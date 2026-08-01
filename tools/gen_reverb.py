@@ -68,7 +68,7 @@ OUT_R = [0, 3]              # 71 / 33 ms -> R starts at 33 ms
 LFO_INC   = 0xa0            # ~0.8 Hz at 44.1k over a 0x800000 phase
 MOD_DEPTH = 8               # peak samples; set by the asl below, see split()
 
-PRE_BASE  = 0x7000          # pre-delay, in the region the Y probe freed
+PRE_BASE  = 0x8000          # pre-delay; 0x4000-ALIGNED so m5 modulo works
 PRE_LEN   = 0x4000          # 16384 words = 371 ms
 PRE_MASK  = PRE_LEN - 1
 
@@ -297,9 +297,11 @@ proc:
 ; about {LINE_TAPS[0] // 8}, i.e. {LINE_TAPS[0]/44.1:.0f} ms down to {LINE_TAPS[0]/8/44.1:.0f} ms on the longest line.
 ; Setup only -- this runs once per block, not per sample.
         move    x:(r6+${P_SIZE}),x0
-        move    #>$100000,a
-        add     x0,a
-        move    a,x1                    ; f
+        move    #>$700000,y1
+        mpy     x0,y1,a                 ; * 0.875 FIRST -- $100000 + $7f0000 is
+        move    #>$100000,x0            ; $8f0000, which reads as NEGATIVE, and
+        add     x0,a                    ; a negative f flips every tap
+        move    a,x1                    ; f = 0.125 .. 0.995
 """
     for i, t in enumerate(LINE_TAPS):
         body += f"""        move    #>${t << 11:06x},x0            ; {t} as a fraction of {LINE_LEN}
@@ -317,7 +319,10 @@ proc:
         move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
 """
     body += f"""        move    #>$ffffff,m0            ; audio read AND written in place via r0
-        move    #>$ffffff,m5
+        move    #>${PRE_MASK:x},m5           ; pre-delay modulo. Harmless to the
+                                        ; diffuser: it only ever does plain
+                                        ; y:(r5), never a post-increment, and
+                                        ; modulo affects updates, not reads.
 
 ; ---- feedback gain from TIME --------------------------------------------
 ; p0 arrives as value<<16. g/2 spans 0.4375..0.4995, so g spans 0.875..0.999.
@@ -354,9 +359,10 @@ proc:
         move    x0,x:(r7+$6c)
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
+; 8x what it would be per sample, because the LFO is stepped once per block.
         move    x:(r6+${P_RATE}),a
-        asr     #$e,a,a
-        move    #>$40,x0
+        asr     #$b,a,a
+        move    #>$200,x0
         add     x0,a
         move    a,x:(r7+$6f)
 
@@ -367,7 +373,24 @@ proc:
         move    x:(r6+${P_PRE}),a
         asr     #$9,a,a
         move    a,x:(r7+$69)
+        move    #>$1,x0                 ; the read happens BEFORE the write, so
+        add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
+        neg     a                       ; is one sample, not a whole buffer of
+        move    a,n5                    ; staleness
+        move    y:>${PREPH:x},a         ; rebuild the pre-delay pointer
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    #>${PRE_BASE:x},x0
+        add     x0,a
+        move    a,x:(r7+$70)            ; NOT $6d: the width matrix uses that
+"""
 
+    # The LFO runs ONCE PER BLOCK, not per sample. At 0.8 Hz it moves about
+    # 0.0024 samples of delay per block, so stepping it 8 frames at a time is
+    # inaudible -- and it buys back ~35 instructions a sample, which is the
+    # difference between fitting in the frame budget and hanging the DSP.
+    body += lfo()
+    body += """
         do      n7,>rvend
 
 ; ---- input: mono sum -----------------------------------------------------
@@ -379,36 +402,18 @@ proc:
         move    a,x:(r7+$5b)
 
 ; ---- pre-delay ----------------------------------------------------------
-; Its own phase and its own {PRE_LEN}-word buffer in the region the Y probe
-; freed. Explicit masked addressing, same as everything else that touches Y.
-        move    y:>${PREPH:x},a
-        move    #>${PRE_MASK:x},x0
-        and     x0,a
-        move    a,x:(r7+$6d)            ; phase
-        move    #>${PRE_BASE:x},x0
-        add     x0,a
-        move    a,r5
-        move    x:(r7+$5b),a            ; the input, and fills the AGU slot
-        move    x:(r7+$5b),b
-        move    a,y:(r5)                ; write it at base + phase
-        move    x:(r7+$6d),a
-        move    x:(r7+$69),x0           ; PRE, in samples
-        sub     x0,a
-        move    #>${PRE_MASK:x},x0
-        and     x0,a
-        move    #>${PRE_BASE:x},x0
-        add     x0,a
-        move    a,r5
-        move    #>$1,n0                 ; both of these fill the AGU slot
-        move    x:(r7+$6d),b
-        move    y:(r5),a
-        move    a,x:(r7+$5b)            ; delayed input -> the diffuser
-        move    b,a
-        move    #>$1,x0
-        add     x0,a
-        move    #>${PRE_MASK:x},x0
-        and     x0,a
-        move    a,y:>${PREPH:x}
+; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
+; lines, which are proven safe. The earlier version computed the addresses
+; arithmetically like the diffuser does, which cost 28 instructions a sample;
+; that is only necessary when r5 and n5 are RECOMPUTED inside the loop, and
+; here they are set once per block.
+        move    x:(r7+$70),r5           ; restore: the allpasses clobber r5
+        move    x:(r7+$5b),a            ; input, and fills the AGU slot
+        move    #>$1,n0
+        move    y:(r5+n5),b             ; delayed
+        move    a,y:(r5)+               ; write, and advance
+        move    r5,x:(r7+$70)
+        move    b,x:(r7+$5b)            ; delayed input -> the diffuser
 """
     for i in range(4):
         body += allpass(i)
@@ -424,7 +429,6 @@ proc:
         asr     #$1,a,a
         move    a,x:(r7+$67)            ; and at half, for the other three lines
 """
-    body += lfo()
     body += "\n; ---- four taps, damped inside the feedback path -------------------------\n"
     body += "        move    x:(r7+$5f),y0           ; damping coefficient, from DAMP\n"
     for i in range(4):
@@ -510,7 +514,12 @@ proc:
         move    (r0)+n0                 ; advance one stereo frame
 rvend:
 
-; ---- save the phase, restore the M registers ----------------------------
+"""
+    body += f"""; ---- save the phases, restore the M registers ---------------------------
+        move    x:(r7+$70),a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    a,y:>${PREPH:x}
         move    r1,a
 """
     body += f"""        move    #>${LINE_MASK:x},x0
