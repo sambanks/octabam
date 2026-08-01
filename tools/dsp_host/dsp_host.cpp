@@ -47,7 +47,7 @@ public:
 struct Args {
     std::string mem, in, out;
     TWord init = 0, proc = 0, audio = 0x000000, params = 0x000100, state = 0x010000;
-    int frames = 32, blocks = 256, trace = 0; TWord flags = 0;
+    int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0; TWord flags = 0;
     std::vector<int> pv{64, 64, 64, 64, 64, 64};
 };
 
@@ -118,6 +118,8 @@ int main(int argc, char** argv) {
         else if (k == "-blocks") a.blocks = atoi(argv[++i]);
         else if (k == "-trace") a.trace = atoi(argv[++i]);
         else if (k == "-flags") a.flags = strtoul(argv[++i], nullptr, 16);
+        else if (k == "-diff") a.diff = atoi(argv[++i]);
+        else if (k == "-spray") a.spray = atoi(argv[++i]);
         else if (k == "-in") a.in = v();
         else if (k == "-out") a.out = v();
         else if (k == "-params") {
@@ -207,12 +209,48 @@ int main(int argc, char** argv) {
             dsp.memWrite(MemArea_X, a.audio + f * 2 + 0, s & 0xffffff);
             dsp.memWrite(MemArea_X, a.audio + f * 2 + 1, s & 0xffffff);
         }
+        if (a.spray && b == 0) {
+            // excite every candidate input word: if the effect reads audio from
+            // anywhere in the low X region, this will find it
+            for (TWord ad = 0; ad < static_cast<TWord>(a.spray); ++ad)
+                dsp.memWrite(MemArea_X, ad, 0x400000);
+        }
         dsp.regs().r[0].var = a.audio;
         dsp.regs().r[6].var = pblock;
         dsp.regs().r[7].var = state;
         dsp.regs().n[7].var = cnt;
+        std::vector<TWord> snap;
+        const TWord DIFF_LO = 0x000, DIFF_HI = 0x8000;
+        if (a.diff && b == a.diff - 1) {
+            snap.resize(DIFF_HI - DIFF_LO);
+            for (TWord ad = DIFF_LO; ad < DIFF_HI; ++ad) snap[ad - DIFF_LO] = mem.get(MemArea_X, ad);
+        }
         if (!runToRts(dsp, a.proc, b == 0 ? a.trace : 0, "proc")) return 1;
+        if (a.diff && b == a.diff - 1) {
+            std::printf("X writes during block %d (impulse block):\n", b);
+            int n = 0; TWord runLo = 0; bool inRun = false;
+            for (TWord ad = DIFF_LO; ad < DIFF_HI; ++ad) {
+                const bool ch = mem.get(MemArea_X, ad) != snap[ad - DIFF_LO];
+                if (ch && !inRun) { runLo = ad; inRun = true; }
+                if (!ch && inRun) {
+                    if (n < 40) std::printf("   X:0x%05x..0x%05x  (%u words)\n", runLo, ad - 1, ad - runLo);
+                    ++n; inRun = false;
+                }
+            }
+            if (inRun) std::printf("   X:0x%05x..0x%05x\n", runLo, DIFF_HI - 1);
+            std::printf("   %d changed regions total\n", n);
+        }
 
+        if (a.spray) {
+            TWord acc = 0;
+            for (TWord ad = 0xa0; ad <= 0xa1; ++ad) acc |= mem.get(MemArea_X, ad);
+            for (TWord ad = 0x130; ad <= 0x133; ++ad) acc |= mem.get(MemArea_X, ad);
+            if (acc && (b % 40 == 0 || b < 6))
+                std::printf("  block %4d: X:0xa0=%06x %06x  X:0x130=%06x %06x %06x %06x\n", b,
+                            mem.get(MemArea_X,0xa0), mem.get(MemArea_X,0xa1),
+                            mem.get(MemArea_X,0x130), mem.get(MemArea_X,0x131),
+                            mem.get(MemArea_X,0x132), mem.get(MemArea_X,0x133));
+        }
         for (int f = 0; f < a.frames; ++f) {
             for (int c = 0; c < 2; ++c) {
                 TWord w = mem.get(MemArea_X, a.audio + f * 2 + c);
