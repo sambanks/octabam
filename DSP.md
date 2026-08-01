@@ -566,7 +566,34 @@ So X memory covers at least `0x0000`–`0xf000`, and the region the firmware nev
 references — **`0x08d98`–`0x0ffff`, 29,288 words, 664 ms at 44.1 kHz** — is real,
 writable, and entirely free.
 
-### The full resource budget for new reverbs
+### CORRECTION: that budget does not belong to effects
+
+The figures below were measured correctly but interpreted wrongly, and the reverb
+work proved it. Probing showed X:0x4000/0xc000/0xf000 respond to reads and
+writes, and I concluded 664 ms of delay memory was available. It is not
+*allocated* to effects, and using it does not work: a self-chosen buffer neither
+persists reliably nor is safe to write in bulk.
+
+How the stock reverbs actually do it, from DARK REV's disassembly:
+
+* it never loads an address above 0x200 into an address register, apart from two
+  loaded lookup tables;
+* it reads its modulo registers from a table -- `move #>$8cf3,r3` then
+  `move x:(r3+$8),m4`;
+* that table at X:0x8cfb is a list of DELAY LENGTHS:
+  `28 36 58 82 126 190 250 408 646 922 1376 2047 608 896 1292 2047`
+* and it makes heavy use of Y memory (103 instructions) at low addresses.
+
+So effects are given small buffers in low Y memory and take their delay lengths
+from a table. The longest line DARK uses is 2,047 words -- about 46 ms, not the
+664 ms I quoted. A reverb here is built from a few thousand words in total, which
+is why the stock ones sound small.
+
+This invalidates the design premise of reverb v1-v4: four 4096-word lines in
+self-chosen X memory is roughly 8x more delay memory than the hardware actually
+hands an effect, in a memory space that is not ours.
+
+### The measured figures, which stand as measurements
 
 | resource | available | stock comparison |
 |---|---|---|
