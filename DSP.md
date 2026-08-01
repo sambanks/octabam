@@ -734,3 +734,88 @@ One trap when fixing it in `tools/gen_reverb.py`: the offset is interpolated int
 the assembly as text, so `P_RATE = 12` formats as `$12`, which the assembler reads
 as **hex 18**. It needs `{P_RATE:x}`. That produces a working build that quietly
 reads the wrong slot.
+
+## 10. Per-instance buffers: the host runs a bump allocator
+
+Every build up to v22 hardcoded absolute Y addresses. That works for exactly one
+instance and writes through everything else. Here is how the stock effects do it.
+
+### The mechanism
+
+Two globals, both initialised in `P:0x002bf` and advanced by the dispatcher in
+`P:0x0041e` once per effect:
+
+    X:0x20a = 0x6000    per-instance STATE block (r7), += 0x100 each
+    X:0x213 = 0x255     pointer into a TABLE of per-instance BUFFER BASES, += 1
+
+An effect reads its own base in two instructions:
+
+    move    x:>$213,r4
+    move    x:(r4),x0           ; x0 = this instance's buffer base
+
+and then places every buffer at `base + a fixed offset`. DARK REV's offsets are
+`0x0000 0x0300 0x0320 0x0348 0x0350 0x0800 0x1000 0x2000 0x2800 0x3800 0x3a00
+0x3b00 0x3c00 0x3c80 0x3d00 0x3d40 0x3d80 0x3da0`.
+
+The dispatcher advances both pointers **twice** per loop iteration, once for FX1
+and once for FX2, calling `x:(r1+$215)` (init) and `x:(r1+$235)` (process) for
+each.
+
+### The table, and what it tells you
+
+`X:0x255` is a loaded module, 8 words, and it is the whole memory map:
+
+    0x01000  0x04000  0x01c00  0x08000  0x02800  0x30000  0x03400  0x34000
+
+Interleaved FX1/FX2. Separating them:
+
+    FX1:  0x1000  0x1c00  0x2800  0x3400     stride 0xc00   =  3072 words
+    FX2:  0x4000  0x8000  0x30000 0x34000    stride 0x4000  = 16384 words
+
+which lays out as:
+
+| Y range | |
+|---|---|
+| `0x0000–0x0FFF` | system, loaded modules |
+| `0x1000–0x3FFF` | 4 FX1 instances, 3072 words each |
+| `0x4000–0xBFFF` | 2 FX2 instances, 16384 words each |
+| `0x30000+` | 2 more FX2 instances |
+
+Three things follow:
+
+1. **An FX2 effect gets 0x4000 words; FX1 gets 0xc00.** That is why the reverbs
+   are FX2-only — they do not fit in an FX1 allocation.
+2. **`0x8000 + 0x4000 = 0xC000`**, exactly where §8's probe found Y ends. The
+   allocator fills Y to the last word and then jumps to a second region at
+   `0x30000`, which the probe never reached (it stopped at `0x20000`).
+3. Our 40K layout was about 2.5x an instance's entire allocation.
+
+### What v23 does
+
+All buffers are offsets from the base, and all persistent state moved out of
+absolute Y into the r7 block, which is already per-instance:
+
+    lines      base+0x0000  4 x 2048    taps 1567 1249 977 733
+    allpasses  base+0x2000  4 x 1024    taps 907 673 487 331
+    pre-delay  base+0x3000  1 x 2048    46 ms
+                                        total 0x3800 of 0x4000
+
+    r7+$83        tank write phase
+    r7+$84..$8a   allpass phase, LFO phase, pre-delay phase, 4 damping states
+    r7+$71..$78   the instance base and everything derived from it
+
+Cost: nothing per sample. The bases are computed once per block, so the loop is
+still 300 instructions. The sonic cost is real though — tank taps drop from
+71 ms to 35 ms and pre-delay from 369 ms to 46 ms.
+
+**Verification that actually proves it**: run the same build at two different
+table entries (`DSP_ALLOC_IDX` in `dsp_host`) and compare the output. Base
+`0x4000` and base `0x8000` produce byte-identical audio.
+
+### One trap worth its own paragraph
+
+A modulo offset larger than the buffer is **undefined** on the DSP56300. Shrinking
+the pre-delay to 2048 words while leaving the knob scaled to `v*128` meant PRE=32
+asked for 4096 samples through `y:(r5+n5)` under `m5`. It does not wrap and it
+does not clamp: the read returns nothing, the tank gets no input, and the reverb
+goes **completely silent** — which looks nothing like an addressing bug.

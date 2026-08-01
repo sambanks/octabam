@@ -191,6 +191,18 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < a.pv.size(); ++i) std::printf(" %d", a.pv[i]);
     std::printf("   state r7 = X:0x%05x\n", state);
 
+    // Emulate the host's buffer allocator. X:0x213 points at this instance's
+    // entry in the base table at X:0x255; entry 1 is 0x4000, the first FX2
+    // slot. Without this an effect reads a base of 0 and writes over the
+    // loaded modules.
+    // DSP_ALLOC_IDX picks which table entry, so the same build can be run at
+    // different bases to prove it is genuinely relocatable.
+    const char* ai = getenv("DSP_ALLOC_IDX");
+    const TWord alloc = 0x255 + (ai ? strtoul(ai, nullptr, 0) : 1);
+    mem.set(MemArea_X, 0x213, alloc);
+    std::printf("instance base = Y:0x%05x (via X:0x213 -> X:0x%03x)\n",
+                mem.get(MemArea_X, alloc), alloc);
+
     dsp.regs().r[6].var = pblock;
     dsp.regs().r[7].var = state;
     if (a.init) {
@@ -228,7 +240,19 @@ int main(int argc, char** argv) {
         }
         if (a.pingpong >= 0) mem.set(MemArea_X, 0x41f, static_cast<TWord>(a.pingpong));
         dsp.regs().r[0].var = a.audio;
-        dsp.regs().r[6].var = pblock;
+        // Emulate the host's buffer allocator. X:0x213 points at this instance's
+    // entry in the base table at X:0x255; entry 1 is 0x4000, the first FX2
+    // slot. Without this an effect reads a base of 0 and writes over the
+    // loaded modules.
+    // DSP_ALLOC_IDX picks which table entry, so the same build can be run at
+    // different bases to prove it is genuinely relocatable.
+    const char* ai = getenv("DSP_ALLOC_IDX");
+    const TWord alloc = 0x255 + (ai ? strtoul(ai, nullptr, 0) : 1);
+    mem.set(MemArea_X, 0x213, alloc);
+    std::printf("instance base = Y:0x%05x (via X:0x213 -> X:0x%03x)\n",
+                mem.get(MemArea_X, alloc), alloc);
+
+    dsp.regs().r[6].var = pblock;
         dsp.regs().r[7].var = state;
         dsp.regs().n[7].var = cnt;
         std::vector<TWord> snap;

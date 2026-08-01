@@ -29,15 +29,37 @@ The hardware constraints this encodes, all established by probe:
 import sys
 
 # ---- memory ---------------------------------------------------------------
-# Sized against the measured 0x400..0xBFFF. Everything here tops out at 0x6FFF,
-# which leaves 0x7000..0xBFFF (20K words, 465 ms) for the pre-delay.
-LINE_BASE = 0x1000          # four tank lines, contiguous, one per 0x1000
-LINE_LEN  = 4096
-LINE_TAPS = [3121, 2477, 1949, 1453]        # 71 / 56 / 44 / 33 ms, all prime
+# Buffers are PER-INSTANCE. The host runs a bump allocator: X:0x213 holds a
+# pointer into a table of per-instance buffer bases (X:0x255, one word each,
+# advanced by one per effect), and X:0x20a does the same for the 0x100-word r7
+# state blocks. An effect reads its own base with
+#
+#     move x:>$213,r4        move x:(r4),x0
+#
+# and places every buffer at base + a fixed offset. That is exactly what DARK
+# REV does, and its offsets run to 0x3da0.
+#
+# The table shows the whole layout, and it is tight:
+#
+#     Y:0x0000-0x0FFF   system
+#     Y:0x1000-0x3FFF   4 FX1 instances, 0xc00 words each
+#     Y:0x4000-0xBFFF   2 FX2 instances, 0x4000 words each  -- exactly to 0xC000
+#     Y:0x30000+        2 more FX2 instances
+#
+# So an FX2 effect gets 0x4000 = 16384 words, and FX1 only 3072 -- which is why
+# the reverbs are FX2-only. Hardcoding absolute addresses, as every build up to
+# v22 did, writes through all of them; it only worked because nothing else was
+# running. Everything below is an OFFSET from the instance base and the total
+# must not exceed 0x4000.
+ALLOC_PTR = 0x213           # X: pointer to this instance's base
 
-AP_BASE   = 0x5000          # four series allpasses, one per 0x800
-AP_LEN    = 2048
-AP_TAPS   = [1051, 773, 557, 379]           # 24 / 17.5 / 12.6 / 8.6 ms
+LINE_OFF  = 0x0000          # four tank lines, one per 0x800
+LINE_LEN  = 2048
+LINE_TAPS = [1567, 1249, 977, 733]          # 35.5 / 28.3 / 22.2 / 16.6 ms, prime
+
+AP_OFF    = 0x2000          # four series allpasses, one per 0x400
+AP_LEN    = 1024
+AP_TAPS   = [907, 673, 487, 331]            # 20.6 / 15.3 / 11.0 / 7.5 ms
 
 MOD_LINES = [1, 2]          # which tank lines get the interpolated read
 
@@ -68,14 +90,21 @@ OUT_R = [0, 3]              # 71 / 33 ms -> R starts at 33 ms
 LFO_INC   = 0xa0            # ~0.8 Hz at 44.1k over a 0x800000 phase
 MOD_DEPTH = 8               # peak samples; set by the asl below, see split()
 
-PRE_BASE  = 0x8000          # pre-delay; 0x4000-ALIGNED so m5 modulo works
-PRE_LEN   = 0x4000          # 16384 words = 371 ms
-PRE_MASK  = PRE_LEN - 1
+PRE_OFF   = 0x3000          # pre-delay; the base is 0x4000-aligned, so this is
+PRE_LEN   = 0x800           # PRE_LEN-aligned too, which m5 modulo requires
+PRE_MASK  = PRE_LEN - 1     # 2048 words = 46 ms
+                            # total: 0x2000 + 0x1000 + 0x800 = 0x3800 of 0x4000
 
-PHASE     = 0x7a1           # Y: shared allpass phase
-LFOPH     = 0x7a2           # Y: LFO phase
-PREPH     = 0x7a3           # Y: pre-delay phase
-DAMPST    = 0x7f0           # Y: four one-pole states, 0x7f0..0x7f3
+# Persistent state moves OUT of absolute Y and into the r7 block, which is
+# already per-instance and 0x100 words long. r7+$83 is proven to survive between
+# frames -- it is where the tank write phase lives -- and these sit beside it.
+# The stock code writes r7+$82/$84/$8b, so the region is real.
+PHASE     = "x:(r7+$84)"    # shared allpass phase
+LFOPH     = "x:(r7+$85)"    # LFO phase
+PREPH     = "x:(r7+$86)"    # pre-delay phase
+DAMPST    = 0x87            # four one-pole states, r7+$87..$8a
+BASE      = "x:(r7+$71)"    # this instance's buffer base
+APB       = 0x72            # the four allpass bases, r7+$72..$75
 
 # ---- parameters -----------------------------------------------------------
 # Layout follows Blackhole's primary page (Mix, Gravity, Feedback, Size, Lo, Hi)
@@ -109,15 +138,15 @@ def neg24(n):
 
 
 def allpass(i):
-    base, tap = AP_BASE + i * AP_LEN, AP_TAPS[i]
+    off, tap = AP_OFF + i * AP_LEN, AP_TAPS[i]
     return f"""
-; -- allpass {i}: Y:{base:#07x}, tap {tap} ({tap/44.1:.1f} ms) --
-        move    y:>${PHASE:x},a
+; -- allpass {i}: base+{off:#06x}, tap {tap} ({tap/44.1:.1f} ms) --
+        move    {PHASE},a
         move    #>{AP_LEN - tap},x0
         add     x0,a
         move    #>${AP_MASK:x},x0
         and     x0,a                    ; (phase - tap) mod {AP_LEN}
-        move    #>${base:x},x0
+        move    x:(r7+${APB+i:02x}),x0
         add     x0,a
         move    a,r5
         move    #>$400000,y0            ; coefficient, and fills the AGU slot
@@ -131,8 +160,8 @@ def allpass(i):
         mpy     x1,y0,a
         sub     a,b                     ; out = d - g*v
         move    b,x:(r7+$5b)
-        move    y:>${PHASE:x},a         ; write v at base + phase
-        move    #>${base:x},x0
+        move    {PHASE},a               ; write v at base + phase
+        move    x:(r7+${APB+i:02x}),x0
         add     x0,a
         move    a,r5
         move    x:(r7+$5c),a            ; reload v, fills the AGU slot
@@ -165,13 +194,13 @@ def split(mi, mf, who):
 def lfo():
     return f"""
 ; ---- LFO: one triangle and its inverse ----------------------------------
-        move    y:>${LFOPH:x},a         ; persistent phase, [0,$7fffff]
+        move    {LFOPH},a               ; persistent phase, [0,$7fffff]
         move    x:(r7+$6f),x0           ; increment, from RATE
         add     x0,a
         move    #>$7fffff,x0
         and     x0,a                    ; wrap; A1 is right even if A2 carried
         move    a1,x0                   ; extract without saturating on A2
-        move    x0,y:>${LFOPH:x}
+        move    x0,{LFOPH}
         move    x0,a                    ; clean copy, A2 = 0
         move    #>$400000,x0
         sub     x0,a
@@ -189,8 +218,9 @@ def lfo():
 
 def modread(i, mi, mf):
     """Interpolated read for tank line i: d = d0 + f*(d1-d0), f in [0,1)."""
-    base, tap = LINE_BASE + i * LINE_LEN, LINE_TAPS[i]
-    return f"""; -- line {i} modulated: Y:{base:#07x}, tap {tap}, interpolated --
+    off, tap = LINE_OFF + i * LINE_LEN, LINE_TAPS[i]
+    slot = 0x76 if i == MOD_LINES[0] else 0x77
+    return f"""; -- line {i} modulated: base+{off:#06x}, tap {tap}, interpolated --
         move    r1,b
         move    #>${LINE_MASK:x},x0
         and     x0,b                    ; shared write phase
@@ -203,7 +233,7 @@ def modread(i, mi, mf):
         move    b,a
         add     x0,a
         and     x0,a                    ; i1 = (i0-1) mod {LINE_LEN}
-        move    #>${base:x},x0
+        move    x:(r7+${slot:02x}),x0
         add     x0,b
         add     x0,a
         move    a,x1
@@ -231,12 +261,12 @@ def tap(i):
         head = modread(i, 0x63, 0x64)
     else:
         head = f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
-    return head + f"""        move    y:>${DAMPST+i:x},b
+    return head + f"""        move    x:(r7+${DAMPST+i:02x}),b
         sub     b,a
         move    a,x0
         mpy     x0,y0,a
         add     b,a
-        move    a,y:>${DAMPST+i:x}
+        move    a,x:(r7+${DAMPST+i:02x})
         move    a,x:(r7+${0x56+i:02x})
 """
 
@@ -249,23 +279,25 @@ def main():
 ; Four series allpasses into a four-line FDN with a 4x4 Hadamard, one-pole
 ; damping inside the feedback path, and interpolated modulation on two lines.
 ;
-; Sized against the measured end of Y memory at 0xC000:
-;   lines      Y:{LINE_BASE:#07x} .. {LINE_BASE + 4*LINE_LEN - 1:#07x}   {LINE_LEN} words each ({tail_ms:.0f} ms)
+; All buffers are relative to the per-instance base at x:(x:>$213), so two
+; tracks running this effect do not write through each other. An FX2 instance is
+; given 0x4000 words:
+;   lines      base+{LINE_OFF:#06x} .. base+{LINE_OFF + 4*LINE_LEN - 1:#06x}   {LINE_LEN} words each
 ;              taps {' '.join(str(t) for t in LINE_TAPS)}  ({' '.join(f'{t/44.1:.0f}' for t in LINE_TAPS)} ms)
-;   allpasses  Y:{AP_BASE:#07x} .. {AP_BASE + 4*AP_LEN - 1:#07x}   {AP_LEN} words each
+;   allpasses  base+{AP_OFF:#06x} .. base+{AP_OFF + 4*AP_LEN - 1:#06x}   {AP_LEN} words each
 ;              taps {' '.join(str(t) for t in AP_TAPS)}  ({' '.join(f'{t/44.1:.0f}' for t in AP_TAPS)} ms)
-;   free       Y:0x7000 .. 0xBFFF  (20K words, 465 ms) for the pre-delay
+;   pre-delay  base+{PRE_OFF:#06x} .. base+{PRE_OFF + PRE_LEN - 1:#06x}   {PRE_LEN} words ({PRE_LEN/44.1:.0f} ms)
+;   total      {AP_OFF + 4*AP_LEN + PRE_LEN:#06x} of the 0x4000 an FX2 instance is given
 ;
 ; The allpasses are long on purpose. Four lines at ~50 ms is only ~80 echoes a
 ; second, which on its own reads as a stutter rather than a wash; the density
 ; has to come from diffusion, so the allpasses run 9-24 ms instead of the 3-8 ms
 ; they were when the whole engine had to fit in 6K.
 ;
-; State:
+; State (all in the per-instance r7 block, not absolute Y):
 ;   r7+$83        write phase (persistent, masked on load as well as save)
-;   Y:{PHASE:#05x}        shared allpass phase
-;   Y:{LFOPH:#05x}        LFO phase
-;   Y:{DAMPST:#05x}..{DAMPST+3:#05x}  damping states
+;   r7+$84..$8a   allpass phase, LFO phase, pre-delay phase, 4 damping states
+;   r7+$71..$78   this instance's base, and the bases derived from it
 ;   r7+$55..$66   per-sample scratch
 ;
 ; Parameters:
@@ -287,19 +319,53 @@ init:
         rts
 
 proc:
+; ---- this instance's buffer base ----------------------------------------
+; X:${ALLOC_PTR:x} points at our entry in the host's table of per-instance bases.
+; Everything below is an offset from it, so two tracks running this effect get
+; separate delay lines instead of writing through each other.
+        move    x:>${ALLOC_PTR:x},r4
+        move    #>$ffffff,m0            ; audio is read and written via r0
+        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    x:(r4),x0
+        move    x0,x:(r7+$71)
+
+; ---- absolute bases, once per block -------------------------------------
+        move    #>${AP_OFF:x},a
+        add     x0,a
+        move    a,x:(r7+${APB:02x})
+        move    #>${AP_OFF+AP_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+${APB+1:02x})
+        move    #>${AP_OFF+2*AP_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+${APB+2:02x})
+        move    #>${AP_OFF+3*AP_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+${APB+3:02x})
+        move    #>${LINE_OFF+MOD_LINES[0]*LINE_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+$76)            ; modulated line {MOD_LINES[0]}
+        move    #>${LINE_OFF+MOD_LINES[1]*LINE_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+$77)            ; modulated line {MOD_LINES[1]}
+        move    #>${PRE_OFF:x},a
+        add     x0,a
+        move    a,x:(r7+$78)            ; pre-delay
+
 ; ---- rebuild the four delay pointers from the saved phase ----------------
         move    x:(r7+$83),a
         move    #>${LINE_MASK:x},x0
         and     x0,a                    ; mask on LOAD: the phase may be garbage
+        move    x:(r7+$71),x0
+        add     x0,a                    ; base + LINE_OFF({LINE_OFF:#x})
+        move    a,r1                    ; line 0
         move    #>${LINE_LEN:x},x0
         add     x0,a
-        move    a,r1                    ; line 0  Y:{LINE_BASE:#07x}
+        move    a,r2                    ; line 1
         add     x0,a
-        move    a,r2                    ; line 1  Y:{LINE_BASE+LINE_LEN:#07x}
+        move    a,r3                    ; line 2
         add     x0,a
-        move    a,r3                    ; line 2  Y:{LINE_BASE+2*LINE_LEN:#07x}
-        add     x0,a
-        move    a,r4                    ; line 3  Y:{LINE_BASE+3*LINE_LEN:#07x}
+        move    a,r4                    ; line 3
         move    #>${LINE_MASK:x},m1
         move    #>${LINE_MASK:x},m2
         move    #>${LINE_MASK:x},m3
@@ -334,8 +400,7 @@ proc:
             body += f"""        neg     a
         move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
 """
-    body += f"""        move    #>$ffffff,m0            ; audio read AND written in place via r0
-        move    #>${PRE_MASK:x},m5           ; pre-delay modulo. Harmless to the
+    body += f"""        move    #>${PRE_MASK:x},m5           ; pre-delay modulo. Harmless to the
                                         ; diffuser: it only ever does plain
                                         ; y:(r5), never a post-increment, and
                                         ; modulo affects updates, not reads.
@@ -382,21 +447,22 @@ proc:
         add     x0,a
         move    a,x:(r7+$6f)
 
-; ---- PRE: pre-delay in samples, 0 .. 16256 (369 ms) ----------------------
-; v * 128, not v * 256: the buffer is 16384 words, and 127*256 = 32512 would
-; overrun it. The mask would then wrap the top half of the knob back round to
-; short delays instead of clamping.
+; ---- PRE: pre-delay in samples, 0 .. 2032 (46 ms) -----------------------
+; v * 16. The scale MUST keep this below PRE_LEN ({PRE_LEN}): the read is
+; y:(r5+n5) under m5 modulo, and a modulo offset larger than the buffer is
+; undefined on the DSP56300. It does not wrap -- the read returns nothing, the
+; tank gets no input, and the reverb goes completely silent.
         move    x:(r6+${P_PRE:x}),a
-        asr     #$9,a,a
+        asr     #$c,a,a
         move    a,x:(r7+$69)
         move    #>$1,x0                 ; the read happens BEFORE the write, so
         add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
         neg     a                       ; is one sample, not a whole buffer of
         move    a,n5                    ; staleness
-        move    y:>${PREPH:x},a         ; rebuild the pre-delay pointer
+        move    {PREPH},a               ; rebuild the pre-delay pointer
         move    #>${PRE_MASK:x},x0
         and     x0,a
-        move    #>${PRE_BASE:x},x0
+        move    x:(r7+$78),x0
         add     x0,a
         move    a,x:(r7+$70)            ; NOT $6d: the width matrix uses that
 """
@@ -434,12 +500,12 @@ proc:
     for i in range(4):
         body += allpass(i)
     body += f"""
-        move    y:>${PHASE:x},a         ; advance the shared allpass phase
+        move    {PHASE},a               ; advance the shared allpass phase
         move    #>$1,x0
         add     x0,a
         move    #>${AP_MASK:x},x0
         and     x0,a
-        move    a,y:>${PHASE:x}
+        move    a,{PHASE}
         move    x:(r7+$5b),a
         move    a,x:(r7+$55)            ; diffused input -> tank
         asr     #$1,a,a
@@ -535,7 +601,7 @@ rvend:
         move    x:(r7+$70),a
         move    #>${PRE_MASK:x},x0
         and     x0,a
-        move    a,y:>${PREPH:x}
+        move    a,{PREPH}
         move    r1,a
 """
     body += f"""        move    #>${LINE_MASK:x},x0
