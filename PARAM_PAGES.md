@@ -18,8 +18,14 @@ NOTE/ARP/CTRL pages, and the effects.
 ## 1. Table bounds
 
 ```
-0x400d2fe4 .. 0x400d5f00     30 entries × 402 (0x192) bytes = 12,060 B
+0x400d2e52 .. 0x400d5f00     31 entries × 402 (0x192) bytes = 12,462 B
 ```
+
+> Corrected after the Ghidra pass: the table starts one entry earlier than first
+> measured. Entry −1 at `0x400d2e52` has a blank name, which is why a
+> printable-name walk skipped it; `FUN_40031da4` returns it (`0x400d2e8a` =
+> `0x400d2e52 + 0x38`) for track 7 when `DAT_80000034` is set — the **master
+> track** page.
 
 402 is not a multiple of 4, so **this is a packed serialised blob, not a
 compiler-laid-out C struct** — absolute alignment shifts 2 bytes per entry, and the
@@ -193,6 +199,53 @@ The hard boundary stays where it was: none of this changes what the DSP *does* w
 parameter. Widening `TSTR` to a fifth value gets you a fifth selectable mode that the
 DSP has no code for. Data edits reach the control surface; new behaviour behind a
 parameter still needs the DSP56300 work described in `COVERAGE.md`.
+
+## 5b. Confirmed by decompilation (Ghidra 12.1.2 pass)
+
+`FUN_40031da4(track, page_kind)` is the resolver, and it settles the layout:
+
+```c
+if (track < 8) switch (page_kind) {                    // audio tracks
+  case 0: id = Part[track] @ +0x8eda2; tbl = 0x400d5f38; break;  // machine type
+  case 1: return 0x400d37f6;                                     // LFO
+  case 2: return (track==7 && DAT_80000034) ? 0x400d2e8a          // master track
+                                            : 0x400d3988;         // AMP
+  case 3: id = Part[track] @ +0x8ed80; tbl = 0x400d5f58; break;   // FX1
+  case 4: id = Part[track] @ +0x8ed88; tbl = 0x400d5fdc; break;   // FX2
+  return tbl[id];
+}
+switch (page_kind) {                                   // MIDI tracks (>= 8)
+  case 0: return 0x400d3e3e;  // NOTE      case 3: return 0x400d42f4;  // CTRL 1
+  case 1: return 0x400d4162;  // LFO       case 4: return 0x400d4486;  // CTRL 2
+  case 2: return 0x400d3fd0;  // ARP
+}
+```
+
+Every fixed return is an entry start + 0x38, which confirms that **the canonical
+struct base is the pointer stored in the tables, `P = E + 0x38`** — not the entry
+start used for the field table in §2. Re-based, the two arrays the decompiler
+reads directly are `min = P+0x6a` and `count = P+0x9a`, exactly the offsets
+`NOTES.md` already recorded for this function. Add `0x38` to every §2 offset to
+get the P-relative form; the fields listed *before* `E+0x38` belong to the
+**previous** record.
+
+`FUN_400326d4(descriptor, page, out)` stages a page into a 0x16-stride working
+array, reading `min` from `P+0x6a` and `count` from `P+0x9a` with a `page ? 6 : 0`
+bias — i.e. six parameters per page, two pages, as the layout implies. It also
+reads two further fields at `P+0x18a`/`P+0x18e`, so the record really is 0x192
+bytes long measured from `P`.
+
+**Bearing on the FX1 experiment**: the effect id is used for *one* thing here —
+indexing the descriptor table, `return tbl[id]`, with no side effects and no
+bounds check beyond the table's own extent. Nothing in this path forwards the id
+to the DSP, which is consistent with (but does not yet prove) the algorithm being
+selected elsewhere. Where the DSP is actually told which effect to run is still
+open, and is the one thing the hardware test will settle empirically.
+
+Supporting evidence that the slots are symmetric: FX1 already hosts effects of
+**both** page classes (class A `0x40032814`: FILTER SPAT EQ PHSR FLNG CHOR COMB;
+class B `0x400328e4`: DJEQ COMP LOFI), and the four effects being added span both.
+So the page-class handler is not what excludes delay and reverb from FX1.
 
 ## 6. Not yet decoded
 
