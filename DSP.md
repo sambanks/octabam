@@ -288,21 +288,61 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 
 `0x7f0000` is 127, `0x400000` is 64 — the centre of a `0..127` control.
 
-### The complete effect ABI
+### The effect ABI — partly settled, and one claim CORRECTED
 
-Everything a new algorithm needs to satisfy:
+| register | meaning | confidence |
+|---|---|---|
+| `r6` | this instance's parameter block | **confirmed** — dispatcher sets it, effects read `x:(r6+0..5)` |
+| `x:(r6+0)` … `x:(r6+5)` | page-1 parameters, `value << 16` | **confirmed** four ways (§6) |
+| `r7` | per-instance state block | **confirmed** — dispatcher sets `r7 = x:0x20a + 0x100` |
+| `n7` | frame count | confirmed for the stub; effects also read `x:0x20c` |
+| `r0` | audio buffer | **NOT as first documented — see below** |
 
-| register | meaning |
-|---|---|
-| `r0` | input buffer (two interleaved channels) |
-| `r1` | output buffer |
-| `n7` | sample count for the `do` loop |
-| `r6` | this instance's parameter block |
-| `x:(r6+0)` … `x:(r6+5)` | page-1 parameters, `value << 16` |
-| `x:(r6+0x0c)` … | page-2 parameters |
-| — | return with `rts` |
+> **Correction.** An earlier version of this section stated `r0` = input buffer
+> and `r1` = output buffer as "the complete effect ABI". That is the **passthrough
+> stub's** convention, and the stub is the degenerate case. Real effects do not
+> follow it. DARK REV's entry saves the incoming `r0` into its state
+> (`move r0,x:(r7+$17)`) and then works from **fixed addresses**:
+>
+> ```asm
+> 00171e: move r6,x:(r7+$18)
+> 00172e: move #$a0,r2
+> 00172f: move #>$110,r4
+> ```
+>
+> So where a real effect reads and writes audio is **still unresolved**. Writing
+> the test impulse at `X:0` and at `X:0xa0` both fail to produce a reverb tail,
+> though tracing confirms the effect does read the impulse (a helper at `P:0x9ad`
+> returns it) and does write into the `0xa0`–`0x110` region.
 
-The null stub (§5) is a working minimal implementation of exactly this contract.
+## 6b. Harness status (`tools/dsp_host`)
+
+**Working**: memory loading, the emulator, single-stepped calls via the DSP's own
+`jsr`, output capture. The passthrough stub returns exactly the two impulse
+samples it should, and that is a genuine end-to-end validation of the plumbing.
+
+**Frame context — solved.** The effects depend on control words no module
+initialises. Rather than reconstruct them by hand, the harness runs the DSP's own
+setup routine at `P:0x372..0x39e`, which derives them from two loaded pointers:
+
+```
+x:0x415 = 0x35d -> x:0x419      x:0x416 = 0x2dd -> x:0x208
+x:0x20a = 0x6000 (state base)   x:0x213 = 0x255
+x:0x20c = frame count, from (x:(x:0x419+0x1e) >> 8) & 0xf   -- capped at 15
+x:0x20d = 0x10 - count          x:0x20e = count * 2
+```
+
+Verified: the harness now reports exactly the values the hardware would compute,
+and derives `r6 = x:0x208 + 6` and `r7 = x:0x20a + 0x100` the way the dispatcher
+does. Note `x:0x20c` being zero makes the dispatcher **skip the effect entirely**,
+which is why an unseeded context produced silence.
+
+**Not working**: real effects run without faulting but produce no tail, because
+the audio buffer convention above is unresolved. Until that is closed the harness
+cannot validate a reverb, which was the whole point of building it.
+
+**Next step**: instrument the harness to log every X write during one process
+call. That names the output buffer directly instead of guessing at it.
 
 ## 7. Where a new effect can go, and what fits
 

@@ -47,7 +47,7 @@ public:
 struct Args {
     std::string mem, in, out;
     TWord init = 0, proc = 0, audio = 0x000000, params = 0x000100, state = 0x010000;
-    int frames = 32, blocks = 256, trace = 0;
+    int frames = 32, blocks = 256, trace = 0; TWord flags = 0;
     std::vector<int> pv{64, 64, 64, 64, 64, 64};
 };
 
@@ -94,6 +94,13 @@ bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycle
     return false;
 }
 
+// Run a straight-line range of P memory (used for the frame context setup).
+void runRange(DSP& dsp, TWord lo, TWord hi) {
+    dsp.setPC(lo);
+    while (dsp.getPC().toWord() <= hi)
+        dsp.execInterpreter();
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -110,6 +117,7 @@ int main(int argc, char** argv) {
         else if (k == "-frames") a.frames = atoi(argv[++i]);
         else if (k == "-blocks") a.blocks = atoi(argv[++i]);
         else if (k == "-trace") a.trace = atoi(argv[++i]);
+        else if (k == "-flags") a.flags = strtoul(argv[++i], nullptr, 16);
         else if (k == "-in") a.in = v();
         else if (k == "-out") a.out = v();
         else if (k == "-params") {
@@ -138,16 +146,40 @@ int main(int argc, char** argv) {
     if (!loadMem(dsp, a.mem, modules, words)) return 1;
     std::printf("loaded %d modules, %ld words from %s\n", modules, words, a.mem.c_str());
 
-    // parameter block: page-1 values as 0..127 << 16
-    for (int i = 0; i < 6; ++i)
-        dsp.memWrite(MemArea_X, a.params + i, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
-    std::printf("params @X:0x%05x =", a.params);
-    for (int i = 0; i < 6; ++i) std::printf(" %d", a.pv[i]);
-    std::printf("\n");
+    // ---- frame context ----------------------------------------------------
+    // The effects depend on control words that no module initialises; the DSP's
+    // own setup routine at P:0x372..0x39e derives them from two loaded pointers
+    // (x:0x415, x:0x416). Rather than reconstruct that by hand, run it.
+    //
+    // It reads the frame count out of x:(x:0x415 + 0x1e) as (w >> 8) & 0xf, so
+    // seed that first. The count is capped at 15 frames by the & 0xf.
+    if (a.frames > 15) { std::printf("frames capped to 15 (the & 0xf in setup)\n"); a.frames = 15; }
+    const TWord blkA = mem.get(MemArea_X, 0x415);
+    mem.set(MemArea_X, blkA + 0x1e, (static_cast<TWord>(a.frames) << 8) | a.flags);
+    std::printf("seeded x:0x%05x+0x1e = frames %d\n", blkA, a.frames);
 
-    dsp.regs().r[6].var = a.params;
-    dsp.regs().r[7].var = a.state;   // per-instance state block (dispatcher: r7 = x:>$20a + 0x100)
-    std::printf("state block r7 = X:0x%05x\n", a.state);
+    runRange(dsp, 0x372, 0x39e);
+
+    const TWord ctlA = mem.get(MemArea_X, 0x419);
+    const TWord ctlB = mem.get(MemArea_X, 0x208);
+    const TWord cnt  = mem.get(MemArea_X, 0x20c);
+    std::printf("context: x:0x419=0x%05x  x:0x208=0x%05x  x:0x20c=%u (frames)  "
+                "x:0x20d=%u  x:0x20e=%u\n", ctlA, ctlB, cnt,
+                mem.get(MemArea_X, 0x20d), mem.get(MemArea_X, 0x20e));
+    if (!cnt) { std::printf("  !! frame count is 0 -- the dispatcher would skip the effect\n"); }
+
+    // The dispatcher hands the routine r6 = x:0x208 + 6 (FX1) and
+    // r7 = x:0x20a + 0x100.
+    const TWord pblock = ctlB + 6;
+    const TWord state  = mem.get(MemArea_X, 0x20a) + 0x100;
+    for (int i = 0; i < 6; ++i)
+        mem.set(MemArea_X, pblock + i, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
+    std::printf("params @X:0x%05x =", pblock);
+    for (int i = 0; i < 6; ++i) std::printf(" %d", a.pv[i]);
+    std::printf("   state r7 = X:0x%05x\n", state);
+
+    dsp.regs().r[6].var = pblock;
+    dsp.regs().r[7].var = state;
     if (a.init) {
         std::printf("running init @P:0x%05x ...\n", a.init);
         if (!runToRts(dsp, a.init, a.trace, "init")) return 1;
@@ -176,9 +208,9 @@ int main(int argc, char** argv) {
             dsp.memWrite(MemArea_X, a.audio + f * 2 + 1, s & 0xffffff);
         }
         dsp.regs().r[0].var = a.audio;
-        dsp.regs().r[6].var = a.params;
-        dsp.regs().r[7].var = a.state;
-        dsp.regs().n[7].var = a.frames;
+        dsp.regs().r[6].var = pblock;
+        dsp.regs().r[7].var = state;
+        dsp.regs().n[7].var = cnt;
         if (!runToRts(dsp, a.proc, b == 0 ? a.trace : 0, "proc")) return 1;
 
         for (int f = 0; f < a.frames; ++f) {
@@ -190,6 +222,14 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // where did anything actually land? scan the low X region for non-zero words
+    std::printf("non-zero X words in 0x000..0x0ff after the run:\n");
+    int shown = 0;
+    for (TWord ad = 0; ad < 0x100; ++ad) {
+        TWord w = mem.get(MemArea_X, ad);
+        if (w && shown < 24) { std::printf("   X:0x%03x = 0x%06x\n", ad, w); ++shown; }
+    }
+    if (!shown) std::printf("   (none)\n");
     std::printf("ran %d blocks x %d frames; %ld non-zero output samples\n",
                 a.blocks, a.frames, nonzero);
     if (!nonzero) std::printf("  (all silent -- the effect produced nothing)\n");
