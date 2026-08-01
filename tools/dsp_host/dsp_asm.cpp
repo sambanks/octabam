@@ -57,7 +57,7 @@ const char* errName(AssembleError e) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string in, out;
+    std::string in, out, sym;
     TWord org = 0;
     bool list = false;
     for (int i = 1; i < argc; ++i) {
@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
         else if (k == "-out" && i + 1 < argc) out = argv[++i];
         else if (k == "-org" && i + 1 < argc) org = strtoul(argv[++i], nullptr, 16);
         else if (k == "-list") list = true;
+        else if (k == "-sym" && i + 1 < argc) sym = argv[++i];
     }
     if (in.empty()) { std::cerr << "usage: dsp_asm -in src.asm -org <hex> [-out blob] [-list]\n"; return 2; }
 
@@ -162,6 +163,13 @@ int main(int argc, char** argv) {
     if (errors) { std::fprintf(stderr, "%d error(s)\n", errors); return 1; }
 
     std::printf("assembled %zu words, P:0x%05x..0x%05x\n", outWords.size(), org, pc - 1);
+    if (!sym.empty()) {
+        // emit the label map so callers never hardcode an entry point -- a stale
+        // one silently dispatches into the middle of a routine
+        std::ofstream sf(sym);
+        for (auto& [name, addr] : labels) sf << name << " " << std::hex << addr << "\n";
+        std::printf("wrote %s (%zu symbols)\n", sym.c_str(), labels.size());
+    }
     if (!out.empty()) {
         std::ofstream o(out, std::ios::binary);
         for (auto w : outWords) {
