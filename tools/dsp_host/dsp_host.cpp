@@ -177,7 +177,13 @@ int main(int argc, char** argv) {
     // The dispatcher hands the routine r6 = x:0x208 + 6 (FX1) and
     // r7 = x:0x20a + 0x100.
     const TWord pblock = ctlB + 6;
-    const TWord state  = mem.get(MemArea_X, 0x20a) + 0x100;
+    // One instance index drives BOTH host pointers, because that is how the
+    // dispatcher advances them: X:0x20a (state blocks, 0x100 apart) and X:0x213
+    // (buffer bases, 1 apart) move together, one step per effect. Setting them
+    // independently models something the hardware never does.
+    const char* ai = getenv("DSP_ALLOC_IDX");
+    const TWord inst = ai ? strtoul(ai, nullptr, 0) : 1;
+    const TWord state  = mem.get(MemArea_X, 0x20a) + inst * 0x100;
     // Page 1 is pblock+0..5. Page 2 is neither contiguous with it nor in
     // display order; mapped on hardware with dsp/pagemap_probe.asm:
     //   index 6 -> +$b (knob BAL)   7 -> +$c (MIXF)
@@ -197,11 +203,10 @@ int main(int argc, char** argv) {
     // loaded modules.
     // DSP_ALLOC_IDX picks which table entry, so the same build can be run at
     // different bases to prove it is genuinely relocatable.
-    const char* ai = getenv("DSP_ALLOC_IDX");
-    const TWord alloc = 0x255 + (ai ? strtoul(ai, nullptr, 0) : 1);
+    const TWord alloc = 0x255 + inst;
     mem.set(MemArea_X, 0x213, alloc);
-    std::printf("instance base = Y:0x%05x (via X:0x213 -> X:0x%03x)\n",
-                mem.get(MemArea_X, alloc), alloc);
+    std::printf("instance %u: r7 = X:0x%05x, base = Y:0x%05x (X:0x%03x)\n",
+                inst, state, mem.get(MemArea_X, alloc), alloc);
 
     dsp.regs().r[6].var = pblock;
     dsp.regs().r[7].var = state;
@@ -246,11 +251,10 @@ int main(int argc, char** argv) {
     // loaded modules.
     // DSP_ALLOC_IDX picks which table entry, so the same build can be run at
     // different bases to prove it is genuinely relocatable.
-    const char* ai = getenv("DSP_ALLOC_IDX");
-    const TWord alloc = 0x255 + (ai ? strtoul(ai, nullptr, 0) : 1);
+    const TWord alloc = 0x255 + inst;
     mem.set(MemArea_X, 0x213, alloc);
-    std::printf("instance base = Y:0x%05x (via X:0x213 -> X:0x%03x)\n",
-                mem.get(MemArea_X, alloc), alloc);
+    std::printf("instance %u: r7 = X:0x%05x, base = Y:0x%05x (X:0x%03x)\n",
+                inst, state, mem.get(MemArea_X, alloc), alloc);
 
     dsp.regs().r[6].var = pblock;
         dsp.regs().r[7].var = state;

@@ -52,6 +52,8 @@ import sys
 # running. Everything below is an OFFSET from the instance base and the total
 # must not exceed 0x4000.
 ALLOC_PTR = 0x213           # X: pointer to this instance's base
+ALLOC_TAB = 0x255           # X: the table itself, one word per instance
+STATE_TAB = 0x6000          # X: first r7 state block; they advance in lockstep
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
@@ -310,19 +312,38 @@ def main():
 init:
 ; No loop, and nothing reset that has to survive: this runs far more often than
 ; once per effect selection.
-;
-; The buffer base MUST be read here and not in proc. The dispatcher advances
-; X:${ALLOC_PTR:x} before it calls process, so by then the pointer refers to a
-; different instance's entry -- you get a base that is neither yours nor even
-; aligned, and modulo addressing walks out of the buffer. The stock reverbs do
-; the same thing: DARK REV reads it at P:0x01692, inside its init.
-        move    x:>${ALLOC_PTR:x},r4
         move    #>$ffffff,m0
-        move    #>$ffffff,m1            ; both fill the AGU slot
-        move    x:(r4),x0
+        move    #>$ffffff,m1
+        move    #>$ffffff,m2
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
+        rts
+
+proc:
+; ---- this instance's buffer base, derived from r7 -----------------------
+; The host advances X:${ALLOC_PTR:x} (buffer bases) and X:0x20a (state blocks)
+; together, one per effect, so the table index is recoverable from r7 alone:
+;
+;     n = (r7 - {STATE_TAB:#x}) >> 8        base = x:({ALLOC_TAB:#x} + n)
+;
+; Reading X:${ALLOC_PTR:x} directly only works in init, because the dispatcher
+; advances it before calling process. Deriving it from r7 works ANYWHERE and
+; needs nothing to survive between calls -- which matters, because parts of the
+; r7 block are demonstrably volatile (r7+$50 does not persist).
+        move    r7,a
+        move    #>${(-STATE_TAB) & 0xffffff:06x},x0
+        add     x0,a
+        asr     #$8,a,a
+        move    #>${ALLOC_TAB:x},x0
+        add     x0,a
+        move    a,r4
+        move    #>$ffffff,m0            ; audio is read and written via r0
+        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    x:(r4),x0               ; base
         move    x0,x:(r7+$71)
 
-; ---- every buffer base, derived once ------------------------------------
+; ---- every buffer base, derived once per block --------------------------
         move    #>${AP_OFF:x},a
         add     x0,a
         move    a,x:(r7+${APB:02x})
@@ -337,24 +358,15 @@ init:
         move    a,x:(r7+${APB+3:02x})
         move    #>${LINE_OFF+MOD_LINES[0]*LINE_LEN:x},a
         add     x0,a
-        move    a,x:(r7+$76)            ; modulated line {MOD_LINES[0]}
+        move    a,x:(r7+$76)
         move    #>${LINE_OFF+MOD_LINES[1]*LINE_LEN:x},a
         add     x0,a
-        move    a,x:(r7+$77)            ; modulated line {MOD_LINES[1]}
+        move    a,x:(r7+$77)
         move    #>${PRE_OFF:x},a
         add     x0,a
-        move    a,x:(r7+$78)            ; pre-delay
+        move    a,x:(r7+$78)
 
-        move    #>$ffffff,m2
-        move    #>$ffffff,m3
-        move    #>$ffffff,m4
-        move    #>$ffffff,m5
-        rts
-
-proc:
 ; ---- rebuild the four delay pointers from the saved phase ----------------
-        move    #>$ffffff,m0            ; audio is read and written via r0
-        move    #>${LINE_MASK:x},m1
         move    x:(r7+$83),a
         move    #>${LINE_MASK:x},x0
         and     x0,a                    ; mask on LOAD: the phase may be garbage
