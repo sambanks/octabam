@@ -304,7 +304,76 @@ Everything a new algorithm needs to satisfy:
 
 The null stub (§5) is a working minimal implementation of exactly this contract.
 
-## 7. Next steps — writing an effect
+## 7. Where a new effect can go, and what fits
+
+### Internal P memory is contiguous and full
+
+| payload | internal P modules | words used | top | gaps |
+|---|---|---|---|---|
+| A | 66 | 8,159 | `P:0x01fdf` | **none** |
+| B | 46 | 7,583 | `P:0x01d9f` | **none** |
+
+Not one hole in either image. Payload A ends at `0x01fdf`, which is 99.6% of
+`0x2000` — that reads as **8 K words of internal P RAM, essentially full**, and
+would leave **33 free words in A** and 609 in B.
+
+> **This is an inference, not a datasheet fact.** The evidence is the packing
+> (perfectly contiguous, stopping 33 words short of an 8 K boundary) plus
+> `P:0x30000`/`P:0x38000` being a separate external region for the host-port
+> bootstrap. If the part actually has 16 K words, there are 8,225 words free at
+> `P:0x01fdf` and a new effect can simply be appended.
+>
+> **Cheap decisive test**: append a module that loads a *copy* of an existing
+> effect at `P:0x02000+`, and point a spare id's dispatch entries at the copy.
+> If that id produces the effect, P RAM extends past 8 K. If it is silent or
+> crashes, it does not. One flash settles it.
+
+### If 8 K is right: replace, don't append
+
+Effect code is 6,158 of the 8,159 words — **75% of the whole program**. So the
+room is in the effects themselves, and the move is to overwrite one you never
+use and repoint its two dispatch entries:
+
+| effect | code | | effect | code |
+|---|---|---|---|---|
+| DARK REV | 1,067 words | | CHORUS | 329 |
+| SPRING REV | 1,063 | | FLANGER | 289 |
+| FILTER | 727 | | EQUALIZER | 282 |
+| PLATE REV | 594 | | COMB | 277 |
+| LO-FI | 537 | | SPATIALIZER | 261 |
+| DJ EQ | 345 | | PHASER | 207 |
+| | | | COMPRESSOR | 180 |
+
+Replacing DJ EQ or SPATIALIZER is the obvious opening move: few people would miss
+them, and 261–345 words is a generous budget for a simple algorithm.
+
+### What fits, by cost
+
+Code size alone is not cost; the per-sample work is. Counting `do` loops in each
+process routine:
+
+| effect | process words | `do` loops | tightest loop body |
+|---|---|---|---|
+| SPRING REV | 1,117 | **26** | 3 |
+| DARK REV | 918 | **22** | 4 |
+| PLATE REV | 617 | **21** | 3 |
+| FILTER | 725 | 12 | 4 |
+| LO-FI | 520 | 11 | 5 |
+| COMB | 259 | 9 | 3 |
+| PHASER | 203 | 12 | 3 |
+| COMPRESSOR | 196 | 8 | 3 |
+
+The three reverbs top both measures — and they are exactly the three that glitch
+when two run at once. That correlation makes the ranking usable as a budget: an
+effect in the COMPRESSOR/PHASER class (~200 words, ~8–12 loops, 3-instruction
+inner loops) is comfortably affordable; anything reverb-shaped is not.
+
+**A first effect should be cheap per sample** — a bitcrusher, waveshaper or
+ring-modulator is a few instructions inside one `do` loop and lands well inside
+the budget. Anything needing a long delay line is the wrong first target, both
+for cycles and because delay-line memory is the one resource we have not mapped.
+
+## 8. Next steps — writing an effect
 
 The path is now mapped end to end:
 
