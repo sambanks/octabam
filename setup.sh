@@ -66,4 +66,25 @@ EOF
 fi
 
 echo
+echo "== 4) dsp56300 (desensamblador DSP56300 para el programa del DSP) =="
+# El programa de audio (FX + timestretch) corre en el DSP56300, no en el ColdFire.
+# Ni Ghidra ni radare2 traen ese target; usamos el desensamblador del emulador
+# del Access Virus. Ver DSP.md y tools/dsp_modmap.py.
+DIS=vendor/dsp56300/build/source/disassemble/dsp56kDisassemble
+if [ ! -x "$DIS" ]; then
+  if ! command -v cmake >/dev/null 2>&1; then
+    echo "   [!] cmake no encontrado — brew install cmake"
+  else
+    [ -d vendor/dsp56300 ] || git clone --depth 1 \
+      https://github.com/dsp56300/dsp56300.git vendor/dsp56300
+    git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
+    cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
+      && cmake --build vendor/dsp56300/build --target dsp56kDisassemble -j8 \
+      || echo "   [!] la compilacion fallo — revisa vendor/dsp56300"
+  fi
+else
+  echo "   ya compilado: $DIS"
+fi
+
+echo
 echo "== setup completo. Siguiente:  ./fetch-os.sh  y luego  ./analyze.sh =="

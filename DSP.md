@@ -112,19 +112,60 @@ effect descriptors, so this looked like a static effect dispatch table. **It is
 not** — every one of the 30 words is `0x000000`. They are zero-initialised
 scratch words. If a dispatch table exists it is built at runtime.
 
-## 4. Next steps
+## 4. Disassembly (step 2 — done)
 
-1. **Build a DSP56300 disassembler.** `NOTES.md` used the one from the Access
-   Virus emulator (`dsp56kDisassemble`); `setup.sh` never clones it, and
-   `vendor/` contains only `elektron-firmware-tool`. Neither Ghidra nor radare2
-   ships a DSP56300 target.
-2. **Disassemble the P modules at their correct addresses**, which this map now
-   supplies. Start with `P:0x01252` and `P:0x01679`.
-3. **Find the effect dispatch** — the code that reads the effect id the ColdFire
+Neither Ghidra nor radare2 ships a DSP56300 target. `setup.sh` now clones and
+builds the disassembler from the Access Virus emulator project
+(<https://github.com/dsp56300/dsp56300>) into
+`vendor/dsp56300/build/source/disassemble/dsp56kDisassemble`.
+
+```sh
+./setup.sh                                        # clones + builds it
+python3 tools/dsp_modmap.py                       # the full module map
+python3 tools/dsp_modmap.py --extract A 1252 out/dsp/A_P1252.bin
+vendor/dsp56300/build/source/disassemble/dsp56kDisassemble \
+    -in out/dsp/A_P1252.bin -pc 1252 -le
+```
+
+**The `-le` is required.** Module data is 24-bit **little-endian**, matching how
+`FUN_40001b18` maps bytes onto the three 8-bit ports (`0x20000014` gets bits
+23–16 from `b[i+5]`, `0x18` gets 15–8 from `b[i+4]`, `0x1c` gets 7–0 from
+`b[i+3]`). Big-endian produces plausible-looking garbage — exactly the trap the
+module map exists to avoid. (`NOTES.md` describes the boot blobs as big-endian;
+that reading does not hold for the payload modules.)
+
+### Validation
+
+`P:0x01252` disassembles into obviously real code from the first instruction —
+an `r7` stack frame, a hardware `do` loop whose bounds land exactly on its body,
+and `move x:>$213,r2` reading X memory at `0x213`, inside a mapped X module.
+
+Decode quality across four P modules, 2,871 instructions:
+
+| module | lines | undecodable |
+|---|---|---|
+| `P:0x01252` | 901 | **0** |
+| `P:0x01679` | 848 | **0** |
+| `P:0x01000` | 485 | **0** |
+| `P:0x007d1` | 637 | **0** |
+
+Zero `dc` fallbacks anywhere. Wrong addresses or wrong endianness would litter
+the output with them, so this validates the module map, the byte order and the
+disassembler together.
+
+## 5. Next steps
+
+1. **Find the effect dispatch** — the code that reads the effect id the ColdFire
    publishes to `0x80000ec4[track]` / `0x80000ecc[track]` (see `PARAM_PAGES.md`)
-   and branches to an algorithm. Finding this answers, in one go, why DELAY is
-   silent on FX1 and whether an unused id can be given an implementation.
-4. **Find free P memory** and a splice point for a new algorithm.
+   and branches to an algorithm. Answers, in one go, why DELAY is silent on FX1
+   and whether an unused id can be given an implementation.
+2. **Map the parameter frame** — how the 12 descriptor parameters arrive at the
+   algorithm, which is what any new effect has to consume.
+3. **Find free P memory** and a splice point for a new algorithm.
 
-Only step 4 amounts to "write a new effect". Steps 1–3 are the price of entry,
-and step 3 is where the interesting answers are.
+Only step 3 amounts to "write a new effect"; step 1 is where the answers are.
+
+Note the ColdFire uploads the payloads verbatim from the image, so a modified DSP
+program only needs the payload rewritten in place — the record format is
+understood in both directions, and the loader does no checksumming of its own.
+The outer ELEK/aPLib container is rebuilt by the existing toolchain.

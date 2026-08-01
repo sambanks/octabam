@@ -66,10 +66,48 @@ def parse(b, order):
     return mods, "ran off the end"
 
 
+def modules(img, va, ln):
+    """Best-effort parse of one payload -> list of (space, addr, count, data_off)."""
+    b = img[va - BASE: va - BASE + ln]
+    best = None
+    for order in ("ca", "ac"):
+        mods, _ = parse(b, order)
+        if mods:
+            consumed = mods[-1][3] + mods[-1][2] * 3
+            if best is None or consumed > best[0]:
+                best = (consumed, mods)
+    return (best[1] if best else []), b
+
+
+def extract(img, args):
+    """--extract <A|B> <hex dsp addr> <out.bin>  : dump one module's raw words."""
+    tag, addr_s, out = args
+    addr = int(addr_s, 16)
+    for t, va, ln in PAYLOADS:
+        if t != tag.upper():
+            continue
+        mods, b = modules(img, va, ln)
+        for sp, a, cnt, data in mods:
+            if a == addr:
+                blob = b[data: data + cnt * 3]
+                pathlib.Path(out).write_bytes(blob)
+                print(f"payload {t} {SPACE.get(sp,'?')}:0x{addr:05x}  {cnt:,} words "
+                      f"({len(blob):,} B) -> {out}")
+                print(f"  disassemble with:")
+                print(f"    vendor/dsp56300/build/source/disassemble/dsp56kDisassemble \\")
+                print(f"        -in {out} -pc {addr:x} -le")
+                return
+        sys.exit(f"no module at 0x{addr:05x} in payload {t}")
+    sys.exit(f"unknown payload {tag}")
+
+
 def main():
     if not IMG.exists():
         sys.exit(f"missing {IMG}")
     img = IMG.read_bytes()
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--extract":
+        return extract(img, sys.argv[2:5])
 
     print("=== bootstraps (address given explicitly by the ColdFire) ===")
     for tag, va, ln, dsp in BOOTSTRAPS:
