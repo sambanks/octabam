@@ -465,6 +465,56 @@ ring-modulator is a few instructions inside one `do` loop and lands well inside
 the budget. Anything needing a long delay line is the wrong first target, both
 for cycles and because delay-line memory is the one resource we have not mapped.
 
+## 7b. We can write DSP56300 code — validated
+
+`dsp56kEmu` ships an assembler as well as an emulator. `tools/dsp_host/dsp_asm.cpp`
+wraps it with two-pass label resolution and emits a module blob in the payload's
+24-bit little-endian packing.
+
+**Validation**: reassembling the stock passthrough stub from source reproduces
+all 9 words **byte for byte**, including the two-word `do n7,>$7d0` (`06df00
+0007cf`). So the write side of the toolchain is correct against known-good
+firmware bytes, not merely plausible.
+
+```sh
+dsp_asm -in dsp/passthrough.asm -org 7c8 -list -out blob.bin
+```
+
+## 7c. Delay memory — earlier figures CORRECTED
+
+Two mistakes in §7, both from scanning immediates too loosely:
+
+1. The buffer ladders attributed to the reverbs mixed **coefficient tables** in
+   with delay lines. `X:0x438` (6,305 words, 99% non-zero, a decaying curve),
+   `X:0x4840` (4,096) and `X:0x6c00` (3,730) are loaded data, not buffers. DARK
+   REV's real delay memory is roughly 7,600 words (**~172 ms**), not the 416 ms
+   quoted.
+2. Some "buffer bases" were not addresses at all — SPRING's `0x7f00` is
+   `and #>$7f00,b`, a bitmask. Filtering to immediates loaded into address
+   registers leaves very few, because **the reverbs compute their buffer
+   addresses at runtime** rather than loading constants. Static scanning cannot
+   locate their delay lines.
+
+The uninitialised X regions, which is what actually matters:
+
+| region | words | ms @44.1k | use |
+|---|---|---|---|
+| `0x01d9f–0x0483f` | 10,913 | 247 | main delay region (PLATE, DARK) |
+| `0x05840–0x06bff` | 5,056 | 115 | per-instance state blocks (`x:0x20a` = 0x6000) |
+| `0x07a92–0x0857f` | 2,798 | 63 | |
+| **`0x08d98–0x0ffff`** | **29,288** | **664** | **unreferenced anywhere** |
+
+If that last region is real memory, a new reverb can have several times the stock
+delay allocation — which is what a Blackhole-class space needs. Whether it exists
+is unresolved: relocating a stock reverb's buffers to test it is not viable,
+since those addresses are computed rather than stored.
+
+**Better test, which also proves the pipeline**: write a small probe effect that
+stores a pattern high in X, reads it back, and passes audio only if it matches.
+Point a free effect id at it, flash, listen. That answers the memory question and
+exercises the entire write → assemble → insert → dispatch → ColdFire descriptor →
+flash path with ~20 instructions of risk instead of a thousand-word reverb.
+
 ## 8. Next steps — writing an effect
 
 The path is now mapped end to end:
