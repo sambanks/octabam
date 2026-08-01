@@ -55,6 +55,11 @@ ALLOC_PTR = 0x213           # X: pointer to this instance's base
 ALLOC_TAB = 0x255           # X: the table itself, one word per instance
 STATE_TAB = 0x6000          # X: first r7 state block; they advance in lockstep
 
+# Set to an address to bypass the allocator and hardcode the base. Only for
+# bisecting: it pins every instance to the same region, so two tracks collide.
+# 0x4000 is a real FX2 slot, so it is safe to run.
+ALLOC_FIXED = None
+
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
 LINE_TAPS = [1567, 1249, 977, 733]          # 35.5 / 28.3 / 22.2 / 16.6 ms, prime
@@ -101,10 +106,29 @@ PRE_MASK  = PRE_LEN - 1     # 2048 words = 46 ms
 # already per-instance and 0x100 words long. r7+$83 is proven to survive between
 # frames -- it is where the tank write phase lives -- and these sit beside it.
 # The stock code writes r7+$82/$84/$8b, so the region is real.
-PHASE     = "x:(r7+$84)"    # shared allpass phase
-LFOPH     = "x:(r7+$85)"    # LFO phase
-PREPH     = "x:(r7+$86)"    # pre-delay phase
-DAMPST    = 0x87            # four one-pole states, r7+$87..$8a
+# Where persistent state lives, established by bisection on hardware:
+#
+#   r7+$83        persists          (the stock tank phase lives here)
+#   r7+$71..$78   fine WITHIN a call, but not across calls
+#   r7+$84..$8a   does NOT persist -- putting state here hangs the DSP
+#
+# DARK REV's init writes $1a $1b $1f $82 $83 $84 $8b and pointedly skips
+# $85..$8a, which now looks like it was avoiding host-owned words.
+#
+# So only ONE persistent r7 word is available, and that is enough:
+#
+#  * the tank, allpass and pre-delay phases all advance by exactly 1 per sample
+#    and differ only in their mask, so they are the SAME counter. r1 already
+#    carries it (base + phase, with the base aligned), so each is just r1 masked.
+#  * the LFO phase and the four damping states cannot be derived. They go in the
+#    instance's own Y region and are loaded and saved once per BLOCK -- the LFO
+#    already runs per block, and a one-pole's state only has to survive the gap.
+#
+# Nothing here costs a per-sample instruction; it is ~30 per block.
+STATE_OFF = 0x3800          # Y, inside the instance: LFO phase + 4 damping states
+PHASE  = "x:(r7+$79)"       # allpass phase, recomputed from r1 each sample
+LFOPH  = "x:(r7+$7e)"       # per-block working copy of the Y word
+DAMP   = [f"x:(r7+${0x7a+i:02x})" for i in range(4)]
 BASE      = "x:(r7+$71)"    # this instance's buffer base
 APB       = 0x72            # the four allpass bases, r7+$72..$75
 
@@ -263,12 +287,12 @@ def tap(i):
         head = modread(i, 0x63, 0x64)
     else:
         head = f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
-    return head + f"""        move    x:(r7+${DAMPST+i:02x}),b
+    return head + f"""        move    {DAMP[i]},b
         sub     b,a
         move    a,x0
         mpy     x0,y0,a
         add     b,a
-        move    a,x:(r7+${DAMPST+i:02x})
+        move    a,{DAMP[i]}
         move    a,x:(r7+${0x56+i:02x})
 """
 
@@ -298,7 +322,8 @@ def main():
 ;
 ; State (all in the per-instance r7 block, not absolute Y):
 ;   r7+$83        write phase (persistent, masked on load as well as save)
-;   r7+$84..$8a   allpass phase, LFO phase, pre-delay phase, 4 damping states
+;   r7+$83        the ONE persistent word: tank / allpass / pre-delay phase
+;   base+{STATE_OFF:#06x}   LFO phase and 4 damping states, loaded per block
 ;   r7+$71..$78   this instance's base, and the bases derived from it
 ;   r7+$55..$66   per-sample scratch
 ;
@@ -331,7 +356,10 @@ proc:
 ; advances it before calling process. Deriving it from r7 works ANYWHERE and
 ; needs nothing to survive between calls -- which matters, because parts of the
 ; r7 block are demonstrably volatile (r7+$50 does not persist).
-        move    r7,a
+""" + (f"""        move    #>${ALLOC_FIXED:x},x0            ; BASE HARDCODED -- bisect build
+        move    #>$ffffff,m0            ; audio is read and written via r0
+        move    #>${LINE_MASK:x},m1
+        move    x0,x:(r7+$71)""" if ALLOC_FIXED is not None else f"""        move    r7,a
         move    #>${(-STATE_TAB) & 0xffffff:06x},x0
         add     x0,a
         asr     #$8,a,a
@@ -341,7 +369,7 @@ proc:
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
         move    x:(r4),x0               ; base
-        move    x0,x:(r7+$71)
+        move    x0,x:(r7+$71)""") + f"""
 
 ; ---- every buffer base, derived once per block --------------------------
         move    #>${AP_OFF:x},a
@@ -365,6 +393,28 @@ proc:
         move    #>${PRE_OFF:x},a
         add     x0,a
         move    a,x:(r7+$78)
+
+; ---- per-block: load the state that cannot be derived -------------------
+; The LFO phase and the four one-pole states are the only things that must
+; survive between calls and cannot be recomputed. They live in the instance's
+; own Y region, so they are per-instance, and touching them once per block costs
+; nothing per sample.
+        move    #>${STATE_OFF:x},a
+        add     x0,a
+        move    a,x:(r7+$7f)            ; keep the address for the save
+        move    a,r5
+        move    #>$ffffff,m5            ; linear for the walk
+        move    x:(r7+$71),x0           ; restore x0 = base; fills the AGU slot
+        move    y:(r5)+,a
+        move    a,{LFOPH}
+        move    y:(r5)+,a
+        move    a,{DAMP[0]}
+        move    y:(r5)+,a
+        move    a,{DAMP[1]}
+        move    y:(r5)+,a
+        move    a,{DAMP[2]}
+        move    y:(r5)+,a
+        move    a,{DAMP[3]}
 
 ; ---- rebuild the four delay pointers from the saved phase ----------------
         move    x:(r7+$83),a
@@ -473,7 +523,7 @@ proc:
         add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
         neg     a                       ; is one sample, not a whole buffer of
         move    a,n5                    ; staleness
-        move    {PREPH},a               ; rebuild the pre-delay pointer
+        move    x:(r7+$83),a            ; the same counter again
         move    #>${PRE_MASK:x},x0
         and     x0,a
         move    x:(r7+$78),x0
@@ -486,7 +536,7 @@ proc:
     # inaudible -- and it buys back ~35 instructions a sample, which is the
     # difference between fitting in the frame budget and hanging the DSP.
     body += lfo()
-    body += """
+    body += f"""
         do      n7,>rvend
 
 ; ---- input: mono sum -----------------------------------------------------
@@ -496,6 +546,10 @@ proc:
         add     x0,a
         asr     #$1,a,a
         move    a,x:(r7+$5b)
+        move    r1,a                    ; the allpass phase IS the tank phase:
+        move    #>${AP_MASK:x},x0       ; both advance by 1 a sample, and the
+        and     x0,a                    ; line base is aligned, so r1 masked is it
+        move    a,{PHASE}
 
 ; ---- pre-delay ----------------------------------------------------------
 ; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
@@ -514,12 +568,6 @@ proc:
     for i in range(4):
         body += allpass(i)
     body += f"""
-        move    {PHASE},a               ; advance the shared allpass phase
-        move    #>$1,x0
-        add     x0,a
-        move    #>${AP_MASK:x},x0
-        and     x0,a
-        move    a,{PHASE}
         move    x:(r7+$5b),a
         move    a,x:(r7+$55)            ; diffused input -> tank
         asr     #$1,a,a
@@ -611,11 +659,21 @@ proc:
 rvend:
 
 """
-    body += f"""; ---- save the phases, restore the M registers ---------------------------
-        move    x:(r7+$70),a
-        move    #>${PRE_MASK:x},x0
-        and     x0,a
-        move    a,{PREPH}
+    body += f"""; ---- per-block: write the underivable state back -------------------------
+        move    x:(r7+$7f),r5
+        move    #>$ffffff,m5
+        move    {LFOPH},a               ; fills the AGU slot
+        move    a,y:(r5)+
+        move    {DAMP[0]},a
+        move    a,y:(r5)+
+        move    {DAMP[1]},a
+        move    a,y:(r5)+
+        move    {DAMP[2]},a
+        move    a,y:(r5)+
+        move    {DAMP[3]},a
+        move    a,y:(r5)+
+
+; ---- save the phase, restore the M registers ---------------------------
         move    r1,a
 """
     body += f"""        move    #>${LINE_MASK:x},x0
