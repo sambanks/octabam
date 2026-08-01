@@ -551,6 +551,48 @@ iteration turned a two-flash question into four. The control run -- probing
 addresses known to exist -- was what converted "the memory must be absent" into
 "our code is wrong", and should have come first.
 
+## 7e. HARDWARE: the delay-memory budget, confirmed
+
+Probing one address per flash, with identical branch-free code so the address is
+the only variable:
+
+| address | result |
+|---|---|
+| `X:0x4000` | distortion — real |
+| `X:0xc000` | distortion — real |
+| `X:0xf000` | distortion — real |
+
+So X memory covers at least `0x0000`–`0xf000`, and the region the firmware never
+references — **`0x08d98`–`0x0ffff`, 29,288 words, 664 ms at 44.1 kHz** — is real,
+writable, and entirely free.
+
+### The full resource budget for new reverbs
+
+| resource | available | stock comparison |
+|---|---|---|
+| free delay memory | **29,288 words / 664 ms** | DARK REV uses ~7,600 / 172 ms |
+| plus the shared gap `0x1d9f–0x483f` | 10,913 / 247 ms | currently PLATE + DARK |
+| code space (replace DARK) | 1,067 words | — |
+| code space (all three reverbs) | 2,724 words | — |
+| cycle budget | **unmeasured** | two stock reverbs already glitch |
+
+Using the free `0x8d98+` region rather than the stock buffers means a new reverb
+**does not disturb the existing ones**, so it can be developed and flashed
+alongside working firmware instead of replacing something first.
+
+The cycle budget is now the only unquantified constraint, and the only
+calibration is empirical: two stock reverbs at once glitch. That will shape how
+much modulation and diffusion is affordable, and it is the thing most likely to
+force compromises during tuning.
+
+### Development loop, now that it exists
+
+The probe runs identically in `tools/dsp_host` and on hardware using the same
+convention (`r0` = interleaved block processed in place, `n7` = frames). Since a
+new algorithm's interface is ours to choose, the harness can host the reverb
+during development — feed audio, capture output, iterate on the desktop — and
+hardware is only needed when the result is worth listening to.
+
 ## 8. Next steps — writing an effect
 
 The path is now mapped end to end:
