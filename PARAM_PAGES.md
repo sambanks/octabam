@@ -318,9 +318,41 @@ and DELAY descriptors directly, outside the id tables — the only two effects t
 get that treatment. Whether that relates to buffer setup is not established; the
 decompilation was not understood well enough to claim it.
 
-**Cheap decisive test, no build required**: set FX2 = DELAY *and* FX1 = DELAY on
-the same track. If the FX1 delay comes alive once FX2 has allocated the buffer,
-the allocation hypothesis is confirmed outright.
+### Follow-up hardware tests
+
+| test | result |
+|---|---|
+| FX1 **and** FX2 both = DELAY | FX1 still silent |
+| DELAY UI on FX1 | fully present, parameters move and display; audio unaffected |
+| two reverbs at once (FX1 + FX2) | **audio glitches**, severity varies by reverb |
+| FX1 = reverb, save + power cycle | **survives**, reloads correctly |
+
+**The buffer hypothesis was narrowed, not confirmed or killed.** Co-selecting
+DELAY on both slots rules out *one shared delay buffer allocated on demand*. It
+does **not** rule out a **per-slot buffer pointer whose FX1 entry is never
+initialised** — that version fits every observation. (An earlier note here called
+this test "decisive"; it was not.)
+
+The UI behaving perfectly while audio is untouched confirms the ColdFire side is
+complete: the id is stored, resolved, displayed and published to shared RAM
+correctly. Whatever refuses the delay is on the far side of the chip boundary.
+
+**The glitching is the more important practical finding.** Two simultaneous
+reverbs exceed something the DSP was provisioned for — unsurprising, since stock
+firmware makes that combination impossible, so nothing in the DSP budget had to
+allow for it. Severity varying by reverb type is consistent with a cycle budget
+rather than a memory limit. It is audio-only misbehaviour, harmless to the
+hardware, but it means **this build is not a free upgrade**: FX1 reverb is usable,
+FX1 + FX2 reverb is not reliably usable.
+
+### Where this leaves the two questions
+
+- *Can an unused id host a custom descriptor?* The reverbs say the mechanism
+  allows it. Any such effect is still limited to algorithms the DSP already
+  implements, and is subject to the same unbudgeted-cycles risk.
+- *Why is delay silent?* Now purely a DSP-side question. Settling it means
+  disassembling the DSP program (`COVERAGE.md`); nothing further is extractable
+  from the ColdFire image.
 
 ## 6. Not yet decoded
 
