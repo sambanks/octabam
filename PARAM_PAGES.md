@@ -354,6 +354,36 @@ FX1 + FX2 reverb is not reliably usable.
   disassembling the DSP program (`COVERAGE.md`); nothing further is extractable
   from the ColdFire image.
 
+## 5e. Adding an effect needs FIVE tables, not two
+
+Discovered the hard way while making a custom effect selectable — each missing
+piece fails differently, and none of them error:
+
+| # | table | keyed by | consequence if missing |
+|---|---|---|---|
+| 1 | id lookup `0x400d5f58` (FX1) / `0x400d5fdc` (FX2) | effect id | descriptor unresolvable |
+| 2 | chooser list `0x400d6060` (FX1) / `0x400d6090` (FX2) | position | not offered in the menu |
+| 3 | **its own descriptor record** (402 B) | — | see below |
+| 4 | descriptor's **id byte** at `P+0x03` | — | see below |
+| 5 | **id -> cursor position `0x400d6150`** | effect id | selecting it jumps to NONE |
+
+**(3) and (4)**: the stored effect id comes from the *descriptor*, not the list
+position — `FUN_40052474` does `*(Part+0x8ed88) = (char)*(int*)list[cursor]`,
+i.e. the low byte of the word at `P+0`, which is the id at `P+0x03`. So two list
+entries sharing one descriptor **are the same effect**: selecting the second
+stores the first's id and the cursor snaps back to it. A new effect needs its own
+402-byte record with its own id byte.
+
+Note the same line indexes the id table by the **whole** 32-bit word at `P+0`, so
+the three bytes above the id must be zero.
+
+**(5)** is the one with no obvious reason to exist. `FUN_4005996c` counts the
+list by scanning to its terminator (so a longer list is handled correctly), but
+then seeds the cursor from `0x400d6150[id]`. It is a reverse map of the chooser
+order — `FLTR`→1, `EQ`→2, … `DARK`→14 — and an id missing from it selects
+position 0, which is `NONE`. Every other table can be perfectly correct and the
+effect will still appear unselectable.
+
 ## 6. Not yet decoded
 
 - `E+0x35` flags (6 bytes).

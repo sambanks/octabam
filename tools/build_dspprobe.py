@@ -40,11 +40,15 @@ P = {"A": (0x01252, 0x007c8, 0x007c9, 0x400e2345),
 
 # ColdFire side
 NONE_DESC = 0x400d4618
-LOFI_DESC = 0x400d5da6      # stand-in descriptor so the probe has a param page
+LOFI_ENTRY = 0x400d5d6e     # LO-FI's descriptor RECORD start (pointer = +0x38)
+CLONE_AT = 0x400d7000       # where the probe's own descriptor record goes
+CLONE_DESC = CLONE_AT + 0x38
+DESC_LEN = 0x192
 FX2_IDS = 0x400d5fdc
 FX2_LIST = 0x400d6090
 NEW_LIST = 0x400d6b00
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
+ID2POS = 0x400d6150         # effect id -> chooser cursor position (reverse map)
 
 
 def main():
@@ -105,15 +109,31 @@ def main():
     cur = rd32(FX2_IDS + PROBE_ID * 4)
     if cur != NONE_DESC:
         sys.exit(f"FX2 id 0x{PROBE_ID:02x} is not NONE (0x{cur:08x})")
+
+    # The firmware takes the stored effect id from the DESCRIPTOR's id byte
+    # (P+0x03), not from the chooser position -- so two list entries sharing one
+    # descriptor are the same effect, and selecting the second snaps back to the
+    # first. The probe therefore needs its own descriptor record.
+    src = LOFI_ENTRY - BASE
+    dst = CLONE_AT - BASE
+    if any(img[dst:dst + DESC_LEN]):
+        sys.exit(f"cave at 0x{CLONE_AT:08x} is not free for the descriptor")
+    img[dst:dst + DESC_LEN] = img[src:src + DESC_LEN]
+    img[dst + 0x3b] = PROBE_ID                                    # its own id
+    img[dst + 0x3c:dst + 0x41] = b"PRB\x00\x00"                   # abbreviation
+    img[dst + 0x41:dst + 0x4e] = b"XPROBE\x00" + b"\x00" * 6      # full name
+    print(f"  cloned LO-FI's descriptor -> 0x{CLONE_AT:08x} "
+          f"({DESC_LEN} B), id byte = 0x{PROBE_ID:02x}, name XPROBE")
+
     img[FX2_IDS + PROBE_ID * 4 - BASE: FX2_IDS + PROBE_ID * 4 - BASE + 4] = \
-        LOFI_DESC.to_bytes(4, "big")
-    print(f"  id 0x{PROBE_ID:02x} -> descriptor 0x{LOFI_DESC:08x} (shows as LO-FI)")
+        CLONE_DESC.to_bytes(4, "big")
+    print(f"  id 0x{PROBE_ID:02x} -> descriptor 0x{CLONE_DESC:08x}")
 
     old, a = [], FX2_LIST
     while int.from_bytes(img[a - BASE:a - BASE + 4], "big"):
         old.append(int.from_bytes(img[a - BASE:a - BASE + 4], "big"))
         a += 4
-    new = old + [LOFI_DESC, 0]
+    new = old + [CLONE_DESC, 0]
     if any(img[NEW_LIST - BASE: NEW_LIST - BASE + len(new) * 4]):
         sys.exit("cave not free")
     for i, v in enumerate(new):
@@ -124,6 +144,17 @@ def main():
         img[r - BASE:r - BASE + 4] = NEW_LIST.to_bytes(4, "big")
     print(f"  chooser list -> 0x{NEW_LIST:08x}, {len(new) - 1} entries "
           f"(probe is the LAST one, position {len(old)})")
+
+    # A FIFTH table: effect id -> cursor position in the chooser. The list
+    # builder seeds the cursor from it, so an id missing here selects position 0
+    # (NONE) no matter how correct the other four tables are.
+    pos = len(old)
+    if int.from_bytes(img[ID2POS + PROBE_ID * 4 - BASE:
+                          ID2POS + PROBE_ID * 4 - BASE + 4], "big") != 0:
+        sys.exit(f"id->pos slot for 0x{PROBE_ID:02x} is not free")
+    img[ID2POS + PROBE_ID * 4 - BASE: ID2POS + PROBE_ID * 4 - BASE + 4] = \
+        pos.to_bytes(4, "big")
+    print(f"  id->position map 0x{ID2POS:08x}[0x{PROBE_ID:02x}] = {pos}")
 
     OUT.write_bytes(bytes(img))
     stock = IMG.read_bytes()
