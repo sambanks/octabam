@@ -643,3 +643,58 @@ Note the ColdFire uploads the payloads verbatim from the image, so a modified DS
 program only needs the payload rewritten in place — the record format is
 understood in both directions, and the loader does no checksumming of its own.
 The outer ELEK/aPLib container is rebuilt by the existing toolchain.
+
+## 8. HARDWARE: Y memory ends at 0xC000
+
+The reverb's tank was 1024-word lines because that was all §7's uncertain X-memory
+figures could justify. `dsp/ymemprobe.asm` settles it for Y, which is where the
+delay buffers actually live.
+
+The probe is a **wet-only** echo whose buffer base is chosen by `p0`:
+
+    base = (p0 + 1) << 10          p0=0 -> Y:0x400  ...  p0=127 -> Y:0x20000
+
+1024 words at that base, tap 1000, feedback 0.5. Wet-only is the point: it turns
+a judgement call about echo quality into a yes/no, because silence is then a real
+answer rather than an ambiguous one. Sweep `p0` and note where it stops.
+
+**Result: clean echo up to p0=46, silence from p0=47.** So Y is real through
+`0xBFFF` and absent at `0xC000` — **48K words**. Loaded modules end at `0x794`,
+so `0x795–0xBFFF` is free: **46K words, roughly 1.04 s of delay at 44.1 kHz.**
+
+That is about 8x what the reverb had been using, and it is what makes a
+Blackhole-class space possible. `tools/gen_reverb.py` now sizes against it:
+
+| | words | Y range | |
+|---|---|---|---|
+| 4 tank lines | 4096 each | `0x1000–0x4fff` | taps 3121/2477/1949/1453 (71/56/44/33 ms) |
+| 4 allpasses | 2048 each | `0x5000–0x6fff` | taps 1051/773/557/379 (24/17.5/12.6/8.6 ms) |
+| free | 20,480 | `0x7000–0xBFFF` | 465 ms, earmarked for pre-delay |
+
+Note the diffusers are long *on purpose*. Four lines at ~50 ms is only ~80 echoes
+a second, which on its own reads as a stutter rather than a wash; the density has
+to come from diffusion, not from the tank.
+
+### Two structural faults the emulator caught, both inaudible on a bench test
+
+Worth recording because neither is a coding error — both are topology mistakes
+that only show up when you measure the impulse response, and the harness's
+default input is a single impulse followed by silence, which makes them obvious.
+
+1. **A 104 ms hole.** Injecting the input into line 0 only — the thing that
+   produces the bloom — starves every other line until line 0's tap fires (71 ms),
+   and the output line's tap then adds its own delay. First wet energy arrived at
+   104 ms. Fixed by injecting into all four lines, two at full and two at half:
+   the level gradient preserves the build-up, but every line has energy at once.
+2. **A 56 ms channel offset.** L was tapped from a line with no direct injection,
+   so L started at 89 ms and R at 33 ms — which reads as the right side arriving
+   first, not as width. Fixed by summing two tank taps per channel and giving each
+   output pair one fully-injected and one half-injected line. Now 44 ms L / 33 ms
+   R, and the channels sit 1.1–1.5 dB apart.
+
+### The emulator also catches runaway feedback
+
+An early modulation build self-oscillated on hardware. It was visible in the
+harness the whole time as an envelope that never decayed (RMS pinned near 4M at
+1 s), and was misread as a long tail. With an impulse input, **a flat envelope is
+proof of instability**. Check it on every build.
