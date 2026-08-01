@@ -153,17 +153,110 @@ Zero `dc` fallbacks anywhere. Wrong addresses or wrong endianness would litter
 the output with them, so this validates the module map, the byte order and the
 disassembler together.
 
-## 5. Next steps
+## 5. The effect dispatch (step 3 — done)
 
-1. **Find the effect dispatch** — the code that reads the effect id the ColdFire
-   publishes to `0x80000ec4[track]` / `0x80000ecc[track]` (see `PARAM_PAGES.md`)
-   and branches to an algorithm. Answers, in one go, why DELAY is silent on FX1
-   and whether an unused id can be given an implementation.
-2. **Map the parameter frame** — how the 12 descriptor parameters arrive at the
-   algorithm, which is what any new effect has to consume.
-3. **Find free P memory** and a splice point for a new algorithm.
+`tools/dsp_disasm_all.py` disassembles every P module at its correct address
+(payload A: 68 modules / 6,817 instructions; payload B: 46 / 6,251; **zero**
+undecodable). The dispatch is in `P:0x0041e`, and it is the only one — six
+`jsr (r2)` sites in each payload, no others anywhere:
 
-Only step 3 amounts to "write a new effect"; step 1 is where the answers are.
+```asm
+0004ac: move    x:(r6+$1b),b      ; the effect id field
+0004ad: asr     #$8,b,b           ; extract the byte
+0004b0: move    b,r1              ; r1 = effect id
+0004b4: move    x:(r1+$235),r2    ; r2 = PROCESS_TABLE[id]
+0004be: jsr     (r2)              ; call every frame
+...
+0004c9: cmp     x0,b              ; did the id change since last frame?
+0004ca: beq     ...               ; no -> skip
+0004cb: move    x:(r1+$215),r2    ; r2 = INIT_TABLE[id]
+0004cd: jsr     (r2)              ; call only on change
+```
+
+**Two 32-entry function-pointer tables in X memory, indexed by the raw effect
+id** — `X:0x215` = init (called when the id changes), `X:0x235` = process (called
+every frame). They are `0x20` apart and the load map carries them as one record,
+`X:0x00215, 64 words`, at image `0x400e2345` (A) / `0x400f5a10` (B). So both
+tables are **plain data in the payload**, editable with the existing toolchain.
+
+### The tables (payload A; B is identical in structure)
+
+| id | init | process | effect |
+|---|---|---|---|
+| `0x04` | `P:0x007d1` | `P:0x007dd` | FILTER |
+| `0x05` | `P:0x00aa8` | `P:0x00ab2` | SPATIALIZER |
+| `0x0c` | `P:0x00bad` | `P:0x00bb2` | EQUALIZER |
+| `0x0d` | `P:0x01d71` | `P:0x01d7d` | DJ EQ |
+| `0x10` | `P:0x00cc7` | `P:0x00cd8` | PHASER |
+| `0x11` | `P:0x00d96` | `P:0x00da3` | FLANGER |
+| `0x12` | `P:0x00eb7` | `P:0x00ed7` | CHORUS |
+| `0x13` | `P:0x01eca` | `P:0x01edc` | COMB |
+| `0x14` | `P:0x01000` | `P:0x01055` | PLATE REV |
+| `0x15` | `P:0x01252` | `P:0x012be` | SPRING REV |
+| `0x16` | `P:0x01679` | `P:0x0171b` | DARK REV |
+| `0x18` | `P:0x01aa4` | `P:0x01ab1` | COMPRESSOR |
+| `0x1c` | `P:0x01b58` | `P:0x01b75` | LO-FI |
+| **all 19 others** | `P:0x007c8` | `P:0x007c9` | **null stub** |
+
+**13 effects are implemented on the DSP.** Every other id — including `0x08`
+DELAY and `0x19` MULTIBCOMP — points at the null stub.
+
+### Why DELAY was silent on FX1 — solved
+
+The null stub is not silence, it is a **passthrough**:
+
+```asm
+0007c8: rts                       ; init: nothing
+0007c9: move r0,r1                ; process: copy input to output
+0007ca: do   n7,>$7d0
+0007cc: move x:(r0)+,a
+0007cd: move x:(r0)+,b            ; two interleaved channels
+0007ce: move a,x:(r1)+
+0007cf: move b,x:(r1)+
+0007d0: rts
+```
+
+Which is exactly the observed behaviour: the parameter page worked, the audio was
+untouched. `0x08` has no implementation in *either* payload.
+
+Yet DELAY demonstrably works on FX2 in stock firmware. Since this is the only
+dispatch in either payload, **the delay must be implemented outside the
+per-effect insert chain** — a dedicated stage in the audio graph that the FX2
+slot enables, rather than a table-dispatched insert. That also explains why
+adding `0x08` to the FX1 list changed nothing: the dispatch handed it the
+passthrough, and the dedicated stage only watches the FX2 slot. *(Best-supported
+inference. Direct evidence: `0x08` → passthrough in both tables, and delay works
+on FX2.)*
+
+`MULTIBCOMP` (`0x19`) also points at the stub, confirming the "unfinished
+placeholder" reading of its copied-from-DJ-EQ parameter labels — and retiring the
+probe idea, which would have found nothing but passthrough on all 19 free ids.
+
+### The stub is also the ABI specification
+
+Those seven instructions are a complete worked example of an effect's process
+routine: **`r0` = input buffer, `r1` = output buffer, `n7` = sample count, two
+interleaved channels, `rts` when done.** Any new effect has to satisfy that
+contract, and here it is in full.
+
+## 6. Next steps — writing an effect
+
+The path is now mapped end to end:
+
+1. Write init + process routines in DSP56300 assembly against the ABI above.
+2. Place them in free P memory. The payload is a **record list**, so a new module
+   can simply be appended before the terminator — no gap-hunting needed. (Check
+   what P addresses are real internal RAM first: modules run to ~`P:0x01fdf`,
+   with `P:0x30000`/`P:0x38000` being the host-port bootstrap in a separate
+   external region.)
+3. Point `X:0x215[id]` and `X:0x235[id]` at the new code — two words of data.
+4. Add the ColdFire-side descriptor and chooser entry (`PARAM_PAGES.md`).
+
+Do it for **both** payloads, or the effect exists on only one of the two DSPs.
+
+Still unknown, and needed before step 1 is real: how the 12 descriptor parameters
+reach the algorithm, and how much DSP cycle budget is actually free — the FX1
+reverb test showed two reverbs already glitch, so the headroom is not generous.
 
 Note the ColdFire uploads the payloads verbatim from the image, so a modified DSP
 program only needs the payload rewritten in place — the record format is
