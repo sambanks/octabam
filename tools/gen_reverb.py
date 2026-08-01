@@ -82,7 +82,11 @@ DAMPST    = 0x7f0           # Y: four one-pole states, 0x7f0..0x7f3
 # and Supermassive's core set, which agree on what belongs where. LO is the one
 # gap: a low cut inside the feedback loop needs four more filter states and ~24
 # instructions a sample, and the cycle headroom is not measured yet.
-P_TIME, P_HI, P_SIZE, P_PRE, P_MOD, P_MIX, P_RATE, P_WIDTH = range(8)
+# Page 1 is r6+0..5. Page 2 is NOT r6+6..8 -- there is a six-slot gap, and it
+# starts at r6+$c. Confirmed against the stock code: DARK REV and PLATE REV both
+# read r6+0..5 and then r6+$c and r6+$e, and their page 2 is PRE / BAL / MONO.
+P_TIME, P_HI, P_SIZE, P_PRE, P_MOD, P_MIX = range(6)
+P_RATE, P_WIDTH = 0xc, 0xd
 
 LINE_MASK = LINE_LEN - 1
 AP_MASK   = AP_LEN - 1
@@ -355,12 +359,12 @@ proc:
         move    x0,x:(r7+$68)
 
 ; ---- WIDTH: 0 = mono, 127 = full stereo ---------------------------------
-        move    x:(r6+${P_WIDTH}),x0
+        move    x:(r6+${P_WIDTH:x}),x0
         move    x0,x:(r7+$6c)
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
-        move    x:(r6+${P_RATE}),a
+        move    x:(r6+${P_RATE:x}),a
         asr     #$b,a,a
         move    #>$200,x0
         add     x0,a

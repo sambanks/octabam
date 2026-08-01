@@ -178,8 +178,12 @@ int main(int argc, char** argv) {
     // r7 = x:0x20a + 0x100.
     const TWord pblock = ctlB + 6;
     const TWord state  = mem.get(MemArea_X, 0x20a) + 0x100;
-    for (size_t i = 0; i < a.pv.size(); ++i)
-        mem.set(MemArea_X, pblock + i, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
+    // Page 1 is pblock+0..5; page 2 starts at pblock+0xc, not +6. The stock
+    // reverbs read exactly r6+0..5 and r6+$c/$e, so index 6 and up map there.
+    for (size_t i = 0; i < a.pv.size(); ++i) {
+        const TWord off = (i < 6) ? i : i + 6;
+        mem.set(MemArea_X, pblock + off, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
+    }
     std::printf("params @X:0x%05x =", pblock);
     for (size_t i = 0; i < a.pv.size(); ++i) std::printf(" %d", a.pv[i]);
     std::printf("   state r7 = X:0x%05x\n", state);
