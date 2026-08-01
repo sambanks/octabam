@@ -12,7 +12,13 @@
 ;
 ; The probe is a wet-only echo whose buffer moves with p0:
 ;
-;     base = (p0 + 1) << 10        p0=0 -> Y:0x400 ... p0=127 -> Y:0x20000
+;     base = (p0 + 1) << 12        p0=0 -> Y:0x1000 ... p0=127 -> Y:0x80000
+;
+; Second sweep, coarser and much further out. The first one stepped 1024 words
+; and stopped at 0x20000, which was enough to find the end of the low region at
+; 0xC000 -- but the host's own allocator table hands out bases at 0x30000 and
+; 0x34000 (and 0x38000/0x3c000 in payload B), so there is a second region we
+; have never characterised. This steps 4096 and reaches 0x80000.
 ;
 ; 1024 words at base, tap 1000 (~23 ms), feedback 0.5, and the OUTPUT IS WET
 ; ONLY. That makes it a clean yes/no rather than a judgement call:
@@ -22,8 +28,10 @@
 ;     noise / breakup       ->  something else lives there, or it aliases
 ;     hang                  ->  it aliased onto loaded module memory
 ;
-; Sweep p0 up and note the highest position that still echoes cleanly. Each
-; step is one 1024-word page, so the answer in words is (p0 + 2) << 10.
+; Reference points: p0=3 is Y:0x4000 (known good, an FX2 slot), p0=10 is 0xB000
+; (the last known-good page), p0=11 is 0xC000 (known absent), p0=47 is 0x30000
+; and p0=63 is 0x40000. What matters is whether the echo comes BACK anywhere
+; above p0=11.
 ;
 ; Addressing is v13's: computed, masked, no modulo and no N register, which is
 ; the only style proven not to hang.
@@ -51,7 +59,7 @@ proc:
         asr     #$10,a,a                ; a1 = p0, 0..127
         move    #>$1,x0
         add     x0,a
-        asl     #$a,a,a                 ; (p0+1) * 1024
+        asl     #$c,a,a                 ; (p0+1) * 4096
         move    a,x:(r7+$70)
 
 ; ---- phase, masked on LOAD as well as on save ---------------------------

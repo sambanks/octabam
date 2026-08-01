@@ -498,13 +498,18 @@ proc:
                                         ; modulo affects updates, not reads.
 
 ; ---- feedback gain from TIME --------------------------------------------
-; p0 arrives as value<<16. g/2 spans 0.4375..0.4995, so g spans 0.875..0.999.
-; The 4x4 Hadamard has row norm 2, so folding the half into the gain makes the
-; matrix orthonormal and the loop gain equal to g.
+; p0 arrives as value<<16. The 4x4 Hadamard has row norm 2, so folding the half
+; into the gain makes the matrix orthonormal and the loop gain equal to g.
+;
+; g now spans 0.935..0.9995, not 0.875..0.999. Decay is g^n where n is passes,
+; so RT60 scales with the loop time -- and fitting a real 16K allocation halved
+; the mean tap from ~51 ms to ~26 ms, which halved every decay time and made
+; TIME feel like it had stopped doing anything. g_new = g_old^0.5 restores the
+; old RT60 range over the same knob travel.
         move    x:(r6),x0
-        move    #>$080000,y1
+        move    #>$043000,y1
         mpy     x0,y1,a
-        move    #>$380000,x0
+        move    #>$3bd000,x0
         add     x0,a
         move    a,x:(r7+$5e)
 
