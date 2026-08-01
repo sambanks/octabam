@@ -17,3 +17,6 @@ vendor/
 .playwright-mcp/
 __pycache__/
 *.pyc
+
+# dsp_host is copied into vendor/ to build against dsp56kEmu
+vendor/dsp56300/

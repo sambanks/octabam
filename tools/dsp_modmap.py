@@ -101,6 +101,30 @@ def extract(img, args):
     sys.exit(f"unknown payload {tag}")
 
 
+def dumpmem(img, args):
+    """--dumpmem <A|B> <out.mem> : flat memory image for the emulator harness.
+
+    Format (little-endian): per module [u8 space][u32 addr][u32 count] then
+    count * u32 words. Terminated by space == 0xff.
+    """
+    import struct
+    tag, out = args
+    for t, va, ln in PAYLOADS:
+        if t != tag.upper():
+            continue
+        mods, b = modules(img, va, ln)
+        with open(out, "wb") as fh:
+            for sp, addr, cnt, data in mods:
+                fh.write(struct.pack("<BII", sp, addr, cnt))
+                for i in range(cnt):
+                    fh.write(struct.pack("<I", w24(b, data + i * 3)))
+            fh.write(struct.pack("<BII", 0xff, 0, 0))
+        n = sum(c for _, _, c, _ in mods)
+        print(f"payload {t}: {len(mods)} modules, {n:,} words -> {out}")
+        return
+    sys.exit(f"unknown payload {tag}")
+
+
 def main():
     if not IMG.exists():
         sys.exit(f"missing {IMG}")
@@ -108,6 +132,8 @@ def main():
 
     if len(sys.argv) > 1 and sys.argv[1] == "--extract":
         return extract(img, sys.argv[2:5])
+    if len(sys.argv) > 1 and sys.argv[1] == "--dumpmem":
+        return dumpmem(img, sys.argv[2:4])
 
     print("=== bootstraps (address given explicitly by the ColdFire) ===")
     for tag, va, ln, dsp in BOOTSTRAPS:

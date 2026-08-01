@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.10)
+project(dsp_host)
+add_executable(dsp_host dsp_host.cpp)
+target_include_directories(dsp_host PRIVATE ${DSP56300_SOURCE})
+target_link_libraries(dsp_host PRIVATE dsp56kEmu)
