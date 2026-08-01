@@ -56,7 +56,7 @@
 
 init:
         move    #>$9000,r1
-        move    #>$ffff,m1              ; linear addressing for the clear
+        move    #>$ffffff,m1            ; linear ($ffff would be modulo-65536)
         move    #>$4800,x0              ; 4x4096 lines + 4x512 allpasses, contiguous
         clr     a
         do      x0,>iclr
@@ -71,6 +71,19 @@ iclr:
         move    a,x:(r7+$5f)            ; allpass phase
         move    a,x:(r7+$61)            ; LFO A
         move    a,x:(r7+$62)            ; LFO B
+
+; ---- restore the M registers before returning ----------------------------
+; The caller's addressing breaks if these are left in modulo mode. Every stock
+; effect does this -- DARK REV's own exit is
+;   move #>$ffffff,m1 / move m1,m4 / move m1,m2 / move m1,m5
+; (dsp56kEmu's assembler has no M-to-M move, so the immediate form is used)
+; and leaving them set is what hung the DSP.
+        move    #>$ffffff,m0
+        move    #>$ffffff,m1
+        move    #>$ffffff,m2
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
         rts
 
 proc:
@@ -96,7 +109,7 @@ proc:
         move    #>$fff527,n2            ; -2777
         move    #>$fff6f9,n3            ; -2311
         move    #>$fff8b5,n4            ; -1867
-        move    #>$ffff,m0              ; audio pointer is linear
+        move    #>$ffffff,m0            ; audio pointer is linear
         move    #>$1ff,m5               ; allpass buffers are 512 words
 
         do      n7,>rvend
@@ -349,4 +362,17 @@ rvend:
         move    #>$fff,x0
         and     x0,a
         move    a,x:(r7+$54)
+
+; ---- restore the M registers before returning ----------------------------
+; The caller's addressing breaks if these are left in modulo mode. Every stock
+; effect does this -- DARK REV's own exit is
+;   move #>$ffffff,m1 / move m1,m4 / move m1,m2 / move m1,m5
+; (dsp56kEmu's assembler has no M-to-M move, so the immediate form is used)
+; and leaving them set is what hung the DSP.
+        move    #>$ffffff,m0
+        move    #>$ffffff,m1
+        move    #>$ffffff,m2
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
         rts
