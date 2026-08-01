@@ -314,21 +314,29 @@ The null stub (§5) is a working minimal implementation of exactly this contract
 | B | 46 | 7,583 | `P:0x01d9f` | **none** |
 
 Not one hole in either image. Payload A ends at `0x01fdf`, which is 99.6% of
-`0x2000` — that reads as **8 K words of internal P RAM, essentially full**, and
-would leave **33 free words in A** and 609 in B.
+`0x2000`, and that looked like an 8 K internal P RAM essentially full.
 
-> **This is an inference, not a datasheet fact.** The evidence is the packing
-> (perfectly contiguous, stopping 33 words short of an 8 K boundary) plus
-> `P:0x30000`/`P:0x38000` being a separate external region for the host-port
-> bootstrap. If the part actually has 16 K words, there are 8,225 words free at
-> `P:0x01fdf` and a new effect can simply be appended.
->
-> **Cheap decisive test**: append a module that loads a *copy* of an existing
-> effect at `P:0x02000+`, and point a spare id's dispatch entries at the copy.
-> If that id produces the effect, P RAM extends past 8 K. If it is silent or
-> crashes, it does not. One flash settles it.
+### HARDWARE RESULT: there is memory above 8K — that inference was WRONG
 
-### If 8 K is right: replace, don't append
+`tools/build_dsptest.py` relocated CHORUS from `P:0x00eb7` to `P:0x02000` (three
+words per payload: the module's load-address field and its two dispatch entries).
+Flashed to the MKII: **CHORUS works normally.**
+
+So `P:0x2000` is real, usable, executable memory. The program ending at `0x01fdf`
+is where this build happens to stop, not a hardware boundary. **A new effect can
+simply be appended** rather than having to displace an existing one — the much
+easier workflow.
+
+Proven usable so far: `P:0x02000`–`P:0x02149` (CHORUS's 329 words). The upper
+bound is unknown; relocating several clean effects to `0x4000`, `0x8000`, `0xc000`
+in one build would bracket it in a single flash, if it ever matters.
+
+Unsettled nuance: on a DSP56300, addresses beyond internal RAM fall through to
+external memory, which is slower. CHORUS running cleanly says `0x2000` works, not
+that it runs at full internal speed. For a cheap effect this is unlikely to
+matter; for something cycle-critical it would need checking.
+
+### The fallback, if space above ever runs out: replace
 
 Effect code is 6,158 of the 8,159 words — **75% of the whole program**. So the
 room is in the effects themselves, and the move is to overwrite one you never
