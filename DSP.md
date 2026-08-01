@@ -239,7 +239,72 @@ routine: **`r0` = input buffer, `r1` = output buffer, `n7` = sample count, two
 interleaved channels, `rts` when done.** Any new effect has to satisfy that
 contract, and here it is in full.
 
-## 6. Next steps — writing an effect
+## 6. How parameters reach the algorithm (step 4 — done)
+
+The dispatcher sets `r6` before calling, and effects read their parameters from
+it. From `P:0x0041e`:
+
+```asm
+0004a7: move    x:>$208,r6        ; r6 = base of the per-instance block
+0004a9: move    #$6,n6            ; FX1 stride (the FX2 block uses #$c)
+0004ac: move    x:(r6+$1b),b      ; FX1 effect id   (FX2 reads +$1c)
+0004b1: move    (r6)+n6           ; r6 += 6  -> FX1 params  (FX2: += 12)
+0004be: jsr     (r2)              ; routine sees r6 pointing at ITS parameters
+```
+
+So relative to `x:>$208`: FX1's parameters start at `+6`, FX2's at `+12`, and the
+two effect ids sit at `+0x1b` / `+0x1c` — the same adjacent-pair arrangement the
+ColdFire uses at `0x80000ec4` / `0x80000ecc`.
+
+### Parameter layout, confirmed against the descriptors
+
+Inside a routine, **page-1 parameter *i* is at `x:(r6+i)`, positionally**, empty
+slots included. Four independent confirmations, each an effect whose descriptor
+has a `---` slot and whose code skips exactly that offset:
+
+| effect | descriptor page 1 | offsets read | skipped |
+|---|---|---|---|
+| COMB | `PTCH TUNE LP FB --- MIX` | `00 01 02 03 05` | **`04`** |
+| DJ EQ | `LS F --- HS F LOWG MIDG HI G` | `00 02 03 04 05` | **`01`** |
+| SPRING | `TIME --- --- HP LP MIX` | `00 03 04 05` | **`01 02`** |
+| FLANGER | page 2 entirely `---` | nothing at `0c+` | **all of page 2** |
+
+Page-2 parameters start at `x:(r6+0x0c)`. There they appear to be **packed**,
+skipping empty slots — CHORUS (`TAPS --- --- FBLP --- ---`) reads `+0x0c` and
+`+0x0d`, which fits packed but not positional. Less certain than the page-1
+result; verify before relying on it.
+
+### Value convention
+
+Parameters arrive as 24-bit words with the 0–127 value in the **high byte**
+(`value << 16`), i.e. DSP fractional format:
+
+```asm
+and     #>$7f0000,a       ; mask to the 0..127 range        (LO-FI)
+sub     #>$400000,b       ; recentre: 64<<16 -> bipolar     (FILTER, FLANGER)
+asr     #$e,a,a           ; scale down for use as a coefficient
+mpyi    #>$e00000,x1,a    ; fractional multiply
+```
+
+`0x7f0000` is 127, `0x400000` is 64 — the centre of a `0..127` control.
+
+### The complete effect ABI
+
+Everything a new algorithm needs to satisfy:
+
+| register | meaning |
+|---|---|
+| `r0` | input buffer (two interleaved channels) |
+| `r1` | output buffer |
+| `n7` | sample count for the `do` loop |
+| `r6` | this instance's parameter block |
+| `x:(r6+0)` … `x:(r6+5)` | page-1 parameters, `value << 16` |
+| `x:(r6+0x0c)` … | page-2 parameters |
+| — | return with `rts` |
+
+The null stub (§5) is a working minimal implementation of exactly this contract.
+
+## 7. Next steps — writing an effect
 
 The path is now mapped end to end:
 
