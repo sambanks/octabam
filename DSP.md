@@ -515,6 +515,42 @@ Point a free effect id at it, flash, listen. That answers the memory question an
 exercises the entire write → assemble → insert → dispatch → ColdFire descriptor →
 flash path with ~20 instructions of risk instead of a thousand-word reverb.
 
+## 7d. HARDWARE: custom DSP code runs
+
+`dsp/probe.asm` — 17 words, written by us — assembled, inserted over CHORUS's
+module, dispatched via a new effect id `0x06` with its own descriptor, and
+**audibly distorting on a real MKII**. The whole path works end to end:
+
+    assemble -> insert module -> dispatch tables -> 5 ColdFire tables -> flash -> sound
+
+It also proves **X:0x4000 is real read/write memory**, since the probe stamps a
+mask there in init and reads it back in process to use as the audio mask.
+
+### What the four attempts cost, and the actual lesson
+
+Attempts 1-3 hung the DSP (audio stops, sequencer freezes on trig 1 -- the
+sequencer is clocked by the DSP frame interrupt, so a DSP stall looks exactly
+like that). Attempt 4 worked after removing three things at once, so which one
+mattered is not established. The candidates, in order of suspicion:
+
+1. **Executing at `P:0x2000`.** Every failed attempt relocated the donor module
+   there. `PRAMTEST` proved code *executes* at `P:0x2000`, but that test kept
+   CHORUS's own code and dispatch. A plausible mechanism: if `P:0x2000` and
+   `X:0x2000` alias to the same external memory, the control probe's
+   `move x0,x:>$2000` overwrote its own first instruction. **Untested, and
+   important** -- it would rule out putting new code above the internal P range
+   while using low X as delay memory.
+2. **The blob is position-dependent even without branches**, because `do` encodes
+   an absolute loop-end address. One blob was being assembled at payload A's org
+   and written into payload B at a different address.
+3. **A hardcoded entry point** (`ORG + 9`) that silently became wrong when the
+   probe shrank from 9 init words to 5.
+
+The process lesson is the real one: changing several variables per hardware
+iteration turned a two-flash question into four. The control run -- probing
+addresses known to exist -- was what converted "the memory must be absent" into
+"our code is wrong", and should have come first.
+
 ## 8. Next steps — writing an effect
 
 The path is now mapped end to end:
