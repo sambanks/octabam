@@ -55,13 +55,12 @@
 ; ---------------------------------------------------------------------------
 
 init:
-        move    #>$9000,r1
-        move    #>$ffffff,m1            ; linear ($ffff would be modulo-65536)
-        move    #>$4800,x0              ; 4x4096 lines + 4x512 allpasses, contiguous
-        clr     a
-        do      x0,>iclr
-        move    a,x:(r1)+
-iclr:
+; NO buffer clear. init runs on the audio frame path, and ANY bulk loop there
+; blows the frame deadline and stalls the engine permanently -- proven on
+; hardware: 1024- and 4096-iteration loops both hang, in X memory and in Y
+; memory alike, with one or two instructions per iteration. Every init that is
+; just a handful of moves runs. The buffers start with whatever they contain and
+; it decays away through the feedback loop.
         clr     a
         move    a,x:(r7+$50)
         move    a,x:(r7+$51)

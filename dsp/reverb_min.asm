@@ -48,13 +48,15 @@
 ; ---------------------------------------------------------------------------
 
 init:
-        move    #>$9000,r1
-        move    #>$ffffff,m1            ; linear ($ffff is modulo-65536, not linear)
-        move    #>$2000,x0              ; 4 x 2048 contiguous words
-        clr     a
-        do      x0,>iclr
-        move    a,x:(r1)+
-iclr:
+; NO buffer clear. init is called from the audio frame path, and any bulk loop
+; there blows the frame deadline and stalls the engine permanently. Evidence:
+; every build whose init contains a long loop hangs -- 1024 or 4096 iterations,
+; one or two instructions per iteration, X memory or Y memory, all identical.
+; Every build whose init is a handful of moves works. Memory space was never the
+; variable.
+;
+; The delay buffers are simply left as they are. Whatever they contain decays
+; away through the feedback loop, and DSP RAM is generally zero after boot.
         clr     a
         move    a,x:(r7+$50)
         move    a,x:(r7+$51)
