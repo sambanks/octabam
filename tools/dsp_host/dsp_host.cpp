@@ -47,7 +47,7 @@ public:
 struct Args {
     std::string mem, in, out;
     TWord init = 0, proc = 0, audio = 0x000000, params = 0x000100, state = 0x010000;
-    int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0; TWord flags = 0;
+    int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0; TWord flags = 0; int pingpong = -1;
     std::vector<int> pv{64, 64, 64, 64, 64, 64};
 };
 
@@ -120,6 +120,7 @@ int main(int argc, char** argv) {
         else if (k == "-flags") a.flags = strtoul(argv[++i], nullptr, 16);
         else if (k == "-diff") a.diff = atoi(argv[++i]);
         else if (k == "-spray") a.spray = atoi(argv[++i]);
+        else if (k == "-pp") a.pingpong = atoi(argv[++i]);
         else if (k == "-in") a.in = v();
         else if (k == "-out") a.out = v();
         else if (k == "-params") {
@@ -161,6 +162,8 @@ int main(int argc, char** argv) {
     std::printf("seeded x:0x%05x+0x1e = frames %d\n", blkA, a.frames);
 
     runRange(dsp, 0x372, 0x39e);
+    if (a.pingpong >= 0) { mem.set(MemArea_X, 0x41f, static_cast<TWord>(a.pingpong));
+        std::printf("ping-pong selector x:0x41f = %d\n", a.pingpong); }
 
     const TWord ctlA = mem.get(MemArea_X, 0x419);
     const TWord ctlB = mem.get(MemArea_X, 0x208);
@@ -215,6 +218,7 @@ int main(int argc, char** argv) {
             for (TWord ad = 0; ad < static_cast<TWord>(a.spray); ++ad)
                 dsp.memWrite(MemArea_X, ad, 0x400000);
         }
+        if (a.pingpong >= 0) mem.set(MemArea_X, 0x41f, static_cast<TWord>(a.pingpong));
         dsp.regs().r[0].var = a.audio;
         dsp.regs().r[6].var = pblock;
         dsp.regs().r[7].var = state;

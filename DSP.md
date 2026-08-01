@@ -341,8 +341,52 @@ which is why an unseeded context produced silence.
 the audio buffer convention above is unresolved. Until that is closed the harness
 cannot validate a reverb, which was the whole point of building it.
 
-**Next step**: instrument the harness to log every X write during one process
-call. That names the output buffer directly instead of guessing at it.
+### Why address-guessing kept failing: the audio is DMA'd in
+
+The interrupt vector table at `P:0x00000` decodes cleanly. The ESAI vectors
+(`0x30`–`0x3e`) are all `jmp` to themselves — the unused-vector idiom — so audio
+does **not** arrive over the serial audio interface. The live vectors are
+`0x10`–`0x1c`, and they are host-port handlers that program the DMA controller:
+
+```asm
+000588: move a1,x:>$200          ; IRQA: DMA0 setup
+00058a: movep x:<<M_HORX,a1      ;   word 1 from the host ...
+00058d: movep a1,x:<<M_DDR0      ;   ... is the DMA DESTINATION ADDRESS
+00058e: movep x:<<M_HORX,a1      ;   word 2 ...
+000591: movep a1,x:<<M_DCO0      ;   ... is the transfer count
+000592: movep #>$8e82c0,x:<<M_DCR0 ; enable DMA0
+0005c1/0005c4: move x0,x:>$41f   ; DMA-complete: ping-pong buffer selector
+```
+
+So **the ColdFire DMAs audio into the DSP's X memory and tells it the destination
+address at runtime**. There is no fixed audio buffer constant to discover, which
+is exactly why eight rounds of guessing addresses (`X:0`, `0xa0`, `0xb0`,
+`0x110`, both ping-pong states) all produced silence. The buffer addresses, the
+control blocks and the per-track state all arrive over the host port.
+
+Reconstructing that faithfully means emulating the ColdFire→DSP protocol — a
+substantial job requiring the ColdFire-side frame builder (`FUN_4000c8a4`) to be
+replayed. It is not a couple more constants.
+
+### The way around it: we do not need to run the STOCK effects
+
+The harness exists to develop a **new** algorithm, and a new algorithm's
+interface is ours to choose while developing it:
+
+1. **Develop in isolation.** Write the reverb as a self-contained routine, feed
+   it audio and capture output through the harness on our own convention. This
+   works *today* — the emulator, memory loading, call/return and capture are all
+   validated.
+2. **Integrate by imitation.** At integration time, prepend the buffer-acquisition
+   prologue from an existing reverb. We have DARK REV's disassembly; whatever it
+   does to locate its buffers (`move r0,x:(r7+$17)`, the pointer table at
+   `X:0x130`, `#$a0`/`#>$110`), we replicate verbatim. We do not have to
+   *understand* the convention to *copy* it.
+3. **Validate on hardware**, where the real ColdFire supplies the real DMA setup.
+
+That keeps the desktop loop for the part that actually needs iterating — the
+algorithm and its tuning — and confines the unknown to a prologue we can lift
+wholesale.
 
 ## 7. Where a new effect can go, and what fits
 
