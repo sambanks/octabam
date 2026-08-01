@@ -812,6 +812,29 @@ still 300 instructions. The sonic cost is real though — tank taps drop from
 table entries (`DSP_ALLOC_IDX` in `dsp_host`) and compare the output. Base
 `0x4000` and base `0x8000` produce byte-identical audio.
 
+### The base MUST be read in init, not in process
+
+v23 hung. The loop was still 300 instructions, so it was never cycles -- it was
+*when* the base is read.
+
+The dispatcher advances `X:0x213` **before** it calls process:
+
+    0004d8  x:$213 -> b ; +1 ; -> x:$213      advance
+    0004f4  jsr (r2)                          call PROCESS
+
+so by the time process runs, the pointer refers to a different instance's entry.
+Reading it there returns a base that is neither yours nor necessarily aligned,
+and since the tank pointers use modulo addressing, an unaligned base makes r1-r4
+wander out of the buffer and into loaded modules.
+
+The stock code says the same thing plainly, once you check the dispatch table:
+DARK REV's init is `P:0x01679-0x0171a` and its process starts at `P:0x0171b`, and
+the base read at `P:0x01692` is **inside init**.
+
+v24 reads the base and derives all seven buffer addresses in init -- 31
+instructions, no loop -- and stores them in the r7 block. Process just uses them,
+which is also cheaper than recomputing per block.
+
 ### One trap worth its own paragraph
 
 A modulo offset larger than the buffer is **undefined** on the DSP56300. Shrinking

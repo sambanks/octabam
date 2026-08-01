@@ -79,6 +79,11 @@ def main():
               f"{helper_off - len(words)} words clear before PLATE's helper at "
               f"+{helper_off} (P:0x{dark + helper_off:05x})")
         print(f"  init P:0x{init_at:05x}   proc P:0x{proc_at:05x}")
+        # per payload, so the emulator harness never has to guess. Both payloads
+        # write out/dsp/rv.sym, and the second one wins -- passing those
+        # addresses against payload A's memory image silently runs garbage.
+        pathlib.Path(f"out/dsp/rv_{tag}.sym").write_text(
+            f"init {init_at:x}\nproc {proc_at:x}\n")
 
         wrw(xtab + DARK_ID * 3, init_at)
         wrw(xtab + (32 + DARK_ID) * 3, proc_at)

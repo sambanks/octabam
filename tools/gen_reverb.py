@@ -310,26 +310,19 @@ def main():
 init:
 ; No loop, and nothing reset that has to survive: this runs far more often than
 ; once per effect selection.
-        move    #>$ffffff,m0
-        move    #>$ffffff,m1
-        move    #>$ffffff,m2
-        move    #>$ffffff,m3
-        move    #>$ffffff,m4
-        move    #>$ffffff,m5
-        rts
-
-proc:
-; ---- this instance's buffer base ----------------------------------------
-; X:${ALLOC_PTR:x} points at our entry in the host's table of per-instance bases.
-; Everything below is an offset from it, so two tracks running this effect get
-; separate delay lines instead of writing through each other.
+;
+; The buffer base MUST be read here and not in proc. The dispatcher advances
+; X:${ALLOC_PTR:x} before it calls process, so by then the pointer refers to a
+; different instance's entry -- you get a base that is neither yours nor even
+; aligned, and modulo addressing walks out of the buffer. The stock reverbs do
+; the same thing: DARK REV reads it at P:0x01692, inside its init.
         move    x:>${ALLOC_PTR:x},r4
-        move    #>$ffffff,m0            ; audio is read and written via r0
-        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    #>$ffffff,m0
+        move    #>$ffffff,m1            ; both fill the AGU slot
         move    x:(r4),x0
         move    x0,x:(r7+$71)
 
-; ---- absolute bases, once per block -------------------------------------
+; ---- every buffer base, derived once ------------------------------------
         move    #>${AP_OFF:x},a
         add     x0,a
         move    a,x:(r7+${APB:02x})
@@ -352,7 +345,16 @@ proc:
         add     x0,a
         move    a,x:(r7+$78)            ; pre-delay
 
+        move    #>$ffffff,m2
+        move    #>$ffffff,m3
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
+        rts
+
+proc:
 ; ---- rebuild the four delay pointers from the saved phase ----------------
+        move    #>$ffffff,m0            ; audio is read and written via r0
+        move    #>${LINE_MASK:x},m1
         move    x:(r7+$83),a
         move    #>${LINE_MASK:x},x0
         and     x0,a                    ; mask on LOAD: the phase may be garbage
