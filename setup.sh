@@ -2,6 +2,16 @@
 # Fase 0 — instala el tooling de RE y compila elektron-firmware-tool.
 # Idempotente: puedes correrlo varias veces.
 set -euo pipefail
+
+# Copia nuestras fuentes al arbol de vendor. Idempotente; sobreescribe siempre,
+# porque tools/dsp_host/ es la fuente de verdad.
+stage_dsp_host() {
+  mkdir -p vendor/dsp56300/source/dsp_host
+  cp tools/dsp_host/dsp_asm.cpp tools/dsp_host/dsp_host.cpp \
+     tools/dsp_host/CMakeLists.txt vendor/dsp56300/source/dsp_host/ 2>/dev/null || true
+  grep -q dsp_host vendor/dsp56300/source/CMakeLists.txt 2>/dev/null \
+    || echo 'add_subdirectory(dsp_host)' >> vendor/dsp56300/source/CMakeLists.txt
+}
 cd "$(dirname "$0")"
 
 echo "== 1) Herramientas del sistema (via Homebrew) =="
@@ -78,8 +88,14 @@ if [ ! -x "$DIS" ]; then
     [ -d vendor/dsp56300 ] || git clone --depth 1 \
       https://github.com/dsp56300/dsp56300.git vendor/dsp56300
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
+    # Nuestro ensamblador (dsp_asm) y banco de pruebas (dsp_host) viven en
+    # tools/dsp_host/ y se copian al arbol de vendor para compilarse. Copiarlos a
+    # mano se presta a que las dos copias se separen: una edicion en tools/ que
+    # nunca llega al binario da resultados falsos y cuesta encontrar.
+    stage_dsp_host
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
-      && cmake --build vendor/dsp56300/build --target dsp56kDisassemble -j8 \
+      && cmake --build vendor/dsp56300/build \
+           --target dsp56kDisassemble dsp_asm dsp_host -j8 \
       || echo "   [!] la compilacion fallo — revisa vendor/dsp56300"
   fi
 else

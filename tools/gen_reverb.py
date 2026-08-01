@@ -68,9 +68,21 @@ OUT_R = [0, 3]              # 71 / 33 ms -> R starts at 33 ms
 LFO_INC   = 0xa0            # ~0.8 Hz at 44.1k over a 0x800000 phase
 MOD_DEPTH = 8               # peak samples; set by the asl below, see split()
 
+PRE_BASE  = 0x7000          # pre-delay, in the region the Y probe freed
+PRE_LEN   = 0x4000          # 16384 words = 371 ms
+PRE_MASK  = PRE_LEN - 1
+
 PHASE     = 0x7a1           # Y: shared allpass phase
 LFOPH     = 0x7a2           # Y: LFO phase
+PREPH     = 0x7a3           # Y: pre-delay phase
 DAMPST    = 0x7f0           # Y: four one-pole states, 0x7f0..0x7f3
+
+# ---- parameters -----------------------------------------------------------
+# Layout follows Blackhole's primary page (Mix, Gravity, Feedback, Size, Lo, Hi)
+# and Supermassive's core set, which agree on what belongs where. LO is the one
+# gap: a low cut inside the feedback loop needs four more filter states and ~24
+# instructions a sample, and the cycle headroom is not measured yet.
+P_TIME, P_HI, P_SIZE, P_PRE, P_MOD, P_MIX, P_RATE, P_WIDTH = range(8)
 
 LINE_MASK = LINE_LEN - 1
 AP_MASK   = AP_LEN - 1
@@ -138,7 +150,7 @@ def lfo():
     return f"""
 ; ---- LFO: one triangle and its inverse ----------------------------------
         move    y:>${LFOPH:x},a         ; persistent phase, [0,$7fffff]
-        move    #>${LFO_INC:06x},x0
+        move    x:(r7+$6f),x0           ; increment, from RATE
         add     x0,a
         move    #>$7fffff,x0
         and     x0,a                    ; wrap; A1 is right even if A2 carried
@@ -148,6 +160,9 @@ def lfo():
         move    #>$400000,x0
         sub     x0,a
         abs     a                       ; triangle T, 0 .. $400000
+        move    a,x0
+        move    x:(r7+$68),y1           ; MOD depth
+        mpy     x0,y1,a                 ; scaled triangle
         move    a1,x0
         move    x0,x:(r7+$66)           ; stash for the inverse
 """ + split(0x61, 0x62, "line %d" % MOD_LINES[0]) + f"""        move    #>$400000,a
@@ -165,7 +180,7 @@ def modread(i, mi, mf):
         and     x0,b                    ; shared write phase
         move    x:(r7+${mi:02x}),x0
         sub     x0,b                    ; phase - offset
-        move    #>{LINE_LEN - tap},x0
+        move    x:(r7+${0x6a if i == MOD_LINES[0] else 0x6b:02x}),x0    ; {LINE_LEN} - tap, from SIZE
         add     x0,b
         move    #>${LINE_MASK:x},x0
         and     x0,b                    ; i0
@@ -274,8 +289,33 @@ proc:
         move    #>${LINE_MASK:x},m3
         move    #>${LINE_MASK:x},m4
 """
+    body += f"""
+; ---- SIZE: scale all four tap lengths -----------------------------------
+; Each tap is held as a fraction of LINE_LEN (tap << 11), multiplied by a factor
+; f = 0.125 .. 0.992, and shifted back to an integer. The nominal taps are the
+; MAXIMUM, so SIZE only ever shrinks the space: {LINE_TAPS[0]} samples down to
+; about {LINE_TAPS[0] // 8}, i.e. {LINE_TAPS[0]/44.1:.0f} ms down to {LINE_TAPS[0]/8/44.1:.0f} ms on the longest line.
+; Setup only -- this runs once per block, not per sample.
+        move    x:(r6+${P_SIZE}),x0
+        move    #>$100000,a
+        add     x0,a
+        move    a,x1                    ; f
+"""
     for i, t in enumerate(LINE_TAPS):
-        body += f"        move    #>${neg24(t):06x},n{i+1}            ; -{t}\n"
+        body += f"""        move    #>${t << 11:06x},x0            ; {t} as a fraction of {LINE_LEN}
+        mpy     x0,x1,a
+        asr     #$b,a,a                 ; back to an integer tap
+"""
+        if i in MOD_LINES:
+            slot = 0x6a if i == MOD_LINES[0] else 0x6b
+            body += f"""        move    #>${LINE_LEN:x},b
+        sub     a,b                     ; {LINE_LEN} - tap, for the modulated read
+        move    b,x:(r7+${slot:02x})
+"""
+        else:
+            body += f"""        neg     a
+        move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
+"""
     body += f"""        move    #>$ffffff,m0            ; audio read AND written in place via r0
         move    #>$ffffff,m5
 
@@ -290,17 +330,43 @@ proc:
         add     x0,a
         move    a,x:(r7+$5e)
 
-; ---- DAMP: p1 -> damping coefficient ------------------------------------
-        move    x:(r6+$1),x0
+; ---- HI: high cut, as an EQ rather than a damping amount -----------------
+; The one-pole is s += c*(d-s), so a LARGE c tracks the input and keeps highs.
+; HI reads as an EQ control, so it has to run the other way from the old DAMP:
+; HI=0 gives c=0.125 (dark), HI=127 gives c~0.99 (bright).
+        move    x:(r6+${P_HI}),x0
         move    #>$700000,y1
         mpy     x0,y1,a
-        move    #>$7fffff,b
-        sub     a,b
-        move    b,x:(r7+$5f)
+        move    #>$100000,x0
+        add     x0,a
+        move    a,x:(r7+$5f)
 
-; ---- MIX: p5 -> wet gain ------------------------------------------------
-        move    x:(r6+$5),x0
+; ---- MIX -----------------------------------------------------------------
+        move    x:(r6+${P_MIX}),x0
         move    x0,x:(r7+$60)
+
+; ---- MOD: modulation depth, scales the LFO triangle ---------------------
+        move    x:(r6+${P_MOD}),x0
+        move    x0,x:(r7+$68)
+
+; ---- WIDTH: 0 = mono, 127 = full stereo ---------------------------------
+        move    x:(r6+${P_WIDTH}),x0
+        move    x0,x:(r7+$6c)
+
+; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
+        move    x:(r6+${P_RATE}),a
+        asr     #$e,a,a
+        move    #>$40,x0
+        add     x0,a
+        move    a,x:(r7+$6f)
+
+; ---- PRE: pre-delay in samples, 0 .. 16256 (369 ms) ----------------------
+; v * 128, not v * 256: the buffer is 16384 words, and 127*256 = 32512 would
+; overrun it. The mask would then wrap the top half of the knob back round to
+; short delays instead of clamping.
+        move    x:(r6+${P_PRE}),a
+        asr     #$9,a,a
+        move    a,x:(r7+$69)
 
         do      n7,>rvend
 
@@ -310,7 +376,39 @@ proc:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$5b)            ; into the diffuser
+        move    a,x:(r7+$5b)
+
+; ---- pre-delay ----------------------------------------------------------
+; Its own phase and its own {PRE_LEN}-word buffer in the region the Y probe
+; freed. Explicit masked addressing, same as everything else that touches Y.
+        move    y:>${PREPH:x},a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    a,x:(r7+$6d)            ; phase
+        move    #>${PRE_BASE:x},x0
+        add     x0,a
+        move    a,r5
+        move    x:(r7+$5b),a            ; the input, and fills the AGU slot
+        move    x:(r7+$5b),b
+        move    a,y:(r5)                ; write it at base + phase
+        move    x:(r7+$6d),a
+        move    x:(r7+$69),x0           ; PRE, in samples
+        sub     x0,a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    #>${PRE_BASE:x},x0
+        add     x0,a
+        move    a,r5
+        move    #>$1,n0                 ; both of these fill the AGU slot
+        move    x:(r7+$6d),b
+        move    y:(r5),a
+        move    a,x:(r7+$5b)            ; delayed input -> the diffuser
+        move    b,a
+        move    #>$1,x0
+        add     x0,a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    a,y:>${PREPH:x}
 """
     for i in range(4):
         body += allpass(i)
@@ -368,16 +466,45 @@ proc:
     body += """; ---- wet added to dry, two tank taps per channel -------------------------
         move    x:(r7+$60),y1           ; wet gain
 """
-    for taps, dst, label in ((OUT_L, "(r0)", "L"), (OUT_R, "(r0+n0)", "R")):
+    for taps, slot, label in ((OUT_L, 0x6d, "L"), (OUT_R, 0x6e, "R")):
         body += f"""        move    x:(r7+${0x56+taps[0]:02x}),a            ; line {taps[0]}, tap {LINE_TAPS[taps[0]]}
         move    x:(r7+${0x56+taps[1]:02x}),x0           ; line {taps[1]}, tap {LINE_TAPS[taps[1]]}
         add     x0,a
         asr     #$1,a,a
+        move    a,x:(r7+${slot:02x})            ; wet {label}
+"""
+    body += """
+; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
+; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. w=0 collapses to mono, w=1 gives
+; back exactly the two tap sums.
+        move    x:(r7+$6d),a
+        move    x:(r7+$6e),x0
+        add     x0,a
+        asr     #$1,a,a
+        move    a,x:(r7+$65)            ; M
+        move    x:(r7+$6d),a
+        sub     x0,a
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r7+$6c),y0           ; WIDTH
+        mpy     x0,y0,a
+        move    a,x:(r7+$66)            ; w*S
+        move    x:(r7+$65),a
+        move    x:(r7+$66),x0
+        add     x0,a
+        move    a,x0
+        mpy     x0,y1,a                 ; * MIX
+        move    x:(r0),x0
+        add     x0,a
+        move    a,x:(r0)                ; L in place
+        move    x:(r7+$65),a
+        move    x:(r7+$66),x0
+        sub     x0,a
         move    a,x0
         mpy     x0,y1,a
-        move    x:{dst},x0
+        move    x:(r0+n0),x0
         add     x0,a
-        move    a,x:{dst}                ; {label} in place
+        move    a,x:(r0+n0)             ; R in place
 """
     body += """        move    #>$2,n0
         move    (r0)+n0                 ; advance one stereo frame

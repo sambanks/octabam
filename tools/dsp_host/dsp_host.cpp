@@ -17,7 +17,8 @@
 //
 // Usage:
 //   dsp_host -mem out/dsp/mem_A.mem -init <hex> -proc <hex> [options]
-//     -params a,b,c,d,e,f   page-1 parameter values 0..127 (default 64)
+//     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
+//                           8 also covers the page-2 slots at r6+6..7
 //     -frames N             frames per block (default 32)
 //     -blocks N             blocks to run (default 256)
 //     -in file.raw          24-bit mono raw input, else an impulse is used
@@ -127,7 +128,7 @@ int main(int argc, char** argv) {
             a.pv.clear();
             char* s = argv[++i];
             for (char* t = strtok(s, ","); t; t = strtok(nullptr, ",")) a.pv.push_back(atoi(t));
-            a.pv.resize(6, 64);
+            if (a.pv.size() < 8) a.pv.resize(8, 64);   // page 2 lives at r6+6..8
         }
     }
     if (a.mem.empty() || !a.proc) {
@@ -177,10 +178,10 @@ int main(int argc, char** argv) {
     // r7 = x:0x20a + 0x100.
     const TWord pblock = ctlB + 6;
     const TWord state  = mem.get(MemArea_X, 0x20a) + 0x100;
-    for (int i = 0; i < 6; ++i)
+    for (size_t i = 0; i < a.pv.size(); ++i)
         mem.set(MemArea_X, pblock + i, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
     std::printf("params @X:0x%05x =", pblock);
-    for (int i = 0; i < 6; ++i) std::printf(" %d", a.pv[i]);
+    for (size_t i = 0; i < a.pv.size(); ++i) std::printf(" %d", a.pv[i]);
     std::printf("   state r7 = X:0x%05x\n", state);
 
     dsp.regs().r[6].var = pblock;
