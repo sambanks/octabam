@@ -82,11 +82,23 @@ DAMPST    = 0x7f0           # Y: four one-pole states, 0x7f0..0x7f3
 # and Supermassive's core set, which agree on what belongs where. LO is the one
 # gap: a low cut inside the feedback loop needs four more filter states and ~24
 # instructions a sample, and the cycle headroom is not measured yet.
-# Page 1 is r6+0..5. Page 2 is NOT r6+6..8 -- there is a six-slot gap, and it
-# starts at r6+$c. Confirmed against the stock code: DARK REV and PLATE REV both
-# read r6+0..5 and then r6+$c and r6+$e, and their page 2 is PRE / BAL / MONO.
-P_TIME, P_HI, P_SIZE, P_PRE, P_MOD, P_MIX = range(6)
-P_RATE, P_WIDTH = 0xc, 0xd
+# Page 1 is r6+0..5. Page 2 is NOT r6+6..8, and it is not in display order
+# either -- mapped on hardware with dsp/pagemap_probe.asm, which put an
+# unmistakable behaviour on each candidate offset:
+#
+#     knob PRE   -> r6+$e        knob MONO  -> r6+$d
+#     knob BAL   -> r6+$b        knob MIXF  -> r6+$c   (boolean mix/send)
+#
+# That also explains the stock code: DARK REV and PLATE REV read r6+0..5 plus
+# r6+$c and r6+$e -- the mix/send mode and the PRE knob, which really is their
+# pre-delay. They leave BAL and MONO to the host.
+#
+# Our pre-delay therefore sits on the knob already labelled PRE, and page 1's
+# fourth slot is freed for LO.
+P_TIME, P_HI, P_SIZE, P_SPARE, P_MOD, P_MIX = range(6)
+P_PRE   = 0xe               # knob PRE
+P_WIDTH = 0xb               # knob BAL
+P_RATE  = 0xd               # knob MONO
 
 LINE_MASK = LINE_LEN - 1
 AP_MASK   = AP_LEN - 1
@@ -374,7 +386,7 @@ proc:
 ; v * 128, not v * 256: the buffer is 16384 words, and 127*256 = 32512 would
 ; overrun it. The mask would then wrap the top half of the knob back round to
 ; short delays instead of clamping.
-        move    x:(r6+${P_PRE}),a
+        move    x:(r6+${P_PRE:x}),a
         asr     #$9,a,a
         move    a,x:(r7+$69)
         move    #>$1,x0                 ; the read happens BEFORE the write, so

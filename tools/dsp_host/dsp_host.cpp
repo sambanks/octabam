@@ -178,10 +178,13 @@ int main(int argc, char** argv) {
     // r7 = x:0x20a + 0x100.
     const TWord pblock = ctlB + 6;
     const TWord state  = mem.get(MemArea_X, 0x20a) + 0x100;
-    // Page 1 is pblock+0..5; page 2 starts at pblock+0xc, not +6. The stock
-    // reverbs read exactly r6+0..5 and r6+$c/$e, so index 6 and up map there.
+    // Page 1 is pblock+0..5. Page 2 is neither contiguous with it nor in
+    // display order; mapped on hardware with dsp/pagemap_probe.asm:
+    //   index 6 -> +$b (knob BAL)   7 -> +$c (MIXF)
+    //   index 8 -> +$d (knob MONO)  9 -> +$e (knob PRE)
+    static const TWord page2[] = {0xb, 0xc, 0xd, 0xe};
     for (size_t i = 0; i < a.pv.size(); ++i) {
-        const TWord off = (i < 6) ? i : i + 6;
+        const TWord off = (i < 6) ? i : page2[(i - 6) % 4];
         mem.set(MemArea_X, pblock + off, (static_cast<TWord>(a.pv[i]) & 0x7f) << 16);
     }
     std::printf("params @X:0x%05x =", pblock);

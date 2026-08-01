@@ -699,24 +699,33 @@ harness the whole time as an envelope that never decayed (RMS pinned near 4M at
 1 s), and was misread as a long tail. With an impulse input, **a flat envelope is
 proof of instability**. Check it on every build.
 
-## 9. Page-2 parameters are at r6+$c, not r6+6
+## 9. Page-2 parameters: r6+$b..$e, and NOT in display order
 
 Page 1's six values are `x:(r6+0)` through `x:(r6+5)`, which §6 already had. Page
-2 — the screen you land on when you select the effect — is **not** at `r6+6`.
-There is a six-slot gap, and it starts at **`r6+$c`**.
+2 — the screen you land on when you select the effect — is **not** at `r6+6`, and
+crucially it is **not in display order** either.
 
-Found by surveying every r6-relative read in the stock DSP code. DARK REV and
-PLATE REV each read exactly:
+Surveying r6-relative reads in the stock code gets you close but not there: DARK
+REV and PLATE REV each read `r6+0..5`, plus `r6+$c` and `r6+$e`. That is enough to
+know page 2 is somewhere around `$b..$e`, and no more — two different orderings
+fit it, and picking the sensible-looking one is wrong.
 
-    r6+0 r6+1 r6+2 r6+3 r6+4 r6+5        page 1
-    r6+$c            r6+$e               page 2
+Measured instead, with `dsp/pagemap_probe.asm`: put an unmistakable, *different*
+behaviour on each candidate offset, flash once, and read the answer off the
+knobs. Page 2 shows four controls, the last of them a boolean:
 
-and DARK REV's page 2 is `PRE / BAL / MONO`, so `$c/$d/$e` are those three in
-order. Neither reverb reads `$d` (BAL), which the host presumably applies itself.
+| knob | offset |
+|---|---|
+| `PRE` | **`r6+$e`** |
+| `BAL` | **`r6+$b`** |
+| `MONO` | **`r6+$d`** |
+| `MIXF` | **`r6+$c`** (boolean mix/send) |
 
-Nothing in either module touches `r6+6..$b`. What lives there is unknown — a
-plausible guess is a second copy of page 1 (smoothing targets, or the values
-before interpolation), but nothing confirms it.
+That also explains the stock reads: `$c` and `$e` are the mix/send mode and the
+`PRE` knob, which really is DARK REV's pre-delay. Both are things a reverb needs.
+BAL and MONO it leaves to the host.
+
+`r6+6..$a` is touched by nothing. What lives there is still unknown.
 
 **Symptom if you get this wrong**: the parameters silently read whatever is in
 those slots and never change. Page-2 knobs simply do nothing, with no error.
