@@ -53,12 +53,32 @@ import sys
 # must not exceed 0x4000.
 ALLOC_PTR = 0x213           # X: pointer to this instance's base
 ALLOC_TAB = 0x255           # X: the table itself, one word per instance
-STATE_TAB = 0x6000          # X: first r7 state block; they advance in lockstep
+STATE_TAB = 0x6000          # X: first r7 state block
+
+# X:0x213 is only readable in init -- the dispatcher advances it before calling
+# process, and the stock reverbs read it there too. Getting the value across to
+# process is the hard part, because only r7+$83 persists and the tank phase owns
+# it. So init stashes the base in absolute Y at an address unique to the
+# instance:
+#
+#     Y:(STASH + (r7 >> 8))   ->  0x795..0x79d for r7 = 0x6000..0x6800
+#
+# which is the free window above the loaded coefficient module at 0x715..0x794.
+# Absolute, but one word per instance, so instances do not collide.
+#
+# Deriving the base as x:(0x255 + ((r7 - 0x6000) >> 8)) does NOT work, though the
+# arithmetic looked sound: measured on hardware, r7 = 0x6200, and table[2] is
+# 0x1c00 -- a 3072-word FX1 slot. A 16K layout there runs to 0x53ff, through the
+# other FX1 buffers and into FX2 slot 0. The pointers do advance together, but
+# FX2 effects do not take even table entries.
+#
+# Measured with dsp/baseprobe.asm: the stash returns 0x4000, an FX2 slot.
+STASH     = 0x735
 
 # Set to an address to bypass the allocator and hardcode the base. Only for
 # bisecting: it pins every instance to the same region, so two tracks collide.
 # 0x4000 is a real FX2 slot, so it is safe to run.
-ALLOC_FIXED = 0x4000
+ALLOC_FIXED = None
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
@@ -335,14 +355,24 @@ def main():
 ; ---------------------------------------------------------------------------
 
 init:
-; No loop, and nothing reset that has to survive: this runs far more often than
-; once per effect selection.
-        move    #>$ffffff,m0
+; No loop, and nothing reset that has to survive.
+;
+; Reading X:${ALLOC_PTR:x} is only valid HERE. Stash the base where process can
+; find it: absolute Y, but at an address unique to this instance.
+        move    x:>${ALLOC_PTR:x},r4
+        move    r7,a
+        asr     #$8,a,a                 ; r7 >> 8; also fills the AGU slot
+        move    x:(r4),x0               ; this instance's buffer base
+        move    #>${STASH:x},y0
+        add     y0,a
+        move    a,r5
+        move    #>$ffffff,m5
+        move    #>$ffffff,m0            ; both fill the AGU slot
+        move    x0,y:(r5)
         move    #>$ffffff,m1
         move    #>$ffffff,m2
         move    #>$ffffff,m3
         move    #>$ffffff,m4
-        move    #>$ffffff,m5
         rts
 
 proc:
@@ -360,15 +390,13 @@ proc:
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1
         move    x0,x:(r7+$71)""" if ALLOC_FIXED is not None else f"""        move    r7,a
-        move    #>${(-STATE_TAB) & 0xffffff:06x},x0
-        add     x0,a
         asr     #$8,a,a
-        move    #>${ALLOC_TAB:x},x0
-        add     x0,a
-        move    a,r4
+        move    #>${STASH:x},y0
+        add     y0,a
+        move    a,r5
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
-        move    x:(r4),x0               ; base
+        move    y:(r5),x0               ; the base init stashed for us
         move    x0,x:(r7+$71)""") + f"""
 
 ; ---- every buffer base, derived once per block --------------------------

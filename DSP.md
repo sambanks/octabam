@@ -812,6 +812,47 @@ still 300 instructions. The sonic cost is real though — tank taps drop from
 table entries (`DSP_ALLOC_IDX` in `dsp_host`) and compare the output. Base
 `0x4000` and base `0x8000` produce byte-identical audio.
 
+### Getting the base from init to process, measured not deduced
+
+Two claims in this section were reasoned from the dispatcher listing and both
+were wrong. Recording how they failed, because the failure mode is identical in
+each case — a build that is clean in the emulator and unusable on hardware.
+
+**Wrong claim 1: the base can be derived from r7.** X:0x20a and X:0x213 do
+advance together, so `n = (r7 - 0x6000) >> 8; base = x:(0x255 + n)` looks sound.
+Measured with `dsp/r7probe.asm` — 49 words that pass audio only when the TIME
+knob equals `r7 >> 8`, so the knob position reads the register directly — r7 is
+**0x6200**. The arithmetic was right, but `table[2]` is `0x1c00`, a 3072-word
+**FX1** slot. A 16K layout starting there runs to `0x53ff`, through the other FX1
+buffers and into FX2 slot 0. FX2 effects do not take even table entries.
+
+**Wrong claim 2: persistent state can live anywhere in the r7 block.** Bisected:
+
+| build | base | state | result |
+|---|---|---|---|
+| v25 | derived | `r7+$84..$8a` | hangs |
+| v26 | hardcoded | `r7+$84..$8a` | hangs → base innocent |
+| v27 | hardcoded | absolute Y | runs → state is the fault |
+
+`r7+$71..$78` is fine *within* one call and `r7+$83` persists, but `r7+$84..$8a`
+does not. DARK REV's init writes `$1a $1b $1f $82 $83 $84 $8b` and steps around
+`$85..$8a` — it was avoiding host-owned words.
+
+**What works**, measured with `dsp/baseprobe.asm` (same trick, TIME matched
+against `base >> 9`): init reads `X:0x213` and stashes the base in absolute Y at
+
+    Y:(0x735 + (r7 >> 8))    ->  0x795..0x79d for r7 = 0x6000..0x6800
+
+the free window above the loaded coefficient module at `0x715..0x794`. The
+address is absolute, but there is one word per instance, so instances do not
+collide. It returns **0x4000** on hardware — an FX2 slot — and survives the trip
+into process.
+
+That leaves the phases, and one persistent word turns out to be enough: the tank,
+allpass and pre-delay phases all advance by 1 per sample and differ only in mask,
+so they are the same counter, and `r1` already carries it. The LFO phase and four
+damping states go in the instance's own Y region, loaded and saved once per block.
+
 ### The base MUST be read in init, not in process
 
 v23 hung. The loop was still 300 instructions, so it was never cycles -- it was
