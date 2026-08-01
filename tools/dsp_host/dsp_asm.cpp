@@ -81,47 +81,78 @@ int main(int argc, char** argv) {
     Assembler asmb;
     std::map<std::string, TWord> labels;
 
-    // ---- pass 1: size instructions, record labels -----------------------------
+    // Pre-scan label names. The assembler's symbol table does not resolve these
+    // in operands, so labels are substituted textually as $hex instead.
+    for (auto& [n, text] : lines) {
+        const auto colon = text.find(':');
+        if (colon != std::string::npos && text.find(',') == std::string::npos)
+            labels[text.substr(0, colon)] = 0;
+    }
+
+    // The assembler implements only the RELATIVE b-forms (bra/bsr/bcc); jmp and
+    // jcc are not supported. So a branch operand is a DISPLACEMENT from the
+    // instruction's own address, while everything else (do, immediates, memory
+    // references) takes the label's absolute value. Getting this wrong is silent:
+    // "beq $201f" at pc 0x200e branches to 0x402d, not 0x201f.
+    auto isRelative = [](const std::string& t) {
+        static const char* rel[] = {"bra","bsr","beq","bne","bcc","bcs","bhs","blo",
+                                    "bgt","blt","bge","ble","bmi","bpl","bvc","bvs"};
+        std::string m = t.substr(0, t.find_first_of(" \t"));
+        for (auto& c : m) c = static_cast<char>(tolower(c));
+        for (auto* r : rel) if (m == r) return true;
+        return false;
+    };
+
+    auto substitute = [&](std::string t, bool real, TWord here) {
+        const bool relative = isRelative(t);
+        for (auto& [name, addr] : labels) {
+            char buf[32];
+            if (!real) {
+                // pass 1: a high dummy so the LONG form is sized, matching pass 2
+                std::snprintf(buf, sizeof buf, "$%x", 0x7ff000);
+            } else if (relative) {
+                const int32_t disp = static_cast<int32_t>(addr) - static_cast<int32_t>(here);
+                std::snprintf(buf, sizeof buf, "%s$%x", disp < 0 ? "-" : "",
+                              disp < 0 ? -disp : disp);
+            } else {
+                std::snprintf(buf, sizeof buf, "$%x", addr);
+            }
+            for (auto p2 = t.find(name); p2 != std::string::npos; p2 = t.find(name, p2 + 1))
+                t.replace(p2, name.size(), buf);
+        }
+        return t;
+    };
+
+    // ---- pass 1: size instructions, fix label addresses -----------------------
     TWord pc = org;
     std::vector<std::pair<int, std::string>> code;
     for (auto& [n, text] : lines) {
         auto t = text;
         const auto colon = t.find(':');
-        if (colon != std::string::npos && t.find(',') == std::string::npos
-            && t.find(' ') > colon) {
+        if (colon != std::string::npos && t.find(',') == std::string::npos) {
             labels[t.substr(0, colon)] = pc;
             t = trim(t.substr(colon + 1));
             if (t.empty()) continue;
         }
-        // size it with a dummy value substituted for any unknown label
-        auto probe = t;
-        for (auto& [name, addr] : labels) {
-            (void)addr;
-            const auto p = probe.find(name);
-            if (p != std::string::npos) probe.replace(p, name.size(), "$100");
-        }
-        const auto r = asmb.assemble(probe.c_str());
-        const uint32_t words = r.success() ? r.wordCount : 1;
+        const auto r = asmb.assemble(substitute(t, false, pc).c_str());
         code.emplace_back(n, t);
-        pc += words;
+        pc += r.success() ? r.wordCount : 1;
     }
 
-    // ---- pass 2: assemble with labels resolved --------------------------------
-    for (auto& [type, name] : std::vector<std::pair<int, int>>{}) { (void)type; (void)name; }
-    for (auto& [name, addr] : labels) asmb.addSymbol(Assembler::MemP, addr, name);
-
+    // ---- pass 2: assemble with real addresses ---------------------------------
     std::vector<TWord> outWords;
     pc = org;
     int errors = 0;
     for (auto& [n, text] : code) {
-        const auto r = asmb.assemble(text.c_str());
+        const auto resolved = substitute(text, true, pc);
+        const auto r = asmb.assemble(resolved.c_str());
         if (!r.success()) {
-            std::fprintf(stderr, "%s:%d: %s -- \"%s\"\n", in.c_str(), n, errName(r.error), text.c_str());
+            std::fprintf(stderr, "%s:%d: %s -- \"%s\"\n", in.c_str(), n, errName(r.error), resolved.c_str());
             ++errors;
             continue;
         }
         if (list) {
-            std::printf("%06x: %-40s ; %06x", pc, text.c_str(), r.word[0]);
+            std::printf("%06x: %-38s ; %06x", pc, resolved.c_str(), r.word[0]);
             if (r.wordCount > 1) std::printf(" %06x", r.word[1]);
             std::printf("\n");
         }
