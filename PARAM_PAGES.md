@@ -247,6 +247,48 @@ Supporting evidence that the slots are symmetric: FX1 already hosts effects of
 class B `0x400328e4`: DJEQ COMP LOFI), and the four effects being added span both.
 So the page-class handler is not what excludes delay and reverb from FX1.
 
+## 5c. Where the effect id crosses to the DSP
+
+`apply_part` publishes both ids into the `0x80000000` window — the RAM shared with
+the DSP56300 — as two **adjacent 8-byte arrays**, one byte per track:
+
+```asm
+40009370  movea.l D4,A1              ; D4 = track
+40009372  adda.l #-0x7ffffef0,A1     ; A1 = 0x80000110 + track
+4000937e  adda.l #0x8ed80,A0         ; FX1 id in the Part data
+40009384  move.b (A0),(0xdb4,A1)     ; -> FX1 id array 0x80000ec4[track]
+4000938c  addq.l #0x8,A2             ; +8 = the FX2 id field (0x8ed88)
+4000938e  move.b (A2),(0xdbc,A1)     ; -> FX2 id array 0x80000ecc[track]
+```
+
+`0x80000ec4[8]` / `0x80000ecc[8]` sit immediately before the live scene buffer at
+`0x80000ed4 + track*0x40`, so the whole per-track audio state is one contiguous
+block in shared RAM.
+
+**Every ColdFire site touching these arrays treats the two slots identically.**
+Eight of the nine FX1 sites have an FX2 counterpart 12–20 bytes away, in adjacent
+code. The ninth (`0x40004c22`) only looks unpaired: it does `lea 0x80000ec4,A6`
+and reaches the FX2 array through a `+8` displacement off the same base, because
+the arrays are contiguous — the same one-base-serves-both idiom as the `0x8ed80` /
+`0x8ed88` Part fields.
+
+Ghidra's `ReferenceManager` reports **zero** references to these addresses, because
+every access is displacement-based off a base register. That is the mirror image of
+the trap `NOTES.md` records for the scalar sweep: a reference sweep finds absolute
+operands and misses computed ones. Both sweeps are needed.
+
+**Conclusion for the FX1 experiment.** On the ColdFire side the two FX slots are
+structurally identical: same descriptor mechanism, same table shape, same page
+classes, same publication path into DSP-shared RAM, differing only by an 8-byte
+offset. Nothing in the control processor treats FX1 as the lesser slot — the
+restriction is purely the contents of two lists.
+
+The residual risk is therefore **entirely on the DSP side** and is not answerable
+from this binary at all: whether the DSP provisions delay-line memory or cycles
+per slot. That is across the chip boundary, and settling it statically means
+disassembling the DSP program (`COVERAGE.md`). The hardware test answers it in
+about two minutes instead.
+
 ## 6. Not yet decoded
 
 - `E+0x35` flags (6 bytes).
