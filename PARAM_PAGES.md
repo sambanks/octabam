@@ -289,6 +289,39 @@ per slot. That is across the chip boundary, and settling it statically means
 disassembling the DSP program (`COVERAGE.md`). The hardware test answers it in
 about two minutes instead.
 
+## 5d. HARDWARE RESULT — reverbs work on FX1, delay does not
+
+Flashed `OCTATRACK_FX1TEST.bin` to a real MKII running OS 1.40C via the CF-card
+OS UPGRADE path. Loaded cleanly.
+
+| effect added to FX1 | result |
+|---|---|
+| PLATE REV | **works** |
+| SPRING REV | **works** |
+| DARK REV | **works** |
+| DELAY | selectable, but **no audible effect** |
+
+**What the reverbs prove.** The id→algorithm mapping is *not* slot-restricted. The
+DSP will run a reverb algorithm requested from the FX1 slot, with no change beyond
+two lookup tables. So the stock 10-vs-14 split is not a hard architectural
+boundary, and — importantly for the wider question — an effect id is a loosely
+coupled selector, not something the DSP validates against the slot. That is the
+condition under which an unused id could host a custom descriptor.
+
+**What the delay result means.** The failure is specific to one effect, not to the
+slot, so the cause is a per-effect resource rather than a per-slot permission.
+Leading hypothesis: the delay needs a delay-line buffer that is allocated only for
+the FX2 slot, so an FX1 delay runs with no buffer and produces nothing. Untested.
+
+Unconfirmed lead: `FUN_40005638` (a defaults initialiser) references the FILTER
+and DELAY descriptors directly, outside the id tables — the only two effects that
+get that treatment. Whether that relates to buffer setup is not established; the
+decompilation was not understood well enough to claim it.
+
+**Cheap decisive test, no build required**: set FX2 = DELAY *and* FX1 = DELAY on
+the same track. If the FX1 delay comes alive once FX2 has allocated the buffer,
+the allocation hypothesis is confirmed outright.
+
 ## 6. Not yet decoded
 
 - `E+0x35` flags (6 bytes).
