@@ -1284,3 +1284,51 @@ change, with the SIZE scaling corrected so the tap cannot exceed the line
 monotonic by measuring the impulse response at several settings.
 
 Not started: v61 is on the card and unverified, and this builds on it.
+
+## v61 CONFIRMED, and v62: modulo restored, SIZE fixed. ON THE CARD
+
+**v61 hardware: HP works** — "subtle, but works". LO is real, so the
+knob remap and the new filter are both good. Its LO coefficient is
+raised in v62 from `$020000` to `$040000` since subtle was the complaint.
+
+### v62 = modulo on the tank lines + SIZE rescaled
+
+**974 words, 1063 clear.** The modulo conversion *saved 67 words* against
+v61's 1041, and bought back a similar count of instructions a sample.
+
+* `m1..m4` = `$7ff`: r1..r4 are the four line pointers, each wrapping
+  inside its own line. All four advance together at the end of the loop.
+  Bases are base+0/0x800/0x1000/0x1800 against a base of 0x4000 or
+  0x8000, so every line is 2048-aligned as modulo requires.
+* lines 0 and 3 read `y:(r1+n1)` / `y:(r4+n4)` — one word each against
+  eleven. **This makes n1/n4 live**: they were computed from SIZE every
+  block and thrown away, which is why SIZE only ever moved two of the
+  four lines.
+* the four write-backs became `move a,y:(rN)` — one word against eight,
+  and the `hold it while r5 is built` dance disappears.
+* the allpasses stay arithmetic. Modulo needs a dedicated address
+  register per buffer with fixed M for the whole block, and r1..r4 are
+  spoken for; only the tank lines fit, which is what the original design
+  did.
+
+**SIZE rescaled.** `f` was 0.125..1.861 and the tap is `3134*f`, so the
+nominal 1567 landed at knob ~27 and everything above ran off the end of
+the 2048-word line, wrapped, and made SIZE non-monotonic. `f` now spans
+**0.08..0.653**, so the longest tap tops out at 2046 — one short of the
+modulo limit and of what `|n1|` may legally be. Measured, wet arrival is
+now monotonic across the knob: **2.0 / 3.6 / 5.2 / 6.8 / 8.3 ms** at
+SIZE 0/32/64/96/127.
+
+Note the interaction, which is pre-existing and not a bug: RT60 scales
+with loop time, so a smaller SIZE also shortens the decay. The old
+nominal tap now sits around SIZE~92, so expect to run SIZE higher than
+before for the same space.
+
+Verified: two instances, poisoned $82/$83, dirty Y, split 5 — no hang,
+guard clean. Decay at SIZE=127 is RT60 ~3.7 / 4.1 / 17.3 s at TIME
+0/64/127, no runaway at any setting. HP now bites: the early tail falls
+2960 -> 953 -> 329 across the knob.
+
+Test protocol: **SIZE should now be a real size control across its whole
+travel** and should keep growing all the way up rather than turning back
+on itself. HP should be more obvious than in v61. Two tracks as always.
