@@ -78,7 +78,7 @@ STASH     = 0x735
 # Set to an address to bypass the allocator and hardcode the base. Only for
 # bisecting: it pins every instance to the same region, so two tracks collide.
 # 0x4000 is a real FX2 slot, so it is safe to run.
-ALLOC_FIXED = None
+ALLOC_FIXED = 0x4000
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
