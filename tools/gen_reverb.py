@@ -888,8 +888,14 @@ audio:
         move    x:(r7+$78),x0
         add     x0,a
         move    a,r5
-        move    #>$ffffff,m5            ; two instructions before r5 is used
-        move    #>$ffffff,m1
+        nop                             ; two instructions before r5 is used --
+        nop                             ; and NOT M-register writes. Loading an M
+                                        ; register interlocks with its address
+                                        ; register, so writing m5 here and using
+                                        ; r5 two instructions later froze the DSP
+                                        ; on a single track. m5 is already linear
+                                        ; from the per-block setup; nothing in
+                                        ; this loop needs to touch it.
         move    y:(r5),b                ; delayed
         move    x:(r7+$70),a            ; write at phase
         move    #>${PRE_MASK:x},x0
