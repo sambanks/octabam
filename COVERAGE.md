@@ -29,7 +29,7 @@ container? data inside the MAIN OS that `FUN_40001d4c` receives as `param_1`?).
 | Audio engine (voices) | 🟡 | Data model (voice `0x800049d8`, mailboxes), frame builder, handoff to the DSP. Missing: voice parameter computation, envelopes, amp modulator |
 | Sample playback: FLEX vs STATIC | ⬜ | FLEX=RAM, STATIC=stream from CF. Not decompiled |
 | **Timestretch** (NORMAL/BEAT) | ⬜ | On the DSP (separate binary) |
-| **Effects — Appendix B (17 FX)** | ⬜ | Multimode filter, phaser, flanger, chorus, comb, DynamiX comp, echo/freeze delay, plate/spring/dark reverb… **all on the DSP** |
+| **Effects — Appendix B (17 FX)** | 🟡 | All on the DSP. The **dispatcher ABI, per-instance memory allocator and parameter path are fully reversed**, and a custom reverb replaces DARK REV and runs on all 8 tracks (`dsp/reverb71.asm`, see `DSP.md` + `HANDOFF.md`). The stock algorithms themselves are still undecompiled |
 | Machines — Appendix A (FLEX/STATIC/THRU/NEIGHBOR/PICKUP) | 🟡 | Dispatch by type found (`FUN_40097168`→0-4); logic not decompiled |
 | Track recorders / Pickup / sampling (ch.9) | ⬜ | Recording of input to buffers. Only a passing glimpse ("ROTATING AUDIO") |
 | Sequencer: clock/tick | ✅ | **Sample-accurate**: clocked by the audio frame ISR (`0x4000aad0`), `2³¹/tempo` phase accumulator; wakes the seq task via a kernel queue |

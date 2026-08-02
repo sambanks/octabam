@@ -660,7 +660,8 @@ answer rather than an ambiguous one. Sweep `p0` and note where it stops.
 
 **Result: clean echo up to p0=46, silence from p0=47.** So Y is real through
 `0xBFFF` and absent at `0xC000` — **48K words**. Loaded modules end at `0x794`,
-so `0x795–0xBFFF` is free: **46K words, roughly 1.04 s of delay at 44.1 kHz.**
+so `0x795–0xBFFF` is free: **46K words, roughly 1.04 s of delay at 44.1 kHz** —
+*internal only; there is another 64K external at `0x30000`, see the warning below*.
 
 > ⚠️ **INCOMPLETE — this probe stopped at `0x20000` and missed a whole region.**
 > The `<<12` re-sweep (3 Aug, hardware) found a **second, EXTERNAL region at

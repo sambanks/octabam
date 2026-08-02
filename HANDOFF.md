@@ -1,3 +1,41 @@
+# Octatrack custom reverb — CURRENT STATE (3 Aug)
+
+**`dsp/reverb71.asm` runs on ALL EIGHT TRACKS simultaneously.** Confirmed
+on hardware. The project began with a build that froze the instrument the
+moment a second track was enabled.
+
+| | |
+|---|---|
+| current build | `dsp/reverb71.asm` -> `out/OCTATRACK_V71.bin` |
+| cost | 297 cycles/sample (was 432 before the density pass) |
+| size | 978 words of the 2037 available (SPRING + DARK's front) |
+| instances | 8 — four per DSP, two internal Y slots and two external |
+
+**Done and hardware-confirmed:** the two-track freeze (v55), the
+boot-garbage warm-up (v56), the trig static / a=0 sub-block (v57), the
+pre-delay and its parameter slot (v58/v59), SPRING's module taken for
+code space (v60), LO plus the knob remap (v61), modulo on the tank (v62),
+four-line modulation (v65), the external Y region (v67), and the 31%
+density pass (v68-v71).
+
+**Open, in value order:**
+1. **The tank rings** — its modes are ~20x too sparse to overlap. Measured,
+   and a delay-memory limit rather than a bug. Two levers now exist: spend
+   the freed cycles on more delay lines, or patch the allocator table at
+   `X:0x255` to trade instance count for a bigger tank (8 modest / 4 large
+   / 2 very large — see "THE ALLOCATOR TABLE IS PATCHABLE DATA").
+2. SHVG's range wants calibrating on the instrument.
+3. MIXF (`$e`) is a dead knob and is a host-owned boolean, not a control.
+4. The two-instance split divergence, emulator-only and still unexplained.
+
+⚠️ **Everything below this point is an append-only investigation log, in
+rough reverse chronological order. Section headers like "READY TO FLASH"
+were true when written and are NOT current.** The log is kept because the
+probes, harness fixes and dead ends are permanently useful — but read this
+header for state, not the sections below.
+
+---
+
 # Two-track freeze — SOLVED AND CONFIRMED ON HARDWARE (2 Aug)
 
 **The cause.** v46/v50's phase load: `move x:(r7+$83),a` then `and #$7ff`.
@@ -861,6 +899,28 @@ Two more, found and FIXED while validating stageprobe4:
   the day it was added.
 
 ## Standing rules for the engine, learned by freezing the machine
+
+* **`mpy` does NOT double.** Measured: 0.5*0.5 = $200000 exactly. A
+  "fractional multiply shifts left" theory drove three wrong changes
+  before hardware caught it. Coefficients are plain fractions.
+* **Let the AGU do address work.** Modulo wraps, adds the base and masks
+  for free. Doing it by hand cost 135 cycles/sample — 31% of the engine.
+  An interpolated read does NOT need two addresses: the read pointer
+  advances one per sample, so `d1` this sample is `d0` last sample.
+* **`dsp_asm` silently mis-encodes illegal parallel moves.** It emits a
+  different instruction rather than erroring. `x:(rN+displacement)` can
+  never be parallel; operand order matters (`mpy y0,x0,a` takes a parallel
+  move, `mpy x0,y0,a` discards it); XY dual moves need the X pointer in
+  R0-R3 and the Y pointer in R4-R7. Verify every one by disassembling.
+* **When a register holding a constant is repurposed, grep every read of
+  it.** Two clobbers this session came from exactly that — one produced
+  344 stray writes, the other broke only when PRE was off-centre.
+* **A workaround for a disproven theory does not remove itself.** The
+  arithmetic addressing added for the modulo theory outlived the theory by
+  nineteen builds and eventually cost an instance.
+* **Sanity-check a surprising emulator result against the instrument.**
+  A harness modelling a special case instead of the dispatcher invented a
+  self-oscillation that cost a day; the user's ears settled it in one line.
 
 * two instructions between writing r5 and using it — and they must be **data
   moves**, never M-register writes (an M load interlocks with its address

@@ -141,7 +141,7 @@ def main():
     print(f"\n{OUT}: {len(img):,} bytes, {d} changed")
     print("\nNo ColdFire-side changes: we inherit DARK REV's id, descriptor and")
     print("chooser entry. Its first parameter is already TIME, which is what p0 drives.")
-    print("\nTEST: FX2 -> DARK REV. TIME sweeps the decay (RT60 ~2.7s to ~6.8s).")
+    print("\nTEST: FX2 -> DARK REV. TIME sweeps the decay (RT60 ~3.7s to ~17s).")
     print("      SPRING REV is GONE — its module is now ours, and its id runs the")
     print("      reverb too. PLATE and CHORUS must still work: check them.")
 
