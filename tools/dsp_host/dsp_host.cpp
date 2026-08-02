@@ -89,6 +89,7 @@ struct Args {
     TWord flags = 0; int pingpong = -1;
     int inst = 1; TWord dirty = 0; bool noctl = false;
     bool dispatch = false; int fx2tracks = 0; TWord fxid = 0x16;
+    int split = 0; TWord prevfx = 0;
     std::vector<int> allocIdx, r7Idx;
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
@@ -271,6 +272,8 @@ int main(int argc, char** argv) {
         else if (k == "-noctl") { a.noctl = true; --i; }
         else if (k == "-dispatch") a.fx2tracks = atoi(argv[++i]), a.dispatch = true;
         else if (k == "-fxid") a.fxid = strtoul(argv[++i], nullptr, 16);
+        else if (k == "-split") a.split = atoi(argv[++i]);
+        else if (k == "-prevfx") a.prevfx = strtoul(argv[++i], nullptr, 16);
         else if (k == "-alloc") a.allocIdx = parseList(argv[++i]);
         else if (k == "-r7") a.r7Idx = parseList(argv[++i]);
         else if (k == "-allocproc") a.allocProc = v();
@@ -472,14 +475,27 @@ int main(int argc, char** argv) {
         const TWord curr = mem.get(MemArea_X, 0x416);
         std::printf("dispatch mode: pending blocks at X:0x%05x, current at X:0x%05x\n",
                     pend, curr);
+        // -split models the moment the effect is ADDED to the LAST enabled track,
+        // which is the only thing the hardware has ever been observed to die on.
+        // That track's CURRENT id stays the old effect and its PENDING id becomes
+        // ours, so the dispatcher runs the outgoing effect over [0, split), calls
+        // our init because the ids differ, then calls US over [split, 16) at
+        // r0 = split*2. Steady state (split 0) never exercises any of that.
         for (int t = 0; t < 4; ++t) {
             const bool on = t < a.fx2tracks;
-            for (TWord base : {pend, curr}) {
-                if (on) mem.set(MemArea_X, base + t * 0x20 + 0x1c, a.fxid << 8);
-                mem.set(MemArea_X, base + t * 0x20 + 0x1e, 0);   // split 0 = steady
+            const bool incoming = on && a.split && (t == a.fx2tracks - 1);
+            if (on) {
+                mem.set(MemArea_X, pend + t * 0x20 + 0x1c, a.fxid << 8);
+                mem.set(MemArea_X, curr + t * 0x20 + 0x1c,
+                        (incoming ? a.prevfx : a.fxid) << 8);
             }
-            std::printf("  track %d: FX2 id 0x%02x %s\n", t, a.fxid,
-                        on ? "<- our effect" : "(left as loaded)");
+            const TWord sp = incoming ? (static_cast<TWord>(a.split) & 0xf) << 8 : 0;
+            mem.set(MemArea_X, pend + t * 0x20 + 0x1e, sp);
+            mem.set(MemArea_X, curr + t * 0x20 + 0x1e, sp);
+            if (on)
+                std::printf("  track %d: FX2 pending 0x%02x, current 0x%02x, split %d%s\n",
+                            t, a.fxid, incoming ? a.prevfx : a.fxid,
+                            incoming ? a.split : 0, incoming ? "   <- BEING ADDED" : "");
         }
         for (int b = 0; b < a.blocks; ++b) {
             dsp.setPC(0x372);

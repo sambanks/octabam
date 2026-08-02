@@ -121,6 +121,35 @@ SLOT_SHIFT = 0x40                   # -> $10..$3f, inside DARK REV's region
 #               same region, so two tracks collide by construction.
 BASE_MODE = "stash"
 
+# How the four tank lines are addressed.
+#
+#   "modulo"    r1..r4 with m1..m4 = LINE_MASK, tap read as y:(rN+nN), write as
+#               y:(rN)+. One instruction each and eight Y accesses a sample.
+#   "computed"  the address built arithmetically and masked, read and written
+#               through r5 with m5 linear -- the style the diffuser and the
+#               modulated reads already use.
+#
+# The docstring at the top of this file has said since the diffuser was written
+# that modulo addressing with an N register hangs this DSP, and the diffuser and
+# the modulated reads were converted to computed arithmetic because of it. The
+# tank kept modulo on the argument that it is only fatal when r/n are
+# RECOMPUTED inside the sample loop, and the tank sets them once a block.
+#
+# That argument holds for one instance and not for two. v40 -- tank, modulo,
+# 8 Y accesses a sample -- hangs on two tracks. v41, the same 135 instructions a
+# sample with only the four reads and four writes removed, runs. So it is not
+# the instruction count, and it is not the access count either: dsp/yburn.asm
+# sustained 66 Y accesses a sample on one track with no break at all. The one
+# thing v40 does that neither v41 nor yburn does is y:(rN+nN) -- an indexed read
+# under modulo -- and four simultaneous modulo buffers to do it in.
+#
+# r1 stays base + phase as before. The base is LINE_LEN-aligned, so masking
+# (r1 - tap) with LINE_MASK yields the offset within the line regardless.
+TANK_ADDR = os.environ.get("RV_TANK_ADDR") or "computed"
+
+LINE_BASE = [0x50, 0x51, 0x52, 0x53]    # the only slots free in $50..$7f
+TANK_TMP  = 0x54
+
 # Which stages of the engine to emit. dsp/minimal.asm -- a bare rts init and a
 # five-instruction copy loop -- runs happily on two tracks, so the hang is in
 # something the algorithm does, and this is how we find out what. Drop a stage
@@ -395,6 +424,43 @@ def modread(i, mi, mf):
 """
 
 
+def _tapread(i):
+    """Tank tap read with the address built by hand instead of by modulo.
+
+    Eleven instructions where modulo needs one. The two moves between writing r5
+    and using it are the mandatory gap, and they are not filler: they fetch the
+    damping state and coefficient the caller wants next anyway.
+    """
+    return f"""        move    r1,a                    ; line {i} read, tap {LINE_TAPS[i]}
+        move    #>${(-LINE_TAPS[i]) & 0xffffff:06x},x0
+        add     x0,a
+        move    #>${LINE_MASK:x},x0
+        and     x0,a                    ; offset within the line
+        move    x:(r7+${LINE_BASE[i]:02x}),x0
+        add     x0,a
+        move    a,r5
+        move    {DAMP[i]},b             ; fills the AGU slot
+        move    x:(r7+$5f),y0           ; and again
+        move    y:(r5),a
+"""
+
+
+def _tapwrite(i):
+    """Tank line write, same computed addressing, no post-increment."""
+    return f"""        move    a,x:(r7+${TANK_TMP:02x})            ; hold it while r5 is built
+        move    r1,a
+        move    #>${LINE_MASK:x},x0
+        and     x0,a
+        move    x:(r7+${LINE_BASE[i]:02x}),x0
+        add     x0,a
+        move    a,r5
+        move    x:(r7+${TANK_TMP:02x}),a            ; fills the AGU slot
+        move    x:(r7+$5f),y0           ; and again
+        move    a,y:(r5)
+
+"""
+
+
 def tap(i):
     """One tank tap, damped inside the feedback path, result to r7+$56+i."""
     if "mod" in STAGES and i == MOD_LINES[0]:
@@ -402,11 +468,15 @@ def tap(i):
     elif "mod" in STAGES and i == MOD_LINES[1]:
         head = modread(i, 0x63, 0x64)
     else:
-        head = (f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
-                if "lines" in STAGES else
-                f"        clr     a                       ; line {i} NOT READ -- no buffer traffic\n")
-    return head + f"""        move    {DAMP[i]},b
-        sub     b,a
+        if "lines" not in STAGES:
+            head = f"        clr     a                       ; line {i} NOT READ -- no buffer traffic\n"
+        elif TANK_ADDR == "modulo":
+            head = f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
+        else:
+            head = _tapread(i)
+    # _tapread already left the damping state in b while it waited on r5
+    reload = "" if head.endswith("move    y:(r5),a\n") else f"        move    {DAMP[i]},b\n"
+    return head + reload + f"""        sub     b,a
         move    a,x0
         mpy     x0,y0,a
         add     b,a
@@ -436,6 +506,21 @@ def remap_slots(text):
     bad = [n for n in left if SLOT_LO <= n <= SLOT_HI or n in (0x00, 0x01)]
     assert not bad, f"slots still in the host's range: {[hex(n) for n in bad]}"
     return out
+
+
+tank_m = LINE_MASK if TANK_ADDR == "modulo" else 0xffffff
+
+linebases = "" if TANK_ADDR == "modulo" else "".join(
+    f"""        move    #>${LINE_OFF + i * LINE_LEN:x},a
+        add     x0,a
+        move    a,x:(r7+${LINE_BASE[i]:02x})            ; line {i} base
+""" for i in range(4))
+
+# With modulo gone, nothing post-increments the line pointers, so the phase has
+# to be advanced explicitly -- once, for all four lines.
+phase_adv = "" if TANK_ADDR == "modulo" else """        move    (r1)+                   ; the shared phase; every line address is
+                                        ; built from it and masked
+"""
 
 
 def main():
@@ -536,7 +621,7 @@ audio:
         move    #>${LINE_MASK:x},m1
         move    x0,x:(r7+$71)""" if BASE_MODE == "fixed" else f"""        move    x:>${ALLOC_PTR:x},r4
         move    #>$ffffff,m0            ; audio is read and written via r0
-        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    #>${tank_m:x},m1     ; both fill the AGU slot
         move    x:(r4),x0
         move    x0,x:(r7+$71)""" if BASE_MODE == "procread" else f"""        move    r7,a
         move    #>$ffffff,m0            ; audio is read and written via r0
@@ -544,7 +629,7 @@ audio:
         move    #>${STASH:x},y0
         add     y0,a
         move    a,r5
-        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    #>${tank_m:x},m1     ; both fill the AGU slot
         move    #>$ffffff,m5
         move    y:(r5),x0               ; the base init stashed for us
         move    x0,x:(r7+$71)""") + f"""
@@ -594,7 +679,7 @@ audio:
         move    #>${PRE_OFF:x},a
         add     x0,a
         move    a,x:(r7+$78)
-
+{linebases}
 ; ---- per-block: load the state that cannot be derived -------------------
 ; The LFO phase and the four one-pole states are the only things that must
 ; survive between calls and cannot be recomputed. They live in the instance's
@@ -631,10 +716,10 @@ audio:
         move    a,r3                    ; line 2
         add     x0,a
         move    a,r4                    ; line 3
-        move    #>${LINE_MASK:x},m1
-        move    #>${LINE_MASK:x},m2
-        move    #>${LINE_MASK:x},m3
-        move    #>${LINE_MASK:x},m4
+        move    #>${tank_m:x},m1        ; linear unless TANK_ADDR is "modulo"
+        move    #>${tank_m:x},m2
+        move    #>${tank_m:x},m3
+        move    #>${tank_m:x},m4
 """
     if "size" in STAGES:
         body += f"""
@@ -843,8 +928,12 @@ audio:
             body += f"""        move    x:(r7+${slot:02x}),x0           ; diffused input{'' if slot == IN_FULL else ', half'}
         {op}     x0,a
 """
-        body += (f"        move    a,y:(r{i+1})+\n\n" if "lines" in STAGES else
-                 f"        move    (r{i+1})+                 ; advance only -- nothing written\n\n")
+        if "lines" not in STAGES:
+            body += f"        move    (r{i+1})+                 ; advance only -- nothing written\n\n"
+        elif TANK_ADDR == "modulo":
+            body += f"        move    a,y:(r{i+1})+\n\n"
+        else:
+            body += _tapwrite(i)
     body += """; ---- wet added to dry, two tank taps per channel -------------------------
         move    x:(r7+$60),y1           ; wet gain
 """
@@ -888,7 +977,7 @@ audio:
         add     x0,a
         move    a,x:(r0+n0)             ; R in place
 """
-    body += """        move    #>$2,n0
+    body += f"""{phase_adv}        move    #>$2,n0
         move    (r0)+n0                 ; advance one stereo frame
 rvend:
 
