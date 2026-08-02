@@ -1734,3 +1734,118 @@ Suspects, in order:
 track 3 disabled?** Runs alone → contention/bandwidth, and the fix is
 fewer or cheaper external accesses. Freezes alone → specific to
 `0x34000`, and the bootstrap overlay goes to the top. One test, no flash.
+
+## THE DENSITY PLAN — why 4 instances freeze, and how to fit them
+
+**Hardware, 3 Aug:** reverb on tracks 1, 2, 4 = fine. Adding track 3 =
+freeze. Earlier, 1/2/3 fine and adding 4 froze. **So it is the FOURTH
+instance, whichever slot it lands in** — not an address, not the external
+bus, not the P:0x30000 overlay. Mute makes no difference, because the
+engine still runs; mute is downstream. That one test killed three
+hypotheses at once.
+
+It is a budget problem, and the budget is ours to fix:
+
+| | instr/sample | per DSP at 4 instances |
+|---|---|---|
+| our v67 | **408** | 1,632 — freezes |
+| our v67, 3 instances | 408 | 1,224 — **works** |
+| stageprobe5 stage 7 | ~270 | ~1,080 — worked, 4 per DSP |
+
+So the ceiling is between 1,224 and 1,632. **Target: ~280/sample**, which
+puts four instances at 1,120 — inside proven-good territory.
+
+### Where the 408 goes (measured, not guessed)
+
+| section | instr | % |
+|---|---|---|
+| 4 tank lines (interpolated reads) | 146 | 36% |
+| 4 allpasses | 104 | 25% |
+| Hadamard + write-back | 51 | 12% |
+| output: wet, width, MIX | 45 | 11% |
+| LO filters | 44 | 11% |
+| input + pre-delay | 17 | 4% |
+
+Plus pure waste, already identified: **17 loop-invariant constants
+reloaded inside the loop, 8 reloads of the allpass phase from
+`x:(r7+$39)`, and 12 store-then-immediately-reload spills.** The engine
+uses the r7 block as a register file because the generator does no
+register allocation; that is the root cause of 106 X reads and 44 X
+writes a sample.
+
+### Why stock is 2-3x denser: PARALLEL MOVES
+
+The DSP56300 does an ALU op plus an X move plus a Y move in ONE cycle.
+Stock DARK uses it in 12% of its instructions:
+
+    mac  y0,x0,b   x:(r3)+,x0   y:(r4)+,y0      <- one instruction
+    mpy  y0,x0,a   x:(r1),x1    y:(r5)+,y0
+
+**Our sample loop uses it exactly 0 times out of 408.**
+
+### ⚠️ TOOLING TRAPS, verified by disassembling what the assembler emits
+
+Do not write a parallel move without checking the encoding. Measured:
+
+| written | encodes as | verdict |
+|---|---|---|
+| `mpy y0,x0,a` | `2000d0` | baseline |
+| `mpy y0,x0,a  x:(r5)+,x0` | `44ddd0` | **parallel move encoded** |
+| `mpy x0,y0,a  x:(r5)+,x0` | `01278d` | same as bare `mpy x0,y0,a` — **MOVE SILENTLY DROPPED** |
+| `mpy y0,x0,a  x:(r5)+,x0  y:(r1)+,y0` | `012785` | fallback form — **wrong** |
+| `add x0,a  x:(r5)+,x1` | `45dd40` | ok |
+| `move x:(r5)+,x0  y:(r1)+,y0` | `f0bd00` | ok |
+
+Three rules follow:
+
+1. **`x:(rN+displacement)` can never be a parallel move.** Our entire
+   state access is `x:(r7+$xx)`, which is why we have zero. Hot values
+   must move to pointer streaming or stay in registers.
+2. **Operand order matters.** `mpy y0,x0,a` takes a parallel move;
+   `mpy x0,y0,a` does not and the move is discarded without an error.
+   Our generator emits `x0,y0` everywhere.
+3. **XY dual moves are bank-restricted:** the X pointer must be R0-R3 and
+   the Y pointer R4-R7. Stock obeys this (`x:(r3)+ / y:(r4)+`); our
+   attempt used `x:(r5)+ / y:(r1)+`, both wrong-bank, and the assembler
+   emitted a different instruction rather than refusing.
+
+**`dsp_asm` does not reject illegal parallel forms — it silently emits
+something else.** Every parallel move introduced must be verified by
+disassembling the built blob, not by trusting a clean assemble. This is
+the same class of trap as the stale-binary and `-proc` address traps.
+
+### The staged plan
+
+**Stage 1 — free wins, no restructure. Est. -50 instr/sample.**
+Hoist the 17 loop-invariant constants to per-block setup; compute the
+allpass phase once instead of 8 times; remove the 12 store-then-reload
+spills. Pure bookkeeping, output should be bit-identical.
+
+**Stage 2 — allpass addressing. Est. -40.**
+Each allpass spends ~16 of its 25 instructions computing two addresses
+(read and write) from scratch. The write address is `base + phase` and
+the read is a fixed offset back, so derive one from the other. If a
+register can be freed, `r5` with modulo `$3ff` and `n5 = -tap` reduces
+each access to a single `y:(r5+n5)` / `y:(r5)`.
+
+**Stage 3 — register banks and parallel moves. Est. -80 to -120.**
+Reassign so X-memory pointers live in R0-R3 and Y-memory (delay line)
+pointers in R4-R7, which is what dual moves require. Convert the hot
+state accesses from `x:(r7+$xx)` displacement to pointer streaming, and
+emit `mpy y0,x0,a x:(rN)+,x0` forms with the operand order that actually
+encodes. This is the big one and it is where stock's advantage lives.
+
+Together: 408 → roughly 200-280. Enough for the fourth instance, and the
+freed cycles are also what would pay for a denser tank later — the same
+work serves both goals, which is why it beats trimming features.
+
+### Verification protocol — non-negotiable at every stage
+
+1. `-inst 2`, poisoned $82/$83, `-dirty`, `-split 5`: no hang, guard clean.
+2. **Output bit-identical to v67** where the stage is a pure optimization.
+   Stage 1 and most of Stage 2 must be; any difference is a bug.
+3. Disassemble the built blob and confirm the parallel moves encoded as
+   intended — see the trap table above.
+4. Re-measure instr/sample and spectral flatness before flashing.
+5. Hardware: 4 instances is the acceptance test, plus the usual two-track
+   and PLATE checks.
