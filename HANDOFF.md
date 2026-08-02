@@ -41,7 +41,21 @@ pair, double v50's need), and ~450 instructions/sample across the pair.**
 The freeze is not a rate. It is a SHAPE — one of the four things v50 does
 that raw traffic does not: the scattered tap reads, the tank's write-behind
 pattern, the allpass read-modify-write, or the LFO-modulated interpolated
-reads. `dsp/stageprobe5.asm` stages exactly those.
+reads. `dsp/stageprobe5.asm` staged exactly those.
+
+**And the shapes are eliminated too (stageprobe5, EIGHT tracks, 2 Aug).**
+Every instance climbed the ladder, nothing froze — and the stages are
+cumulative, so stage 7 ran all four shapes AT ONCE on four instances per
+DSP (~1080 instr/sample per DSP, well past cycleburn's "ceiling", which was
+therefore also conservative). Every access pattern the reverb needs is
+survivable, individually and combined, at 4× the instance count that kills
+v50. What remains between the probe and v50 is not WHAT memory is touched
+but HOW — the register idioms. `dsp/stageprobe6.asm` stages those:
+the loop-carried (r1)+ phase pointer, the dead per-block n1/n4/n5 writes,
+the X dataflow density (one-poles, Hadamard, feedback mpy chain), feedback
+writes at the carried phase, then everything combined with v5's shapes. If
+those pass as well, the residue is v50's exact instruction ORDER, and v7 is
+v50's own loop body grafted whole onto the scaffold.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -171,7 +185,7 @@ Third session — every pending question answered:
   AXES ARE ELIMINATED" above — this is the result the whole ladder was
   built for.
 
-## READY TO FLASH: `dsp/stageprobe5.asm` / `OCTATRACK_STAGES5.bin`
+## stageprobe5 (flashed, done — eight tracks, no freeze, shapes eliminated)
 
 The v4 scaffold (proven two-track survivable, including its readout) with
 the Y ramp and instruction burn dropped — those axes are closed — and the
@@ -353,7 +367,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe2.asm` | first build-up attempt. Hardware: no freeze but cycling noise — INVALID, wrote four unproven r7 slots. Kept as the record of why. |
 | `dsp/stageprobe3.asm` | v2 on proven slots, counter tagged inside $83. Its "cycling" was misread as $83 scrambling; v4 disproved that. |
 | `dsp/stageprobe4.asm` | the proven scaffold: buzz readout, click train, pitch = calls/block. Two-track ladder completed — the axes eliminator. |
-| `dsp/stageprobe5.asm` | the scaffold + the reverb's four shapes staged: tap reads, tank writes, allpass RMW, LFO'd interpolated reads. **The one to flash.** |
+| `dsp/stageprobe5.asm` | the scaffold + the four shapes. EIGHT tracks, ladders complete, no freeze — the shapes eliminator. |
+| `dsp/stageprobe6.asm` | the scaffold + the register idioms: carried (r1)+ phase, dead n writes, X dataflow, feedback at the carried phase, then everything. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
