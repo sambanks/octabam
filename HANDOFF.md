@@ -904,3 +904,43 @@ Two more, found and FIXED while validating stageprobe4:
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
 `RV_TANK_ADDR=modulo|computed`; `RV_LINE_LEN=` shrinks the lines.
+
+## PRE STILL INAUDIBLE AFTER v59 — the slot probe
+
+v59 flashed and PRE still could not be heard; the user's read was "maybe
+it's me". It is probably not. Two separate things were being conflated,
+and they need separating before another hopeful flash:
+
+1. **A 46 ms pre-delay on this reverb is subtle by nature.** Pre-delay
+   reads on an isolated transient with the wet well up. Against a
+   running sequence with a 3-7 s tail, shifting the whole wet by 46 ms
+   is close to imperceptible even when perfectly correct. "Cannot hear
+   it" is a plausible outcome from a CORRECT build.
+2. **There is still no positive proof the PRE knob reaches the DSP.**
+   The emulator proves the pre-delay code works once a value arrives; it
+   CANNOT prove which knob writes slot $c, because the harness writes
+   parameters directly. That link has been inferred twice and was wrong
+   once ($e). Do not infer it a third time — measure it.
+
+**Free test first, no flash:** MIX full wet, TIME minimum, sequencer
+stopped, one percussive hit, A/B PRE at 0 and 127. That strips out
+everything that masks pre-delay.
+
+**`dsp/preprobe.asm` / `out/OCTATRACK_PREPROBE.bin` settles it in one
+flash.** It is v59 with the wet GAIN driven by slot $c instead of MIX
+($5) — so the slot we believe is PRE controls how LOUD the reverb is,
+a readout that cannot be missed. Sweep every knob on both pages:
+
+* **the PRE knob changes reverb volume** → the mapping is right, the
+  pre-delay has been working all along and is merely subtle. Go back to
+  v59 and lengthen the pre-delay if more is wanted (0x800 words spare in
+  the allocation ≈ 93 ms total).
+* **a DIFFERENT knob changes volume** → that knob is $c; read the real
+  PRE slot straight off which one moved.
+* **NO knob changes volume** → $c is not knob-driven on hardware and the
+  whole page-2 mapping needs a fresh probe.
+
+MIX stops working in this build by design; it is a diagnostic, and v59
+is one flash away again. 945 words, 29 clear. Emulator: slot $c = 0
+gives a bit-silent wet, 32 and 127 give audible wet — the readout works.
+Built with the standing A2-clean rule applied to the masked gain.
