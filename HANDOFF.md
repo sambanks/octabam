@@ -120,7 +120,7 @@ runs it from the first call through the enable window on two tracks, and
 does not die. The four remaining deltas are all semantically inert — there
 is no longer a good hypothesis for why v50 freezes and v8 does not.
 
-## READY TO FLASH: `OCTATRACK_V50CONTROL.bin` — the control
+## the control (flashed): v50 STILL FREEZES — the differential is real
 
 When every remaining explanation looks impossible, re-verify the
 phenomenon. Every v50 freeze predates today: different session, different
@@ -139,6 +139,45 @@ card this morning). Two tracks, the canonical gesture:
   project state, an interaction since perturbed) — and v46/v50 may simply
   be shippable now. Then flash v46 (the good-sounding build) and enjoy it,
   while the archaeology becomes optional.
+
+**Result: track 1 runs; track 2 freezes it IMMEDIATELY.** Reproduced
+today, in this project. The v8-vs-v50 differential is real and current.
+
+Also observed, and it reframes the morning: v50 on track 1 — the
+unmodified reverb, no ladder, no buzz — STILL sounds like "laddering
+static". The v2/v3 "cycling static" was never the probes' defect, and "I
+never really heard the wash" now has a candidate cause: the delay lines
+are NEVER CLEARED. init zeroes nothing; the tank recirculates whatever
+garbage the 0x3800-word allocation held, the LFO swells it, and the wash
+drowns. A separate bug from the freeze; the fix is clearing the lines at
+init (or a dry warm-up that writes zeros). Do not chase it before the
+freeze is closed.
+
+## READY TO FLASH: `dsp/reverb51.asm` / `OCTATRACK_V51.bin`
+
+The last structural delta standing, isolated across the whole build
+history:
+
+| build class | a=0 control call | two tracks |
+|---|---|---|
+| stock DARK REV | reads its parameter slots (~dozens of instr) | fine |
+| every surviving stageprobe (v1–v8) | ~60 instr of scaffold, every call | fine |
+| pre-v44 (ignored the flag) | ran the ENGINE against r0=0 — destructive | froze |
+| v44/v46/v50 (honoured the flag) | `rts` in 3 instructions | froze |
+
+Everything that idles ~60 instructions on the control call survives;
+everything that returns instantly (or corrupts) freezes. stageprobe7/8
+carry THIS ENGINE and survive — the engine is not the difference; the
+control call is. v51 = v50 + `do #60 / nop` before the a=0 rts. One
+change, diff-verified.
+
+* **no freeze** → the two-track freeze was a CONTROL-CALL TIMING contract
+  all along, the fix is ~4 words, and v51 IS the reverb (modulo the
+  garbage-line cleanup above and v46's pre-delay restoration).
+* **freezes** → time alone is not the protection and the scaffold's a=0
+  X-writes ($83 et al.) are; v52 adds those.
+
+Emulator, -inst 2 -guard 16384: clean, wet output live.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -454,7 +493,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe6.asm` | the scaffold + the register idioms. No freeze — the idioms eliminator. |
 | `dsp/stageprobe7.asm` | v50's entire engine, verbatim, on the ladder. Two tracks: NO freeze, engine live. The engine's acquittal. |
 | `dsp/stageprobe8.asm` | v7 with one constant changed: engine from the FIRST call. No freeze — the enable window's acquittal. |
-| `dsp/reverb50.asm` (as `OCTATRACK_V50CONTROL.bin`) | the CONTROL: v50 rebuilt unchanged, to re-verify the freeze exists today at all. **The one to flash.** |
+| `dsp/reverb50.asm` (as `OCTATRACK_V50CONTROL.bin`) | the CONTROL. Flashed: still freezes on track 2, today — the differential is real. |
+| `dsp/reverb51.asm` (as `OCTATRACK_V51.bin`) | v50 + a ~60-instruction burn on the control call. The timing-contract test. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
