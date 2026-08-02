@@ -27,20 +27,52 @@ The rule for the standing-rules list: **`and` masks A1 only. Any
 persistent word that can hold garbage and feeds an address register must
 be A2-cleaned after masking, or the limiter will saturate the pointer.**
 
-## NEXT SESSION — the audio-quality track (stability is done)
+## READY TO FLASH: `dsp/reverb56.asm` / `out/OCTATRACK_V56.bin` — the warm-up
 
-`dsp/reverb55.asm` is the current good build: v50 + the A2-clean, runs on
-two tracks, hardware-confirmed. In order:
+Audio-quality item 1, built and emulator-validated. v56 = v55 + the
+warm-up that kills the "laddering static": the lines hold boot garbage
+and the tank recirculates it (confirmed in the emulator — v55 with
+`-dirty` lines outputs a full-scale-ish garbage wash from block 0,
+every output sample nonzero, peak $24a1cc, before any input arrives).
 
-1. **Kill the "laddering static": clear the delay lines after init.**
-   The lines hold boot garbage and the tank recirculates it. Adopt stock
-   DARK's own warm-up shape (visible at P:0x1718–0x172c in
-   `out/dsp/payload_A.asm`): count blocks in $83 up to 0x100, keep the
-   wet fully dry until warm, and use the warm-up blocks to zero the
-   0x3800-word region progressively (~56 words a block does it in 256).
+The shape is stock DARK's own (P:0x1718–0x172c), adapted: stock counts
+blocks in $83 to 0x100 with $82 as the warmed flag, but our $83 already
+holds the tank phase, so the counter lives in **$82, tagged**
+($2c0000 | count) — tagged because init cannot be the reset point (the
+dispatcher re-invokes init most blocks) and $82 holds garbage on the
+first call; stageprobe4 proved the tagged-counter idiom stable. While
+warming (256 audio calls ≈ 1.5 s): zero 56 words of the 0x3800-word
+allocation per block (256×56 covers all of it), zero the LFO/damping
+state block, stay completely DRY. Then the engine runs, forever. The tag
+field and the count are each masked AND A2-cleaned before use — the
+count feeds the zero pointer, so the standing rule applies.
+
+925 words, 49 clear of PLATE's helper. Emulator, `-inst 2 -r7 2,5
+-guard 16384 -dirty`, both instances' $82/$83 poisoned with bit-23-set
+garbage: no hang, guard clean; output **bit-silent** through the whole
+warm-up despite garbage-filled lines, then a clean 300-block tail from
+an impulse fed after warm-up; an impulse fed DURING warm-up passes
+through exactly dry (2 nonzero samples, no tail).
+
+Run protocol: flash, enable on one track, play. Expect ~1.5 s of dry
+after first enabling the effect, then the wash — CLEAN, for the first
+time, no laddering static. Then two tracks as always (the warm-up path
+touches only proven slots and its own buffer, but two-track confirmation
+stays the ritual). Knobs after warm-up: TIME/HI/MIX as in v55.
+
+* **static gone, wash audible** → item 1 closed; next is item 2 below.
+* **static persists after the dry warm-up window** → the garbage is not
+  (only) boot leftovers in the lines — something writes them while
+  running, and the phase-step mismatch noted at v52 (grafts stepped 32
+  vs 16 written frames) deserves a re-check against v56's real phase.
+
+## NEXT — the audio-quality track, remaining
+
 2. **Restore v46's pre-delay** (removed for the modulo theory, which was
    never the problem). Its `y:(r5+n5)` path needs the same A2 discipline
-   as everything else that derives addresses from loaded words.
+   as everything else that derives addresses from loaded words. The PRE
+   parameter setup is still in the build (it computes n5 and $30); only
+   the seven loop-body instructions need to come back. 49 words clear.
 3. **Then tuning.** TIME/HI/MIX behave; the wash should finally be
    audible once the lines start clean. If split-boundary artifacts are
    audible during play, stock's shape is the reference: run the body on
@@ -682,6 +714,7 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + tagged phase save. FROZE — the $83 value is not the mechanism. |
 | `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call. FROZE — and forced the re-read that found the real cause. |
 | `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
+| `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up: 256 dry blocks zero the whole allocation. Emulator-validated, awaiting hardware. |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
