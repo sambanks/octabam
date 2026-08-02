@@ -1849,3 +1849,56 @@ work serves both goals, which is why it beats trimming features.
 4. Re-measure instr/sample and spectral flatness before flashing.
 5. Hardware: 4 instances is the acceptance test, plus the usual two-track
    and PLATE checks.
+
+## DENSITY STAGE 1 — done. 432 -> 408 cycles/sample (5.6%)
+
+`dsp/reverb68.asm`. **Bit-identical output to v67** across four parameter
+sets including the extremes, guard clean at two instances under poison,
+dirty Y and split. 1049 words (v67 was 1067).
+
+What was actually wrong, and it is a distinction worth keeping: **an
+instruction with a 24-bit immediate is TWO WORDS and costs an extra
+program-fetch CYCLE.** The loop had 24 of them. Instruction count is not
+cycle count, and the plan's "408 instructions" was really ~432 cycles.
+
+Two changes:
+
+* **loop constants preloaded into spare AGU registers.** `move #>$7ff,x0`
+  (2 words, 2 cycles) becomes `move n1,x0` (1 word, 1 cycle). n1..n4 and
+  n6 are genuinely free — v65 moved lines 0 and 3 onto arithmetic
+  interpolated reads, orphaning n1/n4, and the tank pointers use modulo
+  but never indexed `(rN+nN)` addressing. 17 immediates eliminated.
+  Written well before the loop with data moves after, since an AGU write
+  next to its address register is the interlock that froze v47.
+* **redundant coefficient reloads removed** — 4 reloads of g/2 in the
+  write-back section and 3 of the allpass coefficient. y0 survives across
+  both stretches; nothing between clobbers it.
+
+### Honest assessment: this is not enough on its own
+
+| | cycles/sample | 4 instances |
+|---|---|---|
+| v67 | 432 | 1,728 — freezes |
+| **v68 (Stage 1)** | **408** | 1,632 — still too high |
+| 3 instances at 432 | — | 1,296 — works |
+
+The ceiling is somewhere between 1,296 and 1,728, and external-memory
+wait states mean instances 3 and 4 cost more than 1 and 2, so it is not
+a clean number. **Stage 1 delivered 5.6% against my estimated 12% — the
+plan's estimates were optimistic and should be treated as such.**
+
+Rough remaining potential: Stage 2 (allpass addressing, ~12 cycles of
+addressing per allpass) maybe -24; Stage 3 (parallel moves against 106 X
+reads and 44 X writes) maybe -50. That lands near 334, i.e. 1,336 for
+four — which may still not fit.
+
+**So flashing v68 alone proves nothing**: it is bit-identical, so there
+is nothing to hear, and it does not reach 4 instances. It is banked
+headroom. Either continue to Stages 2 and 3 and flash once when 4
+instances is plausible, or accept 3 instances and spend the headroom on
+sound quality instead.
+
+If 4 instances turns out to be unreachable by optimization alone, the
+honest lever is algorithmic: fewer allpasses, or dropping back to 2
+interpolated lines instead of 4 (worth ~56 cycles), trading measured
+smoothness for instance count.
