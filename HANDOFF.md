@@ -1054,3 +1054,53 @@ pointer at double rate with a crossfaded window, ~25-40 instructions a
 sample plus state. Cycles are available (~135-165 used against ~1080/DSP
 proven); it is CODE SPACE that decides, which is what the scan above is
 about.
+
+## SPRING TAKEN: 974 -> 2037 words. ON THE CARD as `OCTATRACK_V60.bin`
+
+Decided and done. `tools/build_reverb.py` now assembles the blob at
+**SPRING's** address and lets it run straight through into DARK's, since
+the three reverb modules are contiguous:
+
+    PLATE   P:0x1000 (B 0x0dc0)   594 words   left alone
+    SPRING  P:0x1252 (B 0x1012)  1063 words   TAKEN
+    DARK    P:0x1679 (B 0x1439)  1067 words   front 974 available, unused so far
+
+**Budget is now 2037 words** (SPRING 1063 + DARK's front 974). v59's code
+is 942, so **1095 words are clear** where there were 32.
+
+Mechanics, all enforced by the builder:
+* the modules are separate RECORDS with their own load addresses, so the
+  blob is split — first 1063 words into SPRING's record, the rest into
+  DARK's. At 942 words it currently all fits in SPRING and DARK's module
+  is left completely untouched.
+* the builder asserts SPRING+1063 == DARK and that SPRING's record really
+  is 1063 words, and refuses any blob over 2037.
+* **SPRING's dispatch entries are repointed at our init/proc**, so
+  selecting SPRING REV runs the reverb rather than jumping into the
+  middle of our code. Both ids (0x15 SPRING, 0x16 DARK) now run it.
+
+Verified before flashing:
+* PLATE's module UNTOUCHED, DARK's module UNTOUCHED, and the helper at
+  DARK+974 **byte-identical to stock** in both payloads (checked
+  directly against the stock image, not assumed).
+* Emulator at the new address: two instances, poisoned $82/$83, dirty Y,
+  split 5 — no hang, guard clean, and PRE still live (onset block
+  47 / 115 / 182 at PRE 0 / 64 / 127), matching v59 exactly.
+
+`OCTATRACK_V60.bin` is **v59's code, relocated — no audio change is
+intended.** It is a structural verification flash, deliberately not
+bundled with a feature so a failure is unambiguous.
+
+Test protocol:
+1. the reverb still sounds like v59 on DARK REV, one track then two;
+2. **PLATE REV still works** — it is the one effect that reaches into
+   our neighbourhood, via the helper at DARK+974;
+3. SPRING REV now runs the reverb instead of a spring (or at minimum
+   does not hang);
+4. CHORUS still works, as the usual bystander check.
+
+If all four hold, the code budget is 2.1x and the sound-design work can
+finally start: LO on knob 4 (the slot `gen_reverb.py` always reserved
+for it), Gravity, and a tank rebalance for size. PLATE's 594 words remain
+available as a second step — it has NO inbound branches at all — if
+shimmer or anything else needs them.
