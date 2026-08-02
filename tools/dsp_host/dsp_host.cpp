@@ -660,10 +660,12 @@ int main(int argc, char** argv) {
             }
 
             if (getenv("DSP_DBG") && k == 0 && b < atoi(getenv("DSP_DBG")))
-                std::printf("  dbg blk %3d: $82=%06x $83=%06x $3e=%06x\n", b,
+                std::printf("  dbg blk %3d: $82=%06x $83=%06x $3e=%06x $30=%06x n5=%06x\n", b,
                             mem.get(MemArea_X, I.state + 0x82),
                             mem.get(MemArea_X, I.state + 0x83),
-                            mem.get(MemArea_X, I.state + 0x3e));
+                            mem.get(MemArea_X, I.state + 0x3e),
+                            mem.get(MemArea_X, I.state + 0x30),
+                            dsp.regs().n[5].var);
 
             for (int f = 0; f < a.frames; ++f) {
                 for (int c = 0; c < 2; ++c) {

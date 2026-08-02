@@ -57,26 +57,26 @@ is stashed at entry in $14; both calls USE the advanced value so the
 sub-blocks agree). The warm-up counter deliberately counts calls — under
 a nonzero split it just warms in 128 blocks instead of 256.
 
-928 words, 46 clear. Emulator (with the harness's new faithful `-split`
-model for `-inst` mode): **output is bit-identical at split 0, 5 and 11**,
-both instances, guard clean — the engine is split-invariant. With garbage
-$82/$83 poison + dirty lines + split 5: no hang, warm-up completes, clean
-tail. v56 under the same split model drops first-sub-block input
-entirely — the static, reproduced. v57 also survived 200 blocks × 2
-instances of a full-length bogus a=0 call (r0=0, n7=15) without hang or
-guard violation, courtesy of a stale-binary accident that doubled as a
-robustness test.
+928 words, 46 clear. **HARDWARE CONFIRMED: the trig static is gone.**
+Flashed, played, trigged — "sounds good". Items 1 and 3 are closed.
 
-Run protocol: flash, one track, play, **hit trigs** — on- and off-grid,
-different BPMs (the split cycles per v4's block-phase theory). The static
-should not return after any trig. Then two tracks, trigs on both. Then
-the warm-up check still applies (dry ~1.5 s after first enable, less
-after a trig has set a split).
-
-* **static gone after trigs** → items 1 and 3 are closed together; next
-  is the pre-delay (below).
-* **static persists** → it is not the split gap; measure, don't guess —
-  the next candidate would need a new observable.
+⚠️ **The emulator claim originally written here was WRONG and is
+retracted**: "bit-identical at split 0, 5 and 11" was measured against a
+STALE harness binary that ignored `-split` entirely (see the harness
+note below — the build compiles the vendored copy, not `tools/`). Every
+`-split` run in that session was really the legacy shape, so the three
+configs were trivially identical and the comparison proved nothing.
+Re-measured with a correct binary, **v57 is NOT split-invariant**: at
+split 0 the impulse onset is block 46, at split 5 and 11 it is block 28
+(those two agree with each other exactly), 4797 of 6000 samples differ,
+max |diff| 0x2475d (~0.0018 FS), and the diffs are spread evenly across
+all in-block positions rather than clustering at the sub-block boundary.
+The internal state is provably identical either way — traced $83, $3e,
+$30 and n5 per block, phase advances +15/block in both modes — so it is
+NOT the engine running twice. **Unexplained; the top open item.** It did
+not stop the build sounding right on hardware, but it is a real
+discrepancy in a build that is supposed to be split-continuous, and it
+must be understood before it is trusted.
 
 ## v56 (flashed): warm-up VERIFIED, then the trig static named the real bug
 
@@ -122,17 +122,50 @@ stays the ritual). Knobs after warm-up: TIME/HI/MIX as in v55.
   running, and the phase-step mismatch noted at v52 (grafts stepped 32
   vs 16 written frames) deserves a re-check against v56's real phase.
 
+## THE KNOBS DO NOT MATCH THEIR LABELS — measured 2 Aug
+
+Asked "what are the HP and LP knobs doing?", because they were barely
+audible. They are barely audible because **one of them does nothing at
+all and the other is secretly the LFO depth.** We inherited DARK REV's
+descriptor, so the UI shows DARK REV's parameter names while the DSP
+code reads whatever slot it likes. Names read straight out of the
+descriptor at `0x400d58b8` (6-byte stride from E+0x4e):
+
+| knob | UI label | slot | what our code actually does with it |
+|---|---|---|---|
+| 1 | TIME | +$0 | TIME (feedback) — **matches** |
+| 2 | SHVG | +$1 | HI / high-cut damping coefficient |
+| 3 | SHVF | +$2 | SIZE (scales all four tap lengths) |
+| 4 | **HP** | +$3 | **nothing — never read** |
+| 5 | **LP** | +$4 | MOD — LFO modulation depth |
+| 6 | MIX | +$5 | MIX — **matches** |
+| p2 | PRE | +$e | PRE — **matches** (dead until v58; the loop body was bypassed) |
+| p2 | BAL | +$b | WIDTH (mid/side) |
+| p2 | MIXF | +$c | nothing — never read |
+| p2 | MONO | +$d | RATE (LFO rate) |
+
+So HP is a dead knob, and LP is a subtle chorus depth — exactly the
+reported symptom. The fix is free (no ColdFire work, no descriptor
+edit): change which `x:(r6+N)` slots the DSP reads so the behaviour
+lands under the right names. The obvious assignment, since a one-pole in
+the feedback path IS a low-pass: **LP (+$4) → the high-cut damping**
+(currently on SHVG), and give HP (+$3) a real high-pass on the wet, or
+park SIZE/MOD there. TIME and MIX already match and must not move.
+
 ## NEXT — the audio-quality track, remaining
 
-2. **Restore v46's pre-delay** (removed for the modulo theory, which was
-   never the problem). Its `y:(r5+n5)` path needs the same A2 discipline
-   as everything else that derives addresses from loaded words. The PRE
-   parameter setup is still in the build (it computes n5 and $30); only
-   the seven loop-body instructions need to come back. 49 words clear.
-3. **Then tuning.** TIME/HI/MIX behave; the wash should finally be
-   audible once the lines start clean. If split-boundary artifacts are
-   audible during play, stock's shape is the reference: run the body on
-   both calls with r0 redirected through the (r7+$1a) mute check.
+2. **Restore v46's pre-delay** — STAGED as `dsp/reverb58.asm`, built and
+   emulator-checked, but **NOT flashed and NOT on the card**: it is
+   blocked behind the v57 split discrepancy above. It is v57 + exactly
+   two deltas (diff-verified): `m5` back to `$7ff` in the SIZE section,
+   and v46's seven loop-body instructions restored. 940 words, 34 clear.
+   $30 is re-derived per call from $83 + the pre-delay base (already
+   A2-cleaned), so it is split-continuous by the same construction as
+   everything else. Emulator: identical output at split 0 vs 5 at
+   PRE=0/64/127 (note: v58 shows the split-invariance v57 lacks, which
+   is itself a clue worth chasing), guard clean, and PRE demonstrably
+   live — onset moves block 47 → 115 → 182 as PRE goes 0 → 64 → 127.
+3. **Then the knob remap** (table above) and tuning.
 
 Rules that must survive into any new build: the A2-clean after every
 masked load that feeds an address register; check the builder's word
@@ -791,7 +824,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call. FROZE — and forced the re-read that found the real cause. |
 | `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
 | `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up. **Hardware: warm-up works, clean until a trig** — the trig static exposed the a=0 sub-block bug. |
-| `dsp/reverb57.asm` (as `OCTATRACK_V57.bin`) | v56 + body on BOTH calls (a=0 is the first sub-block) + LFO gated per-block. Split-invariant bit-exactly in the emulator; awaiting hardware. |
+| `dsp/reverb57.asm` (as `OCTATRACK_V57.bin`) | v56 + body on BOTH calls (a=0 is the first sub-block) + LFO gated per-block. **HARDWARE CONFIRMED: trig static gone.** Emulator shows an unexplained split-dependence — see above. |
+| `dsp/reverb58.asm` | v57 + v46's pre-delay restored. Built, emulator-checked, **not flashed** — blocked on the v57 split discrepancy. |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
