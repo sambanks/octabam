@@ -247,7 +247,7 @@ pointer); a huge one falls out of range. Would also explain the two-track
 requirement: the reading host path may only matter with two live FX2
 instances.
 
-## READY TO FLASH: `dsp/reverb53.asm` / `OCTATRACK_V53.bin`
+## v53 (flashed: FROZE) — the $83 value is not the mechanism
 
 v50 + TWO INSTRUCTIONS, diff-verified: the phase save becomes
 $2c0000 | phase. The load path already masks $7ff, so the reverb is
@@ -259,6 +259,39 @@ bit-identical in behaviour. The test doubles as the fix.
 * **freezes** → the value story is dead; resume the strip series from v9
   (strip the counter next, phase back to bare $83 — isolating the
   remaining kept items one at a time).
+
+**Result: FROZE. And then the disassembly rewrote two assumptions at
+once** (payload_A.asm, stock DARK at P:0x1679):
+
+* the ONLY code in payload A touching (r7+$83) is stock DARK itself, at
+  P:0x1718/0x1723/0x172a. The host NEVER references $83. Every
+  host-reads-$83 theory is dead.
+* **$83 is stock DARK's own WARM-UP COUNTER**: incremented per audio call
+  until 0x100 (256 blocks ≈ 1.5 s), with **$82 as the warmed-up flag**
+  (0 while warming). The stock effect has exactly the warm-up guard this
+  investigation kept proposing to invent.
+* **stock DARK runs its body on BOTH calls** — the old "its a=0 path only
+  reads parameter slots" was a misreading of `beq func_00172e`, which
+  skips only the warm-up bump. Stock also ignores the dispatcher's r0
+  for its writes (r0 is redirected via an (r7+$1a) check to a dummy at
+  X:0x110 — mute machinery) and saves r0/r6 to $17/$18 at entry.
+
+## READY TO FLASH: `dsp/reverb54.asm` / `OCTATRACK_V54.bin`
+
+Eliminated on the control call so far: time (v51), r7-write traffic
+(v52), the $83 value (v53). The last untested SINGLE delta between every
+survivor and every freezer: **the M-register epilogue on the a=0 exit.**
+The scaffolds restore m0..m5 = $ffffff on every exit; the freezing
+builds leave M untouched on a=0. v54 = v50 + exactly that, diff-verified
+(six instructions).
+
+* **no freeze** → the contract is M-restoration on the control call;
+  investigate who leaves M non-linear (the host between calls?) at
+  leisure — v54 is the reverb.
+* **freezes** → no SINGLE a=0-side addition protects. The protection is
+  a=1-side or a combination; next is the v9-side strip: v9 with the
+  counter removed and the phase back to v50's $83 load/save (isolating
+  the phase-LOAD-position and entry-store deltas).
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -578,7 +611,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb51.asm` (as `OCTATRACK_V51.bin`) | v50 + a nop burn on the control call. FROZE — time is not the protection. |
 | `dsp/reverb52.asm` (as `OCTATRACK_V52.bin`) | v50 + a stock-style param latch on the control call. FROZE — not the protection. |
 | `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | v8 minus the audio scaffold. No freeze — narrowed the protection to the $83/counter group. |
-| `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + two instructions: the phase saved TAGGED ($2c0000\|phase). The $83 hypothesis test AND the candidate fix. **The one to flash.** |
+| `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + tagged phase save. FROZE — the $83 value is not the mechanism. |
+| `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call — the last untested single delta. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
