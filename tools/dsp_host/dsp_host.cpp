@@ -269,7 +269,10 @@ int main(int argc, char** argv) {
         else if (k == "-pp") a.pingpong = atoi(argv[++i]);
         else if (k == "-inst") a.inst = atoi(argv[++i]);
         else if (k == "-dirty") a.dirty = strtoul(argv[++i], nullptr, 0);
-        else if (k == "-noctl") { a.noctl = true; --i; }
+        // no --i here: -noctl consumes nothing, and decrementing made the
+        // parse loop re-read it forever -- the flag hung the harness since
+        // the day it was added
+        else if (k == "-noctl") { a.noctl = true; }
         else if (k == "-dispatch") a.fx2tracks = atoi(argv[++i]), a.dispatch = true;
         else if (k == "-fxid") a.fxid = strtoul(argv[++i], nullptr, 16);
         else if (k == "-split") a.split = atoi(argv[++i]);
@@ -604,7 +607,14 @@ int main(int argc, char** argv) {
                 dsp.regs().r[7].var = I.state;
                 dsp.regs().n[7].var = cnt;
             }
-            dsp.regs().a.var = 1;
+            // The dispatcher raises the flag with `move #$1,a`, and a short
+            // immediate to an accumulator is LEFT-ALIGNED: a1 = $010000, not
+            // a0 = 1. The distinction is invisible to `tst a` (both are
+            // nonzero) but not to `move a,x:..`, which transfers A1 -- an
+            // effect that stores the flag and tests the copy reads 0 here if
+            // the harness sets the raw var. stageprobe4's audio stage was
+            // silently gated off by exactly this.
+            dsp.regs().a.var = 0x010000000000ULL;
             if (!runToRts(dsp, a.proc, (b == 0 && k == 0) ? a.trace : 0, who)) {
                 std::printf("\nHANG: instance %d, block %d, pc=0x%06x\n", k, b,
                             dsp.getPC().toWord());

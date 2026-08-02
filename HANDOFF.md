@@ -24,6 +24,11 @@ Stage 4 is 8 Y accesses a sample per instance and it survives. Build up from
 this, not down from the reverb — every attempt to subtract from a working
 reverb broke something else.
 
+> **CAVEAT (v3 result, 2 Aug):** the host scrambles $83 — the slot this
+> probe's counter lived in, unprotected. If the resets come every few
+> seconds, the escalation silently restarted and the later stages never ran.
+> "Never freezes" stands; the per-stage attribution does not.
+
 ## Best remaining lead: Y traffic with TWO instances
 
 |  | Y/sample | across two tracks | two tracks |
@@ -55,24 +60,65 @@ The guard could not have caught either: it shadows **Y and P only** — an X
 write to a host-owned r7 slot is invisible to it. Audit r7 offsets by hand
 against the proven set: $10..$3f (v46, clean audio on track 1) plus $83.
 
-## READY TO FLASH: `dsp/stageprobe3.asm` / `OCTATRACK_STAGES3.bin`
+## stageprobe3, hardware result: the cycle SURVIVED the fix — $83 is NOT safe
 
-stageprobe2 with every write moved onto proven ground; the experiment is
-unchanged. The counter now lives entirely in $83, tagged in-word (bits 23..17
-signature $2d, bits 16..0 count, **saturating** instead of wrapping), so no
-unproven slot has to persist. Stage/mode/gain moved to $15..$17. Audio advance
-is v50's idiom verbatim. Emulator: guard clean, tag survives, count = calls
-exactly, gain ladder exact (full, then −6 dB per stage, floor −36 dB).
+v3 tagged the counter inside $83 itself, the one "proven" slot, and moved all
+scratch onto slots v46 uses. One track still cycled quiet → loud static →
+quiet. Gain depends only on stage, stage only on the count, so a clean run
+climbs the ladder once and stays at the floor — a repeating cycle means the
+count keeps getting DESTROYED. **The host scrambles $83 between calls.**
+"Proven to persist" was proven by luck, over windows shorter than the reset
+period. Two ripples:
 
-What a CLEAN one-track run sounds like: dry → clean mono at full level → six
-clean steps down → stays at the floor. Deviations are results, not noise:
+* **stageprobe v1's stage attribution is void.** Its counter sat in $83
+  unprotected. If the host resets it every few seconds, v1 never escalated
+  past stage 1–2, and "8 Y accesses a sample survives two tracks" was never
+  demonstrated. v1 also had no audible readout, so a resetting counter was
+  invisible — it only ever reported "did not freeze".
+* **v46 does not contradict this.** A scrambled tank phase is a momentary
+  tail glitch every few seconds, easy to miss by ear. It proves the
+  scrambling is intermittent, not absent.
 
-* static at stage 1 → the r0 idiom is *still* wrong
-* any return to dry or full level → $83 is not safe either, which would be
-  worth knowing on its own
+Separately: the static survived two scratch layouts and two r0 idioms (v3's
+audio stage is v50's verbatim instructions). Stage 1 should have been clean
+mono program; it was not. Amplifying x:(r0) yields noise, cause unknown — so
+the probe must stop amplifying input.
 
-The ladder does not restart on effect toggle ($83 persists); to re-run,
-switch FX2 to another effect and back, which scrambles $83 and fails the tag.
+Suspects for the scrambler, none yet discriminated: host writes into its own
+r7 bookkeeping between calls; init re-invocation ("most blocks"); sequencer
+events — pattern loop, trigs, scene/crossfader. v4 measures which.
+
+## READY TO FLASH: `dsp/stageprobe4.asm` / `OCTATRACK_STAGES4.bin`
+
+Same ladder, but the probe now DISCRIMINATES instead of assuming:
+
+* the readout is a **synthesized buzz** — a square from bit 1 of the count,
+  ADDED to the dry the way v46 adds wet, input never read into it. Clean buzz
+  = write path fine, v2/v3's static was garbage input. Buzzing static = the
+  pointer or write path itself.
+* buzz **pitch measures calls per block**: ~690 Hz = the count steps once a
+  block, ~1.4 kHz = twice (control + audio both run).
+* a **tag-fail click**: one loud 5.8 ms block every time the tag check fails.
+  The click train IS the host-reset measurement — its rhythm fingerprints the
+  scrambler.
+* the count **recycles at the top** (to stage 14) so the floor buzz never
+  freezes into DC; the tag changed ($2c, was $5a) so a leftover v3 word fails
+  on the first call.
+
+**Run protocol, in order:**
+
+1. One track, **sequencer STOPPED** (buzz needs no input). Clean world: one
+   click, ~3 s silence, buzz in at −12 dB, five 6 dB steps (~3 s each, half
+   that if two calls a block), then the floor, forever.
+2. Repeating clicks with the sequencer stopped → the host resets $83 even at
+   rest. Clicks only once playing → sequencer-driven; **vary the BPM** — if
+   the click period scales, that is confirmation.
+3. Then two tracks, as always. If it freezes, the buzz level at death is the
+   stage that killed it.
+
+Emulator (after fixing the two harness bugs below): guard clean at two
+instances, count = calls exactly, buzz sign alternates per block, ladder
+magnitudes exact, click fires on a scrambled $83 and clears the call after.
 
 Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
 not first: two *structural* things v50 does and stageprobe never does at all are
@@ -188,6 +234,17 @@ Feeding it: `python3 tools/dsp_modmap.py --dumpmem A <out.mem>` reads the
 hardcoded stock image, so for a patched build call `dsp_modmap.dumpmem()`
 directly against `out/mainos_reverb.bin`.
 
+Two more, found and FIXED while validating stageprobe4:
+
+* the audio call's mode flag was set as `a.var = 1`, which is a0 = 1. The
+  dispatcher's `move #$1,a` is left-aligned: a1 = $010000. Invisible to
+  `tst a`, but `move a,x:..` transfers A1 — an effect that stores the flag
+  and tests the copy read 0 in the harness and silently skipped its audio
+  path. Now set hardware-accurately.
+* `-noctl` decremented the parse index on a flag that consumes nothing, so
+  the argument loop re-read it forever. The flag had hung the harness since
+  the day it was added.
+
 ## Standing rules for the engine, learned by freezing the machine
 
 * two instructions between writing r5 and using it — and they must be **data
@@ -211,7 +268,8 @@ directly against `out/mainos_reverb.bin`.
 | `dsp/reverb50.asm` | v46 with the pre-delay removed. No modulo anywhere. Freezes on 2 — the result that killed the modulo theory. |
 | `dsp/stageprobe.asm` | the two-track survivor. Start here. |
 | `dsp/stageprobe2.asm` | first build-up attempt. Hardware: no freeze but cycling noise — INVALID, wrote four unproven r7 slots. Kept as the record of why. |
-| `dsp/stageprobe3.asm` | stageprobe2 on proven slots only: counter tagged inside $83, scratch in $15..$17, v50's r0 advance. **The one to flash.** |
+| `dsp/stageprobe3.asm` | v2 on "proven" slots, counter tagged inside $83. Hardware: the cycle SURVIVED — the proof that the host scrambles $83. |
+| `dsp/stageprobe4.asm` | the discriminating probe: synthesized buzz readout, tag-fail click train, pitch = calls/block. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
