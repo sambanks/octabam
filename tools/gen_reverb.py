@@ -516,35 +516,54 @@ proc:
         move    #>${LINE_MASK:x},m3
         move    #>${LINE_MASK:x},m4
 """
-    body += f"""
-; ---- SIZE: scale all four tap lengths -----------------------------------
-; Each tap is held as a fraction of LINE_LEN (tap << 11), multiplied by a factor
-; f = 0.125 .. 0.992, and shifted back to an integer. The nominal taps are the
-; MAXIMUM, so SIZE only ever shrinks the space: {LINE_TAPS[0]} samples down to
-; about {LINE_TAPS[0] // 8}, i.e. {LINE_TAPS[0]/44.1:.0f} ms down to {LINE_TAPS[0]/8/44.1:.0f} ms on the longest line.
-; Setup only -- this runs once per block, not per sample.
-        move    x:(r6+${P_SIZE}),x0
-        move    #>$700000,y1
-        mpy     x0,y1,a                 ; * 0.875 FIRST -- $100000 + $7f0000 is
-        move    #>$100000,x0            ; $8f0000, which reads as NEGATIVE, and
-        add     x0,a                    ; a negative f flips every tap
-        move    a,x1                    ; f = 0.125 .. 0.995
+    if "size" in STAGES:
+        body += f"""
+    ; ---- SIZE: scale all four tap lengths -----------------------------------
+    ; Each tap is held as a fraction of LINE_LEN (tap << 11), multiplied by a factor
+    ; f = 0.125 .. 0.992, and shifted back to an integer. The nominal taps are the
+    ; MAXIMUM, so SIZE only ever shrinks the space: {LINE_TAPS[0]} samples down to
+    ; about {LINE_TAPS[0] // 8}, i.e. {LINE_TAPS[0]/44.1:.0f} ms down to {LINE_TAPS[0]/8/44.1:.0f} ms on the longest line.
+    ; Setup only -- this runs once per block, not per sample.
+            move    x:(r6+${P_SIZE}),x0
+            move    #>$700000,y1
+            mpy     x0,y1,a                 ; * 0.875 FIRST -- $100000 + $7f0000 is
+            move    #>$100000,x0            ; $8f0000, which reads as NEGATIVE, and
+            add     x0,a                    ; a negative f flips every tap
+            move    a,x1                    ; f = 0.125 .. 0.995
+    """
+        for i, t in enumerate(LINE_TAPS):
+            body += f"""        move    #>${t << 11:06x},x0            ; {t} as a fraction of {LINE_LEN}
+            mpy     x0,x1,a
+            asr     #$b,a,a                 ; back to an integer tap
+    """
+            if "mod" in STAGES and i in MOD_LINES:
+                slot = 0x6a if i == MOD_LINES[0] else 0x6b
+                body += f"""        move    #>${LINE_LEN:x},b
+            sub     a,b                     ; {LINE_LEN} - tap, for the modulated read
+            move    b,x:(r7+${slot:02x})
+    """
+            else:
+                body += f"""        neg     a
+            move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
+    """
+    else:
+        # Every tap is a compile-time constant, so NOTHING a parameter can hold
+        # reaches an N register. An N-register offset larger than the modulus is
+        # undefined on the DSP56300 -- it is the one documented way to hang this
+        # part instantly -- and with SIZE in the path a bad read of x:(r6+2) puts
+        # an arbitrary value there. This build removes the mechanism rather than
+        # clamping it, so a "runs" result is unambiguous.
+        body += "\n; ---- fixed taps: no parameter reaches an address ------------------------\n"
+        for i, t in enumerate(LINE_TAPS):
+            if "mod" in STAGES and i in MOD_LINES:
+                slot = 0x6a if i == MOD_LINES[0] else 0x6b
+                body += f"""        move    #>${LINE_LEN - t:x},a
+        move    a,x:(r7+${slot:02x})    ; {LINE_LEN} - {t}, for the modulated read
 """
-    for i, t in enumerate(LINE_TAPS):
-        body += f"""        move    #>${t << 11:06x},x0            ; {t} as a fraction of {LINE_LEN}
-        mpy     x0,x1,a
-        asr     #$b,a,a                 ; back to an integer tap
+            else:
+                body += f"""        move    #>${(-t) & 0xffffff:06x},n{i+1}         ; -{t}, line {i} reads y:(r{i+1}+n{i+1})
 """
-        if "mod" in STAGES and i in MOD_LINES:
-            slot = 0x6a if i == MOD_LINES[0] else 0x6b
-            body += f"""        move    #>${LINE_LEN:x},b
-        sub     a,b                     ; {LINE_LEN} - tap, for the modulated read
-        move    b,x:(r7+${slot:02x})
-"""
-        else:
-            body += f"""        neg     a
-        move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
-"""
+
     m5_init = PRE_MASK if "pre" in STAGES else 0xffffff
     body += f"""        move    #>${m5_init:x},m5           ; pre-delay modulo. Harmless to the
                                         ; diffuser: it only ever does plain
