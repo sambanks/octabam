@@ -1452,3 +1452,55 @@ from ~0.18 Hz up to ~3 Hz. `$d` still contributes if it is live.
 Still open: modulating lines 0 and 3 (blocked by the AGU pairing Rn with
 Nn of the same index — they would have to move to arithmetic addressing),
 and scaling the allpasses with SIZE to hold the diffusion ratio.
+
+## v65: ALL FOUR lines modulated, diffusion 0.5 -> 0.703. ON THE CARD
+
+v64 hardware: "better but still ringy and metallic". The two structural
+causes identified at v63 were still in place, so v65 addresses both.
+
+**All four tank lines are now interpolated and LFO-modulated.** Lines 0
+and 3 were static modulo reads (`y:(r1+n1)`, `y:(r4+n4)`); they now use
+the same interpolated path lines 1 and 2 use, with `2048 - tap` held in
+new slots r7+$45/$46. The AGU blocker from v63 is sidestepped by going
+back to arithmetic addressing for these two reads — the modulo pointers
+r1..r4 still carry the write phase, so the v62 saving is only partly
+given back.
+
+**LFO phases are crosswise on purpose.** Line 0 takes the inverse
+triangle, line 1 the forward, line 2 the inverse, line 3 the forward, so
+the pairs that share tap factors move in opposition rather than together.
+
+**Diffusion raised 0.5 -> 0.703** (`$400000` -> `$5a0000`). The classic
+range for series diffusers is 0.625..0.75; 0.5 is thin, and thin
+diffusion is half of why a tank reads metallic.
+
+1057 words, 980 clear. Guard clean at two instances with poison, dirty Y
+and split. RT60 ~3.8 s at TIME=0, ~17.7 s at TIME=127, no runaway.
+
+Measured against v64 at SIZE=96, MOD=64 — autocorrelation of the tail:
+
+| build | strongest periodicity | peak/mean |
+|---|---|---|
+| v64 (2 lines, diffusion 0.5) | 0.149 at 32 Hz | 5.03 |
+| **v65 (4 lines, diffusion 0.703)** | 0.137 at 133 Hz | **3.46** |
+
+peak/mean is the useful number: it fell 31%, i.e. the tail is markedly
+less periodic.
+
+### The next lead, already visible in the measurement
+
+v65's strongest remaining resonance is at **lag 331 samples — exactly
+allpass 3's tap length.** The ringing source has moved from the tank to
+the DIFFUSERS, which is expected: a higher allpass g rings longer at its
+own delay period. Two obvious follow-ups if it is still metallic:
+
+1. **Modulate the allpass taps too** (a few samples is plenty). This is
+   what Dattorro's plate does and it specifically breaks the diffuser's
+   own resonance.
+2. **Make the allpass taps mutually coprime and scale them with SIZE.**
+   They are fixed at 907/673/487/331 while the tank grows, so the
+   diffusion-to-tank ratio runs 0.3 -> 2.5 across SIZE — the diffusers are
+   weakest exactly where the tank needs them most, which matches "worse
+   with more SHVF". Naive scaling overflows the 1024-word allpass
+   buffers; needs a downward-only scale or a bigger allocation (2039
+   words of Y are still free).
