@@ -1332,3 +1332,67 @@ guard clean. Decay at SIZE=127 is RT60 ~3.7 / 4.1 / 17.3 s at TIME
 Test protocol: **SIZE should now be a real size control across its whole
 travel** and should keep growing all the way up rather than turning back
 on itself. HP should be more obvious than in v61. Two tracks as always.
+
+## v63: deeper modulation + the allpass gain fix. WHY IT WAS METALLIC
+
+v62 hardware: **SIZE now behaves**, but "quite metallic, much worse with
+more SHVF", and **SHVG does nothing**. Both diagnosed with numbers.
+
+### SHVG did nothing because the modulation was 15 samples wide
+
+The LFO integer offset came from `asl #$5` on the scaled triangle, giving
+0..15 samples — **0.34 ms**. Inaudible. v63 uses `asl #$8` for 0..126
+samples (~2.9 ms), with the fraction mask widened to match ($07ffff/`asl
+#4` -> $00ffff/`asl #8`). Measured: MOD now changes **97% of samples**
+with a max delta of 681252, against a build where it changed almost
+nothing.
+
+### Why it is metallic — three compounding causes, measured
+
+1. **Scaling destroys the taps' coprimality.** The nominal taps 1567 /
+   1249 / 977 / 733 are all prime, which is the standard trick. But SIZE
+   multiplies and truncates them, and the results are not coprime:
+
+   | SIZE | taps | worst pairwise gcd |
+   |---|---|---|
+   | 0 | 250 199 156 117 | 39 |
+   | 32 | 703 560 438 328 | 8 |
+   | **64** | **1155 921 720 540** | **180** |
+   | 96 | 1608 1281 1002 751 | 6 |
+   | 127 | 2046 1631 1275 956 | 3 |
+
+   At SIZE=64 two lines echo in lockstep every 180 samples — a resonance
+   at ~245 Hz. The metallic character therefore *varies with SIZE*, which
+   matches the report.
+2. **Echo density collapses as SIZE grows**: 977/s at SIZE=0 down to
+   119/s at 127. Below roughly 1000/s a tank is audibly grainy on its own.
+3. **The allpasses are FIXED while the tank grows.** Diffusion-to-tank
+   ratio runs 0.3 -> 1.4 -> 2.5 across SIZE, so exactly when the tank
+   most needs masking, the diffusers are relatively weakest. This is the
+   direct cause of "much worse with more SHVF".
+
+### Also fixed: the allpasses were not allpasses
+
+Coefficient `$400000` is 0.5 on paper, but **`mpy` is a fractional
+multiply and doubles it to 1.0**. A unity-gain allpass is degenerate — a
+comb, not a diffuser. v63 uses `$200000` for a true 0.5. (A crest-factor
+measurement did not separate the two, but g=1.0 is objectively wrong and
+combs are what metallic sounds like.)
+
+974 words, 1063 clear. Two instances, poisoned, dirty, split: no hang,
+guard clean.
+
+### Not done, and why
+
+**Modulating lines 0 and 3 is blocked by the AGU.** The DSP56300 pairs
+`Rn` only with `Nn` of the SAME index, so `y:(r1+n2)` is an illegal
+address and there is no second offset register for the interpolation
+partner. Lines 0/3 would have to move back to the arithmetic addressing
+lines 1/2 use — which is affordable (1063 words free) but is its own
+build. **That is the highest-value next step**: it doubles the number of
+modulated lines and would break the SIZE=64 gcd lockstep directly.
+
+Also open: scaling the allpasses with SIZE to hold the diffusion ratio.
+Naive scaling overflows the 1024-word allpass buffers at high SIZE, so it
+needs either a downward-only scale or a bigger allpass allocation (2039
+words of Y are still free).
