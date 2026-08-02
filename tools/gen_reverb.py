@@ -455,7 +455,11 @@ def _tapwrite(i):
         add     x0,a
         move    a,r5
         move    x:(r7+${TANK_TMP:02x}),a            ; fills the AGU slot
-        move    x:(r7+$5f),y0           ; and again
+        move    x:(r7+$5e),y0           ; and again -- $5e, NOT $5f. y0 holds g/2
+                                        ; across the whole write-back section, so
+                                        ; reloading the DAMPING coefficient here
+                                        ; gave lines 1..3 a feedback gain of up to
+                                        ; 0.995 and the tank self-oscillated.
         move    a,y:(r5)
 
 """
