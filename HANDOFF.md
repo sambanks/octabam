@@ -53,9 +53,40 @@ v50. What remains between the probe and v50 is not WHAT memory is touched
 but HOW — the register idioms. `dsp/stageprobe6.asm` stages those:
 the loop-carried (r1)+ phase pointer, the dead per-block n1/n4/n5 writes,
 the X dataflow density (one-poles, Hadamard, feedback mpy chain), feedback
-writes at the carried phase, then everything combined with v5's shapes. If
-those pass as well, the residue is v50's exact instruction ORDER, and v7 is
-v50's own loop body grafted whole onto the scaffold.
+writes at the carried phase, then everything combined with v5's shapes.
+
+**And the idioms are eliminated too (stageprobe6, 2 Aug: no freeze).** Every
+component of the reverb — rates, shapes, register idioms — is now cleared.
+The one untested thing left is v50 ITSELF: its exact instruction stream.
+
+## READY TO FLASH: `dsp/stageprobe7.asm` / `OCTATRACK_STAGES7.bin`
+
+v50's ENTIRE ENGINE, verbatim, on a minimal ladder scaffold. Verified graft:
+550 instructions diffed against reverb50.asm — the only deviations are the
+documented five (the a-gate head replaced by the scaffold's, two phase reads
+$83→$1a since $83 is the counter and the phase is derived count<<4, the
+dry-bypass labels, and the now-pointless phase save dropped). r0 is stashed
+at entry and restored before the engine because the buzz loop walks it. The
+engine freely clobbers all scaffold slots by design — everything re-derives
+from $83 each call, and the engine runs strictly after the last scaffold
+read. 970 words, 4 clear of PLATE's helper.
+
+Ladder: stage 0 silence, stage 1 buzz at −12, stage 2+ buzz at −18 AND the
+engine. The buzz excites the reverb, so a ringing tail behind the tone is
+the engine audibly alive.
+
+Two tracks:
+* **freezes ~3–6 s after the second track lands** → the freeze is
+  reproduced ON INSTRUMENT inside a proven vehicle, and v8 bisects the
+  engine body on the ladder.
+* **runs, reverb tail audible** → the engine is innocent in this vehicle
+  and the fault was in what surrounded it in the real build — v50's own
+  entry/init/dispatch context. A genuinely new place to look.
+
+Emulator, `-inst 2 -guard 16384`, both instances through the full engine:
+clean, count exact, output live. (Trap relived while validating: the fast
+variant's debug exports pushed past 974 words, the builder refused, and the
+stale image nearly got "validated" — check the builder's output, always.)
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -368,7 +399,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe3.asm` | v2 on proven slots, counter tagged inside $83. Its "cycling" was misread as $83 scrambling; v4 disproved that. |
 | `dsp/stageprobe4.asm` | the proven scaffold: buzz readout, click train, pitch = calls/block. Two-track ladder completed — the axes eliminator. |
 | `dsp/stageprobe5.asm` | the scaffold + the four shapes. EIGHT tracks, ladders complete, no freeze — the shapes eliminator. |
-| `dsp/stageprobe6.asm` | the scaffold + the register idioms: carried (r1)+ phase, dead n writes, X dataflow, feedback at the carried phase, then everything. **The one to flash.** |
+| `dsp/stageprobe6.asm` | the scaffold + the register idioms. No freeze — the idioms eliminator. |
+| `dsp/stageprobe7.asm` | v50's entire engine, verbatim (550-instruction diff-verified), on the ladder. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
