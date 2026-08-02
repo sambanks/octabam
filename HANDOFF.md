@@ -120,6 +120,29 @@ Emulator (after fixing the two harness bugs below): guard clean at two
 instances, count = calls exactly, buzz sign alternates per block, ladder
 magnitudes exact, click fires on a scrambled $83 and clears the call after.
 
+### v4 hardware, first session: the pitch IS a dispatcher observable
+
+One track: a clean solid tone, stable at rest, and **every sequencer trig
+changes its pitch, which then holds until the next trig**. Decoded:
+
+* clean tone → the audio write path is fine; v2/v3's "static" was never the
+  write side.
+* pitch = calls per block (~689 Hz one, ~1378 Hz two, rough ~1034 three).
+* trigs therefore set the per-track SPLIT (`+$1e` bits 8..11) to a value
+  that **persists until the next trig** — almost certainly the trig's
+  micro-timing within the block. On-grid trig → split 0 → one call → low
+  tone; off-grid → split ≠ 0 → two calls → the octave.
+* this rewrites the v3 static too: with split ≠ 0, v3's replace-the-audio
+  stage only processed [split, 16) — the first split frames of every block
+  kept raw input, and that boundary discontinuity at 2.7 kHz block rate IS
+  the "static". An effect that REPLACES audio must handle split; one that
+  ADDS (v46, the buzz) is immune.
+* **the "$83 scrambling" claim above is now in doubt**: a solid stable tone
+  with no reported clicks means no tag failures. v3's "cycling" may have
+  been ladder replays triggered by the user's own toggles/power cycles plus
+  split distortion. Awaiting explicit answers: clicks yes/no, intro ladder
+  heard yes/no, two pitches or more.
+
 Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
 not first: two *structural* things v50 does and stageprobe never does at all are
 cheaper to test, so they go ahead of the ramp.
