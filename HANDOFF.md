@@ -1,125 +1,118 @@
-# HANDOFF — compact status + GUI-in-transition plan
+# Two-track freeze — state of the investigation
 
-Consolidation of the conversation for autonomous work. Full detail in `NOTES.md`,
-`ARCHITECTURE.md`, `COVERAGE.md`.
+**Symptom.** The reverb works on one track and sounds right. The moment it is
+enabled on a second track the machine freezes, sequencer stuck on step one,
+regardless of knob positions and regardless of whether the second track is
+playing.
 
-## What has been achieved (verified)
+**Not solved.** Sixteen builds, zero correct hypotheses. Everything below is
+either measured on hardware or read out of the dispatcher listing.
 
-- **Complete RE** of the Octatrack MKII OS 1.40C firmware: ColdFire (MCF5445x) + DSP56xxx + proprietary
-  RTOS. OS format: `.bin`(ELUP, XOR+checksum) / `.syx`(SysEx) → ELEK → aPLib → MAIN OS
-  (1,112,560 B @ base `0x40000400`). No cryptographic signature → patchable.
-- **Toolchain**: decode (`tools/bin_decode.py`, `decode_elek.c`), Ghidra headless (Coldfire),
-  radare2, **ColdFire Unicorn emulator** (`tools/emu_*.py`), DSP56300 disassembler, `m68k-elf-as`.
-- **Repackaging tested**: `elektron-firmware-tool -c 3 <mainos> -o <out.syx>` → checksums ok.
-- **"lazy part apply" audio patch** implemented+validated+packaged:
-  `out/OCTATRACK_OS1.40C_LAZYPART.syx`. Save/restore in `FUN_40009094` (entry `0x40009094`→save_stub,
-  exit tail-call `0x40009664`→restore_stub, cave `0x400d64e0`). Tracks that are sounding keep their params on
-  pattern change; they apply the destination Part on the first trig (D6 gate of the frame builder `0x4000c9e2`).
+## The one build that survives two tracks
 
-## Key structures (RAM)
-- `per_track_part[8]` @ `0x8000182a`, `per_track_pattern[8]` @ `0x80001832` (byte/track).
-- Active Part (audio) `0x80000002`, active pattern `0x80000003`. Applied GLOBAL `0x80001828/29`.
-- DISPLAYED/edited pattern (GUI) `DAT_100b14cf`; current track `DAT_100b14cc`.
-- Voice buffer (params→DSP) `0x80000a50` stride `0x40`/track. Active voice `0x800049d8` stride `0xA8` byte0.
-- `_DAT_46c82456` = project RAM base (part/pattern data).
-- Free code cave: `0x400d64da` (5986 B; the audio patch uses from `0x400d64e0`, ~184 B → free from
-  ~`0x400d65a0`). Free RAM: `0x80006a00+` (the audio patch used `0x80006a00`..`0x80006c28`).
+`dsp/stageprobe.asm` — never freezes on two tracks. It escalates every ~3 s:
 
-## The encoder editor (pinned down) — `FUN_40052e98(encoder_idx 0-6, delta)`
-- Reads the param's current value from the Part data (indexed by `DAT_100b14cf` + the part that uses that pattern
-  + track + param), adds delta, clamps, writes it back + dirty flag `0x9b332`.
-- **Gated live-update**: only updates the voice buffer (sound) IF
-  `DAT_80000002==per_track_part[track] && DAT_80000003==per_track_pattern[track]`.
-- Encoder 6 = LEVEL (special case 0/0x7f). Others: read-modify-write at `…0x8f3e2`.
-- Param definition (min/max) via `FUN_40031f28`/`FUN_40031ee0`/`FUN_40031da4`.
+| stage | what runs |
+|---|---|
+| 0 | `rts`, nothing at all |
+| 1 | recover base from the stash, write 4 r7 slots |
+| 2 | load and save the state block at base+0x3800 |
+| 3 | read all four delay lines every sample |
+| 4 | write all four delay lines every sample |
 
-## GOAL: GUI-in-transition
-When a track is IN TRANSITION (`per_track_part[track] != active_Part`, and sounding), editing a knob should:
-1. **Write to the SOURCE Part** (`per_track_part[track]` / `per_track_pattern[track]`), not the destination one.
-2. **Update the sound live** (which today is gated OFF by `per_track != active`).
-→ This way you can sculpt the transitioning sound in real time.
+Stage 4 is 8 Y accesses a sample per instance and it survives. Build up from
+this, not down from the reverb — every attempt to subtract from a working
+reverb broke something else.
 
-### Plan
-1. Deep RE of `FUN_40052e98`: understand exactly which globals determine the read/write direction of the
-   param, and the target of the live-update. Trace it with the emulator.
-2. Design: detect transition (per_track_part[track]!=active && voice_active[track]); if in transition,
-   redirect the editor's part/pattern index to `per_track_*[track]` and force the live-update gate.
-3. Implement (cave + detour in `FUN_40052e98`), validate in the emulator, repackage.
+## Best remaining lead: Y traffic with TWO instances
 
-### Progress — ✅ COMPLETED
-- [x] Consolidated.
-- [x] RE of the editor addressing (empirical trace in the emulator, `tools/emu_editor.py`).
-- [x] Patch design (wrapper with return-hook: override globals→source during transition).
-- [x] Implementation (`tools/patch_gui.s`, assembled with m68k-elf-as/ld @ `0x400d6600`).
-- [x] Emulator validation (transition→writes source + live-update; normal path intact; globals
-      restored; robustness 4 tracks × 4 encoders all ✓).
-- [x] Repackaged → `out/OCTATRACK_OS1.40C_LAZYPART_GUI.syx` (checksums ok).
-
-## ✅ CURRENT BUILD — `out/OCTATRACK_OS1.40C_FULL_MAXO_V6.syx`
-
-Everything: lazy-part + GUI-in-transition (reentrancy-fixed) + sticky scenes v2 + dirty
-indicators + MAXOLYDIAN branding. 809 patch bytes, checksums ok, round-trip identical,
-reproducible from the stock `.syx` via `sysex/apply_patch.py`.
-
-| patch | source | detour | stub |
+|  | Y/sample | across two tracks | two tracks |
 |---|---|---|---|
-| lazy part apply | `patch.s` | `0x40009094` | `0x400d64e0` |
-| GUI-in-transition | `patch_gui2.s` | `0x40052e98` | `0x400d6600` |
-| sticky scenes v2 | `patch_scene2.s` | `0x40009094`, `0x4003f1b4` | `0x400d6700` |
-| dirty track LED | `patch_led.s` | `0x40083fb4` | `0x400d6800` |
-| dirty scene trig | `patch_trig.s` | `0x40034b5e` | `0x400d6900` |
+| stageprobe | 8 | 16 | survives |
+| v50 | 18 | 36 | freezes |
 
-**Two corrections happened here, both documented in `NOTES.md`:**
+`dsp/yburn.asm` sustained 66 Y accesses a sample with **no break at all**, but
+that was one instance. Two-instance Y traffic is the one axis never measured,
+and it is the difference between the survivor and every failure.
 
-1. **Sticky scenes v1 was wrong.** It assumed `FUN_40009094` == "pattern change"; it is
-   actually `apply_part(part, pattern)` reached from 10 sites including the manual
-   scene-assign path, so v1 clobbered manual assignment. v2 polls `DAT_80000003` instead
-   and adopts vs imposes based on whether the index actually changed.
-2. **The GUI patch crashed the unit.** Its return-hook used one global slot; a nested entry
-   clobbered it and the outer return jumped to a dead address (`EXCEPTION VEC:0B`). Fixed by
-   a reentrancy guard in `patch_gui2.s`.
+**Next probe:** extend stageprobe with stages that raise Y traffic rather than
+add features — 8, 16, 24, 36 accesses a sample — same time-based readout, run
+on two tracks. If there is no ceiling, bandwidth is out and the difference is a
+feature (diffuser, LFO, modulated reads); add those to stageprobe one at a time.
 
-Confirmed on hardware: lazy part, GUI-in-transition, sticky scenes v2. Pending hardware
-confirmation: the two dirty indicators, and the crash fix.
+## Eliminated, with the evidence
 
-## ✅ FINAL RESULT — `out/OCTATRACK_OS1.40C_LAZYPART_GUI_MAXO.syx`
+| ruled out | how |
+|---|---|
+| base delivery, the init stash | `dsp/instprobe.asm`: r7 = 0x6200/0x6500, bases 0x4000/0x8000, distinct and valid. The probe itself runs on two tracks. |
+| r7 state blocks | same, plus the dispatcher advances x:0x20a three times a track |
+| buffer extent | `dsp/ownprobe.asm`: every word of the 0x4000 allocation still holds that instance's own signature a block later, at every offset, both tracks |
+| Y bandwidth (one instance) | `dsp/yburn.asm`: no break at 66 accesses a sample |
+| cycles | v40 and v41 are both 135 instr/sample; one freezes, one does not |
+| parameters reaching an address | v38: taps as compile-time constants, still froze |
+| r7 slot region | v39: scratch moved into DARK REV's own $1a..$4x, still froze |
+| the A mode flag | v44 honours it; still froze |
+| **modulo addressing** | v50 has none anywhere, every M register linear, **still froze** |
 
-Flashable firmware with the TWO behavior patches (below) **+ boot branding**: the startup
-screen and SYSTEM STATUS → OS VERSION show **`MAXOLYDIAN`** instead of `1.40C`.
-- The displayed version lives in the ELEK header (flash `0x4008`), a display field of **10 fixed chars**
-  (`0x08–0x11`); it cannot be enlarged (the aPLib section starts at `0x12`, a hardcoded offset). That's why
-  `MAXOLYDIAN` (10) and not `MAXOLYDIAN 1.40C` (16). Internal code `0178` intact. Detail in `NOTES.md`.
-- Build: `elektron-firmware-tool -i <stock.syx> -c 3 out/mainos_combined.bin -V "MAXOLYDIAN" -o <out>`
-  (extended the tool's `set_version()` to write the full display field from `0x08`).
-- Verified: header `0x08–0x11`="MAXOLYDIAN", `0178` intact, `0x12`=NUL, checksums ok, round-trip of the
-  MAIN OS byte-identical (audio+GUI patches intact).
-- Variants without branding: `_GUI.syx` (audio+GUI) and `_LAZYPART.syx` (audio only).
+## Dispatcher ABI, read from payload A
 
-## Previous RESULT (audio + GUI)
+* `P:0x372` resets x:0x418, x:0x20a=0x6000, x:0x213=0x255, falls into the track
+  loop at `P:0x385`, four iterations (x:0x418 steps 0x20 to 0x80), exits 0x53e.
+  Four tracks per payload, two payloads, eight tracks.
+* Per track: x:0x20a advances 0x100 three times (0x4ae, 0x4e4, 0x51e), x:0x213
+  advances 1 twice (0x4d8, 0x526). Reproduces the measured r7 and bases exactly.
+* `x:0x415 + t*0x20` is a track's PENDING config, `x:0x416 + t*0x20` its CURRENT.
+  FX1 id at `+$1b`, FX2 id at `+$1c`, as value<<8.
+* `+$1e` bits 8..11 are an effect-change SPLIT POINT, not a block size.
+  x:0x20c = split, x:0x20d = 16 - split, x:0x20e = split*2.
+* **Both proc calls are audio.** A block is 16 frames and it is split: the
+  CURRENT effect gets [0, split) at r0=0 with a=0, the PENDING effect gets
+  [split, 16) at r0=split*2 with a=1. A crossfade across an effect change. In
+  steady state split is 0, the outgoing call is skipped, and the effect gets the
+  whole block at r0=0.
+* FX2 is handed `r6 = x:0x208 + 12`; FX1 gets +6.
+* init is re-invoked whenever a slot's effect id differs from the previous
+  slot's, which is most blocks — this is why "init runs more often than once".
 
-**`out/OCTATRACK_OS1.40C_LAZYPART_GUI.syx`** = flashable firmware with BOTH patches:
-1. **Lazy part apply** (audio): tracks that are sounding keep their params when changing pattern; they apply
-   the destination Part on their first trig.
-2. **GUI-in-transition**: turning a knob while a track is in transition **edits the SOURCE Part
-   and sculpts the transitioning sound in real time** (previously it edited the destination without sounding).
+## Harness
 
-### The GUI patch (`FUN_40052e98`, the encoder editor)
-- **Entry `0x40052e98` → setup** (cave `0x400d6600`): if `per_track_part[track] != active_Part`
-  (transition), it saves `DAT_100b14cf`/`0x80000002`/`0x80000003`, sets them = source
-  (`per_track_pattern[track]`/`per_track_part[track]`), and **hooks the return to cleanup** (return-hook,
-  covers ALL exits of the editor: rts + tail-call). Executes the displaced entry, `jmp 0x40052ea0`.
-- **cleanup** (`0x400d6690`): restores the 3 globals, `jmp` to the real return.
-- Save area RAM: `0x80006c30` (SAVE_CF/02/03, DID_OVERRIDE, SAVE_RET). GUI cave: `0x400d6600`.
-  (Does not overlap with the audio patch: cave `0x400d64e0`, RAM `0x80006a00`.)
-- Key discovery (emulator): redirecting only `DAT_100b14cf` → source makes the editor read/write
-  the source Part (iVar10 follows automatically); + setting `0x80000002/03` = source makes it pass the
-  live-update gate. Validated byte by byte.
+`tools/dsp_host/dsp_host.cpp`:
 
-### Verification / how to test
-- `tools/emu_editor.py`, `tools/emu_gui_concept.py`: trace the editor (concept).
-- Combine+validate: the `out/mainos_combined.bin` image; validation scripts above.
-- **Risk/caveat**: the gate is passed by temporarily setting `0x80000002/03` (audio active Part)
-  during the edit (µs). The frame builder skips sounding non-triggered tracks (D6 gate), so
-  the transitioning track is not affected; another track that trigs in that µs window could (very unlikely)
-  take the wrong Part for 1 frame. Acceptable for experimental use; documented.
-- **Flashing**: see `FLASHING.md` — same procedure, use `out/OCTATRACK_OS1.40C_LAZYPART_GUI.syx`.
+* `-inst N` — N instances with correct per-instance r7, base and audio
+* `-dispatch N` — **runs the host's own dispatcher** rather than imitating it.
+  Configures N tracks with the effect on FX2 and executes `P:0x372` onward.
+  `-split N` models the effect-change transition. Stock DARK REV completes at
+  one and two tracks, so a negative from it means something.
+* `-guard [words]` — shadows Y:0x0000..0xBFFF and loaded P from before the first
+  init; separates a stray write from one landing on a loaded module
+* `-dirty SEED` — fill Y with garbage first; hardware does not hand out zeroed
+  buffers
+* It does **not** reproduce the freeze, at either instance count, steady state or
+  transition. Time is the thing it cannot model.
+
+## Standing rules for the engine, learned by freezing the machine
+
+* two instructions between writing r5 and using it — and they must be **data
+  moves**, never M-register writes (an M load interlocks with its address
+  register; this froze one track in v47)
+* no M-register write inside the sample loop
+* a modulo offset larger than the buffer is undefined: silent, not an error
+* absolute Y scratch must sit at 0x800 or above — payload B loads modules to
+  Y:0x7a4 where payload A stops at 0x794 (this was the v30/v31 hang)
+* X:0x213 is only valid during init; reading it in process gives whatever the
+  last init left (this was the v33 hang)
+* check the generated assembly and the assembler's exit status, not the
+  generator. `build_reverb.py | grep` masks a failed assemble and the emulator
+  will then happily "verify" a stale image.
+
+## Builds worth keeping
+
+| file | what it is |
+|---|---|
+| `dsp/reverb46.asm` | computed tank, modulo pre-delay. **Works on track 1**, freezes on 2. The reference good build. |
+| `dsp/reverb50.asm` | v46 with the pre-delay removed. No modulo anywhere. Freezes on 2 — the result that killed the modulo theory. |
+| `dsp/stageprobe.asm` | the two-track survivor. Start here. |
+| `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
+
+`RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
+`RV_TANK_ADDR=modulo|computed`; `RV_LINE_LEN=` shrinks the lines.
