@@ -132,12 +132,18 @@ BASE_MODE = "stash"
 #   "pre"   the pre-delay, which is the only other user of r5/m5 modulo
 #   "diff"  the four series allpasses, which use computed addressing
 #   "mod"   the LFO and the interpolated modulated reads on MOD_LINES
+#   "size"  SIZE scaling the taps; without it every tap is a constant
+#   "lines" the delay-line reads and writes themselves. Without it the pointers
+#           still advance under modulo and every other thing proc does still
+#           happens -- there is simply no Y buffer traffic. That splits "what the
+#           setup does" from "touching the buffer", which is the last division
+#           left after instprobe proved the base and r7 both arrive correctly.
 #
 # "tank" is not optional -- without it there is no effect, and dsp/minimal.asm
 # already covers that case.
 # Override without editing, so a bisect build is reproducible from its command:
 #     RV_STAGES=tank python3 tools/gen_reverb.py v37 > dsp/reverb37.asm
-STAGES = set((os.environ.get("RV_STAGES") or "tank,pre,diff,mod").split(","))
+STAGES = set((os.environ.get("RV_STAGES") or "tank,pre,diff,mod,size,lines").split(","))
 
 # Only used when BASE_MODE == "fixed". 0x4000 is a real FX2 slot, so it is safe
 # to run on one track.
@@ -369,7 +375,9 @@ def tap(i):
     elif "mod" in STAGES and i == MOD_LINES[1]:
         head = modread(i, 0x63, 0x64)
     else:
-        head = f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
+        head = (f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
+                if "lines" in STAGES else
+                f"        clr     a                       ; line {i} NOT READ -- no buffer traffic\n")
     return head + f"""        move    {DAMP[i]},b
         sub     b,a
         move    a,x0
@@ -789,7 +797,8 @@ proc:
             body += f"""        move    x:(r7+${slot:02x}),x0           ; diffused input{'' if slot == IN_FULL else ', half'}
         {op}     x0,a
 """
-        body += f"        move    a,y:(r{i+1})+\n\n"
+        body += (f"        move    a,y:(r{i+1})+\n\n" if "lines" in STAGES else
+                 f"        move    (r{i+1})+                 ; advance only -- nothing written\n\n")
     body += """; ---- wet added to dry, two tank taps per channel -------------------------
         move    x:(r7+$60),y1           ; wet gain
 """
