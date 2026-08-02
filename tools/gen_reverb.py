@@ -773,7 +773,7 @@ audio:
                 body += f"""        move    #>${(-t) & 0xffffff:06x},n{i+1}         ; -{t}, line {i} reads y:(r{i+1}+n{i+1})
 """
 
-    m5_init = PRE_MASK if "pre" in STAGES else 0xffffff
+    m5_init = 0xffffff      # never modulo: see TANK_ADDR
     body += f"""        move    #>${m5_init:x},m5           ; pre-delay modulo. Harmless to the
                                         ; diffuser: it only ever does plain
                                         ; y:(r5), never a post-increment, and
@@ -835,17 +835,12 @@ audio:
 ; tank gets no input, and the reverb goes completely silent.
         move    x:(r6+${P_PRE:x}),a
         asr     #$c,a,a
-        move    a,x:(r7+$69)
-        move    #>$1,x0                 ; the read happens BEFORE the write, so
-        add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
-        neg     a                       ; is one sample, not a whole buffer of
-        move    a,n5                    ; staleness
+        move    a,x:(r7+$69)            ; PRE in samples
         move    x:(r7+$83),a            ; the same counter again
         move    #>${PRE_MASK:x},x0
         and     x0,a
-        move    x:(r7+$78),x0
-        add     x0,a
-        move    a,x:(r7+$70)            ; NOT $6d: the width matrix uses that
+        move    a,x:(r7+$70)            ; the pre-delay phase, an OFFSET now --
+                                        ; not an address, and no N register
 """
 
     # The LFO runs ONCE PER BLOCK, not per sample. At 0.8 Hz it moves about
@@ -871,19 +866,46 @@ audio:
 
 """
     if "pre" in STAGES:
-        body += """; ---- pre-delay ----------------------------------------------------------
-; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
-; lines, which are proven safe. The earlier version computed the addresses
-; arithmetically like the diffuser does, which cost 28 instructions a sample;
-; that is only necessary when r5 and n5 are RECOMPUTED inside the loop, and
-; here they are set once per block.
-        move    x:(r7+$70),r5           ; restore: the allpasses clobber r5
-        move    x:(r7+$5b),a            ; input, and fills the AGU slot
-        move    #>$1,n0
-        move    y:(r5+n5),b             ; delayed
-        move    a,y:(r5)+               ; write, and advance
-        move    r5,x:(r7+$70)
-        move    b,x:(r7+$5b)            ; delayed input -> the diffuser
+        body += f"""; ---- pre-delay ---------------------------------------------------------
+; Computed and masked, exactly like the tank and the diffuser. It used to be
+; r5 with m5 modulo and y:(r5+n5), on the argument that r5 and n5 are set once
+; a block rather than recomputed in the loop -- and that was the LAST indexed
+; modulo access left in the engine after the tank was converted.
+;
+; dsp/stageprobe.asm reads and writes all four delay lines on two tracks with
+; every M register linear and never freezes. v40 (tank on modulo) froze, v45
+; (tank computed, pre-delay still on modulo) froze. Every build with any indexed
+; modulo access has frozen and the one build with none has not.
+        move    x:(r7+$5b),a            ; hold the input
+        move    a,x:(r7+${TANK_TMP:02x})
+        move    x:(r7+$70),a            ; read at phase - PRE - 1
+        move    x:(r7+$69),x0
+        sub     x0,a
+        move    #>$1,x0
+        sub     x0,a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    x:(r7+$78),x0
+        add     x0,a
+        move    a,r5
+        move    #>$ffffff,m5            ; two instructions before r5 is used
+        move    #>$ffffff,m1
+        move    y:(r5),b                ; delayed
+        move    x:(r7+$70),a            ; write at phase
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    x:(r7+$78),x0
+        add     x0,a
+        move    a,r5
+        move    b,x:(r7+$5b)            ; delayed -> the diffuser; fills the slot
+        move    x:(r7+${TANK_TMP:02x}),a            ; the input again
+        move    a,y:(r5)
+        move    x:(r7+$70),a            ; advance the phase
+        move    #>$1,x0
+        add     x0,a
+        move    #>${PRE_MASK:x},x0
+        and     x0,a
+        move    a,x:(r7+$70)
 """
     body += ""
     if "diff" in STAGES:
