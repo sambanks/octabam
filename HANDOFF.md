@@ -24,10 +24,11 @@ Stage 4 is 8 Y accesses a sample per instance and it survives. Build up from
 this, not down from the reverb — every attempt to subtract from a working
 reverb broke something else.
 
-> **CAVEAT (v3 result, 2 Aug):** the host scrambles $83 — the slot this
-> probe's counter lived in, unprotected. If the resets come every few
-> seconds, the escalation silently restarted and the later stages never ran.
-> "Never freezes" stands; the per-stage attribution does not.
+> **CAVEAT (2 Aug):** this probe's counter lived in $83 unprotected and it
+> had no audible readout, so whether the stages actually escalated on
+> hardware was never verified — only "never froze" was. (v4 later proved
+> $83 IS stable, which restores confidence, but the attribution was still
+> never observed directly; v4's audible ladder supersedes this probe.)
 
 ## Best remaining lead: Y traffic with TWO instances
 
@@ -66,9 +67,11 @@ v3 tagged the counter inside $83 itself, the one "proven" slot, and moved all
 scratch onto slots v46 uses. One track still cycled quiet → loud static →
 quiet. Gain depends only on stage, stage only on the count, so a clean run
 climbs the ladder once and stays at the floor — a repeating cycle means the
-count keeps getting DESTROYED. **The host scrambles $83 between calls.**
-"Proven to persist" was proven by luck, over windows shorter than the reset
-period. Two ripples:
+count keeps getting DESTROYED — which at the time read as "the host
+scrambles $83 between calls". **v4 later disproved that** (no tag failures,
+ever); the real explanation was ladder replays from the user's own toggles
+and power cycles, heard through split-boundary distortion (below). Kept as
+written for the record of what the ripples were believed to be:
 
 * **stageprobe v1's stage attribution is void.** Its counter sat in $83
   unprotected. If the host resets it every few seconds, v1 never escalated
@@ -137,11 +140,29 @@ changes its pitch, which then holds until the next trig**. Decoded:
   kept raw input, and that boundary discontinuity at 2.7 kHz block rate IS
   the "static". An effect that REPLACES audio must handle split; one that
   ADDS (v46, the buzz) is immune.
-* **the "$83 scrambling" claim above is now in doubt**: a solid stable tone
-  with no reported clicks means no tag failures. v3's "cycling" may have
-  been ladder replays triggered by the user's own toggles/power cycles plus
-  split distortion. Awaiting explicit answers: clicks yes/no, intro ladder
-  heard yes/no, two pitches or more.
+* **the "$83 scrambling" claim is RETRACTED**: confirmed no clicks or pops,
+  ever, playing or stopped. The tag never fails; $83 is stable. v3's
+  "cycling" was the ladder replaying after the user's own toggles and power
+  cycles, heard through split-boundary distortion.
+
+Second session of answers:
+
+* **six distinct pitches, cycling — the 7th trig repeats the 1st** — with
+  every trig ON the grid (user is firm, and right: no micro-timing set).
+  Theory: the beat grid does not divide the block grid. A step is a
+  non-integer number of 16-frame blocks, so consecutive on-grid trigs land
+  at different offsets INSIDE a block, cycling with period = the
+  denominator of the fractional blocks-per-step — 6 at this tempo. The
+  offset is what the host writes into split, and each split value has its
+  own audible waveform. **Prediction: the cycle length changes with BPM.**
+  If six survives every tempo, the theory is dead.
+* "solid tone indefinitely, no ladder heard" — probably the ladder ran at
+  boot (project loads with the effect enabled) and only the floor was ever
+  heard. Clean test pending: sequencer stopped, power cycle, listen from
+  boot: one click → ~3 s silence → fade in → five level drops → floor. A
+  tone at one level from the first second = stage machinery broken, top
+  priority.
+* still pending: the TWO-TRACK run, the entire point of the ladder.
 
 Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
 not first: two *structural* things v50 does and stageprobe never does at all are
@@ -291,7 +312,7 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb50.asm` | v46 with the pre-delay removed. No modulo anywhere. Freezes on 2 — the result that killed the modulo theory. |
 | `dsp/stageprobe.asm` | the two-track survivor. Start here. |
 | `dsp/stageprobe2.asm` | first build-up attempt. Hardware: no freeze but cycling noise — INVALID, wrote four unproven r7 slots. Kept as the record of why. |
-| `dsp/stageprobe3.asm` | v2 on "proven" slots, counter tagged inside $83. Hardware: the cycle SURVIVED — the proof that the host scrambles $83. |
+| `dsp/stageprobe3.asm` | v2 on proven slots, counter tagged inside $83. Its "cycling" was misread as $83 scrambling; v4 disproved that. |
 | `dsp/stageprobe4.asm` | the discriminating probe: synthesized buzz readout, tag-fail click train, pitch = calls/block. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
