@@ -984,3 +984,73 @@ clear — tight enough that it wants its own build and its own flash, not
 a bolt-on. **Weigh it against the knob remap, which is worth more per
 flash**: HP is dead, LP is the LFO depth, and WIDTH ($b) and RATE ($d)
 are probably dead too since stock never reads those slots.
+
+## CODE SPACE: the branch scan, and 974 -> 2037 or 2724 words
+
+Ran the inbound-reference scan over both payloads. **First, a correction
+to the module identities** — the 1063-word module adjacent to DARK is
+**SPRING REV, not PLATE**. Confirmed from the dispatch table at X:0x215:
+
+| id | effect | module | words |
+|---|---|---|---|
+| 0x14 | PLATE REV | P:0x1000 (B: 0xdc0) | 594 |
+| 0x15 | SPRING REV | P:0x1252 (B: 0x1012) | 1063 |
+| 0x16 | **DARK REV — ours** | P:0x1679 (B: 0x1439) | 1067 |
+
+All three are **contiguous** in both payloads: 0x1000 + 594 = 0x1252,
+0x1252 + 1063 = 0x1679. That is 2724 words of contiguous P.
+
+**Every reference into these modules from outside, payload A:**
+
+| into | branches in | from |
+|---|---|---|
+| PLATE | **0** | — |
+| SPRING | 3 (`jsr` -> 0x1586) | **stock DARK, all three** |
+| DARK | 1 (`jsr` -> 0x1a47 = +974) | PLATE |
+
+Address-sized immediates were checked too and are all false positives:
+PLATE's `$19c0/$1a00/$1a80/$1b00/$1c00` are its **Y** delay-line bases
+(each is `move #>$x,a / add x0,a` against the instance base — our own
+idiom), and the `#>$1000`s are arithmetic constants. Only the `jsr`s are
+real.
+
+**This also explains the old "vacating SPRING hung the DSP".** SPRING's
+only inbound callers are stock DARK — and that attempt vacated SPRING
+while stock DARK was still live, so DARK's `jsr 0x1586` landed in the
+new code. **We have since replaced DARK entirely and our reverb never
+calls 0x1586, so that dependency no longer exists.** The old warning in
+the standing rules is now obsolete for SPRING specifically.
+
+### The options
+
+| take | contiguous words | costs | notes |
+|---|---|---|---|
+| nothing (today) | **974** | — | capped by PLATE's `jsr` to DARK+974 |
+| + SPRING | **2037** (0x1252..0x1a46) | SPRING REV | must still preserve the helper at DARK+974 |
+| + SPRING + PLATE | **2724** (0x1000..0x1aa3) | SPRING + PLATE REV | PLATE is the helper's only caller, so +974 cap disappears too |
+
+Builder work either way: our blob must be split across the separate
+module RECORDS (each has its own load address), and the vacated effects'
+dispatch entries at X:0x215/X:0x235 must be repointed — SPRING's init
+would otherwise land on our code at a wrong offset. `build_reverb.py`
+already patches those tables, so it is a modest change. Pointing a
+vacated id at our own init/proc makes selecting it simply run the
+reverb, which is a harmless outcome.
+
+## Blackhole: no pitch shifter (asked 2 Aug)
+
+Blackhole is a reverb with delay-line modulation, not a pitch shifter.
+Mod Depth/Rate sweep the taps, which Doppler-detunes — which is exactly
+what our two interpolated modulated lines already do. The octave-up
+"shimmer" people associate with big Eventide reverbs is a DIFFERENT
+algorithm family (Eventide's own ShimmerVerb, Valhalla Shimmer, Strymon
+Shimmer mode), which feeds a pitch shifter into the regeneration path.
+Blackhole's character comes from Gravity (decay-envelope inversion),
+very long feedback and heavy modulation instead.
+
+So the mechanism we have IS Blackhole's. Adding true shimmer would be a
+deliberate move to a different effect: an octave-up needs a second read
+pointer at double rate with a crossfaded window, ~25-40 instructions a
+sample plus state. Cycles are available (~135-165 used against ~1080/DSP
+proven); it is CODE SPACE that decides, which is what the scan above is
+about.
