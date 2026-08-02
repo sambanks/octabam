@@ -150,8 +150,21 @@ STAGES = set((os.environ.get("RV_STAGES") or "tank,pre,diff,mod,size,lines").spl
 ALLOC_FIXED = 0x4000
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
-LINE_LEN  = 2048
-LINE_TAPS = [1567, 1249, 977, 733]          # 35.5 / 28.3 / 22.2 / 16.6 ms, prime
+# RV_LINE_LEN shrinks the lines without changing how many times a sample touches
+# them. v40 hangs on two tracks and v41 -- identical bar the four line reads and
+# four line writes -- does not, so it is the buffer access. That leaves two
+# possibilities, and they need different fixes:
+#
+#   how OFTEN     8 Y accesses a sample per instance, doubling with the second
+#                 track. No probe has ever exercised this: cycleburn burned NOPs
+#                 and memburn2 used X memory.
+#   how MUCH      the extent touched. 4 x 2048 words from the base, which
+#                 assumes the FX2 allocation really is 0x4000 words.
+#
+# Shrinking the lines keeps the access count identical and cuts the extent by 8,
+# so it tells the two apart in one build.
+LINE_LEN  = int(os.environ.get("RV_LINE_LEN") or 2048)
+LINE_TAPS = [max(3, t * LINE_LEN // 2048) for t in (1567, 1249, 977, 733)]
 
 AP_OFF    = 0x2000          # four series allpasses, one per 0x400
 AP_LEN    = 1024
@@ -214,7 +227,9 @@ PRE_MASK  = PRE_LEN - 1     # 2048 words = 46 ms
 #    already runs per block, and a one-pole's state only has to survive the gap.
 #
 # Nothing here costs a per-sample instruction; it is ~30 per block.
-STATE_OFF = 0x3800          # Y, inside the instance: LFO phase + 4 damping states
+# With shrunken lines the state block follows them immediately, so the whole
+# footprint is a few hundred words rather than 0x3800.
+STATE_OFF = 0x3800 if LINE_LEN == 2048 else 4 * LINE_LEN
 PHASE  = "x:(r7+$79)"       # allpass phase, recomputed from r1 each sample
 LFOPH  = "x:(r7+$7e)"       # per-block working copy of the Y word
 DAMP   = [f"x:(r7+${0x7a+i:02x})" for i in range(4)]
