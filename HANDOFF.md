@@ -35,10 +35,51 @@ reverb broke something else.
 that was one instance. Two-instance Y traffic is the one axis never measured,
 and it is the difference between the survivor and every failure.
 
-**Next probe:** extend stageprobe with stages that raise Y traffic rather than
-add features — 8, 16, 24, 36 accesses a sample — same time-based readout, run
-on two tracks. If there is no ceiling, bandwidth is out and the difference is a
-feature (diffuser, LFO, modulated reads); add those to stageprobe one at a time.
+## READY TO FLASH: `dsp/stageprobe2.asm` / `OCTATRACK_STAGES2.bin`
+
+Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
+not first: two *structural* things v50 does and stageprobe never does at all are
+cheaper to test, so they go ahead of the ramp.
+
+| stage | adds | Y/sample | instr/sample |
+|---|---|---|---|
+| 0 | stageprobe's stage 4, verbatim | 8 | 79 |
+| 1 | **AUDIO** — read/write x:(r0), walk r0 per frame | 8 | 95 |
+| 2 | **PARAMS** — the eight x:(r6+n) reads v50 does | 8 | 95 |
+| 3 | Y to 16 | 16 | 109 |
+| 4 | Y to 24 | 24 | 121 |
+| 5 | Y to 36 (twice v50's) | 36 | 137 |
+| 6 | 80 instructions a sample of pure arithmetic | 36 | 223 |
+
+Stage 1 is the one the old handoff never listed: **r0 was eliminated for the Y
+buffer, never for the audio buffer.** Both instances are handed r0 = x:0x20e,
+which is 0 in steady state — the same pointer.
+
+Stage 6 closes the cycles axis *for two instances*; cycleburn only ever measured
+one. 223 a sample is 446 across the pair, still under the ~806 it measured.
+
+**Two readouts, so the stage is not timed blind.** From stage 1 the track goes
+MONO, and from stage 1 it drops **6 dB per stage** (stage 2 half, stage 3 a
+quarter … stage 6 −30 dB). Count the drops: the level you last heard is the
+stage it died in. This matters because the counter advances once per *proc
+call* — if the dispatcher makes both the control and the audio call, escalation
+is ~1.5 s a stage, not 3 s. Trust the drops, not the clock.
+
+Unlike stageprobe, the counter is initialised once against a sentinel in
+r7+$82, so the escalation starts from a known point instead of from whatever
+garbage the slot held. init cannot do it — the dispatcher re-invokes init most
+blocks and the counter would never leave stage 0.
+
+**Run it on one track first** and let it pass 21 s, to prove the escalation is
+harmless. Then enable both tracks in QUICK SUCCESSION — each instance counts its
+own blocks, so the two escalations run offset by however long you take.
+
+A freeze inside the first three seconds means the *baseline* broke, not that a
+null effect is fatal — stageprobe already proved a null effect is not.
+
+Emulator, `-inst 2 -guard`, all seven stages: guard clean, and the only stray
+writes are the two intended base stashes at Y:0x862 / Y:0x864 — byte-identical
+to what the known-good stageprobe produces.
 
 ## Eliminated, with the evidence
 
@@ -90,6 +131,26 @@ feature (diffuser, LFO, modulated reads); add those to stageprobe one at a time.
 * It does **not** reproduce the freeze, at either instance count, steady state or
   transition. Time is the thing it cannot model.
 
+Three things about it that cost half a session to rediscover:
+
+* **`-dispatch N` never completes** once the context is real. It hangs at any
+  block count, and it hangs identically for `stageprobe`, which is the build that
+  survives on hardware — so a hang there says nothing about the effect. Use
+  `-inst N`, which is what the guard section of `DSP.md` documents anyway.
+* **`instructions/sample` and `-trace` cannot see inside a `do` loop.** The
+  emulator's `do_exec` runs the whole loop within a single `execInterpreter`
+  step, so the harness counts a 15-frame sample loop as one instruction and the
+  trace jumps straight from the `do` to the epilogue. A reported "6.8
+  instructions/sample" is an artifact, **not** an effect that is idling — do not
+  read it as one. The guard is unaffected: it still sees every in-loop write.
+* **`-proc` is per source file.** `build_reverb.py` prints the address; a stale
+  one silently runs whatever bytes are at the old offset and reports a plausible
+  number. Copy it from the build output every time.
+
+Feeding it: `python3 tools/dsp_modmap.py --dumpmem A <out.mem>` reads the
+hardcoded stock image, so for a patched build call `dsp_modmap.dumpmem()`
+directly against `out/mainos_reverb.bin`.
+
 ## Standing rules for the engine, learned by freezing the machine
 
 * two instructions between writing r5 and using it — and they must be **data
@@ -112,6 +173,7 @@ feature (diffuser, LFO, modulated reads); add those to stageprobe one at a time.
 | `dsp/reverb46.asm` | computed tank, modulo pre-delay. **Works on track 1**, freezes on 2. The reference good build. |
 | `dsp/reverb50.asm` | v46 with the pre-delay removed. No modulo anywhere. Freezes on 2 — the result that killed the modulo theory. |
 | `dsp/stageprobe.asm` | the two-track survivor. Start here. |
+| `dsp/stageprobe2.asm` | built up from it: audio, params, a Y ramp to 36, then cycles. **The one to flash next.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
