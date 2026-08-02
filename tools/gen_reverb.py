@@ -26,6 +26,7 @@ The hardware constraints this encodes, all established by probe:
     Addresses are computed arithmetically and masked instead, with two
     instructions between writing r5 and using it.
 """
+import os
 import sys
 
 # ---- memory ---------------------------------------------------------------
@@ -99,6 +100,24 @@ STASH     = 0x800
 #   "fixed"     ALLOC_FIXED, for bisecting only -- it pins every instance to the
 #               same region, so two tracks collide by construction.
 BASE_MODE = "stash"
+
+# Which stages of the engine to emit. dsp/minimal.asm -- a bare rts init and a
+# five-instruction copy loop -- runs happily on two tracks, so the hang is in
+# something the algorithm does, and this is how we find out what. Drop a stage
+# and the data flow closes over the gap: without "pre" the mono input goes
+# straight to the diffuser, without "diff" it goes straight to the tank, without
+# "mod" every line uses its fixed N-register tap and the LFO is not emitted.
+#
+#   "tank"  the four delay lines, the Hadamard, the damping and the output
+#   "pre"   the pre-delay, which is the only other user of r5/m5 modulo
+#   "diff"  the four series allpasses, which use computed addressing
+#   "mod"   the LFO and the interpolated modulated reads on MOD_LINES
+#
+# "tank" is not optional -- without it there is no effect, and dsp/minimal.asm
+# already covers that case.
+# Override without editing, so a bisect build is reproducible from its command:
+#     RV_STAGES=tank python3 tools/gen_reverb.py v37 > dsp/reverb37.asm
+STAGES = set((os.environ.get("RV_STAGES") or "tank,pre,diff,mod").split(","))
 
 # Only used when BASE_MODE == "fixed". 0x4000 is a real FX2 slot, so it is safe
 # to run on one track.
@@ -325,9 +344,9 @@ def modread(i, mi, mf):
 
 def tap(i):
     """One tank tap, damped inside the feedback path, result to r7+$56+i."""
-    if i == MOD_LINES[0]:
+    if "mod" in STAGES and i == MOD_LINES[0]:
         head = modread(i, 0x61, 0x62)
-    elif i == MOD_LINES[1]:
+    elif "mod" in STAGES and i == MOD_LINES[1]:
         head = modread(i, 0x63, 0x64)
     else:
         head = f"        move    y:(r{i+1}+n{i+1}),a         ; line {i}, fixed tap {LINE_TAPS[i]}\n"
@@ -516,7 +535,7 @@ proc:
         mpy     x0,x1,a
         asr     #$b,a,a                 ; back to an integer tap
 """
-        if i in MOD_LINES:
+        if "mod" in STAGES and i in MOD_LINES:
             slot = 0x6a if i == MOD_LINES[0] else 0x6b
             body += f"""        move    #>${LINE_LEN:x},b
         sub     a,b                     ; {LINE_LEN} - tap, for the modulated read
@@ -526,7 +545,8 @@ proc:
             body += f"""        neg     a
         move    a,n{i+1}                    ; -tap, line {i} reads y:(r{i+1}+n{i+1})
 """
-    body += f"""        move    #>${PRE_MASK:x},m5           ; pre-delay modulo. Harmless to the
+    m5_init = PRE_MASK if "pre" in STAGES else 0xffffff
+    body += f"""        move    #>${m5_init:x},m5           ; pre-delay modulo. Harmless to the
                                         ; diffuser: it only ever does plain
                                         ; y:(r5), never a post-increment, and
                                         ; modulo affects updates, not reads.
@@ -578,7 +598,9 @@ proc:
         add     x0,a
         move    a,x:(r7+$6f)
 
-; ---- PRE: pre-delay in samples, 0 .. 2032 (46 ms) -----------------------
+"""
+    if "pre" in STAGES:
+        body += f"""; ---- PRE: pre-delay in samples, 0 .. 2032 (46 ms) -----------------------
 ; v * 16. The scale MUST keep this below PRE_LEN ({PRE_LEN}): the read is
 ; y:(r5+n5) under m5 modulo, and a modulo offset larger than the buffer is
 ; undefined on the DSP56300. It does not wrap -- the read returns nothing, the
@@ -602,7 +624,8 @@ proc:
     # 0.0024 samples of delay per block, so stepping it 8 frames at a time is
     # inaudible -- and it buys back ~35 instructions a sample, which is the
     # difference between fitting in the frame budget and hanging the DSP.
-    body += lfo()
+    if "mod" in STAGES:
+        body += lfo()
     body += f"""
         do      n7,>rvend
 
@@ -618,7 +641,9 @@ proc:
         and     x0,a                    ; line base is aligned, so r1 masked is it
         move    a,{PHASE}
 
-; ---- pre-delay ----------------------------------------------------------
+"""
+    if "pre" in STAGES:
+        body += """; ---- pre-delay ----------------------------------------------------------
 ; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
 ; lines, which are proven safe. The earlier version computed the addresses
 ; arithmetically like the diffuser does, which cost 28 instructions a sample;
@@ -632,8 +657,10 @@ proc:
         move    r5,x:(r7+$70)
         move    b,x:(r7+$5b)            ; delayed input -> the diffuser
 """
-    for i in range(4):
-        body += allpass(i)
+    body += ""
+    if "diff" in STAGES:
+        for i in range(4):
+            body += allpass(i)
     body += f"""
         move    x:(r7+$5b),a
         move    a,x:(r7+$55)            ; diffused input -> tank
