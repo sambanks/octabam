@@ -27,7 +27,63 @@ The rule for the standing-rules list: **`and` masks A1 only. Any
 persistent word that can hold garbage and feeds an address register must
 be A2-cleaned after masking, or the limiter will saturate the pointer.**
 
-## READY TO FLASH: `dsp/reverb56.asm` / `out/OCTATRACK_V56.bin` — the warm-up
+## READY TO FLASH: `dsp/reverb57.asm` / `out/OCTATRACK_V57.bin` — run the body on BOTH calls
+
+**v56's hardware result rewrote the "control call" one final time.** v56
+played clean after its warm-up — until the first trig, at which point the
+static started, immediately and permanently (2 bars then trig → static at
+bar 3; 4 bars then trig → static at bar 5). No freeze on two tracks;
+knobs fine. Decoded against stageprobe4's discovery and confirmed in the
+dispatcher listing (P:0x4b8..0x4d7):
+
+* the a=0 call is **not a control call. It is the FIRST SUB-BLOCK**:
+  frames [0,split) of the same 16-frame buffer at r0=0 with **n7=split**,
+  made ONLY when the track's split is nonzero. The a=1 call always
+  follows with n7=16-split, r0=split*2. At split=0 (a track that has
+  never trig'd) the first call is skipped — which is why "rts on a=0"
+  ever seemed to work.
+* every trig sets the split to its landing offset inside the block and it
+  **persists until the next trig**. So from the first trig onward, v56's
+  a=0 rts drops frames [0,split) from the tank's input and leaves the wet
+  absent from those frames — a gap train at 2.76 kHz block rate cut into
+  a continuous tail. That is the "static after a trig".
+
+v57 = v56 + run the body on both calls (stock DARK does the same; its
+a=0 `beq $172e` skips only the warm-up bump). Everything already
+re-derives from $83 per call and saves phase/damping state per call, so
+the sub-blocks are sample-continuous by construction. The only
+once-per-block state, the LFO advance, now gates on the a flag (the flag
+is stashed at entry in $14; both calls USE the advanced value so the
+sub-blocks agree). The warm-up counter deliberately counts calls — under
+a nonzero split it just warms in 128 blocks instead of 256.
+
+928 words, 46 clear. Emulator (with the harness's new faithful `-split`
+model for `-inst` mode): **output is bit-identical at split 0, 5 and 11**,
+both instances, guard clean — the engine is split-invariant. With garbage
+$82/$83 poison + dirty lines + split 5: no hang, warm-up completes, clean
+tail. v56 under the same split model drops first-sub-block input
+entirely — the static, reproduced. v57 also survived 200 blocks × 2
+instances of a full-length bogus a=0 call (r0=0, n7=15) without hang or
+guard violation, courtesy of a stale-binary accident that doubled as a
+robustness test.
+
+Run protocol: flash, one track, play, **hit trigs** — on- and off-grid,
+different BPMs (the split cycles per v4's block-phase theory). The static
+should not return after any trig. Then two tracks, trigs on both. Then
+the warm-up check still applies (dry ~1.5 s after first enable, less
+after a trig has set a split).
+
+* **static gone after trigs** → items 1 and 3 are closed together; next
+  is the pre-delay (below).
+* **static persists** → it is not the split gap; measure, don't guess —
+  the next candidate would need a new observable.
+
+## v56 (flashed): warm-up VERIFIED, then the trig static named the real bug
+
+v56's warm-up worked as designed — clean wash at first enable, no
+laddering static, no freeze on two tracks, knobs fine. The remaining
+static proved to be trig-keyed (see v57 above): the a=0 sub-block call
+was being rts'd. The warm-up machinery carries into v57 unchanged.
 
 Audio-quality item 1, built and emulator-validated. v56 = v55 + the
 warm-up that kills the "laddering static": the lines hold boot garbage
@@ -620,13 +676,17 @@ to what the known-good stageprobe produces.
   advances 1 twice (0x4d8, 0x526). Reproduces the measured r7 and bases exactly.
 * `x:0x415 + t*0x20` is a track's PENDING config, `x:0x416 + t*0x20` its CURRENT.
   FX1 id at `+$1b`, FX2 id at `+$1c`, as value<<8.
-* `+$1e` bits 8..11 are an effect-change SPLIT POINT, not a block size.
+* `+$1e` bits 8..11 are the per-track SPLIT POINT, not a block size.
   x:0x20c = split, x:0x20d = 16 - split, x:0x20e = split*2.
-* **Both proc calls are audio.** A block is 16 frames and it is split: the
-  CURRENT effect gets [0, split) at r0=0 with a=0, the PENDING effect gets
-  [split, 16) at r0=split*2 with a=1. A crossfade across an effect change. In
-  steady state split is 0, the outgoing call is skipped, and the effect gets the
-  whole block at r0=0.
+* **Both proc calls are audio** (P:0x4b8..0x4d7, re-read for v57): when
+  split ≠ 0 the dispatcher first calls with a=0, r0=0, **n7=split** —
+  frames [0,split) — then always calls with a=1, r0=split*2,
+  n7=16-split. At split=0 the first call is SKIPPED and the a=1 call gets
+  the whole block. The split is set by an effect change (crossfade) AND
+  by **every trig** (its landing offset inside the block, persisting
+  until the next trig) — so after the first trig, an effect that rts's
+  the a=0 call permanently drops [0,split) from its input and output.
+  The n7 handed to each call is the sub-block length; honour it.
 * FX2 is handed `r6 = x:0x208 + 12`; FX1 gets +6.
 * init is re-invoked whenever a slot's effect id differs from the previous
   slot's, which is most blocks — this is why "init runs more often than once".
@@ -647,7 +707,23 @@ to what the known-good stageprobe produces.
 * It does **not** reproduce the freeze, at either instance count, steady state or
   transition. Time is the thing it cannot model.
 
-Three things about it that cost half a session to rediscover:
+* `-split N` (now also in `-inst` mode) — models the post-trig steady
+  state faithfully: a=0 call with r0=buffer, n7=N, then a=1 with
+  r0=buffer+2N, n7=frames−N. The definitive split test is
+  bit-identical output across `-split 0/5/11`. Without `-split`, the
+  legacy shape (a=0 at r0=0, n7=frames) is kept — it matches what an
+  a=0-rts effect sees, but for a both-calls effect it double-runs the
+  engine; use `-noctl` or `-split` for those.
+* `DSP_DBG=N` env var — prints instance 0's $82/$83/$3e for the first N
+  blocks; the cheap way to watch phase/warm-up/LFO advance per block.
+
+Four things about it that cost sessions to rediscover:
+
+* **the harness SOURCE is `tools/dsp_host/dsp_host.cpp`, but the build
+  compiles `vendor/dsp56300/source/dsp_host/dsp_host.cpp`.** Copy
+  tools→vendor before `make dsp_host` or you will run the old binary
+  while reading the new source. (Cost half a session: a "-split" run
+  that silently ignored the flag.)
 
 * **`-dispatch N` never completes** once the context is real. It hangs at any
   block count, and it hangs identically for `stageprobe`, which is the build that
@@ -714,7 +790,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + tagged phase save. FROZE — the $83 value is not the mechanism. |
 | `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call. FROZE — and forced the re-read that found the real cause. |
 | `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
-| `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up: 256 dry blocks zero the whole allocation. Emulator-validated, awaiting hardware. |
+| `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up. **Hardware: warm-up works, clean until a trig** — the trig static exposed the a=0 sub-block bug. |
+| `dsp/reverb57.asm` (as `OCTATRACK_V57.bin`) | v56 + body on BOTH calls (a=0 is the first sub-block) + LFO gated per-block. Split-invariant bit-exactly in the emulator; awaiting hardware. |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);

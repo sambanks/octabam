@@ -586,27 +586,35 @@ int main(int argc, char** argv) {
                 for (TWord ad = DIFF_LO; ad < DIFF_HI; ++ad) snap[ad - DIFF_LO] = mem.get(MemArea_X, ad);
             }
 
-            // The dispatcher calls proc TWICE a block (P:0x4a7 / P:0x4db):
-            // first a control call with a = 0 and r0 = 0, then the audio call
-            // with a = 1 and r0 = the real buffer. An effect that ignores the A
-            // flag runs its whole engine against r0 = 0 as well. Modelling only
-            // the audio call -- and passing r0 = 0 for it -- is why this harness
-            // could not see that.
+            // The dispatcher's two calls per block (P:0x4b8..0x4d7, read from
+            // the listing): when the track's SPLIT is nonzero it first calls
+            // with a = 0, r0 = 0, n7 = split -- the FIRST SUB-BLOCK, frames
+            // [0,split) of the same buffer -- then always calls with a = 1,
+            // r0 = split*2, n7 = 16-split for [split,16). At split = 0 the
+            // first call is skipped and the a=1 call gets the whole block.
+            // Every trig sets the split to its landing offset inside the
+            // block and it persists until the next trig.
+            //
+            // -split N models that post-trig steady state faithfully: the
+            // block's frames are tiled across the two calls. Without -split,
+            // the legacy shape is kept (a = 0 call at r0 = 0 with n7 = cnt),
+            // which matches what an a=0-rts effect experiences at split = 0.
             char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
+            const int sp = (a.split > 0 && a.split < a.frames) ? a.split : 0;
             if (!a.noctl) {
-                dsp.regs().r[0].var = 0;
+                dsp.regs().r[0].var = sp ? I.audio : 0;
                 dsp.regs().a.var = 0;
-                dsp.regs().n[7].var = cnt;
+                dsp.regs().n[7].var = sp ? sp : cnt;
                 char cw[40]; std::snprintf(cw, sizeof cw, "inst %d ctl", k);
                 if (!runToRts(dsp, a.proc, 0, cw)) {
-                    std::printf("\nHANG in the CONTROL call: instance %d, block %d\n", k, b);
+                    std::printf("\nHANG in the a=0 call: instance %d, block %d\n", k, b);
                     return 1;
                 }
-                dsp.regs().r[0].var = I.audio;
                 dsp.regs().r[6].var = pblock;
                 dsp.regs().r[7].var = I.state;
-                dsp.regs().n[7].var = cnt;
             }
+            dsp.regs().r[0].var = I.audio + 2 * sp;
+            dsp.regs().n[7].var = cnt - sp;
             // The dispatcher raises the flag with `move #$1,a`, and a short
             // immediate to an accumulator is LEFT-ALIGNED: a1 = $010000, not
             // a0 = 1. The distinction is invisible to `tst a` (both are
@@ -650,6 +658,12 @@ int main(int argc, char** argv) {
                 if (inRun) std::printf("   X:0x%05x..0x%05x\n", runLo, DIFF_HI - 1);
                 std::printf("   %d changed regions total\n", n);
             }
+
+            if (getenv("DSP_DBG") && k == 0 && b < atoi(getenv("DSP_DBG")))
+                std::printf("  dbg blk %3d: $82=%06x $83=%06x $3e=%06x\n", b,
+                            mem.get(MemArea_X, I.state + 0x82),
+                            mem.get(MemArea_X, I.state + 0x83),
+                            mem.get(MemArea_X, I.state + 0x3e));
 
             for (int f = 0; f < a.frames; ++f) {
                 for (int c = 0; c < 2; ++c) {
