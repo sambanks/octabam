@@ -59,7 +59,7 @@ writes at the carried phase, then everything combined with v5's shapes.
 component of the reverb — rates, shapes, register idioms — is now cleared.
 The one untested thing left is v50 ITSELF: its exact instruction stream.
 
-## READY TO FLASH: `dsp/stageprobe7.asm` / `OCTATRACK_STAGES7.bin`
+## stageprobe7 (flashed: two tracks, NO FREEZE, engine verified live)
 
 v50's ENTIRE ENGINE, verbatim, on a minimal ladder scaffold. Verified graft:
 550 instructions diffed against reverb50.asm — the only deviations are the
@@ -87,6 +87,33 @@ Emulator, `-inst 2 -guard 16384`, both instances through the full engine:
 clean, count exact, output live. (Trap relived while validating: the fast
 variant's debug exports pushed past 974 words, the builder refused, and the
 stale image nearly got "validated" — check the builder's output, always.)
+
+**Hardware result: two tracks, no freeze, and the engine is verifiably
+running** — the knobs (which feed only the engine; the buzz reads no
+parameters) audibly change the output. The wash is masked by the constant
+buzz (a steady tone through a reverb is nearly inaudible as reverb) and by
+MIX: emulator-measured, MIX=0 gives a mathematically bare square (2 distinct
+sample values) while MIX=64 gives ~6,000 distinct values at 3× the peak.
+
+**v50's engine is innocent.** The remaining deltas between surviving v7 and
+freezing v50, exhaustively: (1) v7's ladder held the engine silent through
+the first ~6 s — it SLEPT THROUGH THE ENABLE TRANSITION, and the original
+symptom was always "freezes THE MOMENT it is enabled on a second track";
+(2) the buzz input; (3) the r0 stash/restore; (4) derived vs persisted
+phase; (5) the entry head. Delta (1) explains the symptom's timing exactly.
+
+## READY TO FLASH: `dsp/stageprobe8.asm` / `OCTATRACK_STAGES8.bin`
+
+v7 with ONE INSTRUCTION changed (diff-verified): the engine's stage gate
+threshold is 0, so the engine runs from the very first proc call — straight
+through the enable window. Buzz unchanged.
+
+* **freezes the moment track 2 is enabled** → FOUND IT: the engine is fine,
+  running it during the enable window is fatal. v9 = v50 + a warm-up guard
+  (dry for the first ~64 blocks after init), no buzz, no ladder — the
+  shippable reverb.
+* **still no freeze** → the enable window is innocent and the remaining
+  deltas (buzz, r0 handling, phase, head) get one flash each.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -400,7 +427,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe4.asm` | the proven scaffold: buzz readout, click train, pitch = calls/block. Two-track ladder completed — the axes eliminator. |
 | `dsp/stageprobe5.asm` | the scaffold + the four shapes. EIGHT tracks, ladders complete, no freeze — the shapes eliminator. |
 | `dsp/stageprobe6.asm` | the scaffold + the register idioms. No freeze — the idioms eliminator. |
-| `dsp/stageprobe7.asm` | v50's entire engine, verbatim (550-instruction diff-verified), on the ladder. **The one to flash.** |
+| `dsp/stageprobe7.asm` | v50's entire engine, verbatim, on the ladder. Two tracks: NO freeze, engine live. The engine's acquittal. |
+| `dsp/stageprobe8.asm` | v7 with one constant changed: engine from the FIRST call, through the enable window. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
