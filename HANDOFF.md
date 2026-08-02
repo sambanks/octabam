@@ -1686,3 +1686,51 @@ still works.
 * **they hang** → external Y needs something we have not done — wait
   states, or the P:0x30000 overlay above. Power-cycle; the probe already
   proved the memory responds, so this would be about HOW we use it.
+
+## The machine, correctly stated (3 Aug)
+
+**8 tracks, each with one FX1 slot and one FX2 slot.** FX1 is 3072 words
+(~70 ms): chorus, phaser, comb, EQ — never a reverb or delay. FX2 is
+16,384 words and holds them. That is why all three stock reverbs and the
+delay are FX2-only, and why ours must be too.
+
+The work is split across **two DSP chips, four tracks each, both live at
+once**. The old DSP.md claim that only one payload can be live is
+corrected: they share `Y:0x4000` because they are different chips with
+their own on-chip RAM.
+
+Eight tracks need eight FX2 slots and the memory closes exactly:
+
+| | slots | where |
+|---|---|---|
+| DSP A, 4 tracks | 0x4000, 0x8000 | internal, on-chip |
+| | 0x30000, 0x34000 | external, shared SRAM |
+| DSP B, 4 tracks | 0x4000, 0x8000 | internal, its own |
+| | 0x38000, 0x3c000 | external, shared SRAM |
+
+**Internal supplies only four of the eight, so external memory is not
+optional — it is required for 8 tracks to have reverb at all.** An
+independent confirmation that it is real, that stock uses it, and that
+our guard was giving away half the machine.
+
+### Which reframes the v67 track-4 freeze
+
+Track 4 is not "the last of four". It is the **second instance on the
+shared external bus for that chip** — the first configuration where two
+instances contend for external SRAM while the other chip may also be
+using it. Track 3 alone on external memory worked, and stock runs all 8,
+so external memory is fine for a reverb-sized effect. **The freeze is
+ours.**
+
+Suspects, in order:
+* bandwidth — external accesses carry wait states and this engine does
+  ~36 Y accesses a sample; two contending instances plus the other chip
+  may miss the block deadline;
+* `P:0x30000` holds 171 words of host-port bootstrap in that same
+  physical memory (also the likeliest cause of the TIME=47 buzz);
+* something specific to `0x34000`.
+
+**The cheap discriminator, not yet run: does track 4 freeze ALONE, with
+track 3 disabled?** Runs alone → contention/bandwidth, and the fix is
+fewer or cheaper external accesses. Freezes alone → specific to
+`0x34000`, and the bootstrap overlay goes to the top. One test, no flash.

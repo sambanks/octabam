@@ -964,10 +964,32 @@ entry `1 + 2k` and state block `0x6000 + (2 + 2k) * 0x100`:
 | track 4 FX2 | 7 | 0x34000 | **0x3c000** | 0x6800 |
 
 That model reproduces both hardware measurements: `dsp/r7probe.asm` returned
-0x6200, and `dsp/baseprobe.asm` returned 0x4000 and 0x8000 on two tracks. Note
-the low two FX2 slots are the **same Y addresses in both payloads**, so only one
-payload can be live at a time — which is also why r7 values cannot collide across
-payloads.
+0x6200, and `dsp/baseprobe.asm` returned 0x4000 and 0x8000 on two tracks.
+
+> **CORRECTED (3 Aug).** This used to say the low two FX2 slots being the same Y
+> addresses in both payloads meant "only one payload can be live at a time".
+> That is backwards. **Both payloads are live at once** — two separate DSP chips,
+> four tracks each, each with its own on-chip RAM, so `Y:0x4000` on chip A and
+> `Y:0x4000` on chip B are different physical memory.
+>
+> **The machine: 8 tracks, each with one FX1 slot and one FX2 slot.** FX1 is
+> 3072 words (~70 ms) — fine for chorus, phaser, comb, EQ, and far too small for
+> a reverb or a delay, which is why every stock reverb and the delay are FX2-only.
+> FX2 is 16,384 words and can hold them.
+>
+> Eight tracks therefore need eight FX2 slots, and the memory closes exactly:
+>
+> | | slots | where |
+> |---|---|---|
+> | DSP A, 4 tracks | `0x4000` `0x8000` | internal, on-chip |
+> | | `0x30000` `0x34000` | external, shared SRAM |
+> | DSP B, 4 tracks | `0x4000` `0x8000` | internal, its own on-chip |
+> | | `0x38000` `0x3c000` | external, shared SRAM |
+>
+> Internal memory supplies only four of the eight, so **the external region is
+> not optional — it is required for 8 tracks to have reverb at all.** That is an
+> independent confirmation that it is real and that stock uses it, and it is the
+> reason the payloads partition it: a shared resource is what gets divided.
 
 Deriving the base as `x:(0x255 + ((r7 - 0x6000) >> 8))` looks sound and is wrong:
 r7 = 0x6200 pairs with table[**1**], not table[2]. table[2] is 0x1c00, a
