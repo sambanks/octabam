@@ -1504,3 +1504,68 @@ own delay period. Two obvious follow-ups if it is still metallic:
    with more SHVF". Naive scaling overflows the 1024-word allpass
    buffers; needs a downward-only scale or a bigger allocation (2039
    words of Y are still free).
+
+## WHY IT RINGS: modal density. The measurement that explains everything.
+
+Installed numpy in a scratch venv and measured **spectral flatness** of
+the tail (geometric/arithmetic mean of the power spectrum: 1.0 = noise,
+->0 = tonal). This is the right metric for "metallic"; autocorrelation
+was not.
+
+| build | flatness | top-1% bins | early crest |
+|---|---|---|---|
+| v64 (2 lines modulated, diffusion 0.5) | 0.0006 | 32.5% | 14.14 |
+| **v65 (4 lines modulated, diffusion 0.703)** | **0.0030** | 34.6% | 10.12 |
+| v65 + SHORT allpass taps (211/157/563/409) | 0.0005 | 35.0% | 9.60 |
+
+**v65 is a genuine 5x improvement** over v64, and shortening the allpass
+taps to Dattorro's ratios makes it 6x WORSE — that idea is dead, our long
+diffusers are right.
+
+### The physics, and it is not a bug
+
+An FDN sounds smooth when its modes OVERLAP:
+
+    mode spacing   = sample_rate / total_delay_samples
+    mode bandwidth = 2.2 / RT60
+    smooth needs   bandwidth >= spacing
+
+| SIZE | tank delay | spacing | RT60 4 s bandwidth | overlap |
+|---|---|---|---|---|
+| 64 | 2544 (58 ms) | 17.3 Hz | 0.55 Hz | **0.03** |
+| 96 | 3534 (80 ms) | 12.5 Hz | 0.55 Hz | **0.04** |
+| 127 | 4493 (102 ms) | 9.8 Hz | 0.55 Hz | **0.06** |
+
+**We are 20-30x short of modal overlap.** For a 4 s decay you would need
+~1.8 SECONDS of delay memory; an FX2 instance gets 16K words = 0.37 s
+total, of which the tank has 8K. This is the quantitative answer to "have
+we drifted from Blackhole": we have not drifted, we are memory-bound.
+
+Both predictions of the model were confirmed:
+* flatness rises monotonically with SIZE — 0.0014 / 0.0020 / 0.0035 /
+  0.0066 at SIZE 32/64/96/127, and top-1% energy falls 50% -> 25%.
+* flatness rises with SHORTER decay (0.0079 at TIME=32 vs 0.0055 at 96).
+
+**Practical consequence for playing it: run SIZE HIGH.** It is not just a
+bigger space, it is a smoother one — 4.7x less tonal at 127 than at 32.
+
+Modulation is the only structural fix at this memory budget, and it
+works: flatness 0.0004 at MOD=0 rising to 0.0035 at MOD=127, ~9x. But it
+saturates (0.0025 / 0.0030 / 0.0035 at MOD 32/64/127).
+
+## v66: longer tank taps — NEGATIVE RESULT, do not ship
+
+`dsp/reverb66.asm` = v65 with the nominal taps raised 1567/1249/977/733 ->
+2039/1627/1277/953 (all prime), because SIZE only shrinks a tap so the old
+nominals used just 55% of the 8192 allocated line words; the new ones use
+72%, as far as is safe given the LFO subtracts up to 126 samples.
+
+Predicted: 30% more delay, mode spacing 9.7 -> 7.5 Hz, so flatter.
+**Measured: no improvement.** Flatness 0.0064 vs v65's 0.0066, and top-1%
+energy WORSE at 35.8% vs 25.1%, early crest worse at 12.16 vs 11.75.
+
+The model says more delay helps and the SIZE sweep agrees strongly, yet
+lengthening the nominals reproduces none of it. Unexplained. A 23% change
+in spacing may simply be inside this metric's noise, or the new taps
+interact worse under SIZE scaling. **Not shipped, kept as the record.**
+Build it only if something else makes the mechanism clearer.
