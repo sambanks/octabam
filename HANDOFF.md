@@ -1991,7 +1991,20 @@ stray write regions, the other broke bit-identity only when PRE was off
 centre, which is what pointed at it. Worth remembering: **when a register
 holding a constant gets repurposed, grep every read of it.**
 
-### HARDWARE: v71 CONFIRMED (3 Aug)
+### HARDWARE: v71 CONFIRMED — **EIGHT SIMULTANEOUS REVERBS** (3 Aug)
+
+**All 8 tracks run the reverb at once.** The full machine, one per track.
+For scale: this project began with a reverb that froze the instrument the
+moment a SECOND track was enabled.
+
+What it took, in order: the A2/limiter freeze (v55), the boot-garbage
+warm-up (v56), the a=0 sub-block trig static (v57), the pre-delay and its
+parameter slot (v58/v59), taking SPRING's module for code space (v60),
+LO and the knob remap (v61), modulo on the tank (v62), the mpy retraction
+(v64), four-line modulation (v65), the external Y region (v67), and the
+31% density pass (v68-v71). The last two are what made 8 possible: v67
+unlocked the four external FX2 slots we had been refusing, and the
+optimization pass fit four instances per DSP inside the cycle budget.
 
 Flashed and working. The full 31% optimization holds on the instrument,
 including the parts the emulator provably cannot check — the AGU
