@@ -30,16 +30,18 @@ reverb broke something else.
 > $83 IS stable, which restores confidence, but the attribution was still
 > never observed directly; v4's audible ladder supersedes this probe.)
 
-## Best remaining lead: Y traffic with TWO instances
+## THE AXES ARE ELIMINATED (stageprobe4, two tracks, 2 Aug)
 
-|  | Y/sample | across two tracks | two tracks |
-|---|---|---|---|
-| stageprobe | 8 | 16 | survives |
-| v50 | 18 | 36 | freezes |
+Both instances climbed the ladder **audibly, stage by stage,** and nothing
+froze — the first two-track result with proof the load actually escalated.
+Eliminated for two simultaneous instances, in one verified run: **audio
+buffer access, parameter reads, Y traffic at 36/sample each (72 across the
+pair, double v50's need), and ~450 instructions/sample across the pair.**
 
-`dsp/yburn.asm` sustained 66 Y accesses a sample with **no break at all**, but
-that was one instance. Two-instance Y traffic is the one axis never measured,
-and it is the difference between the survivor and every failure.
+The freeze is not a rate. It is a SHAPE — one of the four things v50 does
+that raw traffic does not: the scattered tap reads, the tank's write-behind
+pattern, the allpass read-modify-write, or the LFO-modulated interpolated
+reads. `dsp/stageprobe5.asm` stages exactly those.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -91,7 +93,7 @@ Suspects for the scrambler, none yet discriminated: host writes into its own
 r7 bookkeeping between calls; init re-invocation ("most blocks"); sequencer
 events — pattern loop, trigs, scene/crossfader. v4 measures which.
 
-## READY TO FLASH: `dsp/stageprobe4.asm` / `OCTATRACK_STAGES4.bin`
+## stageprobe4 (flashed, done — the scaffold is proven)
 
 Same ladder, but the probe now DISCRIMINATES instead of assuming:
 
@@ -156,13 +158,50 @@ Second session of answers:
   offset is what the host writes into split, and each split value has its
   own audible waveform. **Prediction: the cycle length changes with BPM.**
   If six survives every tempo, the theory is dead.
-* "solid tone indefinitely, no ladder heard" — probably the ladder ran at
-  boot (project loads with the effect enabled) and only the floor was ever
-  heard. Clean test pending: sequencer stopped, power cycle, listen from
-  boot: one click → ~3 s silence → fade in → five level drops → floor. A
-  tone at one level from the first second = stage machinery broken, top
-  priority.
-* still pending: the TWO-TRACK run, the entire point of the ladder.
+Third session — every pending question answered:
+
+* **the intro ladder is real**: power cycle, listen from boot → the ladder
+  runs, audibly. The stage machinery is verified on hardware.
+* **the block-phase split theory is verified**: the pitch-cycle length
+  changes with BPM — 80 → 2 tones, 100 → 1, 114 → 4, 120 → 1. The split is
+  the trig's landing offset inside the 16-frame block, set by the tempo
+  grid beating against the block grid, persisting until the next trig.
+* **TWO TRACKS COMPLETED THE LADDER AND DID NOT FREEZE.** Both instances
+  stepped down audibly and settled into the trig-pitch behaviour. See "THE
+  AXES ARE ELIMINATED" above — this is the result the whole ladder was
+  built for.
+
+## READY TO FLASH: `dsp/stageprobe5.asm` / `OCTATRACK_STAGES5.bin`
+
+The v4 scaffold (proven two-track survivable, including its readout) with
+the Y ramp and instruction burn dropped — those axes are closed — and the
+reverb's four remaining SHAPES staged in their place:
+
+| stage | adds | if it dies here, the buzz was at |
+|---|---|---|
+| 1 | audio buzz + params (proven) | −12 dB |
+| 2 | 4 reads at v50's tap offsets (481/799/1071/1315 behind the head) | −18 dB |
+| 3 | + 4 writes at the write phase — the full tank pattern | −24 dB |
+| 4 | + 2 allpass read-modify-writes, mpy chain between | −30 dB |
+| 5 | + 2 interpolated double-reads, fixed offset | −36 dB |
+| 6 | + LFO on line 1's offset — full modulated addressing | −42 dB |
+| 7+ | everything, forever | floor |
+
+~270 instructions/sample per instance at full load, ~540 across the pair —
+near what v4 proved. The tank phase is derived from the count (p0 =
+count<<4 masked), since $83 holds the counter; the LFO phase persists in
+the state block at base+0x3800, which the scaffold already loads and saves.
+
+**Run: both tracks, let both ladders complete, leave it running a minute.**
+If it freezes, the last buzz level names the feature (table above). If it
+runs forever, no single shape is the killer and the next bisect is
+COMBINATIONS — most likely candidate then: the full engine's register
+pressure or the wet path's second mpy chain.
+
+Emulator, `-inst 2 -guard 16384` (the default 0x3800-word window is one
+word short of the state block — v4 never tripped it only because it wrote
+the state word back unchanged): clean, count exact, LFO offset wandering
+791..799 as designed.
 
 Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
 not first: two *structural* things v50 does and stageprobe never does at all are
@@ -313,7 +352,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe.asm` | the two-track survivor. Start here. |
 | `dsp/stageprobe2.asm` | first build-up attempt. Hardware: no freeze but cycling noise — INVALID, wrote four unproven r7 slots. Kept as the record of why. |
 | `dsp/stageprobe3.asm` | v2 on proven slots, counter tagged inside $83. Its "cycling" was misread as $83 scrambling; v4 disproved that. |
-| `dsp/stageprobe4.asm` | the discriminating probe: synthesized buzz readout, tag-fail click train, pitch = calls/block. **The one to flash.** |
+| `dsp/stageprobe4.asm` | the proven scaffold: buzz readout, click train, pitch = calls/block. Two-track ladder completed — the axes eliminator. |
+| `dsp/stageprobe5.asm` | the scaffold + the reverb's four shapes staged: tap reads, tank writes, allpass RMW, LFO'd interpolated reads. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
