@@ -1,12 +1,34 @@
-# Two-track freeze — state of the investigation
+# Two-track freeze — SOLVED (mechanism reproduced in the emulator, 2 Aug)
 
-**Symptom.** The reverb works on one track and sounds right. The moment it is
-enabled on a second track the machine freezes, sequencer stuck on step one,
-regardless of knob positions and regardless of whether the second track is
-playing.
+**The cause.** v46/v50's phase load: `move x:(r7+$83),a` then `and #$7ff`.
+On the FIRST call after enable, $83 holds leftover garbage. `and` cleans
+**A1 only** — garbage with **bit 23 set** sign-extends A2 = $ff, the
+accumulator reads as a huge negative, and every subsequent `move a,rN`
+goes through the **limiter and saturates to $800000**. `move r1,a`
+re-poisons A2 each block, so every "masked" address derivation saturates
+again — and the first delay-line access lands at **Y:0x800000**: off-chip,
+unmapped, the external bus waits forever. Machine frozen, sequencer on
+step one.
 
-**Not solved.** Sixteen builds, zero correct hypotheses. Everything below is
-either measured on hardware or read out of the dispatcher listing.
+Why two tracks: track 1's state page leftover at X:0x6283 happened to be
+bit-23-clear; track 2's at X:0x6583 was not. Deterministic per project —
+which made it look structural for fifty builds. Why the emulator never
+saw it: `-dirty` fills **Y only**; the X state pages stayed zero, so the
+load was always clean.
+
+**Reproduced**: poisoning the second instance's $83 with bit-23-set
+garbage in the harness makes v50 emit exactly the saturated accesses
+(750 hits at Y:0x800000 in 5 blocks). **Fixed**: `dsp/reverb55.asm` =
+v50 + four instructions — the `move a1,x0 / move x0,a` A2-clean (v50's
+own LFO idiom, "extract without saturating on A2") after both masked $83
+loads. Same poison: zero saturated accesses, guard clean.
+
+The rule for the standing-rules list: **`and` masks A1 only. Any
+persistent word that can hold garbage and feeds an address register must
+be A2-cleaned after masking, or the limiter will saturate the pointer.**
+
+Below, the investigation as it unfolded — kept because the probes,
+harness fixes and ABI corrections along the way are permanently useful.
 
 ## The one build that survives two tracks
 
@@ -292,6 +314,27 @@ builds leave M untouched on a=0. v54 = v50 + exactly that, diff-verified
   a=1-side or a combination; next is the v9-side strip: v9 with the
   counter removed and the phase back to v50's $83 load/save (isolating
   the phase-LOAD-position and entry-store deltas).
+
+**Result: FROZE — which forced the a=1-side re-read that found it.** See
+the SOLVED section at the top: the phase load's A2 pollution, the
+limiter, Y:0x800000. The probes all survived because the tag check
+laundered $83 before any address was derived from it.
+
+## v55: the fix
+
+`dsp/reverb55.asm` / `OCTATRACK_V55.bin` — v50 + the four A2-clean
+instructions. Emulator: v50+poison = 750 saturated accesses; v55+poison
+= 0, guard clean, wet live. Flashed for hardware confirmation.
+
+Still open after the freeze closes (the audio-quality track):
+* the delay lines are never cleared at init — the "laddering static" —
+  stock DARK's own answer is its warm-up counter ($83!) and $82 flag:
+  256 blocks of guard after init. Adopt the same shape.
+* restore v46's pre-delay (dropped in v50 for the modulo theory, which
+  was never the problem).
+* stock DARK also runs its body on BOTH calls and redirects r0 through
+  an (r7+$1a) mute check to a dummy at X:0x110 — worth matching if
+  split-boundary artifacts remain audible.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -612,7 +655,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb52.asm` (as `OCTATRACK_V52.bin`) | v50 + a stock-style param latch on the control call. FROZE — not the protection. |
 | `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | v8 minus the audio scaffold. No freeze — narrowed the protection to the $83/counter group. |
 | `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + tagged phase save. FROZE — the $83 value is not the mechanism. |
-| `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call — the last untested single delta. **The one to flash.** |
+| `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call. FROZE — and forced the re-read that found the real cause. |
+| `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX**: v50 + A2-clean after both $83 loads. Poison-verified in the emulator. **Flash to confirm.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
