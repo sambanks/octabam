@@ -1631,3 +1631,58 @@ onto something live (power-cycle, as usual).
 
 Note the emulator CANNOT answer this: its Y is sized generously, so it
 will happily accept 0x30000 whether or not the hardware has it.
+
+## THE EXTERNAL REGION IS REAL — 64K words. v67 ON THE CARD.
+
+`ymemprobe` flashed and swept. **Result: sound at TIME 0–10, silence
+through the gap, SOUND AGAIN AT 47–62, freeze at 63.**
+
+| Y range | what |
+|---|---|
+| `0x04000–0x0BFFF` | 2 FX2 slots — all we had ever used |
+| `0x0C000–0x2FFFF` | absent |
+| **`0x30000–0x3FFFF`** | **64K words, EXTERNAL — 4 more FX2 slots** |
+| `0x40000+` | absent, freezes |
+
+So the machine has **more delay memory outside the region we knew about
+than inside it**, and every one of the 8 tracks has a full 16,384-word
+FX2 slot: internal 48K is per-DSP (both payloads use 0x4000/0x8000 on
+different chips), external 64K is shared and split between the payloads,
+A taking 0x30000/0x34000 and B 0x38000/0x3c000.
+
+**We had been giving up half the machine on an untested assumption.**
+
+Noted for later: TIME=47 — `0x30000` exactly — buzzed continuously while
+48–62 were clean. Possibly the host-port bootstrap at P:0x30000 (171
+words, payload A only) sharing physical memory with Y. Stock lays its own
+first delay line at base+0x0000 too, so it is presumably harmless, but if
+track 3 misbehaves specifically, that is the first suspect.
+
+### v67 = v65 + the widened guard
+
+The slot check now accepts `0x4000..0xBFFF` **and** `0x30000..0x3FFFF`,
+rejecting the absent gap and everything from `0x40000` up. 1067 words,
+970 clear — the first build to spill past SPRING into DARK's front (4
+words), which the builder handles.
+
+Emulator, four instances on the REAL per-track bases (alloc 1,3,5,7 =
+0x4000/0x8000/0x30000/0x34000), wet samples after an impulse per track:
+
+| build | track 1 | track 2 | track 3 | track 4 |
+|---|---|---|---|---|
+| v65 | 89 | 89 | **1** | **1** |
+| **v67** | 89 | 89 | **89** | **89** |
+
+Two-instance behaviour is unchanged (guard clean, poisoned, dirty, split).
+
+Test protocol: **the reverb on tracks 3 and 4** — the ones that have
+always been silent. Then all four at once, which is the real prize and
+has never been possible. Then the usual: two tracks still fine, PLATE
+still works.
+
+* **tracks 3/4 now reverberate** → the machine is fully unlocked, and the
+  memory ceiling that framed every design decision (16K per instance,
+  "we are memory-bound vs Blackhole") needs revisiting from scratch.
+* **they hang** → external Y needs something we have not done — wait
+  states, or the P:0x30000 overlay above. Power-cycle; the probe already
+  proved the memory responds, so this would be about HOW we use it.

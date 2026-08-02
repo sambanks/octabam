@@ -662,6 +662,13 @@ answer rather than an ambiguous one. Sweep `p0` and note where it stops.
 `0xBFFF` and absent at `0xC000` — **48K words**. Loaded modules end at `0x794`,
 so `0x795–0xBFFF` is free: **46K words, roughly 1.04 s of delay at 44.1 kHz.**
 
+> ⚠️ **INCOMPLETE — this probe stopped at `0x20000` and missed a whole region.**
+> The `<<12` re-sweep (3 Aug, hardware) found a **second, EXTERNAL region at
+> `0x30000–0x3FFFF`: 64K words**, echoing cleanly, freezing only at `0x40000`.
+> That is where the allocator's other four FX2 slots live, and believing they
+> were absent made our reverb run dry on half the tracks for twenty builds.
+> See "Y memory, measured end to end" below.
+
 That is about 8x what the reverb had been using, and it is what makes a
 Blackhole-class space possible. `tools/gen_reverb.py` now sizes against it:
 
@@ -787,7 +794,32 @@ Three things follow:
    are FX2-only — they do not fit in an FX1 allocation.
 2. **`0x8000 + 0x4000 = 0xC000`**, exactly where §8's probe found Y ends. The
    allocator fills Y to the last word and then jumps to a second region at
-   `0x30000`, which the probe never reached (it stopped at `0x20000`).
+   `0x30000` — **which is REAL, and was finally measured on 3 Aug.** The old
+   probe stopped at `0x20000` and never reached it.
+
+### Y memory, measured end to end (3 Aug, `dsp/ymemprobe.asm` on hardware)
+
+| Y range | what | |
+|---|---|---|
+| `0x00000–0x00794` | system + loaded modules | internal |
+| `0x00795–0x00FFF` | free | internal |
+| `0x01000–0x03FFF` | 4 FX1 slots x 3072 | internal |
+| `0x04000–0x0BFFF` | 2 FX2 slots x 16384 | internal |
+| `0x0C000–0x2FFFF` | **absent** (silence) | — |
+| `0x30000–0x3FFFF` | **64K words, 4 more FX2 slots** | **EXTERNAL** |
+| `0x40000+` | **absent** (freezes) | — |
+
+Swept by TIME as `base = (p0+1) << 12`: sound at 0–10, silence through the
+gap, **sound again at 47–62**, freeze at 63. TIME=47 is `0x30000` exactly and
+buzzed continuously while 48–62 were clean — worth remembering if anything
+odd shows up at the very start of the external region.
+
+The internal 48K is **per-DSP** (both payloads use `0x4000`/`0x8000` and do not
+clash, because they are different chips). The external 64K is **shared**, which
+is why the payloads are given different halves: A takes `0x30000`/`0x34000`,
+B takes `0x38000`/`0x3c000`. Every one of the 8 tracks therefore has a full
+16,384-word FX2 slot, and an effect that refuses the external slots — as ours
+did until v67 — silently gives up half the machine.
 3. Our 40K layout was about 2.5x an instance's entire allocation.
 
 ### What v23 does
