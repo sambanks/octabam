@@ -27,6 +27,31 @@ The rule for the standing-rules list: **`and` masks A1 only. Any
 persistent word that can hold garbage and feeds an address register must
 be A2-cleaned after masking, or the limiter will saturate the pointer.**
 
+## NEXT SESSION — the audio-quality track (stability is done)
+
+`dsp/reverb55.asm` is the current good build: v50 + the A2-clean, runs on
+two tracks, hardware-confirmed. In order:
+
+1. **Kill the "laddering static": clear the delay lines after init.**
+   The lines hold boot garbage and the tank recirculates it. Adopt stock
+   DARK's own warm-up shape (visible at P:0x1718–0x172c in
+   `out/dsp/payload_A.asm`): count blocks in $83 up to 0x100, keep the
+   wet fully dry until warm, and use the warm-up blocks to zero the
+   0x3800-word region progressively (~56 words a block does it in 256).
+2. **Restore v46's pre-delay** (removed for the modulo theory, which was
+   never the problem). Its `y:(r5+n5)` path needs the same A2 discipline
+   as everything else that derives addresses from loaded words.
+3. **Then tuning.** TIME/HI/MIX behave; the wash should finally be
+   audible once the lines start clean. If split-boundary artifacts are
+   audible during play, stock's shape is the reference: run the body on
+   both calls with r0 redirected through the (r7+$1a) mute check.
+
+Rules that must survive into any new build: the A2-clean after every
+masked load that feeds an address register; check the builder's word
+count (974 limit) and the assembler's exit status; emulator `-dirty`
+fills Y only — poison X state words by appending records to the .mem
+(see the v50/v55 poison test) when garbage-sensitivity matters.
+
 Below, the investigation as it unfolded — kept because the probes,
 harness fixes and ABI corrections along the way are permanently useful.
 
