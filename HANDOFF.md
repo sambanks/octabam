@@ -35,7 +35,44 @@ reverb broke something else.
 that was one instance. Two-instance Y traffic is the one axis never measured,
 and it is the difference between the survivor and every failure.
 
-## READY TO FLASH: `dsp/stageprobe2.asm` / `OCTATRACK_STAGES2.bin`
+## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
+
+Flashed and run on one and two tracks. Nothing froze, but one track cycled
+**quiet → loud static → quiet → loud static**, which a working escalation
+cannot produce. The diagnosis, from the symptom alone:
+
+* the cycle is the **counter resetting**. $85/$86/$87 are written and read
+  within the same call and cannot cause a period; the sentinel at **$82** is
+  the one word that had to survive *between* calls, and only $83 was ever
+  proven to. Host rewrites $82 → count restarts → the ladder replays: dry
+  (quiet) → stage 1 at full gain (loud) → 6 dB steps (quiet) → reset. So
+  stages 3–6 likely **never ran**, and "no freeze" cannot be banked.
+* the static is the **r0 advance**: two `(r0)+n0` steps (n0=1) one data move
+  apart, an idiom never before run on hardware. v46/v50 advance one frame as
+  n0=2, single `(r0)+n0`, and v46 sounds right on track 1.
+
+The guard could not have caught either: it shadows **Y and P only** — an X
+write to a host-owned r7 slot is invisible to it. Audit r7 offsets by hand
+against the proven set: $10..$3f (v46, clean audio on track 1) plus $83.
+
+## READY TO FLASH: `dsp/stageprobe3.asm` / `OCTATRACK_STAGES3.bin`
+
+stageprobe2 with every write moved onto proven ground; the experiment is
+unchanged. The counter now lives entirely in $83, tagged in-word (bits 23..17
+signature $2d, bits 16..0 count, **saturating** instead of wrapping), so no
+unproven slot has to persist. Stage/mode/gain moved to $15..$17. Audio advance
+is v50's idiom verbatim. Emulator: guard clean, tag survives, count = calls
+exactly, gain ladder exact (full, then −6 dB per stage, floor −36 dB).
+
+What a CLEAN one-track run sounds like: dry → clean mono at full level → six
+clean steps down → stays at the floor. Deviations are results, not noise:
+
+* static at stage 1 → the r0 idiom is *still* wrong
+* any return to dry or full level → $83 is not safe either, which would be
+  worth knowing on its own
+
+The ladder does not restart on effect toggle ($83 persists); to re-run,
+switch FX2 to another effect and back, which scrambles $83 and fails the tag.
 
 Built up from the survivor, one axis every ~3 s. Y traffic is in it, but it is
 not first: two *structural* things v50 does and stageprobe never does at all are
@@ -65,10 +102,10 @@ stage it died in. This matters because the counter advances once per *proc
 call* — if the dispatcher makes both the control and the audio call, escalation
 is ~1.5 s a stage, not 3 s. Trust the drops, not the clock.
 
-Unlike stageprobe, the counter is initialised once against a sentinel in
-r7+$82, so the escalation starts from a known point instead of from whatever
-garbage the slot held. init cannot do it — the dispatcher re-invokes init most
-blocks and the counter would never leave stage 0.
+Unlike stageprobe, the counter starts from a known point instead of from
+whatever garbage the slot held: the tag check fails on garbage and resets the
+count. init cannot do it — the dispatcher re-invokes init most blocks and the
+counter would never leave stage 0.
 
 **Run it on one track first** and let it pass 21 s, to prove the escalation is
 harmless. Then enable both tracks in QUICK SUCCESSION — each instance counts its
@@ -173,7 +210,8 @@ directly against `out/mainos_reverb.bin`.
 | `dsp/reverb46.asm` | computed tank, modulo pre-delay. **Works on track 1**, freezes on 2. The reference good build. |
 | `dsp/reverb50.asm` | v46 with the pre-delay removed. No modulo anywhere. Freezes on 2 — the result that killed the modulo theory. |
 | `dsp/stageprobe.asm` | the two-track survivor. Start here. |
-| `dsp/stageprobe2.asm` | built up from it: audio, params, a Y ramp to 36, then cycles. **The one to flash next.** |
+| `dsp/stageprobe2.asm` | first build-up attempt. Hardware: no freeze but cycling noise — INVALID, wrote four unproven r7 slots. Kept as the record of why. |
+| `dsp/stageprobe3.asm` | stageprobe2 on proven slots only: counter tagged inside $83, scratch in $15..$17, v50's r0 advance. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
