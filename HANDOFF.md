@@ -1396,3 +1396,59 @@ Also open: scaling the allpasses with SIZE to hold the diffusion ratio.
 Naive scaling overflows the 1024-word allpass buffers at high SIZE, so it
 needs either a downward-only scale or a bigger allpass allocation (2039
 words of Y are still free).
+
+## ⚠️ CORRECTION: `mpy` DOES NOT DOUBLE. Measured, not reasoned.
+
+**Every claim in this file about "`mpy` is a fractional multiply and
+doubles" is WRONG.** It was a theory, it survived because it sounded
+plausible, and it drove three bad changes before hardware caught it.
+
+Measured with `dsp/mpytest.asm` (three `mpy`s storing to low X, read
+straight out of the harness):
+
+| computation | result | doubling would give |
+|---|---|---|
+| 0.5 x 0.5 | **$200000** (0.25) | $400000 |
+| 0.5 x 0.25 | **$100000** (0.125) | $200000 |
+| 0.992 x 0.875 | **$6f2000** (0.868) | $6d6000 x2 |
+
+Exact, no shift. **The original coefficients were right all along.** The
+evidence had already said so — the reverb decayed properly with a loop
+gain that a doubling `mpy` would have put at 1.87 — and that contradiction
+was noted and then not acted on. Act on contradictions.
+
+### What it broke, and what v64 reverts
+
+* **v63 halved the allpass coefficient** to "correct" a 1.0 that was
+  never 1.0. It made the diffusers 0.25 instead of 0.5, which is exactly
+  "more ringy and metallic" — reverted to `$400000`.
+* **v62 rescaled SIZE** to stop a tap overrun that could not happen. The
+  tap is `1567*f`, not `3134*f`; f = 0.125..0.993 gives 196..1556
+  samples, always inside the 2048-word line, always monotonic. The
+  rescale shrank the range to 125..574 — a smaller, ringier space.
+  Reverted to the original constants.
+* The "SIZE is non-monotonic / runs off the end of the line" diagnosis is
+  **withdrawn**. What was real, and stays fixed, is that SIZE reached
+  only two of four lines because n1/n4 were computed and discarded; the
+  v62 modulo conversion fixed that and is kept.
+
+With the original scaling the taps are also better behaved than the
+rescaled ones — worst pairwise gcd across SIZE is 39/1/9/13/10, against
+the rescale's 180 at SIZE=64.
+
+## v64: reverts + SHVG drives the LFO RATE
+
+979 words, 1058 clear. Guard clean at two instances with poison, dirty Y
+and split. RT60 ~4.2 s, unchanged by MOD. MOD changes 98% of samples.
+
+**Why SHVG was still inaudible in v63 even at 8x the depth:** depth is
+only half of it. At MOD=0 the LFO free-runs at ~0.18 Hz — one sweep every
+5.6 seconds — which reads as "nothing is happening" no matter how deep it
+is. And RATE lives on `$d`, which stock never reads and which may well be
+host-side and constant. So v64 has **SHVG drive the rate as well as the
+depth**: one known-good knob now controls how much movement there is,
+from ~0.18 Hz up to ~3 Hz. `$d` still contributes if it is live.
+
+Still open: modulating lines 0 and 3 (blocked by the AGU pairing Rn with
+Nn of the same index — they would have to move to arithmetic addressing),
+and scaling the allpasses with SIZE to hold the diffusion ratio.
