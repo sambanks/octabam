@@ -211,7 +211,7 @@ guessing: **strip v8 toward v50 from the surviving side** — remove
 scaffold elements group by group; the strip that freezes names the
 protection. Deterministic.
 
-## READY TO FLASH: `dsp/stageprobe9.asm` / `OCTATRACK_STAGES9.bin`
+## stageprobe9 (flashed: NO FREEZE) — the audio scaffold was not the protection
 
 v8 minus the entire audio-side scaffold: no buzz loop, no gain ladder, no
 click override. Kept, to strip next: the entry stores, the counter/tag
@@ -229,6 +229,36 @@ no-op), the M epilogue, the engine gate shape.
 
 No buzz in this build: the engine is the only audio; knobs prove it runs.
 908 words. Emulator: guard clean, wet live.
+
+**Result: no freeze.** The protection is among the kept items, and sorting
+every build's fate by what it leaves in $83 collapses the whole history
+into one table:
+
+| leaves in $83 | builds | two tracks |
+|---|---|---|
+| huge tagged values ($2c0000+) | every surviving probe | fine |
+| bare phase, 0..0x7ff forever | v44 v46 v50 v51 v52 | FREEZE |
+| never writes it | stock effects | fine |
+
+"$83 persists" only ever proved the host does not WRITE it — not that it
+does not READ it. Stock layouts avoiding the offset is what a host-owned
+field looks like. A small value there reads as valid (an index, a
+pointer); a huge one falls out of range. Would also explain the two-track
+requirement: the reading host path may only matter with two live FX2
+instances.
+
+## READY TO FLASH: `dsp/reverb53.asm` / `OCTATRACK_V53.bin`
+
+v50 + TWO INSTRUCTIONS, diff-verified: the phase save becomes
+$2c0000 | phase. The load path already masks $7ff, so the reverb is
+bit-identical in behaviour. The test doubles as the fix.
+
+* **no freeze** → closed: the freeze was a small number parked in a
+  host-owned word. Ship path: v53 + clear the delay lines at init (the
+  "laddering static") + restore v46's pre-delay.
+* **freezes** → the value story is dead; resume the strip series from v9
+  (strip the counter next, phase back to bare $83 — isolating the
+  remaining kept items one at a time).
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -547,7 +577,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb50.asm` (as `OCTATRACK_V50CONTROL.bin`) | the CONTROL. Flashed: still freezes on track 2, today — the differential is real. |
 | `dsp/reverb51.asm` (as `OCTATRACK_V51.bin`) | v50 + a nop burn on the control call. FROZE — time is not the protection. |
 | `dsp/reverb52.asm` (as `OCTATRACK_V52.bin`) | v50 + a stock-style param latch on the control call. FROZE — not the protection. |
-| `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | the strip series begins: v8 minus the audio-side scaffold. **The one to flash.** |
+| `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | v8 minus the audio scaffold. No freeze — narrowed the protection to the $83/counter group. |
+| `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + two instructions: the phase saved TAGGED ($2c0000\|phase). The $83 hypothesis test AND the candidate fix. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
