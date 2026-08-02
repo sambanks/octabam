@@ -102,7 +102,7 @@ symptom was always "freezes THE MOMENT it is enabled on a second track";
 (2) the buzz input; (3) the r0 stash/restore; (4) derived vs persisted
 phase; (5) the entry head. Delta (1) explains the symptom's timing exactly.
 
-## READY TO FLASH: `dsp/stageprobe8.asm` / `OCTATRACK_STAGES8.bin`
+## stageprobe8 (flashed: NO FREEZE — the enable window is innocent too)
 
 v7 with ONE INSTRUCTION changed (diff-verified): the engine's stage gate
 threshold is 0, so the engine runs from the very first proc call — straight
@@ -114,6 +114,31 @@ through the enable window. Buzz unchanged.
   shippable reverb.
 * **still no freeze** → the enable window is innocent and the remaining
   deltas (buzz, r0 handling, phase, head) get one flash each.
+
+**Result: still no freeze.** v8 contains v50's engine as a strict superset,
+runs it from the first call through the enable window on two tracks, and
+does not die. The four remaining deltas are all semantically inert — there
+is no longer a good hypothesis for why v50 freezes and v8 does not.
+
+## READY TO FLASH: `OCTATRACK_V50CONTROL.bin` — the control
+
+When every remaining explanation looks impossible, re-verify the
+phenomenon. Every v50 freeze predates today: different session, different
+project state, sixteen build-generations ago — and several historical
+"freezes" were later traced to since-fixed self-inflicted bugs. Nobody has
+flashed actual v50 today. This is `dsp/reverb50.asm` rebuilt unchanged
+(445,152 bytes — the same artifact as the NOPREMOD.bin that was on the
+card this morning). Two tracks, the canonical gesture:
+
+* **freezes** → the differential is real and current: v8-vs-v50 differ by
+  exactly {buzz input, r0 stash/restore, derived vs persisted phase, entry
+  head}, and each gets one flash. Expect the freeze; power-cycle recovery
+  as usual.
+* **does not freeze** → the "two-track freeze" no longer exists in
+  today's environment — it was keyed to something historical (an old
+  project state, an interaction since perturbed) — and v46/v50 may simply
+  be shippable now. Then flash v46 (the good-sounding build) and enjoy it,
+  while the archaeology becomes optional.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -428,7 +453,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe5.asm` | the scaffold + the four shapes. EIGHT tracks, ladders complete, no freeze — the shapes eliminator. |
 | `dsp/stageprobe6.asm` | the scaffold + the register idioms. No freeze — the idioms eliminator. |
 | `dsp/stageprobe7.asm` | v50's entire engine, verbatim, on the ladder. Two tracks: NO freeze, engine live. The engine's acquittal. |
-| `dsp/stageprobe8.asm` | v7 with one constant changed: engine from the FIRST call, through the enable window. **The one to flash.** |
+| `dsp/stageprobe8.asm` | v7 with one constant changed: engine from the FIRST call. No freeze — the enable window's acquittal. |
+| `dsp/reverb50.asm` (as `OCTATRACK_V50CONTROL.bin`) | the CONTROL: v50 rebuilt unchanged, to re-verify the freeze exists today at all. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
