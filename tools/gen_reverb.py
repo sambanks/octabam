@@ -495,6 +495,29 @@ proc:
         move    y:(r5),x0               ; the base init stashed for us
         move    x0,x:(r7+$71)""") + f"""
 
+; ---- refuse to run on a slot that cannot hold the layout -----------------
+; The bump allocator advances ONE entry per EFFECT, of any type, so which table
+; entry we get depends on how many effects the project loaded before us -- not
+; on how many reverbs. Of the eight entries only two can hold this layout:
+;
+;   0x1000 0x1c00 0x2800 0x3400   FX1 slots, 0xc00 words. A {STATE_OFF:#x}-word
+;                                 layout here runs through the neighbouring
+;                                 buffers and into FX2 slot 0.
+;   0x4000 0x8000                 FX2 slots, 0x4000 words. The only safe ones.
+;   0x30000 0x34000               past the end of Y, which stops at 0xC000.
+;                                 dsp/ymemprobe.asm hangs when it writes there.
+;
+; So check, and pass audio through untouched if the slot is not ours. A dry
+; track is a diagnosis; a hung machine is not. y0/b are used rather than x0/a
+; because the block below needs x0 to still hold the base.
+        move    x:(r7+$71),b
+        move    #>${LINE_OFF + 0x4000:x},y0
+        cmp     y0,b
+        blt     dry
+        move    #>${0xc000 - STATE_OFF + 1:x},y0
+        cmp     y0,b
+        bge     dry
+
 ; ---- every buffer base, derived once per block --------------------------
         move    #>${AP_OFF:x},a
         add     x0,a
@@ -836,6 +859,7 @@ noloop:
     body += f"""        move    #>${LINE_MASK:x},x0
         and     x0,a
         move    a,x:(r7+$83)
+dry:
         move    #>$ffffff,m0
         move    #>$ffffff,m1
         move    #>$ffffff,m2
