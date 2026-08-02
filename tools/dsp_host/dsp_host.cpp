@@ -88,6 +88,7 @@ struct Args {
     int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0;
     TWord flags = 0; int pingpong = -1;
     int inst = 1; TWord dirty = 0; bool noctl = false;
+    bool dispatch = false; int fx2tracks = 0; TWord fxid = 0x16;
     std::vector<int> allocIdx, r7Idx;
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
@@ -268,6 +269,8 @@ int main(int argc, char** argv) {
         else if (k == "-inst") a.inst = atoi(argv[++i]);
         else if (k == "-dirty") a.dirty = strtoul(argv[++i], nullptr, 0);
         else if (k == "-noctl") { a.noctl = true; --i; }
+        else if (k == "-dispatch") a.fx2tracks = atoi(argv[++i]), a.dispatch = true;
+        else if (k == "-fxid") a.fxid = strtoul(argv[++i], nullptr, 16);
         else if (k == "-alloc") a.allocIdx = parseList(argv[++i]);
         else if (k == "-r7") a.r7Idx = parseList(argv[++i]);
         else if (k == "-allocproc") a.allocProc = v();
@@ -446,6 +449,85 @@ int main(int argc, char** argv) {
         std::ifstream f(a.in, std::ios::binary);
         int32_t s;
         while (f.read(reinterpret_cast<char*>(&s), 4)) input.push_back(s);
+    }
+
+    // ---- FAITHFUL MODE: run the host's own dispatcher ---------------------
+    // Everything above hand-rolls the calling convention from a reading of the
+    // listing, and a mistake in that reading is invisible here -- which is how
+    // the A-flag bug survived six builds and why r6 is still the FX1 block.
+    //
+    // P:0x372 resets x:0x418/0x20a/0x213/0x20b/0x420 and falls into the track
+    // loop at P:0x385, which runs four times (x:0x418 steps 0x20 to 0x80) and
+    // exits to P:0x53e. Per track it dispatches FX1 then FX2, advancing x:0x20a
+    // three times and x:0x213 twice -- exactly the measured 0x6200/0x6500 and
+    // 0x4000/0x8000.
+    //
+    // Each track's config is a 0x20-word block: x:0x416 + t*0x20 is current,
+    // x:0x415 + t*0x20 is pending, the FX1 id sits at +$1b and the FX2 id at
+    // +$1c as value<<8, and +$1e's bits 8..11 are the effect-change split point.
+    // Setting the split to 0 is steady state: the outgoing call is skipped and
+    // the effect gets the whole 16-frame block at r0 = 0.
+    if (a.dispatch) {
+        const TWord pend = mem.get(MemArea_X, 0x415);
+        const TWord curr = mem.get(MemArea_X, 0x416);
+        std::printf("dispatch mode: pending blocks at X:0x%05x, current at X:0x%05x\n",
+                    pend, curr);
+        for (int t = 0; t < 4; ++t) {
+            const bool on = t < a.fx2tracks;
+            for (TWord base : {pend, curr}) {
+                if (on) mem.set(MemArea_X, base + t * 0x20 + 0x1c, a.fxid << 8);
+                mem.set(MemArea_X, base + t * 0x20 + 0x1e, 0);   // split 0 = steady
+            }
+            std::printf("  track %d: FX2 id 0x%02x %s\n", t, a.fxid,
+                        on ? "<- our effect" : "(left as loaded)");
+        }
+        for (int b = 0; b < a.blocks; ++b) {
+            dsp.setPC(0x372);
+            bool ok = false;
+            std::vector<TWord> recent;
+            for (uint32_t i = 0; i < 400000; ++i) {
+                const TWord pc = dsp.getPC().toWord();
+                if (pc == 0x53e) { ok = true; break; }
+                if (b == 0 && a.trace) {
+                    recent.push_back(pc);
+                    if (recent.size() > 40) recent.erase(recent.begin());
+                }
+                dsp.execInterpreter();
+            }
+            if (!ok && a.trace && !recent.empty()) {
+                std::printf("  last 40 PCs: ");
+                for (TWord q : recent) std::printf("%05x ", q);
+                std::printf("\n");
+            }
+            if (!ok) {
+                std::printf("\nHANG in the dispatcher: block %d, pc=0x%06x\n",
+                            b, dsp.getPC().toWord());
+                std::printf("  r0=%06x r1=%06x r2=%06x r3=%06x r4=%06x r5=%06x r6=%06x r7=%06x\n",
+                            dsp.regs().r[0].var, dsp.regs().r[1].var, dsp.regs().r[2].var,
+                            dsp.regs().r[3].var, dsp.regs().r[4].var, dsp.regs().r[5].var,
+                            dsp.regs().r[6].var, dsp.regs().r[7].var);
+                std::printf("  m0=%06x m1=%06x m2=%06x m3=%06x m4=%06x m5=%06x n7=%06x\n",
+                            dsp.regs().m[0].var, dsp.regs().m[1].var, dsp.regs().m[2].var,
+                            dsp.regs().m[3].var, dsp.regs().m[4].var, dsp.regs().m[5].var,
+                            dsp.regs().n[7].var);
+                std::printf("  x:0x20a=%06x x:0x213=%06x x:0x418=%06x\n",
+                            mem.get(MemArea_X, 0x20a), mem.get(MemArea_X, 0x213),
+                            mem.get(MemArea_X, 0x418));
+                return 1;
+            }
+            if (guard.armed) {
+                int cl = 0; char who[24]; std::snprintf(who, sizeof who, "dispatch");
+                inst[0].violations += guard.check(mem, 0x4000, 0x4000 + a.guardWords,
+                                                  who, "blk", b, b > 2, cl);
+                inst[0].clobbers += cl;
+            }
+        }
+        std::printf("dispatcher completed %d blocks with %d FX2 track(s) on effect 0x%02x\n",
+                    a.blocks, a.fx2tracks, a.fxid);
+        if (guard.armed)
+            std::printf("  %ld stray regions, %ld CLOBBERING a loaded module\n",
+                        inst[0].violations, inst[0].clobbers);
+        return inst[0].clobbers ? 3 : 0;
     }
 
     size_t inPos = 0;
