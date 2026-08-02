@@ -1569,3 +1569,65 @@ lengthening the nominals reproduces none of it. Unexplained. A 23% change
 in spacing may simply be inside this metric's noise, or the new taps
 interact worse under SIZE scaling. **Not shipped, kept as the record.**
 Build it only if something else makes the mechanism clearer.
+
+## THE 2-INSTANCE LIMIT MAY BE OUR OWN INVENTION (asked 3 Aug)
+
+User: "stock runs on every track though, why can we only run on two?"
+The right question, and it exposes an untested assumption.
+
+**Our reverb refuses any base outside [0x4000, 0x8801).** That guard was
+written on the belief that the allocator's other two FX2 bases — 0x30000
+and 0x34000 (0x38000/0x3c000 in payload B) — are past the end of Y. The
+belief traces to §8's "Y ends at 0xC000", and **DSP.md line 790 already
+admits that probe never reached them: it stopped at 0x20000.**
+
+Read straight from the firmware, X:0x255 is interleaved FX1/FX2:
+
+| entry | track | slot | base |
+|---|---|---|---|
+| 0,2,4,6 | 0..3 | FX1 | 0x1000 0x1c00 0x2800 0x3400 (3072 words) |
+| 1 | 0 | FX2 | 0x4000 |
+| 3 | 1 | FX2 | 0x8000 |
+| 5 | 2 | FX2 | **0x30000** — never tested |
+| 7 | 3 | FX2 | **0x34000** — never tested |
+
+Evidence those slots are REAL, and that we are needlessly dry on half the
+tracks:
+
+* the stock firmware's own table hands them out;
+* **stock DARK REV cannot fit in an FX1 slot.** Its init (traced at
+  P:0x1699..0x16e8) derives buffer bases at base+0x0000, +0x400, +0x800,
+  +0xc00, +0x1000, +0x1800, +0x2000, +0x2800, +0x3000 — over 12K words,
+  so it is FX2-only, exactly like ours;
+* therefore if 0x30000 were dead, stock DARK on tracks 3/4 would hang the
+  machine. The user reports stock runs on every track;
+* DSP.md's own reading: the allocator "fills Y to the last word and then
+  jumps to a second region at 0x30000" — deliberate, almost certainly
+  external SRAM.
+
+**READY TO FLASH: `dsp/ymemprobe.asm` / `out/OCTATRACK_YMEMPROBE.bin`.**
+Already written for this and never run. A wet-only 1024-word echo whose
+base is `(p0+1) << 12`, swept by TIME:
+
+| TIME | base | meaning |
+|---|---|---|
+| 3 | 0x04000 | known good — the echo must be there |
+| 10 | 0x0B000 | last known-good page |
+| 11 | 0x0C000 | known absent — echo must stop |
+| **47** | **0x30000** | **track 3's FX2 base — the question** |
+| **51** | **0x34000** | **track 4's FX2 base** |
+| 63..127 | 0x40000..0x80000 | how far the second region runs |
+
+Wet-only, so silence is a real answer rather than a judgement call:
+clear echo = the page is real; silence = no memory; hang = it aliased
+onto something live (power-cycle, as usual).
+
+* **echo at 47 and 51** → the 2-instance limit is ours, not the machine's.
+  Widen the guard to accept 0x30000..0x37fff (and payload B's
+  0x38000..0x3ffff) and the reverb runs on FOUR tracks per DSP, like
+  stock. This also reopens the memory question entirely.
+* **silence at 47** → the limit is real, stock must handle tracks 3/4 some
+  other way, and that is worth understanding before anything else.
+
+Note the emulator CANNOT answer this: its Y is sized generously, so it
+will happily accept 0x30000 whether or not the hardware has it.
