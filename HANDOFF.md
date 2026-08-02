@@ -944,3 +944,43 @@ MIX stops working in this build by design; it is a diagnostic, and v59
 is one flash away again. 945 words, 29 clear. Emulator: slot $c = 0
 gives a bit-silent wet, 32 and 127 give audible wet — the readout works.
 Built with the standing A2-clean rule applied to the masked gain.
+
+### PROBE RESULT: the PRE knob drives slot $c. Mapping CONFIRMED.
+
+Flashed `preprobe`, swept the knobs: **the PRE knob changes the reverb
+volume.** So slot $c is PRE, v59's read is correct, and the pre-delay
+has been working since v59 — it is simply too subtle to hear at 46 ms
+in this reverb. Not a bug, and the parameter path is now MEASURED
+rather than inferred, which it never was before.
+
+Card restored to v59.
+
+**Why 46 ms hides here, and what it would take to fix.** The wet already
+starts ~20 ms after the dry (allpasses 7-21 ms, then the tank taps), and
+it is a diffuse wash rather than a sharp onset, so shifting the whole
+thing by 46 ms reads as a mild spaciousness change, not an obvious gap —
+especially against a running sequence with a 3-7 s tail.
+
+Doubling it to ~93 ms is NOT a two-instruction change, and the reason is
+worth writing down: **the pre-delay pointer $30 is re-derived every call
+as `pre_base + (phase & $7ff)`, and that phase is the TANK phase, masked
+to 2048.** So the buffer cannot exceed 2048 words while the pointer is
+derived that way, however much Y is free. Getting past it needs one of:
+
+* **a persistent pre-delay pointer** (what stock DARK does — it keeps
+  its own in r7+$2e) instead of deriving it from the tank phase. Must be
+  sanitised per call (mask into the buffer) or a garbage $30 aims the
+  modulo region at arbitrary Y — the exact shape of the v55 freeze.
+* **arithmetic addressing** with a power-of-2 mask instead of modulo,
+  which also drops the only non-linear M register. Needs a 4096-word
+  buffer, i.e. base+0x3000..0x3fff — which leaves nowhere for the 5-word
+  state block at base+0x3800. Freeing it means either moving the LFO and
+  damping state into r7 (persistence there is now well evidenced: $82
+  and $83 both hold), or shrinking allpass 3 to 512 words (its tap is
+  331, so it fits) and parking the state in the freed 0x2e00 region.
+
+Either way it is ~20-30 instructions a sample and 30+ words against 32
+clear — tight enough that it wants its own build and its own flash, not
+a bolt-on. **Weigh it against the knob remap, which is worth more per
+flash**: HP is dead, LP is the LFO depth, and WIDTH ($b) and RATE ($d)
+are probably dead too since stock never reads those slots.
