@@ -90,6 +90,26 @@ STATE_TAB = 0x6000          # X: first r7 state block
 # Measured with dsp/baseprobe.asm: the stash returns 0x4000, an FX2 slot.
 STASH     = 0x800
 
+# WHERE OUR r7 SCRATCH LIVES.
+#
+# Every build that writes r7 slots hangs on two tracks; every build that writes
+# none survives. dsp/minimal.asm and dsp/baseprobe.asm both run two instances
+# and neither writes a single r7 word, while v30, v31, v33, v37 and v38 all
+# write 41 of them and all hang. That is a clean split across seven builds.
+#
+# Two earlier findings say the same thing and were read as curiosities at the
+# time: r7+$71..$78 do NOT survive between calls, which means something else is
+# writing them, and r7+$84..$8a hangs outright. The block is not ours to use
+# from $50 up -- it is the host's.
+#
+# DARK REV keeps its per-instance state at r7+$1a..$4x, carries buffer addresses
+# through it from init into process, and runs on every track at once. So that
+# region is per-instance and safe. Slots $50..$7f are shifted down into it;
+# the phase stays at $83, which is where the stock tank phase lives and is the
+# one slot already proven to persist.
+SLOT_LO, SLOT_HI = 0x50, 0x7f       # the range the generator emits
+SLOT_SHIFT = 0x40                   # -> $10..$3f, inside DARK REV's region
+
 # How process gets hold of the base:
 #
 #   "stash"     init reads X:0x213 and leaves it at Y:(STASH + (r7 >> 8)).
@@ -358,6 +378,29 @@ def tap(i):
         move    a,{DAMP[i]}
         move    a,x:(r7+${0x56+i:02x})
 """
+
+
+def remap_slots(text):
+    """Shift every r7+$NN in SLOT_LO..SLOT_HI down by SLOT_SHIFT.
+
+    Done on the finished text rather than at each emission site: there are ~40
+    of them across a dozen f-strings, and one missed reference would read a slot
+    nobody wrote. This cannot miss one, and it is checked below.
+    """
+    import re
+
+    def sub(m):
+        n = int(m.group(1), 16)
+        if SLOT_LO <= n <= SLOT_HI:
+            n -= SLOT_SHIFT
+            assert n >= 0x10, f"slot ${n:02x} shifted below $10"
+        return f"r7+${n:02x}"
+
+    out = re.sub(r"r7\+\$([0-9a-f]{2})", sub, text)
+    left = sorted({int(x, 16) for x in re.findall(r"r7\+\$([0-9a-f]{2})", out)})
+    bad = [n for n in left if SLOT_LO <= n <= SLOT_HI or n in (0x00, 0x01)]
+    assert not bad, f"slots still in the host's range: {[hex(n) for n in bad]}"
+    return out
 
 
 def main():
@@ -801,7 +844,7 @@ noloop:
         move    #>$ffffff,m5
         rts
 """
-    sys.stdout.write(body)
+    sys.stdout.write(remap_slots(body))
 
 
 if __name__ == "__main__":
