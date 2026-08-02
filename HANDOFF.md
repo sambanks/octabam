@@ -185,7 +185,7 @@ excluded by stock behaviour (stock effects do not touch M registers on the
 control call and survive). What stock does that v50 does not is exactly
 one thing: **the control call latches parameters into r7 state.**
 
-## READY TO FLASH: `dsp/reverb52.asm` / `OCTATRACK_V52.bin`
+## v52 (flashed: FROZE) — param latching is not the protection either
 
 v50 with the control call doing what stock DARK does: read the eight
 parameter slots, store them into r7 ($20..$27 — slots the audio call
@@ -200,6 +200,35 @@ Diff-verified: only the a=0 latch differs from v50.
   behaviour, and the search flips: strip v8 (which survives) toward v50
   piece by piece — buzz stage out first, then the counter — one flash
   each, from the surviving side.
+
+**Result: FROZE. And track 1 still ladders static** — the audio bug is the
+engine's own (uncleared lines; plus the grafts' derived phase steps
+32/block against 16 written frames, scrambling the tank — both on the
+audio-fix list, after the freeze).
+
+Two guessed protections dead (v51 time, v52 param latch). No more
+guessing: **strip v8 toward v50 from the surviving side** — remove
+scaffold elements group by group; the strip that freezes names the
+protection. Deterministic.
+
+## READY TO FLASH: `dsp/stageprobe9.asm` / `OCTATRACK_STAGES9.bin`
+
+v8 minus the entire audio-side scaffold: no buzz loop, no gain ladder, no
+click override. Kept, to strip next: the entry stores, the counter/tag
+machinery ($83 written on EVERY call including a=0), the derived phase in
+$1a (v50 instead persists phase into $83 at the END of each audio call —
+the last a=1-side delta, tested by the next strip), the r0 restore (now a
+no-op), the M epilogue, the engine gate shape.
+
+* **survives** → the protection is among the kept items; v10 strips the
+  counter and reverts the phase to v50's $83 persistence — if THAT
+  freezes, the killer is the counter/derived-phase group, and one more
+  build splits it.
+* **freezes** → the buzz stage's audio writes were the protection —
+  astonishing, and immediately actionable.
+
+No buzz in this build: the engine is the only audio; knobs prove it runs.
+908 words. Emulator: guard clean, wet live.
 
 ## stageprobe2, hardware result: NO FREEZE — but the run is INVALID
 
@@ -517,7 +546,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe8.asm` | v7 with one constant changed: engine from the FIRST call. No freeze — the enable window's acquittal. |
 | `dsp/reverb50.asm` (as `OCTATRACK_V50CONTROL.bin`) | the CONTROL. Flashed: still freezes on track 2, today — the differential is real. |
 | `dsp/reverb51.asm` (as `OCTATRACK_V51.bin`) | v50 + a nop burn on the control call. FROZE — time is not the protection. |
-| `dsp/reverb52.asm` (as `OCTATRACK_V52.bin`) | v50 + stock's contract: the control call latches params into r7. **The one to flash.** |
+| `dsp/reverb52.asm` (as `OCTATRACK_V52.bin`) | v50 + a stock-style param latch on the control call. FROZE — not the protection. |
+| `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | the strip series begins: v8 minus the audio-side scaffold. **The one to flash.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
