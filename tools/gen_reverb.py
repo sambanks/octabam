@@ -78,7 +78,7 @@ STASH     = 0x735
 # Set to an address to bypass the allocator and hardcode the base. Only for
 # bisecting: it pins every instance to the same region, so two tracks collide.
 # 0x4000 is a real FX2 slot, so it is safe to run.
-ALLOC_FIXED = 0x4000
+ALLOC_FIXED = None
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
@@ -359,16 +359,8 @@ init:
 ;
 ; Reading X:${ALLOC_PTR:x} is only valid HERE. Stash the base where process can
 ; find it: absolute Y, but at an address unique to this instance.
-        move    x:>${ALLOC_PTR:x},r4
-        move    r7,a
-        asr     #$8,a,a                 ; r7 >> 8; also fills the AGU slot
-        move    x:(r4),x0               ; this instance's buffer base
-        move    #>${STASH:x},y0
-        add     y0,a
-        move    a,r5
         move    #>$ffffff,m5
-        move    #>$ffffff,m0            ; both fill the AGU slot
-        move    x0,y:(r5)
+        move    #>$ffffff,m0
         move    #>$ffffff,m1
         move    #>$ffffff,m2
         move    #>$ffffff,m3
@@ -389,15 +381,29 @@ proc:
 """ + (f"""        move    #>${ALLOC_FIXED:x},x0            ; BASE HARDCODED -- bisect build
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1
-        move    x0,x:(r7+$71)""" if ALLOC_FIXED is not None else f"""        move    r7,a
-        asr     #$8,a,a
-        move    #>${STASH:x},y0
-        add     y0,a
-        move    a,r5
+        move    x0,x:(r7+$71)""" if ALLOC_FIXED is not None else f"""; Read X:${ALLOC_PTR:x} here, in process. No stash, and no absolute Y anywhere in
+; the effect.
+;
+; v23 did this and hung, which is why the stash was built -- but v23 also kept
+; state in r7+$84..$8a, which v26/v27 later proved fatal on its own. Retested
+; clean in v33: one track works. The read is fine; v23's hang was the state.
+;
+; It also rules the stash out of the two-track crash, since v33 has no stash and
+; still hangs with two.
+        move    x:>${ALLOC_PTR:x},r4
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
-        move    y:(r5),x0               ; the base init stashed for us
+        move    x:(r4),x0
         move    x0,x:(r7+$71)""") + f"""
+
+; ---- BISECT LEVEL, read first because it gates the state load ------------
+;     HP <  32   PASSTHROUGH -- no sample loop, no state load, no state SAVE
+;     HP <  64   + tank
+;     HP <  96   + pre-delay
+;     HP >= 96   + diffuser (the full engine)
+        move    x:(r6+$3),a
+        asr     #$10,a,a
+        move    a,x:(r7+$50)
 
 ; ---- every buffer base, derived once per block --------------------------
         move    #>${AP_OFF:x},a
@@ -423,6 +429,10 @@ proc:
         move    a,x:(r7+$78)
 
 ; ---- per-block: load the state that cannot be derived -------------------
+        move    x:(r7+$50),a
+        move    #>32,x0
+        cmp     x0,a
+        blt     nostate
 ; The LFO phase and the four one-pole states are the only things that must
 ; survive between calls and cannot be recomputed. They live in the instance's
 ; own Y region, so they are per-instance, and touching them once per block costs
@@ -443,6 +453,7 @@ proc:
         move    a,{DAMP[2]}
         move    y:(r5)+,a
         move    a,{DAMP[3]}
+nostate:
 
 ; ---- rebuild the four delay pointers from the saved phase ----------------
         move    x:(r7+$83),a
@@ -570,6 +581,10 @@ proc:
     # difference between fitting in the frame budget and hanging the DSP.
     body += lfo()
     body += f"""
+        move    x:(r7+$50),a
+        move    #>32,x0
+        cmp     x0,a
+        blt     noloop
         do      n7,>rvend
 
 ; ---- input: mono sum -----------------------------------------------------
@@ -584,6 +599,11 @@ proc:
         and     x0,a                    ; line base is aligned, so r1 masked is it
         move    a,{PHASE}
 
+; ---- pre-delay (skipped below bisect level 43) --------------------------
+        move    x:(r7+$50),a
+        move    #>64,x0
+        cmp     x0,a
+        blt     nopre
 ; ---- pre-delay ----------------------------------------------------------
 ; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
 ; lines, which are proven safe. The earlier version computed the addresses
@@ -597,9 +617,18 @@ proc:
         move    a,y:(r5)+               ; write, and advance
         move    r5,x:(r7+$70)
         move    b,x:(r7+$5b)            ; delayed input -> the diffuser
+nopre:
+"""
+    body += """
+; ---- diffuser (skipped below bisect level 86) ---------------------------
+        move    x:(r7+$50),a
+        move    #>96,x0
+        cmp     x0,a
+        blt     noap
 """
     for i in range(4):
         body += allpass(i)
+    body += "noap:\n"
     body += f"""
         move    x:(r7+$5b),a
         move    a,x:(r7+$55)            ; diffused input -> tank
@@ -705,6 +734,7 @@ rvend:
         move    a,y:(r5)+
         move    {DAMP[3]},a
         move    a,y:(r5)+
+noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------
         move    r1,a
