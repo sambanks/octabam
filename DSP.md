@@ -883,3 +883,78 @@ the pre-delay to 2048 words while leaving the knob scaled to `v*128` meant PRE=3
 asked for 4096 samples through `y:(r5+n5)` under `m5`. It does not wrap and it
 does not clamp: the read returns nothing, the tank gets no input, and the reverb
 goes **completely silent** — which looks nothing like an addressing bug.
+
+## 11. HARDWARE: the two payloads have DIFFERENT Y module maps
+
+The two DSP program payloads are not two copies of the same layout. Below
+Y:0x1000 — the region above the loaded coefficient modules and beneath the FX1
+buffers, which is the only absolute scratch an effect can use — they differ:
+
+| payload | Y modules below 0x1000 | highest loaded word | free window |
+|---|---|---|---|
+| A | 5 | Y:0x0794 | Y:0x0795..0x0FFF |
+| B | **21** | **Y:0x07a4** | Y:0x07a5..0x0FFF |
+
+**This is what made the reverb hang on two tracks.** init carried its buffer base
+across to process through a per-instance stash at `Y:(0x735 + (r7 >> 8))`, an
+address chosen against payload A's map and verified on payload A. On payload B
+every one of those addresses lands inside a live 128-word coefficient table. The
+effect corrupted another algorithm's coefficients, then read that algorithm's
+data back as its own buffer base and wrote 14K words from wherever it pointed.
+
+One instance never showed it, because one instance is one payload.
+
+Anything absolute in Y must sit at **0x800 or above** to be safe in both, and the
+usable window is only `0x7a5..0x0FFF` — 2139 words.
+
+### X:0x213 is per-instance during init and NOT during process
+
+The dispatcher advances the allocator pointer per effect, so once blocks are
+running it sits wherever the last init left it. Reading it in process gives:
+
+* one effect loaded → still a valid FX2 slot → **works, by luck**
+* two effects loaded → both instances read the **same** entry → one of them
+  writes 14K words through memory it does not own
+
+Read it in init and carry the value across. This is what the stock reverbs do.
+
+### The allocator's instance model
+
+Each track allocates an FX1 slot and *then* an FX2 slot, so the two pointers step
+by two per track from an FX2 effect's point of view. FX2 instance `k` gets table
+entry `1 + 2k` and state block `0x6000 + (2 + 2k) * 0x100`:
+
+| | alloc entry | base (A) | base (B) | r7 |
+|---|---|---|---|---|
+| track 1 FX2 | 1 | 0x04000 | 0x04000 | 0x6200 |
+| track 2 FX2 | 3 | 0x08000 | 0x08000 | 0x6400 |
+| track 3 FX2 | 5 | 0x30000 | **0x38000** | 0x6600 |
+| track 4 FX2 | 7 | 0x34000 | **0x3c000** | 0x6800 |
+
+That model reproduces both hardware measurements: `dsp/r7probe.asm` returned
+0x6200, and `dsp/baseprobe.asm` returned 0x4000 and 0x8000 on two tracks. Note
+the low two FX2 slots are the **same Y addresses in both payloads**, so only one
+payload can be live at a time — which is also why r7 values cannot collide across
+payloads.
+
+Deriving the base as `x:(0x255 + ((r7 - 0x6000) >> 8))` looks sound and is wrong:
+r7 = 0x6200 pairs with table[**1**], not table[2]. table[2] is 0x1c00, a
+3072-word FX1 slot, and a 16K layout there runs to 0x53ff through the other FX1
+buffers and into FX2 slot 0.
+
+### Finding this class of bug without a mount cycle
+
+`tools/dsp_host/dsp_host.cpp -inst N -guard` runs N instances the way the
+dispatcher does and shadows Y:0x0000..0xBFFF plus the loaded part of P from
+before the first init. It separates a *stray* write (outside the instance's
+buffer — the stash is deliberately one of these) from a *clobber* (landing on a
+word a loaded module put there, which is never legitimate) and names it:
+
+```
+!! CLOBBER inst 0 init wrote Y:0x00737 -- OVER A LOADED MODULE
+```
+
+Two bisect builds shipped to hardware before this existed were themselves broken
+by the instrumentation — v34 put the level read inside the pre-delay setup so n5
+came from the knob, v35 clobbered x0 between the base derivation and the state
+load — so their hardware results had to be discarded. Run the guard first.
