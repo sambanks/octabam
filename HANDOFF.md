@@ -154,18 +154,55 @@ park SIZE/MOD there. TIME and MIX already match and must not move.
 
 ## NEXT — the audio-quality track, remaining
 
-2. **Restore v46's pre-delay** — STAGED as `dsp/reverb58.asm`, built and
-   emulator-checked, but **NOT flashed and NOT on the card**: it is
-   blocked behind the v57 split discrepancy above. It is v57 + exactly
-   two deltas (diff-verified): `m5` back to `$7ff` in the SIZE section,
-   and v46's seven loop-body instructions restored. 940 words, 34 clear.
-   $30 is re-derived per call from $83 + the pre-delay base (already
-   A2-cleaned), so it is split-continuous by the same construction as
-   everything else. Emulator: identical output at split 0 vs 5 at
-   PRE=0/64/127 (note: v58 shows the split-invariance v57 lacks, which
-   is itself a clue worth chasing), guard clean, and PRE demonstrably
-   live — onset moves block 47 → 115 → 182 as PRE goes 0 → 64 → 127.
-3. **Then the knob remap** (table above) and tuning.
+2. **ON THE CARD NOW: `dsp/reverb58.asm` / `out/OCTATRACK_V58.bin`** —
+   v46's pre-delay restored. v57 + exactly two deltas (diff-verified):
+   `m5` back to `$7ff` in the SIZE section, and v46's seven loop-body
+   instructions restored. 940 words, 34 clear. $30 is re-derived per
+   call from $83 + the pre-delay base (already A2-cleaned), so it is
+   split-continuous by the same construction as everything else.
+   Emulator: identical output at split 0 vs 5 at PRE=0/64/127, guard
+   clean, and PRE demonstrably live — impulse onset moves block
+   47 → 115 → 182 as PRE goes 0 → 64 → 127.
+
+   Run protocol: flash, one track, play. **PRE is knob 4 on page 2** and
+   it should now sweep the gap before the wash, 0 to ~46 ms. Sweep it
+   end to end; also re-check that the warm-up and the trig behaviour
+   from v56/v57 are unchanged, then two tracks as always.
+   * **PRE sweeps, nothing else regresses** → the audio-quality track is
+     done bar tuning; next is the knob remap.
+   * **PRE does nothing** → the loop body is not seeing n5/$30; check
+     them on hardware rather than guessing.
+   * **anything freezes** → the modulo theory gets a second life after
+     all, and `m5 = $7ff` is the only new non-linear M register.
+3. **Then the knob remap** (table above), decided 2 Aug: LP → the
+   high-cut damping, and HP → either a NEW one-pole high-pass on the wet
+   (~25-30 words of the 34 clear; the musically right answer) or SIZE if
+   it will not fit. TIME, MIX and PRE already match and must not move.
+4. **Then tuning.**
+
+## OPEN: the two-instance split divergence (emulator only)
+
+Not a shipping blocker — hardware sounds right — but unexplained, and
+this project does not leave those lying. Narrowed on 2 Aug:
+
+* v57 at **one** instance: output identical at split 0 and split 5.
+* v57 at **two** instances: instance 0's output DIFFERS between split 0
+  and split 5, from block 28, ~80% of samples, max |diff| 0x2475d.
+* split 5 and split 11 agree with each other **exactly** — so it depends
+  on whether a second call happens, not where the boundary falls.
+* adding a second instance with NO split changes nothing.
+* instance 0's r7 state is bit-identical block for block ($82/$83/$3e/
+  $30/n5 all traced), and the guard reports no cross-buffer writes.
+
+So it needs two instances AND the extra call, while leaving instance 0's
+own state and buffers provably untouched. That combination points at
+**register carryover between instances in the harness** — something read
+before it is written, holding instance 1's leftovers instead of instance
+0's — rather than an engine fault. The harness does not reset x0/x1/y0/
+y1/b/r1-r5/n0-n6/m0-m5 between instances; the effect is believed to
+re-derive all of them, and finding the one it does not is the next step.
+v58 does NOT show the divergence, which is itself a clue: the pre-delay
+adds the only read of $30 in the loop.
 
 Rules that must survive into any new build: the A2-clean after every
 masked load that feeds an address register; check the builder's word
@@ -825,7 +862,7 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
 | `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up. **Hardware: warm-up works, clean until a trig** — the trig static exposed the a=0 sub-block bug. |
 | `dsp/reverb57.asm` (as `OCTATRACK_V57.bin`) | v56 + body on BOTH calls (a=0 is the first sub-block) + LFO gated per-block. **HARDWARE CONFIRMED: trig static gone.** Emulator shows an unexplained split-dependence — see above. |
-| `dsp/reverb58.asm` | v57 + v46's pre-delay restored. Built, emulator-checked, **not flashed** — blocked on the v57 split discrepancy. |
+| `dsp/reverb58.asm` (as `OCTATRACK_V58.bin`) | v57 + v46's pre-delay restored (m5 = $7ff, seven loop instructions). **ON THE CARD, awaiting hardware.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
