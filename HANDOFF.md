@@ -1991,7 +1991,15 @@ stray write regions, the other broke bit-identity only when PRE was off
 centre, which is what pointed at it. Worth remembering: **when a register
 holding a constant gets repurposed, grep every read of it.**
 
-### Systematic device test plan
+### HARDWARE: v71 CONFIRMED (3 Aug)
+
+Flashed and working. The full 31% optimization holds on the instrument,
+including the parts the emulator provably cannot check — the AGU
+interlock timing around the in-loop `n5` writes for the allpass modulo,
+and the pre-delay's move to r6. **`dsp/reverb71.asm` is the current good
+build.**
+
+### Systematic device test plan (kept; the bisect was not needed)
 
 All four images are built. They are bit-identical to each other and to
 v67 **in the emulator** — but the emulator cannot model AGU interlock
