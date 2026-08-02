@@ -1959,3 +1959,57 @@ Estimated -20 cycles (325 -> ~305, giving 1,220 at four instances).
 AGU interlock timing** — that is a hardware-pipeline effect. Follow the
 standing rule strictly: two instructions, both data moves, between
 writing r5/n5 and using them.
+
+## FULL OPTIMIZATION PASS — 432 -> 297 cycles/sample (31%)
+
+Every stage is **bit-identical to v67** in the emulator, verified across
+five parameter sets including the extremes, guard clean at two instances
+under poison, dirty Y and split. Nothing about the sound changed; only
+the cost.
+
+| build | change | cycles | x4 | words |
+|---|---|---|---|---|
+| v67 | baseline (on the card) | 432 | 1,728 | 1067 |
+| v68 | constants into spare AGU regs; drop redundant reloads | 408 | 1,632 | 1049 |
+| v69 | **line reads -> modulo-indexed** | 325 | 1,300 | 1018 |
+| v70 | **allpasses -> modulo** (pre-delay to r6) | 301 | 1,204 | 986 |
+| v71 | DAMP + LO coefficient held in registers | **297** | **1,188** | 978 |
+
+Three instances at 432 = 1,296, which provably runs. **Four at 297 =
+1,188 — under it, with margin.**
+
+The two big wins were both modulo, and both were the same insight: the
+AGU wraps, adds the base and masks for free, and we were doing all three
+by hand. The line reads looked like they needed two addresses for
+interpolation; they do not, because `d1` this sample is `d0` last sample.
+The allpasses looked like they needed `m5` twice over; they do not,
+because **r6 is unused inside the loop** and can take the pre-delay.
+
+Two self-inflicted clobbers were found and fixed on the way, both from
+Stage 1's constants being displaced by later stages — one produced 344
+stray write regions, the other broke bit-identity only when PRE was off
+centre, which is what pointed at it. Worth remembering: **when a register
+holding a constant gets repurposed, grep every read of it.**
+
+### Systematic device test plan
+
+All four images are built. They are bit-identical to each other and to
+v67 **in the emulator** — but the emulator cannot model AGU interlock
+timing, which is a hardware pipeline effect and exactly what froze v47.
+So the device test is about the pipeline, not the audio.
+
+**Test v71 first** — it is the whole win, and if it is clean the rest is
+academic. Bisect downward only if it misbehaves:
+
+| order | image | if it fails, the suspect is |
+|---|---|---|
+| 1 | `OCTATRACK_V71.bin` | — start here |
+| 2 | `OCTATRACK_V70.bin` | v71's register holding |
+| 3 | `OCTATRACK_V69.bin` | the allpass modulo / pre-delay on r6 |
+| 4 | `OCTATRACK_V68.bin` | the line-read modulo |
+| 5 | `OCTATRACK_V67.bin` | the constant hoisting (known-good baseline) |
+
+For each: **it must sound exactly like v67** (identical, not merely
+similar — any audible difference is a bug, since the emulator says the
+samples match). Then the real question: **how many tracks can now run the
+reverb at once?** Three was the limit at 432 cycles; 297 predicts four.
