@@ -1104,3 +1104,79 @@ finally start: LO on knob 4 (the slot `gen_reverb.py` always reserved
 for it), Gravity, and a tank rebalance for size. PLATE's 594 words remain
 available as a second step — it has NO inbound branches at all — if
 shimmer or anything else needs them.
+
+## v61 built (LO + knob remap) — and a SUSTAIN found that predates it
+
+### What v61 is
+
+First build in the enlarged space. 1041 words, **996 clear** of 2037.
+
+* **HP ($3) -> LO**, a new one-pole high-pass inside the feedback path,
+  one per tank line. `gen_reverb.py` reserved slot $3 for exactly this
+  from the start ("P_SPARE ... freed for LO") and never built it because
+  the cycle headroom was unmeasured; stageprobe5/6 since measured it.
+  At HP=0 the coefficient is 0, the state never moves and nothing is
+  subtracted — the filter is bypassed exactly.
+* **LP ($4) -> HI**, the existing high cut, moved off $1.
+* **SHVG ($1) -> MOD** depth, moved off $4.
+* state block base+0x3800 grows 5 -> 9 words (4 LO states); LO
+  coefficient in r7+$40, working states in r7+$41..$44.
+
+Regression evidence: **v61 with LO=0 is bit-identical to v59** across
+TIME=64/100/127, so the remap and the filter are provably inert when the
+new knob is at zero.
+
+### The sustain (NOT a v61 regression — v59 does it too)
+
+Feeding one impulse then silence and measuring the RMS envelope over
+**4.1 s**, the output does not decay. It settles at roughly -15 dBFS and
+stays within 0.1-2 dB for the whole window, as a broadband ~4 kHz signal
+at about 60% full scale. Present in **v59, the build currently on the
+card**, and unchanged by every gain reduction tried:
+
+| build under test | drop over 4.1 s |
+|---|---|
+| v59 / v61 (LO=0), TIME 0 → 127 | -0.3 to -0.4 dB |
+| + tank feedback constants halved | -0.7 dB |
+| + allpass coefficient halved | -1.6 dB |
+| + both | -2.0 dB |
+| + both, MOD=0 | -0.1 dB |
+| + both, TIME=0 MOD=0 HI=0 (max damping) | -0.1 dB |
+
+**TIME does not change the sustained level at all** (peak RMS moves 0.1 dB
+across the whole knob), which says the oscillation is not in the tank
+feedback loop. Neither modulation nor damping stops it.
+
+An earlier measurement suggested instability at TIME=127 only; that was
+an artifact of a 700-block (238 ms) window against a multi-second tail,
+which shows nothing but the build-up. Always measure decay over seconds.
+
+### A real arithmetic bug found on the way (separate from the sustain)
+
+**`mpy` on the DSP56300 is a FRACTIONAL multiply: it doubles.** Every
+coefficient in this engine was chosen as if it did not, so each variable
+term is 2x its documented value:
+
+* allpass coefficient `$400000` is 0.5 on paper, **1.0 in fact** — and an
+  allpass at 1.0 is a pure integrator, not a diffuser.
+* TIME: `g` is documented 0.935..0.9995; the arithmetic gives
+  0.935..**1.064**, and the +-1 Hadamard rows have gain 2, so the loop
+  gain is ~1.87 where 0.93 was intended.
+* HI: `c` is documented 0.125..0.99; it reaches **1.86**, which is a
+  ~22 dB boost at Nyquist rather than a high cut.
+* SIZE: `f` reaches **1.86**, so taps above SIZE~68 overrun the 2048-word
+  line and alias.
+
+Halving the constants is the fix, and it demonstrably reduces the level
+— but it does NOT stop the sustain, so at least one more mechanism is in
+play. Do not ship a half-understood coefficient change on top of an
+unexplained oscillation.
+
+### The contradiction to resolve first
+
+The emulator says v59 drones; the user says v59 sounds good. One of those
+is wrong and it decides everything downstream. Cheapest resolution is by
+ear, no flash: **play a short sound through the reverb and then STOP —
+if the tail never dies, the emulator is right.** The reverb has always
+been described as "static"/"wash" in this project, so a self-sustaining
+tank is a live candidate for what that always was.
