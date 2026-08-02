@@ -1,4 +1,4 @@
-# Two-track freeze — SOLVED (mechanism reproduced in the emulator, 2 Aug)
+# Two-track freeze — SOLVED AND CONFIRMED ON HARDWARE (2 Aug)
 
 **The cause.** v46/v50's phase load: `move x:(r7+$83),a` then `and #$7ff`.
 On the FIRST call after enable, $83 holds leftover garbage. `and` cleans
@@ -324,7 +324,7 @@ laundered $83 before any address was derived from it.
 
 `dsp/reverb55.asm` / `OCTATRACK_V55.bin` — v50 + the four A2-clean
 instructions. Emulator: v50+poison = 750 saturated accesses; v55+poison
-= 0, guard clean, wet live. Flashed for hardware confirmation.
+= 0, guard clean, wet live. **HARDWARE CONFIRMED: two tracks, no freeze.**
 
 Still open after the freeze closes (the audio-quality track):
 * the delay lines are never cleared at init — the "laddering static" —
@@ -656,7 +656,7 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/stageprobe9.asm` (as `OCTATRACK_STAGES9.bin`) | v8 minus the audio scaffold. No freeze — narrowed the protection to the $83/counter group. |
 | `dsp/reverb53.asm` (as `OCTATRACK_V53.bin`) | v50 + tagged phase save. FROZE — the $83 value is not the mechanism. |
 | `dsp/reverb54.asm` (as `OCTATRACK_V54.bin`) | v50 + M epilogue on the control call. FROZE — and forced the re-read that found the real cause. |
-| `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX**: v50 + A2-clean after both $83 loads. Poison-verified in the emulator. **Flash to confirm.** |
+| `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);
