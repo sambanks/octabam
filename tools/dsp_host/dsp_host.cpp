@@ -105,6 +105,8 @@ struct Instance {
     long nonzero = 0;
     long violations = 0;
     long clobbers = 0;
+    long cycles = 0;
+    long procCalls = 0;
 };
 
 // Which Y and P words a loaded module occupies. Writing over one of these is
@@ -145,6 +147,7 @@ bool loadMem(DSP& dsp, const std::string& path, int& modules, long& words) {
 }
 
 // Run from _pc until the matching rts pops back past the entry stack depth.
+uint32_t g_lastCycles = 0;
 bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycles = 50000000) {
     // Call through the emulator's own jsr so the return address is pushed the
     // way the hardware would. The sentinel must be a MAPPED P address -- an
@@ -154,11 +157,12 @@ bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycle
     dsp.jsr(pc);
     for (uint32_t i = 0; i < maxCycles; ++i) {
         const TWord cur = dsp.getPC().toWord();
-        if (cur == sentinel) return true;
+        if (cur == sentinel) { g_lastCycles = i; return true; }
         if (trace && static_cast<int>(i) < trace)
-            std::printf("  %s %6u  pc=%06x  a=%012llx r0=%06x r6=%06x\n", what, i, cur,
+            std::printf("  %s %6u  pc=%06x  a=%012llx r0=%06x r6=%06x n7=%06x lc=%06x\n", what, i, cur,
                         static_cast<unsigned long long>(dsp.regs().a.var & 0xffffffffffffull),
-                        dsp.regs().r[0].var, dsp.regs().r[6].var);
+                        dsp.regs().r[0].var, dsp.regs().r[6].var,
+                        dsp.regs().n[7].var, dsp.regs().lc.var);
         dsp.execInterpreter();   // single-step; exec() may JIT past the sentinel
     }
     std::cerr << what << ": did not return after " << maxCycles << " cycles (pc="
@@ -481,6 +485,7 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
+            I.cycles += g_lastCycles; ++I.procCalls;
             if (guard.armed) {
                 int cl = 0;
                 I.violations += guard.check(mem, I.base, I.base + a.guardWords, who,
@@ -537,6 +542,9 @@ int main(int argc, char** argv) {
     std::printf("ran %d blocks x %d frames on %d instance(s)\n", a.blocks, a.frames, a.inst);
     long total = 0, bad = 0;
     for (int k = 0; k < a.inst; ++k) {
+        std::printf("  instance %d: %.1f instructions/sample (%ld calls)\n", k,
+                    inst[k].procCalls ? double(inst[k].cycles) / inst[k].procCalls / a.frames : 0.0,
+                    inst[k].procCalls);
         std::printf("  instance %d: %ld non-zero output samples", k, inst[k].nonzero);
         if (guard.armed)
             std::printf(", %ld stray write regions, %ld CLOBBERING a loaded module",
