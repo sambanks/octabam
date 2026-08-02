@@ -84,10 +84,10 @@ public:
 
 struct Args {
     std::string mem, in, out;
-    TWord init = 0, proc = 0, audio = 0x000000, params = 0x000100, state = 0x010000;
+    TWord init = 0, proc = 0, audio = 0x000080, params = 0x000100, state = 0x010000;
     int frames = 32, blocks = 256, trace = 0, diff = 0, spray = 0;
     TWord flags = 0; int pingpong = -1;
-    int inst = 1;
+    int inst = 1; TWord dirty = 0; bool noctl = false;
     std::vector<int> allocIdx, r7Idx;
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
@@ -266,6 +266,8 @@ int main(int argc, char** argv) {
         else if (k == "-spray") a.spray = atoi(argv[++i]);
         else if (k == "-pp") a.pingpong = atoi(argv[++i]);
         else if (k == "-inst") a.inst = atoi(argv[++i]);
+        else if (k == "-dirty") a.dirty = strtoul(argv[++i], nullptr, 0);
+        else if (k == "-noctl") { a.noctl = true; --i; }
         else if (k == "-alloc") a.allocIdx = parseList(argv[++i]);
         else if (k == "-r7") a.r7Idx = parseList(argv[++i]);
         else if (k == "-allocproc") a.allocProc = v();
@@ -387,6 +389,18 @@ int main(int argc, char** argv) {
     // effect. -allocproc chooses which model to run.
     auto setAlloc = [&](TWord v) { mem.set(MemArea_X, 0x213, v); };
 
+    // Hardware does not hand an effect a zeroed buffer -- it holds whatever the
+    // previous algorithm left. The emulator does, which can make a build look
+    // fine here and behave differently on the device.
+    if (a.dirty) {
+        TWord x = a.dirty;
+        for (TWord ad = 0x1000; ad < 0xC000; ++ad) {
+            x ^= x << 13; x ^= x >> 17; x ^= x << 5; x &= 0xffffff;
+            mem.set(MemArea_Y, ad, x);
+        }
+        std::printf("Y:0x1000..0xBFFF filled with garbage (seed 0x%x)\n", a.dirty);
+    }
+
     Guard guard;
     if (a.guard) {
         guard.arm(mem);
@@ -471,7 +485,28 @@ int main(int argc, char** argv) {
                 for (TWord ad = DIFF_LO; ad < DIFF_HI; ++ad) snap[ad - DIFF_LO] = mem.get(MemArea_X, ad);
             }
 
+            // The dispatcher calls proc TWICE a block (P:0x4a7 / P:0x4db):
+            // first a control call with a = 0 and r0 = 0, then the audio call
+            // with a = 1 and r0 = the real buffer. An effect that ignores the A
+            // flag runs its whole engine against r0 = 0 as well. Modelling only
+            // the audio call -- and passing r0 = 0 for it -- is why this harness
+            // could not see that.
             char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
+            if (!a.noctl) {
+                dsp.regs().r[0].var = 0;
+                dsp.regs().a.var = 0;
+                dsp.regs().n[7].var = cnt;
+                char cw[40]; std::snprintf(cw, sizeof cw, "inst %d ctl", k);
+                if (!runToRts(dsp, a.proc, 0, cw)) {
+                    std::printf("\nHANG in the CONTROL call: instance %d, block %d\n", k, b);
+                    return 1;
+                }
+                dsp.regs().r[0].var = I.audio;
+                dsp.regs().r[6].var = pblock;
+                dsp.regs().r[7].var = I.state;
+                dsp.regs().n[7].var = cnt;
+            }
+            dsp.regs().a.var = 1;
             if (!runToRts(dsp, a.proc, (b == 0 && k == 0) ? a.trace : 0, who)) {
                 std::printf("\nHANG: instance %d, block %d, pc=0x%06x\n", k, b,
                             dsp.getPC().toWord());

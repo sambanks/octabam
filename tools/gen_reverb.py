@@ -499,6 +499,25 @@ init:
         rts
 
 proc:
+; ---- the A accumulator is a MODE FLAG, and it is not optional -----------
+; The dispatcher calls this routine TWICE a block (P:0x4a7 for FX1, P:0x4db for
+; FX2, payload A):
+;
+;   move #$0,r0 / clr a / jsr (r2)          a = 0, r0 = 0     control call
+;   move x:>$20e,r0 / move #$1,a / jsr (r2) a = 1, r0 = audio audio call
+;
+; DARK REV opens with `tst a / beq func_00172e` and its a=0 path only reads
+; parameter slots -- it never touches audio. Ignoring the flag means running the
+; whole engine a second time every block against r0 = 0, writing into low X
+; memory that is not ours and advancing the delay phase and every line twice.
+;
+; The emulator did not catch this because the harness passes r0 = 0 for audio
+; too, so both calls looked identical to it.
+        tst     a
+        bne     audio
+        rts
+audio:
+
 ; ---- this instance's buffer base ----------------------------------------
 ; X:${ALLOC_PTR:x} points at this instance's entry in the base table, but ONLY
 ; during init: the dispatcher advances it per effect, so by the time blocks are
