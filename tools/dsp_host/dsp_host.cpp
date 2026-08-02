@@ -55,6 +55,9 @@
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
+//     -split N              a=0 sub-block call of N frames, then a=1 for the rest
+//                           (the post-trig state). Omitted = split 0, where the
+//                           a=0 call is SKIPPED -- what the dispatcher does.
 //     -guard [words]        police buffer bounds (default window 0x3800 words)
 //     -frames N             frames per block (default 32)
 //     -blocks N             blocks to run (default 256)
@@ -607,13 +610,22 @@ int main(int argc, char** argv) {
             // Every trig sets the split to its landing offset inside the
             // block and it persists until the next trig.
             //
-            // -split N models that post-trig steady state faithfully: the
-            // block's frames are tiled across the two calls. Without -split,
-            // the legacy shape is kept (a = 0 call at r0 = 0 with n7 = cnt),
-            // which matches what an a=0-rts effect experiences at split = 0.
+            // -split N models the post-trig steady state: the block's frames
+            // are tiled across the two calls. WITHOUT -split the a=0 call is
+            // SKIPPED, because that is what the hardware does at split = 0.
+            //
+            // It used to be made anyway, at r0 = 0 with n7 = cnt, to model what
+            // an a=0-rts effect sees. That is now a trap: since v57 the reverb
+            // runs its body on BOTH calls, so the harness was executing the
+            // whole engine against r0 = 0 — which on hardware IS the audio
+            // buffer, but here is unrelated low X memory. The engine read that
+            // as input and fed it to the tank every block, so the reverb never
+            // decayed and looked self-oscillating for hours of investigation,
+            // while the hardware decayed perfectly. Model the dispatcher, not a
+            // historical special case.
             char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
             const int sp = (a.split > 0 && a.split < a.frames) ? a.split : 0;
-            if (!a.noctl) {
+            if (!a.noctl && sp) {
                 dsp.regs().r[0].var = sp ? I.audio : 0;
                 dsp.regs().a.var = 0;
                 dsp.regs().n[7].var = sp ? sp : cnt;

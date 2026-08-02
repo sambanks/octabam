@@ -1126,7 +1126,7 @@ Regression evidence: **v61 with LO=0 is bit-identical to v59** across
 TIME=64/100/127, so the remap and the filter are provably inert when the
 new knob is at zero.
 
-### The sustain (NOT a v61 regression — v59 does it too)
+### The "sustain" was MY HARNESS. Resolved — see below. (kept for the lesson)
 
 Feeding one impulse then silence and measuring the RMS envelope over
 **4.1 s**, the output does not decay. It settles at roughly -15 dBFS and
@@ -1180,3 +1180,59 @@ ear, no flash: **play a short sound through the reverb and then STOP —
 if the tail never dies, the emulator is right.** The reverb has always
 been described as "static"/"wash" in this project, so a self-sustaining
 tank is a live candidate for what that always was.
+
+
+## RESOLVED: the sustain was a harness artifact, not the reverb
+
+User checked by ear: **the tail dies away nicely on hardware.** That
+contradiction was the useful signal, and the harness was at fault.
+
+**Cause.** With neither `-noctl` nor `-split`, the harness still made the
+a=0 call, at **r0 = 0** with n7 = cnt — a legacy shape that modelled what
+an a=0-rts effect sees. Since v57 the reverb runs its body on BOTH calls,
+so the harness was executing the whole engine against r0 = 0. On hardware
+r0 = 0 IS the audio buffer; in the harness the buffer is at 0x80, so r0 = 0
+is unrelated low X memory. The engine read that as input and injected it
+into the tank **every block**. A continuously driven tank never decays
+and does not care about TIME — which is exactly what was observed, and it
+survived every gain reduction because it was never a gain problem.
+
+**Fixed** in `dsp_host.cpp`: with no `-split`, the a=0 call is now
+SKIPPED, which is what the dispatcher does at split 0. Same v59 build,
+same parameters, only the call model differing:
+
+| call model | drop over 4.1 s |
+|---|---|
+| old default (a=0 at r0=0) | -0.3 dB — the phantom |
+| `-noctl` | **-56.2 dB** |
+| `-split 5` | **-56.2 dB**, identical to `-noctl` |
+
+**Two retractions.** The "instability at TIME=127" was a 238 ms window
+against a multi-second tail. And the alarming coefficient analysis below
+is NOT confirmed: with the harness fixed, v61 decays cleanly and TIME
+sweeps the decay properly — RT60 ~3.7 s / 4.3 s / 17.5 s at TIME
+0 / 64 / 127. The `mpy` doubling is real arithmetic, and the top of the
+TIME range does run about 2x longer than the 2.7-6.8 s documented, but
+**nothing is unstable and no coefficient needs emergency surgery.** Treat
+it as a tuning observation, not a bug.
+
+**The standing lesson, third time in this project:** a harness that
+models a special case rather than the dispatcher will invent a
+phenomenon and cost a day. Always sanity-check a surprising emulator
+result against the instrument before chasing it — the user's ears
+settled this in one message.
+
+## READY TO FLASH: `dsp/reverb61.asm` / `out/OCTATRACK_V61.bin`
+
+1041 words, 996 clear. LO coefficient tuned to `$020000` by measurement:
+the late tail falls 775 -> 308 -> 128 across the HP knob at TIME=64 while
+RT60 stays ~4.2-4.6 s. Larger values annihilate the tail, because the
+filter is inside the loop and its cut compounds every pass.
+
+Test protocol:
+* **HP** should now be a real low cut — sweep it and the tail should
+  tighten and lose weight without vanishing.
+* **LP** should be the high cut it always was, just moved off SHVG.
+* **SHVG** is now MOD depth (was on LP).
+* TIME, SHVF/SIZE, MIX, PRE unchanged.
+* Two tracks as always.

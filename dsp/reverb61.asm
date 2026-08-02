@@ -417,9 +417,11 @@ warmdone:
 ; $3 is the knob labelled HP, and a low cut IS a high-pass, so the label is
 ; honest. HP=0 gives coefficient 0 -- the state never moves, nothing is
 ; subtracted, and the filter is bypassed exactly. HP=127 gives ~0.155,
-; which is a firm low cut on the tail without touching the dry.
+; sits INSIDE the loop and its cut compounds every pass. Measured:
+; the late tail falls 775 -> 308 -> 128 across the knob at TIME=64,
+; while RT60 stays ~4.2-4.6 s. A larger coefficient annihilates it.
         move    x:(r6+$3),x0
-        move    #>$140000,y1
+        move    #>$020000,y1
         mpy     x0,y1,a
         move    a,x:(r7+$40)            ; LO coefficient
 
