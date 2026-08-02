@@ -1902,3 +1902,60 @@ If 4 instances turns out to be unreachable by optimization alone, the
 honest lever is algorithmic: fewer allpasses, or dropping back to 2
 interpolated lines instead of 4 (worth ~56 cycles), trading measured
 smoothness for instance count.
+
+## DENSITY STAGE 2 — done. 432 -> 325 cycles/sample (25%)
+
+`dsp/reverb69.asm`. **Bit-identical to v67** across four parameter sets,
+guard clean at two instances under poison, dirty Y and split. 1018 words.
+
+Answering "did we move everything to modulo?" — **no, and the reads were
+the expensive half.** The tank WRITES were modulo (r1..r4); the four
+interpolated line reads and all eight allpass accesses were arithmetic.
+v62 put the line reads on modulo and v65 took them back off, because an
+interpolated read appears to need TWO addresses.
+
+**It does not.** Two facts collapse it to one modulo-indexed read:
+
+* `rK` already walks line k under modulo 2048, so `y:(rK+nK)` with
+  `nK = (2048-tap) - offset` lands exactly on `(phase - tap - offset) mod
+  2048`. The AGU does the masking, the base add and the wrap for free —
+  replacing ~15 instructions of arithmetic with one.
+* **the interpolation partner needs no address at all: `d1` this sample
+  IS `d0` last sample.** The read pointer advances one per sample, and
+  the write head stays >=69 samples away even at the shortest tap and
+  deepest modulation, so the carried value is never overwritten. Primed
+  one sample further back before the loop, so sample 0 is exact too.
+
+Each line read went from ~29 instructions to 8. All eight uses of the
+`$7ff` mask disappeared with the arithmetic, which freed n1..n4 for the
+read offsets (Stage 1 had them holding constants; `$3ff` moved to n6).
+
+| | cycles/sample | x4 |
+|---|---|---|
+| v67 | 432 | 1,728 |
+| v68 (Stage 1) | 408 | 1,632 |
+| **v69 (Stage 2)** | **325** | **1,300** |
+| 3 instances at 432 (works) | — | 1,296 |
+
+**Four instances now costs what three used to.** That is the first point
+where 4 looks reachable, though 1,300 is exactly at the proven edge, so
+margin is worth having.
+
+### Next: the allpasses, and r6 is the key
+
+They are still fully arithmetic and are now the biggest block (~100 of
+325). 12 of each allpass's ~25 instructions are address arithmetic: eight
+to build the read address, four to rebuild the write address.
+
+With `m5 = $3ff` and `r5 = base + phase`, `y:(r5+n5)` with
+`n5 = 1024-tap` IS the read and `y:(r5)` is the write. The blocker was
+that `m5` is `$7ff` for the pre-delay — but **r6 is completely unused
+inside the loop**, so the pre-delay can move to r6/m6/n6 and `m5` becomes
+permanently `$3ff`. No M-register write inside the loop, which is the
+rule that froze v47.
+
+Estimated -20 cycles (325 -> ~305, giving 1,220 at four instances).
+⚠️ It needs an `n5` write per allpass, and **the emulator cannot verify
+AGU interlock timing** — that is a hardware-pipeline effect. Follow the
+standing rule strictly: two instructions, both data moves, between
+writing r5/n5 and using them.
