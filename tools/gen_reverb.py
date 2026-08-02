@@ -141,9 +141,21 @@ BASE_MODE = "stash"
 #
 # "tank" is not optional -- without it there is no effect, and dsp/minimal.asm
 # already covers that case.
-# Override without editing, so a bisect build is reproducible from its command:
-#     RV_STAGES=tank python3 tools/gen_reverb.py v37 > dsp/reverb37.asm
-STAGES = set((os.environ.get("RV_STAGES") or "tank,pre,diff,mod,size,lines").split(","))
+# Stages are SUBTRACTIVE: the default is always the whole engine and a bisect
+# build names what to remove.
+#
+#     RV_DROP=pre,diff,mod,size,lines python3 tools/gen_reverb.py v43 > ...
+#
+# It used to be additive, and that cost a build. "lines" was added to the stage
+# list after v40 was generated with RV_STAGES=tank, so the same string silently
+# stopped emitting the delay-line reads and writes: v42 shipped as v41 with
+# smaller buffers, produced no reverb at all, and would have "run" on two tracks
+# for the one reason that proves nothing. Subtractive cannot do that -- adding a
+# stage cannot change what an existing command means.
+ALL_STAGES = {"tank", "pre", "diff", "mod", "size", "lines"}
+STAGES = ALL_STAGES - set(x for x in (os.environ.get("RV_DROP") or "").split(",") if x)
+_unknown = set(x for x in (os.environ.get("RV_DROP") or "").split(",") if x) - ALL_STAGES
+assert not _unknown, f"RV_DROP names no such stage: {sorted(_unknown)}"
 
 # Only used when BASE_MODE == "fixed". 0x4000 is a real FX2 slot, so it is safe
 # to run on one track.
