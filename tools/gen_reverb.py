@@ -286,17 +286,24 @@ APB       = 0x72            # the four allpass bases, r7+$72..$75
 # either -- mapped on hardware with dsp/pagemap_probe.asm, which put an
 # unmistakable behaviour on each candidate offset:
 #
-#     knob PRE   -> r6+$e        knob MONO  -> r6+$d
-#     knob BAL   -> r6+$b        knob MIXF  -> r6+$c   (boolean mix/send)
+#     knob PRE   -> r6+$c        knob MONO  -> r6+$d
+#     knob BAL   -> r6+$b        knob MIXF  -> r6+$e   (boolean mix/send)
 #
-# That also explains the stock code: DARK REV and PLATE REV read r6+0..5 plus
-# r6+$c and r6+$e -- the mix/send mode and the PRE knob, which really is their
-# pre-delay. They leave BAL and MONO to the host.
+# CORRECTED 3 Aug: PRE and MIXF were the wrong way round here, and it cost a
+# hardware flash. Read it off stock DARK instead of the probe --
+#   $c  P:0x17d4 masks the knob field, scales it, sets m5 = $7ff and walks a
+#       2048-word delay buffer. That is a PRE-DELAY, unmistakably.
+#   $e  P:0x173c and P:0x1a0d only ever `btst #$8` it and branch. That is a
+#       FLAG. A knob arrives as value<<16, so bit 8 is always clear, and an
+#       effect reading PRE from $e sees 0 for every knob position.
+# Confirmed on hardware too: with wet gain wired to $c, the PRE knob is the
+# one that moves it. STOCK'S OWN READS ARE THE AUTHORITY ON SLOT MEANING --
+# the pagemap probe is not.
 #
 # Our pre-delay therefore sits on the knob already labelled PRE, and page 1's
 # fourth slot is freed for LO.
 P_TIME, P_HI, P_SIZE, P_SPARE, P_MOD, P_MIX = range(6)
-P_PRE   = 0xe               # knob PRE
+P_PRE   = 0xc               # knob PRE (was 0xe -- see above)
 P_WIDTH = 0xb               # knob BAL
 P_RATE  = 0xd               # knob MONO
 

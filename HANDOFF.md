@@ -1236,3 +1236,51 @@ Test protocol:
 * **SHVG** is now MOD depth (was on LP).
 * TIME, SHVF/SIZE, MIX, PRE unchanged.
 * Two tracks as always.
+
+## SIZE IS BROKEN, and the fix is to put modulo BACK on the tank lines
+
+Found while checking the coefficients. Two related things:
+
+**1. SIZE only scales two of the four lines.** `n1` and `n4` are computed
+from SIZE every block and then **never used**. Lines 0 and 3 read with
+hardcoded taps (`$fff9e1` = -1567, `$fffd23` = -733); only lines 1 and 2
+use the SIZE-derived `$2a`/`$2b`. The comment beside the dead code still
+says "-tap, line 0 reads `y:(r1+n1)`" — which is a MODULO read. This is
+leftover wreckage from ripping modulo out to chase the modulo theory, and
+the theory was wrong anyway.
+
+**2. What SIZE does scale, it scales past the end of the line.** With the
+`mpy` doubling, `f` spans 0.125..1.861 and the tap is `3134*f`, so the
+nominal 1567 lands at f=0.5 — knob ~27, not 127. Above that the tap
+exceeds the 2048-word line, `and #$7ff` wraps it, and SIZE goes
+NON-MONOTONIC: turning it up past ~2/3 makes the space smaller again.
+
+### Would going back to modulo free words? Yes — but that is the least of it
+
+Per tap read, arithmetic addressing costs 11 words:
+
+    move r1,a / move #>$fff9e1,x0 / add x0,a / move #>$7ff,x0 /
+    and x0,a / move x:(r7+$10),x0 / add x0,a / move a,r5
+
+against `move y:(r1+n1),a` — **one word**. A write-back site is 8 words
+against 1. Across the four line reads and four write-backs that is
+roughly **50 words and a similar count of instructions a sample**.
+
+The allpasses cannot all follow: modulo needs a dedicated address
+register per buffer with a fixed M for the whole block (no M writes
+inside the loop — standing rule), and r1..r5 is all we have. r1..r4 are
+already the four line pointers and m1..m4 are already set per block, so
+**the tank lines are exactly the case modulo fits**, which is what the
+original design did.
+
+Alignment checks out: line bases are base+0/0x800/0x1000/0x1800, and base
+is 0x4000 or 0x8000, so every line is 2048-aligned as modulo requires.
+
+**But words are no longer the reason to do it** — taking SPRING left 996
+free. The reasons are that it makes `n1..n4` live so **SIZE works on all
+four lines**, and it buys back ~50 instructions a sample. Do it as one
+change, with the SIZE scaling corrected so the tap cannot exceed the line
+(cap `f` so `3134*f <= 2047`, i.e. f <= 0.653), and verify SIZE is
+monotonic by measuring the impulse response at several settings.
+
+Not started: v61 is on the card and unverified, and this builds on it.
