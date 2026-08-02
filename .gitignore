@@ -20,3 +20,5 @@ __pycache__/
 
 # dsp_host is copied into vendor/ to build against dsp56kEmu
 vendor/dsp56300/
+
+OCTATRACK_*.bin

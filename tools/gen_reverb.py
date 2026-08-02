@@ -13,7 +13,7 @@ The hardware constraints this encodes, all established by probe:
 
   * delay buffers live in Y memory, and Y ends at 0xC000 -- measured with
     dsp/ymemprobe.asm, which sweeps a wet-only echo buffer across Y a page at a
-    time. It goes silent at page 47, so 0x400..0xBFFF is real and 0x795..0xBFFF
+    time. It goes silent at page 47, so 0x400..0xBFFF is real and 0x7a5..0xBFFF
     is free of loaded modules.
   * init must not loop, and must not reset anything that has to survive: it
     appears to run far more often than once per effect selection, so resetting
@@ -61,24 +61,48 @@ STATE_TAB = 0x6000          # X: first r7 state block
 # it. So init stashes the base in absolute Y at an address unique to the
 # instance:
 #
-#     Y:(STASH + (r7 >> 8))   ->  0x795..0x79d for r7 = 0x6000..0x6800
+#     Y:(STASH + (r7 >> 8))   ->  0x861..0x86f for r7 = 0x6100..0x6f00
 #
-# which is the free window above the loaded coefficient module at 0x715..0x794.
 # Absolute, but one word per instance, so instances do not collide.
+#
+# STASH WAS 0x735, AND THAT IS WHY v30/v31 HUNG ON TWO TRACKS. That put the
+# stash at 0x796..0x79b, chosen as "the free window above the loaded coefficient
+# module at 0x715..0x794" -- which is payload A's map. Payload B loads 21 Y
+# modules below 0x1000 rather than A's 5, and its last one runs to Y:0x7a4. So
+# on payload B every stash address landed INSIDE a live 128-word coefficient
+# table: the effect corrupted another algorithm's coefficients, then read that
+# algorithm's data back as its own buffer base and wrote 14K words from wherever
+# that pointed.
+#
+# The free window is Y:0x7a5..0xFFF in both payloads (nothing else is loaded
+# below the FX1 buffers at 0x1000), so 0x800-based addresses are clear in both.
 #
 # Deriving the base as x:(0x255 + ((r7 - 0x6000) >> 8)) does NOT work, though the
 # arithmetic looked sound: measured on hardware, r7 = 0x6200, and table[2] is
 # 0x1c00 -- a 3072-word FX1 slot. A 16K layout there runs to 0x53ff, through the
 # other FX1 buffers and into FX2 slot 0. The pointers do advance together, but
-# FX2 effects do not take even table entries.
+# FX2 effects do not take even table entries -- each track allocates an FX1 slot
+# and then an FX2 slot, so FX2 instance k takes table entry 1 + 2k and state
+# block 0x6000 + (2 + 2k) * 0x100. That model reproduces both measurements:
+# r7probe returned 0x6200 and baseprobe returned 0x4000 and 0x8000.
 #
 # Measured with dsp/baseprobe.asm: the stash returns 0x4000, an FX2 slot.
-STASH     = 0x735
+STASH     = 0x800
 
-# Set to an address to bypass the allocator and hardcode the base. Only for
-# bisecting: it pins every instance to the same region, so two tracks collide.
-# 0x4000 is a real FX2 slot, so it is safe to run.
-ALLOC_FIXED = None
+# How process gets hold of the base:
+#
+#   "stash"     init reads X:0x213 and leaves it at Y:(STASH + (r7 >> 8)).
+#               The only one that is correct with more than one instance.
+#   "procread"  process reads X:0x213 itself. Works on one track by luck and
+#               hangs on two; kept because it is the shortest and it is what
+#               v33 shipped, so builds can be compared against it.
+#   "fixed"     ALLOC_FIXED, for bisecting only -- it pins every instance to the
+#               same region, so two tracks collide by construction.
+BASE_MODE = "stash"
+
+# Only used when BASE_MODE == "fixed". 0x4000 is a real FX2 slot, so it is safe
+# to run on one track.
+ALLOC_FIXED = 0x4000
 
 LINE_OFF  = 0x0000          # four tank lines, one per 0x800
 LINE_LEN  = 2048
@@ -359,7 +383,17 @@ init:
 ;
 ; Reading X:${ALLOC_PTR:x} is only valid HERE. Stash the base where process can
 ; find it: absolute Y, but at an address unique to this instance.
+""" + ("" if BASE_MODE != "stash" else f"""        move    x:>${ALLOC_PTR:x},r4
+        move    r7,a
+        asr     #$8,a,a                 ; r7 >> 8; also fills the AGU slot
+        move    x:(r4),x0               ; this instance's buffer base
+        move    #>${STASH:x},y0
+        add     y0,a
+        move    a,r5
         move    #>$ffffff,m5
+        move    #>$ffffff,m0            ; both fill the AGU slot
+        move    x0,y:(r5)
+""") + f"""        move    #>$ffffff,m5
         move    #>$ffffff,m0
         move    #>$ffffff,m1
         move    #>$ffffff,m2
@@ -368,42 +402,36 @@ init:
         rts
 
 proc:
-; ---- this instance's buffer base, derived from r7 -----------------------
-; The host advances X:${ALLOC_PTR:x} (buffer bases) and X:0x20a (state blocks)
-; together, one per effect, so the table index is recoverable from r7 alone:
+; ---- this instance's buffer base ----------------------------------------
+; X:${ALLOC_PTR:x} points at this instance's entry in the base table, but ONLY
+; during init: the dispatcher advances it per effect, so by the time blocks are
+; running it sits wherever the last init left it. With one effect loaded that
+; happens to still be a valid FX2 slot, which is why reading it in process
+; (v33) worked on one track and hung on two -- both instances then read the SAME
+; entry and one of them wrote 14K words through memory it does not own.
 ;
-;     n = (r7 - {STATE_TAB:#x}) >> 8        base = x:({ALLOC_TAB:#x} + n)
+; So read it in init and carry it across in the per-instance stash. See the
+; STASH note above for why the address moved from 0x735 to 0x800.
 ;
-; Reading X:${ALLOC_PTR:x} directly only works in init, because the dispatcher
-; advances it before calling process. Deriving it from r7 works ANYWHERE and
-; needs nothing to survive between calls -- which matters, because parts of the
-; r7 block are demonstrably volatile (r7+$50 does not persist).
+; Deriving it instead as x:({ALLOC_TAB:#x} + ((r7 - {STATE_TAB:#x}) >> 8)) does not work:
+; measured, r7 = 0x6200 while the base is table[1], not table[2].
 """ + (f"""        move    #>${ALLOC_FIXED:x},x0            ; BASE HARDCODED -- bisect build
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1
-        move    x0,x:(r7+$71)""" if ALLOC_FIXED is not None else f"""; Read X:${ALLOC_PTR:x} here, in process. No stash, and no absolute Y anywhere in
-; the effect.
-;
-; v23 did this and hung, which is why the stash was built -- but v23 also kept
-; state in r7+$84..$8a, which v26/v27 later proved fatal on its own. Retested
-; clean in v33: one track works. The read is fine; v23's hang was the state.
-;
-; It also rules the stash out of the two-track crash, since v33 has no stash and
-; still hangs with two.
-        move    x:>${ALLOC_PTR:x},r4
+        move    x0,x:(r7+$71)""" if BASE_MODE == "fixed" else f"""        move    x:>${ALLOC_PTR:x},r4
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
         move    x:(r4),x0
+        move    x0,x:(r7+$71)""" if BASE_MODE == "procread" else f"""        move    r7,a
+        move    #>$ffffff,m0            ; audio is read and written via r0
+        asr     #$8,a,a
+        move    #>${STASH:x},y0
+        add     y0,a
+        move    a,r5
+        move    #>${LINE_MASK:x},m1     ; both fill the AGU slot
+        move    #>$ffffff,m5
+        move    y:(r5),x0               ; the base init stashed for us
         move    x0,x:(r7+$71)""") + f"""
-
-; ---- BISECT LEVEL, read first because it gates the state load ------------
-;     HP <  32   PASSTHROUGH -- no sample loop, no state load, no state SAVE
-;     HP <  64   + tank
-;     HP <  96   + pre-delay
-;     HP >= 96   + diffuser (the full engine)
-        move    x:(r6+$3),a
-        asr     #$10,a,a
-        move    a,x:(r7+$50)
 
 ; ---- every buffer base, derived once per block --------------------------
         move    #>${AP_OFF:x},a
@@ -429,10 +457,6 @@ proc:
         move    a,x:(r7+$78)
 
 ; ---- per-block: load the state that cannot be derived -------------------
-        move    x:(r7+$50),a
-        move    #>32,x0
-        cmp     x0,a
-        blt     nostate
 ; The LFO phase and the four one-pole states are the only things that must
 ; survive between calls and cannot be recomputed. They live in the instance's
 ; own Y region, so they are per-instance, and touching them once per block costs
@@ -442,7 +466,7 @@ proc:
         move    a,x:(r7+$7f)            ; keep the address for the save
         move    a,r5
         move    #>$ffffff,m5            ; linear for the walk
-        move    x:(r7+$71),x0           ; restore x0 = base; fills the AGU slot
+        move    x:(r7+$71),x0           ; base again; fills the AGU slot after r5
         move    y:(r5)+,a
         move    a,{LFOPH}
         move    y:(r5)+,a
@@ -453,7 +477,6 @@ proc:
         move    a,{DAMP[2]}
         move    y:(r5)+,a
         move    a,{DAMP[3]}
-nostate:
 
 ; ---- rebuild the four delay pointers from the saved phase ----------------
         move    x:(r7+$83),a
@@ -581,10 +604,6 @@ nostate:
     # difference between fitting in the frame budget and hanging the DSP.
     body += lfo()
     body += f"""
-        move    x:(r7+$50),a
-        move    #>32,x0
-        cmp     x0,a
-        blt     noloop
         do      n7,>rvend
 
 ; ---- input: mono sum -----------------------------------------------------
@@ -599,11 +618,6 @@ nostate:
         and     x0,a                    ; line base is aligned, so r1 masked is it
         move    a,{PHASE}
 
-; ---- pre-delay (skipped below bisect level 43) --------------------------
-        move    x:(r7+$50),a
-        move    #>64,x0
-        cmp     x0,a
-        blt     nopre
 ; ---- pre-delay ----------------------------------------------------------
 ; r5 with m5 modulo and a plain post-increment -- the same shape as the tank
 ; lines, which are proven safe. The earlier version computed the addresses
@@ -617,18 +631,9 @@ nostate:
         move    a,y:(r5)+               ; write, and advance
         move    r5,x:(r7+$70)
         move    b,x:(r7+$5b)            ; delayed input -> the diffuser
-nopre:
-"""
-    body += """
-; ---- diffuser (skipped below bisect level 86) ---------------------------
-        move    x:(r7+$50),a
-        move    #>96,x0
-        cmp     x0,a
-        blt     noap
 """
     for i in range(4):
         body += allpass(i)
-    body += "noap:\n"
     body += f"""
         move    x:(r7+$5b),a
         move    a,x:(r7+$55)            ; diffused input -> tank
