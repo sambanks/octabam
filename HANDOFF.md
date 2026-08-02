@@ -139,10 +139,15 @@ descriptor at `0x400d58b8` (6-byte stride from E+0x4e):
 | 4 | **HP** | +$3 | **nothing — never read** |
 | 5 | **LP** | +$4 | MOD — LFO modulation depth |
 | 6 | MIX | +$5 | MIX — **matches** |
-| p2 | PRE | +$e | PRE — **matches** (dead until v58; the loop body was bypassed) |
-| p2 | BAL | +$b | WIDTH (mid/side) |
-| p2 | MIXF | +$c | nothing — never read |
-| p2 | MONO | +$d | RATE (LFO rate) |
+| p2 | PRE | +$c | PRE — **matches as of v59** (v58 read $e and was knob-deaf) |
+| p2 | ? | +$b | WIDTH — **suspect: stock never reads $b** |
+| p2 | ? | +$d | RATE — **suspect: stock never reads $d** |
+| p2 | flag | +$e | nothing now; stock uses it as a `btst #$8` flag |
+
+Stock DARK reads only `$0..$5`, `$c` and `$e`. Everything else on page 2
+is likely host-side (routing/balance) and may read as a constant to the
+DSP — so **WIDTH and RATE are probably dead knobs too**, and the remap
+should verify each slot against stock's reads before trusting it.
 
 So HP is a dead knob, and LP is a subtle chorus depth — exactly the
 reported symptom. The fix is free (no ColdFire work, no descriptor
@@ -154,8 +159,39 @@ park SIZE/MOD there. TIME and MIX already match and must not move.
 
 ## NEXT — the audio-quality track, remaining
 
-2. **ON THE CARD NOW: `dsp/reverb58.asm` / `out/OCTATRACK_V58.bin`** —
-   v46's pre-delay restored. v57 + exactly two deltas (diff-verified):
+2. **ON THE CARD NOW: `dsp/reverb59.asm` / `out/OCTATRACK_V59.bin`** —
+   the pre-delay, on the RIGHT PARAMETER SLOT.
+
+   v58 flashed and PRE was inaudible and did not respond to the knob.
+   The pre-delay code was fine; **the slot was wrong.** Read from stock
+   DARK's own disassembly rather than guessed:
+
+   * **`$e` is a FLAG word.** Stock does `move x:(r6+$e),a / btst #$8,a`
+     and branches (P:0x173c, P:0x1a0d). A knob arrives as value<<16, so
+     bit 8 is always clear, and `asr #$c` of it is 0 — a one-sample
+     pre-delay, forever, no matter where the knob is. Exactly the
+     reported symptom.
+   * **`$c` is stock's PRE**, and its code at P:0x17d4 is the same
+     design as ours: mask the knob field (`and #>$7f0000`), scale it
+     (`mpy #$7f0 / add #$10` ≈ v*16+16, max 2031 — our v*16, max 2032,
+     is the same ramp), `m5 = $7ff` for a 2048-word modulo buffer, back
+     a pointer up by the offset, read delayed / write input, persist the
+     pointer. Only the slot was ever wrong.
+
+   The old note in `dsp_host.cpp` — "index 9 -> +$e (knob PRE)", from
+   `pagemap_probe` — is WRONG for DARK REV and has been corrected there.
+   **Stock's own reads are the authority on slot meaning; the probe was
+   not.** Stock reads only `$0..$5, $c, $e`, which also means our WIDTH
+   (`$b`) and RATE (`$d`) may be dead knobs — check them during the
+   remap.
+
+   v59 = v58 + two instructions (diff-verified): the read moves `$e`→`$c`
+   and gains stock's `and #>$7f0000` mask, since the slot can carry bits
+   outside the knob field. 942 words, 32 clear. Emulator: wet onset
+   moves block 47 → 115 → 182 as PRE goes 0 → 64 → 127, guard clean at
+   two instances; sweeping the OLD slot `$e` now changes nothing.
+
+   v58 (superseded) — v57 + exactly two deltas (diff-verified):
    `m5` back to `$7ff` in the SIZE section, and v46's seven loop-body
    instructions restored. 940 words, 34 clear. $30 is re-derived per
    call from $83 + the pre-delay base (already A2-cleaned), so it is
@@ -164,16 +200,16 @@ park SIZE/MOD there. TIME and MIX already match and must not move.
    clean, and PRE demonstrably live — impulse onset moves block
    47 → 115 → 182 as PRE goes 0 → 64 → 127.
 
-   Run protocol: flash, one track, play. **PRE is knob 4 on page 2** and
-   it should now sweep the gap before the wash, 0 to ~46 ms. Sweep it
-   end to end; also re-check that the warm-up and the trig behaviour
-   from v56/v57 are unchanged, then two tracks as always.
-   * **PRE sweeps, nothing else regresses** → the audio-quality track is
+   Run protocol: flash, one track, play something percussive with MIX
+   well up (a 46 ms shift is easy to miss on sustained material), and
+   sweep PRE end to end. Then two tracks as always.
+   * **PRE sweeps the gap before the wash** → the audio-quality track is
      done bar tuning; next is the knob remap.
-   * **PRE does nothing** → the loop body is not seeing n5/$30; check
-     them on hardware rather than guessing.
+   * **PRE still does nothing** → the slot is right (stock's own code
+     proves it), so suspect the loop body: check `n5` and `$30` reach
+     it, and that `m5` really is `$7ff` at the pre-delay access.
    * **anything freezes** → the modulo theory gets a second life after
-     all, and `m5 = $7ff` is the only new non-linear M register.
+     all, and `m5 = $7ff` is the only non-linear M register in the build.
 3. **Then the knob remap** (table above), decided 2 Aug: LP → the
    high-cut damping, and HP → either a NEW one-pole high-pass on the wet
    (~25-30 words of the 34 clear; the musically right answer) or SIZE if
@@ -862,7 +898,8 @@ Two more, found and FIXED while validating stageprobe4:
 | `dsp/reverb55.asm` (as `OCTATRACK_V55.bin`) | **THE FIX, HARDWARE CONFIRMED**: v50 + A2-clean after both $83 loads. Two tracks run. |
 | `dsp/reverb56.asm` (as `OCTATRACK_V56.bin`) | v55 + the tagged $82 warm-up. **Hardware: warm-up works, clean until a trig** — the trig static exposed the a=0 sub-block bug. |
 | `dsp/reverb57.asm` (as `OCTATRACK_V57.bin`) | v56 + body on BOTH calls (a=0 is the first sub-block) + LFO gated per-block. **HARDWARE CONFIRMED: trig static gone.** Emulator shows an unexplained split-dependence — see above. |
-| `dsp/reverb58.asm` (as `OCTATRACK_V58.bin`) | v57 + v46's pre-delay restored (m5 = $7ff, seven loop instructions). **ON THE CARD, awaiting hardware.** |
+| `dsp/reverb58.asm` (as `OCTATRACK_V58.bin`) | v57 + v46's pre-delay restored. Flashed: PRE INAUDIBLE — read parameter slot $e, which is a flag word, not PRE. |
+| `dsp/reverb59.asm` (as `OCTATRACK_V59.bin`) | v58 with the PRE read moved to $c (stock DARK's own pre-delay slot) + stock's knob mask. **ON THE CARD, awaiting hardware.** |
 | `dsp/instprobe.asm` `dsp/ownprobe.asm` `dsp/yburn.asm` | the measurement probes, all safe to run |
 
 `RV_DROP=` drops stages subtractively (`pre,diff,mod,size,lines`);

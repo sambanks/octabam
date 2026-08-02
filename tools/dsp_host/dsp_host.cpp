@@ -380,9 +380,21 @@ int main(int argc, char** argv) {
         }
 
     // Page 1 is pblock+0..5. Page 2 is neither contiguous with it nor in
-    // display order; mapped on hardware with dsp/pagemap_probe.asm:
+    // display order; the knob names below came from dsp/pagemap_probe.asm:
     //   index 6 -> +$b (knob BAL)   7 -> +$c (MIXF)
     //   index 8 -> +$d (knob MONO)  9 -> +$e (knob PRE)
+    //
+    // WARNING: those NAMES are not reliable, and at least two are wrong for
+    // DARK REV. Read from stock DARK's disassembly: +$c is its PRE-DELAY
+    // (P:0x17d4 masks the knob field, scales it, sets m5 = $7ff and walks a
+    // 2048-word delay buffer), while +$e is a FLAG word it only ever probes
+    // with `btst #$8` (P:0x173c, P:0x1a0d). Reading PRE from +$e cost a
+    // hardware flash: the pre-delay was inaudible and knob-deaf because a
+    // knob arrives as value<<16, so bit 8 is always clear.
+    //
+    // The slot offsets here are still correct -- it is only the knob labels
+    // that mislead. When a slot's MEANING matters, take it from the stock
+    // effect's own reads, not from this comment.
     static const TWord page2[] = {0xb, 0xc, 0xd, 0xe};
     auto setParams = [&](const std::vector<int>& pv) {
         for (size_t i = 0; i < pv.size(); ++i) {
