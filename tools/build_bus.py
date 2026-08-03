@@ -133,7 +133,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"18"
+BUILD_TAG = b"19"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -337,6 +337,17 @@ def main():
             # Taking CHORUS.TAPS's pair, the control Sam named.
             wr32(clone_P + 0x0ca + 7 * 4, 0x4003c718)
             wr32(clone_P + 0x0fa + 7 * 4, 0x40047254)
+            # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
+            # 20 stepped params in stock FX2 (count < 128): every single one
+            # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited
+            # DARK's 0x400328e4 there, which is why it kept drawing as a plain
+            # knob even with the right formatter pair.
+            #
+            # Only slot 7 is touched. Slots 6 and 8 also carry a non-zero
+            # 0x12a and are working full-travel knobs on hardware, so a
+            # non-zero value is fine FOR A KNOB -- it is specifically stepped
+            # rendering that requires zero. Change one thing.
+            wr32(clone_P + 0x12a + 7 * 4, 0)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
