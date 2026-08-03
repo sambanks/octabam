@@ -647,6 +647,13 @@ warmdone:
         mpy     x0,y1,a
         move    a,x:(r7+$40)            ; LO coefficient
 
+; ---- ER level (v91) ------------------------------------------------------
+; Fixed for now. MODE (the free page-2 select) will drive this slot per
+; character: a room wants strong early reflections, a hall weak ones, a plate
+; none at all. That is most of what separates the modes.
+        move    #>$400000,a
+        move    a,x:(r7+$6c)
+
 ; ---- MIX -----------------------------------------------------------------
         move    x:(r6+$5),x0
         move    x0,x:(r7+$20)
@@ -1096,6 +1103,129 @@ lf51:
         move    a,y:(r6)+               ; write, and advance
         move    r6,x:(r7+$30)
         move    b,x:(r7+$1b)            ; delayed input -> the diffuser
+
+; ---- EARLY REFLECTIONS (v91): six taps off the pre-delay buffer ----------
+; A real space gives a burst of discrete early echoes before the diffuse
+; tail, and it is most of what makes a room sound like a room rather than a
+; wash. We had none: the tank's own build-up was the only early behaviour.
+;
+; ZERO extra memory, which is the whole reason this is affordable -- the 32K
+; re-layout filled the allocation, so a new buffer was never an option. The
+; pre-delay already holds 4096 samples (93 ms) of input history and was being
+; read exactly once. These are just five more taps into it.
+;
+; Addresses are built arithmetically rather than with (rN+nN): every address
+; register is committed and r5's modulo is $7ff (2048) while this buffer is
+; 4096, so an indexed read would wrap in the wrong place. A plain y:(r5) read
+; ignores modulo entirely -- it only affects UPDATES -- so borrowing r5 here
+; is safe, and r5 is rebuilt from scratch by every allpass below.
+;
+; Taps are primes in ms-ish spacing with alternating sign for L/R spread, and
+; decaying gains. $6c holds the ER level, which MODE will set per character
+; (room wants strong ER, hall weak, plate none).
+        move    x:(r7+$30),a            ; pre_base + phase
+        move    x:(r7+$38),x0           ; pre_base
+        sub     x0,a
+        move    a,x:(r7+$62)            ; the phase alone, once per sample
+        clr     a
+        move    a,x:(r7+$5a)            ; ER accumulator L
+        move    a,x:(r7+$5b)            ; ER accumulator R
+        move    x:(r7+$62),a
+        move    #>331,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$700000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5a),x0
+        add     x0,a
+        move    a,x:(r7+$5a)
+        move    x:(r7+$62),a
+        move    #>557,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$5c0000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5b),x0
+        add     x0,a
+        move    a,x:(r7+$5b)
+        move    x:(r7+$62),a
+        move    #>919,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$4a0000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5a),x0
+        add     x0,a
+        move    a,x:(r7+$5a)
+        move    x:(r7+$62),a
+        move    #>1301,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$3c0000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5b),x0
+        add     x0,a
+        move    a,x:(r7+$5b)
+        move    x:(r7+$62),a
+        move    #>1723,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$300000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5a),x0
+        add     x0,a
+        move    a,x:(r7+$5a)
+        move    x:(r7+$62),a
+        move    #>2213,x0
+        sub     x0,a
+        and     #>$fff,a                ; wrap inside the 4096-word buffer
+        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
+        move    x0,a                    ; a move to rN, or it saturates
+        move    x:(r7+$38),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),b                ; the tap
+        move    b,x0
+        move    #>$260000,y1
+        mpy     x0,y1,a
+        move    x:(r7+$5b),x0
+        add     x0,a
+        move    a,x:(r7+$5b)
 
 ; -- allpass 0: base+0x4000, tap 1994 (45.2 ms) --
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
@@ -1554,6 +1684,10 @@ lf51:
         sub     x0,a
         move    x:(r7+$19),x0           ; line 3
         sub     x0,a
+        move    x:(r7+$5a),x0           ; + early reflections L (v91)
+        move    x:(r7+$6c),y1
+        mpy     x0,y1,b
+        add     b,a
         move    a,x:(r7+$2d)            ; wet L = l0+l1-l2-l3 -- the /4 that used
                                         ; to be here IS the makeup gain for the
                                         ; -12 dB tank attenuation above. Net
@@ -1567,6 +1701,10 @@ lf51:
         sub     x0,a
         move    x:(r7+$19),x0
         add     x0,a
+        move    x:(r7+$5b),x0           ; + early reflections R (v91)
+        move    x:(r7+$6c),y1
+        mpy     x0,y1,b
+        add     b,a
         move    a,x:(r7+$2e)            ; wet R = l0-l1-l2+l3 -- same makeup
 
 ; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
