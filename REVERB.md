@@ -3,8 +3,13 @@
 A four-line FDN reverb that replaces DARK REV on the Octatrack's DSPs. It
 runs on **all eight tracks simultaneously**.
 
-Current build: **`dsp/reverb71.asm`** → `out/OCTATRACK_V71.bin`.
-297 cycles/sample, 978 words of program memory.
+Current build: **`dsp/reverb84.asm`** → `out/OCTATRACK_V84.bin`.
+341 cycles/sample, 1098 words of program memory.
+
+> **Voicing is in progress and is the live work.** The structure below is
+> settled; the tuning is not. See "Tuning: what is known" at the end — it
+> records several results that cost hardware flashes to learn and are not
+> obvious from the code.
 
 For how the DSP subsystem works — boot, payload format, the dispatcher ABI,
 the allocator, the memory map — see `DSP.md`. For the reverse-engineering
@@ -43,15 +48,20 @@ describe what we do with the slot — the mapping below is what matters.
 | slot | UI label | what it does |
 |---|---|---|
 | `$0` | TIME | feedback → RT60, measured ~3.7 s to ~17 s |
-| `$1` | SHVG | **MOD** — modulation depth *and* rate (~0.18–3 Hz) |
-| `$2` | SHVF | **SIZE** — scales all four tap lengths, 196–1556 samples |
+| `$1` | MOD | **MOD** — modulation depth only (rate is fixed, see below) |
+| `$2` | SIZE | **SIZE** — scales all four tap lengths, 627–1543 samples |
 | `$3` | HP | **LO** — high-pass inside the feedback path |
 | `$4` | LP | **HI** — high-cut damping inside the feedback path |
 | `$5` | MIX | wet gain |
 | `$b` | BAL | **WIDTH** — mid/side, 0 = mono |
 | `$c` | PRE | pre-delay, 0–46 ms |
-| `$d` | MONO | **RATE** — LFO rate (stock never reads `$d`, so it may be inert) |
+| `$d` | MONO | **DEAD.** Confirmed on hardware: this knob does nothing. `$d` is host-side, not a parameter. Not read. |
 | `$e` | MIXF | **unused** — a host-owned boolean, not a continuous control |
+
+Page-1 names are rewritten by `build_reverb.py` (the descriptor's name
+strings are plain data). Page 2 is deliberately NOT renamed: its descriptor
+order conflicts with the probed `r6` mapping, and renaming against a mapping
+known to be wrong would put right names on wrong knobs.
 
 **Stock's own reads are the authority on what a slot means.** Reading PRE from
 `$e` (a flag word stock only `btst`s) cost a hardware flash; `$c` is stock's
@@ -158,3 +168,56 @@ Two levers exist for going further, and they are independent:
 Smaller items: SHVG's range wants calibrating by ear; MIXF (`$e`) is dead and
 likely to stay so; and there is an unexplained emulator-only divergence
 between one and two instances under a nonzero split.
+
+
+## Tuning: what is known
+
+Several of these cost a hardware flash each and none are obvious from the
+code. The measurements come from a spectral-flatness harness (see below for
+its limits).
+
+**Seasickness is RATE, not depth.** Pitch shift is `-d(delay)/dt`, so it
+depends on how fast the delay moves, not how far. 63 samples at 2.84 Hz is
+~28 cents of vibrato and sounds seasick; the same 63 samples at 0.25 Hz is
+~2.5 cents and is inaudible. Depth is what smears the modes. Coupling MOD
+to both — which v64 did as a workaround for an inaudible control — means
+turning it up adds wobble faster than it adds smearing. **Keep the rate
+slow and fixed; let MOD move depth alone.**
+
+**Small SIZE is inherently bad.** At the original floor the whole tank was
+566 samples: a mode spacing of 78 Hz, which is a comb, not a reverb. The
+floor is now `f = 0.4` so the bottom of the knob is ~1,810 samples at 24 Hz.
+Confirmed by ear ("smallest size sounds worst") before it was fixed.
+
+**Modulation must never reach zero.** A completely static tank rings — its
+modes are audible as pitched resonance. Some residual sweep is needed at
+MOD=0.
+
+**The interpolation fraction rule:** integer part via `asl #n`, fraction
+masked with `2^(24-n)-1` and shifted by **n-1**, never by `n`. Shifting by
+`n` pushes the top half past `0x800000`, where a 24-bit fractional reads
+NEGATIVE, and the interpolation jumps backwards once per integer LFO step —
+heard as a fast flutter. This bug was live from v72 to v79.
+
+**That bug was also doing something useful**, which is the uncomfortable
+part: it is a noise source, and interpolation dither is a real technique for
+breaking up delay-line artifacts. Every build the user liked had it. Fixing
+it was correct and immediately exposed ringing that had been masked. If the
+tail needs more smearing than slow deep modulation provides, *deliberate*
+randomisation is the principled replacement.
+
+**Spectral flatness cannot tell diffusion from distortion.** It rewards
+broadband noise, so it ranked the flutter builds highly and dropped when the
+flutter was fixed. It is useful for comparing structural changes, and
+misleading for anything that adds noise. **When it and the ear disagree, the
+ear is the measurement.** Early crest factor is the better companion metric.
+
+**In-loop allpass proportion matters.** An allpass inside the feedback loop
+is a dispersive element — the mechanism spring reverbs are built on. At 15%
+of the line it feeds it is diffusion; ours ran 26–64% and were suspected of
+producing a spring/plate ring. Removing them was tested (v82/v83) but
+bundled with other changes, so the result is not clean.
+
+**Change one thing per flash.** Between v77 and v83 five things changed and
+the result was worse in a way that could not be attributed. The recovery was
+to reflash v77, confirm the baseline, and move one variable at a time.
