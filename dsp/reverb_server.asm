@@ -69,7 +69,7 @@
 ; the "static after a trig". Only the LFO advance gates on the a flag.
 ;
 ; v56 = v55 + the warm-up: a tagged block counter in r7+$82 (stock DARK's
-; own warmed-flag slot) zeroes the whole 0x3800-word allocation 56 words a
+; own warmed-flag slot) zeroes the whole allocation 128 words a
 ; block over 256 blocks, output dry until warm. Kills the "laddering
 ; static" -- the lines held boot garbage and the tank recirculated it.
 ;
@@ -78,15 +78,23 @@
 ; Four series allpasses into a four-line FDN with a 4x4 Hadamard, one-pole
 ; damping inside the feedback path, and interpolated modulation on two lines.
 ;
-; All buffers are relative to the per-instance base at x:(x:>$213), so two
-; tracks running this effect do not write through each other. An FX2 instance is
-; given 0x4000 words:
-;   lines      base+0x0000 .. base+0x1fff   2048 words each
-;              taps 1567 1249 977 733  (36 28 22 17 ms)
-;   allpasses  base+0x2000 .. base+0x2fff   1024 words each
-;              taps 907 673 487 331  (21 15 11 8 ms)
-;   pre-delay  base+0x3000 .. base+0x37ff   2048 words (46 ms)
-;   total      0x3800 of the 0x4000 an FX2 instance is given
+; All buffers are relative to the hardcoded base Y:0x4000. BUS.md pools the
+; bank's whole FX2 allocation into 0x8000 words per server (0x4000..0xBFFF),
+; and as of the 32K re-layout the engine uses ALL of it -- every buffer is
+; twice the size it was, so the same tap fractions describe a space twice as
+; large:
+;   lines      base+0x0000 .. base+0x3fff   4096 words each, spacing 0x1000
+;              taps 3958 3386 2894 2474  (90 77 66 56 ms) at SIZE max
+;   allpasses  base+0x4000 .. base+0x5fff   2048 words each, spacing 0x800
+;              taps 1994 1706 1438 1226  (45 39 33 28 ms)
+;   pre-delay  base+0x6000 .. base+0x6fff   4096 words (93 ms)
+;   in-loop AP base+0x7000 .. base+0x7fff   2048 words each, taps 298 446
+;   total      0x8000 -- the whole allocation, nothing left over
+;
+; The tap CONSTANTS did not change in the re-layout: they are stored as
+; fractions of the line length ($3DD800 = 1979/2048), so doubling the line
+; and shifting one bit less after the multiply yields 3958 from the same
+; word. Only the modulo, the spacing and the shift counts moved.
 ;
 ; The allpasses are long on purpose. Four lines at ~50 ms is only ~80 echoes a
 ; second, which on its own reads as a stutter rather than a wash; the density
@@ -96,7 +104,7 @@
 ; State (all in the per-instance r7 block, not absolute Y):
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
-;   base+0x3800   4 in-loop allpasses, 512 words each (v74)
+;   base+0x7000   2 in-loop allpasses, 2048 words each (v74; 32K re-layout)
 ;   r7+$40        LO coefficient;  r7+$41..$44  LO states (working copies)
 ;   r7+$31..$78   this instance's base, and the bases derived from it
 ;   r7+$15..$66   per-sample scratch
@@ -339,7 +347,7 @@ bus_mine:
 
 ; ---- warm-up: stock DARK's shape, adapted --------------------------------
 ; The delay lines are never cleared: init zeroes nothing, so the tank
-; recirculates whatever the 0x3800-word allocation held -- the "laddering
+; recirculates whatever the 0x8000-word allocation held -- the "laddering
 ; static". Stock DARK's answer (P:0x1718..0x172c in payload A) is a
 ; per-block counter in $83 up to 0x100 with $82 as the warmed flag. Our
 ; $83 already holds the tank phase, so the counter lives in $82 --
@@ -347,8 +355,8 @@ bus_mine:
 ; garbage and init cannot be the reset point (the dispatcher re-invokes
 ; init most blocks). stageprobe4 proved the tagged-counter idiom stable.
 ;
-; While warming: zero 56 words of the allocation per block (256 * 56 =
-; 0x3800, all of it), zero the LFO/damping state block, and stay DRY --
+; While warming: zero 128 words of the allocation per block (256 * 128 =
+; 0x8000, all of it), zero the LFO/damping state block, and stay DRY --
 ; the engine does not run until the lines are clean.
 ;
 ; $82 = $2c0000 | count. The standing rule applies twice: the tag field
@@ -375,16 +383,17 @@ warmtag:
         bge     warmdone                ; warmed: run the reverb
 warmrun:
         move    a,x:(r7+$15)            ; count, for the save below
-        asl     #$6,a,a                 ; count*64 -- v74 clears the FULL
-                                        ; 0x4000 words now that the in-loop
-                                        ; allpasses occupy base+0x3800..0x3fff
+        asl     #$7,a,a                 ; count*128 -- the 32K re-layout clears
+                                        ; the FULL 0x8000 words: 256 blocks x
+                                        ; 128 = 32,768, every buffer including
+                                        ; the in-loop allpasses at base+0x7000
         move    x:(r7+$31),x0
         add     x0,a
-        move    a,r5                    ; base + count*56, count < 0x100 so
-                                        ; the last word is base+0x37ff
+        move    a,r5                    ; base + count*128, count < 0x100 so
+                                        ; the last word is base+0x7fff
         clr     b                       ; the zero source ...
         move    x:(r7+$31),x0           ; ... and both fill the AGU slot
-        do      #64,>warmz
+        do      #128,>warmz
         move    b,y:(r5)+
 warmz:
 ; the one-pole and LFO state now lives in r7, so zero it there
@@ -412,50 +421,54 @@ warmdone:
                                         ; derives buffers from x0
 
 ; ---- every buffer base, derived once per block --------------------------
-        move    #>$2000,a
+; Input allpasses, 2048 words apart since the 32K re-layout.
+        move    #>$4000,a
         add     x0,a
         move    a,x:(r7+$32)
-        move    #>$2400,a
+        move    #>$4800,a
         add     x0,a
         move    a,x:(r7+$33)
-        move    #>$2800,a
+        move    #>$5000,a
         add     x0,a
         move    a,x:(r7+$34)
-        move    #>$2c00,a
+        move    #>$5800,a
         add     x0,a
         move    a,x:(r7+$35)
-        move    #>$800,a
-        add     x0,a
-        move    a,x:(r7+$36)
+; $36/$37 and $10..$13 are line bases nothing reads any more -- the loop
+; builds r1..r4 from the saved phase below. Kept in step with the layout
+; rather than left stating the old one.
         move    #>$1000,a
         add     x0,a
-        move    a,x:(r7+$37)
-        move    #>$3000,a
+        move    a,x:(r7+$36)
+        move    #>$2000,a
         add     x0,a
-        move    a,x:(r7+$38)
+        move    a,x:(r7+$37)
+        move    #>$6000,a
+        add     x0,a
+        move    a,x:(r7+$38)            ; pre-delay base
         move    #>$0,a
         add     x0,a
         move    a,x:(r7+$10)            ; line 0 base
-        move    #>$800,a
-        add     x0,a
-        move    a,x:(r7+$11)            ; line 1 base
         move    #>$1000,a
         add     x0,a
+        move    a,x:(r7+$11)            ; line 1 base
+        move    #>$2000,a
+        add     x0,a
         move    a,x:(r7+$12)            ; line 2 base
-        move    #>$1800,a
+        move    #>$3000,a
         add     x0,a
         move    a,x:(r7+$13)            ; line 3 base
 
 ; ---- state lives in r7, which is already per-instance and persistent ----
 ; v74: the LFO phases and one-pole states used to be round-tripped through
-; a 12-word block at base+0x3800 every call. That was never necessary --
+; a 12-word block at the top of the allocation every call. That was never necessary --
 ; the r7 block is per-instance and survives between calls, which $83 has
 ; proven for seventy builds. Deleting the round-trip frees ~48 instructions
-; a block AND the whole 2,048-word region at base+0x3800, which is where
-; the in-loop allpasses now live.
+; a block AND the whole region at the top of the allocation, which is where
+; the in-loop allpasses now live (base+0x7000 since the 32K re-layout).
 ; ---- rebuild the four delay pointers from the saved phase ----------------
         move    x:(r7+$83),a
-        move    #>$7ff,x0
+        move    #>$fff,x0
         and     x0,a                    ; mask on LOAD: the phase may be garbage
         move    a1,x0                   ; -- but AND cleans A1 ONLY. Garbage with
         move    x0,a                    ; bit 23 set sign-extends A2 = $ff, and
@@ -469,27 +482,33 @@ warmdone:
         move    x:(r7+$31),x0
         add     x0,a                    ; base + LINE_OFF(0x0)
         move    a,r1                    ; line 0
-        move    #>$800,x0
+        move    #>$1000,x0
         add     x0,a
         move    a,r2                    ; line 1
         add     x0,a
         move    a,r3                    ; line 2
         add     x0,a
         move    a,r4                    ; line 3
-        move    #>$7ff,m1               ; MODULO 2048: r1..r4 are the four line
-        move    #>$7ff,m2               ; pointers and each wraps inside its own
-        move    #>$7ff,m3               ; line. Restored in v62 -- this is the
-        move    #>$7ff,m4               ; original design, and it is what makes
+        move    #>$fff,m1               ; MODULO 4096: r1..r4 are the four line
+        move    #>$fff,m2               ; pointers and each wraps inside its own
+        move    #>$fff,m3               ; line. Restored in v62 -- this is the
+        move    #>$fff,m4               ; original design, and it is what makes
                                         ; n1/n4 live again so SIZE reaches all
-                                        ; four lines. Bases are base+0/0x800/
-                                        ; 0x1000/0x1800 and base is 0x4000 or
-                                        ; 0x8000, so every line is 2048-aligned
+                                        ; four lines. Bases are base+0/0x1000/
+                                        ; 0x2000/0x3000 and base is the literal
+                                        ; 0x4000, so every line is 4096-aligned
                                         ; as modulo requires.
 
     ; ---- SIZE: scale all four tap lengths -----------------------------------
-    ; tap = 1567*f on the longest line, so f = 0.125..0.993 gives 196..1556
-    ; samples, 4.4..35 ms. The nominal taps are the MAXIMUM -- SIZE only ever
+    ; tap = 3958*f on the longest line, so f = 0.400 .. 0.989 gives 1583..3914
+    ; samples, 36..89 ms. The nominal taps are the MAXIMUM -- SIZE only ever
     ; shrinks the space.
+    ;
+    ; 32K RE-LAYOUT: the fraction words below are UNCHANGED -- $3DD800 is
+    ; 1979*2048, and shifting back by 10 instead of 11 turns the same word
+    ; into 3958*f against the now 4096-word line. That is the whole point of
+    ; storing taps as fractions of the line: doubling the line doubles the
+    ; space and leaves the character alone.
     ;
     ; These are the ORIGINAL constants, restored in v64. v62 rescaled them to
     ; cap the tap at 2046 "because mpy doubles", and it does not: measured,
@@ -513,50 +532,52 @@ warmdone:
 ; it. Confirmed by ear ("smallest size sounds worst") and by measurement
 ; (at SIZE=16 nearly half the spectrum's energy sits in 1% of the bins).
 ; Raising the floor costs the smallest spaces, which were the bad ones.
-            move    #>$3DD800,x0            ; 1979 as a fraction of 2048
+            move    #>$3DD800,x0            ; 1979/2048 -> 3958 of 4096
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap
+            asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
             or      x0,a                    ; truncates the prime nominals and the
                                             ; results share factors: gcd hit 204 at
                                             ; SIZE=104, two lines locked at 216 Hz
-            move    #>$800,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            move    #>$1000,b
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$45)            ; line 0 -- was n1, which only worked
                                             ; for a STATIC tap. All four lines are
                                             ; modulated now, so all four go through
                                             ; the interpolated path.
-            move    #>$34E800,x0            ; 1693 as a fraction of 2048
+            move    #>$34E800,x0            ; 1693/2048 -> 3386 of 4096
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap
+            asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
             or      x0,a                    ; truncates the prime nominals and the
                                             ; results share factors: gcd hit 204 at
                                             ; SIZE=104, two lines locked at 216 Hz
-            move    #>$800,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            move    #>$1000,b
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2a)
-            move    #>$2D3800,x0            ; 1447 as a fraction of 2048
+            move    #>$2D3800,x0            ; 1447/2048 -> 2894 of 4096
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap
+            asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
             or      x0,a                    ; truncates the prime nominals and the
                                             ; results share factors: gcd hit 204 at
                                             ; SIZE=104, two lines locked at 216 Hz
-            move    #>$800,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            move    #>$1000,b
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2b)
-            move    #>$26A800,x0            ; 1237 as a fraction of 2048
+            move    #>$26A800,x0            ; 1237/2048 -> 2474 of 4096
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap
-            move    #>$800,b
-            sub     a,b                     ; 2048 - tap
+            asr     #$a,a,a                 ; back to an integer tap
+            move    #>$1000,b
+            sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$46)            ; line 3                    ; -tap, line 3 reads y:(r4+n4)
-            move    #>$7ff,m6           ; PRE-DELAY modulo, moved off m5 in
-                                        ; v70 so m5 can be $3ff for the
-                                        ; allpasses. r6 is unused inside the
-                                        ; sample loop, so it costs nothing.
-            move    #>$3ff,m5           ; ALLPASS modulo: with r5 = base+phase,
+            move    #>$fff,m6           ; PRE-DELAY modulo (4096 since the 32K
+                                        ; re-layout), moved off m5 in v70 so m5
+                                        ; can carry the allpasses. r6 is unused
+                                        ; inside the sample loop, so it costs
+                                        ; nothing.
+            move    #>$7ff,m5           ; ALLPASS modulo, 2048 since the 32K
+                                        ; re-layout: with r5 = base+phase,
                                         ; y:(r5+n5) IS the tap read and y:(r5)
                                         ; the write. Set once per block -- an M
                                         ; write inside the loop froze v47.
@@ -564,9 +585,9 @@ warmdone:
                                         ; diffuser: it only ever does plain
                                         ; y:(r5), never a post-increment, and
                                         ; modulo affects updates, not reads.
-                                        ; The pre-delay region is base+0x3000,
-                                        ; and base is 0x4000 or 0x8000, so the
-                                        ; buffer is 0x800-aligned as modulo
+                                        ; The pre-delay region is base+0x6000
+                                        ; and base is 0x4000, so the buffer is
+                                        ; 0x1000-aligned as modulo
                                         ; addressing requires. Set here, AFTER
                                         ; the warm-up's linear r5 walk (which
                                         ; m5 is forced linear for at entry) and
@@ -664,9 +685,10 @@ warmdone:
                                         ; own multipliers
         move    a,x:(r7+$2f)
 
-; ---- PRE: pre-delay in samples, 0 .. 2032 (46 ms) -----------------------
-; v * 16. The scale MUST keep this below PRE_LEN (2048): the read is
-; y:(r5+n5) under m5 modulo, and a modulo offset larger than the buffer is
+; ---- PRE: pre-delay in samples, 0 .. 4064 (93 ms) -----------------------
+; v * 32 since the 32K re-layout doubled PRE_LEN to 4096 (it was v * 16 into
+; a 2048-word buffer, 0..46 ms). The scale MUST keep this below PRE_LEN: the
+; read is y:(r6+n6) under m6 modulo, and a modulo offset larger than the buffer is
 ; undefined on the DSP56300. It does not wrap -- the read returns nothing, the
 ; tank gets no input, and the reverb goes completely silent.
 ;
@@ -683,7 +705,8 @@ warmdone:
 ;   input, and persist the pointer in its own r7 slot.
 ;
 ; Stock's scale is `mpy #$7f0 / add #$10` = v*~16 + 16, max 2031 -- our
-; v*16 (max 2032) is the same ramp, so only the slot was ever wrong.
+; v*16 (max 2032) was the same ramp, so only the slot was ever wrong; the
+; re-layout doubles it to v*32 to reach the end of the bigger buffer.
 ; The mask is stock's too: the slot can carry bits outside the knob
 ; field, and asr alone would drag them into the sample count.
 ; SLOT MOVED $c -> $e. Measured with dsp/page2_probe.asm on hardware: page-2
@@ -694,15 +717,15 @@ warmdone:
 ; triggered on it), so PRE lives there now. See DSP.md section 9.
         move    x:(r6+$e),a
         and     #>$7f0000,a             ; knob field only, as stock does
-        asr     #$c,a,a
+        asr     #$b,a,a                 ; v*32 (was #$c, v*16)
         move    a,x:(r7+$29)
         move    #>$1,x0                 ; the read happens BEFORE the write, so
         add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
         neg     a                       ; is one sample, not a whole buffer of
         move    a,n6                    ; staleness
         move    x:(r7+$83),a            ; the same counter again
-        move    #>$7ff,x0
-        and     x0,a
+        move    #>$fff,x0               ; phase is 0..4095 now, and the
+        and     x0,a                    ; pre-delay buffer is 4096 to match
         move    a1,x0                   ; A2-clean here too: same garbage, same
         move    x0,a                    ; saturation, same bus hang
         move    x:(r7+$38),x0
@@ -861,7 +884,7 @@ lf51:
 ; register write next to its address register is the interlock that froze v47.
                                         ; (n6 now carries the pre-delay offset;
                                         ; the allpass mask is gone -- the AGU
-                                        ; masks for free under m5 = $3ff)
+                                        ; masks for free under m5 = $7ff)
         move    x:(r7+$31),x0           ; two data moves before the loop, to
         move    x:(r7+$31),x0           ; clear the AGU write
 
@@ -873,12 +896,12 @@ lf51:
 ; circulation, which is how a smooth tail comes out of finite memory. We had
 ; none at all: one echo per line per pass, where Dattorro gets a burst.
 ;
-; Two of them, 1024 words each, in the region the Y state block used to
-; occupy. They share m5 = $3ff with the input diffusers, so no M write.
-        move    #>$3800,a
+; Two of them, 2048 words each since the 32K re-layout, at the top of the
+; allocation. They share m5 = $7ff with the input diffusers, so no M write.
+        move    #>$7000,a
         add     x0,a
         move    a,x:(r7+$5e)            ; allpass A base, on line 0
-        move    #>$3c00,a
+        move    #>$7800,a
         add     x0,a
         move    a,x:(r7+$5f)            ; allpass B base, on line 1
 ; v85: SHORTER. 401 and 601 were 26-64% of the line they feed, where the
@@ -886,20 +909,26 @@ lf51:
 ; stops diffusing and starts DISPERSING -- delaying frequencies by different
 ; amounts -- which is the mechanism a spring reverb is built on, and which
 ; the user hears as metallic when the wet is turned up.
-        move    #>875,a
-        move    a,x:(r7+$60)            ; 1024 - 149   (9.7% of the longest line)
-        move    #>801,a
-        move    a,x:(r7+$61)            ; 1024 - 223   (14.5%)
+;
+; 32K RE-LAYOUT: the taps DOUBLE with the lines they feed (149->298,
+; 223->446). What v85 fixed was a PROPORTION, not an absolute length, so
+; holding 9.7%/14.5% against a line that is now twice as long means doubling
+; the tap -- leaving them at 149/223 would halve the proportion to 4.8%/7.3%
+; and change the character the re-layout is meant to preserve.
+        move    #>1750,a
+        move    a,x:(r7+$60)            ; 2048 - 298   (9.7% of the longest line)
+        move    #>1602,a
+        move    a,x:(r7+$61)            ; 2048 - 446   (14.5%)
 
 ; ---- STAGE 2: read offsets for the four modulo-indexed line reads -------
-; nK = (2048 - tap_k) - offset_k, so y:(rK+nK) lands on the delayed sample
+; nK = (4096 - tap_k) - offset_k, so y:(rK+nK) lands on the delayed sample
 ; with no masking, no base add and no second address. Each is primed one
 ; sample further back first, which seeds the interpolation carry for the
 ; first sample of the block.
 ;
 ; This costs n1..n4, which Stage 1 was using for constants -- but all eight
 ; uses of $7ff lived in the address arithmetic this replaces, so that
-; constant is simply gone. $3ff moves to n6.
+; constant is simply gone. The allpass mask lives in m5, not n6.
         move    x:(r7+$45),a
         move    x:(r7+$23),x0
         sub     x0,a
@@ -984,7 +1013,7 @@ lf51:
         move    a,x:(r7+$68)            ; advance DELAY ACC write pointer
 
         move    r1,a                    ; the allpass phase IS the tank phase:
-        and     #>$3ff,a                ; both advance by 1 a sample, and the
+        and     #>$7ff,a                ; both advance by 1 a sample, and the
                                         ; line base is aligned, so r1 masked is
                                         ; it. Immediate, not n6: n6 now carries
                                         ; the pre-delay offset.
@@ -1014,18 +1043,18 @@ lf51:
         move    r6,x:(r7+$30)
         move    b,x:(r7+$1b)            ; delayed input -> the diffuser
 
-; -- allpass 0: base+0x2000, tap 997 (20.6 ms) --
-; v70: modulo. n5 = 1024-tap, m5 = $3ff, r5 = base + phase. The AGU then
+; -- allpass 0: base+0x4000, tap 1994 (45.2 ms) --
+; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>27,n5             ; 1024 - 997
+        move    #>54,n5             ; 2048 - 1994
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$32),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
         move    #>$5a0000,y0            ; coefficient 0.703
         move    x:(r7+$1b),x1           ; input, and spaces the r5 write
-        move    y:(r5+n5),b             ; d, at (phase - tap) mod 1024
+        move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
         move    x1,x0
@@ -1038,17 +1067,17 @@ lf51:
         move    x:(r7+$1c),a
         move    a,y:(r5)                ; write v at base + phase
 
-; -- allpass 1: base+0x2400, tap 853 (15.3 ms) --
-; v70: modulo. n5 = 1024-tap, m5 = $3ff, r5 = base + phase. The AGU then
+; -- allpass 1: base+0x4800, tap 1706 (38.7 ms) --
+; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>171,n5             ; 1024 - 853
+        move    #>342,n5             ; 2048 - 1706
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$33),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
         move    x:(r7+$1b),x1           ; input, and spaces the r5 write
-        move    y:(r5+n5),b             ; d, at (phase - tap) mod 1024
+        move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
         move    x1,x0
@@ -1061,17 +1090,17 @@ lf51:
         move    x:(r7+$1c),a
         move    a,y:(r5)                ; write v at base + phase
 
-; -- allpass 2: base+0x2800, tap 719 (11.0 ms) --
-; v70: modulo. n5 = 1024-tap, m5 = $3ff, r5 = base + phase. The AGU then
+; -- allpass 2: base+0x5000, tap 1438 (32.6 ms) --
+; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>305,n5             ; 1024 - 719
+        move    #>610,n5             ; 2048 - 1438
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$34),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
         move    x:(r7+$1b),x1           ; input, and spaces the r5 write
-        move    y:(r5+n5),b             ; d, at (phase - tap) mod 1024
+        move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
         move    x1,x0
@@ -1084,17 +1113,17 @@ lf51:
         move    x:(r7+$1c),a
         move    a,y:(r5)                ; write v at base + phase
 
-; -- allpass 3: base+0x2c00, tap 613 (7.5 ms) --
-; v70: modulo. n5 = 1024-tap, m5 = $3ff, r5 = base + phase. The AGU then
+; -- allpass 3: base+0x5800, tap 1226 (27.8 ms) --
+; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>411,n5             ; 1024 - 613
+        move    #>822,n5             ; 2048 - 1226
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$35),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
         move    x:(r7+$1b),x1           ; input, and spaces the r5 write
-        move    y:(r5+n5),b             ; d, at (phase - tap) mod 1024
+        move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
         mpy     x0,y0,a
         move    x1,x0
@@ -1121,16 +1150,18 @@ lf51:
 
 ; ---- four taps, damped inside the feedback path -------------------------
         move    x:(r7+$1f),y0           ; damping coefficient, from DAMP
-; -- line 0: base+0x0000, tap 1567, interpolated, LFO-modulated --
+; -- line 0: base+0x0000, tap 3958, interpolated, LFO-modulated --
 ; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r1 already walks this line under modulo 2048, so
-; y:(r1+n1) with n1 = (2048-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 2048 -- the AGU does the masking for free.
+; arithmetic. r1 already walks this line under modulo 4096, so
+; y:(r1+n1) with n1 = (4096-tap) - LFO offset reads exactly
+; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
 ;
 ; The interpolation partner needs no second address: the read pointer
 ; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=69 samples away even at the shortest tap and deepest
-; modulation, so the carried value is never overwritten. Primed before the
+; head stays >=55 samples away even at the longest tap and deepest
+; modulation, so the carried value is never overwritten. (At 2048-word
+; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
+; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
 ; loop, one sample further back, so sample 0 is exact too.
         move    y:(r1+n1),b            ; d0
         move    x:(r7+$47),a            ; d1 = last sample's d0
@@ -1164,16 +1195,18 @@ lf51:
         sub     x0,a                    ; y - lo, the low cut
         move    a,x:(r7+$16)
 
-; -- line 1 modulated: base+0x0800, tap 1249, interpolated --
+; -- line 1 modulated: base+0x1000, tap 3386, interpolated --
 ; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r2 already walks this line under modulo 2048, so
-; y:(r2+n2) with n2 = (2048-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 2048 -- the AGU does the masking for free.
+; arithmetic. r2 already walks this line under modulo 4096, so
+; y:(r2+n2) with n2 = (4096-tap) - LFO offset reads exactly
+; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
 ;
 ; The interpolation partner needs no second address: the read pointer
 ; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=69 samples away even at the shortest tap and deepest
-; modulation, so the carried value is never overwritten. Primed before the
+; head stays >=55 samples away even at the longest tap and deepest
+; modulation, so the carried value is never overwritten. (At 2048-word
+; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
+; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
 ; loop, one sample further back, so sample 0 is exact too.
         move    y:(r2+n2),b            ; d0
         move    x:(r7+$48),a            ; d1 = last sample's d0
@@ -1207,16 +1240,18 @@ lf51:
         sub     x0,a                    ; y - lo, the low cut
         move    a,x:(r7+$17)
 
-; -- line 2 modulated: base+0x1000, tap 977, interpolated --
+; -- line 2 modulated: base+0x2000, tap 2894, interpolated --
 ; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r3 already walks this line under modulo 2048, so
-; y:(r3+n3) with n3 = (2048-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 2048 -- the AGU does the masking for free.
+; arithmetic. r3 already walks this line under modulo 4096, so
+; y:(r3+n3) with n3 = (4096-tap) - LFO offset reads exactly
+; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
 ;
 ; The interpolation partner needs no second address: the read pointer
 ; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=69 samples away even at the shortest tap and deepest
-; modulation, so the carried value is never overwritten. Primed before the
+; head stays >=55 samples away even at the longest tap and deepest
+; modulation, so the carried value is never overwritten. (At 2048-word
+; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
+; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
 ; loop, one sample further back, so sample 0 is exact too.
         move    y:(r3+n3),b            ; d0
         move    x:(r7+$49),a            ; d1 = last sample's d0
@@ -1250,16 +1285,18 @@ lf51:
         sub     x0,a                    ; y - lo, the low cut
         move    a,x:(r7+$18)
 
-; -- line 3: base+0x1800, tap 733, interpolated, LFO-modulated --
+; -- line 3: base+0x3000, tap 2474, interpolated, LFO-modulated --
 ; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r4 already walks this line under modulo 2048, so
-; y:(r4+n4) with n4 = (2048-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 2048 -- the AGU does the masking for free.
+; arithmetic. r4 already walks this line under modulo 4096, so
+; y:(r4+n4) with n4 = (4096-tap) - LFO offset reads exactly
+; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
 ;
 ; The interpolation partner needs no second address: the read pointer
 ; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=69 samples away even at the shortest tap and deepest
-; modulation, so the carried value is never overwritten. Primed before the
+; head stays >=55 samples away even at the longest tap and deepest
+; modulation, so the carried value is never overwritten. (At 2048-word
+; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
+; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
 ; loop, one sample further back, so sample 0 is exact too.
         move    y:(r4+n4),b            ; d0
         move    x:(r7+$4a),a            ; d1 = last sample's d0
@@ -1327,8 +1364,8 @@ lf51:
 ; -- in-loop allpass, line 0: diffuses the feedback before it is stored --
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$60),a
-        move    a,n5                    ; 1024 - tap
-        move    x:(r7+$39),a            ; phase (already masked to $3ff)
+        move    a,n5                    ; 2048 - tap
+        move    x:(r7+$39),a            ; phase (already masked to $7ff)
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
@@ -1358,8 +1395,8 @@ lf51:
 ; -- in-loop allpass, line 1: diffuses the feedback before it is stored --
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$61),a
-        move    a,n5                    ; 1024 - tap
-        move    x:(r7+$39),a            ; phase (already masked to $3ff)
+        move    a,n5                    ; 2048 - tap
+        move    x:(r7+$39),a            ; phase (already masked to $7ff)
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
@@ -1470,7 +1507,7 @@ lf51:
         move    a,x:(r0+n0)             ; R in place
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
-        move    (r3)+                   ; under m1..m4 = $7ff
+        move    (r3)+                   ; under m1..m4 = $fff
         move    (r4)+
         move    #>$2,n0
         move    (r0)+n0                 ; advance one stereo frame
@@ -1480,8 +1517,8 @@ noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------
         move    r1,a
-        move    #>$7ff,x0
-        and     x0,a
+        move    #>$fff,x0               ; 4096-word lines since the 32K
+        and     x0,a                    ; re-layout, so the phase is 0..4095
         move    a,x:(r7+$83)
 dry:
         move    #>$ffffff,m0

@@ -34,16 +34,16 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
                                          └─────────────────────┘
 ```
 
-* **Pre-delay** — up to 2048 samples (46 ms), modulo buffer on r6.
-* **Diffusers** — four series allpasses, g = 0.703, taps 997/853/719/613,
-  packed to a 1.6:1 ratio so they nearly fill their 1024-word buffers.
+* **Pre-delay** — up to 4096 samples (93 ms), modulo buffer on r6.
+* **Diffusers** — four series allpasses, g = 0.703, taps 1994/1706/1438/1226,
+  packed to a 1.6:1 ratio so they nearly fill their 2048-word buffers.
 * **Tank** — four delay lines with a 4×4 Hadamard feedback matrix. All four
   reads are **interpolated and LFO-modulated**, with the LFO phases crosswise
   (lines 0 and 2 on the inverse triangle, 1 and 3 on the forward) so lines
   sharing tap factors move in opposition.
 * **In the loop** — a one-pole low-pass (HI) and a one-pole high-pass (LO)
   per line, so the decay is shaped per band rather than the output EQ'd.
-* **In-loop allpasses** — two, 1024 words each, taps 149/223, on lines 0
+* **In-loop allpasses** — two, 2048 words each, taps 298/446, on lines 0
   and 1. An allpass in the feedback path multiplies echo density on every
   circulation, which is how a smooth tail comes out of finite memory. Note
   the proportion matters: too long relative to the line and it becomes a
@@ -67,7 +67,7 @@ free.
 | 1 | 5 | MIX | `r6+$5` | wet gain |
 | 2 | 6 | WIDTH | `r6+$b` | mid/side, 0 = mono |
 | 2 | 8 | -DEL | `r6+$d` | dry send into the DELAY bus (`BUS.md`) |
-| 2 | 10 | PRE | `r6+$e` | pre-delay |
+| 2 | 10 | PRE | `r6+$e` | pre-delay, 0–93 ms |
 | 2 | 7, 9, 11 | — | `$c` bits 8-15, `$d` low, `$e` low | **free**, and they are *selects*, not knobs |
 
 **Page-2 slots pair up**: a knob arrives as `value<<16` so it occupies only
@@ -83,14 +83,16 @@ it moved. Do not "fix" this back.
 
 ## Memory layout
 
-Each FX2 instance is given 16,384 words. The reverb uses 0x3809 of them:
+`BUS.md` allocates the server **32,768 words** at the hardcoded base `Y:0x4000`
+(spanning `0x4000–0xBFFF`), and since the 32K re-layout the engine uses all of
+them:
 
 | offset | size | what |
 |---|---|---|
-| `base+0x0000` | 4 × 2048 | tank lines, taps 1979/1693/1447/1237 scaled by SIZE |
-| `base+0x2000` | 4 × 1024 | input allpasses, taps 997/853/719/613 |
-| `base+0x3000` | 2048 | pre-delay |
-| `base+0x3800` | 2 × 1024 | in-loop allpasses |
+| `base+0x0000` | 4 × 4096 | tank lines, taps 3958/3386/2894/2474 scaled by SIZE |
+| `base+0x4000` | 4 × 2048 | input allpasses, taps 1994/1706/1438/1226 |
+| `base+0x6000` | 4096 | pre-delay |
+| `base+0x7000` | 2 × 2048 | in-loop allpasses, taps 298/446 |
 
 **All persistent state lives in the r7 block**, which is per-instance and
 survives between calls — `$82` is the warm-up counter (tagged
@@ -98,35 +100,71 @@ survives between calls — `$82` is the warm-up counter (tagged
 including the four LFO phases and the one-pole states. There is no Y state
 block; it was round-tripped needlessly until v74.
 
-## Planned 32K re-layout (not yet done)
+## The 32K re-layout (done, emulator-verified, not yet flashed)
 
-`BUS.md` allocates each server **32,768 words**, but the layout above uses only
-16,384 — half the allocation is unused. `DSP.md` §7c's high-X region was probed
-and is not real, so 32K is the hard ceiling; taking it is the whole remaining
-memory gain. Target:
+The layout above used only 16,384 of the 32,768 words `BUS.md` allocates —
+half the allocation sat unused. `DSP.md` §7c's high-X region was probed and is
+not real, so 32K is the hard ceiling, and taking it was the whole remaining
+memory gain. Every buffer doubled:
 
-| offset | size | what | changes from now |
+| offset | size | what | what changed |
 |---|---|---|---|
-| `base+0x0000` | 4 × 4096 | tank lines | modulo `$7ff` → `$fff`; line bases 0/`$1000`/`$2000`/`$3000` |
-| `base+0x4000` | 4 × 2048 | input allpasses | bases `$4000`/`$4800`/`$5000`/`$5800`; `m5` `$3ff` → `$7ff`; every `n5` becomes `2048 - 2*tap` |
-| `base+0x6000` | 4096 | pre-delay | `m6` `$7ff` → `$fff`; PRE scale `v*16` → `v*32` (0–93 ms) |
+| `base+0x0000` | 4 × 4096 | tank lines | modulo `$7ff` → `$fff`; line spacing `$800` → `$1000` |
+| `base+0x4000` | 4 × 2048 | input allpasses | bases `$4000`/`$4800`/`$5000`/`$5800`; `m5` `$3ff` → `$7ff`; every `n5` doubled to `2048 - 2*tap` |
+| `base+0x6000` | 4096 | pre-delay | `m6` `$7ff` → `$fff`; PRE scale `v*16` → `v*32` (0–93 ms), i.e. `asr #$c` → `asr #$b` |
 | `base+0x7000` | 2 × 2048 | in-loop allpasses | base `$3800` → `$7000`, spacing `$400` → `$800` |
 
-**The tank tap constants do NOT change.** They are stored as fractions of the
-line length (`$3DD800` = 1979/2048), so with 4096-word lines the same fraction
-yields 3958 samples — the character scales intact and only the modulo and line
-spacing move.
+**The tank tap constants did not change.** They are stored as fractions of the
+line length (`$3DD800` = 1979 × 2048), so the same word yields 3958 against a
+4096-word line — but only because the shift that turns the product back into
+an integer tap moved with it: **`asr #$b` → `asr #$a`** on all four taps, and
+`2048 - tap` → `4096 - tap`. The constants are untouched; the scaling around
+them is not.
 
-Also required: the warm-up clear covers the whole allocation, so `asl #$6`
-(×64) → `asl #$7` (×128) and `do #64` → `do #128`, keeping 256 blocks × 128 =
-32,768. And the saved-phase mask (`$7ff`, guarding the two-track freeze) →
-`$fff`.
+**The in-loop allpass taps DID double, 149/223 → 298/446.** The plan didn't
+say so, and their `n5` had to be recomputed for the bigger buffer either way.
+What v85 fixed there was a *proportion* — ~15% of the line the allpass feeds,
+above which it disperses instead of diffusing — so holding 9.7%/14.5% against
+a line that is now twice as long means doubling the tap. Leaving them at
+149/223 would have halved the proportion to 4.8%/7.3%, a character change the
+re-layout is specifically meant not to make.
 
-**Care needed:** `$7ff`, `$800` and `$1000` each appear in *several unrelated
-roles* in this file — line modulo, pre-delay modulo, line spacing, phase mask.
-Blind search-and-replace will silently corrupt it. Change them by role, then
-verify with an impulse test that the tail lengthens and stays stable, and check
-guard-clean under `-dirty`.
+Also done: the warm-up clear covers the whole allocation (`asl #$6` → `asl
+#$7`, `do #64` → `do #128`, keeping 256 blocks × 128 = 32,768), and the
+saved-phase mask (`$7ff`, guarding the two-track freeze) → `$fff` in all three
+places it appears — the load, the pre-delay pointer derivation, and the save.
+The in-loop allpass phase mask went `$3ff` → `$7ff` to match `m5`.
+
+**Care was needed and still is:** `$7ff`, `$800` and `$1000` each appear in
+*several unrelated roles* in `reverb_server.asm` — line modulo, pre-delay
+modulo, line spacing, phase mask, allpass modulo. Blind search-and-replace
+would silently corrupt it. Each was changed by role.
+
+### What the emulator says
+
+All runs `guard clean`, `0 CLOBBERING a loaded module`, no hang, at
+`-guard 32768`, including two instances with poisoned `-r7 2,5`,
+`-dirty 0xBEEF` and `-split 5`.
+
+* **The tail lengthens, as intended.** Impulse at TIME=64, SIZE=127, MOD=40:
+  RT60 **5.4 s → 8.7 s** on the same knob setting, because the loop time
+  doubled and decay is `g^n` in *passes*, not seconds.
+* **It stays stable.** Decay is monotone across the whole sweep; at TIME=127
+  (the near-infinite setting) the new build sits at −20 dB after 8 s, the same
+  as the old one and not growing, and no output sample exceeds the dry input.
+  Swept SIZE 0/32/64/96/127 × MOD 0/127: every combination guard-clean, no
+  silence, no runaway.
+* **PRE doubled exactly.** Knob 0 → 127 moves the wet onset by 2032 samples on
+  the old build and **4064** on the new one, and max PRE is not silent — which
+  is the failure mode if the modulo offset ever exceeds the buffer.
+* **The bus plumbing is untouched.** The `→DELAY` dry send still lands on
+  `BUS.md`'s exact hand-derivable value (`0x0c8000` = dry 0.125 × level
+  0.78125 × `0x800000`), bit-identical between the old and new builds.
+
+Code size is unchanged — 1269/2130 words of the SPRING+DARK budget, same as
+before, since every change was a constant or a shift count.
+
+**Not yet flashed.** By ear is the remaining check, and the one that matters.
 
 ## Register map inside the sample loop
 
@@ -136,16 +174,25 @@ against.
 | reg | use | modulo |
 |---|---|---|
 | r0 / n0 | audio buffer, stereo stride | linear |
-| r1–r4 / n1–n4 | tank line pointers; nK = read offset | m1–m4 = `$7ff` |
-| r5 / n5 | allpass pointer; n5 = 1024−tap, rewritten per allpass | m5 = `$3ff` |
-| r6 / n6 | pre-delay pointer and offset | m6 = `$7ff` |
+| r1–r4 / n1–n4 | tank line pointers; nK = read offset | m1–m4 = `$fff` |
+| r5 / n5 | allpass pointer; n5 = 2048−tap, rewritten per allpass | m5 = `$7ff` |
+| r6 / n6 | pre-delay pointer and offset | m6 = `$fff` |
 | r7 | state block | — |
 | n7 | frame count, from the dispatcher | — |
 
 ## Build, verify, flash
 
+ChonVerb ships through the bus build, not the retired `build_reverb.py` path:
+
 ```sh
-python3 tools/build_reverb.py dsp/reverb88.asm      # patches both payloads
+python3 tools/build_bus.py                          # -> out/mainos_bus.bin
+```
+
+The container/flash steps below are the old standalone recipe, kept for the
+shape of the commands; substitute `out/mainos_bus.bin`.
+
+```sh
+python3 tools/build_reverb.py dsp/reverb88.asm      # RETIRED path
 EFT_EMIT_CONTAINER=out/elek_v88.bin \
   vendor/elektron-firmware-tool/elektron-firmware-tool \
   -i downloads/extracted/OCTATRACK_OS1.40C.syx -c 3 out/mainos_reverb.bin \
@@ -157,14 +204,21 @@ Then copy the `.bin` to the **root** of the CF card (one only), and on the
 device: PROJECT → OS UPGRADE → YES.
 
 Before flashing, always run the emulator check — two instances, poisoned
-state words, dirty memory, and a nonzero split:
+state words, dirty memory, and a nonzero split. `tools/dsp_modmap.py`'s
+`dumpmem` takes the image bytes as an argument, so the payload can be dumped
+straight out of the bus build:
 
 ```sh
-dsp_host -mem <payload_A.mem> -init 1252 -proc 126d -inst 2 -r7 2,5 \
-         -guard 16384 -dirty 0xBEEF -split 5 -blocks 600 -in imp.raw
+python3 -c "import sys,pathlib; sys.path.insert(0,'tools'); import dsp_modmap; \
+  dsp_modmap.dumpmem(pathlib.Path('out/mainos_bus.bin').read_bytes(), \
+                     ['A','out/dsp/mem_reverb_server_A.mem'])"
+
+dsp_host -mem out/dsp/mem_reverb_server_A.mem -init 1252 -proc 1253 \
+         -inst 2 -r7 2,5 -guard 32768 -dirty 0xBEEF -split 5 -blocks 900
 ```
 
-It must report **guard clean** and no hang. For a pure optimization, also
+`-guard 32768`, not 16384 — the server owns the whole 32K since the
+re-layout. It must report **guard clean** and no hang. For a pure optimization, also
 diff the output against the previous build: it should be **bit-identical**,
 and any difference is a bug. See `DSP.md` §6b for the harness reference and
 its traps.
@@ -187,10 +241,18 @@ Two things, both of which were once believed impossible:
 
 **The tank rings**, and this is a memory limit rather than a bug. An FDN
 sounds smooth when its modes overlap — mode spacing is `sr / total_delay`,
-mode bandwidth is `2.2 / RT60`. At SIZE max the tank holds 4,493 samples, so
-spacing is 9.8 Hz against a bandwidth of 0.55 Hz at a 4-second decay: an
-overlap of 0.06, roughly 20× too sparse. A 4-second decay would want ~1.8 s
-of delay memory; an instance is given 0.37 s.
+mode bandwidth is `2.2 / RT60`. Measured on the pre-re-layout build: at SIZE
+max the tank held 4,493 samples, so spacing was 9.8 Hz against a bandwidth of
+0.55 Hz at a 4-second decay — an overlap of 0.06, roughly 20× too sparse. A
+4-second decay wants ~1.8 s of delay memory.
+
+**The 32K re-layout halves that gap and exhausts the lever.** Doubling every
+line doubles the total delay, so mode spacing halves and the overlap doubles;
+the instance now holds 0.74 s rather than 0.37 s. That is also the ceiling —
+32K is the whole allocation and `DSP.md` §7c's high-X region is not real, so
+there is no third doubling to take. The figures below were measured before
+the re-layout and have not been re-measured since; expect them to improve by
+roughly a factor of two, not to disappear.
 
 Measured confirmation: spectral flatness rises monotonically with SIZE
 (0.0014 → 0.0066 from SIZE 32 to 127) and with shorter decay. Modulation
@@ -200,17 +262,18 @@ flatness — but it saturates.
 **Practical consequence: run SIZE high.** It is not just a bigger space, it
 is a measurably smoother one.
 
-Two levers exist for going further, and they are independent:
+One lever is left, and one is spent:
 
 1. **Spend freed cycles on more delay lines.** The density pass left
-   headroom that did not exist before; v84 uses 341 of it.
-2. **Patch the allocator table at `X:0x255`** — it is loaded data, editable
-   exactly like the dispatch tables `build_reverb.py` already writes — to
-   trade instance count for tank size: 8 modest, 4 large (2 × 32K per DSP),
-   or 2 very large (1 × 45K, also taking the FX1 region). Doubling the delay
-   is worth roughly 3× the smoothness. Repoint the sacrificed slots at the
-   dead region above `0xC000`, where writes are discarded, so a stray effect
-   is silent rather than destructive.
+   headroom that did not exist before; v84 uses 341 of it. Still open.
+2. ~~**Trade instance count for tank size**~~ — **taken.** This used to be a
+   plan to patch the allocator table at `X:0x255` (8 modest instances, or 4
+   large at 2 × 32K per DSP, or 2 very large at 1 × 45K). `BUS.md` reached
+   the same 32K per server without touching `X:0x255` at all — the menu
+   collapsed to two servers plus client stubs, so each server just hardcodes
+   its own fixed base and takes half the bank's pool — and the re-layout
+   above spends it. The 45K variant would still need the FX1 region and an
+   allocator edit, and is not planned.
 
 Smaller items: SHVG's range wants calibrating by ear; MIXF (`$e`) is dead and
 likely to stay so; and there is an unexplained emulator-only divergence
@@ -306,8 +369,9 @@ MODE should reconfigure tap lengths, diffusion depth, damping and modulation
 together — not merely rescale SIZE.
 
 **Order of work:**
-1. The 32K re-layout above — half the allocation is unused, so this is free
-   headroom and tells you by ear how far the hardware actually goes.
+1. ~~The 32K re-layout~~ — **built and emulator-verified**, see above. It
+   still needs a flash: by ear is what tells you how far the hardware
+   actually goes, and nothing before that does.
 2. Measure real cycle cost with both effects live. Every figure taken so far
    has been dominated by warm-up and is meaningless; `DSP.md` §12's rule
    (measure, don't guess) applies.
