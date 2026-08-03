@@ -3,7 +3,7 @@
 A four-line FDN reverb that replaces DARK REV on the Octatrack's DSPs. It
 runs on **all eight tracks simultaneously**.
 
-Current build: **`dsp/reverb84.asm`** → `out/OCTATRACK_V84.bin`.
+Current build: **`dsp/reverb88.asm`** → `out/OCTATRACK_V88.bin`.
 341 cycles/sample, 1098 words of program memory.
 
 > **Voicing is in progress and is the live work.** The structure below is
@@ -30,16 +30,15 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
 ```
 
 * **Pre-delay** — up to 2048 samples (46 ms), modulo buffer on r6.
-* **Diffusers** — four series allpasses, g = 0.703, taps 907/673/487/331
-  (20.6/15.3/11.0/7.5 ms). Deliberately long: density has to come from
-  diffusion because four tank lines alone read as discrete echoes.
+* **Diffusers** — four series allpasses, g = 0.703, taps 997/853/719/613,
+  packed to a 1.6:1 ratio so they nearly fill their 1024-word buffers.
 * **Tank** — four delay lines with a 4×4 Hadamard feedback matrix. All four
   reads are **interpolated and LFO-modulated**, with the LFO phases crosswise
   (lines 0 and 2 on the inverse triangle, 1 and 3 on the forward) so lines
   sharing tap factors move in opposition.
 * **In the loop** — a one-pole low-pass (HI) and a one-pole high-pass (LO)
   per line, so the decay is shaped per band rather than the output EQ'd.
-* **In-loop allpasses** — two, 1024 words each, taps 401/601, on lines 0
+* **In-loop allpasses** — two, 1024 words each, taps 149/223, on lines 0
   and 1. An allpass in the feedback path multiplies echo density on every
   circulation, which is how a smooth tail comes out of finite memory. Note
   the proportion matters: too long relative to the line and it becomes a
@@ -79,8 +78,8 @@ Each FX2 instance is given 16,384 words. The reverb uses 0x3809 of them:
 
 | offset | size | what |
 |---|---|---|
-| `base+0x0000` | 4 × 2048 | tank lines, taps 1567/1249/977/733 scaled by SIZE |
-| `base+0x2000` | 4 × 1024 | allpasses, taps 907/673/487/331 |
+| `base+0x0000` | 4 × 2048 | tank lines, taps 1979/1693/1447/1237 scaled by SIZE |
+| `base+0x2000` | 4 × 1024 | input allpasses, taps 997/853/719/613 |
 | `base+0x3000` | 2048 | pre-delay |
 | `base+0x3800` | 2 × 1024 | in-loop allpasses |
 
@@ -107,12 +106,12 @@ against.
 ## Build, verify, flash
 
 ```sh
-python3 tools/build_reverb.py dsp/reverb84.asm      # patches both payloads
-EFT_EMIT_CONTAINER=out/elek_v84.bin \
+python3 tools/build_reverb.py dsp/reverb88.asm      # patches both payloads
+EFT_EMIT_CONTAINER=out/elek_v88.bin \
   vendor/elektron-firmware-tool/elektron-firmware-tool \
   -i downloads/extracted/OCTATRACK_OS1.40C.syx -c 3 out/mainos_reverb.bin \
-  -V MAXOLYDIAN -o out/OCTATRACK_OS1.40C_V84.syx
-python3 tools/make_bin.py out/elek_v84.bin -o out/OCTATRACK_V84.bin
+  -V MAXOLYDIAN -o out/OCTATRACK_OS1.40C_V88.syx
+python3 tools/make_bin.py out/elek_v88.bin -o out/OCTATRACK_V88.bin
 ```
 
 Then copy the `.bin` to the **root** of the CF card (one only), and on the
@@ -226,6 +225,24 @@ is a dispersive element — the mechanism spring reverbs are built on. At 15%
 of the line it feeds it is diffusion; ours ran 26–64% and were suspected of
 producing a spring/plate ring. Removing them was tested (v82/v83) but
 bundled with other changes, so the result is not clean.
+
+**Pack the buffers.** Both the tank lines and the input diffusers were
+allocated equal power-of-two buffers but given taps spanning a 2.1:1 and
+2.7:1 ratio, so roughly 40% of the delay memory was never read. Tightening
+both to ~1.6:1 recovered it for nothing — no cycles, no memory, no loss of
+instances — and was worth more than any other single change of the voicing
+pass. **When a design allocates equal buffers for unequal contents, check
+the utilisation.**
+
+**Input diffusion and in-loop diffusion are not interchangeable.** Moving
+input allpasses into the loop (v87) improved mode spacing but doubled the
+early crest factor: the input chain smooths the attack, the in-loop chain
+thins the modes. Pack both; do not trade one for the other.
+
+**Averaging more tank lines into each output does not help** (v89). The
+lines share a feedback matrix, so they are not independent; orthogonal
+4-line output taps concentrated energy rather than smoothing it, and gave
+no stereo benefit over disjoint 2-line pairs.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
