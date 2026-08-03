@@ -144,7 +144,7 @@ DEFAULTS = {
                       (6, 48),   # SPEED  slow-ish
                       (7, 2),    # MODE   HALL, the most generally useful
                       (8, 64),   # DIFF   mid
-                      (9, 15),   # WIDTH  full (count 16)
+                      (9, 127),  # WIDTH  full
                       (10, 0),   # PRE    none
                       (11, 0)],  # -DEL   off
     "SEND": [(0, 0), (1, 0)],
@@ -189,7 +189,12 @@ ACTIVE_PARAMS = {
 # counts here and the DSP scales them back up (asl #$13). If a larger count is
 # ever confirmed, raise these and drop the DSP shift to #$10; nothing else
 # changes.
-PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 4, 8: 128, 9: 16, 10: 128, 11: 16}}
+# count IS the value range, drawn on a 0..127 scale -- a count of 16 gives 16
+# steps over one eighth of the knob's travel, which is what WIDTH and ->DEL
+# did on hardware. Only MODE wants a small count: that is exactly how stock
+# encodes a selector (CHORUS TAPS is count 5, FILTER NUM is count 5, both with
+# enable nibble 1 and min 0 -- there is no separate "selector" type field).
+PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 4, 8: 128, 9: 128, 10: 128, 11: 128}}
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.

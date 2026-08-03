@@ -735,9 +735,7 @@ md_done:
         and     #>$ffff,a               ; companion field, not the knob field
         move    a1,x0                   ; AND cleans A1 only
         move    x0,a
-        asl     #$13,a,a                ; 0..15 (count 16) -> left-aligned knob
-                                        ; scale. NOT #$10: the companion field
-                                        ; carries a small STEP COUNT, not 0..127
+        asl     #$10,a,a                ; 0..127 -> left-aligned like a knob
         move    a,x:(r7+$69)
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
@@ -753,7 +751,7 @@ md_done:
         and     #>$ffff,a
         move    a1,x0
         move    x0,a
-        asl     #$13,a,a                ; 0..15 -> knob scale, as above
+        asl     #$10,a,a                ; 0..127 -> knob scale
         move    a,x:(r7+$2c)
 
 ; ---- DIFFUSION: allpass coefficient -- slot 8, $d's KNOB field (v92) -----
@@ -808,7 +806,13 @@ md_done:
         move    a,x0
         move    #>$500000,y1
         mpy     x0,y1,a
-        asr     #$b,a,a
+        asr     #$a,a,a                 ; #$a not #$b: the first range (0.13 to
+                                        ; 1.0 Hz) was reported as barely
+                                        ; audible. This doubles the top to
+                                        ; ~1.9 Hz, still under the 2.84 Hz v84
+                                        ; measured as outright seasick, and the
+                                        ; floor stays where a static tank
+                                        ; cannot happen.
         move    #>$180,x0
         add     x0,a
         move    a,x:(r7+$2f)
