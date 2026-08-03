@@ -658,9 +658,20 @@ warmdone:
         move    x:(r6+$5),x0
         move    x0,x:(r7+$20)
 
-; ---- ->DELAY send level (BUS.md task 10, knob on the dead $d/MONO slot) --
-        move    x:(r6+$d),x0
-        move    x0,x:(r7+$69)
+; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
+; Moved off slot 8 ($d's knob field) so DIFFUSION can have it. A companion
+; field carries a plain 0..127 integer in the low bits, not a left-aligned
+; knob, so it is masked and shifted UP to knob scale. DSP.md section 9: all
+; six page-2 slots reach the DSP with a full 0..127 range -- measured, and it
+; took seven probe builds, so do not re-derive it.
+        move    x:(r6+$e),a
+        and     #>$ffff,a               ; companion field, not the knob field
+        move    a1,x0                   ; AND cleans A1 only
+        move    x0,a
+        asl     #$13,a,a                ; 0..15 (count 16) -> left-aligned knob
+                                        ; scale. NOT #$10: the companion field
+                                        ; carries a small STEP COUNT, not 0..127
+        move    a,x:(r7+$69)
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
 ; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
@@ -668,9 +679,34 @@ warmdone:
         move    x:(r6+$1),x0
         move    x0,x:(r7+$28)
 
-; ---- WIDTH: 0 = mono, 127 = full stereo ---------------------------------
-        move    x:(r6+$b),x0
-        move    x0,x:(r7+$2c)
+; ---- WIDTH: 0 = mono, 127 = full stereo -- slot 9, $d's LOW bits (v92) --
+; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
+; ->DELAY above.
+        move    x:(r6+$d),a
+        and     #>$ffff,a
+        move    a1,x0
+        move    x0,a
+        asl     #$13,a,a                ; 0..15 -> knob scale, as above
+        move    a,x:(r7+$2c)
+
+; ---- DIFFUSION: allpass coefficient -- slot 8, $d's KNOB field (v92) -----
+; New control. It scales the allpass coefficient g, which was the fixed
+; literal $5a0000 (0.703) in all six allpasses. Range 0.35 .. 0.78: below
+; that an allpass stops diffusing and starts sounding like a plain delay,
+; above ~0.8 the ringing this file documents gets worse rather than better.
+;
+; MUST mask the knob field -- $d's low bits now carry WIDTH, and reading the
+; whole word would add WIDTH into the coefficient.
+        move    x:(r6+$d),a
+        and     #>$7f0000,a             ; knob field only
+        move    a1,x0
+        move    x0,a
+        move    a,x0
+        move    #>$380000,y1
+        mpy     x0,y1,a
+        move    #>$2d0000,x0
+        add     x0,a
+        move    a,x:(r7+$6d)            ; g, for every allpass
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
 ; 8x what it would be per sample, because the LFO is stepped once per block.
@@ -689,9 +725,23 @@ warmdone:
 ;
 ; r6+$d is not read: hardware confirmed the page-2 knob does nothing, so
 ; that slot is host-side, not a parameter.
-        move    #>$300,a                ; ~0.25 Hz; the four lines then run at
-                                        ; 0.25 / 0.21 / 0.18 / 0.14 Hz via their
-                                        ; own multipliers
+; MOD SPEED is now a knob -- page-2 slot 6, reading $b (v92). v84 fixed the
+; rate deliberately, because coupling it to MOD made the reverb seasick: 63
+; samples at 2.84 Hz is ~28 cents of vibrato, the same depth at 0.25 Hz is
+; ~2.5 cents and inaudible. Exposing it is right, but the range is
+; deliberately capped LOW -- $180 to ~$680, roughly 0.12 to 0.55 Hz -- so the
+; top of the knob still lands well under where v84 found it unusable. It also
+; never reaches zero: a static tank rings.
+        move    x:(r6+$b),a
+        and     #>$7f0000,a
+        move    a1,x0
+        move    x0,a
+        move    a,x0
+        move    #>$500000,y1
+        mpy     x0,y1,a
+        asr     #$b,a,a
+        move    #>$180,x0
+        add     x0,a
         move    a,x:(r7+$2f)
 
 ; ---- PRE: pre-delay in samples, 0 .. 4064 (93 ms) -----------------------
@@ -1236,7 +1286,9 @@ lf51:
         move    x:(r7+$32),x0            ; base
         add     x0,a
         move    a,r5                    ; = write address
-        move    #>$5a0000,y0            ; coefficient 0.703
+        move    x:(r7+$6d),y0           ; g, from DIFFUSION (was the fixed
+                                        ; literal 0.703). Loaded once and held
+                                        ; across all four input allpasses.
         move    x:(r7+$1b),x1           ; input, and spaces the r5 write
         move    y:(r5+n5),b             ; d, at (phase - tap) mod 2048
         move    b,x0
@@ -1575,7 +1627,7 @@ lf51:
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    #>$5a0000,y1            ; g -- y1, NOT y0: y0 holds g/2 across
+        move    x:(r7+$6d),y1           ; g -- y1, NOT y0: y0 holds g/2 across
         move    x:(r7+$15),x0           ; the whole write-back section
         move    y:(r5+n5),b             ; d0
 ; Interpolate against the PREVIOUS sample's d0 -- the same carry the tank
@@ -1591,7 +1643,7 @@ lf51:
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    #>$5a0000,y1            ; g back
+        move    x:(r7+$6d),y1           ; g back
         move    b,x0
         mpy     x0,y1,a
         move    x1,x0
@@ -1622,7 +1674,7 @@ lf51:
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    #>$5a0000,y1            ; g -- y1, NOT y0: y0 holds g/2 across
+        move    x:(r7+$6d),y1           ; g -- y1, NOT y0: y0 holds g/2 across
         move    x:(r7+$15),x0           ; the whole write-back section
         move    y:(r5+n5),b             ; d0
 ; Interpolate against the PREVIOUS sample's d0 -- the same carry the tank
@@ -1638,7 +1690,7 @@ lf51:
         mpy     x0,y1,a                 ; f*(d1-d0)
         add     b,a                     ; + d0 -> interpolated tap
         move    a,b
-        move    #>$5a0000,y1            ; g back
+        move    x:(r7+$6d),y1           ; g back
         move    b,x0
         mpy     x0,y1,a
         move    x1,x0

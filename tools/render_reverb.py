@@ -37,13 +37,19 @@ FRAMES = 15              # dsp_host caps a block at 15 frames (the & 0xf in setu
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
 # -params index -> r6 offset is NOT linear: 0..5 are page 1, then the harness
-# maps 6..9 onto r6+$b..$e. Names come from REVERB.md's measured table.
+# maps 6..9 onto r6+$b..$e (and 10,11 WRAP back onto $b,$c).
+#
+# IMPORTANT LIMITATION: dsp_host writes (value & 0x7f) << 16 -- always into the
+# word's KNOB field. The v92 layout puts MODE, WIDTH and ->DEL in COMPANION
+# fields (the low bits of $c/$d/$e), and this harness cannot write those at
+# all. Those three are not auditionable here; build a variant with the value
+# substituted, or test them on hardware.
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 100),
-          ("MIX", 64), ("WIDTH", 64), ("_FREE", 0), ("DEL", 0), ("PRE", 0)]
+          ("MIX", 64), ("SPEED", 64), ("_C", 0), ("DIFF", 64), ("PRE", 0)]
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
 # $c (index 7) is a real page-2 slot but nothing on the host drives it
 # (REVERB.md), so it is not offered as a knob.
-KNOBS = ", ".join(n for n, _ in PARAMS if n != "_FREE")
+KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
 
 
 def die(msg):
@@ -199,14 +205,14 @@ def main():
         if "=" not in spec:
             die(f"bad -p {spec!r}, want NAME=VALUE")
         k, v = (s.strip() for s in spec.split("=", 1))
-        if k.upper() not in NAMES or k.upper() == "_FREE":
+        if k.upper() not in NAMES or k.upper() == "_C":
             die(f"unknown knob {k!r}; known: {KNOBS}")
         values[NAMES[k.upper()]] = max(0, min(127, int(v)))
 
     sweep = []
     if a.sweep:
         k, vs = a.sweep.split("=", 1)
-        if k.upper() not in NAMES or k.upper() == "_FREE":
+        if k.upper() not in NAMES or k.upper() == "_C":
             die(f"unknown knob {k!r}; known: {KNOBS}")
         sweep = [(k.upper(), int(v)) for v in vs.split(",")]
 
@@ -244,7 +250,7 @@ def main():
         # name the knobs that differ from the defaults, and always the swept one
         # (a sweep can legitimately pass through a knob's own default value)
         label = " ".join(f"{n}={vals[n]}" for n, _ in PARAMS
-                         if n != "_FREE" and (n == swept or vals[n] != dict(PARAMS)[n])) \
+                         if n != "_C" and (n == swept or vals[n] != dict(PARAMS)[n])) \
                 or "defaults"
         report(label, L, R, len(src), a.normalize)   # BEFORE normalising --
         # rescaling first would move the rail out from under the clip counter

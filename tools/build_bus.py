@@ -110,12 +110,15 @@ RENAMES = {
     ],
     "REVERB SERVER": [
         (1, b"MOD"), (2, b"SIZE"),
-        (6, b"WIDTH"),          # slot 6 -> r6+$b
-        (7, b""),
-        (8, b"-DEL"),           # slot 8 -> r6+$d
-        (9, b""),
-        (10, b"PRE"),           # slot 10 -> r6+$e
-        (11, b""),
+        # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
+        # odd slots are companion fields in the same word and are only proven
+        # to carry a SMALL step count -- see PAGE2_COUNTS below.
+        (6, b"SPEED"),          # slot 6 -> r6+$b        MOD rate
+        (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
+        (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
+        (9, b"WIDTH"),          # slot 9 -> r6+$d low
+        (10, b"PRE"),           # slot 10 -> r6+$e knob
+        (11, b"-DEL"),          # slot 11 -> r6+$e low
     ],
     "SEND": [
         (0, b"-DEL"), (1, b"-VRB"),
@@ -164,9 +167,19 @@ def penable(active):
 # r6+0..5; page-2 index 6 = r6+$c, 7 = r6+$b, 8 = r6+$d (DSP.md section 9).
 ACTIVE_PARAMS = {
     "DELAY SERVER": [0, 1, 2, 3, 4, 5, 8],
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 8, 10],   # $b, $d, $e (measured)
+    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
     "SEND": [0, 1],
 }
+
+# Page-2 value counts for REVERB SERVER (v92). Even slots take the full 0..127
+# knob range, which is measured. Odd slots are COMPANION fields sharing the
+# even slot's word, and the only counts ever confirmed on hardware for them are
+# small ones -- tools/build_bus.py's own probe used count 3, whatever DSP.md
+# section 9's prose says about "a full 0..127 range". So they get modest step
+# counts here and the DSP scales them back up (asl #$13). If a larger count is
+# ever confirmed, raise these and drop the DSP shift to #$10; nothing else
+# changes.
+PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 5, 8: 128, 9: 16, 10: 128, 11: 16}}
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
@@ -257,6 +270,9 @@ def main():
             img[a - BASE:a - BASE + 6] = label.ljust(6, b"\0")[:6]
         for idx, val in DEFAULTS.get(name, []):
             img[clone_P - BASE + P_DEFAULTS + idx] = val
+        for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
+            wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
+            wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
         if os.environ.get("PROBE") == "1" and name == "REVERB SERVER":
             for idx, cnt in PROBE_COUNTS.items():
                 wr32(clone_P + 0x9a + idx * 4, cnt)
