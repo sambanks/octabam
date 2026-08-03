@@ -443,11 +443,31 @@ input trim; below it the engine is linear. A pure sine at the same peak level
 is linear to within 0.1 dB, so it is *density*, not peak level, that drives
 this — a sine test will not show it.
 
-**Confirmed audible.** Three renders at 0 / −12 / −24 dB input trim, every
-knob fixed and loudness matched, predicted in advance from the measured
-compression (2.1 dB between the first pair, 0.0 dB between the second):
-0 dB against −12 dB is **"very audible"** by ear. So the saturation is not
-merely measurable, it is a fault.
+**Diagnosis closed — the prediction held on both halves.** Three renders at
+0 / −12 / −24 dB input trim, every knob fixed and loudness matched, with the
+outcome written down in advance from the measured compression (2.1 dB between
+the first pair, 0.0 dB between the second):
+
+* 0 dB vs −12 dB — **"very audible"**
+* −12 dB vs −24 dB — **"identical"**
+
+That is the signature of saturation and nothing else. Had the second pair
+also differed, something other than saturation would have been moving with
+level and the whole account would be wrong; it did not, so the engine really
+is clean once it is out of the rail, and the fault is entirely headroom.
+
+**Confirmed on two sources, which fail differently** — worth knowing, because
+a single source would have given a misleading picture of the mechanism:
+
+| at 0 dB input | synth pluck | drum loop |
+|---|---|---|
+| clipped output samples | 6 | **680** |
+| loop compression, 0 → −12 dB | 2.1 dB | 1.4 dB |
+| compression, −12 → −24 dB | 0.0 dB | 0.0 dB |
+
+Sustained density builds up *inside* the loop (the synth compresses more but
+barely clips); transients hit the *output* rail (the drums clip 113× harder
+while compressing less). One cause, two symptoms, one fix.
 
 (The first attempt at this comparison was worthless — it changed input gain,
 TIME, MIX and normalisation at once. The "change one thing" rule applies to
@@ -472,11 +492,19 @@ exponent is fitted to one source, so it is a starting point, not a constant.
 **The saturation and the drift are separate problems.** The compression was
 measured at *fixed* TIME while varying input, so it is about absolute level
 into a high-gain loop, not about TIME. The fix is therefore not
-TIME-dependent: **attenuate into the tank by roughly the knee (~18 dB on this
-source) and apply matching makeup gain to the wet output.** Output level is
-unchanged, internal headroom improves by the same amount, and it costs two
-constants. The loudness-matched A/B above is exactly that experiment done
-externally, and it is the one that sounded better.
+TIME-dependent: **attenuate into the tank, and apply matching makeup gain to
+the wet output.** Output level is unchanged, internal headroom improves by
+the same amount, and it costs two constants and no cycles. The
+loudness-matched A/B above is exactly that experiment performed externally,
+and it is the one that sounded better.
+
+Sizing: both sources are fully linear by −12 dB, so **−12 dB is the measured
+floor and −18 dB is a safe working figure**. It is bounded above as well as
+below — every dB of attenuation is a dB of makeup gain on the wet, which
+lifts the tail's noise floor, so this wants the smallest value that clears
+the knee rather than the largest that fits. The bass loop is the obvious
+third source to check before fixing a number, since low frequencies carry the
+most energy into a feedback path.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
