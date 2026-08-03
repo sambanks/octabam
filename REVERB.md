@@ -1,19 +1,24 @@
-# The custom reverb
+# ChonVerb — the custom reverb
 
-A four-line FDN reverb that replaces DARK REV on the Octatrack's DSPs. It
-runs on **all eight tracks simultaneously**.
+A four-line FDN reverb. It now ships as **ChonVerb**, one of the three effects
+on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
+bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 
-Current build: **`dsp/reverb88.asm`** → `out/OCTATRACK_V88.bin`.
-341 cycles/sample, 1098 words of program memory.
+> **The old standalone DARK REV replacement is retired.** Earlier builds
+> (`dsp/reverb88.asm` via `tools/build_reverb.py`) replaced stock DARK REV in
+> place, inheriting its descriptor and knob labels. That is no longer the
+> product and is not being maintained — ChonVerb has its own cloned descriptor,
+> its own id, and its own knob layout. Where this document still describes the
+> old build, it is history; the sections below marked **current** are not.
 
-> **Voicing is in progress and is the live work.** The structure below is
-> settled; the tuning is not. See "Tuning: what is known" at the end — it
-> records several results that cost hardware flashes to learn and are not
-> obvious from the code.
+> **Voicing is placeholder.** The structure below is real and hardware-proven,
+> but the parameter defaults were chosen to be obviously audible for debugging,
+> not because they sound good. Voicing is the live work — see "Planned design"
+> at the end.
 
 For how the DSP subsystem works — boot, payload format, the dispatcher ABI,
-the allocator, the memory map — see `DSP.md`. For the reverse-engineering
-that got us here, see `REVERB_LOG.md` (historical).
+the allocator, the memory map — see `DSP.md`. For the bus itself see `BUS.md`.
+For the reverse-engineering that got us here, `REVERB_LOG.md` (historical).
 
 ---
 
@@ -45,32 +50,36 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
   dispersive element, which is what a spring reverb is.
 * **Out** — mid/side width, then wet gain added to the dry.
 
-## Parameters
+## Parameters (current)
 
-The UI labels are DARK REV's, inherited with its descriptor. Several do not
-describe what we do with the slot — the mapping below is what matters.
+Twelve are addressable per effect — six on page 1, six on page 2 — and the
+page-2 mapping was **measured**, not inferred (`DSP.md` §9; two earlier guesses
+were wrong and cost hardware flashes). ChonVerb uses nine and leaves three
+free.
 
-| slot | UI label | what it does |
-|---|---|---|
-| `$0` | TIME | feedback → RT60, measured ~3.7 s to ~17 s |
-| `$1` | MOD | **MOD** — modulation depth only (rate is fixed, see below) |
-| `$2` | SIZE | **SIZE** — scales all four tap lengths, 627–1543 samples |
-| `$3` | HP | **LO** — high-pass inside the feedback path |
-| `$4` | LP | **HI** — high-cut damping inside the feedback path |
-| `$5` | MIX | wet gain |
-| `$b` | BAL | **WIDTH** — mid/side, 0 = mono |
-| `$c` | PRE | pre-delay, 0–46 ms |
-| `$d` | MONO | **DEAD.** Confirmed on hardware: this knob does nothing. `$d` is host-side, not a parameter. Not read. |
-| `$e` | MIXF | **unused** — a host-owned boolean, not a continuous control |
+| page | slot | label | reads | what it does |
+|---|---|---|---|---|
+| 1 | 0 | TIME | `r6+$0` | feedback → RT60, ~3.7 s to ~17 s |
+| 1 | 1 | MOD | `r6+$1` | modulation depth (rate is fixed and slow — see below) |
+| 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths |
+| 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
+| 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
+| 1 | 5 | MIX | `r6+$5` | wet gain |
+| 2 | 6 | WIDTH | `r6+$b` | mid/side, 0 = mono |
+| 2 | 8 | -DEL | `r6+$d` | dry send into the DELAY bus (`BUS.md`) |
+| 2 | 10 | PRE | `r6+$e` | pre-delay |
+| 2 | 7, 9, 11 | — | `$c` bits 8-15, `$d` low, `$e` low | **free**, and they are *selects*, not knobs |
 
-Page-1 names are rewritten by `build_reverb.py` (the descriptor's name
-strings are plain data). Page 2 is deliberately NOT renamed: its descriptor
-order conflicts with the probed `r6` mapping, and renaming against a mapping
-known to be wrong would put right names on wrong knobs.
+**Page-2 slots pair up**: a knob arrives as `value<<16` so it occupies only
+bits 16-22, leaving the low bits of the same word as an independent field.
+Even slots carry the knob, odd slots a small select — which is what the three
+free slots are, and what a MODE control should use.
 
-**Stock's own reads are the authority on what a slot means.** Reading PRE from
-`$e` (a flag word stock only `btst`s) cost a hardware flash; `$c` is stock's
-real pre-delay slot.
+**PRE lives on `$e`, not `$c`.** `$c`'s knob field is driven by display slot 6
+but our WIDTH already reads that value at `$b`; nothing drives `$c` in a way
+PRE could use. Stock DARK reads *its* pre-delay from `$c`, which is why older
+builds did — but no page-2 slot reaches `$c` usefully, so PRE was dead until
+it moved. Do not "fix" this back.
 
 ## Memory layout
 
@@ -277,3 +286,29 @@ no stereo benefit over disjoint 2-line pairs.
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
 to reflash v77, confirm the baseline, and move one variable at a time.
+
+## Planned design (agreed, not yet built)
+
+**One FDN engine with a MODE select**, covering standard characters *and* the
+largest space this hardware supports — rather than choosing between them. The
+three free page-2 selects exist precisely for this; MODE is the obvious first.
+
+* **Standard characters**: room / plate / hall, in the spirit of a Chase Bliss
+  CXM 1978. Comfortably within budget — these want density, not length.
+* **Big mode**: **Valhalla-flavoured, not Blackhole.** Deliberate: Blackhole's
+  character comes substantially from raw allocation, and 743 ms is the hard
+  ceiling (`DSP.md` §7c — the high X region was probed and is not real).
+  Valhalla's large spaces get their scale from long feedback, heavy modulation
+  and dense diffusion, which is both achievable here and a match for the FDN
+  structure already in place. Expect genuinely large and smooth; not infinite.
+
+MODE should reconfigure tap lengths, diffusion depth, damping and modulation
+together — not merely rescale SIZE.
+
+**Order of work:**
+1. The 32K re-layout above — half the allocation is unused, so this is free
+   headroom and tells you by ear how far the hardware actually goes.
+2. Measure real cycle cost with both effects live. Every figure taken so far
+   has been dominated by warm-up and is meaningless; `DSP.md` §12's rule
+   (measure, don't guess) applies.
+3. Then design the modes against what steps 1 and 2 reveal.

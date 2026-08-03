@@ -29,6 +29,32 @@ already proved out, plus its own now-verified bus plumbing and menu tables —
 this document adds no new reverse-engineering beyond that. Where it leans on
 something still unverified, that's called out.
 
+## Start here (state as of 4 Aug 2026)
+
+**Built and running on hardware.** Three FX2 effects sharing a send bus:
+`ChonVerb`, `BongDelay`, `Send`. Build with `python3 tools/build_bus.py`
+(writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
+wrap and flash per `README.md` §3. Latest flashed image was `BUS9`.
+
+| | |
+|---|---|
+| build | `tools/build_bus.py` — DSP placement + all five ColdFire tables, both payloads |
+| verify | `tools/verify_menu.py` — menu tables vs the real decompiled chooser |
+| sources | `dsp/reverb_server.asm`, `dsp/delay_server.asm`, `dsp/send_client.asm` |
+| probes | `dsp/page2_probe.asm`, `dsp/xmem_probe.asm` (diagnostics, `PROBE=1` / `XPROBE=1`) |
+
+**Both effect algorithms are placeholders** — the bus mechanism is finished,
+the *sound* is not. Next task is the 32K re-layout in `REVERB.md`, then a real
+cycle measurement with both effects live, then designing the reverb modes.
+
+**Read before touching parameters:** `DSP.md` §9 (page-2 slot mapping, measured
+— two earlier guesses were wrong and cost flashes) and `PARAM_PAGES.md` §5e
+(the five tables, and the P-vs-E descriptor trap that cost two more).
+
+**Constraints that are settled, don't re-chase them:** 32,768 words per server
+is the memory ceiling (`DSP.md` §7c, probed); 12 parameters per effect, six
+page-1 knobs plus three page-2 knobs and three page-2 selects (`DSP.md` §9).
+
 ## Motivation
 
 The custom reverb (`REVERB.md`) is a per-track insert, run independently on

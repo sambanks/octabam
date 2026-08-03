@@ -160,7 +160,7 @@ ARCHITECTURE.md      consolidated architecture (hardware, OS, memory map)
 NOTES.md             chronological reverse-engineering log
 FLASHING.md          safe-flashing guide + recovery net (read before flashing)
 DSP.md               the DSP56300 subsystem: dispatch, allocator, memory, harness
-REVERB.md            the custom reverb — architecture, parameters, build, limits
+REVERB.md            ChonVerb — architecture, parameters, planned design
 REVERB_LOG.md        historical: the reverse-engineering campaign behind it
 BUS.md               shared delay/reverb send bus — built, running on hardware
 COVERAGE.md          what of the OS is understood, and what is not
