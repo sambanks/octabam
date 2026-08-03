@@ -144,7 +144,7 @@ DEFAULTS = {
                       (6, 48),   # SPEED  slow-ish
                       (7, 2),    # MODE   HALL, the most generally useful
                       (8, 64),   # DIFF   mid
-                      (9, 127),  # WIDTH  full
+                      (9, 7),    # WIDTH  full (select, 0..7)
                       (10, 0),   # PRE    none
                       (11, 0)],  # -DEL   off
     "SEND": [(0, 0), (1, 0)],
@@ -194,7 +194,17 @@ ACTIVE_PARAMS = {
 # did on hardware. Only MODE wants a small count: that is exactly how stock
 # encodes a selector (CHORUS TAPS is count 5, FILTER NUM is count 5, both with
 # enable nibble 1 and min 0 -- there is no separate "selector" type field).
-PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 4, 8: 128, 9: 128, 10: 128, 11: 128}}
+# THREE KNOBS + THREE SELECTS is the hardware budget (DSP.md section 9), not
+# six knobs. The knob fields ($b/$d/$e bits 16-22) take 128; the companion
+# fields are eight-bit selects and take a small step count. Setting a
+# companion slot to 128 does not make it continuous -- it stays a select and
+# reads as a near-boolean, which is what hardware showed.
+PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SPEED  knob
+                                  7: 4,     # MODE   select: ROOM/PLATE/HALL/BIG
+                                  8: 128,   # DIFF   knob
+                                  9: 8,     # WIDTH  select: mono..full
+                                  10: 128,  # PRE    knob
+                                  11: 8}}   # -DEL   select: off..full
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.

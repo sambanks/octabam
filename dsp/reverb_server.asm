@@ -742,10 +742,18 @@ md_done:
 ; six page-2 slots reach the DSP with a full 0..127 range -- measured, and it
 ; took seven probe builds, so do not re-derive it.
         move    x:(r6+$e),a
-        and     #>$ffff,a               ; companion field, not the knob field
+        and     #>$ff,a                 ; companion field is EIGHT bits, and it
+                                        ; is a SELECT: DSP.md section 9's budget
+                                        ; is three continuous knobs plus three
+                                        ; companion selects, not six knobs.
+                                        ; $ffff was wrong -- it reached into the
+                                        ; knob field's neighbourhood.
         move    a1,x0                   ; AND cleans A1 only
         move    x0,a
-        asl     #$10,a,a                ; 0..127 -> left-aligned like a knob
+        asl     #$14,a,a                ; v * $100000
+        move    a,x0
+        asr     #$3,a,a                 ; v * $20000
+        add     x0,a                    ; v * $120000: 0..7 spans 0 .. 0.984
         move    a,x:(r7+$69)
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
@@ -758,10 +766,13 @@ md_done:
 ; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
 ; ->DELAY above.
         move    x:(r6+$d),a
-        and     #>$ffff,a
+        and     #>$ff,a                 ; eight-bit companion select, as above
         move    a1,x0
         move    x0,a
-        asl     #$10,a,a                ; 0..127 -> knob scale
+        asl     #$14,a,a
+        move    a,x0
+        asr     #$3,a,a
+        add     x0,a                    ; 0..7 spans mono .. full stereo
         move    a,x:(r7+$2c)
 
 ; ---- DIFFUSION: allpass coefficient -- slot 8, $d's KNOB field (v92) -----
