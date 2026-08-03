@@ -133,7 +133,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"15"
+BUILD_TAG = b"16"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -303,6 +303,21 @@ def main():
             img[a - BASE:a - BASE + 6] = label.ljust(6, b"\0")[:6]
         for idx, val in DEFAULTS.get(name, []):
             img[clone_P - BASE + P_DEFAULTS + idx] = val
+        # PER-PARAMETER DISPLAY FORMATTERS, P+0x0ca and P+0x0fa (12 x u32 each).
+        # A cloned descriptor inherits the DONOR's formatter for every slot, and
+        # the formatter decides how the value is drawn -- overriding the value
+        # count entirely. DARK's slot 8 (MONO) and slot 11 (MIXF) carry
+        # non-zero formatters, so our DIFF drew like an on/off and our ->DEL
+        # drew as "MIX / SEND" no matter what count it was given. Stock uses 0
+        # for a plain numeric parameter, so zero them for every slot we renamed.
+        #
+        # These arrays sit at offsets 2 mod 4, which is why a 4-aligned scan of
+        # the record found "no pointer fields" and sent this investigation down
+        # a blind alley for two rounds.
+        if name == "REVERB SERVER":
+            for idx in range(12):
+                wr32(clone_P + 0x0ca + idx * 4, 0)
+                wr32(clone_P + 0x0fa + idx * 4, 0)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
