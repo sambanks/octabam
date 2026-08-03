@@ -127,7 +127,15 @@ RENAMES = {
     ],
 }
 ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
-FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb",
+# BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
+# to not being able to tell WHICH build was running on the unit: a symptom
+# ("knobs unchanged") is ambiguous between "the change did not work" and "the
+# flash did not apply", and those need opposite responses. The name field is
+# 13 bytes and always on screen, so it costs nothing to carry the answer.
+# BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
+BUILD_TAG = b"15"
+
+FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
 # Explicit per-knob defaults -- NOT the donor's, which are for a different
 # algorithm on that slot. DARK REV's MIX default is 0 (a freshly selected
