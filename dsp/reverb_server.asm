@@ -539,7 +539,7 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$6f)
         clr     a                       ; no early reflections: a big space has
         move    a,x:(r7+$6c)            ; no close walls to hear
-        move    #>$0c0000,a             ; diffusion offset, medium
+        move    #>$040000,a             ; diffusion offset, lowest
         move    a,x:(r7+$3f)
         bra     md_done
 md_room:
@@ -547,7 +547,7 @@ md_room:
         move    a,x:(r7+$6f)
         move    #>$600000,a             ; STRONG early reflections: this is
         move    a,x:(r7+$6c)            ; most of what says "room"
-        move    #>$180000,a             ; diffusion offset, high
+        move    #>$0c0000,a             ; diffusion offset, high
         move    a,x:(r7+$3f)
         bra     md_done
 md_plate:
@@ -555,7 +555,7 @@ md_plate:
         move    a,x:(r7+$6f)
         clr     a                       ; a plate has no early reflections at
         move    a,x:(r7+$6c)            ; all -- it is not a room
-        move    #>$200000,a             ; diffusion offset, highest: a plate is
+        move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
         bra     md_done
 md_hall:
@@ -563,7 +563,7 @@ md_hall:
         move    a,x:(r7+$6f)
         move    #>$200000,a             ; weak early reflections -- far walls
         move    a,x:(r7+$6c)
-        move    #>$100000,a             ; diffusion offset, medium
+        move    #>$060000,a             ; diffusion offset, medium
         move    a,x:(r7+$3f)
 md_done:
 
@@ -777,11 +777,13 @@ md_done:
         move    a1,x0
         move    x0,a
         move    a,x0
-        move    #>$380000,y1
-        mpy     x0,y1,a
-        move    #>$2d0000,x0
-        add     x0,a
-        move    x:(r7+$3f),x0           ; + MODE's diffusion offset
+        move    #>$2a0000,y1            ; span sized so that base + full DIFF +
+        mpy     x0,y1,a                 ; the LARGEST mode offset still lands
+        move    #>$2d0000,x0            ; under ~0.80. At the old $380000 span
+        add     x0,a                    ; PLATE overflowed $7fffff at DIFF=127
+        move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
+        add     x0,a                    ; 0.88-0.97, where an allpass is a
+                                        ; near-oscillator, not a diffuser.
         add     x0,a
         move    a,x:(r7+$6d)            ; g, for every allpass
 
