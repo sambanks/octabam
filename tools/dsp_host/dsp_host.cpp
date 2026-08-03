@@ -97,6 +97,8 @@ struct Args {
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
+    std::vector<TWord> peekY, peekX;
+    std::vector<std::pair<TWord, TWord>> pokeY;
 };
 
 // Everything the dispatcher would set up for one effect instance.
@@ -296,6 +298,25 @@ int main(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-')
                 a.guardWords = strtoul(argv[++i], nullptr, 0);
         }
+        else if (k == "-peeky") {
+            std::string t(argv[++i]);
+            for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
+                a.peekY.push_back(strtoul(p, nullptr, 16));
+        }
+        else if (k == "-peekx") {
+            std::string t(argv[++i]);
+            for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
+                a.peekX.push_back(strtoul(p, nullptr, 16));
+        }
+        else if (k == "-pokey") {
+            std::string t(argv[++i]);
+            for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ",")) {
+                char* eq = std::strchr(p, '=');
+                if (!eq) continue;
+                *eq = 0;
+                a.pokeY.emplace_back(strtoul(p, nullptr, 16), strtoul(eq + 1, nullptr, 16));
+            }
+        }
     }
     // -guard may be the last argument, which the loop above cannot see
     if (argc > 1 && std::string(argv[argc - 1]) == "-guard") a.guard = true;
@@ -423,6 +444,17 @@ int main(int argc, char** argv) {
             mem.set(MemArea_Y, ad, x);
         }
         std::printf("Y:0x1000..0xBFFF filled with garbage (seed 0x%x)\n", a.dirty);
+    }
+
+    // -pokey addr=val,... : seed arbitrary Y words before any block runs --
+    // e.g. planting a fake "last block's bus accumulator" so a server can be
+    // tested for whether it actually reads shared bus scratch, without a
+    // second instance running the client code that would normally write it
+    // (the harness only supports one -init/-proc pair, so a true mixed-
+    // effect multi-instance run isn't possible; this is the substitute).
+    for (auto& pv : a.pokeY) {
+        mem.set(MemArea_Y, pv.first, pv.second);
+        std::printf("poked Y:0x%05x = 0x%06x\n", pv.first, pv.second);
     }
 
     Guard guard;
@@ -721,6 +753,17 @@ int main(int argc, char** argv) {
         if (w && shown < 24) { std::printf("   X:0x%03x = 0x%06x\n", ad, w); ++shown; }
     }
     if (!shown) std::printf("   (none)\n");
+
+    if (!a.peekY.empty()) {
+        std::printf("peek Y memory after the run:\n");
+        for (TWord ad : a.peekY)
+            std::printf("   Y:0x%05x = 0x%06x\n", ad, mem.get(MemArea_Y, ad));
+    }
+    if (!a.peekX.empty()) {
+        std::printf("peek X memory after the run:\n");
+        for (TWord ad : a.peekX)
+            std::printf("   X:0x%05x = 0x%06x\n", ad, mem.get(MemArea_X, ad));
+    }
 
     std::printf("ran %d blocks x %d frames on %d instance(s)\n", a.blocks, a.frames, a.inst);
     long total = 0, bad = 0;

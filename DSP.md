@@ -504,10 +504,33 @@ The uninitialised X regions, which is what actually matters:
 | `0x07a92–0x0857f` | 2,798 | 63 | |
 | **`0x08d98–0x0ffff`** | **29,288** | **664** | **unreferenced anywhere** |
 
-If that last region is real memory, a new reverb can have several times the stock
-delay allocation — which is what a Blackhole-class space needs. Whether it exists
-is unresolved: relocating a stock reverb's buffers to test it is not viable,
-since those addresses are computed rather than stored.
+**RESOLVED, negatively — and this one is properly earned (4 Aug 2026,
+`dsp/xmem_probe.asm` v2).** The high X region is NOT usable memory on hardware.
+
+A first attempt tested three single words and reported failure, but it was not
+trustworthy and is worth recording as a lesson: one of its three addresses
+(`X:0x09000`) turned out to be clobbered even in the *emulator*, where only the
+DSP's own setup routine and our effect run — so "unreferenced anywhere" from a
+static scan was wrong, exactly as this section warns for the stock reverbs.
+Its per-address signatures also made a single-address failure sound identical
+to total failure, and it skipped the A2-clean discipline used everywhere else.
+
+v2 earns the conclusion instead:
+* writes and verifies a full **1024-word block** at `0x0C000` and another at
+  `0x0F000`, not isolated words;
+* uses a **walking value**, so no two words share a pattern and a dead address
+  whose bus merely holds the last value written cannot pass;
+* A2-cleans every readback before comparing;
+* signals pass as half-volume and each block's failure on a *separate*
+  channel, so the outcomes are audibly distinct;
+* **and was validated in `tools/dsp_host` first**, where X memory is real: it
+  passes there, output exactly half of input. A probe that always fails is
+  indistinguishable from real failure unless you check this.
+
+On hardware both blocks fail. So: **a reverb's memory ceiling is the 32,768
+words (743 ms) of its FX2 allocation.** Still over 4x stock DARK REV's ~7,600
+words, but a Blackhole-class allocation is off the table. Do not re-chase this
+without reading the above — it has now cost two hardware flashes.
 
 **Better test, which also proves the pipeline**: write a small probe effect that
 stores a pattern high in X, reads it back, and passes audio only if it matches.
@@ -732,6 +755,83 @@ knobs. Page 2 shows four controls, the last of them a boolean:
 That also explains the stock reads: `$c` and `$e` are the mix/send mode and the
 `PRE` knob, which really is DARK REV's pre-delay. Both are things a reverb needs.
 BAL and MONO it leaves to the host.
+
+> **This table is knob-LABEL to offset, and stock's labels are misleading.**
+> `$c` is the slot DARK's algorithm reads its pre-delay from, but the knob
+> *displayed* as `PRE` drives `$e`; `$c` is driven by the knob displayed as
+> `MIXF`. Both statements are true at once and they are easy to conflate --
+> a `BUS.md` session did exactly that, "corrected" this table the wrong way,
+> and then renamed page-2 slots against the mapping, producing page-2 knobs
+> that did nothing. `REVERB.md` warns about precisely this: page 2 is left
+> unrenamed because the descriptor's display order conflicts with the probed
+> mapping. **The display-slot-index to offset mapping is still not directly
+> measured** -- only label-to-offset is.
+
+### Page-2 DISPLAY SLOT -> offset, measured (dsp/page2_probe.asm)
+
+The table above is knob-LABEL to offset. What a clone actually needs is
+display-SLOT-INDEX to offset, and that had never been measured -- inferring it
+from stock's labels was wrong twice. Settled with `dsp/page2_probe.asm`: give
+each offset a distinct audible signature, expose all six page-2 slots with a
+full 0..127 range, flash once, sweep each knob.
+
+| page-2 display slot | drives |
+|---|---|
+| 6 | **`r6+$c`** bits 16-22 (knob field; also appears in `$b`) |
+| 7 | **`r6+$c`** bits 8-15 |
+| 8 | **`r6+$d`** knob field |
+| 9 | **`r6+$d`** low bits |
+| 10 | **`r6+$e`** knob field |
+| 11 | **`r6+$e`** low bits |
+
+**All six page-2 slots reach the DSP.** Getting here took seven probe builds
+and two wrong guesses, so the reasoning matters as much as the table:
+
+* A knob arrives as `value<<16`, occupying bits 16-22. **The low bits of the
+  same word are a separate, independently addressable field** — this is what
+  stock means by "`$e` is a FLAG word" read with `btst #$8`. One word carries
+  a continuous control AND a small select. That is how stock FILTER shows six
+  page-2 controls (four of them count-2 booleans) while its DSP reads only
+  `$c`, `$d`, `$e`.
+* Slots therefore pair up: **even slot = knob field, odd slot = companion
+  field of the same word.** 8/9 share `$d`, 10/11 share `$e`.
+* **A probe that only compares the whole word against `64<<16` cannot see the
+  companion field at all.** Probes 1-4 did exactly that and wrongly concluded
+  slots 7/9/11 were dead and `$c` unreachable. Both conclusions were wrong.
+* `r6+$6..$a` really are dead — probed explicitly (v3), nothing responds.
+* Page-class A (`0x40032814`, e.g. FILTER) is **not** a richer alternative:
+  cloning a class-A donor rendered only one page-2 knob, because that class
+  sources its page layout from the 20-byte-stride array at `0x46c7d244`
+  (`PARAM_PAGES.md` §4) which a cloned descriptor does not populate. Stay on
+  class B for cloned effects.
+* Watch the **value COUNT and MIN**: slots inheriting count 2 are booleans a
+  threshold probe can never trip, and a non-zero min makes a slot display a
+  negative range (slot 7 showed -64..-62 until min was forced to 0).
+
+**Settled (v7).** Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
+8-15 — different fields, so both are independently usable. Slot 6's value also
+appears at `$b`, so an effect may read it from either.
+
+**Usable budget: six page-2 controls per effect** — three continuous knobs in
+the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion selects:
+
+| control | read it from | decode |
+|---|---|---|
+| knob A | `x:(r6+$b)` or `$c` | value<<16, use as Q1.23 directly |
+| knob B | `x:(r6+$d)` | value<<16 |
+| knob C | `x:(r6+$e)` | value<<16 |
+| select A | `x:(r6+$c)` | `and #>$00ff00` then `asr #$8` |
+| select B | `x:(r6+$d)` | `and #>$0000ff` (low field) |
+| select C | `x:(r6+$e)` | `and #>$0000ff` (low field) |
+
+The selects were exercised with count 3 and responded on positions 1 and 2, so
+at least three states are distinguishable; the exact value-to-bit encoding
+within each field has not been enumerated beyond "zero vs non-zero per state".
+
+**Superseded:** an earlier revision of this section claimed `r6+$c` was
+unreachable and that only three page-2 offsets existed. Both were artefacts
+of probing only the knob field -- see the bullets above. All four offsets
+(`$b`, `$c`, `$d`, `$e`) and all six display slots are reachable.
 
 `r6+6..$a` is touched by nothing. What lives there is still unknown.
 

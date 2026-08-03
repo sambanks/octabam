@@ -235,6 +235,33 @@ bias — i.e. six parameters per page, two pages, as the layout implies. It also
 reads two further fields at `P+0x18a`/`P+0x18e`, so the record really is 0x192
 bytes long measured from `P`.
 
+### `P+0x18a` / `P+0x18e` — the per-parameter ENABLE BITMAP (decoded)
+
+Those "two further fields" are **a nibble per parameter, bit 0 = this parameter
+exists**. `FUN_400326d4` (staging a value) and `FUN_40037590` (drawing the knob)
+both call `FUN_400a6994(*(u32*)(P+0x18a), *(u32*)(P+0x18e), paramIndex)` and gate
+on the returned bit 0 — so a zero nibble means the knob is neither staged nor
+drawn.
+
+| word | parameters | nibble order |
+|---|---|---|
+| `P+0x18e` | 0–7 | low nibble = parameter 0 |
+| `P+0x18a` | 8–11 | low nibble = parameter 8 |
+
+Verified against stock: every `---` slot has nibble 0 and every named knob has
+bit 0 set, on all four effects checked. SPRING REV
+(`TIME --- --- HP LP MIX | TYPE BAL --- --- --- ---`) is the clearest case —
+`P+0x18e = 0x11111001`, `P+0x18a = 0x00000000`. `NONE` is all zeros, as expected.
+Some slots carry `3` rather than `1` (DARK's `SHVF`, FILTER's `WDTH`); the extra
+bits are not decoded, and `FUN_40037590` separately tests bit 2 to pick a display
+flag. Plain `1` is what the large majority of stock parameters use.
+
+**This is the field that makes a cloned descriptor work or silently do nothing**,
+and it is the reason the `P` vs `E` distinction above is not academic: a clone
+copied as `E .. E+0x192` (rather than `P .. P+0x192`) loses exactly the tail
+these two words live in, and the effect appears in the menu with a correct name
+and **not a single knob**. That cost two hardware flashes on the `BUS.md` work.
+
 **Bearing on the FX1 experiment**: the effect id is used for *one* thing here —
 indexing the descriptor table, `return tbl[id]`, with no side effects and no
 bounds check beyond the table's own extent. Nothing in this path forwards the id
@@ -363,9 +390,14 @@ piece fails differently, and none of them error:
 |---|---|---|---|
 | 1 | id lookup `0x400d5f58` (FX1) / `0x400d5fdc` (FX2) | effect id | descriptor unresolvable |
 | 2 | chooser list `0x400d6060` (FX1) / `0x400d6090` (FX2) | position | not offered in the menu |
-| 3 | **its own descriptor record** (402 B) | — | see below |
+| 3 | **its own descriptor record** (402 B, **from `P`, not `E`**) | — | see below |
 | 4 | descriptor's **id byte** at `P+0x03` | — | see below |
 | 5 | **id -> cursor position `0x400d6150`** | effect id | selecting it jumps to NONE |
+
+> **(3) is measured from `P = E + 0x38`** (§5b), so a clone must copy
+> `P .. P+0x192`. Copying `E .. E+0x192` looks right, lands the name and id in
+> the correct places, and still produces an effect with **no knobs at all**,
+> because the enable bitmap at `P+0x18a`/`P+0x18e` falls off the end. See §5b.
 
 **(3) and (4)**: the stored effect id comes from the *descriptor*, not the list
 position — `FUN_40052474` does `*(Part+0x8ed88) = (char)*(int*)list[cursor]`,
