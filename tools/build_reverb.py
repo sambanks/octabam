@@ -45,6 +45,25 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_reverb.bin")
+
+# ---- ColdFire-side: fix the parameter NAMES the UI shows ------------------
+# We inherit DARK REV's descriptor, so the knobs are labelled for DARK REV's
+# algorithm, not ours. The names are plain data -- 12 six-byte NUL-padded
+# strings at E+0x4e -- and editing them is the same class of change as the
+# shipped arp key-scale patch (PARAM_PAGES.md section 5).
+#
+# Page 1 maps straight to r6+$0..$5, so these are safe. HP and LP are LEFT
+# ALONE: they are already accurate, since our LO is a high-pass and our HI
+# is a low-pass.
+#
+# Page 2 is NOT renamed. Its descriptor order (PRE, BAL, MONO, -, -, MIXF)
+# does not match the probed r6 mapping, and we PROVED PRE is r6+$c while the
+# probe claimed index 6 -> r6+$b. Renaming on a mapping that is known to
+# conflict would put right names on wrong knobs -- worse than SHVG. Verify
+# the page-2 mapping on hardware first.
+DESCRIPTORS = {"DARK": 0x400d58b8}
+PARAM_NAMES = 0x4e                      # 12 x 6 bytes, NUL-padded
+RENAME = {1: b"MOD", 2: b"SIZE"}        # SHVG -> MOD, SHVF -> SIZE
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
 DARK_ID = 0x16
 SPRING_ID = 0x15
@@ -135,6 +154,15 @@ def main():
             wrw(xtab + (32 + eid) * 3, proc_at)
             print(f"    X:0x215[0x{eid:02x}] = P:0x{init_at:05x}   "
                   f"X:0x235[0x{eid:02x}] = P:0x{proc_at:05x}   ({who})")
+
+    # ---- rename the mislabelled page-1 parameters ------------------------
+    for who, E in DESCRIPTORS.items():
+        for idx, name in RENAME.items():
+            a = E + PARAM_NAMES + idx * 6
+            old = bytes(img[a - BASE:a - BASE + 6])
+            img[a - BASE:a - BASE + 6] = name.ljust(6, b"\0")
+            print(f"  {who} param {idx}: {old.rstrip(chr(0).encode()).decode():5s}"
+                  f" -> {name.decode()}")
 
     OUT.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
