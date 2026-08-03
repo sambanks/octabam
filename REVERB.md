@@ -89,6 +89,36 @@ survives between calls — `$82` is the warm-up counter (tagged
 including the four LFO phases and the one-pole states. There is no Y state
 block; it was round-tripped needlessly until v74.
 
+## Planned 32K re-layout (not yet done)
+
+`BUS.md` allocates each server **32,768 words**, but the layout above uses only
+16,384 — half the allocation is unused. `DSP.md` §7c's high-X region was probed
+and is not real, so 32K is the hard ceiling; taking it is the whole remaining
+memory gain. Target:
+
+| offset | size | what | changes from now |
+|---|---|---|---|
+| `base+0x0000` | 4 × 4096 | tank lines | modulo `$7ff` → `$fff`; line bases 0/`$1000`/`$2000`/`$3000` |
+| `base+0x4000` | 4 × 2048 | input allpasses | bases `$4000`/`$4800`/`$5000`/`$5800`; `m5` `$3ff` → `$7ff`; every `n5` becomes `2048 - 2*tap` |
+| `base+0x6000` | 4096 | pre-delay | `m6` `$7ff` → `$fff`; PRE scale `v*16` → `v*32` (0–93 ms) |
+| `base+0x7000` | 2 × 2048 | in-loop allpasses | base `$3800` → `$7000`, spacing `$400` → `$800` |
+
+**The tank tap constants do NOT change.** They are stored as fractions of the
+line length (`$3DD800` = 1979/2048), so with 4096-word lines the same fraction
+yields 3958 samples — the character scales intact and only the modulo and line
+spacing move.
+
+Also required: the warm-up clear covers the whole allocation, so `asl #$6`
+(×64) → `asl #$7` (×128) and `do #64` → `do #128`, keeping 256 blocks × 128 =
+32,768. And the saved-phase mask (`$7ff`, guarding the two-track freeze) →
+`$fff`.
+
+**Care needed:** `$7ff`, `$800` and `$1000` each appear in *several unrelated
+roles* in this file — line modulo, pre-delay modulo, line spacing, phase mask.
+Blind search-and-replace will silently corrupt it. Change them by role, then
+verify with an impulse test that the tail lengthens and stays stable, and check
+guard-clean under `-dirty`.
+
 ## Register map inside the sample loop
 
 Every address register is committed; this is the constraint any change works

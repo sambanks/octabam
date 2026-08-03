@@ -162,6 +162,7 @@ FLASHING.md          safe-flashing guide + recovery net (read before flashing)
 DSP.md               the DSP56300 subsystem: dispatch, allocator, memory, harness
 REVERB.md            the custom reverb — architecture, parameters, build, limits
 REVERB_LOG.md        historical: the reverse-engineering campaign behind it
+BUS.md               shared delay/reverb send bus — built, running on hardware
 COVERAGE.md          what of the OS is understood, and what is not
 PARAM_PAGES.md       effect/machine parameter descriptors
 dsp/                 DSP56300 sources (the reverb and its probe builds)
