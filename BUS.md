@@ -43,9 +43,19 @@ wrap and flash per `README.md` §3. Latest flashed image was `BUS9`.
 | sources | `dsp/reverb_server.asm`, `dsp/delay_server.asm`, `dsp/send_client.asm` |
 | probes | `dsp/page2_probe.asm`, `dsp/xmem_probe.asm` (diagnostics, `PROBE=1` / `XPROBE=1`) |
 
-**Both effect algorithms are placeholders** — the bus mechanism is finished,
-the *sound* is not. Next task is the 32K re-layout in `REVERB.md`, then a real
-cycle measurement with both effects live, then designing the reverb modes.
+**ChonVerb is feature-complete as of `ChonVerb19` (4 Aug 2026)**: 32K
+re-layout, tank headroom, modulated in-loop allpasses, early reflections, a
+working MODE select and a real dry/wet crossfade, all confirmed on hardware.
+What remains is per-mode voicing by ear. **BongDelay is still placeholder.**
+
+The effect's displayed name carries its build number (`BUILD_TAG` in
+`tools/build_bus.py`) — bump it every time a `.bin` is wrapped. Three debugging
+rounds were lost to not being able to tell which firmware was on the unit.
+
+Cycle budget is **measured, not guessed**: a full bank (reverb + delay + two
+sends) is ~700 of ~1080 cycles/sample. `tools/dsp_host` CANNOT measure this —
+its `instructions/sample` does not scale with frame count. Count the sample
+loop statically instead. See `REVERB.md`.
 
 **Read before touching parameters:** `DSP.md` §9 (page-2 slot mapping, measured
 — two earlier guesses were wrong and cost flashes) and `PARAM_PAGES.md` §5e

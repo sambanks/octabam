@@ -11,10 +11,10 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > its own id, and its own knob layout. Where this document still describes the
 > old build, it is history; the sections below marked **current** are not.
 
-> **Voicing is placeholder.** The structure below is real and hardware-proven,
-> but the parameter defaults were chosen to be obviously audible for debugging,
-> not because they sound good. Voicing is the live work — see "Planned design"
-> at the end.
+> **Status, 4 Aug 2026 (`ChonVerb19`, on hardware).** Structure, parameters and
+> the MODE select are all working on the unit. The four modes' constants are
+> first-pass values chosen by analysis rather than by ear, so per-mode voicing
+> is the live work — see "Planned design" at the end.
 
 For how the DSP subsystem works — boot, payload format, the dispatcher ABI,
 the allocator, the memory map — see `DSP.md`. For the bus itself see `BUS.md`.
@@ -48,38 +48,81 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
   circulation, which is how a smooth tail comes out of finite memory. Note
   the proportion matters: too long relative to the line and it becomes a
   dispersive element, which is what a spring reverb is.
-* **Out** — mid/side width, then wet gain added to the dry.
+* **Early reflections** — six taps off the pre-delay buffer, alternating L/R
+  with decaying gains, level set by MODE. Costs no memory: the pre-delay
+  already held 93 ms of input history and was read once.
+* **Out** — mid/side width, then a dry/wet crossfade.
 
 ## Parameters (current)
 
-Twelve are addressable per effect — six on page 1, six on page 2 — and the
-page-2 mapping was **measured**, not inferred (`DSP.md` §9; two earlier guesses
-were wrong and cost hardware flashes). ChonVerb uses nine and leaves three
-free.
+All twelve are live — six on page 1, six on page 2 — and the page-2 mapping
+was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
+`ChonVerb19`.
 
 | page | slot | label | reads | what it does |
 |---|---|---|---|---|
-| 1 | 0 | TIME | `r6+$0` | feedback → RT60, ~3.7 s to ~17 s |
-| 1 | 1 | MOD | `r6+$1` | modulation depth (rate is fixed and slow — see below) |
-| 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths |
+| 1 | 0 | TIME | `r6+$0` | feedback → RT60 |
+| 1 | 1 | MOD | `r6+$1` | modulation depth |
+| 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths, within the current MODE |
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
-| 1 | 5 | MIX | `r6+$5` | wet gain |
-| 2 | 6 | WIDTH | `r6+$b` | mid/side, 0 = mono |
-| 2 | 8 | -DEL | `r6+$d` | dry send into the DELAY bus (`BUS.md`) |
-| 2 | 10 | PRE | `r6+$e` | pre-delay, 0–93 ms |
-| 2 | 7, 9, 11 | — | `$c` bits 8-15, `$d` low, `$e` low | **free**, and they are *selects*, not knobs |
+| 1 | 5 | MIX | `r6+$5` | dry/wet **crossfade** |
+| 2 | 6 | SPEED | `r6+$b` | LFO rate, ~0.13–1.9 Hz |
+| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 HALL, 3 BIG |
+| 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
+| 2 | 9 | WIDTH | `r6+$d` low | mid/side, 0 = mono |
+| 2 | 10 | PRE | `r6+$e` knob | pre-delay, 0–93 ms |
+| 2 | 11 | -DEL | `r6+$e` low | dry send into the DELAY bus (`BUS.md`) |
 
-**Page-2 slots pair up**: a knob arrives as `value<<16` so it occupies only
-bits 16-22, leaving the low bits of the same word as an independent field.
-Even slots carry the knob, odd slots a small select — which is what the three
-free slots are, and what a MODE control should use.
+**Five of the six page-2 controls are full-travel knobs**, including two in
+*companion* fields. `DSP.md` §9 used to say the budget was three knobs plus
+three small selects; that was inferred from stock's usage, and hardware
+falsified it. Only MODE is deliberately stepped.
 
-**PRE lives on `$e`, not `$c`.** `$c`'s knob field is driven by display slot 6
-but our WIDTH already reads that value at `$b`; nothing drives `$c` in a way
-PRE could use. Stock DARK reads *its* pre-delay from `$c`, which is why older
-builds did — but no page-2 slot reaches `$c` usefully, so PRE was dead until
-it moved. Do not "fix" this back.
+**Page-2 slots pair up**: a knob arrives as `value<<16` occupying bits 16-22,
+leaving the low bits of the same word as an independent field. Even slot =
+knob field, odd slot = companion field of the same word. Both can carry a
+full 0–127 value; mask the companion with `#>$7f` and shift it up by 16.
+
+**PRE lives on `$e`, not `$c`.** Nothing drives `$c`'s knob field usefully.
+Stock DARK reads *its* pre-delay from `$c`, which is why older builds did.
+Do not "fix" this back.
+
+### Making a cloned descriptor draw correctly
+
+This cost six hardware flashes to establish, so it is written out in full.
+Four per-parameter arrays matter, each 12 × u32, `P`-relative:
+
+| offset | what it is |
+|---|---|
+| `P+0x9a` | **value count** — the parameter's range, drawn on a fixed 0–127 scale. A count of 16 gives 16 values over ⅛ of the knob's travel, *not* 16 nicely-spaced steps. |
+| `P+0x0ca` | **display formatter**, a function pointer. `0` = plain numeric knob. |
+| `P+0x0fa` | **formatter's partner**, also a function pointer. Both must be set for stepped rendering. |
+| `P+0x12a` | **must be `0` for a stepped control.** Surveyed all 20 stepped params in stock FX2: 20 of 20 have it zero. |
+
+**A clone inherits all four from its donor**, and the donor's values are for a
+different algorithm. That is what made `→DEL` render as DARK's "MIX / SEND"
+however large a count it was given, and what kept MODE a plain knob for three
+builds. Zero `0x0ca`/`0x0fa` for every renamed slot; for a stepped control,
+set both to a stock pair *and* zero `0x12a`.
+
+Working stepped pairs, for reference:
+
+| source | count | `0x0ca` | `0x0fa` |
+|---|---|---|---|
+| CHORUS.TAPS | 5 | `0x4003c718` | `0x40047254` | ← MODE uses this |
+| SPATIALIZER.PHSE | 4 | `0x4003bbc0` | `0x400467a4` |
+| FILTER.Q | 4 | `0x4003bc60` | `0x40046c28` |
+
+There is **no value-name table** in the descriptor: names like FILTER Q's
+`none|HP|LP|BOTH` come from the renderer function itself, so a cloned selector
+shows numbers. Giving MODE FILTER.Q's pair would draw *those* words, which
+would be worse than numbers.
+
+**`DEFAULTS` must be in range.** A default outside its own value count is used
+as an index and stalled the sequencer on hardware. Every enabled slot needs an
+explicit default — an unlisted one silently keeps the donor's.
+`tools/verify_menu.py` now enforces this.
 
 ## Memory layout
 
@@ -528,6 +571,10 @@ three free page-2 selects exist precisely for this; MODE is the obvious first.
 
 MODE should reconfigure tap lengths, diffusion depth, damping and modulation
 together — not merely rescale SIZE.
+
+**Built as of `ChonVerb19`**: the MODE select exists and works on hardware
+(slot 7, stepped, four values). Its per-mode constants — tap scale, early-
+reflection level, diffusion offset — are first-pass and want tuning by ear.
 
 **Order of work:**
 1. ~~The 32K re-layout~~ — **built and emulator-verified**, see above. It
