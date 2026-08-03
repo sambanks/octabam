@@ -742,24 +742,17 @@ md_done:
 ; six page-2 slots reach the DSP with a full 0..127 range -- measured, and it
 ; took seven probe builds, so do not re-derive it.
         move    x:(r6+$e),a
-        and     #>$7,a                  ; mask to the STEP COUNT, not to the
-                                        ; field width. A part saved under an
-                                        ; earlier build can still hold a value
-                                        ; sized for the old count (e.g. 127),
-                                        ; and the OS does not appear to clamp it
-                                        ; on load -- v*$120000 then overflows
-                                        ; $7fffff and the control reads
-                                        ; NEGATIVE. Masking to 0..7 makes a
-                                        ; stale value harmless instead.
-                                        ; (The field itself is eight bits and is
-                                        ; a SELECT: DSP.md section 9's budget is
-                                        ; three knobs plus three selects.)
+        and     #>$7f,a                 ; 0..127 in the companion field. The
+                                        ; 8-step restriction is gone: what made
+                                        ; this control unusable was the
+                                        ; inherited DISPLAY FORMATTER, not the
+                                        ; value count, and with that zeroed it
+                                        ; draws as an ordinary knob. $7f, not
+                                        ; $ff, so a stale byte cannot exceed
+                                        ; full scale after the shift.
         move    a1,x0                   ; AND cleans A1 only
         move    x0,a
-        asl     #$14,a,a                ; v * $100000
-        move    a,x0
-        asr     #$3,a,a                 ; v * $20000
-        add     x0,a                    ; v * $120000: 0..7 spans 0 .. 0.984
+        asl     #$10,a,a                ; left-align like a knob
         move    a,x:(r7+$69)
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
@@ -772,13 +765,10 @@ md_done:
 ; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
 ; ->DELAY above.
         move    x:(r6+$d),a
-        and     #>$7,a                  ; step count, not field width -- see above
+        and     #>$7f,a                 ; 0..127, as above
         move    a1,x0
         move    x0,a
-        asl     #$14,a,a
-        move    a,x0
-        asr     #$3,a,a
-        add     x0,a                    ; 0..7 spans mono .. full stereo
+        asl     #$10,a,a                ; mono .. full stereo
         move    a,x:(r7+$2c)
 
 ; ---- DIFFUSION: allpass coefficient -- slot 8, $d's KNOB field (v92) -----

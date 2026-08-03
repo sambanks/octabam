@@ -133,7 +133,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"16"
+BUILD_TAG = b"17"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -152,7 +152,7 @@ DEFAULTS = {
                       (6, 48),   # SPEED  slow-ish
                       (7, 2),    # MODE   HALL, the most generally useful
                       (8, 64),   # DIFF   mid
-                      (9, 7),    # WIDTH  full (select, 0..7)
+                      (9, 127),  # WIDTH  full
                       (10, 0),   # PRE    none
                       (11, 0)],  # -DEL   off
     "SEND": [(0, 0), (1, 0)],
@@ -210,9 +210,9 @@ ACTIVE_PARAMS = {
 PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SPEED  knob
                                   7: 4,     # MODE   select: ROOM/PLATE/HALL/BIG
                                   8: 128,   # DIFF   knob
-                                  9: 8,     # WIDTH  select: mono..full
+                                  9: 128,   # WIDTH  full knob
                                   10: 128,  # PRE    knob
-                                  11: 8}}   # -DEL   select: off..full
+                                  11: 128}} # -DEL   full knob
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
@@ -318,6 +318,15 @@ def main():
             for idx in range(12):
                 wr32(clone_P + 0x0ca + idx * 4, 0)
                 wr32(clone_P + 0x0fa + idx * 4, 0)
+            # MODE gets a STEPPED formatter rather than a plain knob. Surveyed
+            # every stock effect: 0x4003c718 is what CHORUS.TAPS and SPRING
+            # REV.TYPE use, and it copes with counts 3, 5 and 128 -- i.e. it is
+            # the enumerated-selector renderer, which is the "like taps on
+            # chorus" Sam asked for.
+            # The alternative, 0x4003bc60 (FILTER.Q, count 4), draws real word
+            # labels but they read "none|HP|LP|BOTH", which would be actively
+            # wrong on a mode selector. Numbers beat wrong words.
+            wr32(clone_P + 0x0ca + 7 * 4, 0x4003c718)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
