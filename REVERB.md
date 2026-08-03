@@ -20,12 +20,13 @@ that got us here, see `REVERB_LOG.md` (historical).
 ## Signal path
 
 ```
-in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ─┐ ─► width ─► mix ─► out
-        (PRE)        (diffusion)         │ 4 lines    │
-                                         │ 4x4 Hadamard
-                                         │ HI damping │  (one-poles, inside
-                                         │ LO cut     │   the feedback loop)
-                                         └────────────┘
+in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ──────────┐ ─► width ─► mix ─► out
+        (PRE)        (input diffusion)   │ 4 lines, modulated  │
+                                         │ 4x4 Hadamard        │
+                                         │ HI damping          │  all inside the
+                                         │ LO cut              │  feedback loop
+                                         │ 2 in-loop allpasses │
+                                         └─────────────────────┘
 ```
 
 * **Pre-delay** — up to 2048 samples (46 ms), modulo buffer on r6.
@@ -38,6 +39,11 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ─┐ ─�
   sharing tap factors move in opposition.
 * **In the loop** — a one-pole low-pass (HI) and a one-pole high-pass (LO)
   per line, so the decay is shaped per band rather than the output EQ'd.
+* **In-loop allpasses** — two, 1024 words each, taps 401/601, on lines 0
+  and 1. An allpass in the feedback path multiplies echo density on every
+  circulation, which is how a smooth tail comes out of finite memory. Note
+  the proportion matters: too long relative to the line and it becomes a
+  dispersive element, which is what a spring reverb is.
 * **Out** — mid/side width, then wet gain added to the dry.
 
 ## Parameters
@@ -76,10 +82,13 @@ Each FX2 instance is given 16,384 words. The reverb uses 0x3809 of them:
 | `base+0x0000` | 4 × 2048 | tank lines, taps 1567/1249/977/733 scaled by SIZE |
 | `base+0x2000` | 4 × 1024 | allpasses, taps 907/673/487/331 |
 | `base+0x3000` | 2048 | pre-delay |
-| `base+0x3800` | 9 | LFO phase, 4 damping states, 4 LO states |
+| `base+0x3800` | 2 × 1024 | in-loop allpasses |
 
-Persistent per-instance state lives in the r7 block: `$82` is the warm-up
-counter (tagged `$2c0000 | count`), `$83` the tank phase, `$10..$4e` working.
+**All persistent state lives in the r7 block**, which is per-instance and
+survives between calls — `$82` is the warm-up counter (tagged
+`$2c0000 | count`), `$83` the tank phase, and `$10..$61` the working set
+including the four LFO phases and the one-pole states. There is no Y state
+block; it was round-tripped needlessly until v74.
 
 ## Register map inside the sample loop
 
@@ -98,12 +107,12 @@ against.
 ## Build, verify, flash
 
 ```sh
-python3 tools/build_reverb.py dsp/reverb71.asm      # patches both payloads
-EFT_EMIT_CONTAINER=out/elek_v71.bin \
+python3 tools/build_reverb.py dsp/reverb84.asm      # patches both payloads
+EFT_EMIT_CONTAINER=out/elek_v84.bin \
   vendor/elektron-firmware-tool/elektron-firmware-tool \
   -i downloads/extracted/OCTATRACK_OS1.40C.syx -c 3 out/mainos_reverb.bin \
-  -V MAXOLYDIAN -o out/OCTATRACK_OS1.40C_V71.syx
-python3 tools/make_bin.py out/elek_v71.bin -o out/OCTATRACK_V71.bin
+  -V MAXOLYDIAN -o out/OCTATRACK_OS1.40C_V84.syx
+python3 tools/make_bin.py out/elek_v84.bin -o out/OCTATRACK_V84.bin
 ```
 
 Then copy the `.bin` to the **root** of the CF card (one only), and on the
@@ -155,8 +164,8 @@ is a measurably smoother one.
 
 Two levers exist for going further, and they are independent:
 
-1. **Spend freed cycles on more delay lines.** 297 cycles/sample leaves
-   headroom that did not exist before.
+1. **Spend freed cycles on more delay lines.** The density pass left
+   headroom that did not exist before; v84 uses 341 of it.
 2. **Patch the allocator table at `X:0x255`** — it is loaded data, editable
    exactly like the dispatch tables `build_reverb.py` already writes — to
    trade instance count for tank size: 8 modest, 4 large (2 × 32K per DSP),
