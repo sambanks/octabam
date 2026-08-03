@@ -323,6 +323,18 @@ def main():
     if os.environ.get("PROBE") == "1":
         print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
     send_src = pathlib.Path(ASM_SRC["SEND"]).read_text()
+    # MODE=n substitutes a literal for the page-2 MODE read, so each character
+    # can be auditioned locally. dsp_host cannot drive companion fields (its
+    # -params only writes value<<16 into knob fields), so this is the only way
+    # to hear the modes without a flash. Diagnostic only -- the normal build
+    # reads the real slot.
+    mode_env = os.environ.get("MODE")
+    if mode_env is not None:
+        assert reverb_src.count("; MODE_OVERRIDE") == 1
+        reverb_src = reverb_src.replace(
+            "; MODE_OVERRIDE", "        move    #>$%x,a" % int(mode_env))
+        print(f"  *** MODE OVERRIDE: forced to {int(mode_env)} ***")
+
     if delay_src.count("$30000") != 1:
         sys.exit("expected exactly one $30000 literal in delay_server.asm")
 

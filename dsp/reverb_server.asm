@@ -501,6 +501,72 @@ warmdone:
                                         ; 0x4000, so every line is 4096-aligned
                                         ; as modulo requires.
 
+; ---- MODE: character select, page-2 slot 7 ($c bits 8-15) (v93) ---------
+; One engine, four characters. REVERB.md's agreed design: MODE reconfigures
+; tap lengths, early-reflection level and diffusion TOGETHER -- not merely
+; rescaling SIZE, which is what makes a room a room rather than a small hall.
+;
+; Read here, before the SIZE block, because it scales the tap lengths that
+; block computes. The companion field carries a small step count (0..3), not
+; a left-aligned knob -- see the page-2 rejig note above.
+;
+;   0 ROOM   short taps, STRONG early reflections, high diffusion
+;   1 PLATE  medium taps, NO early reflections, highest diffusion
+;   2 HALL   long taps, weak early reflections, medium diffusion
+;   3 BIG    longest taps, no early reflections -- the Valhalla-flavoured one
+;
+; SIZE, TIME, DIFF and the rest still work inside whichever character is
+; chosen; MODE moves the centre, the knobs move around it.
+        move    x:(r6+$c),a
+        and     #>$ff00,a               ; slot 7's field, NOT the knob field
+        move    a1,x0                   ; AND cleans A1 only
+        move    x0,a
+        asr     #$8,a,a                 ; -> 0..3
+; MODE_OVERRIDE
+        move    a,x:(r7+$6e)
+
+        move    x:(r7+$6e),a
+        tst     a
+        beq     md_room
+        move    #>$1,x0
+        cmp     x0,a
+        beq     md_plate
+        move    #>$2,x0
+        cmp     x0,a
+        beq     md_hall
+md_big:                                 ; 3, and anything unexpected
+        move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
+        move    a,x:(r7+$6f)
+        clr     a                       ; no early reflections: a big space has
+        move    a,x:(r7+$6c)            ; no close walls to hear
+        move    #>$0c0000,a             ; diffusion offset, medium
+        move    a,x:(r7+$3f)
+        bra     md_done
+md_room:
+        move    #>$399999,a             ; tap scale 0.45 -- close walls
+        move    a,x:(r7+$6f)
+        move    #>$600000,a             ; STRONG early reflections: this is
+        move    a,x:(r7+$6c)            ; most of what says "room"
+        move    #>$180000,a             ; diffusion offset, high
+        move    a,x:(r7+$3f)
+        bra     md_done
+md_plate:
+        move    #>$530000,a             ; tap scale 0.65
+        move    a,x:(r7+$6f)
+        clr     a                       ; a plate has no early reflections at
+        move    a,x:(r7+$6c)            ; all -- it is not a room
+        move    #>$200000,a             ; diffusion offset, highest: a plate is
+        move    a,x:(r7+$3f)            ; dense from the first millisecond
+        bra     md_done
+md_hall:
+        move    #>$730000,a             ; tap scale 0.90
+        move    a,x:(r7+$6f)
+        move    #>$200000,a             ; weak early reflections -- far walls
+        move    a,x:(r7+$6c)
+        move    #>$100000,a             ; diffusion offset, medium
+        move    a,x:(r7+$3f)
+md_done:
+
     ; ---- SIZE: scale all four tap lengths -----------------------------------
     ; tap = 3958*f on the longest line, so f = 0.400 .. 0.989 gives 1583..3914
     ; samples, 36..89 ms. The nominal taps are the MAXIMUM -- SIZE only ever
@@ -528,6 +594,9 @@ warmdone:
             mpy     x0,y1,a
             move    #>$333000,x0            ; f = 0.400 .. 0.989, was
             add     x0,a                    ; 0.125 .. 0.993
+            move    a,x0                    ; then scaled by MODE's tap scale,
+            move    x:(r7+$6f),y1           ; so SIZE moves within a character
+            mpy     x0,y1,a                 ; rather than replacing it
             move    a,x1
 ; At the old floor the whole tank was 566 samples -- a mode spacing of 78 Hz,
 ; which is a metallic comb by construction and no amount of diffusion fixes
@@ -651,8 +720,6 @@ warmdone:
 ; Fixed for now. MODE (the free page-2 select) will drive this slot per
 ; character: a room wants strong early reflections, a hall weak ones, a plate
 ; none at all. That is most of what separates the modes.
-        move    #>$400000,a
-        move    a,x:(r7+$6c)
 
 ; ---- MIX -----------------------------------------------------------------
         move    x:(r6+$5),x0
@@ -705,6 +772,8 @@ warmdone:
         move    #>$380000,y1
         mpy     x0,y1,a
         move    #>$2d0000,x0
+        add     x0,a
+        move    x:(r7+$3f),x0           ; + MODE's diffusion offset
         add     x0,a
         move    a,x:(r7+$6d)            ; g, for every allpass
 
@@ -1737,9 +1806,9 @@ lf51:
         move    x:(r7+$19),x0           ; line 3
         sub     x0,a
         move    x:(r7+$5a),x0           ; + early reflections L (v91)
-        move    x:(r7+$6c),y1
-        mpy     x0,y1,b
-        add     b,a
+        move    x:(r7+$6c),y0           ; y0, NOT y1: y1 holds the MIX wet gain
+        mpy     x0,y0,b                 ; for this whole section, and clobbering
+        add     b,a                     ; it multiplied MIX by the ER level
         move    a,x:(r7+$2d)            ; wet L = l0+l1-l2-l3 -- the /4 that used
                                         ; to be here IS the makeup gain for the
                                         ; -12 dB tank attenuation above. Net
@@ -1754,9 +1823,9 @@ lf51:
         move    x:(r7+$19),x0
         add     x0,a
         move    x:(r7+$5b),x0           ; + early reflections R (v91)
-        move    x:(r7+$6c),y1
-        mpy     x0,y1,b
-        add     b,a
+        move    x:(r7+$6c),y0           ; y0, NOT y1: y1 holds the MIX wet gain
+        mpy     x0,y0,b                 ; for this whole section, and clobbering
+        add     b,a                     ; it multiplied MIX by the ER level
         move    a,x:(r7+$2e)            ; wet R = l0-l1-l2+l3 -- same makeup
 
 ; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
