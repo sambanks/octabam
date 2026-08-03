@@ -406,6 +406,8 @@ warmz:
         move    b,x:(r7+$42)
         move    b,x:(r7+$43)
         move    b,x:(r7+$44)
+        move    b,x:(r7+$5c)            ; in-loop allpass interpolation
+        move    b,x:(r7+$5d)            ; carries (v90)
         move    b,x:(r7+$4f)
         move    b,x:(r7+$50)
         move    b,x:(r7+$51)
@@ -759,6 +761,32 @@ lf3e:
         move    #>$400000,x0
         sub     x0,a
         abs     a                       ; triangle, 0 .. $400000
+        move    a,x:(r7+$5a)            ; stash: the AP modulator below clobbers it
+        move    a,x0
+; ---- in-loop allpass modulation (Dattorro): FIXED depth, never zero ------
+; The in-loop allpasses were static. Dattorro modulates his, and a moving
+; allpass smears the modes on every circulation -- which REVERB.md names as
+; the only structural fix for the ringing at this delay budget. Costs cycles
+; and NO memory, which is the right shape now: the 32K re-layout filled the
+; allocation, but the cycle budget has ~551 spare.
+;
+; Depth is fixed at $200000 rather than following MOD, so it can never reach
+; zero -- the same rule this file already records for the tank ("modulation
+; must never reach zero"; a completely static tank rings). MOD stays the
+; tank's control alone.
+        move    #>$200000,y1
+        mpy     x0,y1,a
+        move    a1,x1
+        asl     #$8,a,a
+        move    a2,x0
+        move    x0,x:(r7+$52)            ; AP integer offset, 0..~31 samples
+        move    x1,a
+        move    #>$00ffff,x0
+        and     x0,a
+        asl     #$8,a,a                 ; shift by n-1, never n (REVERB.md's
+        move    a,x0                    ; interpolation fraction rule)
+        move    x0,x:(r7+$53)            ; AP fraction
+        move    x:(r7+$5a),a            ; triangle back for the tank's own use
         move    a,x0
         move    x:(r7+$28),y1           ; MOD depth
         mpy     x0,y1,a
@@ -791,6 +819,32 @@ lf4f:
         move    #>$400000,x0
         sub     x0,a
         abs     a                       ; triangle, 0 .. $400000
+        move    a,x:(r7+$5b)            ; stash: the AP modulator below clobbers it
+        move    a,x0
+; ---- in-loop allpass modulation (Dattorro): FIXED depth, never zero ------
+; The in-loop allpasses were static. Dattorro modulates his, and a moving
+; allpass smears the modes on every circulation -- which REVERB.md names as
+; the only structural fix for the ringing at this delay budget. Costs cycles
+; and NO memory, which is the right shape now: the 32K re-layout filled the
+; allocation, but the cycle budget has ~551 spare.
+;
+; Depth is fixed at $200000 rather than following MOD, so it can never reach
+; zero -- the same rule this file already records for the tank ("modulation
+; must never reach zero"; a completely static tank rings). MOD stays the
+; tank's control alone.
+        move    #>$200000,y1
+        mpy     x0,y1,a
+        move    a1,x1
+        asl     #$8,a,a
+        move    a2,x0
+        move    x0,x:(r7+$54)            ; AP integer offset, 0..~31 samples
+        move    x1,a
+        move    #>$00ffff,x0
+        and     x0,a
+        asl     #$8,a,a                 ; shift by n-1, never n (REVERB.md's
+        move    a,x0                    ; interpolation fraction rule)
+        move    x0,x:(r7+$55)            ; AP fraction
+        move    x:(r7+$5b),a            ; triangle back for the tank's own use
         move    a,x0
         move    x:(r7+$28),y1           ; MOD depth
         mpy     x0,y1,a
@@ -1384,14 +1438,30 @@ lf51:
 ; -- in-loop allpass, line 0: diffuses the feedback before it is stored --
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$60),a
-        move    a,n5                    ; 2048 - tap
+        move    x:(r7+$52),x0           ; LFO integer offset -- the allpass is
+        sub     x0,a                    ; MODULATED now, not static
+        move    a,n5                    ; (2048 - tap) - offset
         move    x:(r7+$39),a            ; phase (already masked to $7ff)
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
         move    #>$5a0000,y1            ; g -- y1, NOT y0: y0 holds g/2 across
         move    x:(r7+$15),x0           ; the whole write-back section
-        move    y:(r5+n5),b             ; d
+        move    y:(r5+n5),b             ; d0
+; Interpolate against the PREVIOUS sample's d0 -- the same carry the tank
+; lines use, and for the same reason: the read pointer advances exactly one
+; per sample, so last sample's d0 IS this sample's d1, and no second address
+; register is needed. Every N register is committed, so there is no other way
+; to do this.
+        move    x:(r7+$5c),a            ; d1 = last sample's d0
+        move    b,x:(r7+$5c)            ; carry forward
+        sub     b,a                     ; d1 - d0
+        move    a,x0
+        move    x:(r7+$53),y1           ; fraction (g is reloaded below)
+        mpy     x0,y1,a                 ; f*(d1-d0)
+        add     b,a                     ; + d0 -> interpolated tap
+        move    a,b
+        move    #>$5a0000,y1            ; g back
         move    b,x0
         mpy     x0,y1,a
         move    x1,x0
@@ -1415,14 +1485,30 @@ lf51:
 ; -- in-loop allpass, line 1: diffuses the feedback before it is stored --
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$61),a
-        move    a,n5                    ; 2048 - tap
+        move    x:(r7+$54),x0           ; LFO integer offset -- the allpass is
+        sub     x0,a                    ; MODULATED now, not static
+        move    a,n5                    ; (2048 - tap) - offset
         move    x:(r7+$39),a            ; phase (already masked to $7ff)
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
         move    #>$5a0000,y1            ; g -- y1, NOT y0: y0 holds g/2 across
         move    x:(r7+$15),x0           ; the whole write-back section
-        move    y:(r5+n5),b             ; d
+        move    y:(r5+n5),b             ; d0
+; Interpolate against the PREVIOUS sample's d0 -- the same carry the tank
+; lines use, and for the same reason: the read pointer advances exactly one
+; per sample, so last sample's d0 IS this sample's d1, and no second address
+; register is needed. Every N register is committed, so there is no other way
+; to do this.
+        move    x:(r7+$5d),a            ; d1 = last sample's d0
+        move    b,x:(r7+$5d)            ; carry forward
+        sub     b,a                     ; d1 - d0
+        move    a,x0
+        move    x:(r7+$55),y1           ; fraction (g is reloaded below)
+        mpy     x0,y1,a                 ; f*(d1-d0)
+        add     b,a                     ; + d0 -> interpolated tap
+        move    a,b
+        move    #>$5a0000,y1            ; g back
         move    b,x0
         mpy     x0,y1,a
         move    x1,x0
