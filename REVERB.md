@@ -498,13 +498,41 @@ the same amount, and it costs two constants and no cycles. The
 loudness-matched A/B above is exactly that experiment performed externally,
 and it is the one that sounded better.
 
-Sizing: both sources are fully linear by −12 dB, so **−12 dB is the measured
-floor and −18 dB is a safe working figure**. It is bounded above as well as
-below — every dB of attenuation is a dB of makeup gain on the wet, which
-lifts the tail's noise floor, so this wants the smallest value that clears
-the knee rather than the largest that fits. The bass loop is the obvious
-third source to check before fixing a number, since low frequencies carry the
-most energy into a feedback path.
+**Sizing: there is no single number, and the third source is why.** Bass was
+checked precisely because low frequencies carry the most energy into a
+feedback path, and it broke the −18 dB estimate outright — 26,741 clipped
+samples at 0 dB against 680 for drums and 6 for the synth, and still
+compressing at −24 dB.
+
+**The knee is set by HP**, the in-loop low cut, over a 24 dB range:
+
+| HP | knee (linear below) | clipped @ 0 dB |
+|---|---|---|
+| 0 — *filter bypassed exactly* | −36 dB | 36,945 |
+| 20 | −24 to −36 dB | 26,741 |
+| 64 | −24 dB | |
+| 127 | −12 dB — same as the other sources | |
+
+So the mechanism is not "loud input" but **low-frequency energy circulating
+with near-unity feedback**, and HP is the control that governs it. DC buildup
+at HP=0 is real but negligible (0.6% of RMS), so this is LF, not DC.
+
+That kills a single fixed attenuation as the whole answer: sizing it for
+HP=0 bass means −36 dB, and every dB is a dB of makeup gain lifting the
+tail's noise floor. Two parts instead:
+
+1. **Floor the LO coefficient so HP=0 never bypasses the filter exactly.**
+   This is the same shape as the rule already recorded above — *modulation
+   must never reach zero* — and the same root cause: a control allowed to
+   reach exactly zero creates a pathology at the endpoint. Note the floor
+   cannot do the whole job on its own, since holding the knee at −18 dB
+   would need HP ≈ 90, which would thin everything.
+2. **A modest fixed input attenuation, sized for mid-range material**
+   (−12 to −18 dB), with makeup on the wet.
+
+Deliberately *not* sized for loud bass into a bypassed low cut. That
+combination should be allowed to saturate rather than paying 36 dB of noise
+floor across every other setting to prevent it.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
