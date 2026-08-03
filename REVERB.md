@@ -218,7 +218,44 @@ dsp_host -mem out/dsp/mem_reverb_server_A.mem -init 1252 -proc 1253 \
 ```
 
 `-guard 32768`, not 16384 — the server owns the whole 32K since the
-re-layout. It must report **guard clean** and no hang. For a pure optimization, also
+re-layout. It must report **guard clean** and no hang.
+
+## Voicing without flashing
+
+**Judge the sound in the emulator; spend flashes on what it cannot test.**
+`tools/dsp_host` runs the real assembled instruction stream with exact
+DSP56300 arithmetic — which this document already relies on ("for a pure
+optimization the output should be bit-identical") — at about **6× real
+time**. `tools/render_reverb.py` wraps it:
+
+```sh
+python3 tools/render_reverb.py loop.wav                      # wet+dry
+python3 tools/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
+python3 tools/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
+python3 tools/render_reverb.py loop.wav --build              # rebuild first
+```
+
+Knobs are named, not indexed, because `-params` is *not* a linear map onto
+`r6` — indices 0–5 are page 1, then 6–9 land on `r6+$b..$e`. It handles the
+256-call warm-up by padding and trimming, and `--wet` recovers the wet signal
+exactly by subtracting the dry path. `--wet -p MIX=0` renders **digital
+silence**, which is the standing self-check: it confirms both the dry
+subtraction and the sample alignment in one run.
+
+Do **not** shortcut this by rendering one impulse response and convolving it
+against material offline — the tank is modulated, so it is time-varying and
+an IR does not capture it. Feed the real audio through.
+
+**What still needs hardware**, and cannot be faked here:
+
+* **The cycle budget.** This harness will happily render an engine that
+  cannot run: 432 cycles/sample froze the chip once already. Anything that
+  adds cost needs one flash to confirm eight tracks still play.
+* **Everything ColdFire-side** — menu, descriptors, knob labels, parameter
+  ranges. `-params` pokes `r6` directly and bypasses all of it.
+* **Payload B**, which `dsp_host` cannot boot at all (`BUS.md`).
+* **Multi-instance under a nonzero split**, where there is a known
+  unexplained one-vs-two-instance divergence. For a pure optimization, also
 diff the output against the previous build: it should be **bit-identical**,
 and any difference is a bug. See `DSP.md` §6b for the harness reference and
 its traps.
