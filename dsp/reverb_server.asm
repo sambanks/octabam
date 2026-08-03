@@ -721,9 +721,19 @@ md_done:
 ; character: a room wants strong early reflections, a hall weak ones, a plate
 ; none at all. That is most of what separates the modes.
 
-; ---- MIX -----------------------------------------------------------------
+; ---- MIX: a real crossfade, not wet added on top of unity dry (v94) ------
+; It used to be out = dry + wet*MIX, so dry stayed at full scale however wet
+; the effect was set. That cannot help clipping on a hot source -- 1.0 + 0.78
+; is 1.78 -- and it means MIX never actually removes the dry signal, so the
+; top of the knob is not "wet" in the sense every other reverb means it.
+;
+; out = dry*(1-MIX) + wet*MIX. MIX arrives as value<<16, so 1-MIX is just
+; $7fffff minus it.
         move    x:(r6+$5),x0
-        move    x0,x:(r7+$20)
+        move    x0,x:(r7+$20)           ; wet gain
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,x:(r7+$70)            ; dry gain = 1 - MIX
 
 ; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
 ; Moved off slot 8 ($d's knob field) so DIFFUSION can have it. A companion
@@ -1866,15 +1876,23 @@ lf51:
         add     x0,a
         move    a,x0
         mpy     x0,y1,a                 ; * MIX
-        move    x:(r0),x0
-        add     x0,a
+        move    a,x:(r7+$71)            ; stash the wet half
+        move    x:(r0),x0               ; dry
+        move    x:(r7+$70),y0           ; dry gain -- y0 is free here, y1 must
+        mpy     x0,y0,a                 ; keep holding MIX for the R channel
+        move    x:(r7+$71),x0
+        add     x0,a                    ; dry*(1-MIX) + wet*MIX
         move    a,x:(r0)                ; L in place
         move    x:(r7+$25),a
         move    x:(r7+$26),x0
         sub     x0,a
         move    a,x0
         mpy     x0,y1,a
+        move    a,x:(r7+$71)            ; same crossfade on the right
         move    x:(r0+n0),x0
+        move    x:(r7+$70),y0
+        mpy     x0,y0,a
+        move    x:(r7+$71),x0
         add     x0,a
         move    a,x:(r0+n0)             ; R in place
         move    (r1)+                   ; all four line pointers advance together

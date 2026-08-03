@@ -373,9 +373,14 @@ One lever is left, and one is spent:
    above spends it. The 45K variant would still need the FX1 region and an
    allocator edit, and is not planned.
 
-Smaller items: SHVG's range wants calibrating by ear; MIXF (`$e`) is dead and
-likely to stay so; and there is an unexplained emulator-only divergence
-between one and two instances under a nonzero split.
+Smaller items: MOD depth's range wants calibrating by ear (this was recorded
+for years as "SHVG's range" — SHVG is a *stock DARK REV* knob label the
+retired build inherited, and ChonVerb names its own knobs, so the item is
+just MOD); and there is an unexplained emulator-only divergence between one
+and two instances under a nonzero split.
+
+The old note that "MIXF (`$e`) is dead" is also gone: `$e` carries PRE in its
+knob field and →DEL in its companion field, both live.
 
 
 ## Tuning: what is known
