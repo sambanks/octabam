@@ -1137,6 +1137,26 @@ lf51:
         move    a,y:(r5)                ; write v at base + phase
 
         move    x:(r7+$1b),a
+; ---- TANK INPUT ATTENUATION: -12 dB of headroom -------------------------
+; The tank runs at a loop gain approaching 1, so energy circulating in it
+; reaches Q1.23 saturation long before the OUTPUT does -- measured: on a
+; dense source at TIME=110, 6 dB less input gave only 2.3 dB less output,
+; and on bass it clipped 26,741 samples. Confirmed audible in a
+; loudness-matched A/B, and -12 dB is the figure that was chosen by ear.
+;
+; The matching makeup gain is FREE: the output sum below used to divide the
+; four-line sum by 4, and it no longer does. Attenuating by 4 here and
+; dropping that /4 there leaves the output level and the shared WET bus
+; EXACTLY where they were, with the whole 12 dB spent on headroom inside the
+; loop. It also removes a reliance on A2 during the output sum, which used
+; to run up to 4x full scale before being shifted back down.
+;
+; Deliberately NOT tied to TIME. The compression was measured at FIXED TIME
+; while varying input, so it is about absolute level in a high-gain loop.
+; (1-g) scaling -- the textbook answer -- was tried and over-corrected by
+; 30 dB, because 1/(1-g) is a steady-state result and music never gets
+; there. See REVERB.md.
+        asr     #$2,a,a                 ; -12 dB
         move    a,x:(r7+$15)            ; diffused input -> tank
 ; ---- STAGE 3b: coefficients held in registers across all four lines -----
 ; y0 = DAMP and x1 = the LO coefficient. Neither is clobbered between here
@@ -1448,8 +1468,12 @@ lf51:
         sub     x0,a
         move    x:(r7+$19),x0           ; line 3
         sub     x0,a
-        asr     #$2,a,a
-        move    a,x:(r7+$2d)            ; wet L = (l0+l1-l2-l3)/4
+        move    a,x:(r7+$2d)            ; wet L = l0+l1-l2-l3 -- the /4 that used
+                                        ; to be here IS the makeup gain for the
+                                        ; -12 dB tank attenuation above. Net
+                                        ; output level is unchanged; dropping it
+                                        ; also keeps this sum inside A1 instead
+                                        ; of running to 4x full scale first.
         move    x:(r7+$16),a
         move    x:(r7+$17),x0
         sub     x0,a
@@ -1457,8 +1481,7 @@ lf51:
         sub     x0,a
         move    x:(r7+$19),x0
         add     x0,a
-        asr     #$2,a,a
-        move    a,x:(r7+$2e)            ; wet R = (l0-l1-l2+l3)/4
+        move    a,x:(r7+$2e)            ; wet R = l0-l1-l2+l3 -- same makeup
 
 ; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
 ; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. w=0 collapses to mono, w=1 gives

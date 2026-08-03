@@ -424,126 +424,63 @@ lines share a feedback matrix, so they are not independent; orthogonal
 4-line output taps concentrated energy rather than smoothing it, and gave
 no stereo benefit over disjoint 2-line pairs.
 
-**The tank has no input scaling, and at long TIME it saturates.** An FDN's
-steady-state gain for sustained input is `1/(1-g)`, and nothing here
-compensates for it:
+**The tank had no input scaling, and at long TIME it saturated.** Fixed —
+the engine now attenuates its diffused input by 12 dB before the tank, and
+the four-line output sum no longer divides by 4. Those cancel exactly, so
+output level and the shared WET bus are unchanged and the whole 12 dB is
+spent on headroom inside the loop. One `asr` added, two removed: the build
+got a word *smaller*.
 
-| TIME | g | steady-state tank gain |
-|---|---|---|
-| 64 | 0.967 | 31× (+30 dB) |
-| 100 | 0.986 | 70× (+37 dB) |
-| 110 | 0.991 | 109× (+41 dB) |
-| 127 | 0.9995 | 1956× (+66 dB) |
+**Accepted by ear, on the source where the fault was audible.** Three
+loudness-matched renders of the synth pluck: old engine at 0 dB (the fault),
+new engine at 0 dB, old engine at −12 dB trim (the known-good reference).
+New-at-0 dB against old-at−12 dB: **"same"**. That is the acceptance test —
+the engine now behaves at full input the way it used to behave only with
+12 dB of external trim.
 
-The diffused input is added to the lines at full level (half on lines 2 and
-3) regardless. Measured on a dense synth loop at TIME=110: **6 dB less input
-gives only 2.3 dB less output** — 3.7 dB of compression, from Q1.23
-saturation inside the loop. The knee for that source is around −18 dB of
-input trim; below it the engine is linear. A pure sine at the same peak level
-is linear to within 0.1 dB, so it is *density*, not peak level, that drives
-this — a sine test will not show it.
+### How this was found, and the trap in it
 
-**Diagnosis closed — the prediction held on both halves.** Three renders at
-0 / −12 / −24 dB input trim, every knob fixed and loudness matched, with the
-outcome written down in advance from the measured compression (2.1 dB between
-the first pair, 0.0 dB between the second):
+An FDN's steady-state gain is `1/(1-g)`, and nothing compensated for it:
++30 dB at TIME=64, +66 dB at TIME=127. Measured on a dense synth loop at
+TIME=110, 6 dB less input gave only 2.3 dB less output. A pure sine at the
+same peak level is linear to within 0.1 dB, so it is **density**, not peak
+level, that drives this — a sine test misses it entirely.
 
-* 0 dB vs −12 dB — **"very audible"**
-* −12 dB vs −24 dB — **"identical"**
+The controlled trim test predicted, in advance, that 0 dB and −12 dB would
+differ and that −12 dB and −24 dB would not. Both held ("very audible",
+"identical"), which is what identifies the mechanism as saturation and
+nothing else.
 
-That is the signature of saturation and nothing else. Had the second pair
-also differed, something other than saturation would have been moving with
-level and the whole account would be wrong; it did not, so the engine really
-is clean once it is out of the rail, and the fault is entirely headroom.
+**Then the measurements led the work astray, and this is the part worth
+remembering.** Bass measured far worse than anything else — 26,741 clipped
+samples at 0 dB against 680 for drums and 6 for the synth, a knee at −36 dB
+rather than −12 dB, and a knee that tracked HP across a 24 dB range. A whole
+argument was built on it: that no single constant could work, that a
+LO-coefficient floor was needed, that MIX should become a crossfade.
 
-**Confirmed on two sources, which fail differently** — worth knowing, because
-a single source would have given a misleading picture of the mechanism:
+**None of it was audible.** The bass renders sounded identical to each other
+throughout — saturated, clean, old engine, new engine. So that entire branch
+was measurement-led, and this file's own rule already covered it: *when the
+measurement and the ear disagree, the ear is the measurement.*
 
-| at 0 dB input | synth pluck | drum loop |
-|---|---|---|
-| clipped output samples | 6 | **680** |
-| loop compression, 0 → −12 dB | 2.1 dB | 1.4 dB |
-| compression, −12 → −24 dB | 0.0 dB | 0.0 dB |
+Two concrete cautions that came out of it:
 
-Sustained density builds up *inside* the loop (the synth compresses more but
-barely clips); transients hit the *output* rail (the drums clip 113× harder
-while compressing less). One cause, two symptoms, one fix.
+* **Clipped-sample counts predict audibility badly here.** 26,741 clipped on
+  bass was inaudible; the audible synth fault came with only 6. The counter
+  measures the *output* rail, while the audible fault was *loop* compression
+  — different things, and it is the loop that matters.
+* **Removing the saturation makes the output louder**, because the
+  saturation was acting as a limiter — clip counts go *up* after the fix
+  (synth 6 → 74, bass at −6 dB 0 → 2,920). This was called a blocker on the
+  strength of those counts. By ear it is not one: the fixed engine at 0 dB
+  is indistinguishable from the reference. Same shape as the interpolation
+  bug recorded above — fixing something correct exposed what it had been
+  masking — but here what it exposed does not matter.
 
-(The first attempt at this comparison was worthless — it changed input gain,
-TIME, MIX and normalisation at once. The "change one thing" rule applies to
-renders as much as to flashes, and is *easier* to break when a render is
-cheap.)
-
-**Do NOT scale the tank input by `(1-g)`.** That was the obvious fix and it
-is wrong here — measured, it over-corrects by about 30 dB:
-
-| TIME | wet rms, as built | wet rms, input × `(1-g)` |
-|---|---|---|
-| 64 | −31.7 dBFS | −29.4 |
-| 100 | −29.2 | −34.0 |
-| 127 | −25.6 | **−59.0** |
-
-`1/(1-g)` is a *steady-state* result and musical material never reaches
-steady state, so it wildly overestimates the buildup. The real drift across
-the whole TIME range is **6.1 dB**, not the ~36 dB the formula implies.
-Flattening 6.1 dB out of a 36 dB span needs roughly `(1-g)^0.17` — and that
-exponent is fitted to one source, so it is a starting point, not a constant.
-
-**The saturation and the drift are separate problems.** The compression was
-measured at *fixed* TIME while varying input, so it is about absolute level
-into a high-gain loop, not about TIME. The fix is therefore not
-TIME-dependent: **attenuate into the tank, and apply matching makeup gain to
-the wet output.** Output level is unchanged, internal headroom improves by
-the same amount, and it costs two constants and no cycles. The
-loudness-matched A/B above is exactly that experiment performed externally,
-and it is the one that sounded better.
-
-**Sizing: there is no single number, and the third source is why.** Bass was
-checked precisely because low frequencies carry the most energy into a
-feedback path, and it broke the −18 dB estimate outright — 26,741 clipped
-samples at 0 dB against 680 for drums and 6 for the synth, and still
-compressing at −24 dB.
-
-**The knee is set by HP**, the in-loop low cut, over a 24 dB range:
-
-| HP | knee (linear below) | clipped @ 0 dB |
-|---|---|---|
-| 0 — *filter bypassed exactly* | −36 dB | 36,945 |
-| 20 | −24 to −36 dB | 26,741 |
-| 64 | −24 dB | |
-| 127 | −12 dB — same as the other sources | |
-
-So the mechanism is not "loud input" but **low-frequency energy circulating
-with near-unity feedback**, and HP is the control that governs it. DC buildup
-at HP=0 is real but negligible (0.6% of RMS), so this is LF, not DC.
-
-**A LO-coefficient floor does NOT fix this** — proposed and killed by
-measurement before it reached a listening test. The LO coefficient is linear
-in the HP knob, so a floor is exactly equivalent to a minimum knob value, and
-small floors do nothing at all. Bass at 0 dB, wet rms:
-
-| HP | 0 | 4 | 8 | 12 | 16 | 24 | 32 |
-|---|---|---|---|---|---|---|---|
-| rms | −17.8 | −17.6 | −17.5 | −17.4 | −17.3 | −17.3 | −17.5 |
-
-Half a dB across the whole candidate range. Only HP ≈ 64+ moves the knee, and
-that is a large tone change, not a floor. The floor would only have addressed
-the DC offset, which is already negligible.
-
-**HP and LP are tone controls and must not become headroom controls.** They
-are user-facing knobs, so it is true that a player *can* turn HP up and stop
-the distortion — but that is not a fix, it is a lost control. Needing HP ≈ 90
-to keep a bass part clean means the bottom two-thirds of the knob is
-unusable, and a full-range reverb — exactly what the 32K re-layout was for —
-becomes unreachable. The knob should decide how the tail sounds, never
-whether it survives.
-
-So headroom belongs in **a fixed input attenuation with makeup gain on the
-wet**, which is orthogonal to HP: it buys the same headroom at every setting
-and costs only noise floor, leaving the whole HP range musically available.
-Size it for mid-range material (−12 to −18 dB) rather than for loud bass into
-a bypassed low cut; that worst case should be allowed to saturate rather than
-taxing every other setting 36 dB of noise floor to prevent it.
+Still true and still not acted on: MIX adds wet on top of *unity* dry rather
+than crossfading, so `dry + 0.78×wet` must clip a hot source at high MIX.
+That is a voicing decision, not a bug fix, and there is no ear evidence it
+matters yet.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
