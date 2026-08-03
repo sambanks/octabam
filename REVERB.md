@@ -241,18 +241,40 @@ Two things, both of which were once believed impossible:
 
 **The tank rings**, and this is a memory limit rather than a bug. An FDN
 sounds smooth when its modes overlap — mode spacing is `sr / total_delay`,
-mode bandwidth is `2.2 / RT60`. Measured on the pre-re-layout build: at SIZE
-max the tank held 4,493 samples, so spacing was 9.8 Hz against a bandwidth of
-0.55 Hz at a 4-second decay — an overlap of 0.06, roughly 20× too sparse. A
-4-second decay wants ~1.8 s of delay memory.
+mode bandwidth is `2.2 / RT60`.
 
-**The 32K re-layout halves that gap and exhausts the lever.** Doubling every
-line doubles the total delay, so mode spacing halves and the overlap doubles;
-the instance now holds 0.74 s rather than 0.37 s. That is also the ceiling —
-32K is the whole allocation and `DSP.md` §7c's high-X region is not real, so
-there is no third doubling to take. The figures below were measured before
-the re-layout and have not been re-measured since; expect them to improve by
-roughly a factor of two, not to disappear.
+**Say which number you mean.** "32K" is the **allocation**, and only a
+quarter of it is ever heard as tail length:
+
+| | words | ms |
+|---|---|---|
+| allocation (what `BUS.md` hands the server) | 32,768 | 743 |
+| tank lines (the only part that sets tail length) | 16,384 | 372 |
+| **total delay actually read at SIZE max** | 12,574 | **285** |
+| diffusers + pre-delay + in-loop allpasses | 16,384 | 372 |
+
+The last row buys density and pre-delay, not decay. Mode spacing is computed
+from the **third** row, so quoting the allocation — or `DSP.md` §7c's "743 ms
+ceiling", which is the first row — overstates the space by about 2.6×.
+
+Recomputed against the real constants (the previously recorded 4,493 samples
+/ 9.8 Hz / overlap 0.06 belonged to the tap set *two* generations back —
+1567/1249/977/733 — and understated the build it was attached to):
+
+| | total delay | spacing | overlap @ RT60 = 4 s |
+|---|---|---|---|
+| pre-re-layout | 6,286 | 7.0 Hz | 0.078 |
+| **post-re-layout** | **12,574** | **3.5 Hz** | **0.157** |
+
+**The 32K re-layout halves the gap and exhausts the lever.** Overlap doubles,
+and that is the ceiling: 32K is the whole allocation and `DSP.md` §7c's
+high-X region is not real, so there is no third doubling to take. Still ~6×
+short of the overlap ≥ 1 that reads as smooth (it was ~13× short), and a
+4-second decay would want ~1.8 s of total delay against the 285 ms available.
+Modulation and diffusion have to cover the rest — which is the whole argument
+for a Valhalla-flavoured big mode rather than a Blackhole-flavoured one.
+
+The measurements below predate the re-layout and have not been retaken.
 
 Measured confirmation: spectral flatness rises monotonically with SIZE
 (0.0014 → 0.0066 from SIZE 32 to 127) and with shorter decay. Modulation
