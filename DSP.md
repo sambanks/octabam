@@ -812,6 +812,22 @@ and two wrong guesses, so the reasoning matters as much as the table:
 8-15 — different fields, so both are independently usable. Slot 6's value also
 appears at `$b`, so an effect may read it from either.
 
+> **CORRECTED 4 Aug 2026, on hardware: all six can be full-range knobs.**
+> The "three knobs plus three companion selects" split below was inferred from
+> how *stock* uses the fields, and it is not a hardware limit. ChonVerb runs
+> SPEED/DIFF/WIDTH/PRE/→DEL as five full 0–127 controls, two of them in
+> companion fields, confirmed by ear and eye on the unit.
+>
+> What actually made a companion field *look* like a two-state control was the
+> **per-parameter display formatter at `P+0x0ca`**, inherited from the donor
+> descriptor — DARK's `MIXF` formatter drew our →DEL as "MIX / SEND" no matter
+> what value count it was given. Zero that array (and its partner at `P+0x0fa`)
+> and the same field draws as an ordinary knob. See `REVERB.md`.
+>
+> The decode below is still right — companion fields are read with a mask —
+> and the field/offset table above is still right. Only the *budget* claim was
+> wrong.
+
 **Usable budget: six page-2 controls per effect** — three continuous knobs in
 the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion selects:
 

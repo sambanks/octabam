@@ -133,7 +133,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"17"
+BUILD_TAG = b"18"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -326,7 +326,17 @@ def main():
             # The alternative, 0x4003bc60 (FILTER.Q, count 4), draws real word
             # labels but they read "none|HP|LP|BOTH", which would be actively
             # wrong on a mode selector. Numbers beat wrong words.
+            # BOTH arrays, not just 0x0ca. Setting 0x0ca alone reproduces
+            # DELAY.TIME exactly -- formatter 0x4003c718 with 0x0fa = 0 -- and
+            # DELAY.TIME renders as a PLAIN KNOB, which is what MODE did.
+            # Every enumerated control in stock has both set:
+            #   CHORUS.TAPS      count 5  0x4003c718 + 0x40047254
+            #   SPRING REV.TYPE  count 3  0x4003c718 + 0x40047424
+            #   FILTER.Q         count 4  0x4003bc60 + 0x40046c28
+            #   DELAY.TIME       count 128 0x4003c718 + 0        <- plain knob
+            # Taking CHORUS.TAPS's pair, the control Sam named.
             wr32(clone_P + 0x0ca + 7 * 4, 0x4003c718)
+            wr32(clone_P + 0x0fa + 7 * 4, 0x40047254)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0
