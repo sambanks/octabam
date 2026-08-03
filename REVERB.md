@@ -279,19 +279,39 @@ diff the output against the previous build: it should be **bit-identical**,
 and any difference is a bug. See `DSP.md` §6b for the harness reference and
 its traps.
 
-## What it takes to run on all eight tracks
+## The cycle budget — measured, and much larger than assumed
 
-Two things, both of which were once believed impossible:
+**Superseded: "four instances per DSP".** The engine was shaped around fitting
+four reverb instances on one chip — that is what forced the density pass
+(432 → 297 cycles/sample) and what made every feature look unaffordable. The
+bus design retired it: **one ChonVerb per bank**, enforced by the server-role
+lock in `BUS.md`. A bank's four FX2 slots hold one reverb, one delay and two
+sends, not four reverbs.
 
-* **The external memory region.** Eight tracks need eight 16K FX2 slots;
-  internal Y supplies only four. The other four live at `Y:0x30000–0x3FFFF`,
-  64K of external SRAM shared between the two DSPs and partitioned between
-  the payloads. An effect that refuses those bases silently gives up half
-  the machine.
-* **Fitting four instances per DSP inside the cycle budget.** The engine was
-  432 cycles/sample and four instances froze the chip; a density pass took it
-  to 297. Most of the win was letting the AGU do address arithmetic instead
-  of doing it by hand.
+Counted statically from the sample loops (two-word `#>` immediates costed as
+two cycles):
+
+| | instructions | cycles/sample |
+|---|---|---|
+| `reverb_server` | 367 | 381 |
+| `delay_server` | 107 | 112 |
+| `send_client` | 16 | 18 |
+| **a full bank** (1 + 1 + 2 sends) | | **529** |
+| budget per DSP (`stageprobe5/6`) | | ~1080 |
+| **headroom** | | **~551** |
+
+That is **1.4× the entire current reverb engine**, free. Under the old
+assumption a bank cost 4 × 381 = 1524 and did not fit at all, which is why
+the engine has been living well below its means.
+
+**Do not measure this in `tools/dsp_host`.** Its `instructions/sample` figure
+is `g_lastCycles / procCalls / frames`, and `g_lastCycles` does not scale with
+the frame count — measured, it reports a flat ~376 per call at 1, 3, 5, 10 and
+15 frames, so the per-sample figure is simply the constant divided by however
+many frames were requested. The engine itself is fine (the wet is present in
+every frame; zeros are evenly distributed across all 15 positions mod 15, with
+no periodicity). It is the counter that cannot see inside the `do` loop. Count
+the loop statically instead.
 
 ## Known limits and open work
 
