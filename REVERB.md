@@ -517,22 +517,33 @@ So the mechanism is not "loud input" but **low-frequency energy circulating
 with near-unity feedback**, and HP is the control that governs it. DC buildup
 at HP=0 is real but negligible (0.6% of RMS), so this is LF, not DC.
 
-That kills a single fixed attenuation as the whole answer: sizing it for
-HP=0 bass means −36 dB, and every dB is a dB of makeup gain lifting the
-tail's noise floor. Two parts instead:
+**A LO-coefficient floor does NOT fix this** — proposed and killed by
+measurement before it reached a listening test. The LO coefficient is linear
+in the HP knob, so a floor is exactly equivalent to a minimum knob value, and
+small floors do nothing at all. Bass at 0 dB, wet rms:
 
-1. **Floor the LO coefficient so HP=0 never bypasses the filter exactly.**
-   This is the same shape as the rule already recorded above — *modulation
-   must never reach zero* — and the same root cause: a control allowed to
-   reach exactly zero creates a pathology at the endpoint. Note the floor
-   cannot do the whole job on its own, since holding the knee at −18 dB
-   would need HP ≈ 90, which would thin everything.
-2. **A modest fixed input attenuation, sized for mid-range material**
-   (−12 to −18 dB), with makeup on the wet.
+| HP | 0 | 4 | 8 | 12 | 16 | 24 | 32 |
+|---|---|---|---|---|---|---|---|
+| rms | −17.8 | −17.6 | −17.5 | −17.4 | −17.3 | −17.3 | −17.5 |
 
-Deliberately *not* sized for loud bass into a bypassed low cut. That
-combination should be allowed to saturate rather than paying 36 dB of noise
-floor across every other setting to prevent it.
+Half a dB across the whole candidate range. Only HP ≈ 64+ moves the knee, and
+that is a large tone change, not a floor. The floor would only have addressed
+the DC offset, which is already negligible.
+
+**HP and LP are tone controls and must not become headroom controls.** They
+are user-facing knobs, so it is true that a player *can* turn HP up and stop
+the distortion — but that is not a fix, it is a lost control. Needing HP ≈ 90
+to keep a bass part clean means the bottom two-thirds of the knob is
+unusable, and a full-range reverb — exactly what the 32K re-layout was for —
+becomes unreachable. The knob should decide how the tail sounds, never
+whether it survives.
+
+So headroom belongs in **a fixed input attenuation with makeup gain on the
+wet**, which is orthogonal to HP: it buys the same headroom at every setting
+and costs only noise floor, leaving the whole HP range musically available.
+Size it for mid-range material (−12 to −18 dB) rather than for loud bass into
+a bypassed low cut; that worst case should be allowed to saturate rather than
+taxing every other setting 36 dB of noise floor to prevent it.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
