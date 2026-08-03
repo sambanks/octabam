@@ -159,6 +159,12 @@ the behavior patches have a per-hunk table in [`sysex/README.md`](sysex/README.m
 ARCHITECTURE.md      consolidated architecture (hardware, OS, memory map)
 NOTES.md             chronological reverse-engineering log
 FLASHING.md          safe-flashing guide + recovery net (read before flashing)
+DSP.md               the DSP56300 subsystem: dispatch, allocator, memory, harness
+REVERB.md            the custom reverb — architecture, parameters, build, limits
+REVERB_LOG.md        historical: the reverse-engineering campaign behind it
+COVERAGE.md          what of the OS is understood, and what is not
+PARAM_PAGES.md       effect/machine parameter descriptors
+dsp/                 DSP56300 sources (the reverb and its probe builds)
 sysex/               the patch (source + JSON hunks) and the reproducible patcher
 tools/               analysis + build scripts (Ghidra headless, emulators, packers)
 fetch-os.sh          download + extract the official OS

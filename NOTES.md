@@ -880,7 +880,7 @@ After instability on hardware, the spec was rewritten and the build restarted fr
   conveyed nothing. The scan was the symptom, not the cause: the track LED needs no scan
   because the painter already iterates tracks and each pass checks its own.
 - **Track LED: fixed.** It was missing the `&& sounding` half of the condition that the
-  original design (`HANDOFF.md`) specified — an idle track with a stale `per_track_part`
+  original design (recorded in `REVERB_LOG.md`) specified — an idle track with a stale `per_track_part`
   read as dirty forever. Voice-active byte at `0x800049d8 + track*0xa8`.
 - **New — encoder ends the transition** (`tools/patch_enc.s`, same hook site the removed GUI
   patch used). The destination Part's parameters no longer exist by then: `apply_part`

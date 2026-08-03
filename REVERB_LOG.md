@@ -1,4 +1,22 @@
-# Octatrack custom reverb — CURRENT STATE (3 Aug)
+# Reverb investigation log — HISTORICAL ARCHIVE
+
+> **This is a closed record, not live documentation.**
+>
+> * For the effect as it stands — architecture, parameters, memory layout,
+>   how to build and flash it, known limits — read **`REVERB.md`**.
+> * For the DSP subsystem — boot, payload format, dispatcher ABI, allocator,
+>   memory map, harness, standing rules — read **`DSP.md`**.
+>
+> What follows is the append-only log of the reverse-engineering campaign
+> that produced them: roughly seventy builds, most of which failed, and the
+> eliminations are the point. Section headers such as "READY TO FLASH" were
+> true on the day they were written and are **not** current. Kept because
+> knowing what was already ruled out — and how — is worth more than the
+> conclusions alone.
+
+---
+
+# State at the end of the campaign (3 Aug)
 
 **`dsp/reverb71.asm` runs on ALL EIGHT TRACKS simultaneously.** Confirmed
 on hardware. The project began with a build that froze the instrument the

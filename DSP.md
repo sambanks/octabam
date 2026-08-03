@@ -1013,3 +1013,43 @@ Two bisect builds shipped to hardware before this existed were themselves broken
 by the instrumentation — v34 put the level read inside the pre-delay setup so n5
 came from the knob, v35 clobbered x0 between the base derivation and the state
 load — so their hardware results had to be discarded. Run the guard first.
+
+## 12. Standing rules for writing DSP code here
+
+Learned by freezing the machine. Every one of these cost at least one
+hardware flash.
+
+* **`mpy` does NOT double.** Measured: 0.5*0.5 = $200000 exactly. A
+  "fractional multiply shifts left" theory drove three wrong changes
+  before hardware caught it. Coefficients are plain fractions.
+* **Let the AGU do address work.** Modulo wraps, adds the base and masks
+  for free. Doing it by hand cost 135 cycles/sample — 31% of the engine.
+  An interpolated read does NOT need two addresses: the read pointer
+  advances one per sample, so `d1` this sample is `d0` last sample.
+* **`dsp_asm` silently mis-encodes illegal parallel moves.** It emits a
+  different instruction rather than erroring. `x:(rN+displacement)` can
+  never be parallel; operand order matters (`mpy y0,x0,a` takes a parallel
+  move, `mpy x0,y0,a` discards it); XY dual moves need the X pointer in
+  R0-R3 and the Y pointer in R4-R7. Verify every one by disassembling.
+* **When a register holding a constant is repurposed, grep every read of
+  it.** Two clobbers this session came from exactly that — one produced
+  344 stray writes, the other broke only when PRE was off-centre.
+* **A workaround for a disproven theory does not remove itself.** The
+  arithmetic addressing added for the modulo theory outlived the theory by
+  nineteen builds and eventually cost an instance.
+* **Sanity-check a surprising emulator result against the instrument.**
+  A harness modelling a special case instead of the dispatcher invented a
+  self-oscillation that cost a day; the user's ears settled it in one line.
+
+* two instructions between writing r5 and using it — and they must be **data
+  moves**, never M-register writes (an M load interlocks with its address
+  register; this froze one track in v47)
+* no M-register write inside the sample loop
+* a modulo offset larger than the buffer is undefined: silent, not an error
+* absolute Y scratch must sit at 0x800 or above — payload B loads modules to
+  Y:0x7a4 where payload A stops at 0x794 (this was the v30/v31 hang)
+* X:0x213 is only valid during init; reading it in process gives whatever the
+  last init left (this was the v33 hang)
+* check the generated assembly and the assembler's exit status, not the
+  generator. `build_reverb.py | grep` masks a failed assemble and the emulator
+  will then happily "verify" a stale image.
