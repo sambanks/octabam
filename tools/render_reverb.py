@@ -151,7 +151,7 @@ def run(mem, src, values, tail_s, verbose):
 
 
 # ---- reporting -----------------------------------------------------------
-def report(label, L, R, src_len):
+def report(label, L, R, src_len, normalized=False):
     peak = max((abs(v) for v in L + R), default=0)
     clip = sum(1 for v in L + R if abs(v) >= 8388607)
     tail = L[src_len:] or L
@@ -164,7 +164,10 @@ def report(label, L, R, src_len):
         above = [i for i, e in enumerate(env) if 20 * math.log10(max(e, 1e-9) / pk) > -60]
         if above:
             rt = (above[-1] + 1) * w / SR
-    print(f"  {label:28s} peak {peak/8388607:5.2f} FS   tail to -60 dB {rt:5.2f} s"
+    rms = math.sqrt(sum(v * v for v in L) / max(len(L), 1)) / 8388607
+    print(f"  {label:28s} peak {peak/8388607:5.2f} FS  rms {20*math.log10(max(rms,1e-9)):6.1f} dBFS"
+          f"  tail to -60 dB {rt:5.2f} s"
+          + ("  [normalised]" if normalized else "")
           + (f"   *** {clip} CLIPPED SAMPLES ***" if clip else ""))
 
 
@@ -179,7 +182,15 @@ def main():
                     help="wet only (out minus the dry path, exact -- not a MIX trick)")
     ap.add_argument("--tail", type=float, default=8.0, help="seconds of ring-out (default 8)")
     ap.add_argument("--gain", type=float, default=1.0, help="input gain, linear (default 1.0)")
+    ap.add_argument("--normalize", action="store_true",
+                    help="peak-normalise the OUTPUT to -1 dBFS. Does not change what the "
+                         "hardware would do -- it just makes quiet renders (impulses, "
+                         "--wet tails) auditionable without riding the volume knob.")
     ap.add_argument("--build", action="store_true", help="run build_bus.py first")
+    ap.add_argument("--mem", metavar="FILE",
+                    help="render through a different payload dump instead of the "
+                         "current build -- how you A/B two engine versions on the "
+                         "same source (keep the old .mem when you change the engine)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
 
@@ -187,7 +198,7 @@ def main():
     for spec in a.param:
         if "=" not in spec:
             die(f"bad -p {spec!r}, want NAME=VALUE")
-        k, v = spec.split("=", 1)
+        k, v = (s.strip() for s in spec.split("=", 1))
         if k.upper() not in NAMES or k.upper() == "_FREE":
             die(f"unknown knob {k!r}; known: {KNOBS}")
         values[NAMES[k.upper()]] = max(0, min(127, int(v)))
@@ -209,7 +220,9 @@ def main():
     if a.gain != 1.0:
         src = [v * a.gain for v in src]
 
-    mem = ensure_mem(a.build)
+    mem = pathlib.Path(a.mem) if a.mem else ensure_mem(a.build)
+    if a.mem and not mem.exists():
+        die(f"no such payload dump: {mem}")
     out_base = pathlib.Path(a.out) if a.out else src_path.with_suffix("")
     print(f"{src_path.name}: {len(src)/SR:.1f} s + {a.tail:.0f} s tail"
           + (f"   [{'wet only' if a.wet else 'wet+dry'}]"))
@@ -228,14 +241,21 @@ def main():
             dry = [int(v * 8388607) for v in src] + [0] * (len(L) - len(src))
             L = [l - d for l, d in zip(L, dry)]
             R = [r - d for r, d in zip(R, dry)]
-        dest = dest.with_suffix(".wav")
-        write_wav(dest, L, R)
         # name the knobs that differ from the defaults, and always the swept one
         # (a sweep can legitimately pass through a knob's own default value)
         label = " ".join(f"{n}={vals[n]}" for n, _ in PARAMS
                          if n != "_FREE" and (n == swept or vals[n] != dict(PARAMS)[n])) \
                 or "defaults"
-        report(label, L, R, len(src))
+        report(label, L, R, len(src), a.normalize)   # BEFORE normalising --
+        # rescaling first would move the rail out from under the clip counter
+        # and report a saturated render as clean
+        if a.normalize:
+            pk = max((abs(v) for v in L + R), default=0)
+            if pk:
+                g = (8388607 * 0.891) / pk          # -1 dBFS
+                L = [v * g for v in L]; R = [v * g for v in R]
+        dest = dest.with_suffix(".wav")
+        write_wav(dest, L, R)
         print(f"  -> {dest}")
 
 

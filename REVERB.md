@@ -164,7 +164,26 @@ All runs `guard clean`, `0 CLOBBERING a loaded module`, no hang, at
 Code size is unchanged — 1269/2130 words of the SPRING+DARK budget, same as
 before, since every change was a constant or a shift count.
 
-**Not yet flashed.** By ear is the remaining check, and the one that matters.
+### And by ear
+
+A/B'd through `tools/render_reverb.py` on a real pitched synth loop — same
+source, same knobs, wet only, old build against new. **The old 16K build is
+audibly worse**: what it does to a sustained tonal source reads as
+distortion. The new one is clearly cleaner on the same material.
+
+Measured on that A/B, the new tail is **3× flatter** (spectral flatness
+0.00003 vs 0.00001). Note these are far below the 0.0014–0.0066 this document
+records elsewhere, because those came from impulse tests and a pitched loop
+concentrates energy in its harmonics — only the *ratio* between two builds on
+the same source means anything.
+
+Neither render clipped (peak 0.36 FS, nothing at the rail), so the roughness
+on the old build is mode sparseness, not saturation. The separate saturation
+problem the same session turned up is under "Known limits" below, and is the
+next thing to fix.
+
+**Not yet flashed.** Nothing here needs a flash to hear; the cycle budget
+still does.
 
 ## Register map inside the sample loop
 
@@ -404,6 +423,32 @@ thins the modes. Pack both; do not trade one for the other.
 lines share a feedback matrix, so they are not independent; orthogonal
 4-line output taps concentrated energy rather than smoothing it, and gave
 no stereo benefit over disjoint 2-line pairs.
+
+**The tank has no input scaling, and at long TIME it saturates.** An FDN's
+steady-state gain for sustained input is `1/(1-g)`, and nothing here
+compensates for it:
+
+| TIME | g | steady-state tank gain |
+|---|---|---|
+| 64 | 0.967 | 31× (+30 dB) |
+| 100 | 0.986 | 70× (+37 dB) |
+| 110 | 0.991 | 109× (+41 dB) |
+| 127 | 0.9995 | 1956× (+66 dB) |
+
+The diffused input is added to the lines at full level (half on lines 2 and
+3) regardless. Measured on a dense synth loop at TIME=110: **6 dB less input
+gives only 2.3 dB less output** — 3.7 dB of compression, from Q1.23
+saturation inside the loop. The knee for that source is around −18 dB of
+input trim; below it the engine is linear. A pure sine at the same peak level
+is linear to within 0.1 dB, so it is *density*, not peak level, that drives
+this — a sine test will not show it.
+
+**Confirmed by ear, and it is not subtle**: the same loop at −12 dB input
+trim was "so much better". There is no input trim on hardware — the track's
+signal goes straight in — so **the fix belongs in the engine: scale the input
+into the tank by something like `(1-g)`**, so tank level stops depending on
+TIME. That is standard FDN practice and is the first thing to do in the
+voicing pass.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
