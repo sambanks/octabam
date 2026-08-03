@@ -742,12 +742,18 @@ md_done:
 ; six page-2 slots reach the DSP with a full 0..127 range -- measured, and it
 ; took seven probe builds, so do not re-derive it.
         move    x:(r6+$e),a
-        and     #>$ff,a                 ; companion field is EIGHT bits, and it
-                                        ; is a SELECT: DSP.md section 9's budget
-                                        ; is three continuous knobs plus three
-                                        ; companion selects, not six knobs.
-                                        ; $ffff was wrong -- it reached into the
-                                        ; knob field's neighbourhood.
+        and     #>$7,a                  ; mask to the STEP COUNT, not to the
+                                        ; field width. A part saved under an
+                                        ; earlier build can still hold a value
+                                        ; sized for the old count (e.g. 127),
+                                        ; and the OS does not appear to clamp it
+                                        ; on load -- v*$120000 then overflows
+                                        ; $7fffff and the control reads
+                                        ; NEGATIVE. Masking to 0..7 makes a
+                                        ; stale value harmless instead.
+                                        ; (The field itself is eight bits and is
+                                        ; a SELECT: DSP.md section 9's budget is
+                                        ; three knobs plus three selects.)
         move    a1,x0                   ; AND cleans A1 only
         move    x0,a
         asl     #$14,a,a                ; v * $100000
@@ -766,7 +772,7 @@ md_done:
 ; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
 ; ->DELAY above.
         move    x:(r6+$d),a
-        and     #>$ff,a                 ; eight-bit companion select, as above
+        and     #>$7,a                  ; step count, not field width -- see above
         move    a1,x0
         move    x0,a
         asl     #$14,a,a
