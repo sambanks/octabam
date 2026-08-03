@@ -135,8 +135,18 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb",
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
     "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0)],
+    # EVERY page-2 slot needs an explicit default now that all twelve are
+    # enabled: an unlisted slot keeps the DONOR's default, which is sized for
+    # DARK REV's value counts, not ours. And a default outside its own count
+    # is used as an index -- that shipped once (slot 7: default 64, count 5)
+    # and stalled the sequencer on hardware. verify_menu.py now checks it.
     "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 100), (5, 64),
-                      (6, 0), (7, 64), (8, 0)],
+                      (6, 48),   # SPEED  slow-ish
+                      (7, 2),    # MODE   HALL, the most generally useful
+                      (8, 64),   # DIFF   mid
+                      (9, 15),   # WIDTH  full (count 16)
+                      (10, 0),   # PRE    none
+                      (11, 0)],  # -DEL   off
     "SEND": [(0, 0), (1, 0)],
 }
 
@@ -179,7 +189,7 @@ ACTIVE_PARAMS = {
 # counts here and the DSP scales them back up (asl #$13). If a larger count is
 # ever confirmed, raise these and drop the DSP shift to #$10; nothing else
 # changes.
-PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 5, 8: 128, 9: 16, 10: 128, 11: 16}}
+PAGE2_COUNTS = {"REVERB SERVER": {6: 128, 7: 4, 8: 128, 9: 16, 10: 128, 11: 16}}
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.

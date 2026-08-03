@@ -68,6 +68,12 @@ ACTIVE_PARAMS = {
 }
 
 
+# P-relative: the per-parameter value-COUNT array and the defaults array.
+# tools/build_bus.py writes both; PARAM_PAGES.md section 5b has the record map.
+P_COUNTS = 0x9a
+P_DEFAULTS = 0x5e
+
+
 def main():
     stock = STOCK.read_bytes()
     img = BUILT.read_bytes()
@@ -161,6 +167,21 @@ def main():
             nm = img[a - BASE:a - BASE + 6].split(b"\0")[0]
             check(bool(nm), f"{name}: enabled knob p{i} has a non-empty name "
                             f"({nm.decode('latin1')!r})")
+
+        # DEFAULT MUST LIE INSIDE THE VALUE COUNT. This invariant did not
+        # exist and a build that violated it shipped: page-2 value counts were
+        # narrowed (slot 7 -> 5) without narrowing the matching defaults (slot
+        # 7 was 64), and an out-of-range default is used as an index. On
+        # hardware the sequencer ran two steps and stopped, tracks rendered as
+        # the wrong effect, and there was no audio. It was harmless right up
+        # until those slots were ENABLED, which is why it survived earlier
+        # builds -- nothing read a disabled slot.
+        for i in sorted(got):
+            cnt = rd32(img, P + P_COUNTS + i * 4)
+            dflt = img[P + P_DEFAULTS + i - BASE]
+            check(cnt > 0 and dflt < cnt,
+                  f"{name}: p{i} default {dflt} is inside its value count "
+                  f"{cnt}")
 
     print("\n=== FX1 untouched: its own id lookup and chooser list, and every "
           "donor's OWN descriptor bytes outside our clone caves, are "
