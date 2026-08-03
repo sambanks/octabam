@@ -443,26 +443,40 @@ input trim; below it the engine is linear. A pure sine at the same peak level
 is linear to within 0.1 dB, so it is *density*, not peak level, that drives
 this — a sine test will not show it.
 
-**Measured, NOT yet confirmed by ear.** The compression above is real and
-reproducible, but whether it is *audible as a fault* is a separate question
-and the first attempt to answer it was worthless: the comparison changed
-input gain, TIME, MIX and normalisation at once, so it could not attribute
-anything. (The rule this file already states — change one thing — applies to
-renders as much as to flashes, and is easier to break when a render is cheap.)
+**Confirmed audible.** Three renders at 0 / −12 / −24 dB input trim, every
+knob fixed and loudness matched, predicted in advance from the measured
+compression (2.1 dB between the first pair, 0.0 dB between the second):
+0 dB against −12 dB is **"very audible"** by ear. So the saturation is not
+merely measurable, it is a fault.
 
-The controlled test is three renders at 0 / −12 / −24 dB input trim with
-every knob fixed and loudness matched. It makes a falsifiable prediction,
-since the compression is 2.1 dB between the first pair and 0.0 dB between the
-second:
+(The first attempt at this comparison was worthless — it changed input gain,
+TIME, MIX and normalisation at once. The "change one thing" rule applies to
+renders as much as to flashes, and is *easier* to break when a render is
+cheap.)
 
-* if trim is audible, **0 dB and −12 dB differ, and −12 dB and −24 dB do not**
-* if all three sound alike, the saturation is measurable but inaudible here,
-  and the input-scaling change is not urgent
+**Do NOT scale the tank input by `(1-g)`.** That was the obvious fix and it
+is wrong here — measured, it over-corrects by about 30 dB:
 
-If it is audible, the fix belongs in the engine rather than in gain staging,
-because **there is no input trim on hardware** — the track's signal goes
-straight in. Scaling the tank input by something like `(1-g)` makes tank level
-independent of TIME, which is standard FDN practice.
+| TIME | wet rms, as built | wet rms, input × `(1-g)` |
+|---|---|---|
+| 64 | −31.7 dBFS | −29.4 |
+| 100 | −29.2 | −34.0 |
+| 127 | −25.6 | **−59.0** |
+
+`1/(1-g)` is a *steady-state* result and musical material never reaches
+steady state, so it wildly overestimates the buildup. The real drift across
+the whole TIME range is **6.1 dB**, not the ~36 dB the formula implies.
+Flattening 6.1 dB out of a 36 dB span needs roughly `(1-g)^0.17` — and that
+exponent is fitted to one source, so it is a starting point, not a constant.
+
+**The saturation and the drift are separate problems.** The compression was
+measured at *fixed* TIME while varying input, so it is about absolute level
+into a high-gain loop, not about TIME. The fix is therefore not
+TIME-dependent: **attenuate into the tank by roughly the knee (~18 dB on this
+source) and apply matching makeup gain to the wet output.** Output level is
+unchanged, internal headroom improves by the same amount, and it costs two
+constants. The loudness-matched A/B above is exactly that experiment done
+externally, and it is the one that sounded better.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was
