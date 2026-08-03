@@ -443,12 +443,26 @@ input trim; below it the engine is linear. A pure sine at the same peak level
 is linear to within 0.1 dB, so it is *density*, not peak level, that drives
 this — a sine test will not show it.
 
-**Confirmed by ear, and it is not subtle**: the same loop at −12 dB input
-trim was "so much better". There is no input trim on hardware — the track's
-signal goes straight in — so **the fix belongs in the engine: scale the input
-into the tank by something like `(1-g)`**, so tank level stops depending on
-TIME. That is standard FDN practice and is the first thing to do in the
-voicing pass.
+**Measured, NOT yet confirmed by ear.** The compression above is real and
+reproducible, but whether it is *audible as a fault* is a separate question
+and the first attempt to answer it was worthless: the comparison changed
+input gain, TIME, MIX and normalisation at once, so it could not attribute
+anything. (The rule this file already states — change one thing — applies to
+renders as much as to flashes, and is easier to break when a render is cheap.)
+
+The controlled test is three renders at 0 / −12 / −24 dB input trim with
+every knob fixed and loudness matched. It makes a falsifiable prediction,
+since the compression is 2.1 dB between the first pair and 0.0 dB between the
+second:
+
+* if trim is audible, **0 dB and −12 dB differ, and −12 dB and −24 dB do not**
+* if all three sound alike, the saturation is measurable but inaudible here,
+  and the input-scaling change is not urgent
+
+If it is audible, the fix belongs in the engine rather than in gain staging,
+because **there is no input trim on hardware** — the track's signal goes
+straight in. Scaling the tank input by something like `(1-g)` makes tank level
+independent of TIME, which is standard FDN practice.
 
 **Change one thing per flash.** Between v77 and v83 five things changed and
 the result was worse in a way that could not be attributed. The recovery was

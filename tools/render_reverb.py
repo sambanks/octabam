@@ -254,7 +254,9 @@ def main():
             if pk:
                 g = (8388607 * 0.891) / pk          # -1 dBFS
                 L = [v * g for v in L]; R = [v * g for v in R]
-        dest = dest.with_suffix(".wav")
+        # NOT with_suffix: an output name containing a dot ("trim_0.25") has
+        # everything from that dot replaced, silently colliding two renders
+        dest = dest if dest.suffix.lower() == ".wav" else dest.with_name(dest.name + ".wav")
         write_wav(dest, L, R)
         print(f"  -> {dest}")
 
