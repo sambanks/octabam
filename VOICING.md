@@ -324,3 +324,26 @@ its own, with or without any change in the modes. This metric has exactly the
 flaw this file's own rule warns about, only in the numerator's favour rather
 than the denominator's. It is a hint, not a finding. **Settle it by ear, or
 with a metric that tracks narrowband DECAY RATE rather than level contrast.**
+
+**Settled by ear: nothing was exposed.** Second pass on the same 4-12 s tail,
+three rounds, A then B: *"sound the same as far as ringing goes."* So the
++6 dB of peak-to-median contrast was the **median moving**, not the modes --
+the old build's broadband noise had been sitting on the floor and lifting it,
+and taking it away raised the ratio without touching what rings. The metric
+was confounded exactly as suspected, and the ear settled it in one pass.
+
+**Do not build the narrowband decay-rate metric on this evidence.** It was
+proposed to break this tie and the tie no longer exists.
+
+**This lifts Round 2b's block on voicing.** "Tuning mode constants against a
+tail with broadband noise in it means voicing the noise as much as the
+reverb" -- the noise is gone, the tail did not get worse, and the per-mode
+constants can be judged on their own terms again. Round 1's finding stands as
+the open question: the modes are **under-differentiated**, and damping was
+measured to have little spectral authority, so tap scale is doing the work.
+
+**And a counter-example worth keeping.** `REVERB.md`'s standing caution --
+that removing an accidental noise source may expose ringing it was masking,
+because "every build the user liked had it" -- did NOT hold this time. The
+caution came from the v72 fraction bug and is real, but it is a thing to
+CHECK, not a thing to assume. Checking it cost two listens.

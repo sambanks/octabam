@@ -538,11 +538,18 @@ magnitude to be audible at all. It also passes every negative test in
 the sample. The fix is a two-slot swap: no cycles, no words.
 
 The four LFO *phases* are deliberately crosswise (see Signal path); the two
-halves of one offset are not. **Same caution as the v72 fraction bug, for the
-same reason:** this was an accidental noise source, and `ChonVerb19` — the
-build on hardware, the one that was liked — has it. If removing the sawtooth
-exposes ringing it was smearing, the answer is deliberate randomisation, not
-restoring the swap.
+halves of one offset are not.
+
+**Confirmed by ear, both halves.** The crackle is fixed ("yes, fixed in B"),
+and the v72 caution — that removing an accidental noise source exposes
+ringing it was masking — **did not hold here**: on the 4–12 s tail, three
+rounds, *"sound the same as far as ringing goes."* Deliberate randomisation
+is therefore NOT needed. The caution is real and came from a real case, but
+it is something to **check**, not something to assume; checking it cost two
+listens. See `VOICING.md` Rounds 2e–2f.
+
+This also lifts Round 2b's block on voicing: the tail no longer has broadband
+noise in it, so the per-mode constants can be judged on their own terms.
 
 **Spectral flatness cannot tell diffusion from distortion.** It rewards
 broadband noise, so it ranked the flutter builds highly and dropped when the
