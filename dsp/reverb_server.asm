@@ -1185,8 +1185,20 @@ mixset:
 ; deliberately capped LOW -- $180 to ~$680, roughly 0.12 to 0.55 Hz -- so the
 ; top of the knob still lands well under where v84 found it unusable. It also
 ; never reaches zero: a static tank rings.
-        move    x:(r6+$b),a
+; v101: SPEED is now SHMR. The LFO rate is PINNED at 40, which VOICING Round 5
+; measured as its shallow optimum -- the knob's default was 64, so this is a
+; small improvement in its own right, not merely a sacrifice.
+;
+; The knob is read HERE, once per block, and cached in $0e. It cannot be read
+; inside the sample loop: r6 is the PRE-DELAY POINTER in there (y:(r6+n6)), not
+; the parameter block, so x:(r6+$b) in the loop reads whatever the pre-delay
+; buffer happens to be near. That cost a debugging round.
+        move    x:(r6+$b),a             ; SHMR amount, value<<16
         and     #>$7f0000,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$0e)            ; cached for the loop
+        move    #>$280000,a             ; 40 << 16, where the knob used to land
         move    a1,x0
         move    x0,a
         move    a,x0
@@ -2129,6 +2141,87 @@ lf51:
         move    a,x:(r6)+               ; u2 = d2+d3
         move    b,x:(r6)+               ; u3 = d2-d3
         move    #>$fff,m6               ; back to the pre-delay's modulo-4096
+
+; ---- SHIMMER: +12 in the feedback path (v101) ---------------------------
+; Reads the tank's own output, shifts it up an octave and adds it back into the
+; tank INPUT, so the octave compounds on every circulation. That compounding is
+; what makes a shimmer bloom upward rather than just sit an octave above.
+;
+; +12 is the cheap interval. The read head runs at exactly 2x the write head,
+; so the gap closes by exactly ONE sample per sample and every read is INTEGER
+; -- no fractional interpolation, no lerp. Any other ratio would need both.
+;
+; Two heads half a buffer apart with a triangular crossfade, so the
+; discontinuity where a head laps the write pointer always falls where that
+; head's gain is zero. For a triangle g2 = 1-g1, so the whole crossfade is
+; out = tap2 + 2*g*(tap1-tap2) -- ONE multiply.
+;
+; TRAP (REVERB.md, PRE): a modulo offset LARGER than the buffer is undefined on
+; the DSP56300 -- it does not wrap, the read returns nothing. So head 2's
+; offset is masked to $7ff explicitly rather than left as phase+1024.
+;
+; State is $0e and $0f, the last two free r7 slots in the whole block. The
+; amount is read from r6+$b every sample rather than cached, precisely because
+; there is no third slot. m5 is $7ff here (the input diffusers leave it that
+; way) and the buffer is 2048 words aligned at base+0x7800, so the AGU wraps
+; both heads for free.
+
+        move    x:(r7+$0f),a            ; phase. May be GARBAGE on the first
+        move    #>$1,x0                 ; call -- the mask below cleans it, which
+        add     x0,a                    ; is why no init is needed and why the
+        move    #>$7ff,x0               ; address is DERIVED from the phase
+        and     x0,a                    ; rather than kept as a walking pointer
+        move    a1,x1                   ; (AND cleans A1 only; x1 is 24-bit so
+        move    x1,x:(r7+$0f)           ; this IS the clean value)
+
+        move    x1,a                    ; g = (1024 - |phase-1024|) << 12,
+        move    #>1024,x0               ; a triangle peaking where head 2 laps
+        sub     x0,a                    ; and zero where head 1 does
+        abs     a
+        neg     a
+        add     x0,a                    ; 0 .. 1024
+        asl     #$c,a,a                 ; -> 0 .. $400000 (0.5); the crossfade
+        move    a1,y1                   ; doubles it back to unity below
+
+        move    x:(r7+$5e),a            ; in-loop allpass A base = inst+0x7000,
+        move    #>$800,x0               ; so the shimmer buffer is +0x800 past
+        add     x0,a                    ; it. Derived, because the r7 block has
+        move    a,x0                    ; no slot left to cache it in.
+        move    x1,a
+        add     x0,a
+        move    a,r5                    ; r5 = buffer + phase
+
+        move    x:(r7+$16),a            ; tank output, d0 + d2
+        move    x:(r7+$18),x0
+        add     x0,a
+        asr     a                       ; halved for headroom
+        move    a,y:(r5)                ; write it at the head
+
+        move    x1,n5
+        move    y:(r5+n5),b             ; head 1, at +phase
+
+        move    x1,a
+        move    #>1024,x0
+        add     x0,a
+        move    #>$7ff,x0
+        and     x0,a                    ; MASKED -- see the TRAP note above
+        move    a1,n5
+        move    y:(r5+n5),a             ; head 2, at +(phase+1024)
+
+        move    a,y0                    ; tap2
+        sub     y0,b                    ; b = tap1 - tap2
+        move    b,x0
+        mpy     x0,y1,a                 ; g * (tap1 - tap2)
+        asl     a                       ; 2g, so the crossfade reaches unity
+        move    y0,x0
+        add     x0,a                    ; = the octave-up signal
+
+        move    a1,x1
+        move    x:(r7+$0e),x0           ; SHMR, cached by the setup above
+        mpy     x1,x0,a
+        move    x:(r7+$15),x0           ; the tank input
+        add     x0,a
+        move    a,x:(r7+$15)            ; ...with the octave folded in
 
 ; ---- feedback and write back --------------------------------------------
         move    x:(r7+$1e),y0           ; g/2, loaded ONCE for the whole

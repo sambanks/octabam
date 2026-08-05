@@ -128,7 +128,9 @@ RENAMES = {
         # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
         # odd slots are companion fields in the same word and are only proven
         # to carry a SMALL step count -- see PAGE2_COUNTS below.
-        (6, b"SPEED"),          # slot 6 -> r6+$b        MOD rate
+        (6, b"SHMR"),           # slot 6 -> r6+$b        shimmer amount
+                                #   (was SPEED; the LFO rate is pinned at 40,
+                                #    VOICING Round 5's measured optimum)
         (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
         (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
         (9, b"WIDTH"),          # slot 9 -> r6+$d low
