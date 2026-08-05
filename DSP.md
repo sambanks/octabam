@@ -375,6 +375,21 @@ stock Echo Freeze Delay keeps working, **provided that code passes the audio
 through unchanged.** That is the question BUS.md's parked design needed
 answered, and the answer is yes.
 
+**AND THE FIRST STRUCTURAL FACT ABOUT WHERE THE DELAY IS.** By ear, 5 Aug: the
+send taps **pre-delay** — the reverb receives dry, not repeats. So the stock
+delay is applied **downstream of the FX2 insert**, in the output/mix path rather
+than in the insert chain. That is the first positive constraint on its location
+after three rounds of static search, and it came from listening, not reading.
+
+It also explains the silence result retroactively: zeroing the insert starved
+everything downstream of it, the delay included.
+
+**Consequence for anything we build: we cannot tap the stock delay's output.**
+Every slot we can reach is upstream of it. A "delay into reverb" routing is
+therefore impossible with the *stock* delay — it is only available via our own
+`DELAY SERVER`, whose `→VERB` cross-send exists for exactly that (`BUS.md`
+task 10).
+
 **What it does NOT establish — and the temptation is to claim it.** The send
 client leaves the buffer contents byte-identical to the passthrough; it only
 taps. So this says *nothing* about whether the delay reads that buffer, nor

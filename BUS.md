@@ -1032,6 +1032,17 @@ So the gap remains real and possibly useful later, but **it is not a route to a
 per-track send knob** without a UI surface to drive it, and no such surface has
 been identified.
 
+**The send taps PRE-delay** (by ear, 5 Aug). The reverb receives dry; the stock
+delay is applied downstream of the FX2 insert. So the co-located design gives
+**stock delay and reverb in PARALLEL on one track** — still impossible on stock
+hardware — but **not delay into reverb**, and no slot we can reach could ever
+give us that, because they are all upstream of the delay.
+
+**That hands BongDelay a clear purpose.** Delay-into-reverb is available only
+through our own `DELAY SERVER` and its `→VERB` cross-send (task 10, already
+built). BongDelay is therefore not competing with the stock delay on sound — it
+is *the delay you can route*, which is a thing the machine has never had.
+
 **Confirmed end-to-end:** with a ChonVerb server on another track in the bank
 and DELAY's `FB` knob up, the reverb send audibly works from inside the delay's
 slot. Delay and shared reverb on one track, costing neither the FX1 filter nor
