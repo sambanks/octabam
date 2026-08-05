@@ -290,13 +290,27 @@ def assemble(src_text, org):
 
 
 def main():
-    delayprobe = os.environ.get("DELAYPROBE") == "1"
+    # DELAYPROBE=silence  id 0x08 -> a stub that writes zeros (round 1)
+    # DELAYPROBE=send     id 0x08 -> the SEND client, which passes audio and
+    #                     only taps it, so the track stays alive. Round 1 came
+    #                     back "silent", which mostly proves the insert is in
+    #                     the audio path -- it cannot tell us where the delay
+    #                     is. This one asks the question that matters instead:
+    #                     can our code hold id 0x08 AND leave the delay working?
+    _p = os.environ.get("DELAYPROBE", "")
+    probe = {"1": "silence", "silence": "silence", "send": "send",
+             "stock": "stock"}.get(_p)
+    if _p and not probe:
+        sys.exit("DELAYPROBE must be 'stock', 'silence' or 'send'")
+    delayprobe = probe is not None
     if delayprobe:
         # Make it unmistakable ON THE UNIT which firmware is running. Three
         # debugging rounds were lost to exactly this ambiguity, and a probe
         # build that reads "ChonVerb22" like the product build is that hazard
         # in its worst form -- this one deliberately silences a stock effect.
-        FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG + b"P"
+        FULLNAME["REVERB SERVER"] = (b"ChonVerb" + BUILD_TAG +
+                                     {"silence": b"P", "send": b"S",
+                                      "stock": b"C"}[probe])
     if not DIS.exists():
         sys.exit(f"missing {DIS} -- run ./setup.sh")
     img = bytearray(IMG.read_bytes())
@@ -520,16 +534,13 @@ def main():
             if name == "SEND":
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
+                send_init, send_proc = init_a, proc_a
             extra = f"  Y base 0x{pp['ybase']:x}" if name == "DELAY SERVER" else ""
             print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
 
-        if delayprobe:
-            # Point stock DELAY's id at a stub that writes SILENCE where the
-            # stock one passes audio through. What we hear then tells us
-            # whether the delay's audio goes through the FX2 insert at all --
-            # see dsp/silence_stub.asm for how to read each outcome.
+        if probe == "silence":
             words, init_a, proc_a = assemble(
                 pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
             if cursor + len(words) > base_a + budget:
@@ -541,6 +552,31 @@ def main():
                   f"({len(words):4} words)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY now writes silence, NOT passthrough ***")
             cursor += len(words)
+        elif probe == "stock":
+            # THE CONTROL. DELAY is back in the menu but its dispatch is left
+            # exactly as stock -- the passthrough at P:0x007c8. This is the
+            # build that had to come FIRST and did not: without it, "the delay
+            # went silent" cannot be told apart from "the delay never worked
+            # under our firmware in the first place" (its VOL/SEND could simply
+            # be 0, or selecting it from our replaced chooser could skip setup).
+            print(f"  {'DELAY':13} dispatch left STOCK (passthrough) "
+                  f"id 0x{STOCK_DELAY_ID:02x}  *** CONTROL BUILD ***")
+        elif probe == "send":
+            # No new code: point id 0x08 at the SEND client already placed
+            # above. It passes the audio through and only taps it, so a track
+            # with FX2 = DELAY stays audible.
+            #
+            # CAVEAT for reading the result: SEND reads its two send levels
+            # from p0/p1, and on this id those are DELAY's OWN knobs (TIME and
+            # its neighbour), not send levels. So the send AMOUNT is whatever
+            # those happen to be -- uncontrolled. The question this build
+            # answers is only "does the delay survive our code in its slot",
+            # not "is the send level right".
+            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, send_init)
+            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, send_proc)
+            print(f"  {'SEND @ 0x08':13} P:0x{send_init:05x} "
+                  f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
+                  f"*** DELAY's slot now runs SEND; audio passes through ***")
         print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
               f"({budget} words)  used {cursor - base_a}  "
               f"FREE {base_a + budget - cursor}")
@@ -562,15 +598,21 @@ def main():
     if mode_env is not None:
         out = pathlib.Path("out/mainos_bus_mode%d.bin" % int(mode_env))
     if delayprobe:
-        out = pathlib.Path("out/mainos_bus_delayprobe.bin")
+        out = pathlib.Path(f"out/mainos_bus_delayprobe_{probe}.bin")
     out.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
     note = ""
     if mode_env is not None:
         note = "   *** DIAGNOSTIC, MODE FORCED -- DO NOT FLASH ***"
-    elif delayprobe:
+    elif probe == "silence":
         note = ("   *** DIAGNOSTIC DELAY PROBE -- flashable, but stock DELAY "
                 "writes SILENCE. Not a product build. ***")
+    elif probe == "send":
+        note = ("   *** DIAGNOSTIC DELAY PROBE -- flashable; stock DELAY's "
+                "slot runs SEND. Not a product build. ***")
+    elif probe == "stock":
+        note = ("   *** CONTROL BUILD -- DELAY in the menu, dispatch STOCK. "
+                "Flash this FIRST. Not a product build. ***")
     print(f"\n{out}: {len(img):,} bytes, {d} changed" + note)
 
 
