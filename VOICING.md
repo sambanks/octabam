@@ -485,3 +485,60 @@ By ear: **good, kept.** The risks it was checked against were that the taps
 would read as a slapback stuck on the front rather than as scale, and that they
 would muddy the onset — BIG has the lowest diffusion coefficient of the four, so
 discrete taps get the least smearing there. Neither happened.
+
+### Round 5 — chasing "metallic", and a metric that measured the wrong thing
+
+Asked to reduce ringing. Excited with a **20 ms broadband noise burst**, because
+the first attempt used the pad and its strongest tail peaks came out at 263.8 /
+349.9 / 522.2 Hz — C4, F4, C5. Those are the pad's own notes. **A musical source
+cannot reveal tank modes**; it only shows you its own harmonics ringing on.
+
+**Then a fourth measurement error.** Ranked the modes by peak-to-median bin
+energy and got ROOM 26.5 / PLATE 23.9 / HALL 33.0 / **BIG 48.0 dB**, and was
+about to "fix" BIG. The tell that it was wrong: **nothing moved it** — not MOD
+depth, not SPEED, not DIFF. A number insensitive to every control that should
+affect it is not measuring what you think. It was tracking **spectral tilt**:
+BIG has the darkest damping, so its band above ~1 kHz is empty, which drags the
+global median down and inflates the ratio. The ranking was just the damping
+order re-spelled.
+
+Corrected by measuring each bin against a **local** median (±40 Hz) instead of
+the global one, so a dark tail and a bright one are each judged against their
+own envelope. That inverts the answer completely:
+
+| mode | prominence over local envelope | total delay |
+|---|---|---|
+| ROOM | 10.8 dB | 5,657 samples |
+| PLATE | 9.4 dB | 7,072 |
+| HALL | 8.2 dB | 9,036 |
+| BIG | **7.9 dB** | 12,572 |
+
+**BIG is the SMOOTHEST of the four, not the worst.** And the ordering is exactly
+monotonic in total delay, which is what modal theory predicts (modal density ∝
+sum of line lengths). Reproducing theory across four independent configurations
+is the reason to trust this metric where the previous one earned no trust.
+(ROOM's figure is taken at t=1.0 s; by t=3.0 s it is near its own noise floor at
+RT60 2.7 s and reads a meaningless 20 dB.)
+
+**Conclusion: there is no clear fix to make, and that is the finding.**
+
+* The only structural lever is **more total delay**, and memory is at the 32K
+  hard ceiling. Splitting the same memory into more lines would not help —
+  modal density depends on the SUM of the delays, not the line count.
+* The mode that is most modal is **ROOM**, which is physically correct: small
+  rooms really are modal, and at RT60 2.7 s it has the least time to ring.
+* The available knobs buy very little. MOD 0 → 64 gains 1.4 dB and then flattens;
+  SPEED has a shallow optimum near 40 (default is 64); and **higher DIFF makes it
+  WORSE** (7.5 → 9.3 dB across the knob), which vindicates BIG's low diffusion
+  offset rather than arguing against it.
+* Absolute prominence of 8–11 dB over the local envelope is modest. This is not
+  a badly metallic reverb, and the ear agreed — the pad passed before any of
+  this was measured.
+
+**Method note — four measurement errors in one session, three of them caught by
+the same reflex.** Decimal-for-hex slot numbers; a 10 s source analysed as a
+tail; a DFT aliasing above 2756 Hz; and a metric tracking tilt instead of
+structure. The reflex that caught three: **a number that does not respond to the
+control that should move it is a broken measurement, not a null result.** The
+fourth was caught by demanding bit-identical output from a change that should
+have been a no-op. Both are cheaper than the debugging they prevent.
