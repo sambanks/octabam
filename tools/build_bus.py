@@ -482,9 +482,16 @@ def main():
               f"P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- FX1 selecting "
               f"any of them by name is now silent, not our code")
 
-    OUT.write_bytes(bytes(img))
+    # A MODE-forced build ignores the real page-2 slot, so it must never end up
+    # wrapped and flashed -- it would look like a MODE knob that does nothing.
+    # Give it its own path rather than overwriting the flashable image.
+    out = OUT if mode_env is None else pathlib.Path(
+        "out/mainos_bus_mode%d.bin" % int(mode_env))
+    out.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
-    print(f"\n{OUT}: {len(img):,} bytes, {d} changed")
+    print(f"\n{out}: {len(img):,} bytes, {d} changed"
+          + ("   *** DIAGNOSTIC, MODE FORCED -- DO NOT FLASH ***"
+             if mode_env is not None else ""))
 
 
 if __name__ == "__main__":

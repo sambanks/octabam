@@ -6,6 +6,7 @@ ear without a flash.
     python3 tools/render_reverb.py loop.wav
     python3 tools/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
     python3 tools/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
+    python3 tools/render_reverb.py loop.wav --mode all       # all four characters
     python3 tools/render_reverb.py loop.wav --build          # rebuild first
 
 Why this is trustworthy: tools/dsp_host runs the REAL assembled instruction
@@ -42,8 +43,9 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # IMPORTANT LIMITATION: dsp_host writes (value & 0x7f) << 16 -- always into the
 # word's KNOB field. The v92 layout puts MODE, WIDTH and ->DEL in COMPANION
 # fields (the low bits of $c/$d/$e), and this harness cannot write those at
-# all. Those three are not auditionable here; build a variant with the value
-# substituted, or test them on hardware.
+# all. MODE gets around it with --mode, which assembles the value in via
+# build_bus.py's MODE= override instead of driving the slot. WIDTH and ->DEL
+# have no such override and still need a flash to hear.
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 100),
           ("MIX", 64), ("SPEED", 64), ("_C", 0), ("DIFF", 64), ("PRE", 0)]
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
@@ -126,6 +128,40 @@ def ensure_mem(build):
     return MEM
 
 
+MODES = ["ROOM", "PLATE", "HALL", "BIG"]     # dsp/reverb_server.asm's md_* order
+
+
+def ensure_mode_mem(mode, build):
+    """Payload-A dump of a build with MODE assembled in, one image per mode.
+
+    build_bus.py's MODE= override substitutes the value for the page-2 read,
+    which is the only way to hear a character here -- the slot itself is a
+    companion field and dsp_host cannot write those. Those images are
+    diagnostic (the real MODE slot is ignored), so they get their own paths
+    and are never the flashable out/mainos_bus.bin."""
+    img = ROOT / f"out/mainos_bus_mode{mode}.bin"
+    mem = ROOT / f"out/dsp/mem_reverb_server_A_mode{mode}.mem"
+    # rebuild when the engine or the builder moved, not just when the image is
+    # missing -- a stale mode render silently voices the previous constants
+    newest = max((ROOT / p).stat().st_mtime
+                 for p in ("dsp/reverb_server.asm", "tools/build_bus.py"))
+    if build or not img.exists() or img.stat().st_mtime < newest:
+        print(f"building {img.name} (MODE={mode} {MODES[mode]}) ...")
+        r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                           env=dict(os.environ, MODE=str(mode)),
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
+    if not HOST.exists():
+        die(f"missing {HOST.relative_to(ROOT)} -- run ./setup.sh")
+    if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
+        sys.path.insert(0, str(ROOT / "tools"))
+        import dsp_modmap
+        mem.parent.mkdir(parents=True, exist_ok=True)
+        dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+    return mem
+
+
 def run(mem, src, values, tail_s, verbose):
     """src: mono floats at SR. -> (L, R) as 24-bit ints, warm-up trimmed."""
     pad = WARMUP_BLOCKS * FRAMES
@@ -192,6 +228,10 @@ def main():
                     help="peak-normalise the OUTPUT to -1 dBFS. Does not change what the "
                          "hardware would do -- it just makes quiet renders (impulses, "
                          "--wet tails) auditionable without riding the volume knob.")
+    ap.add_argument("--mode", metavar="N|all",
+                    help="audition MODE characters: 0 ROOM, 1 PLATE, 2 HALL, "
+                         "3 BIG, or 'all'. Assembles the value in (the slot is "
+                         "a companion field dsp_host cannot drive)")
     ap.add_argument("--build", action="store_true", help="run build_bus.py first")
     ap.add_argument("--mem", metavar="FILE",
                     help="render through a different payload dump instead of the "
@@ -226,9 +266,21 @@ def main():
     if a.gain != 1.0:
         src = [v * a.gain for v in src]
 
-    mem = pathlib.Path(a.mem) if a.mem else ensure_mem(a.build)
-    if a.mem and not mem.exists():
-        die(f"no such payload dump: {mem}")
+    if a.mode is not None:
+        if a.mem:
+            die("--mode builds its own images; --mem renders a prebuilt dump. Pick one.")
+        if a.mode.lower() == "all":
+            modes = list(range(len(MODES)))
+        elif a.mode.isdigit() and int(a.mode) < len(MODES):
+            modes = [int(a.mode)]
+        else:
+            die(f"bad --mode {a.mode!r}; want 0..{len(MODES)-1} or 'all'")
+        renders = [(ensure_mode_mem(m, a.build), MODES[m]) for m in modes]
+    else:
+        mem = pathlib.Path(a.mem) if a.mem else ensure_mem(a.build)
+        if a.mem and not mem.exists():
+            die(f"no such payload dump: {mem}")
+        renders = [(mem, None)]
     out_base = pathlib.Path(a.out) if a.out else src_path.with_suffix("")
     print(f"{src_path.name}: {len(src)/SR:.1f} s + {a.tail:.0f} s tail"
           + (f"   [{'wet only' if a.wet else 'wet+dry'}]"))
@@ -238,33 +290,37 @@ def main():
         vals = dict(zip(NAMES, values)); vals[k] = v
         jobs.append((vals, pathlib.Path(f"{out_base}_{k}{v}"), k))
 
-    for vals, dest, swept in jobs:
-        vlist = [vals[n] for n, _ in PARAMS]
-        L, R = run(mem, src, vlist, a.tail, a.verbose)
-        if a.wet:
-            # output = dry + wet, and the dry path is the mono input duplicated,
-            # so subtracting it recovers the wet exactly.
-            dry = [int(v * 8388607) for v in src] + [0] * (len(L) - len(src))
-            L = [l - d for l, d in zip(L, dry)]
-            R = [r - d for r, d in zip(R, dry)]
-        # name the knobs that differ from the defaults, and always the swept one
-        # (a sweep can legitimately pass through a knob's own default value)
-        label = " ".join(f"{n}={vals[n]}" for n, _ in PARAMS
-                         if n != "_C" and (n == swept or vals[n] != dict(PARAMS)[n])) \
-                or "defaults"
-        report(label, L, R, len(src), a.normalize)   # BEFORE normalising --
-        # rescaling first would move the rail out from under the clip counter
-        # and report a saturated render as clean
-        if a.normalize:
-            pk = max((abs(v) for v in L + R), default=0)
-            if pk:
-                g = (8388607 * 0.891) / pk          # -1 dBFS
-                L = [v * g for v in L]; R = [v * g for v in R]
-        # NOT with_suffix: an output name containing a dot ("trim_0.25") has
-        # everything from that dot replaced, silently colliding two renders
-        dest = dest if dest.suffix.lower() == ".wav" else dest.with_name(dest.name + ".wav")
-        write_wav(dest, L, R)
-        print(f"  -> {dest}")
+    for mem, mode_name in renders:
+        for vals, dest, swept in jobs:
+            vlist = [vals[n] for n, _ in PARAMS]
+            L, R = run(mem, src, vlist, a.tail, a.verbose)
+            if a.wet:
+                # output = dry + wet, and the dry path is the mono input duplicated,
+                # so subtracting it recovers the wet exactly.
+                dry = [int(v * 8388607) for v in src] + [0] * (len(L) - len(src))
+                L = [l - d for l, d in zip(L, dry)]
+                R = [r - d for r, d in zip(R, dry)]
+            # name the knobs that differ from the defaults, and always the swept one
+            # (a sweep can legitimately pass through a knob's own default value)
+            label = " ".join(f"{n}={vals[n]}" for n, _ in PARAMS
+                             if n != "_C" and (n == swept or vals[n] != dict(PARAMS)[n])) \
+                    or "defaults"
+            if mode_name:
+                label = f"{mode_name:<6s} {label}"
+            report(label, L, R, len(src), a.normalize)   # BEFORE normalising --
+            # rescaling first would move the rail out from under the clip counter
+            # and report a saturated render as clean
+            if a.normalize:
+                pk = max((abs(v) for v in L + R), default=0)
+                if pk:
+                    g = (8388607 * 0.891) / pk          # -1 dBFS
+                    L = [v * g for v in L]; R = [v * g for v in R]
+            # NOT with_suffix: an output name containing a dot ("trim_0.25") has
+            # everything from that dot replaced, silently colliding two renders
+            d = dest if not mode_name else dest.with_name(f"{dest.name}_{mode_name}")
+            d = d if d.suffix.lower() == ".wav" else d.with_name(d.name + ".wav")
+            write_wav(d, L, R)
+            print(f"  -> {d}")
 
 
 if __name__ == "__main__":
