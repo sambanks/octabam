@@ -515,15 +515,34 @@ since the tank carries are primed. So the isolation trick above is not just
 a convenient way to measure this bug; MOD=0 was already the observation that
 ruled it out, and nobody had cashed it in.
 
-**What that leaves.** Round 2c's "wrong cause 1: block-stepped LFO —
-plausible, unproven, and not acted on" is back to being the leading
-candidate, by elimination rather than by evidence. It survives the MOD=0
-test (the staircase vanishes when the offset stops moving) and it is the
-only mechanism left that does. Worth noting the two are not rivals so much
-as the same root cause at different amplitudes: both come from the offset
-being piecewise-constant per block. Priming fixed the boundary *sample*; it
-does nothing about the delay time being a staircase in between, which is the
-much larger signal.
+**What that leaves — superseded, see below.** The block-stepped LFO was the
+leading candidate by elimination. It has since been built and measured, and
+it is not the fault either: **−62.5 dB**, for 64 cycles/sample. The staircase
+moves the delay by only ~0.026 of a sample across one block, which was never
+going to be a crackle. Not kept. `VOICING.md` Round 2e has the implementation
+and the invariant that verified it (at MOD=0 there is nothing to ramp, and
+the ramped engine comes out bit-identical to the stepped one).
+
+**The offset/fraction PAIRING RULE — this one was the real fault.** Each
+line's interpolation fraction must come from the same LFO as the integer
+offset its `nK` was built from: `n1←$23/$24`, `n2←$21/$22`, `n3←$56/$57`,
+`n4←$58/$59`. Lines 0 and 2 had B's and C's fractions swapped, so their
+effective delay was `tap + offset_B + fraction_C`. A foreign fraction is a
+sawtooth that wraps whenever *its own* LFO's integer part steps, which put a
+**1-sample sawtooth at ~76 Hz** on two of the four lines.
+
+Measured at **−29.6 dB**, against −62.5 dB for the staircase and −64 dB for
+the allpass carry: 33 dB louder than either, and the only candidate with the
+magnitude to be audible at all. It also passes every negative test in
+`VOICING.md` Round 2b — gone at MOD=0, signal-proportional, broadband, not
+the sample. The fix is a two-slot swap: no cycles, no words.
+
+The four LFO *phases* are deliberately crosswise (see Signal path); the two
+halves of one offset are not. **Same caution as the v72 fraction bug, for the
+same reason:** this was an accidental noise source, and `ChonVerb19` — the
+build on hardware, the one that was liked — has it. If removing the sawtooth
+exposes ringing it was smearing, the answer is deliberate randomisation, not
+restoring the swap.
 
 **Spectral flatness cannot tell diffusion from distortion.** It rewards
 broadband noise, so it ranked the flutter builds highly and dropped when the

@@ -244,3 +244,52 @@ survives the MOD=0 test. Note the two were never rivals — both come from the
 offset being piecewise-constant per block. Priming fixed the boundary *sample*;
 the delay time is still a staircase in between, and that is the larger signal
 by far.
+
+### Round 2e — wrong cause 1 is ALSO wrong; the pairing is the real one
+
+Round 2d's "back to wrong cause 1" lasted one round. Building it settled it.
+
+**The block-stepped LFO was implemented and measured: −62.5 dB.** Each line
+carries a running packed position (integer offset in the top 8 bits, fraction
+in the low 16) and walks 1/16 of the way to the block's target every sample,
+so the delay time ramps instead of stepping. Verified by an invariant: at
+MOD=0 there is nothing to ramp, and the rebuilt engine is **bit-identical** to
+the old one — which it can only be if every offset, fraction and `nK` still
+lands exactly where it did. Cost: 64 cycles/sample.
+
+It changes the tail by **−62.5 dB**, the same order as the allpass carry fix
+in Round 2d, and moves the 8–16 kHz band by +0.01 dB. The staircase is real
+and inaudible. In hindsight the arithmetic said so: the offset traverses
+~76 samples/s, so across one 15-sample block it moves ~0.026 of a sample.
+**Not kept — 64 cycles/sample for −62.5 dB is a bad trade.**
+
+**The real one: lines 0 and 2 took their interpolation fraction from a
+DIFFERENT LFO than their integer offset.**
+
+| line | integer offset | fraction | |
+|---|---|---|---|
+| 0 (`r1`) | `$23` LFO B | `$57` LFO **C** | wrong |
+| 1 (`r2`) | `$21` LFO A | `$22` LFO A | ok |
+| 2 (`r3`) | `$56` LFO C | `$24` LFO **B** | wrong |
+| 3 (`r4`) | `$58` LFO D | `$59` LFO D | ok |
+
+B's and C's fractions were swapped. The effective delay of lines 0 and 2 was
+`tap + offset_B + fraction_C`, and a foreign fraction is a sawtooth that wraps
+every time *its* LFO's integer steps — so those two lines carried a 1-sample
+sawtooth on their delay at ~76 Hz.
+
+**−29.6 dB**, against −62.5 and −64 for the two structural candidates: 33 dB
+louder than anything else found, and the only one with the magnitude to be
+audible. It passes every negative test in Round 2b — vanishes at MOD=0,
+signal-proportional, broadband, not the sample. Fix is a two-slot swap, no
+cycles, no words.
+
+**Not yet judged by ear, and this one needs it.** It is exactly the shape
+`REVERB.md` warns about: an accidental noise source that may have been doing
+perceptual work. `ChonVerb19` — the build on hardware, the one that was liked
+— has this bug. Removing it may expose ringing the sawtooth was smearing, in
+which case the answer is deliberate randomisation, not putting the swap back.
+
+**Method note.** Three candidates, three magnitudes, one ranking: −29.6 dB
+beats −62.5 and −64 by more than 30 dB. None of it needed a flash, and the two
+that lost were the two that had been reasoned about most confidently.

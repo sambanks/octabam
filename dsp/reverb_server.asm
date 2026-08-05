@@ -1619,6 +1619,12 @@ lf51:
         move    a,x:(r7+$27)            ; and at half, for the other three lines
 
 ; ---- four taps, damped inside the feedback path -------------------------
+; PAIRING RULE: each line's interpolation fraction MUST come from the same
+; LFO as the integer offset its nK was built from. n1<-$23/$24, n2<-$21/$22,
+; n3<-$56/$57, n4<-$58/$59. Lines 0 and 2 had B's and C's fractions swapped,
+; which put a 1-sample sawtooth on their delay at the foreign LFO's wrap
+; rate. The four LFO PHASES are deliberately crosswise (REVERB.md); the two
+; halves of one offset are not.
         move    x:(r7+$1f),y0           ; damping coefficient, from DAMP
 ; -- line 0: base+0x0000, tap 3958, interpolated, LFO-modulated --
 ; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
@@ -1636,7 +1642,7 @@ lf51:
         move    y:(r1+n1),b            ; d0
         move    x:(r7+$47),a            ; d1 = last sample's d0
         move    b,x:(r7+$47)            ; carry forward
-        move    x:(r7+$57),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
+        move    x:(r7+$24),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
         sub     b,a                     ; d1 - d0
         move    a,x0
         mpy     x0,y1,a                 ; f*(d1-d0)
@@ -1726,7 +1732,7 @@ lf51:
         move    y:(r3+n3),b            ; d0
         move    x:(r7+$49),a            ; d1 = last sample's d0
         move    b,x:(r7+$49)            ; carry forward
-        move    x:(r7+$24),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
+        move    x:(r7+$57),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
         sub     b,a                     ; d1 - d0
         move    a,x0
         mpy     x0,y1,a                 ; f*(d1-d0)
