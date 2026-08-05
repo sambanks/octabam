@@ -335,30 +335,33 @@ id `0x08` dispatches to.
 | build | id `0x08` runs | result on the unit |
 |---|---|---|
 | `ChonVerb22C` (control) | stock passthrough | **delay WORKS** |
-| `ChonVerb22P` | a stub writing zeros | **delay SILENT, dry FINE**, DELAY CTRL keys still lit |
+| `ChonVerb22P` | a stub writing zeros | **the whole track goes silent** (dry included); other tracks unaffected; DELAY CTRL keys still lit |
 
-**The control had to come first and did not.** Round 1 was run without it, and
+**What the control bought, and it is worth having.** Round 1 ran without it, so
 "the delay went silent" could not be told apart from "the delay never worked
-under our firmware". The control settles that: **our chooser replacement does
-correctly wire up a stock effect** — DELAY selected from our 4-entry menu
-behaves normally when its dispatch is left alone.
+under our firmware at all". The control settles that: **our chooser replacement
+wires up a stock effect correctly** — DELAY picked from our 4-entry menu behaves
+normally when its dispatch is left alone. That is what makes the `send` build
+below a meaningful test rather than a shot in the dark.
 
-**So the silence result is real, and it is the first thing we have learned about
-where the delay sits.** Zeroing what the FX2 insert writes **kills the delay but
-not the dry**. Read literally that means the insert's output feeds the delay,
-while the dry reaches the mix by a route that does not depend on it — i.e. the
-Echo Freeze Delay is wired as a **send**, not as a series insert. That also fits
-the effect having its own `SEND` parameter (manual §12.7.6, which DELAY CTRL
-sets to 0 when LOCK is on).
+**The silence build told us nothing about where the delay is, and that was
+predictable.** The FX2 insert is a series insert; writing zeros there kills the
+track's audio whether the delay sits upstream of it, downstream of it, or
+anywhere else. Both surviving hypotheses predict exactly what was observed. The
+experiment could only ever have been informative if the delay had *survived*.
 
-**Treat that reading as provisional until one thing is confirmed**: that the
-surviving dry was the *same track* carrying the delay, not other tracks. If it
-was the same track, the send reading stands and it is a significant structural
-finding. Not yet confirmed.
+> **RETRACTED, same day.** An earlier revision of this section read the result
+> as "dry fine, delay silent" and concluded the delay must be wired as a **send**
+> rather than a series insert. That was a misreading of an ambiguous report —
+> the surviving dry was on *other* tracks, not on the track carrying the delay.
+> The send reading has no support. Recorded because the failure is the
+> instructive part: the interpretation was built on a one-word answer to a
+> question that had not been posed precisely, and written up before the
+> ambiguity was resolved.
 
-**Confirmed either way:** the DELAY CTRL keys still lit under the silence build.
-Those come from the stored Part id and the `0x460d1700` bitmask, which no DSP
-dispatch change can reach — exactly what the static analysis predicted, now
+**Confirmed and standing:** the DELAY CTRL keys still lit under the silence
+build. Those come from the stored Part id and the `0x460d1700` bitmask, which no
+DSP dispatch change can reach — exactly what the static analysis predicted, now
 observed on hardware.
 
 **Next:** `DELAYPROBE=send` points id `0x08` at the SEND client, which passes
