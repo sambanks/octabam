@@ -592,18 +592,18 @@ md_big:                                 ; 3, and anything unexpected
 ; wall arrived at exactly the same time and only differed in loudness.
 ; Arrival PATTERN is most of what says which space this is, before the
 ; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>1741,a
-        move    a,x:(r7+$78)            ; ER tap 0, 39.5 ms
-        move    #>2377,a
-        move    a,x:(r7+$79)
-        move    #>2917,a
-        move    a,x:(r7+$7a)
-        move    #>3391,a
-        move    a,x:(r7+$7b)
-        move    #>3733,a
-        move    a,x:(r7+$7c)
-        move    #>4051,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 91.9 ms
+        move    #>2355,a
+        move    a,x:(r7+$78)            ; ER tap 0, 39.5 ms   [4096-1741]
+        move    #>1719,a
+        move    a,x:(r7+$79)            ; n6 = 4096 - 2377
+        move    #>1179,a
+        move    a,x:(r7+$7a)            ; n6 = 4096 - 2917
+        move    #>705,a
+        move    a,x:(r7+$7b)            ; n6 = 4096 - 3391
+        move    #>363,a
+        move    a,x:(r7+$7c)            ; n6 = 4096 - 3733
+        move    #>45,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 91.9 ms   [4096-4051]
 ; TAP SPREAD, 1.69 : 1 (longest:shortest) -- wide, CAPPED by the buffer.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -686,18 +686,18 @@ md_room:
 ; wall arrived at exactly the same time and only differed in loudness.
 ; Arrival PATTERN is most of what says which space this is, before the
 ; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>199,a
-        move    a,x:(r7+$78)            ; ER tap 0, 4.5 ms
-        move    #>313,a
-        move    a,x:(r7+$79)
-        move    #>439,a
-        move    a,x:(r7+$7a)
-        move    #>587,a
-        move    a,x:(r7+$7b)
-        move    #>751,a
-        move    a,x:(r7+$7c)
-        move    #>941,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 21.3 ms
+        move    #>3897,a
+        move    a,x:(r7+$78)            ; ER tap 0, 4.5 ms   [4096-199]
+        move    #>3783,a
+        move    a,x:(r7+$79)            ; n6 = 4096 - 313
+        move    #>3657,a
+        move    a,x:(r7+$7a)            ; n6 = 4096 - 439
+        move    #>3509,a
+        move    a,x:(r7+$7b)            ; n6 = 4096 - 587
+        move    #>3345,a
+        move    a,x:(r7+$7c)            ; n6 = 4096 - 751
+        move    #>3155,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 21.3 ms   [4096-941]
 ; TAP SPREAD, 1.60 : 1 (longest:shortest) -- the reference -- unchanged.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -765,18 +765,18 @@ md_plate:
 ; wall arrived at exactly the same time and only differed in loudness.
 ; Arrival PATTERN is most of what says which space this is, before the
 ; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>331,a
-        move    a,x:(r7+$78)            ; ER tap 0, 7.5 ms
-        move    #>557,a
-        move    a,x:(r7+$79)
-        move    #>919,a
-        move    a,x:(r7+$7a)
-        move    #>1301,a
-        move    a,x:(r7+$7b)
-        move    #>1723,a
-        move    a,x:(r7+$7c)
-        move    #>2213,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 50.2 ms
+        move    #>3765,a
+        move    a,x:(r7+$78)            ; ER tap 0, 7.5 ms   [4096-331]
+        move    #>3539,a
+        move    a,x:(r7+$79)            ; n6 = 4096 - 557
+        move    #>3177,a
+        move    a,x:(r7+$7a)            ; n6 = 4096 - 919
+        move    #>2795,a
+        move    a,x:(r7+$7b)            ; n6 = 4096 - 1301
+        move    #>2373,a
+        move    a,x:(r7+$7c)            ; n6 = 4096 - 1723
+        move    #>1883,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 50.2 ms   [4096-2213]
 ; TAP SPREAD, 1.24 : 1 (longest:shortest) -- TIGHTEST -- most homogeneous.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -844,18 +844,18 @@ md_hall:
 ; wall arrived at exactly the same time and only differed in loudness.
 ; Arrival PATTERN is most of what says which space this is, before the
 ; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>883,a
-        move    a,x:(r7+$78)            ; ER tap 0, 20.0 ms
-        move    #>1279,a
-        move    a,x:(r7+$79)
-        move    #>1733,a
-        move    a,x:(r7+$7a)
-        move    #>2239,a
-        move    a,x:(r7+$7b)
-        move    #>2803,a
-        move    a,x:(r7+$7c)
-        move    #>3413,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 77.4 ms
+        move    #>3213,a
+        move    a,x:(r7+$78)            ; ER tap 0, 20.0 ms   [4096-883]
+        move    #>2817,a
+        move    a,x:(r7+$79)            ; n6 = 4096 - 1279
+        move    #>2363,a
+        move    a,x:(r7+$7a)            ; n6 = 4096 - 1733
+        move    #>1857,a
+        move    a,x:(r7+$7b)            ; n6 = 4096 - 2239
+        move    #>1293,a
+        move    a,x:(r7+$7c)            ; n6 = 4096 - 2803
+        move    #>683,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 77.4 ms   [4096-3413]
 ; TAP SPREAD, 1.92 : 1 (longest:shortest) -- WIDEST -- most audible structure.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -1242,6 +1242,9 @@ mixset:
         add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
         neg     a                       ; is one sample, not a whole buffer of
         move    a,n6                    ; staleness
+        move    a,x:(r7+$62)            ; ...and stash it: the ER taps below
+                                        ; now use n6 as their own index, so
+                                        ; the pre-delay reloads it each sample
         move    x:(r7+$83),a            ; the same counter again
         move    #>$fff,x0               ; phase is 0..4095 now, and the
         and     x0,a                    ; pre-delay buffer is 4096 to match
@@ -1671,6 +1674,8 @@ lf51:
         move    x:(r7+$30),r6           ; r6, not r5: the allpasses own r5 now
         move    x:(r7+$1b),a            ; input, and fills the AGU slot
         move    #>$1,n0
+        move    x:(r7+$62),n6           ; pre-delay offset back (ER taps
+                                        ; below borrow n6 every sample)
         move    y:(r6+n6),b             ; delayed
         move    a,y:(r6)+               ; write, and advance
         move    r6,x:(r7+$30)
@@ -1695,103 +1700,60 @@ lf51:
 ; Taps are primes in ms-ish spacing with alternating sign for L/R spread, and
 ; decaying gains. $6c holds the ER level, which MODE will set per character
 ; (room wants strong ER, hall weak, plate none).
-        move    x:(r7+$30),a            ; pre_base + phase
-        move    x:(r7+$38),x0           ; pre_base
-        sub     x0,a
-        move    a,x:(r7+$62)            ; the phase alone, once per sample
+; v99: the AGU does the wrap, the base add and the mask FOR FREE.
+; This block used to build every tap address by hand -- subtract the tap,
+; `and #>$fff` to wrap, clean A2, add the base, load r5 -- eleven words a tap.
+; That is precisely the pattern the density pass removed everywhere else and
+; was worth 135 cycles there (DSP.md); this block was written afterwards and
+; repeated it. r6 already points into the pre-delay buffer under m6 = $fff,
+; which is the same addressing the pre-delay's OWN read two lines up uses.
+; The stored constants are now (4096 - tap) so they drop straight into n6.
+; 254 -> ~181 cycles, bit-identical.
         clr     a
         move    a,x:(r7+$5a)            ; ER accumulator L
         move    a,x:(r7+$5b)            ; ER accumulator R
-        move    x:(r7+$62),a
-        move    x:(r7+$78),x0           ; this MODE's ER tap 0
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$78),n6           ; this MODE's ER tap 0  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$700000,y1
         mpy     x0,y1,a
         move    x:(r7+$5a),x0
         add     x0,a
         move    a,x:(r7+$5a)
-        move    x:(r7+$62),a
-        move    x:(r7+$79),x0           ; this MODE's ER tap 1
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$79),n6           ; this MODE's ER tap 1  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$5c0000,y1
         mpy     x0,y1,a
         move    x:(r7+$5b),x0
         add     x0,a
         move    a,x:(r7+$5b)
-        move    x:(r7+$62),a
-        move    x:(r7+$7a),x0           ; this MODE's ER tap 2
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$7a),n6           ; this MODE's ER tap 2  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$4a0000,y1
         mpy     x0,y1,a
         move    x:(r7+$5a),x0
         add     x0,a
         move    a,x:(r7+$5a)
-        move    x:(r7+$62),a
-        move    x:(r7+$7b),x0           ; this MODE's ER tap 3
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$7b),n6           ; this MODE's ER tap 3  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$3c0000,y1
         mpy     x0,y1,a
         move    x:(r7+$5b),x0
         add     x0,a
         move    a,x:(r7+$5b)
-        move    x:(r7+$62),a
-        move    x:(r7+$7c),x0           ; this MODE's ER tap 4
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$7c),n6           ; this MODE's ER tap 4  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$300000,y1
         mpy     x0,y1,a
         move    x:(r7+$5a),x0
         add     x0,a
         move    a,x:(r7+$5a)
-        move    x:(r7+$62),a
-        move    x:(r7+$7d),x0           ; this MODE's ER tap 5
-        sub     x0,a
-        and     #>$fff,a                ; wrap inside the 4096-word buffer
-        move    a1,x0                   ; AND cleans A1 only -- A2-clean before
-        move    x0,a                    ; a move to rN, or it saturates
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),b                ; the tap
+        move    x:(r7+$7d),n6           ; this MODE's ER tap 5  (4096-tap)
+        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
         move    b,x0
         move    #>$260000,y1
         mpy     x0,y1,a

@@ -346,14 +346,25 @@ both wrong, in different ways.
 
 | | instructions | cycles/sample |
 |---|---|---|
-| `reverb_server` | 512 | 731 |
+| `reverb_server` | 470 | 660 |
 | `delay_server` | 107 | 163 |
 | `send_client` | 16 | 18 |
-| **a full bank** (1 + 1 + 2 sends) | | **930** |
+| **a full bank** (1 + 1 + 2 sends) | | **859** |
 | budget per DSP (`stageprobe5/6`) | | ~1080 |
-| **headroom** | | **~150** (86% used) |
+| **headroom** | | **~221** (80% used) |
 
-(735 for the reverb / 934 a bank before the v97 Hadamard rewrite below. Note
+(v99 took the reverb 731 -> 660 and the bank 930 -> 859: the early-reflection
+block was building all six tap addresses by hand -- subtract, `and #>$fff` to
+wrap, clean A2, add the base, load r5 -- when **r6 already indexes the
+pre-delay buffer under `m6 = $fff`**, which is the addressing the pre-delay's
+own read two lines above uses. **This is exactly the pattern the density pass
+removed everywhere else, worth 135 cycles there (`DSP.md`); the ER block was
+written afterwards and repeated it.** Storing `(4096 - tap)` instead of `tap`
+drops the constant straight into `n6`. 254 -> ~181 cycles, **bit-identical
+across all four modes and a max-feedback wet render.** The one cost: the ER taps
+borrow `n6`, so the pre-delay reloads it each sample -- 2 words against 71.
+
+735 for the reverb / 934 a bank before the v97 Hadamard rewrite below. Note
 that rewrite moved the instruction count the *other* way — 508 → 512 — while
 cycles fell 735 → 731. **Instructions are not cycles here**, and a count of
 them would have scored a real speed-up as a regression.)
