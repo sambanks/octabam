@@ -983,7 +983,7 @@ passing during this session and both are wrong:
 **CHORUS is in FX1's list** — which is why the v98 restore mattered. Until then
 every track's FX1 chorus was silently a passthrough on our firmware.
 
-### SUPERSEDED by the FX2 result — read this first
+### Two ways to get delay + reverb on one track — and they trade differently
 
 **Hardware, 5 Aug 2026: our code can hold stock DELAY's own slot.** With id
 `0x08` dispatched to the SEND client (`DELAYPROBE=send`, `ChonVerb22S`), the
@@ -992,8 +992,35 @@ FX2 *and* feed the ChonVerb bus from that same slot — **the FX1 filter is not
 the price after all**, and the ordering objection below (an FX1 send taps dry,
 so never delay-into-reverb) is moot because the send now sits at the FX2 point.
 
-That makes the FX1 plan below the second-best version of this idea. It is kept
-for its reasoning, not as the plan.
+**But it does NOT make the FX1 plan below obsolete, and an earlier revision of
+this section wrongly said it did.** Hardware, 5 Aug: **all twelve of DELAY's
+parameters are in use, and `X` is a boolean** — so there is no sacrificial knob
+to carry a send level, and the co-located design has *no independent level
+control at all*. The FX1 design does, because `Send` there owns its own
+descriptor and its own two knobs.
+
+So the real choice is:
+
+| | co-located on FX2 | Send on FX1 |
+|---|---|---|
+| FX1 filter | **kept** | spent |
+| send level control | **none** — every knob is a live delay control | real, two knobs |
+| what the send taps | the FX2 point | dry, pre-FX2 |
+| delay into reverb | possible in principle | never |
+| state | proven on hardware | designed, unbuilt |
+
+Neither dominates. Co-located keeps the filter but the send is all-or-nothing at
+whatever fixed level is compiled in; FX1 gives real controls but costs the
+filter and can only ever send dry.
+
+**The option that would beat both**, and the only one needing new work:
+`DSP.md` §9 records that **`r6+6..$a` is touched by nothing** — five words in
+the per-track param record that no stock effect and no publisher uses. A value
+delivered there is readable by our client and invisible to everything stock,
+which is a genuinely independent send level with the FX1 filter kept. The cost
+is ColdFire reverse engineering: something has to *write* those words, so the
+parameter publication path has to be found and extended. Well-posed, unlike the
+delay hunt, and `apply_part` is the place to start.
 
 **Confirmed end-to-end:** with a ChonVerb server on another track in the bank
 and DELAY's `FB` knob up, the reverb send audibly works from inside the delay's
