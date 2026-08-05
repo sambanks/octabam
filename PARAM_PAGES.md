@@ -170,6 +170,29 @@ delay's own twelve are all in use (`BUS.md`).
 | CONTROL 1 | `00111111` / `00001111` | p0 p1 |
 | CONTROL 2 | `11111111` / `00001111` | none |
 
+> ### CAVEAT that invalidates part of this table (photographed, 5 Aug 2026)
+>
+> **The enable bitmap only governs the GENERIC parameter-page renderer. A page
+> drawn by bespoke code ignores it entirely.**
+>
+> Descriptor 7 is the **MIXER** screen. Its bitmap marks `p0 MAIN` and `p1 DIR`
+> as not drawn — and a photograph of the unit shows **`MAIN` right there on
+> screen**, alongside `MIX`, `CUE` and both `DIR`/`GAIN` pairs. Every one of
+> descriptor 7's parameters is visible and editable. The MIXER simply does not
+> use the generic renderer, so its bitmap says nothing about what the user sees.
+>
+> Consequences:
+> * **Descriptor 7 has no free slots.** Dead as a control-surface candidate.
+> * **"Not drawn" in this table means only "the generic renderer skips it."** It
+>   is not evidence the parameter is unused, and for any page with a custom
+>   screen it does not even predict visibility.
+> * The table below is still a correct reading of the *bitmaps*. It is not a
+>   reliable list of free knobs, and was wrongly presented as one.
+>
+> **Cheap check before trusting any candidate: look at the page on the unit.**
+> If AMP page 2 shows a gap where `ATCK` would sit, the bitmap governs there and
+> AMP is a generic page. If `ATCK` is visible, the same trap has struck twice.
+
 **AMP is the interesting page** — always present regardless of machine type, and
 per-track, which is the granularity a send level needs. Its full table:
 
