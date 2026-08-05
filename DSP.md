@@ -325,6 +325,47 @@ FREEZE behaviour): it shares the **sampling/recorder** machinery rather than the
 FX chain — a delay is re-reading recorded audio, which is what the voice path
 already does.
 
+### HARDWARE, 5 Aug 2026 — the first positive evidence
+
+Three builds, each stamping its own effect name so the unit says which is
+running (`DELAYPROBE=stock|silence|send` in `tools/build_bus.py`). All three
+restore stock DELAY to the FX2 chooser as a 4th entry; they differ only in what
+id `0x08` dispatches to.
+
+| build | id `0x08` runs | result on the unit |
+|---|---|---|
+| `ChonVerb22C` (control) | stock passthrough | **delay WORKS** |
+| `ChonVerb22P` | a stub writing zeros | **delay SILENT, dry FINE**, DELAY CTRL keys still lit |
+
+**The control had to come first and did not.** Round 1 was run without it, and
+"the delay went silent" could not be told apart from "the delay never worked
+under our firmware". The control settles that: **our chooser replacement does
+correctly wire up a stock effect** — DELAY selected from our 4-entry menu
+behaves normally when its dispatch is left alone.
+
+**So the silence result is real, and it is the first thing we have learned about
+where the delay sits.** Zeroing what the FX2 insert writes **kills the delay but
+not the dry**. Read literally that means the insert's output feeds the delay,
+while the dry reaches the mix by a route that does not depend on it — i.e. the
+Echo Freeze Delay is wired as a **send**, not as a series insert. That also fits
+the effect having its own `SEND` parameter (manual §12.7.6, which DELAY CTRL
+sets to 0 when LOCK is on).
+
+**Treat that reading as provisional until one thing is confirmed**: that the
+surviving dry was the *same track* carrying the delay, not other tracks. If it
+was the same track, the send reading stands and it is a significant structural
+finding. Not yet confirmed.
+
+**Confirmed either way:** the DELAY CTRL keys still lit under the silence build.
+Those come from the stored Part id and the `0x460d1700` bitmask, which no DSP
+dispatch change can reach — exactly what the static analysis predicted, now
+observed on hardware.
+
+**Next:** `DELAYPROBE=send` points id `0x08` at the SEND client, which passes
+audio through and only taps it. If the delay survives that, **our code can hold
+the delay's slot and keep the delay** — which is the whole question behind
+BUS.md's parked Send design.
+
 ### Two limits on the sweep above — do not over-read it
 
 **The DSP self-modifies.** Frame setup writes `move x0,p:>$58c` and
