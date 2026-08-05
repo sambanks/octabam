@@ -209,3 +209,38 @@ interpolation dither is a real technique for breaking up delay-line artifacts.
 Every build the user liked had it." Removing this class of noise may expose
 ringing that it was masking. If so, the principled replacement is deliberate
 randomisation, not restoring a bug.
+
+### Round 2d — the interpolation partner is measured, fixed, and exonerated
+
+Round 2c's "likely real cause" above is **wrong**, on two independent grounds.
+The full measurement is in `REVERB.md`; the short version:
+
+**The four tank lines were never exposed.** They are seeded before the loop,
+one sample further back with the new offset — which is exactly the block
+boundary the carry argument fails at — and the offset cannot change mid-block.
+The suspect line 1567 quoted above is immune. Deleting the seed reads *does*
+change the output, so that priming is load-bearing, not vestigial.
+
+**The two in-loop allpasses (v90) genuinely had the bug** and are now primed
+the same way. Cost: 28 instructions per *block*, outside the sample loop, so
+zero against the cycles/sample budget — the "one extra Y read per line per
+sample" costed above was never needed. Verified correct by forcing the allpass
+LFO depth to zero, which makes the prime a no-op: ref and fixed renders come
+out **bit-identical**, which a wrong address could not do.
+
+**But it is not the crackle.** Isolated at MOD=0 (where the allpass depth is
+fixed and still stepping, but the tank is not), the correction *is* a click
+train — crest 28.0 dB against the tail's 10.8 dB, exactly the predicted shape
+— but at −94.7 dBFS RMS under a −30.5 dBFS tail. ~64 dB down. Inaudible.
+
+**The observation that should have settled this was already on this page.**
+Round 2b: the crackle is *gone at MOD=0*. The allpass depth never follows MOD,
+so this defect is fully active at MOD=0 and cannot be a fault that disappears
+there. That ruled it out before any of the above was rendered.
+
+**So: back to wrong cause 1.** The block-stepped LFO is the leading candidate
+again, by elimination rather than evidence. It is the only mechanism left that
+survives the MOD=0 test. Note the two were never rivals — both come from the
+offset being piecewise-constant per block. Priming fixed the boundary *sample*;
+the delay time is still a staircase in between, and that is the larger signal
+by far.

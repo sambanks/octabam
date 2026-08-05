@@ -462,6 +462,69 @@ it was correct and immediately exposed ringing that had been masked. If the
 tail needs more smearing than slow deep modulation provides, *deliberate*
 randomisation is the principled replacement.
 
+**The carried interpolation partner is NOT the crackle — measured, −64 dB.**
+Every interpolated read in the engine gets its `d1` for free by carrying
+forward last sample's `d0`, on the argument that the read pointer advances
+exactly one per sample. That argument holds only while the read OFFSET holds
+still, so it was the standing suspect for the crackle: the LFOs step the
+offset, and each step should invalidate one interpolation.
+
+It is a real defect, but a tiny one, and only in one place:
+
+* The four **tank** lines were never exposed. They are seeded before the
+  loop, one sample further back with the *new* offset, which is exactly the
+  block boundary the argument fails at — and the offsets cannot change
+  mid-block, because the LFOs advance once per block. Deleting the four seed
+  reads does change the output, so that priming is load-bearing, not
+  vestigial.
+* The two **in-loop allpasses** (v90) used the same trick and never got the
+  same seeding. Now they do.
+
+Cost of priming them: 28 instructions per BLOCK, outside the sample loop, so
+zero against the table above. The in-loop comment's "every N register is
+committed, so there is no other way to do this" is true per sample and false
+once per block — which is where the fix lives.
+
+Two things worth keeping from how this was settled, because both are reusable:
+
+* **Verify address arithmetic by making the change a no-op.** With the
+  allpass LFO depth forced to zero the offset never steps, so a correct
+  prime must reproduce the stale carry *exactly* — ref and fixed renders
+  come out bit-identical. A wrong address would differ even with a static
+  offset. That separates "I changed something" from "I read the right word".
+* **Isolate with MOD=0.** The tank's modulation follows MOD but the
+  allpasses' depth is fixed and never zero, so at MOD=0 the only thing still
+  stepping an offset is the allpass pair. The ref-vs-fix difference there is
+  the defect alone, with no tank divergence mixed in.
+
+Measured that way, the correction *is* a click train — crest 28.0 dB against
+the tail's 10.8 dB, the exact shape predicted — but it sits at −94.7 dBFS
+RMS under a −30.5 dBFS tail: ~64 dB down, peaks ~36 dB under the tail's RMS.
+Far too quiet to be the audible fault. **Cross the interpolation partner off
+the crackle suspect list; the fix is a correctness fix, not a voicing one.**
+Also note this is a case where the raw ref-vs-fix diff is *misleading*: at
+MOD=127 it reads −50 dB, but nearly all of that is chaotic divergence of a
+feedback system, not artifact. The crest factor is what distinguishes them.
+
+**And an independent confirmation that was already on file.** `VOICING.md`
+Round 2b established by ear that the crackle is *gone at MOD=0*. The allpass
+depth is fixed and never follows MOD, so the allpass carry defect is fully
+active at MOD=0 — it therefore cannot be a fault that disappears there. The
+same test kills the tank's carry as a candidate from the other direction,
+since the tank carries are primed. So the isolation trick above is not just
+a convenient way to measure this bug; MOD=0 was already the observation that
+ruled it out, and nobody had cashed it in.
+
+**What that leaves.** Round 2c's "wrong cause 1: block-stepped LFO —
+plausible, unproven, and not acted on" is back to being the leading
+candidate, by elimination rather than by evidence. It survives the MOD=0
+test (the staircase vanishes when the offset stops moving) and it is the
+only mechanism left that does. Worth noting the two are not rivals so much
+as the same root cause at different amplitudes: both come from the offset
+being piecewise-constant per block. Priming fixed the boundary *sample*; it
+does nothing about the delay time being a staircase in between, which is the
+much larger signal.
+
 **Spectral flatness cannot tell diffusion from distortion.** It rewards
 broadband noise, so it ranked the flutter builds highly and dropped when the
 flutter was fixed. It is useful for comparing structural changes, and

@@ -1253,6 +1253,52 @@ lf51:
         move    x:(r7+$4e),a
         move    a,n4
 
+; ---- prime the IN-LOOP ALLPASS interpolation carries ---------------------
+; The same seeding the four tank lines get above, for the same reason, and
+; the allpasses (v90) never had it.
+;
+; The carried d1 is only "last sample's d0" while the READ OFFSET holds
+; still. Inside a block it does: r5 walks one per sample and n5 is fixed.
+; Across a block boundary the AP offsets ($52/$54) step with their LFO, and
+; then the carry is off by one -- it is d0 or d2, not d1. On a DOWNWARD step
+; the fraction is near 1.0, so the interpolator outputs that wrong neighbour
+; almost in full: a one-sample error at tail amplitude, fed straight back
+; into the loop by the allpass it sits in. Once per block per allpass, at
+; the LFO's integer-crossing rate.
+;
+; Priming costs ~26 instructions per BLOCK -- under 2 cycles/sample
+; amortised, against the ~551 spare -- and needs no extra N register, which
+; is what the in-loop comment ("no other way to do this") ruled out. That
+; was true per SAMPLE; it is not true once per block.
+        move    x:(r7+$60),a            ; allpass A: (2048 - tap) - offset - 1
+        move    x:(r7+$52),x0
+        sub     x0,a
+        move    #>$1,x0
+        sub     x0,a
+        move    a,n5
+        move    r1,a                    ; the AP phase IS the tank phase
+        and     #>$7ff,a                ; (same derivation as $39 in the loop)
+        move    x:(r7+$5e),x0           ; base A
+        add     x0,a
+        move    a,r5
+        move    x:(r7+$61),b            ; spaces the r5 write, and preloads
+        move    y:(r5+n5),a             ; d1 for the block's first sample
+        move    a,x:(r7+$5c)
+        move    x:(r7+$54),x0           ; allpass B: b still holds (2048 - tap)
+        move    b,a
+        sub     x0,a
+        move    #>$1,x0
+        sub     x0,a
+        move    a,n5
+        move    r1,a
+        and     #>$7ff,a
+        move    x:(r7+$5f),x0           ; base B
+        add     x0,a
+        move    a,r5
+        move    x:(r7+$5c),b            ; spaces the r5 write
+        move    y:(r5+n5),a
+        move    a,x:(r7+$5d)
+
         do      n7,>rvend
 
 ; ---- input: mono sum, plus the shared REVERB bus accumulator (BUS.md) ----
