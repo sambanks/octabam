@@ -88,7 +88,8 @@
 ;   allpasses  base+0x4000 .. base+0x5fff   2048 words each, spacing 0x800
 ;              taps 1994 1706 1438 1226  (45 39 33 28 ms)
 ;   pre-delay  base+0x6000 .. base+0x6fff   4096 words (93 ms)
-;   in-loop AP base+0x7000 .. base+0x7fff   2048 words each, taps 298 446
+;   in-loop AP base+0x7000 .. base+0x77ff   1024 words each, taps 298 446
+;   SHIMMER   base+0x7800 .. base+0x7fff   2048 words, free as of v100
 ;   total      0x8000 -- the whole allocation, nothing left over
 ;
 ; The tap CONSTANTS did not change in the re-layout: they are stored as
@@ -104,7 +105,8 @@
 ; State (all in the per-instance r7 block, not absolute Y):
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
-;   base+0x7000   2 in-loop allpasses, 2048 words each (v74; 32K re-layout)
+;   base+0x7000   2 in-loop allpasses, 1024 words each (v100; were 2048)
+;   base+0x7800   2048 words free for the shimmer pitch shifter (v100)
 ;   r7+$40        LO coefficient;  r7+$41..$44  LO states (working copies)
 ;   r7+$31..$78   this instance's base, and the bases derived from it
 ;   r7+$15..$66   per-sample scratch
@@ -1491,7 +1493,7 @@ lf51:
         move    #>$7000,a
         add     x0,a
         move    a,x:(r7+$5e)            ; allpass A base, on line 0
-        move    #>$7800,a
+        move    #>$7400,a
         add     x0,a
         move    a,x:(r7+$5f)            ; allpass B base, on line 1
 ; v85: SHORTER. 401 and 601 were 26-64% of the line they feed, where the
@@ -1505,10 +1507,16 @@ lf51:
 ; holding 9.7%/14.5% against a line that is now twice as long means doubling
 ; the tap -- leaving them at 149/223 would halve the proportion to 4.8%/7.3%
 ; and change the character the re-layout is meant to preserve.
-        move    #>1750,a
-        move    a,x:(r7+$60)            ; 2048 - 298   (9.7% of the longest line)
-        move    #>1602,a
-        move    a,x:(r7+$61)            ; 2048 - 446   (14.5%)
+        move    #>726,a
+        move    a,x:(r7+$60)            ; 1024 - 298   (9.7% of the longest line)
+        move    #>578,a
+        move    a,x:(r7+$61)            ; 1024 - 446   (14.5%)
+; v100: the in-loop allpass buffers are 1024 words, not 2048. Their taps are
+; 298 and 446 and the modulation adds at most ~31, so 477 is the longest read
+; they can ever make -- 2048 was over twice what they need. Halving both frees
+; 2048 CONTIGUOUS words at base+0x7800 for the shimmer pitch shifter, and it is
+; bit-identical because the tap distance behind the write pointer is unchanged;
+; only the wrap point moves, and nothing reads far enough back to see it.
 
 ; ---- STAGE 2: read offsets for the four modulo-indexed line reads -------
 ; nK = (4096 - tap_k) - offset_k, so y:(rK+nK) lands on the delayed sample
@@ -1587,8 +1595,9 @@ lf51:
         move    #>$1,x0
         sub     x0,a
         move    a,n5
+        move    #>$3ff,m5               ; v100: the in-loop allpasses are 1024
         move    r1,a                    ; the AP phase IS the tank phase
-        and     #>$7ff,a                ; (same derivation as $39 in the loop)
+        and     #>$3ff,a                ; (same derivation as $39 in the loop)
         move    x:(r7+$5e),x0           ; base A
         add     x0,a
         move    a,r5
@@ -1602,13 +1611,14 @@ lf51:
         sub     x0,a
         move    a,n5
         move    r1,a
-        and     #>$7ff,a
+        and     #>$3ff,a
         move    x:(r7+$5f),x0           ; base B
         add     x0,a
         move    a,r5
         move    x:(r7+$5c),b            ; spaces the r5 write
         move    y:(r5+n5),a
         move    a,x:(r7+$5d)
+        move    #>$7ff,m5               ; v100: back to the diffusers' 2048
 
         do      n7,>rvend
 
@@ -2136,12 +2146,19 @@ lf51:
         move    x:(r7+$15),x0           ; diffused input
         add     x0,a
 ; -- in-loop allpass, line 0: diffuses the feedback before it is stored --
+        move    #>$3ff,m5               ; v100: these two are 1024 now. The four
+                                        ; INPUT diffusers above are still 2048
+                                        ; and share m5, so it is switched here
+                                        ; and put back after line 1 below.
         move    a,x1                    ; x = the value bound for the line
         move    x:(r7+$60),a
         move    x:(r7+$52),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (2048 - tap) - offset
-        move    x:(r7+$39),a            ; phase (already masked to $7ff)
+        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        and     #>$3ff,a                ; ...but these buffers are 1024. A2 is
+                                        ; already 0 (the phase loads positive),
+                                        ; so no A2-clean dance is needed here.
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
@@ -2188,7 +2205,10 @@ lf51:
         move    x:(r7+$54),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (2048 - tap) - offset
-        move    x:(r7+$39),a            ; phase (already masked to $7ff)
+        move    x:(r7+$39),a            ; phase (masked to $7ff above)
+        and     #>$3ff,a                ; ...but these buffers are 1024. A2 is
+                                        ; already 0 (the phase loads positive),
+                                        ; so no A2-clean dance is needed here.
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
@@ -2219,6 +2239,7 @@ lf51:
         sub     a,b                     ; out = d - g*v
         move    x:(r7+$14),a
         move    a,y:(r5)                ; store v
+        move    #>$7ff,m5               ; v100: back to the input diffusers' 2048
         move    b,a                     ; out -> the line
         move    a,y:(r2)             ; write at the line's own modulo pointer
 
