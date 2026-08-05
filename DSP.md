@@ -283,6 +283,48 @@ other effect has bespoke UI. Manual §12.7.6 settles it: the mode only sets
 the ordinary path. The code around the table is UI drawing indexed by a RAM mode
 variable. **The delay has no privileged control channel.**
 
+### Round 3: the ColdFire side, properly anchored — and still not found
+
+**There is exactly one firmware section.** `elektron-firmware-tool -i` reports
+`id 3 MAIN OS, 1112560 B` and nothing else. ColdFire code and both DSP payloads
+are all in the file we have been searching. **No other binary is hiding it.**
+
+**An earlier anchor was wrong.** `part+0x08` came from the *defaults
+initialiser* (`FUN_40005638`) and is not the live location; every search keyed on
+it returned zero, correctly. The real locations, in `PARAM_PAGES.md` §5c all
+along:
+
+| | FX1 | FX2 |
+|---|---|---|
+| stored, in Part data | `Part+0x8ed80` | `Part+0x8ed88` |
+| published to shared RAM | `0x80000ec4[track]` | `0x80000ecc[track]` |
+
+**The published array is write-only from the CPU.** All 8 references to
+`0x80000ecc` are stores; nothing on the ColdFire ever reads it back. **The DSP
+is its only consumer.**
+
+**The "is this track's FX2 the delay" test exists, and it is UI.** Two sites read
+`Part+0x8ed88` and compare against 8 — `0x400405ba` sets a bit, `0x400452b8`
+tests one — maintaining a per-track bitmask at **`0x460d1700`** = tracks whose
+FX2 is the Echo Freeze Delay. All seven users of that mask are in the
+`0x40040xxx`–`0x40045xxx` UI/key-handling region (build, set, clear, test).
+**Nothing in the audio path reads it.** That is the DELAY CTRL green-key
+machinery and nothing more.
+
+So: the CPU knows which tracks carry the delay, for lighting keys. It hands the
+id to the DSP. The DSP dispatches it to a passthrough. **No code on either
+processor does anything audible with that fact.**
+
+**The remaining thread — find the parameter consumer.** DELAY declares all
+twelve parameters and they are published into the DSP param block like any other
+effect's. Parameters that nothing reads would be strange. The passthrough stub
+reads none of them, so **whatever reads the delay's parameters is the delay.**
+That is a search for the consumer of data we know is published, rather than for
+a comparison that may not exist. Working hypothesis (Sam's, and it fits the
+FREEZE behaviour): it shares the **sampling/recorder** machinery rather than the
+FX chain — a delay is re-reading recorded audio, which is what the voice path
+already does.
+
 ### Two limits on the sweep above — do not over-read it
 
 **The DSP self-modifies.** Frame setup writes `move x0,p:>$58c` and
