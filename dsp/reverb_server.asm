@@ -624,8 +624,15 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$77)
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
-        clr     a                       ; no early reflections: a big space has
-        move    a,x:(r7+$6c)            ; no close walls to hear
+        move    #>$180000,a             ; WEAK late reflections, 0.19 -- below
+        move    a,x:(r7+$6c)            ; HALL's 0.25. Was 0 on the reasoning that
+                                        ; "a big space has no close walls to hear",
+                                        ; which is true of CLOSE walls and false of
+                                        ; the space as a whole: a large hall's
+                                        ; reflections are faint and LATE, and being
+                                        ; late is the cue that says vast before the
+                                        ; tail arrives. BIG's ER taps already sit at
+                                        ; 39-92 ms doing nothing (Round 4).
         move    #>$040000,a             ; diffusion offset, lowest
         move    a,x:(r7+$3f)
         move    #>$390000,a             ; damping 0.445 -- darkest tail. Set

@@ -471,3 +471,17 @@ the message *after* an A/B is useless: the text arrives when the audio is over.
 Speech synthesis between clips was worse (truncated and distracting). Settled on
 a non-verbal count-in: N short 880 Hz pips = mode N (1 ROOM, 2 PLATE, 3 HALL,
 4 BIG), then the clip. `pip1..4.wav` alongside `gap.wav` in the scratchpad.
+
+### Round 4b — BIG gets its early reflections back
+
+One constant. BIG's ER level 0 → **0.19**, just under HALL's 0.25, firing into
+the 39–92 ms taps Round 4 gave it and which had been sitting unused.
+
+The old reasoning was "a big space has no close walls to hear" — true of CLOSE
+walls, false of the space as a whole. A large hall's reflections are faint and
+**late**, and lateness is the cue that says *vast* before the tail arrives.
+
+By ear: **good, kept.** The risks it was checked against were that the taps
+would read as a slapback stuck on the front rather than as scale, and that they
+would muddy the onset — BIG has the lowest diffusion coefficient of the four, so
+discrete taps get the least smearing there. Neither happened.
