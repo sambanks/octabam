@@ -291,6 +291,12 @@ def assemble(src_text, org):
 
 def main():
     delayprobe = os.environ.get("DELAYPROBE") == "1"
+    if delayprobe:
+        # Make it unmistakable ON THE UNIT which firmware is running. Three
+        # debugging rounds were lost to exactly this ambiguity, and a probe
+        # build that reads "ChonVerb22" like the product build is that hazard
+        # in its worst form -- this one deliberately silences a stock effect.
+        FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG + b"P"
     if not DIS.exists():
         sys.exit(f"missing {DIS} -- run ./setup.sh")
     img = bytearray(IMG.read_bytes())
