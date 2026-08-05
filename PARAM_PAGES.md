@@ -340,10 +340,13 @@ slot, so the cause is a per-effect resource rather than a per-slot permission.
 Leading hypothesis: the delay needs a delay-line buffer that is allocated only for
 the FX2 slot, so an FX1 delay runs with no buffer and produces nothing. Untested.
 
-Unconfirmed lead: `FUN_40005638` (a defaults initialiser) references the FILTER
-and DELAY descriptors directly, outside the id tables — the only two effects that
-get that treatment. Whether that relates to buffer setup is not established; the
-decompilation was not understood well enough to claim it.
+~~Unconfirmed lead: `FUN_40005638` references the FILTER and DELAY descriptors
+directly...~~ **CLOSED, 5 Aug 2026, and it was nothing.** `FUN_40005638` is the
+**part defaults initialiser**: it copies `E+0x3b` out of each of those two
+descriptors into a fresh part's structure, because a new part defaults to
+**FX1 = FILTER, FX2 = DELAY**. It has no connection to delay-line buffers. The
+real question — where the delay runs, given id `0x08` is a passthrough — is open
+and the DSP is now ruled out; see `DSP.md` §5.
 
 ### Follow-up hardware tests
 

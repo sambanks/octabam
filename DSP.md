@@ -219,18 +219,63 @@ The null stub is not silence, it is a **passthrough**:
 Which is exactly the observed behaviour: the parameter page worked, the audio was
 untouched. `0x08` has no implementation in *either* payload.
 
-Yet DELAY demonstrably works on FX2 in stock firmware. Since this is the only
-dispatch in either payload, **the delay must be implemented outside the
-per-effect insert chain** — a dedicated stage in the audio graph that the FX2
-slot enables, rather than a table-dispatched insert. That also explains why
-adding `0x08` to the FX1 list changed nothing: the dispatch handed it the
-passthrough, and the dedicated stage only watches the FX2 slot. *(Best-supported
-inference. Direct evidence: `0x08` → passthrough in both tables, and delay works
-on FX2.)*
+Which is exactly the observed behaviour on FX1: the parameter page worked, the
+audio was untouched. **That half is settled.**
 
-`MULTIBCOMP` (`0x19`) also points at the stub, confirming the "unfinished
-placeholder" reading of its copied-from-DJ-EQ parameter labels — and retiring the
-probe idea, which would have found nothing but passthrough on all 19 free ids.
+### Where DELAY actually is — OPEN, and the DSP is ruled out
+
+The FX2 half was previously written up here as solved: "a dedicated stage in the
+audio graph that the FX2 slot enables." **That was an inference to explain the
+stub, and searching for it found nothing.** Retracted; what follows is what was
+actually checked (5 Aug 2026).
+
+Echo Freeze Delay is a normal per-track FX2 effect — manual §11.4.10 lists it
+under "FX2 effects", alongside the three reverbs. So the contradiction is real:
+a documented per-track insert whose id resolves to a passthrough.
+
+**Ruled out, by measurement:**
+
+* **Both slots share one dispatch.** Six `jsr (r2)` sites, all in `P:0x0041e`,
+  all indexing `X:0x215`/`X:0x235`. FX1 takes the id from `r6+$1b`, FX2 from
+  `r6+$1c` — that is the *only* difference between the slots.
+* **No special case.** No `cmp` against id 8 anywhere in the core modules.
+* **No extra stage.** The per-track path is FX1 → FX2 → a 16-iteration gain
+  routine (`func_00055a`) → bookkeeping → `jmp int_00004a`. The frame loop
+  (`P:0x40`) makes one call, to the unpack routine.
+* **No hidden code.** A reachability sweep from the dispatch tables, the
+  interrupt vectors and the bootstraps reaches **95.8%** of payload A's
+  instructions and **98.5%** of payload B's. Every unreached run is small
+  (≤112 instructions) and sits inside a module that is otherwise reached.
+  There is no delay-sized body of unreferenced code.
+* **No delay buffer.** Every non-effect module characterised: `0x2bf` is a
+  MAC/pointer-walk resampler, `0x3a1` parameter unpacking, `0x5cb` flag
+  handling off `r6+$1e`, `0x6f4` a small MAC helper. **The largest modulo
+  buffer anywhere in the program is 128 words** (`m6=$7f`). A delay needs
+  thousands.
+* **No third program.** Payloads A and B are back-to-back and the image tail
+  after B is 93% zeros. A and B are the two DSP *chips*, and neither has it.
+
+**A lead that turned out to be nothing.** `PARAM_PAGES.md` flagged
+`FUN_40005638` as referencing the FILTER and DELAY descriptors directly,
+"outside the id tables — the only two effects that get that treatment", and
+wondered whether it related to buffer setup. It does not: it is the **part
+defaults initialiser**, copying `E+0x3b` out of each. A fresh part just defaults
+to **FX1 = FILTER, FX2 = DELAY**. Lead closed.
+
+**So the delay is not in the DSP program at all.** The remaining explanation is
+that it runs on the ColdFire — which is consistent with it needing a buffer far
+larger than the 32,768-word ceiling a DSP effect can reach (§7c), while SDRAM
+sits on the CPU side, and with FREEZE being buffer machinery. **That is a
+hypothesis, not a finding**, and this section should not be marked solved again
+until someone locates the code. What would settle it: find per-sample circular-
+buffer work on the ColdFire in the frame path, keyed off the FX2 slot's id.
+
+`MULTIBCOMP` (`0x19`) also points at the stub. It appears in **neither** of the
+manual's FX1/FX2 lists and its parameter labels are copied from DJ EQ — an
+unfinished entry that was never exposed, and **distinct from the Dynamix
+Compressor**, which is `0x18` and has real code (180 words at `0x01aa4`). That
+also retires the probe idea, which would have found nothing but passthrough on
+all 19 free ids.
 
 ### The stub is also the ABI specification
 

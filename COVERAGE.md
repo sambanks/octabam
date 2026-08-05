@@ -8,9 +8,18 @@ decompiled) · ⬜ untouched.
 
 **The Octatrack's audio algorithms are NOT in the binary we have analyzed.** The MAIN OS
 (ColdFire code) is the *control*: UI, sequencer, files, and the assembly of voice parameters.
-The *signal processing* — sample playback, **timestretch**, and the **17 effects**
-(filters, reverbs, delays, phaser…) — runs on the **DSP56xxx**, whose program is a **separate
+The *signal processing* — sample playback, **timestretch**, and the effects
+(filters, reverbs, phaser…) — runs on the **DSP56xxx**, whose program is a **separate
 binary** that the ColdFire uploads at startup (`FUN_40001d4c`, 24-bit words).
+
+**Corrected 5 Aug 2026: there are 14 distinct effects, not 17.** Manual §11.4.10
+lists 10 on FX1 and 14 on FX2 (the FX1 ten plus Echo Freeze Delay and the three
+reverbs). Of those 14, the DSP implements **13** — every one except **Echo Freeze
+Delay**, whose id `0x08` resolves to the passthrough stub. Where the delay
+actually runs is an open question and the DSP is ruled out; see `DSP.md` §5.
+(A 15th id, `MULTIBCOMP` `0x19`, exists in the descriptor tables but appears in
+neither manual list and has no DSP code — an unfinished entry, and not the same
+thing as the Dynamix Compressor, which is `0x18` and real.)
 
 → Reversing the actual audio (FX, timestretch) is a **separate project**: you have to **extract and
 disassemble the DSP56xxx program** (24-bit DSP56300 architecture, a different disassembler).
