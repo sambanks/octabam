@@ -1062,10 +1062,31 @@ md_done:
 ; out = dry*(1-MIX) + wet*MIX. MIX arrives as value<<16, so 1-MIX is just
 ; $7fffff minus it.
         move    x:(r6+$5),x0
-        move    x0,x:(r7+$20)           ; wet gain
+        move    x0,x:(r7+$20)           ; wet gain, unchanged: rises the whole way
+; v96: HOLD the dry at unity for the bottom half of the knob, then crossfade it
+; away over the top half. A straight 1-MIX crossfade measured the knob getting
+; ~7 dB QUIETER as it was turned up (-22.0 dBFS at MIX=0 down to -28.8 at 96),
+; because a reverb's wet is inherently far below its dry: the tail spreads the
+; same energy over seconds, so swapping dry for wet at equal gain loses level.
+; Turning a reverb up should not shrink the sound.
+;
+; dry = 1                 for MIX <= 0.5      -- pure "mix more in"
+;     = 2 * (1 - MIX)     for MIX >  0.5      -- reaches fully wet at the top
+;
+; Keeps what v94 was actually after (the top of the knob IS wet, which the old
+; additive law could never reach) and drops what made it feel wrong.
+        move    #>$400000,a             ; 0.5
+        move    x0,b
+        cmp     a,b                     ; MIX - 0.5
+        blt     mixhold
         move    #>$7fffff,a
-        sub     x0,a
-        move    a,x:(r7+$70)            ; dry gain = 1 - MIX
+        sub     x0,a                    ; 1 - MIX, and <= $3fffff on this branch
+        asl     #$1,a,a                 ; so the double cannot overflow into sign
+        bra     mixset
+mixhold:
+        move    #>$7fffff,a             ; dry at unity across the bottom half
+mixset:
+        move    a,x:(r7+$70)            ; dry gain
 
 ; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
 ; Moved off slot 8 ($d's knob field) so DIFFUSION can have it. A companion

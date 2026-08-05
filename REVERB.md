@@ -66,7 +66,7 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
 | 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths, within the current MODE |
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
-| 1 | 5 | MIX | `r6+$5` | dry/wet **crossfade** |
+| 1 | 5 | MIX | `r6+$5` | dry held to half-travel, then crossfaded (see below) |
 | 2 | 6 | SPEED | `r6+$b` | LFO rate, ~0.13–1.9 Hz |
 | 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 HALL, 3 BIG |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
@@ -667,8 +667,23 @@ Two concrete cautions that came out of it:
   bug recorded above — fixing something correct exposed what it had been
   masking — but here what it exposed does not matter.
 
-Still true and still not acted on: MIX adds wet on top of *unity* dry rather
-than crossfading, so `dry + 0.78×wet` must clip a hot source at high MIX.
+**MIX: acted on twice, and the second time was the right shape.** v94 made it a
+straight `dry*(1-MIX) + wet*MIX` crossfade, because the old additive law left
+dry at full scale forever and the top of the knob was never actually *wet*.
+That motive was sound and the result was not: measured, the knob got **7 dB
+QUIETER as it was turned up** (−22.0 dBFS at MIX=0 → −28.8 at 96). This is not
+the usual −3 dB crossfade dip. **A reverb's wet is inherently far below its
+dry** — the tail spreads the same energy over seconds — so swapping one for the
+other at equal gain loses real level, and turning a reverb up should never
+shrink the sound. v96 holds the dry at unity for the bottom half and crossfades
+it away over the top half:
+
+    dry = 1              MIX <= 64      pure "mix more in"
+        = 2 * (1 - MIX)  MIX >  64      still reaches fully wet at the top
+
+Flat to within 0.1 dB across the bottom half, peak unchanged at 0.70–0.71, and
+it keeps what v94 was after. Reported by the user as unintuitive before it was
+measured; the measurement agreed.
 That is a voicing decision, not a bug fix, and there is no ear evidence it
 matters yet.
 
