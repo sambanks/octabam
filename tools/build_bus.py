@@ -266,6 +266,13 @@ PP = {
 # take its code, so its stock dispatch entries stand and FX1 gets it back.
 DONOR_IDS = {"plate": 0x14, "spring": 0x15, "dark": 0x16}
 
+# Stock Echo Freeze Delay. Untouched by a normal build: its descriptor, its
+# FX2_IDS entry and its (passthrough) dispatch are all stock. DELAYPROBE=1 puts
+# it back in the menu and points its dispatch at dsp/silence_stub.asm -- see
+# that file for what each audible outcome would mean.
+STOCK_DELAY_ID = 0x08
+STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
+
 
 def assemble(src_text, org):
     tmp = pathlib.Path("/tmp/build_bus_src.asm")
@@ -283,6 +290,7 @@ def assemble(src_text, org):
 
 
 def main():
+    delayprobe = os.environ.get("DELAYPROBE") == "1"
     if not DIS.exists():
         sys.exit(f"missing {DIS} -- run ./setup.sh")
     img = bytearray(IMG.read_bytes())
@@ -389,6 +397,11 @@ def main():
     # making every unassigned track a SEND removes the "first track set to NONE
     # stalls the bus" hazard by construction rather than patching around it.
     real = [(n, clone_addr[n]) for n in ORDER]
+    if delayprobe:
+        # Stock DELAY needs no clone -- it has its own descriptor and its own
+        # FX2_IDS entry, both untouched by this build. It only needs putting
+        # back in the list so it can be selected.
+        real = real + [("DELAY (stock)", STOCK_DELAY_P)]
     entries = [p for _, p in real] + [0]
     assert len(entries) * 4 <= CLONE_BASE - NEW_LIST, "list overruns the clone cave"
     for i, v in enumerate(entries):
@@ -408,6 +421,12 @@ def main():
     # DSP dispatch. Every unassigned track is then a SEND automatically.
     wr32(FX2_IDS + NONE_ID * 4, clone_addr["SEND"])
     wr32(ID2POS + NONE_ID * 4, ORDER.index("SEND"))
+    if delayprobe:
+        wr32(ID2POS + STOCK_DELAY_ID * 4, len(real) - 1)
+        if rd32(FX2_IDS + STOCK_DELAY_ID * 4) != STOCK_DELAY_P:
+            sys.exit("DELAY's FX2_IDS entry is not stock -- refusing to probe")
+        print(f"  *** DELAY PROBE: stock DELAY restored to the menu at "
+              f"position {len(real) - 1} ***")
     print(f"  chooser list = {len(real)} entries, no NONE, viewport shrunk to "
           f"{len(real)} rows (no padding)")
     print(f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
@@ -499,6 +518,23 @@ def main():
             print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
+
+        if delayprobe:
+            # Point stock DELAY's id at a stub that writes SILENCE where the
+            # stock one passes audio through. What we hear then tells us
+            # whether the delay's audio goes through the FX2 insert at all --
+            # see dsp/silence_stub.asm for how to read each outcome.
+            words, init_a, proc_a = assemble(
+                pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
+            if cursor + len(words) > base_a + budget:
+                sys.exit("silence stub does not fit the region's free tail")
+            place(words, cursor)
+            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, init_a)
+            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, proc_a)
+            print(f"  {'SILENCE STUB':13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
+                  f"({len(words):4} words)  id 0x{STOCK_DELAY_ID:02x} "
+                  f"*** DELAY now writes silence, NOT passthrough ***")
+            cursor += len(words)
         print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
               f"({budget} words)  used {cursor - base_a}  "
               f"FREE {base_a + budget - cursor}")
@@ -516,13 +552,20 @@ def main():
     # A MODE-forced build ignores the real page-2 slot, so it must never end up
     # wrapped and flashed -- it would look like a MODE knob that does nothing.
     # Give it its own path rather than overwriting the flashable image.
-    out = OUT if mode_env is None else pathlib.Path(
-        "out/mainos_bus_mode%d.bin" % int(mode_env))
+    out = OUT
+    if mode_env is not None:
+        out = pathlib.Path("out/mainos_bus_mode%d.bin" % int(mode_env))
+    if delayprobe:
+        out = pathlib.Path("out/mainos_bus_delayprobe.bin")
     out.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
-    print(f"\n{out}: {len(img):,} bytes, {d} changed"
-          + ("   *** DIAGNOSTIC, MODE FORCED -- DO NOT FLASH ***"
-             if mode_env is not None else ""))
+    note = ""
+    if mode_env is not None:
+        note = "   *** DIAGNOSTIC, MODE FORCED -- DO NOT FLASH ***"
+    elif delayprobe:
+        note = ("   *** DIAGNOSTIC DELAY PROBE -- flashable, but stock DELAY "
+                "writes SILENCE. Not a product build. ***")
+    print(f"\n{out}: {len(img):,} bytes, {d} changed" + note)
 
 
 if __name__ == "__main__":
