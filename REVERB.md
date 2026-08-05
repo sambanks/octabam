@@ -551,6 +551,39 @@ listens. See `VOICING.md` Rounds 2e–2f.
 This also lifts Round 2b's block on voicing: the tail no longer has broadband
 noise in it, so the per-mode constants can be judged on their own terms.
 
+## What MODE actually varies (current)
+
+Six levers, after Rounds 3–4. At the start of that work only the first three
+existed, and the modes were reported as sounding alike; after all six, "much
+better" by ear.
+
+| lever | ROOM | PLATE | HALL | BIG |
+|---|---|---|---|---|
+| tap scale (size) | 0.45 | 0.5625 | 0.71875 | 1.00 |
+| ER level | 0.75 | 0 | 0.25 | 0 |
+| diffusion coefficient | high | highest | medium | lowest |
+| **tap spread** | 1.60:1 | 1.24:1 | 1.92:1 | 1.69:1 |
+| **ER arrivals** | 4.5–21 ms | — | 20–77 ms | — |
+| **diffuser taps** | 1607.. | 1447.. | 1994.. | 2011.. |
+| **LFO rate** | 0.70 | 1.00 | 0.45 | 0.25 |
+| **decay scale → RT60** | 0.92 → 2.7 s | 0.965 → 4.7 s | 0.99 → 7.7 s | 1.00 → 10.0 s |
+
+**Decay was the one MODE never touched**, and it is the biggest room-vs-hall
+cue — every mode used to decay at whatever TIME said (6.9–11.6 s measured), so
+ROOM vs HALL stayed the weakest pair however the others were set.
+
+**Two invariants hold the per-mode work honest.** The mean tap is 3178 in every
+mode, so tap scale and tap spread stay independent; and ROOM's spread is the
+original set, so ROOM must render *bit-identical* whenever the indirection is
+touched.
+
+**The r7 state block is FULL.** `$7e..$81` were the last free slots. `r7+$84`
+and up **hang the DSP** (host-owned — see `DSP.md`, bisected across three
+builds). Anything further that needs per-mode state must use the parking
+pattern: `md_*` writes its scale into a slot a later parameter block is going to
+overwrite anyway (`$2f` rate, `$1e` decay), and that block folds it into its own
+multiply. `md_*` runs before every parameter block, which is what makes it safe.
+
 **Spectral flatness cannot tell diffusion from distortion.** It rewards
 broadband noise, so it ranked the flutter builds highly and dropped when the
 flutter was fixed. It is useful for comparing structural changes, and

@@ -130,6 +130,11 @@ Changes made (v95, `dsp/reverb_server.asm`):
    across its **entire** range moves the tail's >3 kHz energy ratio only
    0.035 → 0.046. So per-mode damping cannot be the differentiator this file
    assumed it would be. The tap respread is doing the real work.
+   **[RETRACTED in Round 3 — this is false.]** Measured with a proper FFT the
+   LP knob moves the 3–8 kHz tail by **56 dB**. The 0.035 → 0.046 figure came
+   from an analysis that aliased everything above 2756 Hz. Damping turned out
+   to be the strongest differentiator available, and acting on this claim cost
+   two rounds. See Round 3.
 
 **Verdict by ear**: BIG and HALL are now different but "hard to quantify, not
 super different". Still short of the goal. Deliberately left there, because the
@@ -341,6 +346,7 @@ reverb" -- the noise is gone, the tail did not get worse, and the per-mode
 constants can be judged on their own terms again. Round 1's finding stands as
 the open question: the modes are **under-differentiated**, and damping was
 measured to have little spectral authority, so tap scale is doing the work.
+(That damping claim is RETRACTED — see Round 3; it was an aliasing artifact.)
 
 **And a counter-example worth keeping.** `REVERB.md`'s standing caution --
 that removing an accidental noise source may expose ringing it was masking,
@@ -413,3 +419,55 @@ numbers, a still-playing source, an aliasing DFT). Two were caught by invariants
 that should have been cheap habits from the start: *make the change a no-op and
 require bit-identical output* caught the first, and *a column that does not move
 at all is a broken measurement, not a null result* caught the third.
+
+### Round 4 — the modes finally separate, and it was decay all along
+
+Round 3 left the constants no longer binding and the shared *structure* binding
+instead. Four things were made per-mode. Three were the ones predicted; the
+fourth was not, and it was the one that mattered.
+
+**1. Early-reflection ARRIVALS.** The six ER taps were fixed at
+331/557/919/1301/1723/2213 in every mode with only their LEVEL varying — a near
+wall and a far wall arrived at the same time and differed only in loudness.
+Now ROOM 4.5–21 ms (tight cluster), HALL 20–77 ms (late, sparse), all prime,
+all inside the 4096-word pre-delay.
+
+**2. Input diffuser taps.** The four series allpasses were fixed at
+1994/1706/1438/1226; only the coefficient varied, so every mode built echo
+density identically. Now PLATE shortest (1447/1259/1103/953), BIG longest
+(2011/1789/1531/1297).
+
+**3. LFO rate.** Only depth varied per mode. A plate's shimmer is a different
+RATE from a hall's drift. PLATE 1.00 → BIG 0.25.
+
+By ear after those three: *"PLATE is better, and ROOM vs HALL is the weakest
+pair"* — which is exactly what the metric said (3.72, lowest of six). Ear and
+measurement have now agreed on the weakest pair twice running.
+
+**4. DECAY TIME — the one MODE never touched at all.** Measured at TIME=64 the
+four modes ran **6.9 / 9.8 / 10.3 / 11.6 s**, and even that spread was
+incidental: shorter lines circulate more often, so they decay faster at the same
+`g`. Nothing in `md_*` set decay. Decay time is the single biggest room-vs-hall
+cue, so ROOM vs HALL was always going to be the weakest pair however the other
+five levers were set. A ROOM with a 6.9 s tail is a cathedral.
+
+Per-mode scale on the feedback gain: ROOM 0.92, PLATE 0.965, HALL 0.99, BIG
+1.00. Result **2.7 / 4.7 / 7.7 / 10.0 s**. Scaling `g` DOWN is always safe; it
+is scaling up that self-oscillates.
+
+**By ear: "much better!"** Six levers now vary per mode, against three at the
+start of the session (tap scale, ER level, diffusion coefficient).
+
+**The r7 block is FULL, and the pattern that got round it.** `$7e..$81` were the
+last free slots and went to the diffuser taps; `r7+$84..$8a` **hangs the DSP**
+(host-owned, `DSP.md`). The LFO rate and decay scale needed no slot at all: the
+`md_*` block writes its scale into the slot the later parameter block is going
+to overwrite anyway (`$2f` for rate, `$1e` for decay), and that block folds it
+into its own multiply. Setup order makes it safe — `md_*` runs before every
+parameter block. **Anything else per-mode has to use this trick or free a slot.**
+
+**Method note — say what is playing BEFORE it plays.** Announcing the order in
+the message *after* an A/B is useless: the text arrives when the audio is over.
+Speech synthesis between clips was worse (truncated and distracting). Settled on
+a non-verbal count-in: N short 880 Hz pips = mode N (1 ROOM, 2 PLATE, 3 HALL,
+4 BIG), then the clip. `pip1..4.wav` alongside `gap.wav` in the scratchpad.

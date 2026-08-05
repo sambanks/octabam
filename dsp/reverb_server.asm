@@ -555,6 +555,55 @@ warmdone:
 ; A big space is darker and more moving in its tail, not merely longer; that
 ; is the part tap scale was never going to express.
 md_big:                                 ; 3, and anything unexpected
+; DECAY SCALE, 1.00 -> ~11.6 s, unchanged; BIG is the long one.
+; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
+; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
+; incidentally, from shorter lines circulating more often. Decay time is
+; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
+; pair however the other five levers were set.
+;
+; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
+; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
+; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
+        move    #>$7FFFFF,a
+        move    a,x:(r7+$1e)
+; INPUT DIFFUSER taps, LONGEST -- slowest, most spacious buildup.
+; The four series allpasses were fixed at 1994/1706/1438/1226 in every
+; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
+; fast echo density builds, so every mode built density identically.
+; Stored as (2048 - tap), which is what the modulo read wants.
+        move    #>37,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 2011 (45.6 ms)
+        move    #>259,a
+        move    a,x:(r7+$7f)
+        move    #>517,a
+        move    a,x:(r7+$80)
+        move    #>751,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 1297 (29.4 ms)
+        move    #>$200000,a             ; MODE's LFO RATE scale -- slowest -- a huge space barely moves.
+        move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
+                                        ; below folds into its own result. The
+                                        ; r7 block ends at $83 ($84+ is host-
+                                        ; owned and HANGS, DSP.md), so there is
+                                        ; no spare slot for this.
+; EARLY-REFLECTION ARRIVALS, 39-92 ms -- the largest space there is.
+; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
+; every mode, with only their LEVEL varying -- so a near wall and a far
+; wall arrived at exactly the same time and only differed in loudness.
+; Arrival PATTERN is most of what says which space this is, before the
+; tail even starts. All prime, all inside the 4096-word pre-delay.
+        move    #>1741,a
+        move    a,x:(r7+$78)            ; ER tap 0, 39.5 ms
+        move    #>2377,a
+        move    a,x:(r7+$79)
+        move    #>2917,a
+        move    a,x:(r7+$7a)
+        move    #>3391,a
+        move    a,x:(r7+$7b)
+        move    #>3733,a
+        move    a,x:(r7+$7c)
+        move    #>4051,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 91.9 ms
 ; TAP SPREAD, 1.69 : 1 (longest:shortest) -- wide, CAPPED by the buffer.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -593,6 +642,55 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$73)            ; scale comes from movement, not length
         bra     md_done
 md_room:
+; DECAY SCALE, 0.92 -> RT60 ~2.0 s. A room is SHORT; 6.9 s is a cathedral.
+; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
+; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
+; incidentally, from shorter lines circulating more often. Decay time is
+; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
+; pair however the other five levers were set.
+;
+; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
+; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
+; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
+        move    #>$75C000,a
+        move    a,x:(r7+$1e)
+; INPUT DIFFUSER taps, short -- a small space diffuses fast.
+; The four series allpasses were fixed at 1994/1706/1438/1226 in every
+; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
+; fast echo density builds, so every mode built density identically.
+; Stored as (2048 - tap), which is what the modulo read wants.
+        move    #>441,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 1607 (36.4 ms)
+        move    #>681,a
+        move    a,x:(r7+$7f)
+        move    #>885,a
+        move    a,x:(r7+$80)
+        move    #>1057,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 991 (22.5 ms)
+        move    #>$599999,a             ; MODE's LFO RATE scale -- moderate.
+        move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
+                                        ; below folds into its own result. The
+                                        ; r7 block ends at $83 ($84+ is host-
+                                        ; owned and HANGS, DSP.md), so there is
+                                        ; no spare slot for this.
+; EARLY-REFLECTION ARRIVALS, 4.5-21 ms -- CLOSE walls, tight cluster.
+; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
+; every mode, with only their LEVEL varying -- so a near wall and a far
+; wall arrived at exactly the same time and only differed in loudness.
+; Arrival PATTERN is most of what says which space this is, before the
+; tail even starts. All prime, all inside the 4096-word pre-delay.
+        move    #>199,a
+        move    a,x:(r7+$78)            ; ER tap 0, 4.5 ms
+        move    #>313,a
+        move    a,x:(r7+$79)
+        move    #>439,a
+        move    a,x:(r7+$7a)
+        move    #>587,a
+        move    a,x:(r7+$7b)
+        move    #>751,a
+        move    a,x:(r7+$7c)
+        move    #>941,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 21.3 ms
 ; TAP SPREAD, 1.60 : 1 (longest:shortest) -- the reference -- unchanged.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -623,6 +721,55 @@ md_room:
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
         bra     md_done
 md_plate:
+; DECAY SCALE, 0.965 -> ~4.8 s.
+; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
+; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
+; incidentally, from shorter lines circulating more often. Decay time is
+; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
+; pair however the other five levers were set.
+;
+; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
+; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
+; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
+        move    #>$7B8000,a
+        move    a,x:(r7+$1e)
+; INPUT DIFFUSER taps, SHORTEST -- density from the first millisecond.
+; The four series allpasses were fixed at 1994/1706/1438/1226 in every
+; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
+; fast echo density builds, so every mode built density identically.
+; Stored as (2048 - tap), which is what the modulo read wants.
+        move    #>601,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 1447 (32.8 ms)
+        move    #>789,a
+        move    a,x:(r7+$7f)
+        move    #>945,a
+        move    a,x:(r7+$80)
+        move    #>1095,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 953 (21.6 ms)
+        move    #>$7fffff,a             ; MODE's LFO RATE scale -- fastest -- a plate shimmers.
+        move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
+                                        ; below folds into its own result. The
+                                        ; r7 block ends at $83 ($84+ is host-
+                                        ; owned and HANGS, DSP.md), so there is
+                                        ; no spare slot for this.
+; EARLY-REFLECTION ARRIVALS, unchanged; PLATE runs ER level 0.
+; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
+; every mode, with only their LEVEL varying -- so a near wall and a far
+; wall arrived at exactly the same time and only differed in loudness.
+; Arrival PATTERN is most of what says which space this is, before the
+; tail even starts. All prime, all inside the 4096-word pre-delay.
+        move    #>331,a
+        move    a,x:(r7+$78)            ; ER tap 0, 7.5 ms
+        move    #>557,a
+        move    a,x:(r7+$79)
+        move    #>919,a
+        move    a,x:(r7+$7a)
+        move    #>1301,a
+        move    a,x:(r7+$7b)
+        move    #>1723,a
+        move    a,x:(r7+$7c)
+        move    #>2213,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 50.2 ms
 ; TAP SPREAD, 1.24 : 1 (longest:shortest) -- TIGHTEST -- most homogeneous.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -653,6 +800,55 @@ md_plate:
         move    a,x:(r7+$73)
         bra     md_done
 md_hall:
+; DECAY SCALE, 0.99 -> ~7.9 s.
+; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
+; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
+; incidentally, from shorter lines circulating more often. Decay time is
+; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
+; pair however the other five levers were set.
+;
+; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
+; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
+; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
+        move    #>$7D7000,a
+        move    a,x:(r7+$1e)
+; INPUT DIFFUSER taps, the original set -- unchanged.
+; The four series allpasses were fixed at 1994/1706/1438/1226 in every
+; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
+; fast echo density builds, so every mode built density identically.
+; Stored as (2048 - tap), which is what the modulo read wants.
+        move    #>54,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 1994 (45.2 ms)
+        move    #>342,a
+        move    a,x:(r7+$7f)
+        move    #>610,a
+        move    a,x:(r7+$80)
+        move    #>822,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 1226 (27.8 ms)
+        move    #>$399999,a             ; MODE's LFO RATE scale -- slow drift.
+        move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
+                                        ; below folds into its own result. The
+                                        ; r7 block ends at $83 ($84+ is host-
+                                        ; owned and HANGS, DSP.md), so there is
+                                        ; no spare slot for this.
+; EARLY-REFLECTION ARRIVALS, 20-77 ms -- FAR walls, late and sparse.
+; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
+; every mode, with only their LEVEL varying -- so a near wall and a far
+; wall arrived at exactly the same time and only differed in loudness.
+; Arrival PATTERN is most of what says which space this is, before the
+; tail even starts. All prime, all inside the 4096-word pre-delay.
+        move    #>883,a
+        move    a,x:(r7+$78)            ; ER tap 0, 20.0 ms
+        move    #>1279,a
+        move    a,x:(r7+$79)
+        move    #>1733,a
+        move    a,x:(r7+$7a)
+        move    #>2239,a
+        move    a,x:(r7+$7b)
+        move    #>2803,a
+        move    a,x:(r7+$7c)
+        move    #>3413,a
+        move    a,x:(r7+$7d)            ; ER tap 5, 77.4 ms
 ; TAP SPREAD, 1.92 : 1 (longest:shortest) -- WIDEST -- most audible structure.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -802,6 +998,9 @@ md_done:
         mpy     x0,y1,a
         move    #>$3bd000,x0
         add     x0,a
+        move    a,x1                    ; fold in MODE's decay scale, parked in
+        move    x:(r7+$1e),y1           ; $1e by the md_ block above. TIME still
+        mpy     x1,y1,a                 ; spans its full range inside a character.
         move    a,x:(r7+$1e)
 
 ; ---- HI: high cut, on the knob LABELLED LP ($4) --------------------------
@@ -972,7 +1171,10 @@ md_done:
                                         ; cannot happen.
         move    #>$180,x0
         add     x0,a
-        move    a,x:(r7+$2f)
+        move    a,x1                    ; fold in MODE's LFO rate scale, which the
+        move    x:(r7+$2f),y1           ; md_ block parked here. SPEED still spans
+        mpy     x1,y1,a                 ; its full range inside each character, the
+        move    a,x:(r7+$2f)            ; same shape as MOD depth and damping.
 
 ; ---- PRE: pre-delay in samples, 0 .. 4064 (93 ms) -----------------------
 ; v * 32 since the 32K re-layout doubled PRE_LEN to 4096 (it was v * 16 into
@@ -1473,7 +1675,7 @@ lf51:
         move    a,x:(r7+$5a)            ; ER accumulator L
         move    a,x:(r7+$5b)            ; ER accumulator R
         move    x:(r7+$62),a
-        move    #>331,x0
+        move    x:(r7+$78),x0           ; this MODE's ER tap 0
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1489,7 +1691,7 @@ lf51:
         add     x0,a
         move    a,x:(r7+$5a)
         move    x:(r7+$62),a
-        move    #>557,x0
+        move    x:(r7+$79),x0           ; this MODE's ER tap 1
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1505,7 +1707,7 @@ lf51:
         add     x0,a
         move    a,x:(r7+$5b)
         move    x:(r7+$62),a
-        move    #>919,x0
+        move    x:(r7+$7a),x0           ; this MODE's ER tap 2
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1521,7 +1723,7 @@ lf51:
         add     x0,a
         move    a,x:(r7+$5a)
         move    x:(r7+$62),a
-        move    #>1301,x0
+        move    x:(r7+$7b),x0           ; this MODE's ER tap 3
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1537,7 +1739,7 @@ lf51:
         add     x0,a
         move    a,x:(r7+$5b)
         move    x:(r7+$62),a
-        move    #>1723,x0
+        move    x:(r7+$7c),x0           ; this MODE's ER tap 4
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1553,7 +1755,7 @@ lf51:
         add     x0,a
         move    a,x:(r7+$5a)
         move    x:(r7+$62),a
-        move    #>2213,x0
+        move    x:(r7+$7d),x0           ; this MODE's ER tap 5
         sub     x0,a
         and     #>$fff,a                ; wrap inside the 4096-word buffer
         move    a1,x0                   ; AND cleans A1 only -- A2-clean before
@@ -1573,7 +1775,7 @@ lf51:
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>54,n5             ; 2048 - 1994
+        move    x:(r7+$7e),n5        ; this MODE's allpass 0
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$32),x0            ; base
         add     x0,a
@@ -1599,7 +1801,7 @@ lf51:
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>342,n5             ; 2048 - 1706
+        move    x:(r7+$7f),n5        ; this MODE's allpass 1
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$33),x0            ; base
         add     x0,a
@@ -1622,7 +1824,7 @@ lf51:
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>610,n5             ; 2048 - 1438
+        move    x:(r7+$80),n5        ; this MODE's allpass 2
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$34),x0            ; base
         add     x0,a
@@ -1645,7 +1847,7 @@ lf51:
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
 ; does the wrap and the base add for free: y:(r5+n5) is the tap read and
 ; y:(r5) is the write, so the second address build disappears entirely.
-        move    #>822,n5             ; 2048 - 1226
+        move    x:(r7+$81),n5        ; this MODE's allpass 3
         move    x:(r7+$39),a            ; phase   (also spaces the n5 write)
         move    x:(r7+$35),x0            ; base
         add     x0,a
