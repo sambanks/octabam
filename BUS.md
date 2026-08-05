@@ -34,7 +34,8 @@ something still unverified, that's called out.
 **Built and running on hardware.** Three FX2 effects sharing a send bus:
 `ChonVerb`, `BongDelay`, `Send`. Build with `python3 tools/build_bus.py`
 (writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
-wrap and flash per `README.md` §3. Latest flashed image was `BUS9`.
+wrap and flash per `README.md` §3. Latest flashed image carries `ChonVerb21`
+(5 Aug 2026); `BUILD_TAG` in `tools/build_bus.py` is the source of that number.
 
 | | |
 |---|---|
@@ -43,10 +44,14 @@ wrap and flash per `README.md` §3. Latest flashed image was `BUS9`.
 | sources | `dsp/reverb_server.asm`, `dsp/delay_server.asm`, `dsp/send_client.asm` |
 | probes | `dsp/page2_probe.asm`, `dsp/xmem_probe.asm` (diagnostics, `PROBE=1` / `XPROBE=1`) |
 
-**ChonVerb is feature-complete as of `ChonVerb19` (4 Aug 2026)**: 32K
-re-layout, tank headroom, modulated in-loop allpasses, early reflections, a
-working MODE select and a real dry/wet crossfade, all confirmed on hardware.
-What remains is per-mode voicing by ear. **BongDelay is still placeholder.**
+**ChonVerb is feature-complete and voiced as of `ChonVerb21` (5 Aug 2026)**:
+32K re-layout, tank headroom, modulated in-loop allpasses, early reflections, a
+MODE select varying six per-mode levers, and a dry/wet law that does not lose
+level as it is turned up — all confirmed on hardware by ear. Per-mode voicing
+is **done** (`VOICING.md` Rounds 1–5); what remains on the reverb is small and
+listed at the end of `REVERB.md`. **BongDelay is still placeholder** — the
+plumbing is verified, the algorithm has never been designed or voiced, and it
+is now the largest open piece of work on the bus.
 
 The effect's displayed name carries its build number (`BUILD_TAG` in
 `tools/build_bus.py`) — bump it every time a `.bin` is wrapped. Three debugging

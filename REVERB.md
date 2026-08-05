@@ -699,7 +699,7 @@ matters yet.
 the result was worse in a way that could not be attributed. The recovery was
 to reflash v77, confirm the baseline, and move one variable at a time.
 
-## Planned design (agreed, not yet built)
+## The design, as built
 
 **One FDN engine with a MODE select**, covering standard characters *and* the
 largest space this hardware supports — rather than choosing between them. The
@@ -717,15 +717,33 @@ three free page-2 selects exist precisely for this; MODE is the obvious first.
 MODE should reconfigure tap lengths, diffusion depth, damping and modulation
 together — not merely rescale SIZE.
 
-**Built as of `ChonVerb19`**: the MODE select exists and works on hardware
-(slot 7, stepped, four values). Its per-mode constants — tap scale, early-
-reflection level, diffusion offset — are first-pass and want tuning by ear.
+**All of the above is built and confirmed on hardware as `ChonVerb21`**
+(5 Aug 2026, "much better"). MODE varies **six** levers, not the three it
+shipped with in `ChonVerb19`: tap scale and spread, ER level and arrival times,
+diffusion coefficient and diffuser taps, LFO rate, damping, and decay time.
+RT60 runs 2.7 / 4.7 / 7.7 / 10.0 s across ROOM → BIG. Decay time was the lever
+MODE had never touched and the one that mattered most — every mode used to
+decay at whatever TIME said, which is why ROOM vs HALL stayed the weakest pair
+however the others were set. Full record in `VOICING.md`.
 
-**Order of work:**
-1. ~~The 32K re-layout~~ — **built and emulator-verified**, see above. It
-   still needs a flash: by ear is what tells you how far the hardware
-   actually goes, and nothing before that does.
-2. Measure real cycle cost with both effects live. Every figure taken so far
-   has been dominated by warm-up and is meaningless; `DSP.md` §12's rule
-   (measure, don't guess) applies.
-3. Then design the modes against what steps 1 and 2 reveal.
+**Order of work — where it stands:**
+1. ~~The 32K re-layout~~ — **done**, flashed, confirmed by ear.
+2. ~~Design the modes~~ — **done**, Rounds 1–5 in `VOICING.md`.
+3. **Measure real cycle cost with both effects live** — *still open, and only a
+   flash can do it.* The ~700-of-~1080 figure is a **static** count of the
+   sample loop, not a measurement under load: `tools/dsp_host` cannot measure
+   this at all (its `instructions/sample` does not scale with frame count).
+   `DSP.md` §12's rule applies.
+
+**Also still open**, both small and both with their evidence recorded above:
+MOD depth's range wants calibrating by ear (Round 5 measured it flattening
+after ~64, so the top half of the knob may be doing nothing); and the
+unexplained emulator-only divergence between one and two instances under a
+nonzero split. Two things the emulator cannot check at all: item 3 above, and
+the UI surface for **WIDTH** and **→DEL**, whose companion fields `-params`
+cannot drive — WIDTH is an audible control that has never been heard moving
+from the front panel.
+
+**Closed, do not re-chase:** modal prominence (8–11 dB over the local envelope,
+monotonic in total delay, no structural lever left under the 32K ceiling —
+`VOICING.md` Round 5); tank saturation; the tail crackle; the MIX law.
