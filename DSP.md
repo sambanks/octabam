@@ -239,6 +239,65 @@ routine: **`r0` = input buffer, `r1` = output buffer, `n7` = sample count, two
 interleaved channels, `rts` when done.** Any new effect has to satisfy that
 contract, and here it is in full.
 
+### Module records are NOT routine boundaries
+
+Measured 5 Aug 2026, while costing out how much program space could be reclaimed
+for BongDelay. **A payload module record says where a chunk of words is loaded,
+nothing more.** The loader lays consecutive records down contiguously, and an
+effect's code runs straight across the seam. So:
+
+* **"No id points at this module" is not evidence the module is dead.**
+* **A module's word count is not the effect's size.**
+
+The case that proves it. Four small P modules — `0x00d64`, `0x00d6a`, `0x00d70`
+(6 words each) and `0x00d76` (32) — have **no entry in either dispatch table**.
+They look free. They are **PHASER's**, and PHASER reaches them by falling off the
+end of its own record:
+
+```asm
+do  #<$2,>$d89     ; PHASER's loop end -- inside the 32-word block
+do  n7,>$d84       ; likewise
+```
+
+They read as mid-routine too: biquad `mpy`/`mac` cascades, **no `rts` anywhere**,
+three identical 6-word sections falling through into each other, the last block
+ending `bra $7b0`. That is an unrolled cascade entered at a computed offset —
+jump in N sections from the end, fall through to a shared tail.
+
+**PHASER's true extent is `0x00cc7`–`0x00d96` = 207 words, not the 157 its record
+claims.**
+
+Every other DSP-implemented effect was checked the same way — disassemble the
+module, take the maximum *control-flow* target, compare against the record end:
+
+| effect | module span | max CF target | |
+|---|---|---|---|
+| FILTER | `0x007d1`–`0x00aa8` (727) | `0x00a3d` | inside |
+| SPATIALIZER | `0x00aa8`–`0x00bad` (261) | `0x00baa` | inside |
+| EQUALIZER | `0x00bad`–`0x00cc7` (282) | `0x00cc5` | inside |
+| **PHASER** | `0x00cc7`–`0x00d64` (157) | **`0x00d89`** | **runs past** |
+| FLANGER | `0x00d96`–`0x00eb7` (289) | `0x00e9c` | inside |
+| COMPRESSOR | `0x01aa4`–`0x01b58` (180) | `0x01b55` | inside |
+| LO-FI | `0x01b58`–`0x01d71` (537) | `0x01d6b` | inside |
+| DJ EQ | `0x01d71`–`0x01eca` (345) | `0x01ec7` | inside |
+| COMB | `0x01eca`–`0x01fdf` (277) | `0x01fd4` | inside |
+
+**PHASER is the only one that spans records**, so the other eight can be sized by
+their records after all.
+
+**Match on control flow only.** A first pass matched every `>$…` operand and
+flagged four effects as running past. Those were long immediates — `move
+#>$2000,x0` — not branch targets. The tell was targets at `0x02000`, past the end
+of the whole FX region. Restrict to `do`/`rep`/`jmp`/`jsr`/`bra`/`bsr`/`Jcc`.
+
+**There is shared code below the FX region.** PHASER's `bra $7b0` lands inside the
+85-word module at `0x00773`–`0x007c8`, under where the algorithms start and right
+below the null stub. At least one effect calls out to common routines, so that
+region is not free either. Who else does is unmapped.
+
+**Rule before overwriting any neighbour: disassemble it and check its
+control-flow targets.** The module map alone will mislead you.
+
 ## 6. How parameters reach the algorithm (step 4 — done)
 
 The dispatcher sets `r6` before calling, and effects read their parameters from
