@@ -534,6 +534,26 @@ warmdone:
         move    #>$2,x0
         cmp     x0,a
         beq     md_hall
+; v95, after the first by-ear round (VOICING.md round 1): HALL and BIG were
+; indistinguishable wet and level-matched. Tap scale was 0.90 vs 1.00 -- 11%,
+; against ~40% for every other step -- and BIG is already at the $7fffff
+; ceiling, so HALL and PLATE come DOWN to even the spacing out. Going below
+; ROOM's 0.45 is not available: v77 raised the SIZE floor precisely because
+; small spaces were metallic, and ROOM's floor is already 713 samples against
+; the 566 measured bad.
+;
+; Tap scale alone could not buy the difference, though, so two constants the
+; agreed design always called for are now wired in as well (REVERB.md: MODE
+; "should reconfigure tap lengths, diffusion depth, damping and modulation
+; together"):
+;
+;   $72  damping scale  -- multiplies the HI-derived coefficient. SMALLER is
+;                          darker, because the one-pole is s += c*(d-s).
+;   $73  mod depth scale -- multiplies MOD. Only ever scales DOWN, so BIG sits
+;                          at unity and the tighter spaces move less.
+;
+; A big space is darker and more moving in its tail, not merely longer; that
+; is the part tap scale was never going to express.
 md_big:                                 ; 3, and anything unexpected
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
@@ -541,6 +561,18 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$6c)            ; no close walls to hear
         move    #>$040000,a             ; diffusion offset, lowest
         move    a,x:(r7+$3f)
+        move    #>$390000,a             ; damping 0.445 -- darkest tail. Set
+        move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
+                                        ; first attempt used 0.60 against HALL's
+                                        ; 0.75 and measured BIG the BRIGHTER of
+                                        ; the two, because damping applies once
+                                        ; per circulation and BIG's lines are
+                                        ; 1.39x longer, so it damps 0.72x as
+                                        ; often per second. Retention over equal
+                                        ; time goes as c^(1/tapscale), which is
+                                        ; what these constants are chosen on.
+        move    #>$7fffff,a             ; full modulation: the Valhalla-flavoured
+        move    a,x:(r7+$73)            ; scale comes from movement, not length
         bra     md_done
 md_room:
         move    #>$399999,a             ; tap scale 0.45 -- close walls
@@ -549,22 +581,35 @@ md_room:
         move    a,x:(r7+$6c)            ; most of what says "room"
         move    #>$0c0000,a             ; diffusion offset, high
         move    a,x:(r7+$3f)
+        move    #>$790000,a             ; damping 0.95 -- small and bright
+        move    a,x:(r7+$72)
+        move    #>$400000,a             ; least movement: a small room does not
+        move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
         bra     md_done
 md_plate:
-        move    #>$530000,a             ; tap scale 0.65
+        move    #>$480000,a             ; tap scale 0.5625 (was 0.65)
         move    a,x:(r7+$6f)
         clr     a                       ; a plate has no early reflections at
         move    a,x:(r7+$6c)            ; all -- it is not a room
         move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
+        move    #>$7fffff,a             ; brightest -- a plate's tail is the
+        move    a,x:(r7+$72)            ; opposite of a dark hall
+        move    #>$599999,a             ; some movement, less than a hall
+        move    a,x:(r7+$73)
         bra     md_done
 md_hall:
-        move    #>$730000,a             ; tap scale 0.90
+        move    #>$5c0000,a             ; tap scale 0.71875 (was 0.90)
         move    a,x:(r7+$6f)
         move    #>$200000,a             ; weak early reflections -- far walls
         move    a,x:(r7+$6c)
         move    #>$060000,a             ; diffusion offset, medium
         move    a,x:(r7+$3f)
+        move    #>$730000,a             ; damping 0.90 per pass -- but its lines
+        move    a,x:(r7+$72)            ; are short enough that per SECOND this
+                                        ; still lands darker than PLATE
+        move    #>$7fffff,a             ; full movement
+        move    a,x:(r7+$73)
 md_done:
 
     ; ---- SIZE: scale all four tap lengths -----------------------------------
@@ -694,7 +739,10 @@ md_done:
         mpy     x0,y1,a
         move    #>$100000,x0
         add     x0,a
-        move    a,x:(r7+$1f)
+        move    a,x1                    ; v95: scale by MODE's damping constant
+        move    x:(r7+$72),y1           ; before it lands. The scale is <= 1.0,
+        mpy     x1,y1,a                 ; so c stays inside its safe range and
+        move    a,x:(r7+$1f)            ; the knob still spans within a mode
 
 ; ---- LO: low cut inside the feedback path, on the knob LABELLED HP ($3) --
 ; The Blackhole/Supermassive pair is a low AND a high cut inside the loop,
@@ -759,7 +807,9 @@ md_done:
 ; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
 ; is labelled LP and now carries the high cut, which is what it says.
         move    x:(r6+$1),x0
-        move    x0,x:(r7+$28)
+        move    x:(r7+$73),y1           ; v95: scaled per MODE, only ever down
+        mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
+        move    a,x:(r7+$28)            ; its full range inside each character
 
 ; ---- WIDTH: 0 = mono, 127 = full stereo -- slot 9, $d's LOW bits (v92) --
 ; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
@@ -791,7 +841,17 @@ md_done:
         move    x:(r7+$3f),x0           ; and g read NEGATIVE; the others sat at
         add     x0,a                    ; 0.88-0.97, where an allpass is a
                                         ; near-oscillator, not a diffuser.
-        add     x0,a
+                                        ;
+                                        ; v95: the mode offset was added TWICE
+                                        ; here. The span above is sized so that
+                                        ; base + full DIFF + the largest offset
+                                        ; lands at 0.352+0.326+0.125 = 0.802 --
+                                        ; the "under ~0.80" this comment claims,
+                                        ; and only true with ONE add. The second
+                                        ; put PLATE at 0.93 at DIFF=127, back in
+                                        ; the near-oscillator range the comment
+                                        ; warns about, which is the opposite of
+                                        ; diffusion and blurs the modes together.
         move    a,x:(r7+$6d)            ; g, for every allpass
 
 ; ---- RATE: LFO increment, ~0.34 Hz .. ~3 Hz -----------------------------
@@ -932,7 +992,7 @@ lf3e:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a                 ; shift by n-1, never n (REVERB.md's
+        asl     #$7,a,a                 ; shift by n-1, never n (REVERB.md's
         move    a,x0                    ; interpolation fraction rule)
         move    x0,x:(r7+$53)            ; AP fraction
         move    x:(r7+$5a),a            ; triangle back for the tank's own use
@@ -946,8 +1006,12 @@ lf3e:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a
-        move    a,x0
+        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
+        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
+                                        ; scales by 2^7. v95: this had regressed
+                                        ; to #$8 -- REVERB.md's "live from v72 to
+                                        ; v79" bug, back again, with the rule
+                                        ; still written next to it.
         move    x0,x:(r7+$22)           ; interpolation fraction
 
         move    x:(r7+$4f),a            ; line 1  (1.168x) phase
@@ -990,7 +1054,7 @@ lf4f:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a                 ; shift by n-1, never n (REVERB.md's
+        asl     #$7,a,a                 ; shift by n-1, never n (REVERB.md's
         move    a,x0                    ; interpolation fraction rule)
         move    x0,x:(r7+$55)            ; AP fraction
         move    x:(r7+$5b),a            ; triangle back for the tank's own use
@@ -1004,8 +1068,12 @@ lf4f:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a
-        move    a,x0
+        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
+        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
+                                        ; scales by 2^7. v95: this had regressed
+                                        ; to #$8 -- REVERB.md's "live from v72 to
+                                        ; v79" bug, back again, with the rule
+                                        ; still written next to it.
         move    x0,x:(r7+$24)           ; interpolation fraction
 
         move    x:(r7+$50),a            ; line 2  (0.887x) phase
@@ -1036,8 +1104,12 @@ lf50:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a
-        move    a,x0
+        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
+        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
+                                        ; scales by 2^7. v95: this had regressed
+                                        ; to #$8 -- REVERB.md's "live from v72 to
+                                        ; v79" bug, back again, with the rule
+                                        ; still written next to it.
         move    x0,x:(r7+$57)           ; interpolation fraction
 
         move    x:(r7+$51),a            ; line 3  (1.426x) phase
@@ -1068,8 +1140,12 @@ lf51:
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$8,a,a
-        move    a,x0
+        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
+        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
+                                        ; scales by 2^7. v95: this had regressed
+                                        ; to #$8 -- REVERB.md's "live from v72 to
+                                        ; v79" bug, back again, with the rule
+                                        ; still written next to it.
         move    x0,x:(r7+$59)           ; interpolation fraction
 
 ; ---- STAGE 1: loop constants preloaded into spare AGU registers ---------
