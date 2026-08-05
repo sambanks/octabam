@@ -555,6 +555,24 @@ warmdone:
 ; A big space is darker and more moving in its tail, not merely longer; that
 ; is the part tap scale was never going to express.
 md_big:                                 ; 3, and anything unexpected
+; TAP SPREAD, 1.69 : 1 (longest:shortest) -- wide, CAPPED by the buffer.
+; The four line lengths used to be hardcoded once and merely SCALED by
+; MODE, so every mode was ONE modal pattern transposed. That is why they
+; sounded alike however the scale moved.
+;
+; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
+; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
+; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
+; BIG -13% -- so the new lever pushed against the one already working, and
+; the modes measured CLOSER together. See VOICING.md Round 3.
+        move    #>$3F4800,a             ; line 0: 4050 of 4096
+        move    a,x:(r7+$74)
+        move    #>$352C00,a             ; line 1: 3403 of 4096
+        move    a,x:(r7+$75)
+        move    #>$2CB000,a             ; line 2: 2860 of 4096
+        move    a,x:(r7+$76)
+        move    #>$258C00,a             ; line 3: 2403 of 4096
+        move    a,x:(r7+$77)
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
         clr     a                       ; no early reflections: a big space has
@@ -575,6 +593,24 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$73)            ; scale comes from movement, not length
         bra     md_done
 md_room:
+; TAP SPREAD, 1.60 : 1 (longest:shortest) -- the reference -- unchanged.
+; The four line lengths used to be hardcoded once and merely SCALED by
+; MODE, so every mode was ONE modal pattern transposed. That is why they
+; sounded alike however the scale moved.
+;
+; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
+; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
+; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
+; BIG -13% -- so the new lever pushed against the one already working, and
+; the modes measured CLOSER together. See VOICING.md Round 3.
+        move    #>$3DD800,a             ; line 0: 3958 of 4096
+        move    a,x:(r7+$74)
+        move    #>$34E800,a             ; line 1: 3386 of 4096
+        move    a,x:(r7+$75)
+        move    #>$2D3800,a             ; line 2: 2894 of 4096
+        move    a,x:(r7+$76)
+        move    #>$26A800,a             ; line 3: 2474 of 4096
+        move    a,x:(r7+$77)
         move    #>$399999,a             ; tap scale 0.45 -- close walls
         move    a,x:(r7+$6f)
         move    #>$600000,a             ; STRONG early reflections: this is
@@ -587,6 +623,24 @@ md_room:
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
         bra     md_done
 md_plate:
+; TAP SPREAD, 1.24 : 1 (longest:shortest) -- TIGHTEST -- most homogeneous.
+; The four line lengths used to be hardcoded once and merely SCALED by
+; MODE, so every mode was ONE modal pattern transposed. That is why they
+; sounded alike however the scale moved.
+;
+; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
+; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
+; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
+; BIG -13% -- so the new lever pushed against the one already working, and
+; the modes measured CLOSER together. See VOICING.md Round 3.
+        move    #>$372000,a             ; line 0: 3528 of 4096
+        move    a,x:(r7+$74)
+        move    #>$334C00,a             ; line 1: 3283 of 4096
+        move    a,x:(r7+$75)
+        move    #>$2FC000,a             ; line 2: 3056 of 4096
+        move    a,x:(r7+$76)
+        move    #>$2C7400,a             ; line 3: 2845 of 4096
+        move    a,x:(r7+$77)
         move    #>$480000,a             ; tap scale 0.5625 (was 0.65)
         move    a,x:(r7+$6f)
         clr     a                       ; a plate has no early reflections at
@@ -599,15 +653,39 @@ md_plate:
         move    a,x:(r7+$73)
         bra     md_done
 md_hall:
+; TAP SPREAD, 1.92 : 1 (longest:shortest) -- WIDEST -- most audible structure.
+; The four line lengths used to be hardcoded once and merely SCALED by
+; MODE, so every mode was ONE modal pattern transposed. That is why they
+; sounded alike however the scale moved.
+;
+; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
+; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
+; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
+; BIG -13% -- so the new lever pushed against the one already working, and
+; the modes measured CLOSER together. See VOICING.md Round 3.
+        move    #>$42D000,a             ; line 0: 4276 of 4096
+        move    a,x:(r7+$74)
+        move    #>$35C400,a             ; line 1: 3441 of 4096
+        move    a,x:(r7+$75)
+        move    #>$2B4000,a             ; line 2: 2768 of 4096
+        move    a,x:(r7+$76)
+        move    #>$22CC00,a             ; line 3: 2227 of 4096
+        move    a,x:(r7+$77)
         move    #>$5c0000,a             ; tap scale 0.71875 (was 0.90)
         move    a,x:(r7+$6f)
         move    #>$200000,a             ; weak early reflections -- far walls
         move    a,x:(r7+$6c)
         move    #>$060000,a             ; diffusion offset, medium
         move    a,x:(r7+$3f)
-        move    #>$730000,a             ; damping 0.90 per pass -- but its lines
-        move    a,x:(r7+$72)            ; are short enough that per SECOND this
-                                        ; still lands darker than PLATE
+        move    #>$598000,a             ; damping 0.70 per pass. WAS 0.90, which
+        move    a,x:(r7+$72)            ; put HALL's per-SECOND retention at 0.861
+                                        ; against PLATE's 1.000 -- 14% apart on a
+                                        ; control whose full range moves the 3-8 kHz
+                                        ; tail by 56 dB (measured). That closeness,
+                                        ; not the tap lengths, is why the two modes
+                                        ; would not separate. Now 0.607 vs 1.000.
+                                        ; Per-second retention is c^(1/tapscale);
+                                        ; BIG stays darkest at 0.445.
         move    #>$7fffff,a             ; full movement
         move    a,x:(r7+$73)
 md_done:
@@ -648,7 +726,7 @@ md_done:
 ; it. Confirmed by ear ("smallest size sounds worst") and by measurement
 ; (at SIZE=16 nearly half the spectrum's energy sits in 1% of the bins).
 ; Raising the floor costs the smallest spaces, which were the bad ones.
-            move    #>$3DD800,x0            ; 1979/2048 -> 3958 of 4096
+            move    x:(r7+$74),x0           ; this MODE's line 0 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
@@ -661,7 +739,7 @@ md_done:
                                             ; for a STATIC tap. All four lines are
                                             ; modulated now, so all four go through
                                             ; the interpolated path.
-            move    #>$34E800,x0            ; 1693/2048 -> 3386 of 4096
+            move    x:(r7+$75),x0           ; this MODE's line 1 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
@@ -671,7 +749,7 @@ md_done:
             move    #>$1000,b
             sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2a)
-            move    #>$2D3800,x0            ; 1447/2048 -> 2894 of 4096
+            move    x:(r7+$76),x0           ; this MODE's line 2 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap
             move    #>$1,x0                 ; force the tap ODD -- SIZE scales and
@@ -681,7 +759,7 @@ md_done:
             move    #>$1000,b
             sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2b)
-            move    #>$26A800,x0            ; 1237/2048 -> 2474 of 4096
+            move    x:(r7+$77),x0           ; this MODE's line 3 fraction
             mpy     x0,x1,a
             asr     #$a,a,a                 ; back to an integer tap
             move    #>$1000,b

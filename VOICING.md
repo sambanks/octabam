@@ -347,3 +347,69 @@ that removing an accidental noise source may expose ringing it was masking,
 because "every build the user liked had it" -- did NOT hold this time. The
 caution came from the v72 fraction bug and is real, but it is a thing to
 CHECK, not a thing to assume. Checking it cost two listens.
+
+### Round 3 — per-mode tap spread and the damping that was never the problem
+
+**Hypothesis**: the modes shared one modal *pattern*. The four line lengths were
+hardcoded once (`1.000 : 0.855 : 0.731 : 0.625`, spread 1.60:1) and every mode
+multiplied all four by a single scalar, so MODE could only *transpose* the space,
+never reshape it. Wired the four tap fractions into `r7+$74..$77` and gave each
+mode its own spread. Costs nothing — the SIZE section now reads them from `r7`
+instead of four two-word immediates, which is a cycle *cheaper* each.
+
+**First attempt was wrong, and the measurement caught it.** Pinning the longest
+tap at 3958 in every mode and shortening the other three changed each mode's
+*mean* delay (PLATE +12%, BIG −13%), so the new spread lever pushed straight
+against the tap-scale lever already carrying the differentiation. Mean pairwise
+separation went DOWN (spectral 3.85 → 3.72, buildup 4.16 → 3.21). Fix: hold the
+mean tap at ROOM's 3178 in every mode, so scale and spread are independent.
+Corrected version measures 4.24 / 4.42. **ROOM is unchanged and renders
+bit-identical**, which is what verifies the `r7` indirection.
+
+By ear: "still too close" for PLATE vs HALL — which was also the weakest pair in
+the measurement (2.98 spectral, the lowest of six). Ear and metric agreed.
+
+**Then two measurement errors of my own, both worth recording.**
+
+1. *Analysed a still-playing source as a tail.* The pad is 10 s long; the decay
+   was being measured at 1.0–3.5 s. Use `stab` (0.57 s) or window after the
+   source ends.
+2. *The DFT was aliasing.* For speed the band analysis summed over every 8th
+   input sample, which folds everything above 44100/16 = **2756 Hz** back down.
+   Every "hi" and "air" figure above that was meaningless — the giveaway was the
+   air column reading *exactly* 3.2 dB at every knob position. Replaced with a
+   real radix-2 FFT (`spec.py` in the scratchpad).
+
+**Consequence: `REVERB.md`'s "damping has little spectral authority" is WRONG,
+and so was the version of it I reported before fixing the FFT.** Measured
+properly, the LP knob moves the 3–8 kHz tail by **56 dB**:
+
+| LP | 800 Hz–3k | 3k–8k | 8k–16k |
+|---|---|---|---|
+| 0 | −98.0 | −105.2 | −107.6 |
+| 64 | −22.1 | −88.7 | −97.4 |
+| 127 | −19.2 | −48.9 | −87.6 |
+
+**The real cause of PLATE ≈ HALL was mundane.** Per-second retention is
+`c^(1/tapscale)`. PLATE sat at 1.000 and HALL at 0.861 — **14% apart on a
+control with 56 dB of range**. Nothing else they differ in could overcome
+sounding like the same brightness. HALL 0.90 → 0.70 per pass (0.607 per second)
+opens the 3–8 kHz gap from ~4 dB to **20.2 dB**, with the per-second ordering
+preserved: PLATE 1.000 > ROOM 0.882 > HALL 0.607 > BIG 0.445.
+
+**By ear: "a little better ... acceptably different now, but not different like
+the modes in the CXM."** So the constants are no longer the binding constraint;
+the shared *structure* is. Three things are still identical in every mode:
+
+- **Early reflections** — six taps at FIXED positions, only the level varies. A
+  near wall and a far wall currently arrive at the same time.
+- **Diffusion** — four input allpasses at fixed taps and a fixed 1.6:1 packing,
+  plus two in-loop allpasses at 298/446. Only the coefficient varies.
+- **Modulation** — one fixed set of LFO rates. Only depth varies, and a plate's
+  shimmer is a different RATE from a hall's drift, not a different depth.
+
+**Method note.** Three measurement errors this session (decimal-for-hex slot
+numbers, a still-playing source, an aliasing DFT). Two were caught by invariants
+that should have been cheap habits from the start: *make the change a no-op and
+require bit-identical output* caught the first, and *a column that does not move
+at all is a broken measurement, not a null result* caught the third.
