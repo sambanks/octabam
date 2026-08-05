@@ -472,9 +472,24 @@ without trouble, which is reassuring — but a delay line writes continuously
 across its entire buffer in a way a reverb tank does not, and BongDelay is a
 placeholder that has never been driven hard.
 
-Settle it before building on it: write a known pattern across the delay's whole
-buffer in the emulator and check whether the staging words at `0x30000` survive
-a frame.
+**SETTLED, 5 Aug 2026 — they do NOT alias, and no probe was needed.** Stock's
+own behaviour proves it. The allocator table at `X:0x255` gives FX2 bases
+`0x4000`, `0x8000`, **`0x30000`**, `0x34000` (§10), so on any bank where track 3
+runs an FX2 effect, stock uses **`Y:0x30000` as that effect's 16,384-word
+buffer** — a stock reverb there writes across all of it. And the frame setup
+reads **`X:0x30000`** as parameter staging every frame. Both are true in
+unmodified firmware in ordinary use. If those were the same physical words,
+stock would corrupt its own frame parameters whenever anyone put a reverb on
+track 3.
+
+**The emulator could not have answered this**, and the probe suggested in an
+earlier revision of this note would have been worthless: `dsp_host` keeps X and
+Y as separate arrays by construction — the `.mem` format tags every module with
+its space — so it reports "no aliasing" regardless of what the board does. It
+would have given the right answer for the wrong reason.
+
+So `dsp/delay_server.asm`'s hardcoded `Y:0x30000` / `Y:0x38000` bases are safe
+against the staging area, and BongDelay may use its full 32,768 words.
 
 `MULTIBCOMP` (`0x19`) also points at the stub. It appears in **neither** of the
 manual's FX1/FX2 lists and its parameter labels are copied from DJ EQ — an
