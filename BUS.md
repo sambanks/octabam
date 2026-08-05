@@ -36,6 +36,21 @@ something still unverified, that's called out.
 (writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
 wrap and flash per `README.md` §3. Latest flashed image carries `ChonVerb21`
 (5 Aug 2026); `BUILD_TAG` in `tools/build_bus.py` is the source of that number.
+**`ChonVerb22` is built but NOT yet flashed** — the v98 repack below.
+
+**What we take from stock, and what we don't (v98).** All three servers pack
+into **PLATE REV + SPRING REV + DARK REV** alone — 2724 contiguous words
+against 2672 of code, 52 free. Those three ids are silenced on FX1; that is
+the whole cost, and it is the trade the project was always making: three
+stock reverbs for a better one.
+
+**CHORUS is NOT taken and works normally.** It housed `Send`'s 166 words until
+v98 — collateral rather than a considered trade, since Send fits inside the
+reverb region with room over. Its code is byte-identical to stock and id
+`0x12` keeps its stock dispatch entries, both payloads, asserted at build
+time. Nothing had to be *recovered* to do this: every build starts from a
+pristine `out/raw/section_3_MAIN_OS.bin`, so stock code is only ever
+overwritten on the way out, never destroyed.
 
 | | |
 |---|---|
@@ -445,14 +460,35 @@ rule, no class question at all) — unchanged by this task.
 three servers' own DSP code is now actually placed in P memory and
 dispatched, both payloads:
 
+**Superseded by v98 — the table below is the original per-donor placement and
+is kept for the reasoning, not the addresses.** All three now pack into one
+region, PLATE+SPRING+DARK, and CHORUS is given back; see "What we take from
+stock" in *Start here*, and `tools/build_bus.py`'s docstring for the layout.
+
 | entry | id | P-code donor | budget |
 |---|---|---|---|
-| `SEND` | `0x03` | CHORUS (329 words, confirmed no inbound branches — `tools/build_dspprobe.py`'s relocatability scan) | 127/329 |
+| `SEND` | `0x03` | ~~CHORUS~~ (329 words, confirmed no inbound branches — `tools/build_dspprobe.py`'s relocatability scan) | 127/329 |
 | `DELAY SERVER` | `0x01` | PLATE REV (594 words, confirmed no inbound branches — `tools/build_reverb.py`'s own note) | 453/594 |
 | `REVERB SERVER` | `0x02` | SPRING + DARK's front (2037/2130 words combined, the same budget `tools/build_reverb.py` already proved safe on hardware) | 1215/2037 |
 
 These are DSP P-memory donors, unrelated to task 11's ColdFire descriptor
 donors above (different address space, independent decisions).
+
+**The relocation itself is cheap, and that is worth knowing.** Our code is
+assembled from source with an `-org`, so moving a server is an argument
+change plus two dispatch entries — the v98 repack moved all three and the
+rendered output stayed **bit-identical across all four modes** and a
+`TIME=127 SIZE=127 DIFF=127` wet case. Stock code is not relocatable on the
+same terms: we have it only as a binary full of absolute branch targets, so
+reclaiming more space means *taking a neighbour's module*, never *shuffling
+theirs out of the way*.
+
+**One trap the repack exposed:** `tools/render_reverb.py` had the engine's
+entry point hardcoded as `1252/1253`. A hardcoded entry point does not fail
+loudly when code moves — it jumps into the middle of whatever now lives
+there. It now reads `X:0x215`/`X:0x235` out of the `.mem` being rendered,
+which is also what makes `--mem` honest when the two builds being compared
+put the engine at different addresses.
 
 **Donor ids point at the proven-silent null stub, not our code** — a
 deliberate departure from the currently-shipped reverb build, which
@@ -990,8 +1026,9 @@ ACC-write addressing needed for the dry sends already existed.
 7. ~~DSP code placement + dispatch~~ **done, emulator-verified (payload A;
    payload B checked statically), not flashed** — `tools/build_bus.py`
    combines task 11's menu tables with placing the three servers' own
-   assembled code in real P memory (SEND on CHORUS, DELAY SERVER on PLATE
-   REV, REVERB SERVER on SPRING+DARK's combined budget) and wiring
+   assembled code in real P memory (originally SEND on CHORUS, DELAY SERVER
+   on PLATE REV, REVERB SERVER on SPRING+DARK; **since v98 all three pack
+   into PLATE+SPRING+DARK and CHORUS is given back**) and wiring
    `X:0x215`/`X:0x235` for ids `0x01`/`0x02`/`0x03`, both payloads. Donor ids
    are repointed to the same null stub `tools/build_dspprobe.py` already
    proved silent on hardware, not to the new servers, so FX1 selecting a

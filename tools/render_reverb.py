@@ -162,7 +162,43 @@ def ensure_mode_mem(mode, build):
     return mem
 
 
-def run(mem, src, values, tail_s, verbose):
+REVERB_ID = 0x07                 # NEW_IDS["REVERB SERVER"] in build_bus.py
+INIT_TAB, PROC_TAB = 0x215, 0x235    # X memory, the dispatcher's two tables
+
+
+def entry_points(mem_path):
+    """Read the reverb's init/proc addresses out of the dump being rendered.
+
+    Hardcoded as 1252/1253 until v98 repacked the servers to give CHORUS's
+    module back to stock. A hardcoded entry point does not fail loudly when
+    the code moves -- it jumps into the middle of whatever now lives there --
+    so it is read from X:0x215/0x235, the same tables the hardware dispatches
+    through. Reading the .mem rather than the image also keeps --mem honest:
+    two builds being A/B'd need not put the engine at the same address.
+    """
+    blob = mem_path.read_bytes()
+    want = {INIT_TAB + REVERB_ID, PROC_TAB + REVERB_ID}
+    found, pos = {}, 0
+    while pos + 9 <= len(blob):
+        sp, addr, cnt = struct.unpack_from("<BII", blob, pos)
+        pos += 9
+        if sp == 0xff:
+            break
+        if sp == 1:                                  # X space
+            for a in want:
+                if addr <= a < addr + cnt:
+                    found[a] = struct.unpack_from("<I", blob, pos + (a - addr) * 4)[0]
+        pos += cnt * 4
+    init, proc = found.get(INIT_TAB + REVERB_ID), found.get(PROC_TAB + REVERB_ID)
+    if init is None or proc is None:
+        die(f"no dispatch table in {mem_path.name} -- cannot locate the engine")
+    if not 0 < init < 0x20000 or proc != init + 1:
+        die(f"implausible reverb entry points in {mem_path.name}: "
+            f"init 0x{init:05x} proc 0x{proc:05x}")
+    return init, proc
+
+
+def run(mem, src, values, tail_s, verbose, entry=None):
     """src: mono floats at SR. -> (L, R) as 24-bit ints, warm-up trimmed."""
     pad = WARMUP_BLOCKS * FRAMES
     total = pad + len(src) + int(tail_s * SR)
@@ -177,7 +213,8 @@ def run(mem, src, values, tail_s, verbose):
             v = src[i - pad] if pad <= i < pad + len(src) else 0.0
             f.write(struct.pack("<i", max(-8388608, min(8388607, int(v * 8388607)))))
 
-    cmd = [str(HOST), "-mem", str(mem), "-init", "1252", "-proc", "1253",
+    init, proc = entry or entry_points(mem)
+    cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}",
            "-inst", "1", "-r7", "4", "-alloc", "3", "-blocks", str(blocks),
            "-in", str(tmp), "-out", str(out),
            "-params", ",".join(str(v) for v in values)]

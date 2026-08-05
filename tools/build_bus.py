@@ -15,22 +15,31 @@ three new ids (0x01 DELAY SERVER, 0x02 REVERB SERVER, 0x03 SEND) actually run
 them instead of whatever the byte-donor used to be.
 
 DSP-side donor choice (P-code space only -- unrelated to the ColdFire
-descriptor-clone donors task 11 already picked):
+descriptor-clone donors task 11 already picked).
 
-  REVERB SERVER (1215 words) <- SPRING + DARK's front, exactly the
-    combined-budget technique tools/build_reverb.py already proved safe on
-    hardware (2037 words available, SPRING's own inbound callers are from
-    stock DARK alone, and DARK's own front is the same "974-word helper
-    boundary" already measured). This build does NOT repeat that script's
-    choice to repoint SPRING/DARK's OWN ids at the new code -- see below.
-  DELAY SERVER (453 words) <- PLATE REV's module (594 words, confirmed no
-    inbound branches at all -- tools/build_reverb.py's own relocatability
-    note). Comfortable single-module fit, no spillover needed.
-  SEND (127 words) <- CHORUS's module (329 words, confirmed clean by
-    tools/build_dspprobe.py's relocatability scan: "no absolute internal
-    jumps, nothing branches into it"). Same donor that script used to prove
-    the whole assemble -> insert -> dispatch -> flash pipeline on real
-    hardware, just for a different purpose here (byte space, not a probe).
+**v98: CHORUS IS NO LONGER A DONOR AND IS FULLY RESTORED.** All three servers
+now pack into the PLATE + SPRING + DARK region alone -- 2724 contiguous words
+against 2672 of code, so everything fits in space that was already spent on
+replacing the three stock reverbs. SEND used to sit in CHORUS's 329-word
+module, which cost FX1 its chorus to house 166 words; that was collateral,
+not a considered trade. The three reverbs are the trade: we replaced them
+with a better one.
+
+Layout, in address order from PLATE's base:
+
+  SEND           166 words
+  REVERB SERVER 1999
+  DELAY SERVER   507   <- last DELIBERATELY: BongDelay is the algorithm still
+                          to be designed, so it gets the trailing free words
+                          (52 now) and is adjacent to COMPRESSOR's module if
+                          the region is ever extended rightward. Growing it
+                          then moves nothing else.
+
+The three records are contiguous in LOADED P memory but separated by headers
+in the file, so a stream spanning them is split per record on the way in --
+the technique tools/build_reverb.py proved on hardware for SPRING+DARK, just
+generalised to three. Contiguity is asserted at build time rather than
+assumed.
 
 **Donor ids get repointed to the SAME null stub tools/build_dspprobe.py
 already used and proved silent on hardware (P:0x007c8/0x007c9 payload A,
@@ -40,14 +49,20 @@ from tools/build_reverb.py, which repoints SPRING/DARK's own ids at the new
 reverb engine -- fine there because nothing else in this project offers
 those ids any more once this build's three-entry menu replaces the whole FX2
 chooser. But FX1's chooser is untouched (BUS.md's "FX1 is untouched"
-promise) and can still select CHORUS, PLATE REV, SPRING REV or DARK REV by
-name -- if their dispatch pointed at our servers, selecting one on FX1 would
-run the SAME hardcoded-Y-base engine a second, uncontrolled time on whatever
-track holds it, exactly the multi-instance collision the hardcoded-base
-design assumes can't happen (BUS.md's Memory section). Silencing them
-avoids that: FX1 selecting any of the four donor names now gets harmless
-silence, the same already-hardware-proven behaviour stock DELAY has always
-had.
+promise) and can still select PLATE REV, SPRING REV or DARK REV by name --
+if their dispatch pointed at our servers, selecting one on FX1 would run the
+SAME hardcoded-Y-base engine a second, uncontrolled time on whatever track
+holds it, exactly the multi-instance collision the hardcoded-base design
+assumes can't happen (BUS.md's Memory section). Silencing them avoids that:
+FX1 selecting any of the three reverb names now gets harmless silence, the
+same already-hardware-proven behaviour stock DELAY has always had.
+
+CHORUS (id 0x12) is deliberately NOT in that list any more. Its code is
+untouched and its dispatch entries keep the values the stock image ships, so
+FX1 selecting CHORUS gets the real chorus back. Nothing has to be restored
+to make that work -- every build starts from a pristine
+out/raw/section_3_MAIN_OS.bin, so the stock code was never destroyed, only
+overwritten on the way out.
 
 DELAY SERVER's Y-memory base literal is the one place this script differs
 per payload in the ASSEMBLED CODE itself (not just where it's placed):
@@ -133,7 +148,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"21"
+BUILD_TAG = b"22"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -246,7 +261,10 @@ PP = {
     "B": dict(chorus=0x00c77, plate=0x00dc0, spring=0x01012, dark=0x01439,
               nul_i=0x00588, nul_p=0x00589, xtab=0x400f5a10, ybase=0x38000),
 }
-DONOR_IDS = {"chorus": 0x12, "plate": 0x14, "spring": 0x15, "dark": 0x16}
+# Ids whose algorithm we overwrite, and which must therefore be silenced on
+# FX1. CHORUS (0x12) was here until v98 and is deliberately gone: we no longer
+# take its code, so its stock dispatch entries stand and FX1 gets it back.
+DONOR_IDS = {"plate": 0x14, "spring": 0x15, "dark": 0x16}
 
 
 def assemble(src_text, org):
@@ -428,59 +446,72 @@ def main():
 
         print(f"-- payload {tag} --")
 
-        # ---- SEND -> CHORUS's module -----------------------------------
-        _, _, cnt, off = record(pp["chorus"])
-        words, init_a, proc_a = assemble(send_src, pp["chorus"])
-        if len(words) > cnt:
-            sys.exit(f"payload {tag}: SEND {len(words)} words > CHORUS's {cnt}")
-        for i, w in enumerate(words):
-            wrw_p(va + off + i * 3, w)
-        wrw_p(pp["xtab"] + NEW_IDS["SEND"] * 3, init_a)
-        wrw_p(pp["xtab"] + (32 + NEW_IDS["SEND"]) * 3, proc_a)
-        wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias -> SEND,
-        wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # so a fresh part sends
-        print(f"  SEND          -> CHORUS  P:0x{pp['chorus']:05x} "
-              f"({len(words)}/{cnt} words)  id 0x{NEW_IDS['SEND']:02x}")
+        # ---- all three servers pack into PLATE + SPRING + DARK ------------
+        # v98: CHORUS is not a donor any more. See the module docstring.
+        region = sorted((record(pp[k]) for k in ("plate", "spring", "dark")),
+                        key=lambda m: m[1])
+        for (_, a, cnt, _), (_, a2, _, _) in zip(region, region[1:]):
+            if a + cnt != a2:
+                sys.exit(f"payload {tag}: PLATE/SPRING/DARK are not contiguous "
+                         f"(0x{a:05x}+{cnt} != 0x{a2:05x}) -- a single code "
+                         f"stream cannot span them")
+        base_a = region[0][1]
+        budget = sum(m[2] for m in region)
 
-        # ---- DELAY SERVER -> PLATE's module -----------------------------
-        _, _, cnt, off = record(pp["plate"])
-        src = delay_src.replace("$30000", f"${pp['ybase']:x}")
-        words, init_a, proc_a = assemble(src, pp["plate"])
-        if len(words) > cnt:
-            sys.exit(f"payload {tag}: DELAY SERVER {len(words)} words > PLATE's {cnt}")
-        for i, w in enumerate(words):
-            wrw_p(va + off + i * 3, w)
-        wrw_p(pp["xtab"] + NEW_IDS["DELAY SERVER"] * 3, init_a)
-        wrw_p(pp["xtab"] + (32 + NEW_IDS["DELAY SERVER"]) * 3, proc_a)
-        print(f"  DELAY SERVER  -> PLATE   P:0x{pp['plate']:05x} "
-              f"({len(words)}/{cnt} words)  id 0x{NEW_IDS['DELAY SERVER']:02x}  "
-              f"Y base 0x{pp['ybase']:x}")
+        def place(words, start):
+            """Write a contiguous word stream at P address `start`.
 
-        # ---- REVERB SERVER -> SPRING + DARK's front, same budget --------
-        _, _, s_cnt, s_off = record(pp["spring"])
-        _, _, d_cnt, d_off = record(pp["dark"])
-        words, init_a, proc_a = assemble(reverb_src, pp["spring"])
-        budget = s_cnt + d_cnt
-        if len(words) > budget:
-            sys.exit(f"payload {tag}: REVERB SERVER {len(words)} words > "
-                      f"SPRING+DARK budget {budget}")
-        head, tail = words[:s_cnt], words[s_cnt:]
-        for i, w in enumerate(head):
-            wrw_p(va + s_off + i * 3, w)
-        for i, w in enumerate(tail):
-            wrw_p(va + d_off + i * 3, w)
-        wrw_p(pp["xtab"] + NEW_IDS["REVERB SERVER"] * 3, init_a)
-        wrw_p(pp["xtab"] + (32 + NEW_IDS["REVERB SERVER"]) * 3, proc_a)
-        print(f"  REVERB SERVER -> SPRING+DARK  {len(words)}/{budget} words  "
-              f"id 0x{NEW_IDS['REVERB SERVER']:02x}")
+            The records load back-to-back but are separated by headers in the
+            file, so the stream is cut at each record boundary.
+            """
+            i = 0
+            for _, a, cnt, off in region:
+                if i >= len(words):
+                    break
+                pos = start + i
+                if not (a <= pos < a + cnt):
+                    continue
+                n = min(len(words) - i, a + cnt - pos)
+                for k in range(n):
+                    wrw_p(va + off + (pos - a + k) * 3, words[i + k])
+                i += n
+            if i != len(words):
+                sys.exit(f"payload {tag}: placement ran past the region")
+
+        # SEND first, DELAY SERVER last so the trailing free words belong to
+        # the algorithm still to be designed.
+        plan = (("SEND", send_src),
+                ("REVERB SERVER", reverb_src),
+                ("DELAY SERVER", delay_src.replace("$30000", f"${pp['ybase']:x}")))
+        cursor = base_a
+        for name, src in plan:
+            words, init_a, proc_a = assemble(src, cursor)
+            if cursor + len(words) > base_a + budget:
+                sys.exit(f"payload {tag}: {name} overruns the region "
+                         f"({cursor + len(words) - base_a} > {budget} words)")
+            place(words, cursor)
+            wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
+            if name == "SEND":
+                wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
+                wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
+            extra = f"  Y base 0x{pp['ybase']:x}" if name == "DELAY SERVER" else ""
+            print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
+                  f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
+            cursor += len(words)
+        print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
+              f"({budget} words)  used {cursor - base_a}  "
+              f"FREE {base_a + budget - cursor}")
 
         # ---- donor ids -> the proven-silent null stub, not our code ------
         for donor, eid in DONOR_IDS.items():
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
-        print(f"  donor ids (CHORUS/PLATE/SPRING/DARK) -> null stub "
+        print(f"  donor ids (PLATE/SPRING/DARK REV) -> null stub "
               f"P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- FX1 selecting "
               f"any of them by name is now silent, not our code")
+        print(f"  CHORUS (id 0x12) UNTOUCHED -- code and dispatch are stock, "
+              f"FX1 gets the real chorus back")
 
     # A MODE-forced build ignores the real page-2 slot, so it must never end up
     # wrapped and flashed -- it would look like a MODE knob that does nothing.
