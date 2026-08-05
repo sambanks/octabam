@@ -262,13 +262,67 @@ wondered whether it related to buffer setup. It does not: it is the **part
 defaults initialiser**, copying `E+0x3b` out of each. A fresh part just defaults
 to **FX1 = FILTER, FX2 = DELAY**. Lead closed.
 
-**So the delay is not in the DSP program at all.** The remaining explanation is
-that it runs on the ColdFire — which is consistent with it needing a buffer far
-larger than the 32,768-word ceiling a DSP effect can reach (§7c), while SDRAM
-sits on the CPU side, and with FREEZE being buffer machinery. **That is a
-hypothesis, not a finding**, and this section should not be marked solved again
-until someone locates the code. What would settle it: find per-sample circular-
-buffer work on the ColdFire in the frame path, keyed off the FX2 slot's id.
+**So the delay is not dispatched as a DSP insert.** Where it *is* remains open.
+Two hypotheses have now been tried and neither survived; this section should not
+be marked solved again on the strength of a third.
+
+**Hypothesis 1 — a dedicated DSP stage.** Dead, see above.
+
+**Hypothesis 2 — it runs on the ColdFire.** Attractive (a delay wants a buffer
+bigger than the 32,768-word DSP ceiling, and SDRAM is on the CPU side), but the
+evidence went against it. The audio frame ISR at `0x4000aad0` is **DMA
+orchestration** — ColdFire peripheral registers `0xfc04503e` / `0xfc0450de` /
+`0xfc0450fe`, host-port handshake, buffer flips — with no per-sample arithmetic
+anywhere in it. Below even odds.
+
+**The trig-key lead, also a dead end but worth recording.** `DELAY CTRL` is a
+trig-key mode (table at `0x400beb76`: TRACKS / CHROMATIC / SLOTS / SLICES /
+QUICK MUTE / DELAY CTRL, six 20-byte records). It looked promising because no
+other effect has bespoke UI. Manual §12.7.6 settles it: the mode only sets
+**TIME**, plus **SEND or VOL** depending on LOCK — ordinary parameters through
+the ordinary path. The code around the table is UI drawing indexed by a RAM mode
+variable. **The delay has no privileged control channel.**
+
+### Two limits on the sweep above — do not over-read it
+
+**The DSP self-modifies.** Frame setup writes `move x0,p:>$58c` and
+`p:>$59b` — it patches its own instructions at runtime. Static reachability
+cannot see paths the program creates for itself, so "95.8% reached" bounds how
+much *unreferenced* code exists; it does not prove all behaviour is accounted
+for.
+
+**"No large modulo buffer" is NOT evidence of no delay line.** An earlier draft
+of this section argued that, having found nothing bigger than `m6=$7f` (128
+words). It does not follow: a delay line needs no modulo at all. Module `0x2bf`
+walks external memory with `m0` linear, which is exactly how a long buffer would
+be read. Retracted as an argument; the reachability and module-by-module
+characterisation are what carry the conclusion.
+
+### Stock uses `X:0x30000` as per-frame parameter staging — CHECK THIS
+
+Found while chasing the above, and it matters for `dsp/delay_server.asm`. Frame
+setup copies 72 words out of `X:0x30000` into `y:0x1b8`, then writes parameter
+values back into `X:0x30000`:
+
+```asm
+0000a8: move  #>$30000,r1
+0000ac: do    #<$48,>$b0
+0000ae: move  x:(r1)+,x0
+0000af: move  x0,y:(r4)+        ; -> y:0x1b8
+...
+0000b6: move  a1,x:(r1)+        ; and writes params back into 0x30000
+```
+
+**BongDelay hardcodes `Y:0x30000` / `Y:0x38000` as its delay-line base.**
+Whether `X:0x30000` and `Y:0x30000` are the same physical external SRAM on this
+board is **not established**. ChonVerb has run on all 8 tracks using that region
+without trouble, which is reassuring — but a delay line writes continuously
+across its entire buffer in a way a reverb tank does not, and BongDelay is a
+placeholder that has never been driven hard.
+
+Settle it before building on it: write a known pattern across the delay's whole
+buffer in the emulator and check whether the staging words at `0x30000` survive
+a frame.
 
 `MULTIBCOMP` (`0x19`) also points at the stub. It appears in **neither** of the
 manual's FX1/FX2 lists and its parameter labels are copied from DJ EQ — an
