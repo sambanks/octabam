@@ -339,21 +339,62 @@ bus design retired it: **one ChonVerb per bank**, enforced by the server-role
 lock in `BUS.md`. A bank's four FX2 slots hold one reverb, one delay and two
 sends, not four reverbs.
 
-Counted statically from the sample loops (two-word `#>` immediates costed as
-two cycles):
+Counted by `tools/cycle_count.py`, which assembles each server, injects a label
+after its `do n7,>END` sample loop and takes the word span. **Run it after any
+change to a sample loop** — the two hand counts this table has carried were
+both wrong, in different ways.
 
 | | instructions | cycles/sample |
 |---|---|---|
-| `reverb_server` | 367 | 381 |
-| `delay_server` | 107 | 112 |
+| `reverb_server` | 508 | 735 |
+| `delay_server` | 107 | 163 |
 | `send_client` | 16 | 18 |
-| **a full bank** (1 + 1 + 2 sends) | | **529** |
+| **a full bank** (1 + 1 + 2 sends) | | **934** |
 | budget per DSP (`stageprobe5/6`) | | ~1080 |
-| **headroom** | | **~551** |
+| **headroom** | | **~146** (86% used) |
 
-That is **1.4× the entire current reverb engine**, free. Under the old
-assumption a bank cost 4 × 381 = 1524 and did not fit at all, which is why
-the engine has been living well below its means.
+**This supersedes 529/551, and the correction has two independent halves.**
+
+*The engine really did grow*: 367 → 508 instructions across the seventeen
+commits Rounds 3–5 put into `reverb_server.asm`. Six per-mode levers are not
+free.
+
+*And the old model under-costed the code.* It charged two cycles only for `#>`
+long immediates and missed that **`x:(rn+$disp)` is also a two-word, two-cycle
+instruction** — which is how every access to the r7 state block is written.
+`delay_server.asm` is the control that proves this: it has **not been touched
+since that count** (`git log ea1800d..HEAD` is empty for it), its instruction
+count is 107 both times, and yet it costs 163 cycles rather than the 112
+recorded. The old pass found 5 two-word instructions in it where there are 56.
+
+Cross-checked three ways before being believed: the assembler's own symbol
+span, an independent disassembly of the same bytes (`dsp56kDisassemble`, which
+prints each instruction's word count), and a source-line count — 508
+instructions and 735 words agree exactly across all three.
+
+**Treat 934 as a floor, not a ceiling.** The count is exact for the code but
+models no memory-contention stalls, so the figure under load can only be
+higher. The old headroom claim — "1.4× the entire reverb engine, free" — is
+gone: at 86% of budget with two effects and two sends live, a bank is much
+closer to its limit than anything in these docs has assumed, and adding
+delay lines on the strength of the old number would have overrun it.
+
+**The one large lever, measured but not taken.** 208 of the reverb loop's 735
+cycles are long-displacement accesses to the r7 state block, spread over 75
+distinct offsets; every register-indirect form (`(rn)`, `(rn)+`, `(rn+n)`) is
+one word instead of two. Meanwhile **r0–r4 and r6 are nearly idle inside the
+loop** — 3 to 7 references each, against r7's 208. Pointing spare registers at
+hot clusters of the state block would convert two-word accesses into one-word
+ones.
+
+The ceiling on that is **133 cycles** (208 accesses − 75 one-off pointer
+setups) and the realistic figure is well below it: only five or six registers
+are actually spare, 31 of the 75 offsets are touched exactly once and can never
+pay for their own setup, and the win only materialises where offsets are
+adjacent enough to walk with post-increment (`$5a/$5b` and `$38/$39` are, most
+are not). **Unproven — this is an inspection of the disassembly, not a build.**
+What would settle it: convert one hot cluster, re-run `cycle_count.py`, and
+require bit-identical rendered output from `render_reverb.py --mem`.
 
 **Do not measure this in `tools/dsp_host`.** Its `instructions/sample` figure
 is `g_lastCycles / procCalls / frames`, and `g_lastCycles` does not scale with
@@ -729,11 +770,11 @@ however the others were set. Full record in `VOICING.md`.
 **Order of work — where it stands:**
 1. ~~The 32K re-layout~~ — **done**, flashed, confirmed by ear.
 2. ~~Design the modes~~ — **done**, Rounds 1–5 in `VOICING.md`.
-3. **Measure real cycle cost with both effects live** — *still open, and only a
-   flash can do it.* The ~700-of-~1080 figure is a **static** count of the
-   sample loop, not a measurement under load: `tools/dsp_host` cannot measure
-   this at all (its `instructions/sample` does not scale with frame count).
-   `DSP.md` §12's rule applies.
+3. ~~Measure real cycle cost with both effects live~~ — **counted**, and the
+   answer changed the picture: **934 of ~1080, 86% used**, not the 529 or ~700
+   the docs carried. `tools/cycle_count.py` makes it reproducible. What is
+   still flash-only is confirming it under load — the static count models no
+   memory-contention stalls, so it is a floor.
 
 **Also still open**, both small and both with their evidence recorded above:
 MOD depth's range wants calibrating by ear (Round 5 measured it flattening

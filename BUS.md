@@ -57,10 +57,14 @@ The effect's displayed name carries its build number (`BUILD_TAG` in
 `tools/build_bus.py`) — bump it every time a `.bin` is wrapped. Three debugging
 rounds were lost to not being able to tell which firmware was on the unit.
 
-Cycle budget is **measured, not guessed**: a full bank (reverb + delay + two
-sends) is ~700 of ~1080 cycles/sample. `tools/dsp_host` CANNOT measure this —
-its `instructions/sample` does not scale with frame count. Count the sample
-loop statically instead. See `REVERB.md`.
+Cycle budget is **measured, not guessed** — by `python3 tools/cycle_count.py`,
+which is the only correct way to get it: `tools/dsp_host` CANNOT measure this
+(its `instructions/sample` does not scale with frame count). A full bank
+(reverb + delay + two sends) is **934 of ~1080 cycles/sample — 86% used, 146
+free**, and that is a floor, since the count models no memory-contention
+stalls. Earlier hand counts of 529 and ~700 were both wrong; see `REVERB.md`
+for the correction and for the one large lever that is left. **Re-run the tool
+after any change to a sample loop.**
 
 **Read before touching parameters:** `DSP.md` §9 (page-2 slot mapping, measured
 — two earlier guesses were wrong and cost flashes) and `PARAM_PAGES.md` §5e
