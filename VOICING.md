@@ -542,3 +542,20 @@ structure. The reflex that caught three: **a number that does not respond to the
 control that should move it is a broken measurement, not a null result.** The
 fourth was caught by demanding bit-identical output from a change that should
 have been a no-op. Both are cheaper than the debugging they prevent.
+
+### Hardware, 5 Aug 2026 — `ChonVerb21`, confirmed
+
+Flashed and heard on the unit. **"Much better."** Everything voiced in Rounds
+2d–5 plus the MIX law was emulator-only until this point; it all holds up on
+hardware.
+
+That closes the loop this file was opened for. Round 1's finding — *the modes
+are under-differentiated* — is answered, and the answer was six per-mode levers
+where there had been three, with **decay time** the one that mattered most and
+the one MODE had never touched.
+
+Still open and deliberately not acted on: modal prominence at 8–11 dB over the
+local envelope (Round 5), whose only structural lever is more total delay
+against a 32K hard ceiling. And two things the emulator cannot check at all —
+the cycle budget with a full bank live, and the UI surface for WIDTH and →DEL,
+whose companion fields `-params` cannot drive.

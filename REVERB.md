@@ -11,10 +11,18 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > its own id, and its own knob layout. Where this document still describes the
 > old build, it is history; the sections below marked **current** are not.
 
-> **Status, 4 Aug 2026 (`ChonVerb19`, on hardware).** Structure, parameters and
-> the MODE select are all working on the unit. The four modes' constants are
-> first-pass values chosen by analysis rather than by ear, so per-mode voicing
-> is the live work — see "Planned design" at the end.
+> **Status, 5 Aug 2026 (`ChonVerb21`, on hardware, confirmed by ear).**
+> Structure, parameters and the MODE select all work on the unit, and so does
+> everything from the 5 Aug session: the tail crackle is fixed, the four modes
+> are genuinely distinct (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG, plus
+> per-mode ER arrivals, diffuser taps, tap spread, LFO rate and damping), and
+> MIX holds dry at unity to half-travel before crossfading. Reported on
+> hardware as "much better".
+>
+> Per-mode voicing is no longer the blocking work. What remains is measured but
+> unacted-on: modal prominence 8–11 dB over the local envelope, whose only
+> structural lever is more total delay against a 32K hard ceiling — see
+> `VOICING.md` Round 5 for why no fix is worth making at this budget.
 
 For how the DSP subsystem works — boot, payload format, the dispatcher ABI,
 the allocator, the memory map — see `DSP.md`. For the bus itself see `BUS.md`.
