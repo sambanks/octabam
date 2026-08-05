@@ -146,6 +146,93 @@ Record source AB/CD (5 values each), record length (65), trig mode (3), a third 
 with 11 options, fade in/out (113), and quantised record/play (18 values, default
 `255` = off). This is the whole sampling front-end's parameter model.
 
+## 3b. Free parameter slots — surveyed across every page (5 Aug 2026)
+
+Read straight from the per-parameter enable bitmaps (`P+0x18e` = slots 0-7,
+`P+0x18a` = slots 8-11, one nibble each, **0 = disabled, no knob drawn**). Done
+while looking for somewhere to put a per-track SEND level for the bus, since the
+delay's own twelve are all in use (`BUS.md`).
+
+| page | enable `p0..p7` / `p8..p11` | slots with NO knob |
+|---|---|---|
+| PLAYBACK 0 | `15311311` / `00001751` | none |
+| PLAYBACK 1 | `55311311` / `00001751` | none |
+| PLAYBACK 2 | `00031031` / `00000000` | p0 p1 p2 p5 p8 p9 p10 p11 |
+| PLAYBACK 3 | `00000000` / `00000000` | all twelve |
+| PLAYBACK 4 | `00110111` / `00001100` | p0 p1 p4 p10 p11 |
+| LFO (audio) | `11111111` / `00001111` | none |
+| **AMP** | `11811111` / `00000111` | **p8** |
+| routing | `00111111` / `00001000` | p0 p1 p9 p10 p11 |
+| recorder | `11111111` / `00001111` | none |
+| NOTE | `11111111` / `00000101` | p8 p10 |
+| ARP | `00111111` / `00001001` | p0 p1 p9 p10 |
+| LFO (MIDI) | `11111111` / `00001111` | none |
+| CONTROL 1 | `00111111` / `00001111` | p0 p1 |
+| CONTROL 2 | `11111111` / `00001111` | none |
+
+**AMP is the interesting page** — always present regardless of machine type, and
+per-track, which is the granularity a send level needs. Its full table:
+
+| slot | label | default | count | enabled | formatter `P+0x0ca` |
+|---|---|---|---|---|---|
+| p0 | `ATK` | 0 | 128 | 1 | 0 |
+| p1 | `HOLD` | 127 | 128 | 1 | `0x4003b3d0` |
+| p2 | `REL` | 127 | 128 | 8 | `0x4003b408` |
+| p3 | `VOL` | 64 | 128 | 1 | `0x4003c7a0` |
+| p4 | `BAL` | 64 | 128 | 1 | `0x4003c7a0` |
+| p5 | `XVOL` | 127 | 128 | 1 | `0x4003b484` |
+| p6 | `AMP` | 1 | 4 | 1 | `0x4003b6fc` |
+| p7 | `SYNC` | 1 | 2 | 1 | `0x4003c14c` |
+| **p8** | **`ATCK`** | 0 | **2** | **0** | `0x4003b754` |
+| p9 | `FX1` | 0 | 4 | 1 | `0x4003b6fc` |
+| p10 | `FX2` | 0 | 4 | 1 | `0x4003b6fc` |
+| p11 | `TRIG` | 0 | 5 | 1 | `0x4003bdd8` |
+
+* **`p8 ATCK` is the only genuinely un-drawn slot, and it is a boolean** (count
+  2). Using it as a level means widening the count to 128 and zeroing its
+  formatter as well as enabling it — three edits to a stock page, not one.
+* **`XVOL` (p5) is marked ENABLED but Sam reports it does not appear in the
+  GUI.** It is a full 128-range page-1 slot with a custom formatter
+  (`0x4003b484`), and a formatter is exactly what decides whether and how a
+  parameter draws — the same mechanism that made our `→DEL` render as
+  "MIX / SEND" regardless of value count (§5e, `REVERB.md`).
+  **Do not assume it is free.** `XVOL` is almost certainly *crossfader volume*;
+  a parameter can be consumed by the engine while not being directly editable.
+  Repurposing it would likely break crossfader behaviour, which is a flagship
+  feature. **Test first: does the crossfader change that track's level?** If it
+  does, `XVOL` is live and off-limits. If it does nothing, it is a far better
+  candidate than `ATCK`.
+
+### What a probe build would have to establish
+
+Enabling a slot draws a knob. It does **not** follow that the value goes
+anywhere. A control has to travel UI → Part storage → publication → the DSP's
+per-track record, and a slot disabled since the factory may have no storage and
+no publication path behind it. Two questions, in order:
+
+1. **Does an AMP-page parameter reach the DSP at all, and at which offset?**
+   AMP values drive the voice, not an effect, so it is not known whether they
+   land anywhere an FX effect's `r6` can see. Note the FX record's `r6+6..$a` is
+   measured as touched by nothing (`DSP.md` §9) — worth checking whether AMP
+   values land there.
+2. **Does enabling `p8` give it storage and publication, or is it inert?**
+
+Method is `dsp/page2_probe.asm`'s, which settled the FX page-2 mapping and is
+the precedent to copy: give each candidate offset a **distinct audible
+signature**, expose the slot with a full 0..127 range, flash once, sweep.
+
+Two traps that pass already recorded, both of which apply here:
+
+* **A probe comparing whole words against `64<<16` cannot see a companion
+  field.** Probes 1-4 did exactly that and drew the wrong conclusion.
+* **Defaults must be in range.** A default outside its own value count is used
+  as an index and stalled the sequencer on hardware — so widening `ATCK`'s count
+  means checking its default too.
+
+Seven builds settled page 2. Budget similarly, and note this one edits a
+**stock, always-present page shared by every track**, where page 2 only ever
+edited our own clones.
+
 ### Other decoded pages
 
 ```
