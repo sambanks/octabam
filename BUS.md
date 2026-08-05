@@ -955,6 +955,75 @@ ACC-write addressing needed for the dry sends already existed.
   without documented issue, which is reassuring but not the same as
   measuring this specific case.
 
+## The FX1 slot, and what it is not
+
+Established 5 Aug 2026, mostly by correcting a wrong framing of my own.
+
+**Every track has two independent slots.** FX1 and FX2 each have their own menu,
+their own parameter pages, and their own allocation from the bump allocator
+(`DSP.md` §10): **FX1 gets 3,072 words, FX2 gets 16,384.** That size difference
+is exactly why the reverbs are FX2-only — a reverb does not fit in 3,072.
+
+**Our bus replaces only the FX2 chooser.** FX1's list is untouched, so ChonVerb,
+BongDelay and Send are selectable *only* on FX2. That is what "we are FX2-only"
+means: not that FX1 is unavailable, but that we never put anything in it.
+
+**FX1 is NOT idle, and its memory is NOT a pool.** Both claims were made in
+passing during this session and both are wrong:
+
+* The dispatcher calls FX1 every frame with whatever is selected, and a fresh
+  part **defaults to FX1 = FILTER** (`FUN_40005638`, `DSP.md` §5). On a real
+  kit that slot is usually doing real work — the FX1 filter is half the sound
+  design on this machine.
+* The 4 × 3,072 words are only free if FX1 is unused across the *whole bank*,
+  and they are four separate blocks at `0x1000`/`0x1c00`/`0x2800`/`0x3400`, not
+  one contiguous 12K. **A delay line could not use them as a single buffer even
+  if they were free.** Do not count them toward BongDelay's memory.
+
+**CHORUS is in FX1's list** — which is why the v98 restore mattered. Until then
+every track's FX1 chorus was silently a passthrough on our firmware.
+
+### PARKED: Send on FX1 (delay + reverb on one track)
+
+Recorded because the reasoning is worth keeping, **not currently being built.**
+
+The idea: put our `Send` client in the FX1 slot and restore stock **Echo Freeze
+Delay** to the FX2 menu. A track would then get the stock delay *and* the shared
+ChonVerb bus at once — which stock hardware cannot do at all (`PARAM_PAGES.md`
+§5d: two simultaneous reverbs already glitch).
+
+What makes it look cheap:
+
+* **Restoring DELAY to the FX2 menu costs nothing on the DSP.** Id `0x08`
+  dispatches to the passthrough stub — no cycles, no memory. We dropped it by
+  shrinking the chooser to three entries, not because we needed anything of its.
+* **The send client needs no per-instance buffer** — it works entirely in shared
+  bus scratch, so it does not consume its slot's allocation. The cost is *the
+  slot*, not memory.
+* **FX1-list additions are hardware-proven** (`PARAM_PAGES.md` §5d — reverbs ran
+  on FX1 with working knobs), and both slots share one dispatch, so id `0x09`
+  would run identically in either.
+
+Why it is parked rather than queued:
+
+* **It spends the track's FX1 slot**, i.e. its filter. That is a real cost on
+  this machine, not a free lunch.
+* **Ordering is a hard constraint.** FX1 runs *before* FX2, and the stock delay
+  is applied outside the DSP chain entirely, so an FX1 send taps the **dry**
+  signal. You get delay and reverb in parallel — **never delay into reverb.**
+* **The send level has nowhere to live on the delay's own page.** DELAY declares
+  all twelve parameters (`P+0x18e = 11111111`, `P+0x18a = 00001111`), and
+  repurposing one is unsafe while we do not know which the delay engine reads
+  (`DSP.md` §5 — we still do not know where it runs).
+* **Bus housekeeping is untested against it.** Clients elect a housekeeper by
+  call position to zero the accumulators once per block; FX1 senders would
+  change the number of effect calls per frame from 4 to 8 in a bank.
+* **The send client has only ever run in an FX2 slot.**
+
+It also leans on the stock delay continuing to work while we do not know how it
+works. It is untouched by our build today, so the risk is low — but repointing
+id `0x08` or moving memory it uses would find out the hard way.
+
 ## Open work (not yet designed)
 
 - ~~`DELAY SERVER`'s own core sound~~ **decided and built, task 9** — a
