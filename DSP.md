@@ -387,12 +387,33 @@ location question is still open.
 the stock delay on FX2 *and* feed the ChonVerb bus from the same slot — so the
 FX1 filter is no longer the price. See BUS.md.
 
+**Confirmed end-to-end, same session.** With a ChonVerb server on another track
+in the bank and DELAY's `FB` knob turned up, the reverb send audibly works from
+inside the delay's slot. So our send client is not merely dispatched there — it
+is tapping the audio and reaching the bus, while the stock delay runs.
+
+**A track can therefore have the stock Echo Freeze Delay AND the shared reverb
+at once**, which stock hardware cannot do at all (`PARAM_PAGES.md` §5d), at the
+cost of neither the FX1 filter nor any additional stock effect.
+
 **The catch, which is a real design problem, not a detail.** The send client
-reads its two levels from `p0`/`p1`, and on this id those are DELAY's own knobs.
-DELAY declares all twelve parameters, so *any* offset we read is one of its
-controls — there is no free slot for an independent send level. Options are a
-fixed level, coupling the send to a delay parameter deliberately chosen for it,
-or finding the level somewhere outside the param block. Unresolved.
+reads its two levels from `p0`/`p1`, and on this id those are DELAY's own knobs:
+
+| | | | | | |
+|---|---|---|---|---|---|
+| p0 `TIME` (47) | p1 `FB` (0) | p2 `VOL` (127) | p3 `BASE` (0) | p4 `WDTH` (127) | p5 `SEND` (0) |
+| p6 `X` (0) | p7 `TAPE` (1) | p8 `DIR` (127) | p9 `SYNC` (1) | p10 `LOCK` (0) | p11 `PASS` (0) |
+
+`p0`/`p1` are TIME and FB — the two you would least want to lose, and **FB is
+worst of all because it couples the two things that must be independent**: FB at
+0 means no repeats *and* no send; FB up means repeats *and* send. They cannot be
+set separately.
+
+DELAY declares all twelve parameters, so any offset we read is one of its
+controls. Options: a fixed level; a deliberately chosen sacrificial parameter
+(`p6 X` and `p11 PASS` both default to 0 and are the least obviously essential,
+though what they do is unverified); or sourcing the level outside the param
+block entirely. **Unresolved, and it is the next design decision.**
 
 **Next:** `DELAYPROBE=send` points id `0x08` at the SEND client, which passes
 audio through and only taps it. If the delay survives that, **our code can hold

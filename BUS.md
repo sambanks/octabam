@@ -995,11 +995,18 @@ so never delay-into-reverb) is moot because the send now sits at the FX2 point.
 That makes the FX1 plan below the second-best version of this idea. It is kept
 for its reasoning, not as the plan.
 
+**Confirmed end-to-end:** with a ChonVerb server on another track in the bank
+and DELAY's `FB` knob up, the reverb send audibly works from inside the delay's
+slot. Delay and shared reverb on one track, costing neither the FX1 filter nor
+any further stock effect.
+
 **The blocker moved rather than vanished.** The send client reads its levels
-from `p0`/`p1`, which on id `0x08` are DELAY's own knobs, and DELAY declares all
-twelve parameters — so there is no free slot for an independent send level.
-Fixed level, a deliberately-chosen delay parameter, or a level sourced outside
-the param block. Unresolved, and it is the next design decision, not a detail.
+from `p0`/`p1`, which on id `0x08` are DELAY's `TIME` and `FB`. **FB is the
+worst possible choice** because it couples what must be independent — FB at 0 is
+no repeats *and* no send; FB up is both. DELAY declares all twelve parameters,
+so any offset is one of its controls. Fixed level, a deliberately chosen
+sacrificial parameter (`p6 X` / `p11 PASS` both default 0), or a level sourced
+outside the param block. Unresolved, and it is the next design decision.
 
 **Still unknown:** where the delay is implemented (`DSP.md` §5). Nothing here
 depends on knowing.
