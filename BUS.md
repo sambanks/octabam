@@ -1013,14 +1013,24 @@ Neither dominates. Co-located keeps the filter but the send is all-or-nothing at
 whatever fixed level is compiled in; FX1 gives real controls but costs the
 filter and can only ever send dry.
 
-**The option that would beat both**, and the only one needing new work:
-`DSP.md` §9 records that **`r6+6..$a` is touched by nothing** — five words in
-the per-track param record that no stock effect and no publisher uses. A value
-delivered there is readable by our client and invisible to everything stock,
-which is a genuinely independent send level with the FX1 filter kept. The cost
-is ColdFire reverse engineering: something has to *write* those words, so the
-parameter publication path has to be found and extended. Well-posed, unlike the
-delay hunt, and `apply_part` is the place to start.
+**A third option was floated and does not work as stated.** `DSP.md` §9 records
+that `r6+6..$a` is touched by nothing — five words in the per-track param record
+no stock effect reads and no publisher writes. Publishing a send level there
+would be invisible to everything stock, so it looks like an independent control
+with the filter kept.
+
+**It solves the wrong half.** Those five words are inside the DSP's data
+structure, not on any page. A control has to *originate* somewhere the user can
+turn, and this machine gives each effect exactly twelve parameter slots drawn as
+two pages of six — **DELAY uses all twelve**, so there is no free encoder on that
+track's FX2 pages. Taking a knob from another page (track, amp, LFO) just moves
+the theft. Inventing a new parameter page is a different order of work from the
+chooser and descriptor edits this project has done, and nothing here has touched
+that machinery.
+
+So the gap remains real and possibly useful later, but **it is not a route to a
+per-track send knob** without a UI surface to drive it, and no such surface has
+been identified.
 
 **Confirmed end-to-end:** with a ChonVerb server on another track in the bank
 and DELAY's `FB` knob up, the reverb send audibly works from inside the delay's
