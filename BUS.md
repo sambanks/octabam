@@ -983,6 +983,27 @@ passing during this session and both are wrong:
 **CHORUS is in FX1's list** — which is why the v98 restore mattered. Until then
 every track's FX1 chorus was silently a passthrough on our firmware.
 
+### SUPERSEDED by the FX2 result — read this first
+
+**Hardware, 5 Aug 2026: our code can hold stock DELAY's own slot.** With id
+`0x08` dispatched to the SEND client (`DELAYPROBE=send`, `ChonVerb22S`), the
+stock Echo Freeze Delay **still works**. So a track can run the stock delay on
+FX2 *and* feed the ChonVerb bus from that same slot — **the FX1 filter is not
+the price after all**, and the ordering objection below (an FX1 send taps dry,
+so never delay-into-reverb) is moot because the send now sits at the FX2 point.
+
+That makes the FX1 plan below the second-best version of this idea. It is kept
+for its reasoning, not as the plan.
+
+**The blocker moved rather than vanished.** The send client reads its levels
+from `p0`/`p1`, which on id `0x08` are DELAY's own knobs, and DELAY declares all
+twelve parameters — so there is no free slot for an independent send level.
+Fixed level, a deliberately-chosen delay parameter, or a level sourced outside
+the param block. Unresolved, and it is the next design decision, not a detail.
+
+**Still unknown:** where the delay is implemented (`DSP.md` §5). Nothing here
+depends on knowing.
+
 ### PARKED: Send on FX1 (delay + reverb on one track)
 
 Recorded because the reasoning is worth keeping, **not currently being built.**

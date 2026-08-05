@@ -364,6 +364,36 @@ build. Those come from the stored Part id and the `0x460d1700` bitmask, which no
 DSP dispatch change can reach — exactly what the static analysis predicted, now
 observed on hardware.
 
+### `ChonVerb22S` — our code can hold the delay's slot
+
+| build | id `0x08` runs | result |
+|---|---|---|
+| `ChonVerb22S` | the SEND client | **delay still WORKS** |
+
+**What this establishes, exactly:** id `0x08`'s DSP slot can run our code and the
+stock Echo Freeze Delay keeps working, **provided that code passes the audio
+through unchanged.** That is the question BUS.md's parked design needed
+answered, and the answer is yes.
+
+**What it does NOT establish — and the temptation is to claim it.** The send
+client leaves the buffer contents byte-identical to the passthrough; it only
+taps. So this says *nothing* about whether the delay reads that buffer, nor
+where the delay is implemented. Silence killed it and passthrough-plus-tap did
+not, which is exactly what "the delay is fed by the track's audio" predicts and
+is equally consistent with every remaining hypothesis about *where*. The
+location question is still open.
+
+**Design consequence, and it supersedes the parked FX1 plan.** A track can run
+the stock delay on FX2 *and* feed the ChonVerb bus from the same slot — so the
+FX1 filter is no longer the price. See BUS.md.
+
+**The catch, which is a real design problem, not a detail.** The send client
+reads its two levels from `p0`/`p1`, and on this id those are DELAY's own knobs.
+DELAY declares all twelve parameters, so *any* offset we read is one of its
+controls — there is no free slot for an independent send level. Options are a
+fixed level, coupling the send to a delay parameter deliberately chosen for it,
+or finding the level somewhere outside the param block. Unresolved.
+
 **Next:** `DELAYPROBE=send` points id `0x08` at the SEND client, which passes
 audio through and only taps it. If the delay survives that, **our code can hold
 the delay's slot and keep the delay** — which is the whole question behind
