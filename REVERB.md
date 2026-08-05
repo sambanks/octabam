@@ -346,12 +346,17 @@ both wrong, in different ways.
 
 | | instructions | cycles/sample |
 |---|---|---|
-| `reverb_server` | 508 | 735 |
+| `reverb_server` | 512 | 731 |
 | `delay_server` | 107 | 163 |
 | `send_client` | 16 | 18 |
-| **a full bank** (1 + 1 + 2 sends) | | **934** |
+| **a full bank** (1 + 1 + 2 sends) | | **930** |
 | budget per DSP (`stageprobe5/6`) | | ~1080 |
-| **headroom** | | **~146** (86% used) |
+| **headroom** | | **~150** (86% used) |
+
+(735 for the reverb / 934 a bank before the v97 Hadamard rewrite below. Note
+that rewrite moved the instruction count the *other* way — 508 → 512 — while
+cycles fell 735 → 731. **Instructions are not cycles here**, and a count of
+them would have scored a real speed-up as a regression.)
 
 **This supersedes 529/551, and the correction has two independent halves.**
 
@@ -387,14 +392,49 @@ loop** — 3 to 7 references each, against r7's 208. Pointing spare registers at
 hot clusters of the state block would convert two-word accesses into one-word
 ones.
 
-The ceiling on that is **133 cycles** (208 accesses − 75 one-off pointer
-setups) and the realistic figure is well below it: only five or six registers
-are actually spare, 31 of the 75 offsets are touched exactly once and can never
-pay for their own setup, and the win only materialises where offsets are
-adjacent enough to walk with post-increment (`$5a/$5b` and `$38/$39` are, most
-are not). **Unproven — this is an inspection of the disassembly, not a build.**
-What would settle it: convert one hot cluster, re-run `cycle_count.py`, and
-require bit-identical rendered output from `render_reverb.py --mem`.
+The arithmetic ceiling is 133 cycles (208 accesses − 75 one-off setups). **That
+ceiling is not reachable, and the best cluster has now been converted to find
+out by how much.**
+
+**Done (v97): the 4×4 Hadamard, `$16..$1d`.** The most favourable cluster in the
+loop — 13 accesses over 9 contiguous offsets, the only run of that quality.
+d0..d3 and u0..u3 are adjacent, so one `lua` pointer reads the four inputs and
+walks straight into the four outputs, and copying the operand to B removes the
+two reloads (A takes the sum, B the difference). **24 words → 16.**
+
+**But the saving is 4, not 8, and `m6` is why.** It holds `$fff` for the
+pre-delay's modulo-4096, and the AGU applies the modifier to post-increments.
+An eight-word walk is therefore only safe if `(r7+$16) & $fff <= $ff7` — a
+property of the *host-assigned* `r7`, not of this code, and not verifiable from
+the emulator, whose base is one sample of one. Forcing `m6` linear and putting
+it back costs 4 words, halving the win. **Every further cluster pays this same
+tax** unless it can live inside a register whose modifier is already linear.
+
+Verified bit-identical across all four modes and a `TIME=127 SIZE=127 DIFF=127`
+wet render. Bank total **934 → 930**.
+
+**Extrapolate down, not up.** This was the best case in the loop and it
+returned 4 cycles. 31 of the 75 offsets are touched exactly once and can never
+repay a pointer setup; most of the rest are not adjacent enough to walk; and
+only five or six registers are spare. The realistic total for the whole lever
+is a few tens of cycles, not 133 — worth having if cycles ever get tight,
+**not worth spending a flash to chase now**.
+
+**Trap, and it cost the first two attempts: this assembler silently encodes
+`tfr a,b` as `rnd b`** (opcode `200019`, confirmed by disassembling the output).
+No error, no warning. B never receives A, the FDN matrix stops being orthogonal,
+and the symptom is not a crash but a **40% shift in RT60** — the sort of thing
+that reads as "voicing changed" rather than "code is wrong". Use `move a,b`;
+`tfr y1,a` and `tfr y1,b` do encode correctly. No shipped source used `tfr`
+before this, so nothing else is affected. **Disassemble what you assembled
+before trusting a hand-written optimisation** — `dsp56kDisassemble` prints each
+instruction with its word count and would have caught this in seconds.
+
+**And the control that made the result trustworthy**: inserting a single `nop`
+in the loop and demanding a bit-identical render. That proves the harness is
+sensitive to code changes only through *behaviour*, not through layout or
+timing — without it, "bit-identical" would have been an untested claim about
+the test rather than about the change.
 
 **Do not measure this in `tools/dsp_host`.** Its `instructions/sample` figure
 is `g_lastCycles / procCalls / frames`, and `g_lastCycles` does not scale with

@@ -2115,20 +2115,48 @@ lf51:
         move    a,x:(r7+$19)
 
 ; ---- 4x4 Hadamard: adds and subtracts only ------------------------------
-        move    x:(r7+$17),x0
-        move    x:(r7+$16),a
+; v97: 24 words -> 20. x:(r7+$disp) is a TWO-word instruction and every
+; register-indirect form is one (`tools/cycle_count.py`; REVERB.md's cycle
+; table for why that matters). d0..d3 and u0..u3 are $16..$1d, eight
+; CONTIGUOUS words, so one pointer reads the four inputs and walks straight
+; on into the four outputs. The two reloads of d0 and d2 go too: copy the
+; operand to B first, then A takes the sum while B takes the difference.
+;
+; r6 is free here -- live only at the early-reflection tap above (loaded from
+; x:(r7+$30), used, stored back) and dead from there to the end of the loop.
+; y1 likewise: last written at the damping mpy above, next written in the
+; write-back section below.
+;
+; m6 IS NOT free, and this is what costs the other 4 words. It holds $fff for
+; the pre-delay's modulo-4096, the AGU applies it to these post-increments,
+; and an 8-word walk is only safe if (r7+$16) & $fff <= $ff7 -- a property of
+; the HOST-ASSIGNED r7, not of this code, and unverifiable across instances
+; from here. So the block forces m6 linear and puts it back. The pre-delay
+; runs earlier in the loop than this does, so the restore is what keeps the
+; NEXT iteration correct; do not drop it.
+;
+; NOTE `move a,b`, not `tfr a,b`: this assembler silently encodes `tfr a,b`
+; as `rnd b` (opcode 200019, verified by disassembly). It emits no error, B
+; never receives A, and the FDN matrix quietly stops being orthogonal --
+; which showed up as a 40% RT60 shift, not as anything obviously broken.
+        move    #>$ffffff,m6            ; linear for the walk
+        lua     (r7+$16),r6
+        move    x:(r6)+,a               ; d0
+        move    x:(r6)+,x0              ; d1
+        move    a,b                     ; keep d0: A takes the sum, B the diff
         add     x0,a
-        move    a,x:(r7+$1a)            ; u0 = d0+d1
-        move    x:(r7+$16),a
-        sub     x0,a
-        move    a,x:(r7+$1b)            ; u1 = d0-d1
-        move    x:(r7+$19),x0
-        move    x:(r7+$18),a
+        sub     x0,b
+        move    x:(r6)+,y1              ; d2, parked -- A and B are both busy
+        move    x:(r6)+,x0              ; d3; r6 now points exactly at u0
+        move    a,x:(r6)+               ; u0 = d0+d1
+        move    b,x:(r6)+               ; u1 = d0-d1
+        move    y1,a
+        move    y1,b
         add     x0,a
-        move    a,x:(r7+$1c)            ; u2 = d2+d3
-        move    x:(r7+$18),a
-        sub     x0,a
-        move    a,x:(r7+$1d)            ; u3 = d2-d3
+        sub     x0,b
+        move    a,x:(r6)+               ; u2 = d2+d3
+        move    b,x:(r6)+               ; u3 = d2-d3
+        move    #>$fff,m6               ; back to the pre-delay's modulo-4096
 
 ; ---- feedback and write back --------------------------------------------
         move    x:(r7+$1e),y0           ; g/2, loaded ONCE for the whole
