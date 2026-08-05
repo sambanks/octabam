@@ -293,3 +293,34 @@ which case the answer is deliberate randomisation, not putting the swap back.
 **Method note.** Three candidates, three magnitudes, one ranking: −29.6 dB
 beats −62.5 and −64 by more than 30 dB. None of it needed a flash, and the two
 that lost were the two that had been reasoned about most confidently.
+
+### Round 2f — heard: the pairing WAS the crackle
+
+A/B/A/B on the pad, wet only, both peak-normalised to −1 dBFS, first 8 s.
+**Verdict: "yes, fixed in B."** Round 2b's crackle is closed — it was the
+foreign-LFO fraction on lines 0 and 2, and the two-slot swap is the fix.
+
+Worth keeping for the method: the fault was found by measurement (−29.6 dB,
+33 dB clear of two structural candidates) and confirmed by ear, and the two
+candidates that lost were the two that had been argued for most confidently
+in Rounds 2c and 2d. Neither cost a flash.
+
+**Open: did removing it expose ringing?** The v72 caution applies directly —
+the sawtooth was an accidental dither and `ChonVerb19` has it. First listen on
+the 4–12 s tail was inconclusive ("would need another couple listens").
+
+The measurement leans toward yes but **cannot settle it, for the reason
+`REVERB.md` already records about spectral flatness.** Peak-to-median bin
+energy over 200 Hz–6 kHz in the late tail:
+
+| | 5 s | 7 s | 9 s | mean |
+|---|---|---|---|---|
+| A, sawtooth present | 52.8 | 51.7 | 49.9 | 51.5 dB |
+| B, paired | 59.9 | 58.7 | 54.2 | **57.6 dB** |
+
++6 dB more modal contrast in B, which is what exposed ringing looks like —
+but A's broadband noise raises the **median**, which compresses the ratio on
+its own, with or without any change in the modes. This metric has exactly the
+flaw this file's own rule warns about, only in the numerator's favour rather
+than the denominator's. It is a hint, not a finding. **Settle it by ear, or
+with a metric that tracks narrowband DECAY RATE rather than level contrast.**
