@@ -233,10 +233,10 @@ are worth more than any voicing change:
 - **Roll the unrolled loops back up.** The reverb's four tank lines are
   unrolled: tank taps 101 instructions, feedback/write-back 101, STAGE-2 read
   offsets 44, LFOs 19 — **265 instructions for four lines, ~66 per line** ✅
-  (counted). A hardware `do` loop on the 56300 is zero-overhead; the cost of
-  rolling is per-line constants becoming table reads instead of immediates,
-  a handful of cycles per line. **Eight lines rolled would be SMALLER than
-  four lines unrolled**, and cost maybe +32 cycles.
+  (counted). A hardware `do` on the 56300 is zero-overhead, so the cost is
+  per-line constants becoming table reads instead of immediates. **Eight lines
+  rolled is SMALLER than four lines unrolled.** Mechanics, the strided state
+  layout and the two traps: §"Rolling the tank loop" below.
 - **AGU modulo is no longer mandatory.** Power-of-2 alignment is what caps a
   single delay line at 16,384 words in the private region. A manual compare-
   and-wrap costs ~4–6 cycles/sample — unaffordable before, free now — and
@@ -385,6 +385,73 @@ Costs, against ~2,576 spare cycles and 494 free words:
   against 494 free. *Fits, with nothing left, and that estimate carries ±20%.*
   **Roll the tank loop and the problem disappears** — this is exactly why the
   inversion above matters more than the feature does.
+
+## Rolling the tank loop — what it means, and why it is the enabler
+
+**"Rolling" = turning an unrolled loop back into a loop.** The tank's four
+delay lines are not written as a loop; the same code is written out four times
+with different registers and constants.
+
+✅ **Measured, not impression:** the tank-tap block is **4 × 25 instructions,
+and once constants and address registers are normalised all four repeats are
+identical**. Same shape in feedback/write-back (101), the STAGE-2 read offsets
+(44) and the LFOs (19). **265 instructions doing 66 instructions' worth of
+distinct work.**
+
+Unrolling is the classic spend-words-to-save-cycles trade, and it was right
+when cycles were the wall. It is now backwards — which is why **8 lines rolled
+is SMALLER than 4 lines unrolled**, and why the modal-density fix stops costing
+program space at all instead of needing ~450–500 words against 494 free.
+
+### It is more tractable than it looks: the state is already strided
+
+✅ Four of the five per-line state groups are **already stride-1 across the
+lines**, so rolling them is mechanically `base + k`:
+
+| state | line 0 | 1 | 2 | 3 | |
+|---|---|---|---|---|---|
+| tap copy | `$16` | `$17` | `$18` | `$19` | ✅ stride 1 |
+| damping | `$3a` | `$3b` | `$3c` | `$3d` | ✅ |
+| LO state | `$41` | `$42` | `$43` | `$44` | ✅ |
+| interpolation carry | `$47` | `$48` | `$49` | `$4a` | ✅ |
+| LFO fraction | `$24` | `$22` | `$57` | `$59` | ❌ irregular |
+
+The odd one out is **not sloppiness** — it is the deliberate crosswise LFO
+assignment (lines 0 and 2 on the inverse triangle, 1 and 3 on the forward, see
+`REVERB.md` §Signal path). Fix by reordering the LFO state array so line *k*
+reads slot *k* while preserving the same phase relationships. ⚠️ The **pairing
+rule** applies here and it has already cost one bug: each line's interpolation
+fraction must come from the same LFO as the integer offset its `nK` was built
+from. Getting that wrong put a 1-sample sawtooth at ~76 Hz on two lines and
+measured −29.6 dB — the loudest artifact ever found in this engine.
+
+**Bonus: it frees registers.** `r1–r4` hold the four line pointers and `m1–m4`
+*all hold the same `$fff`*. Rolled needs one pointer and one modifier, freeing
+three address registers and three modifiers — which `REVERB.md` already wants
+for the r7-access optimisation, and which is the tax that halved the v97
+Hadamard's saving.
+
+### Two things that will bite
+
+- **`r7` is FULL.** The tank taps alone use **20 of its words for 4 lines**;
+  8 lines wants 40, and `$84+` **hangs the DSP** ([[octamax-r7-slots-full]]).
+  The extra state must go to **absolute Y in the server's own buffer** — a
+  proven pattern (`dsp/cycleburn.asm` parks LFO and damping state there, and
+  `DSP.md`'s v27 build showed absolute Y works where `r7+$84` hangs). There is
+  exactly one server per bank, so absolute-Y scalars cannot collide.
+  **The rolling re-layout and the r7-full problem have the SAME fix**, which is
+  the argument for doing them together rather than in sequence.
+- 🟡 **Nested `do`.** The tank loop would sit inside the existing
+  `do n7,>END` sample loop. The 56300 supports nested hardware loops via the
+  stack, but **verify it rather than assume it** — the failure mode here is a
+  wrong RT60, not a crash, which is exactly the class of bug the `tfr a,b`
+  mis-encoding produced and which reads as "voicing changed".
+
+**Verification standard for this work**, since it is a pure refactor: the
+rolled build must render **bit-identical** to the unrolled one at four lines,
+across all four modes plus a `TIME=127 SIZE=127 DIFF=127` wet case. Add the
+single-`nop` control that proves the comparison is not blind
+([[octamax-assembler-traps]]). Only once that passes does the line count change.
 
 ## FX1 must keep working — and FILTER is probably NOT the worst case
 
@@ -536,8 +603,11 @@ exactly, except for the scratch, which both cores must touch by definition:
 3. **Specialize the payloads** — drop BongDelay from A, ChonVerb from B, alias
    both to SEND, and confirm the free-word counts (494 / 2,005). Pure win, no
    design decisions in it.
-4. **Roll the reverb's tank loop.** Cycles for words, at a very good rate, and
-   it is what makes 8 lines affordable rather than marginal.
+4. **Roll the reverb's tank loop**, and move the per-line state to absolute Y
+   in the same pass — the two have the same fix. Cycles for words at a very
+   good rate, and it is what makes 8 lines affordable rather than marginal.
+   Gate: bit-identical to the unrolled build at four lines. See the section
+   above for the strided state layout and the two traps.
 5. **Eight lines.** The first real audible step the memory buys.
 6. **Re-scope BongDelay against its actual budget**, then audition it.
 
