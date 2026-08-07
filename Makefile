@@ -87,6 +87,14 @@ burn: ## Build the cycle-burn probe (splices burn_block{1,2}.inc into the live e
 
 .PHONY: check
 check: bus cycles verify ## Everything that can be checked without hardware
+	@# verify_burn.py shells out to build_bus.py twice -- with and without
+	@# BURN=1, neither with XBUS/SPEC -- and each run overwrites
+	@# out/mainos_bus.bin. Left alone, `make check` finishes by leaving a
+	@# plain probe build at the shipping artifact's path, all green. Rebuild
+	@# so the file on disk is the one the checks were about.
+	@$(MAKE) --no-print-directory bus >/dev/null
+	@echo
+	@echo "  all checks passed; out/mainos_bus.bin restored to the shipping build"
 
 # -------------------------------------------------------------------- misc --
 
