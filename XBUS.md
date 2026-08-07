@@ -31,9 +31,59 @@ pre-delay and lower modal density, i.e. a **bigger, smoother space**. 743 ms is
 exactly why `REVERB.md` ruled out Blackhole-class and substituted a
 Valhalla-flavoured big mode. 1.49 s reopens that.
 
+## STATE AS OF 7 Aug 2026, END OF SESSION — read this first
+
+**The send path is BROKEN, and it is a REGRESSION.** A `SEND` feeding
+`ChonVerb` produces a robotic/metallic/"formanty" artifact — on the plain
+build (`BASE30`, scratch at `Y:0x900`), and identically on both XBUS builds.
+One trig versus many changes only whether it is a single decaying event or
+continuous; the artifact is there either way.
+
+**So none of the cross-core work caused it, and the address was never the
+issue.** Two flashes went into chasing `0x3E000` and then `0x36000` before this
+was established, because the bus was ASSUMED to work. It had never been shown
+to: hardware tests 1–4 in `BUS.md` cover the menu, the ids, both servers on
+their OWN tracks, and a SEND cold-boot freeze — none of them is a send being
+HEARD reaching a server. The emulator check poked a value INTO the ACC buffer
+and watched it come out of the server, which exercises the server's READ, not
+the client's WRITE.
+
+**Where the regression must be.** `dsp/send_client.asm` has only ever had two
+commits: the original "running on hardware" (`40f7167`) and the XBUS change.
+The sender is unchanged from when it worked. So the break is in one of the
+**24 commits to `dsp/reverb_server.asm` since `40f7167`** (`git log --oneline
+40f7167..HEAD -- dsp/reverb_server.asm`).
+
+Already checked and CLEAN — do not re-check:
+- the reverb's bus ACC read inside the sample loop is **byte-identical** to the
+  working version
+- no r7 slot the bus uses (`$63 $64 $65 $67 $68 $69 $6a $1b`) has been stolen
+- the `mpy` mis-encoding is a red herring HERE: `mpysu` is numerically correct
+  whenever the second operand is a positive coefficient, which it always is in
+  this code, and `reverb_server` has 16 such sites while sounding correct
+- SHMR defaulting to 48 (a real bug, now fixed to 0) is NOT the cause — Sam
+  confirmed the reverb sounds right on the device, and SHMR does nothing on
+  XVerb29
+
+**BISECT IT LOCALLY — no flashes needed.** `dsp_host` takes `-inst N`, and
+ChonVerb is its OWN send client (it sums its own dry into the shared ACC and
+reads it back), so `-inst 2` puts one instance's audio through the accumulator
+into another's — the send path in miniature. Build each of the 24 commits, run
+`-inst 1` against `-inst 2`, find where they diverge.
+
+⚠️ **The trap that invalidated the first attempt: the engine stays DRY for 256
+CALLS.** A test source that stops inside that window measures only the dry
+period — it produced `tail_rms = 0.00000` and looked like a finding. Put the
+source AFTER the warm-up and use a tone (a square, for odd harmonics), not
+broadband noise, which masks the artifact.
+
+**On the card right now: `OCTATRACK_BASE30.bin`** — the plain build.
+
 ## Path, in order, with the gate at each step
 
-1. **Does the relocated bus still work SAME-CORE?** ← *currently failing.*
+0. **Fix the send-path regression** (above). Everything below is blocked on it.
+1. **Does the relocated bus still work SAME-CORE?** ← *cannot be judged until 0
+   is fixed; the artifact appears on the plain build too.*
    `XBUS28` put the scratch at `0x3E000` and it broke even with both effects
    on ONE core — so cross-core was innocent and the address was the fault.
    `0x3E000` is outside the init pass that zeroes `0x30000-0x37FFF` (so it
