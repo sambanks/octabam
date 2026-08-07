@@ -31,57 +31,188 @@ pre-delay and lower modal density, i.e. a **bigger, smoother space**. 743 ms is
 exactly why `REVERB.md` ruled out Blackhole-class and substituted a
 Valhalla-flavoured big mode. 1.49 s reopens that.
 
-## STATE AS OF 7 Aug 2026, END OF SESSION — read this first
+## STATE AS OF 7 Aug 2026, SESSION 2 — read this first
 
-**The send path is BROKEN, and it is a REGRESSION.** A `SEND` feeding
-`ChonVerb` produces a robotic/metallic/"formanty" artifact — on the plain
-build (`BASE30`, scratch at `Y:0x900`), and identically on both XBUS builds.
-One trig versus many changes only whether it is a single decaying event or
-continuous; the artifact is there either way.
+**The send path is NOT broken, and there is NO regression in
+`reverb_server.asm`.** Both claims from session 1 are now falsified by
+measurement. The artifact is real on hardware but is **not reproducible in the
+emulator under any send configuration**, so its cause is something `dsp_host`
+does not model.
 
-**So none of the cross-core work caused it, and the address was never the
-issue.** Two flashes went into chasing `0x3E000` and then `0x36000` before this
-was established, because the bus was ASSUMED to work. It had never been shown
-to: hardware tests 1–4 in `BUS.md` cover the menu, the ids, both servers on
-their OWN tracks, and a SEND cold-boot freeze — none of them is a send being
-HEARD reaching a server. The emulator check poked a value INTO the ACC buffer
-and watched it come out of the server, which exercises the server's READ, not
-the client's WRITE.
+### What was actually built
 
-**Where the regression must be.** `dsp/send_client.asm` has only ever had two
-commits: the original "running on hardware" (`40f7167`) and the XBUS change.
-The sender is unchanged from when it worked. So the break is in one of the
-**24 commits to `dsp/reverb_server.asm` since `40f7167`** (`git log --oneline
-40f7167..HEAD -- dsp/reverb_server.asm`).
+Session 1's bisect plan could not have worked, for three independent reasons:
 
-Already checked and CLEAN — do not re-check:
-- the reverb's bus ACC read inside the sample loop is **byte-identical** to the
-  working version
-- no r7 slot the bus uses (`$63 $64 $65 $67 $68 $69 $6a $1b`) has been stolen
-- the `mpy` mis-encoding is a red herring HERE: `mpysu` is numerically correct
-  whenever the second operand is a positive coefficient, which it always is in
-  this code, and `reverb_server` has 16 such sites while sounding correct
-- SHMR defaulting to 48 (a real bug, now fixed to 0) is NOT the cause — Sam
-  confirmed the reverb sounds right on the device, and SHMR does nothing on
-  XVerb29
+- ChonVerb **never writes** the REVERB accumulator. It *reads* it (`r7+$63`)
+  and writes the **DELAY** accumulator (`r7+$68`). Only `send_client.asm`
+  writes the REVERB one, so with no SEND instance the reverb reads all zeros.
+- The server-role lock (`y:>$982`) makes a second REVERB SERVER instance `rts`
+  immediately as a dry passthrough — so `-inst 2` gives one working reverb and
+  one passthrough, not a send.
+- `dsp_host` took ONE `-init`/`-proc` pair, so every instance ran the same
+  effect. Its own source said so: *"a true mixed-effect multi-instance run
+  isn't possible"*.
 
-**BISECT IT LOCALLY — no flashes needed.** `dsp_host` takes `-inst N`, and
-ChonVerb is its OWN send client (it sums its own dry into the shared ACC and
-reads it back), so `-inst 2` puts one instance's audio through the accumulator
-into another's — the send path in miniature. Build each of the 24 commits, run
-`-inst 1` against `-inst 2`, find where they diverge.
+`dsp_host` now takes a **list** for `-init`/`-proc` (one entry point per
+instance), plus `-inmask` (which instances receive input) and a **per-instance
+`-split`** (tracks trig independently, so the per-track frame offset can
+differ between the sender and the server). `tools/send_probe.py` drives it:
+instance 0 = REVERB SERVER at `r7 0x6200`, instances 1..N = real SEND clients,
+the tone fed to the SENDs only so everything in the reverb's output arrived
+over the bus.
 
-⚠️ **The trap that invalidated the first attempt: the engine stays DRY for 256
-CALLS.** A test source that stops inside that window measures only the dry
-period — it produced `tail_rms = 0.00000` and looked like a finding. Put the
-source AFTER the warm-up and use a tone (a square, for odd harmonics), not
-broadband noise, which masks the artifact.
+**This is the first time the send path has been exercised end to end
+anywhere** — hardware tests 1–4 never did it, and the earlier emulator check
+poked a value into the ACC, exercising the server's read, not the client's
+write.
+
+### What was measured
+
+| Question | Result |
+|---|---|
+| Does the bus carry audio at all? | **Yes.** Reverb with its own input silenced still produced 175,972 non-zero samples. |
+| Is the send path faithful? | **Yes.** SEND vs DIRECT input track within **0.3 dB THD at every level** (−11.08 vs −10.81 hot; −36.18 vs −36.17 clean). |
+| Is there a regression across the 24 commits? | **No.** THD drifts smoothly with voicing; no step. `40f7167` is itself *worse* than the commit after it. |
+| Do mismatched per-track splits break it? | **No.** All combinations ≈ −36.2 dB. |
+| Do multiple sends break it? | **No bug.** They sum linearly: 4 sends @0.15 and 2 sends @0.3 give *identically* −6.44 dB (same total level). |
+| Cycle budget? | **Not close.** Reverb 33 instr/sample, each SEND 3.7 — ~44 for reverb+3 sends against a ~2400/sample ceiling. |
+| `init` re-invoked most blocks? | **Irrelevant.** Both `init` routines are a bare `rts`. |
+
+**Sam listened to all of it** — one send hot, direct-input control, three sends
+at 3× overload — and every render **sounds fine**. So the emulator does not
+reproduce the artifact.
+
+### One real (separate) finding
+
+The reverb saturates above roughly **0.35 FS input**, and *N* send tracks sum
+linearly into it with nothing dividing by *N*. Odd harmonics dominate (3f
+strongest), and the single best row in the whole sweep is `729c50a` "Tank input
+attenuation: −12 dB of headroom" at −22 dB. This is a genuine gain-staging
+weakness worth fixing on its own merits — but it is **not** the reported
+artifact, because Sam cannot hear it on musical material.
+
+### WHAT THE ARTIFACT ACTUALLY IS — measured from hardware
+
+Sam recorded the device (`out/hw/fade_send.wav`: ChonVerb on track 1, the
+`->REVERB` send faded up on track 2). `tools/capture_hw.py --timeline` reads it.
+The artifact enters at ~4.5 s and is **discrete HF lines ADDED ON TOP of an
+otherwise intact signal** — not a replacement, not saturation:
+
+| | before | after | change |
+|---|---|---|---|
+| 2.5–5 kHz | −45.2 dB | −25.1 dB | **+20.1** |
+| 5–10 kHz | −56.6 dB | −32.2 dB | **+24.4** |
+| 10–20 kHz | −59.8 dB | −40.3 dB | **+19.6** |
+| spectral flatness | −56.0 | −47.5 | +8.5 |
+| rms | −36.3 | −34.8 | +1.5 |
+| **top-8 bins** | **95.3 %** | **95.3 %** | **0.0** |
+
+The music is untouched (top-8 unchanged); ~20 dB of HF arrives alongside it.
+HF peak/mean is **40.9 dB**, so these are DISCRETE LINES, not noise.
+
+**Ruled out by this data:** block-rate comb (measured −63 dB, absent — so it is
+NOT a per-block indexing fault); saturation (the signal is intact); `MOD` depth
+(sweeping it moves HF only ~7 dB against the +20 needed).
+
+**Sam's two observations, which are the best clues available:**
+- Severity tracks MODE, **worst at 1 → least bad at 4**, still present at 4.
+- It sounds like "an almost audio-rate LFO".
+
+### The live lead: `$2f` is used for two different things
+
+`x:(r7+$2f)` holds MODE's **LFO rate scale**, parked by the md_ blocks
+(lines 594/688/767/846), and is then **overwritten** by the RATE block
+(line 1229-1231) with the final phase increment, which the four LFO advances
+(1293/1355/1417/1453) consume as "base increment".
+
+The per-mode scales are:
+
+| UI mode | block | `$2f` scale | |
+|---|---|---|---|
+| 1 ROOM | `md_room` | `$599999` | 0.70 |
+| 2 PLATE | `md_plate` | `$7fffff` | 1.00 — "fastest" |
+| 3 HALL | `md_hall` | `$399999` | 0.45 |
+| 4 BIG | `md_big` | `$200000` | 0.25 — "slowest" |
+
+If `$2f` is ever consumed as the increment while it still holds the RAW SCALE,
+the LFO phase (wrapped at `$7fffff`, advanced once per block) completes a cycle
+per block — **~2940 Hz, audio rate**. That is exactly "an almost audio-rate
+LFO", and severity would follow the scale magnitudes, which reproduces Sam's
+1→4 ranking (1 and 2 are close; 4 is far the mildest).
+
+**NOT PROVEN.** It is a code-structure observation plus a ranking that matches.
+The emulator cannot currently test it — see the MODE bug below.
+
+### ⚠️ BLOCKER: the `MODE=` build override is a silent no-op
+
+`MODE=n python3 tools/build_bus.py` prints `*** MODE OVERRIDE: forced to n ***`
+and the module DOES grow 2040 → 2042 words, so the substitution reaches the
+assembler. But **`MODE=0` and `MODE=3` produce BYTE-IDENTICAL images** (`cmp -l`
+= 0 differing bytes). `dsp_asm` encodes the two immediates differently in
+isolation (`56f400 000000` vs `56f400 000003`), so the value is lost somewhere
+between substitution and `place()`.
+
+Consequences, both bad:
+- **Modes cannot be auditioned or measured locally at all**, which blocks the
+  `$2f` lead above.
+- `render_reverb.py --mode` uses this same path, so **every per-mode audition
+  has been listening to ONE mode**. Per-mode voicing in `VOICING.md` needs
+  revisiting.
+
+Fix this FIRST — everything else about MODE is blocked on it.
+
+### SHMR: untestable, not excluded
+
+`SHMR` (slot 6 → `r6+$b`) is **not wired on hardware** — Sam confirmed the knob
+does nothing at 0 or at maximum. So it sits at the build's default, and the card
+runs `OCTATRACK_BASE30.bin` (`0d4248c`), which PREDATES `41d252c` "SHMR defaults
+to 0: a fresh part was booting with the shimmer half up". The card therefore
+boots with **SHMR = 48, shimmer running, and no way to turn it off**.
+
+In the emulator SHMR=48 adds **+19.8 dB at 2.5–5 kHz**, against the hardware's
++20.1 dB. That is a good match, but it proves nothing on its own: the knob being
+dead means the device test could not falsify it either way. **Deciding it needs
+a flash with a post-`41d252c` build.** Note `send_probe.py --shmr` drives it
+locally; `render_reverb.py`'s PARAMS still mislabels index 6 as "SPEED" (v101
+renamed that slot), which is why every earlier render had the shimmer off.
+
+### Other things `dsp_host` still does not model
+
+1. **The real dispatcher.** The manual instance loop hand-rolls the calling
+   convention from a reading of the listing, and *"a mistake in that reading is
+   invisible here — which is how the A-flag bug survived six builds"*. There is
+   already a faithful `-dispatch` mode that runs the host's own dispatcher at
+   `P:0x372`, but it has **no audio I/O** and applies one `fxid` to every track.
+2. **Payload B / the second core**, which `dsp_host` cannot boot at all.
+3. **ColdFire-side parameter delivery.** `-params` pokes `r6` directly and
+   bypasses the menu, descriptors and ranges — and the SHMR slot above proves
+   the two do NOT agree: a slot dsp_host drives fine can be dead on hardware.
+
+⚠️ **Traps, all of which have now cost a wrong conclusion:**
+- **Zeroing a parameter to clean up a metric hides the bug that parameter
+  causes.** `MOD=0` and `SHMR=0` were set to keep LFO sidebands out of the THD
+  number, and between them they suppressed the two most likely mechanisms for
+  most of the session. Measure with parameters at their DEFAULTS first.
+- The engine stays **DRY for 256 CALLS**. A source stopping inside that window
+  measures only the dry period — it produced `tail_rms = 0.00000` and looked
+  like a finding. `send_probe.py` pads past it and treats silence as a FAILED
+  measurement, never a clean one.
+- **`tools/dsp_host/` is the source of truth but is COPIED into
+  `vendor/dsp56300/source/dsp_host/` by `setup.sh`'s `stage_dsp_host`.**
+  Building without re-copying silently runs the OLD binary. This invalidated an
+  entire first pass of results — the giveaway was two supposedly different
+  renders coming out byte-identical. Always `cp` then build, and check a new
+  flag actually appears in the output.
 
 **On the card right now: `OCTATRACK_BASE30.bin`** — the plain build.
 
 ## Path, in order, with the gate at each step
 
-0. **Fix the send-path regression** (above). Everything below is blocked on it.
+0. **Find the metallic artifact.** It is NOT a send-path regression — the bus is
+   exonerated. In order: (a) fix the `MODE=` no-op, (b) drive all four modes
+   locally and see whether HF tracks the `$2f` magnitudes, (c) instrument the
+   LFO phase with `-peekx` to MEASURE its rate per mode instead of inferring it,
+   (d) if that comes up empty, flash a post-`41d252c` build to settle SHMR.
 1. **Does the relocated bus still work SAME-CORE?** ← *cannot be judged until 0
    is fixed; the artifact appears on the plain build too.*
    `XBUS28` put the scratch at `0x3E000` and it broke even with both effects

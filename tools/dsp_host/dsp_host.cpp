@@ -45,6 +45,15 @@
 //
 // Usage:
 //   dsp_host -mem out/dsp/mem_A.mem -init <hex> -proc <hex> [options]
+//     -init a[,b..]         entry points, hex, one per instance. A single value
+//     -proc a[,b..]         runs the SAME effect on every instance (the original
+//                           behaviour); a LIST runs a different effect per
+//                           instance, which is the only way to put a real SEND
+//                           and a real SERVER in one session and actually
+//                           exercise the shared bus end to end.
+//     -inmask BITS          which instances receive the input audio (default all).
+//                           -inmask 2 feeds instance 1 only, so instance 0's
+//                           output is purely what came in over the bus.
 //     -inst N               number of instances to run (default 1)
 //     -alloc a,b,..         allocator table index per instance (default 1,3,5,..)
 //     -r7 a,b,..            state block index per instance (default 2,4,6,..)
@@ -55,7 +64,9 @@
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
-//     -split N              a=0 sub-block call of N frames, then a=1 for the rest
+//     -split N[,M..]        a=0 sub-block call of N frames, then a=1 for the rest.
+//                           A LIST gives each instance its OWN split, which is what
+//                           hardware does -- tracks trig independently.
 //                           (the post-trig state). Omitted = split 0, where the
 //                           a=0 call is SKIPPED -- what the dispatcher does.
 //     -guard [words]        police buffer bounds (default window 0x3800 words)
@@ -93,7 +104,10 @@ struct Args {
     int inst = 1; TWord dirty = 0; bool noctl = false;
     bool dispatch = false; int fx2tracks = 0; TWord fxid = 0x16;
     int split = 0; TWord prevfx = 0;
+    std::vector<int> splitList;            // split per instance
     std::vector<int> allocIdx, r7Idx;
+    std::vector<TWord> initList, procList;     // entry points, one per instance
+    unsigned inmask = ~0u;                     // which instances get the input
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
@@ -107,6 +121,15 @@ struct Instance {
     TWord base  = 0;        // Y base that entry holds
     TWord state = 0;        // r7
     TWord audio = 0;        // r0
+    TWord init  = 0;        // this instance's entry points -- per-instance so a
+    TWord proc  = 0;        // SEND and a SERVER can run in the same session
+    bool  fed   = true;     // does this instance receive the input audio?
+    int   split = 0;        // ITS OWN split -- every track trigs
+                            // independently on hardware, so two tracks
+                            // sharing the bus can be running different
+                            // splits, and the bus frame offset is
+                            // per-track (XBUS.md). One split for all
+                            // instances cannot model that at all.
     std::vector<int> pv;
     std::ofstream out;
     long nonzero = 0;
@@ -252,6 +275,16 @@ std::vector<int> parseList(const char* s) {
     return v;
 }
 
+// Same, but hex -- for the entry-point lists, which are quoted in hex
+// everywhere else on the command line.
+std::vector<TWord> parseHexList(const char* s) {
+    std::vector<TWord> v;
+    std::string t(s);
+    for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
+        v.push_back(strtoul(p, nullptr, 16));
+    return v;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -260,8 +293,9 @@ int main(int argc, char** argv) {
         std::string k = argv[i];
         auto v = [&] { return std::string(argv[++i]); };
         if (k == "-mem") a.mem = v();
-        else if (k == "-init") a.init = strtoul(argv[++i], nullptr, 16);
-        else if (k == "-proc") a.proc = strtoul(argv[++i], nullptr, 16);
+        else if (k == "-init") { a.initList = parseHexList(argv[++i]); a.init = a.initList[0]; }
+        else if (k == "-proc") { a.procList = parseHexList(argv[++i]); a.proc = a.procList[0]; }
+        else if (k == "-inmask") a.inmask = strtoul(argv[++i], nullptr, 0);
         else if (k == "-audio") a.audio = strtoul(argv[++i], nullptr, 16);
         else if (k == "-pblock") a.params = strtoul(argv[++i], nullptr, 16);
         else if (k == "-state") a.state = strtoul(argv[++i], nullptr, 16);
@@ -280,7 +314,8 @@ int main(int argc, char** argv) {
         else if (k == "-noctl") { a.noctl = true; }
         else if (k == "-dispatch") a.fx2tracks = atoi(argv[++i]), a.dispatch = true;
         else if (k == "-fxid") a.fxid = strtoul(argv[++i], nullptr, 16);
-        else if (k == "-split") a.split = atoi(argv[++i]);
+        else if (k == "-split") { a.splitList = parseList(argv[++i]);
+                                  a.split = a.splitList[0]; }
         else if (k == "-prevfx") a.prevfx = strtoul(argv[++i], nullptr, 16);
         else if (k == "-alloc") a.allocIdx = parseList(argv[++i]);
         else if (k == "-r7") a.r7Idx = parseList(argv[++i]);
@@ -385,8 +420,22 @@ int main(int argc, char** argv) {
         I.state = stateBase + ir * 0x100;
         I.audio = a.audio + k * 0x40;               // 15 frames = 30 words, well clear
         I.pv    = a.pv[std::min<size_t>(k, a.pv.size() - 1)];
+        // Entry points fall back to the LAST list entry, so a single -init/-proc
+        // still runs one effect on every instance -- the behaviour every existing
+        // caller depends on. A list runs a DIFFERENT effect per instance, which is
+        // what a SEND feeding a SERVER needs: the two are separate modules in the
+        // same payload, and until now the harness could only ever run one of them.
+        I.init  = a.initList.empty() ? a.init
+                : a.initList[std::min<size_t>(k, a.initList.size() - 1)];
+        I.proc  = a.procList.empty() ? a.proc
+                : a.procList[std::min<size_t>(k, a.procList.size() - 1)];
+        I.fed   = (a.inmask >> k) & 1;
+        I.split = a.splitList.empty() ? a.split
+                : a.splitList[std::min<size_t>(k, a.splitList.size() - 1)];
         std::printf("instance %d: r7 = X:0x%05x (idx %d), base = Y:0x%05x (X:0x%03x idx %d), "
-                    "audio X:0x%05x\n", k, I.state, ir, I.base, I.alloc, ia, I.audio);
+                    "audio X:0x%05x, init P:0x%05x proc P:0x%05x%s\n",
+                    k, I.state, ir, I.base, I.alloc, ia, I.audio, I.init, I.proc,
+                    I.fed ? "" : "  [no input]");
         std::printf("            params");
         for (int p : I.pv) std::printf(" %d", p);
         std::printf("\n");
@@ -471,9 +520,9 @@ int main(int argc, char** argv) {
         setParams(inst[k].pv);
         dsp.regs().r[6].var = pblock;
         dsp.regs().r[7].var = inst[k].state;
-        if (a.init) {
-            std::printf("running init @P:0x%05x for instance %d ...\n", a.init, k);
-            if (!runToRts(dsp, a.init, a.trace, "init")) return 1;
+        if (inst[k].init) {
+            std::printf("running init @P:0x%05x for instance %d ...\n", inst[k].init, k);
+            if (!runToRts(dsp, inst[k].init, a.trace, "init")) return 1;
             if (guard.armed) {
                 char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
                 int cl = 0;
@@ -605,8 +654,12 @@ int main(int argc, char** argv) {
             if (!input.empty()) s = inPos < input.size() ? input[inPos++] : 0;
             else if (b == 0 && f == 0) s = 0x400000;             // 0.5 full scale
             for (int k = 0; k < a.inst; ++k) {
-                dsp.memWrite(MemArea_X, inst[k].audio + f * 2 + 0, s & 0xffffff);
-                dsp.memWrite(MemArea_X, inst[k].audio + f * 2 + 1, s & 0xffffff);
+                // -inmask silences an instance's own input so its output is
+                // ONLY what arrived through the shared bus. Feeding a server
+                // dry audio as well would bury the bus contribution under it.
+                const int32_t sk = inst[k].fed ? s : 0;
+                dsp.memWrite(MemArea_X, inst[k].audio + f * 2 + 0, sk & 0xffffff);
+                dsp.memWrite(MemArea_X, inst[k].audio + f * 2 + 1, sk & 0xffffff);
             }
         }
         if (a.spray && b == 0) {
@@ -656,13 +709,13 @@ int main(int argc, char** argv) {
             // while the hardware decayed perfectly. Model the dispatcher, not a
             // historical special case.
             char who[32]; std::snprintf(who, sizeof who, "inst %d", k);
-            const int sp = (a.split > 0 && a.split < a.frames) ? a.split : 0;
+            const int sp = (I.split > 0 && I.split < a.frames) ? I.split : 0;
             if (!a.noctl && sp) {
                 dsp.regs().r[0].var = sp ? I.audio : 0;
                 dsp.regs().a.var = 0;
                 dsp.regs().n[7].var = sp ? sp : cnt;
                 char cw[40]; std::snprintf(cw, sizeof cw, "inst %d ctl", k);
-                if (!runToRts(dsp, a.proc, 0, cw)) {
+                if (!runToRts(dsp, I.proc, 0, cw)) {
                     std::printf("\nHANG in the a=0 call: instance %d, block %d\n", k, b);
                     return 1;
                 }
@@ -679,7 +732,7 @@ int main(int argc, char** argv) {
             // the harness sets the raw var. stageprobe4's audio stage was
             // silently gated off by exactly this.
             dsp.regs().a.var = 0x010000000000ULL;
-            if (!runToRts(dsp, a.proc, (b == 0 && k == 0) ? a.trace : 0, who)) {
+            if (!runToRts(dsp, I.proc, (b == 0 && k == 0) ? a.trace : 0, who)) {
                 std::printf("\nHANG: instance %d, block %d, pc=0x%06x\n", k, b,
                             dsp.getPC().toWord());
                 std::printf("  r0=%06x r1=%06x r2=%06x r3=%06x r4=%06x r5=%06x r6=%06x r7=%06x\n",
