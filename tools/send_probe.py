@@ -289,6 +289,8 @@ def main():
     ap.add_argument("--amp", type=float, default=0.5, help="tone amplitude FS")
     ap.add_argument("--level", type=int, default=127, help="SEND ->REVERB level 0..127")
     ap.add_argument("--mix", type=int, default=127, help="reverb MIX 0..127")
+    ap.add_argument("--time", type=int, default=64,
+                    help="TIME/decay (slot 0). MODE scales this by its own decay\nconstant in r7+$1e -- BIG's is 1.000000, i.e. NO headroom.")
     ap.add_argument("--mod", type=int, default=0,
                     help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
@@ -318,6 +320,7 @@ def main():
     mem = pathlib.Path(a.mem) if a.mem else dump_mem(ROOT / a.image,
                                                      ROOT / "out/dsp/_send_probe_A.mem")
     rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod
+    rev[0] = a.time
     snd = list(SEND_PARAMS); snd[1] = a.level
     wsrc = None
     if a.infile:

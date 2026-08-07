@@ -139,10 +139,31 @@ Two things are wrong with it as a theory of Sam's artifact: the ordering is
 backwards (Sam hears BIG as the MILDEST), and BIG's peak/mean of 11.6 dB is
 NOISE-LIKE, whereas the hardware artifact is discrete lines at 40.9 dB.
 
-**Retained as a lead only for BIG's own +30 dB of broadband HF**, which is a
-real defect in the emulator and worth explaining on its own — but it is a
-different phenomenon from the reported artifact, and no mode reproduces the
-hardware's discrete-line signature.
+**Retained as a separate defect: BIG's own +30 dB of HF**, characterised below.
+No mode reproduces the hardware's discrete-line signature.
+
+### Separate defect: BIG rings, and its decay scale is exactly 1.0
+
+BIG measures ~30 dB more HF than the other three modes. Characterised:
+
+- It is a **dense cluster of NON-HARMONIC lines packed into 2–2.8 kHz**, spaced
+  ~100–270 Hz apart (2030.9, 2153.3, 2205.8, 2298.7, 2355.2, 2425.2, 2577.3,
+  2780.5 Hz at −66 to −70 dB). HALL, for contrast, has only isolated spurs at
+  −83 dB and below. That pattern is modal ringing, not distortion.
+- **`md_big` sets the MODE decay scale `x:(r7+$1e)` to `$7FFFFF` = exactly
+  1.000000.** The other three leave headroom: ROOM `$75C000` (0.920), PLATE
+  `$7B8000` (0.965), HALL `$7D7000` (0.980). `$1e` MULTIPLIES the TIME-derived
+  feedback gain (line 1019-1021), so BIG alone applies no attenuation at all —
+  and `$1e` is the slot whose note records that a wrong value there once made
+  the tank self-oscillate.
+- It is **not simple runaway feedback**, though: HF *falls* as TIME rises
+  (−46.8 dB at TIME=0 → −51.6 at TIME=127) and is already at −46.8 with TIME
+  at zero. So the energy is there before the tank can accumulate it — the input
+  or early path, not the decay. ER level does not explain it either (BIG's is
+  the second LOWEST at 0.19, against ROOM's 0.75).
+
+Unresolved, and worth fixing on its own merits — a mode at unity feedback scale
+is a hazard regardless of whether it explains anything on hardware.
 
 ### The `MODE=` override WORKS — a retracted blocker
 
