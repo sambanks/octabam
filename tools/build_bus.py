@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"22"
+BUILD_TAG = b"23"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -248,10 +248,29 @@ if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
     # slot to a full 0..127 range so all six are actually sweepable.
     PROBE_COUNTS = {6: 128, 7: 3, 8: 128, 9: 3, 10: 128, 11: 3}
 
+# ---- BURN MODE (BURN=1): swap ChonVerb for dsp/burn_probe.asm, the same
+# engine plus a knob-swept cycle burn on p3. Measures the per-DSP cycle
+# ceiling, which has never actually been measured -- 1080 is a figure that was
+# SURVIVED (REVERB_LOG.md, stageprobe5), not a wall anyone found. The knob is
+# renamed BURN so the panel cannot be misread as a working LO control; its
+# filter is bypassed in the asm. Everything else about the build is normal, on
+# purpose: the number is only meaningful if the engine under it is the real one.
+if os.environ.get("BURN") == "1":
+    FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
+    ABBR["REVERB SERVER"] = b"BURN"
+    # APPEND, do not replace. Assigning a fresh list here dropped p9/p10's
+    # names and p7's MODE default on the first attempt, and verify_menu.py
+    # caught all three -- an out-of-range page-2 default is not cosmetic, it
+    # is used as an index and stalled the sequencer on hardware once already.
+    RENAMES["REVERB SERVER"].append((3, b"BURN"))
+    # DEFAULTS already carries (3, 0), so the knob boots at zero burn with no
+    # override needed -- which is the one value that must be safe.
+
 # ---- DSP code placement (task 13) ------------------------------------------
 ASM_SRC = {"DELAY SERVER": "dsp/delay_server.asm",
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
+                             else "dsp/burn_probe.asm" if os.environ.get("BURN") == "1"
                              else "dsp/reverb_server.asm"),
            "SEND": "dsp/send_client.asm"}
 
