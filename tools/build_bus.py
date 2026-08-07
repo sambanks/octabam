@@ -166,7 +166,14 @@ DEFAULTS = {
     # is used as an index -- that shipped once (slot 7: default 64, count 5)
     # and stalled the sequencer on hardware. verify_menu.py now checks it.
     "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 100), (5, 64),
-                      (6, 48),   # SPEED  slow-ish
+                      (6, 0),    # SHMR   OFF. This slot was SPEED (LFO rate)
+                                 # and defaulted to 48; v101 renamed it to the
+                                 # shimmer amount and never revisited the
+                                 # default, so a FRESH PART booted with the
+                                 # shimmer half up -- and the shimmer is not
+                                 # usable yet. SHMR=0 is bit-identical to the
+                                 # pre-shimmer engine, so 0 gives a fresh part
+                                 # the good reverb.
                       (7, 2),    # MODE   HALL, the most generally useful
                       (8, 64),   # DIFF   mid
                       (9, 127),  # WIDTH  full
