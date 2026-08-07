@@ -37,7 +37,7 @@ Checklist:
 ## Phase 1 — Static disassembly  [IN PROGRESS]
 
 - Target: **ColdFire / m68k, big-endian**.
-  - radare2: `./disasm.sh` (already configured with base and arch).
+  - radare2: `scripts/disasm.sh` (already configured with base and arch).
   - Ghidra: processor `68000`, big-endian, base `0x40000400`; then run
     `tools/ghidra_import.py` to define strings/pointers and populate xrefs.
 

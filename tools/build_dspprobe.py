@@ -63,7 +63,7 @@ def assemble(org):
 
 def main():
     if not DIS.exists():
-        sys.exit(f"missing {DIS} — run ./setup.sh")
+        sys.exit(f"missing {DIS} — run 'make setup'")
     img = bytearray(IMG.read_bytes())
 
     def wrw(a, v):

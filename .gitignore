@@ -1,15 +1,16 @@
-# --- Elektron copyrighted material: do NOT version or redistribute ---
-# official OS downloaded (.bin/.syx/.zip) + Elektron user manuals
+# --- Elektron copyrighted material: never version or redistribute ---
+# You supply your own copy of the official OS; nothing derived from it that
+# still contains Elektron's code belongs in git.
 downloads/
 *.bin
 *.syx
 *.zip
 *.pdf
 
-# analysis results, patched images, Ghidra project
+# Analysis results, patched images, Ghidra projects.
 out/
 
-# --- Third party (cloned by setup.sh) ---
+# --- Third party, cloned and built by scripts/setup.sh ---
 vendor/
 
 # --- Local ---
@@ -17,8 +18,3 @@ vendor/
 .playwright-mcp/
 __pycache__/
 *.pyc
-
-# dsp_host is copied into vendor/ to build against dsp56kEmu
-vendor/dsp56300/
-
-OCTATRACK_*.bin

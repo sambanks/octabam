@@ -120,7 +120,7 @@ builds the disassembler from the Access Virus emulator project
 `vendor/dsp56300/build/source/disassemble/dsp56kDisassemble`.
 
 ```sh
-./setup.sh                                        # clones + builds it
+make setup                                        # clones + builds it
 python3 tools/dsp_modmap.py                       # the full module map
 python3 tools/dsp_modmap.py --extract A 1252 out/dsp/A_P1252.bin
 vendor/dsp56300/build/source/disassemble/dsp56kDisassemble \

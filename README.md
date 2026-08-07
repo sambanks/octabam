@@ -1,299 +1,152 @@
-```
- ██████╗  ██████╗████████╗ █████╗ ███╗   ███╗ █████╗ ██╗  ██╗
-██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗████╗ ████║██╔══██╗╚██╗██╔╝
-██║   ██║██║        ██║   ███████║██╔████╔██║███████║ ╚███╔╝
-██║   ██║██║        ██║   ██╔══██║██║╚██╔╝██║██╔══██║ ██╔██╗
-╚██████╔╝╚██████╗   ██║   ██║  ██║██║ ╚═╝ ██║██║  ██║██╔╝ ██╗
- ╚═════╝  ╚═════╝   ╚═╝   ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
-    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-   ▐░░░░░░░░░░░░  E L E K T R O N   O C T A T R A C K  ░░░░▌
-   ▐░░  a firmware study toolkit · for educational use  ░░▌
-    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-      READY.
-      LOAD "OCTAMAX",8,1
-      █
-```
+# octabam
 
-# OCTAMAX
+**Custom DSP effects for the Elektron Octatrack MKII.**
 
-**An educational toolkit for understanding how the firmware of the Elektron
-Octatrack works.**
+The Octatrack has two effect slots per track and a fixed menu of algorithms to
+put in them. This project writes new ones — original DSP56300 assembly — and
+delivers them by patching the stock OS image.
 
-OCTAMAX is a reverse-engineering workspace built to *study* the Octatrack MKII
-operating system: how the update files are packed, how the code is laid out in
-memory, how the microkernel schedules tasks, how the sequencer drives the audio
-DSP — and, as a hands-on way of proving that understanding, how a few small,
-optional, entirely reversible behavior changes can be added to the OS image.
+What runs today:
 
-Everything here is for **educational purposes only**. No Elektron binary is
-redistributed. You bring your own copy of the official OS; the tools analyze it
-and, if you ask them to, produce a modified image byte-for-byte reproducibly from
-that copy.
-
----
-
-## Motivation
-
-> Hi, I'm **Maxolydian**, an electronic artist based in Palermo, Italy.
->
-> For many years Elektron's instruments have been a cornerstone of my live
-> performances. A big part of my artistic search is bringing my compositions to
-> the stage while always leaving the door open to improvisation. The central
-> challenge in that search has always been striking the right balance between
-> automation and hands-on control. Too much automation makes things rigid and
-> takes away the freedom to step off the script. At the same time, getting
-> consistent results — in performance and in sound — demands a setup that is
-> reliable and predictable, something a purely hardware rig makes genuinely
-> difficult.
->
-> On that front Elektron hardware offers exceptional reliability and sound
-> quality — qualities recognized the world over, and the reason each of their
-> machines has been so successful. And yet the Octatrack is now more than 16
-> years old, and while its firmware has been updated several times, the way it
-> *works for live performance* hasn't evolved substantially. Elektron's
-> developers must surely feel swamped by all the feature requests from their
-> users, and it must be hard to decide where to invest the team's precious time
-> to deliver the most value.
->
-> That's why I started this project: to open up the possibility of experimenting
-> with changes and small modifications that make my artistic search easier — and
-> at the same time to feed my passion for the hardware and my hunger to learn
-> from the best. In other words, **for strictly educational purposes.** I hope it
-> proves useful to other artists on a similar search.
-
----
-
-## ⚠️ Warning — read before doing anything
-
-**This project is strictly for personal use, and I honestly do not recommend
-updating the firmware of any Elektron unit with anything other than official
-firmware.** It is a risky operation: it puts the product warranty in question and
-it can leave the unit unusable.
-
-Nothing in this repository is endorsed by, supported by, or affiliated with
-Elektron. If you flash a modified OS you do so entirely at your own risk. The
-study of the firmware (static analysis) is harmless; *writing* a non-official OS
-to real hardware is not. If in doubt, don't flash — just read, disassemble, and
-learn.
-
----
-
-## What has been investigated
-
-Everything below was verified against the official **OS 1.40C for Octatrack
-MKII** — either from the firmware's own checksums, byte-exact decompilation, or
-direct disassembly. Full write-ups live in [`ARCHITECTURE.md`](ARCHITECTURE.md)
-(consolidated architecture) and [`NOTES.md`](NOTES.md) (chronological log).
-
-### Hardware
-- **CPU:** Freescale/NXP **ColdFire** (likely MCF5445x, 32-bit, big-endian,
-  ~266 MHz) — a 68000-family core, *not* ARM. The firmware corroborates it: it
-  drives the on-chip ATA controller in the MBAR region (`0xFC04_51xx`) that
-  characterizes the MCF5445x.
-- **Audio DSP:** Freescale **DSP56xxx**, confirmed by the 24-bit word size used
-  when the boot loader uploads the DSP program 3 bytes at a time.
-- **Storage:** **CompactFlash** (FAT16/32) over the ColdFire's on-chip ATA
-  controller, reached through the FlexBus.
-
-### Firmware format and update chain
-Elektron ships a ZIP with **two transports of the same OS** — a `.bin` and a
-`.syx` — both wrapping the same compressed container:
-
-```
-.bin  = [ELUP hdr][seed] + XOR-feedback( [len] + ELEK( aPLib( MAIN OS ) ) ) + checksum
-.syx  = SysEx 7-bit(              ELEK( aPLib( MAIN OS ) )              )
-```
-
-- **ELUP layer** (`.bin` only): XOR obfuscation with feedback plus an additive
-  checksum. Reimplemented in `tools/make_bin.py` / `tools/bin_decode.py` and
-  validated by regenerating Elektron's own official `.bin` byte-for-byte.
-- **ELEK layer:** a proprietary container whose payload is compressed with
-  **aPLib**; it decompresses to the **MAIN OS** (1,112,560 bytes, loaded at base
-  `0x40000400`).
-- **No cryptographic signature** on any layer — the OS is analyzable and, with
-  recalculated checksums, rebuildable. That's *why* the format can be repacked at
-  all; it is not a security bypass.
-- The updater validates the OS (`FUN_4007f748`) with explicit error codes:
-  `-2` not a valid OS · `-3` length · `-4` checksum · `-5` MK1 not allowed ·
-  `-6` no downgrade.
-
-### Operating system
-- A **proprietary preemptive microkernel** (not MQX/ThreadX/VxWorks — banner
-  `ElektronOctatrack DPS-1`). Task Control Blocks, per-priority ready queues,
-  context switch via `TRAP #0`, blocking message queues, and a time slice driven
-  by the ColdFire PIT timer (`0xFC08_0000`).
-- The same message-queue pattern unifies the whole firmware: the ATA "async
-  queues" and the audio "voice mailboxes" *are* kernel message queues.
-
-### Audio engine and sequencer
-- 8 track voices in the `0x80000000` shared-RAM window (base `0x800049d8`,
-  stride `0xA8`).
-- Control path: a sequencer trig writes a voice mailbox → a control-rate frame
-  builder assembles a parameter frame into a **double buffer** → handshake to the
-  **DSP56xxx** over MMIO at `0x20000000`, which does the real-time synthesis.
-- Work split: **ColdFire = control** (RTOS, sequencer, parameter assembly);
-  **DSP = signal** (playback, time-stretch, filters, FX).
-
-### Practical outcome — the optional patches
-As a demonstration of the above, OCTAMAX can build an image with a few behavior
-changes, **all OFF by default** and toggled from the **PERSONALIZE** menu, so a
-freshly flashed unit is indistinguishable from stock until you opt in:
-
-| feature | effect |
+| | |
 |---|---|
-| **Lazy transitions** | On a pattern change to a different Part, sounding tracks keep the previous Part's sound (no volume jump). The track LED dims while the track hasn't been re-trigged since the change; a trig commits it to the destination Part. Also keeps the A/B scene pointers on the same slots across the change. |
-| **No BANK/PTN countdown** | The SELECT BANK / SELECT PATTERN windows stop expiring after four seconds. |
-| **Arp key scales** | The MIDI arpeggiator's key-scale (ARP SETUP, F knob) gains 10 extra qualities beyond the stock major/minor: the five Greek modes (Dorian, Phrygian, Lydian, Mixolydian, Locrian) plus blues, phrygian-dominant, melodic-minor, octatonic and hirajoshi — 12 qualities × 12 roots. `OFF`/`maj`/`min` stay byte-identical to stock, so the extra scales only appear if you scroll the F knob past them. |
-| **PERSONALIZE options** | The two behavior switches (lazy transitions, no countdown), added to the PERSONALIZE menu, unchecked by default. |
-| **Boot branding** | Boot splash and SYSTEM STATUS show `MAXOLYDIAN` instead of `1.40C`. |
+| **ChonVerb** | A four-line FDN reverb with ROOM/PLATE/HALL/BIG modes, modulated taps, mid/side width and pre-delay. Voiced by ear. Replaces the three stock reverbs, which were never good. |
+| **BongDelay** | A delay you can route *into* the reverb. **Currently an untested first draft** — treat it as unwritten. |
+| **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. This is the part the hardware was not designed to do. |
 
-The code changes live in a free code cave and are reached by 6-byte jump detours.
-The arp-scales work is written up in [`NOTES.md`](NOTES.md) (search "ARP key-scale");
-the behavior patches have a per-hunk table in [`sysex/README.md`](sysex/README.md).
+The reverse-engineering in `docs/` is infrastructure, not the product. It
+exists because you cannot write an effect for a machine whose memory map,
+cycle budget and parameter plumbing you do not know.
 
 ---
 
-## Repository layout
+## Why the send bus is the interesting part
 
-```
-ARCHITECTURE.md      consolidated architecture (hardware, OS, memory map)
-NOTES.md             chronological reverse-engineering log
-FLASHING.md          safe-flashing guide + recovery net (read before flashing)
-DSP.md               the DSP56300 subsystem: dispatch, allocator, memory, harness
-REVERB.md            ChonVerb — architecture, parameters, planned design
-REVERB_LOG.md        historical: the reverse-engineering campaign behind it
-BUS.md               shared delay/reverb send bus — built, running on hardware
-COVERAGE.md          what of the OS is understood, and what is not
-PARAM_PAGES.md       effect/machine parameter descriptors
-dsp/                 DSP56300 sources (the reverb and its probe builds)
-sysex/               the patch (source + JSON hunks) and the reproducible patcher
-tools/               analysis + build scripts (Ghidra headless, emulators, packers)
-fetch-os.sh          download + extract the official OS
-setup.sh             clone/build elektron-firmware-tool into vendor/
-analyze.sh           entropy + binwalk + strings + container unpack -> out/
-```
+Stock, an effect is an *insert*: it lives on one track and hears only that
+track. A reverb used that way is one reverb per track, each with its own
+memory and its own cycles, and you cannot feed several tracks into a single
+space.
 
-Downloaded Elektron binaries (`downloads/`, `out/`, `vendor/*.bin`, `*.syx`,
-`*.bin`, `*.pdf`) are **git-ignored on purpose** — none of them are redistributed.
+octabam turns the FX2 slot into a **bus server**. One track hosts the reverb;
+the others select SEND and contribute to it. Because the two payloads run on
+separate cores, and each carries a different server, the delay's output can
+cross into the reverb — a route the stock firmware has no path for at all.
 
----
+The costs are all measured, not estimated:
 
-## Building a `.syx` or `.bin` from scratch
+| resource | per core | state |
+|---|---|---|
+| Cycles | 4,535/sample | 1,392 spare, measured on hardware under full load |
+| Program space | 8,192 words | 494 free on payload A, 1,998 on B |
+| Delay memory | 65,536 words | 1.49 s per server |
 
-You need your own copy of the official OS. The build is fully reproducible: given
-the same stock file it emits a `.syx` byte-identical to the reference build.
-
-### 0. Prerequisites
-
-- **Python 3.8+**
-- **A cross-assembler for the ColdFire** (only needed to rebuild the stubs from
-  source): `m68k-elf-as`, `m68k-elf-ld`, `m68k-elf-objcopy` (targeting
-  `-mcpu=5407`).
-- **`elektron-firmware-tool`** — cloned and built by `setup.sh` into `vendor/`.
-  It's patched locally (see `tools/elektron-firmware-tool.patch`) so it can write
-  the full 10-character version field and emit the rebuilt container.
-
-```sh
-./fetch-os.sh     # downloads the official OS 1.40C into downloads/ and extracts it
-./setup.sh        # clones + patches + builds elektron-firmware-tool into vendor/
-```
-
-### 1. The fast path — apply the pre-built patch
-
-The 1,175 bytes of ColdFire code are already assembled and captured, hunk by
-hunk, in `sysex/patches/maxolydian-r10.json` (each hunk carries its load address,
-the original bytes it expects, and the replacement bytes). To produce a `.syx`:
-
-```sh
-python3 sysex/apply_patch.py \
-    -i downloads/extracted/OCTATRACK_OS1.40C.syx \
-    -o OCTATRACK_MAXOLYDIAN.syx
-```
-
-```
-[1/5] stock .syx checksum ok
-[2/5] extracted section_3_MAIN_OS.bin (1,112,560 bytes)
-[3/5] applied 22 hunks (1175 bytes)
-[4/5] repacked -> OCTATRACK_MAXOLYDIAN.syx
-[5/5] output checksum ok — byte-identical to the reference build
-```
-
-The script **aborts before writing anything** if the stock checksum is wrong, if
-the original bytes under any hunk don't match (wrong firmware, or already
-patched), or if the patched image's checksum is off.
-
-### 2. The full path — rebuild the stubs from source
-
-If you want to change the behavior (or just verify the JSON), rebuild the patched
-MAIN OS from the assembly sources. `tools/build.py` assembles every stub
-(`tools/patch*.s`), places them in the free code cave, and derives **every**
-detour target from the linker's symbol table (never hardcoded — a stale detour
-once froze the unit on the logo screen), verifying the original bytes at each
-site first:
-
-```sh
-python3 tools/build.py            # assembles the stubs -> out/mainos.bin
-```
-
-Then wrap `out/mainos.bin` back into a transport with the patched
-`elektron-firmware-tool`. Section 3 is the MAIN OS; `-V MAXOLYDIAN` sets the
-10-character version field:
-
-```sh
-# -> .syx (for MIDI upgrade, or the reference artifact)
-vendor/elektron-firmware-tool/elektron-firmware-tool \
-    -i downloads/extracted/OCTATRACK_OS1.40C.syx \
-    -c 3 out/mainos.bin -V MAXOLYDIAN \
-    -o OCTATRACK_MAXOLYDIAN.syx
-```
-
-### 3. Making a `.bin` for the CF-card OS UPGRADE
-
-The `.bin` transport (flashed from the CF card via **PROJECT → OS UPGRADE**) is
-much faster than trickling the `.syx` over MIDI at 31250 baud. `tools/make_bin.py`
-wraps the ELEK container into an ELUP `.bin`. Its correctness is not assumed — it
-regenerates Elektron's own official `.bin` byte-for-byte before writing yours:
-
-```sh
-# dump the rebuilt ELEK container, then wrap it as an ELUP .bin
-EFT_EMIT_CONTAINER=elek.bin vendor/elektron-firmware-tool/elektron-firmware-tool \
-    -i downloads/extracted/OCTATRACK_OS1.40C.syx \
-    -c 3 out/mainos.bin -V MAXOLYDIAN -o OCTATRACK_MAXOLYDIAN.syx
-
-python3 tools/make_bin.py elek.bin -o OCTATRACK_MAXOLYDIAN.bin
-```
-
-### 4. Flashing
-
-**Read [`FLASHING.md`](FLASHING.md) first** — it covers the recovery net in
-detail. In short:
-
-- The upgrade goes over **MIDI DIN, not USB** (the `.syx` path), or from the
-  **CF card** (the `.bin` path, faster).
-- Keep the **official `.syx`** at hand. `[FUNC]` + power on → `[TRIG 3]`
-  (MIDI UPGRADE) recovers the unit even if the OS is corrupt — the bootloader is
-  never touched by an OS update, which is why a brick here is soft and
-  recoverable.
-- Never cut power during **`UPDATING FLASH`**.
-- Your CF card, projects and samples are not affected by an OS update.
-- An OS upgrade **resets the PERSONALIZE settings**, so the unit comes back stock
-  (all features off) until you re-enable them.
+`docs/CHIP.md` carries every one of these numbers with a confidence marker,
+and keeps retracted values next to current ones — knowing what a figure *used
+to be* is how you spot a document that has not caught up.
 
 ---
 
-## Legality (not legal advice)
+## ⚠️ Before you flash anything
 
-- Static analysis of the publicly distributed OS carries **zero risk to the
-  hardware** and is the whole point of this project.
-- EU: Directive 2009/24/EC Art. 5 (observe/study/test a program you lawfully use)
-  and Art. 6 (decompilation for interoperability). Elektron's EULA may contain
-  anti-RE clauses — a contractual matter separate from copyright.
-- Private and educational use is low-risk. Redistributing modified binaries is a
-  different question; this repo deliberately redistributes **no** Elektron
-  binary.
+**Writing a non-official OS to an Octatrack can leave it unusable, and it puts
+your warranty in question.** Nothing here is endorsed by, supported by, or
+affiliated with Elektron. If you flash a modified image you do so entirely at
+your own risk.
+
+Reading and disassembling firmware is harmless. Writing it to hardware is not.
+`docs/FLASHING.md` has the recovery path — read it *before* you need it.
+
+**No Elektron binary is redistributed here.** You download your own copy of the
+official OS with `make os`; every build is derived from that copy,
+reproducibly, and the tooling regenerates Elektron's own image byte-for-byte
+before it will produce a modified one.
 
 ---
 
-*OCTAMAX is an independent, unofficial, educational project. "Elektron" and
-"Octatrack" are trademarks of Elektron Music Machines MAV AB, used here only to
-identify the hardware under study. Not affiliated with or endorsed by Elektron.*
+## Quick start
+
+```bash
+make setup     # toolchain: DSP56300 assembler, emulator, firmware tool
+make os        # download the official Elektron OS (your own copy)
+make recon     # unpack it -> out/raw/section_3_MAIN_OS.bin
+make bus       # build the effects into it
+make image     # repack as a card-flashable .bin
+```
+
+`make help` lists everything.
+
+### Hearing it without a hardware flash
+
+This matters more than it sounds. A flash cycle is slow and manual, so the
+project is built around **not needing one** to make a judgement:
+
+```bash
+make render                      # render the whole bus locally
+make reverb IN=loop.wav          # push audio through ChonVerb
+make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
+```
+
+These run the *real assembled instruction stream* on a DSP56300 emulator, at
+roughly 6× real time. What you hear is what the chip will do, which is why
+voicing decisions in `docs/VOICING.md` are recorded as listening results
+rather than as guesses about coefficients.
+
+### Checking it without a hardware flash
+
+```bash
+make check     # build + cycle budget + menu and burn-probe verification
+```
+
+---
+
+## Layout
+
+```
+PLAN.md          Read this first. End state, resource ledger, work order.
+dsp/             The effects. DSP56300 assembly — this is the product.
+tools/           Build, render, measure, verify.
+scripts/         Toolchain setup and firmware recon.
+docs/            Architecture and reference (see below).
+docs/history/    Closed records. Kept for provenance, not for guidance.
+```
+
+The documents that stay current:
+
+| | |
+|---|---|
+| `PLAN.md` | The cold-start document — what is being built and in what order |
+| `docs/XBUS.md` | How the cross-core bus works, and why |
+| `docs/CHIP.md` | Cycles and memory, every number with a confidence marker |
+| `docs/REVERB.md` | ChonVerb: structure, parameters, memory layout |
+| `docs/VOICING.md` | What was decided by listening, and why |
+| `docs/FLASHING.md` | Getting an image onto hardware, and back off it |
+| `docs/DSP.md` | The DSP56300 module load map — which bytes land where |
+| `docs/PARAM_PAGES.md` | Parameter-page descriptors: how a knob reaches the DSP |
+| `docs/ARCHITECTURE.md` | The firmware as a whole |
+| `docs/BUS.md` | The FX2 menu and descriptor work behind the bus |
+
+---
+
+## Credit
+
+This began as a fork of **[mxldyn/octamax](https://github.com/mxldyn/octamax)**
+by Maxolydian, whose reverse engineering of the Octatrack's OS format, memory
+map and parameter tables is what made any of the DSP work reachable. The
+ColdFire archaeology in `docs/ARCHITECTURE.md` and `docs/PARAM_PAGES.md`
+started there.
+
+That project studies the firmware. This one uses that understanding to write
+effects, so the two diverged rather than merged — by agreement, findings flow
+back as notes rather than pull requests. The upstream history is preserved in
+this repository's commit log.
+
+`vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300) (the
+emulator and disassembler this project assembles and auditions against) and
+[elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool).
+
+---
+
+## License
+
+[MIT](LICENSE), covering this repository's own code and documentation. It does
+not extend to Elektron's firmware, which is not distributed here.

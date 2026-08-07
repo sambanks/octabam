@@ -168,7 +168,7 @@ def verify(name, m):
 
 def main():
     if not ASM.exists():
-        sys.exit(f"missing {ASM} -- run ./setup.sh")
+        sys.exit(f"missing {ASM} -- run 'make setup'")
     args = sys.argv[1:]
 
     rows = [measure(n) for n in BANK]

@@ -369,7 +369,7 @@ def main():
         if r.returncode != 0:
             die(f"build_bus.py failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
     if not HOST.exists():
-        die(f"missing {HOST.relative_to(ROOT)} -- run ./setup.sh")
+        die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
 
     mem = pathlib.Path(a.mem) if a.mem else dump_mem(ROOT / a.image,
                                                      ROOT / "out/dsp/_send_probe_A.mem")

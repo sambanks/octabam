@@ -19,7 +19,7 @@ OUTDIR = pathlib.Path("out/dsp")
 
 def main():
     if not DIS.exists():
-        sys.exit(f"missing {DIS} — run ./setup.sh")
+        sys.exit(f"missing {DIS} — run 'make setup'")
     img = IMG.read_bytes()
     OUTDIR.mkdir(parents=True, exist_ok=True)
 

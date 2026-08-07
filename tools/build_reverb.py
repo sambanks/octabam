@@ -2,7 +2,7 @@
 """
 Build a firmware image with our reverb replacing SPRING REV *and* DARK REV.
 
-    python3 tools/build_reverb.py [dsp/reverb4.asm]
+    python3 tools/build_reverb.py [dsp/reverb_server.asm]
 
 DARK REV is the home we inherit: its descriptor's first parameter is already
 TIME, which is what p0 drives, so selecting DARK REV on FX2 runs our reverb with
@@ -88,9 +88,9 @@ def assemble(asm, org):
 
 
 def main():
-    asm = sys.argv[1] if len(sys.argv) > 1 else "dsp/reverb4.asm"
+    asm = sys.argv[1] if len(sys.argv) > 1 else "dsp/reverb_server.asm"
     if not DIS.exists():
-        sys.exit(f"missing {DIS} — run ./setup.sh")
+        sys.exit(f"missing {DIS} — run 'make setup'")
     img = bytearray(IMG.read_bytes())
 
     def wrw(a, v):

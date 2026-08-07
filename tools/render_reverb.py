@@ -118,7 +118,7 @@ def ensure_mem(build):
         subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
                        check=True, capture_output=True)
     if not HOST.exists():
-        die(f"missing {HOST.relative_to(ROOT)} -- run ./setup.sh")
+        die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
     stale = not MEM.exists() or MEM.stat().st_mtime < IMAGE.stat().st_mtime
     if stale:
         sys.path.insert(0, str(ROOT / "tools"))
@@ -153,7 +153,7 @@ def ensure_mode_mem(mode, build):
         if r.returncode != 0:
             die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
     if not HOST.exists():
-        die(f"missing {HOST.relative_to(ROOT)} -- run ./setup.sh")
+        die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
     if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
         sys.path.insert(0, str(ROOT / "tools"))
         import dsp_modmap

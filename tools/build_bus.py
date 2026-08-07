@@ -456,7 +456,7 @@ def main():
                                      {"silence": b"P", "send": b"S",
                                       "stock": b"C"}[probe])
     if not DIS.exists():
-        sys.exit(f"missing {DIS} -- run ./setup.sh")
+        sys.exit(f"missing {DIS} -- run 'make setup'")
     img = bytearray(IMG.read_bytes())
 
     def rd32(a):
