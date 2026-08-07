@@ -37,11 +37,40 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 
-# Budget per DSP, measured with the stageprobe5/6 pair (REVERB.md).
-BUDGET = 1080
+# Budget per CORE, MEASURED on hardware with dsp/burn_probe's cycle meter,
+# 7 Aug 2026. This replaces 1080, which was never a ceiling: it is the load
+# stageprobe5 happened to SURVIVE, written down as a budget and then priced
+# against by every design decision from the density pass onward. Retracted
+# twice in the docs and still printed here until 8 Aug.
+#
+#   FILTER on all four core-0 tracks   froze at 32*76 = 1392 spare
+#   FILTER disabled everywhere         2032 and never broke (probe ran out)
+#
+# 1392 spare was measured with the FULL BANK plus the heaviest FX1 config
+# already running, so the budget for OUR code is that spare plus what the bank
+# already costs. That makes it a WORST CASE that needs no further derating --
+# which is the opposite of how 1080 behaved.
+#
+# Stated as a constant the tool can add to, so the printed budget tracks the
+# bank rather than being a fixed number that goes stale the moment the bank
+# changes.
+BURN_SPARE = 1392       # measured, worst realistic FX1 load
+CORE_TOTAL = 4535       # 200 MIPS / 44100, arithmetic
 
 # A full bank's four FX2 slots: one reverb, one delay, two sends.
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
+
+# Kept in step with build_bus.py's BURN block -- same include files, same
+# anchors. Duplicated rather than imported because build_bus.py runs a whole
+# image build at import time.
+BURN_INJECT = [
+    ("dsp/burn_block1.inc",
+     "        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call\n"
+     "                                        ; (the dispatcher's #$1 is left-\n"
+     "                                        ; aligned), 0 = the split sub-call\n"),
+    ("dsp/burn_block2.inc",
+     "        move    a,x:(r7+$40)            ; LO coefficient\n"),
+]
 
 MARKER = "__cyc_body"
 SAMPLE_LOOP = re.compile(r"^\s*do\s+n7\s*,\s*>?(\w+)\s*(?:;.*)?$", re.I)
@@ -52,6 +81,22 @@ CONTROL_FLOW = re.compile(r"^\s*(j\w*|b(?:ra|sr|cc|cs|eq|ne|ge|lt|gt|le|mi|pl)\w
 
 def prep(name):
     """Source text as the real build assembles it (build_bus.py)."""
+    if name == "burn_probe":
+        # There is no dsp/burn_probe.asm any more. It was a verbatim COPY of
+        # reverb_server.asm plus two blocks, it silently went stale (forked
+        # before v121, so it carried no bus auto-gain), and a cycle meter that
+        # measures an engine we do not ship is worse than none. build_bus.py
+        # now SPLICES the two blocks into the live source under BURN=1, so
+        # "burn_probe" here means exactly that splice -- reproduced by the same
+        # anchors, so this cannot drift from what the build actually assembles.
+        src = (ROOT / "dsp" / "reverb_server.asm").read_text()
+        for inc, anchor in BURN_INJECT:
+            if src.count(anchor) != 1:
+                sys.exit(f"burn_probe: anchor for {inc} appears "
+                         f"{src.count(anchor)} times, expected 1 -- keep this "
+                         f"in step with build_bus.py's BURN block")
+            src = src.replace(anchor, anchor + (ROOT / inc).read_text(), 1)
+        return src
     src = (ROOT / "dsp" / f"{name}.asm").read_text()
     if name == "delay_server":
         # build_bus.py rewrites this per payload; the value cannot change the
@@ -140,8 +185,9 @@ def main():
 
     if "--json" in args:
         print(json.dumps(dict(per_effect={m["name"]: m["words"] for m in rows},
-                              bank=bank, budget=BUDGET,
-                              headroom=BUDGET - bank), indent=2))
+                              bank=bank, budget=bank + BURN_SPARE,
+                              headroom=BURN_SPARE,
+                              core_total=CORE_TOTAL), indent=2))
         return
 
     w = max(len(m["name"]) for m in rows)
@@ -150,9 +196,15 @@ def main():
         n = BANK[m["name"]]
         print(f"{m['name']:{w}}  {m['words']:>13}   x{n} = {m['words'] * n}")
     print(f"{'full bank':{w}}  {'':>13}   {bank}")
-    print(f"{'budget/DSP':{w}}  {BUDGET:>13}")
-    print(f"{'headroom':{w}}  {'':>13}   {BUDGET - bank} "
-          f"({100.0 * bank / BUDGET:.0f}% used)")
+    # The measured spare is what was left ON TOP of a full bank plus four FX1
+    # FILTERs, so it is headroom for NEW work, not a number the bank is scored
+    # against. Printing "% used" against a fixed budget is exactly what made
+    # 1080 dangerous -- it turned an unknown into a pass/fail.
+    print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
+    print(f"{'MEASURED spare':{w}}  {BURN_SPARE:>13}   on top of this bank "
+          f"+ 4x FX1 FILTER (hardware, 7 Aug 2026)")
+    print(f"{'room for new work':{w}}  {'':>13}   {BURN_SPARE} cycles/sample "
+          f"= {BURN_SPARE / max(bank, 1):.1f}x the current bank")
 
 
 if __name__ == "__main__":

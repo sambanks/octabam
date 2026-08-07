@@ -1162,7 +1162,22 @@ md_done:
 ; additive law could never reach) and drops what made it feel wrong.
         move    #>$400000,a             ; 0.5
         move    x0,b
-        cmp     a,b                     ; MIX - 0.5
+; `cmp a,b` HERE ENCODED AS `max a,b` -- disassembled 8 Aug 2026, opcode
+; $20001d. Accumulator-to-accumulator CMP is part of the dsp_asm mis-encoding
+; family this project already lost two attempts to (`tfr a,b` -> `rnd b`), and
+; this was the ONE live instance of it in shipping code.
+;
+; Why it was not caught by ear or by measurement: MAX updates ONLY the C bit
+; (emulator `op_Max`: `ccr_update_ifLess(CCRB_C)`), while `blt` tests N^V. So
+; the branch was reading flags this block never set, and the v96 MIX sweep
+; still measured exactly the intended law -- flat to MIX=64, falling above it.
+; It was right by accident, on whatever set N^V earlier in the parameter block.
+; MAX also writes B = max(A,B); harmless only because b is dead below.
+;
+; SUB is the documented workaround (ADD/SUB encode correctly in this form and
+; SUB sets N^V exactly as CMP would). `sub a,b` leaves b = MIX - 0.5, which is
+; the comparison this always meant to make.
+        sub     a,b                     ; MIX - 0.5, and sets N^V for the blt
         blt     mixhold
         move    #>$7fffff,a
         sub     x0,a                    ; 1 - MIX, and <= $3fffff on this branch

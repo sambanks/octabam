@@ -339,14 +339,59 @@ if DEV:
                  f"{'/'.join(_clash)}=1 -- those replace a server with a probe, "
                  f"which is the opposite of what DEV is for")
 
+# ---- SPEC=1: SPECIALIZE THE PAYLOADS ---------------------------------------
+# One server per core. Payload A (tracks 1-4) carries SEND + ChonVerb; payload
+# B (tracks 5-8) carries SEND + BongDelay. Neither carries the other's engine.
+#
+# WHY IT IS FREE. build_bus.py has always assembled and placed each payload
+# independently -- its own `for tag, va, ln in PAYLOADS` pass, its own region,
+# its own placement -- and the 2,724-word donor region is PER CORE. Both
+# payloads carrying all three servers was never a requirement, only a habit.
+# Dropping the engine each core does not run costs nothing and returns the
+# region that engine occupied.
+#
+# IT ONLY MEANS ANYTHING WITH XBUS=1. The bus accumulators live at Y:0x900 in
+# a plain build, which is CORE-PRIVATE low Y: tracks 5-8's sends would write
+# core 1's copy, which core 0's reverb cannot see. Specializing without
+# relocating the bus into the shared window does not build the target
+# architecture, it builds "reverb serves tracks 1-4, delay serves tracks 5-8"
+# -- strictly worse than today, and it would look like it worked. So require
+# the flag rather than silently producing that.
+#
+# THE ABSENT SERVER'S ID IS ALIASED TO SEND, deliberately (XBUS.md risk 3).
+# The FX2 chooser is one ColdFire list shared by all eight tracks, so nothing
+# stops a user selecting ChonVerb on track 6. Its id must dispatch to
+# SOMETHING on payload B; left alone it would run whatever code now occupies
+# that address. Aliasing to SEND is the same fail-safe mechanism id 0 already
+# uses, and it degrades in the useful direction: the track feeds the bus.
+SPEC = os.environ.get("SPEC") == "1"
+if SPEC:
+    if os.environ.get("XBUS") != "1":
+        sys.exit("SPEC=1 requires XBUS=1. Specializing without relocating the "
+                 "bus into the shared window leaves the accumulators in "
+                 "core-private Y:0x900, so tracks 5-8 would feed a delay only "
+                 "they can reach and tracks 1-4 a reverb only they can reach. "
+                 "That is not the target architecture and it would still make "
+                 "sound, which is the dangerous part -- run XBUS=1 SPEC=1")
+    if DEV:
+        sys.exit("SPEC=1 and DEV=1 are opposites: SPEC puts BongDelay in "
+                 "payload B only, DEV keeps all three servers in payload A so "
+                 "dsp_host can still render the delay. Use DEV=1 XBUS=1 to "
+                 "render locally, SPEC=1 XBUS=1 to build the real image")
+    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "DELAYPROBE")
+              if os.environ.get(v) == "1"]
+    if _clash:
+        sys.exit(f"SPEC=1 cannot be combined with {'/'.join(_clash)}=1 -- "
+                 f"those replace a server with a probe")
+
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": ("dsp/delay_server.asm" if DEV
+ASM_SRC = {"DELAY SERVER": ("dsp/delay_server.asm" if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
                             else "dsp/delay_server.asm"),
+           # BURN is NOT a separate source any more -- see BURN_INJECT below.
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
-                             else "dsp/burn_probe.asm" if os.environ.get("BURN") == "1"
                              else "dsp/reverb_server.asm"),
            "SEND": "dsp/send_client.asm"}
 
@@ -578,6 +623,49 @@ def main():
         print("  *** SHIMMER=1: the shimmer is IN. It is the confirmed cause of the "
               "metallic artifact (v119) -- diagnostic only, do NOT ship this ***")
 
+    # ---- BURN=1: INJECT the cycle burn into the LIVE engine ----------------
+    # It used to be dsp/burn_probe.asm, a verbatim COPY of reverb_server.asm
+    # plus two blocks. That copy silently went stale: it was forked before
+    # v121, so it carries no bus auto-gain, and its own header still claims it
+    # is "reverb_server.asm verbatim except the two marked BURN PROBE blocks".
+    #
+    # A cycle meter that measures an engine we do not ship is worse than no
+    # meter -- the whole point is that (ceiling with burn) - (ceiling without)
+    # prices the REAL configuration. So the two blocks now live in
+    # dsp/burn_block{1,2}.inc and are spliced into the current source at build
+    # time, against anchors asserted to exist exactly once. If the engine moves
+    # under them the build FAILS rather than measuring the wrong thing.
+    if os.environ.get("BURN") == "1":
+        _anchors = [
+            # block 1 goes AFTER the call-flag stash at the top of proc: `a` is
+            # already saved and nothing else is live, which is what makes the
+            # register state trivially known there.
+            ("dsp/burn_block1.inc",
+             "        move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call\n"
+             "                                        ; (the dispatcher's #$1 is left-\n"
+             "                                        ; aligned), 0 = the split sub-call\n"),
+            # block 2 goes after the LO filter's own comment, forcing p3's
+            # coefficient to its documented exact bypass so sweeping the burn
+            # knob cannot change the timbre.
+            # ...and block 2 AFTER the engine's own coefficient write, not
+            # before it: injected before, the real coefficient overwrites the
+            # forced bypass on the next line and the burn knob keeps filtering.
+            ("dsp/burn_block2.inc",
+             "        move    a,x:(r7+$40)            ; LO coefficient\n"),
+        ]
+        for inc, anchor in _anchors:
+            if reverb_src.count(anchor) != 1:
+                sys.exit(f"BURN: anchor for {inc} appears "
+                         f"{reverb_src.count(anchor)} times in "
+                         f"{ASM_SRC['REVERB SERVER']}, expected exactly 1. The "
+                         f"engine moved under the probe -- re-cut the anchor "
+                         f"rather than measuring a stale copy")
+            reverb_src = reverb_src.replace(
+                anchor, anchor + pathlib.Path(inc).read_text(), 1)
+        print("  BURN: cycle burn injected into the LIVE engine "
+              "(dsp/burn_block1.inc + burn_block2.inc); p3 is the burn knob, "
+              "32 cycles/step, and its filter is forced to exact bypass")
+
     mode_env = os.environ.get("MODE")
     if mode_env is not None:
         assert reverb_src.count("; MODE_OVERRIDE") == 1
@@ -653,7 +741,11 @@ def main():
         # housekeeping block exits to bus_notfirst exactly like the reverb's.
         # A delay that still read Y:0x900 would find an empty accumulator and
         # render silence, which is the failure this hatch exists to prevent.
-        if DEV:
+        # ...and under SPEC for the same reason: payload B's BongDelay IS a real
+        # server reading the shared accumulator, so it needs the identical
+        # relocation. Its housekeeping gate is what keeps payload B from
+        # zeroing buffers payload A owns.
+        if DEV or SPEC:
             delay_src = xbus(delay_src, "DELAY SERVER", "bus_notfirst")
 
     # Every source now carries a $30000 that must be substituted per payload,
@@ -664,7 +756,7 @@ def main():
     # added, and _sub below is meant to rewrite BOTH (base -> 0x38000 is
     # correct for payload B's delay; discriminator -> 0x38000 is what makes the
     # gate compare equal there).
-    _want = (2 if DEV else 0) if os.environ.get("XBUS") == "1" else 1
+    _want = (2 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
     if delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
@@ -731,6 +823,14 @@ def main():
         plan = (("SEND", _sub(send_src) if _x else send_src),
                 ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
                 ("DELAY SERVER", _sub(delay_src)))
+        # SPEC: each core carries only the engine it actually runs. Payload A
+        # keeps the reverb, payload B the delay; the other is not placed at all
+        # and its id is aliased to SEND after placement (it needs send_init,
+        # which only exists once SEND has been assembled at this cursor).
+        absent = None
+        if SPEC:
+            absent = "DELAY SERVER" if tag == "A" else "REVERB SERVER"
+            plan = tuple(p for p in plan if p[0] != absent)
         cursor = base_a
         for name, src in plan:
             words, init_a, proc_a = assemble(src, cursor)
@@ -748,6 +848,18 @@ def main():
             print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
+
+        if absent is not None:
+            # The absent engine's id must still dispatch to something on this
+            # core -- the chooser list is shared across all eight tracks and
+            # nothing stops it being selected here. Point it at the SEND client
+            # already placed above: same fail-safe id 0 uses, and a track that
+            # selects the "wrong" server becomes a send to the right one.
+            wrw_p(pp["xtab"] + NEW_IDS[absent] * 3, send_init)
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[absent]) * 3, send_proc)
+            print(f"  {absent:13} NOT PLACED on this core -- id "
+                  f"0x{NEW_IDS[absent]:02x} aliased to SEND P:0x{send_init:05x} "
+                  f"(selecting it here makes the track a send, not silence)")
 
         if probe == "silence":
             words, init_a, proc_a = assemble(
