@@ -2154,6 +2154,7 @@ lf51:
         move    b,x:(r6)+               ; u3 = d2-d3
         move    #>$fff,m6               ; back to the pre-delay's modulo-4096
 
+; SHIMMER_BEGIN -- NOSHIM=1 excises everything to SHIMMER_END (build_bus.py)
 ; ---- SHIMMER: +12 in the feedback path (v101) ---------------------------
 ; Reads the tank's own output, shifts it up an octave and adds it back into the
 ; tank INPUT, so the octave compounds on every circulation. That compounding is
@@ -2287,6 +2288,7 @@ lf51:
         move    x:(r7+$15),x0           ; the tank input
         add     x0,a
         move    a,x:(r7+$15)            ; ...with the octave folded in
+; SHIMMER_END
 
 ; ---- feedback and write back --------------------------------------------
         move    x:(r7+$1e),y0           ; g/2, loaded ONCE for the whole

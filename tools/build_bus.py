@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"30"
+BUILD_TAG = b"31"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -530,6 +530,19 @@ def main():
     # -params only writes value<<16 into knob fields), so this is the only way
     # to hear the modes without a flash. Diagnostic only -- the normal build
     # reads the real slot.
+    # NOSHIM=1: physically EXCISE the shimmer rather than zeroing SHMR.
+    # The shimmer has always sounded bad (blind splice, REVERB.md) and SHMR is
+    # the last standing suspect for the hardware artifact, so removing the code
+    # outright is the test that cannot be argued with -- a zeroed coefficient
+    # still leaves the shifter reading and writing its buffer every sample.
+    # Also reclaims 2048 words at base+0x7800 and the cycles.
+    if os.environ.get("NOSHIM") == "1":
+        i = reverb_src.index("; SHIMMER_BEGIN")
+        j = reverb_src.index("; SHIMMER_END") + len("; SHIMMER_END")
+        cut = reverb_src[i:j].count("\n")
+        reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (NOSHIM=1)" + reverb_src[j:]
+        print(f"  *** SHIMMER EXCISED: {cut} source lines removed ***")
+
     mode_env = os.environ.get("MODE")
     if mode_env is not None:
         assert reverb_src.count("; MODE_OVERRIDE") == 1

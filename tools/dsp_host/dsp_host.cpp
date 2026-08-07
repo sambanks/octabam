@@ -74,6 +74,10 @@
 //     -blocks N             blocks to run (default 256)
 //     -in file.raw          24-bit mono raw input, else an impulse is used
 //     -out file.raw         write instance 0; others go to file.raw.i1, .i2, ...
+//     -track a,b,..         r7-relative X words (hex) dumped EVERY block, so a
+//                           rate can be MEASURED by differencing -- -peekx only
+//                           snapshots once, after the run
+//     -trackout FILE        where -track writes (default /tmp/dsp_track.txt)
 //     -trace N              log the first N instructions executed
 #include <cstdio>
 #include <cstring>
@@ -112,6 +116,8 @@ struct Args {
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
     std::vector<TWord> peekY, peekX;
+    std::vector<TWord> track;              // r7-relative X words, dumped EVERY block
+    std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
 };
 
@@ -338,6 +344,8 @@ int main(int argc, char** argv) {
             for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
                 a.peekY.push_back(strtoul(p, nullptr, 16));
         }
+        else if (k == "-track") a.track = parseHexList(argv[++i]);
+        else if (k == "-trackout") a.trackOut = v();
         else if (k == "-peekx") {
             std::string t(argv[++i]);
             for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
@@ -645,6 +653,13 @@ int main(int argc, char** argv) {
         return inst[0].clobbers ? 3 : 0;
     }
 
+    std::ofstream trackFile;
+    if (!a.track.empty()) {
+        trackFile.open(a.trackOut.empty() ? "/tmp/dsp_track.txt" : a.trackOut);
+        std::printf("tracking r7-relative X words every block ->  %s\n",
+                    a.trackOut.empty() ? "/tmp/dsp_track.txt" : a.trackOut.c_str());
+    }
+
     size_t inPos = 0;
     for (int b = 0; b < a.blocks; ++b) {
         // fill every instance's block: impulse on the first frame unless an
@@ -743,6 +758,18 @@ int main(int argc, char** argv) {
                             dsp.regs().m[0].var, dsp.regs().m[1].var, dsp.regs().m[2].var,
                             dsp.regs().m[3].var, dsp.regs().m[4].var, dsp.regs().m[5].var);
                 return 1;
+            }
+
+            // -track: sample r7-relative state EVERY block. -peekx only snapshots
+            // after the whole run, which cannot measure a RATE -- an LFO phase has
+            // to be differenced block to block to get its increment.
+            if (!a.track.empty() && k == 0) {
+                if (trackFile.is_open()) {
+                    trackFile << b;
+                    for (TWord off : a.track)
+                        trackFile << ' ' << mem.get(MemArea_X, I.state + off);
+                    trackFile << '\n';
+                }
             }
 
             I.cycles += g_lastCycles; ++I.procCalls;
