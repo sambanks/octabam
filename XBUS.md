@@ -243,6 +243,115 @@ are worth more than any voicing change:
   unlocks arbitrary line lengths. This is the only way BongDelay gets a
   single 1.49 s line.
 
+## The shared window can hold CODE, and we have only ever spent it on buffers
+
+**This is the "we freed up a heap of everything" intuition, and it is right —
+but not for program space, which is the one resource the shared memory and the
+cross-core work did not touch at all.** P/X/Y alias in `0x30000-0x3FFFF` ✅, so
+those 65,536 words are addressable as **program memory** just as readily as
+buffer, and nothing has ever tried it.
+
+Stock already does it, in production, today ✅:
+
+| | |
+|---|---|
+| `P:0x30000` | 171 words — the DSP host-port loader + ESAI setup, payload A |
+| `P:0x31000` / `P:0x32000` | bootstraps A (50 words) and B (58) |
+| `P:0x38000` | 19 words — **payload B's entry stub, which `jsr`s into `0x30082`/`0x3008a`** |
+
+That last row is the existence proof and it is the important one: it is a live
+P module, loaded by the ordinary module loader (space byte 0 = P, exactly like
+our code), executing after boot, and reaching **across into payload A's code**.
+
+**`0x38000` is also the half that SURVIVES.** Init zeroes `0x30000-0x37FFF` —
+all 32,768 words, disassembled at `P:0x040` ✅ — so anything preloaded into the
+lower half is wiped. The upper half is not zeroed, which is exactly why that
+19-word stub is still there to be called.
+
+🟡 **So the hypothesis: our effect code can live at `P:0x38000+`.** The
+dispatcher does `jsr (r2)` with an address out of `X:0x215`/`X:0x235`; a 24-bit
+`0x38000` is as valid a target as `0x01000`, and the loader already places P
+modules there.
+
+**What would falsify it:**
+- ~~The OMR memory map may not expose the shared window as P to a core.~~
+  ✅ **DEAD — Ch. 3 has now been read.** "Shared RAM" appears in the **Program**
+  column of all five memory-map figures (3-2 through 3-6), including the
+  default. The window is program-addressable in every configuration.
+- Instruction fetch there costs **1 wait state** (vs 0 as X/Y) ✅, so code in
+  the window runs slower. Cheap now that cycles are abundant, but it must be
+  measured, not assumed.
+- **Contention.** Instruction fetch is a bus access, so code in an 8K block the
+  other core is hammering costs arbitration. Put code in a block that core does
+  not touch.
+
+## And the bigger one: Ch. 3 says the 8K program wall is a SETTING
+
+**This is why program space has been so desperate, and it was never a property
+of the chip.** ✅ Read from `DSP56720RM.pdf` Ch. 3 and confirmed against the
+image:
+
+| map | MS | MSW1 | MSW0 | **Program** | X | Y | usable? |
+|---|---|---|---|---|---|---|---|
+| Fig 3-2 **default** | 0 | – | – | **8K** | 36K | **48K** | ← what stock runs |
+| Fig 3-3 | 1 | 1 | 1 | **16K** | 36K | 40K | ✅ costs `Y:0xA000-0xBFFF` |
+| Fig 3-4 | 1 | 1 | 0 | **24K** | 36K | 32K | ✅ costs `Y:0x8000-0xBFFF` |
+| Fig 3-5 | 1 | 0 | 1 | **32K** | 36K | 24K | 🟡 eats into FX2 slot 1 |
+| Fig 3-6 | 1 | 0 | 0 | 36K | **32K** | 24K | ❌ **ruled out, see below** |
+
+Every row totals 92K words. **The three spaces are one pool of RAM that OMR
+redistributes**, and the trade is word for word.
+
+**Stock runs the default map, and this is now measured, not assumed:**
+
+- ✅ **Nothing writes OMR.** Disassembling every P module in both payloads finds
+  exactly two OMR-class instructions, both `andi #$fc,mr` — that is the *mode
+  register*, not OMR. `MS`, `MSW1`, `MSW0` all reset to 0 (bits 7 and 22:21,
+  Table 5-2), so the core boots the default map and nothing ever changes it.
+- ✅ **The hardware Y sweep matches Fig 3-2 exactly** — Y present
+  `0x00000-0x0BFFF`, absent from `0x0C000`. That is the default map's 48K, to
+  the word.
+- ✅ **Payload A's P code ends at `0x01fdf` — 33 words short of `0x2000`**, the
+  top of the default map's 8K. 8,159 of 8,192 used. *That* is the wall, and our
+  2,724-word donor region sits inside it.
+
+**Fig 3-6 is ruled out by measurement:** it drops X to 32K (`0x0-0x7FFF`) and
+stock's X modules reach **`0x08d98`**. It would break stock outright.
+
+**The prize.** `MS=1, MSW1=1, MSW0=1` **doubles program RAM, 8K → 16K: +8,192
+words**, against a region with *one* free word today. Cost: `Y:0xA000-0xBFFF`,
+i.e. the reverb's private pool drops 32K → 24K, so the reverb goes 65,536 →
+57,344 words (1.49 s → 1.30 s). Fig 3-4 buys +16,384 P words for 1.09 s.
+
+🟡 **Untested, and the risk is real.** OMR must be written **before any module
+is loaded into the newly-available P**, which means patching the boot path —
+the natural site is bootstrap A/B (`P:0x31000`/`0x32000`, 50 and 58 words, in
+the shared window and already ours to patch). Open questions, none answered:
+
+- Does the ColdFire-side loader assume the default extents anywhere?
+- Does anything in stock's *runtime* allocate Y above `0x9FFF`? No loaded
+  module does (the highest Y module ends at `0x795`), but the FX2 allocator
+  hands out `Y:0x8000` as a slot base, and that slot's top half disappears.
+  Under our three-entry menu only ChonVerb lives there, so we control it — but
+  that is an argument about our build, not about stock.
+- Is the switch safe *after* reset at all, or only at reset?
+
+**Sequence if this is ever taken: change the map first and prove the machine
+still boots with the code where it already is.** Do not combine it with moving
+code into the new region — that is two variables, and `REVERB.md`'s "change one
+thing per flash" was written after five changes at once cost a whole session.
+
+**The trade, and it is the honest part: shared words spent on code are words
+neither effect gets as buffer.** 4,096 words of P would take BongDelay from
+65,536 to 61,440 (1.49 s → 1.39 s). Against a program region that has *one*
+free word today, that is an extraordinary rate of exchange — but it is a trade,
+not the free lunch the alias makes it look like.
+
+**Do not confuse this with specialization.** Specialization (494 / 2,005 free
+words) is real, costs nothing, and needs no new hypothesis. This is the lever
+*after* that one, and it should be tested only if the reverb's 494 words prove
+too tight — which rolling the tank loop may well prevent.
+
 ## What to build with it — the reverb
 
 The known limit is modal overlap, and `REVERB.md` closed it as "no structural

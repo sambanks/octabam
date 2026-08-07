@@ -329,9 +329,36 @@ raise a maskable or non-maskable interrupt in the other, with write-data and
 poll-data registers for exchange. Worth remembering if the shared window ever
 proves unusable.
 
-⚠️ Per-core P/X/Y RAM extents are **configurable** via OMR bits (`MS`, `MSW0`,
-`MSW1`) into five different maps. Which one stock selects has never been
-checked — read Ch. 3's figures before trusting any internal extent.
+✅ **Per-core P/X/Y extents are configurable via OMR — and stock runs the
+DEFAULT map. ANSWERED, Ch. 3 read 7 Aug 2026.**
+
+| map | MS | MSW1 | MSW0 | Program | X | Y |
+|---|---|---|---|---|---|---|
+| Fig 3-2 **default** | 0 | – | – | **8K** | 36K | **48K** |
+| Fig 3-3 | 1 | 1 | 1 | 16K | 36K | 40K |
+| Fig 3-4 | 1 | 1 | 0 | 24K | 36K | 32K |
+| Fig 3-5 | 1 | 0 | 1 | 32K | 36K | 24K |
+| Fig 3-6 | 1 | 0 | 0 | 36K | **32K** | 24K |
+
+Every row totals **92K words**: the three spaces are one pool OMR redistributes,
+traded word for word. `MS` is OMR bit 7, `MSW1:MSW0` bits 22:21, all reset to 0.
+
+Three independent confirmations that stock is on Fig 3-2:
+- ✅ **Nothing writes OMR** in either payload. Disassembling every P module
+  finds two OMR-class instructions, both `andi #$fc,mr` — the *mode* register,
+  not OMR.
+- ✅ The hardware Y sweep above (`0x00000-0x0BFFF` present, `0x0C000` absent) is
+  Fig 3-2's 48K to the word.
+- ✅ Payload A's P code ends at **`0x01fdf`, 33 words short of `0x2000`** —
+  8,159 of the default map's 8,192. **That is why program space is the wall,
+  and it is a setting, not silicon.**
+
+❌ **Fig 3-6 is ruled out**: it drops X to `0x0-0x7FFF` and stock's X modules
+reach `0x08d98`.
+
+✅ **Shared RAM appears in the PROGRAM column of all five figures.** The
+`0x30000-0x3FFFF` window is program-addressable in every configuration, not
+just as X/Y. See `XBUS.md` for both levers this opens and their falsifiers.
 
 ## 3a. What is actually IN the shared window (mapped 7 Aug, static analysis)
 
