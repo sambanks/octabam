@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"26"
+BUILD_TAG = b"27"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -258,14 +258,20 @@ if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
 if os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"BURN"
-    # BongDelay's slot carries the SHARED-MEMORY probe in this build -- one
-    # flash, two answers. It is a placeholder algorithm, so its 507 words are
-    # the cheapest diagnostic space on the chip, and the region is otherwise
-    # exactly full (2724 of 2724). dsp/shared_probe.asm rides the SAME
-    # per-payload $30000 -> $38000 substitution DELAY SERVER already uses, so
-    # no new build machinery is needed to tell the two cores apart.
-    FULLNAME["DELAY SERVER"] = b"SharePrb" + BUILD_TAG
-    ABBR["DELAY SERVER"] = b"SHAR"
+    # BongDelay's slot carries the X/Y ALIAS probe in this build. It is a
+    # placeholder algorithm, so its 507 words are the cheapest diagnostic space
+    # on the chip. dsp/alias_probe.asm rides the SAME per-payload
+    # $30000 -> $38000 substitution DELAY SERVER already uses, but as a BASE
+    # rather than a role select: payload A tests its own half of the shared
+    # window, payload B tests its own. Both are valid alias tests and it needs
+    # no new build machinery.
+    #
+    # It replaced dsp/shared_probe.asm, which needed TWO instances (a writer
+    # and a reader) and so could never run -- two copies of the same effect
+    # corrupt audio after ~5.45 s, on the same bank or across banks, whatever
+    # address they use (hardware, 7 Aug). The alias question needs only one.
+    FULLNAME["DELAY SERVER"] = b"AliasPrb" + BUILD_TAG
+    ABBR["DELAY SERVER"] = b"ALIA"
 
     # Round 3's two diagnostic knobs. REPLACE by index rather than append --
     # the BURN block's first draft assigned fresh lists to REVERB SERVER and
@@ -275,10 +281,10 @@ if os.environ.get("BURN") == "1":
     def _set(table, name, idx, val):
         table[name] = [(i, v) for i, v in table[name] if i != idx] + [(idx, val)]
 
-    _set(RENAMES, "DELAY SERVER", 1, b"ADDR")   # which word both cores hit
-    _set(RENAMES, "DELAY SERVER", 2, b"INC")    # counter step; 0 = never changes
-    _set(DEFAULTS, "DELAY SERVER", 1, 0)        # 0x34000, the known-bad control
-    _set(DEFAULTS, "DELAY SERVER", 2, 1)        # +1/block = round 2's behaviour
+    _set(RENAMES, "DELAY SERVER", 1, b"ADDR")   # base + 0x1000/3000/5000/7000
+    _set(RENAMES, "DELAY SERVER", 2, b"SPACE")  # 0 = read back via X, >0 via P
+    _set(DEFAULTS, "DELAY SERVER", 1, 0)        # base + 0x1000
+    _set(DEFAULTS, "DELAY SERVER", 2, 0)        # X first -- the safe one
     # APPEND, do not replace. Assigning a fresh list here dropped p9/p10's
     # names and p7's MODE default on the first attempt, and verify_menu.py
     # caught all three -- an out-of-range page-2 default is not cosmetic, it
@@ -288,7 +294,7 @@ if os.environ.get("BURN") == "1":
     # override needed -- which is the one value that must be safe.
 
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": ("dsp/shared_probe.asm" if os.environ.get("BURN") == "1"
+ASM_SRC = {"DELAY SERVER": ("dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
                             else "dsp/delay_server.asm"),
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"

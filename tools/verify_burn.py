@@ -103,7 +103,7 @@ def render(mem, src, out, p3):
 
 
 def check_roles():
-    """The shared-memory probe must come out a WRITER on A and a READER on B.
+    """The probe must come out based at 0x30000 on A and 0x38000 on B.
 
     This rides DELAY SERVER's existing $30000 -> $38000 per-payload text
     substitution, so the role is decided by the BUILD, not by anything visible
@@ -173,8 +173,8 @@ def check_roles():
                  f"{len(relocs)} relocated address(es), found {len(diff)}: "
                  f"{[(i, hex(streams['A'][i]), hex(streams['B'][i])) for i in diff]}")
     i = diff[0]
-    return {"A": "writer" if streams["A"][i] == 0x30000 else f"?{streams['A'][i]:x}",
-            "B": "reader" if streams["B"][i] == 0x38000 else f"?{streams['B'][i]:x}"}
+    return {"A": "base 0x30000" if streams["A"][i] == 0x30000 else f"?{streams['A'][i]:x}",
+            "B": "base 0x38000" if streams["B"][i] == 0x38000 else f"?{streams['B'][i]:x}"}
 
 
 def main():
@@ -201,8 +201,8 @@ def main():
         ok = ok and cond
 
     roles = check_roles()
-    check("shared probe: payload A writes, payload B reads",
-          roles == {"A": "writer", "B": "reader"}, f"  {roles}")
+    check("alias probe: per-payload base substituted",
+          roles == {"A": "base 0x30000", "B": "base 0x38000"}, f"  {roles}")
     check("sample loop untouched by the burn", ref == got,
           f"  (reverb_server {ref}, burn_probe {got})")
     check("harness is sensitive (reverb_server HP=0 vs HP=64 differ)", a0 != a64,
