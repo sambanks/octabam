@@ -187,8 +187,39 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    non-contiguous regions, dodging stock's 72-word staging at
    `0x30000-0x30047` (rewritten EVERY FRAME) and using the fact that the
    bootstraps at `0x31000`/`0x32000` are dead after boot.
-5. **Then the effects**: the shimmer (the reverb is not finished — the shimmer
-   verb is not usable), and BongDelay, which is an untested first draft.
+5. **Then the effects**: BongDelay, which is an untested first draft and has
+   never been auditioned at all — `send_probe.py` can now drive a real DELAY
+   SERVER, so this is local work. The shimmer is no longer on this list: it is
+   excised, and if it returns it must be as the pitch-synchronous rewrite.
+
+## OUTSTANDING — the short list, 7 Aug 2026
+
+**Needs the device (nothing else is blocked on these):**
+- **Flash a build carrying v121.** The card currently holds
+  `OCTATRACK_NOSHIM31.bin`, which has the shimmer removed but PREDATES the bus
+  auto-gain. Confirm 8 tracks sending is clean on hardware.
+- **Steps 1–3 above** (relocated bus same-core, cross-core send, sync).
+
+**Fully local, in rough value order:**
+- **BongDelay's first audition.** Untested first draft, never heard. Highest
+  chance of finding something, and `send_probe.py` can drive it now.
+- **BIG rings.** ~30 dB more HF than the other modes with no shimmer: a dense
+  cluster of non-harmonic lines at 2–2.8 kHz. `md_big` sets the decay scale
+  `x:(r7+$1e)` to `$7FFFFF` = exactly 1.000000 where ROOM/PLATE/HALL leave
+  headroom (0.920/0.965/0.980). NOT simple runaway feedback — HF *falls* as
+  TIME rises and is already high at TIME=0, so suspect the input/early path.
+- **Tank saturation above ~0.35 FS.** Now the only level limit left, since the
+  bus no longer rails. Affects the reverb on its own track too.
+- **The DELAY accumulator has no auto-gain.** Same fix as v121 when BongDelay
+  is worked on.
+- **Emulator/device alignment.** The proven gap is parameter delivery:
+  `-params` pokes `r6` directly so every slot looks live locally, while on
+  hardware a slot can draw a knob and publish nothing. This is what let the
+  emulator report "clean" for a whole session against an audibly broken device.
+
+**Hard constraint, new:** the payload region is **FULL — 2723 of 2724 words,
+one spare**. Anything added to any of the three effects needs space found first.
+The shimmer's excision is what paid for v121.
 
 ## Constraints that shape it
 
