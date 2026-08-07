@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"28"
+BUILD_TAG = b"29"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -537,19 +537,36 @@ def main():
     # 64K is the whole architectural change; everything else about the bus is
     # already written and hardware-proven.
     #
-    # 0x3E000 is chosen against the map in CHIP.md 3a: clear of stock's
+    # 0x36000 -- and the FIRST choice, 0x3E000, was WRONG. Hardware, 7 Aug:
+    # the bus broke even SAME-CORE. The gate was provably inert in that test
+    # (both effects were payload A, where it falls through), so the address was
+    # the only remaining variable. Two things were wrong with it, and both are
+    # checks that "the manual says the window is shared" let me skip:
+    #
+    #   * 0x3E000 is OUTSIDE the init pass. Init zeroes 0x30000-0x37FFF (32768
+    #     words from 0x30000), so 0x3E000 comes up holding garbage.
+    #   * payload A had never been shown to write there. dsp/alias_probe.asm
+    #     tested payload A at 0x31000/0x33000/0x35000/0x37000 -- all the LOWER
+    #     half. 0x38000-0x3FFFF was only ever exercised from payload B.
+    #
+    # 0x36000 fixes both: inside the zeroed region, and between two addresses
+    # payload A has demonstrably written and read back. Still clear of stock's
     # per-frame staging (0x30000-0x30047, rewritten EVERY FRAME), both
-    # bootstraps (0x31000/0x32000), payload B's entry stub (0x38000), and the
-    # init pass that zeroes 0x30000-0x37FFF. It is also its own 8K block
-    # (0x3E000-0x3FFFF), so the two cores' accesses to it never arbitrate
-    # against their other traffic -- the manual's "no bus contentions occur
-    # when the two DSP cores access different 8K blocks simultaneously".
+    # bootstraps (0x31000/0x32000) and payload B's stub (0x38000), and still
+    # its own 8K block (0x36000-0x37FFF) for the manual's "no bus contentions
+    # when the two cores access different 8K blocks".
+    #
+    # NOTE for any real build: 0x36000 is inside core 0's FX2 SLOT 4
+    # (0x34000-0x37FFF). Harmless while every core-0 track is ChonVerb
+    # (hardcoded Y:0x4000) or a SEND (zero-footprint), but it is not free
+    # ground and BongDelay would contend for it.
     #
     # The map is mechanical: new = 0x3E000 + (old - 0x900), so the whole 0x900
     # -0x982 layout keeps its shape and all three files stay in agreement --
     # which they must, or the buses will not find each other.
     if os.environ.get("XBUS") == "1":
-        XBUS_BASE = 0x3E000
+        # Overridable so the next round is a one-liner, not a code edit.
+        XBUS_BASE = int(os.environ.get("XBUS_BASE", "36000"), 16)
 
         def xbus(src, name, label):
             n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))
