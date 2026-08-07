@@ -13,6 +13,78 @@ Last updated 7 Aug 2026 (build 25).
 
 ---
 
+## 0. The machine model, because this is the easy thing to get wrong
+
+**FX1 and FX2 are not chips, and not cores. They are two effect *slots* on
+every track**, run back to back in the same per-track chain: `FX1 → FX2 → gain
+→ bookkeeping` (`DSP.md` §5–6). Both slots of a given track run on whichever
+core that track lives on.
+
+```
+        ONE CHIP: DSP56721
+   ┌──────────────────┐   ┌──────────────────┐
+   │      CORE 0      │   │      CORE 1      │
+   │   tracks 1–4     │   │   tracks 5–8     │
+   │                  │   │                  │
+   │  track 1: FX1→FX2│   │  track 5: FX1→FX2│
+   │  track 2: FX1→FX2│   │  track 6: FX1→FX2│
+   │  track 3: FX1→FX2│   │  track 7: FX1→FX2│
+   │  track 4: FX1→FX2│   │  track 8: FX1→FX2│
+   │                  │   │                  │
+   │ 4535 cyc/sample  │   │ 4535 cyc/sample  │
+   │ own P memory     │   │ own P memory     │
+   └────────┬─────────┘   └─────────┬────────┘
+            └──── shared 64 K ──────┘   (Y:0x30000–0x3FFFF, 🟡 §3)
+```
+
+**FX1 and FX2 differ in exactly three ways** — nothing else:
+
+1. **Order.** FX1 runs before FX2, so an FX1 send taps the *dry* signal.
+2. **Slot size.** FX1 gets 3 072 words of Y, FX2 gets 16 384. That, and only
+   that, is why reverbs are FX2-only.
+3. **Which byte holds the id.** FX1 reads it from `r6+$1b`, FX2 from `r6+$1c`.
+
+> **Both slots share ONE dispatch table.** Six `jsr (r2)` sites, all in
+> `P:0x0041e`, all indexing `X:0x215`/`X:0x235`. "FX1 takes the id from
+> `r6+$1b`, FX2 from `r6+$1c` — that is the *only* difference between the
+> slots." (`DSP.md:238`) ✅ measured
+
+### The three resources, and how they differ
+
+| | scoped to | spent when | ours |
+|---|---|---|---|
+| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **11 free** |
+| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | **~1 392 spare** |
+| **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
+
+The one that catches people is the middle row. Program space is paid **once**;
+cycles are paid **per track per slot per frame**. Eight tracks running ChonVerb
+cost one copy of the code and eight times the cycles.
+
+### So: can we delete the stock effects "off FX2"?
+
+**No — and this is the thing you're remembering.** There is no FX1 pool and no
+FX2 pool. Every effect exists once, in the DSP's program memory, and both menus
+point at the same implementations through that single dispatch table.
+
+- Removing an effect from the **FX2 menu** frees **nothing**. The menu is just a
+  list of ids on the ColdFire.
+- The space is the effect's **code**, and taking it costs that effect in
+  **both** slots.
+
+That is exactly why the build **silences PLATE REV, SPRING REV and DARK REV on
+FX1**: we overwrote their code with ChonVerb, so if their ids still dispatched
+normally, selecting one on FX1 would run our hardcoded-base engine a second,
+uncontrolled time. CHORUS was a donor until v98 and is now byte-identical to
+stock, so FX1 gets its chorus back.
+
+⚠️ **This has a live consequence for the cycle headroom.** FX1 effects draw
+from the *same* per-core budget as FX2. The 1 392 spare was measured with
+whatever FX1 effects were assigned at the time — and a fresh part defaults
+FX1 = FILTER. Every FX1 filter you turn on eats into that figure.
+
+---
+
 ## 1. The silicon
 
 | | | |
