@@ -525,7 +525,7 @@ The shared window is not flat. Three things to dodge, all already mapped:
 |---|---|---|
 | `0x30000-0x30047` | stock's per-frame parameter staging, 72 words, **rewritten EVERY FRAME** ✅ | never usable |
 | `0x31000` / `0x32000` | bootstraps A and B, 50 / 58 words ✅ | dead after boot, usable |
-| `0x34000` | **a single word written here from payload A corrupts that track's audio after ~5.45 s** ✅ reproduced, cause unknown | **BLOCKER — see below** |
+| `0x34000` | ~~a single word written here corrupts audio after ~5.45 s~~ ❌ **RETRACTED 8 Aug** — v107's own bisect covered this exact address with ONE instance and found it clean; the fault was always duplication (`CHIP.md` §6) | **usable** |
 
 **The bus scratch needs a permanent home, and there is a free one.** It sits at
 `0x36000` today, which is inside the reverb's new `0x34000-0x37FFF` block. But
@@ -546,12 +546,14 @@ exactly, except for the scratch, which both cores must touch by definition:
 
 ## The four things that could bite, in order
 
-1. **`Y:0x34000` corrupts audio after ~5.45 s** ✅ reproduced across two
-   builds, cause never established, filed as a probe curiosity in `CHIP.md`
-   §6. **It sits in the middle of the reverb's new pool.** This was harmless
-   while nothing used that address; the target architecture walks straight
-   into it. **Resolve before laying out the reverb** — it is the only unknown
-   here that can invalidate the whole memory plan.
+1. ~~**`Y:0x34000` corrupts audio after ~5.45 s.**~~ ❌ **DEAD, 8 Aug 2026 —
+   and it was dead before it was ever ranked here.** `dsp/shared_probe.asm`'s
+   `ADDR = 0` *is* `0x34000`, and v107's bisect row "one `SharePrb` + three
+   `Send`s → clean at every ADDR and INC" therefore already measured a single
+   instance writing that exact word, clean. The two builds that "reproduced"
+   it both had two instances running — `04a24cf` says so itself. **The
+   reverb's pool is not blocked and this costs no flash.** Full retraction in
+   `CHIP.md` §6.
 2. ~~**`dsp_host` cannot boot payload B.**~~ **MITIGATED — the `DEV=1` hatch is
    built.** The risk was real: `XBUS=1` stubs the delay out, and the specialized
    build puts BongDelay in payload B only, which `dsp_host` cannot boot
@@ -596,13 +598,20 @@ exactly, except for the scratch, which both cores must touch by definition:
 
 1. ~~**`DEV=1` local-render escape hatch for the delay**~~ — **DONE**, see
    risk 2 above. BongDelay now renders locally for the first time.
-2. **One `BURN=1` flash, then sweep.** Settles two things in one trip to the
-   device: **the real FX1 worst case** (which decides whether 8 lines fits) and
-   **`Y:0x34000`** (risk 1, which decides the memory plan). Both are blockers
-   for design decisions below them, and neither costs a second flash.
-3. **Specialize the payloads** — drop BongDelay from A, ChonVerb from B, alias
-   both to SEND, and confirm the free-word counts (494 / 2,005). Pure win, no
-   design decisions in it.
+2. **One `BURN=1` flash, then sweep.** Now settles ONE thing, not two —
+   `Y:0x34000` was retracted from the docs rather than measured (risk 1). What
+   remains is **the real FX1 worst case**, which decides whether 8 lines fits.
+   Sweep the loaded kit first, then a few single-effect x4 configurations to
+   find which stock FX1 effect is actually the ceiling. The burn knob is a
+   front-panel instrument: one flash, then every further configuration is a
+   knob sweep.
+3. ~~**Specialize the payloads.**~~ ✅ **DONE, 8 Aug 2026 (v123, `SPEC=1`).**
+   `XBUS=1 SPEC=1 python3 tools/build_bus.py`: payload A carries SEND +
+   ChonVerb (**FREE 494**), payload B SEND + BongDelay (**FREE 1998**). The
+   absent server's id is aliased to SEND on each core, which is risk 3's fix
+   applied rather than deferred. Predicted 494 / 2,005; the 7-word gap on B is
+   the delay's XBUS gate. The plain build is byte-identical with the flag off.
+   **Not yet flashed.**
 4. **Roll the reverb's tank loop**, and move the per-line state to absolute Y
    in the same pass — the two have the same fix. Cycles for words at a very
    good rate, and it is what makes 8 lines affordable rather than marginal.
@@ -628,7 +637,8 @@ exactly, except for the scratch, which both cores must touch by definition:
   which predates the bus auto-gain.
 
 ~~**Hard constraint: the payload region is FULL, one spare word.**~~
-**Retracted by specialization** — 494 free on A, 2,005 on B.
+**Retracted by specialization, and now BUILT** — 494 free on A, 1,998 on B
+(`SPEC=1`, v123, 8 Aug 2026).
 
 ## Constraints that shape it
 

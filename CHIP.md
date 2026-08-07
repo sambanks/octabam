@@ -485,12 +485,33 @@ copies each behave as if they own the bank. **Mechanism never established, and
 it does not need to be** — one server per bank is a design rule, not an
 accident. Re-open only if duplicate servers ever become desirable.
 
-**A single word written to `Y:0x34000` from payload A corrupts that track's
-audio after ~5.45 s** (32 steps at 88 BPM), persistently. ✅ Reproduced across
-two builds — including one whose writer never touched the audio buffer at all —
-and ✅ ruled out as machine or project, since ChonVerb on the same track under
-the same conditions is clean. Cause unknown. Matters beyond the probe:
-BongDelay's buffer is `Y:0x30000–0x37FFF`.
+❌ **RETRACTED: "a single word written to `Y:0x34000` from payload A corrupts
+that track's audio after ~5.45 s."** This paragraph stood here until 8 Aug 2026
+and `XBUS.md` imported it as **risk 1, "the only unknown here that can
+invalidate the whole memory plan."** It was already dead when it was written.
+
+**The v107 bisect directly above falsifies it, and covers the exact address.**
+`dsp/shared_probe.asm`'s `ADDR = 0` *is* `0x34000` (`move #>$34000,y0 ; 0: FX2
+slot 4 base, A's half`), and the row **"one `SharePrb` + three `Send`s → clean
+at every ADDR and INC"** therefore includes a single instance writing that very
+word. ✅ **One instance at `Y:0x34000` is clean on hardware.**
+
+The two builds that "reproduced" it are rounds 1 and 2, and commit `04a24cf`
+says so in as many words: *"I had also misread my own evidence: rounds 1 and 2
+BOTH had two instances running, which is why I attributed to the write address
+what was always about duplication."* The fault was always duplication; the
+address never mattered.
+
+**What is still true** is only the row above: two instances of the same effect
+corrupt audio after ~5.45 s at any address, mechanism unestablished, and no
+product configuration has that. **`Y:0x30000–0x37FFF` is not blocked**, and the
+memory re-plan can proceed.
+
+**The lesson is the propagation, not the measurement.** The retraction was
+correct, was written down, and reached only the commit message — so a claim
+this file still asserted went on to become the top-ranked blocker in the
+planning doc. When a bisect kills a hypothesis, delete the paragraph the
+hypothesis lives in, not just the sentence that stated the conclusion.
 
 **Assembler traps.** `dsp_asm` has no reject path — it emits the nearest
 encoding. Accumulator-to-accumulator `CMP`/`CMPM`/`TFR` all mis-encode
