@@ -1,3 +1,8 @@
+> ⚠️ **READ `PLAN.md` FIRST.** As of 8 Aug 2026 this file is the *architecture*
+> record — how the cross-core bus works and why. The **plan** (end-state
+> resource ledger, work order, what to do next) lives in `PLAN.md`, which
+> supersedes this file's "Recommended order" section.
+
 # The target architecture: one reverb, one delay, all eight tracks
 
 Agreed 7 Aug 2026. This supersedes `BUS.md`'s bank-scoped design, whose founding
