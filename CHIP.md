@@ -333,12 +333,46 @@ proves unusable.
 `MSW1`) into five different maps. Which one stock selects has never been
 checked — read Ch. 3's figures before trusting any internal extent.
 
+## 3a. What is actually IN the shared window (mapped 7 Aug, static analysis)
+
+Two free passes over `out/raw/section_3_MAIN_OS.bin`: which modules **load**
+into `0x30000-0x3FFFF`, and which words in P code **reference** it. Remember P,
+X and Y are the same physical words here, so a P module and an X buffer at the
+same address are the same memory.
+
+| range | what | evidence |
+|---|---|---|
+| `0x30000-0x30047` (**72 words**) | **stock's per-frame PARAMETER STAGING.** Copied X→`Y:0x1b8` and written back every frame | disassembled: `do #<$48` loops at `P:0x0a4` (read) and `P:0x366` (write) |
+| `0x30000-0x300AA` (171 words) | DSP **host-port loader + ESAI setup**, payload A, boot-time | module dump |
+| `0x31000-0x31031` (50 words) | **bootstrap A** | `DSP.md:22` |
+| `0x32000-0x32039` (58 words) | **bootstrap B** | `DSP.md:27` |
+| `0x38000-0x38012` (19 words) | payload **B's entry stub** — `jsr`s into `0x30082`/`0x3008a` | module dump |
+| `0x30000-0x37FFF` | **zeroed at init**, all 32 768 words | disassembled at `P:0x040` |
+| `0x38000` | referenced in a **DMA** setup (`M_DCR2`) | `P:0x098` |
+
+**`X:0x30000` staging is CONFIRMED, not folklore.** `DSP.md` claimed stock
+"copies 72 words to `y:0x1b8`"; the loop is `do #<$48` = 72, and there is a
+matching write-back. Since X and Y alias here, that is `Y:0x30000-0x30047` too.
+
+**The window doubles up on purpose.** The boot loader occupies `0x30000` as P;
+init then zeroes `0x30000-0x37FFF`; the same words are then staging and FX2
+buffer. Boot code is disposable and stock reuses its address space — which is
+why nothing breaks.
+
+**Payload B's stub calls into payload A's code**, at `0x30082`/`0x3008a`. That
+is stock already doing cross-core code sharing through this window, in
+production, today.
+
+⚠️ **Method caveat:** a raw word scan finds *values*, not addresses. `0x3a667`
+looked like a reference and disassembles as `teq x1,a r6,r7` (opcode `03a667`).
+Anything from that pass must be disassembled before it is believed.
+
 ### Who uses what
 
 | | |
 |---|---|
 | ChonVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
-| BongDelay | `Y:0x30000–0x37FFF` (payload A) / `Y:0x38000–0x3FFFF` (payload B) — 32 768 words each |
+| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Untested first draft; do not assume it works |
 | Bus scratch | `Y:0x900–0x980` — parity word, then 4 × 16-word accumulators and 4 × 16-word wet buffers |
 | Per-instance base stash | `Y:0x795 + (r7>>8)` — one word per instance |
 | SEND | **nothing.** A zero-footprint client; never touches its own slot |
@@ -401,11 +435,8 @@ the reference manual, no flash needed (§3). What is still open is what to *do*
 with it: a true 8-track bus and cross-core sends are now possible, and the
 per-8K-block contention rule says how to lay it out.
 
-**What else lives in the shared window?** This is the question that matters now,
-and it replaces the sharing question. P/X/Y alias there and `delay_server`
-claims all 64 K across the two payloads, so **its 32 K cannot be assumed** until
-the window is mapped. That is the delay's first design problem, not a probe
-problem.
+~~**What else lives in the shared window?**~~ **MAPPED — see §3a.** It is
+heavily used by stock, at both of `delay_server`'s bases.
 
 ~~**The 32-step fault.**~~ **CLOSED — not a product issue.** ✅ Bisected on
 hardware, 7 Aug:
