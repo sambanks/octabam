@@ -536,12 +536,15 @@ def main():
     # outright is the test that cannot be argued with -- a zeroed coefficient
     # still leaves the shifter reading and writing its buffer every sample.
     # Also reclaims 2048 words at base+0x7800 and the cycles.
-    if os.environ.get("NOSHIM") == "1":
+    if os.environ.get("SHIMMER") != "1":
         i = reverb_src.index("; SHIMMER_BEGIN")
         j = reverb_src.index("; SHIMMER_END") + len("; SHIMMER_END")
         cut = reverb_src[i:j].count("\n")
-        reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (NOSHIM=1)" + reverb_src[j:]
-        print(f"  *** SHIMMER EXCISED: {cut} source lines removed ***")
+        reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (default)" + reverb_src[j:]
+        print(f"  shimmer excised ({cut} lines) -- the DEFAULT; SHIMMER=1 puts it back")
+    else:
+        print("  *** SHIMMER=1: the shimmer is IN. It is the confirmed cause of the "
+              "metallic artifact (v119) -- diagnostic only, do NOT ship this ***")
 
     mode_env = os.environ.get("MODE")
     if mode_env is not None:
