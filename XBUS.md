@@ -106,8 +106,29 @@ blocked.
   leave headroom (0.920/0.965/0.980). Not simple runaway feedback — HF *falls*
   as TIME rises and is already high at TIME=0, so it is the input/early path.
   A mode at unity feedback scale is a hazard regardless.
-- **Gain staging.** The reverb saturates above ~0.35 FS input and *N* sends sum
-  linearly with nothing dividing by *N*.
+- ~~**Gain staging.**~~ **FIXED (v121)** — the bus now auto-scales by the number
+  of clients that actually wrote it, so 1 to 8 tracks all drive the reverb
+  identically. Each SEND registers itself once per block in a parity-indexed
+  count at `Y:0x983/0x984` and writes its contribution with **3 bits of
+  headroom** (`asr #3`), so eight clients at full scale sum to exactly 1.0 and
+  the shared word can no longer be summed into its rail. The server reads the
+  count for the buffer it is READING, looks up 1/N in a table at `base+0x7800`
+  (rebuilt each block, in the space the shimmer freed), multiplies, and shifts
+  back up by 3. Measured before/after at 0.15 FS per send:
+
+  | sends | THD before | THD after |
+  |---|---|---|
+  | 1 | −44.6 | −44.6 |
+  | 3 | −16.3 | −44.6 |
+  | 5 | −3.0 | −44.6 |
+  | 7 | −0.6 | −44.6 |
+
+  Eight tracks at 0.35 FS each are now clean (−44.6). The reverb's OWN tank
+  still saturates above ~0.35 FS — unchanged, separate, and now the only limit.
+  **The DELAY accumulator did NOT get this treatment**; BongDelay is an
+  untested draft and can take the same change when it is worked on.
+- **The payload region is FULL: 2723 of 2724 words, ONE spare.** Anything added
+  to any of the three effects now needs space found first.
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly, so every slot looks live locally, while on
   hardware a slot can draw a knob and publish nothing. That single gap is what

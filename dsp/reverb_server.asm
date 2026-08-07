@@ -274,6 +274,18 @@ bus_zclr:
 ; re-claimed below in dispatch order.
         move    a,y:>$981               ; DELAY SERVER role owner
         move    a,y:>$982               ; REVERB SERVER role owner
+; ---- reset the new write buffer's SEND COUNT, alongside its accumulators ---
+; The housekeeping is duplicated between this file and dsp/send_client.asm and
+; must stay in step (BUS.md). x1 still holds the OLD parity, so the buffer just
+; made current is 1 - x1. Without this the count grows without bound and the
+; auto-gain above divides by garbage.
+        move    #>$1,a
+        sub     x1,a                    ; new parity
+        move    #>$983,x0
+        add     x0,a
+        move    a,r1
+        clr     a
+        move    a,y:(r1)
 bus_seen:
         move    #>$1,x0                 ; remember this block's parity so next
         move    y:>$900,a               ; block we can tell whether anybody
@@ -346,6 +358,69 @@ bus_mine:
         add     x0,a
         add     b,a
         move    a,x:(r7+$68)            ; this call's DELAY ACC write address
+
+; ---- bus auto-gain: resolve 1/N for this block's READ buffer ------------
+; Eight tracks sending into one accumulator sum to eight times one track, and
+; the accumulator CLAMPS at 1.0 -- measured, it breaks up at THREE sends and is
+; destroyed by seven. Dividing by the number of clients that actually wrote the
+; buffer holds total drive CONSTANT however many tracks send, so the send knob
+; sets each track's SHARE of the reverb rather than how hard the tank is hit.
+;
+; The count belongs to the buffer being READ (the fully-summed, one-block-old
+; one), so it is indexed by READ parity. x1 still holds write_parity from the
+; block above, and read = 1 - write.
+;
+; Reciprocals live at base+0x7800 -- the 2048 words the shimmer used to occupy
+; -- rebuilt each block. A compare chain was tried first and cost 72 program
+; words, which OVERRAN the payload region; this is half that and the stores are
+; free in cycle terms.
+;
+; Table order is deliberate: the count is masked to 0..7, so a full 8 senders
+; wraps to index 0. Index 0 therefore holds 1/8, and index k holds 1/k. A count
+; of 0 (nobody sent) also lands on 1/8, which is harmless -- the accumulator is
+; zero in that case anyway.
+        move    #>$b800,b               ; base 0x4000 + 0x7800, the literal --
+        move    b,r5                    ; x:(r7+$31) is not written until AFTER
+                                        ; this block, so reading it here would
+                                        ; take the PREVIOUS block's value (and
+                                        ; garbage on the very first). b is kept
+                                        ; live for the index below.
+        move    #>$ffffff,m5
+        move    #>$100000,a
+        move    a,y:(r5)+               ; [0] = 1/8  (count 8 wraps to here)
+        move    #>$7fffff,a
+        move    a,y:(r5)+               ; [1] = 1/1
+        move    #>$400000,a
+        move    a,y:(r5)+               ; [2] = 1/2
+        move    #>$2aaaab,a
+        move    a,y:(r5)+               ; [3] = 1/3
+        move    #>$200000,a
+        move    a,y:(r5)+               ; [4] = 1/4
+        move    #>$199999,a
+        move    a,y:(r5)+               ; [5] = 1/5
+        move    #>$155555,a
+        move    a,y:(r5)+               ; [6] = 1/6
+        move    #>$124925,a
+        move    a,y:(r5)                ; [7] = 1/7
+
+        move    #>$1,a
+        sub     x1,a                    ; read_parity
+        move    #>$983,x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; clients that wrote the buffer we read
+        move    #>$7,x0
+        and     x0,a                    ; masked: boot garbage cannot index wild
+        move    a1,x0
+        move    x0,a                    ; A2-clean before it becomes an address
+        add     b,a                     ; b = table base, still live
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
+                                        ; $0c, NOT $6d: $6d is the DIFFUSION
+                                        ; allpass coefficient g. Slots $10..$83
+                                        ; are ALL taken -- the only free words in
+                                        ; the state block are $00..$0c.
 
 ; ---- hardcoded base: BUS.md task 8 (REVERB SERVER always Y:0x4000) ------
 ; No x:0x213 read, no per-instance stash -- every instance of this effect
@@ -1660,9 +1735,18 @@ lf51:
         move    a,r5                    ; borrow r5: free here, every use
                                         ; below recomputes it from scratch
         move    y:(r5),b                ; last block's fully-summed sends
+        move    b1,x1                   ; auto-gain: divide by the number of
+        move    x:(r7+$0c),y1           ; clients that wrote it, so eight tracks
+        mpy     x1,y1,b                 ; drive the tank exactly as hard as one
+        asl     #$3,b,b                 ; undo the 3 bits of headroom the clients
+                                        ; write with (dsp/send_client.asm): the
+                                        ; scaled sum is sum/8, so sum/8 * 1/N * 8
+                                        ; = sum/N, and the intermediate never
+                                        ; leaves range -- with N clients writing,
+                                        ; the scaled sum is at most N/8.
         move    x:(r7+$1b),a
         add     b,a
-        move    a,x:(r7+$1b)            ; own dry + bus, feeding the tank
+        move    a,x:(r7+$1b)            ; own dry + scaled bus, feeding the tank
         move    x:(r7+$63),a
         move    #>$1,x0
         add     x0,a

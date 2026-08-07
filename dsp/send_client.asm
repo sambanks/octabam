@@ -26,6 +26,13 @@
 ;   Y:0x951..0x960      DELAY  bus accumulator, buffer 1
 ;   Y:0x961..0x970      DELAY  bus wet, buffer 0
 ;   Y:0x971..0x980      DELAY  bus wet, buffer 1
+;   Y:0x983/0x984       REVERB send COUNT, buffer 0 / buffer 1 -- how many SEND
+;                        clients wrote that buffer this block. Parity-indexed
+;                        exactly like the accumulators, because the server reads
+;                        LAST block's sum and so needs LAST block's count. The
+;                        server divides by it, so N tracks sending at full drive
+;                        the reverb exactly as hard as one track does, and the
+;                        shared accumulator can no longer be summed into its rail.
 ;
 ; Latency, pinned per BUS.md: every block, whichever track is "position 0"
 ; (r7 == 0x6200 -- the FIRST FX2 dispatched in this bank, fixed by hardware
@@ -175,6 +182,21 @@ bus_dohk:                               ; nobody did -- take over this block
         move    a,y:(r2)+
 zclr:
         nop
+; ---- reset the new write buffer's SEND COUNT, alongside its accumulators ----
+; y:>$900 already holds the NEW parity (written just above), so this indexes the
+; same buffer the loop just cleared. Masked and A2-cleaned before it becomes an
+; address, per the standing rule -- a garbage value here is a wild Y write.
+        move    #>$1,x0
+        move    y:>$900,a
+        and     x0,a
+        move    a1,x0
+        move    x0,a
+        move    #>$983,x0
+        add     x0,a
+        move    a,r3
+        move    #>$ffffff,m3
+        clr     a
+        move    a,y:(r3)                ; count = 0; a stays 0 for the locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and
@@ -209,6 +231,33 @@ notfirst:
         move    #>$ffffff,m1
         move    #>$ffffff,m2
 
+; ---- register as a REVERB bus client, once per block ---------------------
+; The server divides the accumulator by this count, which is what keeps eight
+; tracks from summing into the rail (measured: the bus clamps at 1.0, and with
+; no scaling it breaks up at THREE sends).
+;
+; Gated on the split offset, so a block whose proc() runs twice still counts
+; ONCE -- the same trap the parity flip and the housekeeping election were both
+; written around. Counted per block rather than per sample because every sample
+; slot in the block receives exactly one contribution from this track.
+        move    x:(r7+$67),a
+        tst     a
+        bne     cnt_done                ; not this block's first call
+        move    #>$1,x0
+        move    y:>$900,a
+        and     x0,a                    ; WRITE parity: count the buffer we are
+        move    a1,x0                   ; about to add into, not the one being read
+        move    x0,a
+        move    #>$983,x0
+        add     x0,a
+        move    a,r3
+        move    #>$ffffff,m3
+        move    y:(r3),a
+        move    #>$1,x0
+        add     x0,a
+        move    a,y:(r3)
+cnt_done:
+
 ; ---- per-sample: mono dry sum, scaled into both accumulators -------------
         move    x:(r6+1),y0              ; ->REVERB level
         move    x:(r6),y1                ; ->DELAY level
@@ -226,6 +275,15 @@ notfirst:
         move    a,y:(r2)+                ; DELAY  ACC[write][i] += contribution
 
         mpy     x1,y0,a                  ; a = mono * ->REVERB level
+        asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM. Eight clients
+                                         ; at full scale now sum to exactly 1.0
+                                         ; instead of 8.0, so the shared word can
+                                         ; no longer be summed into its rail --
+                                         ; measured, it clamped at seven sends
+                                         ; even once the auto-gain divided right.
+                                         ; The server shifts it back up by 3, so
+                                         ; this costs resolution (21 bits of 24)
+                                         ; and nothing else.
         move    y:(r1),b
         add     b,a
         move    a,y:(r1)+                ; REVERB ACC[write][i] += contribution
