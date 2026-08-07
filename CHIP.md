@@ -9,7 +9,7 @@ be is how you spot a doc that hasn't caught up.
 - 🟡 **inferred** — fits the evidence, not directly tested; falsifier stated
 - ❌ **retracted** — was believed, now known wrong
 
-Last updated 7 Aug 2026 (build 25).
+Last updated 7 Aug 2026 (build 27).
 
 ---
 
@@ -34,7 +34,7 @@ core that track lives on.
    │ 4535 cyc/sample  │   │ 4535 cyc/sample  │
    │ own P memory     │   │ own P memory     │
    └────────┬─────────┘   └─────────┬────────┘
-            └──── shared 64 K ──────┘   (Y:0x30000–0x3FFFF, 🟡 §3)
+            └──── shared 64 K ──────┘   (Y:0x30000–0x3FFFF, ✅ §3)
 ```
 
 **FX1 and FX2 differ in exactly three ways** — nothing else:
@@ -89,11 +89,11 @@ FX1 = FILTER. Every FX1 filter you turn on eats into that figure.
 
 | | | |
 |---|---|---|
-| CPU | Freescale ColdFire **MCF5445AVR266**, 32-bit big-endian, 266 MHz | ✅ board photo |
+| CPU | Freescale ColdFire **MCF54454VR266**, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; our note said `MCF5445A` — same family, likely a misread digit) |
 | Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) | ✅ board photo |
 | DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet |
 | External memory controller | **None.** No EMC on this part — all memory is on-chip | ✅ datasheet block diagram |
-| Shared memory | **8 blocks × 8 K = 64 K**, reachable by *both* cores via Shared Bus 0/1 through Arbiters 0–7 | ✅ datasheet block diagram |
+| Shared memory | **8 blocks × 8 K words = 64 K words at `$030000`**, reachable by *both* cores; P/X/Y alias there | ✅ reference manual + hardware |
 | Storage | CompactFlash (FAT16/32) | ✅ official |
 
 ❌ **"Two separate DSP chips."** They are two cores of one part. `ARCHITECTURE.md`
@@ -149,11 +149,12 @@ of 4 535 cycles/sample, stock's own per-track work takes **under ~1 550**, four
 FX1 FILTERs take **over 640**, our FX2 bank takes ~957 static, and 1 392 was
 still spare on top of all of it.
 
-📄 **What the datasheet SHOULD be read for is MEMORY, and it has not been.**
-`DSP56720EC.pdf` has the per-core X/Y/P RAM extents and the shared-memory
-mapping. That would settle §3's 🟡 — whether `Y:0x30000–0x3FFFF` is the shared
-block — **without a flash**, and it should be read before trusting any delay
-buffer beyond `0x38000`. The PDF is not in this repo.
+📄 **The reference manual HAS now been read** — `DSP56720RM.pdf`, 575 pages,
+at `downloads/datasheets/` (gitignored; third-party). Extract with
+`pdftotext -layout`; `file` misreports it as 27 pages. It settled §3's memory
+questions without a flash. What it still has and we have NOT used: Ch. 3's five
+OMR-selectable memory maps (`MS`, `MSW0`, `MSW1`), which set the per-core X/Y/P
+extents — read those before trusting any *internal* extent.
 
 ### "Spare" is only meaningful attached to a configuration
 
@@ -286,10 +287,24 @@ dead. There is 64 K both cores address; the split into `0x30000` (payload A) /
 `0x38000` (payload B) is **a convention we chose**, not a hardware wall. A true
 8-track bus and cross-core sends are both back on the table.
 
-✅ **P, X and Y ALIAS in this region.** *"When the DSP cores access the shared
-memory, the Program, X, and Y memory addresses are **mapped into same physical
-location**, which means that there is no difference in accessing the shared
-memory from Program, X, or Y memory space."*
+✅ **P, X and Y ALIAS in this region — CONFIRMED ON HARDWARE**, 7 Aug, build 27.
+The manual says *"the Program, X, and Y memory addresses are mapped into same
+physical location"*; `dsp/alias_probe.asm` wrote a tagged incrementing word
+through Y and read it back through **X** and through **P**, at four addresses
+across the window. Every one agreed. The window is uniform.
+
+⚠️ **THE WINDOW IS NOT EMPTY — the DSP bootstraps live in it.** `DSP.md:22`/`:27`:
+bootstrap A loads to **`P:0x31000`** (50 words) and bootstrap B to
+**`P:0x32000`** (58 words). Both sit inside `0x30000-0x3FFFF`, and since P and
+Y are the same words there, **`delay_server`'s payload-A buffer
+(`0x30000-0x37FFF`) covers both of them.** Harmless once booted — they have
+already run — but nothing may assume that region is scratch.
+
+(The probe's own ADDR=0 is base+0x1000, i.e. `0x31000` on payload A: it has been
+writing over bootstrap A's first word all along, and reading it back through P.
+That is also the strongest single piece of evidence for the aliasing — if P and
+Y were separate memories, `P:0x31000` would still hold a bootstrap instruction,
+not our counter.)
 
 ❌ **"X:0x30000 and Y:0x30000 do not alias."** Commit `0f93639` reached that by
 inference — *if they aliased, stock would corrupt itself whenever a reverb sat
