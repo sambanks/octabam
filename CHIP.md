@@ -124,6 +124,40 @@ The ~2 150 absolute figure adds a *static* instruction count to a *real*
 hardware ceiling, which is slightly apples-to-oranges — real code contends for
 memory where nops do not.
 
+### "Spare" is only meaningful attached to a configuration
+
+⚠️ **1 392 is spare on top of whatever happened to be assigned during that
+sweep — not an untouchable reserve.** Everything on the core draws from the
+same budget: stock's per-track voice work, **all four tracks' FX1 effects**,
+and our FX2 bank. A fresh part defaults FX1 = FILTER, so a realistic kit is
+paying for four FX1 effects the sweep may not have included.
+
+**Budget against the worst realistic case per core**, not the bare one:
+
+    4 tracks playing  +  an FX1 effect on each  +  the FX2 bank (957 static)
+
+### The burn knob is a reusable CYCLE METER, not a one-shot test
+
+This is the part worth keeping. `BURN` sits on ChonVerb in any `BURN=1` build,
+so **any configuration can be measured, on demand, with no flash**:
+
+1. Set up the configuration you care about.
+2. Sweep `BURN` up until it breaks.
+3. **`16 × BURN` = cycles/sample spare in that configuration.**
+
+And the *difference* between two configurations is the **cost of the change** —
+which is the only way to price stock effects at all, since they are binary and
+instruction count is not cycles (`v97` moved instructions up 508 → 512 while
+cycles fell 735 → 731).
+
+So the cost of a stock FX1 effect is directly measurable: sweep with it
+assigned on all four tracks, sweep without, take the difference. If a
+configuration freezes at `BURN = 0`, that configuration is already over budget
+and that is a finding in itself.
+
+**Establish the worst-case number before designing the delay**, so the
+algorithm is designed against a real budget rather than a bare-config one.
+
 ❌ **"The budget is 1080 cycles/sample."** 1080 was never a ceiling. It is the
 load `stageprobe5` happened to *survive* (`REVERB_LOG.md`) and got written down
 as a budget. Every design decision from the density pass onward was priced
