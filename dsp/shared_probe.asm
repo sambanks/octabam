@@ -50,27 +50,33 @@
 ; address reads as success -- and a false positive here is the expensive kind,
 ; because it would send us building an 8-track bus that cannot work.
 ;
-; READOUT -- three states, so "it did not work" and "it is not running" cannot
-; be confused. The reader never mutes: it passes its track's audio at
+; READOUT -- FOUR states, and every track announces its own ROLE. Round 1
+; (7 Aug 2026) was VOID because the writer passed audio untouched, so a track
+; at full level was ambiguous between "reader says LIVE" and "this track is a
+; writer" -- and the observed result ("played fine on track 5") was exactly
+; that ambiguous case. The writer now attenuates too, purely as a signature:
 ;
-;   FULL LEVEL   tag matches AND the value is changing -> THE CORES SHARE IT
-;   -24 dB       otherwise                             -> not shared
-;   silence      the probe is not running at all, or is broken
+;   FULL LEVEL   reader, tag matches AND changing  -> THE CORES SHARE IT
+;   -12 dB       this track is the WRITER          -> it is on payload A
+;   -24 dB       reader, not live                  -> not shared
+;   silence      not running at all, or broken
+;
+; That also makes the probe report the TRACK -> CORE MAP, which round 1 put in
+; doubt: if a track in 5-8 reads -12 dB it is on payload A, and the assumed
+; "tracks 1-4 = core 0, 5-8 = core 1" split is itself wrong.
 ;
 ; HOW TO RUN IT. Order matters, because the window retains what was written:
 ;
-;   1. Assign this effect to a track in 5-8 (core 1, the READER) ONLY, with a
-;      sample playing. Expect QUIET. If it is silent, stop -- the probe is not
-;      running and nothing below means anything.
-;   2. Now also assign it to a track in 1-4 (core 0, the WRITER), playing or
-;      not -- the writer needs no audio, it only counts.
-;   3. If the reader jumps to FULL LEVEL, the cores share the window and
-;      BUS.md's hard-boundary constraint is dead.
-;   4. Un-assign the writer. The reader should fall back to quiet within a
+;   1. Put it on ONE track and note the level. -12 dB = writer, anything else
+;      = reader. Do this for a track in 1-4 and a track in 5-8 to establish
+;      which tracks are on which payload BEFORE testing sharing.
+;   2. With one writer and one reader running, the reader going FULL LEVEL
+;      means the cores share the window and BUS.md's hard boundary is dead.
+;   3. Un-assign the writer. The reader must fall back to -24 dB within a
 ;      block. If it stays loud, something OTHER than our writer is churning
 ;      that address and the result is void.
 ;
-; Step 4 is the control and it is not optional. Steps 1-3 alone are satisfied
+; Step 3 is the control and it is not optional. Steps 1-2 alone are satisfied
 ; by any address that happens to be busy.
 ;
 ; WHAT THE EMULATOR CANNOT CHECK: dsp_host cannot boot payload B at all, so
@@ -98,9 +104,13 @@ proc:
         beq     reader
 
 ; ---- WRITER (payload A, core 0) -----------------------------------------
-; Increment, re-tag, store. The audio buffer is never touched, so a track
-; running the writer sounds exactly as it would with no effect -- the writer
-; is meant to be assignable without changing what you hear.
+; Increment, re-tag, store, then fall into the shared gain block at -12 dB.
+;
+; The -12 dB is not cosmetic and it is what round 1 lacked. A writer that
+; passes audio untouched is INDISTINGUISHABLE BY EAR from a reader reporting
+; LIVE, so "the track played fine" answered nothing -- it could not tell us
+; whether we were hearing a successful cross-core read or simply a writer. A
+; distinct level makes every track state its own role.
 ;
 ; A2 is cleaned before the mask for the standing reason this project learned
 ; the hard way: the word starts as boot garbage, AND clears A1 only, and a
@@ -116,7 +126,8 @@ proc:
         move    #>$5a0000,x0
         or      x0,a                    ; re-apply the tag
         move    a,y:>$34000
-        rts
+        move    #>$200000,y1            ; -12 dB: the WRITER's signature level
+        bra     gain
 
 reader:
 ; ---- READER (payload B, core 1) -----------------------------------------
@@ -143,27 +154,40 @@ reader:
         sub     b,a
         beq     notlive                 ; unchanged: stale, writer not running
         move    #>$7fffff,y1            ; LIVE -> full level
-        bra     rdgain
+        bra     gain
 notlive:
         move    #>$080000,y1            ; -24 dB, still audible on purpose
-rdgain:
 
-; ---- apply the gain to this track's audio -------------------------------
+; ---- shared: apply y1 to this track's audio -----------------------------
 ; mpy x0,y1 and NOT x1,y1: the 56300 encodes only eight MPY operand pairs and
 ; x1*y1 is not one of them -- dsp_asm silently emits `mpysu` instead of
 ; erroring (see the memory on assembler traps; this is the second member of
 ; that family after `tfr a,b` -> `rnd b`). x0*y1 is encodable.
 ;
-; asr #1 undoes mpy's fractional doubling, so a gain of $7fffff is unity.
+; NO `asr #1` AFTER THE MPY. Round 1 had one, on the belief that mpy "doubles"
+; -- it does not: MPY is a FRACTIONAL multiply and its shift-left is exactly
+; what makes the result correctly scaled. dsp/send_client.asm multiplies a
+; send level with a bare `mpy x1,y1,a` and no correction, which is the
+; controlling precedent. The stray asr halved everything, so the reader could
+; never reach full level and the LIVE state was unreachable by construction.
+;
+; m0 MUST BE SET, and this is what made round 1 sound like buzzy static with
+; the pad's envelope intact. r0 is not merely read here, it is WRITTEN, and
+; dsp/reverb_server.asm sets `#>$ffffff,m0` for exactly this reason -- its
+; comment reads "audio is read and written via r0". Left at whatever modifier
+; the previous effect happened to leave behind, `move a,x:(r0)` scatters
+; samples to wrapped addresses inside the audio buffer: the energy and the
+; envelope survive, the waveform does not. dsp/send_client.asm gets away with
+; never setting m0 only because it never writes through r0.
+gain:
+        move    #>$ffffff,m0            ; audio is read AND WRITTEN via r0
         move    #>$1,n0
         do      n7,>rd_end
         move    x:(r0),x0               ; L
         mpy     x0,y1,a
-        asr     #$1,a,a
         move    a,x:(r0)
         move    x:(r0+n0),x0            ; R
         mpy     x0,y1,a
-        asr     #$1,a,a
         move    a,x:(r0+n0)
         move    #>$2,n0
         move    (r0)+n0                 ; next stereo frame

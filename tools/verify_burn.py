@@ -126,11 +126,12 @@ def check_roles():
             starts[tag] = int(line.split("P:0x")[1].split(".")[0], 16)
             sizes[tag] = int(line.split("(")[1].split("words")[0])
     # The build MUST have been a BURN build, or this is reading delay_server's
-    # words and answering about the wrong code entirely. delay_server is 507
-    # words and shared_probe is 68, so the size is an unambiguous witness --
-    # and the first draft of this function did exactly that, rebuilding
-    # without BURN and passing for the wrong reason.
-    if set(sizes.values()) != {68}:
+    # words and answering about the wrong code entirely -- the first draft of
+    # this function did exactly that, rebuilding without BURN and passing for
+    # the wrong reason. The witness is size: delay_server is 507 words and the
+    # probe is under 100. Bounded rather than exact, so the probe can grow
+    # without silently turning this check off.
+    if not sizes or max(sizes.values()) > 200 or len(set(sizes.values())) != 1:
         sys.exit(f"check_roles read a non-probe DELAY SERVER slot: {sizes}")
     img = (ROOT / "out/mainos_bus.bin").read_bytes()
     out = {}
