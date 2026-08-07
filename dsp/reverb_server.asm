@@ -1195,9 +1195,13 @@ mixset:
 ; buffer happens to be near. That cost a debugging round.
         move    x:(r6+$b),a             ; SHMR amount, value<<16
         and     #>$7f0000,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$0e)            ; cached for the loop
+        move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
+        move    #>$600000,y1            ; loop gain on TOP of the tank's own
+        mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
+        move    a,x:(r7+$0e)            ; is the sweet spot while 45 at TIME=90
+                                        ; already runs away. A quarter puts that
+                                        ; sweet spot near the top of the travel
+                                        ; instead of a fifth of the way up.
         move    #>$280000,a             ; 40 << 16, where the knob used to land
         move    a1,x0
         move    x0,a
@@ -2195,18 +2199,71 @@ lf51:
         move    x:(r7+$18),x0
         add     x0,a
         asr     a                       ; halved for headroom
-        move    a,y:(r5)                ; write it at the head
 
-        move    x1,n5
-        move    y:(r5+n5),b             ; head 1, at +phase
+; ROLLOFF IN THE FEEDBACK PATH (v102). Valhalla's account of the Eno/Lanois
+; chain is specific that the return had "some hi frequencies rolled off" before
+; it fed the reverb, and that the gain and EQ of the loop are what move the
+; sound between steel-drum and string-pad. We were injecting the octave flat.
+;
+; A one-pole needs to remember its own last output, and the r7 block has no
+; slot left -- but it does not need one: the last output is the last thing we
+; WROTE, which sits at phase-1. Under m5 that is a CONSTANT offset of 2047, so
+; it is a single indexed read and the buffer is its own filter state.
+;
+; The filter therefore sits before the shift rather than after it, so its
+; corner doubles on the way out. That is weaker than filtering the output, but
+; it is free, and the signal is filtered again on every circulation.
+        move    #>2047,b                ; -1 under modulo 2048
+        move    b1,n5
+        move    y:(r5+n5),b             ; y_prev, the last value written
+        sub     b,a                     ; x - y_prev
+        move    a,x0
+        move    #>$133333,y0            ; c = 0.15. Corner ~1 kHz, and since
+                                        ; this sits BEFORE the shift it lands
+                                        ; ~2 kHz on the way out. Regeneration
+                                        ; accumulates highs on every pass, so
+                                        ; the rolloff has to be much darker
+                                        ; than it would be for a single pass.
+        mpy     x0,y0,a                 ; c * (x - y_prev)
+        add     b,a                     ; y = y_prev + c*(x - y_prev)
+        move    a,y:(r5)                ; write the FILTERED value
+
+; DECORRELATION (v102). Valhalla's shimmer notes are explicit that a pitch
+; shifter in a feedback loop splices at a predictable point, the repeats stay
+; correlated, and the result reads as metallic -- the fix being time-varying
+; delays. The tank already modulates its lines and its in-loop allpasses, so
+; the octave gets decorrelated once it is circulating; what was still fixed was
+; the SPLICE itself, always at the same buffer position.
+;
+; The two heads are now pushed in OPPOSITE directions by the two allpass LFOs
+; ($52 and $54, 0..31 samples, already computed for the allpasses). Opposite
+; because moving them together would just shift the splice, not decorrelate the
+; pair. Costs no state and no new LFO -- and NOT the phase increment, which is
+; the pitch ratio itself and must stay exactly 1.
+        move    x1,a
+        move    x:(r7+$52),a1           ; allpass LFO A, 0..31 -- FAR too
+        asl     #$3,a,a                 ; shallow against a 2048 buffer, so x8
+        move    a1,x0                   ; to 0..248: the splice has to be
+        move    x1,a                    ; SMEARED, not merely nudged
+        add     x0,a
+        move    #>$7ff,x0
+        and     x0,a
+        move    a1,n5
+        move    y:(r5+n5),b             ; head 1, at +phase, modulated up
 
         move    x1,a
         move    #>1024,x0
         add     x0,a
+        move    a1,y0                   ; park phase+1024
+        move    x:(r7+$54),a1           ; allpass LFO B, likewise x8
+        asl     #$3,a,a
+        move    a1,x0
+        move    y0,a
+        sub     x0,a                    ; the other way, so the pair decorrelate
         move    #>$7ff,x0
         and     x0,a                    ; MASKED -- see the TRAP note above
         move    a1,n5
-        move    y:(r5+n5),a             ; head 2, at +(phase+1024)
+        move    y:(r5+n5),a             ; head 2, at +(phase+1024), modulated down
 
         move    a,y0                    ; tap2
         sub     y0,b                    ; b = tap1 - tap2
