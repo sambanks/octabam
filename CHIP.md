@@ -124,6 +124,37 @@ The ~2 150 absolute figure adds a *static* instruction count to a *real*
 hardware ceiling, which is slightly apples-to-oranges — real code contends for
 memory where nops do not.
 
+### Why the datasheet cannot answer this
+
+It gives exactly one cycle number: **200 MIPS per core → 4 535 cycles/sample at
+44.1 kHz**. That is the ceiling of the *silicon*. Three things it cannot tell
+us, and all three sit between that figure and anything spendable:
+
+1. **What stock already uses.** Voice playback, sample streaming and
+   interpolation, FX1, frame plumbing, DMA orchestration — that is a property
+   of Elektron's firmware, not of the part. No datasheet knows it.
+2. **What the real deadline is.** A freeze means the DSP missed its *frame*
+   deadline, which may sit below 100 % of the core — the frame ISR needs its
+   own margin. So the usable budget is at most 4 535, probably less.
+3. **Memory-contention stalls.** "200 MIPS" assumes one instruction per cycle
+   with no stalls. Real code doing X and Y accesses with AGU interlocks runs
+   below that, by an amount that depends on the code.
+
+**Datasheet = the ceiling of the chip. The burn probe = the ceiling of what is
+left after stock.** Only the second is spendable, and only the second can be
+measured from here.
+
+Rough split implied by our measurements (big error bars, but the shape holds):
+of 4 535 cycles/sample, stock's own per-track work takes **under ~1 550**, four
+FX1 FILTERs take **over 640**, our FX2 bank takes ~957 static, and 1 392 was
+still spare on top of all of it.
+
+📄 **What the datasheet SHOULD be read for is MEMORY, and it has not been.**
+`DSP56720EC.pdf` has the per-core X/Y/P RAM extents and the shared-memory
+mapping. That would settle §3's 🟡 — whether `Y:0x30000–0x3FFFF` is the shared
+block — **without a flash**, and it should be read before trusting any delay
+buffer beyond `0x38000`. The PDF is not in this repo.
+
 ### "Spare" is only meaningful attached to a configuration
 
 ⚠️ **1 392 is spare on top of whatever happened to be assigned during that
@@ -154,6 +185,31 @@ So the cost of a stock FX1 effect is directly measurable: sweep with it
 assigned on all four tracks, sweep without, take the difference. If a
 configuration freezes at `BURN = 0`, that configuration is already over budget
 and that is a finding in itself.
+
+### Measured: what the stock FX1 FILTER costs (7 Aug, build 23/25)
+
+| configuration | result | spare |
+|---|---|---|
+| FILTER on all four tracks | froze at `BURN = 87` | **1 392** ✅ exact |
+| FILTER disabled everywhere | **never broke** — ran out of knob at 127 | **> 2 032** ✅ lower bound |
+
+**Four FILTERs cost more than 640 cycles/sample — more than 160 cycles each.**
+A lower bound only, because the no-filter sweep never reached the ceiling.
+
+Two consequences, and the first is the important one:
+
+**1 392 is the CONSERVATIVE number, not the optimistic one.** It was measured
+with the heaviest FX1 config already running, so it is a worst case that needs
+no further derating. Design the delay against it.
+
+**Turning FX1 filters off is worth ≥ 640 cycles** — a real design lever if
+anything ever needs more than 1 392.
+
+⚠️ **The probe's range is now the limiting factor, not the chip.** The burn tops
+out at `16 × 127 = 2 032` and the filters-off configuration sailed past it, so
+**the absolute ceiling is still unmeasured**. Raising the scale to `32 ×` (max
+4 064) would find it. Not needed for design — 1 392 worst-case is the number
+that matters — but it is the only reason §2's "~2 150" is still a range.
 
 **Establish the worst-case number before designing the delay**, so the
 algorithm is designed against a real budget rather than a bare-config one.
