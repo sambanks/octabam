@@ -45,6 +45,30 @@
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
+; ROLLED TANK (PLAN.md step 1.1). The four tank taps -- read, interpolate,
+; damp, low-cut -- were four copies of one 25-instruction block differing only
+; in which r7 slots they touched. They are now ONE `do #4` loop over a per-line
+; state table in absolute Y (layout below), which does two things:
+;
+;   * the line count becomes a LOOP BOUND, so an eight-line tank costs the
+;     same code as a four-line one. That was the whole argument for doing this
+;     before growing the tank rather than after.
+;   * per-line state stops competing for r7, which is FULL ($10..$83 used and
+;     $84+ hangs the DSP). Eight lines want forty state words; r7 has none.
+;
+; 2018 -> 1925 program words, and +15 cycles/sample against 1,392 measured
+; spare -- the loop pays a little arithmetic for the indexing that fixed r7
+; displacements got for free. Proved BIT-IDENTICAL to the unrolled engine
+; across all four MODE characters and a TIME=127 SIZE=127 DIFF=127 wet case
+; (`make verify-roll`), with a sensitivity control and a one-nop relocation
+; control alongside, because a bit-identical claim without a control is a
+; claim about the test.
+;
+; STILL UNROLLED, and next in line: the feedback/write-back section and the
+; 4x4 Hadamard. They are not four copies of one block -- lines 0 and 1 carry
+; an in-loop allpass and lines 2 and 3 do not -- so rolling them is a design
+; question, not a transcription.
+;
 ; v61 = v59 + LO, and the page-1 knobs put under the names that fit them:
 ;   HP ($3) -> LO, a NEW one-pole low cut inside the feedback path
 ;   LP ($4) -> HI, the existing high cut (moved off $1)
@@ -89,8 +113,31 @@
 ;              taps 1994 1706 1438 1226  (45 39 33 28 ms)
 ;   pre-delay  base+0x6000 .. base+0x6fff   4096 words (93 ms)
 ;   in-loop AP base+0x7000 .. base+0x77ff   1024 words each, taps 298 446
-;   SHIMMER   base+0x7800 .. base+0x7fff   2048 words, free as of v100
+;   SHIMMER   base+0x7800 .. base+0x7eff   1792 words, free as of v100
+;   tank state base+0x7f00 .. base+0x7fff    256 words, per-line, ROLLED tank
 ;   total      0x8000 -- the whole allocation, nothing left over
+;
+; THE TANK STATE TABLE is what makes the rolled loop possible. r7 is full --
+; $10..$83 are all taken and $84+ HANGS the DSP -- and rolling needs state the
+; loop can INDEX, which a fixed r7 displacement can never be. Six words per
+; line, so line k lives at base+0x7f00 + 6k:
+;
+;   +0  read offset   (4096 - tap) - LFO offset      per block
+;   +1  interpolation fraction                       per block
+;   +2  d0 carry: last sample's tap                  per sample, seeded per block
+;   +3  damping state                                PERSISTENT
+;   +4  LO state                                     PERSISTENT
+;   +5  this line's output                           per sample
+;
+; The persistent words need no save/restore because Y memory is per-instance
+; by construction here (one REVERB SERVER per bank, BUS.md), and the warm-up
+; already zeroes the whole 0x8000-word allocation, this table included.
+;
+; It costs the top 256 words of the region v100 freed for the shimmer. The
+; shimmer is excised by default and PLAN.md retires that implementation
+; outright, so nothing shipping reads those words -- but SHIMMER=1 still
+; assumes a 2048-word buffer at base+0x7800 and would now overlap this table.
+; Do not build SHIMMER=1 against this engine.
 ;
 ; The tap CONSTANTS did not change in the re-layout: they are stored as
 ; fractions of the line length ($3DD800 = 1979/2048), so doubling the line
@@ -482,15 +529,12 @@ warmrun:
         move    b,y:(r5)+
 warmz:
 ; the one-pole and LFO state now lives in r7, so zero it there
-        move    b,x:(r7+$3a)
-        move    b,x:(r7+$3b)
-        move    b,x:(r7+$3c)
-        move    b,x:(r7+$3d)
+;
+; The four tank damping states and the four LO states used to be zeroed here
+; too ($3a..$3d, $41..$44). They live in the Y state table now, and the loop
+; above has just cleared the whole allocation, so zeroing them a second time
+; by hand would be eight dead instructions.
         move    b,x:(r7+$3e)
-        move    b,x:(r7+$41)
-        move    b,x:(r7+$42)
-        move    b,x:(r7+$43)
-        move    b,x:(r7+$44)
         move    b,x:(r7+$5c)            ; in-loop allpass interpolation
         move    b,x:(r7+$5d)            ; carries (v90)
         move    b,x:(r7+$4f)
@@ -545,6 +589,9 @@ warmdone:
         move    #>$3000,a
         add     x0,a
         move    a,x:(r7+$13)            ; line 3 base
+        move    #>$7f00,a
+        add     x0,a
+        move    a,x:(r7+$0b)            ; the tank's per-line state table
 
 ; ---- state lives in r7, which is already per-instance and persistent ----
 ; v74: the LFO phases and one-pole states used to be round-tripped through
@@ -1633,58 +1680,79 @@ lf51:
 ; only the wrap point moves, and nothing reads far enough back to see it.
 
 ; ---- STAGE 2: read offsets for the four modulo-indexed line reads -------
-; nK = (4096 - tap_k) - offset_k, so y:(rK+nK) lands on the delayed sample
-; with no masking, no base add and no second address. Each is primed one
-; sample further back first, which seeds the interpolation carry for the
-; first sample of the block.
+; offset_k = (4096 - tap_k) - lfo_k, so y:(r+offset) lands on the delayed
+; sample with no masking, no base add and no second address. Each line is
+; primed one sample further back first, which seeds the interpolation carry
+; for the first sample of the block.
 ;
-; This costs n1..n4, which Stage 1 was using for constants -- but all eight
-; uses of $7ff lived in the address arithmetic this replaces, so that
-; constant is simply gone. The allpass mask lives in m5, not n6.
-        move    x:(r7+$45),a
-        move    x:(r7+$23),x0
+; ROLLED: these used to land in n1..n4, one N register per line, which is
+; exactly the thing that cannot scale past four lines -- there are only four
+; spare N registers and eight lines would want eight. They go into the state
+; table instead, where the loop indexes them, and n1..n4 stop being per-line
+; resources altogether. n1 is reloaded below with the line stride, the one
+; constant the rolled loop does still want in an AGU register (`move n1,x0`
+; is one word where `move #>$1000,x0` is two -- STAGE 1's rule, still true).
+;
+; The seeding read still goes through r1..r4, because they are already sitting
+; on the four line bases here and the priming happens once per block, not per
+; sample: there is nothing to save by rolling it.
+        move    #>$4,n6                 ; w2 -> the NEXT line's w0
+        move    x:(r7+$0b),a            ; the per-line state table
+        move    a,r6
+        move    #>$1,x1                 ; "one sample further back", hoisted:
+                                        ; `move x1,x0` is one word, `move
+                                        ; #>$1,x0` is two, and it is used
+                                        ; once per line
+        move    x:(r7+$45),a            ; -- line 0: (4096 - tap)
+        move    x:(r7+$23),x0           ;    its own LFO integer offset
         sub     x0,a
-        move    a,x:(r7+$4b)            ; running offset, applied below
-        move    #>$1,x0
+        move    a,y:(r6)+               ; w0: the read offset
+        move    x1,x0
         sub     x0,a
         move    a,n1                    ; primed one sample further back
-        move    x:(r7+$2a),a
+        move    x:(r7+$24),a            ; w1: the interpolation fraction --
+        move    a,y:(r6)+               ;     and it spaces the n1 write
+        move    y:(r1+n1),a
+        move    a,y:(r6)+n6             ; w2: seed the interpolation carry
+        move    x:(r7+$2a),a            ; -- line 1
         move    x:(r7+$21),x0
         sub     x0,a
-        move    a,x:(r7+$4c)            ; running offset, applied below
-        move    #>$1,x0
+        move    a,y:(r6)+
+        move    x1,x0
         sub     x0,a
-        move    a,n2                    ; primed one sample further back
-        move    x:(r7+$2b),a
+        move    a,n2
+        move    x:(r7+$22),a
+        move    a,y:(r6)+
+        move    y:(r2+n2),a
+        move    a,y:(r6)+n6
+        move    x:(r7+$2b),a            ; -- line 2
         move    x:(r7+$56),x0
         sub     x0,a
-        move    a,x:(r7+$4d)            ; running offset, applied below
-        move    #>$1,x0
+        move    a,y:(r6)+
+        move    x1,x0
         sub     x0,a
-        move    a,n3                    ; primed one sample further back
-        move    x:(r7+$46),a
+        move    a,n3
+        move    x:(r7+$57),a
+        move    a,y:(r6)+
+        move    y:(r3+n3),a
+        move    a,y:(r6)+n6
+        move    x:(r7+$46),a            ; -- line 3
         move    x:(r7+$58),x0
         sub     x0,a
-        move    a,x:(r7+$4e)            ; running offset, applied below
-        move    #>$1,x0
+        move    a,y:(r6)+
+        move    x1,x0
         sub     x0,a
-        move    a,n4                    ; primed one sample further back
-        move    y:(r1+n1),a
-        move    a,x:(r7+$47)            ; seed the interpolation carry
-        move    y:(r2+n2),a
-        move    a,x:(r7+$48)            ; seed the interpolation carry
-        move    y:(r3+n3),a
-        move    a,x:(r7+$49)            ; seed the interpolation carry
-        move    y:(r4+n4),a
-        move    a,x:(r7+$4a)            ; seed the interpolation carry
-        move    x:(r7+$4b),a
-        move    a,n1
-        move    x:(r7+$4c),a
-        move    a,n2
-        move    x:(r7+$4d),a
-        move    a,n3
-        move    x:(r7+$4e),a
         move    a,n4
+        move    x:(r7+$59),a
+        move    a,y:(r6)+
+        move    y:(r4+n4),a
+        move    a,y:(r6)+n6
+; n1 now carries the LINE STRIDE, not a read offset: the rolled loop steps its
+; single read pointer from one line to the next by adding 0x1000, and the four
+; lines are 0x1000 apart by construction (base is the literal 0x4000 and every
+; line is 4096-aligned, which is what modulo addressing requires anyway).
+        move    #>$1000,a
+        move    a,n1
 
 ; ---- prime the IN-LOOP ALLPASS interpolation carries ---------------------
 ; The same seeding the four tank lines get above, for the same reason, and
@@ -2021,192 +2089,102 @@ lf51:
         asr     #$1,a,a
         move    a,x:(r7+$27)            ; and at half, for the other three lines
 
-; ---- four taps, damped inside the feedback path -------------------------
-; PAIRING RULE: each line's interpolation fraction MUST come from the same
-; LFO as the integer offset its nK was built from. n1<-$23/$24, n2<-$21/$22,
-; n3<-$56/$57, n4<-$58/$59. Lines 0 and 2 had B's and C's fractions swapped,
-; which put a 1-sample sawtooth on their delay at the foreign LFO's wrap
-; rate. The four LFO PHASES are deliberately crosswise (REVERB.md); the two
+; ---- the tank's four taps, damped and low-cut inside the feedback path ---
+; ROLLED. This was 4 x 25 instructions of identical arithmetic differing only
+; in which r7 slots it touched -- 265 words doing 66 words' work, and the
+; shape that makes an eight-line tank cost twice as much code as a four-line
+; one. Rolled, the line count is a loop bound: DATA, not code.
+;
+; Two registers carry the loop:
+;   r6  walks the per-line state table, six words a line (see the layout at
+;       the top of this file). Every word is touched exactly once for read and
+;       once for write, so a plain post-increment walk covers the line.
+;   r5  is the read pointer, starting at r1 -- line 0's base plus the phase --
+;       and stepping 0x1000 a line. m5 = $fff so the AGU wraps the indexed
+;       read inside whichever 4096-word line r5 currently sits in, which is
+;       exactly what m1..m4 were doing per line before.
+;
+; PAIRING RULE, unchanged and now structural: each line's interpolation
+; fraction MUST come from the same LFO as the integer offset it was built
+; from ($23/$24, $21/$22, $56/$57, $58/$59). Lines 0 and 2 once had B's and
+; C's fractions swapped, which put a 1-sample sawtooth on their delay at the
+; foreign LFO's wrap rate -- the loudest artifact ever measured in this
+; engine. The two halves are now written into ADJACENT words of one line's
+; state (w0 and w1) by one block of setup code, so they cannot drift apart
+; again. The four LFO PHASES are deliberately crosswise (REVERB.md); the two
 ; halves of one offset are not.
-        move    x:(r7+$1f),y0           ; damping coefficient, from DAMP
-; -- line 0: base+0x0000, tap 3958, interpolated, LFO-modulated --
-; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r1 already walks this line under modulo 4096, so
-; y:(r1+n1) with n1 = (4096-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
 ;
-; The interpolation partner needs no second address: the read pointer
-; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=55 samples away even at the longest tap and deepest
-; modulation, so the carried value is never overwritten. (At 2048-word
-; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
-; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
-; loop, one sample further back, so sample 0 is exact too.
-        move    y:(r1+n1),b            ; d0
-        move    x:(r7+$47),a            ; d1 = last sample's d0
-        move    b,x:(r7+$47)            ; carry forward
-        move    x:(r7+$24),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
+; y is parked in y1 rather than round-tripped through memory the way $16..$19
+; used to be. That is bit-identical, not merely equivalent: a move from a
+; 56-bit accumulator to any 24-bit destination -- register or memory -- goes
+; through the same limiter, and reloading either one back into A sets A1 and
+; sign-extends A2 identically. The fraction in y1 is dead by then.
+        move    #>$fff,m5               ; r5 walks a 4096-word LINE now, not
+                                        ; the 2048-word input diffusers
+        move    x:(r7+$0b),a            ; the per-line state table
+        move    a,r6
+        move    r1,x0                   ; line 0: base + phase, the same
+        move    x0,r5                   ; pointer r1 has always been
+        do      #4,>tankend
+        move    y:(r6)+,n5              ; w0: this line's read offset
+        move    y:(r6)+,y1              ; w1: its interpolation fraction
+        move    n1,x0                   ; the line stride, 0x1000
+        move    y:(r5+n5),b             ; d0 -- the AGU wraps inside the line
+        move    r5,a
+        add     x0,a
+        move    a,r5                    ; on to the next line
+; The interpolation partner needs no second address: the read pointer advances
+; one per sample, so d1 THIS sample is d0 LAST sample. The write head stays
+; >=55 samples away even at the longest tap and deepest modulation, so the
+; carried value is never overwritten. Seeded one sample further back before
+; the loop, so sample 0 is exact too.
+        move    y:(r6),a                ; w2: d1 = last sample's d0
+        move    b,y:(r6)+               ; carry forward
         sub     b,a                     ; d1 - d0
         move    a,x0
         mpy     x0,y1,a                 ; f*(d1-d0)
-        add     b,a                     ; + d0 -> interpolated tap
-        move    x:(r7+$3a),b
+        add     b,a                     ; + d0 -> the interpolated tap
+        move    y:(r6),b                ; w3: damping state
         sub     b,a
         move    a,x0
-        mpy     x0,y0,a
+        mpy     x0,y0,a                 ; y0 = DAMP, held across every line
         add     b,a
-        move    a,x:(r7+$3a)
+        move    a,y:(r6)+               ; damping state back
+    ; -- LO: one-pole high-pass on the damped tap, still inside the loop --
+        move    a,y1                    ; park y, the damped tap
+        move    y:(r6),b                ; w4: LO state
+        sub     b,a                     ; y - lo
+        move    a,x0
+        mpy     x0,x1,a                 ; x1 = the LO coefficient
+        add     b,a                     ; lo += cl*(y - lo)
+        move    a,y:(r6)+               ; LO state back
+        move    a,x0                    ; the low-passed part
+        move    y1,a                    ; y again
+        sub     x0,a                    ; y - lo, the low cut
+        move    a,y:(r6)+               ; w5: this line's output
+tankend:
+
+; ---- the four outputs, put where every consumer already reads them -------
+; The loop leaves them in the state table at stride 6. $16..$19 is where the
+; Hadamard and the output sum have always found them, and holding that
+; contract is what lets the whole rest of the sample loop stay byte-for-byte
+; unchanged -- which is the difference between a refactor that can be proved
+; and one that has to be re-voiced.
+        move    #>$6,n6                 ; the table's stride
+        move    x:(r7+$0b),a
+        move    #>$5,x0
+        add     x0,a
+        move    a,r6                    ; -> line 0's output word
+        move    #>$7ff,m5               ; back to the input diffusers' 2048
+        nop                             ; two instructions between writing r6
+                                        ; and addressing through it
+        move    y:(r6)+n6,a
         move    a,x:(r7+$16)
-
-    ; -- LO: one-pole high-pass on the damped tap, still inside the loop --
-    ; a still holds y, the damped tap, and $16 holds a copy. y1 is free
-    ; here: the interpolation fraction is finished with, and y0 must keep
-    ; holding HI for the lines below.
-        move    x:(r7+$41),b            ; lo state
-
-        sub     b,a                     ; y - lo
-        move    a,x0
-        mpy     x0,x1,a                 ; cl*(y - lo)
-        add     b,a                     ; lo += cl*(y - lo)
-        move    a,x:(r7+$41)
-        move    a,x0                    ; the low-passed part
-        move    x:(r7+$16),a            ; y again
-        sub     x0,a                    ; y - lo, the low cut
-        move    a,x:(r7+$16)
-
-; -- line 1 modulated: base+0x1000, tap 3386, interpolated --
-; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r2 already walks this line under modulo 4096, so
-; y:(r2+n2) with n2 = (4096-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
-;
-; The interpolation partner needs no second address: the read pointer
-; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=55 samples away even at the longest tap and deepest
-; modulation, so the carried value is never overwritten. (At 2048-word
-; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
-; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
-; loop, one sample further back, so sample 0 is exact too.
-        move    y:(r2+n2),b            ; d0
-        move    x:(r7+$48),a            ; d1 = last sample's d0
-        move    b,x:(r7+$48)            ; carry forward
-        move    x:(r7+$22),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
-        sub     b,a                     ; d1 - d0
-        move    a,x0
-        mpy     x0,y1,a                 ; f*(d1-d0)
-        add     b,a                     ; + d0 -> interpolated tap
-        move    x:(r7+$3b),b
-        sub     b,a
-        move    a,x0
-        mpy     x0,y0,a
-        add     b,a
-        move    a,x:(r7+$3b)
+        move    y:(r6)+n6,a
         move    a,x:(r7+$17)
-
-    ; -- LO: one-pole high-pass on the damped tap, still inside the loop --
-    ; a still holds y, the damped tap, and $17 holds a copy. y1 is free
-    ; here: the interpolation fraction is finished with, and y0 must keep
-    ; holding HI for the lines below.
-        move    x:(r7+$42),b            ; lo state
-
-        sub     b,a                     ; y - lo
-        move    a,x0
-        mpy     x0,x1,a                 ; cl*(y - lo)
-        add     b,a                     ; lo += cl*(y - lo)
-        move    a,x:(r7+$42)
-        move    a,x0                    ; the low-passed part
-        move    x:(r7+$17),a            ; y again
-        sub     x0,a                    ; y - lo, the low cut
-        move    a,x:(r7+$17)
-
-; -- line 2 modulated: base+0x2000, tap 2894, interpolated --
-; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r3 already walks this line under modulo 4096, so
-; y:(r3+n3) with n3 = (4096-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
-;
-; The interpolation partner needs no second address: the read pointer
-; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=55 samples away even at the longest tap and deepest
-; modulation, so the carried value is never overwritten. (At 2048-word
-; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
-; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
-; loop, one sample further back, so sample 0 is exact too.
-        move    y:(r3+n3),b            ; d0
-        move    x:(r7+$49),a            ; d1 = last sample's d0
-        move    b,x:(r7+$49)            ; carry forward
-        move    x:(r7+$57),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
-        sub     b,a                     ; d1 - d0
-        move    a,x0
-        mpy     x0,y1,a                 ; f*(d1-d0)
-        add     b,a                     ; + d0 -> interpolated tap
-        move    x:(r7+$3c),b
-        sub     b,a
-        move    a,x0
-        mpy     x0,y0,a
-        add     b,a
-        move    a,x:(r7+$3c)
+        move    y:(r6)+n6,a
         move    a,x:(r7+$18)
-
-    ; -- LO: one-pole high-pass on the damped tap, still inside the loop --
-    ; a still holds y, the damped tap, and $18 holds a copy. y1 is free
-    ; here: the interpolation fraction is finished with, and y0 must keep
-    ; holding HI for the lines below.
-        move    x:(r7+$43),b            ; lo state
-
-        sub     b,a                     ; y - lo
-        move    a,x0
-        mpy     x0,x1,a                 ; cl*(y - lo)
-        add     b,a                     ; lo += cl*(y - lo)
-        move    a,x:(r7+$43)
-        move    a,x0                    ; the low-passed part
-        move    x:(r7+$18),a            ; y again
-        sub     x0,a                    ; y - lo, the low cut
-        move    a,x:(r7+$18)
-
-; -- line 3: base+0x3000, tap 2474, interpolated, LFO-modulated --
-; STAGE 2: one MODULO-INDEXED read instead of ~29 instructions of address
-; arithmetic. r4 already walks this line under modulo 4096, so
-; y:(r4+n4) with n4 = (4096-tap) - LFO offset reads exactly
-; (phase - tap - offset) mod 4096 -- the AGU does the masking for free.
-;
-; The interpolation partner needs no second address: the read pointer
-; advances one per sample, so d1 THIS sample is d0 LAST sample. The write
-; head stays >=55 samples away even at the longest tap and deepest
-; modulation, so the carried value is never overwritten. (At 2048-word
-; lines that margin was NEGATIVE -- tap+offset could reach 2083 and the
-; read wrapped past the write head; the 32K re-layout removes that.) Primed before the
-; loop, one sample further back, so sample 0 is exact too.
-        move    y:(r4+n4),b            ; d0
-        move    x:(r7+$4a),a            ; d1 = last sample's d0
-        move    b,x:(r7+$4a)            ; carry forward
-        move    x:(r7+$59),y1            ; fraction -- y1, NOT y0: y0 holds DAMP
-        sub     b,a                     ; d1 - d0
-        move    a,x0
-        mpy     x0,y1,a                 ; f*(d1-d0)
-        add     b,a                     ; + d0 -> interpolated tap
-        move    x:(r7+$3d),b
-        sub     b,a
-        move    a,x0
-        mpy     x0,y0,a
-        add     b,a
-        move    a,x:(r7+$3d)
-        move    a,x:(r7+$19)
-
-    ; -- LO: one-pole high-pass on the damped tap, still inside the loop --
-    ; a still holds y, the damped tap, and $19 holds a copy. y1 is free
-    ; here: the interpolation fraction is finished with, and y0 must keep
-    ; holding HI for the lines below.
-        move    x:(r7+$44),b            ; lo state
-
-        sub     b,a                     ; y - lo
-        move    a,x0
-        mpy     x0,x1,a                 ; cl*(y - lo)
-        add     b,a                     ; lo += cl*(y - lo)
-        move    a,x:(r7+$44)
-        move    a,x0                    ; the low-passed part
-        move    x:(r7+$19),a            ; y again
-        sub     x0,a                    ; y - lo, the low cut
+        move    y:(r6)+n6,a
         move    a,x:(r7+$19)
 
 ; ---- 4x4 Hadamard: adds and subtracts only ------------------------------

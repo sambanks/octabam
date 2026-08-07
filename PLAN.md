@@ -16,7 +16,7 @@ cannot be spent on.
 |---|---|
 | On the unit | **`ChonVerb31`** — no specialization, **no v121 auto-gain** |
 | Built, not flashed | specialization (`SPEC=1`), bus auto-gain (v121), the `DEV=1` render hatch |
-| Reverb | voiced, confirmed by ear, shimmer excised. **Structurally still the four-line tank it started as** |
+| Reverb | voiced, confirmed by ear, shimmer excised. Four lines still, but the **tap loop is rolled** (8 Aug) — line count is a loop bound now |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
 | Next | **Finish ChonVerb**, then BongDelay, then FX1 consolidation |
 
@@ -158,11 +158,35 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
 
 #### The work, in order
 
-1. **Roll the tank loop.** 265 instructions doing 66 instructions' work. Move
-   per-line state to absolute Y — `r7` is full (`$10..$83` used, `$84+` hangs),
-   and the roll needs indexable state anyway. The two are one change.
-   **Gate: bit-identical to the unrolled build at four lines**, with the
-   single-`nop` control that proves the comparison is not blind.
+1. ✅ **Roll the tank loop** — *the four taps, done 8 Aug 2026.* The read /
+   interpolate / damp / low-cut block was four copies of 25 instructions; it is
+   now one `do #4` over a per-line state table in absolute Y at `base+0x7f00`,
+   six words a line. `r7` is out of the per-line business, which is what makes
+   eight lines possible at all — it is full (`$10..$83` used, `$84+` hangs) and
+   eight lines want forty state words.
+
+   **2,018 → 1,925 program words, payload A FREE 494 → 587**, at **+15
+   cycles/sample** (763 → 778) — the loop pays a little arithmetic for indexing
+   that a fixed `r7` displacement got for free. Cheap against 1,392 spare, and
+   the point is that the *line count is now a loop bound*, so growing it costs
+   data rather than code.
+
+   **Gate met**: bit-identical across all four MODE characters plus the
+   `TIME=127 SIZE=127 DIFF=127` wet case, with **two** controls — `HP=0` vs
+   `HP=64` must differ (the render responds to a parameter) and one injected
+   `nop` must relocate the module and render unchanged (a PASS is about audio,
+   not about two builds placing the same). `make verify-roll CAND=...`,
+   `tools/verify_roll.py`; `RVSRC=` in `build_bus.py` swaps the engine.
+
+   🟡 **Still unrolled: the feedback/write-back section and the 4x4 Hadamard**
+   (~101 and ~18 instructions). Those are *not* four copies of one block —
+   lines 0 and 1 carry an in-loop allpass and lines 2 and 3 do not, and the
+   input injection signs differ per line — so rolling them is a design
+   decision, not a transcription, and **it is what step 2 below actually
+   needs**. The natural shape is a per-line parameter row (allpass base, `0`
+   meaning none; input sign and scale) read from the same state table.
+   ⚠️ `make cycles` now prices a counted inner loop instead of refusing it; the
+   `do` setup itself is charged a flat 5 and is still a floor.
 2. **Eight lines.** Modal overlap 0.157 → ~0.31 — the density step people
    actually hear. Needs an 8x8 Hadamard; as a fast Walsh-Hadamard that is
    24 butterflies against the 4x4's 8, still adds and subtracts only.

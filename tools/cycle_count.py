@@ -73,10 +73,22 @@ BURN_INJECT = [
 ]
 
 MARKER = "__cyc_body"
+INNER_MARKER = "__cyc_inner"
 SAMPLE_LOOP = re.compile(r"^\s*do\s+n7\s*,\s*>?(\w+)\s*(?:;.*)?$", re.I)
+# A COUNTED inner loop: `do #4,>tankend`. The tank is rolled over its lines,
+# so words != cycles for its body -- but the count is a literal, so the cycles
+# are still exactly computable: the body simply runs N times. Anything else in
+# CONTROL_FLOW below is still refused, because for a branch they would not be.
+INNER_LOOP = re.compile(r"^\s*do\s+#>?\$?(\w+)\s*,\s*>?(\w+)\s*(?:;.*)?$", re.I)
 # Anything that makes "one word == one cycle" false inside the body.
 CONTROL_FLOW = re.compile(r"^\s*(j\w*|b(?:ra|sr|cc|cs|eq|ne|ge|lt|gt|le|mi|pl)\w*"
                           r"|do|rep|rti|rts)\b", re.I)
+
+# A `do` is not free the way its ITERATIONS are. Entering one costs a few
+# cycles to push LA/LC and set up, and the count below leaves that out -- the
+# same class of omission as the memory-contention stalls the docstring already
+# flags. Both push the real figure UP, so the result stays a floor.
+DO_SETUP = 5
 
 
 def prep(name):
@@ -140,8 +152,14 @@ def measure(name):
                      if l.strip().startswith(end_label + ":")), None)
     if end_line is None:
         sys.exit(f"{name}: no `{end_label}:` label found")
+    # A counted inner loop is allowed and priced; anything else is refused.
+    inner = [(j, INNER_LOOP.match(lines[j])) for j in range(i + 1, end_line)
+             if INNER_LOOP.match(lines[j])]
+    if len(inner) > 1:
+        sys.exit(f"{name}: {len(inner)} counted inner loops in the sample loop; "
+                 f"this prices one")
     bad = [(j + 1, lines[j].strip()) for j in range(i + 1, end_line)
-           if CONTROL_FLOW.match(lines[j])]
+           if CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
     if bad:
         print(f"{name}: loop body is not straight-line -- words != cycles here.",
               file=sys.stderr)
@@ -150,13 +168,31 @@ def measure(name):
         sys.exit(1)
 
     marked = lines[:i + 1] + [f"{MARKER}:"] + lines[i + 1:]
+    inner_at = None
+    if inner:
+        j, m = inner[0]
+        trips = int(m.group(1), 16 if lines[j].count("$") else 10)
+        inner_end = m.group(2)
+        # +1 for the MARKER line already inserted above line i+1
+        marked = marked[:j + 2] + [f"{INNER_MARKER}:"] + marked[j + 2:]
+        inner_at = (trips, inner_end)
+
     blob, syms = assemble("\n".join(marked), name)
     if MARKER not in syms or end_label not in syms:
         sys.exit(f"{name}: assembler dropped a label")
 
     words = syms[end_label] - syms[MARKER]
-    return dict(name=name, words=words, loop_end=end_label,
-                total_words=len(blob) // 3, marked=marked)
+    cycles, note = words, ""
+    if inner_at:
+        trips, inner_end = inner_at
+        if INNER_MARKER not in syms or inner_end not in syms:
+            sys.exit(f"{name}: assembler dropped the inner-loop label")
+        inner_words = syms[inner_end] - syms[INNER_MARKER]
+        # The span already counts the body ONCE, so add the other trips.
+        cycles = words + (trips - 1) * inner_words + DO_SETUP
+        note = f"{inner_words}w x{trips}"
+    return dict(name=name, words=words, cycles=cycles, inner=note,
+                loop_end=end_label, total_words=len(blob) // 3, marked=marked)
 
 
 def verify(name, m):
@@ -181,10 +217,10 @@ def main():
             if not ok:
                 sys.exit("marker changed codegen -- the count is not trustworthy")
 
-    bank = sum(m["words"] * BANK[m["name"]] for m in rows)
+    bank = sum(m["cycles"] * BANK[m["name"]] for m in rows)
 
     if "--json" in args:
-        print(json.dumps(dict(per_effect={m["name"]: m["words"] for m in rows},
+        print(json.dumps(dict(per_effect={m["name"]: m["cycles"] for m in rows},
                               bank=bank, budget=bank + BURN_SPARE,
                               headroom=BURN_SPARE,
                               core_total=CORE_TOTAL), indent=2))
@@ -194,7 +230,8 @@ def main():
     print(f"{'':{w}}  cycles/sample   in a bank")
     for m in rows:
         n = BANK[m["name"]]
-        print(f"{m['name']:{w}}  {m['words']:>13}   x{n} = {m['words'] * n}")
+        extra = f"   [rolled: {m['inner']}]" if m["inner"] else ""
+        print(f"{m['name']:{w}}  {m['cycles']:>13}   x{n} = {m['cycles'] * n}{extra}")
     print(f"{'full bank':{w}}  {'':>13}   {bank}")
     # The measured spare is what was left ON TOP of a full bank plus four FX1
     # FILTERs, so it is headroom for NEW work, not a number the bank is scored
