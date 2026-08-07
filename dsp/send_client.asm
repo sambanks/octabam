@@ -124,6 +124,14 @@ bus_off_done:
 ; Gated on the split offset FIRST: only a block's first call may housekeep, so
 ; a split block's second call can never flip a second time -- the same trap
 ; the original position-0 code was written around.
+; XBUS_GATE -- build_bus.py substitutes a payload gate here when XBUS=1.
+; A shared-memory bus is housekept by ONE core only: both cores number their
+; own instances from zero, so each core's position 0 believes it is the
+; housekeeper and they would flip the shared parity TWICE a block, cancelling
+; out and silently desyncing the bus -- the same trap the split-call gate
+; below was written around, one level up. Payload B is sent straight to
+; notfirst, so it still finds this block's write targets but never elects.
+; Inert in a normal build: it is a comment.
         move    x:(r7+$67),a
         tst     a
         bne     notfirst                ; not this block's first call

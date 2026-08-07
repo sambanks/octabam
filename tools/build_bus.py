@@ -73,7 +73,7 @@ assembling payload B's copy -- the same class of per-payload text edit
 tools/gen_reverb.py already does for its own parameters, just a straight
 substitution here since there's exactly one occurrence.
 """
-import pathlib, subprocess, sys
+import pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"27"
+BUILD_TAG = b"28"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -255,6 +255,16 @@ if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
 # renamed BURN so the panel cannot be misread as a working LO control; its
 # filter is bypassed in the asm. Everything else about the build is normal, on
 # purpose: the number is only meaningful if the engine under it is the real one.
+# ---- XBUS MODE (XBUS=1): the CROSS-CORE BUS test ---------------------------
+# The bus accumulators move from core-private Y:0x900 into the shared window,
+# and housekeeping is gated to payload A. Names say so on the panel, because
+# this build's ChonVerb is NOT the shipping one and BongDelay is a bare stub.
+if os.environ.get("XBUS") == "1":
+    FULLNAME["REVERB SERVER"] = b"XVerb" + BUILD_TAG
+    ABBR["REVERB SERVER"] = b"XVRB"
+    FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
+    ABBR["DELAY SERVER"] = b"NONE"
+
 if os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"BURN"
@@ -294,7 +304,8 @@ if os.environ.get("BURN") == "1":
     # override needed -- which is the one value that must be safe.
 
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": ("dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
+ASM_SRC = {"DELAY SERVER": ("dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
+                            else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
                             else "dsp/delay_server.asm"),
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
@@ -519,8 +530,58 @@ def main():
             "; MODE_OVERRIDE", "        move    #>$%x,a" % int(mode_env))
         print(f"  *** MODE OVERRIDE: forced to {int(mode_env)} ***")
 
-    if delay_src.count("$30000") != 1:
-        sys.exit("expected exactly one $30000 literal in delay_server.asm")
+    # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
+    # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
+    # tracks 5-8's sends write core 1's copy and core 0's reverb cannot see it.
+    # Same address, different physical memory. Relocating them into the shared
+    # 64K is the whole architectural change; everything else about the bus is
+    # already written and hardware-proven.
+    #
+    # 0x3E000 is chosen against the map in CHIP.md 3a: clear of stock's
+    # per-frame staging (0x30000-0x30047, rewritten EVERY FRAME), both
+    # bootstraps (0x31000/0x32000), payload B's entry stub (0x38000), and the
+    # init pass that zeroes 0x30000-0x37FFF. It is also its own 8K block
+    # (0x3E000-0x3FFFF), so the two cores' accesses to it never arbitrate
+    # against their other traffic -- the manual's "no bus contentions occur
+    # when the two DSP cores access different 8K blocks simultaneously".
+    #
+    # The map is mechanical: new = 0x3E000 + (old - 0x900), so the whole 0x900
+    # -0x982 layout keeps its shape and all three files stay in agreement --
+    # which they must, or the buses will not find each other.
+    if os.environ.get("XBUS") == "1":
+        XBUS_BASE = 0x3E000
+
+        def xbus(src, name, label):
+            n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))
+            if not n:
+                sys.exit(f"XBUS: {name} has no bus scratch literals to move")
+            src = re.sub(r"\$9([0-9a-f]{2})\b",
+                         lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)
+            if src.count("; XBUS_GATE") != 1:
+                sys.exit(f"XBUS: {name} is missing its ; XBUS_GATE marker")
+            src = src.replace("; XBUS_GATE", "\n".join([
+                "        move    #>$30000,a          ; XBUS payload gate",
+                "        move    #>$38000,x0",
+                "        cmp     x0,a",
+                f"        beq     {label}             ; payload B never housekeeps",
+                ";"]), 1)
+            print(f"  XBUS: {name} -- {n} scratch refs moved to 0x{XBUS_BASE:05x}, "
+                  f"housekeeping gated to payload A")
+            return src
+
+        # DELAY SERVER is dropped for this test -- it is an untested first
+        # draft and the architecture question needs only a SERVER and a SENDER.
+        # Its 507 words are what pays for the gates; three of them cost 21 and
+        # the region had 11 free.
+        send_src = xbus(send_src, "SEND", "notfirst")
+        reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+
+    # Every source now carries a $30000 that must be substituted per payload,
+    # not just DELAY SERVER's Y base -- the gate above uses the same literal as
+    # its payload discriminator, which is why this count is 2 under XBUS.
+    _want = 0 if os.environ.get("XBUS") == "1" else 1
+    if delay_src.count("$30000") != _want:
+        sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
     for tag, va, ln in PAYLOADS:
         pp = PP[tag]
@@ -568,9 +629,15 @@ def main():
 
         # SEND first, DELAY SERVER last so the trailing free words belong to
         # the algorithm still to be designed.
-        plan = (("SEND", send_src),
-                ("REVERB SERVER", reverb_src),
-                ("DELAY SERVER", delay_src.replace("$30000", f"${pp['ybase']:x}")))
+        # Under XBUS every source carries the payload discriminator, so all
+        # three get the substitution rather than DELAY SERVER alone.
+        # Under XBUS the SENDER and SERVER carry the payload discriminator, so
+        # they get the substitution; the delay slot is a bare stub.
+        _sub = lambda s: s.replace("$30000", f"${pp['ybase']:x}")
+        _x = os.environ.get("XBUS") == "1"
+        plan = (("SEND", _sub(send_src) if _x else send_src),
+                ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
+                ("DELAY SERVER", delay_src if _x else _sub(delay_src)))
         cursor = base_a
         for name, src in plan:
             words, init_a, proc_a = assemble(src, cursor)
