@@ -186,15 +186,26 @@ assigned on all four tracks, sweep without, take the difference. If a
 configuration freezes at `BURN = 0`, that configuration is already over budget
 and that is a finding in itself.
 
-### Measured: what the stock FX1 FILTER costs (7 Aug, build 23/25)
+### Measured: the ceiling, and what the stock FX1 FILTER costs
 
 | configuration | result | spare |
 |---|---|---|
-| FILTER on all four tracks | froze at `BURN = 87` | **1 392** ✅ exact |
-| FILTER disabled everywhere | **never broke** — ran out of knob at 127 | **> 2 032** ✅ lower bound |
+| FILTER on all four tracks | froze at `BURN = 87` (16× scale) | **1 392** ✅ |
+| FILTER disabled everywhere | froze at `BURN = 76` (32× scale) | **2 432** ✅ |
 
-**Four FILTERs cost more than 640 cycles/sample — more than 160 cycles each.**
-A lower bound only, because the no-filter sweep never reached the ceiling.
+**Four FILTERs cost 1 040 cycles/sample — about 260 each.** That is ~23 % of a
+core for four of them, and much more than a filter looks like it should cost.
+
+**The two configurations reconcile to the same total, which is why these are
+trustworthy** rather than two unrelated readings:
+
+| | cycles/sample |
+|---|---|
+| FX2 bank (static) | 957 |
+| 4 × stock FILTER | 1 040 |
+| burn at the freeze | 1 392 |
+| **accounted** | **3 389** |
+| stock's own per-track work (by difference, of 4 535) | **~1 150** |
 
 Two consequences, and the first is the important one:
 
@@ -376,9 +387,30 @@ with it: a true 8-track bus and cross-core sends are now possible, and the
 per-8K-block contention rule says how to lay it out.
 
 **What else lives in the shared window?** This is the question that matters now,
-and it replaces the sharing question. P/X/Y alias there, `delay_server` claims
-all 64 K across the two payloads, and something in it corrupts audio (below).
-Nothing may be assumed about that window until it is mapped.
+and it replaces the sharing question. P/X/Y alias there and `delay_server`
+claims all 64 K across the two payloads, so **its 32 K cannot be assumed** until
+the window is mapped. That is the delay's first design problem, not a probe
+problem.
+
+~~**The 32-step fault.**~~ **CLOSED — not a product issue.** ✅ Bisected on
+hardware, 7 Aug:
+
+| configuration | result |
+|---|---|
+| one `SharePrb` + three `Send`s | **clean** at every ADDR and INC |
+| `SharePrb` + `ChonVerb` on one bank | **clean** |
+| **two `SharePrb`s** on one bank | **noise after ~5.45 s**, regardless of address |
+
+So it needs **two instances of the same effect**, and the address is
+irrelevant — different target words on each track failed identically. Every
+configuration the product actually uses is clean.
+
+That fits the probe's known gap: `BUS.md` has **role locks "so duplicates fail
+safe"**, claimed by both real servers via `bus_claim` and released each block by
+`send_client`. `dsp/shared_probe.asm` has neither lock nor housekeeping, so two
+copies each behave as if they own the bank. **Mechanism never established, and
+it does not need to be** — one server per bank is a design rule, not an
+accident. Re-open only if duplicate servers ever become desirable.
 
 **A single word written to `Y:0x34000` from payload A corrupts that track's
 audio after ~5.45 s** (32 steps at 88 BPM), persistently. ✅ Reproduced across
