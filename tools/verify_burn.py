@@ -134,7 +134,13 @@ def check_roles():
     if not sizes or max(sizes.values()) > 200 or len(set(sizes.values())) != 1:
         sys.exit(f"check_roles read a non-probe DELAY SERVER slot: {sizes}")
     img = (ROOT / "out/mainos_bus.bin").read_bytes()
-    out = {}
+    # Read the WHOLE placed module per payload and diff them, rather than
+    # peeking at fixed offsets. The offsets version was wrong twice: once
+    # reading delay_server's words after rebuilding without BURN, and again
+    # when round 3 put the ADDR select ahead of the role select and moved
+    # every literal. A diff cannot go stale, and it is the stronger claim
+    # anyway -- it proves the substitution touched EXACTLY one word.
+    streams = {}
     for tag, va, ln in PAYLOADS:
         mods, _ = modules(img, va, ln)
         start = starts[tag]
@@ -145,10 +151,30 @@ def check_roles():
             i = va - BASE + off + (p - a) * 3
             return img[i] | (img[i + 1] << 8) | (img[i + 2] << 16)
 
-        # proc's first six words are the role select: the substituted literal
-        # into a, the fixed $38000 into x0, then cmp/beq.
-        out[tag] = "reader" if word(start + 2) == word(start + 4) else "writer"
-    return out
+        streams[tag] = [word(start + i) for i in range(sizes[tag])]
+
+    if len(streams["A"]) != len(streams["B"]):
+        sys.exit(f"payload modules differ in length: "
+                 f"{len(streams['A'])} vs {len(streams['B'])}")
+    # Two KINDS of legitimate difference. `do` encodes an ABSOLUTE loop-end
+    # address, and the module sits at a different P address in each payload,
+    # so those words differ by exactly the placement delta. Anything left over
+    # after accounting for that must be the one substituted literal -- which
+    # makes this a stronger claim than "one word differs": it also proves no
+    # unexplained difference crept in.
+    delta = starts["B"] - starts["A"]
+    diff, relocs = [], []
+    for i, (x, y) in enumerate(zip(streams["A"], streams["B"])):
+        if x == y:
+            continue
+        (relocs if y - x == delta else diff).append(i)
+    if len(diff) != 1:
+        sys.exit(f"expected exactly ONE substituted word after accounting for "
+                 f"{len(relocs)} relocated address(es), found {len(diff)}: "
+                 f"{[(i, hex(streams['A'][i]), hex(streams['B'][i])) for i in diff]}")
+    i = diff[0]
+    return {"A": "writer" if streams["A"][i] == 0x30000 else f"?{streams['A'][i]:x}",
+            "B": "reader" if streams["B"][i] == 0x38000 else f"?{streams['B'][i]:x}"}
 
 
 def main():

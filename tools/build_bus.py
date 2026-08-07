@@ -150,7 +150,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"24"
+BUILD_TAG = b"25"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -266,6 +266,19 @@ if os.environ.get("BURN") == "1":
     # no new build machinery is needed to tell the two cores apart.
     FULLNAME["DELAY SERVER"] = b"SharePrb" + BUILD_TAG
     ABBR["DELAY SERVER"] = b"SHAR"
+
+    # Round 3's two diagnostic knobs. REPLACE by index rather than append --
+    # the BURN block's first draft assigned fresh lists to REVERB SERVER and
+    # silently dropped p9/p10's names and p7's MODE default, which
+    # verify_menu.py caught. An out-of-range page-2 default is not cosmetic:
+    # it is used as an index and stalled the sequencer on hardware once.
+    def _set(table, name, idx, val):
+        table[name] = [(i, v) for i, v in table[name] if i != idx] + [(idx, val)]
+
+    _set(RENAMES, "DELAY SERVER", 1, b"ADDR")   # which word both cores hit
+    _set(RENAMES, "DELAY SERVER", 2, b"INC")    # counter step; 0 = never changes
+    _set(DEFAULTS, "DELAY SERVER", 1, 0)        # 0x34000, the known-bad control
+    _set(DEFAULTS, "DELAY SERVER", 2, 1)        # +1/block = round 2's behaviour
     # APPEND, do not replace. Assigning a fresh list here dropped p9/p10's
     # names and p7's MODE default on the first attempt, and verify_menu.py
     # caught all three -- an out-of-range page-2 default is not cosmetic, it
