@@ -118,48 +118,45 @@ NOT a per-block indexing fault); saturation (the signal is intact); `MOD` depth
 - Severity tracks MODE, **worst at 1 → least bad at 4**, still present at 4.
 - It sounds like "an almost audio-rate LFO".
 
-### The live lead: `$2f` is used for two different things
+### The `$2f` audio-rate-LFO lead — MEASURED, and it does NOT hold
 
-`x:(r7+$2f)` holds MODE's **LFO rate scale**, parked by the md_ blocks
-(lines 594/688/767/846), and is then **overwritten** by the RATE block
-(line 1229-1231) with the final phase increment, which the four LFO advances
-(1293/1355/1417/1453) consume as "base increment".
+`x:(r7+$2f)` really is used for two things (the md_ blocks park MODE's LFO rate
+scale there; the RATE block at 1229-1231 overwrites it with the final phase
+increment). The per-mode scales are ROOM `$599999` (0.70), PLATE `$7fffff`
+(1.00), HALL `$399999` (0.45), BIG `$200000` (0.25).
 
-The per-mode scales are:
+**But rendering all four modes does not support it.** If severity followed the
+scale, BIG (0.25) would be the quietest. It is the LOUDEST by ~30 dB:
 
-| UI mode | block | `$2f` scale | |
-|---|---|---|---|
-| 1 ROOM | `md_room` | `$599999` | 0.70 |
-| 2 PLATE | `md_plate` | `$7fffff` | 1.00 — "fastest" |
-| 3 HALL | `md_hall` | `$399999` | 0.45 |
-| 4 BIG | `md_big` | `$200000` | 0.25 — "slowest" |
+| UI mode | `$2f` | 2.5–5 kHz | 5–10 kHz | HF peak/mean |
+|---|---|---|---|---|
+| 1 ROOM | 0.70 | −77.8 | −85.9 | 44.6 dB |
+| 2 PLATE | 1.00 | −66.8 | −77.1 | 43.3 dB |
+| 3 HALL | 0.45 | −83.0 | −94.0 | 54.9 dB |
+| **4 BIG** | **0.25** | **−48.9** | **−52.5** | **11.6 dB** |
 
-If `$2f` is ever consumed as the increment while it still holds the RAW SCALE,
-the LFO phase (wrapped at `$7fffff`, advanced once per block) completes a cycle
-per block — **~2940 Hz, audio rate**. That is exactly "an almost audio-rate
-LFO", and severity would follow the scale magnitudes, which reproduces Sam's
-1→4 ranking (1 and 2 are close; 4 is far the mildest).
+Two things are wrong with it as a theory of Sam's artifact: the ordering is
+backwards (Sam hears BIG as the MILDEST), and BIG's peak/mean of 11.6 dB is
+NOISE-LIKE, whereas the hardware artifact is discrete lines at 40.9 dB.
 
-**NOT PROVEN.** It is a code-structure observation plus a ranking that matches.
-The emulator cannot currently test it — see the MODE bug below.
+**Retained as a lead only for BIG's own +30 dB of broadband HF**, which is a
+real defect in the emulator and worth explaining on its own — but it is a
+different phenomenon from the reported artifact, and no mode reproduces the
+hardware's discrete-line signature.
 
-### ⚠️ BLOCKER: the `MODE=` build override is a silent no-op
+### The `MODE=` override WORKS — a retracted blocker
 
-`MODE=n python3 tools/build_bus.py` prints `*** MODE OVERRIDE: forced to n ***`
-and the module DOES grow 2040 → 2042 words, so the substitution reaches the
-assembler. But **`MODE=0` and `MODE=3` produce BYTE-IDENTICAL images** (`cmp -l`
-= 0 differing bytes). `dsp_asm` encodes the two immediates differently in
-isolation (`56f400 000000` vs `56f400 000003`), so the value is lost somewhere
-between substitution and `place()`.
+v115 recorded this as a silent no-op. **That was a testing error, not a tool
+bug.** `MODE=n` writes `out/mainos_bus_mode<n>.bin`, NOT `out/mainos_bus.bin`;
+the test copied the latter, which a MODE build never touches, and so compared
+two copies of the ordinary build. The per-mode images differ correctly (2 bytes,
+the substituted immediate), and `render_reverb.py --mode` was right all along —
+it reads those per-mode paths deliberately.
 
-Consequences, both bad:
-- **Modes cannot be auditioned or measured locally at all**, which blocks the
-  `$2f` lead above.
-- `render_reverb.py --mode` uses this same path, so **every per-mode audition
-  has been listening to ONE mode**. Per-mode voicing in `VOICING.md` needs
-  revisiting.
+So per-mode voicing in `VOICING.md` is **not** invalidated. Retracting that too.
 
-Fix this FIRST — everything else about MODE is blocked on it.
+**Verify a MODE build by `cmp`-ing `out/mainos_bus_mode*.bin`** — never
+`out/mainos_bus.bin`.
 
 ### SHMR: untestable, not excluded
 
@@ -209,10 +206,13 @@ renamed that slot), which is why every earlier render had the shimmer off.
 ## Path, in order, with the gate at each step
 
 0. **Find the metallic artifact.** It is NOT a send-path regression — the bus is
-   exonerated. In order: (a) fix the `MODE=` no-op, (b) drive all four modes
-   locally and see whether HF tracks the `$2f` magnitudes, (c) instrument the
-   LFO phase with `-peekx` to MEASURE its rate per mode instead of inferring it,
-   (d) if that comes up empty, flash a post-`41d252c` build to settle SHMR.
+   exonerated, and the `$2f` LFO lead is measured and dead (above). What is left:
+   (a) explain BIG's +30 dB of broadband HF — a real defect, though not the
+   reported one; (b) instrument the LFO phase with `-peekx` to MEASURE its rate
+   per mode rather than infer it; (c) flash a post-`41d252c` build to settle
+   SHMR, which the dead knob makes untestable any other way. No emulator
+   configuration has yet reproduced the hardware's discrete-line signature, so
+   the cause is still something dsp_host does not model.
 1. **Does the relocated bus still work SAME-CORE?** ← *cannot be judged until 0
    is fixed; the artifact appears on the plain build too.*
    `XBUS28` put the scratch at `0x3E000` and it broke even with both effects
