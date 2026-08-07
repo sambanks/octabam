@@ -14,10 +14,20 @@
 ;
 ; WHAT IT DOES. p3 -- the knob labelled HP/LO -- becomes a pure cycle burn:
 ;
-;     burn = 16 * p3 cycles per sample,  0 .. 2032
+;     burn = 32 * p3 cycles per sample,  0 .. 4064
 ;
 ; Sweep it up until the audio breaks and read the knob off the screen. The
-; ceiling is then (whatever the assigned bank costs) + 16*p3.
+; ceiling is then (whatever the assigned bank costs) + 32*p3.
+;
+; 32 A STEP AS OF BUILD 26, because 16 RAN OUT OF KNOB. Measured 7 Aug:
+;   * stock FILTER on all four core-0 tracks -> froze at p3 = 87 = 1392 cycles
+;   * FILTER disabled everywhere            -> p3 = 127 = 2032 and NEVER BROKE
+; So four FILTERs cost >640 cycles/sample, and in the light configuration the
+; PROBE became the limit rather than the chip -- the absolute ceiling is still
+; unmeasured. 32 a step reaches 4064, which is 90% of a core's entire 4535
+; cycles/sample, so it will find the wall or prove there is essentially none
+; left to find. The price is 32-cycle resolution, which is nothing against a
+; number in the thousands; the earlier 1392 stands and does not need redoing.
 ;
 ; SIXTEEN, not eight, and the reason matters. The chip was identified from a
 ; board photo on 7 Aug 2026 as a DSPB56721AG -- a DUAL-CORE DSP5636x at 200
@@ -48,7 +58,7 @@
 ; HOW TO RUN IT -- two passes, one flash, no reflash between them:
 ;
 ;   Pass A (light):  ChonVerb on ONE track, nothing else custom, one track
-;                    playing. Baseline 758 cycles.  Ceiling_A = 758 + 16*p3.
+;                    playing. Baseline 758 cycles.  Ceiling_A = 758 + 32*p3.
 ;   Pass B (full):   the full bank -- ChonVerb + BongDelay + two Sends -- all
 ;                    eight tracks playing, FX1 filters engaged, LFOs running.
 ;                    Baseline 957 + whatever stock FX1 costs.
@@ -239,7 +249,7 @@ proc:
 ; the address setup. The next instruction below is `clr a`, so a, b, x0, x1
 ; and y0 are all free to use.
 ;
-; burn = 8 * p3 cycles/sample: (2 * p3 * n7) iterations of a four-word body,
+; burn = 32 * p3 cycles/sample: (8 * p3 * n7) iterations of a four-word body,
 ; over n7 samples.
 ;
 ; FOUR nops, not one. A one-word DO body is precisely the case where "one word
@@ -256,8 +266,8 @@ proc:
 ; is FRACTIONAL, so for two integers it leaves 2*X*Y in A[47:0]. Here X = n7
 ; and Y = p3<<16 (the raw parameter word -- page-1 knobs carry no companion
 ; field, which is why the LO code it replaces multiplied the word directly),
-; giving p3*n7*2^17. A1 is A[47:24], so asl #$8 lands 2*p3*n7 in A1 exactly.
-; Max 2*127*16 = 4064 iterations, nowhere near overflowing.
+; giving p3*n7*2^17. A1 is A[47:24], so asl #$a lands 8*p3*n7 in A1 exactly.
+; Max 8*127*16 = 16256 iterations, nowhere near overflowing.
 ;
 ; The zero guard is load-bearing and ONE guard covers both cases -- the
 ; product is zero if EITHER p3 or n7 is zero. DO with a count of zero loops
@@ -272,7 +282,7 @@ proc:
         move    x:(r6+$3),y1            ; p3, as the raw value<<16 word
         move    n7,x0                   ; frames on THIS call
         mpy     x0,y1,a
-        asl     #$9,a,a                 ; A1 = 4 * p3 * n7
+        asl     #$a,a,a                 ; A1 = 8 * p3 * n7
         tst     a
         beq     noburn
         move    a1,x0                   ; a1, not a: raw, no limiting

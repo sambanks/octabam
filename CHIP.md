@@ -263,10 +263,49 @@ FX1:  0x1000  0x1C00  0x2800  0x3400      stride 0xC00  =  3 072 words
 FX2:  0x4000  0x8000  0x30000 0x34000     stride 0x4000 = 16 384 words
 ```
 
-🟡 **`0x30000–0x3FFFF` is almost certainly the datasheet's 64 K shared block.**
-8 × 8 192 = 65 536 = `0x10000`, exactly the span, and with no EMC on the part it
-cannot be anything external. *Falsifier:* have one core write a word the other
-core reads at the same address — `dsp/shared_probe.asm`, unresolved (§6).
+✅ **`0x30000–0x3FFFF` IS the shared memory — settled from `DSP56720RM.pdf`,
+not inferred.** §1.4.13: *"eight 8K × 24 words memory blocks for a total of 64K
+shared words and is located starting from $030000"*, and Ch. 3: *"The shared
+memory blocks occupy addresses from $030000 to $03FFFF (including $03FFFF),
+**accessible by both DSP cores**."* 8 × 8 192 = 65 536 — **words, not bytes**,
+which was the whole ambiguity in the block diagram.
+
+❌ **"The two DSPs are a hard boundary."** `BUS.md`'s founding constraint is
+dead. There is 64 K both cores address; the split into `0x30000` (payload A) /
+`0x38000` (payload B) is **a convention we chose**, not a hardware wall. A true
+8-track bus and cross-core sends are both back on the table.
+
+✅ **P, X and Y ALIAS in this region.** *"When the DSP cores access the shared
+memory, the Program, X, and Y memory addresses are **mapped into same physical
+location**, which means that there is no difference in accessing the shared
+memory from Program, X, or Y memory space."*
+
+❌ **"X:0x30000 and Y:0x30000 do not alias."** Commit `0f93639` reached that by
+inference — *if they aliased, stock would corrupt itself whenever a reverb sat
+on track 3*. The manual states the hardware directly and wins. One premise of
+that argument is false; the likeliest is the claim that stock stages per-frame
+parameters at `X:0x30000` at all.
+
+❌ **"BongDelay may use its full 32 768 words."** Retracted with it. The window
+is not ours to assume.
+
+✅ **Zero wait states as X or Y** (1 as P) — so this memory is *not* slow, and
+`DSP.md:449`/`744`'s "walks external memory, which is slower" is wrong twice
+over: not external, not slower.
+
+✅ **Contention is per 8 K block, and that is a design lever.** *"No bus
+contentions occur when the two DSP cores access different 8K × 24 SRAM blocks
+simultaneously."* Keep each core's buffers in different 8 K blocks and
+arbitration costs nothing.
+
+✅ **A second cross-core channel exists: the ICC** (§1.4.14). Each core can
+raise a maskable or non-maskable interrupt in the other, with write-data and
+poll-data registers for exchange. Worth remembering if the shared window ever
+proves unusable.
+
+⚠️ Per-core P/X/Y RAM extents are **configurable** via OMR bits (`MS`, `MSW0`,
+`MSW1`) into five different maps. Which one stock selects has never been
+checked — read Ch. 3's figures before trusting any internal extent.
 
 ### Who uses what
 
@@ -331,13 +370,15 @@ bank, so absolute-Y scalars cannot collide.
 
 ## 6. Open
 
-**Do the two cores share `Y:0x30000–0x3FFFF`?** Unresolved. The block diagram
-says a shared 64 K exists and the span matches exactly; our own evidence cannot
-distinguish shared from core-local, because payload A uses `0x30000` and B uses
-`0x38000` — different addresses either way. `dsp/shared_probe.asm` puts both on
-the *same* address. **Now much less urgent:** with ~1 200 spare cycles you no
-longer need cross-core sharing to afford a great reverb *and* a great delay.
-What it would buy is a true 8-track bus.
+~~**Do the two cores share `Y:0x30000–0x3FFFF`?**~~ **ANSWERED — yes**, from
+the reference manual, no flash needed (§3). What is still open is what to *do*
+with it: a true 8-track bus and cross-core sends are now possible, and the
+per-8K-block contention rule says how to lay it out.
+
+**What else lives in the shared window?** This is the question that matters now,
+and it replaces the sharing question. P/X/Y alias there, `delay_server` claims
+all 64 K across the two payloads, and something in it corrupts audio (below).
+Nothing may be assumed about that window until it is mapped.
 
 **A single word written to `Y:0x34000` from payload A corrupts that track's
 audio after ~5.45 s** (32 steps at 88 BPM), persistently. ✅ Reproduced across
