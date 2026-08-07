@@ -61,6 +61,31 @@ The one that catches people is the middle row. Program space is paid **once**;
 cycles are paid **per track per slot per frame**. Eight tracks running ChonVerb
 cost one copy of the code and eight times the cycles.
 
+### The two menus, read off the image (8 Aug 2026)
+
+✅ **Measured, not inferred** — decoded from the chooser lists at `0x400d6060`
+(FX1) and `0x400d6090` (FX2):
+
+```
+FX1 (11): NONE FILTER EQUALIZER DJ-EQ PHASER FLANGER CHORUS SPATIALIZER
+          COMB COMPRESSOR LO-FI
+FX2 (15): ...the same 11, plus DELAY, PLATE REV, SPRING REV, DARK REV
+```
+
+**The three reverbs and the delay are FX2-ONLY on stock.** Two consequences:
+
+1. ❌ **RETRACTED: `BUS.md`'s "FX1's chooser is untouched and can still select
+   PLATE REV, SPRING REV or DARK REV by name."** It cannot — they are not in
+   its list. So **taking the three reverbs costs FX1 nothing at all**, and the
+   "three stock reverbs for a better one" trade is only ever paid on the FX2
+   menu, which we replace wholesale anyway. The null-stub silencing stays as
+   insurance (both slots share one dispatch, so a stored id outside the menu
+   would still reach the code), but it is defending a path the UI cannot walk.
+2. **FX1's 10 real effects are exactly the reclaimable pool** — 3,384 words,
+   the same in both payloads. That is the entire budget any FX1 redesign has
+   to work with, and it is what `XBUS.md`'s FX1 section should be priced
+   against.
+
 ### So: can we delete the stock effects "off FX2"?
 
 **No — and this is the thing you're remembering.** There is no FX1 pool and no
