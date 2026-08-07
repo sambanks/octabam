@@ -97,7 +97,7 @@ def entry_points(mem_path, fxid):
 
 # ---- the run -------------------------------------------------------------
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
-        direct=False, wave_src=None, split=0, sends=1, layout='RS'):
+        direct=False, wave_src=None, split=0, layout='RS'):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
@@ -139,10 +139,8 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                *(["-split", str(split)] if str(split) not in ("0", "") else []),
                "-params", ",".join(map(str, rev_params))]
     else:
-        # instance 0 = REVERB SERVER (position 0), then `sends` SEND clients on
-        # the following tracks -- XBUS.md's layout, track 1 ChonVerb + 2,3,4 Send.
         # Nothing in send_client divides by the number of clients, so N sends put
-        # N x the contribution into one 24-bit accumulator word.
+        # N x the contribution into one accumulator word.
         # layout: one char per DISPATCH SLOT, in hardware order.
         #   R = REVERB SERVER, S = SEND, . = a track running neither (NONE or a
         #       stock effect -- our code never runs there, so the slot is simply
@@ -302,8 +300,6 @@ def main():
     ap.add_argument("--layout", default="RS",
                     help="dispatch slots in hardware order: R=reverb, S=send, .=neither. "
                          "Slot 0 is position 0, the housekeeper. e.g. SR, .RS, SSR")
-    ap.add_argument("--sends", type=int, default=1,
-                    help="how many SEND clients feed the one accumulator")
     ap.add_argument("--direct", action="store_true",
                     help="CONTROL: no SEND, tone into the reverb's own input")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -329,7 +325,7 @@ def main():
         wsrc, sr = render_reverb.read_wav(pathlib.Path(a.infile))
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
-    L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc, a.split, a.sends, a.layout)
+    L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc, a.split, a.layout)
     thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607
