@@ -390,9 +390,16 @@ ASM_SRC = {"DELAY SERVER": ("dsp/delay_server.asm" if DEV or SPEC
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
                             else "dsp/delay_server.asm"),
            # BURN is NOT a separate source any more -- see BURN_INJECT below.
+           #
+           # RVSRC= swaps the reverb engine for an alternate source file. It
+           # exists so two engines can be built and rendered in ONE script and
+           # compared byte-for-byte (tools/verify_roll.py) -- the refactor gate
+           # PLAN.md sets for rolling the tank. Everything else about the build
+           # is unchanged, which is the point: the only difference between the
+           # two renders must be the engine source.
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
-                             else "dsp/reverb_server.asm"),
+                             else os.environ.get("RVSRC") or "dsp/reverb_server.asm"),
            "SEND": "dsp/send_client.asm"}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the

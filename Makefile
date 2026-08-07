@@ -81,6 +81,11 @@ verify: ## Verify the ColdFire menu edits and the burn probe's integrity
 	python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 
+.PHONY: verify-roll
+verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=dsp/reverb_rolled.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=dsp/reverb_rolled.asm"; exit 1; }
+	python3 tools/verify_roll.py $(CAND)
+
 .PHONY: burn
 burn: ## Build the cycle-burn probe (splices burn_block{1,2}.inc into the live engine)
 	XBUS=1 BURN=1 python3 tools/build_bus.py
