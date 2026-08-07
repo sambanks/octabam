@@ -102,6 +102,54 @@ def render(mem, src, out, p3):
     return out.read_bytes()
 
 
+def check_roles():
+    """The shared-memory probe must come out a WRITER on A and a READER on B.
+
+    This rides DELAY SERVER's existing $30000 -> $38000 per-payload text
+    substitution, so the role is decided by the BUILD, not by anything visible
+    in the source -- which means it is exactly the kind of thing that can be
+    silently wrong. Read it back out of the placed image rather than trusting
+    the substitution ran: if both payloads came out the same role, the probe
+    would answer "not shared" no matter what the hardware does, and that is a
+    wasted flash returning a confident wrong answer.
+    """
+    import os
+    from dsp_modmap import PAYLOADS, modules, BASE
+    env = dict(os.environ)
+    env["BURN"] = "1"
+    starts, sizes = {}, {}
+    tag = None
+    for line in run([sys.executable, "tools/build_bus.py"], env=env).splitlines():
+        if "-- payload" in line:
+            tag = line.split()[-2]
+        if "DELAY SERVER  P:0x" in line:
+            starts[tag] = int(line.split("P:0x")[1].split(".")[0], 16)
+            sizes[tag] = int(line.split("(")[1].split("words")[0])
+    # The build MUST have been a BURN build, or this is reading delay_server's
+    # words and answering about the wrong code entirely. delay_server is 507
+    # words and shared_probe is 68, so the size is an unambiguous witness --
+    # and the first draft of this function did exactly that, rebuilding
+    # without BURN and passing for the wrong reason.
+    if set(sizes.values()) != {68}:
+        sys.exit(f"check_roles read a non-probe DELAY SERVER slot: {sizes}")
+    img = (ROOT / "out/mainos_bus.bin").read_bytes()
+    out = {}
+    for tag, va, ln in PAYLOADS:
+        mods, _ = modules(img, va, ln)
+        start = starts[tag]
+        _, a, _, off = [m for m in mods
+                        if m[0] == 0 and m[1] <= start < m[1] + m[2]][0]
+
+        def word(p):
+            i = va - BASE + off + (p - a) * 3
+            return img[i] | (img[i + 1] << 8) | (img[i + 2] << 16)
+
+        # proc's first six words are the role select: the substituted literal
+        # into a, the fixed $38000 into x0, then cmp/beq.
+        out[tag] = "reader" if word(start + 2) == word(start + 4) else "writer"
+    return out
+
+
 def main():
     src = SCRATCH / "src.wav"
     make_source(src)
@@ -125,6 +173,9 @@ def main():
         print(f"  [{'PASS' if cond else 'FAIL'}] {label}{detail}")
         ok = ok and cond
 
+    roles = check_roles()
+    check("shared probe: payload A writes, payload B reads",
+          roles == {"A": "writer", "B": "reader"}, f"  {roles}")
     check("sample loop untouched by the burn", ref == got,
           f"  (reverb_server {ref}, burn_probe {got})")
     check("harness is sensitive (reverb_server HP=0 vs HP=64 differ)", a0 != a64,

@@ -258,6 +258,14 @@ if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
 if os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"BURN"
+    # BongDelay's slot carries the SHARED-MEMORY probe in this build -- one
+    # flash, two answers. It is a placeholder algorithm, so its 507 words are
+    # the cheapest diagnostic space on the chip, and the region is otherwise
+    # exactly full (2724 of 2724). dsp/shared_probe.asm rides the SAME
+    # per-payload $30000 -> $38000 substitution DELAY SERVER already uses, so
+    # no new build machinery is needed to tell the two cores apart.
+    FULLNAME["DELAY SERVER"] = b"SharePrb" + BUILD_TAG
+    ABBR["DELAY SERVER"] = b"SHAR"
     # APPEND, do not replace. Assigning a fresh list here dropped p9/p10's
     # names and p7's MODE default on the first attempt, and verify_menu.py
     # caught all three -- an out-of-range page-2 default is not cosmetic, it
@@ -267,7 +275,8 @@ if os.environ.get("BURN") == "1":
     # override needed -- which is the one value that must be safe.
 
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": "dsp/delay_server.asm",
+ASM_SRC = {"DELAY SERVER": ("dsp/shared_probe.asm" if os.environ.get("BURN") == "1"
+                            else "dsp/delay_server.asm"),
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/burn_probe.asm" if os.environ.get("BURN") == "1"
