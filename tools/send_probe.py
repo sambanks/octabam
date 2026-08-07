@@ -1,10 +1,27 @@
 #!/usr/bin/env python3
 """
-Render a REAL send path -- SEND client -> shared bus -> REVERB SERVER -- in the
+Render a REAL send path -- SEND client -> shared bus -> a SERVER -- in the
 emulator, and measure the metallic artifact numerically.
 
     python3 tools/send_probe.py                     # current working tree
     python3 tools/send_probe.py --wav out/send.wav  # ... and keep the audio
+
+DRIVING THE DELAY. --layout takes D as well as R, so the DELAY SERVER can be
+run and heard locally:
+
+    DEV=1 XBUS=1 python3 tools/build_bus.py         # writes out/dsp/mem_dev_A.mem
+    python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+
+This needs a DEV=1 image and there is no way around it: XBUS=1 stubs the DELAY
+SERVER out, and the specialized build that follows puts BongDelay in payload B
+only -- which dsp_host cannot boot (REVERB.md). Against either, `--layout DS`
+renders digital silence from a 10-word stub, which the silence check below
+reports as a FAILED measurement rather than a clean one.
+
+The two buses have SEPARATE send knobs -- x:(r6+0) is ->DELAY, x:(r6+1) is
+->REVERB -- so --level follows whichever server is being measured and --dlevel
+overrides it. Driving the reverb's knob while measuring the delay renders
+silence, which cost a confusing first run.
 
 WHY THIS EXISTS. The obvious local repro -- `dsp_host -inst 2` with two reverbs
 -- does not exercise the send path at all, for three independent reasons:
@@ -46,8 +63,9 @@ SR = 44100
 FRAMES = 15                # dsp_host caps a block at 15 frames
 WARMUP_BLOCKS = 300        # the engine stays dry for 256 CALLS; pad well past it
 
-REVERB_ID, SEND_ID = 0x07, 0x09
+REVERB_ID, SEND_ID, DELAY_ID = 0x07, 0x09, 0x06
 INIT_TAB, PROC_TAB = 0x215, 0x235
+SERVER_ID = {"R": REVERB_ID, "S": SEND_ID, "D": DELAY_ID}
 
 # analysis window: 16384 pts -> 2.6917 Hz bins. The tone is placed exactly on
 # bin 163 so a clean render puts all its energy in one bin and the spur floor
@@ -97,7 +115,8 @@ def entry_points(mem_path, fxid):
 
 # ---- the run -------------------------------------------------------------
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
-        direct=False, wave_src=None, split=0, layout='RS'):
+        direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
+        pick=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
@@ -127,54 +146,79 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                 v = amp * math.sin(w * (i - pad)) if pad <= i < pad + n_tone else 0.0
             f.write(struct.pack("<i", max(-8388608, min(8388607, int(v * 8388607)))))
 
-    ri, rp = entry_points(mem, REVERB_ID)
-    si, sp = entry_points(mem, SEND_ID)
-    live = [(0, 'R')]
+    # Resolved lazily, per character actually used: a build that stubbed an
+    # effect out still has a dispatch entry, but a build that never placed it
+    # would die here -- and dying with "no dispatch entry for 0x06" is the
+    # right failure for `--layout DS` against a non-DEV image.
+    ep = {}
+
+    def entry(c):
+        if c not in ep:
+            ep[c] = entry_points(mem, SERVER_ID[c])
+        return ep[c]
+
+    # --direct is the CONTROL for whichever server is being measured, so it has
+    # to instantiate THAT server. Running a reverb and labelling it a delay
+    # control is precisely the class of mislabel this project has lost sessions
+    # to, and here it would silently compare two different effects.
+    dpar = delay_params if delay_params is not None else DELAY_PARAMS
+    tgt = pick or ("R" if "R" in layout.upper() else "D")
+    live = [(0, tgt)]
     if direct:
+        ri, rp = entry(tgt)
         cmd = [str(HOST), "-mem", str(mem),
                "-init", f"{ri:x}", "-proc", f"{rp:x}",
                "-inst", "1", "-r7", "2", "-alloc", "1",
-               "-inmask", "1",                   # tone straight into the reverb
+               "-inmask", "1",                   # tone straight into the server
                "-blocks", str(blocks), "-in", str(src), "-out", str(out),
                *(["-split", str(split)] if str(split) not in ("0", "") else []),
-               "-params", ",".join(map(str, rev_params))]
+               "-params", ",".join(map(str, rev_params if tgt == "R" else dpar))]
     else:
         # Nothing in send_client divides by the number of clients, so N sends put
         # N x the contribution into one accumulator word.
         # layout: one char per DISPATCH SLOT, in hardware order.
-        #   R = REVERB SERVER, S = SEND, . = a track running neither (NONE or a
-        #       stock effect -- our code never runs there, so the slot is simply
-        #       skipped and nobody housekeeps from it)
+        #   R = REVERB SERVER, D = DELAY SERVER, S = SEND, . = a track running
+        #       neither (NONE or a stock effect -- our code never runs there, so
+        #       the slot is simply skipped and nobody housekeeps from it)
         # Slot 0 is position 0 (r7 0x6200), the designated housekeeper. Putting
         # anything other than R there is what makes send_client's self-healing
         # election actually run, and that path never executed in any earlier test.
-        slots = [c for c in layout.upper() if c in "RS."]
+        #
+        # D needs a DEV=1 image (tools/build_bus.py): XBUS=1 stubs the DELAY
+        # SERVER out, and the specialized build puts it in payload B, which
+        # dsp_host cannot boot. Against either of those `--layout DS` renders
+        # silence from a 10-word stub rather than failing, which is why the
+        # silence check below is a FAILED measurement and not a clean one.
+        slots = [c for c in layout.upper() if c in "RDS."]
         live = [(k, c) for k, c in enumerate(slots) if c != "."]
         n = len(live)
-        if not any(c == "R" for _, c in live):
-            die(f"layout {layout!r} has no REVERB SERVER")
+        if not any(c in "RD" for _, c in live):
+            die(f"layout {layout!r} has no server -- needs an R or a D")
         r7s = ",".join(str(2 + 2 * k) for k, _ in live)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
         inmask = sum(1 << i for i, (_, c) in enumerate(live) if c == "S")
+        par = {"R": rev_params, "S": send_params, "D": dpar}
         cmd = [str(HOST), "-mem", str(mem),
-               "-init", ",".join(f"{ri:x}" if c == "R" else f"{si:x}" for _, c in live),
-               "-proc", ",".join(f"{rp:x}" if c == "R" else f"{sp:x}" for _, c in live),
+               "-init", ",".join(f"{entry(c)[0]:x}" for _, c in live),
+               "-proc", ",".join(f"{entry(c)[1]:x}" for _, c in live),
                "-inst", str(n), "-r7", r7s, "-alloc", als,
                "-inmask", str(inmask),                # tone to the SENDs only
                "-blocks", str(blocks), "-in", str(src), "-out", str(out),
                *(["-split", str(split)] if str(split) not in ("0", "") else [])]
         for _, c in live:
-            cmd += ["-params", ",".join(map(str, rev_params if c == "R" else send_params))]
+            cmd += ["-params", ",".join(map(str, par[c]))]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         die(f"dsp_host failed:\n{r.stdout[-3000:]}{r.stderr[-2000:]}")
     if verbose:
         print(r.stdout)
 
-    # dsp_host writes instance 0 to `out` and instance k to `out.iK`. The reverb
+    # dsp_host writes instance 0 to `out` and instance k to `out.iK`. The server
     # is not necessarily instance 0 any more -- under a layout like "SR" a SEND
-    # occupies position 0 -- so read back whichever stream the reverb produced.
-    ridx = 0 if direct else next(i for i, (_, c) in enumerate(live) if c == "R")
+    # occupies position 0 -- so read back whichever stream the server produced.
+    # `pick` chooses which when a layout runs both servers (e.g. "RDS", where
+    # the delay's wet feeds the reverb): default to R if present, else D.
+    ridx = 0 if direct else next(i for i, (_, c) in enumerate(live) if c == tgt)
     got = out if ridx == 0 else pathlib.Path(f"{out}.i{ridx}")
     a = array.array("i")
     a.frombytes(got.read_bytes())
@@ -272,6 +316,10 @@ def write_wav(path, L, R):
 REV_PARAMS  = [64, 0, 127, 0, 127, 127, 0, 0, 64, 0]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
 SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0]
+# delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
+# a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
+# VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
+DELAY_PARAMS = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
 
 
 def main():
@@ -286,6 +334,11 @@ def main():
     ap.add_argument("--label", default="send->reverb")
     ap.add_argument("--amp", type=float, default=0.5, help="tone amplitude FS")
     ap.add_argument("--level", type=int, default=127, help="SEND ->REVERB level 0..127")
+    ap.add_argument("--dlevel", type=int, default=None,
+                    help="SEND ->DELAY level 0..127 (x:(r6+0)). Defaults to\n"
+                         "--level when the target is the DELAY, else 0 -- the\n"
+                         "two buses have SEPARATE send knobs, and driving the\n"
+                         "reverb's while measuring the delay renders silence.")
     ap.add_argument("--mix", type=int, default=127, help="reverb MIX 0..127")
     ap.add_argument("--time", type=int, default=64,
                     help="TIME/decay (slot 0). MODE scales this by its own decay\nconstant in r7+$1e -- BIG's is 1.000000, i.e. NO headroom.")
@@ -298,8 +351,13 @@ def main():
     ap.add_argument("--split", default="0",
                     help="frames in the a=0 sub-block call. NONZERO IS THE POST-TRIG\nSTATE: proc() runs TWICE a block and the bus split bookkeeping\n(r7+$65/$66/$67) actually executes. Split 0 never touches it.")
     ap.add_argument("--layout", default="RS",
-                    help="dispatch slots in hardware order: R=reverb, S=send, .=neither. "
-                         "Slot 0 is position 0, the housekeeper. e.g. SR, .RS, SSR")
+                    help="dispatch slots in hardware order: R=reverb, D=delay, "
+                         "S=send, .=neither. Slot 0 is position 0, the "
+                         "housekeeper. e.g. SR, .RS, SSR, DS. D needs a DEV=1 "
+                         "image (see build_bus.py)")
+    ap.add_argument("--pick", choices=["R", "D"],
+                    help="which server's output to analyse when the layout runs "
+                         "both (default: R if present, else D)")
     ap.add_argument("--direct", action="store_true",
                     help="CONTROL: no SEND, tone into the reverb's own input")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -317,7 +375,11 @@ def main():
                                                      ROOT / "out/dsp/_send_probe_A.mem")
     rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod
     rev[0] = a.time
-    snd = list(SEND_PARAMS); snd[1] = a.level
+    # Which server is being measured decides which SEND knob has to be up.
+    _tgt = "D" if (a.pick == "D" or "R" not in a.layout.upper()) else "R"
+    snd = list(SEND_PARAMS)
+    snd[1] = a.level                                    # ->REVERB, x:(r6+1)
+    snd[0] = a.dlevel if a.dlevel is not None else (a.level if _tgt == "D" else 0)
     wsrc = None
     if a.infile:
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -325,21 +387,25 @@ def main():
         wsrc, sr = render_reverb.read_wav(pathlib.Path(a.infile))
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
-    L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc, a.split, a.layout)
+    L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
+               a.split, a.layout, pick=a.pick)
     thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607
+        _srv = "DELAY" if (a.pick == "D" or "R" not in a.layout.upper()) else "REVERB"
         print(f'{a.label}: {a.infile} through '
-              f"{'REVERB direct (CONTROL)' if a.direct else 'SEND -> bus -> REVERB'}"
+              f"{_srv + ' direct (CONTROL)' if a.direct else 'SEND -> bus -> ' + _srv}"
               f'  amp {a.amp}  peak {pk:.3f} FS')
         if a.wav:
             write_wav(ROOT / a.wav if not os.path.isabs(a.wav) else a.wav, L, R)
             print(f'  -> {a.wav}')
         return 0
 
-    path = "REVERB direct input (CONTROL)" if a.direct else "SEND -> bus -> REVERB"
+    _srv = "DELAY" if (a.pick == "D" or "R" not in a.layout.upper()) else "REVERB"
+    path = (f"{_srv} direct input (CONTROL)" if a.direct
+            else f"SEND -> bus -> {_srv}")
     print(f"{a.label}:  tone {TONE_HZ:.2f} Hz through {path} "
-          f"(amp {a.amp}, ->REVERB {a.level})")
+          f"(amp {a.amp}, ->REVERB {snd[1]}, ->DELAY {snd[0]})")
     if thd is None:
         print(f"  !! SILENT (peak {pk:.2e}, rms {rms:.2e}) -- the bus carried nothing.")
         print("     A silent render is a FAILED measurement, not a clean one.")

@@ -310,8 +310,38 @@ if os.environ.get("BURN") == "1":
     # DEFAULTS already carries (3, 0), so the knob boots at zero burn with no
     # override needed -- which is the one value that must be safe.
 
+# ---- DEV=1: the local-render escape hatch -----------------------------------
+# XBUS=1 stubs the DELAY SERVER out (see ASM_SRC below), and the specialized
+# build that follows it puts BongDelay in payload B ONLY. Both leave the delay
+# with NO REAL CODE IN PAYLOAD A -- and tools/dsp_host cannot boot payload B at
+# all (REVERB.md). So the moment the architecture lands, the delay loses its
+# local render loop and goes back to one hardware flash per iteration, which is
+# the expensive path this project exists to avoid.
+#
+# DEV=1 keeps all three servers real in BOTH payloads, so payload A's .mem dump
+# always contains a driveable DELAY SERVER for tools/send_probe.py.
+#
+# It pays for the space by taking CHORUS's module back as a fourth donor. That
+# is 329 words immediately BELOW PLATE and contiguous with it (v98 gave it back
+# because the product build no longer needed it). SEND + REVERB + a gated DELAY
+# is 2744 words against the 2724 the three reverbs alone provide -- 20 over --
+# so without this the hatch simply would not assemble under XBUS=1.
+#
+# Taking CHORUS costs FX1 its chorus, which is why this build is NEVER FLASHED:
+# it writes out/mainos_bus_dev.bin, not out/mainos_bus.bin, and dumps the
+# payload A .mem beside it.
+DEV = os.environ.get("DEV") == "1"
+if DEV:
+    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "DELAYPROBE")
+              if os.environ.get(v) == "1"]
+    if _clash:
+        sys.exit(f"DEV=1 is a local render build and cannot be combined with "
+                 f"{'/'.join(_clash)}=1 -- those replace a server with a probe, "
+                 f"which is the opposite of what DEV is for")
+
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": ("dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
+ASM_SRC = {"DELAY SERVER": ("dsp/delay_server.asm" if DEV
+                            else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
                             else "dsp/delay_server.asm"),
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
@@ -332,6 +362,8 @@ PP = {
 # FX1. CHORUS (0x12) was here until v98 and is deliberately gone: we no longer
 # take its code, so its stock dispatch entries stand and FX1 gets it back.
 DONOR_IDS = {"plate": 0x14, "spring": 0x15, "dark": 0x16}
+if DEV:
+    DONOR_IDS["chorus"] = 0x12      # DEV takes CHORUS's module for the space
 
 # Stock Echo Freeze Delay. Untouched by a normal build: its descriptor, its
 # FX2_IDS entry and its (passthrough) dispatch are all stock. DELAYPROBE=1 puts
@@ -615,11 +647,24 @@ def main():
         # the region had 11 free.
         send_src = xbus(send_src, "SEND", "notfirst")
         reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+        # ...except under DEV, where the delay IS present and must reach the
+        # same relocated scratch as everyone else -- 14 scratch refs and a
+        # ; XBUS_GATE marker are already in dsp/delay_server.asm, and its
+        # housekeeping block exits to bus_notfirst exactly like the reverb's.
+        # A delay that still read Y:0x900 would find an empty accumulator and
+        # render silence, which is the failure this hatch exists to prevent.
+        if DEV:
+            delay_src = xbus(delay_src, "DELAY SERVER", "bus_notfirst")
 
     # Every source now carries a $30000 that must be substituted per payload,
     # not just DELAY SERVER's Y base -- the gate above uses the same literal as
     # its payload discriminator, which is why this count is 2 under XBUS.
-    _want = 0 if os.environ.get("XBUS") == "1" else 1
+    # Plain build: 1 (the Y base). XBUS: 0, the source is a stub. XBUS+DEV: 2 --
+    # the Y base AND the payload-discriminator literal the gate injection just
+    # added, and _sub below is meant to rewrite BOTH (base -> 0x38000 is
+    # correct for payload B's delay; discriminator -> 0x38000 is what makes the
+    # gate compare equal there).
+    _want = (2 if DEV else 0) if os.environ.get("XBUS") == "1" else 1
     if delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
@@ -637,8 +682,12 @@ def main():
 
         # ---- all three servers pack into PLATE + SPRING + DARK ------------
         # v98: CHORUS is not a donor any more. See the module docstring.
-        region = sorted((record(pp[k]) for k in ("plate", "spring", "dark")),
-                        key=lambda m: m[1])
+        # DEV=1 takes it back as a fourth donor -- it sits immediately BELOW
+        # PLATE and the contiguity assert below is what proves that rather than
+        # assuming it. Dev-only; the flashable build still leaves CHORUS alone.
+        _donors = ("chorus", "plate", "spring", "dark") if DEV else \
+                  ("plate", "spring", "dark")
+        region = sorted((record(pp[k]) for k in _donors), key=lambda m: m[1])
         for (_, a, cnt, _), (_, a2, _, _) in zip(region, region[1:]):
             if a + cnt != a2:
                 sys.exit(f"payload {tag}: PLATE/SPRING/DARK are not contiguous "
@@ -675,9 +724,13 @@ def main():
         # they get the substitution; the delay slot is a bare stub.
         _sub = lambda s: s.replace("$30000", f"${pp['ybase']:x}")
         _x = os.environ.get("XBUS") == "1"
+        # The DELAY is substituted unconditionally: without XBUS it carries its
+        # own Y base, with XBUS it is either a literal-free stub (a no-op
+        # substitution) or, under DEV, base + gate discriminator, both of which
+        # want rewriting to this payload's base.
         plan = (("SEND", _sub(send_src) if _x else send_src),
                 ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
-                ("DELAY SERVER", delay_src if _x else _sub(delay_src)))
+                ("DELAY SERVER", _sub(delay_src)))
         cursor = base_a
         for name, src in plan:
             words, init_a, proc_a = assemble(src, cursor)
@@ -741,11 +794,15 @@ def main():
         for donor, eid in DONOR_IDS.items():
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
-        print(f"  donor ids (PLATE/SPRING/DARK REV) -> null stub "
-              f"P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- FX1 selecting "
-              f"any of them by name is now silent, not our code")
-        print(f"  CHORUS (id 0x12) UNTOUCHED -- code and dispatch are stock, "
-              f"FX1 gets the real chorus back")
+        print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
+              f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- FX1 "
+              f"selecting any of them by name is now silent, not our code")
+        if DEV:
+            print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
+                  f"its chorus. DEV builds are never flashed. ***")
+        else:
+            print(f"  CHORUS (id 0x12) UNTOUCHED -- code and dispatch are stock, "
+                  f"FX1 gets the real chorus back")
 
     # A MODE-forced build ignores the real page-2 slot, so it must never end up
     # wrapped and flashed -- it would look like a MODE knob that does nothing.
@@ -755,6 +812,11 @@ def main():
         out = pathlib.Path("out/mainos_bus_mode%d.bin" % int(mode_env))
     if delayprobe:
         out = pathlib.Path(f"out/mainos_bus_delayprobe_{probe}.bin")
+    if DEV:
+        # Never OUT. A DEV image has CHORUS overwritten and is for dsp_host
+        # only; letting it land on the flashable path is the one way this
+        # hatch could do harm.
+        out = pathlib.Path("out/mainos_bus_dev.bin")
     out.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
     note = ""
@@ -769,7 +831,25 @@ def main():
     elif probe == "stock":
         note = ("   *** CONTROL BUILD -- DELAY in the menu, dispatch STOCK. "
                 "Flash this FIRST. Not a product build. ***")
+    elif DEV:
+        note = ("   *** DEV BUILD -- local render only, DO NOT FLASH "
+                "(CHORUS is overwritten). ***")
     print(f"\n{out}: {len(img):,} bytes, {d} changed" + note)
+
+    if DEV:
+        # Dump payload A straight away. The whole point of the hatch is that
+        # send_probe.py / render_reverb.py can drive the delay, and both take a
+        # .mem -- making the developer remember a separate dsp_modmap
+        # incantation after every build is how the hatch stops being used.
+        import dsp_modmap
+        mem = pathlib.Path("out/dsp/mem_dev_A.mem")
+        mem.parent.mkdir(parents=True, exist_ok=True)
+        dsp_modmap.dumpmem(bytes(img), ["A", str(mem)])
+        print(f"\nDEV hatch ready. All three servers are real in payload A:\n"
+              f"  python3 tools/send_probe.py --mem {mem}\n"
+              f"  python3 tools/render_reverb.py loop.wav --mem {mem}\n"
+              f"DELAY SERVER is id 0x{NEW_IDS['DELAY SERVER']:02x}; "
+              f"send_probe's entry_points() resolves it from the dump.")
 
 
 if __name__ == "__main__":

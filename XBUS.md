@@ -6,23 +6,53 @@ constraint — "the two DSPs are a hard boundary" — is now known to be false.
 ## What we're building
 
 ```
-CORE 0   track 1   ChonVerb      pools all 4 of core 0's FX2 slots  = 65,536 words = 1.49 s
+CORE 0   track 1   ChonVerb   Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo)  = 65,536 words = 1.49 s
          2,3,4     Send
-CORE 1   track 5   BongDelay     pools all 4 of core 1's FX2 slots  = 65,536 words = 1.49 s
+CORE 1   track 5   BongDelay  Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi)  = 65,536 words = 1.49 s
          6,7,8     Send
 
          every track sends to both, through accumulators in the shared window
          delay wet -> reverb  (series, the direction that is already built)
 ```
 
-**Two wins, and they are different resources.**
+⚠️ **Corrected arithmetic — "all 4 of core 0's FX2 slots = 65,536 words" was
+wrong, and wrong in a way that would have collided.** The allocator table at
+`X:0x255` is the same table in both payloads: FX2 slots are `0x4000 0x8000
+0x30000 0x34000` **on each core**. The last two are in the shared window, so
+core 0's slots 3–4 and core 1's slots 3–4 are **the same physical memory**. Both
+cores cannot each take four slots.
+
+The real pool is `32K private + 32K private + 64K shared = 128K words`, and it
+divides as above: each server gets its own core's two private slots plus **half**
+the shared window. 65,536 words each is still the answer — for a different
+reason, and only if the delay is given `0x38000-0x3FFFF`, which the allocator
+never hands out at all. Both servers hardcode their bases, so that is free.
+
+**Three wins, and they are different resources. The third one is new and is the
+one that has been missed.**
 
 *Cycles*: each core runs ONE effect with its full ~4,535 cycles/sample instead
 of both cores running both effects. Roughly doubles the effects budget.
 
-*Memory*: 372 ms → 743 ms (done, the 32K re-layout) → **1.49 s**. Four slots per
-core instead of two, because a core no longer has to house a reverb *and* a
-delay.
+*Memory*: 372 ms → 743 ms (done, the 32K re-layout) → **1.49 s**.
+
+*Program space*: **the payloads no longer have to be the same code.**
+`build_bus.py` already assembles and places each payload independently — one
+`for tag, va, ln in PAYLOADS` loop, its own region, its own placement — and the
+2,724-word region is **per core**. Today both payloads carry all three effects
+and both are at **2,723 of 2,724 words, ONE free**. Under one-server-per-core:
+
+| payload | carries | words | **free** |
+|---|---|---|---|
+| A (core 0) | SEND 212 + ChonVerb 2,018 | 2,230 | **494** |
+| B (core 1) | SEND 212 + BongDelay 507 | 719 | **2,005** |
+
+✅ Measured, not estimated: `XBUS=1 python3 tools/build_bus.py` already prints
+`FREE 484` per payload, because the XBUS path drops the delay to a 10-word stub.
+That build is the specialization, done crudely and by accident.
+
+**Program space was the binding constraint on all three effects, and
+specialization alone removes it — before a single line of code is written.**
 
 **What the memory actually buys, since this is easy to get wrong: NOT a longer
 tail.** The current engine already does 8.7 s RT60 out of 743 ms of buffer —
@@ -161,65 +191,265 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
   Comparing the latter compares the ordinary build with itself, which is what
   produced a bogus "the MODE override is a no-op" claim in v115.
 
-## Path, in order, with the gate at each step
+## Steps 0–3 are DONE
 
-0. ~~Find the metallic artifact.~~ **DONE** — it was the shimmer, stuck
-   half-on and unturnoffable; excised by default, hardware-confirmed gone.
+0. ~~Find the metallic artifact.~~ **DONE** — the shimmer, stuck half-on and
+   unturnoffable; excised by default, hardware-confirmed gone.
+1. ~~Relocated bus, same core.~~ **DONE** at `0x36000`.
+2. ~~Does a cross-core send arrive?~~ **DONE — cross-core works.**
+3. ~~Synchronisation.~~ Not needed as feared; the ICC stays unused.
 
-1. **Does the relocated bus still work SAME-CORE?** ← *cannot be judged until 0
-   is fixed; the artifact appears on the plain build too.*
-   `XBUS28` put the scratch at `0x3E000` and it broke even with both effects
-   on ONE core — so cross-core was innocent and the address was the fault.
-   `0x3E000` is outside the init pass that zeroes `0x30000-0x37FFF` (so it
-   comes up as garbage) and payload A had never been shown to write there at
-   all: `alias_probe` only ever tested payload A in the LOWER half. `XBUS29`
-   retries at `0x36000` — inside the zeroed region, and between two addresses
-   payload A has demonstrably written and read back. **Nothing below means
-   anything until this is clean.**
-2. **Does a cross-core send arrive?** Send on track 5, reverb on track 1.
-   Already known to carry *something* — it scaled with the send dial — so this
-   is about whether it arrives *intact*.
-3. **Synchronisation.** Expected to be needed. The two cores have independent
-   splits and block alignment, and the bus's frame offset is per-track; a
-   cross-core send cannot use it. The ICC (cross-core interrupts + data
-   registers, RM 1.4.14) is the untouched tool for this.
-4. **Re-plan the memory** against `CHIP.md` §3a — four slots per core, in two
-   non-contiguous regions, dodging stock's 72-word staging at
-   `0x30000-0x30047` (rewritten EVERY FRAME) and using the fact that the
-   bootstraps at `0x31000`/`0x32000` are dead after boot.
-5. **Then the effects**: BongDelay, which is an untested first draft and has
-   never been auditioned at all — `send_probe.py` can now drive a real DELAY
-   SERVER, so this is local work. The shimmer is no longer on this list: it is
-   excised, and if it returns it must be as the pitch-synchronous rewrite.
+Steps 4 (memory re-plan) and 5 (the effects) are what remains, and the
+re-evaluation below is what they should now be.
 
-## OUTSTANDING — the short list, 7 Aug 2026
+---
 
-**Needs the device (nothing else is blocked on these):**
-- **Flash a build carrying v121.** The card currently holds
-  `OCTATRACK_NOSHIM31.bin`, which has the shimmer removed but PREDATES the bus
-  auto-gain. Confirm 8 tracks sending is clean on hardware.
-- **Steps 1–3 above** (relocated bus same-core, cross-core send, sync).
+# THE RE-EVALUATION — what a whole core per effect actually buys
 
-**Fully local, in rough value order:**
-- **BongDelay's first audition.** Untested first draft, never heard. Highest
-  chance of finding something, and `send_probe.py` can drive it now.
+## The constraint has INVERTED, and this is the headline
+
+Every optimisation in this project so far traded program words for cycles,
+because cycles were the wall: the density pass (432 → 297), the v97 Hadamard
+rewrite (24 words → 16), the v99 early-reflection rewrite (254 → 181 cycles).
+That rule is now **backwards**.
+
+| resource | before | after specialization | ratio |
+|---|---|---|---|
+| cycles, core 0 (reverb + 3 sends, FX1 filters off) | ~2,432 spare ✅ | **~2,576 spare** 🟡 | ~3.4× the engine's 763 |
+| cycles, core 1 (delay + 3 sends) | — | **~3,176 spare** 🟡 | ~19× the placeholder's 163 |
+| Y memory per server | 32,768 words / 743 ms ✅ | **65,536 / 1.486 s** ✅ | 2× |
+| **program space, payload A** | **1 word** ✅ | **494 words** ✅ | — |
+| **program space, payload B** | **1 word** ✅ | **2,005 words** ✅ | — |
+
+(Cycle figures are the measured 2,432 spare — filters off, full bank live —
+plus the per-sample cost of whatever that core no longer runs. 🟡 because the
+measurement was taken in a different configuration, not because the arithmetic
+is loose. Re-run the burn probe in the real configuration before spending the
+last few hundred.)
+
+**So: spend cycles to buy program words, everywhere.** Two consequences that
+are worth more than any voicing change:
+
+- **Roll the unrolled loops back up.** The reverb's four tank lines are
+  unrolled: tank taps 101 instructions, feedback/write-back 101, STAGE-2 read
+  offsets 44, LFOs 19 — **265 instructions for four lines, ~66 per line** ✅
+  (counted). A hardware `do` loop on the 56300 is zero-overhead; the cost of
+  rolling is per-line constants becoming table reads instead of immediates,
+  a handful of cycles per line. **Eight lines rolled would be SMALLER than
+  four lines unrolled**, and cost maybe +32 cycles.
+- **AGU modulo is no longer mandatory.** Power-of-2 alignment is what caps a
+  single delay line at 16,384 words in the private region. A manual compare-
+  and-wrap costs ~4–6 cycles/sample — unaffordable before, free now — and
+  unlocks arbitrary line lengths. This is the only way BongDelay gets a
+  single 1.49 s line.
+
+## What to build with it — the reverb
+
+The known limit is modal overlap, and `REVERB.md` closed it as "no structural
+lever left under the 32K ceiling". **1.49 s and 2,500 spare cycles reopen it,
+and the lever is more lines, not longer ones.**
+
+Mode spacing is `sr / total_delay_read`. Today: 12,574 samples → 3.5 Hz →
+overlap **0.157** at RT60 4 s, against the ≥ 1 that reads as smooth.
+
+Doubling total delay halves the spacing, and there are two ways to do it:
+**8 lines × 4,096**, or **4 lines × 8,192**. Both give overlap ~0.31. Take the
+first — at equal total delay, more short lines beat fewer long ones (more
+independent paths, richer Hadamard mixing, no drift toward a longer and more
+separated character), and it keeps the per-line length the modes were voiced
+against.
+
+A layout that fits 65,536 words exactly:
+
+| offset | size | what |
+|---|---|---|
+| tank | 8 × 4,096 = 32,768 | eight lines, 8×8 Hadamard |
+| input diffusers | 8 × 2,048 = 16,384 | one per line |
+| pre-delay | 8,192 | 186 ms, double today's |
+| in-loop allpasses | 4 × 2,048 = 8,192 | double today's two |
+
+Costs, against ~2,576 spare cycles and 494 free words:
+
+- **Cycles** 🟡 ~+450 for four more lines, ~+32 for the 8-point fast Hadamard
+  (12 butterflies vs 4). Call it **~1,250 total** against 2,576. Comfortable.
+- **Program space** 🟡 ~+340 instructions ≈ **450–500 words** if unrolled,
+  against 494 free. *Fits, with nothing left, and that estimate carries ±20%.*
+  **Roll the tank loop and the problem disappears** — this is exactly why the
+  inversion above matters more than the feature does.
+
+## FX1 must keep working — and FILTER is probably NOT the worst case
+
+**FX1 stays fully usable on all four tracks. That is a product requirement, not
+a margin, so it comes out of the budget before anything is designed against it.**
+
+⚠️ **FILTER is the only stock effect whose cost has ever been measured**
+(~260 cycles each, 1,040 for four ✅). Treating `4 × FILTER = 1,040` as the
+worst case is an assumption, and there are two reasons to doubt it:
+
+1. **260 is already far more than a biquad should cost.** `CHIP.md` flags this
+   ("much more than a filter looks like it should"). The likeliest explanation
+   is a large **fixed per-call overhead every effect pays** — in which case 260
+   is close to the *floor* for any FX1 effect, not the ceiling.
+2. **Several stock effects plainly do more work.** 🟡 Ranked by structure, not
+   measurement:
+
+   | likely cost | effects |
+   |---|---|
+   | above FILTER | **MULTIBCOMP** (crossovers + multiple detectors), **COMB**, **FLANGER**, **PHASER**, **CHORUS** (modulated interpolated delay lines) |
+   | near FILTER | EQ, DJ EQ (biquad stacks) |
+   | below FILTER | SPATIALIZER, LO-FI, COMPRESSOR |
+   | **free** | **DELAY** — it has no DSP code at all ✅ ([[octamax-stock-delay-mystery]]) |
+
+   Of the 15 stock effects, 11 are live on FX1 for us (DELAY is a passthrough;
+   PLATE/SPRING/DARK are our donors and are silenced).
+
+**And the worst case to measure is not `4 × worst effect`.** A realistic kit
+puts a *different* FX1 effect on each track. The number the design actually
+needs is one reading: **four different heavy FX1 effects, one per track, plus
+the bank — sweep once.**
+
+**This costs ONE flash, not eleven.** The burn probe is a front-panel
+instrument: once a `BURN=1` build is on the card, every configuration is a knob
+sweep with no further flash ✅ (`CHIP.md` §2). Sweep the loaded kit, then sweep
+a few single-effect ×4 configurations to find which effect is actually the
+ceiling.
+
+**Until that reading exists, budget the reverb at ~1,200 cycles, not 1,500** —
+1,040 is a measured floor for the FX1 load and the real figure can only be
+higher. The 8-line tank is estimated at ~1,250 🟡, so **this measurement is
+what decides whether 8 lines fits**, and it should be taken before the tank is
+rewritten, not after.
+
+**Not in scope: the three stock reverbs.** PLATE / SPRING / DARK are our
+donors (594 / 1,063 / 1,067 words ✅) and stay taken — losing them on FX1 is
+accepted, and "FX1 must work" means the other eleven effects and the cycles
+they cost. Do not re-open this to give donors back; core 0 has none to give
+anyway (ChonVerb + SEND = 2,230 against PLATE+SPRING = 1,657).
+
+## What to build with it — the delay
+
+BongDelay was scoped as an afterthought (507 words, 163 cycles, a placeholder)
+and **has still never been heard**. It should not get its first audition
+against the old budget. Payload B gives it:
+
+- **2,005 free program words** — five times its current size
+- **~3,176 spare cycles** — nineteen times its current cost
+- **65,536 words = 1.49 s**, as two 32,768-word modulo lines (`Y:0x8000` and
+  `Y:0x38000` are both 32K-aligned ✅) or one 1.49 s line with a manual wrap
+
+That is a flagship budget, not a placeholder's: multi-tap, stereo ping-pong,
+per-tap filtering, tape wow/flutter, diffused or pitch-shifted feedback,
+reverse. **Re-scope the delay before designing it.**
+
+## Memory re-plan (step 4), concretely
+
+The shared window is not flat. Three things to dodge, all already mapped:
+
+| range | what | verdict |
+|---|---|---|
+| `0x30000-0x30047` | stock's per-frame parameter staging, 72 words, **rewritten EVERY FRAME** ✅ | never usable |
+| `0x31000` / `0x32000` | bootstraps A and B, 50 / 58 words ✅ | dead after boot, usable |
+| `0x34000` | **a single word written here from payload A corrupts that track's audio after ~5.45 s** ✅ reproduced, cause unknown | **BLOCKER — see below** |
+
+**The bus scratch needs a permanent home, and there is a free one.** It sits at
+`0x36000` today, which is inside the reverb's new `0x34000-0x37FFF` block. But
+`0x30000-0x300FF` is already unusable for modulo buffers (stock's staging is in
+it), so put the 133-word scratch at `0x30080-0x30104` and reserve
+`0x30000-0x301FF`. **Cost to the reverb: 512 of 65,536 words, 0.8%** — versus
+carving a hole out of a power-of-2 buffer anywhere else.
+
+The rest of `0x30000-0x33FFF` then carves as a buddy allocator with alignment
+intact: 8K at `0x32000`, 4K at `0x31000`, 2K at `0x30800`, 1K at `0x30400`,
+512 at `0x30200`. **16,256 of 16,384 words recovered.**
+
+**Contention is free if the split is respected** — the manual guarantees no bus
+contention when the two cores touch different 8K blocks ✅. Reverb in blocks
+0–3 (`0x30000-0x37FFF`), delay in blocks 4–7 (`0x38000-0x3FFFF`) satisfies it
+exactly, except for the scratch, which both cores must touch by definition:
+133 words in block 0, negligible.
+
+## The four things that could bite, in order
+
+1. **`Y:0x34000` corrupts audio after ~5.45 s** ✅ reproduced across two
+   builds, cause never established, filed as a probe curiosity in `CHIP.md`
+   §6. **It sits in the middle of the reverb's new pool.** This was harmless
+   while nothing used that address; the target architecture walks straight
+   into it. **Resolve before laying out the reverb** — it is the only unknown
+   here that can invalidate the whole memory plan.
+2. ~~**`dsp_host` cannot boot payload B.**~~ **MITIGATED — the `DEV=1` hatch is
+   built.** The risk was real: `XBUS=1` stubs the delay out, and the specialized
+   build puts BongDelay in payload B only, which `dsp_host` cannot boot
+   (`REVERB.md`) — so the delay would have lost its local render loop exactly
+   when it needed one.
+
+   `DEV=1` keeps all three servers real in both payloads and dumps
+   `out/dsp/mem_dev_A.mem` beside the image. It pays for the space by taking
+   **CHORUS back as a fourth donor** (329 words, immediately below PLATE and
+   contiguous with it — the build asserts that rather than assuming it), because
+   SEND + REVERB + a gated DELAY is **2,744 words against the 2,724** the three
+   reverbs alone provide. That costs FX1 its chorus, so a DEV build writes
+   `out/mainos_bus_dev.bin`, never `out/mainos_bus.bin`, and refuses to combine
+   with `BURN`/`PROBE`/`XPROBE`/`DELAYPROBE`.
+
+   `send_probe.py --layout` now takes **`D`** alongside `R` and `S`, and
+   `--dlevel` drives the `→DELAY` send (`x:(r6+0)`) — a separate knob from
+   `→REVERB` (`x:(r6+1)`), which is why the first run rendered silence.
+
+   ```sh
+   DEV=1 XBUS=1 python3 tools/build_bus.py
+   python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+   ```
+
+   ✅ **Verified: BongDelay produced audio over the bus for the first time** —
+   peak 0.074 FS, −14.6 dBFS, THD −35.2 dB, against **digital silence** on a
+   non-DEV image. And the existing reverb path is **bit-for-bit unchanged**:
+   `--layout RS` against `HEAD`'s script and the new one agree to every digit
+   (peak 0.243, −15.2 dBFS, THD −11.08, same spurs). SEND vs DIRECT at 0.15 FS
+   is −36.18 vs −36.17 — the send path is still faithful; the −11 dB at 0.5 FS
+   is the known tank saturation above ~0.35 FS, not a regression.
+3. **Asymmetric payloads make the menu a footgun.** Selecting ChonVerb on
+   track 6 would dispatch into whatever now occupies that address in payload B.
+   The mechanism to prevent it already exists and is proven — the null stub
+   (`nul_i`/`nul_p`) and the id-0 → SEND aliasing. Wire ChonVerb → SEND on
+   payload B and BongDelay → SEND on payload A, deliberately.
+4. **`tools/cycle_count.py` still prints `budget/DSP 1080`**, a number
+   retracted twice. It will report a design that fits as over budget. Fix the
+   constant before anyone uses it to make a decision.
+
+## Recommended order
+
+1. ~~**`DEV=1` local-render escape hatch for the delay**~~ — **DONE**, see
+   risk 2 above. BongDelay now renders locally for the first time.
+2. **One `BURN=1` flash, then sweep.** Settles two things in one trip to the
+   device: **the real FX1 worst case** (which decides whether 8 lines fits) and
+   **`Y:0x34000`** (risk 1, which decides the memory plan). Both are blockers
+   for design decisions below them, and neither costs a second flash.
+3. **Specialize the payloads** — drop BongDelay from A, ChonVerb from B, alias
+   both to SEND, and confirm the free-word counts (494 / 2,005). Pure win, no
+   design decisions in it.
+4. **Roll the reverb's tank loop.** Cycles for words, at a very good rate, and
+   it is what makes 8 lines affordable rather than marginal.
+5. **Eight lines.** The first real audible step the memory buys.
+6. **Re-scope BongDelay against its actual budget**, then audition it.
+
+## Still open, and unchanged by any of this
+
 - **BIG rings.** ~30 dB more HF than the other modes with no shimmer: a dense
   cluster of non-harmonic lines at 2–2.8 kHz. `md_big` sets the decay scale
   `x:(r7+$1e)` to `$7FFFFF` = exactly 1.000000 where ROOM/PLATE/HALL leave
   headroom (0.920/0.965/0.980). NOT simple runaway feedback — HF *falls* as
   TIME rises and is already high at TIME=0, so suspect the input/early path.
-- **Tank saturation above ~0.35 FS.** Now the only level limit left, since the
-  bus no longer rails. Affects the reverb on its own track too.
-- **The DELAY accumulator has no auto-gain.** Same fix as v121 when BongDelay
-  is worked on.
+- **Tank saturation above ~0.35 FS.** The only level limit left since v121.
+- **The DELAY accumulator has no auto-gain.** Same fix as v121; fold it into
+  the delay re-scope.
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly so every slot looks live locally, while on
-  hardware a slot can draw a knob and publish nothing. This is what let the
-  emulator report "clean" for a whole session against an audibly broken device.
+  hardware a slot can draw a knob and publish nothing.
+- **Flash a build carrying v121.** The card holds `OCTATRACK_NOSHIM31.bin`,
+  which predates the bus auto-gain.
 
-**Hard constraint, new:** the payload region is **FULL — 2723 of 2724 words,
-one spare**. Anything added to any of the three effects needs space found first.
-The shimmer's excision is what paid for v121.
+~~**Hard constraint: the payload region is FULL, one spare word.**~~
+**Retracted by specialization** — 494 free on A, 2,005 on B.
 
 ## Constraints that shape it
 
