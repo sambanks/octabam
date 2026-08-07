@@ -1,7 +1,7 @@
 # The plan: end state, resource ledger, and work order
 
 Written 8 Aug 2026, after a full re-evaluation of where every resource goes.
-**This is the cold-start document — read it before `XBUS.md`**, which is now
+**This is the cold-start document — read it before `docs/XBUS.md`**, which is now
 the *architecture* record rather than the plan.
 
 ---
@@ -16,9 +16,9 @@ cannot be spent on.
 |---|---|
 | On the unit | **`ChonVerb31`** — no specialization, **no v121 auto-gain** |
 | Built, not flashed | specialization (`SPEC=1`), bus auto-gain (v121), the `DEV=1` render hatch |
-| Reverb | voiced, confirmed by ear, shimmer excised. Not growing yet |
+| Reverb | voiced, confirmed by ear, shimmer excised. **Structurally still the four-line tank it started as** |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
-| Next | **BongDelay**, then FX1 consolidation, then the 8-line tank |
+| Next | **Finish ChonVerb**, then BongDelay, then FX1 consolidation |
 
 ⚠️ **The unit's current build breaks above three simultaneous sends** — v121
 fixed that and has never been flashed. Any hardware trip should carry it.
@@ -74,7 +74,7 @@ The ten, with sizes (identical in both payloads):
     EQUALIZER 282   COMB 277   SPATIALIZER 261   COMPRESSOR 180   PHASER 157
 
 **Untested levers, in order of preference — do not touch until 527 is tight:**
-- **OMR memory map** (`CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K, **+8,192
+- **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K, **+8,192
   words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. 🟡
 - **Code in the shared window**: P/X/Y alias at `0x30000-0x3FFFF` ✅ and stock
   already runs code there ✅, so up to 64K is program-addressable at 1 wait
@@ -106,10 +106,115 @@ enough for doublers, short slaps, wide chorus.
 
 ## Work order
 
-### 1. BongDelay — the delay you can route
+### 1. Finish ChonVerb — spend the resources that were not there when it was designed
 
-**Why it is first: it is the only thing that can spend payload B's 2,600
-words, and it is the one feature the machine has never had.**
+**Why it moved to first.** ChonVerb was designed against a budget that no
+longer exists. Every structural compromise in it — four lines, an unrolled
+tank, per-line state crammed into `r7` — was made when program space was the
+wall and the cycle ceiling was believed to be 1,080. Both of those turned out
+to be wrong, and the reverb is the effect that everything else feeds. It is
+currently *good*. The resources to make it excellent are already measured and
+sitting unspent.
+
+**Almost all of it needs no hardware**, which is what makes it a sane first
+step: the roll, the eight lines and the re-voicing are all built, rendered and
+judged by ear locally. The one exception is shimmer's depth control, which has
+to be confirmed on a real unit — fold that into step 2's trip rather than
+making a flash of its own.
+
+#### The dependency that used to put this last is gone
+
+The old plan sequenced the eight-line tank *after* FX1 consolidation, on the
+reasoning that eight lines cost ~450-500 words against payload A's 527. That
+estimate looks pessimistic. Counted from the shipping source:
+
+| block | instrs | per line |
+|---|---|---|
+| four taps, damped inside the feedback path | **101** | ~25 |
+| feedback and write-back | **101** | ~25 |
+| 4x4 Hadamard | **18** | — |
+| *shimmer (excised by default — not in the shipping build)* | *71* | — |
+
+So the tank's per-line work is **~50 instructions**, and eight lines unrolled
+is **~+210-235 words** 🟡 — inside payload A's **494 free today**, with no FX1
+work required first. The old figure appears to have doubled the whole 291-instr
+tank *including the shimmer that is no longer built*.
+
+⚠️ Instruction counts above are exact (counted from `dsp/reverb_server.asm`);
+the **word** figure is inferred, because some DSP56300 instructions assemble to
+two words. **Falsified or confirmed by the build's own region report** — build
+it and read `FREE`. Do not spend this number twice before it is checked.
+
+**Roll the tank first and the question stops mattering.** Rolled, the four-line
+tank is ~60 words instead of 202, and **eight lines costs the same as four** —
+the line count becomes a loop bound, which is data, not code. That both frees
+~140 words *and* decouples the reverb's growth from FX1's pool permanently.
+
+#### The real constraint is now cycles and voicing, not space
+
+Eight lines roughly doubles the tank's cycle cost against **1,392 measured
+spare** — comfortable, but it is the number to watch, and it is the same number
+FX1 spends ×4 per core. Track it with `make cycles` every pass.
+
+#### The work, in order
+
+1. **Roll the tank loop.** 265 instructions doing 66 instructions' work. Move
+   per-line state to absolute Y — `r7` is full (`$10..$83` used, `$84+` hangs),
+   and the roll needs indexable state anyway. The two are one change.
+   **Gate: bit-identical to the unrolled build at four lines**, with the
+   single-`nop` control that proves the comparison is not blind.
+2. **Eight lines.** Modal overlap 0.157 → ~0.31 — the density step people
+   actually hear. Needs an 8x8 Hadamard; as a fast Walsh-Hadamard that is
+   24 butterflies against the 4x4's 8, still adds and subtracts only.
+3. **Shimmer — a new one, from scratch.** The old implementation was heard and
+   **it was bad.** It stays excised, and `SHIMMER=1` is a reference for what
+   not to repeat, not a starting point. Do not re-enable it and re-voice it.
+
+   It was **71 instructions for a +12 pitch shift inside the feedback path** —
+   which is the same story as the rest of this section. It was cheap because
+   nothing could be afforded when it was written, and a pitch shifter done that
+   cheaply, placed inside a feedback loop where its artifacts recirculate and
+   compound, is the metallic sound. That budget no longer applies.
+
+   Two things to change on the second attempt, both now affordable:
+   - **Spend real instructions on the shifter itself** — proper overlapping
+     windows with crossfaded reads, rather than whatever fits in 71 words.
+   - **Reconsider the placement.** Inside the feedback path every artifact
+     compounds on every pass. A shifted *parallel send into* the tank gives the
+     same rising character without the loop multiplying its flaws.
+
+   Two constraints carry over from the first attempt:
+   - ⚠️ **It must be able to reach zero and actually turn off.** The old one's
+     depth drew a knob and published nothing, so it ran stuck half-on. That is
+     the parameter-delivery item below — a shimmer that cannot be switched off
+     is a defect regardless of how it sounds. **Verify the slot publishes on
+     real hardware**; `dsp_host` pokes `r6` directly, so every slot looks live
+     in the emulator. Fold that check into step 2's `BURN=1` trip.
+   - **Judge it at eight lines, not four.** Denser feedback is a different host
+     for a pitch shift.
+
+4. **Re-voice all four modes.** Tap ratios and diffusion were chosen for four
+   lines; eight changes the echo density that every MODE constant was tuned
+   against. `docs/VOICING.md` is the log, and the rule stands — judged by ear,
+   level-matched, A/B/A/B, wet-only.
+5. **Then spend what is left on quality, not size.** The open items in this
+   document are the list: BIG's ringing HF, tank saturation above ~0.35 FS.
+
+#### What "excellent" means here, so it can be called done
+
+Not "bigger". A reverb is finished when a long tail decays without a metallic
+signature, when a dense source does not turn to granular hash, and when the
+four modes are genuinely different spaces rather than one space at four
+lengths. Those are ear judgements, they belong in `docs/VOICING.md`, and they
+are the acceptance test — not the word count.
+
+### 2. BongDelay — the delay you can route
+
+**Why it is second rather than first: it is the only thing that can spend
+payload B's 2,600 words, and it is the one feature the machine has never had —
+but it competes with nothing, so nothing is lost by finishing the reverb
+first.** The reverb draws payload A; the delay draws payload B. Sequencing
+between them is a choice about attention, not about resources.
 
 ✅ **The stock delay is DOWNSTREAM of the FX2 insert** (measured by ear,
 `fcf22fd`). Every slot we can reach is upstream, so **its output can never be
@@ -130,13 +235,12 @@ Traps, all already paid for once:
 - **AGU modulo is no longer mandatory.** Power-of-2 alignment is what caps a
   line at 16,384 words; a manual compare-and-wrap is ~4-6 cycles/sample —
   unaffordable before, free now. It is the only way to a single 1.49 s line.
-- Render locally, no flash: `DEV=1 XBUS=1 python3 tools/build_bus.py` then
-  `python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS`.
+- Render locally, no flash: `make render`.
 
 Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
 `PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used.
 
-### 2. FX1 consolidation — where payload A's space comes from
+### 3. FX1 consolidation — turning 12,288 stranded words into capability
 
 The trick ChonVerb already ran: replace near-duplicates with one engine plus a
 MODE select.
@@ -150,25 +254,22 @@ All four in row 1 are the same structure — a short modulated delay with
 feedback, differing in length, modulation and allpass-vs-comb. They are also
 the effects most in need of a 2026 rewrite.
 
-**~900 words freed takes payload A from 527 to ~1,400**, which is what makes
-step 3 affordable rather than marginal.
+**~900 words freed takes payload A from 527 to ~1,400.** That is no longer
+needed to make the reverb affordable — rolling the tank does that (step 1).
+It is now headroom for FX1's *own* ambition, which is the point: FX1's
+12,288 words of per-core delay memory are stranded until an FX1 effect exists
+to reach them.
 
 **FILTER is the outlier**: 727 words, the largest, the default FX1 effect, and
-~260 cycles — far more than a biquad should cost, which `CHIP.md` reads as a
+~260 cycles — far more than a biquad should cost, which `docs/CHIP.md` reads as a
 large fixed per-call overhead. Highest value, highest risk; it is the effect
 people actually rely on.
 
 ✅ **Taking the three reverbs cost FX1 nothing** — they were never on its menu
 (both chooser lists decoded 8 Aug). FX1's ten effects are the whole pool.
 
-### 3. Eight tank lines — the reverb's next audible step
-
-Modal overlap 0.157 → ~0.31. Costs ~450-500 words unrolled 🟡 against
-payload A's 527 today — which is why step 2 comes first. **Roll the tank loop
-in the same pass** (265 instructions doing 66 instructions' work) and move the
-per-line state to absolute Y, since `r7` is full; the two have the same fix.
-Gate: bit-identical to the unrolled build at four lines, with the single-`nop`
-control that proves the comparison is not blind.
+> The eight-line tank used to be step 3 here. It is now part of step 1, where
+> the numbers say it belongs.
 
 ---
 
@@ -176,14 +277,16 @@ control that proves the comparison is not blind.
 
 **A `BURN=1` flash, then sweep from the front panel.** It answers **the real
 FX1 worst case** — four *different* heavy FX1 effects, one per track, plus the
-bank — which decides whether step 3 fits. Once the build is on the card every
-further configuration is a knob sweep with **no further flash**.
+bank — which decides how much FX1 can afford. Once the build is on the card
+every further configuration is a knob sweep with **no further flash**.
 
 `Y:0x34000` is no longer part of this trip: ❌ retracted 8 Aug, it was
-falsified by our own v107 bisect (`CHIP.md` §6).
+falsified by our own v107 bisect (`docs/CHIP.md` §6).
 
-**Sequence it with the delay, not before it** — step 1 needs no hardware, and
-the sweep informs step 2/3.
+**Sequence it with the delay (step 2), not before it.** Step 1 needs no
+hardware at all, and the sweep informs step 3. ⚠️ Whatever trip happens next
+must carry **v121's bus auto-gain** — the build on the unit predates it and
+breaks above three simultaneous sends.
 
 ---
 
@@ -206,16 +309,19 @@ the sweep informs step 2/3.
 ## Build commands
 
 ```sh
-python3 tools/build_bus.py                    # plain, flashable
-XBUS=1 SPEC=1 python3 tools/build_bus.py      # specialized -- the real image
-DEV=1  XBUS=1 python3 tools/build_bus.py      # local render, NEVER flash
-BURN=1 python3 tools/build_bus.py             # cycle meter on p3
+make bus                    # specialized, cross-core -- THE image
+make bus-plain              # both servers on both cores
+make render                 # build DEV + render the bus locally, no flash
+make burn                   # cycle meter on p3
+make image BUILD=002        # repack as a flashable .bin, version-stamped
 
-python3 tools/verify_menu.py                  # ColdFire menu tables
-python3 tools/verify_burn.py                  # burn probe is inert when off
-python3 tools/cycle_count.py                  # per-effect cycles
+make check                  # bus + cycles + verify, everything without hardware
+make cycles                 # per-effect cycles against the measured budget
+make verify                 # ColdFire menu tables; burn probe inert when off
+make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 ```
 
-Bump `BUILD_TAG` in `tools/build_bus.py` before wrapping any `.bin` — the tag
-is displayed on the panel, and three debugging rounds were once lost to not
-knowing which firmware was on the unit.
+**Bump `BUILD` on every flash** (`make image BUILD=002`). It is stamped into
+the OS version field and shown on the panel; three debugging rounds were once
+lost to not knowing which firmware was on the unit. Also bump `BUILD_TAG` in
+`tools/build_bus.py` if you change what the effect names read.
