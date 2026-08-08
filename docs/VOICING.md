@@ -559,3 +559,63 @@ local envelope (Round 5), whose only structural lever is more total delay
 against a 32K hard ceiling. And two things the emulator cannot check at all —
 the cycle budget with a full bank live, and the UI surface for WIDTH and →DEL,
 whose companion fields `-params` cannot drive.
+
+---
+
+### Round 6 — the eight-line tank, 8 Aug 2026: four faults, then a voicing item
+
+Not a voicing round. Every judgement here was about whether the engine *worked*,
+and the answer was no four times running. Logged because the verdicts were made
+by ear and because Round 7 — the actual re-voicing — starts from where this
+left the engine.
+
+**The harness lied first, and that is the reusable lesson.** `render_reverb.py`
+keyed its build cache on mode and mtime but not on the ENGINE, and
+`build_bus.py` writes every `MODE=` build to one path whatever `RVSRC` says. So
+A/B-ing two engines replayed whichever build landed there first. The eight-line
+tank "sounded exactly like" the four-line one because it **was** the four-line
+one. Before trusting any comparison, confirm the thing you think you are
+rendering is the thing being rendered — this is the 24-bit-parse trap of 7 Aug
+wearing different clothes.
+
+The second lie was a metric. `tail to -60 dB` scores the last window above
+-60 dB **relative to the tail's own peak**, so a tail that *grows* scores as a
+magnificent one. It reported 7.90 s for an engine that was diverging — the
+number that had been written down as proof the eight-line tank worked. **Read
+the per-second envelope; a single scalar cannot tell decay from runaway.**
+
+| # | played | verdict |
+|---|---|---|
+| A | v4 vs 8-line, after the matrix, input-sign and frozen-line fixes | *"still not parity quality wise, but the fault is clearly gone"* |
+| B | after the output-tap fix | *"closer but there is a stutter in the tail on the 8 line"* |
+| C | after giving lines 4-7 distinct lengths | *"the distorted stutter is still there. Couple glitches in the first hit and then the stutter in the second hit"* |
+| D | 4 clips: v4 / 8-line / 8-line MOD=0 / 8-line PLATE | *"glitches went away on 4 ... still a bit of a thwack but that's been around for ages and is tuning rather than a fault"* |
+
+All wet-only, RMS-matched to -22 dBFS, same source. Round D is the one that
+localised it, and it did so because each clip removed exactly one thing.
+
+**What each verdict cost, and what it bought.** B followed the output tap being
+moved ahead of the FWHT — the transform overwrites its slots in place, so the
+output had been applying Hadamard rows to a Hadamard transform and collapsing
+to one line per channel at 8x. C followed lines 4-7 getting their own tap
+lengths; they had been reusing lines 0-3's four fractions, so the tank had four
+duplicate pairs and the modal-overlap doubling the whole step was justified by
+had never happened. Neither is a tuning choice — both were structurally wrong.
+
+**Where Round 7 starts.** The remaining artifact is **ROOM's early reflections**,
+and it is voicing, not a fault: the ER accumulator is byte-identical to the
+four-line engine. Two things moved underneath it. The output-tap fix dropped the
+tank ~9 dB relative to ER, and lines 4-7 now sit at 11-18 ms, overlapping the
+ER taps at 4.5-21.3 ms where the four-line's lines sat at 14-22 ms. So ROOM's
+`$6c` = 0.75 is a balance struck against a tank that no longer exists.
+
+Two more things to re-voice, both known-compromised rather than chosen:
+
+* **Lines 4-7's tap lengths are derived, not voiced** — one `x1` scale of 0.789
+  applied to lines 0-3's fractions, chosen to interleave (488/571/618/667/723/
+  781/846/989 samples, every gap >= 47) and *not* to sound like anything. They
+  want their own per-MODE constants; the region now has 6 free words.
+* **Every MODE constant** was tuned against four lines at a different density.
+
+⚠️ Judge at eight lines and wet-only, and do not re-enable `SHIMMER=1` — it
+stays excised, and a new shifter is a separate job.
