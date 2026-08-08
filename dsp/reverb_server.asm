@@ -768,14 +768,11 @@ warmdone:
 ;   line   0    1    2    3     4    5    6    7
 ;   weight +1   -1  -1/2  +1/2  +1/2 +1   -1  -1/2      sum = 0
 ;
-; THE has_ap WORD IS NOT WRITTEN, because nothing reads it. The write-back
-; loads it (`move y:(r6)+,b ; has_allpass (consumed)`) purely to step r6 over
-; it, and then discards it -- the allpass-vs-plain decision is hardcoded by
-; the unrolled Steps 2/3/4, and the engine's only conditional branches are in
-; the bus housekeeper, the warm-up, MODE and MIX. So the second word of each
-; pair keeps its warm-up zero and n1=2 strides past it. That is what pays for
-; the four new lines: this block is 19 words against the old 18, and the
-; region had exactly 2 free.
+; THE SECOND WORD IS NOT WRITTEN HERE. It was the dead has_allpass flag until
+; 9 Aug 2026; it now carries the PER-LINE DECAY GAIN (PLAN.md 1.1), primed by
+; its own block AFTER the TIME block folds TIME and MODE into $1e -- it cannot
+; be written this early, because $1e is not final yet. This chain writes the
+; weights only and n1=2 strides past the gain word, exactly as it always did.
 ;
 ; The chain generates all eight weights from ONE immediate. `neg`/`asr`/`asl`
 ; walk the accumulator +1 -> -1 -> -1/2 -> +1/2 -> (reuse) -> +1 -> -1 -> -1/2,
@@ -1284,6 +1281,112 @@ md_done:
         move    x:(r7+$1e),y1           ; $1e by the md_ block above. TIME still
         mpy     x1,y1,a                 ; spans its full range inside a character.
         move    a,x:(r7+$1e)
+
+; ---- per-line decay gains (PLAN.md 1.1) ---------------------------------
+; $1e is one decay gain, but the lines circulate at different rates, so equal
+; gain per PASS is unequal decay per SECOND: at ROOM's defaults the longest
+; line (tap 882, 50 passes/s) loses ~50 dB/s while the shortest (tap 400,
+; 110 passes/s) loses ~110 dB/s. An eight-line tank decaying into a two- or
+; three-line one IS the tail that starts lush and turns metallic.
+;
+; Jot's fix is g_i = g^(T_i/T_ref), linearised about the loop-neutral point:
+;
+;     stored_i = a + r_i*($1e - a),   r_i = T_i/T_0 (line 0 is the longest),
+;     a = 1/sqrt(8) = $2D413C
+;
+; THE ACCOUNTING, all of it measured 9 Aug 2026 (this block shipped twice
+; before with wrong constants and self-oscillated both times):
+;   - The multiplies in this toolchain DO NOT DOUBLE. mpy/mpysu produce the
+;     plain product x*y. Measured two independent ways: $1e peeked at three
+;     TIME values fits TIME_val*md exactly (0.4674/0.5001/0.4999 * 0.6505 =
+;     0.3040/0.3146/0.3251), and the first build's peeked gains solve to
+;     k = 1.0002 for the priming mpy. Every "mpy doubles" claim in older
+;     comments is about the CHIP's fractional convention, not this emulator.
+;     ⚠ VERIFY ON HARDWARE (BURN trip): if silicon's mpy shifts left where
+;     the emulator's does not, every decay time halves-or-doubles on the
+;     unit and this block's anchor is wrong there.
+;   - So the line's per-pass multiplier IS the stored word, and the loop is
+;     diag(stored_i)*H8 with ||H8|| = sqrt(8): the UNIFORM engine is already
+;     norm-stable (max $1e = 0.3252, radius <= 0.92). The two explosions were
+;     nothing exotic: gains of 0.41..0.48 pushed the norm over 1.
+;   - Loop-neutral is stored = 1/sqrt(8). $1e can never reach it (max
+;     TIME_val 0.4999 * max md 0.6505 = 0.3252 < 0.3536), so ($1e - a) is
+;     ALWAYS negative and stored_i = a + r_i*($1e - a) is a weighted average
+;     sitting strictly below a: max stored ~ 0.341 at the shortest line,
+;     radius <= 0.341*sqrt(8) = 0.965. Stable BY NORM at every knob in every
+;     mode -- no cancellation argument, no measured-F fudge.
+;   - r_i wants T_i/T_0. The fractions in $74..$77 are HALF-scale (frac_0 =
+;     0.4832), so r_i = 2*frac_i (times $6c's scale for lines 4-7) -- and
+;     since the mpy does NOT double, the 2 is paid with an explicit asl.
+;
+; Primed HERE, after TIME and MODE have both folded into $1e -- the table-B
+; weight chain near the top of the block runs before $1e is final. Gains land
+; in table B's SECOND word (base $0d, +1, stride 2), which was primed zero
+; and read once purely to step r6 -- the write-back loops read it as the live
+; per-line gain at the same instruction count. Per block, nothing per sample.
+; m5 is linear here (set $ffffff by the auto-gain block, untouched until the
+; loop seeding below), so r5 walks clean.
+;
+; ($1e - a) is NEGATIVE, so it rides in y1, never y0: `mpy x0,y0` assembles
+; as mpysu (the documented dsp_asm trap) and an unsigned second operand
+; corrupts a negative multiplier. `mpy x0,y1` is a pairing that encodes
+; signed (verified in the disassembly).
+        move    x:(r7+$0d),a            ; table B base
+        move    #>$1,x0
+        add     x0,a
+        move    a,r5                    ; -> line 0's gain word
+        move    #2,n5                   ; stride 2 (short immediate: address
+                                        ; register, zero-extended -- safe)
+        move    #>$2d413c,x1            ; anchor a = 1/sqrt(8), held for sub/add
+        move    x:(r7+$1e),a
+        sub     x1,a
+        move    a,y1                    ; ($1e - a), group A's multiplier
+        move    x:(r7+$74),x0           ; line 0 fraction (half-scale)
+        mpy     x0,y1,a                 ; frac*($1e-a) -- plain product
+        asl     a                       ; r_0*($1e-a), r_0 = 2*frac_0 = 0.966
+        add     x1,a                    ; + a
+        move    a,y:(r5)+n5             ; line 0 gain
+        move    x:(r7+$75),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 1 gain
+        move    x:(r7+$76),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 2 gain
+        move    x:(r7+$77),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 3 gain
+; Lines 4-7 share the fractions, scaled by $6c: r_i = 2*frac_i*scale. The
+; scale folds into y1 once (plain product again -- no asr compensation, the
+; first build's asr was undoing a doubling that never happens).
+        move    x:(r7+$6c),x0           ; lines 4-7 tap scale (positive)
+        mpy     x0,y1,a                 ; scale*($1e-a)
+        move    a,y1                    ; group B's multiplier
+        move    x:(r7+$74),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 4 gain
+        move    x:(r7+$75),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 5 gain
+        move    x:(r7+$76),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)+n5             ; line 6 gain
+        move    x:(r7+$77),x0
+        mpy     x0,y1,a
+        asl     a
+        add     x1,a
+        move    a,y:(r5)                ; line 7 gain
 
 ; ---- HI: high cut, on the knob LABELLED LP ($4) --------------------------
 ; The one-pole is s += c*(d-s), so a LARGE c tracks the input and keeps highs.
@@ -2870,25 +2973,27 @@ shd1:
 ; ---- feedback and write back (ROLLED, 8-line) ----------------------------
 ; The 8x8 Hadamard leaves u0..u7 in r7+$16..$19 (group A) and $3a..$3d
 ; (group B). Table B at r7+$0d: 2 words per line — +0 input_weight (sign
-; * scale, combined), +1 has_allpass flag.
+; * scale, combined), +1 per-line decay gain stored_k (PLAN.md 1.1; this
+; word was the dead has_allpass flag until 9 Aug 2026).
 ;
-; Step 1: compute fb[k] = u[k]*g/2 + input*weight[k] for all 8 lines.
+; Step 1: compute fb[k] = u[k]*G_k + input*weight[k] for all 8 lines,
+;         G_k the per-line decay gain primed after the TIME block.
 ;         fb[0..3] → scratch $1a..$1d, fb[4..7] → scratch $41..$44.
 ; Step 2: allpass A processes fb[0], writes to r1 (line 0).
 ; Step 3: allpass B processes fb[1], writes to r2 (line 1).
 ; Step 4: write fb[2..7] to lines 2-7 via a rolled loop.
 
-        move    x:(r7+$1e),y0           ; g/2, loaded ONCE for the whole
-                                        ; write-back section. Nothing below
-                                        ; clobbers y0.
         move    x:(r7+$0d),a            ; table B base
-        move    a,r6
+        move    a,r6                    ; (the global $1e load into y0 that
+                                        ; lived here is GONE: each line's gain
+                                        ; now arrives from table B inside the
+                                        ; loops, one word later in the same
+                                        ; read that used to be discarded)
 
 ; -- Step 1a: rolled feedback, group A (u[0..3] at $16..$19) --------------
 ; r4 walks u[0..3] (post-increment), r5 walks scratch[0..3] ($1a..$1d).
-; r6 already walks table B (weight + has_allpass, 2 words per line).
-; y0 = g/2, held across both loops. Input reloaded from $15 each iteration
-; because mpy x0,y1,b overwrites b.
+; r6 already walks table B (weight + gain, 2 words per line). Input reloaded
+; from $15 each iteration because mpy x0,y1,b overwrites b.
         move    r7,a
         move    #>$16,x0
         add     x0,a
@@ -2900,15 +3005,20 @@ shd1:
         move    x:(r7+$15),b            ; input, also spaces the r5 write
         nop
         do      #4,>fbA
-        move    x:(r4)+,a              ; u[k]
-        move    a,x0
-        mpy     x0,y0,a                ; u[k] * g/2
         move    y:(r6)+,x0             ; weight[k]
         move    x:(r7+$15),b           ; input (fresh each iteration)
         move    b,y1
         mpy     x0,y1,b                ; input * weight[k]
-        add     b,a                    ; fb = u*g/2 + input*weight
-        move    y:(r6)+,x0             ; has_allpass (consumed into x0, dead)
+        move    x:(r4)+,a              ; u[k]
+        move    a,x0
+        move    y:(r6)+,y0             ; gain[k]: the read that used to be
+                                       ; discarded is the live per-line gain.
+                                       ; ALWAYS POSITIVE (>= min($1e, 1/√8)),
+                                       ; so mpy-as-mpysu is harmless here
+        mpy     x0,y0,a                ; u[k] * G_k  (a PLAIN product -- the
+                                       ; multiplies here do NOT double; see
+                                       ; the priming block's accounting)
+        add     b,a                    ; fb = u*G_k + input*weight
         move    a,x:(r5)+              ; store fb[k] to scratch
         nop                            ; one instruction between r5 write and use
 fbA:
@@ -2926,15 +3036,15 @@ fbA:
         move    x:(r7+$15),b            ; input, also spaces the r5 write
         nop
         do      #4,>fbB
-        move    x:(r4)+,a              ; u[k]
-        move    a,x0
-        mpy     x0,y0,a                ; u[k] * g/2
         move    y:(r6)+,x0             ; weight[k]
         move    x:(r7+$15),b           ; input (fresh each iteration)
         move    b,y1
         mpy     x0,y1,b                ; input * weight[k]
-        add     b,a                    ; fb = u*g/2 + input*weight
-        move    y:(r6)+,x0             ; has_allpass (consumed into x0, dead)
+        move    x:(r4)+,a              ; u[k]
+        move    a,x0
+        move    y:(r6)+,y0             ; gain[k], as in fbA
+        mpy     x0,y0,a                ; u[k] * G_k
+        add     b,a                    ; fb = u*G_k + input*weight
         move    a,x:(r5)+              ; store fb[k] to scratch
         nop
 fbB:
@@ -2956,8 +3066,9 @@ fbB:
         move    x:(r7+$5e),x0
         add     x0,a
         move    a,r5                    ; = write address
-        move    x:(r7+$6d),y1           ; g -- y1, NOT y0: y0 holds g/2
-        move    x:(r7+$15),x0           ; across the whole write-back section
+        move    x:(r7+$6d),y1           ; g -- y1 by convention (y0 carried the
+        move    x:(r7+$15),x0           ; global gain before PLAN.md 1.1; it is
+                                        ; per-line now and y0 is free here)
         move    y:(r5+n5),b             ; d0
 ; Interpolate against the PREVIOUS sample's d0.
         move    x:(r7+$5c),a            ; d1 = last sample's d0

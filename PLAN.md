@@ -24,7 +24,7 @@ specced and next to build.
 | Reverb | **eight-line, the only engine** — `dsp/reverb_server.asm`. Decays correctly, modes distinct, linear below −6 dBFS. Worst *known* remaining defect: per-line decay skew (step 1.1). Four-line source deleted: `git show c1ce08d:dsp/reverb_server.asm` |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
 | Flash gate | **When ChonVerb is "excellent"** (the acceptance test below) — Sam's call, 9 Aug. The trip must carry v121 **with** the `$0c` fix |
-| Next | 1.1a normalize the FWHT → 1.1b per-line decay gains → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
+| Next | ✅ 1.1 per-line decay gains BUILT (9 Aug) → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
 
 ⚠️ **The unit's current build breaks above three simultaneous sends** — the
 auto-gain fixes that and has never been flashed. Any hardware trip carries it.
@@ -131,70 +131,75 @@ top ~4 dB. What remains is that **what you hear of the tail is not yet what
 the tank does** — and the items below are ordered so each measurement is made
 on top of the previous fix, not through it.
 
-#### 1.1 Per-line decay gains — still the largest known audible defect, but
-#### ❌ the "free" spec is RETRACTED (built and falsified 9 Aug): it needs a
-#### normalized feedback matrix first
+#### 1.1 Per-line decay gains — ✅ BUILT AND VERIFIED, 9 Aug 2026 (third
+#### attempt; the first two self-oscillated, and both prior theories of why
+#### are retracted below)
 
-The defect is real and unchanged: `$1e` is ONE decay gain for all eight
-lines, so equal gain *per pass* is unequal decay *per second* — ~17 dB/s
-spread at ROOM's settings, an eight-line tank that decays into a two- or
-three-line one. That *is* the tail that starts lush and turns metallic.
+The defect was real: `$1e` was ONE decay gain for all eight lines, so equal
+gain *per pass* was unequal decay *per second* — measured ~63 dB/s spread at
+ROOM's defaults (−48.9 longest line to −110 shortest), an eight-line tank
+decaying into a two- or three-line one. That *is* the tail that starts lush
+and turns metallic.
 
-❌ **RETRACTED: `stored_i = 0.5 + r_i·($1e − 0.5)` into Table B, "zero cost,
-provably stable."** It was built 9 Aug and the tank **self-oscillated from a
-−26 dB click at every knob setting, every mode** (+20–30 dB/s growth, rails
-at the wet gain). The spec was wrong twice, and the second one is structural:
+**What shipped**: Jot's `g_i = g^(T_i/T_0)` linearised about the loop-neutral
+point — `stored_i = a + r_i·($1e − a)` with **`a = 1/√8 = $2D413C`**, primed
+per block after the TIME fold into Table B's second word (the dead
+has_allpass slot), read by the write-back loops at the same instruction
+count. 63 program words in the per-block path, ~0 cycles/sample (bank 1332,
+headroom 1024). Payload A FREE 158 → 95.
 
-1. **The anchor.** Stored 0.5 is not loop-neutral; the loop carries a hidden
-   topology factor (measured bounds **1.121 < F < 1.153** in ROOM), so
-   neutral sits at ~0.44. Fixable — re-anchoring at the largest
-   proven-stable value (0.4336) was tried, and:
-2. **It STILL exploded — asymmetry itself is the trigger.** Measured
-   endpoints, same table mechanism throughout: uniform 0.4073 → stable at
-   −96.5 dBFS; uniform 0.4336 → stable; per-line 0.408–0.422 (max BELOW the
-   proven-stable uniform, spread just 3%) → explodes. The FWHT here is the
-   **raw unnormalized H8** (verified: no scaling in any stage), so the
-   tank's stability rests on H8's exact ±cancellation across lines — the
-   same knife-edge that made the first 8-line build unconditionally unstable
-   until the 2/√8 rescale. Per-line gain differences perturb that
-   cancellation by ~spread×√8, which dwarfs the margin. **Jot's per-line
-   gains are only safe around an orthonormal feedback matrix, and this tank
-   does not have one.**
+**The accounting that finally made it work — measured, not derived:**
+- ❌ **"mpy doubles" is FALSE in this toolchain.** Two independent in-situ
+  measurements: `$1e` peeked at three TIME values fits `TIME_val·md`
+  exactly (plain product, three-point exact), and the first failed build's
+  peeked gains solve to k=1.0002 for a genuine signed mpy. Every derivation
+  built on the doubling — the 0.5 anchor, the "hidden factor F", both
+  stability theories — was wrong at the root. ⚠️ **Hardware risk, for the
+  BURN trip checklist**: if silicon's fractional mpy shifts left where the
+  emulator's does not, every decay constant is 2× off on the unit. The
+  8-line engine has never run on hardware; check decay times first.
+- The line's per-pass multiplier is the stored word itself, so the loop is
+  `diag(stored_i)·H8`, ‖H8‖ = √8 — and the uniform engine was **already
+  norm-stable** (max `$1e` = 0.3252, radius ≤ 0.92). Loop-neutral is stored
+  = 1/√8 = 0.3536, and `$1e` = TIME_val·md ≤ 0.4999·0.6505 = 0.3252 can
+  never reach it, so `stored_i` (a weighted average of `a` and `$1e`) stays
+  strictly below neutral: **radius ≤ 0.952 at every knob in every mode,
+  guaranteed by norm alone.** Runtime peek confirms: gains 0.3159..0.3366,
+  exactly as computed.
 
-What survives from the attempt (all verified, in the working tree or git):
-- The Table B mechanism is sound: gains primed per block after TIME folds
-  `$1e` land correctly (peeked at runtime) and the write-back's dead read
-  becomes the live gain at zero extra cost. Variant U (uniform `$1e` through
-  the full table path) renders **byte-identical** to the shipping engine.
-- The per-mode line fractions/taps are measured: ROOM SIZE=127 taps
-  882/762/652/554/638/547/469/400 (pass rates 50–110/s, ratio 2.2).
-- ⚠️ A NEW assembler-trap family member: `mpy x1,y1` (and any operand order
-  dsp_asm doesn't know) silently assembles as **mpysu** — second operand
-  unsigned. 23 sites in the shipping engine are mpysu; all audited safe
-  (positive second operand), but any new mpy with a possibly-negative second
-  operand must be disassembled. `mpy x0,y1` and `mpy y0,x0` encode signed.
+❌ **RETRACTED (both 9 Aug, hours apart):** (1) "stored 0.5 is neutral, the
+gains are free and provably stable" — 0.41–0.48×√8 > 1, it simply exceeded
+the norm; (2) **"asymmetry itself is the trigger** and the tank needs a
+normalized FWHT first (1.1a)" — falsified by the same measurement: the
+"proven-stable uniform 0.4336" control that theory rested on was a *derived*
+$1e value, and the real one is 0.3251. Uniform 0.42 explodes exactly like
+the asymmetric builds did. There is no knife-edge; there was an arithmetic
+error. The planned FWHT surgery (1.1a) is **unnecessary and cancelled** —
+an exact-compensation refactor would not have changed the loop anyway.
 
-**The corrected spec — 1.1a then 1.1b:**
+**Verification (all measured 9 Aug):**
+- Stability: 3 modes × TIME {0,64,127} × SIZE corners, −26 dB click, no
+  growth anywhere (quiet source, per the gate — hot sources mask instability
+  in the clip limit-cycle).
+- Equalisation: predicted per-line decay now −48.9..−46.9 dB/s (2 dB/s
+  spread, was 63); rendered envelope decay-rate drift over the first second
+  improved from −63→−37 dB/s (pre) to −46→−33 (post), early tail density
+  audibly retained, tail runs 5 dB deeper before its floor. Residual drift
+  is consistent with per-line damping — step 1.2's item, HF-only.
+- `make check` green including verify_slots; disassembly of the new block
+  verified instruction-by-instruction (genuine `mpy x0,y1` = 2000c0, no
+  mpysu in the signed path).
 
-- **1.1a Normalize the tank's feedback matrix.** Fold one `asr` into an FWHT
-  stage (H8/2: 8 instructions, ~8 words) and rescale the md_* decay
-  constants ×2/... to restore today's decay times exactly — gate:
-  bit-similar per-second envelopes against the shipping engine at TIME
-  0/64/127 × 3 modes. This buys a **norm-bounded loop** (spectral radius ≤
-  1.414·max multiplier — real margin, not knife-edge cancellation), at the
-  cost that max `$1e` for round-trip-1 becomes 0.3536, so TIME/md
-  recalibrate mechanically (×~0.82).
-- **1.1b Per-line gains on the normalized tank** — the original Table B
-  mechanism, now *mathematically* safe: with an orthogonal-scaled matrix,
-  loop radius ≤ norm × max per-line multiplier, no cancellation dependence.
-  Anchor at the measured neutral, per-mode anchors as a voicing refinement.
+🟡 Still open here: the ~3% r₀ shortfall (r₀ = 2·frac₀ = 0.966, not 1.0)
+uniformly shortens decay slightly — folds into TIME calibration at
+re-voicing. Per-mode anchors are possible later (a is one immediate) but
+the norm argument holds for the global one.
 
-**Gate (unchanged, plus one)**: per-second wet-only envelopes per mode
-(never the `tail to −60 dB` metric alone — it scored THIS explosion as a
-"8.90 s tail" too); decay slope near-constant across the tail; no
-instability at any TIME × SIZE corner in any mode **from a −26 dB click**
-(the hot-source clip limit-cycle masks instability — test quiet); modes
-still distinct.
+⚠️ A NEW assembler-trap datum from the debugging, now in CLAUDE.md: dsp_asm
+silently downgrades any `mpy` operand order it doesn't know to **mpysu**
+(second operand unsigned) — 23 sites in the shipping engine, all audited
+safe. `mpy x0,y1` and `mpy y0,x0` encode signed. Disassemble any new mpy
+whose second operand can go negative.
 
 #### 1.2 Per-line damping — the same defect, one octave up. MEASURE FIRST
 
@@ -212,11 +217,11 @@ coefficient **only if the measured rotation is at audible scale**. Falsified
 by: band-split envelopes decaying at matching rates, in which case close the
 item and say so here.
 
-⚠️ **1.1's falsification applies here with full force:** per-line damping
-differences are per-line asymmetric loss inside the same feedback loop, and
-9 Aug proved a 3% per-line gain asymmetry self-oscillates the unnormalized
-tank. Do not build ANY per-line differentiation before 1.1a normalizes the
-matrix.
+⚠️ Superseding the earlier warning here (the "asymmetry self-oscillates"
+theory is retracted — see 1.1): per-line damping differentiation is safe by
+the same norm argument as the gains, PROVIDED the per-line loss only ever
+scales DOWN from the shared coefficient. Use 1.1's accounting: multiplies
+are plain products, the loop norm is `max_i(gain_i)·√8`, keep it < 1.
 
 #### 1.3 Re-voice the modes — Sam's ears, VOICING.md rules
 
@@ -348,6 +353,11 @@ needs, in one trip, because flash cycles are expensive:
 1. **v121 auto-gain WITH the 9 Aug `$0c` fix** — the unit currently breaks
    above three sends, and v121-without-the-fix was never real.
 2. **The 8-line engine** — hardware has only ever run the four-line.
+   ⚠️ **First check on the unit: decay times vs the emulator.** 1.1's
+   accounting measured that the emulator's mpy does NOT double; if
+   silicon's fractional mpy shifts left, every decay constant (and the
+   1/√8 anchor) is 2× off on hardware — an RT60 sweep against the local
+   renders answers it in one knob pass.
 3. **`BURN=1` probe** (✅ builds again, `make check` green) — the FX1 worst
    case: four different heavy FX1 effects plus the bank. Decides FX1's
    cycle budget. Every configuration after the flash is a knob sweep.
@@ -387,9 +397,18 @@ that must not come back:
   to BIG. Fixed `2da90f0`.
 - ❌ "Per-line decay gains are free and provably stable" (9 Aug spec,
   `7d1dd0b`) — built and falsified the same day: the 0.5 anchor was not
-  neutral, and per-line asymmetry of even 3% self-oscillates the
-  unnormalized H8 tank regardless of anchor. See 1.1 for the corrected
-  two-step spec and what survives.
+  neutral. Working now (third attempt, anchor 1/√8) — see 1.1.
+- ❌ "Per-line asymmetry self-oscillates the unnormalized H8 tank; normalize
+  the FWHT first" (9 Aug, `5d91a94`) — retracted the same day it was
+  written. Its "proven-stable uniform 0.4336" control was a DERIVED `$1e`;
+  the measured one is 0.3251, and uniform 0.42 explodes exactly like the
+  asymmetric builds. Root cause of the whole cascade: **"mpy doubles" is
+  false in this toolchain** (measured, three-point exact) — the multiplier
+  is the stored word itself and the tank was norm-stable all along.
+- ⚠️ Standing hardware caveat from the same finding: if silicon's fractional
+  mpy DOES shift left where the emulator's does not, every decay constant is
+  2× off on the unit — the 8-line has never been flashed; check decay times
+  first thing on the BURN trip.
 - ⚠️ Standing correction, same family: post-8-line multi-send renders before
   9 Aug had auto-gain clobbered by `$0c`; the unit has never had auto-gain.
 
