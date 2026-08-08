@@ -778,14 +778,24 @@ shifted content each circulation. The shimmer's own anti-alias one-pole
 Comment block updated; the `$15` flutter rationale and the cross-core
 LIMITATION paragraph are archived in the source and superseded.
 
-### $0c double-use bug found, deferred
+### $0c double-use bug found, deferred — ✅ FIXED 9 Aug 2026
 
 The per-mode lines-4-7 tap scale (stored to `$0c` by each md_* block) overwrites
 the bus auto-gain 1/N (also stored to `$0c` at line 506). The per-sample
 multiplier at line 2089 therefore reads ~0.75 instead of 1/N. Affects cross-core
 level but not sound character. `$6c` is the only free r7 slot and was reserved
 for the shimmer fix that `$25` now makes unnecessary — it is the obvious home
-for either the tap scale or the bus gain. Not fixed here.
+for either the tap scale or the bus gain. ~~Not fixed here.~~
+
+**Fixed by moving the tap scale to `$6c`** (three md_* stores + the SIZE-block
+read). Measured both ways: the insert-path render is **bit-identical** (same
+audio hash), proving the relocation changed no line length; the send-path
+render (`send_probe.py --layout RS`, one sender) rose **+2.87 dB = exactly
+1/0.71875**, ROOM's tap scale — the value the auto-gain had been wrongly
+multiplying by — with THD, every harmonic and every spur identical to 0.1 dB.
+A pure gain restoration. Note this bug meant **no build before the fix ever
+truly carried v121's auto-gain**, including any render used to judge multi-track
+bus behaviour.
 
 ### Verification
 

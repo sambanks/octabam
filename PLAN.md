@@ -457,7 +457,8 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
      multiplier is `G = 2·$1e`. Wanting `G_i = 1 + r_i(G−1)`, the value to
      store is **`stored_i = 0.5 + r_i·($1e − 0.5)`**.
    - `r_i = T_i/T_ref`, and SIZE scales every line equally, so `r_i` depends
-     only on the per-mode tap fractions already in `$74..$77` (times `$0c` for
+     only on the per-mode tap fractions already in `$74..$77` (times `$6c` —
+     was `$0c` until the 9 Aug slot fix; `$0c` is the bus auto-gain — for
      lines 4-7) — **not on any knob**.
    - `frac_0 ≈ 0.494`, so `r_i ≈ 2·frac_i` to within 1%. And `mpy` already
      multiplies by two. So the whole per-line constant is

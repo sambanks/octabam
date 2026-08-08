@@ -176,7 +176,13 @@
 ;   base+0x7a00   2 in-loop allpasses, 512 words each (v127; were 1024)
 ;   r7+$40        LO coefficient
 ;   r7+$0b        state table base (base+0x7f00)
-;   r7+$0c        lines 4-7 tap scale (per-mode, parked by md_* block)
+;   r7+$0c        bus auto-gain 1/N (housekeeper block; read per sample)
+;   r7+$6c        lines 4-7 tap scale (per-mode, parked by md_* block).
+;                 Was $0c until 9 Aug 2026: the md_* store LANDED ON the bus
+;                 gain (housekeeper writes $0c first, md_* runs after), so the
+;                 per-sample auto-gain multiplied by ~0.72-0.79 instead of 1/N
+;                 and v121's fix was silently un-done in source. $6c is the ER
+;                 level's old slot, freed when ER was removed (Direction A).
 ;   r7+$0d        write-back table base (base+0x7f00 + 8*6 = base+0x7f30)
 ;   r7+$16..$19   Hadamard inputs/outputs u0..u3 (lines 0..3)
 ;   r7+$3a..$3d   Hadamard inputs/outputs u4..u7 (lines 4..7)
@@ -511,9 +517,11 @@ bus_mine:
         move    y:(r5),a
         move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
                                         ; $0c, NOT $6d: $6d is the DIFFUSION
-                                        ; allpass coefficient g. Slots $10..$83
-                                        ; are ALL taken -- the only free words in
-                                        ; the state block are $00..$0c.
+                                        ; allpass coefficient g. And $0c is
+                                        ; the bus gain's ALONE: the md_* tap
+                                        ; scale parked here for a day and every
+                                        ; sample multiplied the bus by ~0.75
+                                        ; instead of 1/N. It lives in $6c now.
 
 ; ---- hardcoded base: BUS.md task 8 (REVERB SERVER always Y:0x4000) ------
 ; No x:0x213 read, no per-instance stash -- every instance of this effect
@@ -958,7 +966,7 @@ md_big:                                 ; 2, and anything unexpected
         move    #>$7fffff,a             ; full modulation: the Valhalla-flavoured
         move    a,x:(r7+$73)            ; scale comes from movement, not length
         move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
-        move    a,x:(r7+$0c)            ; interleave suits the 1.69 spread
+        move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
         bra     md_done
 md_room:
 ; DECAY SCALE, 0.92 -> RT60 ~2.0 s. A room is SHORT; 6.9 s is a cathedral.
@@ -1018,7 +1026,7 @@ md_room:
         move    #>$400000,a             ; least movement: a small room does not
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
         move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
-        move    a,x:(r7+$0c)            ; interleave for a smaller space
+        move    a,x:(r7+$6c)            ; interleave for a smaller space
         bra     md_done
 md_plate:
 ; DECAY SCALE, 0.965 -> ~4.8 s.
@@ -1078,7 +1086,7 @@ md_plate:
         move    #>$599999,a             ; some movement, less than a hall
         move    a,x:(r7+$73)
         move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
-        move    a,x:(r7+$0c)            ; interleave for a dense plate
+        move    a,x:(r7+$6c)            ; interleave for a dense plate
         bra     md_done
 md_done:
 
@@ -1195,10 +1203,12 @@ md_done:
             ; Paid for by hoisting the odd-forcing mask into y1 above: that
             ; freed 10 words, this costs 4.
             ;
-            ; Per-mode scale factor, parked in $0c by the md_* block above.
-            ; Each mode now gets its own interleave (BIG 0.789, ROOM 0.719,
-            ; PLATE 0.766, HALL 0.820), voiced per mode rather than derived.
-            move    x:(r7+$0c),y0           ; this MODE's lines 4-7 tap scale
+            ; Per-mode scale factor, parked in $6c by the md_* block above.
+            ; ($6c, NOT $0c: $0c is the bus auto-gain 1/N, and parking the
+            ; scale there overwrote it -- see the slot map at the top.)
+            ; Each mode gets its own interleave (BIG 0.789, ROOM 0.719,
+            ; PLATE 0.766), voiced per mode rather than derived.
+            move    x:(r7+$6c),y0           ; this MODE's lines 4-7 tap scale
             mpy     x1,y0,a                 ; x1 is dead after this block (the
             move    a,x1                    ; decay block reloads it at ~1300)
             move    x:(r7+$74),x0           ; this MODE's line 0 fraction, rescaled
