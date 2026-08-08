@@ -1188,6 +1188,10 @@ md_done:
 ; Raising the floor costs the smallest spaces, which were the bad ones.
             move    #>$1,y1                 ; the odd-forcing mask, hoisted for
                                             ; all eight lines (see below)
+            move    #>$0800,n0              ; likewise: 2048, used 8 times below.
+                                            ; An address register is free during
+                                            ; setup and move n0,b is 1 word where
+                                            ; move #>$0800,b is 2.
             move    x:(r7+$74),x0           ; this MODE's line 0 fraction
             mpy     x0,x1,a
             asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
@@ -1198,7 +1202,7 @@ md_done:
                                             ; two lines locked at 216 Hz. x0 cannot
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap, for the modulated read
             move    b,x:(r7+$45)            ; line 0 -- was n1, which only worked
                                             ; for a STATIC tap. All four lines are
@@ -1214,7 +1218,7 @@ md_done:
                                             ; two lines locked at 216 Hz. x0 cannot
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap, for the modulated read
             move    b,x:(r7+$2a)
             move    x:(r7+$76),x0           ; this MODE's line 2 fraction
@@ -1227,13 +1231,13 @@ md_done:
                                             ; two lines locked at 216 Hz. x0 cannot
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap, for the modulated read
             move    b,x:(r7+$2b)
             move    x:(r7+$77),x0           ; this MODE's line 3 fraction
             mpy     x0,x1,a
             asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap
             move    b,x:(r7+$46)            ; line 3                    ; -tap, line 3 reads y:(r4+n4)
             ; ---- lines 4-7: the SAME four MODE fractions, RESCALED --------
@@ -1268,27 +1272,27 @@ md_done:
             mpy     x0,x1,a
             asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
             or      y1,a                    ; force the tap ODD (y1=1)
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap
             move    b,x:(r7+$08)            ; line 4
             move    x:(r7+$75),x0           ; this MODE's line 1 fraction, rescaled
             mpy     x0,x1,a
             asr     #$b,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
-            move    #>$0800,b
+            move    n0,b
             sub     a,b
             move    b,x:(r7+$09)            ; line 5
             move    x:(r7+$76),x0           ; this MODE's line 2 fraction, rescaled
             mpy     x0,x1,a
             asr     #$b,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
-            move    #>$0800,b
+            move    n0,b
             sub     a,b
             move    b,x:(r7+$0a)            ; line 6
             move    x:(r7+$77),x0           ; this MODE's line 3 fraction, rescaled
             mpy     x0,x1,a
             asr     #$b,a,a
-            move    #>$0800,b
+            move    n0,b
             sub     a,b                     ; 2048 - tap
             move    b,x:(r7+$4b)            ; line 7
             move    #>$fff,m6           ; PRE-DELAY modulo (4096, unchanged --
