@@ -6,7 +6,7 @@ ear without a flash.
     python3 tools/render_reverb.py loop.wav
     python3 tools/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
     python3 tools/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
-    python3 tools/render_reverb.py loop.wav --mode all       # all four characters
+    python3 tools/render_reverb.py loop.wav --mode all       # all three characters
     python3 tools/render_reverb.py loop.wav --build          # rebuild first
 
 Why this is trustworthy: tools/dsp_host runs the REAL assembled instruction
@@ -249,7 +249,7 @@ def ensure_mem(build):
     return mem
 
 
-MODES = ["ROOM", "PLATE", "HALL", "BIG"]     # dsp/reverb_server.asm's md_* order
+MODES = ["ROOM", "PLATE", "BIG"]     # dsp/reverb_server.asm's md_* order
 
 
 def ensure_mode_mem(mode, build):

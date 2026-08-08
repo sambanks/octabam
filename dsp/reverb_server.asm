@@ -762,18 +762,21 @@ warmdone:
                                         ; as modulo requires.
 
 ; ---- MODE: character select, page-2 slot 7 ($c bits 8-15) (v93) ---------
-; One engine, four characters. REVERB.md's agreed design: MODE reconfigures
-; tap lengths, early-reflection level and diffusion TOGETHER -- not merely
-; rescaling SIZE, which is what makes a room a room rather than a small hall.
+; Three characters. MODE reconfigures tap length, diffusion depth, damping
+; and modulation together — not merely rescaling SIZE.
 ;
 ; Read here, before the SIZE block, because it scales the tap lengths that
-; block computes. The companion field carries a small step count (0..3), not
+; block computes. The companion field carries a small step count (0..2), not
 ; a left-aligned knob -- see the page-2 rejig note above.
 ;
-;   0 ROOM   short taps, STRONG early reflections, high diffusion
-;   1 PLATE  medium taps, NO early reflections, highest diffusion
-;   2 HALL   long taps, weak early reflections, medium diffusion
-;   3 BIG    longest taps, no early reflections -- the Valhalla-flavoured one
+;   0 ROOM   short tap scale, high diffusion, fast damping — close walls
+;   1 PLATE  medium tap scale, highest diffusion, bright — metallic sheet
+;   2 BIG    longest tap scale, low diffusion, darkest — the Valhalla-flavoured one
+;            HALL removed (9 Aug 2026): sat between PLATE and BIG on every
+;            lever and was never distinguishable from BIG in blind A/B.
+;            Early reflections: REMOVED (9 Aug 2026). Six discrete taps were a
+;            flutter echo. The input diffuser (4-13 ms, Dattorro-scale) now fills
+;            this role. See VOICING.md Round 7.
 ;
 ; SIZE, TIME, DIFF and the rest still work inside whichever character is
 ; chosen; MODE moves the centre, the knobs move around it.
@@ -781,35 +784,24 @@ warmdone:
         and     #>$ff00,a               ; slot 7's field, NOT the knob field
         move    a1,x0                   ; AND cleans A1 only
         move    x0,a
-        asr     #$8,a,a                 ; -> 0..3
+        asl     #$8,a,a                 ; -> 0..3, MSB-ALIGNED ($010000 per
+                                        ; step) to match the short immediates
+                                        ; the dispatch below compares against
 ; MODE_OVERRIDE
         move    a,x:(r7+$6e)
 
         move    x:(r7+$6e),a
         tst     a
         beq     md_room
-        move    #>$1,x0                 ; #> -- LONG immediate. `move #$1,x0` is
-        cmp     x0,a                    ; the SHORT form, which the DSP56300
-        beq     md_plate                ; places MSB-ALIGNED ($010000), while a
-        move    #>$2,x0                 ; holds $000001. The compare could never
-        cmp     x0,a                    ; match, so modes 1 and 2 BOTH fell
-        beq     md_hall                 ; through to BIG: PLATE, HALL and BIG
-                                        ; rendered byte-identical (9c080ce81e92)
-                                        ; and the MODE knob had two positions,
-                                        ; not four. Caught by the render
-                                        ; harness's IDENTICAL warning, 9 Aug.
-; v95, after the first by-ear round (VOICING.md round 1): HALL and BIG were
-; indistinguishable wet and level-matched. Tap scale was 0.90 vs 1.00 -- 11%,
-; against ~40% for every other step -- and BIG is already at the $7fffff
-; ceiling, so HALL and PLATE come DOWN to even the spacing out. Going below
-; ROOM's 0.45 is not available: v77 raised the SIZE floor precisely because
-; small spaces were metallic, and ROOM's floor is already 713 samples against
-; the 566 measured bad.
-;
-; Tap scale alone could not buy the difference, though, so two constants the
-; agreed design always called for are now wired in as well (REVERB.md: MODE
-; "should reconfigure tap lengths, diffusion depth, damping and modulation
-; together"):
+        move    #$1,x0                  ; SHORT immediates, which the DSP56300
+        cmp     x0,a                    ; places MSB-ALIGNED ($010000) -- which
+        beq     md_plate                ; is why the extract above is `asl #$8`
+; HALL removed (9 Aug 2026): the three remaining modes are well-separated on
+; decay, damping, modulation and tap spread; HALL sat between PLATE and BIG on
+; every lever and was never distinguishable from BIG in blind A/B (VOICING.md).
+; Removing it frees the md_hall block (~50 words) and the beq dispatch.
+
+; Per-mode levers — each md_* block sets these constants:
 ;
 ;   $72  damping scale  -- multiplies the HI-derived coefficient. SMALLER is
 ;                          darker, because the one-pole is s += c*(d-s).
@@ -818,7 +810,7 @@ warmdone:
 ;
 ; A big space is darker and more moving in its tail, not merely longer; that
 ; is the part tap scale was never going to express.
-md_big:                                 ; 3, and anything unexpected
+md_big:                                 ; 2, and anything unexpected
 ; DECAY SCALE, 1.00 -> ~11.6 s, unchanged; BIG is the long one.
 ; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
 ; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
@@ -831,43 +823,28 @@ md_big:                                 ; 3, and anything unexpected
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$5A8279,a               ; 2/√8 = H8 normalization (was $7FFFFF for H4)
         move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, LONGEST -- slowest, most spacious buildup.
-; The four series allpasses were fixed at 1994/1706/1438/1226 in every
-; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
-; fast echo density builds, so every mode built density identically.
-; Stored as (2048 - tap), which is what the modulo read wants.
-        move    #>37,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 2011 (45.6 ms)
-        move    #>259,a
+; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
+; replaces the removed ER section. All four modes share the same tap set;
+; the diffusion CHARACTER comes from the coefficient at $3f, not the lengths.
+; The four original allpass taps (1994/1706/1438/1226) were too long to
+; diffuse — they dispersed (same mechanism documented in VOICING.md Round 7
+; for the in-loop allpasses). Stored as (2048 - tap) for the modulo read.
+        move    #>1869,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
+        move    #>1755,a
         move    a,x:(r7+$7f)
-        move    #>517,a
+        move    #>1629,a
         move    a,x:(r7+$80)
-        move    #>751,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 1297 (29.4 ms)
+        move    #>1501,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
         move    #>$200000,a             ; MODE's LFO RATE scale -- slowest -- a huge space barely moves.
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
                                         ; r7 block ends at $83 ($84+ is host-
                                         ; owned and HANGS, DSP.md), so there is
                                         ; no spare slot for this.
-; EARLY-REFLECTION ARRIVALS, 39-92 ms -- the largest space there is.
-; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
-; every mode, with only their LEVEL varying -- so a near wall and a far
-; wall arrived at exactly the same time and only differed in loudness.
-; Arrival PATTERN is most of what says which space this is, before the
-; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>2355,a
-        move    a,x:(r7+$78)            ; ER tap 0, 39.5 ms   [4096-1741]
-        move    #>1719,a
-        move    a,x:(r7+$79)            ; n6 = 4096 - 2377
-        move    #>1179,a
-        move    a,x:(r7+$7a)            ; n6 = 4096 - 2917
-        move    #>705,a
-        move    a,x:(r7+$7b)            ; n6 = 4096 - 3391
-        move    #>363,a
-        move    a,x:(r7+$7c)            ; n6 = 4096 - 3733
-        move    #>45,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 91.9 ms   [4096-4051]
+; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
+; A short input diffuser now fills this role (see the allpass tap constants above).
 ; TAP SPREAD, 1.69 : 1 (longest:shortest) -- wide, CAPPED by the buffer.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -888,15 +865,6 @@ md_big:                                 ; 3, and anything unexpected
         move    a,x:(r7+$77)
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
-        move    #>$180000,a             ; WEAK late reflections, 0.19 -- below
-        move    a,x:(r7+$6c)            ; HALL's 0.25. Was 0 on the reasoning that
-                                        ; "a big space has no close walls to hear",
-                                        ; which is true of CLOSE walls and false of
-                                        ; the space as a whole: a large hall's
-                                        ; reflections are faint and LATE, and being
-                                        ; late is the cue that says vast before the
-                                        ; tail arrives. BIG's ER taps already sit at
-                                        ; 39-92 ms doing nothing (Round 4).
         move    #>$040000,a             ; diffusion offset, lowest
         move    a,x:(r7+$3f)
         move    #>$390000,a             ; damping 0.445 -- darkest tail. Set
@@ -927,43 +895,24 @@ md_room:
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$534307,a               ; 2/√8 = H8 normalization (was $75C000 for H4)
         move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, short -- a small space diffuses fast.
-; The four series allpasses were fixed at 1994/1706/1438/1226 in every
-; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
-; fast echo density builds, so every mode built density identically.
-; Stored as (2048 - tap), which is what the modulo read wants.
-        move    #>441,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 1607 (36.4 ms)
-        move    #>681,a
+; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
+; replaces the removed ER section. All modes share the same tap set.
+        move    #>1869,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
+        move    #>1755,a
         move    a,x:(r7+$7f)
-        move    #>885,a
+        move    #>1629,a
         move    a,x:(r7+$80)
-        move    #>1057,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 991 (22.5 ms)
+        move    #>1501,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
         move    #>$599999,a             ; MODE's LFO RATE scale -- moderate.
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
                                         ; r7 block ends at $83 ($84+ is host-
                                         ; owned and HANGS, DSP.md), so there is
                                         ; no spare slot for this.
-; EARLY-REFLECTION ARRIVALS, 4.5-21 ms -- CLOSE walls, tight cluster.
-; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
-; every mode, with only their LEVEL varying -- so a near wall and a far
-; wall arrived at exactly the same time and only differed in loudness.
-; Arrival PATTERN is most of what says which space this is, before the
-; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>3897,a
-        move    a,x:(r7+$78)            ; ER tap 0, 4.5 ms   [4096-199]
-        move    #>3783,a
-        move    a,x:(r7+$79)            ; n6 = 4096 - 313
-        move    #>3657,a
-        move    a,x:(r7+$7a)            ; n6 = 4096 - 439
-        move    #>3509,a
-        move    a,x:(r7+$7b)            ; n6 = 4096 - 587
-        move    #>3345,a
-        move    a,x:(r7+$7c)            ; n6 = 4096 - 751
-        move    #>3155,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 21.3 ms   [4096-941]
+; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
+; A short input diffuser now fills this role (see the allpass tap constants above).
 ; TAP SPREAD, 1.60 : 1 (longest:shortest) -- the reference -- unchanged.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -984,8 +933,6 @@ md_room:
         move    a,x:(r7+$77)
         move    #>$399999,a             ; tap scale 0.45 -- close walls
         move    a,x:(r7+$6f)
-        move    #>$600000,a             ; STRONG early reflections: this is
-        move    a,x:(r7+$6c)            ; most of what says "room"
         move    #>$0c0000,a             ; diffusion offset, high
         move    a,x:(r7+$3f)
         move    #>$790000,a             ; damping 0.95 -- small and bright
@@ -1008,43 +955,24 @@ md_plate:
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$5753E3,a               ; 2/√8 = H8 normalization (was $7B8000 for H4)
         move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, SHORTEST -- density from the first millisecond.
-; The four series allpasses were fixed at 1994/1706/1438/1226 in every
-; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
-; fast echo density builds, so every mode built density identically.
-; Stored as (2048 - tap), which is what the modulo read wants.
-        move    #>601,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 1447 (32.8 ms)
-        move    #>789,a
+; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
+; replaces the removed ER section. All modes share the same tap set.
+        move    #>1869,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
+        move    #>1755,a
         move    a,x:(r7+$7f)
-        move    #>945,a
+        move    #>1629,a
         move    a,x:(r7+$80)
-        move    #>1095,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 953 (21.6 ms)
+        move    #>1501,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
         move    #>$7fffff,a             ; MODE's LFO RATE scale -- fastest -- a plate shimmers.
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
                                         ; r7 block ends at $83 ($84+ is host-
                                         ; owned and HANGS, DSP.md), so there is
                                         ; no spare slot for this.
-; EARLY-REFLECTION ARRIVALS, unchanged; PLATE runs ER level 0.
-; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
-; every mode, with only their LEVEL varying -- so a near wall and a far
-; wall arrived at exactly the same time and only differed in loudness.
-; Arrival PATTERN is most of what says which space this is, before the
-; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>3765,a
-        move    a,x:(r7+$78)            ; ER tap 0, 7.5 ms   [4096-331]
-        move    #>3539,a
-        move    a,x:(r7+$79)            ; n6 = 4096 - 557
-        move    #>3177,a
-        move    a,x:(r7+$7a)            ; n6 = 4096 - 919
-        move    #>2795,a
-        move    a,x:(r7+$7b)            ; n6 = 4096 - 1301
-        move    #>2373,a
-        move    a,x:(r7+$7c)            ; n6 = 4096 - 1723
-        move    #>1883,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 50.2 ms   [4096-2213]
+; EARLY-REFLECTION ARRIVALS removed — six discrete taps were a flutter echo.
+; A short input diffuser now fills this role (see the allpass tap constants above).
 ; TAP SPREAD, 1.24 : 1 (longest:shortest) -- TIGHTEST -- most homogeneous.
 ; The four line lengths used to be hardcoded once and merely SCALED by
 ; MODE, so every mode was ONE modal pattern transposed. That is why they
@@ -1065,8 +993,6 @@ md_plate:
         move    a,x:(r7+$77)
         move    #>$480000,a             ; tap scale 0.5625 (was 0.65)
         move    a,x:(r7+$6f)
-        clr     a                       ; a plate has no early reflections at
-        move    a,x:(r7+$6c)            ; all -- it is not a room
         move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
         move    #>$7fffff,a             ; brightest -- a plate's tail is the
@@ -1076,93 +1002,6 @@ md_plate:
         move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
         move    a,x:(r7+$0c)            ; interleave for a dense plate
         bra     md_done
-md_hall:
-; DECAY SCALE, 0.99 -> ~7.9 s.
-; MODE did not touch decay time AT ALL. Measured at TIME=64 the four modes
-; ran 6.9 / 9.8 / 10.3 / 11.6 s -- and what spread there was came only
-; incidentally, from shorter lines circulating more often. Decay time is
-; the single biggest room-vs-hall cue, so ROOM vs HALL stayed the weakest
-; pair however the other five levers were set.
-;
-; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
-; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
-; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$58B29D,a               ; 2/√8 = H8 normalization (was $7D7000 for H4)
-        move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, the original set -- unchanged.
-; The four series allpasses were fixed at 1994/1706/1438/1226 in every
-; mode; only their COEFFICIENT varied. Allpass LENGTH is what sets how
-; fast echo density builds, so every mode built density identically.
-; Stored as (2048 - tap), which is what the modulo read wants.
-        move    #>54,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 1994 (45.2 ms)
-        move    #>342,a
-        move    a,x:(r7+$7f)
-        move    #>610,a
-        move    a,x:(r7+$80)
-        move    #>822,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 1226 (27.8 ms)
-        move    #>$399999,a             ; MODE's LFO RATE scale -- slow drift.
-        move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
-                                        ; below folds into its own result. The
-                                        ; r7 block ends at $83 ($84+ is host-
-                                        ; owned and HANGS, DSP.md), so there is
-                                        ; no spare slot for this.
-; EARLY-REFLECTION ARRIVALS, 20-77 ms -- FAR walls, late and sparse.
-; The six ER taps used to be hardcoded at 331/557/919/1301/1723/2213 in
-; every mode, with only their LEVEL varying -- so a near wall and a far
-; wall arrived at exactly the same time and only differed in loudness.
-; Arrival PATTERN is most of what says which space this is, before the
-; tail even starts. All prime, all inside the 4096-word pre-delay.
-        move    #>3213,a
-        move    a,x:(r7+$78)            ; ER tap 0, 20.0 ms   [4096-883]
-        move    #>2817,a
-        move    a,x:(r7+$79)            ; n6 = 4096 - 1279
-        move    #>2363,a
-        move    a,x:(r7+$7a)            ; n6 = 4096 - 1733
-        move    #>1857,a
-        move    a,x:(r7+$7b)            ; n6 = 4096 - 2239
-        move    #>1293,a
-        move    a,x:(r7+$7c)            ; n6 = 4096 - 2803
-        move    #>683,a
-        move    a,x:(r7+$7d)            ; ER tap 5, 77.4 ms   [4096-3413]
-; TAP SPREAD, 1.92 : 1 (longest:shortest) -- WIDEST -- most audible structure.
-; The four line lengths used to be hardcoded once and merely SCALED by
-; MODE, so every mode was ONE modal pattern transposed. That is why they
-; sounded alike however the scale moved.
-;
-; The MEAN tap is held at 3178 in every mode, so MODE's tap scale keeps its
-; full effect on size and the spread varies INDEPENDENTLY of it. Pinning the
-; longest instead (first attempt) moved each mode's mean delay -- PLATE +12%,
-; BIG -13% -- so the new lever pushed against the one already working, and
-; the modes measured CLOSER together. See VOICING.md Round 3.
-        move    #>$42D000,a             ; line 0: 4276 of 4096
-        move    a,x:(r7+$74)
-        move    #>$35C400,a             ; line 1: 3441 of 4096
-        move    a,x:(r7+$75)
-        move    #>$2B4000,a             ; line 2: 2768 of 4096
-        move    a,x:(r7+$76)
-        move    #>$22CC00,a             ; line 3: 2227 of 4096
-        move    a,x:(r7+$77)
-        move    #>$5c0000,a             ; tap scale 0.71875 (was 0.90)
-        move    a,x:(r7+$6f)
-        move    #>$200000,a             ; weak early reflections -- far walls
-        move    a,x:(r7+$6c)
-        move    #>$060000,a             ; diffusion offset, medium
-        move    a,x:(r7+$3f)
-        move    #>$598000,a             ; damping 0.70 per pass. WAS 0.90, which
-        move    a,x:(r7+$72)            ; put HALL's per-SECOND retention at 0.861
-                                        ; against PLATE's 1.000 -- 14% apart on a
-                                        ; control whose full range moves the 3-8 kHz
-                                        ; tail by 56 dB (measured). That closeness,
-                                        ; not the tap lengths, is why the two modes
-                                        ; would not separate. Now 0.607 vs 1.000.
-                                        ; Per-second retention is c^(1/tapscale);
-                                        ; BIG stays darkest at 0.445.
-        move    #>$7fffff,a             ; full movement
-        move    a,x:(r7+$73)
-        move    #>$690000,a             ; lines 4-7 tap scale 0.820 -- widest
-        move    a,x:(r7+$0c)            ; interleave for the largest hall
 md_done:
 
     ; ---- SIZE: scale all four tap lengths -----------------------------------
@@ -1393,10 +1232,11 @@ md_done:
         mpy     x0,y1,a
         move    a,x:(r7+$40)            ; LO coefficient
 
-; ---- ER level (v91) ------------------------------------------------------
-; Fixed for now. MODE (the free page-2 select) will drive this slot per
-; character: a room wants strong early reflections, a hall weak ones, a plate
-; none at all. That is most of what separates the modes.
+; ---- ER level: REMOVED (9 Aug 2026) -----------------------------------------
+; The six-tap ER section was a flutter echo. The input diffuser (4-13 ms,
+; Dattorro-scale) now fills this role. $6c is left at zero (warm-up default)
+; and is never written — the per-mode ER-level constants at $6c were removed.
+; See VOICING.md Round 7.
 
 ; ---- MIX: a real crossfade, not wet added on top of unity dry (v94) ------
 ; It used to be out = dry + wet*MIX, so dry stayed at full scale however wet
@@ -1618,7 +1458,7 @@ mixset:
         add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
         neg     a                       ; is one sample, not a whole buffer of
         move    a,n6                    ; staleness
-        move    a,x:(r7+$62)            ; ...and stash it: the ER taps below
+        move    a,x:(r7+$62)            ; ...and stash for the tank input below
                                         ; now use n6 as their own index, so
                                         ; the pre-delay reloads it each sample
         move    x:(r7+$83),a            ; the same counter again
@@ -2302,92 +2142,21 @@ lf4a:
         move    x:(r7+$30),r6           ; r6, not r5: the allpasses own r5 now
         move    x:(r7+$1b),a            ; input, and fills the AGU slot
         move    #>$1,n0
-        move    x:(r7+$62),n6           ; pre-delay offset back (ER taps
+        move    x:(r7+$62),n6           ; pre-delay offset back
                                         ; below borrow n6 every sample)
         move    y:(r6+n6),b             ; delayed
         move    a,y:(r6)+               ; write, and advance
         move    r6,x:(r7+$30)
         move    b,x:(r7+$1b)            ; delayed input -> the diffuser
 
-; ---- EARLY REFLECTIONS (v91): six taps off the pre-delay buffer ----------
-; A real space gives a burst of discrete early echoes before the diffuse
-; tail, and it is most of what makes a room sound like a room rather than a
-; wash. We had none: the tank's own build-up was the only early behaviour.
-;
-; ZERO extra memory, which is the whole reason this is affordable -- the 32K
-; re-layout filled the allocation, so a new buffer was never an option. The
-; pre-delay already holds 4096 samples (93 ms) of input history and was being
-; read exactly once. These are just five more taps into it.
-;
-; Addresses are built arithmetically rather than with (rN+nN): every address
-; register is committed and r5's modulo is $7ff (2048) while this buffer is
-; 4096, so an indexed read would wrap in the wrong place. A plain y:(r5) read
-; ignores modulo entirely -- it only affects UPDATES -- so borrowing r5 here
-; is safe, and r5 is rebuilt from scratch by every allpass below.
-;
-; Taps are primes in ms-ish spacing with alternating sign for L/R spread, and
-; decaying gains. $6c holds the ER level, which MODE will set per character
-; (room wants strong ER, hall weak, plate none).
-; v99: the AGU does the wrap, the base add and the mask FOR FREE.
-; This block used to build every tap address by hand -- subtract the tap,
-; `and #>$fff` to wrap, clean A2, add the base, load r5 -- eleven words a tap.
-; That is precisely the pattern the density pass removed everywhere else and
-; was worth 135 cycles there (DSP.md); this block was written afterwards and
-; repeated it. r6 already points into the pre-delay buffer under m6 = $fff,
-; which is the same addressing the pre-delay's OWN read two lines up uses.
-; The stored constants are now (4096 - tap) so they drop straight into n6.
-; 254 -> ~181 cycles, bit-identical.
-        clr     a
-        move    a,x:(r7+$5a)            ; ER accumulator L
-        move    a,x:(r7+$5b)            ; ER accumulator R
-        move    x:(r7+$78),n6           ; this MODE's ER tap 0  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$700000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5a),x0
-        add     x0,a
-        move    a,x:(r7+$5a)
-        move    x:(r7+$79),n6           ; this MODE's ER tap 1  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$5c0000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5b),x0
-        add     x0,a
-        move    a,x:(r7+$5b)
-        move    x:(r7+$7a),n6           ; this MODE's ER tap 2  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$4a0000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5a),x0
-        add     x0,a
-        move    a,x:(r7+$5a)
-        move    x:(r7+$7b),n6           ; this MODE's ER tap 3  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$3c0000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5b),x0
-        add     x0,a
-        move    a,x:(r7+$5b)
-        move    x:(r7+$7c),n6           ; this MODE's ER tap 4  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$300000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5a),x0
-        add     x0,a
-        move    a,x:(r7+$5a)
-        move    x:(r7+$7d),n6           ; this MODE's ER tap 5  (4096-tap)
-        move    y:(r6+n6),b             ; the tap -- AGU wraps and adds base
-        move    b,x0
-        move    #>$260000,y1
-        mpy     x0,y1,a
-        move    x:(r7+$5b),x0
-        add     x0,a
-        move    a,x:(r7+$5b)
+; ---- EARLY REFLECTIONS: REMOVED (9 Aug 2026) ------------------------------
+; Six discrete taps summed onto the output IS a flutter echo by construction
+; -- the comb notches are 47-222 Hz apart, sparse enough to be heard as pitch.
+; Fixing it needs 20+ taps, which needs program space payload A does not have.
+; The input diffuser, shortened to Dattorro-scale (4-13 ms), now fills the
+; role these taps were meant to: dense early buildup from allpass diffusion
+; rather than discrete echoes. ER=0 for all four modes is the clean setting.
+; See VOICING.md Round 7 for the measurements that settled this.
 
 ; -- allpass 0: base+0x4000, tap 1994 (45.2 ms) --
 ; v70: modulo. n5 = 2048-tap, m5 = $7ff, r5 = base + phase. The AGU then
@@ -2658,10 +2427,6 @@ tankend:
         add     x0,a
         move    x:(r7+$3d),x0           ; line 7
         sub     x0,a                    ; a = (l0-l1+l2-l3)+(l4-l5+l6-l7)
-        move    x:(r7+$5a),x0           ; + early reflections L (v91)
-        move    x:(r7+$6c),y0           ; y0, NOT y1: y1 holds the MIX wet gain
-        mpy     x0,y0,b
-        add     b,a
         move    a,x:(r7+$2d)            ; wet L
         move    x:(r7+$16),a
         move    x:(r7+$17),x0
@@ -2678,10 +2443,6 @@ tankend:
         sub     x0,a
         move    x:(r7+$3d),x0           ; line 7
         sub     x0,a                    ; a = (l0+l1-l2-l3)+(l4+l5-l6-l7)
-        move    x:(r7+$5b),x0           ; + early reflections R (v91)
-        move    x:(r7+$6c),y0
-        mpy     x0,y0,b
-        add     b,a
         move    a,x:(r7+$2e)            ; wet R
 
 ; ---- 8x8 Fast Walsh-Hadamard Transform -----------------------------------
@@ -3021,94 +2782,59 @@ shd1:
         move    a,r6
 
 ; -- Step 1a: rolled feedback, group A (u[0..3] at $16..$19) --------------
-        move    x:(r7+$16),a            ; u0
+; r4 walks u[0..3] (post-increment), r5 walks scratch[0..3] ($1a..$1d).
+; r6 already walks table B (weight + has_allpass, 2 words per line).
+; y0 = g/2, held across both loops. Input reloaded from $15 each iteration
+; because mpy x0,y1,b overwrites b.
+        move    r7,a
+        move    #>$16,x0
+        add     x0,a
+        move    a,r4                    ; r4 -> u0
+        move    r7,a
+        move    #>$1a,x0
+        add     x0,a
+        move    a,r5                    ; r5 -> scratch0
+        move    x:(r7+$15),b            ; input, also spaces the r5 write
+        nop
+        do      #4,>fbA
+        move    x:(r4)+,a              ; u[k]
         move    a,x0
-        mpy     x0,y0,a                 ; u0 * g/2
-        move    y:(r6)+,x0              ; weight[0]
-        move    x:(r7+$15),b
+        mpy     x0,y0,a                ; u[k] * g/2
+        move    y:(r6)+,x0             ; weight[k]
+        move    x:(r7+$15),b           ; input (fresh each iteration)
         move    b,y1
-        mpy     x0,y1,b                 ; input * weight[0]
-        add     b,a                     ; fb0
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$1a)            ; fb0 -> scratch $1a
-
-        move    x:(r7+$17),a            ; u1
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[1]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$1b)            ; fb1 -> scratch $1b
-
-        move    x:(r7+$18),a            ; u2
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[2]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$1c)            ; fb2 -> scratch $1c
-
-        move    x:(r7+$19),a            ; u3
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[3]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$1d)            ; fb3 -> scratch $1d
+        mpy     x0,y1,b                ; input * weight[k]
+        add     b,a                    ; fb = u*g/2 + input*weight
+        move    y:(r6)+,x0             ; has_allpass (consumed into x0, dead)
+        move    a,x:(r5)+              ; store fb[k] to scratch
+        nop                            ; one instruction between r5 write and use
+fbA:
 
 ; -- Step 1b: rolled feedback, group B (u[4..7] at $3a..$3d) --------------
-        move    x:(r7+$3a),a            ; u4
+; r4 walks u[4..7], r5 walks scratch[4..7] ($41..$44).
+        move    r7,a
+        move    #>$3a,x0
+        add     x0,a
+        move    a,r4                    ; r4 -> u4
+        move    r7,a
+        move    #>$41,x0
+        add     x0,a
+        move    a,r5                    ; r5 -> scratch4
+        move    x:(r7+$15),b            ; input, also spaces the r5 write
+        nop
+        do      #4,>fbB
+        move    x:(r4)+,a              ; u[k]
         move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[4]
-        move    x:(r7+$15),b
+        mpy     x0,y0,a                ; u[k] * g/2
+        move    y:(r6)+,x0             ; weight[k]
+        move    x:(r7+$15),b           ; input (fresh each iteration)
         move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$41)            ; fb4 -> scratch $41
-
-        move    x:(r7+$3b),a            ; u5
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[5]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$42)            ; fb5 -> scratch $42
-
-        move    x:(r7+$3c),a            ; u6
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[6]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$43)            ; fb6 -> scratch $43
-
-        move    x:(r7+$3d),a            ; u7
-        move    a,x0
-        mpy     x0,y0,a
-        move    y:(r6)+,x0              ; weight[7]
-        move    x:(r7+$15),b
-        move    b,y1
-        mpy     x0,y1,b
-        add     b,a
-        move    y:(r6)+,b               ; has_allpass (consumed)
-        move    a,x:(r7+$44)            ; fb7 -> scratch $44
+        mpy     x0,y1,b                ; input * weight[k]
+        add     b,a                    ; fb = u*g/2 + input*weight
+        move    y:(r6)+,x0             ; has_allpass (consumed into x0, dead)
+        move    a,x:(r5)+              ; store fb[k] to scratch
+        nop
+fbB:
 
 ; -- Step 2: in-loop allpass, line 0: diffuses the feedback before storage --
         move    #>$1ff,m5               ; these two are 512. The input

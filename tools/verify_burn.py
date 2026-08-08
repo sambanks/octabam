@@ -83,7 +83,7 @@ def build(env_burn):
     render_reverb --mem consumes. Kept under out/burnverify/ so neither build
     can be mistaken for the flashable out/mainos_bus.bin."""
     import os
-    env = dict(os.environ)
+    env = dict(os.environ, XBUS="1")
     if env_burn:
         env["BURN"] = "1"
     else:

@@ -174,7 +174,7 @@ DEFAULTS = {
                                  # usable yet. SHMR=0 is bit-identical to the
                                  # pre-shimmer engine, so 0 gives a fresh part
                                  # the good reverb.
-                      (7, 2),    # MODE   HALL, the most generally useful
+                      (7, 2),    # MODE   BIG (was HALL before the 3-mode cut)
                       (8, 64),   # DIFF   mid
                       (9, 127),  # WIDTH  full
                       (10, 0),   # PRE    none
@@ -232,7 +232,7 @@ ACTIVE_PARAMS = {
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
 PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SPEED  knob
-                                  7: 4,     # MODE   select: ROOM/PLATE/HALL/BIG
+                                  7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
                                   9: 128,   # WIDTH  full knob
                                   10: 128,  # PRE    knob
@@ -616,21 +616,19 @@ def main():
     # -params only writes value<<16 into knob fields), so this is the only way
     # to hear the modes without a flash. Diagnostic only -- the normal build
     # reads the real slot.
-    # NOSHIM=1: physically EXCISE the shimmer rather than zeroing SHMR.
-    # The shimmer has always sounded bad (blind splice, REVERB.md) and SHMR is
-    # the last standing suspect for the hardware artifact, so removing the code
-    # outright is the test that cannot be argued with -- a zeroed coefficient
-    # still leaves the shifter reading and writing its buffer every sample.
-    # Also reclaims 2048 words at base+0x7800 and the cycles.
-    if os.environ.get("SHIMMER") != "1":
+    # NOSHIM=1: physically EXCISE the shimmer if it needs to come out
+    # (e.g. to reclaim the 2048-word Y buffer or the ~130 words of program).
+    # SHIMMER is now IN by default. The metallic artifact was the OLD shimmer
+    # (v119 and earlier) which spliced dry samples into the tail; this one was
+    # built from scratch (v3) and is clean in isolation. See VOICING.md.
+    if os.environ.get("NOSHIM") == "1":
         i = reverb_src.index("; SHIMMER_BEGIN")
         j = reverb_src.index("; SHIMMER_END") + len("; SHIMMER_END")
         cut = reverb_src[i:j].count("\n")
-        reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (default)" + reverb_src[j:]
-        print(f"  shimmer excised ({cut} lines) -- the DEFAULT; SHIMMER=1 puts it back")
+        reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (NOSHIM=1)" + reverb_src[j:]
+        print(f"  shimmer excised ({cut} lines) -- NOSHIM=1 set")
     else:
-        print("  *** SHIMMER=1: the shimmer is IN. It is the confirmed cause of the "
-              "metallic artifact (v119) -- diagnostic only, do NOT ship this ***")
+        print("  shimmer IN (default) -- NOSHIM=1 to excise")
 
     # ---- BURN=1: INJECT the cycle burn into the LIVE engine ----------------
     # It used to be dsp/burn_probe.asm, a verbatim COPY of reverb_server.asm
@@ -679,7 +677,12 @@ def main():
     if mode_env is not None:
         assert reverb_src.count("; MODE_OVERRIDE") == 1
         reverb_src = reverb_src.replace(
-            "; MODE_OVERRIDE", "        move    #>$%x,a" % int(mode_env))
+            "; MODE_OVERRIDE",
+            # << 16: the dispatch compares against SHORT immediates, which the
+            # DSP56300 places MSB-aligned, and the extract above is `asl #$8`
+            # to match. A low-aligned override would miss every compare and
+            # land on BIG -- exactly the bug 2da90f0 fixed.
+            "        move    #>$%x,a" % (int(mode_env) << 16))
         print(f"  *** MODE OVERRIDE: forced to {int(mode_env)} ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
