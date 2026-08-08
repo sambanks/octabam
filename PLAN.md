@@ -432,6 +432,59 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
    - **Judge it at eight lines, not four.** Denser feedback is a different host
      for a pitch shift.
 
+3b. **PER-LINE DECAY GAINS — designed 9 Aug 2026, not yet built. Do this
+   first: it is the largest defect on this list and it needs NO memory work.**
+
+   `$1e` is ONE decay gain for all eight lines. Lines circulate at different
+   rates, so equal gain *per pass* is unequal decay *per second*. At ROOM's
+   settings:
+
+   | line | length | passes/s | decay |
+   |---|---|---|---|
+   | longest | 2,003 | 22.0 | −24.3 dB/s |
+   | shortest | 1,188 | 37.1 | −41.3 dB/s |
+
+   **17 dB per second apart.** After two seconds the short lines are ~34 dB
+   below the long ones: an eight-line tank that decays into a two- or
+   three-line one. A tail that starts lush and turns metallic is exactly what
+   that produces, and it is the standing complaint.
+
+   Jot's fix is `g_i = g^(T_i/T_ref)`. A power per line per block is too
+   expensive, but `x^r ≈ 1 + r(x−1)` is within **1.2%** over the range in use,
+   and the DSP's own arithmetic collapses the rest:
+
+   - `mpy` doubles, so the stored constant is `g/2` and the effective
+     multiplier is `G = 2·$1e`. Wanting `G_i = 1 + r_i(G−1)`, the value to
+     store is **`stored_i = 0.5 + r_i·($1e − 0.5)`**.
+   - `r_i = T_i/T_ref`, and SIZE scales every line equally, so `r_i` depends
+     only on the per-mode tap fractions already in `$74..$77` (times `$0c` for
+     lines 4-7) — **not on any knob**.
+   - `frac_0 ≈ 0.494`, so `r_i ≈ 2·frac_i` to within 1%. And `mpy` already
+     multiplies by two. So the whole per-line constant is
+
+     ```
+     move x:(r7+$1e),a / sub 0.5 / move a,y0     ; once
+     move x:(r7+$74+k),x0 / mpy x0,y0,a / add 0.5 / store   ; per line
+     ```
+
+     **Zero new constants**, ~5 instructions × 8 lines in the per-block priming
+     path, nothing in the sample loop.
+
+   **Where it goes: Table B's second word.** ✅ Confirmed by reading both ends —
+   the `has_allpass` word is written by nobody (the priming block leaves it at
+   its warm-up zero and says so) and read by nobody (the write-back loads it
+   `purely to step r6 over it, and then discards it`). Put `stored_i` there and
+   the write-back's `move y:(r6)+,x0` for the dead word becomes
+   `move y:(r6)+,y0` for a live one: **same instruction count, zero extra
+   words, zero extra cycles.** The only care needed is ordering — `y0` must be
+   loaded before the `mpy x0,y0,a`, so the table is read weight-then-gain and
+   the accumulator source register moves off `x0`.
+
+   ⚠️ Scaling `g` DOWN is always safe; scaling UP self-oscillates. `r_i ≤ 1`
+   here, and `stored_i` is a weighted average of `0.5` and `$1e`, so it can
+   never exceed the existing gain. That is the stability argument, and it is
+   why this is safe to build before the tank is any bigger.
+
 4. **Re-voice all four modes.** Tap ratios and diffusion were chosen for four
    lines; eight changes the echo density that every MODE constant was tuned
    against. `docs/VOICING.md` is the log, and the rule stands — judged by ear,
