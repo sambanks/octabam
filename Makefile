@@ -58,8 +58,8 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/FLASHING.md)
 
 .PHONY: render
 render: ## Build the DEV image and render the bus locally (no hardware)
-	DEV=1 XBUS=1 python3 tools/build_bus.py
-	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+	DEV=1 XBUS=1 SPEC=1 python3 tools/build_bus.py
+	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
 .PHONY: reverb
 reverb: ## Render a wav through ChonVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']

@@ -374,10 +374,12 @@ if SPEC:
                  "That is not the target architecture and it would still make "
                  "sound, which is the dangerous part -- run XBUS=1 SPEC=1")
     if DEV:
-        sys.exit("SPEC=1 and DEV=1 are opposites: SPEC puts BongDelay in "
-                 "payload B only, DEV keeps all three servers in payload A so "
-                 "dsp_host can still render the delay. Use DEV=1 XBUS=1 to "
-                 "render locally, SPEC=1 XBUS=1 to build the real image")
+        # DEV=1 + SPEC=1: payload placement follows SPEC rules (reverb→A,
+        # delay→B) but the build writes the DEV output paths. dsp_host can
+        # still render the reverb from payload A; the delay has no local
+        # render any more -- it outgrew payload A with the 8-line engine.
+        print("  DEV=1 + SPEC=1: rendering reverb only (delay is on payload B, "
+              "which dsp_host cannot boot)")
     _clash = [v for v in ("BURN", "PROBE", "XPROBE", "DELAYPROBE")
               if os.environ.get(v) == "1"]
     if _clash:

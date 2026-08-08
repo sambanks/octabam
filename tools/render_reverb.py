@@ -115,8 +115,12 @@ def write_wav(path, left, right):
 def ensure_mem(build):
     if build or not IMAGE.exists():
         print("building out/mainos_bus.bin ...")
+        env = dict(os.environ, XBUS="1", SPEC="1")
+        rvsrc = os.environ.get("RVSRC")
+        if rvsrc:
+            env["RVSRC"] = rvsrc
         subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
-                       check=True, capture_output=True)
+                       env=env, check=True, capture_output=True)
     if not HOST.exists():
         die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
     stale = not MEM.exists() or MEM.stat().st_mtime < IMAGE.stat().st_mtime
@@ -147,9 +151,14 @@ def ensure_mode_mem(mode, build):
                  for p in ("dsp/reverb_server.asm", "tools/build_bus.py"))
     if build or not img.exists() or img.stat().st_mtime < newest:
         print(f"building {img.name} (MODE={mode} {MODES[mode]}) ...")
+        env = dict(os.environ, MODE=str(mode), XBUS="1", SPEC="1")
+        # RVSRC= passthrough so alternate engines can be rendered without
+        # copying files: RVSRC=dsp/reverb_server_8.asm make reverb ...
+        rvsrc = os.environ.get("RVSRC")
+        if rvsrc:
+            env["RVSRC"] = rvsrc
         r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
-                           env=dict(os.environ, MODE=str(mode)),
-                           capture_output=True, text=True)
+                           env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
     if not HOST.exists():
