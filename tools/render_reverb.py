@@ -212,8 +212,18 @@ def ensure_mem(build):
     # shipping artifact and `make render`'s documented subject. An alternate
     # RVSRC must never be left sitting at that path pretending to be it.
     alt = bool(os.environ.get("RVSRC"))
-    img = CACHE / f"{stem}.bin" if alt else IMAGE
-    mem = CACHE / f"{stem}_A.mem" if alt else MEM
+    # DEV=1 annexes CHORUS's module as a fourth donor, which is 329 free words
+    # on payload A where the shipping build has ZERO. That is the room to
+    # develop an engine change in before paying for it -- a DEV build is never
+    # flashed, so it proves the SOUND without also having to have solved the
+    # space problem. `make check` still gates what ships.
+    dev = os.environ.get("DEV") == "1"
+    if dev:
+        img = ROOT / "out/mainos_bus_dev.bin"
+        mem = ROOT / "out/dsp/mem_dev_A.mem"
+    else:
+        img = CACHE / f"{stem}.bin" if alt else IMAGE
+        mem = CACHE / f"{stem}_A.mem" if alt else MEM
     fp = fingerprint([("XBUS", "1"), ("SPEC", "1"), ("RVSRC", rvsrc if alt else "")])
     if build or not prov_ok(img, fp) or not mem.exists():
         print(f"building {img.relative_to(ROOT)} ...")
@@ -224,14 +234,15 @@ def ensure_mem(build):
                            env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
-        if alt:
+        if alt and not dev:
             claim(IMAGE, img)
         if not HOST.exists():
             die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
-        sys.path.insert(0, str(ROOT / "tools"))
-        import dsp_modmap
-        mem.parent.mkdir(parents=True, exist_ok=True)
-        dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+        if not dev:                         # the DEV build dumps its own .mem
+            sys.path.insert(0, str(ROOT / "tools"))
+            import dsp_modmap
+            mem.parent.mkdir(parents=True, exist_ok=True)
+            dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
         prov_stamp(img, fp)                 # stamp LAST: a crash mid-build must
     else:                                   # not leave a valid-looking artifact
         print(f"reusing {img.relative_to(ROOT)} (fingerprint {fp[:12]} unchanged)")
@@ -386,12 +397,20 @@ def main():
                          "3 BIG, or 'all'. Assembles the value in (the slot is "
                          "a companion field dsp_host cannot drive)")
     ap.add_argument("--build", action="store_true", help="run build_bus.py first")
+    ap.add_argument("--dev", action="store_true",
+                    help="build with DEV=1: annexes CHORUS's module for 329 extra "
+                         "program words on payload A, where the shipping build has "
+                         "none. Never flashable -- for proving a change SOUNDS right "
+                         "before paying for its space")
     ap.add_argument("--mem", metavar="FILE",
                     help="render through a different payload dump instead of the "
                          "current build -- how you A/B two engine versions on the "
                          "same source (keep the old .mem when you change the engine)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.dev:
+        os.environ["DEV"] = "1"     # before any fingerprint() call -- DEV is in
+                                    # BUILD_ENV, so it keys the cache correctly
 
     values = [d for _, d in PARAMS]
     for spec in a.param:

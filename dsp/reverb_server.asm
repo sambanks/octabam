@@ -2785,140 +2785,170 @@ tankend:
 
         move    #>$fff,m6               ; back to the pre-delay's modulo-4096
 
-; SHIMMER_BEGIN -- NOSHIM=1 excises everything to SHIMMER_END (build_bus.py)
-; ---- SHIMMER: +12 in the feedback path (v101) ---------------------------
-; Reads the tank's own output, shifts it up an octave and adds it back into the
-; tank INPUT, so the octave compounds on every circulation. That compounding is
-; what makes a shimmer bloom upward rather than just sit an octave above.
+; SHIMMER_BEGIN -- excised unless SHIMMER=1 (build_bus.py)
+; ---- SHIMMER v2: +12 octave up, decimated buffer (2026-08-09) ------------
+; WHAT WAS WRONG WITH v101, measured rather than guessed. Modelled in Python
+; against the exact same arithmetic, a 220 Hz sine in:
 ;
-; +12 is the cheap interval. The read head runs at exactly 2x the write head,
-; so the gap closes by exactly ONE sample per sample and every read is INTEGER
-; -- no fractional interpolation, no lerp. Any other ratio would need both.
+;   v101 (1024-word buffer, read at 2x):  440 Hz is ABSENT from the output.
+;        Two spurious tones at 350 Hz and 522 Hz, both at full level.
+;   this (effective 2048, read at 1x):    440 Hz dominant, next spur -17.8 dB.
 ;
-; Two heads half a buffer apart with a triangular crossfade, so the
-; discontinuity where a head laps the write pointer always falls where that
-; head's gain is zero. For a triangle g2 = 1-g1, so the whole crossfade is
-; out = tap2 + 2*g*(tap1-tap2) -- ONE multiply.
+; 350 and 522 are 440 +/- 86. They are the sidebands of an 86 Hz amplitude
+; modulation, so deep that the carrier is suppressed and only the sidebands
+; are left -- an inharmonic PAIR either side of the intended pitch. That is
+; the metallic thwong, and in the feedback path it is also self-resonating.
 ;
-; TRAP (REVERB.md, PRE): a modulo offset LARGER than the buffer is undefined on
-; the DSP56300 -- it does not wrap, the read returns nothing. So head 2's
-; offset is masked to $7ff explicitly rather than left as phase+1024.
+; 86 Hz is not a tuning accident, it is arithmetic. With an N-word buffer and
+; a read head at 2x the write head, the heads close at ONE sample per sample,
+; so each head laps the buffer every N samples and two heads splice at 2*SR/N.
+; N=1024 gives 43 Hz per head, 86 Hz the pair. It cannot be voiced away: the
+; only lever is N, and N was capped at 1024 by the AGU's power-of-2 modulo.
 ;
-; State is $0e and $0f, the last two free r7 slots in the whole block. The
-; amount is read from r6+$b every sample rather than cached, precisely because
-; there is no third slot. m5 is $7ff here (the input diffusers leave it that
-; way) and the buffer is 2048 words aligned at base+0x7800, so the AGU wraps
-; both heads for free.
+; THE FIX -- DECIMATE INTO THE BUFFER INSTEAD OF READING OUT OF IT FASTER.
+; Octave up is "read faster than you wrote". v101 wrote at 1x and read at 2x.
+; This writes at 1/2x and reads at 1x -- the same ratio, the same pitch, but
+; now the heads close at HALF a sample per sample, so a lap takes 2N samples
+; instead of N. The artifact rate halves for the same memory: 21.5 Hz, a
+; flutter rather than a buzz. Measured AM depth -11.6 dB -> -27.8 dB.
+;
+; Decimation is free here. The write index is simply phase>>1, so consecutive
+; samples land in the same slot and the later one wins -- no branch, no
+; second counter. What that costs is aliasing above SR/4, which is why the
+; one-pole below is on the WRITE side: it is the anti-alias filter and the
+; HF rolloff the shimmer path wants anyway, doing one job twice.
+;
+; THE CROSSFADE IS LINEAR, DELIBERATELY. A raised cosine was modelled and
+; came out 0.4 dB better (-28.2 vs -27.8) -- against 16.6 dB for the buffer
+; length. Window shape is not what was wrong, so it does not get the words.
+;
+; Reads stay INTEGER: the read head advances exactly 1 per sample, so there
+; is no interpolation anywhere in this block.
+;
+; TRAP (REVERB.md, PRE): a modulo offset LARGER than the buffer is undefined
+; on the DSP56300 -- it does not wrap, the read returns nothing. Head 2's
+; offset is therefore masked to $3ff explicitly, not left as phase+512.
+;
+; TRAP (CLAUDE.md): `mpy x0,y0` silently assembles as `mpysu`. Every multiply
+; here is x0,y1 or x1,y0 for that reason. Disassembled and checked.
+;
+; STATE, and there is exactly enough:
+;   r7+$0e   SHMR amount, already cached per block at the TIME block (~1553).
+;            That read is live in the shipped build even when this block is
+;            excised, so the knob path needs nothing new.
+;   r7+$0f   phase, free-running mod 2048 (the ONLY counter -- read head is
+;            phase & $3ff, write index is phase >> 1)
+;   r7+$4e   one-pole state
+; $0f and $4e are the last two free slots in the whole r7 block ($10..$83 are
+; taken and $84+ hangs the unit). There is no third.
+;
+; BUFFER: base+0x7800, 1024 words, 1024-aligned so the AGU wraps it for free.
+; m5 is $7ff on entry (the input diffusers leave it that way) and is restored
+; to $7ff on exit -- the write-back below still needs the diffusers' modulo.
 
-        move    x:(r7+$0f),a            ; phase. May be GARBAGE on the first
-        move    #>$1,x0                 ; call -- the mask below cleans it, which
-        add     x0,a                    ; is why no init is needed and why the
-        move    #>$7ff,x0               ; address is DERIVED from the phase
-        and     x0,a                    ; rather than kept as a walking pointer
-        move    a1,x1                   ; (AND cleans A1 only; x1 is 24-bit so
-        move    x1,x:(r7+$0f)           ; this IS the clean value)
-
-        move    x1,a                    ; g = (1024 - |phase-1024|) << 12,
-        move    #>1024,x0               ; a triangle peaking where head 2 laps
-        sub     x0,a                    ; and zero where head 1 does
-        abs     a
-        neg     a
-        add     x0,a                    ; 0 .. 1024
-        asl     #$c,a,a                 ; -> 0 .. $400000 (0.5); the crossfade
-        move    a1,y1                   ; doubles it back to unity below
-
+        move    #>$3ff,m5               ; 1024-word shimmer buffer
         move    x:(r7+$5e),a            ; in-loop allpass A base = inst+0x7000,
         move    #>$800,x0               ; so the shimmer buffer is +0x800 past
         add     x0,a                    ; it. Derived, because the r7 block has
-        move    a,x0                    ; no slot left to cache it in.
-        move    x1,a
-        add     x0,a
-        move    a,r5                    ; r5 = buffer + phase
+        move    a,r5                    ; no slot left to cache it in.
 
-        move    x:(r7+$16),a            ; tank output, d0 + d2
-        move    x:(r7+$18),x0
-        add     x0,a
-        asr     a                       ; halved for headroom
+        move    x:(r7+$0f),a            ; phase. May be GARBAGE on the first
+        move    #>$1,x0                 ; call -- the mask below cleans it,
+        add     x0,a                    ; which is why no init is needed and
+        move    #>$7ff,x0               ; why every address here is DERIVED
+        and     x0,a                    ; from the phase rather than kept as a
+        move    a1,x1                   ; walking pointer (AND cleans A1 only;
+        move    x1,x:(r7+$0f)           ; x1 is 24-bit so this IS the value)
 
-; ROLLOFF IN THE FEEDBACK PATH (v102). Valhalla's account of the Eno/Lanois
-; chain is specific that the return had "some hi frequencies rolled off" before
-; it fed the reverb, and that the gain and EQ of the loop are what move the
-; sound between steel-drum and string-pad. We were injecting the octave flat.
-;
-; A one-pole needs to remember its own last output, and the r7 block has no
-; slot left -- but it does not need one: the last output is the last thing we
-; WROTE, which sits at phase-1. Under m5 that is a CONSTANT offset of 2047, so
-; it is a single indexed read and the buffer is its own filter state.
-;
-; The filter therefore sits before the shift rather than after it, so its
-; corner doubles on the way out. That is weaker than filtering the output, but
-; it is free, and the signal is filtered again on every circulation.
-        move    #>2047,b                ; -1 under modulo 2048
-        move    b1,n5
-        move    y:(r5+n5),b             ; y_prev, the last value written
+; ---- one-pole, then the decimated write ---------------------------------
+; c = 0.35 -> corner ~2.7 kHz. It sits BEFORE the shift, so it lands ~5.4 kHz
+; on the way out, and comfortably below the SR/4 the decimation folds about.
+        move    x:(r7+$15),a            ; PARALLEL: the diffused INPUT, not the
+                                        ; tank output. Nothing this block writes
+                                        ; comes back round, so its artifacts do
+                                        ; not compound -- see the note above.
+        move    x:(r7+$4e),b            ; previous filter output
         sub     b,a                     ; x - y_prev
         move    a,x0
-        move    #>$133333,y0            ; c = 0.15. Corner ~1 kHz, and since
-                                        ; this sits BEFORE the shift it lands
-                                        ; ~2 kHz on the way out. Regeneration
-                                        ; accumulates highs on every pass, so
-                                        ; the rolloff has to be much darker
-                                        ; than it would be for a single pass.
-        mpy     x0,y0,a                 ; c * (x - y_prev)
+        move    #>$2ccccd,y1            ; c = 0.35
+        mpy     x0,y1,a                 ; c * (x - y_prev)
         add     b,a                     ; y = y_prev + c*(x - y_prev)
-        move    a,y:(r5)                ; write the FILTERED value
+        move    a,x:(r7+$4e)
 
-; DECORRELATION (v102). Valhalla's shimmer notes are explicit that a pitch
-; shifter in a feedback loop splices at a predictable point, the repeats stay
-; correlated, and the result reads as metallic -- the fix being time-varying
-; delays. The tank already modulates its lines and its in-loop allpasses, so
-; the octave gets decorrelated once it is circulating; what was still fixed was
-; the SPLICE itself, always at the same buffer position.
-;
-; The two heads are now pushed in OPPOSITE directions by the two allpass LFOs
-; ($52 and $54, 0..31 samples, already computed for the allpasses). Opposite
-; because moving them together would just shift the splice, not decorrelate the
-; pair. Costs no state and no new LFO -- and NOT the phase increment, which is
-; the pitch ratio itself and must stay exactly 1.
+        move    a,y1                    ; hold the filtered sample
         move    x1,a
-        move    x:(r7+$52),a1           ; allpass LFO A, 0..31 -- FAR too
-        asl     #$3,a,a                 ; shallow against a 2048 buffer, so x8
-        move    a1,x0                   ; to 0..248: the splice has to be
-        move    x1,a                    ; SMEARED, not merely nudged
-        add     x0,a
-        move    #>$7ff,x0
+        asr     #$1,a,a                 ; write index = phase >> 1, 0..1023 --
+        move    a1,n5                   ; advances once per TWO samples, which
+        move    y1,a                    ; IS the decimation: the later of each
+        move    a,y:(r5+n5)             ; pair overwrites the earlier
+
+; ---- two heads, half a buffer apart, linear crossfade -------------------
+        move    x1,a
+        move    #>$3ff,x0
         and     x0,a
+        move    a1,x0                   ; rd = phase & $3ff, 0..1023
         move    a1,n5
-        move    y:(r5+n5),b             ; head 1, at +phase, modulated up
+        move    y:(r5+n5),b             ; tap 1, at rd
 
-        move    x1,a
-        move    #>1024,x0
-        add     x0,a
-        move    a1,y0                   ; park phase+1024
-        move    x:(r7+$54),a1           ; allpass LFO B, likewise x8
-        asl     #$3,a,a
-        move    a1,x0
-        move    y0,a
-        sub     x0,a                    ; the other way, so the pair decorrelate
-        move    #>$7ff,x0
-        and     x0,a                    ; MASKED -- see the TRAP note above
+        move    x0,a
+        move    #>512,y0
+        add     y0,a                    ; rd + 512
+        move    #>$3ff,y0
+        and     y0,a                    ; MASKED -- see the TRAP note above
         move    a1,n5
-        move    y:(r5+n5),a             ; head 2, at +(phase+1024), modulated down
+        move    y:(r5+n5),a             ; tap 2, at rd + 512
 
+; THE CROSSFADE CYCLES WITH THE FULL PHASE (2048), NOT WITH THE READ HEAD
+; (1024). Getting this wrong is what Sam heard as "the stutter" on 9 Aug, and
+; it is a geometry error, not a voicing one.
+;
+; A head splices where it crosses the WRITE pointer, and the read head closes
+; on the write pointer at half a slot per sample -- so it laps it once every
+; 2048 samples, not every 1024. Head 1 crosses at phase 0; head 2, half a
+; buffer behind, crosses at phase 1024. Building the triangle from
+; (phase & $3ff) gives it a 1024 period, which puts a ZERO at phase 1024 --
+; where the code then outputs 100% of head 2, the very head that is sitting on
+; its own discontinuity. HALF THE SPLICES WERE PLAYED AT FULL GAIN.
+;
+; Built from the full phase instead, the triangle is 0 at phase 0 (head 1
+; muted, head 1 splicing) and 1 at phase 1024 (head 2 muted, head 2 splicing),
+; so every splice falls where that head is silent. Modelled on a 220 Hz sine:
+; the +-43 Hz sidebands either side of the octave drop from -17.8 dB to
+; -36.5 dB. Same instruction count -- the constant and the shift move, nothing
+; else. (An envelope-spread metric shows only 1.2 -> 1.3 dB and misses this
+; entirely; the artifact is spectral, so it has to be measured spectrally.)
+;
+; Built to 0..$400000 (0.5) and doubled by the crossfade below, which is what
+; lets the whole thing be tap2 + 2g*(tap1-tap2) -- ONE multiply.
         move    a,y0                    ; tap2
         sub     y0,b                    ; b = tap1 - tap2
+        move    x1,a                    ; the FULL phase, 0..2047 -- not rd
+        move    #>1024,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; 1024 - |p-1024|, 0..1024
+        asl     #$c,a,a                 ; 1024<<12 -> 0..$400000
+        move    a1,y1
         move    b,x0
         mpy     x0,y1,a                 ; g * (tap1 - tap2)
         asl     a                       ; 2g, so the crossfade reaches unity
         move    y0,x0
         add     x0,a                    ; = the octave-up signal
 
+; ---- back into the tank input -------------------------------------------
+; At SHMR = 0 this multiply is exactly zero and the block is silent, which is
+; the "it must be able to reach zero and actually turn off" constraint. The
+; knob still has to be proved to PUBLISH on hardware (dsp_host pokes r6, so
+; every slot looks live here) -- PLAN.md step 2's BURN=1 trip.
         move    a1,x1
-        move    x:(r7+$0e),x0           ; SHMR, cached by the setup above
-        mpy     x1,x0,a
-        move    x:(r7+$15),x0           ; the tank input
+        move    x:(r7+$0e),x0           ; SHMR, cached per block by the TIME
+        mpy     x1,x0,a                 ; block -- NOT read in the sample loop,
+        move    x:(r7+$15),x0           ; where r6 is the pre-delay pointer
         add     x0,a
-        move    a,x:(r7+$15)            ; ...with the octave folded in
+        move    a,x:(r7+$15)            ; tank input, with the octave folded in
+
+        move    #>$7ff,m5               ; back to the input diffusers' 2048
 ; SHIMMER_END
 
 ; ---- feedback and write back (ROLLED, 8-line) ----------------------------
