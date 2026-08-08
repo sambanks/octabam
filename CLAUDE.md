@@ -25,6 +25,21 @@ the wrong thing. **Disassemble what you assemble** when a result surprises
 you. A related family bit us in shipping code: `cmp a,b` had encoded as
 `max a,b`, which updates only the C bit while `blt` tests N^V.
 
+**`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
+label as its prefix.** Adding a loop labelled `warmz2` next to the existing
+`warmz` assembled to
+
+```
+do #<$40,>$13632     ; 064080 013631      (should have been 001374)
+```
+
+— `warmz`'s address `0x1363` with the leftover `2` appended. The loop branched
+into hyperspace and `dsp_host` SIGSEGVed with no diagnostic. Same family as the
+three above: clean assembly, wrong machine code. Found 9 Aug 2026, after three
+wrong guesses (emulator memory limits, buffer alignment, a stale modulo) that
+were all *reasoned about* rather than disassembled. **Disassembling first would
+have cost one step instead of four** — the rule above is not advice.
+
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and you get "reverb serves tracks 1-4, delay serves 5-8" — worse than
 today, **and it still makes sound.** The build guards this. Do not ungate it.

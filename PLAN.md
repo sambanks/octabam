@@ -342,12 +342,31 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
    worth its own fix: the input diffuser runs 22.5–36.4 ms where a classic
    Dattorro input diffuser is 4–13 ms, so it disperses rather than diffuses.
 
-   🔴 **AND "saturation is ruled out" is retracted too.** Measured 9 Aug by
+   🔴 **AND "saturation is ruled out" is retracted too.** ~~Measured 9 Aug by
    halving the input and scaling ×2: the engine is **nonlinear by −21.8 dB in
-   PLATE and −27.1 dB in ROOM**. That is gross, and it is consistent with the
-   "tank saturation above ~0.35 FS" item this document already lists at step 5.
-   It is NOT the flutter — PLATE is nonlinear and sounds clean — but the exact
-   −10 dB step test below was too coarse to see it and should not be trusted.
+   PLATE and −27.1 dB in ROOM**. That is gross~~ — ❌ **THAT SECOND RETRACTION
+   IS ITSELF RETRACTED, later the same day.** −21.8 dB is a single point of a
+   curve, taken at full-scale input, reported without the sweep that gives it
+   meaning. Swept properly (VOICING.md Round 9):
+
+   | gain | 1.00 | 0.90 | 0.80 | 0.70 | 0.60 | 0.50 | 0.25 | 0.125 |
+   |---|---|---|---|---|---|---|---|---|
+   | residual | −24.0 | −26.1 | −29.1 | −34.1 | −61.0 | −79.4 | −73.4 | −67.4 |
+
+   Below gain 0.5 the residual rises **+6.0 dB per halving** — a fixed additive
+   floor, i.e. 24-bit output quantisation, which is the *measurement* floor and
+   not the engine. **The engine is linear to the floor at any input below
+   −6 dBFS**, then clips above a knee at ~0.6–0.7. It is not "grossly
+   nonlinear"; it is clean until it clips, and it clips only in the top ~4 dB.
+   Priority drops accordingly.
+
+   ✅ The output sum is **ruled out** as the site (output peak is 0.1966 × gain
+   at every point 0.5..1.0, and a saturating output compresses the peak). The
+   clip is inside the feedback loop. 🟡 The FWHT's three unscaled intermediate
+   stores are the leading candidate but are **not actionable yet** — the
+   derived loop gain does not close (2 × `$1e` against H8's √8 implies ~3.7,
+   which would diverge, and the engine decays). Measure the gain structure
+   before acting.
 
    **Ruled out** while chasing that, so it is not re-chased: ~~saturation (both
    engines are linear to exact −10 dB steps, click and sustained loop)~~, the LFO
@@ -500,10 +519,13 @@ FX1 worst case** — four *different* heavy FX1 effects, one per track, plus the
 bank — which decides how much FX1 can afford. Once the build is on the card
 every further configuration is a knob sweep with **no further flash**.
 
-🔴 **BLOCKED as of 8 Aug 2026: the burn probe no longer builds.** `BURN=1`
-splices `burn_block{1,2}.inc` into the reverb (~16 words) and the eight-line
-tank leaves 6 free, so payload A overruns by 10. `SPEC=1` is not a way out —
-the build guards SPEC-with-BURN, since both replace a server.
+✅ **UNBLOCKED as of 9 Aug 2026.** ~~🔴 BLOCKED: the burn probe no longer
+builds — the eight-line tank leaves 6 free, so payload A overruns by 10.~~
+Direction A's removal of the ER section, and the hoists since, took payload A
+from **6 free to 154**. `make check` now runs `verify_burn.py` green, including
+`[PASS] probe inert at BURN=0` and `[PASS] sample loop untouched by the burn`.
+No words need finding and FX1 consolidation is not a prerequisite. `SPEC=1` is
+still not a way out and the build still guards SPEC-with-BURN.
 
 This was **hidden until the four-line engine was deleted**: `verify_burn.py`
 pinned `RVSRC` to the four-line source, so `make verify` was green while
