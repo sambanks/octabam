@@ -601,10 +601,18 @@ warmz:
         move    #>$800,x0
         add     x0,a
         move    a,r5
-        clr     b
-        do      #64,>warmz2
+        clr     b                       ; TWO instructions between the r5 write
+        move    x:(r7+$15),x0           ; and the AGU read in the loop -- the
+                                        ; same spacing the private clear above
+                                        ; uses ("two data moves before the loop,
+                                        ; to clear the AGU write"). With only
+                                        ; ONE, r5 is read before the write has
+                                        ; landed, the loop walks from a garbage
+                                        ; base and dsp_host SIGSEGVs. x0 is dead
+                                        ; here; the value loaded is irrelevant.
+        do      #64,>wshclr
         move    b,y:(r5)+
-warmz2:
+wshclr:
 ; the one-pole and LFO state now lives in r7, so zero it there
 ;
 ; The four tank damping states and the four LO states used to be zeroed here
