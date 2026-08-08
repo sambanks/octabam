@@ -78,6 +78,7 @@ modmap: ## DSP module load map — which bytes land at which P address
 
 .PHONY: verify
 verify: ## Verify the ColdFire menu edits and the burn probe's integrity
+	python3 tools/verify_slots.py
 	python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 

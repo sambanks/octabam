@@ -628,8 +628,11 @@ wshclr:
 ; above has just cleared the whole allocation, so zeroing them a second time
 ; by hand would be eight dead instructions.
         move    b,x:(r7+$3e)
-        move    b,x:(r7+$5c)            ; in-loop allpass interpolation
-        move    b,x:(r7+$5d)            ; carries (v90)
+; The in-loop allpass interpolation carries $5c/$5d used to be zeroed here
+; too (v90). DEAD since v127: the per-block priming above the sample loop
+; seeds both from the buffer, unconditionally, before anything reads them --
+; and the warm-up call itself branches to dry without reading either. Found
+; by tools/verify_slots.py, the $0c bug's checker; deleting them is 2 words.
         move    b,x:(r7+$4f)
         move    b,x:(r7+$50)
         move    b,x:(r7+$51)
