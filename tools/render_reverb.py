@@ -26,12 +26,13 @@ What it CANNOT tell you, and still needs a flash (REVERB.md, BUS.md):
 
 So: voice here, then spend flashes on the cycle budget and the UI surface.
 """
-import argparse, array, math, os, pathlib, struct, subprocess, sys, wave
+import argparse, array, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
 IMAGE = ROOT / "out/mainos_bus.bin"
 MEM = ROOT / "out/dsp/mem_reverb_server_A.mem"
+CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine()
 
 SR = 44100
 FRAMES = 15              # dsp_host caps a block at 15 frames (the & 0xf in setup)
@@ -112,24 +113,72 @@ def write_wav(path, left, right):
 
 
 # ---- the emulator --------------------------------------------------------
+def engine():
+    """(source path, cache stem) for the reverb engine being rendered.
+
+    THE RENDER CACHE IS KEYED BY ENGINE, NOT JUST BY MODE AND MTIME. It has
+    to be. build_bus.py writes every MODE build to the one path
+    out/mainos_bus_mode{N}.bin whatever RVSRC says, so under mode+mtime
+    keying alone an A/B between two engines silently replays whichever build
+    landed there first: render `RVSRC=dsp/some_alt_engine.asm` and then the
+    default, and the default reuses the 8-line image whenever its own source
+    is older than that build -- the normal case for a file that has been
+    sitting in the tree.
+
+    The failure is invisible. The render succeeds, the report prints, the
+    numbers are simply the other engine's. It cost a round of concluding the
+    eight-line tank sounded exactly like the four-line one, because it WAS
+    the four-line one. Every artifact below therefore carries the engine's
+    stem, and build_bus.py's fixed output path is treated as scratch that is
+    moved into the keyed cache immediately after each build."""
+    rv = os.environ.get("RVSRC") or "dsp/reverb_server.asm"
+    if not (ROOT / rv).exists():
+        die(f"RVSRC={rv} does not exist")
+    return rv, re.sub(r"[^A-Za-z0-9]+", "-", pathlib.Path(rv).stem)
+
+
+def claim(built, dest):
+    """Move build_bus.py's fixed-path output into the engine-keyed cache.
+
+    A move, not a copy: leaving one engine's build behind at the shared path
+    is exactly the aliasing this cache exists to prevent, because a later run
+    for a different engine would find a file with a fresh mtime and reuse
+    it."""
+    if not built.exists():
+        die(f"build did not produce {built.relative_to(ROOT)}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(built), str(dest))
+    return dest
+
+
 def ensure_mem(build):
-    if build or not IMAGE.exists():
-        print("building out/mainos_bus.bin ...")
+    rvsrc, stem = engine()
+    # The default engine renders out/mainos_bus.bin in place -- that is the
+    # shipping artifact and `make render`'s documented subject. An alternate
+    # RVSRC must never be left sitting at that path pretending to be it.
+    alt = bool(os.environ.get("RVSRC"))
+    img = CACHE / f"{stem}.bin" if alt else IMAGE
+    mem = CACHE / f"{stem}_A.mem" if alt else MEM
+    newest = max((ROOT / p).stat().st_mtime for p in (rvsrc, "tools/build_bus.py"))
+    if build or not img.exists() or img.stat().st_mtime < newest:
+        print(f"building {img.relative_to(ROOT)} ...")
         env = dict(os.environ, XBUS="1", SPEC="1")
-        rvsrc = os.environ.get("RVSRC")
-        if rvsrc:
+        if alt:
             env["RVSRC"] = rvsrc
-        subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
-                       env=env, check=True, capture_output=True)
+        r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                           env=env, capture_output=True, text=True)
+        if r.returncode != 0:
+            die(f"build_bus.py failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
+        if alt:
+            claim(IMAGE, img)
     if not HOST.exists():
         die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
-    stale = not MEM.exists() or MEM.stat().st_mtime < IMAGE.stat().st_mtime
-    if stale:
+    if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
         sys.path.insert(0, str(ROOT / "tools"))
         import dsp_modmap
-        MEM.parent.mkdir(parents=True, exist_ok=True)
-        dsp_modmap.dumpmem(IMAGE.read_bytes(), ["A", str(MEM)])
-    return MEM
+        mem.parent.mkdir(parents=True, exist_ok=True)
+        dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+    return mem
 
 
 MODES = ["ROOM", "PLATE", "HALL", "BIG"]     # dsp/reverb_server.asm's md_* order
@@ -143,24 +192,23 @@ def ensure_mode_mem(mode, build):
     companion field and dsp_host cannot write those. Those images are
     diagnostic (the real MODE slot is ignored), so they get their own paths
     and are never the flashable out/mainos_bus.bin."""
-    img = ROOT / f"out/mainos_bus_mode{mode}.bin"
-    mem = ROOT / f"out/dsp/mem_reverb_server_A_mode{mode}.mem"
+    rvsrc, stem = engine()
+    img = CACHE / f"{stem}_mode{mode}.bin"
+    mem = CACHE / f"{stem}_mode{mode}_A.mem"
     # rebuild when the engine or the builder moved, not just when the image is
     # missing -- a stale mode render silently voices the previous constants
     newest = max((ROOT / p).stat().st_mtime
-                 for p in ("dsp/reverb_server.asm", "tools/build_bus.py"))
+                 for p in (rvsrc, "tools/build_bus.py"))
     if build or not img.exists() or img.stat().st_mtime < newest:
         print(f"building {img.name} (MODE={mode} {MODES[mode]}) ...")
-        env = dict(os.environ, MODE=str(mode), XBUS="1", SPEC="1")
         # RVSRC= passthrough so alternate engines can be rendered without
-        # copying files: RVSRC=dsp/reverb_server_8.asm make reverb ...
-        rvsrc = os.environ.get("RVSRC")
-        if rvsrc:
-            env["RVSRC"] = rvsrc
+        # copying files: RVSRC=dsp/some_alt_engine.asm make reverb ...
+        env = dict(os.environ, MODE=str(mode), XBUS="1", SPEC="1", RVSRC=rvsrc)
         r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
                            env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
+        claim(ROOT / f"out/mainos_bus_mode{mode}.bin", img)
     if not HOST.exists():
         die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
     if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
@@ -365,6 +413,9 @@ def main():
             # everything from that dot replaced, silently colliding two renders
             d = dest if not mode_name else dest.with_name(f"{dest.name}_{mode_name}")
             d = d if d.suffix.lower() == ".wav" else d.with_name(d.name + ".wav")
+            if d.resolve() == src_path.resolve():
+                die(f"output would overwrite input: {d}\n"
+                    f"  use -o to pick a different output, or --mode to add a suffix")
             write_wav(d, L, R)
             print(f"  -> {d}")
 
