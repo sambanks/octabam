@@ -24,7 +24,7 @@ specced and next to build.
 | Reverb | **eight-line, the only engine** — `dsp/reverb_server.asm`. Decays correctly, modes distinct, linear below −6 dBFS. Worst *known* remaining defect: per-line decay skew (step 1.1). Four-line source deleted: `git show c1ce08d:dsp/reverb_server.asm` |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
 | Flash gate | **When ChonVerb is "excellent"** (the acceptance test below) — Sam's call, 9 Aug. The trip must carry v121 **with** the `$0c` fix |
-| Next | 1.1 per-line decay gains → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
+| Next | 1.1a normalize the FWHT → 1.1b per-line decay gains → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
 
 ⚠️ **The unit's current build breaks above three simultaneous sends** — the
 auto-gain fixes that and has never been flashed. Any hardware trip carries it.
@@ -131,46 +131,70 @@ top ~4 dB. What remains is that **what you hear of the tail is not yet what
 the tank does** — and the items below are ordered so each measurement is made
 on top of the previous fix, not through it.
 
-#### 1.1 Per-line decay gains — NEXT. The largest known audible defect
+#### 1.1 Per-line decay gains — still the largest known audible defect, but
+#### ❌ the "free" spec is RETRACTED (built and falsified 9 Aug): it needs a
+#### normalized feedback matrix first
 
-`$1e` is ONE decay gain for all eight lines. Lines circulate at different
-rates, so equal gain *per pass* is unequal decay *per second*. At ROOM's
-settings the longest line loses 24.3 dB/s and the shortest 41.3 dB/s —
-**17 dB/s apart**; after two seconds the short lines are ~34 dB down. An
-eight-line tank that decays into a two- or three-line one *is* a tail that
-starts lush and turns metallic, which is the standing complaint.
+The defect is real and unchanged: `$1e` is ONE decay gain for all eight
+lines, so equal gain *per pass* is unequal decay *per second* — ~17 dB/s
+spread at ROOM's settings, an eight-line tank that decays into a two- or
+three-line one. That *is* the tail that starts lush and turns metallic.
 
-Jot's fix is `g_i = g^(T_i/T_ref)`; `x^r ≈ 1 + r(x−1)` is within 1.2% over
-the range in use, and the DSP's own arithmetic collapses the rest (full
-derivation: `git log 7d1dd0b`):
+❌ **RETRACTED: `stored_i = 0.5 + r_i·($1e − 0.5)` into Table B, "zero cost,
+provably stable."** It was built 9 Aug and the tank **self-oscillated from a
+−26 dB click at every knob setting, every mode** (+20–30 dB/s growth, rails
+at the wet gain). The spec was wrong twice, and the second one is structural:
 
-- `mpy` doubles, so with `G = 2·$1e` the value to store is
-  **`stored_i = 0.5 + r_i·($1e − 0.5)`**.
-- `r_i` depends only on the per-mode tap fractions in `$74..$77` (times
-  **`$6c`** — the lines-4-7 scale; ⚠️ the original spec said `$0c`, corrected
-  by the 9 Aug slot fix) — not on any knob. `frac_0 ≈ 0.494` so `r_i ≈
-  2·frac_i`, which is exactly the doubling `mpy` already performs. **Zero new
-  constants.**
-- **Where it goes: Table B's second word**, confirmed dead at both ends
-  (primed to zero, loaded only to step r6). The write-back's dead read
-  becomes a live one: same instruction count, zero extra words, zero extra
-  cycles in the sample loop.
-- ⚠️ **Placement pin (added 9 Aug):** the gains must be primed **after the
-  TIME block folds TIME into `$1e`** (~line 1271), per block — not in the
-  table-priming chain near the top of the block, which runs before `$1e` is
-  final. ~5 instructions × 8 lines in the per-block path, nothing per sample.
-- The write-back loop reads the table weight-then-gain; the per-line gain
-  replaces the global `y0` load, so `y0` loads inside the loop and the
-  accumulator source moves off the register the gain occupies.
+1. **The anchor.** Stored 0.5 is not loop-neutral; the loop carries a hidden
+   topology factor (measured bounds **1.121 < F < 1.153** in ROOM), so
+   neutral sits at ~0.44. Fixable — re-anchoring at the largest
+   proven-stable value (0.4336) was tried, and:
+2. **It STILL exploded — asymmetry itself is the trigger.** Measured
+   endpoints, same table mechanism throughout: uniform 0.4073 → stable at
+   −96.5 dBFS; uniform 0.4336 → stable; per-line 0.408–0.422 (max BELOW the
+   proven-stable uniform, spread just 3%) → explodes. The FWHT here is the
+   **raw unnormalized H8** (verified: no scaling in any stage), so the
+   tank's stability rests on H8's exact ±cancellation across lines — the
+   same knife-edge that made the first 8-line build unconditionally unstable
+   until the 2/√8 rescale. Per-line gain differences perturb that
+   cancellation by ~spread×√8, which dwarfs the margin. **Jot's per-line
+   gains are only safe around an orthonormal feedback matrix, and this tank
+   does not have one.**
 
-⚠️ Stability: `stored_i` is a weighted average of `0.5` and `$1e` with
-`r_i ≤ 1`, so it can never exceed the existing gain. Scaling `g` down is
-always safe; scaling up self-oscillates. Safe to build before anything else.
+What survives from the attempt (all verified, in the working tree or git):
+- The Table B mechanism is sound: gains primed per block after TIME folds
+  `$1e` land correctly (peeked at runtime) and the write-back's dead read
+  becomes the live gain at zero extra cost. Variant U (uniform `$1e` through
+  the full table path) renders **byte-identical** to the shipping engine.
+- The per-mode line fractions/taps are measured: ROOM SIZE=127 taps
+  882/762/652/554/638/547/469/400 (pass rates 50–110/s, ratio 2.2).
+- ⚠️ A NEW assembler-trap family member: `mpy x1,y1` (and any operand order
+  dsp_asm doesn't know) silently assembles as **mpysu** — second operand
+  unsigned. 23 sites in the shipping engine are mpysu; all audited safe
+  (positive second operand), but any new mpy with a possibly-negative second
+  operand must be disassembled. `mpy x0,y1` and `mpy y0,x0` encode signed.
 
-**Gate**: per-second wet-only envelopes per mode (never the `tail to −60 dB`
-metric alone — it once scored a divergence as a magnificent tail); decay
-slope near-constant across the tail instead of steepening as short lines die;
-no instability at `TIME=127 SIZE=127`; modes still distinct.
+**The corrected spec — 1.1a then 1.1b:**
+
+- **1.1a Normalize the tank's feedback matrix.** Fold one `asr` into an FWHT
+  stage (H8/2: 8 instructions, ~8 words) and rescale the md_* decay
+  constants ×2/... to restore today's decay times exactly — gate:
+  bit-similar per-second envelopes against the shipping engine at TIME
+  0/64/127 × 3 modes. This buys a **norm-bounded loop** (spectral radius ≤
+  1.414·max multiplier — real margin, not knife-edge cancellation), at the
+  cost that max `$1e` for round-trip-1 becomes 0.3536, so TIME/md
+  recalibrate mechanically (×~0.82).
+- **1.1b Per-line gains on the normalized tank** — the original Table B
+  mechanism, now *mathematically* safe: with an orthogonal-scaled matrix,
+  loop radius ≤ norm × max per-line multiplier, no cancellation dependence.
+  Anchor at the measured neutral, per-mode anchors as a voicing refinement.
+
+**Gate (unchanged, plus one)**: per-second wet-only envelopes per mode
+(never the `tail to −60 dB` metric alone — it scored THIS explosion as a
+"8.90 s tail" too); decay slope near-constant across the tail; no
+instability at any TIME × SIZE corner in any mode **from a −26 dB click**
+(the hot-source clip limit-cycle masks instability — test quiet); modes
+still distinct.
 
 #### 1.2 Per-line damping — the same defect, one octave up. MEASURE FIRST
 
@@ -184,9 +208,15 @@ is carried by the (brighter-decaying) long lines only.
 🟡 The magnitude is inferred, and this is second-order against 1.1's 17 dB/s.
 **So: measure after 1.1 lands** — per-line HF decay via band-split per-second
 envelopes (2 kHz+ vs broadband, per mode). Spec a per-line damping
-coefficient (same `stored_i` arithmetic on `$72`'s product) **only if the
-measured rotation is at audible scale**. Falsified by: band-split envelopes
-decaying at matching rates, in which case close the item and say so here.
+coefficient **only if the measured rotation is at audible scale**. Falsified
+by: band-split envelopes decaying at matching rates, in which case close the
+item and say so here.
+
+⚠️ **1.1's falsification applies here with full force:** per-line damping
+differences are per-line asymmetric loss inside the same feedback loop, and
+9 Aug proved a 3% per-line gain asymmetry self-oscillates the unnormalized
+tank. Do not build ANY per-line differentiation before 1.1a normalizes the
+matrix.
 
 #### 1.3 Re-voice the modes — Sam's ears, VOICING.md rules
 
@@ -355,6 +385,11 @@ that must not come back:
 - ❌ "PLATE confirmed clean by A/B" (8 Aug) — PLATE was unreachable; the mode
   dispatch compared MSB-aligned short immediates and modes 1-2 fell through
   to BIG. Fixed `2da90f0`.
+- ❌ "Per-line decay gains are free and provably stable" (9 Aug spec,
+  `7d1dd0b`) — built and falsified the same day: the 0.5 anchor was not
+  neutral, and per-line asymmetry of even 3% self-oscillates the
+  unnormalized H8 tank regardless of anchor. See 1.1 for the corrected
+  two-step spec and what survives.
 - ⚠️ Standing correction, same family: post-8-line multi-send renders before
   9 Aug had auto-gain clobbered by `$0c`; the unit has never had auto-gain.
 

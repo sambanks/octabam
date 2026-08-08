@@ -19,11 +19,18 @@ Never claim an effect works because it assembled. `make check` is the floor.
 
 ## Traps that have already cost real work
 
-**The assembler mis-encodes two instructions, silently.** `dsp_asm` encodes
-`tfr a,b` as `rnd b` and `mpy x0,y0` as `mpysu`. Both assemble clean and do
-the wrong thing. **Disassemble what you assemble** when a result surprises
-you. A related family bit us in shipping code: `cmp a,b` had encoded as
-`max a,b`, which updates only the C bit while `blt` tests N^V.
+**The assembler mis-encodes instructions, silently.** `dsp_asm` encodes
+`tfr a,b` as `rnd b`, and **any `mpy` operand order it doesn't know as
+`mpysu`** — found with `mpy x0,y0`, confirmed 9 Aug 2026 for `mpy x1,y1`
+and `mpy x0,x1` too (23 sites in the shipping reverb are mpysu; all audited
+safe because their second operand is always positive, which is the only
+reason the engine works). `mpysu` treats the SECOND operand as unsigned, so
+a negative multiplier there is silently corrupted. `mpy x0,y1` and
+`mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
+**Disassemble what you assemble** when a result surprises you — and always
+for a new `mpy` whose second operand can go negative. A related family bit
+us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only
+the C bit while `blt` tests N^V.
 
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
