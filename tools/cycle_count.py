@@ -51,11 +51,35 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 # already costs. That makes it a WORST CASE that needs no further derating --
 # which is the opposite of how 1080 behaved.
 #
-# Stated as a constant the tool can add to, so the printed budget tracks the
-# bank rather than being a fixed number that goes stale the moment the bank
-# changes.
-BURN_SPARE = 1392       # measured, worst realistic FX1 load
+# ⚠️ SPARE IS NOT INVARIANT TO THE BANK, and this tool used to print it as if
+# it were. `budget = bank + BURN_SPARE` against the CURRENT bank made "room for
+# new work" come out at 1392 no matter how much the bank grew -- which says
+# capacity grows with our own code. The dependency was backwards, and the
+# comment above it claimed the opposite ("tracks the bank rather than being a
+# fixed number that goes stale").
+#
+# It went stale immediately: the eight-line tank took the reverb from 763 to
+# 1145 cycles/sample (8 Aug 2026), ~382 more per bank, and the tool went on
+# reporting 1392 of headroom. Real headroom is ~1010.
+#
+# What is actually fixed is the FREEZE POINT. The 7 Aug run measured
+#   bank_then + 4x FX1 FILTER + 1392 = the load at which it froze
+# so spare for new work today is BURN_SPARE minus however much the bank has
+# grown since. Anything else prices FX1 against cycles we do not have -- and
+# FX1 spends them x4 per core, so the error is multiplied by four.
+BURN_SPARE = 1392       # measured, worst realistic FX1 load, 7 Aug 2026
+# 🟡 RECONSTRUCTED, not measured: the bank the 1392 was measured on top of.
+# Pre-roll four-line reverb 763 (PLAN records the roll as 763 -> 778) + delay
+# 163 + 2x send 19. Falsified by re-running the burn sweep, which is the only
+# thing that can re-measure BURN_SPARE itself -- see PLAN, the probe currently
+# does not build.
+BANK_AT_MEASURE = 763 + 163 + 2 * 19
 CORE_TOTAL = 4535       # 200 MIPS / 44100, arithmetic
+
+
+def room_for_new_work(bank):
+    """Headroom left after the bank grew past what BURN_SPARE was measured on."""
+    return BURN_SPARE - (bank - BANK_AT_MEASURE)
 
 # A full bank's four FX2 slots: one reverb, one delay, two sends.
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
@@ -219,10 +243,13 @@ def main():
 
     bank = sum(m["cycles"] * BANK[m["name"]] for m in rows)
 
+    room = room_for_new_work(bank)
+
     if "--json" in args:
         print(json.dumps(dict(per_effect={m["name"]: m["cycles"] for m in rows},
-                              bank=bank, budget=bank + BURN_SPARE,
-                              headroom=BURN_SPARE,
+                              bank=bank, headroom=room,
+                              burn_spare_measured=BURN_SPARE,
+                              bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))
         return
 
@@ -238,10 +265,18 @@ def main():
     # against. Printing "% used" against a fixed budget is exactly what made
     # 1080 dangerous -- it turned an unknown into a pass/fail.
     print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
-    print(f"{'MEASURED spare':{w}}  {BURN_SPARE:>13}   on top of this bank "
+    print(f"{'MEASURED spare':{w}}  {BURN_SPARE:>13}   on a {BANK_AT_MEASURE}-cycle bank "
           f"+ 4x FX1 FILTER (hardware, 7 Aug 2026)")
-    print(f"{'room for new work':{w}}  {'':>13}   {BURN_SPARE} cycles/sample "
-          f"= {BURN_SPARE / max(bank, 1):.1f}x the current bank")
+    grown = bank - BANK_AT_MEASURE
+    print(f"{'bank has grown by':{w}}  {grown:>13}   since that measurement")
+    print(f"{'room for new work':{w}}  {room:>13}   cycles/sample"
+          + (f"  ({room / max(bank, 1):.2f}x the current bank)" if room > 0 else
+             "   *** THE BANK HAS EATEN THE MEASURED HEADROOM ***"))
+    if grown > BURN_SPARE // 3:
+        print()
+        print(f"  NOTE: the bank has consumed {grown} of the {BURN_SPARE} measured spare.")
+        print(f"  FX1 spends cycles x4 per core, so price new FX1 work against {room},")
+        print(f"  not {BURN_SPARE}. Only a re-run of the burn sweep can re-measure this.")
 
 
 if __name__ == "__main__":

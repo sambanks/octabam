@@ -82,13 +82,23 @@ The ten, with sizes (identical in both payloads):
 
 ### Cycles — NOT the constraint, per core, 4,535/sample
 
-✅ 1,392 spare measured **with the full bank plus four FX1 FILTERs already
-running**, so it is a worst case needing no derating. 2,432 with FX1 empty.
-A stock FILTER costs **~260 each**.
+✅ 1,392 spare measured 7 Aug 2026 **with the full bank plus four FX1 FILTERs
+already running**, so it is a worst case needing no derating. A stock FILTER
+costs **~260 each**.
+
+⚠️ **That 1,392 is spare on a 964-cycle bank, and the bank is now 1,346.**
+The eight-line tank took the reverb from 763 to 1,145 cycles/sample, so
+**382 of the measured spare is already spent and the headroom for new work is
+~1,010.** `cycle_count.py` printed 1,392 regardless of bank size until 8 Aug —
+it added the spare to the *current* bank, which says capacity grows with our
+own code. Fixed; it now subtracts the growth and says so.
 
 ⚠️ **FX1 cycles are paid ×4 per core.** A 300-cycle FX1 effect costs 1,200
-cycles/core. *This*, not program space, is the ceiling on FX1 ambition — and
-it is what the burn sweep exists to measure.
+cycles/core — which no longer fits in 1,010. *This*, not program space, is the
+ceiling on FX1 ambition, and the ×4 is why a 38% over-report of headroom
+mattered. Only a re-run of the burn sweep can re-measure the spare itself, and
+🔴 **the probe does not currently build** (see "The one thing that needs
+hardware").
 
 ### Y memory
 
