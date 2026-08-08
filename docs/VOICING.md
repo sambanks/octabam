@@ -619,3 +619,104 @@ Two more things to re-voice, both known-compromised rather than chosen:
 
 ⚠️ Judge at eight lines and wet-only, and do not re-enable `SHIMMER=1` — it
 stays excised, and a new shifter is a separate job.
+
+---
+
+## Round 7 — 9 Aug 2026: the ER is a flutter echo, and MODE had two positions
+
+Judged by ear throughout, wet-only, level-matched, on `out/test_audio/melody.wav`
+(a bare triangle-wave phrase — hard note onsets, no vibrato, so it hides
+nothing).
+
+### ⚠️ RETRACTION: every PLATE and HALL verdict in this log is void
+
+`move #$1,x0` is the SHORT immediate form and the DSP56300 places short
+immediates **MSB-aligned** — x0 got `$010000` while `a` held `$000001`. The
+mode compare could never match, so **modes 1 and 2 both fell through to BIG**.
+Only ROOM was reachable (it is selected by `tst a; beq`, not a compare).
+PLATE, HALL and BIG rendered byte-identical: `9c080ce81e92`.
+
+So **PLATE and HALL have never been heard.** In particular Round 1's "HALL and
+BIG were indistinguishable wet and level-matched" was true because they were
+the same code, and the tap-scale respacing that finding justified (v95) was
+reasoning from an artefact. `8ed9acf`'s per-mode tap scales for PLATE and HALL
+set constants that never executed.
+
+Fixed with long immediates; the four modes now render four distinct hashes
+(ROOM `1a0f9a5649d1`, PLATE `3c620c6ebeaa`, HALL `abbec50628fc`, BIG
+`9c080ce81e92`). **Both modes need voicing from scratch.**
+
+Found by the render harness printing `*** IDENTICAL ***`, not by reading code.
+
+### ROOM's early reflections: structural, not voicing
+
+Round 6 left this as "voicing rather than a fault". **That was wrong.** Sam,
+9 Aug: *"like a playing card in a desk fan"*.
+
+Localised properly — ROOM with `$6c` forced to 0, every other constant
+identical, is **clean**. Not inferred from PLATE this time; PLATE differs in
+about ten constants and attributing its cleanliness to ER alone was the error
+that cost Round 6.
+
+The ER implementation is **correct**. Measured, not assumed:
+
+* linear to **−101 dB** (quarter input scaled ×4 against full input), so the
+  accumulator does not overflow, despite three taps per channel summing to
+  1.83 × full scale before `$6c` is applied
+* time-invariant to **−67 dB** across block phase
+* 99% of its impulse energy inside 21.3 ms, nothing past 60 ms (−224 dB):
+  a pure six-tap output-summed FIR, exactly as written
+
+It is what it was written to do that is wrong. **Six discrete taps summed onto
+the output is a flutter echo.** Real ER sections use 20–100 taps; at six the
+comb notches are 47–222 Hz apart, sparse enough to be heard as *pitch*, which
+is what "robotic" means. Every lever was tried and every one failed the same
+way:
+
+| change | verdict |
+|---|---|
+| level `$6c` 0.75 → 0.27 | "lighter, like a playing card in a desk fan" — scales the comb |
+| taps 4.5–21.3 ms → 8.0–68.9 ms | "quieter but still there" — re-tunes the comb |
+| ER routed into the diffuser | "springs under a snare" — dispersed, not diffused |
+| input diffuser 22–36 ms → 2.6–8.0 ms, ER on output | "card in the spokes" — ER bypasses the diffuser |
+| both together | "different but still not right" — six seeds are still six seeds |
+
+**The fix is more taps, and it needs program space payload A does not have
+(0 free).** Not attempted. Until then ROOM's ER is the reverb's worst artefact
+and `$6c` = 0 is the only clean setting for it.
+
+Contributing, and worth its own fix: the input diffuser runs **22.5–36.4 ms**
+where a classic Dattorro input diffuser is 4–13 ms. At that length an allpass
+disperses rather than diffuses — the same failure this file already documents
+for the in-loop allpasses. That is why routing the ER through it produced a
+spring.
+
+### Also measured, and a separate open bug
+
+The tank is **nonlinear by −21.8 dB** in PLATE and −27.1 dB in ROOM (half the
+input, scale ×2, compare). That is gross, and it matches the "tank saturation
+above ~0.35 FS" item already in PLAN.md. Not the flutter — PLATE is nonlinear
+and sounds clean — but far too much distortion to leave unexamined.
+
+### Shimmer: clean, and not the culprit
+
+The new shifter was confirmed clean **in isolation** (`SHIMONLY6.wav`, the
+shimmer's contribution alone by subtraction, normalised up 15 dB). The stutter
+heard "as soon as the shimmer went in" was ROOM's ER all along; the shimmer
+made it more audible rather than causing it. See the commit log for the two
+real faults fixed in the shifter itself (the 4-copy window and the dirty A2).
+
+### ⚠️ Method note, paid for the hard way
+
+Three metrics were used to judge shifter changes and **all three disagreed with
+Sam's ears**: largest-spectral-peak (ranked a change he called "a big step
+backward" as 18.7 dB better), lap-harmonic energy (predicted −7.2 dB for one he
+called "basically the same"), and envelope-percentile spread (called the real
+fix a no-op at 1.2 → 1.3 dB).
+
+What worked every time: **feed it an impulse and count the events.** Four
+equal copies → stutter; two → "a single pitch shifted tone". Do that first.
+
+And: **isolate by subtraction.** `wet(knob=max) − wet(knob=0)` is the stage's
+own contribution, and muting one stage at a time is what finally localised the
+ER. Both are one render each and neither was run until very late.

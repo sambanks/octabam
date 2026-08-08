@@ -308,19 +308,49 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
      🟡 Still a *derived* set, not a voiced one. Step 1.4 should give lines
      4-7 their own per-MODE constants now that there is a little room.
 
-   🟡 **Remaining, and it is voicing rather than a fault: ROOM's early
-   reflections stick out.** Sam, 8 Aug, on a four-clip A/B: the glitches on a
-   transient vanish in **PLATE**, the mode with no ER — *"glitches went away on
-   4 ... still a bit of a thwack but that's been around for ages and is tuning
-   rather than a fault."* The ER accumulator is **byte-identical to v4**, so
-   nothing is broken; ROOM's ER level (`$6c` = 0.75, "STRONG") was simply
-   balanced against the four-line tank. Two things moved under it: the
-   output-tap fix dropped the tank ~9 dB relative to ER, and lines 4-7 now sit
-   at 11-18 ms, overlapping the ER taps (4.5-21.3 ms) where v4's lines sat at
-   14-22 ms. Re-balance ER per mode in step 1.4.
+   🔴 **RETRACTED 9 Aug — this is a FAULT, not voicing, and it is the reverb's
+   worst artefact.** The paragraph below is kept because its conclusion was
+   acted on for a day and the reasoning has to be visible.
 
-   **Ruled out** while chasing that, so it is not re-chased: saturation (both
-   engines are linear to exact −10 dB steps, click and sustained loop), the LFO
+   ~~🟡 Remaining, and it is voicing rather than a fault: ROOM's early
+   reflections stick out. Sam, 8 Aug, on a four-clip A/B: the glitches on a
+   transient vanish in **PLATE**, the mode with no ER — "glitches went away on
+   4 ... still a bit of a thwack but that's been around for ages and is tuning
+   rather than a fault." The ER accumulator is byte-identical to v4, so nothing
+   is broken; ROOM's ER level (`$6c` = 0.75, "STRONG") was simply balanced
+   against the four-line tank. Re-balance ER per mode in step 1.4.~~
+
+   **Two things were wrong with that.** First, the A/B rested on PLATE — and
+   PLATE was **unreachable**: the mode dispatch compared against short
+   immediates, which the DSP56300 places MSB-aligned, so modes 1 and 2 both
+   fell through to BIG (fixed 9 Aug, `2da90f0`). Second, PLATE differs from
+   ROOM in ~10 constants, so its cleanliness never implicated ER specifically.
+   Muting ER alone (`$6c` = 0, everything else identical) does: ROOM is then
+   **clean**.
+
+   **The implementation is correct** — linear to −101 dB, time-invariant to
+   −67 dB, 99% of its impulse energy inside 21.3 ms. It is a pure six-tap
+   output-summed FIR, exactly as written. **Six discrete taps summed onto the
+   output IS a flutter echo** ("like a playing card in a desk fan"); the comb
+   notches are 47–222 Hz apart, sparse enough to be heard as pitch. Level,
+   tap spacing, routing it through the diffuser, shortening the diffuser, and
+   both together were all tried and all failed — see VOICING.md Round 7 for the
+   verdicts.
+
+   **The fix is 20+ taps, and it needs program space payload A does not have
+   (0 free).** Until then `$6c` = 0 is ROOM's only clean setting. Related and
+   worth its own fix: the input diffuser runs 22.5–36.4 ms where a classic
+   Dattorro input diffuser is 4–13 ms, so it disperses rather than diffuses.
+
+   🔴 **AND "saturation is ruled out" is retracted too.** Measured 9 Aug by
+   halving the input and scaling ×2: the engine is **nonlinear by −21.8 dB in
+   PLATE and −27.1 dB in ROOM**. That is gross, and it is consistent with the
+   "tank saturation above ~0.35 FS" item this document already lists at step 5.
+   It is NOT the flutter — PLATE is nonlinear and sounds clean — but the exact
+   −10 dB step test below was too coarse to see it and should not be trusted.
+
+   **Ruled out** while chasing that, so it is not re-chased: ~~saturation (both
+   engines are linear to exact −10 dB steps, click and sustained loop)~~, the LFO
    integer/fraction pairing (lines 4-7 do get proper adjacent pairs `$00/$01`
    … `$06/$07` — worth checking, since a past mispairing was "the loudest
    artifact ever measured in this engine"), and `$5a/$5b` stash-vs-ER-accumulator
@@ -333,7 +363,30 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
    The delay's local render path is gone; the OMR memory-map lever (16K P)
    would bring it back.
 
-3. **Shimmer — a new one, from scratch.** The old implementation was heard and
+3. **Shimmer — a new one, from scratch.** ✅ **BUILT, 9 Aug, and confirmed
+   clean by ear in isolation.** 130 words, `SHIMMER=1`, still DEV-only because
+   payload A has 0 free. What it is: octave up by *decimating into* a 2048-word
+   buffer (write at ½×, read at 1×) rather than reading out faster, two heads
+   windowed on the **age** of the data under them so each piece of material
+   comes out twice rather than four times, fed the **pre-diffusion** input, and
+   injected as a parallel send. `SPEED=0` renders byte-identical to the
+   excised build, so it provably turns off.
+
+   Three faults were found in it and every one needed a measurement rather
+   than a listen — see the commit log and VOICING.md Round 7 for the method:
+   the 86 Hz sideband pair that was the original thwong, a window keyed on
+   buffer index instead of data age (4 equal copies of every transient = the
+   stutter), and an `and`-masked age that left A2 dirty, the same class as the
+   `$83` load that froze two tracks.
+
+   ⚠️ **The stutter blamed on the shimmer was ROOM's ER.** The shimmer made it
+   more audible; it did not cause it. A day went into the wrong component
+   because "it started when we added shimmer" was taken as causation.
+
+   The paragraphs below are the ORIGINAL brief, kept because the two things it
+   told us to change are exactly the two that mattered.
+
+   The old implementation was heard and
    **it was bad.** It stays excised, and `SHIMMER=1` is a reference for what
    not to repeat, not a starting point. Do not re-enable it and re-voice it.
 
