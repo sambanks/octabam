@@ -899,3 +899,44 @@ around 3.7, which would diverge instantly. The engine demonstrably decays
 how it reads. **Do not act on the FWHT hypothesis until the gain structure is
 measured rather than derived** — the honest state is "threshold clip, inside
 the loop, site not established".
+
+## Round 10 — 9 Aug 2026: SETUP — per-line decay gains, judged by ear
+
+The 1.1 build (per-line decay gains, anchor 1/√8, commit `d381805`) measured
+right: per-line decay spread 63 → 2 dB/s, envelope drift flattened, stability
+by norm at every corner. This round is the ear's verdict — **is the
+lush-turns-metallic complaint gone?** — plus first impressions for the 1.3
+re-voice.
+
+**Renders**: `out/voicing_ab/` — {pad, stab, hat, melody} × {ROOM, PLATE,
+BIG} × {A, B}. **A = pre-1.1** (uniform gain, the engine every previous round
+was heard on). **B = current** (per-line). Wet-only, defaults, tail 8 s,
+sources from `scripts/make_test_audio.py` (out/test_audio). All files
+level-matched to −20 dBFS active-RMS (100 ms windows above −60), so louder
+can't win.
+
+**Play**: `out/voicing_ab/ab.sh pad ROOM` (A/B/A/B; third arg = repeats).
+
+What each source asks:
+- **pad** — THE question: does the held tail stay dense as it decays, or
+  thin out into the metallic few-line ring? Meters say B holds it
+  (tail-to-−60: ROOM 1.5→2.2 s, PLATE 2.5→5.7 s, A→B).
+- **stab** — pitched bloom: smoother rise/fall, no comb-like coloration late.
+- **hat** — HF tail: 1.2 closed per-line damping as not-warranted; if B's
+  hat tail turns sparse or metallic at the top end, that reopens it (the
+  revisit spec is in PLAN.md 1.2). Also audible here if at all: the AP-mod
+  HF shelf (~55 dB down — likely inaudible).
+- **melody** — the musical audition; B runs ~1.5 dB hotter in wet RMS at
+  equal knobs (short lines contributing longer), which the level-match hides
+  — judge character, not loudness.
+
+Note for the log: B's decay is genuinely longer at the same TIME knob (the
+short lines no longer die early), so if B reads as "too long", that is TIME
+recalibration (mechanical, expected — PLAN 1.1's r₀ note), not a fault.
+
+**Verdicts** (fill in after listening):
+- pad ROOM / PLATE / BIG:
+- stab:
+- hat (reopen 1.2?):
+- melody:
+- Overall: does 1.1 ship to the re-voice as-is?
