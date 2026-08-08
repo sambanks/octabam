@@ -187,9 +187,23 @@ FX1 spends ×4 per core. Track it with `make cycles` every pass.
    meaning none; input sign and scale) read from the same state table.
    ⚠️ `make cycles` now prices a counted inner loop instead of refusing it; the
    `do` setup itself is charged a flat 5 and is still a floor.
-2. **Eight lines.** Modal overlap 0.157 → ~0.31 — the density step people
-   actually hear. Needs an 8x8 Hadamard; as a fast Walsh-Hadamard that is
-   24 butterflies against the 4x4's 8, still adds and subtracts only.
+2. ✅ **Eight lines** — *8 Aug 2026.* Modal overlap 0.157 → ~0.31. 8×8 FWHT
+   (24 butterflies), rolled write-back loop (`do #8`), 8 LFOs, 8×2048-word
+   lines, per-line state table at `base+0x7F00` (12 words × 8), Table B at
+   `base+0x7F30`. Built in `dsp/reverb_server_8.asm`, buildable via `RVSRC=`.
+
+   **2511 program words** (2722 of 2724 in the donor region, 2 free). **1145
+   cycles/sample** on core A (full bank 1183, 209 spare). Tail confirmed
+   non-zero (7.90 s to −60 dB ROOM). Render with `RVSRC=dsp/reverb_server_8.asm
+   make reverb IN=loop.wav`.
+
+   🟡 **DEV=1 render hatch cannot fit both servers any more.** The 8-line
+   reverb + send + delay overflows payload A even with the CHORUS donor.
+   `render_reverb.py` and `make render` now build with `SPEC=1` (reverb on A,
+   delay on B) — dsp_host only boots payload A, so it renders the reverb only.
+   The delay's local render path is gone; the OMR memory-map lever (16K P)
+   would bring it back.
+
 3. **Shimmer — a new one, from scratch.** The old implementation was heard and
    **it was bad.** It stays excised, and `SHIMMER=1` is a reference for what
    not to repeat, not a starting point. Do not re-enable it and re-voice it.
@@ -324,6 +338,11 @@ breaks above three simultaneous sends.
   knob and publish nothing. This caused the shimmer to run half-on in every
   build anyone ever heard. **It caps how many usable parameters any effect can
   have**, so it is worth closing before designing a 12-knob delay.
+- **Emulator/device gap: per-core layout.** ✅ Closed 8 Aug — `render_reverb.py`
+  and `make render` now build with `SPEC=1`, matching the shipping layout
+  (reverb on A, delay on B). dsp_host boots payload A, so the reverb renders
+  identically to hardware. The delay has no local render unless the OMR lever
+  is pulled.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is a design rule; no
   product configuration has this.
