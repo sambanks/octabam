@@ -174,6 +174,7 @@
 ;   base+0x7800   2048 words free for the shimmer pitch shifter (v100)
 ;   r7+$40        LO coefficient
 ;   r7+$0b        state table base (base+0x7f00)
+;   r7+$0c        lines 4-7 tap scale (per-mode, parked by md_* block)
 ;   r7+$0d        write-back table base (base+0x7f00 + 8*6 = base+0x7f30)
 ;   r7+$16..$19   Hadamard inputs/outputs u0..u3 (lines 0..3)
 ;   r7+$3a..$3d   Hadamard inputs/outputs u4..u7 (lines 4..7)
@@ -785,10 +786,10 @@ warmdone:
         move    x:(r7+$6e),a
         tst     a
         beq     md_room
-        move    #>$1,x0
+        move    #$1,x0
         cmp     x0,a
         beq     md_plate
-        move    #>$2,x0
+        move    #$2,x0
         cmp     x0,a
         beq     md_hall
 ; v95, after the first by-ear round (VOICING.md round 1): HALL and BIG were
@@ -904,6 +905,8 @@ md_big:                                 ; 3, and anything unexpected
                                         ; what these constants are chosen on.
         move    #>$7fffff,a             ; full modulation: the Valhalla-flavoured
         move    a,x:(r7+$73)            ; scale comes from movement, not length
+        move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
+        move    a,x:(r7+$0c)            ; interleave suits the 1.69 spread
         bra     md_done
 md_room:
 ; DECAY SCALE, 0.92 -> RT60 ~2.0 s. A room is SHORT; 6.9 s is a cathedral.
@@ -983,6 +986,8 @@ md_room:
         move    a,x:(r7+$72)
         move    #>$400000,a             ; least movement: a small room does not
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
+        move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
+        move    a,x:(r7+$0c)            ; interleave for a smaller space
         bra     md_done
 md_plate:
 ; DECAY SCALE, 0.965 -> ~4.8 s.
@@ -1062,6 +1067,8 @@ md_plate:
         move    a,x:(r7+$72)            ; opposite of a dark hall
         move    #>$599999,a             ; some movement, less than a hall
         move    a,x:(r7+$73)
+        move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
+        move    a,x:(r7+$0c)            ; interleave for a dense plate
         bra     md_done
 md_hall:
 ; DECAY SCALE, 0.99 -> ~7.9 s.
@@ -1148,6 +1155,8 @@ md_hall:
                                         ; BIG stays darkest at 0.445.
         move    #>$7fffff,a             ; full movement
         move    a,x:(r7+$73)
+        move    #>$690000,a             ; lines 4-7 tap scale 0.820 -- widest
+        move    a,x:(r7+$0c)            ; interleave for the largest hall
 md_done:
 
     ; ---- SIZE: scale all four tap lengths -----------------------------------
@@ -1263,9 +1272,10 @@ md_done:
             ; Paid for by hoisting the odd-forcing mask into y1 above: that
             ; freed 10 words, this costs 4.
             ;
-            ; ⚠️ Still a derived set, not a voiced one. PLAN step 1.4 should
-            ; give lines 4-7 their own per-MODE constants once there is room.
-            move    #>$650000,y0            ; 0.789
+            ; Per-mode scale factor, parked in $0c by the md_* block above.
+            ; Each mode now gets its own interleave (BIG 0.789, ROOM 0.719,
+            ; PLATE 0.766, HALL 0.820), voiced per mode rather than derived.
+            move    x:(r7+$0c),y0           ; this MODE's lines 4-7 tap scale
             mpy     x1,y0,a                 ; x1 is dead after this block (the
             move    a,x1                    ; decay block reloads it at ~1300)
             move    x:(r7+$74),x0           ; this MODE's line 0 fraction, rescaled
