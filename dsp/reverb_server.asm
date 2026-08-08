@@ -466,12 +466,18 @@ bus_mine:
 ; wraps to index 0. Index 0 therefore holds 1/8, and index k holds 1/k. A count
 ; of 0 (nobody sent) also lands on 1/8, which is harmless -- the accumulator is
 ; zero in that case anyway.
-        move    #>$b800,b               ; base 0x4000 + 0x7800, the literal --
-        move    b,r5                    ; x:(r7+$31) is not written until AFTER
+        move    #>$30000,b              ; SHARED WINDOW + 0x4400. Built as base
+        move    #>$4400,x0              ; + offset rather than one literal
+        add     x0,b                    ; because only the bare `$30000` is
+        move    b,r5                    ; rewritten to `$38000` for payload B --
+                                        ; a fused `$34400` would silently keep
+                                        ; core 1 pointing into core 0's memory.
+                                        ; x:(r7+$31) is not written until AFTER
                                         ; this block, so reading it here would
                                         ; take the PREVIOUS block's value (and
                                         ; garbage on the very first). b is kept
-                                        ; live for the index below.
+                                        ; live for the index below, and x0 is
+                                        ; free until the $983 load below.
         move    #>$ffffff,m5
         move    #>$100000,a
         move    a,y:(r5)+               ; [0] = 1/8  (count 8 wraps to here)
@@ -555,10 +561,10 @@ warmtag:
         bge     warmdone                ; warmed: run the reverb
 warmrun:
         move    a,x:(r7+$15)            ; count, for the save below
-        asl     #$7,a,a                 ; count*128 -- the 32K re-layout clears
-                                        ; the FULL 0x8000 words: 256 blocks x
-                                        ; 128 = 32,768, every buffer including
-                                        ; the in-loop allpasses at base+0x7000
+        asl     #$7,a,a                 ; count*128 -- clears the FULL private
+                                        ; 0x8000 words: 256 blocks x 128 =
+                                        ; 32,768. That allocation is now tank
+                                        ; lines and nothing else.
         move    x:(r7+$31),x0
         add     x0,a
         move    a,r5                    ; base + count*128, count < 0x100 so
@@ -568,6 +574,45 @@ warmrun:
         do      #128,>warmz
         move    b,y:(r5)+
 warmz:
+; ---- and the SHARED half, which the loop above no longer reaches ---------
+; Everything that is not a tank line moved to the shared window, so it needs
+; its own clear or the engine starts on whatever the last effect left there --
+; the "laddering garbage" failure the private clear exists to prevent.
+;
+; 64 words x 256 blocks = 16,384, covering shared+0x0800 .. shared+0x47ff.
+; That is a little more than the 15,872 actually occupied, which is harmless.
+;
+; ⚠️ THE BOUNDS ARE LOAD-BEARING, in both directions:
+;   - it must start at +0x0800, because stock's per-frame parameter staging
+;     sits at shared+0x0000..+0x0047 and is rewritten every frame
+;   - it must end well below +0x6000, because THE BUS SCRATCH lives at
+;     shared+0x6000..+0x7fff. Zeroing that would clear the accumulator parity
+;     word and every client's contribution mid-block, on 256 consecutive
+;     blocks, on a core the other core is talking to.
+; +0x47ff leaves 6,145 words of margin. Do not grow this loop without moving
+; the scratch first.
+        move    #>$ffffff,m5            ; ISOLATION 9 Aug: the clear below wrote
+                                        ; y:(r5)+ under whatever m5 the previous
+                                        ; block left. Forced linear.
+        move    x:(r7+$15),a            ; the count again, still A2-clean
+        asl     #$6,a,a                 ; count*64
+        move    #>$30000,x0             ; -> $38000 on payload B
+        add     x0,a
+        move    #>$800,x0
+        add     x0,a
+        move    a,r5
+        clr     b                       ; TWO instructions between the r5 write
+        move    x:(r7+$15),x0           ; and the AGU read in the loop -- the
+                                        ; same spacing the private clear above
+                                        ; uses ("two data moves before the loop,
+                                        ; to clear the AGU write"). With only
+                                        ; ONE, r5 is read before the write has
+                                        ; landed, the loop walks from a garbage
+                                        ; base and dsp_host SIGSEGVs. x0 is dead
+                                        ; here; the value loaded is irrelevant.
+        do      #64,>wshclr
+        move    b,y:(r5)+
+wshclr:
 ; the one-pole and LFO state now lives in r7, so zero it there
 ;
 ; The four tank damping states and the four LO states used to be zeroed here
@@ -596,19 +641,44 @@ warmdone:
                                         ; derives buffers from x0
 
 ; ---- every buffer base, derived once per block --------------------------
-; Input allpasses, 2048 words apart since the 32K re-layout.
-        move    #>$4000,a
+;
+; TWO REGIONS SINCE THE SHARED-WINDOW RE-LAYOUT (9 Aug 2026).
+;
+; The private allocation Y:0x4000-0xBFFF now carries THE EIGHT TANK LINES AND
+; NOTHING ELSE, so they are free to grow into all 32,768 words of it. Every
+; other buffer moved to this core's own half of the 64K shared window.
+;
+; Why the lines get the private half and not the shared one: the lines are the
+; only thing needing a single UNBROKEN, self-aligned 32K block, and the private
+; allocation is the only unbroken 32K there is. The shared half is fragmented
+; by two things we do not own -- stock's per-frame parameter staging at
+; 0x30000-0x30047, rewritten EVERY FRAME, and the bus scratch at
+; 0x36000-0x37FFF -- so it suits the small buffers, which fit around them.
+;
+; ✅ The shared half really is ours: stock's own FX2 allocator table at X:0x255
+; hands payload A 0x30000/0x34000 and payload B 0x38000/0x3C000, measured from
+; the raw image (XBUS.md). The cores' shared-window slots do not overlap.
+;
+; ⚠️ THE `$30000` BELOW IS REWRITTEN TO `$38000` ON PAYLOAD B by build_bus.py's
+; blanket per-payload substitution, and that is CORRECT here -- a reverb on
+; core 1 must use core 1's half or it would collide with core 0's reverb in the
+; same physical memory. It also means this literal must not be spelled any
+; other way, and that no unrelated `$30000` may appear in this file.
+;
+; Everything below still derives from x0, so the only change to the shape of
+; this block is which base x0 holds.
+        move    #>$0,a
         add     x0,a
-        move    a,x:(r7+$32)
-        move    #>$4800,a
+        move    a,x:(r7+$10)            ; line 0 base
+        move    #>$0800,a
         add     x0,a
-        move    a,x:(r7+$33)
-        move    #>$5000,a
+        move    a,x:(r7+$11)            ; line 1 base
+        move    #>$1000,a
         add     x0,a
-        move    a,x:(r7+$34)
-        move    #>$5800,a
+        move    a,x:(r7+$12)            ; line 2 base
+        move    #>$1800,a
         add     x0,a
-        move    a,x:(r7+$35)
+        move    a,x:(r7+$13)            ; line 3 base
 ; $36/$37 and $10..$13 are line bases the rolled tap loop no longer reads.
 ; r1..r4 carry lines 0..3 inside the sample loop (built from the saved
 ; phase, below). $36/$37 and $4c/$4d carry the four new lines for the
@@ -626,25 +696,33 @@ warmdone:
         move    #>$3800,a               ; line 7 base (7 * 0x0800)
         add     x0,a
         move    a,x:(r7+$4d)
-        move    #>$6000,a
+
+; ---- everything that is NOT a tank line: the shared window --------------
+; x0 is reloaded with the shared base and every derivation below keeps the
+; same `add x0,a` shape it had against the private base.
+        move    #>$30000,x0             ; -> $38000 on payload B (see above)
+; Input allpasses, still 2048 words apart. Their taps are 179/293/419/547 so
+; 1024 would do, but shrinking them is a SEPARATE change: this relocation is
+; required to render bit-identically and a size change would forfeit that test.
+        move    #>$2000,a
         add     x0,a
-        move    a,x:(r7+$38)            ; pre-delay base
-        move    #>$0,a
+        move    a,x:(r7+$32)
+        move    #>$2800,a
         add     x0,a
-        move    a,x:(r7+$10)            ; line 0 base
-        move    #>$0800,a
+        move    a,x:(r7+$33)
+        move    #>$3000,a
         add     x0,a
-        move    a,x:(r7+$11)            ; line 1 base
+        move    a,x:(r7+$34)
+        move    #>$3800,a
+        add     x0,a
+        move    a,x:(r7+$35)
         move    #>$1000,a
         add     x0,a
-        move    a,x:(r7+$12)            ; line 2 base
-        move    #>$1800,a
-        add     x0,a
-        move    a,x:(r7+$13)            ; line 3 base
-        move    #>$7f00,a
+        move    a,x:(r7+$38)            ; pre-delay base, 4096-aligned
+        move    #>$4500,a
         add     x0,a
         move    a,x:(r7+$0b)            ; the tank's per-line state table A
-        move    #>$7f30,a
+        move    #>$4530,a
         add     x0,a
         move    a,x:(r7+$0d)            ; table B: write-back params (8x2=16 words)
 
@@ -821,7 +899,7 @@ md_big:                                 ; 2, and anything unexpected
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$5A8279,a               ; 2/√8 = H8 normalization (was $7FFFFF for H4)
+        move    #>$4CCCCD,a               ; 0.60 2/√8 headroom, was $5A8279 (exact)
         move    a,x:(r7+$1e)
 ; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
 ; replaces the removed ER section. All four modes share the same tap set;
@@ -867,7 +945,7 @@ md_big:                                 ; 2, and anything unexpected
         move    a,x:(r7+$6f)
         move    #>$040000,a             ; diffusion offset, lowest
         move    a,x:(r7+$3f)
-        move    #>$390000,a             ; damping 0.445 -- darkest tail. Set
+        move    #>$480000,a             ; damping 0.5625, was 0.445 -- compensate lower loop gain
         move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
                                         ; first attempt used 0.60 against HALL's
                                         ; 0.75 and measured BIG the BRIGHTER of
@@ -995,7 +1073,7 @@ md_plate:
         move    a,x:(r7+$6f)
         move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
-        move    #>$7fffff,a             ; brightest -- a plate's tail is the
+        move    #>$7A0000,a             ; brightest mode, 0.953 (was 1.00 -- zero damping)
         move    a,x:(r7+$72)            ; opposite of a dark hall
         move    #>$599999,a             ; some movement, less than a hall
         move    a,x:(r7+$73)
@@ -1835,12 +1913,18 @@ lf4a:
 ; circulation, which is how a smooth tail comes out of finite memory. We had
 ; none at all: one echo per line per pass, where Dattorro gets a burst.
 ;
-; Two of them, 2048 words each since the 32K re-layout, at the top of the
-; allocation. They share m5 = $7ff with the input diffusers, so no M write.
-        move    #>$7a00,a
+; Two of them, 512 words each, now in the SHARED WINDOW at +0x4000/+0x4200.
+; They share m5 = $7ff with the input diffusers, so no M write.
+;
+; x0 held the PRIVATE base from the two AGU-clearing loads above, and the
+; private allocation now carries tank lines only, so it is reloaded here.
+; Those two loads still have to happen -- they exist to space the AGU write,
+; not to deliver a value -- so this costs one instruction, not three.
+        move    #>$30000,x0             ; -> $38000 on payload B
+        move    #>$4000,a
         add     x0,a
         move    a,x:(r7+$5e)            ; allpass A base, on line 0
-        move    #>$7c00,a
+        move    #>$4200,a
         add     x0,a
         move    a,x:(r7+$5f)            ; allpass B base, on line 1
 ; v85: SHORTER. 401 and 601 were 26-64% of the line they feed, where the
@@ -2612,10 +2696,14 @@ tankend:
 ; BUFFER: base+0x7000, 2048 words, 2048-aligned so the AGU wraps it free.
 
         move    #>$7ff,m5               ; 2048-word shimmer buffer
-        move    x:(r7+$5e),a            ; in-loop allpass A base = inst+0x7a00,
-        move    #>$a00,x0               ; so the shimmer buffer is 0xa00 BELOW
-        sub     x0,a                    ; it, at inst+0x7000. Derived, because
-        move    a,r5                    ; the r7 block has no slot to cache it.
+        move    x:(r7+$5e),a            ; in-loop allpass A base = shared+0x4000,
+        move    #>$3800,x0              ; so the shimmer buffer is 0x3800 BELOW
+        sub     x0,a                    ; it, at shared+0x0800 -- which is
+        move    a,r5                    ; 2048-ALIGNED, as the AGU wrap requires
+                                        ; (m5 = $7ff above). Still derived from
+                                        ; $5e because the r7 block has no slot
+                                        ; to cache it, and still the only reason
+                                        ; the two are placed 0x3800 apart.
 
         move    x:(r7+$0f),a            ; phase, mod 4096 = 2N. May be GARBAGE
         move    #>$1,x0                 ; on the first call -- the mask cleans
@@ -2629,19 +2717,21 @@ tankend:
 ; c = 0.35 -> corner ~2.7 kHz. It sits BEFORE the shift, so it lands ~5.4 kHz
 ; on the way out, and below the SR/4 the decimation folds about: this is the
 ; anti-alias filter and the shimmer path's HF rolloff doing one job twice.
-        move    x:(r7+$6a),a            ; PRE-DIFFUSION dry mono. NOT $15.
-; $15 is the input AFTER the four series allpasses, whose taps are 1994/1706/
-; 1438/1226 samples -- 28-45 ms. Every transient reaching $15 is therefore
-; ALREADY an echo train, and reading it at 2x brings those echoes to 14-22 ms,
-; right in the flutter band. The shifter was being blamed for a stutter its
-; input already had: fed the raw signal the same code is clean, fed $15 it is
-; not, and Sam identified the diffuser as the culprit from that one A/B.
+        move    x:(r7+$25),a            ; MONO WET SUM ($25 = M from prev sample).
+; $25 is (wet_L + wet_R)/2, the raw tank output before WIDTH and MIX. It was
+; computed at the end of the previous sample, so it includes every previous
+; shimmer contribution that has circulated through the delay lines. Reading it
+; here puts the shifted signal back into $15 -- which flows through the tank,
+; appears in the next wet sum, and is shifted AGAIN. That IS the cascade.
 ;
-; LIMITATION, and it is real: $6a is this instance's OWN dry mono, stashed
-; before the REVERB bus accumulator is folded in at $1b. So tracks that reach
-; this engine over the cross-core bus get reverb but NOT shimmer. Taking the
-; post-bus, pre-diffusion value instead needs a slot to stash it in and the r7
-; block has none left ($0f and $4e are this block's own). Not yet solved.
+; Cross-core tracks feed the reverb bus accumulator into the tank. They appear
+; in $25 the same way local tracks do, so this one-register change also solves
+; the cross-core shimmer limitation ($6a was pre-bus, local-only).
+;
+; $15 flutter note (archived): the diffuser-smear stutter was real, but it was
+; specific to reading $15 directly. $25 is post-tank, smoothed by the delay
+; line integration -- the echo-train structure is gone by the time the signal
+; reaches the wet sum.
         asr     #$2,a,a                 ; -12 dB, matching the attenuation $15
                                         ; already carries, so SHMR's range is
                                         ; unchanged by the move
