@@ -339,8 +339,24 @@ def run(mem, src, values, tail_s, verbose, entry=None):
     blocks = -(-total // FRAMES)
     n = blocks * FRAMES
 
-    tmp = ROOT / "out/dsp/_render_in.raw"
-    out = ROOT / "out/dsp/_render_out.raw"
+    # PER-PROCESS scratch names. These were the fixed paths _render_in.raw /
+    # _render_out.raw, which meant TWO RENDERS RUNNING AT ONCE silently fed
+    # each other's audio through the emulator and wrote each other's output.
+    #
+    # It cost two measurements on 9 Aug 2026: a linearity sweep and a
+    # shimmer A/B were launched as concurrent background jobs, and between
+    # them produced an output peak that was NON-MONOTONIC in input gain
+    # (gain 0.60 louder than gain 0.70). That reads exactly like a conditional
+    # instability in the tank, which is a serious and completely fictitious
+    # bug -- it survived a determinism check, because each render on its own
+    # IS deterministic. Re-running the same points serially made it vanish.
+    #
+    # The failure is silent, it looks like an engine fault rather than a
+    # harness fault, and nothing about the render output hints at it. Unique
+    # names per process remove it entirely; the last render of a process still
+    # leaves its files behind for inspection, keyed by pid.
+    tmp = ROOT / f"out/dsp/_render_in_{os.getpid()}.raw"
+    out = ROOT / f"out/dsp/_render_out_{os.getpid()}.raw"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     with open(tmp, "wb") as f:
         for i in range(n):

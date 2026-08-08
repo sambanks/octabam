@@ -720,3 +720,172 @@ equal copies → stutter; two → "a single pitch shifted tone". Do that first.
 And: **isolate by subtraction.** `wet(knob=max) − wet(knob=0)` is the stage's
 own contribution, and muting one stage at a time is what finally localised the
 ER. Both are one render each and neither was run until very late.
+
+---
+
+## Round 8 — 8 Aug 2026: kill the metallic, make shimmer cascade
+
+Three root causes, all zero-word fixes (voicing constants + one register offset).
+
+### PLATE had zero per-pass damping
+
+`$72 = $7fffff` (1.00). A one-pole with coefficient 1.0 is a wire — no HF
+attenuation per circulation. ROOM uses 0.945, BIG used 0.445. This is the
+likeliest single cause of "metallic" in PLATE mode: the tail has no spectral
+tilt, so HF resonances sustain indefinitely.
+
+Changed to `$7A0000` (0.953). Still the brightest mode (ROOM is 0.945), but
+with actual HF rolloff. The metallic edge is the sound of zero filtering; even
+a 5% per-pass cut compounds over 60+ circulations. May voice higher, but 1.00
+was not "bright" — it was pathological.
+
+### BIG decay sat at the stability limit
+
+`$1e = $5A8279` (exact 2/√8 = 0.7071, zero headroom below the unit circle).
+ROOM and PLATE both scale this down (0.92×, 0.965×). BIG at 1.00× gives narrow
+FDN resonances no room to decay — the "ringing" character, separate from
+damping (which only shapes the spectrum, not the resonance sustain).
+
+Changed `$1e` to `$4CCCCD` (0.60, ~18% headroom). To compensate for the faster
+energy loss, `$72` raised from `$390000` (0.445) to `$480000` (0.563): a
+slightly brighter tail preserves perceived decay length. The character should
+shift from "resonant cave" to "large diffused space."
+
+### Shimmer was a one-shot parallel send
+
+Two problems: (a) the shifted signal entered the tank once and never saw the
+shifter again — no cascading pitch rise; and (b) the source was `$6a`
+(pre-diffusion dry mono, local-only), so cross-core tracks got reverb but no
+shimmer.
+
+Fix: read `$25` (mono wet sum) instead of `$6a`. `$25 = (wet_L+wet_R)/2` is
+the raw tank output, computed from the previous sample's line outputs — before
+WIDTH and MIX, so it's pure wet signal.
+
+Cascading: shimmer output → `$15` → tank write-back → next sample's tap reads
+include it → next sample's `$25` reflects it → shimmer reads its own previous
+output → shifts again. Each circulation delays the re-shift by the mean tap
+(~72 ms at SIZE max), which is exactly the gradual evolving rise.
+
+Cross-core: `$25` is the wet sum of ALL tank output, and cross-core tracks
+feed the reverb bus accumulator which enters the tank — so they appear in `$25`
+the same way local tracks do.
+
+Stability: SHMR starts at 0 (open loop). The tank's DAMP+LO filters tame the
+shifted content each circulation. The shimmer's own anti-alias one-pole
+(c=0.35) and −12 dB attenuation provide additional headroom.
+
+Comment block updated; the `$15` flutter rationale and the cross-core
+LIMITATION paragraph are archived in the source and superseded.
+
+### $0c double-use bug found, deferred
+
+The per-mode lines-4-7 tap scale (stored to `$0c` by each md_* block) overwrites
+the bus auto-gain 1/N (also stored to `$0c` at line 506). The per-sample
+multiplier at line 2089 therefore reads ~0.75 instead of 1/N. Affects cross-core
+level but not sound character. `$6c` is the only free r7 slot and was reserved
+for the shimmer fix that `$25` now makes unnecessary — it is the obvious home
+for either the tap scale or the bus gain. Not fixed here.
+
+### Verification
+
+```
+make check   → ALL CHECKS PASSED, 179 words free, 1022 cycles spare
+make render  → ROOM (0.12 FS / −37.6 dB), PLATE (0.28 FS / −31.2 dB), BIG (0.13 FS / −35.0 dB)
+```
+
+All three modes render distinct hashes. Tail 7.90 s at defaults with SPEED=64
+(shimmer half). PLATE is still the loudest mode (highest damping = most HF
+retained per pass). **Needs ear: A/B against git stash of the old constants,
+each mode, wet-only.** Commands in the commit message.
+
+---
+
+## Round 9 — 9 Aug 2026: the nonlinearity is a THRESHOLD, and the harness lies again
+
+### ⚠️ FIRST: `render_reverb.py` could not be run twice at once, and that faked a bug
+
+`out/dsp/_render_in.raw` and `_render_out.raw` were **fixed paths**. Two renders
+running concurrently fed each other's audio through the emulator and wrote each
+other's output. Fixed 9 Aug — the scratch names now carry the pid.
+
+It cost two measurements, and the failure is worth recognising because of what
+it *looked* like. Two background jobs overlapping produced an output peak that
+was **non-monotonic in input gain**:
+
+    gain 0.70 -> peak 0.1376      gain 0.60 -> peak 0.2016
+    gain 0.55 -> peak 0.3347      gain 0.50 -> peak 0.0983
+
+A smaller input producing a louder output is the signature of a conditional
+instability in the tank — a serious, structural, entirely fictitious bug. It
+**survived a determinism check** (`identical: True`), because each render on its
+own really is deterministic; only the overlap was not. A second anomaly at
+gain 0.580, with a plausible sustained-excursion shape (72,368 samples above
+half-peak against 11,775 for its neighbours), was the same thing again: a
+foreground probe render launched while a background sweep was still going.
+
+**Neither reproduced when re-run serially.** The reflex that caught it was the
+cheap one this file already relies on — *re-run the anomalous point on its own
+before believing it* — and the tell was that the single render disagreed with
+the sweep for the same gain.
+
+### The real measurement, run serially
+
+Residual `r = out(G) - 2*out(G/2)`, wet only, ROOM, `melody.wav`, relative to
+`out(G)`. A linear system gives silence.
+
+| gain | peak (FS) | residual |
+|---|---|---|
+| 1.00 | 0.1966 | **−24.00 dB** |
+| 0.90 | 0.1770 | −26.13 |
+| 0.80 | 0.1573 | −29.13 |
+| 0.70 | 0.1376 | −34.12 |
+| 0.60 | 0.1180 | −60.95 |
+| 0.50 | 0.0983 | −79.40 |
+| 0.25 | 0.0492 | −73.35 |
+| 0.125 | 0.0246 | −67.35 |
+| 0.0625 | 0.0123 | −61.35 |
+| 0.03125 | 0.0061 | −55.23 |
+
+**Two regimes, and the second one is not a nonlinearity at all.** Below gain
+0.5 the residual rises **+6.0 dB per halving** (−79.4, −73.35, −67.35, −61.35,
+−55.23 — differences 6.05/6.00/6.00/6.12). That is the signature of a *fixed
+additive floor*, i.e. 24-bit output quantisation: the measurement floor, not
+the engine. **The engine is linear to the floor at any input below −6 dBFS.**
+
+Above that there is a genuine threshold nonlinearity with a **knee between gain
+0.6 and 0.7** (−60.95 → −34.12, a 27 dB jump for a 1.4 dB level change), which
+then grows only slowly to −24 dB at full scale. Steep onset then saturation is
+the classic hard-clip shape.
+
+### 🔴 RETRACTED: "the engine is nonlinear by −21.8 dB in PLATE and −27.1 dB in ROOM. That is gross."
+
+PLAN.md and Round 7 state this as a property of the engine. It is a **single
+point** on the curve above — the value at full-scale input — reported without
+the sweep that gives it meaning. The engine is not "grossly nonlinear"; it is
+**clean until it clips**, and it clips only in the top ~4 dB of input range.
+That is a different defect with a different fix and a different priority.
+
+### Where it is NOT: the output sum
+
+The output stage sums eight line outputs with ± signs into one 24-bit store
+(`move a,x:(r7+$2d)`), which can grow 8× and saturates — an obvious suspect.
+**Ruled out by the peak column:** output peak is 0.1966 × gain at *every* gain
+from 0.5 to 1.0, exact to four figures. A saturating output stage compresses
+the peak; this one does not. The clip is **inside the feedback loop**.
+
+🟡 **Leading remaining candidate, not yet confirmed: the FWHT's intermediate
+stores.** Three butterfly stages, each `add`/`sub` then `move a,x:(...)` into a
+24-bit slot, with the decay gain applied only *afterwards* in the write-back.
+Element growth through the transform is up to 8× (√8 in RMS), so line outputs
+above ~1/√8 ≈ 0.35 FS start saturating the stage stores — which is exactly the
+"tank saturation above ~0.35 FS" item PLAN.md has carried for months.
+
+⚠️ **Not confirmed, and one obstacle is that the naive gain accounting does not
+close.** Taking `mpy`'s fractional doubling into account, the write-back
+multiplier is `2 × $1e` ≈ 1.06–1.42, and with H8's √8 that implies a loop gain
+around 3.7, which would diverge instantly. The engine demonstrably decays
+(RT60 ≈ 2 s in ROOM), so something in that chain is scaled differently from
+how it reads. **Do not act on the FWHT hypothesis until the gain structure is
+measured rather than derived** — the honest state is "threshold clip, inside
+the loop, site not established".
