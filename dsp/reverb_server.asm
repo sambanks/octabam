@@ -122,8 +122,10 @@
 ;   allpasses  base+0x4000 .. base+0x5fff   2048 words each, spacing 0x800
 ;              taps 1994 1706 1438 1226  (45 39 33 28 ms)
 ;   pre-delay  base+0x6000 .. base+0x6fff   4096 words (93 ms)
-;   in-loop AP base+0x7000 .. base+0x77ff   1024 words each, taps 298 446
-;   SHIMMER   base+0x7800 .. base+0x7eff   1792 words, free as of v100
+;   SHIMMER    base+0x7000 .. base+0x77ff   2048 words, 2048-aligned (v127)
+;   recip tab  base+0x7800 .. base+0x7807      8 words, bus auto-gain
+;   in-loop AP base+0x7a00 .. base+0x7dff    512 words each, taps 298 446
+;              (base+0x7e00 .. base+0x7eff    256 words free)
 ;   tank state base+0x7f00 .. base+0x7fff    256 words, per-line, ROLLED tank
 ;   total      0x8000 -- the whole allocation, nothing left over
 ;
@@ -170,8 +172,8 @@
 ; State (all in the per-instance r7 block, not absolute Y):
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
-;   base+0x7000   2 in-loop allpasses, 1024 words each (v100; were 2048)
-;   base+0x7800   2048 words free for the shimmer pitch shifter (v100)
+;   base+0x7000   shimmer pitch shifter, 2048 words (v127)
+;   base+0x7a00   2 in-loop allpasses, 512 words each (v127; were 1024)
 ;   r7+$40        LO coefficient
 ;   r7+$0b        state table base (base+0x7f00)
 ;   r7+$0c        lines 4-7 tap scale (per-mode, parked by md_* block)
@@ -1991,10 +1993,10 @@ lf4a:
 ;
 ; Two of them, 2048 words each since the 32K re-layout, at the top of the
 ; allocation. They share m5 = $7ff with the input diffusers, so no M write.
-        move    #>$7000,a
+        move    #>$7a00,a
         add     x0,a
         move    a,x:(r7+$5e)            ; allpass A base, on line 0
-        move    #>$7400,a
+        move    #>$7c00,a
         add     x0,a
         move    a,x:(r7+$5f)            ; allpass B base, on line 1
 ; v85: SHORTER. 401 and 601 were 26-64% of the line they feed, where the
@@ -2008,16 +2010,23 @@ lf4a:
 ; holding 9.7%/14.5% against a line that is now twice as long means doubling
 ; the tap -- leaving them at 149/223 would halve the proportion to 4.8%/7.3%
 ; and change the character the re-layout is meant to preserve.
-        move    #>726,a
-        move    a,x:(r7+$60)            ; 1024 - 298   (9.7% of the longest line)
-        move    #>578,a
-        move    a,x:(r7+$61)            ; 1024 - 446   (14.5%)
-; v100: the in-loop allpass buffers are 1024 words, not 2048. Their taps are
-; 298 and 446 and the modulation adds at most ~31, so 477 is the longest read
-; they can ever make -- 2048 was over twice what they need. Halving both frees
-; 2048 CONTIGUOUS words at base+0x7800 for the shimmer pitch shifter, and it is
-; bit-identical because the tap distance behind the write pointer is unchanged;
-; only the wrap point moves, and nothing reads far enough back to see it.
+        move    #>214,a
+        move    a,x:(r7+$60)            ; 512 - 298    (9.7% of the longest line)
+        move    #>66,a
+        move    a,x:(r7+$61)            ; 512 - 446    (14.5%)
+; v127: the in-loop allpass buffers are 512 words, halved again from v100's
+; 1024. Their taps are 298 and 446 and the modulation adds at most ~31, so 477
+; is the longest read they can ever make -- 512 is the smallest power of two
+; that still clears it. Halving frees the 2048 CONTIGUOUS, 2048-ALIGNED words
+; at base+0x7000 that the shimmer needs, and it is bit-identical because the
+; tap distance behind the write pointer is unchanged; only the wrap point
+; moves, and nothing reads far enough back to see it. VERIFIED, not argued:
+; a shimmer-excised build renders byte-identical audio (1241ac86c3ba).
+;
+; They also MOVED, to base+0x7a00/0x7c00. Putting allpass A at base+0x7800 --
+; the obvious choice -- silently overwrote the bus auto-gain RECIPROCAL TABLE
+; that lives there, which cost 2.5 dB of level and stretched the tail from
+; 1.40 s to 5.90 s. The null test above is what caught it.
 
 ; ---- STAGE 2: read offsets for the four modulo-indexed line reads -------
 ; offset_k = (4096 - tap_k) - lfo_k, so y:(r+offset) lands on the delayed
@@ -2191,9 +2200,9 @@ lf4a:
         move    #>$1,x0
         sub     x0,a
         move    a,n5
-        move    #>$3ff,m5               ; v100: the in-loop allpasses are 1024
+        move    #>$1ff,m5               ; v127: the in-loop allpasses are 512
         move    r1,a                    ; the AP phase IS the tank phase
-        and     #>$3ff,a                ; (same derivation as $39 in the loop)
+        and     #>$1ff,a                ; (same derivation as $39 in the loop)
         move    x:(r7+$5e),x0           ; base A
         add     x0,a
         move    a,r5
@@ -2207,7 +2216,7 @@ lf4a:
         sub     x0,a
         move    a,n5
         move    r1,a
-        and     #>$3ff,a
+        and     #>$1ff,a
         move    x:(r7+$5f),x0           ; base B
         add     x0,a
         move    a,r5
@@ -2846,16 +2855,16 @@ tankend:
 ; m5 is $7ff on entry (the input diffusers leave it that way) and is restored
 ; to $7ff on exit -- the write-back below still needs the diffusers' modulo.
 
-        move    #>$3ff,m5               ; 1024-word shimmer buffer
-        move    x:(r7+$5e),a            ; in-loop allpass A base = inst+0x7000,
-        move    #>$800,x0               ; so the shimmer buffer is +0x800 past
-        add     x0,a                    ; it. Derived, because the r7 block has
-        move    a,r5                    ; no slot left to cache it in.
+        move    #>$7ff,m5               ; 2048-word shimmer buffer
+        move    x:(r7+$5e),a            ; in-loop allpass A base = inst+0x7a00,
+        move    #>$a00,x0               ; so the shimmer buffer is 0xa00 BELOW
+        sub     x0,a                    ; it, at inst+0x7000. Derived, because
+        move    a,r5                    ; the r7 block has no slot to cache it.
 
         move    x:(r7+$0f),a            ; phase. May be GARBAGE on the first
         move    #>$1,x0                 ; call -- the mask below cleans it,
         add     x0,a                    ; which is why no init is needed and
-        move    #>$7ff,x0               ; why every address here is DERIVED
+        move    #>$fff,x0               ; why every address here is DERIVED
         and     x0,a                    ; from the phase rather than kept as a
         move    a1,x1                   ; walking pointer (AND cleans A1 only;
         move    x1,x:(r7+$0f)           ; x1 is 24-bit so this IS the value)
@@ -2884,50 +2893,53 @@ tankend:
 
 ; ---- two heads, half a buffer apart, linear crossfade -------------------
         move    x1,a
-        move    #>$3ff,x0
+        move    #>$7ff,x0
         and     x0,a
-        move    a1,x0                   ; rd = phase & $3ff, 0..1023
+        move    a1,x0                   ; rd = phase & $7ff, 0..2047
         move    a1,n5
         move    y:(r5+n5),b             ; tap 1, at rd
 
         move    x0,a
-        move    #>512,y0
-        add     y0,a                    ; rd + 512
-        move    #>$3ff,y0
+        move    #>1024,y0
+        add     y0,a                    ; rd + 1024
+        move    #>$7ff,y0
         and     y0,a                    ; MASKED -- see the TRAP note above
         move    a1,n5
-        move    y:(r5+n5),a             ; tap 2, at rd + 512
+        move    y:(r5+n5),a             ; tap 2, at rd + 1024
 
-; THE CROSSFADE CYCLES WITH THE FULL PHASE (2048), NOT WITH THE READ HEAD
-; (1024). Getting this wrong is what Sam heard as "the stutter" on 9 Aug, and
-; it is a geometry error, not a voicing one.
-;
-; A head splices where it crosses the WRITE pointer, and the read head closes
-; on the write pointer at half a slot per sample -- so it laps it once every
-; 2048 samples, not every 1024. Head 1 crosses at phase 0; head 2, half a
-; buffer behind, crosses at phase 1024. Building the triangle from
-; (phase & $3ff) gives it a 1024 period, which puts a ZERO at phase 1024 --
-; where the code then outputs 100% of head 2, the very head that is sitting on
-; its own discontinuity. HALF THE SPLICES WERE PLAYED AT FULL GAIN.
-;
-; Built from the full phase instead, the triangle is 0 at phase 0 (head 1
-; muted, head 1 splicing) and 1 at phase 1024 (head 2 muted, head 2 splicing),
-; so every splice falls where that head is silent. Modelled on a 220 Hz sine:
-; the +-43 Hz sidebands either side of the octave drop from -17.8 dB to
-; -36.5 dB. Same instruction count -- the constant and the shift move, nothing
-; else. (An envelope-spread metric shows only 1.2 -> 1.3 dB and misses this
-; entirely; the artifact is spectral, so it has to be measured spectrally.)
-;
+; g is a triangle over the READ HEAD's wrap: zero at rd = 0, one at rd = 512.
 ; Built to 0..$400000 (0.5) and doubled by the crossfade below, which is what
 ; lets the whole thing be tap2 + 2g*(tap1-tap2) -- ONE multiply.
+;
+; RETRACTED, 9 Aug, by ear. This triangle was briefly rebuilt from the FULL
+; phase (period 2048, peak at 1024) on the argument that a head splices where
+; it crosses the WRITE pointer, that the read head laps the write pointer only
+; every 2048 samples, and that a 1024-period triangle therefore plays half the
+; splices at full gain. That geometry is correct and the change still measured
+; better on the metric it was chosen against: on a 220 Hz sine the +-43 Hz
+; sidebands went -17.8 dB -> -36.5 dB.
+;
+; It sounded MUCH worse -- "massive resonant ringing overpowering noise".
+; The reason is visible once the right thing is measured. In the rendered
+; melody it put 86.1 Hz at -17 to -22 dB at EVERY time point (absent from the
+; top eight before) and made 21.7 Hz the dominant tail modulation where the
+; music had been. 86.1 Hz is the 4th harmonic of the 21.5 Hz lap rate: the
+; change did not remove lap energy, it moved it off a 500 Hz spur the music
+; masks and onto a bare low-frequency drone that nothing masks.
+;
+; The lesson is about the metric, not the geometry: "largest spectral peak"
+; has no model of audibility, and ranking by it rewarded exactly the wrong
+; trade. The lap harmonics at 21.5/43/64.6/86 Hz are inherent to a PERIODIC
+; splice and no crossfade shape removes them -- the levers are a longer
+; buffer, or making the splice non-periodic.
         move    a,y0                    ; tap2
         sub     y0,b                    ; b = tap1 - tap2
-        move    x1,a                    ; the FULL phase, 0..2047 -- not rd
+        move    x0,a                    ; rd -- the READ head's own wrap
         move    #>1024,x0
         sub     x0,a
         abs     a
         neg     a
-        add     x0,a                    ; 1024 - |p-1024|, 0..1024
+        add     x0,a                    ; 1024 - |rd-1024|, 0..1024
         asl     #$c,a,a                 ; 1024<<12 -> 0..$400000
         move    a1,y1
         move    b,x0
@@ -3059,7 +3071,7 @@ tankend:
         move    a,x:(r7+$44)            ; fb7 -> scratch $44
 
 ; -- Step 2: in-loop allpass, line 0: diffuses the feedback before storage --
-        move    #>$3ff,m5               ; these two are 1024. The input
+        move    #>$1ff,m5               ; these two are 512. The input
                                         ; diffusers share m5, so it is switched
                                         ; here and put back after line 1.
         move    x:(r7+$1a),a            ; fb0 from scratch
@@ -3069,7 +3081,7 @@ tankend:
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (2048 - tap) - offset
         move    x:(r7+$39),a            ; phase (masked to $7ff above)
-        and     #>$3ff,a                ; ...but these buffers are 1024. A2 is
+        and     #>$1ff,a                ; ...but these buffers are 512. A2 is
                                         ; already 0 (the phase loads positive),
                                         ; so no A2-clean dance is needed here.
         move    x:(r7+$5e),x0
@@ -3109,7 +3121,7 @@ tankend:
         sub     x0,a                    ; MODULATED now, not static
         move    a,n5                    ; (2048 - tap) - offset
         move    x:(r7+$39),a            ; phase (masked to $7ff above)
-        and     #>$3ff,a                ; ...but these buffers are 1024
+        and     #>$1ff,a                ; ...but these buffers are 512
         move    x:(r7+$5f),x0
         add     x0,a
         move    a,r5                    ; = write address
