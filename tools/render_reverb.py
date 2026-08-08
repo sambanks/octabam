@@ -265,6 +265,7 @@ def ensure_mode_mem(mode, build):
     mem = CACHE / f"{stem}_mode{mode}_A.mem"
     # Rebuild whenever ANY build input changed -- a stale mode render silently
     # voices the previous constants, and mtime keying missed exactly that.
+    dev = os.environ.get("DEV") == "1"
     fp = fingerprint([("MODE", str(mode)), ("XBUS", "1"), ("SPEC", "1"),
                       ("RVSRC", rvsrc)])
     if build or not prov_ok(img, fp) or not mem.exists():
@@ -276,7 +277,13 @@ def ensure_mode_mem(mode, build):
                            env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
-        claim(ROOT / f"out/mainos_bus_mode{mode}.bin", img)
+        # DEV=1 writes the dev-named image and dumps its own .mem; a plain
+        # build writes the per-mode path and needs the dump doing here. The
+        # MODE override costs 2 words the shipping region does not have, so
+        # --mode in practice always needs --dev.
+        built = ROOT / ("out/mainos_bus_dev.bin" if dev
+                        else f"out/mainos_bus_mode{mode}.bin")
+        claim(built, img)
         if not HOST.exists():
             die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
         sys.path.insert(0, str(ROOT / "tools"))
