@@ -11,15 +11,29 @@
 ;    same literal. At most one DELAY SERVER per bank is self-enforced
 ;    convention, not something this file checks (BUS.md Known limitations).
 ;
-;    OPEN ITEM, not yet solved: BUS.md's Memory section says payload B needs
-;    Y:0x38000, not 0x30000 -- but this source is one file assembled twice
-;    (once per payload, at two different P addresses) by
-;    tools/build_reverb.py, and that script has no mechanism to swap a Y
-;    literal per payload the way it already swaps P addresses. Emulator
-;    testing below only exercises payload A's literal. Fixing this is a
-;    build-tooling task, not an algorithm one -- flagged here rather than
-;    silently shipping a payload-B build that clobbers whatever really owns
-;    0x30000..0x37fff there.
+;    ✅ SOLVED, and this comment was stale for longer than the bug existed.
+;    tools/build_bus.py substitutes the base literal per payload (`_sub`,
+;    PP[tag]["ybase"] = 0x30000 for A / 0x38000 for B). The old text here
+;    named tools/build_reverb.py, which does not build this file at all.
+;
+;    ✅ VERIFIED IN THE EMITTED IMAGE, 9 Aug 2026, not in the source: walking
+;    out/mainos_bus.bin's payload records and scanning the placed P words,
+;    payload B's region carries the immediate 0x38000 five times and the
+;    payload-A base ZERO times. Reading build_bus.py would not have been
+;    enough -- it is a blanket string replace, and what matters is what
+;    landed in the binary.
+;
+;    ⚠️ THE SUBSTITUTION IS A BLANKET TEXT REPLACE OVER THE WHOLE SOURCE,
+;    and it rewrites COMMENTS as well as code. Any file it is applied to
+;    (SEND and REVERB SERVER too, under XBUS) must not spell the payload-A
+;    base as a bare assembler literal anywhere it is not meant to move to
+;    0x38000 on payload B. Write shared-window addresses as offsets from a
+;    register-held base instead.
+;
+;    build_bus.py counts the occurrences and refuses to build if the total
+;    is not what the current flag combination expects. That guard is load-
+;    bearing: writing this very comment with the literal spelled out tripped
+;    it, which is the cheapest possible way to find out.
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call runs the same position-0
 ;    parity-flip-and-clear housekeeping as dsp/send_client.asm and

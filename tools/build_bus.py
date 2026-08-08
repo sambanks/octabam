@@ -64,14 +64,26 @@ to make that work -- every build starts from a pristine
 out/raw/section_3_MAIN_OS.bin, so the stock code was never destroyed, only
 overwritten on the way out.
 
-DELAY SERVER's Y-memory base literal is the one place this script differs
-per payload in the ASSEMBLED CODE itself (not just where it's placed):
-dsp/delay_server.asm hardcodes `$30000`, correct for payload A only (Known
-limitations in BUS.md already flagged this). Payload B needs `$38000`
-instead, so this script substitutes the literal in the source text before
-assembling payload B's copy -- the same class of per-payload text edit
-tools/gen_reverb.py already does for its own parameters, just a straight
-substitution here since there's exactly one occurrence.
+The shared-window Y base is the one place this script differs per payload in
+the ASSEMBLED CODE itself (not just where it's placed). Payload A's half of
+the 64K shared window is 0x30000-0x37FFF and payload B's is 0x38000-0x3FFFF,
+so `_sub` (below) rewrites the literal `$30000` to PP[tag]["ybase"] in the
+source text before assembling.
+
+⚠️ It is a BLANKET string replace over the whole source, not a single
+targeted occurrence, and under XBUS it is applied to SEND and REVERB SERVER
+as well as DELAY SERVER. Two consequences:
+
+  - Any of those files that wants a shared-window address which must NOT
+    move to the other half on payload B cannot spell it `$30000`. Use an
+    offset from a register-held base, or a literal that is not `$30000`.
+  - It rewrites comment text too. Harmless, but do not read a disassembly
+    comment as evidence of what was substituted.
+
+✅ Verified in the emitted image 9 Aug 2026 rather than by reading this
+code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
+times. The old docstring here claimed "exactly one occurrence", which was
+never true for the XBUS path.
 """
 import pathlib, re, subprocess, sys
 

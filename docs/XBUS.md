@@ -21,17 +21,40 @@ CORE 1   track 5   BongDelay  Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (sha
 ```
 
 ⚠️ **Corrected arithmetic — "all 4 of core 0's FX2 slots = 65,536 words" was
-wrong, and wrong in a way that would have collided.** The allocator table at
-`X:0x255` is the same table in both payloads: FX2 slots are `0x4000 0x8000
-0x30000 0x34000` **on each core**. The last two are in the shared window, so
-core 0's slots 3–4 and core 1's slots 3–4 are **the same physical memory**. Both
-cores cannot each take four slots.
+wrong, and wrong in a way that would have collided.**
 
 The real pool is `32K private + 32K private + 64K shared = 128K words`, and it
 divides as above: each server gets its own core's two private slots plus **half**
-the shared window. 65,536 words each is still the answer — for a different
-reason, and only if the delay is given `0x38000-0x3FFFF`, which the allocator
-never hands out at all. Both servers hardcode their bases, so that is free.
+the shared window, **65,536 words each**.
+
+❌ **RETRACTED 9 Aug 2026 — "`X:0x255` is the same table in both payloads:
+FX2 slots are `0x4000 0x8000 0x30000 0x34000` on each core, so core 0's slots
+3–4 and core 1's slots 3–4 are the same physical memory."** That is false, and
+the conclusion it was used to reach ("only if the delay is given
+`0x38000-0x3FFFF`, which the allocator never hands out at all") is false with
+it. ✅ **Measured** by dumping the table out of both payloads of the *raw*
+stock image — it is **not** the same table:
+
+| | payload A | payload B |
+|---|---|---|
+| `X:0x255` | `001000 004000 001c00 008000 002800` **`030000`** `003400` **`034000`** | `001000 004000 001c00 008000 002800` **`038000`** `003400` **`03c000`** |
+
+**Stock already separates the two cores' shared-window slots.** Payload A is
+handed `0x30000` and `0x34000`; payload B is handed `0x38000` and `0x3C000`.
+The allocator hands out `0x38000` on core 1 as a matter of course, and the two
+cores' FX2 slots cannot collide in the shared window even if all four were
+taken.
+
+This *strengthens* the split rather than changing it: core 0 owning
+`0x30000-0x37FFF` and core 1 owning `0x38000-0x3FFFF` is what the stock
+allocator already believes, so the hardcoded bases agree with the table
+instead of merely dodging it. The raw-vs-built comparison also confirms our
+build does **not** modify `X:0x255` in either payload — the difference is
+stock.
+
+Falsified by: dumping module `X:0x255` from `out/raw/section_3_MAIN_OS.bin`
+for both entries of `dsp_modmap.PAYLOADS`. Both servers still hardcode their
+bases, so the table is documentation here, not a dependency.
 
 **Three wins, and they are different resources. The third one is new and is the
 one that has been missed.**

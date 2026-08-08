@@ -821,7 +821,9 @@ the address doesn't move with the table, not a bug.
 **Decision: don't touch `X:0x255` at all.** Instead each server hardcodes
 its own fixed absolute Y base — `REVERB SERVER` always `Y:0x4000` (32K,
 spans `0x4000–0xBFFF`), `DELAY SERVER` always `Y:0x30000` (payload A) /
-`Y:0x38000` (payload B) (32K external) — the same technique pre-v22
+`Y:0x38000` (payload B) (32K in the shared window — ~~external~~ ❌ retracted,
+`CHIP.md` §: there is no external memory and it is **zero wait states as X or
+Y**) — the same technique pre-v22
 single-instance builds used, instead of reading `x:0x213`/`x:(r4)`. This
 reuses a proven pattern rather than opening new ground, and it restores true
 track independence: whichever physical track's *real* table entry legitimately
