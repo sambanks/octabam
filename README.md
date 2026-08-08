@@ -10,7 +10,7 @@ What runs today:
 
 | | |
 |---|---|
-| **ChonVerb** | A four-line FDN reverb with ROOM/PLATE/HALL/BIG modes, modulated taps, mid/side width and pre-delay. Voiced by ear. It takes over the three stock reverb slots, which is where the program space for it came from. |
+| **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/HALL/BIG modes, modulated taps, mid/side width and pre-delay. Voiced by ear. It takes over the three stock reverb slots, which is where the program space for it came from. |
 | **BongDelay** | A delay you can route *into* the reverb. **Currently an untested first draft** — treat it as unwritten. |
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. This is the part the hardware was not designed to do. |
 

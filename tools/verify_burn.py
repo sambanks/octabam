@@ -177,7 +177,46 @@ def check_roles():
             "B": "base 0x38000" if streams["B"][i] == 0x38000 else f"?{streams['B'][i]:x}"}
 
 
+def burn_fits():
+    """Can the burn probe be built at all against the engine we ship?
+
+    It cannot, as of the eight-line tank (8 Aug 2026). BURN=1 splices
+    burn_block{1,2}.inc INTO the reverb, costing ~16 words, and the eight-line
+    engine leaves 6 free in the 2,724-word donor region -- so the build is
+    about 10 words short. SPEC=1 is not an escape: the build guards
+    SPEC-with-BURN, because those both replace a server.
+
+    This used to be hidden. verify_burn.py pinned RVSRC to the four-line
+    engine, so `make verify` was green while checking code the build no longer
+    shipped -- the same stale-fork trap as the burn probe that once measured an
+    engine we did not ship (docs/CHIP.md, PLAN.md). The four-line engine is now
+    deleted, so the pin is gone and the shortfall is visible.
+
+    Reported as a loud SKIP rather than a failure: the probe is not part of any
+    shipping image and blocking every local check on it would be wrong. But it
+    IS a blocker for the BURN=1 hardware trip in PLAN step 2, and it must never
+    read as "verified"."""
+    import os
+    env = dict(os.environ, BURN="1", XBUS="1")
+    r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                       capture_output=True, text=True, env=env)
+    if r.returncode == 0:
+        return True
+    over = [l for l in (r.stdout + r.stderr).splitlines() if "overruns the region" in l]
+    print("=" * 72)
+    print("  SKIPPED: the burn probe does not fit the engine we ship.")
+    for l in over:
+        print(f"    {l.strip()}")
+    print("    BURN=1 splices ~16 words into the reverb; the eight-line tank")
+    print("    leaves 6 free. NOTHING about the burn probe was verified here.")
+    print("    Blocks the BURN=1 hardware sweep (PLAN step 2), not local work.")
+    print("=" * 72)
+    return False
+
+
 def main():
+    if not burn_fits():
+        return 0
     src = SCRATCH / "src.wav"
     make_source(src)
 

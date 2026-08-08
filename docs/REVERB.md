@@ -1,6 +1,8 @@
 # ChonVerb — the custom reverb
 
-A four-line FDN reverb. It now ships as **ChonVerb**, one of the three effects
+An eight-line FDN reverb (four-line through ChonVerb31; the eight-line tank
+landed 8 Aug 2026 and the four-line source is deleted — recover it with
+`git show c1ce08d:dsp/reverb_server.asm`). It ships as **ChonVerb**, one of the three effects
 on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
 bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 
