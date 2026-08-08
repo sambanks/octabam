@@ -24,7 +24,7 @@ specced and next to build.
 | Reverb | **eight-line, the only engine** — `dsp/reverb_server.asm`. Decays correctly, modes distinct, linear below −6 dBFS. Worst *known* remaining defect: per-line decay skew (step 1.1). Four-line source deleted: `git show c1ce08d:dsp/reverb_server.asm` |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
 | Flash gate | **When ChonVerb is "excellent"** (the acceptance test below) — Sam's call, 9 Aug. The trip must carry v121 **with** the `$0c` fix |
-| Next | ✅ 1.1 per-line decay gains BUILT (9 Aug) → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
+| Next | ✅ 1.1 built, ✅ 1.2 measured & closed (9 Aug) → **1.3 re-voice (Sam's ears)** → shimmer decision → flash prep |
 
 ⚠️ **The unit's current build breaks above three simultaneous sends** — the
 auto-gain fixes that and has never been flashed. Any hardware trip carries it.
@@ -201,27 +201,47 @@ silently downgrades any `mpy` operand order it doesn't know to **mpysu**
 safe. `mpy x0,y1` and `mpy y0,x0` encode signed. Disassemble any new mpy
 whose second operand can go negative.
 
-#### 1.2 Per-line damping — the same defect, one octave up. MEASURE FIRST
+#### 1.2 Per-line damping — ✅ MEASURED 9 Aug 2026, and CLOSED as not
+#### warranted. Two new findings came out instead.
 
-Found 9 Aug: the tank loop holds **one damping coefficient for all eight
-lines** (`y0 = DAMP, held across every line`), applied per *pass*. Same
-mechanism as 1.1: with a 1.69× length spread, short lines lose HF up to
-~1.69× faster per second, so even after 1.1 equalises broadband decay, the
-tail's *spectrum* still rotates — short lines go dull first and the late tail
-is carried by the (brighter-decaying) long lines only.
+The hypothesis: one damping coefficient for all eight lines, applied per
+pass, should rotate the tail's spectrum (short lines go dull first) even
+after 1.1 equalises broadband decay.
 
-🟡 The magnitude is inferred, and this is second-order against 1.1's 17 dB/s.
-**So: measure after 1.1 lands** — per-line HF decay via band-split per-second
-envelopes (2 kHz+ vs broadband, per mode). Spec a per-line damping
-coefficient **only if the measured rotation is at audible scale**. Falsified
-by: band-split envelopes decaying at matching rates, in which case close the
-item and say so here.
+**Measured** (band-split FFT envelopes, 93 ms windows, raw dsp_host output,
+quiet click, ROOM/PLATE/BIG at LP 100 and 64, MOD on and off):
 
-⚠️ Superseding the earlier warning here (the "asymmetry self-oscillates"
-theory is retracted — see 1.1): per-line damping differentiation is safe by
-the same norm argument as the gains, PROVIDED the per-line loss only ever
-scales DOWN from the shared coefficient. Use 1.1's accounting: multiplies
-are plain products, the loop norm is `max_i(gain_i)·√8`, keep it < 1.
+- **LF (150–1k) and MF (1–4k) decay at near-constant rates post-1.1** — the
+  bands that carry the tail's energy show no audible-scale rotation. This is
+  the plan's own falsification clause: matching rates → close the item.
+- **HF (4–12k) is non-uniform, but NOT from per-line damping.** Its late
+  envelope is dominated by two separate mechanisms, isolated by controls:
+  1. **AP-modulation scatter shelf.** The always-on in-loop allpass
+     modulation (fixed depth `$200000`, deliberately never zero) scatters
+     MF energy into HF at ~25 dB conversion loss, producing a hard shelf
+     ~25 dB below the band's start that then tracks the MF tail. Measured:
+     zeroing the depth in a scratch build removes the shelf entirely.
+     **This is a 1.3 voicing lever**: depth trades tail smear (the thing it
+     exists for) against HF floor. Not a defect.
+  2. **A residual slow HF floor (~−18 dB/s) with ALL modulation off** — HF
+     decaying slower than MF, impossible for circulating energy, i.e.
+     recirculating truncation noise, sitting ~55 dB below the tail's
+     broadband level. Known-noise item; harmless at listening levels.
+- The genuine per-line HF rotation is not separable above those two floors
+  in the mixed output.
+
+**Cost check that seals it**: table A has NO spare per-line word (all six
+live — offset, fraction, d1 carry, damp state, LO state, line output), so
+per-line coefficients need a 7-word stride across every table writer,
+~60–70 of payload A's 95 free words, plus sample-loop cycles.
+
+**Revisit condition**: only if 1.3's ears say the naked tail's top end turns
+sparse/metallic as it decays. The spec for that case, so it need not be
+re-derived: `c_i = a + r_i·(c − a)` with anchor `a = 1.0` ($7FFFFF) — the
+same weighted-average form as 1.1, short lines pulled toward no-damping.
+Safe by 1.1's norm argument (damping is pure loss; the gain bound
+`max_i(gain_i)·√8 ≤ 0.952` does not depend on it), and the multiplies are
+plain products (1.1's accounting).
 
 #### 1.3 Re-voice the modes — Sam's ears, VOICING.md rules
 
