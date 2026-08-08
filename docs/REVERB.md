@@ -6,6 +6,16 @@ landed 8 Aug 2026 and the four-line source is deleted — recover it with
 on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
 bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 
+> ⚠️ **Reading this file, 9 Aug 2026:** sections below describing the
+> four-line tank, the six-tap early-reflection section, the HALL mode, or the
+> 2048-word static in-loop allpasses describe the **deleted engine**. The
+> shipping engine is eight lines, 8×8 FWHT, **three** modes (ROOM/PLATE/BIG —
+> HALL cut 9 Aug), ER removed in favour of a short Dattorro-scale input
+> diffuser (taps 179/293/419/547 = 4.1–12.4 ms), and 512-word **modulated**
+> in-loop allpasses. The signal path and parameter table here are updated;
+> deeper sections are corrected where marked, historical otherwise. `PLAN.md`
+> is current ground truth for state and work order.
+
 > **The old standalone DARK REV replacement is retired.** Earlier builds
 > (`dsp/reverb88.asm` via `tools/build_reverb.py`) replaced stock DARK REV in
 > place, inheriting its descriptor and knob labels. That is no longer the
@@ -36,8 +46,8 @@ For the reverse-engineering that got us here, `REVERB_LOG.md` (historical).
 
 ```
 in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ──────────┐ ─► width ─► mix ─► out
-        (PRE)        (input diffusion)   │ 4 lines, modulated  │
-                                         │ 4x4 Hadamard        │
+        (PRE)        (input diffusion,   │ 8 lines, modulated  │
+                      4–13 ms Dattorro)  │ 8x8 FWHT            │
                                          │ HI damping          │  all inside the
                                          │ LO cut              │  feedback loop
                                          │ 2 in-loop allpasses │
@@ -45,23 +55,31 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
 ```
 
 * **Pre-delay** — up to 4096 samples (93 ms), modulo buffer on r6.
-* **Diffusers** — four series allpasses, g = 0.703, taps 1994/1706/1438/1226,
-  packed to a 1.6:1 ratio so they nearly fill their 2048-word buffers.
-* **Tank** — four delay lines with a 4×4 Hadamard feedback matrix. All four
-  reads are **interpolated and LFO-modulated**, with the LFO phases crosswise
-  (lines 0 and 2 on the inverse triangle, 1 and 3 on the forward) so lines
-  sharing tap factors move in opposition.
+* **Diffusers** — four series allpasses, taps 179/293/419/547 (4.1–12.4 ms,
+  Dattorro-scale; the original 1994/1706/1438/1226 dispersed rather than
+  diffused and were replaced 9 Aug 2026 when they took over the removed ER
+  section's role). Coefficient per mode via `$3f`.
+* **Tank** — eight delay lines with an 8×8 Walsh-Hadamard feedback matrix
+  (24 butterflies, decay constants scaled 2/√8). All eight reads are
+  **interpolated and LFO-modulated**, each line free-running on its own LFO
+  rate, the multipliers prime-relative so the periods never align. Per-line
+  state lives in a Y table at `base+0x7F00` (table A) and `base+0x7F30`
+  (table B: input weights, and per-line decay gains once PLAN.md 1.1 lands).
 * **In the loop** — a one-pole low-pass (HI) and a one-pole high-pass (LO)
   per line, so the decay is shaped per band rather than the output EQ'd.
-* **In-loop allpasses** — two, 2048 words each, taps 298/446, on lines 0
-  and 1. An allpass in the feedback path multiplies echo density on every
-  circulation, which is how a smooth tail comes out of finite memory. Note
-  the proportion matters: too long relative to the line and it becomes a
-  dispersive element, which is what a spring reverb is.
-* **Early reflections** — six taps off the pre-delay buffer, alternating L/R
-  with decaying gains, level set by MODE. Costs no memory: the pre-delay
-  already held 93 ms of input history and was read once.
-* **Out** — mid/side width, then a dry/wet crossfade.
+  ⚠️ One shared damping coefficient per pass — PLAN.md 1.2's open item.
+* **In-loop allpasses** — two, **512 words each, LFO-modulated** (fixed
+  depth, never zero — a static tank rings), on lines 0 and 1. An allpass in
+  the feedback path multiplies echo density on every circulation. The
+  proportion matters: too long relative to the line and it becomes a
+  dispersive element, which is what a spring reverb is — the reason both the
+  original 2048-word versions and the long input diffusers were cut.
+* **Early reflections** — **removed 9 Aug 2026.** The six discrete taps were
+  a flutter echo (VOICING.md Round 7); the short input diffuser fills the
+  early-energy role.
+* **Out** — L/R tap sums taken **before** the FWHT (a Hadamard row applied
+  after the transform collapses to a single line), sign patterns `+−+−+−+−`
+  and `++−−++−−`; then mid/side width, then a dry/wet crossfade.
 
 ## Parameters (current)
 
@@ -78,7 +96,7 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
 | 1 | 5 | MIX | `r6+$5` | dry held to half-travel, then crossfaded (see below) |
 | 2 | 6 | SPEED | `r6+$b` | LFO rate, ~0.13–1.9 Hz |
-| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 HALL, 3 BIG |
+| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG (HALL cut 9 Aug 2026 — indistinguishable from BIG in blind A/B) |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
 | 2 | 9 | WIDTH | `r6+$d` low | mid/side, 0 = mono |
 | 2 | 10 | PRE | `r6+$e` knob | pre-delay, 0–93 ms |

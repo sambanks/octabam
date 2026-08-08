@@ -1,7 +1,9 @@
 # The plan: end state, resource ledger, and work order
 
-Written 8 Aug 2026, after a full re-evaluation of where every resource goes.
-**This is the cold-start document — read it before `docs/XBUS.md`**, which is now
+Rewritten 9 Aug 2026 after a holistic re-review (the 8 Aug plan is at
+`git show 7d1dd0b:PLAN.md`; the review found one shipped-in-source defect it
+had missed, two stale open items, and one defect class it had only half seen).
+**This is the cold-start document — read it before `docs/XBUS.md`**, which is
 the *architecture* record rather than the plan.
 
 ---
@@ -9,19 +11,23 @@ the *architecture* record rather than the plan.
 ## Start here
 
 The goal is unchanged: **better effects for the Octatrack**. What has changed
-is that we now know where every resource lives and what each one can and
-cannot be spent on.
+since 8 Aug: the `$0c` slot collision is fixed (the bus auto-gain works again
+in source — it had been silently clobbered since the 8-line merge), the input
+diffuser item turned out to be already fixed, and the largest known audible
+defect — one decay gain shared by eight lines of different lengths — is
+specced and next to build.
 
 | | state |
 |---|---|
-| On the unit | **`ChonVerb31`** — no specialization, **no v121 auto-gain** |
-| Built, not flashed | specialization (`SPEC=1`), bus auto-gain (v121), the `DEV=1` render hatch |
-| Reverb | **eight-line, and it is the only engine** — `dsp/reverb_server.asm`. Decays correctly; ER balance per mode is the open voicing item (step 1.2). The four-line source is **deleted**: `git show c1ce08d:dsp/reverb_server.asm` |
+| On the unit | **`ChonVerb31`** — four-line, no specialization, **no auto-gain at all** |
+| Built, not flashed | specialization (`SPEC=1`), bus auto-gain (v121 **+ the 9 Aug `$0c` fix — v121 alone was never truly in any post-8-line build**), the `DEV=1` render hatch, shimmer (DEV-only) |
+| Reverb | **eight-line, the only engine** — `dsp/reverb_server.asm`. Decays correctly, modes distinct, linear below −6 dBFS. Worst *known* remaining defect: per-line decay skew (step 1.1). Four-line source deleted: `git show c1ce08d:dsp/reverb_server.asm` |
 | Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
-| Next | **Finish ChonVerb**, then BongDelay, then FX1 consolidation |
+| Flash gate | **When ChonVerb is "excellent"** (the acceptance test below) — Sam's call, 9 Aug. The trip must carry v121 **with** the `$0c` fix |
+| Next | 1.1 per-line decay gains → 1.2 damping measurement → re-voice → shimmer decision → flash prep |
 
-⚠️ **The unit's current build breaks above three simultaneous sends** — v121
-fixed that and has never been flashed. Any hardware trip should carry it.
+⚠️ **The unit's current build breaks above three simultaneous sends** — the
+auto-gain fixes that and has never been flashed. Any hardware trip carries it.
 
 ---
 
@@ -37,12 +43,12 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 1-4                tracks 5-8
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     494                       1998
+  free (region)     154                       1998
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
                     + any FX1 work
-  FX1 work costs    <-- from BOTH payloads, so capped by A's 527 -->
+  FX1 work costs    <-- from BOTH payloads, so capped by A's side -->
 ```
 
 **Two consequences, and they are the whole plan:**
@@ -58,47 +64,49 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ### Program space — the binding constraint, per core, 8,192 words
 
-✅ Measured 8 Aug 2026 by walking the module map (`tools/dsp_modmap.py`).
+✅ Region numbers re-measured 9 Aug 2026 by the build's own region report
+(`build_bus.py`): **payload A used 2,570 of 2,724, FREE 154. Payload B used
+726, FREE 1,998.**
 
 | | payload A | payload B |
 |---|---|---|
 | stock code below the effects | ~2,001 | ~1,455 |
 | **10 FX1 effects** (the reclaimable pool) | **3,384** | **3,384** |
 | our donor region (PLATE+SPRING+DARK) | 2,724 | 2,724 |
-| P code ends at | `0x01fdf` | `0x01d9f` |
-| **free above the code** | **33** | **609** 🟡 |
+| free above the code | 33 | 609 🟡 |
 
-The ten, with sizes (identical in both payloads):
+The ten FX1 effects, with sizes (identical in both payloads):
 
     FILTER 727   LO-FI 537   DJ EQ 345   CHORUS 329   FLANGER 289
     EQUALIZER 282   COMB 277   SPATIALIZER 261   COMPRESSOR 180   PHASER 157
 
-**Untested levers, in order of preference — do not touch until 527 is tight:**
+**Space levers, in order of preference — do not pull until A is tight again:**
+- **Roll the eight LFO blocks** (`lf3e..lf4a`, ~310 source lines of eightfold
+  near-copies): the tank roll precedent says ~1/8 the words, so **~150–200
+  freed** 🟡 inferred from line counts, priced by the build report when tried.
+  Per-line rate multipliers become an 8-entry table — the same shape as the
+  tank's state table, and unlike the levers below it needs no boot patching.
 - **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K, **+8,192
-  words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. 🟡
+  words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. 🟡 Also the only
+  known route to a local render of the delay (see the DEV note below).
 - **Code in the shared window**: P/X/Y alias at `0x30000-0x3FFFF` ✅ and stock
   already runs code there ✅, so up to 64K is program-addressable at 1 wait
   state. 🟡
+- FX1 consolidation (step 4) frees ~550–650 per payload as a side effect, but
+  is its own project, not a lever to pull for the reverb.
 
 ### Cycles — NOT the constraint, per core, 4,535/sample
 
-✅ 1,392 spare measured 7 Aug 2026 **with the full bank plus four FX1 FILTERs
-already running**, so it is a worst case needing no derating. A stock FILTER
-costs **~260 each**.
-
-⚠️ **That 1,392 is spare on a 964-cycle bank, and the bank is now 1,346.**
-The eight-line tank took the reverb from 763 to 1,145 cycles/sample, so
-**382 of the measured spare is already spent and the headroom for new work is
-~1,010.** `cycle_count.py` printed 1,392 regardless of bank size until 8 Aug —
-it added the spare to the *current* bank, which says capacity grows with our
-own code. Fixed; it now subtracts the growth and says so.
+✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
+already running** (worst case, no derating needed). `make cycles`, 9 Aug:
+bank is now **1,334** (reverb 1,133 + delay 163 + 2 sends), growth 370 since
+the measurement, so **room for new work: 1,022 cycles/sample.**
 
 ⚠️ **FX1 cycles are paid ×4 per core.** A 300-cycle FX1 effect costs 1,200
-cycles/core — which no longer fits in 1,010. *This*, not program space, is the
-ceiling on FX1 ambition, and the ×4 is why a 38% over-report of headroom
-mattered. Only a re-run of the burn sweep can re-measure the spare itself, and
-🔴 **the probe does not currently build** (see "The one thing that needs
-hardware").
+cycles/core — which does not fit in 1,022. *This*, not program space, is the
+ceiling on FX1 ambition. Only a re-run of the burn sweep re-measures the spare
+itself; the probe builds again (✅ 9 Aug, `make check` green) and flies with
+the next trip.
 
 ### Y memory
 
@@ -108,435 +116,180 @@ hardware").
 | FX1 slots | 3,072 each × 4 = **12,288 per core, allocated used or not** |
 
 **FX1's 12,288 words are currently stranded** — only an FX1 effect can reach
-them, and stock's inserts use a fraction (a chorus needs ~30 ms of a 70 ms
-slot). Owning FX1 turns that into real capability: 70 ms lines per track,
-enough for doublers, short slaps, wide chorus.
+them, and stock's inserts use a fraction. Owning FX1 turns that into real
+capability: 70 ms lines per track — doublers, short slaps, wide chorus.
 
 ---
 
 ## Work order
 
-### 1. Finish ChonVerb — spend the resources that were not there when it was designed
+### 1. Finish ChonVerb — the ear items, in dependency order
 
-**Why it moved to first.** ChonVerb was designed against a budget that no
-longer exists. Every structural compromise in it — four lines, an unrolled
-tank, per-line state crammed into `r7` — was made when program space was the
-wall and the cycle ceiling was believed to be 1,080. Both of those turned out
-to be wrong, and the reverb is the effect that everything else feeds. It is
-currently *good*. The resources to make it excellent are already measured and
-sitting unspent.
+The reverb is structurally right: eight driven lines, correct FWHT
+normalisation, all lines written and read, distinct modes, linear until the
+top ~4 dB. What remains is that **what you hear of the tail is not yet what
+the tank does** — and the items below are ordered so each measurement is made
+on top of the previous fix, not through it.
 
-**Almost all of it needs no hardware**, which is what makes it a sane first
-step: the roll, the eight lines and the re-voicing are all built, rendered and
-judged by ear locally. The one exception is shimmer's depth control, which has
-to be confirmed on a real unit — fold that into step 2's trip rather than
-making a flash of its own.
+#### 1.1 Per-line decay gains — NEXT. The largest known audible defect
 
-#### The dependency that used to put this last is gone
+`$1e` is ONE decay gain for all eight lines. Lines circulate at different
+rates, so equal gain *per pass* is unequal decay *per second*. At ROOM's
+settings the longest line loses 24.3 dB/s and the shortest 41.3 dB/s —
+**17 dB/s apart**; after two seconds the short lines are ~34 dB down. An
+eight-line tank that decays into a two- or three-line one *is* a tail that
+starts lush and turns metallic, which is the standing complaint.
 
-The old plan sequenced the eight-line tank *after* FX1 consolidation, on the
-reasoning that eight lines cost ~450-500 words against payload A's 527. That
-estimate looks pessimistic. Counted from the shipping source:
+Jot's fix is `g_i = g^(T_i/T_ref)`; `x^r ≈ 1 + r(x−1)` is within 1.2% over
+the range in use, and the DSP's own arithmetic collapses the rest (full
+derivation: `git log 7d1dd0b`):
 
-| block | instrs | per line |
-|---|---|---|
-| four taps, damped inside the feedback path | **101** | ~25 |
-| feedback and write-back | **101** | ~25 |
-| 4x4 Hadamard | **18** | — |
-| *shimmer (excised by default — not in the shipping build)* | *71* | — |
+- `mpy` doubles, so with `G = 2·$1e` the value to store is
+  **`stored_i = 0.5 + r_i·($1e − 0.5)`**.
+- `r_i` depends only on the per-mode tap fractions in `$74..$77` (times
+  **`$6c`** — the lines-4-7 scale; ⚠️ the original spec said `$0c`, corrected
+  by the 9 Aug slot fix) — not on any knob. `frac_0 ≈ 0.494` so `r_i ≈
+  2·frac_i`, which is exactly the doubling `mpy` already performs. **Zero new
+  constants.**
+- **Where it goes: Table B's second word**, confirmed dead at both ends
+  (primed to zero, loaded only to step r6). The write-back's dead read
+  becomes a live one: same instruction count, zero extra words, zero extra
+  cycles in the sample loop.
+- ⚠️ **Placement pin (added 9 Aug):** the gains must be primed **after the
+  TIME block folds TIME into `$1e`** (~line 1271), per block — not in the
+  table-priming chain near the top of the block, which runs before `$1e` is
+  final. ~5 instructions × 8 lines in the per-block path, nothing per sample.
+- The write-back loop reads the table weight-then-gain; the per-line gain
+  replaces the global `y0` load, so `y0` loads inside the loop and the
+  accumulator source moves off the register the gain occupies.
 
-So the tank's per-line work is **~50 instructions**, and eight lines unrolled
-is **~+210-235 words** 🟡 — inside payload A's **494 free today**, with no FX1
-work required first. The old figure appears to have doubled the whole 291-instr
-tank *including the shimmer that is no longer built*.
+⚠️ Stability: `stored_i` is a weighted average of `0.5` and `$1e` with
+`r_i ≤ 1`, so it can never exceed the existing gain. Scaling `g` down is
+always safe; scaling up self-oscillates. Safe to build before anything else.
 
-⚠️ Instruction counts above are exact (counted from `dsp/reverb_server.asm`);
-the **word** figure is inferred, because some DSP56300 instructions assemble to
-two words. **Falsified or confirmed by the build's own region report** — build
-it and read `FREE`. Do not spend this number twice before it is checked.
+**Gate**: per-second wet-only envelopes per mode (never the `tail to −60 dB`
+metric alone — it once scored a divergence as a magnificent tail); decay
+slope near-constant across the tail instead of steepening as short lines die;
+no instability at `TIME=127 SIZE=127`; modes still distinct.
 
-**Roll the tank first and the question stops mattering.** Rolled, the four-line
-tank is ~60 words instead of 202, and **eight lines costs the same as four** —
-the line count becomes a loop bound, which is data, not code. That both frees
-~140 words *and* decouples the reverb's growth from FX1's pool permanently.
+#### 1.2 Per-line damping — the same defect, one octave up. MEASURE FIRST
 
-#### The real constraint is now cycles and voicing, not space
+Found 9 Aug: the tank loop holds **one damping coefficient for all eight
+lines** (`y0 = DAMP, held across every line`), applied per *pass*. Same
+mechanism as 1.1: with a 1.69× length spread, short lines lose HF up to
+~1.69× faster per second, so even after 1.1 equalises broadband decay, the
+tail's *spectrum* still rotates — short lines go dull first and the late tail
+is carried by the (brighter-decaying) long lines only.
 
-Eight lines roughly doubles the tank's cycle cost against **1,392 measured
-spare** — comfortable, but it is the number to watch, and it is the same number
-FX1 spends ×4 per core. Track it with `make cycles` every pass.
+🟡 The magnitude is inferred, and this is second-order against 1.1's 17 dB/s.
+**So: measure after 1.1 lands** — per-line HF decay via band-split per-second
+envelopes (2 kHz+ vs broadband, per mode). Spec a per-line damping
+coefficient (same `stored_i` arithmetic on `$72`'s product) **only if the
+measured rotation is at audible scale**. Falsified by: band-split envelopes
+decaying at matching rates, in which case close the item and say so here.
 
-#### The work, in order
+#### 1.3 Re-voice the modes — Sam's ears, VOICING.md rules
 
-1. ✅ **Roll the tank loop** — *the four taps, done 8 Aug 2026.* The read /
-   interpolate / damp / low-cut block was four copies of 25 instructions; it is
-   now one `do #4` over a per-line state table in absolute Y at `base+0x7f00`,
-   six words a line. `r7` is out of the per-line business, which is what makes
-   eight lines possible at all — it is full (`$10..$83` used, `$84+` hangs) and
-   eight lines want forty state words.
+Blocked on 1.1 (and 1.2's measurement) because voicing against a tank whose
+decay is about to change is voicing the wrong tank — the reason the 8 Aug
+re-voice was deferred. Judged by ear, level-matched, A/B/A/B, wet-only,
+rounds logged to `docs/VOICING.md`.
 
-   **2,018 → 1,925 program words, payload A FREE 494 → 587**, at **+15
-   cycles/sample** (763 → 778) — the loop pays a little arithmetic for indexing
-   that a fixed `r7` displacement got for free. Cheap against 1,392 spare, and
-   the point is that the *line count is now a loop bound*, so growing it costs
-   data rather than code.
+In scope:
+- Per-mode constants generally, at eight lines.
+- **Lines 4-7 tap fractions are still derived, not voiced** (one shared
+  interleave scale per mode in `$6c`). Give them their own per-MODE values
+  if the ear asks for it — costs a few words per mode, A has 154.
+- **The shimmer decision** (Sam, 9 Aug: decide after re-voicing). It is
+  built, 130 words, clean in isolation, `SPEED=0` provably off, and fits
+  A's 154. Judge it *inside* the re-voiced tank, then ship or hold. If it
+  ships, its depth knob's hardware publish check joins the flash checklist.
+- **BIG's ringing: re-measure before believing it.** The old open item
+  ("~30 dB more HF, decay scale exactly 1.0") predates FWHT renormalisation
+  (BIG's `$1e` is now 0.60) and per-mode damping — its premise is stale.
 
-   **Gate met**: bit-identical across all four MODE characters plus the
-   `TIME=127 SIZE=127 DIFF=127` wet case, with **two** controls — `HP=0` vs
-   `HP=64` must differ (the render responds to a parameter) and one injected
-   `nop` must relocate the module and render unchanged (a PASS is about audio,
-   not about two builds placing the same). `make verify-roll CAND=...`,
-   `tools/verify_roll.py`; `RVSRC=` in `build_bus.py` swaps the engine.
+#### 1.4 Quality items that survive re-voicing
 
-   🟡 **Still unrolled: the feedback/write-back section and the 4x4 Hadamard**
-   (~101 and ~18 instructions). Those are *not* four copies of one block —
-   lines 0 and 1 carry an in-loop allpass and lines 2 and 3 do not, and the
-   input injection signs differ per line — so rolling them is a design
-   decision, not a transcription, and **it is what step 2 below actually
-   needs**. The natural shape is a per-line parameter row (allpass base, `0`
-   meaning none; input sign and scale) read from the same state table.
-   ⚠️ `make cycles` now prices a counted inner loop instead of refusing it; the
-   `do` setup itself is charged a flat 5 and is still a floor.
-2. 🟡 **Eight lines — decays correctly; one defect left, and it is audible.**
-   *Structure built 8 Aug 2026; four defects found, three fixed 8 Aug.*
-   The engine that was committed as done was **unconditionally unstable** and
-   its "measured" tail was a divergence. Re-voicing waits on the output tap
-   below — the tank is right, what you hear of it is not yet.
-   8×8 FWHT (24 butterflies), 8 LFOs, 8×2048-word lines, per-line state table
-   at `base+0x7F00`, Table B at `base+0x7F30`. Now the default engine in
-   `dsp/reverb_server.asm`, and **the only** one — the four-line engine was
-   deleted 8 Aug 2026 on Sam's instruction ("purge the 4 line completely").
-   Recover it, if a reference A/B is ever wanted, with
-   `git show c1ce08d:dsp/reverb_server.asm`. ⚠️ The four-line engine is still
-   what is FLASHED (`ChonVerb31`); deleting the source did not change the unit.
+- **Clip knee at ~0.6–0.7 FS inside the feedback loop.** Round 9 settled
+  what it is NOT: the engine is linear to the measurement floor below
+  −6 dBFS, and the output sum is ruled out. The FWHT's three unscaled
+  intermediate stores are the leading candidate but the derived loop gain
+  does not close (2×`$1e` against √8 implies divergence, and it decays) —
+  **measure the internal gain structure before touching anything.**
+- Tank saturation above ~0.35 FS (older item, likely the same knee — fold
+  into the same measurement).
 
-   **2506 program words, 2718 of 2724 in the donor region — 6 free.** **1145
-   cycles/sample** on core A (full bank 1346, 1392 spare). Cycles are not the
-   constraint; program space is, exactly.
-
-   ❌ **RETRACTED: "Tail confirmed non-zero (7.90 s to −60 dB ROOM)."** That
-   number measured a **divergence**, not a tail. Rendered per-second, the
-   committed engine sits near −52 dB for seven seconds, then explodes to
-   −11.8 dBFS at second 8 and pins there for as long as you render. 7.90 s is
-   when it blew up. The `tail to −60 dB` metric cannot tell a long decay from
-   a runaway — it reports the last window above −60 dB **relative to the
-   tail's own peak**, so a rising tail scores as a magnificent one. Do not
-   accept that metric alone again; read the per-second envelope.
-
-   **Fixed (measured):**
-   - **Matrix normalisation.** The 8×8 Walsh-Hadamard has operator norm √8,
-     but the four `md_*` decay constants were left at their 4-line (norm-2)
-     values, so loop gain was ≈1.41 — unconditionally unstable. All four are
-     now scaled by 2/√8. This alone stops the explosion.
-   - **Input injection.** v4 injects the diffused input as
-     `[+1, −1, −½, +½]`, the signs carried by the *choice* of `add`/`sub` at
-     four inline sites. Folding those into a weight table moved the sign into
-     the stored constant and every entry was primed **positive**, which points
-     the drive straight down the all-ones direction — the Hadamard's own first
-     row, the one mode that adds coherently every pass. Lines 4-7 were primed
-     to weight **zero**, so half the tank was never driven: an "eight-line"
-     tank that was four lines with four parasites. Now
-     `[+1, −1, −½, +½, +½, +1, −1, −½]`, sum zero, all eight driven.
-
-   - **Lines 4-7 were never written.** Step 4 advanced the write pointer in
-     `a` — `move r5,a / add x0,a / move a,r5` — which is right exactly once,
-     for the line 2 → 3 step. From line 3 on, `a` had already been reloaded
-     with the `fb` value about to be stored, so `add x0,a` computed
-     **`fb + 0x800`** and every write from line 4 onward went to an address
-     made out of audio data. Lines 4-7 were still *read* every sample, so the
-     tank circulated their frozen click-era contents forever. The address now
-     lives in `b`, which is dead there — same instruction count, **zero extra
-     words**.
-
-     How it presented, because the shape is worth recognising again: a tail
-     flat within 0.5 dB from second 1 to 12, broadband, indifferent to `TIME`,
-     `SIZE`, `MOD` and `DIFF`, its *level* tracking the decay constant while
-     its *duration* ignored it. It survived replacing the FWHT with the
-     identity matrix and survived collapsing the decay gain to 0.15, which is
-     what proved it was not the FDN. Autocorrelation of the tail peaked at
-     **exactly 2048 samples** — one full line — because a buffer that is read
-     but never written replays itself. Confirmed by `dsp_host -peeky`: 0 of 96
-     words of line 4 changed between an 11.0 s and an 11.5 s render, against
-     96 of 96 for line 0.
-
-   ✅ **Now decays, and the modes are four different spaces.** Wet-only click,
-   ROOM: `TIME=0` → −101.8 dBFS at 1 s, `TIME=127` → −86.5 dBFS at 1 s (it was
-   −65 flat at every setting). Time to the −105 dB floor: **ROOM ~2 s, PLATE
-   ~2.75 s, HALL ~3.5 s, BIG >5.75 s.** No clipping on the wet path; on a
-   peak-1.0 source with dry the 8-line clips **576** samples against v4's
-   **634**, so the level behaviour is not a regression.
-
-   - **Each output channel carried ONE line, at 8× gain.** The FWHT transforms
-     `$16..$19`/`$3a..$3d` **in place**, and the output stage sat *after* it,
-     reading those same slots as "line 0..7" with sign patterns
-     `L = +−+−+−+−` and `R = ++−−++−−`. Those are rows 1 and 2 of the
-     Sylvester H8, and a Hadamard row applied to a Hadamard transform
-     collapses it: `pᵀ(H₈d) = 8·d_k`. So **L was 8·d₁ and R was 8·d₂** — one
-     delay line each, none of the eight-line averaging the block exists to do,
-     and ~9 dB of stray level. v4 is correct only because its Hadamard ran
-     inline on `$1a..$1d`, leaving the raw line outputs in `$16..$19`.
-
-     Fixed by **moving the sums ahead of the FWHT** — the output never needed
-     the mixing matrix, only the feedback does. Pure reordering, **zero extra
-     words**. `y1` (MIX wet gain) stays loaded after the write-back, which
-     clobbers it. Wet-only click RMS fell 6.3 dB to −66.5 dBFS, against v4's
-     −67.9, and the tail floor came back to −116/−118 dB, matching v4's −116.
-
-   ✅ **Now decays, and the modes are four different spaces.** Wet-only click,
-   ROOM: `TIME=0` → −107 dBFS at 1 s, `TIME=127` → −91 dBFS at 1 s (it was −65
-   flat at every setting). Time to floor: **ROOM ~1.5 s, PLATE ~2.5 s, HALL
-   ~3.5 s, BIG >4.75 s.** On a musical source, wet-only, the 8-line now sits
-   **2.1 dB** from v4 in RMS where it was 9.6 dB adrift.
-
-   - **Lines 4-7 duplicated lines 0-3's tap lengths.** All eight read the same
-     four MODE fractions `$74..$77`, so the tank had four DUPLICATE PAIRS —
-     only four distinct delays, each doubled. Degenerate delays reinforce
-     rather than add density, and the tail arrived as a coherent echo train:
-     the **stutter** heard 8 Aug. It also means the "modal overlap 0.157 →
-     0.31" this whole step was justified by never happened. A source comment
-     admitted the shortcut and deferred it to re-voicing.
-
-     Fixed by scaling `x1` **once** before lines 4-7 (one multiply buys four
-     new lengths, since every line multiplies its fraction by it). 0.789 is
-     chosen to *interleave*: the eight land at 488/571/618/667/723/781/846/989
-     samples at SIZE max, every gap ≥47, no pair near a small-integer ratio —
-     unlike a factor near 0.5, which would be free but puts every new line an
-     octave below an old one. Paid for by hoisting the odd-forcing mask into
-     `y1` (freed 10 words, cost 4), which is why the region now has **6 free**
-     where it had 0.
-
-     🟡 Still a *derived* set, not a voiced one. Step 1.4 should give lines
-     4-7 their own per-MODE constants now that there is a little room.
-
-   🔴 **RETRACTED 9 Aug — this is a FAULT, not voicing, and it is the reverb's
-   worst artefact.** The paragraph below is kept because its conclusion was
-   acted on for a day and the reasoning has to be visible.
-
-   ~~🟡 Remaining, and it is voicing rather than a fault: ROOM's early
-   reflections stick out. Sam, 8 Aug, on a four-clip A/B: the glitches on a
-   transient vanish in **PLATE**, the mode with no ER — "glitches went away on
-   4 ... still a bit of a thwack but that's been around for ages and is tuning
-   rather than a fault." The ER accumulator is byte-identical to v4, so nothing
-   is broken; ROOM's ER level (`$6c` = 0.75, "STRONG") was simply balanced
-   against the four-line tank. Re-balance ER per mode in step 1.4.~~
-
-   **Two things were wrong with that.** First, the A/B rested on PLATE — and
-   PLATE was **unreachable**: the mode dispatch compared against short
-   immediates, which the DSP56300 places MSB-aligned, so modes 1 and 2 both
-   fell through to BIG (fixed 9 Aug, `2da90f0`). Second, PLATE differs from
-   ROOM in ~10 constants, so its cleanliness never implicated ER specifically.
-   Muting ER alone (`$6c` = 0, everything else identical) does: ROOM is then
-   **clean**.
-
-   **The implementation is correct** — linear to −101 dB, time-invariant to
-   −67 dB, 99% of its impulse energy inside 21.3 ms. It is a pure six-tap
-   output-summed FIR, exactly as written. **Six discrete taps summed onto the
-   output IS a flutter echo** ("like a playing card in a desk fan"); the comb
-   notches are 47–222 Hz apart, sparse enough to be heard as pitch. Level,
-   tap spacing, routing it through the diffuser, shortening the diffuser, and
-   both together were all tried and all failed — see VOICING.md Round 7 for the
-   verdicts.
-
-   **The fix is 20+ taps, and it needs program space payload A does not have
-   (0 free).** Until then `$6c` = 0 is ROOM's only clean setting. Related and
-   worth its own fix: the input diffuser runs 22.5–36.4 ms where a classic
-   Dattorro input diffuser is 4–13 ms, so it disperses rather than diffuses.
-
-   🔴 **AND "saturation is ruled out" is retracted too.** ~~Measured 9 Aug by
-   halving the input and scaling ×2: the engine is **nonlinear by −21.8 dB in
-   PLATE and −27.1 dB in ROOM**. That is gross~~ — ❌ **THAT SECOND RETRACTION
-   IS ITSELF RETRACTED, later the same day.** −21.8 dB is a single point of a
-   curve, taken at full-scale input, reported without the sweep that gives it
-   meaning. Swept properly (VOICING.md Round 9):
-
-   | gain | 1.00 | 0.90 | 0.80 | 0.70 | 0.60 | 0.50 | 0.25 | 0.125 |
-   |---|---|---|---|---|---|---|---|---|
-   | residual | −24.0 | −26.1 | −29.1 | −34.1 | −61.0 | −79.4 | −73.4 | −67.4 |
-
-   Below gain 0.5 the residual rises **+6.0 dB per halving** — a fixed additive
-   floor, i.e. 24-bit output quantisation, which is the *measurement* floor and
-   not the engine. **The engine is linear to the floor at any input below
-   −6 dBFS**, then clips above a knee at ~0.6–0.7. It is not "grossly
-   nonlinear"; it is clean until it clips, and it clips only in the top ~4 dB.
-   Priority drops accordingly.
-
-   ✅ The output sum is **ruled out** as the site (output peak is 0.1966 × gain
-   at every point 0.5..1.0, and a saturating output compresses the peak). The
-   clip is inside the feedback loop. 🟡 The FWHT's three unscaled intermediate
-   stores are the leading candidate but are **not actionable yet** — the
-   derived loop gain does not close (2 × `$1e` against H8's √8 implies ~3.7,
-   which would diverge, and the engine decays). Measure the gain structure
-   before acting.
-
-   **Ruled out** while chasing that, so it is not re-chased: ~~saturation (both
-   engines are linear to exact −10 dB steps, click and sustained loop)~~, the LFO
-   integer/fraction pairing (lines 4-7 do get proper adjacent pairs `$00/$01`
-   … `$06/$07` — worth checking, since a past mispairing was "the loudest
-   artifact ever measured in this engine"), and `$5a/$5b` stash-vs-ER-accumulator
-   ordering (all eight LFO blocks finish well before the ER accumulator).
-
-   🟡 **DEV=1 render hatch cannot fit both servers any more.** The 8-line
-   reverb + send + delay overflows payload A even with the CHORUS donor.
-   `render_reverb.py` and `make render` now build with `SPEC=1` (reverb on A,
-   delay on B) — dsp_host only boots payload A, so it renders the reverb only.
-   The delay's local render path is gone; the OMR memory-map lever (16K P)
-   would bring it back.
-
-3. **Shimmer — a new one, from scratch.** ✅ **BUILT, 9 Aug, and confirmed
-   clean by ear in isolation.** 130 words, `SHIMMER=1`, still DEV-only because
-   payload A has 0 free. What it is: octave up by *decimating into* a 2048-word
-   buffer (write at ½×, read at 1×) rather than reading out faster, two heads
-   windowed on the **age** of the data under them so each piece of material
-   comes out twice rather than four times, fed the **pre-diffusion** input, and
-   injected as a parallel send. `SPEED=0` renders byte-identical to the
-   excised build, so it provably turns off.
-
-   Three faults were found in it and every one needed a measurement rather
-   than a listen — see the commit log and VOICING.md Round 7 for the method:
-   the 86 Hz sideband pair that was the original thwong, a window keyed on
-   buffer index instead of data age (4 equal copies of every transient = the
-   stutter), and an `and`-masked age that left A2 dirty, the same class as the
-   `$83` load that froze two tracks.
-
-   ⚠️ **The stutter blamed on the shimmer was ROOM's ER.** The shimmer made it
-   more audible; it did not cause it. A day went into the wrong component
-   because "it started when we added shimmer" was taken as causation.
-
-   The paragraphs below are the ORIGINAL brief, kept because the two things it
-   told us to change are exactly the two that mattered.
-
-   The old implementation was heard and
-   **it was bad.** It stays excised, and `SHIMMER=1` is a reference for what
-   not to repeat, not a starting point. Do not re-enable it and re-voice it.
-
-   It was **71 instructions for a +12 pitch shift inside the feedback path** —
-   which is the same story as the rest of this section. It was cheap because
-   nothing could be afforded when it was written, and a pitch shifter done that
-   cheaply, placed inside a feedback loop where its artifacts recirculate and
-   compound, is the metallic sound. That budget no longer applies.
-
-   Two things to change on the second attempt, both now affordable:
-   - **Spend real instructions on the shifter itself** — proper overlapping
-     windows with crossfaded reads, rather than whatever fits in 71 words.
-   - **Reconsider the placement.** Inside the feedback path every artifact
-     compounds on every pass. A shifted *parallel send into* the tank gives the
-     same rising character without the loop multiplying its flaws.
-
-   Two constraints carry over from the first attempt:
-   - ⚠️ **It must be able to reach zero and actually turn off.** The old one's
-     depth drew a knob and published nothing, so it ran stuck half-on. That is
-     the parameter-delivery item below — a shimmer that cannot be switched off
-     is a defect regardless of how it sounds. **Verify the slot publishes on
-     real hardware**; `dsp_host` pokes `r6` directly, so every slot looks live
-     in the emulator. Fold that check into step 2's `BURN=1` trip.
-   - **Judge it at eight lines, not four.** Denser feedback is a different host
-     for a pitch shift.
-
-3b. **PER-LINE DECAY GAINS — designed 9 Aug 2026, not yet built. Do this
-   first: it is the largest defect on this list and it needs NO memory work.**
-
-   `$1e` is ONE decay gain for all eight lines. Lines circulate at different
-   rates, so equal gain *per pass* is unequal decay *per second*. At ROOM's
-   settings:
-
-   | line | length | passes/s | decay |
-   |---|---|---|---|
-   | longest | 2,003 | 22.0 | −24.3 dB/s |
-   | shortest | 1,188 | 37.1 | −41.3 dB/s |
-
-   **17 dB per second apart.** After two seconds the short lines are ~34 dB
-   below the long ones: an eight-line tank that decays into a two- or
-   three-line one. A tail that starts lush and turns metallic is exactly what
-   that produces, and it is the standing complaint.
-
-   Jot's fix is `g_i = g^(T_i/T_ref)`. A power per line per block is too
-   expensive, but `x^r ≈ 1 + r(x−1)` is within **1.2%** over the range in use,
-   and the DSP's own arithmetic collapses the rest:
-
-   - `mpy` doubles, so the stored constant is `g/2` and the effective
-     multiplier is `G = 2·$1e`. Wanting `G_i = 1 + r_i(G−1)`, the value to
-     store is **`stored_i = 0.5 + r_i·($1e − 0.5)`**.
-   - `r_i = T_i/T_ref`, and SIZE scales every line equally, so `r_i` depends
-     only on the per-mode tap fractions already in `$74..$77` (times `$6c` —
-     was `$0c` until the 9 Aug slot fix; `$0c` is the bus auto-gain — for
-     lines 4-7) — **not on any knob**.
-   - `frac_0 ≈ 0.494`, so `r_i ≈ 2·frac_i` to within 1%. And `mpy` already
-     multiplies by two. So the whole per-line constant is
-
-     ```
-     move x:(r7+$1e),a / sub 0.5 / move a,y0     ; once
-     move x:(r7+$74+k),x0 / mpy x0,y0,a / add 0.5 / store   ; per line
-     ```
-
-     **Zero new constants**, ~5 instructions × 8 lines in the per-block priming
-     path, nothing in the sample loop.
-
-   **Where it goes: Table B's second word.** ✅ Confirmed by reading both ends —
-   the `has_allpass` word is written by nobody (the priming block leaves it at
-   its warm-up zero and says so) and read by nobody (the write-back loads it
-   `purely to step r6 over it, and then discards it`). Put `stored_i` there and
-   the write-back's `move y:(r6)+,x0` for the dead word becomes
-   `move y:(r6)+,y0` for a live one: **same instruction count, zero extra
-   words, zero extra cycles.** The only care needed is ordering — `y0` must be
-   loaded before the `mpy x0,y0,a`, so the table is read weight-then-gain and
-   the accumulator source register moves off `x0`.
-
-   ⚠️ Scaling `g` DOWN is always safe; scaling UP self-oscillates. `r_i ≤ 1`
-   here, and `stored_i` is a weighted average of `0.5` and `$1e`, so it can
-   never exceed the existing gain. That is the stability argument, and it is
-   why this is safe to build before the tank is any bigger.
-
-4. **Re-voice all four modes.** Tap ratios and diffusion were chosen for four
-   lines; eight changes the echo density that every MODE constant was tuned
-   against. `docs/VOICING.md` is the log, and the rule stands — judged by ear,
-   level-matched, A/B/A/B, wet-only.
-5. **Then spend what is left on quality, not size.** The open items in this
-   document are the list: BIG's ringing HF, tank saturation above ~0.35 FS.
-
-#### What "excellent" means here, so it can be called done
+#### What "excellent" means here, so it can be called done — and it gates the flash
 
 Not "bigger". A reverb is finished when a long tail decays without a metallic
 signature, when a dense source does not turn to granular hash, and when the
-four modes are genuinely different spaces rather than one space at four
-lengths. Those are ear judgements, they belong in `docs/VOICING.md`, and they
-are the acceptance test — not the word count.
+three modes are genuinely different spaces rather than one space at three
+lengths. Ear judgements, logged in `docs/VOICING.md`, are the acceptance
+test — not the word count. **Sam flashes when this bar is met, not before.**
 
-### 2. BongDelay — the delay you can route
+### 2. Guardrails — cheap insurance against the bug classes that keep recurring
 
-**Why it is second rather than first: it is the only thing that can spend
-payload B's 2,600 words, and it is the one feature the machine has never had —
-but it competes with nothing, so nothing is lost by finishing the reverb
-first.** The reverb draws payload A; the delay draws payload B. Sequencing
-between them is a choice about attention, not about resources.
+Done 9 Aug (this session) unless marked:
+
+- ✅ **`$0c` slot collision fixed** — the md_* tap scale clobbered the bus
+  auto-gain 1/N every block; auto-gain multiplied by ~0.75 instead of 1/N.
+  Moved to `$6c`. Verified: insert render bit-identical, send render +2.87 dB
+  = exactly 1/0.71875. ⚠️ Consequence for past judgements: **no post-8-line
+  emulator render ever had working auto-gain**, and the unit has never had
+  any — re-derive any multi-send balance conclusion from after this fix.
+- **`verify_slots` in `make check`** — static check that no r7 slot is
+  written from two unrelated sections of `dsp/reverb_server.asm`. Third bug
+  of the family ($83 garbage → freeze, $84+ → hang, $0c → clobber); the
+  check would have caught this one at commit time.
+- **Doc propagation** — REVERB.md's front half described the deleted
+  four-line engine (ER, HALL, 2048-word in-loop APs); `render_reverb.py`
+  help listed four modes. Fixed. The stale-plan items are folded into this
+  rewrite: the input-diffuser complaint was **already fixed** by Direction A
+  (taps 179/293/419/547 = 4.1–12.4 ms, Dattorro-scale), and BIG's ringing
+  premise is stale (see 1.3).
+- 🟡 **Parameter-delivery protocol — design before the trip, not at it.**
+  A slot can draw a knob and publish nothing, and `dsp_host` pokes `r6` so
+  everything looks live locally. This caused the old shimmer to run stuck
+  half-on in every build anyone ever heard, and **it caps how many usable
+  parameters any effect can have** — close it before designing a 12-knob
+  delay. Deliverable: a written per-slot on-unit test (drive each knob,
+  observe a slot-keyed audible change), executed during the flash trip.
+
+### 3. BongDelay — the delay you can route
+
+**Second, unchanged in rationale: the only thing that can spend payload B's
+~2,600 words, and the one feature the machine has never had — but it competes
+with nothing, so nothing is lost by finishing the reverb first.**
 
 ✅ **The stock delay is DOWNSTREAM of the FX2 insert** (measured by ear,
-`fcf22fd`). Every slot we can reach is upstream, so **its output can never be
-tapped**. However good stock sounds, it cannot feed the reverb.
-**delay→reverb exists only through BongDelay's `→VERB` cross-send**, which is
-already built. That is the goal, and this is the only route to it.
+`fcf22fd`) — its output can never be tapped. **delay→reverb exists only
+through BongDelay's `→VERB` cross-send**, already built. That is the goal.
 
-Budget: **1,998 program words** (≈4× its current size), **~3,176 spare
-cycles** (≈19×), **65,536 words = 1.49 s**. A flagship budget, not a
-placeholder's: multi-tap, ping-pong, per-tap filtering, tape wow/flutter,
-diffused or pitch-shifted feedback, reverse.
+Budget: **1,998 program words**, **~3,200 spare cycles**, **65,536 words =
+1.49 s**. A flagship budget: multi-tap, ping-pong, per-tap filtering, tape
+wow/flutter, diffused feedback, reverse.
 
 Traps, all already paid for once:
-- ⚠️ **`→DELAY` and `→REVERB` are SEPARATE knobs** (`x:(r6+0)` vs
-  `x:(r6+1)`). Driving the wrong one renders silence.
-- ⚠️ **The DELAY accumulator never got v121's auto-gain.** Same fix as the
-  reverb's; fold it into the re-scope or the bus breaks above three senders.
-- **AGU modulo is no longer mandatory.** Power-of-2 alignment is what caps a
-  line at 16,384 words; a manual compare-and-wrap is ~4-6 cycles/sample —
-  unaffordable before, free now. It is the only way to a single 1.49 s line.
-- Render locally, no flash: `make render`.
+- ⚠️ **`→DELAY` and `→REVERB` are SEPARATE knobs** (`x:(r6+0)` vs `x:(r6+1)`).
+  Driving the wrong one renders silence.
+- ⚠️ **The DELAY accumulator has no auto-gain.** Build it in from the first
+  draft — the reverb's `$0c` collision shows what happens when it is bolted
+  on and shares state loosely. Same 1/N table, same parity indexing.
+- ⚠️ **X:0x30000 vs Y:0x30000 aliasing is unresolved risk under BongDelay**
+  (`docs/CHIP.md`) — settle it before committing a memory map.
+- **AGU modulo is no longer mandatory.** A manual compare-and-wrap is ~4-6
+  cycles/sample — the only way to a single 1.49 s line.
+- 🟡 **No local render path**: `dsp_host` boots payload A only, and the DEV
+  hatch no longer fits both servers. The OMR lever would bring it back —
+  price that against flying blind before deep voicing work on the delay.
+- Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
+  `PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used, and the
+  parameter-delivery gap (step 2) caps how many more are worth adding.
 
-Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
-`PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used.
+### 4. FX1 consolidation — turning 12,288 stranded words into capability
 
-### 3. FX1 consolidation — turning 12,288 stranded words into capability
-
-The trick ChonVerb already ran: replace near-duplicates with one engine plus a
-MODE select.
+The trick ChonVerb already ran: replace near-duplicates with one engine plus
+a MODE select.
 
 | cluster | stock | one engine | freed **per payload** |
 |---|---|---|---|
@@ -544,85 +297,80 @@ MODE select.
 | EQUALIZER + DJ EQ | **627** | ~300 🟡 | **~325** |
 
 All four in row 1 are the same structure — a short modulated delay with
-feedback, differing in length, modulation and allpass-vs-comb. They are also
-the effects most in need of a 2026 rewrite.
+feedback — and the effects most in need of a 2026 rewrite. **FILTER is the
+outlier**: 727 words, the default FX1 effect, ~260 cycles (a large fixed
+per-call overhead, `docs/CHIP.md`). Highest value, highest risk.
 
-**~900 words freed takes payload A from 527 to ~1,400.** That is no longer
-needed to make the reverb affordable — rolling the tank does that (step 1).
-It is now headroom for FX1's *own* ambition, which is the point: FX1's
-12,288 words of per-core delay memory are stranded until an FX1 effect exists
-to reach them.
+⚠️ The real FX1 ceiling is **cycles ×4 per core** (see the ledger), and only
+the `BURN=1` hardware sweep re-measures the spare. Sequence FX1 ambition
+after that trip.
 
-**FILTER is the outlier**: 727 words, the largest, the default FX1 effect, and
-~260 cycles — far more than a biquad should cost, which `docs/CHIP.md` reads as a
-large fixed per-call overhead. Highest value, highest risk; it is the effect
-people actually rely on.
-
-✅ **Taking the three reverbs cost FX1 nothing** — they were never on its menu
+✅ Taking the three reverbs cost FX1 nothing — they were never on its menu
 (both chooser lists decoded 8 Aug). FX1's ten effects are the whole pool.
-
-> The eight-line tank used to be step 3 here. It is now part of step 1, where
-> the numbers say it belongs.
 
 ---
 
-## The one thing that needs hardware
+## The hardware trip — one flash, gated on "excellent"
 
-**A `BURN=1` flash, then sweep from the front panel.** It answers **the real
-FX1 worst case** — four *different* heavy FX1 effects, one per track, plus the
-bank — which decides how much FX1 can afford. Once the build is on the card
-every further configuration is a knob sweep with **no further flash**.
+**A `BURN=1` flash, then sweep from the front panel.** Everything hardware
+needs, in one trip, because flash cycles are expensive:
 
-✅ **UNBLOCKED as of 9 Aug 2026.** ~~🔴 BLOCKED: the burn probe no longer
-builds — the eight-line tank leaves 6 free, so payload A overruns by 10.~~
-Direction A's removal of the ER section, and the hoists since, took payload A
-from **6 free to 154**. `make check` now runs `verify_burn.py` green, including
-`[PASS] probe inert at BURN=0` and `[PASS] sample loop untouched by the burn`.
-No words need finding and FX1 consolidation is not a prerequisite. `SPEC=1` is
-still not a way out and the build still guards SPEC-with-BURN.
+1. **v121 auto-gain WITH the 9 Aug `$0c` fix** — the unit currently breaks
+   above three sends, and v121-without-the-fix was never real.
+2. **The 8-line engine** — hardware has only ever run the four-line.
+3. **`BURN=1` probe** (✅ builds again, `make check` green) — the FX1 worst
+   case: four different heavy FX1 effects plus the bank. Decides FX1's
+   cycle budget. Every configuration after the flash is a knob sweep.
+4. **The parameter-delivery protocol** (step 2) — every slot ChonVerb and
+   the shimmer use, tested from the panel.
+5. **Shimmer depth publish check**, if the shimmer shipped (step 1.3).
+6. **Bump `BUILD`** (`make image BUILD=NNN`) — it is stamped into the OS
+   version field; three debugging rounds were once lost to not knowing which
+   firmware was on the unit. Bump `BUILD_TAG` in `tools/build_bus.py` if
+   effect names change. Card workflow: cp → cmp → rm-old → sync → eject,
+   kill `._` sidecars.
 
-This was **hidden until the four-line engine was deleted**: `verify_burn.py`
-pinned `RVSRC` to the four-line source, so `make verify` was green while
-checking an engine the build no longer shipped — the same stale-fork trap as
-the burn probe that once measured an engine we did not ship. The pin is gone;
-`make check` now prints a loud SKIP naming the shortfall, and passes, because
-the probe is in no shipping image and blocking local work on it would be
-wrong. It must never read as "verified".
+`Y:0x34000` is not part of this trip: ❌ retracted 8 Aug, falsified by our
+own v107 bisect (`docs/CHIP.md` §6).
 
-Three ways out, cheapest first: find ~10 more words in the reverb (the
-odd-forcing hoist just found 10 the same way — `move #>$0800,b` appears 8
-times at 2 words each and could come from an index register); shrink the burn
-blocks; or wait for FX1 consolidation (step 3), which frees ~550-650 per
-payload and makes the question disappear.
+---
 
-`Y:0x34000` is no longer part of this trip: ❌ retracted 8 Aug, it was
-falsified by our own v107 bisect (`docs/CHIP.md` §6).
+## Retraction ledger — kept so the numbers cannot un-retract themselves
 
-**Sequence it with the delay (step 2), not before it.** Step 1 needs no
-hardware at all, and the sweep informs step 3. ⚠️ Whatever trip happens next
-must carry **v121's bus auto-gain** — the build on the unit predates it and
-breaks above three simultaneous sends.
+Full narratives live in VOICING.md and the commit log; these are the claims
+that must not come back:
+
+- ❌ "Tail confirmed non-zero, 7.90 s to −60 dB" — measured a **divergence**;
+  the metric scores a rising tail as a magnificent one. Per-second envelopes
+  only.
+- ❌ "ROOM's ER prominence is voicing, not a fault" — it was a fault (six-tap
+  flutter echo); ER is **removed**, the short input diffuser replaced it.
+- ❌ "The engine is grossly nonlinear (−21.8 dB)" — single point of a curve;
+  swept, it is linear below −6 dBFS with a clip knee in the top ~4 dB. (This
+  retraction itself retracted an earlier "saturation ruled out" — the sweep
+  is the arbiter, both one-liners were wrong.)
+- ❌ "Cycle spare is 1,392 for new work" — that spare was measured on a
+  964-cycle bank; `cycle_count.py` now subtracts bank growth (1,022 today).
+- ❌ "Y:0x34000 is a blocker" — falsified by our own v107 bisect.
+- ❌ "PLATE confirmed clean by A/B" (8 Aug) — PLATE was unreachable; the mode
+  dispatch compared MSB-aligned short immediates and modes 1-2 fell through
+  to BIG. Fixed `2da90f0`.
+- ⚠️ Standing correction, same family: post-8-line multi-send renders before
+  9 Aug had auto-gain clobbered by `$0c`; the unit has never had auto-gain.
 
 ---
 
 ## Open, and unchanged by any of this
 
-- **BIG rings** — ~30 dB more HF than other modes with no shimmer; `md_big`
-  sets the decay scale to exactly 1.000000 where others leave headroom.
-- **Tank saturation above ~0.35 FS** — the only level limit left since v121.
-- **Emulator/device gap: parameter delivery.** `-params` pokes `r6` directly,
-  so every page-2 slot looks live locally while on hardware a slot can draw a
-  knob and publish nothing. This caused the shimmer to run half-on in every
-  build anyone ever heard. **It caps how many usable parameters any effect can
-  have**, so it is worth closing before designing a 12-knob delay.
-- **Emulator/device gap: per-core layout.** ✅ Closed 8 Aug — `render_reverb.py`
-  and `make render` now build with `SPEC=1`, matching the shipping layout
-  (reverb on A, delay on B). dsp_host boots payload A, so the reverb renders
-  identically to hardware. The delay has no local render unless the OMR lever
-  is pulled.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is a design rule; no
   product configuration has this.
+- **Payload B's "609 free above code" has never been loaded** 🟡 — verify
+  before spending it.
+- **Emulator/device gap, parameter delivery** — step 2's protocol closes it.
+- **Emulator/device gap, per-core layout** — ✅ closed 8 Aug (`make render`
+  builds `SPEC=1`; dsp_host boots payload A, so the reverb renders
+  identically to hardware; the delay renders not at all — OMR lever).
 
 ---
 
@@ -640,8 +388,3 @@ make cycles                 # per-effect cycles against the measured budget
 make verify                 # ColdFire menu tables; burn probe inert when off
 make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 ```
-
-**Bump `BUILD` on every flash** (`make image BUILD=002`). It is stamped into
-the OS version field and shown on the panel; three debugging rounds were once
-lost to not knowing which firmware was on the unit. Also bump `BUILD_TAG` in
-`tools/build_bus.py` if you change what the effect names read.

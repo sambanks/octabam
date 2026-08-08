@@ -416,8 +416,8 @@ def main():
                          "hardware would do -- it just makes quiet renders (impulses, "
                          "--wet tails) auditionable without riding the volume knob.")
     ap.add_argument("--mode", metavar="N|all",
-                    help="audition MODE characters: 0 ROOM, 1 PLATE, 2 HALL, "
-                         "3 BIG, or 'all'. Assembles the value in (the slot is "
+                    help="audition MODE characters: 0 ROOM, 1 PLATE, 2 BIG, "
+                         "or 'all'. Assembles the value in (the slot is "
                          "a companion field dsp_host cannot drive)")
     ap.add_argument("--build", action="store_true", help="run build_bus.py first")
     ap.add_argument("--dev", action="store_true",
