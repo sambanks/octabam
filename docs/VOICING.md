@@ -1237,3 +1237,59 @@ BIG=44 (−17.1 vs −17.9).
 Structural candidates if the ear still says thin after v3: in-loop APs
 on only 2 of 8 lines (six lines re-inject undiffused), per-line decay
 spread late, and the truncation floor.
+
+### Round 13 CLOSE — the bloom, found and shipped (commits through this one)
+
+The second half of the round chased Sam's "VV has a bloom of energy at the
+start" through eleven A/B'd variants (v5-v16), each one lever. What
+survived into the SHIPPING engine:
+
+1. **Sparse injection** — input drives only the two shortest lines (3 in
+   group A, 7 in group B, sum zero); the Hadamard spreads energy to all
+   eight over 2-4 passes. Density BUILDS, Lexicon-style, instead of
+   arriving complete. (Driving the two LONGEST lines instead put a ~90 ms
+   hole before BIG's first sound — measured, killed.)
+2. **The driven lines are excluded from the output sums** — the wet comes
+   from lines that fill by recirculation (the swell) — and the sums gain
+   the bloom component instead.
+3. **BLOOM ALLPASSES**: two long, high-g APs in series (41/29 ms, primes,
+   g=0.867 fixed — deliberately NOT DIFF's coefficient) on a side branch:
+   chain out -> APs -> 0.5x into the sums, pre-high-cut so the tone stays
+   tamed. Rings ~600+ ms: the bloom LENGTH no short-diffuser setting could
+   make. Buffers in the ex-margin at shared+0x4800/+0x5000; the warm-up
+   clear is EXTENDED to +0x57ff to cover them (80 words/block, was 64).
+4. **Input diffusers 3.6x longer** (641/1051/1511/1949, primes, 14-44 ms,
+   all modes): the diffusers are the bloom generator; Dattorro-short taps
+   could not stretch the attack.
+5. **Mode constants** (ROOM/BIG; PLATE untouched): both mod rate scales to
+   1.0 (~2.2 Hz — BIG's "a huge space barely moves" 0.25 left a
+   near-static tank, and a static tank rings); BIG depth 0.60; ROOM tap
+   scale 0.60; diffusion offsets up (ROOM->0.125, BIG->0.094); damping
+   way up (ROOM 0.953, BIG 0.8125) with tone moved to the wet high-cut
+   (both 0.523) -- in-loop damping compounds and was thinning+darkening
+   the tail end ("thins out and darker", Sam).
+
+**Fit**: 2720/2724 words -- the v16 audition build was 1 word OVER and ran
+under --dev; the shipping fold paid for itself plus the warm-up extension
+with the leaner sparse chain (-1), a short n5 immediate (-1), and deriving
+bloom AP b's base from AP a's r5 (-2). Verified: make check clean, every
+new site disassembled (mpysu x0,y0 with positive-constant y0 = the audited
+family; asr #$3,b,b = 0c1c87; do #<$50; count*80 math exact).
+
+**Sam's verdicts along the way**: fast-shallow LFO "lot better"; damping
+rebalance "lot closer now, tails are pretty good"; bloom v13 "slightly too
+loud... I was confusing brightness and volume with lushness and length";
+v15/v16 (bloom APs) "getting closer... we aren't as lush but that's
+probably close enough. Awesome effort."
+
+**Ear pairings for the kit** (out/vv_ab, rebuilt on the shipping engine):
+ROOM=T56, PLATE=T64, BIG=T44, DIFF=120, WIDTH=100, SHMR=0.
+
+**Open for next round**: (1) PLATE inherited every structural change
+UNAUDITIONED -- it needs its own ear pass (its mod rate also jumped to
+~2.2 Hz via the global x8). (2) The lushness residual: candidates are
+in-loop APs on more than 2 of 8 lines, and modulating the bloom APs.
+(3) TIME->decay calibration needs re-deriving with a bloom-aware fit
+window (the 0.4-1.6 s window now catches the tail of the bloom, so slopes
+read shallow). (4) verify_slots / hardware publish for DIFF at 120 as a
+default is a knob question, not a code one.

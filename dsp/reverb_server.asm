@@ -594,8 +594,10 @@ warmz:
 ; its own clear or the engine starts on whatever the last effect left there --
 ; the "laddering garbage" failure the private clear exists to prevent.
 ;
-; 64 words x 256 blocks = 16,384, covering shared+0x0800 .. shared+0x47ff.
-; That is a little more than the 15,872 actually occupied, which is harmless.
+; 80 words x 256 blocks = 20,480, covering shared+0x0800 .. shared+0x57ff.
+; Grown from 64 words/block on 9 Aug 2026: the BLOOM ALLPASSES (Round 13)
+; live at +0x4800 and +0x5000, and an uncleared allpass recirculates boot
+; garbage -- the same "laddering static" the private clear exists to stop.
 ;
 ; ⚠️ THE BOUNDS ARE LOAD-BEARING, in both directions:
 ;   - it must start at +0x0800, because stock's per-frame parameter staging
@@ -604,13 +606,17 @@ warmz:
 ;     shared+0x6000..+0x7fff. Zeroing that would clear the accumulator parity
 ;     word and every client's contribution mid-block, on 256 consecutive
 ;     blocks, on a core the other core is talking to.
-; +0x47ff leaves 6,145 words of margin. Do not grow this loop without moving
+; +0x57ff leaves 2,049 words of margin. Do not grow this loop without moving
 ; the scratch first.
         move    #>$ffffff,m5            ; ISOLATION 9 Aug: the clear below wrote
                                         ; y:(r5)+ under whatever m5 the previous
                                         ; block left. Forced linear.
         move    x:(r7+$15),a            ; the count again, still A2-clean
-        asl     #$6,a,a                 ; count*64
+        asl     #$4,a,a                 ; count*16 ...
+        move    a,b
+        move    x:(r7+$15),a
+        asl     #$6,a,a                 ; ... + count*64 = count*80
+        add     b,a
         move    #>$30000,x0             ; -> $38000 on payload B
         add     x0,a
         move    #>$800,x0
@@ -625,7 +631,7 @@ warmz:
                                         ; landed, the loop walks from a garbage
                                         ; base and dsp_host SIGSEGVs. x0 is dead
                                         ; here; the value loaded is irrelevant.
-        do      #64,>wshclr
+        do      #80,>wshclr
         move    b,y:(r5)+
 wshclr:
 ; the one-pole and LFO state now lives in r7, so zero it there
@@ -775,7 +781,8 @@ warmdone:
 ; drive onto one of each pair's two outputs. The rotation keeps both live.
 ;
 ;   line   0    1    2    3     4    5    6    7
-;   weight +1   -1  -1/2  +1/2  +1/2 +1   -1  -1/2      sum = 0
+;   weight  0    0    0   +1     0    0    0   -1       sum = 0
+;   (SPARSE since Round 13 -- see the bloom note at the chain below)
 ;
 ; THE SECOND WORD IS NOT WRITTEN HERE. It was the dead has_allpass flag until
 ; 9 Aug 2026; it now carries the PER-LINE DECAY GAIN (PLAN.md 1.1), primed by
@@ -793,28 +800,29 @@ warmdone:
         move    #2,n1                   ; SHORT immediate: 1 word, and safe
                                         ; because n1 is an ADDRESS register, so
                                         ; the 8-bit value is zero-extended.
-        move    #$7f,a                  ; +0.992, the seed for the whole chain.
-                                        ; SHORT immediate again -- and here the
-                                        ; MSB placement that makes `move #1,y0`
-                                        ; a trap is exactly what is wanted: the
-                                        ; byte lands in A1's top, giving $7f0000
-                                        ; in one word where $7fffff costs two.
-                                        ; 0.992 vs 1.0 on an input weight is
-                                        ; 0.07 dB, and it buys the last word.
-        move    a,y:(r1)+n1             ; line 0 weight  +1
+; SPARSE INJECTION (Round 13, the BLOOM): only the two SHORTEST lines are
+; driven -- 3 in group A, 7 in group B, one per FWHT group, sum zero. The
+; first echoes arrive at the short taps and the Hadamard spreads energy
+; into the six longer lines over successive passes, so density BUILDS over
+; 2-4 loop times instead of arriving complete on pass one (Lexicon-style).
+; Driving the LONG lines instead delayed BIG's first sound by ~90 ms --
+; measured, not argued. The old dense vector [+1 -1 -1/2 +1/2 | rotated]
+; is in history with the chain that generated it.
+; `move #$7f,a` is a SHORT immediate landing in A1's top: $7f0000 = +0.992
+; in one word where $7fffff costs two (0.07 dB shy of 1.0, irrelevant).
+        clr     a
+        move    a,y:(r1)+n1             ; line 0 weight  0
+        move    a,y:(r1)+n1             ; line 1 weight  0
+        move    a,y:(r1)+n1             ; line 2 weight  0
+        move    #$7f,a
+        move    a,y:(r1)+n1             ; line 3 weight  +1  (shortest, group A)
+        clr     a
+        move    a,y:(r1)+n1             ; line 4 weight  0
+        move    a,y:(r1)+n1             ; line 5 weight  0
+        move    a,y:(r1)+n1             ; line 6 weight  0
+        move    #$7f,a
         neg     a
-        move    a,y:(r1)+n1             ; line 1 weight  -1
-        asr     a
-        move    a,y:(r1)+n1             ; line 2 weight  -1/2
-        neg     a
-        move    a,y:(r1)+n1             ; line 3 weight  +1/2
-        move    a,y:(r1)+n1             ; line 4 weight  +1/2  (unchanged)
-        asl     a
-        move    a,y:(r1)+n1             ; line 5 weight  +1
-        neg     a
-        move    a,y:(r1)+n1             ; line 6 weight  -1
-        asr     a
-        move    a,y:(r1)+n1             ; line 7 weight  -1/2
+        move    a,y:(r1)+n1             ; line 7 weight  -1  (shortest, group B)
 
 ; ---- state lives in r7, which is already per-instance and persistent ----
 ; v74: the LFO phases and one-pole states used to be round-tripped through
@@ -918,21 +926,25 @@ md_big:                                 ; 2, and anything unexpected
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$4CCCCD,a               ; 0.60 2/√8 headroom, was $5A8279 (exact)
         move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
-; replaces the removed ER section. All four modes share the same tap set;
-; the diffusion CHARACTER comes from the coefficient at $3f, not the lengths.
-; The four original allpass taps (1994/1706/1438/1226) were too long to
-; diffuse — they dispersed (same mechanism documented in VOICING.md Round 7
-; for the in-loop allpasses). Stored as (2048 - tap) for the modulo read.
-        move    #>1869,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
-        move    #>1755,a
+; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
+; bloom generator now, and the 4-13 ms Dattorro set could not stretch the
+; attack. All modes share the tap set (641 1051 1511 1949, primes), stored
+; as (2048 - tap) for the modulo read. Round 7's dispersion warning was for
+; the IN-LOOP allpasses; on the input side, dispersion IS the bloom.
+        move    #>1407,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 641 (14.5 ms)
+        move    #>997,a
         move    a,x:(r7+$7f)
-        move    #>1629,a
+        move    #>537,a
         move    a,x:(r7+$80)
-        move    #>1501,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
-        move    #>$200000,a             ; MODE's LFO RATE scale -- slowest -- a huge space barely moves.
+        move    #>99,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 1949 (44.2 ms)
+        move    #>$7fffff,a             ; MODE's LFO RATE scale 1.0 (~2.2 Hz).
+                                        ; Round 13: 'a huge space barely
+                                        ; moves' (0.25) left the tank nearly
+                                        ; static through a 2 s tail, and a
+                                        ; static tank RINGS -- this file's
+                                        ; own rule. VV's hall mods at 2.53 Hz.
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
                                         ; r7 block ends at $83 ($84+ is host-
@@ -960,9 +972,13 @@ md_big:                                 ; 2, and anything unexpected
         move    a,x:(r7+$77)
         move    #>$7fffff,a             ; tap scale 1.00 -- the largest space
         move    a,x:(r7+$6f)
-        move    #>$040000,a             ; diffusion offset, lowest
+        move    #>$0c0000,a             ; diffusion offset, ROOM's old level
+                                        ; (Round 13; 0.031 was too dry to
+                                        ; wash the end-ring)
         move    a,x:(r7+$3f)
-        move    #>$480000,a             ; damping 0.5625, was 0.445 -- compensate lower loop gain
+        move    #>$680000,a             ; damping 0.8125 (Round 13, was
+                                        ; 0.5625): the loop keeps its highs;
+                                        ; tone lives in the wet high-cut
         move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
                                         ; (Round 11: BIG keeps 0.5625 -- already
                                         ; darkest, its HF hang was the scatter,
@@ -975,9 +991,12 @@ md_big:                                 ; 2, and anything unexpected
                                         ; often per second. Retention over equal
                                         ; time goes as c^(1/tapscale), which is
                                         ; what these constants are chosen on.
-        move    #>$7fffff,a             ; full modulation: the Valhalla-flavoured
+        move    #>$4CCCCD,a             ; mod depth 0.60 (Round 13, was 1.0:
+                                        ; at the x8 base rate, full depth
+                                        ; would be ~19 cents of vibrato --
+                                        ; fast-shallow, never fast-deep).
         move    a,x:(r7+$73)            ; scale comes from movement, not length
-        move    #>$4ccccd,a             ; wet high-cut 0.60 (~7 kHz) -- between
+        move    #>$430000,a             ; wet high-cut 0.523 (Round 13) -- between
         move    a,x:(r7+$7a)            ; ROOM's dark and PLATE's bright
         move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
         move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
@@ -995,17 +1014,19 @@ md_room:
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$534307,a               ; 2/√8 = H8 normalization (was $75C000 for H4)
         move    a,x:(r7+$1e)
-; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
-; replaces the removed ER section. All modes share the same tap set.
-        move    #>1869,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
-        move    #>1755,a
+; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
+; modes share the tap set (641 1051 1511 1949, primes).
+        move    #>1407,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 641 (14.5 ms)
+        move    #>997,a
         move    a,x:(r7+$7f)
-        move    #>1629,a
+        move    #>537,a
         move    a,x:(r7+$80)
-        move    #>1501,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
-        move    #>$599999,a             ; MODE's LFO RATE scale -- moderate.
+        move    #>99,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 1949 (44.2 ms)
+        move    #>$7fffff,a             ; MODE's LFO RATE scale 1.0 (~2.2 Hz)
+                                        ; -- Round 13: fast-shallow mod is
+                                        ; what washes the end-ring
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
                                         ; r7 block ends at $83 ($84+ is host-
@@ -1031,16 +1052,22 @@ md_room:
         move    a,x:(r7+$76)
         move    #>$26A800,a             ; line 3: 2474 of 4096
         move    a,x:(r7+$77)
-        move    #>$399999,a             ; tap scale 0.45 -- close walls
+        move    #>$4CCCCD,a             ; tap scale 0.60 (Round 13, was 0.45:
+                                        ; the room grew for bloom + density)
         move    a,x:(r7+$6f)
-        move    #>$0c0000,a             ; diffusion offset, high
+        move    #>$100000,a             ; diffusion offset, PLATE's (Round 13)
         move    a,x:(r7+$3f)
-        move    #>$600000,a             ; damping 0.75 (was 0.95: Round 11's
+        move    #>$7A0000,a             ; damping 0.953 -- the loop barely
+                                        ; damps (Round 13); in-loop damping
+                                        ; compounds per pass and was thinning
+                                        ; + darkening the late tail. Tone
+                                        ; lives in the wet high-cut now. (Was
+                                        ; 0.75; Round 11's retune of the old
         move    a,x:(r7+$72)            ; inverted-HF finding -- VV room's HF
                                         ; dies FASTEST, ours hung on)
         move    #>$400000,a             ; least movement: a small room does not
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
-        move    #>$466666,a             ; wet high-cut 0.55 (~6 kHz) -- VV room
+        move    #>$430000,a             ; wet high-cut 0.523 (Round 13) -- VV room
         move    a,x:(r7+$7a)            ; is "darker tone"
         move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
         move    a,x:(r7+$6c)            ; interleave for a smaller space
@@ -1070,16 +1097,16 @@ md_plate:
                                         ; 0.019 of scale). This value targets
                                         ; VV plate's rate at TIME~32, whole
                                         ; upper knob left for longer tails.
-; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
-; replaces the removed ER section. All modes share the same tap set.
-        move    #>1869,a
-        move    a,x:(r7+$7e)            ; allpass 0, tap 179 (4.1 ms)
-        move    #>1755,a
+; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
+; modes share the tap set (641 1051 1511 1949, primes).
+        move    #>1407,a
+        move    a,x:(r7+$7e)            ; allpass 0, tap 641 (14.5 ms)
+        move    #>997,a
         move    a,x:(r7+$7f)
-        move    #>1629,a
+        move    #>537,a
         move    a,x:(r7+$80)
-        move    #>1501,a
-        move    a,x:(r7+$81)            ; allpass 3, tap 547 (12.4 ms)
+        move    #>99,a
+        move    a,x:(r7+$81)            ; allpass 3, tap 1949 (44.2 ms)
         move    #>$7fffff,a             ; MODE's LFO RATE scale -- fastest -- a plate shimmers.
         move    a,x:(r7+$2f)            ; parked in $2f, which the RATE block
                                         ; below folds into its own result. The
@@ -1636,13 +1663,17 @@ mixset:
         move    a,x0
         move    #>$500000,y1
         mpy     x0,y1,a
-        asr     #$b,a,a                 ; 2048-word lines: 11-bit shift, not 10
-                                        ; 1.0 Hz) was reported as barely
-                                        ; audible. This doubles the top to
-                                        ; ~1.9 Hz, still under the 2.84 Hz v84
-                                        ; measured as outright seasick, and the
-                                        ; floor stays where a static tank
-                                        ; cannot happen.
+        asr     #$8,a,a                 ; Round 13: BASE RATE x8, ~2.2 Hz at a
+                                        ; mode scale of 1.0. The pinned ~0.4 Hz
+                                        ; rate could not spread a mode across
+                                        ; FFT bins, and the surviving modes
+                                        ; towered 50-65 dB over the diffuse
+                                        ; tail -- THE metallic end-ring,
+                                        ; measured (latetail probe). v84's
+                                        ; seasick 2.84 Hz was fast-DEEP; this
+                                        ; is fast-SHALLOW: every mode's depth
+                                        ; scale is set so vibrato stays under
+                                        ; ~12 cents.
         move    #>$180,x0
         add     x0,a
         move    a,x1                    ; fold in MODE's LFO rate scale, which the
@@ -2496,6 +2527,65 @@ lf4a:
         move    x:(r7+$1c),a
         move    a,y:(r5)                ; write v at base + phase
 
+; ---- BLOOM ALLPASSES (Round 13) ------------------------------------------
+; Two long, high-g allpasses on a SIDE BRANCH: chain out -> AP a (41 ms) ->
+; AP b (29 ms) -> $08 -> the wet sums. The tank input does NOT see them.
+; This is the machinery of the ENERGY BLOOM: with sparse injection the tank
+; fills over 2-4 passes, and this pair smears the incoming energy over
+; ~600+ ms of ring (g = 0.867, staggered primes 1801/1291), so the wet
+; SWELLS the way VV's does instead of arriving complete. Two in series:
+; arrivals multiply, and density-squared is the lush.
+;
+; Buffers: shared+0x4800 and +0x5000, 2048 words each, 2048-aligned, in
+; what was the margin below the bus scratch -- THE WARM-UP CLEAR NOW COVERS
+; THEM (+0x0800..+0x57ff); an uncleared allpass recirculates boot garbage.
+; Static taps (no modulation, no interpolation): m5 is still $7ff here and
+; the phase is $39, exactly like the input diffusers above. g is a FIXED
+; immediate, NOT DIFF's $6d -- this pair may run hotter than the in-loop
+; allpasses dare, because nothing here recirculates into the tank.
+; The mpy x0,y0 sites encode as mpysu (CLAUDE.md); y0 is a positive
+; constant, so they are in the audited-safe family. $08 and $14 are block
+; temps, both rewritten every block before their readers run.
+        move    x:(r7+$5e),a            ; in-loop AP A base = shared+0x4000
+        move    #>$800,x0
+        add     x0,a                    ; -> shared+0x4800  (bloom AP a)
+        move    x:(r7+$39),x0           ; phase mod 2048
+        add     x0,a
+        move    a,r5
+        move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
+                                        ; zero-extended in an address register)
+        move    #>$6F0000,y0            ; g = 0.867, both bloom APs
+        move    x:(r7+$1b),x1           ; chain output in
+        move    y:(r5+n5),b             ; d
+        move    b,x0
+        mpy     x0,y0,a
+        move    x1,x0
+        add     x0,a                    ; v = x + g*d
+        move    a,x:(r7+$14)
+        move    a,x0
+        mpy     x0,y0,a
+        sub     a,b                     ; out = d - g*v
+        move    x:(r7+$14),a
+        move    a,y:(r5)                ; write v (AP a)
+        move    b,x1                    ; AP a out -> AP b in
+        move    r5,a                    ; base_a + phase, still intact ...
+        move    #>$800,x0
+        add     x0,a                    ; ... + 0x800 = base_b + phase
+        move    a,r5
+        move    #>757,n5                ; 2048 - 1291 (29 ms)
+        move    y:(r5+n5),b             ; d
+        move    b,x0
+        mpy     x0,y0,a
+        move    x1,x0
+        add     x0,a                    ; v = x + g*d
+        move    a,x:(r7+$14)
+        move    a,x0
+        mpy     x0,y0,a
+        sub     a,b                     ; out = d - g*v
+        move    b,x:(r7+$08)            ; -> the bloom component, for the sums
+        move    x:(r7+$14),a
+        move    a,y:(r5)                ; write v (AP b)
+
         move    x:(r7+$1b),a
 ; ---- TANK INPUT ATTENUATION: -12 dB of headroom -------------------------
 ; The tank runs at a loop gain approaching 1, so energy circulating in it
@@ -2653,39 +2743,43 @@ tankend:
 ; reloads y0 with g/2 itself); a, b and x0 are all free before the FWHT.
 ; y1 is NOT touched here -- the MIX wet gain is still loaded after the
 ; write-back, which clobbers y1.
-;   L = (l0-l1+l2-l3) + (l4-l5+l6-l7) + ER_L
-;   R = (l0+l1-l2-l3) + (l4+l5-l6-l7) + ER_R
+;   L = (l0-l1+l2) + (l4-l5+l6) + bloom/2   (driven lines 3,7 excluded)
+;   R = (l0+l1-l2) + (l4+l5-l6) + bloom/2
+; Round 13: the DRIVEN lines (3 and 7 -- sparse injection) are EXCLUDED
+; from the sums, and the BLOOM component is added instead. The wet is then
+; built from lines that fill via recirculation (rising over passes 2-4)
+; plus the bloom allpasses' smear: the Lexicon swell-knee-decay shape. The
+; driven lines still feed the tank; they are only absent from the OUTPUT.
+; Bloom at 0.5x: $08 is raw chain scale, 4x hotter than $15, so >>3.
         move    x:(r7+$16),a            ; line 0
         move    x:(r7+$17),x0           ; line 1
         sub     x0,a
         move    x:(r7+$18),x0           ; line 2
-        add     x0,a
-        move    x:(r7+$19),x0           ; line 3
-        sub     x0,a                    ; a = l0-l1+l2-l3
+        add     x0,a                    ; a = l0-l1+l2   (l3 driven, excluded)
         move    x:(r7+$3a),x0           ; line 4
         add     x0,a
         move    x:(r7+$3b),x0           ; line 5
         sub     x0,a
         move    x:(r7+$3c),x0           ; line 6
-        add     x0,a
-        move    x:(r7+$3d),x0           ; line 7
-        sub     x0,a                    ; a = (l0-l1+l2-l3)+(l4-l5+l6-l7)
+        add     x0,a                    ; (l7 driven, excluded)
+        move    x:(r7+$08),b            ; the bloom, pre-filter: the wet
+        asr     #$3,b,b                 ; high-cut below tames its sheen
+        add     b,a
         move    a,x:(r7+$2d)            ; wet L
         move    x:(r7+$16),a
         move    x:(r7+$17),x0
         add     x0,a
         move    x:(r7+$18),x0
-        sub     x0,a
-        move    x:(r7+$19),x0
-        sub     x0,a                    ; a = l0+l1-l2-l3
+        sub     x0,a                    ; a = l0+l1-l2   (l3 excluded)
         move    x:(r7+$3a),x0           ; line 4
         add     x0,a
         move    x:(r7+$3b),x0           ; line 5
         add     x0,a
         move    x:(r7+$3c),x0           ; line 6
-        sub     x0,a
-        move    x:(r7+$3d),x0           ; line 7
-        sub     x0,a                    ; a = (l0+l1-l2-l3)+(l4+l5-l6-l7)
+        sub     x0,a                    ; (l7 excluded)
+        move    x:(r7+$08),b            ; same bloom on R
+        asr     #$3,b,b
+        add     b,a
         move    a,x:(r7+$2e)            ; wet R
 
 ; ---- 8x8 Fast Walsh-Hadamard Transform -----------------------------------
