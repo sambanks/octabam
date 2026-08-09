@@ -413,6 +413,20 @@ delivered most of the checklist. Status per item:
 the MARKER=1 staged-audible-marks mechanism (committed, reusable — point it
 at BongDelay next); and MIX-at-100% loudness, queued as a voicing item.
 
+**Legacy-project FX2 ids — checked 10 Aug, closed by analysis (one 🟡).**
+A saved project can still dispatch a stock FX2 id the replaced chooser no
+longer offers. "Alias them all to SEND" does NOT work: `X:0x215/0x235`
+serve FX1 and FX2 from the same entries (measured, `DSP.md` — id source
+`r6+$1b` vs `$1c` is the only difference), so aliasing would break those
+effects on FX1 — the donor null-stub design exists precisely because of
+this. It is also unnecessary: every big-buffer stock FX2 effect is already
+handled (three reverbs null-stubbed, Echo Freeze dispatch is the stock
+no-op passthrough). The survivors are dual FX1/FX2 shallow effects
+(dynamics/EQ class) — 🟡 *inferred* to make no FX2-slot buffer writes.
+Falsifier: legacy project, COMPRESSOR stored on an FX2 slot of tracks 5–8,
+listen for tank corruption while ChonVerb plays. If that ever fails, the
+fix is ColdFire-side id sanitization at publish, not the DSP tables.
+
 `Y:0x34000` is not part of this trip: ❌ retracted 8 Aug, falsified by our
 own v107 bisect (`docs/CHIP.md` §6).
 
