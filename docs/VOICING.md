@@ -1160,3 +1160,23 @@ auditioned locally.
 Remaining, in order of the measured gaps: LF bass-mult (VV's LF outlives
 its mids; ours dies faster — confirm on a bass source first), then the
 residual metallic (diffusion/AP-mod voicing on the doubled lines).
+
+### Round 12b addendum — the LF claim mostly dies with the shimmer too
+
+Re-measured on a bass source (bass.wav through BIG, shimmer-free): LF and
+MF decay DEAD EQUAL (−21.6 vs −21.7 dB/s). And the shimmer-free stab rows
+already had LF outliving MF in PLATE (−14.4 vs −18.5) and BIG (−17.1 vs
+−17.9). 🔴 So "ours dies LF-first" — Round 12's finding 2 — was mostly the
+shimmer's broadband recirculation flattering MF/HF sustain, not an LF
+defect. Remaining LF gap: ROOM only, ~1.3 dB/s vs VV room. A bass-mult is
+DEPRIORITIZED until the ear asks for more low bloom.
+
+That reorders the open list to: **1. the residual "little metallic"**
+(levers: MOD depth, DIFF, AP-mod rate — the first two are free knobs),
+**2. ROOM's small LF shortfall**, 3. shimmer re-voicing on the new tank.
+
+**Sweeps for the ear**: `out/vv_ab/sweeps/sweep.sh mod` (MOD 20/60/100/127)
+and `sweep.sh diff` (DIFF 20/64/100/127), PLATE fixed at the VV-matched
+settings otherwise. Ear-anchor: ../stab_PLATE_A.wav. Question for MOD: does
+more smear kill the ring before it turns seasick? For DIFF: does the ring
+live in the diffusers (DIFF up = denser but more allpass coloration)?
