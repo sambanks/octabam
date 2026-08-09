@@ -628,6 +628,8 @@ wshclr:
 ; above has just cleared the whole allocation, so zeroing them a second time
 ; by hand would be eight dead instructions.
         move    b,x:(r7+$3e)
+        move    b,x:(r7+$78)            ; wet high-cut states (Round 11): boot
+        move    b,x:(r7+$79)            ; garbage here would click at warm-end
 ; The in-loop allpass interpolation carries $5c/$5d used to be zeroed here
 ; too (v90). DEAD since v127: the per-block priming above the sample loop
 ; seeds both from the buffer, unconditionally, before anything reads them --
@@ -955,6 +957,9 @@ md_big:                                 ; 2, and anything unexpected
         move    a,x:(r7+$3f)
         move    #>$480000,a             ; damping 0.5625, was 0.445 -- compensate lower loop gain
         move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
+                                        ; (Round 11: BIG keeps 0.5625 -- already
+                                        ; darkest, its HF hang was the scatter,
+                                        ; which the wet high-cut now handles)
                                         ; first attempt used 0.60 against HALL's
                                         ; 0.75 and measured BIG the BRIGHTER of
                                         ; the two, because damping applies once
@@ -965,6 +970,8 @@ md_big:                                 ; 2, and anything unexpected
                                         ; what these constants are chosen on.
         move    #>$7fffff,a             ; full modulation: the Valhalla-flavoured
         move    a,x:(r7+$73)            ; scale comes from movement, not length
+        move    #>$4ccccd,a             ; wet high-cut 0.60 (~7 kHz) -- between
+        move    a,x:(r7+$7a)            ; ROOM's dark and PLATE's bright
         move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
         move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
         bra     md_done
@@ -1021,10 +1028,13 @@ md_room:
         move    a,x:(r7+$6f)
         move    #>$0c0000,a             ; diffusion offset, high
         move    a,x:(r7+$3f)
-        move    #>$790000,a             ; damping 0.95 -- small and bright
-        move    a,x:(r7+$72)
+        move    #>$600000,a             ; damping 0.75 (was 0.95: Round 11's
+        move    a,x:(r7+$72)            ; inverted-HF finding -- VV room's HF
+                                        ; dies FASTEST, ours hung on)
         move    #>$400000,a             ; least movement: a small room does not
         move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
+        move    #>$466666,a             ; wet high-cut 0.55 (~6 kHz) -- VV room
+        move    a,x:(r7+$7a)            ; is "darker tone"
         move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
         move    a,x:(r7+$6c)            ; interleave for a smaller space
         bra     md_done
@@ -1081,10 +1091,14 @@ md_plate:
         move    a,x:(r7+$6f)
         move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
-        move    #>$7A0000,a             ; brightest mode, 0.953 (was 1.00 -- zero damping)
-        move    a,x:(r7+$72)            ; opposite of a dark hall
+        move    #>$640000,a             ; damping 0.78 (was 0.953 ~= none: the
+        move    a,x:(r7+$72)            ; tail literally BRIGHTENED as it
+                                        ; decayed -- Round 11. Still the
+                                        ; brightest mode of the three.)
         move    #>$599999,a             ; some movement, less than a hall
         move    a,x:(r7+$73)
+        move    #>$570000,a             ; wet high-cut 0.68 (~8 kHz) -- plate
+        move    a,x:(r7+$7a)            ; stays the bright one
         move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
         move    a,x:(r7+$6c)            ; interleave for a dense plate
         bra     md_done
@@ -3205,6 +3219,38 @@ fbB:
         move    x:(r7+$2c),y0           ; WIDTH
         mpy     x0,y0,a
         move    a,x:(r7+$26)            ; w*S
+
+; ---- wet high-cut (Round 11) --------------------------------------------
+; VintageVerb runs an output high-shelf/high-cut ON TOP of its in-loop
+; damping; we had none, and the measured result was an INVERTED HF ladder --
+; HF outliving the mids in every mode (VOICING.md Round 11), because the
+; in-loop damping cannot reach the HF that the always-on AP modulation
+; scatters up from the mids (Round 11's shelf finding). One-pole low-pass on
+; M and w*S -- filtering the two components IS filtering L and R, since
+; L = M + wS and R = M - wS. Sits BEFORE the bus write below, so the shared
+; REVERB WET carries the voiced signal.
+; Coefficient per mode in $7a (md_* block), states $78/$79 (free slots,
+; zeroed in warm-up). y1 holds MIX and must survive -- the coefficient rides
+; y0, which is free here (WIDTH is done, dry gain reloads it later). The
+; mpy encodes as mpysu; the coefficient is always positive, so it is safe,
+; and it is a plain product (no doubling) -- c is stored as-is.
+        move    x:(r7+$25),a            ; M
+        move    x:(r7+$78),b            ; high-cut state, M channel
+        sub     b,a
+        move    a,x0
+        move    x:(r7+$7a),y0           ; per-mode wet high-cut coefficient
+        mpy     x0,y0,a                 ; c*(x - y)
+        add     b,a                     ; y += c*(x - y)
+        move    a,x:(r7+$78)
+        move    a,x:(r7+$25)            ; M, high-cut
+        move    x:(r7+$26),a            ; w*S
+        move    x:(r7+$79),b            ; state, S channel
+        sub     b,a
+        move    a,x0
+        mpy     x0,y0,a
+        add     b,a
+        move    a,x:(r7+$79)
+        move    a,x:(r7+$26)            ; w*S, high-cut
 
 ; ---- write M to the shared REVERB WET buffer (BUS.md task 8) ------------
 ; Pre-WIDTH, pre-MIX: the bus carries this reverb's own clean output, not

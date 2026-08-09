@@ -986,3 +986,31 @@ Three findings, in order of audible damage:
    voiced. VV's field is strongly decorrelated.
 
 Round 11 targets: our band-slope rows bracket VV's per mode; then ears.
+
+### Round 11 addendum — the constants cannot bridge it: line length is the gap
+
+Wet high-cut built (one-pole on M and w*S, coeff $7a per mode, states
+$78/$79) and per-mode damping retuned (ROOM 0.95→0.75, PLATE 0.953→0.78).
+Measured tilt trajectories (HMF−MF and HF−MF at 0.4 s → 1.6 s into the stab
+tail):
+
+| | HMF−MF | HF−MF |
+|---|---|---|
+| VV room | −11.1→−11.6 | −29.0→−32.1 |
+| VV plate | −10.2→−12.2 | −25.1→−31.4 |
+| VV hall | −9.7→−9.6 | −24.7→−35.7 |
+| us ROOM | −17.4→−22.6 | −50.9→−49.8 |
+| us PLATE | −27.6→−16.3 (brightens!) | −53.7→−33.2 (brightens!) |
+| us BIG | −26.1→−23.3 | −53.3→−55.7 |
+
+We are 6–25 dB TOO DARK in the upper bands while ALSO letting HF outlive
+the mids — dark and zingy at once. No constant fixes both: our lines are
+9–20 ms (50–110 passes/s), so damping strong enough to kill the late zing
+destroys the early top end. VV's loop delays are several times longer, so
+the same per-pass damping lands bright-early/dark-late. Round 5's verdict
+("the only structural lever is more total delay") returns with a measured
+target attached.
+
+**Next: relayout increment 2 — double the lines to 8×4096 (93 ms).**
+Increment 1 (b2bab52) left private Y holding only the 8×2048 lines: the
+memory is already there. Then re-run this table.
