@@ -1,8 +1,9 @@
 ; ---------------------------------------------------------------------------
 ; EIGHT-LINE TANK (PLAN.md step 1.2). The tank has been grown from 4 lines to
 ; 8, with a rolled write-back loop, an 8x8 fast Walsh-Hadamard, and 8
-; independent LFOs. Lines are 2048 words each (halved from 4096 to fit the
-; 0x8000-word private pool), stride 0x0800, modulo 0x7FF.
+; independent LFOs. Lines are 4096 words each (relayout increment 2: back to
+; the 32K-era length, but EIGHT of them -- increment 1 emptied the private
+; pool of everything else), stride 0x1000, modulo 0xFFF.
 ;
 ; This file is the refactored engine. The 4-line shipping engine lives at
 ; dsp/reverb_server.asm and is still the reference for verify_roll.py.
@@ -114,20 +115,26 @@
 ;
 ; All buffers are relative to the hardcoded base Y:0x4000. BUS.md pools the
 ; bank's whole FX2 allocation into 0x8000 words per server (0x4000..0xBFFF).
-; EIGHT-LINE RE-LAYOUT (PLAN.md step 1.2): lines halved to 2048 words to fit
-; 8 in the private pool. Tap fractions are ratios of line length and do not
-; change -- only the shift counts and the modulo move:
-;   lines      base+0x0000 .. base+0x3fff   2048 words each, spacing 0x0800
-;              taps ~1979 1693 1447 1237  (45 38 33 28 ms) at SIZE max, 8 lines
-;   allpasses  base+0x4000 .. base+0x5fff   2048 words each, spacing 0x800
-;              taps 1994 1706 1438 1226  (45 39 33 28 ms)
-;   pre-delay  base+0x6000 .. base+0x6fff   4096 words (93 ms)
-;   SHIMMER    base+0x7000 .. base+0x77ff   2048 words, 2048-aligned (v127)
-;   recip tab  base+0x7800 .. base+0x7807      8 words, bus auto-gain
-;   in-loop AP base+0x7a00 .. base+0x7dff    512 words each, taps 298 446
-;              (base+0x7e00 .. base+0x7eff    256 words free)
-;   tank state base+0x7f00 .. base+0x7fff    256 words, per-line, ROLLED tank
-;   total      0x8000 -- the whole allocation, nothing left over
+;
+; RELAYOUT INCREMENT 2 (9 Aug 2026): lines DOUBLED to 4096 words each --
+; 8 x 4096 = 0x8000, the whole private allocation. Increment 1 moved every
+; other buffer to the shared window precisely so the lines could take all of
+; it. Round 11's measurement is the reason: 9-20 ms lines circulate 50-110
+; times a second, so damping strong enough to kill the late HF zing also
+; kills the early top end -- no constant bridges that; only longer lines do.
+; Tap fractions are ratios of line length and do not change -- only the
+; shift counts, the spacing and the modulos move (the same shape as the two
+; re-layouts before it):
+;   lines      base+0x0000 .. base+0x7fff   4096 words each, spacing 0x1000
+;              taps to ~3914 (89 ms) at SIZE max, 8 lines
+;
+; In the SHARED window since increment 1 (unchanged by increment 2 -- all
+; still 2048-word/512-word buffers with their own modulos):
+;   input APs  shared+0x2000 .. 0x3fff      2048 words each, taps 179..547
+;   pre-delay  shared+0x1000 .. 0x1fff      4096 words (93 ms)
+;   SHIMMER    shared+0x0800 ..             2048 words (excised by default)
+;   in-loop AP shared+0x4000/0x4200         512 words each, taps 298 446
+;   tank state shared+0x4500 ..             per-line tables A and B
 ;
 ; THE TANK STATE TABLE is what makes the rolled loops possible. r7 is full --
 ; $10..$83 are all taken and $84+ HANGS the DSP -- and rolling needs state the
@@ -135,7 +142,7 @@
 ;
 ; Thirteen words per line, in two groups:
 ;   GROUP A -- tank tap loop (words +0..+5, stride 6 within group):
-;     +0  read offset   (2048 - tap) - LFO offset        per block
+;     +0  read offset   (4096 - tap) - LFO offset        per block
 ;     +1  interpolation fraction                         per block
 ;     +2  d0 carry: last sample's tap                    per sample, seeded per block
 ;     +3  damping state                                  PERSISTENT
@@ -683,13 +690,13 @@ warmdone:
         move    #>$0,a
         add     x0,a
         move    a,x:(r7+$10)            ; line 0 base
-        move    #>$0800,a
-        add     x0,a
-        move    a,x:(r7+$11)            ; line 1 base
         move    #>$1000,a
         add     x0,a
+        move    a,x:(r7+$11)            ; line 1 base
+        move    #>$2000,a
+        add     x0,a
         move    a,x:(r7+$12)            ; line 2 base
-        move    #>$1800,a
+        move    #>$3000,a
         add     x0,a
         move    a,x:(r7+$13)            ; line 3 base
 ; $36/$37 and $10..$13 are line bases the rolled tap loop no longer reads.
@@ -697,16 +704,16 @@ warmdone:
 ; phase, below). $36/$37 and $4c/$4d carry the four new lines for the
 ; state-table priming carry seed -- those are the only places that need
 ; a bare line base (without phase) for lines 4..7.
-        move    #>$2000,a               ; line 4 base (4 * 0x0800)
+        move    #>$4000,a               ; line 4 base (4 * 0x1000)
         add     x0,a
         move    a,x:(r7+$36)
-        move    #>$2800,a               ; line 5 base (5 * 0x0800)
+        move    #>$5000,a               ; line 5 base (5 * 0x1000)
         add     x0,a
         move    a,x:(r7+$37)
-        move    #>$3000,a               ; line 6 base (6 * 0x0800)
+        move    #>$6000,a               ; line 6 base (6 * 0x1000)
         add     x0,a
         move    a,x:(r7+$4c)
-        move    #>$3800,a               ; line 7 base (7 * 0x0800)
+        move    #>$7000,a               ; line 7 base (7 * 0x1000)
         add     x0,a
         move    a,x:(r7+$4d)
 
@@ -832,21 +839,21 @@ warmdone:
         move    x:(r7+$31),x0
         add     x0,a                    ; base + LINE_OFF(0x0)
         move    a,r1                    ; line 0
-        move    #>$0800,x0
+        move    #>$1000,x0
         add     x0,a
         move    a,r2                    ; line 1
         add     x0,a
         move    a,r3                    ; line 2
         add     x0,a
         move    a,r4                    ; line 3
-        move    #>$7ff,m1               ; MODULO 2048: r1..r4 are the four line
-        move    #>$7ff,m2               ; pointers and each wraps inside its own
-        move    #>$7ff,m3               ; line. Restored in v62 -- this is the
-        move    #>$7ff,m4               ; original design, and it is what makes
+        move    #>$fff,m1               ; MODULO 4096: r1..r4 are the four line
+        move    #>$fff,m2               ; pointers and each wraps inside its own
+        move    #>$fff,m3               ; line. Restored in v62 -- this is the
+        move    #>$fff,m4               ; original design, and it is what makes
                                         ; n1/n4 live again so SIZE reaches all
-                                        ; four lines. Bases are base+0/0x0800/
-                                        ; 0x1000/0x1800 and base is the literal
-                                        ; 0x4000, so every line is 2048-aligned
+                                        ; four lines. Bases are base+0/0x1000/
+                                        ; 0x2000/0x3000 and base is the literal
+                                        ; 0x4000, so every line is 4096-aligned
                                         ; as modulo requires.
 
 ; ---- MODE: character select, page-2 slot 7 ($c bits 8-15) (v93) ---------
@@ -1142,13 +1149,13 @@ md_done:
 ; Raising the floor costs the smallest spaces, which were the bad ones.
             move    #>$1,y1                 ; the odd-forcing mask, hoisted for
                                             ; all eight lines (see below)
-            move    #>$0800,n0              ; likewise: 2048, used 8 times below.
+            move    #>$1000,n0              ; likewise: 4096, used 8 times below.
                                             ; An address register is free during
                                             ; setup and move n0,b is 1 word where
-                                            ; move #>$0800,b is 2.
+                                            ; move #>$1000,b is 2.
             move    x:(r7+$74),x0           ; this MODE's line 0 fraction
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
+            asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
                                             ; above: SIZE scales and truncates the
                                             ; prime nominals and the results share
@@ -1157,14 +1164,14 @@ md_done:
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
             move    n0,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$45)            ; line 0 -- was n1, which only worked
                                             ; for a STATIC tap. All four lines are
                                             ; modulated now, so all four go through
                                             ; the interpolated path.
             move    x:(r7+$75),x0           ; this MODE's line 1 fraction
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
+            asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
                                             ; above: SIZE scales and truncates the
                                             ; prime nominals and the results share
@@ -1173,11 +1180,11 @@ md_done:
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
             move    n0,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2a)
             move    x:(r7+$76),x0           ; this MODE's line 2 fraction
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
+            asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD. y1 = 1, hoisted
                                             ; above: SIZE scales and truncates the
                                             ; prime nominals and the results share
@@ -1186,13 +1193,13 @@ md_done:
                                             ; hold it (each line loads its fraction
                                             ; there), y1 is free across this block.
             move    n0,b
-            sub     a,b                     ; 2048 - tap, for the modulated read
+            sub     a,b                     ; 4096 - tap, for the modulated read
             move    b,x:(r7+$2b)
             move    x:(r7+$77),x0           ; this MODE's line 3 fraction
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
+            asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             move    n0,b
-            sub     a,b                     ; 2048 - tap
+            sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$46)            ; line 3                    ; -tap, line 3 reads y:(r4+n4)
             ; ---- lines 4-7: the SAME four MODE fractions, RESCALED --------
             ; They used to be the same four fractions used raw, which gave the
@@ -1227,30 +1234,30 @@ md_done:
             move    a,x1                    ; decay block reloads it at ~1300)
             move    x:(r7+$74),x0           ; this MODE's line 0 fraction, rescaled
             mpy     x0,x1,a
-            asr     #$b,a,a                 ; back to an integer tap (2048-word lines)
+            asr     #$a,a,a                 ; back to an integer tap (4096-word lines)
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
-            sub     a,b                     ; 2048 - tap
+            sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$08)            ; line 4
             move    x:(r7+$75),x0           ; this MODE's line 1 fraction, rescaled
             mpy     x0,x1,a
-            asr     #$b,a,a
+            asr     #$a,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
             sub     a,b
             move    b,x:(r7+$09)            ; line 5
             move    x:(r7+$76),x0           ; this MODE's line 2 fraction, rescaled
             mpy     x0,x1,a
-            asr     #$b,a,a
+            asr     #$a,a,a
             or      y1,a                    ; force the tap ODD (y1=1)
             move    n0,b
             sub     a,b
             move    b,x:(r7+$0a)            ; line 6
             move    x:(r7+$77),x0           ; this MODE's line 3 fraction, rescaled
             mpy     x0,x1,a
-            asr     #$b,a,a
+            asr     #$a,a,a
             move    n0,b
-            sub     a,b                     ; 2048 - tap
+            sub     a,b                     ; 4096 - tap
             move    b,x:(r7+$4b)            ; line 7
             move    #>$fff,m6           ; PRE-DELAY modulo (4096, unchanged --
                                         ; the pre-delay buffer did not shrink
@@ -1258,38 +1265,40 @@ md_done:
                                         ; m5 in v70 so m5 can carry the
                                         ; allpasses. r6 is unused inside the
                                         ; sample loop, so it costs nothing.
-            move    #>$7ff,m5           ; ALLPASS modulo, 2048 since the 32K
-                                        ; re-layout: with r5 = base+phase,
-                                        ; y:(r5+n5) IS the tap read and y:(r5)
-                                        ; the write. Set once per block -- an M
-                                        ; write inside the loop froze v47.
-                                        ; Harmless to the
-                                        ; diffuser: it only ever does plain
-                                        ; y:(r5), never a post-increment, and
-                                        ; modulo affects updates, not reads.
-                                        ; The pre-delay region is base+0x6000
-                                        ; and base is 0x4000, so the buffer is
-                                        ; 0x1000-aligned as modulo
-                                        ; addressing requires. Set here, AFTER
-                                        ; the warm-up's linear r5 walk (which
-                                        ; m5 is forced linear for at entry) and
-                                        ; BEFORE the loop; the state save at the
-                                        ; end forces it linear again.
+            move    #>$fff,m5           ; LINE modulo, 4096 (increment 2): what
+                                        ; runs under m5 between here and the
+                                        ; sample loop is the lines 4-7 priming,
+                                        ; whose y:(r5+n5) reads must wrap
+                                        ; inside a 4096-word LINE. The gain-
+                                        ; table writes in between never cross a
+                                        ; 4096 boundary (16 words inside
+                                        ; shared+0x4530), so the modulo is
+                                        ; transparent to them. The in-loop AP
+                                        ; priming below switches m5 to $1ff
+                                        ; itself and leaves it at $7ff, which
+                                        ; is what the sample loop's DIFFUSERS
+                                        ; need. Set here, AFTER the warm-up's
+                                        ; linear r5 walk (which m5 is forced
+                                        ; linear for at entry); the state save
+                                        ; at the end forces it linear again.
 
 ; ---- feedback gain from TIME --------------------------------------------
 ; p0 arrives as value<<16. The 8x8 Walsh-Hadamard has unnormalised row norm
 ; √8, and the MODE blocks above have been scaled by 2/√8 so that the stored
 ; value already folds in the orthonormalising factor. Loop gain equals g.
 ;
-; g now spans 0.935..0.9995, not 0.875..0.999. Decay is g^n where n is passes,
-; so RT60 scales with the loop time -- and fitting a real 16K allocation halved
-; the mean tap from ~51 ms to ~26 ms, which halved every decay time and made
-; TIME feel like it had stopped doing anything. g_new = g_old^0.5 restores the
-; old RT60 range over the same knob travel.
+; g spans 0.875..0.999 (stored as g/2; the per-line gain block doubles it).
+; Decay is g^n where n is passes, so RT60 scales with the loop time. When the
+; 16K squeeze halved the mean tap to ~26 ms, g was remapped to g_old^0.5
+; (0.935..0.9995) to keep the same RT60 over the knob. INCREMENT 2 doubles
+; the lines back to the ~51 ms mean tap that mapping compensated for, so the
+; compensation comes OFF again -- keeping it would double every decay and
+; push TIME's usable range off the top of the knob. These are the original
+; constants: base $380000 = 0.875/2, span $080000 = 0.124/2 over the knob.
         move    x:(r6),x0
-        move    #>$043000,y1
+        move    #>$080000,y1
         mpy     x0,y1,a
-        move    #>$3bd000,x0
+        move    #>$380000,x0
         add     x0,a
         move    a,x1                    ; fold in MODE's decay scale, parked in
         move    x:(r7+$1e),y1           ; $1e by the md_ block above. TIME still
@@ -2163,8 +2172,8 @@ lf4a:
 ; Phase comes from r1 (all eight lines share one write phase, stored in
 ; $83, and r1 was rebuilt from it). The priming reads from the delay line
 ; at (line_base + phase + offset), one sample before the block's first
-; tap, under m5 = $7ff -- same modulo the sample loop uses.
-        move    x:(r7+$08),a            ; -- line 4: (2048 - tap)
+; tap, under m5 = $fff -- same modulo the sample loop's tank walk uses.
+        move    x:(r7+$08),a            ; -- line 4: (4096 - tap)
         move    x:(r7+$00),x0           ;    its LFO integer offset
         sub     x0,a
         move    a,y:(r6)+               ; w0
@@ -2174,7 +2183,7 @@ lf4a:
         move    x:(r7+$01),a            ; w1: the interpolation fraction
         move    a,y:(r6)+
         move    r1,a                    ; line 0 base + phase
-        and     #>$7ff,a                ; just the phase (m5=$7ff wraps it)
+        and     #>$fff,a                ; just the phase (m5=$fff wraps it)
         move    x:(r7+$36),x0           ; line 4 base
         add     x0,a
         move    a,r5
@@ -2190,7 +2199,7 @@ lf4a:
         move    x:(r7+$03),a
         move    a,y:(r6)+
         move    r1,a
-        and     #>$7ff,a
+        and     #>$fff,a
         move    x:(r7+$37),x0           ; line 5 base
         add     x0,a
         move    a,r5
@@ -2206,7 +2215,7 @@ lf4a:
         move    x:(r7+$05),a
         move    a,y:(r6)+
         move    r1,a
-        and     #>$7ff,a
+        and     #>$fff,a
         move    x:(r7+$4c),x0           ; line 6 base
         add     x0,a
         move    a,r5
@@ -2222,17 +2231,17 @@ lf4a:
         move    x:(r7+$07),a
         move    a,y:(r6)+
         move    r1,a
-        and     #>$7ff,a
+        and     #>$fff,a
         move    x:(r7+$4d),x0           ; line 7 base
         add     x0,a
         move    a,r5
         move    y:(r5+n5),a
         move    a,y:(r6)+n6
 ; n1 now carries the LINE STRIDE, not a read offset: the rolled loop steps its
-; single read pointer from one line to the next by adding 0x0800, and the eight
-; lines are 0x0800 apart by construction (base is the literal 0x4000 and every
-; line is 2048-aligned, which is what modulo addressing requires anyway).
-        move    #>$0800,a
+; single read pointer from one line to the next by adding 0x1000, and the eight
+; lines are 0x1000 apart by construction (base is the literal 0x4000 and every
+; line is 4096-aligned, which is what modulo addressing requires anyway).
+        move    #>$1000,a
         move    a,n1
 
 ; ---- prime the IN-LOOP ALLPASS interpolation carries ---------------------
@@ -2252,7 +2261,7 @@ lf4a:
 ; amortised, against the ~551 spare -- and needs no extra N register, which
 ; is what the in-loop comment ("no other way to do this") ruled out. That
 ; was true per SAMPLE; it is not true once per block.
-        move    x:(r7+$60),a            ; allpass A: (2048 - tap) - offset - 1
+        move    x:(r7+$60),a            ; allpass A: (512 - tap) - offset - 1
         move    x:(r7+$52),x0
         sub     x0,a
         move    #>$1,x0
@@ -2267,7 +2276,7 @@ lf4a:
         move    x:(r7+$61),b            ; spaces the r5 write, and preloads
         move    y:(r5+n5),a             ; d1 for the block's first sample
         move    a,x:(r7+$5c)
-        move    x:(r7+$54),x0           ; allpass B: b still holds (2048 - tap)
+        move    x:(r7+$54),x0           ; allpass B: b still holds (512 - tap)
         move    b,a
         sub     x0,a
         move    #>$1,x0
@@ -2333,7 +2342,14 @@ lf4a:
         move    r1,a                    ; the allpass phase IS the tank phase:
         and     #>$7ff,a                ; both advance by 1 a sample, and the
                                         ; line base is aligned, so r1 masked is
-                                        ; it. Immediate, not n6: n6 now carries
+                                        ; it. $7ff ON PURPOSE, not the lines'
+                                        ; $fff: the diffusers and in-loop APs
+                                        ; are 2048/512-word SHARED buffers, so
+                                        ; this truncates the 0..4095 tank phase
+                                        ; to their own wrap. Masking $fff here
+                                        ; would walk r5 into the neighbouring
+                                        ; buffer for half of every lap.
+                                        ; Immediate, not n6: n6 now carries
                                         ; the pre-delay offset.
         move    a,x:(r7+$39)
 
@@ -2529,7 +2545,7 @@ lf4a:
 ; 56-bit accumulator to any 24-bit destination -- register or memory -- goes
 ; through the same limiter, and reloading either one back into A sets A1 and
 ; sign-extends A2 identically. The fraction in y1 is dead by then.
-        move    #>$7ff,m5               ; r5 walks a 2048-word LINE now
+        move    #>$fff,m5               ; r5 walks a 4096-word LINE now
         move    x:(r7+$0b),a            ; the per-line state table
         move    a,r6
         move    r1,x0                   ; line 0: base + phase, the same
@@ -2537,7 +2553,7 @@ lf4a:
         do      #8,>tankend
         move    y:(r6)+,n5              ; w0: this line's read offset
         move    y:(r6)+,y1              ; w1: its interpolation fraction
-        move    n1,x0                   ; the line stride, 0x0800
+        move    n1,x0                   ; the line stride, 0x1000
         move    y:(r5+n5),b             ; d0 -- the AGU wraps inside the line
         move    r5,a
         add     x0,a
@@ -3072,7 +3088,7 @@ fbB:
         move    x:(r7+$60),a
         move    x:(r7+$52),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
-        move    a,n5                    ; (2048 - tap) - offset
+        move    a,n5                    ; (512 - tap) - offset
         move    x:(r7+$39),a            ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512. A2 is
                                         ; already 0 (the phase loads positive),
@@ -3113,7 +3129,7 @@ fbB:
         move    x:(r7+$61),a
         move    x:(r7+$54),x0           ; LFO integer offset -- the allpass is
         sub     x0,a                    ; MODULATED now, not static
-        move    a,n5                    ; (2048 - tap) - offset
+        move    a,n5                    ; (512 - tap) - offset
         move    x:(r7+$39),a            ; phase (masked to $7ff above)
         and     #>$1ff,a                ; ...but these buffers are 512
         move    x:(r7+$5f),x0
@@ -3301,8 +3317,13 @@ noloop:
 
 ; ---- save the phase, restore the M registers ---------------------------
         move    r1,a
-        move    #>$7ff,x0               ; 2048-word lines in the 8-line
-        and     x0,a                    ; re-layout, so the phase is 0..2047
+        move    #>$fff,x0               ; 4096-word lines (increment 2), so
+        and     x0,a                    ; the phase is 0..4095 -- which is what
+                                        ; the pre-delay derivation ($30, masked
+                                        ; $fff into a 4096 buffer) was already
+                                        ; shaped for; PRE above ~46 ms read
+                                        ; never-written memory while the phase
+                                        ; wrapped at 2048.
         move    a,x:(r7+$83)
 dry:
         move    #>$ffffff,m0
