@@ -683,8 +683,12 @@ def main():
     # The block buffer is 16 stereo frames at X:0 (dispatcher ABI, see the
     # proc: header), so the marks use absolute addresses -- no register
     # copies. M1 sits AFTER the incoming-a capture, which it would clobber.
-    # Toggle slot r7+$0a is unused in the engine (checked 10 Aug), masked and
-    # A2-cleaned per the standing garbage discipline.
+    # CORRECTION 10 Aug: r7+$0a is NOT free -- it is a per-block tap temp for
+    # line 6 (the whole r7 block $00..$83 is now full). Harmless here by
+    # ordering: the engine rewrites the temp after this point and before it
+    # reads it, so the engine is unaffected; the cost is that M2's flutter
+    # alternation is erratic (the toggle reads the temp's LSB, not its own
+    # last value). Fine for a diagnostic; do NOT copy this slot choice.
     if os.environ.get("MARKER") == "1":
         if os.environ.get("NOSHIM") != "1":
             sys.exit("MARKER=1 needs NOSHIM=1 -- the marks cost ~38 words and "
