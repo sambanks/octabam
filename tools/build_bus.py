@@ -164,8 +164,9 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
 # 31 -> 32, 10 Aug 2026: 31 covered BOTH the working 7 Aug flashes and the
 # dead R13 flash, which cost a session of "which build is this" -- the exact
-# ambiguity this tag exists to prevent.
-BUILD_TAG = b"32"
+# ambiguity this tag exists to prevent. 32 -> 33: the post-marker product
+# build (mapping documented, real names under SPEC).
+BUILD_TAG = b"33"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -282,10 +283,18 @@ if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
 # and housekeeping is gated to payload A. Names say so on the panel, because
 # this build's ChonVerb is NOT the shipping one and BongDelay is a bare stub.
 if os.environ.get("XBUS") == "1":
-    FULLNAME["REVERB SERVER"] = b"XVerb" + BUILD_TAG
-    ABBR["REVERB SERVER"] = b"XVRB"
-    FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
-    ABBR["DELAY SERVER"] = b"NONE"
+    if os.environ.get("SPEC") == "1" or os.environ.get("DEV") == "1":
+        # SPEC/DEV: BOTH servers are real -- the product names, tag-stamped.
+        # (The XVerb/NotUsed names below date from the v111 architecture test,
+        # where the delay really was a stub. Leaving "NotUsed" on a real
+        # BongDelay cost a debugging round on 10 Aug 2026.)
+        FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BongDelay" + BUILD_TAG
+    else:
+        FULLNAME["REVERB SERVER"] = b"XVerb" + BUILD_TAG
+        ABBR["REVERB SERVER"] = b"XVRB"
+        FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
+        ABBR["DELAY SERVER"] = b"NONE"
 
 # ---- MARKER MODE (MARKER=1): staged audible execution markers --------------
 # Diagnostic for the R13 hardware deadness (10 Aug 2026): the same payload
@@ -363,8 +372,17 @@ if DEV:
                  f"which is the opposite of what DEV is for")
 
 # ---- SPEC=1: SPECIALIZE THE PAYLOADS ---------------------------------------
-# One server per core. Payload A (tracks 1-4) carries SEND + ChonVerb; payload
-# B (tracks 5-8) carries SEND + BongDelay. Neither carries the other's engine.
+# One server per core. Payload A carries SEND + ChonVerb; payload B carries
+# SEND + BongDelay. Neither carries the other's engine.
+#
+# TRACK MAPPING -- MEASURED, 10 Aug 2026, and INVERTED from what every doc
+# assumed: payload A serves TRACKS 5-8 and payload B serves TRACKS 1-4.
+# Established by the MrkVerb32 marker flash: proc-entry marks fired on tracks
+# 5-8 only (track 5 = position 0, full engine; 6-8 = duplicate-role rts).
+# No pre-SPEC build could have revealed this -- both payloads carried every
+# effect, so the mapping was unobservable. Deliberately NOT swapped: the
+# reverb belongs downstream of the delay (delay wet -> reverb, series), so
+# serving the delay from the low tracks is the wanted topology.
 #
 # WHY IT IS FREE. build_bus.py has always assembled and placed each payload
 # independently -- its own `for tag, va, ln in PAYLOADS` pass, its own region,
@@ -374,12 +392,13 @@ if DEV:
 # region that engine occupied.
 #
 # IT ONLY MEANS ANYTHING WITH XBUS=1. The bus accumulators live at Y:0x900 in
-# a plain build, which is CORE-PRIVATE low Y: tracks 5-8's sends would write
-# core 1's copy, which core 0's reverb cannot see. Specializing without
-# relocating the bus into the shared window does not build the target
-# architecture, it builds "reverb serves tracks 1-4, delay serves tracks 5-8"
-# -- strictly worse than today, and it would look like it worked. So require
-# the flag rather than silently producing that.
+# a plain build, which is CORE-PRIVATE low Y: one core's sends would write
+# their own private copy, which the other core's server cannot see.
+# Specializing without relocating the bus into the shared window does not
+# build the target architecture, it builds "each half of the tracks reaches
+# one effect and cannot send to the other" -- strictly worse than today, and
+# it would look like it worked. So require the flag rather than silently
+# producing that.
 #
 # THE ABSENT SERVER'S ID IS ALIASED TO SEND, deliberately (XBUS.md risk 3).
 # The FX2 chooser is one ColdFire list shared by all eight tracks, so nothing
@@ -392,10 +411,11 @@ if SPEC:
     if os.environ.get("XBUS") != "1":
         sys.exit("SPEC=1 requires XBUS=1. Specializing without relocating the "
                  "bus into the shared window leaves the accumulators in "
-                 "core-private Y:0x900, so tracks 5-8 would feed a delay only "
-                 "they can reach and tracks 1-4 a reverb only they can reach. "
-                 "That is not the target architecture and it would still make "
-                 "sound, which is the dangerous part -- run XBUS=1 SPEC=1")
+                 "core-private Y:0x900, so each core's tracks would feed only "
+                 "the one server their own core carries and could never reach "
+                 "the other. That is not the target architecture and it would "
+                 "still make sound, which is the dangerous part -- run "
+                 "XBUS=1 SPEC=1")
     if DEV:
         # DEV=1 + SPEC=1: payload placement follows SPEC rules (reverb→A,
         # delay→B) but the build writes the DEV output paths. dsp_host can
@@ -803,10 +823,10 @@ mkgo:""",
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
-    # tracks 5-8's sends write core 1's copy and core 0's reverb cannot see it.
-    # Same address, different physical memory. Relocating them into the shared
-    # 64K is the whole architectural change; everything else about the bus is
-    # already written and hardware-proven.
+    # one core's sends write their own copy and the other core's server cannot
+    # see it. Same address, different physical memory. Relocating them into the
+    # shared 64K is the whole architectural change; everything else about the
+    # bus is already written and hardware-proven.
     #
     # 0x36000 -- and the FIRST choice, 0x3E000, was WRONG. Hardware, 7 Aug:
     # the bus broke even SAME-CORE. The gate was provably inert in that test

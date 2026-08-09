@@ -48,8 +48,15 @@ were all *reasoned about* rather than disassembled. **Disassembling first would
 have cost one step instead of four** — the rule above is not advice.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
-memory and you get "reverb serves tracks 1-4, delay serves 5-8" — worse than
-today, **and it still makes sound.** The build guards this. Do not ungate it.
+memory and each half of the tracks can reach only its own core's server — worse
+than today, **and it still makes sound.** The build guards this. Do not ungate it.
+
+**The track↔core mapping is INVERTED from old assumptions**: payload A serves
+**tracks 5-8** (ChonVerb), payload B serves **tracks 1-4** (BongDelay).
+Measured 10 Aug 2026 via the MrkVerb32 marker flash, after the assumption cost
+two flashes and a session chasing "R13 is dead" (it was alive on tracks 5-8).
+Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
+**track 5**, not track 1.
 
 **`→DELAY` and `→REVERB` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`.
 Driving the wrong one renders silence, which reads as a broken algorithm.

@@ -470,6 +470,7 @@ whole module.
 | Parameters per effect | **12** — 6 page-1 knobs, 3 page-2 knobs, 3 page-2 selects | ✅ `DSP.md` §9 |
 | Menu | 3 entries: ChonVerb / BongDelay / Send. **No selectable NONE** | ✅ |
 | Unassigned tracks | id 0 is aliased to **SEND**, so every unassigned track feeds the bus | ✅ |
+| Track↔core mapping | **payload A serves tracks 5-8, payload B serves tracks 1-4** — inverted from every pre-SPEC assumption; unobservable before SPEC | ✅ MrkVerb32 marker flash, 10 Aug 2026 |
 | `r7` state block | `$00–$83` usable; **`$84–$8a` HANGS** (host-owned) | ✅ bisected |
 | ChonVerb's `r7` | **full** | ✅ |
 

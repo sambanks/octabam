@@ -11,10 +11,18 @@ constraint — "the two DSPs are a hard boundary" — is now known to be false.
 ## What we're building
 
 ```
-CORE 0   track 1   ChonVerb   Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo)  = 65,536 words = 1.49 s
-         2,3,4     Send
-CORE 1   track 5   BongDelay  Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi)  = 65,536 words = 1.49 s
+CORE 0   track 5   ChonVerb   Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo)  = 65,536 words = 1.49 s
          6,7,8     Send
+CORE 1   track 1   BongDelay  Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi)  = 65,536 words = 1.49 s
+         2,3,4     Send
+
+✅ MEASURED 10 Aug 2026 (MrkVerb32 marker flash): core 0 / payload A serves
+TRACKS 5-8, core 1 / payload B serves TRACKS 1-4 -- INVERTED from every
+pre-SPEC document, which assumed A↔1-4. No pre-SPEC build could observe the
+mapping (both payloads carried every effect). Kept as-is on purpose: the
+reverb belongs downstream of the delay, so the delay serving the low tracks
+is the wanted topology. The inversion cost two flashes and a session read as
+"R13 is dead on hardware" -- it was alive on tracks 5-8 the whole time.
 
          every track sends to both, through accumulators in the shared window
          delay wet -> reverb  (series, the direction that is already built)

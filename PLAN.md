@@ -41,7 +41,7 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ```
                     payload A (core 0)        payload B (core 1)
-                    tracks 1-4                tracks 5-8
+                    tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
   free (region)     154                       1998
   free (above code) 33                        609  🟡 inferred, never loaded
