@@ -935,7 +935,7 @@ short lines no longer die early), so if B reads as "too long", that is TIME
 recalibration (mechanical, expected — PLAN 1.1's r₀ note), not a fault.
 
 **Verdicts** (fill in after listening):
-- pad ROOM / PLATE / BIG:
+- pad ROOM / PLATE / BIG: (pending)
 - stab:
 - hat (reopen 1.2?):
 - melody:
@@ -1087,7 +1087,7 @@ the matched TIME above, wet-only, level-matched to −20 dBFS active-RMS,
 **Play**: `out/vv_ab/ab.sh stab PLATE` (A/B/A/B; third arg = repeats).
 
 **Verdicts** (fill in after listening):
-- pad ROOM / PLATE / BIG:
+- pad ROOM / PLATE / BIG: (pending)
 - stab (the ring test):
 - hat:
 - melody:
@@ -1131,3 +1131,32 @@ Open question for the ear now that the zing has an owner: how much of the
 remaining ring (if any) is the tank's, and does the shimmer's own v3 sound
 hold up at sane levels on the doubled lines (SHMR sweet spot was measured
 at raw 0.20 on the OLD 2048 tank — re-find it).
+
+### Round 12b — Sam's verdict on the shimmer-free kit, and STEREO renders
+
+**Sam, on the shimmer-free kit: "sooooo much better, still a little
+metallic and not as lush but huge improvement."** The doubled lines plus
+the accidental-shimmer excision carried most of the distance; what remains
+is "a little metallic" and "not as lush".
+
+**WIDTH= build-time override built** (the item Round 11 finding 3 asked
+for): same mechanism as MODE= — build_bus.py clobbers the extracted
+companion value with an immediate at `; WIDTH_OVERRIDE`, wired through
+render_reverb.py's fingerprint. Every render before this was mono.
+Measured at WIDTH=100, stab PLATE: L/R corr **−0.11/+0.02** against VV
+plate's −0.16/−0.06 — on the reference — with decay slopes bit-identical
+to the mono row (WIDTH is post-tank, as it should be). ROOM at WIDTH=100
+runs wider late (−0.50) than VV room (−0.03); left wide on purpose —
+erring toward "broad" — narrow by ear if ROOM smears.
+
+Also fixed: BUILD_ENV still listed the dead SHIMMER flag instead of
+NOSHIM, so a NOSHIM build did not change the render-cache fingerprint —
+the exact stale-cache bug that list exists to prevent.
+
+**Kit REBUILT: B-sides now stereo** (WIDTH=100, SHMR=0, same TIME
+pairings). This is the first time our stereo field has ever been
+auditioned locally.
+
+Remaining, in order of the measured gaps: LF bass-mult (VV's LF outlives
+its mids; ours dies faster — confirm on a bass source first), then the
+residual metallic (diffusion/AP-mod voicing on the doubled lines).

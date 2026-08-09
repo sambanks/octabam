@@ -1553,6 +1553,7 @@ mixset:
         move    a1,x0
         move    x0,a
         asl     #$10,a,a                ; mono .. full stereo
+; WIDTH_OVERRIDE
         move    a,x:(r7+$2c)
 
 ; ---- DIFFUSION: allpass coefficient -- slot 8, $d's KNOB field (v92) -----

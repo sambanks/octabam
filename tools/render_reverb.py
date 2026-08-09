@@ -57,8 +57,11 @@ CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine
 # Every env var build_bus.py branches on -- grep 'environ' tools/build_bus.py.
 # A var missing from this list is a way to change the build without changing
 # the fingerprint, which is the exact bug this guards against.
-BUILD_ENV = ("RVSRC", "MODE", "SHIMMER", "XBUS", "SPEC", "DEV", "BURN", "PROBE",
-             "XPROBE", "XBUS_BASE", "DELAYPROBE")
+BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
+             "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE")
+# SHIMMER was in this list until Round 12; the flag build_bus.py actually
+# branches on has been NOSHIM since the v3 rewrite, so a NOSHIM build did
+# not change the fingerprint -- the exact bug the comment above names.
 
 
 def fingerprint(extra=()):

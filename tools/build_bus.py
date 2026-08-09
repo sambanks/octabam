@@ -697,6 +697,21 @@ def main():
             "        move    #>$%x,a" % (int(mode_env) << 16))
         print(f"  *** MODE OVERRIDE: forced to {int(mode_env)} ***")
 
+    # WIDTH is a companion field like MODE (v92): dsp_host writes only the
+    # knob field, so every local render before this override was MONO --
+    # +1.00 L/R correlation in every measured row through Round 12, while
+    # VintageVerb's field is decorrelated. Same mechanism as MODE=: clobber
+    # a with the immediate right before the store to $2c. << 16 puts the
+    # 0..127 value where the knob-field extraction above lands it.
+    width_env = os.environ.get("WIDTH")
+    if width_env is not None:
+        assert reverb_src.count("; WIDTH_OVERRIDE") == 1
+        assert 0 <= int(width_env) <= 127
+        reverb_src = reverb_src.replace(
+            "; WIDTH_OVERRIDE",
+            "        move    #>$%x,a" % (int(width_env) << 16))
+        print(f"  *** WIDTH OVERRIDE: forced to {int(width_env)} ***")
+
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
     # tracks 5-8's sends write core 1's copy and core 0's reverb cannot see it.
