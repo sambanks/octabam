@@ -162,7 +162,10 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # flash did not apply", and those need opposite responses. The name field is
 # 13 bytes and always on screen, so it costs nothing to carry the answer.
 # BUMP THIS EVERY TIME A .bin IS WRAPPED FOR FLASHING.
-BUILD_TAG = b"31"
+# 31 -> 32, 10 Aug 2026: 31 covered BOTH the working 7 Aug flashes and the
+# dead R13 flash, which cost a session of "which build is this" -- the exact
+# ambiguity this tag exists to prevent.
+BUILD_TAG = b"32"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -283,6 +286,14 @@ if os.environ.get("XBUS") == "1":
     ABBR["REVERB SERVER"] = b"XVRB"
     FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
     ABBR["DELAY SERVER"] = b"NONE"
+
+# ---- MARKER MODE (MARKER=1): staged audible execution markers --------------
+# Diagnostic for the R13 hardware deadness (10 Aug 2026): the same payload
+# renders in the emulator, so three marks report BY EAR how far proc() gets
+# on the unit. Named so the panel cannot be mistaken for a product build.
+if os.environ.get("MARKER") == "1":
+    FULLNAME["REVERB SERVER"] = b"MrkVerb" + BUILD_TAG
+    ABBR["REVERB SERVER"] = b"MRKV"
 
 if os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
@@ -641,6 +652,84 @@ def main():
         print(f"  shimmer excised ({cut} lines) -- NOSHIM=1 set")
     else:
         print("  shimmer IN (default) -- NOSHIM=1 to excise")
+
+    # ---- MARKER=1: inject the staged audible execution marks ---------------
+    # See the MARKER MODE naming block above. Three marks, three sites in
+    # dsp/reverb_server.asm, each a distinct sound so one flash reports how
+    # far proc() executes on hardware:
+    #   M1 proc entry      -> whole block asr #2   = -12 dB, always
+    #   M2 past role lock  -> extra -6 dB on alternating calls = ~1.4 kHz AM
+    #   M3 past warm-up    -> first 4 frames zeroed = ~2.8 kHz gap train
+    # The block buffer is 16 stereo frames at X:0 (dispatcher ABI, see the
+    # proc: header), so the marks use absolute addresses -- no register
+    # copies. M1 sits AFTER the incoming-a capture, which it would clobber.
+    # Toggle slot r7+$0a is unused in the engine (checked 10 Aug), masked and
+    # A2-cleaned per the standing garbage discipline.
+    if os.environ.get("MARKER") == "1":
+        if os.environ.get("NOSHIM") != "1":
+            sys.exit("MARKER=1 needs NOSHIM=1 -- the marks cost ~38 words and "
+                     "payload A has 4 free without the shimmer excised")
+        _marks = {
+            # The buffer base comes from r0 (dispatcher ABI) so the marks work
+            # in BOTH the emulator harness and on hardware, and the loop count
+            # from n7 (2*n7 words = this call's frames) so a split call can
+            # never write past its sub-buffer.
+            "; MARKER_ENTRY": """\
+; ---- MARKER M1 (diagnostic): proc ran -> this call's frames -12 dB -------
+        move    #>$ffffff,m5
+        move    r0,x0
+        move    x0,r5
+        move    n7,a
+        asl     #$1,a,a
+        do      a,>mken
+        move    x:(r5),a
+        asr     #$2,a,a
+        move    a,x:(r5)+
+mken:""",
+            "; MARKER_LOCK": """\
+; ---- MARKER M2 (diagnostic): role lock passed -> alternating -6 dB -------
+        move    x:(r7+$0a),a
+        and     #>$1,a
+        move    a1,x0
+        move    x0,a
+        tst     a
+        beq     mkset
+        clr     a
+        move    a,x:(r7+$0a)
+        move    #>$ffffff,m5
+        move    r0,x0
+        move    x0,r5
+        move    n7,a
+        asl     #$1,a,a
+        do      a,>mkflu
+        move    x:(r5),a
+        asr     #$1,a,a
+        move    a,x:(r5)+
+mkflu:
+        bra     mkgo
+mkset:
+        move    #>$1,a
+        move    a,x:(r7+$0a)
+mkgo:""",
+            "; MARKER_WARM": """\
+; ---- MARKER M3 (diagnostic): warm-up complete -> loud 2.8 kHz pulse ------
+; A +0.5 pulse overwrites this call's first frame: unmissable, and it fires
+; even if the wet path is silent -- it is what separates "stuck in warm-up"
+; (no pulse) from "engine ran but wet is dead" (pulse, no tail).
+        move    #>$ffffff,m5
+        move    r0,x0
+        move    x0,r5
+        move    #>$400000,a
+        move    a,x:(r5)+
+        move    a,x:(r5)+""",
+        }
+        for _tag, _code in _marks.items():
+            if reverb_src.count(_tag) != 1:
+                sys.exit(f"MARKER: expected exactly one '{_tag}' in "
+                         f"{ASM_SRC['REVERB SERVER']}")
+            reverb_src = reverb_src.replace(_tag, _code)
+        print("  *** MARKER BUILD: staged audible marks injected -- "
+              "diagnostic, NOT a product build ***")
 
     # ---- BURN=1: INJECT the cycle burn into the LIVE engine ----------------
     # It used to be dsp/burn_probe.asm, a verbatim COPY of reverb_server.asm

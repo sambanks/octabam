@@ -257,6 +257,7 @@ proc:
         move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
                                         ; (the dispatcher's #$1 is left-
                                         ; aligned), 0 = the split sub-call
+; MARKER_ENTRY
 
 ; ---- BUS.md: split-aware frame offset within the shared bus buffers, and
 ; the gate for whether THIS track (if it happens to be position 0) may run
@@ -419,6 +420,7 @@ bus_claim:
         move    r7,a
         move    a,y:>$982
 bus_mine:
+; MARKER_LOCK
 
 ; ---- this call's REVERB ACC read address and WET write address ----------
 ; READ is the OTHER buffer from the current write parity -- the one every
@@ -663,6 +665,7 @@ wshclr:
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
 warmdone:
+; MARKER_WARM
         move    x:(r7+$31),x0           ; the base again: everything below
                                         ; derives buffers from x0
 
