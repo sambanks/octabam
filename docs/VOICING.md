@@ -1203,3 +1203,37 @@ one-constant variants (mod smear to PLATE's, diffusion offset raised).
 - room: which of the four beats base, and is any un-metallic enough?
 - big:
 - Does the winner survive on pad/melody (smear cost)?
+
+### Round 13 — the hunt's findings (in-session, Sam's ear + late-tail probe)
+
+Single levers (MOD/DIFF knobs, mod-to-PLATE constants, diffusion offsets):
+Sam — "they all reduced it a little". Combos: "creeping closer... it just
+rings at the end in a metallic way on all modes, which vv doesnt."
+
+**Late-tail probe built** (scratchpad latetail.py: spectral crest of the
+−40..−60 dB tail segment, 2-8 kHz). Ours: crest 47-65 dB vs VV 30-40 —
+few towering modes late where VV stays washy. Gain sweep: crest falls
+~6 dB per input halving, no knee → the PEAKS are linear modal ring
+scaling with input over a FIXED floor (in-loop truncation noise). Not
+the Round 9 clip — a modal-prominence problem.
+
+**The binding lever was mod RATE, pinned near 0.4 Hz since v101** (VV
+demo runs 2.53 Hz). Slow-deep mod cannot spread a mode across bins;
+fast-shallow can. Base rate x8 (asr #$b -> #$8 in the RATE block,
+~2.2 Hz), depth scales trimmed to hold vibrato ≤~12 cents: ROOM crest
+65 -> 49, the largest single movement of any lever. Sam: "lot better but
+still more to go. valhalla tails sound denser and brighter right until
+they tail off, where ours seem to thin out and are darker."
+
+**Damping rebalance (v2/v3): move tone from the LOOP to the OUTPUT.**
+In-loop damping compounds per pass (late HF collapse = thin+dark end);
+VV carries tone in output EQ which does not compound. Damping scales up
+(ROOM 0.75 -> 0.953, BIG 0.5625 -> 0.8125), wet high-cut down (ROOM
+0.55 -> 0.414, BIG 0.60 -> 0.4375): late HF−LF ROOM −50 -> −38, BIG
+−52 -> −33.5 (VV room −21.5, hall −31.4 — BIG on target, ROOM still
+short). TIME re-matched: ROOM=56 (MF −19.9 vs VV −19.8 exact),
+BIG=44 (−17.1 vs −17.9).
+
+Structural candidates if the ear still says thin after v3: in-loop APs
+on only 2 of 8 lines (six lines re-inject undiffused), per-line decay
+spread late, and the truncation floor.
