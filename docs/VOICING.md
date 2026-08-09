@@ -1092,3 +1092,42 @@ the matched TIME above, wet-only, level-matched to −20 dBFS active-RMS,
 - hat:
 - melody:
 - Overall: how far did the lines close the lush gap?
+
+### 🔴 Round 12 addendum — RETRACTION: the table above was shimmer-polluted
+
+Sam, listening to the kit: "is the shimmer on? there is still a high zingy
+bit in the bg." **It was.** SPEED has been SHMR since v101, the render
+harness defaulted it to 64, and 64 quarter-scaled is an octave-up loop gain
+of ~0.13 recirculating through the tank — in every "us" row of the Round 12
+table, and in every measured row of every earlier round since v101. (The
+session notes had it backwards — "shimmer excised by default" was memory,
+not code: build_bus.py ships it IN unless NOSHIM=1.)
+
+Measured, stab PLATE T32: MF slope −18.7 dB/s with SHMR=64 vs **−22.8
+without** — the shimmer was not just zing on top, it recirculates and
+lengthens every band's sustain. So the decay-matched pairings above were
+matched against a shimmer-inflated decay, and are retracted with the rows.
+
+**Shimmer-free rows and pairings** (same filterbank, SPEED=0):
+
+| | LF | MF | HMF | HF | HMF−MF | HF−MF | crest |
+|---|---|---|---|---|---|---|---|
+| us ROOM T80 | −20.8 | −20.1 | −21.1 | −21.6 | −8.7→−9.5 | −23.0→−24.4 | 9.2 |
+| us PLATE T80 | −14.4 | −18.5 | −21.5 | −22.3 | −9.4→−11.6 | −23.2→−26.4 | 8.1 |
+| us BIG T64 | −17.1 | −17.9 | −18.9 | −19.4 | −10.2→−12.3 | −24.5→−27.1 | 7.9 |
+
+**ROOM=TIME 80 ↔ VV room (−20.1 vs −19.8) · PLATE=TIME 80 ↔ VV plate
+(−18.5 vs −18.9) · BIG=TIME 64 ↔ VV hall (−17.9 vs −17.9, exact).** All
+mid-knob. The tilt-inversion-gone conclusion SURVIVES the retraction — the
+shimmer-free rows darken even more cleanly than the polluted ones. The
+PLATE $1e retune also survives (re-validated shimmer-free: the match sits
+at T80 with a tight-plate bottom below and ~4.3 s at T127).
+
+Kit REBUILT shimmer-free at these TIMEs (same protocol, same screens).
+render_reverb.py's SPEED default is now 0 so this confound cannot recur;
+shimmer auditioning is opt-in (-p SPEED=n).
+
+Open question for the ear now that the zing has an owner: how much of the
+remaining ring (if any) is the tank's, and does the shimmer's own v3 sound
+hold up at sane levels on the doubled lines (SHMR sweet spot was measured
+at raw 0.20 on the OLD 2048 tank — re-find it).
