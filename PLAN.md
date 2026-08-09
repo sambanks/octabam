@@ -11,23 +11,33 @@ the *architecture* record rather than the plan.
 ## Start here
 
 The goal is unchanged: **better effects for the Octatrack**. What has changed
-since 8 Aug: the `$0c` slot collision is fixed (the bus auto-gain works again
-in source — it had been silently clobbered since the 8-line merge), the input
-diffuser item turned out to be already fixed, and the largest known audible
-defect — one decay gain shared by eight lines of different lengths — is
-specced and next to build.
+since 9 Aug: **the full R13 stack is on hardware and confirmed by ear** —
+Round 13's bloom voicing, the 8-line engine, SPEC, the relocated buffers and
+the bus auto-gain all run on the unit as voiced (10 Aug). Getting there took
+a three-flash diagnostic detour whose root cause was a wrong assumption, not
+a defect: **the track↔core mapping is inverted from every earlier document**
+(payload A / ChonVerb serves tracks 5–8, payload B / BongDelay serves 1–4 —
+measured via the MrkVerb32 marker flash, kept deliberately for the
+delay→reverb series topology).
 
 | | state |
 |---|---|
-| On the unit | **`ChonVerb31`** — four-line, no specialization, **no auto-gain at all** |
-| Built, not flashed | specialization (`SPEC=1`), bus auto-gain (v121 **+ the 9 Aug `$0c` fix — v121 alone was never truly in any post-8-line build**), the `DEV=1` render hatch, shimmer (DEV-only) |
-| Reverb | **eight-line, the only engine** — `dsp/reverb_server.asm`. Decays correctly, modes distinct, linear below −6 dBFS. Worst *known* remaining defect: per-line decay skew (step 1.1). Four-line source deleted: `git show c1ce08d:dsp/reverb_server.asm` |
-| Delay | **`delay_server.asm` is an untested first draft.** Treat as unwritten |
-| Flash gate | **When ChonVerb is "excellent"** (the acceptance test below) — Sam's call, 9 Aug. The trip must carry v121 **with** the `$0c` fix |
-| Next | ✅ 1.1 built, ✅ 1.2 measured & closed (9 Aug) → **1.3 re-voice (Sam's ears)** → shimmer decision → flash prep |
+| On the unit | **`OCTABAMR14`** (tag 33) — 8-line ChonVerb w/ bloom + shimmer v3, SPEC, XBUS, auto-gain w/ `$0c` fix. **Hardware-confirmed as voiced, 10 Aug** |
+| Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
+| Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
+| Delay | **`delay_server.asm` (514 words) has never knowingly executed on hardware or in any emulator** — payload B cannot boot in `dsp_host`. Prime suspect for the 9 Aug stall. Treat as unwritten until its first deliberate run |
+| Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
+| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, wet makeup gain, shimmer decision) |
 
-⚠️ **The unit's current build breaks above three simultaneous sends** — the
-auto-gain fixes that and has never been flashed. Any hardware trip carries it.
+⚠️ **10 Aug hardware findings:** (1) ✅ measured — **page-1 knobs publish
+and work; page-2 continuous slots do not** (SHMR/DIFF/WIDTH/PRE/→DEL pinned
+at their deliberate defaults; MODE, a select, works). Decision open: fix
+the page-2 publish path vs cut dead slots. (2) Page-1 knob feel needs a
+**tuning pass** against the R13 engine (ranges/curves — Sam, 10 Aug).
+(3) MIX at 100% is much quieter than dry — inherent (wet spreads the same
+energy over seconds; the straight crossfade measured −7 dB) and now has
+ear evidence; queue a **wet makeup gain** voicing pass. Cheapest form is
+~1 word (`asl` on the wet path) but payload A has 4 words free.
 
 ---
 
@@ -43,7 +53,7 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     154                       1998
+  free (region)     4   (R13 bloom ate 150)   1998
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
@@ -64,9 +74,11 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ### Program space — the binding constraint, per core, 8,192 words
 
-✅ Region numbers re-measured 9 Aug 2026 by the build's own region report
-(`build_bus.py`): **payload A used 2,570 of 2,724, FREE 154. Payload B used
-726, FREE 1,998.**
+✅ Region numbers re-measured 10 Aug 2026 by the build's own region report
+(`build_bus.py`, tag-33 product build): **payload A used 2,720 of 2,724,
+FREE 4** (Round 13's bloom spent the 9 Aug 154). **Payload B used 726,
+FREE 1,998.** The known relief on A is the LFO-block roll (~150–200 words),
+which is also what un-blocks the BURN probe (overruns by 14).
 
 | | payload A | payload B |
 |---|---|---|
@@ -365,30 +377,41 @@ after that trip.
 
 ---
 
-## The hardware trip — one flash, gated on "excellent"
+## The hardware trip — HAPPENED 9–10 Aug, diagnostically, and mostly paid off
 
-**A `BURN=1` flash, then sweep from the front panel.** Everything hardware
-needs, in one trip, because flash cycles are expensive:
+The trip was forced early by the "R13 is dead" chase (three flashes: R13,
+the MrkVerb32 marker probe, R14) rather than gated on "excellent" — but it
+delivered most of the checklist. Status per item:
 
-1. **v121 auto-gain WITH the 9 Aug `$0c` fix** — the unit currently breaks
-   above three sends, and v121-without-the-fix was never real.
-2. **The 8-line engine** — hardware has only ever run the four-line.
-   ⚠️ **First check on the unit: decay times vs the emulator.** 1.1's
-   accounting measured that the emulator's mpy does NOT double; if
-   silicon's fractional mpy shifts left, every decay constant (and the
-   1/√8 anchor) is 2× off on hardware — an RT60 sweep against the local
-   renders answers it in one knob pass.
-3. **`BURN=1` probe** (✅ builds again, `make check` green) — the FX1 worst
-   case: four different heavy FX1 effects plus the bank. Decides FX1's
-   cycle budget. Every configuration after the flash is a knob sweep.
-4. **The parameter-delivery protocol** (step 2) — every slot ChonVerb and
-   the shimmer use, tested from the panel.
-5. **Shimmer depth publish check**, if the shimmer shipped (step 1.3).
-6. **Bump `BUILD`** (`make image BUILD=NNN`) — it is stamped into the OS
-   version field; three debugging rounds were once lost to not knowing which
-   firmware was on the unit. Bump `BUILD_TAG` in `tools/build_bus.py` if
-   effect names change. Card workflow: cp → cmp → rm-old → sync → eject,
-   kill `._` sidecars.
+1. ✅ **v121 auto-gain with the `$0c` fix is on the unit** (R14). The
+   >3-sends break should be gone — worth one deliberate multi-send test.
+2. ✅ **The 8-line engine runs on hardware, decays as voiced by ear**
+   (10 Aug). ⚠️ The *numeric* RT60 sweep against local renders is still
+   worth one knob pass — "sounds as voiced" makes the 2×-off mpy scenario
+   very unlikely but has not measured it.
+3. ❌ **`BURN=1` probe did NOT go** — it no longer fits the R13 layout
+   (overruns payload A by 14 words; `verify_burn` skips loudly). Needs the
+   LFO-block roll first. FX1's cycle budget remains unmeasured.
+4. ✅→🟡 **Parameter-delivery protocol — MEASURED, 10 Aug:** the split is
+   exactly as §2 predicted. **Page-1 knobs (p0–p5) publish and work** (Sam:
+   "just need tuned" — that's a voicing item, not a delivery one). MODE
+   (page-2 *select*) was proven live 5 Aug. **Page-2 continuous slots do
+   not publish from the panel** — SHMR, DIFF, WIDTH, PRE, →DEL all pinned
+   at their defaults (the SHMR-stuck-at-48 mechanism). 🟡 remaining:
+   decide fix-the-publish-path (PARAM_PAGES §3's probe groundwork) vs cut
+   the dead slots — several are likely redundant post-R13 anyway, and the
+   defaults they pin at were chosen deliberately (DIFF 64, WIDTH 127,
+   PRE 0, SHMR 0, →DEL 0), so the engine is fully usable meanwhile.
+5. 🟡 **Shimmer depth publish** — SHMR is a page-2 continuous slot, so
+   presumed dead on the panel; folded into item 4's enumeration.
+6. ✅ **Tag discipline restored** — BUILD_TAG was stuck at 31 across both
+   working and dead flashes (exactly the ambiguity it exists to prevent,
+   and it cost this trip a session); now 33, bumped per wrap. Card
+   workflow: cp → cmp → rm-old → sync → eject, kill `._` sidecars.
+
+**New, from the trip itself:** the track↔core inversion (see Start here);
+the MARKER=1 staged-audible-marks mechanism (committed, reusable — point it
+at BongDelay next); and MIX-at-100% loudness, queued as a voicing item.
 
 `Y:0x34000` is not part of this trip: ❌ retracted 8 Aug, falsified by our
 own v107 bisect (`docs/CHIP.md` §6).
