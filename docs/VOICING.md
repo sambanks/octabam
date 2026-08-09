@@ -940,3 +940,49 @@ recalibration (mechanical, expected — PLAN 1.1's r₀ note), not a fault.
 - hat (reopen 1.2?):
 - melody:
 - Overall: does 1.1 ship to the re-voice as-is?
+
+## Round 11 — 9 Aug 2026: the VintageVerb pivot, and the tilt inversion
+
+**Baselines reset (Sam): "none of it has ever sounded good."** Reference
+chosen: Valhalla VintageVerb demo (4.0.5d), Room / Plate / Hall1984, all at
+DECAY 2.02 s, damping 6 kHz / HighShelf −24 dB, BassMult 1.5×@300 Hz, mod
+2.53 Hz/38%, COLOR 1980s, mix 100%. Sam's bounces: `out/vv_ref/{room,plate,
+hall}/{pad,stab,hat,melody}_1.wav` (48k/24-bit; stab hits every ~4 s, hat
+every ~2 s — consistent hit levels across the file prove no demo fade landed).
+Supermassive is REASSIGNED to BongDelay (a diffused feedback delay is what it
+is); ChonVerb voices against VintageVerb alone.
+
+Round 10 verdicts (pad A/B, level-matched): **B > A clearly** (per-line gains
+keep the tail dense) but the bar is not met: tail still metallic + wrong
+tone. (Also this round: the first A/B kit was 24-bit renders sheared through
+a 16-bit read in the level-match — Sam heard "mostly static" and was right;
+kit rebuilt with 24-bit I/O and a flatness+duration screen now runs before
+any listening.)
+
+**Measured gap table** (stab tail band slopes dB/s; crest = 30 ms peak/RMS
+grain metric; corr = L/R correlation early/late):
+
+| | LF 150-500 | MF 0.5-2k | HMF 2-6k | HF 6-10k | crest | corr |
+|---|---|---|---|---|---|---|
+| VV room | −21.1 | −23.3 | −25.2 | −29.7 | 8.9 | +.32/+.15 |
+| VV plate | −21.3 | −26.9 | −28.8 | −32.9 | 8.9 | −.17/+.19 |
+| VV hall | −17.4 | −21.4 | −24.4 | −33.4 | 8.8 | −.06/+.25 |
+| us ROOM | −24.9 | −29.8 | −33.6 | **−26.4** | 7.3 | +1/+1 |
+| us PLATE | −16.3 | −17.0 | −13.0 | **−10.8** | 8.1 | +1/+1 |
+| us BIG | −29.0 | −29.1 | −26.4 | **−22.6** | 8.4 | +1/+1 |
+
+Three findings, in order of audible damage:
+1. **The metallic/wrong-tone complaint is an INVERTED HF ladder.** Every VV
+   mode decays monotonically faster with frequency; every one of ours lets
+   HF outlive the mids (PLATE's tail literally brightens — its damping scale
+   is 0.953 ≈ none). VV uses in-loop damping PLUS an output high-shelf/cut;
+   we have no wet-path high-cut at all. Fix: add one (mode-voiced), retune
+   per-mode damping toward the measured ladders.
+2. **Density is NOT the gap** — crest 7.3–8.4 vs 8.9. The grain hypothesis
+   dies; it was tilt all along.
+3. **Local renders are mono** (corr +1.00): WIDTH is a companion field
+   dsp_host cannot drive, so every render ever judged locally had WIDTH=0.
+   Needs a build-time WIDTH= override (like MODE=) before stereo can be
+   voiced. VV's field is strongly decorrelated.
+
+Round 11 targets: our band-slope rows bracket VV's per mode; then ears.
