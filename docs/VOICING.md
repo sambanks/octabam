@@ -1014,3 +1014,81 @@ target attached.
 **Next: relayout increment 2 — double the lines to 8×4096 (93 ms).**
 Increment 1 (b2bab52) left private Y holding only the 8×2048 lines: the
 memory is already there. Then re-run this table.
+
+## Round 12 — 9 Aug 2026: the doubled lines, measured against VintageVerb
+
+Sam's Round 11 listening verdict on the retuned constants: better shape,
+still metallic/ringy, and VV still far lusher and broader. That is what the
+addendum predicted — so relayout increment 2 went in: **the eight tank lines
+doubled to 4096 words (93 ms max)**, filling the whole private 32K that
+increment 1 emptied for exactly this. Commit eb1c8b2. Folded in: the TIME→g
+mapping reverted to 0.875..0.999 (the 0.935..0.9995 range was g_old^0.5,
+derived FOR the halved taps), and a latent PRE defect healed (the 4096-word
+pre-delay derivation assumed a 0..4095 phase the halving had taken away —
+PRE above ~46 ms read never-written memory).
+
+Verified before any voicing: make check clean; the module disassembled with
+dsp56kDisassemble and every edited site checked word-by-word (asr #$a =
+0c1c14, stock's own encoding; modulo loads 05f42x 000fff; bases, strides
+and g constants exact). No mis-encodes.
+
+### The gap table, re-measured (new pure-python filterbank, VV re-measured
+### with the SAME bank so rows compare; slopes dB/s over 0.4–1.6 s of the
+### stab tail; tilt = band minus MF at 0.4 s → 1.6 s)
+
+| | LF | MF | HMF | HF | HMF−MF | HF−MF | crest | corr E/L |
+|---|---|---|---|---|---|---|---|---|
+| VV room | −19.2 | −19.8 | −20.2 | −20.7 | −9.8→−9.9 | −23.1→−23.6 | 8.6 | +.36/−.03 |
+| VV plate | −14.8 | −18.9 | −21.2 | −22.9 | −9.6→−10.5 | −22.2→−24.4 | 9.1 | −.16/−.06 |
+| VV hall | −14.4 | −17.9 | −19.8 | −21.1 | −8.2→−10.6 | −20.5→−24.9 | 8.2 | −.09/+.43 |
+| us ROOM T64 | −21.5 | −20.3 | −19.9 | −20.3 | −8.4→−8.5 | −22.7→−23.2 | 9.2 | +1/+1 |
+| us PLATE T32 | −16.0 | −18.7 | −21.4 | −22.3 | −8.8→−10.6 | −22.5→−25.3 | 8.6 | +1/+1 |
+| us BIG T8 | −20.2 | −17.7 | −18.0 | −18.5 | −10.2→−11.2 | −24.5→−25.9 | 8.2 | +1/+1 |
+
+**The tilt inversion is GONE.** Every mode now darkens as it decays, inside
+VV's tilt bracket — the Round 11 damping/high-cut constants finally have
+lines long enough to act on. PLATE at TIME=32 sits within 0.6 dB/s of VV
+plate in three of four bands.
+
+### PLATE decay scale retuned, empirically
+
+On the doubled lines PLATE's fastest decay (TIME=0) measured MF −15.1 dB/s
+vs VV plate's −18.9: the knob could not reach a real plate's tightness.
+$1e $5753E3 → $50A000. ⚠️ The first attempt (×0.972 by per-pass gain
+accounting) delivered only 2.5 of the needed 6.9 dB/s — $1e feeds the
+per-line formula through the 1/√8 anchor SPREAD, so scale moves less gain
+than naive accounting says. Measured sensitivity: ~2.5 dB/s per 0.019 of
+scale. Do not retune these by derivation.
+
+### Decay-matched knob pairings (for A/B and for the manual)
+
+ROOM = TIME 64 ↔ VV room · PLATE = TIME 32 ↔ VV plate · BIG = TIME 8 ↔
+VV hall1984 (all at VV DECAY 2.02 s). BIG reaching hall-at-2s at TIME=8 is
+fine: VV's own DECAY runs to 70 s, the knob top is for long tails.
+
+### What the table says is still missing
+
+1. **Stereo, still.** corr +1.00: every local render is MONO (WIDTH is a
+   companion field dsp_host cannot drive). VV's field is decorrelated ±0.4.
+   "Lush and broad" is partly THIS — a WIDTH= build override (like MODE=)
+   is the next mechanical item, before any more tone chasing.
+2. **LF dies too fast.** VV's LF outlives its mids in every mode (BassMult
+   1.5×@300 Hz); ours decays LF FASTER than mids in ROOM and BIG. A
+   bass-mult (LF decay boost, the inverse of the LO cut) is the candidate
+   lever for "lush". Caveat: the LF band has the fewest cycles per window;
+   confirm on a bass source before building anything.
+3. **Metallic-by-ear: unjudged on the new lines.** The measured tilt is
+   right; whether 93 ms lines kill the ring is the ear's call.
+
+**Renders**: `out/vv_ab/` — {pad, stab, hat, melody} × {ROOM, PLATE, BIG},
+**A = VintageVerb** (Sam's bounces, trimmed to 12 s), **B = ChonVerb** at
+the matched TIME above, wet-only, level-matched to −20 dBFS active-RMS,
+24-bit I/O, flatness+duration screen run before writing (Round 11's rule).
+**Play**: `out/vv_ab/ab.sh stab PLATE` (A/B/A/B; third arg = repeats).
+
+**Verdicts** (fill in after listening):
+- pad ROOM / PLATE / BIG:
+- stab (the ring test):
+- hat:
+- melody:
+- Overall: how far did the lines close the lush gap?

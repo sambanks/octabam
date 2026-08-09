@@ -1056,8 +1056,20 @@ md_plate:
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$5753E3,a               ; 2/√8 = H8 normalization (was $7B8000 for H4)
-        move    a,x:(r7+$1e)
+        move    #>$50A000,a               ; was $5753E3 (2/√8 exact). Round 12:
+        move    a,x:(r7+$1e)            ; on the doubled lines PLATE's fastest
+                                        ; decay (TIME=0) measured MF -15.1 dB/s
+                                        ; against VV plate's -18.9 -- the knob
+                                        ; could not reach a real plate's
+                                        ; tightness. Set EMPIRICALLY, not by
+                                        ; gain accounting: $1e feeds the per-
+                                        ; line formula through the 1/√8 anchor
+                                        ; spread, so a naive x0.972 delivered
+                                        ; only 2.5 dB/s of the needed 6.9
+                                        ; (measured sensitivity ~2.5 dB/s per
+                                        ; 0.019 of scale). This value targets
+                                        ; VV plate's rate at TIME~32, whole
+                                        ; upper knob left for longer tails.
 ; INPUT DIFFUSER taps, Dattorro-scale (4-13 ms) — short, dense buildup
 ; replaces the removed ER section. All modes share the same tap set.
         move    #>1869,a
