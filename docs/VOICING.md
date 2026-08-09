@@ -1180,3 +1180,26 @@ and `sweep.sh diff` (DIFF 20/64/100/127), PLATE fixed at the VV-matched
 settings otherwise. Ear-anchor: ../stab_PLATE_A.wav. Question for MOD: does
 more smear kill the ring before it turns seasick? For DIFF: does the ring
 live in the diffusers (DIFF up = denser but more allpass coloration)?
+
+## Round 13 — 9 Aug 2026: SETUP — the metallic hunt, ROOM and BIG
+
+Sam on the stereo kit: "yeah so much better, just need to chase down the
+metallics, especially on the non-plate ones." So: why is PLATE the least
+metallic? The per-mode lever table says PLATE has the FASTEST mod (rate
+scale 1.0 vs ROOM 0.70/BIG 0.25), the MOST input diffusion (offset 0.125
+vs 0.094/0.031), and the narrowest tap spread. BIG's mod philosophy ("a
+huge space barely moves", rate 0.25 = well under 0.1 Hz effective) is the
+prime suspect: a near-static tank rings — this file's own rule — and the
+VV reference everything is judged against runs its mod at 2.53 Hz.
+
+**Renders**: `out/vv_ab/metallic/` — {room, big} × {base, mod127, diff127,
+vmod, vdiff}, stab, VV-matched TIME, WIDTH=100, SHMR=0, level-matched.
+mod127/diff127 are free knobs (depth 3.2x / allpass g up); vmod/vdiff are
+one-constant variants (mod smear to PLATE's, diffusion offset raised).
+**Play**: `out/vv_ab/metallic/hunt.sh room` / `big`. VV anchors:
+`../stab_ROOM_A.wav`, `../stab_BIG_A.wav`.
+
+**Verdicts** (fill in after listening):
+- room: which of the four beats base, and is any un-metallic enough?
+- big:
+- Does the winner survive on pad/melody (smear cost)?
