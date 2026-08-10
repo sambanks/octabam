@@ -2506,7 +2506,15 @@ lfrol:
         move    a,r5
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
                                         ; zero-extended in an address register)
-        move    #>$6F0000,y0            ; g = 0.867 (R18-BISECT: back to R17)
+        move    #>$6F0000,y0            ; g = 0.867, both bloom APs. R18 tried
+                                        ; 0.91 (longer ring) and levels up to
+                                        ; 2x and RETIRED them all by ear: the
+                                        ; APs' sparse 41/29 ms pulse train
+                                        ; reads as fast flutter on plucked
+                                        ; transients at any g once the level
+                                        ; is >=1x (VOICING.md R18). The
+                                        ; forward primary lives in the
+                                        ; driven-line sum taps instead.
         move    x:(r7+$1b),x1           ; chain output in
         move    y:(r5+n5),b             ; d
         move    b,x0
