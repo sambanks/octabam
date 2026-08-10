@@ -53,7 +53,7 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     4   (R13 bloom ate 150)   1998
+  free (region)     178 (LFO roll, 10 Aug)    1998
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
