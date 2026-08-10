@@ -116,6 +116,7 @@ struct Args {
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
     std::vector<TWord> peekY, peekX;
+    std::string dumpyFile; TWord dumpyLo = 0, dumpyHi = 0;
     std::vector<TWord> track;              // r7-relative X words, dumped EVERY block
     std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
@@ -195,10 +196,12 @@ bool runToRts(DSP& dsp, TWord pc, int trace, const char* what, uint32_t maxCycle
         const TWord cur = dsp.getPC().toWord();
         if (cur == sentinel) { g_lastCycles = i; return true; }
         if (trace && static_cast<int>(i) < trace)
-            std::printf("  %s %6u  pc=%06x  a=%012llx r0=%06x r6=%06x n7=%06x lc=%06x\n", what, i, cur,
+            std::printf("  %s %6u  pc=%06x  a=%012llx r5=%06x n5=%06x m5=%06x x1=%06x n7=%06x\n", what, i, cur,
                         static_cast<unsigned long long>(dsp.regs().a.var & 0xffffffffffffull),
-                        dsp.regs().r[0].var, dsp.regs().r[6].var,
-                        dsp.regs().n[7].var, dsp.regs().lc.var);
+                        dsp.regs().r[5].var & 0xffffff, dsp.regs().n[5].var & 0xffffff,
+                        dsp.regs().m[5].var & 0xffffff,
+                        (unsigned)(dsp.regs().x.var >> 24) & 0xffffff,
+                        dsp.regs().n[7].var);
         dsp.execInterpreter();   // single-step; exec() may JIT past the sentinel
     }
     std::cerr << what << ": did not return after " << maxCycles << " cycles (pc="
@@ -346,6 +349,15 @@ int main(int argc, char** argv) {
         }
         else if (k == "-track") a.track = parseHexList(argv[++i]);
         else if (k == "-trackout") a.trackOut = v();
+        else if (k == "-dumpy") {
+            // -dumpy file,lo,hi : write raw Y[lo..hi) as u32 LE at end of run
+            std::string t(argv[++i]);
+            char* p1 = strtok(&t[0], ","); char* p2 = strtok(nullptr, ",");
+            char* p3 = strtok(nullptr, ",");
+            if (p1 && p2 && p3) { a.dumpyFile = p1;
+                a.dumpyLo = strtoul(p2, nullptr, 16);
+                a.dumpyHi = strtoul(p3, nullptr, 16); }
+        }
         else if (k == "-peekx") {
             std::string t(argv[++i]);
             for (char* p = strtok(&t[0], ","); p; p = strtok(nullptr, ","))
@@ -747,7 +759,7 @@ int main(int argc, char** argv) {
             // the harness sets the raw var. stageprobe4's audio stage was
             // silently gated off by exactly this.
             dsp.regs().a.var = 0x010000000000ULL;
-            if (!runToRts(dsp, I.proc, (b == 0 && k == 0) ? a.trace : 0, who)) {
+            if (!runToRts(dsp, I.proc, ((b == 0 || (a.diff && b == a.diff - 1)) && k == 0) ? a.trace : 0, who)) {
                 std::printf("\nHANG: instance %d, block %d, pc=0x%06x\n", k, b,
                             dsp.getPC().toWord());
                 std::printf("  r0=%06x r1=%06x r2=%06x r3=%06x r4=%06x r5=%06x r6=%06x r7=%06x\n",
@@ -793,6 +805,15 @@ int main(int argc, char** argv) {
                 }
                 if (inRun) std::printf("   X:0x%05x..0x%05x\n", runLo, DIFF_HI - 1);
                 std::printf("   %d changed regions total\n", n);
+                // values of every changed word (capped), so two runs can be
+                // value-diffed, not just region-diffed
+                int nv = 0;
+                for (TWord ad = DIFF_LO; ad < DIFF_HI && nv < 400; ++ad) {
+                    if (mem.get(MemArea_X, ad) != snap[ad - DIFF_LO]) {
+                        std::printf("   XVAL 0x%05x = 0x%06x\n", ad, mem.get(MemArea_X, ad));
+                        ++nv;
+                    }
+                }
             }
 
             if (getenv("DSP_DBG") && k == 0 && b < atoi(getenv("DSP_DBG")))
@@ -834,6 +855,34 @@ int main(int argc, char** argv) {
     }
     if (!shown) std::printf("   (none)\n");
 
+    {   // full register file at end of run, for cross-engine divergence hunts
+        auto& R = dsp.regs();
+        std::printf("REGS a=%012llx b=%012llx x=%012llx y=%012llx\n",
+            (long long)R.a.var & 0xffffffffffffLL, (long long)R.b.var & 0xffffffffffffLL,
+            (long long)R.x.var, (long long)R.y.var);
+        for (int i = 0; i < 8; ++i)
+            std::printf("REGS r%d=%06x n%d=%06x m%d=%06x\n", i, R.r[i].var & 0xffffff,
+                        i, R.n[i].var & 0xffffff, i, R.m[i].var & 0xffffff);
+        std::printf("REGS sr=%06x omr=%06x sp=%06x la=%06x lc=%06x\n",
+                    R.sr.var & 0xffffff, R.omr.var & 0xffffff, R.sp.var & 0xffffff,
+                    R.la.var & 0xffffff, R.lc.var & 0xffffff);
+    }
+    if (!a.dumpyFile.empty() && a.dumpyFile[0] == '@') {   // @file = X space
+        std::ofstream df(a.dumpyFile.substr(1), std::ios::binary);
+        for (TWord ad = a.dumpyLo; ad < a.dumpyHi; ++ad) {
+            uint32_t w = mem.get(MemArea_X, ad);
+            df.write(reinterpret_cast<const char*>(&w), 4);
+        }
+        std::printf("dumped X 0x%05x..0x%05x\n", a.dumpyLo, a.dumpyHi);
+    }
+    else if (!a.dumpyFile.empty()) {
+        std::ofstream df(a.dumpyFile, std::ios::binary);
+        for (TWord ad = a.dumpyLo; ad < a.dumpyHi; ++ad) {
+            uint32_t w = mem.get(MemArea_Y, ad);
+            df.write(reinterpret_cast<const char*>(&w), 4);
+        }
+        std::printf("dumped Y 0x%05x..0x%05x -> %s\n", a.dumpyLo, a.dumpyHi, a.dumpyFile.c_str());
+    }
     if (!a.peekY.empty()) {
         std::printf("peek Y memory after the run:\n");
         for (TWord ad : a.peekY)

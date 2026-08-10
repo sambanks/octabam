@@ -984,7 +984,27 @@ mkgo:""",
             absent = "DELAY SERVER" if tag == "A" else "REVERB SERVER"
             plan = tuple(p for p in plan if p[0] != absent)
         cursor = base_a
+        # LFO roll table (10 Aug 2026): reverb_server.asm's rolled lines 2-7
+        # read per-line [rate const, phase slot, int slot, frac slot] from a
+        # 24-word P table via p:(r5)+. Placed immediately BEFORE the module so
+        # the address is known pre-assembly; the source's $facade literal is
+        # rewritten to it. dsp_asm has no dc directive, hence raw words here.
+        LFOTAB = [0x5b0000, 0x50, 0x56, 0x57,   # line 2  0.711x
+                  0x4a0000, 0x51, 0x58, 0x59,   # line 3  0.578x
+                  0x760000, 0x47, 0x00, 0x01,   # line 4  0.922x
+                  0x610000, 0x48, 0x02, 0x03,   # line 5  0.758x
+                  0x4d0000, 0x49, 0x04, 0x05,   # line 6  0.602x
+                  0x370000, 0x4a, 0x06, 0x07]   # line 7  0.430x
         for name, src in plan:
+            if "$facade" in src:
+                if src.count("$facade") != 1:
+                    sys.exit(f"payload {tag}: {name} has multiple $facade "
+                             f"LFOTAB literals -- expected exactly one")
+                place(LFOTAB, cursor)
+                src = src.replace("$facade", f"${cursor:x}")
+                print(f"  LFOTAB        P:0x{cursor:05x}..0x{cursor + 24:05x} "
+                      f"(  24 words)  rolled LFO lines 2-7")
+                cursor += len(LFOTAB)
             words, init_a, proc_a = assemble(src, cursor)
             if cursor + len(words) > base_a + budget:
                 sys.exit(f"payload {tag}: {name} overruns the region "

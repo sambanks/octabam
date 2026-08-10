@@ -1868,20 +1868,50 @@ lf4f:
                                         ; still written next to it.
         move    x0,x:(r7+$24)           ; interpolation fraction
 
-        move    x:(r7+$50),a            ; line 2  (0.887x) phase
+; ---- LFO lines 2-7: ROLLED (10 Aug 2026) --------------------------------
+; Six identical tank-only stanzas (the shape above, minus the AP modulator)
+; collapsed into one loop over a 24-word P-space table: per line
+; [rate const, phase slot, int slot, frac slot]. The table is placed by
+; build_bus.py immediately BEFORE this module (so its address is known
+; pre-assembly) and the facade placeholder literal below is rewritten to
+; it -- grep LFOTAB there. Per-line data, exactly the unrolled constants:
+;   line 2  0.711x $5b0000  phase $50  out $56/$57
+;   line 3  0.578x $4a0000  phase $51  out $58/$59
+;   line 4  0.922x $760000  phase $47  out $00/$01
+;   line 5  0.758x $610000  phase $48  out $02/$03
+;   line 6  0.602x $4d0000  phase $49  out $04/$05
+;   line 7  0.430x $370000  phase $4a  out $06/$07
+; p:(rN) reads are hardware-proven (dsp/alias_probe.asm). The scattered r7
+; slots are reached with the (r7+n7) indexed mode, so the phases STAY in
+; the slots the warm-up zeroing list already covers -- no state migration.
+; n7 (the sample count) is stashed in $15 for the duration: $15 is warm-up
+; scratch and the sample loop's per-sample tank-input slot, written before
+; read in both, and the stash AND restore both complete before the sample
+; loop starts.
+; AGU SETTLE DISCIPLINE: a write to r5/n7 is followed by at least TWO
+; instructions before that register addresses anything -- the same spacing
+; the warm-up's shared clear documents ("with only ONE, the loop walks from
+; a garbage base"). Every n7 load below is hoisted early for exactly this.
+        move    n7,a
+        move    a,x:(r7+$15)            ; stash the sample count
+        move    #>$facade,r5            ; LFOTAB -- rewritten by build_bus.py
+        move    #>$ffffff,m5            ; r5 walks the table linearly
+        do      #6,>lfrol
+        move    p:(r5)+,y1              ; this line's rate constant
         move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$5b0000,y1               ; rate x0.711
+        move    p:(r5)+,n7              ; phase slot -- hoisted 2 above its use
         mpy     x0,y1,b                 ; this line's own rate
         move    b1,x0
+        move    x:(r7+n7),a             ; phase
         add     x0,a
         move    #>$7fffff,x0
         and     x0,a                    ; wrap
         move    a1,x0                   ; extract without saturating on A2
         move    x:(r7+$14),b            ; call flag: advance once per block,
         tst     b                       ; but USE the advanced value on both
-        beq     lf50
-        move    x0,x:(r7+$50)
-lf50:
+        beq     lfrsk
+        move    x0,x:(r7+n7)
+lfrsk:
         move    x0,a
         move    #>$400000,x0
         sub     x0,a
@@ -1889,188 +1919,32 @@ lf50:
         move    a,x0
         move    x:(r7+$28),y1           ; MOD depth
         mpy     x0,y1,a
+        move    p:(r5)+,n7              ; integer slot -- hoisted 3 above use
         move    a1,x1
         asl     #$8,a,a
         move    a2,x0
-        move    x0,x:(r7+$56)           ; integer offset, 0..126 samples
+        move    x0,x:(r7+n7)
+        move    p:(r5)+,n7              ; fraction slot -- hoisted 5 above use
         move    x1,a
         move    #>$00ffff,x0
         and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-                                        ; scales by 2^7. v95: this had regressed
-                                        ; to #$8 -- REVERB.md's "live from v72 to
-                                        ; v79" bug, back again, with the rule
-                                        ; still written next to it.
-        move    x0,x:(r7+$57)           ; interpolation fraction
-
-        move    x:(r7+$51),a            ; line 3  (1.426x) phase
-        move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$4a0000,y1               ; rate x0.578
-        mpy     x0,y1,b                 ; this line's own rate
-        move    b1,x0
-        add     x0,a
-        move    #>$7fffff,x0
-        and     x0,a                    ; wrap
-        move    a1,x0                   ; extract without saturating on A2
-        move    x:(r7+$14),b            ; call flag: advance once per block,
-        tst     b                       ; but USE the advanced value on both
-        beq     lf51
-        move    x0,x:(r7+$51)
-lf51:
-        move    x0,a
-        move    #>$400000,x0
-        sub     x0,a
-        abs     a                       ; triangle, 0 .. $400000
-        move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
-        mpy     x0,y1,a
-        move    a1,x1
-        asl     #$8,a,a
-        move    a2,x0
-        move    x0,x:(r7+$58)           ; integer offset, 0..126 samples
-        move    x1,a
-        move    #>$00ffff,x0
-        and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-                                        ; scales by 2^7. v95: this had regressed
-                                        ; to #$8 -- REVERB.md's "live from v72 to
-                                        ; v79" bug, back again, with the rule
-                                        ; still written next to it.
-        move    x0,x:(r7+$59)           ; interpolation fraction
-
-; ---- LFOs lines 4-7 (8-line), no allpass modulation ----------------------
-; Rates chosen prime-relative to lines 0-3 (0.992, 0.850, 0.711, 0.578) so
-; the eight periods do not align.
-
-        move    x:(r7+$47),a            ; line 4  (0.922x) phase
-        move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$760000,y1               ; rate x0.922
-        mpy     x0,y1,b                 ; this line's own rate
-        move    b1,x0
-        add     x0,a
-        move    #>$7fffff,x0
-        and     x0,a                    ; wrap
-        move    a1,x0                   ; extract without saturating on A2
-        move    x:(r7+$14),b            ; call flag: advance once per block,
-        tst     b                       ; but USE the advanced value on both
-        beq     lf47
-        move    x0,x:(r7+$47)
-lf47:
-        move    x0,a
-        move    #>$400000,x0
-        sub     x0,a
-        abs     a                       ; triangle, 0 .. $400000
-        move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
-        mpy     x0,y1,a
-        move    a1,x1
-        asl     #$8,a,a
-        move    a2,x0
-        move    x0,x:(r7+$00)           ; integer offset, line 4
-        move    x1,a
-        move    #>$00ffff,x0
-        and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-        move    x0,x:(r7+$01)           ; interpolation fraction, line 4
-
-        move    x:(r7+$48),a            ; line 5  (0.758x) phase
-        move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$610000,y1               ; rate x0.758
-        mpy     x0,y1,b                 ; this line's own rate
-        move    b1,x0
-        add     x0,a
-        move    #>$7fffff,x0
-        and     x0,a                    ; wrap
-        move    a1,x0                   ; extract without saturating on A2
-        move    x:(r7+$14),b            ; call flag: advance once per block,
-        tst     b                       ; but USE the advanced value on both
-        beq     lf48
-        move    x0,x:(r7+$48)
-lf48:
-        move    x0,a
-        move    #>$400000,x0
-        sub     x0,a
-        abs     a                       ; triangle, 0 .. $400000
-        move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
-        mpy     x0,y1,a
-        move    a1,x1
-        asl     #$8,a,a
-        move    a2,x0
-        move    x0,x:(r7+$02)           ; integer offset, line 5
-        move    x1,a
-        move    #>$00ffff,x0
-        and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-        move    x0,x:(r7+$03)           ; interpolation fraction, line 5
-
-        move    x:(r7+$49),a            ; line 6  (0.602x) phase
-        move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$4d0000,y1               ; rate x0.602
-        mpy     x0,y1,b                 ; this line's own rate
-        move    b1,x0
-        add     x0,a
-        move    #>$7fffff,x0
-        and     x0,a                    ; wrap
-        move    a1,x0                   ; extract without saturating on A2
-        move    x:(r7+$14),b            ; call flag: advance once per block,
-        tst     b                       ; but USE the advanced value on both
-        beq     lf49
-        move    x0,x:(r7+$49)
-lf49:
-        move    x0,a
-        move    #>$400000,x0
-        sub     x0,a
-        abs     a                       ; triangle, 0 .. $400000
-        move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
-        mpy     x0,y1,a
-        move    a1,x1
-        asl     #$8,a,a
-        move    a2,x0
-        move    x0,x:(r7+$04)           ; integer offset, line 6
-        move    x1,a
-        move    #>$00ffff,x0
-        and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-        move    x0,x:(r7+$05)           ; interpolation fraction, line 6
-
-        move    x:(r7+$4a),a            ; line 7  (0.430x) phase
-        move    x:(r7+$2f),x0           ; base increment, from RATE
-        move    #>$370000,y1               ; rate x0.430
-        mpy     x0,y1,b                 ; this line's own rate
-        move    b1,x0
-        add     x0,a
-        move    #>$7fffff,x0
-        and     x0,a                    ; wrap
-        move    a1,x0                   ; extract without saturating on A2
-        move    x:(r7+$14),b            ; call flag: advance once per block,
-        tst     b                       ; but USE the advanced value on both
-        beq     lf4a
-        move    x0,x:(r7+$4a)
-lf4a:
-        move    x0,a
-        move    #>$400000,x0
-        sub     x0,a
-        abs     a                       ; triangle, 0 .. $400000
-        move    a,x0
-        move    x:(r7+$28),y1           ; MOD depth
-        mpy     x0,y1,a
-        move    a1,x1
-        asl     #$8,a,a
-        move    a2,x0
-        move    x0,x:(r7+$06)           ; integer offset, line 7
-        move    x1,a
-        move    #>$00ffff,x0
-        and     x0,a
-        asl     #$7,a,a                 ; n-1: n=8 for the integer part above and
-        move    a,x0                    ; the mask is 2^(24-8)-1, so the fraction
-        move    x0,x:(r7+$07)           ; interpolation fraction, line 7
+        asl     #$7,a,a                 ; n-1, never n (REVERB.md's rule; the
+        move    a,x0                    ; v95 regression story lives at line 0)
+        move    x0,x:(r7+n7)
+lfrol:
+        move    x:(r7+$15),a            ; restore the sample count
+        move    a,n7
+; RESTORE m5 = $fff. This block sits between the line-modulo set (the
+; "LINE modulo, 4096" store above the TIME section) and the lines 4-7
+; priming, whose y:(r5+n5) seed reads MUST wrap inside a 4096-word line --
+; that section's own comment says so. Leaving m5 linear here sent the
+; priming's seed reads past Y:0xC000 on any block whose phase+offset
+; crossed a line end: the seeds read zeros, every line's tail detuned by a
+; hair, and the render was off by LSBs that grew with recirculation. Found
+; 10 Aug 2026 by instruction-level trace against the unrolled engine after
+; THREE state-comparison passes (X, Y, registers) all came back identical
+; at block boundaries -- the divergence lived entirely inside the block.
+        move    #>$fff,m5               ; the priming's wrap, put back
 
 ; ---- STAGE 1: loop constants preloaded into spare AGU registers ---------
 ; `move #>$7ff,x0` is a TWO-WORD instruction: opcode plus a 24-bit immediate,
