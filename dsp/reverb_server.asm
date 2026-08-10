@@ -1506,7 +1506,31 @@ md_done:
 ; out = dry*(1-MIX) + wet*MIX. MIX arrives as value<<16, so 1-MIX is just
 ; $7fffff minus it.
         move    x:(r6+$5),x0
-        move    x0,x:(r7+$20)           ; wet gain, unchanged: rises the whole way
+; ---- WET MAKEUP (10 Aug 2026, ear evidence from the R14 hardware trip) ---
+; Fully wet measured much quieter than dry -- inherent (the tail spreads the
+; same energy over seconds; v96's own note measured the straight crossfade
+; -7 dB) and now heard on hardware. A fractional gain cannot exceed 1.0, so
+; the makeup is split: $20 stores wgain/2 and the mix stage asl-doubles the
+; wet product. The curve keeps the bottom half BIT-IDENTICAL (MIX<<15,
+; doubled exactly back) and adds (MIX-0.5) over the top half, mirroring the
+; dry fade-out -- reaching ~2x (+6 dB) at MIX=127 where dry is gone, and
+; leaving the mid-knob sum no hotter than before. The compare reuses the
+; documented `sub a,b` idiom verbatim: cmp a,b encodes as MAX here (the
+; assembler trap above), and asr/asl must come AFTER the branch -- they
+; update the CCR the blt needs.
+        move    #>$400000,a             ; 0.5
+        move    x0,b
+        sub     a,b                     ; MIX - 0.5, sets N^V for the blt
+        blt     mkwlo
+        move    x0,a
+        asr     #$1,a,a                 ; top half: MIX/2 ...
+        add     b,a                     ; ... + (MIX - 0.5), max $7e8000 < 1.0
+        bra     mkwst
+mkwlo:
+        move    x0,a
+        asr     #$1,a,a                 ; bottom half: exactly MIX/2
+mkwst:
+        move    a,x:(r7+$20)            ; wgain/2 -- the mix stage doubles it
 ; v96: HOLD the dry at unity for the bottom half of the knob, then crossfade it
 ; away over the top half. A straight 1-MIX crossfade measured the knob getting
 ; ~7 dB QUIETER as it was turned up (-22.0 dBFS at MIX=0 down to -28.8 at 96),
@@ -3269,7 +3293,8 @@ fbB:
         move    x:(r7+$26),x0
         add     x0,a
         move    a,x0
-        mpy     x0,y1,a                 ; * MIX
+        mpy     x0,y1,a                 ; * (wgain/2)
+        asl     #$1,a,a                 ; wet makeup: doubled in full precision
         move    a,x:(r7+$71)            ; stash the wet half
         move    x:(r0),x0               ; dry
         move    x:(r7+$70),y0           ; dry gain -- y0 is free here, y1 must
@@ -3282,6 +3307,7 @@ fbB:
         sub     x0,a
         move    a,x0
         mpy     x0,y1,a
+        asl     #$1,a,a                 ; wet makeup, right channel
         move    a,x:(r7+$71)            ; same crossfade on the right
         move    x:(r0+n0),x0
         move    x:(r7+$70),y0

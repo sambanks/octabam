@@ -1293,3 +1293,27 @@ in-loop APs on more than 2 of 8 lines, and modulating the bloom APs.
 window (the 0.4-1.6 s window now catches the tail of the bloom, so slopes
 read shallow). (4) verify_slots / hardware publish for DIFF at 120 as a
 default is a knob question, not a code one.
+
+## Round 14 setup: WET MAKEUP GAIN (10 Aug 2026) — built, ear pass pending
+
+Sam's hardware finding on R14: fully wet is much quieter than dry. Inherent
+(v96's own note measured the straight crossfade −7 dB), now with ear
+evidence. Built as a top-half makeup so the knob's bottom half is untouched:
+
+    $20 stores wgain/2; the mix stage asl-doubles the wet product.
+    wgain'(MIX) = MIX/2                    MIX <= 64   (doubled back exactly:
+                                                        BIT-IDENTICAL below half)
+                = MIX/2 + (MIX - 64)       MIX >  64   (reaches ~2x = +6 dB at 127,
+                                                        mirroring the dry fade-out)
+
+**Measured** (dsp_host A/B vs the pre-makeup engine, SHMR pinned 0 — the
+6-param default leaves SHMR at 64 and it POLLUTED the first A/B to a flat
++0.00 dB, the Round-12 trap again; pin page 2 in every dsp_host measurement):
+- MIX=64: bit-identical, by construction and verified.
+- MIX=127, pure diffuse tail: ratio 2.017 = **+6.1 dB** ✅
+- Input-correlated material moves less (the residual dry at 0.0156 still
+  rivals the thin-spread instantaneous wet), so bulk-rms A/Bs under-read;
+  judge the makeup on TAILS.
+
+Ear pass: A/B `scratchpad pre_127 vs mk_127` renders (melody, wet) — Sam.
+Cost 15 words (payload A at 163 free). Commit carries the details.
