@@ -165,8 +165,9 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # 31 -> 32, 10 Aug 2026: 31 covered BOTH the working 7 Aug flashes and the
 # dead R13 flash, which cost a session of "which build is this" -- the exact
 # ambiguity this tag exists to prevent. 32 -> 33: the post-marker product
-# build (mapping documented, real names under SPEC).
-BUILD_TAG = b"33"
+# build (mapping documented, real names under SPEC). 33 -> 34: LFO roll
+# + wet makeup, the R15 flash.
+BUILD_TAG = b"34"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
