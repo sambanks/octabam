@@ -27,7 +27,7 @@ delay→reverb series topology).
 | Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | **R16 built (tag 35): SHMR offset fix** — page-2 publish RESOLVED (works; SHMR just read the wrong slot). Flash R16 to confirm shimmer is reachable, then: companion-field selects (WIDTH/→DEL), voicing residue (page-1 tuning, PLATE ear pass, TIME→decay refit, DIFF/PRE/shimmer voicing) → BongDelay voicing |
+| Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
 ⚠️ **10 Aug hardware findings:** (1) 🟡 **page-2 continuous slots (SHMR/
 DIFF/WIDTH/PRE/→DEL) reported as not publishing — NOW IN DOUBT.** A 10-Aug
