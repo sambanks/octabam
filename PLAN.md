@@ -74,11 +74,13 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ### Program space — the binding constraint, per core, 8,192 words
 
-✅ Region numbers re-measured 10 Aug 2026 by the build's own region report
-(`build_bus.py`, tag-33 product build): **payload A used 2,720 of 2,724,
-FREE 4** (Round 13's bloom spent the 9 Aug 154). **Payload B used 726,
-FREE 1,998.** The known relief on A is the LFO-block roll (~150–200 words),
-which is also what un-blocks the BURN probe (overruns by 14).
+✅ Region numbers re-measured 10 Aug 2026 (post-LFO-roll build): **payload A
+used 2,546 of 2,724, FREE 178** — the LFO-block roll landed 10 Aug (lines
+2–7 in one loop over a 24-word P table, proven bit-identical against the
+unrolled engine incl. a 600-block MOD=127 A/B; the session's lesson is the
+m5 line-modulo invariant, documented at the roll site). **Payload B used
+726, FREE 1,998.** `verify_burn` PASSES again — the BURN hardware sweep is
+unblocked, and the wet-makeup words exist now.
 
 | | payload A | payload B |
 |---|---|---|
@@ -389,9 +391,9 @@ delivered most of the checklist. Status per item:
    (10 Aug). ⚠️ The *numeric* RT60 sweep against local renders is still
    worth one knob pass — "sounds as voiced" makes the 2×-off mpy scenario
    very unlikely but has not measured it.
-3. ❌ **`BURN=1` probe did NOT go** — it no longer fits the R13 layout
-   (overruns payload A by 14 words; `verify_burn` skips loudly). Needs the
-   LFO-block roll first. FX1's cycle budget remains unmeasured.
+3. 🟡 **`BURN=1` probe missed the trip but is UNBLOCKED** — the 10 Aug
+   LFO roll freed the words and `verify_burn` passes again. FX1's cycle
+   budget remains unmeasured until the next flash carries it.
 4. ✅→🟡 **Parameter-delivery protocol — MEASURED, 10 Aug:** the split is
    exactly as §2 predicted. **Page-1 knobs (p0–p5) publish and work** (Sam:
    "just need tuned" — that's a voicing item, not a delivery one). MODE
