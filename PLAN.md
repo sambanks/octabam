@@ -142,6 +142,16 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
 
 ### 1. Finish ChonVerb — the ear items, in dependency order
 
+**✅ DONE FOR NOW — Sam's call, 11 Aug 2026**, after the R18 ear pass and
+the Discord demo set (`out/demo_sources/discord/`, shimmer + gate on real
+material). "Done for now" is a voicing verdict, not a closure: still open
+if a future round reopens the file are the pad's last forwardness, the
+6–9 k crest, the shifter-input HP, the TIME refit (1.3), the PLATE ear
+pass, and 1.4's gain-structure measurement. **Tags 35–37 plus the LP
+default change (10333c6) remain UNFLASHED** — the flash bar in "what
+excellent means" below still gates the trip. Work order moves to
+BongDelay (section 3).
+
 The reverb is structurally right: eight driven lines, correct FWHT
 normalisation, all lines written and read, distinct modes, linear until the
 top ~4 dB. What remains is that **what you hear of the tail is not yet what
