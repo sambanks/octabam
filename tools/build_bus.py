@@ -167,7 +167,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # ambiguity this tag exists to prevent. 32 -> 33: the post-marker product
 # build (mapping documented, real names under SPEC). 33 -> 34: LFO roll
 # + wet makeup, the R15 flash.
-BUILD_TAG = b"35"
+BUILD_TAG = b"36"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}

@@ -745,9 +745,6 @@ warmdone:
         move    #>$3800,a
         add     x0,a
         move    a,x:(r7+$35)
-        move    #>$1000,a
-        add     x0,a
-        move    a,x:(r7+$38)            ; pre-delay base, 4096-aligned
         move    #>$4500,a
         add     x0,a
         move    a,x:(r7+$0b)            ; the tank's per-line state table A
@@ -2926,6 +2923,19 @@ tankend:
         move    y1,a                    ; age below is measured against it and
         move    a,y:(r5+n5)             ; nothing past here clobbers y0.
 
+; ---- CHORUS (R17): wobble the read phase by the MOD-scaled LFO so the octave
+; gets pitch vibrato -- that blurs the 330/550 sidebands into a lush chorus
+; (the Valhalla "richness" is density + modulation, not stacked octaves). $21
+; is line-0's LFO offset ALREADY x MOD depth, so the MOD knob scales the
+; shimmer chorus alongside the tank wobble -- one "movement" control. Only the
+; READS move; the buffer write above used the true (unmodulated) phase.
+        move    x:(r7+$21),a           ; line-0 LFO offset (x MOD depth)
+        asr     #$2,a,a                ; scale to the shimmer's wobble depth
+        move    a1,x0
+        move    x1,a
+        add     x0,a
+        move    a1,x1                  ; modulated phase for both head reads
+
 ; ---- head 0: pos = phase & $7ff, age = (write - pos) & $7ff -------------
         move    x1,a
         move    #>$7ff,x0
@@ -2967,7 +2977,22 @@ shp0:                                   ; into 2 -- the whole fix.
         bra     shd0                    ; what keeps the pair summing to ~1;
 shr0:                                   ; a pure triangle would dip to zero
         add     x0,a                    ; twice a lap.
-        asl     #$f,a,a                 ; g = t/256 in Q23
+        asl     #$f,a,a                 ; g = t/256 in Q23 (linear ramp)
+; SMOOTHSTEP the ramp: s = g^2*(3-2g) = g^2 + 2*g^2*(1-g). S-shaped, so the
+; ramp meets the flat top AND the silent zone with ZERO slope -- that removes
+; the crossfade-corner discontinuities that inject the +-110 Hz sidebands,
+; WITHOUT widening the overlap (which comb-filters the octave away). ~10c.
+        move    a,x0                    ; g
+        move    a,y1                    ; g
+        mpy     x0,y1,a                 ; g^2  (mpy x0,y1 = signed)
+        move    a,x1                    ; save g^2
+        move    #>$7fffff,a
+        sub     x0,a                    ; 1 - g
+        move    a,y1                    ; 1 - g
+        move    x1,x0                   ; g^2
+        mpy     x0,y1,a                 ; g^2*(1-g)
+        asl     #$1,a,a                 ; 2*g^2*(1-g)
+        add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
 shd0:
         move    a1,y1                   ; g0
         move    y:(r5+n5),a             ; tap 0
@@ -3006,7 +3031,19 @@ shp1:                                   ; into 2 -- the whole fix.
         bra     shd1                    ; what keeps the pair summing to ~1;
 shr1:                                   ; a pure triangle would dip to zero
         add     x0,a                    ; twice a lap.
-        asl     #$f,a,a                 ; g = t/256 in Q23
+        asl     #$f,a,a                 ; g = t/256 in Q23 (linear ramp)
+; SMOOTHSTEP, same as head 0
+        move    a,x0                    ; g
+        move    a,y1                    ; g
+        mpy     x0,y1,a                 ; g^2
+        move    a,x1                    ; save g^2
+        move    #>$7fffff,a
+        sub     x0,a                    ; 1 - g
+        move    a,y1                    ; 1 - g
+        move    x1,x0                   ; g^2
+        mpy     x0,y1,a                 ; g^2*(1-g)
+        asl     #$1,a,a                 ; 2*g^2*(1-g)
+        add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
 shd1:
         move    a1,y1                   ; g1
         move    y:(r5+n5),a             ; tap 1
