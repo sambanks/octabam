@@ -1315,5 +1315,5 @@ evidence. Built as a top-half makeup so the knob's bottom half is untouched:
   rivals the thin-spread instantaneous wet), so bulk-rms A/Bs under-read;
   judge the makeup on TAILS.
 
-Ear pass: A/B `scratchpad pre_127 vs mk_127` renders (melody, wet) — Sam.
-Cost 15 words (payload A at 163 free). Commit carries the details.
+**Ear pass: ✅ CONFIRMED on hardware, 10 Aug 2026 (R15 flash, tag 34) —
+Sam: "mix is great."** Cost 15 words (payload A at 163 free).

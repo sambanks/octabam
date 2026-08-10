@@ -22,12 +22,12 @@ delay→reverb series topology).
 
 | | state |
 |---|---|
-| On the unit | **`OCTABAMR14`** (tag 33) — 8-line ChonVerb w/ bloom + shimmer v3, SPEC, XBUS, auto-gain w/ `$0c` fix. **Hardware-confirmed as voiced, 10 Aug** |
+| On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
-| Delay | **`delay_server.asm` (514 words) has never knowingly executed on hardware or in any emulator** — payload B cannot boot in `dsp_host`. Prime suspect for the 9 Aug stall. Treat as unwritten until its first deliberate run |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, ~~wet makeup~~ ✅ built 10 Aug pending ear, shimmer decision) |
+| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, ~~wet makeup~~ ✅ ear-confirmed R15, shimmer decision) |
 
 ⚠️ **10 Aug hardware findings:** (1) ✅ measured — **page-1 knobs publish
 and work; page-2 continuous slots do not** (SHMR/DIFF/WIDTH/PRE/→DEL pinned
