@@ -924,8 +924,17 @@ md_big:                                 ; 2, and anything unexpected
 ; Parked in $1e for the TIME block below to fold in -- the r7 block ends at
 ; $83 and $7e..$81 went to the diffuser taps, so there is no spare slot.
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
-        move    #>$4CCCCD,a               ; 0.60 2/√8 headroom, was $5A8279 (exact)
-        move    a,x:(r7+$1e)
+;
+; R18: 0.60 -> 0.67578. The 0.60 was cut from 2/√8 for "headroom" before the
+; 1.1 norm proof existed; with it, stability needs only $1e < 1/√8 = 0.3536,
+; and 0.67578 keeps max $1e = 0.4995*0.67578 = 0.3376 (radius <= 0.976 at the
+; shortest line, strictly < 1 BY NORM at every knob). What it buys: BIG's
+; decay CEILING was ~-15 dB/s (RT60 ~4 s) -- the Valhalla Shimmer reference
+; rings at -8.3 dB/s (~7 s) and its size knob was only at HALF. TIME's top
+; now reaches ~-5 dB/s; the whole knob lengthens (T64 ~-10 dB/s, was -21).
+; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
+        move    #>$568000,a               ; 0.67578 (was $4CCCCD = 0.60 "2/√8
+        move    a,x:(r7+$1e)              ; headroom", pre-norm-proof)
 ; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
 ; bloom generator now, and the 4-13 ms Dattorro set could not stretch the
 ; attack. All modes share the tap set (641 1051 1511 1949, primes), stored
@@ -976,9 +985,15 @@ md_big:                                 ; 2, and anything unexpected
                                         ; (Round 13; 0.031 was too dry to
                                         ; wash the end-ring)
         move    a,x:(r7+$3f)
-        move    #>$680000,a             ; damping 0.8125 (Round 13, was
-                                        ; 0.5625): the loop keeps its highs;
-                                        ; tone lives in the wet high-cut
+        move    #>$733333,a             ; damping 0.90 (R18, was 0.8125; R13
+                                        ; had raised it from 0.5625): the loop
+                                        ; keeps its highs; tone lives in the
+                                        ; wet high-cut. At 0.8125 the compound
+                                        ; loss still ran ~-10 dB vs the VV ref
+                                        ; across 6-9k through the body -- the
+                                        ; binding HF lever, measured: the wet
+                                        ; high-cut raise alone moved 6-9k by
+                                        ; <1 dB, this is where the band dies.
         move    a,x:(r7+$72)            ; against PASS RATE, not per pass: the
                                         ; (Round 11: BIG keeps 0.5625 -- already
                                         ; darkest, its HF hang was the scatter,
@@ -996,8 +1011,14 @@ md_big:                                 ; 2, and anything unexpected
                                         ; would be ~19 cents of vibrato --
                                         ; fast-shallow, never fast-deep).
         move    a,x:(r7+$73)            ; scale comes from movement, not length
-        move    #>$430000,a             ; wet high-cut 0.523 (Round 13) -- between
-        move    a,x:(r7+$7a)            ; ROOM's dark and PLATE's bright
+        move    #>$4CCCCD,a             ; wet high-cut 0.60, ~6.4 kHz (R18; was
+        move    a,x:(r7+$7a)            ; 0.523 ~5.2k). The Valhalla Shimmer ref
+                                        ; (high cut 8k, color bright) measured
+                                        ; 6-9k a full 5-10 dB brighter through
+                                        ; the body; the 5.2k corner was the
+                                        ; single biggest shading on that band.
+                                        ; Still below PLATE's 0.68 -- BIG stays
+                                        ; the darker of the two by design.
         move    #>$650000,a             ; lines 4-7 tap scale 0.789 -- wide
         move    a,x:(r7+$6c)            ; interleave suits the 1.69 spread
         bra     md_done
@@ -1735,6 +1756,18 @@ mixset:
         add     x0,a                    ; 2048 + val*256
         bra     g_st
 g_off:
+; R18 FIX: GATE=0 was not actually OFF. The trigger threshold is 0.094 FS on
+; the tank input; quieter sources never fire it, so GCNT stayed 0, GLVL
+; decayed to 0 and the wet was SILENT (found via a -12 dB render nulling to
+; -146 dB; the "16-bit floor" reading of the earlier quiet-click silence is
+; RETRACTED -- it was this gate). And before the first loud note, every
+; attack snapped the gate open/shut -- fast rectangular chops on the wet.
+; At GATE=0 force the gate open EVERY BLOCK: GCNT full so the per-sample
+; target is always FULL, GLVL pinned so a fresh boot starts open.
+        move    #>$400000,a
+        move    a,x:(r7+$30)            ; GCNT: never runs out at GATE=0
+        move    #>$7fffff,a
+        move    a,x:(r7+$62)            ; GLVL: open now, not after an attack
         move    #>$400000,a             ; ~4.19M samples ~= 95 s: never closes
 g_st:
         move    a,x:(r7+$29)            ; GHOLD
@@ -2473,7 +2506,7 @@ lfrol:
         move    a,r5
         move    #247,n5                 ; 2048 - 1801 (41 ms; SHORT immediate,
                                         ; zero-extended in an address register)
-        move    #>$6F0000,y0            ; g = 0.867, both bloom APs
+        move    #>$6F0000,y0            ; g = 0.867 (R18-BISECT: back to R17)
         move    x:(r7+$1b),x1           ; chain output in
         move    y:(r5+n5),b             ; d
         move    b,x0
@@ -2682,7 +2715,29 @@ tankend:
         move    x:(r7+$3c),x0           ; line 6
         add     x0,a                    ; (l7 driven, excluded)
         move    x:(r7+$08),b            ; the bloom, pre-filter: the wet
-        asr     #$3,b,b                 ; high-cut below tames its sheen
+        asr     #$3,b,b                 ; bloom back at 0.5x (R18: 1x/1.5x/2x
+                                        ; all flutter on plucked transients --
+                                        ; the AP pulse train is audible at any
+                                        ; ring length once the level is up;
+                                        ; the forward primary lives in the
+                                        ; driven-line taps below instead)
+        add     b,a
+; PRESENCE TAP (R18b, Sam's stab note: "their primary tone is much more
+; forward"). The wet here is ALL recirculated energy -- the driven lines are
+; excluded from the sums, so nothing input-correlated reaches the output and
+; the note submerges immediately. The VV wet audibly keeps the note forward.
+; $1b (diffused chain out, bright, pre-tank) at 0.5x wet scale restores an
+; input-correlated component: the smeared CHAIN, not the deleted 6-tap ER
+; flutter. Same >>3 as the bloom ($1b is also 4x $15's scale). Mono on both
+; sums = a centered, forward image, which is what "forward" means here.
+; R18: the DRIVEN lines return to the sums at HALF weight -- l3 to L, l7 to
+; R. This is the "primary tone forward" fix that survived the ear round: the
+; bloom at >=1x fluttered on plucked transients (AP pulse train), the raw
+; chain tap ($1b) was the archived stutter; the driven lines are DENSE, carry
+; the note directly, and ring with the tank's own decay. Half weight keeps
+; most of the R13 swell (the other six lines still fill by recirculation).
+        move    x:(r7+$19),b            ; line 3 (driven)
+        asr     #$1,b,b
         add     b,a
         move    a,x:(r7+$2d)            ; wet L
         move    x:(r7+$16),a
@@ -2697,7 +2752,10 @@ tankend:
         move    x:(r7+$3c),x0           ; line 6
         sub     x0,a                    ; (l7 excluded)
         move    x:(r7+$08),b            ; same bloom on R
-        asr     #$3,b,b
+        asr     #$3,b,b                 ; 0.5x, as L
+        add     b,a
+        move    x:(r7+$3d),b            ; line 7 (driven), R side -- split
+        asr     #$1,b,b                 ; l3/l7 keeps the image wide
         add     b,a
         move    a,x:(r7+$2e)            ; wet R
 
@@ -2889,28 +2947,36 @@ tankend:
 ; c = 0.35 -> corner ~2.7 kHz. It sits BEFORE the shift, so it lands ~5.4 kHz
 ; on the way out, and below the SR/4 the decimation folds about: this is the
 ; anti-alias filter and the shimmer path's HF rolloff doing one job twice.
-        move    x:(r7+$25),a            ; MONO WET SUM ($25 = M from prev sample).
-; $25 is (wet_L + wet_R)/2, the raw tank output before WIDTH and MIX. It was
-; computed at the end of the previous sample, so it includes every previous
-; shimmer contribution that has circulated through the delay lines. Reading it
-; here puts the shifted signal back into $15 -- which flows through the tank,
-; appears in the next wet sum, and is shifted AGAIN. That IS the cascade.
+        move    x:(r7+$08),a            ; BLOOM BRANCH (R18): single-octave feed.
+; $08 is the diffused input through the two long bloom allpasses (41/29 ms,
+; g=.867, ~600 ms ring) -- dense and smeared like a wet sum, but with ZERO
+; shimmer recirculation, because the shimmer's own output re-enters the tank
+; downstream of it. One shift, +12 only: the Valhalla Shimmer reference runs
+; feedback=0 / pitch single, and R17 measured our cascade ($25 = prev wet sum,
+; re-shifted every pass) regenerating splice-HF into a harsh 6-9k shelf that
+; no pre- or post-filter could remove. Reading $08 removes the cascade at the
+; source. The +24/+36 climb goes with it -- deliberate, it was the harshness.
 ;
-; Cross-core tracks feed the reverb bus accumulator into the tank. They appear
-; in $25 the same way local tracks do, so this one-register change also solves
-; the cross-core shimmer limitation ($6a was pre-bus, local-only).
+; Cross-core tracks reach the bus accumulator, which feeds the input chain
+; upstream of the diffusers, so they appear in $08 like local tracks do --
+; the cross-core property of the $25 feed is kept.
 ;
-; $15 flutter note (archived): the diffuser-smear stutter was real, but it was
-; specific to reading $15 directly. $25 is post-tank, smoothed by the delay
-; line integration -- the echo-train structure is gone by the time the signal
-; reaches the wet sum.
-        asr     #$2,a,a                 ; -12 dB, matching the attenuation $15
-                                        ; already carries, so SHMR's range is
-                                        ; unchanged by the move
+; $15 flutter note (archived): reading $15 directly stuttered (echo-train
+; structure). $08 is $15's material AFTER the bloom APs' 600 ms smear, which
+; is the same integration argument that made $25 usable.
+        asr     #$2,a,a                 ; -12 dB: $08 is raw chain scale, 4x
+                                        ; hotter than $15 (see the bloom-sum
+                                        ; >>3), so SHMR's range is unchanged
         move    x:(r7+$4e),b            ; previous filter output
         sub     b,a
         move    a,x0
-        move    #>$2ccccd,y1            ; c = 0.35
+        move    #>$399999,y1            ; c = 0.45 (R18; was 0.35). Corner ~4.2k
+                                        ; -> ~8.4k post-shift = the Valhalla
+                                        ; ref's 8 kHz high cut. Safe to open now
+                                        ; the cascade is gone: R17 measured this
+                                        ; filter useless against cascade HF
+                                        ; because splice noise REGENERATED
+                                        ; downstream of it every pass.
         mpy     x0,y1,a
         add     b,a                     ; y = y_prev + c*(x - y_prev)
         move    a,x:(r7+$4e)
@@ -2929,8 +2995,34 @@ tankend:
 ; is line-0's LFO offset ALREADY x MOD depth, so the MOD knob scales the
 ; shimmer chorus alongside the tank wobble -- one "movement" control. Only the
 ; READS move; the buffer write above used the true (unmodulated) phase.
+; R18: the wobble is now SUB-SAMPLE. The R17 form used only the INTEGER
+; offset asr #2 -- quantized to whole buffer words, and a word is TWO samples
+; (decimated write), so every wobble step was a 2-sample splice, ~hundreds a
+; second, spraying zipper hash straight into the 6-9k band the Valhalla ref
+; is clean in. The tank lines dodge exactly this with their paired fractions
+; ($21/$22 -- the pairing rule); the shimmer heads now do the same: integer
+; word offset into the phase, fractional word remainder into $38 for the
+; heads' interpolated reads below.
+;
+; frac_words(Q23) = ($21 & 3)*0.25  +  ($22 sample-fraction)/4
+; -- both non-negative, sum <= $7fffff exactly, no carry possible.
+; A2 note: the `and` leaves a2 untouched, but $21 is 0..126 so a2 is 0 and
+; stays CONSISTENT with the positive a1 -- not the stale-extension trap; the
+; asl #21 keeps a1 < 2^23 so nothing reaches a2 either.
+;
+; (A per-head wobble from a second LFO was tried and measured WORSE -- crest
+; 34.7 -> 38.2 -- every window crossfade hands off between two mismatched
+; phases. A shared second LFO at half depth measured null. Both retired.)
         move    x:(r7+$21),a           ; line-0 LFO offset (x MOD depth)
-        asr     #$2,a,a                ; scale to the shimmer's wobble depth
+        move    #>$3,x0
+        and     x0,a                   ; sub-word bits of the sample offset
+        asl     #$15,a,a               ; ($21 & 3) << 21 = x0.25 in Q23
+        move    x:(r7+$22),b           ; the paired interpolation fraction
+        asr     #$2,b,b                ; samples -> words
+        add     b,a
+        move    a,x:(r7+$38)           ; word fraction, Q23 ($38: freed R17)
+        move    x:(r7+$21),a
+        asr     #$2,a,a                ; integer word offset, 0..31
         move    a1,x0
         move    x1,a
         add     x0,a
@@ -2982,21 +3074,50 @@ shr0:                                   ; a pure triangle would dip to zero
 ; ramp meets the flat top AND the silent zone with ZERO slope -- that removes
 ; the crossfade-corner discontinuities that inject the +-110 Hz sidebands,
 ; WITHOUT widening the overlap (which comb-filters the octave away). ~10c.
+;
+; R18 BUG FIX: R17 parked g^2 in X1 here -- but x1 still holds the MODULATED
+; PHASE, which head 1 reads as its position. Every time head 0 took this ramp
+; path, head 1's read position became g^2-garbage at up to full window gain:
+; periodic bursts of mispositioned reads, found by disassembling the region
+; (the register lifetime is invisible in a per-instruction check). g^2 parks
+; in $14 (per-sample scratch) instead. Head 1's own smoothstep below keeps
+; x1 legitimately -- the phase is dead once head 1's position is computed.
         move    a,x0                    ; g
         move    a,y1                    ; g
         mpy     x0,y1,a                 ; g^2  (mpy x0,y1 = signed)
-        move    a,x1                    ; save g^2
+        move    a,x:(r7+$14)            ; park g^2 -- NOT x1 (see above)
         move    #>$7fffff,a
         sub     x0,a                    ; 1 - g
         move    a,y1                    ; 1 - g
-        move    x1,x0                   ; g^2
+        move    x:(r7+$14),x0           ; g^2
         mpy     x0,y1,a                 ; g^2*(1-g)
         asl     #$1,a,a                 ; 2*g^2*(1-g)
-        add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
+        add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
 shd0:
-        move    a1,y1                   ; g0
-        move    y:(r5+n5),a             ; tap 0
+; R18: interpolated read -- tap = t0 + frac*(t1 - t0), frac from $38. b is
+; free until it takes the head's contribution, so the gain parks there. $14
+; is per-sample scratch (the bloom APs are done with it by now). The mpy
+; orientation is x0 = (t1-t0) SIGNED, y1 = frac -- mpy x0,y1 encodes signed
+; (the audited form); never put the possibly-negative difference second.
+        move    a1,b                    ; park g0
+        move    y:(r5+n5),a             ; t0
+        move    a,x:(r7+$14)
+        move    n5,a
+        move    #>1,x0
+        add     x0,a
+        move    #>$7ff,x0
+        and     x0,a                    ; pos0 + 1, wrapped
+        move    a1,n5
+        move    y:(r5+n5),a             ; t1
+        move    x:(r7+$14),x0
+        sub     x0,a                    ; t1 - t0
         move    a1,x0
+        move    x:(r7+$38),y1           ; frac
+        mpy     x0,y1,a                 ; frac*(t1-t0)  (signed x frac)
+        move    x:(r7+$14),x0
+        add     x0,a                    ; interpolated tap 0
+        move    a1,x0
+        move    b,y1                    ; g0 back
         mpy     x0,y1,a
         move    a,b                     ; b = head 0's contribution
 
@@ -3045,10 +3166,30 @@ shr1:                                   ; a pure triangle would dip to zero
         asl     #$1,a,a                 ; 2*g^2*(1-g)
         add     x1,a                    ; s = g^2 + 2*g^2*(1-g)
 shd1:
-        move    a1,y1                   ; g1
-        move    y:(r5+n5),a             ; tap 1
+; R18: interpolated read, head 1. b carries head 0's contribution, so g1
+; stays in y1 and frac rides y0 -- the write index y0 held is DEAD once this
+; head's age is computed (nothing below reads it). mpy x0,y0 assembles as
+; MPYSU (the CLAUDE.md trap): SAFE here and only here because y0 = frac is
+; strictly non-negative -- the audited-family argument. The signed difference
+; is in x0, the first (signed) operand. DISASSEMBLED AND CHECKED.
+        move    y:(r5+n5),a             ; t0
+        move    a,x:(r7+$14)
+        move    n5,a
+        move    #>1,x0
+        add     x0,a
+        move    #>$7ff,x0
+        and     x0,a                    ; pos1 + 1, wrapped
+        move    a1,n5
+        move    y:(r5+n5),a             ; t1
+        move    x:(r7+$14),x0
+        sub     x0,a                    ; t1 - t0
         move    a1,x0
-        mpy     x0,y1,a
+        move    x:(r7+$38),y0           ; frac (write index in y0 is dead now)
+        mpy     x0,y0,a                 ; frac*(t1-t0) -- mpysu, y0 >= 0: safe
+        move    x:(r7+$14),x0
+        add     x0,a                    ; interpolated tap 1
+        move    a1,x0
+        mpy     x0,y1,a                 ; g1 * tap
         add     b,a                     ; the octave-up signal, g0+g1 ~= 1
 
 ; ---- back into the tank input -------------------------------------------

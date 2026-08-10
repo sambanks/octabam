@@ -1317,3 +1317,137 @@ evidence. Built as a top-half makeup so the knob's bottom half is untouched:
 
 **Ear pass: ✅ CONFIRMED on hardware, 10 Aug 2026 (R15 flash, tag 34) —
 Sam: "mix is great."** Cost 15 words (payload A at 163 free).
+
+## R18 — 10 Aug 2026: the Valhalla Shimmer gap (single-octave, lerp heads,
+## an R17 bug, and BIG's decay ceiling)
+
+Sam, with VallhallaShimmer refs on the same sources: "still much richer and
+energetic and modulated." The ref bounces (out/vv_ref/shimmer, settings
+screenshot alongside: mix .5, shift +12, FEEDBACK 0, diffusion .91, size .5,
+low cut 10, high cut 8k, mod .59/.30, PITCH SINGLE, bright) were mined for
+numbers first: dry extracted by aligned subtraction (alpha .75, so the
+bounces carry dry — all wet-vs-wet comparisons use the residual), 24-BIT
+loaders (the first hour of numbers was garbage int16 reads of Logic's 24-bit
+bounces — flat-white "ref spectra" were the tell).
+
+Measured gaps at R17-tag-36 baseline, wet vs wet (pad/stab, BIG T64 S64):
+MF tail decay -21 vs VV -8.3 dB/s; 6-9k body -8..-10 dB darker; 6-9k
+spectral crest (isolated towers over wash) 27-39 dB vs VV 15-20; 1-4k mod
+index .37-.45 vs .52-.54. Diagnosis in five parts, each verified by its own
+A/B render + gap re-measure:
+
+1. **CASCADE OFF (architectural, R17's deferred item).** The shifter now
+   reads the BLOOM branch ($08 -- diffused input through the two long APs,
+   zero shimmer recirculation, 600 ms smeared so the old $15 stutter has no
+   transient structure to stutter on) instead of the prev-sample wet sum
+   $25. One shift, +12 only, feedback=0 -- the ref's own topology. The
+   +24/+36 climb is gone WITH the 6-9k splice-HF it regenerated every pass.
+   Crest pad 38.6 -> 34.7 on this change alone.
+2. **SUB-SAMPLE HEAD READS.** The R17 chorus wobbled the heads by INTEGER
+   buffer words = 2-sample splices, hundreds/s of zipper right in 6-9k. The
+   heads now interpolate: frac_words = ($21&3)/4 + $22/4 (the tank's own
+   pairing rule applied to the shimmer), lerp t0+frac*(t1-t0) per head.
+   With the hash gone, 9-12k dropped 9 dB -- the "brightness" it faked is
+   off the books, which is what let the real levers below be sized.
+3. **R17 BUG, found by disassembling the region: head 0's smoothstep parked
+   g^2 in X1 -- the register holding the modulated phase head 1 reads as
+   its POSITION.** Every head-0 ramp pass sent head 1 to a garbage position
+   at up to full window gain. Fixed: g^2 parks in $14. (mpy audit of the
+   new code: signed mpy x0,y1 everywhere it must be; one mpysu x0,y0 with
+   frac in the unsigned slot -- non-negative by construction, audited-safe
+   family. Disassembled from the BUILT image this time, not the stock one.)
+4. **BIG's decay CEILING was the "less energetic" core.** md 0.60 was cut
+   from 2/sqrt(8) for "headroom" before the 1.1 norm proof existed; ceiling
+   measured ~-15 dB/s vs the ref's -8.3 (TIME barely moved it: 64->118 was
+   -21->-15.5). md -> $568000 = 0.67578: max $1e = 0.3376 < 1/sqrt(8), the
+   1.1 stability argument holds unchanged (radius <= 0.976, strictly <1 BY
+   NORM at every knob). T100 now lands -8.1 dB/s == the ref. Falsifier
+   rendered: -10 dB click, TIME=127 x SIZE {0,127}, SPEED=96 MOD=64 --
+   per-second envelopes (the only metric the retraction ledger trusts for
+   this) decay monotonically to the -103 dB floor, no growth. Two trap
+   notes from running it: a -26 dB click renders SILENT -- first blamed on
+   the 16-bit output floor, ❌ RETRACTED same session: it was the GATE=0
+   threshold bug (below); and the tail-to--60 metric printed "7.90 s" --
+   the retraction ledger's own divergence number, here a genuine tail, but
+   only the envelope says so. NOTE: the
+   whole BIG knob lengthens -- kit TIMEs for non-shimmer BIG re-map (old
+   T44 character now sits near T20-ish; TIME refit remains open in PLAN 1.3).
+5. **Tone opened toward the ref**: pre-shift one-pole c .35 -> .45 (~8.4k
+   post-shift, = the ref's high cut); BIG wet high-cut .523 -> .60 (~6.4k,
+   still under PLATE); BIG in-loop damping .8125 -> .90 (measured the
+   binding 6-9k lever -- the wet high-cut raise alone moved the band <1 dB).
+
+RETIRED along the way (both measured, neither shipped): per-head wobble
+from a second LFO (crest 34.7 -> 38.2 -- every window crossfade hands off
+between mismatched phases; per-head modulation is structurally wrong in a
+windowed 2-head shifter) and a shared second-LFO at half depth (null).
+
+**Where the numbers stand** (new engine, BIG T100 S96 MOD64 DIFF120, wet):
+decay -7.9..-8.1 vs ref -8.3/-8.4 (matched); mod index .515 vs .524
+(matched); 6-9k crest 32 vs 19.5 pad, 26 vs 15 stab (improved from 39/27,
+still the open item -- remaining towers are tank-modal + residual splice);
+body spectrum still bottom-heavy vs the ref above 4k (the ref's shifter
+path is bright by design; ours shifts the full-band bloom -- a shifter
+input HP needs a Y-table state slot, deferred until the ear asks).
+
+Program: payload A FREE 50 (was 104). Cycles: room for new work 827.
+make check green. NOT committed until Sam's ears pass the kit.
+
+**Ear kit** (out/vv_ab/shimmer, level-matched to the VV body rms, mono
+48k): {pad,stab,melody}_{VV,R18} + {pad,stab}_R17 (old engine at ITS best,
+T118). Listen for: (1) splice harshness on the stab tail -- R17's zingy
+6-9k vs R18 vs VV's wash; (2) sheen vs mud on the pad -- is R18's octave
+thick where VV's is airy (the deferred shifter-HP question); (3) movement
+-- does R18's chorus now breathe like VV; (4) does the long tail hold its
+energy (the md change) without ringing metallic.
+
+### R18 ear round -- the artifact hunt, and what actually shipped
+
+Stab first: tail "brilliant", but "their primary tone is much more forward
+... and goes for longer." Three levers tried IN THE WET SUMS for the
+forward primary, two retired by ear:
+
+- ❌ PRESENCE TAP ($1b raw diffuser chain into the sums): built, sounded
+  right on the stab, retired -- the archived $15-stutter warning applies to
+  its transient response, and it was never exonerated in the glitch hunt.
+- ❌ BLOOM RAISES (0.5x -> 1x/1.5x/2x, g 0.867 -> 0.91): stab loved them
+  ("length is perfect", "reaaly nice") -- and the melody FALSIFIED them:
+  "fast glitchy artifacts." Bisected by ear on 4 s snippets: presence off
+  -> still there; g back to 0.867 at 1.5x -> STILL THERE; level back to
+  0.5x -> gone. The bloom allpasses' impulse response is a sparse 41/29 ms
+  pulse train; above ~0.5x it reads as flutter on plucked transients at ANY
+  g. The bloom stays exactly at R13's voicing (0.5x, g=0.867).
+- ✅ DRIVEN LINES BACK IN THE SUMS at half weight (l3 -> L, l7 -> R, kept
+  split for width). Dense, input-correlated, rings with the tank's own
+  decay, no pulse train. Melody "clean", stab "yep good", pad "good, not
+  quite as forward but good enough if we have to meet in the middle."
+
+**GATE=0 BUG, found mid-hunt and FIXED**: the R16 gate's trigger threshold
+is 0.094 FS on the tank input, and GATE=0 merely set a 95 s hold -- it
+still needed ONE loud trigger to open. Quieter sources never opened it
+(a -12 dB melody rendered at -146 dB: SILENT), and material with a quiet
+opening got per-attack open/shut chops. GATE=0 now forces GCNT full +
+GLVL open every block: a true bypass. This also retracts the "16-bit
+floor" reading of the silent quiet-click renders (stability falsifier
+above -- the sweep itself, run at -10 dB, stays valid: the click DID
+open the gate).
+
+Hunt lessons, at protocol level: (1) the glitch was inaudible to every
+metric tried (click detector, HF flux, envelope jumps, linearity null --
+the null itself was invalidated by the gate bug) and was localized only by
+EAR-BISECTING 4-SECOND SNIPPETS -- cut the audio, not the lever list;
+(2) two naive linear resamples in the kit pipeline (48k source -> 44.1k
+render -> 48k kit) were a real, separate artifact Sam heard first -- kit
+files are now built at the render rate with a sinc-resampled source.
+
+**Final R18 stack** (tag 37): single-octave shimmer off the bloom branch;
+sub-sample interpolated heads; the R17 x1-clobber fix; BIG md 0.676 /
+damping 0.90 / wet high-cut 0.60; pre-shift LP 0.45; driven lines at 0.5x
+in the sums; GATE=0 bypass. Kit files: {stab,pad,melody}_R18i vs _VV in
+out/vv_ab/shimmer.
+
+**Verdicts (Sam), final kit:** stab "yep good"; melody "clean"; pad
+"good, not quite as forward but good enough if we have to meet in the
+middle." Open for next round: the pad's last bit of forwardness (a driven-
+line weight between 0.5 and 1, or per-mode), 6-9k crest still 32 vs VV
+19.5 on the pad, and the deferred shifter-input HP (Y-table state).
