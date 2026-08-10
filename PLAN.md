@@ -27,7 +27,7 @@ delay→reverb series topology).
 | Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
 | Delay | **`delay_server.asm` (514 words) has never knowingly executed on hardware or in any emulator** — payload B cannot boot in `dsp_host`. Prime suspect for the 9 Aug stall. Treat as unwritten until its first deliberate run |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, wet makeup gain, shimmer decision) |
+| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, ~~wet makeup~~ ✅ built 10 Aug pending ear, shimmer decision) |
 
 ⚠️ **10 Aug hardware findings:** (1) ✅ measured — **page-1 knobs publish
 and work; page-2 continuous slots do not** (SHMR/DIFF/WIDTH/PRE/→DEL pinned
