@@ -146,7 +146,7 @@ RENAMES = {
         (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
         (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
         (9, b"WIDTH"),          # slot 9 -> r6+$d low
-        (10, b"PRE"),           # slot 10 -> r6+$e knob
+        (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
         (11, b"-DEL"),          # slot 11 -> r6+$e low
     ],
     "SEND": [
@@ -167,7 +167,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # ambiguity this tag exists to prevent. 32 -> 33: the post-marker product
 # build (mapping documented, real names under SPEC). 33 -> 34: LFO roll
 # + wet makeup, the R15 flash.
-BUILD_TAG = b"34"
+BUILD_TAG = b"35"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -193,9 +193,9 @@ DEFAULTS = {
                                  # the good reverb.
                       (7, 2),    # MODE   BIG (was HALL before the 3-mode cut)
                       (8, 64),   # DIFF   mid
-                      (9, 127),  # WIDTH  full
-                      (10, 0),   # PRE    none
-                      (11, 0)],  # -DEL   off
+                      (9, 3),    # WIDTH  R16: 4-step select (0..3), 3 = wide
+                      (10, 0),   # GATE   off (ungated reverb)
+                      (11, 0)],  # -DEL   R16: 4-step send select (0..3), 0 off
     "SEND": [(0, 0), (1, 0)],
 }
 
@@ -248,12 +248,16 @@ ACTIVE_PARAMS = {
 # fields are eight-bit selects and take a small step count. Setting a
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SPEED  knob
+PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
-                                  9: 128,   # WIDTH  full knob
-                                  10: 128,  # PRE    knob
-                                  11: 128}} # -DEL   full knob
+                                  9: 4,     # WIDTH  R16: SELECT (companion $d-low
+                                            #        reads near-boolean at 128 on
+                                            #        hardware -- a small count
+                                            #        publishes; mono/narrow/norm/wide)
+                                  10: 128,  # GATE   knob (R16: was PRE)
+                                  11: 4}}   # -DEL   R16: SELECT (companion $e-low),
+                                            #        off/.25/.5/.75 send
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
@@ -578,19 +582,22 @@ def main():
             #   FILTER.Q         count 4  0x4003bc60 + 0x40046c28
             #   DELAY.TIME       count 128 0x4003c718 + 0        <- plain knob
             # Taking CHORUS.TAPS's pair, the control Sam named.
-            wr32(clone_P + 0x0ca + 7 * 4, 0x4003c718)
-            wr32(clone_P + 0x0fa + 7 * 4, 0x40047254)
+            # R16: WIDTH (9) and ->DEL (11) are now 4-step SELECTS too (the
+            # companion low-byte fields do not publish as smooth knobs on
+            # hardware), so they get the same stepped renderer -- otherwise a
+            # count-4 knob crams its four values into the first ~3% of travel.
+            for step_slot in (7, 9, 11):
+                wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
+                wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
             # 20 stepped params in stock FX2 (count < 128): every single one
             # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited
             # DARK's 0x400328e4 there, which is why it kept drawing as a plain
-            # knob even with the right formatter pair.
-            #
-            # Only slot 7 is touched. Slots 6 and 8 also carry a non-zero
-            # 0x12a and are working full-travel knobs on hardware, so a
-            # non-zero value is fine FOR A KNOB -- it is specifically stepped
-            # rendering that requires zero. Change one thing.
-            wr32(clone_P + 0x12a + 7 * 4, 0)
+            # knob even with the right formatter pair. Slots 9 and 11 already
+            # inherit 0x12a = 0 from DARK (its slots 9/11 are 0), so only slot 7
+            # needs zeroing -- but do all three explicitly, it is idempotent.
+            for step_slot in (7, 9, 11):
+                wr32(clone_P + 0x12a + step_slot * 4, 0)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array
             wr32(clone_P + 0x6a + idx * 4, 0)       # min 0

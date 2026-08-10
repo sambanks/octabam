@@ -106,7 +106,7 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # build_bus.py's MODE= override instead of driving the slot. WIDTH and ->DEL
 # have no such override and still need a flash to hear.
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 100),
-          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("PRE", 0)]
+          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("GATE", 0)]
 # SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
 # put an octave-up loop gain of ~0.13 into EVERY render -- Round 12 measured
 # it inflating the sustain of every band (PLATE MF -18.7 vs -22.8 dB/s

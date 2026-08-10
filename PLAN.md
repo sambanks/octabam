@@ -27,12 +27,15 @@ delay→reverb series topology).
 | Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | page-2 publish decision (fix path vs cut slots) → **BongDelay first deliberate run** → voicing residue (page-1 knob tuning, PLATE ear pass, TIME→decay refit, ~~wet makeup~~ ✅ ear-confirmed R15, shimmer decision) |
+| Next | **R16 built (tag 35): SHMR offset fix** — page-2 publish RESOLVED (works; SHMR just read the wrong slot). Flash R16 to confirm shimmer is reachable, then: companion-field selects (WIDTH/→DEL), voicing residue (page-1 tuning, PLATE ear pass, TIME→decay refit, DIFF/PRE/shimmer voicing) → BongDelay voicing |
 
-⚠️ **10 Aug hardware findings:** (1) ✅ measured — **page-1 knobs publish
-and work; page-2 continuous slots do not** (SHMR/DIFF/WIDTH/PRE/→DEL pinned
-at their deliberate defaults; MODE, a select, works). Decision open: fix
-the page-2 publish path vs cut dead slots. (2) Page-1 knob feel needs a
+⚠️ **10 Aug hardware findings:** (1) 🟡 **page-2 continuous slots (SHMR/
+DIFF/WIDTH/PRE/→DEL) reported as not publishing — NOW IN DOUBT.** A 10-Aug
+investigation cleared both the descriptor (byte-equal to working stock DARK)
+and the engine (responds to every value locally), and `DSP.md` §9 recorded
+these same knobs working by ear on 4 Aug. Reconfirm per-knob on the next
+flash before cutting slots or building a fix (protocol in step 2). Page-1
+knobs publish and work; MODE (a select) works. (2) Page-1 knob feel needs a
 **tuning pass** against the R13 engine (ranges/curves — Sam, 10 Aug).
 (3) MIX at 100% is much quieter than dry — inherent (wet spreads the same
 energy over seconds; the straight crossfade measured −7 dB) and now has
@@ -321,8 +324,61 @@ Done 9 Aug (this session) unless marked:
   everything looks live locally. This caused the old shimmer to run stuck
   half-on in every build anyone ever heard, and **it caps how many usable
   parameters any effect can have** — close it before designing a 12-knob
-  delay. Deliverable: a written per-slot on-unit test (drive each knob,
-  observe a slot-keyed audible change), executed during the flash trip.
+  delay.
+
+  ✅ **RESOLVED 10 Aug (R16): page-2 publish WORKS — the "doesn't publish"
+  finding was wrong.** On-unit reconfirm (Sam): MODE steps, PRE swooshes
+  (reaches the DSP), DIFF/WIDTH move but subtle, SHMR + →DEL silent. The
+  descriptor was never the problem (it is byte-equal to stock DARK's working
+  page-2 knobs). Two real issues surfaced instead, neither a publish gate:
+  - **SHMR read the wrong offset** (`$b`); the panel publishes slot 6 to
+    `$c`'s knob field. `$b`-only was dead on the unit while a local render
+    has an obvious +12 shimmer (octave-up −7.3→−1.1 dB, dominates the tail).
+    ✅ **R16 reads SHMR from `$c` knob OR'd with `$b`** — assembled, `make
+    check` green, local-verified; confirm on unit.
+  - ✅ **Companion low-byte fields → 4-step SELECTS (R16).** WIDTH
+    (mono/narrow/normal/wide) and →DEL (off/.25/.5/.75) now publish. Smooth
+    knobs there read near-boolean on hardware; selects are the page-2 budget.
+  - ✅ **DIFF works** (Sam confirmed audible).
+  - ✅ **PRE → replaced by GATE (R16).** PRE worked (clean 90 ms pre-delay,
+    proven) but 93 ms is buffer-capped and not worth a knob (Sam). The `$e`
+    slot is now **GATE — a gated reverb** (Phil-Collins slam): 0 = off, up =
+    hold time before the wet slams shut. Envelope keyed on the tank input,
+    fast attack + ~20 ms release, per-sample wet multiply. Voiced by ear
+    (Sam: release "perfect" between 15/25 → 20 ms). ~104 cycles, 914 spare.
+    The pre-delay was removed to free the r7 state slots ($29/$30/$62).
+
+  **R16 batch is flash-ready.** SHMR reachable + WIDTH/→DEL selects + GATE
+  (new gated-reverb feature). Remaining page-2 polish is voicing (shimmer
+  character — Sam: "sounds not good"), for after the flash confirms it.
+
+  ⚠️ **New DSP trap from the GATE work (now in CLAUDE.md):** a logical/asr
+  op on an accumulator leaves the extension byte stale, and the next
+  `move a,x:` SATURATES the store to full scale. A hand-rolled sign-mask
+  select pinned the gate open and disassembled correctly. Fix: use the
+  conditional-transfer ops (`tmi`/`teq`), which also keep the loop branch-free.
+
+  **Deliverable = the RECONFIRMATION PROTOCOL (execute on the next flash,
+  on a track confirmed to be ChonVerb — tracks 5–8):**
+  1. **MODE** (control; known-good select): step 0→1→2, hear ROOM→PLATE→BIG.
+     If MODE does nothing, the track isn't ChonVerb — stop and fix that.
+  2. **SHMR** (slot 6, `$b`): 0 → ~100. Expect a shimmering octave-up sheen
+     grow on the tail. (Default 0 = off, so this one MUST be turned up.)
+  3. **DIFF** (slot 8, `$d` knob): 0 → 127. Expect the tail's texture to go
+     from grainy/fluttery (low) to smooth/dense (high).
+  4. **WIDTH** (slot 9, `$d` low): 127 → 0. Expect the stereo image to
+     collapse to mono. (Default 127, so turn it DOWN.)
+  5. **PRE** (slot 10, `$e` knob): 0 → 127. Expect a growing pre-delay gap
+     (0→~93 ms) between the dry transient and the reverb onset — clearest on
+     a percussive source, wet-only.
+  6. **→DEL** (slot 11, `$e` low): 0 → 127 with a delay also on the bus.
+     Expect dry signal to start feeding the BongDelay send.
+
+  Each of 2–6 is confirmed working LOCALLY (dsp_host, 10 Aug). If any is
+  inert on the panel while MODE works, THAT slot's panel→shared-RAM publish
+  is the isolated failure — then, and only then, build the panel probe
+  (`PARAM_PAGES.md` §3 groundwork). If all move, the 10-Aug finding is
+  retracted and this whole item closes.
 
 ### 3. BongDelay — the delay you can route
 
@@ -394,18 +450,24 @@ delivered most of the checklist. Status per item:
 3. 🟡 **`BURN=1` probe missed the trip but is UNBLOCKED** — the 10 Aug
    LFO roll freed the words and `verify_burn` passes again. FX1's cycle
    budget remains unmeasured until the next flash carries it.
-4. ✅→🟡 **Parameter-delivery protocol — MEASURED, 10 Aug:** the split is
-   exactly as §2 predicted. **Page-1 knobs (p0–p5) publish and work** (Sam:
-   "just need tuned" — that's a voicing item, not a delivery one). MODE
-   (page-2 *select*) was proven live 5 Aug. **Page-2 continuous slots do
-   not publish from the panel** — SHMR, DIFF, WIDTH, PRE, →DEL all pinned
-   at their defaults (the SHMR-stuck-at-48 mechanism). 🟡 remaining:
-   decide fix-the-publish-path (PARAM_PAGES §3's probe groundwork) vs cut
-   the dead slots — several are likely redundant post-R13 anyway, and the
-   defaults they pin at were chosen deliberately (DIFF 64, WIDTH 127,
-   PRE 0, SHMR 0, →DEL 0), so the engine is fully usable meanwhile.
-5. 🟡 **Shimmer depth publish** — SHMR is a page-2 continuous slot, so
-   presumed dead on the panel; folded into item 4's enumeration.
+4. 🟡 **Parameter-delivery — 10-Aug finding CHALLENGED, 10 Aug.** The trip
+   reported page-2 continuous slots (SHMR/DIFF/WIDTH/PRE/→DEL) pinned at
+   defaults, MODE (a select) working — read as "the §2 split confirmed."
+   A same-day investigation could not reproduce any gate: the cloned
+   descriptor is byte-for-byte equal to **stock DARK REV's** working page-2
+   knobs (count 128, `P+0x12a`=0x40032814, enable 1); the DSP engine
+   responds to every page-2 value poked into r6 (dsp_host sweeps); the read
+   code is unchanged since 4 Aug; and `DSP.md` §9 recorded these five knobs
+   "confirmed by ear and eye" on 4 Aug — a direct contradiction. Both
+   descriptor-level fix-theories (`0x12a`, count) are falsified by stock.
+   **Page-1 knobs publish and work** (Sam: "just need tuned" — voicing, not
+   delivery). 🟡 remaining: **reconfirm per-knob on the next flash** (step 2
+   protocol) — do NOT cut slots or build a publish-fix until then. Most
+   likely the 10-Aug observation was a misread from the chaotic trip.
+5. 🟡 **Shimmer depth publish** — SHMR is a page-2 continuous slot; its
+   panel publish is part of item 4's reconfirmation (turn SHMR up from its
+   default of 0). Shimmer itself is the proper v3 and in by default, so if
+   SHMR publishes there is nothing further to build.
 6. ✅ **Tag discipline restored** — BUILD_TAG was stuck at 31 across both
    working and dead flashes (exactly the ambiguity it exists to prevent,
    and it cost this trip a session); now 33, bumped per wrap. Card

@@ -32,6 +32,20 @@ for a new `mpy` whose second operand can go negative. A related family bit
 us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only
 the C bit while `blt` tests N^V.
 
+**A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
+extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
+scale.** Building a sign mask with `move a,b / asr #$17,b,b / not b` and
+storing the result writes `0x7FFFFF`, not the bits you computed — the
+store's limiter sees A2 inconsistent with A1's sign and clamps. This cost a
+long session on the gated-reverb envelope: a branchless mask-select looked
+correct and disassembled correctly but pinned the gate open, because every
+masked value saturated on store. **Fix: don't hand-roll sign masks. Use the
+conditional-transfer ops** — `tmi x0,a` (floor to 0 if negative), `teq x0,a`,
+`tpl`/`tge` — which move a CLEAN register into the accumulator, so no A2
+staleness. A plain `move #imm,reg` does NOT disturb the condition codes, so
+the `sub`/`tst` that sets the flag survives to the Tcc. (This is also why the
+sample loop stays branch-free: Tcc replaces the branch AND avoids the trap.)
+
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
 `warmz` assembled to

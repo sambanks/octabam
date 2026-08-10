@@ -95,14 +95,20 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
 | 1 | 5 | MIX | `r6+$5` | dry held to half-travel, then crossfaded (see below) |
-| 2 | 6 | SPEED | `r6+$b` | LFO rate, ~0.13–1.9 Hz |
+| 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (R16: reads `$c` knob field OR'd with `$b` — `$b` alone was silent on hardware, DSP.md §9) |
 | 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG (HALL cut 9 Aug 2026 — indistinguishable from BIG in blind A/B) |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
-| 2 | 9 | WIDTH | `r6+$d` low | mid/side, 0 = mono |
-| 2 | 10 | PRE | `r6+$e` knob | pre-delay, 0–93 ms |
-| 2 | 11 | -DEL | `r6+$e` low | dry send into the DELAY bus (`BUS.md`) |
+| 2 | 9 | WIDTH | `r6+$d` low | R16: **4-step select** (mono/narrow/normal/wide). Companion low-byte fields read near-boolean at count 128 on hardware, so smooth-knob WIDTH was dead — a small count publishes |
+| 2 | 10 | GATE | `r6+$e` knob | R16: **gated reverb** (Phil-Collins slam). 0 = off; up = hold time (~46 ms–780 ms) before the wet slams shut. Envelope keyed on the tank input ($1b, so sends trigger it), fast attack + ~20 ms eased release, applied as a per-sample multiply on the wet L/R. Replaced PRE (pre-delay was buffer-capped at 93 ms, not worth a knob) |
+| 2 | 11 | -DEL | `r6+$e` low | R16: **4-step send select** (off/.25/.5/.75) into the DELAY bus (`BUS.md`) — companion field, same reason as WIDTH |
 
-**Five of the six page-2 controls are full-travel knobs**, including two in
+**Page-2 budget (R16): three smooth knobs + three selects.** The three knob
+fields (`$c` SHMR, `$d` DIFF, `$e` PRE) publish as full-travel knobs; the three
+companion fields (`$c` mid MODE, `$d` low WIDTH, `$e` low →DEL) publish only as
+small-count selects — a smooth knob in a companion field reads near-boolean on
+hardware. This is the actual page-2 control budget.
+
+**(Historical note) five of the six page-2 controls are full-travel knobs**, including two in
 *companion* fields. `DSP.md` §9 used to say the budget was three knobs plus
 three small selects; that was inferred from stock's usage, and hardware
 falsified it. Only MODE is deliberately stepped.

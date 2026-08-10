@@ -1572,23 +1572,17 @@ mixset:
         move    a,x:(r7+$70)            ; dry gain
 
 ; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
-; Moved off slot 8 ($d's knob field) so DIFFUSION can have it. A companion
-; field carries a plain 0..127 integer in the low bits, not a left-aligned
-; knob, so it is masked and shifted UP to knob scale. DSP.md section 9: all
-; six page-2 slots reach the DSP with a full 0..127 range -- measured, and it
-; took seven probe builds, so do not re-derive it.
+; R16: a 4-STEP SELECT, not a knob. Hardware (10 Aug) showed the companion
+; LOW-byte fields read near-boolean at count 128 -- a smooth knob here was
+; dead on the unit. A small count publishes (MODE, a companion select, works),
+; so ->DEL is now count 4: the panel sends a plain index 0..3 in the low bits.
+; asl #$15 maps it 0/0x200000/0x400000/0x600000 = off / .25 / .5 / .75, a
+; clean power-of-two step with no overflow (index 3 -> 0x600000 < full).
         move    x:(r6+$e),a
-        and     #>$7f,a                 ; 0..127 in the companion field. The
-                                        ; 8-step restriction is gone: what made
-                                        ; this control unusable was the
-                                        ; inherited DISPLAY FORMATTER, not the
-                                        ; value count, and with that zeroed it
-                                        ; draws as an ordinary knob. $7f, not
-                                        ; $ff, so a stale byte cannot exceed
-                                        ; full scale after the shift.
-        move    a1,x0                   ; AND cleans A1 only
+        and     #>$7f,a                 ; select index 0..3 (companion low byte)
+        move    a1,x0
         move    x0,a
-        asl     #$10,a,a                ; left-align like a knob
+        asl     #$15,a,a                ; index -> send level, 0 / .25 / .5 / .75
         move    a,x:(r7+$69)
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
@@ -1599,14 +1593,15 @@ mixset:
         mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
         move    a,x:(r7+$28)            ; its full range inside each character
 
-; ---- WIDTH: 0 = mono, 127 = full stereo -- slot 9, $d's LOW bits (v92) --
-; Moved off slot 6 so MOD SPEED can have it. Same companion-field handling as
-; ->DELAY above.
+; ---- WIDTH: mono .. wide -- slot 9, $d's LOW bits (v92) -----------------
+; R16: a 4-STEP SELECT, like ->DELAY above (companion low-byte fields do not
+; publish as smooth knobs -- hardware 10 Aug). Panel sends index 0..3; asl #$15
+; maps it 0 / .25 / .5 / .75 = mono / narrow / normal / wide. Default 3.
         move    x:(r6+$d),a
-        and     #>$7f,a                 ; 0..127, as above
+        and     #>$7f,a                 ; select index 0..3 (companion low byte)
         move    a1,x0
         move    x0,a
-        asl     #$10,a,a                ; mono .. full stereo
+        asl     #$15,a,a                ; index -> width: mono / .25 / .5 / .75
 ; WIDTH_OVERRIDE
         move    a,x:(r7+$2c)
 
@@ -1675,8 +1670,20 @@ mixset:
 ; inside the sample loop: r6 is the PRE-DELAY POINTER in there (y:(r6+n6)), not
 ; the parameter block, so x:(r6+$b) in the loop reads whatever the pre-delay
 ; buffer happens to be near. That cost a debugging round.
-        move    x:(r6+$b),a             ; SHMR amount, value<<16
-        and     #>$7f0000,a
+; SHMR amount, value<<16. Read from BOTH $c's knob field and $b, OR'd.
+; The page-2 probe (v7, DSP.md section 9) found display-slot 6 lands in
+; $c bits 16-22 (the knob field); MODE uses $c's mid byte ($ff00), so the
+; knob field is free. The old read used $b alone, on that section's softer
+; "slot 6 also appears at $b" note -- which hardware FALSIFIED 10 Aug 2026:
+; SHMR was silent on the unit (Sam, A/B'd against a local render that has
+; audible +12 shimmer). Only one field is populated by the panel, so OR'ing
+; the two is robust to which one it actually is, at ~3 words.
+        move    x:(r6+$c),a
+        and     #>$7f0000,a             ; $c knob field (probe's primary finding)
+        move    a1,x0
+        move    x:(r6+$b),a
+        and     #>$7f0000,a             ; $b (the old read; kept as fallback)
+        or      x0,a                    ; combine: whichever the panel filled
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #>$600000,y1            ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)
@@ -1708,55 +1715,32 @@ mixset:
         mpy     x1,y1,a                 ; its full range inside each character, the
         move    a,x:(r7+$2f)            ; same shape as MOD depth and damping.
 
-; ---- PRE: pre-delay in samples, 0 .. 4064 (93 ms) -----------------------
-; v * 32 since the 32K re-layout doubled PRE_LEN to 4096 (it was v * 16 into
-; a 2048-word buffer, 0..46 ms). The scale MUST keep this below PRE_LEN: the
-; read is y:(r6+n6) under m6 modulo, and a modulo offset larger than the buffer is
-; undefined on the DSP56300. It does not wrap -- the read returns nothing, the
-; tank gets no input, and the reverb goes completely silent.
-;
-; THE SLOT IS $c, NOT $e. v58 read $e, the pre-delay was inaudible on
-; hardware and did not respond to the knob, and stock DARK says why:
-;
-;   $e is a FLAG word -- stock does `move x:(r6+$e),a / btst #$8,a` at
-;   P:0x173c and P:0x1a0d and branches on it. A knob arrives as
-;   value<<16, so bit 8 is always clear and `asr #$c` of it is 0: a
-;   one-sample pre-delay, forever, whatever the knob does.
-;   $c is stock's own PRE. At P:0x17d4 it does exactly what this code
-;   does: mask the knob field, scale it, set m5 = $7ff (the same 2048
-;   modulo), back a pointer up by the offset, read delayed / write
-;   input, and persist the pointer in its own r7 slot.
-;
-; Stock's scale is `mpy #$7f0 / add #$10` = v*~16 + 16, max 2031 -- our
-; v*16 (max 2032) was the same ramp, so only the slot was ever wrong; the
-; re-layout doubles it to v*32 to reach the end of the bigger buffer.
-; The mask is stock's too: the slot can carry bits outside the knob
-; field, and asr alone would drag them into the sample count.
-; SLOT MOVED $c -> $e. Measured with dsp/page2_probe.asm on hardware: page-2
-; display slots drive $b (slot 6), $d (slot 8) and $e (slot 10) -- and NOTHING
-; drives $c. Stock DARK reads its own pre-delay from $c, which is why earlier
-; builds read it here, but no page-2 knob can reach $c, so PRE was dead by
-; construction. $e carries a full 0..127 knob value (the probe's slot-10 test
-; triggered on it), so PRE lives there now. See DSP.md section 9.
+; (PRE-DELAY retired here in R16 -- see the GATE block below and the removal
+; note at the old in-loop read. $e slot 10 is GATE now. The historical
+; pre-delay reasoning -- $c-vs-$e slot, the modulo read -- lives in git.)
+; ---- GATE: gated-reverb HOLD time -- page-2 slot 10 ($e knob), R16 -------
+; Replaces PRE (pre-delay was buffer-bound at 93 ms, not worth a knob). The
+; $e knob is the HOLD: how long the wet stays open after an input transient
+; before it slams shut. hold = 2048 + val*256 samples (val 0..127 -> ~46 ms
+; .. ~780 ms). GATE=0 stores a huge hold so the gate, once opened, never
+; closes -- an ordinary ungated reverb. Per-sample state lives in the slots
+; the pre-delay freed: $29 = GHOLD (hold length), $30 = GCNT (hold counter),
+; $62 = GLVL (smoothed 0..1 gate level). The envelope is updated per sample
+; at the tank-input point (keyed on $1b, so it triggers on the bus/send input
+; too, not just this track's own dry); the wet is multiplied by GLVL at the
+; output stage.
         move    x:(r6+$e),a
-        and     #>$7f0000,a             ; knob field only, as stock does
-        asr     #$b,a,a                 ; v*32 (was #$c, v*16)
-        move    a,x:(r7+$29)
-        move    #>$1,x0                 ; the read happens BEFORE the write, so
-        add     x0,a                    ; the offset is -(PRE+1): at PRE=0 that
-        neg     a                       ; is one sample, not a whole buffer of
-        move    a,n6                    ; staleness
-        move    a,x:(r7+$62)            ; ...and stash for the tank input below
-                                        ; now use n6 as their own index, so
-                                        ; the pre-delay reloads it each sample
-        move    x:(r7+$83),a            ; the same counter again
-        move    #>$fff,x0               ; phase is 0..4095 now, and the
-        and     x0,a                    ; pre-delay buffer is 4096 to match
-        move    a1,x0                   ; A2-clean here too: same garbage, same
-        move    x0,a                    ; saturation, same bus hang
-        move    x:(r7+$38),x0
-        add     x0,a
-        move    a,x:(r7+$30)            ; NOT $6d: the width matrix uses that
+        and     #>$7f0000,a             ; knob field, val<<16
+        asr     #$8,a,a                 ; -> val*256 samples
+        tst     a
+        beq     g_off                   ; GATE=0 -> ungated
+        move    #>2048,x0
+        add     x0,a                    ; 2048 + val*256
+        bra     g_st
+g_off:
+        move    #>$400000,a             ; ~4.19M samples ~= 95 s: never closes
+g_st:
+        move    a,x:(r7+$29)            ; GHOLD
 
 ; ---- EIGHT INDEPENDENT LFOs, one per tank line --------------------------
 ; v72. Before this, ONE phase accumulator produced a triangle and its
@@ -2265,6 +2249,46 @@ lfrol:
         move    x:(r7+$1b),a
         add     b,a
         move    a,x:(r7+$1b)            ; own dry + scaled bus, feeding the tank
+
+; --- GATE envelope (R16), BRANCHLESS AND FLAG-INDEPENDENT. The sample loop
+; must stay straight-line (branches in a do-loop can hang the DSP), and rather
+; than trust `move` to preserve the condition codes for a Tcc, every choice is
+; made with a SIGN MASK (asr #$17 fills a word with its sign bit) and an
+; XOR-select. Keyed on the full tank input ($1b), so it fires on the bus/send
+; drive, not just this track's own dry. a/b/x0/x1/y0 are reloaded downstream.
+; A. countdown, floored at 0 (Tcc keeps the accumulator clean -- a logical
+;    sign-mask leaves A2 inconsistent and the store limiter saturates it):
+        move    x:(r7+$30),a            ; GCNT
+        move    #>$1,x0
+        sub     x0,a                    ; GCNT - 1  (sets N)
+        move    #>0,x0
+        tmi     x0,a                    ; if < 0, floor to 0
+        move    a,x1                    ; counted-down candidate
+; B. retrigger: if |input| >= threshold, GCNT := GHOLD (else the countdown).
+;    A `move` does not touch the condition codes, so the sub's N reaches tmi.
+        move    x:(r7+$1b),a            ; full tank input (bus/send too)
+        abs     a
+        move    #>$0c0000,x0            ; threshold ~0.094
+        sub     x0,a                    ; N = 0 (plus) when triggered
+        move    x:(r7+$29),a            ; GHOLD
+        tmi     x1,a                    ; NOT triggered -> counted-down
+        move    a,x:(r7+$30)            ; GCNT
+; C. target = FULL if GCNT > 0 else 0:
+        tst     a                       ; Z = (GCNT == 0)
+        move    #>$7fffff,a             ; FULL
+        move    #>0,x0
+        teq     x0,a                    ; GCNT == 0 -> target 0
+; D. one-pole smooth toward target -- the slam ramp:
+        move    x:(r7+$62),b            ; GLVL
+        sub     b,a                     ; delta = target - GLVL  (N=1 if closing)
+        move    a,x0                    ; delta
+        move    #>$020000,a             ; ATTACK coeff ~1.4 ms -- fast, keeps the
+        move    #>$002500,x1            ; bloom's punch; RELEASE coeff ~20 ms
+        tmi     x1,a                    ; delta<0 (closing) -> ease with release
+        move    a,y0                    ; the moves above don't touch N, so tmi
+        mpy     y0,x0,a                 ; sees the sub's flag. coeff * delta
+        add     b,a
+        move    a,x:(r7+$62)            ; GLVL += coeff*(target - GLVL)
         move    x:(r7+$63),a
         move    #>$1,x0
         add     x0,a
@@ -2314,15 +2338,12 @@ lfrol:
 ; pre-delay base once per CALL (in the PRE setup, A2-cleaned there), and
 ; the running pointer is saved back per sample, so the two sub-blocks of a
 ; split block continue each other exactly.
-        move    x:(r7+$30),r6           ; r6, not r5: the allpasses own r5 now
-        move    x:(r7+$1b),a            ; input, and fills the AGU slot
-        move    #>$1,n0
-        move    x:(r7+$62),n6           ; pre-delay offset back
-                                        ; below borrow n6 every sample)
-        move    y:(r6+n6),b             ; delayed
-        move    a,y:(r6)+               ; write, and advance
-        move    r6,x:(r7+$30)
-        move    b,x:(r7+$1b)            ; delayed input -> the diffuser
+; PRE-DELAY REMOVED (R16): the pre-delay maxed at 93 ms (buffer-bound), not
+; enough to justify a page-2 knob, so PRE is retired and its $e slot becomes
+; GATE (gated-reverb hold). $1b already holds "own dry + scaled bus" from the
+; input sum above, so the diffuser below reads the (undelayed) input directly.
+; Freeing $29/$30/$62 gives the gate its three state slots.
+        move    #>$1,n0                 ; n0 = 1, as the removed block set it
 
 ; ---- EARLY REFLECTIONS: REMOVED (9 Aug 2026) ------------------------------
 ; Six discrete taps summed onto the output IS a flutter echo by construction
@@ -3295,7 +3316,10 @@ fbB:
         move    a,x0
         mpy     x0,y1,a                 ; * (wgain/2)
         asl     #$1,a,a                 ; wet makeup: doubled in full precision
-        move    a,x:(r7+$71)            ; stash the wet half
+        move    a,x0                    ; GATE: scale the wet by the gate level
+        move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
+        mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
+        move    a,x:(r7+$71)            ; stash the (gated) wet half
         move    x:(r0),x0               ; dry
         move    x:(r7+$70),y0           ; dry gain -- y0 is free here, y1 must
         mpy     x0,y0,a                 ; keep holding MIX for the R channel
@@ -3308,6 +3332,9 @@ fbB:
         move    a,x0
         mpy     x0,y1,a
         asl     #$1,a,a                 ; wet makeup, right channel
+        move    a,x0                    ; GATE: same gate level on the right
+        move    x:(r7+$62),y0           ; GLVL
+        mpy     y0,x0,a                 ; wet * gate
         move    a,x:(r7+$71)            ; same crossfade on the right
         move    x:(r0+n0),x0
         move    x:(r7+$70),y0

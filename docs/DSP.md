@@ -1137,6 +1137,15 @@ and two wrong guesses, so the reasoning matters as much as the table:
 8-15 — different fields, so both are independently usable. Slot 6's value also
 appears at `$b`, so an effect may read it from either.
 
+> ⚠️ **The "also appears at `$b`" clause is FALSIFIED on hardware, 10 Aug
+> 2026.** ChonVerb read SHMR from `$b` alone and it was **dead silent on the
+> unit** (Sam, A/B'd against a local render with clearly audible +12 shimmer:
+> octave-up rises from −7.3 to −1.1 dB and dominates the tail). The knob does
+> publish — MODE (`$c` mid) and PRE (`$e` knob) both respond on the panel —
+> so slot 6 lands in `$c`'s **knob field** as the primary finding says, NOT at
+> `$b`. R16 reads SHMR from `$c` knob field OR'd with `$b` (robust to either),
+> pending on-unit confirmation. Do not rely on `$b` for a page-2 knob.
+
 > **CORRECTED 4 Aug 2026, on hardware: all six can be full-range knobs.**
 > The "three knobs plus three companion selects" split below was inferred from
 > how *stock* uses the fields, and it is not a hardware limit. ChonVerb runs
@@ -1152,6 +1161,24 @@ appears at `$b`, so an effect may read it from either.
 > The decode below is still right — companion fields are read with a mask —
 > and the field/offset table above is still right. Only the *budget* claim was
 > wrong.
+>
+> ⚠️ **CONTRADICTION, OPEN as of 10 Aug 2026.** `PLAN.md`'s 10-Aug hardware
+> trip recorded the OPPOSITE of the 4-Aug "confirmed by ear and eye" above:
+> that page-2 continuous knobs (SHMR/DIFF/WIDTH/PRE/→DEL) "do not publish —
+> pinned at their defaults", MODE (a select) works. Both cannot be current.
+> A 10-Aug static + local investigation could not reproduce any gate:
+> (1) our cloned page-2 descriptor is byte-for-byte equal to **stock DARK
+> REV's** page-2 knobs (count 128, `P+0x12a`=0x40032814, enable 1), which
+> publish and work; both descriptor-level fix-theories (`0x12a` callbacks,
+> count=128) are falsified by stock working with those exact values.
+> (2) the DSP engine RESPONDS to every page-2 value when poked into r6
+> (dsp_host DIFF/SHMR/PRE sweeps give distinct output) — no r7 slot
+> collision. (3) the read code is UNCHANGED since 4–6 Aug. So descriptor and
+> engine are both correct, and the 10-Aug observation is most likely a
+> misdiagnosis from that chaotic trip (wrong tag, track↔core inversion).
+> **Do not act on either claim until the next flash reconfirms per-knob**
+> (turn each page-2 knob through its range on a known-ChonVerb track — the
+> protocol is in `PLAN.md` step 2).
 
 **Usable budget: six page-2 controls per effect** — three continuous knobs in
 the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion selects:
