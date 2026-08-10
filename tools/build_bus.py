@@ -182,7 +182,7 @@ DEFAULTS = {
     # DARK REV's value counts, not ours. And a default outside its own count
     # is used as an index -- that shipped once (slot 7: default 64, count 5)
     # and stalled the sequencer on hardware. verify_menu.py now checks it.
-    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 100), (5, 64),
+    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 127), (5, 64),
                       (6, 0),    # SHMR   OFF. This slot was SPEED (LFO rate)
                                  # and defaulted to 48; v101 renamed it to the
                                  # shimmer amount and never revisited the
