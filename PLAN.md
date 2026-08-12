@@ -906,6 +906,9 @@ each stage is a separate commit gated by `make check`):
      resets to 2048 + scatter and the lag ceiling subtracts 3072; at full
      SPRAY GRAIN's max TIME is ~116 ms. Select 0 pins every grain to +12,
      the nearest thing to the pre-split engine, kept reachable for A/B.
+   - ✅ **EAR PASS ON THE SPLIT, 13 Aug: "yeah it was good" (Sam).** The
+     direction is settled; GRAIN's mechanism is done. What remains on it is
+     voicing (defaults, set weighting, grain SIZE) and COST.
    - ⚠️ **GRAIN is now the most expensive thing in the project**: its path is
      488w + 1,119 of roll, taking the delay to **1,931 cycles/sample**. See
      the cycle ledger — it fits core 1 but the margin is gone, and the

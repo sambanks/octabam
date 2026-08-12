@@ -1592,8 +1592,12 @@ musical, and it was not in the set because it *could not be*.
 ### Where it stands
 
 Mechanically GRAIN is now a real granular: independent per-grain pitch,
-position, and on/off, with unison in the set. **Not yet ear-judged after the
-split.** Open voicing questions: where DENSITY and SPRAY should default,
+position, and on/off, with unison in the set. ✅ **EAR PASS ON THE SPLIT
+(13 Aug): Sam, "yeah it was good."** So the direction is settled and the
+grain core is done being redesigned — the remaining work on GRAIN is
+voicing and cost, not mechanism.
+
+Open voicing questions: where DENSITY and SPRAY should default,
 whether the interval set wants weighting toward unison rather than uniform
 draws, and grain SIZE — now a free parameter for the first time (it is one
 constant in the schedule step) with no page-2 slot left to put it on.
