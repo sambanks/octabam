@@ -233,6 +233,11 @@ def main():
         ("TIME=127 (16320 max)", dp(TIME=127), 0),
         ("FDBK=127 TONE=127 (long recirculation)", dp(FDBK=127, TONE=127), 0),
         ("defaults, split=7 (a=0/a=1 sub-block path)", dp(), 7),
+        # MIX=0 is the DRY PATH, and stage 5c turned MIX from an add into a
+        # crossfade. At 0 the two are identical by construction, so this case
+        # is what proves the change touched only the blend and nothing else
+        # -- the cases above it are EXPECTED to differ across that commit.
+        ("MIX=0 (dry path untouched by the crossfade)", dp(MIX=0), 0),
     ]
     for label, params, split in CASES:
         a = render(ref_mem, params, split, source)

@@ -1813,8 +1813,16 @@ gmode:
         move    a,x0                    ; state, 0 .. ~1.0 (always positive)
         move    x:(r7+$5c),y1           ; SPRAY
         mpy     x0,y1,a                 ; both operands non-negative
-        asr     #$d,a,a                 ; -> samples
-        and     #>$3ff,a
+        asr     #$a,a,a                 ; -> samples, THIRTEEN bits: SPRAY
+        and     #>$1fff,a               ; now spans 0..8191 (186 ms), not
+                                        ; 0..1023 (23 ms). 23 ms is a flam,
+                                        ; not a cloud -- the grains fused
+                                        ; into one transposed layer, which
+                                        ; is the second reason this did not
+                                        ; read as granular. Both widths are
+                                        ; musically useful (Sam), so the KNOB
+                                        ; spans them instead of a constant
+                                        ; choosing one
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7+$54)            ; candidate, line L
@@ -1828,8 +1836,8 @@ gmode:
         move    a1,x0
         move    x:(r7+$5c),y1           ; SPRAY
         mpy     x0,y1,a
-        asr     #$d,a,a
-        and     #>$3ff,a
+        asr     #$a,a,a                 ; same 13-bit field, line R
+        and     #>$1fff,a
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$55)            ; candidate, line R
@@ -2050,6 +2058,32 @@ grnbz:
                                         ; there is the shipping idiom (see
                                         ; bus_zclr above) and makes the loop's
                                         ; extent independent of what follows
+; ---- GRAIN's own lag base, and why it is not PITCH's --------------------
+; A head reads at lag + age + scatter, so a wider scatter needs a lower lag
+; ceiling to stay inside the 16384-word line. Deriving that ceiling FROM
+; SPRAY means the delay range is spent only when the scatter is actually
+; turned up: at SPRAY=0 GRAIN keeps very nearly the full range, and only at
+; full spray does its maximum TIME halve. A fixed worst-case cap would have
+; charged every setting for the widest one.
+; PITCH keeps $6e untouched, which is what holds its bit-identity.
+; Computed here, after the builder, because $56 is the builder's scratch and
+; is free from this point until the readers finish.
+        move    x:(r7+$5c),a            ; SPRAY, Q23
+        asr     #$a,a,a                 ; ~ its max scatter in samples
+        move    a1,x0
+        move    #>14335,a               ; 16384 - 2048 (window) - 1 (lerp)
+        sub     x0,a
+        move    a,x:(r7+$56)            ; the cap at this SPRAY
+        move    x:(r7+$75),a            ; TIME
+        move    x:(r7+$56),x0
+        sub     x0,a                    ; sub/branch, not cmp
+        tst     a
+        ble     grcapok
+        clr     a
+grcapok:
+        add     x0,a
+        move    a,x:(r7+$56)            ; GRAIN's lag base, this sample
+
 ; ---- READER, line L: four lerped reads, summed --------------------------
 ; r4 starts at record L0 and strides 8 words, skipping line R's records with
 ; the n4 set per block. b accumulates across the four grains and nothing in
@@ -2063,7 +2097,7 @@ grnbz:
         move    x:(r4)+,x0              ; age_int
         move    r1,a                    ; LineL write pointer
         sub     x0,a
-        move    x:(r7+$6e),x0           ; PLAGB = min(TIME, 13311), so lag +
+        move    x:(r7+$56),x0           ; PLAGB = min(TIME, 13311), so lag +
         sub     x0,a                    ; age + scatter + the lerp's older
                                         ; neighbour stays inside the line
         move    x:(r4)+,x0              ; this grain's scatter, line L
@@ -2114,7 +2148,7 @@ grnlz:
         move    x:(r4)+,x0              ; age_int
         move    r2,a                    ; LineR write pointer
         sub     x0,a
-        move    x:(r7+$6e),x0           ; PLAGB
+        move    x:(r7+$56),x0           ; PLAGB
         sub     x0,a
         move    x:(r4)+,x0              ; this grain's scatter, line R
         sub     x0,a
@@ -2514,15 +2548,37 @@ pdone:
         tne     x0,b
         move    b,x:(r7+$7c)
 
-; ---- own track: wet added to dry, MIX-scaled ------------------------------
-        move    x:(r7+$7b),x0           ; wet L = fL
+; ---- own track: MIX CROSSFADES dry to wet (v2 stage 5c) -------------------
+; ⚠️ A DELIBERATE BEHAVIOUR CHANGE, and the reason the box did not sound like
+; a granular. This was `dry + wet*MIX`: the dry sat at UNITY always, so even
+; at MIX=127 the wet could only EQUAL it and the effect could never dominate.
+; Fine for a trad delay, fatal for a texture effect -- every audition of
+; GRAIN was a full-strength dry melody with a cloud underneath it, which Sam
+; heard exactly as "a slightly effected verb".
+;
+; Written as dry + MIX*(wet - dry), which IS the crossfade dry*(1-MIX) +
+; wet*MIX but needs no 1-MIX slot -- and r7 has none left. At MIX=0 this is
+; bit-identical to the old path (the gate proves it); at 127 it is 99.2% wet.
+;
+; The difference is taken through a LIMITING move, not `move a1,x0`: wet-dry
+; can exceed full scale, and on the main output path a wrap is an audible
+; click where a saturate is not. (The lerps elsewhere use a1 because they
+; interpolate BETWEEN two stored samples, where the difference is bounded in
+; practice and the idiom is audited.)
+        move    x:(r7+$7b),a            ; wet L = fL
+        move    x:(r0),x0               ; dry L
+        sub     x0,a                    ; wet - dry
+        move    a,x0                    ; LIMITING move
         move    x:(r7+$76),y1           ; MIX
-        mpy     x0,y1,a
+        mpy     x0,y1,a                 ; MIX*(wet-dry), signed: x0 first
         move    x:(r0),x0
-        add     x0,a
+        add     x0,a                    ; dry + MIX*(wet-dry)
         move    a,x:(r0)                ; L in place
 
-        move    x:(r7+$7c),x0           ; wet R = fR
+        move    x:(r7+$7c),a            ; wet R = fR
+        move    x:(r0+n0),x0            ; dry R
+        sub     x0,a
+        move    a,x0
         move    x:(r7+$76),y1
         mpy     x0,y1,a
         move    x:(r0+n0),x0

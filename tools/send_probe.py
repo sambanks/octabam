@@ -126,6 +126,7 @@ def entry_points(mem_path, fxid):
 # ---- the run -------------------------------------------------------------
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
+        inall=False,
         pick=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
@@ -219,7 +220,15 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
             die(f"layout {layout!r} has no server -- needs an R or a D")
         r7s = ",".join(str(2 + 2 * k) for k, _ in live)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
-        inmask = sum(1 << i for i, (_, c) in enumerate(live) if c == "S")
+        # The tone normally reaches the SENDs only, so a SERVER's own track
+        # is SILENT and its dry path is never exercised -- MIX=0 renders
+        # digital silence. That is fine for measuring an engine and useless
+        # for measuring a DRY/WET BLEND, which is a hardware-only behaviour
+        # every local render was blind to until 12 Aug 2026. --inall feeds
+        # every live slot, so the delay's own dry is real and MIX can be
+        # measured for what it does on the unit.
+        inmask = sum(1 << i for i, (_, c) in enumerate(live)
+                     if c == "S" or inall)
         par = {"R": rev_params, "S": send_params, "D": dpar}
         cmd = [str(HOST), "-mem", str(mem),
                "-init", ",".join(f"{entry(c)[0]:x}" for _, c in live),
@@ -382,6 +391,11 @@ def main():
                     help="DELAY TONE 0..127 (delay slot 2, default 100)")
     ap.add_argument("--dping", type=int, default=None,
                     help="DELAY PING 0..127 (delay slot 3, default 64)")
+    ap.add_argument("--inall", action="store_true",
+                    help="feed the source to EVERY live slot, not just the\n"
+                         "SENDs. Without it a server's own track is silent and\n"
+                         "its DRY path -- and therefore MIX -- cannot be\n"
+                         "measured locally at all.")
     ap.add_argument("--dspray", type=int, default=None,
                     help="DELAY SPRAY 0..127 (delay slot 10, default 0).\n"
                          "GRAIN's scatter depth: 0 puts all four grains on one\n"
@@ -442,7 +456,8 @@ def main():
             if val is not None:
                 dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
-               a.split, a.layout, delay_params=dpar, pick=a.pick)
+               a.split, a.layout, delay_params=dpar, pick=a.pick,
+               inall=a.inall)
     thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607
