@@ -1826,6 +1826,36 @@ gmode:
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7+$54)            ; candidate, line L
+; ---- DENSITY: does this grain sound at all? (v2 stage 5d) ----------------
+; THE FLAT SUM IS WHY THE SOURCE STAYED CONTINUOUS. Four grains windowed to
+; sum to exactly 1.0 are GAPLESS, so the output is a continuously shifted
+; melody rather than a cloud of fragments -- Sam: "there was still a lot more
+; of the melody lines playing". That flatness was inherited from PITCH, where
+; ripple was the defect; in a granular the GAPS ARE THE TEXTURE. So a grain
+; may now simply not sound, decided once at its wrap and held for its whole
+; life -- re-deciding per sample would chop it into noise.
+;
+; The mute rides BIT 16 of the latched word, which is free: the reader
+; subtracts that word and masks the result with $3fff, and $10000 is exactly
+; 4 * $4000, so it vanishes modulo the line. No new r7 slot (there are none)
+; and not one extra instruction in either reader.
+        move    #>$10000,x0
+        add     x0,a
+        move    a,x:(r7+$56)            ; the same offset, MUTED
+        move    x:(r7+$18),b            ; three more PRNG bits
+        asr     #$5,b,b
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b                    ; 0..7
+        move    x:(r7+$2d),a            ; DENS -- the WOW knob read as density
+        asr     #$e,a,a                 ; in GRAIN (slot 6 is TAPE-only there,
+        move    a1,x0                   ; the same dual meaning REVERSE gives
+        move    x0,a                    ; the PTCH select). 0..7
+        sub     b,a                     ; N SET == this grain stays silent
+        move    x:(r7+$54),b            ; sounding form
+        move    x:(r7+$56),x0           ; muted form
+        tmi     x0,b
+        move    b,x:(r7+$54)
 ; Line R's candidate: a DISJOINT field of the same word. The low 12 bits are
 ; shifted up to the top, so R's 10-bit field is state bits 2..11 where L's
 ; was 13..22 -- no bit feeds both lines in the same sample, which is what
@@ -1841,6 +1871,36 @@ gmode:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$55)            ; candidate, line R
+; ---- DENSITY: does this grain sound at all? (v2 stage 5d) ----------------
+; THE FLAT SUM IS WHY THE SOURCE STAYED CONTINUOUS. Four grains windowed to
+; sum to exactly 1.0 are GAPLESS, so the output is a continuously shifted
+; melody rather than a cloud of fragments -- Sam: "there was still a lot more
+; of the melody lines playing". That flatness was inherited from PITCH, where
+; ripple was the defect; in a granular the GAPS ARE THE TEXTURE. So a grain
+; may now simply not sound, decided once at its wrap and held for its whole
+; life -- re-deciding per sample would chop it into noise.
+;
+; The mute rides BIT 16 of the latched word, which is free: the reader
+; subtracts that word and masks the result with $3fff, and $10000 is exactly
+; 4 * $4000, so it vanishes modulo the line. No new r7 slot (there are none)
+; and not one extra instruction in either reader.
+        move    #>$10000,x0
+        add     x0,a
+        move    a,x:(r7+$56)            ; the same offset, MUTED
+        move    x:(r7+$18),b            ; three more PRNG bits
+        asr     #$5,b,b
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b                    ; 0..7
+        move    x:(r7+$2d),a            ; DENS -- the WOW knob read as density
+        asr     #$e,a,a                 ; in GRAIN (slot 6 is TAPE-only there,
+        move    a1,x0                   ; the same dual meaning REVERSE gives
+        move    x0,a                    ; the PTCH select). 0..7
+        sub     b,a                     ; N SET == this grain stays silent
+        move    x:(r7+$55),b            ; sounding form
+        move    x:(r7+$56),x0           ; muted form
+        tmi     x0,b
+        move    b,x:(r7+$55)
 ; ---- THE LIVE INTERVAL: musical, random, and re-rolled per repeat --------
 ; v2 stage 5b. GRAIN shipped applying ONE fixed interval to everything, so
 ; every repeat came back at the same pitch. The reference device's character
@@ -1901,7 +1961,11 @@ gmode:
         teq     x0,a                    ; behind instead of catching up)
         move    x:(r7+$18),b            ; three MORE bits: roll 1 time in 8,
         asr     #$2,b,b                 ; so the interval holds for about a
-        and     #>$7,b                  ; repeat rather than warbling
+        and     #>$3,b                  ; repeat rather than warbling. 1 IN 4,
+                                        ; measured: hold 170 ms = 1.05x TIME at
+                                        ; TIME 55, i.e. one interval per repeat
+                                        ; -- 1-in-8 held 3.5 repeats and read as
+                                        ; "changing pitch every now and then"
         move    b1,x0
         move    x0,b
         tst     b                        ; Z == this is a rolling draw
@@ -2020,6 +2084,22 @@ gmode:
         abs     a
         move    #>$400000,x0
         sub     x0,a                    ; N set == |d| < half == NO wrap
+        move    a,x:(r7+$56)            ; ⚠️ PARK THE FLAG AS A VALUE. Both
+                                        ; latches below test this one N bit,
+                                        ; and they used to be separated by
+                                        ; nothing but moves. The DENSITY gating
+                                        ; (stage 5d) put `clr` and `tst`
+                                        ; between them, which SET the condition
+                                        ; codes -- so line R's latch tested a
+                                        ; garbage flag and re-scattered EVERY
+                                        ; SAMPLE instead of once per grain. A
+                                        ; read position that jumps every sample
+                                        ; is broadband noise, and it was
+                                        ; audible on the right channel alone
+                                        ; (Sam, immediately: "a noise wash on
+                                        ; the right"). $56 is free here: it
+                                        ; parked age_fx, which died once the
+                                        ; fraction was taken.
 ; ---- store the two records: line L, then line R ---------------------------
         move    x:(r7+$57),x0           ; age_int
         move    x0,x:(r4)+
@@ -2028,22 +2108,41 @@ gmode:
         tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
                                         ; hand-rolled mask (A2 staleness)
         move    b,x:(r4)+
+        move    b,x:(r7+$5a)            ; park the latched word: its bit 16
+                                        ; says whether this grain sounds
         move    x:(r7+$58),x0           ; frac
         move    x0,x:(r4)+
+        clr     b                       ; FIRST: clr sets the condition codes
+        move    x:(r7+$5a),a
+        and     #>$10000,a              ; the mute flag
+        move    a1,x0
+        move    x0,a
+        tst     a                       ; Z SET == this grain sounds
         move    x:(r7+$59),x0           ; gain/2
-        move    x0,x:(r4)+
+        teq     x0,b                    ; silent grains contribute nothing,
+        move    b,x:(r4)+               ; and the gaps are the texture
         move    x:(r7+$57),x0           ; age_int, line R's copy
         move    x0,x:(r4)+
+        move    x:(r7+$56),a            ; RESTORE the wrap flag -- the density
+        tst     a                       ; gating above destroyed it
         move    x:(r4),x0               ; this grain's current scatter, R
         move    x:(r7+$55),b            ; this sample's candidate, R
         tmi     x0,b                    ; the SAME wrap flag: the two lines'
                                         ; grains are in step, only their
                                         ; source positions differ
         move    b,x:(r4)+
+        move    b,x:(r7+$5a)
         move    x:(r7+$58),x0
         move    x0,x:(r4)+
+        clr     b
+        move    x:(r7+$5a),a
+        and     #>$10000,a
+        move    a1,x0
+        move    x0,a
+        tst     a
         move    x:(r7+$59),x0
-        move    x0,x:(r4)+
+        teq     x0,b
+        move    b,x:(r4)+
 ; ---- next grain: a quarter cycle further round ----------------------------
         move    x:(r7+$5d),a
         move    #>$200000,x0            ; 512 samples in Q11.12 = 1/4 window
