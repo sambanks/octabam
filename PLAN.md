@@ -56,7 +56,8 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     32 (11 Aug, post-R18)     1953 (12 Aug, v2 stage 1)
+  free (region)     4 (12 Aug, delay          1879 (12 Aug, delay
+                    auto-gain)                auto-gain)
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
@@ -77,13 +78,18 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ### Program space — the binding constraint, per core, 8,192 words
 
-✅ Region numbers from the build report, 11 Aug 2026: **payload A used 2,692
-of 2,724, FREE 32** — R16–R18 consumed nearly all of the 178 the LFO-block
-roll freed on 10 Aug (roll: lines 2–7 in one loop over a 24-word P table,
-proven bit-identical against the unrolled engine incl. a 600-block MOD=127
-A/B; the session's lesson is the m5 line-modulo invariant, documented at the
-roll site). **Payload B used 726, FREE 1,998** — 12 Aug (v2 stage 1, delay
-514 → 559): **used 771, FREE 1,953.**
+✅ Region numbers from the build report, 12 Aug 2026 (delay auto-gain):
+**payload A used 2,720 of 2,724, FREE 4** — the delay auto-gain's writer-side
+changes cost A 28 words (send +9, reverb +19) on top of 11 Aug's 2,692/32,
+which R16–R18 had already run down from the 178 the LFO-block roll freed on
+10 Aug (roll: lines 2–7 in one loop over a 24-word P table, proven
+bit-identical against the unrolled engine incl. a 600-block MOD=127 A/B; the
+session's lesson is the m5 line-modulo invariant, documented at the roll
+site). **A is effectively FULL** — the wet-makeup `asl` (~1 word) still
+fits; anything else waits on the reverb-side LFO-block roll lever below.
+**Payload B used 726, FREE 1,998** — 12 Aug (v2 stage 1, delay 514 → 559):
+**used 771, FREE 1,953** — 12 Aug (auto-gain, delay +65 / send +9): **used
+845, FREE 1,879.**
 
 ⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
 layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
@@ -132,9 +138,9 @@ The ten FX1 effects, with sizes (identical in both payloads):
 ### Cycles — NOT the constraint, per core, 4,535/sample
 
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
-already running** (worst case, no derating needed). `make cycles`, 11 Aug:
-the bank has grown 573 since the measurement (R16–R18 shimmer/gate work), so
-**room for new work: 819 cycles/sample** (was 1,022 on 9 Aug at bank 1,334).
+already running** (worst case, no derating needed). `make cycles`, 12 Aug:
+**room for new work: 770 cycles/sample** (819 on 11 Aug post-R18; v2 stage
+1's manual wrap took it to 777, the delay auto-gain to 770).
 
 ⚠️ **FX1 cycles are paid ×4 per core.** A 300-cycle FX1 effect costs 1,200
 cycles/core — which does not fit in 819. *This*, not program space, is the
@@ -447,7 +453,8 @@ class of silent mislabel dies loudly instead of measuring.
 blew up the RDS layout even with a genuine delay): the DEV build placed the
 delay's 32K lines at payload A's Y base 0x30000, but payload A's half of
 the shared window is fully owned — ChonVerb's relocated buffers at
-0x30000/0x34000 and the bus scratch at 0x36000–0x36082. LineR's write
+0x30000/0x34000 and the bus scratch at 0x36000–0x3608f (0x36085+ added by
+the delay auto-gain: DELAY counts + the delay's 1/N table). LineR's write
 pointer crossed the parity word, all four ACC buffers and both role locks
 every 16,384 samples. Fix: under DEV the delay is substituted to its
 **shipping address 0x38000** (payload B's half, unused in a single-core
@@ -463,7 +470,8 @@ renders `--layout DS`. Falsifier for the →VERB claim: it is emulator-only;
 if hardware's cross-core timing differs, the on-unit check is →DEL/→VERB
 routed audio on tracks 1–4 feeding a track-5 ChonVerb.
 
-Budget: **1,953 program words, ALL of them renderable** — the DEV placement
+Budget: **1,879 program words, ALL of them renderable** (1,953 before the
+12 Aug auto-gain commit) — the DEV placement
 change landed 12 Aug evening (delay at P:0x04000 outside the donor region,
 see traps), so the hatch no longer caps the delay — **~2,150 spare cycles
 with four FX1 FILTERs /
@@ -526,6 +534,28 @@ each stage is a separate commit gated by `make check`):
    spine commit** — it is a behavior change, measured like the reverb's
    `$0c` fix rather than bit-compared, and lands as its own gated commit
    before PITCH.
+   ✅ **BUS AUTO-GAIN LANDED 12 Aug 2026 (the gated commit).** The delay-bus
+   mirror of v121: SEND's `→DELAY` tap and the reverb's `→DEL` send register
+   once per block in `$985/$986` (parity-indexed, reset by all three
+   housekeeping copies — the delay's copy was silently MISSING even the
+   `$983` reset since v121; healed, though it is dead code in live builds
+   because the XBUS gate keeps payload B from housekeeping) and write
+   `asr #3`; the delay looks up 1/N (table at `$988-$98f`, bus scratch,
+   because both line buffers fill its entire half-window) and shifts back
+   up 3. **Measured (the gate):** N ∈ {1,2,3,5,7} sends at 0.3 FS all
+   render −26.1 dBFS / −36.1 dB THD; before, level grew with N and hit the
+   rail (7 sends: −13.4 dBFS at −10.2 dB THD). Single-send level-identical
+   before/after (net-unity round trip); RDS still −36.8 THD. Every new mpy
+   disassembled from the emitted image (`mpy x0,y1,b` = 2000c8, signed).
+   Cost: payload A 2,692 → **2,720 of 2,724, FREE 4** (send +9, reverb
+   +19 — A is now effectively FULL; next words come from the delay-side
+   LFO-block roll or not at all); payload B 771 → **845, FREE 1,879**;
+   cycles 777 → 770/sample room (stage 1's wrap had already taken 819 →
+   777). ⚠️ Surfaced, pre-existing, NOT fixed here: the delay's `→VERB`
+   send is an unregistered full-scale writer into the REVERB accumulator,
+   so the reverb's auto-gain gives it an effective ×8/N_sends — ×8 when
+   one SEND is registered, ×1 with none. Belongs to the `→VERB` voicing
+   pass; noted in XBUS.md's ledger entry.
    ⚠️ New trap instance, caught by the `$30000` census guard: a MODE
    override of 3 << 16 SPELLS `$30000` — the payload-A base literal — and
    the blanket payload substitution would rewrite it to `$38000` (mode
@@ -587,9 +617,13 @@ otherwise by ear).
 Traps, all already paid for once:
 - ⚠️ **`→DELAY` and `→REVERB` are SEPARATE knobs** (`x:(r6+0)` vs `x:(r6+1)`).
   Driving the wrong one renders silence.
-- ⚠️ **The DELAY accumulator has no auto-gain.** Build it in from the first
-  draft — the reverb's `$0c` collision shows what happens when it is bolted
-  on and shares state loosely. Same 1/N table, same parity indexing.
+- ✅ **The DELAY accumulator auto-gain LANDED 12 Aug 2026** (the gated
+  measured commit after stage 1 — see 3.1). Every DELAY-bus writer registers
+  in `$985/$986` and writes `asr #3`; the delay divides by the count (1/N
+  table at `$988-$98f` in the bus scratch) and shifts back. Measured: 1–7
+  sends all render −26.1 dBFS / −36.1 dB THD where before, 7 sends hit the
+  rail at −10 dB THD; single-send is level-identical. The gain lives in the
+  delay's own `r7+$7f`, alone (the `$0c` lesson).
 - ✅ **X/Y/P aliasing in the shared window is SETTLED — they DO alias**
   (`docs/CHIP.md`, alias probe build 27). Lay out BongDelay's memory map
   knowing X:0x30000 and Y:0x30000 are the same storage.

@@ -33,6 +33,16 @@
 ;                        server divides by it, so N tracks sending at full drive
 ;                        the reverb exactly as hard as one track does, and the
 ;                        shared accumulator can no longer be summed into its rail.
+;   Y:0x985/0x986       DELAY send COUNT, buffer 0 / buffer 1 -- the same
+;                        mechanism for the DELAY bus (landed with BongDelay's
+;                        auto-gain). Every DELAY-bus writer registers here:
+;                        SEND (this file) and REVERB SERVER's ->DEL send, both
+;                        unconditionally, because both write the accumulator
+;                        unconditionally (zeros count too).
+;   Y:0x988..0x98f      DELAY SERVER's 1/N reciprocal table, rebuilt by it
+;                        each block. Lives in the shared scratch because the
+;                        delay's own half-window is entirely line buffer.
+;                        Nobody else reads or writes these eight words.
 ;
 ; Latency, pinned per BUS.md: every block, whichever track is "position 0"
 ; (r7 == 0x6200 -- the FIRST FX2 dispatched in this bank, fixed by hardware
@@ -196,7 +206,11 @@ zclr:
         move    a,r3
         move    #>$ffffff,m3
         clr     a
-        move    a,y:(r3)                ; count = 0; a stays 0 for the locks below
+        move    a,y:(r3)                ; REVERB count = 0
+        move    #2,n3                   ; SHORT immediate: 1 word (address reg)
+        move    (r3)+n3                 ; -> the DELAY count, same parity
+        move    a,y:(r3)                ; DELAY count = 0; a stays 0 for the
+                                        ; locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and
@@ -255,7 +269,12 @@ notfirst:
         move    y:(r3),a
         move    #>$1,x0
         add     x0,a
-        move    a,y:(r3)
+        move    a,y:(r3)                ; REVERB count += 1
+        move    #2,n3
+        move    (r3)+n3                 ; -> the DELAY count, same parity --
+        move    y:(r3),a                ; this client writes BOTH accumulators
+        add     x0,a                    ; unconditionally (zeros count too),
+        move    a,y:(r3)                ; so it registers on both buses
 cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into both accumulators -------------
@@ -270,6 +289,9 @@ cnt_done:
         move    a,x1                     ; x1 = mono, the mpy operand
 
         mpy     x1,y1,a                  ; a = mono * ->DELAY level
+        asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM, mirror of
+                                         ; the REVERB path below -- the DELAY
+                                         ; SERVER shifts it back up by 3
         move    y:(r2),b
         add     b,a
         move    a,y:(r2)+                ; DELAY  ACC[write][i] += contribution

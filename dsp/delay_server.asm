@@ -15,11 +15,16 @@
 ;     grain readers at scattered offsets, reverse reads, a single full-
 ;     window line -- from the aligned-modulo-per-rN constraint.
 ;
-; Deliberately NOT in stage 1 (each is its own gated commit): bus auto-gain
-; (behavior change -- measured like the reverb's $0c fix, not bit-compared),
+; Deliberately NOT in stage 1 (each is its own gated commit):
 ; the Y state table (no new persistent state yet), PITCH/FREEZE/TAPE/GRAIN/
 ; REVERSE, and the descriptor-side MODE select (a one-value select would
 ; draw a dead knob; it lands with the second mode).
+;
+; BUS AUTO-GAIN LANDED as its own gated commit after stage 1 (the behavior
+; change stage 1 deliberately excluded -- measured like the reverb's $0c
+; fix, not bit-compared). Mechanism at the "bus auto-gain" block below:
+; every DELAY-bus writer registers per block in $985/$986 and writes asr #3;
+; this server multiplies the accumulator by 1/count and shifts back up 3.
 ;
 ; ---------------------------------------------------------------------------
 ; BUS.md task 9: DELAY SERVER. An algorithm from scratch -- unlike REVERB
@@ -158,6 +163,10 @@
 ;                       outputs (per sample)
 ;   r7+$7d              scratch: x_in, own dry mono + bus (per sample)
 ;   r7+$7e/$81          scratch: fbIntoL/fbIntoR (per sample)
+;   r7+$7f              bus auto-gain 1/N (per block; read per sample). The
+;                       delay-bus mirror of the reverb's $0c -- kept in its
+;                       own slot with nothing else ever parked here (the $0c
+;                       collision lesson)
 ;   r7+$80              1 - PING (per block)
 ;   r7+$82              warm-up tagged counter (stock DARK's slot
 ;                       convention, reused -- see dsp/reverb89.asm)
@@ -329,6 +338,25 @@ bus_zclr:
 ; re-claimed below in dispatch order.
         move    a,y:>$981               ; DELAY SERVER role owner
         move    a,y:>$982               ; REVERB SERVER role owner
+; ---- reset the new write buffer's SEND COUNTs, alongside its accumulators --
+; Kept in step with dsp/send_client.asm / dsp/reverb_server.asm (the standing
+; rule: the housekeeping copies must stay identical). NOTE this copy was
+; MISSING the $983 reset from v121 until the delay auto-gain landed -- dead
+; code in every live build, because the XBUS payload gate keeps this payload
+; from ever housekeeping, but a divergent copy is exactly the silent-desync
+; class the rule exists for. x1 still holds the OLD parity from the flip
+; above, so the buffer just made current is 1 - x1.
+        move    #>$1,a
+        sub     x1,a                    ; new parity
+        move    #>$983,x0
+        add     x0,a
+        move    a,r3
+        move    #>$ffffff,m3
+        clr     a
+        move    a,y:(r3)                ; REVERB count = 0
+        move    #2,n3                   ; SHORT immediate: 1 word (address reg)
+        move    (r3)+n3                 ; -> the DELAY count, same parity
+        move    a,y:(r3)                ; DELAY count = 0
 bus_seen:
         move    #>$1,x0                 ; remember this block's parity so next
         move    y:>$900,a               ; block we can tell whether anybody
@@ -399,6 +427,59 @@ bus_mine:
         add     x0,a
         add     b,a
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
+
+; ---- bus auto-gain: resolve 1/N for this block's READ buffer --------------
+; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
+; N clients summing into one accumulator word drive the delay N x as hard as
+; one, and the shared word clamps at 1.0. Every DELAY-bus writer (SEND's
+; ->DELAY tap, the reverb's ->DEL send) now registers once per block in a
+; parity-indexed count at $985/$986 and writes with 3 bits of headroom
+; (asr #3); this block divides by the count and the per-sample read shifts
+; back up by 3, so the send knob sets a track's SHARE of the delay rather
+; than how hard the line is hit. Same table order as the reverb's: count is
+; masked to 0..7, so 8 writers wrap to index 0, which therefore holds 1/8.
+; A count of 0 (nobody wrote) also lands on 1/8 -- harmless, the accumulator
+; is zero then anyway, since writers register unconditionally.
+;
+; The table lives in the shared bus scratch at $988-$98f (relocated with the
+; rest of the $9xx layout under XBUS) because this server has no free ground
+; of its own: both line buffers fill its entire half-window. Rebuilt each
+; block; the stores are free in cycle terms. x1 (write_parity) is still
+; valid from the address block above.
+        move    #>$988,b                ; reciprocal table base
+        move    b,r5
+        move    #>$ffffff,m5
+        move    #>$100000,a
+        move    a,y:(r5)+               ; [0] = 1/8  (count 8 wraps to here)
+        move    #>$7fffff,a
+        move    a,y:(r5)+               ; [1] = 1/1
+        move    #>$400000,a
+        move    a,y:(r5)+               ; [2] = 1/2
+        move    #>$2aaaab,a
+        move    a,y:(r5)+               ; [3] = 1/3
+        move    #>$200000,a
+        move    a,y:(r5)+               ; [4] = 1/4
+        move    #>$199999,a
+        move    a,y:(r5)+               ; [5] = 1/5
+        move    #>$155555,a
+        move    a,y:(r5)+               ; [6] = 1/6
+        move    #>$124925,a
+        move    a,y:(r5)                ; [7] = 1/7
+
+        move    #>$1,a
+        sub     x1,a                    ; read_parity: the count belongs to
+        move    #>$985,x0               ; the fully-summed one-block-old
+        add     x0,a                    ; buffer this block READS
+        move    a,r5
+        move    y:(r5),a                ; clients that wrote the buffer we read
+        move    #>$7,x0
+        and     x0,a                    ; masked: boot garbage cannot index wild
+        move    a1,x0
+        move    x0,a                    ; A2-clean before it becomes an address
+        add     b,a                     ; b = table base, still live
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$7f)            ; this block's bus gain, used per sample
 
 ; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
 ; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
@@ -567,7 +648,14 @@ dwarmdone:
                                         ; send (BUS.md task 10) taps dry alone
         move    x:(r7+$63),a            ; this sample's ACC read address
         move    a,r5
-        move    y:(r5),b                ; last block's fully-summed sends
+        move    y:(r5),x0               ; last block's fully-summed sends
+        move    x:(r7+$7f),y1           ; this block's bus gain 1/N
+        mpy     x0,y1,b                 ; hold total drive constant vs N --
+                                        ; signed (2000c8, disassembled from
+                                        ; the emitted image): x0 is a bus
+                                        ; sample and can be negative, y1
+                                        ; (1/N) never
+        asl     #$3,b,b                 ; undo the writers' 3-bit headroom
         move    x:(r7+$7d),a
         add     b,a
         move    a,x:(r7+$7d)            ; x_in = dry + bus

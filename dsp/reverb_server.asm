@@ -393,7 +393,10 @@ bus_zclr:
         add     x0,a
         move    a,r1
         clr     a
-        move    a,y:(r1)
+        move    a,y:(r1)                ; REVERB count = 0
+        move    #2,n1                   ; SHORT immediate: 1 word (address reg)
+        move    (r1)+n1                 ; -> the DELAY count, same parity
+        move    a,y:(r1)                ; DELAY count = 0
 bus_seen:
         move    #>$1,x0                 ; remember this block's parity so next
         move    y:>$900,a               ; block we can tell whether anybody
@@ -538,6 +541,27 @@ bus_mine:
                                         ; scale parked here for a day and every
                                         ; sample multiplied the bus by ~0.75
                                         ; instead of 1/N. It lives in $6c now.
+
+; ---- register as a DELAY bus client, once per block ----------------------
+; The ->DELAY send below writes the DELAY accumulator every sample (a zero
+; contribution when ->DEL is off, but a write all the same), so this server
+; registers in the DELAY count exactly as SEND registers in both counts --
+; the DELAY SERVER divides its accumulator by this. Same once-per-block gate
+; as SEND's registration: the split offset, so a split block counts ONCE.
+; x1 still holds write_parity (nothing above touches it since the address
+; block), and m5 is already linear from the table build above.
+        move    x:(r7+$67),a
+        tst     a
+        bne     vdcnt_done              ; not this block's first call
+        move    x1,a
+        move    #>$985,x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    #>$1,x0
+        add     x0,a
+        move    a,y:(r5)                ; DELAY count += 1
+vdcnt_done:
 
 ; ---- hardcoded base: BUS.md task 8 (REVERB SERVER always Y:0x4000) ------
 ; No x:0x213 read, no per-instance stash -- every instance of this effect
@@ -2338,6 +2362,11 @@ lfrol:
         move    x:(r7+$6a),x0           ; own dry mono, this sample
         move    x:(r7+$69),y1           ; ->DELAY level
         mpy     x0,y1,a
+        asr     #$3,a,a                 ; 3 bits of bus headroom -- every
+                                        ; DELAY-bus writer shifts down, the
+                                        ; DELAY SERVER shifts back up by 3
+                                        ; (mirror of the REVERB bus's v121
+                                        ; scheme, landed with delay auto-gain)
         move    x:(r7+$68),b            ; this call's DELAY ACC write address
         move    b,r5
         move    y:(r5),b

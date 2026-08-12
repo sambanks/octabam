@@ -93,7 +93,8 @@ result, check which code the dispatch entry actually points at — same
 family as "disassemble what you assemble".
 
 **Payload A's half of the shared window is FULLY OWNED**: ChonVerb's
-relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x36082`.
+relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x3608f`
+(grew from `-0x36084` on 12 Aug: DELAY send counts + the delay's 1/N table).
 There is no free ground in it for delay lines — the DEV build places the
 delay at its shipping base `0x38000` (payload B's half) for exactly this
 reason. A delay based at `0x30000` sweeps the parity word, all four ACC

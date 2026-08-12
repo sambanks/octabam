@@ -698,8 +698,30 @@ exactly, except for the scratch, which both cores must touch by definition:
   cut 9 Aug 2026, so it is historical). NOT simple runaway feedback — HF *falls* as
   TIME rises and is already high at TIME=0, so suspect the input/early path.
 - **Tank saturation above ~0.35 FS.** The only level limit left since v121.
-- **The DELAY accumulator has no auto-gain.** Same fix as v121; fold it into
-  the delay re-scope.
+- ~~**The DELAY accumulator has no auto-gain.** Same fix as v121; fold it into
+  the delay re-scope.~~ **DONE — 12 Aug 2026, the delay-bus mirror of v121.**
+  Every DELAY-bus writer (SEND's `→DELAY` tap, the reverb's `→DEL` send)
+  registers once per block in a parity-indexed count at `Y:0x985/0x986` and
+  writes with the same 3 bits of headroom; the DELAY SERVER divides by the
+  count (1/N table at `0x988-0x98f` in the bus scratch — the delay's own
+  half-window is entirely line buffer) and shifts back up by 3. Measured,
+  N sends at 0.3 FS, `→DELAY` 127, delay output:
+
+  | sends | before (rms / THD) | after (rms / THD) |
+  |---|---|---|
+  | 1 | −26.1 / −36.1 | −26.1 / −36.1 |
+  | 2 | −20.1 / −36.1 | −26.1 / −36.1 |
+  | 3 | −16.5 / −36.1 | −26.1 / −36.1 |
+  | 5 | −14.0 / −14.3 | −26.1 / −36.1 |
+  | 7 | −13.4 / −10.2 | −26.1 / −36.1 |
+
+  Single-send is level-identical before/after (net-unity round trip), and
+  the before column shows the same rail-clamp signature the reverb bus had.
+  ⚠️ Still asymmetric: the delay's own `→VERB` send into the REVERB
+  accumulator is an UNREGISTERED, full-scale writer — the reverb divides it
+  by the SEND count and shifts up 3, so its effective gain is 8/N_sends
+  (×8 with one send registered, ×1 with none). Pre-existing, unchanged by
+  this fix; belongs to the `→VERB` voicing pass.
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly so every slot looks live locally, while on
   hardware a slot can draw a knob and publish nothing.
