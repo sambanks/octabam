@@ -25,7 +25,7 @@ delay→reverb series topology).
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean. 🟡 12 Aug: local render (`DEV=1`) no longer builds, and the stale dump shows a harness problem beyond that — `→VERB` cross-send is unconfirmed either way, see step 3 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
@@ -410,6 +410,23 @@ with nothing, so nothing is lost by finishing the reverb first.**
 `fcf22fd`) — its output can never be tapped. **delay→reverb exists only
 through BongDelay's `→VERB` cross-send**, already built. That is the goal.
 
+🟡 **`→VERB` is BUILT, not CONFIRMED — checked 12 Aug 2026, inconclusive.**
+Tried to verify locally via `send_probe.py --layout RDS`. `DEV=1 XBUS=1`
+does not build against current source (see below), so the check ran against
+the stale pre-R16 `out/dsp/mem_dev_A.mem` (10 Aug 22:05) — valid for DELAY
+SERVER's own code, which is unchanged since (`86efe0a` is comment-only,
+payload hash identical). Result: **BongDelay produced ZERO output in every
+layout tried**, direct or bus-fed, MIX/FDBK at any value — not just the
+cross-send, its own local echo too. This contradicts `2f35107`'s "BongDelay
+produced audio over the bus for the first time" measurement on what should
+be the same DEV=1/payload-A gate variant. Prime suspect, unconfirmed: the
+server-role lock (`y:>$981`) never getting cleared for some layouts, but the
+`build_bus.py` XBUS_GATE substitution reads correctly on paper for this
+case — the discrepancy is not explained by source reading alone and needs
+disassembly of the built binary at the housekeeping site, not another
+theory. **Until this is resolved, treat `→VERB` as unverified** — do not
+plan on it working without either fixing the harness or a hardware test.
+
 Budget: **1,998 program words**, **~3,200 spare cycles**, **65,536 words =
 1.49 s**. A flagship budget: multi-tap, ping-pong, per-tap filtering, tape
 wow/flutter, diffused feedback, reverse.
@@ -426,8 +443,13 @@ Traps, all already paid for once:
 - **AGU modulo is no longer mandatory.** A manual compare-and-wrap is ~4-6
   cycles/sample — the only way to a single 1.49 s line.
 - 🟡 **No local render path**: `dsp_host` boots payload A only, and the DEV
-  hatch no longer fits both servers. The OMR lever would bring it back —
-  price that against flying blind before deep voicing work on the delay.
+  hatch no longer fits both servers — confirmed 12 Aug 2026, R16-R18's
+  ChonVerb growth pushed it over (2,456 + 3,206 words against a 3,053-word
+  donor region under `DEV=1`; this is new fallout, not previously written
+  down). The OMR lever would bring it back — price that against flying
+  blind before deep voicing work on the delay. Even the stale pre-R16 dump
+  shows a harness-level problem beyond the space issue — see the `→VERB`
+  item above.
 - Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
   `PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used, and the
   parameter-delivery gap (step 2) caps how many more are worth adding.
