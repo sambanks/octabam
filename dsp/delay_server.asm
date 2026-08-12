@@ -1840,7 +1840,12 @@ gmode:
         and     #>$1fff,a               ; 0..8191 samples (186 ms)
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$54)            ; candidate, line L
+        move    #>2048,x0               ; -> straight to the RESET FORM this
+        add     x0,a                    ; grain's offset takes at its wrap:
+        asl     #$9,a,a                 ; (2048 + scatter) in Q14.9. Also
+        move    a1,x0                   ; per-sample-constant, so the builder
+        move    x0,a                    ; no longer rebuilds it four times.
+        move    a,x:(r7+$54)            ; reset form, line L
         move    x:(r7+$18),a
         asl     #$b,a,a                 ; a DISJOINT field of the same word,
         and     #>$7fffff,a             ; so no bit feeds both lines
@@ -1851,7 +1856,12 @@ gmode:
         and     #>$1fff,a
         move    a1,x0
         move    x0,a
-        move    a,x:(r7+$55)            ; candidate, line R
+        move    #>2048,x0               ; -> straight to the RESET FORM this
+        add     x0,a                    ; grain's offset takes at its wrap:
+        asl     #$9,a,a                 ; (2048 + scatter) in Q14.9. Also
+        move    a1,x0                   ; per-sample-constant, so the builder
+        move    x0,a                    ; no longer rebuilds it four times.
+        move    a,x:(r7+$55)            ; reset form, line R
 ; ---- the SCHEDULE: fixed rate, drives the envelope alone -----------------
 ; 2^23 / 4096 = 2048 samples per grain (46 ms). Grain SIZE is now free to
 ; become a parameter -- it is this constant and nothing else -- but page 2
@@ -1880,6 +1890,86 @@ gmode:
 grcapok:
         add     x0,a
         move    a,x:(r7+$56)            ; GRAIN's lag base, this sample
+; ---- HOISTED: the three per-sample draws (v2 stage 5f, optimisation) -----
+; These read ONLY per-sample-constant state -- the select index, the PRNG
+; word (advanced once above) and the DENS knob -- so all four builder
+; iterations were computing IDENTICAL values four times over. Lifting them is
+; therefore BIT-IDENTICAL, not merely equivalent, and the gate proves it.
+;
+; It is also correct for a second, independent reason worth writing down: the
+; four grains sit at exact quarter offsets of a schedule advancing $1000 per
+; sample, so their wraps are 512 samples apart and AT MOST ONE GRAIN WRAPS
+; PER SAMPLE. A single candidate is all that can ever be consumed.
+;
+; They live in REVERSE's per-block slots, which is sound for the same reason
+; GRAIN already borrows its scratch: the mode alternatives are mutually
+; exclusive within a sample, and REVERSE rebuilds these every block.
+; The select is the SET WIDTH, and entry 0 is +12 so that a mask of 0 --
+; select index 0 -- pins every grain to the octave. That is the fixed engine,
+; the nearest thing to what was ear-passed before the split, and it stays
+; reachable for comparison.
+;   index 0 -> mask 0: +12 only          index 1 -> mask 1: +12 / unison
+;   index 2,3 -> mask 3: +12 / unison / +7 / -12
+        move    x:(r7+$5f),a            ; select index
+        move    #>$3,b                  ; wide by default
+        tst     a
+        move    #>$0,x0
+        teq     x0,b                    ; index 0 -> fixed +12
+        move    #>$1,x0
+        cmp     x0,a
+        move    #>$1,x0
+        teq     x0,b                    ; index 1 -> +12 / unison
+        move    b,x0
+        move    x:(r7+$18),b
+        and     x0,b
+        move    b1,x0
+        move    x0,b                    ; A2-clean before the compares
+        move    #>$fffe00,a             ; 0 -> +12  (-512)
+        move    #>$1,x0
+        cmp     x0,b
+        move    #>$0,x0                 ; CLR is accumulator-only; a zero
+        teq     x0,a                    ; immediate is the register form
+                                        ; 1 -> UNISON (delta 0) -- impossible
+                                        ; before the split, and most of what
+                                        ; keeps the cloud musical
+        move    #>$2,x0
+        cmp     x0,b
+        move    #>$ffff00,x0            ; 2 -> +7   (-256)
+        teq     x0,a
+        move    #>$3,x0
+        cmp     x0,b
+        move    #>$100,x0               ; 3 -> -12  (+256)
+        teq     x0,a
+        move    a,x:(r7+$5e)            ; the candidate rate, this sample
+        move    x:(r7+$18),b            ; density: three PRNG bits vs DENS
+        asr     #$5,b,b
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b
+        move    x:(r7+$2d),a            ; DENS (the WOW knob in GRAIN)
+        asr     #$e,a,a
+        move    a1,x0
+        move    x0,a
+        sub     b,a                     ; N SET == this grain stays silent
+        clr     b
+        move    #>$1,x0
+        tmi     x0,b                    ; b = 1 when muted
+        move    b,x:(r7+$60)            ; candidate mute, line L
+        move    x:(r7+$18),b            ; its own density draw, so L and R
+        asr     #$8,b,b                 ; gap independently
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b
+        move    x:(r7+$2d),a
+        asr     #$e,a,a
+        move    a1,x0
+        move    x0,a
+        sub     b,a
+        clr     b
+        move    #>$1,x0
+        tmi     x0,b
+        move    b,x:(r7+$61)            ; candidate mute, line R
+
 ; ---- BUILDER ------------------------------------------------------------
         move    r7,a
         move    #>$34,x0
@@ -1922,7 +2012,10 @@ grcapok:
         abs     a
         move    #>$400000,x0
         sub     x0,a                    ; N SET == did NOT wrap
-        move    a,x:(r7+$58)            ; ⚠️ PARK THE FLAG AS A VALUE. Eight
+        move    a,y0                    ; ⚠️ PARK THE FLAG AS A VALUE, in y0 --
+                                        ; free throughout the builder, and a
+                                        ; register restore is a word cheaper
+                                        ; than a memory one at every site. Eight
                                         ; Tcc's below depend on it and the
                                         ; arithmetic between them SETS the
                                         ; condition codes -- the exact bug
@@ -1931,87 +2024,29 @@ grcapok:
 ; ---- the candidate rate for this grain, drawn from the SET ---------------
 ; unison is IN the set and is drawn as often as anything else, which is what
 ; keeps the cloud musical: most grains at pitch, some shifted.
-; The select is the SET WIDTH, and entry 0 is +12 so that a mask of 0 --
-; select index 0 -- pins every grain to the octave. That is the fixed engine,
-; the nearest thing to what was ear-passed before the split, and it stays
-; reachable for comparison.
-;   index 0 -> mask 0: +12 only          index 1 -> mask 1: +12 / unison
-;   index 2,3 -> mask 3: +12 / unison / +7 / -12
-        move    x:(r7+$5f),a            ; select index
-        move    #>$3,b                  ; wide by default
-        tst     a
-        move    #>$0,x0
-        teq     x0,b                    ; index 0 -> fixed +12
-        move    #>$1,x0
-        cmp     x0,a
-        move    #>$1,x0
-        teq     x0,b                    ; index 1 -> +12 / unison
-        move    b,x0
-        move    x:(r7+$18),b
-        and     x0,b
-        move    b1,x0
-        move    x0,b                    ; A2-clean before the compares
-        move    #>$fffe00,a             ; 0 -> +12  (-512)
-        move    #>$1,x0
-        cmp     x0,b
-        move    #>$0,x0                 ; CLR is accumulator-only; a zero
-        teq     x0,a                    ; immediate is the register form
-                                        ; 1 -> UNISON (delta 0) -- impossible
-                                        ; before the split, and most of what
-                                        ; keeps the cloud musical
-        move    #>$2,x0
-        cmp     x0,b
-        move    #>$ffff00,x0            ; 2 -> +7   (-256)
-        teq     x0,a
-        move    #>$3,x0
-        cmp     x0,b
-        move    #>$100,x0               ; 3 -> -12  (+256)
-        teq     x0,a
-        move    a,x:(r7+$5b)            ; the candidate rate
 ; ---- record: rate, mute, offset, gain -- L then R ------------------------
-        move    x:(r7+$58),a
+        move    y0,a
         tst     a
-        move    x:(r7+$5b),x0           ; candidate rate
+        move    x:(r7+$5e),x0           ; candidate rate, hoisted
         move    x:(r4),b                ; current rate
         tpl     x0,b                    ; wrapped -> take the new one
         move    b,x:(r4)+
         move    b,x:(r7+$5a)            ; this grain's LIVE rate, for the
                                         ; offset update two words along
-        move    x:(r7+$18),b            ; density: three PRNG bits vs DENS
-        asr     #$5,b,b
-        and     #>$7,b
-        move    b1,x0
-        move    x0,b
-        move    x:(r7+$2d),a            ; DENS (the WOW knob in GRAIN)
-        asr     #$e,a,a
-        move    a1,x0
-        move    x0,a
-        sub     b,a                     ; N SET == this grain stays silent
-        clr     b
-        move    #>$1,x0
-        tmi     x0,b                    ; b = 1 when muted
-        move    b,x:(r7+$5b)            ; the candidate mute
-        move    x:(r7+$58),a
+        move    y0,a
         tst     a
-        move    x:(r7+$5b),x0
+        move    x:(r7+$60),x0           ; candidate mute L, hoisted
         move    x:(r4),b                ; current mute
         tpl     x0,b                    ; wrapped -> take the new one
         move    b,x:(r4)+
         move    b,x:(r7+$5b)            ; the LIVE mute
 ; offset: reset to (2048 + scatter) << 9 at the wrap, else += rate
-        move    x:(r7+$54),a            ; scatter candidate, line L
-        move    #>2048,x0
-        add     x0,a
-        asl     #$9,a,a                 ; -> Q14.9
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$57)            ; the RESET form
         move    x:(r4),a                ; current offset
         move    x:(r7+$5a),x0           ; this grain's live rate
         add     x0,a                    ; the RUNNING form, in a
-        move    x:(r7+$57),x0           ; the RESET form, in x0 -- Tcc takes a
-                                        ; REGISTER source, never an accumulator
-        move    x:(r7+$58),b            ; the parked wrap flag
+        move    x:(r7+$54),x0           ; the RESET form, hoisted -- Tcc takes
+                                        ; a REGISTER source, never an accumulator
+        move    y0,b                    ; the parked wrap flag
         tst     b                       ; N SET == did not wrap
         tpl     x0,a                    ; wrapped -> reset
         move    a,x:(r4)+
@@ -2023,46 +2058,25 @@ grcapok:
         teq     x0,b                    ; mute==0 -> sounds
         move    b,x:(r4)+
 ; ---- the same four words for line R -------------------------------------
-        move    x:(r7+$58),a
+        move    y0,a
         tst     a
         move    x:(r7+$5b),x0
         move    x:(r4),b
         move    x:(r7+$5a),x0           ; R shares the grain's RATE
         tpl     x0,b
         move    b,x:(r4)+
-        move    x:(r7+$18),b            ; its own density draw, so L and R
-        asr     #$8,b,b                 ; gap independently
-        and     #>$7,b
-        move    b1,x0
-        move    x0,b
-        move    x:(r7+$2d),a
-        asr     #$e,a,a
-        move    a1,x0
-        move    x0,a
-        sub     b,a
-        clr     b
-        move    #>$1,x0
-        tmi     x0,b
-        move    b,x:(r7+$5b)
-        move    x:(r7+$58),a
+        move    y0,a
         tst     a
-        move    x:(r7+$5b),x0
+        move    x:(r7+$61),x0           ; candidate mute R, hoisted
         move    x:(r4),b
         tpl     x0,b
         move    b,x:(r4)+
         move    b,x:(r7+$5b)
-        move    x:(r7+$55),a            ; scatter candidate, line R
-        move    #>2048,x0
-        add     x0,a
-        asl     #$9,a,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$57)
         move    x:(r4),a
         move    x:(r7+$5a),x0
         add     x0,a
-        move    x:(r7+$57),x0
-        move    x:(r7+$58),b
+        move    x:(r7+$55),x0           ; the RESET form, hoisted
+        move    y0,b
         tst     b
         tpl     x0,a
         move    a,x:(r4)+
