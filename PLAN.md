@@ -140,8 +140,18 @@ The ten FX1 effects, with sizes (identical in both payloads):
 
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
 already running** (worst case, no derating needed). `make cycles`, 12 Aug
-(late): **room for new work: 352 cycles/sample** (819 on 11 Aug post-R18;
-v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352). ✅ **The mode-fork model was generalised to N paths, 12 Aug
+(late): **room for new work: −232 cycles/sample** (819 on 11 Aug post-R18;
+v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352, **GRAIN →
+−232**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
+broke first, not the chip.** It sums reverb + delay + two sends on ONE
+core; on hardware ChonVerb is payload A (tracks 5–8, core 0) and BongDelay
+is payload B (tracks 1–4, core 1), so no core ever pays both. The delay's
+worst path (GRAIN, 1,211) plus two sends is ~1,251 against core 1's
+~2,150 🟡 spare, and the server-role lock means it is charged ONCE per
+bank however many tracks select it. Treat −232 as "the single-core model
+has outlived its usefulness", not as an overrun — and note that the burn
+sweep is now the ONLY thing that can re-measure the real per-core ceiling,
+which raises the priority of unblocking it. ✅ **The mode-fork model was generalised to N paths, 12 Aug
 (`3fc25ba`)**: BEGIN..first MID is the always-run dispatch and each MID..next
 is one mutually exclusive alternative, so three modes are priced as
 dispatch + WORST alternative (dispatch 14w, PITCH 524w, TAPE 193w) instead
@@ -724,9 +734,17 @@ each stage is a separate commit gated by `make check`):
    at every level. Slot 10 is still free if the ear asks for DRIVE.
 5. **GRAIN** — the flagship, and the honest answer to "it doesn't sound like
    a Microcosm": density is the mechanism, not a better two-head shifter.
-   **Not started. Specced and costed 12 Aug 2026** so the next session
-   implements instead of re-deriving — two of these were measured, not
-   guessed, and both change the design:
+   ✅ **LANDED 12 Aug 2026 (`23fb336`), AND ITS EAR PASS PASSED FIRST TIME**
+   — the only BongDelay mode that has. Verdict (Sam), on his own melody
+   source at TIME 40 / FDBK 45 / MIX 110 / +12, level-matched, against a
+   CLEAN baseline and a SPRAY=0 control: **"spray killed robo and 127 was
+   good as well."** That closes the stage-2 defect with the mechanism it
+   was diagnosed for — the "robo" was PERIODICITY, and four grains each
+   re-randomising at their own wrap make the cancellation aperiodic. BOTH
+   ends of the knob pass, so SPRAY is a character control, not a
+   find-the-one-value knob. Round logged in `docs/VOICING.md`.
+   The spec below was written before the build and held up; what changed
+   in contact with the code is marked.
    - ✅ **THE ROLL IS MANDATORY, not an optimization.** PITCH costs 524
      words for 4 head evaluations (~131 each), so 4 grains × 2 lines
      unrolled is **1,048 words against payload B's 942 free — it does not
@@ -746,20 +764,54 @@ each stage is a separate commit gated by `make check`):
      jump stays silent); lerped reads; **output-only, never in the loop**
      (stage 2c). Per-line scatter tables keep L and R decorrelated while the
      window gains are computed once and reused.
-   - **Implementation constraints, all checked**: `r4` is the only free AGU
-     pointer (r0/r1/r2/r5/r6/r7 are taken) and `m4` must be set to `$ffffff`
-     alongside m0/m1/m2/m5; a `do` body must be BRANCH-FREE, so every
-     conditional is a Tcc (`tmi`/`teq`/`tne`) — already the house idiom;
-     the state table needs ~13 words and r7 is free from `$32` to `$62`;
-     the PRNG currently lives INSIDE the PITCH alternative and must be
-     hoisted or duplicated.
-   - ⚠️ **Extend the gate first**: `verify_delay` proves CLEAN only. Add
-     DMODE=1/2 cases so PITCH and TAPE are bit-compared too, since the roll
-     touches shared machinery. That is the stage-1 pattern — prove
-     equivalence, THEN add.
-   - Cost: ~400 cycles/sample 🟡 on core 1's ~2,150 spare. Freeze + grain =
-     texture hold, and SPRAY (scatter depth) is the natural knob — slot 10
-     is the last free one.
+   - **What the build changed**: the roll is THREE emissions, not one —
+     a builder (`do #4`, fills an 8-record interleaved table) plus one
+     reader per line, because a single 8-iteration loop would have needed
+     the line base and write pointer staged per record. The table is 32
+     words at `$34..$53` (not ~13: 4 words × 8 records), and only the
+     eight SCATTERS persist — every other field is rebuilt each sample, so
+     boot garbage there cannot survive one sample. Per-grain WRAP
+     DETECTION needs no stored previous age at all: `prev = (age + step) &
+     mask` by construction, so recomputing it is exact and costs less than
+     eight more words. The PRNG was DUPLICATED rather than hoisted —
+     hoisting would spend CLEAN's and TAPE's cycles on a number they never
+     read, and words are the thing payload B has. `m4` set per block and
+     restored at `dry:` as specced.
+   - ✅ **Gate extended FIRST (`5277d68`)**, the stage-1 pattern: PITCH
+     (+12 and detune) and TAPE (WOW=100, and WOW=127 FDBK=127) are now
+     bit-compared too, each with its OWN sensitivity control (the
+     reference in that mode must differ from CLEAN, or the case is
+     vacuous). GRAIN then landed **21/21 against the pre-GRAIN engine** —
+     CLEAN, PITCH and TAPE all bit-identical despite the shifted-output
+     substitution being refactored to a per-block flag. The unknown-mode
+     fallback moved to DMODE=5, since 3 is an engine now.
+   - **Cost, measured**: 343 words (1,561 → 1,904); GRAIN's path is 289w +
+     609 of roll = **~898 cycles/sample**, more than double the ~400
+     estimate, making it the delay's worst path (834 → 1,211). It fits on
+     core 1's ~2,150 🟡 spare and only one DELAY SERVER runs per bank (the
+     role lock), so it is charged once — but see the cycle ledger: the
+     printed single-core headroom is now NEGATIVE.
+   - ⚠️ **The fork's cycle model compared alternatives by WORDS**, which
+     was only correct while every alternative was straight-line. It would
+     have priced PITCH's size with GRAIN's roll depth. `cycle_count` now
+     attributes each roll to the alternative containing it and compares by
+     CYCLES; reduces exactly to the old formula when nothing is rolled.
+   - ⚠️ **WOW (slot 6) and FRZE (slot 11) WERE NEVER ENABLED.** Stages 3
+     and 4 named, defaulted, counted and implemented both and neither was
+     added to `ACTIVE_PARAMS` — which IS the panel's enable bitmap, so on
+     hardware they would have drawn no knob at all: TAPE's depth and
+     FREEZE itself pinned to their defaults with no way to move them.
+     `verify_menu` keeps its own copy of the list and was missing the same
+     two slots, so it could not see it. The inverse of the PARAM_PAGES
+     trap. Fixed here; page 2 is now full and correct — **WOW(6) MODE(7)
+     VRBD(8) PTCH(9) SPRA(10) FRZE(11), three knobs and three selects,
+     which is the hardware budget exactly.**
+   - **Still unheard**: FREEZE + GRAIN (the texture hold) and GRAIN through
+     the `→VERB` send (the delay→reverb wash the whole framing assumes).
+     Also measured, for the next round and not against this one: GRAIN's
+     L/R correlation is **0.00** against the reference granular's **+0.51**
+     — ours is WIDER, not narrower. If it ever reads as "no centre" the
+     lever is PING or correlating the two lines' scatter, not the window.
 6. **REVERSE** — windowed backward reads, same crossfade machinery
    (~150–250 words) — cheapest AFTER grain exists.
 

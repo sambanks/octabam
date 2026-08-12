@@ -1451,3 +1451,51 @@ out/vv_ab/shimmer.
 middle." Open for next round: the pad's last bit of forwardness (a driven-
 line weight between 0.5 and 1, or per-mode), 6-9k crest still 32 vs VV
 19.5 on the pad, and the deferred shifter-input HP (Y-table state).
+
+---
+
+## BongDelay v2 stage 5 -- GRAIN, ear round 1 (12 Aug 2026)
+
+**PASSED FIRST TIME**, which no BongDelay mode had done: PITCH's first ear
+pass failed the splice and needed a window fix, a retraction, jitter and
+the cascade cut before it was usable.
+
+Kit: `out/grain_ab/melody_{clean,spray0,spray64,spray127}_lvl.wav` --
+Sam's own `melody_1_dry.wav` (48k mono) through the DS layout, TIME 40,
+FDBK 45, MIX 110, PTCH +12, level-matched to -20 dBFS rms with peak
+protection (the GRAIN variants needed +12.5 to +13.2 dB against CLEAN's
++8.7, which is the scatter's own level cost showing up).
+
+Presented in one order, one file per play, narrated: CLEAN as the
+baseline, then SPRAY 0 / 64 / 127.
+
+**Verdict (Sam): "spray killed robo and 127 was good as well."**
+
+That is the stage-2 defect closed by the mechanism it was diagnosed for.
+The PITCH ear pass established that the "robo" was PERIODICITY -- two heads
+a fixed distance apart cancelling on a metronome -- not window shape, and
+that widening the window only moved the rate (buzz -> flutter, both
+rejected). GRAIN attacks it directly: four grains, each re-randomising its
+source position at its own wrap, so the cancellation is aperiodic. SPRAY=0
+is the control that makes this legible -- it puts all four grains on ONE
+read, i.e. deliberately back in the coherent regime -- and the knob's
+effect is exactly the difference between the two.
+
+BOTH ends of the usable range pass, so SPRAY is a character control rather
+than a "find the one good value" knob. Default stays 64 (mid).
+
+Measured alongside, for the next round rather than against this one:
+
+| | reference granular | GRAIN |
+|---|---|---|
+| L/R correlation | +0.51 (melody/pad/stab), +0.72 (hat) | **0.00** |
+
+⚠️ GRAIN is WIDER than the reference device, not narrower. Not a fault and
+not a target -- but if the pad ever reads as "no centre", the lever is the
+PING crossfeed (rendered at 64) or correlating the two lines' scatter,
+NOT the window. Also: the reference files carry content only in their
+first ~25-35 s; the rest of each is trailing silence.
+
+Still unheard, and the two combinations the design was built toward:
+FREEZE + GRAIN (the texture hold) and GRAIN through the ->VERB send (the
+delay->reverb wash the whole framing assumes).
