@@ -60,7 +60,7 @@ P_PENABLE_LO = 0x18e                    # params 0..7, one nibble each
 P_PENABLE_HI = 0x18a                    # params 8..11
 # which knobs each effect's DSP code actually reads (mirrors build_menu.py)
 ACTIVE_PARAMS = {
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 8],
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 7, 8, 9],   # 7 MODE + 9 PTCH: v2 stage 2
     # v92 page-2 rejig: all twelve. Even page-2 slots are knob fields, odd ones
     # are companion fields of the same word (DSP.md section 9).
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],

@@ -56,8 +56,8 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     4 (12 Aug, delay          1879 (12 Aug, delay
-                    auto-gain)                auto-gain)
+  free (region)     4 (12 Aug, delay          1353 (12 Aug late, v2
+                    auto-gain)                stage 2 PITCH)
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
@@ -89,7 +89,8 @@ site). **A is effectively FULL** — the wet-makeup `asl` (~1 word) still
 fits; anything else waits on the reverb-side LFO-block roll lever below.
 **Payload B used 726, FREE 1,998** — 12 Aug (v2 stage 1, delay 514 → 559):
 **used 771, FREE 1,953** — 12 Aug (auto-gain, delay +65 / send +9): **used
-845, FREE 1,879.**
+845, FREE 1,879** — 12 Aug late (v2 stage 2 PITCH, delay +526): **used
+1,371, FREE 1,353.**
 
 ⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
 layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
@@ -138,9 +139,15 @@ The ten FX1 effects, with sizes (identical in both payloads):
 ### Cycles — NOT the constraint, per core, 4,535/sample
 
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
-already running** (worst case, no derating needed). `make cycles`, 12 Aug:
-**room for new work: 770 cycles/sample** (819 on 11 Aug post-R18; v2 stage
-1's manual wrap took it to 777, the delay auto-gain to 770).
+already running** (worst case, no derating needed). `make cycles`, 12 Aug
+(late): **room for new work: 352 cycles/sample** (819 on 11 Aug post-R18;
+v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352). ⚠️ The PITCH
+drop is a MODEL change as much as a cost: the tool now prices the delay's
+mode fork at its worst path (~450 cycles in PITCH mode), and the bank model
+is the pre-XBUS single-core one — on hardware the PITCH cost lands on
+CORE 1's ~2,150 🟡 spare, not on core 0 where FX1 competes. The printed
+number is the honest single-core floor; the burn sweep remains the only
+re-measure.
 
 ⚠️ **FX1 cycles are paid ×4 per core.** A 300-cycle FX1 effect costs 1,200
 cycles/core — which does not fit in 819. *This*, not program space, is the
@@ -470,8 +477,8 @@ renders `--layout DS`. Falsifier for the →VERB claim: it is emulator-only;
 if hardware's cross-core timing differs, the on-unit check is →DEL/→VERB
 routed audio on tracks 1–4 feeding a track-5 ChonVerb.
 
-Budget: **1,879 program words, ALL of them renderable** (1,953 before the
-12 Aug auto-gain commit) — the DEV placement
+Budget: **1,353 program words, ALL of them renderable** (1,953 before the
+12 Aug auto-gain commit, 1,879 before stage-2 PITCH) — the DEV placement
 change landed 12 Aug evening (delay at P:0x04000 outside the donor region,
 see traps), so the hatch no longer caps the delay — **~2,150 spare cycles
 with four FX1 FILTERs /
@@ -566,6 +573,31 @@ each stage is a separate commit gated by `make check`):
    a low-byte SELECT: +12 / +7 / −12 / ±detune 🟡 (~200–300 words,
    ~60–100 cycles). Each repeat shifts; through the reverb this is the
    Crystal/Hedra territory.
+   ✅ **LANDED 12 Aug 2026 (late) — ear pass pending.** MODE 1 = PITCH:
+   per line, a Q11.12 age accumulator (persistent, wraps mod 2048 samples)
+   plus two heads a half-window apart reading the DELAY LINE ITSELF at lag
+   `min(TIME,14335) + age` — no separate shift buffer exists or fits (both
+   line buffers fill the half-window), and line-reading is the topology
+   GRAIN inherits. Window is shimmer v3's verbatim (age-trapezoid 640/256,
+   smoothstep, silent upper half — two copies not four); reads are lerped
+   (frac = age's low 12 bits); shifted taps land in $79/$7a so TONE, PING,
+   FDBK, MIX and →VERB are mode-blind — every repeat re-shifts (the climb
+   is the point here, unlike the reverb's cascade cut). Steps: +12=+$1000,
+   +7=+$800, −12=−$800, det=±$24 (±15.2 cents, L up / R down — the one
+   select where the lines differ). **Descriptor landed with it** (the
+   stage-1 rule): MODE select count 2 (slot 7), PTCH select count 4
+   (slot 9, companion low byte); defaults 0/0, in range; `DINT=n` local
+   override mirrors DMODE. **Measured:** 438.75 Hz in → +12 ladder
+   869/1731/3453/6899/13789 Hz (each repeat re-shifted), +7 stacks
+   654/977/1472/2205 (1.5ⁿ), −12 descends 223/116/55, detune spreads
+   ±15 c around f; ping-pong puts even orders on R, odd on L; splice
+   sidebands ±21.5 Hz (window lap rate) at −14 dB. CLEAN bit-identical
+   through the dispatch (`verify-delay` vs pre-stage-2 HEAD, 11/11 incl.
+   DMODE=3→CLEAN). Every emitted mpy signed (2000c0/c8), abs/neg checked.
+   Cost: delay 624 → 1,150 words; payload B used 845 → 1,371, FREE 1,353;
+   ~450 cycles/sample in PITCH mode only (CLEAN path unchanged;
+   `cycle_count` now prices the mode fork at its WORST path via MODEFORK
+   markers instead of refusing or summing both engines).
 3. **FREEZE** — 2-state select: stop line writes, keep reading (~30–60
    words, ~0 cycles). With PITCH: frozen buffer + shifted reads.
 4. **TAPE** — wow/flutter LFO on the read pointer (LFOTAB precedent),
@@ -663,8 +695,12 @@ Traps, all already paid for once:
   XBUS/SPEC (`make bus`) and the hatch (`make render-delay`) are the live
   configurations; treat bus-plain as historical unless something needs it.
 - Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
-  `PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used, and the
-  parameter-delivery gap (step 2) caps how many more are worth adding.
+  `PING` p3, `MIX` p4, `VRBW` p5, `MODE` p7 (select, count 2), `VRBD` p8,
+  `PTCH` p9 (select, count 4) — 9 of 12 used (MODE/PTCH landed with stage
+  2), and the parameter-delivery gap (step 2) caps how many more are worth
+  adding. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
+  can draw a knob and publish nothing, and dsp_host cannot drive companion
+  fields at all (`DMODE=`/`DINT=` are the local overrides).
 
 ### 4. FX1 consolidation — turning 12,288 stranded words into capability
 

@@ -196,8 +196,25 @@ def measure(name):
                 if lines[sj].strip() == "; SHIMMER_END":
                     shim_lines.update(range(si, sj + 1))
                     break
+    # MODEFORK_BEGIN/MID/END: a mode dispatch where exactly ONE of the two
+    # paths (BEGIN..MID = path A incl. the dispatch, MID..END = path B) runs
+    # per sample. Branches inside are exempt like the shimmer's (short window
+    # ramps, +-2 words), and the span is corrected below from A+B to the
+    # WORST path: span - min(A, B). That keeps the count a per-sample ceiling
+    # for whichever mode is selected, instead of pricing both engines at once.
+    fork = {}
+    for si, sl in enumerate(lines):
+        if sl.strip().startswith("; MODEFORK_BEGIN"):
+            fork["begin"] = si
+        elif sl.strip().startswith("; MODEFORK_MID"):
+            fork["mid"] = si
+        elif sl.strip().startswith("; MODEFORK_END"):
+            fork["end"] = si
+    if fork and set(fork) != {"begin", "mid", "end"}:
+        sys.exit(f"{name}: incomplete MODEFORK markers ({sorted(fork)})")
+    fork_lines = set(range(fork["begin"], fork["end"] + 1)) if fork else set()
     bad = [(j + 1, lines[j].strip()) for j in range(i + 1, end_line)
-           if j not in shim_lines
+           if j not in shim_lines and j not in fork_lines
            and CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
     if bad:
         print(f"{name}: loop body is not straight-line -- words != cycles here.",
@@ -206,18 +223,25 @@ def measure(name):
             print(f"  {name}.asm:{ln}: {txt}", file=sys.stderr)
         sys.exit(1)
 
-    marked = lines[:i + 1] + [f"{MARKER}:"] + lines[i + 1:]
+    # All label insertions (body marker, inner-loop markers, fork markers) go
+    # through one list, applied in descending line order so no insertion
+    # shifts another's position.
+    inserts = [(i, f"{MARKER}:")]
     inner_at = []
-    if inner:
-        # Insert marker labels before each inner loop. Labels go in reverse order
-        # so earlier insertions don't shift later indices.
-        for j, m in reversed(inner):
-            trips = int(m.group(1), 16 if lines[j].count("$") else 10)
-            inner_end = m.group(2)
-            label = f"{INNER_MARKER}{len(inner_at)}"
-            # +1 for the MARKER line already inserted above line i+1
-            marked = marked[:j + 2] + [f"{label}:"] + marked[j + 2:]
-            inner_at.insert(0, (trips, inner_end, label))
+    for j, m in inner:
+        trips = int(m.group(1), 16 if lines[j].count("$") else 10)
+        label = f"{INNER_MARKER}{len(inner_at)}"
+        inserts.append((j, f"{label}:"))
+        inner_at.append((trips, m.group(2), label))
+    fork_labels = {}
+    if fork:
+        for key in ("begin", "mid", "end"):
+            lbl = f"__cyc_fk{key}"
+            inserts.append((fork[key], f"{lbl}:"))
+            fork_labels[key] = lbl
+    marked = list(lines)
+    for j, txt in sorted(inserts, reverse=True):
+        marked = marked[:j + 1] + [txt] + marked[j + 1:]
 
     blob, syms = assemble("\n".join(marked), name)
     if MARKER not in syms or end_label not in syms:
@@ -232,6 +256,15 @@ def measure(name):
         # The span already counts the body ONCE, so add the other trips.
         cycles += (trips - 1) * inner_words + DO_SETUP
         notes.append(f"{inner_words}w x{trips}")
+    if fork_labels:
+        if any(l not in syms for l in fork_labels.values()):
+            sys.exit(f"{name}: assembler dropped a MODEFORK label")
+        a_w = syms[fork_labels["mid"]] - syms[fork_labels["begin"]]
+        b_w = syms[fork_labels["end"]] - syms[fork_labels["mid"]]
+        # The span priced BOTH paths; only one runs per sample. Charge the
+        # worst one, so the number stays a ceiling for either mode.
+        cycles -= min(a_w, b_w)
+        notes.append(f"fork worst-path (A {a_w}w, B {b_w}w)")
     note = ", ".join(notes) if notes else ""
     return dict(name=name, words=words, cycles=cycles, inner=note,
                 loop_end=end_label, total_words=len(blob) // 3, marked=marked)

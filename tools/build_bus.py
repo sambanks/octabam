@@ -136,7 +136,10 @@ NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
 RENAMES = {
     "DELAY SERVER": [
         (1, b"FDBK"), (2, b"TONE"), (3, b"PING"), (4, b"MIX"), (5, b"VRBW"),
-        (6, b""), (7, b""), (8, b"VRBD"),
+        (6, b""), (7, b"MODE"),     # slot 7 -> r6+$c b8-15  engine select (v2)
+        (8, b"VRBD"),
+        (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
+                                    #   +12 / +7 / -12 / +-detune (stage 2)
     ],
     "REVERB SERVER": [
         (1, b"MOD"), (2, b"SIZE"),
@@ -179,7 +182,10 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0)],
+    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0),
+                     (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
+                     (9, 0)],   # PTCH  +12   -- both IN RANGE of their counts
+                                # below (the default-as-index sequencer stall)
     # EVERY page-2 slot needs an explicit default now that all twelve are
     # enabled: an unlisted slot keeps the DONOR's default, which is sized for
     # DARK REV's value counts, not ours. And a default outside its own count
@@ -228,7 +234,9 @@ def penable(active):
 # Which knobs each effect's DSP code actually reads. Page-1 indices 0..5 are
 # r6+0..5; page-2 index 6 = r6+$c, 7 = r6+$b, 8 = r6+$d (DSP.md section 9).
 ACTIVE_PARAMS = {
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 8],
+    # 7 (MODE) and 9 (PTCH) landed with v2 stage 2 -- the stage-1 rule was
+    # that a one-value select draws a dead knob, so MODE waited for PITCH.
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 7, 8, 9],
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
     "SEND": [0, 1],
 }
@@ -251,7 +259,9 @@ ACTIVE_PARAMS = {
 # fields are eight-bit selects and take a small step count. Setting a
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
+PAGE2_COUNTS = {"DELAY SERVER":  {7: 2,     # MODE   select: CLEAN/PITCH (v2 s2)
+                                  9: 4},    # PTCH   select: +12/+7/-12/det
+                "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
                                   9: 4,     # WIDTH  R16: SELECT (companion $d-low
@@ -883,6 +893,21 @@ mkgo:""",
             "; DMODE_OVERRIDE",
             "        move    #>%d,a" % (int(dmode_env) << 16))
         print(f"  *** DMODE OVERRIDE: BongDelay MODE forced to {int(dmode_env)} ***")
+
+    # DINT=n forces BongDelay's PITCH interval select (0=+12, 1=+7, 2=-12,
+    # 3=detune), same mechanism and reason as DMODE: the select is a companion
+    # LOW-byte field (r6+$d), which dsp_host's -params cannot drive. Plain
+    # small index, decimal for consistency with the DMODE precedent.
+    dint_env = os.environ.get("DINT")
+    if dint_env is not None:
+        if delay_src.count("; DINT_OVERRIDE") != 1:
+            sys.exit("DINT=n set but the DELAY source has no single "
+                     "; DINT_OVERRIDE marker -- a pre-stage-2 delay_server.asm "
+                     "cannot take an interval override")
+        delay_src = delay_src.replace(
+            "; DINT_OVERRIDE",
+            "        move    #>%d,a" % int(dint_env))
+        print(f"  *** DINT OVERRIDE: BongDelay PITCH interval forced to {int(dint_env)} ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --

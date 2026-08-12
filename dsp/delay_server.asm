@@ -139,6 +139,10 @@
 ;
 ; State (all in the per-instance r7 block):
 ;   r7+$14              call flag stash (proc entry accumulator)
+;   r7+$15/$16/$17      per-sample scratch for the PITCH heads (age_fx /
+;                       phase then g^2 / t0 then tap). $15 doubles as the
+;                       warm-up count stash -- warm-up and the sample loop
+;                       are mutually exclusive by construction
 ;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
 ;                       with dsp/reverb_server.asm's convention)
 ;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
@@ -146,8 +150,17 @@
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
 ;   r7+$68              LineR base = LineL base + 0x4000 (per block, for the
 ;                       per-sample manual wraps -- v2 spine)
-;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN, and
-;                       in stage 1 every other value also runs CLEAN)
+;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN,
+;                       1 = PITCH -- stage 2; every other value runs CLEAN)
+;   r7+$6a/$6b          PITCH age step L / R, Q11.12 signed (per block, from
+;                       the PTCH interval select; they differ only in DETUNE)
+;   r7+$6c/$6d          PITCH head age L / R, Q11.12 (persistent, masked on
+;                       load AND save -- same discipline as $70/$71)
+;   r7+$6e              PITCH lag base = min(TIME, 14335) (per block; TIME +
+;                       window 2048 + the lerp's -1 must stay inside the
+;                       16384-word line, or a head would read data newer
+;                       than this lap)
+;   r7+$6f              per-sample scratch for the PITCH heads (age_int)
 ;   r7+$70/$71          LineL/LineR write-pointer phase, persistent, masked
 ;                       on load AND save (same two-track-freeze discipline
 ;                       as dsp/reverb89.asm's $83 -- garbage with bit 23 set
@@ -199,6 +212,15 @@
 ;              the shared REVERB ACC bus (BUS.md task 10). One-directional:
 ;              see dsp/reverb_server.asm's ->DELAY header note for why the
 ;              reverse (reverb wet -> delay) is deliberately never built.
+;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
+;              count 2: 0 = CLEAN, 1 = PITCH. Landed with stage 2, per the
+;              stage-1 rule that a one-value select draws a dead knob.
+;   p9 PTCH  -> PITCH interval select, page-2 slot 9 companion (r6+$d low
+;              bits), count 4: 0 = +12, 1 = +7, 2 = -12, 3 = +-detune
+;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
+;              WIDTH lesson: companion fields read near-boolean at count 128
+;              on hardware, small counts publish. DINT=n (build_bus.py) is
+;              the local override -- dsp_host cannot drive companion fields.
 ;   p6 ->VERB DRY -> this track's own pre-effect signal, parallel tap into the
 ;              same REVERB ACC bus, same shape as dsp/send_client.asm's knobs.
 ;              Reads x:(r6+$d) -- BUS.md task 11 gave DELAY SERVER its own
@@ -539,6 +561,9 @@ dwarmz:
         move    b,x:(r7+$71)
         move    b,x:(r7+$77)
         move    b,x:(r7+$78)
+        move    b,x:(r7+$6c)            ; PITCH head ages start at 0 (they are
+        move    b,x:(r7+$6d)            ; masked on load too, but determinism
+                                        ; is what verify-delay bit-compares)
         move    x:(r7+$15),a            ; reload count
         move    #>$1,x0
         add     x0,a
@@ -603,6 +628,68 @@ dwarmdone:
 ; DMODE_OVERRIDE
         move    a,x:(r7+$69)            ; MODE, this block (0 = CLEAN)
 
+; ---- PITCH interval select -> per-line age steps (v2 stage 2) -------------
+; Page-2 slot 9's companion field, r6+$d LOW bits -- ChonVerb's WIDTH/->DEL
+; idiom exactly (companion low-byte fields publish small counts; this one is
+; count 4). Decoded every block regardless of MODE (cheap, and keeps the
+; PITCH state warm across a MODE flip). The step is the head's age advance
+; per sample in Q11.12: age DECREASES by (rate-1) for an upshift, so
+;   +12 (rate 2.0)  -> step +$1000 (1.0 sample/sample)
+;   +7  (rate 1.5)  -> step +$800  (0.5)
+;   -12 (rate 0.5)  -> step -$800  (age grows: the head falls behind)
+;   det (rate 1+-e) -> +-$24 = +-15.2 cents, L up / R down -- the one select
+;                      where the two lines' steps differ
+; Stored as full signed words; the per-sample update wraps with & $7fffff,
+; and two's complement subtraction is exact under that mask.
+        move    x:(r6+$d),a
+        and     #>$7f,a                 ; select index 0..3 (companion low byte)
+; DINT_OVERRIDE
+        move    a1,x0
+        move    x0,a                    ; A2-clean before the compares
+        move    #>$1,x0
+        cmp     x0,a
+        beq     pint7
+        move    #>$2,x0
+        cmp     x0,a
+        beq     pintm12
+        move    #>$3,x0
+        cmp     x0,a
+        beq     pintdet
+        move    #>$1000,a               ; index 0 (and any garbage): +12
+        move    a,x:(r7+$6a)
+        move    a,x:(r7+$6b)
+        bra     pintend
+pint7:
+        move    #>$800,a                ; +7
+        move    a,x:(r7+$6a)
+        move    a,x:(r7+$6b)
+        bra     pintend
+pintm12:
+        move    #>$fff800,a             ; -12
+        move    a,x:(r7+$6a)
+        move    a,x:(r7+$6b)
+        bra     pintend
+pintdet:
+        move    #>$24,a                 ; detune: L up 15 cents
+        move    a,x:(r7+$6a)
+        move    #>$ffffdc,a             ; R down 15 cents
+        move    a,x:(r7+$6b)
+pintend:
+
+; ---- PITCH lag base: TIME clamped to keep lag + window + lerp in the line -
+; Max head lag = base + 2047 (age) + 1 (lerp's older neighbour); it must not
+; reach 16384 or the read wraps onto data written THIS lap. sub/branch, not
+; cmp (the cmp-encodes-as-max trap family: sub sets N and V properly).
+        move    x:(r7+$75),a            ; TIME, 64..16320
+        move    #>14335,x0              ; 16384 - 2048 - 1
+        sub     x0,a
+        tst     a
+        ble     plagok                  ; TIME <= cap: keep it
+        clr     a                       ; over: excess -> 0, i.e. clamp
+plagok:
+        add     x0,a                    ; min(TIME, 14335)
+        move    a,x:(r7+$6e)            ; PLAGB, the pitch heads' lag base
+
 ; ---- rebuild both line pointers from saved phase --------------------------
 ; Same A2-clean discipline as dsp/reverb89.asm's phase reload: garbage with
 ; bit 23 set would sign-extend and saturate the following move a,rN to
@@ -664,7 +751,18 @@ dwarmdone:
         add     x0,a
         move    a,x:(r7+$63)            ; advance ACC read pointer
 
-; ---- read both delayed taps: manual wrap, no AGU modulo (v2 spine) --------
+; ---- taps: engine dispatch on MODE (v2 stage 2) ---------------------------
+; MODE 1 = PITCH takes the shifted-tap path below; 0 and every unknown value
+; run the CLEAN taps -- a wrong select degrades to the trad delay, never to
+; silence (the stage-1 rule). The compare is the safe `cmp x0,a` form.
+; MODEFORK_BEGIN -- cycle_count.py: exactly one of the two paths between here
+; and MODEFORK_END runs per sample; the tool prices the WORST one, not both.
+        move    x:(r7+$69),a
+        move    #>$10000,x0             ; 1 << 16, MSB-aligned like the store
+        cmp     x0,a
+        beq     pmode
+
+; ---- CLEAN: read both delayed taps: manual wrap, no AGU modulo (v2 spine) -
 ; read addr = base + ((wr - TIME) & $3fff). The AND is exact because both
 ; line bases are 0x4000-aligned, so the base falls out of the mask; wr-TIME
 ; never goes negative (base >= 0x30000 > TIME's 16320 max). A2 stays
@@ -693,6 +791,373 @@ dwarmdone:
         move    a,r5
         move    y:(r5),a
         move    a,x:(r7+$7a)            ; dR
+        bra     pdone
+
+; ---- PITCH: dual crossfaded lerp heads per line (v2 stage 2) --------------
+; The shimmer-v3 machinery (dsp/reverb_server.asm SHIMMER block) reading the
+; DELAY LINE ITSELF -- no separate shift buffer exists or fits; both line
+; buffers fill this server's entire half-window, and reading the line at
+; moving lag is the Microcosm-family topology anyway (GRAIN inherits exactly
+; this addressing). Per line:
+;
+;   age (Q11.12, persistent, wraps mod 2048 samples) advances by the
+;   interval step; head lag = PLAGB + age, so an upshift's head slides
+;   TOWARD the write pointer, replaying material at rate (1 + step/4096).
+;   Head 1 runs half a window (1024 samples) behind head 0. Each head:
+;   trapezoid window on AGE (the shimmer constants verbatim: silent at the
+;   wrap splice, ramp 256, flat top, zero over the upper half -- two copies,
+;   not four), smoothstepped, times a LERPED line read (integer lag from
+;   age's top bits, Q23 fraction from its low 12 -- truncation is the floor
+;   that cost the first shimmer, lerp is mandatory). g0+g1 ~= 1, so loop
+;   gain still never exceeds FDBK: PITCH inherits CLEAN's stability bound.
+;
+; The shifted taps land in $79/$7a exactly where CLEAN's taps land, so
+; everything downstream -- TONE damping, the PING crossfeed, FDBK write-back,
+; MIX, the ->VERB send -- is one engine, mode-blind. Each REPEAT re-shifts:
+; the climbing-octave Crystal behaviour, on purpose (the reverb's shimmer
+; deliberately removed its cascade; a delay's discrete repeats are where a
+; climb IS the effect).
+;
+; mpy orientation throughout: the possibly-negative operand (tap, t1-t0) is
+; ALWAYS x0, the first operand of the audited-signed `mpy x0,y1` form; y1
+; only ever carries frac or a window gain, both strictly non-negative.
+; MODEFORK_MID -- CLEAN path ends above, PITCH path starts here
+pmode:
+; ---- Line L: age update ---------------------------------------------------
+        move    x:(r7+$6c),a            ; ageL, Q11.12
+        move    x:(r7+$6a),x0           ; stepL (signed)
+        sub     x0,a
+        and     #>$7fffff,a             ; wrap mod 2048 samples
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7+$6c)
+; ---- Line L, head 0: lerp read at lag PLAGB + age -------------------------
+        move    a,x:(r7+$15)            ; park age_fx
+        asr     #$c,a,a                 ; age_int, 0..2047
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$6f)            ; park age_int
+        move    r1,a                    ; LineL write pointer
+        move    x:(r7+$6e),x0           ; PLAGB
+        sub     x0,a
+        move    x:(r7+$6f),x0           ; age_int
+        sub     x0,a
+        and     #>$3fff,a               ; read phase (t0, the newer neighbour)
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$16)            ; park phase
+        move    x:(r7+$31),x0           ; LineL base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t0
+        move    a,x:(r7+$17)            ; park t0
+        move    x:(r7+$16),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a               ; phase-1, wrapped: one sample OLDER
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$17),x0           ; t0
+        sub     x0,a                    ; t1 - t0, signed
+        move    a1,x0                   ; -> FIRST mpy operand
+        move    x:(r7+$15),a            ; age_fx
+        and     #>$fff,a                ; sample fraction, Q12 (a2 already 0)
+        asl     #$b,a,a                 ; -> Q23
+        move    a1,y1                   ; frac
+        mpy     x0,y1,a                 ; frac*(t1-t0), signed
+        move    x:(r7+$17),x0
+        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    a,x:(r7+$17)            ; park tap (t0 dead)
+; window: t = 640 - |age-640|; silent upper half, ramp 256, smoothstep
+        move    x:(r7+$6f),a            ; age_int
+        move    #>640,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a
+        tst     a
+        bgt     pwl0a
+        clr     a                       ; upper half: this head is silent
+        bra     pwl0d
+pwl0a:
+        move    #>256,x0
+        sub     x0,a
+        blt     pwl0r
+        move    #>$7fffff,a             ; flat top
+        bra     pwl0d
+pwl0r:
+        add     x0,a
+        asl     #$f,a,a                 ; g = t/256, Q23
+        move    a,x0                    ; smoothstep s = g^2*(3-2g), zero-slope
+        move    a,y1                    ; joins at both ends (shimmer R18)
+        mpy     x0,y1,a                 ; g^2
+        move    a,x:(r7+$15)            ; park g^2 (age_fx dead)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1                    ; 1-g
+        move    x:(r7+$15),x0
+        mpy     x0,y1,a                 ; g^2*(1-g)
+        asl     #$1,a,a
+        add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
+pwl0d:
+        move    a1,y1                   ; g0
+        move    x:(r7+$17),x0           ; tap (signed) first
+        mpy     x0,y1,a
+        move    a,b                     ; b = head 0's contribution
+; ---- Line L, head 1: age + half a window, same machinery ------------------
+        move    x:(r7+$6c),a
+        move    #>$400000,x0            ; +1024 samples in Q11.12
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a                    ; age1_fx, clean
+        move    a,x:(r7+$15)
+        asr     #$c,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$6f)
+        move    r1,a
+        move    x:(r7+$6e),x0
+        sub     x0,a
+        move    x:(r7+$6f),x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$16)
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$17)
+        move    x:(r7+$16),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    x:(r7+$17),x0
+        sub     x0,a
+        move    a1,x0
+        move    x:(r7+$15),a
+        and     #>$fff,a
+        asl     #$b,a,a
+        move    a1,y1
+        mpy     x0,y1,a
+        move    x:(r7+$17),x0
+        add     x0,a
+        move    a,x:(r7+$17)
+        move    x:(r7+$6f),a
+        move    #>640,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a
+        tst     a
+        bgt     pwl1a
+        clr     a
+        bra     pwl1d
+pwl1a:
+        move    #>256,x0
+        sub     x0,a
+        blt     pwl1r
+        move    #>$7fffff,a
+        bra     pwl1d
+pwl1r:
+        add     x0,a
+        asl     #$f,a,a
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a
+        move    a,x:(r7+$15)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1
+        move    x:(r7+$15),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+pwl1d:
+        move    a1,y1                   ; g1
+        move    x:(r7+$17),x0
+        mpy     x0,y1,a
+        add     b,a                     ; g0*tap0 + g1*tap1, g0+g1 ~= 1
+        move    a,x:(r7+$79)            ; dL, shifted
+; ---- Line R: identical, on r2/base $68/age $6d/step $6b -------------------
+        move    x:(r7+$6d),a
+        move    x:(r7+$6b),x0
+        sub     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$6d)
+        move    a,x:(r7+$15)
+        asr     #$c,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$6f)
+        move    r2,a
+        move    x:(r7+$6e),x0
+        sub     x0,a
+        move    x:(r7+$6f),x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$16)
+        move    x:(r7+$68),x0           ; LineR base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$17)
+        move    x:(r7+$16),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    x:(r7+$17),x0
+        sub     x0,a
+        move    a1,x0
+        move    x:(r7+$15),a
+        and     #>$fff,a
+        asl     #$b,a,a
+        move    a1,y1
+        mpy     x0,y1,a
+        move    x:(r7+$17),x0
+        add     x0,a
+        move    a,x:(r7+$17)
+        move    x:(r7+$6f),a
+        move    #>640,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a
+        tst     a
+        bgt     pwr0a
+        clr     a
+        bra     pwr0d
+pwr0a:
+        move    #>256,x0
+        sub     x0,a
+        blt     pwr0r
+        move    #>$7fffff,a
+        bra     pwr0d
+pwr0r:
+        add     x0,a
+        asl     #$f,a,a
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a
+        move    a,x:(r7+$15)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1
+        move    x:(r7+$15),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+pwr0d:
+        move    a1,y1
+        move    x:(r7+$17),x0
+        mpy     x0,y1,a
+        move    a,b
+        move    x:(r7+$6d),a
+        move    #>$400000,x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$15)
+        asr     #$c,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$6f)
+        move    r2,a
+        move    x:(r7+$6e),x0
+        sub     x0,a
+        move    x:(r7+$6f),x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$16)
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$17)
+        move    x:(r7+$16),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    x:(r7+$17),x0
+        sub     x0,a
+        move    a1,x0
+        move    x:(r7+$15),a
+        and     #>$fff,a
+        asl     #$b,a,a
+        move    a1,y1
+        mpy     x0,y1,a
+        move    x:(r7+$17),x0
+        add     x0,a
+        move    a,x:(r7+$17)
+        move    x:(r7+$6f),a
+        move    #>640,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a
+        tst     a
+        bgt     pwr1a
+        clr     a
+        bra     pwr1d
+pwr1a:
+        move    #>256,x0
+        sub     x0,a
+        blt     pwr1r
+        move    #>$7fffff,a
+        bra     pwr1d
+pwr1r:
+        add     x0,a
+        asl     #$f,a,a
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a
+        move    a,x:(r7+$15)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1
+        move    x:(r7+$15),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+pwr1d:
+        move    a1,y1
+        move    x:(r7+$17),x0
+        mpy     x0,y1,a
+        add     b,a
+        move    a,x:(r7+$7a)            ; dR, shifted
+; MODEFORK_END
+pdone:
 
 ; ---- one-pole damping in the feedback path: s += c*(d-s) ------------------
         move    x:(r7+$77),b            ; state L
