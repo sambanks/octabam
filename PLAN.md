@@ -91,7 +91,8 @@ fits; anything else waits on the reverb-side LFO-block roll lever below.
 **used 771, FREE 1,953** — 12 Aug (auto-gain, delay +65 / send +9): **used
 845, FREE 1,879** — 12 Aug late (v2 stage 2 PITCH, delay +526): **used
 1,371, FREE 1,353** — 12–13 Aug (stages 3/4/4b/5/5b–5e/6, delay 1,371 →
-**2,375**): **used 2,596, FREE 128.**
+**2,375**): **used 2,596, FREE 128** — 13 Aug (5f optimisation, delay →
+2,360): **used 2,581, FREE 143.**
 
 ⚠️ **PAYLOAD B IS NO LONGER ROOMY, and this is the entry that says so.**
 Every stage costed itself against "~1,000 free" and that figure went stale
@@ -154,14 +155,15 @@ The ten FX1 effects, with sizes (identical in both payloads):
 already running** (worst case, no derating needed). `make cycles`, 12 Aug
 (late): **room for new work: −232 cycles/sample** (819 on 11 Aug post-R18;
 v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352, GRAIN → −232,
-**GRAIN 5e → −952**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
+GRAIN 5e → −952, **5f optimisation → −616**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
 broke first, not the chip.** It sums reverb + delay + two sends on ONE
 core; on hardware ChonVerb is payload A (tracks 5–8, core 0) and BongDelay
 is payload B (tracks 1–4, core 1), so no core ever pays both. The delay's
-worst path (GRAIN 5e, **1,931**) plus two sends is ~1,971 against core 1's
-~2,150 🟡 spare — ⚠️ that is now a **9% margin**, where it was 42% before
-the split, and it is the first time this project has been anywhere near a
-real cycle wall. GRAIN's rolled builder is the whole of it, and the server-role lock means it is charged ONCE per
+worst path (GRAIN, **1,595** after the 5f optimisation pass; 1,931 before)
+plus two sends is ~1,635 against core 1's ~2,150 🟡 spare — a **24% margin**,
+recovered from the 9% the split left. It was 42% before GRAIN existed, so
+the trend still points one way and the burn sweep is still the only thing
+that can re-measure the ceiling, and the server-role lock means it is charged ONCE per
 bank however many tracks select it. Treat −952 as "the single-core model
 has outlived its usefulness", not as an overrun — and note that the burn
 sweep is now the ONLY thing that can re-measure the real per-core ceiling,
@@ -909,11 +911,22 @@ each stage is a separate commit gated by `make check`):
    - ✅ **EAR PASS ON THE SPLIT, 13 Aug: "yeah it was good" (Sam).** The
      direction is settled; GRAIN's mechanism is done. What remains on it is
      voicing (defaults, set weighting, grain SIZE) and COST.
-   - ⚠️ **GRAIN is now the most expensive thing in the project**: its path is
-     488w + 1,119 of roll, taking the delay to **1,931 cycles/sample**. See
-     the cycle ledger — it fits core 1 but the margin is gone, and the
-     rolled builder is doing work that could be hoisted. An optimisation
-     pass is owed if the ear keeps this direction.
+   - ✅ **5f, OPTIMISATION PASS (`ce31594`): 1,931 → 1,595 cycles/sample,
+     BIT-IDENTICAL.** The rolled builder was doing four times a sample what
+     it needed to do once. Three invariants lifted — the candidate rate, the
+     candidate mute per line, and the offset's reset form per line — all
+     reading only per-sample-constant state, so all four iterations computed
+     identical values. Correct for a second independent reason worth
+     keeping: the grains sit at exact quarter offsets of the schedule, so
+     their wraps are 512 samples apart and **at most one grain wraps per
+     sample** — one candidate is all that can ever be consumed. Plus the
+     wrap flag moved to y0 (a register restore is a word cheaper at each of
+     six sites). Builder body 234 → 127 words; margin on core 1 **9% → 24%**.
+     ⚠️ **Not taken, and priced so nobody re-derives it**: grains 0/2 and
+     1/3 have complementary window gains, so two smoothsteps would do
+     instead of four — but it needs the loop restructured to 2 iterations of
+     2 grains, saving ~60 cycles for ~100 words against payload B's 143.
+     A bad trade until words appear.
 6. **REVERSE** — ✅ **LANDED 12 Aug 2026 (`2cb04a7`), MODE 4**, and the
    estimate held: **174 words**, the cheapest mode, precisely because the
    crossfade machinery already existed. Two complementary heads half a
