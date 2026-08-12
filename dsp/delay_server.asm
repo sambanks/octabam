@@ -1781,14 +1781,40 @@ tapel:
 ; is ALWAYS x0, the audited-signed `mpy x0,y1` form; y1 only ever carries a
 ; fraction or a window gain, both non-negative.
 gmode:
-; ---- the PRNG, and this sample's two scatter candidates -------------------
-; 23-bit xorshift, shifts 15/15/8 -- the SAME generator as stage 2b's, and
-; DUPLICATED here rather than hoisted above the dispatch on purpose: hoisting
-; would run it in CLEAN and TAPE too, spending their cycles on a number they
-; never read. The alternatives are mutually exclusive, so duplication costs
-; words (which payload B has) and no cycles (which are the scarcer thing on
-; this path). Every shift result is re-cleaned through the a1->x0->a idiom
-; because `and`/`eor` write A1 only and leave A2 STALE -- the store trap.
+; ---- GRAIN, v2 stage 5e: the SCHEDULE and the RATE are separate ----------
+; Until now one accumulator drove both the window envelope and the read
+; position. That single fact forced three things at once, and Sam heard all
+; three: every grain shifted by the SAME interval and they all jumped
+; TOGETHER (a step in the whole layer, "jumping around in a not very musical
+; fashion"); UNISON WAS IMPOSSIBLE, because a rate of 1.0 means the age never
+; advances, so the grain never wraps and never re-scatters -- which is why
+; the interval set had no unison in it, and "mostly unison with occasional
+; shifts" is most of what makes a grain cloud sound musical rather than
+; arbitrary; and grain size was welded to the pitch ratio.
+;
+; So: a SCHEDULE phase ticks at a fixed rate and drives ONLY the envelope,
+; while each grain carries its OWN read-offset accumulator advancing at its
+; own rate. The cloud now morphs instead of stepping, and unison is a legal
+; draw.
+;
+; Record, 8 of them (L0 R0 L1 R1 ...), FOUR words -- exactly the 32 the old
+; table used, so this costs no r7 space (there is none):
+;   +0 rate delta, signed Q9 per sample   (PERSISTENT, latched at the wrap)
+;   +1 mute flag                          (PERSISTENT, latched at the wrap)
+;   +2 read offset, Q14.9                 (PERSISTENT, accumulates)
+;   +3 window gain / 2, Q23               (rebuilt every sample)
+; The field order is the BUILDER's access order, so every access is a plain
+; post-increment; the readers start at +2 and stride 8 with n4.
+;
+; RATE DELTAS are (1 - r) in Q9, because the read address is wr - lag and the
+; write pointer runs away at 1 sample/sample:
+;   unison r=1.0 -> 0      +12 r=2.0 -> -512
+;   +7     r=1.5 -> -256   -12 r=0.5 -> +256
+; A grain at +12 therefore traverses 2048 samples over its 2048-sample life,
+; which is why the offset RESETS to 2048 + scatter and why the lag ceiling
+; below subtracts 3072. ⚠️ That bound is load-bearing: LAG0 + 2048 + scatter
+; + 1024 must stay inside the 16384-word line, or a head reads across the
+; write pointer -- a full-scale discontinuity once per grain.
         move    x:(r7+$18),a            ; state
         move    a1,x0
         asl     #$f,a,a
@@ -1806,462 +1832,349 @@ gmode:
         move    a1,x0
         move    x0,a                    ; A2 clean before the store
         move    a,x:(r7+$18)
-; Line L's candidate: the whole state read as a Q23 fraction, scaled by SPRAY
-; and taken down to 0..1015 samples. One PRNG advance per sample is enough
-; because at most ONE grain wraps per quarter cycle -- the same reasoning
-; stage 2b's single candidate rests on.
+; ---- this sample's scatter candidates, SPRAY-scaled ---------------------
         move    a,x0                    ; state, 0 .. ~1.0 (always positive)
         move    x:(r7+$5c),y1           ; SPRAY
         mpy     x0,y1,a                 ; both operands non-negative
-        asr     #$a,a,a                 ; -> samples, THIRTEEN bits: SPRAY
-        and     #>$1fff,a               ; now spans 0..8191 (186 ms), not
-                                        ; 0..1023 (23 ms). 23 ms is a flam,
-                                        ; not a cloud -- the grains fused
-                                        ; into one transposed layer, which
-                                        ; is the second reason this did not
-                                        ; read as granular. Both widths are
-                                        ; musically useful (Sam), so the KNOB
-                                        ; spans them instead of a constant
-                                        ; choosing one
+        asr     #$a,a,a
+        and     #>$1fff,a               ; 0..8191 samples (186 ms)
         move    a1,x0
-        move    x0,a                    ; A2-clean before the store
+        move    x0,a
         move    a,x:(r7+$54)            ; candidate, line L
-; ---- DENSITY: does this grain sound at all? (v2 stage 5d) ----------------
-; THE FLAT SUM IS WHY THE SOURCE STAYED CONTINUOUS. Four grains windowed to
-; sum to exactly 1.0 are GAPLESS, so the output is a continuously shifted
-; melody rather than a cloud of fragments -- Sam: "there was still a lot more
-; of the melody lines playing". That flatness was inherited from PITCH, where
-; ripple was the defect; in a granular the GAPS ARE THE TEXTURE. So a grain
-; may now simply not sound, decided once at its wrap and held for its whole
-; life -- re-deciding per sample would chop it into noise.
-;
-; The mute rides BIT 16 of the latched word, which is free: the reader
-; subtracts that word and masks the result with $3fff, and $10000 is exactly
-; 4 * $4000, so it vanishes modulo the line. No new r7 slot (there are none)
-; and not one extra instruction in either reader.
-        move    #>$10000,x0
-        add     x0,a
-        move    a,x:(r7+$56)            ; the same offset, MUTED
-        move    x:(r7+$18),b            ; three more PRNG bits
-        asr     #$5,b,b
-        and     #>$7,b
-        move    b1,x0
-        move    x0,b                    ; 0..7
-        move    x:(r7+$2d),a            ; DENS -- the WOW knob read as density
-        asr     #$e,a,a                 ; in GRAIN (slot 6 is TAPE-only there,
-        move    a1,x0                   ; the same dual meaning REVERSE gives
-        move    x0,a                    ; the PTCH select). 0..7
-        sub     b,a                     ; N SET == this grain stays silent
-        move    x:(r7+$54),b            ; sounding form
-        move    x:(r7+$56),x0           ; muted form
-        tmi     x0,b
-        move    b,x:(r7+$54)
-; Line R's candidate: a DISJOINT field of the same word. The low 12 bits are
-; shifted up to the top, so R's 10-bit field is state bits 2..11 where L's
-; was 13..22 -- no bit feeds both lines in the same sample, which is what
-; "per-line scatter tables" has to mean to actually decorrelate them.
         move    x:(r7+$18),a
-        asl     #$b,a,a
-        and     #>$7fffff,a
+        asl     #$b,a,a                 ; a DISJOINT field of the same word,
+        and     #>$7fffff,a             ; so no bit feeds both lines
         move    a1,x0
-        move    x:(r7+$5c),y1           ; SPRAY
+        move    x:(r7+$5c),y1
         mpy     x0,y1,a
-        asr     #$a,a,a                 ; same 13-bit field, line R
+        asr     #$a,a,a
         and     #>$1fff,a
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$55)            ; candidate, line R
-; ---- DENSITY: does this grain sound at all? (v2 stage 5d) ----------------
-; THE FLAT SUM IS WHY THE SOURCE STAYED CONTINUOUS. Four grains windowed to
-; sum to exactly 1.0 are GAPLESS, so the output is a continuously shifted
-; melody rather than a cloud of fragments -- Sam: "there was still a lot more
-; of the melody lines playing". That flatness was inherited from PITCH, where
-; ripple was the defect; in a granular the GAPS ARE THE TEXTURE. So a grain
-; may now simply not sound, decided once at its wrap and held for its whole
-; life -- re-deciding per sample would chop it into noise.
-;
-; The mute rides BIT 16 of the latched word, which is free: the reader
-; subtracts that word and masks the result with $3fff, and $10000 is exactly
-; 4 * $4000, so it vanishes modulo the line. No new r7 slot (there are none)
-; and not one extra instruction in either reader.
-        move    #>$10000,x0
-        add     x0,a
-        move    a,x:(r7+$56)            ; the same offset, MUTED
-        move    x:(r7+$18),b            ; three more PRNG bits
-        asr     #$5,b,b
-        and     #>$7,b
-        move    b1,x0
-        move    x0,b                    ; 0..7
-        move    x:(r7+$2d),a            ; DENS -- the WOW knob read as density
-        asr     #$e,a,a                 ; in GRAIN (slot 6 is TAPE-only there,
-        move    a1,x0                   ; the same dual meaning REVERSE gives
-        move    x0,a                    ; the PTCH select). 0..7
-        sub     b,a                     ; N SET == this grain stays silent
-        move    x:(r7+$55),b            ; sounding form
-        move    x:(r7+$56),x0           ; muted form
-        tmi     x0,b
-        move    b,x:(r7+$55)
-; ---- THE LIVE INTERVAL: musical, random, and re-rolled per repeat --------
-; v2 stage 5b. GRAIN shipped applying ONE fixed interval to everything, so
-; every repeat came back at the same pitch. The reference device's character
-; -- Sam: "musical random sounding pitched repeats" -- is intervals that
-; CHANGE, and measurement agreed with the ear: single-series harmonicity is
-; 0.95 dry, 0.78 on the reference, 0.81 on our fixed-interval GRAIN. Four
-; SIMULTANEOUS transpositions would have put the reference far below ours;
-; 0.03 apart says one transposition at a time, varying. So the mechanism is
-; a changing interval, not a polyphonic cloud -- which is also the cheap one.
-;
-; WHY THIS WORKS WITHOUT THE CASCADE, and it is stage 2c's doing: the loop
-; recirculates the CLEAN tap while the shifter sits on the output, reading
-; the line at TIME lag. So when the interval changes, each repeat is shifted
-; by whatever is current AS IT PASSES THE READ HEAD -- successive repeats
-; come out at different pitches with no compounding, and no repeat is ever
-; shifted twice. The non-cascading topology bought this and nobody noticed.
-;
-; The set is {+12, +7, +19, -12} -- octaves, fifths and a sub-octave, so any
-; draw is consonant with any other and with the dry. Re-rolled at a base-age
-; wrap with probability 1/8, which at +12's 46 ms cycle is a mean hold of
-; ~370 ms: the repeat timescale, not a warble.
-;
-; SELECT INDEX 0 IS THE FIXED ENGINE, BIT-FOR-BIT. That is deliberate and
-; the gate proves it: the +12 voicing Sam ear-passed is still exactly
-; reachable, and every pre-existing GRAIN case stays bit-identical. Indices
-; 1..3 roll.
-        move    x:(r7+$5e),a            ; the live step (persistent -- see the
-        tst     a                       ; state map: this slot is REVERSE's
-        move    #>$1000,x0              ; phase, and the two modes are
-        teq     x0,a                    ; mutually exclusive within a sample)
-        move    a,x:(r7+$5e)            ; SEED IT: a zero step never advances
-        move    a,x:(r7+$5b)            ; the age, so it could never reach a
-                                        ; wrap, so it could never re-roll --
-                                        ; a deadlock, not a quiet default.
-                                        ; $5b keeps the step ACTUALLY APPLIED
-                                        ; this sample, for the builder's
-                                        ; per-grain wrap test below
-; ---- the candidate, computed every sample and admitted only at a wrap ----
-; Branchless 4-way select on two PRNG bits, then gated by three more (1 in
-; 8), then overridden wholesale at select index 0. Parked, because the wrap
-; test below needs the condition codes and this clobbers them.
-; The SET is the select's other job: index 1 draws from {+12, +7} alone,
-; indices 2 and 3 add +19 and -12. Sam, on the narrowed set: "sounded
-; somewhat better" -- the wide leaps were part of the unmusicality, though
-; only part (the rest is that all four grains jump TOGETHER, which is
-; structural and not fixable from here).
-        move    x:(r7+$5f),a            ; select index
-        move    #>$1,x0
-        cmp     x0,a
-        move    #>$3,a                  ; wide: {+12,+7,+19,-12}
-        move    #>$1,x0
-        teq     x0,a                    ; index 1: {+12,+7} only
-        move    a,x0
-        move    x:(r7+$18),b            ; PRNG state, advanced above
-        and     x0,b                    ; which interval, within the set
-        move    b1,x0
-        move    x0,b                    ; A2-clean before the compares
-        move    #>$1000,a               ; 0 -> +12  (rate 2.0)
-        move    #>$1,x0
-        cmp     x0,b
-        move    #>$800,x0               ; 1 -> +7   (rate 1.5)
-        teq     x0,a
-        move    #>$2,x0
-        cmp     x0,b
-        move    #>$2000,x0              ; 2 -> +19  (rate 3.0)
-        teq     x0,a
-        move    #>$3,x0
-        cmp     x0,b
-        move    #>$fff800,x0            ; 3 -> -12  (rate 0.5, the head falls
-        teq     x0,a                    ; behind instead of catching up)
-        move    x:(r7+$18),b            ; three MORE bits: roll 1 time in 8,
-        asr     #$2,b,b                 ; so the interval holds for about a
-        and     #>$3,b                  ; repeat rather than warbling. 1 IN 4,
-                                        ; measured: hold 170 ms = 1.05x TIME at
-                                        ; TIME 55, i.e. one interval per repeat
-                                        ; -- 1-in-8 held 3.5 repeats and read as
-                                        ; "changing pitch every now and then"
-        move    b1,x0
-        move    x0,b
-        tst     b                        ; Z == this is a rolling draw
-        move    x:(r7+$5e),x0            ; otherwise keep what we have
-        tne     x0,a
-        move    x:(r7+$5f),b            ; select index
-        tst     b
-        move    x:(r7+$6a),x0           ; index 0: the FIXED engine, exactly
-        teq     x0,a                    ; as ear-passed
-        move    a,x:(r7+$56)            ; park the candidate
-; ---- the shared base age --------------------------------------------------
-; Advances by the LIVE step (age DECREASES for an upshift: the head slides
-; toward the write pointer). GRAIN uses one age for both lines -- sharing it
-; is what lets one window computation serve both, and the decorrelation
-; GRAIN needs comes from the per-line scatter, not from the step.
+; ---- the SCHEDULE: fixed rate, drives the envelope alone -----------------
+; 2^23 / 4096 = 2048 samples per grain (46 ms). Grain SIZE is now free to
+; become a parameter -- it is this constant and nothing else -- but page 2
+; has no spare slot, so it stays fixed until something is given up.
         move    x:(r7+$32),a
-        move    x:(r7+$5b),x0           ; the step applied this sample
-        sub     x0,a
-        and     #>$7fffff,a             ; wrap mod 2048 samples
+        move    #>$1000,x0
+        add     x0,a
+        and     #>$7fffff,a
         move    a1,x0
         move    x0,a                    ; A2-clean; boot garbage dies here
         move    a,x:(r7+$32)
-        move    a,x:(r7+$5d)            ; the builder's running cursor
-; ---- did the BASE age just wrap? then the candidate becomes live ---------
-; Same no-stored-previous trick the builder uses: prev = (age + step) & mask
-; by construction, so |age - prev| > half a cycle can only mean it folded.
-        move    x:(r7+$5b),x0
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0                   ; prev (A1 only: the AND leaves A2
-                                        ; stale, which is why it leaves here)
-        move    x:(r7+$32),a            ; the age, clean from its store
-        sub     x0,a
-        abs     a
-        move    #>$400000,x0
-        sub     x0,a                    ; N SET == did NOT wrap
-        move    x:(r7+$56),x0           ; the candidate
-        move    x:(r7+$5e),a            ; the current live step
-        tpl     x0,a                    ; wrapped -> admit it
-        move    a,x:(r7+$5e)
-; ---- BUILDER: fill the grain table, one grain (both lines) per pass -------
-; r4 walks all 32 words straight through, which is why the record's field
-; order is its consumption order. Per grain: age_int, fraction and window
-; gain are computed ONCE and stored into BOTH lines' records; the scatter is
-; latched per line, and only at THIS GRAIN'S OWN WRAP.
-        move    r7,a
-        move    #>$34,x0
-        add     x0,a
-        move    a,r4                    ; -> record L0
-        do      #4,>grnbz
-        move    x:(r7+$5d),a            ; this grain's age
-        move    a,x:(r7+$56)            ; park age_fx (the fraction needs it)
-        asr     #$c,a,a
-        move    a1,x0
-        move    x0,a                    ; age_int, 0..2047, A2-clean
-        move    a,x:(r7+$57)
-        move    x:(r7+$56),a
-        and     #>$fff,a                ; sample fraction, Q12 (a2 already 0)
-        asl     #$b,a,a                 ; -> Q23
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$58)            ; frac
-; window: full-overlap triangle t = 1024 - |age-1024|, smoothstepped, HALVED
-        move    x:(r7+$57),a            ; age_int
-        move    #>1024,x0
-        sub     x0,a
-        abs     a
-        neg     a
-        add     x0,a                    ; t = 1024 - |age-1024|, 0..1024
-        asl     #$d,a,a                 ; g = t/1024, Q23; t=1024 -> 2^23,
-                                        ; exact in the 56-bit acc
-        move    a,x0                    ; LIMITING move: 2^23 clips $7fffff
-        move    a,y1                    ; smoothstep s = g^2*(3-2g), zero-slope
-        mpy     x0,y1,a                 ; g^2       joins at both ends
-        move    a,x:(r7+$5a)            ; park g^2
-        move    #>$7fffff,a
-        sub     x0,a
-        move    a,y1                    ; 1-g
-        move    x:(r7+$5a),x0
-        mpy     x0,y1,a                 ; g^2*(1-g)
-        asl     #$1,a,a
-        add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
-        asr     #$1,a,a                 ; HALVED: the four grains sum to 2.0
-                                        ; exactly, so halving here makes the
-                                        ; cloud unity AND keeps every partial
-                                        ; sum inside full scale (a running sum
-                                        ; above 1.0 would saturate on store)
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$59)            ; gain/2
-; ---- did THIS grain just wrap? -------------------------------------------
-; The previous age is (age + step) & mask by construction, so it does not
-; need storing: recomputing it costs less than eight persistent words and is
-; exactly equivalent. |age - prev| > half a cycle can only mean the mask
-; folded it, i.e. this grain restarted. N SET means it did NOT wrap.
-;
-; The jump is inaudible because a grain's window gain is exactly 0 at its own
-; wrap -- the full-overlap window is a PREREQUISITE for re-scattering, not
-; just a cleanup (stage 2b established this).
-;
-; The flag must survive to BOTH Tcc's below, so everything between here and
-; the second latch is a MOVE: moves do not disturb the condition codes, which
-; is the same guarantee the FREEZE and TAPE substitutions already rest on.
-        move    x:(r7+$5d),a            ; age
-        move    x:(r7+$5b),x0           ; the step APPLIED this sample -- not
-                                        ; the block's select step, which is no
-                                        ; longer what the age advances by once
-                                        ; the interval rolls
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0                   ; prev (A1 only -- A2 is stale after
-                                        ; the AND, which is exactly why the
-                                        ; value leaves through a1, not a)
-        move    x:(r7+$5d),a            ; age again, clean from its store
-        sub     x0,a                    ; d = age - prev
-        abs     a
-        move    #>$400000,x0
-        sub     x0,a                    ; N set == |d| < half == NO wrap
-        move    a,x:(r7+$56)            ; ⚠️ PARK THE FLAG AS A VALUE. Both
-                                        ; latches below test this one N bit,
-                                        ; and they used to be separated by
-                                        ; nothing but moves. The DENSITY gating
-                                        ; (stage 5d) put `clr` and `tst`
-                                        ; between them, which SET the condition
-                                        ; codes -- so line R's latch tested a
-                                        ; garbage flag and re-scattered EVERY
-                                        ; SAMPLE instead of once per grain. A
-                                        ; read position that jumps every sample
-                                        ; is broadband noise, and it was
-                                        ; audible on the right channel alone
-                                        ; (Sam, immediately: "a noise wash on
-                                        ; the right"). $56 is free here: it
-                                        ; parked age_fx, which died once the
-                                        ; fraction was taken.
-; ---- store the two records: line L, then line R ---------------------------
-        move    x:(r7+$57),x0           ; age_int
-        move    x0,x:(r4)+
-        move    x:(r4),x0               ; this grain's current scatter, L
-        move    x:(r7+$54),b            ; this sample's candidate, L
-        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
-                                        ; hand-rolled mask (A2 staleness)
-        move    b,x:(r4)+
-        move    b,x:(r7+$5a)            ; park the latched word: its bit 16
-                                        ; says whether this grain sounds
-        move    x:(r7+$58),x0           ; frac
-        move    x0,x:(r4)+
-        clr     b                       ; FIRST: clr sets the condition codes
-        move    x:(r7+$5a),a
-        and     #>$10000,a              ; the mute flag
-        move    a1,x0
-        move    x0,a
-        tst     a                       ; Z SET == this grain sounds
-        move    x:(r7+$59),x0           ; gain/2
-        teq     x0,b                    ; silent grains contribute nothing,
-        move    b,x:(r4)+               ; and the gaps are the texture
-        move    x:(r7+$57),x0           ; age_int, line R's copy
-        move    x0,x:(r4)+
-        move    x:(r7+$56),a            ; RESTORE the wrap flag -- the density
-        tst     a                       ; gating above destroyed it
-        move    x:(r4),x0               ; this grain's current scatter, R
-        move    x:(r7+$55),b            ; this sample's candidate, R
-        tmi     x0,b                    ; the SAME wrap flag: the two lines'
-                                        ; grains are in step, only their
-                                        ; source positions differ
-        move    b,x:(r4)+
-        move    b,x:(r7+$5a)
-        move    x:(r7+$58),x0
-        move    x0,x:(r4)+
-        clr     b
-        move    x:(r7+$5a),a
-        and     #>$10000,a
-        move    a1,x0
-        move    x0,a
-        tst     a
-        move    x:(r7+$59),x0
-        teq     x0,b
-        move    b,x:(r4)+
-; ---- next grain: a quarter cycle further round ----------------------------
-        move    x:(r7+$5d),a
-        move    #>$200000,x0            ; 512 samples in Q11.12 = 1/4 window
-        add     x0,a
-        and     #>$7fffff,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$5d)
-grnbz:
-        nop                             ; the `do` end label marks the LAST
-                                        ; instruction of the body -- a nop
-                                        ; there is the shipping idiom (see
-                                        ; bus_zclr above) and makes the loop's
-                                        ; extent independent of what follows
-; ---- GRAIN's own lag base, and why it is not PITCH's --------------------
-; A head reads at lag + age + scatter, so a wider scatter needs a lower lag
-; ceiling to stay inside the 16384-word line. Deriving that ceiling FROM
-; SPRAY means the delay range is spent only when the scatter is actually
-; turned up: at SPRAY=0 GRAIN keeps very nearly the full range, and only at
-; full spray does its maximum TIME halve. A fixed worst-case cap would have
-; charged every setting for the widest one.
-; PITCH keeps $6e untouched, which is what holds its bit-identity.
-; Computed here, after the builder, because $56 is the builder's scratch and
-; is free from this point until the readers finish.
+        move    a,x:(r7+$5d)            ; the builder's cursor
+; ---- GRAIN's lag base, from SPRAY ---------------------------------------
         move    x:(r7+$5c),a            ; SPRAY, Q23
         asr     #$a,a,a                 ; ~ its max scatter in samples
         move    a1,x0
-        move    #>14335,a               ; 16384 - 2048 (window) - 1 (lerp)
-        sub     x0,a
-        move    a,x:(r7+$56)            ; the cap at this SPRAY
+        move    #>13310,a               ; 16382 - 2048 (reset) - 1024 (a -12
+        sub     x0,a                    ; grain's upward traversal)
+        move    a,x:(r7+$57)
         move    x:(r7+$75),a            ; TIME
-        move    x:(r7+$56),x0
-        sub     x0,a                    ; sub/branch, not cmp
+        move    x:(r7+$57),x0
+        sub     x0,a
         tst     a
         ble     grcapok
         clr     a
 grcapok:
         add     x0,a
         move    a,x:(r7+$56)            ; GRAIN's lag base, this sample
-
-; ---- READER, line L: four lerped reads, summed --------------------------
-; r4 starts at record L0 and strides 8 words, skipping line R's records with
-; the n4 set per block. b accumulates across the four grains and nothing in
-; the body touches it, so the sum needs no memory slot.
+; ---- BUILDER ------------------------------------------------------------
         move    r7,a
         move    #>$34,x0
         add     x0,a
+        move    a,r4                    ; -> record L0
+        move    #>2,n4
+        do      #4,>grnbz
+; window gain from the SCHEDULE phase alone, halved (four grains sum to 2.0)
+        move    x:(r7+$5d),a
+        move    #>$400000,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; triangle on the schedule
+        asl     #$1,a,a
+        move    a,x0                    ; LIMITING move
+        move    a,y1
+        mpy     x0,y1,a                 ; smoothstep, as everywhere here
+        move    a,x:(r7+$5a)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1
+        move    x:(r7+$5a),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+        asr     #$1,a,a                 ; halved
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$59)            ; gain/2
+; ---- this grain's own wrap: prev = (phase - SSTEP) & mask ----------------
+        move    x:(r7+$5d),a
+        move    #>$1000,x0
+        sub     x0,a
+        and     #>$7fffff,a
+        move    a1,x0                   ; prev (A1 only: the AND leaves A2
+                                        ; stale, so it leaves through a1)
+        move    x:(r7+$5d),a
+        sub     x0,a
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; N SET == did NOT wrap
+        move    a,x:(r7+$58)            ; ⚠️ PARK THE FLAG AS A VALUE. Eight
+                                        ; Tcc's below depend on it and the
+                                        ; arithmetic between them SETS the
+                                        ; condition codes -- the exact bug
+                                        ; stage 5d shipped and an ear caught.
+                                        ; Every one of them restores it first.
+; ---- the candidate rate for this grain, drawn from the SET ---------------
+; unison is IN the set and is drawn as often as anything else, which is what
+; keeps the cloud musical: most grains at pitch, some shifted.
+; The select is the SET WIDTH, and entry 0 is +12 so that a mask of 0 --
+; select index 0 -- pins every grain to the octave. That is the fixed engine,
+; the nearest thing to what was ear-passed before the split, and it stays
+; reachable for comparison.
+;   index 0 -> mask 0: +12 only          index 1 -> mask 1: +12 / unison
+;   index 2,3 -> mask 3: +12 / unison / +7 / -12
+        move    x:(r7+$5f),a            ; select index
+        move    #>$3,b                  ; wide by default
+        tst     a
+        move    #>$0,x0
+        teq     x0,b                    ; index 0 -> fixed +12
+        move    #>$1,x0
+        cmp     x0,a
+        move    #>$1,x0
+        teq     x0,b                    ; index 1 -> +12 / unison
+        move    b,x0
+        move    x:(r7+$18),b
+        and     x0,b
+        move    b1,x0
+        move    x0,b                    ; A2-clean before the compares
+        move    #>$fffe00,a             ; 0 -> +12  (-512)
+        move    #>$1,x0
+        cmp     x0,b
+        move    #>$0,x0                 ; CLR is accumulator-only; a zero
+        teq     x0,a                    ; immediate is the register form
+                                        ; 1 -> UNISON (delta 0) -- impossible
+                                        ; before the split, and most of what
+                                        ; keeps the cloud musical
+        move    #>$2,x0
+        cmp     x0,b
+        move    #>$ffff00,x0            ; 2 -> +7   (-256)
+        teq     x0,a
+        move    #>$3,x0
+        cmp     x0,b
+        move    #>$100,x0               ; 3 -> -12  (+256)
+        teq     x0,a
+        move    a,x:(r7+$5b)            ; the candidate rate
+; ---- record: rate, mute, offset, gain -- L then R ------------------------
+        move    x:(r7+$58),a
+        tst     a
+        move    x:(r7+$5b),x0           ; candidate rate
+        move    x:(r4),b                ; current rate
+        tpl     x0,b                    ; wrapped -> take the new one
+        move    b,x:(r4)+
+        move    b,x:(r7+$5a)            ; this grain's LIVE rate, for the
+                                        ; offset update two words along
+        move    x:(r7+$18),b            ; density: three PRNG bits vs DENS
+        asr     #$5,b,b
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b
+        move    x:(r7+$2d),a            ; DENS (the WOW knob in GRAIN)
+        asr     #$e,a,a
+        move    a1,x0
+        move    x0,a
+        sub     b,a                     ; N SET == this grain stays silent
+        clr     b
+        move    #>$1,x0
+        tmi     x0,b                    ; b = 1 when muted
+        move    b,x:(r7+$5b)            ; the candidate mute
+        move    x:(r7+$58),a
+        tst     a
+        move    x:(r7+$5b),x0
+        move    x:(r4),b                ; current mute
+        tpl     x0,b                    ; wrapped -> take the new one
+        move    b,x:(r4)+
+        move    b,x:(r7+$5b)            ; the LIVE mute
+; offset: reset to (2048 + scatter) << 9 at the wrap, else += rate
+        move    x:(r7+$54),a            ; scatter candidate, line L
+        move    #>2048,x0
+        add     x0,a
+        asl     #$9,a,a                 ; -> Q14.9
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$57)            ; the RESET form
+        move    x:(r4),a                ; current offset
+        move    x:(r7+$5a),x0           ; this grain's live rate
+        add     x0,a                    ; the RUNNING form, in a
+        move    x:(r7+$57),x0           ; the RESET form, in x0 -- Tcc takes a
+                                        ; REGISTER source, never an accumulator
+        move    x:(r7+$58),b            ; the parked wrap flag
+        tst     b                       ; N SET == did not wrap
+        tpl     x0,a                    ; wrapped -> reset
+        move    a,x:(r4)+
+; gain, zeroed when this grain is muted
+        clr     b
+        move    x:(r7+$5b),a            ; live mute
+        tst     a
+        move    x:(r7+$59),x0           ; gain/2
+        teq     x0,b                    ; mute==0 -> sounds
+        move    b,x:(r4)+
+; ---- the same four words for line R -------------------------------------
+        move    x:(r7+$58),a
+        tst     a
+        move    x:(r7+$5b),x0
+        move    x:(r4),b
+        move    x:(r7+$5a),x0           ; R shares the grain's RATE
+        tpl     x0,b
+        move    b,x:(r4)+
+        move    x:(r7+$18),b            ; its own density draw, so L and R
+        asr     #$8,b,b                 ; gap independently
+        and     #>$7,b
+        move    b1,x0
+        move    x0,b
+        move    x:(r7+$2d),a
+        asr     #$e,a,a
+        move    a1,x0
+        move    x0,a
+        sub     b,a
+        clr     b
+        move    #>$1,x0
+        tmi     x0,b
+        move    b,x:(r7+$5b)
+        move    x:(r7+$58),a
+        tst     a
+        move    x:(r7+$5b),x0
+        move    x:(r4),b
+        tpl     x0,b
+        move    b,x:(r4)+
+        move    b,x:(r7+$5b)
+        move    x:(r7+$55),a            ; scatter candidate, line R
+        move    #>2048,x0
+        add     x0,a
+        asl     #$9,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$57)
+        move    x:(r4),a
+        move    x:(r7+$5a),x0
+        add     x0,a
+        move    x:(r7+$57),x0
+        move    x:(r7+$58),b
+        tst     b
+        tpl     x0,a
+        move    a,x:(r4)+
+        clr     b
+        move    x:(r7+$5b),a
+        tst     a
+        move    x:(r7+$59),x0
+        teq     x0,b
+        move    b,x:(r4)+
+; ---- next grain: a quarter of the schedule further round -----------------
+        move    x:(r7+$5d),a
+        move    #>$200000,x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5d)
+grnbz:
+        nop
+; ---- READER, line L: offset at +2, gain at +3, stride 8 -----------------
+        move    r7,a
+        move    #>$36,x0
+        add     x0,a
         move    a,r4
+        move    #>6,n4
         clr     b
         do      #4,>grnlz
-        move    x:(r4)+,x0              ; age_int
-        move    r1,a                    ; LineL write pointer
-        sub     x0,a
-        move    x:(r7+$56),x0           ; PLAGB = min(TIME, 13311), so lag +
-        sub     x0,a                    ; age + scatter + the lerp's older
-                                        ; neighbour stays inside the line
-        move    x:(r4)+,x0              ; this grain's scatter, line L
-        sub     x0,a
-        and     #>$3fff,a               ; read phase (t0, the newer neighbour)
+        move    x:(r4)+,x0              ; this grain's offset, Q14.9 -- it
+        move    x0,x:(r7+$5b)           ; carries BOTH the integer lag and the
+                                        ; lerp fraction now, because each grain
+                                        ; advances at its own rate and so has
+                                        ; its own sub-sample position. There is
+                                        ; no shared fraction any more.
+        move    x0,a
+        asr     #$9,a,a                 ; integer samples
         move    a1,x0
         move    x0,a                    ; A2-clean
+        move    a,x:(r7+$5a)
+        move    x:(r7+$5b),a
+        and     #>$1ff,a                ; the fractional part
+        asl     #$e,a,a                 ; -> Q23
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5b)            ; park frac
+        move    r1,a                    ; LineL write pointer
+        move    x:(r7+$56),x0           ; GRAIN's lag base
+        sub     x0,a
+        move    x:(r7+$5a),x0           ; this grain's integer offset
+        sub     x0,a
+        and     #>$3fff,a               ; read phase, t0
+        move    a1,x0
+        move    x0,a
         move    a,x:(r7+$5a)            ; park phase
         move    x:(r7+$31),x0           ; LineL base
         add     x0,a
         move    a,r5
         move    y:(r5),a                ; t0
-        move    a,x:(r7+$5b)            ; park t0
+        move    a,x:(r7+$57)            ; park t0
         move    x:(r7+$5a),a
         move    #>$1,x0
         sub     x0,a
-        and     #>$3fff,a               ; phase-1, wrapped: one sample OLDER
+        and     #>$3fff,a               ; one sample OLDER
         move    a1,x0
         move    x0,a
         move    x:(r7+$31),x0
         add     x0,a
         move    a,r5
         move    y:(r5),a                ; t1
-        move    x:(r7+$5b),x0           ; t0
+        move    x:(r7+$57),x0           ; t0
         sub     x0,a                    ; t1 - t0, signed
         move    a1,x0                   ; -> FIRST mpy operand
-        move    x:(r4)+,y1              ; frac
-        mpy     x0,y1,a                 ; frac*(t1-t0), signed
-        move    x:(r7+$5b),x0
+        move    x:(r7+$5b),y1           ; frac, prepared above
+        mpy     x0,y1,a
+        move    x:(r7+$57),x0
         add     x0,a                    ; tap = t0 + frac*(t1-t0)
-        move    a,x0                    ; LIMITING move, matching the park-to-
-                                        ; memory the PITCH heads do here
+        move    a,x0                    ; LIMITING move
         move    x:(r4)+,y1              ; this grain's window gain / 2
         mpy     x0,y1,a
-        add     a,b                     ; the cloud, summed
-        move    (r4)+n4                 ; skip line R's record
+        add     a,b
+        move    (r4)+n4
 grnlz:
         nop
-        move    b,x:(r7+$24)            ; shifted OUTPUT tap L -- NOT $79:
-                                        ; the loop's tap stays unshifted
-; ---- READER, line R: identical, on r2 / base $68 / records from $38 -------
+        move    b,x:(r7+$24)            ; shifted OUTPUT tap L
+; ---- READER, line R -----------------------------------------------------
         move    r7,a
-        move    #>$38,x0
+        move    #>$3a,x0
         add     x0,a
         move    a,r4
+        move    #>6,n4
         clr     b
         do      #4,>grnrz
-        move    x:(r4)+,x0              ; age_int
-        move    r2,a                    ; LineR write pointer
+        move    x:(r4)+,x0              ; this grain's offset, Q14.9 -- it
+        move    x0,x:(r7+$5b)           ; carries BOTH the integer lag and the
+                                        ; lerp fraction now, because each grain
+                                        ; advances at its own rate and so has
+                                        ; its own sub-sample position. There is
+                                        ; no shared fraction any more.
+        move    x0,a
+        asr     #$9,a,a                 ; integer samples
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$5a)
+        move    x:(r7+$5b),a
+        and     #>$1ff,a                ; the fractional part
+        asl     #$e,a,a                 ; -> Q23
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5b)            ; park frac
+        move    r2,a
+        move    x:(r7+$56),x0
         sub     x0,a
-        move    x:(r7+$56),x0           ; PLAGB
-        sub     x0,a
-        move    x:(r4)+,x0              ; this grain's scatter, line R
+        move    x:(r7+$5a),x0           ; this grain's integer offset
         sub     x0,a
         and     #>$3fff,a
         move    a1,x0
@@ -2270,8 +2183,8 @@ grnlz:
         move    x:(r7+$68),x0           ; LineR base
         add     x0,a
         move    a,r5
-        move    y:(r5),a                ; t0
-        move    a,x:(r7+$5b)
+        move    y:(r5),a
+        move    a,x:(r7+$57)
         move    x:(r7+$5a),a
         move    #>$1,x0
         sub     x0,a
@@ -2281,23 +2194,23 @@ grnlz:
         move    x:(r7+$68),x0
         add     x0,a
         move    a,r5
-        move    y:(r5),a                ; t1
-        move    x:(r7+$5b),x0
+        move    y:(r5),a
+        move    x:(r7+$57),x0
         sub     x0,a
         move    a1,x0
-        move    x:(r4)+,y1              ; frac
+        move    x:(r7+$5b),y1
         mpy     x0,y1,a
-        move    x:(r7+$5b),x0
+        move    x:(r7+$57),x0
         add     x0,a
         move    a,x0
-        move    x:(r4)+,y1              ; gain/2
+        move    x:(r4)+,y1
         mpy     x0,y1,a
         add     a,b
-        move    (r4)+n4                 ; skip line L's record
+        move    (r4)+n4
 grnrz:
         nop
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
-        bra     pdone                   ; GRAIN ends here: REVERSE follows
+        bra     pdone
 ; MODEFORK_MID -- alternative 4: REVERSE
 
 ; ---- REVERSE: windowed backward reads (v2 stage 6) -----------------------
