@@ -25,7 +25,7 @@ delay→reverb series topology).
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1 |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and grain jitter is built but uncommitted; PITCH is not voiced yet. See 3.1 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
@@ -578,8 +578,10 @@ each stage is a separate commit gated by `make check`):
    plus two heads a half-window apart reading the DELAY LINE ITSELF at lag
    `min(TIME,14335) + age` — no separate shift buffer exists or fits (both
    line buffers fill the half-window), and line-reading is the topology
-   GRAIN inherits. Window is shimmer v3's verbatim (age-trapezoid 640/256,
-   smoothstep, silent upper half — two copies not four); reads are lerped
+   GRAIN inherits. Window was shimmer v3's verbatim (age-trapezoid 640/256,
+   smoothstep, silent upper half — two copies not four) ❌ **replaced by a
+   full-overlap crossfade in `e6f5359`, see the ear pass below**; reads are
+   lerped
    (frac = age's low 12 bits); shifted taps land in $79/$7a so TONE, PING,
    FDBK, MIX and →VERB are mode-blind — every repeat re-shifts (the climb
    is the point here, unlike the reverb's cascade cut). Steps: +12=+$1000,
@@ -594,10 +596,58 @@ each stage is a separate commit gated by `make check`):
    sidebands ±21.5 Hz (window lap rate) at −14 dB. CLEAN bit-identical
    through the dispatch (`verify-delay` vs pre-stage-2 HEAD, 11/11 incl.
    DMODE=3→CLEAN). Every emitted mpy signed (2000c0/c8), abs/neg checked.
-   Cost: delay 624 → 1,150 words; payload B used 845 → 1,371, FREE 1,353;
-   ~450 cycles/sample in PITCH mode only (CLEAN path unchanged;
+   Cost: delay 624 → 1,150 words (→ **1,086 after `e6f5359`**, the
+   branchless window being 64 words cheaper); payload B used 845 → 1,371 →
+   **1,307, FREE 1,417**; ~450 cycles/sample in PITCH mode only (CLEAN path
+   unchanged;
    `cycle_count` now prices the mode fork at its WORST path via MODEFORK
    markers instead of refusing or summing both engines).
+   ✅ **EAR PASS RUN 12 Aug 2026 (late), and it FAILED the splice** — then
+   one fix landed and one theory was retracted. Sam on the octave ladder:
+   "climbed up in octaves and got kind of glitchy metallic". Bisected with a
+   single-generation render (FDBK=0, one shifted echo): the dirt is in the
+   **shifter itself**, not in the ladder compounding it — which turned the
+   question into a measurement.
+   - ✅ **FULL-OVERLAP WINDOW (`e6f5359`)**. The trapezoid switches heads
+     almost rectangularly: measured splice sidebands every 43.1 Hz in a
+     slowly-decaying ladder (−18.7, −20.9, −26.8, −28.3, −33.4…). Replacing
+     it with a complementary triangle + smoothstep collapsed the higher
+     orders 20–25 dB (first pair −18.7/−20.9 → −26.0/−33.7) and is
+     **branchless: −64 words**. Ear: "bit better", still "robo".
+   - ❌ **WIDENING THE WINDOW 4× IS RETRACTED** (built and reverted the same
+     evening). The theory — that the residual pair and the carrier offset
+     were a lattice displacement scaling with window length — is falsified:
+     at **every** window length the octave arrives as **two equal lines one
+     lap apart with nothing at 2f**. That is suppressed-carrier AM: the two
+     heads sit half a window (93 ms) apart on the line, so a steady
+     partial's relative phase between them is fixed (158° here) and they
+     cancel once per lap. Widening only moved the cancellation 43.1 → 10.8
+     Hz — buzz became flutter ("robo and fluttery") — and cost half the
+     PITCH delay range. A ramp sweep at C=8192 (R=512/1024/2048/4096)
+     showed the trade is 1-D with no good point: ripple 6.3/10.3/12.6/13.5
+     dB against off-carrier energy −8.7/−10.3/−14.5/−35.6 dB. On melody the
+     two extremes read as "twinkly robot" and "artificial".
+   - 🟡 **STAGE 2b, GRAIN JITTER — BUILT, UNCOMMITTED, ear "a bit less"
+     robo.** The defect is **periodicity**, not window shape, so the fix is
+     to scatter each grain's source position (0–1023 samples, 23-bit
+     xorshift, period 2^23−1) latched at each head's own wrap — inaudible
+     because the full-overlap window's gain is exactly 0 there, which makes
+     the window fix a **prerequisite** rather than just a cleanup. Measured:
+     modulation peak/total −2.0 → −7.7 dB, i.e. the cancellation depth is
+     now random per grain instead of identical; the carrier cluster recentres
+     on the true octave. +96 words, 11 new r7 slots ($18–$23, the delay's own
+     block — not the reverb's full one). `make check` + verify-delay 11/11
+     green. This is GRAIN's (stage 5) mechanism with fewer heads and no
+     SPRAY knob.
+   - **The framing this produced, and it is the real result of the session:**
+     a Microcosm-style device is not a clean shifter — it is artifacts made
+     **dense and aperiodic** until they read as texture, mixed under dry and
+     washed into reverb. Judging PITCH naked, dry, full-wet and single-
+     interval is the harshest possible exposure of exactly the artifact
+     granular design exists to hide. `send_probe.py --dvrbw` now drives the
+     delay's `→VERB` send from the CLI so the delay→reverb topology is one
+     command.
+
 3. **FREEZE** — 2-state select: stop line writes, keep reading (~30–60
    words, ~0 cycles). With PITCH: frozen buffer + shifted reads.
 4. **TAPE** — wow/flutter LFO on the read pointer (LFOTAB precedent),
@@ -826,6 +876,14 @@ that must not come back:
   first thing on the BURN trip.
 - ⚠️ Standing correction, same family: post-8-line multi-send renders before
   9 Aug had auto-gain clobbered by `$0c`; the unit has never had auto-gain.
+- ❌ "The PITCH splice artifact is a lattice displacement that scales with
+  window length; widen the window" (12 Aug, built and reverted the same
+  evening) — falsified by its own measurement: at EVERY window length the
+  octave arrives as two equal lines one lap apart with nothing at 2f
+  (suppressed-carrier AM from the two heads' fixed relative phase), so
+  widening moved the artifact 43.1 → 10.8 Hz (buzz → flutter) and cost half
+  the PITCH delay range. The defect is periodicity, not window shape. The
+  full-overlap window fix from the same session stands (measured, `e6f5359`).
 - ❌ "BongDelay produces zero output in every layout; →VERB unconfirmed
   either way" (12 Aug morning, `7a2859c`) — the dump was a `SPEC=1` build
   in which the DELAY id is aliased to the SEND client; every "delay"
