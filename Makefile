@@ -97,6 +97,11 @@ verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAN
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=dsp/reverb_rolled.asm"; exit 1; }
 	python3 tools/verify_roll.py $(CAND)
 
+.PHONY: verify-delay
+verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=dsp/delay_new.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=dsp/delay_server.asm]"; exit 1; }
+	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
+
 .PHONY: burn
 burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 70 words)
 	XBUS=1 BURN=1 python3 tools/build_bus.py

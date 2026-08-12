@@ -1,4 +1,27 @@
 ; ---------------------------------------------------------------------------
+; BongDelay v2, STAGE 1: CLEAN (PLAN.md 3.1, 12 Aug 2026).
+;
+; This file is v1's engine carried bit-identically through the v2 spine --
+; the refactor-first gate (tools/verify_delay.py, the verify_roll pattern):
+; prove equivalence, THEN add modes. Two spine changes, no behavior change:
+;
+;   * MODE select read (page-2 slot 7, r6+$c bits 8-15, ChonVerb's exact
+;     idiom). Stage 1 has one engine, so every value runs CLEAN -- the
+;     dispatch grows compares when PITCH lands, and unknown values must
+;     keep degrading to CLEAN (the trad delay), never to silence.
+;   * NO AGU MODULO. m1/m2 stay at the global linear invariant ($ffffff);
+;     read addresses are computed and write pointers wrapped by hand
+;     (details at the sample loop). This is what frees later modes --
+;     grain readers at scattered offsets, reverse reads, a single full-
+;     window line -- from the aligned-modulo-per-rN constraint.
+;
+; Deliberately NOT in stage 1 (each is its own gated commit): bus auto-gain
+; (behavior change -- measured like the reverb's $0c fix, not bit-compared),
+; the Y state table (no new persistent state yet), PITCH/FREEZE/TAPE/GRAIN/
+; REVERSE, and the descriptor-side MODE select (a one-value select would
+; draw a dead knob; it lands with the second mode).
+;
+; ---------------------------------------------------------------------------
 ; BUS.md task 9: DELAY SERVER. An algorithm from scratch -- unlike REVERB
 ; SERVER (task 8), there is no existing engine to reuse, so this file is the
 ; first build of it. Same three structural pieces as dsp/reverb_server.asm
@@ -96,11 +119,13 @@
 ;    (closing it both ways reproduces the self-oscillation this project has
 ;    already seen once).
 ;
-;    Each line is a plain circular buffer read via modulo indexed addressing
-;    (dsp/probe_echo.asm's proven shape: rN holds the write pointer, y:(rN+
-;    nN) reads TIME-behind without moving it, y:(rN)+ writes and advances) --
-;    simpler than reverb89's phase-plus-fixed-offset scheme, which exists
-;    there to support per-line LFO modulation this file doesn't have.
+;    Each line is a plain circular buffer, wrapped BY HAND (v2 spine): rN
+;    holds the write pointer as a plain linear address, the TIME-behind read
+;    address is computed per sample as base + ((wr - TIME) & $3fff), and the
+;    post-write pointer is folded back the same way. The AND is exact
+;    because both line bases are 0x4000-aligned, so the base falls out of
+;    the mask. v1 used AGU modulo (m1/m2 = $3fff) for the same addresses --
+;    proven bit-identical at the swap (tools/verify_delay.py, 12 Aug 2026).
 ;
 ; Memory (base = Y:0x30000, aligned to 0x4000 as modulo addressing requires):
 ;   LineL   base+0x0000 .. base+0x3fff   16384 words (max ~371 ms @ 44.1kHz)
@@ -114,6 +139,10 @@
 ;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
 ;   r7+$64              this call's DELAY WET write address (BUS.md bus)
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
+;   r7+$68              LineR base = LineL base + 0x4000 (per block, for the
+;                       per-sample manual wraps -- v2 spine)
+;   r7+$69              MODE, MSB-aligned select (per block; 0 = CLEAN, and
+;                       in stage 1 every other value also runs CLEAN)
 ;   r7+$70/$71          LineL/LineR write-pointer phase, persistent, masked
 ;                       on load AND save (same two-track-freeze discipline
 ;                       as dsp/reverb89.asm's $83 -- garbage with bit 23 set
@@ -475,6 +504,24 @@ dwarmdone:
         move    x:(r6+$d),x0
         move    x0,x:(r7+$86)           ; ->VERB DRY level (BUS.md task 10/11)
 
+; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
+; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
+; (dsp/reverb_server.asm). STAGE 1: CLEAN is the only engine, so every value
+; -- including whatever an undefined descriptor slot leaves in this word on
+; hardware -- runs CLEAN. When PITCH lands, the dispatch compares MSB-aligned
+; short immediates on $69, and unknown values must keep falling through to
+; CLEAN: a wrong select degrades to the trad delay, never to silence. The
+; descriptor's MODE select (RENAMES/DEFAULTS/PAGE2_COUNTS in build_bus.py)
+; lands with the second mode. DMODE=n (build_bus.py) substitutes a literal
+; at the marker below -- dsp_host cannot drive companion fields.
+        move    x:(r6+$c),a
+        and     #>$ff00,a               ; slot 7's companion field, not the knob
+        move    a1,x0
+        move    x0,a                    ; A2-clean (AND cleans A1 only)
+        asl     #$8,a,a                 ; -> MSB-aligned ($010000 per step)
+; DMODE_OVERRIDE
+        move    a,x:(r7+$69)            ; MODE, this block (0 = CLEAN)
+
 ; ---- rebuild both line pointers from saved phase --------------------------
 ; Same A2-clean discipline as dsp/reverb89.asm's phase reload: garbage with
 ; bit 23 set would sign-extend and saturate the following move a,rN to
@@ -488,26 +535,23 @@ dwarmdone:
         add     x0,a
         move    a,r1                    ; LineL write pointer
 
+        move    x:(r7+$31),a            ; LineR base = LineL base + 0x4000,
+        move    #>$4000,x0              ; stashed for the per-sample manual
+        add     x0,a                    ; wraps (v2 spine)
+        move    a,x:(r7+$68)
+
         move    x:(r7+$71),a            ; LineR phase
         move    #>$3fff,x0
         and     x0,a
         move    a1,x0
         move    x0,a
-        move    x:(r7+$31),x0
-        move    #>$4000,b
-        add     x0,b                    ; b = LineL base + 0x4000 = LineR base
-        move    b,x0
+        move    x:(r7+$68),x0           ; LineR base
         add     x0,a
         move    a,r2                    ; LineR write pointer
 
-        move    #>$3fff,m1              ; MODULO 16384: each line wraps
-        move    #>$3fff,m2              ; inside its own 0x4000-aligned half
-
-; ---- shared tap offset: both lines use the same TIME ----------------------
-        move    x:(r7+$75),a
-        neg     a
-        move    a,n1
-        move    a,n2
+; v2 SPINE: NO AGU MODULO. m1/m2 stay at the linear invariant ($ffffff);
+; the TIME-behind read address is computed per sample and the write
+; pointers are wrapped by hand below. n1/n2 are unused.
 
         move    #>$1,n0
         do      n7,>dlyend
@@ -532,10 +576,34 @@ dwarmdone:
         add     x0,a
         move    a,x:(r7+$63)            ; advance ACC read pointer
 
-; ---- read both delayed taps (pointer stays put; n1/n2 look TIME back) ----
-        move    y:(r1+n1),a
+; ---- read both delayed taps: manual wrap, no AGU modulo (v2 spine) --------
+; read addr = base + ((wr - TIME) & $3fff). The AND is exact because both
+; line bases are 0x4000-aligned, so the base falls out of the mask; wr-TIME
+; never goes negative (base >= 0x30000 > TIME's 16320 max). A2 stays
+; consistent through the AND (small positive values only) and is re-cleaned
+; via the a1->x0->a idiom regardless -- the A2-staleness store trap.
+        move    r1,a
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a                    ; wr - TIME
+        and     #>$3fff,a               ; read phase
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    x:(r7+$31),x0           ; LineL base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
         move    a,x:(r7+$79)            ; dL
-        move    y:(r2+n2),a
+
+        move    r2,a
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0           ; LineR base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
         move    a,x:(r7+$7a)            ; dR
 
 ; ---- one-pole damping in the feedback path: s += c*(d-s) ------------------
@@ -591,6 +659,25 @@ dwarmdone:
         move    x:(r7+$73),y1
         mpy     x0,y1,a
         move    a,y:(r2)+                ; LineR write, advance -- no x_in term
+
+; ---- wrap both write pointers by hand (the modulo this engine no longer
+; asks the AGU for). After the +1 a pointer is base .. base+0x4000 inclusive;
+; masking the phase and re-adding the base folds base+0x4000 back to base
+; and leaves every other value alone.
+        move    r1,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    x:(r7+$31),x0           ; LineL base
+        add     x0,a
+        move    a,r1
+        move    r2,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0           ; LineR base
+        add     x0,a
+        move    a,r2
 
 ; ---- own track: wet added to dry, MIX-scaled ------------------------------
         move    x:(r7+$7b),x0           ; wet L = fL

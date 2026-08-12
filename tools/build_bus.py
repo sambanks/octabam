@@ -438,10 +438,17 @@ if SPEC:
                  f"those replace a server with a probe")
 
 # ---- DSP code placement (task 13) ------------------------------------------
-ASM_SRC = {"DELAY SERVER": ("dsp/delay_server.asm" if DEV or SPEC
+           # DLSRC= swaps the delay engine for an alternate source file --
+           # the same mechanism as RVSRC below, for the same reason: the
+           # BongDelay v2 refactor gate (tools/verify_delay.py) builds and
+           # renders two engines in one script and compares byte-for-byte.
+           # It only means anything where the real delay is placed (DEV/SPEC/
+           # plain); the XBUS stub and BURN probe arms ignore it.
+ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
+                            if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
-                            else "dsp/delay_server.asm"),
+                            else os.environ.get("DLSRC") or "dsp/delay_server.asm"),
            # BURN is NOT a separate source any more -- see BURN_INJECT below.
            #
            # RVSRC= swaps the reverb engine for an alternate source file. It
@@ -818,7 +825,11 @@ mkgo:""",
             # DSP56300 places MSB-aligned, and the extract above is `asl #$8`
             # to match. A low-aligned override would miss every compare and
             # land on BIG -- exactly the bug 2da90f0 fixed.
-            "        move    #>$%x,a" % (int(mode_env) << 16))
+            # DECIMAL immediate: MODE=3 << 16 spelled $30000 is the payload-A
+            # Y base literal, which the XBUS _sub would rewrite to $38000
+            # (mode 0x38). Latent-only since the HALL cut (MODE stops at 2),
+            # found 12 Aug 2026 when DMODE=3 tripped the delay-source census.
+            "        move    #>%d,a" % (int(mode_env) << 16))
         print(f"  *** MODE OVERRIDE: forced to {int(mode_env)} ***")
 
     # WIDTH is a companion field like MODE (v92): dsp_host writes only the
@@ -835,6 +846,28 @@ mkgo:""",
             "; WIDTH_OVERRIDE",
             "        move    #>$%x,a" % (int(width_env) << 16))
         print(f"  *** WIDTH OVERRIDE: forced to {int(width_env)} ***")
+
+    # DMODE=n forces BongDelay's MODE select, same mechanism and reason as
+    # MODE= above: dsp_host writes only the knob field of a param word, so a
+    # companion-field select cannot be driven by -params at all. The v2 engine
+    # (PLAN.md 3.1) reads its MODE from r6+$c bits 8-15 exactly like ChonVerb;
+    # << 16 makes the immediate MSB-aligned to match the `asl #$8` extract.
+    dmode_env = os.environ.get("DMODE")
+    if dmode_env is not None:
+        if delay_src.count("; DMODE_OVERRIDE") != 1:
+            sys.exit("DMODE=n set but the DELAY source has no single "
+                     "; DMODE_OVERRIDE marker -- a v1 delay_server.asm cannot "
+                     "take a mode override")
+        # DECIMAL immediate, deliberately: mode 3 << 16 is 0x30000, which
+        # spelled as $30000 is indistinguishable from the payload-A Y base --
+        # the census below would refuse the build, and worse, the blanket
+        # $30000 -> $38000 payload substitution would rewrite the mode to
+        # 0x38. dsp_asm takes decimal immediates (move #>1407,a is shipped
+        # code); the string "196608" collides with nothing.
+        delay_src = delay_src.replace(
+            "; DMODE_OVERRIDE",
+            "        move    #>%d,a" % (int(dmode_env) << 16))
+        print(f"  *** DMODE OVERRIDE: BongDelay MODE forced to {int(dmode_env)} ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
