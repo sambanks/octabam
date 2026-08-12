@@ -141,6 +141,9 @@ RENAMES = {
         (8, b"VRBD"),
         (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
+        (10, b"SPRA"),              # slot 10 -> r6+$e knob  GRAIN scatter
+                                    #   depth (stage 5). Four characters: the
+                                    #   name field is per-knob and short
         (11, b"FRZE"),              # slot 11 -> r6+$e low   freeze select:
                                     #   run / hold (stage 3)
     ],
@@ -189,6 +192,10 @@ DEFAULTS = {
                      (6, 48),   # WOW   a musical default wobble for TAPE
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
                      (11, 0),   # FRZE  run   -- a fresh part is never held
+                     (10, 64),  # SPRA  mid   -- GRAIN's whole point is the
+                                #       scatter, so it boots half up rather
+                                #       than at 0 (where four grains stack on
+                                #       one read and it is just a thick PITCH)
                      (9, 0)],   # PTCH  +12   -- all IN RANGE of their counts
                                 # below (the default-as-index sequencer stall)
     # EVERY page-2 slot needs an explicit default now that all twelve are
@@ -236,12 +243,28 @@ def penable(active):
     return lo, hi
 
 
-# Which knobs each effect's DSP code actually reads. Page-1 indices 0..5 are
-# r6+0..5; page-2 index 6 = r6+$c, 7 = r6+$b, 8 = r6+$d (DSP.md section 9).
+# Which knobs each effect's DSP code actually reads, and therefore which ones
+# the panel DRAWS -- this list is the enable bitmap, so a slot missing here is
+# unreachable on hardware no matter how completely it is named, defaulted,
+# counted and implemented.
+#
+# Page-1 indices 0..5 are r6+0..5. Page 2 is THREE KNOBS AND THREE SELECTS,
+# in slot order 6..11: knob $b, select $c-high, knob $d, select $d-low, knob
+# $e, select $e-low. (The older note here said "6 = r6+$c, 7 = r6+$b, 8 =
+# r6+$d", which is stale -- it predates the v92 page-2 rejig and disagrees
+# with both servers' actual reads. Corrected 12 Aug 2026.)
 ACTIVE_PARAMS = {
     # 7 (MODE) and 9 (PTCH) landed with v2 stage 2 -- the stage-1 rule was
     # that a one-value select draws a dead knob, so MODE waited for PITCH.
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 7, 8, 9],
+    # ⚠️ 6 (WOW) and 11 (FRZE) were NAMED, DEFAULTED AND COUNTED by stages 3
+    # and 4 but never added HERE, so both shipped un-enabled: the DSP read
+    # them and the panel never drew them, which on the unit is a control that
+    # cannot be moved off its default. Found 12 Aug 2026 while wiring SPRAY.
+    # verify_menu only checks the slots that ARE enabled, so it could not see
+    # this -- it is the inverse of the PARAM_PAGES trap ("a slot can draw a
+    # knob and publish nothing") and cost nothing only because nobody had
+    # tried to freeze on hardware yet.
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
     "SEND": [0, 1],
 }
@@ -264,8 +287,11 @@ ACTIVE_PARAMS = {
 # fields are eight-bit selects and take a small step count. Setting a
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"DELAY SERVER":  {7: 3,     # MODE   select: CLEAN/PITCH/TAPE
+PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
+                                  7: 4,     # MODE   select: CLEAN/PITCH/TAPE/
+                                            #        GRAIN (v2 s5)
                                   9: 4,     # PTCH   select: +12/+7/-12/det
+                                  10: 128,  # SPRA   knob ($e knob, v2 s5)
                                   11: 2},   # FRZE   select: run/hold (v2 s3)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG

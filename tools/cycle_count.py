@@ -261,24 +261,40 @@ def measure(name):
 
     words = syms[end_label] - syms[MARKER]
     cycles, notes = words, []
+    rolls = []
     for trips, inner_end, label in inner_at:
         if label not in syms or inner_end not in syms:
             sys.exit(f"{name}: assembler dropped the inner-loop label {label}")
         inner_words = syms[inner_end] - syms[label]
         # The span already counts the body ONCE, so add the other trips.
-        cycles += (trips - 1) * inner_words + DO_SETUP
+        surcharge = (trips - 1) * inner_words + DO_SETUP
+        cycles += surcharge
+        rolls.append((syms[label], surcharge))
         notes.append(f"{inner_words}w x{trips}")
     if fork_labels:
         if any(l not in syms for l in fork_labels.values()):
             sys.exit(f"{name}: assembler dropped a MODEFORK label")
         bounds = ([syms[l] for l in fork_mid_labels] + [syms[fork_labels["end"]]])
         disp_w = bounds[0] - syms[fork_labels["begin"]]
-        alts = [bounds[k + 1] - bounds[k] for k in range(len(bounds) - 1)]
+        alt_w = [bounds[k + 1] - bounds[k] for k in range(len(bounds) - 1)]
+        # ⚠️ AN ALTERNATIVE'S COST IS ITS WORDS PLUS ITS OWN ROLLS, not its
+        # words alone. Comparing alternatives by WORDS was right only while
+        # every one of them was straight-line: GRAIN (v2 stage 5) is rolled,
+        # so its 343 words run ~3x that in cycles, and a words-only max would
+        # have picked PITCH as the worst path and then added GRAIN's roll
+        # surcharge to it -- charging one engine's size with another's depth.
+        # Attribute each roll to the alternative whose address range contains
+        # it, then take the worst by CYCLES. Reduces exactly to the old
+        # formula when no alternative is rolled.
+        alt_sur = [sum(s for at, s in rolls if bounds[k] <= at < bounds[k + 1])
+                   for k in range(len(alt_w))]
+        alt_cyc = [w + s for w, s in zip(alt_w, alt_sur)]
         # The span priced EVERY alternative; at most one runs per sample.
         # Charge the dispatch (always) plus the worst alternative.
-        cycles -= sum(alts) - max(alts)
+        cycles -= sum(alt_cyc) - max(alt_cyc)
         notes.append("fork worst-path (dispatch %dw, alts %s)"
-                     % (disp_w, "/".join(f"{w}w" for w in alts)))
+                     % (disp_w, "/".join(f"{w}w" if not s else f"{w}w+{s}roll"
+                                         for w, s in zip(alt_w, alt_sur))))
     note = ", ".join(notes) if notes else ""
     return dict(name=name, words=words, cycles=cycles, inner=note,
                 loop_end=end_label, total_words=len(blob) // 3, marked=marked)

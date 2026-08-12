@@ -378,6 +378,15 @@ def main():
                          "TAPE's wow/flutter depth; ignored by the other modes.")
     ap.add_argument("--dmix", type=int, default=None,
                     help="DELAY MIX 0..127 (delay slot 4, default 90)")
+    ap.add_argument("--dtone", type=int, default=None,
+                    help="DELAY TONE 0..127 (delay slot 2, default 100)")
+    ap.add_argument("--dping", type=int, default=None,
+                    help="DELAY PING 0..127 (delay slot 3, default 64)")
+    ap.add_argument("--dspray", type=int, default=None,
+                    help="DELAY SPRAY 0..127 (delay slot 10, default 0).\n"
+                         "GRAIN's scatter depth: 0 puts all four grains on one\n"
+                         "read position, 127 spreads them over 1015 samples.\n"
+                         "Only read in GRAIN (DMODE=3); inert elsewhere.")
     ap.add_argument("--dvrbw", type=int, default=None,
                     help="DELAY ->VERB WET 0..127 (delay slot 5, default 0).\n"
                          "The delay's own cross-send into the REVERB bus --\n"
@@ -425,10 +434,11 @@ def main():
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
     dpar = None
-    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow)):
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow,
+                                   a.dtone, a.dping, a.dspray)):
         dpar = list(DELAY_PARAMS)
-        for idx, val in ((0, a.dtime), (1, a.dfdbk), (4, a.dmix), (5, a.dvrbw),
-                         (6, a.dwow)):
+        for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
+                         (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (9, a.dspray)):
             if val is not None:
                 dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,

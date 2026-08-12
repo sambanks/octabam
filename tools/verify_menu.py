@@ -60,7 +60,14 @@ P_PENABLE_LO = 0x18e                    # params 0..7, one nibble each
 P_PENABLE_HI = 0x18a                    # params 8..11
 # which knobs each effect's DSP code actually reads (mirrors build_menu.py)
 ACTIVE_PARAMS = {
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 7, 8, 9],   # 7 MODE + 9 PTCH: v2 stage 2
+    # v2 stage 5 fills page 2: WOW(6) MODE(7) VRBD(8) PTCH(9) SPRA(10) FRZE(11)
+    # -- three knobs and three selects, which is the hardware budget exactly.
+    # ⚠️ 6 and 11 were implemented, named, defaulted and counted by stages 3/4
+    # and never enabled, so they shipped undrawable; this check is an
+    # INDEPENDENT copy of build_bus.py's list on purpose (it reads the built
+    # image, not the source of truth that built it), so it could not catch
+    # that -- both lists were simply missing the same slots.
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
     # v92 page-2 rejig: all twelve. Even page-2 slots are knob fields, odd ones
     # are companion fields of the same word (DSP.md section 9).
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],

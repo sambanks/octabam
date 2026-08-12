@@ -168,6 +168,32 @@
 ;                       topology, v2 stage 2c
 ;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
 ;                       with dsp/reverb_server.asm's convention)
+;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load AND
+;                       save -- same discipline as $6c/$6d). ONE age serves
+;                       all four grains; each takes a fixed quarter-cycle
+;                       offset from it, so a single advance moves the cloud
+;   r7+$33              SHIFTED-OUTPUT flag (per block): nonzero when the wet
+;                       comes from $24/$25 -- PITCH or GRAIN. Replaces the
+;                       per-sample MODE compare at the substitution point, so
+;                       adding modes there costs nothing per sample
+;   r7+$34..$53         GRAIN grain table, 8 records of 4 words, INTERLEAVED
+;                       L0 R0 L1 R1 L2 R2 L3 R3 so that the builder walks it
+;                       straight through and each reader strides by 8:
+;                         +0 age_int, 0..2047       (rebuilt every sample)
+;                         +1 latched scatter        (PERSISTENT, see below)
+;                         +2 sample fraction, Q23   (rebuilt every sample)
+;                         +3 window gain / 2, Q23   (rebuilt every sample)
+;                       The field order IS the consumption order in both
+;                       loops, which is what lets every access be a plain
+;                       post-increment instead of an indexed read
+;   r7+$54/$55          this sample's scatter candidates, line L / line R --
+;                       two DISJOINT fields of one PRNG word, each scaled by
+;                       SPRAY. Per-line candidates are what keep L and R
+;                       decorrelated while they share ages and window gains
+;   r7+$56..$5b         GRAIN per-sample scratch (builder: age_fx / age_int /
+;                       frac / gain / smoothstep temp; reader: phase / t0)
+;   r7+$5c              SPRAY depth, Q23 (per block, from the SPRAY knob)
+;   r7+$5d              GRAIN per-grain age cursor (the builder's running age)
 ;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
 ;   r7+$64              this call's DELAY WET write address (BUS.md bus)
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
@@ -236,8 +262,15 @@
 ;              see dsp/reverb_server.asm's ->DELAY header note for why the
 ;              reverse (reverb wet -> delay) is deliberately never built.
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
-;              count 2: 0 = CLEAN, 1 = PITCH. Landed with stage 2, per the
-;              stage-1 rule that a one-value select draws a dead knob.
+;              count 4: 0 = CLEAN, 1 = PITCH, 2 = TAPE, 3 = GRAIN. Landed with
+;              stage 2, per the stage-1 rule that a one-value select draws a
+;              dead knob; every unknown value still falls through to CLEAN.
+;   p10 SPRAY-> GRAIN scatter depth, page-2 slot 10 KNOB field (r6+$e bits
+;              16-22 -- the SAME WORD as FRZE, which is its low byte), 0..127
+;              used directly as a Q23 multiplier on each grain's random source
+;              offset: 0 = every grain reads the same place (four heads, one
+;              position -- the coherent, most PITCH-like end), 127 = the full
+;              0..1015-sample scatter. Only read in GRAIN.
 ;   p6 WOW   -> TAPE wow depth, page-1 slot 6 KNOB field (r6+$b), 0..127.
 ;              Scales flutter with it (wow/8). Only read in TAPE; harmless
 ;              in the other modes.
@@ -539,6 +572,9 @@ bus_mine:
 ; payload at build time (SOLVED -- see this file's header; BongDelay ships
 ; on payload B, base 0x38000, serving tracks 1-4).
         move    #>$ffffff,m0            ; audio is read and written via r0
+        move    #>$ffffff,m4            ; GRAIN walks its table with r4 -- the
+                                        ; one free AGU pointer, held at the
+                                        ; global linear invariant like the rest
         move    #>$30000,x0
         move    x0,x:(r7+$31)
 
@@ -608,6 +644,20 @@ dwarmz:
         move    b,x:(r7+$27)            ; TAPE LFO phases: persistent, and
         move    b,x:(r7+$28)            ; masked on load, but determinism is
                                         ; what verify-delay bit-compares
+        move    b,x:(r7+$32)            ; GRAIN base age
+; GRAIN's eight LATCHED SCATTERS (record +1 of each of the eight grains).
+; Only these persist -- every other field of the table is rewritten by the
+; builder before the readers touch it, every sample, so boot garbage there
+; cannot survive one sample. A garbage SCATTER would, and it subtracts
+; straight into a read address, so it is cleared like the PITCH offsets are.
+        move    b,x:(r7+$35)            ; L0
+        move    b,x:(r7+$39)            ; R0
+        move    b,x:(r7+$3d)            ; L1
+        move    b,x:(r7+$41)            ; R1
+        move    b,x:(r7+$45)            ; L2
+        move    b,x:(r7+$49)            ; R2
+        move    b,x:(r7+$4d)            ; L3
+        move    b,x:(r7+$51)            ; R3
         move    #>$123456,a             ; PRNG seed: any nonzero word (xorshift
         move    a,x:(r7+$18)            ; is dead at 0), fixed for determinism
         move    x:(r7+$15),a            ; reload count
@@ -673,6 +723,35 @@ dwarmdone:
         asl     #$8,a,a                 ; -> MSB-aligned ($010000 per step)
 ; DMODE_OVERRIDE
         move    a,x:(r7+$69)            ; MODE, this block (0 = CLEAN)
+
+; ---- SHIFTED-OUTPUT flag: which modes replace the wet with $24/$25 --------
+; PITCH and GRAIN both leave their result in the shifted-output taps and both
+; are substituted into the wet AFTER the lines are written (stage 2c, so
+; nothing shifted can re-enter the feedback). Resolving "is this such a mode"
+; ONCE PER BLOCK instead of at the substitution point makes that per-sample
+; test a `tst`, the same shape as FREEZE's -- it costs two words fewer than
+; the single compare it replaces and does not grow when a fourth mode wants
+; the same treatment. Branchless: cmp sets Z, the intervening moves do not
+; disturb it, and teq moves a CLEAN register in (never a hand-rolled mask).
+        clr     a
+        move    x:(r7+$69),b            ; MODE
+        move    #>$10000,x0             ; 1 << 16 = PITCH
+        cmp     x0,b
+        move    #>$1,x0
+        teq     x0,a
+        move    #>196608,x0             ; 3 << 16 = GRAIN. DECIMAL, DELIBERATELY:
+                                        ; in hex this immediate IS the payload-A
+                                        ; Y base literal, and build_bus.py's
+                                        ; blanket substitution would rewrite it
+                                        ; to the payload-B base -- i.e. to mode
+                                        ; 0x38. Same trap the census caught on
+                                        ; DMODE=3; writing this comment WITH the
+                                        ; hex spelled out trips the census too,
+                                        ; which is the cheapest possible reminder
+        cmp     x0,b
+        move    #>$1,x0
+        teq     x0,a
+        move    a,x:(r7+$33)            ; nonzero = the wet comes from $24/$25
 
 ; ---- PITCH interval select -> per-line age steps (v2 stage 2) -------------
 ; Page-2 slot 9's companion field, r6+$d LOW bits -- ChonVerb's WIDTH/->DEL
@@ -756,6 +835,24 @@ pintend:
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7+$26)            ; 0 = running, nonzero = frozen
+
+; ---- SPRAY: GRAIN scatter depth (v2 stage 5) ------------------------------
+; Page-2 slot 10's KNOB field -- the SAME WORD as FRZE, whose select is its
+; low byte, which is why the two masks here are disjoint and neither reads
+; the other's field. knob<<16 already IS value/128 in Q1.23, so it is used
+; directly as a multiplier with no mpy to build it (the MIX/PING trick).
+; SPRAY=0 puts every grain on the same read position -- four heads in a
+; cluster, the most coherent and least granular end -- and 127 gives the
+; full 0..1015-sample scatter. Decoded every block regardless of MODE, like
+; PTCH and FRZE; harmless in the modes that never read it.
+        move    x:(r6+$e),a
+        and     #>$7f0000,a             ; knob field only
+        move    a1,x0
+        move    x0,a                    ; A2-clean (AND cleans A1 only)
+        move    a,x:(r7+$5c)            ; SPRAY, 0 .. ~0.992 as Q23
+        move    #>4,n4                  ; GRAIN's readers stride one record
+                                        ; past the other line's, per block so
+                                        ; the sample loop never pays for it
 
 ; ---- PITCH lag base: TIME clamped to keep lag + window + lerp in the line -
 ; Max head lag = base + 8191 (age) + 1 (lerp's older neighbour); it must not
@@ -898,6 +995,10 @@ plagok:
         move    #>$20000,x0             ; 2 << 16 = TAPE (v2 stage 4)
         cmp     x0,a
         beq     tapel
+        move    #>196608,x0             ; 3 << 16 = GRAIN (v2 stage 5). DECIMAL
+                                        ; for the base-literal reason above
+        cmp     x0,a
+        beq     gmode
         bra     pdone                   ; CLEAN, and every unknown value
 ; MODEFORK_MID -- alternative 1: PITCH
 
@@ -1534,6 +1635,335 @@ tapel:
         move    x:(r7+$2b),x0
         add     x0,a                    ; tap = t0 + frac*(t1-t0)
         move    a,x:(r7+$7a)          ; dR, wobbled
+        bra     pdone                   ; TAPE ends here: GRAIN follows
+; MODEFORK_MID -- alternative 3: GRAIN
+
+; ---- GRAIN: four overlapping grains per line, rolled (v2 stage 5) ---------
+; THE FLAGSHIP, and the honest answer to "it doesn't sound like a Microcosm":
+; density is the mechanism, not a better two-head shifter. PITCH's ear pass
+; established the framing this is built on -- a granular device is artifacts
+; made DENSE and APERIODIC until they read as texture, not a clean shifter.
+; So GRAIN is PITCH's machinery with twice the heads and an independent
+; random source position per grain, on a knob.
+;
+; N = 4, AND N MUST BE EVEN. With the full-overlap triangle window, grains
+; staggered by 1/N sum to: N=2 -> 1.0000, N=4 -> 2.0000 (both exactly flat,
+; because the grains pair up complementarily -- 0 with 2, 1 with 3), N=3 ->
+; 0.21 dB ripple, N=5 -> 0.03 dB. An ODD count puts a ripple AT THE GRAIN
+; RATE, which is a periodic amplitude modulation -- exactly the artifact
+; class stages 2b/2c existed to remove. Four it is, and each gain is HALVED
+; as it is built so the four sum to 1.0 and no partial sum can saturate on
+; its way through the accumulator.
+;
+; THE ROLL IS MANDATORY, not an optimization. PITCH spends 524 words on four
+; head evaluations; eight of them unrolled is ~1,048 words against payload
+; B's ~940 free -- it does not fit. Rolled, the body is emitted three times
+; (one builder, one reader per line) instead of eight. Precedent: the tank
+; roll and the LFO roll in dsp/reverb_server.asm.
+;
+; WHAT IS SHARED AND WHAT IS NOT. One base age serves all four grains, each
+; taking a fixed quarter-cycle offset, so a single advance moves the whole
+; cloud; the window gain, integer age and sample fraction depend only on that
+; age, so they are computed ONCE and used by both lines. What is per-line is
+; the SCATTER -- an independent random source offset per grain per line --
+; and that alone is what keeps L and R decorrelated. (A single scatter shared
+; by both lines would make the two channels identical up to the ping-pong
+; matrix, which is the mono trap this file's header already documents once.)
+;
+; OUTPUT ONLY, NEVER IN THE LOOP -- stage 2c, and it is not optional here: a
+; cascade would put every repeat through eight more splices, and compounding
+; is what an ear calls "machine". The result lands in $24/$25 exactly like
+; PITCH's, and the substitution below is mode-blind via the $33 flag.
+;
+; A `do` body must be BRANCH-FREE, so every conditional here is a Tcc --
+; already the house idiom, and the reason the scatter latch is `tmi`.
+;
+; mpy orientation throughout: the possibly-negative operand (t1-t0, the tap)
+; is ALWAYS x0, the audited-signed `mpy x0,y1` form; y1 only ever carries a
+; fraction or a window gain, both non-negative.
+gmode:
+; ---- the PRNG, and this sample's two scatter candidates -------------------
+; 23-bit xorshift, shifts 15/15/8 -- the SAME generator as stage 2b's, and
+; DUPLICATED here rather than hoisted above the dispatch on purpose: hoisting
+; would run it in CLEAN and TAPE too, spending their cycles on a number they
+; never read. The alternatives are mutually exclusive, so duplication costs
+; words (which payload B has) and no cycles (which are the scarcer thing on
+; this path). Every shift result is re-cleaned through the a1->x0->a idiom
+; because `and`/`eor` write A1 only and leave A2 STALE -- the store trap.
+        move    x:(r7+$18),a            ; state
+        move    a1,x0
+        asl     #$f,a,a
+        and     #>$7fffff,a
+        eor     x0,a                    ; x ^= (x << 15)
+        move    a1,x0
+        move    x0,a
+        asr     #$f,a,a                 ; state is always positive, so the
+        eor     x0,a                    ; arithmetic shift IS a logical one
+        move    a1,x0
+        move    x0,a
+        asl     #$8,a,a
+        and     #>$7fffff,a
+        eor     x0,a                    ; x ^= (x << 8)
+        move    a1,x0
+        move    x0,a                    ; A2 clean before the store
+        move    a,x:(r7+$18)
+; Line L's candidate: the whole state read as a Q23 fraction, scaled by SPRAY
+; and taken down to 0..1015 samples. One PRNG advance per sample is enough
+; because at most ONE grain wraps per quarter cycle -- the same reasoning
+; stage 2b's single candidate rests on.
+        move    a,x0                    ; state, 0 .. ~1.0 (always positive)
+        move    x:(r7+$5c),y1           ; SPRAY
+        mpy     x0,y1,a                 ; both operands non-negative
+        asr     #$d,a,a                 ; -> samples
+        and     #>$3ff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean before the store
+        move    a,x:(r7+$54)            ; candidate, line L
+; Line R's candidate: a DISJOINT field of the same word. The low 12 bits are
+; shifted up to the top, so R's 10-bit field is state bits 2..11 where L's
+; was 13..22 -- no bit feeds both lines in the same sample, which is what
+; "per-line scatter tables" has to mean to actually decorrelate them.
+        move    x:(r7+$18),a
+        asl     #$b,a,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x:(r7+$5c),y1           ; SPRAY
+        mpy     x0,y1,a
+        asr     #$d,a,a
+        and     #>$3ff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$55)            ; candidate, line R
+; ---- the shared base age --------------------------------------------------
+; Advances by the PTCH interval's step, exactly as PITCH's per-line ages do
+; (age DECREASES for an upshift: the head slides toward the write pointer).
+; GRAIN uses the LEFT line's step for both lines -- at the detune select the
+; two differ, and sharing the age is what lets one window computation serve
+; both. The decorrelation GRAIN needs comes from the scatter, not from a
+; 15-cent step difference.
+        move    x:(r7+$32),a
+        move    x:(r7+$6a),x0           ; step, Q11.12 signed
+        sub     x0,a
+        and     #>$7fffff,a             ; wrap mod 2048 samples
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7+$32)
+        move    a,x:(r7+$5d)            ; the builder's running cursor
+; ---- BUILDER: fill the grain table, one grain (both lines) per pass -------
+; r4 walks all 32 words straight through, which is why the record's field
+; order is its consumption order. Per grain: age_int, fraction and window
+; gain are computed ONCE and stored into BOTH lines' records; the scatter is
+; latched per line, and only at THIS GRAIN'S OWN WRAP.
+        move    r7,a
+        move    #>$34,x0
+        add     x0,a
+        move    a,r4                    ; -> record L0
+        do      #4,>grnbz
+        move    x:(r7+$5d),a            ; this grain's age
+        move    a,x:(r7+$56)            ; park age_fx (the fraction needs it)
+        asr     #$c,a,a
+        move    a1,x0
+        move    x0,a                    ; age_int, 0..2047, A2-clean
+        move    a,x:(r7+$57)
+        move    x:(r7+$56),a
+        and     #>$fff,a                ; sample fraction, Q12 (a2 already 0)
+        asl     #$b,a,a                 ; -> Q23
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$58)            ; frac
+; window: full-overlap triangle t = 1024 - |age-1024|, smoothstepped, HALVED
+        move    x:(r7+$57),a            ; age_int
+        move    #>1024,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; t = 1024 - |age-1024|, 0..1024
+        asl     #$d,a,a                 ; g = t/1024, Q23; t=1024 -> 2^23,
+                                        ; exact in the 56-bit acc
+        move    a,x0                    ; LIMITING move: 2^23 clips $7fffff
+        move    a,y1                    ; smoothstep s = g^2*(3-2g), zero-slope
+        mpy     x0,y1,a                 ; g^2       joins at both ends
+        move    a,x:(r7+$5a)            ; park g^2
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1                    ; 1-g
+        move    x:(r7+$5a),x0
+        mpy     x0,y1,a                 ; g^2*(1-g)
+        asl     #$1,a,a
+        add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
+        asr     #$1,a,a                 ; HALVED: the four grains sum to 2.0
+                                        ; exactly, so halving here makes the
+                                        ; cloud unity AND keeps every partial
+                                        ; sum inside full scale (a running sum
+                                        ; above 1.0 would saturate on store)
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$59)            ; gain/2
+; ---- did THIS grain just wrap? -------------------------------------------
+; The previous age is (age + step) & mask by construction, so it does not
+; need storing: recomputing it costs less than eight persistent words and is
+; exactly equivalent. |age - prev| > half a cycle can only mean the mask
+; folded it, i.e. this grain restarted. N SET means it did NOT wrap.
+;
+; The jump is inaudible because a grain's window gain is exactly 0 at its own
+; wrap -- the full-overlap window is a PREREQUISITE for re-scattering, not
+; just a cleanup (stage 2b established this).
+;
+; The flag must survive to BOTH Tcc's below, so everything between here and
+; the second latch is a MOVE: moves do not disturb the condition codes, which
+; is the same guarantee the FREEZE and TAPE substitutions already rest on.
+        move    x:(r7+$5d),a            ; age
+        move    x:(r7+$6a),x0           ; step
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0                   ; prev (A1 only -- A2 is stale after
+                                        ; the AND, which is exactly why the
+                                        ; value leaves through a1, not a)
+        move    x:(r7+$5d),a            ; age again, clean from its store
+        sub     x0,a                    ; d = age - prev
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; N set == |d| < half == NO wrap
+; ---- store the two records: line L, then line R ---------------------------
+        move    x:(r7+$57),x0           ; age_int
+        move    x0,x:(r4)+
+        move    x:(r4),x0               ; this grain's current scatter, L
+        move    x:(r7+$54),b            ; this sample's candidate, L
+        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
+                                        ; hand-rolled mask (A2 staleness)
+        move    b,x:(r4)+
+        move    x:(r7+$58),x0           ; frac
+        move    x0,x:(r4)+
+        move    x:(r7+$59),x0           ; gain/2
+        move    x0,x:(r4)+
+        move    x:(r7+$57),x0           ; age_int, line R's copy
+        move    x0,x:(r4)+
+        move    x:(r4),x0               ; this grain's current scatter, R
+        move    x:(r7+$55),b            ; this sample's candidate, R
+        tmi     x0,b                    ; the SAME wrap flag: the two lines'
+                                        ; grains are in step, only their
+                                        ; source positions differ
+        move    b,x:(r4)+
+        move    x:(r7+$58),x0
+        move    x0,x:(r4)+
+        move    x:(r7+$59),x0
+        move    x0,x:(r4)+
+; ---- next grain: a quarter cycle further round ----------------------------
+        move    x:(r7+$5d),a
+        move    #>$200000,x0            ; 512 samples in Q11.12 = 1/4 window
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5d)
+grnbz:
+        nop                             ; the `do` end label marks the LAST
+                                        ; instruction of the body -- a nop
+                                        ; there is the shipping idiom (see
+                                        ; bus_zclr above) and makes the loop's
+                                        ; extent independent of what follows
+; ---- READER, line L: four lerped reads, summed --------------------------
+; r4 starts at record L0 and strides 8 words, skipping line R's records with
+; the n4 set per block. b accumulates across the four grains and nothing in
+; the body touches it, so the sum needs no memory slot.
+        move    r7,a
+        move    #>$34,x0
+        add     x0,a
+        move    a,r4
+        clr     b
+        do      #4,>grnlz
+        move    x:(r4)+,x0              ; age_int
+        move    r1,a                    ; LineL write pointer
+        sub     x0,a
+        move    x:(r7+$6e),x0           ; PLAGB = min(TIME, 13311), so lag +
+        sub     x0,a                    ; age + scatter + the lerp's older
+                                        ; neighbour stays inside the line
+        move    x:(r4)+,x0              ; this grain's scatter, line L
+        sub     x0,a
+        and     #>$3fff,a               ; read phase (t0, the newer neighbour)
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$5a)            ; park phase
+        move    x:(r7+$31),x0           ; LineL base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t0
+        move    a,x:(r7+$5b)            ; park t0
+        move    x:(r7+$5a),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a               ; phase-1, wrapped: one sample OLDER
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$5b),x0           ; t0
+        sub     x0,a                    ; t1 - t0, signed
+        move    a1,x0                   ; -> FIRST mpy operand
+        move    x:(r4)+,y1              ; frac
+        mpy     x0,y1,a                 ; frac*(t1-t0), signed
+        move    x:(r7+$5b),x0
+        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    a,x0                    ; LIMITING move, matching the park-to-
+                                        ; memory the PITCH heads do here
+        move    x:(r4)+,y1              ; this grain's window gain / 2
+        mpy     x0,y1,a
+        add     a,b                     ; the cloud, summed
+        move    (r4)+n4                 ; skip line R's record
+grnlz:
+        nop
+        move    b,x:(r7+$24)            ; shifted OUTPUT tap L -- NOT $79:
+                                        ; the loop's tap stays unshifted
+; ---- READER, line R: identical, on r2 / base $68 / records from $38 -------
+        move    r7,a
+        move    #>$38,x0
+        add     x0,a
+        move    a,r4
+        clr     b
+        do      #4,>grnrz
+        move    x:(r4)+,x0              ; age_int
+        move    r2,a                    ; LineR write pointer
+        sub     x0,a
+        move    x:(r7+$6e),x0           ; PLAGB
+        sub     x0,a
+        move    x:(r4)+,x0              ; this grain's scatter, line R
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5a)
+        move    x:(r7+$68),x0           ; LineR base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t0
+        move    a,x:(r7+$5b)
+        move    x:(r7+$5a),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$5b),x0
+        sub     x0,a
+        move    a1,x0
+        move    x:(r4)+,y1              ; frac
+        mpy     x0,y1,a
+        move    x:(r7+$5b),x0
+        add     x0,a
+        move    a,x0
+        move    x:(r4)+,y1              ; gain/2
+        mpy     x0,y1,a
+        add     a,b
+        move    (r4)+n4                 ; skip line L's record
+grnrz:
+        nop
+        move    b,x:(r7+$25)            ; shifted OUTPUT tap R
 ; MODEFORK_END
 pdone:
 
@@ -1696,27 +2126,30 @@ pdone:
         add     x0,a
         move    a,r2
 
-; ---- PITCH: the wet becomes the SHIFTED tap (v2 stage 2c) ----------------
+; ---- PITCH / GRAIN: the wet becomes the SHIFTED tap (v2 stage 2c) --------
 ; Placed HERE deliberately: both lines have already been written above from
 ; the clean tap, so the shift can never re-enter the feedback loop. From
 ; this point on the wet -- own-track MIX, the shared DELAY WET buffer and
 ; the ->VERB send -- carries the shifted signal, and everything downstream
 ; stays mode-blind.
 ;
-; Branchless via Tcc: cmp sets Z, the intervening moves do not disturb it,
-; and teq moves a CLEAN register into the accumulator (never a hand-rolled
-; mask -- the A2-staleness store trap). In CLEAN mode teq does not fire and
-; the wet is bit-identical to v1's.
-        move    x:(r7+$69),a
-        move    #>$10000,x0
-        cmp     x0,a                    ; Z set == PITCH
+; Branchless via Tcc: tst sets Z, the intervening moves do not disturb it,
+; and tne moves a CLEAN register into the accumulator (never a hand-rolled
+; mask -- the A2-staleness store trap). In CLEAN and TAPE the flag is 0, tne
+; does not fire and the wet is bit-identical to v1's.
+;
+; The mode test itself moved OUT of the sample loop in stage 5 ($33, resolved
+; once per block): PITCH and GRAIN both land here, and an in-loop compare
+; would have had to grow a second one to say so.
+        move    x:(r7+$33),a            ; SHIFTED flag: PITCH or GRAIN
+        tst     a
         move    x:(r7+$24),x0           ; shifted L
         move    x:(r7+$7b),b            ; loop's wet L
-        teq     x0,b
+        tne     x0,b
         move    b,x:(r7+$7b)
         move    x:(r7+$25),x0           ; shifted R
         move    x:(r7+$7c),b
-        teq     x0,b
+        tne     x0,b
         move    b,x:(r7+$7c)
 
 ; ---- own track: wet added to dry, MIX-scaled ------------------------------
@@ -1788,5 +2221,6 @@ dry:
         move    #>$ffffff,m0
         move    #>$ffffff,m1
         move    #>$ffffff,m2
+        move    #>$ffffff,m4
         move    #>$ffffff,m5
         rts
