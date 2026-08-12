@@ -179,7 +179,14 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # ambiguity this tag exists to prevent. 32 -> 33: the post-marker product
 # build (mapping documented, real names under SPEC). 33 -> 34: LFO roll
 # + wet makeup, the R15 flash.
-BUILD_TAG = b"37"
+# 37 -> 38, 13 Aug 2026: 35-37 were stamped for reverb rounds R16/R17/R18 and
+# NONE of them ever reached a card, so 37's contents kept growing under a tag
+# that had already been "assigned" -- by the time it was wrapped it also
+# carried the whole of BongDelay v2 (five modes, GRAIN through 5g). A tag that
+# names two different images is the failure at 31 all over again, so the wrap
+# gets a fresh number: 38 == OCTABAMR19 == everything through R18 plus
+# BongDelay v2. 35, 36 and 37 were never on hardware and never will be.
+BUILD_TAG = b"38"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
