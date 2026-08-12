@@ -158,6 +158,8 @@
 ;                       t0 / the Q23 lag fraction)
 ;   r7+$2d/$2e          TAPE wow depth / flutter depth (per block, from the
 ;                       WOW knob; their sum is bounded by TIME's floor)
+;   r7+$2f/$30          TAPE saturation per-sample scratch (the parked write
+;                       value w, and its soft-clipped form)
 ;   r7+$26              FREEZE flag (per block, from the slot-11 select:
 ;                       0 = running, nonzero = hold the lines)
 ;   r7+$24/$25          PITCH shifted OUTPUT tap L / R (per sample). Kept
@@ -1582,6 +1584,52 @@ pdone:
         mpy     x0,y1,a
         move    x:(r7+$7d),x0           ; x_in
         add     x0,a
+; ---- TAPE loop saturation (v2 stage 4b) ----------------------------------
+; The record head compresses. y = w - w^3/3, applied to what each line is
+; ABOUT TO BE WRITTEN (input + feedback for LineL, crossfed feedback for
+; LineR) -- so it is in the loop, and every repeat is saturated again:
+; -0.03 dB at 0.1 FS, -0.76 at 0.5, -3.52 at full scale, and a hot repeat
+; train rounds off progressively the way tape does.
+;
+; WHY THIS CURVE AND NOT A DRIVE STAGE: small-signal gain is EXACTLY 1 and
+; the curve is monotonic with |y| <= |w| over the whole fixed-point range,
+; so it can only ever REDUCE magnitude. It therefore adds no loop gain and
+; cannot introduce self-oscillation at any FDBK -- unlike a pre-gain soft
+; clipper, which would also fold back above unity (y = u - u^3/3 turns over
+; at u = 1) and need a clamp. There is no drive knob for the same reason
+; the depth ceiling exists in the LFO block: the safe version is the one
+; that cannot be knocked into a bad regime from the panel. Slot 10 is still
+; free if the ear later asks for DRIVE.
+;
+; TAPE ONLY, via the same Tcc substitution as the FREEZE hold and the PITCH
+; wet: cmp sets Z, moves do not disturb it, teq moves a CLEAN register in.
+; CLEAN and PITCH are untouched, which is what keeps verify-delay's
+; bit-identity gate green.
+;
+; Applied BEFORE the FREEZE substitution below on purpose: a frozen line
+; must hold its contents EXACTLY (gain 1, a copy), and re-saturating the
+; held loop every lap would grind it down instead.
+        move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
+                                        ; can exceed full scale and a raw a1
+                                        ; would WRAP where this saturates
+        move    x:(r7+$2f),x0           ; w, saturated
+        move    x0,y1
+        mpy     x0,y1,b                 ; w^2   (signed x signed)
+        move    b,y1                    ; limiting move: w^2 <= 1
+        mpy     x0,y1,b                 ; w^3
+        move    b,x0
+        move    #>$2aaaab,y1            ; 1/3
+        mpy     x0,y1,b                 ; w^3/3
+        move    x:(r7+$2f),a            ; w
+        move    b,x0
+        sub     x0,a                    ; sat = w - w^3/3
+        move    a,x:(r7+$30)
+        move    x:(r7+$69),b            ; MODE
+        move    #>$20000,x0             ; 2 << 16 = TAPE
+        cmp     x0,b                    ; Z set == TAPE
+        move    x:(r7+$2f),a            ; w back (non-TAPE keeps it)
+        move    x:(r7+$30),x0           ; sat
+        teq     x0,a
 ; FREEZE (v2 stage 3): write the RAW TAP back instead -- unity recirculation
 ; with the input excluded, so the last TIME samples loop for ever. The loop
 ; length is TIME itself (read at wr-TIME, written at wr, so the region is
@@ -1602,6 +1650,27 @@ pdone:
         move    x:(r7+$81),x0           ; fbIntoR
         move    x:(r7+$73),y1
         mpy     x0,y1,a
+        move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
+                                        ; can exceed full scale and a raw a1
+                                        ; would WRAP where this saturates
+        move    x:(r7+$2f),x0           ; w, saturated
+        move    x0,y1
+        mpy     x0,y1,b                 ; w^2   (signed x signed)
+        move    b,y1                    ; limiting move: w^2 <= 1
+        mpy     x0,y1,b                 ; w^3
+        move    b,x0
+        move    #>$2aaaab,y1            ; 1/3
+        mpy     x0,y1,b                 ; w^3/3
+        move    x:(r7+$2f),a            ; w
+        move    b,x0
+        sub     x0,a                    ; sat = w - w^3/3
+        move    a,x:(r7+$30)
+        move    x:(r7+$69),b            ; MODE
+        move    #>$20000,x0             ; 2 << 16 = TAPE
+        cmp     x0,b                    ; Z set == TAPE
+        move    x:(r7+$2f),a            ; w back (non-TAPE keeps it)
+        move    x:(r7+$30),x0           ; sat
+        teq     x0,a
         move    x:(r7+$26),b
         tst     b
         move    x:(r7+$7a),x0
