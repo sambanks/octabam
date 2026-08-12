@@ -80,6 +80,26 @@ Driving the wrong one renders silence, which reads as a broken algorithm.
 rest). New per-track state goes in the Y state table, not r7. `$84+` hangs
 the unit. (Do not scan for these with `"\$$s"` in a shell — it expands.)
 
+**A dump can resolve a perfectly plausible dispatch entry for an effect it
+does not contain.** `SPEC=1` (which `make render` sets) aliases the absent
+server's id to the SEND client — deliberately, so a wrong chooser pick
+becomes a send. Locally that alias renders a dry passthrough: silence over
+the bus, dry in a `--direct` control, no error anywhere. This produced the
+12 Aug "BongDelay outputs nothing in any config" session — the delay was
+never instantiated; every measurement ran a SEND. Delay work needs the
+hatch (`make render-delay`), and `send_probe.py` now dies when a D layout's
+DELAY entry equals SEND's. The general rule: before believing a *negative*
+result, check which code the dispatch entry actually points at — same
+family as "disassemble what you assemble".
+
+**Payload A's half of the shared window is FULLY OWNED**: ChonVerb's
+relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x36082`.
+There is no free ground in it for delay lines — the DEV build places the
+delay at its shipping base `0x38000` (payload B's half) for exactly this
+reason. A delay based at `0x30000` sweeps the parity word, all four ACC
+buffers and both role locks every 16,384 samples and blows up any
+multi-server layout (found 12 Aug, RDS full-scale garbage).
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

@@ -25,7 +25,7 @@ delay→reverb series topology).
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean. 🟡 12 Aug: local render (`DEV=1`) no longer builds, and the stale dump shows a harness problem beyond that — `→VERB` cross-send is unconfirmed either way, see step 3 |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident; redesign can start |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
@@ -109,8 +109,19 @@ The ten FX1 effects, with sizes (identical in both payloads):
   Per-line rate multipliers become an 8-entry table — the same shape as the
   tank's state table, and unlike the levers below it needs no boot patching.
 - **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K, **+8,192
-  words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. 🟡 Also the only
-  known route to a local render of the delay (see the DEV note below).
+  words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. Scoped 12 Aug:
+  - ⚠️ **On core 0 it EVICTS TANK LINES 6-7** — ChonVerb's eight lines are
+    Y:0x4000-0xBFFF at 4K each (reverb_server.asm:683), so the Y cost is not
+    an abstract pool shrink; it reopens the done-for-now reverb (re-layout +
+    re-voice). Treat core-0 OMR as reverb work, not a build flag.
+  - 🟡 **OMR is per-core: core 1 alone can take Fig 3-3** (+8,192 P for the
+    delay) with no tank cost — BongDelay's lines live in the shared window,
+    not private Y. Contingent on nothing else on that core using
+    Y:0xA000-0xBFFF (legacy dual-class FX2 ids are the suspect).
+  - ✅ **It buys nothing locally**: dsp_host has no 8K wall and no OMR model
+    (P is flat 0x80000 words, dsp_host.cpp:391) — which also means NO OMR
+    risk can be de-risked in the emulator; each unknown is a flash (min two:
+    OMR-only, then a marker module above 0x2000).
 - **Code in the shared window**: P/X/Y alias at `0x30000-0x3FFFF` ✅ and stock
   already runs code there ✅, so up to 64K is program-addressable at 1 wait
   state. 🟡
@@ -410,26 +421,127 @@ with nothing, so nothing is lost by finishing the reverb first.**
 `fcf22fd`) — its output can never be tapped. **delay→reverb exists only
 through BongDelay's `→VERB` cross-send**, already built. That is the goal.
 
-🟡 **`→VERB` is BUILT, not CONFIRMED — checked 12 Aug 2026, inconclusive.**
-Tried to verify locally via `send_probe.py --layout RDS`. `DEV=1 XBUS=1`
-does not build against current source (see below), so the check ran against
-the stale pre-R16 `out/dsp/mem_dev_A.mem` (10 Aug 22:05) — valid for DELAY
-SERVER's own code, which is unchanged since (`86efe0a` is comment-only,
-payload hash identical). Result: **BongDelay produced ZERO output in every
-layout tried**, direct or bus-fed, MIX/FDBK at any value — not just the
-cross-send, its own local echo too. This contradicts `2f35107`'s "BongDelay
-produced audio over the bus for the first time" measurement on what should
-be the same DEV=1/payload-A gate variant. Prime suspect, unconfirmed: the
-server-role lock (`y:>$981`) never getting cleared for some layouts, but the
-`build_bus.py` XBUS_GATE substitution reads correctly on paper for this
-case — the discrepancy is not explained by source reading alone and needs
-disassembly of the built binary at the housekeeping site, not another
-theory. **Until this is resolved, treat `→VERB` as unverified** — do not
-plan on it working without either fixing the harness or a hardware test.
+✅ **`→VERB` CONFIRMED (emulator), 12 Aug 2026 (evening, same day the
+morning's finding below was recorded) — delay wet reaches the
+reverb, and the direction is the designed one: delay → reverb, never the
+reverse.** Measured via `--layout RDS` with SEND's `→REVERB` knob at 0, so
+the *only* route into ChonVerb was BongDelay's cross-send: VRBW=127 filled
+the reverb at −14.0 dBFS; the VRBW=0 control was digital silence (−180 dB).
+Local echo is also structurally confirmed: impulse taps at exactly 5,184
+samples (TIME=40 → 40·128+64), decaying through FDBK. Hardware confirm
+still rides the next flash.
 
-Budget: **1,998 program words**, **~3,200 spare cycles**, **65,536 words =
-1.49 s**. A flagship budget: multi-tap, ping-pong, per-tap filtering, tape
-wow/flutter, diffused feedback, reverse.
+**The 12 Aug "zero output in every layout" finding is RETRACTED — the delay
+was never instantiated.** The disassembly-first rule found it in one step:
+the stale dump's DELAY dispatch entry *equalled* SEND's. That dump was a
+`SPEC=1` build (`make render` sets SPEC), and under SPEC payload A carries
+no delay — `build_bus.py` deliberately aliases id 0x06 to the SEND client,
+which is a dry passthrough. Every "delay" measurement on 12 Aug measured a
+SEND. The "valid for DELAY SERVER's own code" reasoning was wrong: the
+delay's code was not in the dump at all. `send_probe.py` now refuses to run
+a D layout against a dump whose DELAY entry is the SEND alias, so this
+class of silent mislabel dies loudly instead of measuring.
+
+**A real DEV-only memory collision was found and fixed on the way** (it
+blew up the RDS layout even with a genuine delay): the DEV build placed the
+delay's 32K lines at payload A's Y base 0x30000, but payload A's half of
+the shared window is fully owned — ChonVerb's relocated buffers at
+0x30000/0x34000 and the bus scratch at 0x36000–0x36082. LineR's write
+pointer crossed the parity word, all four ACC buffers and both role locks
+every 16,384 samples. Fix: under DEV the delay is substituted to its
+**shipping address 0x38000** (payload B's half, unused in a single-core
+dsp_host run), making the DEV delay byte-identical to the one that ships —
+including the never-housekeep gate, covered by SEND's election exactly as
+on hardware. The DS THD even improved (−35.2 → −36.8 dB): the historical
+numbers had the scratch corruption folded in.
+
+Harness: **`make render-delay`** builds the hatch (`DEV=1 XBUS=1 NOSHIM=1`
+— NOSHIM became load-bearing when R16–R18 grew ChonVerb past the DEV donor
+region; the DEV reverb is only a downstream sink for delay work) and
+renders `--layout DS`. Falsifier for the →VERB claim: it is emulator-only;
+if hardware's cross-core timing differs, the on-unit check is →DEL/→VERB
+routed audio on tracks 1–4 feeding a track-5 ChonVerb.
+
+Budget: **1,998 program words** (583 renderable until the DEV placement
+change lands — see traps), **~2,150 spare cycles with four FX1 FILTERs /
+~3,200 without** 🟡 (derived from the 7 Aug sweep, never separately
+measured on this core), **32,768 words of line = 0.74 s stereo / 1.49 s
+mono in hand**, plus the private-Y 32K 🟡 counted in the pool but never
+claimed.
+
+#### 3.1 BongDelay v2 — design sketch (proposed 12 Aug 2026, ratify by ear)
+
+**The reference decision.** Microcosm-adjacent — a **pitch/granular delay
+feeding ChonVerb over `→VERB`** — replaces Round 11's "Supermassive-style
+diffused feedback" placeholder (VOICING.md; the placeholder predates
+shimmer and Sam flagged it for reconsideration). Two reasons it fits THIS
+box: in-loop diffusion is partly redundant with an 8-line shimmer reverb
+sitting immediately downstream, and the risky machinery for the pitch
+direction (crossfaded variable-rate lerp heads, their truncation floor) is
+already de-risked by shimmer v3. Granular-into-reverb *is* the Microcosm
+topology; the routing half is measured, today.
+
+**The spine, shared by every mode** (the ChonVerb pattern: one engine +
+MODE select):
+- Stereo lines at Y:0x38000, manual compare-and-wrap (frees the layout
+  from AGU modulo; ~4–6 cycles).
+- Feedback loop with TONE one-pole (exists) and the PING crossfeed matrix
+  (exists); saturation stage in the loop 🟡 optional, voice it.
+- **Auto-gain from the first draft** (1/N table, parity indexing — the
+  `$0c` lesson, non-negotiable).
+- Warm-up tag idiom (`$2e0000`), new per-track state in the **Y state
+  table** (r7 `$00-$83` is full).
+- `→VERB` wet/dry sends (exist, confirmed); MIX with a wet-makeup pass at
+  voicing (the reverb's −7 dB lesson).
+
+**Modes, in build order** (each lands only when renderable + ear-passed;
+each stage is a separate commit gated by `make check`):
+1. **CLEAN** — v1's behavior as mode 0, bit-identical through the new
+   spine (the `verify_roll` gate pattern: refactor first, prove
+   equivalence, THEN add). ~0 new words beyond the mode dispatch.
+2. **PITCH** — dual crossfaded lerp heads on the feedback tap, interval as
+   a low-byte SELECT: +12 / +7 / −12 / ±detune 🟡 (~200–300 words,
+   ~60–100 cycles). Each repeat shifts; through the reverb this is the
+   Crystal/Hedra territory.
+3. **FREEZE** — 2-state select: stop line writes, keep reading (~30–60
+   words, ~0 cycles). With PITCH: frozen buffer + shifted reads.
+4. **TAPE** — wow/flutter LFO on the read pointer (LFOTAB precedent),
+   loop saturation (~150–250 words, ~50–80 cycles).
+5. **GRAIN** — the flagship: 4–8 windowed grain readers at LCG-scattered
+   offsets over the same line, per-grain pitch from the interval select,
+   SPRAY knob for scatter depth (~400–600 words, ~20–25 cycles/grain 🟡).
+   Freeze + grain = texture hold.
+6. **REVERSE** — windowed backward reads, same crossfade machinery
+   (~150–250 words) — cheapest AFTER grain exists.
+
+All costs 🟡 inferred from shipped analogues (shimmer 130 words, gate ~104
+cycles); price each stage by the build report when it lands, and stop
+adding modes when the ear says the box is full, not when the words run out.
+
+**Parameters — no new UI mechanism.** Everything is the existing knob-page
+descriptor system (MODE-as-stepped-select is shipped tech: ChonVerb MODE,
+WIDTH/→DEL selects). Today: TIME p0, FDBK p1, TONE p2, PING p3, MIX p4,
+VRBW p5, VRBD p8. Free: knob fields 6/7/9/10/11 plus low-byte companions.
+Proposed: **MODE** (select), **PITCH interval** (select — near-boolean
+knobs read badly on hardware, the WIDTH lesson), **SIZE** (grain/window
+knob), **SPRAY** (knob), **FREEZE** (2-state select). ⚠️ Every new slot
+rides the on-unit reconfirm checklist — a slot can draw a knob and publish
+nothing, and dsp_host pokes r6 so publish gaps are invisible locally.
+⚠️ Selects need their descriptor fields exact (the PARAM_PAGES.md
+sequencer-stall trap).
+
+**Traps this design walks past** (all documented, none new): mpy operand
+order for any new multiply whose second operand can go negative —
+disassemble every new mpy site; grain envelopes and freeze switching via
+Tcc, never hand-rolled sign masks (A2 staleness); no new label may prefix
+an existing one; recirculating pitch reads sit on the truncation floor —
+lerp mandatory, judge wet-only early; the hatch has 69 words of margin, so
+the DEV placement change (traps above) lands before stage 2 outgrows it.
+
+**What is deliberately OUT of v1**: Microcosm's phrase-looper/slicer layer
+(a product in itself), multi-tap rhythm patterns (cheap, add later if the
+ear asks), in-loop diffusion (redundant with the reverb until proven
+otherwise by ear).
 
 Traps, all already paid for once:
 - ⚠️ **`→DELAY` and `→REVERB` are SEPARATE knobs** (`x:(r6+0)` vs `x:(r6+1)`).
@@ -442,14 +554,25 @@ Traps, all already paid for once:
   knowing X:0x30000 and Y:0x30000 are the same storage.
 - **AGU modulo is no longer mandatory.** A manual compare-and-wrap is ~4-6
   cycles/sample — the only way to a single 1.49 s line.
-- 🟡 **No local render path**: `dsp_host` boots payload A only, and the DEV
-  hatch no longer fits both servers — confirmed 12 Aug 2026, R16-R18's
-  ChonVerb growth pushed it over (2,456 + 3,206 words against a 3,053-word
-  donor region under `DEV=1`; this is new fallout, not previously written
-  down). The OMR lever would bring it back — price that against flying
-  blind before deep voicing work on the delay. Even the stale pre-R16 dump
-  shows a harness-level problem beyond the space issue — see the `→VERB`
-  item above.
+- ✅ **Local render path RESTORED 12 Aug 2026 (evening): `make render-delay`.**
+  The morning's finding stands in part: `DEV=1 XBUS=1` alone overruns the
+  DEV donor region by 153 words (3,206 vs 3,053) after R16–R18's ChonVerb
+  growth. `NOSHIM=1` frees enough — shimmer is voicing, and the DEV reverb
+  is only a downstream sink for delay work. Two more traps closed the same
+  session: `make render`'s `SPEC=1` dump has NO delay (id 0x06 → SEND
+  alias; `send_probe` now dies on it), and the DEV delay must live at its
+  shipping Y base 0x38000 — payload A's half of the window is fully owned
+  (ChonVerb buffers 0x30000/0x34000, bus scratch 0x36000). See the `→VERB`
+  item above. ⚠️ The hatch region is TIGHT: 69 words free (build report, 12 Aug
+  — SEND 212 + LFOTAB 24 + NOSHIM reverb 2,234 + delay 514 = 2,984 of
+  3,053), capping an in-region delay at ~583 words vs payload B's 1,998.
+  But ✅ dsp_host has NO 8K P wall (flat 0x80000 words, no OMR model —
+  measured 12 Aug), so the cap falls to a DEV-only build change: place the
+  delay module above the donor region for the hatch. ~Half a session of
+  build_bus.py work (a new P module record), zero hardware risk; do it when
+  the redesign first exceeds 583 words. OMR stays a hardware-only lever for
+  a delay past 1,998 (see the ledger's lever list — asymmetric core-1
+  Fig 3-3 is the variant that costs no tank lines).
 - Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
   `PING` p3, `MIX` p4, `VRBW` p5, `VRBD` p8 — 7 of 12 used, and the
   parameter-delivery gap (step 2) caps how many more are worth adding.
@@ -578,6 +701,18 @@ that must not come back:
   first thing on the BURN trip.
 - ⚠️ Standing correction, same family: post-8-line multi-send renders before
   9 Aug had auto-gain clobbered by `$0c`; the unit has never had auto-gain.
+- ❌ "BongDelay produces zero output in every layout; →VERB unconfirmed
+  either way" (12 Aug morning, `7a2859c`) — the dump was a `SPEC=1` build
+  in which the DELAY id is aliased to the SEND client; every "delay"
+  measurement that morning instantiated a SEND. Retracted the same day by
+  the disassembly the entry itself called for (dispatch entry DELAY ==
+  SEND). The delay code was never in the dump; nothing about the delay was
+  measured. →VERB is now CONFIRMED in the emulator (step 3).
+- ⚠️ Standing correction from the same session: every pre-12-Aug DEV-hatch
+  delay render (incl. `2f35107`'s numbers) ran the delay at Y:0x30000,
+  where its LineR write pointer swept the bus scratch and ChonVerb's
+  relocated buffers every 16,384 samples. Single-server DS layouts survived
+  it (measured THD −35.2 vs −36.8 clean); multi-server layouts did not.
 
 ---
 
@@ -591,7 +726,9 @@ that must not come back:
 - **Emulator/device gap, parameter delivery** — step 2's protocol closes it.
 - **Emulator/device gap, per-core layout** — ✅ closed 8 Aug (`make render`
   builds `SPEC=1`; dsp_host boots payload A, so the reverb renders
-  identically to hardware; the delay renders not at all — OMR lever).
+  identically to hardware) and ✅ the delay half closed 12 Aug: `make
+  render-delay` renders BongDelay at its shipping Y base 0x38000, at the
+  cost of shimmer (NOSHIM) and a ~583-word delay cap (step 3).
 
 ---
 
