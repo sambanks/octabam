@@ -156,10 +156,10 @@
 ;                       the PTCH interval select; they differ only in DETUNE)
 ;   r7+$6c/$6d          PITCH head age L / R, Q11.12 (persistent, masked on
 ;                       load AND save -- same discipline as $70/$71)
-;   r7+$6e              PITCH lag base = min(TIME, 14335) (per block; TIME +
-;                       window 2048 + the lerp's -1 must stay inside the
-;                       16384-word line, or a head would read data newer
-;                       than this lap)
+;   r7+$6e              PITCH lag base = min(TIME, 13311) (per block; TIME +
+;                       window 2048 + jitter 1023 + the lerp's -1 must stay
+;                       inside the 16384-word line, or a head would read
+;                       data newer than this lap)
 ;   r7+$6f              per-sample scratch for the PITCH heads (age_int)
 ;   r7+$70/$71          LineL/LineR write-pointer phase, persistent, masked
 ;                       on load AND save (same two-track-freeze discipline
@@ -633,11 +633,11 @@ dwarmdone:
 ; idiom exactly (companion low-byte fields publish small counts; this one is
 ; count 4). Decoded every block regardless of MODE (cheap, and keeps the
 ; PITCH state warm across a MODE flip). The step is the head's age advance
-; per sample in Q11.12: age DECREASES by (rate-1) for an upshift, so
-;   +12 (rate 2.0)  -> step +$1000 (1.0 sample/sample)
-;   +7  (rate 1.5)  -> step +$800  (0.5)
-;   -12 (rate 0.5)  -> step -$800  (age grows: the head falls behind)
-;   det (rate 1+-e) -> +-$24 = +-15.2 cents, L up / R down -- the one select
+; per sample in Q13.10: age DECREASES by (rate-1) for an upshift, so
+;   +12 (rate 2.0)  -> step +$400 (1.0 sample/sample)
+;   +7  (rate 1.5)  -> step +$200 (0.5)
+;   -12 (rate 0.5)  -> step -$200 (age grows: the head falls behind)
+;   det (rate 1+-e) -> +-$9 = +-15.1 cents, L up / R down -- the one select
 ;                      where the two lines' steps differ
 ; Stored as full signed words; the per-sample update wraps with & $7fffff,
 ; and two's complement subtraction is exact under that mask.
@@ -677,7 +677,7 @@ pintdet:
 pintend:
 
 ; ---- PITCH lag base: TIME clamped to keep lag + window + lerp in the line -
-; Max head lag = base + 2047 (age) + 1 (lerp's older neighbour); it must not
+; Max head lag = base + 8191 (age) + 1 (lerp's older neighbour); it must not
 ; reach 16384 or the read wraps onto data written THIS lap. sub/branch, not
 ; cmp (the cmp-encodes-as-max trap family: sub sets N and V properly).
         move    x:(r7+$75),a            ; TIME, 64..16320
@@ -804,12 +804,38 @@ plagok:
 ;   interval step; head lag = PLAGB + age, so an upshift's head slides
 ;   TOWARD the write pointer, replaying material at rate (1 + step/4096).
 ;   Head 1 runs half a window (1024 samples) behind head 0. Each head:
-;   trapezoid window on AGE (the shimmer constants verbatim: silent at the
-;   wrap splice, ramp 256, flat top, zero over the upper half -- two copies,
-;   not four), smoothstepped, times a LERPED line read (integer lag from
-;   age's top bits, Q23 fraction from its low 12 -- truncation is the floor
-;   that cost the first shimmer, lerp is mandatory). g0+g1 ~= 1, so loop
-;   gain still never exceeds FDBK: PITCH inherits CLEAN's stability bound.
+;   FULL-OVERLAP complementary triangle window on AGE
+;   (t = 1024-|age-1024|), smoothstepped, times a LERPED line read (integer
+;   lag from age's top bits, Q23 fraction from its low 12 -- truncation is
+;   the floor that cost the first shimmer, lerp is mandatory). Smoothstep
+;   obeys s(g)+s(1-g)=1, so g0+g1 == 1 EXACTLY at every age: loop gain never
+;   exceeds FDBK and PITCH inherits CLEAN's stability bound.
+;
+;   FULL-OVERLAP WINDOW, 12 Aug 2026, replacing the shimmer trapezoid (ramp
+;   256, flat top, silent upper half). Measured on a 219.98 Hz sine, single
+;   generation, +12: the trapezoid's near-rectangular switching put splice
+;   sidebands every +-43.1 Hz at -18.7 dB with a slowly-decaying harmonic
+;   ladder (-27, -28, -33...) -- audibly "glitchy metallic" on a naked echo
+;   (the reverb wash hid the same machinery in shimmer). Full-overlap turns
+;   the switching waveform sinusoidal: higher orders collapsed 20-25 dB,
+;   first pair -18.7/-20.9 -> -26.0/-33.7. Ear (Sam): "bit better", still
+;   "robo".
+;
+;   ❌ WIDENING THE WINDOW IS RETRACTED, same day, by measurement AND ear.
+;   4x (2048 -> 8192, age Q13.10) was built on the theory that the residual
+;   pair was a lattice displacement that scales with window length. It is
+;   not: at EVERY window length the octave arrives as TWO EQUAL LINES a lap
+;   apart with nothing at 2f -- suppressed-carrier AM, i.e. the two heads
+;   (a half window = 93 ms apart on the line, so an arbitrary relative
+;   phase -- 158 deg for this tone) cancelling once per lap. Widening only
+;   moved the cancellation rate 43.1 -> 10.8 Hz, i.e. buzz -> flutter; Sam
+;   heard the 8192 build as "robo and fluttery" and it cost half the PITCH
+;   delay range. A ramp-width sweep at C=8192 (R=512/1024/2048/4096)
+;   confirmed the trade is 1-D and has no good point: envelope ripple
+;   6.3/10.3/12.6/13.5 dB against off-carrier energy -8.7/-10.3/-14.5/
+;   -35.6 dB. The defect is PERIODICITY, not window shape: the fix has to
+;   break the fixed grain geometry (scatter the grain start), not reshape
+;   the crossfade. That is the next gated commit.
 ;
 ; The shifted taps land in $79/$7a exactly where CLEAN's taps land, so
 ; everything downstream -- TONE damping, the PING crossfeed, FDBK write-back,
@@ -872,29 +898,18 @@ pmode:
         move    x:(r7+$17),x0
         add     x0,a                    ; tap = t0 + frac*(t1-t0)
         move    a,x:(r7+$17)            ; park tap (t0 dead)
-; window: t = 640 - |age-640|; silent upper half, ramp 256, smoothstep
+; window: full-overlap triangle t = 1024 - |age-1024|, smoothstepped
         move    x:(r7+$6f),a            ; age_int
-        move    #>640,x0
+        move    #>1024,x0
         sub     x0,a
         abs     a
         neg     a
-        add     x0,a
-        tst     a
-        bgt     pwl0a
-        clr     a                       ; upper half: this head is silent
-        bra     pwl0d
-pwl0a:
-        move    #>256,x0
-        sub     x0,a
-        blt     pwl0r
-        move    #>$7fffff,a             ; flat top
-        bra     pwl0d
-pwl0r:
-        add     x0,a
-        asl     #$f,a,a                 ; g = t/256, Q23
-        move    a,x0                    ; smoothstep s = g^2*(3-2g), zero-slope
-        move    a,y1                    ; joins at both ends (shimmer R18)
-        mpy     x0,y1,a                 ; g^2
+        add     x0,a                    ; t = 1024 - |age-1024|, 0..1024
+        asl     #$d,a,a                 ; g = t/1024, Q23; t=1024 -> 2^23,
+                                        ; exact in the 56-bit acc
+        move    a,x0                    ; LIMITING move: 2^23 clips $7fffff
+        move    a,y1                    ; smoothstep s = g^2*(3-2g), zero-slope
+        mpy     x0,y1,a                 ; g^2       joins at both ends
         move    a,x:(r7+$15)            ; park g^2 (age_fx dead)
         move    #>$7fffff,a
         sub     x0,a
@@ -903,14 +918,14 @@ pwl0r:
         mpy     x0,y1,a                 ; g^2*(1-g)
         asl     #$1,a,a
         add     x0,a                    ; s = g^2 + 2*g^2*(1-g)
-pwl0d:
         move    a1,y1                   ; g0
         move    x:(r7+$17),x0           ; tap (signed) first
         mpy     x0,y1,a
         move    a,b                     ; b = head 0's contribution
 ; ---- Line L, head 1: age + half a window, same machinery ------------------
         move    x:(r7+$6c),a
-        move    #>$400000,x0            ; +1024 samples in Q11.12
+        move    #>$400000,x0            ; +1024 samples in Q11.12 (half the
+                                        ; window)
         add     x0,a
         and     #>$7fffff,a
         move    a1,x0
@@ -956,24 +971,12 @@ pwl0d:
         add     x0,a
         move    a,x:(r7+$17)
         move    x:(r7+$6f),a
-        move    #>640,x0
+        move    #>1024,x0
         sub     x0,a
         abs     a
         neg     a
         add     x0,a
-        tst     a
-        bgt     pwl1a
-        clr     a
-        bra     pwl1d
-pwl1a:
-        move    #>256,x0
-        sub     x0,a
-        blt     pwl1r
-        move    #>$7fffff,a
-        bra     pwl1d
-pwl1r:
-        add     x0,a
-        asl     #$f,a,a
+        asl     #$d,a,a
         move    a,x0
         move    a,y1
         mpy     x0,y1,a
@@ -985,7 +988,6 @@ pwl1r:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     x0,a
-pwl1d:
         move    a1,y1                   ; g1
         move    x:(r7+$17),x0
         mpy     x0,y1,a
@@ -1040,24 +1042,12 @@ pwl1d:
         add     x0,a
         move    a,x:(r7+$17)
         move    x:(r7+$6f),a
-        move    #>640,x0
+        move    #>1024,x0
         sub     x0,a
         abs     a
         neg     a
         add     x0,a
-        tst     a
-        bgt     pwr0a
-        clr     a
-        bra     pwr0d
-pwr0a:
-        move    #>256,x0
-        sub     x0,a
-        blt     pwr0r
-        move    #>$7fffff,a
-        bra     pwr0d
-pwr0r:
-        add     x0,a
-        asl     #$f,a,a
+        asl     #$d,a,a
         move    a,x0
         move    a,y1
         mpy     x0,y1,a
@@ -1069,7 +1059,6 @@ pwr0r:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     x0,a
-pwr0d:
         move    a1,y1
         move    x:(r7+$17),x0
         mpy     x0,y1,a
@@ -1121,24 +1110,12 @@ pwr0d:
         add     x0,a
         move    a,x:(r7+$17)
         move    x:(r7+$6f),a
-        move    #>640,x0
+        move    #>1024,x0
         sub     x0,a
         abs     a
         neg     a
         add     x0,a
-        tst     a
-        bgt     pwr1a
-        clr     a
-        bra     pwr1d
-pwr1a:
-        move    #>256,x0
-        sub     x0,a
-        blt     pwr1r
-        move    #>$7fffff,a
-        bra     pwr1d
-pwr1r:
-        add     x0,a
-        asl     #$f,a,a
+        asl     #$d,a,a
         move    a,x0
         move    a,y1
         mpy     x0,y1,a
@@ -1150,7 +1127,6 @@ pwr1r:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     x0,a
-pwr1d:
         move    a1,y1
         move    x:(r7+$17),x0
         mpy     x0,y1,a

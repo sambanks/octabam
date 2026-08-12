@@ -369,6 +369,17 @@ def main():
                     help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
                     help="SHIMMER amount (param slot 6 -> r6+$b). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
+    ap.add_argument("--dtime", type=int, default=None,
+                    help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
+    ap.add_argument("--dfdbk", type=int, default=None,
+                    help="DELAY FDBK 0..127 (delay slot 1, default 60)")
+    ap.add_argument("--dmix", type=int, default=None,
+                    help="DELAY MIX 0..127 (delay slot 4, default 90)")
+    ap.add_argument("--dvrbw", type=int, default=None,
+                    help="DELAY ->VERB WET 0..127 (delay slot 5, default 0).\n"
+                         "The delay's own cross-send into the REVERB bus --\n"
+                         "the delay->reverb topology (PLAN 3). Needs a layout\n"
+                         "carrying both servers, e.g. --layout RDS --pick R.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -410,8 +421,14 @@ def main():
         wsrc, sr = render_reverb.read_wav(pathlib.Path(a.infile))
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
+    dpar = None
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw)):
+        dpar = list(DELAY_PARAMS)
+        for idx, val in ((0, a.dtime), (1, a.dfdbk), (4, a.dmix), (5, a.dvrbw)):
+            if val is not None:
+                dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
-               a.split, a.layout, pick=a.pick)
+               a.split, a.layout, delay_params=dpar, pick=a.pick)
     thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607
