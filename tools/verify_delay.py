@@ -35,10 +35,30 @@ sub-block path, whose bus bookkeeping never runs at split 0). Unlike
 verify_roll these are RUNTIME knob values, not per-build overrides, so one
 build of each engine serves every case.
 
-DMODE: if the candidate carries a `; DMODE_OVERRIDE` marker (the v2 mode
-dispatch), it is additionally built with DMODE=3 -- an engine that does not
-exist -- and must render identically to the reference: an unknown MODE
-select must degrade to CLEAN, the trad delay, never to silence.
+MODE COVERAGE (added 12 Aug 2026, before GRAIN). Until then this gate proved
+CLEAN only, which was enough while each new mode was a leaf hung off the
+dispatch -- but GRAIN rolls machinery the other modes share (the PRNG, the
+window, the shifted-output substitution), so PITCH and TAPE have to be
+bit-compared too or a refactor can break them invisibly. Each mode case
+builds BOTH engines with the same DMODE/DINT overrides and compares:
+
+  * DMODE=1 PITCH, DINT=0 (+12) and DINT=3 (detune -- the one select where
+    the two lines' steps differ, so it is the case that catches an L/R mixup)
+  * DMODE=2 TAPE at WOW=100, and at WOW=127 FDBK=127 (deep wobble through
+    the loop saturation, the two stage-4 mechanisms at once)
+  * DMODE=3 GRAIN at SPRAY=0 (every grain reads the same place -- the
+    degenerate, most easily-broken case) and SPRAY=127 (full scatter)
+
+and each is guarded by its OWN sensitivity control: the reference in that
+mode must DIFFER from the reference in CLEAN. Without it a mode case passes
+vacuously whenever the override silently fails to reach the engine, which is
+exactly what the DMODE machinery exists to prevent (`$30000` census trap).
+
+UNKNOWN MODE: the candidate is additionally built with DMODE=5 -- above every
+implemented engine -- and must render identically to the reference: an unknown
+MODE select must degrade to CLEAN, the trad delay, never to silence. (This was
+DMODE=3 until GRAIN took mode 3; a fallback case aimed at a mode that EXISTS
+proves nothing.)
 """
 import argparse
 import os
@@ -54,14 +74,20 @@ import send_probe
 SCRATCH = ROOT / "out" / "delayverify"
 SR = 44100
 
-# TIME FDBK TONE PING MIX VRBW p6 p7 VRBD p9 -- send_probe.DELAY_PARAMS order
+# TIME FDBK TONE PING MIX VRBW WOW p7 VRBD SPRAY -- send_probe.DELAY_PARAMS
+# order. Indices 6..9 are the page-2 KNOB fields r6+$b/$c/$d/$e (dsp_host
+# writes value<<16, the knob field only -- which is why the companion selects
+# MODE/PTCH/FRZE need build overrides and cannot appear here).
 BASE = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
+
+SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 4,
+        "WOW": 6, "SPRAY": 9}
 
 
 def dp(**kw):
     p = list(BASE)
     for k, v in kw.items():
-        p[{"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 4}[k]] = v
+        p[SLOT[k]] = v
     return p
 
 
@@ -79,15 +105,19 @@ def make_source():
     return src
 
 
-def build(src, tag, dmode=None):
+def build(src, tag, dmode=None, dint=None):
     """Build the delay hatch with DLSRC=src, keep its payload-A dump, return
-    (mem, delay_words, hatch_free)."""
+    (mem, delay_words, hatch_free). DFRZ/DINT are popped as well as DMODE:
+    an override leaking in from the caller's environment would silently move
+    BOTH sides of the comparison off the case this run means to prove."""
     env = dict(os.environ, DEV="1", XBUS="1", DLSRC=str(src))
     for k in ("SPEC", "BURN", "PROBE", "XPROBE", "DELAYPROBE", "MODE",
-              "WIDTH", "DMODE", "NOSHIM"):
+              "WIDTH", "DMODE", "DINT", "DFRZ", "NOSHIM"):
         env.pop(k, None)
     if dmode is not None:
         env["DMODE"] = str(dmode)
+    if dint is not None:
+        env["DINT"] = str(dint)
     r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
                        env=env, capture_output=True, text=True)
     if r.returncode:
@@ -108,6 +138,16 @@ def build(src, tag, dmode=None):
     mem = SCRATCH / f"{tag}.mem"
     shutil.copyfile(ROOT / "out/dsp/mem_dev_A.mem", mem)
     return mem, words, free
+
+
+def mode_count(src):
+    """How many engines a delay source carries, counted from the mode fork's
+    own markers (CLEAN plus one alternative per MODEFORK_MID) -- the same
+    markers tools/cycle_count.py prices the fork by, so this cannot drift
+    from what the build assembles. A mode only ONE side carries cannot be
+    bit-compared at all, so the caller skips it loudly rather than failing a
+    candidate for adding an engine."""
+    return 1 + src.count("; MODEFORK_MID")
 
 
 NOP_MARKERS = ("; ---- one-pole damping in the feedback path",
@@ -202,15 +242,56 @@ def main():
             detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
         check(f"bit-identical: {label}", a == b, detail)
 
-    # ---- unknown MODE must fall back to CLEAN ------------------------------
-    if "; DMODE_OVERRIDE" in (ROOT / args.candidate).read_text():
-        dm_mem, _, _ = build(args.candidate, "cand_dmode3", dmode=3)
+    # ---- the OTHER ENGINES, each with its own sensitivity control ----------
+    # CLEAN equality above says nothing about PITCH/TAPE/GRAIN, and every
+    # stage from here on touches machinery they share. Both engines are built
+    # with the SAME override so the comparison is of code, not of mode.
+    cand_src = (ROOT / args.candidate).read_text()
+    ref_src = (ROOT / args.ref).read_text()
+    shared_modes = min(mode_count(cand_src), mode_count(ref_src))
+    if "; DMODE_OVERRIDE" in cand_src:
+        clean_ref = render(ref_mem, dp(), source=source)
+        MODES = [
+            ("PITCH +12", 1, 0, dp()),
+            ("PITCH detune (L/R steps differ)", 1, 3, dp()),
+            ("TAPE WOW=100", 2, None, dp(WOW=100)),
+            ("TAPE WOW=127 FDBK=127 (deep wobble + loop saturation)", 2, None,
+             dp(WOW=127, FDBK=127)),
+            ("GRAIN SPRAY=0 (every grain on the same read)", 3, 0, dp(SPRAY=0)),
+            ("GRAIN SPRAY=127 (full scatter)", 3, 0, dp(SPRAY=127)),
+        ]
+        for label, dmode, dint, params in MODES:
+            if dmode > shared_modes - 1:
+                print(f"  [ -- ] {label}: DMODE={dmode} is not an engine BOTH "
+                      f"sources carry -- nothing to bit-compare, case skipped")
+                continue
+            rm, _, _ = build(args.ref, f"ref_m{dmode}_{dint}", dmode, dint)
+            cm, _, _ = build(args.candidate, f"cand_m{dmode}_{dint}", dmode, dint)
+            a = render(rm, params, source=source)
+            check(f"mode is LIVE: {label} differs from CLEAN",
+                  a != clean_ref,
+                  "" if a != clean_ref else
+                  "  <-- the override never reached the engine; the case below "
+                  "is VACUOUS")
+            b = render(cm, params, source=source)
+            detail = ""
+            if a != b:
+                fa, fb = a[0] + a[1], b[0] + b[1]
+                n = sum(1 for x, y in zip(fa, fb) if x != y)
+                first = next((i for i, (x, y) in enumerate(zip(fa, fb))
+                              if x != y), -1)
+                detail = f"  (first differing sample {first}, {n} of {len(fa)} differ)"
+            check(f"bit-identical: {label}", a == b, detail)
+
+        # ---- unknown MODE must fall back to CLEAN --------------------------
+        # DMODE=5, not 3: 3 is GRAIN now, and a fallback case aimed at a mode
+        # that EXISTS proves nothing. Keep this above the highest engine.
+        dm_mem, _, _ = build(args.candidate, "cand_dmode5", dmode=5)
         d = render(dm_mem, dp(), source=source)
-        r = render(ref_mem, dp(), source=source)
-        check("DMODE=3 (nonexistent mode) degrades to CLEAN, bit-identical",
-              d == r)
+        check("DMODE=5 (nonexistent mode) degrades to CLEAN, bit-identical",
+              d == clean_ref)
     else:
-        print("  [ -- ] DMODE fallback case skipped: candidate has no "
+        print("  [ -- ] mode cases skipped: candidate has no "
               "; DMODE_OVERRIDE marker (a v1 source)")
 
     print(f"\n  DELAY SERVER {ref_words} -> {cand_words} words "
