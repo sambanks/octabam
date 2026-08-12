@@ -288,9 +288,13 @@ ACTIVE_PARAMS = {
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
 PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
-                                  7: 4,     # MODE   select: CLEAN/PITCH/TAPE/
-                                            #        GRAIN (v2 s5)
-                                  9: 4,     # PTCH   select: +12/+7/-12/det
+                                  7: 5,     # MODE   select: CLEAN/PITCH/TAPE/
+                                            #        GRAIN/REVERSE (v2 s5/s6)
+                                  9: 4,     # PTCH   select: +12/+7/-12/det --
+                                            #        and REVERSE reads the SAME
+                                            #        select as a segment SIZE
+                                            #        (4096/2048/1024/512), which
+                                            #        is why its count stays 4
                                   10: 128,  # SPRA   knob ($e knob, v2 s5)
                                   11: 2},   # FRZE   select: run/hold (v2 s3)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)

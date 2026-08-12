@@ -194,6 +194,21 @@
 ;                       frac / gain / smoothstep temp; reader: phase / t0)
 ;   r7+$5c              SPRAY depth, Q23 (per block, from the SPRAY knob)
 ;   r7+$5d              GRAIN per-grain age cursor (the builder's running age)
+;   r7+$5e              REVERSE segment phase, 23-bit (persistent, masked on
+;                       load AND save). ONE phase for both lines and both
+;                       heads -- head 1 is simply half a segment further on
+;   r7+$5f              PTCH/SIZE select index, raw 0..3 (per block). Stored
+;                       by the PTCH decode so REVERSE can read the SAME select
+;                       as a segment SIZE without a second override marker
+;   r7+$60/$61          REVERSE segment length S / phase step 2^23/S (per
+;                       block, from that index)
+;   r7+$62              REVERSE lag floor = min(TIME, 16320 - 2S) (per block)
+;                       -- ⚠️ THIS IS THE LAST FREE r7 SLOT. $32..$62 is now
+;                       fully allocated and $84+ hangs the unit, so a further
+;                       mode needs the Y state table, not this block.
+;                       REVERSE reuses GRAIN's $56..$5b as per-sample scratch,
+;                       which is safe because the mode alternatives are
+;                       mutually exclusive within a sample.
 ;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
 ;   r7+$64              this call's DELAY WET write address (BUS.md bus)
 ;   r7+$65..$67         split-aware bus bookkeeping (shared mechanism)
@@ -262,9 +277,10 @@
 ;              see dsp/reverb_server.asm's ->DELAY header note for why the
 ;              reverse (reverb wet -> delay) is deliberately never built.
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
-;              count 4: 0 = CLEAN, 1 = PITCH, 2 = TAPE, 3 = GRAIN. Landed with
-;              stage 2, per the stage-1 rule that a one-value select draws a
-;              dead knob; every unknown value still falls through to CLEAN.
+;              count 5: 0 = CLEAN, 1 = PITCH, 2 = TAPE, 3 = GRAIN,
+;              4 = REVERSE. Landed with stage 2, per the stage-1 rule that a
+;              one-value select draws a dead knob; every unknown value still
+;              falls through to CLEAN.
 ;   p10 SPRAY-> GRAIN scatter depth, page-2 slot 10 KNOB field (r6+$e bits
 ;              16-22 -- the SAME WORD as FRZE, which is its low byte), 0..127
 ;              used directly as a Q23 multiplier on each grain's random source
@@ -278,6 +294,11 @@
 ;              count 2: 0 = running, 1 = hold. Orthogonal to MODE -- frozen
 ;              + PITCH is shifted reads over held material. `DFRZ=n` is the
 ;              local override (dsp_host cannot drive companion fields).
+;   p9 PTCH  -> in REVERSE this same select is SIZE: 0 = 4096 samples (93 ms,
+;              the longest the line allows -- playing S samples backwards
+;              spans 2S of history), 1 = 2048, 2 = 1024, 3 = 512. One select,
+;              two meanings, because MODE already says which is in force and
+;              page 2 has no spare slot.
 ;   p9 PTCH  -> PITCH interval select, page-2 slot 9 companion (r6+$d low
 ;              bits), count 4: 0 = +12, 1 = +7, 2 = -12, 3 = +-detune
 ;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
@@ -645,6 +666,7 @@ dwarmz:
         move    b,x:(r7+$28)            ; masked on load, but determinism is
                                         ; what verify-delay bit-compares
         move    b,x:(r7+$32)            ; GRAIN base age
+        move    b,x:(r7+$5e)            ; REVERSE segment phase
 ; GRAIN's eight LATCHED SCATTERS (record +1 of each of the eight grains).
 ; Only these persist -- every other field of the table is rewritten by the
 ; builder before the readers touch it, every sample, so boot garbage there
@@ -725,7 +747,7 @@ dwarmdone:
         move    a,x:(r7+$69)            ; MODE, this block (0 = CLEAN)
 
 ; ---- SHIFTED-OUTPUT flag: which modes replace the wet with $24/$25 --------
-; PITCH and GRAIN both leave their result in the shifted-output taps and both
+; PITCH, GRAIN and REVERSE all leave their result in the shifted-output taps
 ; are substituted into the wet AFTER the lines are written (stage 2c, so
 ; nothing shifted can re-enter the feedback). Resolving "is this such a mode"
 ; ONCE PER BLOCK instead of at the substitution point makes that per-sample
@@ -751,6 +773,10 @@ dwarmdone:
         cmp     x0,b
         move    #>$1,x0
         teq     x0,a
+        move    #>$40000,x0             ; 4 << 16 = REVERSE
+        cmp     x0,b
+        move    #>$1,x0
+        teq     x0,a
         move    a,x:(r7+$33)            ; nonzero = the wet comes from $24/$25
 
 ; ---- PITCH interval select -> per-line age steps (v2 stage 2) -------------
@@ -771,6 +797,16 @@ dwarmdone:
 ; DINT_OVERRIDE
         move    a1,x0
         move    x0,a                    ; A2-clean before the compares
+        move    a,x:(r7+$5f)            ; the RAW index, kept for REVERSE --
+                                        ; which reads this same select as a
+                                        ; segment SIZE. Stashing it here is
+                                        ; what avoids a second read of r6+$d,
+                                        ; and therefore a second copy of the
+                                        ; interval-override marker, which
+                                        ; build_bus.py refuses: it requires
+                                        ; EXACTLY ONE, and a marker spelled
+                                        ; out in a comment counts (the same
+                                        ; family as the base-literal census)
         move    #>$1,x0
         cmp     x0,a
         beq     pint7
@@ -853,6 +889,66 @@ pintend:
         move    #>4,n4                  ; GRAIN's readers stride one record
                                         ; past the other line's, per block so
                                         ; the sample loop never pays for it
+
+; ---- REVERSE: segment size, phase step, and the lag floor (v2 stage 6) ----
+; The PTCH select read as a SIZE. S must be a POWER OF TWO, and that is not
+; taste: the phase step is 2^23/S, so only a power of two makes it an exact
+; integer -- and exactness is what makes the segment-local sample index
+; p = phase*S/2^23 land on WHOLE SAMPLES, which is why REVERSE needs no lerp
+; at all while PITCH and TAPE do.
+;
+; ⚠️ THE SIZE CEILING IS THE LINE, NOT TASTE. Playing S samples backwards
+; takes S samples, during which the write pointer advances S -- so the head
+; reaches a lag of LAG0 + 2S and the buffer must hold 2S of history. With a
+; 16384-word line that caps S at 4096 (93 ms) once the floor is allowed
+; anything at all. Any future size increase must re-check LAG0 + 2S < 16384.
+        move    x:(r7+$5f),a            ; select index
+        move    #>$1,x0
+        cmp     x0,a
+        beq     rsz1
+        move    #>$2,x0
+        cmp     x0,a
+        beq     rsz2
+        move    #>$3,x0
+        cmp     x0,a
+        beq     rsz3
+        move    #>4096,a                ; index 0 (and any garbage): 93 ms
+        move    a,x:(r7+$60)
+        move    #>2048,a                ; step = 2^23 / S
+        move    a,x:(r7+$61)
+        move    #>8128,a                ; cap = 16320 - 2S
+        bra     rszend
+rsz1:
+        move    #>2048,a                ; 46 ms
+        move    a,x:(r7+$60)
+        move    #>4096,a
+        move    a,x:(r7+$61)
+        move    #>12224,a
+        bra     rszend
+rsz2:
+        move    #>1024,a                ; 23 ms
+        move    a,x:(r7+$60)
+        move    #>8192,a
+        move    a,x:(r7+$61)
+        move    #>14272,a
+        bra     rszend
+rsz3:
+        move    #>512,a                 ; 12 ms -- stutter territory
+        move    a,x:(r7+$60)
+        move    #>16384,a
+        move    a,x:(r7+$61)
+        move    #>15296,a
+rszend:
+        move    a,x:(r7+$56)            ; the cap for this size
+        move    x:(r7+$75),a            ; TIME
+        move    x:(r7+$56),x0
+        sub     x0,a                    ; sub/branch, not cmp (the
+        tst     a                       ; cmp-encodes-as-max trap family)
+        ble     rlagok
+        clr     a                       ; over the cap: excess -> 0
+rlagok:
+        add     x0,a                    ; min(TIME, cap)
+        move    a,x:(r7+$62)            ; RLAG0, the reversed chunk's lag floor
 
 ; ---- PITCH lag base: TIME clamped to keep lag + window + lerp in the line -
 ; Max head lag = base + 8191 (age) + 1 (lerp's older neighbour); it must not
@@ -999,6 +1095,9 @@ plagok:
                                         ; for the base-literal reason above
         cmp     x0,a
         beq     gmode
+        move    #>$40000,x0             ; 4 << 16 = REVERSE (v2 stage 6)
+        cmp     x0,a
+        beq     rmode
         bra     pdone                   ; CLEAN, and every unknown value
 ; MODEFORK_MID -- alternative 1: PITCH
 
@@ -1964,6 +2063,180 @@ grnlz:
 grnrz:
         nop
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
+        bra     pdone                   ; GRAIN ends here: REVERSE follows
+; MODEFORK_MID -- alternative 4: REVERSE
+
+; ---- REVERSE: windowed backward reads (v2 stage 6) -----------------------
+; The cheapest mode left, and cheap only BECAUSE the crossfade machinery
+; already exists -- it is the same two complementary heads PITCH uses, with
+; the head walking BACKWARDS through the line instead of drifting.
+;
+; THE MECHANISM, and why it needs no lerp. A phase runs 0..2^23 and the
+; segment-local sample index is p = phase*S/2^23, which is EXACTLY what a
+; fractional mpy of the phase by S computes -- so p advances by exactly 1
+; per sample and the read lands on a whole sample every time. Contrast
+; PITCH and TAPE, where the read sits between samples and the lerp is
+; mandatory (the truncation floor that cost the first shimmer). Reverse at
+; unity rate is the one moving read in this file that is exact.
+;
+;   read = wr - (LAG0 + 2p)
+;
+; and since wr advances by 1 per sample while p does too, the read address
+; DECREASES by exactly 1 per sample: backwards, at unity speed. The 2 is
+; not a fudge -- it is the write pointer running away from the read.
+;
+; Two heads half a segment apart, complementary-triangle windowed on the
+; phase and smoothstepped, so g0 + g1 == 1 EXACTLY at every phase and the
+; splice at each segment restart happens where that head's gain is 0. Both
+; heads and BOTH LINES share one phase: each line reads its own buffer at
+; the same lag, and the lines already hold different material (the input
+; enters L only and crosses over through PING), so nothing is gained by
+; giving them separate phases and one r7 slot is saved.
+;
+; OUTPUT ONLY, never in the loop -- stage 2c. A reverse read HAS a splice,
+; so recirculating it would compound one per repeat, which is exactly the
+; mechanism the PITCH ear pass rejected.
+;
+; mpy orientation: the possibly-negative operand (the tap) is always x0, the
+; audited-signed `mpy x0,y1` form; y1 carries S or a window gain, both
+; non-negative.
+rmode:
+        move    x:(r7+$5e),a            ; segment phase
+        move    x:(r7+$61),x0           ; step = 2^23 / S
+        add     x0,a
+        and     #>$7fffff,a             ; wrap: one segment
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7+$5e)
+; ---- head 0: lag and window from the phase -------------------------------
+        move    a1,x0                   ; phase
+        move    x:(r7+$60),y1           ; S, non-negative
+        mpy     x0,y1,a                 ; p = phase*S/2^23, EXACT (the
+                                        ; product is a whole multiple of
+                                        ; 2^23, so nothing is rounded)
+        asl     #$1,a,a                 ; 2p -- the write pointer's run-away
+        move    a1,x0
+        move    x:(r7+$62),a            ; RLAG0
+        add     x0,a
+        move    a,x:(r7+$56)            ; lag0, shared by both lines
+        move    x:(r7+$5e),a            ; phase again
+        move    #>$400000,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; t = 2^22 - |phase-2^22|
+        asl     #$1,a,a                 ; g = t/2^22, Q23
+        move    a,x0                    ; LIMITING move: the peak clips to
+        move    a,y1                    ; $7fffff, as everywhere else here
+        mpy     x0,y1,a                 ; smoothstep s = g^2*(3-2g)
+        move    a,x:(r7+$5a)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1                    ; 1-g
+        move    x:(r7+$5a),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$57)            ; g0
+; ---- head 1: half a segment further on, same machinery -------------------
+        move    x:(r7+$5e),a
+        move    #>$400000,x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$5b)            ; park phase1
+        move    a1,x0
+        move    x:(r7+$60),y1
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        move    a1,x0
+        move    x:(r7+$62),a
+        add     x0,a
+        move    a,x:(r7+$58)            ; lag1
+        move    x:(r7+$5b),a
+        move    #>$400000,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a
+        asl     #$1,a,a
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a
+        move    a,x:(r7+$5a)
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1
+        move    x:(r7+$5a),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$59)            ; g1, and g0+g1 == 1 exactly
+; ---- Line L: both heads, windowed and summed -----------------------------
+        move    r1,a                    ; LineL write pointer
+        move    x:(r7+$56),x0           ; lag0
+        sub     x0,a
+        and     #>$3fff,a               ; read phase (exact: the base is
+        move    a1,x0                   ; 0x4000-aligned, so it falls out
+        move    x0,a                    ; of the mask)
+        move    x:(r7+$31),x0           ; LineL base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; tap, head 0
+        move    a,x0                    ; possibly negative -> FIRST operand
+        move    x:(r7+$57),y1           ; g0
+        mpy     x0,y1,a
+        move    a,b
+        move    r1,a
+        move    x:(r7+$58),x0           ; lag1
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; tap, head 1
+        move    a,x0
+        move    x:(r7+$59),y1           ; g1
+        mpy     x0,y1,a
+        add     b,a
+        move    a,x:(r7+$24)            ; shifted OUTPUT tap L -- NOT $79
+; ---- Line R: identical, on r2 / base $68 ---------------------------------
+        move    r2,a
+        move    x:(r7+$56),x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0           ; LineR base
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x0
+        move    x:(r7+$57),y1
+        mpy     x0,y1,a
+        move    a,b
+        move    r2,a
+        move    x:(r7+$58),x0
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x0
+        move    x:(r7+$59),y1
+        mpy     x0,y1,a
+        add     b,a
+        move    a,x:(r7+$25)            ; shifted OUTPUT tap R
 ; MODEFORK_END
 pdone:
 

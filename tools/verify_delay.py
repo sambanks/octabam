@@ -48,17 +48,20 @@ builds BOTH engines with the same DMODE/DINT overrides and compares:
     the loop saturation, the two stage-4 mechanisms at once)
   * DMODE=3 GRAIN at SPRAY=0 (every grain reads the same place -- the
     degenerate, most easily-broken case) and SPRAY=127 (full scatter)
+  * DMODE=4 REVERSE at its longest segment and at its shortest with TIME
+    maxed (the case where the lag floor is clamped, i.e. the bound that
+    keeps LAG0 + 2S inside the line)
 
 and each is guarded by its OWN sensitivity control: the reference in that
 mode must DIFFER from the reference in CLEAN. Without it a mode case passes
 vacuously whenever the override silently fails to reach the engine, which is
 exactly what the DMODE machinery exists to prevent (`$30000` census trap).
 
-UNKNOWN MODE: the candidate is additionally built with DMODE=5 -- above every
+UNKNOWN MODE: the candidate is additionally built with DMODE=7 -- above every
 implemented engine -- and must render identically to the reference: an unknown
 MODE select must degrade to CLEAN, the trad delay, never to silence. (This was
-DMODE=3 until GRAIN took mode 3; a fallback case aimed at a mode that EXISTS
-proves nothing.)
+DMODE=3 until GRAIN took mode 3, then 5 until REVERSE took 4; a fallback case
+aimed at a mode that EXISTS proves nothing, so it moves up with the engines.)
 """
 import argparse
 import os
@@ -259,6 +262,8 @@ def main():
              dp(WOW=127, FDBK=127)),
             ("GRAIN SPRAY=0 (every grain on the same read)", 3, 0, dp(SPRAY=0)),
             ("GRAIN SPRAY=127 (full scatter)", 3, 0, dp(SPRAY=127)),
+            ("REVERSE size 4096 (93 ms, the line's ceiling)", 4, 0, dp()),
+            ("REVERSE size 512 (stutter) at TIME=127", 4, 3, dp(TIME=127)),
         ]
         for label, dmode, dint, params in MODES:
             if dmode > shared_modes - 1:
@@ -286,9 +291,9 @@ def main():
         # ---- unknown MODE must fall back to CLEAN --------------------------
         # DMODE=5, not 3: 3 is GRAIN now, and a fallback case aimed at a mode
         # that EXISTS proves nothing. Keep this above the highest engine.
-        dm_mem, _, _ = build(args.candidate, "cand_dmode5", dmode=5)
+        dm_mem, _, _ = build(args.candidate, "cand_dmode7", dmode=7)
         d = render(dm_mem, dp(), source=source)
-        check("DMODE=5 (nonexistent mode) degrades to CLEAN, bit-identical",
+        check("DMODE=7 (nonexistent mode) degrades to CLEAN, bit-identical",
               d == clean_ref)
     else:
         print("  [ -- ] mode cases skipped: candidate has no "
