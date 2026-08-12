@@ -711,13 +711,55 @@ each stage is a separate commit gated by `make check`):
    Measured: a 220 Hz burst's tail drifts smoothly on a ~1.25 s cycle over
    roughly ±10 cents, no steps. 39 multiplies in the emitted image, all
    signed. Cost: 1,287 → 1,505 words, 193w on the TAPE path.
-   🟡 **Loop saturation is deliberately NOT in this stage** — a behavior
-   change belongs in its own voiced commit (the bus auto-gain precedent).
-   It is the obvious next voicing lever for this mode.
-5. **GRAIN** — the flagship: 4–8 windowed grain readers at LCG-scattered
-   offsets over the same line, per-grain pitch from the interval select,
-   SPRAY knob for scatter depth (~400–600 words, ~20–25 cycles/grain 🟡).
-   Freeze + grain = texture hold.
+   ✅ **LOOP SATURATION LANDED (`44e9b7f`, stage 4b)**: `y = w − w³/3` on
+   what each line is about to be written, so it is in the loop and every
+   repeat is saturated again. Small-signal gain is EXACTLY 1 and the curve
+   is monotonic with |y| ≤ |w|, so it adds no loop gain and cannot
+   self-oscillate at any FDBK — unlike a pre-gain clipper, which would also
+   fold back above unity. **No DRIVE knob on purpose**, for the same reason
+   the LFO depth has a ceiling: the safe version is the one the panel cannot
+   knock into a bad regime. Measured with WOW=0 so the wobble's sidebands
+   could not be miscredited: THD −24.6 dB at 0.9 FS, −39.5 at 0.3, −41.3 at
+   0.1 (= CLEAN's floor, i.e. transparent when quiet); CLEAN flat at −41.4
+   at every level. Slot 10 is still free if the ear asks for DRIVE.
+5. **GRAIN** — the flagship, and the honest answer to "it doesn't sound like
+   a Microcosm": density is the mechanism, not a better two-head shifter.
+   **Not started. Specced and costed 12 Aug 2026** so the next session
+   implements instead of re-deriving — two of these were measured, not
+   guessed, and both change the design:
+   - ✅ **THE ROLL IS MANDATORY, not an optimization.** PITCH costs 524
+     words for 4 head evaluations (~131 each), so 4 grains × 2 lines
+     unrolled is **1,048 words against payload B's 942 free — it does not
+     fit.** Rolled, the body is one evaluation (~131 words) plus loop
+     overhead: ~150–200 total, run 8×. Precedent: the tank roll and the LFO
+     roll.
+   - ✅ **N MUST BE EVEN.** With the full-overlap triangle window, grains
+     staggered by 1/N sum to: N=2 → 1.0000 (flat), **N=4 → 2.0000 (flat)**,
+     N=3 → 0.21 dB ripple, N=5 → 0.03 dB. The even counts are exactly flat
+     because the grains pair up complementarily (0&2, 1&3). An odd count
+     puts a ripple **at the grain rate** — a periodic amplitude modulation,
+     which is exactly the artifact class stages 2b/2c existed to remove.
+     Take N=4 and scale the sum by 1/2.
+   - **Mechanism**: one shared base age + per-grain quarter-cycle offset
+     (so a single age advance serves all four); per-grain scatter latched at
+     ITS OWN wrap (stage 2b's machinery, and the window is 0 there so the
+     jump stays silent); lerped reads; **output-only, never in the loop**
+     (stage 2c). Per-line scatter tables keep L and R decorrelated while the
+     window gains are computed once and reused.
+   - **Implementation constraints, all checked**: `r4` is the only free AGU
+     pointer (r0/r1/r2/r5/r6/r7 are taken) and `m4` must be set to `$ffffff`
+     alongside m0/m1/m2/m5; a `do` body must be BRANCH-FREE, so every
+     conditional is a Tcc (`tmi`/`teq`/`tne`) — already the house idiom;
+     the state table needs ~13 words and r7 is free from `$32` to `$62`;
+     the PRNG currently lives INSIDE the PITCH alternative and must be
+     hoisted or duplicated.
+   - ⚠️ **Extend the gate first**: `verify_delay` proves CLEAN only. Add
+     DMODE=1/2 cases so PITCH and TAPE are bit-compared too, since the roll
+     touches shared machinery. That is the stage-1 pattern — prove
+     equivalence, THEN add.
+   - Cost: ~400 cycles/sample 🟡 on core 1's ~2,150 spare. Freeze + grain =
+     texture hold, and SPRAY (scatter depth) is the natural knob — slot 10
+     is the last free one.
 6. **REVERSE** — windowed backward reads, same crossfade machinery
    (~150–250 words) — cheapest AFTER grain exists.
 
