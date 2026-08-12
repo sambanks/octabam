@@ -456,15 +456,17 @@ including the never-housekeep gate, covered by SEND's election exactly as
 on hardware. The DS THD even improved (−35.2 → −36.8 dB): the historical
 numbers had the scratch corruption folded in.
 
-Harness: **`make render-delay`** builds the hatch (`DEV=1 XBUS=1 NOSHIM=1`
-— NOSHIM became load-bearing when R16–R18 grew ChonVerb past the DEV donor
-region; the DEV reverb is only a downstream sink for delay work) and
+Harness: **`make render-delay`** builds the hatch (`DEV=1 XBUS=1` — NOSHIM
+was load-bearing for a few hours on 12 Aug, until the same evening's
+placement change below made room for the full-shimmer reverb again) and
 renders `--layout DS`. Falsifier for the →VERB claim: it is emulator-only;
 if hardware's cross-core timing differs, the on-unit check is →DEL/→VERB
 routed audio on tracks 1–4 feeding a track-5 ChonVerb.
 
-Budget: **1,953 program words** (24 renderable until the DEV placement
-change lands — see traps), **~2,150 spare cycles with four FX1 FILTERs /
+Budget: **1,953 program words, ALL of them renderable** — the DEV placement
+change landed 12 Aug evening (delay at P:0x04000 outside the donor region,
+see traps), so the hatch no longer caps the delay — **~2,150 spare cycles
+with four FX1 FILTERs /
 ~3,200 without** 🟡 (derived from the 7 Aug sweep, never separately
 measured on this core), **32,768 words of line = 0.74 s stereo / 1.49 s
 mono in hand**, plus the private-Y 32K 🟡 counted in the pool but never
@@ -510,9 +512,15 @@ each stage is a separate commit gated by `make check`):
    controls, then TIME 0/127, PING 0/64/127, FDBK+TONE high, split=7, and
    DMODE=3 (nonexistent mode) ≡ CLEAN. New blocks disassembled from the
    emitted image (every mpy is the signed 2000c0). Cost: 514 → 559 words
-   (+45); payload B FREE 1,998 → 1,953; **hatch FREE 69 → 24** ⚠️ so the
-   DEV placement change (delay above the donor region) is due BEFORE
-   stage 2 — PITCH's ~200-300 words cannot fit the hatch as it stands.
+   (+45); payload B FREE 1,998 → 1,953; hatch FREE 69 → 24, which made the
+   DEV placement change stage 2's opener — ✅ **and it LANDED the same
+   evening**: the DEV delay now assembles at P:0x04000 outside the donor
+   region (`build_bus.py` DEV_DELAY_P; the module record is appended to
+   the .mem dump — the payload has 6 bytes of record slack, measured, and
+   dsp_host boots the dump). Verified bit-identical in-region vs relocated
+   (3 corner renders), full gate re-run 11/11 vs v1 through the new flow,
+   THD unchanged (−36.8). The hatch no longer caps the delay, and NOSHIM
+   is back to optional (full-shimmer hatch: 2,692 of 3,053, FREE 361).
    The descriptor-side MODE select is deliberately deferred to stage 2 (a
    one-value select draws a dead knob), and **bus auto-gain is NOT in the
    spine commit** — it is a behavior change, measured like the reverb's
@@ -567,8 +575,9 @@ disassemble every new mpy site; grain envelopes and freeze switching via
 Tcc, never hand-rolled sign masks (A2 staleness); no new label may prefix
 an existing one; recirculating pitch reads sit on the truncation floor —
 lerp mandatory, judge wet-only early; the hatch had 69 words of margin and
-stage 1 spent 45 of them (**24 left**), so the DEV placement change (traps
-above) is now DUE — it lands before stage 2, which cannot fit otherwise.
+stage 1 spent 45 of them — closed the same evening by the DEV placement
+change (delay at P:0x04000, out of region): the render loop now carries
+payload B's full budget, so no stage outgrows it.
 
 **What is deliberately OUT of v1**: Microcosm's phrase-looper/slicer layer
 (a product in itself), multi-tap rhythm patterns (cheap, add later if the
@@ -587,26 +596,30 @@ Traps, all already paid for once:
 - **AGU modulo is no longer mandatory.** A manual compare-and-wrap is ~4-6
   cycles/sample — the only way to a single 1.49 s line.
 - ✅ **Local render path RESTORED 12 Aug 2026 (evening): `make render-delay`.**
-  The morning's finding stands in part: `DEV=1 XBUS=1` alone overruns the
-  DEV donor region by 153 words (3,206 vs 3,053) after R16–R18's ChonVerb
-  growth. `NOSHIM=1` frees enough — shimmer is voicing, and the DEV reverb
-  is only a downstream sink for delay work. Two more traps closed the same
-  session: `make render`'s `SPEC=1` dump has NO delay (id 0x06 → SEND
-  alias; `send_probe` now dies on it), and the DEV delay must live at its
-  shipping Y base 0x38000 — payload A's half of the window is fully owned
-  (ChonVerb buffers 0x30000/0x34000, bus scratch 0x36000). See the `→VERB`
-  item above. ⚠️ The hatch region is TIGHT: 24 words free (build report,
-  12 Aug evening, post-stage-1 — SEND 212 + LFOTAB 24 + NOSHIM reverb
-  2,234 + delay 559 = 3,029 of 3,053), capping the in-region delay at ~583
-  words vs payload B's 1,953 — and stage 1 took it to 559, so **the cap is
-  effectively reached**. But ✅ dsp_host has NO 8K P wall (flat 0x80000
-  words, no OMR model — measured 12 Aug), so the cap falls to a DEV-only
-  build change: place the delay module above the donor region for the
-  hatch. ~Half a session of build_bus.py work (a new P module record),
-  zero hardware risk; **now the first item of stage 2** — PITCH cannot fit
-  otherwise. OMR stays a hardware-only lever for a delay past 1,953 (see
-  the ledger's lever list — asymmetric core-1 Fig 3-3 is the variant that
-  costs no tank lines).
+  Two traps closed the same session: `make render`'s `SPEC=1` dump has NO
+  delay (id 0x06 → SEND alias; `send_probe` now dies on it), and the DEV
+  delay must live at its shipping Y base 0x38000 — payload A's half of the
+  window is fully owned (ChonVerb buffers 0x30000/0x34000, bus scratch
+  0x36000). See the `→VERB` item above.
+- ✅ **The hatch cap is GONE — DEV placement change LANDED 12 Aug (late
+  evening), stage 2's opener.** History, kept so the numbers can't
+  un-retire: `DEV=1 XBUS=1` alone overran the region by 153 words after
+  R16–R18, `NOSHIM=1` bridged it for a few hours, and stage 1's +45 left
+  24 words — the ~583-word in-region cap was effectively reached. Now the
+  DEV delay assembles at **P:0x04000, outside the donor region entirely**
+  (`build_bus.py` DEV_DELAY_P): dsp_host has NO 8K P wall (flat 0x80000
+  words, no OMR model — measured 12 Aug), the payload has no room for a
+  new module record (6 bytes of slack, measured), so the record is
+  **appended to the .mem dump**, which is the only thing dsp_host boots.
+  The DEV image carries a dangling dispatch to 0x04000 — one more reason
+  it is never flashed; on hardware the delay ships in-region in payload B,
+  unchanged. Verified: in-region vs relocated bit-identical (3 corner
+  renders), full verify_delay 11/11 vs v1 through the new flow, THD
+  −36.8 unchanged. Consequences: the delay's render budget is payload B's
+  full 1,953, NOSHIM is optional again (full-shimmer hatch 2,692 of 3,053,
+  FREE 361 — a truer downstream sink for →VERB listening), and OMR stays a
+  hardware-only lever for a delay past 1,953 (asymmetric core-1 Fig 3-3 is
+  the variant that costs no tank lines).
 - ⚠️ **`make bus-plain` no longer builds at all** (12 Aug evening): the
   no-flag layout packs SEND + full-shimmer reverb + delay into one
   2,724-word region and overruns it by 506 words (3,230; it was already
@@ -769,10 +782,10 @@ that must not come back:
 - **Emulator/device gap, per-core layout** — ✅ closed 8 Aug (`make render`
   builds `SPEC=1`; dsp_host boots payload A, so the reverb renders
   identically to hardware) and ✅ the delay half closed 12 Aug: `make
-  render-delay` renders BongDelay at its shipping Y base 0x38000, at the
-  cost of shimmer (NOSHIM) and a ~583-word delay cap (step 3) — a cap the
-  v2 stage-1 spine has all but consumed (559 words, 24 free; the DEV
-  placement change opens stage 2).
+  render-delay` renders BongDelay at its shipping Y base 0x38000 — and
+  since the 12 Aug placement change with the full-shimmer reverb, no word
+  cap, and no NOSHIM (the delay runs from P:0x04000 via the .mem dump;
+  step 3).
 
 ---
 

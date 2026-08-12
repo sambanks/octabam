@@ -9,12 +9,14 @@ emulator, and measure the metallic artifact numerically.
 DRIVING THE DELAY. --layout takes D as well as R, so the DELAY SERVER can be
 run and heard locally:
 
-    DEV=1 XBUS=1 NOSHIM=1 python3 tools/build_bus.py   # -> out/dsp/mem_dev_A.mem
+    DEV=1 XBUS=1 python3 tools/build_bus.py   # -> out/dsp/mem_dev_A.mem
     python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
-(NOSHIM=1 became load-bearing 12 Aug 2026: R16-R18 grew ChonVerb past what the
-DEV donor region can hold with all three servers real -- shimmer excised frees
-exactly enough. The DEV reverb is only a downstream sink for delay work.)
+(NOSHIM=1 was load-bearing for a few hours on 12 Aug 2026 -- R16-R18 grew
+ChonVerb past what the donor region could hold with all three servers packed
+in. The same evening's DEV placement change moved the delay OUT of the region
+to P:0x04000, appended to the .mem dump -- see build_bus.py's DEV_DELAY_P --
+so the full-shimmer reverb fits again and NOSHIM is back to optional.)
 
 This needs a DEV=1 image and there is no way around it: XBUS=1 stubs the DELAY
 SERVER out, and the specialized build that follows puts BongDelay in payload B
@@ -174,7 +176,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
             if c == "D" and ep["D"] == entry_points(mem, SERVER_ID["S"]):
                 die("this dump's DELAY entry is the SEND alias -- a SPEC build "
                     "(payload A carries no delay). Build the delay hatch:\n"
-                    "  DEV=1 XBUS=1 NOSHIM=1 python3 tools/build_bus.py\n"
+                    "  DEV=1 XBUS=1 python3 tools/build_bus.py\n"
                     "then rerun against out/dsp/mem_dev_A.mem")
         return ep[c]
 

@@ -634,6 +634,17 @@ exactly, except for the scratch, which both cores must touch by definition:
    python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
    ```
 
+   **UPDATE 12 Aug 2026 (v2 stage 2 opener): the DEV delay no longer sits in
+   the donor region at all.** It assembles at **P:0x04000** and its module
+   record is appended to the `.mem` dump (`build_bus.py` `DEV_DELAY_P`) —
+   dsp_host has no 8K P wall and boots the dump, not the image, and the
+   payload itself has only 6 bytes of record slack. Verified bit-identical
+   against the in-region placement. Consequences: the hatch no longer caps
+   the delay's size (the old cap was ~583 words), and the full-shimmer
+   reverb fits the region again (2,692 of 3,053), so `NOSHIM=1` is optional
+   for delay work. The DEV image's dispatch points at code that exists only
+   in the dump — one more reason DEV builds are never flashed.
+
    ✅ **Verified: BongDelay produced audio over the bus for the first time** —
    peak 0.074 FS, −14.6 dBFS, THD −35.2 dB, against **digital silence** on a
    non-DEV image. And the existing reverb path is **bit-for-bit unchanged**:

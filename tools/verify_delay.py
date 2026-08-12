@@ -6,11 +6,13 @@
 
 The verify_roll pattern applied to the delay (PLAN.md 3.1, stage 1 CLEAN:
 refactor first, prove equivalence, THEN add modes). Both engines are built
-into the DELAY HATCH -- DEV=1 XBUS=1 NOSHIM=1, the `make render-delay`
-configuration, delay at its shipping Y base 0x38000 -- and rendered through
-the real send path (--layout DS: a DELAY SERVER at position 0 plus a SEND
-feeding it over the shared bus). NOT SPEC: a SPEC dump has no delay at all
-(id 0x06 -> SEND alias), the 12 Aug mislabel send_probe now dies on.
+into the DELAY HATCH -- DEV=1 XBUS=1, the `make render-delay` configuration,
+delay at its shipping Y base 0x38000 and, since the 12 Aug placement change,
+at P:0x04000 outside the donor region (build_bus.py's DEV_DELAY_P; the
+record lives in the .mem dump) -- and rendered through the real send path
+(--layout DS: a DELAY SERVER at position 0 plus a SEND feeding it over the
+shared bus). NOT SPEC: a SPEC dump has no delay at all (id 0x06 -> SEND
+alias), the 12 Aug mislabel send_probe now dies on.
 
 THE CONTROLS ARE THE POINT (verify_roll's lesson, verbatim): a bit-identical
 claim is worthless without a companion check proving the comparison can see
@@ -80,9 +82,9 @@ def make_source():
 def build(src, tag, dmode=None):
     """Build the delay hatch with DLSRC=src, keep its payload-A dump, return
     (mem, delay_words, hatch_free)."""
-    env = dict(os.environ, DEV="1", XBUS="1", NOSHIM="1", DLSRC=str(src))
+    env = dict(os.environ, DEV="1", XBUS="1", DLSRC=str(src))
     for k in ("SPEC", "BURN", "PROBE", "XPROBE", "DELAYPROBE", "MODE",
-              "WIDTH", "DMODE"):
+              "WIDTH", "DMODE", "NOSHIM"):
         env.pop(k, None)
     if dmode is not None:
         env["DMODE"] = str(dmode)
@@ -212,7 +214,9 @@ def main():
               "; DMODE_OVERRIDE marker (a v1 source)")
 
     print(f"\n  DELAY SERVER {ref_words} -> {cand_words} words "
-          f"({cand_words - ref_words:+d}), hatch FREE {ref_free} -> {cand_free}")
+          f"({cand_words - ref_words:+d}); donor-region FREE {ref_free} -> "
+          f"{cand_free} (the delay sits OUTSIDE it at DEV_DELAY_P since the "
+          f"12 Aug placement change)")
     print("\nOK" if ok else "\nFAILED")
     return 0 if ok else 1
 

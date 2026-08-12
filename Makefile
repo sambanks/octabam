@@ -64,11 +64,15 @@ render: ## Build the DEV image and render the bus locally (no hardware)
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BongDelay locally
 	@# NO SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias).
-	@# NOSHIM pays for the space R16-R18 consumed; the DEV reverb is only a
-	@# downstream sink for delay work. Overwrites mem_dev_A.mem -- send_probe
-	@# refuses to run a D layout against a SPEC dump, so a stale mix-up dies
-	@# loudly instead of rendering a plausible dry passthrough (12 Aug 2026).
-	DEV=1 XBUS=1 NOSHIM=1 python3 tools/build_bus.py
+	@# Overwrites mem_dev_A.mem -- send_probe refuses to run a D layout
+	@# against a SPEC dump, so a stale mix-up dies loudly instead of
+	@# rendering a plausible dry passthrough (12 Aug 2026).
+	@# NOSHIM=1 is NOT needed since the DEV placement change (12 Aug
+	@# evening): the delay lives at P:0x04000 outside the donor region
+	@# (appended to the .mem dump; dsp_host has no 8K wall), so the full
+	@# shimmer reverb fits as the downstream sink and the delay's growth
+	@# budget is payload B's, not the hatch's.
+	DEV=1 XBUS=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
 .PHONY: reverb

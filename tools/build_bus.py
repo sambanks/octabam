@@ -470,6 +470,21 @@ PP = {
     "B": dict(chorus=0x00c77, plate=0x00dc0, spring=0x01012, dark=0x01439,
               nul_i=0x00588, nul_p=0x00589, xtab=0x400f5a10, ybase=0x38000),
 }
+# DEV only: where the DELAY SERVER's code lives when it is NOT packed into
+# the donor region (12 Aug 2026, v2 stage 2 opener). The hatch region capped
+# the delay at ~583 words (24 free after stage 1) vs payload B's ~1,953 --
+# the redesign would have outgrown its own render loop one stage in. dsp_host
+# has NO 8K P wall and no OMR model (P is flat 0x80000 words, measured
+# 12 Aug), so a DEV build can run the delay from any address; the payload
+# itself has no room for a new module record (6 bytes of slack, measured), so
+# the record is appended to the .mem DUMP instead -- the dump is the only
+# thing dsp_host boots, and a DEV image is never flashed. 0x04000 is clear of
+# every P record dsp_host loads (stock tops out at 0x01fdf below the shared
+# window) and below send_probe's `init < 0x20000` plausibility bound. On
+# hardware this address does not exist (the 8K OMR wall) -- which is fine,
+# because on hardware the delay ships IN REGION in payload B, unchanged.
+DEV_DELAY_P = 0x04000
+
 # Ids whose algorithm we overwrite, and which must therefore be silenced on
 # FX1. CHORUS (0x12) was here until v98 and is deliberately gone: we no longer
 # take its code, so its stock dispatch entries stand and FX1 gets it back.
@@ -956,6 +971,7 @@ mkgo:""",
     if delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
+    dev_delay = None            # (words) for the .mem dump append, DEV only
     for tag, va, ln in PAYLOADS:
         pp = PP[tag]
         mods, _ = modules(bytes(img), va, ln)
@@ -1062,6 +1078,31 @@ mkgo:""",
                 print(f"  LFOTAB        P:0x{cursor:05x}..0x{cursor + 24:05x} "
                       f"(  24 words)  rolled LFO lines 2-7")
                 cursor += len(LFOTAB)
+            if DEV and name == "DELAY SERVER":
+                # DEV: the delay does NOT go in the donor region. It is
+                # assembled at DEV_DELAY_P (see that constant) and its module
+                # record is appended to the .mem dump after the image is
+                # written -- the payload has no slack for a new record, and
+                # dsp_host boots the dump, not the image. The dispatch
+                # entries in THIS image do point at DEV_DELAY_P, so the DEV
+                # .bin carries a dangling dispatch: one more reason it is
+                # never flashed. The region below now carries only SEND +
+                # LFOTAB + reverb, so the delay's growth budget is payload
+                # B's, not the hatch's.
+                words, init_a, proc_a = assemble(src, DEV_DELAY_P)
+                if DEV_DELAY_P + len(words) >= 0x20000:
+                    sys.exit(f"payload {tag}: DEV delay overruns the "
+                             f"entry-point plausibility bound "
+                             f"(0x{DEV_DELAY_P + len(words):05x} >= 0x20000)")
+                wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
+                wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
+                if tag == "A":
+                    dev_delay = words
+                print(f"  {name:13} P:0x{DEV_DELAY_P:05x}..0x"
+                      f"{DEV_DELAY_P + len(words):05x} ({len(words):4} words)"
+                      f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
+                      f"(DEV: OUT OF REGION, code lives in the .mem dump)")
+                continue
             words, init_a, proc_a = assemble(src, cursor)
             if cursor + len(words) > base_a + budget:
                 sys.exit(f"payload {tag}: {name} overruns the region "
@@ -1190,6 +1231,26 @@ mkgo:""",
         mem = pathlib.Path("out/dsp/mem_dev_A.mem")
         mem.parent.mkdir(parents=True, exist_ok=True)
         dsp_modmap.dumpmem(bytes(img), ["A", str(mem)])
+        if dev_delay is not None:
+            # The delay's code is not IN the payload (no record slack; see
+            # DEV_DELAY_P) -- append its module record to the dump, the same
+            # [u8 space][u32 addr][u32 count][count*u32] format dumpmem
+            # writes. Absent under DEV+SPEC, where payload A legitimately
+            # carries no delay and dev_delay stays None.
+            import struct
+            term = struct.pack("<BII", 0xff, 0, 0)
+            blob = mem.read_bytes()
+            if not blob.endswith(term):
+                sys.exit("mem dump does not end with the 0xff terminator "
+                         "record -- dumpmem's format changed under us")
+            with open(mem, "wb") as fh:
+                fh.write(blob[:-len(term)])
+                fh.write(struct.pack("<BII", 0, DEV_DELAY_P, len(dev_delay)))
+                for w in dev_delay:
+                    fh.write(struct.pack("<I", w))
+                fh.write(term)
+            print(f"  + DELAY SERVER record appended to the dump: "
+                  f"P:0x{DEV_DELAY_P:05x} ({len(dev_delay)} words)")
         print(f"\nDEV hatch ready. All three servers are real in payload A:\n"
               f"  python3 tools/send_probe.py --mem {mem}\n"
               f"  python3 tools/render_reverb.py loop.wav --mem {mem}\n"
