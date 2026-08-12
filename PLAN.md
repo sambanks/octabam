@@ -25,7 +25,7 @@ delay→reverb series topology).
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and grain jitter is built but uncommitted; PITCH is not voiced yet. See 3.1 |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE LANDED** (`6aac927`, loop length = TIME, verified bit-identical loops). PITCH is still not voiced. See 3.1 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
@@ -598,7 +598,7 @@ each stage is a separate commit gated by `make check`):
    DMODE=3→CLEAN). Every emitted mpy signed (2000c0/c8), abs/neg checked.
    Cost: delay 624 → 1,150 words (→ **1,086 after `e6f5359`**, the
    branchless window being 64 words cheaper); payload B used 845 → 1,371 →
-   **1,307, FREE 1,417**; ~450 cycles/sample in PITCH mode only (CLEAN path
+   **1,307 → 1,287 after stages 2b/2c/3, FREE ~1,216**; ~450 cycles/sample in PITCH mode only (CLEAN path
    unchanged;
    `cycle_count` now prices the mode fork at its WORST path via MODEFORK
    markers instead of refusing or summing both engines).
@@ -627,8 +627,8 @@ each stage is a separate commit gated by `make check`):
      showed the trade is 1-D with no good point: ripple 6.3/10.3/12.6/13.5
      dB against off-carrier energy −8.7/−10.3/−14.5/−35.6 dB. On melody the
      two extremes read as "twinkly robot" and "artificial".
-   - 🟡 **STAGE 2b, GRAIN JITTER — BUILT, UNCOMMITTED, ear "a bit less"
-     robo.** The defect is **periodicity**, not window shape, so the fix is
+   - ✅ **STAGE 2b, GRAIN JITTER — LANDED (`cf5d73a`)**, ear "a bit less"
+     robo. The defect is **periodicity**, not window shape, so the fix is
      to scatter each grain's source position (0–1023 samples, 23-bit
      xorshift, period 2^23−1) latched at each head's own wrap — inaudible
      because the full-overlap window's gain is exactly 0 there, which makes
@@ -639,6 +639,20 @@ each stage is a separate commit gated by `make check`):
      block — not the reverb's full one). `make check` + verify-delay 11/11
      green. This is GRAIN's (stage 5) mechanism with fewer heads and no
      SPRAY knob.
+   - ✅ **STAGE 2c, NON-CASCADING — LANDED (`cf5d73a`), and it is the change
+     that moved the needle.** Until it, the shifted taps WERE the loop's
+     taps, so repeat *n* had been through the shifter *n* times and carried
+     *n* generations of splice artifact — that compounding, not the splice,
+     is most of what an ear calls "machine" (ChonVerb hit exactly this and
+     its shimmer cut its own cascade for the same reason). The loop now
+     recirculates the CLEAN tap and the shifter sits on the OUTPUT only,
+     substituted into the wet AFTER both lines are written, so nothing
+     shifted can re-enter the feedback. Measured at FDBK 60: the +12 ladder
+     (869/1731/3453/6899 Hz) is **gone**, replaced by one cluster at the
+     true octave. Every repeat is shifted exactly once — a fixed-interval
+     harmoniser on the delay output. ⚠️ **The Crystal climb is deliberately
+     gone**; if it is ever wanted back it belongs on a select, not as the
+     only topology.
    - **The framing this produced, and it is the real result of the session:**
      a Microcosm-style device is not a clean shifter — it is artifacts made
      **dense and aperiodic** until they read as texture, mixed under dry and
@@ -648,8 +662,29 @@ each stage is a separate commit gated by `make check`):
      delay's `→VERB` send from the CLI so the delay→reverb topology is one
      command.
 
-3. **FREEZE** — 2-state select: stop line writes, keep reading (~30–60
-   words, ~0 cycles). With PITCH: frozen buffer + shifted reads.
+3. **FREEZE** — 2-state select. ✅ **LANDED 12 Aug 2026 (`6aac927`)**, and
+   the sketch's "stop line writes" turned out to be the wrong mechanism:
+   the pointers must keep running or the reads stall. What shipped instead
+   **substitutes the line write** — while held, each line writes back the
+   raw tap it just read instead of `x_in + fb*FDBK`. Read at `wr−TIME`,
+   written at `wr`, so the region copies itself forward one lap every TIME
+   samples: **the loop length IS the TIME knob**, and the gain is exactly 1
+   (a copy, not a multiply) so a frozen line can neither decay nor grow.
+   Input, FDBK and PING are bypassed while held; MIX, `→VERB` and the PITCH
+   heads keep working, so the dry plays over it and **FREEZE+PITCH is
+   shifted reads over held material** — the texture hold. Branchless via
+   Tcc (`tne`). Select at page-2 slot 11 (`r6+$e` low, count 2, default
+   RUNNING); `DFRZ=n` is the local override.
+   **Verified by measurement, not by ear**: with a source that stops before
+   the freeze engages, consecutive TIME-length windows are BIT-IDENTICAL
+   (max sample diff 0) at constant level across seconds, where the same
+   render unfrozen decays to nothing. Cost: 1,267 → 1,287 words (+20),
+   ~12 cycles/sample.
+   ⚠️ **The knob is UNEXERCISED locally and cannot be**: `dsp_host` cannot
+   change a parameter mid-run, so the flag was toggled by a scratch build
+   keyed off its own block counter. Slot 11 rides the on-unit reconfirm
+   checklist like every other select — the SHMR wrong-offset bug is what
+   that checklist exists for.
 4. **TAPE** — wow/flutter LFO on the read pointer (LFOTAB precedent),
    loop saturation (~150–250 words, ~50–80 cycles).
 5. **GRAIN** — the flagship: 4–8 windowed grain readers at LCG-scattered
@@ -746,9 +781,9 @@ Traps, all already paid for once:
   configurations; treat bus-plain as historical unless something needs it.
 - Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
   `PING` p3, `MIX` p4, `VRBW` p5, `MODE` p7 (select, count 2), `VRBD` p8,
-  `PTCH` p9 (select, count 4) — 9 of 12 used (MODE/PTCH landed with stage
-  2), and the parameter-delivery gap (step 2) caps how many more are worth
-  adding. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
+  `PTCH` p9 (select, count 4), `FRZE` p11 (select, count 2, stage 3) — **10
+  of 12 used**, and the parameter-delivery gap (step 2) caps how many more
+  are worth adding. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
   can draw a knob and publish nothing, and dsp_host cannot drive companion
   fields at all (`DMODE=`/`DINT=` are the local overrides).
 
