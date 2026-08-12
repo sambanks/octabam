@@ -152,6 +152,8 @@
 ;   r7+$1f/$20          latched grain scatter, LineR head 0 / head 1
 ;   r7+$21              this sample's PRNG candidate offset (per-sample)
 ;   r7+$22/$23          per-sample scratch for the wrap latches (parked age)
+;   r7+$26              FREEZE flag (per block, from the slot-11 select:
+;                       0 = running, nonzero = hold the lines)
 ;   r7+$24/$25          PITCH shifted OUTPUT tap L / R (per sample). Kept
 ;                       separate from the loop's taps ($79/$7a) so the shift
 ;                       never re-enters the feedback -- the non-cascading
@@ -228,6 +230,10 @@
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
 ;              count 2: 0 = CLEAN, 1 = PITCH. Landed with stage 2, per the
 ;              stage-1 rule that a one-value select draws a dead knob.
+;   p11 FRZE -> FREEZE select, page-2 slot 11 companion (r6+$e low bits),
+;              count 2: 0 = running, 1 = hold. Orthogonal to MODE -- frozen
+;              + PITCH is shifted reads over held material. `DFRZ=n` is the
+;              local override (dsp_host cannot drive companion fields).
 ;   p9 PTCH  -> PITCH interval select, page-2 slot 9 companion (r6+$d low
 ;              bits), count 4: 0 = +12, 1 = +7, 2 = -12, 3 = +-detune
 ;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
@@ -701,6 +707,20 @@ pintdet:
         move    #>$ffffdc,a             ; R down 15 cents
         move    a,x:(r7+$6b)
 pintend:
+
+; ---- FREEZE select (v2 stage 3) ------------------------------------------
+; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
+; select idiom as PTCH ($d low) and ChonVerb's WIDTH/->DEL, count 2. Any
+; nonzero value freezes, so boot garbage in the field cannot do anything
+; worse than hold; the masked read also keeps a wild value out of the flag.
+; Decoded every block regardless of MODE: freeze is orthogonal to the engine
+; (frozen + PITCH = shifted reads over held material, PLAN 3.1 stage 3).
+        move    x:(r6+$e),a
+        and     #>$7f,a                 ; select index, companion low byte
+; DFRZ_OVERRIDE
+        move    a1,x0
+        move    x0,a                    ; A2-clean before the store
+        move    a,x:(r7+$26)            ; 0 = running, nonzero = frozen
 
 ; ---- PITCH lag base: TIME clamped to keep lag + window + lerp in the line -
 ; Max head lag = base + 8191 (age) + 1 (lerp's older neighbour); it must not
@@ -1351,11 +1371,30 @@ pdone:
         mpy     x0,y1,a
         move    x:(r7+$7d),x0           ; x_in
         add     x0,a
+; FREEZE (v2 stage 3): write the RAW TAP back instead -- unity recirculation
+; with the input excluded, so the last TIME samples loop for ever. The loop
+; length is TIME itself (read at wr-TIME, written at wr, so the region is
+; copied forward one lap per TIME samples), which is why this is a plain
+; substitution and not a "stop the pointers" freeze: the pointers must keep
+; running or the reads would stall. Gain is EXACTLY 1 -- a copy, not a
+; multiply -- so a frozen line neither decays nor grows.
+; Branchless via Tcc (tne moves a CLEAN register in; never a hand-rolled
+; mask, the A2-staleness trap). FDBK, PING and the input are all bypassed
+; while held, which is what a hold means; MIX, ->VERB and the PITCH heads
+; keep working, so you can play over it.
+        move    x:(r7+$26),b            ; FREEZE flag
+        tst     b
+        move    x:(r7+$79),x0           ; the unshifted tap, this sample
+        tne     x0,a                    ; frozen -> hold
         move    a,y:(r1)+                ; LineL write, advance
 
         move    x:(r7+$81),x0           ; fbIntoR
         move    x:(r7+$73),y1
         mpy     x0,y1,a
+        move    x:(r7+$26),b
+        tst     b
+        move    x:(r7+$7a),x0
+        tne     x0,a
         move    a,y:(r2)+                ; LineR write, advance -- no x_in term
 
 ; ---- wrap both write pointers by hand (the modulo this engine no longer

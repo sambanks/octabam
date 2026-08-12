@@ -140,6 +140,8 @@ RENAMES = {
         (8, b"VRBD"),
         (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
+        (11, b"FRZE"),              # slot 11 -> r6+$e low   freeze select:
+                                    #   run / hold (stage 3)
     ],
     "REVERB SERVER": [
         (1, b"MOD"), (2, b"SIZE"),
@@ -184,7 +186,8 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 DEFAULTS = {
     "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0),
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
-                     (9, 0)],   # PTCH  +12   -- both IN RANGE of their counts
+                     (11, 0),   # FRZE  run   -- a fresh part is never held
+                     (9, 0)],   # PTCH  +12   -- all IN RANGE of their counts
                                 # below (the default-as-index sequencer stall)
     # EVERY page-2 slot needs an explicit default now that all twelve are
     # enabled: an unlisted slot keeps the DONOR's default, which is sized for
@@ -260,7 +263,8 @@ ACTIVE_PARAMS = {
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
 PAGE2_COUNTS = {"DELAY SERVER":  {7: 2,     # MODE   select: CLEAN/PITCH (v2 s2)
-                                  9: 4},    # PTCH   select: +12/+7/-12/det
+                                  9: 4,     # PTCH   select: +12/+7/-12/det
+                                  11: 2},   # FRZE   select: run/hold (v2 s3)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
@@ -908,6 +912,20 @@ mkgo:""",
             "; DINT_OVERRIDE",
             "        move    #>%d,a" % int(dint_env))
         print(f"  *** DINT OVERRIDE: BongDelay PITCH interval forced to {int(dint_env)} ***")
+
+    # DFRZ=n forces BongDelay's FREEZE select (0 = running, nonzero = hold),
+    # same mechanism and reason as DMODE/DINT: slot 11 is a companion LOW-byte
+    # field (r6+$e) and dsp_host's -params cannot drive it.
+    dfrz_env = os.environ.get("DFRZ")
+    if dfrz_env is not None:
+        if delay_src.count("; DFRZ_OVERRIDE") != 1:
+            sys.exit("DFRZ=n set but the DELAY source has no single "
+                     "; DFRZ_OVERRIDE marker -- a pre-stage-3 delay_server.asm "
+                     "cannot take a freeze override")
+        delay_src = delay_src.replace(
+            "; DFRZ_OVERRIDE",
+            "        move    #>%d,a" % int(dfrz_env))
+        print(f"  *** DFRZ OVERRIDE: BongDelay FREEZE forced to {int(dfrz_env)} ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
