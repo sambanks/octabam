@@ -1833,21 +1833,107 @@ gmode:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$55)            ; candidate, line R
+; ---- THE LIVE INTERVAL: musical, random, and re-rolled per repeat --------
+; v2 stage 5b. GRAIN shipped applying ONE fixed interval to everything, so
+; every repeat came back at the same pitch. The reference device's character
+; -- Sam: "musical random sounding pitched repeats" -- is intervals that
+; CHANGE, and measurement agreed with the ear: single-series harmonicity is
+; 0.95 dry, 0.78 on the reference, 0.81 on our fixed-interval GRAIN. Four
+; SIMULTANEOUS transpositions would have put the reference far below ours;
+; 0.03 apart says one transposition at a time, varying. So the mechanism is
+; a changing interval, not a polyphonic cloud -- which is also the cheap one.
+;
+; WHY THIS WORKS WITHOUT THE CASCADE, and it is stage 2c's doing: the loop
+; recirculates the CLEAN tap while the shifter sits on the output, reading
+; the line at TIME lag. So when the interval changes, each repeat is shifted
+; by whatever is current AS IT PASSES THE READ HEAD -- successive repeats
+; come out at different pitches with no compounding, and no repeat is ever
+; shifted twice. The non-cascading topology bought this and nobody noticed.
+;
+; The set is {+12, +7, +19, -12} -- octaves, fifths and a sub-octave, so any
+; draw is consonant with any other and with the dry. Re-rolled at a base-age
+; wrap with probability 1/8, which at +12's 46 ms cycle is a mean hold of
+; ~370 ms: the repeat timescale, not a warble.
+;
+; SELECT INDEX 0 IS THE FIXED ENGINE, BIT-FOR-BIT. That is deliberate and
+; the gate proves it: the +12 voicing Sam ear-passed is still exactly
+; reachable, and every pre-existing GRAIN case stays bit-identical. Indices
+; 1..3 roll.
+        move    x:(r7+$5e),a            ; the live step (persistent -- see the
+        tst     a                       ; state map: this slot is REVERSE's
+        move    #>$1000,x0              ; phase, and the two modes are
+        teq     x0,a                    ; mutually exclusive within a sample)
+        move    a,x:(r7+$5e)            ; SEED IT: a zero step never advances
+        move    a,x:(r7+$5b)            ; the age, so it could never reach a
+                                        ; wrap, so it could never re-roll --
+                                        ; a deadlock, not a quiet default.
+                                        ; $5b keeps the step ACTUALLY APPLIED
+                                        ; this sample, for the builder's
+                                        ; per-grain wrap test below
+; ---- the candidate, computed every sample and admitted only at a wrap ----
+; Branchless 4-way select on two PRNG bits, then gated by three more (1 in
+; 8), then overridden wholesale at select index 0. Parked, because the wrap
+; test below needs the condition codes and this clobbers them.
+        move    x:(r7+$18),b            ; PRNG state, advanced above
+        and     #>$3,b                  ; two bits: which interval
+        move    b1,x0
+        move    x0,b                    ; A2-clean before the compares
+        move    #>$1000,a               ; 0 -> +12  (rate 2.0)
+        move    #>$1,x0
+        cmp     x0,b
+        move    #>$800,x0               ; 1 -> +7   (rate 1.5)
+        teq     x0,a
+        move    #>$2,x0
+        cmp     x0,b
+        move    #>$2000,x0              ; 2 -> +19  (rate 3.0)
+        teq     x0,a
+        move    #>$3,x0
+        cmp     x0,b
+        move    #>$fff800,x0            ; 3 -> -12  (rate 0.5, the head falls
+        teq     x0,a                    ; behind instead of catching up)
+        move    x:(r7+$18),b            ; three MORE bits: roll 1 time in 8,
+        asr     #$2,b,b                 ; so the interval holds for about a
+        and     #>$7,b                  ; repeat rather than warbling
+        move    b1,x0
+        move    x0,b
+        tst     b                        ; Z == this is a rolling draw
+        move    x:(r7+$5e),x0            ; otherwise keep what we have
+        tne     x0,a
+        move    x:(r7+$5f),b            ; select index
+        tst     b
+        move    x:(r7+$6a),x0           ; index 0: the FIXED engine, exactly
+        teq     x0,a                    ; as ear-passed
+        move    a,x:(r7+$56)            ; park the candidate
 ; ---- the shared base age --------------------------------------------------
-; Advances by the PTCH interval's step, exactly as PITCH's per-line ages do
-; (age DECREASES for an upshift: the head slides toward the write pointer).
-; GRAIN uses the LEFT line's step for both lines -- at the detune select the
-; two differ, and sharing the age is what lets one window computation serve
-; both. The decorrelation GRAIN needs comes from the scatter, not from a
-; 15-cent step difference.
+; Advances by the LIVE step (age DECREASES for an upshift: the head slides
+; toward the write pointer). GRAIN uses one age for both lines -- sharing it
+; is what lets one window computation serve both, and the decorrelation
+; GRAIN needs comes from the per-line scatter, not from the step.
         move    x:(r7+$32),a
-        move    x:(r7+$6a),x0           ; step, Q11.12 signed
+        move    x:(r7+$5b),x0           ; the step applied this sample
         sub     x0,a
         and     #>$7fffff,a             ; wrap mod 2048 samples
         move    a1,x0
         move    x0,a                    ; A2-clean; boot garbage dies here
         move    a,x:(r7+$32)
         move    a,x:(r7+$5d)            ; the builder's running cursor
+; ---- did the BASE age just wrap? then the candidate becomes live ---------
+; Same no-stored-previous trick the builder uses: prev = (age + step) & mask
+; by construction, so |age - prev| > half a cycle can only mean it folded.
+        move    x:(r7+$5b),x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0                   ; prev (A1 only: the AND leaves A2
+                                        ; stale, which is why it leaves here)
+        move    x:(r7+$32),a            ; the age, clean from its store
+        sub     x0,a
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; N SET == did NOT wrap
+        move    x:(r7+$56),x0           ; the candidate
+        move    x:(r7+$5e),a            ; the current live step
+        tpl     x0,a                    ; wrapped -> admit it
+        move    a,x:(r7+$5e)
 ; ---- BUILDER: fill the grain table, one grain (both lines) per pass -------
 ; r4 walks all 32 words straight through, which is why the record's field
 ; order is its consumption order. Per grain: age_int, fraction and window
@@ -1912,7 +1998,10 @@ gmode:
 ; the second latch is a MOVE: moves do not disturb the condition codes, which
 ; is the same guarantee the FREEZE and TAPE substitutions already rest on.
         move    x:(r7+$5d),a            ; age
-        move    x:(r7+$6a),x0           ; step
+        move    x:(r7+$5b),x0           ; the step APPLIED this sample -- not
+                                        ; the block's select step, which is no
+                                        ; longer what the age advances by once
+                                        ; the interval rolls
         add     x0,a
         and     #>$7fffff,a
         move    a1,x0                   ; prev (A1 only -- A2 is stale after

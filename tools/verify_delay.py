@@ -262,6 +262,7 @@ def main():
              dp(WOW=127, FDBK=127)),
             ("GRAIN SPRAY=0 (every grain on the same read)", 3, 0, dp(SPRAY=0)),
             ("GRAIN SPRAY=127 (full scatter)", 3, 0, dp(SPRAY=127)),
+            ("GRAIN rolling intervals (select 1)", 3, 1, dp(SPRAY=90)),
             ("REVERSE size 4096 (93 ms, the line's ceiling)", 4, 0, dp()),
             ("REVERSE size 512 (stutter) at TIME=127", 4, 3, dp(TIME=127)),
         ]
