@@ -373,6 +373,9 @@ def main():
                     help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
     ap.add_argument("--dfdbk", type=int, default=None,
                     help="DELAY FDBK 0..127 (delay slot 1, default 60)")
+    ap.add_argument("--dwow", type=int, default=None,
+                    help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
+                         "TAPE's wow/flutter depth; ignored by the other modes.")
     ap.add_argument("--dmix", type=int, default=None,
                     help="DELAY MIX 0..127 (delay slot 4, default 90)")
     ap.add_argument("--dvrbw", type=int, default=None,
@@ -422,9 +425,10 @@ def main():
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
     dpar = None
-    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw)):
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow)):
         dpar = list(DELAY_PARAMS)
-        for idx, val in ((0, a.dtime), (1, a.dfdbk), (4, a.dmix), (5, a.dvrbw)):
+        for idx, val in ((0, a.dtime), (1, a.dfdbk), (4, a.dmix), (5, a.dvrbw),
+                         (6, a.dwow)):
             if val is not None:
                 dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,

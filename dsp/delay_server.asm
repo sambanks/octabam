@@ -152,6 +152,12 @@
 ;   r7+$1f/$20          latched grain scatter, LineR head 0 / head 1
 ;   r7+$21              this sample's PRNG candidate offset (per-sample)
 ;   r7+$22/$23          per-sample scratch for the wrap latches (parked age)
+;   r7+$27/$28          TAPE wow / flutter LFO phase (persistent, masked)
+;   r7+$29              TAPE mod: the summed offset, then its integer part
+;   r7+$2a/$2b/$2c      TAPE per-sample scratch (phase then smoothstep /
+;                       t0 / the Q23 lag fraction)
+;   r7+$2d/$2e          TAPE wow depth / flutter depth (per block, from the
+;                       WOW knob; their sum is bounded by TIME's floor)
 ;   r7+$26              FREEZE flag (per block, from the slot-11 select:
 ;                       0 = running, nonzero = hold the lines)
 ;   r7+$24/$25          PITCH shifted OUTPUT tap L / R (per sample). Kept
@@ -230,6 +236,9 @@
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
 ;              count 2: 0 = CLEAN, 1 = PITCH. Landed with stage 2, per the
 ;              stage-1 rule that a one-value select draws a dead knob.
+;   p6 WOW   -> TAPE wow depth, page-1 slot 6 KNOB field (r6+$b), 0..127.
+;              Scales flutter with it (wow/8). Only read in TAPE; harmless
+;              in the other modes.
 ;   p11 FRZE -> FREEZE select, page-2 slot 11 companion (r6+$e low bits),
 ;              count 2: 0 = running, 1 = hold. Orthogonal to MODE -- frozen
 ;              + PITCH is shifted reads over held material. `DFRZ=n` is the
@@ -594,6 +603,9 @@ dwarmz:
         move    b,x:(r7+$21)
         move    b,x:(r7+$24)            ; shifted output taps: only read in
         move    b,x:(r7+$25)            ; PITCH, cleared for determinism
+        move    b,x:(r7+$27)            ; TAPE LFO phases: persistent, and
+        move    b,x:(r7+$28)            ; masked on load, but determinism is
+                                        ; what verify-delay bit-compares
         move    #>$123456,a             ; PRNG seed: any nonzero word (xorshift
         move    a,x:(r7+$18)            ; is dead at 0), fixed for determinism
         move    x:(r7+$15),a            ; reload count
@@ -707,6 +719,27 @@ pintdet:
         move    #>$ffffdc,a             ; R down 15 cents
         move    a,x:(r7+$6b)
 pintend:
+
+; ---- TAPE depths from the WOW knob (v2 stage 4) --------------------------
+; Page-1 slot 6 is a KNOB field (r6+$b, value<<16, 0..127), not a select:
+; wow depth is a continuous voicing control unlike MODE/PTCH/FRZE.
+;   wow depth = knob << 10  -> up to 31.75 samples, Q11.12
+;   flutter   = wow >> 3    -> up to  3.97 samples
+; The CEILING IS LOAD-BEARING, not taste: the modulated read sits at lag
+; TIME + mod, TIME's floor is 64 samples (knob 0 -> 0*128+64), and the two
+; depths sum to at most 35.7 -- so the lag can never reach 0 and wrap onto
+; the sample about to be written, which is a whole lap old (a full-scale
+; discontinuity every LFO cycle). Any future depth increase must re-check
+; that sum against TIME's floor.
+        move    x:(r6+$b),a
+        asr     #$6,a,a                 ; knob<<16 -> knob<<10
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$2d)            ; WOWD
+        asr     #$3,a,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$2e)            ; FLTD = WOWD/8
 
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
@@ -853,13 +886,18 @@ plagok:
 ; 0 and every unknown value run the loop's clean taps alone -- a wrong select
 ; degrades to the trad delay, never to silence (the stage-1 rule). The
 ; compare is the safe `cmp x0,a` form.
-; MODEFORK_BEGIN -- cycle_count.py: exactly one of the two paths between here
-; and MODEFORK_END runs per sample; the tool prices the WORST one, not both.
+; MODEFORK_BEGIN -- cycle_count.py: BEGIN..first MID is the dispatch and
+; always runs; each MID..next is one mutually exclusive alternative, and the
+; tool charges dispatch + the WORST alternative, never every engine summed.
         move    x:(r7+$69),a
         move    #>$10000,x0             ; 1 << 16, MSB-aligned like the store
         cmp     x0,a
-        bne     pdone
-; MODEFORK_MID -- CLEAN's path is the fall-through above; PITCH starts here
+        beq     pmode
+        move    #>$20000,x0             ; 2 << 16 = TAPE (v2 stage 4)
+        cmp     x0,a
+        beq     tapel
+        bra     pdone                   ; CLEAN, and every unknown value
+; MODEFORK_MID -- alternative 1: PITCH
 
 ; ---- PITCH: dual crossfaded lerp heads per line (v2 stage 2) --------------
 ; The shimmer-v3 machinery (dsp/reverb_server.asm SHIMMER block) reading the
@@ -1321,6 +1359,179 @@ pmode:
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$25)            ; shifted OUTPUT tap R
+        bra     pdone
+; MODEFORK_MID -- alternative 2: TAPE
+
+; ---- TAPE: wow + flutter on the loop's own read (v2 stage 4) --------------
+; The transport wobbles, so unlike PITCH the modulation belongs IN THE LOOP:
+; the read that feeds TONE, PING and the write-back is the modulated one, so
+; every repeat accumulates more drift. That is what a tape delay does, and
+; it is safe here in the way PITCH's cascade was not -- a smooth lag
+; modulation has no splice, so there is nothing to compound. This mode
+; cannot sound robotic for the same reason.
+;
+; Two LFOs, each a phase accumulator -> triangle -> smoothstep (the window
+; machinery, reused rather than re-derived): wow ~0.80 Hz for slow drift,
+; flutter ~7.3 Hz for the faster shimmer. Depth comes from the WOW knob, the
+; two are summed, split into an integer sample offset and a Q23 fraction,
+; and read with the same LERP as the PITCH heads -- mandatory, because an
+; integer-only moving read is a zipper, the truncation floor that cost the
+; first shimmer.
+;
+; The two rates are deliberately not in a small integer ratio: locked LFOs
+; would read as one mechanical cycle, which is the PERIODICITY lesson from
+; the PITCH ear pass applied before it can bite.
+;
+; mpy orientation throughout: the possibly-negative operand (the centred LFO
+; and t1-t0) is always x0, the audited-signed `mpy x0,y1` form.
+tapel:
+        move    x:(r7+$27),a           ; wow phase
+        move    #>$98,x0              ; 0.80 Hz at 44.1k
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7+$27)
+        move    #>$400000,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; triangle, 0..$400000
+        asl     #$1,a,a                 ; -> 0..1 (the limiting move clamps
+        move    a,x0                    ; the single top value)
+        move    a,y1
+        mpy     x0,y1,a                 ; g^2, then the same smoothstep this
+        move    a,x:(r7+$2a)            ; file uses everywhere else
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1                    ; 1-g
+        move    x:(r7+$2a),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a                    ; s = g^2*(3-2g), 0..1
+        move    a1,x0
+        move    x:(r7+$2d),y1         ; WOWD
+        mpy     x0,y1,a                 ; s*depth
+        asl     #$1,a,a
+        move    x:(r7+$2d),x0
+        sub     x0,a                    ; depth*(2s-1): centred, +-depth
+        move    a,x:(r7+$29)            ; running mod total
+
+        move    x:(r7+$28),a           ; flutter phase
+        move    #>$56d,x0              ; 7.3 Hz -- NOT a multiple of the wow
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean; boot garbage dies here
+        move    a,x:(r7+$28)
+        move    #>$400000,x0
+        sub     x0,a
+        abs     a
+        neg     a
+        add     x0,a                    ; triangle, 0..$400000
+        asl     #$1,a,a                 ; -> 0..1 (the limiting move clamps
+        move    a,x0                    ; the single top value)
+        move    a,y1
+        mpy     x0,y1,a                 ; g^2, then the same smoothstep this
+        move    a,x:(r7+$2a)            ; file uses everywhere else
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y1                    ; 1-g
+        move    x:(r7+$2a),x0
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x0,a                    ; s = g^2*(3-2g), 0..1
+        move    a1,x0
+        move    x:(r7+$2e),y1         ; FLTD
+        mpy     x0,y1,a                 ; s*depth
+        asl     #$1,a,a
+        move    x:(r7+$2e),x0
+        sub     x0,a                    ; depth*(2s-1): centred, +-depth
+        move    x:(r7+$29),x0
+        add     x0,a                    ; mod = wow + flutter, Q11.12 signed
+
+; ---- split the offset: integer samples + Q23 fraction ---------------------
+; asr floors (arithmetic, so negative offsets too) and the masked low 12
+; bits are the POSITIVE remainder -- the pairing the lerp below assumes.
+        move    a,x:(r7+$2a)            ; park mod
+        asr     #$c,a,a                 ; integer samples, signed
+        move    a1,x0
+        move    x0,a                    ; move-to-accumulator sign-extends
+        move    a,x:(r7+$29)            ; mod_int
+        move    x:(r7+$2a),a
+        and     #>$fff,a                ; fraction (A2 stale until cleaned)
+        asl     #$b,a,a                 ; -> Q23
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$2c)            ; frac
+
+; ---- TAPE Line L: lerped read at lag TIME + mod ---------------------------
+        move    r1,a
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a
+        move    x:(r7+$29),x0           ; mod_int, signed
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$2a)            ; park phase
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$2b)            ; t0
+        move    x:(r7+$2a),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a               ; one sample OLDER
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$31),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$2b),x0
+        sub     x0,a                    ; t1 - t0, signed
+        move    a1,x0                   ; -> FIRST mpy operand
+        move    x:(r7+$2c),y1           ; frac
+        mpy     x0,y1,a
+        move    x:(r7+$2b),x0
+        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    a,x:(r7+$79)          ; dL, wobbled -- the LOOP's own tap
+
+; ---- TAPE Line R: lerped read at lag TIME + mod ---------------------------
+        move    r2,a
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a
+        move    x:(r7+$29),x0           ; mod_int, signed
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$2a)            ; park phase
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$2b)            ; t0
+        move    x:(r7+$2a),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a               ; one sample OLDER
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$68),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$2b),x0
+        sub     x0,a                    ; t1 - t0, signed
+        move    a1,x0                   ; -> FIRST mpy operand
+        move    x:(r7+$2c),y1           ; frac
+        mpy     x0,y1,a
+        move    x:(r7+$2b),x0
+        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    a,x:(r7+$7a)          ; dR, wobbled
 ; MODEFORK_END
 pdone:
 

@@ -136,7 +136,8 @@ NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
 RENAMES = {
     "DELAY SERVER": [
         (1, b"FDBK"), (2, b"TONE"), (3, b"PING"), (4, b"MIX"), (5, b"VRBW"),
-        (6, b""), (7, b"MODE"),     # slot 7 -> r6+$c b8-15  engine select (v2)
+        (6, b"WOW"),                # slot 6 -> r6+$b knob    TAPE wow depth
+        (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
         (8, b"VRBD"),
         (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
@@ -185,6 +186,7 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
     "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0),
+                     (6, 48),   # WOW   a musical default wobble for TAPE
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
                      (11, 0),   # FRZE  run   -- a fresh part is never held
                      (9, 0)],   # PTCH  +12   -- all IN RANGE of their counts
@@ -262,7 +264,7 @@ ACTIVE_PARAMS = {
 # fields are eight-bit selects and take a small step count. Setting a
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"DELAY SERVER":  {7: 2,     # MODE   select: CLEAN/PITCH (v2 s2)
+PAGE2_COUNTS = {"DELAY SERVER":  {7: 3,     # MODE   select: CLEAN/PITCH/TAPE
                                   9: 4,     # PTCH   select: +12/+7/-12/det
                                   11: 2},   # FRZE   select: run/hold (v2 s3)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)

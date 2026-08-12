@@ -196,20 +196,26 @@ def measure(name):
                 if lines[sj].strip() == "; SHIMMER_END":
                     shim_lines.update(range(si, sj + 1))
                     break
-    # MODEFORK_BEGIN/MID/END: a mode dispatch where exactly ONE of the two
-    # paths (BEGIN..MID = path A incl. the dispatch, MID..END = path B) runs
-    # per sample. Branches inside are exempt like the shimmer's (short window
-    # ramps, +-2 words), and the span is corrected below from A+B to the
-    # WORST path: span - min(A, B). That keeps the count a per-sample ceiling
-    # for whichever mode is selected, instead of pricing both engines at once.
+    # MODEFORK_BEGIN/MID.../END: a mode dispatch. BEGIN..first MID is the
+    # DISPATCH and always runs; each MID..next-MID-or-END is one MUTUALLY
+    # EXCLUSIVE alternative, of which at most one runs per sample. Branches
+    # inside are exempt like the shimmer's (short window ramps, +-2 words),
+    # and the span is corrected below from "every alternative summed" to
+    # "dispatch + the worst alternative", so the count stays a per-sample
+    # ceiling for whichever mode is selected instead of pricing every engine
+    # at once. N MIDs are allowed: BongDelay has CLEAN/PITCH/TAPE, and
+    # pricing PITCH+TAPE together would overstate it by a whole engine.
     fork = {}
+    mids = []
     for si, sl in enumerate(lines):
         if sl.strip().startswith("; MODEFORK_BEGIN"):
             fork["begin"] = si
         elif sl.strip().startswith("; MODEFORK_MID"):
-            fork["mid"] = si
+            mids.append(si)
         elif sl.strip().startswith("; MODEFORK_END"):
             fork["end"] = si
+    if mids:
+        fork["mid"] = mids[0]
     if fork and set(fork) != {"begin", "mid", "end"}:
         sys.exit(f"{name}: incomplete MODEFORK markers ({sorted(fork)})")
     fork_lines = set(range(fork["begin"], fork["end"] + 1)) if fork else set()
@@ -234,11 +240,17 @@ def measure(name):
         inserts.append((j, f"{label}:"))
         inner_at.append((trips, m.group(2), label))
     fork_labels = {}
+    fork_mid_labels = []
     if fork:
-        for key in ("begin", "mid", "end"):
+        for key in ("begin", "end"):
             lbl = f"__cyc_fk{key}"
             inserts.append((fork[key], f"{lbl}:"))
             fork_labels[key] = lbl
+        for n, si in enumerate(mids):
+            lbl = f"__cyc_fkmid{n}"
+            inserts.append((si, f"{lbl}:"))
+            fork_labels[f"mid{n}"] = lbl
+            fork_mid_labels.append(lbl)
     marked = list(lines)
     for j, txt in sorted(inserts, reverse=True):
         marked = marked[:j + 1] + [txt] + marked[j + 1:]
@@ -259,12 +271,14 @@ def measure(name):
     if fork_labels:
         if any(l not in syms for l in fork_labels.values()):
             sys.exit(f"{name}: assembler dropped a MODEFORK label")
-        a_w = syms[fork_labels["mid"]] - syms[fork_labels["begin"]]
-        b_w = syms[fork_labels["end"]] - syms[fork_labels["mid"]]
-        # The span priced BOTH paths; only one runs per sample. Charge the
-        # worst one, so the number stays a ceiling for either mode.
-        cycles -= min(a_w, b_w)
-        notes.append(f"fork worst-path (A {a_w}w, B {b_w}w)")
+        bounds = ([syms[l] for l in fork_mid_labels] + [syms[fork_labels["end"]]])
+        disp_w = bounds[0] - syms[fork_labels["begin"]]
+        alts = [bounds[k + 1] - bounds[k] for k in range(len(bounds) - 1)]
+        # The span priced EVERY alternative; at most one runs per sample.
+        # Charge the dispatch (always) plus the worst alternative.
+        cycles -= sum(alts) - max(alts)
+        notes.append("fork worst-path (dispatch %dw, alts %s)"
+                     % (disp_w, "/".join(f"{w}w" for w in alts)))
     note = ", ".join(notes) if notes else ""
     return dict(name=name, words=words, cycles=cycles, inner=note,
                 loop_end=end_label, total_words=len(blob) // 3, marked=marked)
