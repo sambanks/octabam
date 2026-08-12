@@ -155,13 +155,18 @@ The ten FX1 effects, with sizes (identical in both payloads):
 already running** (worst case, no derating needed). `make cycles`, 12 Aug
 (late): **room for new work: −232 cycles/sample** (819 on 11 Aug post-R18;
 v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352, GRAIN → −232,
-GRAIN 5e → −952, **5f optimisation → −616**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
+GRAIN 5e → −952, 5f optimisation → −616, **stage 5g → −771**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
 broke first, not the chip.** It sums reverb + delay + two sends on ONE
 core; on hardware ChonVerb is payload A (tracks 5–8, core 0) and BongDelay
 is payload B (tracks 1–4, core 1), so no core ever pays both. The delay's
-worst path (GRAIN, **1,595** after the 5f optimisation pass; 1,931 before)
-plus two sends is ~1,635 against core 1's ~2,150 🟡 spare — a **24% margin**,
-recovered from the 9% the split left. It was 42% before GRAIN existed, so
+worst path (GRAIN, **1,750** after stage 5g; 1,595 after 5f, 1,931 before)
+plus two sends is ~1,790 against core 1's ~2,150 🟡 spare — a **17% margin**,
+down from 5f's 24% and up from the 9% the split left. ⚠️ **Stage 5g spent
+155 cycles** — the per-grain reset un-hoisting one of 5f's three lifted
+invariants, as priced. **The 4-grains→2 change would return roughly 300**
+and is the obvious place to go if this gets tight; it is now a cost
+decision with a voicing cost attached (half the simultaneous voices), not
+the free win the mis-cited "~60 cycles" made it look. It was 42% before GRAIN existed, so
 the trend still points one way and the burn sweep is still the only thing
 that can re-measure the ceiling, and the server-role lock means it is charged ONCE per
 bank however many tracks select it. Treat −952 as "the single-core model
@@ -822,12 +827,40 @@ each stage is a separate commit gated by `make check`):
      trap. Fixed here; page 2 is now full and correct — **WOW(6) MODE(7)
      VRBD(8) PTCH(9) SPRA(10) FRZE(11), three knobs and three selects,
      which is the hardware budget exactly.**
-   - **Still unheard**: FREEZE + GRAIN (the texture hold) and GRAIN through
-     the `→VERB` send (the delay→reverb wash the whole framing assumes).
-     Also measured, for the next round and not against this one: GRAIN's
-     L/R correlation is **0.00** against the reference granular's **+0.51**
-     — ours is WIDER, not narrower. If it ever reads as "no centre" the
-     lever is PING or correlating the two lines' scatter, not the window.
+   - ~~**Still unheard**: FREEZE + GRAIN and GRAIN through `→VERB`.~~
+     ✅ **GRAIN THROUGH `→VERB` WAS HEARD 13 Aug and PASSED** (Sam, on the
+     stage-5g engine: "sounds great") — see stage 5g below. **FREEZE + GRAIN
+     is still unheard.**
+     ⚠️ **Hearing it found a level defect, now FIXED.** The `→VERB` write
+     applied neither the **1/8 headroom** every other bus writer applies nor
+     the send-count registration, so `reverb_server`'s `asl #$3` (which
+     exists to undo that headroom) amplified it **eight times** — VRBW 100
+     pinned the reverb output at 1.000 FS. One `asr #$3,a,a` fixes it, and
+     the measurement confirms the factor is exactly 8: isolated peaks at
+     VRBW 25/50/100/127 went 0.220/0.426/~0.88/1.000 → **0.027/0.055/0.110/
+     0.140**, linear with no saturation. ⚠️ **The registration half is
+     deliberately NOT done** — it changes the balance of every other send on
+     the bus and wants hardware thought.
+   - ⚠️ **FREEZE + GRAIN IS UNHEARABLE WITH THIS HARNESS — a finding, not a
+     to-do.** `DFRZ` is a BUILD-TIME constant, so a frozen build is frozen
+     from sample 0: the line never takes input and loops silence (measured,
+     peak **0.003 FS**). The reason the override exists is the reason it
+     cannot demonstrate the mode — slot 11 is a companion LOW-BYTE field and
+     `dsp_host`'s `-params` cannot drive one, so FREEZE can never be toggled
+     mid-render. Needs a DEV-only "freeze after N samples" hook (~10 words),
+     a `dsp_host` extension, or hardware. **The same blocker applies to any
+     audition needing a companion-field change part-way through a render.**
+     ⚠️ **RETRACTED 13 Aug 2026 — "GRAIN is WIDER than the reference".**
+     The old reading was GRAIN's L/R **0.00** against the reference
+     granular's **+0.51**, measured on the reference's WHOLE FILE. But the
+     reference is `dry + grain layer`, and its dry is MONO at exactly
+     0.707 — so that +0.51 was the dry showing through, not the grains.
+     Fit the dry out and the reference's grain layer alone measures
+     **0.00 / +0.03** on melody/pad/stab: **the two agree, and there is no
+     width gap to close.** Falsifiable the same way it was found — refit
+     the dry and remeasure the residual. The old advice (PING, or
+     correlating the two lines' scatter) stands only if an ear reports "no
+     centre"; nothing measured now asks for it.
    ---
    **Stages 5b–5e, 12–13 Aug 2026 — the voicing pass, driven entirely by
    Sam's ears against a reference granular on his own melody.** Each one was
@@ -926,7 +959,118 @@ each stage is a separate commit gated by `make check`):
      1/3 have complementary window gains, so two smoothsteps would do
      instead of four — but it needs the loop restructured to 2 iterations of
      2 grains, saving ~60 cycles for ~100 words against payload B's 143.
-     A bad trade until words appear.
+     A bad trade until words appear. ⚠️ **Reopened by stage 5g** — halving
+     the grain count halves the cloud's EVENT RATE for free, which is now
+     the thing being bought. See below.
+   ---
+   **Stage 5g, 13 Aug 2026 — the reference stops being the target, and the
+   size/span budget gets written down.** Driven by Sam's ears against the
+   granular reference on all four of his own sources.
+   - ⚠️ **THE REFERENCE IS `dry + grain layer`, NOT A WET RENDER.** Its mono
+     dry sits at exactly **0.707 (−3 dB, equal-power 50/50)** in every file,
+     both channels. Any measurement of these files must fit the dry out
+     first and analyse the residual. This is what retracted the "+0.51 vs
+     our 0.00, ours is WIDER" claim above — see `docs/VOICING.md`.
+     ✅ Identified: **Efx Fragments, preset "1 Bar Glimmers"** (not a
+     Microcosm, which is what every earlier note assumed).
+   - ✅ **A REGRESSION FOUND BY EAR: 5e silently dropped 5b's interval
+     roll.** 5b measured the criterion — hold ≈ 1–2 × TIME — and shipped a
+     1-in-4 roll. After the split the rate is latched at EVERY grain wrap,
+     and four grains at quarter offsets means a new pitch every L/4 samples
+     (11.6 ms, 86 Hz at the shipping size). Sam, first pass: *"dense fast
+     changing (oscillating?) pitch"*. `make check` and the bit-identity gate
+     were both green throughout — the same lesson as 5d.
+     ⚠️ **And the first fix was wrong in an instructive way**: gating the
+     SHARED candidate holds one pitch across the whole cloud, which is a
+     pitch shifter with a dry blend (*"more like a pitch shifter than
+     granular"*). The gate belongs on each grain's OWN latch, where the
+     grain keeps the rate already in its record and four independent pitches
+     coexist. Carried in **x1** — y1 is clobbered by the builder's window
+     smoothstep every pass.
+   - ✅ **THE MASTER CONSTRAINT, and it reproduces the shipping constant:**
+
+     ```
+     ceiling = 16382 − (r_max − r_min) · L
+     ```
+
+     `L` = grain size, `r_max`/`r_min` the fastest/slowest rate in the set.
+     Shipping (L=2048, span 2.0→0.5) gives **13310 — the exact literal in
+     the source**; L=4096 with +12..−19 gives 9555; down-only at L=8192
+     gives 10921. Validated three ways. **Grain size × pitch span is one
+     fixed budget** — wide intervals or long grains, not both.
+   - ⚠️ **WHY SIZE IS THE LEVER**: a 46 ms grain is shorter than any musical
+     event, so what the ear tracks is the RESTART RATE, not the fragment —
+     that is the buzz. 93 ms holds a recognisable piece of the source.
+     Measured 20–120 Hz modulation 27% → 12% across that doubling.
+   - ⚠️ **AND WHY UPSHIFTS COST DOUBLE**: an upshifted grain reads faster
+     than the write pointer advances, so it must START a full `(r−1)·L`
+     further back or it overtakes. Dropping upshifts entirely changes the
+     bound to `16382 − 0.667·L` and makes 372 ms grains affordable —
+     **tried, and REJECTED BY EAR**: Sam, *"down only isn't going to cut it
+     as the only approach"*, preferring the up+down set at 93 ms as *"that
+     classic granular sound but not too over the top like an Eventide
+     Crystals"*. ⚠️ The down-only build also raised 20–120 Hz modulation
+     from 20% to 33% and **the cause is not known** — TIME sweeps do not
+     move it, so the obvious read-near-the-write-pointer explanation is
+     falsified. Set aside, not solved.
+   - ⚠️ **A WRONG INFERENCE, CORRECTED THE SAME DAY.** I read Sam's "not too
+     over the top like an Eventide Crystals" as a rejection of LONG
+     fragments, concluded that the reference's 63.6% sub-4 Hz was therefore
+     off-target, and wrote that the reference had stopped being the
+     objective. **Sam: "when I ruled out crystals it wasn't the bar length
+     it's always just heaps and heaps of crazy sounding busy notes."**
+     Crystals is rejected for BUSYNESS, not length — which is the opposite
+     reading. Sub-4 Hz is *sparser*, i.e. AWAY from Crystals, so **63.6%
+     remains a legitimate target** and moving toward it is moving toward
+     what he asked for. The lesson is the familiar one: an adjective was
+     turned into a mechanism without checking which mechanism was meant.
+   - **The two axes are independent, and conflating them caused the above.**
+     PITCH VARIETY over time (how many distinct notes the cloud visits) is
+     what Sam asked for with *"there aren't very many actual different notes
+     playing off the main one"* — fixed by the 8-entry set. BUSYNESS
+     (how many notes sound AT ONCE, and how often a new one starts) is what
+     Crystals fails at. Sparse-and-varied is coherent and is the target;
+     they only looked like one axis because the shared-candidate hold
+     collapsed both at the same time.
+   - ✅ **BUILT AND GATED, 13 Aug**, two candidates, both unstacked onto the
+     shipping source rather than grown as one blob:
+     `dsp/delay_grain_v2.asm` (per-grain hold + 8-entry set + L=4096,
+     **+43 words**) and `dsp/delay_grain_v3.asm` (v2 + per-grain reset +
+     L=8192, **+67 words**). `verify_delay` on both: **every CLEAN, PITCH,
+     TAPE and REVERSE case bit-identical, both controls pass, the
+     unknown-mode fallback bit-identical, and ONLY the three GRAIN cases
+     differ** — which is the change. Neither has had an ear pass yet.
+   - ✅ **THE PER-GRAIN RESET WORKED, measured**: envelope modulation
+     0.5–4 Hz **43.5% → 58.5%** (reference 63.6%), 4–20 Hz 36.7% → 22.9%
+     (reference 21.2%), 20–120 Hz 19.8% → 18.6% (reference 15.2%) — the
+     closest the distribution has come, **with +12 still in the set**. And
+     G's unexplained 20–120 Hz blow-up does NOT appear, so whatever that
+     was, it is specific to the down-only reset-to-zero and not to a large L.
+     ⚠️ Flux overshot slow (0.0122 against the reference's 0.0168).
+   - ⚠️ **THE "~60 CYCLES" FOR 4→2 WAS A MIS-CITATION.** That figure is 5f's
+     note about a DIFFERENT restructure — keeping four grains but running
+     the loop as 2 iterations of 2, exploiting complementary window gains to
+     compute two smoothsteps instead of four (~60 cycles for ~100 words).
+     **Halving the GRAIN COUNT is a much bigger saving**: the builder's
+     `do` and both readers are loops whose trip count IS the grain count,
+     and 5f measured GRAIN's path at 289 words straight-line **plus 609
+     cycles of roll**. Essentially all of that roll scales with N, so 4→2
+     takes GRAIN from ~898 to **~590 cycles/sample** 🟡 — order 300 saved,
+     not 60. Price it from a build report before spending it.
+   - **NEXT, and priced**: (1) **4 grains → 2**, which halves the event rate
+     at the same `L` for ~100 words and *saves* ~60 cycles — the 5f note
+     above, reopened. (2) **PER-GRAIN RESET**: today every grain reserves
+     room for BOTH extremes, but no grain needs both — an upshifter only
+     drifts down, a downshifter only up. Sizing each grain's reset from its
+     own rate changes the cost from `(r_max−1)L + (1−r_min)L` to
+     `max|1−r|·L`, i.e. `16382 − 1.0·L` instead of `16382 − 1.667·L`, which
+     makes **L=8192 affordable WITH +12 kept** (ceiling 2729 → 8190). Costs
+     un-hoisting one of 5f's three invariants.
+   - ⚠️ **NOT MATCHED, and structural**: the reference on the hat is loud
+     AND sparse (−6.7 dB at 72% gaps, crest 27). Our density gate only
+     subtracts energy, so sparse always costs level — we get −3.9 dB at 21%
+     gaps or −9.4 dB at 75%, never both. Needs makeup gain on the surviving
+     grains, which does not exist.
 6. **REVERSE** — ✅ **LANDED 12 Aug 2026 (`2cb04a7`), MODE 4**, and the
    estimate held: **174 words**, the cheapest mode, precisely because the
    crossfade machinery already existed. Two complementary heads half a

@@ -1840,9 +1840,9 @@ gmode:
         and     #>$1fff,a               ; 0..8191 samples (186 ms)
         move    a1,x0
         move    x0,a
-        move    #>2048,x0               ; -> straight to the RESET FORM this
-        add     x0,a                    ; grain's offset takes at its wrap:
-        asl     #$9,a,a                 ; (2048 + scatter) in Q14.9. Also
+        move    #>0,x0                  ; the SCATTER ALONE now -- the
+        add     x0,a                    ; reserve is added PER GRAIN below,
+        asl     #$9,a,a                 ; (4096 + scatter) in Q14.9. Also
         move    a1,x0                   ; per-sample-constant, so the builder
         move    x0,a                    ; no longer rebuilds it four times.
         move    a,x:(r7+$54)            ; reset form, line L
@@ -1856,9 +1856,9 @@ gmode:
         and     #>$1fff,a
         move    a1,x0
         move    x0,a
-        move    #>2048,x0               ; -> straight to the RESET FORM this
-        add     x0,a                    ; grain's offset takes at its wrap:
-        asl     #$9,a,a                 ; (2048 + scatter) in Q14.9. Also
+        move    #>0,x0                  ; the SCATTER ALONE now -- the
+        add     x0,a                    ; reserve is added PER GRAIN below,
+        asl     #$9,a,a                 ; (4096 + scatter) in Q14.9. Also
         move    a1,x0                   ; per-sample-constant, so the builder
         move    x0,a                    ; no longer rebuilds it four times.
         move    a,x:(r7+$55)            ; reset form, line R
@@ -1867,7 +1867,7 @@ gmode:
 ; become a parameter -- it is this constant and nothing else -- but page 2
 ; has no spare slot, so it stays fixed until something is given up.
         move    x:(r7+$32),a
-        move    #>$1000,x0
+        move    #>$400,x0
         add     x0,a
         and     #>$7fffff,a
         move    a1,x0
@@ -1878,7 +1878,7 @@ gmode:
         move    x:(r7+$5c),a            ; SPRAY, Q23
         asr     #$a,a,a                 ; ~ its max scatter in samples
         move    a1,x0
-        move    #>13310,a               ; 16382 - 2048 (reset) - 1024 (a -12
+        move    #>8190,a                ; 16382 - 8192 (a +12 grain's own
         sub     x0,a                    ; grain's upward traversal)
         move    a,x:(r7+$57)
         move    x:(r7+$75),a            ; TIME
@@ -1910,8 +1910,17 @@ grcapok:
 ; reachable for comparison.
 ;   index 0 -> mask 0: +12 only          index 1 -> mask 1: +12 / unison
 ;   index 2,3 -> mask 3: +12 / unison / +7 / -12
+        move    x:(r7+$18),a            ; the interval-hold roll draw
+        asr     #$c,a,a                 ; bits 12-13: a field no other draw
+        and     #>$3,a                  ; touches (set 0-2, density 5-10)
+        move    a1,x0                   ; the AND leaves A2 stale, so the
+        move    x0,a                    ; value leaves through a1
+        move    a,x1                    ; park: 0 == re-pitch at this wrap.
+                                        ; x1, NOT y1 -- the builder's window
+                                        ; smoothstep clobbers y1 every pass.
+                                        ; p = 1/4, so a grain holds ~4 lives.
         move    x:(r7+$5f),a            ; select index
-        move    #>$3,b                  ; wide by default
+        move    #>$7,b                  ; index 3 -> the WIDE 8-entry set
         tst     a
         move    #>$0,x0
         teq     x0,b                    ; index 0 -> fixed +12
@@ -1919,6 +1928,10 @@ grcapok:
         cmp     x0,a
         move    #>$1,x0
         teq     x0,b                    ; index 1 -> +12 / unison
+        move    #>$2,x0
+        cmp     x0,a
+        move    #>$3,x0
+        teq     x0,b                    ; index 2 -> the shipping 4-entry set
         move    b,x0
         move    x:(r7+$18),b
         and     x0,b
@@ -1934,11 +1947,28 @@ grcapok:
                                         ; keeps the cloud musical
         move    #>$2,x0
         cmp     x0,b
-        move    #>$ffff00,x0            ; 2 -> +7   (-256)
+        move    #>$155,x0               ; 2 -> -19  (+341)
         teq     x0,a
         move    #>$3,x0
         cmp     x0,b
         move    #>$100,x0               ; 3 -> -12  (+256)
+        teq     x0,a
+        move    #>$4,x0
+        cmp     x0,b
+        move    #>$0,x0
+        teq     x0,a                    ; 4 -> UNISON again: 2/8, so the cloud
+                                        ; still sits mostly at pitch
+        move    #>$5,x0
+        cmp     x0,b
+        move    #>$ffff55,x0            ; 5 -> +5   (-171)
+        teq     x0,a
+        move    #>$6,x0
+        cmp     x0,b
+        move    #>$80,x0                ; 6 -> -5   (+128)
+        teq     x0,a
+        move    #>$7,x0
+        cmp     x0,b
+        move    #>$ffff00,x0            ; 7 -> +7   (-256)
         teq     x0,a
         move    a,x:(r7+$5e)            ; the candidate rate, this sample
         move    x:(r7+$18),b            ; density: three PRNG bits vs DENS
@@ -2002,7 +2032,7 @@ grcapok:
         move    a,x:(r7+$59)            ; gain/2
 ; ---- this grain's own wrap: prev = (phase - SSTEP) & mask ----------------
         move    x:(r7+$5d),a
-        move    #>$1000,x0
+        move    #>$400,x0
         sub     x0,a
         and     #>$7fffff,a
         move    a1,x0                   ; prev (A1 only: the AND leaves A2
@@ -2025,8 +2055,13 @@ grcapok:
 ; unison is IN the set and is drawn as often as anything else, which is what
 ; keeps the cloud musical: most grains at pitch, some shifted.
 ; ---- record: rate, mute, offset, gain -- L then R ------------------------
-        move    y0,a
-        tst     a
+        move    x1,a                    ; this sample's roll draw
+        tst     a                       ; Z SET == re-pitch on this wrap
+        move    #>$800000,x0            ; else force "did not wrap", so the
+        move    y0,a                    ; grain KEEPS its own current rate
+                                        ; (a MOVE leaves the flag alone)
+        tne     x0,a                    ; roll missed -> hold this pitch
+        tst     a                       ; sign = wrapped AND rolled
         move    x:(r7+$5e),x0           ; candidate rate, hoisted
         move    x:(r4),b                ; current rate
         tpl     x0,b                    ; wrapped -> take the new one
@@ -2041,10 +2076,20 @@ grcapok:
         move    b,x:(r4)+
         move    b,x:(r7+$5b)            ; the LIVE mute
 ; offset: reset to (2048 + scatter) << 9 at the wrap, else += rate
+        move    x:(r7+$5a),a            ; this grain's rate delta
+        neg     a                       ; -delta: POSITIVE only for upshifts
+        move    #>$0,x0
+        tmi     x0,a                    ; a downshift reserves NOTHING
+        asl     #$d,a,a                 ; x8192 = (drift samples) << 9 at L=8192
+        move    a1,x0                   ; asl leaves A2 stale
+        move    x0,a
+        move    x:(r7+$54),x0           ; + (scatter << 9), hoisted
+        add     x0,a
+        move    a1,y1                   ; this grain's own RESET form
         move    x:(r4),a                ; current offset
         move    x:(r7+$5a),x0           ; this grain's live rate
         add     x0,a                    ; the RUNNING form, in a
-        move    x:(r7+$54),x0           ; the RESET form, hoisted -- Tcc takes
+        move    y1,x0                   ; the RESET form -- Tcc takes
                                         ; a REGISTER source, never an accumulator
         move    y0,b                    ; the parked wrap flag
         tst     b                       ; N SET == did not wrap
@@ -2072,10 +2117,20 @@ grcapok:
         tpl     x0,b
         move    b,x:(r4)+
         move    b,x:(r7+$5b)
+        move    x:(r7+$5a),a            ; this grain's rate delta
+        neg     a                       ; -delta: POSITIVE only for upshifts
+        move    #>$0,x0
+        tmi     x0,a                    ; a downshift reserves NOTHING
+        asl     #$d,a,a                 ; x8192 = (drift samples) << 9 at L=8192
+        move    a1,x0                   ; asl leaves A2 stale
+        move    x0,a
+        move    x:(r7+$55),x0           ; + (scatter << 9), hoisted
+        add     x0,a
+        move    a1,y1                   ; this grain's own RESET form
         move    x:(r4),a
         move    x:(r7+$5a),x0
         add     x0,a
-        move    x:(r7+$55),x0           ; the RESET form, hoisted
+        move    y1,x0                   ; the RESET form
         move    y0,b
         tst     b
         tpl     x0,a
@@ -2649,6 +2704,27 @@ pdone:
         move    x:(r7+$86),y1           ; ->VERB DRY level
         mpy     x0,y1,b
         add     b,a                     ; combined contribution
+        asr     #$3,a,a                 ; ⚠️ THE 3 BITS OF HEADROOM EVERY OTHER
+                                        ; WRITER APPLIES. dsp/send_client.asm
+                                        ; scales its contribution by 1/8 before
+                                        ; accumulating, and reverb_server undoes
+                                        ; it with `asl #$3` after the 1/N
+                                        ; auto-gain -- so a writer that skips
+                                        ; the /8 is amplified EIGHT TIMES on the
+                                        ; way out. Measured 13 Aug: at VRBW 100
+                                        ; the REVERB output pinned at 1.000 FS
+                                        ; and only VRBW <= 50 was usable. An
+                                        ; arithmetic shift, so A2 stays
+                                        ; consistent and the store below cannot
+                                        ; hit the saturation trap.
+                                        ; ⚠️ STILL MISSING, deliberately: this
+                                        ; send does NOT register in the Y:$983
+                                        ; SEND COUNT, so N excludes it and the
+                                        ; auto-gain divides by one client too
+                                        ; few. That is a separate change -- it
+                                        ; alters the balance of every OTHER
+                                        ; send on the bus -- and wants hardware
+                                        ; thought, not a same-session patch.
         move    x:(r7+$84),b            ; this call's REVERB ACC write address
         move    b,r5
         move    y:(r5),b

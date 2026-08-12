@@ -1488,12 +1488,21 @@ Measured alongside, for the next round rather than against this one:
 
 | | reference granular | GRAIN |
 |---|---|---|
-| L/R correlation | +0.51 (melody/pad/stab), +0.72 (hat) | **0.00** |
+| L/R correlation, WHOLE FILE | +0.51 (melody/pad/stab), +0.72 (hat) | **0.00** |
+| L/R correlation, GRAIN LAYER ONLY | **0.00 / +0.03 / -0.02** | **0.00** |
 
-⚠️ GRAIN is WIDER than the reference device, not narrower. Not a fault and
-not a target -- but if the pad ever reads as "no centre", the lever is the
-PING crossfeed (rendered at 64) or correlating the two lines' scatter,
-NOT the window. Also: the reference files carry content only in their
+⚠️ **RETRACTED 13 Aug 2026: "GRAIN is WIDER than the reference device" was
+wrong, and the whole-file row is why.** The reference is not a wet render --
+it is `dry + grain layer`, with the MONO dry sitting at exactly 0.707. That
+mono dry is what pulled the whole-file correlation to +0.51. Fit the dry out
+(scalar least-squares, per channel) and the reference's grain layer alone is
+uncorrelated, same as ours. **The two agree; there is no width gap.**
+Falsifiable the same way it was found: refit the dry, remeasure the
+residual. The old lever advice (PING crossfeed, or correlating the two
+lines' scatter) applies only if an ear reports "no centre" -- no
+measurement asks for it now.
+
+Also: the reference files carry content only in their
 first ~25-35 s; the rest of each is trailing silence.
 
 Still unheard, and the two combinations the design was built toward:
@@ -1601,3 +1610,169 @@ Open voicing questions: where DENSITY and SPRAY should default,
 whether the interval set wants weighting toward unison rather than uniform
 draws, and grain SIZE — now a free parameter for the first time (it is one
 constant in the schedule step) with no page-2 slot left to put it on.
+
+---
+
+## GRAIN stage 5g — the reference-matched pass (13 Aug 2026)
+
+Method changed, and that is the headline. The reference granular was
+finally **measured** rather than described: identified as **Efx Fragments,
+preset "1 Bar Glimmers"**, and — critically — found to be `dry + grain
+layer`, with the mono dry sitting at exactly **0.707 (-3 dB, equal-power
+50/50)** in all four of Sam's sources, both channels. Every number below is
+taken on the RESIDUAL after fitting that dry out. Doing this retracted the
+"+0.51 vs our 0.00, ours is WIDER" reading recorded above.
+
+### The metric that found what the others could not
+
+Level, gaps, L/R correlation and the shift histogram all MATCHED on the
+first pass, and Sam still said: *"those sound close now but the nature is
+completely different. Ref has sparse melodic musical pitches. Ours all have
+dense fast changing (oscillating?) pitch."* Every one of those metrics is
+TIME-AVERAGED. What sees it is the **envelope modulation spectrum + spectral
+flux of the grain layer**:
+
+| | flux | 0.5-4 Hz | 4-20 Hz | 20-120 Hz |
+|---|---|---|---|---|
+| reference | 0.0168 | **63.6%** | 21.2% | 15.2% |
+| shipping GRAIN | 0.0248 | 34.8% | 31.0% | 34.3% |
+| **v3 (DENS 45)** | 0.0083 | **63.9%** | **21.0%** | **15.1%** |
+
+### What each round established
+
+1. **A REGRESSION, found by ear.** 5e dropped 5b's interval roll: the rate
+   latches at EVERY grain wrap, so with four grains at quarter offsets the
+   cloud re-pitches every 11.6 ms. Both gates were green throughout.
+2. **The first fix was WRONG, instructively.** Gating the SHARED candidate
+   holds one pitch across the whole cloud. Sam: *"more like a pitch shifter
+   than granular."* The gate belongs on each grain's OWN latch.
+3. **"Not very many actual different notes"** -> the 4-entry set became 8
+   (unison x2, +12, +7, +5, -5, -12, -19), indices 0/1/2 unchanged.
+4. **Grain SIZE is the envelope lever, and it is line-bound.**
+   `ceiling = 16382 - (r_max - r_min) * L`, which reproduces the shipping
+   13310 exactly. **Per-grain reset** changes it to `16382 - max|1-r|*L`,
+   which is what bought L=8192 (186 ms) with +12 kept.
+5. **Down-only was tried and REJECTED BY EAR** — *"down only isn't going to
+   cut it as the only approach"* — despite being the cheapest route to long
+   grains. It also raised 20-120 Hz from 20% to 33%, **cause unknown**; TIME
+   sweeps do not move it, so the read-near-the-write-pointer explanation is
+   falsified. Set aside, not solved.
+
+### ✅ EAR PASS, on `dsp/delay_grain_v3.asm`
+
+**Sam, on melody at DENSITY 45 and 80: "both sound great."** Earlier in the
+same pass: *"sounding better and better"*, and on the 93 ms build *"that
+classic granular sound but not too over the top like an Eventide Crystals"*.
+
+**BOTH ENDS OF DENSITY PASS, so it is a character control, not a
+find-the-one-value knob** — the same conclusion SPRAY reached in 5a, and the
+argument for leaving it mid. The trade it spans is real and measured:
+DENS 45 matches the reference's modulation split almost exactly but leaves
+the grain layer ~8 dB under the dry; DENS 80 brings that to ~-6 dB with gaps
+at the reference's 6.9%, at the cost of more 20-120 Hz.
+
+### The demo pass (13 Aug) -- two findings the metrics could not have given
+
+Sixteen renders across the Discord demo sources (band / drums / guitar /
+piano), four voicings varying BOTH the delay and the reverb, all through the
+FIXED `->VERB`. Two verdicts from Sam:
+
+- ⚠️ **"It sounds a lot better lower."** Every voicing was re-mixed **6 dB
+  down** -- shifting each rather than flattening them to one number, so each
+  keeps its own grain-vs-wash balance. The set now runs grain -11 to -18 dB
+  under the dry, where it started at -5 to -12. **The engine was being
+  auditioned too loud all session**, including in the melody/pad/stab
+  rounds, which were judged at roughly the dry's own level.
+- ⚠️ **THE INTERVAL SET IS SOURCE-DEPENDENT, and this is the one thing no
+  measurement here could have found.** On a whole-band recording Sam
+  preferred **set 1 (unison + 12 only)** over the wide 8-entry set 3, at
+  identical settings and level. The wide set's -19 / -5 / +5 grains land as
+  WRONG NOTES against a full arrangement; on a solo line (melody, pad, stab)
+  the same set ear-passed. **Nothing in the modulation spectrum, the shift
+  profile, the gap statistics or the flux can see a wrong note against a
+  chord** -- the same class of blind spot as the pitch oscillation, but
+  harmonic rather than temporal.
+  → This is an argument for KEEPING the PTCH select's set-WIDTH meaning
+  rather than treating set 3 as simply "the good one", and it means the
+  DEFAULT should probably be narrow, with width as the character control.
+
+### Defaults this pass recommends
+
+MODE GRAIN, interval set **3** (the wide 8-entry draw), TIME **32**,
+FDBK **127**, SPRAY **64**, TONE **127**, DENSITY **45-80**.
+⚠️ **SPRAY must not be 0** — it collapses the grain layer's L/R correlation
+from 0.00 to **+0.50**. (The SHIPPING default is already 64 and always was;
+the 0 is `send_probe`'s test default, which is what produced the measurement.
+Noted so nobody "fixes" a default that is already correct.)
+
+### Two claims from this pass that were WRONG and are retracted here
+
+- **"4->2 grains saves ~60 cycles"** — a mis-citation of 5f's different
+  restructure. Halving the grain count halves the roll, so it is order
+  **300** cycles. 🟡 inferred from 5f's measured 289w + 609-cycle split.
+- **"Sub-4 Hz is the Crystals direction Sam ruled out"** — wrong reading.
+  Sam: *"when I ruled out crystals it wasn't the bar length it's always just
+  heaps and heaps of crazy sounding busy notes."* Crystals fails on
+  BUSYNESS, so sparser is TOWARD the target, and 63.6% stays legitimate.
+
+### ✅ GRAIN THROUGH `->VERB`, heard for the first time (13 Aug)
+
+One of the two combinations PLAN had listed as unheard since GRAIN landed.
+Rendered honestly: BOTH outputs taken from ONE `--layout RDS` run (`--pick D`
+and `--pick R`), so the wash really is this grain through ChonVerb rather
+than a separate reverb pass, then summed offline against the dry at the
+approved DENS 45 balance. **Sam: "sounds great."** at wash -8 dB and +2.9 dB
+relative to the grain.
+
+⚠️ Two things not to over-read from those files: the balance is CHOSEN
+OFFLINE (no single render gives dry + delay + wash in hardware
+proportions -- on the unit those come from the real send knobs), and the
+level below is a genuine defect.
+
+⚠️ **`->VERB` SATURATES: a MEASURED defect, not a suspicion.** At VRBW 100
+with the reverb's own track live the REVERB output peaks at **1.000 FS**.
+VRBW 25 gives 0.220 and VRBW 50 gives 0.426, so the usable range is roughly
+**VRBW <= 50** and the knob's printed 0..127 is mostly unusable headroom.
+This is the unregistered x8/N writer already on the voicing list; fix it
+before the cross-send ships.
+
+### Still open
+
+- ⚠️ **FREEZE + GRAIN IS NOT MERELY UNHEARD -- IT IS UNHEARABLE WITH THIS
+  HARNESS, and that is a finding, not a to-do.** `DFRZ` is a BUILD-TIME
+  constant, so a frozen build is frozen from sample 0: the line never takes
+  input and the engine loops silence. Measured 13 Aug -- peak **0.003 FS**.
+  The reason the override exists at all is the same reason it cannot
+  demonstrate the mode: slot 11 is a companion LOW-BYTE field and
+  `dsp_host`'s `-params` cannot drive one, so FREEZE can never be toggled
+  MID-RENDER. Hearing it needs one of: a DEV-only "freeze after N samples"
+  hook (~10 words), extending `dsp_host` to drive companion fields, or
+  hardware. The same blocker applies to ANY audition that needs a
+  companion-field change part-way through a render.
+
+- ✅ **THE `->VERB` SATURATION IS FIXED** (in `dsp/delay_grain_v3.asm`), and
+  the cause was exact rather than guessed. `dsp/send_client.asm` scales its
+  contribution by **1/8** before accumulating and registers in the Y:$983
+  SEND COUNT; `reverb_server` then applies the 1/N auto-gain and `asl #$3`
+  to undo that headroom. The delay's `->VERB` write did NEITHER, so the
+  reverb's `asl #$3` amplified it **eight times**. One `asr #$3,a,a` on the
+  combined contribution fixes it, and the measurement confirms the factor is
+  exactly 8: isolated reverb peak at VRBW 25/50/100/127 went
+  0.220/0.426/~0.88/1.000(clipped) -> **0.027/0.055/0.110/0.140**, linear
+  across the whole knob with no saturation anywhere.
+  ⚠️ **HALF THE BUG IS DELIBERATELY LEFT**: this send still does not
+  REGISTER in the send count, so N excludes it and the auto-gain divides by
+  one client too few. Fixing that changes the balance of every OTHER send on
+  the bus, so it wants hardware thought rather than a same-session patch.
+- The interval hold is **no longer load-bearing at L=8192**: disabling it
+  entirely leaves flux unchanged (0.0083 either way). It was a real fix at
+  46 ms grains. 13 words; keep until an ear says otherwise, but do not
+  describe it as carrying the sound.
+- **Flux is still half the reference** (0.0083 vs 0.0168) at a matched
+  modulation split. Structural: the reference uses SHORT grains spaced
+  SPARSELY, we use LONG grains overlapping DENSELY.
+- **hat still does not match** — the reference is loud AND sparse (-6.7 dB
+  at 72% gaps, crest 27); our density gate only subtracts, so we get
+  -3.9 dB at 21% gaps or -9.4 dB at 75%, never both. Needs makeup gain on
+  surviving grains, which does not exist.
+- pad, stab and hat have not had an ear pass on v3 at all.

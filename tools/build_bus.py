@@ -188,7 +188,15 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 90), (5, 0), (8, 0),
+    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 64), (5, 0), (8, 0),
+                     #      MIX 90 -> 64 (stage 5g). Sam, on the demo set:
+                     #      "it sounds a lot better lower". ⚠️ His finding
+                     #      actually implies LOWER still -- the grain sitting
+                     #      ~14 dB under the dry is MIX ~21 in the crossfade --
+                     #      but a near-dry default reads as "the effect does
+                     #      nothing", which is the exact trap this table's
+                     #      header warns about. 64 is the compromise, not the
+                     #      measured optimum.
                      (6, 48),   # WOW   a musical default wobble for TAPE
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
                      (11, 0),   # FRZE  run   -- a fresh part is never held
@@ -196,7 +204,25 @@ DEFAULTS = {
                                 #       scatter, so it boots half up rather
                                 #       than at 0 (where four grains stack on
                                 #       one read and it is just a thick PITCH)
-                     (9, 0)],   # PTCH  +12   -- all IN RANGE of their counts
+                     (9, 1)],   # PTCH  0 -> 1 (stage 5g), and it is a TRADE.
+                                #       Slot 9 is triple-meaning. For GRAIN it
+                                #       is the SET WIDTH, and 0 pins every
+                                #       grain to +12 -- the pre-split fixed
+                                #       engine, measurably the worst voicing
+                                #       (shift-profile error 0.495 against the
+                                #       reference, vs 0.173 for the wide set).
+                                #       A fresh part switching to GRAIN got
+                                #       that. 1 = +12/unison is usable
+                                #       everywhere and is what Sam preferred on
+                                #       a full band mix, where the wide set's
+                                #       -19/-5/+5 grains read as wrong notes.
+                                #       ⚠️ THE COST: PITCH now boots at +7
+                                #       instead of +12, and REVERSE at a
+                                #       2048-sample segment instead of 4096.
+                                #       Neither is a defect, both are a changed
+                                #       preference -- flagged because no ear has
+                                #       checked those two since the change.
+                                #       -- all IN RANGE of their counts
                                 # below (the default-as-index sequencer stall)
     # EVERY page-2 slot needs an explicit default now that all twelve are
     # enabled: an unlisted slot keeps the DONOR's default, which is sized for
