@@ -143,6 +143,19 @@
 ;                       phase then g^2 / t0 then tap). $15 doubles as the
 ;                       warm-up count stash -- warm-up and the sample loop
 ;                       are mutually exclusive by construction
+;   r7+$18              grain-jitter PRNG state, 23-bit xorshift (persistent,
+;                       seeded nonzero at warm-up: xorshift is dead at 0)
+;   r7+$19/$1a          previous ageL head 0 / head 1, for wrap detection
+;   r7+$1b/$1c          latched grain scatter, LineL head 0 / head 1, in
+;                       samples 0..1023 (persistent, held for a whole grain)
+;   r7+$1d/$1e          previous ageR head 0 / head 1
+;   r7+$1f/$20          latched grain scatter, LineR head 0 / head 1
+;   r7+$21              this sample's PRNG candidate offset (per-sample)
+;   r7+$22/$23          per-sample scratch for the wrap latches (parked age)
+;   r7+$24/$25          PITCH shifted OUTPUT tap L / R (per sample). Kept
+;                       separate from the loop's taps ($79/$7a) so the shift
+;                       never re-enters the feedback -- the non-cascading
+;                       topology, v2 stage 2c
 ;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
 ;                       with dsp/reverb_server.asm's convention)
 ;   r7+$63              this call's DELAY ACC read address (BUS.md bus)
@@ -564,6 +577,19 @@ dwarmz:
         move    b,x:(r7+$6c)            ; PITCH head ages start at 0 (they are
         move    b,x:(r7+$6d)            ; masked on load too, but determinism
                                         ; is what verify-delay bit-compares)
+        move    b,x:(r7+$19)            ; grain-jitter state: previous ages and
+        move    b,x:(r7+$1a)            ; the four latched offsets all start at
+        move    b,x:(r7+$1b)            ; 0, so a fresh instance is
+        move    b,x:(r7+$1c)            ; reproducible (verify-delay compares
+        move    b,x:(r7+$1d)            ; bit-exactly, and a boot-garbage
+        move    b,x:(r7+$1e)            ; offset would index a wild read)
+        move    b,x:(r7+$1f)
+        move    b,x:(r7+$20)
+        move    b,x:(r7+$21)
+        move    b,x:(r7+$24)            ; shifted output taps: only read in
+        move    b,x:(r7+$25)            ; PITCH, cleared for determinism
+        move    #>$123456,a             ; PRNG seed: any nonzero word (xorshift
+        move    a,x:(r7+$18)            ; is dead at 0), fixed for determinism
         move    x:(r7+$15),a            ; reload count
         move    #>$1,x0
         add     x0,a
@@ -681,7 +707,9 @@ pintend:
 ; reach 16384 or the read wraps onto data written THIS lap. sub/branch, not
 ; cmp (the cmp-encodes-as-max trap family: sub sets N and V properly).
         move    x:(r7+$75),a            ; TIME, 64..16320
-        move    #>14335,x0              ; 16384 - 2048 - 1
+        move    #>13311,x0              ; 16384 - 2048 - 1024 - 1 (window, the
+                                        ; grain jitter's max, and the lerp's
+                                        ; older neighbour)
         sub     x0,a
         tst     a
         ble     plagok                  ; TIME <= cap: keep it
@@ -751,18 +779,27 @@ plagok:
         add     x0,a
         move    a,x:(r7+$63)            ; advance ACC read pointer
 
-; ---- taps: engine dispatch on MODE (v2 stage 2) ---------------------------
-; MODE 1 = PITCH takes the shifted-tap path below; 0 and every unknown value
-; run the CLEAN taps -- a wrong select degrades to the trad delay, never to
-; silence (the stage-1 rule). The compare is the safe `cmp x0,a` form.
-; MODEFORK_BEGIN -- cycle_count.py: exactly one of the two paths between here
-; and MODEFORK_END runs per sample; the tool prices the WORST one, not both.
-        move    x:(r7+$69),a
-        move    #>$10000,x0             ; 1 << 16, MSB-aligned like the store
-        cmp     x0,a
-        beq     pmode
-
-; ---- CLEAN: read both delayed taps: manual wrap, no AGU modulo (v2 spine) -
+; ---- the FEEDBACK LOOP's taps: ALWAYS the unshifted read (v2 stage 2c) ----
+; NON-CASCADING PITCH. Until stage 2c the shifted taps WERE the loop's taps,
+; so every repeat was shifted again: repeat n had been through the shifter n
+; times and carried n generations of splice artifact. That compounding, not
+; the splice itself, is most of what an ear calls "machine" -- and ChonVerb
+; hit exactly this and fixed it the same way (its shimmer deliberately cut
+; its own cascade; see dsp/reverb_server.asm's SHIMMER block).
+;
+; Now the loop recirculates the CLEAN tap and the shifter sits on the OUTPUT
+; only, so every repeat is shifted exactly ONCE: a fixed-interval harmoniser
+; on the delay's output rather than a climbing ladder. TONE, PING, FDBK and
+; the write-back are all mode-blind and bit-identical to CLEAN's; the
+; substitution happens after the lines are written (below), so nothing
+; shifted ever re-enters the loop.
+;
+; ⚠️ The climb is GONE by construction -- +12 no longer walks up in octaves.
+; That was the Crystal behaviour stage 2 chose on purpose; it is exactly
+; what compounds the artifact, and the ear rejected it (12 Aug). If a climb
+; is ever wanted back it belongs on a select, not as the only topology.
+;
+; ---- CLEAN taps: manual wrap, no AGU modulo (v2 spine) --------------------
 ; read addr = base + ((wr - TIME) & $3fff). The AND is exact because both
 ; line bases are 0x4000-aligned, so the base falls out of the mask; wr-TIME
 ; never goes negative (base >= 0x30000 > TIME's 16320 max). A2 stays
@@ -791,7 +828,18 @@ plagok:
         move    a,r5
         move    y:(r5),a
         move    a,x:(r7+$7a)            ; dR
-        bra     pdone
+
+; ---- MODE dispatch: PITCH additionally computes the SHIFTED OUTPUT taps ---
+; 0 and every unknown value run the loop's clean taps alone -- a wrong select
+; degrades to the trad delay, never to silence (the stage-1 rule). The
+; compare is the safe `cmp x0,a` form.
+; MODEFORK_BEGIN -- cycle_count.py: exactly one of the two paths between here
+; and MODEFORK_END runs per sample; the tool prices the WORST one, not both.
+        move    x:(r7+$69),a
+        move    #>$10000,x0             ; 1 << 16, MSB-aligned like the store
+        cmp     x0,a
+        bne     pdone
+; MODEFORK_MID -- CLEAN's path is the fall-through above; PITCH starts here
 
 ; ---- PITCH: dual crossfaded lerp heads per line (v2 stage 2) --------------
 ; The shimmer-v3 machinery (dsp/reverb_server.asm SHIMMER block) reading the
@@ -801,10 +849,10 @@ plagok:
 ; this addressing). Per line:
 ;
 ;   age (Q11.12, persistent, wraps mod 2048 samples) advances by the
-;   interval step; head lag = PLAGB + age, so an upshift's head slides
-;   TOWARD the write pointer, replaying material at rate (1 + step/4096).
-;   Head 1 runs half a window (1024 samples) behind head 0. Each head:
-;   FULL-OVERLAP complementary triangle window on AGE
+;   interval step; head lag = PLAGB + age + JITTER, so an upshift's head
+;   slides TOWARD the write pointer, replaying material at rate
+;   (1 + step/4096). Head 1 runs half a window (1024 samples) behind head 0.
+;   Each head: FULL-OVERLAP complementary triangle window on AGE
 ;   (t = 1024-|age-1024|), smoothstepped, times a LERPED line read (integer
 ;   lag from age's top bits, Q23 fraction from its low 12 -- truncation is
 ;   the floor that cost the first shimmer, lerp is mandatory). Smoothstep
@@ -833,9 +881,8 @@ plagok:
 ;   delay range. A ramp-width sweep at C=8192 (R=512/1024/2048/4096)
 ;   confirmed the trade is 1-D and has no good point: envelope ripple
 ;   6.3/10.3/12.6/13.5 dB against off-carrier energy -8.7/-10.3/-14.5/
-;   -35.6 dB. The defect is PERIODICITY, not window shape: the fix has to
-;   break the fixed grain geometry (scatter the grain start), not reshape
-;   the crossfade. That is the next gated commit.
+;   -35.6 dB. The defect is PERIODICITY, not window shape -- see the
+;   jitter block below.
 ;
 ; The shifted taps land in $79/$7a exactly where CLEAN's taps land, so
 ; everything downstream -- TONE damping, the PING crossfeed, FDBK write-back,
@@ -847,8 +894,36 @@ plagok:
 ; mpy orientation throughout: the possibly-negative operand (tap, t1-t0) is
 ; ALWAYS x0, the first operand of the audited-signed `mpy x0,y1` form; y1
 ; only ever carries frac or a window gain, both strictly non-negative.
-; MODEFORK_MID -- CLEAN path ends above, PITCH path starts here
 pmode:
+; ---- grain jitter PRNG (v2 stage 2b) --------------------------------------
+; 23-bit xorshift, shifts 15/15/8: maximal period 8388607 (190 s of samples,
+; verified by simulation against the exact masked recurrence, along with a
+; flat distribution of the 10-bit field taken below). Every shift result is
+; re-cleaned through the a1->x0->a idiom because `and`/`eor` write A1 only
+; and leave A2 STALE -- the store trap. Advanced every sample; each head
+; LATCHES it at its own wrap, so the four grains scatter independently.
+        move    x:(r7+$18),a            ; state
+        move    a1,x0
+        asl     #$f,a,a
+        and     #>$7fffff,a
+        eor     x0,a                    ; x ^= (x << 15)
+        move    a1,x0
+        move    x0,a
+        asr     #$f,a,a                 ; state is always positive, so the
+        eor     x0,a                    ; arithmetic shift IS a logical one
+        move    a1,x0
+        move    x0,a
+        asl     #$8,a,a
+        and     #>$7fffff,a
+        eor     x0,a                    ; x ^= (x << 8)
+        move    a1,x0
+        move    x0,a                    ; A2 clean before the store
+        move    a,x:(r7+$18)
+        asr     #$d,a,a                 ; take the top 10 bits: 0..1023 samples
+        and     #>$3ff,a                ; of scatter (23 ms), the SPRAY depth
+        move    a1,x0                   ; GRAIN will put on a knob
+        move    x0,a
+        move    a,x:(r7+$21)            ; this sample's candidate offset
 ; ---- Line L: age update ---------------------------------------------------
         move    x:(r7+$6c),a            ; ageL, Q11.12
         move    x:(r7+$6a),x0           ; stepL (signed)
@@ -857,7 +932,58 @@ pmode:
         move    a1,x0
         move    x0,a                    ; A2-clean; boot garbage dies here
         move    a,x:(r7+$6c)
-; ---- Line L, head 0: lerp read at lag PLAGB + age -------------------------
+; ---- grain scatter: each head latches a new offset at ITS OWN wrap --------
+; The whole point of stage 2b. With a FIXED grain start the two heads sit a
+; half window (23 ms) apart on the line for ever, so for any steady partial
+; their relative phase is constant and they cancel on a metronome: measured,
+; the octave arrives as two equal lines one lap apart with nothing at 2f
+; (suppressed-carrier AM). Sam heard that as "robo" at a 43 Hz lap and
+; "fluttery" at 10.8 Hz -- the same defect at two rates, which is why no
+; window shape or length fixed it. Re-scattering each grain's source
+; position by 0..1023 samples makes the cancellation APERIODIC: the ear
+; stops tracking it as a machine and hears texture, which is what the
+; granular reference (PLAN 3.1) is actually made of.
+;
+; The jump is inaudible because a head's window gain is exactly 0 at its own
+; wrap -- so the full-overlap window is a PREREQUISITE for this, not just a
+; cleanup. GRAIN (stage 5) is this mechanism with more heads and the depth
+; on a SPRAY knob.
+        move    a,x:(r7+$22)            ; park age
+        move    x:(r7+$19),x0
+        sub     x0,a                    ; d = age - previous age
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; |d| > half a cycle == this head just
+                                        ; wrapped; N set means it did NOT
+        move    x:(r7+$21),b            ; this sample's candidate offset
+        move    x:(r7+$1b),x0           ; the grain's current offset
+        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
+                                        ; hand-rolled mask (A2 staleness)
+        move    b,x:(r7+$1b)
+        move    x:(r7+$22),a
+        move    a,x:(r7+$19)           ; prevL0 := ageL0
+; head 1 runs half a window ahead, so it wraps half a lap later
+        move    #>$400000,x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a                    ; A2 clean
+        move    a,x:(r7+$23)            ; park age
+        move    x:(r7+$1a),x0
+        sub     x0,a                    ; d = age - previous age
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; |d| > half a cycle == this head just
+                                        ; wrapped; N set means it did NOT
+        move    x:(r7+$21),b            ; this sample's candidate offset
+        move    x:(r7+$1c),x0           ; the grain's current offset
+        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
+                                        ; hand-rolled mask (A2 staleness)
+        move    b,x:(r7+$1c)
+        move    x:(r7+$23),a
+        move    a,x:(r7+$1a)           ; prevL1 := ageL1
+        move    x:(r7+$22),a            ; ageL0 back for the heads below
+; ---- Line L, head 0: lerp read at lag PLAGB + age + scatter ---------------
         move    a,x:(r7+$15)            ; park age_fx
         asr     #$c,a,a                 ; age_int, 0..2047
         move    a1,x0
@@ -867,6 +993,8 @@ pmode:
         move    x:(r7+$6e),x0           ; PLAGB
         sub     x0,a
         move    x:(r7+$6f),x0           ; age_int
+        sub     x0,a
+        move    x:(r7+$1b),x0           ; this grain's scatter
         sub     x0,a
         and     #>$3fff,a               ; read phase (t0, the newer neighbour)
         move    a1,x0
@@ -940,6 +1068,8 @@ pmode:
         sub     x0,a
         move    x:(r7+$6f),x0
         sub     x0,a
+        move    x:(r7+$1c),x0           ; this grain's scatter
+        sub     x0,a
         and     #>$3fff,a
         move    a1,x0
         move    x0,a
@@ -992,7 +1122,8 @@ pmode:
         move    x:(r7+$17),x0
         mpy     x0,y1,a
         add     b,a                     ; g0*tap0 + g1*tap1, g0+g1 ~= 1
-        move    a,x:(r7+$79)            ; dL, shifted
+        move    a,x:(r7+$24)            ; shifted OUTPUT tap L -- NOT $79:
+                                        ; the loop's tap stays unshifted
 ; ---- Line R: identical, on r2/base $68/age $6d/step $6b -------------------
         move    x:(r7+$6d),a
         move    x:(r7+$6b),x0
@@ -1001,6 +1132,40 @@ pmode:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$6d)
+        move    a,x:(r7+$22)            ; park age
+        move    x:(r7+$1d),x0
+        sub     x0,a                    ; d = age - previous age
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; |d| > half a cycle == this head just
+                                        ; wrapped; N set means it did NOT
+        move    x:(r7+$21),b            ; this sample's candidate offset
+        move    x:(r7+$1f),x0           ; the grain's current offset
+        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
+                                        ; hand-rolled mask (A2 staleness)
+        move    b,x:(r7+$1f)
+        move    x:(r7+$22),a
+        move    a,x:(r7+$1d)           ; prevR0 := ageR0
+        move    #>$400000,x0
+        add     x0,a
+        and     #>$7fffff,a
+        move    a1,x0
+        move    x0,a
+        move    a,x:(r7+$23)            ; park age
+        move    x:(r7+$1e),x0
+        sub     x0,a                    ; d = age - previous age
+        abs     a
+        move    #>$400000,x0
+        sub     x0,a                    ; |d| > half a cycle == this head just
+                                        ; wrapped; N set means it did NOT
+        move    x:(r7+$21),b            ; this sample's candidate offset
+        move    x:(r7+$20),x0           ; the grain's current offset
+        tmi     x0,b                    ; no wrap -> keep it. Tcc, never a
+                                        ; hand-rolled mask (A2 staleness)
+        move    b,x:(r7+$20)
+        move    x:(r7+$23),a
+        move    a,x:(r7+$1e)           ; prevR1 := ageR1
+        move    x:(r7+$22),a            ; ageR0 back
         move    a,x:(r7+$15)
         asr     #$c,a,a
         move    a1,x0
@@ -1010,6 +1175,8 @@ pmode:
         move    x:(r7+$6e),x0
         sub     x0,a
         move    x:(r7+$6f),x0
+        sub     x0,a
+        move    x:(r7+$1f),x0           ; this grain's scatter
         sub     x0,a
         and     #>$3fff,a
         move    a1,x0
@@ -1079,6 +1246,8 @@ pmode:
         sub     x0,a
         move    x:(r7+$6f),x0
         sub     x0,a
+        move    x:(r7+$20),x0           ; this grain's scatter
+        sub     x0,a
         and     #>$3fff,a
         move    a1,x0
         move    x0,a
@@ -1131,7 +1300,7 @@ pmode:
         move    x:(r7+$17),x0
         mpy     x0,y1,a
         add     b,a
-        move    a,x:(r7+$7a)            ; dR, shifted
+        move    a,x:(r7+$25)            ; shifted OUTPUT tap R
 ; MODEFORK_END
 pdone:
 
@@ -1207,6 +1376,29 @@ pdone:
         move    x:(r7+$68),x0           ; LineR base
         add     x0,a
         move    a,r2
+
+; ---- PITCH: the wet becomes the SHIFTED tap (v2 stage 2c) ----------------
+; Placed HERE deliberately: both lines have already been written above from
+; the clean tap, so the shift can never re-enter the feedback loop. From
+; this point on the wet -- own-track MIX, the shared DELAY WET buffer and
+; the ->VERB send -- carries the shifted signal, and everything downstream
+; stays mode-blind.
+;
+; Branchless via Tcc: cmp sets Z, the intervening moves do not disturb it,
+; and teq moves a CLEAN register into the accumulator (never a hand-rolled
+; mask -- the A2-staleness store trap). In CLEAN mode teq does not fire and
+; the wet is bit-identical to v1's.
+        move    x:(r7+$69),a
+        move    #>$10000,x0
+        cmp     x0,a                    ; Z set == PITCH
+        move    x:(r7+$24),x0           ; shifted L
+        move    x:(r7+$7b),b            ; loop's wet L
+        teq     x0,b
+        move    b,x:(r7+$7b)
+        move    x:(r7+$25),x0           ; shifted R
+        move    x:(r7+$7c),b
+        teq     x0,b
+        move    b,x:(r7+$7c)
 
 ; ---- own track: wet added to dry, MIX-scaled ------------------------------
         move    x:(r7+$7b),x0           ; wet L = fL
