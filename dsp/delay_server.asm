@@ -1942,8 +1942,20 @@ gmode:
 ; Branchless 4-way select on two PRNG bits, then gated by three more (1 in
 ; 8), then overridden wholesale at select index 0. Parked, because the wrap
 ; test below needs the condition codes and this clobbers them.
+; The SET is the select's other job: index 1 draws from {+12, +7} alone,
+; indices 2 and 3 add +19 and -12. Sam, on the narrowed set: "sounded
+; somewhat better" -- the wide leaps were part of the unmusicality, though
+; only part (the rest is that all four grains jump TOGETHER, which is
+; structural and not fixable from here).
+        move    x:(r7+$5f),a            ; select index
+        move    #>$1,x0
+        cmp     x0,a
+        move    #>$3,a                  ; wide: {+12,+7,+19,-12}
+        move    #>$1,x0
+        teq     x0,a                    ; index 1: {+12,+7} only
+        move    a,x0
         move    x:(r7+$18),b            ; PRNG state, advanced above
-        and     #>$3,b                  ; two bits: which interval
+        and     x0,b                    ; which interval, within the set
         move    b1,x0
         move    x0,b                    ; A2-clean before the compares
         move    #>$1000,a               ; 0 -> +12  (rate 2.0)
