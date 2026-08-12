@@ -1499,3 +1499,101 @@ first ~25-35 s; the rest of each is trailing silence.
 Still unheard, and the two combinations the design was built toward:
 FREEZE + GRAIN (the texture hold) and GRAIN through the ->VERB send (the
 delay->reverb wash the whole framing assumes).
+
+---
+
+## BongDelay v2 stages 5b–5e — the voicing pass (12–13 Aug 2026)
+
+Method: Sam's own source material (`melody_1_dry.wav` and friends, 48k mono)
+rendered through the DS layout, level-matched, one file per play, narrated.
+The reference was **his own granular** applied to the same samples
+(`melody_3.wav` et al.) — the first time this project has had a target
+rather than an adjective. Content in those files is only the first ~25–35 s;
+the rest is trailing silence.
+
+**Sam on which source shows it: "melody is an especially good one to display
+the musical random sounding pitched repeats and the smooth glassy sound."**
+Those two phrases drove every change below.
+
+### Round 1 — SPRAY sweep (0 / 40 / 80 / 127), wet only
+
+Verdict: **"they were all granular in that they had random grains playing.
+But there was still a lot more of the melody lines playing and it was just
+kind of changing pitch of beat and every now and then."**
+
+Two findings in one sentence, and both were structural:
+- "a lot more of the melody lines playing" → the four grains sum to exactly
+  1.0 at all times, so the output is GAPLESS. The flat-sum rule came from
+  PITCH, where ripple was the defect; in a granular the gaps ARE the
+  texture. → **DENSITY** (stage 5d).
+- "changing pitch every now and then" → the interval rolled at 1-in-8, a
+  measured hold of 3.5 × TIME. → **1-in-4**, measured at 1.05 × TIME.
+
+### The rate criterion, because "which is best?" deserved an answer
+
+Sam, fairly: **"best in what way?"** The target character is *repeats at
+different pitches*, which fails in two directions — hold much longer than a
+repeat and many repeats share a pitch (harmonic drift); much shorter and the
+pitch changes DURING a repeat (warble). So the criterion is **hold ≈ 1–2 ×
+TIME**, which is measurable rather than a taste call:
+
+| roll rate | hold | × TIME (161 ms) | reads as |
+|---|---|---|---|
+| every wrap | 64 ms | 0.40 | warble, changes 2.5× within a repeat |
+| 1 in 2 | 109 ms | 0.68 | still sub-repeat |
+| **1 in 4** | **170 ms** | **1.05** | **one interval per repeat** ✅ |
+| 1 in 8 | 559 ms | 3.47 | 3–4 repeats share a pitch |
+
+The criterion picked a value none of the three offered variants had, which
+is why it was derivable rather than guessable. ⚠️ The pocket is TIME-
+dependent and the dice are not: the hold is ~170 ms absolutely, so it drifts
+out of the pocket at TIME extremes. Tying the probability to TIME needs a
+reciprocal and a slot neither of which exists yet.
+
+### Round 2 — "sounds nothing like a granular", and a wrong diagnosis
+
+Sam: **"Are we choosing the end sound or an aspect? This sounds nothing like
+a granular just sounds like a slightly effected verb."** Both halves fair —
+the roll rate had become the whole conversation while the gross balance had
+never been auditioned.
+
+⚠️ **Two causes were offered and one was invented.** The claim that a unity
+dry was swamping it was reasoned from `out = dry + wet*MIX` in the source;
+the harness says `-inmask` feeds the SENDS only, so a server's own track is
+silent and every `--pick D` render was already 100% wet. The real cause was
+duller: those renders were `--pick R`, the reverb's output. **Do not judge
+the delay through the reverb** — it is a wash with grain in it.
+
+What survived is a genuine hardware defect the harness could not see, and
+`--inall` was added so it can (dry remaining 100/53/7.1% at MIX 0/64/127).
+
+### Round 3 — density, and a bug an ear caught in one pass
+
+Sam: **"plays random high grains on left side and a noise wash on the right.
+dens seems to be working though."** The density mechanism was fine; the
+noise was a condition-code clobber between two Tcc's (now a CLAUDE.md trap).
+R's zcr 10888 → 744 against L's 739. **`make check` and the bit-identity
+gate were both GREEN through this** — the code was deterministic and every
+mode assembled. Only ears found it, which is the argument for auditioning
+every stage rather than trusting the gate.
+
+Then: **"both sides working now. It's still jumping around in a not very
+musical fashion, but is starting to work more like granular."**
+
+### Round 4 — the split
+
+Narrowing the set to {+12, +7} was "somewhat better" — the wide leaps were
+part of it. The rest was structural and is stage 5e: all four grains shared
+one accumulator, so a roll made the whole layer leap at once, and **unison
+was unreachable** (rate 1.0 → the age never advances → no wrap → no
+re-scatter). "Mostly at pitch, some shifted" is most of what makes a cloud
+musical, and it was not in the set because it *could not be*.
+
+### Where it stands
+
+Mechanically GRAIN is now a real granular: independent per-grain pitch,
+position, and on/off, with unison in the set. **Not yet ear-judged after the
+split.** Open voicing questions: where DENSITY and SPRAY should default,
+whether the interval set wants weighting toward unison rather than uniform
+draws, and grain SIZE — now a free parameter for the first time (it is one
+constant in the schedule step) with no page-2 slot left to put it on.

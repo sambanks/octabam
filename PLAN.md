@@ -90,7 +90,19 @@ fits; anything else waits on the reverb-side LFO-block roll lever below.
 **Payload B used 726, FREE 1,998** — 12 Aug (v2 stage 1, delay 514 → 559):
 **used 771, FREE 1,953** — 12 Aug (auto-gain, delay +65 / send +9): **used
 845, FREE 1,879** — 12 Aug late (v2 stage 2 PITCH, delay +526): **used
-1,371, FREE 1,353.**
+1,371, FREE 1,353** — 12–13 Aug (stages 3/4/4b/5/5b–5e/6, delay 1,371 →
+**2,375**): **used 2,596, FREE 128.**
+
+⚠️ **PAYLOAD B IS NO LONGER ROOMY, and this is the entry that says so.**
+Every stage costed itself against "~1,000 free" and that figure went stale
+under them: BongDelay is 2,375 words, a 4.6× growth over v1's 514, and B's
+slack is down to **128**. Stage 5's "the roll is MANDATORY, it does not fit
+unrolled" reasoning now applies to *any* further mode — and r7 is full at
+the same time, so the next feature needs both the Y state table and words
+that do not exist. **Program space has become a design driver on payload B
+for the first time**, which retires the "specialising the payloads frees
+1,998 words for nothing" framing for B specifically. A is unchanged at
+FREE 4.
 
 ⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
 layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
@@ -141,14 +153,16 @@ The ten FX1 effects, with sizes (identical in both payloads):
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
 already running** (worst case, no derating needed). `make cycles`, 12 Aug
 (late): **room for new work: −232 cycles/sample** (819 on 11 Aug post-R18;
-v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352, **GRAIN →
-−232**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
+v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352, GRAIN → −232,
+**GRAIN 5e → −952**). ⚠️ **THE PRINTED NUMBER HAS GONE NEGATIVE, and the model is what
 broke first, not the chip.** It sums reverb + delay + two sends on ONE
 core; on hardware ChonVerb is payload A (tracks 5–8, core 0) and BongDelay
 is payload B (tracks 1–4, core 1), so no core ever pays both. The delay's
-worst path (GRAIN, 1,211) plus two sends is ~1,251 against core 1's
-~2,150 🟡 spare, and the server-role lock means it is charged ONCE per
-bank however many tracks select it. Treat −232 as "the single-core model
+worst path (GRAIN 5e, **1,931**) plus two sends is ~1,971 against core 1's
+~2,150 🟡 spare — ⚠️ that is now a **9% margin**, where it was 42% before
+the split, and it is the first time this project has been anywhere near a
+real cycle wall. GRAIN's rolled builder is the whole of it, and the server-role lock means it is charged ONCE per
+bank however many tracks select it. Treat −952 as "the single-core model
 has outlived its usefulness", not as an overrun — and note that the burn
 sweep is now the ONLY thing that can re-measure the real per-core ceiling,
 which raises the priority of unblocking it. ✅ **The mode-fork model was generalised to N paths, 12 Aug
@@ -812,8 +826,121 @@ each stage is a separate commit gated by `make check`):
      L/R correlation is **0.00** against the reference granular's **+0.51**
      — ours is WIDER, not narrower. If it ever reads as "no centre" the
      lever is PING or correlating the two lines' scatter, not the window.
-6. **REVERSE** — windowed backward reads, same crossfade machinery
-   (~150–250 words) — cheapest AFTER grain exists.
+   ---
+   **Stages 5b–5e, 12–13 Aug 2026 — the voicing pass, driven entirely by
+   Sam's ears against a reference granular on his own melody.** Each one was
+   a structural finding, not a knob turn, and three of the four came from a
+   single sentence of feedback:
+   - ✅ **5b, ROLLING INTERVALS (`e7990aa`).** GRAIN applied ONE fixed
+     interval, so every repeat came back the same pitch; the reference has
+     "musical random sounding pitched repeats". **Decided by measurement,
+     against my own recommendation**: I argued for simultaneous per-grain
+     intervals; single-series harmonicity said 0.952 dry / 0.780 reference /
+     0.806 our fixed GRAIN — four simultaneous transpositions would put the
+     reference far BELOW ours, and 0.03 apart says one at a time, varying.
+     **Why it works without a cascade is stage 2c's doing and nobody had
+     noticed**: the loop recirculates the CLEAN tap while the shifter reads
+     the line at TIME lag, so a changing interval means each repeat is
+     shifted by whatever is current as it passes the read head — different
+     pitches per repeat, no compounding. Rate measured against TIME: 1-in-4
+     holds 170 ms = **1.05× TIME**, one interval per repeat; 1-in-8 held 3.5
+     repeats ("changing pitch every now and then"), every-wrap changed 2.5×
+     WITHIN a repeat (warble). The criterion is hold ≈ one repeat, and it is
+     measurable — which is why the right value was derivable rather than a
+     taste call.
+   - ✅ **5c, MIX CROSSFADES + SPRAY WIDENED (`9491e41`), and a WRONG
+     DIAGNOSIS.** Sam: "sounds nothing like a granular, just a slightly
+     effected verb". I gave two causes; **one was invented**. I claimed a
+     unity dry was swamping it, reasoning from `out = dry + wet*MIX` in the
+     source — but send_probe's `-inmask` feeds the SENDS only, so a server's
+     own track is silent, MIX=0 renders −240 dBFS and every `--pick D`
+     render was ALREADY 100% wet. The real cause was duller: those renders
+     were `--pick R`, the reverb's output. ⚠️ What survived is a genuine
+     HARDWARE defect — on the unit the effect is an insert and the track
+     really carries audio, so the wet could at best EQUAL the dry and a
+     texture mode could never dominate. MIX now crossfades, written as
+     `dry + MIX*(wet−dry)` so it needs no 1−MIX slot. **And the harness
+     could not see it**, so `send_probe --inall` was added (feed every live
+     slot): measured dry remaining 100% / 53% / 7.1% at MIX 0/64/127, where
+     the old code read 100% at all three. SPRAY went 0..1023 samples (23 ms,
+     "a flam, not a cloud") to 0..8191 (186 ms); GRAIN got its own
+     SPRAY-derived lag base so range is spent only when scatter is used.
+   - ✅ **5d, DENSITY (`9995afb`) — and the flat-sum rule was the defect.**
+     Sam: "still a lot more of the melody lines playing". Four grains
+     windowed to sum to exactly 1.0 are GAPLESS, so the output is a
+     continuously shifted melody, not a cloud of fragments. **The
+     N-MUST-BE-EVEN rule was inherited from PITCH, where ripple was the
+     defect, and is exactly wrong here: in a granular THE GAPS ARE THE
+     TEXTURE.** Grains now drop out, decided at their wrap. DENSITY is the
+     WOW knob (TAPE-only, so GRAIN reuses it — the same dual meaning
+     REVERSE gives PTCH). Measured: rms −9.4 dB and near-silent 10 ms
+     windows 0% → 13% across the knob.
+   - ⚠️ **AND 5d SHIPPED A BUG THAT AN EAR CAUGHT IN ONE PASS** — see the
+     new trap in CLAUDE.md. Both scatter latches test ONE `N` flag from the
+     wrap comparison and had been separated by nothing but moves; the
+     density gating put `clr`/`tst` between them, so line R re-scattered
+     EVERY SAMPLE. A read position that jumps every sample is broadband
+     noise: Sam heard "a noise wash on the right" immediately. R's zcr
+     10888 → 744 against L's 739 once the flag was parked and restored.
+     ⚠️ **And I misdiagnosed it first**, concluding "this predates today's
+     changes" from a bisect in which every point was built from the CURRENT
+     source. A bisect that does not vary the thing it claims to vary is not
+     a bisect.
+   - ✅ **5e, THE SCHEDULE/RATE SPLIT (`265d409`) — the grain core
+     redesigned.** Sam: "still jumping around in a not very musical
+     fashion". Narrowing the interval set helped "somewhat"; the rest was
+     structural. ONE accumulator drove both the window envelope and the read
+     position, which forced three things at once: every grain shifted by the
+     same interval and they all jumped TOGETHER (a step, not a morph);
+     **UNISON WAS STRUCTURALLY UNREACHABLE** (rate 1.0 means the age never
+     advances, so the grain never wraps and never re-scatters — the set had
+     no unison in it because it COULD not, and "mostly at pitch, some
+     shifted" is most of what makes a cloud musical); and grain SIZE was
+     welded to the pitch ratio. Now a schedule phase drives only the
+     envelope while each grain accumulates its own read offset at its own
+     rate. Record `[rate, mute, offset, gain]` × 8 = **exactly the 32 words
+     the old table used**, so a core redesign cost no r7 space. The offset
+     is Q14.9 and carries its own lerp fraction — with per-grain rates there
+     is no shared sub-sample position. ⚠️ **Load-bearing bound**: a +12
+     grain traverses 2048 samples over its 2048-sample life, so the offset
+     resets to 2048 + scatter and the lag ceiling subtracts 3072; at full
+     SPRAY GRAIN's max TIME is ~116 ms. Select 0 pins every grain to +12,
+     the nearest thing to the pre-split engine, kept reachable for A/B.
+   - ⚠️ **GRAIN is now the most expensive thing in the project**: its path is
+     488w + 1,119 of roll, taking the delay to **1,931 cycles/sample**. See
+     the cycle ledger — it fits core 1 but the margin is gone, and the
+     rolled builder is doing work that could be hoisted. An optimisation
+     pass is owed if the ear keeps this direction.
+6. **REVERSE** — ✅ **LANDED 12 Aug 2026 (`2cb04a7`), MODE 4**, and the
+   estimate held: **174 words**, the cheapest mode, precisely because the
+   crossfade machinery already existed. Two complementary heads half a
+   segment apart, windowed and smoothstepped so g0+g1 == 1 exactly and each
+   restart lands where that head's gain is 0.
+   **THE READ IS EXACT — the only moving read in the file that is.** The
+   segment-local index is `p = phase*S/2^23`, which is what a fractional mpy
+   of the phase by S computes, so p advances by exactly 1 per sample and
+   every read lands on a whole sample: NO LERP, where PITCH and TAPE both
+   need one. That is also why **S must be a power of two** — the phase step
+   is 2^23/S and only a power of two makes it an integer.
+   `read = wr − (LAG0 + 2p)`; the 2 is the write pointer running away from
+   the read at 1 sample/sample, so the address decreases by exactly 1.
+   ⚠️ **The size ceiling is the LINE, not taste**: playing S samples
+   backwards takes S samples during which the write advances S, so the
+   buffer must hold 2S of history and a 16,384-word line caps S at 4096
+   (93 ms). SIZE reuses the PTCH select (4096/2048/1024/512) — one select,
+   two meanings, because MODE already says which is in force and page 2 has
+   no spare slot. Output-only (stage 2c): a reverse read HAS a splice, and
+   recirculating it would compound one per repeat.
+   **Verified by measurement, not by "it makes sound"**: a 200→4000 Hz chirp
+   with a silent tail, TIME high so the tail is pure wet — CLEAN's tail
+   rises monotonically (15 rising 10 ms steps, 2 falling), REVERSE falls
+   within each segment and jumps up at the boundary (13 falling, 8 rising),
+   a sawtooth no forward read can produce, period ~46 ms = half the 93 ms
+   segment, which is the two heads swapping dominance.
+   ⚠️ **r7 IS NOW FULL**: `$62` was the last free slot ($32..$62 fully
+   allocated; `$84+` hangs the unit). REVERSE reuses GRAIN's per-sample
+   scratch, sound only because the mode alternatives are mutually exclusive
+   within a sample. **A seventh mode needs the Y state table, not r7.**
 
 All costs 🟡 inferred from shipped analogues (shimmer 130 words, gate ~104
 cycles); price each stage by the build report when it lands, and stop
@@ -824,6 +951,27 @@ CAND=<file> [REF=<file>]` proves any future delay engine bit-identical to
 the shipping one, with the same two controls as `verify_roll` (a blind
 harness and a placement-lucky candidate both fail loudly). `DLSRC=` swaps
 the delay source per build exactly as `RVSRC=` does the reverb's.
+
+**PAGE 2 IS FULL, and three slots carry two meanings.** As of stage 5e the
+delay draws every slot the hardware allows — three knobs and three selects,
+which is the budget exactly (DSP.md section 9):
+
+| slot | field | CLEAN / PITCH / TAPE | GRAIN | REVERSE |
+|---|---|---|---|---|
+| 6 | `$b` knob | WOW (TAPE depth) | **DENSITY** | — |
+| 7 | `$c` high | MODE — CLEAN / PITCH / TAPE / GRAIN / REVERSE (count 5) |||
+| 8 | `$d` knob | →VERB DRY |||
+| 9 | `$d` low | PTCH interval | **interval SET** | **SIZE** |
+| 10 | `$e` knob | SPRAY (scatter depth) |||
+| 11 | `$e` low | FREEZE |||
+
+Dual meanings are deliberate: MODE already says which is in force, and a
+knob that does nothing in three modes is worse than one that does something
+in all five. ⚠️ Every one of these rides the on-unit reconfirm checklist,
+and **six of them have never been touched on hardware** — WOW, SPRA and
+FRZE were only enabled on 12 Aug (they had been named, defaulted and
+counted but left out of the enable bitmap, so they drew no knob at all),
+and MODE is a 5-way select where the unit has only ever seen a 3-way.
 
 **Parameters — no new UI mechanism.** Everything is the existing knob-page
 descriptor system (MODE-as-stepped-select is shipped tech: ChonVerb MODE,

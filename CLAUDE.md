@@ -46,6 +46,30 @@ staleness. A plain `move #imm,reg` does NOT disturb the condition codes, so
 the `sub`/`tst` that sets the flag survives to the Tcc. (This is also why the
 sample loop stays branch-free: Tcc replaces the branch AND avoids the trap.)
 
+**A Tcc pair that shares ONE compare is broken by ANY arithmetic between
+them — and nothing at the second site looks wrong.** The branch-free idiom
+here is `cmp`/`tst` once, then several `Tcc`s that all read the same
+condition codes, relying on the fact that MOVES do not disturb them. That
+holds until someone inserts real work in the middle. GRAIN's two scatter
+latches (line L, line R) shared one wrap flag; adding a density gate
+containing `clr b` and `tst a` between them left line R testing garbage, so
+it re-latched a random read position EVERY SAMPLE instead of once per grain.
+That is broadband noise, and it was audible as a hiss **on the right channel
+only** — found by ear (13 Aug), not by any check, because `make check` and
+the bit-identity gate were both green: the code was deterministic and every
+mode still assembled. Fix: park the compare's RESULT in a scratch slot and
+restore the flag with `tst` before each Tcc that needs it. **When you add
+anything to a block, check what the code BELOW it assumed about the
+condition codes** — the dependency is invisible at the point you edit, and
+`clr`, `and`, `abs`, `tst` and every arithmetic op all set them. Same family
+as the A2-staleness trap: legal instructions, correct-looking source, wrong
+machine behaviour.
+
+**`Tcc` takes a REGISTER source, never an accumulator, and `clr` takes an
+accumulator, never a register.** `tpl b,a` and `clr x0` are both
+InvalidInstruction — caught at assembly, which is the cheap case, but they
+look plausible enough to write repeatedly. Move the value through `x0`.
+
 **`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
 label as its prefix.** Adding a loop labelled `warmz2` next to the existing
 `warmz` assembled to
@@ -60,6 +84,16 @@ three above: clean assembly, wrong machine code. Found 9 Aug 2026, after three
 wrong guesses (emulator memory limits, buffer alignment, a stale modulo) that
 were all *reasoned about* rather than disassembled. **Disassembling first would
 have cost one step instead of four** — the rule above is not advice.
+
+**Build-time markers and base literals count when they appear in COMMENTS.**
+`build_bus.py` census-checks the number of `$30000` literals in the delay
+source and requires exactly one `; DMODE_OVERRIDE` / `; DINT_OVERRIDE`
+marker — and the substitution is a blanket text replace over the whole file.
+Writing *about* either in a comment trips the guard: both happened while
+documenting stage 5/6 (a comment explaining why mode 3's immediate must be
+decimal spelled the hex out; another explaining the override marker spelled
+the marker out). The build refuses, loudly, which is the guard working —
+describe them in prose instead of spelling them.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
 memory and each half of the tracks can reach only its own core's server — worse
