@@ -25,7 +25,7 @@ delay→reverb series topology).
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE LANDED** (`6aac927`, loop length = TIME, verified bit-identical loops). PITCH is still not voiced. See 3.1 |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
@@ -141,7 +141,12 @@ The ten FX1 effects, with sizes (identical in both payloads):
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
 already running** (worst case, no derating needed). `make cycles`, 12 Aug
 (late): **room for new work: 352 cycles/sample** (819 on 11 Aug post-R18;
-v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352). ⚠️ The PITCH
+v2 stage 1's wrap → 777, delay auto-gain → 770, PITCH → 352). ✅ **The mode-fork model was generalised to N paths, 12 Aug
+(`3fc25ba`)**: BEGIN..first MID is the always-run dispatch and each MID..next
+is one mutually exclusive alternative, so three modes are priced as
+dispatch + WORST alternative (dispatch 14w, PITCH 524w, TAPE 193w) instead
+of every engine summed. It also stopped under-charging the dispatch, which
+moved the delay 762 → 769 before TAPE counted at all. ⚠️ The PITCH
 drop is a MODEL change as much as a cost: the tool now prices the delay's
 mode fork at its worst path (~450 cycles in PITCH mode), and the bank model
 is the pre-XBUS single-core one — on hardware the PITCH cost lands on
@@ -598,7 +603,7 @@ each stage is a separate commit gated by `make check`):
    DMODE=3→CLEAN). Every emitted mpy signed (2000c0/c8), abs/neg checked.
    Cost: delay 624 → 1,150 words (→ **1,086 after `e6f5359`**, the
    branchless window being 64 words cheaper); payload B used 845 → 1,371 →
-   **1,307 → 1,287 after stages 2b/2c/3, FREE ~1,216**; ~450 cycles/sample in PITCH mode only (CLEAN path
+   **1,505 after stages 2b/2c/3/4, FREE ~1,000**; ~450 cycles/sample in PITCH mode only (CLEAN path
    unchanged;
    `cycle_count` now prices the mode fork at its WORST path via MODEFORK
    markers instead of refusing or summing both engines).
@@ -685,8 +690,30 @@ each stage is a separate commit gated by `make check`):
    keyed off its own block counter. Slot 11 rides the on-unit reconfirm
    checklist like every other select — the SHMR wrong-offset bug is what
    that checklist exists for.
-4. **TAPE** — wow/flutter LFO on the read pointer (LFOTAB precedent),
-   loop saturation (~150–250 words, ~50–80 cycles).
+4. **TAPE** — ✅ **LANDED 12 Aug 2026 (`3fc25ba`)**, MODE 2. Two LFOs
+   (phase accumulator → triangle → smoothstep, the window machinery reused)
+   sum into a signed sample offset that displaces **the loop's own read**:
+   wow ~0.80 Hz, flutter ~7.3 Hz, depth from the new **WOW knob** (page-1
+   slot 6, r6+$b). The read is LERPED — an integer-only moving read is a
+   zipper, the truncation floor that cost the first shimmer.
+   **The modulation is in the LOOP, unlike PITCH's**, so every repeat
+   accumulates more drift — and that is safe here in the way PITCH's cascade
+   was not: a smooth lag modulation has no splice, so there is nothing to
+   compound. **This mode cannot sound robotic for the same reason PITCH
+   did.** The two rates are deliberately not in a small integer ratio, so
+   they never lock into one mechanical cycle (the periodicity lesson applied
+   before it could bite).
+   ⚠️ **A bound that is load-bearing, not taste**: wow ≤ 31.75 samples,
+   flutter ≤ 3.97, summing to 35.7 against TIME's floor of 64 — so the lag
+   can never reach 0 and wrap onto the sample about to be written (a whole
+   lap old: a full-scale discontinuity once per LFO cycle). Any depth
+   increase must re-check that sum.
+   Measured: a 220 Hz burst's tail drifts smoothly on a ~1.25 s cycle over
+   roughly ±10 cents, no steps. 39 multiplies in the emitted image, all
+   signed. Cost: 1,287 → 1,505 words, 193w on the TAPE path.
+   🟡 **Loop saturation is deliberately NOT in this stage** — a behavior
+   change belongs in its own voiced commit (the bus auto-gain precedent).
+   It is the obvious next voicing lever for this mode.
 5. **GRAIN** — the flagship: 4–8 windowed grain readers at LCG-scattered
    offsets over the same line, per-grain pitch from the interval select,
    SPRAY knob for scatter depth (~400–600 words, ~20–25 cycles/grain 🟡).
@@ -781,8 +808,9 @@ Traps, all already paid for once:
   configurations; treat bus-plain as historical unless something needs it.
 - Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
   `PING` p3, `MIX` p4, `VRBW` p5, `MODE` p7 (select, count 2), `VRBD` p8,
-  `PTCH` p9 (select, count 4), `FRZE` p11 (select, count 2, stage 3) — **10
-  of 12 used**, and the parameter-delivery gap (step 2) caps how many more
+  `PTCH` p9 (select, count 4), `FRZE` p11 (select, count 2, stage 3),
+  `WOW` p6 (knob, stage 4) — **11 of 12 used** (MODE's count is now 3:
+  CLEAN/PITCH/TAPE), and the parameter-delivery gap (step 2) caps how many more
   are worth adding. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
   can draw a knob and publish nothing, and dsp_host cannot drive companion
   fields at all (`DMODE=`/`DINT=` are the local overrides).
