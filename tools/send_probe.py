@@ -36,7 +36,9 @@ WHY THIS EXISTS. The obvious local repro -- `dsp_host -inst 2` with two reverbs
 The third is now fixed: -init/-proc take a list, one entry point per instance.
 This script uses that to run instance 0 = REVERB SERVER (r7 0x6200, position 0,
 the housekeeper) and instance 1 = SEND (r7 0x6400) -- the hardware layout from
-XBUS.md, track 1 ChonVerb + track 2 Send.
+XBUS.md. (Instance numbering only -- on hardware ChonVerb serves
+TRACKS 5-8, payload B's BongDelay serves 1-4; the old 'track 1 ChonVerb'
+label predates the 10 Aug track<->core inversion measurement.)
 
 -inmask 2 feeds the tone to the SEND only. The reverb's own dry input is
 silent, so everything in its output arrived over the bus. That is what makes

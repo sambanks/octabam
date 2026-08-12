@@ -26,7 +26,8 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > **Status, 5 Aug 2026 (`ChonVerb21`, on hardware, confirmed by ear).**
 > Structure, parameters and the MODE select all work on the unit, and so does
 > everything from the 5 Aug session: the tail crackle is fixed, the four modes
-> are genuinely distinct (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG, plus
+> are genuinely distinct *(four modes then; three since the 9 Aug HALL cut)*
+> (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG, plus
 > per-mode ER arrivals, diffuser taps, tap spread, LFO rate and damping), and
 > MIX holds dry at unity to half-travel before crossfading. Reported on
 > hardware as "much better".
@@ -103,7 +104,8 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
 | 2 | 11 | -DEL | `r6+$e` low | R16: **4-step send select** (off/.25/.5/.75) into the DELAY bus (`BUS.md`) — companion field, same reason as WIDTH |
 
 **Page-2 budget (R16): three smooth knobs + three selects.** The three knob
-fields (`$c` SHMR, `$d` DIFF, `$e` PRE) publish as full-travel knobs; the three
+fields (`$c` SHMR, `$d` DIFF, `$e` GATE — PRE was retired in R16 and its slot
+became GATE) publish as full-travel knobs; the three
 companion fields (`$c` mid MODE, `$d` low WIDTH, `$e` low →DEL) publish only as
 small-count selects — a smooth knob in a companion field reads near-boolean on
 hardware. This is the actual page-2 control budget.
@@ -118,9 +120,11 @@ leaving the low bits of the same word as an independent field. Even slot =
 knob field, odd slot = companion field of the same word. Both can carry a
 full 0–127 value; mask the companion with `#>$7f` and shift it up by 16.
 
-**PRE lives on `$e`, not `$c`.** Nothing drives `$c`'s knob field usefully.
-Stock DARK reads *its* pre-delay from `$c`, which is why older builds did.
-Do not "fix" this back.
+**The `$e` knob field carries GATE since R16.** ❌ Retracted: "PRE lives on
+`$e`, not `$c`" — true through R15; PRE was retired in R16 (buffer-capped at
+93 ms, not worth a knob) and its slot became GATE. The `$c` half still stands:
+nothing drives `$c`'s knob field usefully. Stock DARK reads *its* pre-delay
+from `$c`, which is why older builds did. Do not "fix" this back.
 
 ### Making a cloned descriptor draw correctly
 
@@ -160,9 +164,22 @@ explicit default — an unlisted one silently keeps the donor's.
 
 ## Memory layout
 
-`BUS.md` allocates the server **32,768 words** at the hardcoded base `Y:0x4000`
-(spanning `0x4000–0xBFFF`), and since the 32K re-layout the engine uses all of
-them:
+**Current layout (✅ since the 8-line re-layout of 9 Aug 2026, map from
+`dsp/reverb_server.asm`'s header):** the private allocation at the hardcoded
+base `Y:0x4000` (32,768 words, `0x4000–0xBFFF`) now carries tank lines only;
+every other buffer moved to the shared window, giving **65,536 words (1.49 s)
+per server** in total:
+
+| location | size | what |
+|---|---|---|
+| `base+0x0000..0x7fff` | 8 × 4096 | tank lines, taps to ~3914 (89 ms) at SIZE max |
+| `shared+0x2000..0x3fff` | 4 × 2048 | input allpasses, taps 179/293/419/547 |
+| `shared+0x1000..0x1fff` | 4096 | former pre-delay (93 ms) — PRE retired in R16, buffer no longer read |
+| `shared+0x0800..` | 2048 | shimmer line (excised by `NOSHIM=1`) |
+| `shared+0x4000` / `0x4200` | 2 × 512 | in-loop allpasses, modulated, taps 298/446 |
+| `shared+0x4500..` | 13 words/line | tank state tables A and B (see below) |
+
+❌ Retracted layout (32K-era, four-line engine — kept for history):
 
 | offset | size | what |
 |---|---|---|
@@ -171,13 +188,16 @@ them:
 | `base+0x6000` | 4096 | pre-delay |
 | `base+0x7000` | 2 × 2048 | in-loop allpasses, taps 298/446 |
 
-**All persistent state lives in the r7 block**, which is per-instance and
-survives between calls — `$82` is the warm-up counter (tagged
-`$2c0000 | count`), `$83` the tank phase, and `$10..$61` the working set
-including the four LFO phases and the one-pole states. There is no Y state
-block; it was round-tripped needlessly until v74.
+**Persistent state is split.** ❌ Retracted: "all persistent state lives in
+the r7 block … there is no Y state block" — true of the four-line engine only.
+The r7 block is per-instance and now **completely full** (`$00..$83` all taken,
+10 Aug 2026; `$84+` hangs the unit) — `$82` is the warm-up counter (tagged
+`$2c0000 | count`), `$83` the tank phase. Per-line tank state lives in the
+**Y state tables A and B at `shared+0x4500`** (13 words per line), because the
+rolled tank loops need state they can index, which a fixed r7 displacement can
+never be.
 
-## The 32K re-layout (done, emulator-verified, not yet flashed)
+## The 32K re-layout (done and long since flashed; superseded by the 8-line layout above)
 
 The layout above used only 16,384 of the 32,768 words `BUS.md` allocates —
 half the allocation sat unused. `DSP.md` §7c's high-X region was probed and is
@@ -259,13 +279,17 @@ on the old build is mode sparseness, not saturation. The separate saturation
 problem the same session turned up is under "Known limits" below, and is the
 next thing to fix.
 
-**Not yet flashed.** Nothing here needs a flash to hear; the cycle budget
-still does.
+**~~Not yet flashed.~~ Resolved: this flashed long since.** ("Not yet
+flashed" was true when written.) Nothing here needed a flash to hear.
 
 ## Register map inside the sample loop
 
 Every address register is committed; this is the constraint any change works
 against.
+
+> 🟡 **Pre-roll register map, kept as history** — this is the four-line
+> engine's assignment. The 8-line rolled tank walks the Y state table at
+> `shared+0x4500` instead of holding line pointers in r1–r4.
 
 | reg | use | modulo |
 |---|---|---|
@@ -370,6 +394,11 @@ after its `do n7,>END` sample loop and takes the word span. **Run it after any
 change to a sample loop** — the two hand counts this table has carried were
 both wrong, in different ways.
 
+> ❌ **Retracted accounting — the whole table is pre-8-line.** The ~1080
+> "budget per DSP" is retracted; the measured budget is 4,535 cycles/core,
+> with 819/sample of room for new work as of 11 Aug 2026. See `CHIP.md` for
+> the live numbers. Table kept as history.
+
 | | instructions | cycles/sample |
 |---|---|---|
 | `reverb_server` | 470 | 660 |
@@ -417,7 +446,8 @@ instructions and 735 words agree exactly across all three.
 **Treat 934 as a floor, not a ceiling.** The count is exact for the code but
 models no memory-contention stalls, so the figure under load can only be
 higher. The old headroom claim — "1.4× the entire reverb engine, free" — is
-gone: at 86% of budget with two effects and two sends live, a bank is much
+gone: at 86% of budget (❌ retracted-budget accounting — the ~1080 figure;
+see `CHIP.md`) with two effects and two sends live, a bank is much
 closer to its limit than anything in these docs has assumed, and adding
 delay lines on the strength of the old number would have overrun it.
 
@@ -448,7 +478,8 @@ it back costs 4 words, halving the win. **Every further cluster pays this same
 tax** unless it can live inside a register whose modifier is already linear.
 
 Verified bit-identical across all four modes and a `TIME=127 SIZE=127 DIFF=127`
-wet render. Bank total **934 → 930**.
+wet render. Bank total **934 → 930** (❌ retracted-budget accounting — see
+`CHIP.md`).
 
 **Extrapolate down, not up.** This was the best case in the loop and it
 returned 4 cycles. 31 of the 75 offsets are touched exactly once and can never
@@ -487,6 +518,11 @@ the loop statically instead.
 **The tank rings**, and this is a memory limit rather than a bug. An FDN
 sounds smooth when its modes overlap — mode spacing is `sr / total_delay`,
 mode bandwidth is `2.2 / RT60`.
+
+> ❌ **32K-era analysis (four-line engine), kept as history.** The engine is
+> now 8 × 4096-word lines in a 65,536-word (1.49 s) per-server allocation
+> since the XBUS shared-window split; the numbers below describe the retired
+> layout.
 
 **Say which number you mean.** "32K" is the **allocation**, and only a
 quarter of it is ever heard as tail length:
@@ -531,8 +567,9 @@ is a measurably smoother one.
 
 One lever is left, and one is spent:
 
-1. **Spend freed cycles on more delay lines.** The density pass left
-   headroom that did not exist before; v84 uses 341 of it. Still open.
+1. ~~**Spend freed cycles on more delay lines.**~~ — **taken**: the
+   eight-line tank shipped 8 Aug 2026. (The density pass left headroom that
+   did not exist before; v84 used 341 of it.)
 2. ~~**Trade instance count for tank size**~~ — **taken.** This used to be a
    plan to patch the allocator table at `X:0x255` (8 modest instances, or 4
    large at 2 × 32K per DSP, or 2 very large at 1 × 45K). `BUS.md` reached
@@ -677,11 +714,14 @@ listens. See `VOICING.md` Rounds 2e–2f.
 This also lifts Round 2b's block on voicing: the tail no longer has broadband
 noise in it, so the per-mode constants can be judged on their own terms.
 
-## What MODE actually varies (current)
+## What MODE actually varies (as voiced in Rounds 3–4)
 
 Six levers, after Rounds 3–4. At the start of that work only the first three
 existed, and the modes were reported as sounding alike; after all six, "much
 better" by ear.
+
+(The HALL column is kept as history — HALL was cut 9 Aug 2026,
+indistinguishable from BIG in blind A/B; shipping modes are ROOM/PLATE/BIG.)
 
 | lever | ROOM | PLATE | HALL | BIG |
 |---|---|---|---|---|
@@ -823,17 +863,24 @@ to reflash v77, confirm the baseline, and move one variable at a time.
 largest space this hardware supports — rather than choosing between them. The
 three free page-2 selects exist precisely for this; MODE is the obvious first.
 
-* **Standard characters**: room / plate / hall, in the spirit of a Chase Bliss
+* **Standard characters**: room / plate / big (HALL was cut 9 Aug 2026 —
+  indistinguishable from BIG in blind A/B), in the spirit of a Chase Bliss
   CXM 1978. Comfortably within budget — these want density, not length.
 * **Big mode**: **Valhalla-flavoured, not Blackhole.** Deliberate: Blackhole's
-  character comes substantially from raw allocation, and 743 ms is the hard
-  ceiling (`DSP.md` §7c — the high X region was probed and is not real).
+  character comes substantially from raw allocation, and 743 ms was the hard
+  ceiling when this was written (`DSP.md` §7c — the high X region was probed
+  and is not real). ❌ Superseded: 1.49 s per server since the XBUS
+  shared-window split.
   Valhalla's large spaces get their scale from long feedback, heavy modulation
   and dense diffusion, which is both achievable here and a match for the FDN
   structure already in place. Expect genuinely large and smooth; not infinite.
 
 MODE should reconfigure tap lengths, diffusion depth, damping and modulation
 together — not merely rescale SIZE.
+
+> 🟡 **History (marked 12 Aug 2026):** the hardware confirmation below is
+> real, but it describes the retired four-mode, four-line engine. Superseded
+> by the 8-line R13+ engine (tags 35–37 unflashed; the unit runs R15, tag 34).
 
 **All of the above is built and confirmed on hardware as `ChonVerb21`**
 (5 Aug 2026, "much better"). MODE varies **six** levers, not the three it
@@ -848,7 +895,8 @@ however the others were set. Full record in `VOICING.md`.
 1. ~~The 32K re-layout~~ — **done**, flashed, confirmed by ear.
 2. ~~Design the modes~~ — **done**, Rounds 1–5 in `VOICING.md`.
 3. ~~Measure real cycle cost with both effects live~~ — **counted**, and the
-   answer changed the picture: **934 of ~1080, 86% used**, not the 529 or ~700
+   answer changed the picture: **934 of ~1080, 86% used** (❌ retracted-budget
+   accounting — see `CHIP.md`), not the 529 or ~700
    the docs carried. `tools/cycle_count.py` makes it reproducible. What is
    still flash-only is confirming it under load — the static count models no
    memory-contention stalls, so it is a floor.
@@ -859,8 +907,9 @@ after ~64, so the top half of the knob may be doing nothing); and the
 unexplained emulator-only divergence between one and two instances under a
 nonzero split. Two things the emulator cannot check at all: item 3 above, and
 the UI surface for **WIDTH** and **→DEL**, whose companion fields `-params`
-cannot drive — WIDTH is an audible control that has never been heard moving
-from the front panel.
+cannot drive. ❌ Retracted (10 Aug 2026): "WIDTH has never been heard moving
+from the front panel" — WIDTH was confirmed moving on-unit, as the 4-step
+select it became in R16.
 
 **Closed, do not re-chase:** modal prominence (8–11 dB over the local envelope,
 monotonic in total delay, no structural lever left under the 32K ceiling —

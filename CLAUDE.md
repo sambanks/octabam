@@ -75,9 +75,10 @@ Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
 **`→DELAY` and `→REVERB` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`.
 Driving the wrong one renders silence, which reads as a broken algorithm.
 
-**r7 scratch slots `$10..$83` are all in use.** Only `$00..$0c` is free, and
-`$84+` hangs the unit. Check before you allocate. (Do not scan for these with
-`"\$$s"` in a shell — it expands.)
+**r7 scratch is COMPLETELY FULL — `$00..$83` all in use as of 10 Aug 2026**
+(the "only `$00..$0c` free" note held until the R16–R18 work consumed the
+rest). New per-track state goes in the Y state table, not r7. `$84+` hangs
+the unit. (Do not scan for these with `"\$$s"` in a shell — it expands.)
 
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so

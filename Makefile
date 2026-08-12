@@ -77,7 +77,7 @@ modmap: ## DSP module load map — which bytes land at which P address
 	python3 tools/dsp_modmap.py
 
 .PHONY: verify
-verify: ## Verify the ColdFire menu edits and the burn probe's integrity
+verify: ## Verify the ColdFire menu edits (+ burn probe when it fits; it currently SKIPS)
 	python3 tools/verify_slots.py
 	python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
@@ -88,7 +88,7 @@ verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAN
 	python3 tools/verify_roll.py $(CAND)
 
 .PHONY: burn
-burn: ## Build the cycle-burn probe (splices burn_block{1,2}.inc into the live engine)
+burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 70 words)
 	XBUS=1 BURN=1 python3 tools/build_bus.py
 
 .PHONY: check
@@ -100,7 +100,7 @@ check: bus cycles verify ## Everything that can be checked without hardware
 	@# so the file on disk is the one the checks were about.
 	@$(MAKE) --no-print-directory bus >/dev/null
 	@echo
-	@echo "  all checks passed; out/mainos_bus.bin restored to the shipping build"
+	@echo "  all runnable checks passed (verify_burn may report SKIPPED above); out/mainos_bus.bin restored to the shipping build"
 
 # -------------------------------------------------------------------- misc --
 

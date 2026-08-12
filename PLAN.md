@@ -24,23 +24,23 @@ delay→reverb series topology).
 |---|---|
 | On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
-| Reverb | eight-line, confirmed on hardware. Remaining work is voicing residue + the knob-publish gap below |
+| Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. The 9 Aug stall remains unexplained but its prime suspect just ran clean |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
 | Next | **Flash the R16+R17+R18 batch (tag 37)** — R16 SHMR fix + selects + GATE; R17 shimmer crossfade/chorus; R18 Valhalla uplift (single-octave shimmer, lerp heads, BIG decay ceiling, driven-line presence, GATE=0 bypass fix) — all ear-passed locally, none flashed. On-unit: step-2 knob reconfirmation protocol, then voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 |
 
-⚠️ **10 Aug hardware findings:** (1) 🟡 **page-2 continuous slots (SHMR/
-DIFF/WIDTH/PRE/→DEL) reported as not publishing — NOW IN DOUBT.** A 10-Aug
-investigation cleared both the descriptor (byte-equal to working stock DARK)
-and the engine (responds to every value locally), and `DSP.md` §9 recorded
-these same knobs working by ear on 4 Aug. Reconfirm per-knob on the next
-flash before cutting slots or building a fix (protocol in step 2). Page-1
-knobs publish and work; MODE (a select) works. (2) Page-1 knob feel needs a
+✅ **RESOLVED 10 Aug (on-unit reconfirm): page-2 PUBLISHES.** The earlier
+"not publishing" report was a misdiagnosis (wrong tag + track↔core
+inversion during the chaotic trip). Per-knob: MODE steps, PRE reached the
+DSP (before its R16 retirement to GATE), DIFF/WIDTH move; SHMR was silent
+because the DSP read the wrong offset ($b where the panel publishes $c —
+R16 reads $c OR $b, unflashed); →DEL silent pre-R16. Page-1 knobs publish
+and work. Remaining 10 Aug findings: (2) Page-1 knob feel needs a
 **tuning pass** against the R13 engine (ranges/curves — Sam, 10 Aug).
 (3) MIX at 100% is much quieter than dry — inherent (wet spreads the same
 energy over seconds; the straight crossfade measured −7 dB) and now has
 ear evidence; queue a **wet makeup gain** voicing pass. Cheapest form is
-~1 word (`asl` on the wet path) but payload A has 4 words free.
+~1 word (`asl` on the wet path); payload A is at FREE 32 (11 Aug).
 
 ---
 
@@ -56,7 +56,7 @@ it must exist in **both** payloads — and program space is **per core**.
                     payload A (core 0)        payload B (core 1)
                     tracks 5-8 ✅MEASURED     tracks 1-4 ✅MEASURED
   carries           SEND + ChonVerb           SEND + BongDelay
-  free (region)     178 (LFO roll, 10 Aug)    1998
+  free (region)     32 (11 Aug, post-R18)     1998
   free (above code) 33                        609  🟡 inferred, never loaded
   ---------------   -----------------------   -----------------------
   spendable on      ChonVerb growth           BongDelay, and NOTHING ELSE
@@ -77,13 +77,18 @@ it must exist in **both** payloads — and program space is **per core**.
 
 ### Program space — the binding constraint, per core, 8,192 words
 
-✅ Region numbers re-measured 10 Aug 2026 (post-LFO-roll build): **payload A
-used 2,546 of 2,724, FREE 178** — the LFO-block roll landed 10 Aug (lines
-2–7 in one loop over a 24-word P table, proven bit-identical against the
-unrolled engine incl. a 600-block MOD=127 A/B; the session's lesson is the
-m5 line-modulo invariant, documented at the roll site). **Payload B used
-726, FREE 1,998.** `verify_burn` PASSES again — the BURN hardware sweep is
-unblocked, and the wet-makeup words exist now.
+✅ Region numbers from the build report, 11 Aug 2026: **payload A used 2,692
+of 2,724, FREE 32** — R16–R18 consumed nearly all of the 178 the LFO-block
+roll freed on 10 Aug (roll: lines 2–7 in one loop over a 24-word P table,
+proven bit-identical against the unrolled engine incl. a 600-block MOD=127
+A/B; the session's lesson is the m5 line-modulo invariant, documented at the
+roll site). **Payload B used 726, FREE 1,998.**
+
+⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
+layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
+BURN hardware sweep is re-blocked until words are found (the LFO-block roll
+of the delay side, ~150–200 words 🟡, is the listed lever). The 10 Aug
+"PASSES again / unblocked" claim held only until R16 landed.
 
 | | payload A | payload B |
 |---|---|---|
@@ -115,14 +120,16 @@ The ten FX1 effects, with sizes (identical in both payloads):
 ### Cycles — NOT the constraint, per core, 4,535/sample
 
 ✅ 1,392 spare measured 7 Aug 2026 on a 964-cycle bank **with four FX1 FILTERs
-already running** (worst case, no derating needed). `make cycles`, 9 Aug:
-bank is now **1,334** (reverb 1,133 + delay 163 + 2 sends), growth 370 since
-the measurement, so **room for new work: 1,022 cycles/sample.**
+already running** (worst case, no derating needed). `make cycles`, 11 Aug:
+the bank has grown 573 since the measurement (R16–R18 shimmer/gate work), so
+**room for new work: 819 cycles/sample** (was 1,022 on 9 Aug at bank 1,334).
 
 ⚠️ **FX1 cycles are paid ×4 per core.** A 300-cycle FX1 effect costs 1,200
-cycles/core — which does not fit in 1,022. *This*, not program space, is the
+cycles/core — which does not fit in 819. *This*, not program space, is the
 ceiling on FX1 ambition. Only a re-run of the burn sweep re-measures the spare
-itself; the probe builds again (✅ 9 Aug, `make check` green) and flies with
+itself; the probe NO LONGER BUILDS (re-blocked 11 Aug: the plain layout
+overruns by 70 words — see the §ledger above) and cannot fly until words are
+found; it was briefly green on 9 Aug and would have flown with
 the next trip.
 
 ### Y memory
@@ -260,7 +267,8 @@ quiet click, ROOM/PLATE/BIG at LP 100 and 64, MOD on and off):
 **Cost check that seals it**: table A has NO spare per-line word (all six
 live — offset, fraction, d1 carry, damp state, LO state, line output), so
 per-line coefficients need a 7-word stride across every table writer,
-~60–70 of payload A's 95 free words, plus sample-loop cycles.
+~60–70 payload-A words (FREE was 95 when this was priced; 32 now — this
+  item no longer fits without finding words), plus sample-loop cycles.
 
 **Revisit condition**: only if 1.3's ears say the naked tail's top end turns
 sparse/metallic as it decays. The spec for that case, so it need not be
@@ -281,7 +289,8 @@ In scope:
 - Per-mode constants generally, at eight lines.
 - **Lines 4-7 tap fractions are still derived, not voiced** (one shared
   interleave scale per mode in `$6c`). Give them their own per-MODE values
-  if the ear asks for it — costs a few words per mode, A has 154.
+  if the ear asks for it — costs a few words per mode (A had 154 free when
+  written; 32 now).
 - **The shimmer decision** (Sam, 9 Aug: decide after re-voicing). It is
   built, 130 words, clean in isolation, `SPEED=0` provably off, and fits
   A's 154. Judge it *inside* the re-voiced tank, then ship or hold. If it
@@ -355,7 +364,8 @@ Done 9 Aug (this session) unless marked:
     slot is now **GATE — a gated reverb** (Phil-Collins slam): 0 = off, up =
     hold time before the wet slams shut. Envelope keyed on the tank input,
     fast attack + ~20 ms release, per-sample wet multiply. Voiced by ear
-    (Sam: release "perfect" between 15/25 → 20 ms). ~104 cycles, 914 spare.
+    (Sam: release "perfect" between 15/25 → 20 ms). ~104 cycles against the
+    measured spare (819 as of 11 Aug).
     The pre-delay was removed to free the r7 state slots ($29/$30/$62).
 
   **R16 batch is flash-ready.** SHMR reachable + WIDTH/→DEL selects + GATE
@@ -368,27 +378,27 @@ Done 9 Aug (this session) unless marked:
   select pinned the gate open and disassembled correctly. Fix: use the
   conditional-transfer ops (`tmi`/`teq`), which also keep the loop branch-free.
 
-  **Deliverable = the RECONFIRMATION PROTOCOL (execute on the next flash,
-  on a track confirmed to be ChonVerb — tracks 5–8):**
+  ✅ **The original reconfirmation protocol was EXECUTED 10 Aug** (on-unit,
+  R15): MODE stepped, PRE swooshed, DIFF and WIDTH moved, SHMR and →DEL were
+  silent — which localized the failures to the DSP-side reads, not publish,
+  and produced the R16 fixes (SHMR reads `$c` OR `$b`; WIDTH/→DEL became
+  4-step selects; PRE retired, its slot is GATE). The "doesn't publish"
+  finding is retracted and that item is CLOSED.
+
+  **What replaces it — the tag-37 flash checklist (execute on the next
+  flash, on a track confirmed to be ChonVerb — tracks 5–8):**
   1. **MODE** (control; known-good select): step 0→1→2, hear ROOM→PLATE→BIG.
      If MODE does nothing, the track isn't ChonVerb — stop and fix that.
-  2. **SHMR** (slot 6, `$b`): 0 → ~100. Expect a shimmering octave-up sheen
-     grow on the tail. (Default 0 = off, so this one MUST be turned up.)
-  3. **DIFF** (slot 8, `$d` knob): 0 → 127. Expect the tail's texture to go
-     from grainy/fluttery (low) to smooth/dense (high).
-  4. **WIDTH** (slot 9, `$d` low): 127 → 0. Expect the stereo image to
-     collapse to mono. (Default 127, so turn it DOWN.)
-  5. **PRE** (slot 10, `$e` knob): 0 → 127. Expect a growing pre-delay gap
-     (0→~93 ms) between the dry transient and the reverb onset — clearest on
-     a percussive source, wet-only.
-  6. **→DEL** (slot 11, `$e` low): 0 → 127 with a delay also on the bus.
-     Expect dry signal to start feeding the BongDelay send.
-
-  Each of 2–6 is confirmed working LOCALLY (dsp_host, 10 Aug). If any is
-  inert on the panel while MODE works, THAT slot's panel→shared-RAM publish
-  is the isolated failure — then, and only then, build the panel probe
-  (`PARAM_PAGES.md` §3 groundwork). If all move, the 10-Aug finding is
-  retracted and this whole item closes.
+  2. **SHMR** (slot 6, R16 `$c`-OR-`$b` fix): 0 → ~100. Expect an octave-up
+     sheen growing on the tail. This is the R16 fix's on-unit confirm.
+  3. **GATE** (slot 10, `$e` knob — NEW in R16): with drums, up from 0.
+     Expect the tail to chop off after the hold (higher = longer hold,
+     measured 11 Aug in the emulator). GATE=0 must be a true bypass (R18).
+  4. **WIDTH select** (slot 9, `$d` low): step 3→0, image collapses to mono.
+  5. **→DEL select** (slot 11, `$e` low): step up with a delay on the bus;
+     dry starts feeding the BongDelay send. Still never heard on-unit.
+  6. **LP boot default**: fresh part should boot bright (LP=127,
+     commit 10333c6).
 
 ### 3. BongDelay — the delay you can route
 
@@ -410,8 +420,9 @@ Traps, all already paid for once:
 - ⚠️ **The DELAY accumulator has no auto-gain.** Build it in from the first
   draft — the reverb's `$0c` collision shows what happens when it is bolted
   on and shares state loosely. Same 1/N table, same parity indexing.
-- ⚠️ **X:0x30000 vs Y:0x30000 aliasing is unresolved risk under BongDelay**
-  (`docs/CHIP.md`) — settle it before committing a memory map.
+- ✅ **X/Y/P aliasing in the shared window is SETTLED — they DO alias**
+  (`docs/CHIP.md`, alias probe build 27). Lay out BongDelay's memory map
+  knowing X:0x30000 and Y:0x30000 are the same storage.
 - **AGU modulo is no longer mandatory.** A manual compare-and-wrap is ~4-6
   cycles/sample — the only way to a single 1.49 s line.
 - 🟡 **No local render path**: `dsp_host` boots payload A only, and the DEV
@@ -457,9 +468,11 @@ delivered most of the checklist. Status per item:
    (10 Aug). ⚠️ The *numeric* RT60 sweep against local renders is still
    worth one knob pass — "sounds as voiced" makes the 2×-off mpy scenario
    very unlikely but has not measured it.
-3. 🟡 **`BURN=1` probe missed the trip but is UNBLOCKED** — the 10 Aug
-   LFO roll freed the words and `verify_burn` passes again. FX1's cycle
-   budget remains unmeasured until the next flash carries it.
+3. ❌ **`BURN=1` probe missed the trip and is RE-BLOCKED (11 Aug)** — the
+   10 Aug LFO roll briefly made `verify_burn` pass, then R16–R18 growth
+   pushed the plain layout over the region (DELAY SERVER 2,794 > 2,724, 70
+   words). FX1's cycle budget remains unmeasured until words are found and
+   a flash carries the probe.
 4. 🟡 **Parameter-delivery — 10-Aug finding CHALLENGED, 10 Aug.** The trip
    reported page-2 continuous slots (SHMR/DIFF/WIDTH/PRE/→DEL) pinned at
    defaults, MODE (a select) working — read as "the §2 split confirmed."
@@ -471,13 +484,14 @@ delivered most of the checklist. Status per item:
    "confirmed by ear and eye" on 4 Aug — a direct contradiction. Both
    descriptor-level fix-theories (`0x12a`, count) are falsified by stock.
    **Page-1 knobs publish and work** (Sam: "just need tuned" — voicing, not
-   delivery). 🟡 remaining: **reconfirm per-knob on the next flash** (step 2
-   protocol) — do NOT cut slots or build a publish-fix until then. Most
-   likely the 10-Aug observation was a misread from the chaotic trip.
-5. 🟡 **Shimmer depth publish** — SHMR is a page-2 continuous slot; its
-   panel publish is part of item 4's reconfirmation (turn SHMR up from its
-   default of 0). Shimmer itself is the proper v3 and in by default, so if
-   SHMR publishes there is nothing further to build.
+   delivery). ✅ CLOSED same trip: the per-knob reconfirm ran on-unit 10 Aug
+   (MODE stepped, PRE swooshed, DIFF/WIDTH moved; SHMR/→DEL silent for
+   DSP-read reasons fixed in R16). The "pinned at defaults" observation was
+   a misread from the chaotic trip; page-2 publishes. See step 2.
+5. ✅ **Shimmer depth publish — cause found, fix built (unflashed).** SHMR
+   was silent on-unit because the DSP read `$b` while the panel publishes
+   `$c`'s knob field — a wrong read offset, not a publish gate. R16 reads
+   `$c` OR `$b`; on-unit confirm rides the tag-37 flash checklist (step 2).
 6. ✅ **Tag discipline restored** — BUILD_TAG was stuck at 31 across both
    working and dead flashes (exactly the ambiguity it exists to prevent,
    and it cost this trip a session); now 33, bumped per wrap. Card
@@ -521,7 +535,7 @@ that must not come back:
   retraction itself retracted an earlier "saturation ruled out" — the sweep
   is the arbiter, both one-liners were wrong.)
 - ❌ "Cycle spare is 1,392 for new work" — that spare was measured on a
-  964-cycle bank; `cycle_count.py` now subtracts bank growth (1,022 today).
+  964-cycle bank; `cycle_count.py` now subtracts bank growth (819 as of 11 Aug).
 - ❌ "Y:0x34000 is a blocker" — falsified by our own v107 bisect.
 - ❌ "PLATE confirmed clean by A/B" (8 Aug) — PLATE was unreachable; the mode
   dispatch compared MSB-aligned short immediates and modes 1-2 fell through

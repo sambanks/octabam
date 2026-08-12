@@ -60,7 +60,9 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 #
 # It went stale immediately: the eight-line tank took the reverb from 763 to
 # 1145 cycles/sample (8 Aug 2026), ~382 more per bank, and the tool went on
-# reporting 1392 of headroom. Real headroom is ~1010.
+# reporting 1392 of headroom. (Real headroom at that point was ~1010;
+# the tool now subtracts bank growth itself -- its own output is the live
+# number, 819 as of 11 Aug 2026.)
 #
 # What is actually fixed is the FREEZE POINT. The 7 Aug run measured
 #   bank_then + 4x FX1 FILTER + 1392 = the load at which it froze

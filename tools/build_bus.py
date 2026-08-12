@@ -19,7 +19,7 @@ descriptor-clone donors task 11 already picked).
 
 **v98: CHORUS IS NO LONGER A DONOR AND IS FULLY RESTORED.** All three servers
 now pack into the PLATE + SPRING + DARK region alone -- 2724 contiguous words
-against 2672 of code, so everything fits in space that was already spent on
+against the code (2,692 words as of 11 Aug 2026 -- the build report is the live number), so everything fits in space that was already spent on
 replacing the three stock reverbs. SEND used to sit in CHORUS's 329-word
 module, which cost FX1 its chorus to house 166 words; that was collateral,
 not a considered trade. The three reverbs are the trade: we replaced them
@@ -31,7 +31,8 @@ Layout, in address order from PLATE's base:
   REVERB SERVER 1999
   DELAY SERVER   507   <- last DELIBERATELY: BongDelay is the algorithm still
                           to be designed, so it gets the trailing free words
-                          (52 now) and is adjacent to COMPRESSOR's module if
+                          (see the build report for the live count) and is
+                          adjacent to COMPRESSOR's module if
                           the region is ever extended rightward. Growing it
                           then moves nothing else.
 
@@ -48,14 +49,16 @@ by design), not to the new server code.** This is a deliberate departure
 from tools/build_reverb.py, which repoints SPRING/DARK's own ids at the new
 reverb engine -- fine there because nothing else in this project offers
 those ids any more once this build's three-entry menu replaces the whole FX2
-chooser. But FX1's chooser is untouched (BUS.md's "FX1 is untouched"
-promise) and can still select PLATE REV, SPRING REV or DARK REV by name --
-if their dispatch pointed at our servers, selecting one on FX1 would run the
-SAME hardcoded-Y-base engine a second, uncontrolled time on whatever track
-holds it, exactly the multi-instance collision the hardcoded-base design
-assumes can't happen (BUS.md's Memory section). Silencing them avoids that:
-FX1 selecting any of the three reverb names now gets harmless silence, the
-same already-hardware-proven behaviour stock DELAY has always had.
+chooser. The FX1 menu never listed the reverbs or DELAY -- they are FX2-only
+(Sam, corrected repeatedly; do not write "FX1 selecting PLATE..." again) --
+so no selector should ever reach the donor ids. The null stub is defensive
+insurance for exactly that assumption: if ANY dispatch path did resolve a
+donor id (a saved part, an id poked by something we haven't mapped), pointing
+it at our servers would run the SAME hardcoded-Y-base engine a second,
+uncontrolled time on whatever track holds it -- the multi-instance collision
+the hardcoded-base design assumes can't happen (BUS.md's Memory section).
+Silencing them makes any such path harmless silence, the same
+already-hardware-proven behaviour stock DELAY has always had.
 
 CHORUS (id 0x12) is deliberately NOT in that list any more. Its code is
 untouched and its dispatch entries keep the values the stock image ships, so
@@ -700,7 +703,7 @@ def main():
     if os.environ.get("MARKER") == "1":
         if os.environ.get("NOSHIM") != "1":
             sys.exit("MARKER=1 needs NOSHIM=1 -- the marks cost ~38 words and "
-                     "payload A has 4 free without the shimmer excised")
+                     "payload A free words are in the build report; NOSHIM frees ~2k")
         _marks = {
             # The buffer base comes from r0 (dispatcher ABI) so the marks work
             # in BOTH the emulator harness and on hardware, and the loop count
@@ -891,8 +894,8 @@ mkgo:""",
 
         # DELAY SERVER is dropped for this test -- it is an untested first
         # draft and the architecture question needs only a SERVER and a SENDER.
-        # Its 507 words are what pays for the gates; three of them cost 21 and
-        # the region had 11 free.
+        # Its words are what pays for the gates (historical sizing: 507 words
+        # against a region that then had 11 free).
         send_src = xbus(send_src, "SEND", "notfirst")
         reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
         # ...except under DEV, where the delay IS present and must reach the
@@ -1087,8 +1090,9 @@ mkgo:""",
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
         print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
-              f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- FX1 "
-              f"selecting any of them by name is now silent, not our code")
+              f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
+              f"path resolving a donor id gets silence, not our code "
+              f"(defensive: the FX1 menu never listed the reverbs)")
         if DEV:
             print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
                   f"its chorus. DEV builds are never flashed. ***")

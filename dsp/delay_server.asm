@@ -167,9 +167,9 @@
 ;              descriptor (cloned from SPRING REV's bytes, not SPRING's own
 ;              id/slot -- tools/build_menu.py), and $d is the page-2 slot
 ;              that class's real hardware wiring puts at the same "MONO"-
-;              equivalent position dsp/reverb_server.asm's ->DELAY send
-;              already uses on its own (different instance's) $d -- no
-;              conflict, r6 is per-instance. See DSP.md section 9 / REVERB.md
+;              equivalent position. (The reverb's ->DELAY send moved to its
+;              $e low bits in R16; the old "same $d" note is history. No
+;              conflict either way -- r6 is per-instance.) See DSP.md section 9 / REVERB.md
 ;              for how $b/$c/$d/$e were measured, and tools/build_menu.py's
 ;              docstring for why SPRING (not stock DELAY) was the donor.
 ; ---------------------------------------------------------------------------
@@ -371,9 +371,11 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
 
-; ---- hardcoded base (BUS.md task 9: DELAY SERVER, Y:0x30000 payload A) ---
-; No x:0x213 read, no per-instance stash -- see header note above about
-; payload B's literal not yet being parameterized by the build tooling.
+; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
+; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
+; SOURCE default; build_bus.py substitutes the correct half-window base per
+; payload at build time (SOLVED -- see this file's header; BongDelay ships
+; on payload B, base 0x38000, serving tracks 1-4).
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$30000,x0
         move    x0,x:(r7+$31)

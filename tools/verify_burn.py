@@ -180,11 +180,12 @@ def check_roles():
 def burn_fits():
     """Can the burn probe be built at all against the engine we ship?
 
-    It cannot, as of the eight-line tank (8 Aug 2026). BURN=1 splices
-    burn_block{1,2}.inc INTO the reverb, costing ~16 words, and the eight-line
-    engine leaves 6 free in the 2,724-word donor region -- so the build is
-    about 10 words short. SPEC=1 is not an escape: the build guards
-    SPEC-with-BURN, because those both replace a server.
+    It cannot, as of R16-R18 (measured 11 Aug 2026): the bus-plain layout
+    the probe needs packs BOTH servers into one 2,724-word region and DELAY
+    SERVER overruns it by 70 words (2,794 > 2,724). SPEC=1 is not an escape:
+    the build guards SPEC-with-BURN, because those both replace a server.
+    (The 8 Aug reading -- "about 10 words short" -- predates the reverb LFO
+    roll landing AND the R16-R18 growth; the roll landed and was not enough.)
 
     This used to be hidden. verify_burn.py pinned RVSRC to the four-line
     engine, so `make verify` was green while checking code the build no longer
@@ -224,8 +225,9 @@ def burn_fits():
         for l in over:
             print(f"    {l.strip()}")
         print("    NOTHING about the burn probe was verified here. Blocks the")
-        print("    BURN=1 hardware sweep (PLAN: find the words -- the LFO-block")
-        print("    roll frees ~150-200), not local work.")
+        print("    BURN=1 hardware sweep (PLAN: find ~70 words in the plain")
+        print("    layout; the reverb LFO roll already landed and was not enough),")
+        print("    not local work.")
         print("=" * 72)
         return False
     return True

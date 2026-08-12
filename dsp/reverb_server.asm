@@ -5,8 +5,9 @@
 ; the 32K-era length, but EIGHT of them -- increment 1 emptied the private
 ; pool of everything else), stride 0x1000, modulo 0xFFF.
 ;
-; This file is the refactored engine. The 4-line shipping engine lives at
-; dsp/reverb_server.asm and is still the reference for verify_roll.py.
+; This file IS the shipping engine (8 lines). The old 4-line engine it was
+; refactored from is history -- recover it from git if verify_roll ever
+; needs a reference again; it does not live at a separate path.
 ;
 ; Original header follows.
 ;
@@ -38,9 +39,11 @@
 ; 3. Everything else -- the algorithm, the parameters, the memory layout
 ;    below, the warm-up, all of it -- is untouched.
 ;
-; 4. CROSS-BUS SEND (BUS.md task 10): ->DELAY, dry only, one new knob on the
-;    confirmed-dead $d (MONO) slot (REVERB.md's parameter table: proven on
-;    hardware to do nothing, so free to repurpose). Taps this reverb's own
+; 4. CROSS-BUS SEND (BUS.md task 10): ->DELAY, dry only. (R16: the send
+;    level now lives in $e's LOW bits as a 4-step select -- the original
+;    "$d is confirmed dead, repurpose it" premise was FALSIFIED 10 Aug:
+;    page-2 publishes, and $d now carries WIDTH low / DIFF knob.) Taps this
+;    reverb's own
 ;    PRE-EFFECT dry mono signal -- never its processed wet -- and adds it,
 ;    scaled, into the shared DELAY bus accumulator alongside whatever SEND
 ;    clients contribute that block. Dry-only is not a simplification, it is
@@ -64,13 +67,15 @@
 ;   * the line count becomes a LOOP BOUND, so an eight-line tank costs the
 ;     same code as a four-line one. That was the whole argument for doing this
 ;     before growing the tank rather than after.
-;   * per-line state stops competing for r7, which is FULL ($10..$83 used and
-;     $84+ hangs the DSP). Eight lines want forty state words; r7 has none.
+;   * per-line state stops competing for r7, which is FULL ($00..$83 all
+;     used as of 10 Aug 2026; $84+ hangs the DSP). Eight lines want forty
+;     state words; r7 has none.
 ;
 ; 2018 -> 1925 program words, and +15 cycles/sample against 1,392 measured
 ; spare -- the loop pays a little arithmetic for the indexing that fixed r7
 ; displacements got for free. Proved BIT-IDENTICAL to the unrolled engine
-; across all four MODE characters and a TIME=127 SIZE=127 DIFF=127 wet case
+; across all MODE characters (four at the time; ROOM/PLATE/BIG since the
+; HALL cut) and a TIME=127 SIZE=127 DIFF=127 wet case
 ; (`make verify-roll`), with a sensitivity control and a one-nop relocation
 ; control alongside, because a bit-identical claim without a control is a
 ; claim about the test.
@@ -137,8 +142,8 @@
 ;   tank state shared+0x4500 ..             per-line tables A and B
 ;
 ; THE TANK STATE TABLE is what makes the rolled loops possible. r7 is full --
-; $10..$83 are all taken and $84+ HANGS the DSP -- and rolling needs state the
-; loop can INDEX, which a fixed r7 displacement can never be.
+; $00..$83 are ALL taken (10 Aug 2026) and $84+ HANGS the DSP -- and rolling
+; needs state the loop can INDEX, which a fixed r7 displacement can never be.
 ;
 ; Thirteen words per line, in two groups:
 ;   GROUP A -- tank tap loop (words +0..+5, stride 6 within group):
@@ -219,8 +224,10 @@
 ;   p1 DAMP -> one-pole coefficient. s += c*(d-s), so a LARGE c keeps highs.
 ;              DAMP up lowers c: 0 = bright, 127 = dark.
 ;   p5 MIX  -> wet gain
-;   $d MONO (confirmed dead on hardware, REVERB.md) -> repurposed as ->DELAY
-;      send level, dry only (BUS.md task 10)
+;   ->DELAY send level, dry only (BUS.md task 10): $e LOW bits, 4-step
+;      select since R16. (The original home was $d on a "confirmed dead"
+;      premise that was FALSIFIED 10 Aug -- page-2 publishes; $d now
+;      carries WIDTH low bits / DIFF knob field.)
 ; ---------------------------------------------------------------------------
 
 ; LINES = 8 -- the tank loop bound. Hardcoded rather than an equ because
@@ -1171,7 +1178,7 @@ md_plate:
         bra     md_done
 md_done:
 
-    ; ---- SIZE: scale all four tap lengths -----------------------------------
+    ; ---- SIZE: scale all eight tap lengths ----------------------------------
     ; tap = 3958*f on the longest line, so f = 0.400 .. 0.989 gives 1583..3914
     ; samples, 36..89 ms. The nominal taps are the MAXIMUM -- SIZE only ever
     ; shrinks the space.
@@ -1494,9 +1501,9 @@ md_done:
 ; shaping the decay per band rather than the wet EQ. gen_reverb.py reserved
 ; page-1 slot $3 for exactly this from the start ("P_SPARE ... freed for
 ; LO") and never built it, because at the time the cycle headroom was not
-; measured. It is now: stageprobe5/6 put ~1080 instructions a sample per
-; DSP within reach and this engine uses ~135, so the ~44 this costs is
-; affordable several times over.
+; measured. When it was (stageprobe5/6, since superseded by the 7 Aug burn
+; measurement -- see make cycles for the live number), the ~44 cycles this
+; costs were affordable several times over, and still are.
 ;
 ; $3 is the knob labelled HP, and a low cut IS a high-pass, so the label is
 ; honest. HP=0 gives coefficient 0 -- the state never moves, nothing is
@@ -1511,9 +1518,9 @@ md_done:
 
 ; ---- ER level: REMOVED (9 Aug 2026) -----------------------------------------
 ; The six-tap ER section was a flutter echo. The input diffuser (4-13 ms,
-; Dattorro-scale) now fills this role. $6c is left at zero (warm-up default)
-; and is never written — the per-mode ER-level constants at $6c were removed.
-; See VOICING.md Round 7.
+; Dattorro-scale) now fills this role. The per-mode ER-level constants at
+; $6c were removed; $6c has since been REUSED as the lines-4-7 tap scale,
+; written by every md_* block (it is NOT free). See VOICING.md Round 7.
 
 ; ---- MIX: a real crossfade, not wet added on top of unity dry (v94) ------
 ; It used to be out = dry + wet*MIX, so dry stayed at full scale however wet
@@ -1671,8 +1678,9 @@ mixset:
 ; the depth and slowing the sweep gives the smearing without the pitch
 ; artifact.
 ;
-; r6+$d is not read: hardware confirmed the page-2 knob does nothing, so
-; that slot is host-side, not a parameter.
+; (The old "r6+$d is not read: hardware confirmed it does nothing" note was
+; FALSIFIED 10 Aug -- page-2 publishes, and $d IS read now: WIDTH from its
+; low bits and DIFF from its knob field, both in this file.)
 ; MOD SPEED is now a knob -- page-2 slot 6, reading $b (v92). v84 fixed the
 ; rate deliberately, because coupling it to MOD made the reverb seasick: 63
 ; samples at 2.84 Hz is ~28 cents of vibrato, the same depth at 0.25 Hz is
@@ -1807,7 +1815,8 @@ lf3e:
 ; allpass smears the modes on every circulation -- which REVERB.md names as
 ; the only structural fix for the ringing at this delay budget. Costs cycles
 ; and NO memory, which is the right shape now: the 32K re-layout filled the
-; allocation, but the cycle budget has ~551 spare.
+; allocation, but the cycle budget has spare (make cycles for the live
+; number; 819/sample room as of 11 Aug 2026).
 ;
 ; Depth is fixed at $200000 rather than following MOD, so it can never reach
 ; zero -- the same rule this file already records for the tank ("modulation
@@ -1869,7 +1878,8 @@ lf4f:
 ; allpass smears the modes on every circulation -- which REVERB.md names as
 ; the only structural fix for the ringing at this delay budget. Costs cycles
 ; and NO memory, which is the right shape now: the 32K re-layout filled the
-; allocation, but the cycle budget has ~551 spare.
+; allocation, but the cycle budget has spare (make cycles for the live
+; number; 819/sample room as of 11 Aug 2026).
 ;
 ; Depth is fixed at $200000 rather than following MOD, so it can never reach
 ; zero -- the same rule this file already records for the tank ("modulation
@@ -2217,7 +2227,7 @@ lfrol:
 ; the LFO's integer-crossing rate.
 ;
 ; Priming costs ~26 instructions per BLOCK -- under 2 cycles/sample
-; amortised, against the ~551 spare -- and needs no extra N register, which
+; amortised, against the measured spare (make cycles) -- and needs no extra N register, which
 ; is what the in-loop comment ("no other way to do this") ruled out. That
 ; was true per SAMPLE; it is not true once per block.
         move    x:(r7+$60),a            ; allpass A: (512 - tap) - offset - 1
@@ -2381,7 +2391,7 @@ lfrol:
 ; Fixing it needs 20+ taps, which needs program space payload A does not have.
 ; The input diffuser, shortened to Dattorro-scale (4-13 ms), now fills the
 ; role these taps were meant to: dense early buildup from allpass diffusion
-; rather than discrete echoes. ER=0 for all four modes is the clean setting.
+; rather than discrete echoes. ER=0 for all modes was the clean setting.
 ; See VOICING.md Round 7 for the measurements that settled this.
 
 ; -- allpass 0: base+0x4000, tap 1994 (45.2 ms) --
@@ -2568,17 +2578,20 @@ lfrol:
 ; there. See REVERB.md.
         asr     #$2,a,a                 ; -12 dB
         move    a,x:(r7+$15)            ; diffused input -> tank
-; ---- STAGE 3b: coefficients held in registers across all four lines -----
+; ---- STAGE 3b: coefficients held in registers across all eight lines ----
 ; y0 = DAMP and x1 = the LO coefficient. Neither is clobbered between here
 ; and the write-back: the line reads use y1, the damping uses y0, the LO
 ; uses x1. Both were being re-fetched once per line. The allpasses above do
 ; use y0 and x1, which is why this sits after them.
-        move    x:(r7+$1f),y0           ; DAMP, for all four lines
-        move    x:(r7+$40),x1           ; LO coefficient, for all four lines
+        move    x:(r7+$1f),y0           ; DAMP, for all eight lines
+        move    x:(r7+$40),x1           ; LO coefficient, for all eight lines
         asr     #$1,a,a
-        move    a,x:(r7+$27)            ; and at half, for the other three lines
+        move    a,x:(r7+$27)            ; VESTIGIAL: v4's second injection level.
+                                        ; Nothing reads $27 since injection went
+                                        ; table-driven (table B); store kept only
+                                        ; to avoid perturbing a verified build.
 
-; ---- the tank's four taps, damped and low-cut inside the feedback path ---
+; ---- the tank's eight taps, damped and low-cut inside the feedback path --
 ; ROLLED. This was 4 x 25 instructions of identical arithmetic differing only
 ; in which r7 slots it touched -- 265 words doing 66 words' work, and the
 ; shape that makes an eight-line tank cost twice as much code as a four-line

@@ -75,13 +75,18 @@ of both cores running both effects. Roughly doubles the effects budget.
 *Program space*: **the payloads no longer have to be the same code.**
 `build_bus.py` already assembles and places each payload independently — one
 `for tag, va, ln in PAYLOADS` loop, its own region, its own placement — and the
-2,724-word region is **per core**. Today both payloads carry all three effects
-and both are at **2,723 of 2,724 words, ONE free**. Under one-server-per-core:
+2,724-word region is **per core**. Pre-SPEC (the 7 Aug 2026 reading), both
+payloads carried all three effects and both sat at **2,723 of 2,724 words, ONE
+free**. Under one-server-per-core:
 
 | payload | carries | words | **free** |
 |---|---|---|---|
 | A (core 0) | SEND 212 + ChonVerb 2,018 | 2,230 | **494** |
 | B (core 1) | SEND 212 + BongDelay 507 | 719 | **2,005** |
+
+(Those were the figures at SPEC landing. ✅ Measured 11–12 Aug 2026: R16–R18
+consumed the LFO-roll's 178 words, so A is now 2,692 of 2,724, **FREE 32**;
+B is 726 used, **FREE 1,998**.)
 
 ✅ Measured, not estimated: `XBUS=1 python3 tools/build_bus.py` already prints
 `FREE 484` per payload, because the XBUS path drops the delay to a 10-word stub.
@@ -193,8 +198,9 @@ blocked.
   still saturates above ~0.35 FS — unchanged, separate, and now the only limit.
   **The DELAY accumulator did NOT get this treatment**; BongDelay is an
   untested draft and can take the same change when it is worked on.
-- **The payload region is FULL: 2723 of 2724 words, ONE spare.** Anything added
-  to any of the three effects now needs space found first.
+- **The payload region is FULL: 2723 of 2724 words, ONE spare** — the pre-SPEC
+  reading of 7 Aug 2026, retracted at the end of this file by `SPEC=1`.
+  Anything added to any of the three effects now needs space found first.
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly, so every slot looks live locally, while on
   hardware a slot can draw a knob and publish nothing. That single gap is what
@@ -251,10 +257,10 @@ That rule is now **backwards**.
 
 | resource | before | after specialization | ratio |
 |---|---|---|---|
-| cycles, core 0 (reverb + 3 sends, FX1 filters off) | ~2,432 spare ✅ | **~2,576 spare** 🟡 | ~3.4× the engine's 763 |
+| cycles, core 0 (reverb + 3 sends, FX1 filters off) | ~2,432 spare ✅ | **~2,576 spare** 🟡 — superseded: ✅ 1,392 spare measured (7 Aug); **819**/sample room for new work as of 12 Aug (the bank consumed 573) | ~3.4× the engine's 763 |
 | cycles, core 1 (delay + 3 sends) | — | **~3,176 spare** 🟡 | ~19× the placeholder's 163 |
 | Y memory per server | 32,768 words / 743 ms ✅ | **65,536 / 1.486 s** ✅ | 2× |
-| **program space, payload A** | **1 word** ✅ | **494 words** ✅ | — |
+| **program space, payload A** | **1 word** ✅ | **494 words** ✅ (at SPEC landing; **32** as of R18 — R16–R18 spent the LFO-roll's 178) | — |
 | **program space, payload B** | **1 word** ✅ | **2,005 words** ✅ | — |
 
 (Cycle figures are the measured 2,432 spare — filters off, full bank live —
@@ -266,8 +272,9 @@ last few hundred.)
 **So: spend cycles to buy program words, everywhere.** Two consequences that
 are worth more than any voicing change:
 
-- **Roll the unrolled loops back up.** The reverb's four tank lines are
-  unrolled: tank taps 101 instructions, feedback/write-back 101, STAGE-2 read
+- **Roll the unrolled loops back up.** *(✅ Done — the roll landed 10 Aug 2026;
+  what follows is the pre-roll argument, kept as the record.)* The reverb's
+  four tank lines are unrolled: tank taps 101 instructions, feedback/write-back 101, STAGE-2 read
   offsets 44, LFOs 19 — **265 instructions for four lines, ~66 per line** ✅
   (counted). A hardware `do` on the 56300 is zero-overhead, so the cost is
   per-line constants becoming table reads instead of immediates. **Eight lines
@@ -384,9 +391,10 @@ free word today, that is an extraordinary rate of exchange — but it is a trade
 not the free lunch the alias makes it look like.
 
 **Do not confuse this with specialization.** Specialization (494 / 2,005 free
-words) is real, costs nothing, and needs no new hypothesis. This is the lever
-*after* that one, and it should be tested only if the reverb's 494 words prove
-too tight — which rolling the tank loop may well prevent.
+words at landing; **32** / ~1,998 as of R18, 12 Aug 2026) is real, costs
+nothing, and needs no new hypothesis. This is the lever
+*after* that one, and it should be tested only if the reverb's 494 words (now
+32) prove too tight — which rolling the tank loop may well prevent.
 
 ## What to build with it — the reverb
 
@@ -402,7 +410,7 @@ Doubling total delay halves the spacing, and there are two ways to do it:
 first — at equal total delay, more short lines beat fewer long ones (more
 independent paths, richer Hadamard mixing, no drift toward a longer and more
 separated character), and it keeps the per-line length the modes were voiced
-against.
+against. *(✅ Decided and shipped: the 8-line rolled tank landed 10 Aug 2026.)*
 
 A layout that fits 65,536 words exactly:
 
@@ -413,7 +421,8 @@ A layout that fits 65,536 words exactly:
 | pre-delay | 8,192 | 186 ms, double today's |
 | in-loop allpasses | 4 × 2,048 = 8,192 | double today's two |
 
-Costs, against ~2,576 spare cycles and 494 free words:
+Costs, against ~2,576 spare cycles and 494 free words *(historical pricing —
+the work has since shipped, 10 Aug 2026)*:
 
 - **Cycles** 🟡 ~+450 for four more lines, ~+32 for the 8-point fast Hadamard
   (12 butterflies vs 4). Call it **~1,250 total** against 2,576. Comfortable.
@@ -423,6 +432,9 @@ Costs, against ~2,576 spare cycles and 494 free words:
   inversion above matters more than the feature does.
 
 ## Rolling the tank loop — what it means, and why it is the enabler
+
+> ✅ **DONE — landed 10 Aug 2026**, bit-identical proof via `make verify-roll`.
+> The section below is the design record, kept as written.
 
 **"Rolling" = turning an unrolled loop back into a loop.** The tank's four
 delay lines are not written as a loop; the same code is written out four times
@@ -512,8 +524,9 @@ worst case is an assumption, and there are two reasons to doubt it:
    | below FILTER | SPATIALIZER, LO-FI, COMPRESSOR |
    | **free** | **DELAY** — it has no DSP code at all ✅ ([[octamax-stock-delay-mystery]]) |
 
-   Of the 15 stock effects, 11 are live on FX1 for us (DELAY is a passthrough;
-   PLATE/SPRING/DARK are our donors and are silenced).
+   The FX1 menu never included the reverbs or DELAY — PLATE/SPRING/DARK and
+   DELAY are FX2-only (Sam, on-unit; corrected 11 Aug 2026 after this doc
+   repeatedly implied otherwise). Every FX1 effect is live for us, untouched.
 
 **And the worst case to measure is not `4 × worst effect`.** A realistic kit
 puts a *different* FX1 effect on each track. The number the design actually
@@ -530,18 +543,25 @@ ceiling.
 1,040 is a measured floor for the FX1 load and the real figure can only be
 higher. The 8-line tank is estimated at ~1,250 🟡, so **this measurement is
 what decides whether 8 lines fits**, and it should be taken before the tank is
-rewritten, not after.
+rewritten, not after. *(Resolved: the 8-line tank shipped and ✅ measured
+**1,133 cycles** at the 9 Aug count — under the ~1,250 estimate. The question
+no longer gates the rewrite, which has happened.)*
 
 **Not in scope: the three stock reverbs.** PLATE / SPRING / DARK are our
-donors (594 / 1,063 / 1,067 words ✅) and stay taken — losing them on FX1 is
-accepted, and "FX1 must work" means the other eleven effects and the cycles
-they cost. Do not re-open this to give donors back; core 0 has none to give
-anyway (ChonVerb + SEND = 2,230 against PLATE+SPRING = 1,657).
+donors (594 / 1,063 / 1,067 words ✅) and stay taken. The cost lands entirely
+on the **FX2** menu (the three stock reverbs are replaced by our servers);
+FX1 loses nothing because its menu never listed them (corrected 11 Aug 2026
+— the old "losing them on FX1 is accepted" framing here invented a cost that
+did not exist). "FX1 must work" means the FX1 pool and the cycles it costs.
+Do not re-open this to give donors back; core 0 has none to give anyway
+(ChonVerb + SEND = 2,230 against PLATE+SPRING = 1,657).
 
 ## What to build with it — the delay
 
 BongDelay was scoped as an afterthought (507 words, 163 cycles, a placeholder)
-and **has still never been heard**. It should not get its first audition
+and was first exercised under `DEV=1` on 10 Aug 2026 (risk 2 below) but **has
+never been heard on its shipping payload-B path on hardware**. It should not
+get its first audition
 against the old budget. Payload B gives it:
 
 - **2,005 free program words** — five times its current size
@@ -626,9 +646,9 @@ exactly, except for the scratch, which both cores must touch by definition:
    The mechanism to prevent it already exists and is proven — the null stub
    (`nul_i`/`nul_p`) and the id-0 → SEND aliasing. Wire ChonVerb → SEND on
    payload B and BongDelay → SEND on payload A, deliberately.
-4. **`tools/cycle_count.py` still prints `budget/DSP 1080`**, a number
-   retracted twice. It will report a design that fits as over budget. Fix the
-   constant before anyone uses it to make a decision.
+4. ~~**`tools/cycle_count.py` still prints `budget/DSP 1080`**, a number
+   retracted twice. It will report a design that fits as over budget.~~
+   **FIXED** — the tool now subtracts bank growth and prints the live number.
 
 ## Recommended order
 
@@ -647,21 +667,24 @@ exactly, except for the scratch, which both cores must touch by definition:
    absent server's id is aliased to SEND on each core, which is risk 3's fix
    applied rather than deferred. Predicted 494 / 2,005; the 7-word gap on B is
    the delay's XBUS gate. The plain build is byte-identical with the flag off.
-   **Not yet flashed.**
-4. **Roll the reverb's tank loop**, and move the per-line state to absolute Y
-   in the same pass — the two have the same fix. Cycles for words at a very
-   good rate, and it is what makes 8 lines affordable rather than marginal.
-   Gate: bit-identical to the unrolled build at four lines. See the section
-   above for the strided state layout and the two traps.
-5. **Eight lines.** The first real audible step the memory buys.
+   ~~Not yet flashed.~~ **Flashed** — the unit runs R15 (tag 34) with `SPEC=1`;
+   tags 35–37 (R16–R18) are built but unflashed.
+4. ~~**Roll the reverb's tank loop**, and move the per-line state to absolute Y
+   in the same pass — the two have the same fix.~~ ✅ **DONE, 10 Aug 2026** —
+   bit-identical to the unrolled build at four lines, proven via
+   `make verify-roll`. See the section above for the strided state layout and
+   the two traps.
+5. ~~**Eight lines.**~~ ✅ **DONE, 10 Aug 2026** — the 8-line rolled tank
+   shipped. The first real audible step the memory buys.
 6. **Re-scope BongDelay against its actual budget**, then audition it.
 
 ## Still open, and unchanged by any of this
 
 - **BIG rings.** ~30 dB more HF than the other modes with no shimmer: a dense
   cluster of non-harmonic lines at 2–2.8 kHz. `md_big` sets the decay scale
-  `x:(r7+$1e)` to `$7FFFFF` = exactly 1.000000 where ROOM/PLATE/HALL leave
-  headroom (0.920/0.965/0.980). NOT simple runaway feedback — HF *falls* as
+  `x:(r7+$1e)` to `$7FFFFF` = exactly 1.000000 where ROOM/PLATE leave
+  headroom (0.920/0.965; the third value, 0.980, was HALL's — that mode was
+  cut 9 Aug 2026, so it is historical). NOT simple runaway feedback — HF *falls* as
   TIME rises and is already high at TIME=0, so suspect the input/early path.
 - **Tank saturation above ~0.35 FS.** The only level limit left since v121.
 - **The DELAY accumulator has no auto-gain.** Same fix as v121; fold it into
@@ -669,12 +692,15 @@ exactly, except for the scratch, which both cores must touch by definition:
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly so every slot looks live locally, while on
   hardware a slot can draw a knob and publish nothing.
-- **Flash a build carrying v121.** The card holds `OCTATRACK_NOSHIM31.bin`,
-  which predates the bus auto-gain.
+- ~~**Flash a build carrying v121.** The card holds `OCTATRACK_NOSHIM31.bin`,
+  which predates the bus auto-gain.~~ **DONE** — the unit now runs R15
+  (tag 34), which carries v121 and `SPEC=1`; tags 35–37 (R16–R18) are built
+  but unflashed.
 
 ~~**Hard constraint: the payload region is FULL, one spare word.**~~
 **Retracted by specialization, and now BUILT** — 494 free on A, 1,998 on B
-(`SPEC=1`, v123, 8 Aug 2026).
+(`SPEC=1`, v123, 8 Aug 2026). A has since been spent down to **32 free**
+(R16–R18 consumed the LFO-roll's 178; measured 12 Aug 2026); B still ~1,998.
 
 ## Constraints that shape it
 

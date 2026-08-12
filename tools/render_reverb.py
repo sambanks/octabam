@@ -103,8 +103,9 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # word's KNOB field. The v92 layout puts MODE, WIDTH and ->DEL in COMPANION
 # fields (the low bits of $c/$d/$e), and this harness cannot write those at
 # all. MODE gets around it with --mode, which assembles the value in via
-# build_bus.py's MODE= override instead of driving the slot. WIDTH and ->DEL
-# have no such override and still need a flash to hear.
+# build_bus.py's MODE= override instead of driving the slot. WIDTH has the
+# same kind of override (WIDTH= env, in BUILD_ENV above); ->DEL has none and
+# still needs a flash to hear.
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
           ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("GATE", 0)]
 # SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
@@ -221,7 +222,8 @@ def ensure_mem(build):
     # RVSRC must never be left sitting at that path pretending to be it.
     alt = bool(os.environ.get("RVSRC"))
     # DEV=1 annexes CHORUS's module as a fourth donor, which is 329 free words
-    # on payload A where the shipping build has ZERO. That is the room to
+    # on payload A where the shipping build has almost none (FREE 32,
+    # 11 Aug 2026). That is the room to
     # develop an engine change in before paying for it -- a DEV build is never
     # flashed, so it proves the SOUND without also having to have solved the
     # space problem. `make check` still gates what ships.
@@ -431,7 +433,7 @@ def main():
     ap.add_argument("--dev", action="store_true",
                     help="build with DEV=1: annexes CHORUS's module for 329 extra "
                          "program words on payload A, where the shipping build has "
-                         "none. Never flashable -- for proving a change SOUNDS right "
+                         "almost none (FREE 32). Never flashable -- for proving a change SOUNDS right "
                          "before paying for its space")
     ap.add_argument("--mem", metavar="FILE",
                     help="render through a different payload dump instead of the "

@@ -24,12 +24,12 @@ core that track lives on.
         ONE CHIP: DSP56721
    ┌──────────────────┐   ┌──────────────────┐
    │      CORE 0      │   │      CORE 1      │
-   │   tracks 1–4     │   │   tracks 5–8     │
+   │   tracks 5–8     │   │   tracks 1–4     │
    │                  │   │                  │
-   │  track 1: FX1→FX2│   │  track 5: FX1→FX2│
-   │  track 2: FX1→FX2│   │  track 6: FX1→FX2│
-   │  track 3: FX1→FX2│   │  track 7: FX1→FX2│
-   │  track 4: FX1→FX2│   │  track 8: FX1→FX2│
+   │  track 5: FX1→FX2│   │  track 1: FX1→FX2│
+   │  track 6: FX1→FX2│   │  track 2: FX1→FX2│
+   │  track 7: FX1→FX2│   │  track 3: FX1→FX2│
+   │  track 8: FX1→FX2│   │  track 4: FX1→FX2│
    │                  │   │                  │
    │ 4535 cyc/sample  │   │ 4535 cyc/sample  │
    │ own P memory     │   │ own P memory     │
@@ -53,8 +53,8 @@ core that track lives on.
 
 | | scoped to | spent when | ours |
 |---|---|---|---|
-| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **11 free** |
-| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | **~1 392 spare** |
+| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **32 free** (✅ 11 Aug; the 7–10 Aug builds read 11 free) |
+| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | ~1 392 spare ✅ measured 7 Aug; the bank has grown 573 since, so **~819/sample** remains for new work |
 | **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
 
 The one that catches people is the middle row. Program space is paid **once**;
@@ -237,7 +237,9 @@ Two consequences, and the first is the important one:
 
 **1 392 is the CONSERVATIVE number, not the optimistic one.** It was measured
 with the heaviest FX1 config already running, so it is a worst case that needs
-no further derating. Design the delay against it.
+no further derating. Design the delay against it. *(Update, 11 Aug: the bank
+has grown 573 cycles since that measurement, so the number to design against
+today is **819**, not 1 392.)*
 
 **Turning FX1 filters off is worth ≥ 640 cycles** — a real design lever if
 anything ever needs more than 1 392.
@@ -254,7 +256,8 @@ algorithm is designed against a real budget rather than a bare-config one.
 ❌ **"The budget is 1080 cycles/sample."** 1080 was never a ceiling. It is the
 load `stageprobe5` happened to *survive* (`REVERB_LOG.md`) and got written down
 as a budget. Every design decision from the density pass onward was priced
-against it. `tools/cycle_count.py` still prints `budget/DSP 1080`.
+against it. `tools/cycle_count.py` printed `budget/DSP 1080` for a while
+after the retraction; it now subtracts bank growth and prints the live number.
 
 ❌ **"There is not real headroom — do not spend it on more delay lines."**
 Retracted. There are ~1 200 usable cycles.
@@ -263,18 +266,20 @@ Retracted. There are ~1 200 usable cycles.
 
 | | cycles/sample | |
 |---|---|---|
-| `reverb_server` (ChonVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` |
+| `reverb_server` (ChonVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` — **pre-8-line reading**; ~1 133 as of the 9 Aug count |
 | `delay_server` (BongDelay, **placeholder**) | 163 | ✅ same |
 | `send_client` × 2 | 36 | ✅ same |
-| **full bank** | **957** | ✅ same |
+| **full bank** | **957** | ✅ same — pre-8-line; far larger since (the bank has grown 573 vs the 7 Aug burn) |
 
 These are **static** counts — words in the sample loop, no memory-contention
 stalls modelled — so they are a floor. `tools/dsp_host` **cannot** measure
 cycles: its `instructions/sample` is a constant divided by whatever frame count
 you ask for.
 
-**For scale:** the entire ChonVerb engine is 758 cycles. The spare 1 392 is
-room for ~1.8 more complete reverbs on the same core. A good delay is ~200–300;
+**For scale:** the entire ChonVerb engine was 758 cycles when the spare was
+measured (~1 133 as of 9 Aug), and 1 392 was room for ~1.8 more complete
+reverbs on the same core — against today's ~819 spare, call it less than one
+more. A good delay is ~200–300;
 a correlation-search pitch shifter amortises to ~1/sample plus ~30–60.
 
 ---
@@ -424,7 +429,7 @@ Anything from that pass must be disassembled before it is believed.
 | | |
 |---|---|
 | ChonVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
-| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Untested first draft; do not assume it works |
+| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Ran under `DEV=1` 10 Aug; still never heard on its shipping payload-B path |
 | Bus scratch | `Y:0x900–0x980` — parity word, then 4 × 16-word accumulators and 4 × 16-word wet buffers |
 | Per-instance base stash | `Y:0x795 + (r7>>8)` — one word per instance |
 | SEND | **nothing.** A zero-footprint client; never touches its own slot |
@@ -433,8 +438,9 @@ Anything from that pass must be disassembled before it is believed.
 lever is spent.
 
 ⚠️ **`Y:0x34000` is FX2 slot 4's allocator base**, and the second half of
-BongDelay's pool. Writing a single word there from payload A corrupts that
-track's audio after ~5.45 s — see §6.
+BongDelay's pool. Writing a single word there from payload A was believed to
+corrupt that track's audio after ~5.45 s — **§6 retracts this** (falsified by
+bisect); do not design around it.
 
 ---
 
@@ -443,13 +449,15 @@ track's audio after ~5.45 s — see §6.
 | | | |
 |---|---|---|
 | Our region (PLATE + SPRING + DARK, contiguous) | **2 724 words** | ✅ |
-| Used by a normal build | 2 713 — **11 free** | ✅ build 25 |
+| Used by a normal build | 2 692 — **32 free** (✅ 11 Aug; build 25 read 2 713 — 11 free) | ✅ |
 | Reachability sweep | payload A 95.8 %, B 98.5 % | ✅ `tools/dsp_reach.py` |
 | Free pool elsewhere | **none** | ✅ |
-| Only reclaimable space | ~3 100 words held by nine stock effects — costs those effects | ✅ |
+| Only reclaimable space | **3 384 words held by ten stock effects** — costs those effects (earlier reading: ~3 100 / nine) | ✅ |
 
-Placement, in address order: `SEND` 166 · `REVERB SERVER` 2 040 ·
-`DELAY SERVER` 507.
+Placement, in address order (build-25-era sizes): `SEND` 166 ·
+`REVERB SERVER` 2 040 · `DELAY SERVER` 507. In today's BURN plain layout
+`DELAY SERVER` is **2 794 words** — it overruns the 2 724-word region by 70
+on its own.
 
 **We take exactly three stock effects: PLATE REV, SPRING REV, DARK REV.**
 CHORUS was a donor until v98 and is now byte-identical to stock. Relocating
@@ -463,7 +471,7 @@ whole module.
 
 | | | |
 |---|---|---|
-| Tracks per core | **1–4 → payload A / core 0; 5–8 → payload B / core 1** | ✅ confirmed by probe, 7 Aug |
+| Tracks per core | **5–8 → payload A / core 0; 1–4 → payload B / core 1** (the 7 Aug probe reading — 1–4 → A — was inverted and is retracted) | ✅ measured 10 Aug, MrkVerb32 marker |
 | FX slots per track | FX1 (3 072 words) + FX2 (16 384 words) | ✅ |
 | Reverb/delay are FX2-only | FX1's 3 072 words are far too small | ✅ |
 | FX1 is **not** idle | dispatcher calls it every frame; a fresh part defaults FX1 = FILTER | ✅ |

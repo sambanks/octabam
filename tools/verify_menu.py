@@ -197,7 +197,8 @@ def main():
         check(img[donor_E - BASE:donor_E - BASE + 0x192] ==
               stock[donor_E - BASE:donor_E - BASE + 0x192],
               f"{name}'s own descriptor (E=0x{donor_E:08x}) unchanged -- "
-              f"FX1 selecting it still shows its original name/knobs")
+              f"any menu that still lists it shows its original name/knobs "
+              f"(NB: the reverbs are FX2-only; FX1 never listed them)")
 
     print(f"\n{'ALL CHECKS PASSED' if not fails else f'{len(fails)} CHECK(S) FAILED'}")
     if fails:
