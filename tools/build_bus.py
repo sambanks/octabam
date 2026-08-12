@@ -983,9 +983,22 @@ mkgo:""",
         # own Y base, with XBUS it is either a literal-free stub (a no-op
         # substitution) or, under DEV, base + gate discriminator, both of which
         # want rewriting to this payload's base.
+        #
+        # ...EXCEPT under DEV, where the delay is placed in payload A but must
+        # keep its SHIPPING address, 0x38000 (payload B's half) -- found 12 Aug
+        # 2026 after the RDS layout rendered full-scale garbage. Payload A's
+        # half of the window is FULLY OWNED: ChonVerb's relocated buffers sit
+        # at 0x30000/0x34000 and the bus scratch at XBUS_BASE (0x36000), so a
+        # delay based at 0x30000 writes its 32K lines straight through both --
+        # LineR alone crosses the parity word, all four ACC buffers and both
+        # role locks every 16384 samples. Substituting 0x38000 for BOTH payloads
+        # makes the DEV delay byte-identical to the one that ships: same line
+        # addresses, same gate discriminator (it never housekeeps -- the SEND's
+        # self-healing election covers that, exactly as on hardware).
         plan = (("SEND", _sub(send_src) if _x else send_src),
                 ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
-                ("DELAY SERVER", _sub(delay_src)))
+                ("DELAY SERVER", delay_src.replace("$30000", "$38000")
+                                 if DEV else _sub(delay_src)))
         # SPEC: each core carries only the engine it actually runs. Payload A
         # keeps the reverb, payload B the delay; the other is not placed at all
         # and its id is aliased to SEND after placement (it needs send_init,
@@ -1027,7 +1040,10 @@ mkgo:""",
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
                 send_init, send_proc = init_a, proc_a
-            extra = f"  Y base 0x{pp['ybase']:x}" if name == "DELAY SERVER" else ""
+            extra = (f"  Y base 0x{0x38000 if DEV else pp['ybase']:x}"
+                     + ("  (shipping payload-B address, see plan above)"
+                        if DEV and pp['ybase'] != 0x38000 else "")
+                     if name == "DELAY SERVER" else "")
             print(f"  {name:13} P:0x{cursor:05x}..0x{cursor + len(words):05x} "
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
