@@ -222,12 +222,18 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # R24 took the artifact from moving across the whole sweep to ONE combination
 # in fifteen: T4 sending, delay MODE 1. T4 is the LAST core-1 track and CLEAN
 # the cheapest mode, i.e. where core 1 runs furthest ahead of core 0.
+# ⚠️ R25 SHIPPED A COLD-BOOT BUG: the tracked rotation was never initialised,
+# and a client booting one step ahead is indistinguishable from one legitimately
+# reading pre-flip, so it stuck -- and with the clear moved ahead, a stuck
+# client writes exactly the buffer being cleared. Metallic on every power cycle,
+# cured by re-selecting the effect. Do not flash 44.
+# 45 == OCTABAMR26 == R25 plus seeding that value at init.
 # 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
 # closes clear-vs-WRITE -- the one hazard of the family still open, and the
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"44"
+BUILD_TAG = b"45"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
