@@ -235,10 +235,23 @@ bus_dohk:                               ; nobody did -- take over this block
         and     #>$30,a                     ; mod 4 -- and the SAME mask sanitises
                                           ; boot garbage, which is why four
                                           ; buffers cost less than three
-        move    a,y:>$900
-        move    a,x1                     ; x1 = the NEW offset, live until the
-                                          ; count reset below
-        move    a,x0                     ; x0 = offset into this block's buffers
+        move    a,y:>$900               ; the new CURRENT rotation
+; ⚠️ CLEAR THE BUFFER WRITTEN **NEXT** BLOCK, NOT THIS ONE (17 Aug 2026).
+; Clearing the buffer we are about to write races the OTHER core's writers:
+; core 0 clears at the start of its block and everyone fills it during that
+; block, so a core-1 writer that gets there BEFORE core 0's housekeeper has
+; its contribution written and then wiped. Straddle that boundary and the
+; sender drops out on some blocks and not others -- intermittent dropout,
+; which is broadband hash exactly like the two defects before it.
+; The four-buffer rotation fixed clear-vs-READ and the per-core tracking fixed
+; which-buffer; NEITHER touches clear-vs-WRITE. This does, and it is free:
+; with four buffers there is an idle slot. The buffer written next block was
+; last READ a full block ago and will not be WRITTEN for another full block,
+; so clearing it now has a block of margin on both sides.
+        add     #>$10,a                 ; one further on: the NEXT block's
+        and     #>$30,a                 ; write target, idle right now
+        move    a,x0                    ; bases for the clear AND the count
+
         move    #>$901,a
         add     x0,a
         move    a,r1                     ; r1 = REVERB ACC[new] base
@@ -262,8 +275,9 @@ zclr:
 ; this is the one consumer that wants the bare index and has to scale the
 ; offset back DOWN. x1 holds the NEW offset from the rotation above, so this
 ; no longer re-reads y:>$900.
-        move    x1,a
-        asr     #$4,a,a                 ; offset -> buffer index (0..3)
+        move    x0,a                    ; the SAME buffer the clear loop just
+        asr     #$4,a,a                 ; zeroed -- count and accumulator must
+                                        ; always move together (0..3)
         move    a1,x0
         move    x0,a
         move    #>$9c3,x0
