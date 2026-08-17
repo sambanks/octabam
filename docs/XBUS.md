@@ -419,6 +419,43 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    Core-0 senders are in lockstep with the housekeeper and are structurally
    immune. Measured clean at any level, alone and alongside core-1 senders.
 
+   ---
+
+   ✅ **ALL THREE CLOSED, CONFIRMED ON HARDWARE 17 Aug 2026 (R26, tag 45).**
+   Sam swept T2/T3/T4 against delay MODE 1–5 with a ChonVerb on track 5 and
+   reports **all modes good on all tracks**. The three defects, in the order
+   they were found, each needing the previous one fixed before it was visible:
+
+   | # | defect | fix |
+   |---|---|---|
+   | 1 | **clear-vs-read** — core 0 zeroing a buffer core 1 was reading | FOUR accumulator buffers (two cannot be made safe at any clear time) |
+   | 2 | **the rotation read** — every client read the shared rotation at its own dispatch time, so the core-1 client straddling core 0's flip disagreed with the rest | per-core rotation tracking |
+   | 3 | **clear-vs-write** — core 0's clear racing core 1's writers | clear the buffer written NEXT block (four buffers leave an idle slot) |
+
+   ⚠️ Plus one defect **of my own making** in the fixes: the tracked rotation
+   was never initialised, and a client booting one step ahead is
+   indistinguishable from one legitimately reading pre-flip, so it stuck — and
+   once the clear moved ahead, a stuck client writes exactly the buffer being
+   cleared. Metallic on every core-1 sender after every power cycle (R25).
+   Fixed by seeding at `init` (R26). **The tracking is NOT self-healing**, and
+   the commit that introduced it said it was.
+
+   **THE DIAGNOSTIC LEVER, and it costs no flash: change what is on TRACK 5.**
+   T5 is core 0's **position 0 — the housekeeper** — so swapping ChonVerb for
+   Send moves the flip in time and nothing else. It isolated a core-1 defect
+   three separate times, and it is the first thing to reach for if any of this
+   returns.
+
+   ⚠️ **A SINGLE CLEAN CONFIGURATION PROVES NOTHING.** These artifacts
+   RELOCATE: exactly one (core-1 track, delay mode) pairing was bad at a time,
+   and it moved whenever the mode or core 0's load changed. Two separate
+   flashes were passed by spot-checks before a sweep caught the truth.
+
+   🟡 **STILL UNVERIFIED: that the cores are RATE-LOCKED** and merely
+   phase-offset. The per-core tracking advances one step per block and assumes
+   no drift. Nothing local can test it; a slow return of the artifact over
+   minutes would be the symptom.
+
    ⚠️ **NONE OF THIS IS EVIDENCE THE RACE IS FIXED.** dsp_host is single-core
    and always trivially in lockstep, so no local test can reach a cross-core
    timing defect — the same blindness that let this ship for months. The gate

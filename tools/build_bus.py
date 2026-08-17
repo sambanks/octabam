@@ -227,13 +227,18 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # reading pre-flip, so it stuck -- and with the clear moved ahead, a stuck
 # client writes exactly the buffer being cleared. Metallic on every power cycle,
 # cured by re-selecting the effect. Do not flash 44.
-# 45 == OCTABAMR26 == R25 plus seeding that value at init.
+# 45 == OCTABAMR26 == R25 plus seeding that value at init. R26 is the image on
+# which Sam swept T2/T3/T4 x MODE 1..5 and found ALL MODES GOOD ON ALL TRACKS
+# -- the three cross-core defects are closed.
+# 46 == OCTABAMR27 == R26 plus the auto-gain law 1/sqrt(N) instead of 1/N.
+# ⚠️ LOUDER AGAIN with several senders: up to +9 dB at eight tracks of real
+# (uncorrelated) material. Correlated content now UNDER-corrects and can clip.
 # 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
 # closes clear-vs-WRITE -- the one hazard of the family still open, and the
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"45"
+BUILD_TAG = b"46"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
