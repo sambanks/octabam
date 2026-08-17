@@ -60,3 +60,24 @@ must land per-mode or after §1.4) and mode balance (voicing, by ear).
    audio proves nothing about the send.
 3. The old FDBK check left PING at its ping-pong default, so single-channel
    echo ratios alternated by construction.
+
+
+---
+
+## Addendum, same day: ChonVerb v4 (the RETURN conversion) — gate results
+
+The MIX rows above describe the pre-v4 insert and are HISTORICAL as of
+`5924c8b`. The v4 gate, all measured:
+
+| check | result |
+|---|---|
+| host audio + IN=0, no senders | digital silence (peak 0.000000) |
+| IN 64→127 | **+5.95 dB at 0.1 FS** (exact); +6.80 at 0.5 FS — the extra is the §1.4 tank knee, isolated by the low-level control |
+| sender auto-gain curve | identical to pre-v4 **to 0.01 dB** (the √N wobble is pre-existing tank nonlinearity, proven on both images) |
+| wet continuity | pre-v4 MIX 127 −22.98 dBFS = v4 −22.98 (the constant is the ear-passed voicing) |
+| →DEL at IN=0 | still feeds the delay, 0.375 FS — taps dry PRE-IN, deliberate |
+| new mpy encodings | `mpy x1,y1` IS mpysu (safe: 2nd operand = IN ≥ 0); `mpy y0,x0` genuine signed — both disassembled |
+
+⚠️ Harness bug found on the way: `REV_PARAMS[5]` still carried MIX's 127, which
+under v4 registered a silent host client in every render — the phantom-client
+defect reborn in the test harness, costing exactly the −3.01 dB it predicts.

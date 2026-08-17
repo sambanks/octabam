@@ -23,7 +23,7 @@ delay→reverb series topology).
 | | state |
 |---|---|
 | Superseded | `OCTABAMR19` (tag 38), flashed 17 Aug, first image with delay page 2 enabled; three of six page-2 knobs drew wrong (fixed in `a87e304`). `OCTABAMR21` (tag 40) is the **HKB=1 diagnostic — discard it**, never flashed and superseded by the free track-position test |
-| Wrapped, NOT flashed | *(nothing — R28 is current)*. The 17 Aug consolidation pass after R28 is comment/doc/harness-only and proven bit-identical (verify_bus 17/17), so no new image is owed |
+| Wrapped, NOT flashed | ✅ **`OCTABAMR29` (tag 48), wrapped 17 Aug 2026** — `out/OCTATRACK_OCTABAMR29.bin`, 445,668 bytes, crc32 `0x5a39ca96`, round-trip + checksum ok, `make check` green, differs from R28. `ChonVerb48` ×1, `BongDelay48` ×1, 48 the only tag. = R28 **plus ChonVerb v4: the RETURN conversion** (`5924c8b`) — the reverb now mirrors the delay: wet-only output, **MIX → IN** (default 0, load-bearing), host counted as a client only while sending, wet gain pinned at the R18-ear-passed full-wet constant (continuity EXACT: −22.98 dBFS both sides). The −10.9 dB wet-makeup item is MOOT — no crossfade remains. ⚠️ **Behaviour changes to know before flashing**: a reverb track with audio and IN=0 is **silent by design** (level rides the track fader), and `→DEL` taps the dry **pre-IN**. ⚠️ NOT YET HEARD — the return-reverb feel is the least simulable thing in the project |
 | On the unit | **`OCTABAMR28`** (tag 47) — **FLASHED 17 Aug 2026**, and ✅ **THE FIVE NEVER-WORKED KNOBS NOW WORK** (Sam: "knobs are working now"): delay WOW/PTCH/FRZE, reverb WIDTH and →DEL — the companion-field fix confirmed on hardware. Also confirmed on the R26–R28 series the same day: all three cross-core defects closed (sweep clean on all tracks × all modes), levels hold across sender counts (1/√N), correlated content does not clip in practice, the PLATE/BIG static gone, BIG does not break up at Sam's levels |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
@@ -39,13 +39,13 @@ because the DSP read the wrong offset ($b where the panel publishes $c —
 R16 reads $c OR $b, unflashed); →DEL silent pre-R16. Page-1 knobs publish
 and work. Remaining 10 Aug findings: (2) Page-1 knob feel needs a
 **tuning pass** against the R13 engine (ranges/curves — Sam, 10 Aug).
-(3) MIX at 100% is much quieter than dry — inherent (wet spreads the same
-energy over seconds) and now MEASURED precisely (17 Aug, steady tone,
-direct drive): flat to MIX 64, then **−10.9 dB at full wet** (−19.9 dBFS
-against −9.0 dry). Queue a **wet makeup gain** voicing pass — but ⚠️ a flat
-`asl` (+6 dB) is NOT safe any more: BIG already peaks 0.611 FS from a
-0.5 FS input (its 7–9 dB per-mode gain excess, §1.4), so makeup must land
-per-mode or after 1.4 equalises the modes. Payload A is at FREE 12.
+(3) ✅ **RETIRED BY v4 (17 Aug 2026, `5924c8b`)**: MIX no longer exists —
+ChonVerb is a RETURN (wet-only output, p5 = IN), so there is no crossfade
+to be quiet against and the wet-makeup item is moot. The measurement that
+closed it: full-wet was −10.9 dB below dry through the crossfade; the
+return prints the R18-ear-passed full-wet level exactly (−22.98 dBFS
+continuity, measured). What SURVIVES of this item is §1.4's per-mode gain
+spread (BIG +7–9 dB), which is unchanged and still open.
 
 ---
 
