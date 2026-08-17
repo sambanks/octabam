@@ -833,11 +833,24 @@ dwarmdone:
 ;     undone, so "usable to about VRBW 50" shipped as a known defect. Picking
 ;     one value inside the good part of that range retires the defect instead
 ;     of carrying it.
-; $2d0000 == what knob 45 gave (45 << 16), i.e. mid-way up the part of the
-; old range that worked. ⚠️ VOICING CONSTANT, not a measurement -- it rides
-; the next flash to be judged on the unit, and it is the one number here that
-; cannot be changed without one.
-        move    #>$2d0000,x0
+; $7fffff is the MAXIMUM a Q1.23 multiplier can carry, and it is a deliberate
+; choice rather than a shrug: with the send registered, the reverb's auto-gain
+; hands every client 1/N, so a multiplier of 1.0 makes the delay exactly ONE
+; FULL CLIENT'S SHARE of the reverb bus -- the most any single track can drive
+; it. Going higher means writing below the 3-bit headroom convention, which
+; risks railing the accumulator when several writers peak together.
+; ⚠️ EAR-PICKED 17 Aug 2026: Sam A/B'd $2d0000 (knob 45) / $5a0000 (knob 90) /
+; $7fffff on GRAIN through ChonVerb and chose the loudest. The span between
+; them is only 9 dB -- the whole adjustable range -- and the wash measured
+; 22.71 / 18.x / 13.63 dB below the delay's own output at 2 bus clients, and
+; 21.59 dB at 5, since every registered client dilutes it by 1/N.
+; ⚠️ Those numbers compare a delay's discrete echoes to a reverb TAIL by rms,
+; which overstates the gap: the tail spreads the same energy over seconds.
+; They are valid against each other, not as an absolute "it is too quiet".
+; ⚠️ And the audible delay-vs-reverb balance is NOT this constant's job -- the
+; two effects sit on different TRACKS with their own faders. This sets how
+; hard the delay drives the reverb relative to other SENDERS.
+        move    #>$7fffff,x0
         move    x0,x:(r7+$85)           ; ->VERB level, hardwired
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
