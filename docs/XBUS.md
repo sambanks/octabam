@@ -340,6 +340,85 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    clip boundary rather than a rounding, and the falsifier is that it should
    scale with signal amplitude — measured, it does not.
 
+   ---
+
+   ⚠️ **A SECOND CROSS-CORE DEFECT, CONFIRMED ON HARDWARE 17 Aug 2026 (R23).
+   THE FOUR BUFFERS DID NOT FIX THIS ONE, AND IT WAS NEVER THE SAME BUG.**
+
+   The four-buffer rotation cured *clear-vs-read* and Sam confirmed it: the
+   delay on track 1 over the bus is clean. What remains is **which buffer each
+   client picks**, and it is a different failure.
+
+   **Every client reads the shared rotation word whenever it happens to run.**
+   Core 0 owns the flip. Core 0's own clients are dispatched right after it and
+   therefore always see a stable value. **Core 1's clients read it
+   asynchronously**, so when the flip lands inside core 1's dispatch window,
+   the client that straddles it reads the old rotation on some blocks and the
+   new one on others. Its contribution then lands in a buffer the server has
+   already consumed on some blocks and the right one on others — block-rate
+   amplitude jitter, which is broadband hash that scales linearly with the send
+   and never changes character.
+
+   **The evidence, all on hardware, all free:**
+
+   | configuration | result |
+   |---|---|
+   | T2 (core 1) → delay, mode TAPE | **static** |
+   | T3, T4 (core 1) → delay, same mode | clean |
+   | T6 (core 0) → delay | clean, at any level |
+   | T3 + T6 together | clean |
+   | same sample moved onto T2 | still static — **not the sample** |
+   | T2 dry, sends at zero | clean and healthy — **not the source** |
+   | T2 → delay, mode GRAIN or CLEAN | clean — **the mode moves it** |
+   | T6 → delay, mode TAPE | clean — **TAPE alone is not enough** |
+   | **T5 ChonVerb → Send, everything else untouched** | **static GONE** |
+
+   The last row is the one that settles it: **T5 is core 0's position 0, i.e.
+   the housekeeper.** Changing which effect runs the flip, and how long it
+   takes, moves the flip in time — and that alone cured a defect on a core-1
+   signal path. No per-track, per-sample, per-mode or per-level explanation can
+   produce that.
+
+   ⚠️ **It needs a core-1 client AND a particular timing**: exactly one
+   (core-1 track, delay mode) combination is bad at a time, and it relocates
+   when either the mode or core 0's load changes. **Any "it is fixed" claim
+   must therefore be tested across several mode/track combinations** — a single
+   clean configuration proves nothing, which is how this survived the R23
+   flash's first round of testing.
+
+   🟡 **It probably explains the reverb static too, and that is inferred, not
+   measured.** BongDelay's `→VERB` is a **core-1 writer into the REVERB
+   accumulator**, hardwired on, so it should jitter exactly the same way.
+   ChonVerb then consumes a per-block-jittering sum. It would explain why the
+   static appeared the moment a ChonVerb was added (the corruption always
+   existed; a reverb gave it a consumer) and why PLATE and BIG show it while
+   ROOM does not — long tails sustain broadband noise, short damped ones bury
+   it. That also **retires the 7–9 dB per-mode gain spread as the explanation**
+   for the mode dependence; the gain measurement stands on its own (PLAN 1.4)
+   but it never predicted PLATE.
+
+   **THE FIX — a design job, not a gate.** Clients on a core must agree with
+   each other on the rotation, instead of each reading the shared word at its
+   own dispatch time. The shape: **latch the rotation once per core per block**
+   into core-private low Y (which is genuinely per-core — that is where the bus
+   lived before XBUS relocated it) and have every client on that core read the
+   latch. Cross-core the two cores may then sit one buffer apart, but that
+   offset is CONSTANT rather than jittering, and a constant one-block offset is
+   inaudible — the four buffers already provide the margin for it.
+   ⚠️ Unresolved in that sketch, and the reason it is not costed here: payload B
+   has no housekeeper, so "the first client on this core this block" needs its
+   own per-core election, and the obvious trigger (private latch != shared
+   word) is wrong — a client running after the flip would re-latch and
+   reintroduce the jitter. It needs a real per-block trigger.
+   🟡 The whole approach assumes the two cores are RATE-LOCKED (same sample
+   clock, fixed phase offset) and only phase-offset. If they can actually drift,
+   a constant offset is not achievable and this needs an elastic buffer with
+   its own read pointer instead. **That assumption is unverified.**
+
+   **Workaround that needs no flash: send to the delay from tracks 5–8.**
+   Core-0 senders are in lockstep with the housekeeper and are structurally
+   immune. Measured clean at any level, alone and alongside core-1 senders.
+
    ⚠️ **NONE OF THIS IS EVIDENCE THE RACE IS FIXED.** dsp_host is single-core
    and always trivially in lockstep, so no local test can reach a cross-core
    timing defect — the same blindness that let this ship for months. The gate
