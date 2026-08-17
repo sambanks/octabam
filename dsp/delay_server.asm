@@ -359,6 +359,23 @@
 init:
 ; Hardcoded base, no per-instance stash needed -- literal is identical for
 ; every instance, same reasoning as dsp/reverb_server.asm's init.
+; ---- seed the tracked rotation, so a cold boot cannot start out of step ---
+; ⚠️ THE TRACKING CANNOT SELF-CORRECT A BAD START, and the commit that added it
+; claimed otherwise. "This client legitimately read PRE-FLIP" and "this client
+; is stuck one step AHEAD" give an identical comparison result, every block,
+; forever -- no observation separates them, so a client that boots one step
+; ahead stays there. Harmless when written; NOT harmless once the clear moved
+; one block ahead, because a client stuck one step ahead then writes precisely
+; the buffer core 0 is clearing, and every core-1 sender is wiped. That was the
+; metallic on every power cycle of R25, and why re-selecting the effect cured
+; it: the instance misses blocks during the switch, falls BEHIND, and snaps.
+; If it cannot self-correct it must begin correct. init runs on instantiation
+; -- exactly what re-selecting does -- so seeding here makes a cold boot
+; deterministic. The shared word may advance one step before the first proc;
+; that direction DOES snap, so it is safe.
+; build_bus.py emits a body here for PAYLOAD B ONLY -- payload A recomputes the
+; offset from the shared word every block and has nothing to seed.
+; ROTINIT
         rts
 
 proc:

@@ -1180,15 +1180,17 @@ mkgo:""",
             # rewritten with it and compare the base against itself, gating
             # BOTH payloads out and killing the bus. beq -> bne is the whole
             # change: A ($30000) != $38000 so A skips, B ($38000) == so B runs.
+            # ⚠️ THE GATE IS NO LONGER INJECTED HERE. It used to be a RUNTIME
+            # test of the payload's own base literal, emitted identically into
+            # both payloads and substituted per payload afterwards -- which
+            # means the ungated payload carried four instructions that could
+            # never branch. build_bus knows which payload it is emitting, so
+            # the payload loop now emits an unconditional `bra` for the gated
+            # one and NOTHING for the other: 6 words -> 2 on one payload and
+            # -> 0 on the other. That is where payload A's headroom came from
+            # (it was at FREE 0), and it is behaviourally identical because the
+            # comparison's outcome was already fixed at build time.
             hkb = os.environ.get("HKB") == "1"
-            branch = "bne" if hkb else "beq"
-            skips = "payload A" if hkb else "payload B"
-            src = src.replace("; XBUS_GATE", "\n".join([
-                "        move    #>$30000,a          ; XBUS payload gate",
-                "        move    #>$38000,x0",
-                "        cmp     x0,a",
-                f"        {branch}     {label}             ; {skips} never housekeeps",
-                ";"]), 1)
             print(f"  XBUS: {name} -- {n} scratch refs moved to 0x{XBUS_BASE:05x}, "
                   f"housekeeping gated to payload {'B  *** HKB=1 DIAGNOSTIC ***' if hkb else 'A'}")
             return src
@@ -1220,7 +1222,10 @@ mkgo:""",
     # added, and _sub below is meant to rewrite BOTH (base -> 0x38000 is
     # correct for payload B's delay; discriminator -> 0x38000 is what makes the
     # gate compare equal there).
-    _want = (2 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
+    # Was 2 under XBUS+DEV/SPEC when the gate injection added a second
+    # $30000 as its payload discriminator. The gate is emitted per payload now
+    # and carries no literal, so only the Y base remains.
+    _want = (1 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
     if delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
@@ -1339,6 +1344,66 @@ mkgo:""",
         # line relocate to a different address than mine.
         _rot = XBUS_BASE if os.environ.get("XBUS") == "1" else 0x900
 
+        # ---- the XBUS payload gate, emitted per payload --------------------
+        # Exactly ONE payload housekeeps. The other is sent straight to its
+        # notfirst label so it still finds this block's buffers but never flips
+        # the rotation or clears anything -- both cores number their instances
+        # from zero, so without this each core's position 0 would believe it is
+        # the housekeeper and they would flip the shared rotation twice a block.
+        # HKB=1 swaps which payload is gated (a DIAGNOSTIC, never shipped).
+        _GATE_LABEL = {"SEND": "notfirst", "REVERB SERVER": "bus_notfirst",
+                       "DELAY SERVER": "bus_notfirst"}
+        _hkb = os.environ.get("HKB") == "1"
+
+        def _gate(src, name):
+            if "; XBUS_GATE" not in src:
+                return src
+            # DEV places the delay in payload A but it must behave as payload B
+            # -- it is not the housekeeper there either; SEND's self-healing
+            # election covers that, exactly as on hardware.
+            gated = (tag == ("A" if _hkb else "B")) or (DEV and name == "DELAY SERVER")
+            body = (f"        bra     {_GATE_LABEL[name]}         "
+                    f"; payload {tag} never housekeeps" if gated else
+                    f";  (payload {tag} housekeeps: no gate emitted)")
+            return src.replace("; XBUS_GATE", body, 1)
+
+        def _rotinit(src, name, slot):
+            """Seed the tracked rotation at init. PAYLOAD B ONLY."""
+            if "; ROTINIT" not in src:
+                return src
+            as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
+            if not as_b:
+                return src.replace("; ROTINIT",
+                                   f";  (payload {tag} recomputes every block: "
+                                   f"nothing to seed)", 1)
+            # ⚠️ GUARDED ON r7 LOOKING LIKE A REAL FX2 STATE BLOCK. dsp_host
+            # sets r7 before calling init, but that is the EMULATOR'S instance
+            # model -- the hardware evidence for r7 (dsp/r7probe.asm, 0x6200
+            # for the first FX2 instance) was taken in PROC, not init. An
+            # unguarded store here would be a wild X write if hardware leaves
+            # r7 alone until proc, which is the family that froze the unit
+            # once already. LOWER BOUND ONLY, for words: it catches the boot
+            # states that actually occur (zero and small leftovers). An
+            # implausibly HIGH r7 would still store out of range -- accepted,
+            # and recorded here rather than left silent. If r7 is implausible we seed nothing: the tracked
+            # value stays garbage and the effect behaves as it did before this
+            # fix -- a known state rather than a hang.
+            # ⚠️ `seedskip` and not `initrts`: `init` is an existing label and
+            # dsp_asm resolves labels by PREFIX, so `initrts` assembled to
+            # init's address with "rts" appended. Caught at assembly, which is
+            # the cheap case, but it is the same trap that once branched into
+            # hyperspace.
+            body = "\n".join([
+                "        move    r7,a                ; ROTINIT (payload B)",
+                "        move    #>$6200,x0",
+                "        cmp     x0,a",
+                "        blt     seedskip            ; implausible r7: seed nothing",
+                f"        move    y:>${_rot:x},a",
+                "        and     #>$30,a",
+                f"        move    a,x:(r7+${slot:02x})",
+                "seedskip:"])
+            return src.replace("; ROTINIT", body, 1)
+
         def _rotlatch(src, name, slot):
             if "; ROTLATCH" not in src:
                 return src
@@ -1403,12 +1468,24 @@ mkgo:""",
         # makes the DEV delay byte-identical to the one that ships: same line
         # addresses, same gate discriminator (it never housekeeps -- the SEND's
         # self-healing election covers that, exactly as on hardware).
-        plan = (("SEND", _rotlatch(_sub(send_src) if _x else send_src,
-                                   "SEND", 0x69)),
-                ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
-                ("DELAY SERVER", _rotlatch(
+        def _prep(src, name, slot=None):
+            if _x:
+                src = _gate(src, name)
+            if slot is not None:
+                src = _rotinit(src, name, slot)
+                src = _rotlatch(src, name, slot)
+            return src
+
+        plan = (("SEND", _prep(_sub(send_src) if _x else send_src, "SEND", 0x69)),
+                ("REVERB SERVER", _prep(_sub(reverb_src) if _x else reverb_src,
+                                        "REVERB SERVER")),
+                ("DELAY SERVER", _prep(
                     delay_src.replace("$30000", "$38000")
                     if DEV else _sub(delay_src), "DELAY SERVER", 0x86)))
+        if _x:
+            _g = [n for n, t in plan if "never housekeeps" in t]
+            print(f"  payload {tag}: housekeeping "
+                  f"{'GATED OUT of ' + ', '.join(_g) if _g else 'ENABLED (this payload housekeeps)'}")
         # SPEC: each core carries only the engine it actually runs. Payload A
         # keeps the reverb, payload B the delay; the other is not placed at all
         # and its id is aliased to SEND after placement (it needs send_init,

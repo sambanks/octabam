@@ -118,8 +118,15 @@ def entry_points(mem_path, fxid):
     init, proc = found.get(INIT_TAB + fxid), found.get(PROC_TAB + fxid)
     if init is None or proc is None:
         die(f"no dispatch entry for fx id 0x{fxid:02x} in {pathlib.Path(mem_path).name}")
-    if not 0 < init < 0x20000 or proc != init + 1:
-        die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} proc 0x{proc:05x}")
+    # ⚠️ `proc == init + 1` USED TO BE THE TEST, and it was an accident of every
+    # init being a bare `rts`. It stopped being true on 17 Aug 2026 when the
+    # bus clients gained a rotation seed at init, and it failed as "implausible
+    # entry points" -- which reads like a stale dispatch table rather than a
+    # tool assumption. The real invariant is that proc follows init and init is
+    # SHORT: it seeds per-instance state, it does not process audio.
+    if not 0 < init < 0x20000 or not init < proc <= init + 64:
+        die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} "
+            f"proc 0x{proc:05x} (want init < proc <= init+64)")
     return init, proc
 
 
