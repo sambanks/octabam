@@ -219,9 +219,15 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # needed a specific (core-1 track, delay mode) pair, moved when either changed,
 # and vanished when track 5 -- core 0's housekeeper -- stopped being a ChonVerb.
 # 43 == OCTABAMR24 == R23 plus per-core rotation tracking, the fix for it.
+# R24 took the artifact from moving across the whole sweep to ONE combination
+# in fifteen: T4 sending, delay MODE 1. T4 is the LAST core-1 track and CLEAN
+# the cheapest mode, i.e. where core 1 runs furthest ahead of core 0.
+# 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
+# closes clear-vs-WRITE -- the one hazard of the family still open, and the
+# one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"43"
+BUILD_TAG = b"44"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
