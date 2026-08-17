@@ -281,16 +281,71 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    track. v3 stage 1 made the bus path the normal one, and the artifact
    appeared immediately.
 
-   🟡 Inferred from the code plus the measurements above; not yet directly
-   observed on silicon. **Falsifier, and it is cheap: `HKB=1` swaps which
-   payload housekeeps.** If the artifact follows the core — delay clean,
-   reverb now carrying it — the race is confirmed. If it does not move, this
-   entry is wrong and the hypothesis dies.
+   ✅ **CONFIRMED ON HARDWARE, 17 Aug 2026, and it cost no flash.** Sam moved
+   BongDelay from track 1 to track 4 and the stutter stopped. Track position is
+   dispatch position within core 1's bank, so it moves WHEN in the block the
+   delay reads the accumulator relative to core 0's housekeeper — a timing
+   dependency, and no algorithmic cause has one. It also fixes the SIGN of the
+   race: track 1 is early in core 1's order, track 4 is late, so **the failure
+   mode is core 1 reading too EARLY** — getting to the accumulator before core 0
+   has finished with it.
+   ⚠️ Sam's own caveat, unresolved: on track 4 he thought it was "not doing
+   much". Clean-because-correct and clean-because-starved look the same from
+   here, so track 4 is not yet a validated workaround — check the level against
+   the host-track path before relying on it.
 
-   **The likely fix is not synchronisation but TRIPLE BUFFERING**: write A,
-   read B, clear C, so the clear can never touch a buffer anyone is reading.
-   ~32 more words of bus scratch, no cycles, no ICC. Do not build it until
-   `HKB=1` has confirmed the diagnosis.
+   ⚠️ **THE `HKB=1` FALSIFIER WAS WEAKER THAN THIS ENTRY CLAIMED** (retracted
+   here rather than deleted, because it was quoted as a plan). "Delay clean,
+   reverb now carrying it" is not what swapping the housekeeper does: it
+   transposes the hazard rather than removing it, because core 0's SENDS would
+   then write buffers core 1 clears and reads. Expect a change of character,
+   not a disappearance. It was never run — the free track-position test
+   above settled the question first.
+
+   ✅ **THE FIX: FOUR BUFFERS, landed 17 Aug 2026.** Not three, and not
+   synchronisation.
+   - **Two cannot be made safe at any clear time.** At every instant one buffer
+     is the write target and the other the read target, so the only buffer that
+     can be cleared is the one transitioning read → write — and that transition
+     IS the flip a skewed reader may still be inside. There is no safe instant;
+     this is structural, not a tuning problem.
+   - **Four rather than three because the count is a power of two.** The
+     rotation becomes `+16 & $30` and the read offset `+32 & $30` — two
+     instructions each, no compare, no conditional transfer, and the mask that
+     does the modulo sanitises boot garbage for free. Three needs a clamp and
+     lets illegal garbage through. Four is *cheaper than the two-buffer code it
+     replaced*.
+   - **The read moved to TWO buffers back, and that is the part that does the
+     work.** One back leaves zero margin in exactly the direction that was
+     failing. Two back puts an idle block on each side of the reader, so either
+     core may lead or lag the other by up to a full block. **It costs one block
+     of bus latency — 16 samples, ~0.36 ms** — on a mechanism whose job is to be
+     a block late already.
+   - **It covers the other direction too.** BongDelay's `→VERB` writes payload
+     A's reverb accumulator from core 1 every sample, so the race ran both
+     ways; the delay→reverb wash was carrying it as well. That was not recorded
+     before and is not a separate fix — the same rotation covers it.
+
+   **Gated by `tools/verify_bus.py`** (new): 17 layouts covering all three
+   copies of the housekeeping block, the self-healing election, 1–7 senders on
+   each bus, both cross-sends and split blocks. The restructure is proven exact
+   by pointing the candidate's read at the same buffer generation as the
+   reference — **17/17 bit-identical at lag 0** — which separates the layout
+   change from the latency change completely. With the read at its shipping
+   depth, every delay-path case is bit-identical at exactly one block.
+   ⚠️ Residual, characterised and NOT explained: at 6–7 senders, 2 adjacent
+   samples out of 16,305 differ by ≤33 LSB (−105 dB). It is absent from the
+   lag-0 control, so it is a consequence of the added latency rather than of
+   the layout. Not chased further; it would matter if it turned out to be a
+   clip boundary rather than a rounding, and the falsifier is that it should
+   scale with signal amplitude — measured, it does not.
+
+   ⚠️ **NONE OF THIS IS EVIDENCE THE RACE IS FIXED.** dsp_host is single-core
+   and always trivially in lockstep, so no local test can reach a cross-core
+   timing defect — the same blindness that let this ship for months. The gate
+   proves the bus still does the same thing. Only the unit can say the stutter
+   is gone, and the test is the one that found it: BongDelay on **track 1**,
+   fed over the bus.
 
 Steps 4 (memory re-plan) and 5 (the effects) are what remains, and the
 re-evaluation below is what they should now be.

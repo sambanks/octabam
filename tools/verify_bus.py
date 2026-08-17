@@ -43,6 +43,15 @@ that MUST both fail:
     the per-buffer counts and the auto-gain are actually in the signal path
 A harness that passes its own selftest is not measuring the bus.
 
+⚠️ A BLOCK IS 15 SAMPLES HERE, NOT 16. dsp_host caps a block at 15 frames
+(send_probe.FRAMES) while the bus accumulators are 16 words wide for the
+hardware's 16. A deliberate one-block latency change therefore shows up as a
+15-sample shift, and expecting 16 cost a detour chasing an off-by-one in the
+addressing that did not exist. The way that was settled is worth copying: point
+the candidate's read at the SAME buffer generation as the reference, and the
+whole restructure must come back bit-identical at lag 0 -- which separates
+"the layout changed" from "the latency changed" completely.
+
 ⚠️ The nudged knob has to be one EVERY case carries, and the obvious choice is
 wrong: the first version nudged the delay's FDBK, which left all seven
 reverb-only cases matching because those layouts contain no delay at all. The
@@ -62,7 +71,12 @@ sys.path.insert(0, str(ROOT / "tools"))
 import send_probe  # noqa: E402
 
 REF = ROOT / "out/dsp/bus_reference.json"
+REF_MEM = ROOT / "out/dsp/mem_ref_A.mem"      # only needed by --allow-lag
 DEV_MEM = ROOT / "out/dsp/mem_dev_A.mem"
+
+# dsp_host caps a block at 15 frames, so one block is 15 samples here even
+# though the accumulator buffers are 16 words wide for the hardware's 16.
+BLOCK = send_probe.FRAMES
 
 # Each case pins one property of the bus. The layout string is dispatch order,
 # slot 0 being position 0 -- the housekeeper -- so varying it varies WHO elects
@@ -164,14 +178,30 @@ def render(mem, case, bump_level=0, extra_send=""):
     # is the failure mode a bus change produces most often. Carry the peak so a
     # dead render is a loud error rather than a green tick.
     peak = max((abs(v) for v in L + R), default=0)
-    return h.hexdigest(), peak, len(L)
+    # Samples are kept only when a lag search may need them -- 17 cases of raw
+    # audio is a lot to hold for a run that is going to compare hashes.
+    return h.hexdigest(), peak, len(L), (L, R)
 
 
-def collect(mem, **kw):
+def lag_match(cur_lr, ref_lr, max_lag):
+    """Smallest shift (0..max_lag) at which the candidate IS the reference.
+
+    The candidate is shifted LATER, which is the only direction a buffer moving
+    further back down the rotation can go."""
+    for lag in range(max_lag + 1):
+        if all(c[lag:lag + len(r) - lag] == r[:len(r) - lag]
+               for c, r in zip(cur_lr, ref_lr)):
+            return lag
+    return None
+
+
+def collect(mem, keep_samples=False, **kw):
     out = {}
     for name, case in CASES:
-        digest, peak, n = render(mem, case, **kw)
+        digest, peak, n, lr = render(mem, case, **kw)
         out[name] = dict(sha=digest, peak=peak, n=n)
+        if keep_samples:
+            out[name]["lr"] = lr
     return out
 
 
@@ -184,6 +214,21 @@ def main():
                     help="stamp the candidate as the new reference")
     ap.add_argument("--selftest", action="store_true",
                     help="prove the harness can fail (see the module docstring)")
+    ap.add_argument("--allow-lag", type=int, default=0, metavar="N",
+                    help="accept a case that is bit-identical after shifting the\n"
+                         "candidate LATER by up to N samples, and report the shift.\n"
+                         "For deliberate LATENCY changes only -- moving the bus read\n"
+                         "one buffer further back adds exactly one block, and this is\n"
+                         "how you show that the added latency is the ONLY difference.\n"
+                         "⚠️ A block here is 15 samples, not 16: dsp_host caps a block\n"
+                         "at 15 frames (send_probe.FRAMES) while the accumulators are\n"
+                         "16 words wide for the hardware's 16. Expecting 16 sent one\n"
+                         "session chasing an off-by-one that did not exist.\n"
+                         "⚠️ Engines with per-block state do NOT shift with the bus:\n"
+                         "the reverb's LFOs advance once per block regardless, so its\n"
+                         "cases legitimately fail this while the delay's pass. Prove\n"
+                         "the restructure separately, at zero lag, by pointing the read\n"
+                         "at the same buffer generation as the reference.")
     a = ap.parse_args()
 
     mem = pathlib.Path(a.mem)
@@ -192,7 +237,16 @@ def main():
                  f"  DEV=1 XBUS=1 python3 tools/build_bus.py")
 
     print(f"bus gate: {len(CASES)} cases against {mem.relative_to(ROOT)}")
-    cur = collect(mem)
+    if a.allow_lag and not a.save:
+        # A lag search needs the reference's SAMPLES, and the stamped file holds
+        # only hashes -- so the reference build has to still be on disk. Rather
+        # than guess where, require it explicitly: silently comparing against
+        # the candidate would report lag 0 for everything.
+        if not REF_MEM.exists():
+            sys.exit(f"--allow-lag needs the reference dump's samples, not just\n"
+                     f"its hashes. Put the build the reference was stamped from\n"
+                     f"at {REF_MEM.relative_to(ROOT)} and rerun.")
+    cur = collect(mem, keep_samples=bool(a.allow_lag))
 
     dead = [k for k, v in cur.items() if v["peak"] == 0]
     if dead:
@@ -236,8 +290,14 @@ def main():
             return 1
         print("  selftest passed: the harness can fail.")
 
+    refsamp = {}
+    if a.allow_lag:
+        print(f"  reference samples from {REF_MEM.relative_to(ROOT)}")
+        for k, v in collect(REF_MEM, keep_samples=True).items():
+            refsamp[k] = v["lr"]
+
     print()
-    bad = []
+    bad, lagged = [], []
     for name, _ in CASES:
         c = cur[name]
         r = ref.get(name)
@@ -246,6 +306,16 @@ def main():
             continue
         if c["sha"] == r["sha"]:
             print(f"  ok    {name:52s} peak {c['peak']:8d}")
+        elif a.allow_lag:
+            lag = lag_match(c["lr"], refsamp[name], a.allow_lag)
+            if lag is None:
+                print(f"  FAIL  {name:52s} peak {c['peak']:8d} vs ref "
+                      f"{r['peak']:8d}  (no lag <= {a.allow_lag} matches)")
+                bad.append(name)
+            else:
+                print(f"  ok    {name:52s} peak {c['peak']:8d}  "
+                      f"BIT-IDENTICAL at lag {lag} ({lag / BLOCK:g} block)")
+                lagged.append((name, lag))
         else:
             print(f"  FAIL  {name:52s} peak {c['peak']:8d} vs ref {r['peak']:8d}")
             bad.append(name)
@@ -262,6 +332,12 @@ def main():
               "  which no local test can reach.")
         return 1
 
+    if lagged:
+        lags = sorted({l for _, l in lagged})
+        print(f"\n  {len(lagged)} case(s) bit-identical only after a shift: "
+              f"lag {lags} samples.")
+        print("  That is a LATENCY change and nothing else -- every sample of "
+              "those\n  renders is the reference's, just later.")
     print(f"\n  all {len(CASES)} cases bit-identical to the reference.")
     print("  ⚠️  This proves the bus still DOES the same thing. It does NOT\n"
           "     prove anything about the cross-core race -- dsp_host is\n"

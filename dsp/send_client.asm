@@ -13,59 +13,107 @@
 ; must stay identical across dsp/send_client.asm, and whatever tasks 8/9
 ; build, or the buses will not agree on where anything lives:
 ;
-;   Y:0x900            this block's WRITE OFFSET into each pair of buffers
-;                       below: 0 or 16, i.e. the buffer index ALREADY SCALED
-;                       by the 16-word buffer stride. Masked on load AND save
+;   Y:0x900            this block's WRITE OFFSET into the accumulators below:
+;                       0, 16, 32 or 48 -- the buffer index ALREADY SCALED by
+;                       the 16-word buffer stride. Masked on load AND save
 ;                       (REVERB.md's write-phase rule) since it may start as
-;                       boot garbage, not necessarily a legal value.
+;                       boot garbage; here the mask that does the modulo does
+;                       the sanitising too, for free.
+;
+;                       ⚠️ FOUR ACCUMULATOR BUFFERS, NOT TWO, AND THAT IS THE
+;                       WHOLE CROSS-CORE RACE FIX (docs/XBUS.md step 3;
+;                       hardware-confirmed 17 Aug 2026 by moving BongDelay
+;                       between tracks 1 and 4, which killed the stutter --
+;                       a dispatch-position dependency no algorithmic cause
+;                       has). TWO CANNOT BE MADE SAFE AT ANY CLEAR TIME: at
+;                       every instant one buffer is the write target and the
+;                       other the read target, so the only buffer that can be
+;                       cleared is the one transitioning read -> write, and
+;                       that transition IS the flip a skewed reader on the
+;                       other core may still be inside. With four, a buffer is
+;                       written at block n, rests at n+1, read at n+2, rests
+;                       at n+3 and is cleared again at n+4 -- a full idle
+;                       block between the reader and the housekeeper on BOTH
+;                       sides, so either core may lead the other by up to a
+;                       block and still never touch the same words.
+;
+;                       Four rather than three because the count is a power of
+;                       two: the rotation is `+16 & $30` and the read offset is
+;                       `+32 & $30`, two instructions each with no compare and
+;                       no conditional transfer -- CHEAPER than the two-buffer
+;                       code it replaces, where three needs a clamp. Three
+;                       would also tolerate ±1 block; it just costs more and
+;                       lets illegal boot garbage through the modulo.
+;
 ;                       ⚠️ It held the bare index 0/1 until 17 Aug 2026. Every
 ;                       consumer then multiplied by 16 (`asl #$4`) to get an
-;                       address, and every one of them re-derived the read
-;                       buffer as `1 - parity`. Storing the offset instead
-;                       deletes both from all three copies -- and the reason
-;                       to bother is the ROTATION LENGTH: `1 - parity` hard-
-;                       codes two buffers into every consumer, where
-;                       `16 - offset` (and, with a third buffer, an
-;                       add-and-clamp) is a change the housekeeper makes
-;                       alone. See docs/XBUS.md step 3 for why two buffers
-;                       cannot be made race-free.
-;   Y:0x901..0x910      REVERB bus accumulator, buffer 0 (16 words, one per
-;                       sample slot within a block)
-;   Y:0x911..0x920      REVERB bus accumulator, buffer 1
-;   Y:0x921..0x930      REVERB bus wet, buffer 0           (SERVER writes,
-;   Y:0x931..0x940      REVERB bus wet, buffer 1            SEND never reads)
-;   Y:0x941..0x950      DELAY  bus accumulator, buffer 0
-;   Y:0x951..0x960      DELAY  bus accumulator, buffer 1
-;   Y:0x961..0x970      DELAY  bus wet, buffer 0
-;   Y:0x971..0x980      DELAY  bus wet, buffer 1
-;   Y:0x983/0x984       REVERB send COUNT, buffer 0 / buffer 1 -- how many SEND
-;                        clients wrote that buffer this block. Parity-indexed
-;                        exactly like the accumulators, because the server reads
-;                        LAST block's sum and so needs LAST block's count. The
-;                        server divides by it, so N tracks sending at full drive
-;                        the reverb exactly as hard as one track does, and the
-;                        shared accumulator can no longer be summed into its rail.
-;   Y:0x985/0x986       DELAY send COUNT, buffer 0 / buffer 1 -- the same
+;                       address, and every one of them re-derived the other
+;                       buffer as `1 - parity` -- which hard-codes the ROTATION
+;                       LENGTH into nine sites across three files that must
+;                       stay identical. Storing the scaled offset is what made
+;                       going to four buffers a change the housekeeper makes
+;                       alone.
+;   Y:0x901..0x940      REVERB bus accumulator, FOUR buffers of 16 words (one
+;                       word per sample slot within a block), at +0/+16/+32/+48
+;   Y:0x941..0x960      REVERB bus wet, TWO buffers          (SERVER writes,
+;                                                             SEND never reads)
+;   Y:0x961..0x9a0      DELAY  bus accumulator, FOUR buffers of 16 words
+;   Y:0x9a1..0x9c0      DELAY  bus wet, TWO buffers
+;                       ⚠️ THE WET BUFFERS STAY AT TWO. Nothing reads them --
+;                       they are a hook for BUS.md task 10's cross-bus reader
+;                       and are write-only today -- so they cannot carry a
+;                       race, and giving them four would have pushed the layout
+;                       past Y:0x9ff. That matters: build_bus.py relocates this
+;                       scratch by a BLANKET regex over `$9xx` literals, so a
+;                       layout that outgrows the 0x900 page would need the
+;                       substitution widened, which is exactly the class of
+;                       change CLAUDE.md's trap list is about. Their write
+;                       offset is therefore masked to `& $10` at the two sites
+;                       that address them, and nowhere else.
+;   Y:0x9c1             DELAY SERVER role owner (lock)
+;   Y:0x9c2             REVERB SERVER role owner (lock)
+;   Y:0x9c3..0x9c6      REVERB send COUNT, one per accumulator buffer -- how
+;                        many SEND clients wrote that buffer this block.
+;                        Indexed by the same rotation as the accumulators,
+;                        because the server reads LAST block's sum and so needs
+;                        LAST block's count. The server divides by it, so N
+;                        tracks sending at full drive the reverb exactly as hard
+;                        as one track does, and the shared accumulator can no
+;                        longer be summed into its rail.
+;                        ⚠️ One word per buffer where the accumulators have
+;                        sixteen, so these are the ONLY sites that scale the
+;                        offset back down to a bare index (`asr #$4`).
+;   Y:0x9c7..0x9ca      DELAY send COUNT, one per accumulator buffer -- the same
 ;                        mechanism for the DELAY bus (landed with BongDelay's
 ;                        auto-gain). Every DELAY-bus writer registers here:
 ;                        SEND (this file) and REVERB SERVER's ->DEL send, both
 ;                        unconditionally, because both write the accumulator
 ;                        unconditionally (zeros count too).
-;   Y:0x988..0x98f      DELAY SERVER's 1/N reciprocal table, rebuilt by it
+;   Y:0x9cb..0x9d2      DELAY SERVER's 1/N reciprocal table, rebuilt by it
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.
 ;                        Nobody else reads or writes these eight words.
 ;
+;   The layout ends at Y:0x9d2 -- 211 words, from 144 before the fourth
+;   buffer. Under XBUS it relocates whole to 0x36000..0x360d2.
+;
 ; Latency, pinned per BUS.md: every block, whichever track is "position 0"
 ; (r7 == 0x6200 -- the FIRST FX2 dispatched in this bank, fixed by hardware
 ; order regardless of which of SEND/DELAY SERVER/REVERB SERVER it is running,
-; DSP.md section 11's instance table) flips the parity and clears the NEW
+; DSP.md section 11's instance table) advances the rotation and clears the NEW
 ; write-target buffers, before anyone -- including itself -- accumulates into
-; them this block. Every other track just reads whatever parity that leaves.
-; This makes every track's send land in the SAME buffer every block and read
-; the OTHER (fully-summed, one-block-old) buffer back, regardless of dispatch
-; order -- the alternative BUS.md rejected, where whoever runs first each
-; block sees stale data and whoever runs last sees fresh.
+; them this block. Every other track just reads whatever rotation that leaves.
+; This makes every track's send land in the SAME buffer every block and read a
+; fully-summed, one-block-old buffer back, regardless of dispatch order -- the
+; alternative BUS.md rejected, where whoever runs first each block sees stale
+; data and whoever runs last sees fresh.
+;
+; The READ target is two buffers behind the write target, not one. With four
+; buffers that is what puts an idle block on each side of the reader (see the
+; layout note above); with two it was forced, since "the other one" was the
+; only choice there was. The cost is one extra block of bus latency -- 16
+; samples, ~0.36 ms -- against a mechanism whose whole job is to be a block
+; late already.
 ;
 ; No stash, no read of x:>$213 anywhere: SEND's own per-instance table entry
 ; is irrelevant, because SEND never uses it for anything.
@@ -168,7 +216,7 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$10,x0
+        move    #>$30,x0
         move    y:>$900,a
         and     x0,a
         move    a1,x0
@@ -178,23 +226,21 @@ bus_off_done:
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-        move    #>$10,x0                 ; x0 = mask constant, kept for both uses below
         move    y:>$900,a
-        and     x0,a                     ; mask on LOAD: may be boot garbage. $10,
-                                          ; not $1: the word holds the SCALED
-                                          ; offset, so the legal set is {0,16}
-        move    a,x1                     ; x1 = old offset, masked to {0,16}
-        move    #>$10,a
-        sub     x1,a                     ; a = 16 - old = the new offset. No mask
-                                          ; on save and no `asl #$4` after it:
-                                          ; 16-{0,16} is already in {0,16} and
-                                          ; already scaled
+        move    #>$10,x0
+        add     x0,a                     ; advance one buffer
+        move    #>$30,x0
+        and     x0,a                     ; mod 4 -- and the SAME mask sanitises
+                                          ; boot garbage, which is why four
+                                          ; buffers cost less than three
         move    a,y:>$900
+        move    a,x1                     ; x1 = the NEW offset, live until the
+                                          ; count reset below
         move    a,x0                     ; x0 = offset into this block's buffers
         move    #>$901,a
         add     x0,a
         move    a,r1                     ; r1 = REVERB ACC[new] base
-        move    #>$941,b
+        move    #>$961,b
         add     x0,b
         move    b,r2                     ; r2 = DELAY  ACC[new] base
         move    #>$ffffff,m1
@@ -212,31 +258,31 @@ zclr:
 ; per the standing rule -- a garbage value here is a wild Y write.
 ; The counts are ONE word per buffer where the accumulators are sixteen, so
 ; this is the one consumer that wants the bare index and has to scale the
-; offset back DOWN. It is still cheaper than the old form, which paid for a
-; mask immediate here and an `asl #$4` at every other site.
-        move    y:>$900,a
-        asr     #$4,a,a                 ; offset -> buffer index (0 or 1)
+; offset back DOWN. x1 holds the NEW offset from the rotation above, so this
+; no longer re-reads y:>$900.
+        move    x1,a
+        asr     #$4,a,a                 ; offset -> buffer index (0..3)
         move    a1,x0
         move    x0,a
-        move    #>$983,x0
+        move    #>$9c3,x0
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
         clr     a
         move    a,y:(r3)                ; REVERB count = 0
-        move    #2,n3                   ; SHORT immediate: 1 word (address reg)
-        move    (r3)+n3                 ; -> the DELAY count, same parity
+        move    #4,n3                   ; SHORT immediate: 1 word (address reg).
+        move    (r3)+n3                 ; 4, not 2: four buffers -> four counts
         move    a,y:(r3)                ; DELAY count = 0; a stays 0 for the
                                         ; locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and
 ; re-claimed below in dispatch order.
-        move    a,y:>$981               ; DELAY SERVER role owner
-        move    a,y:>$982               ; REVERB SERVER role owner
+        move    a,y:>$9c1               ; DELAY SERVER role owner
+        move    a,y:>$9c2               ; REVERB SERVER role owner
 
 bus_seen:
-        move    #>$10,x0                ; remember this block's offset so next
+        move    #>$30,x0                ; remember this block's offset so next
         move    y:>$900,a               ; block we can tell whether anybody
         and     x0,a                    ; else housekept in between
         move    a1,x0
@@ -246,7 +292,7 @@ notfirst:
 ; ---- everyone: find this block's write targets (the offset may have just
 ; changed above, so re-read it fresh rather than trust a stale copy) -------
 ; No `asl #$4` here any more: y:>$900 holds the offset already scaled.
-        move    #>$10,x0
+        move    #>$30,x0
         move    y:>$900,a
         and     x0,a                     ; masked on load here too
         move    a,x0
@@ -255,7 +301,7 @@ notfirst:
         move    x:(r7+$67),b             ; this call's split-aware frame offset
         add     b,a
         move    a,r1                     ; r1 = REVERB ACC[write] base + offset
-        move    #>$941,a
+        move    #>$961,a
         add     x0,a
         add     b,a
         move    a,r2                     ; r2 = DELAY  ACC[write] base + offset
@@ -278,7 +324,7 @@ notfirst:
         asr     #$4,a,a                 ; about to add into, not the one being
         move    a1,x0                   ; read. Scaled back down to a bare index
         move    x0,a                    ; because the counts are one word each
-        move    #>$983,x0
+        move    #>$9c3,x0
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
@@ -286,8 +332,8 @@ notfirst:
         move    #>$1,x0
         add     x0,a
         move    a,y:(r3)                ; REVERB count += 1
-        move    #2,n3
-        move    (r3)+n3                 ; -> the DELAY count, same parity --
+        move    #4,n3                   ; four buffers -> four counts per bus
+        move    (r3)+n3                 ; -> the DELAY count, same buffer --
         move    y:(r3),a                ; this client writes BOTH accumulators
         add     x0,a                    ; unconditionally (zeros count too),
         move    a,y:(r3)                ; so it registers on both buses

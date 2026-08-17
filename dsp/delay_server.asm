@@ -23,7 +23,7 @@
 ; BUS AUTO-GAIN LANDED as its own gated commit after stage 1 (the behavior
 ; change stage 1 deliberately excluded -- measured like the reverb's $0c
 ; fix, not bit-compared). Mechanism at the "bus auto-gain" block below:
-; every DELAY-bus writer registers per block in $985/$986 and writes asr #3;
+; every DELAY-bus writer registers per block in the DELAY count and writes asr #3;
 ; this server multiplies the accumulator by 1/count and shifts back up 3.
 ;
 ; ---------------------------------------------------------------------------
@@ -436,7 +436,7 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$10,x0
+        move    #>$30,x0
         move    y:>$900,a
         and     x0,a
         move    a1,x0
@@ -446,22 +446,23 @@ bus_off_done:
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-; y:>$900 holds the WRITE OFFSET (0 or 16), not the bare buffer index -- see
-; the layout comment in dsp/send_client.asm. The mask is therefore $10, the
-; new value is 16 - old, and no `asl #$4` follows: it is already scaled.
-        move    #>$10,x0
+; y:>$900 holds the WRITE OFFSET (0/16/32/48), not the bare buffer index --
+; see the layout comment in dsp/send_client.asm. FOUR buffers, so the rotation
+; is +16 mod 4 and the mask that does the modulo sanitises boot garbage too.
+; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
+        move    #>$10,x0
+        add     x0,a
+        move    #>$30,x0
         and     x0,a
-        move    a,x1
-        move    #>$10,a
-        sub     x1,a
         move    a,y:>$900
+        move    a,x1                    ; x1 = the NEW offset
         move    a,x0
         move    #>$901,a
         add     x0,a
         move    a,r1                    ; r1 = REVERB ACC[new] base
-        move    #>$941,b
-        add     x0,b
+        move    #>$961,b                ; the DELAY accumulator's base MOVED when
+        add     x0,b                    ; the REVERB one grew to four buffers
         move    b,r2                    ; r2 = DELAY  ACC[new] base
         move    #>$ffffff,m1
         move    #>$ffffff,m2
@@ -476,31 +477,30 @@ bus_zclr:
 ; a is still 0 from the clear loop above. Whichever of the three effects is
 ; position 0 does this, so the locks are freed exactly once per block and
 ; re-claimed below in dispatch order.
-        move    a,y:>$981               ; DELAY SERVER role owner
-        move    a,y:>$982               ; REVERB SERVER role owner
+        move    a,y:>$9c1               ; DELAY SERVER role owner
+        move    a,y:>$9c2               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNTs, alongside its accumulators --
 ; Kept in step with dsp/send_client.asm / dsp/reverb_server.asm (the standing
 ; rule: the housekeeping copies must stay identical). NOTE this copy was
-; MISSING the $983 reset from v121 until the delay auto-gain landed -- dead
+; MISSING the REVERB count reset from v121 until the delay auto-gain landed -- dead
 ; code in every live build, because the XBUS payload gate keeps this payload
 ; from ever housekeeping, but a divergent copy is exactly the silent-desync
-; class the rule exists for. x1 still holds the OLD OFFSET from the flip
-; above, so the buffer just made current is at 16 - x1. The counts are one word
-; per buffer rather than sixteen, so the offset scales back down to an index.
-        move    #>$10,a
-        sub     x1,a                    ; new offset
-        asr     #$4,a,a                 ; -> bare index (0 or 1)
-        move    #>$983,x0
+; class the rule exists for. x1 holds the NEW OFFSET from the rotation above.
+; The counts are one word per buffer rather than sixteen, so the offset scales
+; back down to an index.
+        move    x1,a
+        asr     #$4,a,a                 ; -> bare index (0..3)
+        move    #>$9c3,x0
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
         clr     a
         move    a,y:(r3)                ; REVERB count = 0
-        move    #2,n3                   ; SHORT immediate: 1 word (address reg)
-        move    (r3)+n3                 ; -> the DELAY count, same parity
+        move    #4,n3                   ; SHORT immediate: 1 word (address reg).
+        move    (r3)+n3                 ; 4, not 2: four buffers -> four counts
         move    a,y:(r3)                ; DELAY count = 0
 bus_seen:
-        move    #>$10,x0                ; remember this block's offset so next
+        move    #>$30,x0                ; remember this block's offset so next
         move    y:>$900,a               ; block we can tell whether anybody
         and     x0,a                    ; else housekept in between
         move    a1,x0
@@ -519,7 +519,7 @@ bus_notfirst:
 ;
 ; Keyed on r7 (this instance's own state block), so a split block's two calls
 ; both match the same owner and the second is not mistaken for a duplicate.
-        move    y:>$981,a
+        move    y:>$9c1,a
         move    a1,x0
         move    x0,a                    ; A2-clean before the compare
         tst     a
@@ -530,7 +530,7 @@ bus_notfirst:
         rts                             ; a duplicate: pass audio through
 bus_claim:
         move    r7,a
-        move    a,y:>$981
+        move    a,y:>$9c1
 bus_mine:
 
 ; ---- this call's DELAY ACC read address and DELAY WET write address ------
@@ -539,33 +539,47 @@ bus_mine:
 ; WRITE uses the SAME parity clients currently write into, for a future
 ; cross-bus reader (task 10), not consumed by anything yet.
 ; y:>$900 holds the WRITE OFFSET already scaled by the 16-word buffer stride,
-; so the write addresses need no shift at all and the read offset is one
-; subtract. THE ROTATION LENGTH LIVES ONLY IN THE HOUSEKEEPER: this site knows
-; that the other buffer is `16 - write`, and nothing else about how many
-; buffers there are.
+; so the write addresses need no shift at all. THE READ TARGET IS TWO BUFFERS
+; BACK, `write + 32 & $30`. THIS IS THE LINE THE WHOLE RACE FIX IS FOR: with
+; four buffers there is an idle block on each side of this read, so core 0's
+; housekeeper can lead or lag core 1 by up to a full block and still never
+; clear or write the words being read here. Two buffers had no such margin at
+; any clear time, which is why the delay stuttered on track 1 and not track 4
+; (hardware, 17 Aug 2026 -- dispatch position moved the read relative to the
+; other core's flip).
         move    y:>$900,a
-        move    a,x1                    ; x1 = write offset (0 or 16)
-        move    #>$10,a
-        sub     x1,a                    ; a = 16 - write = the read offset
-        move    a,x0
-        move    #>$941,a
+        move    a,x1                    ; x1 = write offset (0/16/32/48)
+        move    #>$20,x0
+        add     x0,a                    ; two buffers on == two buffers back
+        move    #>$30,x0
+        and     x0,a                    ; mod 4
+        move    a,x0                    ; x0 = the read offset
+        move    #>$961,a
         add     x0,a
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
-        move    x1,x0                   ; write offset, no scaling needed
-        move    #>$961,a
+; The WET buffers are TWO deep, not four -- nothing reads them, so they cannot
+; carry a race. This is the second of the two sites that narrows the offset.
+        move    x1,a
+        move    #>$10,x0
+        and     x0,a                    ; write offset, narrowed to {0,16}
+        move    a,x0
+        move    #>$9a1,a
         add     x0,a
         add     b,a
         move    a,x:(r7+$64)            ; this call's DELAY WET write address
 
 ; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
-; x0 (write offset) and b (split-aware frame offset) are both still valid
-; from the block just above -- nothing between there and here touches them.
+; ⚠️ x0 holds the NARROWED (wet) offset from the block just above, not the
+; write offset -- the REVERB accumulator is four deep, so this reloads from x1.
+; b (the split-aware frame offset) is still valid.
 ; ⚠️ THIS IS A CROSS-CORE WRITE. BongDelay runs on payload B and this line
 ; writes payload A's reverb accumulator, so the race documented in
-; docs/XBUS.md step 3 runs in BOTH directions -- the bus damages what arrives
-; at the delay, and the delay's ->VERB damages what arrives at the reverb.
+; docs/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
+; at the delay, and the delay's ->VERB damaged what arrived at the reverb.
+; The fourth buffer covers this direction too, for the same reason.
+        move    x1,x0                   ; the full write offset, 0/16/32/48
         move    #>$901,a
         add     x0,a
         add     b,a
@@ -576,7 +590,7 @@ bus_mine:
 ; N clients summing into one accumulator word drive the delay N x as hard as
 ; one, and the shared word clamps at 1.0. Every DELAY-bus writer (SEND's
 ; ->DELAY tap, the reverb's ->DEL send) now registers once per block in a
-; parity-indexed count at $985/$986 and writes with 3 bits of headroom
+; per-buffer DELAY count and writes with 3 bits of headroom
 ; (asr #3); this block divides by the count and the per-sample read shifts
 ; back up by 3, so the send knob sets a track's SHARE of the delay rather
 ; than how hard the line is hit. Same table order as the reverb's: count is
@@ -584,12 +598,12 @@ bus_mine:
 ; A count of 0 (nobody wrote) also lands on 1/8 -- harmless, the accumulator
 ; is zero then anyway, since writers register unconditionally.
 ;
-; The table lives in the shared bus scratch at $988-$98f (relocated with the
+; The table lives in the shared bus scratch at $9cb-$9d2 (relocated with the
 ; rest of the $9xx layout under XBUS) because this server has no free ground
 ; of its own: both line buffers fill its entire half-window. Rebuilt each
 ; block; the stores are free in cycle terms. x1 (write_parity) is still
 ; valid from the address block above.
-        move    #>$988,b                ; reciprocal table base
+        move    #>$9cb,b                ; reciprocal table base
         move    b,r5
         move    #>$ffffff,m5
         move    #>$100000,a
@@ -609,11 +623,14 @@ bus_mine:
         move    #>$124925,a
         move    a,y:(r5)                ; [7] = 1/7
 
-        move    #>$10,a
-        sub     x1,a                    ; read offset: the count belongs to
-        asr     #$4,a,a                 ; the fully-summed one-block-old buffer
-        move    #>$985,x0               ; this block READS. Scaled back down --
-        add     x0,a                    ; the counts are one word per buffer
+        move    x1,a                    ; the count belongs to the buffer this
+        move    #>$20,x0                ; block READS, which is two buffers back
+        add     x0,a
+        move    #>$30,x0
+        and     x0,a                    ; mod 4
+        asr     #$4,a,a                 ; scaled back down -- the counts are one
+        move    #>$9c7,x0               ; word per buffer, not sixteen
+        add     x0,a
         move    a,r5
 ; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v3 stage 1). IN feeds our own dry
 ; into the same sum the bus arrives on, so N must include us or every other
@@ -645,7 +662,7 @@ bus_mine:
         and     x0,a                    ; masked: boot garbage cannot index wild
         move    a1,x0
         move    x0,a                    ; A2-clean before it becomes an address
-        move    #>$988,b                ; table base, RE-LOADED (see above)
+        move    #>$9cb,b                ; table base, RE-LOADED (see above)
         add     b,a
         move    a,r5
         move    y:(r5),a
@@ -671,7 +688,7 @@ bus_mine:
         asr     #$4,a,a                 ; -> bare index: the counts are one word
         move    a1,x0                   ; per buffer, not sixteen
         move    x0,a                    ; A2-clean before it becomes an address
-        move    #>$983,x0
+        move    #>$9c3,x0
         add     x0,a
         move    a,r5
         move    #>$ffffff,m5
