@@ -199,7 +199,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # names two different images is the failure at 31 all over again, so the wrap
 # gets a fresh number: 38 == OCTABAMR19 == everything through R18 plus
 # BongDelay v2. 35, 36 and 37 were never on hardware and never will be.
-BUILD_TAG = b"38"
+BUILD_TAG = b"39"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
