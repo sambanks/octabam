@@ -538,3 +538,48 @@ effect will still appear unselectable.
 - Which of entries 0/1 is FLEX and which STATIC; the machine-type ordering against
   `FUN_40097168`.
 - Whether the sparse effect-id gaps are usable for a new effect slot.
+
+
+---
+
+## ⚠️ THE PAGE-2 SLOT MAP — settled 17 Aug 2026, after months of confusion
+
+**Each page-2 word carries TWO controls: the KNOB field at bits 16–23 and a
+COMPANION field at BITS 8–15.** Not the low byte. The low byte is never
+published.
+
+| slot | word | field | example |
+|---|---|---|---|
+| 6 | `$c` | knob, bits 16–23 | SHMR / WOW |
+| 7 | `$c` | **bits 8–15** | MODE |
+| 8 | `$d` | knob, bits 16–23 | DIFF |
+| 9 | `$d` | **bits 8–15** | WIDTH / PTCH |
+| 10 | `$e` | knob, bits 16–23 | GATE / SPRAY |
+| 11 | `$e` | **bits 8–15** | →DEL / FRZE |
+
+⚠️ **Slot 6 is on `$c`, not `$b`.** `$b` is not a page-2 parameter word at all.
+
+**How it was settled**, because it was inferred from behaviour rather than
+documented anywhere:
+- **MODE (slot 7) reads bits 8–15 and works** — swept on hardware across five
+  positions, repeatedly, 17 Aug.
+- **R16's SHMR fix independently needed `$c`'s knob field, not `$b`'s** — the
+  same off-by-one word, patched at the time without the pattern being seen.
+- **Slot 11 confirmed dead for BOTH effects** (ChonVerb's →DEL and BongDelay's
+  FRZE, 17 Aug), which rules out a per-effect descriptor fault and leaves the
+  slot itself.
+
+Everything that read bits 0–7 had never worked on hardware: slot 9 and slot 11,
+in both effects, since they were introduced. Fixed in `7a4f96b` (R28).
+
+⚠️ **NONE OF THIS IS TESTABLE IN dsp_host.** It writes only KNOB fields
+(`(pv[i] & 0x7f) << 16`) and maps slots 6–11 onto `$b,$c,$d,$e` cyclically —
+so slot 6 lands on `$b`, which is exactly why the delay's WOW always worked
+locally and never on hardware. A companion field has never been drivable in the
+emulator; `DMODE=`/`DINT=`/`DFRZ=` exist as build-time overrides for that
+reason. **A green local render says nothing about whether a page-2 companion
+control publishes.**
+
+🟡 **Worth doing**: teach dsp_host the real map. It would make companion fields
+locally drivable for the first time and would finally allow FREEZE to be tested
+mid-stream, which PLAN has listed as structurally unhearable since 12 Aug.

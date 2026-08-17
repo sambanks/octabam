@@ -231,6 +231,9 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # which Sam swept T2/T3/T4 x MODE 1..5 and found ALL MODES GOOD ON ALL TRACKS
 # -- the three cross-core defects are closed.
 # 46 == OCTABAMR27 == R26 plus the auto-gain law 1/sqrt(N) instead of 1/N.
+# 47 == OCTABAMR28 == R27 plus the page-2 companion-field fix: the companion is
+# BITS 8-15, not the low byte. Wakes five knobs that have NEVER worked on
+# hardware -- delay WOW/PTCH/FRZE, reverb WIDTH and ->DEL.
 # ⚠️ LOUDER AGAIN with several senders: up to +9 dB at eight tracks of real
 # (uncorrelated) material. Correlated content now UNDER-corrects and can clip.
 # 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
@@ -238,7 +241,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"46"
+BUILD_TAG = b"47"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
