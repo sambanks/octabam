@@ -182,7 +182,14 @@ RENAMES = {
         (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
         (9, b"WIDTH"),          # slot 9 -> r6+$d low
         (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
-        (11, b"-DEL"),          # slot 11 -> r6+$e low
+        (11, b""),              # slot 11 -> RETIRED 18 Aug 2026. Was -DEL, the
+                                #   dry send into the delay -- the twin of the
+                                #   delay's VRBD, which v3 retired with "a
+                                #   return track has no pre-effect signal worth
+                                #   forwarding". The reverb's copy only outlived
+                                #   it because the reverb became a return a day
+                                #   later. Audio that wants both buses belongs
+                                #   on a SEND track.
     ],
     "SEND": [
         (0, b"-DEL"), (1, b"-VRB"),
@@ -425,7 +432,7 @@ ACTIVE_PARAMS = {
     # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
     # inverse that bit WOW/FRZE on 12 Aug).
     "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],  # p5 = -VRB again (18 Aug 2026)
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
+    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # p11 (-DEL) retired 18 Aug 2026
     "SEND": [0, 1],
 }
 
@@ -464,9 +471,9 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
                                             #        reads near-boolean at 128 on
                                             #        hardware -- a small count
                                             #        publishes; mono/narrow/norm/wide)
-                                  10: 128,  # GATE   knob (R16: was PRE)
-                                  11: 4}}   # -DEL   R16: SELECT (companion $e-low),
-                                            #        off/.25/.5/.75 send
+                                  10: 128}} # GATE   knob (R16: was PRE)
+                                            # (11 was -DEL, count 4 -- retired
+                                            #  18 Aug 2026 with the send)
 
 # Which page-2 slots are STEPPED SELECTS rather than knobs, per server. This
 # table also gates the display-formatter pass below -- a server absent from it
@@ -482,7 +489,7 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
 # block below was gated `if name == "REVERB SERVER"`, so BongDelay inherited
 # SPRING REV's formatters for all six page-2 slots and three of them drew
 # wrong on hardware. See the block comment for what each one did.
-STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / ->DEL
+STEPPED_SLOTS = {"REVERB SERVER": (7, 9),       # MODE / WIDTH (-DEL retired)
                  "DELAY SERVER":  (7, 9, 11)}   # MODE / PTCH  / FRZE
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose

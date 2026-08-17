@@ -524,10 +524,12 @@ Done 9 Aug (this session) unless marked:
   4. ✅ **WIDTH select** — CONFIRMED 17 Aug 2026 (R28): the slot publishes
      (companion field, bits 8–15; `docs/PARAM_PAGES.md`) and the emulator
      measures corr +1.000 at W0 → −0.790 at W3.
-  5. ✅ **→DEL select** — CONFIRMED 17 Aug 2026 (R28), on-unit and locally:
-     at 3 the reverb's dry feeds BongDelay (0.375 FS in the emulator, first
-     local drive of any companion field); at 0, digital silence — which is
-     also the phantom-client gate holding.
+  5. ✅ **→DEL select** — CONFIRMED 17 Aug 2026 (R28)… and **RETIRED 18 Aug
+     (R31)**: under the symmetric return architecture it was the twin of the
+     delay's VRBD, which v3 dropped with "a return track has no pre-effect
+     signal worth forwarding". A return reverb's dry is normally silence, so
+     the knob did almost nothing; audio that wants both buses belongs on a
+     SEND track. Freed 61 words on payload A and r7 $68/$69/$6a.
   6. **LP boot default**: fresh part should boot bright (LP=127,
      commit 10333c6).
 

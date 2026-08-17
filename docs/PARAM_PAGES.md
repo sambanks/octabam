@@ -555,7 +555,7 @@ published.
 | 8 | `$d` | knob, bits 16–23 | DIFF |
 | 9 | `$d` | **bits 8–15** | WIDTH / PTCH |
 | 10 | `$e` | knob, bits 16–23 | GATE / SPRAY |
-| 11 | `$e` | **bits 8–15** | →DEL / FRZE |
+| 11 | `$e` | **bits 8–15** | FRZE (→DEL retired 18 Aug 2026) |
 
 ⚠️ **Slot 6 is on `$c`, not `$b`.** `$b` is not a page-2 parameter word at all.
 

@@ -454,7 +454,10 @@ def main():
     ap.add_argument("--gate", type=int, default=None,
                     help="reverb GATE 0..127 (slot-10 KNOB).")
     ap.add_argument("--rdel", type=int, default=None,
-                    help="reverb ->DEL select 0..3 (slot-11 companion).")
+                    help="RETIRED (18 Aug 2026): the reverb's ->DEL send is\n"
+                         "gone (the twin of the delay's VRBD, same rationale).\n"
+                         "A NO-OP on current images; kept so old command lines\n"
+                         "fail soft.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",

@@ -72,7 +72,7 @@ ACTIVE_PARAMS = {
     "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],  # p5 = -VRB (18 Aug 2026)
     # v92 page-2 rejig: all twelve. Even page-2 slots are knob fields, odd ones
     # are companion fields of the same word (DSP.md section 9).
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # p11 (-DEL) retired 18 Aug 2026
     "SEND": [0, 1],
 }
 

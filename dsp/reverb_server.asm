@@ -212,12 +212,10 @@
 ;   r7+$08..$0a   per-block (2048-tap) temp for lines 4..6
 ;   r7+$4b        per-block (2048-tap) temp for line 7
 ;   r7+$15..$66   per-sample scratch
-;   r7+$68        this call's DELAY ACC write address (BUS.md task 10,
-;                 per-call, advances per sample -- same shape as $63/$64)
-;   r7+$69        ->DELAY send level (per block, from knob $d)
-;   r7+$6a        this sample's own pre-effect dry mono, stashed before it's
-;                 combined with the REVERB bus accumulator into $1b (BUS.md
-;                 task 10 -- the ->DELAY send must tap dry alone, not dry+bus)
+;   r7+$68/$69/$6a  FREE (18 Aug 2026, the ->DEL retirement -- with $71 from
+;                 the v4 MIX removal, the first free r7 slots since the 10 Aug
+;                 "completely full" note). Were the ->DEL machinery: DELAY ACC
+;                 write address / send level / pre-effect dry stash
 ;
 ; Parameters:
 ;   p0 TIME -> feedback, 0.875 .. 0.999
@@ -480,15 +478,13 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$64)            ; this call's WET write address
 
-; ---- this call's DELAY ACC write address (BUS.md task 10: ->DELAY send) --
-; ⚠️ x0 now holds the NARROWED (wet) offset from the block just above, not the
-; write offset -- the DELAY accumulator is four deep, so this reloads from x1.
-; b (the split-aware frame offset) is still valid.
-        move    x1,x0                   ; the full write offset, 0/16/32/48
-        move    #>$961,a
-        add     x0,a
-        add     b,a
-        move    a,x:(r7+$68)            ; this call's DELAY ACC write address
+; ---- (the DELAY ACC write address lived here until 18 Aug 2026) -----------
+; RETIRED with the ->DEL send. The reverb no longer writes the DELAY bus at
+; all: its twin (the delay's VRBD) went in v3 with "a return track has no
+; pre-effect signal worth forwarding", and the reverb's -DEL only outlived it
+; because the reverb was converted to a return a day later. Audio that wants
+; both buses belongs on a SEND track. r7 $68/$69/$6a are FREE (first free
+; slots since the 10 Aug "completely full" note).
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
 ; Eight tracks sending into one accumulator sum to eight times one track, and
@@ -596,59 +592,10 @@ bus_mine:
                                         ; sample multiplied the bus by ~0.75
                                         ; instead of 1/N. It lives in $6c now.
 
-; ---- register as a DELAY bus client, once per block ----------------------
-; The ->DELAY send below writes the DELAY accumulator every sample (a zero
-; contribution when ->DEL is off, but a write all the same), so this server
-; registers in the DELAY count exactly as SEND registers in both counts --
-; the DELAY SERVER divides its accumulator by this. Same once-per-block gate
-; as SEND's registration: the split offset, so a split block counts ONCE.
-; x1 still holds the WRITE OFFSET (nothing above touches it since the address
-; block), and m5 is already linear from the table build above.
-; ⚠️ x1 IS AN OFFSET, NOT AN INDEX -- and this site is why the 17 Aug layout
-; change was not bit-identical on the first build. The counts are one word per
-; buffer, so an unscaled x1 addresses sixteen words past the DELAY count base:
-; off the end of the count table, and the real DELAY count never incremented. It broke ONLY the layouts
-; carrying both servers, because nothing reads that count unless a delay is
-; there to divide by it. The comment above this line still said
-; "x1 still holds write_rotation" while the value under it had changed --
-; CLAUDE.md's "check what the code BELOW assumed" trap, exactly.
-        move    x:(r7+$67),a
-        tst     a
-        bne     vdcnt_done              ; not this block's first call
-; ---- and ONLY when actually sending (17 Aug 2026) ------------------------
-; ⚠️ A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE
-; ELSE'S LEVEL. The DELAY SERVER divides its accumulator by this count, so a
-; writer that registers unconditionally and then writes zero dilutes the real
-; senders by N/(N+1) -- **-6 dB with a single sender**. Measured 17 Aug on
-; two independent quantities that both close on the model: delay drive
-; +2.50/+1.02 dB = N/(N+1), reverb share -3.52/-2.50 dB = 1/(N+1). It is why
-; the delay was flat across 1-7 senders in a delay-only bank and drifted the
-; moment a reverb joined it -- and the effect being blamed was innocent.
-; ⚠️ READ THE KNOB FROM r6 DIRECTLY, not the decoded level in r7+$69: the
-; per-block parameter decode runs LATER in this block than this registration,
-; so $69 still holds the PREVIOUS block's value here. Same reason
-; delay_server reads IN from r6 for its own registration gate.
-; ⚠️ No A2 dance before the tst: x:(r6+$e) is a knob field, val<<16 with
-; val <= 127, so it loads positive and A2 is 0; the `and` leaves it 0, which
-; is consistent with A1. That is the ONLY reason this is 5 words and not 7 --
-; if the field could ever load negative, the tst would need a clean register
-; first (CLAUDE.md's A2-staleness trap).
-        move    x:(r6+$e),a
-        and     #>$7f00,a               ; the ->DEL select, BITS 8-15. Zero /
-                                        ; nonzero only, so no shift needed
-        tst     a
-        beq     vdcnt_done              ; ->DEL off: we write zeros, so taking a
-                                        ; 1/N share would rob every real sender
-        move    x1,a
-        asr     #$4,a,a                 ; offset -> bare count index (0..3)
-        move    #>$9c7,x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a
-        move    #>$1,x0
-        add     x0,a
-        move    a,y:(r5)                ; DELAY count += 1
-vdcnt_done:
+; ---- (the DELAY-bus registration lived here until 18 Aug 2026) ------------
+; Gone with the ->DEL send above. Its one-day-old knob gate (d7eb647, the
+; -6.02 dB phantom-client fix) is preserved in spirit by not existing: a
+; client that never writes cannot register, phantom or otherwise.
 
 ; ---- hardcoded base: BUS.md task 8 (REVERB SERVER always Y:0x4000) ------
 ; No x:0x213 read, no per-instance stash -- every instance of this effect
@@ -1667,20 +1614,8 @@ md_done:
         move    #>$7e8000,a
         move    a,x:(r7+$20)
 
-; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
-; R16: a 4-STEP SELECT, not a knob. Hardware (10 Aug) showed the companion
-; LOW-byte fields read near-boolean at count 128 -- a smooth knob here was
-; dead on the unit. A small count publishes (MODE, a companion select, works),
-; so ->DEL is now count 4: the panel sends a plain index 0..3 in the low bits.
-; asl #$15 maps it 0/0x200000/0x400000/0x600000 = off / .25 / .5 / .75, a
-; clean power-of-two step with no overflow (index 3 -> 0x600000 < full).
-        move    x:(r6+$e),a
-        and     #>$7f00,a               ; slot 11's companion field: BITS 8-15
-        asr     #$8,a,a
-        move    a1,x0
-        move    x0,a
-        asl     #$15,a,a                ; index -> send level, 0 / .25 / .5 / .75
-        move    a,x:(r7+$69)
+; ---- (the ->DEL level decode lived here until 18 Aug 2026; see the note at
+; the retired DELAY ACC address block) ---------------------------------------
 
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
 ; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
@@ -2342,10 +2277,6 @@ lfrol:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$6a)            ; own dry mono, PRE-IN -- the ->DELAY
-                                        ; send (BUS.md task 10) taps this, so
-                                        ; ->DEL sends the track's dry even at
-                                        ; IN=0 (documented, deliberate)
 ; RETURN input (v4): own share = dry * IN, with the SAME 3-bit headroom every
 ; bus writer applies, summed with the accumulator BEFORE the auto-gain -- so
 ; the host is one client among N, exactly the delay's recipe. mpy x1,y1 is the
@@ -2410,25 +2341,6 @@ lfrol:
         move    #>$1,x0
         add     x0,a
         move    a,x:(r7+$63)            ; advance the read pointer one sample
-
-; ---- ->DELAY: dry parallel send into the shared DELAY bus (BUS.md task 10)
-        move    x:(r7+$6a),x0           ; own dry mono, this sample
-        move    x:(r7+$69),y1           ; ->DELAY level
-        mpy     x0,y1,a
-        asr     #$3,a,a                 ; 3 bits of bus headroom -- every
-                                        ; DELAY-bus writer shifts down, the
-                                        ; DELAY SERVER shifts back up by 3
-                                        ; (mirror of the REVERB bus's v121
-                                        ; scheme, landed with delay auto-gain)
-        move    x:(r7+$68),b            ; this call's DELAY ACC write address
-        move    b,r5
-        move    y:(r5),b
-        add     b,a
-        move    a,y:(r5)                ; DELAY ACC[write][i] += contribution
-        move    x:(r7+$68),a
-        move    #>$1,x0
-        add     x0,a
-        move    a,x:(r7+$68)            ; advance DELAY ACC write pointer
 
         move    r1,a                    ; the allpass phase IS the tank phase:
         and     #>$7ff,a                ; both advance by 1 a sample, and the
