@@ -100,6 +100,27 @@ takes seconds rather than minutes.
 3. **Eject the card properly** on the computer, then leave USB DISK MODE on the OT. Skipping the
    eject can leave the write in cache and the OT reads a truncated file.
 4. **PROJECT → OS UPGRADE → [YES]**, confirm the prompt.
+5. ⚠️ **POWER-CYCLE THE UNIT BEFORE JUDGING ANYTHING.** Not optional, and not
+   superstition. Sam has hit garbled/garbage audio straight after an upgrade
+   twice, cleared by a reboot both times.
+
+   🟡 The mechanism, inferred from the code and matching the symptom exactly
+   (not yet measured on hardware): both engines skip warm-up when their
+   tagged counter at `r7+$82` holds a valid tag at full count — ChonVerb
+   `$2c0000`, BongDelay `$2e0000`. **An OS upgrade rewrites program memory
+   but does not clear DSP state RAM.** If that word survives with a valid
+   tag, the engine concludes it is already warmed up and runs on whatever is
+   in its buffers — the previous firmware's contents, or boot garbage. The
+   delay's own source note spells out why that is worse than a single glitch:
+   "this engine has real feedback, so uncleared garbage would recirculate
+   rather than just play once and vanish."
+
+   A power cycle clears the tag, warm-up runs, buffers are zeroed. **Judge no
+   audio, and report no defect, until you have rebooted after an upgrade** —
+   otherwise you are auditioning the previous build's leftovers.
+
+   Falsifier, if anyone wants to close it properly: peek `r7+$82` on the
+   first block after an upgrade and see whether the tag compare passes.
 
 The active project is synced to the card automatically before the upgrade.
 
