@@ -23,7 +23,7 @@ a timing fix works.
 
     make verify-bus SAVE=1     # on the tree you trust, BEFORE the edit
     ...make the bus change...
-    make verify-bus            # must come back 17/17 bit-identical
+    make verify-bus            # must come back 19/19 bit-identical
 
 ⚠️ THIS IS AN ON-DEMAND GATE AROUND ONE EDIT, NOT A MEMBER OF `make check` --
 and the reason is worth stating so nobody "fixes" it by adding it. The hashes
@@ -136,6 +136,16 @@ CASES = [
      dict(layout="DS", pick="D", split=7)),
     ("RDS s5  split block with both servers and both cross-sends",
      dict(layout="RDS", pick="D", split=5, dvrbw=127)),
+
+    # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
+    # ⚠️ Added 18 Aug 2026 after the delay's IN decode was silently DELETED by
+    # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
+    # "IN multiplies garbage" rendered identically to "IN works". A knob whose
+    # default is 0 is INVISIBLE to this gate unless a case drives it.
+    ("DS IN   the delay host's own send, nonzero (inall)",
+     dict(layout="DS", pick="D", dmix=64, inall=True)),
+    ("RS IN   the reverb host's own send, nonzero (inall)",
+     dict(layout="RS", mix=64, inall=True)),
 ]
 
 # Knobs held away from their defaults so the paths under test are actually
@@ -155,12 +165,17 @@ def render(mem, case, bump_level=0, extra_send=""):
 
     rev = list(send_probe.REV_PARAMS)
     rev[0] = 40                      # TIME
-    rev[5] = kw["mix"]
+    rev[5] = kw["mix"] if "mix" in case else 0   # p5 = IN post-v4; BASE's old
+                                                 # "mix" default must NOT leak
+                                                 # a phantom host client into
+                                                 # every case
     snd = list(send_probe.SEND_PARAMS)
     snd[1] = kw["level"]             # ->REVERB
     snd[0] = kw["dlevel"]            # ->DELAY
     dpar = list(send_probe.DELAY_PARAMS)
-    for idx, key in ((0, "dtime"), (1, "dfdbk"), (4, "dmix"), (5, "dvrbw")):
+    # idx4 = IN, idx... ⚠️ dvrbw is p4 (-VRB) since the 18 Aug swap; dmix (IN)
+    # is p5. The KEYS keep their historical names; the indices follow the map.
+    for idx, key in ((0, "dtime"), (1, "dfdbk"), (5, "dmix"), (4, "dvrbw")):
         if key in kw:
             dpar[idx] = kw[key]
 
@@ -168,7 +183,7 @@ def render(mem, case, bump_level=0, extra_send=""):
                           verbose=False, amp=kw["amp"], direct=False,
                           wave_src=None, split=kw.get("split", 0),
                           layout=kw["layout"], delay_params=dpar,
-                          pick=kw.get("pick"))
+                          pick=kw.get("pick"), inall=kw.get("inall", False))
     h = hashlib.sha256()
     for v in L:
         h.update(v.to_bytes(4, "little", signed=True))

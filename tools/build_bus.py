@@ -136,21 +136,20 @@ NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
 RENAMES = {
     "DELAY SERVER": [
         (1, b"FDBK"), (2, b"TONE"), (3, b"PING"),
-        (4, b"IN"),                 # slot 4 -> r6+$4  THIS TRACK'S OWN SEND
+        (4, b"-VRB"),               # slot 4 -> r6+$4  the delay's send into
+                                    #   the reverb (swapped with IN 18 Aug 2026
+                                    #   so IN sits bottom-right on BOTH
+                                    #   effects). Was IN; before v3, MIX.
+                                    # (original IN note follows, now at p5:)
                                     #   level into the delay. v3 stage 1: was
                                     #   MIX, a dry/wet crossfade, which had
                                     #   nothing left to cross-fade once the
                                     #   host track became a return that prints
                                     #   the wet alone. Now the host's
                                     #   counterpart of send_client's p0.
-        (5, b"-VRB"),               # slot 5 -> r6+$5  the delay's send into
-                                    #   the reverb, a KNOB AGAIN (18 Aug 2026)
-                                    #   -- SAME NAME as SEND's. Was VRBW,
-                                    #   retired v3..R29 while the send was
-                                    #   hardwired; the hard connect was the
-                                    #   last asymmetry once both effects
-                                    #   became returns. Registration follows
-                                    #   the knob (phantom-client rule).
+        (5, b"IN"),                 # slot 5 -> r6+$5  THIS TRACK'S OWN SEND
+                                    #   level into the delay, bottom-right to
+                                    #   match the reverb's IN (18 Aug swap).
         (6, b"WOW"),                # slot 6 -> r6+$c KNOB    TAPE wow depth
                                     #   (bits 16-23; $b is not a param word --
                                     #    docs/PARAM_PAGES.md)

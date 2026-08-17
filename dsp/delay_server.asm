@@ -697,9 +697,9 @@ bus_mine:
 ; comment indexed the table at address 0 or 1, a wild Y read.
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$4),a             ; IN, read from the knob directly: the
-                                        ;  per-block decode runs AFTER this
-                                        ;  block, so $76 is not set yet
+        move    x:(r6+$5),a             ; IN (p5 since the 18 Aug swap), read
+                                        ;  from the knob directly: the per-block
+                                        ;  decode runs AFTER this block
         tst     a                       ; Z set == IN is 0 == not sending
         tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
@@ -737,7 +737,9 @@ bus_mine:
 ; address arithmetic below (which touches a and x0 but not b).
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$5),a             ; the -VRB knob itself
+        move    x:(r6+$4),a             ; the -VRB knob itself (p4 since the
+                                        ;  18 Aug swap -- IN took p5 so both
+                                        ;  effects' IN sits bottom-right)
         tst     a
         tne     x0,b                    ; sending -> b = 1
         move    x:(r7+$86),a            ; write offset -- the RESOLVED one, not
@@ -886,7 +888,8 @@ dwarmdone:
 ; symmetric RETURN design: now that BOTH effects are returns on a series bus,
 ; the delay is just another track sending to the reverb, and every other track
 ; has a -VRB knob -- the hard connect was the last asymmetry in the box.
-; p5 (retired VRBW's slot) returns as -VRB, SAME NAME as SEND's, default 0.
+; -VRB returns at p4 (IN moved to p5 in the same change, so IN sits
+; bottom-right on BOTH effects), SAME NAME as SEND's, default 0.
 ;
 ; ⚠️ It also fixes a live phantom client: the hardwired send REGISTERED
 ; UNCONDITIONALLY, so an idle delay took a reverb share and diluted every real
@@ -901,8 +904,24 @@ dwarmdone:
 ; ⚠️ The audible delay-vs-reverb balance is still NOT this knob's job -- the
 ; two effects sit on different TRACKS with their own faders. This sets how
 ; hard the delay drives the reverb relative to other senders.
-        move    x:(r6+$5),a             ; -VRB, val<<16 == val/128 Q1.23
+        move    x:(r6+$4),a             ; -VRB, val<<16 == val/128 Q1.23
         move    a,x:(r7+$85)            ; (the MIX/PING trick, multiplier as-is)
+
+; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
+; The exact counterpart of every other track's ->DELAY knob (send_client p0):
+; same range, same scaling, same 3-bit headroom, same auto-gain share. See
+; the input block for the arithmetic.
+; ⚠️ p5, NOT p4, since 18 Aug 2026: IN and -VRB swapped slots so that IN sits
+; BOTTOM-RIGHT on BOTH effects (the reverb's IN is p5). Old projects: stored
+; p4/p5 values swap meaning -- covered by FLASHING.md's first-load step.
+; ⚠️ THIS DECODE WAS SILENTLY DELETED for one day (6d2690b's -VRB splice ate
+; it; caught 18 Aug during this swap): $76 went entirely unwritten, so IN
+; multiplied warm-up garbage. It reached two wrapped images (R30/R31),
+; NEITHER FLASHED. The matrix now has an IN-nonzero render so a dead IN can
+; never again pass silently -- verify_bus alone cannot see it because every
+; default render has IN at 0.
+        move    x:(r6+$5),x0
+        move    x0,x:(r7+$76)           ; IN, 0 .. ~0.99
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
