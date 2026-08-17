@@ -432,11 +432,10 @@ def main():
                          "read position, 127 spreads them over 1015 samples.\n"
                          "Only read in GRAIN (DMODE=3); inert elsewhere.")
     ap.add_argument("--dvrbw", type=int, default=None,
-                    help="RETIRED (v3 stage 1): ->VERB is HARDWIRED at maximum\n"
-                         "and p5 is an empty slot, so this arg is a NO-OP on\n"
-                         "any v3+ image. Kept so old command lines fail soft\n"
-                         "rather than erroring; the delay->reverb topology is\n"
-                         "now always on in --layout RDS --pick R.")
+                    help="delay -VRB 0..127 (p5) -- the delay's send into the\n"
+                         "reverb, A KNOB AGAIN from 18 Aug 2026 (hardwired at\n"
+                         "max v3..R29). Default 0: the wash is opt-in, and\n"
+                         "registration follows the knob.")
     ap.add_argument("--dmode", type=int, default=None,
                     help="delay MODE 0..4 via the slot-7 COMPANION field --\n"
                          "runtime equivalent of the DMODE= build override\n"

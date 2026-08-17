@@ -143,21 +143,27 @@ RENAMES = {
                                     #   host track became a return that prints
                                     #   the wet alone. Now the host's
                                     #   counterpart of send_client's p0.
-        (5, b""),                   # slot 5 -> RETIRED. Was VRBW (->VERB WET);
-                                    #   the send is hardwired in the DSP now,
-                                    #   which also retires the known defect
-                                    #   that only VRBW <= 50 was usable.
-        (6, b"WOW"),                # slot 6 -> r6+$b knob    TAPE wow depth
+        (5, b"-VRB"),               # slot 5 -> r6+$5  the delay's send into
+                                    #   the reverb, a KNOB AGAIN (18 Aug 2026)
+                                    #   -- SAME NAME as SEND's. Was VRBW,
+                                    #   retired v3..R29 while the send was
+                                    #   hardwired; the hard connect was the
+                                    #   last asymmetry once both effects
+                                    #   became returns. Registration follows
+                                    #   the knob (phantom-client rule).
+        (6, b"WOW"),                # slot 6 -> r6+$c KNOB    TAPE wow depth
+                                    #   (bits 16-23; $b is not a param word --
+                                    #    docs/PARAM_PAGES.md)
         (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
         (8, b""),                   # slot 8 -> RETIRED. Was VRBD (->VERB DRY);
                                     #   a return track has no pre-effect
                                     #   signal worth forwarding to the reverb.
-        (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
+        (9, b"PTCH"),               # slot 9 -> r6+$d b8-15  interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
         (10, b"SPRA"),              # slot 10 -> r6+$e knob  GRAIN scatter
                                     #   depth (stage 5). Four characters: the
                                     #   name field is per-knob and short
-        (11, b"FRZE"),              # slot 11 -> r6+$e low   freeze select:
+        (11, b"FRZE"),              # slot 11 -> r6+$e b8-15 freeze select:
                                     #   run / hold (stage 3)
     ],
     "REVERB SERVER": [
@@ -169,7 +175,7 @@ RENAMES = {
         # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
         # odd slots are companion fields in the same word and are only proven
         # to carry a SMALL step count -- see PAGE2_COUNTS below.
-        (6, b"SHMR"),           # slot 6 -> r6+$b        shimmer amount
+        (6, b"SHMR"),           # slot 6 -> r6+$c KNOB   shimmer amount
                                 #   (was SPEED; the LFO rate is pinned at 40,
                                 #    VOICING Round 5's measured optimum)
         (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
@@ -260,6 +266,10 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
     "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 127), (4, 0),
+                     (5, 0),    # -VRB: 0 for the same load-bearing reason as
+                                # IN -- a nonzero default registers the delay
+                                # as a reverb client whenever it exists, idle
+                                # or not, diluting every real sender
                      #      (3) PING 64 -> 127 (v3 stage 2). 64 was the WORST
                      #      place on the knob to boot: measured 17 Aug 2026 it
                      #      leaned +14.7 dB left with correlation 0.185 -- more
@@ -409,7 +419,7 @@ ACTIVE_PARAMS = {
     # what actually stops the panel drawing them; the DSP-side read and the
     # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
     # inverse that bit WOW/FRZE on 12 Aug).
-    "DELAY SERVER": [0, 1, 2, 3, 4, 6, 7, 9, 10, 11],
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],  # p5 = -VRB again (18 Aug 2026)
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
     "SEND": [0, 1],
 }

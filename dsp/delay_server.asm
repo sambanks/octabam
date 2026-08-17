@@ -280,10 +280,9 @@
 ;                       ->VERB DRY send, which is gone with its knob
 ;   r7+$84              this call's REVERB ACC write address (BUS.md task 10,
 ;                       per-call, advances per sample -- same shape as $63/$64)
-;   r7+$85              ->VERB level (per block) -- a HARDWIRED CONSTANT since
-;                       v3 stage 1, not a knob read. Kept in a slot rather
-;                       than inlined at the send site so the value has one
-;                       home to voice
+;   r7+$85              -VRB level (per block) -- a knob again since 18 Aug
+;                       2026 (p5, default 0); was a hardwired $7fffff from v3
+;                       stage 1, when the return design was delay-only
 ;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
 ;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
 ;                       rotation-tracking fix (docs/XBUS.md step 3). Every bus
@@ -731,6 +730,16 @@ bus_mine:
         move    x:(r7+$67),a
         tst     a
         bne     vrcnt_done              ; not this block's first call
+; ---- and ONLY while -VRB is up (18 Aug 2026) -- the phantom-client gate,
+; the same block as ChonVerb's ->DEL and SEND's per-bus registrations: knob
+; read from r6 DIRECTLY (the per-block decode runs later), clr BEFORE the tst,
+; increment through x0 (Tcc takes a register), b carrying the flag across the
+; address arithmetic below (which touches a and x0 but not b).
+        move    #>$1,x0                 ; the "one more client" increment
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+$5),a             ; the -VRB knob itself
+        tst     a
+        tne     x0,b                    ; sending -> b = 1
         move    x:(r7+$86),a            ; write offset -- the RESOLVED one, not
         asr     #$4,a,a                 ; y:>$900: re-reading the shared word
         move    a1,x0                   ; here would reintroduce the very
@@ -741,9 +750,8 @@ bus_mine:
         move    a,r5
         move    #>$ffffff,m5
         move    y:(r5),a
-        move    #>$1,x0
-        add     x0,a
-        move    a,y:(r5)                ; REVERB count += 1
+        add     b,a                     ; REVERB count += (sending ? 1 : 0)
+        move    a,y:(r5)
 vrcnt_done:
 
 ; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
@@ -774,8 +782,7 @@ vrcnt_done:
 ; recirculate rather than just play once and vanish. Sized for this file's
 ; 32768-word allocation: 128 words/block * 256 blocks = 32768 exactly.
         move    x:(r7+$82),a
-        move    #>$fffe00,x0
-        and     x0,a                    ; tag field -- AND cleans A1 only
+        and     #>$fffe00,a             ; tag field -- AND cleans A1 only
         move    a1,x0
         move    x0,a                    ; A2-clean before the compare
         move    #>$2e0000,x0
@@ -785,8 +792,7 @@ vrcnt_done:
         bra     dwarmrun
 dwarmtag:
         move    x:(r7+$82),a
-        move    #>$1ff,x0
-        and     x0,a
+        and     #>$1ff,a
         move    a1,x0
         move    x0,a                    ; the count, A2-clean
         move    #>$100,x0
@@ -842,16 +848,14 @@ dwarmz:
         move    #>$123456,a             ; PRNG seed: any nonzero word (xorshift
         move    a,x:(r7+$18)            ; is dead at 0), fixed for determinism
         move    x:(r7+$15),a            ; reload count
-        move    #>$1,x0
-        add     x0,a
-        move    #>$2e0000,x0
-        add     x0,a                    ; tag | count+1
+        add     #>$1,a
+        add     #>$2e0000,a             ; tag | count+1
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
 dwarmdone:
         move    x:(r7+$31),x0           ; LineL base
 
-; ---- per-block: TIME, FDBK, TONE, PING, MIX -------------------------------
+; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
         move    x:(r6),a
         and     #>$7f0000,a             ; knob field only
         asr     #$9,a,a                 ; value*128 (0..16256)
@@ -867,8 +871,7 @@ dwarmdone:
         move    x:(r6+$2),x0
         move    #>$700000,y1
         mpy     x0,y1,a
-        move    #>$100000,x0
-        add     x0,a
+        add     #>$100000,a
         move    a,x:(r7+$72)            ; TONE, 0.125 (dark) .. 0.99 (bright)
 
         move    x:(r6+$3),x0
@@ -878,51 +881,28 @@ dwarmdone:
         sub     x0,a
         move    a,x:(r7+$80)            ; 1 - PING
 
-; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
-; Was MIX, a dry/wet crossfade. The knob's meaning changed because the SLOT's
-; meaning did: the host track is now a RETURN, not an insert, so there is no
-; dry to cross-fade against and the only question left is how much of this
-; track's own audio joins the bus. That makes this knob the exact counterpart
-; of every other track's ->DELAY knob (dsp/send_client.asm's p0) -- same
-; range, same scaling, same 3-bit headroom, same 1/N share. See the input
-; block for the arithmetic and the header for why.
-        move    x:(r6+$4),x0
-        move    x0,x:(r7+$76)           ; IN, 0 .. ~0.99
-
-; ---- ->VERB: HARDWIRED, no knob (v3 stage 1) -----------------------------
-; Was two knobs, p5 ->VERB WET and p8 ->VERB DRY. Both are gone and the wet
-; send is a build-time constant, for three reasons that all point the same
-; way:
-;   * delay -> reverb is the DESIGNED topology (PLAN 3.1), not a routing
-;     option, so it does not want a knob that can switch it off;
-;   * the DRY half sent this TRACK's pre-effect signal to the reverb, and a
-;     return track has no pre-effect signal worth sending;
-;   * the knob's usable range was broken anyway -- the ->VERB write skipped
-;     the 1/8 headroom until stage 5g, and only the range refit was left
-;     undone, so "usable to about VRBW 50" shipped as a known defect. Picking
-;     one value inside the good part of that range retires the defect instead
-;     of carrying it.
-; $7fffff is the MAXIMUM a Q1.23 multiplier can carry, and it is a deliberate
-; choice rather than a shrug: with the send registered, the reverb's auto-gain
-; hands every client a full share, so a multiplier of 1.0 makes the delay ONE
-; FULL CLIENT'S SHARE of the reverb bus -- the most any single track can drive
-; it. Going higher means writing below the 3-bit headroom convention, which
-; risks railing the accumulator when several writers peak together.
-; ⚠️ EAR-PICKED 17 Aug 2026: Sam A/B'd $2d0000 (knob 45) / $5a0000 (knob 90) /
-; $7fffff on GRAIN through ChonVerb and chose the loudest. The span between
-; them is only 9 dB -- the whole adjustable range -- and the wash measured
-; 22.71 / 18.x / 13.63 dB below the delay's own output at 2 bus clients, and
-; 21.59 dB at 5, under the then-current 1/N law -- those dB figures predate
-; the 17 Aug change to 1/sqrt(N) (the wash now sits ~3-4.5 dB higher at those
-; client counts); the STRUCTURAL point is unchanged.
-; ⚠️ Those numbers compare a delay's discrete echoes to a reverb TAIL by rms,
-; which overstates the gap: the tail spreads the same energy over seconds.
-; They are valid against each other, not as an absolute "it is too quiet".
-; ⚠️ And the audible delay-vs-reverb balance is NOT this constant's job -- the
+; ---- -VRB: the delay's send into the reverb -- A KNOB AGAIN (18 Aug 2026) --
+; Hardwired at $7fffff from v3 stage 1 until here. The hardwire predated the
+; symmetric RETURN design: now that BOTH effects are returns on a series bus,
+; the delay is just another track sending to the reverb, and every other track
+; has a -VRB knob -- the hard connect was the last asymmetry in the box.
+; p5 (retired VRBW's slot) returns as -VRB, SAME NAME as SEND's, default 0.
+;
+; ⚠️ It also fixes a live phantom client: the hardwired send REGISTERED
+; UNCONDITIONALLY, so an idle delay took a reverb share and diluted every real
+; -VRB sender -- the defect class killed twice on 17 Aug, still alive in this
+; one path. Registration now follows the knob (the vrcnt block below).
+;
+; The knob's ceiling is the old ceiling: 127 = one full client's share, the
+; most any single track can drive the reverb -- identical in range, headroom
+; and auto-gain share to every SEND track's -VRB. The 17 Aug rms figures
+; comparing the wash to the delay's own output live in git history with the
+; hardwire; they were valid against each other under the then-current 1/N law.
+; ⚠️ The audible delay-vs-reverb balance is still NOT this knob's job -- the
 ; two effects sit on different TRACKS with their own faders. This sets how
-; hard the delay drives the reverb relative to other SENDERS.
-        move    #>$7fffff,x0
-        move    x0,x:(r7+$85)           ; ->VERB level, hardwired
+; hard the delay drives the reverb relative to other senders.
+        move    x:(r6+$5),a             ; -VRB, val<<16 == val/128 Q1.23
+        move    a,x:(r7+$85)            ; (the MIX/PING trick, multiplier as-is)
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
@@ -2954,7 +2934,7 @@ pdone:
 ; header and dsp/reverb_server.asm's ->DELAY note for why the reverse never
 ; carries wet.
         move    x:(r7+$87),x0           ; delay's own wet, this sample
-        move    x:(r7+$85),y1           ; ->VERB, hardwired (v3 stage 1)
+        move    x:(r7+$85),y1           ; -VRB (p5; hardwired v3..R29)
         mpy     x0,y1,a                 ; the whole contribution: the DRY half
                                         ; is GONE with its knob -- a return
                                         ; track has no pre-effect signal worth

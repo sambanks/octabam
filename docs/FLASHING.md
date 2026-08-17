@@ -292,3 +292,27 @@ card, **without stopping the sequencer/audio**.
 - Pressing **[PAGE]** in SELECT BANK pops the confirm even for projects without siblings (just
   press [NO]); an existence check that keeps [PAGE] stock for non-paged projects is planned.
 - A page that doesn't exist on the card just raises the normal load-error dialog.
+
+
+---
+
+## ⚠️ First load of an EXISTING PROJECT on R29+ (the RETURN-architecture images)
+
+There is **no migration mechanism**: the unit stores each part's knob VALUES,
+and our descriptors only supply defaults when an effect is freshly selected.
+So a project saved on an older image loads with values that may now mean
+something else:
+
+1. **ChonVerb tracks that carried their own audio lose the dry.** The reverb
+   is a RETURN now (wet-only output). Old "insert" usage must be re-rigged as
+   a send, or accepted as wet-only.
+2. **Old stored MIX values load as IN** (p5). On a pure return track this is
+   inaudible — but it silently registers the host as a bus client and dilutes
+   the real senders. Zero it, or use step 4.
+3. **Old stored VRBW values load as `-VRB`** (delay p5, live again from R30).
+   A pre-v3 project's VRBW=127 will wash the delay into the reverb on load.
+4. **The one-step fix per track: re-select the effect** (switch the FX2 away
+   and back). The id-store fires on change and applies fresh defaults.
+
+Same class as the power-cycle step above: known, cheap, and it reads as a
+defect if you don't know it's coming.
