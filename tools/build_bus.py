@@ -1287,22 +1287,40 @@ mkgo:""",
         # 24-word P table via p:(r5)+. Placed immediately BEFORE the module so
         # the address is known pre-assembly; the source's $facade literal is
         # rewritten to it. dsp_asm has no dc directive, hence raw words here.
+        # 17 Aug 2026: lines 0 and 1 joined the roll, in their own two-trip
+        # loop. They carry SIX-word records -- they drive the in-loop ALLPASS
+        # modulator as well as the tank one, which is why the 10 Aug pass left
+        # them out. Their records come FIRST so one r5 walks straight from
+        # record 1 into record 2 and the two loops share their whole setup.
+        # [rate const, phase slot, AP int, AP frac, MOD int, MOD frac]
+        LFO01 = [0x7f0000, 0x3e, 0x52, 0x53, 0x21, 0x22,   # line 0  1.000x
+                 0x6cc000, 0x4f, 0x54, 0x55, 0x23, 0x24]   # line 1  1.168x
         LFOTAB = [0x5b0000, 0x50, 0x56, 0x57,   # line 2  0.711x
                   0x4a0000, 0x51, 0x58, 0x59,   # line 3  0.578x
                   0x760000, 0x47, 0x00, 0x01,   # line 4  0.922x
                   0x610000, 0x48, 0x02, 0x03,   # line 5  0.758x
                   0x4d0000, 0x49, 0x04, 0x05,   # line 6  0.602x
                   0x370000, 0x4a, 0x06, 0x07]   # line 7  0.430x
+        # ⚠️ THE TABLE MUST FOLLOW THE SOURCE. An engine that has not been
+        # through the 17 Aug 0-1 roll reads record 2 FIRST, so prefixing the
+        # 0/1 records unconditionally would feed line 0's data to line 2 --
+        # silently, and in a build that still assembles. Keyed off a marker
+        # the rolled source carries, so verify_roll can hold BOTH engines at
+        # once and compare them.
+        LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         for name, src in plan:
             if "$facade" in src:
                 if src.count("$facade") != 1:
                     sys.exit(f"payload {tag}: {name} has multiple $facade "
                              f"LFOTAB literals -- expected exactly one")
-                place(LFOTAB, cursor)
+                tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
+                place(tab, cursor)
                 src = src.replace("$facade", f"${cursor:x}")
-                print(f"  LFOTAB        P:0x{cursor:05x}..0x{cursor + 24:05x} "
-                      f"(  24 words)  rolled LFO lines 2-7")
-                cursor += len(LFOTAB)
+                print(f"  LFOTAB        P:0x{cursor:05x}.."
+                      f"0x{cursor + len(tab):05x} "
+                      f"({len(tab):4d} words)  rolled LFO lines "
+                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
+                cursor += len(tab)
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
