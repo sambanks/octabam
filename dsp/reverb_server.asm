@@ -508,10 +508,27 @@ bus_mine:
 ; words, which OVERRAN the payload region; this is half that and the stores are
 ; free in cycle terms.
 ;
-; Table order is deliberate: the count is masked to 0..7, so a full 8 senders
-; wraps to index 0. Index 0 therefore holds 1/8, and index k holds 1/k. A count
-; of 0 (nobody sent) also lands on 1/8, which is harmless -- the accumulator is
-; zero in that case anyway.
+; ⚠️ THE LAW IS 1/sqrt(N), NOT 1/N (17 Aug 2026), and the difference is
+; audible. N sources sum as N only when they are CORRELATED; uncorrelated
+; sources -- i.e. actual different tracks -- sum as sqrt(N). Dividing by N
+; therefore OVER-corrects real material by sqrt(N): 3 dB per doubling of
+; senders, 9 dB at eight. Sam heard it immediately as "adding tracks
+; noticeably decreases volume".
+; ⚠️ AND THE ORIGINAL VERIFICATION WAS STRUCTURALLY BLIND TO IT. send_probe
+; feeds THE SAME TONE to every sender, which is perfectly correlated -- the one
+; case where 1/N is exactly right -- so it measured dead flat across 1..7
+; senders and that was reported as the auto-gain working. A measurement cannot
+; rule out what it physically cannot see (CLAUDE.md); here the harness could
+; only ever produce the correlated case.
+; ⚠️ THE TRADE, taken deliberately (Sam's call): 1/sqrt(N) holds real material
+; constant but UNDER-corrects correlated content. Eight tracks of the same
+; signal at full send now run sqrt(8) = 9 dB hot and will clip -- the railing
+; the auto-gain exists to prevent, moved to a rarer case rather than removed.
+; Cross-check on the constants: 1/sqrt(8) is $2d413c, which is independently
+; the reverb's per-line decay anchor.
+; Table order is unchanged: the count is masked to 0..7, so 8 senders wrap to
+; index 0, which therefore holds 1/sqrt(8). A count of 0 lands there too, which
+; is harmless -- the accumulator is zero in that case anyway.
         move    #>$30000,b              ; SHARED WINDOW + 0x4400. Built as base
         move    #>$4400,x0              ; + offset rather than one literal
         add     x0,b                    ; because only the bare `$30000` is
@@ -525,22 +542,22 @@ bus_mine:
                                         ; live for the index below, and x0 is
                                         ; free until the count load below.
         move    #>$ffffff,m5
-        move    #>$100000,a
-        move    a,y:(r5)+               ; [0] = 1/8  (count 8 wraps to here)
+        move    #>$2d413c,a
+        move    a,y:(r5)+       ; [0] = 1/sqrt(8)  (count 8 wraps to here)
         move    #>$7fffff,a
-        move    a,y:(r5)+               ; [1] = 1/1
+        move    a,y:(r5)+       ; [1] = 1/sqrt(1)
+        move    #>$5a8279,a
+        move    a,y:(r5)+       ; [2] = 1/sqrt(2)
+        move    #>$49e69d,a
+        move    a,y:(r5)+       ; [3] = 1/sqrt(3)
         move    #>$400000,a
-        move    a,y:(r5)+               ; [2] = 1/2
-        move    #>$2aaaab,a
-        move    a,y:(r5)+               ; [3] = 1/3
-        move    #>$200000,a
-        move    a,y:(r5)+               ; [4] = 1/4
-        move    #>$199999,a
-        move    a,y:(r5)+               ; [5] = 1/5
-        move    #>$155555,a
-        move    a,y:(r5)+               ; [6] = 1/6
-        move    #>$124925,a
-        move    a,y:(r5)                ; [7] = 1/7
+        move    a,y:(r5)+       ; [4] = 1/sqrt(4)
+        move    #>$393e4b,a
+        move    a,y:(r5)+       ; [5] = 1/sqrt(5)
+        move    #>$34417a,a
+        move    a,y:(r5)+       ; [6] = 1/sqrt(6)
+        move    #>$306123,a
+        move    a,y:(r5)        ; [7] = 1/sqrt(7)
 
         move    x1,a
         add     #>$20,a                    ; read offset = write + 2 buffers

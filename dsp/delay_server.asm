@@ -636,10 +636,16 @@ bus_mine:
 ; per-buffer DELAY count and writes with 3 bits of headroom
 ; (asr #3); this block divides by the count and the per-sample read shifts
 ; back up by 3, so the send knob sets a track's SHARE of the delay rather
-; than how hard the line is hit. Same table order as the reverb's: count is
-; masked to 0..7, so 8 writers wrap to index 0, which therefore holds 1/8.
-; A count of 0 (nobody wrote) also lands on 1/8 -- harmless, the accumulator
-; is zero then anyway, since writers register unconditionally.
+; than how hard the line is hit.
+; ⚠️ THE LAW IS 1/sqrt(N), NOT 1/N (17 Aug 2026) -- see the long note at the
+; reverb's copy of this table. N sources sum as N only when CORRELATED;
+; uncorrelated ones (actual different tracks) sum as sqrt(N), so dividing by N
+; over-corrects real material by 3 dB per doubling, 9 dB at eight senders.
+; The original verification was blind to it: send_probe feeds the SAME tone to
+; every sender, which is exactly the correlated case 1/N gets right.
+; Same table order as the reverb's: count is masked to 0..7, so 8 writers wrap
+; to index 0, which therefore holds 1/sqrt(8). A count of 0 (nobody wrote)
+; lands there too -- harmless, the accumulator is zero then anyway.
 ;
 ; The table lives in the shared bus scratch at $9cb-$9d2 (relocated with the
 ; rest of the $9xx layout under XBUS) because this server has no free ground
@@ -649,22 +655,22 @@ bus_mine:
         move    #>$9cb,b                ; reciprocal table base
         move    b,r5
         move    #>$ffffff,m5
-        move    #>$100000,a
-        move    a,y:(r5)+               ; [0] = 1/8  (count 8 wraps to here)
+        move    #>$2d413c,a
+        move    a,y:(r5)+       ; [0] = 1/sqrt(8)  (count 8 wraps to here)
         move    #>$7fffff,a
-        move    a,y:(r5)+               ; [1] = 1/1
+        move    a,y:(r5)+       ; [1] = 1/sqrt(1)
+        move    #>$5a8279,a
+        move    a,y:(r5)+       ; [2] = 1/sqrt(2)
+        move    #>$49e69d,a
+        move    a,y:(r5)+       ; [3] = 1/sqrt(3)
         move    #>$400000,a
-        move    a,y:(r5)+               ; [2] = 1/2
-        move    #>$2aaaab,a
-        move    a,y:(r5)+               ; [3] = 1/3
-        move    #>$200000,a
-        move    a,y:(r5)+               ; [4] = 1/4
-        move    #>$199999,a
-        move    a,y:(r5)+               ; [5] = 1/5
-        move    #>$155555,a
-        move    a,y:(r5)+               ; [6] = 1/6
-        move    #>$124925,a
-        move    a,y:(r5)                ; [7] = 1/7
+        move    a,y:(r5)+       ; [4] = 1/sqrt(4)
+        move    #>$393e4b,a
+        move    a,y:(r5)+       ; [5] = 1/sqrt(5)
+        move    #>$34417a,a
+        move    a,y:(r5)+       ; [6] = 1/sqrt(6)
+        move    #>$306123,a
+        move    a,y:(r5)        ; [7] = 1/sqrt(7)
 
         move    x1,a                    ; the count belongs to the buffer this
         add     #>$20,a                 ; block READS, which is two buffers back
