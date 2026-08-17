@@ -207,8 +207,15 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # removing it). Tag 40 is burned rather than reused, because a tag that names
 # two different images is the failure at 31 all over again.
 # 41 == OCTABAMR22 == R20 plus the four-buffer cross-core race fix and the
-# phantom-client gate.
-BUILD_TAG = b"41"
+# phantom-client gate. R22 CONFIRMED THE RACE FIX ON HARDWARE (Sam: track 1 is
+# clean), and exposed the next defect in the same breath: "the signal is much
+# quieter".
+# 42 == OCTABAMR23 == R22 plus SEND registering per bus and only when sending.
+# ⚠️ THIS ONE IS MUCH LOUDER -- up to +17 dB for a real sender in a sparse
+# bank, because idle tracks (which alias to SEND) were each taking a 1/N share.
+# Send knobs and track faders set against R22 will be wrong, and ChonVerb's
+# BIG mode clips at a 0.25-0.5 FS input, so back it off by hand.
+BUILD_TAG = b"42"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}

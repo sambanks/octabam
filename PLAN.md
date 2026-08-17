@@ -22,8 +22,9 @@ delay→reverb series topology).
 
 | | state |
 |---|---|
-| On the unit | **`OCTABAMR19`** (tag 38) — **FLASHED 17 Aug 2026**, and it is the first image that ever had delay page 2 enabled. It carries R16+R17+R18 and the whole of BongDelay v2 (five modes, GRAIN through 5g). ⚠️ **Three of its six page-2 knobs draw WRONG** (WOW draws nothing, MODE draws as a −64…−60 dial, PTCH as a 0–3 dial) — a descriptor defect fixed in `a87e304` but not on the unit. Superseded locally by v3; see 3.2 |
-| Wrapped, NOT flashed | ✅ **`OCTABAMR22` (tag 41), wrapped 17 Aug 2026** — `out/OCTATRACK_OCTABAMR22.bin`, 445,708 bytes, crc32 `0xedc5dc64`, container `ELEK0178OCTABAMR22`, round-trip + checksum ok, `make check` green (`verify_burn` SKIPPED as documented), differs from both R20 and R21. Names verified inside the UNPACKED build (`out/mainos_bus.bin` — the packed `.bin` is encoded, so grepping it wrongly reads as "names missing"): `ChonVerb41` ×1, `BongDelay41` ×1, **41 the only tag present**. Carries everything in R20 **plus the 17 Aug bus work**: the four-buffer cross-core race fix and ChonVerb's phantom-client gate. Housekeeping confirmed gated to **payload A** in the build report — this is NOT the HKB image. ⚠️ **`OCTABAMR21` (tag 40) is the HKB=1 DIAGNOSTIC — discard it.** It swaps which payload housekeeps, was built as a falsifier, was never flashed, and is superseded: the race was confirmed for free by track position, and the falsifier was weaker than documented anyway. Tag 40 is burned rather than reused. Version `R22` is next-free; the version and tag counters are independent and always have been |
+| Superseded | `OCTABAMR19` (tag 38), flashed 17 Aug, first image with delay page 2 enabled; three of six page-2 knobs drew wrong (fixed in `a87e304`). `OCTABAMR21` (tag 40) is the **HKB=1 diagnostic — discard it**, never flashed and superseded by the free track-position test |
+| Wrapped, NOT flashed | ✅ **`OCTABAMR23` (tag 42), wrapped 17 Aug 2026** — `out/OCTATRACK_OCTABAMR23.bin`, 445,700 bytes, crc32 `0x2cddfaaa`, container `ELEK0178OCTABAMR23`, round-trip + checksum ok, `make check` green, differs from R22. `ChonVerb42` ×1, `BongDelay42` ×1, 42 the only tag present. = R22 **plus SEND registering per bus and only when sending**. ⚠️ **MUCH LOUDER — up to +17 dB** for a real sender in a sparse bank, because idle tracks (which alias to SEND) were each taking a 1/N share; knobs and faders set against R22 will be wrong. ⚠️ **ChonVerb's BIG clips at a 0.25–0.5 FS input** (measured: BIG peaks 0.827 FS from 0.5 FS in, against ROOM 0.378 and PLATE 0.267 — 7–9 dB more internal gain), so back BIG off by hand; Sam's call, 17 Aug, in preference to guessing a headroom shift |
+| On the unit | **`OCTABAMR22`** (tag 41) — **FLASHED 17 Aug 2026**, and it ✅ **CONFIRMED THE CROSS-CORE RACE FIX**: BongDelay on track 1 over the bus is clean, where R19/R20 stuttered. It also surfaced the two items R23 and §1.4 now carry: the bus path was "much quieter" (the idle-SEND dilution, fixed in R23) and ChonVerb goes static in PLATE and BIG but not ROOM |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1  ✅ **ALL FIVE MODES + GRAIN 5b–5g LANDED** and shipped in R19. ⚠️ **17 Aug, the R19 flash rewrote the design**: the host track was never a return — its own audio drove the engine at unity, immune to 1/N and as loud as every sender combined (measured −24.78 vs −24.85 dB). **v3 makes it one**: output is the wet alone, MIX → IN, `→VERB` hardwired and registered, PING sweeps centred-mono → ping-pong. None of v3 has been heard. See 3.2 |
@@ -396,6 +397,40 @@ In scope:
   intermediate stores are the leading candidate but the derived loop gain
   does not close (2×`$1e` against √8 implies divergence, and it decays) —
   **measure the internal gain structure before touching anything.**
+
+  ✅ **FIRST NUMBERS, 17 Aug 2026 — AND THE MODES ARE 7–9 dB APART.** Tone
+  straight into the reverb (`--direct`), TIME 127, full wet, peak output:
+
+  | input | ROOM | PLATE | **BIG** |
+  |---|---|---|---|
+  | 0.05 FS | 0.037 | 0.028 | 0.089 |
+  | 0.25 FS | 0.183 | 0.142 | **0.447** |
+  | 0.50 FS | 0.378 | 0.267 | **0.827** |
+  | 0.90 FS | 0.606 | 0.440 | **0.990** |
+
+  **BIG crosses both the 0.35 FS saturation figure and the 0.6–0.7 knee at a
+  0.25–0.5 FS input**; ROOM only approaches the knee near 0.9; PLATE never
+  reaches it and is the *coolest* mode of the three. BIG also decays slowest
+  (~4 dB per 0.5 s against ROOM's ~6 and PLATE's ~9), so it accumulates more.
+  This is the gain-structure measurement this item has been asking for since
+  Round 9, and it says the problem is **per-mode, not global**.
+
+  ⚠️ **It explains Sam's hardware static in BIG and NOT in PLATE**, which he
+  reported on both (17 Aug, R22, with a ChonVerb on track 5). PLATE running
+  coolest than the mode that is fine is the part no measurement here accounts
+  for — treat the PLATE half as OPEN and unexplained, not as folded in.
+  Discriminators that need no flash: static should vanish with the input
+  backed off if it is drive (self-oscillation does not need signal), and
+  should vanish with no BongDelay in the bank if it is the hardwired
+  full-scale `→VERB`.
+
+  ⚠️ **Why it surfaced only now**: the bus was accidentally attenuating every
+  client ~8× through phantom registrations (idle tracks alias to SEND and
+  registered unconditionally). That masked the headroom problem. The R23 fix
+  removes the attenuation, so **R23 drives the reverb up to 17 dB harder and
+  makes BIG worse**. Sam's call (17 Aug) was to ship it anyway and back BIG
+  off by hand, rather than have a headroom shift guessed at here — the honest
+  fix is this item, done properly.
 - Tank saturation above ~0.35 FS (older item, likely the same knee — fold
   into the same measurement).
 
