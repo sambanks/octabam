@@ -333,7 +333,11 @@ int main(int argc, char** argv) {
         else if (k == "-out") a.out = v();
         else if (k == "-params") {
             auto p = parseList(argv[++i]);
-            if (p.size() < 8) p.resize(8, 64);         // page 2 lives at r6+$b..$e
+            // page 1 defaults to 64; page-2 slots default to ABSENT (their
+            // words stay zero). The old fill of 64 up to index 8 predated the
+            // real slot map -- under it, index 7's 64 would have set a MODE
+            // companion of 64.
+            if (p.size() < 6) p.resize(6, 64);
             a.pv.push_back(p);
         }
         else if (k == "-guard") {
@@ -472,27 +476,37 @@ int main(int argc, char** argv) {
                 std::printf("  !! instances %d and %d share r7 X:0x%05x\n", j, k, inst[k].state);
         }
 
-    // Page 1 is pblock+0..5. Page 2 is neither contiguous with it nor in
-    // display order; the knob names below came from dsp/pagemap_probe.asm:
-    //   index 6 -> +$b (knob BAL)   7 -> +$c (MIXF)
-    //   index 8 -> +$d (knob MONO)  9 -> +$e (knob PRE)
+    // Page 1 is pblock+0..5. Page 2 is THREE words, each carrying TWO
+    // controls -- settled on hardware 17 Aug 2026 (docs/PARAM_PAGES.md):
     //
-    // WARNING: those NAMES are not reliable, and at least two are wrong for
-    // DARK REV. Read from stock DARK's disassembly: +$c is its PRE-DELAY
-    // (P:0x17d4 masks the knob field, scales it, sets m5 = $7ff and walks a
-    // 2048-word delay buffer), while +$e is a FLAG word it only ever probes
-    // with `btst #$8` (P:0x173c, P:0x1a0d). Reading PRE from +$e cost a
-    // hardware flash: the pre-delay was inaudible and knob-deaf because a
-    // knob arrives as value<<16, so bit 8 is always clear.
+    //   slot 6 -> +$c KNOB (bits 16-23)     slot 7  -> +$c COMPANION (bits 8-15)
+    //   slot 8 -> +$d KNOB                  slot 9  -> +$d COMPANION
+    //   slot 10-> +$e KNOB                  slot 11 -> +$e COMPANION
     //
-    // The slot offsets here are still correct -- it is only the knob labels
-    // that mislead. When a slot's MEANING matters, take it from the stock
-    // effect's own reads, not from this comment.
-    static const TWord page2[] = {0xb, 0xc, 0xd, 0xe};
+    // ⚠️ THE OLD MAP HERE WAS WRONG AND IT COST MONTHS. It sent slot 6 to +$b
+    // (from dsp/pagemap_probe.asm) and wrote every slot as a KNOB field --
+    // which is exactly why the delay's WOW always worked locally and never on
+    // hardware, and why no companion select (MODE aside, which had a
+    // build-time override) was ever exercisable in the emulator. +$b is not a
+    // parameter word at all. The stock-DARK notes that used to live here
+    // (its +$c pre-delay read, the +$e `btst #$8` flag) are in the file
+    // history; the lesson they carried -- take a slot's MEANING from the
+    // effect's own reads -- survives as the map above, which was taken from
+    // exactly that.
+    //
+    // Params 0..5 are page 1; 6..11 follow the table. A companion value is
+    // written to bits 8-15 of the SAME word as its slot's knob, so both are
+    // composed together rather than the last write clobbering the word.
     auto setParams = [&](const std::vector<int>& pv) {
-        for (size_t i = 0; i < pv.size(); ++i) {
-            const TWord off = (i < 6) ? i : page2[(i - 6) % 4];
-            mem.set(MemArea_X, pblock + off, (static_cast<TWord>(pv[i]) & 0x7f) << 16);
+        for (size_t i = 0; i < 6 && i < pv.size(); ++i)
+            mem.set(MemArea_X, pblock + i, (static_cast<TWord>(pv[i]) & 0x7f) << 16);
+        for (TWord w = 0; w < 3; ++w) {                    // +$c, +$d, +$e
+            const size_t knob = 6 + 2 * w, comp = knob + 1;
+            TWord v = 0;
+            if (knob < pv.size()) v |= (static_cast<TWord>(pv[knob]) & 0x7f) << 16;
+            if (comp < pv.size()) v |= (static_cast<TWord>(pv[comp]) & 0x7f) << 8;
+            if (knob < pv.size() || comp < pv.size())
+                mem.set(MemArea_X, pblock + 0xc + w, v);
         }
     };
 

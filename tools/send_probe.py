@@ -352,9 +352,16 @@ def write_wav(path, L, R):
 
 # reverb: MOD and SPEED forced to 0 (modulation makes legitimate sidebands and
 # would swamp the metric), MIX full wet, LP wide open.
-REV_PARAMS  = [64, 0, 127, 0, 127, 127, 0, 0, 64, 0]
+# 12 entries: page 1 (0..5), then the REAL page-2 slot map (6..11) --
+# docs/PARAM_PAGES.md, settled 17 Aug 2026. Slots 7/9/11 are COMPANION fields
+# (written to bits 8-15 of the same word as the preceding knob), drivable
+# locally since dsp_host learned the map the same day; before that, no
+# companion select was ever exercisable in the emulator and DMODE=/DINT=/DFRZ=
+# build overrides were the only way in. Those overrides remain valid and are
+# proven equivalent (param-driven MODE renders bit-identical to a MODE= build).
+REV_PARAMS  = [64, 0, 127, 0, 127, 127, 0, 0, 64, 0, 0, 0]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
-SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0]
+SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
 # a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
 # VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
@@ -365,7 +372,7 @@ SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0]
 # quietly halving every real sender. The old 90 sitting here would have done
 # exactly that to every measurement taken from now on -- the SHMR/SPEED=0
 # lesson, which polluted every render until Round 12 caught it.
-DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0]
+DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0, 0, 0]
 
 
 def main():
@@ -426,6 +433,25 @@ def main():
                          "The delay's own cross-send into the REVERB bus --\n"
                          "the delay->reverb topology (PLAN 3). Needs a layout\n"
                          "carrying both servers, e.g. --layout RDS --pick R.")
+    ap.add_argument("--dmode", type=int, default=None,
+                    help="delay MODE 0..4 via the slot-7 COMPANION field --\n"
+                         "runtime equivalent of the DMODE= build override\n"
+                         "(proven bit-identical). 0=CLEAN 1=PITCH 2=TAPE\n"
+                         "3=GRAIN 4=REVERSE.")
+    ap.add_argument("--dptch", type=int, default=None,
+                    help="delay PTCH select 0..3 (slot-9 companion; DINT=\n"
+                         "equivalent). Interval in PITCH, interval SET in\n"
+                         "GRAIN, segment SIZE in REVERSE.")
+    ap.add_argument("--dfrz", type=int, default=None,
+                    help="delay FREEZE 0/1 (slot-11 companion; DFRZ=\n"
+                         "equivalent). Frozen from block 0 in a fixed-param\n"
+                         "render, so the line holds silence -- see PLAN.")
+    ap.add_argument("--width", type=int, default=None,
+                    help="reverb WIDTH select 0..3 (slot-9 companion).")
+    ap.add_argument("--gate", type=int, default=None,
+                    help="reverb GATE 0..127 (slot-10 KNOB).")
+    ap.add_argument("--rdel", type=int, default=None,
+                    help="reverb ->DEL select 0..3 (slot-11 companion).")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -455,6 +481,9 @@ def main():
                                                      ROOT / "out/dsp/_send_probe_A.mem")
     rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod
     rev[0] = a.time
+    for idx, val in ((9, a.width), (10, a.gate), (11, a.rdel)):
+        if val is not None:
+            rev[idx] = val
     # Which server is being measured decides which SEND knob has to be up.
     _tgt = "D" if (a.pick == "D" or "R" not in a.layout.upper()) else "R"
     snd = list(SEND_PARAMS)
@@ -471,8 +500,14 @@ def main():
     if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow,
                                    a.dtone, a.dping, a.dspray)):
         dpar = list(DELAY_PARAMS)
+        # ⚠️ SPRAY is slot 10 ($e KNOB). It sat at index 9 until 17 Aug 2026,
+        # which under the OLD dsp_host map happened to hit $e's knob field --
+        # right answer, wrong reasoning. Under the real map index 9 is PTCH's
+        # companion, so leaving it would have silently retuned the pitch
+        # select instead of the scatter depth.
         for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
-                         (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (9, a.dspray)):
+                         (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (7, a.dmode),
+                         (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
             if val is not None:
                 dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
