@@ -341,9 +341,8 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$30,x0
         move    y:>$900,a
-        and     x0,a
+        and     #>$30,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$6b),x0
@@ -356,10 +355,8 @@ bus_dohk:                               ; nobody did -- take over this block
 ; is +16 mod 4 and the mask that does the modulo sanitises boot garbage too.
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
-        move    #>$10,x0
-        add     x0,a
-        move    #>$30,x0
-        and     x0,a
+        add     #>$10,a
+        and     #>$30,a
         move    a,y:>$900
         move    a,x1                    ; x1 = the NEW offset
         move    a,x0
@@ -402,9 +399,9 @@ bus_zclr:
         move    (r1)+n1                 ; 4, not 2: four buffers -> four counts
         move    a,y:(r1)                ; DELAY count = 0
 bus_seen:
-        move    #>$30,x0                ; remember this block's offset so next
-        move    y:>$900,a               ; block we can tell whether anybody
-        and     x0,a                    ; else housekept in between
+        move    y:>$900,a               ; remember this block's offset so next
+        and     #>$30,a                 ; block we can tell whether anybody
+                                        ; else housekept in between
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$6b)
@@ -450,10 +447,8 @@ bus_mine:
 ; note in dsp/send_client.asm).
         move    y:>$900,a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
-        move    #>$20,x0
-        add     x0,a                    ; two buffers on == two buffers back
-        move    #>$30,x0
-        and     x0,a                    ; mod 4
+        add     #>$20,a                    ; two buffers on == two buffers back
+        and     #>$30,a                    ; mod 4
         move    a,x0                    ; x0 = the read offset
         move    #>$901,a
         add     x0,a
@@ -464,8 +459,7 @@ bus_mine:
 ; carry a race and they are not worth 32 more words of a page that has to stay
 ; inside 0x9xx. This is one of the two sites that narrows the offset for them.
         move    x1,a
-        move    #>$10,x0
-        and     x0,a                    ; write offset, narrowed to {0,16}
+        and     #>$10,a                 ; write offset, narrowed to {0,16}
         move    a,x0
         move    #>$941,a
         add     x0,a
@@ -535,10 +529,8 @@ bus_mine:
         move    a,y:(r5)                ; [7] = 1/7
 
         move    x1,a
-        move    #>$20,x0
-        add     x0,a                    ; read offset = write + 2 buffers
-        move    #>$30,x0
-        and     x0,a                    ; mod 4
+        add     #>$20,a                    ; read offset = write + 2 buffers
+        and     #>$30,a                    ; mod 4
         asr     #$4,a,a                 ; -> bare index (0..3)
         move    #>$9c3,x0
         add     x0,a

@@ -216,9 +216,8 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$30,x0
         move    y:>$900,a
-        and     x0,a
+        and     #>$30,a
         move    a1,x0
         move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$68),x0
@@ -227,10 +226,8 @@ bus_off_done:
 bus_dohk:                               ; nobody did -- take over this block
 
         move    y:>$900,a
-        move    #>$10,x0
-        add     x0,a                     ; advance one buffer
-        move    #>$30,x0
-        and     x0,a                     ; mod 4 -- and the SAME mask sanitises
+        add     #>$10,a                     ; advance one buffer
+        and     #>$30,a                     ; mod 4 -- and the SAME mask sanitises
                                           ; boot garbage, which is why four
                                           ; buffers cost less than three
         move    a,y:>$900
@@ -282,9 +279,9 @@ zclr:
         move    a,y:>$9c2               ; REVERB SERVER role owner
 
 bus_seen:
-        move    #>$30,x0                ; remember this block's offset so next
-        move    y:>$900,a               ; block we can tell whether anybody
-        and     x0,a                    ; else housekept in between
+        move    y:>$900,a               ; remember this block's offset so next
+        and     #>$30,a                 ; block we can tell whether anybody
+                                        ; else housekept in between
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$68)
@@ -292,9 +289,8 @@ notfirst:
 ; ---- everyone: find this block's write targets (the offset may have just
 ; changed above, so re-read it fresh rather than trust a stale copy) -------
 ; No `asl #$4` here any more: y:>$900 holds the offset already scaled.
-        move    #>$30,x0
         move    y:>$900,a
-        and     x0,a                     ; masked on load here too
+        and     #>$30,a                  ; masked on load here too
         move    a,x0
         move    #>$901,a
         add     x0,a
@@ -308,7 +304,7 @@ notfirst:
         move    #>$ffffff,m1
         move    #>$ffffff,m2
 
-; ---- register as a REVERB bus client, once per block ---------------------
+; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
 ; The server divides the accumulator by this count, which is what keeps eight
 ; tracks from summing into the rail (measured: the bus clamps at 1.0, and with
 ; no scaling it breaks up at THREE sends).
@@ -317,6 +313,35 @@ notfirst:
 ; ONCE -- the same trap the parity flip and the housekeeping election were both
 ; written around. Counted per block rather than per sample because every sample
 ; slot in the block receives exactly one contribution from this track.
+;
+; ⚠️ AND GATED ON EACH KNOB (17 Aug 2026). This used to register on BOTH buses
+; unconditionally, "because both accumulators are written unconditionally
+; (zeros count too)". That reasoning is wrong and it was the single largest
+; level defect in the box. A client that registers and contributes nothing
+; still takes a 1/N share, so it dilutes the real senders by N/(N+1) -- and
+; **a fresh or unassigned track IS a SEND**, because build_bus.py aliases
+; id 0x00 to this module. So an ordinary bank quietly ran N ~= 8 with one real
+; sender, costing that sender 1/8.
+; MEASURED before the fix, one real sender at ->DELAY 100 plus N idle SENDs
+; whose knobs are both zero: -14.19 / -20.21 / -23.74 / -26.23 / -28.17 /
+; -29.76 / -31.10 dB for N = 0..6. That tracks 20*log10(1/(N+1)) to 0.01 dB
+; the whole way -- every idle client cost a full share. Sam heard it as the
+; bus path being "much quieter" than the same audio on its own track.
+; Same defect and same fix as ChonVerb's phantom ->DEL registration; this is
+; the bigger one, because ChonVerb is on one track and SEND is on all of them.
+;
+; ⚠️ THE KNOBS ARE READ STRAIGHT FROM r6, not from a decoded copy: the
+; per-sample loop below reads exactly these two words as its multipliers, so
+; testing them here tests the very value that decides whether we contribute.
+; No mask and no A2 dance -- they are page-1 knob fields, val<<16 with
+; val <= 127, so they load positive with A2 = 0 (SEND has no page 2 and no
+; companion low bytes at all). If that ever changes, this needs a clean
+; register before the tst (CLAUDE.md's A2-staleness trap).
+; ⚠️ `clr` SETS THE CONDITION CODES, so each one goes BEFORE the tst it must
+; not disturb -- the flag-clobber trap, and the reason GRAIN 5d shipped a
+; noise wash on one channel. Tcc takes a REGISTER source, never an
+; accumulator, so the increment travels through x0. Branchless: no new label,
+; which also keeps dsp_asm's prefix-resolution trap out of it.
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
@@ -328,15 +353,23 @@ notfirst:
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
+        move    #>$1,x0                 ; the increment, shared by both Tccs
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+1),a              ; ->REVERB level
+        tst     a                       ; Z set == silent == not a client
+        tne     x0,b                    ; sending -> b = 1
         move    y:(r3),a
-        move    #>$1,x0
-        add     x0,a
-        move    a,y:(r3)                ; REVERB count += 1
+        add     b,a
+        move    a,y:(r3)                ; REVERB count += 1 ONLY if sending
         move    #4,n3                   ; four buffers -> four counts per bus
-        move    (r3)+n3                 ; -> the DELAY count, same buffer --
-        move    y:(r3),a                ; this client writes BOTH accumulators
-        add     x0,a                    ; unconditionally (zeros count too),
-        move    a,y:(r3)                ; so it registers on both buses
+        move    (r3)+n3                 ; -> the DELAY count, same buffer
+        clr     b                       ; again BEFORE its own tst
+        move    x:(r6),a                ; ->DELAY level
+        tst     a
+        tne     x0,b
+        move    y:(r3),a
+        add     b,a
+        move    a,y:(r3)                ; DELAY count += 1 ONLY if sending
 cnt_done:
 
 ; ---- per-sample: mono dry sum, scaled into both accumulators -------------
