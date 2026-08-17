@@ -48,7 +48,7 @@
 ;                       ⚠️ It held the bare index 0/1 until 17 Aug 2026. Every
 ;                       consumer then multiplied by 16 (`asl #$4`) to get an
 ;                       address, and every one of them re-derived the other
-;                       buffer as `1 - parity` -- which hard-codes the ROTATION
+;                       buffer as `1 - rotation` -- which hard-codes the ROTATION
 ;                       LENGTH into nine sites across three files that must
 ;                       stay identical. Storing the scaled offset is what made
 ;                       going to four buffers a change the housekeeper makes
@@ -89,7 +89,7 @@
 ;                        SEND (this file) and REVERB SERVER's ->DEL send, both
 ;                        unconditionally, because both write the accumulator
 ;                        unconditionally (zeros count too).
-;   Y:0x9cb..0x9d2      DELAY SERVER's 1/N reciprocal table, rebuilt by it
+;   Y:0x9cb..0x9d2      DELAY SERVER's 1/sqrt(N) reciprocal table, rebuilt by it
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.
 ;                        Nobody else reads or writes these eight words.
@@ -150,7 +150,7 @@ proc:
 ; (dsp/reverb89.asm's dispatcher note, reproduced here since this file has
 ; no other comment on it) -- a=0 first for frames [0,split), then always
 ; a=1 for [split,16). Naively gating position-0's flip on "r7==0x6200"
-; alone flips the shared parity ONCE PER CALL, i.e. TWICE in a split block,
+; alone flips the shared rotation ONCE PER CALL, i.e. TWICE in a split block,
 ; which cancels itself out and silently desyncs the bus. And without an
 ; offset, every call's per-sample ACC/WET writes start back at index 0,
 ; so a split a=1 call stomps the START of the block instead of continuing
@@ -204,20 +204,20 @@ bus_a1:
         move    a,x:(r7+$67)             ; garbage harmless
 bus_off_done:
 
-; ---- position-0 housekeeping: flip parity, clear the new write targets ---
+; ---- position-0 housekeeping: flip rotation, clear the new write targets ---
 ; Gated on offset==0 too (not just r7==0x6200): only the FIRST dispatch of
 ; position-0's block may flip, so a split block flips exactly once, on
 ; whichever call that is.
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
-; code never runs there, so nobody flips the parity or clears the
+; code never runs there, so nobody flips the rotation or clears the
 ; accumulators, and the bus saturates. NONE became selectable with the task-11
 ; menu, so this is reachable in ordinary use.
 ;
 ; Self-healing election instead. Position 0 still housekeeps whenever it runs.
-; Any other instance takes over if it sees that the parity has NOT changed
+; Any other instance takes over if it sees that the rotation has NOT changed
 ; since the last time it ran -- which can only mean nobody housekept in
-; between. Costs one r7 word (the parity this instance last saw) and no new
+; between. Costs one r7 word (the rotation this instance last saw) and no new
 ; global signal, so it needs nothing the bus does not already have.
 ;
 ; Gated on the split offset FIRST: only a block's first call may housekeep, so
@@ -226,7 +226,7 @@ bus_off_done:
 ; XBUS_GATE -- build_bus.py substitutes a payload gate here when XBUS=1.
 ; A shared-memory bus is housekept by ONE core only: both cores number their
 ; own instances from zero, so each core's position 0 believes it is the
-; housekeeper and they would flip the shared parity TWICE a block, cancelling
+; housekeeper and they would flip the shared rotation TWICE a block, cancelling
 ; out and silently desyncing the bus -- the same trap the split-call gate
 ; below was written around, one level up. Payload B is sent straight to
 ; notfirst, so it still finds this block's write targets but never elects.
@@ -366,7 +366,7 @@ notfirst:
 ; no scaling it breaks up at THREE sends).
 ;
 ; Gated on the split offset, so a block whose proc() runs twice still counts
-; ONCE -- the same trap the parity flip and the housekeeping election were both
+; ONCE -- the same trap the rotation flip and the housekeeping election were both
 ; written around. Counted per block rather than per sample because every sample
 ; slot in the block receives exactly one contribution from this track.
 ;

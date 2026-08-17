@@ -580,6 +580,13 @@ emulator; `DMODE=`/`DINT=`/`DFRZ=` exist as build-time overrides for that
 reason. **A green local render says nothing about whether a page-2 companion
 control publishes.**
 
-🟡 **Worth doing**: teach dsp_host the real map. It would make companion fields
-locally drivable for the first time and would finally allow FREEZE to be tested
-mid-stream, which PLAN has listed as structurally unhearable since 12 Aug.
+✅ **DONE, same day (`cd8964a`)**: dsp_host now implements this exact map, and
+the first-ever param-driven companion renders **bit-identical** to the
+build-time overrides (`MODE=`/`DMODE=`) they duplicate — with negative
+controls. `send_probe` grew `--dmode/--dptch/--dfrz/--width/--gate/--rdel`.
+The end-to-end path is proven locally: ChonVerb's `-DEL` select at 3 feeds
+BongDelay at 0.375 FS peak; at 0, digital silence.
+⚠️ What is STILL impossible locally: changing a parameter **mid-run** —
+dsp_host writes params once before the first block — so FREEZE still engages
+at sample 0 and holds silence. Testing freeze-on-a-filled-line remains
+hardware-only; that limitation is the harness dispatcher's, not the map's.

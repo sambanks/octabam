@@ -25,7 +25,7 @@
 ;    not something this file checks.
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call now also runs the same
-;    position-0 parity-flip-and-clear housekeeping as dsp/send_client.asm
+;    position-0 rotation-flip-and-clear housekeeping as dsp/send_client.asm
 ;    (verbatim, BUS.md's documented duplication requirement, including the
 ;    split-aware frame-offset fix -- see that file's header for the full
 ;    reasoning). The engine's own input additionally sums in the shared
@@ -188,7 +188,7 @@
 ;   base+0x7a00   2 in-loop allpasses, 512 words each (v127; were 1024)
 ;   r7+$40        LO coefficient
 ;   r7+$0b        state table base (base+0x7f00)
-;   r7+$0c        bus auto-gain 1/N (housekeeper block; read per sample)
+;   r7+$0c        bus auto-gain 1/sqrt(N) (housekeeper block; read per sample)
 ;   r7+$6c        lines 4-7 tap scale (per-mode, parked by md_* block).
 ;                 Was $0c until 9 Aug 2026: the md_* store LANDED ON the bus
 ;                 gain (housekeeper writes $0c first, md_* runs after), so the
@@ -268,7 +268,7 @@ proc:
 
 ; ---- BUS.md: split-aware frame offset within the shared bus buffers, and
 ; the gate for whether THIS track (if it happens to be position 0) may run
-; the parity flip on THIS call. Identical mechanism to dsp/send_client.asm
+; the rotation flip on THIS call. Identical mechanism to dsp/send_client.asm
 ; -- see its header for the full reasoning -- keyed off the SAME r7+$14
 ; call flag this engine already keeps for its own LFO-advance gating, so no
 ; new stash of the raw incoming accumulator is needed here.
@@ -308,19 +308,19 @@ bus_a1:
         move    a,x:(r7+$67)            ; garbage harmless
 bus_off_done:
 
-; ---- position-0 housekeeping: flip the shared bus parity, clear the new
+; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
 ; dsp/send_client.asm, must stay identical (BUS.md Known limitations).
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
-; code never runs there, so nobody flips the parity or clears the
+; code never runs there, so nobody flips the rotation or clears the
 ; accumulators, and the bus saturates. NONE became selectable with the task-11
 ; menu, so this is reachable in ordinary use.
 ;
 ; Self-healing election instead. Position 0 still housekeeps whenever it runs.
-; Any other instance takes over if it sees that the parity has NOT changed
+; Any other instance takes over if it sees that the rotation has NOT changed
 ; since the last time it ran -- which can only mean nobody housekept in
-; between. Costs one r7 word (the parity this instance last saw) and no new
+; between. Costs one r7 word (the rotation this instance last saw) and no new
 ; global signal, so it needs nothing the bus does not already have.
 ;
 ; Gated on the split offset FIRST: only a block's first call may housekeep, so
@@ -329,7 +329,7 @@ bus_off_done:
 ; XBUS_GATE -- build_bus.py substitutes a payload gate here when XBUS=1.
 ; A shared-memory bus is housekept by ONE core only: both cores number their
 ; own instances from zero, so each core's position 0 believes it is the
-; housekeeper and they would flip the shared parity TWICE a block, cancelling
+; housekeeper and they would flip the shared rotation TWICE a block, cancelling
 ; out and silently desyncing the bus -- the same trap the split-call gate
 ; below was written around, one level up. Payload B is sent straight to
 ; bus_notfirst, so it still finds this block's write targets but never elects.
@@ -448,10 +448,10 @@ bus_mine:
 ; MARKER_LOCK
 
 ; ---- this call's REVERB ACC read address and WET write address ----------
-; READ is the OTHER buffer from the current write parity -- the one every
+; READ is the OTHER buffer from the current write rotation -- the one every
 ; SEND client (and our own dry sum, below) finished filling last block
 ; (one-block latency, BUS.md's Mechanism section). WRITE uses the SAME
-; parity clients currently write into, so it is complete and ready by the
+; rotation clients currently write into, so it is complete and ready by the
 ; time next block flips -- for a future cross-bus reader (task 10), not
 ; consumed by anything yet.
 ; y:>$900 holds the WRITE OFFSET already scaled by the 16-word buffer stride,
@@ -490,7 +490,7 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$68)            ; this call's DELAY ACC write address
 
-; ---- bus auto-gain: resolve 1/N for this block's READ buffer ------------
+; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
 ; Eight tracks sending into one accumulator sum to eight times one track, and
 ; the accumulator CLAMPS at 1.0 -- measured, it breaks up at THREE sends and is
 ; destroyed by seven. Dividing by the number of clients that actually wrote the
@@ -596,7 +596,7 @@ bus_mine:
 ; off the end of the count table, and the real DELAY count never incremented. It broke ONLY the layouts
 ; carrying both servers, because nothing reads that count unless a delay is
 ; there to divide by it. The comment above this line still said
-; "x1 still holds write_parity" while the value under it had changed --
+; "x1 still holds write_rotation" while the value under it had changed --
 ; CLAUDE.md's "check what the code BELOW assumed" trap, exactly.
         move    x:(r7+$67),a
         tst     a
@@ -709,7 +709,7 @@ warmz:
 ;   - it must start at +0x0800, because stock's per-frame parameter staging
 ;     sits at shared+0x0000..+0x0047 and is rewritten every frame
 ;   - it must end well below +0x6000, because THE BUS SCRATCH lives at
-;     shared+0x6000..+0x7fff. Zeroing that would clear the accumulator parity
+;     shared+0x6000..+0x7fff. Zeroing that would clear the accumulator rotation
 ;     word and every client's contribution mid-block, on 256 consecutive
 ;     blocks, on a core the other core is talking to.
 ; +0x57ff leaves 2,049 words of margin. Do not grow this loop without moving

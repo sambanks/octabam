@@ -23,8 +23,8 @@ delay→reverb series topology).
 | | state |
 |---|---|
 | Superseded | `OCTABAMR19` (tag 38), flashed 17 Aug, first image with delay page 2 enabled; three of six page-2 knobs drew wrong (fixed in `a87e304`). `OCTABAMR21` (tag 40) is the **HKB=1 diagnostic — discard it**, never flashed and superseded by the free track-position test |
-| Wrapped, NOT flashed | ✅ **`OCTABAMR28` (tag 47), wrapped 17 Aug 2026** — 445,652 bytes, crc32 `0xe33999ae`, round-trip + checksum ok, `make check` green, differs from R27. `ChonVerb47`/`BongDelay47`, 47 the only tag. = R27 **plus the page-2 companion-field fix**: the companion is **bits 8–15, not the low byte** (`docs/PARAM_PAGES.md`). Wakes five knobs that have NEVER worked on hardware — delay **WOW/PTCH/FRZE**, reverb **WIDTH** and **→DEL**. ⚠️ **Unverifiable locally by construction** (dsp_host cannot write companion fields at all); the model is inferred from three data points, and if wrong the knobs simply stay dead — an inert failure, not a destructive one |
-| On the unit | **`OCTABAMR27`** (tag 46), flashed 17 Aug — ✅ levels hold across sender counts, correlated content does not clip, **the PLATE/BIG reverb static is GONE** (confirming it was `→VERB`'s core-1 write into the reverb accumulator), and BIG does not break up. Previously `OCTABAMR26` (tag 45), flashed 17 Aug — ✅ **THE THREE CROSS-CORE DEFECTS ARE CLOSED**: Sam swept T2/T3/T4 × delay MODE 1–5 and reports all modes good on all tracks. Previously `OCTABAMR25` (tag 44), flashed 17 Aug — ⚠️ carries a cold-boot bug of my making (uninitialised tracked rotation → metallic on every core-1 sender after a power cycle, cured by re-selecting the effect); fixed in R26. Its residual before that: T4 sending + delay MODE 1, still responsive to changing T5. Previously `OCTABAMR24` (tag 43), flashed 17 Aug — took the cross-core artifact from moving across the whole sweep to **ONE combination in fifteen** (T4 sending, delay MODE 1 CLEAN: the last core-1 track at the cheapest mode, i.e. where core 1 runs furthest ahead of core 0 — exactly where clear-vs-write bites). Previously `OCTABAMR23` (tag 42), flashed 17 Aug — the image that FOUND the second cross-core defect. Previously **`OCTABAMR22`** (tag 41) — **FLASHED 17 Aug 2026**, and it ✅ **CONFIRMED THE CROSS-CORE RACE FIX**: BongDelay on track 1 over the bus is clean, where R19/R20 stuttered. R23 then surfaced a SECOND cross-core defect, hardware-confirmed the same day (docs/XBUS.md step 3): **every client reads the shared rotation word at its own dispatch time, so a core-1 client whose window straddles core 0's flip gets block-rate jitter**. Proven by changing T5 — core 0's *housekeeper* — from ChonVerb to Send, which cured a defect on a core-1 path while touching nothing else. ⚠️ Exactly one (core-1 track, delay mode) combination is bad at a time and it RELOCATES, so no single clean configuration proves a fix. ✅ Workaround needing no flash: **send to the delay from tracks 5–8**, which are in lockstep with the housekeeper. It also surfaced the two items R23 and §1.4 now carry: the bus path was "much quieter" (the idle-SEND dilution, fixed in R23) and ChonVerb goes static in PLATE and BIG but not ROOM |
+| Wrapped, NOT flashed | *(nothing — R28 is current)*. The 17 Aug consolidation pass after R28 is comment/doc/harness-only and proven bit-identical (verify_bus 17/17), so no new image is owed |
+| On the unit | **`OCTABAMR28`** (tag 47) — **FLASHED 17 Aug 2026**, and ✅ **THE FIVE NEVER-WORKED KNOBS NOW WORK** (Sam: "knobs are working now"): delay WOW/PTCH/FRZE, reverb WIDTH and →DEL — the companion-field fix confirmed on hardware. Also confirmed on the R26–R28 series the same day: all three cross-core defects closed (sweep clean on all tracks × all modes), levels hold across sender counts (1/√N), correlated content does not clip in practice, the PLATE/BIG static gone, BIG does not break up at Sam's levels |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1  ✅ **ALL FIVE MODES + GRAIN 5b–5g LANDED** and shipped in R19. ⚠️ **17 Aug, the R19 flash rewrote the design**: the host track was never a return — its own audio drove the engine at unity, immune to 1/N and as loud as every sender combined (measured −24.78 vs −24.85 dB). **v3 makes it one**: output is the wet alone, MIX → IN, `→VERB` hardwired and registered, PING sweeps centred-mono → ping-pong. None of v3 has been heard. See 3.2 |
@@ -40,9 +40,12 @@ R16 reads $c OR $b, unflashed); →DEL silent pre-R16. Page-1 knobs publish
 and work. Remaining 10 Aug findings: (2) Page-1 knob feel needs a
 **tuning pass** against the R13 engine (ranges/curves — Sam, 10 Aug).
 (3) MIX at 100% is much quieter than dry — inherent (wet spreads the same
-energy over seconds; the straight crossfade measured −7 dB) and now has
-ear evidence; queue a **wet makeup gain** voicing pass. Cheapest form is
-~1 word (`asl` on the wet path); payload A is at FREE 32 (11 Aug).
+energy over seconds) and now MEASURED precisely (17 Aug, steady tone,
+direct drive): flat to MIX 64, then **−10.9 dB at full wet** (−19.9 dBFS
+against −9.0 dry). Queue a **wet makeup gain** voicing pass — but ⚠️ a flat
+`asl` (+6 dB) is NOT safe any more: BIG already peaks 0.611 FS from a
+0.5 FS input (its 7–9 dB per-mode gain excess, §1.4), so makeup must land
+per-mode or after 1.4 equalises the modes. Payload A is at FREE 12.
 
 ---
 
@@ -518,9 +521,13 @@ Done 9 Aug (this session) unless marked:
   3. **GATE** (slot 10, `$e` knob — NEW in R16): with drums, up from 0.
      Expect the tail to chop off after the hold (higher = longer hold,
      measured 11 Aug in the emulator). GATE=0 must be a true bypass (R18).
-  4. **WIDTH select** (slot 9, `$d` low): step 3→0, image collapses to mono.
-  5. **→DEL select** (slot 11, `$e` low): step up with a delay on the bus;
-     dry starts feeding the BongDelay send. Still never heard on-unit.
+  4. ✅ **WIDTH select** — CONFIRMED 17 Aug 2026 (R28): the slot publishes
+     (companion field, bits 8–15; `docs/PARAM_PAGES.md`) and the emulator
+     measures corr +1.000 at W0 → −0.790 at W3.
+  5. ✅ **→DEL select** — CONFIRMED 17 Aug 2026 (R28), on-unit and locally:
+     at 3 the reverb's dry feeds BongDelay (0.375 FS in the emulator, first
+     local drive of any companion field); at 0, digital silence — which is
+     also the phantom-client gate holding.
   6. **LP boot default**: fresh part should boot bright (LP=127,
      commit 10333c6).
 

@@ -64,7 +64,7 @@
 ;    it, which is the cheapest possible way to find out.
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call runs the same position-0
-;    parity-flip-and-clear housekeeping as dsp/send_client.asm and
+;    rotation-flip-and-clear housekeeping as dsp/send_client.asm and
 ;    dsp/reverb_server.asm, split-aware-offset fix included, copied
 ;    byte-for-byte (BUS.md Known limitations: this duplication is mandatory,
 ;    not stylistic -- a divergent copy desyncs the bus silently). The engine's
@@ -269,7 +269,7 @@
 ;                       outputs (per sample)
 ;   r7+$7d              scratch: x_in, own dry mono + bus (per sample)
 ;   r7+$7e/$81          scratch: fbIntoL/fbIntoR (per sample)
-;   r7+$7f              bus auto-gain 1/N (per block; read per sample). The
+;   r7+$7f              bus auto-gain 1/sqrt(N) (per block; read per sample). The
 ;                       delay-bus mirror of the reverb's $0c -- kept in its
 ;                       own slot with nothing else ever parked here (the $0c
 ;                       collision lesson)
@@ -425,19 +425,19 @@ bus_a1:
         move    a,x:(r7+$67)            ; garbage harmless
 bus_off_done:
 
-; ---- position-0 housekeeping: flip the shared bus parity, clear the new
+; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
 ; dsp/send_client.asm / dsp/reverb_server.asm, must stay identical.
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
-; code never runs there, so nobody flips the parity or clears the
+; code never runs there, so nobody flips the rotation or clears the
 ; accumulators, and the bus saturates. NONE became selectable with the task-11
 ; menu, so this is reachable in ordinary use.
 ;
 ; Self-healing election instead. Position 0 still housekeeps whenever it runs.
-; Any other instance takes over if it sees that the parity has NOT changed
+; Any other instance takes over if it sees that the rotation has NOT changed
 ; since the last time it ran -- which can only mean nobody housekept in
-; between. Costs one r7 word (the parity this instance last saw) and no new
+; between. Costs one r7 word (the rotation this instance last saw) and no new
 ; global signal, so it needs nothing the bus does not already have.
 ;
 ; Gated on the split offset FIRST: only a block's first call may housekeep, so
@@ -446,7 +446,7 @@ bus_off_done:
 ; XBUS_GATE -- build_bus.py substitutes a payload gate here when XBUS=1.
 ; A shared-memory bus is housekept by ONE core only: both cores number their
 ; own instances from zero, so each core's position 0 believes it is the
-; housekeeper and they would flip the shared parity TWICE a block, cancelling
+; housekeeper and they would flip the shared rotation TWICE a block, cancelling
 ; out and silently desyncing the bus -- the same trap the split-call gate
 ; below was written around, one level up. Payload B is sent straight to
 ; bus_notfirst, so it still finds this block's write targets but never elects.
@@ -574,9 +574,9 @@ bus_claim:
 bus_mine:
 
 ; ---- this call's DELAY ACC read address and DELAY WET write address ------
-; READ is the OTHER buffer from the current write parity -- the one every
+; READ is the OTHER buffer from the current write rotation -- the one every
 ; SEND client (and our own dry sum, below) finished filling last block.
-; WRITE uses the SAME parity clients currently write into, for a future
+; WRITE uses the SAME rotation clients currently write into, for a future
 ; cross-bus reader (task 10), not consumed by anything yet.
 ; ⚠️ THE OFFSET COMES FROM r7+$86, NOT y:>$900. This server lives on payload B
 ; and cannot read the shared rotation at its own dispatch time -- core 0 flips
@@ -628,7 +628,7 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
 
-; ---- bus auto-gain: resolve 1/N for this block's READ buffer --------------
+; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
 ; N clients summing into one accumulator word drive the delay N x as hard as
 ; one, and the shared word clamps at 1.0. Every DELAY-bus writer (SEND's
@@ -650,7 +650,7 @@ bus_mine:
 ; The table lives in the shared bus scratch at $9cb-$9d2 (relocated with the
 ; rest of the $9xx layout under XBUS) because this server has no free ground
 ; of its own: both line buffers fill its entire half-window. Rebuilt each
-; block; the stores are free in cycle terms. x1 (write_parity) is still
+; block; the stores are free in cycle terms. x1 (write_rotation) is still
 ; valid from the address block above.
         move    #>$9cb,b                ; reciprocal table base
         move    b,r5
@@ -718,14 +718,14 @@ bus_mine:
 ; ---- register as a REVERB bus client, once per block (v3 stage 1) --------
 ; The ->VERB send below writes the REVERB accumulator every sample, so this
 ; server must appear in the REVERB count exactly as SEND does and as
-; reverb_server does for the DELAY count -- otherwise ChonVerb's 1/N divides
+; reverb_server does for the DELAY count -- otherwise ChonVerb's auto-gain divides
 ; by one client too few and our contribution comes out x8/N louder than it
 ; should. That was the shipping defect ("->VERB usable only to about VRBW
 ; 50"); the 5g /8 fix removed the constant factor and this removes the
 ; N-dependence, which together are what make a HARDWIRED amount meaningful.
 ;
 ; Same once-per-block gate as every other registration: keyed on the split
-; offset, so a split block's two calls count ONCE. Same WRITE-parity choice
+; offset, so a split block's two calls count ONCE. Same WRITE-rotation choice
 ; as send_client -- count the buffer we are about to add into, not the one
 ; being read.
         move    x:(r7+$67),a
@@ -904,7 +904,7 @@ dwarmdone:
 ;     of carrying it.
 ; $7fffff is the MAXIMUM a Q1.23 multiplier can carry, and it is a deliberate
 ; choice rather than a shrug: with the send registered, the reverb's auto-gain
-; hands every client 1/N, so a multiplier of 1.0 makes the delay exactly ONE
+; hands every client a full share, so a multiplier of 1.0 makes the delay ONE
 ; FULL CLIENT'S SHARE of the reverb bus -- the most any single track can drive
 ; it. Going higher means writing below the 3-bit headroom convention, which
 ; risks railing the accumulator when several writers peak together.
@@ -912,7 +912,9 @@ dwarmdone:
 ; $7fffff on GRAIN through ChonVerb and chose the loudest. The span between
 ; them is only 9 dB -- the whole adjustable range -- and the wash measured
 ; 22.71 / 18.x / 13.63 dB below the delay's own output at 2 bus clients, and
-; 21.59 dB at 5, since every registered client dilutes it by 1/N.
+; 21.59 dB at 5, under the then-current 1/N law -- those dB figures predate
+; the 17 Aug change to 1/sqrt(N) (the wash now sits ~3-4.5 dB higher at those
+; client counts); the STRUCTURAL point is unchanged.
 ; ⚠️ Those numbers compare a delay's discrete echoes to a reverb TAIL by rms,
 ; which overstates the gap: the tail spreads the same energy over seconds.
 ; They are valid against each other, not as an absolute "it is too quiet".
@@ -1230,11 +1232,11 @@ plagok:
         move    x:(r7+$7d),a
         add     x0,a                    ; the full sum, our own share included
         move    a,x0
-        move    x:(r7+$7f),y1           ; this block's bus gain 1/N, where N
+        move    x:(r7+$7f),y1           ; this block's bus gain 1/sqrt(N); N
                                         ; COUNTS US (see the resolve block)
         mpy     x0,y1,a                 ; hold total drive constant vs N --
                                         ; signed (2000c0): x0 is a bus sample
-                                        ; and can be negative, y1 (1/N) never
+                                        ; and can be negative, y1 (the gain) never
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$7d)            ; x_in = the averaged bus, us included
         move    x:(r7+$63),a
@@ -2962,7 +2964,7 @@ pdone:
                                         ; WRITER APPLIES. dsp/send_client.asm
                                         ; scales its contribution by 1/8 before
                                         ; accumulating, and reverb_server undoes
-                                        ; it with `asl #$3` after the 1/N
+                                        ; it with `asl #$3` after the auto-gain
                                         ; auto-gain -- so a writer that skips
                                         ; the /8 is amplified EIGHT TIMES on the
                                         ; way out. Measured 13 Aug: at VRBW 100

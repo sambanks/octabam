@@ -1129,7 +1129,7 @@ mkgo:""",
         print(f"  *** DFRZ OVERRIDE: BongDelay FREEZE forced to {int(dfrz_env)} ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
-    # The accumulators live at Y:0x900-0x982, which is CORE-PRIVATE low Y --
+    # The accumulators live at Y:0x900-0x9d2, which is CORE-PRIVATE low Y --
     # one core's sends write their own copy and the other core's server cannot
     # see it. Same address, different physical memory. Relocating them into the
     # shared 64K is the whole architectural change; everything else about the
@@ -1160,7 +1160,7 @@ mkgo:""",
     # ground and BongDelay would contend for it.
     #
     # The map is mechanical: new = 0x3E000 + (old - 0x900), so the whole 0x900
-    # -0x982 layout keeps its shape and all three files stay in agreement --
+    # -0x9d2 layout keeps its shape and all three files stay in agreement --
     # which they must, or the buses will not find each other.
     if os.environ.get("XBUS") == "1":
         # Overridable so the next round is a one-liner, not a code edit.

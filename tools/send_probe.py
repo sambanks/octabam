@@ -429,10 +429,11 @@ def main():
                          "read position, 127 spreads them over 1015 samples.\n"
                          "Only read in GRAIN (DMODE=3); inert elsewhere.")
     ap.add_argument("--dvrbw", type=int, default=None,
-                    help="DELAY ->VERB WET 0..127 (delay slot 5, default 0).\n"
-                         "The delay's own cross-send into the REVERB bus --\n"
-                         "the delay->reverb topology (PLAN 3). Needs a layout\n"
-                         "carrying both servers, e.g. --layout RDS --pick R.")
+                    help="RETIRED (v3 stage 1): ->VERB is HARDWIRED at maximum\n"
+                         "and p5 is an empty slot, so this arg is a NO-OP on\n"
+                         "any v3+ image. Kept so old command lines fail soft\n"
+                         "rather than erroring; the delay->reverb topology is\n"
+                         "now always on in --layout RDS --pick R.")
     ap.add_argument("--dmode", type=int, default=None,
                     help="delay MODE 0..4 via the slot-7 COMPANION field --\n"
                          "runtime equivalent of the DMODE= build override\n"
