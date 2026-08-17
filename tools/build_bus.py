@@ -341,6 +341,23 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
                                   11: 4}}   # -DEL   R16: SELECT (companion $e-low),
                                             #        off/.25/.5/.75 send
 
+# Which page-2 slots are STEPPED SELECTS rather than knobs, per server. This
+# table also gates the display-formatter pass below -- a server absent from it
+# keeps its donor's formatters untouched (SEND, whose two knobs already
+# inherit FILTER's plain-numeric zeros and work on hardware).
+#
+# ⚠️ BOTH SERVERS ARE (7, 9, 11) AND THAT IS NOT A COINCIDENCE: page 2 is
+# three knobs and three selects, and the selects ARE the three companion
+# fields ($c-high, $d-low, $e-low). Any future page-2 select lands on one of
+# these three slots by construction.
+#
+# ⚠️ The delay was MISSING from this pass entirely until 17 Aug 2026 -- the
+# block below was gated `if name == "REVERB SERVER"`, so BongDelay inherited
+# SPRING REV's formatters for all six page-2 slots and three of them drew
+# wrong on hardware. See the block comment for what each one did.
+STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / ->DEL
+                 "DELAY SERVER":  (7, 9, 11)}   # MODE / PTCH  / FRZE
+
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
 # Temporary diagnostic; the normal build is unaffected.
@@ -665,7 +682,25 @@ def main():
         # These arrays sit at offsets 2 mod 4, which is why a 4-aligned scan of
         # the record found "no pointer fields" and sent this investigation down
         # a blind alley for two rounds.
-        if name == "REVERB SERVER":
+        #
+        # ⚠️ THIS PASS RAN FOR THE REVERB ONLY UNTIL 17 Aug 2026, and the delay
+        # paid for it on the first flash that had page 2 enabled (R19). Cloning
+        # SPRING REV, BongDelay inherited SPRING's formatters verbatim:
+        #   slot 6  WOW  count 128, inherited SPRING TYPE's WORD-LABEL pair
+        #                (0x4003c718 + 0x40047424, a 3-entry table) -- an
+        #                enumerated renderer asked to draw 0..127 from three
+        #                labels DREW NOTHING AT ALL. Reported as "WOW has no
+        #                dial on the display".
+        #   slot 7  MODE count 5, inherited SPRING BAL's bipolar pair
+        #                (0x4003c7a0) AND a non-zero 0x12a -- so the engine
+        #                select drew as a BALANCE DIAL reading -64..-60.
+        #   slot 9  PTCH count 4, inherited an unused slot's zeros -- a plain
+        #                numeric dial reading 0..3 instead of a select.
+        # The counts were right and reaching the panel in every case; only the
+        # renderer was wrong. The control that proves it: the reverb's SHMR is
+        # ALSO slot 6 at count 128, and draws as a normal knob -- same slot,
+        # same count, formatters zeroed. (Sam, on the R19 flash, 17 Aug 2026.)
+        if name in STEPPED_SLOTS:
             for idx in range(12):
                 wr32(clone_P + 0x0ca + idx * 4, 0)
                 wr32(clone_P + 0x0fa + idx * 4, 0)
@@ -690,7 +725,7 @@ def main():
             # companion low-byte fields do not publish as smooth knobs on
             # hardware), so they get the same stepped renderer -- otherwise a
             # count-4 knob crams its four values into the first ~3% of travel.
-            for step_slot in (7, 9, 11):
+            for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
                 wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
@@ -700,7 +735,9 @@ def main():
             # knob even with the right formatter pair. Slots 9 and 11 already
             # inherit 0x12a = 0 from DARK (its slots 9/11 are 0), so only slot 7
             # needs zeroing -- but do all three explicitly, it is idempotent.
-            for step_slot in (7, 9, 11):
+            # The delay needed exactly the same one slot: SPRING's BAL sits in
+            # slot 7 too, and carries the same 0x400328e4.
+            for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x12a + step_slot * 4, 0)
         for idx, cnt in PAGE2_COUNTS.get(name, {}).items():
             wr32(clone_P + 0x9a + idx * 4, cnt)     # P+0x9a = value-count array

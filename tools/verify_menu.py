@@ -80,6 +80,16 @@ ACTIVE_PARAMS = {
 P_COUNTS = 0x9a
 P_DEFAULTS = 0x5e
 
+# The per-parameter DISPLAY FORMATTER arrays. A cloned descriptor inherits the
+# DONOR's formatter for every slot, and the formatter overrides the value count
+# entirely when deciding how a value is DRAWN -- so a slot can carry a perfectly
+# correct count, default and enable bit and still render as something else, or
+# as nothing at all.
+P_FMT1, P_FMT2, P_FMT3 = 0x0ca, 0x0fa, 0x12a
+# The enumerated-selector pair, taken from stock CHORUS.TAPS (count 5). Stock
+# uses all-zeros for a plain numeric knob.
+STEPPED_FMT = (0x4003c718, 0x40047254)
+
 
 def main():
     stock = STOCK.read_bytes()
@@ -189,6 +199,43 @@ def main():
             check(cnt > 0 and dflt < cnt,
                   f"{name}: p{i} default {dflt} is inside its value count "
                   f"{cnt}")
+
+        # THE FORMATTER MUST MATCH THE KIND OF CONTROL THE COUNT SAYS IT IS.
+        # This invariant did not exist and a build that violated it SHIPPED
+        # AND FLASHED (R19, tag 38): the formatter fix-up in build_bus.py was
+        # gated to the reverb, so BongDelay's page 2 inherited SPRING REV's
+        # renderers and three of six slots drew wrong on hardware --
+        #   WOW  (count 128) drew NOTHING, having inherited SPRING TYPE's
+        #        word-label renderer and its THREE-entry label table;
+        #   MODE (count 5)   drew as a BALANCE DIAL reading -64..-60,
+        #        having inherited SPRING BAL's bipolar pair;
+        #   PTCH (count 4)   drew as a plain 0..3 dial.
+        # Counts, defaults, names and enable bits were all correct in every
+        # case, which is exactly why every existing check above passed. Found
+        # by Sam's eyes on the first flash with delay page 2 enabled, 17 Aug
+        # 2026 -- one flash cycle, which is the expensive way to find it.
+        #
+        # The rule, from a survey of all 20 stepped params in stock FX2:
+        #   count < 128 (a SELECT) -> the enumerated pair, and 0x12a MUST be 0
+        #                             (a non-zero 0x12a forces plain-knob
+        #                             drawing even with the right pair)
+        #   count == 128 (a KNOB)  -> both formatters 0, i.e. stock's plain
+        #                             numeric. 0x12a is unconstrained here --
+        #                             working knobs carry several values.
+        for i in sorted(got):
+            cnt = rd32(img, P + P_COUNTS + i * 4)
+            f1 = rd32(img, P + P_FMT1 + i * 4)
+            f2 = rd32(img, P + P_FMT2 + i * 4)
+            f3 = rd32(img, P + P_FMT3 + i * 4)
+            if cnt < 128:
+                check((f1, f2) == STEPPED_FMT and f3 == 0,
+                      f"{name}: p{i} count {cnt} is a SELECT, so it carries "
+                      f"the enumerated formatter pair and 0x12a=0 "
+                      f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
+            else:
+                check(f1 == 0 and f2 == 0,
+                      f"{name}: p{i} count {cnt} is a KNOB, so both formatters "
+                      f"are 0 (got 0x{f1:08x}/0x{f2:08x})")
 
     print("\n=== FX1 untouched: its own id lookup and chooser list, and every "
           "donor's OWN descriptor bytes outside our clone caves, are "
