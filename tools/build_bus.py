@@ -135,10 +135,23 @@ NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
 
 RENAMES = {
     "DELAY SERVER": [
-        (1, b"FDBK"), (2, b"TONE"), (3, b"PING"), (4, b"MIX"), (5, b"VRBW"),
+        (1, b"FDBK"), (2, b"TONE"), (3, b"PING"),
+        (4, b"IN"),                 # slot 4 -> r6+$4  THIS TRACK'S OWN SEND
+                                    #   level into the delay. v3 stage 1: was
+                                    #   MIX, a dry/wet crossfade, which had
+                                    #   nothing left to cross-fade once the
+                                    #   host track became a return that prints
+                                    #   the wet alone. Now the host's
+                                    #   counterpart of send_client's p0.
+        (5, b""),                   # slot 5 -> RETIRED. Was VRBW (->VERB WET);
+                                    #   the send is hardwired in the DSP now,
+                                    #   which also retires the known defect
+                                    #   that only VRBW <= 50 was usable.
         (6, b"WOW"),                # slot 6 -> r6+$b knob    TAPE wow depth
         (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
-        (8, b"VRBD"),
+        (8, b""),                   # slot 8 -> RETIRED. Was VRBD (->VERB DRY);
+                                    #   a return track has no pre-effect
+                                    #   signal worth forwarding to the reverb.
         (9, b"PTCH"),               # slot 9 -> r6+$d low    interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
         (10, b"SPRA"),              # slot 10 -> r6+$e knob  GRAIN scatter
@@ -195,7 +208,33 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 64), (5, 0), (8, 0),
+    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 0),
+                     #      ⚠️ (4) IS NOW **IN**, NOT MIX, AND 0 IS LOAD-
+                     #      BEARING (v3 stage 1) -- it is the one number in
+                     #      this table that a measurement, not taste, fixed.
+                     #      IN>0 REGISTERS THIS TRACK AS A BUS CLIENT, and
+                     #      the delay's 1/N auto-gain then gives it a share
+                     #      whether or not it has any audio to contribute.
+                     #      On the return track this effect is designed for
+                     #      there IS none, so a non-zero default silently
+                     #      halved every real sender: measured 17 Aug 2026,
+                     #      sends-only rendered -24.40 dBFS at IN=0 and
+                     #      -30.42 at IN=64, exactly 6.02 dB = the 1/2 of
+                     #      being counted twice. (A SEND client registers
+                     #      unconditionally, so a silent SEND track dilutes
+                     #      the bus too -- that is the system's existing
+                     #      behaviour and the host now matches it. The knob
+                     #      gate is what lets the DEFAULT opt out.)
+                     #      ⚠️ The cost, and it is real: the output is the wet
+                     #      alone now, so BongDelay placed on a track that IS
+                     #      playing something, with nothing sent to it, is
+                     #      SILENT until IN comes up. That reads as "the
+                     #      effect deleted my audio", which is worse than the
+                     #      trap this table's header warns about -- but it is
+                     #      the correct behaviour for a return, and 0 is the
+                     #      only default that keeps the bus arithmetic honest
+                     #      in the case the design is actually for.
+                     #      Slots 5 and 8 are RETIRED -- no defaults needed.
                      #      MIX 90 -> 64 (stage 5g). Sam, on the demo set:
                      #      "it sounds a lot better lower". ⚠️ His finding
                      #      actually implies LOWER still -- the grain sitting
@@ -297,7 +336,13 @@ ACTIVE_PARAMS = {
     # this -- it is the inverse of the PARAM_PAGES trap ("a slot can draw a
     # knob and publish nothing") and cost nothing only because nobody had
     # tried to freeze on hardware yet.
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    # ⚠️ 5 (VRBW) and 8 (VRBD) RETIRED in v3 stage 1 -- ->VERB is hardwired
+    # and its DRY half is gone, so both slots would draw a knob that
+    # publishes to a DSP read that no longer exists. Dropping them here is
+    # what actually stops the panel drawing them; the DSP-side read and the
+    # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
+    # inverse that bit WOW/FRZE on 12 Aug).
+    "DELAY SERVER": [0, 1, 2, 3, 4, 6, 7, 9, 10, 11],
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve (v92)
     "SEND": [0, 1],
 }

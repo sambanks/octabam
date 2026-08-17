@@ -113,12 +113,34 @@
 ;    there's something to listen to, same "starting point, not final"
 ;    status as the 32K/32K memory split.
 ;
-;    CROSS-BUS SEND (BUS.md task 10): ->VERB, two knobs -- WET (this delay's
-;    own processed output bleeding into the shared REVERB bus) and DRY (this
-;    track's own pre-effect signal, parallel, same tap shape as
-;    dsp/send_client.asm's two knobs). Both are additive contributions into
-;    the REVERB ACC bus alongside whatever SEND clients and REVERB SERVER's
-;    own dry sum add that block. Delay->reverb is allowed to carry WET;
+;    THE HOST TRACK IS A RETURN, NOT AN INSERT (v3 stage 1, 17 Aug 2026).
+;    This is the architectural decision the rest of the file now assumes, so
+;    it is stated once, here. The track BongDelay sits on prints the delay's
+;    wet and nothing else; its OT track fader is the delay's output level;
+;    and its own audio reaches the engine only through the IN knob, on
+;    exactly the terms every other track's ->DELAY knob gets -- scaled, given
+;    the 3-bit headroom, summed into the accumulator's total and divided by a
+;    count that includes it.
+;
+;    What it replaced, and why: the host track used to be privileged twice
+;    over. Its dry entered the engine at UNITY, after the bus had already
+;    been auto-gained, so it was immune to 1/N and therefore as loud into the
+;    delay as every sender combined -- with no knob to trim it (measured
+;    17 Aug: host -24.78 dB vs a full-knob send -24.85, identical). And that
+;    same dry was MIX's crossfade reference, so MIX did two unrelated jobs at
+;    once and walked the stereo image 0.00 -> 7.82 dB across its travel,
+;    purely from crossfading a centred mono dry against a wet that leans
+;    left. One asymmetry, two symptoms; removing the dry from the output
+;    removes both and frees the knob.
+;
+;    CROSS-BUS SEND (BUS.md task 10): ->VERB, HARDWIRED, no knob. It carries
+;    this delay's own processed output into the shared REVERB bus as an
+;    additive contribution alongside whatever SEND clients and REVERB
+;    SERVER's own dry sum add that block, and it registers in the REVERB
+;    count like any other writer. The DRY half and both knobs are gone: a
+;    return track has no pre-effect signal worth forwarding, and delay ->
+;    reverb is the designed topology rather than a routing option.
+;    Delay->reverb is allowed to carry WET;
 ;    reverb->delay (dsp/reverb_server.asm's ->DELAY send) is dry only -- see
 ;    that file's header for why the wet direction only ever runs one way
 ;    (closing it both ways reproduces the self-oscillation this project has
@@ -233,7 +255,11 @@
 ;   r7+$73              FDBK coefficient (per block)
 ;   r7+$74              PING amount (per block)
 ;   r7+$75              TIME, integer sample count (per block)
-;   r7+$76              MIX (per block, raw knob used directly as Q1.23)
+;   r7+$76              IN -- this track's OWN send level into the delay
+;                       (per block, raw knob used directly as Q1.23). Was
+;                       MIX; v3 stage 1 made the host track a return, so
+;                       there is no dry left to cross-fade and the knob
+;                       became the host's counterpart of send_client's p0
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
 ;   r7+$79/$7a          scratch: dL/dR, raw taps (per sample)
 ;   r7+$7b/$7c          scratch: fL/fR, damped taps == this sample's wet
@@ -247,14 +273,15 @@
 ;   r7+$80              1 - PING (per block)
 ;   r7+$82              warm-up tagged counter (stock DARK's slot
 ;                       convention, reused -- see dsp/reverb89.asm)
-;   r7+$83              this sample's own pre-effect dry mono, stashed before
-;                       the DELAY bus is folded into $7d (BUS.md task 10 --
-;                       the ->VERB DRY send taps dry alone, not dry+bus)
+;   r7+$83              FREE (v3 stage 1). Held the pre-bus dry mono for the
+;                       ->VERB DRY send, which is gone with its knob
 ;   r7+$84              this call's REVERB ACC write address (BUS.md task 10,
 ;                       per-call, advances per sample -- same shape as $63/$64)
-;   r7+$85              ->VERB WET level (per block, from knob p5)
-;   r7+$86              ->VERB DRY level (per block, from knob p6, r6+$d --
-;                       see the parameter table below)
+;   r7+$85              ->VERB level (per block) -- a HARDWIRED CONSTANT since
+;                       v3 stage 1, not a knob read. Kept in a slot rather
+;                       than inlined at the send site so the value has one
+;                       home to voice
+;   r7+$86              FREE (v3 stage 1). Held the ->VERB DRY level
 ;   r7+$87              this sample's own mono wet, stashed at the same point
 ;                       it's written to the shared DELAY WET buffer (BUS.md
 ;                       task 10 -- the ->VERB WET send taps that same value)
@@ -270,12 +297,15 @@
 ;   p3 PING  -> crossfeed amount, 0 (parallel stereo) .. ~0.99 (full
 ;              ping-pong swap). Used directly as a Q1.23 fraction -- knob<<16
 ;              already IS value/128 in that format, no mpy needed.
-;   p4 MIX   -> wet added to dry, 0 .. ~0.99, same "raw knob as Q1.23
-;              multiplier" trick as reverb89's MIX.
-;   p5 ->VERB WET -> this delay's own processed output, scaled and summed into
-;              the shared REVERB ACC bus (BUS.md task 10). One-directional:
-;              see dsp/reverb_server.asm's ->DELAY header note for why the
-;              reverse (reverb wet -> delay) is deliberately never built.
+;   p4 IN    -> THIS TRACK'S OWN SEND LEVEL into the delay, 0 .. ~0.99, same
+;              "raw knob as Q1.23 multiplier" trick as before. v3 stage 1:
+;              was MIX. The host track is a RETURN -- it prints the wet and
+;              nothing else -- so the dry/wet crossfade had nothing left to
+;              cross-fade and the slot became the host's own ->DELAY knob,
+;              identical in range, headroom and 1/N share to the one every
+;              other track already has (dsp/send_client.asm p0).
+;   p5       -> FREE. Was ->VERB WET; the send is hardwired now (see $85).
+;   p8       -> FREE. Was ->VERB DRY; the send is gone entirely.
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
 ;              count 5: 0 = CLEAN, 1 = PITCH, 2 = TAPE, 3 = GRAIN,
 ;              4 = REVERSE. Landed with stage 2, per the stage-1 rule that a
@@ -577,15 +607,72 @@ bus_mine:
         move    #>$985,x0               ; the fully-summed one-block-old
         add     x0,a                    ; buffer this block READS
         move    a,r5
+; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v3 stage 1). IN feeds our own dry
+; into the same sum the bus arrives on, so N must include us or every other
+; sender is divided by one too few and we are effectively louder than all of
+; them -- which is exactly the asymmetry the return architecture exists to
+; remove (measured 17 Aug 2026: the host track drove the delay at -24.78 dB
+; against a full-knob send's -24.85, i.e. identically, while being immune to
+; the 1/N that scales everyone else).
+; Only when actually sending: at IN=0 we contribute nothing, and counting a
+; silent client would dilute the real ones by (N+1)/N -- 6 dB with one sender.
+; ⚠️ `clr` SETS THE CONDITION CODES, so it goes BEFORE the tst it must not
+; disturb (the flag-clobber trap in CLAUDE.md, and the reason 5d shipped a
+; noise wash on one channel). Tcc takes a register source, never an
+; accumulator, so the increment travels through x0.
+; ⚠️ AND b HELD THE RECIPROCAL TABLE BASE from the table build above -- the
+; Tcc needs an accumulator, so it takes b and the base is RE-LOADED below
+; rather than "still live". Costs one word; the version that trusted the old
+; comment indexed the table at address 0 or 1, a wild Y read.
+        move    #>$1,x0                 ; the "one more client" increment
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+$4),a             ; IN, read from the knob directly: the
+                                        ;  per-block decode runs AFTER this
+                                        ;  block, so $76 is not set yet
+        tst     a                       ; Z set == IN is 0 == not sending
+        tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
+        add     b,a                     ; ... plus ourselves, if sending
         move    #>$7,x0
         and     x0,a                    ; masked: boot garbage cannot index wild
         move    a1,x0
         move    x0,a                    ; A2-clean before it becomes an address
-        add     b,a                     ; b = table base, still live
+        move    #>$988,b                ; table base, RE-LOADED (see above)
+        add     b,a
         move    a,r5
         move    y:(r5),a
         move    a,x:(r7+$7f)            ; this block's bus gain, used per sample
+
+; ---- register as a REVERB bus client, once per block (v3 stage 1) --------
+; The ->VERB send below writes the REVERB accumulator every sample, so this
+; server must appear in the REVERB count exactly as SEND does and as
+; reverb_server does for the DELAY count -- otherwise ChonVerb's 1/N divides
+; by one client too few and our contribution comes out x8/N louder than it
+; should. That was the shipping defect ("->VERB usable only to about VRBW
+; 50"); the 5g /8 fix removed the constant factor and this removes the
+; N-dependence, which together are what make a HARDWIRED amount meaningful.
+;
+; Same once-per-block gate as every other registration: keyed on the split
+; offset, so a split block's two calls count ONCE. Same WRITE-parity choice
+; as send_client -- count the buffer we are about to add into, not the one
+; being read.
+        move    x:(r7+$67),a
+        tst     a
+        bne     vrcnt_done              ; not this block's first call
+        move    #>$1,x0
+        move    y:>$900,a
+        and     x0,a                    ; write parity
+        move    a1,x0
+        move    x0,a                    ; A2-clean before it becomes an address
+        move    #>$983,x0
+        add     x0,a
+        move    a,r5
+        move    #>$ffffff,m5
+        move    y:(r5),a
+        move    #>$1,x0
+        add     x0,a
+        move    a,y:(r5)                ; REVERB count += 1
+vrcnt_done:
 
 ; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
 ; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
@@ -719,14 +806,36 @@ dwarmdone:
         sub     x0,a
         move    a,x:(r7+$80)            ; 1 - PING
 
+; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
+; Was MIX, a dry/wet crossfade. The knob's meaning changed because the SLOT's
+; meaning did: the host track is now a RETURN, not an insert, so there is no
+; dry to cross-fade against and the only question left is how much of this
+; track's own audio joins the bus. That makes this knob the exact counterpart
+; of every other track's ->DELAY knob (dsp/send_client.asm's p0) -- same
+; range, same scaling, same 3-bit headroom, same 1/N share. See the input
+; block for the arithmetic and the header for why.
         move    x:(r6+$4),x0
-        move    x0,x:(r7+$76)           ; MIX, 0 .. ~0.99
+        move    x0,x:(r7+$76)           ; IN, 0 .. ~0.99
 
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$85)           ; ->VERB WET level (BUS.md task 10)
-
-        move    x:(r6+$d),x0
-        move    x0,x:(r7+$86)           ; ->VERB DRY level (BUS.md task 10/11)
+; ---- ->VERB: HARDWIRED, no knob (v3 stage 1) -----------------------------
+; Was two knobs, p5 ->VERB WET and p8 ->VERB DRY. Both are gone and the wet
+; send is a build-time constant, for three reasons that all point the same
+; way:
+;   * delay -> reverb is the DESIGNED topology (PLAN 3.1), not a routing
+;     option, so it does not want a knob that can switch it off;
+;   * the DRY half sent this TRACK's pre-effect signal to the reverb, and a
+;     return track has no pre-effect signal worth sending;
+;   * the knob's usable range was broken anyway -- the ->VERB write skipped
+;     the 1/8 headroom until stage 5g, and only the range refit was left
+;     undone, so "usable to about VRBW 50" shipped as a known defect. Picking
+;     one value inside the good part of that range retires the defect instead
+;     of carrying it.
+; $2d0000 == what knob 45 gave (45 << 16), i.e. mid-way up the part of the
+; old range that worked. ⚠️ VOICING CONSTANT, not a measurement -- it rides
+; the next flash to be judged on the unit, and it is the one number here that
+; cannot be changed without one.
+        move    #>$2d0000,x0
+        move    x0,x:(r7+$85)           ; ->VERB level, hardwired
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
@@ -1005,23 +1114,38 @@ plagok:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$7d)            ; own dry mono
-        move    a,x:(r7+$83)            ; own dry mono, stashed BEFORE the bus
-                                        ; is folded in below -- the ->VERB DRY
-                                        ; send (BUS.md task 10) taps dry alone
+; ---- v3 stage 1: OUR OWN DRY IS JUST ANOTHER CLIENT ----------------------
+; It used to be added at UNITY, after the bus had already been auto-gained --
+; which made the host track immune to 1/N and therefore as loud into the
+; delay as every sender combined, with no knob to trim it. Now it goes
+; through the identical path a SEND client's contribution takes: scaled by
+; its own level knob, given the same 3 bits of headroom, summed with the
+; others, and divided by a count that includes it.
+;
+; mpy x0,y1 is the SIGNED order (2000c0) -- x0 is audio and goes negative,
+; y1 is a knob and never does. Disassembled from the emitted image; the
+; assembler silently downgrades unknown operand orders to mpysu, which would
+; corrupt every negative sample here.
+        move    a,x0                    ; own dry mono
+        move    x:(r7+$76),y1           ; IN, this track's send level
+        mpy     x0,y1,a                 ; our contribution to the bus
+        asr     #$3,a,a                 ; the 3 bits of headroom EVERY writer
+                                        ; applies, so N of them cannot rail
+                                        ; the sum before it is divided
+        move    a,x:(r7+$7d)            ; park our share
         move    x:(r7+$63),a            ; this sample's ACC read address
         move    a,r5
         move    y:(r5),x0               ; last block's fully-summed sends
-        move    x:(r7+$7f),y1           ; this block's bus gain 1/N
-        mpy     x0,y1,b                 ; hold total drive constant vs N --
-                                        ; signed (2000c8, disassembled from
-                                        ; the emitted image): x0 is a bus
-                                        ; sample and can be negative, y1
-                                        ; (1/N) never
-        asl     #$3,b,b                 ; undo the writers' 3-bit headroom
         move    x:(r7+$7d),a
-        add     b,a
-        move    a,x:(r7+$7d)            ; x_in = dry + bus
+        add     x0,a                    ; the full sum, our own share included
+        move    a,x0
+        move    x:(r7+$7f),y1           ; this block's bus gain 1/N, where N
+                                        ; COUNTS US (see the resolve block)
+        mpy     x0,y1,a                 ; hold total drive constant vs N --
+                                        ; signed (2000c0): x0 is a bus sample
+                                        ; and can be negative, y1 (1/N) never
+        asl     #$3,a,a                 ; undo the writers' 3-bit headroom
+        move    a,x:(r7+$7d)            ; x_in = the averaged bus, us included
         move    x:(r7+$63),a
         move    #>$1,x0
         add     x0,a
@@ -2641,41 +2765,37 @@ pdone:
         tne     x0,b
         move    b,x:(r7+$7c)
 
-; ---- own track: MIX CROSSFADES dry to wet (v2 stage 5c) -------------------
-; ⚠️ A DELIBERATE BEHAVIOUR CHANGE, and the reason the box did not sound like
-; a granular. This was `dry + wet*MIX`: the dry sat at UNITY always, so even
-; at MIX=127 the wet could only EQUAL it and the effect could never dominate.
-; Fine for a trad delay, fatal for a texture effect -- every audition of
-; GRAIN was a full-strength dry melody with a cloud underneath it, which Sam
-; heard exactly as "a slightly effected verb".
+; ---- own track: THE OUTPUT IS THE WET, FULL STOP (v3 stage 1) ------------
+; ⚠️ A DELIBERATE BEHAVIOUR CHANGE, the second this slot has had, and the one
+; that decides what BongDelay IS. The host track is a RETURN: it prints the
+; delay and nothing else, its OT track fader is the delay's output level, and
+; any audio living on it reaches the delay only through IN (the input block)
+; like any other sender's would.
 ;
-; Written as dry + MIX*(wet - dry), which IS the crossfade dry*(1-MIX) +
-; wet*MIX but needs no 1-MIX slot -- and r7 has none left. At MIX=0 this is
-; bit-identical to the old path (the gate proves it); at 127 it is 99.2% wet.
+; This replaces v2 stage 5c's `dry + MIX*(wet-dry)` crossfade, which replaced
+; v1's `dry + wet*MIX`. The crossfade was the right fix for the wrong shape:
+; it made the wet able to dominate, but it kept the host track privileged --
+; its dry was the crossfade reference AND entered the engine at unity, so the
+; one track you could not turn down was the one hosting the effect. Measured
+; 17 Aug 2026: MIX walked the stereo image 0.00 -> 7.82 dB across its travel
+; purely because a centred mono dry was being crossfaded against a wet that
+; leans left, and the host drove the delay exactly as hard as a full-knob
+; send while being immune to the 1/N that scales everyone else.
 ;
-; The difference is taken through a LIMITING move, not `move a1,x0`: wet-dry
-; can exceed full scale, and on the main output path a wrap is an audible
-; click where a saturate is not. (The lerps elsewhere use a1 because they
-; interpolate BETWEEN two stored samples, where the difference is bounded in
-; practice and the idiom is audited.)
+; With no dry in the output there is nothing to cross-fade, so the knob was
+; free to become IN -- see the per-block decode. The image walk cannot recur:
+; it was an artifact of mixing two signals with different stereo geometry,
+; and now only one leaves here.
+;
+; ⚠️ What this GIVES UP, recorded so it is not rediscovered as a bug: audio
+; on the host track no longer passes through. Put a sample on the delay's
+; track with IN=0 and it is silent. That is the definition of a return, but
+; it is a sharp edge, which is why IN does not default to 0 (build_bus.py's
+; DEFAULTS carries the reasoning -- a default that reads as "the effect
+; deleted my audio" is worse than the one that reads as "does nothing").
         move    x:(r7+$7b),a            ; wet L = fL
-        move    x:(r0),x0               ; dry L
-        sub     x0,a                    ; wet - dry
-        move    a,x0                    ; LIMITING move
-        move    x:(r7+$76),y1           ; MIX
-        mpy     x0,y1,a                 ; MIX*(wet-dry), signed: x0 first
-        move    x:(r0),x0
-        add     x0,a                    ; dry + MIX*(wet-dry)
         move    a,x:(r0)                ; L in place
-
         move    x:(r7+$7c),a            ; wet R = fR
-        move    x:(r0+n0),x0            ; dry R
-        sub     x0,a
-        move    a,x0
-        move    x:(r7+$76),y1
-        mpy     x0,y1,a
-        move    x:(r0+n0),x0
-        add     x0,a
         move    a,x:(r0+n0)             ; R in place
 
 ; ---- write mono wet to the shared DELAY WET buffer (BUS.md) --------------
@@ -2698,12 +2818,12 @@ pdone:
 ; header and dsp/reverb_server.asm's ->DELAY note for why the reverse never
 ; carries wet.
         move    x:(r7+$87),x0           ; delay's own wet, this sample
-        move    x:(r7+$85),y1           ; ->VERB WET level
-        mpy     x0,y1,a
-        move    x:(r7+$83),x0           ; this track's own dry, this sample
-        move    x:(r7+$86),y1           ; ->VERB DRY level
-        mpy     x0,y1,b
-        add     b,a                     ; combined contribution
+        move    x:(r7+$85),y1           ; ->VERB, hardwired (v3 stage 1)
+        mpy     x0,y1,a                 ; the whole contribution: the DRY half
+                                        ; is GONE with its knob -- a return
+                                        ; track has no pre-effect signal worth
+                                        ; forwarding, and the designed path is
+                                        ; delay WET -> reverb
         asr     #$3,a,a                 ; ⚠️ THE 3 BITS OF HEADROOM EVERY OTHER
                                         ; WRITER APPLIES. dsp/send_client.asm
                                         ; scales its contribution by 1/8 before
@@ -2717,14 +2837,20 @@ pdone:
                                         ; arithmetic shift, so A2 stays
                                         ; consistent and the store below cannot
                                         ; hit the saturation trap.
-                                        ; ⚠️ STILL MISSING, deliberately: this
-                                        ; send does NOT register in the Y:$983
-                                        ; SEND COUNT, so N excludes it and the
-                                        ; auto-gain divides by one client too
-                                        ; few. That is a separate change -- it
-                                        ; alters the balance of every OTHER
-                                        ; send on the bus -- and wants hardware
-                                        ; thought, not a same-session patch.
+                                        ; ✅ AND IT NOW REGISTERS TOO (v3 stage
+                                        ; 1, at the block above) -- the half
+                                        ; that was deferred on 13 Aug. It had
+                                        ; to land WITH the hardwiring: an
+                                        ; unregistered writer's effective level
+                                        ; is x8/N_registered, so a "fixed"
+                                        ; amount would still have drifted by
+                                        ; 18 dB between one sender and eight.
+                                        ; A constant that is not constant is
+                                        ; worse than a knob. ⚠️ It does change
+                                        ; the balance of every OTHER reverb
+                                        ; send by N/(N+1) -- that was the
+                                        ; reason for deferring, and it is now
+                                        ; a deliberate cost, not an oversight.
         move    x:(r7+$84),b            ; this call's REVERB ACC write address
         move    b,r5
         move    y:(r5),b

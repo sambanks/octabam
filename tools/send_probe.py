@@ -351,7 +351,14 @@ SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
 # a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
 # VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
-DELAY_PARAMS = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
+# TIME FDBK TONE PING IN ... -- slot 4 is IN, this track's own send level into
+# the delay, NOT the old MIX crossfade (v3 stage 1). It defaults to 0 here for
+# the same reason it defaults to 0 in build_bus.py: IN>0 registers the host as
+# a bus client and the 1/N auto-gain then gives it a share it does not use,
+# quietly halving every real sender. The old 90 sitting here would have done
+# exactly that to every measurement taken from now on -- the SHMR/SPEED=0
+# lesson, which polluted every render until Round 12 caught it.
+DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0]
 
 
 def main():
@@ -385,8 +392,14 @@ def main():
     ap.add_argument("--dwow", type=int, default=None,
                     help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
                          "TAPE's wow/flutter depth; ignored by the other modes.")
-    ap.add_argument("--dmix", type=int, default=None,
-                    help="DELAY MIX 0..127 (delay slot 4, default 90)")
+    ap.add_argument("--dmix", "--din", type=int, default=None, dest="dmix",
+                    help="DELAY IN 0..127 (delay slot 4, default 0) -- this\n"
+                         "track's OWN send level into the delay. Was MIX, a\n"
+                         "dry/wet crossfade, until v3 stage 1 made the host\n"
+                         "track a return whose output is the wet alone.\n"
+                         "--din is the name that matches the panel; --dmix\n"
+                         "still works so older command lines do not break,\n"
+                         "but they now mean something different.")
     ap.add_argument("--dtone", type=int, default=None,
                     help="DELAY TONE 0..127 (delay slot 2, default 100)")
     ap.add_argument("--dping", type=int, default=None,

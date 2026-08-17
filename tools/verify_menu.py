@@ -67,7 +67,9 @@ ACTIVE_PARAMS = {
     # INDEPENDENT copy of build_bus.py's list on purpose (it reads the built
     # image, not the source of truth that built it), so it could not catch
     # that -- both lists were simply missing the same slots.
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    # v3 stage 1 retired 5 (VRBW) and 8 (VRBD): ->VERB is hardwired and its
+    # DRY half is gone. Independent copy, as above -- kept in step by hand.
+    "DELAY SERVER": [0, 1, 2, 3, 4, 6, 7, 9, 10, 11],
     # v92 page-2 rejig: all twelve. Even page-2 slots are knob fields, odd ones
     # are companion fields of the same word (DSP.md section 9).
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
