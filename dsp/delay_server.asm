@@ -284,7 +284,12 @@
 ;                       v3 stage 1, not a knob read. Kept in a slot rather
 ;                       than inlined at the send site so the value has one
 ;                       home to voice
-;   r7+$86              FREE (v3 stage 1). Held the ->VERB DRY level
+;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
+;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
+;                       rotation-tracking fix (docs/XBUS.md step 3). Every bus
+;                       address in this file derives from here rather than
+;                       from a fresh read of the shared rotation word.
+;                       Previously: FREE (v3 stage 1). Held the ->VERB DRY level
 ;   r7+$87              this sample's own mono wet, stashed at the same point
 ;                       it's written to the shared DELAY WET buffer (BUS.md
 ;                       task 10 -- the ->VERB WET send taps that same value)
@@ -504,6 +509,13 @@ bus_seen:
         move    x0,a
         move    a,x:(r7+$88)
 bus_notfirst:
+; ---- resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$86 ---------------
+; See the long note in dsp/send_client.asm: every client used to read y:>$900
+; at its own dispatch time, which is not a stable value on payload B because
+; core 0 owns the flip. This server is on payload B, so it is exposed.
+; build_bus.py substitutes a per-payload body here; both leave the offset in
+; r7+$86, and every site downstream reads that instead of the shared word.
+; ROTLATCH
 
 ; ---- server-role lock: only ONE DELAY SERVER may run per bank -----------------
 ; Both servers use a FIXED, hardcoded Y base identical for every instance, so
@@ -535,8 +547,14 @@ bus_mine:
 ; SEND client (and our own dry sum, below) finished filling last block.
 ; WRITE uses the SAME parity clients currently write into, for a future
 ; cross-bus reader (task 10), not consumed by anything yet.
-; y:>$900 holds the WRITE OFFSET already scaled by the 16-word buffer stride,
-; so the write addresses need no shift at all. THE READ TARGET IS TWO BUFFERS
+; ⚠️ THE OFFSET COMES FROM r7+$86, NOT y:>$900. This server lives on payload B
+; and cannot read the shared rotation at its own dispatch time -- core 0 flips
+; it asynchronously, so a core-1 client whose window straddles the flip sees a
+; different value on different blocks. The resolve block at bus_notfirst
+; tracks a stable rotation for this core; see the long note there and
+; docs/XBUS.md step 3.
+; The offset is already scaled by the 16-word buffer stride, so the write
+; addresses need no shift at all. THE READ TARGET IS TWO BUFFERS
 ; BACK, `write + 32 & $30`. THIS IS THE LINE THE WHOLE RACE FIX IS FOR: with
 ; four buffers there is an idle block on each side of this read, so core 0's
 ; housekeeper can lead or lag core 1 by up to a full block and still never
@@ -544,10 +562,10 @@ bus_mine:
 ; any clear time, which is why the delay stuttered on track 1 and not track 4
 ; (hardware, 17 Aug 2026 -- dispatch position moved the read relative to the
 ; other core's flip).
-        move    y:>$900,a
+        move    x:(r7+$86),a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
-        add     #>$20,a                    ; two buffers on == two buffers back
-        and     #>$30,a                    ; mod 4
+        add     #>$20,a                 ; two buffers on == two buffers back
+        and     #>$30,a                 ; mod 4
         move    a,x0                    ; x0 = the read offset
         move    #>$961,a
         add     x0,a
@@ -676,9 +694,10 @@ bus_mine:
         move    x:(r7+$67),a
         tst     a
         bne     vrcnt_done              ; not this block's first call
-        move    y:>$900,a               ; write offset
-        asr     #$4,a,a                 ; -> bare index: the counts are one word
-        move    a1,x0                   ; per buffer, not sixteen
+        move    x:(r7+$86),a            ; write offset -- the RESOLVED one, not
+        asr     #$4,a,a                 ; y:>$900: re-reading the shared word
+        move    a1,x0                   ; here would reintroduce the very
+                                        ; disagreement the resolve block removes
         move    x0,a                    ; A2-clean before it becomes an address
         move    #>$9c3,x0
         add     x0,a

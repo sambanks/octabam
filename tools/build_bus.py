@@ -1269,6 +1269,112 @@ mkgo:""",
         # they get the substitution; the delay slot is a bare stub.
         _sub = lambda s: s.replace("$30000", f"${pp['ybase']:x}")
         _x = os.environ.get("XBUS") == "1"
+
+        # ---- ROTLATCH: resolve this block's write offset, per payload ------
+        # THE SECOND CROSS-CORE DEFECT (docs/XBUS.md step 3, hardware-confirmed
+        # 17 Aug 2026). Every bus client used to read the shared rotation word
+        # at its own dispatch time. Core 0 owns the flip, so core 0's clients --
+        # dispatched right after the housekeeper -- always see the post-flip
+        # value. Core 1's clients read it asynchronously, so whichever one's
+        # execution window STRADDLES the flip sees the old rotation on some
+        # blocks and the new one on others, and its contribution lands in an
+        # already-consumed buffer half the time. Block-rate amplitude jitter:
+        # broadband hash, linear in the send level, character invariant.
+        #
+        # Proven by changing track 5 -- core 0's POSITION 0, i.e. the
+        # housekeeper -- from ChonVerb to Send, which cured static on a core-1
+        # path with nothing on core 1 touched.
+        #
+        # PAYLOAD A NEEDS NOTHING and pays 6 words for the uniform interface;
+        # it is in lockstep with the flip by construction. PAYLOAD B tracks its
+        # own rotation: advance exactly one step per block, and trust that
+        # rather than the shared word unless the shared word says we are more
+        # than one step out.
+        #
+        # ⚠️ THE KEEP CONDITION IS ASYMMETRIC ON PURPOSE. `S == R + one step`
+        # is the pre-flip read -- the normal core-1 case, and the whole thing
+        # we are immunising against -- so it keeps S. EVERYTHING else snaps to
+        # R, which is what makes it self-healing: a client that misses a block
+        # falls one behind, reads R == S + one step next block, and snaps.
+        # 🟡 One state is stable and wrong: S stuck exactly one step AHEAD is
+        # indistinguishable from a legitimate pre-flip read. It is harmless --
+        # that client's audio lands in a buffer read one block (~0.36 ms) later
+        # than everyone else's, CONSTANT rather than jittering, and never in
+        # the buffer being read. Constant offsets are inaudible; jitter is not.
+        # It cannot arise in the emulator (single core, always post-flip, S
+        # tracks R exactly from the first block), which is what keeps the
+        # bit-identity gate meaningful.
+        #
+        # ⚠️ ASSUMES THE CORES ARE RATE-LOCKED and merely phase-offset. If they
+        # can actually drift, "advance one per block" diverges and this needs a
+        # real elastic buffer instead. UNVERIFIED -- no local test can reach it.
+        # ⚠️ THE ROTATION WORD'S ADDRESS MUST BE SPELLED RELOCATED HERE.
+        # This substitution runs INSIDE the payload loop, which is AFTER the
+        # XBUS pass has already rewritten every `$9xx` literal in the source to
+        # XBUS_BASE + 0x9xx. Text inserted now is not seen by that pass, so a
+        # bare `$900` in the body below would read CORE-PRIVATE Y:0x900 instead
+        # of the shared rotation -- resolving the offset to zero on every block
+        # while the housekeeper rotates, which silently breaks every client.
+        # Cost the first build of this fix an hour; the bus gate caught it as
+        # nine dead renders. Same family as every other blanket-substitution
+        # trap in CLAUDE.md.
+        # ⚠️ AND THE MAP IS `base + (old - 0x900)`, NOT `base + old`. The whole
+        # 0x900..0x9ff page relocates onto XBUS_BASE..+0xff, so the rotation
+        # word -- $900, the first word of the page -- lands on XBUS_BASE
+        # EXACTLY. Adding the full 0x900 pointed at unowned memory 0x900 words
+        # past the scratch and resolved every offset from garbage. Caught by
+        # reading the GENERATED source and seeing the neighbouring hand-written
+        # line relocate to a different address than mine.
+        _rot = XBUS_BASE if os.environ.get("XBUS") == "1" else 0x900
+
+        def _rotlatch(src, name, slot):
+            if "; ROTLATCH" not in src:
+                return src
+            # DEV places the delay in payload A but it behaves as payload B in
+            # every other respect (its gate compares equal, so it never
+            # housekeeps) -- so it takes payload B's body wherever it sits.
+            as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
+            if as_b:
+                body = "\n".join([
+                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B",
+                    "        tst     a",
+                    "        bne     rotdone             ; not the block's first call",
+                    f"        move    x:(r7+${slot:02x}),a",
+                    "        add     #>$10,a             ; advance exactly one step",
+                    "        and     #>$30,a             ; per block, mod 4",
+                    "        move    a,x1                ; x1 = S'",
+                    f"        move    y:>${_rot:x},a         ; the shared rotation, ONCE",
+                    "        move    a,x0                ; x0 = R, the snap target",
+                    "        add     #>$10,a",
+                    "        and     #>$30,a             ; a = R + one step",
+                    "        move    a,y0",
+                    "        move    x1,a                ; a = S'",
+                    "        cmp     y0,a                ; S' == R+step: a pre-flip",
+                    "        tne     x0,a                ; read, so KEEP S'. else snap",
+                    f"        move    a,x:(r7+${slot:02x})",
+                    "rotdone:",
+                    f"        move    x:(r7+${slot:02x}),a"])
+            else:
+                body = "\n".join([
+                    f"        move    y:>${_rot:x},a       ; ROTLATCH: payload A is in",
+                    "        and     #>$30,a             ; lockstep with the flip, so",
+                    f"        move    a,x:(r7+${slot:02x})       ; the shared word is stable"])
+            out = src.replace("; ROTLATCH", body, 1)
+            # Guard the trap above: under XBUS no bare $9xx may survive, in the
+            # body or anywhere else. A stale one reads core-private memory.
+            if os.environ.get("XBUS") == "1" and re.search(r"\$9[0-9a-f]{2}\b", body):
+                sys.exit(f"ROTLATCH: {name}'s body still has an unrelocated "
+                         f"$9xx literal -- it would read core-private Y")
+            return out
+
+        # ⚠️ NOT assigned back to send_src/delay_src: this loop runs once per
+        # payload, and mutating the module-level source would make payload B
+        # substitute into payload A's already-substituted text. The result is
+        # threaded through `plan` below as a local instead.
+        # ⚠️ Substituted unconditionally, not only under XBUS: the sites that
+        # read the resolved slot exist in every build, so leaving the marker
+        # as a bare comment would have them reading an uninitialised r7 word.
+
         # The DELAY is substituted unconditionally: without XBUS it carries its
         # own Y base, with XBUS it is either a literal-free stub (a no-op
         # substitution) or, under DEV, base + gate discriminator, both of which
@@ -1285,10 +1391,12 @@ mkgo:""",
         # makes the DEV delay byte-identical to the one that ships: same line
         # addresses, same gate discriminator (it never housekeeps -- the SEND's
         # self-healing election covers that, exactly as on hardware).
-        plan = (("SEND", _sub(send_src) if _x else send_src),
+        plan = (("SEND", _rotlatch(_sub(send_src) if _x else send_src,
+                                   "SEND", 0x69)),
                 ("REVERB SERVER", _sub(reverb_src) if _x else reverb_src),
-                ("DELAY SERVER", delay_src.replace("$30000", "$38000")
-                                 if DEV else _sub(delay_src)))
+                ("DELAY SERVER", _rotlatch(
+                    delay_src.replace("$30000", "$38000")
+                    if DEV else _sub(delay_src), "DELAY SERVER", 0x86)))
         # SPEC: each core carries only the engine it actually runs. Payload A
         # keeps the reverb, payload B the delay; the other is not placed at all
         # and its id is aliased to SEND after placement (it needs send_init,

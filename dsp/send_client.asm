@@ -115,6 +115,11 @@
 ; samples, ~0.36 ms -- against a mechanism whose whole job is to be a block
 ; late already.
 ;
+; r7 slots used here: $14 (call flag), $65/$66/$67 (split bookkeeping),
+; $68 (the housekeeping election's last-seen rotation -- PAYLOAD A ONLY; the
+; XBUS gate jumps payload B straight past bus_seen, so it is dead there),
+; $69 (this block's resolved write offset -- see the resolve block below).
+;
 ; No stash, no read of x:>$213 anywhere: SEND's own per-instance table entry
 ; is irrelevant, because SEND never uses it for anything.
 ; ---------------------------------------------------------------------------
@@ -286,11 +291,31 @@ bus_seen:
         move    x0,a
         move    a,x:(r7+$68)
 notfirst:
-; ---- everyone: find this block's write targets (the offset may have just
-; changed above, so re-read it fresh rather than trust a stale copy) -------
-; No `asl #$4` here any more: y:>$900 holds the offset already scaled.
-        move    y:>$900,a
-        and     #>$30,a                  ; masked on load here too
+; ---- everyone: resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$69 ------
+; ⚠️ THE POINT OF THE INDIRECTION: every client used to read y:>$900 at its own
+; dispatch time, and on PAYLOAD B that is not a stable value. Core 0 owns the
+; rotation and flips it once per block; core 0's own clients are dispatched
+; right after the housekeeper and always see the post-flip value, but core 1's
+; clients read it asynchronously. The core-1 client whose execution window
+; STRADDLES the flip reads the old rotation on some blocks and the new one on
+; others, so its contribution lands in an already-consumed buffer half the
+; time -- block-rate amplitude jitter, i.e. broadband hash that scales linearly
+; with the send and never changes character.
+;
+; CONFIRMED ON HARDWARE 17 Aug 2026: changing track 5 -- core 0's POSITION 0,
+; the housekeeper -- from ChonVerb to Send cured static on a core-1 signal
+; path, with nothing on core 1 touched. Only the flip's timing changed.
+; Full evidence table in docs/XBUS.md step 3.
+;
+; ⚠️ IT RELOCATES: exactly one (core-1 track, delay mode) combination is bad at
+; a time, and it moves when the mode or core 0's load changes. A single clean
+; configuration therefore proves nothing -- test a sweep.
+;
+; build_bus.py substitutes a per-payload body at the marker below. Payload A
+; reads the shared word directly (it is in lockstep and needs nothing);
+; payload B tracks its own rotation. Both leave this block's offset in `a` AND
+; in r7+$69, which every site downstream now reads instead of y:>$900.
+; ROTLATCH
         move    a,x0
         move    #>$901,a
         add     x0,a
@@ -345,10 +370,14 @@ notfirst:
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
-        move    y:>$900,a               ; WRITE offset: count the buffer we are
+        move    x:(r7+$69),a            ; WRITE offset: count the buffer we are
         asr     #$4,a,a                 ; about to add into, not the one being
         move    a1,x0                   ; read. Scaled back down to a bare index
-        move    x0,a                    ; because the counts are one word each
+        move    x0,a                    ; because the counts are one word each.
+                                        ; r7+$69, NOT y:>$900 -- re-reading the
+                                        ; shared word here would reintroduce
+                                        ; exactly the disagreement the resolve
+                                        ; block above exists to remove.
         move    #>$9c3,x0
         add     x0,a
         move    a,r3
