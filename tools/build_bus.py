@@ -199,7 +199,16 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # names two different images is the failure at 31 all over again, so the wrap
 # gets a fresh number: 38 == OCTABAMR19 == everything through R18 plus
 # BongDelay v2. 35, 36 and 37 were never on hardware and never will be.
-BUILD_TAG = b"40"
+# 40 was allocated to the HKB=1 DIAGNOSTIC wrap (OCTABAMR21, 17 Aug) -- an
+# image that swaps which payload housekeeps, built as a falsifier and never
+# flashed. It is superseded: the race was confirmed for free by moving
+# BongDelay between tracks 1 and 4, and the falsifier was weaker than it
+# looked anyway (swapping the housekeeper TRANSPOSES the hazard rather than
+# removing it). Tag 40 is burned rather than reused, because a tag that names
+# two different images is the failure at 31 all over again.
+# 41 == OCTABAMR22 == R20 plus the four-buffer cross-core race fix and the
+# phantom-client gate.
+BUILD_TAG = b"41"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
