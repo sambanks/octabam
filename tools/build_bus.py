@@ -199,7 +199,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # names two different images is the failure at 31 all over again, so the wrap
 # gets a fresh number: 38 == OCTABAMR19 == everything through R18 plus
 # BongDelay v2. 35, 36 and 37 were never on hardware and never will be.
-BUILD_TAG = b"39"
+BUILD_TAG = b"40"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -1132,14 +1132,37 @@ mkgo:""",
                          lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)
             if src.count("; XBUS_GATE") != 1:
                 sys.exit(f"XBUS: {name} is missing its ; XBUS_GATE marker")
+            # ⚠️ HKB=1 SWAPS WHICH PAYLOAD HOUSEKEEPS. A DIAGNOSTIC, not a
+            # feature -- see the XBUS.md entry on the cross-core accumulator
+            # race. Housekeeping (the parity flip AND the clearing of the new
+            # write buffer) has always run on payload A, which is also where
+            # ChonVerb lives -- so the reverb is inherently in lockstep with
+            # it and can never race. BongDelay is on payload B and reads
+            # buffers the OTHER core flips and zeroes asynchronously, which is
+            # the leading explanation for the metallic hash Sam measured on
+            # the delay bus (+22..31 dB of inharmonic HF vs the host path).
+            # With HKB=1 the roles swap: payload B housekeeps and payload A
+            # becomes the racer. If the artifact FOLLOWS the core -- delay
+            # clean, reverb now carrying it -- the race is confirmed.
+            #
+            # ⚠️ It has to be done by INVERTING THE BRANCH, not by changing
+            # the comparand. The first operand's $30000 is the payload's OWN
+            # base and is rewritten to $38000 for payload B by the blanket
+            # substitution -- writing $30000 as the comparand too would get
+            # rewritten with it and compare the base against itself, gating
+            # BOTH payloads out and killing the bus. beq -> bne is the whole
+            # change: A ($30000) != $38000 so A skips, B ($38000) == so B runs.
+            hkb = os.environ.get("HKB") == "1"
+            branch = "bne" if hkb else "beq"
+            skips = "payload A" if hkb else "payload B"
             src = src.replace("; XBUS_GATE", "\n".join([
                 "        move    #>$30000,a          ; XBUS payload gate",
                 "        move    #>$38000,x0",
                 "        cmp     x0,a",
-                f"        beq     {label}             ; payload B never housekeeps",
+                f"        {branch}     {label}             ; {skips} never housekeeps",
                 ";"]), 1)
             print(f"  XBUS: {name} -- {n} scratch refs moved to 0x{XBUS_BASE:05x}, "
-                  f"housekeeping gated to payload A")
+                  f"housekeeping gated to payload {'B  *** HKB=1 DIAGNOSTIC ***' if hkb else 'A'}")
             return src
 
         # DELAY SERVER is dropped for this test -- it is an untested first

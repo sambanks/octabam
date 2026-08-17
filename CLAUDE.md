@@ -125,6 +125,24 @@ you did not explicitly write is the donor's, and some of them outrank the ones
 you did.** Same family as "a slot can draw a knob and publish nothing" — the
 panel and the DSP are separate mechanisms and neither validates the other.
 
+**A MEASUREMENT CAN BE STRUCTURALLY BLIND TO THE THING YOU ARE USING IT TO
+RULE OUT — and it will report "clean" with total confidence.** Two instances,
+both on 17 Aug 2026, both costing hours:
+- `send_probe`'s THD metric sums harmonics **2f..9f of a 438 Hz tone**. A
+  block-rate discontinuity (~2940 Hz) is not a harmonic of 438 Hz, so the
+  metric cannot see it. It reported −45 dB ("clean") on audio that hardware
+  measurement later showed carrying +22 to +31 dB of inharmonic hash. Every
+  "no change" conclusion drawn from it that day was worthless.
+- XBUS step 3 concluded "synchronisation not needed" from a cross-core send
+  measured **through the reverb** — the one consumer that smears per-sample
+  damage into a multi-second tail. It shipped a cross-core race for months.
+**Before trusting a null result, ask what the instrument physically cannot
+see.** A reverb cannot show you a discontinuity. A harmonic metric cannot show
+you an inharmonic one. A single-core emulator cannot show you a race between
+two cores — and `dsp_host` is single-core, so NO local test will ever
+reproduce a bus timing defect. When local says clean and hardware says
+broken, believe the hardware and go looking for what the harness omits.
+
 **A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE ELSE'S
 LEVEL.** The auto-gain divides the accumulator by the number of registered
 clients, so a writer that registers unconditionally and then writes zero

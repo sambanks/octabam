@@ -1492,6 +1492,22 @@ that must not come back:
   residual. R's train IS L's train one repeat later; that is the arithmetic
   identity of any ping-pong fed on one side, and the tap would have masked
   correct behaviour. Only the PING=0 hole was real.
+- ❌ **"Synchronisation. Not needed as feared; the ICC stays unused"**
+  (XBUS.md step 3, shipped since XBUS landed) — retracted 17 Aug 2026. It was
+  concluded from a cross-core send measured **through the reverb**, the one
+  consumer that cannot reveal the defect because it smears per-sample damage
+  into a multi-second tail. There IS a cross-core race: housekeeping (parity
+  flip + clearing the new write buffer) is gated to payload A, ChonVerb lives
+  there and is inherently in lockstep, and **BongDelay on payload B reads
+  buffers the other core flips and zeroes asynchronously**. Measured on
+  hardware: the bus path carries **+22.5 / +18.4 / +31.0 dB** more energy at
+  2.4–3.4k / 3.4–6k / 6–12k than the host path, same engine. 🟡 Falsifier
+  built and ready: `HKB=1` swaps which payload housekeeps; if the artifact
+  follows the core it is confirmed. See XBUS.md step 3.
+  ⚠️ **The lesson is the one that keeps recurring: a measurement can be
+  structurally blind to the thing it is being used to rule out.** The same
+  day, a THD metric (harmonics 2f..9f of a 438 Hz tone) called this artifact
+  clean for hours, because a block-rate discontinuity is not a harmonic.
 - ❌ "→VERB's residual level drift is a defect in the v3 registration"
   (17 Aug, held for about an hour) — the registration is exact. Two
   independent measurements close the model: delay drive +2.50/+1.02 dB =
@@ -1509,6 +1525,14 @@ that must not come back:
 
 ## Open, and unchanged by any of this
 
+- ⚠️ **THE CROSS-CORE ACCUMULATOR RACE (17 Aug 2026)** — the biggest open
+  item on the bus, and it has been shipping since XBUS landed. Housekeeping
+  is gated to payload A; BongDelay on payload B reads buffers core 0 flips
+  and clears asynchronously. Hardware-measured as +22 to +31 dB of inharmonic
+  HF on the bus path vs the host path. NO local test can reproduce it — one
+  core is always in lockstep. Confirm with `HKB=1` (swaps which payload
+  housekeeps), then fix with triple buffering (~32 words of bus scratch, no
+  cycles). See XBUS.md step 3 and 3.2.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is a design rule; no
   product configuration has this.

@@ -239,7 +239,58 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    unturnoffable; excised by default, hardware-confirmed gone.
 1. ~~Relocated bus, same core.~~ **DONE** at `0x36000`.
 2. ~~Does a cross-core send arrive?~~ **DONE — cross-core works.**
-3. ~~Synchronisation.~~ Not needed as feared; the ICC stays unused.
+3. ~~Synchronisation.~~ ~~Not needed as feared; the ICC stays unused.~~
+   ⚠️ **RETRACTED 17 Aug 2026 — AND IT IS THE LOAD-BEARING ONE.** This was
+   concluded from step 2, "does a cross-core send arrive?", which was
+   validated **through the reverb**. A reverb is the one consumer that
+   physically cannot reveal the defect: it smears any per-sample damage into
+   a multi-second tail. The measurement was structurally blind to what it was
+   being used to rule out, exactly like the THD metric that called the same
+   artifact clean all day on 17 Aug (harmonics 2f..9f of a 438 Hz tone cannot
+   see a block-rate discontinuity).
+
+   **THE RACE, and it has been shipping since XBUS landed.** All bus
+   housekeeping — the parity flip AND the clearing of the new write buffer —
+   is gated to payload A (`build_bus.py`, the XBUS_GATE substitution:
+   `beq ... ; payload B never housekeeps`). ChonVerb lives on payload A, so
+   the reverb is inherently in lockstep with the housekeeper and can never
+   race it. **BongDelay lives on payload B and reads accumulator buffers that
+   the OTHER core flips and zeroes asynchronously.** When core 0 flips
+   parity it immediately clears the new write buffer — which is the buffer
+   core 1 may still be reading. Zeros spliced into the audio at block
+   boundaries.
+
+   **Measured on hardware, 17 Aug** (Sam's unit, audio interface capture,
+   band energy normalised to each capture's own 200–800 Hz musical band):
+
+   | band | delay via the BUS | delay via its HOST track | difference |
+   |---|---|---|---|
+   | 2.4–3.4 kHz | −4.1 dB | −26.5 dB | **+22.5 dB** |
+   | 3.4–6 kHz | −12.4 dB | −30.7 dB | **+18.4 dB** |
+   | 6–12 kHz | −14.1 dB | −45.2 dB | **+31.0 dB** |
+
+   Same engine, same output path, same feedback loop — the only difference is
+   whether the audio arrived over the bus. Broadband, inharmonic, no
+   structure: the signature of discontinuities in the data, not distortion of
+   it. Local renders of the identical configuration measure ~30 dB cleaner in
+   those bands and are unaffected by instance count (2 vs 8) or split state,
+   because **a single-core emulator is always trivially in lockstep and can
+   never reproduce this.**
+
+   ⚠️ It hid this long because BongDelay was always driven by its own host
+   track. v3 stage 1 made the bus path the normal one, and the artifact
+   appeared immediately.
+
+   🟡 Inferred from the code plus the measurements above; not yet directly
+   observed on silicon. **Falsifier, and it is cheap: `HKB=1` swaps which
+   payload housekeeps.** If the artifact follows the core — delay clean,
+   reverb now carrying it — the race is confirmed. If it does not move, this
+   entry is wrong and the hypothesis dies.
+
+   **The likely fix is not synchronisation but TRIPLE BUFFERING**: write A,
+   read B, clear C, so the clear can never touch a buffer anyone is reading.
+   ~32 more words of bus scratch, no cycles, no ICC. Do not build it until
+   `HKB=1` has confirmed the diagnosis.
 
 Steps 4 (memory re-plan) and 5 (the effects) are what remains, and the
 re-evaluation below is what they should now be.
