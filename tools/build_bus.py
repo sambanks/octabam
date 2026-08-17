@@ -263,6 +263,10 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # 50 == OCTABAMR31 == R30 minus ChonVerb's ->DEL send (the vestige twin of
 # VRBD; retired, slot 11 blank). The reverb writes NO bus at all now -- the
 # only wet-crossing edge is delay->reverb, under the -VRB knob.
+# ⚠️ R30 AND R31 CARRY A BROKEN DELAY IN (the -VRB splice deleted its decode;
+# $76 never written). NEITHER WAS FLASHED. Do not flash either; tag 51 fixes.
+# 51 == OCTABAMR32 == R31 plus the IN fix and the IN/-VRB slot swap (IN
+# bottom-right on BOTH effects: delay IN p4->p5, -VRB p5->p4).
 # ⚠️ LOUDER AGAIN with several senders: up to +9 dB at eight tracks of real
 # (uncorrelated) material. Correlated content now UNDER-corrects and can clip.
 # 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
@@ -270,7 +274,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"50"
+BUILD_TAG = b"51"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
