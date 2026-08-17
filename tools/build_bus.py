@@ -162,6 +162,10 @@ RENAMES = {
     ],
     "REVERB SERVER": [
         (1, b"MOD"), (2, b"SIZE"),
+        (5, b"IN"),             # v4 RETURN (17 Aug 2026): was the donor's MIX.
+                                # The output is the wet alone; IN is this
+                                # track's own send into its reverb, the
+                                # delay's p4 mirrored.
         # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
         # odd slots are companion fields in the same word and are only proven
         # to carry a SMALL step count -- see PAGE2_COUNTS below.
@@ -329,7 +333,11 @@ DEFAULTS = {
     # DARK REV's value counts, not ours. And a default outside its own count
     # is used as an index -- that shipped once (slot 7: default 64, count 5)
     # and stalled the sequencer on hardware. verify_menu.py now checks it.
-    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 127), (5, 64),
+    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 127), (5, 0),   # IN -- 0 IS LOAD-BEARING (v4 return, the delay's
+                                 # measurement verbatim: a nonzero default registers
+                                 # every idle host as a client and dilutes real senders;
+                                 # and the output is wet alone, so IN=0 + nothing sent
+                                 # = SILENT track, by design)
                       (6, 0),    # SHMR   OFF. This slot was SPEED (LFO rate)
                                  # and defaulted to 48; v101 renamed it to the
                                  # shimmer amount and never revisited the

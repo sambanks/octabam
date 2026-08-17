@@ -566,12 +566,26 @@ bus_mine:
         move    #>$9c3,x0
         add     x0,a
         move    a,r5
+; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v4 return) -- the delay's block,
+; verbatim in every discipline: IN read from r6 DIRECTLY (the per-block decode
+; runs after this), clr BEFORE the tst it must not disturb, the increment
+; through x0 because Tcc takes a register, and b -- WHICH HELD THE TABLE
+; BASE -- re-loaded below rather than trusted (the delay's wild-read lesson).
+        move    #>$1,x0                 ; the "one more client" increment
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+$5),a             ; IN, from the knob itself
+        tst     a
+        tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
+        add     b,a                     ; ... plus ourselves, if sending
         move    #>$7,x0
         and     x0,a                    ; masked: boot garbage cannot index wild
         move    a1,x0
         move    x0,a                    ; A2-clean before it becomes an address
-        add     b,a                     ; b = table base, still live
+        move    #>$30000,b              ; table base RE-LOADED (base + offset,
+        move    #>$4400,x0              ; not fused -- the substitution rule at
+        add     x0,b                    ; the table build above)
+        add     b,a
         move    a,r5
         move    y:(r5),a
         move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
@@ -1619,79 +1633,39 @@ md_done:
 ; $6c were removed; $6c has since been REUSED as the lines-4-7 tap scale,
 ; written by every md_* block (it is NOT free). See VOICING.md Round 7.
 
-; ---- MIX: a real crossfade, not wet added on top of unity dry (v94) ------
-; It used to be out = dry + wet*MIX, so dry stayed at full scale however wet
-; the effect was set. That cannot help clipping on a hot source -- 1.0 + 0.78
-; is 1.78 -- and it means MIX never actually removes the dry signal, so the
-; top of the knob is not "wet" in the sense every other reverb means it.
+; ---- IN: this track's own send into its reverb -- the RETURN conversion ---
+; (v4, 17 Aug 2026.) ChonVerb was an INSERT while BongDelay became a RETURN in
+; v3, and the asymmetry was never a decision -- the reverb simply predates the
+; bus, and when the R19 flash exposed the host-track privilege the fix was
+; applied to the delay alone. Sam's design was always symmetric: two bus
+; effects in series, every track sending or not, INCLUDING the host. So this
+; is the delay's v3 stage 1, mirrored:
+;   * the output is the WET ALONE -- the track fader is the return level;
+;   * MIX is retired; p5 is IN, this track's own send, on exactly the terms
+;     every -VRB sender gets (headroomed, summed BEFORE the auto-gain,
+;     counted as a client only while nonzero);
+;   * the whole MIX/wet-makeup/dry-gain complex (v94/v96 laws, and the one
+;     live `cmp a,b`-encodes-as-MAX site in shipping code) is DELETED. Its
+;     history lives in git; the -10.9 dB full-wet deficit it was compensating
+;     is MOOT for a return -- there is no dry to be quiet against.
 ;
-; out = dry*(1-MIX) + wet*MIX. MIX arrives as value<<16, so 1-MIX is just
-; $7fffff minus it.
-        move    x:(r6+$5),x0
-; ---- WET MAKEUP (10 Aug 2026, ear evidence from the R14 hardware trip) ---
-; Fully wet measured much quieter than dry -- inherent (the tail spreads the
-; same energy over seconds; v96's own note measured the straight crossfade
-; -7 dB) and now heard on hardware. A fractional gain cannot exceed 1.0, so
-; the makeup is split: $20 stores wgain/2 and the mix stage asl-doubles the
-; wet product. The curve keeps the bottom half BIT-IDENTICAL (MIX<<15,
-; doubled exactly back) and adds (MIX-0.5) over the top half, mirroring the
-; dry fade-out -- reaching ~2x (+6 dB) at MIX=127 where dry is gone, and
-; leaving the mid-knob sum no hotter than before. The compare reuses the
-; documented `sub a,b` idiom verbatim: cmp a,b encodes as MAX here (the
-; assembler trap above), and asr/asl must come AFTER the branch -- they
-; update the CCR the blt needs.
-        move    #>$400000,a             ; 0.5
-        move    x0,b
-        sub     a,b                     ; MIX - 0.5, sets N^V for the blt
-        blt     mkwlo
-        move    x0,a
-        asr     #$1,a,a                 ; top half: MIX/2 ...
-        add     b,a                     ; ... + (MIX - 0.5), max $7e8000 < 1.0
-        bra     mkwst
-mkwlo:
-        move    x0,a
-        asr     #$1,a,a                 ; bottom half: exactly MIX/2
-mkwst:
-        move    a,x:(r7+$20)            ; wgain/2 -- the mix stage doubles it
-; v96: HOLD the dry at unity for the bottom half of the knob, then crossfade it
-; away over the top half. A straight 1-MIX crossfade measured the knob getting
-; ~7 dB QUIETER as it was turned up (-22.0 dBFS at MIX=0 down to -28.8 at 96),
-; because a reverb's wet is inherently far below its dry: the tail spreads the
-; same energy over seconds, so swapping dry for wet at equal gain loses level.
-; Turning a reverb up should not shrink the sound.
+; ⚠️ IN's DEFAULT IS 0 AND THAT IS LOAD-BEARING, the delay's measurement
+; verbatim: a nonzero default registers every idle host as a client and
+; dilutes the real senders; and since the output is wet alone, a track that
+; IS playing something with nothing sent to it is SILENT until IN comes up.
 ;
-; dry = 1                 for MIX <= 0.5      -- pure "mix more in"
-;     = 2 * (1 - MIX)     for MIX >  0.5      -- reaches fully wet at the top
-;
-; Keeps what v94 was actually after (the top of the knob IS wet, which the old
-; additive law could never reach) and drops what made it feel wrong.
-        move    #>$400000,a             ; 0.5
-        move    x0,b
-; `cmp a,b` HERE ENCODED AS `max a,b` -- disassembled 8 Aug 2026, opcode
-; $20001d. Accumulator-to-accumulator CMP is part of the dsp_asm mis-encoding
-; family this project already lost two attempts to (`tfr a,b` -> `rnd b`), and
-; this was the ONE live instance of it in shipping code.
-;
-; Why it was not caught by ear or by measurement: MAX updates ONLY the C bit
-; (emulator `op_Max`: `ccr_update_ifLess(CCRB_C)`), while `blt` tests N^V. So
-; the branch was reading flags this block never set, and the v96 MIX sweep
-; still measured exactly the intended law -- flat to MIX=64, falling above it.
-; It was right by accident, on whatever set N^V earlier in the parameter block.
-; MAX also writes B = max(A,B); harmless only because b is dead below.
-;
-; SUB is the documented workaround (ADD/SUB encode correctly in this form and
-; SUB sets N^V exactly as CMP would). `sub a,b` leaves b = MIX - 0.5, which is
-; the comparison this always meant to make.
-        sub     a,b                     ; MIX - 0.5, and sets N^V for the blt
-        blt     mixhold
-        move    #>$7fffff,a
-        sub     x0,a                    ; 1 - MIX, and <= $3fffff on this branch
-        asl     #$1,a,a                 ; so the double cannot overflow into sign
-        bra     mixset
-mixhold:
-        move    #>$7fffff,a             ; dry at unity across the bottom half
-mixset:
-        move    a,x:(r7+$70)            ; dry gain
+; IN is stored as the knob field itself: val<<16 IS val/128 in Q1.23 (the
+; MIX/PING trick), used directly as the per-sample multiplier. Single writer
+; of $70 (verify_slots).
+        move    x:(r6+$5),a
+        move    a,x:(r7+$70)            ; IN, this block
+
+; The wet gain is now a CONSTANT: the old law's MIX=127 value, $7e8000 as
+; wgain/2 (the sample loop still asl-doubles it, = x1.977, +5.9 dB). Chosen so
+; the return prints EXACTLY the full-wet the R18 ear pass approved -- the knob
+; that used to reach this value is gone, not the voicing.
+        move    #>$7e8000,a
+        move    a,x:(r7+$20)
 
 ; ---- ->DELAY send level -- page-2 slot 11, the LOW bits of $e (v92) -----
 ; R16: a 4-STEP SELECT, not a knob. Hardware (10 Aug) showed the companion
@@ -2368,26 +2342,30 @@ lfrol:
         move    x:(r0+n0),x0
         add     x0,a
         asr     #$1,a,a
-        move    a,x:(r7+$1b)
-        move    a,x:(r7+$6a)            ; own dry mono, stashed BEFORE the bus
-                                        ; is folded in below -- the ->DELAY
-                                        ; send (BUS.md task 10) taps dry alone
+        move    a,x:(r7+$6a)            ; own dry mono, PRE-IN -- the ->DELAY
+                                        ; send (BUS.md task 10) taps this, so
+                                        ; ->DEL sends the track's dry even at
+                                        ; IN=0 (documented, deliberate)
+; RETURN input (v4): own share = dry * IN, with the SAME 3-bit headroom every
+; bus writer applies, summed with the accumulator BEFORE the auto-gain -- so
+; the host is one client among N, exactly the delay's recipe. mpy x1,y1 is the
+; mpysu-encoded order (audited family): safe because y1 = IN >= 0.
+        move    a,x1
+        move    x:(r7+$70),y1           ; IN
+        mpy     x1,y1,a
+        asr     #$3,a,a
+        move    a,x:(r7+$1b)            ; own share, headroomed
         move    x:(r7+$63),a            ; this sample's ACC read address
         move    a,r5                    ; borrow r5: free here, every use
                                         ; below recomputes it from scratch
         move    y:(r5),b                ; last block's fully-summed sends
-        move    b1,x1                   ; auto-gain: divide by the number of
-        move    x:(r7+$0c),y1           ; clients that wrote it, so eight tracks
-        mpy     x1,y1,b                 ; drive the tank exactly as hard as one
-        asl     #$3,b,b                 ; undo the 3 bits of headroom the clients
-                                        ; write with (dsp/send_client.asm): the
-                                        ; scaled sum is sum/8, so sum/8 * 1/N * 8
-                                        ; = sum/N, and the intermediate never
-                                        ; leaves range -- with N clients writing,
-                                        ; the scaled sum is at most N/8.
         move    x:(r7+$1b),a
-        add     b,a
-        move    a,x:(r7+$1b)            ; own dry + scaled bus, feeding the tank
+        add     b,a                     ; bus + own share, still headroomed
+        move    a,x1
+        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N); N counts us
+        mpy     x1,y1,a                 ; while IN > 0 (the resolve block)
+        asl     #$3,a,a                 ; undo the writers' 3-bit headroom
+        move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
 
 ; --- GATE envelope (R16), BRANCHLESS AND FLAG-INDEPENDENT. The sample loop
 ; must stay straight-line (branches in a do-loop can hang the DSP), and rather
@@ -3550,7 +3528,7 @@ fbB:
 ; ---- wet gain for the MIX below ----------------------------------------
 ; Loaded HERE, not with the sums above: the write-back clobbers y1, so this
 ; has to come after it. The sums themselves never use y1.
-        move    x:(r7+$20),y1           ; wet gain
+        move    x:(r7+$20),y1           ; wet gain (constant, v4)
 
 ; ---- WIDTH: mid/side, then MIX, then onto the dry -----------------------
 ; M = (L+R)/2, S = (L-R)/2, out = M +/- w*S. w=0 collapses to mono, w=1 gives
@@ -3579,7 +3557,7 @@ fbB:
 ; REVERB WET carries the voiced signal.
 ; Coefficient per mode in $7a (md_* block), states $78/$79 (free slots,
 ; zeroed in warm-up). y1 holds MIX and must survive -- the coefficient rides
-; y0, which is free here (WIDTH is done, dry gain reloads it later). The
+; y0, which is free here (WIDTH is done; y0 is reloaded by GATE below). The
 ; mpy encodes as mpysu; the coefficient is always positive, so it is safe,
 ; and it is a plain product (no doubling) -- c is stored as-is.
         move    x:(r7+$25),a            ; M
@@ -3622,13 +3600,9 @@ fbB:
         move    a,x0                    ; GATE: scale the wet by the gate level
         move    x:(r7+$62),y0           ; GLVL (0..1); y1 still holds wet gain
         mpy     y0,x0,a                 ; signed (y0,x0): wet * gate
-        move    a,x:(r7+$71)            ; stash the (gated) wet half
-        move    x:(r0),x0               ; dry
-        move    x:(r7+$70),y0           ; dry gain -- y0 is free here, y1 must
-        mpy     x0,y0,a                 ; keep holding MIX for the R channel
-        move    x:(r7+$71),x0
-        add     x0,a                    ; dry*(1-MIX) + wet*MIX
-        move    a,x:(r0)                ; L in place
+        move    a,x:(r0)                ; L in place -- WET ALONE (v4 return;
+                                        ; the dry term and the $71 stash are
+                                        ; gone with the MIX crossfade)
         move    x:(r7+$25),a
         move    x:(r7+$26),x0
         sub     x0,a
@@ -3638,13 +3612,7 @@ fbB:
         move    a,x0                    ; GATE: same gate level on the right
         move    x:(r7+$62),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
-        move    a,x:(r7+$71)            ; same crossfade on the right
-        move    x:(r0+n0),x0
-        move    x:(r7+$70),y0
-        mpy     x0,y0,a
-        move    x:(r7+$71),x0
-        add     x0,a
-        move    a,x:(r0+n0)             ; R in place
+        move    a,x:(r0+n0)             ; R in place, wet alone
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
         move    (r3)+                   ; under m1..m4 = $fff

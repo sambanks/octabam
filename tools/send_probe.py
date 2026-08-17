@@ -359,7 +359,10 @@ def write_wav(path, L, R):
 # companion select was ever exercisable in the emulator and DMODE=/DINT=/DFRZ=
 # build overrides were the only way in. Those overrides remain valid and are
 # proven equivalent (param-driven MODE renders bit-identical to a MODE= build).
-REV_PARAMS  = [64, 0, 127, 0, 127, 127, 0, 0, 64, 0, 0, 0]
+# idx5 is IN since the v4 RETURN (was MIX): 0, or every render registers a
+# silent host client and dilutes the senders by 1/sqrt(N+1) -- exactly the
+# phantom-client defect the DSP side just spent a day removing.
+REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 0]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
 SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
@@ -480,7 +483,7 @@ def main():
 
     mem = pathlib.Path(a.mem) if a.mem else dump_mem(ROOT / a.image,
                                                      ROOT / "out/dsp/_send_probe_A.mem")
-    rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod
+    rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod  # --mix drives p5 = IN post-v4
     rev[0] = a.time
     for idx, val in ((9, a.width), (10, a.gate), (11, a.rdel)):
         if val is not None:
