@@ -717,11 +717,28 @@ exactly, except for the scratch, which both cores must touch by definition:
 
   Single-send is level-identical before/after (net-unity round trip), and
   the before column shows the same rail-clamp signature the reverb bus had.
-  ⚠️ Still asymmetric: the delay's own `→VERB` send into the REVERB
+  ~~⚠️ Still asymmetric: the delay's own `→VERB` send into the REVERB
   accumulator is an UNREGISTERED, full-scale writer — the reverb divides it
   by the SEND count and shifts up 3, so its effective gain is 8/N_sends
   (×8 with one send registered, ×1 with none). Pre-existing, unchanged by
-  this fix; belongs to the `→VERB` voicing pass.
+  this fix; belongs to the `→VERB` voicing pass.~~
+  ✅ **FIXED 17 Aug 2026 (BongDelay v3 stage 1).** The `/8` half landed in
+  GRAIN 5g and the REGISTRATION half landed with the hardwiring — they had to
+  go together, because a "fixed" send amount whose level still varies as
+  8/N_registered is not fixed at all. `→VERB` now applies `asr #3` like every
+  other writer and increments the REVERB count once per block, gated on the
+  split offset. ⚠️ It changes the balance of every OTHER reverb send by
+  N/(N+1); that was the reason for the original deferral and it is now a
+  deliberate cost, not an oversight.
+  ⚠️ **A MIRROR OF THIS BUG IS STILL OPEN, in the other direction.** ChonVerb
+  registers as a DELAY-bus client for its `→DEL` send **even when `→DEL` is
+  off** — a phantom client that contributes nothing while taking a 1/N share,
+  diluting every real sender into BongDelay by N/(N+1), i.e. **−6 dB with a
+  single sender**. Measured 17 Aug on two independent quantities: the delay's
+  drive rose +2.50 then +1.02 dB across 1→3 senders with a reverb in the bank
+  (exactly N/(N+1)) where the same sweep with no reverb instance was flat to
+  0.04 dB. The gate is five words and payload A has FREE 4 — written,
+  overran by one word, reverted. Blocked on the reverb-side LFO-block roll.
 - **Emulator/device alignment.** The proven gap is parameter delivery:
   `-params` pokes `r6` directly so every slot looks live locally, while on
   hardware a slot can draw a knob and publish nothing.

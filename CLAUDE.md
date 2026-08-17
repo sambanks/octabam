@@ -109,6 +109,37 @@ Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
 **`→DELAY` and `→REVERB` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`.
 Driving the wrong one renders silence, which reads as a broken algorithm.
 
+**A DESCRIPTOR'S DISPLAY FORMATTER OVERRIDES ITS VALUE COUNT, and a cloned
+descriptor inherits the DONOR's.** A slot can carry a correct count, default,
+name and enable bit and still draw as something else entirely — or as nothing
+at all. Found on the 17 Aug flash: BongDelay clones SPRING REV, the formatter
+fix-up in `build_bus.py` was gated to the reverb, and three of six page-2
+slots drew wrong. WOW inherited SPRING TYPE's word-label renderer whose table
+has THREE entries, was asked to draw 0..127, and **drew no knob at all**;
+MODE inherited SPRING BAL's bipolar pair and drew as a balance dial reading
+−64…−60 instead of a 5-way select. Every existing check passed, because every
+field they checked was right. `verify_menu` now checks the renderer against
+the count (`count < 128` → the enumerated pair with `0x12a` zero; `128` → both
+formatters zero). **The general form: when you clone a descriptor, every field
+you did not explicitly write is the donor's, and some of them outrank the ones
+you did.** Same family as "a slot can draw a knob and publish nothing" — the
+panel and the DSP are separate mechanisms and neither validates the other.
+
+**A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE ELSE'S
+LEVEL.** The auto-gain divides the accumulator by the number of registered
+clients, so a writer that registers unconditionally and then writes zero
+dilutes the real senders by N/(N+1) — **−6 dB with a single sender.** Two
+instances found the same day, 17 Aug: ChonVerb registers for its `→DEL` send
+even when `→DEL` is off (still open — the gate is 5 words and payload A has
+FREE 4), and BongDelay's own `IN` knob would have done it too if its default
+had stayed non-zero on a return track with no audio to send. **Gate the
+registration on the knob, and remember the level knob is usually decoded
+LATER in the block than the registration runs** — read it from `r6` directly,
+or use the previous block's value and accept one block of latency. Symptom to
+watch for: a level that is flat across sender count in one layout and drifts
+in another. It surfaced as an "unexplained residual" in a completely
+different effect's send level, and the effect being blamed was innocent.
+
 **r7 scratch is COMPLETELY FULL — `$00..$83` all in use as of 10 Aug 2026**
 (the "only `$00..$0c` free" note held until the R16–R18 work consumed the
 rest). New per-track state goes in the Y state table, not r7. `$84+` hangs

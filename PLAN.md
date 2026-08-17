@@ -22,13 +22,13 @@ delay→reverb series topology).
 
 | | state |
 |---|---|
-| On the unit | **`OCTABAMR15`** (tag 34) — R14 + LFO roll + wet makeup. **MIX confirmed by ear; BongDelay confirmed working, 10 Aug** |
-| Wrapped, NOT flashed | ✅ **`OCTABAMR19` (tag 38), wrapped 13 Aug 2026** — `out/OCTATRACK_OCTABAMR19.bin`, checksum `0x3b609dc3`, round-trip ok, `make check` green (`verify_burn` SKIPPED as documented). Carries **R16+R17+R18 AND the whole of BongDelay v2** (five modes, GRAIN through 5g). Names verified inside the packed build: `ChonVerb38` ×1, `BongDelay38` ×1, no stale `…37`. ⚠️ **Tags 35/36/37 were stamped for R16/R17/R18 and NEVER reached a card** — 37's contents kept growing under an already-assigned number until it also carried the delay, so the wrap took a fresh one rather than let a tag name two images (the failure at 31). The `R19` in the version string is next-free, not a nineteenth reverb round: R16–R18 name *voicing* rounds no image corresponds to |
+| On the unit | **`OCTABAMR19`** (tag 38) — **FLASHED 17 Aug 2026**, and it is the first image that ever had delay page 2 enabled. It carries R16+R17+R18 and the whole of BongDelay v2 (five modes, GRAIN through 5g). ⚠️ **Three of its six page-2 knobs draw WRONG** (WOW draws nothing, MODE draws as a −64…−60 dial, PTCH as a 0–3 dial) — a descriptor defect fixed in `a87e304` but not on the unit. Superseded locally by v3; see 3.2 |
+| Wrapped, NOT flashed | **Nothing — v3 is committed but UNWRAPPED.** Three commits sit on top of the flashed R19: `a87e304` (the page-2 formatter fix), `5296b5e` (v3 stage 1, the RETURN architecture), `8f10c4a` (v3 stage 2, PING). All green under `make check`; **none of it has been heard**, and two of the three are behaviour changes. Next wrap takes **tag 39** |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
-| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1 |
+| Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1  ✅ **ALL FIVE MODES + GRAIN 5b–5g LANDED** and shipped in R19. ⚠️ **17 Aug, the R19 flash rewrote the design**: the host track was never a return — its own audio drove the engine at unity, immune to 1/N and as loud as every sender combined (measured −24.78 vs −24.85 dB). **v3 makes it one**: output is the wet alone, MIX → IN, `→VERB` hardwired and registered, PING sweeps centred-mono → ping-pong. None of v3 has been heard. See 3.2 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | **FLASH `OCTABAMR19` (tag 38)** — the image is wrapped and waiting; card workflow is cp → cmp → rm old → sync → eject, killing `._` sidecars. It closes the largest unit↔local gap the project has had, and every item in it is ear-passed locally and green under `make check` + the bit-identity gate. **Four questions in it are hardware-ONLY**: (1) the standing mpy caveat — if silicon's fractional `mpy` shifts left where the emulator's does not, every decay constant is 2× off and the 8-line has never been flashed, so **check decay times on track 5 FIRST**; (2) **delay page 2 has never been exercised on the unit** — six slots, three carrying dual meanings, and the reverb's page-2 gap already cost a session; (3) **FREEZE and FREEZE+GRAIN are unhearable locally** (`DFRZ` is build-time, so a frozen build is frozen from sample 0 — measured 0.003 FS), so hardware is the only audition; (4) **the cycle ceiling** — the burn probe does not build, so "does GRAIN hold up on tracks 1–4 in real use" is the only remaining evidence, and if it does not, the priced lever is **4 grains → 2** (~300 cycles, ~100 words) at a voicing cost of half the simultaneous voices. ⚠️ **Ships with one known defect: `→VERB` is usable only to ~VRBW 50** — the ÷8 fix landed, the range refit did not. Then: step-2 knob reconfirmation protocol, voicing residue (pad forwardness, 6-9k crest, shifter-input HP, page-1 tuning, PLATE ear pass, TIME refit) → BongDelay voicing. See VOICING.md R18 and stage 5g |
+| Next | **EAR-PASS v3 LOCALLY, then wrap tag 39.** v3 changed what the box IS — the host track is a return, MIX is now IN, `→VERB` is hardwired — and **none of it has been heard**. GRAIN especially was voiced against a MIX crossfade that no longer exists, so its 5b–5g voicing is provisional until re-heard through the new path. Then the flash carries both v3 and R19's still-unanswered hardware questions: (1) the standing mpy caveat — if silicon's fractional `mpy` shifts left where the emulator's does not, every decay constant is 2× off, so **check decay times on track 5 FIRST**; (2) **delay page 2 has still never been exercised with knobs that draw correctly** — R19 had three of six wrong; (3) **FREEZE and FREEZE+GRAIN remain unhearable locally** (`DFRZ` is build-time, measured 0.003 FS); (4) **the cycle ceiling** — the burn probe does not build, so real use on tracks 1–4 is the only evidence, and the priced lever is **4 grains → 2** (~300 cycles, ~100 words) at a voicing cost of half the simultaneous voices. ⚠️ **Ships with one known defect: ChonVerb is a phantom client of the delay bus** (−6 dB with a single sender); the fix is 5 words and payload A has FREE 4 — see 3.2 |
 
 ✅ **RESOLVED 10 Aug (on-unit reconfirm): page-2 PUBLISHES.** The earlier
 "not publishing" report was a misdiagnosis (wrong tag + track↔core
@@ -93,7 +93,9 @@ fits; anything else waits on the reverb-side LFO-block roll lever below.
 845, FREE 1,879** — 12 Aug late (v2 stage 2 PITCH, delay +526): **used
 1,371, FREE 1,353** — 12–13 Aug (stages 3/4/4b/5/5b–5e/6, delay 1,371 →
 **2,375**): **used 2,596, FREE 128** — 13 Aug (5f optimisation, delay →
-2,360): **used 2,581, FREE 143.**
+2,360): **used 2,581, FREE 143** — 13 Aug (5g, delay → 2,428): **used 2,649,
+FREE 75** — 17 Aug (v3 stages 1+2, delay 2,428 → 2,444): **used 2,665,
+FREE 59.**
 
 ⚠️ **PAYLOAD B IS NO LONGER ROOMY, and this is the entry that says so.**
 Every stage costed itself against "~1,000 free" and that figure went stale
@@ -105,6 +107,17 @@ that do not exist. **Program space has become a design driver on payload B
 for the first time**, which retires the "specialising the payloads frees
 1,998 words for nothing" framing for B specifically. A is unchanged at
 FREE 4.
+
+⚠️ **AND PAYLOAD A'S FREE 4 IS NOW BLOCKING A REAL FIX, not just future
+features.** ChonVerb registers as a DELAY-bus client for its `→DEL` send even
+when `→DEL` is off — a phantom client that takes a 1/N share while
+contributing nothing, diluting every real sender into BongDelay by N/(N+1),
+i.e. **−6 dB with a single sender** (measured 17 Aug, see 3.2). The gate is
+five words. A has four. It was written, it overran by exactly one word, and it
+was reverted. This is the second item blocked on the same lever as
+`verify_burn` — the reverb-side LFO-block roll — and the first one where the
+cost of not having the words is an audible level error rather than a deferred
+feature.
 
 ⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
 layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
@@ -478,6 +491,9 @@ reverb, and the direction is the designed one: delay → reverb, never the
 reverse.** Measured via `--layout RDS` with SEND's `→REVERB` knob at 0, so
 the *only* route into ChonVerb was BongDelay's cross-send: VRBW=127 filled
 the reverb at −14.0 dBFS; the VRBW=0 control was digital silence (−180 dB).
+⚠️ **That control no longer exists** — v3 hardwired `→VERB` and retired the
+knob, so the isolation test is now "`→DELAY` at 0" instead (17 Aug: also
+digital silence). The measurement above stands; only the method is retired.
 Local echo is also structurally confirmed: impulse taps at exactly 5,184
 samples (TIME=40 → 40·128+64), decaying through FDBK. Hardware confirm
 still rides the next flash.
@@ -827,7 +843,9 @@ each stage is a separate commit gated by `make check`):
      two slots, so it could not see it. The inverse of the PARAM_PAGES
      trap. Fixed here; page 2 is now full and correct — **WOW(6) MODE(7)
      VRBD(8) PTCH(9) SPRA(10) FRZE(11), three knobs and three selects,
-     which is the hardware budget exactly.**
+     which is the hardware budget exactly.** ⚠️ **Stale as of v3 (17 Aug):
+     VRBD(8) is retired and p5/p8 are free — see 3.2. Kept because it records
+     what the 12 Aug enable-bitmap fix actually did.**
    - ~~**Still unheard**: FREEZE + GRAIN and GRAIN through `→VERB`.~~
      ✅ **GRAIN THROUGH `→VERB` WAS HEARD 13 Aug and PASSED** (Sam, on the
      stage-5g engine: "sounds great") — see stage 5g below. **FREEZE + GRAIN
@@ -1107,21 +1125,111 @@ All costs 🟡 inferred from shipped analogues (shimmer 130 words, gate ~104
 cycles); price each stage by the build report when it lands, and stop
 adding modes when the ear says the box is full, not when the words run out.
 
+#### 3.2 BongDelay v3 — the RETURN architecture (17 Aug 2026, the R19 flash)
+
+**The first flash with delay page 2 enabled, and it changed the design rather
+than just finding bugs.** Sam flashed R19 and reported four things within
+minutes. Three were one descriptor defect; the fourth opened the question the
+whole box was built on the wrong answer to.
+
+✅ **THE PANEL DEFECT (`a87e304`).** WOW drew no dial, MODE drew as a dial
+reading −64…−60 instead of a 5-way select, PTCH drew as a plain 0–3 dial. One
+cause: the per-parameter display-formatter fix-up in `build_bus.py` was gated
+`if name == "REVERB SERVER"`, so BongDelay — which clones SPRING REV —
+inherited SPRING's renderers for all six page-2 slots. WOW got SPRING TYPE's
+word-label pair whose table has **three** entries and was asked to draw
+0..127, so it drew nothing; MODE got SPRING BAL's **bipolar** pair plus a
+non-zero `0x12a`, which forces plain-knob drawing even with the right pair.
+**Counts, defaults, names and enable bits were correct in every case**, which
+is why every existing check passed. The control that proves it: the reverb's
+SHMR is also slot 6 at count 128 and draws as a normal knob. Blast radius
+measured, not assumed: 33 bytes, all in the DELAY clone's formatter arrays.
+⚠️ `verify_menu` now checks that a slot's renderer matches the kind of control
+its count says it is; run against R19 as a sensitivity control it fails on
+exactly the three Sam reported **plus FRZE**, which had the same defect.
+
+✅ **THE ARCHITECTURE (`5296b5e`) — Sam's call, and it frees slots rather than
+costing them.** The question was "is this actually a send effect?" Measured
+answer: **no, and the host track was privileged twice over.**
+- Its own audio entered the engine at **unity, after** the bus was
+  auto-gained, so it was immune to 1/N — as loud into the delay as every
+  sender combined, with no knob to trim it. Measured: host **−24.78 dB**
+  against a full-knob SEND's **−24.85**, i.e. identical drive.
+- That same dry was MIX's crossfade reference, so MIX did two unrelated jobs
+  and **walked the stereo image 0.00 → 7.82 dB** across its travel — Sam's
+  "changing mix moves that panning around".
+
+What ships: **the host track is a RETURN.** It prints the wet alone; its OT
+track fader is the delay's output level; its own audio reaches the engine only
+through **IN** (was MIX), on exactly the terms every other track's →DELAY knob
+gets. `→VERB` is **hardwired** at `$2d0000` (≈ knob 45) and **registers in the
+REVERB count**, closing the 13 Aug deferral — an unregistered writer's level is
+×8/N_registered, so a "fixed" amount would still have drifted ~18 dB between
+one sender and eight. p5 (VRBW) and p8 (VRBD) are **retired, not renamed**.
+Measured: auto-gain flat at −24.40 dB across 1–7 senders; return level
+preserved (−24.47 → −24.40); IN 64→127 = +5.95 dB (2×, correct).
+⚠️ **IN defaults to 0, and that is a measurement not a taste**: IN>0 registers
+the host as a client and the 1/N gain hands it a share it is not using, so a
+non-zero default silently halved every real sender (−24.40 at IN=0 vs −30.42
+at IN=64, exactly 6.02 dB). The cost is real and documented at the site — the
+output is the wet alone, so BongDelay on a track that IS playing something,
+with nothing sent to it, is **silent** until IN comes up.
+
+✅ **PING (`8f10c4a`) — and half of it was deliberately NOT fixed.** Measured
+before touching anything: PING=0 left LineR at **digital silence** (hard left),
+and the lean ran +20.1/+14.7/+11.5/+9.2 dB at 32/64/96/127 — **no setting
+anywhere on the knob produced a centred image**, and the default sat mid-way.
+- ❌ **The lean at PING=127 is NOT a defect and the planned direct-to-R tap
+  was DROPPED once it was measured.** It is exactly one repeat's decay,
+  because R's train IS L's train one repeat later: lean
+  18.72/12.69/9.17/5.60/2.96 dB against a per-repeat decay of
+  19.20/13.18/9.65/6.13/3.63 at FDBK 20/40/60/90/120 — a **constant −0.5 dB
+  residual across a 6:1 range**. The tap would have masked correct behaviour.
+- ✅ The real defect was PING=0. LineR now takes the input scaled by
+  **1−PING**. Scaling it *by the knob* is the whole trick: `x_in` is a mono
+  scalar by construction, so a symmetric feed makes both lines' state
+  equations identical for **any** PING — provably, by induction — and the knob
+  would do nothing. Measured after: lean 0.00/2.26/4.90/7.76/7.83 and
+  correlation **+1.000**/+0.998/+0.964/+0.714/**−0.078**. A monotonic sweep
+  from centred mono to decorrelated ping-pong, no hole at either end, less
+  lean at every point. Default PING 64 → **127**.
+  ⚠️ PING=127 is **not** bit-identical to the old engine: the knob's top is
+  127/128, so R keeps 0.8% of the input — enough to move the lean 9.17 → 7.83.
+
+⚠️ **OPEN — CHONVERB IS A PHANTOM CLIENT OF THE DELAY BUS, and the fix does
+not fit.** It registers for its →DEL send **even when →DEL is off**:
+contributes nothing, still takes a 1/N share, diluting every real sender into
+the delay by N/(N+1) — **−6 dB with a single sender**. Found while chasing an
+unexplained drift in the hardwired →VERB level, which turned out to be
+innocent; the model closes exactly, on two independent measurements:
+delay drive +2.50/+1.02 dB = `N/(N+1)`, reverb share −3.52/−2.50 dB =
+`1/(N+1)` (my registration, working), net −1.02/−1.48 dB = `N/(N+1)²`. It is
+why the delay is flat across 1–7 senders in a `DS` layout but drifts the
+moment a reverb is in the bank. **The gate costs 5 words and payload A has
+FREE 4** — built, overran by exactly one word, reverted. Blocked on the same
+lever as `verify_burn`: the reverb-side LFO-block roll.
+
+⚠️ **NOTHING IN v3 HAS BEEN HEARD.** Two of the three are behaviour changes,
+and GRAIN especially was voiced against a MIX crossfade that no longer exists.
+`verify_delay`'s bit-identity gate does not apply to any of it — deliberate
+behaviour changes, measured rather than bit-compared, and this HEAD is the new
+reference.
+
 **Stage 1's refactor gate is now permanent tooling**: `make verify-delay
 CAND=<file> [REF=<file>]` proves any future delay engine bit-identical to
 the shipping one, with the same two controls as `verify_roll` (a blind
 harness and a placement-lucky candidate both fail loudly). `DLSRC=` swaps
 the delay source per build exactly as `RVSRC=` does the reverb's.
 
-**PAGE 2 IS FULL, and three slots carry two meanings.** As of stage 5e the
-delay draws every slot the hardware allows — three knobs and three selects,
-which is the budget exactly (DSP.md section 9):
+**PAGE 2 HAS A SPARE KNOB AGAIN**, and three slots carry two meanings. v3
+stage 1 retired slot 8 (→VERB DRY) along with page-1's p5 (→VERB WET), so
+the delay no longer draws every slot the hardware allows:
 
 | slot | field | CLEAN / PITCH / TAPE | GRAIN | REVERSE |
 |---|---|---|---|---|
 | 6 | `$b` knob | WOW (TAPE depth) | **DENSITY** | — |
 | 7 | `$c` high | MODE — CLEAN / PITCH / TAPE / GRAIN / REVERSE (count 5) |||
-| 8 | `$d` knob | →VERB DRY |||
+| 8 | `$d` knob | **FREE** — was →VERB DRY, retired v3 stage 1 |||
 | 9 | `$d` low | PTCH interval | **interval SET** | **SIZE** |
 | 10 | `$e` knob | SPRAY (scatter depth) |||
 | 11 | `$e` low | FREEZE |||
@@ -1129,22 +1237,23 @@ which is the budget exactly (DSP.md section 9):
 Dual meanings are deliberate: MODE already says which is in force, and a
 knob that does nothing in three modes is worse than one that does something
 in all five. ⚠️ Every one of these rides the on-unit reconfirm checklist,
-and **six of them have never been touched on hardware** — WOW, SPRA and
-FRZE were only enabled on 12 Aug (they had been named, defaulted and
-counted but left out of the enable bitmap, so they drew no knob at all),
-and MODE is a 5-way select where the unit has only ever seen a 3-way.
+and **most have never been touched on hardware** — the 17 Aug R19 flash was
+the first with page 2 enabled and it found three of six drawing WRONG (see
+the v3 section below), so nothing here has yet been exercised in a build
+whose knobs render correctly.
 
 **Parameters — no new UI mechanism.** Everything is the existing knob-page
 descriptor system (MODE-as-stepped-select is shipped tech: ChonVerb MODE,
-WIDTH/→DEL selects). Today: TIME p0, FDBK p1, TONE p2, PING p3, MIX p4,
-VRBW p5, VRBD p8. Free: knob fields 6/7/9/10/11 plus low-byte companions.
-Proposed: **MODE** (select), **PITCH interval** (select — near-boolean
-knobs read badly on hardware, the WIDTH lesson), **SIZE** (grain/window
-knob), **SPRAY** (knob), **FREEZE** (2-state select). ⚠️ Every new slot
-rides the on-unit reconfirm checklist — a slot can draw a knob and publish
-nothing, and dsp_host pokes r6 so publish gaps are invisible locally.
-⚠️ Selects need their descriptor fields exact (the PARAM_PAGES.md
-sequencer-stall trap).
+WIDTH/→DEL selects). Today, after v3: TIME p0, FDBK p1, TONE p2, PING p3,
+**IN p4** (this track's own send level — was MIX), MODE p7, PTCH p9, SPRA
+p10, FRZE p11, WOW p6. **Free: p5 and p8, both knob fields** — the two
+→VERB knobs, retired when the send was hardwired.
+⚠️ Every new slot rides the on-unit reconfirm checklist — a slot can draw a
+knob and publish nothing, and dsp_host pokes r6 so publish gaps are
+invisible locally. ⚠️ Selects need their descriptor fields exact (the
+PARAM_PAGES.md sequencer-stall trap), and the formatter must match the kind
+of control the count says it is — the v3 defect, now guarded by
+`verify_menu`.
 
 **Traps this design walks past** (all documented, none new): mpy operand
 order for any new multiply whose second operand can go negative —
@@ -1209,12 +1318,12 @@ Traps, all already paid for once:
   from verify_burn's 2,794-word skip, which is the BURN probe layout.
   XBUS/SPEC (`make bus`) and the hatch (`make render-delay`) are the live
   configurations; treat bus-plain as historical unless something needs it.
-- Current parameters (`build_bus.py`): `TIME` p0, `FDBK` p1, `TONE` p2,
-  `PING` p3, `MIX` p4, `VRBW` p5, `MODE` p7 (select, count 2), `VRBD` p8,
-  `PTCH` p9 (select, count 4), `FRZE` p11 (select, count 2, stage 3),
-  `WOW` p6 (knob, stage 4) — **11 of 12 used** (MODE's count is now 3:
-  CLEAN/PITCH/TAPE), and the parameter-delivery gap (step 2) caps how many more
-  are worth adding. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
+- Current parameters (`build_bus.py`), after v3: `TIME` p0, `FDBK` p1,
+  `TONE` p2, `PING` p3 (default **127**), **`IN` p4** (this track's own send
+  level, default **0** — was `MIX`), `WOW` p6, `MODE` p7 (select, count 5),
+  `PTCH` p9 (select, count 4), `SPRA` p10, `FRZE` p11 (select, count 2) —
+  **10 of 12 used. `p5` and `p8` are FREE**, both knob fields, retired with
+  the two `→VERB` knobs when the send was hardwired. ⚠️ Both new selects ride the on-unit reconfirm checklist — a slot
   can draw a knob and publish nothing, and dsp_host cannot drive companion
   fields at all (`DMODE=`/`DINT=` are the local overrides).
 
@@ -1357,6 +1466,26 @@ that must not come back:
   the disassembly the entry itself called for (dispatch entry DELAY ==
   SEND). The delay code was never in the dump; nothing about the delay was
   measured. →VERB is now CONFIRMED in the emulator (step 3).
+- ❌ "R being silent at PING=0 is a real v1 characteristic ... worth
+  revisiting" (delay_server header, v1) — revisited and MEASURED 17 Aug: it
+  was not a characteristic, it was a hole. The wet was hard left at PING=0
+  and leaned +20.1/+14.7/+11.5/+9.2 dB at 32/64/96/127, with **no centred
+  setting anywhere on the knob**. Closed in `8f10c4a` by feeding LineR the
+  input scaled by 1−PING.
+- ❌ "The lean is a defect; add a small fixed direct-to-R tap" (17 Aug,
+  proposed and approved, then DROPPED before it was built) — falsified by
+  measurement the same session: at PING=127 the lean **is exactly one
+  repeat's decay**, verified across a 6:1 FDBK range with a constant −0.5 dB
+  residual. R's train IS L's train one repeat later; that is the arithmetic
+  identity of any ping-pong fed on one side, and the tap would have masked
+  correct behaviour. Only the PING=0 hole was real.
+- ❌ "→VERB's residual level drift is a defect in the v3 registration"
+  (17 Aug, held for about an hour) — the registration is exact. Two
+  independent measurements close the model: delay drive +2.50/+1.02 dB =
+  N/(N+1), reverb share −3.52/−2.50 dB = 1/(N+1), net −1.02/−1.48 dB =
+  N/(N+1)². The drift is ChonVerb's phantom DELAY-bus registration, a
+  separate and older bug. ⚠️ The first "predicted" figures written down
+  (+3.52/+1.76) were my own arithmetic error, not a model mismatch.
 - ⚠️ Standing correction from the same session: every pre-12-Aug DEV-hatch
   delay render (incl. `2f35107`'s numbers) ran the delay at Y:0x30000,
   where its LineR write pointer swept the bus scratch and ChonVerb's

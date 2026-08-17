@@ -1729,12 +1729,30 @@ OFFLINE (no single render gives dry + delay + wash in hardware
 proportions -- on the unit those come from the real send knobs), and the
 level below is a genuine defect.
 
-⚠️ **`->VERB` SATURATES: a MEASURED defect, not a suspicion.** At VRBW 100
+~~⚠️ **`->VERB` SATURATES: a MEASURED defect, not a suspicion.** At VRBW 100
 with the reverb's own track live the REVERB output peaks at **1.000 FS**.
 VRBW 25 gives 0.220 and VRBW 50 gives 0.426, so the usable range is roughly
 **VRBW <= 50** and the knob's printed 0..127 is mostly unusable headroom.
 This is the unregistered x8/N writer already on the voicing list; fix it
-before the cross-send ships.
+before the cross-send ships.~~
+
+✅ **CLOSED 17 Aug 2026 (BongDelay v3 stage 1) -- BY DELETING THE KNOB.** The
+/8 half landed in 5g; the range refit never did, and v3 made it unnecessary:
+`->VERB` is now a hardwired constant (`$2d0000`, about what knob 45 gave --
+mid-way up the part of the old range that actually worked) and the send
+REGISTERS in the REVERB count, which was the deferred half. Both were needed
+together: an unregistered writer's effective level is x8/N_registered, so a
+"fixed" amount would still have drifted ~18 dB between one sender and eight,
+and a constant that is not constant is worse than a knob. VRBW (p5) and VRBD
+(p8) are retired.
+⚠️ **The falsifier went with it.** The 12 Aug proof that `->VERB` works was
+"VRBW=0 renders digital silence"; there is no knob to zero now, so that
+control has to come from a build flag instead. The 17 Aug isolation control
+used `->DELAY` at 0 (nothing reaches the delay, so nothing can reach the
+reverb) and did render digital silence.
+⚠️ **The constant is a VOICING number that has never been heard** -- it rides
+the next flash to be judged on the unit, and it is the one value here that
+cannot be changed without one.
 
 ### Still open
 

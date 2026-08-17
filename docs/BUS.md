@@ -23,8 +23,10 @@ and are emulator-verified, individually and together (Mechanism section
 below) — guard-clean, and a value that only exists in the shared bus scratch
 has been shown to reach each server's engine and come back out its own WET
 buffer. Task 10 (cross-bus sends) is also built and verified: REVERB
-SERVER's dry `→DELAY` send and DELAY SERVER's `→VERB` wet+dry sends both
+SERVER's dry `→DELAY` send and DELAY SERVER's `→VERB` send both
 land correct, hand-checkable Q1.23 values in the other bus's accumulator
+(⚠️ `→VERB` is WET-ONLY and HARDWIRED as of v3 stage 1, 17 Aug 2026 — the dry
+half and both knobs are gone, and the send now registers in the REVERB count)
 (Cross-bus sends section below). Task 11 (`tools/build_menu.py`) replaces
 FX2's chooser with exactly the three entries below, each a fresh cloned
 descriptor under a brand-new id so FX1 is never touched even in the sense of
