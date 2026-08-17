@@ -620,7 +620,8 @@ bus_mine:
 ; if the field could ever load negative, the tst would need a clean register
 ; first (CLAUDE.md's A2-staleness trap).
         move    x:(r6+$e),a
-        and     #>$7f,a                 ; the ->DEL select index, 0..3
+        and     #>$7f00,a               ; the ->DEL select, BITS 8-15. Zero /
+                                        ; nonzero only, so no shift needed
         tst     a
         beq     vdcnt_done              ; ->DEL off: we write zeros, so taking a
                                         ; 1/N share would rob every real sender
@@ -1700,7 +1701,8 @@ mixset:
 ; asl #$15 maps it 0/0x200000/0x400000/0x600000 = off / .25 / .5 / .75, a
 ; clean power-of-two step with no overflow (index 3 -> 0x600000 < full).
         move    x:(r6+$e),a
-        and     #>$7f,a                 ; select index 0..3 (companion low byte)
+        and     #>$7f00,a               ; slot 11's companion field: BITS 8-15
+        asr     #$8,a,a
         move    a1,x0
         move    x0,a
         asl     #$15,a,a                ; index -> send level, 0 / .25 / .5 / .75
@@ -1719,7 +1721,8 @@ mixset:
 ; publish as smooth knobs -- hardware 10 Aug). Panel sends index 0..3; asl #$15
 ; maps it 0 / .25 / .5 / .75 = mono / narrow / normal / wide. Default 3.
         move    x:(r6+$d),a
-        and     #>$7f,a                 ; select index 0..3 (companion low byte)
+        and     #>$7f00,a               ; slot 9's companion field: BITS 8-15
+        asr     #$8,a,a
         move    a1,x0
         move    x0,a
         asl     #$15,a,a                ; index -> width: mono / .25 / .5 / .75

@@ -987,7 +987,8 @@ dwarmdone:
 ; Stored as full signed words; the per-sample update wraps with & $7fffff,
 ; and two's complement subtraction is exact under that mask.
         move    x:(r6+$d),a
-        and     #>$7f,a                 ; select index 0..3 (companion low byte)
+        and     #>$7f00,a               ; slot 9's companion field: BITS 8-15, the
+        asr     #$8,a,a                 ; same place MODE's is -- see the note there
 ; DINT_OVERRIDE
         move    a1,x0
         move    x0,a                    ; A2-clean before the compares
@@ -1042,8 +1043,11 @@ pintend:
 ; the sample about to be written, which is a whole lap old (a full-scale
 ; discontinuity every LFO cycle). Any future depth increase must re-check
 ; that sum against TIME's floor.
-        move    x:(r6+$b),a
-        asr     #$6,a,a                 ; knob<<16 -> knob<<10
+        move    x:(r6+$c),a             ; $c, NOT $b: the panel publishes slot 6
+        and     #>$7f0000,a             ; to $c's KNOB field (R16's SHMR probe
+        asr     #$6,a,a                 ; found the same). The mask is now needed
+                                        ; because $c also carries MODE at bits
+                                        ; 8-15; on $b nothing shared the word
         move    a1,x0
         move    x0,a                    ; A2-clean
         move    a,x:(r7+$2d)            ; WOWD
@@ -1060,7 +1064,9 @@ pintend:
 ; Decoded every block regardless of MODE: freeze is orthogonal to the engine
 ; (frozen + PITCH = shifted reads over held material, PLAN 3.1 stage 3).
         move    x:(r6+$e),a
-        and     #>$7f,a                 ; select index, companion low byte
+        and     #>$7f00,a               ; slot 11's companion field: BITS 8-15. No
+                                        ; shift: $26 is only ever tested zero /
+                                        ; nonzero, so the index's scale is moot
 ; DFRZ_OVERRIDE
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
