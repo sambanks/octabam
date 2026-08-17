@@ -248,7 +248,12 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # 48 == OCTABAMR29 == R28 plus ChonVerb v4: the RETURN conversion. The reverb
 # now mirrors the delay -- wet-only output, MIX -> IN (default 0), host counted
 # as a client only while sending. ⚠️ A reverb track with audio and IN=0 is
-# SILENT by design; reverb level rides the track fader now.
+# SILENT by design; reverb level rides the track fader now. Ear-passed by Sam
+# on hardware, 17 Aug ("sounds pretty good").
+# 49 == OCTABAMR30 == R29 plus -VRB: the delay's ->VERB send is a KNOB again
+# (p5, default 0, registration follows it). ⚠️ NO WASH out of the box until
+# -VRB comes up -- and see docs/FLASHING.md's "first load of an existing
+# project" step: old VRBW/MIX values load as -VRB/IN.
 # ⚠️ LOUDER AGAIN with several senders: up to +9 dB at eight tracks of real
 # (uncorrelated) material. Correlated content now UNDER-corrects and can clip.
 # 44 == OCTABAMR25 == R24 plus clearing the buffer written NEXT block, which
@@ -256,7 +261,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"48"
+BUILD_TAG = b"49"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
