@@ -28,7 +28,7 @@ delay→reverb series topology).
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
 | Delay | ✅ **FIRST HARDWARE RUN 10 Aug (R15): BongDelay WORKS** — echoes on tracks 1–4, first execution of payload B code anywhere (dsp_host cannot boot it). v1 scope; voicing unstarted. ✅ 12 Aug (evening): the harness is back — `make render-delay` renders BongDelay locally, **`→VERB` delay→reverb CONFIRMED in the emulator** (the morning's "zero output" was a SPEC-dump mislabel, retracted — see step 3). Rig is confident. ✅ Later the same evening: **v2 stage 1 (CLEAN) LANDED** — mode-dispatch spine + manual wrap, proven bit-identical to v1 (`make verify-delay`, 11/11); see 3.1. ⚠️ **Stage 2 PITCH's first ear pass FAILED the splice** (12 Aug late) — the full-overlap window fix landed (`e6f5359`), the 4× widening is retracted, and the CASCADE IS GONE (`cf5d73a` — every repeat shifted once, not *n* times; the measured octave ladder is gone). ✅ **STAGE 3 FREEZE** (`6aac927`, loop length = TIME) and ✅ **STAGE 4 TAPE** (`3fc25ba`, wow+flutter in the loop, WOW knob) LANDED. PITCH is still not voiced; TAPE's loop saturation is deliberately deferred. See 3.1  ✅ **ALL FIVE MODES + GRAIN 5b–5g LANDED** and shipped in R19. ⚠️ **17 Aug, the R19 flash rewrote the design**: the host track was never a return — its own audio drove the engine at unity, immune to 1/N and as loud as every sender combined (measured −24.78 vs −24.85 dB). **v3 makes it one**: output is the wet alone, MIX → IN, `→VERB` hardwired and registered, PING sweeps centred-mono → ping-pong. None of v3 has been heard. See 3.2 |
 | Flash gate | **Passed/overtaken** — the diagnostic trip flashed R13-equivalent and Sam confirmed "working as voiced". The "excellent" bar below still governs *voicing* sign-off |
-| Next | **EAR-PASS v3 LOCALLY, then wrap tag 39.** v3 changed what the box IS — the host track is a return, MIX is now IN, `→VERB` is hardwired — and **none of it has been heard**. GRAIN especially was voiced against a MIX crossfade that no longer exists, so its 5b–5g voicing is provisional until re-heard through the new path. Then the flash carries both v3 and R19's still-unanswered hardware questions: (1) the standing mpy caveat — if silicon's fractional `mpy` shifts left where the emulator's does not, every decay constant is 2× off, so **check decay times on track 5 FIRST**; (2) **delay page 2 has still never been exercised with knobs that draw correctly** — R19 had three of six wrong; (3) **FREEZE and FREEZE+GRAIN remain unhearable locally** (`DFRZ` is build-time, measured 0.003 FS); (4) **the cycle ceiling** — the burn probe does not build, so real use on tracks 1–4 is the only evidence, and the priced lever is **4 grains → 2** (~300 cycles, ~100 words) at a voicing cost of half the simultaneous voices. ⚠️ **Ships with one known defect: ChonVerb is a phantom client of the delay bus** (−6 dB with a single sender); the fix is 5 words and payload A has FREE 4 — see 3.2 |
+| Next | ⚠️ **THE CROSS-CORE RACE IS FIXED IN THE TREE AND UNVERIFIED ON HARDWARE — that is what the next flash is for** (`eb9cf19`, four accumulator buffers; `docs/XBUS.md` step 3). Sam confirmed the race on 17 Aug at no flash cost: **moving BongDelay from track 1 to track 4 killed the stutter**, a dispatch-position dependency no algorithmic cause has. The on-unit test is the one that found it — **BongDelay on TRACK 1, fed over the bus**. Also now in the tree and unflashed: the phantom-client gate (−6.02 → 0.00 dB). Still true below: **EAR-PASS v3 LOCALLY, then wrap.** v3 changed what the box IS — the host track is a return, MIX is now IN, `→VERB` is hardwired — and **none of it has been heard**. GRAIN especially was voiced against a MIX crossfade that no longer exists, so its 5b–5g voicing is provisional until re-heard through the new path. Then the flash carries both v3 and R19's still-unanswered hardware questions: (1) the standing mpy caveat — if silicon's fractional `mpy` shifts left where the emulator's does not, every decay constant is 2× off, so **check decay times on track 5 FIRST**; (2) **delay page 2 has still never been exercised with knobs that draw correctly** — R19 had three of six wrong; (3) **FREEZE and FREEZE+GRAIN remain unhearable locally** (`DFRZ` is build-time, measured 0.003 FS); (4) **the cycle ceiling** — the burn probe does not build, so real use on tracks 1–4 is the only evidence, and the priced lever is **4 grains → 2** (~300 cycles, ~100 words) at a voicing cost of half the simultaneous voices. ⚠️ **R20 predates the 17 Aug bus work**: it ships the phantom-client defect (−6 dB with a single sender) AND the cross-core race. Both are fixed in the tree; R20 would need re-wrapping — see 3.2 |
 
 ✅ **RESOLVED 10 Aug (on-unit reconfirm): page-2 PUBLISHES.** The earlier
 "not publishing" report was a misdiagnosis (wrong tag + track↔core
@@ -80,7 +80,10 @@ it must exist in **both** payloads — and program space is **per core**.
 ### Program space — the binding constraint, per core, 8,192 words
 
 ✅ Region numbers from the build report, 12 Aug 2026 (delay auto-gain):
-**payload A used 2,720 of 2,724, FREE 4** — the delay auto-gain's writer-side
+**payload A used 2,720 of 2,724, FREE 4** — 17 Aug (the bus rotation refactor,
+−15): **2,705, FREE 19** — 17 Aug (four buffers, +9): **2,714, FREE 10** —
+17 Aug (the phantom-client gate, +7): **used 2,721, FREE 3.**
+The pre-17-Aug history: the delay auto-gain's writer-side
 changes cost A 28 words (send +9, reverb +19) on top of 11 Aug's 2,692/32,
 which R16–R18 had already run down from the 178 the LFO-block roll freed on
 10 Aug (roll: lines 2–7 in one loop over a 24-word P table, proven
@@ -108,16 +111,19 @@ for the first time**, which retires the "specialising the payloads frees
 1,998 words for nothing" framing for B specifically. A is unchanged at
 FREE 4.
 
-⚠️ **AND PAYLOAD A'S FREE 4 IS NOW BLOCKING A REAL FIX, not just future
-features.** ChonVerb registers as a DELAY-bus client for its `→DEL` send even
-when `→DEL` is off — a phantom client that takes a 1/N share while
-contributing nothing, diluting every real sender into BongDelay by N/(N+1),
-i.e. **−6 dB with a single sender** (measured 17 Aug, see 3.2). The gate is
-five words. A has four. It was written, it overran by exactly one word, and it
-was reverted. This is the second item blocked on the same lever as
-`verify_burn` — the reverb-side LFO-block roll — and the first one where the
-cost of not having the words is an audible level error rather than a deferred
-feature.
+✅ **RESOLVED 17 Aug 2026 — AND THE WORDS CAME FROM THE BUS, NOT THE LFO ROLL.**
+ChonVerb's phantom `→DEL` registration (a client that took a 1/N share while
+contributing nothing, diluting every real sender by N/(N+1) — **−6 dB with a
+single sender**) is gated on the knob and **measured −6.02 → +0.00 dB**
+(`d7eb647`). The room came from the cross-core race fix, which turned out to
+free words rather than cost them: storing the bus rotation as a pre-scaled
+OFFSET deleted an `asl #$4` and a `1 - parity` from nine sites across three
+files (`7a86d08`, +15 words), and the four-buffer rotation that fixes the race
+is *cheaper than the two-buffer code it replaced* (`eb9cf19`, −9).
+⚠️ The gate cost **7 words, not the 5 priced here** — `and #$7f,a` has no short
+immediate in this assembler and both the load and the branch are two words.
+⚠️ **Payload A is back to FREE 3**, so `verify_burn` is still blocked and the
+next item still needs a lever.
 
 ⚠️ `verify_burn` is **SKIPPED again as of the R16–R18 builds** — the BURN=1
 layout no longer fits payload A (DELAY SERVER 2,794 > 2,724 words), so the
@@ -138,11 +144,19 @@ The ten FX1 effects, with sizes (identical in both payloads):
     EQUALIZER 282   COMB 277   SPATIALIZER 261   COMPRESSOR 180   PHASER 157
 
 **Space levers, in order of preference — do not pull until A is tight again:**
-- **Roll the eight LFO blocks** (`lf3e..lf4a`, ~310 source lines of eightfold
-  near-copies): the tank roll precedent says ~1/8 the words, so **~150–200
-  freed** 🟡 inferred from line counts, priced by the build report when tried.
-  Per-line rate multipliers become an 8-entry table — the same shape as the
-  tank's state table, and unlike the levers below it needs no boot patching.
+- ❌ **"Roll the eight LFO blocks, ~150–200 words freed" is RETRACTED** — it was
+  stale by its own execution and the retraction was stranded in `d51775c`'s
+  commit message without reaching this list. **The 10 Aug pass ALREADY rolled
+  lines 2–7** (the build report says so on every run: "LFOTAB … rolled LFO
+  lines 2-7"). Only lines 0 and 1 were left, because they drive the in-loop
+  ALLPASS modulator as well as the tank one and do not fit the six-trip loop's
+  four-word records. **The real remaining prize is 51 words** ✅ measured, not
+  150–200 — and it is **built and PARKED, not available**: `dsp/reverb_lforoll.asm`
+  frees 51 but FAILS `verify_roll` on the TIME=127 SIZE=127 DIFF=127 wet case,
+  the only one that drives the allpass hard. Bisected (the shared triangle stash
+  is innocent, loop order is irrelevant, the table is right); the remaining
+  suspect is the AP section's indexed writes and it needs a state probe, not
+  more reading.
 - **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K, **+8,192
   words**, costing `Y:0xA000-0xBFFF`. Patches the boot path. Scoped 12 Aug:
   - ⚠️ **On core 0 it EVICTS TANK LINES 6-7** — ChonVerb's eight lines are
@@ -1209,18 +1223,28 @@ anywhere on the knob produced a centred image**, and the default sat mid-way.
   ⚠️ PING=127 is **not** bit-identical to the old engine: the knob's top is
   127/128, so R keeps 0.8% of the input — enough to move the lean 9.17 → 7.83.
 
-⚠️ **OPEN — CHONVERB IS A PHANTOM CLIENT OF THE DELAY BUS, and the fix does
-not fit.** It registers for its →DEL send **even when →DEL is off**:
+✅ **RESOLVED 17 Aug 2026 (`d7eb647`) — CHONVERB WAS A PHANTOM CLIENT OF THE
+DELAY BUS.** It registered for its →DEL send **even when →DEL was off**:
 contributes nothing, still takes a 1/N share, diluting every real sender into
 the delay by N/(N+1) — **−6 dB with a single sender**. Found while chasing an
 unexplained drift in the hardwired →VERB level, which turned out to be
 innocent; the model closes exactly, on two independent measurements:
 delay drive +2.50/+1.02 dB = `N/(N+1)`, reverb share −3.52/−2.50 dB =
 `1/(N+1)` (my registration, working), net −1.02/−1.48 dB = `N/(N+1)²`. It is
-why the delay is flat across 1–7 senders in a `DS` layout but drifts the
-moment a reverb is in the bank. **The gate costs 5 words and payload A has
-FREE 4** — built, overran by exactly one word, reverted. Blocked on the same
-lever as `verify_burn`: the reverb-side LFO-block roll.
+why the delay was flat across 1–7 senders in a `DS` layout but drifted the
+moment a reverb was in the bank.
+✅ **Gated on the knob, measured −6.02 → +0.00 dB** with a reverb in the bank
+(delay drive −20.21 → −14.19, against −14.19 delay-alone). Cost **7 words, not
+the 5 first priced**; the room came from the bus rotation refactor, not the
+LFO roll it was blocked on.
+⚠️ **The ON path is NOT locally testable and has not been tested.** dsp_host
+writes only the KNOB field of `r6+$e`, never the companion LOW BYTE where →DEL
+lives, so the harness can exercise the OFF path only. What stands in for it:
+the emitted load+mask is byte-identical to the shipping →DEL *level* decode, so
+both read the same field and no new read was added — and if that read is wrong
+on hardware (checklist item 5: →DEL has still never been exercised on-unit),
+the gate **fails safe**, leaving the reverb's own send (N+1)/N too loud rather
+than robbing every sender by 6 dB.
 
 ⚠️ **NOTHING IN v3 HAS BEEN HEARD.** Two of the three are behaviour changes,
 and GRAIN especially was voiced against a MIX crossfade that no longer exists.
