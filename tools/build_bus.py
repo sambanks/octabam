@@ -215,7 +215,13 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # bank, because idle tracks (which alias to SEND) were each taking a 1/N share.
 # Send knobs and track faders set against R22 will be wrong, and ChonVerb's
 # BIG mode clips at a 0.25-0.5 FS input, so back it off by hand.
-BUILD_TAG = b"42"
+# R23 is also the image that FOUND the second cross-core defect: static that
+# needed a specific (core-1 track, delay mode) pair, moved when either changed,
+# and vanished when track 5 -- core 0's housekeeper -- stopped being a ChonVerb.
+# 43 == OCTABAMR24 == R23 plus per-core rotation tracking, the fix for it.
+# ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
+# combinations. One clean configuration is what let it survive R23.
+BUILD_TAG = b"43"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
