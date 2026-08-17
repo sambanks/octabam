@@ -101,17 +101,20 @@
 ;        LineL[write] = x_in + fbIntoL*FDBK
 ;        LineR[write] =        fbIntoR*FDBK
 ;
-;    PING=0: LineL is a plain single-line feedback delay and LineR never
-;    receives anything, ever (it only ever hears fbIntoR = fR, and fR
-;    started at 0 with no other way in) -- so MIX'd wet is L-only until
-;    PING moves off zero. PING=~1: full swap -- input enters on L, the
-;    first repeat comes back on R, the next on L, alternating. Total loop
-;    gain per line is a convex combination of fL/fR scaled by FDBK, so it
-;    never exceeds FDBK regardless of PING; stability doesn't depend on
-;    this knob. R being silent at PING=0 is a real v1 characteristic, not
-;    hidden: worth revisiting (e.g. a small fixed direct-to-R tap) once
-;    there's something to listen to, same "starting point, not final"
-;    status as the 32K/32K memory split.
+;    ✅ PING=0's HOLE IS CLOSED (v3 stage 2). It used to leave LineR at
+;    digital silence for ever -- "R being silent at PING=0 is a real v1
+;    characteristic ... worth revisiting" is what this note said, and the
+;    revisit measured it: the wet was hard left at PING=0 and leaned
+;    +20.1/+14.7/+11.5/+9.2 dB at 32/64/96/127, with no centred setting
+;    anywhere on the knob. The input now enters LineR too, scaled by
+;    1-PING, so the knob sweeps CENTRED MONO -> FULL PING-PONG with no
+;    hole at either end. See the LineR write for why scaling by the knob
+;    is what keeps the knob alive on a mono input.
+;    PING=~1: full swap -- input enters on L, the first repeat
+;    comes back on R, the next on L, alternating. Total loop gain per line
+;    is a convex combination of fL/fR scaled by FDBK, so it never exceeds
+;    FDBK regardless of PING; stability doesn't depend on this knob, and
+;    the new input term is not in the loop at all.
 ;
 ;    THE HOST TRACK IS A RETURN, NOT AN INSERT (v3 stage 1, 17 Aug 2026).
 ;    This is the architectural decision the rest of the file now assumes, so
@@ -2620,8 +2623,9 @@ pdone:
         add     b,a                     ; fbIntoR
         move    a,x:(r7+$81)
 
-; ---- write both lines: only LineL receives x_in -- LineR only ever hears
-; whatever crosses over through the PING matrix (header note above) -------
+; ---- write both lines: LineL receives x_in in full, LineR receives it
+; scaled by 1-PING (v3 stage 2 -- was "LineR only ever hears whatever
+; crosses over", which left PING=0 with no path into R at all) ------------
         move    x:(r7+$7e),x0           ; fbIntoL
         move    x:(r7+$73),y1           ; FDBK
         mpy     x0,y1,a
@@ -2693,6 +2697,48 @@ pdone:
         move    x:(r7+$81),x0           ; fbIntoR
         move    x:(r7+$73),y1
         mpy     x0,y1,a
+; ---- LineR ALSO takes the input now, scaled by 1-PING (v3 stage 2) -------
+; LineR used to receive NOTHING but crossfeed, which made PING=0 a hole: with
+; no path in, LineR stayed at digital silence for ever and the whole wet was
+; hard left. Measured 17 Aug 2026 across the knob (CLEAN, TIME 40, FDBK 60):
+; PING 0 left R at -999 dB; 32/64/96/127 leaned +20.1/+14.7/+11.5/+9.2 dB.
+; There was no setting anywhere on the knob that produced a centred image.
+;
+; Scaling the new term by 1-PING rather than a fixed fraction is what keeps
+; the knob meaningful, and it is why the obvious "just feed both lines" fix
+; was rejected when this file was written: x_in is a MONO scalar by
+; construction (the input block sums L+R), so a symmetric entry would make
+; the two lines' state equations identical at every step for ANY value of
+; PING -- provably, by induction -- and the knob would do nothing at all.
+; Tying the asymmetry TO the knob dodges that: the lines are identical only
+; at PING=0, and diverge everywhere above it.
+;
+; Measured after the change, same conditions: lean 0.00/2.26/4.90/7.76/7.83 dB
+; and correlation +1.000/+0.998/+0.964/+0.714/-0.078 at PING 0/32/64/96/127 --
+; a monotonic sweep from a perfectly centred mono delay to a decorrelated
+; ping-pong, with no hole at either end.
+;
+;   PING   0 -> both lines fed equally -> a CENTRED MONO delay (corr +1.000)
+;   PING  64 -> R fed at half -> partial bounce
+;   PING 127 -> R fed 1/128 -> the classic ping-pong
+;
+; ⚠️ NOT quite "127 is unchanged": the knob's top is 127/128, so 1-PING is
+; 0.008 rather than 0, and R keeps 0.8% of the direct input. That is enough to
+; move the top of the knob measurably -- lean 9.17 -> 7.83 dB -- so PING=127
+; is NOT bit-identical to the old engine and should not be described as such.
+;
+; ⚠️ The lean that REMAINS at PING=127 is not a defect and must not be
+; "fixed": it is exactly one repeat's decay, because R's train IS L's train
+; one repeat later. Verified across a 6:1 FDBK range -- lean 18.72/12.69/
+; 9.17/5.60/2.96 dB against a per-repeat decay of 19.20/13.18/9.65/6.13/3.63
+; at FDBK 20/40/60/90/120, a constant -0.5 dB residual. It is the arithmetic
+; identity of any ping-pong fed on one side, and it shrinks as FDBK rises.
+;
+; mac, not a second mpy: the product accumulates onto fbIntoR*FDBK already in
+; a. Same signed x0,y1 operand order as every other multiply in this file.
+        move    x:(r7+$7d),x0           ; x_in
+        move    x:(r7+$80),y1           ; 1 - PING
+        mac     x0,y1,a                 ; + the direct input's share
         move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
                                         ; can exceed full scale and a raw a1
                                         ; would WRAP where this saturates

@@ -208,7 +208,19 @@ FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_T
 # REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 64), (4, 0),
+    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 127), (4, 0),
+                     #      (3) PING 64 -> 127 (v3 stage 2). 64 was the WORST
+                     #      place on the knob to boot: measured 17 Aug 2026 it
+                     #      leaned +14.7 dB left with correlation 0.185 -- more
+                     #      lean than 127 and no audible bounce, the middling
+                     #      blend rather than either character. 127 is the
+                     #      classic ping-pong the effect exists to do, and it
+                     #      is where the lean is smallest (+9.2 dB, which is
+                     #      one repeat's decay and inherent -- see the LineR
+                     #      write). With stage 2's 1-PING input term the other
+                     #      end of the knob is now a centred mono delay, so
+                     #      both extremes are useful and the default sits on
+                     #      the one that says what the box is.
                      #      ⚠️ (4) IS NOW **IN**, NOT MIX, AND 0 IS LOAD-
                      #      BEARING (v3 stage 1) -- it is the one number in
                      #      this table that a measurement, not taste, fixed.
