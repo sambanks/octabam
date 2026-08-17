@@ -436,25 +436,26 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$1,x0
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a
         move    a1,x0
-        move    x0,a                    ; parity now, A2-clean
+        move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$88),x0
         cmp     x0,a
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-        move    #>$1,x0
+; y:>$900 holds the WRITE OFFSET (0 or 16), not the bare buffer index -- see
+; the layout comment in dsp/send_client.asm. The mask is therefore $10, the
+; new value is 16 - old, and no `asl #$4` follows: it is already scaled.
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a
         move    a,x1
-        move    #>$1,a
+        move    #>$10,a
         sub     x1,a
-        and     x0,a
         move    a,y:>$900
-        asl     #$4,a,a
         move    a,x0
         move    #>$901,a
         add     x0,a
@@ -483,10 +484,12 @@ bus_zclr:
 ; MISSING the $983 reset from v121 until the delay auto-gain landed -- dead
 ; code in every live build, because the XBUS payload gate keeps this payload
 ; from ever housekeeping, but a divergent copy is exactly the silent-desync
-; class the rule exists for. x1 still holds the OLD parity from the flip
-; above, so the buffer just made current is 1 - x1.
-        move    #>$1,a
-        sub     x1,a                    ; new parity
+; class the rule exists for. x1 still holds the OLD OFFSET from the flip
+; above, so the buffer just made current is at 16 - x1. The counts are one word
+; per buffer rather than sixteen, so the offset scales back down to an index.
+        move    #>$10,a
+        sub     x1,a                    ; new offset
+        asr     #$4,a,a                 ; -> bare index (0 or 1)
         move    #>$983,x0
         add     x0,a
         move    a,r3
@@ -497,7 +500,7 @@ bus_zclr:
         move    (r3)+n3                 ; -> the DELAY count, same parity
         move    a,y:(r3)                ; DELAY count = 0
 bus_seen:
-        move    #>$1,x0                 ; remember this block's parity so next
+        move    #>$10,x0                ; remember this block's offset so next
         move    y:>$900,a               ; block we can tell whether anybody
         and     x0,a                    ; else housekept in between
         move    a1,x0
@@ -535,33 +538,34 @@ bus_mine:
 ; SEND client (and our own dry sum, below) finished filling last block.
 ; WRITE uses the SAME parity clients currently write into, for a future
 ; cross-bus reader (task 10), not consumed by anything yet.
-        move    #>$1,x0
+; y:>$900 holds the WRITE OFFSET already scaled by the 16-word buffer stride,
+; so the write addresses need no shift at all and the read offset is one
+; subtract. THE ROTATION LENGTH LIVES ONLY IN THE HOUSEKEEPER: this site knows
+; that the other buffer is `16 - write`, and nothing else about how many
+; buffers there are.
         move    y:>$900,a
-        and     x0,a                    ; write_parity
-        move    a,x1
-        move    #>$1,a
-        sub     x1,a                    ; a = 1 - write_parity = read_parity
-        asl     #$4,a,a
+        move    a,x1                    ; x1 = write offset (0 or 16)
+        move    #>$10,a
+        sub     x1,a                    ; a = 16 - write = the read offset
         move    a,x0
         move    #>$941,a
         add     x0,a
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
-        move    x1,a
-        asl     #$4,a,a                 ; write_parity*16
-        move    a,x0
+        move    x1,x0                   ; write offset, no scaling needed
         move    #>$961,a
         add     x0,a
         add     b,a
         move    a,x:(r7+$64)            ; this call's DELAY WET write address
 
 ; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
-; x1 (write_parity) and b (split-aware frame offset) are both still valid
+; x0 (write offset) and b (split-aware frame offset) are both still valid
 ; from the block just above -- nothing between there and here touches them.
-        move    x1,a
-        asl     #$4,a,a                 ; write_parity*16
-        move    a,x0
+; ⚠️ THIS IS A CROSS-CORE WRITE. BongDelay runs on payload B and this line
+; writes payload A's reverb accumulator, so the race documented in
+; docs/XBUS.md step 3 runs in BOTH directions -- the bus damages what arrives
+; at the delay, and the delay's ->VERB damages what arrives at the reverb.
         move    #>$901,a
         add     x0,a
         add     b,a
@@ -605,10 +609,11 @@ bus_mine:
         move    #>$124925,a
         move    a,y:(r5)                ; [7] = 1/7
 
-        move    #>$1,a
-        sub     x1,a                    ; read_parity: the count belongs to
-        move    #>$985,x0               ; the fully-summed one-block-old
-        add     x0,a                    ; buffer this block READS
+        move    #>$10,a
+        sub     x1,a                    ; read offset: the count belongs to
+        asr     #$4,a,a                 ; the fully-summed one-block-old buffer
+        move    #>$985,x0               ; this block READS. Scaled back down --
+        add     x0,a                    ; the counts are one word per buffer
         move    a,r5
 ; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v3 stage 1). IN feeds our own dry
 ; into the same sum the bus arrives on, so N must include us or every other
@@ -662,10 +667,9 @@ bus_mine:
         move    x:(r7+$67),a
         tst     a
         bne     vrcnt_done              ; not this block's first call
-        move    #>$1,x0
-        move    y:>$900,a
-        and     x0,a                    ; write parity
-        move    a1,x0
+        move    y:>$900,a               ; write offset
+        asr     #$4,a,a                 ; -> bare index: the counts are one word
+        move    a1,x0                   ; per buffer, not sixteen
         move    x0,a                    ; A2-clean before it becomes an address
         move    #>$983,x0
         add     x0,a

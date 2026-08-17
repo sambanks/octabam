@@ -106,6 +106,20 @@ verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-d
 	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=dsp/delay_server.asm]"; exit 1; }
 	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
 
+.PHONY: verify-bus
+verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: make verify-bus SAVE=1
+	@# Deliberately NOT part of `make check`. The hashes cover the whole
+	@# render -- reverb engine, delay engine and bus together -- so any
+	@# voicing change fails it for a reason that has nothing to do with the
+	@# bus. It is an on-demand gate around one edit, like verify-roll:
+	@#   make verify-bus SAVE=1     <- on the tree you trust, BEFORE the edit
+	@#   ...make the bus change...
+	@#   make verify-bus            <- must be 17/17 bit-identical
+	@# Needs the DEV hatch: the gate's whole point is exercising layouts that
+	@# carry BOTH servers, and only the hatch has a real delay in payload A.
+	DEV=1 XBUS=1 python3 tools/build_bus.py >/dev/null
+	python3 tools/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
+
 .PHONY: burn
 burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 70 words)
 	XBUS=1 BURN=1 python3 tools/build_bus.py

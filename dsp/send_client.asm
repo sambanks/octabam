@@ -13,10 +13,22 @@
 ; must stay identical across dsp/send_client.asm, and whatever tasks 8/9
 ; build, or the buses will not agree on where anything lives:
 ;
-;   Y:0x900            parity: which of the two buffers below is this
-;                       block's WRITE target (0 or 1). Masked on load AND
-;                       save (REVERB.md's write-phase rule) since it may
-;                       start as boot garbage, not necessarily 0 or 1.
+;   Y:0x900            this block's WRITE OFFSET into each pair of buffers
+;                       below: 0 or 16, i.e. the buffer index ALREADY SCALED
+;                       by the 16-word buffer stride. Masked on load AND save
+;                       (REVERB.md's write-phase rule) since it may start as
+;                       boot garbage, not necessarily a legal value.
+;                       ⚠️ It held the bare index 0/1 until 17 Aug 2026. Every
+;                       consumer then multiplied by 16 (`asl #$4`) to get an
+;                       address, and every one of them re-derived the read
+;                       buffer as `1 - parity`. Storing the offset instead
+;                       deletes both from all three copies -- and the reason
+;                       to bother is the ROTATION LENGTH: `1 - parity` hard-
+;                       codes two buffers into every consumer, where
+;                       `16 - offset` (and, with a third buffer, an
+;                       add-and-clamp) is a change the housekeeper makes
+;                       alone. See docs/XBUS.md step 3 for why two buffers
+;                       cannot be made race-free.
 ;   Y:0x901..0x910      REVERB bus accumulator, buffer 0 (16 words, one per
 ;                       sample slot within a block)
 ;   Y:0x911..0x920      REVERB bus accumulator, buffer 1
@@ -156,26 +168,28 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$1,x0
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a
         move    a1,x0
-        move    x0,a                    ; parity now, A2-clean
+        move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$68),x0
         cmp     x0,a
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-        move    #>$1,x0                  ; x0 = mask constant, kept for both uses below
+        move    #>$10,x0                 ; x0 = mask constant, kept for both uses below
         move    y:>$900,a
-        and     x0,a                     ; mask on LOAD: may be boot garbage
-        move    a,x1                     ; x1 = old parity, masked to {0,1}
-        move    #>$1,a
-        sub     x1,a                     ; a = 1 - old = new parity (0/1)
-        and     x0,a                     ; mask on SAVE too -- belt-and-suspenders,
-                                          ; even though 1-{0,1} is already in {0,1}
+        and     x0,a                     ; mask on LOAD: may be boot garbage. $10,
+                                          ; not $1: the word holds the SCALED
+                                          ; offset, so the legal set is {0,16}
+        move    a,x1                     ; x1 = old offset, masked to {0,16}
+        move    #>$10,a
+        sub     x1,a                     ; a = 16 - old = the new offset. No mask
+                                          ; on save and no `asl #$4` after it:
+                                          ; 16-{0,16} is already in {0,16} and
+                                          ; already scaled
         move    a,y:>$900
-        asl     #$4,a,a                  ; a = new_parity * 16 (0 or 16)
         move    a,x0                     ; x0 = offset into this block's buffers
         move    #>$901,a
         add     x0,a
@@ -193,12 +207,15 @@ bus_dohk:                               ; nobody did -- take over this block
 zclr:
         nop
 ; ---- reset the new write buffer's SEND COUNT, alongside its accumulators ----
-; y:>$900 already holds the NEW parity (written just above), so this indexes the
-; same buffer the loop just cleared. Masked and A2-cleaned before it becomes an
-; address, per the standing rule -- a garbage value here is a wild Y write.
-        move    #>$1,x0
+; y:>$900 already holds the NEW offset (written just above), so this indexes the
+; same buffer the loop just cleared. A2-cleaned before it becomes an address,
+; per the standing rule -- a garbage value here is a wild Y write.
+; The counts are ONE word per buffer where the accumulators are sixteen, so
+; this is the one consumer that wants the bare index and has to scale the
+; offset back DOWN. It is still cheaper than the old form, which paid for a
+; mask immediate here and an `asl #$4` at every other site.
         move    y:>$900,a
-        and     x0,a
+        asr     #$4,a,a                 ; offset -> buffer index (0 or 1)
         move    a1,x0
         move    x0,a
         move    #>$983,x0
@@ -219,19 +236,19 @@ zclr:
         move    a,y:>$982               ; REVERB SERVER role owner
 
 bus_seen:
-        move    #>$1,x0                 ; remember this block's parity so next
+        move    #>$10,x0                ; remember this block's offset so next
         move    y:>$900,a               ; block we can tell whether anybody
         and     x0,a                    ; else housekept in between
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$68)
 notfirst:
-; ---- everyone: find this block's write targets (parity may have just
+; ---- everyone: find this block's write targets (the offset may have just
 ; changed above, so re-read it fresh rather than trust a stale copy) -------
-        move    #>$1,x0
+; No `asl #$4` here any more: y:>$900 holds the offset already scaled.
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a                     ; masked on load here too
-        asl     #$4,a,a                  ; offset = write_parity * 16
         move    a,x0
         move    #>$901,a
         add     x0,a
@@ -257,11 +274,10 @@ notfirst:
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
-        move    #>$1,x0
-        move    y:>$900,a
-        and     x0,a                    ; WRITE parity: count the buffer we are
-        move    a1,x0                   ; about to add into, not the one being read
-        move    x0,a
+        move    y:>$900,a               ; WRITE offset: count the buffer we are
+        asr     #$4,a,a                 ; about to add into, not the one being
+        move    a1,x0                   ; read. Scaled back down to a bare index
+        move    x0,a                    ; because the counts are one word each
         move    #>$983,x0
         add     x0,a
         move    a,r3

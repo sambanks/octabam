@@ -341,25 +341,26 @@ bus_off_done:
         move    #>$6200,x0
         cmp     x0,a
         beq     bus_dohk                ; position 0: always the housekeeper
-        move    #>$1,x0
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a
         move    a1,x0
-        move    x0,a                    ; parity now, A2-clean
+        move    x0,a                    ; offset now, A2-clean
         move    x:(r7+$6b),x0
         cmp     x0,a
         bne     bus_seen                ; it moved: someone else housekept
 bus_dohk:                               ; nobody did -- take over this block
 
-        move    #>$1,x0
+; y:>$900 holds the WRITE OFFSET (0 or 16), not the bare buffer index -- see
+; the layout comment in dsp/send_client.asm. The mask is therefore $10, the
+; new value is 16 - old, and no `asl #$4` follows: it is already scaled.
+        move    #>$10,x0
         move    y:>$900,a
         and     x0,a
         move    a,x1
-        move    #>$1,a
+        move    #>$10,a
         sub     x1,a
-        and     x0,a
         move    a,y:>$900
-        asl     #$4,a,a
         move    a,x0
         move    #>$901,a
         add     x0,a
@@ -384,11 +385,14 @@ bus_zclr:
         move    a,y:>$982               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNT, alongside its accumulators ---
 ; The housekeeping is duplicated between this file and dsp/send_client.asm and
-; must stay in step (BUS.md). x1 still holds the OLD parity, so the buffer just
-; made current is 1 - x1. Without this the count grows without bound and the
+; must stay in step (BUS.md). x1 still holds the OLD OFFSET, so the buffer just
+; made current is at 16 - x1. Without this the count grows without bound and the
 ; auto-gain above divides by garbage.
-        move    #>$1,a
-        sub     x1,a                    ; new parity
+; The counts are one word per buffer, not sixteen, so this is the one place the
+; offset is scaled back down to a bare index.
+        move    #>$10,a
+        sub     x1,a                    ; new offset
+        asr     #$4,a,a                 ; -> bare index (0 or 1)
         move    #>$983,x0
         add     x0,a
         move    a,r1
@@ -398,7 +402,7 @@ bus_zclr:
         move    (r1)+n1                 ; -> the DELAY count, same parity
         move    a,y:(r1)                ; DELAY count = 0
 bus_seen:
-        move    #>$1,x0                 ; remember this block's parity so next
+        move    #>$10,x0                ; remember this block's offset so next
         move    y:>$900,a               ; block we can tell whether anybody
         and     x0,a                    ; else housekept in between
         move    a1,x0
@@ -439,33 +443,30 @@ bus_mine:
 ; parity clients currently write into, so it is complete and ready by the
 ; time next block flips -- for a future cross-bus reader (task 10), not
 ; consumed by anything yet.
-        move    #>$1,x0
+; y:>$900 holds the WRITE OFFSET already scaled by the 16-word buffer stride,
+; so the write addresses need no shift at all and the read offset is one
+; subtract. THE ROTATION LENGTH LIVES ONLY IN THE HOUSEKEEPER: this site knows
+; that the other buffer is `16 - write`, and nothing else about how many
+; buffers there are.
         move    y:>$900,a
-        and     x0,a                    ; write_parity
-        move    a,x1
-        move    #>$1,a
-        sub     x1,a                    ; a = 1 - write_parity = read_parity
-        asl     #$4,a,a
+        move    a,x1                    ; x1 = write offset (0 or 16)
+        move    #>$10,a
+        sub     x1,a                    ; a = 16 - write = the read offset
         move    a,x0
         move    #>$901,a
         add     x0,a
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's ACC read address
-        move    x1,a
-        asl     #$4,a,a                 ; write_parity*16
-        move    a,x0
+        move    x1,x0                   ; write offset, no scaling needed
         move    #>$921,a
         add     x0,a
         add     b,a
         move    a,x:(r7+$64)            ; this call's WET write address
 
 ; ---- this call's DELAY ACC write address (BUS.md task 10: ->DELAY send) --
-; x1 (write_parity) and b (split-aware frame offset) are both still valid
+; x0 (write offset) and b (split-aware frame offset) are both still valid
 ; from the block just above -- nothing between there and here touches them.
-        move    x1,a
-        asl     #$4,a,a                 ; write_parity*16
-        move    a,x0
         move    #>$941,a
         add     x0,a
         add     b,a
@@ -479,8 +480,10 @@ bus_mine:
 ; sets each track's SHARE of the reverb rather than how hard the tank is hit.
 ;
 ; The count belongs to the buffer being READ (the fully-summed, one-block-old
-; one), so it is indexed by READ parity. x1 still holds write_parity from the
-; block above, and read = 1 - write.
+; one), so it is indexed by the READ buffer. x1 still holds the WRITE OFFSET
+; from the block above, the read offset is 16 - x1, and the counts are one word
+; per buffer rather than sixteen -- so this is the third and last site that
+; scales an offset back down to a bare index.
 ;
 ; Reciprocals live at base+0x7800 -- the 2048 words the shimmer used to occupy
 ; -- rebuilt each block. A compare chain was tried first and cost 72 program
@@ -521,8 +524,9 @@ bus_mine:
         move    #>$124925,a
         move    a,y:(r5)                ; [7] = 1/7
 
-        move    #>$1,a
-        sub     x1,a                    ; read_parity
+        move    #>$10,a
+        sub     x1,a                    ; read offset
+        asr     #$4,a,a                 ; -> bare index (0 or 1)
         move    #>$983,x0
         add     x0,a
         move    a,r5
@@ -548,12 +552,21 @@ bus_mine:
 ; registers in the DELAY count exactly as SEND registers in both counts --
 ; the DELAY SERVER divides its accumulator by this. Same once-per-block gate
 ; as SEND's registration: the split offset, so a split block counts ONCE.
-; x1 still holds write_parity (nothing above touches it since the address
+; x1 still holds the WRITE OFFSET (nothing above touches it since the address
 ; block), and m5 is already linear from the table build above.
+; ⚠️ x1 IS AN OFFSET, NOT AN INDEX -- and this site is why the 17 Aug layout
+; change was not bit-identical on the first build. The counts are one word per
+; buffer, so an unscaled x1 addresses $985+16 = $995: off the end of the count
+; table, and the real DELAY count never incremented. It broke ONLY the layouts
+; carrying both servers, because nothing reads that count unless a delay is
+; there to divide by it. The comment above this line still said
+; "x1 still holds write_parity" while the value under it had changed --
+; CLAUDE.md's "check what the code BELOW assumed" trap, exactly.
         move    x:(r7+$67),a
         tst     a
         bne     vdcnt_done              ; not this block's first call
         move    x1,a
+        asr     #$4,a,a                 ; offset -> bare count index (0 or 1)
         move    #>$985,x0
         add     x0,a
         move    a,r5
