@@ -1162,12 +1162,25 @@ answer: **no, and the host track was privileged twice over.**
 What ships: **the host track is a RETURN.** It prints the wet alone; its OT
 track fader is the delay's output level; its own audio reaches the engine only
 through **IN** (was MIX), on exactly the terms every other track's →DELAY knob
-gets. `→VERB` is **hardwired** at `$2d0000` (≈ knob 45) and **registers in the
-REVERB count**, closing the 13 Aug deferral — an unregistered writer's level is
+gets. `→VERB` is **hardwired** at `$7fffff` — ear-picked 17 Aug from a three-way
+A/B ($2d0000 / $5a0000 / $7fffff) on GRAIN through ChonVerb, Sam chose the
+loudest — and **registers in the REVERB count**, closing the 13 Aug deferral — an unregistered writer's level is
 ×8/N_registered, so a "fixed" amount would still have drifted ~18 dB between
 one sender and eight. p5 (VRBW) and p8 (VRBD) are **retired, not renamed**.
 Measured: auto-gain flat at −24.40 dB across 1–7 senders; return level
 preserved (−24.47 → −24.40); IN 64→127 = +5.95 dB (2×, correct).
+⚠️ **The `→VERB` ceiling is STRUCTURAL, and worth knowing before anyone tries
+to raise it.** With the send registered the reverb's auto-gain hands every
+client 1/N, so a multiplier of 1.0 makes the delay exactly **one full client's
+share** — the most any single track can drive the reverb. Louder means writing
+below the 3-bit headroom convention (rail risk when several writers peak) or
+not registering (the ×8 bug). The whole adjustable span is **9 dB**, and a
+full bank is quieter than any A/B rendered against two clients: the wash
+measured 22.71 → 13.63 dB below the delay's own output at 2 bus clients, and
+21.59 dB at 5. ⚠️ Those rms figures compare discrete echoes to a reverb TAIL
+and overstate the gap; they are valid against each other, not as an absolute.
+⚠️ And the audible delay-vs-reverb balance is **not** this constant's job —
+the two effects are on different TRACKS with their own faders.
 ⚠️ **IN defaults to 0, and that is a measurement not a taste**: IN>0 registers
 the host as a client and the 1/N gain hands it a share it is not using, so a
 non-zero default silently halved every real sender (−24.40 at IN=0 vs −30.42

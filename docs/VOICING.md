@@ -1738,8 +1738,10 @@ before the cross-send ships.~~
 
 ✅ **CLOSED 17 Aug 2026 (BongDelay v3 stage 1) -- BY DELETING THE KNOB.** The
 /8 half landed in 5g; the range refit never did, and v3 made it unnecessary:
-`->VERB` is now a hardwired constant (`$2d0000`, about what knob 45 gave --
-mid-way up the part of the old range that actually worked) and the send
+`->VERB` is now a hardwired constant (`$7fffff`, the maximum a Q1.23
+multiplier carries -- ear-picked 17 Aug from $2d0000 / $5a0000 / $7fffff on
+GRAIN through ChonVerb; Sam took the loudest, and max is exactly ONE FULL
+CLIENT'S SHARE of the reverb bus, the most any single track can drive it) and the send
 REGISTERS in the REVERB count, which was the deferred half. Both were needed
 together: an unregistered writer's effective level is x8/N_registered, so a
 "fixed" amount would still have drifted ~18 dB between one sender and eight,
@@ -1750,9 +1752,12 @@ and a constant that is not constant is worse than a knob. VRBW (p5) and VRBD
 control has to come from a build flag instead. The 17 Aug isolation control
 used `->DELAY` at 0 (nothing reaches the delay, so nothing can reach the
 reverb) and did render digital silence.
-⚠️ **The constant is a VOICING number that has never been heard** -- it rides
-the next flash to be judged on the unit, and it is the one value here that
-cannot be changed without one.
+✅ **The constant HAS now been heard** (17 Aug, three-way A/B on GRAIN through
+the reverb, Sam: "the loudest was best"). ⚠️ Still a value that cannot be
+changed without a flash, and the A/B summed delay and reverb at UNITY faders
+where the unit has two separate tracks -- so what was really being judged is
+how hard the delay drives the reverb relative to other SENDERS, not the
+audible balance, which is a fader.
 
 ### Still open
 
