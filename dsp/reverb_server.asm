@@ -578,6 +578,29 @@ bus_mine:
         move    x:(r7+$67),a
         tst     a
         bne     vdcnt_done              ; not this block's first call
+; ---- and ONLY when actually sending (17 Aug 2026) ------------------------
+; ⚠️ A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE
+; ELSE'S LEVEL. The DELAY SERVER divides its accumulator by this count, so a
+; writer that registers unconditionally and then writes zero dilutes the real
+; senders by N/(N+1) -- **-6 dB with a single sender**. Measured 17 Aug on
+; two independent quantities that both close on the model: delay drive
+; +2.50/+1.02 dB = N/(N+1), reverb share -3.52/-2.50 dB = 1/(N+1). It is why
+; the delay was flat across 1-7 senders in a delay-only bank and drifted the
+; moment a reverb joined it -- and the effect being blamed was innocent.
+; ⚠️ READ THE KNOB FROM r6 DIRECTLY, not the decoded level in r7+$69: the
+; per-block parameter decode runs LATER in this block than this registration,
+; so $69 still holds the PREVIOUS block's value here. Same reason
+; delay_server reads IN from r6 for its own registration gate.
+; ⚠️ No A2 dance before the tst: x:(r6+$e) is a knob field, val<<16 with
+; val <= 127, so it loads positive and A2 is 0; the `and` leaves it 0, which
+; is consistent with A1. That is the ONLY reason this is 5 words and not 7 --
+; if the field could ever load negative, the tst would need a clean register
+; first (CLAUDE.md's A2-staleness trap).
+        move    x:(r6+$e),a
+        and     #>$7f,a                 ; the ->DEL select index, 0..3
+        tst     a
+        beq     vdcnt_done              ; ->DEL off: we write zeros, so taking a
+                                        ; 1/N share would rob every real sender
         move    x1,a
         asr     #$4,a,a                 ; offset -> bare count index (0..3)
         move    #>$9c7,x0
