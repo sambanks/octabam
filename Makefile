@@ -121,7 +121,7 @@ verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: m
 	python3 tools/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
 
 .PHONY: burn
-burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 70 words)
+burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 10 words)
 	XBUS=1 BURN=1 python3 tools/build_bus.py
 
 .PHONY: check

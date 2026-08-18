@@ -147,9 +147,10 @@ broken, believe the hardware and go looking for what the harness omits.
 LEVEL.** The auto-gain divides the accumulator by the number of registered
 clients, so a writer that registers unconditionally and then writes zero
 dilutes the real senders by N/(N+1) — **−6 dB with a single sender.** Two
-instances found the same day, 17 Aug: ChonVerb registers for its `→DEL` send
-even when `→DEL` is off (still open — the gate is 5 words and payload A has
-FREE 4), and BongDelay's own `IN` knob would have done it too if its default
+instances found the same day, 17 Aug: ChonVerb registered for its `→DEL` send
+even when `→DEL` was off (since gated on the knob, measured −6.02 → +0.00 dB;
+the send itself was later retired), and BongDelay's own `IN` knob would have
+done it too if its default
 had stayed non-zero on a return track with no audio to send. **Gate the
 registration on the knob, and remember the level knob is usually decoded
 LATER in the block than the registration runs** — read it from `r6` directly,

@@ -1101,9 +1101,14 @@ Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
 > **All six page-2 slots can be full-range knobs — measured on hardware.**
 > The "three knobs plus three companion selects" split reflects how *stock*
 > uses the fields; it is not a hardware limit. Five full 0–127 controls, two
-> of them in companion fields, have run on the unit at once. (ChonVerb
-> currently chooses otherwise: WIDTH and →DEL are 4-step selects on companion
-> low-byte fields, and `$e` carries GATE.)
+> of them in companion fields, have run on the unit at once. (Both shipping
+> effects nonetheless give every companion field a small-count select —
+> ChonVerb WIDTH/RATE, BongDelay MODE/PTCH/FRZE — following an on-unit
+> reading that a count-128 companion publishes **near-boolean**;
+> `build_bus.py`'s `PAGE2_COUNTS` carries that rationale. That reading and
+> the full-range measurement above have not been reconciled against each
+> other — re-test before designing a smooth companion knob. `$e`'s knob
+> field carries GATE.)
 >
 > What makes a companion field *look* like a two-state control is the
 > **per-parameter display formatter at `P+0x0ca`**, inherited from the donor
@@ -1121,12 +1126,13 @@ the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion fields
 | knob B | `x:(r6+$d)` | value<<16 |
 | knob C | `x:(r6+$e)` | value<<16 |
 | select A | `x:(r6+$c)` | `and #>$00ff00` then `asr #$8` |
-| select B | `x:(r6+$d)` | `and #>$0000ff` (low field) |
-| select C | `x:(r6+$e)` | `and #>$0000ff` (low field) |
+| select B | `x:(r6+$d)` | `and #>$7f00` then `asr #$8` (**bits 8–15**) |
+| select C | `x:(r6+$e)` | `and #>$7f00` then `asr #$8` (**bits 8–15**) |
 
-The selects were exercised with count 3 and responded on positions 1 and 2, so
-at least three states are distinguishable; the exact value-to-bit encoding
-within each field has not been enumerated beyond "zero vs non-zero per state".
+⚠️ An earlier version of this table decoded selects B/C from the LOW field
+(bits 0–7) — everything that read bits 0–7 had never worked on hardware.
+The settled map is bits 8–15 for every companion field
+(`PARAM_PAGES.md`), and the shipping code reads them that way.
 
 All four offsets (`$b`, `$c`, `$d`, `$e`) and all six display slots are
 reachable. A probe that watches only the knob field concludes that `$c` is
