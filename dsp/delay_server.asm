@@ -1304,8 +1304,7 @@ plagok:
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$7d)            ; x_in = the averaged bus, us included
         move    x:(r7+$63),a
-        move    #>$1,x0
-        add     x0,a
+        add     #>$1,a
         move    a,x:(r7+$63)            ; advance ACC read pointer
 
 ; ---- the FEEDBACK LOOP's taps: ALWAYS the unshifted read (v2 stage 2c) ----
@@ -2902,9 +2901,27 @@ pdone:
 ; it is a sharp edge, which is why IN does not default to 0 (build_bus.py's
 ; DEFAULTS carries the reasoning -- a default that reads as "the effect
 ; deleted my audio" is worse than the one that reads as "does nothing").
-        move    x:(r7+$7b),a            ; wet L = fL
+; ---- DRIVE MAKEUP (18 Aug 2026): out = wet * (1 + d/2), OUTPUT STAGE ONLY --
+; The V0b/V127b captures proved the drive WORKS (peak -4.2 dB, crest -2.5,
+; harmonics +5.3) and also why it reads as "not much": flat-top without
+; makeup is quieter-and-harsher, not driven. +3.5 dB at full d matches the
+; measured loss. ⚠️ OUTPUT STAGE ONLY, never inside satdrv: makeup on the
+; recirculating write is loop gain, and the drive curve's whole safety
+; argument is that it adds none.
+        move    x:(r7+$7b),x0           ; wet L = fL
+        move    x:(r7+$83),y1           ; d
+        mpy     x0,y1,a                 ; d*wet
+        asr     #$1,a,a                 ; d*wet/2
+        move    a,b
+        move    x0,a
+        add     b,a                     ; wet * (1 + d/2)
         move    a,x:(r0)                ; L in place
-        move    x:(r7+$7c),a            ; wet R = fR
+        move    x:(r7+$7c),x0           ; wet R = fR
+        mpy     x0,y1,a
+        asr     #$1,a,a
+        move    a,b
+        move    x0,a
+        add     b,a
         move    a,x:(r0+n0)             ; R in place
 
 ; ---- write mono wet to the shared DELAY WET buffer (BUS.md) --------------
@@ -2917,8 +2934,7 @@ pdone:
         move    a,x:(r7+$87)            ; stash for the ->VERB WET send below
         move    a,y:(r5)
         move    x:(r7+$64),a
-        move    #>$1,x0
-        add     x0,a
+        add     #>$1,a
         move    a,x:(r7+$64)            ; advance WET write pointer
 
 ; ---- ->VERB: wet (this delay's own output) + dry (this track's own
