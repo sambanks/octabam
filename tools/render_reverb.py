@@ -96,26 +96,31 @@ SR = 44100
 FRAMES = 15              # dsp_host caps a block at 15 frames (the & 0xf in setup)
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-# -params index -> r6 offset is NOT linear: 0..5 are page 1, then the harness
-# maps 6..9 onto r6+$b..$e (and 10,11 WRAP back onto $b,$c).
+# -params index -> r6 offset: 0..5 are page 1, then dsp_host carries the REAL
+# page-2 map (settled on hardware 17 Aug 2026, docs/PARAM_PAGES.md): slots
+# 6/8/10 are the KNOB fields of r6+$c/$d/$e and slots 7/9/11 their COMPANION
+# fields (bits 8-15) -- companions are drivable locally since dsp_host learned
+# the map. The old note here ("6..9 -> $b..$e, knob fields only, companions
+# unwritable") described the pre-17-Aug harness; under the real map its
+# 10-entry table put GATE on slot 9, which is WIDTH's companion -- so
+# `-p GATE=n` never reached the gate, found 18 Aug 2026 when a gated-drums
+# render measured bit-identical at GATE 8/20/40.
 #
-# IMPORTANT LIMITATION: dsp_host writes (value & 0x7f) << 16 -- always into the
-# word's KNOB field. The v92 layout puts MODE, WIDTH and ->DEL in COMPANION
-# fields (the low bits of $c/$d/$e), and this harness cannot write those at
-# all. MODE gets around it with --mode, which assembles the value in via
-# build_bus.py's MODE= override instead of driving the slot. WIDTH has the
-# same kind of override (WIDTH= env, in BUILD_ENV above); ->DEL has none and
-# still needs a flash to hear.
+# MODE (slot 7) still goes in via --mode / build_bus.py's MODE= override, kept
+# because the override predates companion driving and is proven equivalent.
+# MIX (idx 5) has been IN since the v4 return -- the host's own send level,
+# not a crossfade; the name stays so existing command lines keep working.
+# RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
-          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("GATE", 0)]
+          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("WIDTH", 3),
+          ("GATE", 0), ("RATE", 1)]
 # SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
 # put an octave-up loop gain of ~0.13 into EVERY render -- Round 12 measured
 # it inflating the sustain of every band (PLATE MF -18.7 vs -22.8 dB/s
 # without) and Sam heard it as "a high zingy bit in the bg". The voicing
 # baseline is the clean verb; ask for shimmer explicitly with -p SPEED=n.
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
-# $c (index 7) is a real page-2 slot but nothing on the host drives it
-# (REVERB.md), so it is not offered as a knob.
+# _C (index 7) is MODE's companion slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
 
 

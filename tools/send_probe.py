@@ -362,7 +362,10 @@ def write_wav(path, L, R):
 # idx5 is IN since the v4 RETURN (was MIX): 0, or every render registers a
 # silent host client and dilutes the senders by 1/sqrt(N+1) -- exactly the
 # phantom-client defect the DSP side just spent a day removing.
-REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 0]
+# idx11 is the RATE select (0.5/1/2/4x MOD speed) since 18 Aug 2026 -- 1 = 1x,
+# the hardware boot default. 0 halved the MOD speed of every render between
+# RATE's birth and this default catching up (both 18 Aug 2026).
+REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 1]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
 SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
@@ -375,7 +378,11 @@ SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # quietly halving every real sender. The old 90 sitting here would have done
 # exactly that to every measurement taken from now on -- the SHMR/SPEED=0
 # lesson, which polluted every render until Round 12 caught it.
-DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0, 0, 0]
+# idx8 = RATE, and 64 IS LOAD-BEARING (build_bus.py's own words): exactly 1x
+# LFO speed, the pre-knob law. The 0 that sat here from RATE's birth (18 Aug
+# 2026) until later the same day froze both drift LFOs, so every DPTH
+# render between was wobble-free.
+DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 64, 0, 0, 0]
 
 
 def main():
@@ -426,6 +433,10 @@ def main():
                          "SENDs. Without it a server's own track is silent and\n"
                          "its DRY path -- and therefore MIX -- cannot be\n"
                          "measured locally at all.")
+    ap.add_argument("--drate", type=int, default=None,
+                    help="DELAY RATE 0..127 (slot 8 KNOB, born 18 Aug 2026):\n"
+                         "scales both drift LFO increments by val/64, so 64 is\n"
+                         "exactly 1x and 0 freezes the wobble entirely.")
     ap.add_argument("--dspray", type=int, default=None,
                     help="DELAY SPRAY 0..127 (delay slot 10, default 0).\n"
                          "GRAIN's scatter depth: 0 puts all four grains on one\n"
@@ -449,6 +460,15 @@ def main():
                     help="delay FREEZE 0/1 (slot-11 companion; DFRZ=\n"
                          "equivalent). Frozen from block 0 in a fixed-param\n"
                          "render, so the line holds silence -- see PLAN.")
+    ap.add_argument("--rmode", type=int, default=None,
+                    help="reverb MODE 0..2 via the slot-7 COMPANION field\n"
+                         "(0=ROOM 1=PLATE 2=BIG) -- the --dmode twin. Default\n"
+                         "ROOM: REV_PARAMS[7] stays 0, which was the ONLY\n"
+                         "reachable mode here until 18 Aug 2026 (the panel\n"
+                         "boots BIG; renders wanting it must say so).")
+    ap.add_argument("--rrate", type=int, default=None,
+                    help="reverb RATE select 0..3 = 0.5/1/2/4x MOD speed\n"
+                         "(slot-11 companion, born 18 Aug 2026; default 1x).")
     ap.add_argument("--width", type=int, default=None,
                     help="reverb WIDTH select 0..3 (slot-9 companion).")
     ap.add_argument("--gate", type=int, default=None,
@@ -456,8 +476,8 @@ def main():
     ap.add_argument("--rdel", type=int, default=None,
                     help="RETIRED (18 Aug 2026): the reverb's ->DEL send is\n"
                          "gone (the twin of the delay's VRBD, same rationale).\n"
-                         "A NO-OP on current images; kept so old command lines\n"
-                         "fail soft.")
+                         "A TRUE no-op now -- slot 11 is the RATE select, and\n"
+                         "until 18 Aug 2026 this flag silently drove it.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -487,7 +507,9 @@ def main():
                                                      ROOT / "out/dsp/_send_probe_A.mem")
     rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod  # --mix drives p5 = IN post-v4
     rev[0] = a.time
-    for idx, val in ((9, a.width), (10, a.gate), (11, a.rdel)):
+    if a.rdel is not None:
+        print("--rdel is retired (slot 11 is the RATE select now); ignored")
+    for idx, val in ((7, a.rmode), (9, a.width), (10, a.gate), (11, a.rrate)):
         if val is not None:
             rev[idx] = val
     # Which server is being measured decides which SEND knob has to be up.
@@ -504,7 +526,8 @@ def main():
             wsrc = render_reverb.resample(wsrc, sr, SR)
     dpar = None
     if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow,
-                                   a.dtone, a.dping, a.dspray)):
+                                   a.dtone, a.dping, a.dspray, a.dmode,
+                                   a.drate, a.dptch, a.dfrz)):
         dpar = list(DELAY_PARAMS)
         # ⚠️ SPRAY is slot 10 ($e KNOB). It sat at index 9 until 17 Aug 2026,
         # which under the OLD dsp_host map happened to hit $e's knob field --
@@ -513,7 +536,7 @@ def main():
         # select instead of the scatter depth.
         for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
                          (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (7, a.dmode),
-                         (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
+                         (8, a.drate), (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
             if val is not None:
                 dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
