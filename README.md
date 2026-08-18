@@ -11,7 +11,7 @@ What runs today:
 | | |
 |---|---|
 | **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
-| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), FREEZE, TAPE (wow/flutter + saturation) and GRAIN — that routes *into* the reverb over the bus. Confirmed on hardware, every knob live and audible. |
+| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), TAPE (wow/flutter + saturation), GRAIN and REVERSE — plus a FREEZE hold, routed *into* the reverb over the bus. Confirmed on hardware, every knob live and audible. |
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
