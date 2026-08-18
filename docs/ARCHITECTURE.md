@@ -60,6 +60,11 @@ SHA256 `164f3122…`, ColdFire code).
 **OS validation on update** (`FUN_4007f748`), with its error codes:
 `-1` IO · `-2` not a valid OS · `-3` length · `-4` checksum · `-5` MK1 not allowed (`<"0156"`)
 · `-6` cannot downgrade version (`<"0178"`).
+(On `-5`: the comparison is against the *incoming file's* version code, and
+the MKI and MKII download pages serve the byte-identical 1.40C file —
+measured, SHA256 `370c55a3…` — so this reads as a floor rejecting
+pre-unification MK1-era OS *files*, not MK1 *units*. 🟡 inferred from the
+unified image; the check itself is decompiled fact.)
 
 **UI → write flow** (all decompiled):
 ```

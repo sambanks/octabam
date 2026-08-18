@@ -28,18 +28,21 @@ MIDI. Read §1 first.
 
 ## 0. What you need (checklist)
 
-- [ ] **Octatrack MKII.** The base image is OS 1.40C **for the MKII** — the
-      built image will not work on the MKI, because the MKI runs its own
-      1.40C binary (Elektron ships separate downloads per model) and every
-      ColdFire patch address here was derived from the MKII image; the
-      updater also enforces the model split (`docs/ARCHITECTURE.md`: error
-      −5, "MK1 not allowed"). The *effects* are a different question — both
-      marks share the same-family ColdFire and the same two-core DSP56721
-      audio engine, so a port against the MKI image is plausible: the
-      DSP-side payloads likely carry over, and the recon tooling
-      (`make recon`, `tools/find_base.py`, `tools/verify_menu.py`) is
-      exactly what re-deriving the ColdFire addresses would take. Nobody
-      has attempted it; if you do, you are the test pilot.
+- [ ] **An Octatrack — every test so far has been on an MKII.** The base
+      image is OS 1.40C, and ✅ measured: **Elektron's MKI and MKII download
+      pages serve the byte-identical file** (SHA256 `370c55a3…`, both pages,
+      compared 19 Aug 2026) — the OS is one unified image for both marks.
+      ❌ This retracts two earlier claims here: "will NOT work on the MKI"
+      (asserted without a reason) and "the MKI runs its own 1.40C binary"
+      (asserted from a wrong inference, falsified by the hash comparison).
+      What remains true: **octabam has only ever been flashed on an MKII.**
+      Since the MKI runs the same stock image, the patched image is
+      plausibly compatible as-is 🟡 — but an MKI owner flashing it is the
+      test pilot. (The updater's decompiled error −5 "MK1 not allowed"
+      compares the *incoming file's* version code against "0156", so it
+      rejects pre-unification MK1-era OS files, not MK1 units 🟡 inferred;
+      octabam images keep 1.40C's internal code 0178 and validate normally.
+      `docs/ARCHITECTURE.md`.)
 - [ ] **The built image**: `make image` produces both delivery formats —
       `out/OCTATRACK_OCTABAM<NNN>.bin` (CF-card path, recommended) and
       `out/OCTATRACK_OS1.40C_OCTABAM<NNN>.syx` (MIDI path).
