@@ -1233,6 +1233,17 @@ mkgo:""",
             n = len(re.findall(r"\$9[0-9a-f]{2}\b", src))
             if not n:
                 sys.exit(f"XBUS: {name} has no bus scratch literals to move")
+            # ⚠️ `$09xx` (zero-padded) literals are DELIBERATELY outside this
+            # pattern: the delay's RATE/DRV state lives at CORE-PRIVATE Y
+            # $0901-$0903 after the shared-window words at 0x360d3-5 proved
+            # dead on hardware (R36; mechanism unknown, docs/PARAM_PAGES.md
+            # sibling note in the source). Relocating them would aim the
+            # writes into the shared REVERB accumulator. The census below
+            # pins the count so drift is loud.
+            n_priv = len(re.findall(r"\$09[0-9a-f]{2}\b", src))
+            if name == "DELAY SERVER" and n_priv != 6:
+                sys.exit(f"XBUS: {name} expected exactly 6 core-private $09xx "
+                         f"refs (RATE/DRV state), found {n_priv}")
             src = re.sub(r"\$9([0-9a-f]{2})\b",
                          lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)
             if src.count("; XBUS_GATE") != 1:

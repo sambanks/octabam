@@ -1063,7 +1063,7 @@ pintend:
 ; val/64 with NO post-shift -- an asl after truncation broke bit-identity at
 ; the default by one LSB of the odd flutter increment, which is exactly the
 ; kind of failure the DPTH=0 gate exists to catch.
-; Results live in Y bus scratch ($9d3/$9d4, relocated with the rest under
+; Results live in CORE-PRIVATE Y 0901h/0902h (see the warning below;
 ; XBUS): r7 is full, and the server-role lock guarantees ONE delay per bank,
 ; so the shared words have one writer.
         move    x:(r6+$d),a
@@ -1071,15 +1071,29 @@ pintend:
         move    a1,x0
         move    #>$130,y1
         mpy     x0,y1,a                 ; wow inc = $98 * val/64
-        move    a,y:>$9d3
+; ⚠️ 0901h-0903h: CORE-PRIVATE Y, and the ZERO-PADDED SPELLING IS LOAD-BEARING.
+; These three words (wow inc / flutter inc / drive d) lived at shared-window
+; Y 0x360d3-5 for one image (R36) and were DEAD ON HARDWARE: -VRB and FRZE
+; proved the decodes execute and the $e word publishes, yet DPTH/RATE/DRV all
+; behaved as zero -- the per-block writes and in-loop reads do not meet on
+; silicon there, mechanism unknown (they were the first in-loop absolute Y
+; reads in the shared window; the emulator's flat memory passes either way,
+; so no local test can see whatever silicon does). Moved to the OLD BUS
+; RANGE, core-private low Y -- empty since XBUS relocated the bus out, and
+; hardware-proven for exactly this write-per-block/read-per-sample pattern
+; by stock and the v121 bus. The `$09xx` spelling dodges build_bus.py's
+; blanket `$9xx` relocation regex ON PURPOSE: `0901h` would be rewritten to
+; 0x36001, straight into the shared REVERB accumulator. build_bus
+; census-guards the count (exactly 6 refs).
+        move    a,y:>$0901
         move    #>$ada,y1
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
-        move    a,y:>$9d4
+        move    a,y:>$0902
 
 ; ---- DRIVE amount: p10 in every mode but GRAIN --------------------------
 ; GRAIN's p10 is SPRA (scatter), the established multi-meaning pattern -- so
 ; in GRAIN, d is pinned 0 and the grains run undriven; everywhere else the
-; knob is DRV. knob<<16 IS d in Q1.23 (the MIX/PING trick). Y scratch $9d5:
+; knob is DRV. knob<<16 IS d in Q1.23 (the MIX/PING trick). Y 0903h:
 ; same reasoning as the RATE increments above.
         move    x:(r7+$69),b            ; MODE
         move    #>196608,x0             ; 3 << 16 = GRAIN. DECIMAL (base literal)
@@ -1091,7 +1105,7 @@ pintend:
 drvz:
         clr     a
 drvw:
-        move    a,y:>$9d5
+        move    a,y:>$0903
 
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
@@ -1311,7 +1325,7 @@ plagok:
 ; The load-bearing depth bound is unchanged and rate-independent: wow+flutter
 ; sum <= 35.7 samples against TIME's floor of 64.
         move    x:(r7+$27),a           ; wow phase
-        move    y:>$9d3,x0            ; wow increment -- $98 (0.80 Hz) x RATE
+        move    y:>$0901,x0           ; wow increment -- $98 (0.80 Hz) x RATE
                                         ; (p8), computed per block. Y bus
                                         ; scratch, because r7 is full and the
                                         ; role lock means ONE delay per bank
@@ -1346,7 +1360,7 @@ plagok:
         move    a,x:(r7+$29)            ; running mod total
 
         move    x:(r7+$28),a           ; flutter phase
-        move    y:>$9d4,x0            ; flutter increment -- $56d (7.3 Hz,
+        move    y:>$0902,x0           ; flutter increment -- $56d (7.3 Hz,
                                         ; NOT a multiple of the wow: the
                                         ; anti-lock ratio survives RATE because
                                         ; ONE factor scales both) x RATE
@@ -3032,7 +3046,7 @@ satdrv:
 ; so it adds no loop gain and cannot self-oscillate at any FDBK, the same
 ; argument as the base curve above. The LIMITING move on 2w IS the knee's
 ; hard half above |w| = 0.5, on purpose: clamp-then-cubic is the harder drive.
-; d comes from Y:$9d5 (p10 in every mode but GRAIN, where p10 stays SPRA and
+; d comes from core-private Y 0903h (p10 in every mode but GRAIN, where p10 stays SPRA and
 ; d is pinned 0 -- the per-block decode owns that fork). d = 0 is an EXACT
 ; bypass: the R35 gates all survive at DRIVE 0, which is this change's gate.
 ; w1 is already parked in $2f by the saturation block above -- reused, and u
@@ -3055,7 +3069,7 @@ satdrv:
         move    x:(r7+$2f),x0           ; w1
         sub     x0,a                    ; hot - w1 (possibly negative)
         move    a,x0
-        move    y:>$9d5,y1              ; d
+        move    y:>$0903,y1             ; d (core-private -- see the RATE decode)
         mpy     x0,y1,a                 ; d*(hot-w1) -- signed form, x0 negative-capable
         move    a,x0
         move    x:(r7+$2f),a
