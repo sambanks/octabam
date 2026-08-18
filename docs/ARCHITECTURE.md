@@ -29,8 +29,8 @@ audio pipeline.
 
 | Component | Detail | Confidence |
 |---|---|---|
-| CPU | Freescale **ColdFire MCF5445AVR266** (32-bit, big-endian, 266 MHz) | ✓ (board photo, 7 Aug 2026; the earlier "prob. MCF5445x, ~266 MHz" guess was exact) |
-| Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) — **two** DSP5636x cores, **200 MHz / 200 MIPS each**, no external memory controller | ✓ (board photo, 7 Aug 2026) |
+| CPU | Freescale **ColdFire MCF5445AVR266** (32-bit, big-endian, 266 MHz) | ✓ (board photo) |
+| Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) — **two** DSP5636x cores, **200 MHz / 200 MIPS each**, no external memory controller | ✓ (board photo) |
 | Storage | **CompactFlash** (FAT16/32), OS and data; boots to DEMO without CF | ✓ (official) |
 | Expansion bus | FlexBus (chip-selects for ATA, DSP, RAM) | ✓ (from the firmware) |
 

@@ -1,11 +1,9 @@
-# DSP56300 side — module load map (step 1)
+# DSP56300 side — module load map
 
-The effects and timestretch run on the DSP, not on the ColdFire. `COVERAGE.md`
-records that the DSP program was located and extracted but never disassembled,
-and identifies the blocker: without knowing which bytes load to which DSP address
-in which memory space, a disassembly is at the wrong PC and is worthless.
-
-**That blocker is now cleared.** This document is the map.
+The effects and timestretch run on the DSP, not on the ColdFire. Disassembling
+the DSP program requires knowing which bytes load to which DSP address in which
+memory space — at the wrong PC a disassembly is worthless. This document is the
+map.
 
 Addresses are ColdFire virtual addresses (`file_offset = vaddr − 0x40000400`)
 unless prefixed `P:` / `X:` / `Y:`, which are DSP word addresses.
@@ -35,8 +33,9 @@ the GPIO at `0xfc0a400c` toggled between passes, and each pass has its own
 bootstrap and payload. `ARCHITECTURE.md` assumes a single DSP56xxx. The two
 payloads have near-identical X/Y layouts (matching module sizes 6305, 198, 4096,
 3730, 384, 384, 258, …) at slightly different base addresses, which is what two
-instances splitting the work would look like. *Inference from the load map, not
-confirmed against hardware.*
+instances splitting the work would look like. *Inferred from the load map;
+borne out by the per-chip memory model in §11 and the measured track↔chip
+mapping (payload A serves tracks 5–8, payload B tracks 1–4).*
 
 ### The blobs are relocated before the bank RAM eats them
 
@@ -104,7 +103,7 @@ no `0x30000`/`0x38000` regions.
 The largest P modules (`P:0x01252`, `P:0x01679`, ~1,065 words each) are the
 obvious first disassembly targets — big enough to be real signal-processing code.
 
-### A hypothesis that did not survive
+### The 15 one-word records are NOT a dispatch table
 
 Each payload contains a run of **15 consecutive one-word P records** (A:
 `P:0x006e5`–`0x006f3`, B: `P:0x004a5`–`0x004b3`). Fifteen is also the number of
@@ -112,7 +111,7 @@ effect descriptors, so this looked like a static effect dispatch table. **It is
 not** — every one of the 30 words is `0x000000`. They are zero-initialised
 scratch words. If a dispatch table exists it is built at runtime.
 
-## 4. Disassembly (step 2 — done)
+## 4. Disassembly
 
 Neither Ghidra nor radare2 ships a DSP56300 target. `setup.sh` now clones and
 builds the disassembler from the Access Virus emulator project
@@ -131,8 +130,8 @@ vendor/dsp56300/build/source/disassemble/dsp56kDisassemble \
 `FUN_40001b18` maps bytes onto the three 8-bit ports (`0x20000014` gets bits
 23–16 from `b[i+5]`, `0x18` gets 15–8 from `b[i+4]`, `0x1c` gets 7–0 from
 `b[i+3]`). Big-endian produces plausible-looking garbage — exactly the trap the
-module map exists to avoid. (`NOTES.md` describes the boot blobs as big-endian;
-that reading does not hold for the payload modules.)
+module map exists to avoid. (`history/NOTES.md` describes the boot blobs as
+big-endian; that reading does not hold for the payload modules.)
 
 ### Validation
 
@@ -153,7 +152,7 @@ Zero `dc` fallbacks anywhere. Wrong addresses or wrong endianness would litter
 the output with them, so this validates the module map, the byte order and the
 disassembler together.
 
-## 5. The effect dispatch (step 3 — done)
+## 5. The effect dispatch
 
 `tools/dsp_disasm_all.py` disassembles every P module at its correct address
 (payload A: 68 modules / 6,817 instructions; payload B: 46 / 6,251; **zero**
@@ -201,7 +200,7 @@ tables are **plain data in the payload**, editable with the existing toolchain.
 **13 effects are implemented on the DSP.** Every other id — including `0x08`
 DELAY and `0x19` MULTIBCOMP — points at the null stub.
 
-### Why DELAY was silent on FX1 — solved
+### Why DELAY is silent as a DSP insert
 
 The null stub is not silence, it is a **passthrough**:
 
@@ -216,18 +215,15 @@ The null stub is not silence, it is a **passthrough**:
 0007d0: rts
 ```
 
-Which is exactly the observed behaviour: the parameter page worked, the audio was
+Which is exactly the observed behaviour: the parameter page works, the audio is
 untouched. `0x08` has no implementation in *either* payload.
-
-Which is exactly the observed behaviour on FX1: the parameter page worked, the
-audio was untouched. **That half is settled.**
 
 ### Where DELAY actually is — OPEN, and the DSP is ruled out
 
-The FX2 half was previously written up here as solved: "a dedicated stage in the
-audio graph that the FX2 slot enables." **That was an inference to explain the
-stub, and searching for it found nothing.** Retracted; what follows is what was
-actually checked (5 Aug 2026).
+A tempting explanation — "a dedicated stage in the audio graph that the FX2
+slot enables" — **is an inference that a full search failed to support**; do not
+re-adopt it without new evidence. What follows is what has actually been
+checked.
 
 Echo Freeze Delay is a normal per-track FX2 effect — manual §11.4.10 lists it
 under "FX2 effects", alongside the three reverbs. So the contradiction is real:
@@ -255,16 +251,15 @@ a documented per-track insert whose id resolves to a passthrough.
 * **No third program.** Payloads A and B are back-to-back and the image tail
   after B is 93% zeros. A and B are the two DSP *chips*, and neither has it.
 
-**A lead that turned out to be nothing.** `PARAM_PAGES.md` flagged
-`FUN_40005638` as referencing the FILTER and DELAY descriptors directly,
-"outside the id tables — the only two effects that get that treatment", and
-wondered whether it related to buffer setup. It does not: it is the **part
-defaults initialiser**, copying `E+0x3b` out of each. A fresh part just defaults
-to **FX1 = FILTER, FX2 = DELAY**. Lead closed.
+**A lead that is nothing.** `PARAM_PAGES.md` flagged `FUN_40005638` as
+referencing the FILTER and DELAY descriptors directly, "outside the id tables —
+the only two effects that get that treatment", suggesting buffer setup. It is
+not: it is the **part defaults initialiser**, copying `E+0x3b` out of each. A
+fresh part just defaults to **FX1 = FILTER, FX2 = DELAY**.
 
 **So the delay is not dispatched as a DSP insert.** Where it *is* remains open.
-Two hypotheses have now been tried and neither survived; this section should not
-be marked solved again on the strength of a third.
+Two hypotheses are ruled out below; do not mark this solved on the strength of
+a third without measurement.
 
 **Hypothesis 1 — a dedicated DSP stage.** Dead, see above.
 
@@ -283,16 +278,15 @@ other effect has bespoke UI. Manual §12.7.6 settles it: the mode only sets
 the ordinary path. The code around the table is UI drawing indexed by a RAM mode
 variable. **The delay has no privileged control channel.**
 
-### Round 3: the ColdFire side, properly anchored — and still not found
+### The ColdFire side — searched, and not found there either
 
 **There is exactly one firmware section.** `elektron-firmware-tool -i` reports
 `id 3 MAIN OS, 1112560 B` and nothing else. ColdFire code and both DSP payloads
 are all in the file we have been searching. **No other binary is hiding it.**
 
-**An earlier anchor was wrong.** `part+0x08` came from the *defaults
-initialiser* (`FUN_40005638`) and is not the live location; every search keyed on
-it returned zero, correctly. The real locations, in `PARAM_PAGES.md` §5c all
-along:
+**Do not anchor searches on `part+0x08`.** It comes from the *defaults
+initialiser* (`FUN_40005638`) and is not the live location; any search keyed on
+it returns zero, correctly. The real locations are in `PARAM_PAGES.md` §5c:
 
 | | FX1 | FX2 |
 |---|---|---|
@@ -320,12 +314,12 @@ twelve parameters and they are published into the DSP param block like any other
 effect's. Parameters that nothing reads would be strange. The passthrough stub
 reads none of them, so **whatever reads the delay's parameters is the delay.**
 That is a search for the consumer of data we know is published, rather than for
-a comparison that may not exist. Working hypothesis (Sam's, and it fits the
+a comparison that may not exist. Working hypothesis (it fits the
 FREEZE behaviour): it shares the **sampling/recorder** machinery rather than the
 FX chain — a delay is re-reading recorded audio, which is what the voice path
 already does.
 
-### HARDWARE, 5 Aug 2026 — the first positive evidence
+### Hardware evidence: substituting id `0x08`'s dispatch
 
 Three builds, each stamping its own effect name so the unit says which is
 running (`DELAYPROBE=stock|silence|send` in `tools/build_bus.py`). All three
@@ -334,61 +328,54 @@ id `0x08` dispatches to.
 
 | build | id `0x08` runs | result on the unit |
 |---|---|---|
-| `ChonVerb22C` (control) | stock passthrough | **delay WORKS** |
-| `ChonVerb22P` | a stub writing zeros | **the whole track goes silent** (dry included); other tracks unaffected; DELAY CTRL keys still lit |
+| control | stock passthrough | **delay WORKS** |
+| silence | a stub writing zeros | **the whole track goes silent** (dry included); other tracks unaffected; DELAY CTRL keys still lit |
 
-**What the control bought, and it is worth having.** Round 1 ran without it, so
-"the delay went silent" could not be told apart from "the delay never worked
-under our firmware at all". The control settles that: **our chooser replacement
-wires up a stock effect correctly** — DELAY picked from our 4-entry menu behaves
-normally when its dispatch is left alone. That is what makes the `send` build
-below a meaningful test rather than a shot in the dark.
+**What the control establishes.** Without it, "the delay went silent" could not
+be told apart from "the delay never worked under this firmware at all". With
+it: **the chooser replacement wires up a stock effect correctly** — DELAY
+picked from the 4-entry menu behaves normally when its dispatch is left alone.
+That is what makes the `send` build below a meaningful test rather than a shot
+in the dark.
 
-**The silence build told us nothing about where the delay is, and that was
-predictable.** The FX2 insert is a series insert; writing zeros there kills the
-track's audio whether the delay sits upstream of it, downstream of it, or
-anywhere else. Both surviving hypotheses predict exactly what was observed. The
-experiment could only ever have been informative if the delay had *survived*.
+**The silence build says nothing about where the delay is.** The FX2 insert is
+a series insert; writing zeros there kills the track's audio whether the delay
+sits upstream of it, downstream of it, or anywhere else. Both surviving
+hypotheses predict exactly what was observed. The experiment could only ever
+have been informative if the delay had *survived*. In particular the result
+does **not** support reading the delay as a send rather than a series insert —
+the dry that survives is on *other* tracks, not on the track carrying the
+delay.
 
-> **RETRACTED, same day.** An earlier revision of this section read the result
-> as "dry fine, delay silent" and concluded the delay must be wired as a **send**
-> rather than a series insert. That was a misreading of an ambiguous report —
-> the surviving dry was on *other* tracks, not on the track carrying the delay.
-> The send reading has no support. Recorded because the failure is the
-> instructive part: the interpretation was built on a one-word answer to a
-> question that had not been posed precisely, and written up before the
-> ambiguity was resolved.
-
-**Confirmed and standing:** the DELAY CTRL keys still lit under the silence
-build. Those come from the stored Part id and the `0x460d1700` bitmask, which no
-DSP dispatch change can reach — exactly what the static analysis predicted, now
+**Confirmed and standing:** the DELAY CTRL keys stay lit under the silence
+build. Those come from the stored Part id and the `0x460d1700` bitmask, which
+no DSP dispatch change can reach — exactly what the static analysis predicts,
 observed on hardware.
 
-### `ChonVerb22S` — our code can hold the delay's slot
+### Our code can hold the delay's slot
 
 | build | id `0x08` runs | result |
 |---|---|---|
-| `ChonVerb22S` | the SEND client | **delay still WORKS** |
+| send | the SEND client | **delay still WORKS** |
 
 **What this establishes, exactly:** id `0x08`'s DSP slot can run our code and the
 stock Echo Freeze Delay keeps working, **provided that code passes the audio
 through unchanged.** That is the question BUS.md's parked design needed
 answered, and the answer is yes.
 
-**AND THE FIRST STRUCTURAL FACT ABOUT WHERE THE DELAY IS.** By ear, 5 Aug: the
+**And a structural fact about where the delay is.** By listening test: the
 send taps **pre-delay** — the reverb receives dry, not repeats. So the stock
-delay is applied **downstream of the FX2 insert**, in the output/mix path rather
-than in the insert chain. That is the first positive constraint on its location
-after three rounds of static search, and it came from listening, not reading.
+delay is applied **downstream of the FX2 insert**, in the output/mix path
+rather than in the insert chain — the one positive constraint on its location
+that static search never produced.
 
-It also explains the silence result retroactively: zeroing the insert starved
-everything downstream of it, the delay included.
+It also explains the silence result: zeroing the insert starves everything
+downstream of it, the delay included.
 
 **Consequence for anything we build: we cannot tap the stock delay's output.**
 Every slot we can reach is upstream of it. A "delay into reverb" routing is
 therefore impossible with the *stock* delay — it is only available via our own
-`DELAY SERVER`, whose `→VERB` cross-send exists for exactly that (`BUS.md`
-task 10).
+`DELAY SERVER`, whose `→VERB` cross-send exists for exactly that (`BUS.md`).
 
 **What it does NOT establish — and the temptation is to claim it.** The send
 client leaves the buffer contents byte-identical to the passthrough; it only
@@ -398,11 +385,11 @@ not, which is exactly what "the delay is fed by the track's audio" predicts and
 is equally consistent with every remaining hypothesis about *where*. The
 location question is still open.
 
-**Design consequence, and it supersedes the parked FX1 plan.** A track can run
+**Design consequence.** A track can run
 the stock delay on FX2 *and* feed the ChonVerb bus from the same slot — so the
 FX1 filter is no longer the price. See BUS.md.
 
-**Confirmed end-to-end, same session.** With a ChonVerb server on another track
+**Confirmed end-to-end.** With a ChonVerb server on another track
 in the bank and DELAY's `FB` knob turned up, the reverb send audibly works from
 inside the delay's slot. So our send client is not merely dispatched there — it
 is tapping the audio and reaching the bus, while the stock delay runs.
@@ -428,12 +415,7 @@ DELAY declares all twelve parameters, so any offset we read is one of its
 controls. Options: a fixed level; a deliberately chosen sacrificial parameter
 (`p6 X` and `p11 PASS` both default to 0 and are the least obviously essential,
 though what they do is unverified); or sourcing the level outside the param
-block entirely. **Unresolved, and it is the next design decision.**
-
-**Next:** `DELAYPROBE=send` points id `0x08` at the SEND client, which passes
-audio through and only taps it. If the delay survives that, **our code can hold
-the delay's slot and keep the delay** — which is the whole question behind
-BUS.md's parked Send design.
+block entirely. **Unresolved.**
 
 ### Two limits on the sweep above — do not over-read it
 
@@ -443,19 +425,19 @@ cannot see paths the program creates for itself, so "95.8% reached" bounds how
 much *unreferenced* code exists; it does not prove all behaviour is accounted
 for.
 
-**"No large modulo buffer" is NOT evidence of no delay line.** An earlier draft
-of this section argued that, having found nothing bigger than `m6=$7f` (128
-words). It does not follow: a delay line needs no modulo at all. Module `0x2bf`
-walks external memory with `m0` linear, which is exactly how a long buffer would
-be read. (*Annotation 12 Aug 2026: "external memory" here is stale — there is
-no external memory; the shared window runs at the same speed. See `CHIP.md`.*) Retracted as an argument; the reachability and module-by-module
-characterisation are what carry the conclusion.
+**"No large modulo buffer" is NOT evidence of no delay line.** Nothing in the
+program uses a modulo bigger than `m6=$7f` (128 words), but it does not follow
+that no delay line exists: a delay line needs no modulo at all. Module `0x2bf`
+walks the shared window with `m0` linear, which is exactly how a long buffer
+would be read. (There is no external memory on this board; the shared window
+runs at the same speed as internal memory — see `CHIP.md`.) The reachability
+sweep and the module-by-module characterisation are what carry the conclusion,
+not the modulo scan.
 
-### Stock uses `X:0x30000` as per-frame parameter staging — CHECK THIS
+### Stock uses `X:0x30000` as per-frame parameter staging
 
-Found while chasing the above, and it matters for `dsp/delay_server.asm`. Frame
-setup copies 72 words out of `X:0x30000` into `y:0x1b8`, then writes parameter
-values back into `X:0x30000`:
+This matters for `dsp/delay_server.asm`. Frame setup copies 72 words out of
+`X:0x30000` into `y:0x1b8`, then writes parameter values back into `X:0x30000`:
 
 ```asm
 0000a8: move  #>$30000,r1
@@ -466,44 +448,29 @@ values back into `X:0x30000`:
 0000b6: move  a1,x:(r1)+        ; and writes params back into 0x30000
 ```
 
-**BongDelay hardcodes `Y:0x30000` / `Y:0x38000` as its delay-line base.**
-Whether `X:0x30000` and `Y:0x30000` are the same physical external SRAM on this
-board is **not established**. ChonVerb has run on all 8 tracks using that region
-without trouble, which is reassuring — but a delay line writes continuously
-across its entire buffer in a way a reverb tank does not, and BongDelay is a
-placeholder that has never been driven hard.
+**BongDelay hardcodes `Y:0x30000` / `Y:0x38000` as its delay-line base — and
+X, Y and P DO alias in the shared window `0x30000`–`0x3FFFF`.** Measured with
+`dsp/alias_probe.asm`; see `CHIP.md`. The per-server ceiling there is
+**65,536 shared-window words (1.49 s)**. Reason about the shared window as ONE
+memory.
 
-> ❌ **RETRACTED 10 Aug 2026 — they DO alias.** The alias probe (build 27)
-> measured X/Y/P aliasing in the shared window `0x30000`–`0x3FFFF`; see
-> `CHIP.md`. The per-server ceiling is **65,536 shared-window words
-> (1.49 s)**, not "its full 32,768 words" as concluded below. The 5-Aug
-> reasoning is kept below as history.
+A superficially convincing argument that the spaces could not alias is
+falsified by that measurement, and is worth recording so it is not re-derived:
+the allocator table at `X:0x255` gives FX2 bases `0x4000`, `0x8000`,
+**`0x30000`**, `0x34000` (§10), so stock places a 16,384-word **`Y:0x30000`**
+effect buffer under the same addresses the frame setup stages parameters
+through in **`X:0x30000`** — which looks like proof the spaces must be
+separate. They are not; the probe wins.
 
-**SETTLED, 5 Aug 2026 — they do NOT alias, and no probe was needed.** Stock's
-own behaviour proves it. The allocator table at `X:0x255` gives FX2 bases
-`0x4000`, `0x8000`, **`0x30000`**, `0x34000` (§10), so on any bank where track 3
-runs an FX2 effect, stock uses **`Y:0x30000` as that effect's 16,384-word
-buffer** — a stock reverb there writes across all of it. And the frame setup
-reads **`X:0x30000`** as parameter staging every frame. Both are true in
-unmodified firmware in ordinary use. If those were the same physical words,
-stock would corrupt its own frame parameters whenever anyone put a reverb on
-track 3.
-
-**The emulator could not have answered this**, and the probe suggested in an
-earlier revision of this note would have been worthless: `dsp_host` keeps X and
-Y as separate arrays by construction — the `.mem` format tags every module with
-its space — so it reports "no aliasing" regardless of what the board does. It
-would have given the right answer for the wrong reason.
-
-So `dsp/delay_server.asm`'s hardcoded `Y:0x30000` / `Y:0x38000` bases are safe
-against the staging area, and BongDelay may use its full 32,768 words.
+**The emulator cannot answer aliasing questions either way**: `dsp_host` keeps
+X and Y as separate arrays by construction — the `.mem` format tags every
+module with its space — so it reports "no aliasing" regardless of what the
+board does.
 
 `MULTIBCOMP` (`0x19`) also points at the stub. It appears in **neither** of the
 manual's FX1/FX2 lists and its parameter labels are copied from DJ EQ — an
 unfinished entry that was never exposed, and **distinct from the Dynamix
-Compressor**, which is `0x18` and has real code (180 words at `0x01aa4`). That
-also retires the probe idea, which would have found nothing but passthrough on
-all 19 free ids.
+Compressor**, which is `0x18` and has real code (180 words at `0x01aa4`).
 
 ### The stub is also the ABI specification
 
@@ -514,8 +481,8 @@ contract, and here it is in full.
 
 ### Module records are NOT routine boundaries
 
-Measured 5 Aug 2026, while costing out how much program space could be reclaimed
-for BongDelay. **A payload module record says where a chunk of words is loaded,
+Measured while sizing how much program space could be reclaimed.
+**A payload module record says where a chunk of words is loaded,
 nothing more.** The loader lays consecutive records down contiguously, and an
 effect's code runs straight across the seam. So:
 
@@ -571,7 +538,7 @@ region is not free either. Who else does is unmapped.
 **Rule before overwriting any neighbour: disassemble it and check its
 control-flow targets.** The module map alone will mislead you.
 
-## 6. How parameters reach the algorithm (step 4 — done)
+## 6. How parameters reach the algorithm
 
 The dispatcher sets `r6` before calling, and effects read their parameters from
 it. From `P:0x0041e`:
@@ -620,7 +587,7 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 
 `0x7f0000` is 127, `0x400000` is 64 — the centre of a `0..127` control.
 
-### The effect ABI — partly settled, and one claim CORRECTED
+### The effect ABI — partly settled
 
 | register | meaning | confidence |
 |---|---|---|
@@ -630,9 +597,8 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 | `n7` | frame count | confirmed for the stub; effects also read `x:0x20c` |
 | `r0` | audio buffer | **NOT as first documented — see below** |
 
-> **Correction.** An earlier version of this section stated `r0` = input buffer
-> and `r1` = output buffer as "the complete effect ABI". That is the **passthrough
-> stub's** convention, and the stub is the degenerate case. Real effects do not
+> **`r0` = input / `r1` = output is the passthrough STUB's convention, and the
+> stub is the degenerate case — it is not the effect ABI.** Real effects do not
 > follow it. DARK REV's entry saves the incoming `r0` into its state
 > (`move r0,x:(r7+$17)`) and then works from **fixed addresses**:
 >
@@ -653,7 +619,7 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 `jsr`, output capture. The passthrough stub returns exactly the two impulse
 samples it should, and that is a genuine end-to-end validation of the plumbing.
 
-**Frame context — solved.** The effects depend on control words no module
+**Frame context.** The effects depend on control words no module
 initialises. Rather than reconstruct them by hand, the harness runs the DSP's own
 setup routine at `P:0x372..0x39e`, which derives them from two loaded pointers:
 
@@ -692,8 +658,8 @@ does **not** arrive over the serial audio interface. The live vectors are
 
 So **the ColdFire DMAs audio into the DSP's X memory and tells it the destination
 address at runtime**. There is no fixed audio buffer constant to discover, which
-is exactly why eight rounds of guessing addresses (`X:0`, `0xa0`, `0xb0`,
-`0x110`, both ping-pong states) all produced silence. The buffer addresses, the
+is exactly why guessing addresses (`X:0`, `0xa0`, `0xb0`,
+`0x110`, both ping-pong states) produces silence. The buffer addresses, the
 control blocks and the per-track state all arrive over the host port.
 
 Reconstructing that faithfully means emulating the ColdFire→DSP protocol — a
@@ -730,11 +696,11 @@ wholesale.
 | B | 46 | 7,583 | `P:0x01d9f` | **none** |
 
 Not one hole in either image. Payload A ends at `0x01fdf`, which is 99.6% of
-`0x2000`, and that looked like an 8 K internal P RAM essentially full.
+`0x2000` — which looks like an 8 K internal P RAM essentially full. It is not:
 
-### HARDWARE RESULT: there is memory above 8K — that inference was WRONG
+### There is memory above 8K (hardware-measured)
 
-`tools/build_dsptest.py` relocated CHORUS from `P:0x00eb7` to `P:0x02000` (three
+`tools/build_dsptest.py` (in git history) relocated CHORUS from `P:0x00eb7` to `P:0x02000` (three
 words per payload: the module's load-address field and its two dispatch entries).
 Flashed to the MKII: **CHORUS works normally.**
 
@@ -747,14 +713,9 @@ Proven usable so far: `P:0x02000`–`P:0x02149` (CHORUS's 329 words). The upper
 bound is unknown; relocating several clean effects to `0x4000`, `0x8000`, `0xc000`
 in one build would bracket it in a single flash, if it ever matters.
 
-Unsettled nuance: on a DSP56300, addresses beyond internal RAM fall through to
-external memory, which is slower. CHORUS running cleanly says `0x2000` works, not
-that it runs at full internal speed. For a cheap effect this is unlikely to
-matter; for something cycle-critical it would need checking.
-
-*Annotation 12 Aug 2026: settled — there is no external memory on this board;
-the shared window runs at the same speed as internal memory (see `CHIP.md`).
-The "would need checking" caveat is closed.*
+There is no external memory on this board and no speed penalty above the
+internal range: the shared window runs at the same speed as internal memory
+(see `CHIP.md`).
 
 ### The fallback, if space above ever runs out: replace
 
@@ -816,9 +777,9 @@ firmware bytes, not merely plausible.
 dsp_asm -in dsp/passthrough.asm -org 7c8 -list -out blob.bin
 ```
 
-## 7c. Delay memory — earlier figures CORRECTED
+## 7c. Delay memory
 
-Two mistakes in §7, both from scanning immediates too loosely:
+Two corrections to figures produced by scanning immediates too loosely:
 
 1. The buffer ladders attributed to the reverbs mixed **coefficient tables** in
    with delay lines. `X:0x438` (6,305 words, 99% non-zero, a decaying curve),
@@ -840,18 +801,18 @@ The uninitialised X regions, which is what actually matters:
 | `0x07a92–0x0857f` | 2,798 | 63 | |
 | **`0x08d98–0x0ffff`** | **29,288** | **664** | **unreferenced anywhere** |
 
-**RESOLVED, negatively — and this one is properly earned (4 Aug 2026,
-`dsp/xmem_probe.asm` v2).** The high X region is NOT usable memory on hardware.
+**RESOLVED, negatively (`dsp/xmem_probe.asm`): the high X region is NOT
+usable memory on hardware.**
 
-A first attempt tested three single words and reported failure, but it was not
-trustworthy and is worth recording as a lesson: one of its three addresses
-(`X:0x09000`) turned out to be clobbered even in the *emulator*, where only the
-DSP's own setup routine and our effect run — so "unreferenced anywhere" from a
-static scan was wrong, exactly as this section warns for the stock reverbs.
-Its per-address signatures also made a single-address failure sound identical
-to total failure, and it skipped the A2-clean discipline used everywhere else.
+A single-word probe cannot earn that conclusion, and its blind spots are worth
+keeping: one of three single-word test addresses (`X:0x09000`) turns out to be
+clobbered even in the *emulator*, where only the DSP's own setup routine and
+the effect run — so "unreferenced anywhere" from a static scan was already
+wrong, exactly as this section warns for the stock reverbs. Per-address
+signatures also make a single-address failure sound identical to total
+failure, and readbacks must be A2-cleaned like everything else.
 
-v2 earns the conclusion instead:
+The probe as written earns the conclusion instead:
 * writes and verifies a full **1024-word block** at `0x0C000` and another at
   `0x0F000`, not isolated words;
 * uses a **walking value**, so no two words share a pattern and a dead address
@@ -863,16 +824,11 @@ v2 earns the conclusion instead:
   passes there, output exactly half of input. A probe that always fails is
   indistinguishable from real failure unless you check this.
 
-On hardware both blocks fail. So: **a reverb's memory ceiling is the 32,768
-words (743 ms) of its FX2 allocation.** Still over 4x stock DARK REV's ~7,600
-words, but a Blackhole-class allocation is off the table. Do not re-chase this
-without reading the above — it has now cost two hardware flashes.
-
-**Better test, which also proves the pipeline**: write a small probe effect that
-stores a pattern high in X, reads it back, and passes audio only if it matches.
-Point a free effect id at it, flash, listen. That answers the memory question and
-exercises the entire write → assemble → insert → dispatch → ColdFire descriptor →
-flash path with ~20 instructions of risk instead of a thousand-word reverb.
+On hardware both blocks fail. High X buys nothing: **a reverb's memory ceiling
+is its FX2 allocation — 32,768 words (743 ms) as originally pooled, and
+65,536 shared-window words (1.49 s) per server since the XBUS split (see
+`CHIP.md`).** A Blackhole-class allocation in high X is off the table. Do not
+re-chase this without reading the above.
 
 ## 7d. HARDWARE: custom DSP code runs
 
@@ -885,12 +841,12 @@ module, dispatched via a new effect id `0x06` with its own descriptor, and
 It also proves **X:0x4000 is real read/write memory**, since the probe stamps a
 mask there in init and reads it back in process to use as the audio mask.
 
-### What the four attempts cost, and the actual lesson
+### Bring-up hangs: the candidate causes
 
-Attempts 1-3 hung the DSP (audio stops, sequencer freezes on trig 1 -- the
-sequencer is clocked by the DSP frame interrupt, so a DSP stall looks exactly
-like that). Attempt 4 worked after removing three things at once, so which one
-mattered is not established. The candidates, in order of suspicion:
+Three bring-up attempts hung the DSP (audio stops, sequencer freezes on trig 1
+-- the sequencer is clocked by the DSP frame interrupt, so a DSP stall looks
+exactly like that). The working attempt removed three things at once, so which
+one mattered is not established. The candidates, in order of suspicion:
 
 1. **Executing at `P:0x2000`.** Every failed attempt relocated the donor module
    there. `PRAMTEST` proved code *executes* at `P:0x2000`, but that test kept
@@ -905,10 +861,9 @@ mattered is not established. The candidates, in order of suspicion:
 3. **A hardcoded entry point** (`ORG + 9`) that silently became wrong when the
    probe shrank from 9 init words to 5.
 
-The process lesson is the real one: changing several variables per hardware
-iteration turned a two-flash question into four. The control run -- probing
-addresses known to exist -- was what converted "the memory must be absent" into
-"our code is wrong", and should have come first.
+The process rule: change one variable per hardware iteration, and run the
+control first -- probing addresses known to exist is what converts "the memory
+must be absent" into "the code is wrong".
 
 ## 7e. HARDWARE: the delay-memory budget, confirmed
 
@@ -925,13 +880,13 @@ So X memory covers at least `0x0000`–`0xf000`, and the region the firmware nev
 references — **`0x08d98`–`0x0ffff`, 29,288 words, 664 ms at 44.1 kHz** — is real,
 writable, and entirely free.
 
-### CORRECTION: that budget does not belong to effects
+### That budget does not belong to effects
 
-The figures below were measured correctly but interpreted wrongly, and the reverb
-work proved it. Probing showed X:0x4000/0xc000/0xf000 respond to reads and
-writes, and I concluded 664 ms of delay memory was available. It is not
-*allocated* to effects, and using it does not work: a self-chosen buffer neither
-persists reliably nor is safe to write in bulk.
+The figures below are correct as measurements but do not mean 664 ms of delay
+memory is available to an effect. X:0x4000/0xc000/0xf000 respond to reads and
+writes, but the region is not *allocated* to effects, and using it does not
+work: a self-chosen buffer neither persists reliably nor is safe to write in
+bulk.
 
 How the stock reverbs actually do it, from DARK REV's disassembly:
 
@@ -944,13 +899,13 @@ How the stock reverbs actually do it, from DARK REV's disassembly:
 * and it makes heavy use of Y memory (103 instructions) at low addresses.
 
 So effects are given small buffers in low Y memory and take their delay lengths
-from a table. The longest line DARK uses is 2,047 words -- about 46 ms, not the
-664 ms I quoted. A reverb here is built from a few thousand words in total, which
+from a table. The longest line DARK uses is 2,047 words -- about 46 ms, not
+664 ms. A reverb here is built from a few thousand words in total, which
 is why the stock ones sound small.
 
-This invalidates the design premise of reverb v1-v4: four 4096-word lines in
-self-chosen X memory is roughly 8x more delay memory than the hardware actually
-hands an effect, in a memory space that is not ours.
+Four 4096-word lines in self-chosen X memory would be roughly 8x more delay
+memory than the hardware actually hands an effect, in a memory space that is
+not the effect's.
 
 ### The measured figures, which stand as measurements
 
@@ -960,18 +915,12 @@ hands an effect, in a memory space that is not ours.
 | plus the shared gap `0x1d9f–0x483f` | 10,913 / 247 ms | currently PLATE + DARK |
 | code space (replace DARK) | 1,067 words | — |
 | code space (all three reverbs) | 2,724 words | — |
-| cycle budget | **unmeasured** | two stock reverbs already glitch |
+| cycle budget | since measured — see `CHIP.md` | two stock reverbs already glitch |
 
-Using the free `0x8d98+` region rather than the stock buffers means a new reverb
-**does not disturb the existing ones**, so it can be developed and flashed
-alongside working firmware instead of replacing something first.
+The cycle budget has since been measured (`CHIP.md`); the one empirical
+calibration visible from stock alone is that two stock reverbs at once glitch.
 
-The cycle budget is now the only unquantified constraint, and the only
-calibration is empirical: two stock reverbs at once glitch. That will shape how
-much modulation and diffusion is affordable, and it is the thing most likely to
-force compromises during tuning.
-
-### Development loop, now that it exists
+### Development loop
 
 The probe runs identically in `tools/dsp_host` and on hardware using the same
 convention (`r0` = interleaved block processed in place, `n7` = frames). Since a
@@ -994,10 +943,6 @@ The path is now mapped end to end:
 
 Do it for **both** payloads, or the effect exists on only one of the two DSPs.
 
-Still unknown, and needed before step 1 is real: how the 12 descriptor parameters
-reach the algorithm, and how much DSP cycle budget is actually free — the FX1
-reverb test showed two reverbs already glitch, so the headroom is not generous.
-
 Note the ColdFire uploads the payloads verbatim from the image, so a modified DSP
 program only needs the payload rewritten in place — the record format is
 understood in both directions, and the loader does no checksumming of its own.
@@ -1005,9 +950,8 @@ The outer ELEK/aPLib container is rebuilt by the existing toolchain.
 
 ## 8. HARDWARE: Y memory ends at 0xC000
 
-The reverb's tank was 1024-word lines because that was all §7's uncertain X-memory
-figures could justify. `dsp/ymemprobe.asm` settles it for Y, which is where the
-delay buffers actually live.
+`dsp/ymemprobe.asm` (in git history) settles the question for Y, which is
+where the delay buffers actually live.
 
 The probe is a **wet-only** echo whose buffer base is chosen by `p0`:
 
@@ -1020,13 +964,13 @@ answer rather than an ambiguous one. Sweep `p0` and note where it stops.
 **Result: clean echo up to p0=46, silence from p0=47.** So Y is real through
 `0xBFFF` and absent at `0xC000` — **48K words**. Loaded modules end at `0x794`,
 so `0x795–0xBFFF` is free: **46K words, roughly 1.04 s of delay at 44.1 kHz** —
-*internal only; there is another 64K external at `0x30000`, see the warning below*.
+*internal only; there is another 64K shared window at `0x30000`, see the warning below*.
 
 > ⚠️ **INCOMPLETE — this probe stopped at `0x20000` and missed a whole region.**
-> The `<<12` re-sweep (3 Aug, hardware) found a **second, EXTERNAL region at
+> A `<<12` re-sweep on hardware found a **second region — the shared window at
 > `0x30000–0x3FFFF`: 64K words**, echoing cleanly, freezing only at `0x40000`.
-> That is where the allocator's other four FX2 slots live, and believing they
-> were absent made our reverb run dry on half the tracks for twenty builds.
+> That is where the allocator's other four FX2 slots live; an effect that
+> treats them as absent silently runs dry on half the tracks.
 > See "Y memory, measured end to end" below.
 
 That is about 8x what the reverb had been using, and it is what makes a
@@ -1096,18 +1040,18 @@ BAL and MONO it leaves to the host.
 > `$c` is the slot DARK's algorithm reads its pre-delay from, but the knob
 > *displayed* as `PRE` drives `$e`; `$c` is driven by the knob displayed as
 > `MIXF`. Both statements are true at once and they are easy to conflate --
-> a `BUS.md` session did exactly that, "corrected" this table the wrong way,
-> and then renamed page-2 slots against the mapping, producing page-2 knobs
-> that did nothing. `REVERB.md` warns about precisely this: page 2 is left
-> unrenamed because the descriptor's display order conflicts with the probed
-> mapping. **The display-slot-index to offset mapping is still not directly
-> measured** -- only label-to-offset is.
+> "correcting" this table the wrong way and renaming page-2 slots against the
+> mapping produces page-2 knobs that do nothing. `REVERB.md` warns about
+> precisely this: page 2 is left unrenamed because the descriptor's display
+> order conflicts with the probed mapping. This table is label-to-offset
+> only; the display-SLOT-index to offset mapping is measured in the next
+> section.
 
 ### Page-2 DISPLAY SLOT -> offset, measured (dsp/page2_probe.asm)
 
 The table above is knob-LABEL to offset. What a clone actually needs is
-display-SLOT-INDEX to offset, and that had never been measured -- inferring it
-from stock's labels was wrong twice. Settled with `dsp/page2_probe.asm`: give
+display-SLOT-INDEX to offset -- and inferring it
+from stock's labels gets it wrong. Measured with `dsp/page2_probe.asm`: give
 each offset a distinct audible signature, expose all six page-2 slots with a
 full 0..127 range, flash once, sweep each knob.
 
@@ -1120,8 +1064,8 @@ full 0..127 range, flash once, sweep each knob.
 | 10 | **`r6+$e`** knob field |
 | 11 | **`r6+$e`** low bits |
 
-**All six page-2 slots reach the DSP.** Getting here took seven probe builds
-and two wrong guesses, so the reasoning matters as much as the table:
+**All six page-2 slots reach the DSP.** The reasoning matters as much as the
+table:
 
 * A knob arrives as `value<<16`, occupying bits 16-22. **The low bits of the
   same word are a separate, independently addressable field** — this is what
@@ -1132,9 +1076,9 @@ and two wrong guesses, so the reasoning matters as much as the table:
 * Slots therefore pair up: **even slot = knob field, odd slot = companion
   field of the same word.** 8/9 share `$d`, 10/11 share `$e`.
 * **A probe that only compares the whole word against `64<<16` cannot see the
-  companion field at all.** Probes 1-4 did exactly that and wrongly concluded
-  slots 7/9/11 were dead and `$c` unreachable. Both conclusions were wrong.
-* `r6+$6..$a` really are dead — probed explicitly (v3), nothing responds.
+  companion field at all** — and wrongly concludes slots 7/9/11 are dead and
+  `$c` unreachable. Both conclusions are wrong.
+* `r6+$6..$a` really are dead — probed explicitly, nothing responds.
 * Page-class A (`0x40032814`, e.g. FILTER) is **not** a richer alternative:
   cloning a class-A donor rendered only one page-2 knob, because that class
   sources its page layout from the 20-byte-stride array at `0x46c7d244`
@@ -1144,71 +1088,32 @@ and two wrong guesses, so the reasoning matters as much as the table:
   threshold probe can never trip, and a non-zero min makes a slot display a
   negative range (slot 7 showed -64..-62 until min was forced to 0).
 
-**Settled (v7).** Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
-8-15 — different fields, so both are independently usable. Slot 6's value also
-appears at `$b`, so an effect may read it from either.
+Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
+8-15 — different fields, so both are independently usable.
 
-> ⚠️ **The "also appears at `$b`" clause is FALSIFIED on hardware, 10 Aug
-> 2026.** ChonVerb read SHMR from `$b` alone and it was **dead silent on the
-> unit** (Sam, A/B'd against a local render with clearly audible +12 shimmer:
-> octave-up rises from −7.3 to −1.1 dB and dominates the tail). The knob does
-> publish — MODE (`$c` mid) and PRE (`$e` knob) both respond on the panel —
-> so slot 6 lands in `$c`'s **knob field** as the primary finding says, NOT at
-> `$b`. R16 reads SHMR from `$c` knob field OR'd with `$b` (robust to either),
-> pending on-unit confirmation. Do not rely on `$b` for a page-2 knob.
+> ⚠️ **Do not rely on `$b` for a page-2 knob.** An earlier probe result said
+> slot 6's value also appears at `$b`; on hardware, an engine reading a
+> page-2 knob from `$b` alone is **dead silent** while the panel demonstrably
+> publishes (MODE — `$c` mid — and the `$e` knob both respond). Slot 6 lands
+> in `$c`'s **knob field**, as the table says. ChonVerb reads SHMR from the
+> `$c` knob field OR'd with `$b` (robust to either).
 
-> **CORRECTED 4 Aug 2026, on hardware: all six can be full-range knobs.**
-> The "three knobs plus three companion selects" split below was inferred from
-> how *stock* uses the fields, and it is not a hardware limit. ChonVerb runs
-> SPEED/DIFF/WIDTH/PRE/→DEL as five full 0–127 controls, two of them in
-> companion fields, confirmed by ear and eye on the unit.
+> **All six page-2 slots can be full-range knobs — measured on hardware.**
+> The "three knobs plus three companion selects" split reflects how *stock*
+> uses the fields; it is not a hardware limit. Five full 0–127 controls, two
+> of them in companion fields, have run on the unit at once. (ChonVerb
+> currently chooses otherwise: WIDTH and →DEL are 4-step selects on companion
+> low-byte fields, and `$e` carries GATE.)
 >
-> *Annotation 12 Aug 2026:* on the unit the companion-field pair read
-> near-boolean in practice, and as of R16 WIDTH and →DEL are **4-step
-> selects** on companion low-byte fields; PRE was **retired** in R16
-> (`$e` is GATE now). "All six *can* be full-range" stands as a statement
-> about the hardware; it is no longer how ChonVerb uses them.
->
-> What actually made a companion field *look* like a two-state control was the
+> What makes a companion field *look* like a two-state control is the
 > **per-parameter display formatter at `P+0x0ca`**, inherited from the donor
-> descriptor — DARK's `MIXF` formatter drew our →DEL as "MIX / SEND" no matter
-> what value count it was given. Zero that array (and its partner at `P+0x0fa`)
+> descriptor — DARK's `MIXF` formatter draws a knob as "MIX / SEND" no matter
+> what value count it is given. Zero that array (and its partner at `P+0x0fa`)
 > and the same field draws as an ordinary knob. See `REVERB.md`.
->
-> The decode below is still right — companion fields are read with a mask —
-> and the field/offset table above is still right. Only the *budget* claim was
-> wrong.
->
-> ✅ **RESOLVED, 10 Aug 2026 — the on-unit per-knob reconfirm happened.**
-> Page 2 **does publish**: MODE steps, PRE reached the DSP (before its R16
-> retirement), DIFF and WIDTH move. SHMR was silent for a different reason —
-> the DSP read the wrong offset (`$b`; the panel publishes to `$c`'s knob
-> field). R16 reads `$c` OR `$b` (robust to either) and is **still
-> unflashed**. As of R16, WIDTH/→DEL are 4-step selects on companion
-> low-byte fields, and PRE is retired (`$e` is GATE now). The contradiction
-> block below is kept as history.
->
-> ⚠️ **CONTRADICTION, OPEN as of 10 Aug 2026** *(historical — resolved
-> above)*. `PLAN.md`'s 10-Aug hardware
-> trip recorded the OPPOSITE of the 4-Aug "confirmed by ear and eye" above:
-> that page-2 continuous knobs (SHMR/DIFF/WIDTH/PRE/→DEL) "do not publish —
-> pinned at their defaults", MODE (a select) works. Both cannot be current.
-> A 10-Aug static + local investigation could not reproduce any gate:
-> (1) our cloned page-2 descriptor is byte-for-byte equal to **stock DARK
-> REV's** page-2 knobs (count 128, `P+0x12a`=0x40032814, enable 1), which
-> publish and work; both descriptor-level fix-theories (`0x12a` callbacks,
-> count=128) are falsified by stock working with those exact values.
-> (2) the DSP engine RESPONDS to every page-2 value when poked into r6
-> (dsp_host DIFF/SHMR/PRE sweeps give distinct output) — no r7 slot
-> collision. (3) the read code is UNCHANGED since 4–6 Aug. So descriptor and
-> engine are both correct, and the 10-Aug observation is most likely a
-> misdiagnosis from that chaotic trip (wrong tag, track↔core inversion).
-> **Do not act on either claim until the next flash reconfirms per-knob**
-> (turn each page-2 knob through its range on a known-ChonVerb track — the
-> protocol is in `PLAN.md` step 2).
 
-**Usable budget: six page-2 controls per effect** — three continuous knobs in
-the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion selects:
+**Six page-2 controls per effect** — three continuous knobs in
+the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion fields
+(each usable as a select or, per the note above, as a full-range knob):
 
 | control | read it from | decode |
 |---|---|---|
@@ -1223,10 +1128,10 @@ The selects were exercised with count 3 and responded on positions 1 and 2, so
 at least three states are distinguishable; the exact value-to-bit encoding
 within each field has not been enumerated beyond "zero vs non-zero per state".
 
-**Superseded:** an earlier revision of this section claimed `r6+$c` was
-unreachable and that only three page-2 offsets existed. Both were artefacts
-of probing only the knob field -- see the bullets above. All four offsets
-(`$b`, `$c`, `$d`, `$e`) and all six display slots are reachable.
+All four offsets (`$b`, `$c`, `$d`, `$e`) and all six display slots are
+reachable. A probe that watches only the knob field concludes that `$c` is
+unreachable and that only three page-2 offsets exist -- both artefacts of the
+probe, not facts about the hardware (see the bullets above).
 
 `r6+6..$a` is touched by nothing. What lives there is still unknown.
 
@@ -1240,7 +1145,7 @@ reads the wrong slot.
 
 ## 10. Per-instance buffers: the host runs a bump allocator
 
-Every build up to v22 hardcoded absolute Y addresses. That works for exactly one
+Hardcoding absolute Y addresses works for exactly one
 instance and writes through everything else. Here is how the stock effects do it.
 
 ### The mechanism
@@ -1290,10 +1195,10 @@ Three things follow:
    are FX2-only — they do not fit in an FX1 allocation.
 2. **`0x8000 + 0x4000 = 0xC000`**, exactly where §8's probe found Y ends. The
    allocator fills Y to the last word and then jumps to a second region at
-   `0x30000` — **which is REAL, and was finally measured on 3 Aug.** The old
-   probe stopped at `0x20000` and never reached it.
+   `0x30000` — which is real and measured (the first probe stopped at
+   `0x20000` and never reached it).
 
-### Y memory, measured end to end (3 Aug, `dsp/ymemprobe.asm` on hardware)
+### Y memory, measured end to end (`dsp/ymemprobe.asm` on hardware; file in git history)
 
 | Y range | what | |
 |---|---|---|
@@ -1302,7 +1207,7 @@ Three things follow:
 | `0x01000–0x03FFF` | 4 FX1 slots x 3072 | internal |
 | `0x04000–0x0BFFF` | 2 FX2 slots x 16384 | internal |
 | `0x0C000–0x2FFFF` | **absent** (silence) | — |
-| `0x30000–0x3FFFF` | **64K words, 4 more FX2 slots** | **EXTERNAL** |
+| `0x30000–0x3FFFF` | **64K words, 4 more FX2 slots** | **shared window** |
 | `0x40000+` | **absent** (freezes) | — |
 
 Swept by TIME as `base = (p0+1) << 12`: sound at 0–10, silence through the
@@ -1311,16 +1216,17 @@ buzzed continuously while 48–62 were clean — worth remembering if anything
 odd shows up at the very start of the external region.
 
 The internal 48K is **per-DSP** (both payloads use `0x4000`/`0x8000` and do not
-clash, because they are different chips). The external 64K is **shared**, which
+clash, because they are different chips). The 64K window is **shared between
+the chips**, which
 is why the payloads are given different halves: A takes `0x30000`/`0x34000`,
 B takes `0x38000`/`0x3c000`. Every one of the 8 tracks therefore has a full
-16,384-word FX2 slot, and an effect that refuses the external slots — as ours
-did until v67 — silently gives up half the machine.
+16,384-word FX2 slot, and an effect that refuses the shared-window slots
+silently gives up half the machine.
 3. Our 40K layout was about 2.5x an instance's entire allocation.
 
-### What v23 does
+### The relocatable layout
 
-All buffers are offsets from the base, and all persistent state moved out of
+All buffers become offsets from the base, and all persistent state moves out of
 absolute Y into the r7 block, which is already per-instance:
 
     lines      base+0x0000  4 x 2048    taps 1567 1249 977 733
@@ -1342,13 +1248,13 @@ table entries (`DSP_ALLOC_IDX` in `dsp_host`) and compare the output. Base
 
 ### Getting the base from init to process, measured not deduced
 
-Two claims in this section were reasoned from the dispatcher listing and both
-were wrong. Recording how they failed, because the failure mode is identical in
+Two plausible claims reasoned from the dispatcher listing are both
+wrong, with the same failure mode in
 each case — a build that is clean in the emulator and unusable on hardware.
 
 **Wrong claim 1: the base can be derived from r7.** X:0x20a and X:0x213 do
 advance together, so `n = (r7 - 0x6000) >> 8; base = x:(0x255 + n)` looks sound.
-Measured with `dsp/r7probe.asm` — 49 words that pass audio only when the TIME
+Measured with `dsp/r7probe.asm` (in git history) — 49 words that pass audio only when the TIME
 knob equals `r7 >> 8`, so the knob position reads the register directly — r7 is
 **0x6200**. The arithmetic was right, but `table[2]` is `0x1c00`, a 3072-word
 **FX1** slot. A 16K layout starting there runs to `0x53ff`, through the other FX1
@@ -1358,15 +1264,15 @@ buffers and into FX2 slot 0. FX2 effects do not take even table entries.
 
 | build | base | state | result |
 |---|---|---|---|
-| v25 | derived | `r7+$84..$8a` | hangs |
-| v26 | hardcoded | `r7+$84..$8a` | hangs → base innocent |
-| v27 | hardcoded | absolute Y | runs → state is the fault |
+| 1 | derived | `r7+$84..$8a` | hangs |
+| 2 | hardcoded | `r7+$84..$8a` | hangs → base innocent |
+| 3 | hardcoded | absolute Y | runs → state is the fault |
 
 `r7+$71..$78` is fine *within* one call and `r7+$83` persists, but `r7+$84..$8a`
 does not. DARK REV's init writes `$1a $1b $1f $82 $83 $84 $8b` and steps around
 `$85..$8a` — it was avoiding host-owned words.
 
-**What works**, measured with `dsp/baseprobe.asm` (same trick, TIME matched
+**What works**, measured with `dsp/baseprobe.asm` (in git history; same trick, TIME matched
 against `base >> 9`): init reads `X:0x213` and stashes the base in absolute Y at
 
     Y:(0x735 + (r7 >> 8))    ->  0x795..0x79d for r7 = 0x6000..0x6800
@@ -1383,7 +1289,7 @@ damping states go in the instance's own Y region, loaded and saved once per bloc
 
 ### The base MUST be read in init, not in process
 
-v23 hung. The loop was still 300 instructions, so it was never cycles -- it was
+Reading it in process hangs the machine — and not because of cycles; it is
 *when* the base is read.
 
 The dispatcher advances `X:0x213` **before** it calls process:
@@ -1400,8 +1306,8 @@ The stock code says the same thing plainly, once you check the dispatch table:
 DARK REV's init is `P:0x01679-0x0171a` and its process starts at `P:0x0171b`, and
 the base read at `P:0x01692` is **inside init**.
 
-v24 reads the base and derives all seven buffer addresses in init -- 31
-instructions, no loop -- and stores them in the r7 block. Process just uses them,
+Read the base and derive all seven buffer addresses in init -- 31
+instructions, no loop -- and store them in the r7 block. Process just uses them,
 which is also cheaper than recomputing per block.
 
 ### One trap worth its own paragraph
@@ -1423,14 +1329,15 @@ buffers, which is the only absolute scratch an effect can use — they differ:
 | A | 5 | Y:0x0794 | Y:0x0795..0x0FFF |
 | B | **21** | **Y:0x07a4** | Y:0x07a5..0x0FFF |
 
-**This is what made the reverb hang on two tracks.** init carried its buffer base
-across to process through a per-instance stash at `Y:(0x735 + (r7 >> 8))`, an
-address chosen against payload A's map and verified on payload A. On payload B
-every one of those addresses lands inside a live 128-word coefficient table. The
-effect corrupted another algorithm's coefficients, then read that algorithm's
-data back as its own buffer base and wrote 14K words from wherever it pointed.
+**This is a real failure mode.** An init that carries its buffer base
+across to process through a per-instance stash at `Y:(0x735 + (r7 >> 8))` — an
+address chosen against payload A's map and verified on payload A — lands, on
+payload B,
+inside a live 128-word coefficient table at every one of those addresses. The
+effect corrupts another algorithm's coefficients, then reads that algorithm's
+data back as its own buffer base and writes 14K words from wherever it points.
 
-One instance never showed it, because one instance is one payload.
+One instance never shows it, because one instance is one payload.
 
 Anything absolute in Y must sit at **0x800 or above** to be safe in both, and the
 usable window is only `0x7a5..0x0FFF` — 2139 words.
@@ -1459,14 +1366,19 @@ entry `1 + 2k` and state block `0x6000 + (2 + 2k) * 0x100`:
 | track 3 FX2 | 5 | 0x30000 | **0x38000** | 0x6600 |
 | track 4 FX2 | 7 | 0x34000 | **0x3c000** | 0x6800 |
 
-That model reproduces both hardware measurements: `dsp/r7probe.asm` returned
-0x6200, and `dsp/baseprobe.asm` returned 0x4000 and 0x8000 on two tracks.
+("Track *n*" here is the *n*-th track of the chip's own bank of four. The
+track↔chip mapping is measured: payload A serves tracks 5–8, payload B serves
+tracks 1–4.)
 
-> **CORRECTED (3 Aug).** This used to say the low two FX2 slots being the same Y
-> addresses in both payloads meant "only one payload can be live at a time".
-> That is backwards. **Both payloads are live at once** — two separate DSP chips,
+That model reproduces both hardware measurements: `dsp/r7probe.asm` returned
+0x6200, and `dsp/baseprobe.asm` returned 0x4000 and 0x8000 on two tracks
+(both probes in git history).
+
+> **Both payloads are live at once** — two separate DSP chips,
 > four tracks each, each with its own on-chip RAM, so `Y:0x4000` on chip A and
-> `Y:0x4000` on chip B are different physical memory.
+> `Y:0x4000` on chip B are different physical memory. (The low two FX2 slots
+> being the same Y addresses in both payloads does NOT mean only one payload
+> can be live at a time.)
 >
 > **The machine: 8 tracks, each with one FX1 slot and one FX2 slot.** FX1 is
 > 3072 words (~70 ms) — fine for chorus, phaser, comb, EQ, and far too small for
@@ -1478,11 +1390,11 @@ That model reproduces both hardware measurements: `dsp/r7probe.asm` returned
 > | | slots | where |
 > |---|---|---|
 > | DSP A, 4 tracks | `0x4000` `0x8000` | internal, on-chip |
-> | | `0x30000` `0x34000` | external, shared SRAM |
+> | | `0x30000` `0x34000` | shared-window SRAM |
 > | DSP B, 4 tracks | `0x4000` `0x8000` | internal, its own on-chip |
-> | | `0x38000` `0x3c000` | external, shared SRAM |
+> | | `0x38000` `0x3c000` | shared-window SRAM |
 >
-> Internal memory supplies only four of the eight, so **the external region is
+> Internal memory supplies only four of the eight, so **the shared window is
 > not optional — it is required for 8 tracks to have reverb at all.** That is an
 > independent confirmation that it is real and that stock uses it, and it is the
 > reason the payloads partition it: a shared resource is what gets divided.
@@ -1504,19 +1416,18 @@ word a loaded module put there, which is never legitimate) and names it:
 !! CLOBBER inst 0 init wrote Y:0x00737 -- OVER A LOADED MODULE
 ```
 
-Two bisect builds shipped to hardware before this existed were themselves broken
-by the instrumentation — v34 put the level read inside the pre-delay setup so n5
-came from the knob, v35 clobbered x0 between the base derivation and the state
-load — so their hardware results had to be discarded. Run the guard first.
+Bisect builds can be broken by their own instrumentation — one put the level
+read inside the pre-delay setup so n5
+came from the knob, another clobbered x0 between the base derivation and the
+state load — invalidating their hardware results. Run the guard first.
 
 ## 12. Standing rules for writing DSP code here
 
-Learned by freezing the machine. Every one of these cost at least one
-hardware flash.
+Learned by freezing the machine; each of these was established on hardware.
 
-* **`mpy` does NOT double.** Measured: 0.5*0.5 = $200000 exactly. A
-  "fractional multiply shifts left" theory drove three wrong changes
-  before hardware caught it. Coefficients are plain fractions.
+* **`mpy` does NOT double.** Measured: 0.5*0.5 = $200000 exactly. The
+  "fractional multiply shifts left" theory is wrong. Coefficients are
+  plain fractions.
 * **Let the AGU do address work.** Modulo wraps, adds the base and masks
   for free. Doing it by hand cost 135 cycles/sample — 31% of the engine.
   An interpolated read does NOT need two addresses: the read pointer
@@ -1527,24 +1438,25 @@ hardware flash.
   move, `mpy x0,y0,a` discards it); XY dual moves need the X pointer in
   R0-R3 and the Y pointer in R4-R7. Verify every one by disassembling.
 * **When a register holding a constant is repurposed, grep every read of
-  it.** Two clobbers this session came from exactly that — one produced
+  it.** Two real clobbers came from exactly that — one produced
   344 stray writes, the other broke only when PRE was off-centre.
-* **A workaround for a disproven theory does not remove itself.** The
-  arithmetic addressing added for the modulo theory outlived the theory by
-  nineteen builds and eventually cost an instance.
+* **A workaround for a disproven theory does not remove itself.** An
+  arithmetic-addressing workaround added for a disproven modulo theory
+  outlived the theory and eventually cost an instance.
 * **Sanity-check a surprising emulator result against the instrument.**
-  A harness modelling a special case instead of the dispatcher invented a
-  self-oscillation that cost a day; the user's ears settled it in one line.
+  A harness modelling a special case instead of the dispatcher can invent
+  behaviour — a spurious self-oscillation, for instance — that a listening
+  test falsifies immediately.
 
 * two instructions between writing r5 and using it — and they must be **data
   moves**, never M-register writes (an M load interlocks with its address
-  register; this froze one track in v47)
+  register; this froze one track)
 * no M-register write inside the sample loop
 * a modulo offset larger than the buffer is undefined: silent, not an error
 * absolute Y scratch must sit at 0x800 or above — payload B loads modules to
-  Y:0x7a4 where payload A stops at 0x794 (this was the v30/v31 hang)
+  Y:0x7a4 where payload A stops at 0x794 (violating this has hung the unit)
 * X:0x213 is only valid during init; reading it in process gives whatever the
-  last init left (this was the v33 hang)
+  last init left (this too has hung the unit)
 * check the generated assembly and the assembler's exit status, not the
   generator. `build_reverb.py | grep` masks a failed assemble and the emulator
   will then happily "verify" a stale image.

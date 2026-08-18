@@ -194,7 +194,7 @@ from Elektron's zip (card). Your CF card and projects are not affected.
 
 ---
 
-## ⚠️ First load of an EXISTING PROJECT on R29+ (the RETURN-architecture images)
+## ⚠️ First load of a project saved on an older (pre-return) image
 
 There is **no migration mechanism**: the unit stores each part's knob VALUES,
 and our descriptors only supply defaults when an effect is freshly selected.
@@ -207,8 +207,8 @@ something else:
 2. **Old stored MIX values load as IN** (p5). On a pure return track this is
    inaudible — but it silently registers the host as a bus client and dilutes
    the real senders. Zero it, or use step 4.
-3. **Old stored VRBW values load as `-VRB`** (delay p5, live again from R30).
-   A pre-v3 project's VRBW=127 will wash the delay into the reverb on load.
+3. **Old stored VRBW values load as `-VRB`** (delay p5). An old project's
+   VRBW=127 will wash the delay into the reverb on load.
 4. **The one-step fix per track: re-select the effect** (switch the FX2 away
    and back). The id-store fires on change and applies fresh defaults.
 
