@@ -1000,14 +1000,21 @@ md_big:                                 ; 2, and anything unexpected
 ; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
         move    #>$568000,a               ; 0.67578 (was $4CCCCD = 0.60 "2/√8
         move    a,x:(r7+$1e)              ; headroom", pre-norm-proof)
-        move    #>$3f4000,a             ; wet gain/2 = -6 dB vs ROOM/PLATE.
-        move    a,x:(r7+$20)            ; HARDWARE capture B (18 Aug 2026): BIG
-                                        ; measured +8.4 dB over ROOM at identical
-                                        ; settings -- 1.4's internal gain spread
-                                        ; at the output. -6 brings the three
-                                        ; modes within ~2 dB; the residual is
-                                        ; deliberate (BIG should still be the
-                                        ; big one)
+        move    #>$5a0000,a             ; wet gain/2 = -3 dB vs ROOM/PLATE.
+        move    a,x:(r7+$20)            ; Two-step history, same day (18 Aug
+                                        ; 2026): capture B measured BIG +8.4 dB
+                                        ; over ROOM and a -6 trim shipped in
+                                        ; R33 -- but those captures ran on the
+                                        ; OLD PART, whose stored LP strips more
+                                        ; HF from ROOM/PLATE (low damping) than
+                                        ; from BIG, inflating BIG's relative
+                                        ; tail. The clean-part number is ~+5.4
+                                        ; (emulator), Sam's ear called the -6
+                                        ; "a bit of a volume drop", and -3 is
+                                        ; the correction: BIG lands ~+2 with a
+                                        ; long-tail loudness discount on top.
+                                        ; The part-state lesson, a second time,
+                                        ; in the same session it was learned.
 ; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
 ; bloom generator now, and the 4-13 ms Dattorro set could not stretch the
 ; attack. All modes share the tap set (641 1051 1511 1949, primes), stored
