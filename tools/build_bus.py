@@ -269,6 +269,9 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # only wet-crossing edge is delay->reverb, under the -VRB knob.
 # ⚠️ R30 AND R31 CARRY A BROKEN DELAY IN (the -VRB splice deleted its decode;
 # $76 never written). NEITHER WAS FLASHED. Do not flash either; tag 51 fixes.
+# 54 == OCTABAMR35 == R34 plus the TAPE retirement: DPTH (was WOW) + RATE are
+# global modulation across every delay mode; TAPE's position aliases CLEAN
+# (bit-identically, knobs matched); saturation keys on DPTH>0.
 # 53 == OCTABAMR34 == R33 with BIG's trim softened -6 -> -3 (ear: "a bit of a
 # volume drop"; the +8.4 measurement was part-state-inflated).
 # 52 == OCTABAMR33 == R32 plus voicing round 1 from the hardware captures:
@@ -282,7 +285,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"53"
+BUILD_TAG = b"54"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
