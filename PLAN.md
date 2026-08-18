@@ -23,7 +23,7 @@ delay→reverb series topology).
 | | state |
 |---|---|
 | Superseded | `OCTABAMR19` (tag 38), flashed 17 Aug, first image with delay page 2 enabled; three of six page-2 knobs drew wrong (fixed in `a87e304`). `OCTABAMR21` (tag 40) is the **HKB=1 diagnostic — discard it**, never flashed and superseded by the free track-position test |
-| Wrapped, NOT flashed | *(nothing — R34 is current)* |
+| Wrapped, NOT flashed | ✅ **`OCTABAMR35` (tag 54), wrapped 18 Aug 2026** — 445,728 bytes, crc32 `0xecf213aa`, `make check` green, all gates bit-identity. = R34 **plus the TAPE retirement**: **DPTH** (was WOW) + **RATE** (new, p8) are global modulation across every delay mode — the loop tap drifts everywhere, saturation keys on DPTH>0, and TAPE's MODE position aliases CLEAN **bit-identically at matched knobs** (old TAPE(WOW=w) ≡ CLEAN(DPTH=w, RATE=64), proven). Delay page 2 is 12/12 live: DPTH MODE RATE / PTCH SPRA FRZE. Payload B FREE 26 (the retirement paid), A FREE 56. ⚠️ DRIVE is an open Sam-call: saturation rides DPTH; a decoupled DRIVE has no free slot (candidate: p9's unread CLEAN-mode meaning) |
 | On the unit | **`OCTABAMR34`** (tag 53) — flashed 18 Aug 2026, ✅ **voicing round 1 fully ear-passed**: GRAIN +6 ("great"), RATE ("great"), BIG at −3 ("sounds right now"; the −6 first cut was measured on a stale part and corrected by ear). The mpy caveat is CLOSED on silicon (`docs/CAPTURE.md`). Both effects are symmetric returns; every knob live and lawful |
 | Where effects live | ChonVerb on **tracks 5–8** (5 = position-0 housekeeper), BongDelay on **tracks 1–4**, Send anywhere ✅ measured |
 | Reverb | eight-line, confirmed on hardware. DONE FOR NOW (11 Aug, see step 1); the knob-publish gap is CLOSED (10 Aug reconfirm — see step 2) |
