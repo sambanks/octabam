@@ -271,6 +271,10 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # only wet-crossing edge is delay->reverb, under the -VRB knob.
 # ⚠️ R30 AND R31 CARRY A BROKEN DELAY IN (the -VRB splice deleted its decode;
 # $76 never written). NEITHER WAS FLASHED. Do not flash either; tag 51 fixes.
+# ⚠️ R36'S DPTH/RATE/DRV WERE DEAD ON HARDWARE (shared-window Y state at
+# 0x360d3-5 -- writes and in-loop reads never meet on silicon; mechanism
+# unknown). 56 == OCTABAMR37 == R36 with that state moved to core-private Y
+# 0901-0903h (the old bus range). Flash R37; discard R36.
 # 55 == OCTABAMR36 == R35 plus DRIVE (p10 = DRV outside GRAIN; loop-stable
 # blend toward the 2x curve; default 0 = exact bypass; GRAIN keeps SPRA).
 # 54 == OCTABAMR35 == R34 plus the TAPE retirement: DPTH (was WOW) + RATE are
@@ -289,7 +293,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"55"
+BUILD_TAG = b"56"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
