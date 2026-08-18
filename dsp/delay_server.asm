@@ -276,7 +276,7 @@
 ;   r7+$80              1 - PING (per block)
 ;   r7+$82              warm-up tagged counter (stock DARK's slot
 ;                       convention, reused -- see dsp/reverb89.asm)
-;   r7+$83              FREE (v3 stage 1). Held the pre-bus dry mono for the
+;   r7+$83              DRIVE amount d (18 Aug 2026; was FREE since v3 --
 ;                       ->VERB DRY send, which is gone with its knob
 ;   r7+$84              this call's REVERB ACC write address (BUS.md task 10,
 ;                       per-call, advances per sample -- same shape as $63/$64)
@@ -1112,7 +1112,15 @@ pintend:
 drvz:
         clr     a
 drvw:
-        move    a,y:>$0903
+        move    a,x:(r7+$83)            ; d -> r7 (18 Aug 2026, probe V0/V127:
+                                        ; d via Y read INSIDE the bsr callee
+                                        ; measured dead on hardware -- crest
+                                        ; unchanged at levels where a 4x knee
+                                        ; must crush ~6 dB -- while the SAME
+                                        ; in-loop Y mechanism works for the
+                                        ; increments read INLINE. $83 was the
+                                        ; delay's one free r7 slot; both ends
+                                        ; are now the battle-proven r7 path)
 
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
@@ -3086,7 +3094,7 @@ satdrv:
         move    x:(r7+$2f),x0           ; w1
         sub     x0,a                    ; hot - w1 (possibly negative)
         move    a,x0
-        move    y:>$0903,y1             ; d (core-private -- see the RATE decode)
+        move    x:(r7+$83),y1           ; d (r7 -- see the decode's V0/V127 note)
         mpy     x0,y1,a                 ; d*(hot-w1) -- signed form, x0 negative-capable
         move    a,x0
         move    x:(r7+$2f),a

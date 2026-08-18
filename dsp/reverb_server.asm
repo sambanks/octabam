@@ -1168,8 +1168,11 @@ md_room:
                                         ; 0.75; Round 11's retune of the old
         move    a,x:(r7+$72)            ; inverted-HF finding -- VV room's HF
                                         ; dies FASTEST, ours hung on)
-        move    #>$400000,a             ; least movement: a small room does not
-        move    a,x:(r7+$73)            ; wobble, and at this size it would chorus
+        move    #>$7fffff,a             ; movement scale 1.0 (18 Aug 2026 relaw --
+        move    a,x:(r7+$73)            ; was 0.5 "a small room does not wobble",
+                                        ; which on top of the old shallow law
+                                        ; meant ~+-5 cents: nothing. The knob
+                                        ; spans it now; taste lives on the knob)
         move    #>$430000,a             ; wet high-cut 0.523 (Round 13) -- VV room
         move    a,x:(r7+$7a)            ; is "darker tone"
         move    #>$5c0000,a             ; lines 4-7 tap scale 0.71875 -- tighter
@@ -1255,8 +1258,8 @@ md_plate:
         move    a,x:(r7+$72)            ; tail literally BRIGHTENED as it
                                         ; decayed -- Round 11. Still the
                                         ; brightest mode of the three.)
-        move    #>$599999,a             ; some movement, less than a hall
-        move    a,x:(r7+$73)
+        move    #>$7fffff,a             ; movement scale 1.0 (18 Aug relaw; was
+        move    a,x:(r7+$73)            ; 0.7 "some movement, less than a hall")
         move    #>$570000,a             ; wet high-cut 0.68 (~8 kHz) -- plate
         move    a,x:(r7+$7a)            ; stays the bright one
         move    #>$620000,a             ; lines 4-7 tap scale 0.765625 -- moderate
@@ -1650,6 +1653,14 @@ md_done:
         move    x:(r6+$1),x0
         move    x:(r7+$73),y1           ; v95: scaled per MODE, only ever down
         mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
+; x2 RELAW (18 Aug 2026, Sam: "make the mod less subtle"). Measured at MOD=127
+; the old law swung the read offsets 0..63 samples -- ~+-11 cents of blur
+; spread over eight lines, masked entirely by the fixed-depth AP modulator.
+; The DESIGNED range is 0..126 ("integer offset, 0..126 samples", the store
+; below); depth capped at 0.496 only because MOD(<=0.99) x tri(0.5). The asl
+; restores the design ceiling EXACTLY: offsets <= 126, so the tap margins and
+; the int/frac shift pair (the v95 trap zone) are untouched.
+        asl     #$1,a,a
         move    a,x:(r7+$28)            ; its full range inside each character
 
 ; ---- WIDTH: mono .. wide -- slot 9, $d's LOW bits (v92) -----------------

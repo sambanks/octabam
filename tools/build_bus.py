@@ -1249,8 +1249,8 @@ mkgo:""",
             # writes into the shared REVERB accumulator. The census below
             # pins the count so drift is loud.
             n_priv = len(re.findall(r"\$09[0-9a-f]{2}\b", src))
-            if name == "DELAY SERVER" and n_priv != 6:
-                sys.exit(f"XBUS: {name} expected exactly 6 core-private $09xx "
+            if name == "DELAY SERVER" and n_priv != 4:   # RATE increments only; d moved to r7 (V0/V127 probe)
+                sys.exit(f"XBUS: {name} expected exactly 4 core-private $09xx "
                          f"refs (RATE/DRV state), found {n_priv}")
             src = re.sub(r"\$9([0-9a-f]{2})\b",
                          lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)
