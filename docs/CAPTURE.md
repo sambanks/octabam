@@ -73,3 +73,40 @@ you heard and reported; this is its formal close-out.
 For each capture I return measured-vs-predicted, a verdict per open item
 (mpy caveat, mode trims, null residual, level law), and proposed constants
 where a number is the fix. Ear rounds then run on the constants, not on hunches.
+
+
+---
+
+# SESSION RESULTS — 18 Aug 2026 (captures A, B, M; D parked; E/F unrun)
+
+## Closed
+- **THE MPY CAVEAT IS DEAD.** Decay vs TIME in BIG: hw 16.4/8.5/4.6 dB/s vs
+  predicted 15.7/9.8/4.3 — within 13%, monotonic, correct spacing. Silicon's
+  fractional multiply does NOT shift. Standing since 9 Aug; off every future
+  flash checklist.
+- **Mode decays match the emulator** (ROOM within 1%, PLATE 4%).
+- **BIG +8.4 dB over ROOM confirmed on silicon** → the R33 −6 dB trim.
+- **GRAIN 14.2 dB under CLEAN (wet-only)** → the R33 +6 dB makeup (headroom-
+  safe step; SPRA-0 coherent stacking caps it). Ear: "grain is great."
+- **RATE (MOD speed select) shipped and ear-passed** ("rate is great").
+
+## The measurement lesson of the session
+**A hardware capture inherits every stored knob on the part it runs through.**
+The PLATE-darkness finding (HF −12 vs emulator +1) was mostly the OLD PART'S
+STORED LP: with a fresh part (LP 127) PLATE reads −5.1. A PLATE-brighten was
+built on the confounded number and reverted within the hour — Sam's "are these
+matching the emulator?" was the catch. Residual hw-vs-emu HF gap ~6 dB is
+within single-capture material variance; the D-null (below) is the instrument
+that can split variance from silicon.
+
+## Parked, with the reason
+- **D (hardware-vs-emulator null)**: a drum loop is the worst null stimulus —
+  self-similar (correlator locks onto neighbouring beats), and two free-running
+  44.1k clocks. Needs a purpose-built signal (chirp + non-repeating noise
+  bursts) on the card. Timestretch OFF is confirmed necessary but not
+  sufficient.
+- **E (1/√N with real material) and F (-VRB wash)**: session pivoted to
+  voicing at Sam's call; both remain cheap and designed.
+- **MOD depth**: drums cannot show the wobble in EITHER system (line-width
+  metric blind on this material). Depth ceiling deliberately not raised — the
+  modulated read's margin to the write head is load-bearing.
