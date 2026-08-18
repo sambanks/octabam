@@ -297,7 +297,9 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # changed nothing, which is what exposed that the DEPTH LAW was the "defect".
 # 58 == OCTABAMR39 == R37 content plus the x8 depth relaw, per-sample lag
 # clamp, 4x drive knee, and the modtap roll. Flash R39; discard R36-R38.
-BUILD_TAG = b"58"
+# 59 == OCTABAMR40 == R39 plus the reverb MOD relaw (ROOM x4 / PLATE x2.9 /
+# BIG x2) and DRIVE's d relocated to r7+$83 (Y-in-callee measured dead on hw).
+BUILD_TAG = b"59"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
