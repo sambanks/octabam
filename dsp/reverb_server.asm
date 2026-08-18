@@ -1000,6 +1000,14 @@ md_big:                                 ; 2, and anything unexpected
 ; Falsifier: quiet-click stability sweep TIME 127 x SIZE corners, no growth.
         move    #>$568000,a               ; 0.67578 (was $4CCCCD = 0.60 "2/√8
         move    a,x:(r7+$1e)              ; headroom", pre-norm-proof)
+        move    #>$3f4000,a             ; wet gain/2 = -6 dB vs ROOM/PLATE.
+        move    a,x:(r7+$20)            ; HARDWARE capture B (18 Aug 2026): BIG
+                                        ; measured +8.4 dB over ROOM at identical
+                                        ; settings -- 1.4's internal gain spread
+                                        ; at the output. -6 brings the three
+                                        ; modes within ~2 dB; the residual is
+                                        ; deliberate (BIG should still be the
+                                        ; big one)
 ; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
 ; bloom generator now, and the 4-13 ms Dattorro set could not stretch the
 ; attack. All modes share the tap set (641 1051 1511 1949, primes), stored
@@ -1100,6 +1108,8 @@ md_room:
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$534307,a               ; 2/√8 = H8 normalization (was $75C000 for H4)
         move    a,x:(r7+$1e)
+        move    #>$7e8000,a             ; wet gain/2 (R18 full-wet, per-mode
+        move    a,x:(r7+$20)            ; since 18 Aug 2026)
 ; INPUT DIFFUSER taps, LONG since Round 13 (14-44 ms): the diffusers are the
 ; modes share the tap set (641 1051 1511 1949, primes).
         move    #>1407,a
@@ -1171,6 +1181,8 @@ md_plate:
 ; Scaling g DOWN is always safe; it is scaling UP that self-oscillates.
         move    #>$50A000,a               ; was $5753E3 (2/√8 exact). Round 12:
         move    a,x:(r7+$1e)            ; on the doubled lines PLATE's fastest
+        move    #>$7e8000,a             ; wet gain/2 (R18 full-wet)
+        move    a,x:(r7+$20)
                                         ; decay (TIME=0) measured MF -15.1 dB/s
                                         ; against VV plate's -18.9 -- the knob
                                         ; could not reach a real plate's
@@ -1224,6 +1236,15 @@ md_plate:
         move    #>$100000,a             ; diffusion offset, highest: a plate is
         move    a,x:(r7+$3f)            ; dense from the first millisecond
         move    #>$640000,a             ; damping 0.78 (was 0.953 ~= none: the
+                                        ; ⚠️ 18 Aug 2026: a PLATE-brighten to
+                                        ; 0.879 was built and REVERTED within
+                                        ; the hour -- the hardware tilt that
+                                        ; justified it (PLATE darkest, HF -12)
+                                        ; was confounded by the test part's
+                                        ; STORED LP, which multiplies this
+                                        ; constant and hits PLATE (smallest
+                                        ; damping) hardest. Re-measure with
+                                        ; LP=127 confirmed before touching.
         move    a,x:(r7+$72)            ; tail literally BRIGHTENED as it
                                         ; decayed -- Round 11. Still the
                                         ; brightest mode of the three.)
@@ -1607,12 +1628,11 @@ md_done:
         move    x:(r6+$5),a
         move    a,x:(r7+$70)            ; IN, this block
 
-; The wet gain is now a CONSTANT: the old law's MIX=127 value, $7e8000 as
-; wgain/2 (the sample loop still asl-doubles it, = x1.977, +5.9 dB). Chosen so
-; the return prints EXACTLY the full-wet the R18 ear pass approved -- the knob
-; that used to reach this value is gone, not the voicing.
-        move    #>$7e8000,a
-        move    a,x:(r7+$20)
+; (The wet gain $20 is PER-MODE since 18 Aug 2026 -- each md_* block stores
+; its own wgain/2, because hardware capture B measured BIG +8.4 dB over
+; ROOM/PLATE at identical settings. ROOM/PLATE keep the R18-approved $7e8000;
+; BIG carries $3f4000 = -6 dB. The store that lived here moved into the
+; dispatch blocks.)
 
 ; ---- (the ->DEL level decode lived here until 18 Aug 2026; see the note at
 ; the retired DELAY ACC address block) ---------------------------------------
@@ -1748,6 +1768,43 @@ md_done:
         move    x:(r7+$2f),y1           ; md_ block parked here. SPEED still spans
         mpy     x1,y1,a                 ; its full range inside each character, the
         move    a,x:(r7+$2f)            ; same shape as MOD depth and damping.
+
+; ---- RATE: MOD speed select -- page-2 slot 11 companion (18 Aug 2026) -----
+; Sam: "not seeing a lot of action from mod... replace mod and wow with mod
+; speed and intensity?" This is the speed half. History that shaped it: the
+; SPEED knob was sacrificed to SHMR for knob real estate (not cycles, not
+; metal) with the rate pinned at Round 5's measured optimum -- which stays
+; the 1x here. The DEPTH ceiling is deliberately NOT raised: the modulated
+; read's margin to the write head is load-bearing (the full-lap-discontinuity
+; class), and speed is the safe dimension.
+; Four factors, ALL SHIFTS (0.5x / 1x / 2x / 4x), and 1x BYPASSES ENTIRELY --
+; so the default renders bit-identical to the pre-RATE engine, which is what
+; makes this gate-able. Slot 11 was -DEL's for a day; blank since; RATE now.
+        move    x:(r6+$e),a
+        and     #>$7f00,a               ; slot 11 companion, bits 8-15
+        asr     #$8,a,a
+        move    a1,x0
+        move    x0,a                    ; select 0..3, A2-clean
+        move    #>$1,x0
+        cmp     x0,a
+        beq     rspd                    ; 1x (the default): leave $2f untouched
+        blt     rsp0
+        move    #>$2,x0
+        cmp     x0,a
+        beq     rsp2
+        move    x:(r7+$2f),a            ; select 3 (shows as 4 on the panel): 4x
+        asl     #$2,a,a
+        bra     rspw
+rsp2:
+        move    x:(r7+$2f),a            ; 2x
+        asl     #$1,a,a
+        bra     rspw
+rsp0:
+        move    x:(r7+$2f),a            ; 0.5x
+        asr     #$1,a,a
+rspw:
+        move    a,x:(r7+$2f)
+rspd:
 
 ; (PRE-DELAY retired here in R16 -- see the GATE block below and the removal
 ; note at the old in-loop read. $e slot 10 is GATE now. The historical

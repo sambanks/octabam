@@ -704,8 +704,7 @@ bus_mine:
         tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
-        move    #>$7,x0
-        and     x0,a                    ; masked: boot garbage cannot index wild
+        and     #>$7,a                  ; masked: boot garbage cannot index wild
         move    a1,x0
         move    x0,a                    ; A2-clean before it becomes an address
         move    #>$9cb,b                ; table base, RE-LOADED (see above)
@@ -747,8 +746,7 @@ bus_mine:
         move    a1,x0                   ; here would reintroduce the very
                                         ; disagreement the resolve block removes
         move    x0,a                    ; A2-clean before it becomes an address
-        move    #>$9c3,x0
-        add     x0,a
+        add     #>$9c3,a
         move    a,r5
         move    #>$ffffff,m5
         move    y:(r5),a
@@ -2430,6 +2428,13 @@ grnbz:
         move    (r4)+n4
 grnlz:
         nop
+; +6 dB GRAIN MAKEUP (18 Aug 2026). Measured wet-only, GRAIN ran 14.2 dB
+; under CLEAN at Sam's settings (SPRA 64, set 3) -- the largest mode-switch
+; level jump in the box, mostly the 4-grain windowed sum's duty cycle. +6 is
+; the HEADROOM-SAFE first step, not the whole gap: at SPRA 0 all four grains
+; cluster coherently and can sum to ~4x a single tap, so closing the full 14
+; would rail exactly there. asl, not a mpy: A2-consistent, no new constant.
+        asl     #$1,b,b
         move    b,x:(r7+$24)            ; shifted OUTPUT tap L
 ; ---- READER, line R -----------------------------------------------------
         move    r7,a
@@ -2494,6 +2499,7 @@ grnlz:
         move    (r4)+n4
 grnrz:
         nop
+        asl     #$1,b,b                 ; +6 dB makeup, matching the L side
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
         bra     pdone
 ; MODEFORK_MID -- alternative 4: REVERSE

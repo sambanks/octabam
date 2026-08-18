@@ -181,14 +181,13 @@ RENAMES = {
         (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
         (9, b"WIDTH"),          # slot 9 -> r6+$d low
         (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
-        (11, b""),              # slot 11 -> RETIRED 18 Aug 2026. Was -DEL, the
-                                #   dry send into the delay -- the twin of the
-                                #   delay's VRBD, which v3 retired with "a
-                                #   return track has no pre-effect signal worth
-                                #   forwarding". The reverb's copy only outlived
-                                #   it because the reverb became a return a day
-                                #   later. Audio that wants both buses belongs
-                                #   on a SEND track.
+        (11, b"RATE"),          # slot 11 -> r6+$e b8-15  MOD speed select,
+                                #   0.5x/1x/2x/4x of Round 5's pinned optimum
+                                #   (18 Aug 2026). Same-day history: -DEL was
+                                #   retired from this slot hours earlier (the
+                                #   VRBD-twin rationale, see git); RATE is its
+                                #   replacement, giving MOD the speed dimension
+                                #   the old SPEED knob lost to SHMR.
     ],
     "SEND": [
         (0, b"-DEL"), (1, b"-VRB"),
@@ -383,7 +382,8 @@ DEFAULTS = {
                       (8, 64),   # DIFF   mid
                       (9, 3),    # WIDTH  R16: 4-step select (0..3), 3 = wide
                       (10, 0),   # GATE   off (ungated reverb)
-                      (11, 0)],  # -DEL   R16: 4-step send select (0..3), 0 off
+                      (11, 1)],  # RATE 1x (index 1; the 1-based panel shows
+                                 # "2"). Slot was -DEL until 18 Aug 2026.
     "SEND": [(0, 0), (1, 0)],
 }
 
@@ -438,7 +438,7 @@ ACTIVE_PARAMS = {
     # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
     # inverse that bit WOW/FRZE on 12 Aug).
     "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],  # p5 = -VRB again (18 Aug 2026)
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # p11 (-DEL) retired 18 Aug 2026
+    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # p11: -DEL retired, RATE born, both 18 Aug 2026
     "SEND": [0, 1],
 }
 
@@ -477,9 +477,9 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
                                             #        reads near-boolean at 128 on
                                             #        hardware -- a small count
                                             #        publishes; mono/narrow/norm/wide)
-                                  10: 128}} # GATE   knob (R16: was PRE)
-                                            # (11 was -DEL, count 4 -- retired
-                                            #  18 Aug 2026 with the send)
+                                  10: 128,  # GATE   knob (R16: was PRE)
+                                  11: 4}}   # RATE   select 0.5/1/2/4x MOD speed
+                                            # (was -DEL until 18 Aug 2026)
 
 # Which page-2 slots are STEPPED SELECTS rather than knobs, per server. This
 # table also gates the display-formatter pass below -- a server absent from it
@@ -495,7 +495,7 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
 # block below was gated `if name == "REVERB SERVER"`, so BongDelay inherited
 # SPRING REV's formatters for all six page-2 slots and three of them drew
 # wrong on hardware. See the block comment for what each one did.
-STEPPED_SLOTS = {"REVERB SERVER": (7, 9),       # MODE / WIDTH (-DEL retired)
+STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / RATE
                  "DELAY SERVER":  (7, 9, 11)}   # MODE / PTCH  / FRZE
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
