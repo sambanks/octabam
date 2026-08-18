@@ -293,7 +293,11 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # one that pairing is exactly where you would expect to bite.
 # ⚠️ The artifact RELOCATES, so testing this needs a SWEEP of track/mode
 # combinations. One clean configuration is what let it survive R23.
-BUILD_TAG = b"57"   # ⚠️ R38 = DIAGNOSTIC (hardwired mod/drive) -- never keep
+# 57 == R38 == DIAGNOSTIC (hardwired mod) -- discard. Its result: constants
+# changed nothing, which is what exposed that the DEPTH LAW was the "defect".
+# 58 == OCTABAMR39 == R37 content plus the x8 depth relaw, per-sample lag
+# clamp, 4x drive knee, and the modtap roll. Flash R39; discard R36-R38.
+BUILD_TAG = b"58"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
