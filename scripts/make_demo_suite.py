@@ -114,6 +114,34 @@ def synth_kalimba(step=5984, bars=4):
     g = 0.55 / pk
     return [(v * g, v * g) for v in buf]
 
+def synth_bleep(step=5984, bars=8):
+    """Square-wave synth lead with rests and octave jumps on the 110.55 grid --
+    built for the PITCH/GRAIN/comb demos, where a plain tone shows the shift."""
+    scale = [220.0, 261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33]
+    pat = [(0, 5, 2, .9), (3, 3, 1, .7), (6, 6, 2, .8), (10, 4, 1, .6),
+           (12, 7, 3, .9), (16, 5, 1, .7), (19, 2, 2, .8), (24, 0, 4, .9),
+           (28, 4, 2, .6)]
+    total = step * 16 * bars
+    buf = [0.0] * total
+    for rep in range(bars // 2):
+        base = rep * step * 32
+        oct_up = 2 if rep % 2 else 1
+        for pos, deg, lens, vel in pat:
+            f = scale[deg] * oct_up
+            start = base + pos * step
+            dur = min(lens * step, total - start)
+            for i in range(dur):
+                env = min(1.0, i / 150.0) * min(1.0, (dur - i) / 900.0)
+                ph = f * i / SR
+                v = 0.0
+                for h in (1, 3, 5, 7, 9):
+                    if f * h < 13000:
+                        v += math.sin(2 * math.pi * ph * h) / h
+                buf[start + i] += 0.5 * vel * env * v
+    pk = max(abs(v) for v in buf) or 1.0
+    g = 0.5 / pk
+    return [(v * g, v * g) for v in buf]
+
 def synth_arp(step=7328, bars=4):
     """Soft square-ish arp (odd harmonics, one-pole LP feel via 1/n^1.6
     rolloff), B minor add9, on the 90.27 BPM 16th grid."""
@@ -149,16 +177,18 @@ def prep_sources():
     d = ROOT / "out" / "demo_sources"
     dd = d / "discord"
     plans = {
-        # name: (builder) — trims are gentle: full loops, capped for suite size
-        "drums110": lambda: read_wav(dd / "drums_dry.wav")[0],
-        "drums90": lambda: tile(read_wav(d / "RRD_KitC_Clean-90-01.wav")[0], 4),
-        "piano": lambda: read_wav(d / "piano_chords.wav")[0][: 16 * SR],
-        "glow": lambda: read_wav(d / "glow_excerpt.wav")[0][: 16 * SR],
-        "guitar": lambda: read_wav(d / "solo_guitar.wav")[0][: 14 * SR],
-        "band": lambda: read_wav(dd / "band_dry.wav")[0][: 14 * SR],
-        "melody": lambda: read_wav(ROOT / "out" / "test_audio" / "melody.wav")[0][: 12 * SR],
-        "kalimba": synth_kalimba,
-        "arp": synth_arp,
+        # name: (builder) — long takes: Sam's note, "cuts off a little abrupt
+        # before you get a chance to hear", so full loops + tiled beds
+        "drums110": lambda: tile(read_wav(dd / "drums_dry.wav")[0], 2),
+        "drums90": lambda: tile(read_wav(d / "RRD_KitC_Clean-90-01.wav")[0], 8),
+        "piano": lambda: read_wav(d / "piano_chords.wav")[0],
+        "glow": lambda: read_wav(d / "glow_excerpt.wav")[0],
+        "guitar": lambda: read_wav(d / "solo_guitar.wav")[0][: 20 * SR],
+        "band": lambda: read_wav(dd / "band_dry.wav")[0][: 20 * SR],
+        "melody": lambda: read_wav(ROOT / "out" / "test_audio" / "melody.wav")[0],
+        "kalimba": lambda: synth_kalimba(bars=8),
+        "arp": lambda: synth_arp(bars=8),
+        "bleep": synth_bleep,
     }
     paths = {}
     for name, fn in plans.items():
@@ -332,6 +362,45 @@ SUITE = [
      {"dmode": 4, "dptch": 3, "dtime": 100, "dfdbk": 80, "dwow": 0}, -7,
      "REVERSE at 512-sample segments: glitch stutter on drums"),
 
+    # ---- the extreme shelf: glitch and pitch pushed past sensible ----
+    ("xtreme_comb_robot_kalimba", "kalimba", "delay",
+     {"dtime": 2, "dfdbk": 127, "dtone": 127, "dping": 0, "dspray": 60,
+      "dwow": 0}, -6,
+     "TIME 2 = a 320-sample comb resonator at FDBK 127: kalimba through a robot larynx"),
+    ("xtreme_comb_subdrone_arp", "arp", "delay",
+     {"dtime": 5, "dfdbk": 127, "dtone": 90, "dping": 0, "dspray": 110,
+      "dwow": 0}, -6,
+     "TIME 5 comb tuned near 63 Hz, DRV 110: the arp grows a driven sub-drone"),
+    ("xtreme_grain_blizzard_kalimba", "kalimba", "delay",
+     {"dmode": 3, "dtime": 64, "dfdbk": 127, "dspray": 127, "dtone": 127,
+      "dwow": 127, "dptch": 3}, -9,
+     "GRAIN with every knob at the wall: DENS+SPRAY 127, wide set - the blizzard"),
+    ("xtreme_grain_micro_arp", "arp", "delay",
+     {"dmode": 3, "dtime": 8, "dfdbk": 127, "dspray": 90, "dtone": 127,
+      "dwow": 100, "dptch": 3}, -9,
+     "GRAIN reading right behind the write head (TIME 8): buzzy micro-glitter"),
+    ("xtreme_pitch_seasick_bleep", "bleep", "delay",
+     {"dmode": 1, "dptch": 3, "dtime": 93, "dfdbk": 110, "dwow": 127,
+      "drate": 127}, -8,
+     "PITCH detune under DPTH/RATE 127: the shifter losing its grip, beautifully"),
+    ("xtreme_pitch_octdrop_bleep", "bleep", "delay",
+     {"dmode": 1, "dptch": 2, "dtime": 93, "dfdbk": 120, "dtone": 60,
+      "dwow": 0}, -8,
+     "PITCH -12 at FDBK 120: every bleep drops an octave and echoes into the floor"),
+    ("xtreme_reverse_storm_arp", "arp", "delay",
+     {"dmode": 4, "dptch": 3, "dtime": 100, "dfdbk": 127, "dping": 127,
+      "dspray": 70, "dwow": 0}, -7,
+     "REVERSE 512-sample segments, FDBK 127, full ping-pong: the stutter storm"),
+    ("xtreme_tape_wreck_bleep", "bleep", "delay",
+     {"dtime": 114, "dfdbk": 115, "dtone": 40, "dwow": 127, "drate": 18,
+      "dspray": 127}, -7,
+     "DPTH 127 at a slow RATE with DRV 127: tape machine dying mid-take"),
+    ("xtreme_gate4_arp", "arp", "verb", (2, {"TIME": 127, "GATE": 4}), -6,
+     "GATE 4 on BIG at max TIME: the reverb reduced to a pump that breathes 16ths"),
+    ("xtreme_gated_shimmer_kalimba", "kalimba", "verb",
+     (2, {"TIME": 120, "SPEED": 110, "GATE": 14}), -6,
+     "gated shimmer: glass choir chopped mid-bloom - chopped-glass rhythm"),
+
     # ---- Together: BongDelay -> ChonVerb over the -VRB cross-send ----
     ("combo_grain_bigwash_glow", "glow", "combo",
      ({"dmode": 3, "dtime": 32, "dfdbk": 127, "dspray": 64, "dtone": 127,
@@ -361,6 +430,80 @@ SUITE = [
      ({"dtime": 93, "dfdbk": 85, "dtone": 80, "dwow": 110, "drate": 95,
        "dspray": 30, "dvrbw": 100}, {"time": 110, "shmr": 90, "rmode": 2}, -8), -9,
      "warped tape echoes into shimmer BIG - the wildest patch in the set"),
+
+    # ---- dense / rhythmic / saturated: DRV at the wall on locked grids ----
+    ("sat_pong16_drums110", "drums110", "delay",
+     {"dtime": 46, "dfdbk": 110, "dtone": 60, "dping": 127, "dspray": 127,
+      "dwow": 0}, -6,
+     "16th ping-pong (TIME 46) with DRV 127: a dense saturated echo lattice"),
+    ("sat_dubwall_drums90", "drums90", "delay",
+     {"dtime": 57, "dfdbk": 122, "dtone": 35, "dspray": 127, "dwow": 20}, -6,
+     "16ths at 90 BPM, FDBK 122, dark and driven: the dub wall"),
+    ("sat_lattice_arp", "arp", "delay",
+     {"dtime": 57, "dfdbk": 115, "dtone": 55, "dping": 127, "dspray": 127,
+      "dwow": 0}, -6,
+     "the arp through the same driven lattice: notes smearing into a pumping grid"),
+    ("sat_combgrind_drums110", "drums110", "delay",
+     {"dtime": 2, "dfdbk": 127, "dtone": 110, "dping": 0, "dspray": 127,
+      "dwow": 0}, -6,
+     "drums through the TIME 2 comb with DRV 127: industrial grind, still on the grid"),
+    ("sat_grainchop_drums110", "drums110", "delay",
+     {"dmode": 3, "dtime": 32, "dfdbk": 127, "dspray": 40, "dtone": 127,
+      "dwow": 127, "dptch": 1}, -7,
+     "GRAIN DENS 127 on drums, narrow set: the beat re-cut into granular chop"),
+    ("sat_revgrind_drums90", "drums90", "delay",
+     {"dmode": 4, "dptch": 3, "dtime": 100, "dfdbk": 127, "dspray": 127,
+      "dwow": 0}, -6,
+     "512-sample REVERSE at FDBK 127 with DRV 127: driven stutter grind"),
+    ("sat_combo_pumpwall_drums110", "drums110", "combo",
+     ({"dtime": 93, "dfdbk": 115, "dtone": 45, "dspray": 127, "dwow": 0,
+       "dvrbw": 110}, {"time": 110, "gate": 10, "rmode": 2}, -7), -6,
+     "saturated 8th echoes into gated BIG: the wall pumps with the kick"),
+
+    # ---- pitch & shimmer abused ON rhythm: crazy fun, still on the grid ----
+    ("rhx_pitchup_drums110", "drums110", "delay",
+     {"dmode": 1, "dptch": 0, "dtime": 93, "dfdbk": 110, "dwow": 0}, -7,
+     "PITCH +12 on the beat: every 8th echo of the kit an octave up, zippy and dense"),
+    ("rhx_subdrop_drums90", "drums90", "delay",
+     {"dmode": 1, "dptch": 2, "dtime": 114, "dfdbk": 115, "dtone": 70,
+      "dwow": 0}, -6,
+     "PITCH -12 at 90 BPM: every hit answered a sub-octave down - drops for free"),
+    ("rhx_grainmad_drums110", "drums110", "delay",
+     {"dmode": 3, "dtime": 32, "dfdbk": 127, "dspray": 127, "dtone": 127,
+      "dwow": 127, "dptch": 3}, -7,
+     "GRAIN wide set + DENS/SPRAY 127 on drums: wrong notes can't exist on a beat"),
+    ("rhx_gated_shimmer_drums110", "drums110", "verb",
+     (2, {"TIME": 120, "SPEED": 127, "GATE": 10}), -5,
+     "SHMR 127 gated at 10: each hit sprays octave glass, then the gate guillotines it"),
+    ("rhx_combo_spiral_drums110", "drums110", "combo",
+     ({"dmode": 1, "dptch": 0, "dtime": 93, "dfdbk": 100, "dwow": 0,
+       "dvrbw": 110}, {"time": 127, "shmr": 127, "rmode": 2}, -7), -8,
+     "PITCH +12 echoes into SHMR 127 BIG: the whole beat spiralling upward forever"),
+    ("rhx_combo_shimmerpump_drums90", "drums90", "combo",
+     ({"dtime": 114, "dfdbk": 110, "dtone": 50, "dspray": 100, "dwow": 0,
+       "dvrbw": 110}, {"time": 120, "shmr": 110, "gate": 12, "rmode": 2}, -7), -6,
+     "driven dub 8ths into gated shimmer BIG: a glass wall that pumps with the kick"),
+
+    # ---- extreme combos: the glitch shelf through the wash ----
+    ("xcombo_blizzard_shimmer_kalimba", "kalimba", "combo",
+     ({"dmode": 3, "dtime": 64, "dfdbk": 127, "dspray": 127, "dtone": 127,
+       "dwow": 127, "dptch": 3, "dvrbw": 110},
+      {"time": 127, "shmr": 127, "rmode": 2}, -8), -10,
+     "the GRAIN blizzard into SHMR 127 BIG at max TIME: a glitter storm that never lands"),
+    ("xcombo_comb_cathedral_arp", "arp", "combo",
+     ({"dtime": 5, "dfdbk": 127, "dtone": 90, "dping": 0, "dspray": 110,
+       "dwow": 0, "dvrbw": 110}, {"time": 127, "rmode": 2}, -8), -7,
+     "the driven comb drone into BIG at max TIME: industrial cathedral"),
+    ("xcombo_stutter_shimmer_arp", "arp", "combo",
+     ({"dmode": 4, "dptch": 3, "dtime": 100, "dfdbk": 127, "dping": 127,
+       "dspray": 70, "dwow": 0, "dvrbw": 100},
+      {"time": 110, "shmr": 90, "rmode": 2}, -8), -9,
+     "the reverse stutter storm washing into shimmer: broken machinery in a chapel"),
+    ("xcombo_seasick_warble_bleep", "bleep", "combo",
+     ({"dmode": 1, "dptch": 3, "dtime": 93, "dfdbk": 110, "dwow": 127,
+       "drate": 127, "dvrbw": 110},
+      {"time": 100, "mod": 127, "rrate": 3, "rmode": 1}, -8), -9,
+     "seasick detune into PLATE with MOD 127 at 4x: two warbles fighting, gloriously"),
 ]
 
 def main():
@@ -392,10 +535,10 @@ def main():
         print(f"[{len(results)+1}/{len(jobs)}] {name}")
         if kind == "verb":
             mode, params = spec
-            wet = render_reverb(srcs[src], WET / f"{name}.wav", mode, 8, params)
+            wet = render_reverb(srcs[src], WET / f"{name}.wav", mode, 10, params)
             pk = mix(srcs[src], [(wet, wet_db)], out_path)
         elif kind == "delay":
-            wet = render_send(srcs[src], WET / f"{name}.wav", 3.0, "DS", None, spec)
+            wet = render_send(srcs[src], WET / f"{name}.wav", 10.0, "DS", None, spec)
             pk = mix(srcs[src], [(wet, wet_db)], out_path)
         else:  # combo: one RDS run per pick, honest single-render bus
             dargs, rargs, wash_db = spec
@@ -403,8 +546,8 @@ def main():
             common.update(rargs)
             common["dlevel"] = 127
             common["level"] = 0
-            wet_d = render_send(srcs[src], WET / f"{name}_D.wav", 6.0, "RDS", "D", common)
-            wet_r = render_send(srcs[src], WET / f"{name}_R.wav", 6.0, "RDS", "R", common)
+            wet_d = render_send(srcs[src], WET / f"{name}_D.wav", 12.0, "RDS", "D", common)
+            wet_r = render_send(srcs[src], WET / f"{name}_R.wav", 12.0, "RDS", "R", common)
             pk = mix(srcs[src], [(wet_d, wet_db), (wet_r, wash_db)], out_path)
         results.append((name, src, blurb, pk))
         print(f"    -> {out_path.name}  peak {pk:.2f}", flush=True)
