@@ -11,7 +11,7 @@ What runs today:
 | | |
 |---|---|
 | **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
-| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), FREEZE, TAPE (wow/flutter + saturation) and GRAIN — that routes *into* the reverb over the bus. On hardware since R15; every knob live and audible as of R41 (18 Aug 2026). |
+| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), FREEZE, TAPE (wow/flutter + saturation) and GRAIN — that routes *into* the reverb over the bus. Confirmed on hardware, every knob live and audible. |
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
@@ -34,15 +34,14 @@ cross into the reverb — a route the stock firmware has no path for at all.
 
 The costs are all measured, not estimated:
 
-| resource | per core | state (18 Aug 2026, R41) |
+| resource | per core | state (Aug 2026 build) |
 |---|---|---|
 | Cycles | 4,535/sample | measured ceiling; worst mode fits its core with margin |
 | Program space | 8,192 words | donor region 2,724 words/payload: A 55 free, B 1 free |
 | Delay memory | 65,536 words | 1.49 s per server |
 
-`docs/CHIP.md` carries every one of these numbers with a confidence marker,
-and keeps retracted values next to current ones — knowing what a figure *used
-to be* is how you spot a document that has not caught up.
+`docs/CHIP.md` carries every one of these numbers with a confidence marker —
+measured or inferred, and what would falsify it.
 
 ---
 

@@ -1,15 +1,13 @@
 # Chip, cycles and memory — the current numbers
 
-One page, because these have moved a lot and stale copies of them have cost
-real work. **Every row carries a confidence marker.** Where a number was
+One page, because stale copies of these numbers have cost real work.
+**Every row carries a confidence marker.** Where a number was
 retracted, the old value is kept alongside it — knowing what a figure used to
 be is how you spot a doc that hasn't caught up.
 
 - ✅ **measured** — on hardware, or read off the part
 - 🟡 **inferred** — fits the evidence, not directly tested; falsifier stated
 - ❌ **retracted** — was believed, now known wrong
-
-Last updated 7 Aug 2026 (build 27).
 
 ---
 
@@ -51,17 +49,17 @@ core that track lives on.
 
 ### The three resources, and how they differ
 
-| | scoped to | spent when | ours |
+| | scoped to | spent when | this build |
 |---|---|---|---|
-| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **32 free** (✅ 11 Aug; the 7–10 Aug builds read 11 free) |
-| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | ~1 392 spare ✅ measured 7 Aug; the bank has grown 573 since, so **~819/sample** remains for new work |
+| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **32 free** ✅ (an earlier build read 11 free) |
+| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | ~1 392 spare ✅ measured; the bank has grown 573 since that measurement, so **~819/sample** remains for new work |
 | **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
 
 The one that catches people is the middle row. Program space is paid **once**;
 cycles are paid **per track per slot per frame**. Eight tracks running ChonVerb
 cost one copy of the code and eight times the cycles.
 
-### The two menus, read off the image (8 Aug 2026)
+### The two menus, read off the image
 
 ✅ **Measured, not inferred** — decoded from the chooser lists at `0x400d6060`
 (FX1) and `0x400d6090` (FX2):
@@ -78,7 +76,7 @@ FX2 (15): ...the same 11, plus DELAY, PLATE REV, SPRING REV, DARK REV
    PLATE REV, SPRING REV or DARK REV by name."** It cannot — they are not in
    its list. So **taking the three reverbs costs FX1 nothing at all**, and the
    "three stock reverbs for a better one" trade is only ever paid on the FX2
-   menu, which we replace wholesale anyway. The null-stub silencing stays as
+   menu, which this build replaces wholesale anyway. The null-stub silencing stays as
    insurance (both slots share one dispatch, so a stored id outside the menu
    would still reach the code), but it is defending a path the UI cannot walk.
 2. **FX1's 10 real effects are exactly the reclaimable pool** — 3,384 words,
@@ -86,9 +84,9 @@ FX2 (15): ...the same 11, plus DELAY, PLATE REV, SPRING REV, DARK REV
    to work with, and it is what `XBUS.md`'s FX1 section should be priced
    against.
 
-### So: can we delete the stock effects "off FX2"?
+### So: can the stock effects be deleted "off FX2"?
 
-**No — and this is the thing you're remembering.** There is no FX1 pool and no
+**No.** There is no FX1 pool and no
 FX2 pool. Every effect exists once, in the DSP's program memory, and both menus
 point at the same implementations through that single dispatch table.
 
@@ -98,9 +96,9 @@ point at the same implementations through that single dispatch table.
   **both** slots.
 
 That is exactly why the build **silences PLATE REV, SPRING REV and DARK REV on
-FX1**: we overwrote their code with ChonVerb, so if their ids still dispatched
-normally, selecting one on FX1 would run our hardcoded-base engine a second,
-uncontrolled time. CHORUS was a donor until v98 and is now byte-identical to
+FX1**: their code is overwritten with ChonVerb, so if their ids still dispatched
+normally, selecting one on FX1 would run the hardcoded-base engine a second,
+uncontrolled time. CHORUS was once a donor and is now byte-identical to
 stock, so FX1 gets its chorus back.
 
 ⚠️ **This has a live consequence for the cycle headroom.** FX1 effects draw
@@ -114,7 +112,7 @@ FX1 = FILTER. Every FX1 filter you turn on eats into that figure.
 
 | | | |
 |---|---|---|
-| CPU | Freescale ColdFire **MCF54454VR266**, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; our note said `MCF5445A` — same family, likely a misread digit) |
+| CPU | Freescale ColdFire **MCF54454VR266**, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A` — same family, likely a misread digit) |
 | Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) | ✅ board photo |
 | DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet |
 | External memory controller | **None.** No EMC on this part — all memory is on-chip | ✅ datasheet block diagram |
@@ -134,12 +132,12 @@ no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 | | | |
 |---|---|---|
 | Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic |
-| **Measured ceiling for FX work** | **~2 150** (reverb alone) to **~2 350** (full bank) | ✅ hardware, build 23 |
-| **Proven spare headroom** | **1 392 cycles/sample**, exactly | ✅ hardware, build 23 |
+| **Measured ceiling for FX work** | **~2 150** (reverb alone) to **~2 350** (full bank) | ✅ hardware, burn probe |
+| **Proven spare headroom** | **1 392 cycles/sample**, exactly | ✅ hardware, burn probe |
 | Safe planning number | **~1 100–1 200** | 🟡 1 392 minus contention margin |
 | Stock's own share | ~2 400, a bit over half the core | 🟡 by subtraction |
 
-**How the ceiling was measured.** `dsp/burn_probe.asm` adds `16 × p3`
+**How the ceiling was measured.** `dsp/burn_probe.asm` (in git history) adds `16 × p3`
 cycles/sample of pure nops, scaled by `n7` so the figure is per *sample*
 regardless of the split. It froze at p3 = 87 → **87 × 16 = 1 392 cycles**
 tolerated on top of whatever was already running.
@@ -152,8 +150,8 @@ memory where nops do not.
 ### Why the datasheet cannot answer this
 
 It gives exactly one cycle number: **200 MIPS per core → 4 535 cycles/sample at
-44.1 kHz**. That is the ceiling of the *silicon*. Three things it cannot tell
-us, and all three sit between that figure and anything spendable:
+44.1 kHz**. That is the ceiling of the *silicon*. Three things it cannot
+answer, and all three sit between that figure and anything spendable:
 
 1. **What stock already uses.** Voice playback, sample streaming and
    interpolation, FX1, frame plumbing, DMA orchestration — that is a property
@@ -169,15 +167,15 @@ us, and all three sit between that figure and anything spendable:
 left after stock.** Only the second is spendable, and only the second can be
 measured from here.
 
-Rough split implied by our measurements (big error bars, but the shape holds):
+Rough split implied by the measurements (big error bars, but the shape holds):
 of 4 535 cycles/sample, stock's own per-track work takes **under ~1 550**, four
-FX1 FILTERs take **over 640**, our FX2 bank takes ~957 static, and 1 392 was
+FX1 FILTERs take **over 640**, the FX2 bank takes ~957 static, and 1 392 was
 still spare on top of all of it.
 
 📄 **The reference manual HAS now been read** — `DSP56720RM.pdf`, 575 pages,
 at `downloads/datasheets/` (gitignored; third-party). Extract with
 `pdftotext -layout`; `file` misreports it as 27 pages. It settled §3's memory
-questions without a flash. What it still has and we have NOT used: Ch. 3's five
+questions without a flash, including Ch. 3's five
 OMR-selectable memory maps (`MS`, `MSW0`, `MSW1`), which set the per-core X/Y/P
 extents — read those before trusting any *internal* extent.
 
@@ -186,7 +184,7 @@ extents — read those before trusting any *internal* extent.
 ⚠️ **1 392 is spare on top of whatever happened to be assigned during that
 sweep — not an untouchable reserve.** Everything on the core draws from the
 same budget: stock's per-track voice work, **all four tracks' FX1 effects**,
-and our FX2 bank. A fresh part defaults FX1 = FILTER, so a realistic kit is
+and the FX2 bank. A fresh part defaults FX1 = FILTER, so a realistic kit is
 paying for four FX1 effects the sweep may not have included.
 
 **Budget against the worst realistic case per core**, not the bare one:
@@ -204,8 +202,8 @@ so **any configuration can be measured, on demand, with no flash**:
 
 And the *difference* between two configurations is the **cost of the change** —
 which is the only way to price stock effects at all, since they are binary and
-instruction count is not cycles (`v97` moved instructions up 508 → 512 while
-cycles fell 735 → 731).
+instruction count is not cycles (one rewrite moved instructions up 508 → 512
+while cycles fell 735 → 731).
 
 So the cost of a stock FX1 effect is directly measurable: sweep with it
 assigned on all four tracks, sweep without, take the difference. If a
@@ -237,8 +235,8 @@ Two consequences, and the first is the important one:
 
 **1 392 is the CONSERVATIVE number, not the optimistic one.** It was measured
 with the heaviest FX1 config already running, so it is a worst case that needs
-no further derating. Design the delay against it. *(Update, 11 Aug: the bank
-has grown 573 cycles since that measurement, so the number to design against
+no further derating. Design the delay against it. *(The bank
+has since grown 573 cycles, so the number to design against
 today is **819**, not 1 392.)*
 
 **Turning FX1 filters off is worth ≥ 640 cycles** — a real design lever if
@@ -254,10 +252,9 @@ that matters — but it is the only reason §2's "~2 150" is still a range.
 algorithm is designed against a real budget rather than a bare-config one.
 
 ❌ **"The budget is 1080 cycles/sample."** 1080 was never a ceiling. It is the
-load `stageprobe5` happened to *survive* (`REVERB_LOG.md`) and got written down
-as a budget. Every design decision from the density pass onward was priced
-against it. `tools/cycle_count.py` printed `budget/DSP 1080` for a while
-after the retraction; it now subtracts bank growth and prints the live number.
+load one probe build happened to *survive* (`REVERB_LOG.md`, in git history)
+and got written down as a budget.
+`tools/cycle_count.py` now subtracts bank growth and prints the live number.
 
 ❌ **"There is not real headroom — do not spend it on more delay lines."**
 Retracted. There are ~1 200 usable cycles.
@@ -266,10 +263,10 @@ Retracted. There are ~1 200 usable cycles.
 
 | | cycles/sample | |
 |---|---|---|
-| `reverb_server` (ChonVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` — **pre-8-line reading**; ~1 133 as of the 9 Aug count |
+| `reverb_server` (ChonVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` — **pre-8-line reading**; **~1 133** with the 8-line tank |
 | `delay_server` (BongDelay, **placeholder**) | 163 | ✅ same |
 | `send_client` × 2 | 36 | ✅ same |
-| **full bank** | **957** | ✅ same — pre-8-line; far larger since (the bank has grown 573 vs the 7 Aug burn) |
+| **full bank** | **957** | ✅ same — pre-8-line; far larger since (the bank has grown 573 vs the burn measurement) |
 
 These are **static** counts — words in the sample loop, no memory-contention
 stalls modelled — so they are a floor. `tools/dsp_host` **cannot** measure
@@ -277,7 +274,7 @@ cycles: its `instructions/sample` is a constant divided by whatever frame count
 you ask for.
 
 **For scale:** the entire ChonVerb engine was 758 cycles when the spare was
-measured (~1 133 as of 9 Aug), and 1 392 was room for ~1.8 more complete
+measured (~1 133 with the 8-line tank), and 1 392 was room for ~1.8 more complete
 reverbs on the same core — against today's ~819 spare, call it less than one
 more. A good delay is ~200–300;
 a correlation-search pitch shifter amortises to ~1/sample plus ~30–60.
@@ -286,7 +283,7 @@ a correlation-search pitch shifter amortises to ~1/sample plus ~30–60.
 
 ## 3. DSP Y memory
 
-Swept end to end on hardware (`dsp/ymemprobe.asm`, 3 Aug), per core:
+Swept end to end on hardware (`dsp/ymemprobe.asm`, in git history), per core:
 
 | Y range | what | |
 |---|---|---|
@@ -314,10 +311,10 @@ which was the whole ambiguity in the block diagram.
 
 ❌ **"The two DSPs are a hard boundary."** `BUS.md`'s founding constraint is
 dead. There is 64 K both cores address; the split into `0x30000` (payload A) /
-`0x38000` (payload B) is **a convention we chose**, not a hardware wall. A true
+`0x38000` (payload B) is **a chosen convention**, not a hardware wall. A true
 8-track bus and cross-core sends are both back on the table.
 
-✅ **P, X and Y ALIAS in this region — CONFIRMED ON HARDWARE**, 7 Aug, build 27.
+✅ **P, X and Y ALIAS in this region — CONFIRMED ON HARDWARE.**
 The manual says *"the Program, X, and Y memory addresses are mapped into same
 physical location"*; `dsp/alias_probe.asm` wrote a tagged incrementing word
 through Y and read it back through **X** and through **P**, at four addresses
@@ -334,16 +331,16 @@ already run — but nothing may assume that region is scratch.
 writing over bootstrap A's first word all along, and reading it back through P.
 That is also the strongest single piece of evidence for the aliasing — if P and
 Y were separate memories, `P:0x31000` would still hold a bootstrap instruction,
-not our counter.)
+not the probe's counter.)
 
-❌ **"X:0x30000 and Y:0x30000 do not alias."** Commit `0f93639` reached that by
+❌ **"X:0x30000 and Y:0x30000 do not alias."** That claim was reached by
 inference — *if they aliased, stock would corrupt itself whenever a reverb sat
 on track 3*. The manual states the hardware directly and wins. One premise of
 that argument is false; the likeliest is the claim that stock stages per-frame
 parameters at `X:0x30000` at all.
 
 ❌ **"BongDelay may use its full 32 768 words."** Retracted with it. The window
-is not ours to assume.
+is not free ground to assume.
 
 ✅ **Zero wait states as X or Y** (1 as P) — so this memory is *not* slow, and
 `DSP.md:449`/`744`'s "walks external memory, which is slower" is wrong twice
@@ -360,7 +357,7 @@ poll-data registers for exchange. Worth remembering if the shared window ever
 proves unusable.
 
 ✅ **Per-core P/X/Y extents are configurable via OMR — and stock runs the
-DEFAULT map. ANSWERED, Ch. 3 read 7 Aug 2026.**
+DEFAULT map. ANSWERED from Ch. 3 of the reference manual.**
 
 | map | MS | MSW1 | MSW0 | Program | X | Y |
 |---|---|---|---|---|---|---|
@@ -390,7 +387,7 @@ reach `0x08d98`.
 `0x30000-0x3FFFF` window is program-addressable in every configuration, not
 just as X/Y. See `XBUS.md` for both levers this opens and their falsifiers.
 
-## 3a. What is actually IN the shared window (mapped 7 Aug, static analysis)
+## 3a. What is actually IN the shared window (mapped by static analysis)
 
 Two free passes over `out/raw/section_3_MAIN_OS.bin`: which modules **load**
 into `0x30000-0x3FFFF`, and which words in P code **reference** it. Remember P,
@@ -429,7 +426,7 @@ Anything from that pass must be disassembled before it is believed.
 | | |
 |---|---|
 | ChonVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
-| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Ran under `DEV=1` 10 Aug; still never heard on its shipping payload-B path |
+| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Renders locally under `DEV=1`; confirmed on hardware on its shipping payload-B path |
 | Bus scratch | `Y:0x900–0x980` — parity word, then 4 × 16-word accumulators and 4 × 16-word wet buffers |
 | Per-instance base stash | `Y:0x795 + (r7>>8)` — one word per instance |
 | SEND | **nothing.** A zero-footprint client; never touches its own slot |
@@ -448,20 +445,20 @@ bisect); do not design around it.
 
 | | | |
 |---|---|---|
-| Our region (PLATE + SPRING + DARK, contiguous) | **2 724 words** | ✅ |
-| Used by a normal build | 2 692 — **32 free** (✅ 11 Aug; build 25 read 2 713 — 11 free) | ✅ |
+| The donor region (PLATE + SPRING + DARK, contiguous) | **2 724 words** | ✅ |
+| Used by a normal build | 2 692 — **32 free** (an earlier build read 2 713 — 11 free) | ✅ |
 | Reachability sweep | payload A 95.8 %, B 98.5 % | ✅ `tools/dsp_reach.py` |
 | Free pool elsewhere | **none** | ✅ |
 | Only reclaimable space | **3 384 words held by ten stock effects** — costs those effects (earlier reading: ~3 100 / nine) | ✅ |
 
-Placement, in address order (build-25-era sizes): `SEND` 166 ·
+Placement, in address order (sizes from an earlier build): `SEND` 166 ·
 `REVERB SERVER` 2 040 · `DELAY SERVER` 507. In today's BURN plain layout
 `DELAY SERVER` is **2 794 words** — it overruns the 2 724-word region by 70
 on its own.
 
-**We take exactly three stock effects: PLATE REV, SPRING REV, DARK REV.**
-CHORUS was a donor until v98 and is now byte-identical to stock. Relocating
-*our* code is cheap (assembled with `-org`); relocating *stock* code is not
+**Exactly three stock effects are taken: PLATE REV, SPRING REV, DARK REV.**
+CHORUS was once a donor and is now byte-identical to stock. Relocating
+*the project's* code is cheap (assembled with `-org`); relocating *stock* code is not
 (binary, absolute branch targets), so more space means taking a neighbour's
 whole module.
 
@@ -471,19 +468,21 @@ whole module.
 
 | | | |
 |---|---|---|
-| Tracks per core | **5–8 → payload A / core 0; 1–4 → payload B / core 1** (the 7 Aug probe reading — 1–4 → A — was inverted and is retracted) | ✅ measured 10 Aug, MrkVerb32 marker |
+| Tracks per core | **5–8 → payload A / core 0; 1–4 → payload B / core 1** (an earlier probe reading — 1–4 → A — was inverted and is retracted) | ✅ measured, marker-flash test |
 | FX slots per track | FX1 (3 072 words) + FX2 (16 384 words) | ✅ |
 | Reverb/delay are FX2-only | FX1's 3 072 words are far too small | ✅ |
 | FX1 is **not** idle | dispatcher calls it every frame; a fresh part defaults FX1 = FILTER | ✅ |
 | Parameters per effect | **12** — 6 page-1 knobs, 3 page-2 knobs, 3 page-2 selects | ✅ `DSP.md` §9 |
 | Menu | 3 entries: ChonVerb / BongDelay / Send. **No selectable NONE** | ✅ |
 | Unassigned tracks | id 0 is aliased to **SEND**, so every unassigned track feeds the bus | ✅ |
-| Track↔core mapping | **payload A serves tracks 5-8, payload B serves tracks 1-4** — inverted from every pre-SPEC assumption; unobservable before SPEC | ✅ MrkVerb32 marker flash, 10 Aug 2026 |
+| Track↔core mapping | **payload A serves tracks 5-8, payload B serves tracks 1-4** — inverted from the natural assumption; unobservable before specialization (both payloads carried every effect) | ✅ marker-flash test |
 | `r7` state block | `$00–$83` usable; **`$84–$8a` HANGS** (host-owned) | ✅ bisected |
 | ChonVerb's `r7` | **full** | ✅ |
 
-Persistent state does **not** have to live in `r7` — `dsp/cycleburn.asm` parks
-LFO and damping state in the instance's own Y region, and `DSP.md`'s v27 build
+Persistent state does **not** have to live in `r7` — `dsp/cycleburn.asm`
+(in git history) parks
+LFO and damping state in the instance's own Y region, and a probe build
+recorded in `DSP.md`
 proved absolute Y works where `r7+$84` hangs. There is exactly one server per
 bank, so absolute-Y scalars cannot collide.
 
@@ -500,7 +499,7 @@ per-8K-block contention rule says how to lay it out.
 heavily used by stock, at both of `delay_server`'s bases.
 
 ~~**The 32-step fault.**~~ **CLOSED — not a product issue.** ✅ Bisected on
-hardware, 7 Aug:
+hardware:
 
 | configuration | result |
 |---|---|
@@ -514,26 +513,24 @@ configuration the product actually uses is clean.
 
 That fits the probe's known gap: `BUS.md` has **role locks "so duplicates fail
 safe"**, claimed by both real servers via `bus_claim` and released each block by
-`send_client`. `dsp/shared_probe.asm` has neither lock nor housekeeping, so two
+`send_client`. `dsp/shared_probe.asm` (in git history) has neither lock nor housekeeping, so two
 copies each behave as if they own the bank. **Mechanism never established, and
 it does not need to be** — one server per bank is a design rule, not an
 accident. Re-open only if duplicate servers ever become desirable.
 
 ❌ **RETRACTED: "a single word written to `Y:0x34000` from payload A corrupts
-that track's audio after ~5.45 s."** This paragraph stood here until 8 Aug 2026
-and `XBUS.md` imported it as **risk 1, "the only unknown here that can
-invalidate the whole memory plan."** It was already dead when it was written.
+that track's audio after ~5.45 s."**
 
-**The v107 bisect directly above falsifies it, and covers the exact address.**
-`dsp/shared_probe.asm`'s `ADDR = 0` *is* `0x34000` (`move #>$34000,y0 ; 0: FX2
+**The bisect directly above falsifies it, and covers the exact address.**
+`dsp/shared_probe.asm`'s `ADDR = 0` *is* `0x34000`
+(`move #>$34000,y0 ; 0: FX2
 slot 4 base, A's half`), and the row **"one `SharePrb` + three `Send`s → clean
 at every ADDR and INC"** therefore includes a single instance writing that very
 word. ✅ **One instance at `Y:0x34000` is clean on hardware.**
 
-The two builds that "reproduced" it are rounds 1 and 2, and commit `04a24cf`
-says so in as many words: *"I had also misread my own evidence: rounds 1 and 2
-BOTH had two instances running, which is why I attributed to the write address
-what was always about duplication."* The fault was always duplication; the
+The two builds that appeared to reproduce it each had **two instances
+running**, which attributed to the write address
+what was always about duplication. The fault was always duplication; the
 address never mattered.
 
 **What is still true** is only the row above: two instances of the same effect
@@ -541,11 +538,11 @@ corrupt audio after ~5.45 s at any address, mechanism unestablished, and no
 product configuration has that. **`Y:0x30000–0x37FFF` is not blocked**, and the
 memory re-plan can proceed.
 
-**The lesson is the propagation, not the measurement.** The retraction was
-correct, was written down, and reached only the commit message — so a claim
-this file still asserted went on to become the top-ranked blocker in the
-planning doc. When a bisect kills a hypothesis, delete the paragraph the
-hypothesis lives in, not just the sentence that stated the conclusion.
+**The lesson is the propagation, not the measurement.** A retraction that is
+written down in only one place leaves the dead claim asserted everywhere else
+it was copied. When a bisect kills a hypothesis, delete the paragraph the
+hypothesis lives in — in every document that repeats it — not just the
+sentence that stated the conclusion.
 
 **Assembler traps.** `dsp_asm` has no reject path — it emits the nearest
 encoding. Accumulator-to-accumulator `CMP`/`CMPM`/`TFR` all mis-encode

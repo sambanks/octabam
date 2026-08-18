@@ -1,20 +1,19 @@
 # ChonVerb — the custom reverb
 
-An eight-line FDN reverb (four-line through ChonVerb31; the eight-line tank
-landed 8 Aug 2026 and the four-line source is deleted — recover it with
-`git show c1ce08d:dsp/reverb_server.asm`). It ships as **ChonVerb**, one of the three effects
+An eight-line FDN reverb (an earlier four-line engine's source is deleted —
+recover it with `git show c1ce08d:dsp/reverb_server.asm`, in git history). It
+ships as **ChonVerb**, one of the three effects
 on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
 bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 
-> ⚠️ **Reading this file, 9 Aug 2026:** sections below describing the
-> four-line tank, the six-tap early-reflection section, the HALL mode, or the
-> 2048-word static in-loop allpasses describe the **deleted engine**. The
-> shipping engine is eight lines, 8×8 FWHT, **three** modes (ROOM/PLATE/BIG —
-> HALL cut 9 Aug), ER removed in favour of a short Dattorro-scale input
-> diffuser (taps 179/293/419/547 = 4.1–12.4 ms), and 512-word **modulated**
-> in-loop allpasses. The signal path and parameter table here are updated;
-> deeper sections are corrected where marked, historical otherwise. `PLAN.md`
-> is current ground truth for state and work order.
+> ⚠️ **Reading this file:** sections below describing the four-line tank, the
+> six-tap early-reflection section, the HALL mode, or the 2048-word static
+> in-loop allpasses describe the **deleted engine**. The shipping engine is
+> eight lines, 8×8 FWHT, **three** modes (ROOM/PLATE/BIG), ER removed in
+> favour of a short Dattorro-scale input diffuser (taps 179/293/419/547 =
+> 4.1–12.4 ms), and 512-word **modulated** in-loop allpasses. The signal path
+> and parameter table here are current; deeper sections are corrected where
+> marked, historical otherwise.
 
 > **The old standalone DARK REV replacement is retired.** Earlier builds
 > (`dsp/reverb88.asm` via `tools/build_reverb.py`) replaced stock DARK REV in
@@ -23,19 +22,17 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > its own id, and its own knob layout. Where this document still describes the
 > old build, it is history; the sections below marked **current** are not.
 
-> **Status, 5 Aug 2026 (`ChonVerb21`, on hardware, confirmed by ear).**
-> Structure, parameters and the MODE select all work on the unit, and so does
-> everything from the 5 Aug session: the tail crackle is fixed, the four modes
-> are genuinely distinct *(four modes then; three since the 9 Aug HALL cut)*
-> (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG, plus
-> per-mode ER arrivals, diffuser taps, tap spread, LFO rate and damping), and
-> MIX holds dry at unity to half-travel before crossfading. Reported on
-> hardware as "much better".
+> ✅ **On hardware, confirmed by ear:** structure, parameters and the MODE
+> select all work on the unit; the tail crackle is fixed; the modes are
+> genuinely distinct (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG on the
+> four-mode engine of the time, plus per-mode ER arrivals, diffuser taps, tap
+> spread, LFO rate and damping); and MIX holds dry at unity to half-travel
+> before crossfading.
 >
-> Per-mode voicing is no longer the blocking work. What remains is measured but
+> Per-mode voicing is not the blocking work. What remains is measured but
 > unacted-on: modal prominence 8–11 dB over the local envelope, whose only
 > structural lever is more total delay against a 32K hard ceiling — see
-> `VOICING.md` Round 5 for why no fix is worth making at this budget.
+> `VOICING.md` for why no fix is worth making at this budget.
 
 For how the DSP subsystem works — boot, payload format, the dispatcher ABI,
 the allocator, the memory map — see `DSP.md`. For the bus itself see `BUS.md`.
@@ -58,26 +55,25 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
 * **Pre-delay** — up to 4096 samples (93 ms), modulo buffer on r6.
 * **Diffusers** — four series allpasses, taps 179/293/419/547 (4.1–12.4 ms,
   Dattorro-scale; the original 1994/1706/1438/1226 dispersed rather than
-  diffused and were replaced 9 Aug 2026 when they took over the removed ER
-  section's role). Coefficient per mode via `$3f`.
+  diffused and were replaced when the ER section was removed, the short
+  diffusers taking over its role). Coefficient per mode via `$3f`.
 * **Tank** — eight delay lines with an 8×8 Walsh-Hadamard feedback matrix
   (24 butterflies, decay constants scaled 2/√8). All eight reads are
   **interpolated and LFO-modulated**, each line free-running on its own LFO
   rate, the multipliers prime-relative so the periods never align. Per-line
   state lives in a Y table at `base+0x7F00` (table A) and `base+0x7F30`
-  (table B: input weights, and per-line decay gains once PLAN.md 1.1 lands).
+  (table B: input weights and per-line decay gains).
 * **In the loop** — a one-pole low-pass (HI) and a one-pole high-pass (LO)
   per line, so the decay is shaped per band rather than the output EQ'd.
-  ⚠️ One shared damping coefficient per pass — PLAN.md 1.2's open item.
+  ⚠️ One shared damping coefficient per pass.
 * **In-loop allpasses** — two, **512 words each, LFO-modulated** (fixed
   depth, never zero — a static tank rings), on lines 0 and 1. An allpass in
   the feedback path multiplies echo density on every circulation. The
   proportion matters: too long relative to the line and it becomes a
   dispersive element, which is what a spring reverb is — the reason both the
   original 2048-word versions and the long input diffusers were cut.
-* **Early reflections** — **removed 9 Aug 2026.** The six discrete taps were
-  a flutter echo (VOICING.md Round 7); the short input diffuser fills the
-  early-energy role.
+* **Early reflections** — **removed.** The six discrete taps were a flutter
+  echo (`VOICING.md`); the short input diffuser fills the early-energy role.
 * **Out** — L/R tap sums taken **before** the FWHT (a Hadamard row applied
   after the transform collapses to a single line), sign patterns `+−+−+−+−`
   and `++−−++−−`; then mid/side width, then a dry/wet crossfade.
@@ -85,8 +81,7 @@ in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ───�
 ## Parameters (current)
 
 All twelve are live — six on page 1, six on page 2 — and the page-2 mapping
-was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
-`ChonVerb19`.
+was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed.
 
 | page | slot | label | reads | what it does |
 |---|---|---|---|---|
@@ -96,39 +91,32 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed as shipped in
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
 | 1 | 5 | MIX | `r6+$5` | dry held to half-travel, then crossfaded (see below) |
-| 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (R16: reads `$c` knob field OR'd with `$b` — `$b` alone was silent on hardware, DSP.md §9) |
-| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG (HALL cut 9 Aug 2026 — indistinguishable from BIG in blind A/B) |
+| 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (read from the `$c` knob field OR'd with `$b`; the panel publishes slot 6 to `$c` — DSP.md §9) |
+| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
-| 2 | 9 | WIDTH | `r6+$d` low | R16: **4-step select** (mono/narrow/normal/wide). Companion low-byte fields read near-boolean at count 128 on hardware, so smooth-knob WIDTH was dead — a small count publishes |
-| 2 | 10 | GATE | `r6+$e` knob | R16: **gated reverb** (Phil-Collins slam). 0 = off; up = hold time (~46 ms–780 ms) before the wet slams shut. Envelope keyed on the tank input ($1b, so sends trigger it), fast attack + ~20 ms eased release, applied as a per-sample multiply on the wet L/R. Replaced PRE (pre-delay was buffer-capped at 93 ms, not worth a knob) |
-| 2 | 11 | -DEL | `r6+$e` low | R16: **4-step send select** (off/.25/.5/.75) into the DELAY bus (`BUS.md`) — companion field, same reason as WIDTH |
+| 2 | 9 | WIDTH | `r6+$d` low | **4-step select** (mono/narrow/normal/wide). Companion fields read near-boolean at count 128 on hardware, so a smooth knob there is dead — a small count publishes |
+| 2 | 10 | GATE | `r6+$e` knob | **gated reverb** (Phil-Collins slam). 0 = off; up = hold time (~46 ms–780 ms) before the wet slams shut. Envelope keyed on the tank input ($1b, so sends trigger it), fast attack + ~20 ms eased release, applied as a per-sample multiply on the wet L/R. Replaced PRE (pre-delay was buffer-capped at 93 ms, not worth a knob) |
+| 2 | 11 | RATE | `r6+$e` low | **4-step select** for the tank-mod LFO speed: 0.5×/1×/2×/4× of the pinned base rate — companion field, same reason as WIDTH. (This slot previously carried a `→DEL` send select, retired because a return reverb's dry is normally silence) |
 
-**Page-2 budget (R16): three smooth knobs + three selects.** The three knob
-fields (`$c` SHMR, `$d` DIFF, `$e` GATE — PRE was retired in R16 and its slot
-became GATE) publish as full-travel knobs; the three
-companion fields (`$c` mid MODE, `$d` low WIDTH, `$e` low →DEL) publish only as
+**Page-2 budget: three smooth knobs + three selects.** The three knob
+fields (`$c` SHMR, `$d` DIFF, `$e` GATE) publish as full-travel knobs; the three
+companion fields (`$c` mid MODE, `$d` low WIDTH, `$e` low RATE) publish only as
 small-count selects — a smooth knob in a companion field reads near-boolean on
 hardware. This is the actual page-2 control budget.
-
-**(Historical note) five of the six page-2 controls are full-travel knobs**, including two in
-*companion* fields. `DSP.md` §9 used to say the budget was three knobs plus
-three small selects; that was inferred from stock's usage, and hardware
-falsified it. Only MODE is deliberately stepped.
 
 **Page-2 slots pair up**: a knob arrives as `value<<16` occupying bits 16-22,
 leaving the low bits of the same word as an independent field. Even slot =
 knob field, odd slot = companion field of the same word. Both can carry a
 full 0–127 value; mask the companion with `#>$7f` and shift it up by 16.
 
-**The `$e` knob field carries GATE since R16.** ❌ Retracted: "PRE lives on
-`$e`, not `$c`" — true through R15; PRE was retired in R16 (buffer-capped at
-93 ms, not worth a knob) and its slot became GATE. The `$c` half still stands:
-nothing drives `$c`'s knob field usefully. Stock DARK reads *its* pre-delay
-from `$c`, which is why older builds did. Do not "fix" this back.
+**The `$e` knob field carries GATE.** PRE, which used to live on `$e`, was
+retired (buffer-capped at 93 ms, not worth a knob) and its slot became GATE.
+Stock DARK reads *its* pre-delay from `$c`, which is why older builds drove
+`$c`; do not "fix" that back.
 
 ### Making a cloned descriptor draw correctly
 
-This cost six hardware flashes to establish, so it is written out in full.
+This was expensive to establish on hardware, so it is written out in full.
 Four per-parameter arrays matter, each 12 × u32, `P`-relative:
 
 | offset | what it is |
@@ -139,9 +127,9 @@ Four per-parameter arrays matter, each 12 × u32, `P`-relative:
 | `P+0x12a` | **must be `0` for a stepped control.** Surveyed all 20 stepped params in stock FX2: 20 of 20 have it zero. |
 
 **A clone inherits all four from its donor**, and the donor's values are for a
-different algorithm. That is what made `→DEL` render as DARK's "MIX / SEND"
-however large a count it was given, and what kept MODE a plain knob for three
-builds. Zero `0x0ca`/`0x0fa` for every renamed slot; for a stepped control,
+different algorithm. That is what made an early `→DEL` send select render as
+DARK's "MIX / SEND" however large a count it was given, and what kept MODE
+drawing as a plain knob. Zero `0x0ca`/`0x0fa` for every renamed slot; for a stepped control,
 set both to a stock pair *and* zero `0x12a`.
 
 Working stepped pairs, for reference:
@@ -164,8 +152,8 @@ explicit default — an unlisted one silently keeps the donor's.
 
 ## Memory layout
 
-**Current layout (✅ since the 8-line re-layout of 9 Aug 2026, map from
-`dsp/reverb_server.asm`'s header):** the private allocation at the hardcoded
+**Current layout (✅ measured; map from `dsp/reverb_server.asm`'s
+header):** the private allocation at the hardcoded
 base `Y:0x4000` (32,768 words, `0x4000–0xBFFF`) now carries tank lines only;
 every other buffer moved to the shared window, giving **65,536 words (1.49 s)
 per server** in total:
@@ -174,12 +162,13 @@ per server** in total:
 |---|---|---|
 | `base+0x0000..0x7fff` | 8 × 4096 | tank lines, taps to ~3914 (89 ms) at SIZE max |
 | `shared+0x2000..0x3fff` | 4 × 2048 | input allpasses, taps 179/293/419/547 |
-| `shared+0x1000..0x1fff` | 4096 | former pre-delay (93 ms) — PRE retired in R16, buffer no longer read |
+| `shared+0x1000..0x1fff` | 4096 | former pre-delay (93 ms) — PRE retired, buffer no longer read |
 | `shared+0x0800..` | 2048 | shimmer line (excised by `NOSHIM=1`) |
 | `shared+0x4000` / `0x4200` | 2 × 512 | in-loop allpasses, modulated, taps 298/446 |
 | `shared+0x4500..` | 13 words/line | tank state tables A and B (see below) |
 
-❌ Retracted layout (32K-era, four-line engine — kept for history):
+❌ Old layout (32K-era, four-line engine — historical; does not describe the
+shipping build):
 
 | offset | size | what |
 |---|---|---|
@@ -188,16 +177,16 @@ per server** in total:
 | `base+0x6000` | 4096 | pre-delay |
 | `base+0x7000` | 2 × 2048 | in-loop allpasses, taps 298/446 |
 
-**Persistent state is split.** ❌ Retracted: "all persistent state lives in
-the r7 block … there is no Y state block" — true of the four-line engine only.
-The r7 block is per-instance and now **completely full** (`$00..$83` all taken,
-10 Aug 2026; `$84+` hangs the unit) — `$82` is the warm-up counter (tagged
+**Persistent state is split** (the four-line engine kept it all in the r7
+block; the shipping engine does not).
+The r7 block is per-instance and **completely full** (`$00..$83` all taken;
+`$84+` hangs the unit) — `$82` is the warm-up counter (tagged
 `$2c0000 | count`), `$83` the tank phase. Per-line tank state lives in the
 **Y state tables A and B at `shared+0x4500`** (13 words per line), because the
 rolled tank loops need state they can index, which a fixed r7 displacement can
 never be.
 
-## The 32K re-layout (done and long since flashed; superseded by the 8-line layout above)
+## The 32K re-layout (historical — replaced by the 8-line layout above)
 
 The layout above used only 16,384 of the 32,768 words `BUS.md` allocates —
 half the allocation sat unused. `DSP.md` §7c's high-X region was probed and is
@@ -218,9 +207,9 @@ an integer tap moved with it: **`asr #$b` → `asr #$a`** on all four taps, and
 `2048 - tap` → `4096 - tap`. The constants are untouched; the scaling around
 them is not.
 
-**The in-loop allpass taps DID double, 149/223 → 298/446.** The plan didn't
-say so, and their `n5` had to be recomputed for the bigger buffer either way.
-What v85 fixed there was a *proportion* — ~15% of the line the allpass feeds,
+**The in-loop allpass taps DID double, 149/223 → 298/446**, and their `n5`
+had to be recomputed for the bigger buffer either way.
+What matters there is a *proportion* — ~15% of the line the allpass feeds,
 above which it disperses instead of diffusing — so holding 9.7%/14.5% against
 a line that is now twice as long means doubling the tap. Leaving them at
 149/223 would have halved the proportion to 4.8%/7.3%, a character change the
@@ -254,9 +243,11 @@ All runs `guard clean`, `0 CLOBBERING a loaded module`, no hang, at
 * **PRE doubled exactly.** Knob 0 → 127 moves the wet onset by 2032 samples on
   the old build and **4064** on the new one, and max PRE is not silent — which
   is the failure mode if the modulo offset ever exceeds the buffer.
-* **The bus plumbing is untouched.** The `→DELAY` dry send still lands on
-  `BUS.md`'s exact hand-derivable value (`0x0c8000` = dry 0.125 × level
-  0.78125 × `0x800000`), bit-identical between the old and new builds.
+* **The bus plumbing of the time was untouched.** The then-present `→DELAY`
+  dry send still landed on `BUS.md`'s exact hand-derivable value (`0x0c8000`
+  = dry 0.125 × level 0.78125 × `0x800000`), bit-identical between the old
+  and new builds. (The reverb no longer writes any bus; the send was later
+  retired.)
 
 Code size is unchanged — 1269/2130 words of the SPRING+DARK budget, same as
 before, since every change was a constant or a shift count.
@@ -276,11 +267,7 @@ the same source means anything.
 
 Neither render clipped (peak 0.36 FS, nothing at the rail), so the roughness
 on the old build is mode sparseness, not saturation. The separate saturation
-problem the same session turned up is under "Known limits" below, and is the
-next thing to fix.
-
-**~~Not yet flashed.~~ Resolved: this flashed long since.** ("Not yet
-flashed" was true when written.) Nothing here needed a flash to hear.
+problem is recorded under "Tuning" below (since fixed).
 
 ## Register map inside the sample loop
 
@@ -382,22 +369,22 @@ its traps.
 
 ## The cycle budget — measured, and much larger than assumed
 
-**Superseded: "four instances per DSP".** The engine was shaped around fitting
-four reverb instances on one chip — that is what forced the density pass
-(432 → 297 cycles/sample) and what made every feature look unaffordable. The
-bus design retired it: **one ChonVerb per bank**, enforced by the server-role
-lock in `BUS.md`. A bank's four FX2 slots hold one reverb, one delay and two
-sends, not four reverbs.
+**There is one ChonVerb per bank**, enforced by the server-role lock in
+`BUS.md` — a bank's four FX2 slots hold one reverb, one delay and two sends,
+not four reverbs. The engine was originally shaped around fitting four reverb
+instances on one chip — that is what forced the density pass
+(432 → 297 cycles/sample) and what made every feature look unaffordable; the
+bus design retired that constraint.
 
 Counted by `tools/cycle_count.py`, which assembles each server, injects a label
 after its `do n7,>END` sample loop and takes the word span. **Run it after any
-change to a sample loop** — the two hand counts this table has carried were
-both wrong, in different ways.
+change to a sample loop** — hand counts here have been wrong more than once,
+in different ways.
 
-> ❌ **Retracted accounting — the whole table is pre-8-line.** The ~1080
-> "budget per DSP" is retracted; the measured budget is 4,535 cycles/core,
-> with 819/sample of room for new work as of 11 Aug 2026. See `CHIP.md` for
-> the live numbers. Table kept as history.
+> ❌ **Old accounting — the whole table describes the four-line engine.** The
+> ~1080 "budget per DSP" is wrong; the measured budget is 4,535 cycles/core,
+> with 819/sample of room for new work. See `CHIP.md` for the live numbers.
+> Table kept as history.
 
 | | instructions | cycles/sample |
 |---|---|---|
@@ -408,7 +395,7 @@ both wrong, in different ways.
 | budget per DSP (`stageprobe5/6`) | | ~1080 |
 | **headroom** | | **~221** (80% used) |
 
-(v99 took the reverb 731 -> 660 and the bank 930 -> 859: the early-reflection
+(A later pass took the reverb 731 -> 660 and the bank 930 -> 859: the early-reflection
 block was building all six tap addresses by hand -- subtract, `and #>$fff` to
 wrap, clean A2, add the base, load r5 -- when **r6 already indexes the
 pre-delay buffer under `m6 = $fff`**, which is the addressing the pre-delay's
@@ -419,16 +406,16 @@ drops the constant straight into `n6`. 254 -> ~181 cycles, **bit-identical
 across all four modes and a max-feedback wet render.** The one cost: the ER taps
 borrow `n6`, so the pre-delay reloads it each sample -- 2 words against 71.
 
-735 for the reverb / 934 a bank before the v97 Hadamard rewrite below. Note
+735 for the reverb / 934 a bank before the Hadamard rewrite below. Note
 that rewrite moved the instruction count the *other* way — 508 → 512 — while
 cycles fell 735 → 731. **Instructions are not cycles here**, and a count of
 them would have scored a real speed-up as a regression.)
 
-**This supersedes 529/551, and the correction has two independent halves.**
+**The earlier 529/551 figures were wrong, and the correction has two
+independent halves.**
 
-*The engine really did grow*: 367 → 508 instructions across the seventeen
-commits Rounds 3–5 put into `reverb_server.asm`. Six per-mode levers are not
-free.
+*The engine really did grow*: 367 → 508 instructions across the per-mode
+voicing work on `reverb_server.asm`. Six per-mode levers are not free.
 
 *And the old model under-costed the code.* It charged two cycles only for `#>`
 long immediates and missed that **`x:(rn+$disp)` is also a two-word, two-cycle
@@ -446,7 +433,7 @@ instructions and 735 words agree exactly across all three.
 **Treat 934 as a floor, not a ceiling.** The count is exact for the code but
 models no memory-contention stalls, so the figure under load can only be
 higher. The old headroom claim — "1.4× the entire reverb engine, free" — is
-gone: at 86% of budget (❌ retracted-budget accounting — the ~1080 figure;
+gone: at 86% of budget (❌ old-budget accounting — the ~1080 figure;
 see `CHIP.md`) with two effects and two sends live, a bank is much
 closer to its limit than anything in these docs has assumed, and adding
 delay lines on the strength of the old number would have overrun it.
@@ -463,7 +450,7 @@ The arithmetic ceiling is 133 cycles (208 accesses − 75 one-off setups). **Tha
 ceiling is not reachable, and the best cluster has now been converted to find
 out by how much.**
 
-**Done (v97): the 4×4 Hadamard, `$16..$1d`.** The most favourable cluster in the
+**Done: the 4×4 Hadamard, `$16..$1d`.** The most favourable cluster in the
 loop — 13 accesses over 9 contiguous offsets, the only run of that quality.
 d0..d3 and u0..u3 are adjacent, so one `lua` pointer reads the four inputs and
 walks straight into the four outputs, and copying the operand to B removes the
@@ -478,7 +465,7 @@ it back costs 4 words, halving the win. **Every further cluster pays this same
 tax** unless it can live inside a register whose modifier is already linear.
 
 Verified bit-identical across all four modes and a `TIME=127 SIZE=127 DIFF=127`
-wet render. Bank total **934 → 930** (❌ retracted-budget accounting — see
+wet render. Bank total **934 → 930** (❌ old-budget accounting — see
 `CHIP.md`).
 
 **Extrapolate down, not up.** This was the best case in the loop and it
@@ -488,7 +475,7 @@ only five or six registers are spare. The realistic total for the whole lever
 is a few tens of cycles, not 133 — worth having if cycles ever get tight,
 **not worth spending a flash to chase now**.
 
-**Trap, and it cost the first two attempts: this assembler silently encodes
+**Trap: this assembler silently encodes
 `tfr a,b` as `rnd b`** (opcode `200019`, confirmed by disassembling the output).
 No error, no warning. B never receives A, the FDN matrix stops being orthogonal,
 and the symptom is not a crash but a **40% shift in RT60** — the sort of thing
@@ -538,8 +525,8 @@ The last row buys density and pre-delay, not decay. Mode spacing is computed
 from the **third** row, so quoting the allocation — or `DSP.md` §7c's "743 ms
 ceiling", which is the first row — overstates the space by about 2.6×.
 
-Recomputed against the real constants (the previously recorded 4,493 samples
-/ 9.8 Hz / overlap 0.06 belonged to the tap set *two* generations back —
+Recomputed against the real constants (an earlier recorded 4,493 samples
+/ 9.8 Hz / overlap 0.06 belonged to an older tap set —
 1567/1249/977/733 — and understated the build it was attached to):
 
 | | total delay | spacing | overlap @ RT60 = 4 s |
@@ -568,8 +555,8 @@ is a measurably smoother one.
 One lever is left, and one is spent:
 
 1. ~~**Spend freed cycles on more delay lines.**~~ — **taken**: the
-   eight-line tank shipped 8 Aug 2026. (The density pass left headroom that
-   did not exist before; v84 used 341 of it.)
+   eight-line tank shipped. (The density pass left headroom that did not
+   exist before; an earlier build spent 341 of it.)
 2. ~~**Trade instance count for tank size**~~ — **taken.** This used to be a
    plan to patch the allocator table at `X:0x255` (8 modest instances, or 4
    large at 2 × 32K per DSP, or 2 very large at 1 × 45K). `BUS.md` reached
@@ -579,14 +566,14 @@ One lever is left, and one is spent:
    above spends it. The 45K variant would still need the FX1 region and an
    allocator edit, and is not planned.
 
-Smaller items: MOD depth's range wants calibrating by ear (this was recorded
-for years as "SHVG's range" — SHVG is a *stock DARK REV* knob label the
-retired build inherited, and ChonVerb names its own knobs, so the item is
-just MOD); and there is an unexplained emulator-only divergence between one
-and two instances under a nonzero split.
+Smaller items: MOD depth's range wants calibrating by ear (older records call
+this "SHVG's range" — SHVG is a *stock DARK REV* knob label the retired build
+inherited, and ChonVerb names its own knobs, so the item is just MOD); and
+there is an unexplained emulator-only divergence between one and two
+instances under a nonzero split.
 
-The old note that "MIXF (`$e`) is dead" is also gone: `$e` carries PRE in its
-knob field and →DEL in its companion field, both live.
+`$e` is not dead: it carries GATE in its knob field and RATE in its companion
+field, both live.
 
 
 ## Tuning: what is known
@@ -599,14 +586,14 @@ its limits).
 depends on how fast the delay moves, not how far. 63 samples at 2.84 Hz is
 ~28 cents of vibrato and sounds seasick; the same 63 samples at 0.25 Hz is
 ~2.5 cents and is inaudible. Depth is what smears the modes. Coupling MOD
-to both — which v64 did as a workaround for an inaudible control — means
+to both — once done as a workaround for an inaudible control — means
 turning it up adds wobble faster than it adds smearing. **Keep the rate
 slow and fixed; let MOD move depth alone.**
 
 **Small SIZE is inherently bad.** At the original floor the whole tank was
 566 samples: a mode spacing of 78 Hz, which is a comb, not a reverb. The
 floor is now `f = 0.4` so the bottom of the knob is ~1,810 samples at 24 Hz.
-Confirmed by ear ("smallest size sounds worst") before it was fixed.
+Confirmed by ear before it was fixed.
 
 **Modulation must never reach zero.** A completely static tank rings — its
 modes are audible as pitched resonance. Some residual sweep is needed at
@@ -616,11 +603,11 @@ MOD=0.
 masked with `2^(24-n)-1` and shifted by **n-1**, never by `n`. Shifting by
 `n` pushes the top half past `0x800000`, where a 24-bit fractional reads
 NEGATIVE, and the interpolation jumps backwards once per integer LFO step —
-heard as a fast flutter. This bug was live from v72 to v79.
+heard as a fast flutter.
 
 **That bug was also doing something useful**, which is the uncomfortable
 part: it is a noise source, and interpolation dither is a real technique for
-breaking up delay-line artifacts. Every build the user liked had it. Fixing
+breaking up delay-line artifacts. Every build preferred by ear had it. Fixing
 it was correct and immediately exposed ringing that had been masked. If the
 tail needs more smearing than slow deep modulation provides, *deliberate*
 randomisation is the principled replacement.
@@ -640,7 +627,7 @@ It is a real defect, but a tiny one, and only in one place:
   mid-block, because the LFOs advance once per block. Deleting the four seed
   reads does change the output, so that priming is load-bearing, not
   vestigial.
-* The two **in-loop allpasses** (v90) used the same trick and never got the
+* The two **in-loop allpasses** used the same trick and never got the
   same seeding. Now they do.
 
 Cost of priming them: 28 instructions per BLOCK, outside the sample loop, so
@@ -670,19 +657,19 @@ MOD=127 it reads −50 dB, but nearly all of that is chaotic divergence of a
 feedback system, not artifact. The crest factor is what distinguishes them.
 
 **And an independent confirmation that was already on file.** `VOICING.md`
-Round 2b established by ear that the crackle is *gone at MOD=0*. The allpass
+records, by ear, that the crackle is *gone at MOD=0*. The allpass
 depth is fixed and never follows MOD, so the allpass carry defect is fully
 active at MOD=0 — it therefore cannot be a fault that disappears there. The
 same test kills the tank's carry as a candidate from the other direction,
 since the tank carries are primed. So the isolation trick above is not just
 a convenient way to measure this bug; MOD=0 was already the observation that
-ruled it out, and nobody had cashed it in.
+ruled it out.
 
-**What that leaves — superseded, see below.** The block-stepped LFO was the
-leading candidate by elimination. It has since been built and measured, and
-it is not the fault either: **−62.5 dB**, for 64 cycles/sample. The staircase
+**The block-stepped LFO is not the fault either.** It was the leading
+candidate by elimination, but built and measured it sits at
+**−62.5 dB**, for 64 cycles/sample. The staircase
 moves the delay by only ~0.026 of a sample across one block, which was never
-going to be a crackle. Not kept. `VOICING.md` Round 2e has the implementation
+going to be a crackle. Not kept. `VOICING.md` has the implementation
 and the invariant that verified it (at MOD=0 there is nothing to ramp, and
 the ramped engine comes out bit-identical to the stepped one).
 
@@ -696,32 +683,29 @@ sawtooth that wraps whenever *its own* LFO's integer part steps, which put a
 
 Measured at **−29.6 dB**, against −62.5 dB for the staircase and −64 dB for
 the allpass carry: 33 dB louder than either, and the only candidate with the
-magnitude to be audible at all. It also passes every negative test in
-`VOICING.md` Round 2b — gone at MOD=0, signal-proportional, broadband, not
+magnitude to be audible at all. It also passes every negative test recorded
+in `VOICING.md` — gone at MOD=0, signal-proportional, broadband, not
 the sample. The fix is a two-slot swap: no cycles, no words.
 
 The four LFO *phases* are deliberately crosswise (see Signal path); the two
 halves of one offset are not.
 
-**Confirmed by ear, both halves.** The crackle is fixed ("yes, fixed in B"),
-and the v72 caution — that removing an accidental noise source exposes
-ringing it was masking — **did not hold here**: on the 4–12 s tail, three
-rounds, *"sound the same as far as ringing goes."* Deliberate randomisation
-is therefore NOT needed. The caution is real and came from a real case, but
-it is something to **check**, not something to assume; checking it cost two
-listens. See `VOICING.md` Rounds 2e–2f.
+**Confirmed by ear, both halves.** The crackle is fixed, and the caution
+above — that removing an accidental noise source exposes ringing it was
+masking — **did not hold here**: on the 4–12 s tail the ringing is unchanged.
+Deliberate randomisation is therefore NOT needed. The caution is real and
+came from a real case, but it is something to **check**, not something to
+assume; checking it costs a couple of listens. See `VOICING.md`.
 
-This also lifts Round 2b's block on voicing: the tail no longer has broadband
-noise in it, so the per-mode constants can be judged on their own terms.
+The tail no longer has broadband noise in it, so the per-mode constants can
+be judged on their own terms.
 
-## What MODE actually varies (as voiced in Rounds 3–4)
+## What MODE actually varies
 
-Six levers, after Rounds 3–4. At the start of that work only the first three
-existed, and the modes were reported as sounding alike; after all six, "much
-better" by ear.
+Six levers. With only the first three, the modes sounded alike by ear; all
+six make them genuinely distinct.
 
-(The HALL column is kept as history — HALL was cut 9 Aug 2026,
-indistinguishable from BIG in blind A/B; shipping modes are ROOM/PLATE/BIG.)
+(The HALL column is kept as history; shipping modes are ROOM/PLATE/BIG.)
 
 | lever | ROOM | PLATE | HALL | BIG |
 |---|---|---|---|---|
@@ -744,8 +728,7 @@ original set, so ROOM must render *bit-identical* whenever the indirection is
 touched.
 
 **The r7 state block is FULL.** `$7e..$81` were the last free slots. `r7+$84`
-and up **hang the DSP** (host-owned — see `DSP.md`, bisected across three
-builds). Anything further that needs per-mode state must use the parking
+and up **hang the DSP** (host-owned — see `DSP.md`). Anything further that needs per-mode state must use the parking
 pattern: `md_*` writes its scale into a slot a later parameter block is going to
 overwrite anyway (`$2f` rate, `$1e` decay), and that block folds it into its own
 multiply. `md_*` runs before every parameter block, which is what makes it safe.
@@ -759,7 +742,7 @@ ear is the measurement.** Early crest factor is the better companion metric.
 **In-loop allpass proportion matters.** An allpass inside the feedback loop
 is a dispersive element — the mechanism spring reverbs are built on. At 15%
 of the line it feeds it is diffusion; ours ran 26–64% and were suspected of
-producing a spring/plate ring. Removing them was tested (v82/v83) but
+producing a spring/plate ring. Removing them was tested but
 bundled with other changes, so the result is not clean.
 
 **Pack the buffers.** Both the tank lines and the input diffusers were
@@ -771,11 +754,11 @@ pass. **When a design allocates equal buffers for unequal contents, check
 the utilisation.**
 
 **Input diffusion and in-loop diffusion are not interchangeable.** Moving
-input allpasses into the loop (v87) improved mode spacing but doubled the
+input allpasses into the loop improved mode spacing but doubled the
 early crest factor: the input chain smooths the attack, the in-loop chain
 thins the modes. Pack both; do not trade one for the other.
 
-**Averaging more tank lines into each output does not help** (v89). The
+**Averaging more tank lines into each output does not help.** The
 lines share a feedback matrix, so they are not independent; orthogonal
 4-line output taps concentrated energy rather than smoothing it, and gave
 no stereo benefit over disjoint 2-line pairs.
@@ -790,7 +773,7 @@ got a word *smaller*.
 **Accepted by ear, on the source where the fault was audible.** Three
 loudness-matched renders of the synth pluck: old engine at 0 dB (the fault),
 new engine at 0 dB, old engine at −12 dB trim (the known-good reference).
-New-at-0 dB against old-at−12 dB: **"same"**. That is the acceptance test —
+New-at-0 dB is indistinguishable from old-at−12 dB. That is the acceptance test —
 the engine now behaves at full input the way it used to behave only with
 12 dB of external trim.
 
@@ -803,8 +786,8 @@ same peak level is linear to within 0.1 dB, so it is **density**, not peak
 level, that drives this — a sine test misses it entirely.
 
 The controlled trim test predicted, in advance, that 0 dB and −12 dB would
-differ and that −12 dB and −24 dB would not. Both held ("very audible",
-"identical"), which is what identifies the mechanism as saturation and
+differ and that −12 dB and −24 dB would not. Both held by
+ear, which is what identifies the mechanism as saturation and
 nothing else.
 
 **Then the measurements led the work astray, and this is the part worth
@@ -833,7 +816,7 @@ Two concrete cautions that came out of it:
   bug recorded above — fixing something correct exposed what it had been
   masking — but here what it exposed does not matter.
 
-**MIX: acted on twice, and the second time was the right shape.** v94 made it a
+**MIX: a plain crossfade is the wrong shape here.** A first fix made it a
 straight `dry*(1-MIX) + wet*MIX` crossfade, because the old additive law left
 dry at full scale forever and the top of the knob was never actually *wet*.
 That motive was sound and the result was not: measured, the knob got **7 dB
@@ -841,21 +824,22 @@ QUIETER as it was turned up** (−22.0 dBFS at MIX=0 → −28.8 at 96). This is
 the usual −3 dB crossfade dip. **A reverb's wet is inherently far below its
 dry** — the tail spreads the same energy over seconds — so swapping one for the
 other at equal gain loses real level, and turning a reverb up should never
-shrink the sound. v96 holds the dry at unity for the bottom half and crossfades
-it away over the top half:
+shrink the sound. The shipping law holds the dry at unity for the bottom half
+and crossfades it away over the top half:
 
     dry = 1              MIX <= 64      pure "mix more in"
         = 2 * (1 - MIX)  MIX >  64      still reaches fully wet at the top
 
 Flat to within 0.1 dB across the bottom half, peak unchanged at 0.70–0.71, and
-it keeps what v94 was after. Reported by the user as unintuitive before it was
-measured; the measurement agreed.
+it keeps what the plain crossfade was after. The plain crossfade was judged
+unintuitive by ear before it was measured; the measurement agreed.
 That is a voicing decision, not a bug fix, and there is no ear evidence it
 matters yet.
 
-**Change one thing per flash.** Between v77 and v83 five things changed and
-the result was worse in a way that could not be attributed. The recovery was
-to reflash v77, confirm the baseline, and move one variable at a time.
+**Change one thing per flash.** When five things changed between two builds,
+the result was worse in a way that could not be attributed; the recovery was
+to reflash the older build, confirm the baseline, and move one variable at a
+time.
 
 ## The design, as built
 
@@ -863,14 +847,14 @@ to reflash v77, confirm the baseline, and move one variable at a time.
 largest space this hardware supports — rather than choosing between them. The
 three free page-2 selects exist precisely for this; MODE is the obvious first.
 
-* **Standard characters**: room / plate / big (HALL was cut 9 Aug 2026 —
+* **Standard characters**: room / plate / big (a fourth HALL mode was cut as
   indistinguishable from BIG in blind A/B), in the spirit of a Chase Bliss
   CXM 1978. Comfortably within budget — these want density, not length.
 * **Big mode**: **Valhalla-flavoured, not Blackhole.** Deliberate: Blackhole's
   character comes substantially from raw allocation, and 743 ms was the hard
-  ceiling when this was written (`DSP.md` §7c — the high X region was probed
-  and is not real). ❌ Superseded: 1.49 s per server since the XBUS
-  shared-window split.
+  ceiling when the mode was designed (`DSP.md` §7c — the high X region was
+  probed and is not real; the allocation is 1.49 s per server since the XBUS
+  shared-window split).
   Valhalla's large spaces get their scale from long feedback, heavy modulation
   and dense diffusion, which is both achievable here and a match for the FDN
   structure already in place. Expect genuinely large and smooth; not infinite.
@@ -878,13 +862,12 @@ three free page-2 selects exist precisely for this; MODE is the obvious first.
 MODE should reconfigure tap lengths, diffusion depth, damping and modulation
 together — not merely rescale SIZE.
 
-> 🟡 **History (marked 12 Aug 2026):** the hardware confirmation below is
-> real, but it describes the retired four-mode, four-line engine. Superseded
-> by the 8-line R13+ engine (tags 35–37 unflashed; the unit runs R15, tag 34).
+> 🟡 **Historical:** the hardware confirmation below is real, but it describes
+> the retired four-mode, four-line engine; the shipping engine is the
+> eight-line tank.
 
-**All of the above is built and confirmed on hardware as `ChonVerb21`**
-(5 Aug 2026, "much better"). MODE varies **six** levers, not the three it
-shipped with in `ChonVerb19`: tap scale and spread, ER level and arrival times,
+**All of the above was built and confirmed on hardware.** MODE varies **six**
+levers, not the original three: tap scale and spread, ER level and arrival times,
 diffusion coefficient and diffuser taps, LFO rate, damping, and decay time.
 RT60 runs 2.7 / 4.7 / 7.7 / 10.0 s across ROOM → BIG. Decay time was the lever
 MODE had never touched and the one that mattered most — every mode used to
@@ -893,24 +876,23 @@ however the others were set. Full record in `VOICING.md`.
 
 **Order of work — where it stands:**
 1. ~~The 32K re-layout~~ — **done**, flashed, confirmed by ear.
-2. ~~Design the modes~~ — **done**, Rounds 1–5 in `VOICING.md`.
+2. ~~Design the modes~~ — **done**, recorded in `VOICING.md`.
 3. ~~Measure real cycle cost with both effects live~~ — **counted**, and the
-   answer changed the picture: **934 of ~1080, 86% used** (❌ retracted-budget
+   answer changed the picture: **934 of ~1080, 86% used** (❌ old-budget
    accounting — see `CHIP.md`), not the 529 or ~700
-   the docs carried. `tools/cycle_count.py` makes it reproducible. What is
-   still flash-only is confirming it under load — the static count models no
-   memory-contention stalls, so it is a floor.
+   earlier records carried. `tools/cycle_count.py` makes it reproducible.
+   What is still flash-only is confirming it under load — the static count
+   models no memory-contention stalls, so it is a floor.
 
 **Also still open**, both small and both with their evidence recorded above:
-MOD depth's range wants calibrating by ear (Round 5 measured it flattening
-after ~64, so the top half of the knob may be doing nothing); and the
+MOD depth's range wants calibrating by ear (measured flattening after ~64, so
+the top half of the knob may be doing nothing — `VOICING.md`); and the
 unexplained emulator-only divergence between one and two instances under a
 nonzero split. Two things the emulator cannot check at all: item 3 above, and
-the UI surface for **WIDTH** and **→DEL**, whose companion fields `-params`
-cannot drive. ❌ Retracted (10 Aug 2026): "WIDTH has never been heard moving
-from the front panel" — WIDTH was confirmed moving on-unit, as the 4-step
-select it became in R16.
+the front-panel UI surface for the companion-field selects (**WIDTH**,
+**RATE** — see `PARAM_PAGES.md` for what the harness can and cannot drive).
+WIDTH has been confirmed moving on-unit as its 4-step select.
 
 **Closed, do not re-chase:** modal prominence (8–11 dB over the local envelope,
 monotonic in total delay, no structural lever left under the 32K ceiling —
-`VOICING.md` Round 5); tank saturation; the tail crackle; the MIX law.
+`VOICING.md`); tank saturation; the tail crackle; the MIX law.

@@ -1,67 +1,63 @@
-# Effect bus: shared delay + reverb sends (design, in progress)
+# Effect bus: shared delay + reverb sends
 
-> ❌ **Superseded as the design record, 12 Aug 2026 — see `XBUS.md`.** The
-> sections below predate the cross-core bus (which works, measured), the
-> track↔core measurement (payload A serves tracks 5–8, payload B serves
+> ❌ **`XBUS.md` is the current design record; this document predates it.**
+> The sections below predate the cross-core bus (which works — measured),
+> the track↔core measurement (payload A serves tracks 5–8, payload B serves
 > tracks 1–4 — inverted from what this file assumes), and the FX2-menu
-> framing correction (the donor reverbs were never on the FX1 menu). Kept
-> as history; the stale claims carry dated annotations in place.
+> framing correction (the donor reverbs were never on the FX1 menu, so
+> taking them cost FX1 nothing). Kept as the record of the per-bank bus
+> design; claims that no longer hold are corrected in place.
 
-**Status: both buses and the cross-bus sends are emulator-verified; the
-ColdFire menu has been through two hardware flashes.** Flash 1 found a
-chooser-overdraw bug; flash 2 found the real cause of "no knobs" — the
+**Status: both buses and the cross-bus sends are emulator-verified, and the
+ColdFire menu mechanism is hardware-verified.** (The "not flashed" notes in
+the task ledger below are from the time of writing; the full stack has since
+shipped and been confirmed on hardware — `XBUS.md` carries current status.) Hardware testing surfaced a
+chooser-overdraw bug and the real cause of "no knobs" — the
 descriptor clone was copied from `E` rather than `P = E+0x38`, losing the
 record's last `0x38` bytes and with them the **per-parameter enable
 bitmap** (`P+0x18a`/`P+0x18e`), so every clone declared itself to have no
 parameters. That, a missing selectable `NONE`, and donor defaults that were
 wrong for our algorithms (DARK's `MIX`=0 would have made REVERB SERVER
-silent regardless) are all fixed. See "Hardware test 1" and "Hardware test
-2" below. Third flash pending. `dsp/send_client.asm` (the client),
+silent regardless) are all fixed — see the hardware-test sections
+below. `dsp/send_client.asm` (the client),
 `dsp/reverb_server.asm` (the REVERB server, reusing the existing engine) and
-`dsp/delay_server.asm` (the DELAY server, a new algorithm — task 9) all exist
+`dsp/delay_server.asm` (the DELAY server, a new algorithm) all exist
 and are emulator-verified, individually and together (Mechanism section
 below) — guard-clean, and a value that only exists in the shared bus scratch
 has been shown to reach each server's engine and come back out its own WET
-buffer. Task 10 (cross-bus sends) is also built and verified: REVERB
+buffer. The cross-bus sends are also built and verified: REVERB
 SERVER's dry `→DELAY` send and DELAY SERVER's `→VERB` send both
 land correct, hand-checkable Q1.23 values in the other bus's accumulator
-(⚠️ `→VERB` is WET-ONLY and HARDWIRED as of v3 stage 1, 17 Aug 2026 — the dry
-half and both knobs are gone, and the send now registers in the REVERB count)
-(Cross-bus sends section below). Task 11 (`tools/build_menu.py`) replaces
+(⚠️ the `→VERB` send has since been reworked — wet-only, registering in the
+REVERB count; see `XBUS.md` and `dsp/delay_server.asm` for current behaviour)
+(Cross-bus sends section below). `tools/build_menu.py` replaces
 FX2's chooser with exactly the three entries below, each a fresh cloned
 descriptor under a brand-new id so FX1 is never touched even in the sense of
 shared-descriptor text bleed-through — verified against the real, decompiled
-ColdFire chooser functions (Menu and slot layout section below), not yet
-against the DSP dispatch tables (a separate, not-yet-scoped follow-up). It
+ColdFire chooser functions (Menu and slot layout section below). It
 builds entirely on mechanisms `REVERB.md`, `DSP.md` and `PARAM_PAGES.md`
 already proved out, plus its own now-verified bus plumbing and menu tables —
 this document adds no new reverse-engineering beyond that. Where it leans on
 something still unverified, that's called out.
 
-## Start here (state as of 4 Aug 2026)
+## Start here
 
 **Built and running on hardware.** Three FX2 effects sharing a send bus:
 `ChonVerb`, `BongDelay`, `Send`. Build with `python3 tools/build_bus.py`
 (writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
-wrap and flash per `README.md` §3. Latest flashed image carries `ChonVerb21`
-(5 Aug 2026); `BUILD_TAG` in `tools/build_bus.py` is the source of that number.
-**`ChonVerb22` is built but NOT yet flashed** — the v98 repack below.
-(*Annotation 12 Aug 2026: stale — the unit now runs **R15 (tag 34)**; tags
-35–37 (R16–R18) are built but unflashed. See `PLAN.md`.*)
+wrap and flash per `README.md` §3. `BUILD_TAG` in `tools/build_bus.py` is the
+build number stamped into the effect names.
 
-**What we take from stock, and what we don't (v98).** All three servers pack
-into **PLATE REV + SPRING REV + DARK REV** alone — 2724 contiguous words
-against 2672 of code, 52 free. Those three ids are silenced on FX1; that is
-the whole cost, and it is the trade the project was always making: three
-stock reverbs for a better one.
-(*Annotation 12 Aug 2026: two corrections. Occupancy is now **2,692 used /
-32 free** as of 11 Aug 2026. And the cost never landed on FX1 — the FX1 menu
-never listed PLATE/SPRING/DARK; they are FX2-only, so the whole cost is the
-FX2 menu's three stock reverbs and **FX1 lost nothing**.*)
+**What is taken from stock, and what is not.** All three servers pack
+into **PLATE REV + SPRING REV + DARK REV** alone — 2,724 contiguous words
+(the build report carries the live occupancy). Those three ids are silenced;
+that is the whole cost, and it is the trade the project was always making:
+three stock reverbs for a better one. The cost never lands on FX1 — the FX1
+menu never listed PLATE/SPRING/DARK; they are FX2-only, so the whole cost is
+the FX2 menu's three stock reverbs and **FX1 loses nothing**.
 
-**CHORUS is NOT taken and works normally.** It housed `Send`'s 166 words until
-v98 — collateral rather than a considered trade, since Send fits inside the
-reverb region with room over. Its code is byte-identical to stock and id
+**CHORUS is NOT taken and works normally.** Its code is byte-identical to
+stock and id
 `0x12` keeps its stock dispatch entries, both payloads, asserted at build
 time. Nothing had to be *recovered* to do this: every build starts from a
 pristine `out/raw/section_3_MAIN_OS.bin`, so stock code is only ever
@@ -74,40 +70,35 @@ overwritten on the way out, never destroyed.
 | sources | `dsp/reverb_server.asm`, `dsp/delay_server.asm`, `dsp/send_client.asm` |
 | probes | `dsp/page2_probe.asm`, `dsp/xmem_probe.asm` (diagnostics, `PROBE=1` / `XPROBE=1`) |
 
-**ChonVerb is feature-complete and voiced as of `ChonVerb21` (5 Aug 2026)**:
+**ChonVerb is feature-complete and voiced**:
 32K re-layout, tank headroom, modulated in-loop allpasses, early reflections, a
 MODE select varying six per-mode levers, and a dry/wet law that does not lose
-level as it is turned up — all confirmed on hardware by ear. Per-mode voicing
-is **done** (`VOICING.md` Rounds 1–5); what remains on the reverb is small and
-listed at the end of `REVERB.md`. **BongDelay is still placeholder** — the
-plumbing is verified, the algorithm has never been designed or voiced, and it
-is now the largest open piece of work on the bus.
+level as it is turned up — all confirmed on hardware. Per-mode voicing
+is logged in `VOICING.md`; what remains on the reverb is small and
+listed at the end of `REVERB.md`.
 
 The effect's displayed name carries its build number (`BUILD_TAG` in
-`tools/build_bus.py`) — bump it every time a `.bin` is wrapped. Three debugging
-rounds were lost to not being able to tell which firmware was on the unit.
+`tools/build_bus.py`) — bump it every time a `.bin` is wrapped; otherwise
+there is no way to tell which firmware is on the unit.
 
 Cycle budget is **measured, not guessed** — by `python3 tools/cycle_count.py`,
 which is the only correct way to get it: `tools/dsp_host` CANNOT measure this
-(its `instructions/sample` does not scale with frame count). A full bank
-(reverb + delay + two sends) is **930 of ~1080 cycles/sample — 86% used, 150
-free**, and that is a floor, since the count models no memory-contention
-stalls. (*Annotation 12 Aug 2026: the ~1080 budget is ❌ **retracted** — it
-was never a ceiling. Measured: **4,535 cycles/core**, with 819 cycles of room
-today. See `CHIP.md`.*) Earlier hand counts of 529 and ~700 were both wrong; see `REVERB.md`
-for the correction and for the one large lever that is left. **Re-run the tool
+(its `instructions/sample` does not scale with frame count). Measured:
+**4,535 cycles/core** — see `CHIP.md` for the current figures and headroom.
+(An earlier "~1080 cycles/sample budget" was never a ceiling and is wrong;
+hand counts of 529 and ~700 were also wrong — see `REVERB.md`
+for the correction.) **Re-run the tool
 after any change to a sample loop.**
 
-**Read before touching parameters:** `DSP.md` §9 (page-2 slot mapping, measured
-— two earlier guesses were wrong and cost flashes) and `PARAM_PAGES.md` §5e
-(the five tables, and the P-vs-E descriptor trap that cost two more).
+**Read before touching parameters:** `DSP.md` §9 (page-2 slot mapping,
+measured — plausible guesses at it are wrong) and `PARAM_PAGES.md` §5e
+(the five tables, and the P-vs-E descriptor trap).
 
-**Constraints that are settled, don't re-chase them:** 32,768 words per server
-is the memory ceiling (`DSP.md` §7c, probed); 12 parameters per effect, six
-page-1 knobs plus three page-2 knobs and three page-2 selects (`DSP.md` §9).
-(*Annotation 12 Aug 2026: the 32,768-word ceiling is ❌ **retracted** — since
-the XBUS split each server has **65,536 shared-window words = 1.49 s**
-(X/Y/P alias there; `CHIP.md`, alias probe build 27).*)
+**Constraints that are settled, don't re-chase them:** each server's memory
+ceiling is **65,536 shared-window words = 1.49 s** (X/Y/P alias in the shared
+window — `CHIP.md`; an earlier 32,768-word ceiling predates the XBUS split);
+12 parameters per effect, six page-1 knobs plus six page-2 controls
+(`DSP.md` §9).
 
 ## Motivation
 
@@ -130,21 +121,16 @@ runs. Building a literal pre-effect bus would mean patching the ColdFire
 frame builder that assembles audio for the DSP — a much bigger reverse-
 engineering project than the reverb itself, and out of scope here.
 
-**The two DSPs are also a hard boundary, not a soft one.** Tracks 1–4 are
-physically wired to chip A, tracks 5–8 to chip B (`ARCHITECTURE.md` §6,
-`DSP.md`'s boot sequence)
-(*Annotation 12 Aug 2026: ❌ retracted on both counts. The mapping is
-**inverted** — measured 10 Aug 2026 via the MrkVerb32 marker flash, payload
-A serves **tracks 5–8** and payload B serves **tracks 1–4**. And the "hard
-boundary" premise is retracted: the cross-core bus **works** — cross-core
-accumulators measured; see `XBUS.md`.*) — separate chips, separate DMA/host-port channels.
-The "shared" external 64K SRAM isn't a bridge between them either: it's
-partitioned in half at build time, one half per payload. Nothing found so far
-suggests the two chips exchange audio with each other in real time. So
-whatever gets built here is **scoped per bank of four tracks (1–4, 5–8),
-independently — not a single global 8-track bus.** A true unified bus would
-need to solve real-time inter-chip communication, an open unknown, not a
-known-but-unexplored lever like the ones below.
+**The two DSPs looked like a hard boundary, and are not.** Each bank of four
+tracks is wired to its own chip — payload A serves **tracks 5–8**, payload B
+serves **tracks 1–4** (measured via a marker flash; note the inversion from
+older assumptions) — separate chips, separate DMA/host-port channels, and the
+shared 64K SRAM window partitioned in half at build time, one half per
+payload. The design below therefore scoped the bus **per bank of four
+tracks, independently — not a single global 8-track bus**. ❌ That premise no
+longer holds for the shipped firmware: the cross-core bus **works** —
+cross-core accumulators measured; see `XBUS.md`. The per-bank design below
+is kept as the record of the underlying mechanism.
 
 ## The mechanism: fake a bus inside the per-track dispatch
 
@@ -481,14 +467,13 @@ exact `0x0dc000` Q1.23 product as before (dry 0.125 × level 0.859375 ×
 (page 1's last slot, already safe by the general page-1-is-always-straight
 rule, no class question at all) — unchanged by this task.
 
-**Built and verified, task 13 (`tools/build_bus.py`). Not flashed.** The
-three servers' own DSP code is now actually placed in P memory and
-dispatched, both payloads:
+**Built and verified, task 13 (`tools/build_bus.py`).** The three servers'
+own DSP code is placed in P memory and dispatched, both payloads:
 
-**Superseded by v98 — the table below is the original per-donor placement and
-is kept for the reasoning, not the addresses.** All three now pack into one
-region, PLATE+SPRING+DARK, and CHORUS is given back; see "What we take from
-stock" in *Start here*, and `tools/build_bus.py`'s docstring for the layout.
+**The table below is the original per-donor placement, kept for the
+reasoning, not the addresses.** All three now pack into one region,
+PLATE+SPRING+DARK, and CHORUS is given back; see "What we take from stock"
+in *Start here*, and `tools/build_bus.py`'s docstring for the layout.
 
 | entry | id | P-code donor | budget |
 |---|---|---|---|
@@ -520,9 +505,8 @@ deliberate departure from the currently-shipped reverb build, which
 repoints SPRING/DARK's *own* ids at the new engine. That's fine there
 because nothing else offers those ids once the three-entry menu replaces
 the whole FX2 chooser — but FX1's chooser is untouched and can still select
-CHORUS, PLATE REV, SPRING REV or DARK REV by name (*Correction 12 Aug 2026:
-the FX1 menu **never listed** PLATE/SPRING/DARK — CHORUS yes, but the reverb
-donors are FX2-only, so only CHORUS could ever be selected there*), and if
+CHORUS by name (of the donor-adjacent effects only CHORUS is in FX1's menu —
+PLATE/SPRING/DARK are FX2-only and were never listed there), and if
 their dispatch
 pointed at our servers, selecting one on FX1 would run the same
 hardcoded-Y-base engine a second, uncontrolled time on whatever track holds
@@ -809,7 +793,7 @@ two servers should split the whole bank's pool evenly — 32,768 words
 (~744 ms) each — rather than leaving two slots' worth of memory unused.
 This is `REVERB.md`'s "lever 2" ("4 large: 2 × 32K per DSP").
 
-**Originally planned as a `X:0x255` allocator-table edit; superseded.**
+**An `X:0x255` allocator-table edit was considered and rejected.**
 Dumping the real table from both stock payloads (`tools/dsp_modmap.py
 --dumpmem`) confirmed `DSP.md` §11's model exactly: FX2 instance *k* always
 lands on table entry `1 + 2k`, which is **fixed by track position**, not by
@@ -849,10 +833,10 @@ the address doesn't move with the table, not a bug.
 **Decision: don't touch `X:0x255` at all.** Instead each server hardcodes
 its own fixed absolute Y base — `REVERB SERVER` always `Y:0x4000` (32K,
 spans `0x4000–0xBFFF`), `DELAY SERVER` always `Y:0x30000` (payload A) /
-`Y:0x38000` (payload B) (32K in the shared window — ~~external~~ ❌ retracted,
-`CHIP.md` §: there is no external memory and it is **zero wait states as X or
-Y**) — the same technique pre-v22
-single-instance builds used, instead of reading `x:0x213`/`x:(r4)`. This
+`Y:0x38000` (payload B) (32K in the shared window — there is no external
+memory; it is **zero wait states as X or Y**, `CHIP.md`) — the same
+technique earlier single-instance builds used, instead of reading
+`x:0x213`/`x:(r4)`. This
 reuses a proven pattern rather than opening new ground, and it restores true
 track independence: whichever physical track's *real* table entry legitimately
 overlaps one of these fixed bases is never a problem, because that track can
@@ -968,11 +952,10 @@ ACC-write addressing needed for the dry sends already existed.
   id-change-triggers-init behavior) — the outgoing server's tail stops
   abruptly, the incoming one starts cold. This already happens today
   swapping any effect on any track; not a new failure mode.
-- **Bank-scoped, not instrument-wide.** Two independent bus pairs (1–4,
-  5–8), not one shared across all 8 tracks. A track on one bank can never
-  reach the other bank's buses. (*Annotation 12 Aug 2026: ❌ retracted —
-  the cross-core bus (XBUS) works, cross-core accumulators measured; see
-  `XBUS.md`.*)
+- **Bank-scoped in this original design** — two independent bus pairs
+  (1–4, 5–8), not one shared across all 8 tracks. The cross-core bus has
+  since removed that limit: cross-core accumulators are measured working —
+  see `XBUS.md`.
 - **Two full algorithms sharing one chip's cycle budget is unmeasured.**
   Three of four reverb instances collapsing into cheap send stubs frees a
   lot of headroom, but "should have room" isn't "measured has room" —
@@ -988,8 +971,6 @@ ACC-write addressing needed for the dry sends already existed.
   measuring this specific case.
 
 ## The FX1 slot, and what it is not
-
-Established 5 Aug 2026, mostly by correcting a wrong framing of my own.
 
 **Every track has two independent slots.** FX1 and FX2 each have their own menu,
 their own parameter pages, and their own allocation from the bump allocator
@@ -1017,15 +998,16 @@ every track's FX1 chorus was silently a passthrough on our firmware.
 
 ### Two ways to get delay + reverb on one track — and they trade differently
 
-**Hardware, 5 Aug 2026: our code can hold stock DELAY's own slot.** With id
+**Measured on hardware: this project's code can hold stock DELAY's own
+slot.** With id
 `0x08` dispatched to the SEND client (`DELAYPROBE=send`, `ChonVerb22S`), the
 stock Echo Freeze Delay **still works**. So a track can run the stock delay on
 FX2 *and* feed the ChonVerb bus from that same slot — **the FX1 filter is not
 the price after all**, and the ordering objection below (an FX1 send taps dry,
 so never delay-into-reverb) is moot because the send now sits at the FX2 point.
 
-**But it does NOT make the FX1 plan below obsolete, and an earlier revision of
-this section wrongly said it did.** Hardware, 5 Aug: **all twelve of DELAY's
+**But it does NOT make the FX1 plan below obsolete.** Measured on hardware:
+**all twelve of DELAY's
 parameters are in use, and `X` is a boolean** — so there is no sacrificial knob
 to carry a send level, and the co-located design has *no independent level
 control at all*. The FX1 design does, because `Send` there owns its own
@@ -1064,7 +1046,7 @@ So the gap remains real and possibly useful later, but **it is not a route to a
 per-track send knob** without a UI surface to drive it, and no such surface has
 been identified.
 
-**The send taps PRE-delay** (by ear, 5 Aug). The reverb receives dry; the stock
+**The send taps PRE-delay** (established by ear). The reverb receives dry; the stock
 delay is applied downstream of the FX2 insert. So the co-located design gives
 **stock delay and reverb in PARALLEL on one track** — still impossible on stock
 hardware — but **not delay into reverb**, and no slot we can reach could ever

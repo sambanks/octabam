@@ -21,9 +21,9 @@ NOTE/ARP/CTRL pages, and the effects.
 0x400d2e52 .. 0x400d5f00     31 entries × 402 (0x192) bytes = 12,462 B
 ```
 
-> Corrected after the Ghidra pass: the table starts one entry earlier than first
-> measured. Entry −1 at `0x400d2e52` has a blank name, which is why a
-> printable-name walk skipped it; `FUN_40031da4` returns it (`0x400d2e8a` =
+> The table starts one entry earlier than a printable-name walk finds: entry
+> −1 at `0x400d2e52` has a blank name, which is why such a
+> walk skips it; `FUN_40031da4` returns it (`0x400d2e8a` =
 > `0x400d2e52 + 0x38`) for track 7 when `DAT_80000034` is set — the **master
 > track** page.
 
@@ -146,7 +146,7 @@ Record source AB/CD (5 values each), record length (65), trig mode (3), a third 
 with 11 options, fade in/out (113), and quantised record/play (18 values, default
 `255` = off). This is the whole sampling front-end's parameter model.
 
-## 3b. Free parameter slots — surveyed across every page (5 Aug 2026)
+## 3b. Free parameter slots — surveyed across every page
 
 Read straight from the per-parameter enable bitmaps (`P+0x18e` = slots 0-7,
 `P+0x18a` = slots 8-11, one nibble each, **0 = disabled, no knob drawn**). Done
@@ -170,7 +170,7 @@ delay's own twelve are all in use (`BUS.md`).
 | CONTROL 1 | `00111111` / `00001111` | p0 p1 |
 | CONTROL 2 | `11111111` / `00001111` | none |
 
-> ### CAVEAT that invalidates part of this table (photographed, 5 Aug 2026)
+> ### CAVEAT that invalidates part of this table (photographed on the unit)
 >
 > **The enable bitmap only governs the GENERIC parameter-page renderer. A page
 > drawn by bespoke code ignores it entirely.**
@@ -214,7 +214,7 @@ per-track, which is the granularity a send level needs. Its full table:
 * **`p8 ATCK` is the only genuinely un-drawn slot, and it is a boolean** (count
   2). Using it as a level means widening the count to 128 and zeroing its
   formatter as well as enabling it — three edits to a stock page, not one.
-* **`XVOL` (p5) is marked ENABLED but Sam reports it does not appear in the
+* **`XVOL` (p5) is marked ENABLED but it does not appear in the
   GUI.** It is a full 128-range page-1 slot with a custom formatter
   (`0x4003b484`), and a formatter is exactly what decides whether and how a
   parameter draws — the same mechanism that made our `→DEL` render as
@@ -244,15 +244,15 @@ Method is `dsp/page2_probe.asm`'s, which settled the FX page-2 mapping and is
 the precedent to copy: give each candidate offset a **distinct audible
 signature**, expose the slot with a full 0..127 range, flash once, sweep.
 
-Two traps that pass already recorded, both of which apply here:
+Two recorded traps, both of which apply here:
 
 * **A probe comparing whole words against `64<<16` cannot see a companion
-  field.** Probes 1-4 did exactly that and drew the wrong conclusion.
+  field.** Earlier probes did exactly that and drew the wrong conclusion.
 * **Defaults must be in range.** A default outside its own value count is used
   as an index and stalled the sequencer on hardware — so widening `ATCK`'s count
   means checking its default too.
 
-Seven builds settled page 2. Budget similarly, and note this one edits a
+Settling page 2 took seven probe builds; budget similarly, and note this one edits a
 **stock, always-present page shared by every track**, where page 2 only ever
 edited our own clones.
 
@@ -370,7 +370,7 @@ flag. Plain `1` is what the large majority of stock parameters use.
 and it is the reason the `P` vs `E` distinction above is not academic: a clone
 copied as `E .. E+0x192` (rather than `P .. P+0x192`) loses exactly the tail
 these two words live in, and the effect appears in the menu with a correct name
-and **not a single knob**. That cost two hardware flashes on the `BUS.md` work.
+and **not a single knob**. That mistake cost two hardware flashes to find.
 
 **Bearing on the FX1 experiment**: the effect id is used for *one* thing here —
 indexing the descriptor table, `return tbl[id]`, with no side effects and no
@@ -450,13 +450,13 @@ slot, so the cause is a per-effect resource rather than a per-slot permission.
 Leading hypothesis: the delay needs a delay-line buffer that is allocated only for
 the FX2 slot, so an FX1 delay runs with no buffer and produces nothing. Untested.
 
-~~Unconfirmed lead: `FUN_40005638` references the FILTER and DELAY descriptors
-directly...~~ **CLOSED, 5 Aug 2026, and it was nothing.** `FUN_40005638` is the
-**part defaults initialiser**: it copies `E+0x3b` out of each of those two
+`FUN_40005638` references the FILTER and DELAY descriptors directly, but it
+is not a lead: it is the
+**part defaults initialiser** — it copies `E+0x3b` out of each of those two
 descriptors into a fresh part's structure, because a new part defaults to
 **FX1 = FILTER, FX2 = DELAY**. It has no connection to delay-line buffers. The
 real question — where the delay runs, given id `0x08` is a passthrough — is open
-and the DSP is now ruled out; see `DSP.md` §5.
+and the DSP is ruled out; see `DSP.md` §5.
 
 ### Follow-up hardware tests
 
@@ -470,8 +470,7 @@ and the DSP is now ruled out; see `DSP.md` §5.
 **The buffer hypothesis was narrowed, not confirmed or killed.** Co-selecting
 DELAY on both slots rules out *one shared delay buffer allocated on demand*. It
 does **not** rule out a **per-slot buffer pointer whose FX1 entry is never
-initialised** — that version fits every observation. (An earlier note here called
-this test "decisive"; it was not.)
+initialised** — that version fits every observation.
 
 The UI behaving perfectly while audio is untouched confirms the ColdFire side is
 complete: the id is stored, resolved, displayed and published to shared RAM
@@ -542,7 +541,7 @@ effect will still appear unselectable.
 
 ---
 
-## ⚠️ THE PAGE-2 SLOT MAP — settled 17 Aug 2026, after months of confusion
+## ⚠️ THE PAGE-2 SLOT MAP
 
 **Each page-2 word carries TWO controls: the KNOB field at bits 16–23 and a
 COMPANION field at BITS 8–15.** Not the low byte. The low byte is never
@@ -555,35 +554,35 @@ published.
 | 8 | `$d` | knob, bits 16–23 | DIFF |
 | 9 | `$d` | **bits 8–15** | WIDTH / PTCH |
 | 10 | `$e` | knob, bits 16–23 | GATE / SPRAY |
-| 11 | `$e` | **bits 8–15** | FRZE (→DEL retired 18 Aug 2026) |
+| 11 | `$e` | **bits 8–15** | FRZE (→DEL retired) |
 
 ⚠️ **Slot 6 is on `$c`, not `$b`.** `$b` is not a page-2 parameter word at all.
 
-**How it was settled**, because it was inferred from behaviour rather than
+**The evidence**, because the map was inferred from behaviour rather than
 documented anywhere:
 - **MODE (slot 7) reads bits 8–15 and works** — swept on hardware across five
-  positions, repeatedly, 17 Aug.
-- **R16's SHMR fix independently needed `$c`'s knob field, not `$b`'s** — the
-  same off-by-one word, patched at the time without the pattern being seen.
+  positions, repeatedly.
+- **SHMR independently needed `$c`'s knob field, not `$b`'s** — the
+  same off-by-one word.
 - **Slot 11 confirmed dead for BOTH effects** (ChonVerb's →DEL and BongDelay's
-  FRZE, 17 Aug), which rules out a per-effect descriptor fault and leaves the
+  FRZE), which rules out a per-effect descriptor fault and leaves the
   slot itself.
 
 Everything that read bits 0–7 had never worked on hardware: slot 9 and slot 11,
-in both effects, since they were introduced. Fixed in `7a4f96b` (R28).
+in both effects, until this map was applied (fixed in `7a4f96b`).
 
-⚠️ **NONE OF THIS IS TESTABLE IN dsp_host.** It writes only KNOB fields
-(`(pv[i] & 0x7f) << 16`) and maps slots 6–11 onto `$b,$c,$d,$e` cyclically —
-so slot 6 lands on `$b`, which is exactly why the delay's WOW always worked
-locally and never on hardware. A companion field has never been drivable in the
-emulator; `DMODE=`/`DINT=`/`DFRZ=` exist as build-time overrides for that
-reason. **A green local render says nothing about whether a page-2 companion
-control publishes.**
+⚠️ **The trap this map explains**: dsp_host used to write only KNOB fields
+(`(pv[i] & 0x7f) << 16`) and mapped slots 6–11 onto `$b,$c,$d,$e` cyclically —
+so slot 6 landed on `$b`, which is exactly why the delay's WOW always worked
+locally and never on hardware. `DMODE=`/`DINT=`/`DFRZ=` exist as build-time
+overrides for that reason. **A green local render says nothing about whether
+a page-2 companion control publishes** unless the harness implements this
+map.
 
-✅ **DONE, same day (`cd8964a`)**: dsp_host now implements this exact map, and
-the first-ever param-driven companion renders **bit-identical** to the
-build-time overrides (`MODE=`/`DMODE=`) they duplicate — with negative
-controls. `send_probe` grew `--dmode/--dptch/--dfrz/--width/--gate/--rdel`.
+✅ dsp_host now implements this exact map (`cd8964a`), and a
+param-driven companion renders **bit-identical** to the
+build-time overrides (`MODE=`/`DMODE=`) it duplicates — with negative
+controls. `send_probe` has `--dmode/--dptch/--dfrz/--width/--gate/--rdel`.
 The end-to-end path is proven locally: ChonVerb's `-DEL` select at 3 feeds
 BongDelay at 0.375 FS peak; at 0, digital silence.
 ⚠️ What is STILL impossible locally: changing a parameter **mid-run** —
