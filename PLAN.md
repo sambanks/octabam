@@ -17,13 +17,17 @@ audible on the unit.
 What ships:
 
 - **ChonVerb** — an eight-line FDN reverb (ROOM/PLATE/BIG), shimmer, a gated
-  mode, mid/side width, and a MOD speed select. Serves **tracks 5–8**
-  (payload A / core 0). `docs/REVERB.md`.
-- **BongDelay** — a five-mode delay: CLEAN, PITCH (a once-per-repeat
-  harmoniser), TAPE (wow/flutter with in-loop saturation), GRAIN (a granular
-  cloud), REVERSE — plus a FREEZE hold that works across modes. Serves
-  **tracks 1–4** (payload B / core 1). Its wet is hardwired into the reverb
-  over the bus (`→VERB`), the topology the stock hardware has no path for.
+  mode, mid/side width, and a MOD speed select. Hosted on a track **5–8**
+  (payload A / core 0); any track can send into it. `docs/REVERB.md`.
+- **BongDelay** — a multi-mode delay: CLEAN, PITCH (a once-per-repeat
+  harmoniser), GRAIN (a granular cloud), REVERSE — with tape-style
+  wow/flutter modulation (DPTH/RATE), drive (DRV, doubling as GRAIN's
+  scatter depth) and a FREEZE hold available in **every** mode. (MODE still
+  counts five positions; the former TAPE slot aliases CLEAN now that the
+  tape character is global.) Hosted on a track **1–4** (payload B / core 1);
+  any track can send into it. Its wet can be sent on into the reverb over
+  the bus (`-VRB`, p4, default 0) — the delay→reverb series topology the
+  stock hardware has no path for.
 - **The send bus** — any track can select SEND and drive `→DELAY` /
   `→REVERB` (two separate knobs — driving the wrong one renders silence).
   Auto-gain divides by registered client count, so eight senders drive a
@@ -33,9 +37,12 @@ What ships:
   (default 0 — a return track with `IN` at 0 and nothing sent is silent by
   design).
 
-The track↔core mapping is **measured, and inverted from what you'd guess**:
-payload A serves the high tracks. Test the reverb on track 5, the delay on
-tracks 1–4.
+**Hosting is bank-bound; serving is not.** Either effect serves all eight
+tracks over the bus, but each can only be *hosted* on its own core's bank —
+and picking one on the wrong bank runs a SEND instead (the absent server's
+id is deliberately aliased to SEND on that payload). The track↔core mapping
+is **measured, and inverted from what you'd guess**: payload A runs the high
+tracks. Host the reverb on track 5, the delay on tracks 1–4.
 
 ---
 
@@ -85,20 +92,23 @@ payloads are effectively full; new work needs a lever first.
 - **FX1 consolidation** (work order §2) frees ~550–650 per payload as a side
   effect, but is its own project.
 
-### Cycles — per core, 4,535/sample ✅ measured
+### Cycles — per core, 4,535/sample ✅ arithmetic (200 MIPS ÷ 44.1 kHz)
 
 Cycles are not the current constraint, with one caveat. The number
 `make cycles` prints is a **single-core floor**: it sums reverb + delay +
 sends on one core, but on hardware no core ever pays both engines. The
-delay's worst path (GRAIN, ~1,750 cycles) plus sends fits core 1's ~2,150 🟡
-spare with a ~17% margin.
+delay's worst path (GRAIN, ~2,000 cycles by the tool's count) plus sends
+runs against core 1's ~2,150 🟡 *derived* spare — a thin paper margin, while
+the unit runs every mode clean; only the burn sweep can measure the real
+ceiling.
 
 - ⚠️ **FX1 cycles are paid ×4 per core** — a 300-cycle FX1 effect costs
   1,200 cycles/core. *This*, not program space, is the ceiling on FX1
   ambition.
 - ⚠️ **Only the `BURN=1` hardware sweep can re-measure the real per-core
   spare, and the probe currently does not build**: the plain layout overruns
-  the region (2,734 > 2,724 — ~70 words short). `verify_burn` reports
+  the region (2,734 > 2,724 — 10 words short; an older ~70-word figure
+  predates the delay shrinking). `verify_burn` reports
   SKIPPED in `make check` until words are found.
 - **Priced cycle lever**: GRAIN 4 grains → 2 returns ~300 cycles for ~100
   words, at the voicing cost of half the simultaneous voices.
@@ -120,11 +130,12 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
 
 ### 1. Voicing polish — ear items, none blocking
 
-- **Per-mode gain structure.** The modes are 7–9 dB apart at the output:
-  BIG crosses the clip knee at a 0.25–0.5 FS input, ROOM only approaches it
-  near 0.9, PLATE never reaches it. The honest fix is per-mode headroom,
-  set from measurement — the numbers are in `docs/REVERB.md`. Interim
-  practice: back BIG off by hand.
+- **Per-mode gain structure.** The modes are 7–9 dB apart at the output
+  (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
+  defaults), and an input sweep (in this file's git history) put BIG across
+  the clip knee at a 0.25–0.5 FS input while PLATE never reached it. The
+  honest fix is per-mode headroom, set from measurement. Interim practice:
+  back BIG off by hand.
 - Reopeners from the reverb's "done for now" call, live only if a listening
   round asks: the pad's last forwardness, the 6–9 k crest, the TIME refit,
   a PLATE ear pass.
@@ -139,7 +150,7 @@ a MODE select.
 
 | cluster | stock words | one engine | freed **per payload** |
 |---|---|---|---|
-| PHASER + FLANGER + CHORUS + COMB | **1,052** | ~400–500 🟡 | **~550–650** |
+| PHASER + FLANGER + CHORUS + COMB | **1,102** (PHASER's true extent is 207, past its 157-word record — `DSP.md`) | ~400–500 🟡 | **~550–650** |
 | EQUALIZER + DJ EQ | **627** | ~300 🟡 | **~325** |
 
 All four in row 1 are the same structure — a short modulated delay with
@@ -152,7 +163,7 @@ cycles ×4, and the spare has never been measured per core.
 
 ### 3. Unblock the burn probe
 
-Find ~70 words in the plain layout so `BURN=1` places, flash it once, and
+Find ~10 words in the plain layout so `BURN=1` places, flash it once, and
 sweep the real per-core cycle ceiling from the front panel. Everything in §2
 prices off that number.
 

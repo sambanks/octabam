@@ -139,11 +139,14 @@ music untouched (top-8 bins 95.3% before and after)**.
 
 ### The fix, and its state
 
-**The shimmer is now excised BY DEFAULT.** `build_bus.py` cuts everything
-between `; SHIMMER_BEGIN` and `; SHIMMER_END` in `dsp/reverb_server.asm` unless
-`SHIMMER=1` is set, which prints a do-not-ship warning. Excising rather than
-zeroing matters: a zeroed coefficient still leaves the shifter reading and
-writing its buffer every sample.
+**The defective shimmer was excised; the artifact went with it.** The
+shimmer was then rewritten, and the rewrite **ships IN by default** —
+`NOSHIM=1` excises it (`build_bus.py` cuts everything between
+`; SHIMMER_BEGIN` and `; SHIMMER_END` in `dsp/reverb_server.asm`), and
+`SHMR` now defaults to **0**, so it is silent until the knob comes up —
+unlike the stuck-at-48 default that caused this whole episode. Excising
+rather than zeroing matters when it does come out: a zeroed coefficient
+still leaves the shifter reading and writing its buffer every sample.
 
 - Verified **bit-identical** to a `SHMR=0` render, so no side effects.
 - **2040 → 1950 words**, and the payload region's free space **11 → 101 words**.
@@ -229,7 +232,9 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
    unturnoffable; excised by default, hardware-confirmed gone.
 1. ~~Relocated bus, same core.~~ **DONE** at `0x36000`.
 2. ~~Does a cross-core send arrive?~~ **DONE — cross-core works.**
-3. Synchronisation — ⚠️ **NEEDED, and it is the load-bearing step.** An
+3. Cross-core timing — ⚠️ **the load-bearing step, and the early all-clear
+   was wrong.** (The shipped fix turned out to be buffering, not
+   synchronisation — see below.) An
    earlier "not needed; the ICC stays unused" conclusion was drawn from
    step 2, "does a cross-core send arrive?", which was validated **through
    the reverb**. A reverb is the one consumer that physically cannot reveal
@@ -373,7 +378,9 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
 
    🟡 **It probably explains the reverb static too, and that is inferred, not
    measured.** BongDelay's `→VERB` is a **core-1 writer into the REVERB
-   accumulator**, hardwired on, so it should jitter exactly the same way.
+   accumulator** — hardwired on at the time of this diagnosis (it has since
+   become the `-VRB` knob, default 0) — so it should jitter exactly the same
+   way.
    ChonVerb then consumes a per-block-jittering sum. It would explain why the
    static appeared the moment a ChonVerb was added (the corruption always
    existed; a reverb gave it a consumer) and why PLATE and BIG show it while
@@ -465,7 +472,7 @@ That rule is now **backwards**.
 | cycles, core 0 (reverb + 3 sends, FX1 filters off) | ~2,432 spare ✅ | **~2,576 spare** 🟡 estimate; ✅ 1,392 spare measured, of which **819**/sample remains for new work (the bank has since consumed 573) | ~3.4× the engine's 763 |
 | cycles, core 1 (delay + 3 sends) | — | **~3,176 spare** 🟡 | ~19× the placeholder's 163 |
 | Y memory per server | 32,768 words / 743 ms ✅ | **65,536 / 1.486 s** ✅ | 2× |
-| **program space, payload A** | **1 word** ✅ | **494 words** ✅ at specialization; **32** now (later reverb work spent the LFO-roll's 178) | — |
+| **program space, payload A** | **1 word** ✅ | **494 words** ✅ at specialization; the build report is the live ledger (**55** in the current build) | — |
 | **program space, payload B** | **1 word** ✅ | **2,005 words** ✅ | — |
 
 (Cycle figures are the measured 2,432 spare — filters off, full bank live —
@@ -597,7 +604,7 @@ free word today, that is an extraordinary rate of exchange — but it is a trade
 not the free lunch the alias makes it look like.
 
 **Do not confuse this with specialization.** Specialization (494 / 2,005 free
-words at landing; **32** / ~1,998 now) is real, costs
+words at landing; the current build report reads **55** / **1**) is real, costs
 nothing, and needs no new hypothesis. This is the lever
 *after* that one, and it should be tested only if the reverb's 494 words (now
 32) prove too tight — which rolling the tank loop may well prevent.
@@ -955,8 +962,9 @@ exactly, except for the scratch, which both cores must touch by definition:
 
 ~~**Hard constraint: the payload region is FULL, one spare word.**~~
 **No longer true under specialization** — 494 free on A, 1,998 on B at
-`SPEC=1` landing. A has since been spent down to **32 free**
-(the LFO-roll's 178 consumed); B still ~1,998.
+`SPEC=1` landing. Both have since been spent nearly full again: the current
+build report reads A **55 free**, B **1 free** — the build report is the
+live ledger.
 
 ## Constraints that shape it
 

@@ -549,12 +549,12 @@ published.
 
 | slot | word | field | example |
 |---|---|---|---|
-| 6 | `$c` | knob, bits 16–23 | SHMR / WOW |
+| 6 | `$c` | knob, bits 16–23 | SHMR / DPTH |
 | 7 | `$c` | **bits 8–15** | MODE |
-| 8 | `$d` | knob, bits 16–23 | DIFF |
+| 8 | `$d` | knob, bits 16–23 | DIFF / RATE |
 | 9 | `$d` | **bits 8–15** | WIDTH / PTCH |
-| 10 | `$e` | knob, bits 16–23 | GATE / SPRAY |
-| 11 | `$e` | **bits 8–15** | FRZE (→DEL retired) |
+| 10 | `$e` | knob, bits 16–23 | GATE / DRV |
+| 11 | `$e` | **bits 8–15** | RATE / FRZE |
 
 ⚠️ **Slot 6 is on `$c`, not `$b`.** `$b` is not a page-2 parameter word at all.
 

@@ -11,7 +11,7 @@ What runs today:
 | | |
 |---|---|
 | **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
-| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), TAPE (wow/flutter + saturation), GRAIN and REVERSE — plus a FREEZE hold, routed *into* the reverb over the bus. Its program space is the **other core's copy of the same three donor slots** — the stock FX2 delay itself has no DSP code to take. Confirmed on hardware, every knob live and audible. |
+| **BongDelay** | A multi-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), GRAIN (a granular cloud) and REVERSE — with tape-style wow/flutter (DPTH/RATE), drive (DRV) and a FREEZE hold available in **every** mode, routable *into* the reverb over the bus (`-VRB`, default 0). Its program space is the **other core's copy of the same three donor slots** — the stock FX2 delay itself has no DSP code to take. Confirmed on hardware, every knob live and audible. |
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
@@ -36,9 +36,9 @@ The costs are all measured, not estimated:
 
 | resource | per core | state (Aug 2026 build) |
 |---|---|---|
-| Cycles | 4,535/sample | measured ceiling; worst mode fits its core with margin |
+| Cycles | 4,535/sample | derived budget (200 MIPS ÷ 44.1 kHz); every mode runs clean on hardware, true per-core ceiling unmeasured |
 | Program space | 8,192 words | donor region 2,724 words/payload: A 55 free, B 1 free |
-| Delay memory | 65,536 words | 1.49 s per server |
+| FX2 memory | 65,536 words/server | 1.49 s, pooled from private slots + the shared window |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
 measured or inferred, and what would falsify it.
@@ -52,7 +52,7 @@ chip has more, stock runs the map that grants the least):
 
 ```
               DSP56721 — two cores @ 200 MHz, 44.1 kHz audio
-              4,535 cycles per sample per core (measured)
+              4,535 cycles per sample per core (200 MIPS ÷ 44.1 kHz)
 
    CORE 0 / payload A · tracks 5–8      CORE 1 / payload B · tracks 1–4
    ─────────────────────────────────    ─────────────────────────────────
@@ -89,8 +89,8 @@ The bus itself lives in that scratch block — and it is the whole trick:
    SEND ──→DELAY ─────────►┌────────────────┐
    SEND ──→REVERB ────┐    │ DELAY bus acc  │──► BONGDELAY ─► wet out on its
                       │    └────────────────┘        │         track (1–4)
-                      ▼                              │ →VERB, hardwired —
-              ┌────────────────┐                     ▼ this write CROSSES CORES
+                      ▼                              │ -VRB send — this
+              ┌────────────────┐                     ▼ write CROSSES CORES
               │ REVERB bus acc │◄────────────────────┘
               └────────────────┘──► CHONVERB ─► wet out on its track (5–8)
 ```
@@ -100,9 +100,9 @@ accumulator buffers** (the cross-core race fix — see `docs/XBUS.md`)
 plus client counts for the ÷N auto-gain, so eight senders drive a server
 exactly as hard as one. Cycles follow the same split: a core pays its one
 server (role-locked, charged once per bank however many tracks select it)
-plus its tracks' send taps; the delay's worst mode (GRAIN, ~1,750 cycles) is
-the deepest path, and FX1 inserts pay **×4 per core** — which is the real
-ceiling on FX1 ambition, not program space.
+plus its tracks' send taps; the delay's worst mode (GRAIN, ~2,000 cycles by
+`make cycles`) is the deepest path, and FX1 inserts pay **×4 per core** —
+which is the real ceiling on FX1 ambition, not program space.
 
 ---
 

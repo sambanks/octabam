@@ -51,7 +51,7 @@ core that track lives on.
 
 | | scoped to | spent when | this build |
 |---|---|---|---|
-| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words, **32 free** ✅ (an earlier build read 11 free) |
+| **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words; **55 free** in the current build report ✅ (earlier snapshots read 11 and 32 — the build report is the live ledger) |
 | **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | ~1 392 spare ✅ measured; the bank has grown 573 since that measurement, so **~819/sample** remains for new work |
 | **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
 
@@ -175,9 +175,11 @@ still spare on top of all of it.
 📄 **The reference manual HAS now been read** — `DSP56720RM.pdf`, 575 pages,
 at `downloads/datasheets/` (gitignored; third-party). Extract with
 `pdftotext -layout`; `file` misreports it as 27 pages. It settled §3's memory
-questions without a flash, including Ch. 3's five
+questions without a flash — including reading Ch. 3's five
 OMR-selectable memory maps (`MS`, `MSW0`, `MSW1`), which set the per-core X/Y/P
-extents — read those before trusting any *internal* extent.
+extents — read those before trusting any *internal* extent. (Read is not
+exploited: actually *switching* the OMR map remains an untested lever —
+`XBUS.md`.)
 
 ### "Spare" is only meaningful attached to a configuration
 
@@ -446,7 +448,7 @@ bisect); do not design around it.
 | | | |
 |---|---|---|
 | The donor region (PLATE + SPRING + DARK, contiguous) | **2 724 words** | ✅ |
-| Used by a normal build | 2 692 — **32 free** (an earlier build read 2 713 — 11 free) | ✅ |
+| Used by a normal build | 2 669 — **55 free** in the current build report (earlier snapshots read 2 713/11 and 2 692/32) | ✅ |
 | Reachability sweep | payload A 95.8 %, B 98.5 % | ✅ `tools/dsp_reach.py` |
 | Free pool elsewhere | **none** | ✅ |
 | Only reclaimable space | **3 384 words held by ten stock effects** — costs those effects (earlier reading: ~3 100 / nine) | ✅ |

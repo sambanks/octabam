@@ -153,8 +153,9 @@ container before it will produce a modified one.
    should read **`OCTABAM<NNN>`** — the `-V` stamp from `make image`. If it
    still says `1.40C`, the official OS is running, not your build.
 2. **The reverb, on track 5.** Assign ChonVerb to an FX2 slot on one of
-   **tracks 5–8** (payload A serves the high tracks — measured, and inverted
-   from what you'd guess). Feed it audio via `IN` and step **MODE**: you
+   **tracks 5–8** (payload A runs the high tracks — measured, and inverted
+   from what you'd guess; on tracks 1–4 the pick falls back to a SEND).
+   Feed it audio via `IN` and step **MODE**: you
    should hear distinct ROOM → PLATE → BIG spaces. Both effects are
    **returns** (wet-only output): a reverb track with `IN` at 0 is silent by
    design.
@@ -207,8 +208,10 @@ something else:
 2. **Old stored MIX values load as IN** (p5). On a pure return track this is
    inaudible — but it silently registers the host as a bus client and dilutes
    the real senders. Zero it, or use step 4.
-3. **Old stored VRBW values load as `-VRB`** (delay p5). An old project's
-   VRBW=127 will wash the delay into the reverb on load.
+3. **The delay's p4/p5 have both changed meaning.** An old project's stored
+   MIX (p4) loads as `-VRB` — a typical MIX value washes the delay into the
+   reverb on load — and stored VRBW (p5) loads as `IN`, silently registering
+   the host as a bus client.
 4. **The one-step fix per track: re-select the effect** (switch the FX2 away
    and back). The id-store fires on change and applies fresh defaults.
 

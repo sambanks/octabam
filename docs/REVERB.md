@@ -11,9 +11,12 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > in-loop allpasses describe the **deleted engine**. The shipping engine is
 > eight lines, 8×8 FWHT, **three** modes (ROOM/PLATE/BIG), ER removed in
 > favour of a short Dattorro-scale input diffuser (taps 179/293/419/547 =
-> 4.1–12.4 ms), and 512-word **modulated** in-loop allpasses. The signal path
-> and parameter table here are current; deeper sections are corrected where
-> marked, historical otherwise.
+> 4.1–12.4 ms), and 512-word **modulated** in-loop allpasses — and it is a
+> **RETURN**: the output is the wet alone, and p5 is **IN** (this track's own
+> send into its reverb), not a MIX crossfade. The signal path and parameter
+> table here are current; deeper sections are corrected where marked,
+> historical otherwise — in particular, anything describing MIX describes
+> the retired insert-era law.
 
 > **The old standalone DARK REV replacement is retired.** Earlier builds
 > (`dsp/reverb88.asm` via `tools/build_reverb.py`) replaced stock DARK REV in
@@ -26,8 +29,9 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > select all work on the unit; the tail crackle is fixed; the modes are
 > genuinely distinct (RT60 2.7 / 4.7 / 7.7 / 10.0 s across ROOM→BIG on the
 > four-mode engine of the time, plus per-mode ER arrivals, diffuser taps, tap
-> spread, LFO rate and damping); and MIX holds dry at unity to half-travel
-> before crossfading.
+> spread, LFO rate and damping); and the then-MIX held dry at unity to
+> half-travel before crossfading (MIX has since become IN — see the banner
+> above).
 >
 > Per-mode voicing is not the blocking work. What remains is measured but
 > unacted-on: modal prominence 8–11 dB over the local envelope, whose only
@@ -43,14 +47,17 @@ For the reverse-engineering that got us here, `REVERB_LOG.md` (historical).
 ## Signal path
 
 ```
-in ─► pre-delay ─► 4 series allpasses ─► ┌─ FDN tank ──────────┐ ─► width ─► mix ─► out
-        (PRE)        (input diffusion,   │ 8 lines, modulated  │
-                      4–13 ms Dattorro)  │ 8x8 FWHT            │
-                                         │ HI damping          │  all inside the
-                                         │ LO cut              │  feedback loop
-                                         │ 2 in-loop allpasses │
-                                         └─────────────────────┘
+bus Σ + IN ─► 4 series allpasses ─► ┌─ FDN tank ──────────┐ ─► width ─► wet out
+              (input diffusion,     │ 8 lines, modulated  │    (RETURN —
+               4–13 ms Dattorro)    │ 8x8 FWHT            │     no dry path)
+                                    │ HI damping          │
+                                    │ LO cut              │  all inside the
+                                    │ 2 in-loop allpasses │  feedback loop
+                                    └─────────────────────┘
 ```
+
+(The pre-delay stage that used to open this chain is retired with the PRE
+knob; its buffer is still mapped but never read.)
 
 * **Pre-delay** — up to 4096 samples (93 ms), modulo buffer on r6.
 * **Diffusers** — four series allpasses, taps 179/293/419/547 (4.1–12.4 ms,
@@ -90,7 +97,7 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed.
 | 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths, within the current MODE |
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
-| 1 | 5 | MIX | `r6+$5` | dry held to half-travel, then crossfaded (see below) |
+| 1 | 5 | IN | `r6+$5` | **this track's own send** into the reverb (default 0). The output is wet-only; IN>0 also registers the host as a bus client, so a non-zero default would dilute real senders |
 | 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (read from the `$c` knob field OR'd with `$b`; the panel publishes slot 6 to `$c` — DSP.md §9) |
 | 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
@@ -816,7 +823,9 @@ Two concrete cautions that came out of it:
   bug recorded above — fixing something correct exposed what it had been
   masking — but here what it exposed does not matter.
 
-**MIX: a plain crossfade is the wrong shape here.** A first fix made it a
+**MIX: a plain crossfade is the wrong shape here** *(historical — the MIX
+knob no longer exists; the reverb is a return and p5 is IN. Kept for the
+level-law reasoning.)* A first fix made it a
 straight `dry*(1-MIX) + wet*MIX` crossfade, because the old additive law left
 dry at full scale forever and the top of the knob was never actually *wet*.
 That motive was sound and the result was not: measured, the knob got **7 dB
