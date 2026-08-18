@@ -150,13 +150,18 @@ RENAMES = {
         (5, b"IN"),                 # slot 5 -> r6+$5  THIS TRACK'S OWN SEND
                                     #   level into the delay, bottom-right to
                                     #   match the reverb's IN (18 Aug swap).
-        (6, b"WOW"),                # slot 6 -> r6+$c KNOB    TAPE wow depth
+        (6, b"DPTH"),               # slot 6 -> r6+$c KNOB    modulation depth
+                                    #   (was WOW -- global since TAPE retired,
+                                    #    18 Aug 2026; every mode's loop tap
+                                    #    carries the wow/flutter pair now)
                                     #   (bits 16-23; $b is not a param word --
                                     #    docs/PARAM_PAGES.md)
         (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
-        (8, b""),                   # slot 8 -> RETIRED. Was VRBD (->VERB DRY);
-                                    #   a return track has no pre-effect
-                                    #   signal worth forwarding to the reverb.
+        (8, b"RATE"),               # slot 8 -> r6+$d KNOB    modulation speed,
+                                    #   val/64 (64 = 1x exactly, the default).
+                                    #   Slot history: VRBD until v3, blank
+                                    #   until 18 Aug 2026. Pairs with DPTH the
+                                    #   way the reverb's RATE pairs with MOD.
         (9, b"PTCH"),               # slot 9 -> r6+$d b8-15  interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
         (10, b"SPRA"),              # slot 10 -> r6+$e knob  GRAIN scatter
@@ -337,6 +342,9 @@ DEFAULTS = {
                      #      nothing", which is the exact trap this table's
                      #      header warns about. 64 is the compromise, not the
                      #      measured optimum.
+                     (8, 64),   # RATE -- 64 IS LOAD-BEARING: exactly 1x, the
+                                # pre-knob modulation speed; the DPTH=0 gate
+                                # only holds with the law exact here
                      (6, 48),   # WOW   a musical default wobble for TAPE
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
                      (11, 0),   # FRZE  run   -- a fresh part is never held
@@ -441,7 +449,7 @@ ACTIVE_PARAMS = {
     # what actually stops the panel drawing them; the DSP-side read and the
     # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
     # inverse that bit WOW/FRZE on 12 Aug).
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11],  # p5 = -VRB again (18 Aug 2026)
+    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve: p5 -VRB, p8 RATE (18 Aug 2026)
     "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # p11: -DEL retired, RATE born, both 18 Aug 2026
     "SEND": [0, 1],
 }
@@ -464,7 +472,8 @@ ACTIVE_PARAMS = {
 # fields are eight-bit selects and take a small step count. Setting a
 # companion slot to 128 does not make it continuous -- it stays a select and
 # reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # WOW    knob ($b knob, v2 s4)
+PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # DPTH   knob (was WOW; global mod)
+                                  8: 128,   # RATE   knob (mod speed, 64 = 1x)
                                   7: 5,     # MODE   select: CLEAN/PITCH/TAPE/
                                             #        GRAIN/REVERSE (v2 s5/s6)
                                   9: 4,     # PTCH   select: +12/+7/-12/det --
