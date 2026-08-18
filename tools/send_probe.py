@@ -9,14 +9,22 @@ emulator, and measure the metallic artifact numerically.
 DRIVING THE DELAY. --layout takes D as well as R, so the DELAY SERVER can be
 run and heard locally:
 
-    DEV=1 XBUS=1 python3 tools/build_bus.py         # writes out/dsp/mem_dev_A.mem
+    DEV=1 XBUS=1 python3 tools/build_bus.py   # -> out/dsp/mem_dev_A.mem
     python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+
+(NOSHIM=1 was load-bearing for a few hours on 12 Aug 2026 -- R16-R18 grew
+ChonVerb past what the donor region could hold with all three servers packed
+in. The same evening's DEV placement change moved the delay OUT of the region
+to P:0x04000, appended to the .mem dump -- see build_bus.py's DEV_DELAY_P --
+so the full-shimmer reverb fits again and NOSHIM is back to optional.)
 
 This needs a DEV=1 image and there is no way around it: XBUS=1 stubs the DELAY
 SERVER out, and the specialized build that follows puts BongDelay in payload B
 only -- which dsp_host cannot boot (REVERB.md). Against either, `--layout DS`
-renders digital silence from a 10-word stub, which the silence check below
-reports as a FAILED measurement rather than a clean one.
+renders digital silence from a 10-word stub -- or, on a SPEC dump, a dry
+passthrough from the DELAY->SEND id alias, which entry() now refuses to run.
+The silence check below reports silence as a FAILED measurement rather than a
+clean one.
 
 The two buses have SEPARATE send knobs -- x:(r6+0) is ->DELAY, x:(r6+1) is
 ->REVERB -- so --level follows whichever server is being measured and --dlevel
@@ -36,7 +44,9 @@ WHY THIS EXISTS. The obvious local repro -- `dsp_host -inst 2` with two reverbs
 The third is now fixed: -init/-proc take a list, one entry point per instance.
 This script uses that to run instance 0 = REVERB SERVER (r7 0x6200, position 0,
 the housekeeper) and instance 1 = SEND (r7 0x6400) -- the hardware layout from
-XBUS.md, track 1 ChonVerb + track 2 Send.
+XBUS.md. (Instance numbering only -- on hardware ChonVerb serves
+TRACKS 5-8, payload B's BongDelay serves 1-4; the old 'track 1 ChonVerb'
+label predates the 10 Aug track<->core inversion measurement.)
 
 -inmask 2 feeds the tone to the SEND only. The reverb's own dry input is
 silent, so everything in its output arrived over the bus. That is what makes
@@ -108,14 +118,22 @@ def entry_points(mem_path, fxid):
     init, proc = found.get(INIT_TAB + fxid), found.get(PROC_TAB + fxid)
     if init is None or proc is None:
         die(f"no dispatch entry for fx id 0x{fxid:02x} in {pathlib.Path(mem_path).name}")
-    if not 0 < init < 0x20000 or proc != init + 1:
-        die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} proc 0x{proc:05x}")
+    # ⚠️ `proc == init + 1` USED TO BE THE TEST, and it was an accident of every
+    # init being a bare `rts`. It stopped being true on 17 Aug 2026 when the
+    # bus clients gained a rotation seed at init, and it failed as "implausible
+    # entry points" -- which reads like a stale dispatch table rather than a
+    # tool assumption. The real invariant is that proc follows init and init is
+    # SHORT: it seeds per-instance state, it does not process audio.
+    if not 0 < init < 0x20000 or not init < proc <= init + 64:
+        die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} "
+            f"proc 0x{proc:05x} (want init < proc <= init+64)")
     return init, proc
 
 
 # ---- the run -------------------------------------------------------------
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
+        inall=False,
         pick=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
@@ -155,6 +173,19 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     def entry(c):
         if c not in ep:
             ep[c] = entry_points(mem, SERVER_ID[c])
+            # A SPEC build has NO delay in payload A -- build_bus.py aliases id
+            # 0x06 to the SEND client so a wrong chooser pick becomes a send.
+            # Locally that alias resolves to a perfectly plausible entry point
+            # and renders a dry passthrough: silence over the bus, dry in a
+            # --direct control. That cost a session on 12 Aug 2026 ("BongDelay
+            # outputs nothing in any config" -- it was never instantiated).
+            # The dispatch table cannot distinguish the alias from real code,
+            # but DELAY == SEND can never be legitimate: die, don't measure.
+            if c == "D" and ep["D"] == entry_points(mem, SERVER_ID["S"]):
+                die("this dump's DELAY entry is the SEND alias -- a SPEC build "
+                    "(payload A carries no delay). Build the delay hatch:\n"
+                    "  DEV=1 XBUS=1 python3 tools/build_bus.py\n"
+                    "then rerun against out/dsp/mem_dev_A.mem")
         return ep[c]
 
     # --direct is the CONTROL for whichever server is being measured, so it has
@@ -196,7 +227,15 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
             die(f"layout {layout!r} has no server -- needs an R or a D")
         r7s = ",".join(str(2 + 2 * k) for k, _ in live)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
-        inmask = sum(1 << i for i, (_, c) in enumerate(live) if c == "S")
+        # The tone normally reaches the SENDs only, so a SERVER's own track
+        # is SILENT and its dry path is never exercised -- MIX=0 renders
+        # digital silence. That is fine for measuring an engine and useless
+        # for measuring a DRY/WET BLEND, which is a hardware-only behaviour
+        # every local render was blind to until 12 Aug 2026. --inall feeds
+        # every live slot, so the delay's own dry is real and MIX can be
+        # measured for what it does on the unit.
+        inmask = sum(1 << i for i, (_, c) in enumerate(live)
+                     if c == "S" or inall)
         par = {"R": rev_params, "S": send_params, "D": dpar}
         cmd = [str(HOST), "-mem", str(mem),
                "-init", ",".join(f"{entry(c)[0]:x}" for _, c in live),
@@ -313,13 +352,37 @@ def write_wav(path, L, R):
 
 # reverb: MOD and SPEED forced to 0 (modulation makes legitimate sidebands and
 # would swamp the metric), MIX full wet, LP wide open.
-REV_PARAMS  = [64, 0, 127, 0, 127, 127, 0, 0, 64, 0]
+# 12 entries: page 1 (0..5), then the REAL page-2 slot map (6..11) --
+# docs/PARAM_PAGES.md, settled 17 Aug 2026. Slots 7/9/11 are COMPANION fields
+# (written to bits 8-15 of the same word as the preceding knob), drivable
+# locally since dsp_host learned the map the same day; before that, no
+# companion select was ever exercisable in the emulator and DMODE=/DINT=/DFRZ=
+# build overrides were the only way in. Those overrides remain valid and are
+# proven equivalent (param-driven MODE renders bit-identical to a MODE= build).
+# idx5 is IN since the v4 RETURN (was MIX): 0, or every render registers a
+# silent host client and dilutes the senders by 1/sqrt(N+1) -- exactly the
+# phantom-client defect the DSP side just spent a day removing.
+# idx11 is the RATE select (0.5/1/2/4x MOD speed) since 18 Aug 2026 -- 1 = 1x,
+# the hardware boot default. 0 halved the MOD speed of every render between
+# RATE's birth and this default catching up (both 18 Aug 2026).
+REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 1]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
-SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0]
+SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
 # a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
 # VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
-DELAY_PARAMS = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
+# TIME FDBK TONE PING IN ... -- slot 4 is IN, this track's own send level into
+# the delay, NOT the old MIX crossfade (v3 stage 1). It defaults to 0 here for
+# the same reason it defaults to 0 in build_bus.py: IN>0 registers the host as
+# a bus client and the 1/N auto-gain then gives it a share it does not use,
+# quietly halving every real sender. The old 90 sitting here would have done
+# exactly that to every measurement taken from now on -- the SHMR/SPEED=0
+# lesson, which polluted every render until Round 12 caught it.
+# idx8 = RATE, and 64 IS LOAD-BEARING (build_bus.py's own words): exactly 1x
+# LFO speed, the pre-knob law. The 0 that sat here from RATE's birth (18 Aug
+# 2026) until later the same day froze both drift LFOs, so every DPTH
+# render between was wobble-free.
+DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 64, 0, 0, 0]
 
 
 def main():
@@ -346,6 +409,75 @@ def main():
                     help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
                     help="SHIMMER amount (param slot 6 -> r6+$b). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
+    ap.add_argument("--dtime", type=int, default=None,
+                    help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
+    ap.add_argument("--dfdbk", type=int, default=None,
+                    help="DELAY FDBK 0..127 (delay slot 1, default 60)")
+    ap.add_argument("--dwow", type=int, default=None,
+                    help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
+                         "TAPE's wow/flutter depth; ignored by the other modes.")
+    ap.add_argument("--dmix", "--din", type=int, default=None, dest="dmix",
+                    help="DELAY IN 0..127 (delay slot 4, default 0) -- this\n"
+                         "track's OWN send level into the delay. Was MIX, a\n"
+                         "dry/wet crossfade, until v3 stage 1 made the host\n"
+                         "track a return whose output is the wet alone.\n"
+                         "--din is the name that matches the panel; --dmix\n"
+                         "still works so older command lines do not break,\n"
+                         "but they now mean something different.")
+    ap.add_argument("--dtone", type=int, default=None,
+                    help="DELAY TONE 0..127 (delay slot 2, default 100)")
+    ap.add_argument("--dping", type=int, default=None,
+                    help="DELAY PING 0..127 (delay slot 3, default 64)")
+    ap.add_argument("--inall", action="store_true",
+                    help="feed the source to EVERY live slot, not just the\n"
+                         "SENDs. Without it a server's own track is silent and\n"
+                         "its DRY path -- and therefore MIX -- cannot be\n"
+                         "measured locally at all.")
+    ap.add_argument("--drate", type=int, default=None,
+                    help="DELAY RATE 0..127 (slot 8 KNOB, born 18 Aug 2026):\n"
+                         "scales both drift LFO increments by val/64, so 64 is\n"
+                         "exactly 1x and 0 freezes the wobble entirely.")
+    ap.add_argument("--dspray", type=int, default=None,
+                    help="DELAY SPRAY 0..127 (delay slot 10, default 0).\n"
+                         "GRAIN's scatter depth: 0 puts all four grains on one\n"
+                         "read position, 127 spreads them over 1015 samples.\n"
+                         "Only read in GRAIN (DMODE=3); inert elsewhere.")
+    ap.add_argument("--dvrbw", type=int, default=None,
+                    help="delay -VRB 0..127 (p5) -- the delay's send into the\n"
+                         "reverb, A KNOB AGAIN from 18 Aug 2026 (hardwired at\n"
+                         "max v3..R29). Default 0: the wash is opt-in, and\n"
+                         "registration follows the knob.")
+    ap.add_argument("--dmode", type=int, default=None,
+                    help="delay MODE 0..4 via the slot-7 COMPANION field --\n"
+                         "runtime equivalent of the DMODE= build override\n"
+                         "(proven bit-identical). 0=CLEAN 1=PITCH 2=TAPE\n"
+                         "3=GRAIN 4=REVERSE.")
+    ap.add_argument("--dptch", type=int, default=None,
+                    help="delay PTCH select 0..3 (slot-9 companion; DINT=\n"
+                         "equivalent). Interval in PITCH, interval SET in\n"
+                         "GRAIN, segment SIZE in REVERSE.")
+    ap.add_argument("--dfrz", type=int, default=None,
+                    help="delay FREEZE 0/1 (slot-11 companion; DFRZ=\n"
+                         "equivalent). Frozen from block 0 in a fixed-param\n"
+                         "render, so the line holds silence -- see PLAN.")
+    ap.add_argument("--rmode", type=int, default=None,
+                    help="reverb MODE 0..2 via the slot-7 COMPANION field\n"
+                         "(0=ROOM 1=PLATE 2=BIG) -- the --dmode twin. Default\n"
+                         "ROOM: REV_PARAMS[7] stays 0, which was the ONLY\n"
+                         "reachable mode here until 18 Aug 2026 (the panel\n"
+                         "boots BIG; renders wanting it must say so).")
+    ap.add_argument("--rrate", type=int, default=None,
+                    help="reverb RATE select 0..3 = 0.5/1/2/4x MOD speed\n"
+                         "(slot-11 companion, born 18 Aug 2026; default 1x).")
+    ap.add_argument("--width", type=int, default=None,
+                    help="reverb WIDTH select 0..3 (slot-9 companion).")
+    ap.add_argument("--gate", type=int, default=None,
+                    help="reverb GATE 0..127 (slot-10 KNOB).")
+    ap.add_argument("--rdel", type=int, default=None,
+                    help="RETIRED (18 Aug 2026): the reverb's ->DEL send is\n"
+                         "gone (the twin of the delay's VRBD, same rationale).\n"
+                         "A TRUE no-op now -- slot 11 is the RATE select, and\n"
+                         "until 18 Aug 2026 this flag silently drove it.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -373,8 +505,13 @@ def main():
 
     mem = pathlib.Path(a.mem) if a.mem else dump_mem(ROOT / a.image,
                                                      ROOT / "out/dsp/_send_probe_A.mem")
-    rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod
+    rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod  # --mix drives p5 = IN post-v4
     rev[0] = a.time
+    if a.rdel is not None:
+        print("--rdel is retired (slot 11 is the RATE select now); ignored")
+    for idx, val in ((7, a.rmode), (9, a.width), (10, a.gate), (11, a.rrate)):
+        if val is not None:
+            rev[idx] = val
     # Which server is being measured decides which SEND knob has to be up.
     _tgt = "D" if (a.pick == "D" or "R" not in a.layout.upper()) else "R"
     snd = list(SEND_PARAMS)
@@ -387,8 +524,24 @@ def main():
         wsrc, sr = render_reverb.read_wav(pathlib.Path(a.infile))
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
+    dpar = None
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow,
+                                   a.dtone, a.dping, a.dspray, a.dmode,
+                                   a.drate, a.dptch, a.dfrz)):
+        dpar = list(DELAY_PARAMS)
+        # ⚠️ SPRAY is slot 10 ($e KNOB). It sat at index 9 until 17 Aug 2026,
+        # which under the OLD dsp_host map happened to hit $e's knob field --
+        # right answer, wrong reasoning. Under the real map index 9 is PTCH's
+        # companion, so leaving it would have silently retuned the pitch
+        # select instead of the scatter depth.
+        for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
+                         (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (7, a.dmode),
+                         (8, a.drate), (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
+            if val is not None:
+                dpar[idx] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
-               a.split, a.layout, pick=a.pick)
+               a.split, a.layout, delay_params=dpar, pick=a.pick,
+               inall=a.inall)
     thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607

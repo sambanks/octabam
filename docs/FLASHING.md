@@ -1,273 +1,216 @@
-# Safe flashing guide — modified Octatrack MKII firmware
+# Safe flashing guide — octabam builds on the Octatrack MKII
 
-How to flash the patched firmware onto your Octatrack MKII, with a full
-safety net.
+How to get an octabam image onto your Octatrack MKII, with a full safety net —
+and how to get back off it.
 
-> **Everything is OFF by default.** Straight after flashing the unit behaves exactly like
-> stock firmware. The changes below are switched on from **PERSONALIZE** (see §4).
+> **⚠️ This is not official Elektron firmware.** Flashing a modified OS can
+> leave the unit unusable until you recover it, and puts your warranty in
+> question. Nothing here is endorsed by, supported by, or affiliated with
+> Elektron. You flash entirely at your own risk.
+>
+> **Do not redistribute images you build.** A built `.bin`/`.syx` contains
+> Elektron's copyrighted OS with patches applied. This project shares tooling
+> and patches only — everyone builds against their own downloaded copy
+> (`make os`).
 
-The firmware introduces TWO optional behavior changes + boot branding:
-1. **Lazy transitions**: when you switch to a pattern that uses a different Part, the tracks that
-   are playing keep the previous Part's sound — no volume jump. A track's **LED dims while it has
-   not yet been re-trigged** since the Part change; a **trig** (sequencer or manual) commits it to
-   the destination Part and clears the dim. So the dim tells you, at a glance, which playing tracks
-   are still on the previous Part and haven't been re-trigged. Turning an **encoder** applies the
-   destination Part's sound immediately (a live preview/commit of the audio) — it is not a trig, so
-   it does not clear the dim. The same switch also keeps the **A/B scene pointers** on the same
-   slots across the Part change.
-2. **No BANK/PTN countdown**: the SELECT BANK / SELECT PATTERN windows no longer expire after four
-   seconds. They stay open until you pick a trig or press the same key again to abort — the
-   press-again-to-exit toggle already existed in stock firmware. The four countdown boxes stay full
-   and now just mean "selection mode is active".
-3. **Boot branding**: the startup screen (and SYSTEM STATUS → OS VERSION) shows **`MAXOLYDIAN`**
-   instead of `1.40C`.
+> This document once described the upstream **octamax** ColdFire feature set
+> (lazy Part transitions, sticky scenes, bank paging, `MAXO_*` images). Those
+> features are octamax's, not octabam's — an octabam image contains the DSP
+> effects and their menu plumbing, nothing else. The old guide is preserved in
+> this repository's history (`git log -- docs/FLASHING.md`).
 
-They are controlled by **LAZY TRANSITIONS** and **NO BANK/PTN TIMER**, two new entries at the
-bottom of the PERSONALIZE menu.
-7. **Boot branding**: the startup screen (and SYSTEM STATUS → OS VERSION) shows **`MAXOLYDIAN`**
-   instead of `1.40C`.
-
-> **Use only the current build.** Earlier ones carried a GUI-in-transition patch that could crash
-> the unit; it has been removed entirely — the new spec wants an encoder move to *end* the
-> transition, which is the opposite of what that patch did.
-
-> **About the boot branding**: the version you see at power-on lives as text in the header of the
-> ELEK container (flash address `0x4008`), in a **fixed-width, 10-character** field that cannot be
-> enlarged without breaking OS decompression. That's why the text is `MAXOLYDIAN` (exactly 10 chars)
-> and not `MAXOLYDIAN 1.40C` (16, doesn't fit). The internal version code (`0178`, used by the
-> downgrade check) stays intact, so the unit still recognizes the OS correctly.
-
-> Want just the audio+GUI change without the branding? Use `out/OCTATRACK_OS1.40C_LAZYPART_GUI.syx`.
-> Just the audio change? Use `out/OCTATRACK_OS1.40C_LAZYPART.syx`.
-
-> **Guiding principle: learn how to recover BEFORE flashing.** A brick here is *soft and
-> recoverable* — the Startup Menu (bootloader) lives in a region that the OS update doesn't touch,
-> so you can always return to a good OS over MIDI. Read the recovery section first.
+**Guiding principle: learn how to recover BEFORE flashing.** A brick here is
+*soft and recoverable* — the Startup Menu (bootloader) lives in a region that
+the OS update doesn't touch, so you can always return to the official OS over
+MIDI. Read §1 first.
 
 ---
 
 ## 0. What you need (checklist)
 
-- [ ] **Octatrack MKII** (the firmware is OS 1.40C for MKII — it will NOT work on the MKI).
-- [ ] A **5-pin MIDI (DIN) interface** between the Mac and the Octatrack's MIDI IN.
-      ⚠️ **The upgrade does NOT work over USB** — it has to be MIDI DIN. A USB-MIDI cable or an
-      audio interface with MIDI works.
-- [ ] **SysEx Librarian.app** (you already have it installed). It's the standard app on Mac for sending `.syx`.
-- [ ] **The patched firmware**: `out/OCTATRACK_OS1.40C_MAXO_R10.syx`
-- [ ] **The official rescue firmware** (essential!): `downloads/extracted/OCTATRACK_OS1.40C.syx`
-- [ ] **Stable power** — don't power it from a dubious power strip; don't move it during flashing.
+- [ ] **Octatrack MKII.** The base image is OS 1.40C for the MKII — it will
+      NOT work on the MKI.
+- [ ] **The built image**: `make image` produces both delivery formats —
+      `out/OCTATRACK_OCTABAM<NNN>.bin` (CF-card path, recommended) and
+      `out/OCTATRACK_OS1.40C_OCTABAM<NNN>.syx` (MIDI path).
+      `<NNN>` is the `BUILD` number from the Makefile — bump it every flash:
+      a unit whose version string you cannot map back to a commit is a unit
+      you are guessing about.
+- [ ] **The official rescue firmware** (essential!):
+      `downloads/extracted/OCTATRACK_OS1.40C.syx` — you have it after
+      `make os`.
+- [ ] For the MIDI path (and for recovery): a **5-pin MIDI (DIN) interface**
+      into the Octatrack's MIDI IN, and an app that sends `.syx` files
+      (SysEx Librarian on macOS is the usual choice).
+      ⚠️ **The MIDI upgrade does NOT work over USB-MIDI to the OT's own USB
+      port** — it has to be DIN.
+- [ ] **Stable power** — no dubious power strip, and don't move the unit
+      during flashing.
 
 ---
 
 ## 1. Safety net — the recovery path (READ THIS FIRST)
 
-If something goes wrong (a "Z" screen, won't boot, a hang), **DON'T panic**. You recover like this:
+If something goes wrong (a "Z" screen, won't boot, a hang), **don't panic**:
 
 1. Turn off the Octatrack.
-2. Holding **[FUNC]** pressed, turn it on → you enter the **STARTUP MENU**.
-3. Press **[TRIG 3]** → **MIDI UPGRADE** → "READY TO RECEIVE MIDI UPGRADE…" appears.
-4. From SysEx Librarian, send the **official rescue OS**
-   (`downloads/extracted/OCTATRACK_OS1.40C.syx`).
-5. Wait for "PREPARING FLASH" → "UPDATING FLASH". **Don't power off.** You're back on the factory OS.
+2. Holding **[FUNC]**, turn it on → the **STARTUP MENU** appears.
+3. Press **[TRIG 3]** → **MIDI UPGRADE** → "READY TO RECEIVE MIDI UPGRADE…".
+4. Send the **official rescue OS**
+   (`downloads/extracted/OCTATRACK_OS1.40C.syx`) from your SysEx app.
+5. Wait through "PREPARING FLASH" → "UPDATING FLASH". **Don't power off.**
+   You're back on the factory OS.
 
-This menu works **even if the OS is corrupt** (it's the bootloader). That's why the real risk of
-losing the unit is very low.
+This menu works **even if the OS is corrupt** — it's the bootloader, and a
+normal OS update never touches it. That's why the real risk of losing the
+unit is very low.
 
-> **Also**: [TRIG 2] = EMPTY RESET (resets the battery-backed RAM and clears settings, **but NOT the
-> CF card**). Rarely needed, but it's there.
+> **Also**: [TRIG 2] = EMPTY RESET (resets the battery-backed RAM and clears
+> settings, **but NOT the CF card**). Rarely needed, but it's there.
 
 ---
 
 ## 2. Before flashing — backup
 
-Flashing the OS **does not touch the CF card** (your sets, projects and samples live there and stay intact).
-Even so, as a precaution:
+Flashing the OS **does not touch the CF card** (sets, projects and samples
+live there and stay intact). Even so:
 
-- [ ] Back up your CF card to the computer (mount the OT in USB DISK MODE and copy everything), or
-      at least the projects that matter to you.
-- [ ] Optional but recommended: create a **RESTORE POINT** of your active project (OT menu).
+- [ ] Back up your CF card to the computer (USB DISK MODE, copy everything),
+      or at least the projects that matter.
+- [ ] Optional but recommended: a **RESTORE POINT** of your active project.
 
 ---
 
 ## 3a. Flash from the CF card — the fast way (recommended)
 
-Manual §8.5.2. Reads the file off the card instead of trickling it over MIDI at 31250 baud, so it
-takes seconds rather than minutes.
+Manual §8.5.2. Reads the file off the card instead of trickling it over MIDI
+at 31250 baud, so it takes seconds rather than minutes.
 
-1. Connect the OT over USB, select **USB DISK MODE** and press **[YES]**. The CF card appears as a
-   drive on the computer.
-2. Copy **`out/OCTATRACK_MAXO_R10.bin`** to the **ROOT** of the card — not inside any folder.
-3. **Eject the card properly** on the computer, then leave USB DISK MODE on the OT. Skipping the
-   eject can leave the write in cache and the OT reads a truncated file.
-4. **PROJECT → OS UPGRADE → [YES]**, confirm the prompt.
+1. Connect the OT over USB, select **USB DISK MODE**, press **[YES]**. The
+   CF card appears as a drive.
+2. Copy **`out/OCTATRACK_OCTABAM<NNN>.bin`** to the **ROOT** of the card —
+   not inside any folder.
+3. **Eject the card properly** on the computer, then leave USB DISK MODE on
+   the OT. Skipping the eject can leave the write in cache and the OT reads
+   a truncated file.
+4. **PROJECT → OS UPGRADE → [YES]**, confirm the prompt. (The active project
+   is synced to the card automatically first.)
+5. ⚠️ **POWER-CYCLE THE UNIT BEFORE JUDGING ANYTHING.** Not optional, and
+   not superstition — garbled audio straight after an upgrade has happened
+   twice, cleared by a reboot both times.
 
-The active project is synced to the card automatically before the upgrade.
+   🟡 The mechanism, inferred from the code and matching the symptom exactly
+   (not yet measured on hardware): both engines skip warm-up when their
+   tagged counter at `r7+$82` holds a valid tag at full count — ChonVerb
+   `$2c0000`, BongDelay `$2e0000`. **An OS upgrade rewrites program memory
+   but does not clear DSP state RAM.** If that word survives with a valid
+   tag, the engine concludes it is already warmed up and runs on whatever is
+   in its buffers — the previous firmware's contents, or boot garbage. The
+   delay's own source note spells out why that is worse than a single
+   glitch: "this engine has real feedback, so uncleared garbage would
+   recirculate rather than just play once and vanish."
 
-> This needs a unit that boots. If it does not, use the MIDI path in §3b — the Startup Menu is in
-> a region the OS update never touches.
+   A power cycle clears the tag, warm-up runs, buffers are zeroed. **Judge
+   no audio, and report no defect, until you have rebooted after an
+   upgrade** — otherwise you are auditioning the previous build's leftovers.
 
-`tools/make_bin.py` builds the `.bin`. Its correctness is not assumed: it regenerates Elektron's
-own official `.bin` byte-for-byte from that file's own container.
+   Falsifier, if anyone wants to close it properly: peek `r7+$82` on the
+   first block after an upgrade and see whether the tag compare passes.
+
+> This path needs a unit that boots. If it doesn't, use the MIDI path in
+> §3b — the Startup Menu is in a region the OS update never touches.
+
+`tools/make_bin.py` builds the `.bin`. Its correctness is not assumed: it
+regenerates Elektron's own official `.bin` byte-for-byte from that file's own
+container before it will produce a modified one.
 
 ---
 
 ## 3b. Flash over MIDI — for recovery, or if the card path fails
 
-1. **Connect MIDI**: your interface's MIDI OUT → the Octatrack's **MIDI IN** (DIN, not USB).
-2. **Open SysEx Librarian**, and in its destination selector choose your MIDI interface (the output
-   port connected to the OT).
-3. **Drag** `out/OCTATRACK_OS1.40C_MAXO_R10.syx` into the SysEx Librarian list.
-4. On the Octatrack: turn it off, hold **[FUNC]** and turn it on → **STARTUP MENU**.
-5. Press **[TRIG 3]** (MIDI UPGRADE) → it should say **"READY TO RECEIVE MIDI UPGRADE…"**.
-6. In SysEx Librarian, select the file (`_MAXO_R2.syx`) and press **Play**.
-   - The OT's **[TRIG]** lights turn on one by one as it receives. **It takes a while** (be patient).
-7. When the transfer finishes: **"PREPARING FLASH"** appears and then **"UPDATING FLASH"**.
-   - **⚠️ DO NOT POWER OFF OR DISCONNECT** during "…FLASH". Interrupting here corrupts the OS (→ "Z" screen).
-8. The OT may update the bootstrap after flashing. **Wait** for it to finish its boot sequence or to
-   explicitly tell you to restart. Only then is it ready.
+1. **Connect MIDI**: your interface's MIDI OUT → the Octatrack's **MIDI IN**
+   (DIN, not USB).
+2. In your SysEx app, choose the output port connected to the OT and load
+   `out/OCTATRACK_OS1.40C_OCTABAM<NNN>.syx`.
+3. On the Octatrack: power off, hold **[FUNC]**, power on → **STARTUP MENU**.
+4. Press **[TRIG 3]** (MIDI UPGRADE) → **"READY TO RECEIVE MIDI UPGRADE…"**.
+5. Send the file. The **[TRIG]** lights come on one by one as it receives —
+   it takes a while.
+6. When the transfer finishes: **"PREPARING FLASH"**, then **"UPDATING
+   FLASH"**. **⚠️ DO NOT POWER OFF OR DISCONNECT** during "…FLASH" —
+   interrupting here corrupts the OS (→ "Z" screen, → §1).
+7. The OT may update its bootstrap after flashing. Wait for it to finish
+   booting, then power-cycle (§3a step 5 applies here too).
 
-> If SysEx Librarian sends too fast and the OT loses sync, lower the send speed in its *Preferences*
-> (increase the "pause between messages", e.g. to 100–300 ms).
+> If the sender goes too fast and the OT loses sync, increase the pause
+> between messages in the app's preferences (e.g. 100–300 ms).
 
 ---
 
-## 4. Verify that the patch works
+## 4. Verify the flash took
 
-The change is subtle and is only noticeable in one specific situation. To test it:
+1. **Version string.** The boot screen and **SYSTEM STATUS → OS VERSION**
+   should read **`OCTABAM<NNN>`** — the `-V` stamp from `make image`. If it
+   still says `1.40C`, the official OS is running, not your build.
+2. **The reverb, on track 5.** Assign ChonVerb to an FX2 slot on one of
+   **tracks 5–8** (payload A serves the high tracks — measured, and inverted
+   from what you'd guess). Feed it audio via `IN` and step **MODE**: you
+   should hear distinct ROOM → PLATE → BIG spaces. Both effects are
+   **returns** (wet-only output): a reverb track with `IN` at 0 is silent by
+   design.
+3. **The delay, on tracks 1–4.** BongDelay lives on the low tracks (payload
+   B). Same deal: it is a return, fed over the bus.
+4. **The bus.** Put SEND on any other track and drive `→REVERB` /
+   `→DELAY` — those are two separate knobs, and driving the wrong one
+   renders silence that reads as a broken algorithm.
 
-1. Prepare **two patterns** that use **different Parts**, with an **audio track at a different LEVEL**
-   in each Part (e.g. Part 1 with track 1 at a high level, Part 2 with track 1 at a low level).
-2. In pattern 1, trigger track 1 so it **keeps playing** (a long sample or a loop).
-3. **Switch to pattern 2** (with the other Part) **without re-triggering** that track.
-4. **Expected behavior with the patch**: the track keeps playing **at the same volume** (it keeps the
-   source LEVEL) — **without the jump** you had before.
-5. As soon as you **trigger it again** (its first trig in the new pattern), it adopts the LEVEL/params
-   of the destination Part. That's the correct behavior.
-
-If instead the volume jumps when you switch patterns (as before), the patch is not active
-(did you flash the right file?).
-
-### Testing the GUI-in-transition
-6. With the track from step 2 still **in transition** (playing, without re-triggering after the pattern change),
-   **turn its knobs** (e.g. FX, filter, LEVEL).
-7. **Expected**: you hear the sound in transition change in real time, and those edits land in the
-   **source Part** (not the destination one). When you re-trigger the track, it adopts the destination Part.
-
-### Verify the boot branding
-8. Restart the unit: the **first screen** should show **`MAXOLYDIAN`** where it used to say `1.40C`.
-9. Also in **SYSTEM (menu) → SYSTEM STATUS → OS VERSION** it should read `MAXOLYDIAN`.
-   - If it still says `1.40C`, this file wasn't flashed (or the bootloader reads the version from
-     another copy): retry with `_MAXO_R2.syx`. The change is purely cosmetic and doesn't affect operation.
-
-### Testing sticky scenes
-10. Have two patterns with different Parts and different A/B scenes selected in each (e.g. P1 with
-    A1/B2, P2 with A5/B6). Select A1/B2 in P1.
-11. Switch from P1 to P2 **without re-selecting a scene**. **Expected**: A1/B2 stay selected (they don't
-    jump to A5/B6). The crossfader morphs between A1 and B2 as in P1.
-12. You assign a scene manually (SCENE A/B + trig) → that becomes the new "sticky" selection.
-    - If the scenes jump anyway when you switch Part, the patch had no effect (it doesn't harm anything;
-      reflash or report). Note: the "sticky" selection modifies the destination pattern's saved
-      selection in the working copy; if you save the project, it persists.
-
-### Testing the dirty indicators
-13. With a track still in transition (step 2), look at its **track LED**: it should be
-    noticeably **dimmer** than the others. Re-trig that track → it returns to full brightness.
-    This is the exact, per-track signal: dim means "still sounding with the source Part's params".
-14. While any track is in that state, the **selected scene trig** should light **amber** (both
-    dies of the bi-colour LED) instead of its usual colour. This one is a global hint — it says
-    "something is still on the source Part", not which track.
-
-> **An OS upgrade resets the PERSONALIZE settings.** Both switches come back unchecked
-> after every flash, so the unit is stock until you re-enable them. Worth knowing when
-> testing: a build that looks like it changed nothing may simply have its features off.
-
-### Turning the features on
-15. Go to **PROJECT → PERSONALIZE**. Scroll to the bottom: two new entries,
-    **NO BANK/PTN TIMER** and **LAZY TRANSITIONS**, both unchecked.
-    Check them with **[YES]** (or the arrow keys). The 16 stock entries above must still show
-    their own values correctly.
-16. The settings live in battery-backed RAM, so they survive a power cycle. Turn the unit off
-    and on to confirm they stay checked. A Startup Menu **EMPTY RESET** clears them back to
-    factory, like every other PERSONALIZE setting.
-
-### Testing the BANK/PTN toggle
-18. Press **[PTN]**: the SELECT PATTERN window opens. Wait more than four seconds — **it must stay
-    open**, with the four boxes full and unmoving. Press a **[TRIG]** and the pattern changes.
-19. Press **[PTN]** again instead of a trig → aborts back to the sequencer.
-20. Press **[BANK]**, pick a bank with a **[TRIG]** → the display asks for the pattern, also with no
-    time limit. Pick a trig and you are back to normal.
-
-### Regression test — the crash fixed in V4
-17. Play B1 P1, switch to B2 P1, then hold **[SCENE B]** and turn the amp volume of a track that
-    is in transition. **Expected**: it just edits, nothing else happens.
-    - Builds before V4 threw `EXCEPTION VEC:0B` here. If you ever see that screen, power-cycle
-      the unit — nothing is damaged, the OS just trapped — and report it.
+`docs/BUS.md` has the menu layout; `docs/PARAM_PAGES.md` explains how a knob
+reaches the DSP.
 
 ---
 
 ## 5. Reverting to the official firmware
 
-Whenever you want (or if something doesn't convince you), reflash the official one following the **same
-steps in section 3**, but sending `downloads/extracted/OCTATRACK_OS1.40C.syx`. Your CF card and projects
-are not affected.
+Whenever you want: reflash following the same steps in §3, but with
+`downloads/extracted/OCTATRACK_OS1.40C.syx` (MIDI) or the official `.bin`
+from Elektron's zip (card). Your CF card and projects are not affected.
 
 ---
 
 ## Risk notes (honest)
 
-- This firmware is **modified by you, for your own unit, for study purposes.** It is not official
-  Elektron firmware and has no support from them.
-- The patches are **validated in a ColdFire emulator**, and the audio/GUI/sticky-scene behaviour is
-  confirmed on hardware. The emulator harnesses exercise one call at a time, which is exactly how a
-  reentrancy crash slipped through into builds 1.0–3.0 — treat emulator green as necessary, not
-  sufficient, and go in with the recovery net ready.
-- The only truly delicate moment is **"UPDATING FLASH"**: don't cut power there.
-- Residual risk of a *hard* (unrecoverable) brick: very low — the rescue bootloader is not touched in
-  a normal OS update.
+- This firmware is **modified by you, for your own unit, for study
+  purposes.** It is not official Elektron firmware and has no support from
+  anyone — Elektron least of all.
+- Everything checkable without hardware is checked (`make check`,
+  `make render`, the verify gates) — but the emulator is **single-core**, so
+  no local test can reproduce a cross-core bus timing defect, and its mpy
+  semantics and truncation are its own. Treat emulator green as necessary,
+  not sufficient, and go in with the recovery net ready.
+- The only truly delicate moment is **"UPDATING FLASH"**: don't cut power
+  there.
+- Residual risk of a *hard* (unrecoverable) brick: very low — the rescue
+  bootloader is not touched in a normal OS update.
 
 ---
 
-### Quick file reference
+## ⚠️ First load of an EXISTING PROJECT on R29+ (the RETURN-architecture images)
 
-| File | What it is |
-|---|---|
-| `out/OCTATRACK_OS1.40C_MAXO_R10.syx` | **Patched firmware** — everything: lazy part, GUI-in-transition, sticky scenes v2, dirty indicators, "MAXOLYDIAN" branding. The one you're going to flash |
-| `out/OCTATRACK_OS1.40C_LAZYPART_GUI.syx` | Variant without boot branding — ⚠️ pre-V4, has the crash |
-| `out/OCTATRACK_OS1.40C_LAZYPART.syx` | Audio-only variant (no GUI patch, so no crash) |
-| `downloads/extracted/OCTATRACK_OS1.40C.syx` | **Official rescue OS** — for recovery or reverting |
+There is **no migration mechanism**: the unit stores each part's knob VALUES,
+and our descriptors only supply defaults when an effect is freshly selected.
+So a project saved on an older image loads with values that may now mean
+something else:
 
----
+1. **ChonVerb tracks that carried their own audio lose the dry.** The reverb
+   is a RETURN now (wet-only output). Old "insert" usage must be re-rigged as
+   a send, or accepted as wet-only.
+2. **Old stored MIX values load as IN** (p5). On a pure return track this is
+   inaudible — but it silently registers the host as a bus client and dilutes
+   the real senders. Zero it, or use step 4.
+3. **Old stored VRBW values load as `-VRB`** (delay p5, live again from R30).
+   A pre-v3 project's VRBW=127 will wash the delay into the reverb on load.
+4. **The one-step fix per track: re-select the effect** (switch the FX2 away
+   and back). The id-store fires on change and applies fresh defaults.
 
-## Live bank paging (experimental — R12)
-
-Reach more than 16 banks in a live set by paging in whole **sibling projects** from the CF
-card, **without stopping the sequencer/audio**.
-
-### Setup (sibling projects)
-1. Load your base project (e.g. `MYSET`).
-2. **PROJECT → SAVE PROJECT AS → `MYSET_2`** (this copies the sample pool). Optionally `_3`, `_4`.
-   Edit patterns/parts in each; **keep the sample pool / slot assignments identical** across
-   siblings — samples are project-level, so paged banks play whatever sample sits in each slot.
-3. Load the base `MYSET` again to perform.
-
-### Use
-1. Press **[BANK]** to open SELECT BANK.
-2. Press **[PAGE]**: a **"LOAD BANKS?"** popup shows the target project (`MYSET_2`, then `_3`,
-   `_4`, then back to the base). Each press cycles to the next page.
-3. **[YES]** loads that page's banks (all except the one currently playing) in the background —
-   **audio keeps playing** — and drops you back in SELECT BANK to pick a bank + pattern.
-   **[NO]** aborts back to the sequencer.
-
-### Notes / current limitations (release candidate)
-- The **background load is hardware-proven not to stop audio**; the surrounding UX (cycling,
-  the popup) is validated in the emulator and on-device for the core path, but the full flow is
-  still a release candidate — test it before relying on it live, and keep the official `.syx`
-  handy for recovery.
-- **The bank you're playing when you page keeps the base content** until you switch away from it
-  (loading the playing bank would interrupt audio). Switching to another bank frees it; a
-  "catch-up" of that bank is a planned refinement.
-- **Don't SAVE while paged** — the RAM banks hold the sibling's content and a save would write it
-  into the *base* project. Treat paging as performance-only for now.
-- Pressing **[PAGE]** in SELECT BANK pops the confirm even for projects without siblings (just
-  press [NO]); an existence check that keeps [PAGE] stock for non-paged projects is planned.
-- A page that doesn't exist on the card just raises the normal load-error dialog.
+Same class as the power-cycle step above: known, cheap, and it reads as a
+defect if you don't know it's coming.

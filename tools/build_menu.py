@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """
+SUPERSEDED by tools/build_bus.py (the shipping builder) -- kept as the
+ColdFire-menu-integration record. Comments below predate two corrections:
+the FX1 menu NEVER listed the reverbs or DELAY (they are FX2-only; "FX1's
+DARK REV entry" below is wrong), and defaults here are frozen at their
+task-11 values (e.g. LP=100; the shipping default is 127, build_bus.py).
+
 BUS.md task 11: replace FX2's chooser list with exactly three entries --
 DELAY SERVER, REVERB SERVER, SEND.
 

@@ -6,7 +6,7 @@ ear without a flash.
     python3 tools/render_reverb.py loop.wav
     python3 tools/render_reverb.py loop.wav -p TIME=100 -p SIZE=127 -p MIX=80
     python3 tools/render_reverb.py loop.wav --sweep SIZE=0,64,127 --wet
-    python3 tools/render_reverb.py loop.wav --mode all       # all four characters
+    python3 tools/render_reverb.py loop.wav --mode all       # all three characters
     python3 tools/render_reverb.py loop.wav --build          # rebuild first
 
 Why this is trustworthy: tools/dsp_host runs the REAL assembled instruction
@@ -26,7 +26,7 @@ What it CANNOT tell you, and still needs a flash (REVERB.md, BUS.md):
 
 So: voice here, then spend flashes on the cycle budget and the UI surface.
 """
-import argparse, array, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
+import argparse, array, hashlib, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
@@ -34,24 +34,93 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 MEM = ROOT / "out/dsp/mem_reverb_server_A.mem"
 CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine()
 
+
+# ---- provenance ----------------------------------------------------------
+# WHY THIS EXISTS. On 8 Aug 2026 a shimmer was iterated eight times by ear and
+# at least five of those renders were byte-identical to an earlier one:
+#   shimmer_v124_on.wav == shimmer_v125_on.wav                    (09e31b2d)
+#   shimmer_v122_test == shimmer_xfade_test == shimmer_hardcoded  (0fa9e3e7)
+# The edits were real; the audio was not rebuilt. A whole evening was spent
+# judging the same file and concluding the fix had not worked.
+#
+# mtime keying cannot prevent this. It misses --mem (which skips the build
+# entirely), it misses env-var changes such as SHIMMER=/MODE= that alter the
+# assembled output with no file touched, and it silently accepts a same-second
+# write. So the cache is keyed on a CONTENT FINGERPRINT of everything that can
+# change the instruction stream, the fingerprint is stored beside the artifact,
+# and a mismatch forces a rebuild.
+#
+# The over-inclusive hash (every dsp/ source, not just the ones this build
+# links) is deliberate: it errs toward rebuilding, and a needless 20-second
+# rebuild costs nothing next to one wrong by-ear verdict.
+
+# Every env var build_bus.py branches on -- grep 'environ' tools/build_bus.py.
+# A var missing from this list is a way to change the build without changing
+# the fingerprint, which is the exact bug this guards against.
+BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
+             "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE")
+# SHIMMER was in this list until Round 12; the flag build_bus.py actually
+# branches on has been NOSHIM since the v3 rewrite, so a NOSHIM build did
+# not change the fingerprint -- the exact bug the comment above names.
+
+
+def fingerprint(extra=()):
+    """sha256 over every input that can change the assembled instruction stream:
+    all DSP sources, the builder, and the env vars it branches on."""
+    h = hashlib.sha256()
+    for p in sorted(ROOT.glob("dsp/*.asm")) + sorted(ROOT.glob("dsp/*.inc")):
+        h.update(p.name.encode()); h.update(p.read_bytes())
+    for p in ("tools/build_bus.py", "tools/dsp_modmap.py"):
+        h.update((ROOT / p).read_bytes())
+    for k in BUILD_ENV:
+        h.update(f"{k}={os.environ.get(k, '')}\n".encode())
+    for k, v in extra:
+        h.update(f"{k}={v}\n".encode())
+    return h.hexdigest()
+
+
+def sha(path, n=12):
+    return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()[:n]
+
+
+def prov_ok(img, fp):
+    """True when `img` was built from fingerprint `fp` and still exists."""
+    tag = img.with_suffix(img.suffix + ".prov")
+    return img.exists() and tag.exists() and tag.read_text().strip() == fp
+
+
+def prov_stamp(img, fp):
+    img.with_suffix(img.suffix + ".prov").write_text(fp + "\n")
+
 SR = 44100
 FRAMES = 15              # dsp_host caps a block at 15 frames (the & 0xf in setup)
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
-# -params index -> r6 offset is NOT linear: 0..5 are page 1, then the harness
-# maps 6..9 onto r6+$b..$e (and 10,11 WRAP back onto $b,$c).
+# -params index -> r6 offset: 0..5 are page 1, then dsp_host carries the REAL
+# page-2 map (settled on hardware 17 Aug 2026, docs/PARAM_PAGES.md): slots
+# 6/8/10 are the KNOB fields of r6+$c/$d/$e and slots 7/9/11 their COMPANION
+# fields (bits 8-15) -- companions are drivable locally since dsp_host learned
+# the map. The old note here ("6..9 -> $b..$e, knob fields only, companions
+# unwritable") described the pre-17-Aug harness; under the real map its
+# 10-entry table put GATE on slot 9, which is WIDTH's companion -- so
+# `-p GATE=n` never reached the gate, found 18 Aug 2026 when a gated-drums
+# render measured bit-identical at GATE 8/20/40.
 #
-# IMPORTANT LIMITATION: dsp_host writes (value & 0x7f) << 16 -- always into the
-# word's KNOB field. The v92 layout puts MODE, WIDTH and ->DEL in COMPANION
-# fields (the low bits of $c/$d/$e), and this harness cannot write those at
-# all. MODE gets around it with --mode, which assembles the value in via
-# build_bus.py's MODE= override instead of driving the slot. WIDTH and ->DEL
-# have no such override and still need a flash to hear.
-PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 100),
-          ("MIX", 64), ("SPEED", 64), ("_C", 0), ("DIFF", 64), ("PRE", 0)]
+# MODE (slot 7) still goes in via --mode / build_bus.py's MODE= override, kept
+# because the override predates companion driving and is proven equivalent.
+# MIX (idx 5) has been IN since the v4 return -- the host's own send level,
+# not a crossfade; the name stays so existing command lines keep working.
+# RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
+PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
+          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("WIDTH", 3),
+          ("GATE", 0), ("RATE", 1)]
+# SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
+# put an octave-up loop gain of ~0.13 into EVERY render -- Round 12 measured
+# it inflating the sustain of every band (PLATE MF -18.7 vs -22.8 dB/s
+# without) and Sam heard it as "a high zingy bit in the bg". The voicing
+# baseline is the clean verb; ask for shimmer explicitly with -p SPEED=n.
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
-# $c (index 7) is a real page-2 slot but nothing on the host drives it
-# (REVERB.md), so it is not offered as a knob.
+# _C (index 7) is MODE's companion slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
 
 
@@ -157,10 +226,21 @@ def ensure_mem(build):
     # shipping artifact and `make render`'s documented subject. An alternate
     # RVSRC must never be left sitting at that path pretending to be it.
     alt = bool(os.environ.get("RVSRC"))
-    img = CACHE / f"{stem}.bin" if alt else IMAGE
-    mem = CACHE / f"{stem}_A.mem" if alt else MEM
-    newest = max((ROOT / p).stat().st_mtime for p in (rvsrc, "tools/build_bus.py"))
-    if build or not img.exists() or img.stat().st_mtime < newest:
+    # DEV=1 annexes CHORUS's module as a fourth donor, which is 329 free words
+    # on payload A where the shipping build has almost none (FREE 32,
+    # 11 Aug 2026). That is the room to
+    # develop an engine change in before paying for it -- a DEV build is never
+    # flashed, so it proves the SOUND without also having to have solved the
+    # space problem. `make check` still gates what ships.
+    dev = os.environ.get("DEV") == "1"
+    if dev:
+        img = ROOT / "out/mainos_bus_dev.bin"
+        mem = ROOT / "out/dsp/mem_dev_A.mem"
+    else:
+        img = CACHE / f"{stem}.bin" if alt else IMAGE
+        mem = CACHE / f"{stem}_A.mem" if alt else MEM
+    fp = fingerprint([("XBUS", "1"), ("SPEC", "1"), ("RVSRC", rvsrc if alt else "")])
+    if build or not prov_ok(img, fp) or not mem.exists():
         print(f"building {img.relative_to(ROOT)} ...")
         env = dict(os.environ, XBUS="1", SPEC="1")
         if alt:
@@ -169,19 +249,22 @@ def ensure_mem(build):
                            env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
-        if alt:
+        if alt and not dev:
             claim(IMAGE, img)
-    if not HOST.exists():
-        die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
-    if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
-        sys.path.insert(0, str(ROOT / "tools"))
-        import dsp_modmap
-        mem.parent.mkdir(parents=True, exist_ok=True)
-        dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+        if not HOST.exists():
+            die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
+        if not dev:                         # the DEV build dumps its own .mem
+            sys.path.insert(0, str(ROOT / "tools"))
+            import dsp_modmap
+            mem.parent.mkdir(parents=True, exist_ok=True)
+            dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+        prov_stamp(img, fp)                 # stamp LAST: a crash mid-build must
+    else:                                   # not leave a valid-looking artifact
+        print(f"reusing {img.relative_to(ROOT)} (fingerprint {fp[:12]} unchanged)")
     return mem
 
 
-MODES = ["ROOM", "PLATE", "HALL", "BIG"]     # dsp/reverb_server.asm's md_* order
+MODES = ["ROOM", "PLATE", "BIG"]     # dsp/reverb_server.asm's md_* order
 
 
 def ensure_mode_mem(mode, build):
@@ -195,11 +278,12 @@ def ensure_mode_mem(mode, build):
     rvsrc, stem = engine()
     img = CACHE / f"{stem}_mode{mode}.bin"
     mem = CACHE / f"{stem}_mode{mode}_A.mem"
-    # rebuild when the engine or the builder moved, not just when the image is
-    # missing -- a stale mode render silently voices the previous constants
-    newest = max((ROOT / p).stat().st_mtime
-                 for p in (rvsrc, "tools/build_bus.py"))
-    if build or not img.exists() or img.stat().st_mtime < newest:
+    # Rebuild whenever ANY build input changed -- a stale mode render silently
+    # voices the previous constants, and mtime keying missed exactly that.
+    dev = os.environ.get("DEV") == "1"
+    fp = fingerprint([("MODE", str(mode)), ("XBUS", "1"), ("SPEC", "1"),
+                      ("RVSRC", rvsrc)])
+    if build or not prov_ok(img, fp) or not mem.exists():
         print(f"building {img.name} (MODE={mode} {MODES[mode]}) ...")
         # RVSRC= passthrough so alternate engines can be rendered without
         # copying files: RVSRC=dsp/some_alt_engine.asm make reverb ...
@@ -208,14 +292,22 @@ def ensure_mode_mem(mode, build):
                            env=env, capture_output=True, text=True)
         if r.returncode != 0:
             die(f"build_bus.py MODE={mode} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
-        claim(ROOT / f"out/mainos_bus_mode{mode}.bin", img)
-    if not HOST.exists():
-        die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
-    if not mem.exists() or mem.stat().st_mtime < img.stat().st_mtime:
+        # DEV=1 writes the dev-named image and dumps its own .mem; a plain
+        # build writes the per-mode path and needs the dump doing here. The
+        # MODE override costs 2 words the shipping region does not have, so
+        # --mode in practice always needs --dev.
+        built = ROOT / ("out/mainos_bus_dev.bin" if dev
+                        else f"out/mainos_bus_mode{mode}.bin")
+        claim(built, img)
+        if not HOST.exists():
+            die(f"missing {HOST.relative_to(ROOT)} -- run 'make setup'")
         sys.path.insert(0, str(ROOT / "tools"))
         import dsp_modmap
         mem.parent.mkdir(parents=True, exist_ok=True)
         dsp_modmap.dumpmem(img.read_bytes(), ["A", str(mem)])
+        prov_stamp(img, fp)
+    else:
+        print(f"reusing {img.name} (fingerprint {fp[:12]} unchanged)")
     return mem
 
 
@@ -262,8 +354,24 @@ def run(mem, src, values, tail_s, verbose, entry=None):
     blocks = -(-total // FRAMES)
     n = blocks * FRAMES
 
-    tmp = ROOT / "out/dsp/_render_in.raw"
-    out = ROOT / "out/dsp/_render_out.raw"
+    # PER-PROCESS scratch names. These were the fixed paths _render_in.raw /
+    # _render_out.raw, which meant TWO RENDERS RUNNING AT ONCE silently fed
+    # each other's audio through the emulator and wrote each other's output.
+    #
+    # It cost two measurements on 9 Aug 2026: a linearity sweep and a
+    # shimmer A/B were launched as concurrent background jobs, and between
+    # them produced an output peak that was NON-MONOTONIC in input gain
+    # (gain 0.60 louder than gain 0.70). That reads exactly like a conditional
+    # instability in the tank, which is a serious and completely fictitious
+    # bug -- it survived a determinism check, because each render on its own
+    # IS deterministic. Re-running the same points serially made it vanish.
+    #
+    # The failure is silent, it looks like an engine fault rather than a
+    # harness fault, and nothing about the render output hints at it. Unique
+    # names per process remove it entirely; the last render of a process still
+    # leaves its files behind for inspection, keyed by pid.
+    tmp = ROOT / f"out/dsp/_render_in_{os.getpid()}.raw"
+    out = ROOT / f"out/dsp/_render_out_{os.getpid()}.raw"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     with open(tmp, "wb") as f:
         for i in range(n):
@@ -323,16 +431,24 @@ def main():
                          "hardware would do -- it just makes quiet renders (impulses, "
                          "--wet tails) auditionable without riding the volume knob.")
     ap.add_argument("--mode", metavar="N|all",
-                    help="audition MODE characters: 0 ROOM, 1 PLATE, 2 HALL, "
-                         "3 BIG, or 'all'. Assembles the value in (the slot is "
+                    help="audition MODE characters: 0 ROOM, 1 PLATE, 2 BIG, "
+                         "or 'all'. Assembles the value in (the slot is "
                          "a companion field dsp_host cannot drive)")
     ap.add_argument("--build", action="store_true", help="run build_bus.py first")
+    ap.add_argument("--dev", action="store_true",
+                    help="build with DEV=1: annexes CHORUS's module for 329 extra "
+                         "program words on payload A, where the shipping build has "
+                         "almost none (FREE 32). Never flashable -- for proving a change SOUNDS right "
+                         "before paying for its space")
     ap.add_argument("--mem", metavar="FILE",
                     help="render through a different payload dump instead of the "
                          "current build -- how you A/B two engine versions on the "
                          "same source (keep the old .mem when you change the engine)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.dev:
+        os.environ["DEV"] = "1"     # before any fingerprint() call -- DEV is in
+                                    # BUILD_ENV, so it keys the cache correctly
 
     values = [d for _, d in PARAMS]
     for spec in a.param:
@@ -374,6 +490,13 @@ def main():
         mem = pathlib.Path(a.mem) if a.mem else ensure_mem(a.build)
         if a.mem and not mem.exists():
             die(f"no such payload dump: {mem}")
+        if a.mem:
+            # --mem is for A/B'ing a KEPT dump against a new build. It does not
+            # assemble anything, so edits made since that dump was written are
+            # not in it. That is the flag's purpose, but it has also been the
+            # way an edit went unheard, so it announces itself.
+            print(f"  --mem: NO BUILD RUN. Rendering the prebuilt dump {mem} "
+                  f"as-is;\n         source edits since it was written are NOT in it.")
         renders = [(mem, None)]
     out_base = pathlib.Path(a.out) if a.out else src_path.with_suffix("")
     print(f"{src_path.name}: {len(src)/SR:.1f} s + {a.tail:.0f} s tail"
@@ -384,7 +507,11 @@ def main():
         vals = dict(zip(NAMES, values)); vals[k] = v
         jobs.append((vals, pathlib.Path(f"{out_base}_{k}{v}"), k))
 
+    seen = {}                       # audio sha -> first filename that produced it
     for mem, mode_name in renders:
+        # The dump actually handed to dsp_host. Printed every time: this line
+        # is the answer to "am I hearing the code I just edited?"
+        print(f"  engine {mem.name}  [payload {sha(mem)}]")
         for vals, dest, swept in jobs:
             vlist = [vals[n] for n, _ in PARAMS]
             L, R = run(mem, src, vlist, a.tail, a.verbose)
@@ -416,8 +543,21 @@ def main():
             if d.resolve() == src_path.resolve():
                 die(f"output would overwrite input: {d}\n"
                     f"  use -o to pick a different output, or --mode to add a suffix")
+            # An A/B is only evidence if the two sides actually differ. Compare
+            # against what was at this path before, and against every other
+            # render this invocation produced, and SAY SO when they match --
+            # a silent no-op render is what made five shimmer iterations
+            # indistinguishable from each other on 8 Aug (see fingerprint()).
+            before = sha(d) if d.exists() else None
             write_wav(d, L, R)
-            print(f"  -> {d}")
+            now = sha(d)
+            note = ""
+            if before == now:
+                note = "   *** IDENTICAL to the file already at this path ***"
+            elif now in seen:
+                note = f"   *** IDENTICAL to {seen[now]} ***"
+            seen.setdefault(now, d.name)
+            print(f"  -> {d}  [audio {now}]{note}")
 
 
 if __name__ == "__main__":

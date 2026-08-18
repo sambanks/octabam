@@ -10,9 +10,9 @@ What runs today:
 
 | | |
 |---|---|
-| **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/HALL/BIG modes, modulated taps, mid/side width and pre-delay. Voiced by ear. It takes over the three stock reverb slots, which is where the program space for it came from. |
-| **BongDelay** | A delay you can route *into* the reverb. **Currently an untested first draft** — treat it as unwritten. |
-| **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. This is the part the hardware was not designed to do. |
+| **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
+| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), FREEZE, TAPE (wow/flutter + saturation) and GRAIN — that routes *into* the reverb over the bus. On hardware since R15; every knob live and audible as of R41 (18 Aug 2026). |
+| **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
 exists because you cannot write an effect for a machine whose memory map,
@@ -34,10 +34,10 @@ cross into the reverb — a route the stock firmware has no path for at all.
 
 The costs are all measured, not estimated:
 
-| resource | per core | state |
+| resource | per core | state (18 Aug 2026, R41) |
 |---|---|---|
-| Cycles | 4,535/sample | 1,392 spare, measured on hardware under full load |
-| Program space | 8,192 words | 494 free on payload A, 1,998 on B |
+| Cycles | 4,535/sample | measured ceiling; worst mode fits its core with margin |
+| Program space | 8,192 words | donor region 2,724 words/payload: A 55 free, B 1 free |
 | Delay memory | 65,536 words | 1.49 s per server |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker,
@@ -56,10 +56,15 @@ your own risk.
 Reading and disassembling firmware is harmless. Writing it to hardware is not.
 `docs/FLASHING.md` has the recovery path — read it *before* you need it.
 
-**No Elektron binary is redistributed here.** You download your own copy of the
-official OS with `make os`; every build is derived from that copy,
-reproducibly, and the tooling regenerates Elektron's own image byte-for-byte
-before it will produce a modified one.
+**No Elektron binary is redistributed here — and none may be.** You download
+your own copy of the official OS with `make os`; every build is derived from
+that copy, reproducibly, and the tooling regenerates Elektron's own image
+byte-for-byte before it will produce a modified one. The same rule binds you
+onward: **a built `.bin` or `.syx` contains Elektron's copyrighted OS — do not
+share built images.** Share the repo; everyone builds their own.
+
+*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV AB,
+used here only to identify the hardware this project targets.
 
 ---
 
@@ -73,7 +78,9 @@ make bus       # build the effects into it
 make image     # repack as a card-flashable .bin
 ```
 
-`make help` lists everything.
+`make help` lists everything. The setup script assumes **macOS + Homebrew**;
+on Linux the substitutions are the obvious ones (the DSP toolchain itself is
+plain CMake — see `scripts/setup.sh`).
 
 ### Hearing it without a hardware flash
 
@@ -90,6 +97,9 @@ These run the *real assembled instruction stream* on a DSP56300 emulator, at
 roughly 6× real time. What you hear is what the chip will do, which is why
 voicing decisions in `docs/VOICING.md` are recorded as listening results
 rather than as guesses about coefficients.
+
+`scripts/make_test_audio.py` generates synthetic source material to audition
+with — or feed it your own.
 
 ### Checking it without a hardware flash
 
@@ -120,6 +130,8 @@ The documents that stay current:
 | `docs/REVERB.md` | ChonVerb: structure, parameters, memory layout |
 | `docs/VOICING.md` | What was decided by listening, and why |
 | `docs/FLASHING.md` | Getting an image onto hardware, and back off it |
+| `docs/CAPTURE.md` | Hardware capture protocol — predictions committed before measuring |
+| `docs/TESTPASS.md` | The functional test matrix and what the emulator can prove |
 | `docs/DSP.md` | The DSP56300 module load map — which bytes land where |
 | `docs/PARAM_PAGES.md` | Parameter-page descriptors: how a knob reaches the DSP |
 | `docs/ARCHITECTURE.md` | The firmware as a whole |
@@ -143,6 +155,16 @@ this repository's commit log.
 `vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300) (the
 emulator and disassembler this project assembles and auditions against) and
 [elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool).
+
+---
+
+## Contributing
+
+Issues, listening reports and findings are welcome. If you open a PR: `make
+check` is the floor, and read the traps in `CLAUDE.md` first — several of
+them are the kind that assemble clean and do the wrong thing. **Never attach
+a built image, an OS file, or any Elektron-derived binary to an issue or
+PR** — describe it, hash it, or reference the commit that built it instead.
 
 ---
 

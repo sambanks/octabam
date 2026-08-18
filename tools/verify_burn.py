@@ -83,7 +83,7 @@ def build(env_burn):
     render_reverb --mem consumes. Kept under out/burnverify/ so neither build
     can be mistaken for the flashable out/mainos_bus.bin."""
     import os
-    env = dict(os.environ)
+    env = dict(os.environ, XBUS="1")
     if env_burn:
         env["BURN"] = "1"
     else:
@@ -180,11 +180,12 @@ def check_roles():
 def burn_fits():
     """Can the burn probe be built at all against the engine we ship?
 
-    It cannot, as of the eight-line tank (8 Aug 2026). BURN=1 splices
-    burn_block{1,2}.inc INTO the reverb, costing ~16 words, and the eight-line
-    engine leaves 6 free in the 2,724-word donor region -- so the build is
-    about 10 words short. SPEC=1 is not an escape: the build guards
-    SPEC-with-BURN, because those both replace a server.
+    It cannot, as of R16-R18 (measured 11 Aug 2026): the bus-plain layout
+    the probe needs packs BOTH servers into one 2,724-word region and DELAY
+    SERVER overruns it by 70 words (2,794 > 2,724). SPEC=1 is not an escape:
+    the build guards SPEC-with-BURN, because those both replace a server.
+    (The 8 Aug reading -- "about 10 words short" -- predates the reverb LFO
+    roll landing AND the R16-R18 growth; the roll landed and was not enough.)
 
     This used to be hidden. verify_burn.py pinned RVSRC to the four-line
     engine, so `make verify` was green while checking code the build no longer
@@ -197,21 +198,39 @@ def burn_fits():
     IS a blocker for the BURN=1 hardware trip in PLAN step 2, and it must never
     read as "verified"."""
     import os
-    env = dict(os.environ, BURN="1", XBUS="1")
-    r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
-                       capture_output=True, text=True, env=env)
-    if r.returncode == 0:
-        return True
-    over = [l for l in (r.stdout + r.stderr).splitlines() if "overruns the region" in l]
-    print("=" * 72)
-    print("  SKIPPED: the burn probe does not fit the engine we ship.")
-    for l in over:
-        print(f"    {l.strip()}")
-    print("    BURN=1 splices ~16 words into the reverb; the eight-line tank")
-    print("    leaves 6 free. NOTHING about the burn probe was verified here.")
-    print("    Blocks the BURN=1 hardware sweep (PLAN step 2), not local work.")
-    print("=" * 72)
-    return False
+    # BOTH builds this harness needs must fit: the probe (BURN=1) and its
+    # stock reference -- and both run the bus-plain XBUS layout (all three
+    # effects on payload A), which is tighter than the shipping SPEC=1 image.
+    # Round 11's wet high-cut (+42 words) pushed the PLAIN layout over while
+    # the shipping build still fits; before this check, the stock build
+    # crashed AFTER burn_fits passed, failing make check on a probe that is
+    # in no shipping image. Same policy as before: loud SKIP, never a local
+    # blocker, never "verified".
+    combos = (
+        ("burn probe (BURN=1 XBUS=1)", {"XBUS": "1", "BURN": "1"}),
+        ("stock reference (XBUS=1)",   {"XBUS": "1"}),
+        ("alias probe (BURN=1, plain)", {"BURN": "1"}),
+    )
+    for tag, flags in combos:
+        env = dict(os.environ)
+        env.pop("BURN", None); env.pop("XBUS", None)
+        env.update(flags)
+        r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                           capture_output=True, text=True, env=env)
+        if r.returncode == 0:
+            continue
+        over = [l for l in (r.stdout + r.stderr).splitlines() if "overruns the region" in l]
+        print("=" * 72)
+        print(f"  SKIPPED: the {tag} does not fit the bus-plain layout.")
+        for l in over:
+            print(f"    {l.strip()}")
+        print("    NOTHING about the burn probe was verified here. Blocks the")
+        print("    BURN=1 hardware sweep (PLAN: find ~70 words in the plain")
+        print("    layout; the reverb LFO roll already landed and was not enough),")
+        print("    not local work.")
+        print("=" * 72)
+        return False
+    return True
 
 
 def main():

@@ -19,22 +19,171 @@ Never claim an effect works because it assembled. `make check` is the floor.
 
 ## Traps that have already cost real work
 
-**The assembler mis-encodes two instructions, silently.** `dsp_asm` encodes
-`tfr a,b` as `rnd b` and `mpy x0,y0` as `mpysu`. Both assemble clean and do
-the wrong thing. **Disassemble what you assemble** when a result surprises
-you. A related family bit us in shipping code: `cmp a,b` had encoded as
-`max a,b`, which updates only the C bit while `blt` tests N^V.
+**The assembler mis-encodes instructions, silently.** `dsp_asm` encodes
+`tfr a,b` as `rnd b`, and **any `mpy` operand order it doesn't know as
+`mpysu`** — found with `mpy x0,y0`, confirmed 9 Aug 2026 for `mpy x1,y1`
+and `mpy x0,x1` too (23 sites in the shipping reverb are mpysu; all audited
+safe because their second operand is always positive, which is the only
+reason the engine works). `mpysu` treats the SECOND operand as unsigned, so
+a negative multiplier there is silently corrupted. `mpy x0,y1` and
+`mpy y0,x0` encode signed. Both assemble clean and do the wrong thing.
+**Disassemble what you assemble** when a result surprises you — and always
+for a new `mpy` whose second operand can go negative. A related family bit
+us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only
+the C bit while `blt` tests N^V.
+
+**A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
+extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
+scale.** Building a sign mask with `move a,b / asr #$17,b,b / not b` and
+storing the result writes `0x7FFFFF`, not the bits you computed — the
+store's limiter sees A2 inconsistent with A1's sign and clamps. This cost a
+long session on the gated-reverb envelope: a branchless mask-select looked
+correct and disassembled correctly but pinned the gate open, because every
+masked value saturated on store. **Fix: don't hand-roll sign masks. Use the
+conditional-transfer ops** — `tmi x0,a` (floor to 0 if negative), `teq x0,a`,
+`tpl`/`tge` — which move a CLEAN register into the accumulator, so no A2
+staleness. A plain `move #imm,reg` does NOT disturb the condition codes, so
+the `sub`/`tst` that sets the flag survives to the Tcc. (This is also why the
+sample loop stays branch-free: Tcc replaces the branch AND avoids the trap.)
+
+**A Tcc pair that shares ONE compare is broken by ANY arithmetic between
+them — and nothing at the second site looks wrong.** The branch-free idiom
+here is `cmp`/`tst` once, then several `Tcc`s that all read the same
+condition codes, relying on the fact that MOVES do not disturb them. That
+holds until someone inserts real work in the middle. GRAIN's two scatter
+latches (line L, line R) shared one wrap flag; adding a density gate
+containing `clr b` and `tst a` between them left line R testing garbage, so
+it re-latched a random read position EVERY SAMPLE instead of once per grain.
+That is broadband noise, and it was audible as a hiss **on the right channel
+only** — found by ear (13 Aug), not by any check, because `make check` and
+the bit-identity gate were both green: the code was deterministic and every
+mode still assembled. Fix: park the compare's RESULT in a scratch slot and
+restore the flag with `tst` before each Tcc that needs it. **When you add
+anything to a block, check what the code BELOW it assumed about the
+condition codes** — the dependency is invisible at the point you edit, and
+`clr`, `and`, `abs`, `tst` and every arithmetic op all set them. Same family
+as the A2-staleness trap: legal instructions, correct-looking source, wrong
+machine behaviour.
+
+**`Tcc` takes a REGISTER source, never an accumulator, and `clr` takes an
+accumulator, never a register.** `tpl b,a` and `clr x0` are both
+InvalidInstruction — caught at assembly, which is the cheap case, but they
+look plausible enough to write repeatedly. Move the value through `x0`.
+
+**`dsp_asm` resolves labels by PREFIX, so no new label may have an existing
+label as its prefix.** Adding a loop labelled `warmz2` next to the existing
+`warmz` assembled to
+
+```
+do #<$40,>$13632     ; 064080 013631      (should have been 001374)
+```
+
+— `warmz`'s address `0x1363` with the leftover `2` appended. The loop branched
+into hyperspace and `dsp_host` SIGSEGVed with no diagnostic. Same family as the
+three above: clean assembly, wrong machine code. Found 9 Aug 2026, after three
+wrong guesses (emulator memory limits, buffer alignment, a stale modulo) that
+were all *reasoned about* rather than disassembled. **Disassembling first would
+have cost one step instead of four** — the rule above is not advice.
+
+**Build-time markers and base literals count when they appear in COMMENTS.**
+`build_bus.py` census-checks the number of `$30000` literals in the delay
+source and requires exactly one `; DMODE_OVERRIDE` / `; DINT_OVERRIDE`
+marker — and the substitution is a blanket text replace over the whole file.
+Writing *about* either in a comment trips the guard: both happened while
+documenting stage 5/6 (a comment explaining why mode 3's immediate must be
+decimal spelled the hex out; another explaining the override marker spelled
+the marker out). The build refuses, loudly, which is the guard working —
+describe them in prose instead of spelling them.
 
 **`SPEC=1` requires `XBUS=1`.** Without it the accumulators stay in core-private
-memory and you get "reverb serves tracks 1-4, delay serves 5-8" — worse than
-today, **and it still makes sound.** The build guards this. Do not ungate it.
+memory and each half of the tracks can reach only its own core's server — worse
+than today, **and it still makes sound.** The build guards this. Do not ungate it.
+
+**The track↔core mapping is INVERTED from old assumptions**: payload A serves
+**tracks 5-8** (ChonVerb), payload B serves **tracks 1-4** (BongDelay).
+Measured 10 Aug 2026 via the MrkVerb32 marker flash, after the assumption cost
+two flashes and a session chasing "R13 is dead" (it was alive on tracks 5-8).
+Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
+**track 5**, not track 1.
 
 **`→DELAY` and `→REVERB` are separate knobs**: `x:(r6+0)` and `x:(r6+1)`.
 Driving the wrong one renders silence, which reads as a broken algorithm.
 
-**r7 scratch slots `$10..$83` are all in use.** Only `$00..$0c` is free, and
-`$84+` hangs the unit. Check before you allocate. (Do not scan for these with
-`"\$$s"` in a shell — it expands.)
+**A DESCRIPTOR'S DISPLAY FORMATTER OVERRIDES ITS VALUE COUNT, and a cloned
+descriptor inherits the DONOR's.** A slot can carry a correct count, default,
+name and enable bit and still draw as something else entirely — or as nothing
+at all. Found on the 17 Aug flash: BongDelay clones SPRING REV, the formatter
+fix-up in `build_bus.py` was gated to the reverb, and three of six page-2
+slots drew wrong. WOW inherited SPRING TYPE's word-label renderer whose table
+has THREE entries, was asked to draw 0..127, and **drew no knob at all**;
+MODE inherited SPRING BAL's bipolar pair and drew as a balance dial reading
+−64…−60 instead of a 5-way select. Every existing check passed, because every
+field they checked was right. `verify_menu` now checks the renderer against
+the count (`count < 128` → the enumerated pair with `0x12a` zero; `128` → both
+formatters zero). **The general form: when you clone a descriptor, every field
+you did not explicitly write is the donor's, and some of them outrank the ones
+you did.** Same family as "a slot can draw a knob and publish nothing" — the
+panel and the DSP are separate mechanisms and neither validates the other.
+
+**A MEASUREMENT CAN BE STRUCTURALLY BLIND TO THE THING YOU ARE USING IT TO
+RULE OUT — and it will report "clean" with total confidence.** Two instances,
+both on 17 Aug 2026, both costing hours:
+- `send_probe`'s THD metric sums harmonics **2f..9f of a 438 Hz tone**. A
+  block-rate discontinuity (~2940 Hz) is not a harmonic of 438 Hz, so the
+  metric cannot see it. It reported −45 dB ("clean") on audio that hardware
+  measurement later showed carrying +22 to +31 dB of inharmonic hash. Every
+  "no change" conclusion drawn from it that day was worthless.
+- XBUS step 3 concluded "synchronisation not needed" from a cross-core send
+  measured **through the reverb** — the one consumer that smears per-sample
+  damage into a multi-second tail. It shipped a cross-core race for months.
+**Before trusting a null result, ask what the instrument physically cannot
+see.** A reverb cannot show you a discontinuity. A harmonic metric cannot show
+you an inharmonic one. A single-core emulator cannot show you a race between
+two cores — and `dsp_host` is single-core, so NO local test will ever
+reproduce a bus timing defect. When local says clean and hardware says
+broken, believe the hardware and go looking for what the harness omits.
+
+**A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE ELSE'S
+LEVEL.** The auto-gain divides the accumulator by the number of registered
+clients, so a writer that registers unconditionally and then writes zero
+dilutes the real senders by N/(N+1) — **−6 dB with a single sender.** Two
+instances found the same day, 17 Aug: ChonVerb registers for its `→DEL` send
+even when `→DEL` is off (still open — the gate is 5 words and payload A has
+FREE 4), and BongDelay's own `IN` knob would have done it too if its default
+had stayed non-zero on a return track with no audio to send. **Gate the
+registration on the knob, and remember the level knob is usually decoded
+LATER in the block than the registration runs** — read it from `r6` directly,
+or use the previous block's value and accept one block of latency. Symptom to
+watch for: a level that is flat across sender count in one layout and drifts
+in another. It surfaced as an "unexplained residual" in a completely
+different effect's send level, and the effect being blamed was innocent.
+
+**r7 scratch is COMPLETELY FULL — `$00..$83` all in use as of 10 Aug 2026**
+(the "only `$00..$0c` free" note held until the R16–R18 work consumed the
+rest). New per-track state goes in the Y state table, not r7. `$84+` hangs
+the unit. (Do not scan for these with `"\$$s"` in a shell — it expands.)
+
+**A dump can resolve a perfectly plausible dispatch entry for an effect it
+does not contain.** `SPEC=1` (which `make render` sets) aliases the absent
+server's id to the SEND client — deliberately, so a wrong chooser pick
+becomes a send. Locally that alias renders a dry passthrough: silence over
+the bus, dry in a `--direct` control, no error anywhere. This produced the
+12 Aug "BongDelay outputs nothing in any config" session — the delay was
+never instantiated; every measurement ran a SEND. Delay work needs the
+hatch (`make render-delay`), and `send_probe.py` now dies when a D layout's
+DELAY entry equals SEND's. The general rule: before believing a *negative*
+result, check which code the dispatch entry actually points at — same
+family as "disassemble what you assemble".
+
+**Payload A's half of the shared window is FULLY OWNED**: ChonVerb's
+relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x360d2`
+(grew 12 Aug for the DELAY send counts + reciprocal table, and again 17 Aug
+when the accumulators went to FOUR buffers for the cross-core race fix).
+There is no free ground in it for delay lines — the DEV build places the
+delay at its shipping base `0x38000` (payload B's half) for exactly this
+reason. A delay based at `0x30000` sweeps the rotation word, all four ACC
+buffers and both role locks every 16,384 samples and blows up any
+multi-server layout (found 12 Aug, RDS full-scale garbage).
 
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so

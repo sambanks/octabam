@@ -61,6 +61,20 @@ render: ## Build the DEV image and render the bus locally (no hardware)
 	DEV=1 XBUS=1 SPEC=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
+.PHONY: render-delay
+render-delay: ## Build the DELAY hatch (all 3 servers real) and render BongDelay locally
+	@# NO SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias).
+	@# Overwrites mem_dev_A.mem -- send_probe refuses to run a D layout
+	@# against a SPEC dump, so a stale mix-up dies loudly instead of
+	@# rendering a plausible dry passthrough (12 Aug 2026).
+	@# NOSHIM=1 is NOT needed since the DEV placement change (12 Aug
+	@# evening): the delay lives at P:0x04000 outside the donor region
+	@# (appended to the .mem dump; dsp_host has no 8K wall), so the full
+	@# shimmer reverb fits as the downstream sink and the delay's growth
+	@# budget is payload B's, not the hatch's.
+	DEV=1 XBUS=1 python3 tools/build_bus.py
+	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+
 .PHONY: reverb
 reverb: ## Render a wav through ChonVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }
@@ -77,7 +91,8 @@ modmap: ## DSP module load map — which bytes land at which P address
 	python3 tools/dsp_modmap.py
 
 .PHONY: verify
-verify: ## Verify the ColdFire menu edits and the burn probe's integrity
+verify: ## Verify the ColdFire menu edits (+ burn probe when it fits; it currently SKIPS)
+	python3 tools/verify_slots.py
 	python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 
@@ -86,8 +101,27 @@ verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAN
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=dsp/reverb_rolled.asm"; exit 1; }
 	python3 tools/verify_roll.py $(CAND)
 
+.PHONY: verify-delay
+verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=dsp/delay_new.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=dsp/delay_server.asm]"; exit 1; }
+	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
+
+.PHONY: verify-bus
+verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: make verify-bus SAVE=1
+	@# Deliberately NOT part of `make check`. The hashes cover the whole
+	@# render -- reverb engine, delay engine and bus together -- so any
+	@# voicing change fails it for a reason that has nothing to do with the
+	@# bus. It is an on-demand gate around one edit, like verify-roll:
+	@#   make verify-bus SAVE=1     <- on the tree you trust, BEFORE the edit
+	@#   ...make the bus change...
+	@#   make verify-bus            <- must be 17/17 bit-identical
+	@# Needs the DEV hatch: the gate's whole point is exercising layouts that
+	@# carry BOTH servers, and only the hatch has a real delay in payload A.
+	DEV=1 XBUS=1 python3 tools/build_bus.py >/dev/null
+	python3 tools/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
+
 .PHONY: burn
-burn: ## Build the cycle-burn probe (splices burn_block{1,2}.inc into the live engine)
+burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 70 words)
 	XBUS=1 BURN=1 python3 tools/build_bus.py
 
 .PHONY: check
@@ -99,7 +133,7 @@ check: bus cycles verify ## Everything that can be checked without hardware
 	@# so the file on disk is the one the checks were about.
 	@$(MAKE) --no-print-directory bus >/dev/null
 	@echo
-	@echo "  all checks passed; out/mainos_bus.bin restored to the shipping build"
+	@echo "  all runnable checks passed (verify_burn may report SKIPPED above); out/mainos_bus.bin restored to the shipping build"
 
 # -------------------------------------------------------------------- misc --
 

@@ -447,7 +447,8 @@ for.
 of this section argued that, having found nothing bigger than `m6=$7f` (128
 words). It does not follow: a delay line needs no modulo at all. Module `0x2bf`
 walks external memory with `m0` linear, which is exactly how a long buffer would
-be read. Retracted as an argument; the reachability and module-by-module
+be read. (*Annotation 12 Aug 2026: "external memory" here is stale — there is
+no external memory; the shared window runs at the same speed. See `CHIP.md`.*) Retracted as an argument; the reachability and module-by-module
 characterisation are what carry the conclusion.
 
 ### Stock uses `X:0x30000` as per-frame parameter staging — CHECK THIS
@@ -471,6 +472,12 @@ board is **not established**. ChonVerb has run on all 8 tracks using that region
 without trouble, which is reassuring — but a delay line writes continuously
 across its entire buffer in a way a reverb tank does not, and BongDelay is a
 placeholder that has never been driven hard.
+
+> ❌ **RETRACTED 10 Aug 2026 — they DO alias.** The alias probe (build 27)
+> measured X/Y/P aliasing in the shared window `0x30000`–`0x3FFFF`; see
+> `CHIP.md`. The per-server ceiling is **65,536 shared-window words
+> (1.49 s)**, not "its full 32,768 words" as concluded below. The 5-Aug
+> reasoning is kept below as history.
 
 **SETTLED, 5 Aug 2026 — they do NOT alias, and no probe was needed.** Stock's
 own behaviour proves it. The allocator table at `X:0x255` gives FX2 bases
@@ -744,6 +751,10 @@ Unsettled nuance: on a DSP56300, addresses beyond internal RAM fall through to
 external memory, which is slower. CHORUS running cleanly says `0x2000` works, not
 that it runs at full internal speed. For a cheap effect this is unlikely to
 matter; for something cycle-critical it would need checking.
+
+*Annotation 12 Aug 2026: settled — there is no external memory on this board;
+the shared window runs at the same speed as internal memory (see `CHIP.md`).
+The "would need checking" caveat is closed.*
 
 ### The fallback, if space above ever runs out: replace
 
@@ -1137,11 +1148,26 @@ and two wrong guesses, so the reasoning matters as much as the table:
 8-15 — different fields, so both are independently usable. Slot 6's value also
 appears at `$b`, so an effect may read it from either.
 
+> ⚠️ **The "also appears at `$b`" clause is FALSIFIED on hardware, 10 Aug
+> 2026.** ChonVerb read SHMR from `$b` alone and it was **dead silent on the
+> unit** (Sam, A/B'd against a local render with clearly audible +12 shimmer:
+> octave-up rises from −7.3 to −1.1 dB and dominates the tail). The knob does
+> publish — MODE (`$c` mid) and PRE (`$e` knob) both respond on the panel —
+> so slot 6 lands in `$c`'s **knob field** as the primary finding says, NOT at
+> `$b`. R16 reads SHMR from `$c` knob field OR'd with `$b` (robust to either),
+> pending on-unit confirmation. Do not rely on `$b` for a page-2 knob.
+
 > **CORRECTED 4 Aug 2026, on hardware: all six can be full-range knobs.**
 > The "three knobs plus three companion selects" split below was inferred from
 > how *stock* uses the fields, and it is not a hardware limit. ChonVerb runs
 > SPEED/DIFF/WIDTH/PRE/→DEL as five full 0–127 controls, two of them in
 > companion fields, confirmed by ear and eye on the unit.
+>
+> *Annotation 12 Aug 2026:* on the unit the companion-field pair read
+> near-boolean in practice, and as of R16 WIDTH and →DEL are **4-step
+> selects** on companion low-byte fields; PRE was **retired** in R16
+> (`$e` is GATE now). "All six *can* be full-range" stands as a statement
+> about the hardware; it is no longer how ChonVerb uses them.
 >
 > What actually made a companion field *look* like a two-state control was the
 > **per-parameter display formatter at `P+0x0ca`**, inherited from the donor
@@ -1152,6 +1178,34 @@ appears at `$b`, so an effect may read it from either.
 > The decode below is still right — companion fields are read with a mask —
 > and the field/offset table above is still right. Only the *budget* claim was
 > wrong.
+>
+> ✅ **RESOLVED, 10 Aug 2026 — the on-unit per-knob reconfirm happened.**
+> Page 2 **does publish**: MODE steps, PRE reached the DSP (before its R16
+> retirement), DIFF and WIDTH move. SHMR was silent for a different reason —
+> the DSP read the wrong offset (`$b`; the panel publishes to `$c`'s knob
+> field). R16 reads `$c` OR `$b` (robust to either) and is **still
+> unflashed**. As of R16, WIDTH/→DEL are 4-step selects on companion
+> low-byte fields, and PRE is retired (`$e` is GATE now). The contradiction
+> block below is kept as history.
+>
+> ⚠️ **CONTRADICTION, OPEN as of 10 Aug 2026** *(historical — resolved
+> above)*. `PLAN.md`'s 10-Aug hardware
+> trip recorded the OPPOSITE of the 4-Aug "confirmed by ear and eye" above:
+> that page-2 continuous knobs (SHMR/DIFF/WIDTH/PRE/→DEL) "do not publish —
+> pinned at their defaults", MODE (a select) works. Both cannot be current.
+> A 10-Aug static + local investigation could not reproduce any gate:
+> (1) our cloned page-2 descriptor is byte-for-byte equal to **stock DARK
+> REV's** page-2 knobs (count 128, `P+0x12a`=0x40032814, enable 1), which
+> publish and work; both descriptor-level fix-theories (`0x12a` callbacks,
+> count=128) are falsified by stock working with those exact values.
+> (2) the DSP engine RESPONDS to every page-2 value when poked into r6
+> (dsp_host DIFF/SHMR/PRE sweeps give distinct output) — no r7 slot
+> collision. (3) the read code is UNCHANGED since 4–6 Aug. So descriptor and
+> engine are both correct, and the 10-Aug observation is most likely a
+> misdiagnosis from that chaotic trip (wrong tag, track↔core inversion).
+> **Do not act on either claim until the next flash reconfirms per-knob**
+> (turn each page-2 knob through its range on a known-ChonVerb track — the
+> protocol is in `PLAN.md` step 2).
 
 **Usable budget: six page-2 controls per effect** — three continuous knobs in
 the knob fields of `$b`/`$d`/`$e` (or `$c`), plus three companion selects:

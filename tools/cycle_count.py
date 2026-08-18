@@ -60,7 +60,9 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 #
 # It went stale immediately: the eight-line tank took the reverb from 763 to
 # 1145 cycles/sample (8 Aug 2026), ~382 more per bank, and the tool went on
-# reporting 1392 of headroom. Real headroom is ~1010.
+# reporting 1392 of headroom. (Real headroom at that point was ~1010;
+# the tool now subtracts bank growth itself -- its own output is the live
+# number, 819 as of 11 Aug 2026.)
 #
 # What is actually fixed is the FREEZE POINT. The 7 Aug run measured
 #   bank_then + 4x FX1 FILTER + 1392 = the load at which it froze
@@ -176,14 +178,74 @@ def measure(name):
                      if l.strip().startswith(end_label + ":")), None)
     if end_line is None:
         sys.exit(f"{name}: no `{end_label}:` label found")
-    # A counted inner loop is allowed and priced; anything else is refused.
     inner = [(j, INNER_LOOP.match(lines[j])) for j in range(i + 1, end_line)
              if INNER_LOOP.match(lines[j])]
+    # Allow multiple counted inner loops — they are sequential (not nested),
+    # so the total cycles are still exactly computable: the word span already
+    # includes one copy of each body, and we add the remaining trips.
     if len(inner) > 1:
-        sys.exit(f"{name}: {len(inner)} counted inner loops in the sample loop; "
-                 f"this prices one")
+        print(f"  {name}: {len(inner)} counted inner loops — pricing each",
+              file=sys.stderr)
+    # Find SHIMMER_BEGIN/END boundaries. The shimmer contains short branch
+    # sequences (bgt/blt/bra per head) where the path difference is 2 words —
+    # negligible against ~2400 total. Skip those branches rather than refusing.
+    shim_lines = set()
+    for si, sl in enumerate(lines):
+        if sl.strip().startswith("; SHIMMER_BEGIN"):
+            for sj in range(si + 1, min(len(lines), si + 500)):
+                if lines[sj].strip() == "; SHIMMER_END":
+                    shim_lines.update(range(si, sj + 1))
+                    break
+    # MODEFORK_BEGIN/MID.../END: a mode dispatch. BEGIN..first MID is the
+    # DISPATCH and always runs; each MID..next-MID-or-END is one MUTUALLY
+    # EXCLUSIVE alternative, of which at most one runs per sample. Branches
+    # inside are exempt like the shimmer's (short window ramps, +-2 words),
+    # and the span is corrected below from "every alternative summed" to
+    # "dispatch + the worst alternative", so the count stays a per-sample
+    # ceiling for whichever mode is selected instead of pricing every engine
+    # at once. N MIDs are allowed: BongDelay has CLEAN/PITCH/TAPE, and
+    # pricing PITCH+TAPE together would overstate it by a whole engine.
+    fork = {}
+    mids = []
+    for si, sl in enumerate(lines):
+        if sl.strip().startswith("; MODEFORK_BEGIN"):
+            fork["begin"] = si
+        elif sl.strip().startswith("; MODEFORK_MID"):
+            mids.append(si)
+        elif sl.strip().startswith("; MODEFORK_END"):
+            fork["end"] = si
+    if mids:
+        fork["mid"] = mids[0]
+    if fork and set(fork) != {"begin", "mid", "end"}:
+        sys.exit(f"{name}: incomplete MODEFORK markers ({sorted(fork)})")
+    fork_lines = set(range(fork["begin"], fork["end"] + 1)) if fork else set()
+    # A `bsr <label>` in the body is priced AS IF INLINED: the callee's word
+    # span (label..rts, straight-line required) is charged at every call site,
+    # plus a small constant for the call/return pair. Added 18 Aug 2026 when
+    # satdrv rolled the two per-line sat+drive copies into one subroutine --
+    # the roll is a WORD saving; the cycles are still paid per call, and this
+    # keeps the tool honest about that instead of refusing the shape.
+    BSR = re.compile(r"^\s*bsr\s+(\w+)", re.I)
+    bsr_lines = {}
+    for j in range(i + 1, end_line):
+        m = BSR.match(lines[j])
+        if m:
+            lbl = m.group(1)
+            # find the callee: label line .. its rts, all straight-line
+            starts = [k for k, l in enumerate(lines) if l.strip() == lbl + ":"]
+            if len(starts) != 1:
+                sys.exit(f"{name}: bsr target {lbl} found {len(starts)} times")
+            k0 = starts[0]
+            k1 = next(k for k in range(k0, len(lines))
+                      if re.match(r"^\s*rts\b", lines[k], re.I))
+            inner_bad = [l for l in lines[k0 + 1:k1]
+                         if CONTROL_FLOW.match(l)]
+            if inner_bad:
+                sys.exit(f"{name}: bsr callee {lbl} is not straight-line")
+            bsr_lines[j] = (lbl, k0, k1)
     bad = [(j + 1, lines[j].strip()) for j in range(i + 1, end_line)
-           if CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
+           if j not in shim_lines and j not in fork_lines and j not in bsr_lines
+           and CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
     if bad:
         print(f"{name}: loop body is not straight-line -- words != cycles here.",
               file=sys.stderr)
@@ -191,30 +253,87 @@ def measure(name):
             print(f"  {name}.asm:{ln}: {txt}", file=sys.stderr)
         sys.exit(1)
 
-    marked = lines[:i + 1] + [f"{MARKER}:"] + lines[i + 1:]
-    inner_at = None
-    if inner:
-        j, m = inner[0]
+    # All label insertions (body marker, inner-loop markers, fork markers) go
+    # through one list, applied in descending line order so no insertion
+    # shifts another's position.
+    inserts = [(i, f"{MARKER}:")]
+    bsr_marks = []
+    for nidx, (j, (lbl, k0, k1)) in enumerate(sorted(bsr_lines.items())):
+        mstart, mend = f"__cyc_bsr{nidx}", f"__cyc_bsre{nidx}"
+        inserts.append((k0 + 1, f"{mstart}:"))   # after the label line
+        inserts.append((k1 + 1, f"{mend}:"))     # after the rts
+        bsr_marks.append((lbl, mstart, mend))
+    inner_at = []
+    for j, m in inner:
         trips = int(m.group(1), 16 if lines[j].count("$") else 10)
-        inner_end = m.group(2)
-        # +1 for the MARKER line already inserted above line i+1
-        marked = marked[:j + 2] + [f"{INNER_MARKER}:"] + marked[j + 2:]
-        inner_at = (trips, inner_end)
+        label = f"{INNER_MARKER}{len(inner_at)}"
+        inserts.append((j, f"{label}:"))
+        inner_at.append((trips, m.group(2), label))
+    fork_labels = {}
+    fork_mid_labels = []
+    if fork:
+        for key in ("begin", "end"):
+            lbl = f"__cyc_fk{key}"
+            inserts.append((fork[key], f"{lbl}:"))
+            fork_labels[key] = lbl
+        for n, si in enumerate(mids):
+            lbl = f"__cyc_fkmid{n}"
+            inserts.append((si, f"{lbl}:"))
+            fork_labels[f"mid{n}"] = lbl
+            fork_mid_labels.append(lbl)
+    marked = list(lines)
+    for j, txt in sorted(inserts, reverse=True):
+        marked = marked[:j + 1] + [txt] + marked[j + 1:]
 
     blob, syms = assemble("\n".join(marked), name)
     if MARKER not in syms or end_label not in syms:
         sys.exit(f"{name}: assembler dropped a label")
 
     words = syms[end_label] - syms[MARKER]
-    cycles, note = words, ""
-    if inner_at:
-        trips, inner_end = inner_at
-        if INNER_MARKER not in syms or inner_end not in syms:
-            sys.exit(f"{name}: assembler dropped the inner-loop label")
-        inner_words = syms[inner_end] - syms[INNER_MARKER]
+    cycles, notes = words, []
+    rolls = []
+    for lbl, mstart, mend in bsr_marks:
+        if mstart not in syms or mend not in syms:
+            sys.exit(f"{name}: assembler dropped a bsr marker for {lbl}")
+        callee = syms[mend] - syms[mstart]        # body + rts, in words
+        # the bsr word itself is already inside the body span; the callee
+        # executes per call, plus a couple of cycles for the call/return pair
+        cycles += callee + 4
+        notes.append(f"bsr {lbl} {callee}w/call")
+    for trips, inner_end, label in inner_at:
+        if label not in syms or inner_end not in syms:
+            sys.exit(f"{name}: assembler dropped the inner-loop label {label}")
+        inner_words = syms[inner_end] - syms[label]
         # The span already counts the body ONCE, so add the other trips.
-        cycles = words + (trips - 1) * inner_words + DO_SETUP
-        note = f"{inner_words}w x{trips}"
+        surcharge = (trips - 1) * inner_words + DO_SETUP
+        cycles += surcharge
+        rolls.append((syms[label], surcharge))
+        notes.append(f"{inner_words}w x{trips}")
+    if fork_labels:
+        if any(l not in syms for l in fork_labels.values()):
+            sys.exit(f"{name}: assembler dropped a MODEFORK label")
+        bounds = ([syms[l] for l in fork_mid_labels] + [syms[fork_labels["end"]]])
+        disp_w = bounds[0] - syms[fork_labels["begin"]]
+        alt_w = [bounds[k + 1] - bounds[k] for k in range(len(bounds) - 1)]
+        # ⚠️ AN ALTERNATIVE'S COST IS ITS WORDS PLUS ITS OWN ROLLS, not its
+        # words alone. Comparing alternatives by WORDS was right only while
+        # every one of them was straight-line: GRAIN (v2 stage 5) is rolled,
+        # so its 343 words run ~3x that in cycles, and a words-only max would
+        # have picked PITCH as the worst path and then added GRAIN's roll
+        # surcharge to it -- charging one engine's size with another's depth.
+        # Attribute each roll to the alternative whose address range contains
+        # it, then take the worst by CYCLES. Reduces exactly to the old
+        # formula when no alternative is rolled.
+        alt_sur = [sum(s for at, s in rolls if bounds[k] <= at < bounds[k + 1])
+                   for k in range(len(alt_w))]
+        alt_cyc = [w + s for w, s in zip(alt_w, alt_sur)]
+        # The span priced EVERY alternative; at most one runs per sample.
+        # Charge the dispatch (always) plus the worst alternative.
+        cycles -= sum(alt_cyc) - max(alt_cyc)
+        notes.append("fork worst-path (dispatch %dw, alts %s)"
+                     % (disp_w, "/".join(f"{w}w" if not s else f"{w}w+{s}roll"
+                                         for w, s in zip(alt_w, alt_sur))))
+    note = ", ".join(notes) if notes else ""
     return dict(name=name, words=words, cycles=cycles, inner=note,
                 loop_end=end_label, total_words=len(blob) // 3, marked=marked)
 
