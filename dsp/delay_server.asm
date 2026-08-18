@@ -1076,6 +1076,23 @@ pintend:
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
         move    a,y:>$9d4
 
+; ---- DRIVE amount: p10 in every mode but GRAIN --------------------------
+; GRAIN's p10 is SPRA (scatter), the established multi-meaning pattern -- so
+; in GRAIN, d is pinned 0 and the grains run undriven; everywhere else the
+; knob is DRV. knob<<16 IS d in Q1.23 (the MIX/PING trick). Y scratch $9d5:
+; same reasoning as the RATE increments above.
+        move    x:(r7+$69),b            ; MODE
+        move    #>196608,x0             ; 3 << 16 = GRAIN. DECIMAL (base literal)
+        cmp     x0,b
+        beq     drvz
+        move    x:(r6+$e),a             ; p10 knob field
+        and     #>$7f0000,a
+        bra     drvw
+drvz:
+        clr     a
+drvw:
+        move    a,y:>$9d5
+
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
 ; select idiom as PTCH ($d low) and ChonVerb's WIDTH/->DEL, count 2. Any
@@ -2736,32 +2753,11 @@ pdone:
 ; Applied BEFORE the FREEZE substitution below on purpose: a frozen line
 ; must hold its contents EXACTLY (gain 1, a copy), and re-saturating the
 ; held loop every lap would grind it down instead.
-        move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
-                                        ; can exceed full scale and a raw a1
-                                        ; would WRAP where this saturates
-        move    x:(r7+$2f),x0           ; w, saturated
-        move    x0,y1
-        mpy     x0,y1,b                 ; w^2   (signed x signed)
-        move    b,y1                    ; limiting move: w^2 <= 1
-        mpy     x0,y1,b                 ; w^3
-        move    b,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,b                 ; w^3/3
-        move    x:(r7+$2f),a            ; w
-        move    b,x0
-        sub     x0,a                    ; sat = w - w^3/3
-        move    a,x:(r7+$30)
-; SATURATION KEYS ON DPTH now, not MODE (18 Aug 2026, with TAPE's retirement):
-; drift and tape-glue arrive together, which is exactly what selecting TAPE
-; used to mean -- old TAPE at WOW=w>0 is bit-identical to CLEAN at DPTH=w
-; INCLUDING this. The one retired corner: saturation with ZERO wobble (old
-; TAPE at WOW=0), never voiced. A standalone DRIVE can decouple them later.
-; tne, not teq: NONZERO depth takes the saturated write.
-        move    x:(r7+$2d),b            ; DPTH (wow depth; zero iff knob is 0)
-        tst     b
-        move    x:(r7+$2f),a            ; w back (DPTH=0 keeps it)
-        move    x:(r7+$30),x0           ; sat
-        tne     x0,a
+; sat + drive, SHARED: the transform is identical for both lines, so it is a
+; bsr subroutine (satdrv, end of file) -- the roll that paid for DRIVE's
+; words. In: a = the value about to be written. Out: a. Clobbers b/x0/y0/y1
+; and $2f/$30, none live across this point in either channel.
+        bsr     satdrv
 ; FREEZE (v2 stage 3): write the RAW TAP back instead -- unity recirculation
 ; with the input excluded, so the last TIME samples loop for ever. The loop
 ; length is TIME itself (read at wr-TIME, written at wr, so the region is
@@ -2824,32 +2820,11 @@ pdone:
         move    x:(r7+$7d),x0           ; x_in
         move    x:(r7+$80),y1           ; 1 - PING
         mac     x0,y1,a                 ; + the direct input's share
-        move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
-                                        ; can exceed full scale and a raw a1
-                                        ; would WRAP where this saturates
-        move    x:(r7+$2f),x0           ; w, saturated
-        move    x0,y1
-        mpy     x0,y1,b                 ; w^2   (signed x signed)
-        move    b,y1                    ; limiting move: w^2 <= 1
-        mpy     x0,y1,b                 ; w^3
-        move    b,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,b                 ; w^3/3
-        move    x:(r7+$2f),a            ; w
-        move    b,x0
-        sub     x0,a                    ; sat = w - w^3/3
-        move    a,x:(r7+$30)
-; SATURATION KEYS ON DPTH now, not MODE (18 Aug 2026, with TAPE's retirement):
-; drift and tape-glue arrive together, which is exactly what selecting TAPE
-; used to mean -- old TAPE at WOW=w>0 is bit-identical to CLEAN at DPTH=w
-; INCLUDING this. The one retired corner: saturation with ZERO wobble (old
-; TAPE at WOW=0), never voiced. A standalone DRIVE can decouple them later.
-; tne, not teq: NONZERO depth takes the saturated write.
-        move    x:(r7+$2d),b            ; DPTH (wow depth; zero iff knob is 0)
-        tst     b
-        move    x:(r7+$2f),a            ; w back (DPTH=0 keeps it)
-        move    x:(r7+$30),x0           ; sat
-        tne     x0,a
+; sat + drive, SHARED: the transform is identical for both lines, so it is a
+; bsr subroutine (satdrv, end of file) -- the roll that paid for DRIVE's
+; words. In: a = the value about to be written. Out: a. Clobbers b/x0/y0/y1
+; and $2f/$30, none live across this point in either channel.
+        bsr     satdrv
         move    x:(r7+$26),b
         tst     b
         move    x:(r7+$7a),x0
@@ -3017,4 +2992,72 @@ dry:
         move    #>$ffffff,m2
         move    #>$ffffff,m4
         move    #>$ffffff,m5
+        rts
+
+; ---- satdrv: loop saturation + DRIVE blend, shared by both line writes ----
+; (18 Aug 2026 -- rolled when DRIVE landed; the two inline copies were the
+; word cost that had blocked a drive stage since stage 4b.) See the call
+; sites for the register/liveness contract. bsr, not jsr: dsp_asm implements
+; only the RELATIVE b-forms.
+satdrv:
+        move    a,x:(r7+$2f)            ; park w. A LIMITING store: the sum
+                                        ; can exceed full scale and a raw a1
+                                        ; would WRAP where this saturates
+        move    x:(r7+$2f),x0           ; w, saturated
+        move    x0,y1
+        mpy     x0,y1,b                 ; w^2   (signed x signed)
+        move    b,y1                    ; limiting move: w^2 <= 1
+        mpy     x0,y1,b                 ; w^3
+        move    b,x0
+        move    #>$2aaaab,y1            ; 1/3
+        mpy     x0,y1,b                 ; w^3/3
+        move    x:(r7+$2f),a            ; w
+        move    b,x0
+        sub     x0,a                    ; sat = w - w^3/3
+        move    a,x:(r7+$30)
+; SATURATION KEYS ON DPTH now, not MODE (18 Aug 2026, with TAPE's retirement):
+; drift and tape-glue arrive together, which is exactly what selecting TAPE
+; used to mean -- old TAPE at WOW=w>0 is bit-identical to CLEAN at DPTH=w
+; INCLUDING this. The one retired corner: saturation with ZERO wobble (old
+; TAPE at WOW=0), never voiced. A standalone DRIVE can decouple them later.
+; tne, not teq: NONZERO depth takes the saturated write.
+        move    x:(r7+$2d),b            ; DPTH (wow depth; zero iff knob is 0)
+        tst     b
+        move    x:(r7+$2f),a            ; w back (DPTH=0 keeps it)
+        move    x:(r7+$30),x0           ; sat
+        tne     x0,a
+; ---- DRIVE (18 Aug 2026): blend toward the 2x-driven curve ----------------
+; out = w + d*(hot - w), hot = sat(clamp(2w))/2. Unity small-signal at EVERY
+; d (the blend of two unity-small-signal curves), monotonic, |out| bounded --
+; so it adds no loop gain and cannot self-oscillate at any FDBK, the same
+; argument as the base curve above. The LIMITING move on 2w IS the knee's
+; hard half above |w| = 0.5, on purpose: clamp-then-cubic is the harder drive.
+; d comes from Y:$9d5 (p10 in every mode but GRAIN, where p10 stays SPRA and
+; d is pinned 0 -- the per-block decode owns that fork). d = 0 is an EXACT
+; bypass: the R35 gates all survive at DRIVE 0, which is this change's gate.
+; w1 is already parked in $2f by the saturation block above -- reused, and u
+; is parked in y0, which nothing reads between here and its next reload.
+        move    a,x:(r7+$2f)            ; w1 (post-DPTH-select), limited park
+        asl     #$1,a,a
+        move    a,x0                    ; u = 2w, LIMITED
+        move    x0,y0                   ; park u
+        move    x0,y1
+        mpy     x0,y1,b                 ; u^2
+        move    b,y1
+        mpy     x0,y1,b                 ; u^3
+        move    b,x0
+        move    #>$2aaaab,y1
+        mpy     x0,y1,b                 ; u^3/3
+        move    y0,a                    ; u
+        move    b,x0
+        sub     x0,a                    ; sat(u)
+        asr     #$1,a,a                 ; hot = sat(2w)/2
+        move    x:(r7+$2f),x0           ; w1
+        sub     x0,a                    ; hot - w1 (possibly negative)
+        move    a,x0
+        move    y:>$9d5,y1              ; d
+        mpy     x0,y1,a                 ; d*(hot-w1) -- signed form, x0 negative-capable
+        move    a,x0
+        move    x:(r7+$2f),a
+        add     x0,a                    ; w1 + d*(hot-w1)
         rts

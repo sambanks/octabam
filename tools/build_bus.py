@@ -164,9 +164,11 @@ RENAMES = {
                                     #   way the reverb's RATE pairs with MOD.
         (9, b"PTCH"),               # slot 9 -> r6+$d b8-15  interval select:
                                     #   +12 / +7 / -12 / +-detune (stage 2)
-        (10, b"SPRA"),              # slot 10 -> r6+$e knob  GRAIN scatter
-                                    #   depth (stage 5). Four characters: the
-                                    #   name field is per-knob and short
+        (10, b"DRV"),               # slot 10 -> r6+$e knob. DRIVE in every
+                                    #   mode but GRAIN (blend toward the
+                                    #   2x-driven tape curve, 18 Aug 2026);
+                                    #   in GRAIN this same knob is still the
+                                    #   scatter depth (SPRA), the p9 pattern.
         (11, b"FRZE"),              # slot 11 -> r6+$e b8-15 freeze select:
                                     #   run / hold (stage 3)
     ],
@@ -351,10 +353,12 @@ DEFAULTS = {
                      (6, 48),   # WOW   a musical default wobble for TAPE
                      (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
                      (11, 0),   # FRZE  run   -- a fresh part is never held
-                     (10, 64),  # SPRA  mid   -- GRAIN's whole point is the
-                                #       scatter, so it boots half up rather
-                                #       than at 0 (where four grains stack on
-                                #       one read and it is just a thick PITCH)
+                     (10, 0),   # DRV -- 0 = EXACT bypass (the DRIVE gate). ⚠️ This
+                                # default is ALSO GRAIN's scatter now (shared
+                                # byte): a fresh GRAIN part boots fully
+                                # coherent (was 64). Deliberate: bypass-by-
+                                # default outranks a scatter taste that gets
+                                # played by hand anyway.
                      (9, 1)],   # PTCH  0 -> 1 (stage 5g), and it is a TRADE.
                                 #       Slot 9 is triple-meaning. For GRAIN it
                                 #       is the SET WIDTH, and 0 pins every

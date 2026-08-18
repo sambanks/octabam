@@ -219,8 +219,32 @@ def measure(name):
     if fork and set(fork) != {"begin", "mid", "end"}:
         sys.exit(f"{name}: incomplete MODEFORK markers ({sorted(fork)})")
     fork_lines = set(range(fork["begin"], fork["end"] + 1)) if fork else set()
+    # A `bsr <label>` in the body is priced AS IF INLINED: the callee's word
+    # span (label..rts, straight-line required) is charged at every call site,
+    # plus a small constant for the call/return pair. Added 18 Aug 2026 when
+    # satdrv rolled the two per-line sat+drive copies into one subroutine --
+    # the roll is a WORD saving; the cycles are still paid per call, and this
+    # keeps the tool honest about that instead of refusing the shape.
+    BSR = re.compile(r"^\s*bsr\s+(\w+)", re.I)
+    bsr_lines = {}
+    for j in range(i + 1, end_line):
+        m = BSR.match(lines[j])
+        if m:
+            lbl = m.group(1)
+            # find the callee: label line .. its rts, all straight-line
+            starts = [k for k, l in enumerate(lines) if l.strip() == lbl + ":"]
+            if len(starts) != 1:
+                sys.exit(f"{name}: bsr target {lbl} found {len(starts)} times")
+            k0 = starts[0]
+            k1 = next(k for k in range(k0, len(lines))
+                      if re.match(r"^\s*rts\b", lines[k], re.I))
+            inner_bad = [l for l in lines[k0 + 1:k1]
+                         if CONTROL_FLOW.match(l)]
+            if inner_bad:
+                sys.exit(f"{name}: bsr callee {lbl} is not straight-line")
+            bsr_lines[j] = (lbl, k0, k1)
     bad = [(j + 1, lines[j].strip()) for j in range(i + 1, end_line)
-           if j not in shim_lines and j not in fork_lines
+           if j not in shim_lines and j not in fork_lines and j not in bsr_lines
            and CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
     if bad:
         print(f"{name}: loop body is not straight-line -- words != cycles here.",
@@ -233,6 +257,12 @@ def measure(name):
     # through one list, applied in descending line order so no insertion
     # shifts another's position.
     inserts = [(i, f"{MARKER}:")]
+    bsr_marks = []
+    for nidx, (j, (lbl, k0, k1)) in enumerate(sorted(bsr_lines.items())):
+        mstart, mend = f"__cyc_bsr{nidx}", f"__cyc_bsre{nidx}"
+        inserts.append((k0 + 1, f"{mstart}:"))   # after the label line
+        inserts.append((k1 + 1, f"{mend}:"))     # after the rts
+        bsr_marks.append((lbl, mstart, mend))
     inner_at = []
     for j, m in inner:
         trips = int(m.group(1), 16 if lines[j].count("$") else 10)
@@ -262,6 +292,14 @@ def measure(name):
     words = syms[end_label] - syms[MARKER]
     cycles, notes = words, []
     rolls = []
+    for lbl, mstart, mend in bsr_marks:
+        if mstart not in syms or mend not in syms:
+            sys.exit(f"{name}: assembler dropped a bsr marker for {lbl}")
+        callee = syms[mend] - syms[mstart]        # body + rts, in words
+        # the bsr word itself is already inside the body span; the callee
+        # executes per call, plus a couple of cycles for the call/return pair
+        cycles += callee + 4
+        notes.append(f"bsr {lbl} {callee}w/call")
     for trips, inner_end, label in inner_at:
         if label not in syms or inner_end not in syms:
             sys.exit(f"{name}: assembler dropped the inner-loop label {label}")
