@@ -28,8 +28,18 @@ MIDI. Read §1 first.
 
 ## 0. What you need (checklist)
 
-- [ ] **Octatrack MKII.** The base image is OS 1.40C for the MKII — it will
-      NOT work on the MKI.
+- [ ] **Octatrack MKII.** The base image is OS 1.40C **for the MKII** — the
+      built image will not work on the MKI, because the MKI runs its own
+      1.40C binary (Elektron ships separate downloads per model) and every
+      ColdFire patch address here was derived from the MKII image; the
+      updater also enforces the model split (`docs/ARCHITECTURE.md`: error
+      −5, "MK1 not allowed"). The *effects* are a different question — both
+      marks share the same-family ColdFire and the same two-core DSP56721
+      audio engine, so a port against the MKI image is plausible: the
+      DSP-side payloads likely carry over, and the recon tooling
+      (`make recon`, `tools/find_base.py`, `tools/verify_menu.py`) is
+      exactly what re-deriving the ColdFire addresses would take. Nobody
+      has attempted it; if you do, you are the test pilot.
 - [ ] **The built image**: `make image` produces both delivery formats —
       `out/OCTATRACK_OCTABAM<NNN>.bin` (CF-card path, recommended) and
       `out/OCTATRACK_OS1.40C_OCTABAM<NNN>.syx` (MIDI path).
