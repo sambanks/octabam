@@ -11,7 +11,7 @@ What runs today:
 | | |
 |---|---|
 | **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
-| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), TAPE (wow/flutter + saturation), GRAIN and REVERSE — plus a FREEZE hold, routed *into* the reverb over the bus. Confirmed on hardware, every knob live and audible. |
+| **BongDelay** | A five-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), TAPE (wow/flutter + saturation), GRAIN and REVERSE — plus a FREEZE hold, routed *into* the reverb over the bus. Its program space is the **other core's copy of the same three donor slots** — the stock FX2 delay itself has no DSP code to take. Confirmed on hardware, every knob live and audible. |
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
@@ -42,6 +42,65 @@ The costs are all measured, not estimated:
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
 measured or inferred, and what would falsify it.
+
+### The machine, on one page
+
+The Octatrack's audio DSP is one **DSP56721**: two DSP5636x cores, each
+serving four tracks. Each core boots its own payload, and each payload gives
+its effects the same 8,192 words of program memory (an OMR setting — the
+chip has more, stock runs the map that grants the least):
+
+```
+              DSP56721 — two cores @ 200 MHz, 44.1 kHz audio
+              4,535 cycles per sample per core (measured)
+
+   CORE 0 / payload A · tracks 5–8      CORE 1 / payload B · tracks 1–4
+   ─────────────────────────────────    ─────────────────────────────────
+P  8,192 words                          8,192 words
+   ├─ stock: dispatch, FX1, mixing…     ├─ stock: dispatch, FX1, mixing…
+   └─ donor region, 2,724 words         └─ donor region, 2,724 words
+      (was PLATE+SPRING+DARK)              (this core's copy of the same
+      now SEND + CHONVERB                   three slots)
+      used 2,669 · free 55                 now SEND + BONGDELAY
+                                           used 2,723 · free 1
+
+Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
+   └─ the tank: 8 lines × 4,096         └─ pooled, unclaimed by the delay
+
+   shared half 0x30000–0x37FFF (32 K)   shared half 0x38000–0x3FFFF (32 K)
+   ├─ 4 input + 2 in-loop allpasses     └─ LineL + LineR, 16,384 each
+   ├─ shimmer line, retired pre-delay      (ping-pong, ~371 ms per line)
+   ├─ tank state tables
+   └─ BUS SCRATCH at 0x36000 — the
+      one region both cores touch
+```
+
+The shared window `0x30000–0x3FFFF` is 64 K that both cores address (P, X
+and Y all alias there); stock's own allocator already hands its low half to
+core 0 and its high half to core 1, so the split above agrees with the
+machine rather than fighting it.
+
+The bus itself lives in that scratch block — and it is the whole trick:
+
+```
+ any track
+   SEND ──→DELAY ─────────►┌────────────────┐
+   SEND ──→REVERB ────┐    │ DELAY bus acc  │──► BONGDELAY ─► wet out on its
+                      │    └────────────────┘        │         track (1–4)
+                      ▼                              │ →VERB, hardwired —
+              ┌────────────────┐                     ▼ this write CROSSES CORES
+              │ REVERB bus acc │◄────────────────────┘
+              └────────────────┘──► CHONVERB ─► wet out on its track (5–8)
+```
+
+Every writer accumulates per block; each bus keeps **four rotating
+accumulator buffers** (the cross-core race fix — see `docs/XBUS.md`)
+plus client counts for the ÷N auto-gain, so eight senders drive a server
+exactly as hard as one. Cycles follow the same split: a core pays its one
+server (role-locked, charged once per bank however many tracks select it)
+plus its tracks' send taps; the delay's worst mode (GRAIN, ~1,750 cycles) is
+the deepest path, and FX1 inserts pay **×4 per core** — which is the real
+ceiling on FX1 ambition, not program space.
 
 ---
 
