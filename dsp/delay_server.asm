@@ -1045,7 +1045,14 @@ pintend:
 ; that sum against TIME's floor.
         move    x:(r6+$c),a             ; $c, NOT $b: the panel publishes slot 6
         and     #>$7f0000,a             ; to $c's KNOB field (R16's SHMR probe
-        asr     #$6,a,a                 ; found the same). The mask is now needed
+        asr     #$3,a,a         ; x8 RELAW (18 Aug 2026): the old law's
+                                        ; full-knob wobble measured +-2 CENTS --
+                                        ; inaudible by construction, which is
+                                        ; why 'mod does nothing' was true on
+                                        ; every build ever. Wow now reaches
+                                        ; ~+-254 samples (~+-17 cents at 0.8 Hz);
+                                        ; safety moved from the static depth
+                                        ; bound to the per-sample lag clamp below                 ; found the same). The mask is now needed
                                         ; because $c also carries MODE at bits
                                         ; 8-15; on $b nothing shared the word
         move    a1,x0
@@ -1325,7 +1332,7 @@ plagok:
 ; The load-bearing depth bound is unchanged and rate-independent: wow+flutter
 ; sum <= 35.7 samples against TIME's floor of 64.
         move    x:(r7+$27),a           ; wow phase
-        move    y:>$0901,x0           ; wow increment -- $98 (0.80 Hz) x RATE
+        move    y:>$0901,x0           ; wow increment (core-private -- see RATE decode)
                                         ; (p8), computed per block. Y bus
                                         ; scratch, because r7 is full and the
                                         ; role lock means ONE delay per bank
@@ -1360,7 +1367,7 @@ plagok:
         move    a,x:(r7+$29)            ; running mod total
 
         move    x:(r7+$28),a           ; flutter phase
-        move    y:>$0902,x0           ; flutter increment -- $56d (7.3 Hz,
+        move    y:>$0902,x0           ; flutter increment (core-private,
                                         ; NOT a multiple of the wow: the
                                         ; anti-lock ratio survives RATE because
                                         ; ONE factor scales both) x RATE
@@ -1403,6 +1410,27 @@ plagok:
         move    a1,x0
         move    x0,a                    ; move-to-accumulator sign-extends
         move    a,x:(r7+$29)            ; mod_int
+; ---- lag clamp (18 Aug 2026, with the x8 relaw): keep TIME+mod inside the
+; line. Replaces the old static bound (sum < TIME's floor), which is what had
+; capped the depth at inaudibility. Low side: lag >= 8 (never reads the write
+; head); high side: lag <= 16376 (never wraps the $3fff mask at max TIME).
+; Pinning briefly at an extreme is a soft flat-spot in the wobble -- graceful,
+; where a wrap is a full-lap discontinuity. x1 is free in this span.
+        move    #>8,a
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a                    ; 8 - TIME = lowest legal mod
+        move    a,x1
+        move    x:(r7+$29),a
+        cmp     x1,a
+        tlt     x1,a                    ; below -> pin at low limit
+        move    a,x:(r7+$29)
+        move    #>16376,b
+        move    x:(r7+$75),x0
+        sub     x0,b                    ; highest legal mod
+        move    b,x1
+        cmp     x1,a
+        tgt     x1,a                    ; above -> pin at high limit
+        move    a,x:(r7+$29)
         move    x:(r7+$2a),a
         and     #>$fff,a                ; fraction (A2 stale until cleaned)
         asl     #$b,a,a                 ; -> Q23
@@ -1412,70 +1440,18 @@ plagok:
 
 ; ---- TAPE Line L: lerped read at lag TIME + mod ---------------------------
         move    r1,a
-        move    x:(r7+$75),x0           ; TIME
-        sub     x0,a
-        move    x:(r7+$29),x0           ; mod_int, signed
-        sub     x0,a
-        and     #>$3fff,a
-        move    a1,x0
-        move    x0,a                    ; A2-clean
-        move    a,x:(r7+$2a)            ; park phase
+; lerp read rolled into modtap (18 Aug 2026): line base staged in $30, the
+; pointer arrives in a, the tap returns in a. Same word-saving move as satdrv.
         move    x:(r7+$31),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a
-        move    a,x:(r7+$2b)            ; t0
-        move    x:(r7+$2a),a
-        move    #>$1,x0
-        sub     x0,a
-        and     #>$3fff,a               ; one sample OLDER
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$31),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; t1
-        move    x:(r7+$2b),x0
-        sub     x0,a                    ; t1 - t0, signed
-        move    a1,x0                   ; -> FIRST mpy operand
-        move    x:(r7+$2c),y1           ; frac
-        mpy     x0,y1,a
-        move    x:(r7+$2b),x0
-        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    x0,x:(r7+$30)
+        bsr     modtap
         move    a,x:(r7+$79)          ; dL, wobbled -- the LOOP's own tap
 
 ; ---- TAPE Line R: lerped read at lag TIME + mod ---------------------------
         move    r2,a
-        move    x:(r7+$75),x0           ; TIME
-        sub     x0,a
-        move    x:(r7+$29),x0           ; mod_int, signed
-        sub     x0,a
-        and     #>$3fff,a
-        move    a1,x0
-        move    x0,a                    ; A2-clean
-        move    a,x:(r7+$2a)            ; park phase
         move    x:(r7+$68),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a
-        move    a,x:(r7+$2b)            ; t0
-        move    x:(r7+$2a),a
-        move    #>$1,x0
-        sub     x0,a
-        and     #>$3fff,a               ; one sample OLDER
-        move    a1,x0
-        move    x0,a
-        move    x:(r7+$68),x0
-        add     x0,a
-        move    a,r5
-        move    y:(r5),a                ; t1
-        move    x:(r7+$2b),x0
-        sub     x0,a                    ; t1 - t0, signed
-        move    a1,x0                   ; -> FIRST mpy operand
-        move    x:(r7+$2c),y1           ; frac
-        mpy     x0,y1,a
-        move    x:(r7+$2b),x0
-        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        move    x0,x:(r7+$30)
+        bsr     modtap
         move    a,x:(r7+$7a)          ; dR, wobbled
 ; ---- MODE dispatch: PITCH additionally computes the SHIFTED OUTPUT taps ---
 ; 0 and every unknown value run the loop's clean taps alone -- a wrong select
@@ -3008,6 +2984,43 @@ dry:
         move    #>$ffffff,m5
         rts
 
+; ---- modtap: the modulated lerped line read, shared by both lines ---------
+; (18 Aug 2026, rolled with the x8 relaw.) In: a = line write pointer, $30 =
+; the line's base. Out: a = the lerped tap at lag TIME + mod. Clobbers
+; x0/y1/r5 and $2a/$2b (scratch); $2c (frac) is read-only here.
+modtap:
+        move    x:(r7+$75),x0           ; TIME
+        sub     x0,a
+        move    x:(r7+$29),x0           ; mod_int, signed
+        sub     x0,a
+        and     #>$3fff,a
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        move    a,x:(r7+$2a)            ; park phase
+        move    x:(r7+$30),x0           ; line base, staged by the caller
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a
+        move    a,x:(r7+$2b)            ; t0
+        move    x:(r7+$2a),a
+        move    #>$1,x0
+        sub     x0,a
+        and     #>$3fff,a               ; one sample OLDER
+        move    a1,x0
+        move    x0,a
+        move    x:(r7+$30),x0
+        add     x0,a
+        move    a,r5
+        move    y:(r5),a                ; t1
+        move    x:(r7+$2b),x0
+        sub     x0,a                    ; t1 - t0, signed
+        move    a1,x0                   ; -> FIRST mpy operand
+        move    x:(r7+$2c),y1           ; frac
+        mpy     x0,y1,a
+        move    x:(r7+$2b),x0
+        add     x0,a                    ; tap = t0 + frac*(t1-t0)
+        rts
+
 ; ---- satdrv: loop saturation + DRIVE blend, shared by both line writes ----
 ; (18 Aug 2026 -- rolled when DRIVE landed; the two inline copies were the
 ; word cost that had blocked a drive stage since stage 4b.) See the call
@@ -3052,8 +3065,12 @@ satdrv:
 ; w1 is already parked in $2f by the saturation block above -- reused, and u
 ; is parked in y0, which nothing reads between here and its next reload.
         move    a,x:(r7+$2f)            ; w1 (post-DPTH-select), limited park
-        asl     #$1,a,a
-        move    a,x0                    ; u = 2w, LIMITED
+        asl     #$2,a,a                 ; 4w (18 Aug 2026: the 2x knee measured
+                                        ; under 1 dB at real repeat levels --
+                                        ; "drive no". The knee now bites from
+                                        ; 0.25 FS, and the clamp plateau above
+                                        ; it is the flat-top half of the sound)
+        move    a,x0                    ; u = 4w, LIMITED
         move    x0,y0                   ; park u
         move    x0,y1
         mpy     x0,y1,b                 ; u^2
@@ -3065,7 +3082,7 @@ satdrv:
         move    y0,a                    ; u
         move    b,x0
         sub     x0,a                    ; sat(u)
-        asr     #$1,a,a                 ; hot = sat(2w)/2
+        asr     #$2,a,a                 ; hot = sat(4w)/4
         move    x:(r7+$2f),x0           ; w1
         sub     x0,a                    ; hot - w1 (possibly negative)
         move    a,x0
