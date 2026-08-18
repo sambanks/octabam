@@ -299,7 +299,8 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # clamp, 4x drive knee, and the modtap roll. Flash R39; discard R36-R38.
 # 59 == OCTABAMR40 == R39 plus the reverb MOD relaw (ROOM x4 / PLATE x2.9 /
 # BIG x2) and DRIVE's d relocated to r7+$83 (Y-in-callee measured dead on hw).
-BUILD_TAG = b"59"
+# 60 == OCTABAMR41 == R40 plus the drive OUTPUT makeup (wet x (1 + d/2)).
+BUILD_TAG = b"60"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
