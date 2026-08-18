@@ -69,7 +69,9 @@ Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
 
    shared half 0x30000–0x37FFF (32 K)   shared half 0x38000–0x3FFFF (32 K)
    ├─ 4 input + 2 in-loop allpasses     └─ LineL + LineR, 16,384 each
-   ├─ shimmer line, retired pre-delay      (ping-pong, ~371 ms per line)
+   ├─ shimmer pitch-shift line (2 K)       (ping-pong, ~371 ms per line)
+   ├─ dead pre-delay buffer (4 K —
+   │  PRE became GATE; still mapped)
    ├─ tank state tables
    └─ BUS SCRATCH at 0x36000 — the
       one region both cores touch
