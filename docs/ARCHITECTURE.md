@@ -173,17 +173,20 @@ resolve with that base). Image data/BSS ~`0x400bxxxx`.
 
 ---
 
-## 8. Project tools (`tools/`, all reproducible)
+## 8. Project tools (all reproducible)
 
-| Script | What it does |
-|---|---|
-| `fetch-os.sh` / `analyze.sh` | downloads the official OS, entropy + binwalk + decompression |
-| `bin_decode.py` | decodes the ELUP `.bin` (deobfuscates + validates checksum) |
-| `decode_elek.c` | decompresses the ELEK container (aPLib) → MAIN OS |
-| `find_base.py` | determines the load base by pointer→string correlation |
-| `string_func_map.py` | function→UI-strings map (619 functions) |
-| `disasm.sh` | radare2 with correct arch/base (m68k BE @ 0x40000400) |
-| `Ghidra*.java` | headless decompilation scripts (Ghidra 12, Coldfire language) |
+Some of the archaeology tools were pruned in the octabam refactor and live in
+git history (`git log --all -- tools/<name>`), per the repo's history policy.
+
+| Script | Where | What it does |
+|---|---|---|
+| `fetch-os.sh` / `analyze.sh` | `scripts/` | downloads the official OS, entropy + binwalk + decompression |
+| `bin_decode.py` | `tools/` | decodes the ELUP `.bin` (deobfuscates + validates checksum) |
+| `decode_elek.c` | history | decompresses the ELEK container (aPLib) → MAIN OS |
+| `find_base.py` | `tools/` | determines the load base by pointer→string correlation |
+| `string_func_map.py` | history | function→UI-strings map (619 functions) |
+| `disasm.sh` | `scripts/` | radare2 with correct arch/base (m68k BE @ 0x40000400) |
+| `Ghidra*.java` | history | headless decompilation scripts (Ghidra 12, Coldfire language) |
 
 ---
 

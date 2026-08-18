@@ -27,8 +27,10 @@ PREVIOUS CIPHER word. rot16 and bswap are involutions, so inverting it is direct
 
 Usage:
     EFT_EMIT_CONTAINER=elek.bin elektron-firmware-tool -i stock.syx -c 3 mainos.bin \\
-        -V MAXOLYDIAN -o out.syx
-    python3 tools/make_bin.py elek.bin -o OCTATRACK_MAXOLYDIAN.bin
+        -V OCTABAM001 -o out.syx
+    python3 tools/make_bin.py elek.bin -o OCTATRACK_OCTABAM001.bin
+
+(`make image` runs both steps with the BUILD number stamped in.)
 """
 import argparse, struct, sys
 from pathlib import Path

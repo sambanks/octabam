@@ -30,5 +30,10 @@ This license covers this repository's own source code and documentation only.
 
 It does not extend to any Elektron Music Machines firmware, which is not
 distributed here and remains the property of its copyright holder. Users
-supply their own copy of the official OS. Nothing in this project is endorsed
-by, supported by, or affiliated with Elektron.
+supply their own copy of the official OS. The container-format tooling in
+this repository re-implements Elektron's firmware-update packaging solely for
+interoperability: so that an owner can build and flash a modified image for
+their own unit. Nothing in this project is endorsed by, supported by, or
+affiliated with Elektron. Octatrack and Elektron are trademarks of Elektron
+Music Machines MAV AB, used only to identify the hardware this project
+targets.
