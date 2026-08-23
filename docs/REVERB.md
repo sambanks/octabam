@@ -12,8 +12,10 @@ bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
 > eight lines, 8×8 FWHT, **three** modes (ROOM/PLATE/BIG), ER removed in
 > favour of a short Dattorro-scale input diffuser (taps 179/293/419/547 =
 > 4.1–12.4 ms), and 512-word **modulated** in-loop allpasses — and it is a
-> **RETURN**: the output is the wet alone, and p5 is **IN** (this track's own
-> send into its reverb), not a MIX crossfade. The signal path and parameter
+> **RETURN with a unity dry passthrough** (v5, 23 Aug 2026): the output is
+> the host track's own dry untouched plus the wet, and p5 is **IN** (this
+> track's own send into its reverb), not a MIX crossfade. (v4, R29–R41,
+> printed the wet alone and a host track with audio was silent at IN=0.) The signal path and parameter
 > table here are current; deeper sections are corrected where marked,
 > historical otherwise — in particular, anything describing MIX describes
 > the retired insert-era law.
@@ -97,17 +99,17 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed.
 | 1 | 2 | SIZE | `r6+$2` | scales all four tap lengths, within the current MODE |
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
-| 1 | 5 | IN | `r6+$5` | **this track's own send** into the reverb (default 0). The output is wet-only; IN>0 also registers the host as a bus client, so a non-zero default would dilute real senders |
+| 1 | 5 | IN | `r6+$5` | **this track's own send** into the reverb (default 0). The host's dry always passes at unity (v5); IN adds it into the engine on top, **and scales the wet's output makeup ×(1+IN)** (v7 — +6 dB at full, exactly ×1 at 0). IN>0 also registers the host as a bus client, so a non-zero default would dilute real senders |
 | 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (read from the `$c` knob field OR'd with `$b`; the panel publishes slot 6 to `$c` — DSP.md §9) |
 | 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
-| 2 | 9 | WIDTH | `r6+$d` low | **4-step select** (mono/narrow/normal/wide). Companion fields read near-boolean at count 128 on hardware, so a smooth knob there is dead — a small count publishes |
+| 2 | 9 | SHFT | `r6+$d` low | **4-step select** (v7, 23 Aug 2026 — was WIDTH, retired; width is pinned wide): the shimmer interval, **+12 / +19 / +7 / −12**, default +12 = the R18 voicing bit-exactly. Companion fields read near-boolean at count 128 on hardware, so a small count publishes |
 | 2 | 10 | GATE | `r6+$e` knob | **gated reverb** (Phil-Collins slam). 0 = off; up = hold time (~46 ms–780 ms) before the wet slams shut. Envelope keyed on the tank input ($1b, so sends trigger it), fast attack + ~20 ms eased release, applied as a per-sample multiply on the wet L/R. Replaced PRE (pre-delay was buffer-capped at 93 ms, not worth a knob) |
 | 2 | 11 | RATE | `r6+$e` low | **4-step select** for the tank-mod LFO speed: 0.5×/1×/2×/4× of the pinned base rate — companion field, same reason as WIDTH. (This slot previously carried a `→DEL` send select, retired because a return reverb's dry is normally silence) |
 
 **Page-2 budget: three smooth knobs + three selects.** The three knob
 fields (`$c` SHMR, `$d` DIFF, `$e` GATE) publish as full-travel knobs; the three
-companion fields (`$c` mid MODE, `$d` low WIDTH, `$e` low RATE) publish only as
+companion fields (`$c` mid MODE, `$d` low SHFT (was WIDTH), `$e` low RATE) publish only as
 small-count selects — a smooth knob in a companion field reads near-boolean on
 hardware. This is the actual page-2 control budget.
 

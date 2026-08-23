@@ -58,7 +58,8 @@ CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine
 # A var missing from this list is a way to change the build without changing
 # the fingerprint, which is the exact bug this guards against.
 BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
-             "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE")
+             "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE",
+             "DLSRC", "MARKER", "DMODE", "DINT", "DFRZ", "DFRZAT", "TPROBE")
 # SHIMMER was in this list until Round 12; the flag build_bus.py actually
 # branches on has been NOSHIM since the v3 rewrite, so a NOSHIM build did
 # not change the fingerprint -- the exact bug the comment above names.
@@ -112,8 +113,12 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # not a crossfade; the name stays so existing command lines keep working.
 # RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
-          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("WIDTH", 3),
+          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
+# SHFT (idx 9) was WIDTH until v6 (23 Aug 2026): width is pinned wide and the
+# slot selects the shimmer interval, 0/1/2/3 = +12/+19/+7/-12. Audited the
+# same day (the harness-knob-drift rule: audit wrappers with every knob
+# change).
 # SPEED has been SHMR (shimmer amount) since v101, and its old default of 64
 # put an octave-up loop gain of ~0.13 into EVERY render -- Round 12 measured
 # it inflating the sustain of every band (PLATE MF -18.7 vs -22.8 dB/s
@@ -518,6 +523,12 @@ def main():
             if a.wet:
                 # output = dry + wet, and the dry path is the mono input duplicated,
                 # so subtracting it recovers the wet exactly.
+                # ⚠️ TRUE AGAIN SINCE v5 (23 Aug 2026, unity dry passthrough).
+                # It was FALSE for the v4 window (17-23 Aug 2026): the return
+                # printed the wet ALONE, so --wet subtracted a phantom dry and
+                # produced wet-minus-dry -- any --wet render from that window
+                # is suspect. Without --wet, v4 renders were already wet-only
+                # (correct), and v5 renders are dry+wet as labelled.
                 dry = [int(v * 8388607) for v in src] + [0] * (len(L) - len(src))
                 L = [l - d for l, d in zip(L, dry)]
                 R = [r - d for r, d in zip(R, dry)]

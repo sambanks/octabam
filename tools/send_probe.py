@@ -420,7 +420,8 @@ def main():
                     help="DELAY IN 0..127 (delay slot 4, default 0) -- this\n"
                          "track's OWN send level into the delay. Was MIX, a\n"
                          "dry/wet crossfade, until v3 stage 1 made the host\n"
-                         "track a return whose output is the wet alone.\n"
+                         "track a return (wet alone v3..v4; since v5 the\n"
+                         "host's dry rides under the wet at unity).\n"
                          "--din is the name that matches the panel; --dmix\n"
                          "still works so older command lines do not break,\n"
                          "but they now mean something different.")
@@ -431,8 +432,8 @@ def main():
     ap.add_argument("--inall", action="store_true",
                     help="feed the source to EVERY live slot, not just the\n"
                          "SENDs. Without it a server's own track is silent and\n"
-                         "its DRY path -- and therefore MIX -- cannot be\n"
-                         "measured locally at all.")
+                         "neither its IN feed nor (since v5) its unity dry\n"
+                         "passthrough can be measured locally at all.")
     ap.add_argument("--drate", type=int, default=None,
                     help="DELAY RATE 0..127 (slot 8 KNOB, born 18 Aug 2026):\n"
                          "scales both drift LFO increments by val/64, so 64 is\n"
@@ -469,8 +470,12 @@ def main():
     ap.add_argument("--rrate", type=int, default=None,
                     help="reverb RATE select 0..3 = 0.5/1/2/4x MOD speed\n"
                          "(slot-11 companion, born 18 Aug 2026; default 1x).")
-    ap.add_argument("--width", type=int, default=None,
-                    help="reverb WIDTH select 0..3 (slot-9 companion).")
+    ap.add_argument("--shft", "--width", type=int, default=None, dest="width",
+                    help="reverb SHFT 0..3 (slot-9 companion): shimmer\n"
+                         "interval +12/+19/+7/-12. Was WIDTH until v6\n"
+                         "(23 Aug 2026; width is pinned wide now); --width\n"
+                         "still parses so older command lines do not break,\n"
+                         "but it selects the interval, not the image.")
     ap.add_argument("--gate", type=int, default=None,
                     help="reverb GATE 0..127 (slot-10 KNOB).")
     ap.add_argument("--rdel", type=int, default=None,

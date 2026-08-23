@@ -175,9 +175,10 @@ RENAMES = {
     "REVERB SERVER": [
         (1, b"MOD"), (2, b"SIZE"),
         (5, b"IN"),             # v4 RETURN (17 Aug 2026): was the donor's MIX.
-                                # The output is the wet alone; IN is this
-                                # track's own send into its reverb, the
-                                # delay's p4 mirrored.
+                                # IN is this track's own send into its reverb,
+                                # the delay's p4 mirrored. (v4 printed the wet
+                                # alone; since v5 the host's dry rides under
+                                # the wet at unity.)
         # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
         # odd slots are companion fields in the same word and are only proven
         # to carry a SMALL step count -- see PAGE2_COUNTS below.
@@ -186,7 +187,10 @@ RENAMES = {
                                 #    VOICING Round 5's measured optimum)
         (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
         (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
-        (9, b"WIDTH"),          # slot 9 -> r6+$d low
+        (9, b"SHFT"),           # slot 9 -> r6+$d low. v6 (23 Aug 2026): was
+                                #   WIDTH (retired, pinned wide -- Sam's
+                                #   call); now the shimmer interval select:
+                                #   +12 / +19 / +7 / -12
         (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
         (11, b"RATE"),          # slot 11 -> r6+$e b8-15  MOD speed select,
                                 #   0.5x/1x/2x/4x of Round 5's pinned optimum
@@ -300,7 +304,90 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # 59 == OCTABAMR40 == R39 plus the reverb MOD relaw (ROOM x4 / PLATE x2.9 /
 # BIG x2) and DRIVE's d relocated to r7+$83 (Y-in-callee measured dead on hw).
 # 60 == OCTABAMR41 == R40 plus the drive OUTPUT makeup (wet x (1 + d/2)).
-BUILD_TAG = b"60"
+# 65 == OCTABAMR46 also carries THE BURN-SWEEP UNBLOCK (23 Aug, all
+# BIT-IDENTICAL -- placement, not behavior; verified by image-vs-image render
+# hashes across every mode/interval/gate state):
+#   * phead roll: the PITCH head body (62 words) appeared FOUR times in the
+#     delay; rolled -> payload B FREE 220.
+#   * md_done hoist: all three reverb modes stored the same five constants
+#     (diffuser taps + RATE scale); hoisted past the fork. rp_tail: ROOM and
+#     PLATE shared three more ($20/$3f/$73). g_off: one $400000 load now
+#     serves GCNT and GHOLD. Payload A FREE 74.
+#   * verify_burn: GREEN for the first time -- the burn probe builds fit and
+#     all four checks pass; the alias-probe combo alone still needs ~42 words
+#     and now SKIPs granularly instead of masking the sweep.
+# ⚠️ cycle_count now OVERPRICES the delay by ~264 (it mis-attributes the
+# rolled phead calls); actual cycles unchanged. The BURN=1 hardware sweep is
+# the real measurement and is READY: TPROBE-style one flash, sweep p3.
+# 65 == OCTABAMR46 == R45 plus the GATE threshold fix (23 Aug 2026): the
+# trigger bar drops 0.094 -> 0.004 FS (-20.5 -> -48 dBFS). MEASURED defect:
+# at GATE>0, material under the old bar rendered the wet DIGITALLY SILENT
+# until something crossed -20.5 (a -24 dBFS melody at GATE=12 = pure
+# silence); the fixed threshold keeps quiet material alive and the clap
+# chop intact (hold unchanged -- the hold is the musical part). ⚠️ Whether
+# this silent-wet mode is the R44/R45 field incident is UNRESOLVED: it
+# matches every symptom (wet dead / dry passing / sends useless / delay
+# fine / re-select cures via GATE=0 defaults), but Sam suspects a
+# sequencer/track interaction -- ColdFire-side, investigation PAUSED at
+# Sam's request. The incident stays open either way.
+# 64 == OCTABAMR45 == R44 plus Sam's R44 hardware feedback (23 Aug 2026):
+# wet makeup steepened to x(1 + 2*IN) -- +9.5 dB at full IN ("could still be
+# mixed louder"; IN=0 still EXACTLY x1). Measured: percussive wet now 11 dB
+# under dry at full IN (was 20 pre-makeup), no clipping; hot SUSTAINED
+# material clips the store above IN~90 -- knob territory, documented, not
+# guarded (dry ducking was explicitly rejected: "don't back down that
+# [crossfade] road"). Shifter-input HP corner 570 -> ~280 Hz, ear-picked
+# from a 4-corner wet-only ladder ("second one is good"). ⚠️ OPEN INCIDENT,
+# now TWICE on hardware (R44/R45 era): the reverb's WET dies -- dry keeps
+# passing, sends into it do nothing -- until the effect is re-selected on
+# the track. Sequencer unaffected. NOT double-select (Sam confirmed), NOT
+# reproducibly triggered (once correlated with turning SIZE up). Model
+# analysis: the only state that PERSISTS like this is "core 0's bus
+# housekeeping stopped" -- the role locks then hold a stale owner, every
+# instance takes the duplicate exit (rts = dry passthrough) and nobody
+# consumes the ACC. The election should self-heal that, so hardware is
+# doing something the single-core emulator cannot see. NEXT OCCURRENCE'S
+# ONE DIAGNOSTIC: check whether tracks 1-4 sends -> BongDelay ALSO died.
+# The same housekeeper serves both buses: delay dead too = housekeeping
+# died (mechanism located); delay alive = reverb-instance-local. (The
+# duplicate-instance case itself is verified INERT in-model: an RRS layout
+# renders stable for 8 s, second instance = clean dry passthrough.)
+# 63 == OCTABAMR44 == R43 plus the reverb v7 trio (23 Aug 2026, Sam's picks):
+# (1) IN-KEYED WET MAKEUP -- wet x (1 + IN), +6 dB at full IN, EXACTLY x1 at
+# IN=0 (the R29 return level is preserved to the bit; measured x1.99 from
+# sample one at IN=127). (2) SHFT replaces WIDTH: slot 9 selects the shimmer
+# interval +12/+19/+7/-12 via a fractional read phase (core-private 0905h);
+# +12 is BIT-IDENTICAL to the R18 shimmer (hash-gated); width is pinned wide
+# (the old default). All four intervals verified spectrally on a tone.
+# (3) SHIFTER-INPUT HP (the R18 "airier octave" item, unblocked): one-pole,
+# corner ~560 Hz, state at 0906h, on the shimmer feed only -- a VOICING
+# CONSTANT awaiting Sam's ear (A/B pair rendered). PAID FOR by the apbody
+# roll (the input-diffuser allpass body appeared 4x; payload A FREE 18
+# after everything). verify-bus restamped: every reverb-analyzed layout
+# changed by exactly the makeup (fixture drives IN=127), every
+# delay-analyzed layout bit-identical.
+# 62 == OCTABAMR43 == R42 plus the FREEZE seam crossfade (v6, 23 Aug 2026):
+# engaging FREEZE used to capture a step between the loop's newest and oldest
+# sample and replay it every lap (measured with the new DFRZAT repro hook:
+# one ~0.14 FS discontinuity per TIME+64 samples on a pure tone, forever).
+# The hold's write now crossfades from the live chain into the tap over
+# ~1.5 ms at engage (ramp r in core-private Y, armed while running, decaying
+# only while frozen), so the captured loop never contains a step; after the
+# fade the write is the tap TO THE BIT, so the hold still neither decays nor
+# grows. Running path bit-identical (verify_delay all modes + verify-bus
+# 19/19, no restamp). PAID FOR by the smoothw roll -- the 17-instruction
+# smoothstepped-triangle window appeared five times in the delay (wow,
+# flutter, GRAIN, REVERSE x2); rolled to one subroutine, payload B FREE
+# 1 -> 51 net. Also fixed: verify_delay's mode_count undercounted since
+# TAPE's retirement, so REVERSE was silently skipped by every run since
+# 18 Aug -- both REVERSE cases are live again.
+# 61 == OCTABAMR42 == R41 plus v5 dry passthrough on BOTH hosts (23 Aug 2026):
+# each server's own track prints its dry at unity under the wet, so IN=0 is an
+# exact passthrough instead of silence. Bus arithmetic untouched (IN still
+# gates engine feed and client registration); GATE still scales wet only. Net
+# ZERO words on payload B (the drive-makeup a/b dance collapsed to `add x0,a`),
+# +4 on payload A. With a silent host track the output is bit-identical to R41.
+BUILD_TAG = b"65"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -342,15 +429,14 @@ DEFAULTS = {
                      #      the bus too -- that is the system's existing
                      #      behaviour and the host now matches it. The knob
                      #      gate is what lets the DEFAULT opt out.)
-                     #      ⚠️ The cost, and it is real: the output is the wet
-                     #      alone now, so BongDelay placed on a track that IS
-                     #      playing something, with nothing sent to it, is
-                     #      SILENT until IN comes up. That reads as "the
-                     #      effect deleted my audio", which is worse than the
-                     #      trap this table's header warns about -- but it is
-                     #      the correct behaviour for a return, and 0 is the
-                     #      only default that keeps the bus arithmetic honest
-                     #      in the case the design is actually for.
+                     #      ⚠️ The "wet alone" cost this note used to accept
+                     #      -- a playing host track SILENT until IN came up,
+                     #      reading as "the effect deleted my audio" -- is
+                     #      GONE since v5 (23 Aug 2026): both servers now
+                     #      pass the host's dry at unity under the wet, so
+                     #      IN=0 is an exact passthrough. 0 remains the only
+                     #      default that keeps the bus arithmetic honest,
+                     #      and it no longer has a downside.
                      #      Slots 5 and 8 are RETIRED -- no defaults needed.
                      #      MIX 90 -> 64 (stage 5g). Sam, on the demo set:
                      #      "it sounds a lot better lower". ⚠️ His finding
@@ -412,7 +498,11 @@ DEFAULTS = {
                                  # the good reverb.
                       (7, 2),    # MODE   BIG (was HALL before the 3-mode cut)
                       (8, 64),   # DIFF   mid
-                      (9, 3),    # WIDTH  R16: 4-step select (0..3), 3 = wide
+                      (9, 0),    # SHFT   v6: interval select, 0 = +12 (the
+                                 # R18 shimmer voicing). ⚠️ Old projects'
+                                 # stored WIDTH=3 loads as -12 (sub-octave)
+                                 # -- benign at SHMR's 0 default, and the
+                                 # FLASHING.md first-load step covers it
                       (10, 0),   # GATE   off (ungated reverb)
                       (11, 1)],  # RATE 1x (index 1; the 1-based panel shows
                                  # "2"). Slot was -DEL until 18 Aug 2026.
@@ -506,10 +596,12 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # DPTH   knob (was WOW; global mod)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
-                                  9: 4,     # WIDTH  R16: SELECT (companion $d-low
-                                            #        reads near-boolean at 128 on
-                                            #        hardware -- a small count
-                                            #        publishes; mono/narrow/norm/wide)
+                                  9: 4,     # SHFT   v6 (was WIDTH): interval
+                                            #        select +12/+19/+7/-12.
+                                            #        Same count, so the R16
+                                            #        lesson holds: companion
+                                            #        $d-low publishes small
+                                            #        counts, not knobs
                                   10: 128,  # GATE   knob (R16: was PRE)
                                   11: 4}}   # RATE   select 0.5/1/2/4x MOD speed
                                             # (was -DEL until 18 Aug 2026)
@@ -537,6 +629,9 @@ STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / RATE
 import os
 if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
     FULLNAME["REVERB SERVER"] = b"X MEM PROBE" if os.environ.get("XPROBE") == "1" else b"P2 PROBE"
+if os.environ.get("TPROBE") == "1":
+    FULLNAME["REVERB SERVER"] = b"TEMPO PROBE"    # streams the 0x30000 staging
+                                                  # block; see dsp/tempoprobe.asm
     ABBR["REVERB SERVER"] = b"PROB"
     ACTIVE_PARAMS["REVERB SERVER"] = [6, 7, 8, 9, 10, 11]   # page 2 only
     RENAMES["REVERB SERVER"] = [(i, b"") for i in range(6)] + \
@@ -641,7 +736,7 @@ if os.environ.get("BURN") == "1":
 # payload A .mem beside it.
 DEV = os.environ.get("DEV") == "1"
 if DEV:
-    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "DELAYPROBE")
+    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE")
               if os.environ.get(v) == "1"]
     if _clash:
         sys.exit(f"DEV=1 is a local render build and cannot be combined with "
@@ -700,7 +795,7 @@ if SPEC:
         # render any more -- it outgrew payload A with the 8-line engine.
         print("  DEV=1 + SPEC=1: rendering reverb only (delay is on payload B, "
               "which dsp_host cannot boot)")
-    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "DELAYPROBE")
+    _clash = [v for v in ("BURN", "PROBE", "XPROBE", "TPROBE", "DELAYPROBE")
               if os.environ.get(v) == "1"]
     if _clash:
         sys.exit(f"SPEC=1 cannot be combined with {'/'.join(_clash)}=1 -- "
@@ -728,6 +823,7 @@ ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
            # two renders must be the engine source.
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
+                             else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
                              else os.environ.get("RVSRC") or "dsp/reverb_server.asm"),
            "SEND": "dsp/send_client.asm"}
 
@@ -1142,14 +1238,10 @@ mkgo:""",
     # VintageVerb's field is decorrelated. Same mechanism as MODE=: clobber
     # a with the immediate right before the store to $2c. << 16 puts the
     # 0..127 value where the knob-field extraction above lands it.
-    width_env = os.environ.get("WIDTH")
-    if width_env is not None:
-        assert reverb_src.count("; WIDTH_OVERRIDE") == 1
-        assert 0 <= int(width_env) <= 127
-        reverb_src = reverb_src.replace(
-            "; WIDTH_OVERRIDE",
-            "        move    #>$%x,a" % (int(width_env) << 16))
-        print(f"  *** WIDTH OVERRIDE: forced to {int(width_env)} ***")
+    if os.environ.get("WIDTH") is not None:
+        sys.exit("WIDTH= is retired (v6, 23 Aug 2026): the knob is SHFT, the "
+                 "shimmer interval select, and dsp_host drives companion "
+                 "fields directly -- use render_reverb -p SHFT=n")
 
     # DMODE=n forces BongDelay's MODE select, same mechanism and reason as
     # MODE= above: dsp_host writes only the knob field of a param word, so a
@@ -1202,6 +1294,42 @@ mkgo:""",
             "        move    #>%d,a" % int(dfrz_env))
         print(f"  *** DFRZ OVERRIDE: BongDelay FREEZE forced to {int(dfrz_env)} ***")
 
+    # DFRZAT=n engages FREEZE after n post-warm-up BLOCKS instead of from
+    # sample 0 -- the missing repro lever PLAN.md's "FREEZE cannot be
+    # auditioned locally" names: a static DFRZ=1 freeze holds the silence the
+    # warm-up just cleared. DEV-ONLY (guarded below): the emitted code keeps a
+    # block counter in one word of payload A's owned shared-window half
+    # (Y:0x37FFE -- init-zeroed, above the bus scratch at 0x360d2, below the
+    # DEV delay lines at their shipping base; nothing else touches it in a DEV
+    # layout). Branchless: sub sets N once, the two Tcc read it, and the
+    # interleaved immediate moves do not disturb the condition codes -- the
+    # same shared-flag idiom as the sample loop, with nothing between the pair.
+    dfrzat_env = os.environ.get("DFRZAT")
+    if dfrzat_env is not None:
+        if dfrz_env is not None:
+            sys.exit("DFRZ and DFRZAT are mutually exclusive -- one freeze "
+                     "override at a time")
+        if os.environ.get("DEV") is None:
+            sys.exit("DFRZAT=n is a DEV-only repro hook (its counter word "
+                     "lives in payload A's shared-window half and its words "
+                     "do not fit the shipping payload B region) -- set DEV=1")
+        if delay_src.count("; DFRZ_OVERRIDE") != 1:
+            sys.exit("DFRZAT=n set but the DELAY source has no single "
+                     "; DFRZ_OVERRIDE marker")
+        delay_src = delay_src.replace(
+            "; DFRZ_OVERRIDE",
+            "        move    y:>$37ffe,a\n"
+            "        add     #>1,a\n"
+            "        move    a,y:>$37ffe\n"
+            "        move    #>%d,x0\n"
+            "        sub     x0,a\n"
+            "        move    #>0,x0\n"
+            "        tmi     x0,a\n"
+            "        move    #>1,x0\n"
+            "        tpl     x0,a" % int(dfrzat_env))
+        print(f"  *** DFRZAT OVERRIDE: BongDelay freezes after "
+              f"{int(dfrzat_env)} post-warm blocks ***")
+
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
     # The accumulators live at Y:0x900-0x9d2, which is CORE-PRIVATE low Y --
     # one core's sends write their own copy and the other core's server cannot
@@ -1252,9 +1380,16 @@ mkgo:""",
             # writes into the shared REVERB accumulator. The census below
             # pins the count so drift is loud.
             n_priv = len(re.findall(r"\$09[0-9a-f]{2}\b", src))
-            if name == "DELAY SERVER" and n_priv != 4:   # RATE increments only; d moved to r7 (V0/V127 probe)
-                sys.exit(f"XBUS: {name} expected exactly 4 core-private $09xx "
-                         f"refs (RATE/DRV state), found {n_priv}")
+            # RATE increments are 4 refs; a v6+ source adds 4 more for the
+            # freeze-crossfade ramp (satdrv tail load/store, per-block re-arm
+            # load/store). Keyed on the ramp word's presence so verify_delay
+            # can still build a pre-v6 REFERENCE source.
+            n_want = 8 if "y:>$0904" in src else 4
+            if name == "DELAY SERVER" and n_priv != n_want:
+                sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
+                         f"$09xx refs (RATE/DRV state"
+                         f"{' + freeze ramp' if n_want == 8 else ''}), "
+                         f"found {n_priv}")
             src = re.sub(r"\$9([0-9a-f]{2})\b",
                          lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)), src)
             if src.count("; XBUS_GATE") != 1:

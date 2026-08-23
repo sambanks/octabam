@@ -66,6 +66,7 @@ aimed at a mode that EXISTS proves nothing, so it moves up with the engines.)
 import argparse
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -144,13 +145,17 @@ def build(src, tag, dmode=None, dint=None):
 
 
 def mode_count(src):
-    """How many engines a delay source carries, counted from the mode fork's
-    own markers (CLEAN plus one alternative per MODEFORK_MID) -- the same
-    markers tools/cycle_count.py prices the fork by, so this cannot drift
-    from what the build assembles. A mode only ONE side carries cannot be
-    bit-compared at all, so the caller skips it loudly rather than failing a
-    candidate for adding an engine."""
-    return 1 + src.count("; MODEFORK_MID")
+    """How many engine SELECT POSITIONS a delay source carries, read from the
+    mode fork's own markers. Counted from the alternative NUMBERS, not the
+    marker count: TAPE's retirement (18 Aug 2026) left the alternatives
+    numbered 1/3/4, and `1 + count` said 4 -- so REVERSE (DMODE=4) was
+    SILENTLY SKIPPED by every run since, the harness-drift family again
+    (caught 23 Aug when the v6 roll touched REVERSE and its cases skipped).
+    A mode only ONE side carries cannot be bit-compared at all, so the
+    caller still skips it loudly rather than failing a candidate for adding
+    an engine."""
+    ns = [int(n) for n in re.findall(r"; MODEFORK_MID -- alternative (\d+)", src)]
+    return (max(ns) + 1) if ns else 1
 
 
 NOP_MARKERS = ("; ---- one-pole damping in the feedback path",

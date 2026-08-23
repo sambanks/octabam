@@ -170,8 +170,10 @@ container before it will produce a modified one.
    from what you'd guess; on tracks 1–4 the pick falls back to a SEND).
    Feed it audio via `IN` and step **MODE**: you
    should hear distinct ROOM → PLATE → BIG spaces. Both effects are
-   **returns** (wet-only output): a reverb track with `IN` at 0 is silent by
-   design.
+   **returns with a unity dry passthrough** (v5, 23 Aug 2026): the host
+   track's own audio passes untouched, `IN` adds it into the engine on top.
+   `IN` at 0 is an exact passthrough — the R41-and-earlier behaviour of a
+   silent host track is retired.
 3. **The delay, on tracks 1–4.** BongDelay lives on the low tracks (payload
    B). Same deal: it is a return, fed over the bus.
 4. **The bus.** Put SEND on any other track and drive `→REVERB` /
@@ -215,9 +217,15 @@ and our descriptors only supply defaults when an effect is freshly selected.
 So a project saved on an older image loads with values that may now mean
 something else:
 
-1. **ChonVerb tracks that carried their own audio lose the dry.** The reverb
-   is a RETURN now (wet-only output). Old "insert" usage must be re-rigged as
-   a send, or accepted as wet-only.
+1. **ChonVerb tracks that carried their own audio keep the dry again** (v5,
+   23 Aug 2026): the host's dry passes at unity under the wet. (In the
+   R29–R41 window the return printed the wet alone and such tracks went
+   silent — that behaviour is retired.) Note the dry is NOT the old MIX law:
+   it is always unity, and the wet rides on top.
+1b. **Old stored WIDTH values load as SHFT** (p9, since R44): the reverb's
+   width is pinned wide and slot 9 selects the shimmer interval. A stored
+   WIDTH of 3 (the old default) reads as −12, the sub-octave — silent unless
+   SHMR is up, and the first-load re-select fixes it like everything else.
 2. **Old stored MIX values load as IN** (p5). On a pure return track this is
    inaudible — but it silently registers the host as a bus client and dilutes
    the real senders. Zero it, or use step 4.

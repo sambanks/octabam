@@ -52,7 +52,7 @@ core that track lives on.
 | | scoped to | spent when | this build |
 |---|---|---|---|
 | **Program space** (P) | **per core** | once at load — same cost whether 1 track or 8 use the effect | 2 724 words; **55 free** in the current build report ✅ (earlier snapshots read 11 and 32 — the build report is the live ledger) |
-| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | ~1 392 spare ✅ measured; the bank has grown 573 since that measurement, so **~819/sample** remains for new work |
+| **Cycles** | **per core** | **every frame, per track, per slot** — up to 8 effect calls per core | **704 spare** with the reverb + 4× FILTER, **1 088** with 2× — measured 23 Aug 2026, see §2 (the old "1 392 spare / 819 remains" figures are superseded) |
 | **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
 
 The one that catches people is the middle row. Program space is paid **once**;
@@ -132,10 +132,15 @@ no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 | | | |
 |---|---|---|
 | Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic |
-| **Measured ceiling for FX work** | **~2 150** (reverb alone) to **~2 350** (full bank) | ✅ hardware, burn probe |
-| **Proven spare headroom** | **1 392 cycles/sample**, exactly | ✅ hardware, burn probe |
-| Safe planning number | **~1 100–1 200** | 🟡 1 392 minus contention margin |
-| Stock's own share | ~2 400, a bit over half the core | 🟡 by subtraction |
+| **Measured ceiling for FX work** | **~2 350** (with 4× FX1 FILTER as environment) — RE-CONFIRMED 23 Aug 2026, second independent sweep | ✅ hardware, burn probe ×2 |
+| Spare with the R46 reverb + 4× FILTER + running sequencer | **704 cycles/sample** (breakup at p3=22 × 32; p3=23 = high-pitch squeal, the deep-overrun signature) | ✅ hardware, 23 Aug 2026 |
+| **The R46 reverb's true cost** | **≈1 650/sample** (2 356 − 704) — `cycle_count.py` prices it 1 384, so the pricer reads **~270 low** on the reverb (and ~264 high on the delay since the phead roll) | ✅ by two consistent sweeps |
+| Spare with the R46 reverb + **2×** FILTER | **1 088** (p3=34 × 32) | ✅ hardware, 23 Aug 2026 |
+| **One FX1 FILTER's true cost** | **192 cycles/sample** ((1 088 − 704)/2, measured differentially) — retires the old ~260 inference | ✅ hardware, 23 Aug 2026 |
+| **Total DSP-usable budget** | **≈3 120 cycles/sample** (all three sweeps agree: reverb 1 652 + 4×192 + 704 = 3 124; 7 Aug's 964 + 768 + 1 392 = same) | ✅ triangulated from 3 sweeps |
+| Safe planning number | **~500** on top of the current reverb in a 4-FILTER bank; **~900** with 2 | 🟡 sweep minus contention margin |
+| Stock's own share | **≈1 410** (4 535 − 3 120) — revised DOWN from "~2 400, half the core" | ✅ by subtraction from measured budget |
+| ⚠️ Historic spare "1 392, exactly" | superseded as a headline (it was the 7 Aug bank's spare, ceiling 964+1392=2356 — consistent with today) | ✅ then, 🟡 as guidance now |
 
 **How the ceiling was measured.** `dsp/burn_probe.asm` (in git history) adds `16 × p3`
 cycles/sample of pure nops, scaled by `n7` so the figure is per *sample*
@@ -200,7 +205,9 @@ so **any configuration can be measured, on demand, with no flash**:
 
 1. Set up the configuration you care about.
 2. Sweep `BURN` up until it breaks.
-3. **`16 × BURN` = cycles/sample spare in that configuration.**
+3. **`32 × BURN` = cycles/sample spare in that configuration.** (⚠️ 32
+   since the two-block probe — `dsp/burn_block1.inc` documents the scaling;
+   the original single-block probe this section was written against was 16.)
 
 And the *difference* between two configurations is the **cost of the change** —
 which is the only way to price stock effects at all, since they are binary and

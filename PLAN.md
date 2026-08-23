@@ -32,10 +32,11 @@ What ships:
   `→REVERB` (two separate knobs — driving the wrong one renders silence).
   Auto-gain divides by registered client count, so eight senders drive a
   server as hard as one.
-- **Both effects are RETURNS**: a server track outputs wet only, fed by the
-  other tracks' sends; its own audio reaches the engine only through `IN`
-  (default 0 — a return track with `IN` at 0 and nothing sent is silent by
-  design).
+- **Both effects are RETURNS with a unity dry passthrough** (v5, 23 Aug
+  2026): a server track outputs its own dry untouched plus the wet, fed by
+  the other tracks' sends; its audio reaches the *engine* only through `IN`
+  (default 0 — an exact passthrough). v4's wet-only output, which muted any
+  audio on the host track, is retired: Sam hit it in the field and called it.
 
 **Hosting is bank-bound; serving is not.** Either effect serves all eight
 tracks over the bus, but each can only be *hosted* on its own core's bank —
@@ -180,10 +181,12 @@ prices off that number.
   artifacts relocate, so any "fixed" claim needs a track × mode sweep; **no
   local test is evidence** — `dsp_host` is single-core. The free diagnostic
   lever: **change what is on track 5** (core 0's position-0 housekeeper).
-- **FREEZE and FREEZE+GRAIN cannot be auditioned locally**: the freeze
-  select is a companion field `dsp_host` cannot change mid-render, and a
-  build-time freeze holds silence from sample 0. Needs a DEV
-  freeze-after-N-samples hook, a `dsp_host` extension, or hardware.
+- **FREEZE renders locally since 23 Aug 2026**: `DFRZAT=n` (DEV-only,
+  build_bus.py) engages the freeze after n post-warm blocks, so a render
+  can capture real material mid-flight — the repro lever that found and
+  then verified the v6 seam-click fix. (The old blocker stands for a
+  freeze toggled MID-render more than once; one engage per render is what
+  the hook does.)
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is the design rule;
   no product configuration has this.

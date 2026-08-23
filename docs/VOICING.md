@@ -1799,3 +1799,20 @@ audible balance, which is a fader.
   -3.9 dB at 21% gaps or -9.4 dB at 75%, never both. Needs makeup gain on
   surviving grains, which does not exist.
 - pad, stab and hat have not had an ear pass on v3 at all.
+
+## R45 — shifter-input HP corner + wet makeup slope (23 Aug 2026)
+
+**HP corner, judged by ear on the 4-corner ladder** (melody, SHMR=100,
+wet-only, peak-normalised; files oct_570/oct_280/oct_170/oct_off in the
+session scratchpad): Sam heard the flashed 570 Hz as "a bit thin" on
+hardware; on the local ladder "second one [280 Hz] is good". Shipped
+c = $050000 (~280 Hz). 170 Hz and off remain unheard-by-comparison —
+reopeners if 280 still reads thin on the unit.
+
+**Wet makeup slope ×(1+IN) → ×(1+2·IN)** ("reverb could still be mixed
+louder"). Measured on melody (hot, sustained) and clap (percussive):
+clap wet at IN=127 now −34.3 dBFS vs dry −23.5 (11 dB under; was 20 before
+any makeup), zero clipping. Melody clips the store above IN≈90 (7302
+clipped samples at 96, none at 64) — the knob's top is for sparse/quiet
+sources, by design. Dry ducking was considered and REJECTED by Sam as the
+old crossfade road.
