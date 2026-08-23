@@ -304,6 +304,15 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # 59 == OCTABAMR40 == R39 plus the reverb MOD relaw (ROOM x4 / PLATE x2.9 /
 # BIG x2) and DRIVE's d relocated to r7+$83 (Y-in-callee measured dead on hw).
 # 60 == OCTABAMR41 == R40 plus the drive OUTPUT makeup (wet x (1 + d/2)).
+# 66 == OCTABAMR47 == R46 plus the DELAY's IN-keyed wet makeup (23 Aug 2026,
+# "delay wet is quiet"): out += 2*IN*wet -- additive from the PRE-drive wet,
+# so IN=0 is bit-identical INCLUDING under hot drive (measured: +9.5 dB at
+# IN=127, +6.0 at 64, 0.0 at 0). Found and fixed on the way: send_probe's
+# --din drove SLOT 4 (-VRB) since the 18 Aug IN/-VRB swap -- the makeup
+# measured +0.0 dB until the harness was fixed; verify_delay's SLOT map had
+# the same stale 4. verify_bus was correct all along (its DS IN case was the
+# real safety net). Fixture dmix 127 -> 40: at 127 the x3 makeup railed
+# every D layout and a clipped fixture is a blind fixture.
 # 65 == OCTABAMR46 also carries THE BURN-SWEEP UNBLOCK (23 Aug, all
 # BIT-IDENTICAL -- placement, not behavior; verified by image-vs-image render
 # hashes across every mode/interval/gate state):
@@ -387,7 +396,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # gates engine feed and client registration); GATE still scales wet only. Net
 # ZERO words on payload B (the drive-makeup a/b dance collapsed to `add x0,a`),
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
-BUILD_TAG = b"65"
+BUILD_TAG = b"66"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}

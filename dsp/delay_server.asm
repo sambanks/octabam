@@ -2682,11 +2682,21 @@ pdone:
 ; and the unity add cannot carry up from a0) -- the two words that freed per
 ; channel are exactly what the dry add costs, so v5 is net ZERO program
 ; words on payload B, which had 1 free.
+; IN-KEYED WET MAKEUP (v8, 23 Aug 2026 -- the reverb's law, ported on Sam's
+; "delay wet is quiet"): out gains + 2*IN*wet, so full IN lifts the wet
+; +9.5 dB while IN=0 adds EXACTLY zero -- every send-fed return level stays
+; bit-identical, drive included (additive term from the PRE-drive wet, so
+; the drive path's store-clamp behaviour is untouched). y0 is free across
+; this whole block; the mpy is the audited-signed y0,x0 form.
+        move    x:(r7+$76),y0           ; IN, this block
         move    x:(r7+$7b),x0           ; wet L = fL
         move    x:(r7+$83),y1           ; d
         mpy     x0,y1,a                 ; d*wet
         asr     #$1,a,a                 ; d*wet/2
         add     x0,a                    ; wet * (1 + d/2)
+        mpy     y0,x0,b                 ; IN * wet
+        asl     #$1,b,b                 ; 2*IN*wet
+        add     b,a                     ; + the makeup
         move    x:(r0),b                ; dry L, still in place
         add     b,a                     ; + dry at unity (v5)
         move    a,x:(r0)                ; L in place -- dry + wet
@@ -2694,6 +2704,9 @@ pdone:
         mpy     x0,y1,a
         asr     #$1,a,a
         add     x0,a
+        mpy     y0,x0,b                 ; makeup, R channel
+        asl     #$1,b,b
+        add     b,a
         move    x:(r0+n0),b             ; dry R
         add     b,a
         move    a,x:(r0+n0)             ; R in place -- dry + wet

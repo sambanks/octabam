@@ -539,8 +539,13 @@ def main():
         # right answer, wrong reasoning. Under the real map index 9 is PTCH's
         # companion, so leaving it would have silently retuned the pitch
         # select instead of the scatter depth.
+        # ⚠️ IN is slot 5 and -VRB is slot 4 since the 18 Aug 2026 swap.
+        # This table carried the PRE-swap mapping until 23 Aug -- --din was
+        # silently driving -VRB (caught when a delay IN-makeup test measured
+        # +0.0 dB lift; verify_bus.py had the swap right all along). The
+        # harness-knob-drift rule again: audit EVERY wrapper on a slot swap.
         for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
-                         (4, a.dmix), (5, a.dvrbw), (6, a.dwow), (7, a.dmode),
+                         (5, a.dmix), (4, a.dvrbw), (6, a.dwow), (7, a.dmode),
                          (8, a.drate), (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
             if val is not None:
                 dpar[idx] = val

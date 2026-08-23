@@ -84,8 +84,12 @@ SR = 44100
 # MODE/PTCH/FRZE need build overrides and cannot appear here).
 BASE = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
 
-SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 4,
+SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 5,
         "WOW": 6, "SPRAY": 9}
+# ⚠️ MIX (= IN since v3) moved to slot 5 in the 18 Aug 2026 IN/-VRB swap;
+# this map said 4 until 23 Aug, so the "MIX=0" case was actually pinning
+# -VRB -- harmless for its bit-compare purpose (both sides got the same
+# wrong knob), but wrong as documentation of what it exercised.
 
 
 def dp(**kw):

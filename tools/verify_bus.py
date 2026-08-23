@@ -152,7 +152,12 @@ CASES = [
 # carrying signal -- a case rendered at FDBK 0 through a silent send proves
 # nothing about the accumulator it never reads.
 BASE = dict(dur=0.12, tail=0.25, amp=0.5, level=100, dlevel=100,
-            mix=127, dtime=20, dfdbk=70, dmix=127)
+            mix=127, dtime=20, dfdbk=70, dmix=40)
+# dmix 127 -> 40 (23 Aug 2026, with the delay's IN-keyed wet makeup): at 127
+# the x3 makeup pinned every D-layout render at the rail, and a clipped
+# fixture is a BLIND fixture -- rail-pinned samples compare equal no matter
+# what the code did. 40 keeps IN exercised (the 18 Aug lesson above) with
+# the makeup active and the peak well off the clamp.
 
 
 def render(mem, case, bump_level=0, extra_send=""):
