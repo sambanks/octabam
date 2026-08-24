@@ -1075,7 +1075,9 @@ def main():
     # voice-record writer at the instruction that publishes the FX2 id
     # (0x40004d40, in 0x40004bd2) and replays it from a cave that also
     # stores tempo24 and samples-per-MIDI-clock (Q12.4) into the record's
-    # dead halfwords +0x24/+0x26 = FX2's r6+$6/r6+$7, for tracks whose FX2 id
+    # halfwords +0x24/+0x26 = FX2's r6+$6/r6+$7 (dead = never READ; the frame
+    # builder rewrites them every frame, so the cave re-stores every pass --
+    # docs/midi_re_note.md, 24 Aug 2026), for tracks whose FX2 id
     # is 6 or 7 (our servers) only. Source: cf/tempo_cave.s (m68k-elf-as,
     # -mcpu=5407); the bytes are pinned here so the build needs no m68k
     # toolchain, and re-checked against a fresh assembly when one is present.
