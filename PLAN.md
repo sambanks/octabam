@@ -158,7 +158,7 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   (two of them 10–15 dB quieter) at full send dropped the wet by 4.8 dB vs
   the loud sender alone — the 1/√N law to the dB (1/N predicts −9.5). Design
   property to know: a quiet sender turns the loud sender's reverb down.
-- **R58 (tag 77, built + ear-approved locally, NOT YET FLASHED): PING
+- **R58 (tag 77, ON THE UNIT 24 Aug — hardware-ratified: lean 8.0 -> ~4.4 dB, wet +3.8 dB, no clipping): PING
   balance + delay return makeup** — wet x1.5 both channels, +0.75*PING*wet
   on R; lean 7.9 -> 4.4 dB at defaults, PING 0 untouched, no bus-level side
   effects. `docs/VOICING.md` R58. Hardware ear-ratify on next flash.

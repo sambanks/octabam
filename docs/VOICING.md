@@ -1890,5 +1890,4 @@ Measured (emulator, send path): lean at PING 127/FDBK 60 +7.9 -> +4.4 dB
 on drums/bass/melody alike; PING 0 exactly symmetric (no shelf); FDBK 20
 worst case 17.5 -> 14.0 dB; no clipping on any render (drums peak -2.4).
 At FDBK 0 the right line still has no repeat to lift — inherent to the
-serial ping-pong, accepted. Tag 77. NOT YET FLASHED — hardware ear-ratify
-on the next flash.
+serial ping-pong, accepted. Tag 77. FLASHED + hardware-ratified the same night: lean +4.2/+4.6 dB on the unit (predicted 4.4), wet +3.8 dB (predicted +3.5), no clipping. (Flash detour for the record: a raw mainos_bus.bin on the card gives LENGTH ERROR — the card path needs `make image` ELUP packing, one OS bin on the root at a time; the "wrong checksum" complaints that evening were PROJECT files, not the OS.)
