@@ -589,3 +589,60 @@ BongDelay at 0.375 FS peak; at 0, digital silence.
 dsp_host writes params once before the first block — so FREEZE still engages
 at sample 0 and holds silence. Testing freeze-on-a-filled-line remains
 hardware-only; that limitation is the harness dispatcher's, not the map's.
+
+## 7. Display formatters, decoded (24 Aug 2026 — static, r2)
+
+Asked for by the tempo-sync work: can a knob show "1/8" instead of 64? Yes,
+and cheaply. Every per-slot formatter (`P+0x0ca`, the "A" array) has ONE
+signature, and it is trivial:
+
+```c
+void fmt(char *buf, int value);      // 4(a7) = buf, 8(a7) = value
+```
+
+and every stock one is a thin wrapper over `sprintf` (`0x40013a08`):
+
+| formatter | what it prints | used by |
+|---|---|---|
+| `0x4003c718` | `sprintf(buf, "%d", value + 1)` | every stepped select (TAPS, TYPE, our MODE/PTCH/FRZE), DELAY TIME |
+| `0x4003c14c` | `sprintf(buf, value ? "ON" : "OFF")` — **the label IS the format string** | DELAY X/TAPE/SYNC/LOCK/PASS |
+| `0x4003c770` | `value ? "%d" : "OFF"` | NOTE CHAN |
+| `0x4003c7a0` | `value − 64` with `"+%d"` / `"%d"` | SPRING BAL, our bipolar donors |
+
+Strings: `"%d"` `0x400b465d`, `"OFF"` `0x400b4e78`, `"ON"` `0x400b7702`,
+`"+%d"` `0x400b449f`.
+
+**So a labelled select is a ~20-byte code cave:** index a pointer table by
+`value`, put the pointer where the format string goes, `jmp sprintf`. The
+table and the strings are data in the same cave region the tempo cave lives
+in (`0x400d7000..0x400d7c3c`, 3 KB free). We already ship a ColdFire cave
+and the build pins/verifies its bytes, so the mechanism is proven.
+
+**The "B" array (`P+0x0fa`) is the WIDGET drawer**, and each one has its
+position count hard-coded (the same prologue, then `cmp #N`):
+
+| B callback | widget |
+|---|---|
+| `0x40047254` | 5-position ticks (CHORUS TAPS — and what we borrowed for MODE/PTCH/FRZE, which is why PTCH's 4 values sit on a 5-tick widget) |
+| `0x40047424` | 3-position (SPRING TYPE) |
+| `0x400477d4` | boolean (DELAY's five switches) |
+| `0x400467a4` / `0x4004661c` | numeric bar (NOTE) |
+| `0` | **the plain dial with the A text** — stock DELAY TIME is `A=0x4003c718, B=0` |
+
+There is no 12-position widget, and none is needed: `B = 0` draws the dial
+and prints whatever A wrote.
+
+**A formatter may read globals.** It gets only `(buf, value)`, but the
+tempo is at `0x80001814` (BPM×24, `DSP.md` §6c). So a FREE TIME dial can
+print "1/8" when its ms value lands within a tolerance of a division at the
+current tempo, and "%d" otherwise — the "newer devices" behaviour. That is
+option 3's display half, and it is small; the DSP half (snap TIME to the
+nearest division inside the same tolerance) is ~100 words. Costed but NOT
+built (Sam: investigate only).
+
+**Two things still unmeasured:** the buffer length behind `buf` (stock's
+longest label is "OFF"/"%d" of 3–4 chars; our labels would be ≤ 5,
+"1/16T"), and whether the A formatter is also consulted anywhere the B
+widget's count matters (a count-12 dial with `B=0` is stock DELAY TIME's
+own configuration, so this is low-risk). Both are one flash to settle.
+

@@ -134,7 +134,7 @@ def entry_points(mem_path, fxid):
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
         inall=False,
-        pick=None):
+        pick=None, tempo=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
@@ -246,6 +246,9 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                *(["-split", str(split)] if str(split) not in ("0", "") else [])]
         for _, c in live:
             cmd += ["-params", ",".join(map(str, par[c]))]
+    if tempo:
+        # what the ColdFire tempo cave publishes (r6+$6/$7); 24 Aug 2026
+        cmd += ["-tempo", str(tempo)]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         die(f"dsp_host failed:\n{r.stdout[-3000:]}{r.stderr[-2000:]}")

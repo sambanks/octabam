@@ -297,7 +297,13 @@
 ;                       task 10 -- the ->VERB WET send taps that same value)
 ;
 ; Parameters (page 1, knob arrives as value<<16, value 0..127):
-;   p0 TIME  -> delay length, 64 .. 16320 samples (~1.5 .. 370 ms). floor +
+;   p0 TIME  -> delay length, 64 .. 16320 samples (~1.5 .. 370 ms), a FREE
+;              dial that STICKY-SNAPS to a tempo division (24 Aug 2026):
+;              near 1/32T .. 1/4 of the tempo the ColdFire cave publishes at
+;              r6+$6/$7 it snaps, holds that division through tempo changes,
+;              and lets go when the knob moves; the panel prints the
+;              division name while held, ms otherwise (cf/time_fmt.s). See
+;              the STICKY SNAP block in proc. floor +
 ;              value*128 via the same and/asr trick dsp/reverb89.asm's PRE
 ;              uses (asr #$9 == >>16 then <<7, i.e. *128 without an mpy).
 ;   p1 FDBK  -> feedback gain, 0 .. ~0.87 (mpy by $700000, no floor: FDBK=0
@@ -334,8 +340,10 @@
 ;              in the other modes.
 ;   p11 FRZE -> FREEZE select, page-2 slot 11 companion (r6+$e low bits),
 ;              count 2: 0 = running, 1 = hold. Orthogonal to MODE -- frozen
-;              + PITCH is shifted reads over held material. `DFRZ=n` is the
-;              local override (dsp_host cannot drive companion fields).
+;              + PITCH is shifted reads over held material; frozen while
+;              TIME is tempo-locked (always, see p0) is a tempo-locked loop.
+;              `DFRZ=n` is the local override (it forces the decoded VALUE;
+;              dsp_host also drives companions via -params 7/9/11).
 ;   p9 PTCH  -> in REVERSE this same select is SIZE: 0 = 4096 samples (93 ms,
 ;              the longest the line allows -- playing S samples backwards
 ;              spans 2S of history), 1 = 2048, 2 = 1024, 3 = 512. One select,
@@ -346,7 +354,8 @@
 ;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
 ;              WIDTH lesson: companion fields read near-boolean at count 128
 ;              on hardware, small counts publish. DINT=n (build_bus.py) is
-;              the local override -- dsp_host cannot drive companion fields.
+;              the local override (dsp_host also drives companions through
+;              -params indices 7/9/11 since 17 Aug 2026).
 ;   p6 ->VERB DRY -> this track's own pre-effect signal, parallel tap into the
 ;              same REVERB ACC bus, same shape as dsp/send_client.asm's knobs.
 ;              Reads x:(r6+$d) -- BUS.md task 11 gave DELAY SERVER its own
@@ -868,6 +877,148 @@ dwarmdone:
         add     x0,a                    ; floor 64 samples (~1.45 ms)
         move    a,x:(r7+$75)            ; TIME, 64..16320 samples
 
+; ---- TIME: STICKY SNAP to a tempo division (24 Aug 2026, v3 of the day) --
+; TIME is a FREE dial that snaps to a tempo division when it lands near one,
+; and then HOLDS that division through tempo changes until the knob moves --
+; Sam's "sticky snap" (a free-with-labels dial in the style of newer boxes,
+; plus tempo-following once snapped). The ColdFire never told the DSP the
+; tempo (docs/DSP.md 6c), so the tempo cave (cf/tempo_cave.s) publishes two
+; dead halfwords of this track's record:  r6+$6 = tempo24 (BPM*24) and
+; r6+$7 = samples per MIDI clock (1/24 beat) in Q12.4 -- both <<8 like every
+; published word. One signed mpy per candidate: x0 = ticks*16 << 8,
+; y0 = M << 11  ->  a1 = (x0*y0*2) >> 24 = ticks*M.
+; RULE (cf/time_fmt.s, the panel formatter, uses the SAME integers):
+;   free = knob*128 + 64;  tol = free/16 (+-6%)
+;   candidate = the LAST M in {2,3,4,6,8,9,12,16,18,24} with |ticks*M-free| < tol
+;   knob moved since last block -> held = candidate;  else held stays
+;   TIME = held ? min(ticks*held, 16320) : free      (0 ticks -> free)
+; 1/2T and 1/4. are not candidates: they never fit the 370 ms line below
+; ~170 BPM. Neighbours 8 and 9 clocks are 11% apart, so +-6% windows
+; barely touch; last-match-wins on both sides keeps them consistent.
+; State: Y 0908h (last knob) and 0909h (held M<<11), core-private, ABSOLUTE
+; addressing beside the proven 0901h-0907h words -- NEVER (r)+ (R48-R50,
+; docs/DSP.md 6c-i). Per CORE, not per instance: two delays on one core
+; would re-evaluate every block (correct, just not sticky); one server per
+; core is the design. Branch-free; unpublished ticks read 0, every product
+; is 0, nothing is within tolerance, the teq falls back to free -- the
+; emulator without -tempo, or a NOTEMPO build, behaves as before.
+        move    x:(r7+$75),a            ; free-running TIME, from the knob
+        move    a,y1
+        asr     #$4,a,a
+        move    a,x1                    ; tolerance = free/16
+        move    x:(r6+$7),x0            ; ticks Q12.4 << 8 (0 = not published)
+        clr     b                       ; candidate: 0 = nothing near
+        move    #>$1000,y0              ; M=2  (1/32T)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$1800,y0              ; M=3  (1/32)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$2000,y0              ; M=4  (1/16T)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$3000,y0              ; M=6  (1/16)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$4000,y0              ; M=8  (1/8T)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$4800,y0              ; M=9  (1/16.)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$6000,y0              ; M=12 (1/8)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$8000,y0              ; M=16 (1/4T)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$9000,y0              ; M=18 (1/8.)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+        move    #>$c000,y0              ; M=24 (1/4)
+        mpy     y0,x0,a                 ; ticks*M
+        sub     y1,a
+        abs     a                       ; |d - free|
+        cmp     x1,a
+        tlt     y0,b                    ; within tolerance -> candidate
+; ---- knob moved? then held = candidate, else keep ---------------------------
+        move    b,x1                    ; candidate (B2 clean: clr/Tcc only)
+        move    x:(r6),a
+        and     #>$7f0000,a
+        asr     #$10,a,a                ; knob, 0..127
+        move    a,y0
+        move    y:>$0908,x0             ; last knob
+        move    y0,y:>$0908
+        move    y:>$0909,b              ; held M<<11 (0 = free)
+        cmp     x0,a                    ; knob - last
+        tne     x1,b                    ; moved -> re-evaluated
+        move    b,y:>$0909
+; ---- TIME = held ? ticks*held : free ---------------------------------------
+        move    b,y0
+        move    x:(r6+$7),x0
+        mpy     y0,x0,a                 ; 0 when free or unpublished
+        move    #>16320,x1
+        cmp     x1,a
+        tgt     x1,a                    ; clamp to the line
+        move    x:(r7+$75),x1
+        tst     a
+        teq     x1,a                    ; free
+        move    a,x:(r7+$75)
+
+; ---- TIME SLEW (24 Aug 2026): glide, don't jump ---------------------------
+; TIME is applied once per block, so turning the knob (or the tempo moving a
+; synced TIME between zones) stepped the read head and crackled -- Sam heard
+; it on the unit. A one-pole per block, coefficient 1/1024 in Q8, makes the
+; head GLIDE instead: the worst case (a full-range jump, 16,256 samples) moves
+; ~16 samples per 15-sample block -- about an octave, gone in a few blocks;
+; a one-zone synced step (~1,800 samples) bends ~2 semitones and settles in
+; ~1 s. Tape-delay behaviour, which is the character this delay already has.
+; Truncation (asr) parks the glide up to 4 samples short from below and lands
+; exactly from above -- inaudible. State at Y 0907h, core-private, ABSOLUTE
+; addressing beside the proven 0901h-0904h words (R48-R50 died to an
+; init-built table written through (r1)+ -- docs/DSP.md 6c-i). Zero at boot
+; seeds from the target, so an instantiate does not swoop up from 0.
+        move    x:(r7+$75),a            ; target, integer samples
+        asl     #$8,a,a                 ; Q8
+        move    a,x0
+        move    y:>$0907,b              ; slewed TIME, Q8 (0 at boot)
+        tst     b
+        teq     x0,b                    ; boot: start AT the target
+        move    b,y0
+        sub     y0,a                    ; target - state
+        asr     #$a,a,a                 ; /1024 per block
+        add     y0,a                    ; state += step
+        move    a,y:>$0907
+        asr     #$8,a,a                 ; back to integer samples
+        move    a,x:(r7+$75)            ; TIME, as every consumer below sees it
+
         move    x:(r6+$1),x0
         move    #>$700000,y1
         mpy     x0,y1,a
@@ -935,7 +1086,8 @@ dwarmdone:
 ; CLEAN: a wrong select degrades to the trad delay, never to silence. The
 ; descriptor's MODE select (RENAMES/DEFAULTS/PAGE2_COUNTS in build_bus.py)
 ; lands with the second mode. DMODE=n (build_bus.py) substitutes a literal
-; at the marker below -- dsp_host cannot drive companion fields.
+; at the marker below (dsp_host can also drive companions via -params 7/9/11;
+; the override forces the decoded VALUE, so DFRZ=2 means frozen, not SYNC).
         move    x:(r6+$c),a
         and     #>$ff00,a               ; slot 7's companion field, not the knob
         move    a1,x0
@@ -1138,7 +1290,11 @@ drvw:
         move    x:(r6+$e),a
         and     #>$7f00,a               ; slot 11's companion field: BITS 8-15. No
                                         ; shift: $26 is only ever tested zero /
-                                        ; nonzero, so the index's scale is moot
+                                        ; nonzero, so the index's scale is moot.
+                                        ; (24 Aug 2026: briefly a 4-way with a
+                                        ; SYNC bit; on the unit position 2 froze
+                                        ; too, and freeze is performative --
+                                        ; Sam: SYNC does not live here.)
 ; DFRZ_OVERRIDE
         move    a1,x0
         move    x0,a                    ; A2-clean before the store

@@ -686,6 +686,173 @@ That keeps the desktop loop for the part that actually needs iterating — the
 algorithm and its tuning — and confines the unknown to a prologue we can lift
 wholesale.
 
+## 6c. Tempo and the DSP — the ColdFire side, read (24 Aug 2026)
+
+Sam wants tempo sync for BongDelay. The question is whether the DSP is ever
+told the tempo. This is a **static** pass over the ColdFire image with r2
+(`scripts/disasm.sh`; Ghidra is no longer installed here). Every claim below
+is *read from code*, not measured on hardware; the TPROBE flash
+(`dsp/tempoprobe.asm`) is the measurement, and it was built and staged as
+`out/OCTATRACK_OCTABAMT1.bin` the same day, unflashed.
+
+**What the tempo is.** `_DAT_80001814` holds **BPM × 24**, clamped to
+`0x2d0..0x1c20` (720..7200 = 30..300 BPM) at both writers (`0x40005c4a`,
+`0x4004bc7e`). It is shadowed to `0x80000020` and latched per frame into
+`0x8000181c`; the sequencer's phase increment is `0x80001820 = 2³¹/tempo24`
+(`NOTES.md`, and the frame builder at `0x4000ca96`).
+
+**How a frame reaches the DSP** — the transfer routine at `0x40004860`, a
+7-step state machine (`0x46104d3e`) over eDMA channel 0 (TCD at
+`0xFC045000`, DADDR fixed at the port `0x2000001c`, 16-byte bursts,
+4 minor loops). Before each DMA it writes two halfwords to the port: the DSP
+destination (`0x6000 | X address`) and the count in halfwords (two per
+24-bit word). Per ping (`0x800000e0`/`e4` select), per DSP (chip-select
+`0xFC0A400C`):
+
+| ColdFire source | words | DSP dest | what |
+|---|---|---|---|
+| `0x800021d0` (A) / `0x80001c90` (B) + ping·`0xa80` | 336 | `X:0x080` | **four 84-word per-track records** (`0x150` bytes each) |
+| `0x80000110` / `0x80000210` + ping·`0x200` | 64 | `X:0x000` | four 16-word per-voice records |
+| `0x80005460` + slot·`0x80` | 32 | `X:0x800` | a sample-slot record, on demand |
+| `0x80003190` + ping·`0x400` | 256 | ← `X:0x400` | read-back (DSP → CPU) |
+
+The 336-word block is assembled by the packer at `0x4000d3fc`–`0x4000d55e`:
+for each of 8 tracks it calls the machine-type handler from the table at
+`0x400d61d0` (rotated from `0x400d61f0`), with the record pointer parked at
+`0x80001c80`. The 72-word staging block the DSP copies out of `X:0x30000`
+(§5) is the 84-word record after the DSP's unpack; the packer also steps a
+second per-track cursor by `0x48` = 72.
+
+**What consumes the tempo inside the packer's handlers** — three sites, all
+turning tempo into a *rate*, none copying it:
+
+* `0x400074a0` / `0x40007502` — LFO speed: `tempo24 << 18`, a MULT table at
+  `0x400ab83a`, and a ×`0x55555556` (÷3) step for the triplet multipliers.
+  The DSP receives an LFO phase increment.
+* `0x400060c4` / `0x40006d48` — read the phase increment `0x80001820`
+  (negated) into per-voice records: the timestretch/trig position.
+* `0x40004bd2` (runs right after the transfer) — advances a playback
+  position by `tempo24 << 4` per frame **only when byte `+0x2b` of the
+  per-voice record is set**, else by the constant `0xb40` (= 120 BPM × 24).
+  So a "follow tempo" voice gets its *position* from tempo; the DSP still
+  never sees BPM.
+
+The two remaining tempo readers outside the sequencer are UI: `0x40031d70`
+(`((x+1102)·2205/tempo24 + 3600)·7200`, one caller, a `sprintf` of
+`%03d/%03d` — sample length in bars) and `0x4002f7ec` (a `%ds` display).
+
+**Conclusion of the static pass (inferred, one flash from measured):** the
+ColdFire computes every tempo-derived rate itself and ships rates, not BPM.
+No code path found copies `0x80001814`, `0x8000181c` or `0x80000020` into
+a frame record. **What would falsify it:** a word in the TPROBE capture
+whose 60→180 BPM ratio is 3 (or ⅓). A word that *scales* with tempo but is
+not the tempo — an LFO increment on a track with a tempo-synced LFO — is
+the expected false positive; run the probe with the LFO off.
+
+**If falsified: cheap.** Read the word in BongDelay; ~40 words of payload B.
+**If confirmed: a ColdFire code patch** — the first in this project — to
+store `tempo24` into a spare word of the per-track record inside the
+packer (the record is 84 words, the DSP stages 72; whether the tail 12 are
+free is the next thing to read, in the handler at `0x400068e4`). It is one
+`move.l` plus finding the slot; the risk is that it is a new class of edit.
+
+**Ceiling either way:** a server owns 65,536 shared-window words = 1.49 s
+(`CHIP.md`). At 120 BPM a bar is 2 s, so sync divisions stop around a
+dotted half; the division table must saturate, not wrap.
+
+### 6c-i. The patch, built (24 Aug 2026, same day — unflashed)
+
+Sam chose the patch without waiting for the probe, and it turned out not to
+need the 84-word record at all: **the per-voice record is the better
+vehicle.** The routine at `0x40004bd2` writes the FX ids into the 0x40-byte
+per-voice record at `0x80000110 + ping·0x200 + track·0x40` (+0x36/+0x38 —
+which are `x:$208+$1b/$1c`, the ids the DSP reads). Each **16-bit halfword
+of that record is one DSP word, `<< 8`** — that is why knobs sit at bits
+16–23 and companions at 8–15, and why the low byte "is never published"
+(`PARAM_PAGES.md`). So FX2's `x:(r6+i)` is halfword `12+i`, and the
+documented-dead `r6+$6..$a` are record bytes `0x24..0x2c` that nothing
+writes.
+
+`cf/tempo_cave.s` (56 bytes, `m68k-elf-as -mcpu=5407`, bytes pinned in
+`build_bus.py` and re-checked against a fresh assembly when the toolchain
+is present) sits at `0x400d7000` — inside the stock zero run
+`0x400d6b00..0x400d7c3c`, just past the menu clones. The hook replaces the
+three instructions at `0x40004d40` (`move.b 0xdbc(a0),d2 / ext.w d2 /
+move.w d2,0x38(a2)`) with `jsr cave` + two `nop`s; the cave replays them,
+then **only for FX2 id 6 or 7** stores `tempo24` to `+0x24` (`r6+$6`) and
+`42,336,000 / tempo24` — samples per MIDI clock in Q12.4, fits 16 bits
+down to 30 BPM — to `+0x26` (`r6+$7`), using the ColdFire's `divu.l`. d0/d1
+saved; ~40 cycles per our-track per frame. `NOTEMPO=1` omits it.
+
+DSP side (`dsp/delay_server.asm`, the block after the TIME decode), final
+form after three revisions in the day — **TIME is a free dial with a STICKY
+SNAP** (R56): `free = knob·128+64`, `tol = free/16`; the last division
+M ∈ {2,3,4,6,8,9,12,16,18,24} clocks (1/32T … 1/4) with `|ticks·M − free|
+< tol` becomes *held* when the knob moves, and held survives tempo changes
+until the knob moves again; `TIME = held ? min(ticks·held, 16320) : free`.
+Branch-free (one signed `mpy` + `abs`/`cmp`/`tlt` per candidate), state at
+Y `0908h`/`0909h` with absolute addressing, per core not per instance (two
+delays on one core re-evaluate every block — correct, not sticky; one
+server per core is the design). Unpublished ticks → free, unchanged
+behaviour. The earlier forms — a SYNC bit in FRZE (R53: position 2 froze
+on the unit, unexplained) and an always-synced 12-zone TIME (R54: worked,
+but "steps on a free dial" felt wrong) — are in the history. 1/2T and 1/4.
+are not candidates (never fit the line below ~170 BPM).
+
+**The panel prints the division** (`cf/time_fmt.s`, a second ColdFire cave
+at `0x400d7040`, 288 bytes, registered as TIME's `A` formatter with `B=0` —
+stock DELAY TIME's shape): the same rule with the same integers, its own
+`last/held` in cave RAM (per panel), `"1/8"` etc. while held, else ms.
+`PARAM_PAGES.md` §7 has the formatter ABI. `verify_menu` allows exactly
+this one exception to "a count-128 knob has zero formatters".
+
+**Measured locally, 120 BPM, all 128 knob positions:** every position
+matches the rule (59 snap, 69 free), the free fallback is unchanged. **R56 confirmed on the unit the same evening**: labels draw, snap holds
+through tempo changes, audio clean. Sam's question, answered: no
+longer repeats were lost — the dial's 370 ms ceiling is the line's, and
+the snap only replaces values near a division.
+
+**TIME slew (R55, same day).** TIME crackled when turned — pre-existing:
+it is applied per block, so the read head stepped. Now a one-pole per
+block, 1/1024 in Q8, state at Y `0907h` (absolute addressing beside the
+proven `0901h–0904h`; zero seeds from the target). Worst case ~1
+sample/sample (an octave, gone in a few blocks); a one-zone synced step
+bends ~2 semitones and settles in ~1 s. The emulator exercises only the
+seed path (every render starts at the target) — the glide itself is
+hardware-judged.
+
+**Measured locally (emulator, impulse, FDBK 0), 120 BPM (both ends of every
+zone) and 97.3 BPM:** every knob zone lands on `int(ticks·M)` to the sample, the top zones saturate
+at 16,320, and SYNC with nothing published reproduces the SYNC-off echo
+time exactly. What the emulator cannot show: whether the ColdFire hook is
+reached and whether `0x8000181c` holds tempo24 at that moment — that is the
+R48 flash. Falsifier: with SYNC on and the knob swept, the echo time on
+hardware follows the knob linearly (the fallback) instead of stepping.
+⚠️ `DFRZ=2` does NOT test SYNC — the override forces the decoded flag
+VALUE, so 2 is "frozen"; drive SYNC locally with `-params` index 11 = 2.
+
+**R48–R50 killed every voice** (24 Aug: B/C/D input lights on at boot,
+UI and sequencer alive, stems will not start). Bisected by flash: R49 (the
+divide guarded) same; **R50 (`NOTEMPO=1`, ColdFire untouched) same; R52
+(= R47, HEAD) works.** So the DSP-side change did it, and its only new
+memory writes were the init-built division table at Y `0910h–091fh`
+through `(r1)+` — `m1` is not guaranteed linear at init, and "stock does
+not use that Y range" was a disassembly grep, not a measurement. R53
+replaces the table with a cmp/`tge` immediate chain: no memory writes, no
+address registers. The paragraph below records the divide-by-zero theory
+that R49 falsified; the guard stays because the defect is real.
+
+**R48's first theory (falsified as THE cause, kept as a defect).** Inferred
+cause — not measured, but a real defect either way: `0x8000181c` is only
+latched at the end of the frame builder's voice pass, so the hooked
+routine can run against a zero tempo before that, and `divu.l` by zero
+TRAPS. The emulator is structurally blind to this (it never runs the
+ColdFire). R49 = the same cave with `beq` past the divide on zero (58
+bytes). Falsifier: if R49 hangs the same way, the cause is elsewhere in
+the hook (context, stack, or the cave region not being what the running
+image executes) and the next step is a cave that does nothing but replay
+the displaced instructions.
+
 ## 7. Where a new effect can go, and what fits
 
 ### Internal P memory is contiguous and full

@@ -61,6 +61,7 @@
 //                             perinst (default) this instance's entry
 //                             end             left past the last instance
 //                             keep            never rewritten after the inits
+//     -tempo BPM            publish tempo24 / clocks Q12.4 at r6+$6/$7 (the cave)
 //     -params a,b,...       parameter values 0..127 (default 64); 6 fills page 1,
 //                           8 also covers the page-2 slots. Repeat the option to
 //                           give successive instances different values.
@@ -120,6 +121,7 @@ struct Args {
     std::vector<TWord> track;              // r7-relative X words, dumped EVERY block
     std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
+    double tempo = 0;                      // -tempo BPM: publish r6+$6/$7 like the ColdFire cave
 };
 
 // Everything the dispatcher would set up for one effect instance.
@@ -307,6 +309,7 @@ int main(int argc, char** argv) {
         else if (k == "-inmask") a.inmask = strtoul(argv[++i], nullptr, 0);
         else if (k == "-audio") a.audio = strtoul(argv[++i], nullptr, 16);
         else if (k == "-pblock") a.params = strtoul(argv[++i], nullptr, 16);
+        else if (k == "-tempo") a.tempo = atof(argv[++i]);
         else if (k == "-state") a.state = strtoul(argv[++i], nullptr, 16);
         else if (k == "-frames") a.frames = atoi(argv[++i]);
         else if (k == "-blocks") a.blocks = atoi(argv[++i]);
@@ -507,6 +510,15 @@ int main(int argc, char** argv) {
             if (comp < pv.size()) v |= (static_cast<TWord>(pv[comp]) & 0x7f) << 8;
             if (knob < pv.size() || comp < pv.size())
                 mem.set(MemArea_X, pblock + 0xc + w, v);
+        }
+        // -tempo: what cf/tempo_cave.s publishes on hardware (24 Aug 2026):
+        // r6+$6 = BPM*24, r6+$7 = 42336000/tempo24 = samples per MIDI clock
+        // in Q12.4 -- 16-bit halfwords, so <<8 like every published word.
+        if (a.tempo > 0) {
+            const TWord t24 = static_cast<TWord>(a.tempo * 24 + 0.5);
+            const TWord ticks = 42336000u / t24;
+            mem.set(MemArea_X, pblock + 6, (t24 & 0xffff) << 8);
+            mem.set(MemArea_X, pblock + 7, (ticks & 0xffff) << 8);
         }
     };
 

@@ -38,6 +38,18 @@ What ships:
   (default 0 — an exact passthrough). v4's wet-only output, which muted any
   audio on the host track, is retired: Sam hit it in the field and called it.
 
+- **Tempo sync (R56, 24 Aug 2026, ON THE UNIT, confirmed)** — two ColdFire *code*
+  caves (the project's first): one publishes the project tempo into two
+  dead parameter words of any track hosting one of our servers; the other
+  is BongDelay TIME's display formatter. **TIME is a free dial with a
+  sticky snap**: near a division (1/32T … 1/4) it snaps, holds that
+  division through tempo changes, lets go when the knob moves; the panel
+  prints "1/8" while held, ms otherwise. Plus a per-block TIME slew for the
+  crackle. R53 proved cave + DSP on hardware; R54 the divisions; R55/R56
+  slew, snap and labels confirmed on the unit the same evening; levels may want tuning. Lessons in `docs/DSP.md` §6c
+  (never init-build tables in Y through `(r1)+` — R48–R50 killed every
+  voice). `docs/PARAM_PAGES.md` §7 decodes the formatter ABI.
+
 **Hosting is bank-bound; serving is not.** Either effect serves all eight
 tracks over the bus, but each can only be *hosted* on its own core's bank —
 and picking one on the wrong bank runs a SEND instead (the absent server's

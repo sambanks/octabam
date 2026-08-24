@@ -91,6 +91,7 @@ P_FMT1, P_FMT2, P_FMT3 = 0x0ca, 0x0fa, 0x12a
 # The enumerated-selector pair, taken from stock CHORUS.TAPS (count 5). Stock
 # uses all-zeros for a plain numeric knob.
 STEPPED_FMT = (0x4003c718, 0x40047254)
+TIME_FMT = 0x400d7040          # cf/time_fmt.s cave (build_bus.py TIME_FMT_CAVE)
 
 
 def main():
@@ -234,6 +235,13 @@ def main():
                       f"{name}: p{i} count {cnt} is a SELECT, so it carries "
                       f"the enumerated formatter pair and 0x12a=0 "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
+            elif name == "DELAY SERVER" and i == 0 and f1 == TIME_FMT:
+                # TIME's sticky-snap label formatter (cf/time_fmt.s, 24 Aug
+                # 2026): a knob with A = our cave and B = 0 -- stock DELAY
+                # TIME's own shape (A = 0x4003c718, B = 0).
+                check(f2 == 0,
+                      f"{name}: p0 TIME carries the label formatter, so B is 0 "
+                      f"(got 0x{f2:08x})")
             else:
                 check(f1 == 0 and f2 == 0,
                       f"{name}: p{i} count {cnt} is a KNOB, so both formatters "

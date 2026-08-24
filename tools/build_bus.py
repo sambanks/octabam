@@ -396,7 +396,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # gates engine feed and client registration); GATE still scales wet only. Net
 # ZERO words on payload B (the drive-makeup a/b dance collapsed to `add x0,a`),
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
-BUILD_TAG = b"66"
+BUILD_TAG = b"75"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}
@@ -601,7 +601,11 @@ PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # DPTH   knob (was WOW; global mod)
                                             #        (4096/2048/1024/512), which
                                             #        is why its count stays 4
                                   10: 128,  # SPRA   knob ($e knob, v2 s5)
-                                  11: 2},   # FRZE   select: run/hold (v2 s3)
+                                  11: 2},   # FRZE   select: run/hold (v2 s3;
+                                            #        briefly 4 with a SYNC bit,
+                                            #        24 Aug 2026 -- position 2
+                                            #        froze on the unit; TIME is
+                                            #        always synced instead)
                 "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
                                   7: 3,     # MODE   select: ROOM/PLATE/BIG
                                   8: 128,   # DIFF   knob
@@ -926,6 +930,12 @@ def main():
         img[i], img[i + 1], img[i + 2] = v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff
 
     # ==== 1. ColdFire menu tables (task 11) =================================
+    # Diagnostic tempo-cave variants stamp the panel name so the running
+    # firmware is unmistakable (the R48/R49 isolation, 24 Aug 2026).
+    if os.environ.get("TEMPOCAVE") == "replay":
+        FULLNAME["DELAY SERVER"] = b"BongDlyRPLY" + BUILD_TAG
+    elif os.environ.get("NOTEMPO") == "1":
+        FULLNAME["DELAY SERVER"] = b"BongDlyNOCF" + BUILD_TAG
     cave_end = CLONE_BASE + CLONE_STRIDE * len(ORDER)
     if any(img[NEW_LIST - BASE:cave_end - BASE]):
         sys.exit("menu cave not free")
@@ -1059,6 +1069,100 @@ def main():
         wr32(r, NEW_LIST)
     for pos, name in enumerate(ORDER):
         wr32(ID2POS + NEW_IDS[name] * 4, pos)
+    # ==== 1b. ColdFire: TEMPO PUBLISH cave (24 Aug 2026) ====================
+    # The DSP is never told the tempo -- the ColdFire computes every
+    # tempo-derived rate itself (docs/DSP.md 6c). This hooks the per-frame
+    # voice-record writer at the instruction that publishes the FX2 id
+    # (0x40004d40, in 0x40004bd2) and replays it from a cave that also
+    # stores tempo24 and samples-per-MIDI-clock (Q12.4) into the record's
+    # dead halfwords +0x24/+0x26 = FX2's r6+$6/r6+$7, for tracks whose FX2 id
+    # is 6 or 7 (our servers) only. Source: cf/tempo_cave.s (m68k-elf-as,
+    # -mcpu=5407); the bytes are pinned here so the build needs no m68k
+    # toolchain, and re-checked against a fresh assembly when one is present.
+    # NOTEMPO=1 leaves the ColdFire untouched (the DSP side then reads zeros
+    # and SYNC is a no-op by design).
+    TEMPO_HOOK = 0x40004d40
+    TEMPO_CAVE = 0x400d7000            # inside the stock zero run
+                                       # 0x400d6b00-0x400d7c3c, past the clones
+    TEMPO_HOOK_STOCK = bytes.fromhex("14280dbc" "4882" "35420038")
+    TEMPO_CAVE_BYTES = bytes.fromhex(
+        "14280dbc" "4882" "35420038"           # displaced: id -> +0x38
+        "2f00" "2002" "5d80" "0c8000000001" "621e"   # id-6 > 1 -> skip
+        "2f01" "20398000181c" "6712"           # tempo24; 0 -> nodiv (R48
+                                               # HUNG AT BOOT on divu.l by 0)
+        "35400024"                             # tempo24 -> +0x24 (r6+$6)
+        "223c0285ff00" "4c401001" "35410026"   # 42336000/tempo24 -> +0x26
+        "221f" "201f" "4e75")
+    # TEMPOCAVE=replay: the hook with a cave that ONLY replays the three
+    # displaced instructions -- isolates the hook mechanism from the stores
+    # (R48/R49 killed the voices on the unit; docs/DSP.md 6c-i).
+    if os.environ.get("TEMPOCAVE") == "replay":
+        TEMPO_CAVE_BYTES = TEMPO_HOOK_STOCK + bytes.fromhex("4e75")
+        print("  tempo cave: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
+    if os.environ.get("NOTEMPO") == "1":
+        print("  tempo cave OFF (NOTEMPO=1) -- SYNC reads zeros")
+    else:
+        assert TEMPO_CAVE >= cave_end, "tempo cave overlaps the menu clones"
+        got = bytes(img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10])
+        if got != TEMPO_HOOK_STOCK:
+            sys.exit(f"tempo hook site 0x{TEMPO_HOOK:08x} is not stock "
+                     f"({got.hex()}) -- refusing")
+        if any(img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)]):
+            sys.exit("tempo cave not free")
+        import shutil, subprocess, tempfile
+        if (os.environ.get("TEMPOCAVE") != "replay" and
+                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
+            with tempfile.TemporaryDirectory() as td:
+                o, b = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
+                subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
+                                "cf/tempo_cave.s"], check=True)
+                subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
+                                ".text", o, b], check=True)
+                fresh = pathlib.Path(b).read_bytes()
+            if fresh != TEMPO_CAVE_BYTES:
+                sys.exit("cf/tempo_cave.s no longer assembles to the pinned "
+                         "bytes -- update TEMPO_CAVE_BYTES deliberately")
+        img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)] = \
+            TEMPO_CAVE_BYTES
+        img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10] = \
+            b"\x4e\xb9" + TEMPO_CAVE.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
+        print(f"  tempo cave: {len(TEMPO_CAVE_BYTES)} bytes at "
+              f"0x{TEMPO_CAVE:08x}, hook at 0x{TEMPO_HOOK:08x} "
+              f"(tempo24 -> r6+$6, clocks Q12.4 -> r6+$7, ids 6/7)")
+
+    # ==== 1c. ColdFire: TIME LABEL FORMATTER cave (24 Aug 2026) ==============
+    # cf/time_fmt.s: BongDelay TIME's display formatter (P+0x0ca "A", with
+    # B = 0 -- stock DELAY TIME's own configuration). Prints the division
+    # name while the DSP's sticky snap holds one, else ms; same integers as
+    # the DSP rule (docs/PARAM_PAGES.md section 7, DSP.md 6c). Position-
+    # independent; its two state longs live in the cave (RAM). Follows the
+    # tempo cave; the bytes are pinned and re-checked like the tempo cave's.
+    # Off with NOTEMPO=1 (no tempo, no labels -- the knob stays plain).
+    TIME_FMT_CAVE = 0x400d7040
+    TIME_FMT_BYTES = bytes.fromhex("4fefffec48d7043c202f001c45fa010a2200ef89068100000040b0926748248042aa0004243980001814673a263c0285ff004c4230032401e88a41fa008878007a001a184c035000e88d9a816a024485ba8264082544000452aa000452840c840000000a66da202a0004672241fa006032300afe02810000ffffd1c12f48001c4cd7043c4fef00144ef940013a08700a4c001000203c000001b94c4010012f41001c4cd7043c4fef00142f2f00084879400b465d2f2f000c4eb940013a084fef000c4e750203040608090c1012180014001a001f0025002a002f00350039003e0043312f33325400312f333200312f31365400312f313600312f385400312f31362e00312f3800312f345400312f382e00312f3400000000ffffffff00000000")
+    if os.environ.get("NOTEMPO") != "1":
+        assert TIME_FMT_CAVE >= TEMPO_CAVE + len(TEMPO_CAVE_BYTES)
+        assert TIME_FMT_CAVE + len(TIME_FMT_BYTES) <= 0x400d7c3c, "past the stock zero run"
+        if any(img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)]):
+            sys.exit("time_fmt cave not free")
+        if (os.environ.get("TEMPOCAVE") != "replay" and
+                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
+            with tempfile.TemporaryDirectory() as td:
+                o, b = os.path.join(td, "f.o"), os.path.join(td, "f.bin")
+                subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
+                                "cf/time_fmt.s"], check=True)
+                subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
+                                ".text", o, b], check=True)
+                if pathlib.Path(b).read_bytes() != TIME_FMT_BYTES:
+                    sys.exit("cf/time_fmt.s no longer assembles to the pinned "
+                             "bytes -- update TIME_FMT_BYTES deliberately")
+        img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)] = \
+            TIME_FMT_BYTES
+        wr32(clone_addr["DELAY SERVER"] + 0x0ca, TIME_FMT_CAVE)   # p0 TIME: A
+        wr32(clone_addr["DELAY SERVER"] + 0x0fa, 0)               #          B
+        print(f"  time_fmt cave: {len(TIME_FMT_BYTES)} bytes at "
+              f"0x{TIME_FMT_CAVE:08x}, registered as BongDelay TIME's formatter")
+
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
@@ -1082,7 +1186,11 @@ def main():
         print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
     send_src = pathlib.Path(ASM_SRC["SEND"]).read_text()
     # MODE=n substitutes a literal for the page-2 MODE read, so each character
-    # can be auditioned locally. dsp_host cannot drive companion fields (its
+    # can be auditioned locally. (dsp_host HAS driven companion fields via
+    # -params indices 7/9/11 since 17 Aug 2026; these overrides predate that
+    # and force the decoded VALUE -- so DFRZ=2 is FROZEN, not SYNC. To test
+    # SYNC locally pass index 11 = 2 in -params, as the 24 Aug measurement
+    # did.) dsp_host once could not drive companion fields (its
     # -params only writes value<<16 into knob fields), so this is the only way
     # to hear the modes without a flash. Diagnostic only -- the normal build
     # reads the real slot.
@@ -1394,6 +1502,11 @@ mkgo:""",
             # load/store). Keyed on the ramp word's presence so verify_delay
             # can still build a pre-v6 REFERENCE source.
             n_want = 8 if "y:>$0904" in src else 4
+            # + 2 for the TIME slew state (load + store, 24 Aug 2026)
+            n_want += 2 if "y:>$0907" in src else 0
+            # + 4 for the sticky-snap state: last knob + held division,
+            # load + store each (24 Aug 2026)
+            n_want += 4 if "y:>$0908" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"
