@@ -161,13 +161,12 @@ on the RE below.
    guard). Upstream filtering in the `0x4000e464` switch is by note range
    only per the scout. Expect it to work; if the selected track misbehaves,
    select a different track while playing.
-3. CC 40–45 on T1's channel move BongDelay page 1 (tier 1, no code).
 4. `TPROBE`-style read of `r6+$8/$9` is NOT needed if 1–2 behave; keep it
    as the fallback diagnostic.
 
 ## Work order
 
-1. ⬜ **Verify tier-1 page 1 on hardware, no flash**: CC 40–45 on T1's channel
+1. ✅ **Tier-1 page 1 on hardware (24 Aug, no flash)**: CC 40 on T3's channel moved BongDelay TIME, CC 7 moved LEVEL; the OT echoes TIME as CC 40 with CC OUT on. Driven from `tools/ot_midi.py` (CoreMIDI via ctypes, no deps) through a Midihub `FROM A → FILTER(drop realtime) → OCTATRACK` pipe. Previously: ⬜: CC 40–45 on T1's channel
    → BongDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
    the descriptor enable bitmap or the writer's disabled-slot check bites us.
 2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`cf/tempo_cave.s`): fader + note words, relocate to the
