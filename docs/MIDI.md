@@ -151,10 +151,15 @@ on the RE below.
 **Hardware checklist for the first flash** (needs Sam at the unit):
 1. Freeze end: is it the RIGHT end of the fader (B)? Inferred from the CC 48
    inversion only. If wrong, flip the two compares.
-2. Does a note on the delay host's channel latch on a RETURN track (no
-   sample machine)? If the switch at `0x4000e464` filters by machine type,
-   host the delay on a track with a sample machine and no sample, or move
-   the note read to the source track.
+2. Does a note on the delay host's channel latch on a RETURN track? Read
+   24 Aug: the per-track loop at `0x4000e724..0x4000e790` writes
+   `0x400d64c2[t]` (`moveb %a3@,%a2@` at `0x4000e75a`) for EVERY track in
+   the channel mask with **no machine-type test** ✅; the only skip is the
+   currently-selected track when global `0x46104cb0` is set and
+   `0x40033970` returns 0 🟡 (unread — likely an editor/chromatic-mode
+   guard). Upstream filtering in the `0x4000e464` switch is by note range
+   only per the scout. Expect it to work; if the selected track misbehaves,
+   select a different track while playing.
 3. CC 40–45 on T1's channel move BongDelay page 1 (tier 1, no code).
 4. `TPROBE`-style read of `r6+$8/$9` is NOT needed if 1–2 behave; keep it
    as the fallback diagnostic.
