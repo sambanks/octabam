@@ -805,7 +805,7 @@ but "steps on a free dial" felt wrong) — are in the history. 1/2T and 1/4.
 are not candidates (never fit the line below ~170 BPM).
 
 **The panel prints the division** (`cf/time_fmt.s`, a second ColdFire cave
-at `0x400d7040`, 288 bytes, registered as TIME's `A` formatter with `B=0` —
+at `0x400d7080` (moved 24 Aug when the tempo cave grew to 104 bytes; was `0x400d7040`), 288 bytes, registered as TIME's `A` formatter with `B=0` —
 stock DELAY TIME's shape): the same rule with the same integers, its own
 `last/held` in cave RAM (per panel), `"1/8"` etc. while held, else ms.
 `PARAM_PAGES.md` §7 has the formatter ABI. `verify_menu` allows exactly

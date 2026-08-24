@@ -132,18 +132,45 @@ routes: (a) find the UI page-2 knob writer (the `FUN_40055008` analog for page
 `FUN_40054cd8` with the right index and let the frame builder publish. Gated
 on the RE below.
 
+## Status (24 Aug 2026, evening) — 2/3/4 BUILT, local-verified, UNFLASHED
+
+- **Cave v2** (`cf/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
+  formatter cave moved to `0x400d7080`): `r6+$8` = fader+1 (1 = fully B,
+  128 = fully A, 0 = no cave), `r6+$9` = held note or 0. Bytes pinned in
+  `build_bus.py`. ✅ assembled, ⬜ hardware.
+- **Note → PITCH interval** (`dsp/delay_server.asm` after `pintend`): the
+  DSP latches the note in `y:>$090a` (HOLD); iterative `2^(-1/12)` multiply,
+  ≤ 25 mpys per block. ✅ `make verify-midi`: notes 96/91/72/84 land within
+  15 cents of the +12/+7/−12/unison selects; no-note is bit-identical.
+- **Fader → FREEZE**: engage ≤ 25, release ≥ 41 (hysteresis), flag in
+  `y:>$090b` ORed into the FRZE select. ✅ fader 1 ≡ FRZE, 128 ≡ running,
+  30-from-cold ≡ running, bit-identical.
+- Cost: **payload B FREE 87 → 16** (71 words for both). `make check` green.
+- Local overrides: `DNOTE=n` (plain note), `DFADER=n` (1..128).
+
+**Hardware checklist for the first flash** (needs Sam at the unit):
+1. Freeze end: is it the RIGHT end of the fader (B)? Inferred from the CC 48
+   inversion only. If wrong, flip the two compares.
+2. Does a note on the delay host's channel latch on a RETURN track (no
+   sample machine)? If the switch at `0x4000e464` filters by machine type,
+   host the delay on a track with a sample machine and no sample, or move
+   the note read to the source track.
+3. CC 40–45 on T1's channel move BongDelay page 1 (tier 1, no code).
+4. `TPROBE`-style read of `r6+$8/$9` is NOT needed if 1–2 behave; keep it
+   as the fallback diagnostic.
+
 ## Work order
 
 1. ⬜ **Verify tier-1 page 1 on hardware, no flash**: CC 40–45 on T1's channel
    → BongDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
    the descriptor enable bitmap or the writer's disabled-slot check bites us.
-2. ⬜ **Cave v2** (`cf/tempo_cave.s`): fader + note words, relocate to the
+2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`cf/tempo_cave.s`): fader + note words, relocate to the
    `0xff` padding. `make check` + hardware: `TPROBE`-style probe reading
    `r6+$8/$9` (`dsp/tempoprobe.asm` is the template).
-3. ⬜ **Tier 3 DSP** (the fun one): table + decode branch, local render, ear
+3. ✅ **Tier 3 DSP** (built, local-verified; ⬜ ear pass + flash) (the fun one): table + decode branch, local render, ear
    pass, flash.
-4. ⬜ **Tier 2 DSP**: fader → FREEZE with hysteresis; then voicing uses.
-5. ⬜ **RE: page-2 writer** (one scout), then the CC patch for 62–73.
+4. ✅ **Tier 2 DSP** (built, local-verified; ⬜ hardware end check): fader → FREEZE with hysteresis; then voicing uses.
+5. ❌ **DROPPED** (Sam, 24 Aug): CC → page 2 was only wanted for scene-style gestures, which the fader publish now covers; no external-controller use case.
 6. ⬜ Docs: fold the corrections into `docs/history/NOTES.md` (scene morph)
    — DSP.md §6c-i and build_bus.py's comment were corrected 24 Aug.
 

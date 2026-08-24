@@ -75,6 +75,10 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BongDelay
 	DEV=1 XBUS=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
+.PHONY: verify-midi
+verify-midi: ## Local check of note->PITCH interval and fader->FREEZE (DNOTE/DFADER overrides, ~1 min)
+	python3 tools/verify_midi.py
+
 .PHONY: reverb
 reverb: ## Render a wav through ChonVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }

@@ -91,7 +91,7 @@ P_FMT1, P_FMT2, P_FMT3 = 0x0ca, 0x0fa, 0x12a
 # The enumerated-selector pair, taken from stock CHORUS.TAPS (count 5). Stock
 # uses all-zeros for a plain numeric knob.
 STEPPED_FMT = (0x4003c718, 0x40047254)
-TIME_FMT = 0x400d7040          # cf/time_fmt.s cave (build_bus.py TIME_FMT_CAVE)
+TIME_FMT = 0x400d7080          # cf/time_fmt.s cave (build_bus.py TIME_FMT_CAVE)
 
 
 def main():
