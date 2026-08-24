@@ -143,6 +143,14 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
 
 ### 1. Voicing polish — ear items, none blocking
 
+- **Clipping on BOTH effects at R56 (heard on the unit, 24 Aug 2026).**
+  Sam hears some clipping from ChonVerb *and* BongDelay. Reverb side: the
+  IN-keyed makeup ×(1+2·IN) (R45) and the known BIG clip knee below.
+  Delay side: R47's IN-keyed wet makeup plus the saturation stage — the
+  two makeups may now stack when both effects are on. Measure before
+  touching: sweep input level per mode/effect locally (send_probe /
+  render), find the level at which each first clips, then set headroom
+  from that. Related: "levels may want tuning" in the R56 note above.
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
   (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across
