@@ -1816,3 +1816,66 @@ any makeup), zero clipping. Melody clips the store above IN≈90 (7302
 clipped samples at 96, none at 64) — the knob's top is for sparse/quiet
 sources, by design. Dry ducking was considered and REJECTED by Sam as the
 old crossfade road.
+
+## Full MIDI-driven hardware voice pass (24 Aug 2026, evening)
+
+Sam's own set on the unit (R57), driven end-to-end over MIDI (`tools/hw_sweep.py`:
+scripted CC/notes -> EVO4 capture -> metrics; Rytm-over-USB transport control;
+chromatic note 84 on a track's channel as the deterministic one-shot stimulus —
+sample-trig notes 36-43 never fired and T1 turned out to be a THRU track from
+the Rytm, so chromatic one-shots on T3/T4/T6 are THE stimulus method).
+Layout measured: T1 thru (Rytm), T3 bass + BongDelay, T4 acid, T5 ChonVerb,
+T6 lead, T7 empty, T8 master. Wet-only instrument: solo the host track
+(+ AMP VOL 0 on T3 so only bus-fed wet remains).
+
+**Levels: NO clipping anywhere, on either effect, at any page-1 setting or
+stacked extreme.** Reverb: 3 senders at 127 + TIME/SIZE/MOD 127 -> wet peak
+−20 dBFS; delay: FDBK 127 held 12 s, no runaway (−20.7); full mix all sends
+127 + FDBK 100 + series -VRB 127 -> −17.4 dBFS peak. Reverb TIME 20->127
+raises steady wet only +4.8 dB. Modes ROOM/PLATE/BIG now span only ~3.6 dB
+at equal send (BIG quietest; the old clip knee unreachable, re-confirmed with
+one-shots). GATE 16 and SHMR 90 level-safe; Sam's stored part runs both hot
+and every capture inherited that state (by design — his set is the deliverable).
+
+**Pitch: exact, no adjustment needed.** Note->interval (R57) on real material:
++12/+6/0/−5/−12 all land within the estimator's 1/4-semitone floor (log-f
+spectrum cross-correlation dry vs wet, `hw_sweep.shift_semitones`). GRAIN
+scatter (DRV 80) fragments the 790 ms periodicity comb into 150-800 ms spread
+at unison pitch, deterministic per trigger; wow (DPTH 90) smears the lead
+fundamental 129 -> ~190-250 Hz width. REVERSE verified by envelope
+cross-correlation against time-reversed dry (0.121 vs 0.085 fwd on lead).
+FREEZE: hold flat ±0.5 dB over ~25 s, input correctly ignored while held,
+**no audible seam (Sam's ear)** — the R43 crossfade fix confirmed on hardware —
+clean release.
+
+**Open ear items (the honest residue):**
+- **PING lean**: at PING 127 (default) the wet leans ~8 dB left at FDBK 60;
+  at FDBK 0 the right channel is SILENT (single hard-left slap). Inherent to
+  the serial ping-pong (R only receives L's feedback). With no send-fed
+  makeup this is the whole "delay reads quiet vs reverb" story (−5 dB L /
+  −13 dB R at equal send). Candidate fixes, unbuilt: input into both lines
+  at high PING, and/or +4 dB send-fed wet makeup (one instruction, output
+  stage). Needs Sam's ear ruling first.
+- ~~GATE slam-time unmeasured~~ **RETRACTED same evening: it WAS measured** —
+  at GATE 16, cutting the send left the capture (opening ~0.4 s later)
+  silent: the wet shut in <400 ms, vs a seconds-long tail at Sam's stored
+  high GATE. The 'failed' gatecut captures were the result.
+
+**Instrument notes:** a capture chain can lie several ways in one evening —
+**stopping the transport mid-pattern leaves any LOOP-enabled sample droning**
+(the "mystery constant signal" episode: balanced L/R, identical stats across
+different stimuli — first misread as the EVO4 capturing its mics, which is
+RETRACTED; the EVO4's post-sleep 96 kHz renegotiation was real, the mic
+theory was not); the Midihub silently reverted to its stored preset (params
+40-45 passed, notes + CC 49/50 blocked — SAVE the pipe config to a preset);
+and a card pulled mid-session degrades Static-machine stimuli. Every "it
+went quiet" had a rig cause, never a DSP one.
+
+**Cross-bus residual check (same evening):** the open "T4 sending + delay
+MODE 1 (CLEAN)" combo from XBUS.md, on Sam's set layout (ChonVerb on T5 as
+housekeeper, delay on T3): rolling-pattern and one-shot wet captures show no
+hash (CLEAN wet correlates 0.90/zero-shift with the PITCH wet of the same
+stimulus), and **Sam's ear on the monitors: "sounded clean."** Caveats: T2
+carries no audio in this set (that axis untestable here), and artifacts
+RELOCATE — this clears this layout, not the residual; its suspected
+structural cause stays open in XBUS.md.

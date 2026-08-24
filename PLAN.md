@@ -158,6 +158,15 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   (two of them 10–15 dB quieter) at full send dropped the wet by 4.8 dB vs
   the loud sender alone — the 1/√N law to the dB (1/N predicts −9.5). Design
   property to know: a quiet sender turns the loud sender's reverb down.
+- **Full MIDI-driven hardware voice pass DONE (24 Aug 2026 evening,
+  Sam's set, R57)** — see `docs/VOICING.md`. No clipping at any page-1
+  setting or stacked extreme on either effect; modes span ~3.6 dB; pitch
+  exact on real material; GRAIN scatter / wow / REVERSE / FREEZE all
+  hardware-verified (freeze seamless by Sam's ear). Open: the **PING-127
+  left lean** (~8 dB at FDBK 60, R silent at FDBK 0 — inherent serial
+  ping-pong; candidate fixes priced in VOICING.md) and the **TONE CC-42
+  publish quirk** (lands in the Part but reaches the DSP only while T3's
+  FX2 page is on screen — docs/MIDI.md).
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
   (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across

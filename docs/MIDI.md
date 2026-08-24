@@ -189,3 +189,28 @@ on the RE below.
   needs a sample machine with nothing loaded, or the cave reads the note from
   a different track (the source track) — a design choice, not a blocker.
 - Page-2 live bytes not in the 72-byte block → tier 1 costs a real writer.
+
+## Hardware findings — full MIDI-driven voice pass (24 Aug 2026 evening)
+
+- **CC 40/41/43/44/45 (page-1 slots 0,1,3,4,5) work un-selected. CC 42 ->
+  slot 2 (TONE) is the exception: the write lands in the Part (panel shows
+  the new value) but reaches the DSP only while the host track's FX2 page
+  is ON SCREEN.** Hand-turns always work (the page is necessarily up).
+  Delay-specific: the reverb's slot 2 (SIZE, T5) takes CC fine un-selected.
+  Enable bitmap, min/count clamp all verified sane in the image; the
+  frame-builder path for this one slot is the remaining suspect. 🟡 UNTRACED.
+  Practical rule for sets: automate TIME/FDBK/PING/-VRB/IN freely; TONE by
+  hand.
+- Chromatic notes 72-96 on a track's channel are the reliable remote
+  trigger; **sample-trig notes 36-43 never fired on this project** (and a
+  THRU track has nothing to trig). A note to the panel-SELECTED track is
+  eaten (editor guard) — keep an empty track selected while driving notes.
+- The note->PITCH interval latch (R57) re-measured exact on real sources:
+  +12/+6/0/−5/−12 within 1/4 semitone (see VOICING.md).
+- Transport: drive the RYTM over USB (`ot_midi.py -p "Elektron Analog Rytm
+  MKII" start|stop`) — it is clock master; the OT follows. Never send
+  start/stop to the OT's own port.
+- **Midihub reverts to its stored preset on power/USB blips: SAVE the
+  session pipes** (FROM A -> drop-realtime-only -> OCTATRACK). The reverted
+  preset passed CC 40-48 but blocked notes and CC 49/50 — a very confusing
+  partial failure.
