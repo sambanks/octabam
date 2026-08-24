@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """Local verification of the MIDI branch's two DSP paths (24 Aug 2026):
-note -> BongDelay PITCH interval (r6+$9) and crossfader -> FREEZE (r6+$8).
-dsp_host has no ColdFire cave, so the words are forced with the DNOTE= /
-DFADER= build overrides and the result compared with the knob select that
-should produce the same thing.
+note -> BongDelay PITCH interval (r6+$9). dsp_host has no ColdFire cave,
+so the word is forced with the DNOTE= build override and the result compared
+with the knob select that should produce the same thing.
 
   EXACT (bit-identical):
     no note (DNOTE=0)          == the PTCH select      (nothing changes)
-    fader 128 (fully A) clean  == clean                (never engages)
-    fader 30 from cold         == clean                (hysteresis dead band)
-    fader 1 (fully B)          == FRZE select 1
   WITHIN 15 CENTS OF THE SELECT PATH, 30 of nominal (spectral peak of the wet, the heads decorrelate so a
   waveform diff is meaningless):
     note 96 ~ +12, note 91 ~ +7, note 72 ~ -12, note 84 ~ unison (CLEAN's pitch)
 
-Slow (13 DEV builds + renders, ~1 min); not part of make check.
+Slow (8 DEV builds + renders, ~1 min); not part of make check.
 """
 import array, cmath, math, os, pathlib, subprocess, sys, wave
 
@@ -24,7 +20,7 @@ OUT = ROOT / "out" / "midiverify"; OUT.mkdir(parents=True, exist_ok=True)
 
 def render(name, env, *probe):
     e = dict(os.environ, DEV="1", XBUS="1")
-    for k in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFADER", "NOSHIM"):
+    for k in ("DMODE", "DINT", "DFRZ", "DNOTE", "NOSHIM"):
         e.pop(k, None)
     e.update(env)
     subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT, env=e,
@@ -77,11 +73,6 @@ P = ("--dmode", "1", "--dptch", "0")
 sel12 = render("sel_p12", {}, *P)
 check("DNOTE=0 == PTCH select (no note ever: unchanged)", same(sel12, render("note0", {"DNOTE": "0"}, *P)))
 clean = render("clean", {}, "--dmode", "0")
-check("DFADER=128 (fully A) == clean", same(clean, render("fader128", {"DFADER": "128"}, "--dmode", "0")))
-check("DFADER=30 from cold == clean (dead band)", same(clean, render("fader30", {"DFADER": "30"}, "--dmode", "0")))
-frz = render("frz_sel", {}, "--dmode", "0", "--dfrz", "1")
-check("DFADER=1 (fully B) == FRZE select", same(frz, render("fader1", {"DFADER": "1"}, "--dmode", "0")))
-check("FRZE select differs from clean (the control)", not same(frz, clean))
 
 uni = peak_hz(clean)
 for note, want, ref in ((96, 1200, sel12), (91, 700, render("sel_p7", {}, "--dmode", "1", "--dptch", "1")),

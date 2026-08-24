@@ -1347,35 +1347,12 @@ drvw:
                                         ; too, and freeze is performative --
                                         ; Sam: SYNC does not live here.)
 ; DFRZ_OVERRIDE
-; ---- crossfader -> FREEZE (branch midi, 24 Aug 2026) ----------------------
-; r6+$8 carries fader+1 from the cave (1 = fully B/right, 128 = fully A/left;
-; 0 = no cave, never engages). Engage at <= 25 (fader <= 24), release at
-; >= 41 (fader >= 40): hysteresis, so a fader parked near the end cannot
-; chatter the 0/1 field. The flag ORs into the select ($100, a nonzero
-; companion value) so knob-freeze and fader-freeze are one flag downstream.
-; Which physical end is "B" is INFERRED from the CC 48 inversion
-; (docs/midi_re_scene.md) -- confirm on the unit.
-        move    a1,x0                   ; the select, kept
-        move    y:>$090b,a              ; fader-freeze flag (0 / $100)
-        move    x:(r6+$8),b
-        and     #>$7f00,b               ; fader+1, bits 8-15
-; DFADER_OVERRIDE
-        move    b1,y1
-        move    y1,b                    ; A2-clean for the compares
-        tst     b
-        beq     fzkeep                  ; 0 = no cave: leave the flag alone
-        move    #>$1900,y1              ; 25<<8
-        cmp     y1,b
-        move    #>$100,y0
-        tle     y0,a                    ; b <= 25 -> engaged
-        move    #>$2900,y1              ; 41<<8
-        cmp     y1,b
-        move    #>$0,y0
-        tge     y0,a                    ; b >= 41 -> released
-        move    a,y:>$090b
-fzkeep:
-        or      x0,a                    ; select | fader flag (A2 stale --
-        move    a1,x0                   ; cleaned by the pair below)
+; (24 Aug 2026: a crossfader -> FREEZE hard-lock lived here for an evening
+; and was removed at Sam's request -- nothing is to be welded to the fader.
+; Page 1 scene-locks morph like any stock effect; page 2 cannot be locked,
+; and that is where it stays. The cave still publishes fader+1 at r6+$8,
+; unread.)
+        move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7+$26)            ; 0 = running, nonzero = frozen
 ; v6: while RUNNING, keep the engage-crossfade ramp armed at ~1 (satdrv's

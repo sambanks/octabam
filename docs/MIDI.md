@@ -17,9 +17,11 @@ raw image. `aaa` segfaults on this image.
 1. **Tier 1 — CC → knobs.** Page-2 shortlist that MUST become reachable:
    **FRZE, MODE (both effects), SHMR, GATE, DRV**. DPTH/RATE/DIFF/PTCH/SHFT
    are nice-to-have.
-2. **Tier 2 — crossfader.** Publish the **fader value** to the DSP (one cave,
-   like tempo in R56); the DSP thresholds FREEZE itself with hysteresis and
-   the fader becomes a general modulation source.
+2. **Tier 2 — crossfader.** ❌ **NOTHING hard-locked to the fader** (Sam,
+   24 Aug, second decision, overriding the first): the want was scene-style
+   selective assignment like any stock effect. Page 1 already scene-locks;
+   page 2 cannot; so nothing is done. (The cave still publishes fader+1 at
+   `r6+$8`, unread — a spare word, not a feature.)
 3. **Tier 3 — notes.** **Note → BongDelay PITCH interval** first ("funnest").
    HOLD semantics: the last note sticks after note-off; retune by tapping.
    A never-received note (0) → the PTCH select behaves exactly as today.
@@ -142,15 +144,14 @@ on the RE below.
   DSP latches the note in `y:>$090a` (HOLD); iterative `2^(-1/12)` multiply,
   ≤ 25 mpys per block. ✅ `make verify-midi`: notes 96/91/72/84 land within
   15 cents of the +12/+7/−12/unison selects; no-note is bit-identical.
-- **Fader → FREEZE**: engage ≤ 25, release ≥ 41 (hysteresis), flag in
-  `y:>$090b` ORed into the FRZE select. ✅ fader 1 ≡ FRZE, 128 ≡ running,
-  30-from-cold ≡ running, bit-identical.
-- Cost: **payload B FREE 87 → 16** (71 words for both). `make check` green.
-- Local overrides: `DNOTE=n` (plain note), `DFADER=n` (1..128).
+- ~~Fader → FREEZE~~ built and then REMOVED the same evening (Sam: no
+  hard-locks to the fader). Its A/B (fader 1 ≡ FRZE etc.) passed before
+  removal, for the record.
+- Cost: **payload B FREE 87 → 43** (44 words for the note path). `make
+  check` green.
+- Local override: `DNOTE=n` (plain note).
 
 **Hardware checklist for the first flash** (needs Sam at the unit):
-1. Freeze end: is it the RIGHT end of the fader (B)? Inferred from the CC 48
-   inversion only. If wrong, flip the two compares.
 2. Does a note on the delay host's channel latch on a RETURN track? Read
    24 Aug: the per-track loop at `0x4000e724..0x4000e790` writes
    `0x400d64c2[t]` (`moveb %a3@,%a2@` at `0x4000e75a`) for EVERY track in
@@ -174,7 +175,7 @@ on the RE below.
    `r6+$8/$9` (`dsp/tempoprobe.asm` is the template).
 3. ✅ **Tier 3 DSP** (built, local-verified; ⬜ ear pass + flash) (the fun one): table + decode branch, local render, ear
    pass, flash.
-4. ✅ **Tier 2 DSP** (built, local-verified; ⬜ hardware end check): fader → FREEZE with hysteresis; then voicing uses.
+4. ❌ **Tier 2 DSP** built then removed (no fader hard-locks): fader → FREEZE with hysteresis; then voicing uses.
 5. ❌ **DROPPED** (Sam, 24 Aug): CC → page 2 was only wanted for scene-style gestures, which the fader publish now covers; no external-controller use case.
 6. ⬜ Docs: fold the corrections into `docs/history/NOTES.md` (scene morph)
    — DSP.md §6c-i and build_bus.py's comment were corrected 24 Aug.

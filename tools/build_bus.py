@@ -1420,25 +1420,19 @@ mkgo:""",
         print(f"  *** DFRZ OVERRIDE: BongDelay FREEZE forced to {int(dfrz_env)} ***")
 
     # DNOTE=n forces the MIDI-note word the ColdFire cave publishes at r6+$9
-    # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison), and
-    # DFADER=n the crossfader word at r6+$8 (0 = no cave; 1..128 = position
-    # + 1, 1 = fully B). dsp_host has no cave, so these are the only local
-    # way to hear note -> interval and fader -> FREEZE (branch midi, 24 Aug
-    # 2026). Same immediate-substitution mechanism as DMODE/DINT/DFRZ.
-    for env, marker, what in (("DNOTE", "; DNOTE_OVERRIDE", "MIDI note"),
-                              ("DFADER", "; DFADER_OVERRIDE", "crossfader")):
-        v = os.environ.get(env)
-        if v is not None:
-            if delay_src.count(marker) != 1:
-                sys.exit(f"{env}=n set but the DELAY source has no single "
-                         f"{marker} marker")
-            # the note read lands in A and its marker follows the asr, so the
-            # plain value (DINT's precedent); the fader read lands in B and
-            # its marker precedes the <<8 compares, so the shifted value
-            reg, val = ("a", int(v)) if env == "DNOTE" else ("b", int(v) << 8)
-            delay_src = delay_src.replace(
-                marker, "        move    #>%d,%s" % (val, reg))
-            print(f"  *** {env} OVERRIDE: BongDelay {what} word forced to {int(v)} ***")
+    # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison).
+    # dsp_host has no cave, so this is the only local way to hear note ->
+    # interval (branch midi, 24 Aug 2026). Same immediate-substitution
+    # mechanism as DMODE/DINT/DFRZ; the marker follows the asr, so the
+    # plain value (DINT's precedent).
+    dnote_env = os.environ.get("DNOTE")
+    if dnote_env is not None:
+        if delay_src.count("; DNOTE_OVERRIDE") != 1:
+            sys.exit("DNOTE=n set but the DELAY source has no single "
+                     "; DNOTE_OVERRIDE marker")
+        delay_src = delay_src.replace(
+            "; DNOTE_OVERRIDE", "        move    #>%d,a" % int(dnote_env))
+        print(f"  *** DNOTE OVERRIDE: BongDelay MIDI note word forced to {int(dnote_env)} ***")
 
     # DFRZAT=n engages FREEZE after n post-warm-up BLOCKS instead of from
     # sample 0 -- the missing repro lever PLAN.md's "FREEZE cannot be
@@ -1536,9 +1530,9 @@ mkgo:""",
             # + 4 for the sticky-snap state: last knob + held division,
             # load + store each (24 Aug 2026)
             n_want += 4 if "y:>$0908" in src else 0
-            # + 4 for the MIDI branch (24 Aug 2026): latched note $090a and
-            # fader-freeze flag $090b, load + store each
-            n_want += 4 if "y:>$090a" in src else 0
+            # + 2 for the MIDI branch (24 Aug 2026): latched note $090a,
+            # load + store
+            n_want += 2 if "y:>$090a" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"
