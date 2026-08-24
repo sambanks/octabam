@@ -134,7 +134,7 @@ routes: (a) find the UI page-2 knob writer (the `FUN_40055008` analog for page
 `FUN_40054cd8` with the right index and let the frame builder publish. Gated
 on the RE below.
 
-## Status (24 Aug 2026, evening) — 2/3/4 BUILT, local-verified, UNFLASHED
+## Status (24 Aug 2026) — note → interval ON THE UNIT (R57, tag 76), hardware-confirmed
 
 - **Cave v2** (`cf/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
   formatter cave moved to `0x400d7080`): `r6+$8` = fader+1 (1 = fully B,
@@ -172,7 +172,7 @@ on the RE below.
 2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`cf/tempo_cave.s`): fader + note words, relocate to the
    `0xff` padding. `make check` + hardware: `TPROBE`-style probe reading
    `r6+$8/$9` (`dsp/tempoprobe.asm` is the template).
-3. ✅ **Tier 3 DSP** (built, local-verified; ⬜ ear pass + flash) (the fun one): table + decode branch, local render, ear
+3. ✅ **Tier 3 DSP** — built, local-verified, flashed as R57 and ear-confirmed on the unit 24 Aug (the fun one): table + decode branch, local render, ear
    pass, flash.
 4. ❌ **Tier 2 DSP** built then removed (no fader hard-locks): fader → FREEZE with hysteresis; then voicing uses.
 5. ❌ **DROPPED** (Sam, 24 Aug): CC → page 2 was only wanted for scene-style gestures, which the fader publish now covers; no external-controller use case.
