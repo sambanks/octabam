@@ -2906,6 +2906,18 @@ pdone:
         mpy     x0,y1,a                 ; d*wet
         asr     #$1,a,a                 ; d*wet/2
         add     x0,a                    ; wet * (1 + d/2)
+; PING BALANCE + RETURN MAKEUP (R58, 24 Aug 2026, ear-approved locally the
+; same evening). Two terms, OUTPUT STAGE ONLY (loop gain and the ->VERB
+; stash r7+$87 untouched): both channels gain wet/2 (x1.5, +3.5 dB -- the
+; delay return measured 5-13 dB under the reverb at equal send), and R
+; additionally gains 0.75*PING*wet, centring the serial ping-pong's
+; aggregate image (measured lean +7.9 dB at PING 127/FDBK 60 -> +4.4 dB;
+; PING 0 was already symmetric and gets no shelf). At FDBK 0 the right
+; line still has no repeat to lift -- inherent, documented in VOICING.md.
+; mpy x0,y1 below is the audited-SIGNED order (wet in x0 goes negative).
+        move    x0,b
+        asr     #$1,b,b                 ; wet/2 -> x1.5 both channels
+        add     b,a
         mpy     y0,x0,b                 ; IN * wet
         asl     #$1,b,b                 ; 2*IN*wet
         add     b,a                     ; + the makeup
@@ -2916,6 +2928,15 @@ pdone:
         mpy     x0,y1,a
         asr     #$1,a,a
         add     x0,a
+        move    x0,b
+        asr     #$1,b,b                 ; wet/2 -> x1.5, matching L
+        add     b,a
+        move    x:(r7+$74),y1           ; PING (y1's d is done for this channel)
+        mpy     x0,y1,b                 ; wet*PING (signed order)
+        asr     #$1,b,b
+        add     b,a                     ; + wet*PING/2
+        asr     #$1,b,b
+        add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         mpy     y0,x0,b                 ; makeup, R channel
         asl     #$1,b,b
         add     b,a

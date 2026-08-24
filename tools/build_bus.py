@@ -396,7 +396,7 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # gates engine feed and client registration); GATE still scales wet only. Net
 # ZERO words on payload B (the drive-makeup a/b dance collapsed to `add x0,a`),
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
-BUILD_TAG = b"76"
+BUILD_TAG = b"77"
 
 FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
             "SEND": b"Send"}

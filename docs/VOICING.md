@@ -1879,3 +1879,16 @@ stimulus), and **Sam's ear on the monitors: "sounded clean."** Caveats: T2
 carries no audio in this set (that axis untestable here), and artifacts
 RELOCATE — this clears this layout, not the residual; its suspected
 structural cause stays open in XBUS.md.
+
+## R58 — PING balance + delay return makeup (24 Aug 2026, late evening)
+
+Sam's ear pass on local renders ("sounds good", drums A/B, wet-only,
+PING 127 FDBK 60): **both wet channels gain x1.5 (+3.5 dB), and R
+additionally gains 0.75*PING*wet** — output stage only, loop gain and the
+->VERB stash untouched, so bus levels and the series path are unchanged.
+Measured (emulator, send path): lean at PING 127/FDBK 60 +7.9 -> +4.4 dB
+on drums/bass/melody alike; PING 0 exactly symmetric (no shelf); FDBK 20
+worst case 17.5 -> 14.0 dB; no clipping on any render (drums peak -2.4).
+At FDBK 0 the right line still has no repeat to lift — inherent to the
+serial ping-pong, accepted. Tag 77. NOT YET FLASHED — hardware ear-ratify
+on the next flash.
