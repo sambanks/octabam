@@ -151,10 +151,13 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   flattening the sum at full scale. With gains at 0 dB / VOL 64 and the
   mix rebalanced (peak −17.6 dBFS), sends swept 0→127 on both effects and
   both at once: **no clipping at any step** (reverb +5.4 dB RMS at full
-  send, delay +1.5, both −14.4 dBFS peak). The BIG knee (0.25–0.5 FS in)
+  send, delay +1.5, both −14.4 dBFS peak). BIG swept separately: clean at full send (−14.9 dBFS peak). The BIG knee (0.25–0.5 FS in)
   is unreachable from a sane mix (senders ≈ 0.13 FS); the old drums hit
   0.41 FS. Open ear item only: the delay return is ~4 dB quieter than the
-  reverb at equal send.
+  reverb at equal send. **Capture E closed the same evening**: three senders
+  (two of them 10–15 dB quieter) at full send dropped the wet by 4.8 dB vs
+  the loud sender alone — the 1/√N law to the dB (1/N predicts −9.5). Design
+  property to know: a quiet sender turns the loud sender's reverb down.
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
   (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across
