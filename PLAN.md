@@ -143,14 +143,21 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
 
 ### 1. Voicing polish — ear items, none blocking
 
-- **Clipping on BOTH effects at R56 (heard on the unit, 24 Aug 2026).**
-  Sam hears some clipping from ChonVerb *and* BongDelay. Reverb side: the
-  IN-keyed makeup ×(1+2·IN) (R45) and the known BIG clip knee below.
-  Delay side: R47's IN-keyed wet makeup plus the saturation stage — the
-  two makeups may now stack when both effects are on. Measure before
-  touching: sweep input level per mode/effect locally (send_probe /
-  render), find the level at which each first clips, then set headroom
-  from that. Related: "levels may want tuning" in the R56 note above.
+- **"Clipping on both effects" (24 Aug 2026) — RESOLVED UPSTREAM, measured
+  on the unit the same evening** via the EVO4 + MIDI CC rig
+  (`tools/level_cap.py`, `tools/ot_midi.py`): the dry mix was flat-topping
+  with every send at zero. Causes, in order: AMP VOL ≈ +12 dB on two
+  source tracks + hot sample GAINs (pre-FX clip), then a master compressor
+  flattening the sum at full scale. With gains at 0 dB / VOL 64 and the
+  mix rebalanced (peak −17.6 dBFS), sends swept 0→127 on both effects and
+  both at once: **no clipping at any step** (reverb +5.4 dB RMS at full
+  send, delay +1.5, both −14.4 dBFS peak). BIG swept separately: clean at full send (−14.9 dBFS peak). The BIG knee (0.25–0.5 FS in)
+  is unreachable from a sane mix (senders ≈ 0.13 FS); the old drums hit
+  0.41 FS. Open ear item only: the delay return is ~4 dB quieter than the
+  reverb at equal send. **Capture E closed the same evening**: three senders
+  (two of them 10–15 dB quieter) at full send dropped the wet by 4.8 dB vs
+  the loud sender alone — the 1/√N law to the dB (1/N predicts −9.5). Design
+  property to know: a quiet sender turns the loud sender's reverb down.
 - **Per-mode gain structure.** The modes are 7–9 dB apart at the output
   (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
   defaults), and an input sweep (in this file's git history) put BIG across

@@ -1188,6 +1188,57 @@ pintdet:
         move    a,x:(r7+$6b)
 pintend:
 
+; ---- MIDI note -> PITCH interval (branch midi, 24 Aug 2026) ---------------
+; The ColdFire cave (cf/tempo_cave.s v2) re-stores the host track's held
+; MIDI note into record halfword +0x2a = r6+$9 every frame (bits 8-15 after
+; the <<8, like every other published byte); 0 = released or no cave. The
+; OT's chromatic range is 72..96 with 84 = unison (the stock code p-locks
+; PTCH as 64+5*(note-84)), so interval = note-84, +-12. HOLD semantics: the
+; last note LATCHES in a core-private Y slot and the select above is overridden for as
+; long as any note has ever arrived -- a track that never sees MIDI behaves
+; exactly as before. Both scouts' facts: docs/midi_re_note.md.
+;   step = $1000 * (2^(n/12) - 1), computed by starting at r = 2^(13/12)/4
+;   and multiplying by 2^(-1/12) (97 - note) times: r = 2^(n/12)/4, and
+;   step = (r_word >> 9) - $1000. Error < 1 cent across the range (checked
+;   in python, 24 Aug). No table: R48-R50 died on an init-built Y table, and
+;   a P table needs an AGU register the block has no spare of. <= 25 mpys
+;   per block, per-block cost only. `do y0` is the shipped bus_zclr idiom.
+        move    x:(r6+$9),a
+        and     #>$7f00,a               ; the note, bits 8-15
+        asr     #$8,a,a
+; DNOTE_OVERRIDE
+        move    a1,x0
+        move    x0,a                    ; A2-clean
+        tst     a
+        move    y:>$090a,b              ; latched note (0 = never)
+        tne     x0,b                    ; a new note replaces it; a release
+                                        ; (0) leaves it -- the moves between
+                                        ; tst and tne do not touch the flags
+        move    b,y:>$090a
+        tst     b
+        beq     qend                   ; no note ever -> the select stands
+        move    #>97,a
+        sub     b,a                     ; count = 97 - note = 13 - n
+        move    #>1,x0
+        cmp     x0,a
+        tlt     x0,a                    ; clamp 1..25 (belt and braces: the
+        move    #>25,x0                 ; chromatic map cannot exceed it)
+        cmp     x0,a
+        tgt     x0,a
+        move    a1,y0                   ; loop count
+        move    #>$43ce3e,a             ; 2^(13/12)/4
+        move    #>$78d0e0,y1            ; 2^(-1/12)
+        do      y0,>qmul
+        move    a,x0                    ; |a| < 1, immediate-loaded: clean
+        mpy     x0,y1,a                 ; SIGNED order (x0,y1) -- not mpysu
+qmul:
+        asr     #$9,a,a                 ; r_word >> 9 = 2^(n/12) * $1000
+        move    #>$1000,x0
+        sub     x0,a                    ; - 1.0 -> the age step
+        move    a,x:(r7+$6a)            ; both lines: the note is one
+        move    a,x:(r7+$6b)            ; interval, never a detune
+qend:
+
 ; ---- TAPE depths from the WOW knob (v2 stage 4) --------------------------
 ; Page-1 slot 6 is a KNOB field (r6+$b, value<<16, 0..127), not a select:
 ; wow depth is a continuous voicing control unlike MODE/PTCH/FRZE.
@@ -1296,6 +1347,11 @@ drvw:
                                         ; too, and freeze is performative --
                                         ; Sam: SYNC does not live here.)
 ; DFRZ_OVERRIDE
+; (24 Aug 2026: a crossfader -> FREEZE hard-lock lived here for an evening
+; and was removed at Sam's request -- nothing is to be welded to the fader.
+; Page 1 scene-locks morph like any stock effect; page 2 cannot be locked,
+; and that is where it stays. The cave still publishes fader+1 at r6+$8,
+; unread.)
         move    a1,x0
         move    x0,a                    ; A2-clean before the store
         move    a,x:(r7+$26)            ; 0 = running, nonzero = frozen
