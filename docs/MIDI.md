@@ -214,3 +214,24 @@ on the RE below.
   session pipes** (FROM A -> drop-realtime-only -> OCTATRACK). The reverted
   preset passed CC 40-48 but blocked notes and CC 49/50 — a very confusing
   partial failure.
+
+## Remote CC reference (manual-confirmed 24 Aug 2026, for the gain-match session)
+
+From the official appendices (OT MKII 1.40A Appendix C, AR MKII 1.72
+Appendix C — URLs in the memory note `octabam-midi-cc-reference`). ✅ =
+also exercised on our hardware; 🟡 = manual-only, unverified here.
+
+**Octatrack, per-track channel**: CC 7 track level (receive-only) ✅,
+CC 46 track level (trn+rec), CC 8 balance, **CC 25 AMP VOL** 🟡 (amp page =
+CC 22–27), playback 16–21, LFO 28–33, FX1 34–39 🟡, FX2 40–45 ✅ (slot-2
+on-screen quirk, above), CC 47 cue, 48 crossfader ✅, 49/50/51
+mute/solo/cue, 55/56 scene A/B select. Pattern select via program change
+needs PROG CH receive ON (PROJECT→MIDI→SYNC) 🟡.
+
+**Rytm MKII, per-track channel** (needs RECEIVE CC/NRPN ON in MIDI
+CONFIG): **CC 95 track LEVEL** 🟡, CC 7 amp VOLUME, CC 8x amp page (81
+overdrive, 82/83 delay/reverb send), CC 31 sample level, 94/93
+mute/solo. FX track channel: delay 16–23, reverb 24–31, distortion
+70–77, **compressor 78–85** (78 thresh, 81 makeup, 84 mix, 85 output
+vol) 🟡. Transport start/stop over its own USB port only ✅ — it is clock
+master; never send start/stop to the OT.
