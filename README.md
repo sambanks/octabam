@@ -37,7 +37,7 @@ The costs are all measured, not estimated:
 | resource | per core | state (Aug 2026 build) |
 |---|---|---|
 | Cycles | 4,535/sample | derived budget (200 MIPS ÷ 44.1 kHz); every mode runs clean on hardware, true per-core ceiling unmeasured |
-| Program space | 8,192 words | donor region 2,724 words/payload: A 55 free, B 1 free |
+| Program space | 8,192 words | donor region 2,724 words/payload: A 74 free, B 30 free (R58; `make bus` prints the live ledger) |
 | FX2 memory | 65,536 words/server | 1.49 s, pooled from private slots + the shared window |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
@@ -61,8 +61,8 @@ P  8,192 words                          8,192 words
    └─ donor region, 2,724 words         └─ donor region, 2,724 words
       (was PLATE+SPRING+DARK)              (this core's copy of the same
       now SEND + CHONVERB                   three slots)
-      used 2,669 · free 55                 now SEND + BONGDELAY
-                                           used 2,723 · free 1
+      used 2,650 · free 74                 now SEND + BONGDELAY
+      (R58 build)                           used 2,694 · free 30
 
 Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
    └─ the tank: 8 lines × 4,096         └─ pooled, unclaimed by the delay
@@ -156,7 +156,10 @@ make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 These run the *real assembled instruction stream* on a DSP56300 emulator, at
 roughly 6× real time. What you hear is what the chip will do, which is why
 voicing decisions in `docs/VOICING.md` are recorded as listening results
-rather than as guesses about coefficients.
+rather than as guesses about coefficients. (Delay work uses `make
+render-delay` — the shipping layout has no delay in the payload the emulator
+can boot.) How all of this works — and, just as important, what it
+structurally cannot see — is `docs/HARNESS.md`.
 
 `scripts/make_test_audio.py` generates synthetic source material to audition
 with — or feed it your own.
@@ -188,6 +191,8 @@ The documents that stay current:
 | `docs/XBUS.md` | How the cross-core bus works, and why |
 | `docs/CHIP.md` | Cycles and memory, every number with a confidence marker |
 | `docs/REVERB.md` | ChonVerb: structure, parameters, memory layout |
+| `docs/TOOLING.md` | Every tool, end to end — the newcomer's map of the pipeline |
+| `docs/HARNESS.md` | The emulation and measurement rig: how local renders work, and their blind spots |
 | `docs/VOICING.md` | What was decided by listening, and why |
 | `docs/FLASHING.md` | Getting an image onto hardware, and back off it |
 | `docs/CAPTURE.md` | Hardware capture protocol — predictions committed before measuring |
