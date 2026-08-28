@@ -615,6 +615,12 @@ mpyi    #>$e00000,x1,a    ; fractional multiply
 
 ## 6b. Harness status (`tools/dsp_host`)
 
+> **This section is the bring-up record, kept for provenance.** The plan at
+> its end ("develop in isolation, integrate by imitation") is what was built,
+> and the harness has long since validated far more than a reverb — the
+> current description of the working system is **`docs/HARNESS.md`**, and the
+> functional baseline it can prove is `docs/TESTPASS.md`.
+
 **Working**: memory loading, the emulator, single-stepped calls via the DSP's own
 `jsr`, output capture. The passthrough stub returns exactly the two impulse
 samples it should, and that is a genuine end-to-end validation of the plumbing.
@@ -635,9 +641,12 @@ and derives `r6 = x:0x208 + 6` and `r7 = x:0x20a + 0x100` the way the dispatcher
 does. Note `x:0x20c` being zero makes the dispatcher **skip the effect entirely**,
 which is why an unseeded context produced silence.
 
-**Not working**: real effects run without faulting but produce no tail, because
+**Not working** *(as of this snapshot — RETRACTED since; see the note at the
+top of §6b)*: real effects run without faulting but produce no tail, because
 the audio buffer convention above is unresolved. Until that is closed the harness
-cannot validate a reverb, which was the whole point of building it.
+cannot validate a reverb, which was the whole point of building it. *(Closed by
+route 1 below: the new effects use our own convention, and the harness now
+renders the full bus — `docs/HARNESS.md`.)*
 
 ### Why address-guessing kept failing: the audio is DMA'd in
 

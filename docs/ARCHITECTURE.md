@@ -1,9 +1,11 @@
 # Elektron Octatrack firmware architecture (MKII, OS 1.40C)
 
 Architecture document consolidated from the educational reverse engineering of the
-firmware. It brings together everything that has been verified: hardware, OS format, kernel,
-storage, audio engine, sequencer, and the memory map. It complements `NOTES.md` (chronological
-log) and the scripts in `tools/`.
+firmware — the **ColdFire/OS side**. It brings together everything that has been verified:
+hardware, OS format, kernel, storage, audio engine, sequencer, and the memory map. The DSP
+side (payload format, effect dispatch, the parts the effects actually run on) is
+`docs/DSP.md`; the chronological log lives in `docs/history/NOTES.md`, and the tools are
+mapped in `docs/TOOLING.md`.
 
 > **Scope and honesty**: everything marked ✓ is verified (checksum from the firmware itself,
 > byte-exact decompilation, or direct disassembly). Anything marked ~ is a strong inference but
@@ -199,6 +201,12 @@ git history (`git log --all -- tools/<name>`), per the repo's history policy.
 
 - **Sequencer clock**: the periodic source that dispatches the trig-processor `FUN_400977cc`
   (by pointer, according to machine type) — internal tempo clock or MIDI clock (0xF8).
-- DSP program load: where the blob that `FUN_40001d4c` uploads comes from (an OS section?).
+  *Partially closed*: the tempo/project-BPM path on the ColdFire side has since been read
+  end-to-end for the tempo-sync work (`docs/DSP.md` §6c); the trig dispatch source itself
+  remains unread.
+- ~~DSP program load: where the blob that `FUN_40001d4c` uploads comes from (an OS
+  section?).~~ **Closed** — the DSP payloads live inside the MAIN OS image itself, and their
+  module format, load map and boot sequence are fully mapped in `docs/DSP.md` §§1–3
+  (`tools/dsp_modmap.py` recovers the map).
 - Remaining ATA handlers; large functions the ColdFire decompiler does not lift (read in ASM).
 - Extract the vector table (`0x400` preamble, not in this section) for the ISR map.
