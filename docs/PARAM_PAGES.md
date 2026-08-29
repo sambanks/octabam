@@ -547,6 +547,13 @@ effect will still appear unselectable.
 COMPANION field at BITS 8–15.** Not the low byte. The low byte is never
 published.
 
+**The rule is slot -> word -> bit field, whatever a module calls its knobs.**
+The examples below are named `<ChonVerb> / <BongDelay>` because those were the
+only two effects when this was measured; a module names its own twelve slots
+in its manifest and the mapping is unchanged. Note the consequence: because
+the companion fields ARE slots 7, 9 and 11, a stepped control can only live
+there — `schema.py` enforces it.
+
 | slot | word | field | example |
 |---|---|---|---|
 | 6 | `$c` | knob, bits 16–23 | SHMR / DPTH |
@@ -564,12 +571,12 @@ documented anywhere:
   positions, repeatedly.
 - **SHMR independently needed `$c`'s knob field, not `$b`'s** — the
   same off-by-one word.
-- **Slot 11 confirmed dead for BOTH effects** (ChonVerb's →DEL and BongDelay's
+- **Slot 11 confirmed dead for both effects TESTED** (ChonVerb's →DEL and BongDelay's
   FRZE), which rules out a per-effect descriptor fault and leaves the
   slot itself.
 
 Everything that read bits 0–7 had never worked on hardware: slot 9 and slot 11,
-in both effects, until this map was applied (fixed in `7a4f96b`).
+in both effects then existing, until this map was applied (fixed in `7a4f96b`).
 
 ⚠️ **The trap this map explains**: dsp_host used to write only KNOB fields
 (`(pv[i] & 0x7f) << 16`) and mapped slots 6–11 onto `$b,$c,$d,$e` cyclically —

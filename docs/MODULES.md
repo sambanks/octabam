@@ -11,6 +11,25 @@ and `CLAUDE.md` for the traps that have already cost real work — several of
 them are traps a new module can walk straight into, and they are repeated
 here where they apply.
 
+**Decide first which kind you are writing, because it decides most of what
+follows.**
+
+An **insert** processes its own track's frames in place: no bus role, no
+shared-window claim, placed in both payloads, runnable on any track and
+several at once. Nothing negotiates with anything. `bus_role=BusRole.NONE`,
+`ybase=YBase.NEVER`, and most of the hazards below simply do not apply.
+**Start here** — six of the ten shipping modules are inserts, and each was
+built against this document alone.
+
+A **server** owns a bus accumulator, is bank-bound to one core, and has to
+take part in the rotation, the housekeeping election and the auto-gain. It
+buys a whole donor region's worth of program space with that complexity.
+There are two, they are documented in `docs/XBUS.md`, and you should have a
+reason before writing a third.
+
+A module can also be neither: a **bus client** (`send`) or a **ColdFire
+patch** (`tempo-sync`) that changes firmware behaviour and touches no audio.
+
 ---
 
 ## The shape of a module
@@ -232,9 +251,13 @@ full list. All of them assemble clean and do the wrong thing.
 ## Two things that will surprise you
 
 **`dsp_host` cannot boot payload B.** Local testability therefore depends on
-which payload a module lands on. BongDelay ships on payload B and can only be
-rendered locally through the DEV hatch, which places it out of region in
-payload A. A module on core 1 inherits that constraint.
+which payload a module lands on — and that is a SERVER's problem, because
+specialization is what puts a server on one core. BongDelay ships on payload
+B and can only be rendered locally through the DEV hatch, which places it out
+of region in payload A; a server on core 1 inherits that constraint.
+
+An insert is in BOTH payloads, so it is always reachable in payload A and
+renders with no hatch at all.
 
 **No local test can reproduce a cross-core timing defect**, because
 `dsp_host` is single-core. When local says clean and hardware says broken,

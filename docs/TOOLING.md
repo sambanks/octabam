@@ -77,7 +77,8 @@ Two instruction sets, two toolchains:
 
 **`tools/build_bus.py` is THE builder** (`make bus` = `XBUS=1 SPEC=1`). What
 it builds is a **remix**: a named selection of modules (`make bus
-REMIX=<name>`, default `chongbong`; `make modules` lists both). Each
+REMIX=<name>`, default `chongbong`; `make modules` lists the modules and the
+remixes, `make remix` composes one interactively). Each
 `modules/<name>/manifest.py` declares one contribution — menu entry,
 parameters, DSP source, ColdFire caves — against the schema in
 `tools/remix/schema.py`, and `tools/remix/ledger.py` refuses a selection
@@ -111,8 +112,8 @@ version:
 | tool | what it does |
 |---|---|
 | `tools/dsp_host` | the emulator harness itself — boots a payload dump, calls effects through the recovered ABI, captures audio, polices memory |
-| `tools/render_reverb.py` (`make reverb IN=..`) | wav → ChonVerb → wav, knobs by name, sweeps, wet-only — the voicing instrument |
-| `tools/send_probe.py` (`make render`, `make render-delay`) | renders a real SEND→bus→server path and measures it numerically |
+| `tools/render_reverb.py` (`make reverb IN=..`) | wav → ChonVerb → wav, knobs by name, sweeps, wet-only — the voicing instrument **for the reverb specifically** |
+| `tools/send_probe.py` (`make render`, `make render-delay`) | renders a real SEND→bus→server path and measures it numerically. `--direct` puts audio through one module on its own track instead — **the way an insert is rendered**, since an insert has no bus accumulator to analyse |
 | `scripts/make_test_audio.py` | synthesises the standard audition material into `out/test_audio/` |
 
 ## 6. Verifying
@@ -121,7 +122,7 @@ version:
 
 | tool | proves |
 |---|---|
-| `tools/cycle_count.py` (`make cycles`) | static per-sample cycle count of each server against the measured budget — static because the emulator's instruction counter cannot measure this |
+| `tools/cycle_count.py` (`make cycles`) | static per-sample cycle count of **every module in the selected remix**, plus the worst load one core can be asked for — static because the emulator's instruction counter cannot measure this |
 | `tools/verify_roll.py` / `verify_delay.py` | an alternate reverb / delay engine is **bit-identical** to the shipping one — the gate every refactor passes before landing |
 | `tools/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving: 17 layouts, stamp-edit-compare (`docs/XBUS.md`) |
 | `tools/verify_menu.py` | the ColdFire menu edits against the real chooser mechanism, decompiled from the firmware — including the descriptor traps (formatter vs count) |
