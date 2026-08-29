@@ -21,6 +21,11 @@ What ships today:
 | **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs its own dry at unity plus the wet, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
 | **Tempo sync** | A ColdFire module rather than an effect: two code caves, one publishing the project tempo, crossfader and held MIDI note where the DSP can read them, one drawing BongDelay's TIME knob as a tempo division. It is the worked example of patching what the firmware *does*. |
 
+Those four are **confirmed on hardware**. There is also a set of six
+Mutable-Instruments-flavoured **inserts** — see below — which are verified by
+local render and measurement but have **never been flashed**. If you build
+and flash them you are the first person to run them on real hardware.
+
 The reverse-engineering in `docs/` is infrastructure, not the product. It
 exists because you cannot write an effect for a machine whose memory map,
 cycle budget and parameter plumbing you do not know.
@@ -49,6 +54,35 @@ The costs are all measured, not estimated:
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
 measured or inferred, and what would falsify it.
+
+### Servers and inserts, and why the difference matters
+
+A **server** owns a bus accumulator and is *bank-bound*: ChonVerb exists only
+on core 0, BongDelay only on core 1, and one of each per core is the design
+rule. That asymmetry is what bought them their program space.
+
+An **insert** has no bus role at all. It processes its own track's frames in
+place, is placed in *both* payloads, and can therefore run on any of the
+eight tracks — several at once, all different, or four copies of the same
+one. Inserts also **stack**: because none of them negotiates for the bus or
+the shared window, a single image can carry a whole set.
+
+That makes an insert far the easier thing to contribute, and it is what the
+six modules below are:
+
+| | |
+|---|---|
+| **WarpFold** | Warps-ish: a wavefolder into a ring modulator. FOLD / RING / BOTH. |
+| **Ripple** | Ripples-ish: a driven state-variable filter, LP / BP / HP, resonance to Q≈30. The drive clip is the character. |
+| **Rungs** | Rings-ish: eight tuned resonators struck by the audio itself. STRING / BELL / GLASS, plus a stretch control. |
+| **Streamz** | Streams-ish: a vactrol lowpass gate. The envelope opens a filter and an amplifier *together*, so quiet is dark as well as quiet. LPG / VCF / VCA. |
+| **BodeShift** | Warps-ish: a Bode frequency shifter — every partial moves by the same number of *hertz*, so it is not a pitch shifter. UP / DOWN / WIDE, plus a feedback spiral. |
+| **Nimbus** | Clouds-ish: four grains reading back out of a continuously-recorded 743 ms buffer, with a freeze. |
+
+`make bus REMIX=mutables` builds five of them onto one card (2,410 of the
+2,724 available words). Nimbus gets its own remix, because it owns the
+per-core FX2 buffer region and so cannot share a core with ChonVerb's tank —
+a pair the build refuses by name rather than letting you discover it by ear.
 
 ### The machine, on one page
 
@@ -145,6 +179,10 @@ make bus       # build the effects into it
 make image     # repack as a card-flashable .bin
 ```
 
+`make remix` opens a workbench for composing a selection: toggle modules and
+it shows collisions, the panel your choice produces, and its word cost
+against the donor region, then builds or saves it.
+
 `make help` lists everything. The setup script assumes **macOS + Homebrew**;
 on Linux the substitutions are the obvious ones (the DSP toolchain itself is
 plain CMake — see `scripts/setup.sh`).
@@ -177,8 +215,10 @@ make check     # build + cycle budget + ledger selftest + menu verification
 ### Building a different selection
 
 ```bash
+make remix                # compose one interactively
 make modules              # the module index and the available remixes
 make bus REMIX=verbonly   # ChonVerb and the send bus, no delay, no caves
+make bus REMIX=mutables   # five stacking inserts, no servers
 ```
 
 A module left out of a remix is not built, not placed and not listed — and
@@ -248,12 +288,17 @@ Issues, listening reports and findings are welcome, and so are modules.
 **To add one**, copy `modules/_template/` and read
 **[docs/MODULES.md](docs/MODULES.md)**. Your module declares what it is and
 what it claims; the build refuses to start if two selected modules claim the
-same FX2 id, cave, hook site or core-private word, and names both.
+same FX2 id, cave, hook site, core-private word, or the per-core FX2 buffer
+region, and names both.
+
+**An insert is the easiest first module** — no bus role, no shared window, no
+payload asymmetry to reason about. The six above were each built against
+`docs/MODULES.md` alone.
 
 If you open a PR: `make check` is the floor, and read the traps in
 `CLAUDE.md` first — several are the kind that assemble clean and do the wrong
 thing. If you changed the *build* rather than adding a module, prove it
-changed nothing with `scripts/refhash.sh` (23 configurations, artifacts and
+changed nothing with `scripts/refhash.sh` (26 configurations, artifacts and
 build reports, bit-identical).
 
 **Never attach a built image, an OS file, or any Elektron-derived binary to
