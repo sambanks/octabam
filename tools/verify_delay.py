@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prove an alternate BongDelay engine is BIT-IDENTICAL to the shipping one.
 
-    python3 tools/verify_delay.py dsp/delay_server2.asm
+    python3 tools/verify_delay.py modules/bongdelay/delay_server2.asm
     python3 tools/verify_delay.py cand.asm --ref modules/bongdelay/delay_server.asm
 
 The verify_roll pattern applied to the delay (PLAN.md 3.1, stage 1 CLEAN:
@@ -200,7 +200,7 @@ def render(mem, params, split=0, source=[]):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("candidate", help="the engine under test, e.g. dsp/delay_server2.asm")
+    ap.add_argument("candidate", help="the engine under test, e.g. modules/bongdelay/delay_server2.asm")
     ap.add_argument("--ref", default=registry.asm("bongdelay"),
                     help="the engine it must match (default: the shipping one)")
     args = ap.parse_args()

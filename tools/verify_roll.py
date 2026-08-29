@@ -179,7 +179,7 @@ def main():
 
     # ---- the control, first: can this comparison see anything? -----------
     # Build the REFERENCE once with no MODE override and render it at two HP
-    # settings. HP=0 is documented in dsp/reverb_server.asm as an exact bypass
+    # settings. HP=0 is documented in modules/chonverb/reverb_server.asm as an exact bypass
     # of the in-loop low cut, so HP=0 vs HP=64 is a real change to the audio.
     ref_mem, ref_words, ref_free = build(args.ref, None, "ref_default")
     c0 = render(ref_mem, wav, SCRATCH / "ctl_hp0.wav", ("HP=0",))

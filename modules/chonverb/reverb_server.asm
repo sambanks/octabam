@@ -25,7 +25,7 @@
 ;    not something this file checks.
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call now also runs the same
-;    position-0 rotation-flip-and-clear housekeeping as dsp/send_client.asm
+;    position-0 rotation-flip-and-clear housekeeping as modules/send/send_client.asm
 ;    (verbatim, BUS.md's documented duplication requirement, including the
 ;    split-aware frame-offset fix -- see that file's header for the full
 ;    reasoning). The engine's own input additionally sums in the shared
@@ -49,12 +49,12 @@
 ;    clients contribute that block. Dry-only is not a simplification, it is
 ;    the safety argument: BUS.md's Cross-bus sends section forbids a
 ;    reverb->delay WET path because it would close a loop with DELAY
-;    SERVER's own ->VERB wet send (task 10's other half, dsp/delay_server.asm)
+;    SERVER's own ->VERB wet send (task 10's other half, modules/bongdelay/delay_server.asm)
 ;    -- delay's wet reaching reverb, reverb's wet reaching delay, round again,
 ;    the same shape of instability that self-oscillated during this engine's
 ;    own development (DSP.md's "flat envelope is proof of instability"). A
 ;    dry tap can never close that loop: it only ever reads a track's own
-;    pre-effect signal, the same guarantee dsp/send_client.asm's two knobs
+;    pre-effect signal, the same guarantee modules/send/send_client.asm's two knobs
 ;    already rely on.
 ; ---------------------------------------------------------------------------
 
@@ -266,7 +266,7 @@ proc:
 
 ; ---- BUS.md: split-aware frame offset within the shared bus buffers, and
 ; the gate for whether THIS track (if it happens to be position 0) may run
-; the rotation flip on THIS call. Identical mechanism to dsp/send_client.asm
+; the rotation flip on THIS call. Identical mechanism to modules/send/send_client.asm
 ; -- see its header for the full reasoning -- keyed off the SAME r7+$14
 ; call flag this engine already keeps for its own LFO-advance gating, so no
 ; new stash of the raw incoming accumulator is needed here.
@@ -308,7 +308,7 @@ bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
-; dsp/send_client.asm, must stay identical (BUS.md Known limitations).
+; modules/send/send_client.asm, must stay identical (BUS.md Known limitations).
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
 ; code never runs there, so nobody flips the rotation or clears the
@@ -349,7 +349,7 @@ bus_off_done:
 bus_dohk:                               ; nobody did -- take over this block
 
 ; y:>$900 holds the WRITE OFFSET (0/16/32/48), not the bare buffer index --
-; see the layout comment in dsp/send_client.asm. FOUR buffers, so the rotation
+; see the layout comment in modules/send/send_client.asm. FOUR buffers, so the rotation
 ; is +16 mod 4 and the mask that does the modulo sanitises boot garbage too.
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
@@ -394,7 +394,7 @@ bus_zclr:
         move    a,y:>$9c1               ; DELAY SERVER role owner
         move    a,y:>$9c2               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNT, alongside its accumulators ---
-; The housekeeping is duplicated between this file and dsp/send_client.asm and
+; The housekeeping is duplicated between this file and modules/send/send_client.asm and
 ; must stay in step (BUS.md). x1 holds the NEW OFFSET from the rotation above.
 ; Without this the count grows without bound and the auto-gain above divides by
 ; garbage.
@@ -456,7 +456,7 @@ bus_mine:
 ; so the write addresses need no shift at all. THE READ TARGET IS TWO BUFFERS
 ; BACK, `write + 32 & $30` -- with four buffers that leaves an idle block on
 ; each side of the reader, which is the cross-core race fix (see the layout
-; note in dsp/send_client.asm).
+; note in modules/send/send_client.asm).
         move    y:>$900,a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
         add     #>$20,a                    ; two buffers on == two buffers back

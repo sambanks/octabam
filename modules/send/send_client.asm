@@ -10,7 +10,7 @@
 ;
 ; ---- shared absolute-Y bus scratch (>= 0x800, safe in both payloads, DSP.md
 ; section 11) -- this layout is shared with REVERB SERVER / DELAY SERVER and
-; must stay identical across dsp/send_client.asm, and whatever tasks 8/9
+; must stay identical across modules/send/send_client.asm, and whatever tasks 8/9
 ; build, or the buses will not agree on where anything lives:
 ;
 ;   Y:0x900            this block's WRITE OFFSET into the accumulators below:

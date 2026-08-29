@@ -4,7 +4,7 @@ An eight-line FDN reverb (an earlier four-line engine's source is deleted —
 recover it with `git show c1ce08d:dsp/reverb_server.asm`, in git history). It
 ships as **ChonVerb**, one of the three effects
 on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
-bank. Built by `tools/build_bus.py`; source `dsp/reverb_server.asm`.
+bank. Built by `tools/build_bus.py`; source `modules/chonverb/reverb_server.asm`.
 
 > ⚠️ **Reading this file:** sections below describing the four-line tank, the
 > six-tap early-reflection section, the HALL mode, or the 2048-word static
@@ -161,7 +161,7 @@ explicit default — an unlisted one silently keeps the donor's.
 
 ## Memory layout
 
-**Current layout (✅ measured; map from `dsp/reverb_server.asm`'s
+**Current layout (✅ measured; map from `modules/chonverb/reverb_server.asm`'s
 header):** the private allocation at the hardcoded
 base `Y:0x4000` (32,768 words, `0x4000–0xBFFF`) now carries tank lines only;
 every other buffer moved to the shared window, giving **65,536 words (1.49 s)

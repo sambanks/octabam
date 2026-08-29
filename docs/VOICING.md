@@ -18,7 +18,7 @@ buildup · `LW Pad Softspoken` sustained → tail density.
 
 ## The constants under test
 
-`dsp/reverb_server.asm`, the `md_*` block. Three values per mode:
+`modules/chonverb/reverb_server.asm`, the `md_*` block. Three values per mode:
 
 | mode | tap scale | early reflections | diffusion offset |
 |---|---|---|---|

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Static dead-store check for the r7 state block in dsp/reverb_server.asm.
+Static dead-store check for the r7 state block in modules/chonverb/reverb_server.asm.
 
 WHY. Three shipped bugs share one family: a state slot meaning two things at
 once. $83 (bit-23 garbage saturating the AGU -> the two-track freeze), $84+

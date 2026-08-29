@@ -140,7 +140,7 @@ Two spare bytes per track could host **one** extra halfword, not three, and
 the DSP-side companion packing would still be lost at every intermediate
 position. Not worth it.
 
-**Do instead (Tier 2)** 🟡: in `cf/tempo_cave.s` (hooked at `0x40004d40`,
+**Do instead (Tier 2)** 🟡: in `modules/tempo-sync/tempo_cave.s` (hooked at `0x40004d40`,
 `a2` = this track's record) add `move.l 0x460d16c8,%d0 ; move.w %d0,0x28(%a2)`
 inside the id-6/7 branch → `r6+$8` (documented dead) carries 0..127 every
 frame for our servers. The DSP thresholds FREEZE/MODE with hysteresis, and

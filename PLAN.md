@@ -314,7 +314,7 @@ make check                  # bus + cycles + verify, everything without hardware
 make cycles                 # per-effect cycles against the measured budget
 make verify                 # ColdFire menu tables (burn probe SKIPs -- see above)
 make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
-make verify-delay CAND=dsp/delay_new.asm   # bit-identity gate for delay refactors
+make verify-delay CAND=modules/bongdelay/delay_new.asm   # bit-identity gate for delay refactors
 ```
 
 `make bus-plain` (both servers on both cores) and `make burn` do not

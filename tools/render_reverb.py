@@ -271,7 +271,7 @@ def ensure_mem(build):
     return mem
 
 
-MODES = ["ROOM", "PLATE", "BIG"]     # dsp/reverb_server.asm's md_* order
+MODES = ["ROOM", "PLATE", "BIG"]     # modules/chonverb/reverb_server.asm's md_* order
 
 
 def ensure_mode_mem(mode, build):

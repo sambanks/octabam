@@ -106,13 +106,13 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify_burn.py
 
 .PHONY: verify-roll
-verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=dsp/reverb_rolled.asm
-	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=dsp/reverb_rolled.asm"; exit 1; }
+verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/chonverb/reverb_lforoll.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=modules/chonverb/reverb_lforoll.asm"; exit 1; }
 	python3 tools/verify_roll.py $(CAND)
 
 .PHONY: verify-delay
-verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=dsp/delay_new.asm
-	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=modules/bongdelay/delay_server.asm]"; exit 1; }
+verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/bongdelay/delay_new.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/bongdelay/delay_new.asm [REF=modules/bongdelay/delay_server.asm]"; exit 1; }
 	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
 
 .PHONY: verify-bus

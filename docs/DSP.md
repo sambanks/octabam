@@ -436,7 +436,7 @@ not the modulo scan.
 
 ### Stock uses `X:0x30000` as per-frame parameter staging
 
-This matters for `dsp/delay_server.asm`. Frame setup copies 72 words out of
+This matters for `modules/bongdelay/delay_server.asm`. Frame setup copies 72 words out of
 `X:0x30000` into `y:0x1b8`, then writes parameter values back into `X:0x30000`:
 
 ```asm
@@ -778,7 +778,7 @@ cave must re-store its value on every pass — which the tempo cave does,
 because the hook runs after the copy. Still free on those terms:
 `+0x28/+0x2a/+0x2c` (`r6+$8/$9/$a`).
 
-`cf/tempo_cave.s` (56 bytes, `m68k-elf-as -mcpu=5407`, bytes pinned in
+`modules/tempo-sync/tempo_cave.s` (56 bytes, `m68k-elf-as -mcpu=5407`, bytes pinned in
 `build_bus.py` and re-checked against a fresh assembly when the toolchain
 is present) sits at `0x400d7000` — inside the stock zero run
 `0x400d6b00..0x400d7c3c`, just past the menu clones. The hook replaces the
@@ -789,7 +789,7 @@ then **only for FX2 id 6 or 7** stores `tempo24` to `+0x24` (`r6+$6`) and
 down to 30 BPM — to `+0x26` (`r6+$7`), using the ColdFire's `divu.l`. d0/d1
 saved; ~40 cycles per our-track per frame. `NOTEMPO=1` omits it.
 
-DSP side (`dsp/delay_server.asm`, the block after the TIME decode), final
+DSP side (`modules/bongdelay/delay_server.asm`, the block after the TIME decode), final
 form after three revisions in the day — **TIME is a free dial with a STICKY
 SNAP** (R56): `free = knob·128+64`, `tol = free/16`; the last division
 M ∈ {2,3,4,6,8,9,12,16,18,24} clocks (1/32T … 1/4) with `|ticks·M − free|
@@ -804,7 +804,7 @@ on the unit, unexplained) and an always-synced 12-zone TIME (R54: worked,
 but "steps on a free dial" felt wrong) — are in the history. 1/2T and 1/4.
 are not candidates (never fit the line below ~170 BPM).
 
-**The panel prints the division** (`cf/time_fmt.s`, a second ColdFire cave
+**The panel prints the division** (`modules/tempo-sync/time_fmt.s`, a second ColdFire cave
 at `0x400d7080` (moved 24 Aug when the tempo cave grew to 104 bytes; was `0x400d7040`), 288 bytes, registered as TIME's `A` formatter with `B=0` —
 stock DELAY TIME's shape): the same rule with the same integers, its own
 `last/held` in cave RAM (per panel), `"1/8"` etc. while held, else ms.

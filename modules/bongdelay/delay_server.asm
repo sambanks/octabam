@@ -29,7 +29,7 @@
 ; ---------------------------------------------------------------------------
 ; BUS.md task 9: DELAY SERVER. An algorithm from scratch -- unlike REVERB
 ; SERVER (task 8), there is no existing engine to reuse, so this file is the
-; first build of it. Same three structural pieces as dsp/reverb_server.asm
+; first build of it. Same three structural pieces as modules/chonverb/reverb_server.asm
 ; (hardcoded base, shared bus plumbing duplicated verbatim, everything else
 ; is this file's own new code):
 ;
@@ -64,8 +64,8 @@
 ;    it, which is the cheapest possible way to find out.
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call runs the same position-0
-;    rotation-flip-and-clear housekeeping as dsp/send_client.asm and
-;    dsp/reverb_server.asm, split-aware-offset fix included, copied
+;    rotation-flip-and-clear housekeeping as modules/send/send_client.asm and
+;    modules/chonverb/reverb_server.asm, split-aware-offset fix included, copied
 ;    byte-for-byte (BUS.md Known limitations: this duplication is mandatory,
 ;    not stylistic -- a divergent copy desyncs the bus silently). The engine's
 ;    own input additionally sums in the shared DELAY bus accumulator, and its
@@ -147,7 +147,7 @@
 ;    return track has no pre-effect signal worth forwarding, and delay ->
 ;    reverb is the designed topology rather than a routing option.
 ;    Delay->reverb is allowed to carry WET;
-;    reverb->delay (dsp/reverb_server.asm's ->DELAY send) is dry only -- see
+;    reverb->delay (modules/chonverb/reverb_server.asm's ->DELAY send) is dry only -- see
 ;    that file's header for why the wet direction only ever runs one way
 ;    (closing it both ways reproduces the self-oscillation this project has
 ;    already seen once).
@@ -195,7 +195,7 @@
 ;                       never re-enters the feedback -- the non-cascading
 ;                       topology, v2 stage 2c
 ;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
-;                       with dsp/reverb_server.asm's convention)
+;                       with modules/chonverb/reverb_server.asm's convention)
 ;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load AND
 ;                       save -- same discipline as $6c/$6d). ONE age serves
 ;                       all four grains; each takes a fixed quarter-cycle
@@ -302,7 +302,7 @@
 ;              near 1/32T .. 1/4 of the tempo the ColdFire cave publishes at
 ;              r6+$6/$7 it snaps, holds that division through tempo changes,
 ;              and lets go when the knob moves; the panel prints the
-;              division name while held, ms otherwise (cf/time_fmt.s). See
+;              division name while held, ms otherwise (modules/tempo-sync/time_fmt.s). See
 ;              the STICKY SNAP block in proc. floor +
 ;              value*128 via the same and/asr trick dsp/reverb89.asm's PRE
 ;              uses (asr #$9 == >>16 then <<7, i.e. *128 without an mpy).
@@ -320,7 +320,7 @@
 ;              dry/wet crossfade had nothing left to
 ;              cross-fade and the slot became the host's own ->DELAY knob,
 ;              identical in range, headroom and 1/N share to the one every
-;              other track already has (dsp/send_client.asm p0).
+;              other track already has (modules/send/send_client.asm p0).
 ;   p5       -> FREE. Was ->VERB WET; the send is hardwired now (see $85).
 ;   p8       -> FREE. Was ->VERB DRY; the send is gone entirely.
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
@@ -357,7 +357,7 @@
 ;              the local override (dsp_host also drives companions through
 ;              -params indices 7/9/11 since 17 Aug 2026).
 ;   p6 ->VERB DRY -> this track's own pre-effect signal, parallel tap into the
-;              same REVERB ACC bus, same shape as dsp/send_client.asm's knobs.
+;              same REVERB ACC bus, same shape as modules/send/send_client.asm's knobs.
 ;              Reads x:(r6+$d) -- BUS.md task 11 gave DELAY SERVER its own
 ;              descriptor (cloned from SPRING REV's bytes, not SPRING's own
 ;              id/slot -- tools/build_menu.py), and $d is the page-2 slot
@@ -371,7 +371,7 @@
 
 init:
 ; Hardcoded base, no per-instance stash needed -- literal is identical for
-; every instance, same reasoning as dsp/reverb_server.asm's init.
+; every instance, same reasoning as modules/chonverb/reverb_server.asm's init.
 ; ---- seed the tracked rotation, so a cold boot cannot start out of step ---
 ; ⚠️ THE TRACKING CANNOT SELF-CORRECT A BAD START, and the commit that added it
 ; claimed otherwise. "This client legitimately read PRE-FLIP" and "this client
@@ -400,7 +400,7 @@ proc:
         move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
 
 ; ---- BUS.md: split-aware frame offset + position-0 election --------------
-; Verbatim from dsp/send_client.asm / dsp/reverb_server.asm (BUS.md Known
+; Verbatim from modules/send/send_client.asm / modules/chonverb/reverb_server.asm (BUS.md Known
 ; limitations: this copy must stay byte-identical across all three files).
         clr     a
         move    a,x:(r7+$67)            ; default: offset 0 (first call)
@@ -440,7 +440,7 @@ bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
-; dsp/send_client.asm / dsp/reverb_server.asm, must stay identical.
+; modules/send/send_client.asm / modules/chonverb/reverb_server.asm, must stay identical.
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
 ; code never runs there, so nobody flips the rotation or clears the
@@ -481,7 +481,7 @@ bus_off_done:
 bus_dohk:                               ; nobody did -- take over this block
 
 ; y:>$900 holds the WRITE OFFSET (0/16/32/48), not the bare buffer index --
-; see the layout comment in dsp/send_client.asm. FOUR buffers, so the rotation
+; see the layout comment in modules/send/send_client.asm. FOUR buffers, so the rotation
 ; is +16 mod 4 and the mask that does the modulo sanitises boot garbage too.
 ; No `asl #$4` follows: the value is already scaled.
         move    y:>$900,a
@@ -526,7 +526,7 @@ bus_zclr:
         move    a,y:>$9c1               ; DELAY SERVER role owner
         move    a,y:>$9c2               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNTs, alongside its accumulators --
-; Kept in step with dsp/send_client.asm / dsp/reverb_server.asm (the standing
+; Kept in step with modules/send/send_client.asm / modules/chonverb/reverb_server.asm (the standing
 ; rule: the housekeeping copies must stay identical). NOTE this copy was
 ; MISSING the REVERB count reset from v121 until the delay auto-gain landed -- dead
 ; code in every live build, because the XBUS payload gate keeps this payload
@@ -554,7 +554,7 @@ bus_seen:
         move    a,x:(r7+$88)
 bus_notfirst:
 ; ---- resolve THIS BLOCK'S WRITE OFFSET, ONCE, into r7+$86 ---------------
-; See the long note in dsp/send_client.asm: every client used to read y:>$900
+; See the long note in modules/send/send_client.asm: every client used to read y:>$900
 ; at its own dispatch time, which is not a stable value on payload B because
 ; core 0 owns the flip. This server is on payload B, so it is exposed.
 ; build_bus.py substitutes a per-payload body here; both leave the offset in
@@ -781,7 +781,7 @@ vrcnt_done:
         move    x0,x:(r7+$31)
 
 ; ---- warm-up: zero both lines and persistent state before running --------
-; Same tagged-counter idiom as dsp/reverb89.asm/dsp/reverb_server.asm, but a
+; Same tagged-counter idiom as dsp/reverb89.asm/modules/chonverb/reverb_server.asm, but a
 ; DIFFERENT TAG -- $2e0000, where reverb_server uses $2c0000. Both effects
 ; keep their counter in the same r7+$82 slot and the dispatcher does NOT clear
 ; the state block when a track's effect changes, so with a shared tag the
@@ -882,12 +882,12 @@ dwarmdone:
 ; and then HOLDS that division through tempo changes until the knob moves --
 ; Sam's "sticky snap" (a free-with-labels dial in the style of newer boxes,
 ; plus tempo-following once snapped). The ColdFire never told the DSP the
-; tempo (docs/DSP.md 6c), so the tempo cave (cf/tempo_cave.s) publishes two
+; tempo (docs/DSP.md 6c), so the tempo cave (modules/tempo-sync/tempo_cave.s) publishes two
 ; dead halfwords of this track's record:  r6+$6 = tempo24 (BPM*24) and
 ; r6+$7 = samples per MIDI clock (1/24 beat) in Q12.4 -- both <<8 like every
 ; published word. One signed mpy per candidate: x0 = ticks*16 << 8,
 ; y0 = M << 11  ->  a1 = (x0*y0*2) >> 24 = ticks*M.
-; RULE (cf/time_fmt.s, the panel formatter, uses the SAME integers):
+; RULE (modules/tempo-sync/time_fmt.s, the panel formatter, uses the SAME integers):
 ;   free = knob*128 + 64;  tol = free/16 (+-6%)
 ;   candidate = the LAST M in {2,3,4,6,8,9,12,16,18,24} with |ticks*M-free| < tol
 ;   knob moved since last block -> held = candidate;  else held stays
@@ -1079,7 +1079,7 @@ dwarmdone:
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
-; (dsp/reverb_server.asm). STAGE 1: CLEAN is the only engine, so every value
+; (modules/chonverb/reverb_server.asm). STAGE 1: CLEAN is the only engine, so every value
 ; -- including whatever an undefined descriptor slot leaves in this word on
 ; hardware -- runs CLEAN. When PITCH lands, the dispatch compares MSB-aligned
 ; short immediates on $69, and unknown values must keep falling through to
@@ -1189,7 +1189,7 @@ pintdet:
 pintend:
 
 ; ---- MIDI note -> PITCH interval (branch midi, 24 Aug 2026) ---------------
-; The ColdFire cave (cf/tempo_cave.s v2) re-stores the host track's held
+; The ColdFire cave (modules/tempo-sync/tempo_cave.s v2) re-stores the host track's held
 ; MIDI note into record halfword +0x2a = r6+$9 every frame (bits 8-15 after
 ; the <<8, like every other published byte); 0 = released or no cave. The
 ; OT's chromatic range is 72..96 with 84 = unison (the stock code p-locks
@@ -1542,7 +1542,7 @@ plagok:
 ; times and carried n generations of splice artifact. That compounding, not
 ; the splice itself, is most of what an ear calls "machine" -- and ChonVerb
 ; hit exactly this and fixed it the same way (its shimmer deliberately cut
-; its own cascade; see dsp/reverb_server.asm's SHIMMER block).
+; its own cascade; see modules/chonverb/reverb_server.asm's SHIMMER block).
 ;
 ; Now the loop recirculates the CLEAN tap and the shifter sits on the OUTPUT
 ; only, so every repeat is shifted exactly ONCE: a fixed-interval harmoniser
@@ -1682,7 +1682,7 @@ plagok:
 ; MODEFORK_MID -- alternative 1: PITCH
 
 ; ---- PITCH: dual crossfaded lerp heads per line (v2 stage 2) --------------
-; The shimmer-v3 machinery (dsp/reverb_server.asm SHIMMER block) reading the
+; The shimmer-v3 machinery (modules/chonverb/reverb_server.asm SHIMMER block) reading the
 ; DELAY LINE ITSELF -- no separate shift buffer exists or fits; both line
 ; buffers fill this server's entire half-window, and reading the line at
 ; moving lag is the Microcosm-family topology anyway (GRAIN inherits exactly
@@ -2001,7 +2001,7 @@ pmode:
 ; head evaluations; eight of them unrolled is ~1,048 words against payload
 ; B's ~940 free -- it does not fit. Rolled, the body is emitted three times
 ; (one builder, one reader per line) instead of eight. Precedent: the tank
-; roll and the LFO roll in dsp/reverb_server.asm.
+; roll and the LFO roll in modules/chonverb/reverb_server.asm.
 ;
 ; WHAT IS SHARED AND WHAT IS NOT. One base age serves all four grains, each
 ; taking a fixed quarter-cycle offset, so a single advance moves the whole
@@ -2960,7 +2960,7 @@ pdone:
 ; ---- ->VERB: wet (this delay's own output) + dry (this track's own
 ; pre-effect signal), scaled and summed into the shared REVERB ACC bus
 ; (BUS.md task 10). One-directional by construction -- see this file's
-; header and dsp/reverb_server.asm's ->DELAY note for why the reverse never
+; header and modules/chonverb/reverb_server.asm's ->DELAY note for why the reverse never
 ; carries wet.
         move    x:(r7+$87),x0           ; delay's own wet, this sample
         move    x:(r7+$85),y1           ; -VRB (p5; hardwired v3..R29)
@@ -2970,7 +2970,7 @@ pdone:
                                         ; forwarding, and the designed path is
                                         ; delay WET -> reverb
         asr     #$3,a,a                 ; ⚠️ THE 3 BITS OF HEADROOM EVERY OTHER
-                                        ; WRITER APPLIES. dsp/send_client.asm
+                                        ; WRITER APPLIES. modules/send/send_client.asm
                                         ; scales its contribution by 1/8 before
                                         ; accumulating, and reverb_server undoes
                                         ; it with `asl #$3` after the auto-gain

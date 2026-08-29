@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LEGACY GENERATOR -- emits the OLD FOUR-LINE engine. The shipping engine is
-the hand-maintained 8-line dsp/reverb_server.asm (ROOM/PLATE/BIG, rolled
+the hand-maintained 8-line modules/chonverb/reverb_server.asm (ROOM/PLATE/BIG, rolled
 tank, Y state table); nothing in the Makefile invokes this. Kept because
 its probe-derived constraints below remain the provenance record.
 

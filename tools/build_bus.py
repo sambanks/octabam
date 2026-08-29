@@ -9,7 +9,7 @@ Builds on tools/build_menu.py's already-verified ColdFire menu tables (same
 constants, reproduced here rather than imported so this stays a single
 self-contained build script like every other tools/build_*.py in this
 project) and adds what task 11 explicitly deferred: placing
-dsp/reverb_server.asm / delay_server.asm / send_client.asm's assembled code
+the selected modules' assembled DSP code (modules/<name>/*.asm)
 in real P memory, for BOTH payloads, and repointing X:0x215/X:0x235 so the
 three new ids (0x01 DELAY SERVER, 0x02 REVERB SERVER, 0x03 SEND) actually run
 them instead of whatever the byte-donor used to be.
@@ -1004,7 +1004,7 @@ def main():
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
     # See the MARKER MODE naming block above. Three marks, three sites in
-    # dsp/reverb_server.asm, each a distinct sound so one flash reports how
+    # modules/chonverb/reverb_server.asm, each a distinct sound so one flash reports how
     # far proc() executes on hardware:
     #   M1 proc entry      -> whole block asr #2   = -12 dB, always
     #   M2 past role lock  -> extra -6 dB on alternating calls = ~1.4 kHz AM
@@ -1385,7 +1385,7 @@ mkgo:""",
                   "no housekeeping to gate")
         # ...except under DEV, where the delay IS present and must reach the
         # same relocated scratch as everyone else -- 14 scratch refs and a
-        # ; XBUS_GATE marker are already in dsp/delay_server.asm, and its
+        # ; XBUS_GATE marker are already in modules/bongdelay/delay_server.asm, and its
         # housekeeping block exits to bus_notfirst exactly like the reverb's.
         # A delay that still read Y:0x900 would find an empty accumulator and
         # render silence, which is the failure this hatch exists to prevent.

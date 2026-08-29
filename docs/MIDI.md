@@ -25,7 +25,7 @@ raw image. `aaa` segfaults on this image.
 3. **Tier 3 — notes.** **Note → BongDelay PITCH interval** first ("funnest").
    HOLD semantics: the last note sticks after note-off; retune by tapping.
    A never-received note (0) → the PTCH select behaves exactly as today.
-4. `midi` off `main` @ `1a1929b`; caves in `cf/`; the level-voicing session
+4. `midi` off `main` @ `1a1929b`; caves in `modules/tempo-sync/` (originally `cf/`); the level-voicing session
    stays on `main` (parked, `tools/level_cap.py`).
 
 ## What the ColdFire says
@@ -97,7 +97,7 @@ never READ; a cave must re-store every pass, as the tempo cave already does.
 ## Design
 
 ### One cave, three words
-Extend `cf/tempo_cave.s`'s id-6/7 branch (a2 = record, a0 = id base; the
+Extend `modules/tempo-sync/tempo_cave.s`'s id-6/7 branch (a2 = record, a0 = id base; the
 track index is `a0 − 0x80000110`):
 ```
     +0x28  r6+$8   fader     move.l 0x460d16c8,%d0 ; move.w %d0,0x28(%a2)   (0..127)
@@ -136,11 +136,11 @@ on the RE below.
 
 ## Status (24 Aug 2026) — note → interval ON THE UNIT (R57, tag 76), hardware-confirmed
 
-- **Cave v2** (`cf/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
+- **Cave v2** (`modules/tempo-sync/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
   formatter cave moved to `0x400d7080`): `r6+$8` = fader+1 (1 = fully B,
   128 = fully A, 0 = no cave), `r6+$9` = held note or 0. Bytes pinned in
   `build_bus.py`. ✅ assembled, ⬜ hardware.
-- **Note → PITCH interval** (`dsp/delay_server.asm` after `pintend`): the
+- **Note → PITCH interval** (`modules/bongdelay/delay_server.asm` after `pintend`): the
   DSP latches the note in `y:>$090a` (HOLD); iterative `2^(-1/12)` multiply,
   ≤ 25 mpys per block. ✅ `make verify-midi`: notes 96/91/72/84 land within
   15 cents of the +12/+7/−12/unison selects; no-note is bit-identical.
@@ -169,7 +169,7 @@ on the RE below.
 1. ✅ **Tier-1 page 1 on hardware (24 Aug, no flash)**: CC 40 on T3's channel moved BongDelay TIME, CC 7 moved LEVEL; the OT echoes TIME as CC 40 with CC OUT on. Driven from `tools/ot_midi.py` (CoreMIDI via ctypes, no deps) through a Midihub `FROM A → FILTER(drop realtime) → OCTATRACK` pipe. Previously: ⬜: CC 40–45 on T1's channel
    → BongDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
    the descriptor enable bitmap or the writer's disabled-slot check bites us.
-2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`cf/tempo_cave.s`): fader + note words, relocate to the
+2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`modules/tempo-sync/tempo_cave.s`): fader + note words, relocate to the
    `0xff` padding. `make check` + hardware: `TPROBE`-style probe reading
    `r6+$8/$9` (`dsp/tempoprobe.asm` is the template).
 3. ✅ **Tier 3 DSP** — built, local-verified, flashed as R57 and ear-confirmed on the unit 24 Aug (the fun one): table + decode branch, local render, ear
@@ -181,7 +181,7 @@ on the RE below.
 
 ## What would falsify the plan
 - The cave's track index: `a0 − 0x80000110` is inferred from
-  `cf/tempo_cave.s`'s comment 🟡 — confirm in the writer before reading
+  `modules/tempo-sync/tempo_cave.s`'s comment 🟡 — confirm in the writer before reading
   `0x400d64c2(track)`.
 - Chromatic note-on on a **return** track (no sample) may be filtered before
   `0x400d64c2` is written (the switch at `0x4000e464` runs per listening

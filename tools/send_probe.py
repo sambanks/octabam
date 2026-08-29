@@ -35,9 +35,9 @@ WHY THIS EXISTS. The obvious local repro -- `dsp_host -inst 2` with two reverbs
 -- does not exercise the send path at all, for three independent reasons:
 
   * ChonVerb never WRITES the REVERB accumulator. It reads it (r7+$63) and
-    writes the DELAY accumulator (r7+$68). Only dsp/send_client.asm writes the
+    writes the DELAY accumulator (r7+$68). Only modules/send/send_client.asm writes the
     REVERB one, so with no SEND instance the reverb reads an all-zero buffer.
-  * The server-role lock (dsp/reverb_server.asm, y:>$982) makes a second
+  * The server-role lock (modules/chonverb/reverb_server.asm, y:>$982) makes a second
     REVERB SERVER instance rts immediately as a dry passthrough.
   * dsp_host took ONE -init/-proc pair, so every instance ran the same effect.
 

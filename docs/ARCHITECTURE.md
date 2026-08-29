@@ -2,7 +2,7 @@
 
 Architecture document consolidated from the educational reverse engineering of the
 firmware. It brings together everything that has been verified: hardware, OS format, kernel,
-storage, audio engine, sequencer, and the memory map. It complements `NOTES.md` (chronological
+storage, audio engine, sequencer, and the memory map. It complements `history/NOTES.md` (chronological
 log) and the scripts in `tools/`.
 
 > **Scope and honesty**: everything marked ✓ is verified (checksum from the firmware itself,

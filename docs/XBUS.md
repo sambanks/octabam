@@ -142,7 +142,7 @@ music untouched (top-8 bins 95.3% before and after)**.
 **The defective shimmer was excised; the artifact went with it.** The
 shimmer was then rewritten, and the rewrite **ships IN by default** —
 `NOSHIM=1` excises it (`build_bus.py` cuts everything between
-`; SHIMMER_BEGIN` and `; SHIMMER_END` in `dsp/reverb_server.asm`), and
+`; SHIMMER_BEGIN` and `; SHIMMER_END` in `modules/chonverb/reverb_server.asm`), and
 `SHMR` now defaults to **0**, so it is silent until the knob comes up —
 unlike the stuck-at-48 default that caused this whole episode. Excising
 rather than zeroing matters when it does come out: a zeroed coefficient
