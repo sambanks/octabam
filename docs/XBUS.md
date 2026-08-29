@@ -1,986 +1,229 @@
-> ⚠️ **READ `PLAN.md` FIRST.** This file is the *architecture* record — how the
-> cross-core bus works and why. The **plan** (end-state resource ledger, work
-> order, what to do next) lives in `PLAN.md`, which takes precedence over this
-> file's "Recommended order" section.
+> **This is the architecture record** — how the cross-core bus works, and why
+> it is shaped the way it is. The plan and work order live in `PLAN.md`. The
+> full development log this file was distilled from — every dated finding,
+> retraction and price — is `docs/history/XBUS_LOG.md`, with the complete
+> trail in git history.
 
-# The target architecture: one reverb, one delay, all eight tracks
+# The cross-core bus: one reverb, one delay, all eight tracks
 
-This replaces `BUS.md`'s bank-scoped design, whose founding constraint — "the
-two DSPs are a hard boundary" — is known to be false.
+Stock, an FX2 effect is an insert: it lives on one track and hears only that
+track. This project turns the FX2 slot into a **bus**: one track hosts a
+server (the reverb or the delay), every other track can select SEND and
+contribute to it, and the two servers — one per DSP core — can feed each
+other across the core boundary. This document is the mechanism.
 
 ## The design
 
 ```
-CORE 0   track 5   ChonVerb   Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo)  = 65,536 words = 1.49 s
-         6,7,8     Send
-CORE 1   track 1   BongDelay  Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi)  = 65,536 words = 1.49 s
-         2,3,4     Send
+CORE 0   track 5    ChonVerb    Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo) = 65,536 words = 1.49 s
+         6, 7, 8    Send
+CORE 1   track 1    BongDelay   Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi) = 65,536 words = 1.49 s
+         2, 3, 4    Send
 
-✅ MEASURED (marker-flash test): core 0 / payload A serves TRACKS 5-8,
-core 1 / payload B serves TRACKS 1-4 -- INVERTED from the natural assumption
-that A serves 1-4. No pre-specialization build could observe the mapping
-(both payloads carried every effect). Kept as-is on purpose: the reverb
-belongs downstream of the delay, so the delay serving the low tracks is the
-wanted topology.
-
-         every track sends to both, through accumulators in the shared window
-         delay wet -> reverb  (series, the direction that is already built)
+         every track sends to both buses, through accumulators in the shared window
+         delay wet -> reverb   (series, over the bus — the route stock has no path for)
 ```
 
-⚠️ **A plausible misreading — "all 4 of core 0's FX2 slots = 65,536 words" —
-is wrong, and wrong in a way that would collide.**
+✅ **The track↔core mapping is measured, and inverted from the natural
+assumption**: payload A / core 0 serves **tracks 5–8**, payload B / core 1
+serves **tracks 1–4** (marker-flash test, 10 Aug 2026). Kept deliberately —
+the delay on the low tracks puts it upstream of the reverb, which is the
+topology wanted anyway. Host the reverb on track 5, the delay on 1–4.
 
-The real pool is `32K private + 32K private + 64K shared = 128K words`, and it
-divides as above: each server gets its own core's two private slots plus **half**
-the shared window, **65,536 words each**.
+**Hosting is bank-bound; serving is not.** Under specialization (`SPEC=1`)
+each server exists in only one payload, so it can only be *hosted* on its
+own core's bank — but any of the eight tracks can send into it. Picking a
+server on the wrong bank runs a SEND instead: the absent server's dispatch
+id is deliberately aliased to the SEND client on that payload, so the wrong
+menu pick degrades to a send rather than silence or a wild jump.
 
-❌ **FALSE: "`X:0x255` is the same table in both payloads: FX2 slots are
-`0x4000 0x8000 0x30000 0x34000` on each core, so core 0's slots 3–4 and
-core 1's slots 3–4 are the same physical memory."** That claim is false, and
-the conclusion it leads to ("only if the delay is given `0x38000-0x3FFFF`,
-which the allocator never hands out at all") is false with it. ✅ **Measured**
-by dumping the table out of both payloads of the *raw* stock image — it is
-**not** the same table:
+**Each server's memory is 65,536 words (1.49 s at 44.1 kHz)**: its core's
+two private FX2 slots plus half of the 64K shared window at
+`0x30000–0x3FFFF`, where P, X and Y all alias ✅. The halves are not an
+invention of this project — the stock allocator's slot table (`X:0x255`,
+dumped from both payloads of the *raw* image ✅) already hands the low half
+to core 0 and the high half to core 1, so the split agrees with the machine
+rather than fighting it. The two cores' shared-window slots cannot collide
+even with all four taken.
 
-| | payload A | payload B |
+## What a send is
+
+A track on SEND runs a small client with two independent level knobs —
+`x:(r6+0)` drives **→DELAY**, `x:(r6+1)` drives **→REVERB**. Driving the
+wrong one renders silence, which reads as a broken algorithm; it is the
+first thing to check. Each block, the client adds its (level-scaled) audio
+into the current write accumulator of each bus it feeds and registers
+itself in that bus's client count. Servers consume the *summed previous*
+work — the bus is deliberately block-late.
+
+BongDelay's own wet can be sent onward into the reverb (`-VRB`, default 0):
+a **core-1 writer into core-0's reverb accumulator**, the series route. The
+reverse route (reverb → delay) is forbidden by design — it closes a
+feedback loop across both cores.
+
+**Total bus latency is exactly 2 blocks** — 32 samples on hardware, 30 in
+the emulator's 15-frame blocks — measured to the sample
+(`docs/TESTPASS.md`). One block from write-then-read, one from the
+four-buffer read-two-back below.
+
+## The accumulators: four rotating buffers
+
+Each bus keeps **four accumulator buffers**, rotated once per block, with
+the read pointed **two buffers back** from the write. This is the cross-core
+race fix, and the shape is forced:
+
+- **Two buffers cannot be made safe at any clear time.** At every instant
+  one is the write target and one the read target, so the only clearable
+  buffer is the one transitioning read→write — and that transition *is* the
+  flip a skewed reader on the other core may still be inside. Structural,
+  not tunable.
+- **Four, not three, because the count is a power of two.** The rotation is
+  two instructions (`+16 & $30`) and the read offset two more, no compare,
+  no clamp — and the mask sanitises boot garbage for free. Four is cheaper
+  than the two-buffer code it replaced.
+- **Read-two-back is the part that does the work**: it puts an idle block on
+  each side of the reader, so either core may lead or lag the other by up to
+  a full block. Cost: the second block of the latency above.
+- **It covers both directions at once** — core 1 reading core 0's clears
+  (the delay bus) and core 1 writing into core 0's reverb bus (`-VRB`) ride
+  the same rotation.
+
+All bus state — the rotation word, the four buffer sets for both buses, the
+client counts, the reciprocal tables and both role locks — lives in the
+**bus scratch block at `Y:0x36000`**, carved out of core 0's half of the
+shared window (`docs/CHIP.md` for the exact extent). Role locks make the
+first instance of a server the *only* one: a second instance of the same
+server returns as a passthrough, so one server per bank is enforced, and a
+server's cycle cost is charged once per bank however many tracks select it.
+
+## Housekeeping and the rotation
+
+Someone has to flip the rotation and clear buffers, exactly once per block,
+on one core. All housekeeping is **gated to payload A** (core 0); every bus
+participant carries the housekeeping block, and an election makes the
+first-dispatched core-0 instance — position 0, i.e. **track 5** — run it,
+so the mechanism survives whatever occupies track 5. Three rules the
+defects below burned in:
+
+- **Clients never read the shared rotation word directly.** Each core tracks
+  the rotation privately, advancing once per block, so all clients on a core
+  agree — a core-1 client that read the shared word at its own dispatch time
+  would straddle core 0's flip and land contributions in a dead buffer on
+  random blocks.
+- **The tracked rotation is seeded at `init`, and is NOT self-healing.**
+  Unseeded, a client booting one step out of phase sticks there — and writes
+  exactly the buffer being cleared, metallic on every core-1 sender after
+  every power cycle.
+- **The housekeeper clears the buffer that will be written NEXT block**, not
+  the one just vacated — the four-buffer rotation leaves an idle slot so the
+  clear can never race a skewed writer.
+
+## Auto-gain: eight senders drive a server exactly as hard as one
+
+The naive bus rails: senders sum, and five tracks at moderate level clip
+the shared word. Instead every writer contributes with **3 bits of headroom**
+(`asr #3`, so eight full-scale clients sum to exactly 1.0) and registers in
+a per-block client count; the server multiplies the summed block by **1/N**
+from a reciprocal table and shifts back up. Measured flat: 1 through 7
+senders render identically (THD −44.6 dB at every count where the
+un-gained bus had railed to −0.6). Two hard-won rules:
+
+- **Registration must be gated on the send knob.** A client that registers
+  and contributes nothing dilutes every real sender by N/(N+1) — **−6 dB
+  with a single sender** — and the symptom shows up in a *different*
+  effect's level. Both effects had a variant of this; both are gated now.
+- **Every writer registers, including the cross-core one.** `-VRB` applies
+  the same `asr #3` and increments the reverb count like any client; a
+  "fixed" full-scale writer whose effective gain varies as 8/N with the
+  sender count is not fixed at all.
+
+Perceptual consequence, by design: the law is 1/N across *registered*
+senders, so a quiet sender turns a loud sender's reverb down (measured to
+the dB against the 1/√N alternative — `docs/CAPTURE.md`, capture E).
+
+## The three cross-core defects — why all of the above
+
+Each was found on hardware, each only became visible once the previous one
+was fixed, and all three are hardware-confirmed closed (sweep of core-1
+tracks × delay modes, all clean):
+
+| # | defect | fix |
 |---|---|---|
-| `X:0x255` | `001000 004000 001c00 008000 002800` **`030000`** `003400` **`034000`** | `001000 004000 001c00 008000 002800` **`038000`** `003400` **`03c000`** |
-
-**Stock already separates the two cores' shared-window slots.** Payload A is
-handed `0x30000` and `0x34000`; payload B is handed `0x38000` and `0x3C000`.
-The allocator hands out `0x38000` on core 1 as a matter of course, and the two
-cores' FX2 slots cannot collide in the shared window even if all four were
-taken.
-
-This *strengthens* the split rather than changing it: core 0 owning
-`0x30000-0x37FFF` and core 1 owning `0x38000-0x3FFFF` is what the stock
-allocator already believes, so the hardcoded bases agree with the table
-instead of merely dodging it. The raw-vs-built comparison also confirms this
-build does **not** modify `X:0x255` in either payload — the difference is
-stock.
-
-Falsified by: dumping module `X:0x255` from `out/raw/section_3_MAIN_OS.bin`
-for both entries of `dsp_modmap.PAYLOADS`. Both servers still hardcode their
-bases, so the table is documentation here, not a dependency.
-
-**Three wins, and they are different resources. The third one is the easiest
-to miss.**
-
-*Cycles*: each core runs ONE effect with its full ~4,535 cycles/sample instead
-of both cores running both effects. Roughly doubles the effects budget.
-
-*Memory*: 372 ms → 743 ms (done, the 32K re-layout) → **1.49 s**.
-
-*Program space*: **the payloads no longer have to be the same code.**
-`build_bus.py` already assembles and places each payload independently — one
-`for tag, va, ln in PAYLOADS` loop, its own region, its own placement — and the
-2,724-word region is **per core**. Before specialization, both payloads
-carried all three effects and both sat at **2,723 of 2,724 words, ONE
-free**. Under one-server-per-core:
-
-| payload | carries | words | **free** |
-|---|---|---|---|
-| A (core 0) | SEND 212 + ChonVerb 2,018 | 2,230 | **494** |
-| B (core 1) | SEND 212 + BongDelay 507 | 719 | **2,005** |
-
-(Those were the figures when specialization landed; both payloads have grown
-into the room since. The build report is the live ledger — the current build
-prints A 2,669 used / **FREE 55**, B 2,723 used / **FREE 1**.)
-
-✅ Measured, not estimated: `XBUS=1 python3 tools/build_bus.py` already prints
-`FREE 484` per payload, because the XBUS path drops the delay to a 10-word stub.
-That build already is the specialization, in crude form.
-
-**Program space was the binding constraint on all three effects, and
-specialization alone removes it — before a single line of code is written.**
-
-**What the memory actually buys, since this is easy to get wrong: NOT a longer
-tail.** The current engine already does 8.7 s RT60 out of 743 ms of buffer —
-tail length comes from feedback gain. More memory buys longer taps, longer
-pre-delay and lower modal density, i.e. a **bigger, smoother space**. 743 ms is
-exactly why `REVERB.md` ruled out Blackhole-class and substituted a
-Valhalla-flavoured big mode. 1.49 s reopens that.
-
-## SOLVED: the metallic artifact was the SHIMMER
-
-**Hardware-confirmed.** With the shimmer excised, the metallic/staticky
-artifact is **GONE**. The send path was never at fault.
-
-### What it was
-
-The shimmer (a +12 pitch shifter in the feedback path) ran on every earlier
-build, at roughly half strength, **with no way to turn it off**:
-
-- Page-2 slot 6 is `SHMR`, and `build_bus.py`'s `DEFAULTS` set it to **48** —
-  a default left over from when that slot was SPEED, never revisited when the
-  slot became the shimmer amount.
-- The knob could not correct it, because a page-2 slot **draws a knob without
-  necessarily publishing a value** (`PARAM_PAGES.md` §"What a probe build
-  would have to establish"). So SHMR sat pinned at 48.
-- The shimmer is documented as metallic in its own right (`REVERB.md`: a blind
-  splice), so this was a known-bad effect stuck permanently half-on.
-
-### Two lessons, both general
-
-1. **The emulator had `SHMR=0` in every render.** The slot had been set to 0
-   in the render harnesses to keep LFO sidebands out of a THD metric.
-   **Zeroing a parameter to clean up a measurement hides the bug that
-   parameter causes.** Every "the send path renders clean" result was true
-   and useless.
-2. **"The reverb sounds right on its own track" does not rule the shimmer
-   out** — it does the opposite: at partial MIX the dry masks the shimmer,
-   while a SEND is heard 100% wet, which is exactly the asymmetry that makes
-   a stuck wet-path artifact look like a send-path fault.
-
-The measurement that matched was per-mode shimmer contribution —
-ROOM +19.8, PLATE +22.9, HALL +22.6, **BIG +1.8 dB** — against the hardware
-signature: **+20.1 dB at 2.5–5 kHz, discrete lines (HF peak/mean 40.9 dB),
-music untouched (top-8 bins 95.3% before and after)**.
-
-### The fix, and its state
-
-**The defective shimmer was excised; the artifact went with it.** The
-shimmer was then rewritten, and the rewrite **ships IN by default** —
-`NOSHIM=1` excises it (`build_bus.py` cuts everything between
-`; SHIMMER_BEGIN` and `; SHIMMER_END` in `modules/chonverb/reverb_server.asm`), and
-`SHMR` now defaults to **0**, so it is silent until the knob comes up —
-unlike the stuck-at-48 default that caused this whole episode. Excising
-rather than zeroing matters when it does come out: a zeroed coefficient
-still leaves the shifter reading and writing its buffer every sample.
-
-- Verified **bit-identical** to a `SHMR=0` render, so no side effects.
-- **2040 → 1950 words**, and the payload region's free space **11 → 101 words**.
-- Reclaims the 2048-word buffer at `base+0x7800`.
-- The code is preserved in git behind the markers, for the pitch-synchronous
-  rewrite (`REVERB.md`), which is where the shimmer should return from.
-
-### What this unblocks
-
-The send path is exonerated and the reverb now matches how it was voiced
-(the `VOICING.md` rounds were done without shimmer). Everything below in
-this document — the cross-core bus, the 1.49 s re-layout — is not blocked
-by the artifact.
-
-### Related findings
-
-- **BIG rings.** ~30 dB more HF than the other modes even with no shimmer: a
-  dense cluster of non-harmonic lines in 2–2.8 kHz. `md_big` sets the decay
-  scale `x:(r7+$1e)` to `$7FFFFF` = **exactly 1.000000**, where ROOM/PLATE
-  leave headroom (0.920/0.965; a third value, 0.980, belonged to the
-  since-removed HALL mode). Not simple runaway feedback — HF *falls*
-  as TIME rises and is already high at TIME=0, so it is the input/early path.
-  A mode at unity feedback scale is a hazard regardless.
-- ~~**Gain staging.**~~ **FIXED (bus auto-gain)** — the bus now auto-scales by the number
-  of clients that actually wrote it, so 1 to 8 tracks all drive the reverb
-  identically. Each SEND registers itself once per block in a parity-indexed
-  count at `Y:0x983/0x984` and writes its contribution with **3 bits of
-  headroom** (`asr #3`), so eight clients at full scale sum to exactly 1.0 and
-  the shared word can no longer be summed into its rail. The server reads the
-  count for the buffer it is READING, looks up 1/N in a table at `base+0x7800`
-  (rebuilt each block, in the space the shimmer freed), multiplies, and shifts
-  back up by 3. Measured before/after at 0.15 FS per send:
-
-  | sends | THD before | THD after |
-  |---|---|---|
-  | 1 | −44.6 | −44.6 |
-  | 3 | −16.3 | −44.6 |
-  | 5 | −3.0 | −44.6 |
-  | 7 | −0.6 | −44.6 |
-
-  Eight tracks at 0.35 FS each are now clean (−44.6). The reverb's OWN tank
-  still saturates above ~0.35 FS — unchanged, separate, and now the only limit.
-  (The DELAY accumulator received the same treatment separately — see "Still
-  open" below.)
-- **The payload region was FULL before specialization: 2723 of 2724 words, ONE
-  spare** — no longer true under `SPEC=1`; see the end of this file.
-- **Emulator/device alignment.** The proven gap is parameter delivery:
-  `-params` pokes `r6` directly, so every slot looks live locally, while on
-  hardware a slot can draw a knob and publish nothing. That single gap is
-  enough for the emulator to report "clean" on a build that publishes nothing
-  on the unit.
-
-### What was measured about the bus, and stands
-
-| Question | Result |
-|---|---|
-| Does the bus carry audio? | **Yes.** 175,972 non-zero samples with the reverb's own input silenced. |
-| Is the send path faithful? | **Yes.** SEND vs DIRECT within **0.3 dB THD at every level**. |
-| A regression in the send path's history? | **No.** Smooth drift across the candidate range, no step. |
-| Mismatched per-track splits? | **No.** All combinations ≈ −36.2 dB. |
-| Multiple sends? | **No bug.** They sum linearly. |
-| Cycle budget? | **Not close.** ~44 instr/sample against a ~2400 ceiling. |
-| LFO rate (measured, not inferred)? | **0.10–0.69 Hz**, as designed. An audio-rate `$2f` theory is falsified. |
-
-`dsp_host` supports what was needed to establish these: **list `-init`/`-proc`**
-(a different effect per instance, so a true SEND→SERVER run is possible),
-**`-inmask`**, **per-instance `-split`**, and **`-track`** (r7-relative words
-dumped every block, so a *rate* can be differenced; `-peekx` only snapshots
-once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
-
-⚠️ **Traps, each capable of producing a wrong conclusion:**
-- **Zeroing a parameter to clean up a metric hides the bug it causes** (above).
-- **`tools/dsp_host/` is COPIED into `vendor/` by `setup.sh`'s
-  `stage_dsp_host`.** Building without re-copying silently runs the OLD binary
-  — the giveaway is two different renders coming out byte-identical.
-- **`MODE=n` writes `out/mainos_bus_mode<n>.bin`, NOT `out/mainos_bus.bin`.**
-  Comparing the latter compares the ordinary build with itself, which reads
-  as "the MODE override is a no-op".
-
-## Steps 0–3 are DONE
-
-0. ~~Find the metallic artifact.~~ **DONE** — the shimmer, stuck half-on and
-   unturnoffable; excised by default, hardware-confirmed gone.
-1. ~~Relocated bus, same core.~~ **DONE** at `0x36000`.
-2. ~~Does a cross-core send arrive?~~ **DONE — cross-core works.**
-3. Cross-core timing — ⚠️ **the load-bearing step, and the early all-clear
-   was wrong.** (The shipped fix turned out to be buffering, not
-   synchronisation — see below.) An
-   earlier "not needed; the ICC stays unused" conclusion was drawn from
-   step 2, "does a cross-core send arrive?", which was validated **through
-   the reverb**. A reverb is the one consumer that physically cannot reveal
-   the defect: it smears any per-sample damage into a multi-second tail. The
-   measurement was structurally blind to what it was being used to rule out —
-   the same way a THD metric summing harmonics 2f..9f of a 438 Hz tone
-   cannot see a block-rate discontinuity.
-
-   **THE RACE.** All bus
-   housekeeping — the parity flip AND the clearing of the new write buffer —
-   is gated to payload A (`build_bus.py`, the XBUS_GATE substitution:
-   `beq ... ; payload B never housekeeps`). ChonVerb lives on payload A, so
-   the reverb is inherently in lockstep with the housekeeper and can never
-   race it. **BongDelay lives on payload B and reads accumulator buffers that
-   the OTHER core flips and zeroes asynchronously.** When core 0 flips
-   parity it immediately clears the new write buffer — which is the buffer
-   core 1 may still be reading. Zeros spliced into the audio at block
-   boundaries.
-
-   **Measured on hardware** (audio-interface capture, band energy normalised
-   to each capture's own 200–800 Hz musical band):
-
-   | band | delay via the BUS | delay via its HOST track | difference |
-   |---|---|---|---|
-   | 2.4–3.4 kHz | −4.1 dB | −26.5 dB | **+22.5 dB** |
-   | 3.4–6 kHz | −12.4 dB | −30.7 dB | **+18.4 dB** |
-   | 6–12 kHz | −14.1 dB | −45.2 dB | **+31.0 dB** |
-
-   Same engine, same output path, same feedback loop — the only difference is
-   whether the audio arrived over the bus. Broadband, inharmonic, no
-   structure: the signature of discontinuities in the data, not distortion of
-   it. Local renders of the identical configuration measure ~30 dB cleaner in
-   those bands and are unaffected by instance count (2 vs 8) or split state,
-   because **a single-core emulator is always trivially in lockstep and can
-   never reproduce this.**
-
-   ⚠️ The defect stays hidden as long as BongDelay is driven by its own host
-   track; the moment the bus path becomes the normal one, the artifact
-   appears.
-
-   ✅ **CONFIRMED ON HARDWARE, without a flash.** Moving BongDelay from
-   track 1 to track 4 stopped the stutter. Track position is
-   dispatch position within core 1's bank, so it moves WHEN in the block the
-   delay reads the accumulator relative to core 0's housekeeper — a timing
-   dependency, and no algorithmic cause has one. It also fixes the SIGN of the
-   race: track 1 is early in core 1's order, track 4 is late, so **the failure
-   mode is core 1 reading too EARLY** — getting to the accumulator before core 0
-   has finished with it.
-   ⚠️ Track position is a diagnostic, not a validated workaround:
-   clean-because-correct and clean-because-starved sound the same, so a
-   quiet-but-clean track must have its level checked against the host-track
-   path before being relied on.
-
-   ⚠️ Note that swapping the housekeeper to payload B (`HKB=1`) would NOT
-   have been a clean falsifier: it transposes the hazard rather than removing
-   it, because core 0's SENDS would then write buffers core 1 clears and
-   reads. Expect a change of character, not a disappearance.
-
-   ✅ **THE FIX: FOUR BUFFERS.** Not three, and not synchronisation.
-   - **Two cannot be made safe at any clear time.** At every instant one buffer
-     is the write target and the other the read target, so the only buffer that
-     can be cleared is the one transitioning read → write — and that transition
-     IS the flip a skewed reader may still be inside. There is no safe instant;
-     this is structural, not a tuning problem.
-   - **Four rather than three because the count is a power of two.** The
-     rotation becomes `+16 & $30` and the read offset `+32 & $30` — two
-     instructions each, no compare, no conditional transfer, and the mask that
-     does the modulo sanitises boot garbage for free. Three needs a clamp and
-     lets illegal garbage through. Four is *cheaper than the two-buffer code it
-     replaced*.
-   - **The read moved to TWO buffers back, and that is the part that does the
-     work.** One back leaves zero margin in exactly the direction that was
-     failing. Two back puts an idle block on each side of the reader, so either
-     core may lead or lag the other by up to a full block. **It costs one block
-     of bus latency — 16 samples, ~0.36 ms** — on a mechanism whose job is to be
-     a block late already.
-   - **It covers the other direction too.** BongDelay's `→VERB` writes payload
-     A's reverb accumulator from core 1 every sample, so the race ran both
-     ways; the delay→reverb wash was carrying it as well. That is not a
-     separate fix — the same rotation covers it.
-
-   **Gated by `tools/verify_bus.py`**: 17 layouts covering all three
-   copies of the housekeeping block, the self-healing election, 1–7 senders on
-   each bus, both cross-sends and split blocks. The restructure is proven exact
-   by pointing the candidate's read at the same buffer generation as the
-   reference — **17/17 bit-identical at lag 0** — which separates the layout
-   change from the latency change completely. With the read at its shipping
-   depth, every delay-path case is bit-identical at exactly one block.
-   ⚠️ Residual, characterised and NOT explained: at 6–7 senders, 2 adjacent
-   samples out of 16,305 differ by ≤33 LSB (−105 dB). It is absent from the
-   lag-0 control, so it is a consequence of the added latency rather than of
-   the layout. Not chased further; it would matter if it turned out to be a
-   clip boundary rather than a rounding, and the falsifier is that it should
-   scale with signal amplitude — measured, it does not.
-
-   ---
-
-   ⚠️ **A SECOND CROSS-CORE DEFECT, CONFIRMED ON HARDWARE. THE FOUR BUFFERS
-   DID NOT FIX THIS ONE, AND IT WAS NEVER THE SAME BUG.**
-
-   The four-buffer rotation cured *clear-vs-read*, hardware-confirmed: the
-   delay on track 1 over the bus is clean. What remains is **which buffer each
-   client picks**, and it is a different failure.
-
-   **Every client reads the shared rotation word whenever it happens to run.**
-   Core 0 owns the flip. Core 0's own clients are dispatched right after it and
-   therefore always see a stable value. **Core 1's clients read it
-   asynchronously**, so when the flip lands inside core 1's dispatch window,
-   the client that straddles it reads the old rotation on some blocks and the
-   new one on others. Its contribution then lands in a buffer the server has
-   already consumed on some blocks and the right one on others — block-rate
-   amplitude jitter, which is broadband hash that scales linearly with the send
-   and never changes character.
-
-   **The evidence, all on hardware, all free:**
-
-   | configuration | result |
-   |---|---|
-   | T2 (core 1) → delay, mode TAPE | **static** |
-   | T3, T4 (core 1) → delay, same mode | clean |
-   | T6 (core 0) → delay | clean, at any level |
-   | T3 + T6 together | clean |
-   | same sample moved onto T2 | still static — **not the sample** |
-   | T2 dry, sends at zero | clean and healthy — **not the source** |
-   | T2 → delay, mode GRAIN or CLEAN | clean — **the mode moves it** |
-   | T6 → delay, mode TAPE | clean — **TAPE alone is not enough** |
-   | **T5 ChonVerb → Send, everything else untouched** | **static GONE** |
-
-   The last row is the one that settles it: **T5 is core 0's position 0, i.e.
-   the housekeeper.** Changing which effect runs the flip, and how long it
-   takes, moves the flip in time — and that alone cured a defect on a core-1
-   signal path. No per-track, per-sample, per-mode or per-level explanation can
-   produce that.
-
-   ⚠️ **It needs a core-1 client AND a particular timing**: exactly one
-   (core-1 track, delay mode) combination is bad at a time, and it relocates
-   when either the mode or core 0's load changes. **Any "it is fixed" claim
-   must therefore be tested across several mode/track combinations** — a single
-   clean configuration proves nothing, and spot-checks have passed
-   configurations that a sweep then failed.
-
-   🟡 **It probably explains the reverb static too, and that is inferred, not
-   measured.** BongDelay's `→VERB` is a **core-1 writer into the REVERB
-   accumulator** — hardwired on at the time of this diagnosis (it has since
-   become the `-VRB` knob, default 0) — so it should jitter exactly the same
-   way.
-   ChonVerb then consumes a per-block-jittering sum. It would explain why the
-   static appeared the moment a ChonVerb was added (the corruption always
-   existed; a reverb gave it a consumer) and why PLATE and BIG show it while
-   ROOM does not — long tails sustain broadband noise, short damped ones bury
-   it. That also **retires the 7–9 dB per-mode gain spread as the explanation**
-   for the mode dependence; the gain measurement stands on its own
-   but it never predicted PLATE.
-
-   **THE FIX — a design job, not a gate.** Clients on a core must agree with
-   each other on the rotation, instead of each reading the shared word at its
-   own dispatch time. The shape: **latch the rotation once per core per block**
-   into core-private low Y (which is genuinely per-core — that is where the bus
-   lived before XBUS relocated it) and have every client on that core read the
-   latch. Cross-core the two cores may then sit one buffer apart, but that
-   offset is CONSTANT rather than jittering, and a constant one-block offset is
-   inaudible — the four buffers already provide the margin for it.
-   ⚠️ Unresolved in that sketch, and the reason it is not costed here: payload B
-   has no housekeeper, so "the first client on this core this block" needs its
-   own per-core election, and the obvious trigger (private latch != shared
-   word) is wrong — a client running after the flip would re-latch and
-   reintroduce the jitter. It needs a real per-block trigger.
-   🟡 The whole approach assumes the two cores are RATE-LOCKED (same sample
-   clock, fixed phase offset) and only phase-offset. If they can actually drift,
-   a constant offset is not achievable and this needs an elastic buffer with
-   its own read pointer instead. **That assumption is unverified.**
-
-   **Workaround that needs no flash: send to the delay from tracks 5–8.**
-   Core-0 senders are in lockstep with the housekeeper and are structurally
-   immune. Measured clean at any level, alone and alongside core-1 senders.
-
-   ---
-
-   ✅ **ALL THREE CLOSED, CONFIRMED ON HARDWARE.**
-   A sweep of T2/T3/T4 against delay MODE 1–5 with a ChonVerb on track 5
-   shows **all modes good on all tracks**. The three defects, in the order
-   they were found, each needing the previous one fixed before it was visible:
-
-   | # | defect | fix |
-   |---|---|---|
-   | 1 | **clear-vs-read** — core 0 zeroing a buffer core 1 was reading | FOUR accumulator buffers (two cannot be made safe at any clear time) |
-   | 2 | **the rotation read** — every client read the shared rotation at its own dispatch time, so the core-1 client straddling core 0's flip disagreed with the rest | per-core rotation tracking |
-   | 3 | **clear-vs-write** — core 0's clear racing core 1's writers | clear the buffer written NEXT block (four buffers leave an idle slot) |
-
-   ⚠️ Plus one defect in the fixes themselves: the tracked rotation
-   must be seeded at `init`. Uninitialised, a client booting one step ahead is
-   indistinguishable from one legitimately reading pre-flip, so it sticks — and
-   once the clear moved ahead, a stuck client writes exactly the buffer being
-   cleared: metallic on every core-1 sender after every power cycle.
-   Seeding at `init` fixes it. **The tracking is NOT self-healing.**
-
-   **THE DIAGNOSTIC LEVER, and it costs no flash: change what is on TRACK 5.**
-   T5 is core 0's **position 0 — the housekeeper** — so swapping ChonVerb for
-   Send moves the flip in time and nothing else. It has isolated core-1
-   defects repeatedly, and it is the first thing to reach for if any of this
-   returns.
-
-   ⚠️ **A SINGLE CLEAN CONFIGURATION PROVES NOTHING.** These artifacts
-   RELOCATE: exactly one (core-1 track, delay mode) pairing is bad at a time,
-   and it moves whenever the mode or core 0's load changes. Spot-checks have
-   passed builds that a sweep then failed.
-
-   🟡 **STILL UNVERIFIED: that the cores are RATE-LOCKED** and merely
-   phase-offset. The per-core tracking advances one step per block and assumes
-   no drift. Nothing local can test it; a slow return of the artifact over
-   minutes would be the symptom.
-
-   ⚠️ **NO LOCAL TEST IS EVIDENCE THE RACE IS FIXED.** dsp_host is single-core
-   and always trivially in lockstep, so no local test can reach a cross-core
-   timing defect. The gate proves the bus still does the same thing. Only the
-   unit can say the stutter is gone, and the decisive test is the one that
-   exposes it: BongDelay on **track 1**, fed over the bus.
-
-Steps 4 (memory re-plan) and 5 (the effects) are what remains, and the
-re-evaluation below is what they should now be.
-
----
-
-# THE RE-EVALUATION — what a whole core per effect actually buys
-
-## The constraint has INVERTED, and this is the headline
-
-Every optimisation in this project so far traded program words for cycles,
-because cycles were the wall: a density pass (432 → 297), a Hadamard
-rewrite (24 words → 16), an early-reflection rewrite (254 → 181 cycles).
-That rule is now **backwards**.
-
-| resource | before | after specialization | ratio |
-|---|---|---|---|
-| cycles, core 0 (reverb + 3 sends, FX1 filters off) | ~2,432 spare ✅ | **~2,576 spare** 🟡 estimate; ✅ 1,392 spare measured, of which **819**/sample remains for new work (the bank has since consumed 573) | ~3.4× the engine's 763 |
-| cycles, core 1 (delay + 3 sends) | — | **~3,176 spare** 🟡 | ~19× the placeholder's 163 |
-| Y memory per server | 32,768 words / 743 ms ✅ | **65,536 / 1.486 s** ✅ | 2× |
-| **program space, payload A** | **1 word** ✅ | **494 words** ✅ at specialization; the build report is the live ledger (**55** in the current build) | — |
-| **program space, payload B** | **1 word** ✅ | **2,005 words** ✅ | — |
-
-(Cycle figures are the measured 2,432 spare — filters off, full bank live —
-plus the per-sample cost of whatever that core no longer runs. 🟡 because the
-measurement was taken in a different configuration, not because the arithmetic
-is loose. Re-run the burn probe in the real configuration before spending the
-last few hundred.)
-
-**So: spend cycles to buy program words, everywhere.** Two consequences that
-are worth more than any voicing change:
-
-- **Roll the unrolled loops back up.** *(✅ Done — the roll has shipped;
-  what follows is the pre-roll argument, kept as the record.)* The reverb's
-  four tank lines are unrolled: tank taps 101 instructions, feedback/write-back 101, STAGE-2 read
-  offsets 44, LFOs 19 — **265 instructions for four lines, ~66 per line** ✅
-  (counted). A hardware `do` on the 56300 is zero-overhead, so the cost is
-  per-line constants becoming table reads instead of immediates. **Eight lines
-  rolled is SMALLER than four lines unrolled.** Mechanics, the strided state
-  layout and the two traps: §"Rolling the tank loop" below.
-- **AGU modulo is no longer mandatory.** Power-of-2 alignment is what caps a
-  single delay line at 16,384 words in the private region. A manual compare-
-  and-wrap costs ~4–6 cycles/sample — unaffordable before, free now — and
-  unlocks arbitrary line lengths. This is the only way BongDelay gets a
-  single 1.49 s line.
-
-## The shared window can hold CODE, and it has only ever been spent on buffers
-
-**Program space is the one resource the shared memory and the
-cross-core work did not touch at all.** P/X/Y alias in `0x30000-0x3FFFF` ✅, so
-those 65,536 words are addressable as **program memory** just as readily as
-buffer, and nothing has ever tried it.
-
-Stock already does it, in production, today ✅:
-
-| | |
-|---|---|
-| `P:0x30000` | 171 words — the DSP host-port loader + ESAI setup, payload A |
-| `P:0x31000` / `P:0x32000` | bootstraps A (50 words) and B (58) |
-| `P:0x38000` | 19 words — **payload B's entry stub, which `jsr`s into `0x30082`/`0x3008a`** |
-
-That last row is the existence proof and it is the important one: it is a live
-P module, loaded by the ordinary module loader (space byte 0 = P, exactly like
-this project's code), executing after boot, and reaching **across into payload
-A's code**.
-
-**`0x38000` is also the half that SURVIVES.** Init zeroes `0x30000-0x37FFF` —
-all 32,768 words, disassembled at `P:0x040` ✅ — so anything preloaded into the
-lower half is wiped. The upper half is not zeroed, which is exactly why that
-19-word stub is still there to be called.
-
-🟡 **So the hypothesis: effect code can live at `P:0x38000+`.** The
-dispatcher does `jsr (r2)` with an address out of `X:0x215`/`X:0x235`; a 24-bit
-`0x38000` is as valid a target as `0x01000`, and the loader already places P
-modules there.
-
-**What would falsify it:**
-- ~~The OMR memory map may not expose the shared window as P to a core.~~
-  ✅ **DEAD — Ch. 3 has now been read.** "Shared RAM" appears in the **Program**
-  column of all five memory-map figures (3-2 through 3-6), including the
-  default. The window is program-addressable in every configuration.
-- Instruction fetch there costs **1 wait state** (vs 0 as X/Y) ✅, so code in
-  the window runs slower. Cheap now that cycles are abundant, but it must be
-  measured, not assumed.
-- **Contention.** Instruction fetch is a bus access, so code in an 8K block the
-  other core is hammering costs arbitration. Put code in a block that core does
-  not touch.
-
-## And the bigger one: Ch. 3 says the 8K program wall is a SETTING
-
-**This is why program space has been so desperate, and it was never a property
-of the chip.** ✅ Read from `DSP56720RM.pdf` Ch. 3 and confirmed against the
-image:
-
-| map | MS | MSW1 | MSW0 | **Program** | X | Y | usable? |
-|---|---|---|---|---|---|---|---|
-| Fig 3-2 **default** | 0 | – | – | **8K** | 36K | **48K** | ← what stock runs |
-| Fig 3-3 | 1 | 1 | 1 | **16K** | 36K | 40K | ✅ costs `Y:0xA000-0xBFFF` |
-| Fig 3-4 | 1 | 1 | 0 | **24K** | 36K | 32K | ✅ costs `Y:0x8000-0xBFFF` |
-| Fig 3-5 | 1 | 0 | 1 | **32K** | 36K | 24K | 🟡 eats into FX2 slot 1 |
-| Fig 3-6 | 1 | 0 | 0 | 36K | **32K** | 24K | ❌ **ruled out, see below** |
-
-Every row totals 92K words. **The three spaces are one pool of RAM that OMR
-redistributes**, and the trade is word for word.
-
-**Stock runs the default map, and this is now measured, not assumed:**
-
-- ✅ **Nothing writes OMR.** Disassembling every P module in both payloads finds
-  exactly two OMR-class instructions, both `andi #$fc,mr` — that is the *mode
-  register*, not OMR. `MS`, `MSW1`, `MSW0` all reset to 0 (bits 7 and 22:21,
-  Table 5-2), so the core boots the default map and nothing ever changes it.
-- ✅ **The hardware Y sweep matches Fig 3-2 exactly** — Y present
-  `0x00000-0x0BFFF`, absent from `0x0C000`. That is the default map's 48K, to
-  the word.
-- ✅ **Payload A's P code ends at `0x01fdf` — 33 words short of `0x2000`**, the
-  top of the default map's 8K. 8,159 of 8,192 used. *That* is the wall, and the
-  2,724-word donor region sits inside it.
-
-**Fig 3-6 is ruled out by measurement:** it drops X to 32K (`0x0-0x7FFF`) and
-stock's X modules reach **`0x08d98`**. It would break stock outright.
-
-**The prize.** `MS=1, MSW1=1, MSW0=1` **doubles program RAM, 8K → 16K: +8,192
-words**, against a region with *one* free word today. Cost: `Y:0xA000-0xBFFF`,
-i.e. the reverb's private pool drops 32K → 24K, so the reverb goes 65,536 →
-57,344 words (1.49 s → 1.30 s). Fig 3-4 buys +16,384 P words for 1.09 s.
-
-🟡 **Untested, and the risk is real.** OMR must be written **before any module
-is loaded into the newly-available P**, which means patching the boot path —
-the natural site is bootstrap A/B (`P:0x31000`/`0x32000`, 50 and 58 words, in
-the shared window and already patchable by the build). Open questions, none
-answered:
-
-- Does the ColdFire-side loader assume the default extents anywhere?
-- Does anything in stock's *runtime* allocate Y above `0x9FFF`? No loaded
-  module does (the highest Y module ends at `0x795`), but the FX2 allocator
-  hands out `Y:0x8000` as a slot base, and that slot's top half disappears.
-  Under the three-entry menu only ChonVerb lives there, so the build controls
-  it — but that is an argument about this build, not about stock.
-- Is the switch safe *after* reset at all, or only at reset?
-
-**Sequence if this is ever taken: change the map first and prove the machine
-still boots with the code where it already is.** Do not combine it with moving
-code into the new region — that is two variables, and `REVERB.md`'s rule is
-one change per flash.
-
-**The trade, and it is the honest part: shared words spent on code are words
-neither effect gets as buffer.** 4,096 words of P would take BongDelay from
-65,536 to 61,440 (1.49 s → 1.39 s). Against a program region that has *one*
-free word today, that is an extraordinary rate of exchange — but it is a trade,
-not the free lunch the alias makes it look like.
-
-**Do not confuse this with specialization.** Specialization (494 / 2,005 free
-words at landing; the current build report reads **55** / **1**) is real, costs
-nothing, and needs no new hypothesis. This is the lever
-*after* that one, and it should be tested only if the reverb's 494 words (now
-32) prove too tight — which rolling the tank loop may well prevent.
-
-## What to build with it — the reverb
-
-The known limit is modal overlap, and `REVERB.md` closed it as "no structural
-lever left under the 32K ceiling". **1.49 s and 2,500 spare cycles reopen it,
-and the lever is more lines, not longer ones.**
-
-Mode spacing is `sr / total_delay_read`. Today: 12,574 samples → 3.5 Hz →
-overlap **0.157** at RT60 4 s, against the ≥ 1 that reads as smooth.
-
-Doubling total delay halves the spacing, and there are two ways to do it:
-**8 lines × 4,096**, or **4 lines × 8,192**. Both give overlap ~0.31. Take the
-first — at equal total delay, more short lines beat fewer long ones (more
-independent paths, richer Hadamard mixing, no drift toward a longer and more
-separated character), and it keeps the per-line length the modes were voiced
-against. *(✅ Decided and shipped: the 8-line rolled tank.)*
-
-A layout that fits 65,536 words exactly:
-
-| offset | size | what |
+| 1 | **clear-vs-read** — core 0 zeroing a buffer core 1 was still reading: zeros spliced in at block boundaries, +18 to +31 dB of broadband hash on the bus path only | four buffers, read two back |
+| 2 | **the rotation read** — each client read the shared rotation at its own dispatch time; the core-1 client straddling core 0's flip disagreed with the rest, block-rate amplitude jitter | per-core rotation tracking |
+| 3 | **clear-vs-write** — core 0's clear racing core 1's writers | clear the next-block buffer |
+
+Plus one defect in the fixes themselves: the unseeded rotation tracking
+(above). The full diagnostic trail — including the measurement that cracked
+it, swapping what ran on track 5 — is in `docs/history/XBUS_LOG.md`.
+
+## Standing caveats — what any future claim must respect
+
+- 🟡 **The fix assumes the cores are rate-locked** (same sample clock,
+  constant phase offset). Unverified, and nothing local can verify it. The
+  symptom of drift would be a slow return of the artifact over minutes.
+- ⚠️ **A single clean configuration proves nothing.** These artifacts
+  RELOCATE: exactly one (core-1 track, delay mode) pairing is bad at a
+  time, and it moves when the mode or core 0's load changes. Spot-checks
+  have passed builds that a sweep then failed — any "fixed" claim needs a
+  track × mode sweep.
+- ⚠️ **No local test is evidence about a cross-core race.** `dsp_host` is
+  single-core and always trivially in lockstep. The bit-identity gate
+  proves a change preserved behaviour; only the unit can say a timing
+  defect is gone, and the decisive configuration is the one that exposed
+  it: BongDelay on track 1, fed over the bus.
+- **The free diagnostic lever, costing no flash: change what is on track
+  5.** T5 is core 0's position 0 — the housekeeper — so swapping ChonVerb
+  for a Send there moves the flip in time and nothing else. It has isolated
+  core-1 defects repeatedly.
+- Characterised, unexplained residual: at 6–7 senders, 2 samples in 16,305
+  differ by ≤33 LSB (−105 dB) versus the lag-0 control. It does not scale
+  with amplitude (the falsifier for a clip boundary), so it is filed as
+  rounding under the added latency and not chased.
+
+## Verification
+
+`make verify-bus` is the gate for any bus-layout change: **17 layouts** —
+all three carriers of the housekeeping block, the election, 1–7 senders per
+bus, both cross-sends, split blocks — rendered and compared **bit-for-bit**
+against a stamp taken before the edit (`SAVE=1` first). The four-buffer
+restructure itself was proven exact by pointing the candidate's read at the
+same buffer *generation* as the reference — 17/17 bit-identical at lag 0 —
+separating the layout change from the latency change completely. See
+`docs/HARNESS.md` for where this sits in the wider rig.
+
+## The shared window, mapped
+
+| range | what | notes |
 |---|---|---|
-| tank | 8 × 4,096 = 32,768 | eight lines, 8×8 Hadamard |
-| input diffusers | 8 × 2,048 = 16,384 | one per line |
-| pre-delay | 8,192 | 186 ms, double today's |
-| in-loop allpasses | 4 × 2,048 = 8,192 | double today's two |
+| `0x30000–0x30047` | stock's per-frame parameter staging ✅ | rewritten every frame — never usable |
+| `0x30000–0x37FFF` | core 0's half: ChonVerb's relocated buffers (`0x30000`, `0x34000`), shimmer line, tank state | fully owned — no free ground (`CLAUDE.md`) |
+| `0x31000` / `0x32000` | stock bootstraps A and B ✅ | dead after boot |
+| `0x36000+` | **bus scratch** — rotation, 4×2 accumulator sets, counts, reciprocals, role locks | the one region both cores touch |
+| `0x38000–0x3FFFF` | core 1's half: BongDelay's LineL + LineR, 16,384 words each | ping-pong, ~371 ms per line |
 
-Costs, against ~2,576 spare cycles and 494 free words *(historical pricing —
-the work has since shipped)*:
+Constraints that shaped it: AGU modulo addressing needs power-of-2
+alignment, so big buffers start at `0x30000`/`0x34000`/`0x38000`/`0x3C000`;
+the private and shared regions are not contiguous (`0xC000–0x2FFFF` is
+absent), so no single 128K buffer; and the DSP56720 manual guarantees no
+bus contention while the cores touch different 8K blocks ✅ — the half/half
+split satisfies that everywhere except the scratch, which both cores must
+touch by definition and which is a few hundred words in one block.
 
-- **Cycles** 🟡 ~+450 for four more lines, ~+32 for the 8-point fast Hadamard
-  (12 butterflies vs 4). Call it **~1,250 total** against 2,576. Comfortable.
-- **Program space** 🟡 ~+340 instructions ≈ **450–500 words** if unrolled,
-  against 494 free. *Fits, with nothing left, and that estimate carries ±20%.*
-  **Roll the tank loop and the problem disappears** — this is exactly why the
-  inversion above matters more than the feature does.
+A delay line must never be based in core 0's half: it would sweep the
+rotation word, all four accumulator sets and both role locks every 16,384
+samples and blow up any multi-server layout (measured, 12 Aug 2026 — the
+DEV build places the delay at its shipping `0x38000` base for exactly this
+reason).
 
-## Rolling the tank loop — what it means, and why it is the enabler
+## Program space: the payloads are different programs
 
-> ✅ **DONE** — bit-identical proof via `make verify-roll`.
-> The section below is the design record, kept as written.
-
-**"Rolling" = turning an unrolled loop back into a loop.** The tank's four
-delay lines are not written as a loop; the same code is written out four times
-with different registers and constants.
-
-✅ **Measured, not impression:** the tank-tap block is **4 × 25 instructions,
-and once constants and address registers are normalised all four repeats are
-identical**. Same shape in feedback/write-back (101), the STAGE-2 read offsets
-(44) and the LFOs (19). **265 instructions doing 66 instructions' worth of
-distinct work.**
-
-Unrolling is the classic spend-words-to-save-cycles trade, and it was right
-when cycles were the wall. It is now backwards — which is why **8 lines rolled
-is SMALLER than 4 lines unrolled**, and why the modal-density fix stops costing
-program space at all instead of needing ~450–500 words against 494 free.
-
-### It is more tractable than it looks: the state is already strided
-
-✅ Four of the five per-line state groups are **already stride-1 across the
-lines**, so rolling them is mechanically `base + k`:
-
-| state | line 0 | 1 | 2 | 3 | |
-|---|---|---|---|---|---|
-| tap copy | `$16` | `$17` | `$18` | `$19` | ✅ stride 1 |
-| damping | `$3a` | `$3b` | `$3c` | `$3d` | ✅ |
-| LO state | `$41` | `$42` | `$43` | `$44` | ✅ |
-| interpolation carry | `$47` | `$48` | `$49` | `$4a` | ✅ |
-| LFO fraction | `$24` | `$22` | `$57` | `$59` | ❌ irregular |
-
-The odd one out is **not sloppiness** — it is the deliberate crosswise LFO
-assignment (lines 0 and 2 on the inverse triangle, 1 and 3 on the forward, see
-`REVERB.md` §Signal path). Fix by reordering the LFO state array so line *k*
-reads slot *k* while preserving the same phase relationships. ⚠️ The **pairing
-rule** applies here and is easy to get wrong: each line's interpolation
-fraction must come from the same LFO as the integer offset its `nK` was built
-from. Getting that wrong puts a 1-sample sawtooth at ~76 Hz on the affected
-lines, measured at −29.6 dB — the loudest artifact ever found in this engine.
-
-**Bonus: it frees registers.** `r1–r4` hold the four line pointers and `m1–m4`
-*all hold the same `$fff`*. Rolled needs one pointer and one modifier, freeing
-three address registers and three modifiers — which `REVERB.md` already wants
-for the r7-access optimisation, and which is the tax that halved the
-Hadamard rewrite's saving.
-
-### Two things that will bite
-
-- **`r7` is FULL.** The tank taps alone use **20 of its words for 4 lines**;
-  8 lines wants 40, and `$84+` **hangs the DSP**.
-  The extra state must go to **absolute Y in the server's own buffer** — a
-  proven pattern (`dsp/cycleburn.asm`, in git history, parks LFO and damping
-  state there, and
-  a probe build recorded in `DSP.md` showed absolute Y works where `r7+$84`
-  hangs). There is
-  exactly one server per bank, so absolute-Y scalars cannot collide.
-  **The rolling re-layout and the r7-full problem have the SAME fix**, which is
-  the argument for doing them together rather than in sequence.
-- 🟡 **Nested `do`.** The tank loop would sit inside the existing
-  `do n7,>END` sample loop. The 56300 supports nested hardware loops via the
-  stack, but **verify it rather than assume it** — the failure mode here is a
-  wrong RT60, not a crash, which is exactly the class of bug the `tfr a,b`
-  mis-encoding produced and which reads as "voicing changed".
-
-**Verification standard for this work**, since it is a pure refactor: the
-rolled build must render **bit-identical** to the unrolled one at four lines,
-across all four modes plus a `TIME=127 SIZE=127 DIFF=127` wet case. Add the
-single-`nop` control that proves the comparison is not blind.
-Only once that passes does the line count change.
-
-## FX1 must keep working — and FILTER is probably NOT the worst case
-
-**FX1 stays fully usable on all four tracks. That is a product requirement, not
-a margin, so it comes out of the budget before anything is designed against it.**
-
-⚠️ **FILTER is the only stock effect whose cost has ever been measured**
-(~260 cycles each, 1,040 for four ✅). Treating `4 × FILTER = 1,040` as the
-worst case is an assumption, and there are two reasons to doubt it:
-
-1. **260 is already far more than a biquad should cost.** `CHIP.md` flags this
-   ("much more than a filter looks like it should"). The likeliest explanation
-   is a large **fixed per-call overhead every effect pays** — in which case 260
-   is close to the *floor* for any FX1 effect, not the ceiling.
-2. **Several stock effects plainly do more work.** 🟡 Ranked by structure, not
-   measurement:
-
-   | likely cost | effects |
-   |---|---|
-   | above FILTER | **MULTIBCOMP** (crossovers + multiple detectors), **COMB**, **FLANGER**, **PHASER**, **CHORUS** (modulated interpolated delay lines) |
-   | near FILTER | EQ, DJ EQ (biquad stacks) |
-   | below FILTER | SPATIALIZER, LO-FI, COMPRESSOR |
-   | **free** | **DELAY** — it has no DSP code at all ✅ |
-
-   The FX1 menu never included the reverbs or DELAY — PLATE/SPRING/DARK and
-   DELAY are FX2-only (✅ read off the unit's menus). Every FX1 effect stays
-   live, untouched.
-
-**And the worst case to measure is not `4 × worst effect`.** A realistic kit
-puts a *different* FX1 effect on each track. The number the design actually
-needs is one reading: **four different heavy FX1 effects, one per track, plus
-the bank — sweep once.**
-
-**This costs ONE flash, not eleven.** The burn probe is a front-panel
-instrument: once a `BURN=1` build is on the card, every configuration is a knob
-sweep with no further flash ✅ (`CHIP.md` §2). Sweep the loaded kit, then sweep
-a few single-effect ×4 configurations to find which effect is actually the
-ceiling.
-
-**Until that reading exists, budget the reverb at ~1,200 cycles, not 1,500** —
-1,040 is a measured floor for the FX1 load and the real figure can only be
-higher. The 8-line tank is estimated at ~1,250 🟡, so **this measurement is
-what decides whether 8 lines fits**, and it should be taken before the tank is
-rewritten, not after. *(Resolved: the 8-line tank shipped and ✅ measures
-**1,133 cycles** — under the ~1,250 estimate. The question
-no longer gates the rewrite, which has happened.)*
-
-**Not in scope: the three stock reverbs.** PLATE / SPRING / DARK are the
-donors (594 / 1,063 / 1,067 words ✅) and stay taken. The cost lands entirely
-on the **FX2** menu (the three stock reverbs are replaced by the new servers);
-FX1 loses nothing because its menu never listed them (an earlier framing here
-— "losing them on FX1 is accepted" — invented a cost that does not exist).
-"FX1 must work" means the FX1 pool and the cycles it costs.
-Do not re-open this to give donors back; core 0 has none to give anyway
-(ChonVerb + SEND = 2,230 against PLATE+SPRING = 1,657).
-
-## What to build with it — the delay
-
-BongDelay was scoped as an afterthought (507 words, 163 cycles, a
-placeholder) that renders locally under `DEV=1` (risk 2 below). Payload B
-gave it the room to become the five-mode engine that now ships — confirmed
-on hardware on its shipping payload-B path (tracks 1–4). The budget it
-started from:
-
-- **2,005 free program words** — five times the placeholder's size
-- **~3,176 spare cycles** — nineteen times the placeholder's cost
-- **65,536 words = 1.49 s**, as two 32,768-word modulo lines (`Y:0x8000` and
-  `Y:0x38000` are both 32K-aligned ✅) or one 1.49 s line with a manual wrap
-
-That is a flagship budget, not a placeholder's: multi-tap, stereo ping-pong,
-per-tap filtering, tape wow/flutter, diffused or pitch-shifted feedback,
-reverse. **Re-scope the delay before designing it.**
-
-## Memory re-plan (step 4), concretely
-
-The shared window is not flat. Three things to dodge, all already mapped:
-
-| range | what | verdict |
-|---|---|---|
-| `0x30000-0x30047` | stock's per-frame parameter staging, 72 words, **rewritten EVERY FRAME** ✅ | never usable |
-| `0x31000` / `0x32000` | bootstraps A and B, 50 / 58 words ✅ | dead after boot, usable |
-| `0x34000` | ~~a single word written here corrupts audio after ~5.45 s~~ ❌ **FALSE** — a bisect covered this exact address with ONE instance and found it clean; the fault was always instance duplication (`CHIP.md` §6) | **usable** |
-
-**The bus scratch needs a permanent home, and there is a free one.** It sits at
-`0x36000` today, which is inside the reverb's new `0x34000-0x37FFF` block. But
-`0x30000-0x300FF` is already unusable for modulo buffers (stock's staging is in
-it), so put the 133-word scratch at `0x30080-0x30104` and reserve
-`0x30000-0x301FF`. **Cost to the reverb: 512 of 65,536 words, 0.8%** — versus
-carving a hole out of a power-of-2 buffer anywhere else.
-
-The rest of `0x30000-0x33FFF` then carves as a buddy allocator with alignment
-intact: 8K at `0x32000`, 4K at `0x31000`, 2K at `0x30800`, 1K at `0x30400`,
-512 at `0x30200`. **16,256 of 16,384 words recovered.**
-
-**Contention is free if the split is respected** — the manual guarantees no bus
-contention when the two cores touch different 8K blocks ✅. Reverb in blocks
-0–3 (`0x30000-0x37FFF`), delay in blocks 4–7 (`0x38000-0x3FFFF`) satisfies it
-exactly, except for the scratch, which both cores must touch by definition:
-133 words in block 0, negligible.
-
-## The four things that could bite, in order
-
-1. ~~**`Y:0x34000` corrupts audio after ~5.45 s.**~~ ❌ **FALSE.**
-   `dsp/shared_probe.asm` (in git history) has
-   `ADDR = 0` *at* `0x34000`, and the bisect row "one `SharePrb` + three
-   `Send`s → clean at every ADDR and INC" therefore already measured a single
-   instance writing that exact word, clean. The builds that appeared to
-   reproduce it both had two instances running. **The
-   reverb's pool is not blocked.** Full detail in
-   `CHIP.md` §6.
-2. ~~**`dsp_host` cannot boot payload B.**~~ **MITIGATED — the `DEV=1` hatch is
-   built.** The risk was real: `XBUS=1` stubs the delay out, and the specialized
-   build puts BongDelay in payload B only, which `dsp_host` cannot boot
-   (`REVERB.md`) — so the delay would have lost its local render loop exactly
-   when it needed one.
-
-   `DEV=1` keeps all three servers real in both payloads and dumps
-   `out/dsp/mem_dev_A.mem` beside the image. It pays for the space by taking
-   **CHORUS back as a fourth donor** (329 words, immediately below PLATE and
-   contiguous with it — the build asserts that rather than assuming it), because
-   SEND + REVERB + a gated DELAY is **2,744 words against the 2,724** the three
-   reverbs alone provide. That costs FX1 its chorus, so a DEV build writes
-   `out/mainos_bus_dev.bin`, never `out/mainos_bus.bin`, and refuses to combine
-   with `BURN`/`PROBE`/`XPROBE`/`DELAYPROBE`.
-
-   `send_probe.py --layout` takes **`D`** alongside `R` and `S`, and
-   `--dlevel` drives the `→DELAY` send (`x:(r6+0)`) — a separate knob from
-   `→REVERB` (`x:(r6+1)`); driving the wrong one renders silence.
-
-   ```sh
-   DEV=1 XBUS=1 python3 tools/build_bus.py
-   python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
-   ```
-
-   **The DEV delay no longer sits in
-   the donor region at all.** It assembles at **P:0x04000** and its module
-   record is appended to the `.mem` dump (`build_bus.py` `DEV_DELAY_P`) —
-   dsp_host has no 8K P wall and boots the dump, not the image, and the
-   payload itself has only 6 bytes of record slack. Verified bit-identical
-   against the in-region placement. Consequences: the hatch no longer caps
-   the delay's size (the old cap was ~583 words), and the full-shimmer
-   reverb fits the region again (2,692 of 3,053), so `NOSHIM=1` is optional
-   for delay work. The DEV image's dispatch points at code that exists only
-   in the dump — one more reason DEV builds are never flashed.
-
-   ✅ **Verified: BongDelay produces audio over the bus under `DEV=1`** —
-   peak 0.074 FS, −14.6 dBFS, THD −35.2 dB, against **digital silence** on a
-   non-DEV image. And the existing reverb path is **bit-for-bit unchanged**:
-   `--layout RS` renders before and after the hatch agree to every digit
-   (peak 0.243, −15.2 dBFS, THD −11.08, same spurs). SEND vs DIRECT at 0.15 FS
-   is −36.18 vs −36.17 — the send path is still faithful; the −11 dB at 0.5 FS
-   is the known tank saturation above ~0.35 FS, not a regression.
-3. **Asymmetric payloads make the menu a footgun.** Selecting ChonVerb on
-   track 6 would dispatch into whatever now occupies that address in payload B.
-   The mechanism to prevent it already exists and is proven — the null stub
-   (`nul_i`/`nul_p`) and the id-0 → SEND aliasing. Wire ChonVerb → SEND on
-   payload B and BongDelay → SEND on payload A, deliberately.
-4. ~~**`tools/cycle_count.py` prints `budget/DSP 1080`**, a number that was
-   never a real ceiling. It would report a design that fits as over budget.~~
-   **FIXED** — the tool now subtracts bank growth and prints the live number.
-
-## Recommended order
-
-1. ~~**`DEV=1` local-render escape hatch for the delay**~~ — **DONE**, see
-   risk 2 above. BongDelay now renders locally for the first time.
-2. **One `BURN=1` flash, then sweep.** Settles ONE thing —
-   **the real FX1 worst case**, which decides whether 8 lines fits.
-   Sweep the loaded kit first, then a few single-effect x4 configurations to
-   find which stock FX1 effect is actually the ceiling. The burn knob is a
-   front-panel instrument: one flash, then every further configuration is a
-   knob sweep.
-3. ~~**Specialize the payloads.**~~ ✅ **DONE (`SPEC=1`).**
-   `XBUS=1 SPEC=1 python3 tools/build_bus.py`: payload A carries SEND +
-   ChonVerb (**FREE 494**), payload B SEND + BongDelay (**FREE 1998**). The
-   absent server's id is aliased to SEND on each core, which is risk 3's fix
-   applied rather than deferred. Predicted 494 / 2,005; the 7-word gap on B is
-   the delay's XBUS gate. The plain build is byte-identical with the flag off.
-   **Flashed** — the unit runs a `SPEC=1` build.
-4. ~~**Roll the reverb's tank loop**, and move the per-line state to absolute Y
-   in the same pass — the two have the same fix.~~ ✅ **DONE** —
-   bit-identical to the unrolled build at four lines, proven via
-   `make verify-roll`. See the section above for the strided state layout and
-   the two traps.
-5. ~~**Eight lines.**~~ ✅ **DONE** — the 8-line rolled tank
-   shipped. The first real audible step the memory buys.
-6. **Re-scope BongDelay against its actual budget**, then audition it.
-
-## Still open, and unchanged by any of this
-
-- **BIG rings.** ~30 dB more HF than the other modes with no shimmer: a dense
-  cluster of non-harmonic lines at 2–2.8 kHz. `md_big` sets the decay scale
-  `x:(r7+$1e)` to `$7FFFFF` = exactly 1.000000 where ROOM/PLATE leave
-  headroom (0.920/0.965; a third value, 0.980, belonged to the HALL mode,
-  which has been removed). NOT simple runaway feedback — HF *falls* as
-  TIME rises and is already high at TIME=0, so suspect the input/early path.
-- **Tank saturation above ~0.35 FS.** The only level limit left since the
-  bus auto-gain.
-- ~~**The DELAY accumulator has no auto-gain.** Same fix as the reverb bus;
-  fold it into the delay re-scope.~~ **DONE — the delay-bus mirror of the
-  reverb's auto-gain.**
-  Every DELAY-bus writer (SEND's `→DELAY` tap, the reverb's `→DEL` send)
-  registers once per block in a parity-indexed count at `Y:0x985/0x986` and
-  writes with the same 3 bits of headroom; the DELAY SERVER divides by the
-  count (1/N table at `0x988-0x98f` in the bus scratch — the delay's own
-  half-window is entirely line buffer) and shifts back up by 3. Measured,
-  N sends at 0.3 FS, `→DELAY` 127, delay output:
-
-  | sends | before (rms / THD) | after (rms / THD) |
-  |---|---|---|
-  | 1 | −26.1 / −36.1 | −26.1 / −36.1 |
-  | 2 | −20.1 / −36.1 | −26.1 / −36.1 |
-  | 3 | −16.5 / −36.1 | −26.1 / −36.1 |
-  | 5 | −14.0 / −14.3 | −26.1 / −36.1 |
-  | 7 | −13.4 / −10.2 | −26.1 / −36.1 |
-
-  Single-send is level-identical before/after (net-unity round trip), and
-  the before column shows the same rail-clamp signature the reverb bus had.
-  ~~⚠️ Still asymmetric: the delay's own `→VERB` send into the REVERB
-  accumulator is an UNREGISTERED, full-scale writer — the reverb divides it
-  by the SEND count and shifts up 3, so its effective gain is 8/N_sends
-  (×8 with one send registered, ×1 with none). Pre-existing, unchanged by
-  this fix; belongs to the `→VERB` voicing pass.~~
-  ✅ **FIXED.** The `/8` half and the REGISTRATION half had to
-  land together, because a "fixed" send amount whose level still varies as
-  8/N_registered is not fixed at all. `→VERB` now applies `asr #3` like every
-  other writer and increments the REVERB count once per block, gated on the
-  split offset. ⚠️ It changes the balance of every OTHER reverb send by
-  N/(N+1); that was the reason for the original deferral and it is now a
-  deliberate cost, not an oversight.
-  ⚠️ **A mirror of this bug existed in the other direction — since fixed.**
-  ChonVerb registered as a DELAY-bus client for its `→DEL` send even when
-  the send was off — a phantom client that contributed nothing while taking
-  a 1/N share, diluting every real sender into BongDelay by N/(N+1), i.e.
-  **−6 dB with a single sender**. Measured on two independent quantities:
-  the delay's drive rose +2.50 then +1.02 dB across 1→3 senders with a
-  reverb in the bank (exactly N/(N+1)) where the same sweep with no reverb
-  instance was flat to 0.04 dB. The registration is now gated on the knob,
-  measured −6.02 → +0.00 dB. (The `→DEL` send itself was later retired
-  outright; the lesson — gate every registration on its knob — stands.)
-- **Emulator/device alignment.** The proven gap is parameter delivery:
-  `-params` pokes `r6` directly so every slot looks live locally, while on
-  hardware a slot can draw a knob and publish nothing.
-- ~~**Flash a build carrying the bus auto-gain.**~~ **DONE** — the unit runs
-  a build that carries the auto-gain and `SPEC=1`.
-
-~~**Hard constraint: the payload region is FULL, one spare word.**~~
-**No longer true under specialization** — 494 free on A, 1,998 on B at
-`SPEC=1` landing. Both have since been spent nearly full again: the current
-build report reads A **55 free**, B **1 free** — the build report is the
-live ledger.
-
-## Constraints that shape it
-
-- **`0x36000` is inside core 0's FX2 slot 4.** Fine while every core-0 track is
-  ChonVerb (hardcoded `Y:0x4000`) or a Send (zero-footprint). NOT fine once the
-  reverb pools all four slots — the accumulators need a permanent home that is
-  not an FX2 slot. Candidate: the free low-Y window `0x795-0xFFF` is core-
-  private and therefore useless here; this needs solving in the memory
-  re-plan.
-- **Modulo addressing needs power-of-2 alignment**, so a 16,384-word buffer in
-  the shared window must start at `0x30000` or `0x34000`. `0x34000-0x37FFF` is
-  clean; `0x30000-0x33FFF` has the staging in its first 72 words.
-- **The two regions are not contiguous** (`0xC000-0x2FFFF` is absent), so no
-  single 65,536-word buffer. Irrelevant for a bank of separate lines.
-- **Series is one-directional**: delay wet → reverb is allowed and built;
-  reverb wet → delay is forbidden, it closes a feedback loop.
-- **One block of latency already exists** by design (everyone reads the
-  previous block's summed buffer). Cross-core adds at most one more. ~0.36-0.7
-  ms; inaudible for a send.
+Specialization (`SPEC=1`) is what pays for all of this: each payload
+carries SEND plus *its* server only, so the donor region (2,724 words per
+core, from the three stock FX2 reverb slots — which were never on the FX1
+menu, so FX1 lost nothing) is spent once per effect instead of twice.
+`SPEC=1` requires `XBUS=1` — without the bus, each half of the tracks can
+reach only its own core's server, **and the broken build still makes
+sound**, which is why the build guards the combination. The build report is
+the live free-word ledger — `make bus` prints it; numbers quoted in prose
+go stale (several did in this file's own history).
