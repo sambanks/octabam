@@ -68,6 +68,7 @@ twelve parameter slots, its DSP source, its ColdFire caves — and
 image and the reference every refactor proves itself against.
 
 ```sh
+make remix                # the workbench: compose a selection interactively
 make modules              # the module index and the available remixes
 make bus REMIX=<name>     # build a selection (default: chongbong)
 ```
@@ -91,8 +92,19 @@ be):
   tables + STRUCT stretch (880 words). Partials land within 0.15% of the
   series; DAMP spans T60 ~0.1–9 s (hyperbolic in the knob — a voicing item).
 
-They ship together in the `mutables` remix (1,764/2,724 words with SEND;
-`warped` carries WarpFold alone). Built entirely against the manifest
+A fourth followed the same day — `nimbus`, a Clouds-ish granular texture
+(500 words): four grains over a continuously-recorded 743 ms line, POS/SIZE/
+DENS/MIX and a freeze. It gets its **own** remix because it owns the
+per-core FX2 buffer region `Y:0x4000–0xBFFF`, so it cannot share a core with
+ChonVerb's tank — a pair the ledger now refuses by name. Its window found a
+new trap, now in `CLAUDE.md`: **reading `a0` exposes the fractional left
+shift that reading `a1` hides**, so an `a0`-based integer scale is 2× the
+multiplier; the wrong one assembled and made plausible granular noise while
+running the window at double rate, and only a DC gate caught it. The musical
+freeze renders locally via `NFRZAT=n`, the `DFRZAT`-shaped lever.
+
+The first three ship together in the `mutables` remix (1,764/2,724 words with
+SEND; `warped` carries WarpFold alone). Built entirely against the manifest
 contract; the build's three-source special-casing was generalized the same
 day under the refhash gate (bit-identical before any module existed), and
 `verify_menu` now derives its expectations from the selected remix instead of
@@ -107,9 +119,13 @@ Three things follow that are worth knowing before editing anything:
 
 - **The build refuses to start when two selected modules collide** on an FX2
   id, a ColdFire cave, a hook site or a core-private Y word, and names both.
-  `tools/remix/ledger.py`; the negative tests are in `make check`. The shared
-  64K window is **not** covered yet — its extents are not established well
-  enough to write down, so `CLAUDE.md`'s ownership notes remain the map.
+  `tools/remix/ledger.py`; the negative tests are in `make check`. As of
+  29 Aug it also refuses two modules that both own the **per-core FX2
+  instance buffer region** `Y:0x4000–0xBFFF` (ChonVerb's tank, Nimbus's
+  line) — declared, not scanned, because a scan cannot tell an address from
+  a mask. The shared 64K window is still **not** covered — its extents are
+  not established well enough to write down, so `CLAUDE.md`'s ownership
+  notes remain the map.
 - **A module's `priority` is byte-load-bearing.** The donor region is packed
   in that order.
 - **Refactors of the build prove themselves with `scripts/refhash.sh`** — 23
