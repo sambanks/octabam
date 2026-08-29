@@ -76,6 +76,21 @@ What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
 `tempo-sync` — the last being a ColdFire patch rather than an effect, and the
 worked example of changing what the firmware *does*.
 
+The first **outsider module** landed 29 Aug 2026: `warpfold`, a Mutable-
+Instruments-Warps-flavoured ring-mod/wavefolder, and the first per-track
+**insert** (no bus role, placed in BOTH payloads, runs on any track — several
+at once). It ships in its own remix, `warped`, because neither server fits
+beside a new effect in one donor region. Built entirely against the manifest
+contract; the build's three-source special-casing was generalized the same
+day under the refhash gate (bit-identical before the module existed), and
+`verify_menu` now derives its expectations from the selected remix instead of
+a hand table. Local render verified (MIX=0 bit-exact null, DRV=0 fold
+identity at −96 dB, ring sidebands on the predicted carrier to 0.3%);
+**not yet flashed** — MODE's 3-way select and the knob publishes ride the
+standing on-unit reconfirm. Known tool gap: `make cycles` is remix-blind and
+still prices the chongbong engines whatever REMIX says (WarpFold's worst
+loop is ~80 cycles/sample 🟡 by inspection).
+
 Three things follow that are worth knowing before editing anything:
 
 - **The build refuses to start when two selected modules collide** on an FX2
