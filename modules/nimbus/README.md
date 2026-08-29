@@ -41,9 +41,6 @@ Assembles (500 words), disassembly-audited, and rendered locally:
   POS=127); DENS decorrelates the channels; peak stays at 0.400 FS across the
   DENS sweep.
 
-**Not yet flashed** — knob publishes and the FRZE select ride the standing
-on-unit reconfirm.
-
 - **The musical freeze renders locally** since `NFRZAT=n` (DEV-only,
   `build_bus.py`'s `_dev_hooks`): the freeze engages after n post-warm-up
   blocks, so a render can capture real material and then hold it. Verified
@@ -54,6 +51,10 @@ on-unit reconfirm.
   cloud froze the warm-up's cleared silence and rendered nothing. Allow at
   least POSbase + grain length of material first.
 
+**Not yet flashed** — knob publishes and the FRZE select ride the standing
+on-unit reconfirm.
+
 ## Open
+
 - Voicing: grain density is fixed at four. Clouds' texture/diffusion stage
   and pitch-shifted grains are both out of scope for v1.
