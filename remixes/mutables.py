@@ -1,7 +1,8 @@
 """mutables -- the Mutable-Instruments-flavoured insert collection.
 
-Three inserts on one card: WarpFold (ring mod / wavefolder), Ripple (driven
-SVF filter) and Rungs (8-mode modal resonator). Inserts stack, unlike the
+Five inserts on one card: WarpFold (ring mod / wavefolder), Ripple (driven
+SVF filter), Rungs (8-mode modal resonator), Streamz (a vactrol lowpass
+gate) and BodeShift (a frequency shifter). Inserts stack, unlike the
 servers -- each is in both payloads, any track can host any of them, several
 at once -- so this remix carries the whole set where `warped` carries one.
 
@@ -13,7 +14,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="mutables",
-    doc="Three MI-flavoured inserts: WarpFold + Ripple + Rungs, + send bus.",
-    modules=("WARPFOLD", "RIPPLE", "RUNGS", "SEND"),
+    doc="Five MI-flavoured inserts: WarpFold, Ripple, Rungs, Streamz, BodeShift.",
+    modules=("WARPFOLD", "RIPPLE", "RUNGS", "STREAMZ", "BODESHIFT", "SEND"),
     fallback="SEND",
 )

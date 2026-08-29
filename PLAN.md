@@ -103,8 +103,22 @@ multiplier; the wrong one assembled and made plausible granular noise while
 running the window at double rate, and only a DC gate caught it. The musical
 freeze renders locally via `NFRZAT=n`, the `DFRZAT`-shaped lever.
 
-The first three ship together in the `mutables` remix (1,764/2,724 words with
-SEND; `warped` carries WarpFold alone). Built entirely against the manifest
+Two more followed, both zero-buffer inserts:
+
+- `streamz` — Streams-ish **vactrol lowpass gate** (255 words): the envelope
+  opens a filter and an amplifier together, so quiet is dark *and* quiet.
+  LPG/VCF/VCA. Release measured 26–731 ms against a 20–700 ms design; the
+  coupling itself measured as a spectral centroid of 9,880 Hz on loud
+  material against 2,620 Hz on the same material quiet.
+- `bodeshift` — Warps-ish **Bode frequency shifter** (391 words), UP/DOWN/
+  WIDE plus feedback. Built against a float model *first*, which caught the
+  sideband sign convention before a line of assembly was written. Measured on
+  the DSP: wanted sideband at unity, suppression 41.5/29.6/18.7 dB at
+  440 Hz/1 kHz/5 kHz (the model says 40.8/29.2/18.6), shift frequency exact
+  to 0.00 Hz across the knob, and feedback stable at maximum with 0.95 FS in.
+
+All five ship together in the `mutables` remix (2,410/2,724 words with SEND;
+`warped` carries WarpFold alone). Built entirely against the manifest
 contract; the build's three-source special-casing was generalized the same
 day under the refhash gate (bit-identical before any module existed), and
 `verify_menu` now derives its expectations from the selected remix instead of
