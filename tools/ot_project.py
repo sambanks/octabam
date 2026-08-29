@@ -30,7 +30,7 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
 
 Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
-matching /Users/sambanks/octatrack_backups/*pregain*.
+matching /Users/sambanks/octa/backups/*pregain*.
 """
 import json, pathlib, re, sys, glob
 
@@ -50,7 +50,7 @@ def read_project(pdir):
 def bank_info(pdir, banknum):
     data = (pdir / f"bank{banknum:02d}.work").read_bytes()
     ptrns = [m.start() for m in re.finditer(rb"PTRN", data)] + [PART_BASE]
-    pat_part = [data[ptrns[i+1]-6] for i in range(16)]
+    pat_part = [data[ptrns[i+1]-5] for i in range(16)]
     parts = []
     for p in range(NPARTS):
         c = data[PART_BASE + p*PART_STRIDE:][:PART_STRIDE]
@@ -76,7 +76,7 @@ def cmd_report(pdir):
             print(f"  part {i+1}: LEVELs {part['levels']}  FX2 {fx2}")
 
 def guard_backup():
-    if not glob.glob("/Users/sambanks/octatrack_backups/*pregain*"):
+    if not glob.glob("/Users/sambanks/octa/backups/*pregain*"):
         sys.exit("no pregain backup found -- refusing to write")
 
 def apply_gains(pdir, changes):
