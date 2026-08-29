@@ -2,7 +2,7 @@
 """Prove an alternate reverb engine is BIT-IDENTICAL to the shipping one.
 
     python3 tools/verify_roll.py dsp/reverb_rolled.asm
-    python3 tools/verify_roll.py dsp/reverb_rolled.asm --ref dsp/reverb_server.asm
+    python3 tools/verify_roll.py cand.asm --ref modules/chonverb/reverb_server.asm
 
 PLAN.md step 1 rolled the tank into a loop and moved per-line state out of
 the full `r7` block into absolute Y (landed; the shipping engine is the
@@ -35,6 +35,8 @@ import sys
 import wave
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from remix import registry  # noqa: E402
 sys.path.insert(0, str(ROOT / "tools"))
 
 SCRATCH = ROOT / "out" / "rollverify"
@@ -155,7 +157,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("candidate", help="the engine under test, e.g. dsp/reverb_rolled.asm")
-    ap.add_argument("--ref", default="dsp/reverb_server.asm",
+    ap.add_argument("--ref", default=registry.asm("chonverb"),
                     help="the engine it must match (default: the shipping one)")
     args = ap.parse_args()
 

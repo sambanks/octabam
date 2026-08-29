@@ -61,7 +61,7 @@ MODULE = Module(
         Param(b"RATE", 1, 4, active=True, formatter=_STEP),
     ),
     dsp=DspSection(
-        asm="dsp/reverb_server.asm",
+        asm="modules/chonverb/reverb_server.asm",
         priority=1,                       # after SEND, before the delay
         bus_role=BusRole.SERVER,
         # Eight occurrences: the relocated tank buffers at 0x30000/0x34000.

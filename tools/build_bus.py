@@ -834,7 +834,7 @@ def main():
     # halfwords +0x24/+0x26 = FX2's r6+$6/r6+$7 (dead = never READ; the frame
     # builder rewrites them every frame, so the cave re-stores every pass --
     # docs/midi_re_note.md, 24 Aug 2026), for tracks whose FX2 id
-    # is 6 or 7 (our servers) only. Source: cf/tempo_cave.s (m68k-elf-as,
+    # is 6 or 7 (our servers) only. Source: modules/tempo-sync/tempo_cave.s
     # -mcpu=5407); the bytes are pinned here so the build needs no m68k
     # toolchain, and re-checked against a fresh assembly when one is present.
     # NOTEMPO=1 leaves the ColdFire untouched (the DSP side then reads zeros
@@ -878,12 +878,12 @@ def main():
             with tempfile.TemporaryDirectory() as td:
                 o, b = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
                 subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                "cf/tempo_cave.s"], check=True)
+                                "modules/tempo-sync/tempo_cave.s"], check=True)
                 subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
                                 ".text", o, b], check=True)
                 fresh = pathlib.Path(b).read_bytes()
             if fresh != TEMPO_CAVE_BYTES:
-                sys.exit("cf/tempo_cave.s no longer assembles to the pinned "
+                sys.exit("modules/tempo-sync/tempo_cave.s no longer assembles to the pinned "
                          "bytes -- update TEMPO_CAVE_BYTES deliberately")
         img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)] = \
             TEMPO_CAVE_BYTES
@@ -895,7 +895,7 @@ def main():
               f"note -> r6+$9; ids 6/7)")
 
     # ==== 1c. ColdFire: TIME LABEL FORMATTER cave (24 Aug 2026) ==============
-    # cf/time_fmt.s: BongDelay TIME's display formatter (P+0x0ca "A", with
+    # modules/tempo-sync/time_fmt.s: BongDelay TIME's display formatter (P+0x0ca "A", with
     # B = 0 -- stock DELAY TIME's own configuration). Prints the division
     # name while the DSP's sticky snap holds one, else ms; same integers as
     # the DSP rule (docs/PARAM_PAGES.md section 7, DSP.md 6c). Position-
@@ -914,11 +914,11 @@ def main():
             with tempfile.TemporaryDirectory() as td:
                 o, b = os.path.join(td, "f.o"), os.path.join(td, "f.bin")
                 subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                "cf/time_fmt.s"], check=True)
+                                "modules/tempo-sync/time_fmt.s"], check=True)
                 subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
                                 ".text", o, b], check=True)
                 if pathlib.Path(b).read_bytes() != TIME_FMT_BYTES:
-                    sys.exit("cf/time_fmt.s no longer assembles to the pinned "
+                    sys.exit("modules/tempo-sync/time_fmt.s no longer assembles to the pinned "
                              "bytes -- update TIME_FMT_BYTES deliberately")
         img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)] = \
             TIME_FMT_BYTES

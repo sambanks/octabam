@@ -86,6 +86,27 @@ def by_name(name: str):
     raise SystemExit(f"no module named {name!r}")
 
 
+def asm(key_or_name: str) -> str:
+    """A module's DSP source, repo-relative.
+
+    Tools ask for this rather than spelling the path, so moving a module's
+    source is a one-line change in its manifest instead of a sweep through
+    every wrapper -- which is how those paths went stale before.
+    """
+    for m in modules().values():
+        if key_or_name in (m.key, m.name):
+            if m.dsp is None:
+                raise SystemExit(f"module {key_or_name!r} has no DSP source")
+            return m.dsp.asm
+    raise SystemExit(f"no module {key_or_name!r}")
+
+
+def asm_by_stem() -> dict[str, pathlib.Path]:
+    """Source filename stem -> absolute path, for tools that key by filename."""
+    return {pathlib.Path(m.dsp.asm).stem: ROOT / m.dsp.asm
+            for m in modules().values() if m.dsp is not None}
+
+
 def by_id(fx2_id: int):
     for m in modules().values():
         if m.menu is not None and m.menu.fx2_id == fx2_id:

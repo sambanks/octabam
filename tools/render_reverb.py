@@ -29,6 +29,8 @@ So: voice here, then spend flashes on the cycle budget and the UI surface.
 import argparse, array, hashlib, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from remix import registry  # noqa: E402
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
 IMAGE = ROOT / "out/mainos_bus.bin"
 MEM = ROOT / "out/dsp/mem_reverb_server_A.mem"
@@ -205,7 +207,7 @@ def engine():
     the four-line one. Every artifact below therefore carries the engine's
     stem, and build_bus.py's fixed output path is treated as scratch that is
     moved into the keyed cache immediately after each build."""
-    rv = os.environ.get("RVSRC") or "dsp/reverb_server.asm"
+    rv = os.environ.get("RVSRC") or registry.asm("chonverb")
     if not (ROOT / rv).exists():
         die(f"RVSRC={rv} does not exist")
     return rv, re.sub(r"[^A-Za-z0-9]+", "-", pathlib.Path(rv).stem)

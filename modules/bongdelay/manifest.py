@@ -66,7 +66,7 @@ MODULE = Module(
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP),
     ),
     dsp=DspSection(
-        asm="dsp/delay_server.asm",
+        asm="modules/bongdelay/delay_server.asm",
         priority=2,                       # LAST, deliberately: the trailing
                                           # free words of the region belong to
                                           # the algorithm still being designed

@@ -107,7 +107,7 @@ verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAN
 
 .PHONY: verify-delay
 verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=dsp/delay_new.asm
-	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=dsp/delay_server.asm]"; exit 1; }
+	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=dsp/delay_new.asm [REF=modules/bongdelay/delay_server.asm]"; exit 1; }
 	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
 
 .PHONY: verify-bus

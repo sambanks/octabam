@@ -39,7 +39,7 @@ MODULE = Module(
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     dsp=DspSection(
-        asm="dsp/send_client.asm",
+        asm="modules/send/send_client.asm",
         priority=0,                       # FIRST: the absent-server alias
                                           # points at SEND's entry points, so
                                           # it must already be placed
