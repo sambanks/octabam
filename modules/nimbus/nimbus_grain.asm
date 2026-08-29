@@ -188,11 +188,16 @@ nb_s10:
         move    #>$2000,x0             ; 2^(23-10)
         move    x0,x:(r7+$26)
 nb_sdone:
-; FRZE: slot-7 companion (ChonVerb's decode); any nonzero value freezes
+; FRZE: slot-7 companion (ChonVerb's decode); any nonzero value freezes.
+; The marker is the DEV freeze hook's splice point (NFRZAT=n, build_bus.py's
+; _dev_hooks): it replaces the decoded value in `a` with a block counter's
+; verdict, so a render can capture real material and THEN freeze it. A
+; static freeze can only ever hold the silence the warm-up just cleared.
         move    x:(r6+$c),a
         and     #>$ff00,a
         move    a1,x0
         move    x0,a
+; NFRZ_OVERRIDE
         move    a,x:(r7+$27)
 
 ; ---- per-sample loop ------------------------------------------------------

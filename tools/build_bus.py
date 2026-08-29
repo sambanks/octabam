@@ -668,6 +668,52 @@ STOCK_DELAY_ID = 0x08
 STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
 
 
+# ---- DEV repro hooks for outsider modules ----------------------------------
+# The three core sources have their override arms written out at the top of
+# main() (MODE, DMODE, DFRZAT and the rest). A module that arrives later needs
+# the same kind of lever without another special case in the placement loop,
+# so it declares a marker in its source and a rule here.
+#
+# ⚠️ EVERY HOOK HERE IS DEV-ONLY, for the reason DFRZAT is: the counter word
+# lives at Y:0x37FFE in payload A's owned half of the shared window (init-
+# zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
+# layout and is NOT a promise about any shipping one.
+def _dev_hooks(key, src):
+    if key != "NIMBUS":
+        return src
+    at = os.environ.get("NFRZAT")
+    if at is None:
+        return src
+    # NFRZAT=n engages Nimbus's FREEZE after n post-warm-up BLOCKS instead of
+    # from sample 0. Without it the frozen cloud cannot be heard locally at
+    # all: a static FRZE=1 holds the silence the warm-up just cleared, so the
+    # only thing a render proves is that the write head stopped. Exactly the
+    # gap DFRZAT was built to close for BongDelay, and the same shape of fix.
+    if os.environ.get("DEV") is None:
+        sys.exit("NFRZAT=n is a DEV-only repro hook (its counter word lives "
+                 "in payload A's shared-window half) -- set DEV=1")
+    if src.count("; NFRZ_OVERRIDE") != 1:
+        sys.exit("NFRZAT=n set but the NIMBUS source has no single "
+                 "; NFRZ_OVERRIDE marker")
+    # Branchless, and the same shared-flag idiom as everywhere else: `sub`
+    # sets N once, the two Tcc read it, and the interleaved immediate moves
+    # do not disturb the condition codes.
+    src = src.replace(
+        "; NFRZ_OVERRIDE",
+        "        move    y:>$37ffe,a\n"
+        "        add     #>1,a\n"
+        "        move    a,y:>$37ffe\n"
+        "        move    #>%d,x0\n"
+        "        sub     x0,a\n"
+        "        move    #>0,x0\n"
+        "        tmi     x0,a\n"
+        "        move    #>1,x0\n"
+        "        tpl     x0,a" % int(at))
+    print(f"  *** NFRZAT OVERRIDE: Nimbus freezes after {int(at)} "
+          f"post-warm blocks ***")
+    return src
+
+
 def assemble(src_text, org):
     tmp = pathlib.Path("/tmp/build_bus_src.asm")
     tmp.write_text(src_text)
@@ -1691,12 +1737,12 @@ mkgo:""",
         if delay_src is not None:
             _texts["DELAY SERVER"] = delay_src
         # Any other selected module with DSP code loads straight from its
-        # manifest's source -- no probe arms, no override splices, no bus
-        # treatment. A module that needs any of those is one of the three
-        # named above by definition, because that is where those hooks live.
+        # manifest's source and gets no bus treatment, but MAY declare its own
+        # DEV repro hooks below -- the generic version of the arms the three
+        # core sources have at the top of main().
         for _k in ORDER:
             if _k not in _texts and _k in ASM_SRC:
-                _texts[_k] = pathlib.Path(ASM_SRC[_k]).read_text()
+                _texts[_k] = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
 
         def _ybase(m, src):
             if DEV and m.dsp.dev_pin_ybase is not None:

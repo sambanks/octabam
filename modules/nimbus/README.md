@@ -44,11 +44,16 @@ Assembles (500 words), disassembly-audited, and rendered locally:
 **Not yet flashed** — knob publishes and the FRZE select ride the standing
 on-unit reconfirm.
 
-## Open
+- **The musical freeze renders locally** since `NFRZAT=n` (DEV-only,
+  `build_bus.py`'s `_dev_hooks`): the freeze engages after n post-warm-up
+  blocks, so a render can capture real material and then hold it. Verified
+  by cutting the input to digital silence just after the freeze — the output
+  sustains indefinitely (−15.5 dB at +1 s, −16.2 dB at +3 s) on buffer
+  content alone. ⚠️ Freeze **n late enough to matter**: at `NFRZAT=40` only
+  600 samples had been recorded while the grains read ~9,400 back, so the
+  cloud froze the warm-up's cleared silence and rendered nothing. Allow at
+  least POSbase + grain length of material first.
 
-- **The musical freeze is not verified locally.** `FRZE=1` from cold is
-  proven to stop the write head, but toggling it *mid-flight* — the thing
-  you would actually do — needs a render-time hook, exactly as BongDelay's
-  freeze needed `DFRZAT`. Until then the frozen cloud is unheard.
+## Open
 - Voicing: grain density is fixed at four. Clouds' texture/diffusion stage
   and pitch-shifted grains are both out of scope for v1.
