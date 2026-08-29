@@ -76,20 +76,32 @@ What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
 `tempo-sync` — the last being a ColdFire patch rather than an effect, and the
 worked example of changing what the firmware *does*.
 
-The first **outsider module** landed 29 Aug 2026: `warpfold`, a Mutable-
-Instruments-Warps-flavoured ring-mod/wavefolder, and the first per-track
-**insert** (no bus role, placed in BOTH payloads, runs on any track — several
-at once). It ships in its own remix, `warped`, because neither server fits
-beside a new effect in one donor region. Built entirely against the manifest
+The first **outsider modules** landed 29 Aug 2026 — three Mutable-
+Instruments-flavoured per-track **inserts** (no bus role, placed in BOTH
+payloads, run on any track, several at once — the class the servers cannot
+be):
+
+- `warpfold` — Warps-ish ring mod / wavefolder (322 words). MIX=0 bit-exact
+  null, DRV=0 fold identity at −96 dB, ring sidebands on the predicted
+  carrier to 0.3%.
+- `ripple` — Ripples-ish driven SVF, LP/BP/HP, Q≈30 (347 words). LP slope
+  −13.8 dB measured where 2-pole theory says −14.4; the all-knobs-at-127
+  bomb decays clean.
+- `rungs` — Rings-ish 8-mode modal resonator, STRING/BELL/GLASS partial
+  tables + STRUCT stretch (880 words). Partials land within 0.15% of the
+  series; DAMP spans T60 ~0.1–9 s (hyperbolic in the knob — a voicing item).
+
+They ship together in the `mutables` remix (1,764/2,724 words with SEND;
+`warped` carries WarpFold alone). Built entirely against the manifest
 contract; the build's three-source special-casing was generalized the same
-day under the refhash gate (bit-identical before the module existed), and
+day under the refhash gate (bit-identical before any module existed), and
 `verify_menu` now derives its expectations from the selected remix instead of
-a hand table. Local render verified (MIX=0 bit-exact null, DRV=0 fold
-identity at −96 dB, ring sidebands on the predicted carrier to 0.3%);
-**not yet flashed** — MODE's 3-way select and the knob publishes ride the
-standing on-unit reconfirm. Known tool gap: `make cycles` is remix-blind and
-still prices the chongbong engines whatever REMIX says (WarpFold's worst
-loop is ~80 cycles/sample 🟡 by inspection).
+a hand table. All three are **not yet flashed** — every MODE select and knob
+publish rides the standing on-unit reconfirm. Known tool gaps: `make cycles`
+is remix-blind (still prices the chongbong engines whatever REMIX says;
+by inspection the inserts are ~80/~90/~190 cycles/sample worst 🟡), and
+send_probe's layout charset is still hard-coded RDS. — inserts render
+through dsp_host directly.
 
 Three things follow that are worth knowing before editing anything:
 
