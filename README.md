@@ -7,14 +7,72 @@ put in them. This project writes new ones — original DSP56300 assembly — and
 delivers them by patching the stock OS image. It also patches the ColdFire
 side, where the sequencer, the menus and the parts live.
 
-Work is packaged as **modules**, and an image is a **remix**: a named
-selection of modules. `make modules` lists what exists, `make bus REMIX=<name>`
-builds a selection, and adding a module is adding a directory. See
-**[docs/MODULES.md](docs/MODULES.md)** to write one.
+---
 
-**Ten modules ship today.** Two are bus *servers*, six are per-track
-*inserts*, one is the bus client they all lean on, and one patches the
-ColdFire rather than the audio at all.
+## Modules and remixes
+
+**A module is one contribution. A remix is a named selection of them, composed
+into one firmware image.** That is the whole model, and everything else here
+follows from it.
+
+A remix is a file. This one is the granular-texture card:
+
+```python
+# remixes/nimbus.py
+REMIX = Remix(
+    name="nimbus",
+    doc="Nimbus granular texture + send bus. One instance per core.",
+    modules=("NIMBUS", "SEND"),
+    fallback="SEND",
+)
+```
+
+```bash
+make bus REMIX=nimbus       # -> a flashable image containing exactly that
+```
+
+Modules left out are **not built, not placed and not listed**, and their FX2
+ids fall back to the module you nominate — so a saved project that still
+selects a missing effect makes that track a send, rather than dispatching into
+whatever code now occupies the address. There is no central list to edit:
+`modules/*/manifest.py` *is* the registry, so **adding a module is adding a
+directory**.
+
+The build refuses to start if two selected modules collide — same FX2 id,
+ColdFire cave, hook site, core-private word or buffer region — and names both.
+Program space is finite and shared (2,724 words per payload), so a remix is a
+real budget decision, not a label.
+
+### What ships
+
+| remix | contains | why you would build it |
+|---|---|---|
+| **`chongbong`** | ChonVerb + BongDelay + send bus + tempo sync | the shipping image, and the default |
+| **`mutables`** | five inserts + send | a card of stacking effects, no servers |
+| **`nimbus`** | Nimbus + send | the granular texture, which needs a buffer region to itself |
+| **`warped`** | WarpFold + send | the smallest real selection |
+| **`verbonly`** | ChonVerb + send | the reverb alone; proves selection works |
+
+```bash
+make remix                  # compose one interactively: collisions, panel,
+                            #   word cost, all live as you toggle
+make modules                # the index of what exists
+make bus REMIX=<name>       # build a selection
+```
+
+`make remix` is the workbench. Toggle modules and it shows what would collide,
+what the effect chooser ends up looking like on the panel, and what the
+selection costs against the donor region — then builds or saves it.
+
+See **[docs/MODULES.md](docs/MODULES.md)** to write a module.
+
+---
+
+## The modules
+
+**Ten ship today.** Two are bus *servers*, six are per-track *inserts*, one is
+the bus client they all lean on, and one patches the ColdFire rather than the
+audio at all.
 
 ### Effects that serve a bus
 
@@ -87,18 +145,23 @@ cross into the reverb — a route the stock firmware has no path for at all.
 Both servers are **returns**: a track hosting one outputs its own dry at
 unity plus the wet, fed by the other tracks' sends.
 
-The costs are all measured, not estimated:
+---
+
+## The machine, and what there is to spend
+
+Every module in a remix competes for the same three budgets, and they are
+measured rather than estimated:
 
 | resource | per core | state |
 |---|---|---|
 | Cycles | 4,535/sample | derived (200 MIPS ÷ 44.1 kHz). `make cycles` prints the worst load the selected remix can be asked for; the real ceiling is a cliff and only a hardware burn sweep measures it |
 | Program space | 8,192 words | donor region **2,724 words per payload**, shared by every module in the remix. `make bus` prints the live ledger |
-| FX2 memory | 65,536 words/server | 1.49 s, pooled from private slots + the shared window |
+| Y memory | 65,536 words | 1.49 s, pooled from the private FX2 slots + the shared window. A module that wants a big buffer claims it, and only one per core may |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
 measured or inferred, and what would falsify it.
 
-### The machine, on one page
+### The memory map, on one page
 
 The Octatrack's audio DSP is one **DSP56721**: two DSP5636x cores, each
 serving four tracks. Each core boots its own payload, and each payload gives
@@ -167,9 +230,11 @@ accumulator buffers** (the cross-core race fix — see `docs/XBUS.md`)
 plus client counts for the ÷N auto-gain, so eight senders drive a server
 exactly as hard as one. Cycles follow the same split: a core pays its one
 server (role-locked, charged once per bank however many tracks select it)
-plus its tracks' send taps; the delay's worst mode (GRAIN, ~2,000 cycles by
-`make cycles`) is the deepest path, and FX1 inserts pay **×4 per core** —
-which is the real ceiling on FX1 ambition, not program space.
+plus its tracks' send taps; the delay's worst mode (GRAIN, 2,338 cycles by
+`make cycles`) is the deepest path in the shipping image. Note that FX2
+effects are charged once per track that selects them, while **FX1 inserts pay
+×4 per core** — which is the real ceiling on FX1 ambition, and the reason
+nothing here is an FX1 effect yet.
 
 ---
 
@@ -248,23 +313,12 @@ make check     # build + cycle budget + ledger selftest + menu verification
 
 ### Building a different selection
 
-```bash
-make remix                # compose one interactively
-make modules              # the module index and the available remixes
-make bus REMIX=chongbong  # the shipping image (the default)
-make bus REMIX=verbonly   # ChonVerb and the send bus, no delay, no caves
-make bus REMIX=mutables   # five stacking inserts, no servers
-make bus REMIX=nimbus     # the granular insert, which owns a buffer region
-```
-
-A module left out of a remix is not built, not placed and not listed — and
-its FX2 id falls back to the send client, so a saved project that still
-selects it makes that track a send rather than dispatching into whatever code
-now occupies the address.
+See **[Modules and remixes](#modules-and-remixes)** above — `make remix` to
+compose one, `make bus REMIX=<name>` to build it.
 
 ---
 
-## Layout
+## Repository layout
 
 ```
 PLAN.md          Read this first. End state, resource ledger, work order.
