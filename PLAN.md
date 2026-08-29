@@ -79,9 +79,11 @@ core. Two consequences:
 
 ### Program space — per core, 8,192 words; donor region 2,724 words/payload
 
-The build report is the live ledger — `make bus` prints it. Current build:
-**payload A used 2,669, FREE 55; payload B used 2,723, FREE 1.** Both
-payloads are effectively full; new work needs a lever first.
+The build report is the live ledger — `make bus` prints it. Current build
+(29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
+FREE 30.** The older "A 55 / B 1" figures in this file predated the freeze
+and roll work; both payloads are still effectively full, and new work needs
+a lever first.
 
 **Space levers, in order of preference:**
 
