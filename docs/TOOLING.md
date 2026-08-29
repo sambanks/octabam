@@ -23,7 +23,9 @@ The Octatrack's audio runs on a Freescale **DSP56721**: two DSP56300-family
 cores, 24-bit fixed-point, with three separate memory spaces per core — P
 (program), X and Y (data) — and hardware loops and modulo addressing that
 the effects lean on heavily. There is no C compiler in this pipeline;
-effects are written directly in DSP56300 assembly (`dsp/*.asm`). The
+effects are written directly in DSP56300 assembly, one module per
+directory (`modules/<name>/*.asm`; `dsp/` keeps the shared probes and the
+null stub). The
 ColdFire (a 68k-family CPU) runs the OS, UI and sequencer and is a
 completely separate instruction set and toolchain.
 
@@ -73,10 +75,17 @@ Two instruction sets, two toolchains:
 
 ## 4. Building firmware
 
-**`tools/build_bus.py` is THE builder** (`make bus` = `XBUS=1 SPEC=1`). It
-assembles the effects, places them into each payload's donor region, wires
-the dispatch tables, patches the ColdFire-side menu descriptors, and
-census-checks itself (it will refuse a build whose source trips one of its
+**`tools/build_bus.py` is THE builder** (`make bus` = `XBUS=1 SPEC=1`). What
+it builds is a **remix**: a named selection of modules (`make bus
+REMIX=<name>`, default `chongbong`; `make modules` lists both). Each
+`modules/<name>/manifest.py` declares one contribution — menu entry,
+parameters, DSP source, ColdFire caves — against the schema in
+`tools/remix/schema.py`, and `tools/remix/ledger.py` refuses a selection
+whose modules collide on an FX2 id, cave, hook site or core-private Y word.
+`docs/MODULES.md` is the contributor guide. The builder then assembles the
+selected effects, places them into each payload's donor region in declared
+priority order, wires the dispatch tables, patches the ColdFire-side menu
+descriptors, and census-checks itself (it will refuse a build whose source trips one of its
 guards — that is the guard working). It is driven entirely by env flags —
 `DEV`, `NOSHIM`, `MODE`, `DFRZAT`, `TPROBE` and more; grep `environ` in the
 file for the full set, and note the render cache fingerprints every one of
@@ -119,6 +128,8 @@ version:
 | `tools/verify_slots.py` | static dead-store/aliasing check on the r7 state block — the family of bugs where one slot means two things |
 | `tools/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
 | `tools/verify_burn.py` | the cycle-burn probe is the shipping engine plus an inert knob (currently SKIPs — the probe does not place) |
+| `tools/remix/selftest.py` | the resource ledger still catches every collision it claims to (part of `make check`) |
+| `scripts/refhash.sh` | a change to the BUILD (not a module) changed nothing: 23+ configurations, artifacts *and* build reports, bit-identical — save a baseline on a tree you trust first |
 
 ## 7. Hardware measurement and control
 
