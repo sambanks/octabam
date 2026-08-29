@@ -14,6 +14,10 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 BUILD   ?= 001
 VERSION ?= OCTABAM$(BUILD)
 
+# Which modules the image carries. `make modules` lists what is available;
+# remixes/<name>.py is the selection. chongbong is the shipping one.
+REMIX   ?= chongbong
+
 .DEFAULT_GOAL := help
 
 # ---------------------------------------------------------------- toolchain --
@@ -34,11 +38,11 @@ recon: ## Unpack + static recon -> out/raw/section_3_MAIN_OS.bin
 
 .PHONY: bus
 bus: ## THE build: one server per core, cross-core bus -> out/mainos_bus.bin
-	XBUS=1 SPEC=1 python3 tools/build_bus.py
+	REMIX=$(REMIX) XBUS=1 SPEC=1 python3 tools/build_bus.py
 
 .PHONY: bus-plain
 bus-plain: ## Build without specialization (both servers on both cores)
-	python3 tools/build_bus.py
+	REMIX=$(REMIX) python3 tools/build_bus.py
 
 .PHONY: image
 image: bus ## Repack the build into a card-flashable .bin (see docs/FLASHING.md)
@@ -58,7 +62,7 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/FLASHING.md)
 
 .PHONY: render
 render: ## Build the DEV image and render the bus locally (no hardware)
-	DEV=1 XBUS=1 SPEC=1 python3 tools/build_bus.py
+	REMIX=$(REMIX) DEV=1 XBUS=1 SPEC=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
 .PHONY: render-delay
@@ -72,7 +76,7 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BongDelay
 	@# (appended to the .mem dump; dsp_host has no 8K wall), so the full
 	@# shimmer reverb fits as the downstream sink and the delay's growth
 	@# budget is payload B's, not the hatch's.
-	DEV=1 XBUS=1 python3 tools/build_bus.py
+	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
 .PHONY: verify-midi
@@ -139,6 +143,10 @@ check: bus cycles verify ## Everything that can be checked without hardware
 	@echo
 	@echo "  all runnable checks passed (verify_burn may report SKIPPED above); out/mainos_bus.bin restored to the shipping build"
 
+.PHONY: modules
+modules: ## List the module index and the available remixes
+	python3 tools/remix/index.py
+
 # -------------------------------------------------------------------- misc --
 
 .PHONY: disasm
@@ -157,3 +165,4 @@ help: ## Show this help
 	  {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo
 	@echo "Cold start:  read PLAN.md, then  make setup && make os && make recon && make bus"
+	@echo "Modules:     make modules      (then: make bus REMIX=<name>)"

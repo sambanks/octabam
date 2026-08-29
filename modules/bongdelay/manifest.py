@@ -15,7 +15,7 @@ cave that prints the tempo division while the DSP's sticky snap holds one,
 installed by the tempo-sync patch and registered over slot 0 afterwards.
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -71,7 +71,11 @@ MODULE = Module(
                                           # free words of the region belong to
                                           # the algorithm still being designed
         bus_role=BusRole.SERVER,
-        ybase_substituted=True,           # its 32K of lines live at the base
+        ybase=YBase.ALWAYS,               # its 32K of lines live at the base
+        # DEV puts the delay in payload A, but based at 0x30000 its lines
+        # would sweep the reverb's buffers, the bus scratch and both role
+        # locks every 16,384 samples. It keeps its shipping base instead.
+        dev_pin_ybase=0x38000,
         r7_latch_slot=0x86,               # payload B tracks its own rotation
         gate_label="bus_notfirst",
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",

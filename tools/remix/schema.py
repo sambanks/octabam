@@ -35,6 +35,25 @@ class Kind(Enum):
     HYBRID = "hybrid"           # both, e.g. an engine plus a display cave
 
 
+class YBase(Enum):
+    """When a module's `$30000` literal is rewritten to the payload's own base.
+
+    Payload A owns 0x30000-0x37FFF of the shared window and payload B owns
+    0x38000-0x3FFFF, so a module holding buffers there needs its base rewritten
+    per payload. The rule is NOT the same for every module and the difference
+    is load-bearing: the delay is substituted in every build, while the reverb
+    is substituted only once the bus has been relocated into the shared window.
+
+    ⚠️ The rewrite is a BLANKET string replace over the whole source, comments
+    included. A module wanting a shared-window address that must NOT move to
+    the other half cannot spell it `$30000`.
+    """
+
+    NEVER = "never"      # carries no such literal
+    XBUS = "xbus"        # substituted only when the bus is relocated
+    ALWAYS = "always"    # substituted in every build
+
+
 class BusRole(Enum):
     """How the module relates to the cross-core send bus."""
 
@@ -137,7 +156,10 @@ class DspSection:
     priority: int
     payloads: frozenset[str] = frozenset({"A", "B"})
     bus_role: BusRole = BusRole.NONE
-    ybase_substituted: bool = False            # rewrite $30000 to the payload's
+    ybase: YBase = YBase.NEVER                 # see YBase
+    # DEV places this module outside its normal payload but it must keep its
+    # SHIPPING shared-window base, or its buffers sweep the other payload's.
+    dev_pin_ybase: int | None = None
     r7_latch_slot: int | None = None           # rotation-latch state word
     gate_label: str | None = None              # where the housekeeping gate jumps
     override_markers: tuple[str, ...] = ()     # ";_OVERRIDE" hooks it honours
@@ -184,6 +206,10 @@ class CavePatch:
     hook_addr: int | None = None        # where the jsr is planted
     hook_stock: bytes = b""             # bytes that MUST be there first
     registers_formatter: FormatterReg | None = None
+    # Trailing prose for this cave's line in the build report, separator
+    # included. The installer is generic; what a given cave actually DOES is
+    # not, and the build report is the only place a human sees it.
+    report_note: str = ""
 
 
 @dataclass(frozen=True)
@@ -238,6 +264,10 @@ class Module:
         return tuple(i for i, p in enumerate(self.params)
                      if p.formatter is Formatter.STEPPED)
 
+    @property
+    def is_cf_patch(self) -> bool:
+        return bool(self.cf_patches)
+
     def knob_map(self) -> dict[str, int]:
         """Panel label -> slot index, for the test harness.
 
@@ -247,3 +277,37 @@ class Module:
         """
         return {p.name.decode(): i for i, p in enumerate(self.params)
                 if p.name}
+
+
+@dataclass(frozen=True)
+class Remix:
+    """A named selection of modules, composed into one firmware image.
+
+    `modules` is ordered, and for modules that appear in the FX2 chooser that
+    order IS their row on the panel. Modules with no menu entry (a ColdFire
+    patch, say) may sit anywhere in the list; they are filtered out where a
+    chooser order is wanted.
+
+    THE FALLBACK IS NOT OPTIONAL, and it is the question a selective build
+    forces. The FX2 chooser is one list shared by all eight tracks, and a
+    saved project can carry an id this image does not implement -- because
+    the remix left that module out, or because specialization put its engine
+    on the other core. That id must still dispatch to SOMETHING; left alone
+    it runs whatever code now occupies the address. Pointing it at a module
+    that passes audio degrades in the useful direction, which is why the
+    default is the send client: a track that selects a missing effect becomes
+    a send rather than silence or noise.
+    """
+
+    name: str
+    doc: str
+    modules: tuple[str, ...]
+    fallback: str                # module KEY that unimplemented ids alias to
+
+    def __post_init__(self):
+        if self.fallback not in self.modules:
+            raise ValueError(
+                f"remix {self.name!r}: fallback {self.fallback!r} is not in "
+                f"the remix, so ids aliased to it would dispatch nowhere")
+        if len(set(self.modules)) != len(self.modules):
+            raise ValueError(f"remix {self.name!r}: duplicate module keys")

@@ -88,11 +88,13 @@ code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
 times. The old docstring here claimed "exactly one occurrence", which was
 never true for the XBUS path.
 """
-import pathlib, re, subprocess, sys
+import os, pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
+from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
+from remix.schema import YBase  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
@@ -123,10 +125,14 @@ ROWCOUNT_AT = 0x40059a56        # the 16-bit immediate itself
 ROWCOUNT_INSN = 0x40059a54
 NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
-# The chooser order, and therefore each module's row in the FX2 list. This is
-# a property of the REMIX -- which modules are in this image and in what order
-# -- rather than of any one module, so it stays here until remixes/ exists.
-ORDER = ["REVERB SERVER", "DELAY SERVER", "SEND"]   # ChonVerb first, by preference
+# WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
+# chongbong is the shipping selection and the one every refactor proves itself
+# against. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# so ORDER is the menu modules alone, in the remix's declared order.
+REMIX = remix_registry.remix(os.environ.get("REMIX")
+                             or remix_registry.DEFAULT_REMIX)
+ORDER = [k for k in REMIX.modules
+         if remix_modules()[k].menu is not None]
 
 # BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
 # to not being able to tell WHICH build was running on the unit: a symptom
@@ -395,7 +401,6 @@ def penable(active):
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
 # Temporary diagnostic; the normal build is unaffected.
-import os
 if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
     FULLNAME["REVERB SERVER"] = b"X MEM PROBE" if os.environ.get("XPROBE") == "1" else b"P2 PROBE"
 if os.environ.get("TPROBE") == "1":
@@ -577,11 +582,11 @@ if SPEC:
            # renders two engines in one script and compares byte-for-byte.
            # It only means anything where the real delay is placed (DEV/SPEC/
            # plain); the XBUS stub and BURN probe arms ignore it.
-ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM["DELAY SERVER"])
+ASM_SRC = {k: v for k, v in {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER"))
                             if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
-                            else os.environ.get("DLSRC") or _DEF_ASM["DELAY SERVER"]),
+                            else os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER")),
            # BURN is NOT a separate source any more -- see BURN_INJECT below.
            #
            # RVSRC= swaps the reverb engine for an alternate source file. It
@@ -593,8 +598,8 @@ ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM["DELAY SERVER"]
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
-                             else os.environ.get("RVSRC") or _DEF_ASM["REVERB SERVER"]),
-           "SEND": _DEF_ASM["SEND"]}
+                             else os.environ.get("RVSRC") or _DEF_ASM.get("REVERB SERVER")),
+           "SEND": _DEF_ASM.get("SEND")}.items() if k in ORDER}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the
 # X:0x215/X:0x235 module address, and DELAY SERVER's payload-specific Y base
@@ -825,101 +830,97 @@ def main():
         wr32(r, NEW_LIST)
     for pos, name in enumerate(ORDER):
         wr32(ID2POS + NEW_IDS[name] * 4, pos)
-    # ==== 1b. ColdFire caves, from the modules that own them ================
+    # ==== 1b. ColdFire caves, from whichever modules carry them =============
     # A cave is how a module changes the firmware's BEHAVIOUR rather than
-    # adding an effect: assert the hook site is still stock, plant a jsr, and
-    # let the cave replay what it displaced. The addresses, the pinned machine
-    # code and the .s sources live in modules/tempo-sync/manifest.py, which is
-    # also where the reasoning is; what stays here is the installer and the
-    # two diagnostic variants.
+    # adding an effect: assert the hook site still holds the stock bytes,
+    # plant a jsr to the cave, and let the cave replay what it displaced
+    # before doing its own work. The addresses, the pinned machine code, the
+    # .s sources and the reasoning all live in the owning module's manifest.
+    # This is only the installer, and it is generic: a module contributing
+    # caves needs no change here.
     #
-    # NOTEMPO=1 installs neither cave (the DSP side then reads zeros and SYNC
-    # is a no-op by design).
-    _cf = remix_modules()["TEMPO SYNC"].cf_patches
-    _tempo_cave, _time_fmt = _cf
-    TEMPO_HOOK = _tempo_cave.hook_addr
-    TEMPO_CAVE = _tempo_cave.cave_addr
-    TEMPO_HOOK_STOCK = _tempo_cave.hook_stock
-    TEMPO_CAVE_BYTES = _tempo_cave.pinned
-    # TEMPOCAVE=replay: the hook with a cave that ONLY replays the three
-    # displaced instructions -- isolates the hook mechanism from the stores
-    # (R48/R49 killed the voices on the unit; docs/DSP.md 6c-i).
-    if os.environ.get("TEMPOCAVE") == "replay":
-        TEMPO_CAVE_BYTES = TEMPO_HOOK_STOCK + bytes.fromhex("4e75")
-        print("  tempo cave: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
+    # No cave is installed if NOTEMPO=1, and none if the remix carries no
+    # module that has any -- in both cases the DSP side reads zeros and SYNC
+    # is a no-op by design.
+    import shutil, tempfile
+    _caves = [c for k in REMIX.modules for c in remix_modules()[k].cf_patches]
+    _replay = os.environ.get("TEMPOCAVE") == "replay"
+    # TEMPOCAVE=replay: the hook with a cave that ONLY replays the displaced
+    # instructions -- isolates the hook mechanism from the stores (R48/R49
+    # killed the voices on the unit; docs/DSP.md 6c-i).
+    _plan = []
+    for _c in _caves:
+        _b = _c.pinned
+        if _replay and _c.hook_addr is not None:
+            _b = _c.hook_stock + bytes.fromhex("4e75")
+            print(f"  {_c.label}: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
+        _plan.append((_c, _b))
     if os.environ.get("NOTEMPO") == "1":
         print("  tempo cave OFF (NOTEMPO=1) -- SYNC reads zeros")
-    else:
-        assert TEMPO_CAVE >= cave_end, "tempo cave overlaps the menu clones"
-        got = bytes(img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10])
-        if got != TEMPO_HOOK_STOCK:
-            sys.exit(f"tempo hook site 0x{TEMPO_HOOK:08x} is not stock "
-                     f"({got.hex()}) -- refusing")
-        if any(img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)]):
-            sys.exit("tempo cave not free")
-        import shutil, subprocess, tempfile
-        if (os.environ.get("TEMPOCAVE") != "replay" and
-                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
+        _plan = []
+    _cave_top = cave_end            # caves start past the descriptor clones
+    for _c, _b in _plan:
+        assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
+        assert _c.cave_addr + len(_b) <= 0x400d7c3c, "past the stock zero run"
+        if _c.hook_addr is not None:
+            got = bytes(img[_c.hook_addr - BASE:
+                            _c.hook_addr - BASE + len(_c.hook_stock)])
+            if got != _c.hook_stock:
+                sys.exit(f"{_c.label} hook site 0x{_c.hook_addr:08x} is not "
+                         f"stock ({got.hex()}) -- refusing")
+        if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)]):
+            sys.exit(f"{_c.label} not free")
+        # The bytes are PINNED so the build needs no m68k toolchain; when one
+        # is present the source is re-assembled and compared, so a source that
+        # has drifted from what we ship cannot pass unnoticed.
+        if (_c.source and not _replay and shutil.which("m68k-elf-as")
+                and shutil.which("m68k-elf-objcopy")):
             with tempfile.TemporaryDirectory() as td:
-                o, b = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
+                o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
                 subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                _tempo_cave.source], check=True)
+                                _c.source], check=True)
                 subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
-                                ".text", o, b], check=True)
-                fresh = pathlib.Path(b).read_bytes()
-            if fresh != TEMPO_CAVE_BYTES:
-                sys.exit(f"{_tempo_cave.source} no longer assembles to its "
-                         f"pinned bytes -- re-pin them in the manifest "
-                         f"deliberately")
-        img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)] = \
-            TEMPO_CAVE_BYTES
-        img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10] = \
-            b"\x4e\xb9" + TEMPO_CAVE.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
-        print(f"  tempo cave: {len(TEMPO_CAVE_BYTES)} bytes at "
-              f"0x{TEMPO_CAVE:08x}, hook at 0x{TEMPO_HOOK:08x} "
-              f"(tempo24 -> r6+$6, clocks Q12.4 -> r6+$7, fader+1 -> r6+$8, "
-              f"note -> r6+$9; ids 6/7)")
-
-    # ==== 1c. ColdFire: TIME LABEL FORMATTER cave (24 Aug 2026) ==============
-    # modules/tempo-sync/time_fmt.s: BongDelay TIME's display formatter (P+0x0ca "A", with
-    # B = 0 -- stock DELAY TIME's own configuration). Prints the division
-    # name while the DSP's sticky snap holds one, else ms; same integers as
-    # the DSP rule (docs/PARAM_PAGES.md section 7, DSP.md 6c). Position-
-    # independent; its two state longs live in the cave (RAM). Follows the
-    # tempo cave; the bytes are pinned and re-checked like the tempo cave's.
-    # Off with NOTEMPO=1 (no tempo, no labels -- the knob stays plain).
-    TIME_FMT_CAVE = _time_fmt.cave_addr
-    TIME_FMT_BYTES = _time_fmt.pinned
-    if os.environ.get("NOTEMPO") != "1":
-        assert TIME_FMT_CAVE >= TEMPO_CAVE + len(TEMPO_CAVE_BYTES)
-        assert TIME_FMT_CAVE + len(TIME_FMT_BYTES) <= 0x400d7c3c, "past the stock zero run"
-        if any(img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)]):
-            sys.exit("time_fmt cave not free")
-        if (os.environ.get("TEMPOCAVE") != "replay" and
-                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
-            with tempfile.TemporaryDirectory() as td:
-                o, b = os.path.join(td, "f.o"), os.path.join(td, "f.bin")
-                subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                _time_fmt.source], check=True)
-                subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
-                                ".text", o, b], check=True)
-                if pathlib.Path(b).read_bytes() != TIME_FMT_BYTES:
-                    sys.exit(f"{_time_fmt.source} no longer assembles to its "
+                                ".text", o, bp], check=True)
+                if pathlib.Path(bp).read_bytes() != _c.pinned:
+                    sys.exit(f"{_c.source} no longer assembles to its "
                              f"pinned bytes -- re-pin them in the "
                              f"manifest deliberately")
-        img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)] = \
-            TIME_FMT_BYTES
-        _reg = _time_fmt.registers_formatter
-        wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, TIME_FMT_CAVE)  # A
-        wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)              # B
-        print(f"  time_fmt cave: {len(TIME_FMT_BYTES)} bytes at "
-              f"0x{TIME_FMT_CAVE:08x}, registered as BongDelay TIME's formatter")
+        img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if _c.hook_addr is not None:
+            img[_c.hook_addr - BASE:_c.hook_addr - BASE + 10] = \
+                b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
+        # A formatter registration names the module it draws for, so a remix
+        # that omits that module skips the write instead of pointing into a
+        # descriptor which was never cloned.
+        _reg = _c.registers_formatter
+        if _reg is not None and _reg.module in clone_addr:
+            wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _c.cave_addr)
+            wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)
+        _hook = (f", hook at 0x{_c.hook_addr:08x}"
+                 if _c.hook_addr is not None else "")
+        print(f"  {_c.label}: {len(_b)} bytes at 0x{_c.cave_addr:08x}"
+              f"{_hook}{_c.report_note}")
+        _cave_top = _c.cave_addr + len(_b)
 
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
-    wr32(FX2_IDS + NONE_ID * 4, clone_addr["SEND"])
-    wr32(ID2POS + NONE_ID * 4, ORDER.index("SEND"))
+    wr32(FX2_IDS + NONE_ID * 4, clone_addr[REMIX.fallback])
+    wr32(ID2POS + NONE_ID * 4, ORDER.index(REMIX.fallback))
+    # A module this remix leaves out still owns an id, and a saved project can
+    # carry it. Alias it to the fallback for exactly the reason id 0 is
+    # aliased: the alternative is a chooser entry dispatching into whatever
+    # code now occupies that address. Empty whenever the remix carries every
+    # module the registry knows.
+    _omitted = [m for m in remix_modules().values()
+                if m.menu is not None and m.key not in REMIX.modules]
+    for _m in _omitted:
+        wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
+        wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
+    if _omitted:
+        print(f"  not in this remix: "
+              f"{', '.join(sorted(m.key for m in _omitted))} -- their ids "
+              f"alias to {REMIX.fallback}")
     if delayprobe:
         wr32(ID2POS + STOCK_DELAY_ID * 4, len(real) - 1)
         if rd32(FX2_IDS + STOCK_DELAY_ID * 4) != STOCK_DELAY_P:
@@ -932,7 +933,17 @@ def main():
 
     # ==== 2. DSP code placement + dispatch (task 13) ========================
     print("=== DSP: code placed, dispatch wired, both payloads ===")
-    delay_src = pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
+    delay_src = (pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
+                 if "DELAY SERVER" in ASM_SRC else None)
+    if delay_src is None:
+        # The overrides below splice into the delay's source. Asking for one
+        # in a remix that has no delay is a mistake worth naming, not a
+        # traceback.
+        _dset = [v for v in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFRZAT")
+                 if os.environ.get(v) is not None]
+        if _dset:
+            sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
+                     f"carries no DELAY SERVER")
     reverb_src = pathlib.Path(ASM_SRC["REVERB SERVER"]).read_text()
     if os.environ.get("PROBE") == "1":
         print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
@@ -1337,7 +1348,7 @@ mkgo:""",
         # server reading the shared accumulator, so it needs the identical
         # relocation. Its housekeeping gate is what keeps payload B from
         # zeroing buffers payload A owns.
-        if DEV or SPEC:
+        if (DEV or SPEC) and delay_src is not None:
             delay_src = xbus(delay_src, "DELAY SERVER", "bus_notfirst")
 
     # Every source now carries a $30000 that must be substituted per payload,
@@ -1352,7 +1363,7 @@ mkgo:""",
     # $30000 as its payload discriminator. The gate is emitted per payload now
     # and carries no literal, so only the Y base remains.
     _want = (1 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
-    if delay_src.count("$30000") != _want:
+    if delay_src is not None and delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
     dev_delay = None            # (words) for the .mem dump append, DEV only
@@ -1594,7 +1605,7 @@ mkgo:""",
         # makes the DEV delay byte-identical to the one that ships: same line
         # addresses, same gate discriminator (it never housekeeps -- the SEND's
         # self-healing election covers that, exactly as on hardware).
-        def _prep(src, name, slot=None):
+        def _prep(src, name, slot):
             if _x:
                 src = _gate(src, name)
             if slot is not None:
@@ -1602,24 +1613,42 @@ mkgo:""",
                 src = _rotlatch(src, name, slot)
             return src
 
-        plan = (("SEND", _prep(_sub(send_src) if _x else send_src, "SEND", 0x69)),
-                ("REVERB SERVER", _prep(_sub(reverb_src) if _x else reverb_src,
-                                        "REVERB SERVER")),
-                ("DELAY SERVER", _prep(
-                    delay_src.replace("$30000", "$38000")
-                    if DEV else _sub(delay_src), "DELAY SERVER", 0x86)))
+        # The placement plan, built from the manifests rather than spelled
+        # out. Order is DspSection.priority and it is BYTE-LOAD-BEARING: the
+        # region is packed in this order, so SEND first (the fallback alias
+        # needs its entry points to exist) and the delay last, so the region's
+        # trailing free words belong to the algorithm still being designed.
+        _texts = {"SEND": send_src, "REVERB SERVER": reverb_src}
+        if delay_src is not None:
+            _texts["DELAY SERVER"] = delay_src
+
+        def _ybase(m, src):
+            if DEV and m.dsp.dev_pin_ybase is not None:
+                return src.replace("$30000", f"${m.dsp.dev_pin_ybase:x}")
+            if m.dsp.ybase is YBase.ALWAYS or (m.dsp.ybase is YBase.XBUS and _x):
+                return _sub(src)
+            return src
+
+        plan = tuple(
+            (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
+            for m in sorted((remix_modules()[k] for k in ORDER
+                             if k in _texts), key=lambda m: m.dsp.priority))
         if _x:
             _g = [n for n, t in plan if "never housekeeps" in t]
             print(f"  payload {tag}: housekeeping "
                   f"{'GATED OUT of ' + ', '.join(_g) if _g else 'ENABLED (this payload housekeeps)'}")
         # SPEC: each core carries only the engine it actually runs. Payload A
         # keeps the reverb, payload B the delay; the other is not placed at all
-        # and its id is aliased to SEND after placement (it needs send_init,
+        # and its id is aliased to the fallback after placement (it needs its
         # which only exists once SEND has been assembled at this cursor).
         absent = None
         if SPEC:
             absent = "DELAY SERVER" if tag == "A" else "REVERB SERVER"
             plan = tuple(p for p in plan if p[0] != absent)
+            # A remix that never carried that module has nothing to specialize
+            # away, and its id is already handled by the omitted-id alias.
+            if absent not in NEW_IDS:
+                absent = None
         cursor = base_a
         # LFO roll table (10 Aug 2026): reverb_server.asm's rolled lines 2-7
         # read per-line [rate const, phase slot, int slot, frac slot] from a
@@ -1692,10 +1721,10 @@ mkgo:""",
             place(words, cursor)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
-            if name == "SEND":
+            if name == REMIX.fallback:
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
-                send_init, send_proc = init_a, proc_a
+                fb_init, fb_proc = init_a, proc_a
             extra = (f"  Y base 0x{0x38000 if DEV else pp['ybase']:x}"
                      + ("  (shipping payload-B address, see plan above)"
                         if DEV and pp['ybase'] != 0x38000 else "")
@@ -1704,16 +1733,22 @@ mkgo:""",
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
 
+        for _m in _omitted:
+            # Same fail-safe on the DSP side: the id resolves to the fallback's
+            # entry points rather than to whatever occupies its dispatch slot.
+            wrw_p(pp["xtab"] + _m.menu.fx2_id * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + _m.menu.fx2_id) * 3, fb_proc)
+
         if absent is not None:
             # The absent engine's id must still dispatch to something on this
             # core -- the chooser list is shared across all eight tracks and
             # nothing stops it being selected here. Point it at the SEND client
             # already placed above: same fail-safe id 0 uses, and a track that
             # selects the "wrong" server becomes a send to the right one.
-            wrw_p(pp["xtab"] + NEW_IDS[absent] * 3, send_init)
-            wrw_p(pp["xtab"] + (32 + NEW_IDS[absent]) * 3, send_proc)
+            wrw_p(pp["xtab"] + NEW_IDS[absent] * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[absent]) * 3, fb_proc)
             print(f"  {absent:13} NOT PLACED on this core -- id "
-                  f"0x{NEW_IDS[absent]:02x} aliased to SEND P:0x{send_init:05x} "
+                  f"0x{NEW_IDS[absent]:02x} aliased to SEND P:0x{fb_init:05x} "
                   f"(selecting it here makes the track a send, not silence)")
 
         if probe == "silence":
@@ -1748,9 +1783,9 @@ mkgo:""",
             # those happen to be -- uncontrolled. The question this build
             # answers is only "does the delay survive our code in its slot",
             # not "is the send level right".
-            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, send_init)
-            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, send_proc)
-            print(f"  {'SEND @ 0x08':13} P:0x{send_init:05x} "
+            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, fb_proc)
+            print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
         print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "

@@ -112,3 +112,41 @@ def by_id(fx2_id: int):
         if m.menu is not None and m.menu.fx2_id == fx2_id:
             return m
     return None
+
+
+REMIXES_DIR = ROOT / "remixes"
+DEFAULT_REMIX = "chongbong"
+
+
+def remix(name: str = DEFAULT_REMIX):
+    """Load remixes/<name>.py and return its REMIX."""
+    f = REMIXES_DIR / f"{name}.py"
+    if not f.exists():
+        raise SystemExit(f"no remix {name!r} -- have {sorted(remix_names())}")
+    spec = importlib.util.spec_from_file_location(f"remix_sel_{name}", f)
+    mod = importlib.util.module_from_spec(spec)
+    tools = str(ROOT / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    spec.loader.exec_module(mod)
+    if not hasattr(mod, "REMIX"):
+        raise SystemExit(f"{f} defines no REMIX")
+    r = mod.REMIX
+    known = modules()
+    for k in r.modules:
+        if k not in known:
+            raise SystemExit(f"remix {name!r} selects unknown module {k!r} -- "
+                             f"have {sorted(known)}")
+    return r
+
+
+def remix_names() -> list[str]:
+    if not REMIXES_DIR.is_dir():
+        return []
+    return sorted(f.stem for f in REMIXES_DIR.glob("*.py")
+                  if not f.name.startswith("_"))
+
+
+def selected(r) -> list:
+    """The remix's modules, in its declared order."""
+    return [modules()[k] for k in r.modules]

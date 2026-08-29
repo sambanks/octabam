@@ -10,7 +10,7 @@ label is stated here rather than inherited silently -- the harness reads these
 names, and a name that exists only in a donor is a name no tool can see.
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -66,8 +66,8 @@ MODULE = Module(
         bus_role=BusRole.SERVER,
         # Eight occurrences: the relocated tank buffers at 0x30000/0x34000.
         # The per-payload rewrite of this literal is load-bearing, not a
-        # formality.
-        ybase_substituted=True,
+        # formality -- but only once the bus lives in the shared window.
+        ybase=YBase.XBUS,
         r7_latch_slot=None,               # payload A is in lockstep with the
                                           # rotation flip and latches nothing
         gate_label="bus_notfirst",

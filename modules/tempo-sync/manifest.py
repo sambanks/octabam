@@ -66,6 +66,8 @@ MODULE = Module(
             source="modules/tempo-sync/tempo_cave.s",
             hook_addr=TEMPO_HOOK,
             hook_stock=TEMPO_HOOK_STOCK,
+            report_note=" (tempo24 -> r6+$6, clocks Q12.4 -> r6+$7, "
+                        "fader+1 -> r6+$8, note -> r6+$9; ids 6/7)",
         ),
         CavePatch(
             label="time_fmt cave",
@@ -76,6 +78,7 @@ MODULE = Module(
             # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --
             # stock DELAY TIME's own configuration.
             registers_formatter=FormatterReg(module="DELAY SERVER", slot=0),
+            report_note=", registered as BongDelay TIME's formatter",
         ),
     ),
 )

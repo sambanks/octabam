@@ -15,7 +15,7 @@ entirely and its two knobs keep FILTER's plain-numeric zeros -- which is what
 they want and what hardware confirmed.
 """
 
-from remix.schema import (BusRole, DspSection, Harness, Kind, MenuEntry,
+from remix.schema import (BusRole, YBase, DspSection, Harness, Kind, MenuEntry,
                           Module, Param)
 
 _BLANK = Param(b"", None, active=False)
@@ -44,7 +44,7 @@ MODULE = Module(
                                           # points at SEND's entry points, so
                                           # it must already be placed
         bus_role=BusRole.CLIENT,
-        ybase_substituted=False,          # carries no shared-window literal
+        ybase=YBase.NEVER,                # carries no shared-window literal
         r7_latch_slot=0x69,
         gate_label="notfirst",
     ),
