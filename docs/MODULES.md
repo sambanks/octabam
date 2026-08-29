@@ -213,6 +213,13 @@ the remix work proved itself, and it caught things reading the diff did not.
 `docs/VOICING.md`. Render locally rather than flashing: every hardware test
 costs a manual firmware write.
 
+**A `layout_char` makes your module placeable by `send_probe`**, whose
+alphabet is derived from the manifests. But `send_probe` measures a BUS
+ACCUMULATOR, so it only analyses modules whose harness says `is_server`. An
+insert has no accumulator to read: render it with `--direct`, which puts the
+audio through the effect's own track, or drive `dsp_host` yourself. The tool
+says so if you ask for a layout it cannot measure.
+
 **Disassemble what you assemble.** `dsp_asm` mis-encodes several instructions
 silently — `tfr a,b` as `rnd b`, and any `mpy` operand order it does not know
 as `mpysu`, which treats its second operand as unsigned. `CLAUDE.md` has the

@@ -86,6 +86,26 @@ SERVER_ID = {m.harness.layout_char: m.menu.fx2_id
              for m in registry.modules().values()
              if m.harness is not None and m.harness.layout_char
              and m.menu is not None}
+# The layout ALPHABET, derived. It used to be the literal "RDS." in two
+# places, so a module could declare a layout_char, have it resolved into
+# SERVER_ID above, and still be silently dropped from every layout string --
+# which is what happened to all six inserts: they had to be driven through
+# dsp_host by hand. `.` means a track running neither (NONE, or a stock
+# effect): our code never runs there, so the slot is simply skipped.
+LAYOUT_CHARS = set(SERVER_ID) | {"."}
+# Which of them own a bus accumulator and can therefore be MEASURED as the
+# target of a send. An insert has no bus role, so a layout of nothing but
+# inserts has nothing to analyse -- that is what the check below is for.
+SERVER_CHARS = {m.harness.layout_char for m in registry.modules().values()
+                if m.harness is not None and m.harness.layout_char
+                and m.harness.is_server}
+# Every module's own declared defaults, as a -params list. A module the CLI
+# has no flags for still needs SOMETHING sensible on its knobs, and the
+# manifest is where that is already written down.
+MODULE_DEFAULTS = {m.harness.layout_char: [(p.default or 0) for p in m.params]
+                   for m in registry.modules().values()
+                   if m.harness is not None and m.harness.layout_char
+                   and m.params}
 REVERB_ID = SERVER_ID.get("R")
 SEND_ID = SERVER_ID.get("S")
 DELAY_ID = SERVER_ID.get("D")
@@ -235,7 +255,10 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     # control is precisely the class of mislabel this project has lost sessions
     # to, and here it would silently compare two different effects.
     dpar = delay_params if delay_params is not None else DELAY_PARAMS
-    tgt = pick or ("R" if "R" in layout.upper() else "D")
+    _present = [c for c in layout.upper() if c in SERVER_CHARS]
+    tgt = pick or ("R" if "R" in layout.upper() else
+                   "D" if "D" in layout.upper() else
+                   (_present[0] if _present else "R"))
     live = [(0, tgt)]
     if direct:
         ri, rp = entry(tgt)
@@ -262,11 +285,16 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         # dsp_host cannot boot. Against either of those `--layout DS` renders
         # silence from a 10-word stub rather than failing, which is why the
         # silence check below is a FAILED measurement and not a clean one.
-        slots = [c for c in layout.upper() if c in "RDS."]
+        slots = [c for c in layout.upper() if c in LAYOUT_CHARS]
         live = [(k, c) for k, c in enumerate(slots) if c != "."]
         n = len(live)
-        if not any(c in "RD" for _, c in live):
-            die(f"layout {layout!r} has no server -- needs an R or a D")
+        if not any(c in SERVER_CHARS for _, c in live):
+            die(f"layout {layout!r} has no bus server to measure -- needs one "
+                f"of {''.join(sorted(SERVER_CHARS))}. The others "
+                f"({''.join(sorted(set(SERVER_ID) - SERVER_CHARS))}) either "
+                f"feed a bus (SEND) or are inserts that process their own "
+                f"track's frames, so there is no accumulator to analyse; "
+                f"render an insert with --direct instead")
         r7s = ",".join(str(2 + 2 * k) for k, _ in live)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
         # The tone normally reaches the SENDs only, so a SERVER's own track
@@ -278,7 +306,10 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         # measured for what it does on the unit.
         inmask = sum(1 << i for i, (_, c) in enumerate(live)
                      if c == "S" or inall)
-        par = {"R": rev_params, "S": send_params, "D": dpar}
+        # The three the CLI has flags for keep their flag-driven values;
+        # anything else falls back to what its own manifest declares.
+        par = dict(MODULE_DEFAULTS)
+        par.update({"R": rev_params, "S": send_params, "D": dpar})
         cmd = [str(HOST), "-mem", str(mem),
                "-init", ",".join(f"{entry(c)[0]:x}" for _, c in live),
                "-proc", ",".join(f"{entry(c)[1]:x}" for _, c in live),
