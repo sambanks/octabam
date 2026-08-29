@@ -68,6 +68,7 @@ twelve parameter slots, its DSP source, its ColdFire caves — and
 image and the reference every refactor proves itself against.
 
 ```sh
+make remix                # the workbench: compose a selection interactively
 make modules              # the module index and the available remixes
 make bus REMIX=<name>     # build a selection (default: chongbong)
 ```
@@ -76,13 +77,69 @@ What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
 `tempo-sync` — the last being a ColdFire patch rather than an effect, and the
 worked example of changing what the firmware *does*.
 
+The first **outsider modules** landed 29 Aug 2026 — three Mutable-
+Instruments-flavoured per-track **inserts** (no bus role, placed in BOTH
+payloads, run on any track, several at once — the class the servers cannot
+be):
+
+- `warpfold` — Warps-ish ring mod / wavefolder (322 words). MIX=0 bit-exact
+  null, DRV=0 fold identity at −96 dB, ring sidebands on the predicted
+  carrier to 0.3%.
+- `ripple` — Ripples-ish driven SVF, LP/BP/HP, Q≈30 (347 words). LP slope
+  −13.8 dB measured where 2-pole theory says −14.4; the all-knobs-at-127
+  bomb decays clean.
+- `rungs` — Rings-ish 8-mode modal resonator, STRING/BELL/GLASS partial
+  tables + STRUCT stretch (880 words). Partials land within 0.15% of the
+  series; DAMP spans T60 ~0.1–9 s (hyperbolic in the knob — a voicing item).
+
+A fourth followed the same day — `nimbus`, a Clouds-ish granular texture
+(500 words): four grains over a continuously-recorded 743 ms line, POS/SIZE/
+DENS/MIX and a freeze. It gets its **own** remix because it owns the
+per-core FX2 buffer region `Y:0x4000–0xBFFF`, so it cannot share a core with
+ChonVerb's tank — a pair the ledger now refuses by name. Its window found a
+new trap, now in `CLAUDE.md`: **reading `a0` exposes the fractional left
+shift that reading `a1` hides**, so an `a0`-based integer scale is 2× the
+multiplier; the wrong one assembled and made plausible granular noise while
+running the window at double rate, and only a DC gate caught it. The musical
+freeze renders locally via `NFRZAT=n`, the `DFRZAT`-shaped lever.
+
+Two more followed, both zero-buffer inserts:
+
+- `streamz` — Streams-ish **vactrol lowpass gate** (255 words): the envelope
+  opens a filter and an amplifier together, so quiet is dark *and* quiet.
+  LPG/VCF/VCA. Release measured 26–731 ms against a 20–700 ms design; the
+  coupling itself measured as a spectral centroid of 9,880 Hz on loud
+  material against 2,620 Hz on the same material quiet.
+- `bodeshift` — Warps-ish **Bode frequency shifter** (391 words), UP/DOWN/
+  WIDE plus feedback. Built against a float model *first*, which caught the
+  sideband sign convention before a line of assembly was written. Measured on
+  the DSP: wanted sideband at unity, suppression 41.5/29.6/18.7 dB at
+  440 Hz/1 kHz/5 kHz (the model says 40.8/29.2/18.6), shift frequency exact
+  to 0.00 Hz across the knob, and feedback stable at maximum with 0.95 FS in.
+
+All five ship together in the `mutables` remix (2,410/2,724 words with SEND;
+`warped` carries WarpFold alone). Built entirely against the manifest
+contract; the build's three-source special-casing was generalized the same
+day under the refhash gate (bit-identical before any module existed), and
+`verify_menu` now derives its expectations from the selected remix instead of
+a hand table. All three are **not yet flashed** — every MODE select and knob
+publish rides the standing on-unit reconfirm. Known tool gaps: `make cycles`
+is remix-blind (still prices the chongbong engines whatever REMIX says;
+by inspection the inserts are ~80/~90/~190 cycles/sample worst 🟡), and
+send_probe's layout charset is still hard-coded RDS. — inserts render
+through dsp_host directly.
+
 Three things follow that are worth knowing before editing anything:
 
 - **The build refuses to start when two selected modules collide** on an FX2
   id, a ColdFire cave, a hook site or a core-private Y word, and names both.
-  `tools/remix/ledger.py`; the negative tests are in `make check`. The shared
-  64K window is **not** covered yet — its extents are not established well
-  enough to write down, so `CLAUDE.md`'s ownership notes remain the map.
+  `tools/remix/ledger.py`; the negative tests are in `make check`. As of
+  29 Aug it also refuses two modules that both own the **per-core FX2
+  instance buffer region** `Y:0x4000–0xBFFF` (ChonVerb's tank, Nimbus's
+  line) — declared, not scanned, because a scan cannot tell an address from
+  a mask. The shared 64K window is still **not** covered — its extents are
+  not established well enough to write down, so `CLAUDE.md`'s ownership
+  notes remain the map.
 - **A module's `priority` is byte-load-bearing.** The donor region is packed
   in that order.
 - **Refactors of the build prove themselves with `scripts/refhash.sh`** — 23
@@ -144,13 +201,30 @@ a lever first.
 
 ### Cycles — per core, 4,535/sample ✅ arithmetic (200 MIPS ÷ 44.1 kHz)
 
-Cycles are not the current constraint, with one caveat. The number
-`make cycles` prints is a **single-core floor**: it sums reverb + delay +
-sends on one core, but on hardware no core ever pays both engines. The
-delay's worst path (GRAIN, ~2,000 cycles by the tool's count) plus sends
-runs against core 1's ~2,150 🟡 *derived* spare — a thin paper margin, while
-the unit runs every mode clean; only the burn sweep can measure the real
-ceiling.
+Cycles are not the current constraint. `make cycles` is **remix-aware since
+29 Aug 2026** and prints a **WORST ONE CORE** figure derived from the
+selection: four FX2 slots, at most one server (the design rule, and what
+SPEC enforces), inserts unlimited because nothing stops all four tracks
+choosing the same one. Measured this way:
+
+| remix | worst core | what fills it |
+|---|---|---|
+| chongbong | **2,398** | 1× delay + 3× send |
+| mutables | **1,376** | 4× BodeShift (the dearest insert) |
+| nimbus | **1,308** | 4× Nimbus |
+| verbonly | **1,444** | 1× reverb + 3× send |
+
+against ~3,125 usable after stock's own ~1,410. Per-module: reverb 1,384,
+delay 2,338 (GRAIN worst path), Nimbus 327, BodeShift 344, Rungs 238,
+Streamz 154, WarpFold 101, Ripple 93, send 20.
+
+The old headline summed reverb + delay + sends onto one core — a load no
+core ever pays. That composition is still printed, labelled as the legacy
+basis, because the 7 Aug hardware spare was measured against it and
+re-baselining the comparison would break the only hardware anchor there is.
+⚠️ Every figure here is a static count: exact for the code, blind to
+memory-contention stalls, and the wall is a **cliff**. Only the burn sweep
+measures the real ceiling.
 
 - ⚠️ **FX1 cycles are paid ×4 per core** — a 300-cycle FX1 effect costs
   1,200 cycles/core. *This*, not program space, is the ceiling on FX1

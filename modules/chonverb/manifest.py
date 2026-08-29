@@ -10,8 +10,8 @@ label is stated here rather than inherited silently -- the harness reads these
 names, and a name that exists only in a donor is a name no tool can see.
 """
 
-from remix.schema import (BusRole, YBase, DspSection, Formatter, Harness, Kind,
-                          MenuEntry, Module, Param)
+from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter,
+                          Harness, Kind, MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -73,5 +73,9 @@ MODULE = Module(
         gate_label="bus_notfirst",
         override_markers=("; MODE_OVERRIDE",),
     ),
+    # The eight tank lines are hardcoded into Y:0x4000-0xBFFF, the per-CORE
+    # FX2 instance buffer region -- so nothing else that owns memory there
+    # can be hosted on the same core (the ledger refuses the pair).
+    claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="R", is_server=True),
 )

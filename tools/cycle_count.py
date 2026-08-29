@@ -89,8 +89,52 @@ def room_for_new_work(bank):
 # so a module moving its own source cannot leave this pointing at nothing.
 _ASM = registry.asm_by_stem()
 
-# A full bank's four FX2 slots: one reverb, one delay, two sends.
+# The LEGACY bank composition -- one reverb, one delay, two sends. This is
+# the shape BANK_AT_MEASURE was measured with on 7 Aug 2026, so the headroom
+# arithmetic below is only comparable to that measurement while the bank is
+# counted the same way. It is NOT what a core actually runs (see bank_worst).
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
+
+FX2_SLOTS = 4           # per core: four tracks, one FX2 each
+
+
+def bank_worst(rows, mods):
+    """The worst per-core load the SELECTED remix can actually be asked for.
+
+    Four FX2 slots on a core, and the modules that can occupy them are the
+    remix's own. Two rules shape the answer:
+
+      * AT MOST ONE SERVER per core. That is the standing design rule and
+        what SPEC enforces by placing only one engine per payload -- so the
+        legacy `reverb + delay + 2 sends` figure prices a core for two
+        engines no core ever pays, which PLAN.md already flags as a
+        single-core floor rather than a real configuration.
+      * INSERTS ARE UNLIMITED. Nothing stops all four tracks selecting the
+        same insert, so the worst case is four copies of the dearest one --
+        the number that matters for a card of inserts, and the one no
+        previous version of this tool could produce.
+
+    Returns (total, [(name, count), ...]).
+    """
+    cyc = {r["name"]: r["cycles"] for r in rows}
+    servers = sorted((m for m in mods if m["server"] and m["stem"] in cyc),
+                     key=lambda m: -cyc[m["stem"]])
+    others = sorted((m for m in mods if not m["server"] and m["stem"] in cyc),
+                    key=lambda m: -cyc[m["stem"]])
+    picks = []
+    if servers:
+        picks.append(servers[0]["stem"])
+    if others:
+        picks += [others[0]["stem"]] * (FX2_SLOTS - len(picks))
+    elif servers:
+        # A remix of nothing but servers cannot fill the other slots with
+        # anything of ours; those tracks run stock, which this tool does not
+        # price. Say so rather than inventing a number for them.
+        pass
+    counts = {}
+    for n in picks:
+        counts[n] = counts.get(n, 0) + 1
+    return sum(cyc[n] * c for n, c in counts.items()), sorted(counts.items())
 
 # Kept in step with build_bus.py's BURN block -- same include files, same
 # anchors. Duplicated rather than imported because build_bus.py runs a whole
@@ -168,14 +212,37 @@ def assemble(src, tag):
 
 
 def measure(name):
+    """Cycles for one module's per-sample work.
+
+    A module may carry SEVERAL `do n7` loops -- the insert modules dispatch
+    their MODE before the loop and give each mode its own, which is cheaper
+    than testing the mode per sample. Those loops are mutually exclusive by
+    construction (the dispatch branches to exactly one), so the module's
+    per-sample cost is the WORST of them, not their sum. That is the same
+    reasoning MODEFORK applies to alternatives INSIDE one loop; this is the
+    case where the fork sits outside it.
+
+    ⚠️ Summing them instead would price every mode at once -- charging a
+    five-mode module five engines and making it look unaffordable.
+    """
     src = prep(name)
     lines = src.split("\n")
 
     hits = [i for i, l in enumerate(lines) if SAMPLE_LOOP.match(l)]
-    if len(hits) != 1:
-        sys.exit(f"{name}: expected exactly one `do n7,>...` sample loop, "
-                 f"found {len(hits)}")
-    i = hits[0]
+    if not hits:
+        sys.exit(f"{name}: no `do n7,>...` sample loop found")
+    if len(hits) > 1:
+        alts = [_measure_loop(name, src, lines, i) for i in hits]
+        worst = max(alts, key=lambda m: m["cycles"])
+        others = "/".join(str(a["cycles"]) for a in alts)
+        worst = dict(worst)
+        worst["inner"] = ((worst["inner"] + ", ") if worst["inner"] else "") + \
+            f"worst of {len(alts)} mode loops ({others})"
+        return worst
+    return _measure_loop(name, src, lines, hits[0])
+
+
+def _measure_loop(name, src, lines, i):
     end_label = SAMPLE_LOOP.match(lines[i]).group(1)
 
     # The body is everything between the `do` and its end label. Refuse to
@@ -249,8 +316,33 @@ def measure(name):
             if inner_bad:
                 sys.exit(f"{name}: bsr callee {lbl} is not straight-line")
             bsr_lines[j] = (lbl, k0, k1)
+    # ---- forward skips, opted into per module -----------------------------
+    # A module may declare `; CYCLES_FORWARD_BRANCHES` in its header. Then a
+    # CONDITIONAL branch whose target label sits LATER in the same loop body
+    # is allowed, because such a branch can only SKIP code: the word span
+    # already counts what it skips, so the figure stays a ceiling for that
+    # path rather than becoming wrong. Nimbus needs this -- its per-grain
+    # scatter latches and its freeze gate are all two-instruction skips.
+    #
+    # The FORWARD test is the whole safety of it and is enforced, not
+    # trusted: a BACKWARD conditional branch is a loop, the span would count
+    # its body once, and the count would understate by however many times it
+    # went round. That is the shape this tool exists to refuse.
+    fwd_ok = set()
+    if "; CYCLES_FORWARD_BRANCHES" in src:
+        COND = re.compile(r"^\s*b(?:cc|cs|eq|ne|ge|lt|gt|le|mi|pl)\s+(\w+)", re.I)
+        for j in range(i + 1, end_line):
+            m = COND.match(lines[j])
+            if not m:
+                continue
+            tgt = m.group(1)
+            at = next((k for k, l in enumerate(lines)
+                       if l.strip().startswith(tgt + ":")), None)
+            if at is not None and j < at <= end_line:
+                fwd_ok.add(j)
     bad = [(j + 1, lines[j].strip()) for j in range(i + 1, end_line)
            if j not in shim_lines and j not in fork_lines and j not in bsr_lines
+           and j not in fwd_ok
            and CONTROL_FLOW.match(lines[j]) and not INNER_LOOP.match(lines[j])]
     if bad:
         print(f"{name}: loop body is not straight-line -- words != cycles here.",
@@ -356,7 +448,17 @@ def main():
         sys.exit(f"missing {ASM} -- run 'make setup'")
     args = sys.argv[1:]
 
-    rows = [measure(n) for n in BANK]
+    # The modules to price come from the SELECTED REMIX, not a hard-coded
+    # list -- a card of inserts and the shipping image are different loads,
+    # and until 29 Aug this tool priced chongbong's engines whatever REMIX
+    # said, which made every insert's cost an inspection guess.
+    import os
+    from remix.schema import BusRole
+    remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+    mods = [dict(stem=pathlib.Path(m.dsp.asm).stem, key=m.key,
+                 server=(m.dsp.bus_role is BusRole.SERVER))
+            for m in registry.selected(remix) if m.dsp is not None]
+    rows = [measure(m["stem"]) for m in mods]
 
     if "--verify" in args:
         for m in rows:
@@ -366,32 +468,55 @@ def main():
             if not ok:
                 sys.exit("marker changed codegen -- the count is not trustworthy")
 
-    bank = sum(m["cycles"] * BANK[m["name"]] for m in rows)
-
-    room = room_for_new_work(bank)
+    worst, picks = bank_worst(rows, mods)
+    # The legacy composition, and ONLY when the remix still carries the
+    # modules it was measured with -- otherwise the comparison to the 7 Aug
+    # hardware sweep is against a bank that shares nothing with it.
+    legacy = ({m["name"]: m["cycles"] for m in rows}
+              if all(k in {r["name"] for r in rows} for k in BANK) else None)
+    bank = sum(legacy[k] * n for k, n in BANK.items()) if legacy else None
+    room = room_for_new_work(bank) if bank is not None else None
 
     if "--json" in args:
-        print(json.dumps(dict(per_effect={m["name"]: m["cycles"] for m in rows},
+        print(json.dumps(dict(remix=remix.name,
+                              per_effect={m["name"]: m["cycles"] for m in rows},
+                              worst_core=worst,
+                              worst_core_mix=dict(picks),
                               bank=bank, headroom=room,
                               burn_spare_measured=BURN_SPARE,
                               bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))
         return
 
-    w = max(len(m["name"]) for m in rows)
-    print(f"{'':{w}}  cycles/sample   in a bank")
+    w = max(max(len(m["name"]) for m in rows), 17)
+    print(f"remix {remix.name!r}\n")
+    print(f"{'':{w}}  cycles/sample")
     for m in rows:
-        n = BANK[m["name"]]
-        extra = f"   [rolled: {m['inner']}]" if m["inner"] else ""
-        print(f"{m['name']:{w}}  {m['cycles']:>13}   x{n} = {m['cycles'] * n}{extra}")
-    print(f"{'full bank':{w}}  {'':>13}   {bank}")
+        extra = f"   [{m['inner']}]" if m["inner"] else ""
+        print(f"{m['name']:{w}}  {m['cycles']:>13}{extra}")
+    print()
+    mix = " + ".join(f"{n}x {k}" for k, n in picks) or "(nothing of ours)"
+    print(f"{'WORST ONE CORE':{w}}  {worst:>13}   {mix}")
+    print(f"{'':{w}}  {'':>13}   4 FX2 slots, at most one server (the design rule)")
+    if worst > CORE_TOTAL:
+        print(f"{'':{w}}  {'':>13}   *** OVER the arithmetic ceiling ***")
     # The measured spare is what was left ON TOP of a full bank plus four FX1
     # FILTERs, so it is headroom for NEW work, not a number the bank is scored
     # against. Printing "% used" against a fixed budget is exactly what made
     # 1080 dangerous -- it turned an unknown into a pass/fail.
     print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
+    if bank is None:
+        print()
+        print("  This remix carries none of the modules the 7 Aug hardware sweep")
+        print("  was measured with, so the headroom arithmetic below does not")
+        print(f"  apply to it. What can be said: the worst core costs {worst},")
+        print(f"  against ~{CORE_TOTAL - 1410} usable after stock's own ~1410 -- and")
+        print("  the wall is a CLIFF, not a slope. Only a burn sweep measures it.")
+        return
     print(f"{'MEASURED spare':{w}}  {BURN_SPARE:>13}   on a {BANK_AT_MEASURE}-cycle bank "
           f"+ 4x FX1 FILTER (hardware, 7 Aug 2026)")
+    print(f"{'legacy bank':{w}}  {bank:>13}   reverb + delay + 2 sends, the composition"
+          f"\n{'':{w}}  {'':>13}   that measurement was made against (NOT a real core)")
     grown = bank - BANK_AT_MEASURE
     print(f"{'bank has grown by':{w}}  {grown:>13}   since that measurement")
     print(f"{'room for new work':{w}}  {room:>13}   cycles/sample"

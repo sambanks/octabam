@@ -606,7 +606,12 @@ if SPEC:
            # renders two engines in one script and compares byte-for-byte.
            # It only means anything where the real delay is placed (DEV/SPEC/
            # plain); the XBUS stub and BURN probe arms ignore it.
-ASM_SRC = {k: v for k, v in {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER"))
+           # Any module the three special cases below do not name (a remix
+           # contribution like a new insert) builds from its manifest's
+           # declared source, unconditionally -- the probe/override arms are
+           # all reverb- or delay-shaped and do not apply to it.
+ASM_SRC = {k: v for k, v in {**_DEF_ASM,
+           "DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER"))
                             if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
@@ -661,6 +666,52 @@ if DEV:
 # that file for what each audible outcome would mean.
 STOCK_DELAY_ID = 0x08
 STOCK_DELAY_P = 0x400d4ace          # DELAY's E (0x400d4a96) + 0x38
+
+
+# ---- DEV repro hooks for outsider modules ----------------------------------
+# The three core sources have their override arms written out at the top of
+# main() (MODE, DMODE, DFRZAT and the rest). A module that arrives later needs
+# the same kind of lever without another special case in the placement loop,
+# so it declares a marker in its source and a rule here.
+#
+# ⚠️ EVERY HOOK HERE IS DEV-ONLY, for the reason DFRZAT is: the counter word
+# lives at Y:0x37FFE in payload A's owned half of the shared window (init-
+# zeroed, above the bus scratch at 0x360d2), which is free ground in a DEV
+# layout and is NOT a promise about any shipping one.
+def _dev_hooks(key, src):
+    if key != "NIMBUS":
+        return src
+    at = os.environ.get("NFRZAT")
+    if at is None:
+        return src
+    # NFRZAT=n engages Nimbus's FREEZE after n post-warm-up BLOCKS instead of
+    # from sample 0. Without it the frozen cloud cannot be heard locally at
+    # all: a static FRZE=1 holds the silence the warm-up just cleared, so the
+    # only thing a render proves is that the write head stopped. Exactly the
+    # gap DFRZAT was built to close for BongDelay, and the same shape of fix.
+    if os.environ.get("DEV") is None:
+        sys.exit("NFRZAT=n is a DEV-only repro hook (its counter word lives "
+                 "in payload A's shared-window half) -- set DEV=1")
+    if src.count("; NFRZ_OVERRIDE") != 1:
+        sys.exit("NFRZAT=n set but the NIMBUS source has no single "
+                 "; NFRZ_OVERRIDE marker")
+    # Branchless, and the same shared-flag idiom as everywhere else: `sub`
+    # sets N once, the two Tcc read it, and the interleaved immediate moves
+    # do not disturb the condition codes.
+    src = src.replace(
+        "; NFRZ_OVERRIDE",
+        "        move    y:>$37ffe,a\n"
+        "        add     #>1,a\n"
+        "        move    a,y:>$37ffe\n"
+        "        move    #>%d,x0\n"
+        "        sub     x0,a\n"
+        "        move    #>0,x0\n"
+        "        tmi     x0,a\n"
+        "        move    #>1,x0\n"
+        "        tpl     x0,a" % int(at))
+    print(f"  *** NFRZAT OVERRIDE: Nimbus freezes after {int(at)} "
+          f"post-warm blocks ***")
+    return src
 
 
 def assemble(src_text, org):
@@ -975,10 +1026,22 @@ def main():
         if _dset:
             sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
                      f"carries no DELAY SERVER")
-    reverb_src = pathlib.Path(ASM_SRC["REVERB SERVER"]).read_text()
+    reverb_src = (pathlib.Path(ASM_SRC["REVERB SERVER"]).read_text()
+                  if "REVERB SERVER" in ASM_SRC else None)
+    if reverb_src is None:
+        # Same courtesy as the delay's guard above: every one of these arms
+        # splices into or substitutes the reverb's source, so asking for one
+        # in a remix that has no reverb is a mistake worth naming.
+        _rset = [v for v in ("NOSHIM", "MARKER", "BURN", "MODE", "PROBE",
+                             "XPROBE", "TPROBE", "RVSRC")
+                 if os.environ.get(v) is not None]
+        if _rset:
+            sys.exit(f"{'/'.join(_rset)} set, but remix {REMIX.name!r} "
+                     f"carries no REVERB SERVER")
     if os.environ.get("PROBE") == "1":
         print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
-    send_src = pathlib.Path(ASM_SRC["SEND"]).read_text()
+    send_src = (pathlib.Path(ASM_SRC["SEND"]).read_text()
+                if "SEND" in ASM_SRC else None)
     # MODE=n substitutes a literal for the page-2 MODE read, so each character
     # can be auditioned locally. (dsp_host HAS driven companion fields via
     # -params indices 7/9/11 since 17 Aug 2026; these overrides predate that
@@ -999,7 +1062,7 @@ def main():
         cut = reverb_src[i:j].count("\n")
         reverb_src = reverb_src[:i] + "; SHIMMER REMOVED (NOSHIM=1)" + reverb_src[j:]
         print(f"  shimmer excised ({cut} lines) -- NOSHIM=1 set")
-    else:
+    elif reverb_src is not None:
         print("  shimmer IN (default) -- NOSHIM=1 to excise")
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
@@ -1367,7 +1430,8 @@ mkgo:""",
         # draft and the architecture question needs only a SERVER and a SENDER.
         # Its words are what pays for the gates (historical sizing: 507 words
         # against a region that then had 11 free).
-        send_src = xbus(send_src, "SEND", "notfirst")
+        if send_src is not None:
+            send_src = xbus(send_src, "SEND", "notfirst")
         # A PROBE build replaces the reverb's engine with a diagnostic that is
         # not a bus client at all: it has no scratch literals to relocate and
         # no housekeeping to gate, so xbus() would refuse it for lacking the
@@ -1378,7 +1442,9 @@ mkgo:""",
         # The guard stays exactly as strict for every real engine: this skips
         # the treatment for a substituted probe source, it does not weaken the
         # check for anything that is actually on the bus.
-        if not _REVERB_IS_PROBE:
+        if reverb_src is None:
+            pass                    # this remix carries no reverb at all
+        elif not _REVERB_IS_PROBE:
             reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
         else:
             print("  XBUS: REVERB SERVER is a PROBE -- no bus scratch to move, "
@@ -1663,9 +1729,20 @@ mkgo:""",
         # region is packed in this order, so SEND first (the fallback alias
         # needs its entry points to exist) and the delay last, so the region's
         # trailing free words belong to the algorithm still being designed.
-        _texts = {"SEND": send_src, "REVERB SERVER": reverb_src}
+        _texts = {}
+        if send_src is not None:
+            _texts["SEND"] = send_src
+        if reverb_src is not None:
+            _texts["REVERB SERVER"] = reverb_src
         if delay_src is not None:
             _texts["DELAY SERVER"] = delay_src
+        # Any other selected module with DSP code loads straight from its
+        # manifest's source and gets no bus treatment, but MAY declare its own
+        # DEV repro hooks below -- the generic version of the arms the three
+        # core sources have at the top of main().
+        for _k in ORDER:
+            if _k not in _texts and _k in ASM_SRC:
+                _texts[_k] = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
 
         def _ybase(m, src):
             if DEV and m.dsp.dev_pin_ybase is not None:
@@ -1913,11 +1990,16 @@ mkgo:""",
                 fh.write(term)
             print(f"  + DELAY SERVER record appended to the dump: "
                   f"P:0x{DEV_DELAY_P:05x} ({len(dev_delay)} words)")
-        print(f"\nDEV hatch ready. All three servers are real in payload A:\n"
-              f"  python3 tools/send_probe.py --mem {mem}\n"
-              f"  python3 tools/render_reverb.py loop.wav --mem {mem}\n"
-              f"DELAY SERVER is id 0x{NEW_IDS['DELAY SERVER']:02x}; "
-              f"send_probe's entry_points() resolves it from the dump.")
+        if "DELAY SERVER" in NEW_IDS:
+            print(f"\nDEV hatch ready. All three servers are real in payload A:\n"
+                  f"  python3 tools/send_probe.py --mem {mem}\n"
+                  f"  python3 tools/render_reverb.py loop.wav --mem {mem}\n"
+                  f"DELAY SERVER is id 0x{NEW_IDS['DELAY SERVER']:02x}; "
+                  f"send_probe's entry_points() resolves it from the dump.")
+        else:
+            print(f"\nDEV dump ready ({REMIX.name} carries no DELAY SERVER):\n"
+                  f"  drive dsp_host against {mem} directly, or through "
+                  f"send_probe for the modules it knows.")
 
 
 if __name__ == "__main__":

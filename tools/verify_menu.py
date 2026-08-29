@@ -33,10 +33,11 @@ to what task 11 needs to prove (the five tables agree with each other and
 with what the two real functions read). This is "measure, don't guess" in the
 form the ColdFire side allows without a full UI emulation harness.
 """
-import pathlib, sys
+import os, pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE  # noqa: E402
+from remix import registry as _reg  # noqa: E402
 
 STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 BUILT = pathlib.Path("out/mainos_bus.bin")
@@ -48,9 +49,18 @@ LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 FX1_ID_LOOKUP = 0x400d5f58
 FX1_CHOOSER = 0x400d6060
 
-# name -> (effect id, chooser position). NONE occupies position 0.
-EXPECT = {"REVERB SERVER": (0x07, 0), "DELAY SERVER": (0x06, 1), "SEND": (0x09, 2)}
+# name -> (effect id, chooser position), derived from the SELECTED REMIX
+# (REMIX=<name> env, same default as the build) -- the image being verified
+# is whatever remix was built last, so the expectations must come from the
+# same selection or every check below compares against the wrong menu. This
+# table was hand-written for the shipping trio until the first outsider
+# module made a per-remix hand copy impossible (29 Aug 2026).
+REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
+_MODS = _reg.modules()
+_ORDER = [k for k in REMIX.modules if _MODS[k].menu is not None]
+EXPECT = {k: (_MODS[k].menu.fx2_id, i) for i, k in enumerate(_ORDER)}
 N_REAL = len(EXPECT)                    # no NONE entry any more
+FALLBACK = REMIX.fallback               # id 0 and every absent id alias here
 ROWCOUNT_AT = 0x40059a56
 NONE_ID = 0x00                          # aliased to SEND
 
@@ -58,23 +68,17 @@ NONE_ID = 0x00                          # aliased to SEND
 P_PARAM_NAMES = 0x16
 P_PENABLE_LO = 0x18e                    # params 0..7, one nibble each
 P_PENABLE_HI = 0x18a                    # params 8..11
-# which knobs each effect's DSP code actually reads (mirrors build_menu.py)
-ACTIVE_PARAMS = {
-    # v2 stage 5 fills page 2: WOW(6) MODE(7) VRBD(8) PTCH(9) SPRA(10) FRZE(11)
-    # -- three knobs and three selects, which is the hardware budget exactly.
-    # ⚠️ 6 and 11 were implemented, named, defaulted and counted by stages 3/4
-    # and never enabled, so they shipped undrawable; this check is an
-    # INDEPENDENT copy of build_bus.py's list on purpose (it reads the built
-    # image, not the source of truth that built it), so it could not catch
-    # that -- both lists were simply missing the same slots.
-    # v3 stage 1 retired 5 (VRBW) and 8 (VRBD): ->VERB is hardwired and its
-    # DRY half is gone. Independent copy, as above -- kept in step by hand.
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # + p8 RATE (18 Aug 2026)
-    # v92 page-2 rejig: all twelve. Even page-2 slots are knob fields, odd ones
-    # are companion fields of the same word (DSP.md section 9).
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # p11 = RATE (18 Aug 2026)
-    "SEND": [0, 1],
-}
+# Which knobs each effect draws -- from the manifests, the same statement the
+# build reads. This USED to be a deliberately independent hand copy of
+# build_bus.py's list (its old comment told the story of slots 6/11 shipping
+# undrawable because both hand copies were missing the same entries). Remixes
+# ended that arrangement: a per-remix hand table cannot be kept, and the
+# manifest is now the single declaration both sides read. What this check
+# still proves byte-for-byte is that the BUILD PASS wrote what the manifest
+# declares -- the R19 formatter-gate class of bug. What no static check can
+# see is a manifest that under-declares its own effect; that class rides the
+# standing on-unit reconfirm rule (docs/PARAM_PAGES.md).
+ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER}
 
 
 # P-relative: the per-parameter value-COUNT array and the defaults array.
@@ -135,13 +139,13 @@ def main():
     rows = int.from_bytes(img[ROWCOUNT_AT - BASE:ROWCOUNT_AT - BASE + 2], "big")
     check(rows == N_REAL, f"viewport row count == {N_REAL} (got {rows})")
 
-    print("\n=== id 0 (a fresh/unassigned track) is aliased to SEND, so every "
-          "track sends by default and always does the bus housekeeping ===")
-    send_p = rd32(img, FX2_IDS + EXPECT["SEND"][0] * 4)
-    check(rd32(img, FX2_IDS + NONE_ID * 4) == send_p,
-          f"FX2_IDS[0x00] == SEND's descriptor (0x{send_p:08x})")
-    check(rd32(img, ID2POS + NONE_ID * 4) == EXPECT["SEND"][1],
-          f"ID2POS[0x00] == SEND's position ({EXPECT['SEND'][1]})")
+    print(f"\n=== id 0 (a fresh/unassigned track) is aliased to the remix's "
+          f"fallback ({FALLBACK}), so every track degrades to it by default ===")
+    fb_p = rd32(img, FX2_IDS + EXPECT[FALLBACK][0] * 4)
+    check(rd32(img, FX2_IDS + NONE_ID * 4) == fb_p,
+          f"FX2_IDS[0x00] == {FALLBACK}'s descriptor (0x{fb_p:08x})")
+    check(rd32(img, ID2POS + NONE_ID * 4) == EXPECT[FALLBACK][1],
+          f"ID2POS[0x00] == {FALLBACK}'s position ({EXPECT[FALLBACK][1]})")
 
     print("\n=== FUN_40052474: list[cursor] and FUN_4005996c/FUN_400326d4's "
           "independent FX2_IDS[id] lookup must resolve to the SAME "

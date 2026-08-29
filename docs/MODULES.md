@@ -31,7 +31,10 @@ what keeps `modules/_template/` out of every build.
 `tools/remix/schema.py` is the vocabulary and is worth reading in full — it is
 short, and its comments carry the reasoning behind each field.
 
-Copy `modules/_template/` to start.
+Copy `modules/_template/` to start, and `make remix` opens the workbench —
+a curses composer that shows collisions, the panel your selection produces
+and its word cost against the donor region, and can save the result as a
+remix.
 
 ---
 
@@ -166,13 +169,23 @@ pointer into a descriptor that was never cloned.
 ## Resource claims and the ledger
 
 `tools/remix/ledger.py` refuses a build whose selected modules collide, and
-names both. It checks FX2 ids, cave ranges, hook sites, and core-private Y
-words.
+names both. It checks FX2 ids, cave ranges, hook sites, core-private Y words,
+and the per-core FX2 instance buffer region.
 
 Core-private Y is **derived** by scanning your source for `y:>$09xx`, because
 a scan cannot go stale. Low Y is per *core*, not per instance, so every effect
 sharing a core shares those words. Only declare `Claims(reserved_private_y=…)`
 for a word you mean to own but do not yet reference.
+
+**`Y:0x4000`–`0xBFFF` is DECLARED, not derived** —
+`Claims(owns_fx2_buffers=True)`. That region is two FX2 instance slots *per
+core*: ChonVerb's tank is hardcoded there and so is Nimbus's granular line,
+so two such modules on one core overwrite each other while each works
+perfectly alone. It is declared because a scan cannot tell an address from a
+mask — scanning for the range flags `and #>$7fff` and any coefficient that
+lands in it, and `docs/DSP.md` §7c records that static scanning could not
+locate even the stock reverbs' buffers, which compute their bases at runtime.
+A checker that fires on six modules out of eight teaches people to ignore it.
 
 ⚠️ **The shared 64K window (`Y:0x30000`–`0x3FFFF`) is not checked yet** — the
 existing servers' buffer extents are not established well enough to write
