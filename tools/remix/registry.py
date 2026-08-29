@@ -12,14 +12,33 @@ keeps `modules/_template/` out of every build.
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 import sys
+import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
+
+
+def _exec(path: pathlib.Path, modname: str):
+    """Execute a manifest or remix file, ALWAYS from the source on disk.
+
+    Deliberately not importlib's file loader. That one caches bytecode and
+    validates the cache on the source's size and its mtime IN WHOLE SECONDS,
+    so an edit that lands in the same second and does not change the file's
+    length is ignored -- and "change one hex digit in a manifest" is exactly
+    that edit. The build then silently uses the previous declaration.
+
+    Found here by flipping an fx2 id to 0x06 to test the ledger, flipping it
+    back, and watching the build keep refusing. On a manifest that is not a
+    stale cache, it is a firmware image that does not match its own source.
+    """
+    ns = types.ModuleType(modname)
+    ns.__file__ = str(path)
+    exec(compile(path.read_text(), str(path), "exec"), ns.__dict__)
+    return ns
 
 
 def _load_one(manifest: pathlib.Path):
@@ -29,10 +48,7 @@ def _load_one(manifest: pathlib.Path):
     tools = str(ROOT / "tools")
     if tools not in sys.path:
         sys.path.insert(0, tools)
-    spec = importlib.util.spec_from_file_location(
-        f"remix_manifest_{manifest.parent.name}", manifest)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _exec(manifest, f"remix_manifest_{manifest.parent.name}")
     if not hasattr(mod, "MODULE"):
         raise SystemExit(f"{manifest} defines no MODULE")
     return mod.MODULE
@@ -123,12 +139,10 @@ def remix(name: str = DEFAULT_REMIX):
     f = REMIXES_DIR / f"{name}.py"
     if not f.exists():
         raise SystemExit(f"no remix {name!r} -- have {sorted(remix_names())}")
-    spec = importlib.util.spec_from_file_location(f"remix_sel_{name}", f)
-    mod = importlib.util.module_from_spec(spec)
     tools = str(ROOT / "tools")
     if tools not in sys.path:
         sys.path.insert(0, tools)
-    spec.loader.exec_module(mod)
+    mod = _exec(f, f"remix_sel_{name}")
     if not hasattr(mod, "REMIX"):
         raise SystemExit(f"{f} defines no REMIX")
     r = mod.REMIX

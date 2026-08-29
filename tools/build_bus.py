@@ -95,6 +95,7 @@ from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
 from remix.schema import YBase  # noqa: E402
+from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
@@ -678,6 +679,13 @@ def main():
                                       "stock": b"C"}[probe])
     if not DIS.exists():
         sys.exit(f"missing {DIS} -- run 'make setup'")
+    # Resource collisions between the selected modules, BEFORE a byte is
+    # written. Silent when clean: the build report is parsed by other tools,
+    # so a check that passes says nothing.
+    _clashes = ledger.check([remix_modules()[k] for k in REMIX.modules])
+    if _clashes:
+        sys.exit("remix %r has colliding modules:\n  %s"
+                 % (REMIX.name, "\n  ".join(_clashes)))
     img = bytearray(IMG.read_bytes())
 
     def rd32(a):

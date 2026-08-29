@@ -15,7 +15,7 @@ cave that prints the tempo division while the DSP's sticky snap holds one,
 installed by the tempo-sync patch and registered over slot 0 afterwards.
 """
 
-from remix.schema import (BusRole, YBase, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -81,5 +81,12 @@ MODULE = Module(
         override_markers=("; DMODE_OVERRIDE", "; DINT_OVERRIDE",
                           "; DFRZ_OVERRIDE", "; DNOTE_OVERRIDE"),
     ),
+    # 0901h-0903h is named in the source as this module's RATE/DRV state
+    # block. The scan sees 0901 and 0902; 0903 is reserved here because the
+    # comment claims the block and DRIVE's d was later moved to r7+$83, so
+    # whether 0903 is live is not established. Reserving a word nobody uses
+    # costs nothing; letting a second module take one that is quietly live
+    # costs a hardware session.
+    claims=Claims(reserved_private_y=(0x0903,)),
     harness=Harness(layout_char="D", is_server=True),
 )

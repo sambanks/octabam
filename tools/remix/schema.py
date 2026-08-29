@@ -213,6 +213,19 @@ class CavePatch:
 
 
 @dataclass(frozen=True)
+class Claims:
+    """Resources a module reserves that the ledger cannot see for itself.
+
+    Deliberately tiny. Anything derivable from the module's own source is
+    derived rather than declared, because a scan cannot go stale and a
+    hand-written claim can. This is only for what a module means to own but
+    does not yet reference.
+    """
+
+    reserved_private_y: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class Harness:
     """Metadata the local test tools need, so they stop keeping their own copy.
 
@@ -240,6 +253,7 @@ class Module:
     params: tuple[Param, ...] = ()
     dsp: DspSection | None = None
     cf_patches: tuple[CavePatch, ...] = ()
+    claims: Claims | None = None
     harness: Harness | None = None
 
     def __post_init__(self):
