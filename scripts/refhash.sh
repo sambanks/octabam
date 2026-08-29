@@ -21,8 +21,9 @@
 #   noshim           the SHIMMER_BEGIN/END excision
 #   marker           the MARKER splice (which requires NOSHIM -- so this case
 #                    also pins the ORDER of excision vs splice)
-#   burn             the BURN splice; it is EXPECTED to fail placement today,
-#                    so the exit code is part of the baseline
+#   burn             the BURN splice into the live engine. It DOES place
+#                    (the Makefile's help text still says otherwise; what
+#                    does not fit is the alias-probe combo in a plain layout)
 #   delay-override   two delay overrides at once
 #   hkb              the housekeeper flip
 #
@@ -53,14 +54,16 @@ CASES=(
   # flags, and a name is 13 bytes in a cloned descriptor -- exactly the kind
   # of thing that survives a refactor looking fine and ships the wrong string
   # to a unit whose running build you then cannot identify.
-  # These three cannot currently produce an image, so what they pin is the
-  # FAILURE: PROBE=1 dies on a NameError (PROBE_COUNTS is defined inside the
-  # TPROBE block, a latent bug predating this refactor -- left alone here
-  # deliberately, since fixing it would move the baseline it is meant to
-  # hold), and XPROBE/TPROBE swap in a reverb with no bus literals, which
-  # XBUS refuses, leaving only the plain layout where the delay overruns.
-  # The clone report line carries the knob list, so TPROBE's wholesale
-  # ACTIVE_PARAMS replacement is still covered.
+  # The three diagnostics that replace the reverb's engine. Under XBUS the
+  # delay is stubbed, which leaves room for them, and they produce real
+  # images -- so those cases pin the descriptor a probe build writes,
+  # including the panel name that says which diagnostic is running.
+  "xbus-probe|XBUS=1 PROBE=1"
+  "xbus-xprobe|XBUS=1 XPROBE=1"
+  "xbus-tprobe|XBUS=1 TPROBE=1"
+  # The same three in a PLAIN layout, where the real delay overruns the
+  # region. They pin the failure, which is a real thing to preserve: it is
+  # the honest "no room" refusal, not a code defect.
   "probe|PROBE=1"
   "xprobe|XPROBE=1"
   "tprobe|TPROBE=1"

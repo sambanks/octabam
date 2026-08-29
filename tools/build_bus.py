@@ -402,6 +402,27 @@ def penable(active):
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
 # Temporary diagnostic; the normal build is unaffected.
+#
+# Slots 9 and 11 inherit DARK's value COUNT of 2 (booleans, 0/1) -- and a knob
+# that maxes at 1 can never cross the probe's >64 threshold, so they read as
+# "does nothing" whether or not they are wired. Force every page-2 slot to a
+# full 0..127 range so all six are actually sweepable.
+#
+# ⚠️ AT MODULE LEVEL DELIBERATELY. This sat INSIDE the TPROBE block below,
+# where it was defined for the one mode that never reads it and undefined for
+# the mode that does -- so PROBE=1 died on a NameError at the point of use,
+# in every combination, for as long as anyone can tell. Only the PROBE arm
+# applies these counts; keeping the table unconditional is what stops the
+# definition and the use drifting into different branches again.
+PROBE_COUNTS = {6: 128, 7: 3, 8: 128, 9: 3, 10: 128, 11: 3}
+
+# True when the reverb's engine has been swapped for a diagnostic. Read below
+# where the bus relocation is applied: a probe is not a bus client, so it is
+# exempt from a check that exists to catch a real server reading the wrong
+# memory.
+_REVERB_IS_PROBE = any(os.environ.get(v) == "1"
+                       for v in ("PROBE", "XPROBE", "TPROBE"))
+
 if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
     FULLNAME["REVERB SERVER"] = b"X MEM PROBE" if os.environ.get("XPROBE") == "1" else b"P2 PROBE"
 if os.environ.get("TPROBE") == "1":
@@ -412,11 +433,6 @@ if os.environ.get("TPROBE") == "1":
     RENAMES["REVERB SERVER"] = [(i, b"") for i in range(6)] + \
                               [(i, f"P{i}".encode()) for i in range(6, 12)]
     DEFAULTS["REVERB SERVER"] = [(i, 0) for i in range(6, 12)]
-    # Slots 9 and 11 inherit DARK's value COUNT of 2 (booleans, 0/1) -- and a
-    # knob that maxes at 1 can never cross the probe's >64 threshold, so they
-    # read as "does nothing" whether or not they are wired. Force every page-2
-    # slot to a full 0..127 range so all six are actually sweepable.
-    PROBE_COUNTS = {6: 128, 7: 3, 8: 128, 9: 3, 10: 128, 11: 3}
 
 # ---- BURN MODE (BURN=1): swap ChonVerb for dsp/burn_probe.asm, the same
 # engine plus a knob-swept cycle burn on p3. Measures the per-DSP cycle
@@ -437,7 +453,14 @@ if os.environ.get("XBUS") == "1":
         # BongDelay cost a debugging round on 10 Aug 2026.)
         FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG
         FULLNAME["DELAY SERVER"] = b"BongDelay" + BUILD_TAG
-    else:
+    elif not _REVERB_IS_PROBE:
+        # ⚠️ `elif not _REVERB_IS_PROBE`, not `else`. This block runs AFTER the
+        # probe naming above, so a plain `else` renamed a PROBE build's reverb
+        # slot to XVerb -- a diagnostic image whose panel claimed to be the
+        # architecture test. That is the exact ambiguity BUILD_TAG exists to
+        # remove, and it is worse here than a missing name: three debugging
+        # rounds have already been lost to not knowing which firmware was
+        # running. A probe keeps the name that says what it is.
         FULLNAME["REVERB SERVER"] = b"XVerb" + BUILD_TAG
         ABBR["REVERB SERVER"] = b"XVRB"
         FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
@@ -1345,7 +1368,21 @@ mkgo:""",
         # Its words are what pays for the gates (historical sizing: 507 words
         # against a region that then had 11 free).
         send_src = xbus(send_src, "SEND", "notfirst")
-        reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+        # A PROBE build replaces the reverb's engine with a diagnostic that is
+        # not a bus client at all: it has no scratch literals to relocate and
+        # no housekeeping to gate, so xbus() would refuse it for lacking the
+        # very things it correctly does not have. That refusal is what made
+        # PROBE/XPROBE/TPROBE unbuildable in the one layout where they fit --
+        # the layout that stubs the delay and leaves room for them.
+        #
+        # The guard stays exactly as strict for every real engine: this skips
+        # the treatment for a substituted probe source, it does not weaken the
+        # check for anything that is actually on the bus.
+        if not _REVERB_IS_PROBE:
+            reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+        else:
+            print("  XBUS: REVERB SERVER is a PROBE -- no bus scratch to move, "
+                  "no housekeeping to gate")
         # ...except under DEV, where the delay IS present and must reach the
         # same relocated scratch as everyone else -- 14 scratch refs and a
         # ; XBUS_GATE marker are already in dsp/delay_server.asm, and its
