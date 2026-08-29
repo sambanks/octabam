@@ -3,6 +3,18 @@
 **Read `PLAN.md` first.** It carries the end state, the resource ledger and the
 work order. `docs/XBUS.md` is the architecture record, not the plan.
 
+The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
+contribution) composed into **remixes** (`remixes/<name>.py` selects a set).
+`make modules` lists them; `docs/MODULES.md` is the contributor guide. Two
+consequences for working here: a module's declared `priority` is
+byte-load-bearing, and the build refuses to start when two selected modules
+claim the same FX2 id, cave, hook site or core-private Y word.
+
+**If you change the BUILD rather than a module, prove it changed nothing:**
+`scripts/refhash.sh save` on a tree you trust, then `scripts/refhash.sh check`
+— 23 configurations, artifacts and build reports, bit-identical. The whole
+remix refactor was done under that gate.
+
 This is a DSP effects project. The firmware reverse engineering in `docs/` is
 infrastructure that makes the effects possible — it is not the deliverable.
 

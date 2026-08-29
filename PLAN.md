@@ -59,6 +59,41 @@ tracks. Host the reverb on track 5, the delay on tracks 1–4.
 
 ---
 
+## How the repo is organised: modules and remixes
+
+**A module is one contribution; a remix is a named selection of them.**
+`modules/<name>/manifest.py` declares what a module is — its menu entry, its
+twelve parameter slots, its DSP source, its ColdFire caves — and
+`remixes/<name>.py` selects a set. `remixes/chongbong.py` is the shipping
+image and the reference every refactor proves itself against.
+
+```sh
+make modules              # the module index and the available remixes
+make bus REMIX=<name>     # build a selection (default: chongbong)
+```
+
+What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
+`tempo-sync` — the last being a ColdFire patch rather than an effect, and the
+worked example of changing what the firmware *does*.
+
+Three things follow that are worth knowing before editing anything:
+
+- **The build refuses to start when two selected modules collide** on an FX2
+  id, a ColdFire cave, a hook site or a core-private Y word, and names both.
+  `tools/remix/ledger.py`; the negative tests are in `make check`. The shared
+  64K window is **not** covered yet — its extents are not established well
+  enough to write down, so `CLAUDE.md`'s ownership notes remain the map.
+- **A module's `priority` is byte-load-bearing.** The donor region is packed
+  in that order.
+- **Refactors of the build prove themselves with `scripts/refhash.sh`** — 23
+  configurations, artifacts *and* build reports, bit-identical. Save a
+  baseline on a tree you trust before starting. Every commit of the remix
+  work passed it, and it caught things reading the diff did not.
+
+`docs/MODULES.md` is the contributor guide.
+
+---
+
 ## The principle that decides everything: SYMMETRY
 
 **FX2 bus servers are asymmetric. FX1 inserts cannot be.**
@@ -88,7 +123,7 @@ a lever first.
 **Space levers, in order of preference:**
 
 - **The reverb LFO-block roll is built and PARKED, not available.**
-  `dsp/reverb_lforoll.asm` frees 51 words ✅ measured, but fails
+  `modules/chonverb/reverb_lforoll.asm` frees 51 words ✅ measured, but fails
   `verify_roll` on the TIME=127 SIZE=127 DIFF=127 wet case — the only one
   that drives the allpass hard. Bisected: the shared triangle stash is
   innocent, loop order is irrelevant, the table is right; the remaining
@@ -269,6 +304,8 @@ prices off that number.
 
 ```sh
 make bus                    # specialized, cross-core -- THE image
+make modules                # the module index and the available remixes
+make bus REMIX=verbonly     # a reduced selection (no delay, no caves)
 make render                 # build DEV + render the bus locally, no flash
 make render-delay           # the delay hatch -- all 3 servers real, renders BongDelay
 make image BUILD=002        # repack as a flashable .bin, version-stamped
