@@ -8,7 +8,7 @@ is as important as the rest of this page).
 
 The one-line claim, and why it is trustworthy: **the harness runs the real
 assembled instruction stream on a cycle-exact DSP56300 emulator.** It is not
-a model of the reverb; it is the reverb, executed by
+a model of your module; it is your module, executed by
 [dsp56300](https://github.com/dsp56300/dsp56300)'s emulator core at roughly
 6× real time. When a render sounds wrong, the code is wrong — modulo the
 blind spots listed at the end.
@@ -34,13 +34,30 @@ modules/*/*.asm (+ dsp/ probes)
         (make reverb IN=..)                        (make render / render-delay)
 ```
 
-Three commands cover most days:
+Three commands cover most days **if you are working on a bus server**:
 
 ```bash
 make reverb IN=loop.wav ARGS='--wet --mode all'   # hear ChonVerb
 make render                                       # the full bus, SEND → REVERB
 make render-delay                                 # BongDelay via the DEV hatch
 ```
+
+**An INSERT is rendered differently, and none of those three do it.** An
+insert has no bus accumulator, so there is nothing for `send_probe`'s bus
+analysis to read — it will refuse a layout of nothing but inserts, and say
+so. Render one on its own track instead:
+
+```bash
+# the tone (or a wav) straight into the module on its own track
+python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --direct --pick W
+
+# or drive the emulator yourself, which is what the module authors did:
+#   -inst 1 -r7 2 -alloc 1 -inmask 1, entry points from the dump
+```
+
+The letter (`W` above) is the module's `harness.layout_char`. Build the DEV
+image for a remix that contains it first — `REMIX=<name> DEV=1 XBUS=1 SPEC=1
+python3 tools/build_bus.py`.
 
 ## dsp_host — the emulator harness
 
@@ -141,11 +158,24 @@ Two design points worth knowing, both scars:
 → shared bus accumulator → REVERB server — with the tone fed *only* to the
 SEND instance, so everything in the server's output crossed the bus. That is
 what makes the measurement unambiguous. `--layout` is a string of dispatch
-slots in hardware order — `R`=reverb, `D`=delay, `S`=send, `.`=neither, slot
-0 being position 0, the housekeeper — so `RS`, `.RS` and `SSR` are different
-machines, not different spellings; entry points are
-read from the dump's own dispatch tables, never hardcoded, and a `--direct`
-control run bypasses the bus for comparison.
+slots in hardware order, one character per dispatch slot, slot 0 being
+position 0 (the housekeeper) — so `RS`, `.RS` and `SSR` are different
+machines, not different spellings.
+
+**The alphabet is DERIVED from the manifests**, not a fixed list: every
+module that declares a `harness.layout_char` gets its letter, and `.` means a
+track running neither (NONE, or a stock effect). Today that is `R` reverb,
+`D` delay, `S` send, and `W F M G B N` for the six inserts — but read
+`harness.layout_char` in the manifests rather than trusting this sentence,
+which is exactly the kind that goes stale. It did: the alphabet was a
+hard-coded `"RDS."` until 29 Aug 2026, which silently dropped every module
+outside it from every layout string.
+
+`send_probe` ANALYSES a bus accumulator, so only modules whose harness says
+`is_server` can be the target of a measurement; ask for a layout without one
+and it refuses with the reason. Entry points are read from the dump's own
+dispatch tables, never hardcoded, and `--direct` bypasses the bus — a control
+run for a server, and the ordinary way to render an insert.
 
 The metric: a bin-centred 438.75 Hz sine through a linear system should come
 back as one FFT bin. Total non-fundamental energy relative to the

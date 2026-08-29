@@ -113,9 +113,10 @@ at 31250 baud, so it takes seconds rather than minutes.
    twice, cleared by a reboot both times.
 
    🟡 The mechanism, inferred from the code and matching the symptom exactly
-   (not yet measured on hardware): both engines skip warm-up when their
-   tagged counter at `r7+$82` holds a valid tag at full count — ChonVerb
-   `$2c0000`, BongDelay `$2e0000`. **An OS upgrade rewrites program memory
+   (not yet measured on hardware): an engine skips warm-up when its tagged
+   counter holds a valid tag at full count — ChonVerb `$2c0000` at `r7+$82`,
+   BongDelay `$2e0000`, Nimbus `$2d0000` at `r7+$31`. **Any module that
+   tags warm-up state in r7 inherits this**, so if yours does, expect it. **An OS upgrade rewrites program memory
    but does not clear DSP state RAM.** If that word survives with a valid
    tag, the engine concludes it is already warmed up and runs on whatever is
    in its buffers — the previous firmware's contents, or boot garbage. The
@@ -165,23 +166,36 @@ container before it will produce a modified one.
 1. **Version string.** The boot screen and **SYSTEM STATUS → OS VERSION**
    should read **`OCTABAM<NNN>`** — the `-V` stamp from `make image`. If it
    still says `1.40C`, the official OS is running, not your build.
-2. **The reverb, on track 5.** Assign ChonVerb to an FX2 slot on one of
-   **tracks 5–8** (payload A runs the high tracks — measured, and inverted
-   from what you'd guess; on tracks 1–4 the pick falls back to a SEND).
-   Feed it audio via `IN` and step **MODE**: you
-   should hear distinct ROOM → PLATE → BIG spaces. Both effects are
-   **returns with a unity dry passthrough** (v5, 23 Aug 2026): the host
-   track's own audio passes untouched, `IN` adds it into the engine on top.
-   `IN` at 0 is an exact passthrough — the R41-and-earlier behaviour of a
-   silent host track is retired.
-3. **The delay, on tracks 1–4.** BongDelay lives on the low tracks (payload
-   B). Same deal: it is a return, fed over the bus.
+**Which of the steps below apply depends on what your remix contains.** An
+insert-only image (`mutables`, `warped`, `nimbus`) has no reverb, no delay
+and no bus to check — steps 2–4 simply do not apply to it, and step 5 is the
+whole test.
+
+2. **A bank-bound server is restricted to its payload's tracks.** ChonVerb
+   runs on **tracks 5–8** (payload A runs the high tracks — measured, and
+   inverted from what you'd guess); BongDelay on **tracks 1–4**. Picking one
+   on the wrong bank falls back to a SEND, deliberately, so a wrong guess
+   makes a send rather than silence. Assign ChonVerb on track 5, feed it via
+   `IN`, step **MODE**: distinct ROOM → PLATE → BIG spaces.
+3. **The two servers are returns with a unity dry passthrough** (v5, 23 Aug
+   2026): the host track's own audio passes untouched and `IN` adds it into
+   the engine on top, so `IN` at 0 is an exact passthrough. This is a
+   property of the SERVERS, not of every module — an insert processes the
+   host track's audio directly and has its own MIX.
 4. **The bus.** Put SEND on any other track and drive `→REVERB` /
    `→DELAY` — those are two separate knobs, and driving the wrong one
    renders silence that reads as a broken algorithm.
+5. **An insert: select it on any track.** Inserts are placed in both
+   payloads, so any of the eight tracks will do, and several tracks may run
+   the same one or different ones. Expect it to process that track's own
+   audio. Then check the two things **no local test can see**: that each
+   page-2 select draws as a select (not a dial, not nothing — a formatter
+   outranks the value count beside it), and that every knob actually reaches
+   the DSP. A slot can draw a knob and publish nothing; `dsp_host` pokes
+   `r6` directly, so both faults are invisible until this moment.
 
 `docs/BUS.md` has the menu layout; `docs/PARAM_PAGES.md` explains how a knob
-reaches the DSP.
+reaches the DSP; `docs/MODULES.md` is what to read before writing one.
 
 ---
 
@@ -198,8 +212,10 @@ from Elektron's zip (card). Your CF card and projects are not affected.
 - This firmware is **modified by you, for your own unit, for study
   purposes.** It is not official Elektron firmware and has no support from
   anyone — Elektron least of all.
-- Everything checkable without hardware is checked (`make check`,
-  `make render`, the verify gates) — but the emulator is **single-core**, so
+- Everything checkable without hardware is checked — `make check`, the
+  verify gates, and whatever local render your modules support (`make render`
+  for the bus, `send_probe --direct` for an insert) — but the emulator is
+  **single-core**, so
   no local test can reproduce a cross-core bus timing defect, and its mpy
   semantics and truncation are its own. Treat emulator green as necessary,
   not sufficient, and go in with the recovery net ready.

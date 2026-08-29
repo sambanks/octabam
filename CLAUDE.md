@@ -5,15 +5,23 @@ work order. `docs/XBUS.md` is the architecture record, not the plan.
 
 The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>.py` selects a set).
-`make modules` lists them; `docs/MODULES.md` is the contributor guide. Two
-consequences for working here: a module's declared `priority` is
-byte-load-bearing, and the build refuses to start when two selected modules
-claim the same FX2 id, cave, hook site or core-private Y word.
+`make modules` lists them, `make remix` composes one. `docs/MODULES.md` is the
+contributor guide. Two consequences for working here: a module's declared
+`priority` is byte-load-bearing, and the build refuses to start when two
+selected modules claim the same FX2 id, cave, hook site, core-private Y word,
+or the per-core FX2 buffer region.
+
+**Modules come in kinds, and most of the traps below are a SERVER's.** An
+insert (six of the ten) has no bus role, no shared-window claim, sits in both
+payloads and runs on any track; it never touches the rotation, the
+housekeeping election, the auto-gain, or the payload asymmetry. A server pays
+all of that. Read a warning below asking which kind it applies to.
 
 **If you change the BUILD rather than a module, prove it changed nothing:**
 `scripts/refhash.sh save` on a tree you trust, then `scripts/refhash.sh check`
-— 23 configurations, artifacts and build reports, bit-identical. The whole
-remix refactor was done under that gate.
+— 26 configurations, artifacts and build reports, bit-identical. The whole
+remix refactor was done under that gate, and every module added since has
+been proven not to change it.
 
 This is a DSP effects project. The firmware reverse engineering in `docs/` is
 infrastructure that makes the effects possible — it is not the deliverable.
@@ -204,7 +212,9 @@ DELAY entry equals SEND's. The general rule: before believing a *negative*
 result, check which code the dispatch entry actually points at — same
 family as "disassemble what you assemble".
 
-**Payload A's half of the shared window is FULLY OWNED**: ChonVerb's
+**IN THE SHIPPING REMIX, payload A's half of the shared window is FULLY
+OWNED** (a remix without the reverb frees it, which is how the insert
+collection has room to stack): ChonVerb's
 relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x360d2`
 (grew 12 Aug for the DELAY send counts + reciprocal table, and again 17 Aug
 when the accumulators went to FOUR buffers for the cross-core race fix).
