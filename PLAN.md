@@ -201,13 +201,30 @@ a lever first.
 
 ### Cycles — per core, 4,535/sample ✅ arithmetic (200 MIPS ÷ 44.1 kHz)
 
-Cycles are not the current constraint, with one caveat. The number
-`make cycles` prints is a **single-core floor**: it sums reverb + delay +
-sends on one core, but on hardware no core ever pays both engines. The
-delay's worst path (GRAIN, ~2,000 cycles by the tool's count) plus sends
-runs against core 1's ~2,150 🟡 *derived* spare — a thin paper margin, while
-the unit runs every mode clean; only the burn sweep can measure the real
-ceiling.
+Cycles are not the current constraint. `make cycles` is **remix-aware since
+29 Aug 2026** and prints a **WORST ONE CORE** figure derived from the
+selection: four FX2 slots, at most one server (the design rule, and what
+SPEC enforces), inserts unlimited because nothing stops all four tracks
+choosing the same one. Measured this way:
+
+| remix | worst core | what fills it |
+|---|---|---|
+| chongbong | **2,398** | 1× delay + 3× send |
+| mutables | **1,376** | 4× BodeShift (the dearest insert) |
+| nimbus | **1,308** | 4× Nimbus |
+| verbonly | **1,444** | 1× reverb + 3× send |
+
+against ~3,125 usable after stock's own ~1,410. Per-module: reverb 1,384,
+delay 2,338 (GRAIN worst path), Nimbus 327, BodeShift 344, Rungs 238,
+Streamz 154, WarpFold 101, Ripple 93, send 20.
+
+The old headline summed reverb + delay + sends onto one core — a load no
+core ever pays. That composition is still printed, labelled as the legacy
+basis, because the 7 Aug hardware spare was measured against it and
+re-baselining the comparison would break the only hardware anchor there is.
+⚠️ Every figure here is a static count: exact for the code, blind to
+memory-contention stalls, and the wall is a **cliff**. Only the burn sweep
+measures the real ceiling.
 
 - ⚠️ **FX1 cycles are paid ×4 per core** — a 300-cycle FX1 effect costs
   1,200 cycles/core. *This*, not program space, is the ceiling on FX1

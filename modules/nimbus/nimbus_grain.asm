@@ -76,6 +76,12 @@
 ; EXACTLY 1, so DC in must come back flat and unrippled.
 ;
 ; Every mpy is `mpy x0,y1` (known-signed); audited by disassembly.
+;
+; ; CYCLES_FORWARD_BRANCHES -- the five conditional branches in the sample
+; loop (the freeze gate and the four per-grain scatter latches) are all
+; FORWARD skips, so tools/cycle_count.py may price the fall-through path and
+; call the result a ceiling. It enforces the forward part rather than taking
+; this word for it.
 ; ---------------------------------------------------------------------------
 
 init:
