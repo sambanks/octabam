@@ -144,6 +144,49 @@ class DspSection:
 
 
 @dataclass(frozen=True)
+class FormatterReg:
+    """A cave installing itself as some module's per-parameter display formatter.
+
+    Cross-module by nature: the cave belongs to one module and the slot it
+    draws belongs to another. Naming the target here is what lets a remix
+    that omits the target skip the registration instead of writing a pointer
+    into a descriptor that was never cloned.
+    """
+
+    module: str        # target module KEY, e.g. "DELAY SERVER"
+    slot: int          # which of its twelve parameters this formatter draws
+
+
+@dataclass(frozen=True)
+class CavePatch:
+    """ColdFire machine code planted in free space, optionally hooked.
+
+    This is how a module changes the firmware's BEHAVIOUR rather than adding
+    an effect -- how parts, kits, menus or formatters get new logic. The
+    pattern is always the same: assert the hook site still holds the stock
+    bytes, plant a `jsr` to the cave, and have the cave replay what it
+    displaced before doing its own work.
+
+    `pinned` is the hardware-ratified machine code and is what actually gets
+    written. `source` is re-assembled and compared against it when an m68k
+    toolchain is present, so the build needs no toolchain but a source that
+    has drifted from the bytes we ship cannot pass unnoticed.
+
+    ⚠️ A cave that filters on effect ids has those ids compiled INTO `pinned`.
+    Changing a module's fx2 id therefore does not change the cave, and the
+    two fall out of agreement silently. The tempo cave is the live example.
+    """
+
+    label: str                          # name used in the build report
+    cave_addr: int
+    pinned: bytes
+    source: str | None = None           # .s re-assembled and compared
+    hook_addr: int | None = None        # where the jsr is planted
+    hook_stock: bytes = b""             # bytes that MUST be there first
+    registers_formatter: FormatterReg | None = None
+
+
+@dataclass(frozen=True)
 class Harness:
     """Metadata the local test tools need, so they stop keeping their own copy.
 
@@ -170,6 +213,7 @@ class Module:
     menu: MenuEntry | None = None
     params: tuple[Param, ...] = ()
     dsp: DspSection | None = None
+    cf_patches: tuple[CavePatch, ...] = ()
     harness: Harness | None = None
 
     def __post_init__(self):
