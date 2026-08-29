@@ -92,6 +92,7 @@ import pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
+from remix.registry import modules as remix_modules  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
@@ -106,9 +107,10 @@ NEW_LIST = 0x400d6b00
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
 
-DESC_DONORS = {"DELAY SERVER": 0x400d5726,   # SPRING REV
-               "REVERB SERVER": 0x400d58b8,  # DARK REV
-               "SEND": 0x400d4772}           # FILTER
+# DESC_DONORS, NEW_IDS, RENAMES, ABBR, FULLNAME, DEFAULTS, ACTIVE_PARAMS,
+# PAGE2_COUNTS and STEPPED_SLOTS are no longer written here. Each module
+# declares them in modules/<name>/manifest.py and they are derived below,
+# after BUILD_TAG. See tools/remix/schema.py for what a manifest may say.
 
 # The chooser's viewport height: FUN_4005996c pushes a literal 7 to
 # FUN_4007ec60, which stores it as the number of rows FUN_40037590's draw loop
@@ -121,92 +123,11 @@ ROWCOUNT_AT = 0x40059a56        # the 16-bit immediate itself
 ROWCOUNT_INSN = 0x40059a54
 NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
-ORDER = ["REVERB SERVER", "DELAY SERVER", "SEND"]   # ChongVerb first, by preference
-# 0x06/0x07/0x09, not 0x01/0x02/0x03: the first hardware test used
-# 0x01/0x02/0x03 and got correct chooser names but no working knobs and
-# garbage/uninitialized-feeling audio on all three. Ids 0x00-0x03 are the
-# specific four values stock firmware has always treated as bare synonyms
-# for "no effect" (ColdFire logic elsewhere very likely does a raw "id < 4"
-# check, not just a NONE-descriptor lookup), unlike other currently-free ids
-# that happen to map to NONE today without carrying that special meaning.
-# 0x06 is the exact id tools/build_dspprobe.py already proved runs custom
-# DSP code correctly on real hardware -- reusing that specific precedent.
-NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
+# The chooser order, and therefore each module's row in the FX2 list. This is
+# a property of the REMIX -- which modules are in this image and in what order
+# -- rather than of any one module, so it stays here until remixes/ exists.
+ORDER = ["REVERB SERVER", "DELAY SERVER", "SEND"]   # ChonVerb first, by preference
 
-RENAMES = {
-    "DELAY SERVER": [
-        (1, b"FDBK"), (2, b"TONE"), (3, b"PING"),
-        (4, b"-VRB"),               # slot 4 -> r6+$4  the delay's send into
-                                    #   the reverb (swapped with IN 18 Aug 2026
-                                    #   so IN sits bottom-right on BOTH
-                                    #   effects). Was IN; before v3, MIX.
-                                    # (original IN note follows, now at p5:)
-                                    #   level into the delay. v3 stage 1: was
-                                    #   MIX, a dry/wet crossfade, which had
-                                    #   nothing left to cross-fade once the
-                                    #   host track became a return that prints
-                                    #   the wet alone. Now the host's
-                                    #   counterpart of send_client's p0.
-        (5, b"IN"),                 # slot 5 -> r6+$5  THIS TRACK'S OWN SEND
-                                    #   level into the delay, bottom-right to
-                                    #   match the reverb's IN (18 Aug swap).
-        (6, b"DPTH"),               # slot 6 -> r6+$c KNOB    modulation depth
-                                    #   (was WOW -- global since TAPE retired,
-                                    #    18 Aug 2026; every mode's loop tap
-                                    #    carries the wow/flutter pair now)
-                                    #   (bits 16-23; $b is not a param word --
-                                    #    docs/PARAM_PAGES.md)
-        (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
-        (8, b"RATE"),               # slot 8 -> r6+$d KNOB    modulation speed,
-                                    #   val/64 (64 = 1x exactly, the default).
-                                    #   Slot history: VRBD until v3, blank
-                                    #   until 18 Aug 2026. Pairs with DPTH the
-                                    #   way the reverb's RATE pairs with MOD.
-        (9, b"PTCH"),               # slot 9 -> r6+$d b8-15  interval select:
-                                    #   +12 / +7 / -12 / +-detune (stage 2)
-        (10, b"DRV"),               # slot 10 -> r6+$e knob. DRIVE in every
-                                    #   mode but GRAIN (blend toward the
-                                    #   2x-driven tape curve, 18 Aug 2026);
-                                    #   in GRAIN this same knob is still the
-                                    #   scatter depth (SPRA), the p9 pattern.
-        (11, b"FRZE"),              # slot 11 -> r6+$e b8-15 freeze select:
-                                    #   run / hold (stage 3)
-    ],
-    "REVERB SERVER": [
-        (1, b"MOD"), (2, b"SIZE"),
-        (5, b"IN"),             # v4 RETURN (17 Aug 2026): was the donor's MIX.
-                                # IN is this track's own send into its reverb,
-                                # the delay's p4 mirrored. (v4 printed the wet
-                                # alone; since v5 the host's dry rides under
-                                # the wet at unity.)
-        # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
-        # odd slots are companion fields in the same word and are only proven
-        # to carry a SMALL step count -- see PAGE2_COUNTS below.
-        (6, b"SHMR"),           # slot 6 -> r6+$c KNOB   shimmer amount
-                                #   (was SPEED; the LFO rate is pinned at 40,
-                                #    VOICING Round 5's measured optimum)
-        (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
-        (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
-        (9, b"SHFT"),           # slot 9 -> r6+$d low. v6 (23 Aug 2026): was
-                                #   WIDTH (retired, pinned wide -- Sam's
-                                #   call); now the shimmer interval select:
-                                #   +12 / +19 / +7 / -12
-        (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
-        (11, b"RATE"),          # slot 11 -> r6+$e b8-15  MOD speed select,
-                                #   0.5x/1x/2x/4x of Round 5's pinned optimum
-                                #   (18 Aug 2026). Same-day history: -DEL was
-                                #   retired from this slot hours earlier (the
-                                #   VRBD-twin rationale, see git); RATE is its
-                                #   replacement, giving MOD the speed dimension
-                                #   the old SPEED knob lost to SHMR.
-    ],
-    "SEND": [
-        (0, b"-DEL"), (1, b"-VRB"),
-        (2, b""), (3, b""), (4, b""), (5, b""),
-        (6, b""), (7, b""), (8, b""), (9, b""), (10, b""), (11, b""),
-    ],
-}
-ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
 # to not being able to tell WHICH build was running on the unit: a symptom
 # ("knobs unchanged") is ambiguous between "the change did not work" and "the
@@ -398,125 +319,51 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
 BUILD_TAG = b"77"
 
-FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
-            "SEND": b"Send"}
-# Explicit per-knob defaults -- NOT the donor's, which are for a different
-# algorithm on that slot. DARK REV's MIX default is 0 (a freshly selected
-# REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
+# ---- the module tables, derived from modules/*/manifest.py ------------------
+# One statement per fact, living in the module that owns it. These dicts keep
+# their old shapes because the writers below are unchanged: what moved is
+# where the data lives, not what it says.
+#
+# Ids are 0x06/0x07/0x09 rather than 0x01/0x02/0x03 because the first hardware
+# test used the latter and got correct chooser names with dead knobs and
+# garbage audio: 0x00-0x03 are the four values stock has always treated as
+# bare synonyms for "no effect". 0x06 is the exact id tools/build_dspprobe.py
+# proved runs custom DSP code on real hardware. schema.py enforces the range.
+_MODS = remix_modules()
+_SEL = [_MODS[k] for k in ORDER]
+
+DESC_DONORS = {m.key: m.menu.donor_desc for m in _SEL}
+NEW_IDS = {m.key: m.menu.fx2_id for m in _SEL}
+ABBR = {m.key: m.menu.abbr for m in _SEL}
+FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
+            for m in _SEL}
+# A name of None means "leave the donor's", which is a different thing from
+# b"" (blank the slot). Both are in use: SEND blanks ten of FILTER's names.
+RENAMES = {m.key: [(i, p.name) for i, p in enumerate(m.params)
+                   if p.name is not None] for m in _SEL}
+# Explicit per-knob defaults -- NOT the donor's, which are sized for a
+# different algorithm on that slot. DARK REV's MIX default is 0 (a freshly
+# selected reverb would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
-DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 127), (4, 0),
-                     (5, 0),    # -VRB: 0 for the same load-bearing reason as
-                                # IN -- a nonzero default registers the delay
-                                # as a reverb client whenever it exists, idle
-                                # or not, diluting every real sender
-                     #      (3) PING 64 -> 127 (v3 stage 2). 64 was the WORST
-                     #      place on the knob to boot: measured 17 Aug 2026 it
-                     #      leaned +14.7 dB left with correlation 0.185 -- more
-                     #      lean than 127 and no audible bounce, the middling
-                     #      blend rather than either character. 127 is the
-                     #      classic ping-pong the effect exists to do, and it
-                     #      is where the lean is smallest (+9.2 dB, which is
-                     #      one repeat's decay and inherent -- see the LineR
-                     #      write). With stage 2's 1-PING input term the other
-                     #      end of the knob is now a centred mono delay, so
-                     #      both extremes are useful and the default sits on
-                     #      the one that says what the box is.
-                     #      ⚠️ (4) IS NOW **IN**, NOT MIX, AND 0 IS LOAD-
-                     #      BEARING (v3 stage 1) -- it is the one number in
-                     #      this table that a measurement, not taste, fixed.
-                     #      IN>0 REGISTERS THIS TRACK AS A BUS CLIENT, and
-                     #      the delay's 1/N auto-gain then gives it a share
-                     #      whether or not it has any audio to contribute.
-                     #      On the return track this effect is designed for
-                     #      there IS none, so a non-zero default silently
-                     #      halved every real sender: measured 17 Aug 2026,
-                     #      sends-only rendered -24.40 dBFS at IN=0 and
-                     #      -30.42 at IN=64, exactly 6.02 dB = the 1/2 of
-                     #      being counted twice. (A SEND client registers
-                     #      unconditionally, so a silent SEND track dilutes
-                     #      the bus too -- that is the system's existing
-                     #      behaviour and the host now matches it. The knob
-                     #      gate is what lets the DEFAULT opt out.)
-                     #      ⚠️ The "wet alone" cost this note used to accept
-                     #      -- a playing host track SILENT until IN came up,
-                     #      reading as "the effect deleted my audio" -- is
-                     #      GONE since v5 (23 Aug 2026): both servers now
-                     #      pass the host's dry at unity under the wet, so
-                     #      IN=0 is an exact passthrough. 0 remains the only
-                     #      default that keeps the bus arithmetic honest,
-                     #      and it no longer has a downside.
-                     #      Slots 5 and 8 are RETIRED -- no defaults needed.
-                     #      MIX 90 -> 64 (stage 5g). Sam, on the demo set:
-                     #      "it sounds a lot better lower". ⚠️ His finding
-                     #      actually implies LOWER still -- the grain sitting
-                     #      ~14 dB under the dry is MIX ~21 in the crossfade --
-                     #      but a near-dry default reads as "the effect does
-                     #      nothing", which is the exact trap this table's
-                     #      header warns about. 64 is the compromise, not the
-                     #      measured optimum.
-                     (8, 64),   # RATE -- 64 IS LOAD-BEARING: exactly 1x, the
-                                # pre-knob modulation speed; the DPTH=0 gate
-                                # only holds with the law exact here
-                     (6, 48),   # WOW   a musical default wobble for TAPE
-                     (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
-                     (11, 0),   # FRZE  run   -- a fresh part is never held
-                     (10, 0),   # DRV -- 0 = EXACT bypass (the DRIVE gate). ⚠️ This
-                                # default is ALSO GRAIN's scatter now (shared
-                                # byte): a fresh GRAIN part boots fully
-                                # coherent (was 64). Deliberate: bypass-by-
-                                # default outranks a scatter taste that gets
-                                # played by hand anyway.
-                     (9, 1)],   # PTCH  0 -> 1 (stage 5g), and it is a TRADE.
-                                #       Slot 9 is triple-meaning. For GRAIN it
-                                #       is the SET WIDTH, and 0 pins every
-                                #       grain to +12 -- the pre-split fixed
-                                #       engine, measurably the worst voicing
-                                #       (shift-profile error 0.495 against the
-                                #       reference, vs 0.173 for the wide set).
-                                #       A fresh part switching to GRAIN got
-                                #       that. 1 = +12/unison is usable
-                                #       everywhere and is what Sam preferred on
-                                #       a full band mix, where the wide set's
-                                #       -19/-5/+5 grains read as wrong notes.
-                                #       ⚠️ THE COST: PITCH now boots at +7
-                                #       instead of +12, and REVERSE at a
-                                #       2048-sample segment instead of 4096.
-                                #       Neither is a defect, both are a changed
-                                #       preference -- flagged because no ear has
-                                #       checked those two since the change.
-                                #       -- all IN RANGE of their counts
-                                # below (the default-as-index sequencer stall)
-    # EVERY page-2 slot needs an explicit default now that all twelve are
-    # enabled: an unlisted slot keeps the DONOR's default, which is sized for
-    # DARK REV's value counts, not ours. And a default outside its own count
-    # is used as an index -- that shipped once (slot 7: default 64, count 5)
-    # and stalled the sequencer on hardware. verify_menu.py now checks it.
-    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 127), (5, 0),   # IN -- 0 IS LOAD-BEARING (v4 return, the delay's
-                                 # measurement verbatim: a nonzero default registers
-                                 # every idle host as a client and dilutes real senders;
-                                 # and the output is wet alone, so IN=0 + nothing sent
-                                 # = SILENT track, by design)
-                      (6, 0),    # SHMR   OFF. This slot was SPEED (LFO rate)
-                                 # and defaulted to 48; v101 renamed it to the
-                                 # shimmer amount and never revisited the
-                                 # default, so a FRESH PART booted with the
-                                 # shimmer half up -- and the shimmer is not
-                                 # usable yet. SHMR=0 is bit-identical to the
-                                 # pre-shimmer engine, so 0 gives a fresh part
-                                 # the good reverb.
-                      (7, 2),    # MODE   BIG (was HALL before the 3-mode cut)
-                      (8, 64),   # DIFF   mid
-                      (9, 0),    # SHFT   v6: interval select, 0 = +12 (the
-                                 # R18 shimmer voicing). ⚠️ Old projects'
-                                 # stored WIDTH=3 loads as -12 (sub-octave)
-                                 # -- benign at SHMR's 0 default, and the
-                                 # FLASHING.md first-load step covers it
-                      (10, 0),   # GATE   off (ungated reverb)
-                      (11, 1)],  # RATE 1x (index 1; the 1-based panel shows
-                                 # "2"). Slot was -DEL until 18 Aug 2026.
-    "SEND": [(0, 0), (1, 0)],
-}
+DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
+                    if p.default is not None] for m in _SEL}
+# The enable bitmap. A slot missing here is unreachable on hardware no matter
+# how completely it is named, defaulted, counted and implemented -- and the
+# inverse of the trap that a slot can draw a knob and publish nothing. Both
+# have shipped.
+ACTIVE_PARAMS = {m.key: m.active_params for m in _SEL}
+# Value counts. Page 2 is THREE KNOBS AND THREE SELECTS: the knob fields take
+# 128, the companion byte fields take a small step count. Setting a companion
+# to 128 does not make it continuous -- it stays a select and reads as a
+# near-boolean, which is what hardware showed.
+PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
+                        if p.count is not None} for m in _SEL}
+# Membership here also GATES the display-formatter pass below: a module with
+# no stepped slot keeps its donor's formatters untouched, which is what SEND
+# wants (FILTER's plain-numeric zeros, hardware-confirmed).
+STEPPED_SLOTS = {m.key: m.stepped_slots for m in _SEL if m.stepped_slots}
+_DEF_ASM = {m.key: m.dsp.asm for m in _SEL}
+
 
 # ---- P-relative field offsets (PARAM_PAGES.md section 5b) ------------------
 # The record's canonical base is P = E + 0x38 and it is 0x192 bytes long
@@ -541,100 +388,9 @@ def penable(active):
     return lo, hi
 
 
-# Which knobs each effect's DSP code actually reads, and therefore which ones
-# the panel DRAWS -- this list is the enable bitmap, so a slot missing here is
-# unreachable on hardware no matter how completely it is named, defaulted,
-# counted and implemented.
-#
-# Page-1 indices 0..5 are r6+0..5. Page 2 is THREE KNOBS AND THREE SELECTS,
-# in slot order 6..11: knob $b, select $c-high, knob $d, select $d-low, knob
-# $e, select $e-low. (The older note here said "6 = r6+$c, 7 = r6+$b, 8 =
-# r6+$d", which is stale -- it predates the v92 page-2 rejig and disagrees
-# with both servers' actual reads. Corrected 12 Aug 2026.)
-ACTIVE_PARAMS = {
-    # 7 (MODE) and 9 (PTCH) landed with v2 stage 2 -- the stage-1 rule was
-    # that a one-value select draws a dead knob, so MODE waited for PITCH.
-    # ⚠️ 6 (WOW) and 11 (FRZE) were NAMED, DEFAULTED AND COUNTED by stages 3
-    # and 4 but never added HERE, so both shipped un-enabled: the DSP read
-    # them and the panel never drew them, which on the unit is a control that
-    # cannot be moved off its default. Found 12 Aug 2026 while wiring SPRAY.
-    # verify_menu only checks the slots that ARE enabled, so it could not see
-    # this -- it is the inverse of the PARAM_PAGES trap ("a slot can draw a
-    # knob and publish nothing") and cost nothing only because nobody had
-    # tried to freeze on hardware yet.
-    # ⚠️ 5 (VRBW) and 8 (VRBD) RETIRED in v3 stage 1 -- ->VERB is hardwired
-    # and its DRY half is gone, so both slots would draw a knob that
-    # publishes to a DSP read that no longer exists. Dropping them here is
-    # what actually stops the panel drawing them; the DSP-side read and the
-    # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
-    # inverse that bit WOW/FRZE on 12 Aug).
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve: p5 -VRB, p8 RATE (18 Aug 2026)
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # p11: -DEL retired, RATE born, both 18 Aug 2026
-    "SEND": [0, 1],
-}
 
-# Page-2 value counts for REVERB SERVER (v92). Even slots take the full 0..127
-# knob range, which is measured. Odd slots are COMPANION fields sharing the
-# even slot's word, and the only counts ever confirmed on hardware for them are
-# small ones -- tools/build_bus.py's own probe used count 3, whatever DSP.md
-# section 9's prose says about "a full 0..127 range". So they get modest step
-# counts here and the DSP scales them back up (asl #$13). If a larger count is
-# ever confirmed, raise these and drop the DSP shift to #$10; nothing else
-# changes.
-# count IS the value range, drawn on a 0..127 scale -- a count of 16 gives 16
-# steps over one eighth of the knob's travel, which is what WIDTH and ->DEL
-# did on hardware. Only MODE wants a small count: that is exactly how stock
-# encodes a selector (CHORUS TAPS is count 5, FILTER NUM is count 5, both with
-# enable nibble 1 and min 0 -- there is no separate "selector" type field).
-# THREE KNOBS + THREE SELECTS is the hardware budget (DSP.md section 9), not
-# six knobs. The knob fields ($b/$d/$e bits 16-22) take 128; the companion
-# fields are eight-bit selects and take a small step count. Setting a
-# companion slot to 128 does not make it continuous -- it stays a select and
-# reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # DPTH   knob (was WOW; global mod)
-                                  8: 128,   # RATE   knob (mod speed, 64 = 1x)
-                                  7: 5,     # MODE   select: CLEAN/PITCH/TAPE/
-                                            #        GRAIN/REVERSE (v2 s5/s6)
-                                  9: 4,     # PTCH   select: +12/+7/-12/det --
-                                            #        and REVERSE reads the SAME
-                                            #        select as a segment SIZE
-                                            #        (4096/2048/1024/512), which
-                                            #        is why its count stays 4
-                                  10: 128,  # SPRA   knob ($e knob, v2 s5)
-                                  11: 2},   # FRZE   select: run/hold (v2 s3;
-                                            #        briefly 4 with a SYNC bit,
-                                            #        24 Aug 2026 -- position 2
-                                            #        froze on the unit; TIME is
-                                            #        always synced instead)
-                "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
-                                  7: 3,     # MODE   select: ROOM/PLATE/BIG
-                                  8: 128,   # DIFF   knob
-                                  9: 4,     # SHFT   v6 (was WIDTH): interval
-                                            #        select +12/+19/+7/-12.
-                                            #        Same count, so the R16
-                                            #        lesson holds: companion
-                                            #        $d-low publishes small
-                                            #        counts, not knobs
-                                  10: 128,  # GATE   knob (R16: was PRE)
-                                  11: 4}}   # RATE   select 0.5/1/2/4x MOD speed
                                             # (was -DEL until 18 Aug 2026)
 
-# Which page-2 slots are STEPPED SELECTS rather than knobs, per server. This
-# table also gates the display-formatter pass below -- a server absent from it
-# keeps its donor's formatters untouched (SEND, whose two knobs already
-# inherit FILTER's plain-numeric zeros and work on hardware).
-#
-# ⚠️ BOTH SERVERS ARE (7, 9, 11) AND THAT IS NOT A COINCIDENCE: page 2 is
-# three knobs and three selects, and the selects ARE the three companion
-# fields ($c-high, $d-low, $e-low). Any future page-2 select lands on one of
-# these three slots by construction.
-#
-# ⚠️ The delay was MISSING from this pass entirely until 17 Aug 2026 -- the
-# block below was gated `if name == "REVERB SERVER"`, so BongDelay inherited
-# SPRING REV's formatters for all six page-2 slots and three of them drew
-# wrong on hardware. See the block comment for what each one did.
-STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / RATE
-                 "DELAY SERVER":  (7, 9, 11)}   # MODE / PTCH  / FRZE
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
@@ -821,11 +577,11 @@ if SPEC:
            # renders two engines in one script and compares byte-for-byte.
            # It only means anything where the real delay is placed (DEV/SPEC/
            # plain); the XBUS stub and BURN probe arms ignore it.
-ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
+ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM["DELAY SERVER"])
                             if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
-                            else os.environ.get("DLSRC") or "dsp/delay_server.asm"),
+                            else os.environ.get("DLSRC") or _DEF_ASM["DELAY SERVER"]),
            # BURN is NOT a separate source any more -- see BURN_INJECT below.
            #
            # RVSRC= swaps the reverb engine for an alternate source file. It
@@ -837,8 +593,8 @@ ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
-                             else os.environ.get("RVSRC") or "dsp/reverb_server.asm"),
-           "SEND": "dsp/send_client.asm"}
+                             else os.environ.get("RVSRC") or _DEF_ASM["REVERB SERVER"]),
+           "SEND": _DEF_ASM["SEND"]}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the
 # X:0x215/X:0x235 module address, and DELAY SERVER's payload-specific Y base

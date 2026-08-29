@@ -87,6 +87,15 @@ artifacts() {
 
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
+# Three cases pin a FAILURE, and a Python traceback carries the source line
+# number, which every refactor moves. Normalising those out keeps what the
+# traceback actually asserts -- which exception, raised evaluating what -- and
+# drops the one field that is guaranteed to churn. Nothing else is touched:
+# the build report proper is compared verbatim, because tools parse it.
+normalise() {
+  sed -E -i '' -e 's|File "[^"]*", line [0-9]+|File "<src>", line <n>|g' "$1"
+}
+
 run_matrix() {
   local outdir="$1"
   rm -rf "$outdir"; mkdir -p "$outdir"
@@ -100,6 +109,7 @@ run_matrix() {
     local log="$outdir/$name.log" rc=0
     # shellcheck disable=SC2086 -- word splitting of $envs is the point
     env $envs python3 tools/build_bus.py > "$log" 2>&1 || rc=$?
+    normalise "$log"
     {
       echo "case $name rc=$rc"
       while IFS= read -r f; do
