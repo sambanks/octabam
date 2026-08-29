@@ -44,6 +44,22 @@ for a new `mpy` whose second operand can go negative. A related family bit
 us in shipping code: `cmp a,b` had encoded as `max a,b`, which updates only
 the C bit while `blt` tests N^V.
 
+**READING `a0` EXPOSES THE FRACTIONAL LEFT SHIFT THAT READING `a1` HIDES.**
+`mpy` aligns the Q46 product into Q47, so `a1` is the plain fractional
+product — which is why "mpy does not double here" is true, and stays true,
+for every module that reads a1 (all of them until 29 Aug 2026). Read the LOW
+word instead — the idiom for turning an integer product into a wrapping
+ramp — and you see the RAW 48-bit content, shift included, so the effective
+integer scale is **2× your multiplier**. Nimbus's grain window is one
+`mpy phase,2^(23-k)` plus `abs`; written with the arithmetically obvious
+`2^(24-k)` it assembled, rendered, and made a perfectly plausible granular
+noise while running the window at DOUBLE RATE, which put the two grains of
+each pair in phase instead of interleaving. Found by a DC gate, not by ear
+and not by any existing check: two triangle windows a half period apart sum
+to exactly 1, so **DC in must come back flat** — it came back with 2×-DC
+ripple, and went flat (−122 dB) when the multiplier was halved. If you use
+a0 for anything, pin it with a test whose arithmetic you can predict exactly.
+
 **A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
 extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
 scale.** Building a sign mask with `move a,b / asr #$17,b,b / not b` and
