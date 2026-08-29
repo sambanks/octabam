@@ -223,6 +223,26 @@ class Claims:
     """
 
     reserved_private_y: tuple[int, ...] = ()
+    # Does this module hold memory in the per-core FX2 INSTANCE BUFFER region
+    # Y:0x4000-0xBFFF? ChonVerb's eight tank lines live there and so does
+    # Nimbus's granular line, and two such modules on one core silently
+    # corrupt each other -- each works perfectly alone, which is the worst
+    # shape a defect can have.
+    #
+    # DECLARED, where private-Y is derived, and the difference is not
+    # laziness. A source scan cannot tell an address from a mask or a
+    # constant: scanning for this range flags `and #>$7fff` and every
+    # coefficient that happens to land in it, and docs/DSP.md 7c records
+    # that static scanning could not find even the STOCK reverbs' buffers,
+    # because they compute their bases at runtime. A checker that fires on
+    # six modules out of eight teaches people to ignore it.
+    #
+    # ⚠️ This is narrower than "the shared 64K window", which PLAN.md still
+    # lists as unledgered: this region's extents are established (DSP.md's
+    # load map -- 2 FX2 instances of 16,384 words), so it can be written
+    # down honestly. The shared window's are not, and a plausible claim
+    # there would read as a guarantee.
+    owns_fx2_buffers: bool = False
 
 
 @dataclass(frozen=True)

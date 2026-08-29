@@ -20,7 +20,7 @@ from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noq
                           Module, Param)
 
 
-def _effect(name, fx2_id, priority=0, reserved=()):
+def _effect(name, fx2_id, priority=0, reserved=(), buffers=False):
     return Module(
         name=name, key=name.upper(), kind=Kind.DSP_EFFECT,
         doc="fixture",
@@ -31,7 +31,8 @@ def _effect(name, fx2_id, priority=0, reserved=()):
         # the reserved words below are claimed -- which is what lets these
         # fixtures test the claim path in isolation.
         dsp=DspSection(asm="does/not/exist.asm", priority=priority),
-        claims=Claims(reserved_private_y=reserved),
+        claims=Claims(reserved_private_y=reserved,
+                      owns_fx2_buffers=buffers),
     )
 
 
@@ -57,6 +58,12 @@ CASES = [
     ("two effects claiming one core-private Y word",
      [_effect("alpha", 0x07, reserved=(0x0905,)),
       _effect("beta", 0x08, reserved=(0x0905,))], "core-private Y"),
+    # The shape this one guards is a module that works perfectly in every
+    # test done alone: ChonVerb's tank and Nimbus's granular line are both
+    # hardcoded into Y:0x4000-0xBFFF, which is per CORE.
+    ("two effects owning the FX2 instance buffer region",
+     [_effect("alpha", 0x07, buffers=True),
+      _effect("beta", 0x08, buffers=True)], "FX2 instance buffers"),
 ]
 
 CLEAN = [_effect("alpha", 0x07, reserved=(0x0905,)),

@@ -97,6 +97,22 @@ def check(selected) -> list[str]:
                           f"the first, so the first module never runs")
                 hooks[c.hook_addr] = m.name
 
+    # ---- the per-core FX2 instance buffer region --------------------------
+    # Y:0x4000-0xBFFF is TWO FX2 instance slots of 16,384 words, per core and
+    # not per instance in any sense a module can rely on: ChonVerb hardcodes
+    # its tank there and Nimbus hardcodes its granular line there, so two of
+    # them on one core write over each other. Each works perfectly alone.
+    # Declared rather than scanned -- see Claims.owns_fx2_buffers for why a
+    # scan cannot tell an address from a mask.
+    buf = [m for m in selected
+           if getattr(m, "claims", None) is not None
+           and m.claims.owns_fx2_buffers]
+    for i, a in enumerate(buf):
+        for b in buf[i + 1:]:
+            clash("FX2 instance buffers", a.name, b.name,
+                  "Y:0x4000-0xBFFF -- that region is per CORE, so only one "
+                  "of them can be hosted on a given core; each works alone")
+
     # ---- core-private Y ---------------------------------------------------
     # Low Y is per CORE. Two effects that can share a core share these words,
     # so this is checked across every selected module, not per payload.

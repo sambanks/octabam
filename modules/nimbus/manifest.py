@@ -20,8 +20,8 @@ PLAN.md records for the servers.
 MIX=0 is an exact passthrough (during warm-up the effect outputs pure dry).
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
-                          MenuEntry, Module, Param, YBase)
+from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
+                          Kind, MenuEntry, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -58,5 +58,9 @@ MODULE = Module(
         r7_latch_slot=None,
         gate_label=None,
     ),
+    # The 743 ms line is hardcoded into Y:0x4000-0xBFFF -- the same per-CORE
+    # region ChonVerb's tank uses, which is why the two cannot share a core
+    # and why this module has its own remix.
+    claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="N", is_server=False),
 )
