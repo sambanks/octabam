@@ -16,7 +16,8 @@ blind spots listed at the end.
 ## The stack
 
 ```
-dsp/*.asm ──dsp_asm──► tools/build_bus.py ──► out/mainos_bus.bin   (the firmware)
+modules/*/*.asm (+ dsp/ probes)
+          ──dsp_asm──► tools/build_bus.py ──► out/mainos_bus.bin   (the firmware)
                               │
                               └─► out/dsp/mem_*.mem      (payload A memory dump,
                                         │                 via dsp_modmap --dumpmem)
@@ -123,9 +124,12 @@ Two design points worth knowing, both scars:
 * **Renders are provenance-stamped.** An evening was once spent A/B-ing
   byte-identical files because an edit hadn't actually been rebuilt. The
   cache is keyed on a content fingerprint of *everything* that can change
-  the instruction stream — every dsp/ source, the builder, and every env
-  var the builder branches on — and a mismatch forces a rebuild. mtimes
-  cannot do this job.
+  the instruction stream — every module and `dsp/` source, the manifests
+  and remix selections, the build engine, and every env var the builder
+  branches on — and a mismatch forces a rebuild. mtimes cannot do this job.
+  The fingerprint is part of any build change: when a source moves or an
+  env flag is added, `render_reverb.py`'s globs and `BUILD_ENV` move with
+  it (both have been caught stale — same-bug twice).
 * **The knob table drifts when the DSP-side map changes**, and a stale
   wrapper renders confidently with the wrong knob wired (18 Aug 2026: `-p
   GATE=n` was landing on WIDTH's companion — four such bugs in one audit).

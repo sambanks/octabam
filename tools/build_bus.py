@@ -9,7 +9,7 @@ Builds on tools/build_menu.py's already-verified ColdFire menu tables (same
 constants, reproduced here rather than imported so this stays a single
 self-contained build script like every other tools/build_*.py in this
 project) and adds what task 11 explicitly deferred: placing
-dsp/reverb_server.asm / delay_server.asm / send_client.asm's assembled code
+the selected modules' assembled DSP code (modules/<name>/*.asm)
 in real P memory, for BOTH payloads, and repointing X:0x215/X:0x235 so the
 three new ids (0x01 DELAY SERVER, 0x02 REVERB SERVER, 0x03 SEND) actually run
 them instead of whatever the byte-donor used to be.
@@ -88,10 +88,14 @@ code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
 times. The old docstring here claimed "exactly one occurrence", which was
 never true for the XBUS path.
 """
-import pathlib, re, subprocess, sys
+import os, pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
+from remix import registry as remix_registry  # noqa: E402
+from remix.registry import modules as remix_modules  # noqa: E402
+from remix.schema import YBase  # noqa: E402
+from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
 DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
@@ -106,9 +110,10 @@ NEW_LIST = 0x400d6b00
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
 
-DESC_DONORS = {"DELAY SERVER": 0x400d5726,   # SPRING REV
-               "REVERB SERVER": 0x400d58b8,  # DARK REV
-               "SEND": 0x400d4772}           # FILTER
+# DESC_DONORS, NEW_IDS, RENAMES, ABBR, FULLNAME, DEFAULTS, ACTIVE_PARAMS,
+# PAGE2_COUNTS and STEPPED_SLOTS are no longer written here. Each module
+# declares them in modules/<name>/manifest.py and they are derived below,
+# after BUILD_TAG. See tools/remix/schema.py for what a manifest may say.
 
 # The chooser's viewport height: FUN_4005996c pushes a literal 7 to
 # FUN_4007ec60, which stores it as the number of rows FUN_40037590's draw loop
@@ -121,92 +126,15 @@ ROWCOUNT_AT = 0x40059a56        # the 16-bit immediate itself
 ROWCOUNT_INSN = 0x40059a54
 NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
-ORDER = ["REVERB SERVER", "DELAY SERVER", "SEND"]   # ChongVerb first, by preference
-# 0x06/0x07/0x09, not 0x01/0x02/0x03: the first hardware test used
-# 0x01/0x02/0x03 and got correct chooser names but no working knobs and
-# garbage/uninitialized-feeling audio on all three. Ids 0x00-0x03 are the
-# specific four values stock firmware has always treated as bare synonyms
-# for "no effect" (ColdFire logic elsewhere very likely does a raw "id < 4"
-# check, not just a NONE-descriptor lookup), unlike other currently-free ids
-# that happen to map to NONE today without carrying that special meaning.
-# 0x06 is the exact id tools/build_dspprobe.py already proved runs custom
-# DSP code correctly on real hardware -- reusing that specific precedent.
-NEW_IDS = {"DELAY SERVER": 0x06, "REVERB SERVER": 0x07, "SEND": 0x09}
+# WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
+# chongbong is the shipping selection and the one every refactor proves itself
+# against. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# so ORDER is the menu modules alone, in the remix's declared order.
+REMIX = remix_registry.remix(os.environ.get("REMIX")
+                             or remix_registry.DEFAULT_REMIX)
+ORDER = [k for k in REMIX.modules
+         if remix_modules()[k].menu is not None]
 
-RENAMES = {
-    "DELAY SERVER": [
-        (1, b"FDBK"), (2, b"TONE"), (3, b"PING"),
-        (4, b"-VRB"),               # slot 4 -> r6+$4  the delay's send into
-                                    #   the reverb (swapped with IN 18 Aug 2026
-                                    #   so IN sits bottom-right on BOTH
-                                    #   effects). Was IN; before v3, MIX.
-                                    # (original IN note follows, now at p5:)
-                                    #   level into the delay. v3 stage 1: was
-                                    #   MIX, a dry/wet crossfade, which had
-                                    #   nothing left to cross-fade once the
-                                    #   host track became a return that prints
-                                    #   the wet alone. Now the host's
-                                    #   counterpart of send_client's p0.
-        (5, b"IN"),                 # slot 5 -> r6+$5  THIS TRACK'S OWN SEND
-                                    #   level into the delay, bottom-right to
-                                    #   match the reverb's IN (18 Aug swap).
-        (6, b"DPTH"),               # slot 6 -> r6+$c KNOB    modulation depth
-                                    #   (was WOW -- global since TAPE retired,
-                                    #    18 Aug 2026; every mode's loop tap
-                                    #    carries the wow/flutter pair now)
-                                    #   (bits 16-23; $b is not a param word --
-                                    #    docs/PARAM_PAGES.md)
-        (7, b"MODE"),               # slot 7 -> r6+$c b8-15  engine select (v2)
-        (8, b"RATE"),               # slot 8 -> r6+$d KNOB    modulation speed,
-                                    #   val/64 (64 = 1x exactly, the default).
-                                    #   Slot history: VRBD until v3, blank
-                                    #   until 18 Aug 2026. Pairs with DPTH the
-                                    #   way the reverb's RATE pairs with MOD.
-        (9, b"PTCH"),               # slot 9 -> r6+$d b8-15  interval select:
-                                    #   +12 / +7 / -12 / +-detune (stage 2)
-        (10, b"DRV"),               # slot 10 -> r6+$e knob. DRIVE in every
-                                    #   mode but GRAIN (blend toward the
-                                    #   2x-driven tape curve, 18 Aug 2026);
-                                    #   in GRAIN this same knob is still the
-                                    #   scatter depth (SPRA), the p9 pattern.
-        (11, b"FRZE"),              # slot 11 -> r6+$e b8-15 freeze select:
-                                    #   run / hold (stage 3)
-    ],
-    "REVERB SERVER": [
-        (1, b"MOD"), (2, b"SIZE"),
-        (5, b"IN"),             # v4 RETURN (17 Aug 2026): was the donor's MIX.
-                                # IN is this track's own send into its reverb,
-                                # the delay's p4 mirrored. (v4 printed the wet
-                                # alone; since v5 the host's dry rides under
-                                # the wet at unity.)
-        # Page 2 rejig (v92). Even slots are knob fields (0..127, measured);
-        # odd slots are companion fields in the same word and are only proven
-        # to carry a SMALL step count -- see PAGE2_COUNTS below.
-        (6, b"SHMR"),           # slot 6 -> r6+$c KNOB   shimmer amount
-                                #   (was SPEED; the LFO rate is pinned at 40,
-                                #    VOICING Round 5's measured optimum)
-        (7, b"MODE"),           # slot 7 -> r6+$c b8-15  character select
-        (8, b"DIFF"),           # slot 8 -> r6+$d knob   allpass coefficient
-        (9, b"SHFT"),           # slot 9 -> r6+$d low. v6 (23 Aug 2026): was
-                                #   WIDTH (retired, pinned wide -- Sam's
-                                #   call); now the shimmer interval select:
-                                #   +12 / +19 / +7 / -12
-        (10, b"GATE"),          # slot 10 -> r6+$e knob (R16: was PRE)
-        (11, b"RATE"),          # slot 11 -> r6+$e b8-15  MOD speed select,
-                                #   0.5x/1x/2x/4x of Round 5's pinned optimum
-                                #   (18 Aug 2026). Same-day history: -DEL was
-                                #   retired from this slot hours earlier (the
-                                #   VRBD-twin rationale, see git); RATE is its
-                                #   replacement, giving MOD the speed dimension
-                                #   the old SPEED knob lost to SHMR.
-    ],
-    "SEND": [
-        (0, b"-DEL"), (1, b"-VRB"),
-        (2, b""), (3, b""), (4, b""), (5, b""),
-        (6, b""), (7, b""), (8, b""), (9, b""), (10, b""), (11, b""),
-    ],
-}
-ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
 # to not being able to tell WHICH build was running on the unit: a symptom
 # ("knobs unchanged") is ambiguous between "the change did not work" and "the
@@ -398,125 +326,51 @@ ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
 BUILD_TAG = b"77"
 
-FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb" + BUILD_TAG,
-            "SEND": b"Send"}
-# Explicit per-knob defaults -- NOT the donor's, which are for a different
-# algorithm on that slot. DARK REV's MIX default is 0 (a freshly selected
-# REVERB SERVER would be silent) and SPRING's TONE-slot default is 0 (our
+# ---- the module tables, derived from modules/*/manifest.py ------------------
+# One statement per fact, living in the module that owns it. These dicts keep
+# their old shapes because the writers below are unchanged: what moved is
+# where the data lives, not what it says.
+#
+# Ids are 0x06/0x07/0x09 rather than 0x01/0x02/0x03 because the first hardware
+# test used the latter and got correct chooser names with dead knobs and
+# garbage audio: 0x00-0x03 are the four values stock has always treated as
+# bare synonyms for "no effect". 0x06 is the exact id tools/build_dspprobe.py
+# proved runs custom DSP code on real hardware. schema.py enforces the range.
+_MODS = remix_modules()
+_SEL = [_MODS[k] for k in ORDER]
+
+DESC_DONORS = {m.key: m.menu.donor_desc for m in _SEL}
+NEW_IDS = {m.key: m.menu.fx2_id for m in _SEL}
+ABBR = {m.key: m.menu.abbr for m in _SEL}
+FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
+            for m in _SEL}
+# A name of None means "leave the donor's", which is a different thing from
+# b"" (blank the slot). Both are in use: SEND blanks ten of FILTER's names.
+RENAMES = {m.key: [(i, p.name) for i, p in enumerate(m.params)
+                   if p.name is not None] for m in _SEL}
+# Explicit per-knob defaults -- NOT the donor's, which are sized for a
+# different algorithm on that slot. DARK REV's MIX default is 0 (a freshly
+# selected reverb would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
-DEFAULTS = {
-    "DELAY SERVER": [(0, 40), (1, 60), (2, 100), (3, 127), (4, 0),
-                     (5, 0),    # -VRB: 0 for the same load-bearing reason as
-                                # IN -- a nonzero default registers the delay
-                                # as a reverb client whenever it exists, idle
-                                # or not, diluting every real sender
-                     #      (3) PING 64 -> 127 (v3 stage 2). 64 was the WORST
-                     #      place on the knob to boot: measured 17 Aug 2026 it
-                     #      leaned +14.7 dB left with correlation 0.185 -- more
-                     #      lean than 127 and no audible bounce, the middling
-                     #      blend rather than either character. 127 is the
-                     #      classic ping-pong the effect exists to do, and it
-                     #      is where the lean is smallest (+9.2 dB, which is
-                     #      one repeat's decay and inherent -- see the LineR
-                     #      write). With stage 2's 1-PING input term the other
-                     #      end of the knob is now a centred mono delay, so
-                     #      both extremes are useful and the default sits on
-                     #      the one that says what the box is.
-                     #      ⚠️ (4) IS NOW **IN**, NOT MIX, AND 0 IS LOAD-
-                     #      BEARING (v3 stage 1) -- it is the one number in
-                     #      this table that a measurement, not taste, fixed.
-                     #      IN>0 REGISTERS THIS TRACK AS A BUS CLIENT, and
-                     #      the delay's 1/N auto-gain then gives it a share
-                     #      whether or not it has any audio to contribute.
-                     #      On the return track this effect is designed for
-                     #      there IS none, so a non-zero default silently
-                     #      halved every real sender: measured 17 Aug 2026,
-                     #      sends-only rendered -24.40 dBFS at IN=0 and
-                     #      -30.42 at IN=64, exactly 6.02 dB = the 1/2 of
-                     #      being counted twice. (A SEND client registers
-                     #      unconditionally, so a silent SEND track dilutes
-                     #      the bus too -- that is the system's existing
-                     #      behaviour and the host now matches it. The knob
-                     #      gate is what lets the DEFAULT opt out.)
-                     #      ⚠️ The "wet alone" cost this note used to accept
-                     #      -- a playing host track SILENT until IN came up,
-                     #      reading as "the effect deleted my audio" -- is
-                     #      GONE since v5 (23 Aug 2026): both servers now
-                     #      pass the host's dry at unity under the wet, so
-                     #      IN=0 is an exact passthrough. 0 remains the only
-                     #      default that keeps the bus arithmetic honest,
-                     #      and it no longer has a downside.
-                     #      Slots 5 and 8 are RETIRED -- no defaults needed.
-                     #      MIX 90 -> 64 (stage 5g). Sam, on the demo set:
-                     #      "it sounds a lot better lower". ⚠️ His finding
-                     #      actually implies LOWER still -- the grain sitting
-                     #      ~14 dB under the dry is MIX ~21 in the crossfade --
-                     #      but a near-dry default reads as "the effect does
-                     #      nothing", which is the exact trap this table's
-                     #      header warns about. 64 is the compromise, not the
-                     #      measured optimum.
-                     (8, 64),   # RATE -- 64 IS LOAD-BEARING: exactly 1x, the
-                                # pre-knob modulation speed; the DPTH=0 gate
-                                # only holds with the law exact here
-                     (6, 48),   # WOW   a musical default wobble for TAPE
-                     (7, 0),    # MODE  CLEAN -- a fresh part gets the trad delay
-                     (11, 0),   # FRZE  run   -- a fresh part is never held
-                     (10, 0),   # DRV -- 0 = EXACT bypass (the DRIVE gate). ⚠️ This
-                                # default is ALSO GRAIN's scatter now (shared
-                                # byte): a fresh GRAIN part boots fully
-                                # coherent (was 64). Deliberate: bypass-by-
-                                # default outranks a scatter taste that gets
-                                # played by hand anyway.
-                     (9, 1)],   # PTCH  0 -> 1 (stage 5g), and it is a TRADE.
-                                #       Slot 9 is triple-meaning. For GRAIN it
-                                #       is the SET WIDTH, and 0 pins every
-                                #       grain to +12 -- the pre-split fixed
-                                #       engine, measurably the worst voicing
-                                #       (shift-profile error 0.495 against the
-                                #       reference, vs 0.173 for the wide set).
-                                #       A fresh part switching to GRAIN got
-                                #       that. 1 = +12/unison is usable
-                                #       everywhere and is what Sam preferred on
-                                #       a full band mix, where the wide set's
-                                #       -19/-5/+5 grains read as wrong notes.
-                                #       ⚠️ THE COST: PITCH now boots at +7
-                                #       instead of +12, and REVERSE at a
-                                #       2048-sample segment instead of 4096.
-                                #       Neither is a defect, both are a changed
-                                #       preference -- flagged because no ear has
-                                #       checked those two since the change.
-                                #       -- all IN RANGE of their counts
-                                # below (the default-as-index sequencer stall)
-    # EVERY page-2 slot needs an explicit default now that all twelve are
-    # enabled: an unlisted slot keeps the DONOR's default, which is sized for
-    # DARK REV's value counts, not ours. And a default outside its own count
-    # is used as an index -- that shipped once (slot 7: default 64, count 5)
-    # and stalled the sequencer on hardware. verify_menu.py now checks it.
-    "REVERB SERVER": [(0, 64), (1, 30), (2, 100), (3, 0), (4, 127), (5, 0),   # IN -- 0 IS LOAD-BEARING (v4 return, the delay's
-                                 # measurement verbatim: a nonzero default registers
-                                 # every idle host as a client and dilutes real senders;
-                                 # and the output is wet alone, so IN=0 + nothing sent
-                                 # = SILENT track, by design)
-                      (6, 0),    # SHMR   OFF. This slot was SPEED (LFO rate)
-                                 # and defaulted to 48; v101 renamed it to the
-                                 # shimmer amount and never revisited the
-                                 # default, so a FRESH PART booted with the
-                                 # shimmer half up -- and the shimmer is not
-                                 # usable yet. SHMR=0 is bit-identical to the
-                                 # pre-shimmer engine, so 0 gives a fresh part
-                                 # the good reverb.
-                      (7, 2),    # MODE   BIG (was HALL before the 3-mode cut)
-                      (8, 64),   # DIFF   mid
-                      (9, 0),    # SHFT   v6: interval select, 0 = +12 (the
-                                 # R18 shimmer voicing). ⚠️ Old projects'
-                                 # stored WIDTH=3 loads as -12 (sub-octave)
-                                 # -- benign at SHMR's 0 default, and the
-                                 # FLASHING.md first-load step covers it
-                      (10, 0),   # GATE   off (ungated reverb)
-                      (11, 1)],  # RATE 1x (index 1; the 1-based panel shows
-                                 # "2"). Slot was -DEL until 18 Aug 2026.
-    "SEND": [(0, 0), (1, 0)],
-}
+DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
+                    if p.default is not None] for m in _SEL}
+# The enable bitmap. A slot missing here is unreachable on hardware no matter
+# how completely it is named, defaulted, counted and implemented -- and the
+# inverse of the trap that a slot can draw a knob and publish nothing. Both
+# have shipped.
+ACTIVE_PARAMS = {m.key: m.active_params for m in _SEL}
+# Value counts. Page 2 is THREE KNOBS AND THREE SELECTS: the knob fields take
+# 128, the companion byte fields take a small step count. Setting a companion
+# to 128 does not make it continuous -- it stays a select and reads as a
+# near-boolean, which is what hardware showed.
+PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
+                        if p.count is not None} for m in _SEL}
+# Membership here also GATES the display-formatter pass below: a module with
+# no stepped slot keeps its donor's formatters untouched, which is what SEND
+# wants (FILTER's plain-numeric zeros, hardware-confirmed).
+STEPPED_SLOTS = {m.key: m.stepped_slots for m in _SEL if m.stepped_slots}
+_DEF_ASM = {m.key: m.dsp.asm for m in _SEL}
+
 
 # ---- P-relative field offsets (PARAM_PAGES.md section 5b) ------------------
 # The record's canonical base is P = E + 0x38 and it is 0x192 bytes long
@@ -541,105 +395,34 @@ def penable(active):
     return lo, hi
 
 
-# Which knobs each effect's DSP code actually reads, and therefore which ones
-# the panel DRAWS -- this list is the enable bitmap, so a slot missing here is
-# unreachable on hardware no matter how completely it is named, defaulted,
-# counted and implemented.
-#
-# Page-1 indices 0..5 are r6+0..5. Page 2 is THREE KNOBS AND THREE SELECTS,
-# in slot order 6..11: knob $b, select $c-high, knob $d, select $d-low, knob
-# $e, select $e-low. (The older note here said "6 = r6+$c, 7 = r6+$b, 8 =
-# r6+$d", which is stale -- it predates the v92 page-2 rejig and disagrees
-# with both servers' actual reads. Corrected 12 Aug 2026.)
-ACTIVE_PARAMS = {
-    # 7 (MODE) and 9 (PTCH) landed with v2 stage 2 -- the stage-1 rule was
-    # that a one-value select draws a dead knob, so MODE waited for PITCH.
-    # ⚠️ 6 (WOW) and 11 (FRZE) were NAMED, DEFAULTED AND COUNTED by stages 3
-    # and 4 but never added HERE, so both shipped un-enabled: the DSP read
-    # them and the panel never drew them, which on the unit is a control that
-    # cannot be moved off its default. Found 12 Aug 2026 while wiring SPRAY.
-    # verify_menu only checks the slots that ARE enabled, so it could not see
-    # this -- it is the inverse of the PARAM_PAGES trap ("a slot can draw a
-    # knob and publish nothing") and cost nothing only because nobody had
-    # tried to freeze on hardware yet.
-    # ⚠️ 5 (VRBW) and 8 (VRBD) RETIRED in v3 stage 1 -- ->VERB is hardwired
-    # and its DRY half is gone, so both slots would draw a knob that
-    # publishes to a DSP read that no longer exists. Dropping them here is
-    # what actually stops the panel drawing them; the DSP-side read and the
-    # RENAMES entry are separate mechanisms (the PARAM_PAGES trap, and its
-    # inverse that bit WOW/FRZE on 12 Aug).
-    "DELAY SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # all twelve: p5 -VRB, p8 RATE (18 Aug 2026)
-    "REVERB SERVER": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # p11: -DEL retired, RATE born, both 18 Aug 2026
-    "SEND": [0, 1],
-}
 
-# Page-2 value counts for REVERB SERVER (v92). Even slots take the full 0..127
-# knob range, which is measured. Odd slots are COMPANION fields sharing the
-# even slot's word, and the only counts ever confirmed on hardware for them are
-# small ones -- tools/build_bus.py's own probe used count 3, whatever DSP.md
-# section 9's prose says about "a full 0..127 range". So they get modest step
-# counts here and the DSP scales them back up (asl #$13). If a larger count is
-# ever confirmed, raise these and drop the DSP shift to #$10; nothing else
-# changes.
-# count IS the value range, drawn on a 0..127 scale -- a count of 16 gives 16
-# steps over one eighth of the knob's travel, which is what WIDTH and ->DEL
-# did on hardware. Only MODE wants a small count: that is exactly how stock
-# encodes a selector (CHORUS TAPS is count 5, FILTER NUM is count 5, both with
-# enable nibble 1 and min 0 -- there is no separate "selector" type field).
-# THREE KNOBS + THREE SELECTS is the hardware budget (DSP.md section 9), not
-# six knobs. The knob fields ($b/$d/$e bits 16-22) take 128; the companion
-# fields are eight-bit selects and take a small step count. Setting a
-# companion slot to 128 does not make it continuous -- it stays a select and
-# reads as a near-boolean, which is what hardware showed.
-PAGE2_COUNTS = {"DELAY SERVER":  {6: 128,   # DPTH   knob (was WOW; global mod)
-                                  8: 128,   # RATE   knob (mod speed, 64 = 1x)
-                                  7: 5,     # MODE   select: CLEAN/PITCH/TAPE/
-                                            #        GRAIN/REVERSE (v2 s5/s6)
-                                  9: 4,     # PTCH   select: +12/+7/-12/det --
-                                            #        and REVERSE reads the SAME
-                                            #        select as a segment SIZE
-                                            #        (4096/2048/1024/512), which
-                                            #        is why its count stays 4
-                                  10: 128,  # SPRA   knob ($e knob, v2 s5)
-                                  11: 2},   # FRZE   select: run/hold (v2 s3;
-                                            #        briefly 4 with a SYNC bit,
-                                            #        24 Aug 2026 -- position 2
-                                            #        froze on the unit; TIME is
-                                            #        always synced instead)
-                "REVERB SERVER": {6: 128,   # SHMR   knob ($c knob field, R16)
-                                  7: 3,     # MODE   select: ROOM/PLATE/BIG
-                                  8: 128,   # DIFF   knob
-                                  9: 4,     # SHFT   v6 (was WIDTH): interval
-                                            #        select +12/+19/+7/-12.
-                                            #        Same count, so the R16
-                                            #        lesson holds: companion
-                                            #        $d-low publishes small
-                                            #        counts, not knobs
-                                  10: 128,  # GATE   knob (R16: was PRE)
-                                  11: 4}}   # RATE   select 0.5/1/2/4x MOD speed
                                             # (was -DEL until 18 Aug 2026)
 
-# Which page-2 slots are STEPPED SELECTS rather than knobs, per server. This
-# table also gates the display-formatter pass below -- a server absent from it
-# keeps its donor's formatters untouched (SEND, whose two knobs already
-# inherit FILTER's plain-numeric zeros and work on hardware).
-#
-# ⚠️ BOTH SERVERS ARE (7, 9, 11) AND THAT IS NOT A COINCIDENCE: page 2 is
-# three knobs and three selects, and the selects ARE the three companion
-# fields ($c-high, $d-low, $e-low). Any future page-2 select lands on one of
-# these three slots by construction.
-#
-# ⚠️ The delay was MISSING from this pass entirely until 17 Aug 2026 -- the
-# block below was gated `if name == "REVERB SERVER"`, so BongDelay inherited
-# SPRING REV's formatters for all six page-2 slots and three of them drew
-# wrong on hardware. See the block comment for what each one did.
-STEPPED_SLOTS = {"REVERB SERVER": (7, 9, 11),   # MODE / WIDTH / RATE
-                 "DELAY SERVER":  (7, 9, 11)}   # MODE / PTCH  / FRZE
 
 # ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
 # Temporary diagnostic; the normal build is unaffected.
-import os
+#
+# Slots 9 and 11 inherit DARK's value COUNT of 2 (booleans, 0/1) -- and a knob
+# that maxes at 1 can never cross the probe's >64 threshold, so they read as
+# "does nothing" whether or not they are wired. Force every page-2 slot to a
+# full 0..127 range so all six are actually sweepable.
+#
+# ⚠️ AT MODULE LEVEL DELIBERATELY. This sat INSIDE the TPROBE block below,
+# where it was defined for the one mode that never reads it and undefined for
+# the mode that does -- so PROBE=1 died on a NameError at the point of use,
+# in every combination, for as long as anyone can tell. Only the PROBE arm
+# applies these counts; keeping the table unconditional is what stops the
+# definition and the use drifting into different branches again.
+PROBE_COUNTS = {6: 128, 7: 3, 8: 128, 9: 3, 10: 128, 11: 3}
+
+# True when the reverb's engine has been swapped for a diagnostic. Read below
+# where the bus relocation is applied: a probe is not a bus client, so it is
+# exempt from a check that exists to catch a real server reading the wrong
+# memory.
+_REVERB_IS_PROBE = any(os.environ.get(v) == "1"
+                       for v in ("PROBE", "XPROBE", "TPROBE"))
+
 if os.environ.get("PROBE") == "1" or os.environ.get("XPROBE") == "1":
     FULLNAME["REVERB SERVER"] = b"X MEM PROBE" if os.environ.get("XPROBE") == "1" else b"P2 PROBE"
 if os.environ.get("TPROBE") == "1":
@@ -650,11 +433,6 @@ if os.environ.get("TPROBE") == "1":
     RENAMES["REVERB SERVER"] = [(i, b"") for i in range(6)] + \
                               [(i, f"P{i}".encode()) for i in range(6, 12)]
     DEFAULTS["REVERB SERVER"] = [(i, 0) for i in range(6, 12)]
-    # Slots 9 and 11 inherit DARK's value COUNT of 2 (booleans, 0/1) -- and a
-    # knob that maxes at 1 can never cross the probe's >64 threshold, so they
-    # read as "does nothing" whether or not they are wired. Force every page-2
-    # slot to a full 0..127 range so all six are actually sweepable.
-    PROBE_COUNTS = {6: 128, 7: 3, 8: 128, 9: 3, 10: 128, 11: 3}
 
 # ---- BURN MODE (BURN=1): swap ChonVerb for dsp/burn_probe.asm, the same
 # engine plus a knob-swept cycle burn on p3. Measures the per-DSP cycle
@@ -675,7 +453,14 @@ if os.environ.get("XBUS") == "1":
         # BongDelay cost a debugging round on 10 Aug 2026.)
         FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG
         FULLNAME["DELAY SERVER"] = b"BongDelay" + BUILD_TAG
-    else:
+    elif not _REVERB_IS_PROBE:
+        # ⚠️ `elif not _REVERB_IS_PROBE`, not `else`. This block runs AFTER the
+        # probe naming above, so a plain `else` renamed a PROBE build's reverb
+        # slot to XVerb -- a diagnostic image whose panel claimed to be the
+        # architecture test. That is the exact ambiguity BUILD_TAG exists to
+        # remove, and it is worse here than a missing name: three debugging
+        # rounds have already been lost to not knowing which firmware was
+        # running. A probe keeps the name that says what it is.
         FULLNAME["REVERB SERVER"] = b"XVerb" + BUILD_TAG
         ABBR["REVERB SERVER"] = b"XVRB"
         FULLNAME["DELAY SERVER"] = b"NotUsed" + BUILD_TAG
@@ -821,11 +606,11 @@ if SPEC:
            # renders two engines in one script and compares byte-for-byte.
            # It only means anything where the real delay is placed (DEV/SPEC/
            # plain); the XBUS stub and BURN probe arms ignore it.
-ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
+ASM_SRC = {k: v for k, v in {"DELAY SERVER": ((os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER"))
                             if DEV or SPEC
                             else "dsp/silence_stub.asm" if os.environ.get("XBUS") == "1"
                             else "dsp/alias_probe.asm" if os.environ.get("BURN") == "1"
-                            else os.environ.get("DLSRC") or "dsp/delay_server.asm"),
+                            else os.environ.get("DLSRC") or _DEF_ASM.get("DELAY SERVER")),
            # BURN is NOT a separate source any more -- see BURN_INJECT below.
            #
            # RVSRC= swaps the reverb engine for an alternate source file. It
@@ -837,8 +622,8 @@ ASM_SRC = {"DELAY SERVER": ((os.environ.get("DLSRC") or "dsp/delay_server.asm")
            "REVERB SERVER": ("dsp/xmem_probe.asm" if os.environ.get("XPROBE") == "1"
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
-                             else os.environ.get("RVSRC") or "dsp/reverb_server.asm"),
-           "SEND": "dsp/send_client.asm"}
+                             else os.environ.get("RVSRC") or _DEF_ASM.get("REVERB SERVER")),
+           "SEND": _DEF_ASM.get("SEND")}.items() if k in ORDER}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the
 # X:0x215/X:0x235 module address, and DELAY SERVER's payload-specific Y base
@@ -917,6 +702,13 @@ def main():
                                       "stock": b"C"}[probe])
     if not DIS.exists():
         sys.exit(f"missing {DIS} -- run 'make setup'")
+    # Resource collisions between the selected modules, BEFORE a byte is
+    # written. Silent when clean: the build report is parsed by other tools,
+    # so a check that passes says nothing.
+    _clashes = ledger.check([remix_modules()[k] for k in REMIX.modules])
+    if _clashes:
+        sys.exit("remix %r has colliding modules:\n  %s"
+                 % (REMIX.name, "\n  ".join(_clashes)))
     img = bytearray(IMG.read_bytes())
 
     def rd32(a):
@@ -1069,113 +861,97 @@ def main():
         wr32(r, NEW_LIST)
     for pos, name in enumerate(ORDER):
         wr32(ID2POS + NEW_IDS[name] * 4, pos)
-    # ==== 1b. ColdFire: TEMPO PUBLISH cave (24 Aug 2026) ====================
-    # The DSP is never told the tempo -- the ColdFire computes every
-    # tempo-derived rate itself (docs/DSP.md 6c). This hooks the per-frame
-    # voice-record writer at the instruction that publishes the FX2 id
-    # (0x40004d40, in 0x40004bd2) and replays it from a cave that also
-    # stores tempo24 and samples-per-MIDI-clock (Q12.4) into the record's
-    # halfwords +0x24/+0x26 = FX2's r6+$6/r6+$7 (dead = never READ; the frame
-    # builder rewrites them every frame, so the cave re-stores every pass --
-    # docs/midi_re_note.md, 24 Aug 2026), for tracks whose FX2 id
-    # is 6 or 7 (our servers) only. Source: cf/tempo_cave.s (m68k-elf-as,
-    # -mcpu=5407); the bytes are pinned here so the build needs no m68k
-    # toolchain, and re-checked against a fresh assembly when one is present.
-    # NOTEMPO=1 leaves the ColdFire untouched (the DSP side then reads zeros
-    # and SYNC is a no-op by design).
-    TEMPO_HOOK = 0x40004d40
-    TEMPO_CAVE = 0x400d7000            # inside the stock zero run
-                                       # 0x400d6b00-0x400d7c3c, past the clones
-    TEMPO_HOOK_STOCK = bytes.fromhex("14280dbc" "4882" "35420038")
-    TEMPO_CAVE_BYTES = bytes.fromhex(
-        "14280dbc" "4882" "35420038"           # displaced: id -> +0x38
-        "2f00" "2002" "5d80" "0c8000000001" "624c"   # id-6 > 1 -> skip
-        "2f01"
-        "2039460d16c8" "5280" "35400028"       # v2: fader+1 -> +0x28 (r6+$8)
-        "2f08" "41f9400d64c2" "10304800" "205f"  # v2: held note[d4] ...
-        "0280000000ff" "0c80000000ff" "6602" "4280"  # 0xff (released) -> 0
-        "3540002a"                             # ... -> +0x2a (r6+$9)
-        "20398000181c" "6712"                  # tempo24; 0 -> nodiv (R48
-                                               # HUNG AT BOOT on divu.l by 0)
-        "35400024"                             # tempo24 -> +0x24 (r6+$6)
-        "223c0285ff00" "4c401001" "35410026"   # 42336000/tempo24 -> +0x26
-        "221f" "201f" "4e75")
-    # TEMPOCAVE=replay: the hook with a cave that ONLY replays the three
-    # displaced instructions -- isolates the hook mechanism from the stores
-    # (R48/R49 killed the voices on the unit; docs/DSP.md 6c-i).
-    if os.environ.get("TEMPOCAVE") == "replay":
-        TEMPO_CAVE_BYTES = TEMPO_HOOK_STOCK + bytes.fromhex("4e75")
-        print("  tempo cave: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
+    # ==== 1b. ColdFire caves, from whichever modules carry them =============
+    # A cave is how a module changes the firmware's BEHAVIOUR rather than
+    # adding an effect: assert the hook site still holds the stock bytes,
+    # plant a jsr to the cave, and let the cave replay what it displaced
+    # before doing its own work. The addresses, the pinned machine code, the
+    # .s sources and the reasoning all live in the owning module's manifest.
+    # This is only the installer, and it is generic: a module contributing
+    # caves needs no change here.
+    #
+    # No cave is installed if NOTEMPO=1, and none if the remix carries no
+    # module that has any -- in both cases the DSP side reads zeros and SYNC
+    # is a no-op by design.
+    import shutil, tempfile
+    _caves = [c for k in REMIX.modules for c in remix_modules()[k].cf_patches]
+    _replay = os.environ.get("TEMPOCAVE") == "replay"
+    # TEMPOCAVE=replay: the hook with a cave that ONLY replays the displaced
+    # instructions -- isolates the hook mechanism from the stores (R48/R49
+    # killed the voices on the unit; docs/DSP.md 6c-i).
+    _plan = []
+    for _c in _caves:
+        _b = _c.pinned
+        if _replay and _c.hook_addr is not None:
+            _b = _c.hook_stock + bytes.fromhex("4e75")
+            print(f"  {_c.label}: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
+        _plan.append((_c, _b))
     if os.environ.get("NOTEMPO") == "1":
         print("  tempo cave OFF (NOTEMPO=1) -- SYNC reads zeros")
-    else:
-        assert TEMPO_CAVE >= cave_end, "tempo cave overlaps the menu clones"
-        got = bytes(img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10])
-        if got != TEMPO_HOOK_STOCK:
-            sys.exit(f"tempo hook site 0x{TEMPO_HOOK:08x} is not stock "
-                     f"({got.hex()}) -- refusing")
-        if any(img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)]):
-            sys.exit("tempo cave not free")
-        import shutil, subprocess, tempfile
-        if (os.environ.get("TEMPOCAVE") != "replay" and
-                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
+        _plan = []
+    _cave_top = cave_end            # caves start past the descriptor clones
+    for _c, _b in _plan:
+        assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
+        assert _c.cave_addr + len(_b) <= 0x400d7c3c, "past the stock zero run"
+        if _c.hook_addr is not None:
+            got = bytes(img[_c.hook_addr - BASE:
+                            _c.hook_addr - BASE + len(_c.hook_stock)])
+            if got != _c.hook_stock:
+                sys.exit(f"{_c.label} hook site 0x{_c.hook_addr:08x} is not "
+                         f"stock ({got.hex()}) -- refusing")
+        if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)]):
+            sys.exit(f"{_c.label} not free")
+        # The bytes are PINNED so the build needs no m68k toolchain; when one
+        # is present the source is re-assembled and compared, so a source that
+        # has drifted from what we ship cannot pass unnoticed.
+        if (_c.source and not _replay and shutil.which("m68k-elf-as")
+                and shutil.which("m68k-elf-objcopy")):
             with tempfile.TemporaryDirectory() as td:
-                o, b = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
+                o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
                 subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                "cf/tempo_cave.s"], check=True)
+                                _c.source], check=True)
                 subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
-                                ".text", o, b], check=True)
-                fresh = pathlib.Path(b).read_bytes()
-            if fresh != TEMPO_CAVE_BYTES:
-                sys.exit("cf/tempo_cave.s no longer assembles to the pinned "
-                         "bytes -- update TEMPO_CAVE_BYTES deliberately")
-        img[TEMPO_CAVE - BASE:TEMPO_CAVE - BASE + len(TEMPO_CAVE_BYTES)] = \
-            TEMPO_CAVE_BYTES
-        img[TEMPO_HOOK - BASE:TEMPO_HOOK - BASE + 10] = \
-            b"\x4e\xb9" + TEMPO_CAVE.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
-        print(f"  tempo cave: {len(TEMPO_CAVE_BYTES)} bytes at "
-              f"0x{TEMPO_CAVE:08x}, hook at 0x{TEMPO_HOOK:08x} "
-              f"(tempo24 -> r6+$6, clocks Q12.4 -> r6+$7, fader+1 -> r6+$8, "
-              f"note -> r6+$9; ids 6/7)")
-
-    # ==== 1c. ColdFire: TIME LABEL FORMATTER cave (24 Aug 2026) ==============
-    # cf/time_fmt.s: BongDelay TIME's display formatter (P+0x0ca "A", with
-    # B = 0 -- stock DELAY TIME's own configuration). Prints the division
-    # name while the DSP's sticky snap holds one, else ms; same integers as
-    # the DSP rule (docs/PARAM_PAGES.md section 7, DSP.md 6c). Position-
-    # independent; its two state longs live in the cave (RAM). Follows the
-    # tempo cave; the bytes are pinned and re-checked like the tempo cave's.
-    # Off with NOTEMPO=1 (no tempo, no labels -- the knob stays plain).
-    TIME_FMT_CAVE = 0x400d7080   # moved 24 Aug 2026: the tempo cave v2 is 104 bytes
-    TIME_FMT_BYTES = bytes.fromhex("4fefffec48d7043c202f001c45fa010a2200ef89068100000040b0926748248042aa0004243980001814673a263c0285ff004c4230032401e88a41fa008878007a001a184c035000e88d9a816a024485ba8264082544000452aa000452840c840000000a66da202a0004672241fa006032300afe02810000ffffd1c12f48001c4cd7043c4fef00144ef940013a08700a4c001000203c000001b94c4010012f41001c4cd7043c4fef00142f2f00084879400b465d2f2f000c4eb940013a084fef000c4e750203040608090c1012180014001a001f0025002a002f00350039003e0043312f33325400312f333200312f31365400312f313600312f385400312f31362e00312f3800312f345400312f382e00312f3400000000ffffffff00000000")
-    if os.environ.get("NOTEMPO") != "1":
-        assert TIME_FMT_CAVE >= TEMPO_CAVE + len(TEMPO_CAVE_BYTES)
-        assert TIME_FMT_CAVE + len(TIME_FMT_BYTES) <= 0x400d7c3c, "past the stock zero run"
-        if any(img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)]):
-            sys.exit("time_fmt cave not free")
-        if (os.environ.get("TEMPOCAVE") != "replay" and
-                shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy")):
-            with tempfile.TemporaryDirectory() as td:
-                o, b = os.path.join(td, "f.o"), os.path.join(td, "f.bin")
-                subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
-                                "cf/time_fmt.s"], check=True)
-                subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
-                                ".text", o, b], check=True)
-                if pathlib.Path(b).read_bytes() != TIME_FMT_BYTES:
-                    sys.exit("cf/time_fmt.s no longer assembles to the pinned "
-                             "bytes -- update TIME_FMT_BYTES deliberately")
-        img[TIME_FMT_CAVE - BASE:TIME_FMT_CAVE - BASE + len(TIME_FMT_BYTES)] = \
-            TIME_FMT_BYTES
-        wr32(clone_addr["DELAY SERVER"] + 0x0ca, TIME_FMT_CAVE)   # p0 TIME: A
-        wr32(clone_addr["DELAY SERVER"] + 0x0fa, 0)               #          B
-        print(f"  time_fmt cave: {len(TIME_FMT_BYTES)} bytes at "
-              f"0x{TIME_FMT_CAVE:08x}, registered as BongDelay TIME's formatter")
+                                ".text", o, bp], check=True)
+                if pathlib.Path(bp).read_bytes() != _c.pinned:
+                    sys.exit(f"{_c.source} no longer assembles to its "
+                             f"pinned bytes -- re-pin them in the "
+                             f"manifest deliberately")
+        img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        if _c.hook_addr is not None:
+            img[_c.hook_addr - BASE:_c.hook_addr - BASE + 10] = \
+                b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
+        # A formatter registration names the module it draws for, so a remix
+        # that omits that module skips the write instead of pointing into a
+        # descriptor which was never cloned.
+        _reg = _c.registers_formatter
+        if _reg is not None and _reg.module in clone_addr:
+            wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _c.cave_addr)
+            wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)
+        _hook = (f", hook at 0x{_c.hook_addr:08x}"
+                 if _c.hook_addr is not None else "")
+        print(f"  {_c.label}: {len(_b)} bytes at 0x{_c.cave_addr:08x}"
+              f"{_hook}{_c.report_note}")
+        _cave_top = _c.cave_addr + len(_b)
 
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
-    wr32(FX2_IDS + NONE_ID * 4, clone_addr["SEND"])
-    wr32(ID2POS + NONE_ID * 4, ORDER.index("SEND"))
+    wr32(FX2_IDS + NONE_ID * 4, clone_addr[REMIX.fallback])
+    wr32(ID2POS + NONE_ID * 4, ORDER.index(REMIX.fallback))
+    # A module this remix leaves out still owns an id, and a saved project can
+    # carry it. Alias it to the fallback for exactly the reason id 0 is
+    # aliased: the alternative is a chooser entry dispatching into whatever
+    # code now occupies that address. Empty whenever the remix carries every
+    # module the registry knows.
+    _omitted = [m for m in remix_modules().values()
+                if m.menu is not None and m.key not in REMIX.modules]
+    for _m in _omitted:
+        wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
+        wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
+    if _omitted:
+        print(f"  not in this remix: "
+              f"{', '.join(sorted(m.key for m in _omitted))} -- their ids "
+              f"alias to {REMIX.fallback}")
     if delayprobe:
         wr32(ID2POS + STOCK_DELAY_ID * 4, len(real) - 1)
         if rd32(FX2_IDS + STOCK_DELAY_ID * 4) != STOCK_DELAY_P:
@@ -1188,7 +964,17 @@ def main():
 
     # ==== 2. DSP code placement + dispatch (task 13) ========================
     print("=== DSP: code placed, dispatch wired, both payloads ===")
-    delay_src = pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
+    delay_src = (pathlib.Path(ASM_SRC["DELAY SERVER"]).read_text()
+                 if "DELAY SERVER" in ASM_SRC else None)
+    if delay_src is None:
+        # The overrides below splice into the delay's source. Asking for one
+        # in a remix that has no delay is a mistake worth naming, not a
+        # traceback.
+        _dset = [v for v in ("DMODE", "DINT", "DFRZ", "DNOTE", "DFRZAT")
+                 if os.environ.get(v) is not None]
+        if _dset:
+            sys.exit(f"{'/'.join(_dset)} set, but remix {REMIX.name!r} "
+                     f"carries no DELAY SERVER")
     reverb_src = pathlib.Path(ASM_SRC["REVERB SERVER"]).read_text()
     if os.environ.get("PROBE") == "1":
         print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
@@ -1218,7 +1004,7 @@ def main():
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
     # See the MARKER MODE naming block above. Three marks, three sites in
-    # dsp/reverb_server.asm, each a distinct sound so one flash reports how
+    # modules/chonverb/reverb_server.asm, each a distinct sound so one flash reports how
     # far proc() executes on hardware:
     #   M1 proc entry      -> whole block asr #2   = -12 dB, always
     #   M2 past role lock  -> extra -6 dB on alternating calls = ~1.4 kHz AM
@@ -1582,10 +1368,24 @@ mkgo:""",
         # Its words are what pays for the gates (historical sizing: 507 words
         # against a region that then had 11 free).
         send_src = xbus(send_src, "SEND", "notfirst")
-        reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+        # A PROBE build replaces the reverb's engine with a diagnostic that is
+        # not a bus client at all: it has no scratch literals to relocate and
+        # no housekeeping to gate, so xbus() would refuse it for lacking the
+        # very things it correctly does not have. That refusal is what made
+        # PROBE/XPROBE/TPROBE unbuildable in the one layout where they fit --
+        # the layout that stubs the delay and leaves room for them.
+        #
+        # The guard stays exactly as strict for every real engine: this skips
+        # the treatment for a substituted probe source, it does not weaken the
+        # check for anything that is actually on the bus.
+        if not _REVERB_IS_PROBE:
+            reverb_src = xbus(reverb_src, "REVERB SERVER", "bus_notfirst")
+        else:
+            print("  XBUS: REVERB SERVER is a PROBE -- no bus scratch to move, "
+                  "no housekeeping to gate")
         # ...except under DEV, where the delay IS present and must reach the
         # same relocated scratch as everyone else -- 14 scratch refs and a
-        # ; XBUS_GATE marker are already in dsp/delay_server.asm, and its
+        # ; XBUS_GATE marker are already in modules/bongdelay/delay_server.asm, and its
         # housekeeping block exits to bus_notfirst exactly like the reverb's.
         # A delay that still read Y:0x900 would find an empty accumulator and
         # render silence, which is the failure this hatch exists to prevent.
@@ -1593,7 +1393,7 @@ mkgo:""",
         # server reading the shared accumulator, so it needs the identical
         # relocation. Its housekeeping gate is what keeps payload B from
         # zeroing buffers payload A owns.
-        if DEV or SPEC:
+        if (DEV or SPEC) and delay_src is not None:
             delay_src = xbus(delay_src, "DELAY SERVER", "bus_notfirst")
 
     # Every source now carries a $30000 that must be substituted per payload,
@@ -1608,7 +1408,7 @@ mkgo:""",
     # $30000 as its payload discriminator. The gate is emitted per payload now
     # and carries no literal, so only the Y base remains.
     _want = (1 if DEV or SPEC else 0) if os.environ.get("XBUS") == "1" else 1
-    if delay_src.count("$30000") != _want:
+    if delay_src is not None and delay_src.count("$30000") != _want:
         sys.exit(f"expected exactly {_want} $30000 literal(s) in the DELAY source")
 
     dev_delay = None            # (words) for the .mem dump append, DEV only
@@ -1850,7 +1650,7 @@ mkgo:""",
         # makes the DEV delay byte-identical to the one that ships: same line
         # addresses, same gate discriminator (it never housekeeps -- the SEND's
         # self-healing election covers that, exactly as on hardware).
-        def _prep(src, name, slot=None):
+        def _prep(src, name, slot):
             if _x:
                 src = _gate(src, name)
             if slot is not None:
@@ -1858,24 +1658,42 @@ mkgo:""",
                 src = _rotlatch(src, name, slot)
             return src
 
-        plan = (("SEND", _prep(_sub(send_src) if _x else send_src, "SEND", 0x69)),
-                ("REVERB SERVER", _prep(_sub(reverb_src) if _x else reverb_src,
-                                        "REVERB SERVER")),
-                ("DELAY SERVER", _prep(
-                    delay_src.replace("$30000", "$38000")
-                    if DEV else _sub(delay_src), "DELAY SERVER", 0x86)))
+        # The placement plan, built from the manifests rather than spelled
+        # out. Order is DspSection.priority and it is BYTE-LOAD-BEARING: the
+        # region is packed in this order, so SEND first (the fallback alias
+        # needs its entry points to exist) and the delay last, so the region's
+        # trailing free words belong to the algorithm still being designed.
+        _texts = {"SEND": send_src, "REVERB SERVER": reverb_src}
+        if delay_src is not None:
+            _texts["DELAY SERVER"] = delay_src
+
+        def _ybase(m, src):
+            if DEV and m.dsp.dev_pin_ybase is not None:
+                return src.replace("$30000", f"${m.dsp.dev_pin_ybase:x}")
+            if m.dsp.ybase is YBase.ALWAYS or (m.dsp.ybase is YBase.XBUS and _x):
+                return _sub(src)
+            return src
+
+        plan = tuple(
+            (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
+            for m in sorted((remix_modules()[k] for k in ORDER
+                             if k in _texts), key=lambda m: m.dsp.priority))
         if _x:
             _g = [n for n, t in plan if "never housekeeps" in t]
             print(f"  payload {tag}: housekeeping "
                   f"{'GATED OUT of ' + ', '.join(_g) if _g else 'ENABLED (this payload housekeeps)'}")
         # SPEC: each core carries only the engine it actually runs. Payload A
         # keeps the reverb, payload B the delay; the other is not placed at all
-        # and its id is aliased to SEND after placement (it needs send_init,
+        # and its id is aliased to the fallback after placement (it needs its
         # which only exists once SEND has been assembled at this cursor).
         absent = None
         if SPEC:
             absent = "DELAY SERVER" if tag == "A" else "REVERB SERVER"
             plan = tuple(p for p in plan if p[0] != absent)
+            # A remix that never carried that module has nothing to specialize
+            # away, and its id is already handled by the omitted-id alias.
+            if absent not in NEW_IDS:
+                absent = None
         cursor = base_a
         # LFO roll table (10 Aug 2026): reverb_server.asm's rolled lines 2-7
         # read per-line [rate const, phase slot, int slot, frac slot] from a
@@ -1948,10 +1766,10 @@ mkgo:""",
             place(words, cursor)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
-            if name == "SEND":
+            if name == REMIX.fallback:
                 wrw_p(pp["xtab"] + NONE_ID * 3, init_a)          # id 0 alias,
                 wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, proc_a)   # fresh = send
-                send_init, send_proc = init_a, proc_a
+                fb_init, fb_proc = init_a, proc_a
             extra = (f"  Y base 0x{0x38000 if DEV else pp['ybase']:x}"
                      + ("  (shipping payload-B address, see plan above)"
                         if DEV and pp['ybase'] != 0x38000 else "")
@@ -1960,16 +1778,22 @@ mkgo:""",
                   f"({len(words):4} words)  id 0x{NEW_IDS[name]:02x}{extra}")
             cursor += len(words)
 
+        for _m in _omitted:
+            # Same fail-safe on the DSP side: the id resolves to the fallback's
+            # entry points rather than to whatever occupies its dispatch slot.
+            wrw_p(pp["xtab"] + _m.menu.fx2_id * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + _m.menu.fx2_id) * 3, fb_proc)
+
         if absent is not None:
             # The absent engine's id must still dispatch to something on this
             # core -- the chooser list is shared across all eight tracks and
             # nothing stops it being selected here. Point it at the SEND client
             # already placed above: same fail-safe id 0 uses, and a track that
             # selects the "wrong" server becomes a send to the right one.
-            wrw_p(pp["xtab"] + NEW_IDS[absent] * 3, send_init)
-            wrw_p(pp["xtab"] + (32 + NEW_IDS[absent]) * 3, send_proc)
+            wrw_p(pp["xtab"] + NEW_IDS[absent] * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + NEW_IDS[absent]) * 3, fb_proc)
             print(f"  {absent:13} NOT PLACED on this core -- id "
-                  f"0x{NEW_IDS[absent]:02x} aliased to SEND P:0x{send_init:05x} "
+                  f"0x{NEW_IDS[absent]:02x} aliased to SEND P:0x{fb_init:05x} "
                   f"(selecting it here makes the track a send, not silence)")
 
         if probe == "silence":
@@ -2004,9 +1828,9 @@ mkgo:""",
             # those happen to be -- uncontrolled. The question this build
             # answers is only "does the delay survive our code in its slot",
             # not "is the send level right".
-            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, send_init)
-            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, send_proc)
-            print(f"  {'SEND @ 0x08':13} P:0x{send_init:05x} "
+            wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + STOCK_DELAY_ID) * 3, fb_proc)
+            print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
         print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "

@@ -511,7 +511,7 @@ int main(int argc, char** argv) {
             if (knob < pv.size() || comp < pv.size())
                 mem.set(MemArea_X, pblock + 0xc + w, v);
         }
-        // -tempo: what cf/tempo_cave.s publishes on hardware (24 Aug 2026):
+        // -tempo: what modules/tempo-sync/tempo_cave.s publishes on hardware (24 Aug 2026):
         // r6+$6 = BPM*24, r6+$7 = 42336000/tempo24 = samples per MIDI clock
         // in Q12.4 -- 16-bit halfwords, so <<8 like every published word.
         if (a.tempo > 0) {

@@ -35,6 +35,8 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from remix import registry  # noqa: E402
 ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 
 # Budget per CORE, MEASURED on hardware with dsp/burn_probe's cycle meter,
@@ -83,6 +85,10 @@ def room_for_new_work(bank):
     """Headroom left after the bank grew past what BURN_SPARE was measured on."""
     return BURN_SPARE - (bank - BANK_AT_MEASURE)
 
+# Module sources, keyed by filename stem, resolved from the manifests --
+# so a module moving its own source cannot leave this pointing at nothing.
+_ASM = registry.asm_by_stem()
+
 # A full bank's four FX2 slots: one reverb, one delay, two sends.
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
 
@@ -127,7 +133,7 @@ def prep(name):
         # now SPLICES the two blocks into the live source under BURN=1, so
         # "burn_probe" here means exactly that splice -- reproduced by the same
         # anchors, so this cannot drift from what the build actually assembles.
-        src = (ROOT / "dsp" / "reverb_server.asm").read_text()
+        src = _ASM["reverb_server"].read_text()
         for inc, anchor in BURN_INJECT:
             if src.count(anchor) != 1:
                 sys.exit(f"burn_probe: anchor for {inc} appears "
@@ -135,7 +141,7 @@ def prep(name):
                          f"in step with build_bus.py's BURN block")
             src = src.replace(anchor, anchor + (ROOT / inc).read_text(), 1)
         return src
-    src = (ROOT / "dsp" / f"{name}.asm").read_text()
+    src = _ASM[name].read_text()
     if name == "delay_server":
         # build_bus.py rewrites this per payload; the value cannot change the
         # word count, but assert the shape it relies on so a drift is loud.

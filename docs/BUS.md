@@ -6,7 +6,11 @@
 > tracks 1–4 — inverted from what this file assumes), and the FX2-menu
 > framing correction (the donor reverbs were never on the FX1 menu, so
 > taking them cost FX1 nothing). Kept as the record of the per-bank bus
-> design; claims that no longer hold are corrected in place.
+> design; claims that no longer hold are corrected in place. The sources this
+> file cites as `dsp/*.asm` have since moved into `modules/<name>/` (the
+> remix refactor, 29 Aug 2026): `send_client.asm` → `modules/send/`,
+> `reverb_server.asm` → `modules/chonverb/`, `delay_server.asm` →
+> `modules/bongdelay/`. The period citations below are left as written.
 
 **Status: both buses and the cross-bus sends are emulator-verified, and the
 ColdFire menu mechanism is hardware-verified.** (The "not flashed" notes in

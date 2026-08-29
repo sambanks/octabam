@@ -25,7 +25,7 @@ raw image. `aaa` segfaults on this image.
 3. **Tier 3 — notes.** **Note → BongDelay PITCH interval** first ("funnest").
    HOLD semantics: the last note sticks after note-off; retune by tapping.
    A never-received note (0) → the PTCH select behaves exactly as today.
-4. `midi` off `main` @ `1a1929b`; caves in `cf/`; the level-voicing session
+4. `midi` off `main` @ `1a1929b`; caves in `modules/tempo-sync/` (originally `cf/`); the level-voicing session
    stays on `main` (parked, `tools/level_cap.py`).
 
 ## What the ColdFire says
@@ -97,7 +97,7 @@ never READ; a cave must re-store every pass, as the tempo cave already does.
 ## Design
 
 ### One cave, three words
-Extend `cf/tempo_cave.s`'s id-6/7 branch (a2 = record, a0 = id base; the
+Extend `modules/tempo-sync/tempo_cave.s`'s id-6/7 branch (a2 = record, a0 = id base; the
 track index is `a0 − 0x80000110`):
 ```
     +0x28  r6+$8   fader     move.l 0x460d16c8,%d0 ; move.w %d0,0x28(%a2)   (0..127)
@@ -136,11 +136,11 @@ on the RE below.
 
 ## Status (24 Aug 2026) — note → interval ON THE UNIT (R57, tag 76), hardware-confirmed
 
-- **Cave v2** (`cf/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
+- **Cave v2** (`modules/tempo-sync/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
   formatter cave moved to `0x400d7080`): `r6+$8` = fader+1 (1 = fully B,
   128 = fully A, 0 = no cave), `r6+$9` = held note or 0. Bytes pinned in
   `build_bus.py`. ✅ assembled, ⬜ hardware.
-- **Note → PITCH interval** (`dsp/delay_server.asm` after `pintend`): the
+- **Note → PITCH interval** (`modules/bongdelay/delay_server.asm` after `pintend`): the
   DSP latches the note in `y:>$090a` (HOLD); iterative `2^(-1/12)` multiply,
   ≤ 25 mpys per block. ✅ `make verify-midi`: notes 96/91/72/84 land within
   15 cents of the +12/+7/−12/unison selects; no-note is bit-identical.
@@ -169,7 +169,7 @@ on the RE below.
 1. ✅ **Tier-1 page 1 on hardware (24 Aug, no flash)**: CC 40 on T3's channel moved BongDelay TIME, CC 7 moved LEVEL; the OT echoes TIME as CC 40 with CC OUT on. Driven from `tools/ot_midi.py` (CoreMIDI via ctypes, no deps) through a Midihub `FROM A → FILTER(drop realtime) → OCTATRACK` pipe. Previously: ⬜: CC 40–45 on T1's channel
    → BongDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
    the descriptor enable bitmap or the writer's disabled-slot check bites us.
-2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`cf/tempo_cave.s`): fader + note words, relocate to the
+2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`modules/tempo-sync/tempo_cave.s`): fader + note words, relocate to the
    `0xff` padding. `make check` + hardware: `TPROBE`-style probe reading
    `r6+$8/$9` (`dsp/tempoprobe.asm` is the template).
 3. ✅ **Tier 3 DSP** — built, local-verified, flashed as R57 and ear-confirmed on the unit 24 Aug (the fun one): table + decode branch, local render, ear
@@ -181,7 +181,7 @@ on the RE below.
 
 ## What would falsify the plan
 - The cave's track index: `a0 − 0x80000110` is inferred from
-  `cf/tempo_cave.s`'s comment 🟡 — confirm in the writer before reading
+  `modules/tempo-sync/tempo_cave.s`'s comment 🟡 — confirm in the writer before reading
   `0x400d64c2(track)`.
 - Chromatic note-on on a **return** track (no sample) may be filtered before
   `0x400d64c2` is written (the switch at `0x4000e464` runs per listening
@@ -214,3 +214,24 @@ on the RE below.
   session pipes** (FROM A -> drop-realtime-only -> OCTATRACK). The reverted
   preset passed CC 40-48 but blocked notes and CC 49/50 — a very confusing
   partial failure.
+
+## Remote CC reference (manual-confirmed 24 Aug 2026, for the gain-match session)
+
+From the official appendices (OT MKII 1.40A Appendix C, AR MKII 1.72
+Appendix C — URLs in the memory note `octabam-midi-cc-reference`). ✅ =
+also exercised on our hardware; 🟡 = manual-only, unverified here.
+
+**Octatrack, per-track channel**: CC 7 track level (receive-only) ✅,
+CC 46 track level (trn+rec), CC 8 balance, **CC 25 AMP VOL** 🟡 (amp page =
+CC 22–27), playback 16–21, LFO 28–33, FX1 34–39 🟡, FX2 40–45 ✅ (slot-2
+on-screen quirk, above), CC 47 cue, 48 crossfader ✅, 49/50/51
+mute/solo/cue, 55/56 scene A/B select. Pattern select via program change
+needs PROG CH receive ON (PROJECT→MIDI→SYNC) 🟡.
+
+**Rytm MKII, per-track channel** (needs RECEIVE CC/NRPN ON in MIDI
+CONFIG): **CC 95 track LEVEL** 🟡, CC 7 amp VOLUME, CC 8x amp page (81
+overdrive, 82/83 delay/reverb send), CC 31 sample level, 94/93
+mute/solo. FX track channel: delay 16–23, reverb 24–31, distortion
+70–77, **compressor 78–85** (78 thresh, 81 makeup, 84 mix, 85 output
+vol) 🟡. Transport start/stop over its own USB port only ✅ — it is clock
+master; never send start/stop to the OT.

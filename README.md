@@ -1,18 +1,25 @@
 # octabam
 
-**Custom DSP effects for the Elektron Octatrack MKII.**
+**Custom DSP effects and firmware patches for the Elektron Octatrack MKII.**
 
 The Octatrack has two effect slots per track and a fixed menu of algorithms to
 put in them. This project writes new ones — original DSP56300 assembly — and
-delivers them by patching the stock OS image.
+delivers them by patching the stock OS image. It also patches the ColdFire
+side, where the sequencer, the menus and the parts live.
 
-What runs today:
+Work is packaged as **modules**, and an image is a **remix**: a named
+selection of modules. `make modules` lists what exists, `make bus REMIX=<name>`
+builds a selection, and adding a module is adding a directory. See
+**[docs/MODULES.md](docs/MODULES.md)** to write one.
+
+What ships today:
 
 | | |
 |---|---|
 | **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear, confirmed on hardware. It takes over the three stock FX2 reverb slots, which is where the program space for it came from. |
 | **BongDelay** | A multi-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), GRAIN (a granular cloud) and REVERSE — with tape-style wow/flutter (DPTH/RATE), drive (DRV) and a FREEZE hold available in **every** mode, routable *into* the reverb over the bus (`-VRB`, default 0). Its program space is the **other core's copy of the same three donor slots** — the stock FX2 delay itself has no DSP code to take. Confirmed on hardware, every knob live and audible. |
-| **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs wet only, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
+| **The send bus** | All eight tracks feed one shared reverb and one shared delay, across both DSP cores. Both effects are **returns**: a track running one outputs its own dry at unity plus the wet, fed by the other tracks' SEND knobs. This is the part the hardware was not designed to do. |
+| **Tempo sync** | A ColdFire module rather than an effect: two code caves, one publishing the project tempo, crossfader and held MIDI note where the DSP can read them, one drawing BongDelay's TIME knob as a tempo division. It is the worked example of patching what the firmware *does*. |
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
 exists because you cannot write an effect for a machine whose memory map,
@@ -37,7 +44,7 @@ The costs are all measured, not estimated:
 | resource | per core | state (Aug 2026 build) |
 |---|---|---|
 | Cycles | 4,535/sample | derived budget (200 MIPS ÷ 44.1 kHz); every mode runs clean on hardware, true per-core ceiling unmeasured |
-| Program space | 8,192 words | donor region 2,724 words/payload: A 74 free, B 30 free (R58; `make bus` prints the live ledger) |
+| Program space | 8,192 words | donor region 2,724 words/payload: A 74 free, B 30 free (29 Aug 2026; `make bus` prints the live ledger, and this line goes stale — believe the build) |
 | FX2 memory | 65,536 words/server | 1.49 s, pooled from private slots + the shared window |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
@@ -61,8 +68,8 @@ P  8,192 words                          8,192 words
    └─ donor region, 2,724 words         └─ donor region, 2,724 words
       (was PLATE+SPRING+DARK)              (this core's copy of the same
       now SEND + CHONVERB                   three slots)
-      used 2,650 · free 74                 now SEND + BONGDELAY
-      (R58 build)                           used 2,694 · free 30
+      used 2,669 · free 55                 now SEND + BONGDELAY
+                                           used 2,723 · free 1
 
 Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
    └─ the tank: 8 lines × 4,096         └─ pooled, unclaimed by the delay
@@ -156,10 +163,7 @@ make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 These run the *real assembled instruction stream* on a DSP56300 emulator, at
 roughly 6× real time. What you hear is what the chip will do, which is why
 voicing decisions in `docs/VOICING.md` are recorded as listening results
-rather than as guesses about coefficients. (Delay work uses `make
-render-delay` — the shipping layout has no delay in the payload the emulator
-can boot.) How all of this works — and, just as important, what it
-structurally cannot see — is `docs/HARNESS.md`.
+rather than as guesses about coefficients.
 
 `scripts/make_test_audio.py` generates synthetic source material to audition
 with — or feed it your own.
@@ -167,8 +171,20 @@ with — or feed it your own.
 ### Checking it without a hardware flash
 
 ```bash
-make check     # build + cycle budget + menu and burn-probe verification
+make check     # build + cycle budget + ledger selftest + menu verification
 ```
+
+### Building a different selection
+
+```bash
+make modules              # the module index and the available remixes
+make bus REMIX=verbonly   # ChonVerb and the send bus, no delay, no caves
+```
+
+A module left out of a remix is not built, not placed and not listed — and
+its FX2 id falls back to the send client, so a saved project that still
+selects it makes that track a send rather than dispatching into whatever code
+now occupies the address.
 
 ---
 
@@ -176,8 +192,11 @@ make check     # build + cycle budget + menu and burn-probe verification
 
 ```
 PLAN.md          Read this first. End state, resource ledger, work order.
-dsp/             The effects. DSP56300 assembly — this is the product.
+modules/         The contributions. One directory each — this is the product.
+remixes/         Named selections of modules. chongbong is the shipping one.
+dsp/             Shared DSP infrastructure: the null stub and the probes.
 tools/           Build, render, measure, verify.
+tools/remix/     The module schema, registry, ledger and build engine.
 scripts/         Toolchain setup and firmware recon.
 docs/            Architecture and reference (see below).
 docs/history/    Closed records. Kept for provenance, not for guidance.
@@ -188,11 +207,10 @@ The documents that stay current:
 | | |
 |---|---|
 | `PLAN.md` | The cold-start document — what is being built and in what order |
+| `docs/MODULES.md` | **Writing a module** — the schema, the traps, the gates |
 | `docs/XBUS.md` | How the cross-core bus works, and why |
 | `docs/CHIP.md` | Cycles and memory, every number with a confidence marker |
 | `docs/REVERB.md` | ChonVerb: structure, parameters, memory layout |
-| `docs/TOOLING.md` | Every tool, end to end — the newcomer's map of the pipeline |
-| `docs/HARNESS.md` | The emulation and measurement rig: how local renders work, and their blind spots |
 | `docs/VOICING.md` | What was decided by listening, and why |
 | `docs/FLASHING.md` | Getting an image onto hardware, and back off it |
 | `docs/CAPTURE.md` | Hardware capture protocol — predictions committed before measuring |
@@ -225,11 +243,22 @@ emulator and disassembler this project assembles and auditions against) and
 
 ## Contributing
 
-Issues, listening reports and findings are welcome. If you open a PR: `make
-check` is the floor, and read the traps in `CLAUDE.md` first — several of
-them are the kind that assemble clean and do the wrong thing. **Never attach
-a built image, an OS file, or any Elektron-derived binary to an issue or
-PR** — describe it, hash it, or reference the commit that built it instead.
+Issues, listening reports and findings are welcome, and so are modules.
+
+**To add one**, copy `modules/_template/` and read
+**[docs/MODULES.md](docs/MODULES.md)**. Your module declares what it is and
+what it claims; the build refuses to start if two selected modules claim the
+same FX2 id, cave, hook site or core-private word, and names both.
+
+If you open a PR: `make check` is the floor, and read the traps in
+`CLAUDE.md` first — several are the kind that assemble clean and do the wrong
+thing. If you changed the *build* rather than adding a module, prove it
+changed nothing with `scripts/refhash.sh` (23 configurations, artifacts and
+build reports, bit-identical).
+
+**Never attach a built image, an OS file, or any Elektron-derived binary to
+an issue or PR** — describe it, hash it, or reference the commit that built
+it instead.
 
 ---
 

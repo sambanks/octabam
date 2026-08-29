@@ -29,6 +29,8 @@ So: voice here, then spend flashes on the cycle budget and the UI surface.
 import argparse, array, hashlib, math, os, pathlib, re, shutil, struct, subprocess, sys, wave
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from remix import registry  # noqa: E402
 HOST = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
 IMAGE = ROOT / "out/mainos_bus.bin"
 MEM = ROOT / "out/dsp/mem_reverb_server_A.mem"
@@ -59,18 +61,29 @@ CACHE = ROOT / "out/render"          # engine-keyed render artifacts, see engine
 # the fingerprint, which is the exact bug this guards against.
 BUILD_ENV = ("RVSRC", "MODE", "WIDTH", "NOSHIM", "XBUS", "SPEC", "DEV", "BURN",
              "PROBE", "XPROBE", "XBUS_BASE", "DELAYPROBE",
-             "DLSRC", "MARKER", "DMODE", "DINT", "DFRZ", "DFRZAT", "TPROBE")
+             "DLSRC", "MARKER", "DMODE", "DINT", "DFRZ", "DFRZAT", "TPROBE",
+             "REMIX", "NOTEMPO", "TEMPOCAVE", "HKB", "DNOTE")
 # SHIMMER was in this list until Round 12; the flag build_bus.py actually
 # branches on has been NOSHIM since the v3 rewrite, so a NOSHIM build did
-# not change the fingerprint -- the exact bug the comment above names.
+# not change the fingerprint -- the exact bug the comment above names. It
+# happened AGAIN by 29 Aug 2026: NOTEMPO/TEMPOCAVE/HKB/DNOTE (and then REMIX)
+# were added to build_bus.py without landing here, and the remix refactor
+# moved the effect sources out of dsp/ so the glob below stopped seeing them.
+# When adding an env var or moving a source, this list and the globs are part
+# of the change.
 
 
 def fingerprint(extra=()):
     """sha256 over every input that can change the assembled instruction stream:
-    all DSP sources, the builder, and the env vars it branches on."""
+    all DSP and module sources, the build engine, and the env vars it
+    branches on."""
     h = hashlib.sha256()
-    for p in sorted(ROOT.glob("dsp/*.asm")) + sorted(ROOT.glob("dsp/*.inc")):
-        h.update(p.name.encode()); h.update(p.read_bytes())
+    srcs = (list(ROOT.glob("dsp/*.asm")) + list(ROOT.glob("dsp/*.inc"))
+            + list(ROOT.glob("modules/*/*.asm")) + list(ROOT.glob("modules/*/*.s"))
+            + list(ROOT.glob("modules/*/manifest.py")) + list(ROOT.glob("remixes/*.py"))
+            + list(ROOT.glob("tools/remix/*.py")))
+    for p in sorted(srcs, key=lambda p: str(p.relative_to(ROOT))):
+        h.update(str(p.relative_to(ROOT)).encode()); h.update(p.read_bytes())
     for p in ("tools/build_bus.py", "tools/dsp_modmap.py"):
         h.update((ROOT / p).read_bytes())
     for k in BUILD_ENV:
@@ -205,7 +218,7 @@ def engine():
     the four-line one. Every artifact below therefore carries the engine's
     stem, and build_bus.py's fixed output path is treated as scratch that is
     moved into the keyed cache immediately after each build."""
-    rv = os.environ.get("RVSRC") or "dsp/reverb_server.asm"
+    rv = os.environ.get("RVSRC") or registry.asm("chonverb")
     if not (ROOT / rv).exists():
         die(f"RVSRC={rv} does not exist")
     return rv, re.sub(r"[^A-Za-z0-9]+", "-", pathlib.Path(rv).stem)
@@ -269,7 +282,7 @@ def ensure_mem(build):
     return mem
 
 
-MODES = ["ROOM", "PLATE", "BIG"]     # dsp/reverb_server.asm's md_* order
+MODES = ["ROOM", "PLATE", "BIG"]     # modules/chonverb/reverb_server.asm's md_* order
 
 
 def ensure_mode_mem(mode, build):
