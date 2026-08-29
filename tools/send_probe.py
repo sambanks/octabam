@@ -73,9 +73,51 @@ SR = 44100
 FRAMES = 15                # dsp_host caps a block at 15 frames
 WARMUP_BLOCKS = 300        # the engine stays dry for 256 CALLS; pad well past it
 
-REVERB_ID, SEND_ID, DELAY_ID = 0x07, 0x09, 0x06
 INIT_TAB, PROC_TAB = 0x215, 0x235
-SERVER_ID = {"R": REVERB_ID, "S": SEND_ID, "D": DELAY_ID}
+
+# Ids and the layout alphabet come from the module manifests. A layout string
+# is one letter per dispatch slot, and each letter is whichever module claims
+# it -- so a new server becomes selectable here by declaring a layout_char,
+# not by editing this file.
+sys.path.insert(0, str(ROOT / "tools"))
+from remix import registry  # noqa: E402
+
+SERVER_ID = {m.harness.layout_char: m.menu.fx2_id
+             for m in registry.modules().values()
+             if m.harness is not None and m.harness.layout_char
+             and m.menu is not None}
+REVERB_ID = SERVER_ID.get("R")
+SEND_ID = SERVER_ID.get("S")
+DELAY_ID = SERVER_ID.get("D")
+
+# CLI flag -> the module's own knob NAME, and the SLOT then comes from the
+# manifest. The flag names are historical and several no longer match the
+# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives DRV,
+# --width drives SHFT -- so they are kept as aliases for existing invocations
+# and docs while the index they resolve to stays honest.
+#
+# This indirection is the point. The slot numbers used to be written out here
+# by hand, and twice they were wrong: SPRAY sat on slot 9 until it was found
+# to be retuning the pitch select, and --din drove -VRB for five days after
+# the IN/-VRB swap, which made a delay makeup test measure +0.0 dB. Both were
+# a wrapper that had not been audited after a slot moved. There is now
+# nothing to audit.
+REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "IN", "shmr": "SHMR",
+             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE"}
+DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
+               "dping": "PING", "dvrbw": "-VRB", "dmix": "IN", "dwow": "DPTH",
+               "dmode": "MODE", "drate": "RATE", "dptch": "PTCH",
+               "dspray": "DRV", "dfrz": "FRZE"}
+
+
+def _slots(key, flags):
+    """flag name -> slot index, resolved through the module's knob map."""
+    kmap = registry.by_key(key).knob_map()
+    missing = [n for n in flags.values() if n not in kmap]
+    if missing:
+        die(f"{key} has no knob named {missing} -- send_probe's flag table "
+            f"and the manifest disagree")
+    return {f: kmap[n] for f, n in flags.items()}
 
 # analysis window: 16384 pts -> 2.6917 Hz bins. The tone is placed exactly on
 # bin 163 so a clean render puts all its energy in one bin and the spur floor
@@ -513,13 +555,17 @@ def main():
 
     mem = pathlib.Path(a.mem) if a.mem else dump_mem(ROOT / a.image,
                                                      ROOT / "out/dsp/_send_probe_A.mem")
-    rev = list(REV_PARAMS); rev[5] = a.mix; rev[6] = a.shmr; rev[1] = a.mod  # --mix drives p5 = IN post-v4
-    rev[0] = a.time
+    _rs = _slots("REVERB SERVER", REV_FLAGS)
+    rev = list(REV_PARAMS)
+    for _f, _v in (("mix", a.mix), ("shmr", a.shmr), ("mod", a.mod),
+                   ("time", a.time)):
+        rev[_rs[_f]] = _v                      # --mix drives IN (post-v4)
     if a.rdel is not None:
         print("--rdel is retired (slot 11 is the RATE select now); ignored")
-    for idx, val in ((7, a.rmode), (9, a.width), (10, a.gate), (11, a.rrate)):
+    for _f, val in (("rmode", a.rmode), ("width", a.width),
+                    ("gate", a.gate), ("rrate", a.rrate)):
         if val is not None:
-            rev[idx] = val
+            rev[_rs[_f]] = val
     # Which server is being measured decides which SEND knob has to be up.
     _tgt = "D" if (a.pick == "D" or "R" not in a.layout.upper()) else "R"
     snd = list(SEND_PARAMS)
@@ -547,11 +593,15 @@ def main():
         # silently driving -VRB (caught when a delay IN-makeup test measured
         # +0.0 dB lift; verify_bus.py had the swap right all along). The
         # harness-knob-drift rule again: audit EVERY wrapper on a slot swap.
-        for idx, val in ((0, a.dtime), (1, a.dfdbk), (2, a.dtone), (3, a.dping),
-                         (5, a.dmix), (4, a.dvrbw), (6, a.dwow), (7, a.dmode),
-                         (8, a.drate), (9, a.dptch), (10, a.dspray), (11, a.dfrz)):
+        _ds = _slots("DELAY SERVER", DELAY_FLAGS)
+        for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
+                        ("dtone", a.dtone), ("dping", a.dping),
+                        ("dmix", a.dmix), ("dvrbw", a.dvrbw),
+                        ("dwow", a.dwow), ("dmode", a.dmode),
+                        ("drate", a.drate), ("dptch", a.dptch),
+                        ("dspray", a.dspray), ("dfrz", a.dfrz)):
             if val is not None:
-                dpar[idx] = val
+                dpar[_ds[_f]] = val
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
                a.split, a.layout, delay_params=dpar, pick=a.pick,
                inall=a.inall)
