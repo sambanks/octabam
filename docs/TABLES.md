@@ -1,0 +1,142 @@
+# DSP data tables — what the ColdFire uploads at boot
+
+The ColdFire ships a set of X and Y data modules to both DSPs at boot. They
+are lookup tables: waveforms, knob warps, filter coefficients. **They cost us
+nothing** — they are resident in every build, we do not place them, and any
+effect can read them.
+
+**Provenance.** The catalogue is **Bryan T's** (`docs/EXTERNAL.md`), read from
+the payload module records with Q23 decode. It is deliberately **shape-only**:
+it says what the numbers look like, not which effect reads them, except where
+prior work established it. Rows marked ✅ are ones we re-derived here.
+
+**Read this first, or you will misuse it:**
+
+- **Shapes are inferred from a Q23 signed decode.** If a table is really
+  integer or unsigned its shape is different. Smooth all-positive curves are
+  insensitive to this; the bipolar ones are not.
+- **Stride findings are statistical.** They say how the data is *organised*,
+  which only suggests how it is *read*.
+- **Segment boundaries inside the big containers come from a discontinuity
+  detector**, so smoothly-joined tables merge into one. Bryan's own
+  disassembly proved the detector wrong in one place — treat every boundary
+  as approximate until a disassembly confirms it.
+- **Attribution is mostly absent, on purpose.** "This looks like a damping
+  curve" is not "this is the damping curve". To settle one, look up the
+  effect's `P:` range in `DSP.md`'s dispatch table and disassemble that span.
+
+---
+
+## Waveforms
+
+| address | words | contents |
+|---|---|---|
+| `X:0x06c00` | 1,024 | **sine**, `0x3ff` modulo addressing (prior work) |
+| `X:0x07000` | 1,024 | **single-cycle ramp/saw** (0 → −1, wrap to +1, → 0) |
+
+✅ **Verified here (31 Aug 2026):** the sine is exact to **1.75e-7** — Q23
+quantisation — and sits at **the same address in both payloads**, which is what
+an insert needs, since an insert is placed in both. `x:0x6c00` with `m = 1023`
+gives a free-wrapping oscillator for 2–3 instructions.
+
+Together these read as an LFO/oscillator waveform bank.
+
+## Curve banks
+
+| address | words | layout | contents |
+|---|---|---|---|
+| `X:0x04840` | 4,096 | **32 × 128**, clean grid, knob-indexed 0–127 | see below |
+| `X:0x08b70` | 384 | 3 × 128 | saturating-exp curves (prior) |
+| `X:0x088a2` | 258 | 2 × 128, `0x7f` mask | saturating-exp lowpass warp (prior: COMB LP, CHORUS FBLP) |
+
+✅ **What the 32 × 128 bank actually is (verified here):** mostly **one-pole
+coefficient PAIRS** — a near-1.0 *falling* curve beside a small *rising* one,
+i.e. (pole radius, complementary gain) indexed by a knob. That is the shape
+you want for sweeping a one-pole filter from a control, and it is **not** a
+bank of knob warps as the name suggests. Eleven of the 32 are near-linear;
+curves 12–15, 17, 19, 21, 29 and 31 are the genuinely curved ones.
+
+## Interleaved coefficient tables
+
+| address | words | layout | shape |
+|---|---|---|---|
+| `X:0x085a2` | 384 | 64 × 6 | five columns rising to ~0.65, one negative falling to −0.65 |
+| `X:0x08722` | 384 | 64 × 6 | six decaying exponentials, different rates, all from 1.0 — a damping-curve family against a 0–63 control |
+| `X:0x089a4` | 72 | 18 × 4 | two near-flat columns (~0.3–0.5), two rising from negative |
+| `X:0x089ec` | 72 | 18 × 4 | same structure, different values |
+| `X:0x08a34` | 72 | 18 × 4 | same again — three related banks |
+| `Y:0x00290` | 1,024 | 128 × 8 | eight smooth rising curves 0.14–0.34, converging at exactly 0.5 |
+| `X:0x08d4b` | 25 | 5 × 5 | ≈ 0.25-scaled identity — mixing/feedback-matrix shaped |
+
+## Single curves
+
+| address | words | shape |
+|---|---|---|
+| `X:0x08a7c` | 128 | smooth monotone decrease 0.97 → 0.02 |
+| `X:0x08afc` | 116 | bipolar S-curve −0.94 → +0.99, zero crossing ≈ index 80 |
+| `X:0x08d0b` | 64 | gentle monotone rise 0.625 → 0.715 |
+| `Y:0x00690` | 128 | smooth exponential rise 0.07 → 0.97 |
+| `Y:0x00715` | 128 | smooth exponential rise 0.06 → 0.89 |
+
+## The large containers
+
+| address | words | contents |
+|---|---|---|
+| `X:0x00438` | 6,305 | ~8 concatenated large curves: sigmoid plateaus rolling 1 → 0, one 1 → −1 transition, two bell shapes, ending in a 128-word linear micro-ramp. ⚠️ Detected starts (`0x438, 0x720, 0xac9, 0xdb1, 0x105a, 0x15c7, 0x1890, 0x1c59`) are **approximate and known wrong in one place** — disassembly found real sub-tables at `0x13c7` and `0x1bd9` that the detector missed |
+| `X:0x06c00` | 3,730 | container, fully segmented — see below |
+
+`X:0x06c00` internally:
+
+| sub-address | words | contents |
+|---|---|---|
+| `0x6c00` | 1,024 | sine (above) |
+| `0x7000` | 1,024 | saw (above) |
+| `0x7400` | 1,024 | 2^x exponential mantissa, −1.0…−0.5 (prior: LO-FI AMF/DIST/AMD) |
+| `0x7800` | 17 | small hook curve |
+| `0x7811` | 128 | exponential decay 0.00109…0.1885 (prior) |
+| `0x7891` | 128 | exponential decay, ~18–20× smaller (prior) |
+| `0x7911` | 129 | all zero (padding/scratch) |
+| `0x7992` | 256 | saturating rise 0.854 → 0.999 |
+
+## The one confirmed attribution
+
+**EQUALIZER** (`P:0x00bad`–`0x00cc7`), by disassembly rather than shape:
+
+| parameter | index | table | shape |
+|---|---|---|---|
+| GN1/GN2 | raw 0–127 | `X:0x01bd9` | saturating exponential 0.0039 → 0.958 |
+| GN1/GN2 trim | same | `X:0x01c59` | ~1e-5 correction term |
+| FRQ1/FRQ2 | raw **× 4** (`asr #$e`) | `X:0x015c7` | large S-curve, +1.0 rolling to ≈ −0.996 |
+| FRQ1/FRQ2 trim | same ×4 | `X:0x013c7` | ~3e-5 correction term |
+
+Two things fell out of it: `X:0x01bd9` had previously been guessed as FRQ1's
+curve and is actually GN's; and **FRQ reads its table with 4× the index
+resolution of a normal knob**, two extra bits, unexplained.
+
+---
+
+## Are they useful to us? — evaluated, mostly no
+
+✅ Measured 31 Aug 2026. Full working in `docs/EXTERNAL.md` §4.
+
+**A table only pays when the shape is expensive to compute.** A read costs
+~5 instructions *and* an AGU register; `k²` costs three instructions and no
+register. So:
+
+- ❌ **Not for our knob tapers.** Fitting all 32 curves (plus reversals and
+  inversions) against the shapes our modules compute by hand: best match for
+  `k²` is 0.040 RMS, for `(1−k)³` also 0.040 — rough enough to feel different,
+  and more expensive than the arithmetic they would replace.
+- ❌ **Nothing for ChonVerb.** Its cost is tank lines, allpasses and MACs —
+  memory access, not function evaluation. Its LFO is a triangle already.
+- ❌ **Nothing safe for BongDelay.** Its smoothstep window is the one
+  expensive shape, and it must satisfy `s(g) + s(1−g) = 1` **exactly** —
+  that is what bounds the loop gain and gives PITCH its stability. No stock
+  table is even close (best complementarity error 0.24), and an approximate
+  one would trade a proved bound for a few cycles.
+- ✅ **One real win: BodeShift's carrier.** It builds a sine from a refined
+  parabola — 21 instructions, twice per sample, max error 1.09e-3 (≈ −59 dB).
+  The stock sine is exact and in both payloads. Swapping returns ~20 of its
+  344 cycles *and* drops oscillator distortion below the Hilbert pair's own
+  residual. **Priced, not built** — BodeShift is verified as it stands and the
+  sideband measurements would need re-running.

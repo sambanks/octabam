@@ -144,6 +144,11 @@ module on either payload is the delay.
 
 ## 4. Data-table atlas
 
+**The catalogue itself now lives in `docs/TABLES.md`**, merged with what we
+re-derived, so a question like "what is at `X:0x08722`?" has an answer in our
+own tree rather than in a downloaded file. What follows is the summary and
+what it changed.
+
 🟡 A shape-level catalog of every X/Y data module the ColdFire uploads at
 boot, from the payload module records with Q23 decode. Deliberately
 shape-only: it does not attribute tables to effects except where earlier work
