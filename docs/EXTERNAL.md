@@ -169,22 +169,57 @@ statistical, and Q23 decode is assumed throughout.
 
 ---
 
-## 5. A toolchain warning we should heed
+## 5. ✅ The EMAC toolchain warning — CHECKED, and we were worse off
 
-🟡 Bryan reports that **`objdump -m m68k:5407` silently mangles
-every EMAC region into `.short` garbage**, because the ColdFire here is
-V4e-class with a four-accumulator EMAC; `-m m68k:547x` is required. Any prior
-ColdFire disassembly is correct for ordinary ISA code and **blind in
-MAC-heavy regions** — which is exactly where audio arithmetic lives.
+🟡 Bryan reports that **`objdump -m m68k:5407` silently mangles every EMAC
+region into `.short` garbage**, because the ColdFire here is V4e-class with a
+four-accumulator EMAC; `-m m68k:547x` is required.
 
-We do not use that flag: `scripts/disasm.sh` drives radare2 with `-a m68k`,
-and our cave assembly uses `m68k-elf-as -mcpu=5407` (assembling, not
-disassembling, and our caves contain no EMAC). 🟡 **But it is not established
-that radare2's plain `m68k` decodes EMAC any better**, so treat our ColdFire
-disassembly as potentially blind in MAC regions until someone checks. That is
-a live caveat for anyone hunting audio arithmetic on the CPU side.
+✅ **Confirmed, and then some.** We do not use that flag — `scripts/disasm.sh`
+drives radare2 with `-a m68k` — so the open question was whether r2 does
+better. **It does not. It is worse.** Measured on the delay's tap loop at
+`0x40003664`:
 
----
+| | first four instructions |
+|---|---|
+| **`m68k:547x`** | `msacl %d0,%a1,%acc2` · `msacl %d0,%a2,%acc3` · `macl %d2,%a1,%a5@+,%a1,%acc0` · `msacl %d5,%a1,%a0@+,%a1,%acc0` |
+| **`m68k:5407`** | `msacl %d0,%a1` · `.short 0xa4c0` · `btst %d4,%a0@` · `macl %d2,%a1,%a5@+,%a1` |
+| **radare2 `-a m68k`** | `invalid` · `btst.l d4,(a0)` · `invalid` · `btst.l d4,(a0)` |
+
+Two distinct failures, and the second is the dangerous one:
+
+1. **The EMAC ops are lost.** 5407 drops the accumulator operand (so you
+   cannot tell `acc0` from `acc3` — i.e. cannot tell the stereo halves
+   apart); r2 loses the instruction entirely.
+2. **The stream DESYNCHRONISES and invents plausible code.** Both decoders
+   treat the opcode as 2 bytes, so each 2-byte *extension word* is then read
+   as its own instruction. `0910` becomes `btst %d4,%a0@` — an ordinary,
+   unremarkable-looking instruction that is not in the program at all.
+   Nothing announces the error.
+
+**Where this bites.** 791 EMAC instructions are in the image, concentrated in
+exactly the audio code:
+
+| region | EMAC ops | what lives there |
+|---|---|---|
+| `0x40001000` | 48 | the timestretch crossfade mixers |
+| `0x40003000` | 62 | the Echo Freeze Delay's tap and mix loops |
+| `0x40004000` | 50 | frame builder |
+| `0x40007000` | **98** | the trig-handler region — the densest in the image |
+| `0x4000c000`–`0x4000d000` | 47 | grain engine / frame staging |
+
+(Counts from a linear disassembly, so hits in the data regions above
+`0x40098000` are false positives — data decoded as instructions. The code-region
+clusters above are the real ones, and they land on Bryan's landmarks
+independently.) Note that `0x40007000` being the densest is itself a small
+corroboration of his open thread: that is where he expects the marker-list
+writer, and so TSNS's consumer, to be.
+
+**Fix, landed:** `scripts/disasm.sh emac <addr> [bytes]` disassembles a span
+with `m68k-elf-objdump -m m68k:547x`. The warning is at the top of that script
+too. **Any prior r2 reading of the regions above should be treated as
+unsound** — not merely incomplete, but potentially showing instructions that
+do not exist.
 
 ## Open threads worth knowing about
 
