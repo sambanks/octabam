@@ -122,12 +122,14 @@ All five ship together in the `mutables` remix (2,410/2,724 words with SEND;
 contract; the build's three-source special-casing was generalized the same
 day under the refhash gate (bit-identical before any module existed), and
 `verify_menu` now derives its expectations from the selected remix instead of
-a hand table. All three are **not yet flashed** — every MODE select and knob
-publish rides the standing on-unit reconfirm. Known tool gaps: `make cycles`
-is remix-blind (still prices the chongbong engines whatever REMIX says;
-by inspection the inserts are ~80/~90/~190 cycles/sample worst 🟡), and
-send_probe's layout charset is still hard-coded RDS. — inserts render
-through dsp_host directly.
+a hand table. **None of the six is flashed** — every MODE select and knob
+publish rides the standing on-unit reconfirm, and that is the only gate left.
+
+Both tool gaps this paragraph used to list are now CLOSED: `make cycles` is
+remix-aware (measured costs in the ledger below, and they were dearer than
+the inspection estimates this paragraph once carried — Rungs 238 against a
+guessed ~190), and `send_probe`'s layout alphabet is derived from the
+manifests, so an insert renders with `--direct` rather than by hand.
 
 Three things follow that are worth knowing before editing anything:
 
