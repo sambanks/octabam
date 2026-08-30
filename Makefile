@@ -148,6 +148,10 @@ check: bus cycles verify ## Everything that can be checked without hardware
 modules: ## List the module index and the available remixes
 	python3 tools/remix/index.py
 
+.PHONY: remix
+remix: ## The remix workbench: compose a selection, see what it costs, build it
+	python3 tools/remix/tui.py
+
 # -------------------------------------------------------------------- misc --
 
 .PHONY: disasm
@@ -167,3 +171,4 @@ help: ## Show this help
 	@echo
 	@echo "Cold start:  read PLAN.md, then  make setup && make os && make recon && make bus"
 	@echo "Modules:     make modules      (then: make bus REMIX=<name>)"
+	@echo "             make remix        compose a selection interactively"

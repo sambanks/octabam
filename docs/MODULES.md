@@ -224,7 +224,7 @@ because it assembled.
 
 **If you changed the build rather than adding a module, prove it changed
 nothing.** `scripts/refhash.sh save` on a tree you trust, make your change,
-`scripts/refhash.sh check` — 23 build configurations must come back
+`scripts/refhash.sh check` — 26 build configurations must come back
 bit-identical, artifacts *and* build reports. This is how every refactor in
 the remix work proved itself, and it caught things reading the diff did not.
 
