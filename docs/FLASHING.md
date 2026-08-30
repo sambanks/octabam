@@ -197,6 +197,23 @@ whole test.
 `docs/BUS.md` has the menu layout; `docs/PARAM_PAGES.md` explains how a knob
 reaches the DSP; `docs/MODULES.md` is what to read before writing one.
 
+### While you are at the unit — the hardware-only questions
+
+These cannot be answered anywhere else, so they are worth queueing onto any
+flash rather than spending a cycle of their own (`PLAN.md` work order):
+
+- **Sweep the cycle ceiling.** A `make burn` image puts the burn on `p3` at
+  32 cycles/step. The number prices every FX1 decision.
+- **Does the stock delay's enable track the FX2 id?** Select DELAY on a
+  track, read the per-track record byte the delay gates on; select ChonVerb
+  and read it again. If it is written separately from the dispatch id, then
+  a cave can enable the CPU-side delay *downstream of our reverb* — a
+  series routing the stock firmware has no path for. If it simply mirrors
+  the id, the idea is dead and should be recorded as such.
+- **Any new module's page-2 selects and knob publishes.** A slot can draw a
+  knob and publish nothing, and a formatter outranks the value count beside
+  it; both are invisible locally.
+
 ---
 
 ## 5. Reverting to the official firmware

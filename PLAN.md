@@ -329,6 +329,47 @@ flash away rather than a hunt for words.
 (The *only* thing needing words is `verify_burn`'s alias-probe diagnostic in
 the plain layout, which is a local check, not the measurement.)
 
+### 4. Piggyback on that flash: can the STOCK delay run downstream of our reverb?
+
+Cheap experiment, no new engine, and it would buy a routing the hardware has
+no path for. **Everything about it is hardware-only** — the mechanism is
+entirely CPU-side, so no local test can say anything.
+
+**What is settled.** The stock Echo Freeze Delay is applied *downstream of the
+FX2 insert* (measured here by listening test) and lives on the ColdFire as DMA
+over SDRAM rings at `0x4F502C10` (`docs/EXTERNAL.md`, Bryan T). So the signal
+order for "our reverb into the stock delay" is already the right way round.
+The reverse — stock delay into our bus — is **impossible and now known to be
+so physically**: those rings are outside the DSP's 18-bit external address
+range, so no DSP code can ever read them. Delay→reverb stays BongDelay's
+`→VERB`.
+
+**The crack.** The audio path does not read the FX2 id field at all (all 18
+references to it are UI/menu code). The delay's enable is a `moveq #8` against
+a **copied byte in a per-track record** — which is exactly why every id-keyed
+sweep missed it. 🟡 That gate is *inferred*, not measured.
+
+**The experiment.** If that byte is decoupled from the dispatch id, a ColdFire
+cave — infrastructure we already fly — can set it for a track whose FX2 slot
+is running ChonVerb, giving **reverb → stock delay in series on one track**.
+Steps, cheapest first:
+
+1. Confirm the gate by reading it, not by patching: with a `cfv4e`
+   disassembly of `0x400031a0`, identify the record byte and its address.
+   (⚠️ `scripts/disasm.sh emac`, never radare2 — see `docs/EXTERNAL.md` §5.)
+2. On the unit, select DELAY on a track and read that byte; select ChonVerb
+   and read it again. If it tracks the FX2 id, the byte is the id and this
+   is dead. If it is set by a separate write, it is reachable.
+3. Only then write a cave that sets it. Its hook site must satisfy the
+   standing rule: assert the stock bytes, replay what you displace.
+
+**Known unknowns before spending a flash on step 3.** The delay's TIME comes
+from a staged word at `0x80005fa0` whose writer is unmapped, so the delay may
+run with no controllable time; and a track hosting ChonVerb has no free
+parameter slot to put a delay control on. Treat a first result of "it makes
+delayed sound at some arbitrary time" as success for the experiment and a
+separate problem for the design.
+
 ---
 
 ## Open items and standing caveats
