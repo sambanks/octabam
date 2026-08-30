@@ -404,6 +404,70 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
+### 5. The workbench: remix TUI + a local ColdFire emulator (decided 31 Aug 2026)
+
+**The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
+of change that today costs a flash per attempt. Two backlog items merge into
+one tool, under one architectural rule: **the emulator is a headless library;
+the TUI is a shell around it.**
+
+```
+┌─ remix ─────────────┐ ┌─ emulated OT ──────────┐
+│ [x] chonverb        │ │  MAIN MENU             │
+│ [x] bongdelay       │ │  > PROJECT             │
+│ [x] tempo-sync      │ │    REVERB    ← new row │
+│  build ▸ check ▸    │ │  (arrows/enter = keys) │
+└─────────────────────┘ └────────────────────────┘
+```
+
+**Why it is tractable now** (all measured, 31 Aug 2026):
+
+- Unicorn 2.1.4 exposes QEMU's `UC_CPU_M68K_CFV4E` model and **executes this
+  CPU correctly** — `mvz`/`mvs` extended right, EMAC `macl`/`movclrl`
+  produced the exact predicted product (32769 × −32767 = `0xC0000001`).
+  The archaeology-era `emu_*.py` harnesses (recoverable,
+  `git show 9e1c028^:tools/emu_image.py`) ran the default plain-68k core;
+  the model flag removes their one real limitation.
+- The memory map is already decoded (`docs/ARCHITECTURE.md` §7), the DSP
+  MMIO handshake at `0x20000000` down to the ready bit and frame swap, and
+  the unit officially boots to DEMO with no CF card — so the DSP and ATA
+  can be stubbed on day one.
+- The MAIN MENU table system is decoded (`docs/MAINMENU.md`), so the first
+  customer — a dedicated REVERB/DELAY menu entry, the two-write patch of
+  MAINMENU.md §5 — has a concrete test to run.
+
+**Tiers, with the risk stated:**
+
+1. **Tier 0 — headless boot to the main loop.** Map SDRAM/RAM windows, load
+   the image, hook every unmapped access and log it; the stub list builds
+   itself. ⚠️ The open risk is the RTOS tick: the vector table (`0x400`
+   preamble) is an un-extracted open front and interrupt injection in
+   Unicorn m68k is manual. Days if it cooperates, a swamp if not — and the
+   fallback is the detour-style harness (emu_image.py shape, CFV4E model),
+   which covers the menu patch without booting anything.
+2. **Tier 1 — the text UI.** Do NOT emulate the LCD or key matrix. Read the
+   screen by hooking the decoded draw path (window ctor `FUN_4005829c`,
+   list drawer `FUN_40037590`, sprintf `0x40013a08`) into a windows+strings
+   model; inject keys at the software layer (the `[PAGE]` keycode-`0x1b`
+   precedent). Not pixel-faithful — menu-walking faithful.
+3. **TUI shell** (upgrades the `make remix` workbench): remix pane + build
+   pane land first and are useful with no emulator; the emu pane plugs in
+   when Tier 1 does. Schedules deliberately uncoupled.
+4. **Audio stays out.** The voicing loop (render → afplay → ear) is already
+   right and does not move into a pane. A dual-core `dsp_host` (two vendored
+   56300 cores + the shared window — the only tool that could ever show a
+   bus race locally) is acknowledged as the next bet after this, not part
+   of it.
+
+**The prize is not the interactive toy:** a headless
+`boot / inject_key / read_screen` API means `verify_menu`-style checks can
+*walk the patched firmware* under `make check` — an automated no-flash gate
+for every ColdFire cave, present and future.
+
+Not pursued: a gearmulator-style full-machine port with plugin packaging.
+`dsp_host` already runs on that project's DSP core; the ColdFire half above
+is the slice of that road worth having.
+
 ---
 
 ## Open items and standing caveats
