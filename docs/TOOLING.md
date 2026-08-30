@@ -128,9 +128,9 @@ version:
 | `tools/verify_menu.py` | the ColdFire menu edits against the real chooser mechanism, decompiled from the firmware — including the descriptor traps (formatter vs count) |
 | `tools/verify_slots.py` | static dead-store/aliasing check on the r7 state block — the family of bugs where one slot means two things |
 | `tools/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
-| `tools/verify_burn.py` | the cycle-burn probe is the shipping engine plus an inert knob (currently SKIPs — the probe does not place) |
+| `tools/verify_burn.py` | the cycle-burn probe is the shipping engine plus an inert knob (its alias-probe diagnostic SKIPs — the plain layout overruns; the flashable probe itself places fine via `make burn`) |
 | `tools/remix/selftest.py` | the resource ledger still catches every collision it claims to (part of `make check`) |
-| `scripts/refhash.sh` | a change to the BUILD (not a module) changed nothing: 23+ configurations, artifacts *and* build reports, bit-identical — save a baseline on a tree you trust first |
+| `scripts/refhash.sh` | a change to the BUILD (not a module) changed nothing: 26 configurations, artifacts *and* build reports, bit-identical — save a baseline on a tree you trust first |
 
 ## 7. Hardware measurement and control
 

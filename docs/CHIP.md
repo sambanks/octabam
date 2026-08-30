@@ -437,7 +437,7 @@ Anything from that pass must be disassembled before it is believed.
 |---|---|
 | ChonVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
 | BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Renders locally under `DEV=1`; confirmed on hardware on its shipping payload-B path |
-| Bus scratch | `Y:0x900–0x980` — parity word, then 4 × 16-word accumulators and 4 × 16-word wet buffers |
+| Bus scratch | `Y:0x900–0x9d2` — **211 words**: rotation word, then per bus 4 × 16-word accumulators, 2 × 16-word wet buffers and 4 per-buffer send counts, plus both role locks and the delay's 1/√N reciprocal table. `modules/send/send_client.asm` is the authoritative map. ❌ This row read `0x900–0x980`, "parity word", 4 wet buffers until 30 Aug 2026 — wrong extent (it stopped before the role locks at `0x9c1`/`0x9c2`), wrong name ("parity" is the retired two-buffer term), wrong wet count. `XBUS.md` points HERE for the exact extent, so anyone sizing a module against it would have placed it on top of the locks. |
 | Per-instance base stash | `Y:0x795 + (r7>>8)` — one word per instance |
 | SEND | **nothing.** A zero-footprint client; never touches its own slot |
 
@@ -463,8 +463,11 @@ bisect); do not design around it.
 
 Placement, in address order (sizes from an earlier build): `SEND` 166 ·
 `REVERB SERVER` 2 040 · `DELAY SERVER` 507. In today's BURN plain layout
-`DELAY SERVER` is **2 794 words** — it overruns the 2 724-word region by 70
-on its own.
+`DELAY SERVER` overruns the 2 724-word region on its own. ⚠️ Do not quote the
+figure — it has rotted twice (2 794 → 2 734 → **2 766** as of 30 Aug 2026)
+because the delay keeps changing size; `verify_burn` prints the live number.
+And this blocks only that DIAGNOSTIC: the flashable probe places fine via
+`make burn`.
 
 **Exactly three stock effects are taken: PLATE REV, SPRING REV, DARK REV.**
 CHORUS was once a donor and is now byte-identical to stock. Relocating
@@ -482,11 +485,11 @@ whole module.
 | FX slots per track | FX1 (3 072 words) + FX2 (16 384 words) | ✅ |
 | Reverb/delay are FX2-only | FX1's 3 072 words are far too small | ✅ |
 | FX1 is **not** idle | dispatcher calls it every frame; a fresh part defaults FX1 = FILTER | ✅ |
-| Parameters per effect | **12** — 6 page-1 knobs, 3 page-2 knobs, 3 page-2 selects | ✅ `DSP.md` §9 |
-| Menu | 3 entries: ChonVerb / BongDelay / Send. **No selectable NONE** | ✅ |
+| Parameters per effect | **12** — 6 page-1 knobs, then 6 page-2 slots. The "3 knobs + 3 selects" split is how *stock* uses the fields, **not a hardware limit**: all six can be full-range knobs, measured on hardware (`DSP.md` §9 — which this row contradicted while citing it) | ✅ |
+| Menu | **remix-selected** — `make modules` lists what each carries; shipping `chongbong` has 3 entries, `mutables` 6. **No selectable NONE** in any | ✅ |
 | Unassigned tracks | id 0 is aliased to **SEND**, so every unassigned track feeds the bus | ✅ |
 | Track↔core mapping | **payload A serves tracks 5-8, payload B serves tracks 1-4** — inverted from the natural assumption; unobservable before specialization (both payloads carried every effect) | ✅ marker-flash test |
-| `r7` state block | `$00–$83` usable; **`$84–$8a` HANGS** (host-owned) | ✅ bisected |
+| `r7` state block | `$00–$83` usable. `$84–$8a` is host-owned and cannot hold state **across calls**; per-call scratch there is fine, and BongDelay ships using `$84`–`$88`. The blanket "HANGS" stood until 30 Aug 2026 | ✅ bisected |
 | ChonVerb's `r7` | **full** | ✅ |
 
 Persistent state does **not** have to live in `r7` — `dsp/cycleburn.asm`

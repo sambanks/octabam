@@ -123,14 +123,14 @@ verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: m
 	@# bus. It is an on-demand gate around one edit, like verify-roll:
 	@#   make verify-bus SAVE=1     <- on the tree you trust, BEFORE the edit
 	@#   ...make the bus change...
-	@#   make verify-bus            <- must be 17/17 bit-identical
+	@#   make verify-bus            <- every case bit-identical (the tool prints the count)
 	@# Needs the DEV hatch: the gate's whole point is exercising layouts that
 	@# carry BOTH servers, and only the hatch has a real delay in payload A.
 	DEV=1 XBUS=1 python3 tools/build_bus.py >/dev/null
 	python3 tools/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
 
 .PHONY: burn
-burn: ## Build the cycle-burn probe -- CURRENTLY DOES NOT PLACE (plain layout overruns by 10 words)
+burn: ## Build the flashable cycle-burn probe (p3 = the burn knob, 32 cycles/step)
 	XBUS=1 BURN=1 python3 tools/build_bus.py
 
 .PHONY: check

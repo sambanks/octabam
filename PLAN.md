@@ -231,11 +231,14 @@ measures the real ceiling.
 - ⚠️ **FX1 cycles are paid ×4 per core** — a 300-cycle FX1 effect costs
   1,200 cycles/core. *This*, not program space, is the ceiling on FX1
   ambition.
-- ⚠️ **Only the `BURN=1` hardware sweep can re-measure the real per-core
-  spare, and the probe currently does not build**: the plain layout overruns
-  the region (2,734 > 2,724 — 10 words short; an older ~70-word figure
-  predates the delay shrinking). `verify_burn` reports
-  SKIPPED in `make check` until words are found.
+- ✅ **The flashable burn probe BUILDS — `make burn` places it** (payload A
+  FREE 46, B FREE 9) with `p3` as the burn knob at 32 cycles/step. This
+  paragraph claimed the opposite until 30 Aug 2026 and an entire work-order
+  item was priced on it. What is blocked is only `verify_burn`'s **alias-probe
+  diagnostic**, which needs the non-XBUS *plain* layout where the delay
+  overruns — and that figure has rotted twice (2,794 → 2,734 → **2,766 today**,
+  42 words over), so read it from `verify_burn`'s own NOTE rather than from
+  any document.
 - **Priced cycle lever**: GRAIN 4 grains → 2 returns ~300 cycles for ~100
   words, at the voicing cost of half the simultaneous voices.
 
@@ -311,13 +314,20 @@ cycles. Highest value, highest risk. ✅ Taking the three reverbs cost FX1
 nothing — they were never on its menu; FX1's ten effects are the whole pool.
 
 ⚠️ Sequence FX1 ambition after the burn sweep (§3) — its real ceiling is
-cycles ×4, and the spare has never been measured per core.
+cycles ×4. Note the spare HAS been measured per core since 23 Aug 2026
+(704 with the reverb + 4× FILTER, 1,088 with 2×, one FILTER = 192 —
+`docs/CHIP.md` §2); the sweep is to re-measure it against whatever bank FX1
+work would actually run in.
 
-### 3. Unblock the burn probe
+### 3. Flash the burn probe and sweep the ceiling
 
-Find ~10 words in the plain layout so `BURN=1` places, flash it once, and
-sweep the real per-core cycle ceiling from the front panel. Everything in §2
-prices off that number.
+**Not blocked — `make burn` builds a flashable image today.** Flash it once
+and sweep the real per-core cycle ceiling from the front panel with `p3`
+(32 cycles/step). Everything in §2 prices off that number, so this is one
+flash away rather than a hunt for words.
+
+(The *only* thing needing words is `verify_burn`'s alias-probe diagnostic in
+the plain layout, which is a local check, not the measurement.)
 
 ---
 
@@ -393,6 +403,6 @@ make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 make verify-delay CAND=modules/bongdelay/delay_new.asm   # bit-identity gate for delay refactors
 ```
 
-`make bus-plain` (both servers on both cores) and `make burn` do not
-currently build — both layouts overrun the donor region; the burn overrun is
-work-order §3.
+`make bus-plain` (both servers on both cores) does not build — that layout
+overruns the donor region. `make burn` **does** build and is flashable; only
+`verify_burn`'s plain-layout alias probe is blocked.
