@@ -128,12 +128,34 @@ register. So:
   `k²` is 0.040 RMS, for `(1−k)³` also 0.040 — rough enough to feel different,
   and more expensive than the arithmetic they would replace.
 - ❌ **Nothing for ChonVerb.** Its cost is tank lines, allpasses and MACs —
-  memory access, not function evaluation. Its LFO is a triangle already.
-- ❌ **Nothing safe for BongDelay.** Its smoothstep window is the one
-  expensive shape, and it must satisfy `s(g) + s(1−g) = 1` **exactly** —
-  that is what bounds the loop gain and gives PITCH its stability. No stock
-  table is even close (best complementarity error 0.24), and an approximate
-  one would trade a proved bound for a few cycles.
+  memory access, not function evaluation. Its eight LFOs are triangles
+  generated **per block** (~5 cycles/sample for all eight); a table read
+  would cost more than the three instructions they take.
+- ❌ **Nothing in the bus path.** `send_client` is 19 instructions a sample
+  of sum-and-accumulate with no function evaluation at all, and the delay's
+  1/√N table is eight immediates written per block (~1 cycle/sample).
+- ⚠️ **BongDelay: two of five, and not worth it.** `smoothw` (`s = g²(3−2g)`,
+  18 instructions, ~24 cycles a call) has **five call sites**, and they are
+  not the same kind of thing:
+
+  | site | what it windows | tableable? |
+  |---|---|---|
+  | 1589, 1611 | TAPE **wow / flutter LFOs** | ✅ yes — free-running modulators, no constraint. `2·s(triangle) − 1` is a cheap sine approximation, and the stock sine is the real thing |
+  | 2264 | **GRAIN** window | ❌ no |
+  | 2586, 2607 | **PITCH** head windows | ❌ no |
+
+  The three windows must satisfy `s(g) + s(1−g) = 1` **exactly** — that is
+  what makes `g0 + g1 == 1` at every age, which bounds the loop gain and gives
+  PITCH its stability. No stock table is close (best complementarity error
+  0.24), and an approximate one trades a proved bound for a few cycles.
+
+  The two TAPE LFOs genuinely could use the sine table, and TAPE is global so
+  they are paid on every path. But the saving is **~28 cycles of 2,338 (1.2%)**
+  after the read's own cost, the sonic difference between a smoothstepped
+  triangle and a true sine at ~1 Hz is negligible, and **BongDelay has the
+  tightest register pressure of any module** (r7 `$00..$83` full, r0–r5 in
+  use). Spending an address and a modulo register for 1.2% is a poor trade.
+  Logged so it is not rediscovered; not recommended.
 - ✅ **One real win: BodeShift's carrier.** It builds a sine from a refined
   parabola — 21 instructions, twice per sample, max error 1.09e-3 (≈ −59 dB).
   The stock sine is exact and in both payloads. Swapping returns ~20 of its
