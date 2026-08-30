@@ -464,6 +464,19 @@ the TUI is a shell around it.**
 *walk the patched firmware* under `make check` — an automated no-flash gate
 for every ColdFire cave, present and future.
 
+**Tier-0 bring-up is underway and de-risked** (`docs/EMU.md`,
+`tools/emu_bringup.py`, 31 Aug 2026): with SP+SR seeded and MMIO modelled,
+the real image executes **~7,000,000 instructions with zero decode faults**,
+through all early hardware init, and stops exactly at the RTOS handoff
+(`trap #0`, `0x40000e46`). The one load-bearing peripheral value is decoded
+(the clock register must report a 264 MHz sysclk or the boot halts); async
+completion-flag spins are auto-satisfied. What remains is the **fork** at the
+trap: emulate the RTOS (dispatch the trap, drive a timer tick) or take the
+**detour-harness** route (call the UI functions directly, skip the
+scheduler). For the stated goal — a text UI to iterate menu/cave patches —
+the detour harness is very likely the right first cut; `docs/EMU.md` lays out
+both.
+
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above
 is the slice of that road worth having.
