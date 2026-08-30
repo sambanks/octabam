@@ -123,10 +123,21 @@ defects below burned in:
 The naive bus rails: senders sum, and five tracks at moderate level clip
 the shared word. Instead every writer contributes with **3 bits of headroom**
 (`asr #3`, so eight full-scale clients sum to exactly 1.0) and registers in
-a per-block client count; the server multiplies the summed block by **1/N**
-from a reciprocal table and shifts back up. Measured flat: 1 through 7
-senders render identically (THD −44.6 dB at every count where the
-un-gained bus had railed to −0.6). Two hard-won rules:
+a per-block client count; the server multiplies the summed block by
+**1/√N** from a reciprocal table and shifts back up.
+
+❌ **This said 1/N until 30 Aug 2026, and the law changed on 17 Aug** (shipped
+as R27). N sources sum as N only when they are CORRELATED; real tracks are
+not, and sum as √N — so dividing by N over-corrects real material by √N,
+3 dB per doubling. `modules/chonverb/reverb_server.asm` §"THE LAW IS
+1/sqrt(N)" is the authority, and `docs/CAPTURE.md` capture E measured it.
+
+❌ The justification quoted here was worse than the number: *"Measured flat:
+1 through 7 senders render identically (THD −44.6 dB)"*. That measurement fed
+**the same tone** to every sender, so the senders were perfectly correlated —
+the one condition under which 1/N and √N summing agree. It is structurally
+blind to the very thing it was cited as proving, the same family as the THD
+metric that could not see an inharmonic spur. Two hard-won rules:
 
 - **Registration must be gated on the send knob.** A client that registers
   and contributes nothing dilutes every real sender by N/(N+1) — **−6 dB
@@ -137,9 +148,11 @@ un-gained bus had railed to −0.6). Two hard-won rules:
   "fixed" full-scale writer whose effective gain varies as 8/N with the
   sender count is not fixed at all.
 
-Perceptual consequence, by design: the law is 1/N across *registered*
-senders, so a quiet sender turns a loud sender's reverb down (measured to
-the dB against the 1/√N alternative — `docs/CAPTURE.md`, capture E).
+Perceptual consequence, by design: the law is **1/√N** across *registered*
+senders, so a quiet sender still turns a loud sender's reverb down, but by
+half as much in dB as 1/N did (`docs/CAPTURE.md`, capture E — where three
+senders, two of them 10–15 dB quieter, dropped the wet by 4.8 dB against the
+1/N prediction of −9.5).
 
 ## The three cross-core defects — why all of the above
 
@@ -183,12 +196,12 @@ it, swapping what ran on track 5 — is in `docs/history/XBUS_LOG.md`.
 
 ## Verification
 
-`make verify-bus` is the gate for any bus-layout change: **17 layouts** —
+`make verify-bus` is the gate for any bus-layout change: **19 layouts** (17 until 18 Aug 2026, when two `IN` cases were added — the delay's IN decode had been deleted by a splice and 17/17 still passed) —
 all three carriers of the housekeeping block, the election, 1–7 senders per
 bus, both cross-sends, split blocks — rendered and compared **bit-for-bit**
 against a stamp taken before the edit (`SAVE=1` first). The four-buffer
 restructure itself was proven exact by pointing the candidate's read at the
-same buffer *generation* as the reference — 17/17 bit-identical at lag 0 —
+same buffer *generation* as the reference — all cases bit-identical at lag 0 —
 separating the layout change from the latency change completely. See
 `docs/HARNESS.md` for where this sits in the wider rig.
 
