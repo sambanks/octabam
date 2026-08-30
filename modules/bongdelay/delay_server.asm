@@ -313,6 +313,9 @@
 ;   p3 PING  -> crossfeed amount, 0 (parallel stereo) .. ~0.99 (full
 ;              ping-pong swap). Used directly as a Q1.23 fraction -- knob<<16
 ;              already IS value/128 in that format, no mpy needed.
+;   ❌ p4/p5 BELOW ARE STALE -- the 18 Aug 2026 swap made p4 = -VRB and
+;   p5 = IN. The code has it right (see 'IN (p5 since the 18 Aug swap)').
+;   Kept as history:
 ;   p4 IN    -> THIS TRACK'S OWN SEND LEVEL into the delay, 0 .. ~0.99, same
 ;              "raw knob as Q1.23 multiplier" trick as before. v3 stage 1:
 ;              was MIX. The host track is a RETURN -- it prints the wet plus
@@ -321,7 +324,8 @@
 ;              cross-fade and the slot became the host's own ->DELAY knob,
 ;              identical in range, headroom and 1/N share to the one every
 ;              other track already has (modules/send/send_client.asm p0).
-;   p5       -> FREE. Was ->VERB WET; the send is hardwired now (see $85).
+;   p5       -> IN (see above). ❌ "FREE / the send is hardwired" is stale:
+;              -VRB is a KNOB again since 18 Aug 2026, on p4.
 ;   p8       -> FREE. Was ->VERB DRY; the send is gone entirely.
 ;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
 ;              count 5: 0 = CLEAN, 1 = PITCH, 2 = (was TAPE -- retired
@@ -335,7 +339,10 @@
 ;              offset: 0 = every grain reads the same place (four heads, one
 ;              position -- the coherent, most PITCH-like end), 127 = the full
 ;              0..1015-sample scatter. Only read in GRAIN.
-;   p6 WOW   -> TAPE wow depth, page-1 slot 6 KNOB field (r6+$b), 0..127.
+;   p6 DPTH  -> TAPE wow depth, PAGE-2 slot 6, the KNOB field of r6+$c
+;              (NOT page-1, NOT $b -- the $b reading is exactly why this
+;              knob worked locally and never on hardware; PARAM_PAGES.md).
+;              0..127.
 ;              Scales flutter with it (wow/8). Only read in TAPE; harmless
 ;              in the other modes.
 ;   p11 FRZE -> FREEZE select, page-2 slot 11 companion (r6+$e low bits),
@@ -1240,7 +1247,9 @@ qmul:
 qend:
 
 ; ---- TAPE depths from the WOW knob (v2 stage 4) --------------------------
-; Page-1 slot 6 is a KNOB field (r6+$b, value<<16, 0..127), not a select:
+; Page-2 slot 6 is a KNOB field (the KNOB half of r6+$c, value<<16, 0..127),
+; not a select. (This comment said "page-1 ... r6+$b" until 30 Aug 2026,
+; directly above the line that correctly reads x:(r6+$c).):
 ; wow depth is a continuous voicing control unlike MODE/PTCH/FRZE.
 ;   wow depth = knob << 10  -> up to 31.75 samples, Q11.12
 ;   flutter   = wow >> 3    -> up to  3.97 samples

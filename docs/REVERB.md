@@ -188,7 +188,10 @@ shipping build):
 
 **Persistent state is split** (the four-line engine kept it all in the r7
 block; the shipping engine does not).
-The r7 block is per-instance and **completely full** (`$00..$83` all taken;
+The r7 block is per-instance and was **completely full** until 18 Aug 2026;
+`$68`/`$69`/`$6a` were freed by the →DEL retirement and `$71` by the v4 MIX
+removal, so there are ordinary free slots again — do not reach for the
+risky parking pattern before checking. Historically: (`$00..$83` all taken;
 `$84+` hangs the unit) — `$82` is the warm-up counter (tagged
 `$2c0000 | count`), `$83` the tank phase. Per-line tank state lives in the
 **Y state tables A and B at `shared+0x4500`** (13 words per line), because the
@@ -352,7 +355,12 @@ python3 tools/render_reverb.py loop.wav --build              # rebuild first
 ```
 
 Knobs are named, not indexed, because `-params` is *not* a linear map onto
-`r6` — indices 0–5 are page 1, then 6–9 land on `r6+$b..$e`. It handles the
+`r6` — indices 0–5 are page 1, then the page-2 slots interleave: 6/8/10 are the
+KNOB fields of `r6+$c`/`$d`/`$e` and 7/9/11 are their companion fields
+(bits 8–15). ❌ The old "6–9 land on `$b..$e`" reading is wrong and was
+expensive: `$b` is not a page-2 word at all, which is why the delay's WOW
+worked locally and never on hardware, and why `-p GATE=n` silently drove
+WIDTH's companion instead of the gate. It handles the
 256-call warm-up by padding and trimming, and `--wet` recovers the wet signal
 exactly by subtracting the dry path. `--wet -p MIX=0` renders **digital
 silence**, which is the standing self-check: it confirms both the dry
@@ -599,6 +607,13 @@ to both — once done as a workaround for an inaudible control — means
 turning it up adds wobble faster than it adds smearing. **Keep the rate
 slow and fixed; let MOD move depth alone.**
 
+❌ **REVERSED by Round 13** (`VOICING.md`). The rate pinned near 0.4 Hz was
+measured as *the binding cause* of the metallic end-ring; the base rate went
+×8 to ~2.2 Hz with the depth scales trimmed — fast-SHALLOW rather than
+slow-deep — and ROOM's crest fell 65 → 49, the largest single movement of
+any lever in the voicing log. RATE is a live 0.5/1/2/4× select besides. The
+advice above would send you straight back into the ring it removed.
+
 **Small SIZE is inherently bad.** At the original floor the whole tank was
 566 samples: a mode spacing of 78 Hz, which is a comb, not a reverb. The
 floor is now `f = 0.4` so the bottom of the knob is ~1,810 samples at 24 Hz.
@@ -716,6 +731,28 @@ six make them genuinely distinct.
 
 (The HALL column is kept as history; shipping modes are ROOM/PLATE/BIG.)
 
+❌ **THE WHOLE TABLE IS THE PRE-ROUND-7/13/R18 CONSTANT SET, not just the HALL
+column.** The qualifier above implies the other columns are current; they are
+not. Verified against the engine, 30 Aug 2026:
+
+- **ER was REMOVED** (Round 7) — `$6c` is a freed slot. The "ER level" and
+  "ER arrivals" rows describe a stage that no longer exists, and this
+  document says so itself further up.
+- **ROOM's tap scale is 0.60**, not 0.45 (`reverb_server.asm`: "tap scale
+  0.60 (Round 13, was 0.45)").
+- **All modes share the diffuser taps 641/1051/1511/1949** (Round 13, 3.6×
+  longer), so the per-mode "diffuser taps" row is gone.
+- **All modes run LFO rate scale 1.0** (Round 13). BIG's 0.25 was killed
+  explicitly — "a huge space barely moves … left a near-static tank, and a
+  static tank rings".
+- **BIG's decay scale is 0.67578** (R18), not 1.00.
+- ROOM and PLATE now share a diffusion coefficient, and BIG was raised.
+
+`modules/chonverb/reverb_server.asm` is the authority for every one of these
+and `docs/VOICING.md` records why each moved. The table is kept below because
+the *structure* — which levers MODE varies — is still right, and because the
+starting point is worth seeing; **read no constant out of it.**
+
 | lever | ROOM | PLATE | HALL | BIG |
 |---|---|---|---|---|
 | tap scale (size) | 0.45 | 0.5625 | 0.71875 | 1.00 |
@@ -736,7 +773,8 @@ mode, so tap scale and tap spread stay independent; and ROOM's spread is the
 original set, so ROOM must render *bit-identical* whenever the indirection is
 touched.
 
-**The r7 state block is FULL.** `$7e..$81` were the last free slots. `r7+$84`
+**The r7 state block is NO LONGER FULL** (`$68`/`$69`/`$6a`/`$71` freed
+18 Aug 2026). What follows described the full state: `$7e..$81` were the last free slots. `r7+$84`
 and up **hang the DSP** (host-owned — see `DSP.md`). Anything further that needs per-mode state must use the parking
 pattern: `md_*` writes its scale into a slot a later parameter block is going to
 overwrite anyway (`$2f` rate, `$1e` decay), and that block folds it into its own
@@ -902,7 +940,10 @@ unexplained emulator-only divergence between one and two instances under a
 nonzero split. Two things the emulator cannot check at all: item 3 above, and
 the front-panel UI surface for the companion-field selects (**WIDTH**,
 **RATE** — see `PARAM_PAGES.md` for what the harness can and cannot drive).
-WIDTH has been confirmed moving on-unit as its 4-step select.
+❌ WIDTH was **RETIRED** in v7 (23 Aug 2026): width is pinned wide and that
+companion field carries SHFT, the shimmer interval. It is listed here as
+live open work and this document's own parameter table has it right.
+(Historically: WIDTH was confirmed moving on-unit as its 4-step select.)
 
 **Closed, do not re-chase:** modal prominence (8–11 dB over the local envelope,
 monotonic in total delay, no structural lever left under the 32K ceiling —
