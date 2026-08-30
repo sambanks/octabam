@@ -351,6 +351,7 @@ The documents that stay current:
 | `docs/PARAM_PAGES.md` | Parameter-page descriptors: how a knob reaches the DSP |
 | `docs/ARCHITECTURE.md` | The firmware as a whole |
 | `docs/EXTERNAL.md` | Findings from outside this project, and what they retract |
+| `docs/TABLES.md` | The DSP data tables the ColdFire uploads at boot — free lookup curves |
 | `docs/BUS.md` | The FX2 menu and descriptor work behind the bus |
 
 ---

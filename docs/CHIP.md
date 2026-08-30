@@ -412,6 +412,7 @@ same address are the same memory.
 | `0x32000-0x32039` (58 words) | **bootstrap B** | `DSP.md:27` |
 | `0x38000-0x38012` (19 words) | payload **B's entry stub** — `jsr`s into `0x30082`/`0x3008a` | module dump |
 | `0x30000-0x37FFF` | **zeroed at init**, all 32 768 words | disassembled at `P:0x040` |
+| *(X data tables)* | the ColdFire uploads ~20 lookup tables to both DSPs at boot — waveforms, knob warps, coefficient banks. Catalogued in **`docs/TABLES.md`**; they cost us no placement and any effect may read them | Bryan T + verified here |
 | `0x38000` | referenced in a **DMA** setup (`M_DCR2`) | `P:0x098` |
 
 **`X:0x30000` staging is CONFIRMED, not folklore.** `DSP.md` claimed stock
