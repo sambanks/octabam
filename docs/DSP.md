@@ -677,6 +677,16 @@ cannot validate a reverb, which was the whole point of building it. *(Closed by
 route 1 below: the new effects use our own convention, and the harness now
 renders the full bus — `docs/HARNESS.md`.)*
 
+⚠️ **TOOLING, before you read any ColdFire disassembly below.** radare2's
+m68k backend cannot decode this CPU's ColdFire V4e extensions — `mvs`, `mvz`,
+`mov3q` and the EMAC ops all come back `invalid`, and because r2 assumes two
+bytes, the following extension word is decoded as a *separate, ordinary
+looking* instruction. The stream desynchronises and shows code that is not
+there. **6,757 such instructions exist below `0x40098000`, over 149 pages.**
+Use `scripts/disasm.sh emac <addr>` (objdump `-m m68k:cfv4e`). The load-bearing
+ColdFire work here came from Ghidra or from objdump and was re-checked
+30 Aug 2026 — see `docs/EXTERNAL.md` §5.
+
 ### Why address-guessing kept failing: the audio is DMA'd in
 
 ❌ **RETRACTED 30 Aug 2026 — "audio does not arrive over the ESAI" was

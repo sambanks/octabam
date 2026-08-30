@@ -15,21 +15,25 @@
 #     m68k:547x:     msacl %d0,%a1,%acc2  /  msacl %d0,%a2,%acc3
 #
 # So the stream DESYNCHRONISES and invents plausible code that is not there.
-# This is worse than objdump's m68k:5407, which at least decodes some of the
-# MACs (it also desyncs). The ColdFire here is V4e-class with a
-# four-accumulator EMAC, and only `m68k:547x` / `m68k:cfv4e` decode it.
 #
-# 791 EMAC instructions live in the image, concentrated in the audio code:
-# 0x40001000 (the timestretch crossfade mixers), 0x40003000 (the Echo Freeze
-# Delay's tap and mix loops), 0x40004000, 0x40007000 (98 -- the densest), and
-# 0x4000c000-0x4000d000. Treat ANY r2 reading of those regions as unsound.
-# Use `scripts/disasm.sh emac <addr> [bytes]` there instead.
+# ⚠️ AND IT IS NOT ONLY THE EMAC. Measured across the code region below
+# 0x40098000: **6,757 instructions r2 cannot decode, 4,543 of them longer than
+# two bytes** (so each desynchronises what follows), spread over 149 pages.
+# The EMAC ops are a small minority -- the bulk is `mvz` (4,539) and `mvs`
+# (1,834), which are ordinary ColdFire ISA_B moves used everywhere. r2's
+# m68k backend is missing the ColdFire V4e extensions generally, so its
+# reading of THIS firmware is unreliable almost anywhere, not just in audio
+# code.
+#
+# docs/midi_re_note.md and docs/MIDI.md already recorded this in August; the
+# warning simply never reached this script. Use the `emac` subcommand (or
+# objdump -m m68k:cfv4e directly) whenever the answer matters.
 #
 # Usage:
 #   scripts/disasm.sh                 open r2 interactively on the raw image
 #   scripts/disasm.sh strings         dump every string with its offset
 #   scripts/disasm.sh pd 0x1000       run an r2 expression and exit
-#   scripts/disasm.sh emac 0x40003664 [n]   objdump -m m68k:547x, EMAC-correct
+#   scripts/disasm.sh emac 0x40003664 [n]   objdump -m m68k:cfv4e, correct
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -57,7 +61,7 @@ case "${1:-}" in
     [ "$OFF" -ge 0 ] || { echo "address is below the load base $BASE" >&2; exit 1; }
     TMP=$(mktemp)
     dd if="$RAW" of="$TMP" bs=1 skip="$OFF" count="$N" 2>/dev/null
-    m68k-elf-objdump -D -b binary -m m68k:547x --adjust-vma="$ADDR" "$TMP" \
+    m68k-elf-objdump -D -b binary -m m68k:cfv4e --adjust-vma="$ADDR" "$TMP" \
       | tail -n +7
     rm -f "$TMP"
     ;;

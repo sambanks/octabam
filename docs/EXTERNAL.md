@@ -175,10 +175,17 @@ statistical, and Q23 decode is assumed throughout.
 region into `.short` garbage**, because the ColdFire here is V4e-class with a
 four-accumulator EMAC; `-m m68k:547x` is required.
 
-✅ **Confirmed, and then some.** We do not use that flag — `scripts/disasm.sh`
-drives radare2 with `-a m68k` — so the open question was whether r2 does
-better. **It does not. It is worse.** Measured on the delay's tap loop at
-`0x40003664`:
+✅ **Confirmed, and worse than reported — but we already knew, and had
+mislaid it.** `docs/midi_re_note.md`, `docs/midi_re_scene.md` and
+`docs/MIDI.md` all say plainly that radare2's m68k plugin cannot decode the
+ColdFire `mvs`/`mvz`/`mov3q`/`mac` forms and that the MIDI scouts used
+`m68k-elf-objdump -m m68k:cfv4e` instead. That was August. The finding stayed
+in the MIDI corner: `scripts/disasm.sh` went on driving r2 with no warning,
+and this file's first draft asked whether r2 was affected as though it were
+an open question. It was not open; it was stranded — the exact failure mode
+`CLAUDE.md` collects under stale forks.
+
+Measured on the delay's tap loop at `0x40003664`:
 
 | | first four instructions |
 |---|---|
@@ -197,8 +204,15 @@ Two distinct failures, and the second is the dangerous one:
    unremarkable-looking instruction that is not in the program at all.
    Nothing announces the error.
 
-**Where this bites.** 791 EMAC instructions are in the image, concentrated in
-exactly the audio code:
+**And it is not only the EMAC.** Across the code region below `0x40098000`:
+**6,757 instructions r2 cannot decode, 4,543 of them longer than two bytes**
+(each desynchronising what follows), over 149 pages. EMAC is a small minority
+— the bulk is `mvz` (4,539) and `mvs` (1,834), ordinary ColdFire ISA_B moves
+used everywhere. **r2's reading of this firmware is unreliable almost
+anywhere, not merely in audio code.**
+
+The EMAC instructions specifically, 791 of them, concentrate in the audio
+code:
 
 | region | EMAC ops | what lives there |
 |---|---|---|
@@ -216,10 +230,36 @@ corroboration of his open thread: that is where he expects the marker-list
 writer, and so TSNS's consumer, to be.
 
 **Fix, landed:** `scripts/disasm.sh emac <addr> [bytes]` disassembles a span
-with `m68k-elf-objdump -m m68k:547x`. The warning is at the top of that script
-too. **Any prior r2 reading of the regions above should be treated as
-unsound** — not merely incomplete, but potentially showing instructions that
-do not exist.
+with `m68k-elf-objdump -m m68k:cfv4e` — the same flag the MIDI work already
+used — and the script now carries the warning at the top, which is where it
+should have been in August.
+
+### ✅ What this does NOT overturn — the re-check
+
+Every ColdFire address our docs cite in `0x40000400`–`0x4000dfff` (90 of
+them) was re-disassembled with `cfv4e` and compared against r2. **No
+conclusion of ours is falsified.** The differences are almost entirely
+notation (`movel %a2,%sp@-` vs `move.l a2,-(a7)`). Only four cited addresses
+sit on an instruction r2 genuinely cannot read, and none of them breaks a
+claim:
+
+| address | r2 | actually | our claim |
+|---|---|---|---|
+| `0x4000b786` | `invalid` | `mov3ql #-1,%a1@+` | `midi_re_note.md` **already says `mov3q #-1`** — read correctly at the time |
+| `0x4000c24a` | `invalid` | `mvsb %a3@(0,%d1:l),%d0` | a sign-extended indexed byte load, consistent with the scene-pair fill claimed there |
+| `0x40003664`, `0x40003900` | `invalid` | EMAC / coprocessor | Bryan's addresses, from his disassembly not ours |
+
+Two things carried the load and neither was r2: the menu and descriptor work
+was **Ghidra** (`tools/GhidraMenuFuncs.java`, cited in `verify_menu.py` and
+`BUS.md`), and the MIDI work was **objdump `cfv4e`**. ✅ Our own tempo-sync
+cave hook at `0x40004d40` also re-reads exactly as documented — the three
+displaced instructions are `moveb %a0@(3516),%d2 / extw %d2 /
+movew %d2,%a2@(56)`, which is what the cave replays, and it is
+hardware-confirmed besides.
+
+**The lesson is not "r2 lied to us" — it is that we knew and the knowledge sat
+in one document.** Nothing consumed it: not the script that drives r2, not
+`DSP.md`, not this file's first draft.
 
 ## Open threads worth knowing about
 
