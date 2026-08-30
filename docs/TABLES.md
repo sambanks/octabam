@@ -156,9 +156,67 @@ register. So:
   tightest register pressure of any module** (r7 `$00..$83` full, r0–r5 in
   use). Spending an address and a modulo register for 1.2% is a poor trade.
   Logged so it is not rediscovered; not recommended.
-- ✅ **One real win: BodeShift's carrier.** It builds a sine from a refined
-  parabola — 21 instructions, twice per sample, max error 1.09e-3 (≈ −59 dB).
-  The stock sine is exact and in both payloads. Swapping returns ~20 of its
-  344 cycles *and* drops oscillator distortion below the Hilbert pair's own
-  residual. **Priced, not built** — BodeShift is verified as it stands and the
-  sideband measurements would need re-running.
+- ❌ **BodeShift's carrier: BUILT, MEASURED, REJECTED.** This was the one
+  recommendation, and building it retired it. See below.
+
+
+---
+
+## The one swap we actually built — and rejected
+
+BodeShift builds its carrier from a refined parabola (`sb_sin`, 21
+instructions, called twice a sample, max error 1.09e-3 ≈ −59 dB). Replacing
+it with a read from `X:0x06c00` was the only table opportunity the evaluation
+found. **It was implemented and measured on 31 Aug 2026, and then reverted.**
+
+**The implementation**, for whoever reconsiders this — twelve instructions,
+because `p` is Q23 spanning −1..1 for −π..π and the table spans a full turn,
+so the index is `p·512`:
+
+```
+sb_sin:                         ; in: a = p    out: a = sin(pi*p)
+        asr     #$e,a,a         ; -> integer index, signed
+        move    a1,x0
+        move    x0,a            ; A2-clean (asr is fine, the `and` is not)
+        and     #>$3ff,a        ; wrap to 0..1023
+        move    a1,x0
+        move    x0,a
+        move    #>$6c00,x0      ; table base, and it IS 1024-aligned
+        add     x0,a
+        move    a,r1
+        move    #>$ffffff,m1
+        move    x:(r1),a
+        rts
+```
+
+**What it bought:** 344 → **328 cycles** (−4.6 %) and 391 → 382 words.
+MIX=0 stayed bit-exact, shift accuracy stayed at 0.00 Hz error at every knob
+position, feedback stayed stable at maximum, and sideband suppression was
+**identical** — 41.5 / 29.6 / 18.7 dB at 440 Hz / 1 kHz / 5 kHz.
+
+**What it cost, and how nearly we missed it.** Every gate above passed. A full
+spectrum scan — rather than the two bins the sideband test looks at — found
+**two new components at −72.5 dB** (3,860 Hz and 5,249 Hz), phase-quantisation
+products of the 1,024-point table. A/B against the parabola build confirmed
+they are new: the reference has nothing above −75 dB but the wanted sideband,
+the unwanted one and carrier leak. ⚠️ **The existing gate could not see them,
+because it only measures where signal is expected.** Same family as the THD
+metric that could not see an inharmonic spur.
+
+**Why rejected.** Not because −72.5 dB is audible — it is 60 dB down and
+almost certainly is not. Because **the 16 cycles buy nothing**: `mutables`
+worst-core is 1,376 against 3,120 usable, i.e. 1,744 cycles of headroom. The
+trade is a permanent, measurable cleanliness regression for savings we have no
+use for. Revisit only if BodeShift ever lands on a card that is genuinely
+tight.
+
+**Two claims this retired**, both of which had been written down here as
+argument for the swap:
+
+- ❌ *"It drops oscillator distortion below the Hilbert pair's residual."*
+  It was **already** below it — the parabola is −59 dB against a pair limiting
+  at 18.7–41.5 dB. There was never an accuracy gain to win.
+- ❌ *"An interpolated table would be cheaper and more accurate."* Linear
+  interpolation reaches −107 dB but costs ~22 instructions against the
+  parabola's 21, so it saves nothing. The cheap variant is the only one with a
+  saving and it is the one that adds spurs.
