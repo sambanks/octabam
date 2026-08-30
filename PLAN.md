@@ -344,24 +344,58 @@ so physically**: those rings are outside the DSP's 18-bit external address
 range, so no DSP code can ever read them. Delay→reverb stays BongDelay's
 `→VERB`.
 
-**The crack.** The audio path does not read the FX2 id field at all (all 18
-references to it are UI/menu code). The delay's enable is a `moveq #8` against
-a **copied byte in a per-track record** — which is exactly why every id-keyed
-sweep missed it. 🟡 That gate is *inferred*, not measured.
+**The crack — now ✅ MEASURED, 31 Aug 2026, by disassembling it here.** The
+audio path does not read the FX2 id field at all (all 18 references to it are
+UI/menu code). What the delay actually gates on, at `0x40003230`:
+
+```
+a2 = 0x80001b87 + 64*track                  ; 0x400031e0..e6
+mvzb (a2),d0 ; moveq #8,d1 ; cmp ; bne      ; the gate
+mvsb (fp),d0 ; moveq #7,d2 ; cmp ; bne      ; a SECOND condition, fp =
+                                            ; 0x80000eb4 + 8*[0x800000e0]
+```
+
+So the gate byte is **offset +7 of a 64-byte per-track record based at
+`0x80001b80`**, and that record is filled by the frame builder at
+`0x4000d13c..46` in an eight-iteration per-track loop (`a3 += 64`), with
+offsets 6–7 coming from a staging word at `0x80000128 + 512*bank +
+64*track + 32`.
+
+**The consequence, and it is what makes the experiment worth a flash: the gate
+byte is a PER-FRAME COPY in shared RAM, not the FX2 id itself.** The DSP
+dispatch reads the id from the instance table (`r6+$1c`); the CPU delay reads
+this staged copy. They are different storage fed from the same source — so a
+cave running between the builder's write and the delay's read can set one
+without touching the other. That is precisely the decoupling step 2 was meant
+to test, and it is now established statically rather than on the unit.
+
+⚠️ The **second condition** (`0x80000eb4 + 8*bank == 7`) is unexplained;
+`0x80000eb4` is machine-type storage in the timestretch work. It may gate
+which TIME path runs rather than whether the delay runs at all — the two
+branches lead to two different time derivations, not to a bypass. Read it
+before assuming.
+
+✅ **Closed one of Bryan's open threads while in there:** the writer of the
+staged TIME word at `0x80005fa0` is this same routine, at `0x40003284..88`,
+copying a word from the *other* per-track record at `0x80001a00 + 96*track`.
 
 **The experiment.** If that byte is decoupled from the dispatch id, a ColdFire
 cave — infrastructure we already fly — can set it for a track whose FX2 slot
 is running ChonVerb, giving **reverb → stock delay in series on one track**.
 Steps, cheapest first:
 
-1. Confirm the gate by reading it, not by patching: with a `cfv4e`
-   disassembly of `0x400031a0`, identify the record byte and its address.
-   (⚠️ `scripts/disasm.sh emac`, never radare2 — see `docs/EXTERNAL.md` §5.)
-2. On the unit, select DELAY on a track and read that byte; select ChonVerb
-   and read it again. If it tracks the FX2 id, the byte is the id and this
-   is dead. If it is set by a separate write, it is reachable.
-3. Only then write a cave that sets it. Its hook site must satisfy the
-   standing rule: assert the stock bytes, replay what you displace.
+1. ✅ **DONE** — the gate, its record and its filler are decoded above.
+2. Pick the hook window. It must be **after** the frame builder fills the
+   record (`0x4000d146`) and **before** the delay routine reads it
+   (`0x40003230`), on the same frame. Find a site in that window whose stock
+   bytes can be replayed.
+3. Write the cave: force record+7 to 8 for the chosen track. Flash, select
+   ChonVerb on that track, and listen for repeats. The standing rule applies
+   — assert the stock bytes, replay what you displace.
+
+⚠️ **Before spending the flash, settle the second condition** (the `==7`
+above) statically; if it turns out to gate the delay's existence rather than
+its time source, step 3's cave needs to satisfy both.
 
 **Known unknowns before spending a flash on step 3.** The delay's TIME comes
 from a staged word at `0x80005fa0` whose writer is unmapped, so the delay may

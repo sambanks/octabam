@@ -163,6 +163,48 @@ Points that matter if we ever go looking for a table:
   FRQ1 and is actually **GN1/GN2**; FRQ reads `X:0x015c7` with a ×4 index
   (2 extra bits of resolution, unexplained).
 
+### ✅ Evaluated against our own modules, 31 Aug 2026
+
+The atlas is shape-only, so the question it leaves open is *"is any of this
+useful to us?"*. Measured, not guessed:
+
+**The 32 × 128 bank is mostly one-pole COEFFICIENT PAIRS, not knob warps.**
+Extracted and characterised all 32: they come in pairs — a near-1.0 falling
+curve beside a small rising one — which is the (pole radius, complementary
+gain) shape you index by a knob to sweep a one-pole filter. Useful to a future
+module that wants a cutoff map with the stock feel; not what we assumed.
+
+**Not worth swapping our existing tapers, and this is a negative result worth
+recording so nobody re-runs it.** Fitting every curve (plus reversals and
+inversions) against the shapes our modules compute by hand:
+
+| our taper | best stock curve | RMS error | verdict |
+|---|---|---|---|
+| `k²` (BodeShift FREQ, Ripple FREQ, Rungs FREQ) | 14 | 0.040 | rough — audible difference in feel |
+| `(1−k)³` (Streamz FALL) | 12 reversed | 0.040 | rough |
+| an exponential we do *not* currently use | 0 | 0.016 | usable, if a module wants that shape |
+
+And the arithmetic goes the wrong way regardless: `k²` is **three
+instructions** (`move`, `move`, `mpy`) with no address register, while a table
+read costs ~5 *and* an AGU register. Computing wins for cheap shapes. Tables
+only pay for shapes that are expensive to compute.
+
+**Which is exactly BodeShift's sine.** ✅ The 1,024-point sine at `X:0x06c00`
+is at **the same address in BOTH payloads** (checked — so an insert, which
+must live in both, may use it) and is exact to 1.75e-7, i.e. Q23 quantisation.
+BodeShift computes its carrier with a refined parabola instead: **21
+instructions, twice per sample**, for a max error of 1.09e-3 (≈ −59 dB).
+
+Swapping it for a table lookup with modulo addressing (`m = 1023` makes the
+wrap free; r1–r3 are unused in that module) would be **cheaper *and* cleaner** —
+roughly 20 of its 344 cycles back, and the oscillator's distortion drops ~76 dB,
+below the Hilbert pair's own residual, so the shifter's sideband suppression
+would be limited by the pair alone rather than by its oscillator.
+
+🟡 **Not done.** BodeShift is verified as it stands, and this would need the
+sideband and shift-accuracy measurements re-run. Logged as a priced option,
+not a pending change.
+
 ⚠️ Its own caveats are worth keeping: segment boundaries come from a
 discontinuity detector and merge smoothly-joined tables, stride findings are
 statistical, and Q23 decode is assumed throughout.
@@ -265,8 +307,12 @@ in one document.** Nothing consumed it: not the script that drives r2, not
 
 Bryan flags these as still open:
 
-- Who writes the staged delay-time word at `0x80005fa0`, and its units — the
-  missing TIME → staging link.
+- ~~Who writes the staged delay-time word at `0x80005fa0`~~ ✅ **CLOSED here,
+  31 Aug 2026**: the delay routine writes it itself, at `0x40003284..88`,
+  copying a word from the per-track record at `0x80001a00 + 96*track` — on the
+  branch taken when the gate byte is 8 but the second condition fails. Units
+  still open. (`PLAN.md` work order §4 has the full decode, including the gate
+  byte's own provenance.)
 - The gain-to-knob mapping in the delay's EMAC block (FB, VOL, DIR, X);
   needs hand-decoding of EMAC extension words that objdump mangles.
 - Whether the second DSP's tracks (5–8) share the delay function or a twin.
