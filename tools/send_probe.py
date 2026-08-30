@@ -258,17 +258,29 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     _present = [c for c in layout.upper() if c in SERVER_CHARS]
     tgt = pick or ("R" if "R" in layout.upper() else
                    "D" if "D" in layout.upper() else
-                   (_present[0] if _present else "R"))
+                   (_present[0] if _present else None))
+    # ⚠️ NO SILENT FALLBACK TO "R". It used to default to the reverb when it
+    # could not work out a target, which meant `--direct` on an insert
+    # rendered ChonVerb and said so in the wrong words. If we cannot tell what
+    # to run, say so.
+    if tgt is None or tgt not in SERVER_ID:
+        die(f"cannot tell which module to render from layout {layout!r}. "
+            f"Pass --pick <letter> -- one of {''.join(sorted(SERVER_ID))} "
+            f"(see --layout help).")
     live = [(0, tgt)]
     if direct:
         ri, rp = entry(tgt)
+        # Params for whichever module is being rendered: the two servers keep
+        # their CLI-driven sets, anything else uses its own manifest defaults.
+        _par = (rev_params if tgt == "R" else dpar if tgt == "D"
+                else MODULE_DEFAULTS.get(tgt, [0] * 12))
         cmd = [str(HOST), "-mem", str(mem),
                "-init", f"{ri:x}", "-proc", f"{rp:x}",
                "-inst", "1", "-r7", "2", "-alloc", "1",
-               "-inmask", "1",                   # tone straight into the server
+               "-inmask", "1",                   # tone straight into the module
                "-blocks", str(blocks), "-in", str(src), "-out", str(out),
                *(["-split", str(split)] if str(split) not in ("0", "") else []),
-               "-params", ",".join(map(str, rev_params if tgt == "R" else dpar))]
+               "-params", ",".join(map(str, _par))]
     else:
         # Nothing in send_client divides by the number of clients, so N sends put
         # N x the contribution into one accumulator word.
@@ -371,15 +383,38 @@ def fft(x):
     return x
 
 
-def analyse(sig, label):
-    """Report the spur floor of a steady-state window. Returns (ratio_dB, rms)."""
+def analyse(sig, label, tone_end=None):
+    """Report the spur floor of a steady-state window. Returns (ratio_dB, rms).
+
+    ⚠️ THE DEFAULT WINDOW IS THE LAST NFFT SAMPLES OF THE BUFFER, which is
+    the `--tail` SILENCE APPENDED AFTER THE TONE, not "the last part of the
+    tone" this comment used to claim. A reverb hides that: its tail is a loud
+    decaying one, so the window is full of signal. A MEMORYLESS module has
+    nothing there, so the window is digital silence and the tool announced
+    `SILENT -- the bus carried nothing` about a perfectly good render. That is
+    what made every insert look broken (found 30 Aug 2026).
+
+    The fix is deliberately ADDITIVE, not a correction of the window: every
+    THD in `docs/VOICING.md` was measured against the tail, and moving the
+    window silently would invalidate the lot (the reverb reads -36.5 dB on the
+    tail and -21.7 dB on the tone -- they are different measurements, not a
+    better and a worse one). So the tail stays the default, and `tone_end` is
+    used only when the tail turns out to be silent. Anything comparing against
+    a logged number keeps comparing against the same thing.
+    """
     rms = math.sqrt(sum(v * v for v in sig) / max(len(sig), 1)) / 8388607
-    # Take the window from the LAST part of the tone, so the tank is fully
-    # built up and the measurement is steady state.
     if len(sig) < NFFT:
         die(f"{label}: only {len(sig)} samples, need {NFFT}")
     seg = sig[-NFFT:]
     pk = max(abs(v) for v in seg) / 8388607
+    if pk < 1e-4 and tone_end is not None and tone_end >= NFFT:
+        # No tail to measure -- a module with no memory. Fall back to the end
+        # of the tone and SAY SO, because it is not the same measurement.
+        seg = sig[tone_end - NFFT:tone_end]
+        pk = max(abs(v) for v in seg) / 8388607
+        if pk >= 1e-4:
+            print("  (no tail: measured over the end of the TONE, so this THD "
+                  "is not comparable with a server's tail figure)")
     if pk < 1e-4:
         return None, rms, pk, []
 
@@ -484,7 +519,7 @@ def main():
     ap.add_argument("--mod", type=int, default=0,
                     help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
-                    help="SHIMMER amount (param slot 6 -> r6+$b). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
+                    help="SHIMMER amount (param slot 6 -> the KNOB field of r6+$c, NOT $b -- the $b\nreading is why the delay's WOW worked locally and never on hardware; see\nPARAM_PAGES.md). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
     ap.add_argument("--dtime", type=int, default=None,
                     help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
     ap.add_argument("--dfdbk", type=int, default=None,
@@ -563,16 +598,27 @@ def main():
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
                     help="frames in the a=0 sub-block call. NONZERO IS THE POST-TRIG\nSTATE: proc() runs TWICE a block and the bus split bookkeeping\n(r7+$65/$66/$67) actually executes. Split 0 never touches it.")
+    _alpha = ", ".join(f"{c}={registry.by_id(SERVER_ID[c]).name}"
+                       for c in sorted(SERVER_ID))
     ap.add_argument("--layout", default="RS",
-                    help="dispatch slots in hardware order: R=reverb, D=delay, "
-                         "S=send, .=neither. Slot 0 is position 0, the "
-                         "housekeeper. e.g. SR, .RS, SSR, DS. D needs a DEV=1 "
-                         "image (see build_bus.py)")
-    ap.add_argument("--pick", choices=["R", "D"],
-                    help="which server's output to analyse when the layout runs "
-                         "both (default: R if present, else D)")
+                    help=f"dispatch slots in hardware order: {_alpha}, "
+                         ".=neither. Slot 0 is position 0, the housekeeper. "
+                         "e.g. SR, .RS, SSR, DS. D needs a DEV=1 image. "
+                         "Only R/D own a bus accumulator and can be ANALYSED; "
+                         "render an insert with --direct --pick <letter>.")
+    # ⚠️ NOT hard-coded to R/D. This was choices=["R","D"] until 30 Aug 2026,
+    # which made the documented insert-render command
+    # (`--direct --pick W`) die in argparse -- and dropping --pick was worse:
+    # the target fell back to "R", so it instantiated ChonVerb and LABELLED
+    # the output "DELAY". Six documents described that command as the way to
+    # render an insert. Derive the choices, like everything else here.
+    ap.add_argument("--pick", choices=sorted(SERVER_ID),
+                    help="which module's output to analyse. Defaults to the "
+                         "layout's server (R, else D). REQUIRED with --direct "
+                         "for an insert, which has no bus and so no default")
     ap.add_argument("--direct", action="store_true",
-                    help="CONTROL: no SEND, tone into the reverb's own input")
+                    help="CONTROL / the insert path: no SEND, tone straight "
+                         "into the picked module's own track input")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
 
@@ -636,20 +682,34 @@ def main():
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
                a.split, a.layout, delay_params=dpar, pick=a.pick,
                inall=a.inall)
-    thd, rms, pk, extra = analyse(L, a.label) if not a.infile else (None, 0, 0, None)
+    # Where the tone stops, so the analysis window is the end of the TONE
+    # rather than the silence after it -- see analyse().
+    _tone_end = len(wsrc) if wsrc is not None else int(a.dur * SR)
+    thd, rms, pk, extra = (analyse(L, a.label, _tone_end) if not a.infile
+                           else (None, 0, 0, None))
     if a.infile:
         pk = max((abs(v) for v in L + R), default=0) / 8388607
-        _srv = "DELAY" if (a.pick == "D" or "R" not in a.layout.upper()) else "REVERB"
+        _t = a.pick or ("R" if "R" in a.layout.upper() else
+                        "D" if "D" in a.layout.upper() else None)
+        _mm = registry.by_id(SERVER_ID[_t]) if _t in SERVER_ID else None
+        _srv = _mm.menu.fullname.decode("latin1").strip() if _mm else "?"
         print(f'{a.label}: {a.infile} through '
-              f"{_srv + ' direct (CONTROL)' if a.direct else 'SEND -> bus -> ' + _srv}"
+              f"{_srv + ' (--direct)' if a.direct else 'SEND -> bus -> ' + _srv}"
               f'  amp {a.amp}  peak {pk:.3f} FS')
         if a.wav:
             write_wav(ROOT / a.wav if not os.path.isabs(a.wav) else a.wav, L, R)
             print(f'  -> {a.wav}')
         return 0
 
-    _srv = "DELAY" if (a.pick == "D" or "R" not in a.layout.upper()) else "REVERB"
-    path = (f"{_srv} direct input (CONTROL)" if a.direct
+    # Name the module that ACTUALLY ran. This used to be a two-way guess
+    # between REVERB and DELAY, so an insert render was labelled "DELAY" while
+    # executing the reverb -- a mislabel of exactly the kind this project has
+    # lost sessions to.
+    _tgt = a.pick or ("R" if "R" in a.layout.upper() else
+                      "D" if "D" in a.layout.upper() else None)
+    _m = registry.by_id(SERVER_ID[_tgt]) if _tgt in SERVER_ID else None
+    _srv = _m.menu.fullname.decode("latin1").strip() if _m else "?"
+    path = (f"{_srv} on its own track (--direct)" if a.direct
             else f"SEND -> bus -> {_srv}")
     print(f"{a.label}:  tone {TONE_HZ:.2f} Hz through {path} "
           f"(amp {a.amp}, ->REVERB {snd[1]}, ->DELAY {snd[0]})")

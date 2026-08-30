@@ -413,6 +413,12 @@ def run(mem, src, values, tail_s, verbose, entry=None):
 
 
 # ---- reporting -----------------------------------------------------------
+# ⚠️ "tail to -60 dB" CANNOT TELL DECAY FROM RUNAWAY. It scores the last
+# window above -60 dB RELATIVE TO THE TAIL'S OWN PEAK, so a tail that GROWS
+# scores as a magnificent one -- it reported 7.90 s for an engine that was
+# diverging, and that number was written down as proof the eight-line tank
+# worked (docs/VOICING.md, "a single scalar cannot tell decay from runaway").
+# Read the per-second envelope before believing it.
 def report(label, L, R, src_len, normalized=False):
     peak = max((abs(v) for v in L + R), default=0)
     clip = sum(1 for v in L + R if abs(v) >= 8388607)
