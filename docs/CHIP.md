@@ -407,6 +407,7 @@ same address are the same memory.
 |---|---|---|
 | `0x30000-0x30047` (**72 words**) | **stock's per-frame PARAMETER STAGING.** Copied X→`Y:0x1b8` and written back every frame | disassembled: `do #<$48` loops at `P:0x0a4` (read) and `P:0x366` (write) |
 | `0x30000-0x300AA` (171 words) | DSP **host-port loader + ESAI setup**, payload A, boot-time | module dump |
+| | ⚠️ That "ESAI setup" is real and the ESAIs really do carry audio — 8-slot network mode, verified 30 Aug 2026. `DSP.md` asserted the opposite for weeks while this line sat here; see `docs/EXTERNAL.md` §2. | |
 | `0x31000-0x31031` (50 words) | **bootstrap A** | `DSP.md:22` |
 | `0x32000-0x32039` (58 words) | **bootstrap B** | `DSP.md:27` |
 | `0x38000-0x38012` (19 words) | payload **B's entry stub** — `jsr`s into `0x30082`/`0x3008a` | module dump |

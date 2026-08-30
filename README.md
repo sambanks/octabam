@@ -350,6 +350,7 @@ The documents that stay current:
 | `docs/DSP.md` | The DSP56300 module load map — which bytes land where |
 | `docs/PARAM_PAGES.md` | Parameter-page descriptors: how a knob reaches the DSP |
 | `docs/ARCHITECTURE.md` | The firmware as a whole |
+| `docs/EXTERNAL.md` | Findings from outside this project, and what they retract |
 | `docs/BUS.md` | The FX2 menu and descriptor work behind the bus |
 
 ---

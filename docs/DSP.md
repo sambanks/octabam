@@ -218,7 +218,28 @@ The null stub is not silence, it is a **passthrough**:
 Which is exactly the observed behaviour: the parameter page works, the audio is
 untouched. `0x08` has no implementation in *either* payload.
 
-### Where DELAY actually is — OPEN, and the DSP is ruled out
+### Where DELAY actually is — ✅ ANSWERED 30 Aug 2026, externally
+
+**It is on the ColdFire: per-frame DMA descriptor arithmetic over per-track
+circular buffers in SDRAM based at `0x4F502C10`, with an EMAC loop doing the
+gain and mix work.** The frame routine is `0x400031a0`. Full summary and
+provenance in **`docs/EXTERNAL.md`** — this is other people's work, adopted
+on their evidence and not re-verified by us (🟡).
+
+Everything below stands: every negative in this section was correct, and the
+DSP genuinely is ruled out. What the section lacked was the positive answer,
+and the reason it stayed missing is worth keeping — the searches keyed on
+parameter-storage addresses (the routine reads a *derived* time word), on the
+FX2-id field offset (the gate is a `moveq #8` against a copied byte), and on
+the `0x46xxxxxx` globals region (the rings are nowhere near it). What cracked
+it was searching for the **physics** — the literals 176400 and 1,411,200 —
+rather than the plumbing.
+
+One claim of ours does not survive it: *"the ColdFire does no per-sample audio
+arithmetic"* was verified only for the audio ISR at `0x4000aad0`, and the
+delay's EMAC loops are per-sample arithmetic outside it. ❌
+
+The old framing follows, still accurate as a record of what was ruled out:
 
 A tempting explanation — "a dedicated stage in the audio graph that the FX2
 slot enables" — **is an inference that a full search failed to support**; do not
@@ -243,9 +264,15 @@ a documented per-track insert whose id resolves to a passthrough.
   instructions and **98.5%** of payload B's. Every unreached run is small
   (≤112 instructions) and sits inside a module that is otherwise reached.
   There is no delay-sized body of unreferenced code.
-* **No delay buffer.** Every non-effect module characterised: `0x2bf` is a
-  MAC/pointer-walk resampler, `0x3a1` parameter unpacking, `0x5cb` flag
-  handling off `r6+$1e`, `0x6f4` a small MAC helper. **The largest modulo
+* **No delay buffer.** Every non-effect module characterised: `0x2bf`, `0x3a1`,
+  `0x5cb` flag handling off `r6+$1e`, `0x6f4` a small MAC helper.
+  🟡 **Two of those labels are corrected by external work** (`docs/EXTERNAL.md`,
+  30 Aug 2026, not re-verified by us): `0x3a1` is the **voice playback
+  engine** — a 2-tap linear interpolator over the 128-word ring — not
+  "parameter unpacking"; `0x2bf` is the **summing mixdown**, not a resampler.
+  `func_00055a` (below) is the 24-bit ↔ dual-16-bit host packer rather than a
+  gain routine. The *conclusion* of this bullet is untouched: none of them is
+  a delay. **The largest modulo
   buffer anywhere in the program is 128 words** (`m6=$7f`). A delay needs
   thousands.
 * **No third program.** Payloads A and B are back-to-back and the image tail
@@ -429,7 +456,9 @@ for.
 program uses a modulo bigger than `m6=$7f` (128 words), but it does not follow
 that no delay line exists: a delay line needs no modulo at all. Module `0x2bf`
 walks the shared window with `m0` linear, which is exactly how a long buffer
-would be read. (There is no external memory on this board; the shared window
+would be read. (🟡 `0x2bf` is now externally identified as the summing
+mixdown — `docs/EXTERNAL.md`. The caution in this paragraph stands on its own
+reasoning regardless.) (There is no external memory on this board; the shared window
 runs at the same speed as internal memory — see `CHIP.md`.) The reachability
 sweep and the module-by-module characterisation are what carry the conclusion,
 not the modulo scan.
@@ -650,8 +679,27 @@ renders the full bus — `docs/HARNESS.md`.)*
 
 ### Why address-guessing kept failing: the audio is DMA'd in
 
+❌ **RETRACTED 30 Aug 2026 — "audio does not arrive over the ESAI" was
+WRONG, and the reasoning below is the trap.** The vector reading is accurate;
+the inference from it is not. **A DMA-serviced peripheral needs no interrupt
+vectors at all**, so dead ESAI vectors say nothing about whether the ESAI
+carries audio. It does: both DSPs fully configure their ESAIs at boot
+(payload A `P:0x30026`, and a second port right after it) —
+`M_TMOD=1` network mode, `M_TDC=$7` (8 slots), `M_TSMA=$ff` enabling all
+eight, transmit and receive both enabled, and a live `movep a,x:<<M_TX0`.
+✅ **Verified in our own `payload_A.asm`**, prompted by an external finding
+(`docs/EXTERNAL.md`). Note the standing internal contradiction this leaves
+in the record: `CHIP.md` has labelled that very module "host-port loader +
+**ESAI setup**" the whole time, and nobody noticed the two documents
+disagreeing.
+
+The host-port/DMA path described below is real and still stands — it is how
+the *frame blocks* move. What is retracted is the exclusivity: the DMA path
+is not the only audio path, and the ESAI is not idle.
+
 The interrupt vector table at `P:0x00000` decodes cleanly. The ESAI vectors
-(`0x30`–`0x3e`) are all `jmp` to themselves — the unused-vector idiom — so audio
+(`0x30`–`0x3e`) are all `jmp` to themselves — the unused-vector idiom — which
+was read (wrongly, see above) as meaning audio
 does **not** arrive over the serial audio interface. The live vectors are
 `0x10`–`0x1c`, and they are host-port handlers that program the DMA controller:
 
