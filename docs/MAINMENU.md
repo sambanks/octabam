@@ -27,8 +27,8 @@ anchors).
 |---|---|
 | +0x00 | label string pointer |
 | +0x04 | window/geometry descriptor pointer (0 on every leaf row observed) |
-| +0x08 | action function pointer — called by the firmware (see §3) |
-| +0x0c | 0 in every row observed |
+| +0x08 | action function pointer — called by the firmware (see §3). **Doubles as the selectable marker**: cursor-move and submenu-entry code (`0x40064f0a`, `0x40064fe8`) skip rows whose +0x08 is 0 — that is what makes the glyph-`0x17` separators unselectable, and why every real leaf carries the shared `rts` |
+| +0x0c | right-column value-getter function pointer (called by the draw fn `FUN_40064908`); 0 when the row has no value column |
 | +0x10 | child list-descriptor pointer (0 on a leaf) |
 | +0x14 | page id, dispatched when the action is the shared no-op (see §3) |
 
@@ -71,9 +71,18 @@ Two mechanisms coexist in the same field:
   is a bare `rts` (bytes `4e 75`, read off the image), and is dispatched by
   the id at `+0x14` instead: DATE/TIME `0x0f`, PERSONALIZE `0x0c`, CARD
   TOOLS `0x0d`, STATUS `0x0e`; MIDI CONTROL/SYNC/CHANNELS/TURBO STATUS
-  `0x08..0x0b`. Where the id lands has not been traced (🟡 — presumably a
-  screen-constructor table; falsified/completed by following one id from the
-  nav engine).
+  `0x08..0x0b`. ✅ **Traced (31 Aug 2026):** the consumer is the tree-state
+  key handler at `0x40064e64` — on keycode `0x31` ([YES]/ENTER) it reads
+  row+0x14 at `0x4006502c`; ids `1..15` (bounds-checked, `0x40065034`) open
+  the matching entry of a **16-entry menu-state table at `0x400cbdac`,
+  stride 0x14**: `{on_enter, on_exit, draw, key_handler, encoder_handler}`,
+  state index in `DAT_400cbf40`. Cross-confirmed: state `0x0c`'s draw is
+  `FUN_40068e00`, the known PERSONALIZE renderer. Id 0 falls through to
+  calling the row's +0x08 action with one argument = 0 (`0x4006505a`).
+  Two consequences: **all 15 usable states are occupied** (no free slot —
+  live data follows the table), and every state is a screen *inside* the
+  menu window, so **the id path cannot open a parameter page**. The action-fn
+  path is the only extension point.
 
 ## 4. The draw/nav engine ✅ (the parts disassembled)
 
@@ -96,9 +105,10 @@ The root descriptor `0x400cbd8c` is referenced from eight code sites, all
 inside this engine (`0x400649b8`, `0x40064c72`, `0x40064d22`, `0x40064e9a`,
 `0x40064eaa`, `0x40064ef0`, `0x40064f40`, `0x40064f8e`) plus one data site,
 `0x400cbda8` — the word immediately after the descriptor's own rows pointer
-holds a pointer back to the descriptor (🟡 meaning unknown; maybe the record
-is longer than 0x1c, maybe an adjacent "current menu" cell; falsified by
-decoding the structure that owns `0x400cbda8`).
+holds a pointer back to the descriptor. ✅ Resolved (31 Aug 2026): it is the
+**focus pointer** — the "which list descriptor is the cursor in" cell the
+nav engine reads and writes; it persists across menu close (the menu
+remembers its position), which is stock behavior.
 
 ## 5. Why this matters: adding a fifth top-level entry is two writes ✅
 
@@ -127,13 +137,15 @@ The menu shell is the cheap half. Feeding controls to the DSP is not, and
 the viable designs all reuse the existing descriptor pipeline
 (`PARAM_PAGES.md`, `MIDI.md`):
 
-- **Shortcut into the host track's FX2 page.** The action handler stages the
-  existing page (resolver `FUN_40031da4`, stager `FUN_400326d4`) for the
-  track hosting the effect. Real dials, formatters, Part storage, scene
+- **Shortcut into the host track's FX2 page.** The action handler selects
+  the host track and restages the FX2 page through the firmware's own
+  transition functions. Real dials, formatters, Part storage, scene
   locks — the host-track architecture stays as the data model; only the
-  navigation jank goes away. Open question: what per-screen state the stager
-  expects around it (🟡 — nothing here has been executed; the Unicorn
-  ColdFire harness was pruned, so a menu patch goes static-verify → flash).
+  navigation jank goes away. ✅ **Traced end to end, 31 Aug 2026 — see §7**
+  for the decoded open path, the handler, and the residual risks. (Still
+  never executed: the Unicorn ColdFire harness was pruned, so a menu patch
+  goes static-verify → flash until the workbench emu of `PLAN.md` §5
+  exists.)
 - **A bespoke PERSONALIZE-style list screen** whose setters call the stock
   parameter writer `FUN_40054cd8(track, flat, value)` for the host track, so
   values land in the Part and flow through the normal frame builder.
@@ -144,11 +156,115 @@ the viable designs all reuse the existing descriptor pipeline
 Also already ruled out elsewhere: the MIXER page as a control surface (it
 does not use the generic renderer — `PARAM_PAGES.md`).
 
-## 7. Still undecoded
+## 7. The FX2-page shortcut, traced end to end (31 Aug 2026)
 
-The renderer/input half: the window/geometry descriptor internals, how a
-child list becomes an open menu, where the `+0x14` page ids are consumed,
-key handling, and everything `verify_menu.py`'s warning about the indirect
-widget-setup pointers (`PTR_FUN_400bb7f0` etc.) covers. None of it blocks
-the two-write table extension in §5; all of it stands between the table and
-a *screen* you author yourself.
+Everything below is read from disassembly/decompilation (`objdump cfv4e` +
+Ghidra 12 headless on `out/ghidra_fx`), none of it executed.
+
+### How the firmware itself opens the FX2 page ✅
+
+Keymaps are 26-byte records `{u8 code, 0, press, release, h3, aux, 0, u16
+flags}` in two tables, `0x400bfbf6..` and `0x400c01f4..0x400c0840` — the
+second carries codes `0x1c..0x1f` (`0x1c` = the dedicated MKII MAIN MENU
+key, thunked to the menu opener `FUN_40064c18` via `0x40064d78`). **[FX2] is
+keycode `0x26`**, one of five page keys `0x22..0x26` →
+`FUN_4005578c(keycode, edge)`, mapped through the u32 table at `0x400a7280`
+= `(0, 2, 1, 3, 4)` → page kind 4 = FX2 (matches the resolver's case
+numbering).
+
+A single press runs `FUN_400554e0(kind)`, which is the **entire page
+switch**: it writes the current-page-kind global **`0x460d1684`** (long,
+with a byte mirror at `0x46c7d8d8` written by the key handler), resolves the
+descriptor via `FUN_40031ee0(-1,-1)` → `FUN_40031da4(track, kind)`, stages
+it into four fixed working arrays with `FUN_400326d4`, and redraws
+(`FUN_4004d948`). A double press instead reaches **`FUN_4005996c`** through
+`PTR_FUN_400bc4a8` — the **EFFECT 2 SETUP window opener** (screen record
+`0x400bc484`: window handle +0x08, title "EFFECT 2 SETUP" +0x10, open
++0x24, close `FUN_40056830` +0x28, draw `FUN_40037590` +0x2c). It takes no
+arguments: it closes sibling setup windows, calls `FUN_400554e0(4)` itself,
+creates the window (`FUN_4005829c`), and derives track and part from
+globals. Called again while open, it toggles closed.
+
+### The current-track global ✅ — and the shortcut must select the track
+
+`FUN_40031ee0`: track −1 → `mvzb 0x80000000` — **the current audio track is
+the byte at `0x80000000`**, with a UI mirror at `0x100b14cc`; and if
+`0x80000012` ≠ 0 (MIDI mode) the track gets +8, resolving MIDI pages
+instead. Staging for a track without selecting it is not viable: the screen
+draw re-reads `0x100b14cc` directly and the encoder write path
+(`FUN_40054cd8`) keys off the same globals. The committed selector is
+**`FUN_40083bf8(track_index)`** — clamps, writes both globals, tears down
+the old track, restages the current page kind, redraws, updates LEDs — and
+it is already called from non-key UI code (`FUN_40061a94`), not only from
+the track-key release path. Selecting the host track is also the honest UX:
+the track LED moves, confirming where the knobs point.
+
+### Exit safety ✅
+
+Closing the menu from inside an action is tolerated by construction: the
+code after both key-handler tails is gated on the menu window handle
+`DAT_400cbf4c != 0`, and stock itself closes from handler context ([NO] in
+`FUN_400650a0` → `FUN_40064bc0`). `FUN_40064bc0` is the full cleanup:
+destroy window, unregister the input overlay (the dispatcher finishes list
+surgery before calling handlers, so unlinking inside one is safe), reset
+state, MENU LED off. After the shortcut the machine is in a 100% stock
+configuration, so every subsequent exit gesture is stock. One hygiene item:
+`DAT_400c0aac` (last page/track keycode for double-press detection, hold
+counter `0x460d5de0`) keeps its pre-menu value; optionally write −1.
+
+### The handler (~15 instructions, invoked as `action(0)`; only d0 live)
+
+```
+fx2_shortcut:
+    tstl  0x80000012             ; MIDI mode? kind 4 would resolve track+8
+    bnes  .out                   ; bail — menu just stays open
+    moveq #4,d0
+    movel d0,0x460d1684          ; current page kind = FX2 (long)
+    moveb d0,0x46c7d8d8          ; page-kind byte mirror
+    jsr   0x40064bc0             ; close MAIN MENU (full stock cleanup)
+    pea   4                      ; track index 4 = displayed "T5"
+    jsr   0x40083bf8             ; select track + restage FX2 + redraw
+    addql #4,%sp
+    jsr   0x4005996c             ; VARIANT B only: open EFFECT 2 SETUP
+.out:
+    rts
+```
+
+Variant A (no last `jsr`) lands on T5's FX2 knob page; variant B on the
+EFFECT 2 SETUP window. The row hangs off the **CONTROL** submenu
+(`0x400cbd54`) via the §5 relocate/bump/repoint move — avoid PROJECT and
+SYSTEM, whose descriptor addresses are hard-compared at `0x40064fa0..c2`
+for an alternate-list swap keyed on `0x80000088` (semantics unknown,
+untouched by this design). The menu widget init reads the count from the
+descriptor cell at open time, so a flash-time data edit is picked up.
+
+### Residual risk, honestly priced 🟡
+
+Confidence of surviving a first flash: **~75% variant A, ~65% variant B.**
+The risk concentrates in two inferences, both with cheap pre-flash
+falsifiers:
+
+1. `FUN_40083bf8` from a menu action ≡ a track-key release — the
+   `FUN_40043728(old_track)` teardown and the `DAT_8000004b` gate are
+   undecoded. Falsifier: decompile `FUN_40043728`.
+2. Menu-window destroy + setup-window create in ONE key dispatch is not a
+   stock sequence (stock precedent covers each half separately). Falsifier
+   on hardware: garbled/blank screen; mitigation: defer via the
+   timer-callback idiom `FUN_40000c3c` that `FUN_40063660` uses.
+
+Smaller: the MIDI-mode gate is inferred from the `+8`, never executed; the
+`0x46c7d8d8` mirror's two readers (`FUN_4005a918`, `FUN_4005cbd8`) are
+undecoded (cheap to close). Doing the two decompiles first should push
+variant A toward ~85%.
+
+## 8. Still undecoded
+
+What remains of the renderer/input half after the §7 trace: the
+window/geometry descriptor internals (the uniform `{0x13,0x09,0x01,ptr,ptr}`
+records), the drawing primitives behind the state table's draw functions,
+the `0x80000088` alternate-list semantics, `FUN_40043728` (old-track
+teardown) and the two `0x46c7d8d8` readers — plus everything
+`verify_menu.py`'s warning about the indirect widget-setup pointers
+(`PTR_FUN_400bb7f0` etc.) covers. None of it blocks the two-write table
+extension in §5 or the §7 shortcut; authoring a *new* screen of your own is
+the part that still costs real decode work.
