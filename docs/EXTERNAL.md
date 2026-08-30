@@ -205,6 +205,28 @@ would be limited by the pair alone rather than by its oscillator.
 sideband and shift-accuracy measurements re-run. Logged as a priced option,
 not a pending change.
 
+**And nothing for the two servers — checked, both negative.**
+
+*ChonVerb:* there is no expensive shape to table. Its 1,384 cycles are eight
+tank lines, four allpass bodies and two rolled groups — memory reads and MACs,
+not function evaluation. Its LFO is a triangle, which is cheap by construction
+and already shared across lines by the roll.
+
+*BongDelay:* it does have one expensive shape — the **smoothstep** window
+PITCH and GRAIN evaluate per head per sample — and it should **not** be
+tabled, for two independent reasons. No stock table is close: the best
+complementarity error among the candidate 128-word curves is 0.24 and the best
+shape match is 0.43 RMS, both nowhere near usable. And more importantly, the
+engine leans on `s(g) + s(1−g) = 1` holding **exactly** — that is what makes
+`g0 + g1 == 1` at every age, which is what bounds the loop gain and lets PITCH
+inherit CLEAN's stability. An approximate table would silently trade a proved
+stability bound for a handful of cycles. (Bryan's CPU-side crossfade table
+*is* exactly complementary, but it lives in CPU shared RAM at `0x80004000`,
+not in the DSP-visible X space, so it is not available to us.)
+
+The delay's own 1/√N reciprocal table is rebuilt per block, eight entries —
+already negligible.
+
 ⚠️ Its own caveats are worth keeping: segment boundaries come from a
 discontinuity detector and merge smoothly-joined tables, stride findings are
 statistical, and Q23 decode is assumed throughout.
