@@ -368,6 +368,13 @@ effects, so the two diverged rather than merged — by agreement, findings flow
 back as notes rather than pull requests. The upstream history is preserved in
 this repository's commit log.
 
+**Bryan T** answered the project's oldest open question — where the stock
+Echo Freeze Delay actually lives — along with the timestretch architecture and
+a shape-level atlas of the boot-uploaded DSP data tables. That work also
+retracted two claims of ours, one of which we then confirmed against our own
+disassembly. It is recorded, with its own confidence markers and ours, in
+`docs/EXTERNAL.md`.
+
 `vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300) (the
 emulator and disassembler this project assembles and auditions against) and
 [elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool).

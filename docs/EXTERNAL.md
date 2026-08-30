@@ -4,21 +4,21 @@ Reverse-engineering results **from outside this project**, recorded here so
 that what we adopted, what we verified, and what we merely repeated are three
 distinguishable things.
 
-⚠️ **ATTRIBUTION IS INCOMPLETE.** These arrived as three documents with no
-author line. Whoever did this work deserves the credit, and this file should
-name them — if you know, fix it. Until then nothing here should be presented
-as octabam's own finding.
+**This work is by Bryan T**, shared on Discord. It is his finding, not
+octabam's, and is recorded here as such — the status key below marks what we
+independently confirmed versus what we adopted on his evidence.
 
-Received 30 Aug 2026: `octatrack-delay-architecture.md`, `TABLE_ATLAS.md`,
-`timestretch.md`. All three are careful work: they mark their own claims
+Received 30 Aug 2026: `octatrack-delay-architecture.md`, `TABLE_ATLAS.md`
+(a revised version of an earlier atlas), `timestretch.md`. All three are
+careful work: they mark their own claims
 `[measured]` / `[inferred]` / `[open]`, state their method, and are explicit
 about what would falsify them — the same discipline `CLAUDE.md` asks for here.
 Each was derived from the officially distributed OS 1.40C, hash-verified
 against stock, and the hash they quote matches our own canonical
 `section_3_MAIN_OS.bin`.
 
-**Status key:** ✅ we re-verified it ourselves · 🟡 adopted on their evidence,
-not re-verified · ❌ it retracts something we had written.
+**Status key:** ✅ we re-verified it ourselves · 🟡 adopted on Bryan's
+evidence, not re-verified · ❌ it retracts something we had written.
 
 ---
 
@@ -36,7 +36,7 @@ works out where "delay-time ago" lives in each track's ring and points the DMA
 engine at it. The audio itself is moved by hardware, which is why no
 per-sample delay code exists anywhere the obvious searches looked.
 
-Load-bearing specifics, all marked `[measured]` by the source:
+Load-bearing specifics, all marked `[measured]` in Bryan's write-up:
 
 | | |
 |---|---|
@@ -129,7 +129,7 @@ and nothing else — no gain, no window, no position autonomy.
 
 ### 🟡 Corrections to our `docs/DSP.md` module labels
 
-Adopted on their evidence, not re-verified by us, and applied in place:
+Adopted on Bryan's evidence, not re-verified by us, and applied in place:
 
 | module | we called it | it actually is |
 |---|---|---|
@@ -171,7 +171,7 @@ statistical, and Q23 decode is assumed throughout.
 
 ## 5. A toolchain warning we should heed
 
-🟡 The delay write-up reports that **`objdump -m m68k:5407` silently mangles
+🟡 Bryan reports that **`objdump -m m68k:5407` silently mangles
 every EMAC region into `.short` garbage**, because the ColdFire here is
 V4e-class with a four-accumulator EMAC; `-m m68k:547x` is required. Any prior
 ColdFire disassembly is correct for ordinary ISA code and **blind in
@@ -188,7 +188,7 @@ a live caveat for anyone hunting audio arithmetic on the CPU side.
 
 ## Open threads worth knowing about
 
-From the sources, unresolved by them:
+Bryan flags these as still open:
 
 - Who writes the staged delay-time word at `0x80005fa0`, and its units — the
   missing TIME → staging link.
