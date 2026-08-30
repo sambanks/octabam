@@ -29,8 +29,14 @@ that are easy to tell apart in a spectrum:
   * BROADBAND HASH with no relation to the input: the server is reading memory
     that is not audio at all.
   * HARMONIC DISTORTION at 2f/3f/5f of a test tone with the fundamental still
-    dominant: ordinary overload, which is a known and separate weakness (the
-    reverb saturates above ~0.35 FS input) and is NOT this bug.
+    dominant: ordinary overload, which is a known and separate weakness and is
+    NOT this bug.
+    ⚠️ The threshold quoted here was "~0.35 FS input" until 30 Aug 2026, and
+    that figure is RETRACTED (docs/VOICING.md): it came from an unconfirmed
+    FWHT-store hypothesis. The engine is linear to the measurement floor below
+    -6 dBFS, the knee sits between input gain 0.6 and 0.7, and the 24 Aug 2026
+    hardware pass found it unreachable from a sane mix. Do not dismiss a real
+    distortion report by comparing against 0.35.
 
 HOW TO USE IT. Play a steady tone or a simple loop into the send with ChonVerb
 on the receiving track, capture ~8 s, then run --analyse. Capture the WORKING

@@ -80,11 +80,21 @@ import send_probe
 SCRATCH = ROOT / "out" / "delayverify"
 SR = 44100
 
-# TIME FDBK TONE PING MIX VRBW WOW p7 VRBD SPRAY -- send_probe.DELAY_PARAMS
-# order. Indices 6..9 are the page-2 KNOB fields r6+$b/$c/$d/$e (dsp_host
-# writes value<<16, the knob field only -- which is why the companion selects
-# MODE/PTCH/FRZE need build overrides and cannot appear here).
-BASE = [40, 60, 100, 64, 90, 0, 0, 0, 0, 0]
+# send_probe.DELAY_PARAMS order, which since the 18 Aug 2026 swap is:
+#   0 TIME  1 FDBK  2 TONE  3 PING  4 -VRB  5 IN  6 DPTH  7 MODE  8 RATE
+#   9 PTCH  10 DRV  11 FRZE
+# ⚠️ Slot 6 is the KNOB field of r6+$c, NOT $b -- the old "$b/$c/$d/$e"
+# reading is the exact error PARAM_PAGES.md names as why the delay's WOW
+# worked locally and never on hardware. Odd slots (7/9/11) are companion
+# fields; dsp_host drives them via -params too since 17 Aug 2026.
+#
+# ⚠️ The 90 was on index 4 until 30 Aug 2026, described as "MIX 90 so a render
+# is audibly wet". After the swap index 4 is -VRB, so every run pinned the
+# REVERB SEND to 90 and left the delay's own IN at 0. Harmless for the
+# bit-compare (both sides got the same wrong knob) and wrong as a description
+# of what was exercised -- the same shape as the SLOT fix below, which landed
+# on 23 Aug and did not reach this line.
+BASE = [40, 60, 100, 64, 0, 90, 0, 0, 0, 0, 0, 0]
 
 SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 5,
         "WOW": 6, "SPRAY": 9}

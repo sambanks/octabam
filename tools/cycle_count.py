@@ -45,8 +45,11 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 # against by every design decision from the density pass onward. Retracted
 # twice in the docs and still printed here until 8 Aug.
 #
-#   FILTER on all four core-0 tracks   froze at 32*76 = 1392 spare
-#   FILTER disabled everywhere         2032 and never broke (probe ran out)
+#   FILTER on all four core-0 tracks   froze at BURN=87 on the 16x probe -> 1392
+#   FILTER disabled everywhere         froze at BURN=76 on the 32x probe -> 2432
+# (⚠️ the arithmetic here read "32*76 = 1392" until 30 Aug 2026, which is
+# neither row: it fused the two, used the filters-OFF freeze point, and got a
+# product of 2432 while printing 1392. CHIP.md section 2 has both rows.)
 #
 # 1392 spare was measured with the FULL BANK plus the heaviest FX1 config
 # already running, so the budget for OUR code is that spare plus what the bank
@@ -71,6 +74,13 @@ ASM = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm"
 # so spare for new work today is BURN_SPARE minus however much the bank has
 # grown since. Anything else prices FX1 against cycles we do not have -- and
 # FX1 spends them x4 per core, so the error is multiplied by four.
+# ⚠️ SUPERSEDED AS A HEADLINE, kept because the delta arithmetic below is
+# anchored to it. The 23 Aug 2026 sweeps re-measured this properly and
+# CHIP.md section 2 is the authority: spare 704 with the R46 reverb + 4x
+# FILTER, 1088 with 2x, one FILTER = 192 (not the old ~260 inference), total
+# DSP-usable budget ~3120, stock's own share ~1410. Those are what the
+# WORST-CORE line below prices against; this constant only feeds the legacy
+# 7 Aug comparison, which is labelled as such.
 BURN_SPARE = 1392       # measured, worst realistic FX1 load, 7 Aug 2026
 # 🟡 RECONSTRUCTED, not measured: the bank the 1392 was measured on top of.
 # Pre-roll four-line reverb 763 (PLAN records the roll as 763 -> 778) + delay
@@ -79,6 +89,14 @@ BURN_SPARE = 1392       # measured, worst realistic FX1 load, 7 Aug 2026
 # does not build.
 BANK_AT_MEASURE = 763 + 163 + 2 * 19
 CORE_TOTAL = 4535       # 200 MIPS / 44100, arithmetic
+# ✅ hardware, 23 Aug 2026 (CHIP.md section 2), triangulated from three sweeps.
+USABLE = 3120           # what our code may actually spend, per core
+STOCK_SHARE = CORE_TOTAL - USABLE      # ~1410, by subtraction
+# ⚠️ THE PRICER IS KNOWN TO BE OFF, and by how much: CHIP.md measures the R46
+# reverb's true cost at ~1650 against the 1384 counted here (~270 LOW), and
+# the delay ~264 HIGH since the phead roll. The counts below are exact for the
+# code as written and blind to memory contention; treat them as a floor and
+# the hardware sweep as the authority.
 
 
 def room_for_new_work(bank):
@@ -505,6 +523,12 @@ def main():
     # against. Printing "% used" against a fixed budget is exactly what made
     # 1080 dangerous -- it turned an unknown into a pass/fail.
     print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
+    print(f"{'usable by us':{w}}  {USABLE:>13}   measured 23 Aug 2026; stock takes "
+          f"the other ~{STOCK_SHARE}")
+    print(f"{'headroom':{w}}  {USABLE - worst:>13}   against the worst core above"
+          + ("   *** OVER ***" if worst > USABLE else ""))
+    print(f"{'':{w}}  {'':>13}   ⚠️ the counter reads ~270 LOW on the reverb "
+          f"(CHIP.md s2); the wall is a CLIFF")
     if bank is None:
         print()
         print("  This remix carries none of the modules the 7 Aug hardware sweep")
