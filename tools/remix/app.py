@@ -898,6 +898,14 @@ class Workbench(App):
         self.player = None                 # the running afplay
 
     def on_mount(self):
+        # ansi-dark renders in the TERMINAL's own 16-color palette, so the
+        # workbench wears whatever theme Alacritty wears instead of Textual's
+        # truecolor default. WORKBENCH_THEME picks any built-in Textual theme
+        # (e.g. gruvbox, nord, textual-dark) for anyone who wants otherwise.
+        import os
+        from textual.theme import BUILTIN_THEMES
+        want = os.environ.get("WORKBENCH_THEME", "ansi-dark")
+        self.theme = want if want in BUILTIN_THEMES else "ansi-dark"
         self.switch_mode("rig")
 
     def play(self, path):
