@@ -1891,3 +1891,86 @@ on drums/bass/melody alike; PING 0 exactly symmetric (no shelf); FDBK 20
 worst case 17.5 -> 14.0 dB; no clipping on any render (drums peak -2.4).
 At FDBK 0 the right line still has no repeat to lift — inherent to the
 serial ping-pong, accepted. Tag 77. FLASHED + hardware-ratified the same night: lean +4.2/+4.6 dB on the unit (predicted 4.4), wet +3.8 dB (predicted +3.5), no clipping. (Flash detour for the record: a raw mainos_bus.bin on the card gives LENGTH ERROR — the card path needs `make image` ELUP packing, one OS bin on the root at a time; the "wrong checksum" complaints that evening were PROJECT files, not the OS.)
+
+## R59 — the VintageVerb refs revisited on the current engine (31 Aug 2026)
+
+The Round-12 A/B kit rebuilt from scratch against the CURRENT build:
+`out/vv_ab2/` (12 pairs, {pad,stab,hat,melody} x {ROOM,PLATE,BIG}, A = the
+9 Aug VV bounces, B = wet-only ChonVerb, 24-bit 44.1k STEREO — width has
+been pinned wide since v6, so the Round-11 mono limitation is gone), built
+by `out/vv_ab2/build_kit.py`: ffmpeg-sinc prep (no naive resample in the
+path), -20 dBFS active-RMS level match with the peak trim applied to the
+PAIR jointly, decay re-matched by peak->-40 dB tail time on the stab.
+
+**The Round-13 decay match had drifted with the engine**: ROOM = TIME 24
+(was 56 — ran ~0.5 s long), PLATE = 64 (unchanged, matches VV plate at
+2.20 s to the frame), BIG = 38 (was 44). DIFF=120 carried over from the
+old recipe for the kit renders.
+
+**Sam's verdicts** (stab PLATE/ROOM/BIG, hat BIG, pad BIG, melody ROOM
+played A/B): "ours are all wetter sounding but sound pretty good"; stab
+ROOM early tail "a bit" thicker than VV, "but the primary doesn't go as
+long. not necessarily a bad thing."
+
+**"Wetter" localized to DIFF in-session.** All pairs are level-matched
+wet-only, so wetter = energy distribution, and the early-tail slopes agree
+(every stab/hat B row shallower than its A: stab ROOM -18.4 vs -23.2, hat
+BIG -17.8 vs -29.9 dB/s). One knob change, stab PLATE DIFF 120 -> 64:
+early-tail slope -18.0 -> -21.3 dB/s against VV's -19.0, and Sam on the
+render: tightens up, "still a bit shorter but similar ballpark." The match
+point is ~DIFF 80-90, bracketed not measured.
+
+**Found while calibrating, parked as open items:**
+- **ROOM's early tail has a TIME-independent floor**: TIME 16->56 moves the
+  0.4-1.6 s stab slope only -19.0 -> -15.6 dB/s (VV room -23.2). Something
+  in the early tail (bloom/driven-line energy?) decays at its own rate.
+  Inferred candidate only — needs a probe, not a guess.
+- **BIG has a knee between TIME 38 and 44**: peak->-40 dB on the stab jumps
+  2.7 s -> 15.2 s (the inter-hit tail stops dropping 40 dB at all). Half of
+  BIG's dial is effectively infinite. Unknown whether real slow decay or a
+  scatter/truncation floor — one measurement would say.
+- **hat BIG still shows the inverted-HF signature** (-17.8 vs VV -29.9
+  dB/s) — the one row where HF outlives the mids on the current engine.
+- **The TIME dial's useful range has drifted off the knob**: a VV-matched
+  2 s room lives at TIME 24/127. Per-mode TIME re-mapping is settings work,
+  no engine change.
+
+Direction agreed in-session: settings first (DIFF character/default, TIME
+range re-map), the BIG damping + knee measurements after. The kit and its
+build script stay in out/vv_ab2/ (gitignored; script is self-contained).
+
+### R59 addendum — Sam, after the session's DIFF finding landed
+
+"verb is actually sounding really nice to me now." The reverb tuning
+urgency drops; the settings items (DIFF default/range, TIME re-map) stay
+queued but the sound itself passes. Focus moves to the delay.
+
+## R60 — REVERSE diagnosed: the ring is the segment comb (31 Aug 2026)
+
+Sam, from the workbench (piano_chords, TIME 68 FDBK 79 PING 16 -VRB 61
+DPTH 48 RATE 18 PTCH 1 DRV 55): REVERSE "sounds not great ... a fast
+metallicy ringing that seems to be specific to reverse."
+
+**Diagnosis, measured then source-confirmed — working as built, with a
+sweet-spot problem:**
+- No defect: no splice clicks in any variant (max inter-sample step
+  0.04 FS); wow, DRV and -VRB each exonerated by isolation renders
+  (out/vv_ab2/prep/rev_*.wav, journal-driven exact repro).
+- The ring is a comb at ODD multiples of ~10.8 Hz = the 2S period of
+  PTCH=1's 46 ms segment (REVERSE sizes: PTCH 0/1/2/3 = 93/46/23/12 ms,
+  delay_server.asm rsz table). On SUSTAINED harmonic material a reversed
+  46 ms chunk is the same chord re-phased, so the comb is all you hear;
+  FDBK 79 restacks it every repeat. Spectral diff vs CLEAN at identical
+  knobs: +13 to +23 dB on the comb lines (rev_spec.py).
+- Ear-confirmed: PTCH=0 (93 ms) on the piano "a bit" better; drums at the
+  same settings read as texture, not ringing. The wav wasn't wrong -- it
+  was the revealing case.
+
+**Work items opened:**
+1. SETTINGS: REVERSE's useful sustained-source range is basically PTCH=0;
+   1-3 are stutter/texture. Same family as the reverb's TIME drift (R59).
+2. STRUCTURAL: 93 ms is the CEILING -- reversing S samples spans 2S of
+   history and the 16K line caps S at 4096. A musical phrase-reverse
+   (0.5 s+) needs a longer line: a payload-B memory-layout item, not a
+   knob. Parked on the delay design list next to GRAIN makeup gain
+   (DENS = the DPTH/WOW knob in GRAIN; sparse still only subtracts).

@@ -59,7 +59,15 @@ def step_label(mod, name, v):
 
 
 def wav_sources():
-    """Source WAVs to audition, test_audio first (Sam's preferred set)."""
+    """Source WAVs to audition: out/dry/ -- the curated DRY set (31 Aug 2026;
+    test_audio + demo_sources are full of processed renders and made the
+    browser unusable). Falls back to the old dirs only when out/dry is
+    missing or empty (a fresh tree before anyone copies sources in)."""
+    d = ROOT / "out" / "dry"
+    if d.is_dir():
+        out = sorted(d.glob("*.wav"))
+        if out:
+            return out
     out = []
     for sub in ("test_audio", "demo_sources"):
         d = ROOT / "out" / sub
@@ -285,7 +293,7 @@ class RigScreen(Screen):
             end = "[/]" if cur else ""
             if name == "SOURCE":
                 src = app.source.name if app.source else "(none — add wavs "\
-                    "to out/test_audio/)"
+                    "to out/dry/)"
                 lines.append(f" {mark}SOURCE  {escape(src)}{end}")
             elif name == "WET":
                 w = "WET only (reverb render)" if app.wet else "full (dry+wet)"
@@ -308,7 +316,7 @@ class RigScreen(Screen):
         name, slot = rows[self.cursor]
         if name == "SOURCE":
             hint = ("the wav rendered through the effect -- drop files in "
-                    "out/test_audio/; left/right cycles")
+                    "out/dry/; left/right cycles")
         elif name == "WET":
             hint = ("WET = the reverb's wet alone (exact dry subtraction); "
                     "other effects always render their normal output")
@@ -406,7 +414,7 @@ class RigScreen(Screen):
         if mod is None:
             app.status = "no effect on this track — enter picks one"
         elif app.source is None:
-            app.status = "no source wav — put some in out/test_audio/"
+            app.status = "no source wav — put some in out/dry/"
         elif app.rendering:
             app.status = "a render is already running"
         else:
