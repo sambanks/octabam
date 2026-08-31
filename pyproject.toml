@@ -1,0 +1,24 @@
+# octabam is a scripts + Makefile project, not an installable package — the
+# build and analysis tools deliberately run on bare `python3` with the stdlib
+# only. This file exists for ONE reason: the local ColdFire emulator
+# (docs/EMU.md, the workbench's `e` view) needs `unicorn`, the project's only
+# external dependency, and it is optional. uv provisions it into `.venv` as
+# the `emu` extra; the tooling prefers that venv and falls back to bare
+# `python3` (where the emulator view simply reports itself unavailable).
+#
+#   uv sync --extra emu     # or: make emu-setup
+#
+[project]
+name = "octabam"
+version = "0.0.0"
+description = "Custom DSP effects and firmware tooling for the Elektron Octatrack"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+emu = ["unicorn>=2.1"]
+
+[tool.uv]
+# Virtual project: do not try to build/install octabam itself, just manage the
+# environment its scripts run in.
+package = false

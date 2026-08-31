@@ -12,9 +12,10 @@ real peripherals, no scheduler. Two uses:
     freshly built image and show that it boots clean and that a patched-in
     menu entry (docs/MAINMENU.md) actually resolves.
 
-Needs `unicorn` with the CFV4E model: `pip install 'unicorn>=2.1'`. The
-DEFAULT m68k core is plain-68k and will NOT decode this CPU (mvz/mvs/EMAC) —
-see docs/EXTERNAL.md. Boot details and the fork past the trap: docs/EMU.md.
+Needs `unicorn` with the CFV4E model — `make emu-setup` provisions it into
+the uv-managed `.venv` (the `emu` extra). The DEFAULT m68k core is plain-68k
+and will NOT decode this CPU (mvz/mvs/EMAC) — see docs/EXTERNAL.md. Boot
+details and the fork past the trap: docs/EMU.md.
 """
 import collections
 import os
@@ -85,7 +86,7 @@ def boot(image=None, count=BUDGET, on_draw=None):
     """
     r = BootResult()
     if not HAVE_UNICORN:
-        r.stopped = "unicorn not installed (pip install 'unicorn>=2.1')"
+        r.stopped = "unicorn not installed — run: make emu-setup"
         return r
     img = open(image or STOCK_IMAGE, "rb").read()
 
