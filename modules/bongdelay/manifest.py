@@ -71,8 +71,8 @@ MODULE = Module(
         # REVERSE's segment size -- which is why its count stays 4.
         Param(b"PTCH", 1, 4, active=True, formatter=_STEP,
               labels=("+12", "+7", "-12", "det"),
-              doc="PITCH: interval - REVERSE: seg 93/46/23/12 ms, sustained "
-                  "wants 0 (R60) - GRAIN: width"),
+              doc="PITCH: interval - REVERSE: seg 46/93/23/12 ms, default 1 "
+                  "= 93 musical (R62) - GRAIN: width"),
         # DRV is drive in every mode but GRAIN, where the same byte is the
         # scatter depth. 0 = exact bypass, which outranks a scatter taste
         # that gets played by hand anyway.

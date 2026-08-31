@@ -354,11 +354,12 @@
 ;              TIME is tempo-locked (always, see p0) is a tempo-locked loop.
 ;              `DFRZ=n` is the local override (it forces the decoded VALUE;
 ;              dsp_host also drives companions via -params 7/9/11).
-;   p9 PTCH  -> in REVERSE this same select is SIZE: 0 = 4096 samples (93 ms,
+;   p9 PTCH  -> in REVERSE this same select is SIZE: 1 = 4096 samples (93 ms,
 ;              the longest the line allows -- playing S samples backwards
-;              spans 2S of history), 1 = 2048, 2 = 1024, 3 = 512. One select,
-;              two meanings, because MODE already says which is in force and
-;              page 2 has no spare slot.
+;              spans 2S of history, and 1 is the PANEL DEFAULT, R62),
+;              0 = 2048, 2 = 1024, 3 = 512. One select, two meanings,
+;              because MODE already says which is in force and page 2 has
+;              no spare slot.
 ;   p9 PTCH  -> PITCH interval select, page-2 slot 9 companion (r6+$d low
 ;              bits), count 4: 0 = +12, 1 = +7, 2 = -12, 3 = +-detune
 ;              (~15 cents, L up / R down). Selects, not smooth knobs -- the
@@ -1419,18 +1420,21 @@ drvw:
         move    #>$3,x0
         cmp     x0,a
         beq     rsz3
-        move    #>4096,a                ; index 0 (and any garbage): 93 ms
-        move    a,x:(r7+$60)
-        move    #>2048,a                ; step = 2^23 / S
-        move    a,x:(r7+$61)
-        move    #>8128,a                ; cap = 16320 - 2S
+        move    #>2048,a                ; index 0 (and any garbage): 46 ms
+        move    a,x:(r7+$60)            ; (index 0 and 1 SWAPPED, R62: the
+        move    #>4096,a                ; step = 2^23 / S      panel default
+        move    a,x:(r7+$61)            ; is PTCH=1, and R60 measured 46 ms
+        move    #>12224,a               ; cap = 16320 - 2S     as comb
+                                        ; territory on sustained sources --
+                                        ; the default deserves the musical
+                                        ; segment, not the ring)
         bra     rszend
 rsz1:
-        move    #>2048,a                ; 46 ms
-        move    a,x:(r7+$60)
-        move    #>4096,a
+        move    #>4096,a                ; 93 ms -- the DEFAULT, and the size
+        move    a,x:(r7+$60)            ; R60's ear round preferred
+        move    #>2048,a
         move    a,x:(r7+$61)
-        move    #>12224,a
+        move    #>8128,a
         bra     rszend
 rsz2:
         move    #>1024,a                ; 23 ms

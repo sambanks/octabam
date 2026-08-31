@@ -2008,3 +2008,26 @@ risk).
 ⚠️ Behavior change on stored settings: DPTH 48 in GRAIN now means MID
 density, not full. That is the knob working for the first time; the
 makeup holds the level through it.
+
+## R62 — REVERSE's default is the musical segment; the -19 check closes
+## (31 Aug 2026)
+
+**The R60 settings item, done in zero words**: REVERSE's size table indices
+0 and 1 swapped, so the PANEL DEFAULT (PTCH=1) now selects the 93 ms
+segment -- the one R60's ear round preferred on sustained sources -- and
+46 ms moves to index 0. 23/12 ms stay at 2/3. Sizes unchanged, order
+changed; the 93 ms line-ceiling item stays open (structural, and payload
+B FREE 5 means it needs a space lever first).
+
+Verified by exact exchange: new PTCH=1 render == the old PTCH=0 render
+(rev_seg93, the one Sam ear-approved in R60) BIT-FOR-BIT, new PTCH=0 ==
+the old PTCH=1 bit-for-bit, CLEAN/PITCH bit-identical, GRAIN untouched by
+inspection ($62 unread by GRAIN; $60/$61 rewritten per-sample by its hoist
+before any read). make check green; FREE unchanged at 5.
+
+**GRAIN -19 interval: the reference-match swap LANDED long ago** -- the
+shipping 4-entry set is +12 / unison / -19 / -12 (no +7; the wide 8-entry
+set keeps +7 at entry 7). Verified in the set table this session; the
+open-item note in the 30 Aug memory was stale. With this and R61, the
+delay quality pass's buildable items are done: what remains on the list
+is structural (REVERSE line length) or taste (a future ear round).
