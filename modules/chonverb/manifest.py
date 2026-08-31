@@ -63,6 +63,10 @@ MODULE = Module(
     dsp=DspSection(
         asm="modules/chonverb/reverb_server.asm",
         priority=1,                       # after SEND, before the delay
+        # Payload A -> the core serving TRACKS 5-8 (the docstring's measured
+        # inversion). The build's SPEC table still hardcodes this pairing;
+        # here it is stated so the workbench can derive the track range.
+        payloads=frozenset({"A"}),
         bus_role=BusRole.SERVER,
         # Eight occurrences: the relocated tank buffers at 0x30000/0x34000.
         # The per-payload rewrite of this literal is load-bearing, not a

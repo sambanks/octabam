@@ -92,8 +92,72 @@ def main():
     else:
         print("  [PASS] modules that do not collide are left alone")
 
+    # ---- the rig's derivations (tools/remix/rig.py) ---------------------
+    # The track model is DERIVED, so hold the derivation to the measured
+    # facts: payload A serves TRACKS 5-8, B serves 1-4 (10 Aug 2026), an
+    # insert runs anywhere, SYSTEM modules never sit on a track.
+    from remix import registry, rig
+    for mod in registry.modules().values():
+        cat = rig.category(mod)
+        tr = rig.track_range(mod)
+        if cat == rig.SERVER:
+            want = (rig.PAYLOAD_TRACKS["A"]
+                    if mod.dsp.payloads == frozenset({"A"})
+                    else rig.PAYLOAD_TRACKS["B"])
+            ok = len(mod.dsp.payloads) == 1 and tr == want
+        elif cat == rig.INSERT:
+            ok = tr == rig.TRACKS
+        else:
+            ok = len(tr) == 0
+        if ok:
+            print(f"  [PASS] {mod.name}: {cat}, tracks "
+                  f"{f'{tr.start}-{tr.stop - 1}' if len(tr) else 'none'}")
+        else:
+            bad += 1
+            print(f"  [FAIL] {mod.name}: category {cat} derived tracks {tr}")
+    # A server that never declared its payload must refuse, not guess: the
+    # field's default is {"A","B"} and a guess would put the effect on all
+    # eight tracks of the picker.
+    from remix.schema import BusRole, DspSection, Harness
+    vague = Module(
+        name="vague", key="VAGUE", kind=Kind.DSP_EFFECT, doc="fixture",
+        menu=MenuEntry(fx2_id=0x1f, donor_desc=0x400d58b8,
+                       abbr=b"VAG", fullname=b"Vague"),
+        dsp=DspSection(asm="does/not/exist.asm", priority=0,
+                       bus_role=BusRole.SERVER),
+        harness=Harness(layout_char=None, is_server=True))
+    try:
+        rig.track_range(vague)
+        bad += 1
+        print("  [FAIL] a server with undeclared payload was given tracks")
+    except ValueError:
+        print("  [PASS] a server with undeclared payload is refused")
+
+    # ---- one knob-name universe -----------------------------------------
+    # The audition path drives render_reverb, whose PARAMS list predates the
+    # manifest and keeps two historical labels (MIX for IN, SPEED for SHMR).
+    # The bridge is positional -- manifest slot -> PARAMS[slot] -- so prove
+    # the two tables stay slot-for-slot aligned; a slot that moves in one and
+    # not the other is exactly the wrapper drift that has burned renders
+    # before (the harness-knob-drift rule).
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    import render_reverb
+    cv = registry.by_key("REVERB SERVER")
+    for name, slot in sorted(cv.knob_map().items(), key=lambda kv: kv[1]):
+        if slot == 7:
+            ok = render_reverb.PARAMS[slot][0] == "_C"   # MODE goes via --mode
+        else:
+            rr_name = render_reverb.PARAMS[slot][0]
+            ok = rr_name in render_reverb.NAMES and \
+                render_reverb.NAMES[rr_name] == slot
+        if not ok:
+            bad += 1
+            print(f"  [FAIL] chonverb {name}@{slot} has no aligned "
+                  f"render_reverb param")
+    else:
+        print("  [PASS] chonverb's manifest slots align with render_reverb")
+
     # And the real thing: every shipped remix must be clean.
-    from remix import registry
     for name in registry.remix_names():
         r = registry.remix(name)
         found = ledger.check(registry.selected(r))
