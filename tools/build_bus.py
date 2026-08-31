@@ -324,7 +324,17 @@ ORDER = [k for k in REMIX.modules
 # gates engine feed and client registration); GATE still scales wet only. Net
 # ZERO words on payload B (the drive-makeup a/b dance collapsed to `add x0,a`),
 # +4 on payload A. With a silent host track the output is bit-identical to R41.
-BUILD_TAG = b"77"
+# 78 == OCTABAMR62 == tag-77 content plus R61 and R62 (31 Aug 2026):
+# R61 = GRAIN density decode fix (the DENS/DPTH gate compared knob>>1
+# against a 3-bit draw, so >=15 was always full density; now knob>>4, the
+# full dial) + the density MAKEUP (coeff 1/2 + (7-dens3)/14 into the grain
+# gain word; level flat +-1.2 dB across the dial, was -7.1 dB of sag).
+# R62 = REVERSE size-table indices 0/1 swapped so the panel default
+# (PTCH=1) is the 93 ms musical segment, 46 ms on index 0. CLEAN/PITCH/
+# REVERSE proven bit-identical through R61, and R62's swap proven an exact
+# exchange. ⚠️ Stored parts with DPTH ~48 in GRAIN come up MID density on
+# this tag -- the knob working for the first time; the makeup holds level.
+BUILD_TAG = b"78"
 
 # ---- the module tables, derived from modules/*/manifest.py ------------------
 # One statement per fact, living in the module that owns it. These dicts keep
