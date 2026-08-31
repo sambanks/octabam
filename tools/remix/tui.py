@@ -403,7 +403,8 @@ def emu_view(scr, image):
     ok = r.clean
     roots = emu_bringup.menu_children(r) if r.uc and r.reached_handoff else []
     cursor = 0
-    mode = "menu"          # "menu" or "fx2"
+    mode = "menu"                       # "menu" | "fx1" | "fx2"
+    eff = {"fx1": 0x04, "fx2": 0x07}    # assigned effect id per page (cyclable)
 
     def put(y, x, s, attr=0):
         if 0 <= y < h and 0 <= x < w - 1:
@@ -420,43 +421,51 @@ def emu_view(scr, image):
             put(4, 2, "emulator unavailable — run: make emu-setup"
                 if not r.uc else "did not reach the RTOS handoff — a patch may "
                 "have broken early init.", curses.A_BOLD)
-        elif mode == "fx2":
-            put(3, 2, "FX2 SETUP — the built remix's own effects & dials "
-                      "(track 5):", curses.A_BOLD)
-            _lcd(scr, emu_bringup.render_fx2(r), 6, 4)
-            put(h - 3, 2, "the chooser lists THIS image's effects; the labels "
-                          "are the FX2 param row.", curses.A_DIM)
+        elif mode in ("fx1", "fx2"):
+            slot = mode.upper()
+            eid = eff[mode]
+            put(3, 2, f"{slot} SETUP — the effect's real param page "
+                      f"(track 5, effect id 0x{eid:02x}):", curses.A_BOLD)
+            draws = (emu_bringup.render_fx2(r, effect_id=eid) if mode == "fx2"
+                     else emu_bringup.render_fx1(r, effect_id=eid))
+            _lcd(scr, draws, 6, 4)
+            put(h - 3, 2, "left/right cycles the effect · the left column is "
+                          "the chooser, the rows are its knobs.", curses.A_DIM)
         else:
             sel = roots[cursor][0] if roots else ""
             put(3, 2, "MAIN MENU — the firmware's own render "
                       f"(selected: {sel}):", curses.A_BOLD)
             draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, cursor)
             ny = _lcd(scr, draws, 6, 4, sel_label=sel)
-            # the right LCD pane previews the selected category's submenu, as
-            # on the unit; move the cursor to browse each one.
             added = [k[0] for k in roots if k[0] not in STOCK_ROOTS]
             if added:
                 put(ny + 1, 2, "patched-in: " + ", ".join(added), curses.A_BOLD)
 
-        keys = (" up/down browse categories   f FX2 dials   q back "
+        keys = (" up/down browse   1 FX1 page   f FX2 page   q back "
                 "to workbench ") if mode == "menu" else \
-               (" m back to menu   q back to workbench ")
+               (" left/right cycle effect   m menu   1 FX1   f FX2   q back ")
         put(h - 1, 0, keys.ljust(w - 1), curses.A_REVERSE)
         scr.refresh()
 
         c = scr.getch()
         if c in (ord("q"), 27):
             return
-        if mode == "fx2":
-            if c in (ord("m"), ord("f")):
-                mode = "menu"
+        if c == ord("m"):
+            mode = "menu"; continue
+        if c == ord("1"):
+            mode = "fx1"; continue
+        if c == ord("f"):
+            mode = "fx2"; continue
+        if mode in ("fx1", "fx2"):
+            if c in (curses.KEY_RIGHT, ord("l")):
+                eff[mode] = eff[mode] + 1 if eff[mode] < 0x0f else 0x04
+            elif c in (curses.KEY_LEFT, ord("h")):
+                eff[mode] = eff[mode] - 1 if eff[mode] > 0x04 else 0x0f
             continue
         if c in (curses.KEY_DOWN, ord("j")) and roots:
             cursor = (cursor + 1) % len(roots)
         elif c in (curses.KEY_UP, ord("k")) and roots:
             cursor = (cursor - 1) % len(roots)
-        elif c == ord("f"):
-            mode = "fx2"
 
 
 def _wav_sources():
