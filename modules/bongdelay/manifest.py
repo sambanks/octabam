@@ -58,7 +58,8 @@ MODULE = Module(
               doc="this track's own send into the delay; 0 = off (and off the bus)"),
         # ---- page 2 -------------------------------------------------------
         Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
-              doc="tape wow depth -- pitch drift on the line; 0 = none"),
+              doc="tape wow depth; 0 = none - GRAIN: density, full dial, "
+                  "level-flat (R61)"),
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("CLEAN", "PITCH", "(tape)", "GRAIN", "REVRS"),
               doc="engine select; 2 is the retired TAPE slot and runs CLEAN"),
