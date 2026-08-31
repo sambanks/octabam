@@ -338,55 +338,62 @@ def emu_view(scr, image):
     scr.refresh()
 
     r = emu_bringup.boot(str(image))
-    tree = emu_bringup.read_menu_tree(r.uc) if r.uc and r.reached_handoff else []
+    # top-level root names, to move the cursor and to flag what a patch added
+    roots = ([n["name"] for n in emu_bringup.read_menu_tree(r.uc)]
+             if r.uc and r.reached_handoff else [])
 
-    # flatten the tree to display rows
-    rows = []
-    for n in tree:
-        added = n["name"] not in STOCK_ROOTS
-        rows.append((0, n["name"], added))
-        for c in n["children"]:
-            rows.append((1, c["name"], added))
-
-    top = 0
+    cursor = 0
     while True:
         scr.erase()
         ok = r.clean
         head = f" emulator — {image.name} — " + ("BOOTS CLEAN" if ok else "FAULT")
         scr.addstr(0, 0, head.ljust(w - 1),
                    curses.A_REVERSE | (0 if ok else curses.A_BOLD))
+
         def put(y, x, s, attr=0):
-            if 0 <= y < h and x < w - 1:
+            if 0 <= y < h and 0 <= x < w - 1:
                 scr.addstr(y, x, s[:w - x - 1], attr)
+
         put(2, 2, f"instructions : {r.instrs:,}")
         put(3, 2, f"stop         : {r.stopped}")
-        put(4, 2, f"auto-pokes   : {len(r.auto_pokes)} async-completion flags")
         if not r.uc:
-            put(6, 2, r.stopped, curses.A_BOLD)
-            put(6, 2, "emulator unavailable — pip install 'unicorn>=2.1'",
+            put(5, 2, "emulator unavailable — pip install 'unicorn>=2.1'",
                 curses.A_BOLD)
         elif not r.reached_handoff:
-            put(6, 2, "did not reach the RTOS handoff — a patch may have "
+            put(5, 2, "did not reach the RTOS handoff — a patch may have "
                       "broken early init.", curses.A_BOLD)
         else:
-            put(6, 2, "MAIN MENU (walked from booted RAM):", curses.A_BOLD)
-            view_h = h - 9
-            for i in range(top, min(len(rows), top + view_h)):
-                depth, name, added = rows[i]
-                y = 7 + (i - top)
-                mark = "NEW " if added and depth == 0 else ""
-                attr = (curses.A_BOLD if added else 0)
-                put(y, 4 + depth * 2, mark + name, attr)
-        put(h - 1, 0, " up/down scroll   q/esc back to workbench ".ljust(w - 1),
-            curses.A_REVERSE)
+            # LIVE screen: the firmware's own menu render (docs/EMU.md).
+            draws = emu_bringup.render_menu(r, cursor)
+            put(5, 2, "LIVE SCREEN — the firmware's own menu render:",
+                curses.A_BOLD)
+            # draw a little 128x64-proportioned LCD frame
+            grid = emu_bringup.layout_screen(draws)
+            fx, fy = 4, 7
+            put(fy - 1, fx, "+" + "-" * 44 + "+", curses.A_DIM)
+            for i, line in enumerate(grid):
+                put(fy + i, fx, "|", curses.A_DIM)
+                # highlight the selected root name
+                sel = roots[cursor] if cursor < len(roots) else ""
+                attr = curses.A_REVERSE if sel and line.strip() == sel else 0
+                put(fy + i, fx + 1, line.ljust(44), attr)
+                put(fy + i, fx + 45, "|", curses.A_DIM)
+            put(fy + len(grid), fx, "+" + "-" * 44 + "+", curses.A_DIM)
+            added = [n for n in roots if n not in STOCK_ROOTS]
+            if added:
+                put(fy + len(grid) + 2, 2,
+                    "patched-in entr" + ("y" if len(added) == 1 else "ies") +
+                    ": " + ", ".join(added), curses.A_BOLD)
+        put(h - 1, 0, " up/down move cursor   q/esc back to workbench ".ljust(
+            w - 1), curses.A_REVERSE)
         scr.refresh()
         c = scr.getch()
         if c in (ord("q"), 27, ord("e")):
             return
-        elif c in (curses.KEY_DOWN, ord("j")):
-            top = min(max(0, len(rows) - (h - 9)), top + 1)
-        elif c in (curses.KEY_UP, ord("k")):
-            top = max(0, top - 1)
+        elif c in (curses.KEY_DOWN, ord("j")) and roots:
+            cursor = (cursor + 1) % len(roots)
+        elif c in (curses.KEY_UP, ord("k")) and roots:
+            cursor = (cursor - 1) % len(roots)
 
 
 def main(scr):

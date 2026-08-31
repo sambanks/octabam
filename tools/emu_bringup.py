@@ -36,6 +36,21 @@ BUDGET = 50_000_000
 MENU_ROOT_DESC = 0x400cbd8c
 ROW_STRIDE = 0x18
 
+# The universal "draw string at (x,y)" primitive (docs/EMU.md). cdecl, args on
+# the stack at callee entry: sp@(0)=return, then font/canvas/x/y/count/str.
+DRAW_STRING = 0x40012bd8
+
+# Live-screen detour (docs/EMU.md): open the MAIN MENU window, dispatch its
+# draw, and capture every string it emits. These run in task context normally;
+# we call them directly against the warm (post-boot) machine.
+MENU_OPEN = 0x40064c18       # allocates the menu window from the heap
+MENU_DRAW = 0x40064d7c       # dispatches the current menu-state's draw
+MENU_STATE = 0x400cbf40      # menu state index (1 = the tree)
+MENU_VIEWPORT = 0x400cbd9c   # visible-row clamp; 0 in a cold detour -> no rows
+MENU_SELROW = 0x400cbd98     # selected row in the current list (the cursor)
+CALL_SP = 0x47f00000         # scratch stack for a detour call
+CALL_RET = 0x000000f0        # sentinel return address a detour stops at
+
 
 class BootResult:
     def __init__(self):
@@ -55,8 +70,12 @@ class BootResult:
         return self.reached_handoff and self.error is None
 
 
-def boot(image=None, count=BUDGET):
-    """Boot an image to the RTOS handoff. Returns a BootResult."""
+def boot(image=None, count=BUDGET, on_draw=None):
+    """Boot an image to the RTOS handoff. Returns a BootResult.
+
+    on_draw(x, y, str): if given, a hook at the string primitive DRAW_STRING
+    reports every text draw as it happens — the screen-capture path.
+    """
     r = BootResult()
     if not HAVE_UNICORN:
         r.stopped = "unicorn not installed (pip install 'unicorn>=2.1')"
@@ -65,6 +84,18 @@ def boot(image=None, count=BUDGET):
 
     mu = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
     mu.ctl_set_cpu_model(UC_CPU_M68K_CFV4E)
+
+    if on_draw is not None:
+        def _draw_hook(uc, address, size, user):
+            sp = uc.reg_read(UC_M68K_REG_A7)
+            try:
+                x = int.from_bytes(uc.mem_read(sp + 12, 4), "big")
+                y = int.from_bytes(uc.mem_read(sp + 16, 4), "big")
+                sptr = int.from_bytes(uc.mem_read(sp + 24, 4), "big")
+            except UcError:
+                return
+            on_draw(x, y, _cstr(uc, sptr))
+        mu.hook_add(UC_HOOK_CODE, _draw_hook, begin=DRAW_STRING, end=DRAW_STRING)
     for a, sz in {
         0x00000000: 0x00010000, 0x40000000: 0x02000000, 0x46000000: 0x02000000,
         0x48000000: 0x00100000, 0x80000000: 0x01000000, 0x100b0000: 0x00010000,
@@ -248,6 +279,95 @@ def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
                             if child else []}
         out.append(node)
     return out
+
+
+def _call(uc, addr, count=20_000_000):
+    """Invoke a firmware function on a warm machine and run until it returns.
+
+    Sets a scratch stack with a sentinel return address and executes until the
+    function's rts pops it back. Faults propagate as UcError.
+    """
+    uc.reg_write(UC_M68K_REG_A7, CALL_SP)
+    uc.mem_write(CALL_SP, CALL_RET.to_bytes(4, "big"))
+    uc.reg_write(UC_M68K_REG_SR, 0x2700)
+    uc.emu_start(addr, CALL_RET, count=count)
+
+
+def _prime_menu(r):
+    """One-time setup so a warm machine can redraw the MAIN MENU on demand:
+    install the string-capture + fault-survival hooks, flush the JIT cache
+    (draw fns were cached during boot WITHOUT the hooks), and open the window.
+    """
+    uc = r.uc
+    r._draws = []
+
+    def draw_hook(u, address, size, user):
+        sp = u.reg_read(UC_M68K_REG_A7)
+        try:
+            x = int.from_bytes(u.mem_read(sp + 12, 4), "big")
+            y = int.from_bytes(u.mem_read(sp + 16, 4), "big")
+            sptr = int.from_bytes(u.mem_read(sp + 24, 4), "big")
+        except UcError:
+            return
+        t = _cstr(u, sptr)
+        if t:
+            r._draws.append((x, y, t))
+
+    def on_unmapped(u, access, addr, size, val, user):
+        # A cold detour skips some normal setup, so a formatter may hold a
+        # stale pointer; map a zero page so its strlen reads "" and the real
+        # (valid) row labels still render, instead of faulting the whole draw.
+        try:
+            u.mem_map(addr & ~0xFFF, 0x1000)
+        except UcError:
+            pass
+        return True
+
+    uc.hook_add(UC_HOOK_CODE, draw_hook, begin=DRAW_STRING, end=DRAW_STRING)
+    uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED
+                | UC_HOOK_MEM_FETCH_UNMAPPED, on_unmapped)
+    uc.ctl_flush_tb()
+    _call(uc, MENU_OPEN)                     # allocate + set the menu window
+    uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
+    uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
+    r._menu_ready = True
+
+
+def render_menu(r, cursor=0):
+    """Open the MAIN MENU on a warm machine and capture what the firmware
+    draws, as a list of (x, y, text) — the live screen, the real renderer's
+    output rather than the tables. `cursor` selects the highlighted top-level
+    row (0..3); the right pane follows it, as on the unit. A patched-in entry
+    appears here exactly as the firmware would draw it.
+
+    Re-entrant: the first call primes the machine, later calls just redraw.
+    """
+    uc = r.uc
+    if uc is None or not r.reached_handoff:
+        return []
+    try:
+        if not getattr(r, "_menu_ready", False):
+            _prime_menu(r)
+        uc.mem_write(MENU_SELROW, int(cursor).to_bytes(4, "big"))
+        r._draws.clear()
+        _call(uc, MENU_DRAW)
+    except UcError:
+        pass
+    return list(r._draws)
+
+
+def layout_screen(draws, cols=42, rows=9):
+    """Arrange captured (x,y,text) draws into a text grid. The LCD is 128x64
+    with a bottom-left-ish origin (the list drawer steps y DOWN per row, so
+    larger y = higher on screen); map pixel x/y to character cells."""
+    grid = [[" "] * cols for _ in range(rows)]
+    for x, y, t in draws:
+        cx = min(cols - 1, max(0, x * cols // 128))
+        cy = min(rows - 1, max(0, (64 - y) * rows // 64))
+        for i, ch in enumerate(t):
+            if cx + i < cols:
+                grid[cy][cx + i] = ch
+    return ["".join(row).rstrip() for row in grid]
 
 
 def _cli():
