@@ -151,11 +151,24 @@ steps y DOWN per row), so `layout_screen` maps larger-y to higher rows.
 Selection highlight is a separate XOR-rect op `FUN_40012254` (`mode<0`) — not
 captured as text yet.
 
-**What is still table-driven, not live:** entering a submenu / backing out
-(the cursor demo pokes the selection global rather than driving the real key
-handler `FUN_40064e64`), and the param pages. Both are the same detour shape —
-call the state's key handler with a keycode, or stage a param page — and are
-the natural next increments.
+**The FX2 dials page renders too** — `render_fx2(r)` detours to the EFFECT 2
+SETUP window (`FUN_4005996c`) for track 5 and captures the chooser + param
+row; it lists the *built remix's own effects* (`ChonVerb77`, `BongDelay77`,
+`Send`). `make remix` → `e` → `f` shows it. (The effect's specific dial
+*values* — the reverb's SIZE/MODE — need the effect assigned to the track,
+i.e. a loaded project or a poked part-record; the chooser + param labels
+render without one.)
+
+**What is still not live: item-level descent inside the menu.** The MAIN MENU
+is a fixed two-pane widget (categories left, the selected category's submenu
+right), so moving the cursor already *previews* every submenu — but selecting
+a submenu ITEM (to reach a param page, or PROJECT▸SAVE) needs the real key
+handler `FUN_40064e64`, whose keycodes are position-dependent, and the
+selection highlight is an XOR rect (`FUN_40012254`), not text. Repointing the
+display at a submenu descriptor directly does NOT work: the firmware computes
+the row x from 2-pane state that a cold repoint leaves unset, so the labels
+land at a bogus x (`0x80003003`). Driving the key handler + capturing the XOR
+highlight is the next increment.
 
 ## The RTOS fork — still open, still not forced
 

@@ -324,11 +324,32 @@ def shell_out(scr, argv, env=None):
     return r.returncode
 
 
+def _lcd(scr, draws, y0, x0, sel_label=""):
+    """Draw captured (x,y,text) as a framed 128x64-proportioned LCD panel."""
+    h, w = scr.getmaxyx()
+    grid = emu_bringup.layout_screen(draws)
+    width = 46
+
+    def put(y, x, s, attr=0):
+        if 0 <= y < h and 0 <= x < w - 1:
+            scr.addstr(y, x, s[:w - x - 1], attr)
+    put(y0 - 1, x0, "." + "-" * width + ".", curses.A_DIM)
+    for i, line in enumerate(grid):
+        put(y0 + i, x0, "|", curses.A_DIM)
+        attr = (curses.A_REVERSE if sel_label and line.strip() == sel_label
+                else 0)
+        put(y0 + i, x0 + 1, line.ljust(width), attr)
+        put(y0 + i, x0 + width + 1, "|", curses.A_DIM)
+    put(y0 + len(grid), x0, "'" + "-" * width + "'", curses.A_DIM)
+    return y0 + len(grid) + 1
+
+
 def emu_view(scr, image):
-    """Boot a built image in the Tier-0 emulator and show it booted clean and
-    what its MAIN MENU resolves to -- a patched-in entry (docs/MAINMENU.md)
-    shows up highlighted. This is the no-flash gate: a cave that breaks early
-    init faults here instead of on the unit.
+    """Boot a built image in the Tier-0 emulator and NAVIGATE its firmware UI:
+    the MAIN MENU (up/down/enter/back through real rendered screens) and the
+    FX2 dials page, both drawn by the real firmware (docs/EMU.md). A patched-in
+    entry shows up as the firmware would draw it. Booting also IS the no-flash
+    gate: a cave that breaks early init faults here, not on the unit.
     """
     h, w = scr.getmaxyx()
     scr.erase()
@@ -338,62 +359,63 @@ def emu_view(scr, image):
     scr.refresh()
 
     r = emu_bringup.boot(str(image))
-    # top-level root names, to move the cursor and to flag what a patch added
-    roots = ([n["name"] for n in emu_bringup.read_menu_tree(r.uc)]
-             if r.uc and r.reached_handoff else [])
-
+    ok = r.clean
+    roots = emu_bringup.menu_children(r) if r.uc and r.reached_handoff else []
     cursor = 0
+    mode = "menu"          # "menu" or "fx2"
+
+    def put(y, x, s, attr=0):
+        if 0 <= y < h and 0 <= x < w - 1:
+            scr.addstr(y, x, s[:w - x - 1], attr)
+
     while True:
         scr.erase()
-        ok = r.clean
         head = f" emulator — {image.name} — " + ("BOOTS CLEAN" if ok else "FAULT")
-        scr.addstr(0, 0, head.ljust(w - 1),
-                   curses.A_REVERSE | (0 if ok else curses.A_BOLD))
+        put(0, 0, head.ljust(w - 1),
+            curses.A_REVERSE | (0 if ok else curses.A_BOLD))
+        put(1, 2, f"{r.instrs:,} instrs · {r.stopped}", curses.A_DIM)
 
-        def put(y, x, s, attr=0):
-            if 0 <= y < h and 0 <= x < w - 1:
-                scr.addstr(y, x, s[:w - x - 1], attr)
-
-        put(2, 2, f"instructions : {r.instrs:,}")
-        put(3, 2, f"stop         : {r.stopped}")
-        if not r.uc:
-            put(5, 2, "emulator unavailable — pip install 'unicorn>=2.1'",
-                curses.A_BOLD)
-        elif not r.reached_handoff:
-            put(5, 2, "did not reach the RTOS handoff — a patch may have "
-                      "broken early init.", curses.A_BOLD)
+        if not r.uc or not r.reached_handoff:
+            put(4, 2, "emulator unavailable — pip install 'unicorn>=2.1'"
+                if not r.uc else "did not reach the RTOS handoff — a patch may "
+                "have broken early init.", curses.A_BOLD)
+        elif mode == "fx2":
+            put(3, 2, "FX2 SETUP — the built remix's own effects & dials "
+                      "(track 5):", curses.A_BOLD)
+            _lcd(scr, emu_bringup.render_fx2(r), 6, 4)
+            put(h - 3, 2, "the chooser lists THIS image's effects; the labels "
+                          "are the FX2 param row.", curses.A_DIM)
         else:
-            # LIVE screen: the firmware's own menu render (docs/EMU.md).
-            draws = emu_bringup.render_menu(r, cursor)
-            put(5, 2, "LIVE SCREEN — the firmware's own menu render:",
-                curses.A_BOLD)
-            # draw a little 128x64-proportioned LCD frame
-            grid = emu_bringup.layout_screen(draws)
-            fx, fy = 4, 7
-            put(fy - 1, fx, "+" + "-" * 44 + "+", curses.A_DIM)
-            for i, line in enumerate(grid):
-                put(fy + i, fx, "|", curses.A_DIM)
-                # highlight the selected root name
-                sel = roots[cursor] if cursor < len(roots) else ""
-                attr = curses.A_REVERSE if sel and line.strip() == sel else 0
-                put(fy + i, fx + 1, line.ljust(44), attr)
-                put(fy + i, fx + 45, "|", curses.A_DIM)
-            put(fy + len(grid), fx, "+" + "-" * 44 + "+", curses.A_DIM)
-            added = [n for n in roots if n not in STOCK_ROOTS]
+            sel = roots[cursor][0] if roots else ""
+            put(3, 2, "MAIN MENU — the firmware's own render "
+                      f"(selected: {sel}):", curses.A_BOLD)
+            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, cursor)
+            ny = _lcd(scr, draws, 6, 4, sel_label=sel)
+            # the right LCD pane previews the selected category's submenu, as
+            # on the unit; move the cursor to browse each one.
+            added = [k[0] for k in roots if k[0] not in STOCK_ROOTS]
             if added:
-                put(fy + len(grid) + 2, 2,
-                    "patched-in entr" + ("y" if len(added) == 1 else "ies") +
-                    ": " + ", ".join(added), curses.A_BOLD)
-        put(h - 1, 0, " up/down move cursor   q/esc back to workbench ".ljust(
-            w - 1), curses.A_REVERSE)
+                put(ny + 1, 2, "patched-in: " + ", ".join(added), curses.A_BOLD)
+
+        keys = (" up/down browse categories   f FX2 dials   q back "
+                "to workbench ") if mode == "menu" else \
+               (" m back to menu   q back to workbench ")
+        put(h - 1, 0, keys.ljust(w - 1), curses.A_REVERSE)
         scr.refresh()
+
         c = scr.getch()
-        if c in (ord("q"), 27, ord("e")):
+        if c in (ord("q"), 27):
             return
-        elif c in (curses.KEY_DOWN, ord("j")) and roots:
+        if mode == "fx2":
+            if c in (ord("m"), ord("f")):
+                mode = "menu"
+            continue
+        if c in (curses.KEY_DOWN, ord("j")) and roots:
             cursor = (cursor + 1) % len(roots)
         elif c in (curses.KEY_UP, ord("k")) and roots:
             cursor = (cursor - 1) % len(roots)
+        elif c == ord("f"):
+            mode = "fx2"
 
 
 def main(scr):
