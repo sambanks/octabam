@@ -40,14 +40,20 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        Param(b"POS", 30, active=True, formatter=_PLAIN),
-        Param(b"SIZE", 70, active=True, formatter=_PLAIN),
-        Param(b"DENS", 40, active=True, formatter=_PLAIN),
-        Param(b"MIX", 100, active=True, formatter=_PLAIN),
+        Param(b"POS", 30, active=True, formatter=_PLAIN,
+              doc="how far back into the 743 ms buffer the grains read"),
+        Param(b"SIZE", 70, active=True, formatter=_PLAIN,
+              doc="grain length, 23/46/93/186 ms"),
+        Param(b"DENS", 40, active=True, formatter=_PLAIN,
+              doc="per-grain start scatter, up to ~92 ms -- 0 is coherent, high is cloud"),
+        Param(b"MIX", 100, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2 -------------------------------------------------------
         Param(),
-        Param(b"FRZE", 0, 2, active=True, formatter=_STEP),   # OFF / FROZEN
+        Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
+              labels=("RUN", "HOLD"),
+              doc="stop the write head -- the last 743 ms becomes a frozen cloud"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

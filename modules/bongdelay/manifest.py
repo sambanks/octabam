@@ -35,35 +35,50 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        Param(b"TIME", 40, active=True, formatter=_PLAIN),
-        Param(b"FDBK", 60, active=True, formatter=_PLAIN),
-        Param(b"TONE", 100, active=True, formatter=_PLAIN),
+        Param(b"TIME", 40, active=True, formatter=_PLAIN,
+              doc="delay time -- a free dial that sticky-snaps to tempo divisions"),
+        Param(b"FDBK", 60, active=True, formatter=_PLAIN,
+              doc="feedback -- how much each repeat regenerates"),
+        Param(b"TONE", 100, active=True, formatter=_PLAIN,
+              doc="tone of the repeats -- lower = darker every pass"),
         # PING 127, not 64. Measured 17 Aug 2026: 64 was the worst place on
         # the knob to boot -- it leaned +14.7 dB left with correlation 0.185,
         # i.e. more lean than 127 and no audible bounce. 127 is the classic
         # ping-pong, and where the lean is smallest.
-        Param(b"PING", 127, active=True, formatter=_PLAIN),
+        Param(b"PING", 127, active=True, formatter=_PLAIN,
+              doc="stereo ping-pong spread; 127 = the classic alternation (least lean)"),
         # -VRB: this delay's wet send into the reverb. 0 for the same
         # load-bearing reason as IN -- a non-zero default would register the
         # delay as a reverb client whenever it exists, idle or not, diluting
         # every real sender.
-        Param(b"-VRB", 0, active=True, formatter=_PLAIN),
+        Param(b"-VRB", 0, active=True, formatter=_PLAIN,
+              doc="wet send into ChonVerb over the bus -- delay into reverb in series"),
         # IN sits bottom-right to match the reverb's IN (the 18 Aug swap).
-        Param(b"IN", 0, active=True, formatter=_PLAIN),
+        Param(b"IN", 0, active=True, formatter=_PLAIN,
+              doc="this track's own send into the delay; 0 = off (and off the bus)"),
         # ---- page 2 -------------------------------------------------------
-        Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN),
-        Param(b"MODE", 0, 5, active=True, formatter=_STEP),
+        Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
+              doc="tape wow depth -- pitch drift on the line; 0 = none"),
+        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
+              labels=("CLEAN", "PITCH", "(tape)", "GRAIN", "REVRS"),
+              doc="engine select; 2 is the retired TAPE slot and runs CLEAN"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
-        Param(b"RATE", 64, 128, active=True, formatter=_PLAIN),
+        Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
+              doc="wow LFO speed; 64 = exactly 1x (the DPTH=0 bypass law)"),
         # PTCH is triple-meaning: the PITCH interval, GRAIN's set width, and
         # REVERSE's segment size -- which is why its count stays 4.
-        Param(b"PTCH", 1, 4, active=True, formatter=_STEP),
+        Param(b"PTCH", 1, 4, active=True, formatter=_STEP,
+              labels=("+12", "+7", "-12", "det"),
+              doc="PITCH: interval (det = 15-cent L/R spread) - REVERSE: segment size - GRAIN: width"),
         # DRV is drive in every mode but GRAIN, where the same byte is the
         # scatter depth. 0 = exact bypass, which outranks a scatter taste
         # that gets played by hand anyway.
-        Param(b"DRV", 0, 128, active=True, formatter=_PLAIN),
-        Param(b"FRZE", 0, 2, active=True, formatter=_STEP),
+        Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
+              doc="drive on the repeats; in GRAIN it is the scatter depth; 0 = bypass"),
+        Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
+              labels=("RUN", "HOLD"),
+              doc="freeze the line as a loop -- loop length = TIME"),
     ),
     dsp=DspSection(
         asm="modules/bongdelay/delay_server.asm",

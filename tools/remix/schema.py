@@ -100,10 +100,23 @@ class Param:
     count: int | None = None           # value count; None leaves the donor's
     active: bool = False               # drawn at all (the enable bitmap)
     formatter: Formatter = Formatter.INHERIT
+    # Display-only, consumed by the workbench and never by the build (the
+    # refhash gate proves it): one line saying what the knob DOES, and for a
+    # select, what each value means. The unit's panel cannot show either, so
+    # this is where a contributor answers "what is this?" once instead of in
+    # a comment only readers of the manifest ever see.
+    doc: str | None = None             # one line, ~70 chars, for the help row
+    labels: tuple[str, ...] | None = None   # one short label per select value
 
     def __post_init__(self):
         if self.name is not None and len(self.name) > 6:
             raise ValueError(f"param name {self.name!r} exceeds 6 bytes")
+        if self.labels is not None:
+            if self.count is None or len(self.labels) != self.count:
+                raise ValueError(
+                    f"param {self.name!r}: {len(self.labels)} labels for a "
+                    f"count of {self.count} -- one label per value, and only "
+                    f"where a count is declared")
         # A default outside its own count is used as an INDEX. That shipped
         # once -- slot 7 defaulted to 64 with a count of 5 -- and stalled the
         # sequencer on hardware after two steps.

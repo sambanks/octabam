@@ -70,7 +70,18 @@ The workbench derives a **category** and a **track range** for every module
 
 Every effect is auditionable locally through `tools/remix/audition.py`, and
 `tools/send_probe.py --set NAME=VAL` drives any knob of any module through
-its own `knob_map()` — no per-effect wrapper flags to go stale.
+its own `knob_map()` — no per-effect wrapper flags to go stale. Every render
+and A/B mark is journalled to `out/_audition/log.jsonl` (track, effect,
+source, every knob), so a listening note like "this sounds boxy" plus the
+journal tail is a full repro.
+
+Two `Param` fields exist purely for the workbench (the build never reads
+them — the refhash gate proves it): **`doc`**, one line saying what the knob
+does, shown under the knob cursor; and **`labels`**, one short label per
+value of a stepped select (the schema pins the length to `count`). The
+selftest requires a `doc` on every named, drawn param of every menu-bearing
+module — a knob without one is a knob the operator has to reverse-engineer
+by ear.
 
 ---
 

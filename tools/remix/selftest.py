@@ -157,6 +157,27 @@ def main():
     else:
         print("  [PASS] chonverb's manifest slots align with render_reverb")
 
+    # ---- every drawn knob answers "what is this?" -----------------------
+    # The workbench shows Param.doc as the help line under the knob cursor,
+    # and a select's labels beside its value. A knob with neither is a knob
+    # the operator has to reverse-engineer by ear, so hold the line: every
+    # named, drawn param of every menu-bearing module carries a doc.
+    # (Length is capped so the help row stays one line; the schema already
+    # pins labels to the declared count.)
+    for mod in registry.modules().values():
+        if mod.menu is None:
+            continue
+        undocumented = [p.name.decode() for p in mod.params
+                        if p.name and p.active and not p.doc]
+        toolong = [p.name.decode() for p in mod.params
+                   if p.name and p.doc and len(p.doc) > 90]
+        if undocumented or toolong:
+            bad += 1
+            print(f"  [FAIL] {mod.name}: undocumented knobs {undocumented}, "
+                  f"over-long docs {toolong}")
+        else:
+            print(f"  [PASS] {mod.name}: every drawn knob has a doc")
+
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():
         r = registry.remix(name)
