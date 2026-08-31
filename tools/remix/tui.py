@@ -29,7 +29,7 @@ KEYS
     w              assemble and report words (a real build)
     b              build the image        c   make check
     e              boot the built image in the Tier-0 emulator (docs/EMU.md)
-    v              source wav browser: preview + render through ChonVerb
+    v              audition: load a sample, dial FX2 knobs, render + hear
     q              quit
 """
 
@@ -47,6 +47,10 @@ import textwrap
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from remix import ledger, registry  # noqa: E402
 import emu_bringup  # noqa: E402  (Tier-0 ColdFire emulator; docs/EMU.md)
+try:
+    import render_reverb as rr   # ChonVerb FX2 render (DSP emulator)
+except Exception:                # noqa: BLE001 — optional; browser degrades
+    rr = None
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DONOR_WORDS = 2724          # per payload; build_bus.py prints the live figure
@@ -332,7 +336,7 @@ def draw(scr, st):
 
     put(h - 2, 0, st.msg[:w - 1], curses.A_DIM)
     put(h - 1, 0, (" space toggle  f fallback  w words  b build  e emu  "
-                   "v wavs  l load  s save  q quit").ljust(w - 1),
+                   "v audition  l load  s save  q quit").ljust(w - 1),
         curses.A_REVERSE)
     scr.refresh()
 
@@ -466,19 +470,32 @@ def _wav_sources():
     return out
 
 
+# The FX2 knobs to expose, in a sensible editing order. MODE is separate
+# (--mode, 0..2). Ranges are 0..127 except where noted.
+_FX2_KNOBS = ["SIZE", "MIX", "TIME", "MOD", "HP", "LP", "DIFF", "SHFT",
+              "GATE", "RATE", "SPEED"]
+_KNOB_MAX = {"SHFT": 3, "RATE": 4}     # SHFT selects interval; RATE a small mul
+
+
 def wav_browser(scr):
-    """Browse the project's source WAVs, preview them, and render one through
-    ChonVerb (the DSP emulator) to hear the effect — the compose/build/hear
-    loop, in the workbench. Playback is afplay (macOS); rendering shells out to
-    tools/render_reverb.py.
+    """Load a sample and control the FX2 page: pick a source WAV, dial in
+    ChonVerb's knobs, render through the DSP emulator, and hear it — the
+    compose/build/audition loop in the workbench. Playback is afplay (macOS);
+    rendering shells out to tools/render_reverb.py.
     """
     have_afplay = shutil.which("afplay") is not None
     files = _wav_sources()
-    cur, top = 0, 0
+    src_cur, top = 0, 0
+    knobs = {n: dict(rr.PARAMS)[n] for n in _FX2_KNOBS} if rr else {}
+    mode = 2                          # BIG, the fullest
+    knob_cur = 0
     wet = True
-    msg = ("space/p preview · r render through ChonVerb · w wet/dry toggle"
-           if have_afplay else "afplay not found — preview/playback disabled")
+    focus = "src"                     # "src" or "fx"
+    msg = ("tab: sources <-> FX2 knobs · r render+play"
+           if (have_afplay and rr) else
+           "needs afplay + render_reverb (make emu-setup / setup)")
     h, w = scr.getmaxyx()
+    left = min(52, w // 2)
 
     def put(y, x, s, attr=0):
         if 0 <= y < h and 0 <= x < w - 1:
@@ -486,47 +503,92 @@ def wav_browser(scr):
 
     while True:
         scr.erase()
-        put(0, 0, " source wav browser ".ljust(w - 1), curses.A_REVERSE)
-        put(1, 2, f"{len(files)} sources in out/test_audio + out/demo_sources"
-                  f"   render: {'WET only' if wet else 'full (dry+wet)'}",
-            curses.A_DIM)
-        view_h = h - 5
-        if cur < top:
-            top = cur
-        elif cur >= top + view_h:
-            top = cur - view_h + 1
+        put(0, 0, " sample + FX2 audition ".ljust(w - 1), curses.A_REVERSE)
+        put(1, 2, f"{len(files)} sources · render: "
+                  f"{'WET only' if wet else 'full (dry+wet)'} · MODE "
+                  f"{rr.MODES[mode] if rr else '-'}", curses.A_DIM)
+
+        # ---- sources (left) ------------------------------------------------
+        put(2, 2, "SOURCE" + ("  <" if focus == "src" else ""), curses.A_BOLD)
+        view_h = h - 6
+        if src_cur < top:
+            top = src_cur
+        elif src_cur >= top + view_h:
+            top = src_cur - view_h + 1
         for i in range(top, min(len(files), top + view_h)):
             p = files[i]
-            kb = p.stat().st_size // 1024
             label = f"{p.parent.name}/{p.name}"
-            put(3 + i - top, 2, f"{label:<48}{kb:>5} kB",
-                curses.A_REVERSE if i == cur else 0)
+            a = curses.A_REVERSE if (i == src_cur and focus == "src") else (
+                curses.A_BOLD if i == src_cur else 0)
+            put(3 + i - top, 2, f"{label:<44}", a, )
+
+        # ---- FX2 knobs (right) --------------------------------------------
+        x = left + 2
+        for row in range(2, h - 3):
+            put(row, left, "|", curses.A_DIM)
+        put(2, x, "FX2 · ChonVerb" + ("  <" if focus == "fx" else ""),
+            curses.A_BOLD)
+        put(4, x, f"  MODE   {rr.MODES[mode] if rr else '-':<8}",
+            curses.A_REVERSE if (focus == "fx" and knob_cur == 0) else 0)
+        for i, n in enumerate(_FX2_KNOBS):
+            a = curses.A_REVERSE if (focus == "fx" and knob_cur == i + 1) else 0
+            bar_w = 16
+            v = knobs.get(n, 0)
+            fill = round(bar_w * v / max(_KNOB_MAX.get(n, 127), 1))
+            bar = "#" * min(bar_w, fill) + "." * (bar_w - min(bar_w, fill))
+            put(5 + i, x, f"  {n:<6} {v:>3} [{bar}]", a)
+
         put(h - 2, 0, msg[:w - 1], curses.A_DIM)
-        put(h - 1, 0, (" up/down  p preview  r render+play  w wet/dry  "
-                       "q back ").ljust(w - 1), curses.A_REVERSE)
+        put(h - 1, 0, (" tab focus  up/down move  left/right adjust  m mode  "
+                       "p preview  r render+play  w wet/dry  q back")
+            .ljust(w - 1), curses.A_REVERSE)
         scr.refresh()
+
         c = scr.getch()
         if c in (ord("q"), 27):
             return
-        elif c in (curses.KEY_DOWN, ord("j")) and files:
-            cur = min(len(files) - 1, cur + 1)
-        elif c in (curses.KEY_UP, ord("k")) and files:
-            cur = max(0, cur - 1)
+        elif c == ord("\t"):
+            focus = "fx" if focus == "src" else "src"
         elif c == ord("w"):
             wet = not wet
-        elif c in (ord("p"), ord(" ")) and files and have_afplay:
-            shell_out(scr, ["afplay", str(files[cur])])
-        elif c == ord("r") and files and have_afplay:
-            src = files[cur]
-            outp = ROOT / "out" / f"_browser_{src.stem}_chonverb.wav"
+        elif c == ord("m") and rr:
+            mode = (mode + 1) % len(rr.MODES)
+        elif focus == "src":
+            if c in (curses.KEY_DOWN, ord("j")) and files:
+                src_cur = min(len(files) - 1, src_cur + 1)
+            elif c in (curses.KEY_UP, ord("k")) and files:
+                src_cur = max(0, src_cur - 1)
+            elif c in (ord("p"), ord(" ")) and files and have_afplay:
+                shell_out(scr, ["afplay", str(files[src_cur])])
+        else:   # fx knob editing
+            n_rows = len(_FX2_KNOBS) + 1     # +1 for MODE
+            if c in (curses.KEY_DOWN, ord("j")):
+                knob_cur = min(n_rows - 1, knob_cur + 1)
+            elif c in (curses.KEY_UP, ord("k")):
+                knob_cur = max(0, knob_cur - 1)
+            elif c in (curses.KEY_RIGHT, curses.KEY_LEFT, ord("l"), ord("h")):
+                step = 1 if c in (curses.KEY_RIGHT, ord("l")) else -1
+                if knob_cur == 0 and rr:
+                    mode = (mode + step) % len(rr.MODES)
+                elif rr:
+                    n = _FX2_KNOBS[knob_cur - 1]
+                    hi = _KNOB_MAX.get(n, 127)
+                    knobs[n] = max(0, min(hi, knobs[n] + step))
+        if c == ord("r") and files and have_afplay and rr:
+            src = files[src_cur]
+            # -o WITHOUT extension: --mode appends _{MODE}.wav (render_reverb).
+            base = ROOT / "out" / f"_audition_{src.stem}_chonverb"
             argv = [sys.executable, "tools/render_reverb.py", str(src),
-                    "--normalize", "-o", str(outp)]
+                    "--normalize", "--mode", str(mode), "-o", str(base)]
             if wet:
                 argv.append("--wet")
+            for n in _FX2_KNOBS:
+                argv += ["-p", f"{n}={knobs[n]}"]
             rc = shell_out(scr, argv)
-            if rc == 0 and outp.exists():
-                shell_out(scr, ["afplay", str(outp)])
-                msg = f"rendered + played {outp.name}"
+            played = base.with_name(f"{base.name}_{rr.MODES[mode]}.wav")
+            if rc == 0 and played.exists():
+                shell_out(scr, ["afplay", str(played)])
+                msg = f"rendered {src.name} · MODE {rr.MODES[mode]}"
             else:
                 msg = "render failed — see output above"
 
