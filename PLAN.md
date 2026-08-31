@@ -487,11 +487,19 @@ menu and the submenu preview following, as on the unit — on the *built* image,
 so a patched-in entry renders as the firmware would draw it. Recipe and the
 JIT-cache gotcha are in `docs/EMU.md`.
 
-Remaining toward full fidelity: entering submenus / param pages (same detour
-shape — drive the real key handler `FUN_40064e64` / stage a param page) and,
-only if something needs task-interleaving behaviour, route **A** (emulate the
-RTOS: dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing
-built so far needs A; `docs/EMU.md` keeps it on the table.
+The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window for
+track 5, listing the built remix's own effects (`ChonVerb77`, `BongDelay77`,
+`Send`) and the param row. And a **source WAV browser** (`v`) closes the
+voicing loop inside the workbench: browse `out/test_audio` + `out/demo_sources`,
+preview with afplay, and render a source through ChonVerb (the DSP emulator,
+wet or full) and hear it — compose → build → pick source → hear, in one place.
+
+Remaining toward full fidelity: item-level menu descent and live dial *values*
+(same detour shape — drive the real key handler `FUN_40064e64`, capture the
+XOR-highlight `FUN_40012254`, and assign the effect to the track) and, only if
+something needs task-interleaving behaviour, route **A** (emulate the RTOS:
+dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
+far needs A; `docs/EMU.md` keeps it on the table.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above
