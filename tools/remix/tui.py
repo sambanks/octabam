@@ -378,7 +378,7 @@ def emu_view(scr, image):
         put(1, 2, f"{r.instrs:,} instrs · {r.stopped}", curses.A_DIM)
 
         if not r.uc or not r.reached_handoff:
-            put(4, 2, "emulator unavailable — pip install 'unicorn>=2.1'"
+            put(4, 2, "emulator unavailable — run: make emu-setup"
                 if not r.uc else "did not reach the RTOS handoff — a patch may "
                 "have broken early init.", curses.A_BOLD)
         elif mode == "fx2":

@@ -18,6 +18,12 @@ VERSION ?= OCTABAM$(BUILD)
 # remixes/<name>.py is the selection. chongbong is the shipping one.
 REMIX   ?= chongbong
 
+# The tools run on bare python3 (stdlib only). The ONE exception is the local
+# ColdFire emulator (docs/EMU.md), which needs `unicorn` from the uv-managed
+# `.venv` (the `emu` extra). Prefer that venv when present, else bare python3 —
+# where the emulator view degrades to "unavailable" and everything else works.
+PY := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
+
 .DEFAULT_GOAL := help
 
 # ---------------------------------------------------------------- toolchain --
@@ -150,7 +156,12 @@ modules: ## List the module index and the available remixes
 
 .PHONY: remix
 remix: ## The remix workbench: compose a selection, see what it costs, build it
-	python3 tools/remix/tui.py
+	$(PY) tools/remix/tui.py
+
+.PHONY: emu-setup
+emu-setup: ## Provision the emulator's dependency (unicorn) into .venv via uv
+	uv sync --extra emu
+	@echo "emulator ready — 'make remix' then 'e' (docs/EMU.md)"
 
 # -------------------------------------------------------------------- misc --
 

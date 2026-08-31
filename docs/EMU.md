@@ -182,10 +182,16 @@ needs it.
 ## Reproduce
 
 ```sh
-pip install 'unicorn>=2.1'           # the DEFAULT m68k core is plain-68k; the
-tools/emu_bringup.py [image]         # CFV4E model is what decodes this CPU
-make remix                           # ... then press e to boot the built image
+make emu-setup                       # uv sync --extra emu -> .venv with unicorn
+make remix                           # then press e to boot the built image
+.venv/bin/python3 tools/emu_bringup.py [image]   # or the CLI directly
 ```
+
+The emulator's one dependency (`unicorn`, with QEMU's CFV4E core — the DEFAULT
+m68k core is plain-68k and cannot decode this CPU) lives in the uv-managed
+`.venv` as the optional `emu` extra (`pyproject.toml`). `make remix` prefers
+`.venv/bin/python3` and falls back to bare `python3`, where the emulator view
+reports itself unavailable and the rest of the workbench is unaffected.
 
 The CLI prints the boot outcome (the `trap #0` boundary), the auto-pokes, the
 MAIN MENU walked from booted RAM, and the peripheral boot map. In the
