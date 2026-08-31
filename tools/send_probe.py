@@ -196,7 +196,7 @@ def entry_points(mem_path, fxid):
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
         inall=False,
-        pick=None, tempo=None):
+        pick=None, tempo=None, insert_params=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
@@ -248,6 +248,17 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                     "(payload A carries no delay). Build the delay hatch:\n"
                     "  DEV=1 XBUS=1 python3 tools/build_bus.py\n"
                     "then rerun against out/dsp/mem_dev_A.mem")
+            # The same trap generalizes to every module: an id absent from
+            # the image dispatches to the fallback (SPEC aliases it to SEND),
+            # which renders a PLAUSIBLE DRY PASSTHROUGH -- peak == amp, THD at
+            # the noise floor, no error anywhere. Reproduced 31 Aug 2026 with
+            # --pick B against a chongbong image (no BodeShift in it). Check
+            # which code the entry actually points at before running it.
+            if c != "S" and ep[c] == entry_points(mem, SERVER_ID["S"]):
+                _m = registry.by_id(SERVER_ID[c])
+                die(f"this dump's {_m.name} entry is the SEND alias -- the "
+                    f"module is not in this image, so the render would be a "
+                    f"dry passthrough. Build a remix that includes it.")
         return ep[c]
 
     # --direct is the CONTROL for whichever server is being measured, so it has
@@ -271,8 +282,10 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
     if direct:
         ri, rp = entry(tgt)
         # Params for whichever module is being rendered: the two servers keep
-        # their CLI-driven sets, anything else uses its own manifest defaults.
+        # their CLI-driven sets, anything else uses its own manifest defaults
+        # unless --set built an override list.
         _par = (rev_params if tgt == "R" else dpar if tgt == "D"
+                else insert_params if insert_params is not None
                 else MODULE_DEFAULTS.get(tgt, [0] * 12))
         cmd = [str(HOST), "-mem", str(mem),
                "-init", f"{ri:x}", "-proc", f"{rp:x}",
@@ -619,6 +632,13 @@ def main():
     ap.add_argument("--direct", action="store_true",
                     help="CONTROL / the insert path: no SEND, tone straight "
                          "into the picked module's own track input")
+    ap.add_argument("--set", action="append", default=[], metavar="NAME=VAL",
+                    help="drive any knob of the RENDERED module by its "
+                         "manifest name (repeatable). Resolved through the "
+                         "module's own knob map, so it works for every "
+                         "effect -- servers and inserts alike -- without a "
+                         "per-effect flag; an unknown name dies instead of "
+                         "driving the wrong slot.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
 
@@ -679,9 +699,41 @@ def main():
                         ("dspray", a.dspray), ("dfrz", a.dfrz)):
             if val is not None:
                 dpar[_ds[_f]] = val
+    ins = None
+    if a.set:
+        # The target is the module that will actually RUN (same choice run()
+        # makes): --pick, else the layout's reverb, else its delay. --set on
+        # anything else would silently drive a module that never renders.
+        _st = a.pick or ("R" if "R" in a.layout.upper() else
+                         "D" if "D" in a.layout.upper() else None)
+        if _st not in SERVER_ID:
+            die(f"--set needs a render target -- pass --pick <letter> "
+                f"(one of {''.join(sorted(SERVER_ID))})")
+        _mod = registry.by_id(SERVER_ID[_st])
+        kmap = _mod.knob_map()
+        if _st == "R":
+            base = rev
+        elif _st == "D":
+            base = dpar = list(dpar) if dpar is not None else list(DELAY_PARAMS)
+        else:
+            base = ins = list(MODULE_DEFAULTS.get(_st, [0] * 12))
+        for spec in a.set:
+            name, _, val = spec.partition("=")
+            name = name.strip().upper()
+            if name not in kmap:
+                die(f"{_mod.name} has no knob named {name!r} -- it has: "
+                    f"{' '.join(sorted(kmap))}")
+            slot = kmap[name]
+            v = int(val)
+            count = _mod.params[slot].count
+            hi = (count - 1) if count is not None else 127
+            if not 0 <= v <= hi:
+                die(f"{_mod.name} {name}={v} is out of range 0..{hi} -- a "
+                    f"stepped select uses the value as an INDEX")
+            base[slot] = v
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
                a.split, a.layout, delay_params=dpar, pick=a.pick,
-               inall=a.inall)
+               inall=a.inall, insert_params=ins)
     # Where the tone stops, so the analysis window is the end of the TONE
     # rather than the silence after it -- see analyse().
     _tone_end = len(wsrc) if wsrc is not None else int(a.dur * SR)

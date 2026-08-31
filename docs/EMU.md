@@ -93,14 +93,18 @@ Two facts for whoever crosses it:
 
 `emu_bringup.boot(image)` returns a warm machine; `read_menu_tree(uc)` walks
 the MAIN MENU tables (`docs/MAINMENU.md`) out of its RAM. `make remix`
-(the remix workbench, `tools/remix/tui.py`) now has an **`e`** key: it boots
-the *built* image (`out/mainos_bus.bin` — byte-compatible with the raw
-section), confirms it reaches the RTOS handoff with no fault, and shows the
-menu tree with any patched-in entry highlighted. This is the crow-flies form
-of the no-flash gate: a cave that breaks early init **faults here instead of
-on the unit**, and a menu-table patch is visible before a flash. It needs
-`unicorn` in the interpreter that runs the TUI; without it the view degrades
-to an "unavailable" message and the rest of the workbench is unaffected.
+(the workbench, `tools/remix/app.py` — the curses `tui.py` is retired, in
+history) has an **`e`** view: it boots the *built* image
+(`out/mainos_bus.bin` — byte-compatible with the raw section), confirms it
+reaches the RTOS handoff with no fault, and shows the firmware's own screens
+with any patched-in entry highlighted. This is the crow-flies form of the
+no-flash gate: a cave that breaks early init **faults here instead of on the
+unit**, and a menu-table patch is visible before a flash. It needs `unicorn`
+in the interpreter that runs the workbench; without it the view degrades to
+an "unavailable" message and the rest of the workbench is unaffected. The
+workbench caches one `BootResult` and re-boots only when the image's mtime
+changes, so re-entering the view is instant; the FX2 page follows the rig's
+selected track (1-8) rather than a hardcoded track 5.
 
 Boot is ~4 s: execution runs in native bursts (`emu_start` with a count),
 with a per-instruction hook turned on only to pin a loop's bounds when a
@@ -174,8 +178,8 @@ highlight is the next increment.
 
 `render_fx2(r, track, effect_id)` and `render_fx1(r, track, effect_id)` render
 the real FX2 / FX1 parameter pages — the effect's actual knob rows, not a
-default. `make remix` → `e` → `f` (FX2) / `1` (FX1); left/right cycle the
-effect. FX2 with `0x07` shows ChonVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
+default. In the workbench's emu view: `f` (FX2 — follows the rig's selected
+track and its assigned effect) / `o` (FX1; left/right cycle the effect). FX2 with `0x07` shows ChonVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
 HP/LP/IN); FX1 shows the stock effects (FILTER's BASE/WDTH/ENV/ATK/DEC/…, EQ's
 FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
 

@@ -487,12 +487,26 @@ menu and the submenu preview following, as on the unit — on the *built* image,
 so a patched-in entry renders as the firmware would draw it. Recipe and the
 JIT-cache gotcha are in `docs/EMU.md`.
 
-The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window for
-track 5, listing the built remix's own effects (`ChonVerb77`, `BongDelay77`,
-`Send`) and the param row. And a **source WAV browser** (`v`) closes the
-voicing loop inside the workbench: browse `out/test_audio` + `out/demo_sources`,
-preview with afplay, and render a source through ChonVerb (the DSP emulator,
-wet or full) and hear it — compose → build → pick source → hear, in one place.
+The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window,
+listing the built remix's own effects (`ChonVerb77`, `BongDelay77`, `Send`)
+and the param row.
+
+**Milestone 3 is shipped (31 Aug 2026): the track-centric workbench.** The
+curses TUI is retired; `make remix` now runs `tools/remix/app.py` (Textual,
+in the same `.venv` extra as unicorn), organized the way an Octatrack user
+thinks. Home is a RIG of eight tracks: assign any effect the track can host
+(servers by payload — A serves T5-8, B serves T1-4, now DECLARED in the two
+server manifests; inserts anywhere), dial its manifest-named knobs on the
+real page-1/page-2 layout, render and hear it, A/B renders. EVERY effect
+renders locally (`tools/remix/audition.py`): ChonVerb via `render_reverb`,
+BongDelay via a staleness-checked DEV hatch build, inserts via a per-insert
+scratch image — and `send_probe --set NAME=VAL` now drives any knob of any
+module through its own `knob_map()`. The 12 Aug SEND-alias trap is guarded
+for every module (a `--pick` of an absent insert dies instead of rendering a
+plausible dry passthrough). The composer groups modules by category with
+track ranges, phrases its panel as the FX2 menu the unit will show, and
+builds/checks the LIVE selection; the emu view caches its boot until the
+image changes and follows the rig's selected track.
 
 Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the

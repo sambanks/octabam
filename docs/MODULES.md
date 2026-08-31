@@ -50,10 +50,27 @@ what keeps `modules/_template/` out of every build.
 `tools/remix/schema.py` is the vocabulary and is worth reading in full — it is
 short, and its comments carry the reasoning behind each field.
 
-Copy `modules/_template/` to start, and `make remix` opens the workbench —
-a curses composer that shows collisions, the panel your selection produces
-and its word cost against the donor region, and can save the result as a
-remix.
+Copy `modules/_template/` to start, and `make remix` opens the workbench
+(`tools/remix/app.py`, Textual — provisioned by `make emu-setup`). Its home
+view is a RIG of eight tracks: assign effects, dial their manifest-named
+knobs, render and hear them. Its REMIX view is the composer: collisions, the
+FX2 menu your selection produces, its word cost against the donor region,
+save/load, build and check.
+
+The workbench derives a **category** and a **track range** for every module
+(`tools/remix/rig.py`) rather than asking for new declarations:
+
+- **bus effect** (`harness.is_server`) — lives in ONE payload, which the
+  manifest declares (`dsp.payloads`); payload A serves tracks 5-8, payload B
+  serves tracks 1-4 (the measured 10 Aug 2026 inversion). A server that does
+  not declare a single payload is refused, not guessed at.
+- **insert** (a `DSP_EFFECT` with a menu, no server role) — both payloads,
+  any track.
+- **system** (SEND, ColdFire patches) — plumbing; never sits on a track.
+
+Every effect is auditionable locally through `tools/remix/audition.py`, and
+`tools/send_probe.py --set NAME=VAL` drives any knob of any module through
+its own `knob_map()` — no per-effect wrapper flags to go stale.
 
 ---
 

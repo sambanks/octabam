@@ -1,10 +1,12 @@
 # octabam is a scripts + Makefile project, not an installable package — the
 # build and analysis tools deliberately run on bare `python3` with the stdlib
-# only. This file exists for ONE reason: the local ColdFire emulator
-# (docs/EMU.md, the workbench's `e` view) needs `unicorn`, the project's only
-# external dependency, and it is optional. uv provisions it into `.venv` as
-# the `emu` extra; the tooling prefers that venv and falls back to bare
-# `python3` (where the emulator view simply reports itself unavailable).
+# only. This file exists for ONE reason: the interactive workbench's optional
+# dependencies. The local ColdFire emulator (docs/EMU.md) needs `unicorn`,
+# and the workbench frontend (`make remix`) needs `textual`; both live in
+# `.venv` as the `emu` extra (one extra on purpose — one setup command, and
+# the workbench is the only consumer of either). The tooling prefers that
+# venv and falls back to bare `python3`, where the build and every check
+# still run; only the interactive views report themselves unavailable.
 #
 #   uv sync --extra emu     # or: make emu-setup
 #
@@ -16,7 +18,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
-emu = ["unicorn>=2.1"]
+emu = ["unicorn>=2.1", "textual>=0.80"]
 
 [tool.uv]
 # Virtual project: do not try to build/install octabam itself, just manage the
