@@ -768,6 +768,9 @@ class Workbench(App):
     #emunote { height: 2; padding: 0 2; }
     """
     MODES = {"rig": RigScreen, "remix": RemixScreen, "emu": EmuScreen}
+    # App-level so it works from every view; modals handle their own escape
+    # first, and no screen binds it, so escape is unambiguous.
+    BINDINGS = [Binding("escape", "stop_play", "stop audio")]
 
     def __init__(self):
         super().__init__()
@@ -793,11 +796,28 @@ class Workbench(App):
         if shutil.which("afplay") is None:
             self.status = "afplay not found — cannot play (macOS only)"
             return
-        if self.player and self.player.poll() is None:
-            self.player.terminate()
+        self.stop_play()
         self.player = subprocess.Popen(
             ["afplay", str(path)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def stop_play(self):
+        """-> True if something was actually playing."""
+        if self.player and self.player.poll() is None:
+            self.player.terminate()
+            return True
+        return False
+
+    def action_stop_play(self):
+        self.status = ("stopped" if self.stop_play()
+                       else "nothing playing")
+        scr = self.screen
+        if hasattr(scr, "rerender"):
+            scr.rerender()
+
+    def on_unmount(self):
+        # Quitting must not leave a headless afplay running out the render.
+        self.stop_play()
 
 
 if __name__ == "__main__":
