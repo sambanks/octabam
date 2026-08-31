@@ -133,6 +133,9 @@ class State:
         count, and only the build knows them. The build report is API
         (verify_delay and friends parse it), which is why this can parse it.
         """
+        if self.fallback is None or self.fallback not in self.sel:
+            return False, ("set a fallback first (f on a selected module "
+                           "with a menu entry) — the build needs one")
         tmp = ROOT / "remixes/_tui_scratch.py"
         tmp.write_text(self.as_remix("_tui_scratch",
                                      "scratch selection from the remix TUI"))
@@ -168,6 +171,7 @@ class State:
     # ---- saving ---------------------------------------------------------
     def as_remix(self, name, doc):
         mods = ", ".join(f'"{k}"' for k in self.keys if k in self.sel)
+        fb = f'"{self.fallback}"' if self.fallback else "None"
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by tools/remix/tui.py. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
@@ -177,7 +181,7 @@ class State:
                 f'    name="{name}",\n'
                 f'    doc="{doc}",\n'
                 f'    modules=({mods},),\n'
-                f'    fallback="{self.fallback}",\n'
+                f'    fallback={fb},\n'
                 f')\n')
 
 
@@ -297,8 +301,9 @@ def draw(scr, st):
             ry += 1
 
     put(h - 2, 0, st.msg[:w - 1], curses.A_DIM)
-    put(h - 1, 0, (" space toggle  w words  b build  e emu  v wavs  "
-                   "l load  s save  q quit").ljust(w - 1), curses.A_REVERSE)
+    put(h - 1, 0, (" space toggle  f fallback  w words  b build  e emu  "
+                   "v wavs  l load  s save  q quit").ljust(w - 1),
+        curses.A_REVERSE)
     scr.refresh()
 
 
