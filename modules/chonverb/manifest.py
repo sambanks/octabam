@@ -30,11 +30,16 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        Param(b"TIME", 64, active=True, formatter=_PLAIN),
-        Param(b"MOD", 30, active=True, formatter=_PLAIN),
-        Param(b"SIZE", 100, active=True, formatter=_PLAIN),
-        Param(b"HP", 0, active=True, formatter=_PLAIN),
-        Param(b"LP", 127, active=True, formatter=_PLAIN),
+        Param(b"TIME", 64, active=True, formatter=_PLAIN,
+              doc="decay time -- how long the tail rings"),
+        Param(b"MOD", 30, active=True, formatter=_PLAIN,
+              doc="tank modulation depth -- 0 static, high = chorused tail; speed is RATE"),
+        Param(b"SIZE", 100, active=True, formatter=_PLAIN,
+              doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
+        Param(b"HP", 0, active=True, formatter=_PLAIN,
+              doc="low cut inside the feedback path -- thins mud out of the tail"),
+        Param(b"LP", 127, active=True, formatter=_PLAIN,
+              doc="high cut / damping -- darkens the tail; 127 = wide open"),
         # IN is this track's own send into its own reverb. 0 IS LOAD-BEARING
         # (v4, the return conversion): a non-zero default registers every idle
         # host as a bus client, and the 1/sqrt(N) auto-gain then hands it a
@@ -42,23 +47,33 @@ MODULE = Module(
         # exactly -6.02 dB for one such phantom client. Since v5 the host's
         # dry rides under the wet at unity, so IN=0 is an exact passthrough
         # rather than a silent track.
-        Param(b"IN", 0, active=True, formatter=_PLAIN),
+        Param(b"IN", 0, active=True, formatter=_PLAIN,
+              doc="this track's own send into the reverb; 0 = exact passthrough"),
         # ---- page 2: three knobs and three selects, in that alternation ----
         # SHMR defaults OFF. The slot used to be SPEED (the LFO rate) with a
         # default of 48; when it became the shimmer amount the default was
         # never revisited, so a fresh part booted with the shimmer half up.
         # SHMR=0 is bit-identical to the pre-shimmer engine.
-        Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN),
-        Param(b"MODE", 2, 3, active=True, formatter=_STEP),      # ROOM/PLATE/BIG
-        Param(b"DIFF", 64, 128, active=True, formatter=_PLAIN),
+        Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN,
+              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
+        Param(b"MODE", 2, 3, active=True, formatter=_STEP,
+              labels=("ROOM", "PLATE", "BIG"),
+              doc="voicing; the modes sit 7-9 dB apart and BIG clips first"),
+        Param(b"DIFF", 64, 128, active=True, formatter=_PLAIN,
+              doc="diffusion -- low = discrete repeats, high = smooth wash"),
         # SHFT selects the shimmer interval +12/+19/+7/-12 (v6; was WIDTH,
         # which is retired and pinned wide). An old project's stored WIDTH=3
         # loads here as -12, which is benign at SHMR's 0 default.
-        Param(b"SHFT", 0, 4, active=True, formatter=_STEP),
-        Param(b"GATE", 0, 128, active=True, formatter=_PLAIN),
+        Param(b"SHFT", 0, 4, active=True, formatter=_STEP,
+              labels=("+12", "+19", "+7", "-12"),
+              doc="shimmer interval in semitones -- heard once SHMR is up"),
+        Param(b"GATE", 0, 128, active=True, formatter=_PLAIN,
+              doc="gated-reverb hold -- higher holds longer; the useful range is low (8-20)"),
         # MOD speed select, 0.5/1/2/4x. Index 1 is 1x; the panel shows it
         # 1-based, so it reads as "2".
-        Param(b"RATE", 1, 4, active=True, formatter=_STEP),
+        Param(b"RATE", 1, 4, active=True, formatter=_STEP,
+              labels=("0.5x", "1x", "2x", "4x"),
+              doc="MOD speed multiplier; the panel shows it 1-based"),
     ),
     dsp=DspSection(
         asm="modules/chonverb/reverb_server.asm",

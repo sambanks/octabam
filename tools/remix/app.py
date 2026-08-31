@@ -52,17 +52,9 @@ from remix import audition, registry, rig  # noqa: E402
 from remix.state import (BUILT_IMAGE, DONOR_WORDS, ROOT,  # noqa: E402
                          STOCK_ROOTS, State)
 
-# Display sugar for chonverb's three selects; values come from the manifest,
-# these labels from modules/chonverb (MODE order is reverb_server.asm's).
-STEP_LABELS = {
-    ("chonverb", "MODE"): ["ROOM", "PLATE", "BIG"],
-    ("chonverb", "SHFT"): ["+12", "+19", "+7", "-12"],
-    ("chonverb", "RATE"): ["0.5x", "1x", "2x", "4x"],
-}
-
-
 def step_label(mod, name, v):
-    lab = STEP_LABELS.get((mod.name, name))
+    """A select's value as the manifest labels it, else the raw number."""
+    lab = rig.knob_labels(mod, name)
     return lab[v] if lab and v < len(lab) else str(v)
 
 
@@ -134,6 +126,89 @@ class Chooser(ModalScreen[str]):
             self.dismiss("")
 
 
+HELP = {
+    "rig": """[bold]THE RIG — your bench, not the unit[/]
+
+Assign an effect to a track, dial its knobs, render a source wav through
+the effect's real DSP code and hear it. Audio comes from the local DSP
+emulator (~6x real time); nothing here touches hardware.
+
+[bold]keys[/]
+  1-8       select track             enter      pick the track's effect
+  up/down   move between rows        left/right adjust (shift = coarse)
+  r         render + play            space      replay the last render
+  a / b     mark the last render     , / .      replay mark A / B
+  esc       stop audio               backspace  clear the effect
+  x         the remix composer       e          the emulated unit
+
+[bold]why some effects are missing on a track[/]
+The two BUS EFFECTS each live on one of the unit's two DSP cores:
+ChonVerb serves tracks 5-8 and BongDelay tracks 1-4 (measured, and
+inverted from what you'd guess). INSERTS run on any track. The knob
+rows mirror the unit's two FX2 SETUP pages: page 1 = encoders A-F,
+page 2 alternates knob/select. The dim ? line explains whichever
+knob the cursor is on.""",
+    "remix": """[bold]THE COMPOSER — what the firmware image contains[/]
+
+A remix is a named selection of modules built into one firmware image.
+Toggle modules here; the right panel answers, continuously: what the
+FX2 chooser will show on the unit, whether anything collides (the same
+ledger the build runs), and whether the DSP fits the 2724-word donor
+region (w assembles for real numbers).
+
+Effects the image leaves out don't vanish on the unit: an old project
+selecting an absent id is aliased to the FALLBACK (normally SEND), so
+it degrades to a send instead of noise. * marks an explicit fallback,
+~ an automatic one.
+
+[bold]keys[/]
+  space  toggle module        f  make it the fallback
+  w      assemble + measure   b  build the live selection
+  c      build + full check   l  load a saved remix
+  s      save this selection  v  rig    e  emulated unit""",
+    "emu": """[bold]THE EMULATED UNIT — the real firmware, screen only[/]
+
+Your built image, booted in a local ColdFire emulator, drawing its own
+screens: the MAIN MENU (patched-in entries render exactly as the unit
+would), the FX2/FX1 SETUP pages and the PLAYBACK page. There is no
+audio and no key matrix — this view is the no-flash confidence check:
+does the image boot cleanly, does the panel draw what the manifests
+promised.
+
+Knob VALUES draw as dial graphics the text capture cannot read, so the
+rig's numbers are always the truth for values. The boot is cached and
+repeats only when the image changes.
+
+[bold]keys[/]
+  m  main menu      f  FX2 (follows the rig's track + effect)
+  o  FX1 (stock)    p  playback page
+  1-8  track        up/down  menu cursor   left/right  cycle""",
+}
+
+
+class HelpScreen(ModalScreen[None]):
+    """The ? overlay: what this view is, its keys, and the concepts."""
+
+    CSS = """
+    HelpScreen { align: center middle; }
+    #box { width: 76; height: auto; max-height: 90%;
+           border: round $primary; padding: 1 2; }
+    """
+
+    def __init__(self, view):
+        super().__init__()
+        self.view = view
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="box"):
+            yield Static(HELP[self.view])
+            yield Static("[dim]any key closes[/]")
+
+    def on_key(self, ev):
+        ev.stop()
+        self.dismiss(None)
+
+
 # ---- RIG -------------------------------------------------------------------
 class RigScreen(Screen):
     """Eight tracks; the selected one shows its pages and renders."""
@@ -149,6 +224,7 @@ class RigScreen(Screen):
         Binding("full_stop", "play_mark('B')", "play B"),
         Binding("x", "app.switch_mode('remix')", "remix"),
         Binding("e", "app.switch_mode('emu')", "emu"),
+        Binding("question_mark", "help('rig')", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
 
@@ -228,8 +304,21 @@ class RigScreen(Screen):
                 knob = "ABCDEF"[slot % 6]
                 lines.append(f" {mark}{name:<6} {val} \\[{bar}]  "
                              f"p{page}·{knob}{end}")
+        # -- the "what is this?" line for whatever the cursor is on ------
+        name, slot = rows[self.cursor]
+        if name == "SOURCE":
+            hint = ("the wav rendered through the effect -- drop files in "
+                    "out/test_audio/; left/right cycles")
+        elif name == "WET":
+            hint = ("WET = the reverb's wet alone (exact dry subtraction); "
+                    "other effects always render their normal output")
+        elif mod:
+            hint = rig.knob_doc(mod, name) or "(this knob has no doc yet)"
+        else:
+            hint = ""
+        lines.append("")
+        lines.append(f"[dim]? {escape(hint)}[/]")
         if mod and mod.name == "chonverb":
-            lines.append("")
             lines.append("[dim]MODE renders as its own image (cached per "
                          "mode); WET applies to the reverb only.[/]")
         self.query_one("#detail", Static).update("\n".join(lines))
@@ -290,7 +379,7 @@ class RigScreen(Screen):
     def action_pick_effect(self):
         app = self.app
         opts = [(m.key, f"{escape(m.menu.fullname.decode('latin1')):<13} "
-                        f"\\[{rig.category(m)}]")
+                        f"\\[{rig.category(m)}]\n[dim]{escape(m.doc)}[/]")
                 for m in rig.available(app.track)] + [("__none__", "(none)")]
 
         def done(key):
@@ -307,6 +396,9 @@ class RigScreen(Screen):
         self.app.rig.save()
         self.cursor = 0
         self.rerender()
+
+    def action_help(self, view):
+        self.app.push_screen(HelpScreen(view))
 
     def action_render(self):
         app = self.app
@@ -362,8 +454,11 @@ class RigScreen(Screen):
     def action_mark(self, which):
         app = self.app
         if app.history:
-            app.marks[which] = app.history[-1][1]
-            app.status = f"marked {which}: {app.history[-1][0]}"
+            label, path = app.history[-1]
+            app.marks[which] = path
+            app.status = f"marked {which}: {label}"
+            audition._journal({"event": "mark", "which": which,
+                               "label": label, "out": path.name})
         self.rerender()
 
     def action_play_mark(self, which):
@@ -395,6 +490,7 @@ class RemixScreen(Screen):
         Binding("s", "save", "save"),
         Binding("v", "app.switch_mode('rig')", "rig"),
         Binding("e", "app.switch_mode('emu')", "emu"),
+        Binding("question_mark", "help('remix')", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
 
@@ -454,6 +550,8 @@ class RemixScreen(Screen):
         lines.append("[bold dim]REMIXES[/] [dim]" + " ".join(
             n for n in registry.remix_names() if not n.startswith("_"))
             + "[/]")
+        lines.append("")
+        lines.append(f"[dim]? {escape(st.mods[self.current_key()].doc)}[/]")
         self.query_one("#mods", Static).update("\n".join(lines))
 
         # -- right panel: the unit's FX2 menu + fit + problems --------------
@@ -515,6 +613,9 @@ class RemixScreen(Screen):
 
     def current_key(self):
         return self.grouped()[self.key_rows()[self.cursor]][0]
+
+    def action_help(self, view):
+        self.app.push_screen(HelpScreen(view))
 
     def action_toggle(self):
         self.app.state.toggle(self.current_key())
@@ -624,6 +725,7 @@ class EmuScreen(Screen):
         Binding("p", "view('play')", "playback"),
         Binding("v", "app.switch_mode('rig')", "rig"),
         Binding("x", "app.switch_mode('remix')", "remix"),
+        Binding("question_mark", "help('emu')", "what is this?"),
         Binding("q", "app.switch_mode('rig')", "back"),
     ]
 
@@ -731,6 +833,9 @@ class EmuScreen(Screen):
                         + ["'" + "-" * 46 + "'"])
         self.query_one("#lcd", Static).update(lcd)
         self.query_one("#emunote", Static).update(f"[dim]{note}[/]")
+
+    def action_help(self, view):
+        self.app.push_screen(HelpScreen(view))
 
     def action_view(self, v):
         self.view = v

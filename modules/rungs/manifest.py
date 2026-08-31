@@ -34,14 +34,20 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        Param(b"FREQ", 60, active=True, formatter=_PLAIN),
-        Param(b"STRC", 0, active=True, formatter=_PLAIN),
-        Param(b"DAMP", 80, active=True, formatter=_PLAIN),
-        Param(b"MIX", 100, active=True, formatter=_PLAIN),
+        Param(b"FREQ", 60, active=True, formatter=_PLAIN,
+              doc="the resonator's fundamental, ~55 Hz..1.25 kHz"),
+        Param(b"STRC", 0, active=True, formatter=_PLAIN,
+              doc="structure -- stretches the partial series toward inharmonic"),
+        Param(b"DAMP", 80, active=True, formatter=_PLAIN,
+              doc="ring time, T60 ~0.1..9 s -- how long the modes sing"),
+        Param(b"MIX", 100, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2 -------------------------------------------------------
         Param(),
-        Param(b"MODE", 0, 3, active=True, formatter=_STEP),  # STRING/BELL/GLASS
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("STRING", "BELL", "GLASS"),
+              doc="partial series: harmonic string, bell, or stretched glass"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

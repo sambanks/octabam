@@ -45,16 +45,22 @@ MODULE = Module(
         # reaches the reflection), so a fresh instance in FOLD mode passes
         # audio untouched until the knob moves -- deliberate, after SHMR's
         # lesson about defaults that were never revisited.
-        Param(b"DRV", 0, active=True, formatter=_PLAIN),
-        Param(b"FREQ", 48, active=True, formatter=_PLAIN),
+        Param(b"DRV", 0, active=True, formatter=_PLAIN,
+              doc="fold drive, 1..8x into the reflection; 0 = exact identity"),
+        Param(b"FREQ", 48, active=True, formatter=_PLAIN,
+              doc="ring carrier pitch, ~20 Hz..3 kHz -- heard in RING and BOTH"),
         # TONE 127 is the filter nearly wide open (one-pole coefficient
         # ~0.98); it exists to tame fold harshness, not to be a filter.
-        Param(b"TONE", 127, active=True, formatter=_PLAIN),
-        Param(b"MIX", 127, active=True, formatter=_PLAIN),
+        Param(b"TONE", 127, active=True, formatter=_PLAIN,
+              doc="post-fold low-pass to tame harshness; 127 = nearly open"),
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2: knob, select, knob, select, knob, select -------------
         Param(),
-        Param(b"MODE", 0, 3, active=True, formatter=_STEP),   # FOLD/RING/BOTH
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("FOLD", "RING", "BOTH"),
+              doc="wavefold, ring-mod against the carrier, or fold then ring"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

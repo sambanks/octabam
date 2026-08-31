@@ -93,6 +93,16 @@ def default_knobs(mod) -> dict[str, int]:
             for p in mod.params if p.name and p.active}
 
 
+def knob_doc(mod, name: str) -> str:
+    """The manifest's one-line answer to "what is this knob?"."""
+    return mod.params[mod.knob_map()[name]].doc or ""
+
+
+def knob_labels(mod, name: str):
+    """Per-value labels for a select, or None for a plain dial."""
+    return mod.params[mod.knob_map()[name]].labels
+
+
 def knob_max(mod, name: str) -> int:
     """Highest legal value: count-1 where the manifest states a count,
     else the stock 0..127 dial."""

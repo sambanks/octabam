@@ -37,20 +37,26 @@ MODULE = Module(
         # ---- page 1 -------------------------------------------------------
         # SENS drives the follower. 64 is roughly unity: a signal peaking at
         # full scale opens the gate fully.
-        Param(b"SENS", 64, active=True, formatter=_PLAIN),
+        Param(b"SENS", 64, active=True, formatter=_PLAIN,
+              doc="follower sensitivity; 64 ~ unity (full-scale peaks open it fully)"),
         # FALL is the vactrol's sluggishness -- short is plucky and percussive,
         # long is a slow swell. Attack is fixed and fast; an LPG whose attack
         # you can slow down stops sounding like an LPG.
-        Param(b"FALL", 50, active=True, formatter=_PLAIN),
+        Param(b"FALL", 50, active=True, formatter=_PLAIN,
+              doc="vactrol release -- short is plucky, long is a slow swell"),
         # COLR is how dark the gate gets when CLOSED. 0 is a full gate (shut
         # is silent and black); higher leaves the filter partly open, which is
         # the difference between a gate and a gentle tone-follower.
-        Param(b"COLR", 10, active=True, formatter=_PLAIN),
-        Param(b"MIX", 127, active=True, formatter=_PLAIN),
+        Param(b"COLR", 10, active=True, formatter=_PLAIN,
+              doc="how dark the gate gets when closed; 0 = fully shut and silent"),
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2 -------------------------------------------------------
         Param(),
-        Param(b"MODE", 0, 3, active=True, formatter=_STEP),   # LPG/VCF/VCA
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("LPG", "VCF", "VCA"),
+              doc="LPG = filter+amp together; VCF = envelope filter; VCA = gate only"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

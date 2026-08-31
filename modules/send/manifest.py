@@ -33,8 +33,10 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"-DEL", 0, active=True),
-        Param(b"-VRB", 0, active=True),
+        Param(b"-DEL", 0, active=True,
+              doc="this track's send level onto the DELAY bus"),
+        Param(b"-VRB", 0, active=True,
+              doc="this track's send level onto the REVERB bus"),
         _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),

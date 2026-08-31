@@ -34,14 +34,20 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
-        Param(b"FREQ", 90, active=True, formatter=_PLAIN),
-        Param(b"RES", 40, active=True, formatter=_PLAIN),
-        Param(b"DRV", 0, active=True, formatter=_PLAIN),
-        Param(b"MIX", 127, active=True, formatter=_PLAIN),
+        Param(b"FREQ", 90, active=True, formatter=_PLAIN,
+              doc="cutoff, ~24 Hz..7.2 kHz on a squared taper"),
+        Param(b"RES", 40, active=True, formatter=_PLAIN,
+              doc="resonance, up to a screaming Q~30 -- just short of self-oscillation"),
+        Param(b"DRV", 0, active=True, formatter=_PLAIN,
+              doc="drive into the filter -- the clip is the character; 0 = unity"),
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2 -------------------------------------------------------
         Param(),
-        Param(b"MODE", 0, 3, active=True, formatter=_STEP),   # LP/BP/HP
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("LP", "BP", "HP"),
+              doc="filter response: low-pass, band-pass or high-pass"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

@@ -39,14 +39,20 @@ MODULE = Module(
         # ---- page 1 -------------------------------------------------------
         # FREQ 0 with FINE 0 is a shift of zero, which is a (near) bypass --
         # so a freshly selected instance does not leap out at you.
-        Param(b"FREQ", 0, active=True, formatter=_PLAIN),
-        Param(b"FINE", 20, active=True, formatter=_PLAIN),
-        Param(b"FDBK", 0, active=True, formatter=_PLAIN),
-        Param(b"MIX", 100, active=True, formatter=_PLAIN),
+        Param(b"FREQ", 0, active=True, formatter=_PLAIN,
+              doc="coarse shift in Hz -- every partial moves by the same amount"),
+        Param(b"FINE", 20, active=True, formatter=_PLAIN,
+              doc="fine shift -- small values give slow metallic phasing"),
+        Param(b"FDBK", 0, active=True, formatter=_PLAIN,
+              doc="feedback -- each pass shifts again: the Bode barber-pole spiral"),
+        Param(b"MIX", 100, active=True, formatter=_PLAIN,
+              doc="dry/wet; 0 = exact passthrough"),
         Param(), Param(),
         # ---- page 2 -------------------------------------------------------
         Param(),
-        Param(b"MODE", 2, 3, active=True, formatter=_STEP),   # UP/DOWN/WIDE
+        Param(b"MODE", 2, 3, active=True, formatter=_STEP,
+              labels=("UP", "DOWN", "WIDE"),
+              doc="shift direction; WIDE goes up-left / down-right and beats in stereo"),
         Param(), Param(), Param(), Param(),
     ),
     dsp=DspSection(

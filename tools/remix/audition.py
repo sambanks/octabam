@@ -29,6 +29,8 @@ Headless smoke (also the CI-of-one):
 
 from __future__ import annotations
 
+import datetime
+import json
 import os
 import pathlib
 import subprocess
@@ -116,6 +118,20 @@ def _ensure_insert_mem(mod, log=print):
     return mem
 
 
+def _journal(entry):
+    """Append one event to the audition journal, out/_audition/log.jsonl.
+
+    The journal is how a listening session becomes addressable: "this
+    sounds boxy" plus the tail of this file is a full repro -- track,
+    effect, source, wet flag, every knob. One JSON object per line,
+    newest last; renders and A/B marks both land here."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    entry = {"t": datetime.datetime.now().isoformat(timespec="seconds"),
+             **entry}
+    with open(OUT / "log.jsonl", "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
 def render(key, values, source, wet=False, tail=None, label="", log=print):
     """Render module `key` over `source` with manifest-named knob `values`.
 
@@ -151,6 +167,9 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         got = base.with_name(f"{base.name}_{render_reverb.MODES[mode]}.wav")
         if not got.exists():
             _die(f"render_reverb reported success but {got.name} is missing")
+        _journal({"event": "render", "label": label, "effect": mod.name,
+                  "source": source.name, "wet": wet, "knobs": values,
+                  "out": got.name})
         return got
 
     # Everything else goes through send_probe --wav.
@@ -178,6 +197,9 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         _die("send_probe failed: " + (tl[-1] if tl else "(no output)"))
     if not out.exists():
         _die(f"send_probe reported success but {out.name} is missing")
+    _journal({"event": "render", "label": label, "effect": mod.name,
+              "source": source.name, "wet": False, "knobs": values,
+              "out": out.name})
     return out
 
 
