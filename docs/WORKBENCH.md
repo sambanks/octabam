@@ -64,9 +64,12 @@ per-knob help line, and the render history](img/workbench-rig.png)
 
 Row notes:
 
-- **SOURCE** cycles every `.wav` in `out/test_audio/` then
-  `out/demo_sources/` — drop files in either and restart. (No
-  browse-anywhere picker yet.)
+- **SOURCE** cycles every `.wav` in `out/dry/` — the curated DRY set
+  (31 Aug 2026; the old `out/test_audio/` + `out/demo_sources/` browse
+  mixed ~50 processed renders in with the dozen dry sources). Drop files
+  in `out/dry/` and restart. If `out/dry/` is missing or empty the old
+  two-directory browse comes back as the fallback. (No browse-anywhere
+  picker yet.)
 - **RENDER wet/full** applies to ChonVerb only (`render_reverb --wet`, an
   exact dry subtraction). Other effects always render their normal output.
 - **Knob rows** carry the manifest's names in the unit's own page layout:
@@ -245,7 +248,7 @@ through `rich.markup.escape`.
 ## Known gaps
 
 - A/B marks attach only to the most recent render (no history cursor).
-- No browse-anywhere source picker (two fixed directories).
+- No browse-anywhere source picker (one fixed directory, `out/dry/`).
 - Wet-only rendering is ChonVerb-only.
 - The emulator limits listed above (values, key injection, delay page
   under SPEC).
