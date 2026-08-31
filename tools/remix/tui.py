@@ -29,6 +29,7 @@ KEYS
     w              assemble and report words (a real build)
     b              build the image        c   make check
     e              boot the built image in the Tier-0 emulator (docs/EMU.md)
+    v              source wav browser: preview + render through ChonVerb
     q              quit
 """
 
@@ -38,6 +39,7 @@ import curses
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -295,7 +297,7 @@ def draw(scr, st):
             ry += 1
 
     put(h - 2, 0, st.msg[:w - 1], curses.A_DIM)
-    put(h - 1, 0, (" space toggle  w words  b build  c check  e emu  "
+    put(h - 1, 0, (" space toggle  w words  b build  e emu  v wavs  "
                    "l load  s save  q quit").ljust(w - 1), curses.A_REVERSE)
     scr.refresh()
 
@@ -418,6 +420,82 @@ def emu_view(scr, image):
             mode = "fx2"
 
 
+def _wav_sources():
+    """Source WAVs to audition, test_audio first (Sam's preferred set)."""
+    out = []
+    for sub in ("test_audio", "demo_sources"):
+        d = ROOT / "out" / sub
+        if d.is_dir():
+            for p in sorted(d.glob("*.wav")):
+                out.append(p)
+    return out
+
+
+def wav_browser(scr):
+    """Browse the project's source WAVs, preview them, and render one through
+    ChonVerb (the DSP emulator) to hear the effect — the compose/build/hear
+    loop, in the workbench. Playback is afplay (macOS); rendering shells out to
+    tools/render_reverb.py.
+    """
+    have_afplay = shutil.which("afplay") is not None
+    files = _wav_sources()
+    cur, top = 0, 0
+    wet = True
+    msg = ("space/p preview · r render through ChonVerb · w wet/dry toggle"
+           if have_afplay else "afplay not found — preview/playback disabled")
+    h, w = scr.getmaxyx()
+
+    def put(y, x, s, attr=0):
+        if 0 <= y < h and 0 <= x < w - 1:
+            scr.addstr(y, x, s[:w - x - 1], attr)
+
+    while True:
+        scr.erase()
+        put(0, 0, " source wav browser ".ljust(w - 1), curses.A_REVERSE)
+        put(1, 2, f"{len(files)} sources in out/test_audio + out/demo_sources"
+                  f"   render: {'WET only' if wet else 'full (dry+wet)'}",
+            curses.A_DIM)
+        view_h = h - 5
+        if cur < top:
+            top = cur
+        elif cur >= top + view_h:
+            top = cur - view_h + 1
+        for i in range(top, min(len(files), top + view_h)):
+            p = files[i]
+            kb = p.stat().st_size // 1024
+            label = f"{p.parent.name}/{p.name}"
+            put(3 + i - top, 2, f"{label:<48}{kb:>5} kB",
+                curses.A_REVERSE if i == cur else 0)
+        put(h - 2, 0, msg[:w - 1], curses.A_DIM)
+        put(h - 1, 0, (" up/down  p preview  r render+play  w wet/dry  "
+                       "q back ").ljust(w - 1), curses.A_REVERSE)
+        scr.refresh()
+        c = scr.getch()
+        if c in (ord("q"), 27):
+            return
+        elif c in (curses.KEY_DOWN, ord("j")) and files:
+            cur = min(len(files) - 1, cur + 1)
+        elif c in (curses.KEY_UP, ord("k")) and files:
+            cur = max(0, cur - 1)
+        elif c == ord("w"):
+            wet = not wet
+        elif c in (ord("p"), ord(" ")) and files and have_afplay:
+            shell_out(scr, ["afplay", str(files[cur])])
+        elif c == ord("r") and files and have_afplay:
+            src = files[cur]
+            outp = ROOT / "out" / f"_browser_{src.stem}_chonverb.wav"
+            argv = [sys.executable, "tools/render_reverb.py", str(src),
+                    "--normalize", "-o", str(outp)]
+            if wet:
+                argv.append("--wet")
+            rc = shell_out(scr, argv)
+            if rc == 0 and outp.exists():
+                shell_out(scr, ["afplay", str(outp)])
+                msg = f"rendered + played {outp.name}"
+            else:
+                msg = "render failed — see output above"
+
+
 def main(scr):
     curses.curs_set(0)
     st = State()
@@ -497,6 +575,9 @@ def main(scr):
             else:
                 emu_view(scr, BUILT_IMAGE)
                 st.msg = f"emulator: booted {BUILT_IMAGE.name}"
+        elif c == ord("v"):
+            wav_browser(scr)
+            st.msg = "source wav browser"
 
 
 if __name__ == "__main__":
