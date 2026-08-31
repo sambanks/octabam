@@ -193,6 +193,13 @@ and renders empty — it lives on payload B.)
 `FUN_40037590`), FX1 `FUN_40059afc` (drawer `FUN_4003792c`). Calling one after
 assigning the id is the whole recipe.
 
+**The PLAYBACK page** (`render_playback`, `e` → `p`) is the same idea for
+page_kind 0: set the machine-type byte at `PART + PAT*0x18b2 + track + 0x8eda2`
+(0/1 = FLEX/STATIC sample players), stage the page (`FUN_400554e0(0)`), then
+redraw the track screen (`FUN_4004d948`) — the sample row LEV/PTCH/STRT/LEN/
+RATE draws. That is "a sample loaded on the track", on the UI side; the audio
+side (loading a WAV and hearing it) is the `v` audition view.
+
 **Values.** A knob's displayed value is a byte at `PART + PAT*0x18b2 +
 track*30 + slot + 0x8f084` (`set_fx2_value`), and the canonical writer is
 `FUN_40054cd8(track, flat, value)` with `flat = 24 + slot` for FX2 page-1.

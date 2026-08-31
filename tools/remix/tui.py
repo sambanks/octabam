@@ -404,7 +404,7 @@ def emu_view(scr, image):
     roots = emu_bringup.menu_children(r) if r.uc and r.reached_handoff else []
     cursor = 0
     mode = "menu"                       # "menu" | "fx1" | "fx2"
-    eff = {"fx1": 0x04, "fx2": 0x07}    # assigned effect id per page (cyclable)
+    eff = {"fx1": 0x04, "fx2": 0x07, "play": 1}   # per-page selection (cyclable)
 
     def put(y, x, s, attr=0):
         if 0 <= y < h and 0 <= x < w - 1:
@@ -421,6 +421,15 @@ def emu_view(scr, image):
             put(4, 2, "emulator unavailable — run: make emu-setup"
                 if not r.uc else "did not reach the RTOS handoff — a patch may "
                 "have broken early init.", curses.A_BOLD)
+        elif mode == "play":
+            names = ["FLEX", "STATIC", "THRU", "NEIGHBOR"]
+            mi = eff["play"]
+            put(3, 2, "PLAYBACK — the track's sample page "
+                      f"(track 5, machine {names[mi] if mi < 4 else mi}):",
+                curses.A_BOLD)
+            _lcd(scr, emu_bringup.render_playback(r, machine=mi), 6, 4)
+            put(h - 3, 2, "left/right cycles the machine · FLEX/STATIC show the "
+                          "sample params (LEV/PTCH/STRT/LEN).", curses.A_DIM)
         elif mode in ("fx1", "fx2"):
             slot = mode.upper()
             eid = eff[mode]
@@ -441,9 +450,9 @@ def emu_view(scr, image):
             if added:
                 put(ny + 1, 2, "patched-in: " + ", ".join(added), curses.A_BOLD)
 
-        keys = (" up/down browse   1 FX1 page   f FX2 page   q back "
+        keys = (" up/down browse   p PLAYBACK   1 FX1   f FX2   q back "
                 "to workbench ") if mode == "menu" else \
-               (" left/right cycle effect   m menu   1 FX1   f FX2   q back ")
+               (" left/right cycle   m menu   p PLAY   1 FX1   f FX2   q back ")
         put(h - 1, 0, keys.ljust(w - 1), curses.A_REVERSE)
         scr.refresh()
 
@@ -452,6 +461,8 @@ def emu_view(scr, image):
             return
         if c == ord("m"):
             mode = "menu"; continue
+        if c == ord("p"):
+            mode = "play"; continue
         if c == ord("1"):
             mode = "fx1"; continue
         if c == ord("f"):
@@ -461,6 +472,12 @@ def emu_view(scr, image):
                 eff[mode] = eff[mode] + 1 if eff[mode] < 0x0f else 0x04
             elif c in (curses.KEY_LEFT, ord("h")):
                 eff[mode] = eff[mode] - 1 if eff[mode] > 0x04 else 0x0f
+            continue
+        if mode == "play":
+            if c in (curses.KEY_RIGHT, ord("l")):
+                eff["play"] = (eff["play"] + 1) % 4
+            elif c in (curses.KEY_LEFT, ord("h")):
+                eff["play"] = (eff["play"] - 1) % 4
             continue
         if c in (curses.KEY_DOWN, ord("j")) and roots:
             cursor = (cursor + 1) % len(roots)
