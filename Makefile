@@ -155,13 +155,13 @@ modules: ## List the module index and the available remixes
 	python3 tools/remix/index.py
 
 .PHONY: remix
-remix: ## The remix workbench: compose a selection, see what it costs, build it
-	$(PY) tools/remix/tui.py
+remix: ## The workbench: 8 tracks, dial + hear effects, compose + build the image
+	$(PY) tools/remix/app.py
 
 .PHONY: emu-setup
-emu-setup: ## Provision the emulator's dependency (unicorn) into .venv via uv
+emu-setup: ## Provision the workbench deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
-	@echo "emulator ready — 'make remix' then 'e' (docs/EMU.md)"
+	@echo "workbench ready — 'make remix' (docs/EMU.md for the emulator view)"
 
 # -------------------------------------------------------------------- misc --
 
