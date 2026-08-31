@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
-"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the workbench).
+"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the workbench emu).
 
-Boots the real MAIN OS image on Unicorn's ColdFire V4e core, modelling only
-as much of the hardware as the boot path actually touches. It is NOT a full
-machine emulator: there is no display, no real peripherals, no scheduler yet.
-Its job is to prove the CPU core runs the firmware and to MAP what the boot
-needs — the console log is that map.
+Boots a MAIN OS image on Unicorn's ColdFire V4e core, modelling only as much
+of the hardware as the boot path actually touches, and stops at the RTOS
+multitasking handoff (`trap #0`). It is a LIMITED emulator: no display, no
+real peripherals, no scheduler. Two uses:
 
-Run:  tools/emu_bringup.py           (needs `unicorn` with the CFV4E model:
-      pip install unicorn>=2.1 ; the DEFAULT m68k core is plain-68k and will
-      NOT decode this CPU — see docs/EXTERNAL.md on the ColdFire ISA.)
+  * as a CLI, `tools/emu_bringup.py [image]` prints the boot outcome + map;
+  * as a library, `boot(image)` returns a warm machine and `read_menu_tree`
+    walks the MAIN MENU tables out of its RAM — so the remix TUI can boot a
+    freshly built image and show that it boots clean and that a patched-in
+    menu entry (docs/MAINMENU.md) actually resolves.
 
-State of the boot, 31 Aug 2026 (docs/EMU.md has the detail):
-  * With SP+SR seeded and MMIO modelled, the image executes ~7,000,000
-    instructions with zero illegal-instruction faults, through the entire
-    early hardware init, and stops at the RTOS multitasking handoff
-    (`trap #0` at 0x40000e46). That trap is the Tier-0/Tier-1 boundary.
-  * Everything below the trap is modelled here. Reaching the menu code past
-    it needs either full RTOS/interrupt emulation or the detour-harness
-    approach (call UI functions directly) — a design fork, see docs/EMU.md.
+Needs `unicorn` with the CFV4E model: `pip install 'unicorn>=2.1'`. The
+DEFAULT m68k core is plain-68k and will NOT decode this CPU (mvz/mvs/EMAC) —
+see docs/EXTERNAL.md. Boot details and the fork past the trap: docs/EMU.md.
 """
 import collections
 import os
@@ -27,151 +23,253 @@ import sys
 try:
     from unicorn import *
     from unicorn.m68k_const import *
+    HAVE_UNICORN = True
 except ImportError:
-    sys.exit("needs unicorn: pip install 'unicorn>=2.1'")
+    HAVE_UNICORN = False
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMG = open(os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin"), "rb").read()
-BASE = ENTRY = 0x40000400          # image load base = 0x40000000 + 0x400 header
+STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
+BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000
 
-mu = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
-mu.ctl_set_cpu_model(UC_CPU_M68K_CFV4E)
+# Root of the MAIN MENU tree (docs/MAINMENU.md). Address = file offset + BASE.
+MENU_ROOT_DESC = 0x400cbd8c
+ROW_STRIDE = 0x18
 
-# RAM windows (docs/ARCHITECTURE.md §7). The stack top is 0x48000000 and grows
-# down into the 0x46000000 region.
-for a, sz in {
-    0x00000000: 0x00010000, 0x40000000: 0x02000000, 0x46000000: 0x02000000,
-    0x48000000: 0x00100000, 0x80000000: 0x01000000, 0x100b0000: 0x00010000,
-}.items():
-    mu.mem_map(a, sz)
-mu.mem_write(BASE, IMG)
-# Reset state the vector table would seed. ORDER MATTERS: SR before A7, or the
-# supervisor/user stack banks swap and A7 lands in the wrong one.
-mu.reg_write(UC_M68K_REG_SR, 0x2700)   # supervisor, IRQs masked
-mu.reg_write(UC_M68K_REG_A7, 0x48000000)
 
-# ---- peripheral MMIO model ------------------------------------------------
-# Default read = all-ones, which satisfies every "wait until bit SET" poll the
-# boot uses (I2C/serial shift-done at 0xfc088000, UART/serial status at
-# 0xfc064004, ...). OVERRIDES hold registers whose exact value is load-bearing.
-OVERRIDES = {
-    # Clock/PLL config. The firmware computes sysclk = (reg>>24)*12MHz and
-    # HALTS (`bra *` at 0x4000fa8c) unless it equals 264MHz, so the top byte
-    # must be 22 (0x16). Entry reads it at 0x40000418; gate at 0x4000fa78.
-    0xfc0c4000: 0x16000000,
-}
-events = []          # ordered unique (kind, pc, addr[, val]) for the boot map
-seen = set()
-def _log(kind, pc, addr, size, val=None):
-    key = (kind, pc, addr)
-    if key not in seen and len(events) < 80:
-        seen.add(key); events.append((kind, pc, addr, size, val))
+class BootResult:
+    def __init__(self):
+        self.uc = None
+        self.instrs = 0
+        self.maxpc = ENTRY
+        self.stopped = ""          # human-readable stop reason
+        self.trap = None           # (intno, pc) if we stopped at a trap
+        self.reached_handoff = False
+        self.boot_map = []         # ordered unique (kind, pc, addr, size, val)
+        self.auto_pokes = []       # (loop_lo, addr, imm)
+        self.error = None          # UcError text, if any
 
-def periph_read(uc, off, size, b):
-    a = b + off
-    _log("R", uc.reg_read(UC_M68K_REG_PC), a, size)
-    if a in OVERRIDES:
-        return OVERRIDES[a]
-    return (1 << (size * 8)) - 1
+    @property
+    def clean(self):
+        """Booted through all early init to the RTOS handoff with no fault."""
+        return self.reached_handoff and self.error is None
 
-def periph_write(uc, off, size, val, b):
-    _log("W", uc.reg_read(UC_M68K_REG_PC), b + off, size, val)
 
-for a, sz in {0xfc000000: 0x100000, 0x20000000: 0x1000, 0x90000000: 0x1000}.items():
-    mu.mmio_map(a, sz,
-                (lambda u, o, s, d, base=a: periph_read(u, o, s, base)), None,
-                (lambda u, o, s, v, d, base=a: periph_write(u, o, s, v, base)), None)
+def boot(image=None, count=BUDGET):
+    """Boot an image to the RTOS handoff. Returns a BootResult."""
+    r = BootResult()
+    if not HAVE_UNICORN:
+        r.stopped = "unicorn not installed (pip install 'unicorn>=2.1')"
+        return r
+    img = open(image or STOCK_IMAGE, "rb").read()
 
-# ---- auto-satisfy async completion-flag spins -----------------------------
-# Boot polls flags an ISR / the other DSP core would set:
-#   `move.w (abs),d0 ; [mvz] ; cmpi.[wl] #imm,d0 ; bne self`
-# (word@0 and word@0x2000 == 0xffff observed). A watchdog spots the spin, then
-# we decode the read address + compared immediate and write it, faking the
-# completion. The write width matches the LOAD (move.w), not the cmpi.
-auto_pokes = []
-def try_auto_poke(lo, hi):
-    blk = mu.mem_read(lo, min(hi - lo + 8, 32))
-    if blk[0:2] == b"\x30\x38":                       # move.w (abs).w,d0
-        addr = int.from_bytes(blk[2:4], "big", signed=True) & 0xFFFFFFFF; j = 4
-    elif blk[0:2] == b"\x30\x39":                     # move.w (abs).l,d0
-        addr = int.from_bytes(blk[2:6], "big"); j = 6
+    mu = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+    mu.ctl_set_cpu_model(UC_CPU_M68K_CFV4E)
+    for a, sz in {
+        0x00000000: 0x00010000, 0x40000000: 0x02000000, 0x46000000: 0x02000000,
+        0x48000000: 0x00100000, 0x80000000: 0x01000000, 0x100b0000: 0x00010000,
+    }.items():
+        mu.mem_map(a, sz)
+    mu.mem_write(BASE, img)
+    # Reset state the (absent) vector preamble would seed. SR BEFORE A7, or the
+    # supervisor/user stack banks swap and A7 lands in the wrong one.
+    mu.reg_write(UC_M68K_REG_SR, 0x2700)     # supervisor, IRQs masked
+    mu.reg_write(UC_M68K_REG_A7, 0x48000000)
+
+    # -- peripheral MMIO: default read all-ones (satisfies wait-until-SET) ----
+    OVERRIDES = {
+        # Clock/PLL: firmware halts (0x4000fa8c) unless (reg>>24)*12MHz==264MHz,
+        # so the top byte must be 22 (0x16). entry 0x40000418, gate 0x4000fa78.
+        0xfc0c4000: 0x16000000,
+    }
+    seen = set()
+    def _log(kind, pc, addr, size, val=None):
+        key = (kind, pc, addr)
+        if key not in seen and len(r.boot_map) < 80:
+            seen.add(key); r.boot_map.append((kind, pc, addr, size, val))
+
+    def periph_read(uc, off, size, b):
+        a = b + off
+        _log("R", uc.reg_read(UC_M68K_REG_PC), a, size)
+        return OVERRIDES.get(a, (1 << (size * 8)) - 1)
+
+    def periph_write(uc, off, size, val, b):
+        _log("W", uc.reg_read(UC_M68K_REG_PC), b + off, size, val)
+
+    for a, sz in {0xfc000000: 0x100000, 0x20000000: 0x1000,
+                  0x90000000: 0x1000}.items():
+        mu.mmio_map(a, sz,
+                    (lambda u, o, s, d, base=a: periph_read(u, o, s, base)), None,
+                    (lambda u, o, s, v, d, base=a: periph_write(u, o, s, v, base)),
+                    None)
+
+    # -- auto-satisfy async completion-flag spins ---------------------------
+    # Given a PC anywhere in a stalled loop, find the `move.w (abs),d0 ; ... ;
+    # cmpi.[wl] #imm,d0` pair by scanning a window around it, then write imm to
+    # the flag at the LOAD width (move.w, 2 bytes — not the cmpi width, or the
+    # low word reads back wrong). Fakes the completion an ISR/other core signals.
+    def try_auto_poke(pc_in_loop):
+        win_lo = pc_in_loop - 16
+        blk = mu.mem_read(win_lo, 48)
+        for i in range(0, len(blk) - 6, 2):
+            if blk[i:i+2] == b"\x30\x38":             # move.w (abs).w,d0
+                addr = int.from_bytes(blk[i+2:i+4], "big", signed=True) & 0xFFFFFFFF
+                k = i + 4
+            elif blk[i:i+2] == b"\x30\x39":           # move.w (abs).l,d0
+                addr = int.from_bytes(blk[i+2:i+6], "big"); k = i + 6
+            else:
+                continue
+            imm = None
+            j = k
+            while j < min(i + 20, len(blk) - 2):
+                if blk[j:j+2] == b"\x0c\x80":         # cmpi.l #imm,d0
+                    imm = int.from_bytes(blk[j+2:j+6], "big"); break
+                if blk[j:j+2] == b"\x0c\x40":         # cmpi.w #imm,d0
+                    imm = int.from_bytes(blk[j+2:j+4], "big"); break
+                j += 2
+            if imm is None:
+                continue
+            try:
+                mu.mem_write(addr, (imm & 0xFFFF).to_bytes(2, "big"))
+            except UcError:
+                return False
+            r.auto_pokes.append((win_lo + i, addr, imm))
+            return True
+        return False
+
+    def on_intr(uc, intno, user):
+        # trap #0 (intno 32) is the RTOS handoff. Unicorn's CFV4E won't
+        # dispatch it (VBR is a no-op); we record and stop. VBR would come
+        # from [0x400b9668] (set at 0x40000db6) for a manual dispatcher.
+        r.trap = (intno, uc.reg_read(UC_M68K_REG_PC))
+        if intno == 32:
+            r.reached_handoff = True
+        uc.emu_stop()
+    mu.hook_add(UC_HOOK_INTR, on_intr)
+
+    # Event-driven write counter: fires only on stores, so a pure poll spin
+    # costs nothing, but a memset climbs it. Tells a bounded loop apart from a
+    # flag-poll when a stall is suspected.
+    st = {"wc": 0}
+    mu.hook_add(UC_HOOK_MEM_WRITE,
+                lambda u, ac, ad, sz, v, x: st.update(wc=st["wc"] + 1))
+
+    # -- burst execution ----------------------------------------------------
+    # A per-instruction Python hook over ~7M instructions costs ~16s; native
+    # execution in bursts is ~10x faster. We only turn on an instruction hook
+    # BRIEFLY, to pin a loop's exact bounds, once a stall is suspected — a PC
+    # confined to a small window across several bursts. A bounded loop
+    # (memset) escapes the window within a burst or two; a poll never does.
+    BURST = 500_000
+    STALL_BURSTS = 4
+    stop = {"stuck": None}
+    pc = ENTRY
+    window = collections.deque(maxlen=STALL_BURSTS)   # (pc, wc) per burst
+
+    while r.instrs < count:
+        try:
+            mu.emu_start(pc, 0, count=BURST)
+        except UcError as e:
+            r.error = str(e); break
+        if r.trap:
+            break
+        pc = mu.reg_read(UC_M68K_REG_PC)
+        r.instrs += BURST
+        if 0x40000000 < pc < 0x40200000 and pc > r.maxpc:
+            r.maxpc = pc
+        window.append((pc, st["wc"]))
+        pcs = [w[0] for w in window]
+        if len(window) == STALL_BURSTS and max(pcs) - min(pcs) <= 64:
+            writes = window[-1][1] - window[0][1]
+            if writes > 2000:
+                window.clear()               # a memset making progress, not a spin
+            elif try_auto_poke(pc):
+                window.clear()
+            else:
+                stop["stuck"] = (pc, pc); break
+
+    r.uc = mu
+    if r.trap:
+        r.stopped = (f"trap #{r.trap[0]-32} at 0x{r.trap[1]:08x} "
+                     "(RTOS handoff)")
+    elif r.error:
+        r.stopped = f"fault: {r.error}"
+    elif stop["stuck"]:
+        r.stopped = (f"unrecognised spin "
+                     f"0x{stop['stuck'][0]:08x}..0x{stop['stuck'][1]:08x}")
     else:
-        return False
-    imm = None
-    while j < len(blk) - 2:
-        op = blk[j:j+2]
-        if op == b"\x0c\x80":                          # cmpi.l #imm,d0
-            imm = int.from_bytes(blk[j+2:j+6], "big"); break
-        if op == b"\x0c\x40":                          # cmpi.w #imm,d0
-            imm = int.from_bytes(blk[j+2:j+4], "big"); break
-        j += 2
-    if imm is None:
-        return False
+        r.stopped = "instruction cap reached (no handoff)"
+    return r
+
+
+def _cstr(uc, addr, limit=40):
+    if not addr or addr < 0x40000000:
+        return ""
     try:
-        mu.mem_write(addr, (imm & 0xFFFF).to_bytes(2, "big"))   # load is move.w
-    except UcError:
-        return False
-    auto_pokes.append((lo, addr, imm))
-    return True
+        raw = uc.mem_read(addr, limit)
+    except Exception:
+        return ""
+    end = raw.find(b"\x00")
+    s = (raw[:end] if end >= 0 else raw)
+    # menu separator rows are runs of glyph 0x17
+    return "".join(chr(b) if 32 <= b < 127 else "" for b in s)
 
-# ---- watchdog: tell a real spin from a long bounded loop -------------------
-# A memset/memcpy writes to advancing addresses and exits; a poll does not.
-# Track a write COUNTER and require it to climb, or the window is a spin.
-st = {"n": 0, "maxpc": ENTRY, "wc": 0, "stuck": None, "trap": None}
-mu.hook_add(UC_HOOK_MEM_WRITE, lambda u, ac, ad, sz, v, x: st.update(wc=st["wc"] + 1))
-recent = collections.deque(maxlen=16)
-wd = {"win": None, "since": 0, "wc_mark": 0}
-def hook_code(uc, address, size, user):
-    st["n"] += 1
-    recent.append(address)
-    if 0x40000000 < address < 0x40200000 and address > st["maxpc"]:
-        st["maxpc"] = address
-    lo, hi = min(recent), max(recent)
-    if hi - lo <= 40 and len(recent) == 16:
-        if wd["win"] == (lo, hi):
-            wd["since"] += 1
-            if wd["since"] % 4096 == 0:
-                if st["wc"] - wd["wc_mark"] > 64:      # writes climbing => progress
-                    wd["since"] = 0
-                wd["wc_mark"] = st["wc"]
-            if wd["since"] > 300_000:
-                if try_auto_poke(lo, hi):
-                    wd["win"] = None; wd["since"] = 0; recent.clear()
-                else:
-                    st["stuck"] = (lo, hi); uc.emu_stop()
-        else:
-            wd["win"] = (lo, hi); wd["since"] = 0; wd["wc_mark"] = st["wc"]
-    else:
-        wd["win"] = None; wd["since"] = 0
-mu.hook_add(UC_HOOK_CODE, hook_code)
 
-def on_intr(uc, intno, user):
-    # trap #n => exception vector 32+n. Unicorn's CFV4E treats VBR as a no-op,
-    # so it will not dispatch: we record and stop. trap #0 (intno 32) is the
-    # RTOS scheduler handoff; VBR is loaded from [0x400b9668] at 0x40000db6.
-    st["trap"] = (intno, uc.reg_read(UC_M68K_REG_PC)); uc.emu_stop()
-mu.hook_add(UC_HOOK_INTR, on_intr)
+def _u32(uc, addr):
+    return int.from_bytes(uc.mem_read(addr, 4), "big")
 
-try:
-    mu.emu_start(ENTRY, 0, count=BUDGET)
-    outcome = "count cap / clean stop"
-except UcError as e:
-    outcome = f"UcError: {e}"
 
-print(f"instructions : {st['n']:,}")
-print(f"max PC       : 0x{st['maxpc']:08x}")
-print(f"outcome      : {outcome}")
-if st["trap"]:
-    intno, pc = st["trap"]
-    print(f"TRAP         : #{intno-32} (vector {intno}) at pc=0x{pc:08x}  "
-          f"— RTOS handoff, the Tier-0/Tier-1 boundary")
-if st["stuck"]:
-    print(f"STUCK        : unrecognised spin 0x{st['stuck'][0]:08x}..0x{st['stuck'][1]:08x}")
-print(f"auto-pokes   : {len(auto_pokes)}  " +
-      ", ".join(f"@0x{a:x}={v:#x}" for _, a, v in auto_pokes))
-print("\nperipheral boot map (first touch of each register):")
-for ev in events:
-    k, pc, addr, size, val = ev
-    v = f" val=0x{val:x}" if k == "W" else ""
-    print(f"  {k} 0x{addr:08x} sz{size}{v}   (pc 0x{pc:08x})")
+def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
+    """Walk the MAIN MENU tree out of booted RAM (docs/MAINMENU.md).
+
+    Returns a list of {name, action, page_id, children} dicts. A patched-in
+    entry appears here exactly as the firmware would resolve it.
+    """
+    if _seen is None:
+        _seen = set()
+    if desc in _seen or depth > 4:
+        return []
+    _seen.add(desc)
+    count = _u32(uc, desc)
+    rows = _u32(uc, desc + 0x18)
+    if not (0x40000000 <= rows < 0x40200000) or not (0 < count < 64):
+        return []
+    out = []
+    for i in range(count):
+        row = rows + ROW_STRIDE * i
+        label = _cstr(uc, _u32(uc, row + 0x00))
+        action = _u32(uc, row + 0x08)
+        child = _u32(uc, row + 0x10)
+        page_id = _u32(uc, row + 0x14)
+        if not label:
+            continue                      # separator / empty
+        node = {"name": label, "action": action, "page_id": page_id,
+                "children": read_menu_tree(uc, child, depth + 1, _seen)
+                            if child else []}
+        out.append(node)
+    return out
+
+
+def _cli():
+    img = sys.argv[1] if len(sys.argv) > 1 else None
+    r = boot(img)
+    print(f"image        : {img or STOCK_IMAGE}")
+    print(f"instructions : {r.instrs:,}")
+    print(f"max PC       : 0x{r.maxpc:08x}")
+    print(f"outcome      : {r.stopped}")
+    print(f"clean boot   : {r.clean}")
+    print(f"auto-pokes   : {len(r.auto_pokes)}  " +
+          ", ".join(f"@0x{a:x}={v:#x}" for _, a, v in r.auto_pokes))
+    if r.uc and r.reached_handoff:
+        print("\nMAIN MENU (walked from booted RAM):")
+        for n in read_menu_tree(r.uc):
+            kids = ", ".join(c["name"] for c in n["children"])
+            print(f"  {n['name']}" + (f"  -> {kids}" if kids else ""))
+    print("\nperipheral boot map (first touch of each register):")
+    for k, pc, addr, size, val in r.boot_map:
+        v = f" val=0x{val:x}" if k == "W" else ""
+        print(f"  {k} 0x{addr:08x} sz{size}{v}   (pc 0x{pc:08x})")
+
+
+if __name__ == "__main__":
+    _cli()
