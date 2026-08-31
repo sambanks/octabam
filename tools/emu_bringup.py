@@ -60,6 +60,8 @@ CALL_RET = 0x000000f0        # sentinel return address a detour stops at
 # FX1 shows the stock effects (FILTER, etc.).
 FX1_SETUP = 0x40059afc
 FX2_SETUP = 0x4005996c
+PAGE_STAGE = 0x400554e0      # FUN_400554e0(kind): stage a page kind
+TRACK_DRAW = 0x4004d948      # redraw the track screen (playback page)
 CUR_TRACK_B = 0x80000000     # current audio track (byte); UI mirror 0x100b14cc
 
 # Assigning an effect to a track's FX2 slot so its real param page resolves
@@ -306,14 +308,18 @@ def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
     return out
 
 
-def _call(uc, addr, count=20_000_000):
+def _call(uc, addr, args=(), count=20_000_000):
     """Invoke a firmware function on a warm machine and run until it returns.
 
-    Sets a scratch stack with a sentinel return address and executes until the
-    function's rts pops it back. Faults propagate as UcError.
+    Sets a scratch stack with a sentinel return address (and cdecl args above
+    it) and executes until the function's rts pops it back. Faults propagate
+    as UcError.
     """
-    uc.reg_write(UC_M68K_REG_A7, CALL_SP)
-    uc.mem_write(CALL_SP, CALL_RET.to_bytes(4, "big"))
+    sp = CALL_SP - 4 * len(args)
+    uc.reg_write(UC_M68K_REG_A7, sp)
+    uc.mem_write(sp, CALL_RET.to_bytes(4, "big"))
+    for i, a in enumerate(args):
+        uc.mem_write(sp + 4 + 4 * i, (a & 0xFFFFFFFF).to_bytes(4, "big"))
     uc.reg_write(UC_M68K_REG_SR, 0x2700)
     uc.emu_start(addr, CALL_RET, count=count)
 
@@ -473,6 +479,32 @@ def render_fx2(r, track=4, effect_id=0x07):
             assign_fx2(r, track, effect_id)
         r._draws.clear()
         _call(uc, FX2_SETUP)
+    except UcError:
+        pass
+    return list(r._draws)
+
+
+def render_playback(r, track=4, machine=1):
+    """Render the PLAYBACK page (page_kind 0) with a sample machine assigned —
+    the sample-loaded track view (LEV/PTCH/STRT/LEN/RATE). `machine` indexes
+    the machine-type table: 0/1 = FLEX/STATIC (sample players), higher = THRU/
+    NEIGHBOR (input/routing). Stages the page then redraws the track screen.
+    """
+    uc = r.uc
+    if uc is None or not r.reached_handoff:
+        return []
+    if not getattr(r, "_menu_ready", False):
+        _prime_menu(r)
+    try:
+        _prime_part(r)
+        uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
+        uc.mem_write(0x100b14cc, int(track).to_bytes(4, "big"))
+        uc.mem_write(PAT_W, (0).to_bytes(1, "big"))
+        uc.mem_write(PAT_R, (0).to_bytes(1, "big"))
+        uc.mem_write(_part_addr(uc, MACHINE_OFF, track), bytes([machine & 0xff]))
+        _call(uc, PAGE_STAGE, (0,))          # stage page_kind 0 (playback)
+        r._draws.clear()
+        _call(uc, TRACK_DRAW)
     except UcError:
         pass
     return list(r._draws)
