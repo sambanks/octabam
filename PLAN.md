@@ -479,14 +479,19 @@ fault, and see the MAIN MENU walked from RAM with any patched-in entry
 highlighted. That is the crow-flies no-flash gate: a cave that breaks early
 init faults in the emulator, not on the unit. ~4 s per boot (native bursts).
 
-Remaining toward the full loop: **live screen** (render real param pages, not
-just the menu tables) needs the draw path to execute — its universal string
-primitive is located (`FUN_40012bd8`, hook `x`/`y`/`str` off the stack) but
-that runs in a task, so it needs the **fork** at the trap: emulate the RTOS
-(dispatch the trap, drive a timer tick) or the **detour-harness** route (call
-the UI draw/input functions directly, skip the scheduler). For iterating
-menu/cave patches the detour harness is very likely the right next cut;
-`docs/EMU.md` lays out both.
+**Milestone 2 is shipped too**: the **live screen**. `render_menu(r, cursor)`
+calls the firmware's own menu draw against the warm machine and captures it as
+`(x,y,text)` (the detour route — `ctl_flush_tb` + open + state/viewport pokes +
+draw); `make remix` → `e` shows a framed LCD with up/down navigating the main
+menu and the submenu preview following, as on the unit — on the *built* image,
+so a patched-in entry renders as the firmware would draw it. Recipe and the
+JIT-cache gotcha are in `docs/EMU.md`.
+
+Remaining toward full fidelity: entering submenus / param pages (same detour
+shape — drive the real key handler `FUN_40064e64` / stage a param page) and,
+only if something needs task-interleaving behaviour, route **A** (emulate the
+RTOS: dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing
+built so far needs A; `docs/EMU.md` keeps it on the table.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above

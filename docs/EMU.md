@@ -108,59 +108,63 @@ stall is suspected. A stall is a PC confined to a small window across several
 bursts; a bounded loop (memset) is told from a flag-poll by an event-driven
 write counter that only a store advances.
 
-## Live screen — the next fidelity step (primitive located) ✅
+## Milestone 2 — the live screen, via the detour harness ✅
 
-Rendering the firmware's *actual* screen (real param pages, dialogs) rather
-than the menu tables means capturing text as the UI draws it. The universal
-primitive is **`FUN_40012bd8`** — the "draw string at (x,y)" call every
-renderer funnels through (189 call sites; the list/knob drawer `FUN_40037590`
+The firmware's *actual* menu now renders as text, navigable, out of the warm
+machine — `render_menu(r, cursor)` returns the real renderer's output as
+`(x, y, string)` tuples, and `make remix` → `e` shows it in a framed LCD with
+up/down moving the cursor and the submenu preview following, as on the unit.
+
+**The capture primitive** is `FUN_40012bd8` — the "draw string at (x,y)" call
+every renderer funnels through (189 call sites; the list drawer `FUN_40037590`
 and the PERSONALIZE renderer `FUN_40068e00` both reach it). ColdFire cdecl,
-all args on the stack at the callee entry:
+args on the stack at callee entry; **passive capture needs only `x`, `y`,
+`str`**, all on the stack / in RAM, so the hook is self-contained:
 
 ```
 FUN_40012bd8(font, canvas, x, y, count, char *str)
-  sp@(4)=font(0x400ba876)  sp@(8)=canvas  sp@(12)=x  sp@(16)=y
-  sp@(20)=count(-1=to NUL)  sp@(24)=str
+  sp@(12)=x  sp@(16)=y  sp@(24)=str        (font 0x400ba876, canvas=window+36)
 ```
 
-**Passive capture needs only `x`, `y`, and `str`** (all on the stack / in
-RAM), so the hook is self-contained — no canvas needed. Selection highlight
-is a separate XOR-rect op `FUN_40012254` (`mode<0`). Font descriptor
-`0x400ba876` (proportional, 256 glyphs, ~6 px, 7 px line pitch → ~9 lines on
-the 128×64 LCD); width-measure sibling `FUN_40012f30` reproduces the
-firmware's own centering. The framebuffer is 1bpp column-major at a
-runtime-allocated canvas (`*(0x400bc48c)+36`, fields width/height/stride/base
-at `+0/+4/+8/+12`) — harder to decode than the string hook, so **hook the
-string primitive, not the bitmap**.
+**The detour recipe** (the draw code runs in a task the boot never reaches, so
+we call it directly against the warm machine):
 
-The one dependency: the draw code only runs in a task, which the boot does
-not reach (it stops at `trap #0`). So live capture needs the fork below —
-either the RTOS runs the menu task, or the detour harness calls the draw
-path directly. Milestone 1 sidesteps this by reading the tables, not the
-pixels.
+1. Boot to the handoff (heap + window system are up).
+2. Install the string-capture hook at `FUN_40012bd8`, plus a map-on-fault
+   hook: a cold detour skips some setup, so a formatter can hold one stale
+   pointer — map a zero page under it so its `strlen` reads `""` and the real
+   row labels still render instead of faulting the whole draw.
+3. **`ctl_flush_tb()`** — the draw fns were JIT-cached during the boot splash
+   *without* the hooks, so a hook added afterward never fires on the cached
+   block until the translation cache is flushed. (This cost a real debugging
+   session: the loop ran but the string primitive "wasn't called" — it was,
+   the cached block just wasn't instrumented.)
+4. Call `FUN_40064c18` (menu open) — allocates the window from the heap.
+5. Set `[0x400cbf40]=1` (tree state) and **`[0x400cbd9c]=6`** (the visible-row
+   clamp; a cold detour leaves it 0, and the row loop bound is
+   `min(clamp, count)`, so 0 draws nothing).
+6. Poke `[0x400cbd98]` = cursor row, then call `FUN_40064d7c` (draw). The
+   selected row and the right-pane submenu preview follow the cursor.
 
-## The fork ahead — do not pick it silently
+The line pitch is 7 px and the origin is bottom-left-ish (the list drawer
+steps y DOWN per row), so `layout_screen` maps larger-y to higher rows.
+Selection highlight is a separate XOR-rect op `FUN_40012254` (`mode<0`) — not
+captured as text yet.
 
-Reaching the menu code past the trap is a design decision, not more of the
-same grind:
+**What is still table-driven, not live:** entering a submenu / backing out
+(the cursor demo pokes the selection global rather than driving the real key
+handler `FUN_40064e64`), and the param pages. Both are the same detour shape —
+call the state's key handler with a keycode, or stage a param page — and are
+the natural next increments.
 
-- **A. Emulate the RTOS.** Hand-dispatch `trap #0`, drive a periodic timer
-  interrupt for preemption, let the real scheduler run the real tasks. Most
-  faithful; the most work; the display and input still have to be modelled or
-  hooked on top.
-- **B. Detour harness.** Skip the scheduler. Set up a plausible task context
-  and call the UI functions directly — `FUN_40064c18` (menu open), the draw
-  path, feed keycodes to the key handler — stubbing RTOS calls. This is the
-  `emu_image.py`-shaped fallback in `PLAN.md` §5, and the cheaper route to the
-  stated goal (walk a patched menu, test a cave) because it never needs the
-  scheduler. It cannot catch anything that only emerges from real task
-  interleaving — but menu-patch testing does not need that.
+## The RTOS fork — still open, still not forced
 
-For the workbench's purpose (a text UI to iterate menu/cave patches without a
-flash) **B is very likely the right first cut**, with A as a later fidelity
-upgrade if something needs it. Either way the screen is read by hooking the
-decoded draw path (`docs/MAINMENU.md` §7, `PARAM_PAGES.md`) rather than
-emulating an LCD, and keys are injected at the software layer.
+Milestone 2 took route **B** (detour) and it carries the workbench: a menu- or
+cave-patch is visible and walkable without a flash. Route **A** (emulate the
+RTOS — dispatch `trap #0` via VBR `[0x400b9668]`, drive a timer tick, run the
+real scheduler) remains the later fidelity upgrade, the only one that could
+show behaviour emerging from real task interleaving. Nothing built so far
+needs it.
 
 ## Reproduce
 
