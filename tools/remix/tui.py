@@ -28,6 +28,7 @@ KEYS
     l              load a remix  s      save the selection as a remix
     w              assemble and report words (a real build)
     b              build the image        c   make check
+    e              boot the built image in the Tier-0 emulator (docs/EMU.md)
     q              quit
 """
 
@@ -43,9 +44,13 @@ import textwrap
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from remix import ledger, registry  # noqa: E402
+import emu_bringup  # noqa: E402  (Tier-0 ColdFire emulator; docs/EMU.md)
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DONOR_WORDS = 2724          # per payload; build_bus.py prints the live figure
+BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
+# Stock top-level menu, to highlight what a patch adds (docs/MAINMENU.md).
+STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
 
 
 class State:
@@ -290,7 +295,7 @@ def draw(scr, st):
             ry += 1
 
     put(h - 2, 0, st.msg[:w - 1], curses.A_DIM)
-    put(h - 1, 0, (" space toggle  f fallback  w words  b build  c check  "
+    put(h - 1, 0, (" space toggle  w words  b build  c check  e emu  "
                    "l load  s save  q quit").ljust(w - 1), curses.A_REVERSE)
     scr.refresh()
 
@@ -317,6 +322,71 @@ def shell_out(scr, argv, env=None):
     scr.clear()
     curses.doupdate()
     return r.returncode
+
+
+def emu_view(scr, image):
+    """Boot a built image in the Tier-0 emulator and show it booted clean and
+    what its MAIN MENU resolves to -- a patched-in entry (docs/MAINMENU.md)
+    shows up highlighted. This is the no-flash gate: a cave that breaks early
+    init faults here instead of on the unit.
+    """
+    h, w = scr.getmaxyx()
+    scr.erase()
+    scr.addstr(0, 0, f" emulator: booting {image.name} ... ".ljust(w - 1),
+               curses.A_REVERSE)
+    scr.addstr(2, 2, "running the real firmware to the RTOS handoff (~4s)")
+    scr.refresh()
+
+    r = emu_bringup.boot(str(image))
+    tree = emu_bringup.read_menu_tree(r.uc) if r.uc and r.reached_handoff else []
+
+    # flatten the tree to display rows
+    rows = []
+    for n in tree:
+        added = n["name"] not in STOCK_ROOTS
+        rows.append((0, n["name"], added))
+        for c in n["children"]:
+            rows.append((1, c["name"], added))
+
+    top = 0
+    while True:
+        scr.erase()
+        ok = r.clean
+        head = f" emulator — {image.name} — " + ("BOOTS CLEAN" if ok else "FAULT")
+        scr.addstr(0, 0, head.ljust(w - 1),
+                   curses.A_REVERSE | (0 if ok else curses.A_BOLD))
+        def put(y, x, s, attr=0):
+            if 0 <= y < h and x < w - 1:
+                scr.addstr(y, x, s[:w - x - 1], attr)
+        put(2, 2, f"instructions : {r.instrs:,}")
+        put(3, 2, f"stop         : {r.stopped}")
+        put(4, 2, f"auto-pokes   : {len(r.auto_pokes)} async-completion flags")
+        if not r.uc:
+            put(6, 2, r.stopped, curses.A_BOLD)
+            put(6, 2, "emulator unavailable — pip install 'unicorn>=2.1'",
+                curses.A_BOLD)
+        elif not r.reached_handoff:
+            put(6, 2, "did not reach the RTOS handoff — a patch may have "
+                      "broken early init.", curses.A_BOLD)
+        else:
+            put(6, 2, "MAIN MENU (walked from booted RAM):", curses.A_BOLD)
+            view_h = h - 9
+            for i in range(top, min(len(rows), top + view_h)):
+                depth, name, added = rows[i]
+                y = 7 + (i - top)
+                mark = "NEW " if added and depth == 0 else ""
+                attr = (curses.A_BOLD if added else 0)
+                put(y, 4 + depth * 2, mark + name, attr)
+        put(h - 1, 0, " up/down scroll   q/esc back to workbench ".ljust(w - 1),
+            curses.A_REVERSE)
+        scr.refresh()
+        c = scr.getch()
+        if c in (ord("q"), 27, ord("e")):
+            return
+        elif c in (curses.KEY_DOWN, ord("j")):
+            top = min(max(0, len(rows) - (h - 9)), top + 1)
+        elif c in (curses.KEY_UP, ord("k")):
+            top = max(0, top - 1)
 
 
 def main(scr):
@@ -392,6 +462,12 @@ def main(scr):
             target = "bus" if c == ord("b") else "check"
             shell_out(scr, ["make", target, f"REMIX={name}"])
             st.msg = f"make {target} REMIX={name} finished"
+        elif c == ord("e"):
+            if not BUILT_IMAGE.exists():
+                st.msg = "no built image yet — press b to build first"
+            else:
+                emu_view(scr, BUILT_IMAGE)
+                st.msg = f"emulator: booted {BUILT_IMAGE.name}"
 
 
 if __name__ == "__main__":

@@ -470,12 +470,23 @@ the real image executes **~7,000,000 instructions with zero decode faults**,
 through all early hardware init, and stops exactly at the RTOS handoff
 (`trap #0`, `0x40000e46`). The one load-bearing peripheral value is decoded
 (the clock register must report a 264 MHz sysclk or the boot halts); async
-completion-flag spins are auto-satisfied. What remains is the **fork** at the
-trap: emulate the RTOS (dispatch the trap, drive a timer tick) or take the
-**detour-harness** route (call the UI functions directly, skip the
-scheduler). For the stated goal — a text UI to iterate menu/cave patches —
-the detour harness is very likely the right first cut; `docs/EMU.md` lays out
-both.
+completion-flag spins are auto-satisfied.
+
+**Milestone 1 is shipped**: the emulator is a library (`boot()` +
+`read_menu_tree()`), wired into the remix workbench — `make remix`, press
+**`e`** to boot the *built* image, confirm it reaches the handoff with no
+fault, and see the MAIN MENU walked from RAM with any patched-in entry
+highlighted. That is the crow-flies no-flash gate: a cave that breaks early
+init faults in the emulator, not on the unit. ~4 s per boot (native bursts).
+
+Remaining toward the full loop: **live screen** (render real param pages, not
+just the menu tables) needs the draw path to execute — its universal string
+primitive is located (`FUN_40012bd8`, hook `x`/`y`/`str` off the stack) but
+that runs in a task, so it needs the **fork** at the trap: emulate the RTOS
+(dispatch the trap, drive a timer tick) or the **detour-harness** route (call
+the UI draw/input functions directly, skip the scheduler). For iterating
+menu/cave patches the detour harness is very likely the right next cut;
+`docs/EMU.md` lays out both.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above

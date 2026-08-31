@@ -89,6 +89,56 @@ Two facts for whoever crosses it:
   `0x40000d74` written to every slot). So the vector base is known at run
   time from that variable, which sidesteps the no-op register read.
 
+## Milestone 1 — boot-and-inspect, wired into the workbench ✅
+
+`emu_bringup.boot(image)` returns a warm machine; `read_menu_tree(uc)` walks
+the MAIN MENU tables (`docs/MAINMENU.md`) out of its RAM. `make remix`
+(the remix workbench, `tools/remix/tui.py`) now has an **`e`** key: it boots
+the *built* image (`out/mainos_bus.bin` — byte-compatible with the raw
+section), confirms it reaches the RTOS handoff with no fault, and shows the
+menu tree with any patched-in entry highlighted. This is the crow-flies form
+of the no-flash gate: a cave that breaks early init **faults here instead of
+on the unit**, and a menu-table patch is visible before a flash. It needs
+`unicorn` in the interpreter that runs the TUI; without it the view degrades
+to an "unavailable" message and the rest of the workbench is unaffected.
+
+Boot is ~4 s: execution runs in native bursts (`emu_start` with a count),
+with a per-instruction hook turned on only to pin a loop's bounds when a
+stall is suspected. A stall is a PC confined to a small window across several
+bursts; a bounded loop (memset) is told from a flag-poll by an event-driven
+write counter that only a store advances.
+
+## Live screen — the next fidelity step (primitive located) ✅
+
+Rendering the firmware's *actual* screen (real param pages, dialogs) rather
+than the menu tables means capturing text as the UI draws it. The universal
+primitive is **`FUN_40012bd8`** — the "draw string at (x,y)" call every
+renderer funnels through (189 call sites; the list/knob drawer `FUN_40037590`
+and the PERSONALIZE renderer `FUN_40068e00` both reach it). ColdFire cdecl,
+all args on the stack at the callee entry:
+
+```
+FUN_40012bd8(font, canvas, x, y, count, char *str)
+  sp@(4)=font(0x400ba876)  sp@(8)=canvas  sp@(12)=x  sp@(16)=y
+  sp@(20)=count(-1=to NUL)  sp@(24)=str
+```
+
+**Passive capture needs only `x`, `y`, and `str`** (all on the stack / in
+RAM), so the hook is self-contained — no canvas needed. Selection highlight
+is a separate XOR-rect op `FUN_40012254` (`mode<0`). Font descriptor
+`0x400ba876` (proportional, 256 glyphs, ~6 px, 7 px line pitch → ~9 lines on
+the 128×64 LCD); width-measure sibling `FUN_40012f30` reproduces the
+firmware's own centering. The framebuffer is 1bpp column-major at a
+runtime-allocated canvas (`*(0x400bc48c)+36`, fields width/height/stride/base
+at `+0/+4/+8/+12`) — harder to decode than the string hook, so **hook the
+string primitive, not the bitmap**.
+
+The one dependency: the draw code only runs in a task, which the boot does
+not reach (it stops at `trap #0`). So live capture needs the fork below —
+either the RTOS runs the menu task, or the detour harness calls the draw
+path directly. Milestone 1 sidesteps this by reading the tables, not the
+pixels.
+
 ## The fork ahead — do not pick it silently
 
 Reaching the menu code past the trap is a design decision, not more of the
@@ -115,9 +165,12 @@ emulating an LCD, and keys are injected at the software layer.
 ## Reproduce
 
 ```sh
-pip install 'unicorn>=2.1'          # the DEFAULT m68k core is plain-68k; the
-tools/emu_bringup.py                 # CFV4E model is what decodes this CPU
+pip install 'unicorn>=2.1'           # the DEFAULT m68k core is plain-68k; the
+tools/emu_bringup.py [image]         # CFV4E model is what decodes this CPU
+make remix                           # ... then press e to boot the built image
 ```
 
-Prints the instruction count, the stop reason (the `trap #0` boundary), the
-auto-pokes applied, and the peripheral boot map.
+The CLI prints the boot outcome (the `trap #0` boundary), the auto-pokes, the
+MAIN MENU walked from booted RAM, and the peripheral boot map. In the
+workbench, `e` does the same against `out/mainos_bus.bin` and highlights what
+the selection's patches added.
