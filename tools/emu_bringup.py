@@ -48,8 +48,15 @@ MENU_DRAW = 0x40064d7c       # dispatches the current menu-state's draw
 MENU_STATE = 0x400cbf40      # menu state index (1 = the tree)
 MENU_VIEWPORT = 0x400cbd9c   # visible-row clamp; 0 in a cold detour -> no rows
 MENU_SELROW = 0x400cbd98     # selected row in the current list (the cursor)
+MENU_ROWS = 0x400cbda4       # current display list: rows pointer
+MENU_COUNT = 0x400cbda0      # current display list: row count
+MENU_FOCUS = 0x400cbda8      # focus descriptor
 CALL_SP = 0x47f00000         # scratch stack for a detour call
 CALL_RET = 0x000000f0        # sentinel return address a detour stops at
+
+# EFFECT 2 SETUP window opener (docs/MAINMENU.md §7) — the FX2 chooser + dials.
+FX2_SETUP = 0x4005996c
+CUR_TRACK_B = 0x80000000     # current audio track (byte); UI mirror 0x100b14cc
 
 
 class BootResult:
@@ -330,17 +337,47 @@ def _prime_menu(r):
     _call(uc, MENU_OPEN)                     # allocate + set the menu window
     uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
     uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
+    # The root descriptor's rows field (0x400cbd8c+0x18) IS the MENU_ROWS
+    # global that render repoints, so capture the root list ONCE now — after
+    # this, reading the root descriptor gives whatever we last rendered.
+    r._root_rows = _u32(uc, MENU_ROOT_DESC + 0x18)
+    r._root_count = _u32(uc, MENU_ROOT_DESC)
     r._menu_ready = True
 
 
-def render_menu(r, cursor=0):
-    """Open the MAIN MENU on a warm machine and capture what the firmware
-    draws, as a list of (x, y, text) — the live screen, the real renderer's
-    output rather than the tables. `cursor` selects the highlighted top-level
-    row (0..3); the right pane follows it, as on the unit. A patched-in entry
-    appears here exactly as the firmware would draw it.
+def _list_of(r, desc):
+    """(rows_ptr, count) for a menu descriptor, using the captured root list
+    for the root (whose live fields get repointed by rendering)."""
+    if desc == MENU_ROOT_DESC and getattr(r, "_root_rows", None):
+        return r._root_rows, r._root_count
+    return _u32(r.uc, desc + 0x18), _u32(r.uc, desc)
 
-    Re-entrant: the first call primes the machine, later calls just redraw.
+
+def menu_children(r, desc=MENU_ROOT_DESC):
+    """The rows of a menu descriptor as [(label, child_desc, action)]. A row
+    with a non-zero child_desc is a submenu you can descend into."""
+    uc = r.uc
+    if uc is None:
+        return []
+    if not getattr(r, "_menu_ready", False) and r.reached_handoff:
+        _prime_menu(r)
+    rows, count = _list_of(r, desc)
+    if not (0 < count < 64) or not (0x40000000 <= rows < 0x40200000):
+        return []
+    out = []
+    for i in range(count):
+        row = rows + ROW_STRIDE * i
+        label = _cstr(uc, _u32(uc, row + 0x00))
+        if label:
+            out.append((label, _u32(uc, row + 0x10), _u32(uc, row + 0x08)))
+    return out
+
+
+def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
+    """Point the MAIN MENU display at descriptor `desc`, select `cursor`, and
+    capture what the firmware draws, as (x, y, text) — the live screen. The
+    root renders two panes (categories + the selected one's children); a
+    submenu descriptor renders its items. Re-entrant: first call primes it.
     """
     uc = r.uc
     if uc is None or not r.reached_handoff:
@@ -348,9 +385,34 @@ def render_menu(r, cursor=0):
     try:
         if not getattr(r, "_menu_ready", False):
             _prime_menu(r)
+        rows, count = _list_of(r, desc)
+        uc.mem_write(MENU_ROWS, rows.to_bytes(4, "big"))
+        uc.mem_write(MENU_COUNT, count.to_bytes(4, "big"))
+        uc.mem_write(MENU_VIEWPORT, max(count, 6).to_bytes(4, "big"))
+        uc.mem_write(MENU_FOCUS, desc.to_bytes(4, "big"))
         uc.mem_write(MENU_SELROW, int(cursor).to_bytes(4, "big"))
         r._draws.clear()
         _call(uc, MENU_DRAW)
+    except UcError:
+        pass
+    return list(r._draws)
+
+
+def render_fx2(r, track=4):
+    """Detour to the EFFECT 2 SETUP window for `track` (default 4 = track 5,
+    where ChonVerb is hosted) and capture what it draws — the FX2 chooser and
+    parameter labels. Shows the built remix's own effects.
+    """
+    uc = r.uc
+    if uc is None or not r.reached_handoff:
+        return []
+    if not getattr(r, "_menu_ready", False):
+        _prime_menu(r)          # installs the capture + fault-survival hooks
+    try:
+        uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
+        uc.mem_write(0x100b14cc, int(track).to_bytes(4, "big"))
+        r._draws.clear()
+        _call(uc, FX2_SETUP)
     except UcError:
         pass
     return list(r._draws)
@@ -362,6 +424,8 @@ def layout_screen(draws, cols=42, rows=9):
     larger y = higher on screen); map pixel x/y to character cells."""
     grid = [[" "] * cols for _ in range(rows)]
     for x, y, t in draws:
+        if not (0 <= x <= 128 and 0 <= y <= 64):     # skip bogus coords
+            continue
         cx = min(cols - 1, max(0, x * cols // 128))
         cy = min(rows - 1, max(0, (64 - y) * rows // 64))
         for i, ch in enumerate(t):
