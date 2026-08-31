@@ -59,6 +59,20 @@ CALL_RET = 0x000000f0        # sentinel return address a detour stops at
 FX2_SETUP = 0x4005996c
 CUR_TRACK_B = 0x80000000     # current audio track (byte); UI mirror 0x100b14cc
 
+# Assigning an effect to a track's FX2 slot so its real param page resolves
+# (docs/EMU.md, the FX-page research). The project DB pointer at 0x46c82456 is
+# null on our boot (no project loaded), so we point it at a zeroed scratch Part
+# and write the id byte the resolver reads.
+PART_PTR = 0x46c82456        # -> project database base (null until we fake it)
+PART_STRIDE = 0x18b2         # per-pattern
+FX2_ID_OFF = 0x8ed88         # + PAT*stride + track  -> FX2 effect-id byte
+FX1_ID_OFF = 0x8ed80         # FX1 effect-id byte (inserts are all FX2, though)
+PARAM_VAL_OFF = 0x8f084      # + PAT*stride + track*30 + slot -> displayed value
+MACHINE_OFF = 0x8eda2        # + PAT*stride + track -> playback machine type
+FAKE_PART = 0x50000000       # where we map the scratch Part
+PAT_R = 0x100b14cf           # displayed pattern (resolver mirror)
+PAT_W = 0x80000003           # displayed pattern (window/drawer mirror)
+
 
 class BootResult:
     def __init__(self):
@@ -399,10 +413,52 @@ def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
     return list(r._draws)
 
 
-def render_fx2(r, track=4):
-    """Detour to the EFFECT 2 SETUP window for `track` (default 4 = track 5,
-    where ChonVerb is hosted) and capture what it draws — the FX2 chooser and
-    parameter labels. Shows the built remix's own effects.
+def _prime_part(r):
+    """Map a zeroed scratch Part and point the project-DB pointer at it, so the
+    FX-page resolvers have somewhere to read the per-track effect id and values.
+    The real boot loads a project here; ours (bootstrap-upgrade path) does not.
+    """
+    uc = r.uc
+    if getattr(r, "_part_ready", False):
+        return
+    uc.mem_map(FAKE_PART, 0x100000)
+    uc.mem_write(PART_PTR, FAKE_PART.to_bytes(4, "big"))
+    r._part_ready = True
+
+
+def _part_addr(uc, off, track=4, slot=0, track_stride=1):
+    part = int.from_bytes(uc.mem_read(PART_PTR, 4), "big")
+    pat = uc.mem_read(PAT_R, 1)[0]
+    return part + pat * PART_STRIDE + track * track_stride + slot + off
+
+
+def assign_fx2(r, track=4, effect_id=0x07):
+    """Assign an effect (by FX2 id) to a track so its param page resolves. In
+    the BUILT image the id->descriptor table is patched, so 0x07 is ChonVerb,
+    0x06 BongDelay, etc. (raw image: those slots are NONE)."""
+    uc = r.uc
+    _prime_part(r)
+    uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
+    uc.mem_write(0x100b14cc, int(track).to_bytes(4, "big"))
+    uc.mem_write(PAT_W, (0).to_bytes(1, "big"))
+    uc.mem_write(PAT_R, (0).to_bytes(1, "big"))
+    uc.mem_write(_part_addr(uc, FX2_ID_OFF, track), bytes([effect_id & 0xff]))
+
+
+def set_fx2_value(r, track, slot, value):
+    """Poke a track's FX2 param display value (slot 0..11) — the byte the knob
+    drawer reads. Re-render to see it. (Page-2 slots 6..11 have the effect's
+    page-2 knobs; the drawer reads them from the same displayed-value array.)"""
+    _prime_part(r)
+    a = _part_addr(r.uc, PARAM_VAL_OFF, track, slot, track_stride=30)
+    r.uc.mem_write(a, bytes([value & 0xff]))
+
+
+def render_fx2(r, track=4, effect_id=0x07):
+    """Detour to EFFECT 2 SETUP for `track` (default 4 = track 5) with
+    `effect_id` assigned, and capture what it draws — the chooser plus the
+    effect's REAL parameter knobs (e.g. ChonVerb's SHMR/MODE/DIFF/SHFT/GATE/
+    RATE). effect_id None leaves whatever is assigned.
     """
     uc = r.uc
     if uc is None or not r.reached_handoff:
@@ -410,8 +466,8 @@ def render_fx2(r, track=4):
     if not getattr(r, "_menu_ready", False):
         _prime_menu(r)          # installs the capture + fault-survival hooks
     try:
-        uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
-        uc.mem_write(0x100b14cc, int(track).to_bytes(4, "big"))
+        if effect_id is not None:
+            assign_fx2(r, track, effect_id)
         r._draws.clear()
         _call(uc, FX2_SETUP)
     except UcError:
