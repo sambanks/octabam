@@ -46,6 +46,8 @@ try:
 except ImportError:
     sys.exit("the workbench frontend needs textual -- run: make emu-setup")
 
+from rich.markup import escape  # noqa: E402  (rich ships with textual)
+
 from remix import audition, registry, rig  # noqa: E402
 from remix.state import (BUILT_IMAGE, DONOR_WORDS, ROOT,  # noqa: E402
                          STOCK_ROOTS, State)
@@ -193,7 +195,7 @@ class RigScreen(Screen):
         tr = f"T{app.track}"
         if mod:
             full = mod.menu.fullname.decode("latin1")
-            lines.append(f"[bold]{tr} · {full}[/]   "
+            lines.append(f"[bold]{tr} · {escape(full)}[/]   "
                          f"(tracks {rig.track_range(mod).start}-"
                          f"{rig.track_range(mod).stop - 1})")
         else:
@@ -208,7 +210,7 @@ class RigScreen(Screen):
             if name == "SOURCE":
                 src = app.source.name if app.source else "(none — add wavs "\
                     "to out/test_audio/)"
-                lines.append(f" {mark}SOURCE  {src}{end}")
+                lines.append(f" {mark}SOURCE  {escape(src)}{end}")
             elif name == "WET":
                 w = "WET only (reverb render)" if app.wet else "full (dry+wet)"
                 lines.append(f" {mark}RENDER  {w}{end}")
@@ -224,7 +226,7 @@ class RigScreen(Screen):
                     bar = "#" * fill + "." * (16 - fill)
                 page = "1" if slot < 6 else "2"
                 knob = "ABCDEF"[slot % 6]
-                lines.append(f" {mark}{name:<6} {val} [{bar}]  "
+                lines.append(f" {mark}{name:<6} {val} \\[{bar}]  "
                              f"p{page}·{knob}{end}")
         if mod and mod.name == "chonverb":
             lines.append("")
@@ -236,12 +238,14 @@ class RigScreen(Screen):
         h = ["[bold]RENDERS[/]"]
         for i, (label, path) in enumerate(reversed(app.history[-6:])):
             marks = "".join(m for m, p in app.marks.items() if p == path)
-            h.append(f" {('[' + marks + '] ') if marks else '    '}{label}")
+            h.append(f" {('\\[' + marks + '] ') if marks else '    '}"
+                     f"{escape(label)}")
         self.query_one("#history", Static).update(
             "\n".join(h) if len(h) > 1 else
             "[dim]r renders the selected track; a/b mark a render, "
             ", . replay the marks[/]")
-        self.query_one("#status", Static).update(f"[dim]{app.status}[/]")
+        self.query_one("#status", Static).update(
+            f"[dim]{escape(app.status)}[/]")
 
     # ---- input ----------------------------------------------------------
     def on_key(self, ev):
@@ -285,8 +289,8 @@ class RigScreen(Screen):
 
     def action_pick_effect(self):
         app = self.app
-        opts = [(m.key, f"{m.menu.fullname.decode('latin1'):<13} "
-                        f"[{rig.category(m)}]")
+        opts = [(m.key, f"{escape(m.menu.fullname.decode('latin1')):<13} "
+                        f"\\[{rig.category(m)}]")
                 for m in rig.available(app.track)] + [("__none__", "(none)")]
 
         def done(key):
@@ -445,7 +449,7 @@ class RemixScreen(Screen):
             cur = krows[self.cursor] == i
             mark = "[reverse]" if cur else ("" if k in st.sel else "[dim]")
             end = "[/]" if mark else ""
-            lines.append(f" {mark}[{on}]{fb} {m.name:<11}{trs} {wd}{end}")
+            lines.append(f" {mark}\\[{on}]{fb} {m.name:<11}{trs} {wd}{end}")
         lines.append("")
         lines.append("[bold dim]REMIXES[/] [dim]" + " ".join(
             n for n in registry.remix_names() if not n.startswith("_"))
@@ -459,7 +463,7 @@ class RemixScreen(Screen):
             if m.key == st.eff_fallback:
                 star = (" ← fallback (auto)" if st.fallback_is_auto
                         else " ← fallback")
-            p.append(f"  {i}. {m.menu.fullname.decode('latin1'):<13} "
+            p.append(f"  {i}. {escape(m.menu.fullname.decode('latin1')):<13} "
                      f"0x{m.menu.fx2_id:02x}{star}")
         absent = [m for m in st.mods.values()
                   if m.menu is not None and m.key not in st.sel]
@@ -484,7 +488,7 @@ class RemixScreen(Screen):
         probs = st.problems()
         if probs:
             p.append(f"[bold red]WILL NOT BUILD ({len(probs)})[/]")
-            p += [f"  {x}" for x in probs]
+            p += [f"  {escape(x)}" for x in probs]
         else:
             p.append("[bold green]no LEDGER collisions — this selection "
                      "builds[/]")
@@ -496,7 +500,7 @@ class RemixScreen(Screen):
                 p.append(f"[dim]{buffered[0].name} owns Y:0x4000-0xBFFF — "
                          f"the only such module on its core[/]")
         p.append("")
-        p.append(f"[dim]{st.msg}[/]")
+        p.append(f"[dim]{escape(st.msg)}[/]")
         self.query_one("#panel", Static).update("\n".join(p))
 
     def on_key(self, ev):
@@ -721,9 +725,9 @@ class EmuScreen(Screen):
             draws = emu_bringup.render_playback(r, track=track0, machine=mi)
             title = f"PLAYBACK — T{app.track}, {names[mi]} (left/right cycles)"
         grid = emu_bringup.layout_screen(draws)
-        lcd = "\n".join(["[bold]" + title + "[/]", "",
+        lcd = "\n".join(["[bold]" + escape(title) + "[/]", "",
                          "." + "-" * 46 + "."]
-                        + ["|" + ln.ljust(46) + "|" for ln in grid]
+                        + ["|" + escape(ln.ljust(46)) + "|" for ln in grid]
                         + ["'" + "-" * 46 + "'"])
         self.query_one("#lcd", Static).update(lcd)
         self.query_one("#emunote", Static).update(f"[dim]{note}[/]")
