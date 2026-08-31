@@ -46,6 +46,9 @@ EMU, `q` returns to the rig).
 Eight tracks across the top, an effect assigned to each, the selected
 track's controls below. This is the trial-a-sound loop.
 
+![The RIG view: Nimbus on T6, its page-1 knobs and FRZE select, the
+per-knob help line, and the render history](img/workbench-rig.png)
+
 | key | action |
 |---|---|
 | `1`–`8` | select track |
@@ -95,6 +98,10 @@ the cursored module's one-line doc below. Right: what the selection *is* —
 the FX2 chooser exactly as the unit will show it, the program-fit bar
 against the donor region, and the ledger's collision verdict (the same
 `ledger.check` the build runs, not a reimplementation).
+
+![The REMIX view: modules grouped by category with track ranges, the FX2
+menu as the unit will draw it, and the ledger's verdict —
+chongbong loaded](img/workbench-remix.png)
 
 | key | action |
 |---|---|
