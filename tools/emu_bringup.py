@@ -55,7 +55,10 @@ MENU_FOCUS = 0x400cbda8      # focus descriptor
 CALL_SP = 0x47f00000         # scratch stack for a detour call
 CALL_RET = 0x000000f0        # sentinel return address a detour stops at
 
-# EFFECT 2 SETUP window opener (docs/MAINMENU.md §7) — the FX2 chooser + dials.
+# EFFECT 1 / EFFECT 2 SETUP window openers (docs/MAINMENU.md §7) — the chooser
+# + dials. FX1 is page_kind 3 (id byte +0x8ed80); our inserts are all FX2, so
+# FX1 shows the stock effects (FILTER, etc.).
+FX1_SETUP = 0x40059afc
 FX2_SETUP = 0x4005996c
 CUR_TRACK_B = 0x80000000     # current audio track (byte); UI mirror 0x100b14cc
 
@@ -470,6 +473,31 @@ def render_fx2(r, track=4, effect_id=0x07):
             assign_fx2(r, track, effect_id)
         r._draws.clear()
         _call(uc, FX2_SETUP)
+    except UcError:
+        pass
+    return list(r._draws)
+
+
+def render_fx1(r, track=4, effect_id=0x04):
+    """Detour to EFFECT 1 SETUP for `track` with `effect_id` assigned (FX1 id
+    byte +0x8ed80, table 0x400d5f58 — stock effects; 0x04 = FILTER). Same shape
+    as render_fx2. effect_id None leaves whatever is assigned."""
+    uc = r.uc
+    if uc is None or not r.reached_handoff:
+        return []
+    if not getattr(r, "_menu_ready", False):
+        _prime_menu(r)
+    try:
+        if effect_id is not None:
+            _prime_part(r)
+            uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
+            uc.mem_write(0x100b14cc, int(track).to_bytes(4, "big"))
+            uc.mem_write(PAT_W, (0).to_bytes(1, "big"))
+            uc.mem_write(PAT_R, (0).to_bytes(1, "big"))
+            uc.mem_write(_part_addr(uc, FX1_ID_OFF, track),
+                         bytes([effect_id & 0xff]))
+        r._draws.clear()
+        _call(uc, FX1_SETUP)
     except UcError:
         pass
     return list(r._draws)

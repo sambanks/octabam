@@ -170,6 +170,37 @@ the row x from 2-pane state that a cold repoint leaves unset, so the labels
 land at a bogus x (`0x80003003`). Driving the key handler + capturing the XOR
 highlight is the next increment.
 
+## Both FX param pages, with the effect assigned ✅ (31 Aug 2026)
+
+`render_fx2(r, track, effect_id)` and `render_fx1(r, track, effect_id)` render
+the real FX2 / FX1 parameter pages — the effect's actual knob rows, not a
+default. `make remix` → `e` → `f` (FX2) / `1` (FX1); left/right cycle the
+effect. FX2 with `0x07` shows ChonVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
+HP/LP/IN); FX1 shows the stock effects (FILTER's BASE/WDTH/ENV/ATK/DEC/…, EQ's
+FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
+
+**How the effect resolves.** The page draws the descriptor `table[id]` where
+`id` is a per-track byte in the project Part: FX2 at `PART + PAT*0x18b2 +
+track + 0x8ed88`, FX1 at `+0x8ed80` (`PART = *(u32*)0x46c82456`, `PAT =
+*(u8*)0x100b14cf`). Our boot loads no project, so `PART` is null — `_prime_part`
+maps a zeroed scratch Part and points the DB pointer at it, then `assign_fx2`/
+the FX1 path write the id byte. In the BUILT image the id→descriptor tables
+are patched (`build_bus.py`), so `0x07` is ChonVerb; in the raw image those
+slots are NONE. (`0x06`/BongDelay aliases to SEND in the payload-A SPEC image
+and renders empty — it lives on payload B.)
+
+**Both SETUP windows** wrap the stage+draw: FX2 `FUN_4005996c` (drawer
+`FUN_40037590`), FX1 `FUN_40059afc` (drawer `FUN_4003792c`). Calling one after
+assigning the id is the whole recipe.
+
+**Values.** A knob's displayed value is a byte at `PART + PAT*0x18b2 +
+track*30 + slot + 0x8f084` (`set_fx2_value`), and the canonical writer is
+`FUN_40054cd8(track, flat, value)` with `flat = 24 + slot` for FX2 page-1.
+The value itself draws as a dial GRAPHIC, not text, so it is not captured by
+the string hook — the audio side (`render_reverb`, the `v` audition view) is
+where knob values are heard. Editing a value in the page + reading it back as
+text is the remaining nicety.
+
 ## The RTOS fork — still open, still not forced
 
 Milestone 2 took route **B** (detour) and it carries the workbench: a menu- or
