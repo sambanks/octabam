@@ -506,7 +506,11 @@ for every module (a `--pick` of an absent insert dies instead of rendering a
 plausible dry passthrough). The composer groups modules by category with
 track ranges, phrases its panel as the FX2 menu the unit will show, and
 builds/checks the LIVE selection; the emu view caches its boot until the
-image changes and follows the rig's selected track.
+image changes and follows the rig's selected track. Follow-ups landed the
+same day: esc stops audio, Rich-markup escaping, per-knob docs + select
+labels in the manifests with `?` help overlays, the audition journal
+(`out/_audition/log.jsonl`), and the terminal-ANSI theme. The manual is
+`docs/WORKBENCH.md`.
 
 Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the

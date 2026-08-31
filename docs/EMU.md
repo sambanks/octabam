@@ -93,8 +93,8 @@ Two facts for whoever crosses it:
 
 `emu_bringup.boot(image)` returns a warm machine; `read_menu_tree(uc)` walks
 the MAIN MENU tables (`docs/MAINMENU.md`) out of its RAM. `make remix`
-(the workbench, `tools/remix/app.py` — the curses `tui.py` is retired, in
-history) has an **`e`** view: it boots the *built* image
+(the workbench, `tools/remix/app.py` — manual in `docs/WORKBENCH.md`; the
+curses `tui.py` is retired, in history) has an **`e`** view: it boots the *built* image
 (`out/mainos_bus.bin` — byte-compatible with the raw section), confirms it
 reaches the RTOS handoff with no fault, and shows the firmware's own screens
 with any patched-in entry highlighted. This is the crow-flies form of the

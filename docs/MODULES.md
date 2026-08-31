@@ -51,7 +51,8 @@ what keeps `modules/_template/` out of every build.
 short, and its comments carry the reasoning behind each field.
 
 Copy `modules/_template/` to start, and `make remix` opens the workbench
-(`tools/remix/app.py`, Textual — provisioned by `make emu-setup`). Its home
+(`tools/remix/app.py`, Textual — provisioned by `make emu-setup`; the full
+manual is `docs/WORKBENCH.md`). Its home
 view is a RIG of eight tracks: assign effects, dial their manifest-named
 knobs, render and hear them. Its REMIX view is the composer: collisions, the
 FX2 menu your selection produces, its word cost against the donor region,
