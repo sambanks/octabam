@@ -24,7 +24,7 @@ this is not worth acquiring one for.
 
 KEYS
     up/down k j    move          space  toggle the module under the cursor
-    a / n          all / none    f      make it the fallback
+    a / n          all / none    f      override the fallback (else auto: SEND)
     l              load a remix  s      save the selection as a remix
     w              assemble and report words (a real build)
     b              build the image        c   make check
@@ -94,6 +94,34 @@ class State:
         """Selected modules that appear in the FX2 chooser, in panel order."""
         return [m for m in self.selected if m.menu is not None]
 
+    def auto_fallback(self):
+        """The fallback to use when none is set explicitly. SEND is the safe
+        catch-all -- an unimplemented id aliased to it becomes a harmless dry
+        passthrough, not garbage -- so prefer it; if there is exactly one
+        menu-bearing module, it is the only choice. Otherwise there is no safe
+        automatic pick (any real effect would PROCESS the unknown id), so
+        return None and let problems() ask for an explicit choice.
+        """
+        for k in self.keys:
+            if k in self.sel and self.mods[k].name == "send" \
+                    and self.mods[k].menu is not None:
+                return k
+        menu = [m.key for m in self.menu_modules]
+        return menu[0] if len(menu) == 1 else None
+
+    @property
+    def eff_fallback(self):
+        """What the build will actually use: the explicit choice if valid,
+        else the intelligent default."""
+        if self.fallback and self.fallback in self.sel \
+                and self.mods[self.fallback].menu is not None:
+            return self.fallback
+        return self.auto_fallback()
+
+    @property
+    def fallback_is_auto(self):
+        return self.eff_fallback is not None and self.eff_fallback != self.fallback
+
     # ---- what the selection costs and whether it is legal ---------------
     def problems(self):
         """Everything that would stop this selection building, in one list.
@@ -106,14 +134,10 @@ class State:
         if not self.menu_modules:
             out.append("no module with a menu entry: nothing would be "
                        "selectable on the panel")
-        if self.fallback is None:
-            out.append("no fallback: an id this image does not implement "
-                       "would dispatch into whatever occupies its slot")
-        elif self.fallback not in self.sel:
-            out.append(f"fallback {self.fallback!r} is not in the selection")
-        elif self.mods[self.fallback].menu is None:
-            out.append(f"fallback {self.fallback!r} has no menu entry, so "
-                       f"ids aliased to it would dispatch nowhere")
+        if self.eff_fallback is None:
+            out.append("no fallback and none can be picked automatically "
+                       "(no SEND, and several effects) — press f to choose "
+                       "which effect unimplemented ids alias to")
         # A module whose words we know, summed against the region it must fit.
         known = [k for k in self.sel if k in self.words]
         if known and len(known) == len([k for k in self.sel
@@ -133,9 +157,9 @@ class State:
         count, and only the build knows them. The build report is API
         (verify_delay and friends parse it), which is why this can parse it.
         """
-        if self.fallback is None or self.fallback not in self.sel:
-            return False, ("set a fallback first (f on a selected module "
-                           "with a menu entry) — the build needs one")
+        if self.eff_fallback is None:
+            return False, ("no fallback and none can be auto-picked — press "
+                           "f to choose one")
         tmp = ROOT / "remixes/_tui_scratch.py"
         tmp.write_text(self.as_remix("_tui_scratch",
                                      "scratch selection from the remix TUI"))
@@ -171,7 +195,7 @@ class State:
     # ---- saving ---------------------------------------------------------
     def as_remix(self, name, doc):
         mods = ", ".join(f'"{k}"' for k in self.keys if k in self.sel)
-        fb = f'"{self.fallback}"' if self.fallback else "None"
+        fb = f'"{self.eff_fallback}"' if self.eff_fallback else "None"
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by tools/remix/tui.py. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
@@ -209,7 +233,9 @@ def draw(scr, st):
         m = st.mods[k]
         on = k in st.sel
         mark = "x" if on else " "
-        fb = "*" if st.fallback == k else " "
+        # * explicit fallback, ~ the auto-picked one
+        fb = ("*" if st.fallback == k
+              else "~" if k == st.eff_fallback else " ")
         wd = f"{st.words[k]:>5}w" if k in st.words else "     -"
         idtxt = f"0x{m.menu.fx2_id:02x}" if m.menu else " -- "
         line = f" [{mark}]{fb} {m.name:<11} {idtxt} {wd}"
@@ -236,16 +262,20 @@ def draw(scr, st):
     put(ry, x, f"panel: {len(menu)} entries" + (
         "" if menu else "  (nothing selectable!)")); ry += 1
     for i, m in enumerate(menu):
-        star = " <- fallback" if m.key == st.fallback else ""
+        if m.key == st.eff_fallback:
+            star = " <- fallback (auto)" if st.fallback_is_auto \
+                   else " <- fallback"
+        else:
+            star = ""
         put(ry, x + 2, f"{i}. {m.menu.fullname.decode('latin1'):<13}"
                        f"0x{m.menu.fx2_id:02x}{star}")
         ry += 1
     absent = [m for m in st.mods.values()
               if m.menu is not None and m.key not in st.sel]
-    if absent and st.fallback:
+    if absent and st.eff_fallback:
         ry += 1
         put(ry, x, f"{len(absent)} absent id(s) alias to "
-                   f"{st.mods[st.fallback].name}", curses.A_DIM); ry += 1
+                   f"{st.mods[st.eff_fallback].name}", curses.A_DIM); ry += 1
 
     # words
     ry += 1
