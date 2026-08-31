@@ -219,7 +219,10 @@
 ;                       SPRAY. Per-line candidates are what keep L and R
 ;                       decorrelated while they share ages and window gains
 ;   r7+$56..$5b         GRAIN per-sample scratch (builder: age_fx / age_int /
-;                       frac / gain / smoothstep temp; reader: phase / t0)
+;                       frac / gain / smoothstep temp; reader: phase / t0;
+;                       $57 also carries the density MAKEUP coeff from the
+;                       hoist into the builder -- dead there until the
+;                       reader's t0 park)
 ;   r7+$5c              SPRAY depth, Q23 (per block, from the SPRAY knob)
 ;   r7+$5d              GRAIN per-grain age cursor (the builder's running age)
 ;   r7+$5e              REVERSE segment phase, 23-bit (persistent, masked on
@@ -2229,7 +2232,13 @@ grcapok:
         move    b1,x0
         move    x0,b
         move    x:(r7+$2d),a            ; DENS (the WOW knob in GRAIN)
-        asr     #$e,a,a
+        asr     #$11,a,a                ; $2d holds knob<<13; >>17 = knob>>4,
+                                        ; 0..7 across the FULL dial. The old
+                                        ; >>14 left knob>>1 vs a 3-bit draw:
+                                        ; every value >=15 saturated to full
+                                        ; density and the knob's whole range
+                                        ; lived in 0..14 (measured 31 Aug
+                                        ; 2026 -- flat 16..127, -7 dB at 0)
         move    a1,x0
         move    x0,a
         sub     b,a                     ; N SET == this grain stays silent
@@ -2243,7 +2252,7 @@ grcapok:
         move    b1,x0
         move    x0,b
         move    x:(r7+$2d),a
-        asr     #$e,a,a
+        asr     #$11,a,a                ; same relaw as line L above
         move    a1,x0
         move    x0,a
         sub     b,a
@@ -2251,6 +2260,33 @@ grcapok:
         move    #>$1,x0
         tmi     x0,b
         move    b,x:(r7+$61)            ; candidate mute, line R
+; ---- density MAKEUP: coeff = 1/2 + (7-dens3)/14, Q23 ---------------------
+; The gate mutes grains but nothing restored the level, so sparse always
+; cost energy (measured 31 Aug 2026: -0.4/-1.0/-1.9/-2.8/-3.8/-5.4/-7.1 dB
+; at dens3 6..0). This linear law flattens it within ~1.2 dB; the top of
+; the ramp is $7FFFFF by construction (7 * $492492 = $1FFFFFE, so the sum
+; cannot wrap), i.e. the cap is +6 dB and dens3=0 keeps a -1.1 dB residue.
+; Parked in $57, which is DEAD from the pre-hoist park above until the
+; reader parks t0 there -- after the builder (the only consumer) is done.
+; x1 (the parked roll draw) and y0 are NOT touched; y1 is builder-clobbered
+; every pass anyway and is loaded fresh at the consuming mpy.
+        move    x:(r7+$2d),a            ; knob<<13
+        asr     #$11,a,a                ; dens3, 0..7
+        move    a1,x0
+        move    x0,a
+        move    #>7,b
+        sub     a,b                     ; 7-dens3
+        move    b1,x0                   ; through b1: sub is safe but asl
+        move    x0,b                    ; below leaves B2 stale
+        asl     #$14,b,b                ; (7-dens3)<<20 = n/8 in Q23
+        move    b1,x0
+        move    #>$492492,y1            ; 8/14 in Q23
+        mpy     x0,y1,b                 ; n/14 (x0,y1 -- a SIGNED encode)
+        move    #>$400000,x0
+        add     x0,b                    ; + 1/2
+        move    b1,x0
+        move    x0,b
+        move    b,x:(r7+$57)            ; GRAIN makeup coeff, this sample
 
 ; ---- BUILDER ------------------------------------------------------------
         move    r7,a
@@ -2259,16 +2295,20 @@ grcapok:
         move    a,r4                    ; -> record L0
         move    #>2,n4
         do      #4,>grnbz
-; window gain from the SCHEDULE phase alone, halved (four grains sum to 2.0)
+; window gain from the SCHEDULE phase alone, scaled by the density makeup
+; coeff (1/2 at full density == the old fixed halving; four grains sum to
+; 2.0, so 1/2 is unity and the coeff tops out at 1.0 = +6 dB of makeup)
         move    x:(r7+$5d),a
         bsr     smoothw                 ; smoothstepped triangle (v6 roll --
                                         ; y0's wrap flag is parked AFTER this
                                         ; point, and smoothw never touches y0
                                         ; anyway)
-        asr     #$1,a,a                 ; halved
-        move    a1,x0
+        move    a1,x0                   ; window, >= 0
+        move    x:(r7+$57),y1           ; density makeup coeff (hoist)
+        mpy     x0,y1,a                 ; x0,y1 -- a SIGNED encode
+        move    a1,x0                   ; a1: the plain fractional product
         move    x0,a
-        move    a,x:(r7+$59)            ; gain/2
+        move    a,x:(r7+$59)            ; gain * coeff
 ; ---- this grain's own wrap: prev = (phase - SSTEP) & mask ----------------
         move    x:(r7+$5d),a
         move    #>$400,x0

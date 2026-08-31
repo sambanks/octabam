@@ -1974,3 +1974,37 @@ sweet-spot problem:**
    (0.5 s+) needs a longer line: a payload-B memory-layout item, not a
    knob. Parked on the delay design list next to GRAIN makeup gain
    (DENS = the DPTH/WOW knob in GRAIN; sparse still only subtracts).
+
+## R61 — GRAIN density: the knob that barely existed, fixed + makeup gain
+## (31 Aug 2026, ear-passed on local renders)
+
+**The DENS knob was a two-position switch, and nobody knew.** The decode
+fed the 3-bit gate comparison knob>>1 (the $2d slot holds knob<<13 and the
+gate shifted down 14), so every knob value >=15 saturated to full density:
+the whole musical range lived in knob 0..14 and the shipped default (48)
+was silently "always full". Measured before the fix: FLAT from DENS 16 to
+127, -7.1 dB only at 0. Every GRAIN density impression ever formed on a
+default-ish knob was full-density. Fix: shift 17 (knob>>4 -> dens3 0..7),
+both draw sites; the dial now tapers smoothly across its full travel
+(0/-0.4/-1.0/-1.9/-2.8/-3.8/-5.4/-7.1 dB at dens3 7..0).
+
+**Makeup gain built on top** (the PLAN §1 item): per-sample coeff
+1/2 + (7-dens3)/14 (Q23, top of ramp $7FFFFF by construction), parked in
+GRAIN's $57 (dead from the pre-hoist park until the reader's t0 park),
+multiplied into the window in the builder -- 1/2 at full density is the
+old fixed halving exactly. Measured after: **flat within +-1.2 dB across
+the whole dial** (cap +6 dB, so DENS 0 keeps a -1.2 dB residue).
+
+Verified: CLEAN/PITCH/REVERSE renders BIT-IDENTICAL before/after;
+make check green; encodings proven by standalone dsp_asm listing
+(asr #$11,a,a = 0c1c22, mpy x0,y1 = 2000c8 signed, constant intact) and
+image bytes. Cost 25 words -- **payload B FREE 5, the pool is spent**.
+
+**Sam's ear, sparse (DENS 16) A/B before/after makeup: "sparse sounds way
+better now."** Committed on that verdict; hardware ear-ratify rides the
+next flash (DSP-side change only, no descriptor edit, no new publish
+risk).
+
+⚠️ Behavior change on stored settings: DPTH 48 in GRAIN now means MID
+density, not full. That is the knob working for the first time; the
+makeup holds the level through it.
