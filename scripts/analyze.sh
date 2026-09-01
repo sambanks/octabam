@@ -43,7 +43,9 @@ for f in "${ARTIFACTS[@]}"; do
   echo
 
   echo "--- [4] Long strings (versions, menus, paths) ---"
-  strings -n 6 "$f" | sort -u | head -40 | tee "$OUT/${base}.strings.txt" >/dev/null
+  # No head in this pipeline: under pipefail, head's early exit SIGPIPEs sort
+  # (exit 141) once the dump exceeds the pipe buffer — the .syx does.
+  strings -n 6 "$f" | sort -u > "$OUT/${base}.strings.txt"
   head -20 "$OUT/${base}.strings.txt"
   echo "    (full dump in $OUT/${base}.strings.txt)"
   echo
@@ -55,6 +57,10 @@ for f in "${ARTIFACTS[@]}"; do
     if [ -x "$EFT" ]; then
       "$EFT" "$f" 2>&1 | tee "$OUT/${base}.eft.txt" || \
         echo "    (tool exited non-zero; check its usage: $EFT --help)"
+      # The call above only reports; this one extracts the section every
+      # build script reads as its base image.
+      "$EFT" -i "$f" -d 3 -o "$OUT/raw" || \
+        echo "    (extraction failed; $OUT/raw/section_3_MAIN_OS.bin not refreshed)" >&2
     else
       echo "    (elektron-firmware-tool not built; run scripts/setup.sh)"
     fi
