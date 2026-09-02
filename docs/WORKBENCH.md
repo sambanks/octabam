@@ -416,9 +416,21 @@ track's** buffer, and the row names the tracks still free — those are exactly
 the ones that can host an allocating stock effect:
 
 ```
- FX2 buf A #### #### #### ####  4 of 4  none free
- FX2 buf B .... .... #### ####  2 of 4  free on 1, 2
+ FX2 buf A #### #### #### ####  ChonVerb has 5,6,7,8
+ FX2 buf B .... .... #### ####  BongDelay has 3,4 · 1,2 keep theirs
 ```
+
+⚠️ **"Free" was the wrong word and kept being read as "unused".** A track
+whose buffer no module has claimed still *has* that buffer, ready for
+whatever is selected there — so the row says `keep theirs`. That is the whole
+answer to *"the stock reverbs don't use it?"*: they use **their own track's**,
+when you select them on it, and merely listing one in the chooser claims
+nothing. Only a **module** claims a buffer for the life of the image, which
+is why only modules appear in this row.
+
+The two panes are consistent once the timing is clear: the library says
+`Plate Rev … FX2 takes 1 of the 4 slots` (what it does *when selected on a
+track*), and the budget says what is claimed *by the image*.
 
 With `chongbong`, ChonVerb holds all four of core 0's (tracks 5–8) and
 BongDelay tracks 3–4's on core 1 — so **FLANGER on track 1 or 2 would be

@@ -840,10 +840,20 @@ class BenchScreen(Screen):
                 mine = ",".join(str(tracks.start + i) for i in sorted(owner)
                                 if owner[i] is mod)
                 bits.append(f"{disp(mod)} has {mine}")
+            # ⚠️ "free" KEEPS BEING READ AS "unused", and it is not: a track
+            # whose buffer no module has claimed still HAS that buffer, ready
+            # for whatever is selected there. That is the whole answer to "do
+            # the stock reverbs not use it?" -- they use their own track's,
+            # when you select them on it, and listing one in the chooser
+            # claims nothing. Only a MODULE claims a buffer for the life of
+            # the image, which is why only modules appear here.
             if free:
-                bits.append(f"[{OK}]free {','.join(str(t) for t in free)}[/]")
+                bits.append(f"[{OK}]{','.join(str(t) for t in free)} "
+                            f"keep theirs[/]")
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       + " · ".join(bits or ["[dim]all four free[/]"]))
+                       + " · ".join(bits or
+                                    ["[dim]unclaimed — every track keeps its "
+                                     "own[/]"]))
 
         # Rows are countable without a build; the cave is not.
         # Same rule: 31 exist, this selection loaded N.
@@ -873,8 +883,10 @@ class BenchScreen(Screen):
         # remix actually decides.
         out.append("[dim] # loaded by a module · - held by a listed reverb "
                    "· . free[/]")
-        out.append("[dim] one FX2 buffer per track — a free track can still "
-                   "host a stock effect that needs one[/]")
+        out.append("[dim] one FX2 buffer per track. A module claims one for "
+                   "the whole image;[/]")
+        out.append("[dim] a stock effect uses its track's only while it is "
+                   "selected there.[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
