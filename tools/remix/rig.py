@@ -364,3 +364,18 @@ def pins_fx2(mod) -> bool:
     c = getattr(mod, "claims", None)
     return bool((c is not None and c.owns_fx2_buffers)
                 or (mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER))
+
+
+def pinned_slots(mod) -> int:
+    """How many of a core's FOUR FX2 buffer slots this module holds fixed.
+
+    owns_fx2_buffers is the two CORE-PRIVATE slots (0x4000/0x8000); a
+    substituted ybase is the two SHARED-WINDOW ones (0x30000/0x34000 on core
+    0, 0x38000/0x3c000 on core 1 -- measured, X:0x255 in both payloads).
+    ChonVerb has both and so holds all four; Nimbus the first pair;
+    BongDelay the second.
+    """
+    from remix.schema import YBase
+    c = getattr(mod, "claims", None)
+    return (2 * bool(c is not None and c.owns_fx2_buffers)
+            + 2 * bool(mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER))

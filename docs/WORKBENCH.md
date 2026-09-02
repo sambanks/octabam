@@ -360,6 +360,38 @@ it. Every module of ours is now assembled once beside SEND (0.19 s each,
 `out/_audition/words.json` against the newest module source, and re-measured
 when you edit one.
 
+### The budget, standing under the effect
+
+The third column is two stacked panes: the selected effect, and **what is left
+of the image** under it. Every other number is read against this one — "500
+words" means nothing without "and 313 are free" — and it used to be something
+you inferred from a refusal.
+
+```
+Budget
+ words A   ###################.    74 free
+ words B   ####################     5 free
+ FX2 buf A ####################  0 of 4  tracks 5-8
+ FX2 buf B ##########..........  2 of 4  tracks 1-4
+ rows      10 of 31 (the long chooser cave)
+ cave      2,202 B free
+```
+
+Four scarce things and only four: the **two donor regions** (one per payload),
+the **FX2 buffer slots** per core, the **chooser rows**, and the **ColdFire
+cave**. Everything else is unbounded in practice. Read from the build's own
+report wherever possible, because the build is the only thing that knows
+where the cursor actually stopped.
+
+⚠️ **A selection that cannot build reports `not built`, not the last one's
+numbers.** `State.forget_build()` drops them when the selection stops being
+buildable — a budget that silently belongs to the image you had two edits ago
+is worse than no budget at all. Rows are countable without a build, so they
+are still shown; the cave and the words are not.
+
+The pane dividers run the **full height** of the screen: a `Static` is only as
+tall as its text, so they used to stop wherever the shortest column ran out.
+
 ### A / B compares two EFFECTS
 
 Not "two renders ago against now", which is what the marks used to hold. `r`

@@ -418,7 +418,13 @@ class BenchScreen(Screen):
         with Horizontal():
             yield Static(id="pane_avail")
             yield Static(id="pane_load")
-            yield Static(id="pane_unit")
+            # The third column is TWO stacked panes: the selected effect, and
+            # a standing budget under it. What is left of the image is the
+            # context you read every other number against, so it should not
+            # be something you have to go and ask for.
+            with Vertical(id="col_unit"):
+                yield Static(id="pane_unit")
+                yield Static(id="pane_budget")
         yield Static(id="status")
         yield RichLog(id="log", highlight=False, markup=False)
         yield Footer()
@@ -560,6 +566,7 @@ class BenchScreen(Screen):
         self._pane_available(st)
         self._pane_loaded(st, probs)
         self._pane_unit(st, probs)
+        self._pane_budget(st)
         self._paint("#status", f"[dim]{escape(st.msg)}[/]")
 
     def _paint(self, wid, lines):
@@ -713,6 +720,66 @@ class BenchScreen(Screen):
         if not [m for m in st.selected if m.dsp is not None]:
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
+
+    def _pane_budget(self, st):
+        """WHAT IS LEFT, standing under the effect you are looking at.
+
+        Every other number in this workbench is read against this one -- "500
+        words" means nothing without "and 313 are free" -- and it used to be
+        something you inferred from a refusal. Four scarce things, and only
+        four: the two donor regions, the FX2 buffer slots per core, the
+        chooser rows, and the ColdFire cave. Everything else is unbounded in
+        practice.
+
+        Read from the BUILD's own report wherever possible (state.measure),
+        because the build is the only thing that knows where the cursor
+        actually stopped.
+        """
+        out = ["[bold]Budget[/]"]
+        W = 10                                  # one label column throughout
+
+        def row(label, bar_full, bar_len, colour, tail):
+            return (f" {label:<{W}}[{colour}]" + "#" * bar_full + "[/][dim]"
+                    + "." * (bar_len - bar_full) + f"[/]  {tail}")
+
+        if st.regions:
+            for n, used, free in st.regions:
+                fill = min(20, round(20 * used / max(used + free, 1)))
+                c = OK if free > 400 else WARN if free > 32 else BAD
+                out.append(row(f"words {n}", fill, 20, c, f"{free:>4} free"))
+        else:
+            out.append(f" {'words':<{W}}[dim]"
+                       + "?" * 20 + "[/]  [dim]not built[/]")
+
+        # FX2 buffer slots, per core. Four each, and a pinner takes two or
+        # all four of ONE core's -- which is why the two servers coexist.
+        for tag, tracks in (("A", "5-8"), ("B", "1-4")):
+            taken = 0
+            for m in st.selected:
+                if not rig.pins_fx2(m):
+                    continue
+                tr = rig.track_range(m)
+                here = (not len(tr) or len(tr) == 8
+                        or (tag == "A" and tr.start == 5)
+                        or (tag == "B" and tr.start == 1))
+                if here:
+                    taken = max(taken, rig.pinned_slots(m))
+            free = 4 - taken
+            c = OK if free > 2 else WARN if free else BAD
+            out.append(row(f"FX2 buf {tag}", 5 * taken, 20, c,
+                           f"{free} of 4  [dim]tracks {tracks}[/]"))
+
+        # Rows are countable without a build; the cave is not.
+        rows = (st.chooser_rows if st.chooser_rows is not None
+                else len(st.menu_modules))
+        c = OK if rows < 24 else WARN if rows < 31 else BAD
+        out.append(f" {'rows':<{W}}[{c}]{rows}[/][dim] of 31 "
+                   f"(the long chooser cave)[/]")
+        cave = (f"[{OK if st.cave_free > 512 else WARN if st.cave_free else BAD}]"
+                f"{st.cave_free:,}[/][dim] B free[/]"
+                if st.cave_free is not None else "[dim]not built[/]")
+        out.append(f" {'cave':<{W}}{cave}")
+        self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
         mod = self.selected_module()
@@ -885,6 +952,10 @@ class BenchScreen(Screen):
             return          # both write out/mainos_bus.bin; the render's
                             # closing rerender() will kick this again
         if self.app.state.problems() if probs is None else probs:
+            # AND FORGET THE LAST BUILD'S NUMBERS. They describe a different
+            # selection, and a budget that silently belongs to the image you
+            # had two edits ago is worse than no budget at all.
+            self.app.state.forget_build()
             self.synced, self.app.boot = self.gen, None
             return          # it would not build; the ⚠ line says why
         self.syncing = self.gen
@@ -1499,9 +1570,18 @@ class BenchScreen(Screen):
 class Workbench(App):
     TITLE = "remix workbench"
     CSS = """
-    #pane_avail { width: 32; padding: 0 1; }
-    #pane_load  { width: 40; padding: 0 1; border-left: dashed $surface; }
-    #pane_unit  { width: 1fr; padding: 0 1; border-left: dashed $surface; }
+    /* The panes must FILL the row for their left borders to run the whole
+       way down -- a Static is only as tall as its text, so the dividers
+       stopped wherever the shortest column ran out. */
+    Horizontal { height: 1fr; }
+    #pane_avail { width: 32; padding: 0 1; height: 100%; }
+    #pane_load  { width: 40; padding: 0 1; height: 100%;
+                  border-left: dashed $surface; }
+    #col_unit   { width: 1fr; height: 100%;
+                  border-left: dashed $surface; }
+    #pane_unit  { height: 1fr; padding: 0 1; }
+    #pane_budget { height: auto; padding: 0 1;
+                   border-top: dashed $surface; }
     #status { height: 1; padding: 0 1; }
     #log { height: 12; border-top: dashed $surface; }
     """

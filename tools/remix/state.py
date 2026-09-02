@@ -48,6 +48,10 @@ class State:
         # Which of PLATE/SPRING/DARK the last build LEFT ALONE, upper-cased
         # as the build names them. Empty until a build has reported.
         self.donors_kept: set[str] = set()
+        # Bytes left in the ColdFire cave region and rows in the chooser, as
+        # the last build reported them. None until one has.
+        self.cave_free: int | None = None
+        self.chooser_rows: int | None = None
         self.msg = "enter swaps · r hears it · ? for keys"
         # Per-MODULE knob values, so an effect's settings belong to the effect
         # rather than to a track. (The retired rig kept these per track, which
@@ -215,6 +219,15 @@ class State:
         # the real per-payload numbers in self.regions.
         return out
 
+    def forget_build(self):
+        """Drop everything only a build can know. Called when the selection
+        stops being buildable: these numbers describe the image you HAD, and
+        a budget that silently belongs to two edits ago is worse than none."""
+        self.regions = []
+        self.cave_free = None
+        self.chooser_rows = None
+        self.donors_kept = set()
+
     # ---- the one thing that needs a real build --------------------------
     def measure(self, note):
         """Assemble this selection and keep the words the build reports.
@@ -241,6 +254,7 @@ class State:
                 return False, (tail[-1] if tail else "build failed")
             words, regions, payload = {}, [], None
             kept, saw_donor_line = set(), False
+            cave_free = rows = None
             for line in r.stdout.splitlines():
                 m = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
                              r"\s+\(\s*(\d+) words\)", line)
@@ -265,6 +279,12 @@ class State:
                 m = re.search(r"KEPT STOCK: (\S+)", line)
                 if m:
                     kept |= {w.strip() for w in m.group(1).split("/")}
+                m = re.search(r"(\d+) B of cave left", line)
+                if m:
+                    cave_free = int(m.group(1))
+                m = re.search(r"chooser list = (\d+) entries", line)
+                if m:
+                    rows = int(m.group(1))
             self.words.update(words)
             self.words_from = note
             self.regions = regions
@@ -276,6 +296,8 @@ class State:
                         kept = set()
                         break
             self.donors_kept = kept if saw_donor_line else set()
+            self.cave_free = cave_free
+            self.chooser_rows = rows
             if regions:
                 return True, ("assembled: " + " · ".join(
                     f"{n} {u}/{u + f}" for n, u, f in regions))
