@@ -194,3 +194,49 @@ def knob_max(mod, name: str) -> int:
     slot = mod.knob_map()[name]
     count = mod.params[slot].count
     return (count - 1) if count is not None else 127
+
+
+def resources(mod, words=None) -> list[str]:
+    """What this effect COSTS, in the terms the ledger refuses things over.
+
+    Shown while scrolling, because "will this fit beside what I have" is the
+    question the library pane is really being asked, and every answer was
+    previously only available after a refusal.
+
+    Derived wherever it can be (private Y is scanned, caves and hooks are
+    counted from the manifest, words come from the build) so nothing here can
+    go stale against the module it describes.
+    """
+    from remix import ledger
+    out = []
+    if mod.is_stock:
+        # A stock row places no code and clones no descriptor. The three
+        # reverbs are the exception that proves it: their code IS the donor
+        # region, so listing one costs whatever a module of ours would have
+        # written over it.
+        from remix import stock
+        out.append("its code IS the donor region"
+                   if mod.key in stock.CONSUMED else "0 words (already in the image)")
+    elif words:
+        out.append(f"{words} words")
+    elif mod.dsp is not None:
+        out.append("words: build to measure")
+    if mod.dsp is not None and not mod.is_stock:
+        pay = getattr(mod.dsp, "payloads", None)
+        if pay:
+            out.append("payload " + "+".join(sorted(pay)))
+    claims = getattr(mod, "claims", None)
+    if claims is not None and getattr(claims, "owns_fx2_buffers", False):
+        out.append("pins Y:0x4000-0xBFFF (the FX2 buffer region)")
+    if claims is not None and getattr(claims, "stock_instance_buffer", False):
+        out.append("takes an allocator buffer")
+    py = ledger.private_y(mod)
+    if py:
+        out.append(f"{len(py)} core-private Y word"
+                   f"{'s' if len(py) != 1 else ''}")
+    caves = list(mod.cf_patches)
+    if caves:
+        hooks = sum(1 for c in caves if c.hook_addr is not None)
+        out.append(f"{len(caves)} ColdFire cave{'s' if len(caves) != 1 else ''}"
+                   + (f", {hooks} hooked" if hooks else ""))
+    return out

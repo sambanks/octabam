@@ -718,6 +718,12 @@ class BenchScreen(Screen):
             bits.append(f"tracks {tr.start}-{tr.stop - 1}")
         out.append(f"[dim]{' · '.join(bits)}[/]")
         out.append(f"[dim]{escape(mod.doc)}[/]")
+        # WHAT IT COSTS, while you are still deciding. "Will this fit beside
+        # what I already have" is what the library pane is really asked, and
+        # every answer used to arrive only as a refusal after adding it.
+        res = rig.resources(mod, st.words.get(mod.key))
+        if res:
+            out.append(f"[{WARN}]{escape(' · '.join(res))}[/]")
         out.append("")
 
         knobs = self.unit_rows(mod)
@@ -931,12 +937,7 @@ class BenchScreen(Screen):
         bits = [rig.category(mod)]
         if mod.menu is not None:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
-        w = st.words.get(mod.key)
-        if w:
-            bits.append(f"{w} words")
-        elif mod.is_stock:
-            bits.append("no code placed" if mod.key not in stock.CONSUMED
-                        else "its code IS the donor region")
+        bits += rig.resources(mod, st.words.get(mod.key))
         bits.append("in the image" if mod.key in st.sel else "not in the image")
         st.msg = f"{disp(mod)} — {' · '.join(bits)}"
 

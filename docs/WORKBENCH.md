@@ -231,6 +231,19 @@ doc, and its drawn parameters with values — `left`/`right` adjusts,
 `shift` for ×10. **Values live per module**, seeded from the manifest
 defaults (a stale default polluted every shimmer measurement until Round 12).
 
+### What an effect COSTS, while you are choosing
+
+The UNIT pane carries a resource line under the doc, and the status line
+carries the same facts while you scroll: words, payload, whether it pins the
+FX2 buffer region or asks the allocator for a slot, core-private Y words,
+ColdFire caves. `rig.resources()`.
+
+"Will this fit beside what I already have" is what the library pane is really
+being asked, and every answer used to arrive only as a **refusal after
+adding it**. Everything there is derived where it can be — private Y is
+scanned from the source, caves and hooks counted from the manifest, words
+taken from the build — so it cannot go stale against the module it describes.
+
 ### A / B compares two EFFECTS
 
 Not "two renders ago against now", which is what the marks used to hold. `r`
