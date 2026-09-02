@@ -383,7 +383,11 @@ still HAS that buffer, ready for whatever is selected on it.
 
 The row counts what a MODULE pins, for the life of the image — ChonVerb
 holds all four of its core's, BongDelay two of its core's, Nimbus two of
-whichever core hosts it. A STOCK effect never appears there: it takes a
+whichever core hosts it. They go in PAIRS, so "4 free" is two pairs, not
+four independent slots: `owns_fx2_buffers` is the core-private pair
+(Y:0x4000/0x8000) and a substituted ybase is the shared-window pair
+(0x30000/0x34000 on core 0, 0x38000/0x3c000 on core 1). Two modules
+wanting the same pair is what the ledger refuses. A STOCK effect never appears there: it takes a
 slot from the allocator at runtime, per instantiated effect per block,
 and only while it is selected on that track, which no image can reserve.
 That runtime contest is what the ledger refuses a pinner beside an
@@ -860,8 +864,12 @@ class BenchScreen(Screen):
         held = [c for c in stock.CONSUMED if c in st.sel]
         nxt = min(held, key=stock.consumed_at) if held else None
 
+        seen = set()                            # which bar glyphs are drawn
+
         def words_row(n, total, used):
             free, cap = placeable(st.sel, total, used)
+            seen.update(g for g, n in (("#", used), ("-", total - cap),
+                                       (".", free)) if n)
             fill = min(20, round(20 * used / total))
             edge = max(fill, min(20, round(20 * cap / total)))
             c = OK if free > 400 else WARN if free > 32 else BAD
@@ -953,11 +961,20 @@ class BenchScreen(Screen):
             # claims nothing. Only a MODULE claims a buffer for the life of
             # the image, which is why only modules appear here. The footnote
             # below says so, once, rather than the row fighting the word.
+            # NAME THE TRACKS FIRST. "FX2 buf A · 4 free of 4" was read as
+            # four spare buffers on an "FX2 bus"; there is no bus and they
+            # are not spare. They are the four TRACKS this payload serves,
+            # one buffer each, and the count is how many no module has
+            # pinned. Leading with the range says which four.
+            if bits and free:
+                # WHICH ones are left, beside how many. The count answers
+                # "can I add another"; the list answers "where does it go".
+                bits.append(",".join(str(t) for t in free) + " free")
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
                        f"of 4 [dim]· "
                        + (" · ".join(bits) if bits
-                          else f"tracks {tracks.start}-{tracks.stop - 1} "
-                               f"all keep their own") + "[/]")
+                          else f"tracks {tracks.start}-{tracks.stop - 1}, "
+                               f"no module claims one") + "[/]")
 
         # Rows are countable without a build; the cave is not.
         # Same sentence again: 31 exist, this selection loaded N.
@@ -991,8 +1008,17 @@ class BenchScreen(Screen):
         # because the rows it belonged to are two lines up and say "4 free
         # of 4 · tracks 5-8 all keep their own" in words already. It is in
         # `?` with the rest of the buffer story instead.
-        out.append("[dim] bar: # loaded by a module · - held by a listed "
-                   "reverb · . free[/]")
+        # A KEY, one glyph per line. Three items strung along one line with
+        # `·` separators read as a run-on sentence rather than as a legend
+        # -- which is fair, because it IS three unrelated definitions, and
+        # the only thing on the pane a reader cannot decode from the words
+        # beside it. Aligned under the label column so it reads as a key.
+        key = [(g, w) for g, w in (("#", "loaded by a module"),
+                                   ("-", "held by a reverb you kept listed"),
+                                   (".", "free")) if g in seen]
+        for i, (glyph, what) in enumerate(key):
+            out.append(f" {'bar' if not i else '':<{W}}"
+                       f"[dim]{glyph}  {what}[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
