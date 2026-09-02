@@ -208,9 +208,36 @@ Two rules, both enforced:
   and is unflashed.
 
 Stock rows appear in the workbench (a STOCK FX2 group in the composer, any
-track in the rig) but have no manifest knobs and **no local render yet**:
-`send_probe` has no layout letter for a stock id, so the audition says so
-instead of rendering a plausible passthrough.
+track in the rig) **with their real knobs**: `stock.py` reads each
+descriptor's names, defaults, value counts and enable bitmap out of the
+pristine image (`out/raw/section_3_MAIN_OS.bin`), so `knob_map()`,
+`send_probe --set NAME=VAL` and the rig's knob rows all work by the panel's
+own names (a duplicated label, FILTER's two Qs, gets a `2` suffix on the
+later slot). Nothing is ever written back — a stock row is not cloned.
+Each has a `layout_char` (L E J P A C Z O K I Y), so `--pick` takes it —
+or, more usefully, the key or name: `--pick chorus`.
+
+**They render locally the way an insert does**, from a dump of the STOCK
+image's payload A (`out/dsp/_stock_A.mem`, made once by the audition):
+the pristine dump, because a DEV build takes CHORUS as a fourth donor and
+every build null-stubs the reverbs. dsp_host's `-alloc 1` gives a buffered
+effect Y:0x4000, as the hardware gives track 1. Measured 2 Sep 2026 on a
+438 Hz tone at 0.5 FS:
+
+| effect | result |
+|---|---|
+| FILTER | unity at defaults; BASE=20 WDTH=10 Q=100 takes the tone down 27 dB |
+| EQ, DJ EQ, PHASER, COMPRESSOR | pass at defaults, THD −44…−54 dB |
+| CHORUS | MIX=0 is exactly dry; MIX=127 puts sidebands on the tone (THD −31 dB) |
+| SPATIALIZER, COMB | render, COMB's THD −36 dB is its comb |
+| LO-FI | rendered only after `tools/dsp56300.patch`: the vendored emulator had `mpyri` unimplemented in both interpreter and JIT and aborted at init |
+| DELAY | **no DSP code** — the Echo Freeze delay is ColdFire-side; the audition refuses with that reason |
+| FLANGER | **not credible**: MIX=0 is not dry, DEP=0/FB=0 still measures THD −2 dB (hash), all-zero knobs give near silence. Its process loop multiplies by a NEGATIVE immediate (`mpyi #>$f84c00`), which is the standing suspect for an emulator sign-handling defect; falsifier: a three-instruction probe of `mpyi` with that immediate in dsp_host. Open. |
+
+⚠️ These are emulator renders of stock code that was never exercised under
+`dsp_host` before; the servers and inserts were written against it. A
+stock effect that sounds wrong locally is evidence about the emulator
+before it is evidence about the effect.
 
 ---
 

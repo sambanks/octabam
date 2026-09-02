@@ -48,6 +48,10 @@ def main():
         buf = "  [instance buffer -- not beside ChonVerb/Nimbus/BongDelay]" \
             if m.claims is not None and m.claims.stock_instance_buffer else ""
         print(f"  {m.key:<12} FX2 id 0x{m.menu.fx2_id:02x}  {m.doc}{buf}")
+        if m.params:
+            knobs = ", ".join(f"{n}@{i}" for n, i in sorted(
+                m.knob_map().items(), key=lambda kv: kv[1]))
+            print(f"      knobs: {knobs}")
     print(f"\n  consumed by every remix (their code is the donor region): "
           f"{', '.join(stock.CONSUMED)}\n")
 

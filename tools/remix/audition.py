@@ -37,7 +37,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from remix import registry, rig  # noqa: E402
+from remix import registry, rig, stock  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "out/_audition"
@@ -118,6 +118,23 @@ def _ensure_insert_mem(mod, log=print):
     return mem
 
 
+def _ensure_stock_mem(log=print):
+    """A dump of the PRISTINE image's payload A: every stock effect's code
+    and dispatch exactly as the unit ships them, independent of whatever
+    remix is currently built. (A DEV build takes CHORUS's module as a fourth
+    donor, and every build null-stubs the three reverbs, so no built image
+    is the right source for this.)"""
+    mem = ROOT / "out/dsp/_stock_A.mem"
+    if mem.exists() and mem.stat().st_mtime > stock.STOCK_IMAGE.stat().st_mtime:
+        return mem
+    log("dumping the stock image's payload A ...")
+    sys.path.insert(0, str(ROOT / "tools"))
+    import dsp_modmap
+    mem.parent.mkdir(parents=True, exist_ok=True)
+    dsp_modmap.dumpmem(stock.STOCK_IMAGE.read_bytes(), ["A", str(mem)])
+    return mem
+
+
 def _journal(entry):
     """Append one event to the audition journal, out/_audition/log.jsonl.
 
@@ -141,10 +158,11 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
     mod = registry.by_key(key)
     if rig.category(mod) == rig.SYSTEM:
         _die(f"{mod.name} is not an effect")
-    if rig.category(mod) == rig.STOCK:
-        _die(f"{mod.key} is a stock effect: no local render yet (dsp_host "
-             f"carries its code, but send_probe has no layout letter for a "
-             f"stock id) -- hear it on the unit")
+    if rig.category(mod) == rig.STOCK and mod.key in stock.NO_DSP:
+        _die(f"{mod.key} runs on the ColdFire (DMA over SDRAM rings), not the "
+             f"DSP -- its DSP dispatch is stock's passthrough stub, so there "
+             f"is nothing here to render. It works from its chooser row on "
+             f"the unit.")
     source = pathlib.Path(source)
     OUT.mkdir(parents=True, exist_ok=True)
     stem = f"{label + '_' if label else ''}{source.stem}_{mod.name}"
@@ -181,6 +199,10 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         mem = _ensure_delay_mem(log)
         route = ["--layout", "DS"]        # SEND -> bus -> delay, the rig path
         tail = 3.0 if tail is None else tail
+    elif mod.is_stock:
+        mem = _ensure_stock_mem(log)
+        route = ["--direct", "--pick", mod.harness.layout_char]
+        tail = 1.0 if tail is None else tail
     else:
         mem = _ensure_insert_mem(mod, log)
         route = ["--direct", "--pick", mod.harness.layout_char]

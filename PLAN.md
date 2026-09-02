@@ -91,7 +91,14 @@ plus the seven that can sit beside the servers; the other four allocate a
 per-track instance buffer on the addresses the servers hardcode and the
 ledger refuses them beside one. Past seven rows the list relocates and the
 panel scrolls — ⚠️ inferred from stock's fifteen-row list, unflashed.
-`docs/MODULES.md` "Keeping STOCK effects in the chooser".
+`docs/MODULES.md` "Keeping STOCK effects in the chooser". Later the same
+day the rig learned to **render them**: knobs read from the stock
+descriptors, audio from a dump of the pristine image through `dsp_host`.
+Nine of eleven render credibly; DELAY cannot (ColdFire-side); FLANGER's
+render is not credible and is open (a negative-immediate `mpyi` is the
+suspect). LO-FI needed the project's first patch to the vendored emulator
+(`tools/dsp56300.patch`, MPYRI) — worth knowing: stock code exercises
+instructions our own modules never did.
 
 Making them first-class exposed a latent id collision: the DSP dispatch
 tables are shared between FX1 and FX2, and Rungs (`0x0c`) and Nimbus

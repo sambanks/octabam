@@ -1,0 +1,73 @@
+diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
+index ffbf791..350a71a 100644
+--- a/source/CMakeLists.txt
++++ b/source/CMakeLists.txt
+@@ -56,3 +56,5 @@ if(DSP56300_DEBUGGER)
+ 
+ 	set_property(TARGET dsp56kDebugger PROPERTY FOLDER "dsp56300")
+ endif()
++
++add_subdirectory(dsp_host)
+diff --git a/source/dsp56kEmu/dsp_ops_alu.inl b/source/dsp56kEmu/dsp_ops_alu.inl
+index 386e30f..996c82a 100644
+--- a/source/dsp56kEmu/dsp_ops_alu.inl
++++ b/source/dsp56kEmu/dsp_ops_alu.inl
+@@ -1160,7 +1160,16 @@ namespace dsp56k
+ 	}
+ 	inline void DSP::op_Mpyri(const TWord op)
+ 	{
+-		errNotImplemented("MPYRI");
++		// MPYI, then round -- the same shape as Mpyr_SD against Mpy_SD.
++		const bool	ab = getFieldValue<Mpyri, Field_d>(op);
++		const bool	negate = getFieldValue<Mpyri, Field_k>(op);
++		const TWord qq = getFieldValue<Mpyri, Field_qq>(op);
++
++		const TReg24 s		= TReg24(immediateDataExt<Mpyri>());
++		const TReg24 reg	= decode_qq_read(qq);
++
++		alu_mpy( ab, reg, s, negate, false );
++		alu_rnd( ab );
+ 	}
+ 	inline void DSP::op_Neg(const TWord op)
+ 	{
+diff --git a/source/dsp56kEmu/jitops.h b/source/dsp56kEmu/jitops.h
+index 0be2c03..5d51f90 100644
+--- a/source/dsp56kEmu/jitops.h
++++ b/source/dsp56kEmu/jitops.h
+@@ -240,7 +240,7 @@ namespace dsp56k
+ 		template<Instruction Inst, bool Accumulate> void op_Mpy_su(TWord op);
+ 		void op_Mpyi(TWord op);
+ 		void op_Mpyr_S1S2D(TWord op)			{ alu_multiply(op); }
+-		void op_Mpyri(TWord op)					{ errNotImplemented(op); }
++		void op_Mpyri(TWord op);
+ 		void op_Neg(TWord op);
+ 		void op_Nop(TWord op);
+ 		void op_Norm(TWord op)					{ errNotImplemented(op); }
+diff --git a/source/dsp56kEmu/jitops_alu.cpp b/source/dsp56kEmu/jitops_alu.cpp
+index f9f8180..714776e 100644
+--- a/source/dsp56kEmu/jitops_alu.cpp
++++ b/source/dsp56kEmu/jitops_alu.cpp
+@@ -999,6 +999,23 @@ namespace dsp56k
+ 		alu_mpy(ab, reg, s, negate, false, false, false, false);
+ 	}
+ 
++	// MPYRI: MPYI with the result rounded (Mpyri differs from Mpyi only in
++	// the low opcode bits). Elektron's LO-FI effect uses `mpyri #>$2000,x1,a`.
++	void JitOps::op_Mpyri(TWord op)
++	{
++		const bool	ab = getFieldValue<Mpyri, Field_d>(op);
++		const bool	negate = getFieldValue<Mpyri, Field_k>(op);
++		const TWord qq = getFieldValue<Mpyri, Field_qq>(op);
++
++		DspValue s(m_block);
++		getOpWordB(s);
++
++		DspValue reg(m_block);
++		decode_qq_read(reg, qq, true);
++
++		alu_mpy(ab, reg, s, negate, false, false, false, true);
++	}
++
+ 	void JitOps::op_Maci_xxxx(TWord op)
+ 	{
+ 		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);

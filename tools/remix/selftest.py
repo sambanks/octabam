@@ -209,7 +209,7 @@ def main():
     # (Length is capped so the help row stays one line; the schema already
     # pins labels to the declared count.)
     for mod in registry.modules().values():
-        if mod.menu is None or mod.is_stock:
+        if mod.menu is None:
             continue
         undocumented = [p.name.decode() for p in mod.params
                         if p.name and p.active and not p.doc]
@@ -221,6 +221,35 @@ def main():
                   f"over-long docs {toolong}")
         else:
             print(f"  [PASS] {mod.name}: every drawn knob has a doc")
+
+    # ---- stock rows carry their descriptor's knobs -----------------------
+    # Read from the pristine image, so the rig shows a stock effect's real
+    # controls and send_probe can drive them by name. Only checkable when
+    # the image is on disk (make setup); a fresh clone gets params=().
+    from remix import stock
+    if stock.STOCK_IMAGE.exists():
+        for mod in stock.MODULES:
+            names = sorted(mod.knob_map())
+            if not names or len(mod.params) != 12:
+                bad += 1
+                print(f"  [FAIL] {mod.name}: no knobs read from its descriptor")
+            elif len(set(names)) != len(names):
+                bad += 1
+                print(f"  [FAIL] {mod.name}: duplicate knob names {names}")
+            else:
+                print(f"  [PASS] {mod.name}: {len(names)} stock knobs read "
+                      f"({' '.join(names)})")
+    else:
+        print("  [SKIP] stock knobs: out/raw/section_3_MAIN_OS.bin not on disk")
+    # Every module in the registry needs a distinct layout letter or the
+    # send_probe alphabet silently drops one.
+    chars = [m.harness.layout_char for m in registry.modules().values()
+             if m.harness is not None and m.harness.layout_char]
+    if len(set(chars)) != len(chars):
+        bad += 1
+        print(f"  [FAIL] duplicate layout letters: {sorted(chars)}")
+    else:
+        print(f"  [PASS] {len(chars)} distinct layout letters")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():
