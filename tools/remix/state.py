@@ -20,6 +20,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from remix import ledger, registry  # noqa: E402
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DONOR_WORDS = 2724          # per payload; build_bus.py prints the live figure
@@ -78,10 +79,13 @@ class State:
         modules of ours. The honest starting point -- you add to what the box
         already does rather than to somebody else's selection.
 
-        Note this selection cannot BUILD as it stands and should not pretend
-        to: a remix must name a fallback for ids it does not implement, and
-        no stock effect is a safe one (it would PROCESS the unknown id). The
-        moment a module is added, SEND comes with it.
+        ⚠️ IT BUILDS, since 2 Sep 2026 -- to A 0/2724 · B 0/2724, not one
+        word placed, all three reverbs alive: the unit's own chooser rebuilt
+        from our tables. It could not, until the fallback stopped having to
+        be a module of ours; ids this selection does not implement now
+        resolve to the firmware's own NONE (schema.NO_FALLBACK), which is
+        what an unassigned track shows on a stock unit anyway. Until then
+        the bench opened on a selection it had to apologise for.
         """
         from remix import stock
         self.sel = {m.key for m in stock.MODULES}
@@ -173,13 +177,27 @@ class State:
         return [m for m in self.selected if m.menu is not None]
 
     def auto_fallback(self):
-        """The fallback to use when none is set explicitly. SEND is the safe
-        catch-all -- an unimplemented id aliased to it becomes a harmless dry
-        passthrough, not garbage -- so prefer it; if there is exactly one
-        menu-bearing module, it is the only choice. Otherwise there is no safe
-        automatic pick (any real effect would PROCESS the unknown id), so
-        return None and let problems() ask for an explicit choice.
+        """The fallback to use when none is set explicitly.
+
+        THE FIRMWARE'S OWN NONE, whenever this selection has no bus. An
+        unimplemented id then resolves to the descriptor a stock chooser
+        carries at row 0 and to the payload's null stub -- an unassigned
+        track is simply OFF, exactly as on an unmodified unit -- and it costs
+        no words. That is the honest answer for an insert collection, which
+        used to be made to carry SEND (215-250 words) for a bus client
+        nothing in the image reads. See schema.NO_FALLBACK, which is also
+        what refuses this beside a bus participant: with a server or a SEND
+        in the image, an unassigned track running nothing would leave the
+        rotation unflipped and the accumulators uncleared.
+
+        With a bus, SEND is the safe catch-all -- aliasing to it makes the
+        id a harmless dry passthrough rather than garbage -- so prefer it. If
+        there is exactly one menu-bearing module, it is the only choice.
+        Otherwise there is no safe automatic pick (any real effect would
+        PROCESS the unknown id), so return None and let problems() ask.
         """
+        if not any(on_the_bus(m) for m in self.selected):
+            return NO_FALLBACK
         for k in self.order:
             if self.mods[k].name == "send" and self.mods[k].menu is not None:
                 return k
@@ -190,7 +208,13 @@ class State:
     def eff_fallback(self):
         """What the build will actually use: the explicit choice if valid,
         else the intelligent default."""
-        if self.fallback and self.fallback in self.sel \
+        # NO_FALLBACK is not a module, so it is valid exactly when the
+        # selection still has no bus participant -- otherwise it falls
+        # through to the automatic pick, which will be SEND.
+        if self.fallback == NO_FALLBACK:
+            if not any(on_the_bus(m) for m in self.selected):
+                return NO_FALLBACK
+        elif self.fallback and self.fallback in self.sel \
                 and self.mods[self.fallback].menu is not None:
             return self.fallback
         return self.auto_fallback()

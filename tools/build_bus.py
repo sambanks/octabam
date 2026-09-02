@@ -94,7 +94,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
-from remix.schema import YBase  # noqa: E402
+from remix.schema import NO_FALLBACK, YBase  # noqa: E402
 import label_fmt  # noqa: E402
 from remix import ledger  # noqa: E402
 
@@ -161,6 +161,13 @@ REMIX = remix_registry.remix(os.environ.get("REMIX")
                              or remix_registry.DEFAULT_REMIX)
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
+# THE FIRMWARE'S OWN NONE AS THE FALLBACK, for a remix with no bus (see
+# schema.NO_FALLBACK, which is also what refuses it beside a bus
+# participant). Unimplemented ids -- and id 0, a fresh part's -- then resolve
+# to stock's NONE descriptor and to the payload's null stub, instead of to a
+# module of ours that has to be listed and placed. The one thing it costs is
+# a chooser row, restored at position 0 where a stock unit has it.
+NO_FB = REMIX.fallback == NO_FALLBACK
 
 # BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
 # to not being able to tell WHICH build was running on the unit: a symptom
@@ -1003,6 +1010,9 @@ def main():
         clone_addr[name] = stock_P
         print(f"  {name:14s} id 0x{NEW_IDS[name]:02x}  STOCK P=0x{stock_P:08x}"
               f"  (no clone, no code: the row is the only edit)")
+    if delayprobe == "send" and NO_FB:
+        sys.exit("DELAYPROBE=send reuses the SEND client, and this remix has "
+                 f"no SEND (fallback={NO_FALLBACK})")
     if delayprobe and "DELAY" in ORDER:
         sys.exit("DELAYPROBE puts stock DELAY back in the menu, but this remix "
                  "already lists it -- drop one")
@@ -1013,6 +1023,12 @@ def main():
     # making every unassigned track a SEND removes the "first track set to NONE
     # stalls the bus" hazard by construction rather than patching around it.
     real = [(n, clone_addr[n]) for n in ORDER]
+    if NO_FB:
+        # NONE goes back where stock has it: list position 0. It clones no
+        # descriptor and places no code -- FX1_NONE is the firmware's own,
+        # already in the image -- so the row is four bytes of cave and the
+        # only edit.
+        real = [("NONE", FX1_NONE)] + real
     if delayprobe:
         # Stock DELAY needs no clone -- it has its own descriptor and its own
         # FX2_IDS entry, both untouched by this build. It only needs putting
@@ -1046,8 +1062,10 @@ def main():
         if rd32(r) != FX2_LIST:
             sys.exit(f"list ref at 0x{r:08x} not stock FX2_LIST -- refusing")
         wr32(r, list_addr)
+    # The cursor position of every listed effect, past the NONE row if one
+    # was restored -- ID2POS is an index into `real`, not into ORDER.
     for pos, name in enumerate(ORDER):
-        wr32(ID2POS + NEW_IDS[name] * 4, pos)
+        wr32(ID2POS + NEW_IDS[name] * 4, pos + (1 if NO_FB else 0))
     # ==== 1b. ColdFire caves, from whichever modules carry them =============
     # A cave is how a module changes the firmware's BEHAVIOUR rather than
     # adding an effect: assert the hook site still holds the stock bytes,
@@ -1171,8 +1189,10 @@ def main():
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
-    wr32(FX2_IDS + NONE_ID * 4, clone_addr[REMIX.fallback])
-    wr32(ID2POS + NONE_ID * 4, ORDER.index(REMIX.fallback))
+    fb_desc = FX1_NONE if NO_FB else clone_addr[REMIX.fallback]
+    fb_pos = 0 if NO_FB else ORDER.index(REMIX.fallback)
+    wr32(FX2_IDS + NONE_ID * 4, fb_desc)
+    wr32(ID2POS + NONE_ID * 4, fb_pos)
     # A module this remix leaves out still owns an id, and a saved project can
     # carry it. Alias it to the fallback for exactly the reason id 0 is
     # aliased: the alternative is a chooser entry dispatching into whatever
@@ -1195,8 +1215,8 @@ def main():
     _restored = [m for m in _omitted if m.menu.replaces]
     _omitted = [m for m in _omitted if not m.menu.replaces]
     for _m in _omitted:
-        wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
-        wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
+        wr32(FX2_IDS + _m.menu.fx2_id * 4, fb_desc)
+        wr32(ID2POS + _m.menu.fx2_id * 4, fb_pos)
     if _restored:
         print(f"  not in this remix, LEFT STOCK: "
               f"{', '.join(sorted(m.key for m in _restored))} -- each replaces "
@@ -1212,14 +1232,19 @@ def main():
             sys.exit("DELAY's FX2_IDS entry is not stock -- refusing to probe")
         print(f"  *** DELAY PROBE: stock DELAY restored to the menu at "
               f"position {len(real) - 1} ***")
-    print(f"  chooser list = {len(real)} entries, no NONE, viewport shrunk to "
+    _none = "with NONE at row 0" if NO_FB else "no NONE"
+    print(f"  chooser list = {len(real)} entries, {_none}, viewport shrunk to "
           f"{len(real)} rows (no padding)" if len(real) <= CHOOSER_ROWS else
           f"  chooser list = {len(real)} entries at 0x{list_addr:08x} (the "
-          f"long list cave), no NONE, viewport {rows} rows -- it scrolls")
+          f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")
-    print(f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
+    # ⚠️ WORDING FROZEN for the SEND arm: the build report is API (refhash
+    # hashes it verbatim). Only the NONE arm is new.
+    print(f"  id 0x00 aliased to NONE: a fresh/unassigned track is off, as "
+          f"on a stock unit\n" if NO_FB else
+          f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
 
     # ==== 2. DSP code placement + dispatch (task 13) ========================
     print("=== DSP: code placed, dispatch wired, both payloads ===")
@@ -1979,6 +2004,15 @@ mkgo:""",
             # away, and its id is already handled by the omitted-id alias.
             if absent not in NEW_IDS:
                 absent = None
+        if NO_FB:
+            # The DSP half of the NONE fallback, and it needs no new code:
+            # the per-payload null stub is already in the image and is what
+            # the build points a silenced donor id at, described there as
+            # proven. Set before placement because nothing below assigns
+            # fb_init/fb_proc when the fallback is not a module.
+            fb_init, fb_proc = pp["nul_i"], pp["nul_p"]
+            wrw_p(pp["xtab"] + NONE_ID * 3, fb_init)
+            wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, fb_proc)
         cursor = base_a
         # LFO roll table (10 Aug 2026): reverb_server.asm's rolled lines 2-7
         # read per-line [rate const, phase slot, int slot, frac slot] from a

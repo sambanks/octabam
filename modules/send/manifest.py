@@ -50,5 +50,8 @@ MODULE = Module(
         r7_latch_slot=0x69,
         gate_label="notfirst",
     ),
-    harness=Harness(layout_char="S", is_server=False),
+    # bus_client: SEND writes the shared accumulators and carries the
+    # housekeeping block, so an image containing it HAS a bus. That is what
+    # forbids schema.NO_FALLBACK beside it.
+    harness=Harness(layout_char="S", is_server=False, bus_client=True),
 )

@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-from remix import ledger, state  # noqa: E402
+from remix import ledger, registry, schema, state  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
                           Module, Param, YBase)
 
@@ -143,7 +143,7 @@ def main():
     # The track model is DERIVED, so hold the derivation to the measured
     # facts: payload A serves TRACKS 5-8, B serves 1-4 (10 Aug 2026), an
     # insert runs anywhere, SYSTEM modules never sit on a track.
-    from remix import registry, rig
+    from remix import rig
     for mod in registry.modules().values():
         cat = rig.category(mod)
         tr = rig.track_range(mod)
@@ -348,6 +348,45 @@ def main():
         print(f"  [FAIL] state.CAVE_BYTES is {state.CAVE_BYTES:,} B but "
               f"build_bus's cave is "
               f"{_bounds['ZERO_RUN_END'] - _bounds['NEW_LIST']:,} B")
+
+    # THE NONE FALLBACK IS ONLY SAFE WITHOUT A BUS, and that is a refusal,
+    # not a convention -- an unassigned track then runs nothing at all, so
+    # nobody flips the rotation or clears the accumulators. dsp_host is
+    # single-core and can never reproduce the defect, so this check is the
+    # only thing standing between the two. See schema.NO_FALLBACK.
+    _probe = ROOT / "remixes/_selftest_nofb.py"
+    try:
+        _probe.write_text(
+            "from remix.schema import Remix\n\n"
+            "REMIX = Remix(name='_selftest_nofb', doc='scratch',\n"
+            "              modules=('WARPFOLD', 'SEND'), fallback='NONE')\n")
+        registry.remix("_selftest_nofb")
+        bad += 1
+        print("  [FAIL] fallback='NONE' was accepted beside SEND -- an "
+              "unassigned track would leave the bus unhousekept")
+    except SystemExit as e:
+        if "no bus participant" in str(e):
+            print("  [PASS] fallback='NONE' is refused beside a bus participant")
+        else:
+            bad += 1
+            print(f"  [FAIL] fallback='NONE' beside SEND was refused for the "
+                  f"wrong reason: {e}")
+    finally:
+        _probe.unlink(missing_ok=True)
+        for junk in (ROOT / "remixes/__pycache__").glob("_selftest_nofb*"):
+            junk.unlink(missing_ok=True)
+
+    # And the same rule read off the SHIPPED remixes, which is where it would
+    # actually go wrong: nothing may pair NO_FALLBACK with a bus module.
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        _bus = [k for k in _r.modules
+                if schema.on_the_bus(registry.modules()[k])]
+        if _r.fallback == schema.NO_FALLBACK and _bus:
+            bad += 1
+            print(f"  [FAIL] remix {_n!r} falls back to NONE but carries "
+                  f"{', '.join(_bus)}")
+    print(f"  [PASS] every remix's fallback matches whether it has a bus")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():

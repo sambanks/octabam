@@ -378,6 +378,17 @@ class Harness:
 
     layout_char: str | None = None    # its letter in send_probe layout strings
     is_server: bool = False
+    # Does this module take part in the cross-core bus as a CLIENT -- write
+    # the shared accumulators and carry the housekeeping block? Declared, not
+    # inferred: `is_server` is the other half and neither is derivable from
+    # the kind (SEND is a DSP_CLIENT, but so would a non-bus utility be).
+    #
+    # It exists for ONE decision, and it is a safety one: an image with no
+    # bus participant at all has no rotation to flip and no accumulator to
+    # clear, which is the only condition under which unimplemented ids may
+    # fall back to the firmware's own NONE rather than to SEND. See
+    # NO_FALLBACK below.
+    bus_client: bool = False
 
 
 @dataclass(frozen=True)
@@ -467,6 +478,44 @@ class Module:
                 if p.name}
 
 
+# ---- the fallback that is not a module -------------------------------------
+# An unimplemented id has to dispatch SOMEWHERE, and the answer has always
+# been a module of ours -- SEND, which passes the audio through and only taps
+# it. That costs 215-250 words, and an INSERT-ONLY remix was paying them for
+# a client nothing reads: with no server in the image, nothing ever consumes
+# the bus accumulators SEND writes. restock.py says so in its own docstring
+# -- PLATE REV is missing from it ONLY because SEND's words land on PLATE's.
+#
+# So a remix may name this sentinel instead, and unimplemented ids resolve to
+# the FIRMWARE's own NONE: its descriptor (the one at list position 0 of a
+# stock FX2 chooser, which our rebuilt list otherwise drops) and, on the DSP
+# side, the per-payload null stub the build already points silenced donor ids
+# at. It costs one list row -- four bytes of cave -- and no words at all.
+#
+# ⚠️ IT IS REFUSED BESIDE ANY BUS PARTICIPANT, and that is the whole safety
+# argument. Housekeeping -- flipping the rotation word and clearing the
+# accumulators, once per block -- is gated to payload A and done by the FIRST
+# CORE-0 PARTICIPANT DISPATCHED that block (send_client.asm's `bus_seen`
+# election). Today every unassigned track runs SEND, so core 0 always has
+# one. Under this fallback an unassigned track runs nothing, so a project
+# with tracks 5-8 all unassigned has no housekeeper -- and a server on the
+# OTHER core then reads an accumulator that is never rotated and never
+# cleared. With no server and no client in the image there is no bus, no
+# rotation and nothing to clear, so the question does not arise. That is the
+# only case this is allowed in; registry.remix() enforces it.
+#
+# ⚠️ AND IT CANNOT BE SETTLED LOCALLY EITHER WAY: dsp_host is single-core, so
+# no local test can reproduce a bus timing defect (CLAUDE.md). The refusal is
+# what keeps the question off the table rather than answered by inference.
+NO_FALLBACK = "NONE"
+
+
+def on_the_bus(mod) -> bool:
+    """Does this module take part in the cross-core bus, either end?"""
+    h = getattr(mod, "harness", None)
+    return h is not None and (h.is_server or h.bus_client)
+
+
 @dataclass(frozen=True)
 class Remix:
     """A named selection of modules, composed into one firmware image.
@@ -498,10 +547,11 @@ class Remix:
     name: str
     doc: str
     modules: tuple[str, ...]
-    fallback: str                # module KEY that unimplemented ids alias to
+    fallback: str                # module KEY that unimplemented ids alias to,
+                                 # or NO_FALLBACK for the firmware's own NONE
 
     def __post_init__(self):
-        if self.fallback not in self.modules:
+        if self.fallback != NO_FALLBACK and self.fallback not in self.modules:
             raise ValueError(
                 f"remix {self.name!r}: fallback {self.fallback!r} is not in "
                 f"the remix, so ids aliased to it would dispatch nowhere")

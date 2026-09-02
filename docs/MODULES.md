@@ -253,6 +253,9 @@ selects it still runs it, it just has no row — which is what keeps FX1
 whole. `remixes/restored.py` is chongbong plus the seven that can sit
 beside the servers.
 
+`remixes/restock.py` is all fourteen and nothing else: zero words placed,
+all three reverbs alive — the unit's own chooser, rebuilt from our tables.
+
 Two rules, both enforced:
 
 - **Four stock effects allocate an instance buffer** — SPATIALIZER,
@@ -327,6 +330,53 @@ stock effect that sounds wrong locally is evidence about the **harness or
 emulator** before it is evidence about the effect — twice now.
 
 ---
+
+## What an unimplemented id falls back to
+
+The build rewrites the FX2 dispatch tables wholesale, so every one of the 32
+ids has to point at a descriptor and a DSP entry — including **id 0, which
+is what a fresh part's FX2 slot holds**. `Remix.fallback` names where they
+go, and there are two answers.
+
+**`fallback="SEND"` — for a remix with a bus.** The send client passes the
+audio through and only taps it, so an id aliased to it degrades in the
+useful direction: a track that selects a missing effect becomes a send, not
+silence and not noise. No *stock* effect is a safe target — it would
+PROCESS the unknown id on whatever knobs the part holds — and the target
+must be a module of ours anyway: it needs a cloned descriptor, a cursor
+position in the list, and placed code.
+
+**`fallback="NONE"` — for a remix with no bus.** Unimplemented ids resolve
+to the **firmware's own NONE**: the descriptor a stock chooser carries at
+list row 0 (which our rebuilt list otherwise drops) and, on the DSP side,
+the per-payload null stub the build already points silenced donor ids at.
+It costs one chooser row — four bytes of cave — and **not one word**.
+
+That matters more than it sounds. Every insert-only remix used to carry
+SEND purely to satisfy the rule, at 215–250 words, for a bus client nothing
+in the image reads: with no server, nothing ever consumes the accumulators
+it writes. On `restock` those words landed on PLATE REV's, which is the only
+reason the stock chooser was ever thirteen effects instead of fourteen.
+
+⚠️ **`NONE` is refused beside any bus participant**, and that refusal is the
+whole safety argument. Housekeeping — flipping the rotation word and
+clearing the accumulators, once per block — is gated to payload A and done
+by the first core-0 participant dispatched that block (`send_client.asm`'s
+`bus_seen` election). With SEND on every unassigned track, core 0 always has
+one. Under `NONE` an unassigned track runs *nothing*, so a project with
+tracks 5–8 all unassigned would have no housekeeper, and a server on the
+other core would read an accumulator that is never rotated and never
+cleared. With no server and no SEND in the image there is no bus, no
+rotation and nothing to clear, so the question does not arise — and that is
+the only case this is allowed in. `registry.remix()` enforces it.
+
+⚠️ And it could not be settled by measurement either way: `dsp_host` is
+single-core, so **no local test can reproduce a bus timing defect**. The
+refusal keeps the question off the table rather than answered by inference.
+
+Declare `bus_client=True` in a module's `Harness` if it writes the shared
+accumulators, the way `modules/send` does; `is_server=True` is the other
+half. Those two are what `schema.on_the_bus()` reads.
 
 ## Declaring DSP code
 

@@ -1,4 +1,4 @@
-"""nimbus -- the granular texture card: Nimbus alone, plus the send bus.
+"""nimbus -- the granular texture card: Nimbus alone.
 
 Nimbus owns the core-private FX2 buffer region Y:0x4000-0xBFFF, which is
 only free because every other module in an insert remix has no Y footprint
@@ -14,7 +14,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="nimbus",
-    doc="Nimbus granular texture + send bus. One instance per core.",
-    modules=("NIMBUS", "SEND"),
-    fallback="SEND",
+    doc="Nimbus granular texture, alone. One instance per core.",
+    modules=("NIMBUS",),
+    fallback="NONE",
 )

@@ -22,6 +22,9 @@ import sys
 import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
@@ -184,6 +187,22 @@ def remix(name: str = DEFAULT_REMIX):
         if k not in known:
             raise SystemExit(f"remix {name!r} selects unknown module {k!r} -- "
                              f"have {sorted(known)}")
+    # ⚠️ THE FIRMWARE'S OWN NONE IS ONLY SAFE WHEN THERE IS NO BUS. An
+    # unassigned track then runs nothing at all -- including the housekeeping
+    # block -- and a remix with a server on one core and no participant on
+    # core 0 would leave the rotation frozen and the accumulators uncleared.
+    # With neither a server nor a client in the image there is no bus to
+    # keep, so the question does not arise. See schema.NO_FALLBACK for the
+    # whole argument and for why it cannot be settled by a local test.
+    if r.fallback == NO_FALLBACK:
+        on_bus = [k for k in r.modules if on_the_bus(known[k])]
+        if on_bus:
+            raise SystemExit(
+                f"remix {name!r}: fallback {NO_FALLBACK!r} is only for a remix "
+                f"with no bus participant, and this one has "
+                f"{', '.join(sorted(on_bus))} -- an unassigned track would run "
+                f"nothing, so nobody would flip the rotation or clear the "
+                f"accumulators. Use fallback=\"SEND\".")
     return r
 
 

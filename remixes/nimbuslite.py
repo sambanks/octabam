@@ -20,9 +20,9 @@ from remix.schema import Remix
 REMIX = Remix(
     name="nimbuslite",
     doc="Nimbus Lite plus every stock effect that still fits.",
-    modules=("NIMBUS LITE", "SEND",
+    modules=("NIMBUS LITE",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
              "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
              "DARK REV"),
-    fallback="SEND",
+    fallback="NONE",
 )

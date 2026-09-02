@@ -48,6 +48,7 @@ except ImportError:
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
 from remix import audition, registry, rig, stock  # noqa: E402
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 from remix.state import (BUILT_IMAGE, CAVE_BYTES, DONOR_WORDS, ROOT,  # noqa: E402
                          State)
 
@@ -767,8 +768,6 @@ class BenchScreen(Screen):
         Only two questions are actually live while swapping: does this fit,
         and is the panel on the right showing it yet. The rest moved to `?`.
         """
-        if self.untouched_stock(probs):
-            return "[dim]stock — swap a module in to build it[/]"
         if probs:
             return (f"[bold {BAD}]⚠ "
                     f"{escape(self._clash(probs) or probs[0])}[/]")
@@ -1134,8 +1133,6 @@ class BenchScreen(Screen):
         # in flight there is still nothing honest to show.
         self.ensure_sync(probs)
         r = self.app.boot
-        if self.untouched_stock(probs):
-            return head[:1] + ["[dim]swap a module in and this draws it[/]"]
         if probs:
             return head[:1] + ["[dim]not built — see the ⚠ in LOADED[/]"]
         if self.sync_error:
@@ -1447,14 +1444,16 @@ class BenchScreen(Screen):
         one swap happened.
         """
         st = self.app.state
-        # ⚠️ A SELECTION THAT IS STILL ALL STOCK DOES NOT WANT SEND. The
-        # "no fallback" problem is true of an untouched chooser -- that is
-        # why untouched_stock() exists to keep it off the ⚠ line -- so
-        # ensure_fallback fired on any stock ADD as well, and taking a stock
-        # reverb out and putting it back silently added Send. The rule the
-        # docstrings already state is the right one: SEND comes the moment a
-        # module of OURS goes in, and not before.
-        if not any(not m.is_stock for m in st.selected):
+        # ⚠️ A SELECTION WITH NO BUS DOES NOT NEED SEND AT ALL. Unimplemented
+        # ids resolve to the firmware's own NONE, which costs no words --
+        # see schema.NO_FALLBACK and state.auto_fallback. Conscripting SEND
+        # into an insert collection cost it 215-250 words for a client
+        # nothing in that image reads; on restock it cost PLATE REV.
+        # (This also covers the all-stock case: an untouched chooser has no
+        # bus either, and re-adding a stock reverb used to add Send because
+        # "no fallback" is true of the launch state -- which is exactly what
+        # untouched_stock() exists to keep off the ⚠ line.)
+        if not any(on_the_bus(m) for m in st.selected):
             return ""
         if not any("no fallback" in p for p in st.problems()):
             return ""
@@ -1464,20 +1463,14 @@ class BenchScreen(Screen):
         st.insert_at(send.key, len(st.order))
         return " · added Send as the fallback"
 
-    def untouched_stock(self, probs):
-        """Is this the LAUNCH state rather than a mistake?
-
-        An untouched stock chooser cannot build and is documented not to
-        pretend it can (state.load_stock): a remix must name a fallback for
-        the ids it does not implement, and no stock effect is a safe one --
-        it would PROCESS the unknown id rather than pass it. But that is the
-        state the bench OPENS in, so reporting it as ⚠ makes a fresh launch
-        look broken. Say what the next move is instead. The moment a module
-        of ours goes in, SEND comes with it and this stops applying.
-        """
-        return (bool(probs)
-                and all("no fallback" in p for p in probs)
-                and not any(not m.is_stock for m in self.app.state.selected))
+    # untouched_stock() lived here until 2 Sep 2026. THE LAUNCH STATE BUILDS
+    # NOW, so there is nothing to special-case: an untouched stock chooser
+    # falls back to the firmware's own NONE (schema.NO_FALLBACK), places no
+    # code and assembles to A 0/2724 · B 0/2724 -- the chooser an unmodified
+    # unit shows, rebuilt from our own tables. It used to be unbuildable for
+    # one reason only: the fallback had to be a module of ours, so the bench
+    # opened on a selection it had to apologise for ("stock -- swap a module
+    # in to build it") and the panel drew nothing until you did.
 
     def blockers(self, probs):
         """The modules whose removal would clear the ⚠, if that is the shape
@@ -1582,6 +1575,14 @@ class BenchScreen(Screen):
         st = self.app.state
         opts = [(m.key, f"{m.name} (0x{m.menu.fx2_id:02x})")
                 for m in st.menu_modules]
+        # The firmware's own NONE is an option whenever this selection has no
+        # bus, and the RIGHT one there: an unassigned track is off, as on a
+        # stock unit, and it costs no words. It is not offered beside a bus
+        # participant, because nothing would then flip the rotation or clear
+        # the accumulators -- see schema.NO_FALLBACK.
+        if not any(on_the_bus(m) for m in st.selected):
+            opts.insert(0, (NO_FALLBACK,
+                            "NONE -- the firmware's own, no words"))
         if not opts:
             st.msg = "nothing with a chooser row to fall back to"
             self.rerender()
