@@ -426,28 +426,6 @@ class BenchScreen(Screen):
             menus = "+".join(rig.menus(m)) or "—"
             line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
-        # The three stock REVERBS are absent from every list above, and their
-        # absence is the kind that reads as a bug. Say where they went -- and
-        # say it CONDITIONALLY, because "consumed" is a property of the
-        # SELECTION, not a law. Their code is the region our modules are
-        # written over, so a selection carrying no module of ours takes
-        # nothing from them. (Precedent: CHORUS was a donor until v98 and got
-        # its dispatch back the moment we stopped taking its code.)
-        eats = [m for m in st.selected if m.dsp is not None]
-        out.append("[dim]── the three reverbs ──[/]")
-        for name in stock.CONSUMED:
-            out.append(f"[dim]   {name:<13} —[/]")
-        if eats:
-            out.append("[dim]   their code is the region")
-            out.append(f"   {escape(disp(eats[0]))} and "
-                       f"{len(eats) - 1} other" +
-                       ("s" if len(eats) != 2 else "") + " sit in[/]"
-                       if len(eats) > 1 else
-                       f"   {escape(disp(eats[0]))} sits in[/]")
-        else:
-            out.append("[dim]   nothing here takes their code —")
-            out.append("   a stock-only image would keep")
-            out.append("   them, but cannot be built yet[/]")
         out.append("")
         out.append("[dim]enter adds at ▸ in LOADED[/]")
         self.query_one("#pane_avail", Static).update("\n".join(out))
@@ -483,9 +461,28 @@ class BenchScreen(Screen):
                        if self.pane == LOADED else tail)
         if not rows:
             out.append("[dim] (empty — add from the left)[/]")
+        # THE THREE REVERBS ARE PART OF A STOCK CHOOSER and belong in this
+        # list, not off in the library: an unmodified unit shows fourteen FX2
+        # effects, and these are three of them. They leave when something
+        # takes their space -- their code IS the donor region our modules are
+        # written over -- so showing the trade where it happens is the point.
+        # (Precedent: CHORUS was a donor until v98 and got its stock dispatch
+        # back the moment the build stopped taking its code.)
+        eats = [m for m in st.selected if m.dsp is not None]
+        for name in stock.CONSUMED:
+            if eats:
+                out.append(f"[dim]  –  {name:<13} taken by "
+                           f"{escape(disp(eats[0]))}"
+                           f"{f' +{len(eats) - 1}' if len(eats) > 1 else ''}[/]")
+            else:
+                pos += 1
+                out.append(f"[dim] {pos:>2}   {name:<13}FX2[/]")
         probs = st.problems()
         out.append("")
         out.append("[dim]● = in the built image · ◀fb = fallback[/]")
+        out.append("[dim]dim = stock, lost to the donor region[/]"
+                   if eats else
+                   "[dim]a stock chooser: 14 effects, no modules[/]")
         out.append("[dim]← → moves this row (= its panel slot)[/]"
                    if self.pane == LOADED else
                    "[dim]tab here to reorder or remove[/]")

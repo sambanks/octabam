@@ -69,19 +69,8 @@ on it is no help when you are adding from the library. It can sit one past
 the last row — that position is `(end)`, and it is how you append.
 `left`/`right` in LOADED moves a row afterwards.
 
-The three stock **reverbs** are listed last and cannot be selected: PLATE,
-SPRING and DARK REV are the 2,724-word donor region our modules are written
-over. They are shown rather than omitted because an effect that is simply
-absent reads as a bug.
-
-**Whether they are consumed depends on the selection**, and the pane says
-which: a selection carrying modules of ours names one of them ("their code
-is the region WarpFold sits in"); a selection carrying none says so instead.
-The precedent is CHORUS, which was a donor until v98 and got its stock
-dispatch back the moment the build stopped taking its code. ⚠️ A stock-only
-image would therefore keep all three — but cannot be built yet, because a
-remix must name a fallback and no stock effect is a safe one. `PLAN.md` §7
-backlogs it.
+The three stock **reverbs** are not here — they are in LOADED, because they
+are part of a stock chooser. See below.
 
 The `FX1+FX2` column is which **chooser** the effect has a row on, derived
 from the pristine image rather than written down (`stock.fx1_ids()`). Stock
@@ -102,6 +91,19 @@ on the panel, so `left`/`right` is a real edit, not a view preference. The
 number column is the panel row; `·` means no chooser row at all (a ColdFire
 patch). `●` means the effect resolves in the image on disk. `◀fb` marks the
 fallback. `w` fills in each module's word cost by running a real assembly.
+
+**The three reverbs live here.** An unmodified unit shows **fourteen** FX2
+effects, and PLATE, SPRING and DARK REV are three of them — so a stock
+selection lists all fourteen. They leave when something takes their space:
+their code *is* the 2,724-word donor region our modules are written over, so
+adding one drops them in place with the reason (`– PLATE REV taken by
+WarpFold`). That is the trade, shown where it happens rather than as a rule
+you have to know. The precedent is CHORUS, which was a donor until v98 and
+got its stock dispatch back the moment the build stopped taking its code.
+
+⚠️ A stock selection that keeps all three **cannot be built yet** — a remix
+must name a fallback and no stock effect is a safe one. `PLAN.md` §7 has the
+two changes that would fix it, and the argument for closing it instead.
 
 **You start at `stock`** — the chooser an unmodified unit shows, no modules
 of ours. You add to what the box already does rather than to somebody else's
