@@ -670,6 +670,130 @@ Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
 
+#### What it is for
+
+It is the only way to see the **panel** side of an image without flashing
+one. The remixer's own panes say what you asked for; this says what the
+firmware will actually draw from the tables the build wrote — the knob
+labels the page puts under each encoder, and the effect names on the chooser
+rows. That is a real bug class: a cloned descriptor inherits its donor's
+display formatter, so a slot can carry the right count, default, name and
+enable bit and still draw as something else entirely, or as nothing at all
+(17 Aug 2026 — three of six page-2 slots drew wrong on a flash, and every
+check passed because every field they checked was right).
+
+#### An FX page is read, not photographed
+
+```
+ Filter's page, in the unit's own words
+  page 1 LEV   BASE  WDTH  Q       DPTH  ATK   DEC
+  page 2       HP    LP    ENV     HOLD  Q     DIST
+               12dB  12dB  BASE    OFF   NONE
+  FX2 rows on screen  NONE · ▸FILTER · EQUALIZER · DJ EQUALIZER
+                      PHASER · FLANGER · CHORUS
+```
+
+⚠️ **A picture of that screen is not available, and three rounds of column
+work went into finding that out.** The chooser list and the parameter block
+are two overlaid **windows** whose coordinates are not comparable. Measured
+on one FX page, the text baselines top to bottom:
+
+| | | | |
+|---|---|---|---|
+| 57 title | 56 param | 48 param | 47 **list** |
+| 40 **list** | 33 **list** | 30 param | 28 param |
+| 26 **list** | 21 param | 19 **list** | 12 **list** |
+| 5 **list** | 3 param | | |
+
+The list steps exactly 7 px and is internally consistent; the parameter
+block has its own lines, falling 1–3 px from it. **Fourteen baselines in 64
+pixels with a 7 px font are not fourteen lines** — they are two windows, the
+same thing `Pt:1 PART 1` shows in x (its coordinates put the PART window's
+text in the middle of the effect list, where it fused into `DJ EQUALIZER1`).
+Flattening them into nine rows interleaves them and reads as a mapping from
+each chooser row to the labels beside it, which is not what any of it means:
+the labels belong to the effect the **track** has selected.
+
+So the strings are sorted into what they *are*. Which page a row belongs to
+is decided against the effect's **own** parameters, not against pixel
+columns, and by **majority** — a select's value can coincide with a
+parameter's name (`BASE` is both one of FILTER's page-1 knobs and what its
+page-2 `ENV` prints). `LEV` gets its own column rather than being a fourth
+entry in the first bank, which knocked every column after it out of step.
+
+**MAIN MENU stays a picture**, because it is one window of two plain lists
+and flattening loses nothing — and seeing a patched-in top-level row drawn
+where it will be is the whole reason that view exists. Its geometry is
+measured too: the character cell is **4 pixels**, so the LCD is **32**
+characters wide, and a list is left-aligned while parameter labels are
+centred on fixed anchors (`emu_bringup.layout_screen` has both, and tells
+them apart by whether one x carries several label lengths).
+
+⚠️ **A short pane says so rather than cutting the box.** It is the tallest
+thing here and it is last, so it used to lose its bottom border and its last
+rows with nothing saying anything was missing. Trailing and leading blank
+rows go first, then it clips deliberately and prints `7 more rows — the pane
+is short` where the bottom edge would be; below four rows it draws no box at
+all, because a sliver of one costs the lines it would need to explain itself.
+
+Knob **values** draw as dial graphics the string capture cannot read, so only
+a stepped select prints one; the numbers in the pane above are the truth for
+values.
+
+### A / B compares two EFFECTS
+
+Not "two renders ago against now", which is what the marks used to hold. `r`
+hears the effect the cursor is on, `a` parks it as A, then point at the rival
+and `b` — which **re-renders it on the same source** — and `,` / `.` flip
+between them. That is the question a remixer exists to answer: *is mine
+better than the one the box came with?* It is also exactly the question an
+upgraded stock effect asks, which is why the pair is two effects rather than
+two accidents of history.
+
+**`SOURCE` is the first row**: `left`/`right` cycles the wavs in the source
+folder, so choosing what you audition on is one keypress from the knobs. `r`
+renders the effect over it and plays it; `space` replays.
+
+**`d` points the source folder somewhere else** and remembers it in
+`out/_audition/remixer.json`; `REMIXER_SOURCES` overrides both. The
+default is `out/dry/`, the curated dry set — a good default, not a permanent
+one, since a bench gets used on whatever material is to hand. A path that is
+not a directory, or holds no wavs, is refused and the old one stands.
+
+⚠️ **Six of the eleven stock effects render DRY at their defaults** —
+PHASER, FLANGER, CHORUS and COMB sit at `MIX 0`, SPATIALIZER and DELAY at
+`SEND 0` — so pressing `r` on one plays the source back unchanged, which
+reads as "this effect does nothing" (it cost a report on 2 Sep 2026). **That
+is faithful and is not fixed by seeding a different value**: stock defaults
+are read from the firmware's own descriptor (`tools/remix/stock.py`), an
+unmodified unit really does start them fully dry, and inventing a value here
+would make the remixer lie about the page it draws beside. The UNIT pane says
+`⚠ MIX is 0 — this renders DRY` instead. None of *our* modules default this
+way.
+
+**Stepping knobs**: `left`/`right` is ±1 and **`shift`+`left`/`right` is
+±10**. Holding the key runs; ~280 steps/second is sustainable (below), so
+key repeat is the limit, not the remixer.
+
+⚠️ **Holding an arrow key used to lag, and the cause was the emulated
+panel.** `rerender()` called `render_fx2` on *every* keystroke — 15–96 ms,
+mean 32 (`render_fx1` 16, `render_menu` 8; measured 2 Sep 2026) — plus three
+independent `problems()` calls at 2.4 ms each. Under key repeat the work per
+key exceeded the repeat interval, so the UI fell behind the held key and kept
+stepping after release; single presses always felt fine, which is why it
+presented as "slow when holding" rather than as latency. **Nothing a keystroke
+does can change that picture** — knob *values* draw as dial graphics the
+string-capture hook cannot read — so the panel is now cached on (page,
+effect id, build) and `problems()` is computed once per pass. Measured
+A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
+
+Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
+`FX2`, then `MENU` — showing the firmware's own draw of that page, under a
+caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+Not the page title, which the LCD draws itself two lines down; the FX pages
+all open with the same title and the same chooser column, so saying it twice
+is how the caption came to say nothing.
+
 #### What it is for, and why two things share the page
 
 It is the only way to see the **panel** side of an image without flashing

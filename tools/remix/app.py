@@ -365,9 +365,11 @@ It is the only way to see the PANEL side of an image without flashing one. The r
 
 That is a real class of bug and it has cost real days here: a cloned descriptor inherits its donor's display formatter, so a slot can carry the right count, default and name and still draw as something else entirely — or as nothing. Three of six page-2 slots drew wrong on one flash and every check passed, because every field they checked was right.
 
-TWO INDEPENDENT THINGS SHARE THE PAGE, which is why the columns beside a row are not that row's: the chooser list scrolls down the left, and the knob names belong to whichever effect the TRACK has selected — the one named in the caption, marked `▸` when its row is on screen.
+An FX page is shown as what it IS, not as a picture of the screen: the effect's knob names in the unit's own words, in the banks the encoders are in, and the chooser rows the firmware listed (`▸` marks the one this page is for). ⚠️ A picture is not available: the chooser list and the parameter block are two overlaid WINDOWS whose coordinates are not comparable — fourteen text baselines in 64 pixels with a 7 px font — so flattening them into one grid interleaves them and reads as a mapping from each row to the labels beside it, which is not what any of it means. The strings are still the firmware's own; only their arrangement stops being a reconstruction.
 
-Honest limits: knob VALUES draw as dial graphics the string capture cannot read, so the numbers in the pane above are the truth for values and the picture is the truth for names. Nothing here touches hardware.
+MAIN MENU stays a picture, because it is one window of two plain lists and flattening it loses nothing — and seeing a patched-in top-level row drawn where it will be is the whole reason that view exists.
+
+Honest limits: knob VALUES draw as dial graphics the string capture cannot read, so only a stepped select prints one; the numbers in the pane above are the truth for values. Nothing here touches hardware.
 
 [bold]what an FX1 row costs[/]
 No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
@@ -1426,9 +1428,81 @@ class RemixerScreen(Screen):
                                            effect_id=effect_id or 0x04)
         else:
             draws = emu_bringup.render_fx2(r, track=4, effect_id=effect_id)
-        grid = emu_bringup.layout_screen(draws)
-        self._panel_cache = (key, grid)
-        return grid
+        # The RAW draws, because the two readings of them -- the structured
+        # one for an FX page and the picture for the menu -- are both derived
+        # and only the capture is expensive.
+        self._panel_cache = (key, list(draws))
+        return self._panel_cache[1]
+
+    def _page(self, mod, draws):
+        """An FX page as what it IS: the effect's knob names in the unit's
+        own words, in the banks the encoders are in, and the chooser rows.
+
+        ⚠️ NOT A PICTURE OF THE SCREEN. The list and the parameter block are
+        two overlaid windows whose y origins are not comparable (fourteen
+        text baselines in 64 pixels with a 7 px font -- emu_bringup's
+        read_screen has the measurement), so flattening them into one grid
+        interleaves them and reads as a mapping from each chooser row to the
+        labels beside it. The STRINGS are still the firmware's own, which is
+        the whole point of the view; only their arrangement stops being a
+        reconstruction.
+        """
+        import emu_bringup
+        scr = emu_bringup.read_screen(draws)
+        # WHICH PAGE A ROW BELONGS TO, decided against the effect's own
+        # parameters rather than against the pixel columns -- and by MAJORITY,
+        # because a select's VALUE can coincide with a parameter's name
+        # (`BASE` is both one of FILTER's page-1 knobs and what its page-2
+        # ENV prints).
+        page = {n: ("page 1" if slot < 6 else "page 2")
+                for n, slot in self.unit_rows(mod) if n != "SOURCE"}
+        banks = {"page 1": [], "page 2": [], "": []}
+        lev = None
+        for row in scr["params"]:
+            if row and row[0] == "LEV":
+                lev, row = row[0], row[1:]
+            votes = [page.get(n, "") for n in row]
+            kind = max(set(votes), key=votes.count) if votes else ""
+            banks[kind].append(row)
+        out = []
+        w = 6
+        for kind in ("page 1", "page 2", ""):
+            if not banks[kind]:
+                continue
+            line = f" [dim]{kind:<7}[/]" if kind else " " * 8
+            # LEV IS ITS OWN COLUMN, not a fourth entry in the first bank:
+            # the unit puts it on the page-1 name row and the banks are
+            # threes, so folding it in knocked every column after it out of
+            # step with the rows below.
+            line += (lev or "").ljust(w)
+            for bank in banks[kind]:
+                line += "".join(escape(n).ljust(w) for n in bank).ljust(3 * w)
+                line += "  "
+            out.append(line.rstrip())
+            lev = None
+        if not out:
+            out = ["[dim] no parameters drawn[/]"]
+        # AND THE CHOOSER ROWS the firmware actually listed -- the visible
+        # window of them, which is what the capture holds.
+        want = disp(mod).lower()
+        names = [("[reverse]▸" + escape(n) + "[/]")
+                 if n.lower().startswith(want) else escape(n)
+                 for n in scr["list"]]
+        out.append("")
+        # PACKED, not truncated: seven chooser names on one line runs off the
+        # pane, and the one that gets cut is as likely to be the one you were
+        # looking for as any other.
+        room = self.query_one("#pane_unit", Static).content_size.width - 2
+        lead, lines, cur = f" [dim]{self.preview} rows on screen[/] ", [], ""
+        for n in names:
+            bit = (" [dim]·[/] " if cur else "") + n
+            if cur and self._vis(lead + cur + bit) > room:
+                lines.append(lead + cur)
+                lead, cur = " " * 20, n
+            else:
+                cur += bit
+        out += lines + [lead + cur]
+        return out
 
     def _preview(self, mod, probs, room=0):
         st = self.app.state
@@ -1450,8 +1524,7 @@ class RemixerScreen(Screen):
         # belong to whichever effect the TRACK has selected.
         slot = self.preview
         what = ("the main menu, as the unit draws it" if slot == "MENU"
-                else f"the {slot} menu's rows, and {escape(disp(mod))}'s "
-                     f"knob names")
+                else f"{escape(disp(mod))}'s page, in the unit's own words")
         head = [f"preview {modes}  [dim](p)[/]", f"[dim]{what}[/]"]
         # DO NOT DRAW SOMETHING THAT IS NOT THE SELECTION. The FX2 page
         # includes the firmware's own chooser list, so an image that is not
@@ -1500,20 +1573,14 @@ class RemixerScreen(Screen):
                 # of the wrong effect (CLAUDE.md, 12 Aug 2026).
                 return head[:1] + ["[dim]not in the image yet[/]"]
             effect_id = mod.menu.fx2_id
-        grid = self._panel(self.preview, effect_id)
-        # ⚠️ MARK THE SELECTED ROW. The page draws TWO independent things --
-        # the chooser list down the left, and the knob names of whichever
-        # effect the track has selected -- and our capture puts them on the
-        # same text rows, so `ChonVerb78   SHMR MODE DIFF` reads as a mapping
-        # from that row to those knobs. It is not one: the names belong to
-        # the selection, and the row beside them is just the next row of the
-        # list. The unit says which row is selected by XOR-highlighting it,
-        # which the string-capture hook cannot read (docs/EMU.md) -- but we
-        # know which effect we asked for, so say it here.
-        if effect_id is not None:
-            want = disp(mod).lower()
-            grid = [("▸" + ln[1:] if ln[1:].lower().startswith(want) else ln)
-                    for ln in grid]
+        draws = self._panel(self.preview, effect_id)
+        if self.preview != "MENU":
+            return head + self._page(mod, draws)
+        # THE MAIN MENU STAYS A PICTURE. It is one window of two plain lists,
+        # so flattening it loses nothing -- and the whole reason for the view
+        # is to see a patched-in top-level row drawn where it will be.
+        import emu_bringup
+        grid = emu_bringup.layout_screen(draws)
         # The LCD frame is chrome; the firmware's own words are the content.
         edge = f"[{LCD}]"
         # The LCD is 32 characters wide (128 px / a 4 px cell, measured), and
@@ -1526,6 +1593,8 @@ class RemixerScreen(Screen):
         # give up when the pane is short.
         while grid and not grid[-1].strip():
             grid.pop()
+        while grid and not grid[0].strip():
+            grid.pop(0)          # the menu opens with an empty line
         cut = len(head) + len(grid) + 2 - room
         if room and len(grid) - cut < 4:
             # Below a few rows the box says nothing and costs the lines it

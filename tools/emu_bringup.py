@@ -675,6 +675,72 @@ def _anchors(items, left, tol=8):
             for g in groups]
 
 
+def _resolve(frags):
+    """One row's fragments, in draw order, with overpainted ones dropped.
+
+    ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
+    parameter row in place, so the capture holds the label that WAS there
+    and then the one that is -- `PTCH` then `FRQ1` at the same x. Keeping
+    both makes the page read as an effect with seven parameters where the
+    unit draws four.
+    """
+    out = []
+    for x, t in frags:
+        lo, hi = x, x + CELL * len(t)
+        out = [(x0, t0) for x0, t0 in out
+               if x0 + CELL * len(t0) <= lo or x0 >= hi]
+        out.append((x, t))
+    return sorted(out)
+
+
+def read_screen(draws):
+    """The captured strings, sorted into what they ARE rather than into a
+    picture of where they were.
+
+    ⚠️ A CHARACTER GRID CANNOT BE FAITHFUL TO THIS SCREEN, which is why this
+    exists. Measured on one FX page, the text baselines top to bottom are
+
+        57 title | 56 param | 48 param | 47 LIST | 40 LIST | 33 LIST
+        30 param | 28 param | 26 LIST  | 21 param | 19 LIST | 12 LIST
+         5 LIST  |  3 param
+
+    -- the LIST steps exactly 7 px and is internally consistent, and the
+    PARAMETER block has its own lines falling 1-3 px from it. Fourteen
+    baselines in 64 pixels with a 7 px font are not fourteen lines: they are
+    two overlaid WINDOWS whose y origins are not comparable, the same thing
+    `Pt:1 PART 1` shows in x. Flattening both into nine rows interleaves them
+    and reads as a mapping from each chooser row to the labels beside it,
+    which is not what any of it means.
+
+    The STRINGS are still the firmware's own, and they are what the view is
+    for. Only their arrangement stops being a reconstruction.
+
+    -> {"title", "list": [str], "params": [[str]]}, list and params each in
+    top-to-bottom order.
+    """
+    items = _clean(draws)
+    rows = collections.defaultdict(list)
+    for x, y, t in items:
+        rows[y].append((x, t))
+    title, listed, params = None, [], []
+    for y in sorted(rows, reverse=True):
+        frags = _resolve(rows[y])
+        if all(x < LEFT_X for x, _t in frags):
+            # The topmost left-aligned row is the page's title; the rest are
+            # the chooser, which is why the title is taken before the loop
+            # settles into the list's own 7 px pitch.
+            if title is None and len(frags) == 1:
+                title = frags[0][1]
+            else:
+                listed += [t for _x, t in frags]
+            continue
+        # A row may carry a list entry AND parameters; they are separate
+        # windows and go to separate places.
+        listed += [t for x, t in frags if x < LEFT_X]
+        params.append([t for x, t in frags if x >= LEFT_X])
+    return {"title": title, "list": listed, "params": params}
+
+
 def layout_screen(draws, cols=COLS, rows=9):
     """Arrange captured (x,y,text) draws into a text grid. The LCD is 128x64
     with a bottom-left-ish origin (the list drawer steps y DOWN per row, so
