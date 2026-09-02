@@ -35,170 +35,97 @@ workbench lives in the venv.
 Playback is `afplay`, so hearing renders is macOS-only; everything else
 works anywhere the DSP toolchain does.
 
-## The three views
+## One page, three panes
 
-`x` / `v` / `e` move between them; `?` on any view opens an overlay with
-this page's short form; `esc` stops audio from anywhere; `q` quits (from
-EMU, `q` returns to the rig).
+`make remix` opens a single screen. `tab` moves between panes, `up`/`down`
+moves within one, `?` opens this page's short form, `esc` stops audio, `q`
+quits. **There is no per-track view** — the eight-track rig was retired 2 Sep
+2026 because it was a second place to say what a remix already says, and
+knob values belong to the effect rather than to a track.
 
-### RIG — the home view
+```
+┌ AVAILABLE ───────┬ LOADED · stock ────────┬ FILTER ──────────────────────┐
+│ ── server ──     │  1 ● FILTER    FX1+FX2 │ stock · id 0x04 · FX1+FX2    │
+│    BongDelay FX2 │  2 ● EQUALIZER FX1+FX2 │ BASE   0  [............] p1  │
+│    ChonVerb  FX2 │  3 ● DJ EQ     FX1+FX2 │ WDTH 127  [############] p1  │
+│ ── insert ──     │  …                     │ …                            │
+│    WarpFold  FX2 │ 11 ● DELAY     FX2     │ preview: FX2 MENU FX1        │
+│ ── stock ──      │                        │ .--------------------------. │
+│  ✓ FILTER FX1+FX2│ ● = in the built image │ | EFFECT 2 SETUP           | │
+└──────────────────┴────────────────────────┴──────────────────────────────┘
+```
 
-Eight tracks across the top, an effect assigned to each, the selected
-track's controls below. This is the trial-a-sound loop.
+### AVAILABLE — the library
 
-![The RIG view: Nimbus on T6, its page-1 knobs and FRZE select, the
-per-knob help line, and the render history](img/workbench-rig.png)
+Everything that *could* be in an image: your modules grouped **server** /
+**insert** / **system**, then the stock effects the unit already ships. `✓`
+marks what the current selection holds; `enter` adds or removes.
 
-| key | action |
-|---|---|
-| `1`–`8` | select track |
-| `enter` | pick the track's effect (only effects that can run there) |
-| `backspace` | clear the track's effect |
-| `up/down` (`j/k`) | move between rows: SOURCE, RENDER, then the knobs |
-| `left/right` (`h/l`) | adjust the row; `shift` steps by 10 |
-| `r` | render the track's effect over the source, then play it |
-| `space` | replay the last render |
-| `a` / `b` | mark the last render as A / B |
-| `,` / `.` | replay mark A / mark B |
-| `esc` | stop playback |
+The `FX1+FX2` column is which **chooser** the effect has a row on, derived
+from the pristine image rather than written down (`stock.fx1_ids()`). Stock
+gives the two slots different lists: ten effects on FX1, those ten plus
+DELAY and the three reverbs on FX2 — which is why taking the reverbs as
+donors cost FX1 nothing. **Our own modules are FX2-only, and that is a build
+limit, not a hardware one**: the DSP dispatch tables are indexed by the raw
+id and shared between the menus, so a module's code already runs from FX1
+the moment FX1 selects its id. What is missing is the panel side — FX1's
+15-entry chooser cannot grow in place and must be relocated to a cave
+(`tools/build_fx1.py` proved it can be), and no manifest field asks for a
+row. The real ceiling is cycles ×4 (`PLAN.md` §2).
 
-Row notes:
+### LOADED — the image being composed
 
-- **SOURCE** cycles every `.wav` in `out/dry/` — the curated DRY set
-  (31 Aug 2026; the old `out/test_audio/` + `out/demo_sources/` browse
-  mixed ~50 processed renders in with the dozen dry sources). Drop files
-  in `out/dry/` and restart. If `out/dry/` is missing or empty the old
-  two-directory browse comes back as the fallback. (No browse-anywhere
-  picker yet.)
-- **RENDER wet/full** applies to ChonVerb only (`render_reverb --wet`, an
-  exact dry subtraction). Other effects always render their normal output.
-- **Knob rows** carry the manifest's names in the unit's own page layout:
-  slots 0–5 = page 1, encoders A–F; slots 6–11 = page 2, knob/select
-  alternation. Selects show their manifest labels (the delay's MODE reads
-  CLEAN/PITCH/(tape)/GRAIN/REVRS, not 0–4). The dim `?` line under the
-  rows explains whichever row the cursor is on — the text comes from
-  `Param.doc` in the effect's manifest.
-- ChonVerb's MODE renders as its own image, cached per mode
-  (`render_reverb`'s engine cache) — the first render after a MODE flip
-  pays a build, later ones don't.
+The selection, **in chooser order** — the order here *is* the order of rows
+on the panel, so `left`/`right` is a real edit, not a view preference. The
+number column is the panel row; `·` means no chooser row at all (a ColdFire
+patch). `●` means the effect resolves in the image on disk. `◀fb` marks the
+fallback. `w` fills in each module's word cost by running a real assembly.
 
-The RENDERS panel lists recent renders with the knobs that differed from
-defaults; `[A]`/`[B]` show where the marks sit. Marks always attach to the
-**most recent** render — walk-the-history marking is a known gap.
+**You start at `stock`** — the chooser an unmodified unit shows, no modules
+of ours. You add to what the box already does rather than to somebody else's
+remix. That selection deliberately cannot build as it stands: a remix must
+name a fallback for the ids it does not implement, and no stock effect is a
+safe one (it would *process* the unknown id), so the moment you add a module
+you add SEND too. The pane says so.
 
-**Why some effects are missing on some tracks:** the two bus servers each
-live on one DSP core, and the cores serve fixed track halves — ChonVerb
-(payload A) on **tracks 5–8**, BongDelay (payload B) on **tracks 1–4** —
-the measured 10 Aug 2026 track↔core inversion. Inserts run anywhere.
-SYSTEM modules (SEND, tempo-sync) are plumbing and never appear in the
-picker.
+`l` loads a remix (or `stock`), `s` saves the selection as one, `k` resets to
+stock, `f` picks the fallback explicitly, `b` builds, `c` runs `make check`.
 
-### REMIX — the composer
+### UNIT — the selected effect
 
-The old workbench's job, reframed. Left: the modules, grouped **BUS
-EFFECTS** (with track range) / **INSERTS** (any track) / **STOCK FX2** /
-**SYSTEM**, with the cursored module's one-line doc below. Right: what the
-selection *is* — the FX2 chooser exactly as the unit will show it, in
-**selection order** (`[` / `]` move the cursored module; a saved remix
-keeps that order), the program-fit bar against the donor region, and the
-ledger's collision verdict (the same `ledger.check` the build runs, not a
-reimplementation).
+Follows the cursor, so pointing at something in the library previews it
+before you add it. Shows its kind, id, menus and track range, its one-line
+doc, and its drawn parameters with values — `left`/`right` adjusts,
+`shift` for ×10. **Values live per module**, seeded from the manifest
+defaults (a stale default polluted every shimmer measurement until Round 12).
 
-**STOCK FX2** (since 2 Sep 2026) is the eleven stock effects the image
-would otherwise hide: every image replaces the whole chooser, but only
-PLATE/SPRING/DARK REV are actually consumed (their code is the donor
-region), and the panel now says so. Toggling a stock row costs nothing —
-no code, no words, no clone; the row is the only edit. The four that
-allocate a per-track buffer (SPAT, FLNG, CHOR, COMB) are refused beside
-ChonVerb, Nimbus or BongDelay, with the reason. Past seven rows the panel
-scrolls, and the composer says that too. `docs/MODULES.md` has the rules.
+`r` renders the effect over the selected source and plays it; `space`
+replays. Below that, `p` cycles the **preview**: the firmware's own draw of
+the effect's FX2 page, the MAIN MENU, or the FX1 page, from the built image
+in the Tier-0 ColdFire emulator.
 
-In the RIG a stock effect shows its **real knobs** — names, defaults and
-value counts read from the stock descriptor in the pristine image, and a
-select shows the **words the unit draws** ("12dB|24dB", "NONE|HP|LP|BOTH",
-the comb's note names), asked of the firmware's own display formatters on
-the emulated ColdFire (`make stock-labels`) — and **renders** like
-an insert, from a one-time dump of the stock image's payload A
-(`out/dsp/_stock_A.mem`), so nothing about the currently built remix
-matters. Ten of the eleven render (2 Sep 2026): FILTER, EQ, DJ EQ,
-PHASER, FLANGER, CHORUS, SPATIALIZER, COMB, COMPRESSOR, LO-FI — every one
-a bit-exact dry pass at its neutral settings, LO-FI at +6 dB (open) and
-after an emulator patch (`tools/dsp56300.patch`, `mpyri`). **DELAY** runs
-on the ColdFire, so there is no DSP code to render and the audition says
-so. `docs/MODULES.md` has the measurements and the harness lesson (the
-audio block sits at X:0 for a stock render, as on hardware).
+- **MAIN MENU** is the no-flash gate for ColdFire cave work — a patched-in
+  top-level row draws here exactly as the unit would draw it.
+- **FX1** shows that chooser as stock ships it, which is what FX1 rows would
+  have to be added to.
+- **FX2** draws the selected effect's page — *unless it is one of ours that
+  has not been built*, in which case it is deliberately not drawn. An id the
+  image does not implement resolves to the fallback and the firmware would
+  draw a convincing picture of the wrong effect (`CLAUDE.md`, 12 Aug 2026).
+  A **stock** effect always draws: a remix that leaves one out does not
+  remove it — its code, descriptor and dispatch stay stock and an old
+  project that selects it still runs it; it only loses its chooser row.
 
-![The REMIX view: modules grouped by category with track ranges, the FX2
-menu as the unit will draw it, and the ledger's verdict —
-chongbong loaded](img/workbench-remix.png)
+The boot (~4 s) is cached and repeats only when the image changes.
 
-| key | action |
-|---|---|
-| `space` | toggle the module under the cursor |
-| `[` / `]` | move it earlier / later in the chooser |
-| `f` | make it the fallback (absent ids alias to the fallback — normally SEND, so a stale project degrades to a send, not noise; `*` explicit, `~` auto) |
-| `w` | assemble the selection and keep the real word counts |
-| `b` / `c` | `make bus` / `make check` on the **live** selection (via the scratch-remix mechanism — no save needed) |
-| `l` / `s` | load / save a remix file |
-
-A successful `b`/`c` invalidates the EMU view's cached boot, so `e` shows
-the image you just built.
-
-The panel's "no LEDGER collisions" deliberately names what is *not*
-checked (the shared 64K window) and which selected module owns the
-per-core FX2 buffer region — see CLAUDE.md for why that caveat is written
-out each time.
-
-### EMU — the emulated unit
-
-The built image (`out/mainos_bus.bin`) booted in the Tier-0 ColdFire
-emulator, drawing **its own screens**: the MAIN MENU (patched-in entries
-render as the firmware would draw them), FX2/FX1 SETUP, and the PLAYBACK
-page. Booting is itself the no-flash gate — a cave that breaks early init
-faults here, not on the unit.
-
-| key | action |
-|---|---|
-| `m` | main menu (`up/down` moves the cursor) |
-| `f` | FX2 SETUP — `left/right` cycles effects, the rig follows |
-| `o` | FX1 SETUP (stock effects; `left/right` cycles the id) |
-| `p` | PLAYBACK page (`left/right` cycles FLEX/STATIC/THRU/NEIGHBOR) |
-| `a` | stage the cycled-to effect in the composer (FX2 view) |
-| `b` | build the composer's live selection and re-boot |
-| `1`–`8` | change track |
-
-The boot (~4 s) is cached at app level and repeats only when the image's
-mtime changes.
-
-**The FX2 view closes the loop.** `left/right` cycles two groups: the rows
-the built image actually offers (read from the image on disk, in the panel's
-own order — `rig.built_chooser()`), then every other module that *could*
-have a row, marked as not built.
-
-- Landing on a **built** row draws the firmware's own EFFECT 2 SETUP and
-  **assigns it to the track** — the rig and this view are one selection, not
-  two. Where the rig cannot hold it the view says what the *unit* would do
-  instead: a server picked on the wrong core's tracks aliases to the
-  fallback and the track becomes a send; SEND is plumbing the chooser lists
-  and the rig does not hold.
-- Landing on a **pending** row is deliberately **not drawn**. An id the
-  image does not implement resolves to the fallback, and the firmware would
-  draw a convincing picture of the wrong effect — the 12 Aug 2026 trap in
-  panel form. `a` stages it in the composer, `b` builds and re-boots.
-  Cycling past several unbuilt effects costs nothing; only `b` builds.
-
-Changing track **follows** that track's assignment and never writes: an
-empty track would otherwise silently inherit whatever row was showing. The
-cursor also stays on the same *effect* across a rebuild, so staging one and
-pressing `b` leaves you looking at it, now built.
-
-Honest limits (all recorded in `docs/EMU.md`): no audio, no key matrix —
-navigation is done by poking state and re-calling draw functions. Knob
-**values** draw as dial graphics the string-capture hook cannot read, so
-the rig's numbers are always the truth for values. In a SPEC image the
-delay's DSP in payload A is the SEND alias, so its FX2 page can draw
-empty. Item-level menu descent needs the real key handler
-(`FUN_40064e64`) and is not built.
+Honest limits (`docs/EMU.md`): no audio and no key matrix in the emulator —
+navigation is poking state and re-calling draw functions. Knob **values**
+draw as dial graphics the string-capture hook cannot read, so the numbers in
+this pane are the truth for values, not the picture. In a SPEC image the
+delay's DSP in payload A is the SEND alias, so its page can draw empty.
+Item-level menu descent needs the real key handler (`FUN_40064e64`) and is
+not built. The PLAYBACK page render was dropped with the rig — it proved the
+detour could draw a non-FX page and had no role in composing an image.
 
 ## The audition backend
 
@@ -240,14 +167,19 @@ That makes a listening session addressable: "this sounds boxy" plus the
 journal tail is a full repro — track, effect, source, every knob. It is
 also how demo takes get captioned after the fact.
 
-## The rig file
+## Knob values
 
-`out/_rig.json` persists the per-track assignments and knob values across
-restarts. It is a **bench fixture, not a firmware statement** — remix
-files say what the image contains; the rig says what the operator was
-listening to. Loading validates against the current manifests: a renamed
-knob does not resurrect a stale value under its old meaning, and an
-assignment a module can no longer honour is dropped.
+Values live **per module**, in the session, seeded from that module's
+manifest defaults the first time you look at it. They are a bench fixture,
+not a firmware statement: a remix file says what the image *contains*, never
+what the operator had a knob set to. Nothing about them is written into the
+image, and a render is the only thing that consumes them.
+
+⚠️ `out/_rig.json` and the per-track rig it persisted are **gone** (2 Sep
+2026). Eight tracks with an effect on each was a second place to say what a
+remix already says, and it forced a knob set per track when what an operator
+actually tunes is an effect. An old `_rig.json` on disk is inert and can be
+deleted.
 
 ## Theming
 

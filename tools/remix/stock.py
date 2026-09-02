@@ -97,6 +97,46 @@ def _image():
     return _img
 
 
+# ---- which MENU a stock effect appears on ----------------------------------
+# FX1 and FX2 are two slots on the same track, and stock gives them DIFFERENT
+# chooser lists: FX1 offers ten effects, FX2 offers those ten plus DELAY and
+# the three reverbs. That asymmetry is why taking the reverbs as donors cost
+# FX1 nothing -- they were never on its menu.
+#
+# Read from the pristine image rather than written down, so it cannot drift.
+# (Both stock lists open with a NONE row, id 0x00 -- which our rebuilt FX2
+# list drops. Noted 2 Sep 2026 from an outside report; see PLAN.)
+FX1_CHOOSER, FX2_CHOOSER = 0x400d6060, 0x400d6090
+_fx1_ids: frozenset[int] | None = None
+
+
+def _chooser_ids(addr: int, limit: int = 32) -> frozenset[int]:
+    img = _image()
+    if img is None:
+        return frozenset()
+
+    def rd32(a):
+        i = a - BASE
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i <= len(img) - 4 else 0
+
+    out, a = set(), addr
+    for _ in range(limit):
+        ptr = rd32(a)
+        if not ptr:
+            break
+        out.add(rd32(ptr) & 0xff)       # the descriptor's own id word, P+0
+        a += 4
+    return frozenset(out)
+
+
+def fx1_ids() -> frozenset[int]:
+    """Effect ids the STOCK FX1 chooser lists, read from the pristine image."""
+    global _fx1_ids
+    if _fx1_ids is None:
+        _fx1_ids = _chooser_ids(FX1_CHOOSER)
+    return _fx1_ids
+
+
 def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
     """The twelve slots as the stock descriptor declares them, or () when
     the image is not on disk."""

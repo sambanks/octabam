@@ -43,8 +43,31 @@ class State:
         self.words: dict[str, int] = {}      # key -> words, from a real build
         self.words_from = ""                 # which remix produced them
         self.msg = "space toggles; w assembles for word counts; ? for keys"
-        self.load("chongbong" if "chongbong" in registry.remix_names()
-                  else (registry.remix_names() or [None])[0])
+        # Per-MODULE knob values, so an effect's settings belong to the effect
+        # rather than to a track. (The retired rig kept these per track, which
+        # was the redundancy: one knob set per effect is what a remix means.)
+        self.knobs: dict[str, dict[str, int]] = {}
+        self.loaded_name = ""
+        self.load_stock()
+
+    # ---- the default: an unmodified unit --------------------------------
+    def load_stock(self):
+        """The chooser an UNMODIFIED unit shows: every stock FX2 effect, no
+        modules of ours. The honest starting point -- you add to what the box
+        already does rather than to somebody else's selection.
+
+        Note this selection cannot BUILD as it stands and should not pretend
+        to: a remix must name a fallback for ids it does not implement, and
+        no stock effect is a safe one (it would PROCESS the unknown id). The
+        moment a module is added, SEND comes with it.
+        """
+        from remix import stock
+        self.sel = {m.key for m in stock.MODULES}
+        self.order = [m.key for m in stock.MODULES]
+        self.fallback = None
+        self.loaded_name = "stock"
+        self.msg = ("stock: the chooser an unmodified unit shows — "
+                    "add modules from the left")
 
     # ---- selection ----------------------------------------------------
     def load(self, name):
@@ -54,7 +77,19 @@ class State:
         self.sel = set(r.modules)
         self.order = list(r.modules)
         self.fallback = r.fallback
+        self.loaded_name = name
         self.msg = f"loaded remix {name!r}"
+
+    # ---- per-module knob values -----------------------------------------
+    def knobs_for(self, mod) -> dict[str, int]:
+        """This module's current knob values, seeded from its manifest
+        defaults the first time it is asked for. Manifest defaults are the
+        honest baseline -- a stale default polluted every shimmer measurement
+        until Round 12."""
+        from remix import rig
+        if mod.key not in self.knobs:
+            self.knobs[mod.key] = rig.default_knobs(mod)
+        return self.knobs[mod.key]
 
     def toggle(self, key):
         if key in self.sel:

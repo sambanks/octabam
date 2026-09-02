@@ -1,15 +1,16 @@
-"""The bench rig: eight tracks, an effect on each, knobs where the unit has them.
+"""What a module IS, in the terms the workbench and the harness need.
 
-This is the layer the workbench was missing. Everything below it speaks
-modules and payloads; an Octatrack user thinks in TRACKS -- which effect is
-on track 5, what its page-1 knobs read, what the chooser offers on track 2.
-The rig states that mapping once so the audition view, the emulator preview
-and the composer all mean the same thing by "T5".
+Everything below this speaks modules and payloads. This layer answers the
+questions a person asks instead: what kind of thing is this, which tracks can
+host it, which chooser does it appear on, what does the image on disk
+actually offer.
 
-A rig is a BENCH FIXTURE, not a firmware statement: it is deliberately not
-part of a remix file (a remix says what the image contains; the rig says what
-the operator is currently listening to) and it persists to out/_rig.json so a
-restarted workbench picks up where it left off.
+⚠️ The per-TRACK rig this file was named for is GONE (2 Sep 2026). Eight
+tracks with an effect on each was a second place to say what a remix already
+says, and knob values belong to the EFFECT rather than to a track -- so the
+workbench is one page about an image, and `State.knobs_for(mod)` holds the
+values. The helpers below survived because they were never about tracks:
+they are about modules.
 
 Categories and track ranges are DERIVED from the manifests, never declared
 here -- the manifest is the single place a module states what it is
@@ -32,7 +33,6 @@ here -- the manifest is the single place a module states what it is
 
 from __future__ import annotations
 
-import json
 import pathlib
 import sys
 
@@ -41,7 +41,6 @@ from remix import registry  # noqa: E402
 from remix.schema import Kind  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-RIG_FILE = ROOT / "out/_rig.json"
 
 TRACKS = range(1, 9)
 # Which tracks each payload's core serves. Measured 10 Aug 2026 (MrkVerb32
@@ -89,6 +88,36 @@ def effects() -> list:
 
 def available(track: int) -> list:
     return [m for m in effects() if track in track_range(m)]
+
+
+# ---- which MENU a module appears on ----------------------------------------
+FX1, FX2 = "FX1", "FX2"
+
+
+def menus(mod) -> tuple[str, ...]:
+    """The chooser(s) this module has a row on.
+
+    FX1 and FX2 are two slots on the SAME track -- the payload split decides
+    which TRACKS a module can appear on, never which slot -- and stock gives
+    them different lists: ten effects on FX1, those ten plus DELAY and the
+    three reverbs on FX2.
+
+    Our own modules are FX2-only, and that is a BUILD limit rather than a
+    hardware one. The DSP dispatch tables are indexed by the raw id and
+    SHARED between the two menus, so a module's code already runs from FX1
+    the moment FX1 selects its id (that is exactly how Rungs ran wherever
+    FX1 chose EQUALIZER). What is missing is the panel side: FX1's 15-entry
+    chooser cannot grow in place and has to be relocated to a cave
+    (`tools/build_fx1.py` proved it can be), and no manifest field asks for
+    a row. `verify_menu` asserts FX1's list and id lookup are byte-identical
+    to stock, deliberately, until that lands.
+    """
+    from remix import stock as _stock
+    if mod.menu is None:
+        return ()
+    if mod.is_stock:
+        return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
+    return (FX2,)
 
 
 # ---- what the BUILT IMAGE offers -------------------------------------------
@@ -165,57 +194,3 @@ def knob_max(mod, name: str) -> int:
     slot = mod.knob_map()[name]
     count = mod.params[slot].count
     return (count - 1) if count is not None else 127
-
-
-class Rig:
-    """Per-track effect assignment + per-track knob values."""
-
-    def __init__(self):
-        self.assign: dict[int, str | None] = {t: None for t in TRACKS}
-        self.knobs: dict[int, dict[str, int]] = {t: {} for t in TRACKS}
-        self.load()
-
-    def set_effect(self, track: int, key: str | None):
-        if key is not None:
-            mod = registry.by_key(key)
-            if track not in track_range(mod):
-                raise ValueError(
-                    f"{mod.name} cannot run on T{track} (tracks "
-                    f"{track_range(mod).start}-{track_range(mod).stop - 1})")
-            self.knobs[track] = default_knobs(mod)
-        else:
-            self.knobs[track] = {}
-        self.assign[track] = key
-
-    def effect(self, track: int):
-        k = self.assign.get(track)
-        return registry.by_key(k) if k else None
-
-    # ---- persistence ----------------------------------------------------
-    def save(self):
-        RIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        RIG_FILE.write_text(json.dumps(
-            {"assign": {str(t): k for t, k in self.assign.items()},
-             "knobs": {str(t): v for t, v in self.knobs.items()}}, indent=1))
-
-    def load(self):
-        try:
-            d = json.loads(RIG_FILE.read_text())
-        except (OSError, ValueError):
-            return
-        keys = set(registry.modules())
-        for t in TRACKS:
-            k = d.get("assign", {}).get(str(t))
-            if k in keys and t in track_range(registry.by_key(k)):
-                self.assign[t] = k
-                # Keep only knobs the manifest still names, seed the rest
-                # from defaults -- a renamed knob must not resurrect a stale
-                # value under its old meaning.
-                mod = registry.by_key(k)
-                fresh = default_knobs(mod)
-                stored = d.get("knobs", {}).get(str(t), {})
-                for n in fresh:
-                    if n in stored and \
-                            0 <= int(stored[n]) <= knob_max(mod, n):
-                        fresh[n] = int(stored[n])
-                self.knobs[t] = fresh

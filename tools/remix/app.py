@@ -48,7 +48,7 @@ except ImportError:
 
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
-from remix import audition, registry, rig  # noqa: E402
+from remix import audition, registry, rig, stock  # noqa: E402
 from remix.state import (BUILT_IMAGE, DONOR_WORDS, ROOT,  # noqa: E402
                          STOCK_ROOTS, State)
 
@@ -56,6 +56,15 @@ def step_label(mod, name, v):
     """A select's value as the manifest labels it, else the raw number."""
     lab = rig.knob_labels(mod, name)
     return lab[v] if lab and v < len(lab) else str(v)
+
+
+def disp(mod) -> str:
+    """What to CALL a module on screen: the name the panel shows, not the
+    directory slug. `warpfold` is a path; `WarpFold` is what the operator
+    reads on the unit."""
+    if mod.menu is not None:
+        return mod.menu.fullname.decode("latin1") or mod.name
+    return mod.name
 
 
 def wav_sources():
@@ -135,6 +144,31 @@ class Chooser(ModalScreen[str]):
 
 
 HELP = {
+    "bench": """[bold]THE BENCH — one page, three panes[/]
+
+[bold]AVAILABLE[/] everything that could be in an image: your modules,
+then the stock effects the unit already ships. [bold]LOADED[/] is the
+image you are composing, in CHOOSER ORDER — the order here is the order
+of rows on the panel, so left/right there is a real edit. [bold]UNIT[/]
+follows the cursor: the selected effect's knobs, and the firmware's own
+draw of its page.
+
+You start at [bold]stock[/] — the chooser an unmodified unit shows. Add
+to what the box already does. A remix must name a fallback for ids it
+does not implement (SEND is the safe one), so adding a module means
+adding SEND too; the LOADED pane says so when it matters.
+
+● in the LOADED pane means "in the image on disk". An effect that is
+loaded but not built is not previewed: its id is not in the image, so
+the firmware would draw a convincing picture of the WRONG effect.
+
+[bold]keys[/]
+  tab  pane            up/down  move
+  enter  add / remove  left/right  knob value (UNIT) or row order (LOADED)
+  p  preview mode      r  render + hear     space  play last
+  b  build             c  check             w  word cost
+  l  load remix        s  save remix        f  fallback
+  k  back to stock     ?  this""",
     "rig": """[bold]THE RIG — your bench, not the unit[/]
 
 Assign an effect to a track, dial its knobs, render a source wav through
@@ -238,222 +272,413 @@ class HelpScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
-# ---- RIG -------------------------------------------------------------------
-class RigScreen(Screen):
-    """Eight tracks; the selected one shows its pages and renders."""
+# ---- THE BENCH: one page, three panes ---------------------------------------
+AVAILABLE, LOADED, UNIT = 0, 1, 2
+PREVIEWS = ("FX2", "MENU", "FX1")
+
+
+class BenchScreen(Screen):
+    """One page: the library, the image being composed, and the selected unit.
+
+    Three panes, left to right, matching how the work actually goes: what
+    COULD be in the image, what IS, and what the selected effect looks like on
+    the unit. There is no per-track view -- a remix is a statement about an
+    IMAGE, and the eight tracks were a second place to say the same thing.
+    Knob values belong to the effect, not to a track.
+
+    The default selection is STOCK: the chooser an unmodified unit shows. You
+    add to what the box already does rather than to somebody else's remix.
+    """
 
     BINDINGS = [
+        Binding("tab", "pane(1)", "pane"),
+        Binding("shift+tab", "pane(-1)", "prev pane", show=False),
+        Binding("enter", "add_remove", "add / remove"),
+        Binding("p", "preview", "preview"),
         Binding("r", "render", "render+hear"),
         Binding("space", "play", "play last"),
-        Binding("enter", "pick_effect", "effect"),
-        Binding("backspace", "clear_effect", "clear fx", show=False),
-        Binding("a", "mark('A')", "mark A"),
-        Binding("b", "mark('B')", "mark B"),
-        Binding("comma", "play_mark('A')", "play A"),
-        Binding("full_stop", "play_mark('B')", "play B"),
-        Binding("x", "app.switch_mode('remix')", "remix"),
-        Binding("e", "app.switch_mode('emu')", "emu"),
-        Binding("question_mark", "help('rig')", "what is this?"),
+        Binding("a", "mark('A')", "mark A", show=False),
+        Binding("comma", "play_mark('A')", "play A", show=False),
+        Binding("full_stop", "play_mark('B')", "play B", show=False),
+        Binding("b", "build('bus')", "build"),
+        Binding("c", "build('check')", "check", show=False),
+        Binding("w", "measure", "word cost", show=False),
+        Binding("f", "fallback", "fallback", show=False),
+        Binding("l", "load", "load remix"),
+        Binding("s", "save", "save remix"),
+        Binding("k", "stock", "reset to stock", show=False),
+        Binding("question_mark", "help", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
 
     def compose(self) -> ComposeResult:
-        yield Static(id="strip")
-        yield Static(id="detail")
-        yield Static(id="history")
+        with Horizontal():
+            yield Static(id="pane_avail")
+            yield Static(id="pane_load")
+            yield Static(id="pane_unit")
         yield Static(id="status")
+        yield RichLog(id="log", highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
-        self.cursor = 0                     # row in the detail list
+        self.pane = LOADED
+        self.cur = [0, 0, 0]
+        self.preview = "FX2"
+        self.booting = False
+        self.rows_mtime = None
+        self.built = []                  # (fx2_id, module) from the image
+        self.query_one("#log", RichLog).display = False
         self.rerender()
 
-    # ---- the rows the cursor walks (SOURCE, WET, then the knobs) --------
-    def rows(self):
-        app = self.app
-        mod = app.rig.effect(app.track)
-        rows = [("SOURCE", None), ("WET", None)]
-        if mod:
-            for name, slot in sorted(mod.knob_map().items(),
-                                     key=lambda kv: kv[1]):
-                if mod.params[slot].active:
-                    rows.append((name, slot))
-        return rows
+    # ---- the rows each pane walks ---------------------------------------
+    # Group order for the library pane: the way you meet them -- the two big
+    # bus effects, then the inserts that stack, then plumbing, then stock.
+    _GROUPS = (rig.SERVER, rig.INSERT, rig.SYSTEM)
 
+    def avail_rows(self):
+        """Everything that COULD be in an image: our modules, then stock."""
+        mods = [m for m in registry.modules().values() if not m.is_stock]
+        mods.sort(key=lambda m: (self._GROUPS.index(rig.category(m)),
+                                 disp(m).lower()))
+        return mods + list(stock.MODULES)
+
+    def loaded_rows(self):
+        st = self.app.state
+        return [st.mods[k] for k in st.order]
+
+    def unit_rows(self, mod):
+        """The knobs of the selected unit, in slot order."""
+        if mod is None or not mod.params:
+            return []
+        return [(n, s) for n, s in sorted(mod.knob_map().items(),
+                                          key=lambda kv: kv[1])
+                if mod.params[s].active]
+
+    def selected_module(self):
+        """The unit pane follows whichever pane the cursor is in -- point at
+        something in the library and pane 3 previews it before you add it."""
+        rows = self.avail_rows() if self.pane == AVAILABLE else self.loaded_rows()
+        if self.pane == UNIT:
+            rows = self.loaded_rows()
+        if not rows:
+            return None
+        i = min(self.cur[min(self.pane, LOADED)], len(rows) - 1)
+        return rows[i]
+
+    def image_rows(self):
+        """What the BUILT image offers -- re-read when the image changes."""
+        mt = BUILT_IMAGE.stat().st_mtime if BUILT_IMAGE.exists() else None
+        if mt != self.rows_mtime:
+            self.built, self.rows_mtime = rig.built_chooser(), mt
+        return self.built
+
+    def in_image(self, mod):
+        """Would this effect's page actually resolve in the image on disk?
+
+        A STOCK effect always does. A remix that leaves one out does not
+        REMOVE it -- its code, descriptor and dispatch entry stay stock, and
+        an old project that selects it still runs it; it only loses its
+        chooser row. So chooser membership is the wrong test for stock, and
+        using it made every effect unpreviewable on a fresh all-stock launch.
+
+        One of OURS is another matter: if it was not built, its id resolves
+        to the fallback. (The schema forbids our modules on stock ids, so
+        these two cases cannot overlap.)
+        """
+        if mod is None or mod.menu is None:
+            return False
+        if mod.is_stock:
+            return True
+        return any(m is not None and m.key == mod.key
+                   for _, m in self.image_rows())
+
+    # ---- render ----------------------------------------------------------
     def rerender(self):
-        app = self.app
-        r = app.rig
-        # -- strip ---------------------------------------------------------
-        cells = []
-        for t in rig.TRACKS:
-            mod = r.effect(t)
-            name = (mod.menu.abbr.decode("latin1") if mod and mod.menu
-                    else "--")
-            sel = "reverse bold" if t == app.track else "dim"
-            cells.append(f"[{sel}] T{t} {name:<5}[/]")
-        self.query_one("#strip", Static).update(
-            "  ".join(cells) + "\n" + "─" * 78)
+        st = self.app.state
+        self._pane_available(st)
+        self._pane_loaded(st)
+        self._pane_unit(st)
+        self.query_one("#status", Static).update(f"[dim]{escape(st.msg)}[/]")
 
-        # -- detail --------------------------------------------------------
-        mod = r.effect(app.track)
-        lines = []
-        tr = f"T{app.track}"
-        if mod:
-            full = mod.menu.fullname.decode("latin1")
-            lines.append(f"[bold]{tr} · {escape(full)}[/]   "
-                         f"(tracks {rig.track_range(mod).start}-"
-                         f"{rig.track_range(mod).stop - 1})")
-        else:
-            avail = ", ".join(m.name for m in rig.available(app.track))
-            lines.append(f"[bold]{tr} · no effect[/]   (here: {avail})")
-        lines.append("")
-        rows = self.rows()
-        for i, (name, slot) in enumerate(rows):
-            cur = i == self.cursor
-            mark = "[reverse]" if cur else ""
-            end = "[/]" if cur else ""
-            if name == "SOURCE":
-                src = app.source.name if app.source else "(none — add wavs "\
-                    "to out/dry/)"
-                lines.append(f" {mark}SOURCE  {escape(src)}{end}")
-            elif name == "WET":
-                w = "WET only (reverb render)" if app.wet else "full (dry+wet)"
-                lines.append(f" {mark}RENDER  {w}{end}")
+    def _title(self, text, pane):
+        on = self.pane == pane
+        return (f"[reverse bold] {escape(text)} [/]" if on
+                else f"[bold]{escape(text)}[/]")
+
+    def _pane_available(self, st):
+        rows = self.avail_rows()
+        out = [self._title("AVAILABLE", AVAILABLE), ""]
+        group = None
+        for i, m in enumerate(rows):
+            g = "stock effects" if m.is_stock else rig.category(m)
+            if g != group:
+                group = g
+                out.append(f"[dim]── {g} ──[/]")
+            here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
+            mark = "✓" if m.key in st.sel else " "
+            menus = "+".join(rig.menus(m)) or "—"
+            line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
+            out.append(f"[reverse]{line}[/]" if here else line)
+        self.query_one("#pane_avail", Static).update("\n".join(out))
+
+    def _pane_loaded(self, st):
+        rows = self.loaded_rows()
+        name = st.loaded_name or "unsaved"
+        out = [self._title(f"LOADED · {name}", LOADED), ""]
+        pos = 0
+        for i, m in enumerate(rows):
+            here = self.pane == LOADED and i == self.cur[LOADED]
+            if m.menu is not None:
+                pos += 1
+                row = f"{pos:>2}"
             else:
-                v = r.knobs[app.track].get(name, 0)
-                hi = rig.knob_max(mod, name)
-                if hi < 8:                                # a select
-                    val = f"{step_label(mod, name, v):<6}"
-                    bar = "·" * 16
-                else:
-                    val = f"{v:>3}   "
-                    fill = round(16 * v / max(hi, 1))
-                    bar = "#" * fill + "." * (16 - fill)
-                page = "1" if slot < 6 else "2"
-                knob = "ABCDEF"[slot % 6]
-                lines.append(f" {mark}{name:<6} {val} \\[{bar}]  "
-                             f"p{page}·{knob}{end}")
-        # -- the "what is this?" line for whatever the cursor is on ------
-        name, slot = rows[self.cursor]
-        if name == "SOURCE":
-            hint = ("the wav rendered through the effect -- drop files in "
-                    "out/dry/; left/right cycles")
-        elif name == "WET":
-            hint = ("WET = the reverb's wet alone (exact dry subtraction); "
-                    "other effects always render their normal output")
-        elif mod:
-            hint = rig.knob_doc(mod, name) or "(this knob has no doc yet)"
+                row = " ·"                      # no chooser row (a CF patch)
+            menus = "+".join(rig.menus(m)) or "—"
+            words = st.words.get(m.key)
+            cost = f"[dim]{words:>5}w[/]" if words else "      "
+            built = "●" if self.in_image(m) else " "
+            fb = "◀fb" if st.eff_fallback == m.key else "   "
+            line = f" {row} {built} {disp(m):<13}[dim]{menus:<7}[/]{cost}{fb}"
+            out.append(f"[reverse]{line}[/]" if here else line)
+        if not rows:
+            out.append("[dim] (empty — add from the left)[/]")
+        probs = st.problems()
+        out.append("")
+        out.append("[dim]● = in the built image[/]")
+        if probs:
+            out.append(f"[bold]⚠ {escape(probs[0])}[/]")
+        self.query_one("#pane_load", Static).update("\n".join(out))
+
+    def _pane_unit(self, st):
+        mod = self.selected_module()
+        if mod is None:
+            self.query_one("#pane_unit", Static).update(
+                self._title("UNIT", UNIT) + "\n\n[dim]nothing selected[/]")
+            return
+        out = [self._title(disp(mod), UNIT), ""]
+        bits = [rig.category(mod)]
+        if mod.menu:
+            bits.append(f"id 0x{mod.menu.fx2_id:02x}")
+            bits.append("+".join(rig.menus(mod)))
+        tr = rig.track_range(mod)
+        if len(tr):
+            bits.append(f"tracks {tr.start}-{tr.stop - 1}")
+        out.append(f"[dim]{' · '.join(bits)}[/]")
+        out.append(f"[dim]{escape(mod.doc)}[/]")
+        out.append("")
+
+        knobs = self.unit_rows(mod)
+        vals = st.knobs_for(mod)
+        for i, (name, slot) in enumerate(knobs):
+            here = self.pane == UNIT and i == self.cur[UNIT]
+            v = vals.get(name, 0)
+            hi = rig.knob_max(mod, name)
+            if hi < 8:
+                shown = f"{step_label(mod, name, v):<7}"
+                bar = "·" * 12
+            else:
+                shown = f"{v:>3}    "
+                fill = round(12 * v / max(hi, 1))
+                bar = "#" * fill + "." * (12 - fill)
+            page = "1" if slot < 6 else "2"
+            line = f" {name:<6} {shown}\\[{bar}] [dim]p{page}[/]"
+            out.append(f"[reverse]{line}[/]" if here else line)
+        if not knobs:
+            out.append("[dim] (no drawn parameters)[/]")
+        if self.pane == UNIT and knobs:
+            name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
+            out.append("")
+            out.append(f"[dim]? {escape(rig.knob_doc(mod, name) or '')}[/]")
+
+        out.append("")
+        src = self.app.source.name if self.app.source else "(none)"
+        out.append(f"[dim]source {escape(src)} · r renders · space plays[/]")
+        out.append("")
+        out += self._preview(mod)
+        self.query_one("#pane_unit", Static).update("\n".join(out))
+
+    # ---- the emulated panel ---------------------------------------------
+    def _preview(self, mod):
+        modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
+                         f"[dim]{m}[/]" for m in PREVIEWS)
+        head = [f"preview: {modes}  [dim](p)[/]"]
+        r = self.app.boot
+        if r is None:
+            self.ensure_boot()
+            return head + ["[dim]booting the emulator...[/]"]
+        if not r.reached_handoff:
+            return head + ["[bold]did not reach the RTOS handoff[/] — a "
+                           "patch may have broken early init"]
+        import emu_bringup
+        if self.preview == "MENU":
+            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, 0)
+        elif self.preview == "FX1":
+            draws = emu_bringup.render_fx1(r, track=4, effect_id=0x04)
         else:
-            hint = ""
-        lines.append("")
-        lines.append(f"[dim]? {escape(hint)}[/]")
-        if mod and mod.name == "chonverb":
-            lines.append("[dim]MODE renders as its own image (cached per "
-                         "mode); WET applies to the reverb only.[/]")
-        self.query_one("#detail", Static).update("\n".join(lines))
+            if mod.menu is None:
+                return head + ["[dim]no chooser row: this module patches the "
+                               "firmware rather than adding an effect[/]"]
+            if not self.in_image(mod):
+                return head + [
+                    f"[bold]not in the built image[/] — b builds the "
+                    f"selection",
+                    "[dim]the page is not drawn: an id the image does not",
+                    "implement resolves to the fallback, so the firmware",
+                    "would draw the WRONG effect (CLAUDE.md, 12 Aug).[/]"]
+            draws = emu_bringup.render_fx2(r, track=4,
+                                           effect_id=mod.menu.fx2_id)
+        grid = emu_bringup.layout_screen(draws)
+        return head + ["." + "-" * 44 + "."] + \
+            ["|" + escape(ln.ljust(44)) + "|" for ln in grid] + \
+            ["'" + "-" * 44 + "'"]
 
-        # -- history -------------------------------------------------------
-        h = ["[bold]RENDERS[/]"]
-        for i, (label, path) in enumerate(reversed(app.history[-6:])):
-            marks = "".join(m for m, p in app.marks.items() if p == path)
-            h.append(f" {('\\[' + marks + '] ') if marks else '    '}"
-                     f"{escape(label)}")
-        self.query_one("#history", Static).update(
-            "\n".join(h) if len(h) > 1 else
-            "[dim]r renders the selected track; a/b mark a render, "
-            ", . replay the marks[/]")
-        self.query_one("#status", Static).update(
-            f"[dim]{escape(app.status)}[/]")
+    def ensure_boot(self):
+        if not BUILT_IMAGE.exists() or self.booting:
+            return
+        mtime = BUILT_IMAGE.stat().st_mtime
+        if self.app.boot is not None and self.app.boot_mtime == mtime:
+            return
+        self.booting = True
+        self.boot_worker(mtime)
 
-    # ---- input ----------------------------------------------------------
-    def on_key(self, ev):
+    @work(thread=True, exclusive=True, group="boot")
+    def boot_worker(self, mtime):
         app = self.app
-        if ev.key in tuple("12345678"):
-            app.track = int(ev.key)
-            self.cursor = 0
+        try:
+            import emu_bringup
+            r = emu_bringup.boot(str(BUILT_IMAGE))
+        except Exception as e:                       # noqa: BLE001
+            r = None
+            app.state.msg = f"emulator unavailable — {e} (make emu-setup)"
+        self.booting = False
+        if r is not None:
+            app.boot, app.boot_mtime = r, mtime
+        app.call_from_thread(self.rerender)
+
+    # ---- input -----------------------------------------------------------
+    def action_pane(self, d):
+        self.pane = (self.pane + d) % 3
+        self.rerender()
+
+    def action_preview(self):
+        self.preview = PREVIEWS[(PREVIEWS.index(self.preview) + 1)
+                                % len(PREVIEWS)]
+        self.rerender()
+
+    def on_key(self, ev):
+        st = self.app.state
+        rows = (self.avail_rows() if self.pane == AVAILABLE else
+                self.loaded_rows() if self.pane == LOADED else
+                self.unit_rows(self.selected_module()))
+        n = max(len(rows), 1)
+        if ev.key in ("down", "j"):
+            self.cur[self.pane] = min(n - 1, self.cur[self.pane] + 1)
+        elif ev.key in ("up", "k"):
+            self.cur[self.pane] = max(0, self.cur[self.pane] - 1)
+        elif ev.key in ("left", "right", "h", "shift+left", "shift+right"):
+            step = 1 if ev.key in ("right", "shift+right") else -1
+            if self.pane == UNIT:
+                self.adjust(step * (10 if "shift" in ev.key else 1))
+            elif self.pane == LOADED:
+                self.move_row(step)
+            else:
+                return
+        else:
+            return
+        self.rerender()
+
+    def adjust(self, step):
+        """Change the selected knob. Values live per MODULE."""
+        st = self.app.state
+        mod = self.selected_module()
+        knobs = self.unit_rows(mod)
+        if not knobs:
+            return
+        name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
+        vals = st.knobs_for(mod)
+        hi = rig.knob_max(mod, name)
+        vals[name] = max(0, min(hi, vals.get(name, 0) + step))
+
+    def move_row(self, step):
+        """Reorder the loaded pane -- chooser ORDER is the panel's row order,
+        so this is a real edit, not a view preference."""
+        st = self.app.state
+        rows = self.loaded_rows()
+        if not rows:
+            return
+        i = min(self.cur[LOADED], len(rows) - 1)
+        st.move(rows[i].key, step)
+        self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
+
+    def action_add_remove(self):
+        st = self.app.state
+        if self.pane == AVAILABLE:
+            rows = self.avail_rows()
+            mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
+            st.toggle(mod.key)
+            st.loaded_name = ""
+            st.msg = (f"added {mod.key}" if mod.key in st.sel
+                      else f"removed {mod.key}")
+        elif self.pane == LOADED:
+            rows = self.loaded_rows()
+            if not rows:
+                return
+            mod = rows[min(self.cur[LOADED], len(rows) - 1)]
+            st.toggle(mod.key)
+            st.loaded_name = ""
+            st.msg = f"removed {mod.key}"
+            self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
+        self.rerender()
+
+    def action_stock(self):
+        self.app.state.load_stock()
+        self.cur = [0, 0, 0]
+        self.rerender()
+
+    def action_fallback(self):
+        st = self.app.state
+        opts = [(m.key, f"{m.name} (0x{m.menu.fx2_id:02x})")
+                for m in st.menu_modules]
+        if not opts:
+            st.msg = "nothing with a chooser row to fall back to"
             self.rerender()
             return
-        rows = self.rows()
-        if ev.key in ("down", "j"):
-            self.cursor = min(len(rows) - 1, self.cursor + 1)
-        elif ev.key in ("up", "k"):
-            self.cursor = max(0, self.cursor - 1)
-        elif ev.key in ("left", "right", "h", "l",
-                        "shift+left", "shift+right"):
-            step = 1 if ev.key in ("right", "l", "shift+right") else -1
-            if "shift" in ev.key:
-                step *= 10
-            self.adjust(rows[self.cursor], step)
-        else:
-            return
-        self.rerender()
-
-    def adjust(self, row, step):
-        app = self.app
-        name, slot = row
-        if name == "SOURCE":
-            files = wav_sources()
-            if files:
-                i = files.index(app.source) if app.source in files else 0
-                app.source = files[(i + step) % len(files)]
-        elif name == "WET":
-            app.wet = not app.wet
-        else:
-            mod = app.rig.effect(app.track)
-            hi = rig.knob_max(mod, name)
-            v = app.rig.knobs[app.track].get(name, 0)
-            app.rig.knobs[app.track][name] = max(0, min(hi, v + step))
-            app.rig.save()
-
-    def action_pick_effect(self):
-        app = self.app
-        opts = [(m.key, f"{escape(m.menu.fullname.decode('latin1')):<13} "
-                        f"\\[{rig.category(m)}]\n[dim]{escape(m.doc)}[/]")
-                for m in rig.available(app.track)] + [("__none__", "(none)")]
 
         def done(key):
             if key:
-                app.rig.set_effect(app.track,
-                                   None if key == "__none__" else key)
-                app.rig.save()
-                self.cursor = 0
-                self.rerender()
-        app.push_screen(Chooser(f"FX2 on T{app.track}:", opts), done)
+                st.fallback = key
+                st.msg = f"unimplemented ids alias to {key}"
+            self.rerender()
+        self.app.push_screen(Chooser("unimplemented ids alias to:", opts), done)
 
-    def action_clear_effect(self):
-        self.app.rig.set_effect(self.app.track, None)
-        self.app.rig.save()
-        self.cursor = 0
-        self.rerender()
+    def action_help(self):
+        self.app.push_screen(HelpScreen("bench"))
 
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
-
+    # ---- audio -----------------------------------------------------------
     def action_render(self):
-        app = self.app
-        mod = app.rig.effect(app.track)
-        if mod is None:
-            app.status = "no effect on this track — enter picks one"
+        app, st = self.app, self.app.state
+        mod = self.selected_module()
+        if mod is None or rig.category(mod) == rig.SYSTEM:
+            st.msg = "that module is plumbing — nothing to hear"
         elif app.source is None:
-            app.status = "no source wav — put some in out/dry/"
+            st.msg = "no source wav — put some in out/dry/"
         elif app.rendering:
-            app.status = "a render is already running"
+            st.msg = "a render is already running"
         else:
-            self.render_worker(mod, dict(app.rig.knobs[app.track]),
-                               app.source, app.wet, app.track)
+            self.render_worker(mod, dict(st.knobs_for(mod)), app.source)
         self.rerender()
 
     @work(thread=True, exclusive=True, group="render")
-    def render_worker(self, mod, values, source, wet, track):
+    def render_worker(self, mod, values, source):
         app = self.app
 
         def log(msg):
-            app.call_from_thread(self.set_status, msg)
+            app.state.msg = msg
+            app.call_from_thread(self.rerender)
         app.rendering = True
         log(f"rendering {mod.name} on {source.name} ...")
         try:
-            path = audition.render(mod.key, values, source, wet=wet,
-                                   label=f"T{track}", log=log)
+            path = audition.render(mod.key, values, source, log=log)
         except RuntimeError as e:
             app.rendering = False
             log(str(e))
@@ -462,22 +687,19 @@ class RigScreen(Screen):
         changed = {n: v for n, v in values.items()
                    if v != rig.default_knobs(mod).get(n)}
         desc = " ".join(f"{n}={v}" for n, v in changed.items()) or "defaults"
-        app.history.append((f"T{track} {mod.name} · {desc}", path))
-        app.call_from_thread(self.set_status, f"rendered → {path.name}")
+        app.history.append((f"{mod.name} · {desc}", path))
+        app.state.msg = f"rendered → {path.name}"
         app.call_from_thread(app.play, path)
         app.call_from_thread(self.rerender)
-
-    def set_status(self, msg):
-        self.app.status = msg
-        self.rerender()
 
     def action_play(self):
         app = self.app
         if app.history:
-            app.play(app.history[-1][1])
-            app.status = f"playing {app.history[-1][1].name}"
+            label, path = app.history[-1]
+            app.play(path)
+            app.state.msg = f"playing {label}"
         else:
-            app.status = "nothing rendered yet"
+            app.state.msg = "nothing rendered yet"
         self.rerender()
 
     def action_mark(self, which):
@@ -485,7 +707,7 @@ class RigScreen(Screen):
         if app.history:
             label, path = app.history[-1]
             app.marks[which] = path
-            app.status = f"marked {which}: {label}"
+            app.state.msg = f"marked {which}: {label}"
             audition._journal({"event": "mark", "which": which,
                                "label": label, "out": path.name})
         self.rerender()
@@ -495,207 +717,22 @@ class RigScreen(Screen):
         p = app.marks.get(which)
         if p:
             app.play(p)
-            app.status = f"playing {which}: {p.name}"
+            app.state.msg = f"playing {which}: {p.name}"
         else:
-            app.status = f"no {which} mark yet — render, then press "\
-                         f"{'a' if which == 'A' else 'b'}"
+            app.state.msg = f"no {which} mark yet"
         self.rerender()
 
-
-# ---- REMIX -----------------------------------------------------------------
-class RemixScreen(Screen):
-    """The composer: what the image contains, whether it builds, what it costs.
-
-    Grouped the way an operator meets the modules -- servers with their track
-    range, inserts, then the system plumbing that never sits on a track."""
-
-    BINDINGS = [
-        Binding("space", "toggle", "toggle"),
-        Binding("f", "fallback", "fallback"),
-        Binding("w", "measure", "words"),
-        Binding("b", "build('bus')", "build"),
-        Binding("c", "build('check')", "check"),
-        Binding("l", "load", "load"),
-        Binding("s", "save", "save"),
-        Binding("v", "app.switch_mode('rig')", "rig"),
-        Binding("e", "app.switch_mode('emu')", "emu"),
-        Binding("question_mark", "help('remix')", "what is this?"),
-        Binding("q", "app.quit", "quit"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            yield Static(id="mods")
-            yield Static(id="panel")
-        yield RichLog(id="log", max_lines=400, wrap=True)
-        yield Footer()
-
-    def on_mount(self):
-        self.cursor = 0
-        log = self.query_one("#log", RichLog)
-        log.display = False
-        self.rerender()
-
-    def grouped(self):
-        """[(key or None, line-label)] with None rows as group headers."""
-        st = self.app.state
-        cats = {rig.SERVER: [], rig.INSERT: [], rig.STOCK: [],
-                rig.SYSTEM: []}
-        for k in st.keys:
-            cats[rig.category(st.mods[k])].append(k)
-        # Stock rows in stock's own chooser order, not alphabetical.
-        from remix import stock
-        cats[rig.STOCK] = [m.key for m in stock.MODULES]
-        out = []
-        for cat, title in ((rig.SERVER, "BUS EFFECTS (one per payload)"),
-                           (rig.INSERT, "INSERTS (any track)"),
-                           (rig.STOCK, "STOCK FX2 (in every image; "
-                                       "toggle = keep its row, free)"),
-                           (rig.SYSTEM, "SYSTEM (never on a track)")):
-            if cats[cat]:
-                out.append((None, title))
-                out += [(k, "") for k in cats[cat]]
-        return out
-
-    def key_rows(self):
-        return [i for i, (k, _) in enumerate(self.grouped()) if k]
-
-    def rerender(self):
-        st = self.app.state
-        rows = self.grouped()
-        krows = self.key_rows()
-        self.cursor = min(self.cursor, len(krows) - 1)
-        lines = ["[bold]THE IMAGE[/] — modules composed into the firmware\n"]
-        for i, (k, title) in enumerate(rows):
-            if k is None:
-                lines.append(f"[bold dim]{title}[/]")
-                continue
-            m = st.mods[k]
-            on = "x" if k in st.sel else " "
-            fb = ("*" if st.fallback == k
-                  else "~" if k == st.eff_fallback else " ")
-            tr = rig.track_range(m)
-            trs = f"T{tr.start}-{tr.stop - 1}" if len(tr) else "     "
-            wd = (" stock" if m.is_stock
-                  else f"{st.words[k]:>5}w" if k in st.words else "     -")
-            cur = krows[self.cursor] == i
-            mark = "[reverse]" if cur else ("" if k in st.sel else "[dim]")
-            end = "[/]" if mark else ""
-            lines.append(f" {mark}\\[{on}]{fb} {m.name:<11}{trs} {wd}{end}")
-        lines.append("")
-        lines.append("[bold dim]REMIXES[/] [dim]" + " ".join(
-            n for n in registry.remix_names() if not n.startswith("_"))
-            + "[/]")
-        lines.append("")
-        lines.append(f"[dim]? {escape(st.mods[self.current_key()].doc)}[/]")
-        self.query_one("#mods", Static).update("\n".join(lines))
-
-        # -- right panel: the unit's FX2 menu + fit + problems --------------
-        p = ["[bold]THE FX2 MENU[/] — as the unit will show it\n"]
-        for i, m in enumerate(st.menu_modules):
-            star = ""
-            if m.key == st.eff_fallback:
-                star = (" ← fallback (auto)" if st.fallback_is_auto
-                        else " ← fallback")
-            p.append(f"  {i}. {escape(m.menu.fullname.decode('latin1')):<13} "
-                     f"0x{m.menu.fx2_id:02x}{star}")
-        from remix import stock
-        n_menu = len(st.menu_modules)
-        if n_menu > 7:
-            p.append(f"  [dim]{n_menu} rows: the panel shows 7 and scrolls[/]")
-        absent = [m for m in st.mods.values()
-                  if m.menu is not None and m.key not in st.sel
-                  and not m.is_stock]
-        if absent and st.eff_fallback:
-            p.append(f"  [dim]{len(absent)} absent module id(s) alias to "
-                     f"{st.mods[st.eff_fallback].name}[/]")
-        hidden = [m.key for m in stock.MODULES if m.key not in st.sel]
-        if hidden:
-            p.append(f"  [dim]{len(hidden)} stock effects hidden (no row; "
-                     f"still run for old projects)[/]")
-        p.append(f"  [dim]consumed by every remix: {', '.join(stock.CONSUMED)}"
-                 f" — their code is the donor region[/]")
-        p.append("")
-        dsp = [m for m in st.selected if m.dsp is not None]
-        known = [m for m in dsp if m.key in st.words]
-        if known:
-            total = sum(st.words[m.key] for m in known)
-            partial = ("" if len(known) == len(dsp)
-                       else f" ({len(known)}/{len(dsp)} measured)")
-            fill = min(30, round(30 * total / DONOR_WORDS))
-            over = total > DONOR_WORDS
-            p.append(f"program: [{'bold red' if over else 'bold'}]{total}[/] "
-                     f"of {DONOR_WORDS} words{partial}")
-            p.append("[" + "#" * fill + "." * (30 - fill) + "]")
-        else:
-            p.append("[dim]program: press w to assemble and measure[/]")
-        p.append("")
-        probs = st.problems()
-        if probs:
-            p.append(f"[bold red]WILL NOT BUILD ({len(probs)})[/]")
-            p += [f"  {escape(x)}" for x in probs]
-        else:
-            p.append("[bold green]no LEDGER collisions — this selection "
-                     "builds[/]")
-            p.append("[dim]not checked: the shared 64K window "
-                     "(see CLAUDE.md for who owns what)[/]")
-            buffered = [m for m in st.selected
-                        if m.claims is not None and m.claims.owns_fx2_buffers]
-            if buffered:
-                p.append(f"[dim]{buffered[0].name} owns Y:0x4000-0xBFFF — "
-                         f"the only such module on its core[/]")
-        p.append("")
-        p.append(f"[dim]{escape(st.msg)}[/]")
-        self.query_one("#panel", Static).update("\n".join(p))
-
-    def on_key(self, ev):
-        krows = self.key_rows()
-        if ev.key in ("down", "j"):
-            self.cursor = min(len(krows) - 1, self.cursor + 1)
-        elif ev.key in ("up", "k"):
-            self.cursor = max(0, self.cursor - 1)
-        elif ev.character in ("[", "]"):
-            self.app.state.move(self.current_key(),
-                                -1 if ev.character == "[" else +1)
-        else:
-            return
-        self.rerender()
-
-    def current_key(self):
-        return self.grouped()[self.key_rows()[self.cursor]][0]
-
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
-
-    def action_toggle(self):
-        st = self.app.state
-        k = self.current_key()
-        st.toggle(k)
-        if k in st.sel and st.mods[k].is_stock:
-            st.msg = f"{k}: stock row kept -- no code, no words, no clone"
-        self.rerender()
-
-    def action_fallback(self):
-        st = self.app.state
-        k = self.current_key()
-        if k in st.sel and st.mods[k].menu is not None:
-            st.fallback = k
-            st.msg = f"fallback: {st.mods[k].name}"
-        else:
-            st.msg = "the fallback must be selected and have a menu entry"
-        self.rerender()
-
+    # ---- build, measure, load, save --------------------------------------
     def action_measure(self):
         st = self.app.state
-        st.msg = "assembling..."
+        st.msg = "assembling for word counts..."
         self.rerender()
         self.measure_worker()
 
-    @work(thread=True, exclusive=True, group="build")
+    @work(thread=True, exclusive=True, group="measure")
     def measure_worker(self):
         st = self.app.state
-        ok, msg = st.measure("this selection")
-        st.msg = msg
+        st.measure(None)
         self.app.call_from_thread(self.rerender)
 
     def action_build(self, target):
@@ -727,18 +764,23 @@ class RemixScreen(Screen):
         st.msg = (f"make {target}: {'OK' if rc == 0 else f'FAILED (rc {rc})'}"
                   f" — the built image is this selection")
         if rc == 0:
-            self.app.boot = None          # the emu view must re-boot
+            self.app.boot = None          # the preview must re-boot
+            self.rows_mtime = None        # and the ● markers re-read
         self.app.call_from_thread(self.rerender)
 
     def action_load(self):
         names = [n for n in registry.remix_names() if not n.startswith("_")]
 
         def done(name):
-            if name:
+            if name == "stock":
+                self.app.state.load_stock()
+            elif name:
                 self.app.state.load(name)
-                self.rerender()
+            self.cur = [0, 0, 0]
+            self.rerender()
         self.app.push_screen(
-            Chooser("load remix:", [(n, n) for n in names]), done)
+            Chooser("load:", [("stock", "stock (an unmodified unit)")]
+                    + [(n, n) for n in names]), done)
 
     def action_save(self):
         st = self.app.state
@@ -758,9 +800,10 @@ class RemixScreen(Screen):
                 return
 
             def documented(doc):
-                p = ROOT / f"remixes/{name}.py"
-                p.write_text(st.as_remix(
+                pth = ROOT / f"remixes/{name}.py"
+                pth.write_text(st.as_remix(
                     name, doc or "a selection composed in the workbench"))
+                st.loaded_name = name
                 st.msg = f"wrote remixes/{name}.py"
                 self.rerender()
             self.app.push_screen(TextPrompt("one-line description:"),
@@ -768,346 +811,17 @@ class RemixScreen(Screen):
         self.app.push_screen(TextPrompt("save as remix:"), named)
 
 
-# ---- EMU -------------------------------------------------------------------
-class EmuScreen(Screen):
-    """The built image, booted and drawing its own screens (docs/EMU.md)."""
-
-    BINDINGS = [
-        Binding("m", "view('menu')", "menu"),
-        Binding("f", "view('fx2')", "FX2"),
-        Binding("left,right", "noop", "cycle effect"),
-        Binding("a", "stage", "stage effect"),
-        Binding("b", "build", "build + re-boot"),
-        Binding("o", "view('fx1')", "FX1"),
-        Binding("p", "view('play')", "playback"),
-        Binding("v", "app.switch_mode('rig')", "rig"),
-        Binding("x", "app.switch_mode('remix')", "remix"),
-        Binding("question_mark", "help('emu')", "what is this?"),
-        Binding("q", "app.switch_mode('rig')", "back"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        yield Static(id="emuhead")
-        yield Static(id="lcd")
-        yield Static(id="emunote")
-        yield Footer()
-
-    def on_mount(self):
-        self.view = "fx2"
-        self.cursor = 0
-        self.eff = {"fx1": 0x04, "play": 1}
-        self.rows = []                 # the built image's FX2 chooser
-        self.rowi = 0
-        self.rows_mtime = None
-        self.pending = ""               # what the last selection did
-        self.booting = False
-        self.ensure_boot()
-
-    def on_screen_resume(self):
-        # The rig's selection is this view's default subject.
-        self.view = "fx2"
-        self.sync_row()
-        self.ensure_boot()
-
-    def chooser(self):
-        """Everything this view can cycle: the rows the BUILT IMAGE offers,
-        then every other module that COULD have a row, marked as not built.
-
-        The second group is the point of the view -- "the effect I want is
-        not in this image" is the normal case, and the answer has to be
-        reachable from here rather than a trip to the composer. A pending row
-        is never RENDERED: its id is not in the image, so it would resolve to
-        the fallback and draw a convincing picture of the wrong effect. That
-        is the 12 Aug trap in panel form, so the view refuses instead.
-        """
-        # ONLY the image can change these rows. Staging changes the
-        # composer's selection, not the image, and the "STAGED" wording is
-        # read live at render time -- rebuilding here on a selection change
-        # also reset the cursor to row 0, so pressing `a` walked away from
-        # the effect you had just staged.
-        mt = BUILT_IMAGE.stat().st_mtime if BUILT_IMAGE.exists() else None
-        if mt != self.rows_mtime:
-            was = self.current_key()
-            built = [(eid, m, True) for eid, m in rig.built_chooser()]
-            have = {m.key for _, m, _ in built if m is not None}
-            pending = [(m.menu.fx2_id, m, False)
-                       for m in registry.modules().values()
-                       if m.menu is not None and m.key not in have
-                       and rig.category(m) != rig.SYSTEM]
-            pending.sort(key=lambda r: r[1].name)
-            self.rows = built + pending
-            self.rows_mtime = mt
-            self.rowi = 0
-            # Stay on the same EFFECT across a rebuild -- you stage one, press
-            # b, and want to be looking at it now that it is built, not sent
-            # back to row 0.
-            if not (was and self.goto_key(was)):
-                self.sync_row()
-        return self.rows
-
-    def current_key(self):
-        if self.rows and 0 <= self.rowi < len(self.rows):
-            _, m, _ = self.rows[self.rowi]
-            return m.key if m is not None else None
-        return None
-
-    def goto_key(self, key) -> bool:
-        for i, (_, m, _) in enumerate(self.rows):
-            if m is not None and m.key == key:
-                self.rowi = i
-                return True
-        return False
-
-    def sync_row(self):
-        """Point the cursor at whatever the rig has on this track, if the
-        image offers it -- so entering the view shows the rig's subject and
-        cycling starts from there rather than from row 0."""
-        mod = self.app.rig.effect(self.app.track)
-        if mod is None:
-            return
-        for i, (_, m, built) in enumerate(self.rows):
-            if built and m is not None and m.key == mod.key:
-                self.rowi = i
-                return
-
-    def select_row(self):
-        """Write the cycled-to effect back to the RIG, so the emu view and
-        the rig are one selection rather than two. Returns a note saying what
-        happened -- including the cases where the rig cannot hold it, which
-        are NOT errors: the unit's chooser is one list for all eight tracks
-        and will happily let you pick any row on any track.
-        """
-        app = self.app
-        if not self.rows:
-            return ""
-        eid, mod, built = self.rows[self.rowi]
-        if not built:
-            return ""                    # nothing to assign until it is built
-        if mod is None:
-            return f"id 0x{eid:02x} is in the list but no manifest claims it"
-        if rig.category(mod) == rig.SYSTEM:
-            return (f"{mod.key} is plumbing, not a track effect — the unit "
-                    f"lists it, the rig does not hold it")
-        if app.track not in rig.track_range(mod):
-            tr = rig.track_range(mod)
-            return (f"selected on the unit, but {mod.name} is a SERVER on "
-                    f"tracks {tr.start}-{tr.stop - 1} — on T{app.track} its "
-                    f"id aliases to the fallback and the track becomes a send")
-        app.rig.set_effect(app.track, mod.key)
-        app.rig.save()
-        return f"assigned {mod.key} to T{app.track} — the rig followed"
-
-    def ensure_boot(self):
-        app = self.app
-        if not BUILT_IMAGE.exists():
-            self.query_one("#emuhead", Static).update(
-                "[bold]no built image[/] — build one from the REMIX view (b)")
-            return
-        mtime = BUILT_IMAGE.stat().st_mtime
-        if app.boot is not None and app.boot_mtime == mtime:
-            self.rerender()
-            return
-        if not self.booting:
-            self.booting = True
-            self.query_one("#emuhead", Static).update(
-                f"booting {BUILT_IMAGE.name} in the Tier-0 emulator (~4 s)...")
-            self.boot_worker(mtime)
-
-    @work(thread=True, exclusive=True, group="boot")
-    def boot_worker(self, mtime):
-        app = self.app
-        try:
-            import emu_bringup
-            r = emu_bringup.boot(str(BUILT_IMAGE))
-        except Exception as e:                       # noqa: BLE001
-            r = None
-            app.call_from_thread(
-                self.query_one("#emuhead", Static).update,
-                f"[bold]emulator unavailable[/] — {e} (make emu-setup)")
-        self.booting = False
-        if r is not None:
-            app.boot, app.boot_mtime = r, mtime
-            app.call_from_thread(self.rerender)
-
-    def rerender(self):
-        app = self.app
-        r = app.boot
-        if r is None:
-            return
-        import emu_bringup
-        head = (f"[bold]{'BOOTS CLEAN' if r.clean else 'FAULT'}[/] · "
-                f"{r.instrs:,} instrs · {r.stopped} · cached until rebuilt")
-        self.query_one("#emuhead", Static).update(head)
-        note = ""
-        if not r.uc or not r.reached_handoff:
-            self.query_one("#lcd", Static).update(
-                "[bold]did not reach the RTOS handoff — a patch may have "
-                "broken early init.[/]")
-            self.query_one("#emunote", Static).update("")
-            return
-        track0 = app.track - 1               # emu_bringup tracks are 0-based
-        if self.view == "menu":
-            roots = emu_bringup.menu_children(r)
-            self.cursor %= max(len(roots), 1)
-            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC,
-                                            self.cursor)
-            added = [k[0] for k in roots if k[0] not in STOCK_ROOTS]
-            note = ("patched-in: " + ", ".join(added)) if added else ""
-            title = "MAIN MENU — the firmware's own render"
-        elif self.view == "fx2":
-            rows = self.chooser()
-            if not rows:
-                self.query_one("#lcd", Static).update(
-                    "[bold]the built image offers no FX2 chooser rows[/] — "
-                    "build one from the REMIX view (b)")
-                self.query_one("#emunote", Static).update("")
-                return
-            self.rowi %= len(rows)
-            eid, mod, built = rows[self.rowi]
-            name = (mod.menu.fullname.decode("latin1") if mod
-                    else f"unclaimed 0x{eid:02x}")
-            if not built:
-                staged = mod.key in app.state.sel
-                self.query_one("#lcd", Static).update(
-                    f"[bold]{escape(name)}[/] (0x{eid:02x}) is "
-                    f"{'STAGED' if staged else 'NOT'} in this image.\n\n"
-                    + ("  staged in the composer — press [bold]b[/] to build "
-                       "it and re-boot\n" if staged else
-                       "  press [bold]a[/] to stage it, then [bold]b[/] to "
-                       "build and re-boot\n")
-                    + "\n  [dim]the page is not drawn: an id this image does "
-                      "not implement resolves to\n  the fallback, so the "
-                      "firmware would draw a convincing picture of the\n"
-                      "  WRONG effect (CLAUDE.md, 12 Aug 2026).[/]")
-                self.query_one("#emunote", Static).update(
-                    f"[dim]{escape(self.pending)}[/]" if self.pending else
-                    "[dim]left/right cycles · a stages · b builds[/]")
-                return
-            draws = emu_bringup.render_fx2(r, track=track0, effect_id=eid)
-            title = (f"FX2 SETUP — T{app.track}, row {self.rowi + 1}/"
-                     f"{len(rows)}: {name} (0x{eid:02x})")
-            note = (self.pending or
-                    "left/right cycles · a stages an unbuilt effect · b "
-                    "builds · 1-8 changes track · values draw as dials the "
-                    "string hook cannot read, so the rig's numbers are true")
-            if mod and mod.name == "bongdelay":
-                note = ("a SPEC image aliases the delay's DSP to SEND on "
-                        "payload A — the page may draw empty; " + note)
-        elif self.view == "fx1":
-            draws = emu_bringup.render_fx1(r, track=track0,
-                                           effect_id=self.eff["fx1"])
-            title = (f"FX1 SETUP — T{app.track}, effect "
-                     f"0x{self.eff['fx1']:02x} (left/right cycles)")
-        else:
-            names = ["FLEX", "STATIC", "THRU", "NEIGHBOR"]
-            mi = self.eff["play"]
-            draws = emu_bringup.render_playback(r, track=track0, machine=mi)
-            title = f"PLAYBACK — T{app.track}, {names[mi]} (left/right cycles)"
-        grid = emu_bringup.layout_screen(draws)
-        lcd = "\n".join(["[bold]" + escape(title) + "[/]", "",
-                         "." + "-" * 46 + "."]
-                        + ["|" + escape(ln.ljust(46)) + "|" for ln in grid]
-                        + ["'" + "-" * 46 + "'"])
-        self.query_one("#lcd", Static).update(lcd)
-        self.query_one("#emunote", Static).update(f"[dim]{note}[/]")
-
-    def action_stage(self):
-        """Add the cycled-to module to the COMPOSER's live selection. Staging
-        only -- the image is not rebuilt until `b`, so cycling past several
-        unbuilt effects costs nothing."""
-        rows = self.chooser()
-        if self.view != "fx2" or not rows:
-            return
-        _, mod, built = rows[self.rowi]
-        if built or mod is None:
-            self.pending = "already in this image — nothing to stage"
-        elif mod.key in self.app.state.sel:
-            self.pending = f"{mod.key} is already staged — b builds it"
-        else:
-            self.app.state.toggle(mod.key)
-            probs = self.app.state.problems()
-            self.pending = (f"staged {mod.key} — b builds and re-boots"
-                            if not probs else
-                            f"staged {mod.key}, but the build would refuse: "
-                            f"{probs[0]}")
-        self.rerender()
-
-    async def action_build(self):
-        """Build the composer's live selection. The build lives on the REMIX
-        screen because that is where its log pane is, and switching there IS
-        the useful behaviour: you watch it build.
-
-        ⚠️ `await` the mode switch. Firing the build straight after
-        `switch_mode` reaches the screen before its `on_mount` has run and
-        dies on a half-built widget -- the screen exists, its state does not.
-        """
-        if self.app.state.problems():
-            self.pending = f"refusing: {self.app.state.problems()[0]}"
-            self.rerender()
-            return
-        await self.app.switch_mode("remix")
-        self.app.screen.action_build("bus")
-
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
-
-    def action_view(self, v):
-        self.view = v
-        self.rerender()
-
-    def action_noop(self):
-        """left/right are handled in on_key; the binding exists so the footer
-        advertises them."""
-
-    def on_key(self, ev):
-        app = self.app
-        self.pending = ""
-        if ev.key in tuple("12345678"):
-            app.track = int(ev.key)
-            if self.view == "fx2":
-                # Follow the new track's assignment; do NOT write back.
-                # Changing track is navigation, and an empty track would
-                # otherwise silently inherit whatever row happened to show.
-                self.sync_row()
-        elif self.view == "fx2" and ev.key in ("left", "right", "h", "l"):
-            rows = self.chooser()
-            if not rows:
-                return
-            self.rowi = (self.rowi + (1 if ev.key in ("right", "l") else -1)) \
-                % len(rows)
-            self.pending = self.select_row()
-        elif self.view == "menu" and ev.key in ("down", "j"):
-            self.cursor += 1
-        elif self.view == "menu" and ev.key in ("up", "k"):
-            self.cursor -= 1
-        elif self.view == "fx1" and ev.key in ("left", "right", "h", "l"):
-            d = 1 if ev.key in ("right", "l") else -1
-            e = self.eff["fx1"] + d
-            self.eff["fx1"] = 0x04 if e > 0x0f else 0x0f if e < 0x04 else e
-        elif self.view == "play" and ev.key in ("left", "right", "h", "l"):
-            d = 1 if ev.key in ("right", "l") else -1
-            self.eff["play"] = (self.eff["play"] + d) % 4
-        else:
-            return
-        self.rerender()
-
-
 # ---- the app ---------------------------------------------------------------
 class Workbench(App):
     TITLE = "remix workbench"
     CSS = """
-    #strip { height: 2; padding: 0 1; }
-    #detail { height: 1fr; padding: 0 2; }
-    #history { height: 8; padding: 0 2; border-top: dashed $surface; }
+    #pane_avail { width: 30; padding: 0 1; }
+    #pane_load  { width: 40; padding: 0 1; border-left: dashed $surface; }
+    #pane_unit  { width: 1fr; padding: 0 1; border-left: dashed $surface; }
     #status { height: 1; padding: 0 1; }
-    #mods { width: 44; padding: 0 1; }
-    #panel { width: 1fr; padding: 0 1; border-left: dashed $surface; }
     #log { height: 12; border-top: dashed $surface; }
-    #emuhead { height: 2; padding: 0 2; }
-    #lcd { height: 1fr; padding: 0 2; }
-    #emunote { height: 2; padding: 0 2; }
     """
-    MODES = {"rig": RigScreen, "remix": RemixScreen, "emu": EmuScreen}
+    MODES = {"bench": BenchScreen}
     # App-level so it works from every view; modals handle their own escape
     # first, and no screen binds it, so escape is unambiguous.
     BINDINGS = [Binding("escape", "stop_play", "stop audio")]
@@ -1115,14 +829,10 @@ class Workbench(App):
     def __init__(self):
         super().__init__()
         self.state = State()
-        self.rig = rig.Rig()
-        self.track = 5                     # ChonVerb's home; T5 is the test track
         self.source = (wav_sources() or [None])[0]
-        self.wet = False
         self.history = []                  # [(label, path)]
         self.marks = {}                    # "A"/"B" -> path
-        self.status = ("1-8 pick a track · enter picks its effect · "
-                       "r renders · x composes the image")
+        self.status = ""                   # state.msg is the live line now
         self.rendering = False
         self.boot = None                   # cached emulator BootResult
         self.boot_mtime = None
@@ -1137,7 +847,7 @@ class Workbench(App):
         from textual.theme import BUILTIN_THEMES
         want = os.environ.get("WORKBENCH_THEME", "ansi-dark")
         self.theme = want if want in BUILTIN_THEMES else "ansi-dark"
-        self.switch_mode("rig")
+        self.switch_mode("bench")
 
     def play(self, path):
         """afplay, one at a time -- a new play stops the old."""
@@ -1157,8 +867,8 @@ class Workbench(App):
         return False
 
     def action_stop_play(self):
-        self.status = ("stopped" if self.stop_play()
-                       else "nothing playing")
+        self.state.msg = ("stopped" if self.stop_play()
+                          else "nothing playing")
         scr = self.screen
         if hasattr(scr, "rerender"):
             scr.rerender()
