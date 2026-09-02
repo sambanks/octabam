@@ -348,8 +348,15 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
   c  full check        f  choose the fallback        k  back to stock
   ?  this              esc  stop audio      q  quit
 
-[bold]FX1 as well as FX2[/]
-The unit has two effect slots per track and stock lists different sets on them: ten effects on FX1, those ten plus DELAY and the three reverbs on FX2. `1` puts the highlighted effect of yours on FX1 too — the `FX1+FX2` column follows, and `s` saves it with the remix.
+[bold]the two menus are not the same shape[/]
+Every track has TWO effect slots, FX1 then FX2, and each has its own chooser list. They are not symmetric and that is the thing to hold on to:
+
+  [bold]FX2[/] is yours to compose. LOADED is that list — the rows, their order, what is on it at all. Leaving a stock effect out takes its FX2 row and NOTHING else: its code and dispatch stay stock, so an old project that selects it still runs it.
+  [bold]FX1[/] is stock's own ten, and no image shortens it. A remix can only APPEND: `1` puts the highlighted effect of yours on the end of it. You cannot remove or reorder FX1's rows, because they are not ours to move.
+
+So the line under LOADED reads `FX1 chooser  stock's 10 + WarpFold`, and `p` → FX1 draws that chooser as the firmware would — with your effect on it if it is there, and stock's own if it is not.
+
+The `FX1+FX2` column says which menus an effect CAN appear on, not where its rows are today; the ✓ beside it is what says whether it is in the image.
 
 It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row.
 
@@ -719,7 +726,7 @@ class RemixerScreen(Screen):
         # pane paints at all, so they cannot be collected on the way past.
         mod = self.selected_module()
         self._tnames = ["Available",
-                        f"Loaded · {st.loaded_name or 'unsaved'}",
+                        f"FX2 chooser · {st.loaded_name or 'unsaved'}",
                         disp(mod) if mod is not None else "Unit"]
         can_fix = bool(self.blockers(probs))
         if can_fix != getattr(self, "_can_fix", None):
@@ -818,7 +825,12 @@ class RemixerScreen(Screen):
     def _pane_loaded(self, st, probs):
         rows = self.loaded_rows()
         name = st.loaded_name or "unsaved"
-        out = self._head(f"Loaded · {name}", LOADED)
+        # IT IS THE FX2 CHOOSER. The rows are FX2 rows, the numbers are FX2
+        # row numbers, and `←→` reorders FX2 -- while an `FX1+FX2` in the
+        # column beside them invited "row 1 of both", which is not what any
+        # of it means. FX1's list is stock's own and is only ever appended
+        # to; the line under the rows says so.
+        out = self._head(f"FX2 chooser · {name}", LOADED)
         head = len(out)
         cur_line, pos = head, 0
         for i, m in enumerate(rows):
@@ -888,6 +900,32 @@ class RemixerScreen(Screen):
                        f"cannot be listed — {escape(who)} "
                        f"{'holds' if len(pin) == 1 else 'hold'} "
                        f"the buffers they need[/]")
+        # THE OTHER CHOOSER, in one line, under the one being composed.
+        # Composing FX2 while FX1 sat in a column beside it as a tag was the
+        # whole confusion: they are two lists, they are NOT symmetric, and
+        # only one of them is being composed here. FX1's is stock's own ten;
+        # a remix can append to it and can do nothing else to it -- no
+        # removing, no reordering, because those rows are not ours.
+        mine = [m for m in rows if m.key in st.fx1]
+        # TEN, not eleven: FX1's list carries the firmware's own NONE at row
+        # 0, which is not an effect. Counted off the stock rows rather than
+        # written down.
+        n_stock = sum(1 for m in stock.MODULES
+                      if m.menu.fx2_id in stock.fx1_ids())
+        lead = f" FX1 chooser  stock's {n_stock}"
+        if not mine:
+            # "(1 appends)" wrapped at 40 columns, and the hint line two
+            # rows down already says `1 FX1 row`.
+            tell = ", unchanged"
+        else:
+            # Names while they fit -- which one usually does -- and a count
+            # when they do not. A wrapped line here reads as an extra
+            # mystery row, the way the three-reverb `held by` line did.
+            names = ", ".join(disp(m) for m in mine)
+            room = self.query_one("#pane_load", Static).content_size.width
+            tell = (f" + {names}" if room <= 0 or len(lead) + 3 + len(names)
+                    <= room else f" + {len(mine)} of yours")
+        out.append(f"[dim {WARN}]{lead}{escape(tell)}[/]")
         # Everything from the notes down is the IMAGE speaking, not a row,
         # so it stays on screen however long the list gets.
         tail = len(out) - rows_end
@@ -1380,7 +1418,8 @@ class RemixerScreen(Screen):
         if mode == "MENU":
             draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, 0)
         elif mode == "FX1":
-            draws = emu_bringup.render_fx1(r, track=4, effect_id=0x04)
+            draws = emu_bringup.render_fx1(r, track=4,
+                                           effect_id=effect_id or 0x04)
         else:
             draws = emu_bringup.render_fx2(r, track=4, effect_id=effect_id)
         grid = emu_bringup.layout_screen(draws)
@@ -1388,6 +1427,7 @@ class RemixerScreen(Screen):
         return grid
 
     def _preview(self, mod, probs):
+        st = self.app.state
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
         head = [f"preview {modes}  [dim](p)[/]",
@@ -1411,7 +1451,23 @@ class RemixerScreen(Screen):
             return head + ["[bold]did not reach the RTOS handoff[/] — a "
                            "patch may have broken early init"]
         effect_id = None
-        if self.preview == "FX2":
+        if self.preview == "FX1":
+            # ⚠️ IT ALWAYS DREW FILTER. The one view that could show what an
+            # effect looks like on FX1 was pinned to effect_id 0x04, so
+            # putting one of yours on FX1 and pressing `p` showed the stock
+            # filter's page -- harmless while nothing of ours could be on
+            # FX1, and actively misleading the moment one could.
+            on = rig.menus(mod, st.fx1)
+            if rig.FX1 in on and mod.menu is not None:
+                effect_id = mod.menu.fx2_id
+            else:
+                # Stock's own chooser as it ships, which is what an FX1 row
+                # would be added to -- said, rather than left to look like
+                # this effect's page.
+                effect_id = 0x04
+                head = head[:1] + [f"[dim]— {escape(disp(mod))} has no FX1 "
+                                   f"row; this is stock's chooser —[/]"]
+        elif self.preview == "FX2":
             if mod.menu is None:
                 return head + ["[dim]no chooser row: this module patches the "
                                "firmware rather than adding an effect[/]"]

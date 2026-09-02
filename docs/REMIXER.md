@@ -229,6 +229,40 @@ with the firmware's own code — `WarpFold78` as row 11 of a twelve-entry list,
 its own knob names on the page, the cursor opening on that row — which is the
 no-flash gate, not a hardware result.
 
+### The two menus are not the same shape
+
+This is the thing that was unclear while FX1 was a tag in a column. Every
+track has **two** effect slots, FX1 then FX2, and each has its own chooser
+list:
+
+| | FX2 | FX1 |
+|---|---|---|
+| who composes it | **you** — LOADED is that list | stock's own **ten**, and no image shortens it |
+| what a remix can do | list, unlist, reorder | **append only** (`1`) |
+| leaving a stock effect out | takes its FX2 row | takes nothing — it is still on FX1 |
+| an effect FX2 alone listed (DELAY, the reverbs) | takes its only row | — |
+
+So LOADED is titled **`FX2 chooser`** — its rows are FX2 rows, its numbers
+are FX2 row numbers, and `←→` reorders FX2 — and it closes with one line for
+the other list: `FX1 chooser  stock's 10 + WarpFold`, or `stock's 10,
+unchanged`.
+
+**`p` → FX1 draws that chooser as the firmware would**, with your effect on
+it if it is there. ⚠️ It used to draw `effect_id 0x04` unconditionally, so it
+showed the stock FILTER's page whatever the cursor was on — harmless while
+nothing of ours could be on FX1, actively misleading the moment one could
+(fixed 3 Sep 2026). When the selected effect has no FX1 row it says so
+rather than letting stock's chooser look like that effect's page.
+
+⚠️ **The `FX1+FX2` column is CAPABILITY, not current rows** — which menus an
+effect *can* appear on. The `✓` beside it is what says whether it is in the
+image. Gating the FX2 half on the selection was tried the same day and
+reverted: it is more literally true, and it made the library read `—` against
+every module you had not added yet, which the missing `✓` already said, in
+place of the one thing the library is for. What leaving a stock effect out
+costs is on its resource line instead, in words: `not listed — it keeps its
+FX1 row; only the FX2 one is lost`.
+
 ### LOADED — the image being composed
 
 The selection, **in chooser order** — the order here *is* the order of rows

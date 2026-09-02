@@ -133,13 +133,27 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
     from remix import stock as _stock
     if mod.menu is None:
         return ()
-    if mod.is_stock:
-        return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
-    # A replacement inherits its target's menus, because it inherits its id
-    # and the build repoints both of FX1's tables to it.
-    if mod.menu.replaces:
-        return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
-    return (FX1, FX2) if mod.key in fx1_rows else (FX2,)
+    # ⚠️ CAPABILITY, NOT CURRENT ROWS -- deliberately, after trying the other
+    # way on 3 Sep 2026. Gating the FX2 half on "is it in the image" is more
+    # literally true (an unlisted FLANGER really has no FX2 row) and it made
+    # the LIBRARY worse: every module you had not added yet read `—`, which
+    # the missing ✓ beside it already said, in place of the one thing the
+    # library is for -- what this effect COULD be. The consequence of leaving
+    # a stock effect out belongs on its resource line, where there is room to
+    # say it in words; see resources().
+    on = []
+    if mod.is_stock or mod.menu.replaces:
+        # A replacement inherits its target's menus, because it inherits its
+        # id and the build repoints both of FX1's tables to it.
+        # A replacement CARRIES the stock effect's id, so its own fx2_id is
+        # already the one to test.
+        fx2_id = mod.menu.fx2_id
+        if fx2_id in _stock.fx1_ids():
+            on.append(FX1)
+    elif mod.key in fx1_rows:
+        on.append(FX1)
+    on.append(FX2)
+    return tuple(on)
 
 
 # ---- what the BUILT IMAGE offers -------------------------------------------
@@ -249,6 +263,16 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
                        f"free while your modules stay under {at:,} words")
         else:
             out.append("free — already in the image")
+        # WHAT LEAVING IT OUT ACTUALLY COSTS, in words rather than by a dash
+        # in a column. The two menus are not symmetric: FX1's chooser is
+        # stock's own and no image shortens it, so an unlisted effect that
+        # FX1 lists is still there on FX1 -- and one FX2 only ever listed
+        # (DELAY, the three reverbs) is gone from the panel entirely.
+        if not selected:
+            out.append("not listed — it keeps its FX1 row; only the FX2 one "
+                       "is lost" if mod.menu.fx2_id in stock.fx1_ids()
+                       else "not listed — and it was FX2-only, so it has no "
+                            "row at all in this image")
     elif words:
         out.append(f"{words} of 2,724 words")
     elif mod.dsp is not None:
