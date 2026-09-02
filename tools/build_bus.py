@@ -2011,14 +2011,48 @@ mkgo:""",
               f"({budget} words)  used {cursor - base_a}  "
               f"FREE {base_a + budget - cursor}")
 
-        # ---- donor ids -> the proven-silent null stub, not our code ------
+        # ---- donor ids -> the null stub, BUT ONLY WHERE OUR CODE LANDED --
+        # This used to null all three unconditionally, so a build that placed
+        # 250 words silenced 2,724 words' worth of reverb -- and the answer
+        # to "why can I never get the stock verbs back?" was "you cannot,
+        # ever". PLAN §7 item 2. The precedent is CHORUS, which got its stock
+        # dispatch back the moment the build stopped taking its code.
+        #
+        # The stream is contiguous from base_a, so the written span is
+        # [base_a, cursor) and a donor whose record STARTS at or after the
+        # cursor still holds its own code, untouched. Give it back.
+        kept = [d for d in DONOR_IDS if record(pp[d])[1] >= cursor]
         for donor, eid in DONOR_IDS.items():
+            if donor in kept:
+                continue
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
-        print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
-              f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
-              f"path resolving a donor id gets silence, not our code "
-              f"(defensive: the FX1 menu never listed the reverbs)")
+        if not kept:
+            # ⚠️ WORDING FROZEN: the build report is API (refhash hashes it,
+            # and verify_* parse it). Every shipping layout packs past all
+            # three, so this is the line every existing case still prints.
+            print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
+                  f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
+                  f"path resolving a donor id gets silence, not our code "
+                  f"(defensive: the FX1 menu never listed the reverbs)")
+        else:
+            _gone = [d for d in DONOR_IDS if d not in kept]
+            print(f"  donor ids taken ({'/'.join(_gone).upper() or 'none'}) "
+                  f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x}; "
+                  f"KEPT STOCK: {'/'.join(kept).upper()} -- this selection "
+                  f"stops at P:0x{cursor:05x} and never touched their code")
+        # A chooser row for a reverb whose words we just overwrote would
+        # point at a live descriptor over dead code: the panel would draw
+        # PLATE REV and the DSP would run ours. Refuse, loudly.
+        for _name in STOCK_ROWS:
+            _d = next((d for d, e in DONOR_IDS.items()
+                       if e == NEW_IDS[_name]), None)
+            if _d is not None and _d not in kept:
+                sys.exit(f"payload {tag}: {_name} is listed in the chooser but "
+                         f"this selection places code over it (region used "
+                         f"{cursor - base_a} words, {_d.upper()} starts at "
+                         f"{record(pp[_d])[1] - base_a}) -- remove the row or "
+                         f"free the words")
         if DEV:
             print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
                   f"its chorus. DEV builds are never flashed. ***")

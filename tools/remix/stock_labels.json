@@ -198,5 +198,24 @@
    "OFF",
    "ON"
   ]
+ },
+ "PLATE REV": {
+  "MIXF": [
+   "MIX",
+   "SEND"
+  ]
+ },
+ "SPRING REV": {
+  "TYPE": [
+   "1",
+   "2",
+   "3"
+  ]
+ },
+ "DARK REV": {
+  "MIXF": [
+   "MIX",
+   "SEND"
+  ]
  }
 }

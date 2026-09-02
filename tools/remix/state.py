@@ -45,6 +45,9 @@ class State:
         # [(payload, used, free)] as the last build reported them. TWO
         # regions, one per payload -- see problems().
         self.regions: list[tuple[str, int, int]] = []
+        # Which of PLATE/SPRING/DARK the last build LEFT ALONE, upper-cased
+        # as the build names them. Empty until a build has reported.
+        self.donors_kept: set[str] = set()
         self.msg = "enter swaps · r hears it · ? for keys"
         # Per-MODULE knob values, so an effect's settings belong to the effect
         # rather than to a track. (The retired rig kept these per track, which
@@ -237,6 +240,7 @@ class State:
                 tail = (r.stdout + r.stderr).strip().splitlines()
                 return False, (tail[-1] if tail else "build failed")
             words, regions, payload = {}, [], None
+            kept, saw_donor_line = set(), False
             for line in r.stdout.splitlines():
                 m = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
                              r"\s+\(\s*(\d+) words\)", line)
@@ -252,9 +256,26 @@ class State:
                 if m and payload:
                     regions.append((payload, int(m.group(1)),
                                     int(m.group(2))))
+                # WHICH DONORS SURVIVED, from the build rather than
+                # re-derived here. The three reverbs' code IS the donor
+                # region and the build nulls a donor id only where words
+                # actually landed, so "are they gone" is a question only the
+                # placement can answer -- and the workbench used to assume
+                # the answer was always yes.
+                m = re.search(r"KEPT STOCK: (\S+)", line)
+                if m:
+                    kept |= {w.strip() for w in m.group(1).split("/")}
             self.words.update(words)
             self.words_from = note
             self.regions = regions
+            # Both payloads report; a donor survives only if BOTH kept it.
+            for line in r.stdout.splitlines():
+                if "donor ids" in line:
+                    saw_donor_line = True
+                    if "KEPT STOCK:" not in line:
+                        kept = set()
+                        break
+            self.donors_kept = kept if saw_donor_line else set()
             if regions:
                 return True, ("assembled: " + " · ".join(
                     f"{n} {u}/{u + f}" for n, u, f in regions))

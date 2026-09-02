@@ -157,14 +157,33 @@ number column is the panel row; `·` means no chooser row at all (a ColdFire
 patch). `◀fb` marks the fallback. Each module's word cost comes from the real
 assembly the background rebuild runs, so it is always filled in.
 
-**The three reverbs live here.** An unmodified unit shows **fourteen** FX2
-effects, and PLATE, SPRING and DARK REV are three of them — so a stock
-selection lists all fourteen. They leave when something takes their space:
-their code *is* the 2,724-word donor region our modules are written over, so
-adding one drops them to a single dim line, `— PLATE, SPRING, DARK REV
-(donors)`. That is the trade, shown where it happens rather than as a rule
-you have to know. The precedent is CHORUS, which was a donor until v98 and
-got its stock dispatch back the moment the build stopped taking its code.
+**The three reverbs live here, and you can keep them.** An unmodified unit
+shows **fourteen** FX2 effects and PLATE, SPRING and DARK REV are three of
+them, so a stock selection lists all fourteen. Their code *is* the donor
+region — but the build packs it **from PLATE upward**, so a selection only
+loses the reverbs it actually reached, and the pane shows which
+(`— Plate Rev   donor, taken`), read from the build's own report rather than
+assumed.
+
+The smallest buildable image is `remixes/restock.py`: **thirteen** stock
+effects including SPRING and DARK REV, plus SEND. SEND's 215 words land on
+the first 215 of PLATE's 594, so the minimum costs the *smallest* reverb and
+nothing else.
+
+⚠️ Until 2 Sep 2026 all three were nulled **unconditionally** — a build that
+placed 250 words silenced 2,724 words' worth of reverb — so the honest answer
+to "why can I never get the stock verbs back?" was "you cannot, ever". PLAN
+§7, now closed. The precedent was CHORUS, a donor until v98, which got its
+stock dispatch back the moment the build stopped taking its code.
+
+**Two guards make listing them safe.** The **build** refuses a donor row
+whose words this selection took, naming it — only the placement knows where
+the cursor stopped, so nothing predicts it, and `x` applies the fix. The
+**ledger** refuses a reverb beside a module with fixed Y buffers: all three
+take a per-track instance buffer, which is **measured** — each reads
+`x:>$213`, the host's bump allocator, within ~25 words of its entry (PLATE
+`0x01018`, SPRING `0x01267`, DARK `0x01692`) — exactly like SPATIALIZER,
+FLANGER, CHORUS and COMB.
 
 ⚠️ It used to be three lines, one per reverb, each reading `– PLATE REV
 taken by BongDelay +1`. That said one thing three times; it named an
@@ -172,10 +191,6 @@ arbitrary module as the taker (`eats[0]` is just the first selection with DSP
 code — **nothing computes a per-reverb attribution**, and the `+1` was SEND);
 and at 40 columns the ` +1` wrapped onto its own line, so it read as a fourth
 mystery row. Corrected 2 Sep 2026.
-
-⚠️ A stock selection that keeps all three **cannot be built yet** — a remix
-must name a fallback and no stock effect is a safe one. `PLAN.md` §7 has the
-two changes that would fix it, and the argument for closing it instead.
 
 **You start at `stock`** — the chooser an unmodified unit shows, no modules
 of ours. You add to what the box already does rather than to somebody else's

@@ -223,11 +223,39 @@ MODULES = (
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
            "Y"),
+    # ---- THE THREE REVERBS, listable since 2 Sep 2026 -------------------
+    # Their code IS the donor region, so they are the only stock rows whose
+    # availability depends on the rest of the selection: the build packs from
+    # PLATE upward and nulls a donor id ONLY where words actually landed
+    # (build_bus.py), so a light selection keeps the ones it never reached.
+    # It refuses a row whose words were taken, which is the guard that makes
+    # listing them safe.
+    #
+    # buffer=True is MEASURED, not assumed: all three read x:>$213 -- the
+    # host's bump allocator -- within the first ~25 words of their entry
+    # (PLATE 0x01018, SPRING 0x01267, DARK 0x01692; payload A disassembly,
+    # 2 Sep 2026), exactly like the four stock effects already flagged. So
+    # the ledger refuses them beside any module with fixed Y buffers, on the
+    # same grounds and with the same evidence.
+    _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
+           "Stock plate reverb. Its 594 words are the FIRST of the donor "
+           "region, so it is the first row any module of ours takes.",
+           "T", buffer=True),
+    _stock("SPRING REV", "spring", 0x15, 0x400d5726, b"SPRG", b"SPRING REV",
+           1063,
+           "Stock spring reverb. 1,063 words, second in the donor region.",
+           "U", buffer=True),
+    _stock("DARK REV", "dark", 0x16, 0x400d58b8, b"DARK", b"DARK REV", 1067,
+           "Stock dark reverb. 1,067 words, last in the donor region -- so "
+           "it is the one a small selection is most likely to keep.",
+           "V", buffer=True),
 )
 
-# What every remix consumes, whether it lists anything or not: the three
-# reverbs whose code IS the donor region. Named here so the composer can
-# say so rather than leaving it to be inferred from a manifest comment.
+# The donor region, IN PLACEMENT ORDER. The build packs from PLATE upward,
+# so a selection loses them in this order and keeps the tail it never
+# reached -- which is why they are listable at all. Nothing here decides
+# that; the build reports which survived and the workbench reads its answer
+# (state.measure). Kept as a tuple because the ORDER is the meaning.
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
 
 # The one stock row with nothing on the DSP to render.

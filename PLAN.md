@@ -638,36 +638,47 @@ select where one position silently does nothing, drawn as a bare `3`. With
 labels it draws `CLEAN` and the mystery is gone. This is the case that shows
 why numbers are not good enough: the select is CORRECT and still unusable.
 
-### 7. A stock-only build: "put my unit back" (backlogged 2 Sep 2026)
+### 7. Putting the unit back — CLOSED 2 Sep 2026
 
-The workbench opens on **stock** — the chooser an unmodified unit shows — and
-that selection **cannot be built**, which makes the default state a view
-rather than a starting point. Two things stand in the way, and neither is
-hardware:
+**Item 2 is done and item 1 is moot.** `restock` is the remix: thirteen of
+the fourteen stock effects, **including SPRING REV and DARK REV**, plus SEND.
 
-1. **A remix must name a fallback** (`schema.Remix`), and no stock effect is
-   a safe one: the fallback is what unimplemented ids alias to, and a real
-   effect would *process* the unknown id. `auto_fallback()` returns None and
-   `problems()` refuses. A selection with no modules of ours has nothing to
-   alias, so the requirement should be conditional rather than absolute.
-2. **`DONOR_IDS` (PLATE/SPRING/DARK REV) are repointed to the null stub
-   unconditionally** in `build_bus.py`, so even a build that placed no code
-   would silence the three reverbs. That is defensive, not necessary — and
-   there is a precedent for making it conditional: **CHORUS was a donor until
-   v98 and got its stock dispatch back the moment we stopped taking its
-   code.** The three reverbs are consumed because every buildable selection
-   so far contains at least SEND; they are not consumed by nature.
+What was wrong: `build_bus.py` repointed all three donor ids to the null stub
+**unconditionally**, so a build that placed 250 words silenced 2,724 words'
+worth of reverb, and the answer to *"why can I never get the stock verbs
+back?"* was "you cannot, ever". The code stream is contiguous from PLATE
+upward, so the written span is `[base_a, cursor)` and a donor whose record
+starts at or after the cursor **still holds its own code**. It now keeps
+those, and reports which: `donor ids taken (PLATE) ... KEPT STOCK:
+SPRING/DARK`.
 
-Worth having because it is the honest bottom of the range: an image that
-restores an unmodified chooser, including the three reverbs, is *"undo my
-mods"* — the thing to flash before selling the box, or when a remix turns out
-badly. It also makes the workbench's default state buildable, which is what
-a person expects from a thing they are looking at.
+The three reverbs are now ordinary listable stock rows (`tools/remix/
+stock.py`), so the workbench offers them like any other effect. Two guards
+make that safe:
 
-⚠️ It is NOT "flash the stock OS back" — that is what the official installer
-does, and it is simpler. This is the same image with our chooser edits
-reverted, which is only interesting if some ColdFire cave is worth keeping.
-If nothing is, say so and close this rather than building it.
+- the **build** refuses a donor row whose words this selection took, by name
+  — only the placement knows where the cursor stopped, so nothing predicts
+  it; and
+- the **ledger** refuses a reverb beside a module with fixed Y buffers.
+  `buffer=True` on all three is **measured, not assumed**: each reads
+  `x:>$213` — the host's bump allocator — within ~25 words of its entry
+  (PLATE `0x01018`, SPRING `0x01267`, DARK `0x01692`; payload A
+  disassembly), exactly like the four stock effects already flagged.
+
+Item 1 (the fallback requirement) was never the real blocker: SEND costs one
+row and 215 words, which only ever takes PLATE — the *smallest* reverb,
+because the region packs from PLATE upward. So the minimum image costs one
+reverb, not three, and no schema change was needed.
+
+Bit-identity: the two shipping layouts (`bus`, `plain`) are **unchanged**.
+Four of the 26 refhash cases moved — `render` and the three `xbus-*probe`
+diagnostics — and every diff is the intended one: a build that placed few
+words no longer silences reverbs it never touched.
+
+⚠️ **UNFLASHED**, and it is NOT "flash the stock OS back" — that is what the
+official installer does, and it is simpler. This is the same image with our
+chooser edits reverted, which is only interesting if some ColdFire cave is
+worth keeping.
 
 ## Open items and standing caveats
 

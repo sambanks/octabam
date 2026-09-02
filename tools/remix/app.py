@@ -578,13 +578,22 @@ class BenchScreen(Screen):
         # code -- nothing here computes a per-reverb attribution), and
         # overran the 38-column pane so its " +1" wrapped onto its own line
         # and read as a fourth mystery row.
-        eats = [m for m in st.selected if m.dsp is not None]
-        if eats:
-            out.append("[dim] —  Plate, Spring, Dark Rev (donors)[/]")
-        else:
+        # WHICH REVERBS ARE ACTUALLY GONE, from the build's own report --
+        # not "all three, always", which is what this said before 2 Sep 2026
+        # and which was the reason the honest answer to "why can I never get
+        # the stock verbs back?" was "you cannot". A light selection keeps
+        # the ones the placement never reached; they are ordinary stock rows
+        # you can add from the library like any other.
+        gone = [c for c in stock.CONSUMED
+                if c.split()[0] not in st.donors_kept]
+        if st.donors_kept or not gone:
             for cname in stock.CONSUMED:
-                pos += 1
-                out.append(f"[dim] {pos:>2} {titlecase(cname):<13}FX2[/]")
+                if cname in st.sel or cname not in gone:
+                    continue
+                out.append(f"[dim] —  {titlecase(cname):<13}"
+                           f"donor, taken[/]")
+        elif [m for m in st.selected if m.dsp is not None]:
+            out.append("[dim] —  Plate, Spring, Dark Rev (donors)[/]")
         out.append("")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", out)
@@ -607,6 +616,11 @@ class BenchScreen(Screen):
         if self.sync_error:
             # The build names the payload and the overrun; that IS the
             # actionable sentence, so print it rather than a pointer to it.
+            gone = self.blockers([])
+            if gone:
+                return ("[bold]⚠ x removes "
+                        + ", ".join(disp(m) for m in gone)
+                        + " — this selection needs its words[/]")
             return f"[bold]⚠ {escape(self.sync_error)}[/]"
         # THE BUILD'S OWN NUMBERS, one per payload. Not a sum of st.words
         # against DONOR_WORDS: there are TWO regions of that size and
@@ -1023,13 +1037,25 @@ class BenchScreen(Screen):
                 continue
             # "stock instance buffer: flanger and chonverb both claim ..."
             names.add(p_.split(":", 1)[1].split(" and ")[0].strip())
-        return [m for m in st.selected
-                if m.is_stock and m.name.lower() in names]
+        out = [m for m in st.selected
+               if m.is_stock and m.name.lower() in names]
+        # A DONOR ROW WHOSE WORDS THIS SELECTION TOOK. The build refuses it
+        # by name ("PLATE REV is listed in the chooser but this selection
+        # places code over it"), and that verdict is exact -- only the
+        # placement knows where the cursor stopped -- so read it rather than
+        # predicting it here.
+        if self.sync_error:
+            out += [m for m in st.selected
+                    if m.is_stock and m.key in stock.CONSUMED
+                    and f"{m.key} is listed" in self.sync_error]
+        return out
 
     def action_fix(self):
         """Apply the ⚠'s own advice."""
         st = self.app.state
         gone = self.blockers(st.problems())
+        if not gone:
+            gone = self.blockers([])
         if not gone:
             st.msg = "nothing here that removing a row would fix"
             self.rerender()
