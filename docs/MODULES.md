@@ -516,13 +516,29 @@ between them refuse:
 | a remix with both LO-FI and your replacement | refused: `fx2 id: hijack and lofi both claim 0x1c` |
 | a remix with neither | LO-FI stays stock, untouched |
 
-⚠️ **FX1's descriptor is NOT repointed.** `FX1_IDS` (`0x400d5f58`) and
-`FX2_IDS` (`0x400d5fdc`) are separate tables, so your *code* runs from FX1
-while FX1's *page* still draws the stock effect's knob names. Same family as
-"a slot can draw a knob and publish nothing" — the panel and the DSP are
-separate mechanisms and neither validates the other. Either match the stock
-knob layout, or accept that FX1 mislabels it. (`tools/build_fx1.py` knows how
-to write that table if repointing it is ever wanted.)
+**FX1 is taken over too.** `FX1_IDS` (`0x400d5f58`) and `FX2_IDS`
+(`0x400d5fdc`) are separate tables — the DSP dispatch is shared, the
+descriptors are not — so a replacement that only took FX2 would *run* from
+FX1 under the stock effect's knob names. Both FX1 tables are therefore
+repointed as well: the id-indexed lookup, and the row the encoder scrolls.
+
+Both writes are **in place**, because a replacement's effect is already on
+FX1 — there is no list to grow and no cave to relocate into. (That is what
+`tools/build_fx1.py`'s experiment needed, because it *adds* entries: the list
+ends at `0x400d608c` and the FX2 list starts at `0x400d6090`.) The build
+asserts the tables hold stock's descriptor before touching them, and that the
+chooser list contains it exactly once.
+
+Confirmed without a flash: with a throwaway module on LO-FI's id, the
+emulated firmware draws `HIJACK` in LO-FI's slot on the **FX1** chooser and
+its own `GAIN` knob on the page. `verify_replaces.py` checks both tables in
+both directions, and was itself negative-tested by restoring FX1's two
+entries to stock in a built image — it catches "FX2 repointed, FX1
+forgotten", which is the shape this half exists to prevent.
+
+⚠️ **Replacing an FX2-ONLY effect leaves FX1 alone.** DELAY and the three
+reverbs are not on FX1 (their `FX1_IDS` slots are NONE), so there is nothing
+to repoint; the build says so rather than silently doing nothing.
 
 **Words.** Taking a stock effect's *id* does not give you its *code space* —
 you spend from the same 2,724-word donor region as every other module. The

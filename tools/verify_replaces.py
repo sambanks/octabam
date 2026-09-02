@@ -19,6 +19,13 @@ WHAT IS CHECKED, per remix, per payload, for every stock effect id:
   * the id is untouched -- FX2_IDS still points at the stock descriptor and
     the dispatch entries still hold the pristine image's values.
 
+BOTH MENUS ARE CHECKED. FX1 resolves its own descriptors (FX1_IDS, and the
+chooser list it scrolls), so an id can be correct on FX2 and wrong on FX1 --
+which is the shape of the bug this file exists for. For a stock effect
+nobody declared, FX1's two tables must read back the pristine image's
+values; for a declared replacement, both must point at the module's clone
+(or be left alone when FX1 does not list that effect at all).
+
 THE ONE LEGITIMATE EXCEPTION is a donor reverb whose words this selection
 took: PLATE/SPRING/DARK REV's code IS the donor region, so an id whose code
 was overwritten is repointed at the null stub. That is allowed, and ONLY
@@ -35,6 +42,9 @@ from remix import registry, stock  # noqa: E402
 
 BASE = 0x40000400
 FX2_IDS = 0x400d5fdc
+FX1_IDS = 0x400d5f58
+FX1_LIST = 0x400d6060
+FX1_NONE = 0x400d4618
 PRISTINE = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 # (tag, xtab, null init, null proc) -- build_bus.py's PAYLOADS
 PAYLOADS = (("A", 0x400e2345, 0x007c8, 0x007c9),
@@ -48,6 +58,17 @@ def rd32(img, p):
 
 def rdw(img, p):
     return int.from_bytes(img[p - BASE:p - BASE + 3], "little")
+
+
+def _fx1_rows(pristine):
+    """Addresses of the FX1 chooser list's entries, from the pristine image
+    (the list is never relocated by build_bus -- a replacement rewrites a row
+    in place -- so the pristine addresses are the live ones)."""
+    out, a = [], FX1_LIST
+    while rd32(pristine, a) != 0 and len(out) < 32:
+        out.append(a)
+        a += 4
+    return out
 
 
 def static_checks(fails):
@@ -79,9 +100,40 @@ def check_image(name, img, pristine, fails):
             declared[m.menu.fx2_id] = m.key
     for eff in stock.MODULES:
         eid = eff.menu.fx2_id
-        if eid in declared:
-            continue                       # asked for, and checked statically
         want_desc = eff.menu.donor_desc + 0x38
+        fx1_slot = FX1_IDS + eid * 4
+        on_fx1 = rd32(pristine, fx1_slot) != FX1_NONE
+        if eid in declared:
+            # A declared replacement must have taken FX1 too, or FX1 would
+            # run its code under the stock effect's knob names.
+            if not on_fx1:
+                continue
+            got_id = rd32(img, fx1_slot)
+            got_row = [rd32(img, a) for a in _fx1_rows(pristine)
+                       if rd32(pristine, a) == want_desc]
+            if got_id == want_desc:
+                fails.append(
+                    f"{name}: FX1_IDS[0x{eid:02x}] still points at stock "
+                    f"{eff.key}, but {declared[eid]} replaces it -- FX1 would "
+                    f"run the module under stock's knob names")
+            if got_row and got_row[0] == want_desc:
+                fails.append(
+                    f"{name}: the FX1 chooser row for {eff.key} still points "
+                    f"at stock's descriptor, but {declared[eid]} replaces it")
+            if got_id != want_desc and (not got_row or got_row[0] != want_desc):
+                print(f"  [PASS] {name}: {declared[eid]} took {eff.key}'s FX1 "
+                      f"page as well as FX2's")
+            continue
+        if on_fx1:
+            for a in (fx1_slot,) + tuple(
+                    x for x in _fx1_rows(pristine)
+                    if rd32(pristine, x) == want_desc):
+                if rd32(img, a) != rd32(pristine, a):
+                    fails.append(
+                        f"{name}: FX1 table at 0x{a:08x} ({eff.key}) is "
+                        f"0x{rd32(img, a):08x}, not stock's "
+                        f"0x{rd32(pristine, a):08x} -- nothing declared "
+                        f"replaces={eff.key!r}")
         got_desc = rd32(img, FX2_IDS + eid * 4)
         if got_desc != want_desc:
             fails.append(

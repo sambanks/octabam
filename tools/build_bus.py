@@ -102,6 +102,20 @@ DIS = pathlib.Path("vendor/dsp56300/build/source/dsp_host/dsp_asm")
 
 # ---- ColdFire menu tables (task 11, tools/build_menu.py, reproduced here) --
 FX2_IDS = 0x400d5fdc
+# ---- FX1's OWN descriptor tables ------------------------------------------
+# The DSP dispatch is ONE table shared by both menus, but the descriptors are
+# not: FX1 resolves its own. So a module replacing a stock effect runs from
+# FX1 the moment it takes the id, while FX1's PAGE would still draw the stock
+# effect's knob names unless these two are repointed as well -- the "a slot
+# can draw a knob and publish nothing" family, in reverse.
+#
+# For a REPLACEMENT both writes are IN PLACE, because the effect is already
+# on FX1: there is no list to grow and no cave to relocate into. (That is
+# what tools/build_fx1.py's experiment needed, because it ADDS entries --
+# the list ends at 0x400d608c and the FX2 list starts at 0x400d6090.)
+FX1_IDS = 0x400d5f58        # id-indexed, 32 slots; NONE for an FX2-only effect
+FX1_LIST = 0x400d6060       # the chooser list FX1 scrolls, NUL-terminated
+FX1_NONE = 0x400d4618       # the descriptor every unused id points at
 FX2_LIST = 0x400d6090
 ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
@@ -941,6 +955,42 @@ def main():
 
     for name in CLONED_ORDER:
         wr32(FX2_IDS + NEW_IDS[name] * 4, clone_addr[name])
+    # ---- a REPLACEMENT also takes over the stock effect's FX1 page --------
+    for name in CLONED_ORDER:
+        rep = _MODS[name].menu.replaces
+        if not rep:
+            continue
+        stock_P = _MODS[rep].menu.donor_desc + 0x38
+        slot = FX1_IDS + NEW_IDS[name] * 4
+        cur = rd32(slot)
+        if cur == FX1_NONE:
+            print(f"  {name:14s} replaces {rep}, which FX1 does not list -- "
+                  f"its FX1 page is left alone (adding a row needs the list "
+                  f"relocated; see tools/build_fx1.py)")
+            continue
+        if cur != stock_P:
+            sys.exit(f"{name}: FX1_IDS[0x{NEW_IDS[name]:02x}] is 0x{cur:08x}, "
+                     f"not stock {rep}'s 0x{stock_P:08x} -- refusing to "
+                     f"repoint a table that is not where we think it is")
+        wr32(slot, clone_addr[name])
+        # ...and the row the encoder scrolls, which holds the descriptor
+        # pointer directly. Exactly one entry may match, or the assumption
+        # about this table is wrong and nothing should be written.
+        hits = []
+        a = FX1_LIST
+        while rd32(a) != 0:
+            if rd32(a) == stock_P:
+                hits.append(a)
+            a += 4
+            if a > FX1_LIST + 32 * 4:
+                sys.exit("FX1 chooser list has no terminator")
+        if len(hits) != 1:
+            sys.exit(f"{name}: {rep} appears {len(hits)} times in the FX1 "
+                     f"chooser list -- expected exactly one")
+        wr32(hits[0], clone_addr[name])
+        print(f"  {name:14s} REPLACES stock {rep} on FX1 too: id table "
+              f"0x{slot:08x} and chooser row 0x{hits[0]:08x} -> "
+              f"0x{clone_addr[name]:08x}")
     # A stock row's descriptor is the one stock ships, at P = E + 0x38, and
     # its FX2_IDS entry must still be stock's -- the two are the same
     # pointer on a pristine image, and nothing above may have touched it.
