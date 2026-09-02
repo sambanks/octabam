@@ -148,11 +148,20 @@ actually writes, tag included.
   `KERN_INVALID_ADDRESS`, which is the "wild memory reads" half of the
   original report — a second, separate defect the hang had been masking.
 
-  **Inferred, not chased:** the likely candidate is that each block is
-  entered with `dsp.setPC(0x372)` without resetting the DSP's stack, loop
-  and status state, so whatever block 0 left on the stack accumulates. That
-  is a harness modelling gap in the same family as the TX one. Falsifier:
-  reset SP/LA/LC between blocks and see whether block 1 survives. **Nobody
-  has done this**, and until someone does, faithful mode remains unusable —
-  which matters, because it is the only thing that would validate the
-  hand-rolled calling convention the rest of the harness assumes.
+  **FALSIFIED, 2 Sep 2026 — it is not the register file.** The standing
+  guess was that each block inherits block 0's registers, because the
+  dispatcher is entered per audio interrupt on hardware while we break at
+  `0x53e` and force the PC back, leaving every AGU modifier, loop register
+  and stack word live. Restoring the **entire** `SRegs` struct to its
+  post-init state before each block changes nothing: still SIGSEGV on block
+  1, at 1 track and at 4. The experiment was reverted rather than left in —
+  it bought no behaviour and would have read as a fix.
+
+  So the state that kills block 1 is in **memory**, not registers: the
+  dispatcher mutates `x:0x20a`, `x:0x213`, `x:0x418`, `x:0x420` and the
+  pending/current track blocks, and one of those does not survive being
+  re-entered. Next falsifier for whoever picks this up: snapshot and restore
+  X/Y alongside the registers; if block 1 then survives, bisect the restored
+  range to name the word. Until then faithful mode is unusable — which
+  matters, because it is the only thing that would validate the hand-rolled
+  calling convention the rest of the harness assumes.
