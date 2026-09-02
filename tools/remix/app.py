@@ -783,9 +783,15 @@ class BenchScreen(Screen):
             c = OK if free > 400 else WARN if free > 32 else BAD
             bar = (f"[{c}]" + "#" * fill + "[/][dim]" + "." * (edge - fill)
                    + "[/][dim red]" + "-" * (20 - edge) + "[/]")
-            why = (f"  [dim]before {titlecase(nxt)} goes[/]" if nxt and free
-                   else f"  [dim]{titlecase(nxt)} holds the rest[/]" if nxt
-                   else "")
+            # NAME THE NEXT TRADE, not the state. "Plate Rev holds the
+            # rest" was true and useless -- it says which reverb is in the
+            # way without saying what dropping it buys, and at 0 free that
+            # is the only question. Both forms now answer it: how far you
+            # can go before the next one dies, or what the next one is worth.
+            gain = stock.WORDS[nxt] if nxt else 0
+            why = (f"  [dim]then {titlecase(nxt)} goes[/]" if nxt and free
+                   else f"  [dim]drop {titlecase(nxt)} for {gain:,} more[/]"
+                   if nxt else "")
             return f" {'words ' + n:<{W}}{bar}  {free:>4} free{why}"
 
         if st.regions:

@@ -425,12 +425,17 @@ only ever appeared there, because that is the one selection the build
 refuses:
 
 ```
- words A   ....................  2724 free  = the 3 reverbs' code
- words B   ....................  2724 free  = the 3 reverbs' code
+ words A   --------------------     0 free  drop Plate Rev for 594 more
+ words B   --------------------     0 free  drop Plate Rev for 594 more
  FX2 buf A .... .... .... ....  0 pinned of 4  tracks 5-8  +7 stock share
- rows      14 of 31 (the long chooser cave)
+ rows      17 free of 31 (14 loaded)
  cave      untouched — nothing of ours is placed
 ```
+
+The words row **names the next trade** rather than the state: how far you can
+go before the next reverb dies, or — at zero — what dropping it is worth. Drop
+PLATE from that chooser and the row becomes `594 free · then Spring Rev goes`,
+which is exactly the 594 it promised.
 
 ⚠️ **"Free" does not mean empty, and stock is not idle.** The donor region is
 never unoccupied — it holds PLATE + SPRING + DARK's own code, which is
