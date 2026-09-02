@@ -9,6 +9,10 @@ still open about it. Then delete every comment below that you have answered
 
 Read docs/MODULES.md first, and tools/remix/schema.py for the full field
 list; both carry the reasoning that these comments only summarise.
+
+This file is the SKELETON -- every field, commented, and no engine. For a
+finished module small enough to read in one sitting, see modules/hello/:
+one knob, 27 words of DSP, its own remix and its own render gates.
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
@@ -30,8 +34,13 @@ MODULE = Module(
         # WRITE STAYS THE DONOR'S -- including formatters, which override the
         # value counts you do write.
         donor_desc=0x400d58b8,     # DARK REV
-        abbr=b"TMPL",              # 5 bytes
-        fullname=b"Template",      # 13 bytes
+        # BOTH FIELDS ARE NUL-TERMINATED, so the usable length is one less
+        # than the field: abbr is 5 bytes = FOUR characters, fullname 13
+        # bytes = TWELVE. Filling one exactly leaves no terminator; a 5-char
+        # abbr drew fine and crashed the unit on LFO modulation. The schema
+        # rejects both over-lengths -- see modules/hello/README.md.
+        abbr=b"TMPL",              # <=4 chars
+        fullname=b"Template",      # <=12 chars, before any build tag
         build_tag=False,           # append the image's build tag to the name
     ),
 

@@ -804,13 +804,39 @@ def main():
     # ==== 1. ColdFire menu tables (task 11) =================================
     # Diagnostic tempo-cave variants stamp the panel name so the running
     # firmware is unmistakable (the R48/R49 isolation, 24 Aug 2026).
+    # 11 chars + a 2-char tag is 13, which FILLS the 13-byte field and leaves
+    # no NUL -- the defect Bryan T's HELLO WORLD contribution found on the
+    # abbr field (5 chars in 5 bytes, crash on LFO modulation). Bounded to 10
+    # so the tagged name still terminates. The check below enforces it for
+    # every arm that writes a name, not just these two.
     if os.environ.get("TEMPOCAVE") == "replay":
-        FULLNAME["DELAY SERVER"] = b"BongDlyRPLY" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BongDlyRPL" + BUILD_TAG
     elif os.environ.get("NOTEMPO") == "1":
-        FULLNAME["DELAY SERVER"] = b"BongDlyNOCF" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BongDlyNOC" + BUILD_TAG
     cave_end = CLONE_BASE + CLONE_STRIDE * len(CLONED_ORDER)
     if any(img[NEW_LIST - BASE:cave_end - BASE]):
         sys.exit("menu cave not free")
+
+    # ---- both name fields are NUL-TERMINATED --------------------------------
+    # The schema checks what a MANIFEST declares; this checks what the build
+    # actually writes, which is not the same string -- the panel name is
+    # rewritten from six different places depending on the flags, and the
+    # build tag is appended after all of them. A name that exactly fills its
+    # field leaves no terminator, and the firmware's string read runs off the
+    # end of it: 5 chars in the 5-byte abbr crashed a real unit on LFO
+    # modulation (2 Sep 2026, Bryan T -- schema.MenuEntry has the writeup).
+    # Two diagnostic delay names had been doing it to the 13-byte fullname
+    # since 24 Aug 2026, found by that contribution and shortened above.
+    for name in CLONED_ORDER:
+        if len(ABBR[name]) > 4:
+            sys.exit(f"abbr {ABBR[name]!r} for {name} is {len(ABBR[name])} "
+                     f"characters -- the field is 5 bytes NUL-terminated, so "
+                     f"4 is the maximum")
+        if len(FULLNAME[name]) > 12:
+            sys.exit(f"panel name {FULLNAME[name]!r} for {name} is "
+                     f"{len(FULLNAME[name])} characters (build tag included) "
+                     f"-- the field is 13 bytes NUL-terminated, so 12 is the "
+                     f"maximum")
 
     clone_addr = {}
     print("=== ColdFire: three cloned descriptors (task 11) ===")
