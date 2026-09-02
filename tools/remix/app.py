@@ -23,6 +23,8 @@ paying its way.
 
 from __future__ import annotations
 
+import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -62,21 +64,58 @@ def disp(mod) -> str:
     return mod.name
 
 
-def wav_sources():
-    """Source WAVs to audition: out/dry/ -- the curated DRY set (31 Aug 2026;
-    test_audio + demo_sources are full of processed renders and made the
-    browser unusable). Falls back to the old dirs only when out/dry is
-    missing or empty (a fresh tree before anyone copies sources in)."""
-    d = ROOT / "out" / "dry"
+# Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
+# default (31 Aug 2026: test_audio + demo_sources are full of processed
+# renders and made the browser unusable), but a bench is used on whatever
+# material is to hand, so `d` points it somewhere else and CONFIG remembers.
+CONFIG = ROOT / "out" / "_audition" / "workbench.json"
+DEFAULT_SOURCE_DIR = ROOT / "out" / "dry"
+
+
+def load_config():
+    """{} on anything unreadable -- a corrupt settings file must not stop the
+    workbench opening, it is a convenience, not state anyone can lose work
+    from."""
+    try:
+        return json.loads(CONFIG.read_text())
+    except Exception:                                # noqa: BLE001
+        return {}
+
+
+def save_config(cfg):
+    try:
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
+    except OSError:
+        pass                                    # not worth an error dialog
+
+
+def source_dir():
+    """The directory the SOURCE row browses, in precedence order: the env
+    override, what `d` last chose, then out/dry/."""
+    env = os.environ.get("WORKBENCH_SOURCES")
+    if env:
+        return pathlib.Path(env).expanduser()
+    saved = load_config().get("source_dir")
+    if saved:
+        return pathlib.Path(saved).expanduser()
+    return DEFAULT_SOURCE_DIR
+
+
+def wav_sources(d=None):
+    """The wavs in the source directory. Falls back to the old scattered dirs
+    only when the chosen one is missing or empty -- a fresh tree, before
+    anyone has copied sources in."""
+    d = d or source_dir()
     if d.is_dir():
         out = sorted(d.glob("*.wav"))
         if out:
             return out
     out = []
-    for sub in ("test_audio", "demo_sources"):
-        d = ROOT / "out" / sub
-        if d.is_dir():
-            out += sorted(d.glob("*.wav"))
+    for name in ("dry", "test_audio", "demo_sources"):
+        alt = ROOT / "out" / name
+        if alt.is_dir() and alt != d:
+            out += sorted(alt.glob("*.wav"))
     return out
 
 
@@ -89,14 +128,20 @@ class TextPrompt(ModalScreen[str]):
     #box { width: 60; height: auto; border: round $primary; padding: 1; }
     """
 
-    def __init__(self, question):
+    def __init__(self, question, value=""):
         super().__init__()
         self.question = question
+        self.value = value
 
     def compose(self) -> ComposeResult:
         with Vertical(id="box"):
-            yield Static(self.question)
-            yield Input()
+            # ESCAPED, because a question is data. A path in the prompt --
+            # "source folder [/Users/.../out/dry]:" -- parsed as Rich markup
+            # and raised MarkupError: closing tag does not match any open
+            # tag. Same family as the 31 Aug pass that escaped every
+            # data-driven string in the panes; a prompt is one too.
+            yield Static(escape(self.question))
+            yield Input(value=self.value)
 
     def on_input_submitted(self, ev):
         self.dismiss(ev.value.strip())
@@ -157,10 +202,25 @@ itself, so the panel is never showing something else.
   enter  SWAP the ▸ row for this one (at (end): append); on a
          selected module, remove it
   left/right  knob value (UNIT) or row order (LOADED)
+              hold to run; SHIFT+left/right steps by TEN
   r  render + hear     space  play last    p  preview mode
   a  mark it A         , / .  play A / B
-  l  load remix        s  save remix       f  fallback
-  c  full check        k  back to stock    ?  this
+  d  source folder     l  load remix       s  save remix
+  c  full check        f  fallback         k  back to stock
+  ?  this
+
+[bold]why an effect can render DRY[/]
+SIX of the eleven stock effects ship with their wet control at zero —
+PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND) —
+so `r` on one of them at its defaults plays the source back unchanged.
+That is faithful: the defaults are read from the firmware's own
+descriptor, and an unmodified unit really does start them fully dry.
+The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
+
+[bold]the SOURCE row[/]
+`left`/`right` cycles the wavs in the source folder; `d` points it at
+another one and remembers the choice (out/_audition/workbench.json).
+`WORKBENCH_SOURCES` overrides both.
 
 [bold]the one line under LOADED[/]
 It says the only two things that can stop you: whether the selection
@@ -243,6 +303,7 @@ class BenchScreen(Screen):
         Binding("l", "load", "load remix"),
         Binding("s", "save", "save remix"),
         Binding("k", "stock", "reset to stock", show=False),
+        Binding("d", "source_dir", "source folder", show=False),
         Binding("question_mark", "help", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
@@ -270,6 +331,7 @@ class BenchScreen(Screen):
         self.synced = None
         self.syncing = None
         self.sync_error = None
+        self._panel_cache = (None, None)   # see _panel()
         self.query_one("#log", RichLog).display = False
         self.rerender()
 
@@ -301,6 +363,26 @@ class BenchScreen(Screen):
         return rows + [(n, sl) for n, sl in sorted(mod.knob_map().items(),
                                                    key=lambda kv: kv[1])
                        if mod.params[sl].active]
+
+    @staticmethod
+    def dry_control(mod, vals):
+        """The wet/dry control that is sitting at zero, if one is.
+
+        SIX of the eleven stock effects ship with their wet control at 0 --
+        PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND)
+        -- so pressing `r` on them plays the source back unchanged. That is
+        FAITHFUL: the defaults are read from the firmware's own descriptor
+        (tools/remix/stock.py), an unmodified unit really does start them
+        fully dry, and seeding a different value here would make the bench
+        lie about the page it is drawing beside. But it reads as "this effect
+        does nothing", which is what it cost on 2 Sep 2026. So say it.
+        """
+        if mod is None:
+            return None
+        for name in ("MIX", "SEND"):
+            if name in vals and vals[name] == 0:
+                return name
+        return None
 
     def selected_module(self):
         """The unit pane follows whichever pane the cursor is in -- point at
@@ -342,10 +424,17 @@ class BenchScreen(Screen):
 
     # ---- render ----------------------------------------------------------
     def rerender(self):
+        """One pass over the three panes.
+
+        problems() runs the ledger and costs ~2.4 ms (measured 2 Sep 2026);
+        three panes asking it independently made every keystroke pay ~7 ms
+        for one answer. Compute it here and hand it down.
+        """
         st = self.app.state
+        probs = st.problems()
         self._pane_available(st)
-        self._pane_loaded(st)
-        self._pane_unit(st)
+        self._pane_loaded(st, probs)
+        self._pane_unit(st, probs)
         self.query_one("#status", Static).update(f"[dim]{escape(st.msg)}[/]")
 
     def _title(self, text, pane):
@@ -371,7 +460,7 @@ class BenchScreen(Screen):
         out.append("[dim]enter SWAPS with ▸ in LOADED[/]")
         self.query_one("#pane_avail", Static).update("\n".join(out))
 
-    def _pane_loaded(self, st):
+    def _pane_loaded(self, st, probs):
         rows = self.loaded_rows()
         name = st.loaded_name or "unsaved"
         out = [self._title(f"LOADED · {name}", LOADED), ""]
@@ -421,10 +510,10 @@ class BenchScreen(Screen):
                 pos += 1
                 out.append(f"[dim] {pos:>2} {cname:<13}FX2[/]")
         out.append("")
-        out.append(self._ledger_line(st))
+        out.append(self._ledger_line(st, probs))
         self.query_one("#pane_load", Static).update("\n".join(out))
 
-    def _ledger_line(self, st):
+    def _ledger_line(self, st, probs):
         """The fit, the blocker and the build state, in ONE line.
 
         This pane used to close with five: a donor-region budget, a ● legend,
@@ -433,7 +522,6 @@ class BenchScreen(Screen):
         Only two questions are actually live while swapping: does this fit,
         and is the panel on the right showing it yet. The rest moved to `?`.
         """
-        probs = st.problems()
         if self.untouched_stock(probs):
             return "[dim]stock — swap a module in to build it[/]"
         if probs:
@@ -453,7 +541,7 @@ class BenchScreen(Screen):
                 f"{n} {f} free" for n, _u, f in st.regions) + "[/]"
         return "[dim]a stock chooser: 14 effects, no modules[/]"
 
-    def _pane_unit(self, st):
+    def _pane_unit(self, st, probs):
         mod = self.selected_module()
         if mod is None:
             self.query_one("#pane_unit", Static).update(
@@ -477,7 +565,7 @@ class BenchScreen(Screen):
             here = self.pane == UNIT and i == self.cur[UNIT]
             if name == "SOURCE":
                 src = (self.app.source.name if self.app.source
-                       else "(none — put wavs in out/dry/)")
+                       else f"(none — no wavs in {source_dir()})")
                 line = f" SOURCE {escape(src)}"
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
@@ -495,11 +583,14 @@ class BenchScreen(Screen):
             out.append(f"[reverse]{line}[/]" if here else line)
         if not knobs:
             out.append("[dim] (no drawn parameters)[/]")
+        dry = self.dry_control(mod, vals)
+        if dry:
+            out.append(f"[bold]⚠ {dry} is 0 — this renders DRY[/]")
         if self.pane == UNIT and knobs:
             name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
-            hint = ("the wav auditioned through this effect — left/right "
-                    "cycles what is in out/dry/" if name == "SOURCE"
-                    else rig.knob_doc(mod, name) or "")
+            hint = (f"the wav auditioned through this effect — left/right "
+                    f"cycles {source_dir()}, d changes it"
+                    if name == "SOURCE" else rig.knob_doc(mod, name) or "")
             out.append("")
             out.append(f"[dim]? {escape(hint)}[/]")
         out.append("")
@@ -507,11 +598,40 @@ class BenchScreen(Screen):
                    if self.pane == UNIT else
                    "[dim]tab here to change values and audition[/]")
         out.append("")
-        out += self._preview(mod)
+        out += self._preview(mod, probs)
         self.query_one("#pane_unit", Static).update("\n".join(out))
 
     # ---- the emulated panel ---------------------------------------------
-    def _preview(self, mod):
+    def _panel(self, mode, effect_id):
+        """The firmware's own draw of one page, CACHED.
+
+        ⚠️ This is what made a HELD arrow key lag. render_fx2 costs 15-96 ms
+        (mean 32; render_fx1 16, render_menu 8 -- measured 2 Sep 2026), and
+        rerender() ran it on every keystroke, so under key repeat the work
+        per key exceeded the repeat interval and the UI fell behind the key,
+        then kept stepping after release. Single presses always felt fine,
+        which is why it read as "slow when holding" rather than as latency.
+
+        Nothing a keystroke does can change this picture: knob VALUES draw as
+        dial graphics the string-capture hook cannot read (docs/EMU.md), so
+        the page depends only on WHICH page, WHICH effect, and which boot.
+        """
+        key = (mode, effect_id, self.synced)
+        if self._panel_cache[0] == key:
+            return self._panel_cache[1]
+        import emu_bringup
+        r = self.app.boot
+        if mode == "MENU":
+            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, 0)
+        elif mode == "FX1":
+            draws = emu_bringup.render_fx1(r, track=4, effect_id=0x04)
+        else:
+            draws = emu_bringup.render_fx2(r, track=4, effect_id=effect_id)
+        grid = emu_bringup.layout_screen(draws)
+        self._panel_cache = (key, grid)
+        return grid
+
+    def _preview(self, mod, probs):
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
         head = [f"preview {modes}  [dim](p)[/]",
@@ -522,9 +642,8 @@ class BenchScreen(Screen):
         # LOADED pane and reads as "why are those loaded?". The answer is no
         # longer to explain it -- ensure_sync() rebuilds -- but while that is
         # in flight there is still nothing honest to show.
-        self.ensure_sync()
+        self.ensure_sync(probs)
         r = self.app.boot
-        probs = self.app.state.problems()
         if self.untouched_stock(probs):
             return head[:1] + ["[dim]swap a module in and this draws it[/]"]
         if probs:
@@ -537,12 +656,8 @@ class BenchScreen(Screen):
         if not r.reached_handoff:
             return head + ["[bold]did not reach the RTOS handoff[/] — a "
                            "patch may have broken early init"]
-        import emu_bringup
-        if self.preview == "MENU":
-            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, 0)
-        elif self.preview == "FX1":
-            draws = emu_bringup.render_fx1(r, track=4, effect_id=0x04)
-        else:
+        effect_id = None
+        if self.preview == "FX2":
             if mod.menu is None:
                 return head + ["[dim]no chooser row: this module patches the "
                                "firmware rather than adding an effect[/]"]
@@ -552,9 +667,8 @@ class BenchScreen(Screen):
                 # FALLBACK, so the firmware would draw a convincing picture
                 # of the wrong effect (CLAUDE.md, 12 Aug 2026).
                 return head[:1] + ["[dim]not in the image yet[/]"]
-            draws = emu_bringup.render_fx2(r, track=4,
-                                           effect_id=mod.menu.fx2_id)
-        grid = emu_bringup.layout_screen(draws)
+            effect_id = mod.menu.fx2_id
+        grid = self._panel(self.preview, effect_id)
         return head + ["." + "-" * 44 + "."] + \
             ["|" + escape(ln.ljust(44)) + "|" for ln in grid] + \
             ["'" + "-" * 44 + "'"]
@@ -573,17 +687,18 @@ class BenchScreen(Screen):
         self.gen += 1
         self.set_timer(0.35, self.ensure_sync)
 
-    def ensure_sync(self):
+    def ensure_sync(self, probs=None):
         """Start the rebuild if the image is behind and nothing is in the
         way. Idempotent and cheap -- rerender() calls it, so a kick that
         arrives during a render or a build is simply picked up by the next
-        one rather than queued."""
+        one rather than queued. `probs` is rerender's already-computed
+        answer; the timer path has none and pays for its own."""
         if self.syncing is not None or self.synced == self.gen:
             return
         if self.app.rendering:
             return          # both write out/mainos_bus.bin; the render's
                             # closing rerender() will kick this again
-        if self.app.state.problems():
+        if self.app.state.problems() if probs is None else probs:
             self.synced, self.app.boot = self.gen, None
             return          # it would not build; the ⚠ line says why
         self.syncing = self.gen
@@ -808,6 +923,40 @@ class BenchScreen(Screen):
                 self.schedule_sync()
             self.rerender()
         self.app.push_screen(Chooser("unimplemented ids alias to:", opts), done)
+
+    def action_source_dir(self):
+        """Point the SOURCE row at another folder, and remember it.
+
+        A bench is used on whatever material is to hand; out/dry/ is a good
+        default, not a permanent one. Remembered in out/_audition/
+        workbench.json, and WORKBENCH_SOURCES overrides both.
+        """
+        st = self.app.state
+        cur = source_dir()
+
+        def chosen(text):
+            if not text:
+                return
+            # RESOLVED before it is stored: a relative path would be read
+            # back against whatever directory the workbench is next started
+            # from, and `make remix` being run from the repo root is a
+            # convention, not a guarantee.
+            d = pathlib.Path(text.strip()).expanduser()
+            d = d.resolve() if d.exists() else d
+            if not d.is_dir():
+                st.msg = f"not a directory: {d}"
+            elif not sorted(d.glob("*.wav")):
+                st.msg = f"no .wav files in {d}"
+            else:
+                cfg = load_config()
+                cfg["source_dir"] = str(d)
+                save_config(cfg)
+                files = wav_sources(d)
+                self.app.source = files[0] if files else None
+                st.msg = f"{len(files)} wavs from {d}"
+            self.rerender()
+        self.app.push_screen(
+            TextPrompt("source folder for the SOURCE row:", str(cur)), chosen)
 
     def action_help(self):
         self.app.push_screen(HelpScreen("bench"))

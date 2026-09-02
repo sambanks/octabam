@@ -194,9 +194,42 @@ doc, and its drawn parameters with values — `left`/`right` adjusts,
 `shift` for ×10. **Values live per module**, seeded from the manifest
 defaults (a stale default polluted every shimmer measurement until Round 12).
 
-**`SOURCE` is the first row**: `left`/`right` cycles the wavs in `out/dry/`,
-so choosing what you audition on is one keypress from the knobs. `r` renders
-the effect over it and plays it; `space` replays.
+**`SOURCE` is the first row**: `left`/`right` cycles the wavs in the source
+folder, so choosing what you audition on is one keypress from the knobs. `r`
+renders the effect over it and plays it; `space` replays.
+
+**`d` points the source folder somewhere else** and remembers it in
+`out/_audition/workbench.json`; `WORKBENCH_SOURCES` overrides both. The
+default is `out/dry/`, the curated dry set — a good default, not a permanent
+one, since a bench gets used on whatever material is to hand. A path that is
+not a directory, or holds no wavs, is refused and the old one stands.
+
+⚠️ **Six of the eleven stock effects render DRY at their defaults** —
+PHASER, FLANGER, CHORUS and COMB sit at `MIX 0`, SPATIALIZER and DELAY at
+`SEND 0` — so pressing `r` on one plays the source back unchanged, which
+reads as "this effect does nothing" (it cost a report on 2 Sep 2026). **That
+is faithful and is not fixed by seeding a different value**: stock defaults
+are read from the firmware's own descriptor (`tools/remix/stock.py`), an
+unmodified unit really does start them fully dry, and inventing a value here
+would make the bench lie about the page it draws beside. The UNIT pane says
+`⚠ MIX is 0 — this renders DRY` instead. None of *our* modules default this
+way.
+
+**Stepping knobs**: `left`/`right` is ±1 and **`shift`+`left`/`right` is
+±10**. Holding the key runs; ~280 steps/second is sustainable (below), so
+key repeat is the limit, not the workbench.
+
+⚠️ **Holding an arrow key used to lag, and the cause was the emulated
+panel.** `rerender()` called `render_fx2` on *every* keystroke — 15–96 ms,
+mean 32 (`render_fx1` 16, `render_menu` 8; measured 2 Sep 2026) — plus three
+independent `problems()` calls at 2.4 ms each. Under key repeat the work per
+key exceeded the repeat interval, so the UI fell behind the held key and kept
+stepping after release; single presses always felt fine, which is why it
+presented as "slow when holding" rather than as latency. **Nothing a keystroke
+does can change that picture** — knob *values* draw as dial graphics the
+string-capture hook cannot read — so the panel is now cached on (page,
+effect id, build) and `problems()` is computed once per pass. Measured
+A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
 
 Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
 `FX2`, then `MENU` — showing the firmware's own draw of that page.
@@ -374,7 +407,8 @@ through `rich.markup.escape`.
 - DELAY (stock) has no local render (ColdFire-side); LO-FI renders at
   +6 dB at zero settings (unexplained).
 - A/B marks attach only to the most recent render (no history cursor).
-- No browse-anywhere source picker (one fixed directory, `out/dry/`).
+- The source picker takes one directory at a time (`d`), not a tree —
+  no recursion into subfolders and no in-TUI file browser.
 - Wet-only rendering is ChonVerb-only.
 - The emulator limits listed above (values, key injection, delay page
   under SPEC).
