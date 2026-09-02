@@ -387,11 +387,23 @@ Budget
  cave      2,202 B free
 ```
 
-Four scarce things and only four: the **two donor regions** (one per payload),
-the **FX2 buffer slots** per core, the **chooser rows**, and the **ColdFire
-cave**. Everything else is unbounded in practice. Read from the build's own
-report wherever possible, because the build is the only thing that knows
-where the cursor actually stopped.
+**Every row is: what exists, minus what this selection loaded.** Nothing is a
+constant and nothing is a leftover from an earlier build. Four scarce things
+and only four — the **two donor regions** (one per payload), the **FX2 buffer
+slots** per core, the **chooser rows**, and the **ColdFire cave**. Everything
+else is unbounded in practice.
+
+⚠️ **A listed reverb is LOADED.** The build reports the whole 2,724 as free
+because nothing of *ours* is placed yet — but PLATE, SPRING and DARK REV's
+code is what occupies the region, so a reverb you keep in the chooser is
+spending its own words. A stock chooser holding all three therefore has **0
+free**, not 2,724, and the row names the one you would lose first.
+
+⚠️ **One place the plain subtraction is too generous.** The region packs from
+PLATE upward, so holding a *low* reverb makes the space above it unreachable
+even though it is unoccupied — keeping PLATE alone leaves 2,130 words by size
+and **0 you can actually place**. The figure shown is the placeable one; it
+equals the subtraction for every other combination (checked for all four).
 
 ⚠️ **The buffer rows count what a MODULE pins, not slots in use.** ChonVerb
 holds all four of its core's, BongDelay two of its core's, Nimbus two of

@@ -1160,8 +1160,13 @@ def main():
     if _lbl:
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
-              f"({_lbl_top - max(_cave_top, cave_end)} B), "
-              f"{cave_limit - _lbl_top} B of cave left")
+              f"({_lbl_top - max(_cave_top, cave_end)} B)")
+    # ALWAYS report the headroom, even when nothing was planted. It used to
+    # ride on the label-formatter line, so a remix with no labelled select
+    # (SEND alone, say) reported no cave figure at all and the workbench's
+    # budget had a hole in it -- for a selection that builds perfectly well.
+    print(f"  cave: 0x{_lbl_top:08x}..0x{cave_limit:08x}, "
+          f"{cave_limit - _lbl_top} B of cave left")
 
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its

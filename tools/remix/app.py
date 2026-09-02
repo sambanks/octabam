@@ -754,28 +754,46 @@ class BenchScreen(Screen):
             return (f" {label:<{W}}[{colour}]" + "#" * bar_full + "[/][dim]"
                     + "." * (bar_len - bar_full) + f"[/]  {tail}")
 
+        # EVERY ROW HERE IS: what exists, minus what this selection loaded.
+        # Nothing is a constant and nothing is a build's leftover.
+        #
+        # ⚠️ A LISTED REVERB IS LOADED. The build reports the whole 2,724 as
+        # free because nothing of OURS is placed yet -- but PLATE, SPRING and
+        # DARK REV's code is what occupies the region, so a reverb you keep
+        # in the chooser is spending its own words. Subtract them like
+        # anything else. That is the correction to "2724 free" on a stock
+        # chooser, which called the region yours while the three effects
+        # living in it were still listed.
+        #
+        # ⚠️ AND ONE PLACE THE PLAIN SUBTRACTION IS TOO GENEROUS: the region
+        # packs from PLATE upward, so holding a LOW reverb makes the space
+        # above it unreachable even though it is unoccupied. Keeping PLATE
+        # alone leaves 2,130 words by size and 0 you can actually place. The
+        # placeable figure is the offset of the lowest reverb kept, which
+        # equals the subtraction for every other combination (verified for
+        # all four).
+        held = [c for c in stock.CONSUMED if c in st.sel]
+        cap = min((stock.consumed_at(c) for c in held), default=DONOR_WORDS)
+        nxt = min(held, key=stock.consumed_at) if held else None
+
+        def words_row(n, used):
+            free = max(0, cap - used)
+            fill = min(20, round(20 * used / DONOR_WORDS))
+            edge = min(20, round(20 * cap / DONOR_WORDS))
+            c = OK if free > 400 else WARN if free > 32 else BAD
+            bar = (f"[{c}]" + "#" * fill + "[/][dim]" + "." * (edge - fill)
+                   + "[/][dim red]" + "-" * (20 - edge) + "[/]")
+            why = (f"  [dim]before {titlecase(nxt)} goes[/]" if nxt and free
+                   else f"  [dim]{titlecase(nxt)} holds the rest[/]" if nxt
+                   else "")
+            return f" {'words ' + n:<{W}}{bar}  {free:>4} free{why}"
+
         if st.regions:
-            for n, used, free in st.regions:
-                fill = min(20, round(20 * used / max(used + free, 1)))
-                c = OK if free > 400 else WARN if free > 32 else BAD
-                out.append(row(f"words {n}", fill, 20, c, f"{free:>4} free"))
+            for n, used, _f in st.regions:
+                out.append(words_row(n, used))
         elif not [m for m in st.selected if m.dsp is not None]:
-            # ⚠️ "????  not built" for a STOCK chooser was a non-answer to a
-            # question with an exact answer. A stock row places no code --
-            # no clone, no words, its dispatch is already in the image -- so
-            # a selection with no modules of ours uses ZERO of the donor
-            # region, on both payloads, and no build is needed to say so.
-            # The "????" only ever appeared here, because that is the one
-            # selection the build refuses.
-            # ⚠️ "all of it" was wrong-headed: the region is never EMPTY.
-            # It holds PLATE+SPRING+DARK's own code, which is exactly why it
-            # is the donor region. "Free" here means "yours to overwrite",
-            # not "unoccupied" -- and reading it as the latter is what
-            # prompted "so the stock doesn't use any of those resources?".
             for n in ("A", "B"):
-                out.append(row(f"words {n}", 0, 20, OK,
-                               f"{DONOR_WORDS:>4} free  "
-                               f"[dim]= the 3 reverbs' code[/]"))
+                out.append(words_row(n, 0))
         else:
             out.append(f" {'words':<{W}}[dim]"
                        + "?" * 20 + "[/]  [dim]not built[/]")
@@ -820,11 +838,13 @@ class BenchScreen(Screen):
                        f"{taken} pinned of 4  [dim]tracks {tracks}[/]{also}")
 
         # Rows are countable without a build; the cave is not.
-        rows = (st.chooser_rows if st.chooser_rows is not None
-                else len(st.menu_modules))
-        c = OK if rows < 24 else WARN if rows < 31 else BAD
-        out.append(f" {'rows':<{W}}[{c}]{rows}[/][dim] of 31 "
-                   f"(the long chooser cave)[/]")
+        # Same rule: 31 exist, this selection loaded N.
+        used_rows = (st.chooser_rows if st.chooser_rows is not None
+                     else len(st.menu_modules))
+        free_rows = 31 - used_rows
+        c = OK if free_rows > 7 else WARN if free_rows else BAD
+        out.append(f" {'rows':<{W}}[{c}]{free_rows}[/][dim] free of 31 "
+                   f"({used_rows} loaded)[/]")
         # Same again for the cave: a stock row clones no descriptor, plants
         # no formatter and cuts no patch, so with no modules of ours the
         # region is untouched. Said in words rather than a number, because
@@ -843,6 +863,8 @@ class BenchScreen(Screen):
         # instantiated effect per block, which no image can reserve. These
         # are the ones a MODULE holds fixed, which is the part composing a
         # remix actually decides.
+        out.append("[dim] # loaded by a module · - held by a listed reverb "
+                   "· . free[/]")
         out.append("[dim] pinned = held by a module; stock effects take "
                    "theirs at runtime[/]")
         self._paint("#pane_budget", out)
