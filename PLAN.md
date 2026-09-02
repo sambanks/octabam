@@ -349,6 +349,14 @@ feedback. **FILTER is the outlier**: 727 words, the default FX1 effect, ~260
 cycles. Highest value, highest risk. ✅ Taking the three reverbs cost FX1
 nothing — they were never on its menu; FX1's ten effects are the whole pool.
 
+✅ **A module can be listed on FX1 since 3 Sep 2026** — `Remix.fx1`, the
+chooser list relocated into the cave with its three `lea` refs repointed and
+FX1's own id and cursor tables written (`docs/MODULES.md`). It costs no
+words; the bill is cycles, and `make cycles` now prices FX1's four slots, so
+the trade is visible before it is made. Emulator-verified, **unflashed**;
+`remixes/bothslots.py` is the worked example. That is orthogonal to the
+consolidation below, which is about freeing FX1's own words.
+
 ⚠️ Sequence FX1 ambition after the burn sweep (§3) — its real ceiling is
 cycles ×4. Note the spare HAS been measured per core since 23 Aug 2026
 (704 with the reverb + 4× FILTER, 1,088 with 2×, one FILTER = 192 —
@@ -669,6 +677,27 @@ worth keeping.
   then verified the v6 seam-click fix. (The old blocker stands for a
   freeze toggled MID-render more than once; one engage per render is what
   the hook does.)
+- **BACKLOG (Sam, 3 Sep 2026): "workbench" is a name nobody reviewed.** It
+  arrived with the 31 Aug redesign and spread to `docs/WORKBENCH.md`, the
+  pane copy, the `?` overlay and a dozen comments without anyone deciding it
+  was the right word. The thing is a **remixer** — that is what the project
+  calls the concept everywhere else (`make remix`, `remixes/`,
+  `tools/remix/`), and the entry point is already `make remix`. Renaming is
+  cheap in the UI copy and the doc, and it removes a second vocabulary for
+  one tool. Decide the name first; the rename is mechanical after that.
+- **BACKLOG (Sam, 3 Sep 2026): a freshly flashed unit keeps drawing the
+  effect you had before.** After a flash the track still shows the PREVIOUS
+  effect's controls, and only selecting SEND (or anything else) redraws it.
+  Not yet investigated. The shape to check first: the stored per-part `fx2_id`
+  survives the flash (it lives in the project, not the OS), so the id resolves
+  through the NEW image's tables — a remix that dropped that module aliases it
+  to the fallback, and one that kept it on a different row draws the right
+  page but from a stale cursor. Either way, what is on screen is a page
+  STAGED at part-load time and not re-staged when the image under it changed.
+  Adjacent to "a slot can draw a knob and publish nothing" and to the
+  `ID2POS`/`FX2_IDS` pair that `verify_menu` already checks agree. **Polish
+  round, not a defect hunt** — decide what a flashed unit SHOULD show before
+  deciding what to change.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is the design rule;
   no product configuration has this.

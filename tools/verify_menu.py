@@ -38,6 +38,7 @@ import os, pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE  # noqa: E402
 from remix import registry as _reg  # noqa: E402
+from remix.schema import NO_FALLBACK as _NO_FALLBACK  # noqa: E402
 
 STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 BUILT = pathlib.Path("out/mainos_bus.bin")
@@ -52,6 +53,9 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 FX1_ID_LOOKUP = 0x400d5f58
 FX1_CHOOSER = 0x400d6060
+FX1_ID2POS = 0x400d60d0                 # FX1's own cursor-row table
+FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
+FX1_NONE = 0x400d4618
 
 # name -> (effect id, chooser position), derived from the SELECTED REMIX
 # (REMIX=<name> env, same default as the build) -- the image being verified
@@ -63,7 +67,13 @@ REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
 _MODS = _reg.modules()
 _ORDER = [k for k in REMIX.modules if _MODS[k].menu is not None]
 EXPECT = {k: (_MODS[k].menu.fx2_id, i) for i, k in enumerate(_ORDER)}
-N_REAL = len(EXPECT)                    # no NONE entry any more
+# WITH NO FALLBACK the firmware's own NONE goes back at row 0, as a stock
+# unit has it, so the list is one longer than the modules and every position
+# shifts by one.
+_NONE_ROW = 1 if REMIX.fallback == _NO_FALLBACK else 0
+if _NONE_ROW:
+    EXPECT = {k: (i, p + 1) for k, (i, p) in EXPECT.items()}
+N_REAL = len(EXPECT) + _NONE_ROW
 # STOCK rows (tools/remix/stock.py): the build writes their list row and
 # cursor position only, so what is checked for them is that everything
 # else -- descriptor bytes, FX2_IDS entry -- is byte-identical to stock.
@@ -160,11 +170,20 @@ def main():
 
     print(f"\n=== id 0 (a fresh/unassigned track) is aliased to the remix's "
           f"fallback ({FALLBACK}), so every track degrades to it by default ===")
-    fb_p = rd32(img, FX2_IDS + EXPECT[FALLBACK][0] * 4)
+    # ⚠️ A REMIX WITH NO BUS NAMES NO MODULE AS ITS FALLBACK (schema.NO_FALLBACK)
+    # and gets the firmware's own NONE instead, restored at list row 0. This
+    # script assumed a module every time and died with a KeyError on `warped`
+    # and every other no-bus remix -- a traceback, not a failed check, so
+    # `REMIX=warped make verify` reported nothing at all. Found 3 Sep 2026.
+    if FALLBACK == _NO_FALLBACK:
+        fb_p, fb_pos = FX1_NONE, 0
+    else:
+        fb_p, fb_pos = rd32(img, FX2_IDS + EXPECT[FALLBACK][0] * 4), \
+            EXPECT[FALLBACK][1]
     check(rd32(img, FX2_IDS + NONE_ID * 4) == fb_p,
           f"FX2_IDS[0x00] == {FALLBACK}'s descriptor (0x{fb_p:08x})")
-    check(rd32(img, ID2POS + NONE_ID * 4) == EXPECT[FALLBACK][1],
-          f"ID2POS[0x00] == {FALLBACK}'s position ({EXPECT[FALLBACK][1]})")
+    check(rd32(img, ID2POS + NONE_ID * 4) == fb_pos,
+          f"ID2POS[0x00] == {FALLBACK}'s position ({fb_pos})")
 
     print("\n=== FUN_40052474: list[cursor] and FUN_4005996c/FUN_400326d4's "
           "independent FX2_IDS[id] lookup must resolve to the SAME "
@@ -292,7 +311,7 @@ def main():
                       f"{name}: p{i} count {cnt} is a KNOB, so both formatters "
                       f"are 0 (got 0x{f1:08x}/0x{f2:08x})")
 
-    print("\n=== FX1 untouched: its own id lookup and chooser list, and every "
+    print("\n=== FX1: its own id lookup and chooser list, and every "
           "donor's OWN descriptor bytes outside our clone caves, are "
           "byte-identical to the pristine image ===")
     # A DECLARED REPLACEMENT owns its target's two FX1 entries and nothing
@@ -303,7 +322,19 @@ def main():
     _rep_ids = {m.menu.fx2_id for m in _MODS.values()
                 if m.menu is not None and m.menu.replaces
                 and m.key in REMIX.modules}
+    # A REMIX MAY ALSO ASK FOR FX1 ROWS OUTRIGHT (Remix.fx1), which relocates
+    # the list and writes FX1's id and cursor tables. Those edits are checked
+    # in full below; the byte-equality sweep skips exactly the entries the
+    # remix declared, so an UNdeclared change to FX1 still fails.
+    _fx1_ids = {_MODS[k].menu.fx2_id for k in REMIX.fx1}
     _skip = set()
+    for _eid in _fx1_ids:
+        for _t in (FX1_ID_LOOKUP, FX1_ID2POS):
+            _a = _t + _eid * 4 - BASE
+            _skip.update(range(_a, _a + 4))
+    if REMIX.fx1:
+        # The stock list is left where it is; the refs point elsewhere.
+        _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + 0x40))
     for _eid in _rep_ids:
         _a = FX1_ID_LOOKUP + _eid * 4 - BASE
         _skip.update(range(_a, _a + 4))
@@ -320,12 +351,62 @@ def main():
                if i not in _skip and img[i] != stock[i]]
         check(not bad, what + (f" -- {len(bad)} byte(s) moved that no "
                                f"replacement declared" if bad else ""))
+    _except = ([" apart from declared replacements"] if _rep_ids else []) \
+        + ([" apart from the rows this remix asked for"] if REMIX.fx1 else [])
+    _except = " and".join(_except)
     _same(FX1_ID_LOOKUP - BASE, 0x80,
-          "FX1 id lookup table (0x400d5f58, 32 entries) unchanged"
-          + (" apart from declared replacements" if _rep_ids else ""))
+          "FX1 id lookup table (0x400d5f58, 32 entries) unchanged" + _except)
     _same(FX1_CHOOSER - BASE, 0x40,
-          "FX1 chooser list (0x400d6060, 15 entries) unchanged"
-          + (" apart from declared replacements" if _rep_ids else ""))
+          "FX1 chooser list (0x400d6060, 11 entries) unchanged" + _except)
+    # ==== FX1 rows this remix asked for ==================================
+    # The same shape as the FX2 checks above, because it is the same
+    # mechanism one table along: three `lea` sites must agree on a relocated
+    # list, and FX1's own id lookup must resolve each row to the SAME
+    # descriptor the list does -- "a slot can draw a knob and publish
+    # nothing" is what a disagreement between them looks like on the unit.
+    print("\n=== FX1 rows (Remix.fx1): list relocated, its three refs in "
+          "agreement, and FX1's own id and cursor tables written ===")
+    if not REMIX.fx1:
+        print("  --   this remix asks for none; the checks below prove FX1 "
+              "is byte-identical to stock")
+    else:
+        _live = rd32(img, FX1_LIST_REFS[0])
+        check(_live != FX1_CHOOSER,
+              f"FX1 list relocated out of 0x{FX1_CHOOSER:08x} "
+              f"(to 0x{_live:08x}) -- it cannot grow in place")
+        for _r in FX1_LIST_REFS:
+            check(rd32(img, _r) == _live,
+                  f"FX1 list-ref operand at 0x{_r:08x} == 0x{_live:08x}")
+        _stock_n = 0
+        while rd32(stock, FX1_CHOOSER + _stock_n * 4):
+            _stock_n += 1
+        _live_list, _i = [], 0
+        while rd32(img, _live + _i * 4):
+            _live_list.append(rd32(img, _live + _i * 4))
+            _i += 1
+        check(_live_list[:_stock_n] ==
+              [rd32(stock, FX1_CHOOSER + j * 4) for j in range(_stock_n)],
+              f"stock's {_stock_n} FX1 rows are unchanged and still first")
+        check(len(_live_list) == _stock_n + len(REMIX.fx1),
+              f"FX1 list is {_stock_n} + {len(REMIX.fx1)} = "
+              f"{_stock_n + len(REMIX.fx1)} rows (got {len(_live_list)})")
+        for _n, _k in enumerate(REMIX.fx1):
+            _eid = _MODS[_k].menu.fx2_id
+            _pos = _stock_n + _n
+            _ids = rd32(img, FX1_ID_LOOKUP + _eid * 4)
+            check(_ids != FX1_NONE and _ids == _live_list[_pos],
+                  f"{_k}: FX1_IDS[0x{_eid:02x}] and FX1 list row {_pos} "
+                  f"resolve to the same descriptor (0x{_ids:08x})")
+            check(rd32(img, FX1_ID2POS + _eid * 4) == _pos,
+                  f"{_k}: FX1's cursor table puts id 0x{_eid:02x} on row "
+                  f"{_pos} -- without it the chooser opens on row 0")
+            # THE SAME DESCRIPTOR BOTH MENUS USE. FX1 and FX2 keep separate
+            # id tables; pointing them at different clones would draw two
+            # different pages for one effect.
+            check(_ids == rd32(img, FX2_IDS + _eid * 4),
+                  f"{_k}: FX1 and FX2 resolve id 0x{_eid:02x} to the SAME "
+                  f"descriptor, as stock does for the ten shared effects")
+
     for name, donor_E in (("SPRING", 0x400d5726), ("DARK", 0x400d58b8),
                            ("FILTER", 0x400d4772)):
         check(img[donor_E - BASE:donor_E - BASE + 0x192] ==

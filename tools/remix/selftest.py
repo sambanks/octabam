@@ -388,6 +388,43 @@ def main():
                   f"{', '.join(_bus)}")
     print(f"  [PASS] every remix's fallback matches whether it has a bus")
 
+    # ---- FX1 rows (Remix.fx1) -------------------------------------------
+    # The schema half. The BUILD half -- the relocated list, FX1's own id and
+    # cursor tables, and stock's eleven rows unchanged and still first -- is
+    # tools/verify_menu.py, which needs a built image and so runs there.
+    for _bad_fx1, _why in ((("NOT IN IT",), "a key that is not in the remix"),
+                           (("WARPFOLD", "WARPFOLD"), "a duplicate key")):
+        try:
+            schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
+                         fallback=schema.NO_FALLBACK, fx1=_bad_fx1)
+            bad += 1
+            print(f"  [FAIL] Remix(fx1=...) accepted {_why}")
+        except ValueError:
+            print(f"  [PASS] Remix(fx1=...) refuses {_why}")
+    # A module of ours is FX2-only until a remix says otherwise, and then it
+    # is on both -- this is the derivation the workbench's menus column and
+    # every resource line read.
+    _wf = registry.modules()["WARPFOLD"]
+    if rig.menus(_wf) != (rig.FX2,):
+        bad += 1
+        print(f"  [FAIL] WarpFold is {rig.menus(_wf)} with no fx1 row")
+    elif rig.menus(_wf, {"WARPFOLD"}) != (rig.FX1, rig.FX2):
+        bad += 1
+        print(f"  [FAIL] WarpFold is {rig.menus(_wf, {'WARPFOLD'})} with one")
+    else:
+        print("  [PASS] an fx1 row moves a module from FX2 to FX1+FX2")
+    # A REPLACEMENT IS ALREADY ON FX1 and listing it again would duplicate
+    # the row; the build refuses it, and nothing shipped may do it.
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        for _k in _r.fx1:
+            _m = registry.modules()[_k]
+            if _m.is_stock or (_m.menu is not None and _m.menu.replaces):
+                bad += 1
+                print(f"  [FAIL] remix {_n!r} asks for an FX1 row for {_k}, "
+                      f"which already has one")
+    print("  [PASS] no remix asks for an FX1 row a module already has")
+
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():
         r = registry.remix(name)

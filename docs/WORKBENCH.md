@@ -165,13 +165,51 @@ The `FX1+FX2` column is which **chooser** the effect has a row on, derived
 from the pristine image rather than written down (`stock.fx1_ids()`). Stock
 gives the two slots different lists: ten effects on FX1, those ten plus
 DELAY and the three reverbs on FX2 — which is why taking the reverbs as
-donors cost FX1 nothing. **Our own modules are FX2-only, and that is a build
-limit, not a hardware one**: the DSP dispatch tables are indexed by the raw
-id and shared between the menus, so a module's code already runs from FX1
-the moment FX1 selects its id. What is missing is the panel side — FX1's
-15-entry chooser cannot grow in place and must be relocated to a cave
-(`tools/build_fx1.py` proved it can be), and no manifest field asks for a
-row. The real ceiling is cycles ×4 (`PLAN.md` §2).
+donors cost FX1 nothing.
+
+**`1` gives the highlighted effect a row on FX1 too** (3 Sep 2026), and the
+column follows. Our modules were FX2-only until then, and it was never a
+hardware limit: the DSP dispatch tables are indexed by the raw id and shared
+between the menus, so a module's code already ran from FX1 the moment FX1
+selected its id. What was missing was the panel side, for one mechanical
+reason — FX1's chooser list ends at `0x400d608c` and FX2's begins at
+`0x400d6090`, so it cannot grow where it sits. It is relocated into the cave
+instead, exactly as the FX2 list already is when it outgrows its own, and
+FX1's three `lea` references are repointed (`tools/build_fx1.py` proved that
+move standalone against the pristine image; `build_bus.py` does it now).
+
+It belongs to the **remix**, not to the module — which menu an effect appears
+on is a composition choice, like the chooser order beside it — so it is
+`Remix.fx1`, a tuple of module keys, written by `s` and read by `l`.
+`remixes/bothslots.py` is the worked example.
+
+**It costs no words and it is not free.** The code is placed either way; the
+bill is four bytes of cave per row plus the relocated list, and **cycles**.
+FX1 is four more slots on the same four tracks, so listing an effect on both
+menus can double the worst per-core load — WarpFold goes from `4×` to `8×`,
+404 to 808 of the 3,120 our code may spend. The Budget's `cycles` row prices
+it, which is why that row exists (`PLAN.md` §2 called this "the real ceiling
+is cycles ×4").
+
+Two things are refused rather than allowed to go wrong: a module that
+`replaces` a stock effect **already** has that effect's FX1 row (the build
+repoints both of FX1's tables in place), so asking for a second would list it
+twice; and a stock effect's FX1 row is stock's own business. `verify_menu`
+proves the rest — the list relocated, its three refs in agreement, stock's
+eleven rows unchanged and still first, FX1's id lookup and its **cursor**
+table written, and FX1 and FX2 resolving the id to the *same* descriptor.
+
+⚠️ **`tools/build_fx1.py`'s experiment never wrote FX1's cursor table** and
+that is a real gap, not a cosmetic one: `FX1_ID2POS` at `0x400d60d0` is the
+exact analogue of FX2's `ID2POS`, found 3 Sep 2026 by reading the four tables
+in address order (it is FX1's because DELAY and the three reverbs are zero
+there where `ID2POS` gives them rows). Without it a project with one of our
+effects stored on FX1 opens the chooser with the cursor on row 0.
+
+⚠️ **Seen only in the emulator.** The ColdFire emulator draws the FX1 chooser
+with the firmware's own code — `WarpFold78` as row 11 of a twelve-entry list,
+its own knob names on the page, the cursor opening on that row — which is the
+no-flash gate, not a hardware result.
 
 ### LOADED — the image being composed
 
@@ -224,7 +262,8 @@ safe one (it would *process* the unknown id), so the moment you add a module
 you add SEND too. The pane says so.
 
 `l` loads a remix (or `stock`), `s` saves the selection as one, `k` resets to
-stock, `f` picks the fallback explicitly, `c` runs `make check`. **There is no
+stock, `f` picks the fallback explicitly, `1` toggles the highlighted
+effect's FX1 row, `c` runs `make check`. **There is no
 build key** — see below.
 
 **The pane closes with ONE line**, which is either the per-payload budget, a

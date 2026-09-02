@@ -451,6 +451,11 @@ class BenchScreen(Screen):
         Binding("x", "fix", "fix it"),
         Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
+        # "1" for FX1, on the row the cursor is on. This is the other half
+        # of a GLOBAL remixer: until 3 Sep 2026 an effect of ours could only
+        # be reached from the FX2 slot, and only because FX1's chooser list
+        # could not grow where it sits.
+        Binding("1", "fx1", "FX1 row", show=False),
         Binding("l", "load", "load"),
         Binding("s", "save", "save"),
         Binding("k", "stock", "reset to stock", show=False),
@@ -780,7 +785,7 @@ class BenchScreen(Screen):
                 out.append(f"[dim {WARN}]── {g} ──[/]")
             here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
             mark = (f"[{OK}]✓[/]" if m.key in st.sel else " ")
-            menus = "+".join(rig.menus(m)) or "—"
+            menus = "+".join(rig.menus(m, st.fx1)) or "—"
             nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
             pad = " " * max(0, 13 - len(disp(m)))
             line = f" {mark} {nm}{pad} [dim]{menus}[/]"
@@ -805,7 +810,7 @@ class BenchScreen(Screen):
                 row = f"{pos:>2}"
             else:
                 row = " ·"                      # no chooser row (a CF patch)
-            menus = "+".join(rig.menus(m)) or "—"
+            menus = "+".join(rig.menus(m, st.fx1)) or "—"
             words = st.words.get(m.key)
             cost = f"{words:>5}w" if words else "      "
             fb = f"[{MARK}]◀fb[/]" if st.eff_fallback == m.key else ""
@@ -873,7 +878,7 @@ class BenchScreen(Screen):
         # `left`/`right` here is a real edit -- the order of these rows IS
         # the order of rows on the unit's chooser -- and it was documented
         # only in `?`, which is the one place a newcomer looks last.
-        out.append("[dim]enter removes · ← → moves the row[/]")
+        out.append("[dim]enter removes · ←→ order · 1 FX1 row[/]")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", self._fit("#pane_load", out, cur_line,
                                             head=head, tail=tail + 3))
@@ -1256,7 +1261,7 @@ class BenchScreen(Screen):
         bits = [titlecase(rig.category(mod))]
         if mod.menu:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
-            bits.append("+".join(rig.menus(mod)))
+            bits.append("+".join(rig.menus(mod, st.fx1)))
         tr = rig.track_range(mod)
         if len(tr):
             bits.append(f"tracks {tr.start}-{tr.stop - 1}")
@@ -1265,7 +1270,7 @@ class BenchScreen(Screen):
         # WHAT IT COSTS, while you are still deciding. "Will this fit beside
         # what I already have" is what the library pane is really asked, and
         # every answer used to arrive only as a refusal after adding it.
-        res = rig.resources(mod, st.words.get(mod.key))
+        res = rig.resources(mod, st.words.get(mod.key), st.fx1)
         if res:
             out.append(f"[{WARN}]{escape(' · '.join(res))}[/]")
         out.append("")
@@ -1512,7 +1517,7 @@ class BenchScreen(Screen):
         bits = [rig.category(mod)]
         if mod.menu is not None:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
-        bits += rig.resources(mod, st.words.get(mod.key))
+        bits += rig.resources(mod, st.words.get(mod.key), st.fx1)
         bits.append("in the image" if mod.key in st.sel else "not in the image")
         st.msg = f"{disp(mod)} — {' · '.join(bits)}"
 
@@ -1768,6 +1773,18 @@ class BenchScreen(Screen):
         if action == "fix":
             return bool(getattr(self, "_can_fix", False))
         return True
+
+    def action_fx1(self):
+        """Give the highlighted effect a row on FX1 too, or take it away."""
+        st = self.app.state
+        mod = self.selected_module()
+        if mod is None:
+            return
+        st.msg = st.toggle_fx1(mod.key)
+        if mod.key in st.sel:
+            st.loaded_name = ""
+            self.schedule_sync()         # it changes the image
+        self.rerender()
 
     def action_fix(self):
         """Apply the ⚠'s own advice."""

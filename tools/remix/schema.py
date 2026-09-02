@@ -549,6 +549,35 @@ class Remix:
     modules: tuple[str, ...]
     fallback: str                # module KEY that unimplemented ids alias to,
                                  # or NO_FALLBACK for the firmware's own NONE
+    # ---- which of them ALSO get a row on FX1 ------------------------------
+    # THE OTHER HALF OF "BOTH SLOTS", and it belongs to the REMIX rather than
+    # to the module: which menu an effect appears on is a composition choice,
+    # like the chooser order beside it, not a property of the code. The DSP
+    # dispatch is ONE table indexed by the raw id and shared by both menus,
+    # so a listed module's code ALREADY runs from FX1 -- what this adds is
+    # the panel side, which stock keeps in FX1's own tables.
+    #
+    # IT COSTS NO WORDS. Four bytes of cave per row, plus FX1's chooser list
+    # relocated into the cave (it ends at 0x400d608c with FX2's beginning at
+    # 0x400d6090, so it cannot grow in place -- tools/build_fx1.py proved the
+    # move standalone against the stock image). What it does cost is CYCLES:
+    # an FX1 effect runs on a track that is already running an FX2 one, so
+    # the worst per-core load can gain four more copies of it. cycle_count.py
+    # prices that, and the workbench's Budget row is where to look first.
+    #
+    # ⚠️ A `replaces` MODULE IS ALREADY ON FX1 and must not be listed here:
+    # it inherits the stock effect's row and has both of FX1's tables
+    # repointed in place, so a second row would list it twice.
+    #
+    # ⚠️ NOT FOR A MODULE THAT USES THE HOST'S BUFFER ALLOCATOR. FX1 and FX2
+    # keep SEPARATE allocator tables at different sizes (measured, X:0x255 in
+    # both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072. Code
+    # that reads `x:>$213` and assumes the FX2 size overruns its FX1
+    # allocation by 13,312 words. Everything of ours uses FIXED bases at
+    # 0x4000 and up, which an FX1 allocation (0x1000..0x3fff) physically
+    # cannot reach, so nothing is currently exposed to it -- but a module
+    # that starts using the allocator would be.
+    fx1: tuple[str, ...] = ()
 
     def __post_init__(self):
         if self.fallback != NO_FALLBACK and self.fallback not in self.modules:
@@ -557,3 +586,10 @@ class Remix:
                 f"the remix, so ids aliased to it would dispatch nowhere")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
+        for k in self.fx1:
+            if k not in self.modules:
+                raise ValueError(
+                    f"remix {self.name!r}: fx1={k!r} is not in the remix, so "
+                    f"there is no descriptor for FX1's row to point at")
+        if len(set(self.fx1)) != len(self.fx1):
+            raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")

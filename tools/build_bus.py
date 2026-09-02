@@ -117,6 +117,18 @@ FX2_IDS = 0x400d5fdc
 FX1_IDS = 0x400d5f58        # id-indexed, 32 slots; NONE for an FX2-only effect
 FX1_LIST = 0x400d6060       # the chooser list FX1 scrolls, NUL-terminated
 FX1_NONE = 0x400d4618       # the descriptor every unused id points at
+# FX1's OWN cursor-position table, the exact analogue of ID2POS below, found
+# 3 Sep 2026 by reading the four tables in address order: FX1_LIST (11
+# entries) at 0x400d6060, FX2_LIST (15) at 0x400d6090, then two 32-entry
+# id->row tables back to back. It is FX1's because its FX2-only ids are all
+# zero -- DELAY (0x08) and the three reverbs (0x14-0x16) -- where ID2POS
+# gives them rows 0x0b and 0x0c-0x0e. tools/build_fx1.py's experiment never
+# wrote it, which is a real gap: without it a project that has one of our
+# effects stored on FX1 opens the chooser with the cursor on row 0.
+FX1_ID2POS = 0x400d60d0
+# The `lea.l FX1_LIST,aN` sites, the FX1 counterparts of LIST_REFS. Measured
+# by tools/build_fx1.py, which repoints exactly these three.
+FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX2_LIST = 0x400d6090
 ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
@@ -1179,6 +1191,90 @@ def main():
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
               f"({_lbl_top - max(_cave_top, cave_end)} B)")
+    # ==== 1d. FX1 ROWS, for modules that asked for one =====================
+    # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
+    # the raw id and shared by the menus, so a module's CODE already runs from
+    # FX1 the moment FX1 selects its id -- and a REPLACEMENT already gets the
+    # row, because it inherits the stock effect's (above, in place). What was
+    # missing is a row for a module on a NEW id, and it was missing for one
+    # mechanical reason: FX1's list ends at 0x400d608c and FX2's begins at
+    # 0x400d6090, so it cannot grow where it is.
+    #
+    # So it moves, exactly as the FX2 list does when it outgrows NEW_LIST:
+    # rebuilt in the cave, three `lea` references repointed. That relocation
+    # is not new -- tools/build_fx1.py proved it standalone against the stock
+    # image (data only, 74 bytes changed) and it still applies today.
+    #
+    # It costs NO WORDS. The code is in the image either way; this is four
+    # bytes of cave per row plus the relocated list. What it does cost is
+    # CYCLES: an FX1 effect runs on a track that is already running an FX2
+    # one, so the worst per-core load can gain four more copies of it
+    # (tools/cycle_count.py, which prices FX1 slots for exactly this reason).
+    _fx1 = [n for n in ORDER if n in REMIX.fx1]
+    if _fx1:
+        # The remix names keys; only a module with a chooser row of its own
+        # has a descriptor for FX1's list to point at, and a REPLACEMENT
+        # already has FX1's tables repointed to it in place (above).
+        for _n in REMIX.fx1:
+            if _n not in ORDER:
+                sys.exit(f"fx1={_n!r}: it has no FX2 chooser row, so there "
+                         f"is no descriptor clone for FX1 to point at")
+            if _MODS[_n].menu.replaces:
+                sys.exit(f"fx1={_n!r}: it replaces stock "
+                         f"{_MODS[_n].menu.replaces}, which already gives it "
+                         f"that effect's FX1 row -- this would list it twice")
+            if _MODS[_n].is_stock:
+                sys.exit(f"fx1={_n!r}: a stock effect's FX1 row is stock's "
+                         f"own business; this build does not add or remove "
+                         f"one")
+        _old = []
+        _a = FX1_LIST
+        while rd32(_a):
+            _old.append(rd32(_a))
+            _a += 4
+            if len(_old) > 32:
+                sys.exit("FX1 chooser list has no terminator -- refusing")
+        _new = _old + [clone_addr[n] for n in _fx1] + [0]
+        _need = len(_new) * 4
+        if _lbl_top + _need > cave_limit:
+            sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
+                     f"{_need} B at 0x{_lbl_top:08x} and the cave ends at "
+                     f"0x{cave_limit:08x}")
+        if any(img[_lbl_top - BASE:_lbl_top - BASE + _need]):
+            sys.exit(f"FX1 chooser list cave at 0x{_lbl_top:08x} is not free")
+        _fx1_addr = _lbl_top
+        for _i, _v in enumerate(_new):
+            wr32(_fx1_addr + _i * 4, _v)
+        _lbl_top += _need
+        # REPOINT, having proved each site is what we think it is. A `lea.l
+        # <abs>.l,aN` is 0x4?f9 followed by the address, so the two bytes
+        # before the operand pin the instruction as well as the value.
+        for _r in FX1_LIST_REFS:
+            if rd32(_r) != FX1_LIST:
+                sys.exit(f"FX1 list ref at 0x{_r:08x} is 0x{rd32(_r):08x}, "
+                         f"not stock FX1_LIST -- refusing")
+            if bytes(img[_r - BASE - 2:_r - BASE]) not in (
+                    b"\x41\xf9", b"\x47\xf9", b"\x4b\xf9"):
+                sys.exit(f"FX1 list ref at 0x{_r:08x} is not preceded by a "
+                         f"lea.l opcode -- refusing")
+            wr32(_r, _fx1_addr)
+        # FX1 RESOLVES ITS OWN DESCRIPTOR AND ITS OWN CURSOR ROW. Writing
+        # only the list would draw the row and then open the stock NONE page
+        # under it -- "a slot can draw a knob and publish nothing", one table
+        # further along.
+        for _n in _fx1:
+            _slot = FX1_IDS + NEW_IDS[_n] * 4
+            if rd32(_slot) != FX1_NONE:
+                sys.exit(f"{_n}: FX1_IDS[0x{NEW_IDS[_n]:02x}] is "
+                         f"0x{rd32(_slot):08x}, not NONE -- this id is "
+                         f"already on FX1 and the row would be a duplicate")
+            wr32(_slot, clone_addr[_n])
+            wr32(FX1_ID2POS + NEW_IDS[_n] * 4, len(_old) + _fx1.index(_n))
+        print(f"  FX1 chooser = {len(_new) - 1} entries at 0x{_fx1_addr:08x} "
+              f"(stock's {len(_old)} + {', '.join(_fx1)}), "
+              f"{len(FX1_LIST_REFS)} refs repointed, id table and cursor "
+              f"rows written -- no words: the code is already placed")
+
     # ALWAYS report the headroom, even when nothing was planted. It used to
     # ride on the label-formatter line, so a remix with no labelled select
     # (SEND alone, say) reported no cave figure at all and the workbench's

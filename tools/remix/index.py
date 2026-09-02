@@ -61,6 +61,8 @@ def main():
         default = "  <- default" if name == registry.DEFAULT_REMIX else ""
         print(f"  {r.name:<12} {r.doc}{default}")
         print(f"      modules: {', '.join(r.modules)}")
+        if r.fx1:
+            print(f"      also on the FX1 chooser: {', '.join(r.fx1)}")
         print(f"      unimplemented ids fall back to: {r.fallback}")
         print()
     print("Build one with:  make bus REMIX=<name>")

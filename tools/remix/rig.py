@@ -101,7 +101,7 @@ def available(track: int) -> list:
 FX1, FX2 = "FX1", "FX2"
 
 
-def menus(mod) -> tuple[str, ...]:
+def menus(mod, fx1_rows=()) -> tuple[str, ...]:
     """The chooser(s) this module has a row on.
 
     FX1 and FX2 are two slots on the SAME track -- the payload split decides
@@ -115,15 +115,20 @@ def menus(mod) -> tuple[str, ...]:
     emulated firmware to draw the page. Everything below is about a module
     wanting a NEW row rather than an existing one.
 
-    Otherwise our modules are FX2-only, and that is a BUILD limit rather than
-    a hardware one. The DSP dispatch tables are indexed by the raw id and
-    SHARED between the two menus, so a module's code already runs from FX1
-    the moment FX1 selects its id (that is exactly how Rungs ran wherever
-    FX1 chose EQUALIZER). What is missing is the panel side: FX1's 15-entry
-    chooser cannot grow in place and has to be relocated to a cave
-    (`tools/build_fx1.py` proved it can be), and no manifest field asks for
-    a row. `verify_menu` asserts FX1's list and id lookup are byte-identical
-    to stock APART FROM the entries a declared replacement owns.
+    And since 3 Sep 2026 a REMIX can ask for the row outright: `Remix.fx1`
+    lists the modules that also get one, `fx1_rows` here is that set, and the
+    build relocates FX1's chooser into the cave and writes FX1's own id and
+    cursor tables. It costs no words -- the DSP dispatch is one table indexed
+    by the raw id and shared by both menus, so the code already ran from FX1
+    the moment FX1 selected its id (that is exactly how Rungs ran wherever
+    FX1 chose EQUALIZER); what was missing was only the panel side, and only
+    because FX1's list ends at 0x400d608c with FX2's beginning four bytes
+    later. What it does cost is cycles: an FX1 effect runs on a track that is
+    already running an FX2 one.
+
+    `verify_menu` asserts FX1's list and id lookup are byte-identical to
+    stock APART FROM the entries a declared replacement or a declared
+    `Remix.fx1` row owns.
     """
     from remix import stock as _stock
     if mod.menu is None:
@@ -134,7 +139,7 @@ def menus(mod) -> tuple[str, ...]:
     # and the build repoints both of FX1's tables to it.
     if mod.menu.replaces:
         return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
-    return (FX2,)
+    return (FX1, FX2) if mod.key in fx1_rows else (FX2,)
 
 
 # ---- what the BUILT IMAGE offers -------------------------------------------
@@ -213,7 +218,7 @@ def knob_max(mod, name: str) -> int:
     return (count - 1) if count is not None else 127
 
 
-def resources(mod, words=None) -> list[str]:
+def resources(mod, words=None, fx1_rows=()) -> list[str]:
     """What this effect COSTS, ONE LINE PER MENU.
 
     Shown while scrolling, because "will this fit beside what I have" is what
@@ -252,7 +257,7 @@ def resources(mod, words=None) -> list[str]:
     # ---- one line per menu ----------------------------------------------
     allocates = (getattr(mod, "claims", None) is not None
                  and mod.claims.stock_instance_buffer)
-    on = menus(mod)
+    on = menus(mod, fx1_rows)
     pins = (getattr(mod, "claims", None) is not None
             and mod.claims.owns_fx2_buffers)
     window = mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER
@@ -260,11 +265,20 @@ def resources(mod, words=None) -> list[str]:
     if mod.menu is None:
         pass                    # no chooser row at all: neither menu applies
     elif FX1 in on:
+        # ⚠️ AN FX1 ROW IS FREE IN WORDS AND NOT FREE. The code is already
+        # placed either way -- the dispatch table is shared -- so the only
+        # bill is CYCLES, and it is a big one: FX1 is four more slots on the
+        # same four tracks, so listing an effect on both menus can double the
+        # worst per-core load. The Budget's cycles row carries the number.
         out.append("FX1  " + ("takes 1 of the 4 slots (3,072 words each)"
-                              if allocates else "no buffer"))
+                              if allocates else "no buffer")
+                   + (" · a row costs no words, 4 slots of cycles"
+                      if mod.key in fx1_rows else ""))
     else:
         # Not on FX1 at all, so the FX1 allocator never hands it anything.
-        out.append("FX1  no row — takes nothing")
+        out.append("FX1  no row — 1 adds one: no words, 4 slots of cycles"
+                   if not mod.is_stock and mod.menu is not None
+                   else "FX1  no row — takes nothing")
 
     if mod.menu is None:
         pass

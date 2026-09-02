@@ -573,11 +573,52 @@ FX1 under the stock effect's knob names. Both FX1 tables are therefore
 repointed as well: the id-indexed lookup, and the row the encoder scrolls.
 
 Both writes are **in place**, because a replacement's effect is already on
-FX1 — there is no list to grow and no cave to relocate into. (That is what
-`tools/build_fx1.py`'s experiment needed, because it *adds* entries: the list
-ends at `0x400d608c` and the FX2 list starts at `0x400d6090`.) The build
-asserts the tables hold stock's descriptor before touching them, and that the
-chooser list contains it exactly once.
+FX1 — there is no list to grow and no cave to relocate into. Adding a row for
+a module on a *new* id does need both, and that is the other way onto FX1:
+see below.
+
+The build asserts the tables hold stock's descriptor before touching them,
+and that the chooser list contains it exactly once.
+
+### An FX1 row without taking a stock id: `Remix.fx1`
+
+A module on its own id can be listed on FX1 as well, and the remix says so —
+which menu an effect appears on is a composition choice, like the chooser
+order, not a property of the code:
+
+```python
+REMIX = Remix(name="bothslots", doc="…",
+              modules=("WARPFOLD",), fallback="NONE",
+              fx1=("WARPFOLD",))          # also on the FX1 chooser
+```
+
+The DSP side needs nothing: the dispatch table is indexed by the raw id and
+shared, so the code already ran from FX1 the moment FX1 selected the id. The
+panel side needs the list **relocated** — FX1's ends at `0x400d608c` and
+FX2's begins at `0x400d6090`, so it cannot grow in place — plus FX1's own
+id lookup and its cursor table. The build does all four:
+
+| table | what it gets |
+|---|---|
+| the chooser list | rebuilt in the cave, stock's eleven rows first, then yours; its three `lea` references (`0x40037990`, `0x40052706`, `0x40059bd2`) repointed |
+| `FX1_IDS` `0x400d5f58` | your descriptor clone — the **same** one FX2 resolves, as stock does for the ten shared effects |
+| `FX1_ID2POS` `0x400d60d0` | the row your id opens on. ⚠️ `tools/build_fx1.py`'s experiment never wrote this; without it the chooser opens on row 0 |
+| `FX2_IDS` / `ID2POS` | untouched by this — the FX2 row is the ordinary one |
+
+**It costs no words** — the code is placed either way — and it is not free:
+FX1 is four more slots on the same four tracks, so listing an effect on both
+menus can double the worst per-core load (`make cycles` prices it; WarpFold
+goes 4× → 8×, 404 → 808 of the 3,120 our code may spend).
+
+Refused rather than allowed to go wrong: a `replaces` module (it already has
+that effect's FX1 row — a second would list it twice), a stock effect (its
+FX1 row is stock's own business), and a key with no FX2 chooser row of its
+own (nothing for FX1's list to point at). `verify_menu.py` proves the rest,
+and asserts FX1 is byte-identical to stock in every remix that asks for
+nothing.
+
+⚠️ Seen in the emulator, not on hardware: the firmware's own draw puts
+`WarpFold78` on row 11 of a twelve-entry FX1 chooser with its own knob names.
 
 Confirmed without a flash: with a throwaway module on LO-FI's id, the
 emulated firmware draws `HIJACK` in LO-FI's slot on the **FX1** chooser and

@@ -44,6 +44,10 @@ class State:
         self.mods = registry.modules()
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
+        # WHICH OF THEM ALSO GET A ROW ON FX1 (schema.Remix.fx1). Part of the
+        # selection, not of a module: which menu an effect appears on is a
+        # composition choice, like the chooser order beside it.
+        self.fx1: set[str] = set()
         # Chooser ORDER. A remix's module list is ordered and that order is
         # the panel's row order, so the composer keeps it too -- the old set
         # alone wrote every saved remix alphabetically, which silently
@@ -95,6 +99,7 @@ class State:
         from remix import stock
         self.sel = {m.key for m in stock.MODULES}
         self.order = [m.key for m in stock.MODULES]
+        self.fx1 = set()
         self.fallback = None
         self.loaded_name = "stock"
         self.msg = ("stock: the chooser an unmodified unit shows — "
@@ -107,6 +112,7 @@ class State:
         r = registry.remix(name)
         self.sel = set(r.modules)
         self.order = list(r.modules)
+        self.fx1 = set(r.fx1)
         self.fallback = r.fallback
         self.loaded_name = name
         self.msg = f"loaded remix {name!r}"
@@ -122,10 +128,32 @@ class State:
             self.knobs[mod.key] = rig.default_knobs(mod)
         return self.knobs[mod.key]
 
+    def toggle_fx1(self, key):
+        """Give this module a row on FX1 as well, or take it away.
+
+        -> a sentence for the status line. Refused rather than silently
+        ignored where the build would refuse it, so the answer arrives at the
+        keystroke instead of at the next rebuild.
+        """
+        mod = self.mods.get(key)
+        if key not in self.sel or mod is None or mod.menu is None:
+            return "only an effect with a chooser row can have an FX1 one"
+        if mod.is_stock:
+            return "a stock effect's FX1 row is stock's own — this cannot add or remove one"
+        if mod.menu.replaces:
+            return (f"{key} replaces stock {mod.menu.replaces}, so it "
+                    f"already has that effect's FX1 row")
+        if key in self.fx1:
+            self.fx1.discard(key)
+            return f"{key} is FX2 only again"
+        self.fx1.add(key)
+        return f"{key} gets a row on FX1 too — no words, but 4 more slots of cycles"
+
     def toggle(self, key):
         if key in self.sel:
             self.sel.discard(key)
             self.order.remove(key)
+            self.fx1.discard(key)
             if self.fallback == key:
                 self.fallback = None
         else:
@@ -464,6 +492,11 @@ class State:
     def as_remix(self, name, doc):
         mods = ", ".join(f'"{k}"' for k in self.order)
         fb = f'"{self.eff_fallback}"' if self.eff_fallback else "None"
+        # Emitted only when there is one, so every remix written before FX1
+        # rows existed still round-trips byte-for-byte through save/load.
+        rows = [k for k in self.order if k in self.fx1]
+        fx1 = (f'    fx1=({", ".join(chr(34) + k + chr(34) for k in rows)},),\n'
+               if rows else "")
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by the remix workbench. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
@@ -474,4 +507,5 @@ class State:
                 f'    doc="{doc}",\n'
                 f'    modules=({mods},),\n'
                 f'    fallback={fb},\n'
+                f'{fx1}'
                 f')\n')
