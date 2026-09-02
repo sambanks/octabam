@@ -243,6 +243,23 @@ instruction probes were spent clearing the emulator first. `send_probe`
 passes `-audio 0` for a stock render; if a stock effect sounds wrong
 locally, suspect the harness before the effect.
 
+**A DESCRIPTOR NAME THAT EXACTLY FILLS ITS FIELD LEAVES NO NUL, AND THE
+CRASH LANDS SOMEWHERE ELSE ENTIRELY.** `abbr` is a 5-byte field holding FOUR
+characters plus a terminator; `fullname` is 13 bytes holding TWELVE (and the
+build tag is appended after your string). A 5-character abbr assembled,
+built, drew correctly on the panel and behaved normally under manual knob
+use — and threw a line-F exception (VEC:0B) the moment a parameter was
+**LFO-MODULATED**, faulting PC `0x48454C4C` = `"HELL"`. It presented as
+"custom effects can't be modulated", which points at the clone mechanism,
+not at a string. Found 2 Sep 2026 by Bryan T contributing `modules/hello/`,
+after the build accepted it silently. A faulting PC made of the field's own
+ASCII is a smashed return address, so the copy destination is fixed-size —
+INFERRED, the copy is not located; the rule itself is measured (all 30 stock
+page descriptors are ≤4 chars with byte 5 zero). `schema.MenuEntry` now
+refuses both over-lengths and `build_bus.py` re-checks the string it writes,
+tag included — which caught two diagnostic delay names (`BongDlyRPLY`,
+`BongDlyNOCF`) that had been filling all 13 bytes since 24 Aug 2026.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

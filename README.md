@@ -52,6 +52,7 @@ real budget decision, not a label.
 | **`nimbus`** | Nimbus + send | the granular texture, which needs a buffer region to itself |
 | **`warped`** | WarpFold + send | the smallest real selection |
 | **`verbonly`** | ChonVerb + send | the reverb alone; proves selection works |
+| **`hello`** | HELLO WORLD + send | the reference minimal build, and the worked example to read first |
 
 ```bash
 make remix                  # the workbench: 8 tracks, hear effects, compose
@@ -74,9 +75,9 @@ See **[docs/MODULES.md](docs/MODULES.md)** to write a module.
 
 ## The modules
 
-**Ten ship today.** Two are bus *servers*, six are per-track *inserts*, one is
-the bus client they all lean on, and one patches the ColdFire rather than the
-audio at all.
+**Eleven ship today.** Two are bus *servers*, seven are per-track *inserts*,
+one is the bus client they all lean on, and one patches the ColdFire rather
+than the audio at all.
 
 ### Effects that serve a bus
 
@@ -88,9 +89,10 @@ audio at all.
 
 ### Effects that run on one track
 
-Six inserts, Mutable-Instruments-flavoured. They need no bus, sit in both
-payloads, run on any track, and **stack** — `make bus REMIX=mutables` puts
-five of them on one card.
+Seven inserts. They need no bus, sit in both payloads, run on any track, and
+**stack** — `make bus REMIX=mutables` puts five of them on one card. Six are
+Mutable-Instruments-flavoured; the seventh is a volume knob that exists to be
+read.
 
 | | |
 |---|---|
@@ -100,6 +102,7 @@ five of them on one card.
 | **Streamz** | A vactrol lowpass gate: the envelope opens a filter and an amplifier *together*, so quiet is dark as well as quiet. LPG / VCF / VCA. |
 | **BodeShift** | A Bode frequency shifter — every partial moves by the same number of *hertz*, so it is not a pitch shifter. UP / DOWN / WIDE, plus a feedback spiral. |
 | **Nimbus** | Four grains reading back out of a continuously-recorded 743 ms buffer, with a freeze. |
+| **Hello World** | A linear volume knob — 27 words, one knob, no state. The reference minimal insert and the worked example a new module is copied from. Contributed by Bryan T. |
 
 ### Firmware behaviour, not audio
 
@@ -108,9 +111,10 @@ five of them on one card.
 | **Tempo sync** | Two ColdFire code caves: one publishes the project tempo, crossfader and held MIDI note where the DSP can read them; the other draws a TIME knob as a tempo division. The worked example of patching what the firmware *does*. |
 
 ⚠️ **ChonVerb, BongDelay, Send and Tempo sync are confirmed on hardware. The
-six inserts are not** — they are verified by local render and measurement and
-have never been flashed. Whoever flashes them is the first to run them on a
-real machine.
+six Mutable-flavoured inserts are not** — they are verified by local render
+and measurement and have never been flashed. Whoever flashes them is the
+first to run them on a real machine. Hello World was flashed and measured by
+its author on his own unit, not on this project's.
 
 The reverse-engineering in `docs/` is infrastructure, not the product. It
 exists because you cannot write an effect for a machine whose memory map,
@@ -128,7 +132,7 @@ claims no shared memory, is placed in *both* payloads, and therefore runs on
 any of the eight tracks — several at once, all different, or four copies of
 the same one. Nothing negotiates with anything, so inserts **stack**: one
 image can carry a whole set of them. This is far the easier thing to
-contribute, and the six above are all of this kind.
+contribute, and the seven above are all of this kind.
 
 A **server** owns a bus accumulator and is *bank-bound*. ChonVerb exists only
 on core 0 and BongDelay only on core 1, one per core by design rule. That
@@ -393,15 +397,18 @@ emulator and disassembler this project assembles and auditions against) and
 
 Issues, listening reports and findings are welcome, and so are modules.
 
-**To add one**, copy `modules/_template/` and read
+**To add one**, read `modules/hello/` — a complete module small enough to
+read in one sitting: one knob, 27 words of DSP, its own remix and its own
+render gates — then copy `modules/_template/` and follow
 **[docs/MODULES.md](docs/MODULES.md)**. Your module declares what it is and
 what it claims; the build refuses to start if two selected modules claim the
 same FX2 id, cave, hook site, core-private word, or the per-core FX2 buffer
 region, and names both.
 
 **An insert is the easiest first module** — no bus role, no shared window, no
-payload asymmetry to reason about. The six above were each built against
-`docs/MODULES.md` alone.
+payload asymmetry to reason about. The seven above were each built against
+`docs/MODULES.md` alone, and the most recent of them, Hello World, came from
+outside the project.
 
 If you open a PR: `make check` is the floor, and read the traps in
 `CLAUDE.md` first — several are the kind that assemble clean and do the wrong

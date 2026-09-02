@@ -159,8 +159,13 @@ class MenuEntry:
 
     fx2_id: int
     donor_desc: int                    # E address of the stock donor
-    abbr: bytes                        # 5-byte short name
-    fullname: bytes                    # 13-byte panel name, before any tag
+    # BOTH NAME FIELDS ARE NUL-TERMINATED, so their usable length is one less
+    # than the field: abbr is 5 bytes = FOUR characters, fullname 13 bytes =
+    # TWELVE (docs/PARAM_PAGES.md section 2). Filling a field exactly leaves
+    # no terminator and the firmware's string read runs off the end of it --
+    # see __post_init__.
+    abbr: bytes                        # <=4 chars, in a 5-byte field
+    fullname: bytes                    # <=12 chars, in a 13-byte field
     build_tag: bool = False            # append the image's build tag
 
     def __post_init__(self):
@@ -170,10 +175,42 @@ class MenuEntry:
         if not 0x04 <= self.fx2_id <= 0x1f:
             raise ValueError(f"fx2 id 0x{self.fx2_id:02x} is out of range "
                              f"(0x00-0x03 are stock's 'no effect' synonyms)")
-        if len(self.abbr) > 5:
-            raise ValueError(f"abbr {self.abbr!r} exceeds 5 bytes")
-        if len(self.fullname) > 13:
-            raise ValueError(f"fullname {self.fullname!r} exceeds 13 bytes")
+        # ⚠️ FOUR, not five. The abbr field is 5 bytes NUL-TERMINATED, so a
+        # 5-character abbreviation fills it with no terminator and whatever
+        # reads the abbreviation as a C string runs past it into `fullname`.
+        # Found on hardware 2 Sep 2026 by Bryan T, contributing the HELLO
+        # WORLD module: `abbr=b"HELLO"` drew correctly and behaved normally
+        # under manual knob use, and threw a line-F exception the moment a
+        # parameter was LFO-MODULATED -- faulting PC 0x48454C4C, which is
+        # "HELL". It presented as "custom effects cannot be modulated".
+        #
+        # A faulting PC made of the field's own ASCII is the signature of a
+        # SMASHED RETURN ADDRESS, not merely a long read: something copies
+        # the abbreviation into a fixed 5-byte destination, and the extra
+        # characters land past it. INFERRED -- the copy has not been located
+        # in the disassembly. Falsifier: a 5-char abbr whose overrun stays
+        # printable but does not fault.
+        #
+        # What is MEASURED is the rule: all 30 of the firmware's own page
+        # descriptors carry an abbr of 4 characters or fewer with byte 5
+        # zero, every shipping module already did (WFLD, BODE, RPPL, RNGS,
+        # STRM, ...), and hello at 5 was the sole crash. The build used to
+        # accept it and silently overrun -- one evening to find, so it is a
+        # refusal now.
+        if len(self.abbr) > 4:
+            raise ValueError(
+                f"abbr {self.abbr!r} is {len(self.abbr)} characters -- the "
+                f"field is 5 bytes NUL-TERMINATED, so 4 is the maximum. A "
+                f"5th character leaves no terminator and the panel's string "
+                f"read runs into fullname (crashes on LFO modulation).")
+        # Same field shape, same reasoning: 13 bytes NUL-terminated. The
+        # build tag is appended LATER, in build_bus.py, which is where the
+        # tagged length is checked -- this cannot see it.
+        if len(self.fullname) > 12:
+            raise ValueError(
+                f"fullname {self.fullname!r} is {len(self.fullname)} "
+                f"characters -- the field is 13 bytes NUL-TERMINATED, so 12 "
+                f"is the maximum.")
 
 
 @dataclass(frozen=True)

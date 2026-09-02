@@ -18,8 +18,9 @@ An **insert** processes its own track's frames in place: no bus role, no
 shared-window claim, placed in both payloads, runnable on any track and
 several at once. Nothing negotiates with anything. `bus_role=BusRole.NONE`,
 `ybase=YBase.NEVER`, and most of the hazards below simply do not apply.
-**Start here** — six of the ten shipping modules are inserts, and each was
-built against this document alone.
+**Start here** — seven of the eleven shipping modules are inserts, and each
+was built against this document alone. `modules/hello/` is the worked example
+below.
 
 A **server** owns a bus accumulator, is bank-bound to one core, and has to
 take part in the rotation, the housekeeping election and the auto-gain. It
@@ -29,6 +30,52 @@ reason before writing a third.
 
 A module can also be neither: a **bus client** (`send`) or a **ColdFire
 patch** (`tempo-sync`) that changes firmware behaviour and touches no audio.
+
+---
+
+## Your first module: read HELLO WORLD
+
+`modules/hello/` is a linear volume knob and the **complete worked example**:
+one page-1 knob, 27 words of DSP, no state, no bus role, no shared window. It
+is the smallest thing the contract can express, and every piece a real module
+needs is there and no piece it does not:
+
+```
+modules/hello/manifest.py    the declaration -- one knob, one donor, one id
+modules/hello/gain.asm       the engine -- init, proc, in place, 27 words
+modules/hello/README.md      status, measured vs inferred, what is open
+remixes/hello.py             a two-module remix: HELLO WORLD + SEND
+tools/verify_hello.py        render gates with exactly predictable arithmetic
+```
+
+Build and hear it in three commands:
+
+```bash
+make check REMIX=hello
+python3 tools/remix/audition.py hello out/dry/drums_110.wav GAIN=64
+python3 tools/verify_hello.py            # ALL GATES PASSED, 0 LSB
+```
+
+`modules/_template/` is the *skeleton* to copy — a manifest with every field
+commented and nothing else. Read `hello` for what a finished one looks like;
+copy `_template` when you start typing.
+
+**Its gates are the part worth stealing.** `verify_hello.py` drives the effect
+with a full-scale bipolar ramp and asserts the output *exactly*: unity at
+GAIN=127 is bit-identical, GAIN=0 is all zero, and every intermediate gain is
+`(in × g) >> 23` to 0 LSB. Arithmetic you can predict to the bit is what turns
+"it rendered and sounded plausible" into a measurement — and the negative half
+of that ramp is what proves the `mpy` did not silently become an `mpysu`.
+Nimbus's double-rate window (`CLAUDE.md`) got through *ear* review and every
+existing check; a DC gate caught it. Give your module one gate whose answer
+you can compute by hand.
+
+⚠️ And make it name the effect it thinks it is measuring. An id the image does
+not implement **aliases to the fallback**, and dsp_host renders a perfectly
+plausible dry passthrough — `verify_hello.py` shipped with a hardcoded id,
+measured SEND after the module moved, and its unity gate *passed*. It now
+reads the id and the knob slot out of the manifest and refuses if they
+resolve to SEND's entry points. Do the same.
 
 ---
 
@@ -50,7 +97,8 @@ what keeps `modules/_template/` out of every build.
 `tools/remix/schema.py` is the vocabulary and is worth reading in full — it is
 short, and its comments carry the reasoning behind each field.
 
-Copy `modules/_template/` to start, and `make remix` opens the workbench
+Copy `modules/_template/` to start (and read `modules/hello/` for a
+finished one), and `make remix` opens the workbench
 (`tools/remix/app.py`, Textual — provisioned by `make emu-setup`; the full
 manual is `docs/WORKBENCH.md`). Its home
 view is a RIG of eight tracks: assign effects, dial their manifest-named
@@ -133,6 +181,18 @@ things you might assume:
   named, defaulted and implemented — set `active=True`. The inverse trap is
   real too: a slot can draw a knob and publish nothing. See
   `docs/PARAM_PAGES.md`.
+- **Both name fields are NUL-terminated, so the usable length is one less
+  than the field.** `abbr` is 5 bytes = **4 characters**; `fullname` is 13
+  bytes = **12** (and the build tag is appended *after* your string, so a
+  tagged name has 2 fewer). Filling a field exactly leaves no terminator.
+  A 5-character abbr drew correctly, behaved normally under manual knob use,
+  and threw a line-F exception the moment a parameter was **LFO-modulated** —
+  faulting PC `0x48454C4C`, which is `"HELL"`. It presented as "custom
+  effects can't be modulated". Found on hardware 2 Sep 2026 by Bryan T while
+  contributing HELLO WORLD, after the build had silently accepted it; the
+  schema rejects both over-lengths now, and `build_bus.py` re-checks the
+  string it actually writes. `modules/hello/README.md` separates what was
+  measured there from what is still inferred about the mechanism.
 
 ### Page 2 is three knobs and three selects
 
@@ -158,7 +218,14 @@ well. Rungs shipped on `0x0c` (EQUALIZER) and Nimbus on `0x0d` (DJ EQ) from
 FX1 selected EQUALIZER and the chongbong image aliased FX1's EQ to a send.
 It never reached the unit (tag 77 predates it); the schema now refuses at
 construction. Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b
-0x1d 0x1e 0x1f`, of which the first seven plus `0x17`/`0x1a` are taken.
+0x1d 0x1e 0x1f`, of which all but `0x1d 0x1e 0x1f` are taken.
+
+The **registry** is the arbiter, not the ledger: `registry.modules()` refuses
+two modules on one id at import, whether or not any remix selects both. So a
+contributed module can arrive on an id that was free when it was written and
+is not when it lands — HELLO WORLD arrived on `0x17` and was moved to `0x1b`,
+`0x17` having become Rungs's on 2 Sep 2026. `make modules` prints what is
+claimed today.
 
 ## Keeping STOCK effects in the chooser
 
