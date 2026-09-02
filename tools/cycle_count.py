@@ -512,6 +512,14 @@ def main():
     for m in rows:
         extra = f"   [{m['inner']}]" if m["inner"] else ""
         print(f"{m['name']:{w}}  {m['cycles']:>13}{extra}")
+    stock_rows = [m.key for m in registry.selected(remix) if m.is_stock]
+    if stock_rows:
+        # A stock row runs stock code this tool does not count (it measures
+        # our sources). FILTER is the one measured on hardware -- 192/instance,
+        # docs/CHIP.md -- and, like an insert, a stock effect can be picked
+        # on all four tracks of a core, so its cost is paid x4 at worst.
+        print(f"{'stock rows':{w}}  {'NOT COUNTED':>13}   "
+              f"[{', '.join(stock_rows)}] -- stock code; FILTER measured 192")
     print()
     mix = " + ".join(f"{n}x {k}" for k, n in picks) or "(nothing of ours)"
     print(f"{'WORST ONE CORE':{w}}  {worst:>13}   {mix}")

@@ -77,6 +77,30 @@ What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
 `tempo-sync` — the last being a ColdFire patch rather than an effect, and the
 worked example of changing what the firmware *does*.
 
+**What a remix does to the STOCK effects (made explicit 2 Sep 2026).** Every
+image replaces the FX2 chooser wholesale, but only three stock effects are
+*consumed* — PLATE, SPRING and DARK REV, whose code is the donor region.
+The other eleven (FILTER, EQ, DJ EQ, PHASER, FLANGER, CHORUS, SPATIALIZER,
+COMB, COMPRESSOR, LO-FI, the Echo Freeze DELAY) keep their code, descriptor
+and dispatch in every image and had merely lost their chooser row. A remix
+now keeps any of them by listing it by key (`tools/remix/stock.py`), in
+chooser order, at zero cost — the build writes the row and the cursor
+position and nothing else — and the composer shows a STOCK FX2 group, the
+consumed three, and the hidden count. `remixes/restored.py` is chongbong
+plus the seven that can sit beside the servers; the other four allocate a
+per-track instance buffer on the addresses the servers hardcode and the
+ledger refuses them beside one. Past seven rows the list relocates and the
+panel scrolls — ⚠️ inferred from stock's fifteen-row list, unflashed.
+`docs/MODULES.md` "Keeping STOCK effects in the chooser".
+
+Making them first-class exposed a latent id collision: the DSP dispatch
+tables are shared between FX1 and FX2, and Rungs (`0x0c`) and Nimbus
+(`0x0d`) sat on EQUALIZER's and DJ EQ's ids from 29 Aug, so every local
+image since ran Rungs where FX1 selected EQUALIZER, and chongbong aliased
+FX1's EQ and DJ EQ to SEND. Never flashed (tag 77 predates it). Both moved
+(`0x17`, `0x1a`); the schema refuses stock ids; the shipping image differs
+from before in exactly those four ids' entries, byte-diffed.
+
 The first **outsider modules** landed 29 Aug 2026 — three Mutable-
 Instruments-flavoured per-track **inserts** (no bus role, placed in BOTH
 payloads, run on any track, several at once — the class the servers cannot

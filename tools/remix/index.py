@@ -21,6 +21,8 @@ def main():
     print("MODULES  (modules/<name>/manifest.py)\n")
     for key in sorted(mods):
         m = mods[key]
+        if m.is_stock:
+            continue
         bits = []
         if m.menu is not None:
             bits.append(f"FX2 id 0x{m.menu.fx2_id:02x}")
@@ -38,6 +40,16 @@ def main():
                 m.knob_map().items(), key=lambda kv: kv[1]))
             print(f"      knobs: {knobs}")
         print()
+
+    from remix import stock
+    print("STOCK FX2 EFFECTS  (tools/remix/stock.py -- already in every image;\n"
+          "list one in a remix to KEEP its chooser row, by key)\n")
+    for m in stock.MODULES:
+        buf = "  [instance buffer -- not beside ChonVerb/Nimbus/BongDelay]" \
+            if m.claims is not None and m.claims.stock_instance_buffer else ""
+        print(f"  {m.key:<12} FX2 id 0x{m.menu.fx2_id:02x}  {m.doc}{buf}")
+    print(f"\n  consumed by every remix (their code is the donor region): "
+          f"{', '.join(stock.CONSUMED)}\n")
 
     print("REMIXES  (remixes/<name>.py)\n")
     for name in registry.remix_names():

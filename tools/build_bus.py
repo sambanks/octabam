@@ -109,6 +109,18 @@ DESC_LEN = 0x192
 NEW_LIST = 0x400d6b00
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
+# NEW_LIST holds SEVEN rows plus its terminator before it runs into the
+# first clone. A remix that keeps stock effects in the chooser (2 Sep 2026)
+# can have more, so a longer list goes at the tail of the stock zero run
+# instead -- 0x400d7bbc..0x400d7c3c, 32 entries -- and the clones and caves
+# must stay below it. A list of seven or fewer stays at NEW_LIST, so every
+# image that could be built before is byte-identical (refhash).
+LONG_LIST = 0x400d7bbc
+ZERO_RUN_END = 0x400d7c3c
+# The chooser draws this many rows and scrolls a longer list, as stock does
+# with its fifteen. A shorter list shrinks the viewport to match (below);
+# a longer one must NOT grow it past the screen.
+CHOOSER_ROWS = 7
 
 # DESC_DONORS, NEW_IDS, RENAMES, ABBR, FULLNAME, DEFAULTS, ACTIVE_PARAMS,
 # PAGE2_COUNTS and STEPPED_SLOTS are no longer written here. Each module
@@ -348,38 +360,45 @@ BUILD_TAG = b"78"
 # proved runs custom DSP code on real hardware. schema.py enforces the range.
 _MODS = remix_modules()
 _SEL = [_MODS[k] for k in ORDER]
+# A STOCK row (tools/remix/stock.py) gets no clone, no code and no words:
+# its descriptor and dispatch are where stock put them. The build writes
+# its list row and cursor position and nothing else, so everything derived
+# below that feeds a clone or a placement is over the CLONED modules only.
+_CLONED = [m for m in _SEL if not m.is_stock]
+CLONED_ORDER = [m.key for m in _CLONED]
+STOCK_ROWS = [m.key for m in _SEL if m.is_stock]
 
-DESC_DONORS = {m.key: m.menu.donor_desc for m in _SEL}
+DESC_DONORS = {m.key: m.menu.donor_desc for m in _CLONED}
 NEW_IDS = {m.key: m.menu.fx2_id for m in _SEL}
-ABBR = {m.key: m.menu.abbr for m in _SEL}
+ABBR = {m.key: m.menu.abbr for m in _CLONED}
 FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
-            for m in _SEL}
+            for m in _CLONED}
 # A name of None means "leave the donor's", which is a different thing from
 # b"" (blank the slot). Both are in use: SEND blanks ten of FILTER's names.
 RENAMES = {m.key: [(i, p.name) for i, p in enumerate(m.params)
-                   if p.name is not None] for m in _SEL}
+                   if p.name is not None] for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
 # different algorithm on that slot. DARK REV's MIX default is 0 (a freshly
 # selected reverb would be silent) and SPRING's TONE-slot default is 0 (our
 # darkest setting); both look exactly like "the effect does nothing".
 DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
-                    if p.default is not None] for m in _SEL}
+                    if p.default is not None] for m in _CLONED}
 # The enable bitmap. A slot missing here is unreachable on hardware no matter
 # how completely it is named, defaulted, counted and implemented -- and the
 # inverse of the trap that a slot can draw a knob and publish nothing. Both
 # have shipped.
-ACTIVE_PARAMS = {m.key: m.active_params for m in _SEL}
+ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
 # Value counts. Page 2 is THREE KNOBS AND THREE SELECTS: the knob fields take
 # 128, the companion byte fields take a small step count. Setting a companion
 # to 128 does not make it continuous -- it stays a select and reads as a
 # near-boolean, which is what hardware showed.
 PAGE2_COUNTS = {m.key: {i: p.count for i, p in enumerate(m.params)
-                        if p.count is not None} for m in _SEL}
+                        if p.count is not None} for m in _CLONED}
 # Membership here also GATES the display-formatter pass below: a module with
 # no stepped slot keeps its donor's formatters untouched, which is what SEND
 # wants (FILTER's plain-numeric zeros, hardware-confirmed).
-STEPPED_SLOTS = {m.key: m.stepped_slots for m in _SEL if m.stepped_slots}
-_DEF_ASM = {m.key: m.dsp.asm for m in _SEL}
+STEPPED_SLOTS = {m.key: m.stepped_slots for m in _CLONED if m.stepped_slots}
+_DEF_ASM = {m.key: m.dsp.asm for m in _CLONED}
 
 
 # ---- P-relative field offsets (PARAM_PAGES.md section 5b) ------------------
@@ -789,13 +808,13 @@ def main():
         FULLNAME["DELAY SERVER"] = b"BongDlyRPLY" + BUILD_TAG
     elif os.environ.get("NOTEMPO") == "1":
         FULLNAME["DELAY SERVER"] = b"BongDlyNOCF" + BUILD_TAG
-    cave_end = CLONE_BASE + CLONE_STRIDE * len(ORDER)
+    cave_end = CLONE_BASE + CLONE_STRIDE * len(CLONED_ORDER)
     if any(img[NEW_LIST - BASE:cave_end - BASE]):
         sys.exit("menu cave not free")
 
     clone_addr = {}
     print("=== ColdFire: three cloned descriptors (task 11) ===")
-    for i, name in enumerate(ORDER):
+    for i, name in enumerate(CLONED_ORDER):
         # from the donor's P, not its E -- the record is 0x192 bytes measured
         # FROM P, and its tail carries the parameter enable bitmap
         donor_P = DESC_DONORS[name] + 0x38
@@ -894,8 +913,22 @@ def main():
         print(f"  {name:14s} id 0x{new_id:02x}  clone P=0x{clone_P:08x}  "
               f"knobs {ACTIVE_PARAMS[name]}")
 
-    for name in ORDER:
+    for name in CLONED_ORDER:
         wr32(FX2_IDS + NEW_IDS[name] * 4, clone_addr[name])
+    # A stock row's descriptor is the one stock ships, at P = E + 0x38, and
+    # its FX2_IDS entry must still be stock's -- the two are the same
+    # pointer on a pristine image, and nothing above may have touched it.
+    for name in STOCK_ROWS:
+        stock_P = _MODS[name].menu.donor_desc + 0x38
+        if rd32(FX2_IDS + NEW_IDS[name] * 4) != stock_P:
+            sys.exit(f"{name}: FX2_IDS[0x{NEW_IDS[name]:02x}] is not its "
+                     f"stock descriptor -- refusing to list it")
+        clone_addr[name] = stock_P
+        print(f"  {name:14s} id 0x{NEW_IDS[name]:02x}  STOCK P=0x{stock_P:08x}"
+              f"  (no clone, no code: the row is the only edit)")
+    if delayprobe and "DELAY" in ORDER:
+        sys.exit("DELAYPROBE puts stock DELAY back in the menu, but this remix "
+                 "already lists it -- drop one")
 
     # Exactly the three real entries -- no NONE. SEND with both levels at 0 is
     # already identical to "no effect" (it never writes the audio buffer, only
@@ -909,17 +942,33 @@ def main():
         # back in the list so it can be selected.
         real = real + [("DELAY (stock)", STOCK_DELAY_P)]
     entries = [p for _, p in real] + [0]
-    assert len(entries) * 4 <= CLONE_BASE - NEW_LIST, "list overruns the clone cave"
+    if len(entries) * 4 <= CLONE_BASE - NEW_LIST:
+        list_addr, cave_limit = NEW_LIST, ZERO_RUN_END
+    else:
+        # More than seven rows: the list moves to the tail of the zero run
+        # and everything else (clones, caves) has to end below it.
+        list_addr, cave_limit = LONG_LIST, LONG_LIST
+        if len(entries) * 4 > ZERO_RUN_END - LONG_LIST:
+            sys.exit(f"chooser list of {len(real)} rows overruns the long "
+                     f"list cave ({(ZERO_RUN_END - LONG_LIST) // 4 - 1} max)")
+        if any(img[LONG_LIST - BASE:ZERO_RUN_END - BASE]):
+            sys.exit("long chooser list cave not free")
+        if cave_end > LONG_LIST:
+            sys.exit(f"{len(CLONED_ORDER)} descriptor clones run into the "
+                     f"long chooser list at 0x{LONG_LIST:08x}")
     for i, v in enumerate(entries):
-        wr32(NEW_LIST + i * 4, v)
-    # and shrink the viewport to match, so there are no rows left to pad
+        wr32(list_addr + i * 4, v)
+    # and size the viewport: shrink it to a short list so there are no rows
+    # left to pad, never grow it past the seven the screen has -- a longer
+    # list scrolls, as stock's fifteen-entry list does.
     if rd32(ROWCOUNT_INSN) != 0x48780007:
         sys.exit(f"row-count site 0x{ROWCOUNT_INSN:08x} is not `pea (0x7).w` -- refusing")
-    img[ROWCOUNT_AT - BASE:ROWCOUNT_AT - BASE + 2] = len(real).to_bytes(2, "big")
+    rows = min(CHOOSER_ROWS, len(real))
+    img[ROWCOUNT_AT - BASE:ROWCOUNT_AT - BASE + 2] = rows.to_bytes(2, "big")
     for r in LIST_REFS:
         if rd32(r) != FX2_LIST:
             sys.exit(f"list ref at 0x{r:08x} not stock FX2_LIST -- refusing")
-        wr32(r, NEW_LIST)
+        wr32(r, list_addr)
     for pos, name in enumerate(ORDER):
         wr32(ID2POS + NEW_IDS[name] * 4, pos)
     # ==== 1b. ColdFire caves, from whichever modules carry them =============
@@ -953,7 +1002,8 @@ def main():
     _cave_top = cave_end            # caves start past the descriptor clones
     for _c, _b in _plan:
         assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
-        assert _c.cave_addr + len(_b) <= 0x400d7c3c, "past the stock zero run"
+        assert _c.cave_addr + len(_b) <= cave_limit, \
+            "past the stock zero run (or into the long chooser list)"
         if _c.hook_addr is not None:
             got = bytes(img[_c.hook_addr - BASE:
                             _c.hook_addr - BASE + len(_c.hook_stock)])
@@ -1004,8 +1054,14 @@ def main():
     # aliased: the alternative is a chooser entry dispatching into whatever
     # code now occupies that address. Empty whenever the remix carries every
     # module the registry knows.
+    # A STOCK effect the remix leaves out is NOT aliased: its descriptor,
+    # id entry and dispatch stay stock, so an old project that selects it
+    # still runs it -- it simply has no chooser row. That is what every
+    # remix did to all fourteen before 2 Sep 2026, and it is what keeps
+    # FX1 (which shares the dispatch tables) whole.
     _omitted = [m for m in remix_modules().values()
-                if m.menu is not None and m.key not in REMIX.modules]
+                if m.menu is not None and m.key not in REMIX.modules
+                and not m.is_stock]
     for _m in _omitted:
         wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
         wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
@@ -1020,7 +1076,12 @@ def main():
         print(f"  *** DELAY PROBE: stock DELAY restored to the menu at "
               f"position {len(real) - 1} ***")
     print(f"  chooser list = {len(real)} entries, no NONE, viewport shrunk to "
-          f"{len(real)} rows (no padding)")
+          f"{len(real)} rows (no padding)" if len(real) <= CHOOSER_ROWS else
+          f"  chooser list = {len(real)} entries at 0x{list_addr:08x} (the "
+          f"long list cave), no NONE, viewport {rows} rows -- it scrolls")
+    if STOCK_ROWS:
+        print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
+              f"code and dispatch untouched on both cores")
     print(f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
 
     # ==== 2. DSP code placement + dispatch (task 13) ========================

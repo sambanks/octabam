@@ -169,11 +169,23 @@ selecting an absent id is aliased to the FALLBACK (normally SEND), so
 it degrades to a send instead of noise. * marks an explicit fallback,
 ~ an automatic one.
 
+[bold]what happens to the stock effects[/]
+Every image replaces the whole FX2 chooser, but only THREE stock
+effects are consumed -- PLATE, SPRING and DARK REV, whose code is the
+donor region the modules pack into. The other eleven keep their code
+and knobs in every image and only lose their row. Toggle one under
+STOCK FX2 to keep its row: it costs nothing. Four of them (SPAT, FLNG,
+CHOR, COMB) take a per-track buffer where the servers keep theirs, so
+they are refused beside ChonVerb, Nimbus or BongDelay. Row order is
+selection order; [ and ] move the cursored module. More than seven
+rows and the chooser scrolls, as stock's does.
+
 [bold]keys[/]
   space  toggle module        f  make it the fallback
-  w      assemble + measure   b  build the live selection
-  c      build + full check   l  load a saved remix
-  s      save this selection  v  rig    e  emulated unit""",
+  [ / ]  move earlier/later   w  assemble + measure
+  b      build the selection  c  build + full check
+  l      load a saved remix   s  save this selection
+  v      rig                  e  emulated unit""",
     "emu": """[bold]THE EMULATED UNIT — the real firmware, screen only[/]
 
 Your built image, booted in a local ColdFire emulator, drawing its own
@@ -518,12 +530,18 @@ class RemixScreen(Screen):
     def grouped(self):
         """[(key or None, line-label)] with None rows as group headers."""
         st = self.app.state
-        cats = {rig.SERVER: [], rig.INSERT: [], rig.SYSTEM: []}
+        cats = {rig.SERVER: [], rig.INSERT: [], rig.STOCK: [],
+                rig.SYSTEM: []}
         for k in st.keys:
             cats[rig.category(st.mods[k])].append(k)
+        # Stock rows in stock's own chooser order, not alphabetical.
+        from remix import stock
+        cats[rig.STOCK] = [m.key for m in stock.MODULES]
         out = []
         for cat, title in ((rig.SERVER, "BUS EFFECTS (one per payload)"),
                            (rig.INSERT, "INSERTS (any track)"),
+                           (rig.STOCK, "STOCK FX2 (in every image; "
+                                       "toggle = keep its row, free)"),
                            (rig.SYSTEM, "SYSTEM (never on a track)")):
             if cats[cat]:
                 out.append((None, title))
@@ -549,7 +567,8 @@ class RemixScreen(Screen):
                   else "~" if k == st.eff_fallback else " ")
             tr = rig.track_range(m)
             trs = f"T{tr.start}-{tr.stop - 1}" if len(tr) else "     "
-            wd = f"{st.words[k]:>5}w" if k in st.words else "     -"
+            wd = (" stock" if m.is_stock
+                  else f"{st.words[k]:>5}w" if k in st.words else "     -")
             cur = krows[self.cursor] == i
             mark = "[reverse]" if cur else ("" if k in st.sel else "[dim]")
             end = "[/]" if mark else ""
@@ -571,11 +590,22 @@ class RemixScreen(Screen):
                         else " ← fallback")
             p.append(f"  {i}. {escape(m.menu.fullname.decode('latin1')):<13} "
                      f"0x{m.menu.fx2_id:02x}{star}")
+        from remix import stock
+        n_menu = len(st.menu_modules)
+        if n_menu > 7:
+            p.append(f"  [dim]{n_menu} rows: the panel shows 7 and scrolls[/]")
         absent = [m for m in st.mods.values()
-                  if m.menu is not None and m.key not in st.sel]
+                  if m.menu is not None and m.key not in st.sel
+                  and not m.is_stock]
         if absent and st.eff_fallback:
-            p.append(f"  [dim]{len(absent)} absent id(s) alias to "
+            p.append(f"  [dim]{len(absent)} absent module id(s) alias to "
                      f"{st.mods[st.eff_fallback].name}[/]")
+        hidden = [m.key for m in stock.MODULES if m.key not in st.sel]
+        if hidden:
+            p.append(f"  [dim]{len(hidden)} stock effects hidden (no row; "
+                     f"still run for old projects)[/]")
+        p.append(f"  [dim]consumed by every remix: {', '.join(stock.CONSUMED)}"
+                 f" — their code is the donor region[/]")
         p.append("")
         dsp = [m for m in st.selected if m.dsp is not None]
         known = [m for m in dsp if m.key in st.words]
@@ -615,6 +645,9 @@ class RemixScreen(Screen):
             self.cursor = min(len(krows) - 1, self.cursor + 1)
         elif ev.key in ("up", "k"):
             self.cursor = max(0, self.cursor - 1)
+        elif ev.character in ("[", "]"):
+            self.app.state.move(self.current_key(),
+                                -1 if ev.character == "[" else +1)
         else:
             return
         self.rerender()
@@ -626,7 +659,11 @@ class RemixScreen(Screen):
         self.app.push_screen(HelpScreen(view))
 
     def action_toggle(self):
-        self.app.state.toggle(self.current_key())
+        st = self.app.state
+        k = self.current_key()
+        st.toggle(k)
+        if k in st.sel and st.mods[k].is_stock:
+            st.msg = f"{k}: stock row kept -- no code, no words, no clone"
         self.rerender()
 
     def action_fallback(self):

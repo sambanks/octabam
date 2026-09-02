@@ -22,6 +22,14 @@ WHAT IS CHECKED, and how it knows:
   core-private Y     DERIVED by scanning the module's own source for
                      `y:>$09xx`. Low Y is per CORE, not per instance, so
                      every effect sharing a core shares these words.
+  stock buffers      declared (Claims.stock_instance_buffer, from a scan
+                     of the payload disassembly). A stock effect that takes
+                     an instance buffer from the host's bump allocator gets
+                     a PER-TRACK base -- the very addresses ChonVerb,
+                     Nimbus and BongDelay hardcode -- and the chooser is
+                     one list for all eight tracks, so the build cannot
+                     know which track it lands on. Refused beside any
+                     module with fixed Y buffers.
 
 Derived beats declared wherever it is possible: a scan cannot go stale. Its
 limit is that it only sees what the code actually references, so a word a
@@ -40,6 +48,8 @@ from __future__ import annotations
 
 import pathlib
 import re
+
+from remix.schema import YBase
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -112,6 +122,29 @@ def check(selected) -> list[str]:
             clash("FX2 instance buffers", a.name, b.name,
                   "Y:0x4000-0xBFFF -- that region is per CORE, so only one "
                   "of them can be hosted on a given core; each works alone")
+
+    # ---- stock effects that allocate an instance buffer -------------------
+    # The allocator's bases are per TRACK SLOT (docs/DSP.md section 10):
+    # core 0 hands out Y:0x4000 / 0x8000 / 0x30000 / 0x34000, core 1
+    # Y:0x4000 / 0x8000 / 0x38000 / 0x3c000. ChonVerb's tank is all four of
+    # core 0's, Nimbus's line the first two, BongDelay's line core 1's last
+    # two -- so CHORUS on track 6 beside ChonVerb on track 5 writes into the
+    # tank. Each works perfectly alone, and which track the operator picks
+    # is not something an image can constrain, so the PAIR is refused.
+    fixed = [m for m in selected
+             if (getattr(m, "claims", None) is not None
+                 and m.claims.owns_fx2_buffers)
+             or (m.dsp is not None and m.dsp.ybase is not YBase.NEVER)]
+    stocked = [m for m in selected
+               if getattr(m, "claims", None) is not None
+               and m.claims.stock_instance_buffer]
+    for a in stocked:
+        for b in fixed:
+            clash("stock instance buffer", a.name, b.name,
+                  "the allocator's per-track buffer slots -- the stock "
+                  "effect's buffer lands on whichever track hosts it and "
+                  "that is where the module's fixed buffers are; the chooser "
+                  "cannot keep them on different cores")
 
     # ---- core-private Y ---------------------------------------------------
     # Low Y is per CORE. Two effects that can share a core share these words,

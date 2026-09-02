@@ -43,7 +43,11 @@ STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 BUILT = pathlib.Path("out/mainos_bus.bin")
 
 FX2_IDS = 0x400d5fdc
-FX2_LIST_LIVE = 0x400d6b00              # NEW_LIST, after the 3 refs repoint
+# Where the list lives: NEW_LIST (0x400d6b00, seven rows) or the LONG list
+# at the tail of the zero run (0x400d7bbc, up to 32) when a remix keeps
+# stock rows. Read from the image's own list refs rather than assumed.
+LIST_CAVES = (0x400d6b00, 0x400d7bbc)
+CHOOSER_ROWS = 7                        # the screen's rows; longer lists scroll
 ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 FX1_ID_LOOKUP = 0x400d5f58
@@ -60,6 +64,10 @@ _MODS = _reg.modules()
 _ORDER = [k for k in REMIX.modules if _MODS[k].menu is not None]
 EXPECT = {k: (_MODS[k].menu.fx2_id, i) for i, k in enumerate(_ORDER)}
 N_REAL = len(EXPECT)                    # no NONE entry any more
+# STOCK rows (tools/remix/stock.py): the build writes their list row and
+# cursor position only, so what is checked for them is that everything
+# else -- descriptor bytes, FX2_IDS entry -- is byte-identical to stock.
+STOCK_KEYS = {k for k in _ORDER if _MODS[k].is_stock}
 FALLBACK = REMIX.fallback               # id 0 and every absent id alias here
 ROWCOUNT_AT = 0x40059a56
 NONE_ID = 0x00                          # aliased to SEND
@@ -78,7 +86,8 @@ P_PENABLE_HI = 0x18a                    # params 8..11
 # declares -- the R19 formatter-gate class of bug. What no static check can
 # see is a manifest that under-declares its own effect; that class rides the
 # standing on-unit reconfirm rule (docs/PARAM_PAGES.md).
-ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER}
+ACTIVE_PARAMS = {k: _MODS[k].active_params for k in _ORDER
+                 if k not in STOCK_KEYS}
 
 
 # P-relative: the per-parameter value-COUNT array and the defaults array.
@@ -115,10 +124,15 @@ def main():
 
     print("=== FUN_40052474 / FUN_4005996c both embed 0x400d6090 as an "
           "absolute operand at these 3 sites (GhidraChooser.java found them "
-          "inside those two functions); confirm the operand now reads NEW_LIST ===")
+          "inside those two functions); confirm all three now read the SAME "
+          "relocated list, in one of the two list caves ===")
+    FX2_LIST_LIVE = rd32(img, LIST_REFS[0])
+    check(FX2_LIST_LIVE in LIST_CAVES,
+          f"list ref 0x{LIST_REFS[0]:08x} points into a list cave "
+          f"(0x{FX2_LIST_LIVE:08x})")
     for r in LIST_REFS:
         check(rd32(img, r) == FX2_LIST_LIVE,
-              f"list-ref operand at 0x{r:08x} == NEW_LIST (0x{FX2_LIST_LIVE:08x})")
+              f"list-ref operand at 0x{r:08x} == 0x{FX2_LIST_LIVE:08x}")
 
     print("\n=== FUN_4005996c's list-length scan: walk FX2_LIST to the "
           "terminator, exactly as the decompiled do/while does ===")
@@ -137,7 +151,9 @@ def main():
           "terminator (the hardware-test-1 garbage) ===")
     check(length == N_REAL, f"list length == {N_REAL} (got {length})")
     rows = int.from_bytes(img[ROWCOUNT_AT - BASE:ROWCOUNT_AT - BASE + 2], "big")
-    check(rows == N_REAL, f"viewport row count == {N_REAL} (got {rows})")
+    want_rows = min(CHOOSER_ROWS, N_REAL)
+    check(rows == want_rows, f"viewport row count == {want_rows} (got {rows})"
+          + (" -- the list scrolls" if N_REAL > CHOOSER_ROWS else ""))
 
     print(f"\n=== id 0 (a fresh/unassigned track) is aliased to the remix's "
           f"fallback ({FALLBACK}), so every track degrades to it by default ===")
@@ -178,6 +194,13 @@ def main():
           "E instead of P and losing the record's last 0x38 bytes ===")
     for name, (fx_id, pos) in EXPECT.items():
         P = rd32(img, FX2_IDS + fx_id * 4)
+        if name in STOCK_KEYS:
+            # Nothing of a stock row is ours to check but its untouchedness.
+            check(P == rd32(stock, FX2_IDS + fx_id * 4),
+                  f"{name}: FX2_IDS[0x{fx_id:02x}] is stock's own descriptor")
+            check(img[P - BASE:P - BASE + 0x192] == stock[P - BASE:P - BASE + 0x192],
+                  f"{name}: stock descriptor bytes at P=0x{P:08x} unchanged")
+            continue
         lo, hi = rd32(img, P + P_PENABLE_LO), rd32(img, P + P_PENABLE_HI)
         got = {i for i in range(12)
                if ((lo if i < 8 else hi) >> (4 * (i if i < 8 else i - 8))) & 1}

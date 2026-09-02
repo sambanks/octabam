@@ -33,6 +33,11 @@ class State:
         self.mods = registry.modules()
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
+        # Chooser ORDER. A remix's module list is ordered and that order is
+        # the panel's row order, so the composer keeps it too -- the old set
+        # alone wrote every saved remix alphabetically, which silently
+        # reordered the chooser on save.
+        self.order: list[str] = []
         self.fallback: str | None = None
         self.cursor = 0
         self.words: dict[str, int] = {}      # key -> words, from a real build
@@ -47,20 +52,36 @@ class State:
             return
         r = registry.remix(name)
         self.sel = set(r.modules)
+        self.order = list(r.modules)
         self.fallback = r.fallback
         self.msg = f"loaded remix {name!r}"
 
     def toggle(self, key):
         if key in self.sel:
             self.sel.discard(key)
+            self.order.remove(key)
             if self.fallback == key:
                 self.fallback = None
         else:
             self.sel.add(key)
+            self.order.append(key)
+
+    def move(self, key, delta):
+        """Shift a selected module earlier (-1) or later (+1) in chooser order."""
+        if key not in self.sel:
+            self.msg = "select it first -- only selected modules have a row"
+            return
+        i = self.order.index(key)
+        j = max(0, min(len(self.order) - 1, i + delta))
+        self.order[i], self.order[j] = self.order[j], self.order[i]
+        rows = [m.key for m in self.menu_modules]
+        self.msg = (f"{self.mods[key].name} -> chooser row {rows.index(key)}"
+                    if key in rows else "no menu entry: order is moot")
 
     @property
     def selected(self):
-        return [self.mods[k] for k in self.keys if k in self.sel]
+        """Selected modules in CHOOSER order (the remix's declared order)."""
+        return [self.mods[k] for k in self.order]
 
     @property
     def menu_modules(self):
@@ -75,9 +96,8 @@ class State:
         automatic pick (any real effect would PROCESS the unknown id), so
         return None and let problems() ask for an explicit choice.
         """
-        for k in self.keys:
-            if k in self.sel and self.mods[k].name == "send" \
-                    and self.mods[k].menu is not None:
+        for k in self.order:
+            if self.mods[k].name == "send" and self.mods[k].menu is not None:
                 return k
         menu = [m.key for m in self.menu_modules]
         return menu[0] if len(menu) == 1 else None
@@ -184,7 +204,7 @@ class State:
 
     # ---- saving ---------------------------------------------------------
     def as_remix(self, name, doc):
-        mods = ", ".join(f'"{k}"' for k in self.keys if k in self.sel)
+        mods = ", ".join(f'"{k}"' for k in self.order)
         fb = f'"{self.eff_fallback}"' if self.eff_fallback else "None"
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by the remix workbench. Edit freely: the docstring\n'

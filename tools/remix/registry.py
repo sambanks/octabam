@@ -8,6 +8,11 @@ registry refuses duplicate keys and ids.
 
 Directories whose name starts with `_` or `.` are skipped, which is what
 keeps `modules/_template/` out of every build.
+
+The STOCK FX2 effects (tools/remix/stock.py) are registered alongside, under
+their own keys ("FILTER", "CHORUS", ...), so a remix keeps one in the chooser
+by listing it exactly as it lists a module. They are Kind.STOCK: no code, no
+clone, no words -- the build writes only their chooser row.
 """
 
 from __future__ import annotations
@@ -82,6 +87,19 @@ def modules() -> dict[str, object]:
                     f"{seen_ids[m.menu.fx2_id]} and {d.name}")
             seen_ids[m.menu.fx2_id] = d.name
         seen_dirs[m.key] = d.name
+        found[m.key] = m
+    from remix import stock
+    for m in stock.MODULES:
+        if m.key in found:
+            raise SystemExit(f"module {seen_dirs[m.key]} claims the key "
+                             f"{m.key!r}, which is a stock effect's")
+        if m.menu.fx2_id in seen_ids:
+            raise SystemExit(
+                f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
+                f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
+                f"dispatch tables are shared with FX1, so it would hijack "
+                f"that effect on both menus")
+        seen_ids[m.menu.fx2_id] = m.key
         found[m.key] = m
     _cache = found
     return found

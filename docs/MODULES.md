@@ -67,6 +67,8 @@ The workbench derives a **category** and a **track range** for every module
   not declare a single payload is refused, not guessed at.
 - **insert** (a `DSP_EFFECT` with a menu, no server role) — both payloads,
   any track.
+- **stock** (`Kind.STOCK`, `tools/remix/stock.py`) — a stock FX2 effect
+  kept in the chooser; any track, no knobs in the rig, no local render.
 - **system** (SEND, ColdFire patches) — plumbing; never sits on a track.
 
 Every effect is auditionable locally through `tools/remix/audition.py`, and
@@ -144,6 +146,71 @@ become continuous; it stays a select and reads as a near-boolean.
 `0x00`–`0x03` are the values stock treats as bare synonyms for "no effect".
 The first hardware test used them and got correct chooser names with dead
 knobs and garbage audio. The schema rejects them.
+
+**The fifteen STOCK ids are off limits too** (`schema.STOCK_FX2_IDS`), and
+the reason is not tidiness: the two DSP dispatch tables are indexed by the
+raw id and are **shared between FX1 and FX2**. A module on a stock id
+replaces that effect's descriptor in the FX2 lookup and its code wherever
+the id is selected — FX1 included — and a remix that *omits* the module
+then aliases the id to SEND, which takes the stock effect away from FX1 as
+well. Rungs shipped on `0x0c` (EQUALIZER) and Nimbus on `0x0d` (DJ EQ) from
+29 Aug until 2 Sep 2026, so every local image in between ran Rungs where
+FX1 selected EQUALIZER and the chongbong image aliased FX1's EQ to a send.
+It never reached the unit (tag 77 predates it); the schema now refuses at
+construction. Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b
+0x1d 0x1e 0x1f`, of which the first seven plus `0x17`/`0x1a` are taken.
+
+## Keeping STOCK effects in the chooser
+
+Every image replaces the FX2 chooser wholesale, and until 2 Sep 2026 that
+hid all fourteen stock FX2 effects although only **three are consumed** —
+PLATE, SPRING and DARK REV, whose 2,724 words of code are the donor region
+every module packs into. The other eleven keep their code, descriptor and
+dispatch entries in every image; they only lost their row.
+
+`tools/remix/stock.py` registers them under their own keys (`"FILTER"`,
+`"CHORUS"`, `"DELAY"`, …), so a remix keeps one by listing it exactly like
+a module, in the position it should draw at:
+
+```python
+modules=("REVERB SERVER", "DELAY SERVER", "SEND", "FILTER", "LO-FI", "TEMPO SYNC")
+```
+
+A stock row costs **nothing** — no clone, no placement, no words, and
+`make cycles` says so rather than counting it (only FILTER's cost is
+measured, 192 cycles per instance, ×4 at worst like an insert). What the
+build writes is its list row and its cursor position; `verify_menu` checks
+that its descriptor and id entry are byte-identical to stock. A stock
+effect a remix leaves *out* is left alone entirely — an old project that
+selects it still runs it, it just has no row — which is what keeps FX1
+whole. `remixes/restored.py` is chongbong plus the seven that can sit
+beside the servers.
+
+Two rules, both enforced:
+
+- **Four stock effects allocate an instance buffer** — SPATIALIZER,
+  FLANGER, CHORUS, COMB read `X:0x213` at init (measured 2 Sep 2026 by
+  scanning the payload disassembly; the other seven do not). The
+  allocator hands out a base **per track slot**, and those bases are the
+  addresses ChonVerb's tank, Nimbus's line and BongDelay's line hardcode:
+  CHORUS on track 6 beside ChonVerb on track 5 writes into the tank. The
+  chooser is one list for all eight tracks, so an image cannot keep them
+  apart; the ledger refuses the pair (`Claims.stock_instance_buffer`
+  against any module with `owns_fx2_buffers` or a non-`NEVER` `ybase`).
+  All four are legal in an insert-only remix.
+- **More than seven rows moves the list.** The list cave at `0x400d6b00`
+  holds seven rows before the first clone, so a longer list goes to the
+  tail of the stock zero run (`LONG_LIST`, 32 rows) and the viewport is
+  capped at the screen's seven, so it scrolls as stock's fifteen-row list
+  does. Seven or fewer stays where it was, byte for byte. ⚠️ Scrolling our
+  relocated list on the real panel is inferred from stock behaviour, not
+  yet measured — `restored` is the first image with more than seven rows
+  and is unflashed.
+
+Stock rows appear in the workbench (a STOCK FX2 group in the composer, any
+track in the rig) but have no manifest knobs and **no local render yet**:
+`send_probe` has no layout letter for a stock id, so the audition says so
+instead of rendering a plausible passthrough.
 
 ---
 

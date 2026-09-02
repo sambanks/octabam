@@ -26,7 +26,11 @@ MODULE = Module(
     kind=Kind.DSP_EFFECT,
     doc="Rings-style insert: 8-mode modal resonator, STRING/BELL/GLASS.",
     menu=MenuEntry(
-        fx2_id=0x0c,
+        fx2_id=0x17,
+        # ⚠️ was 0x0c/0x0d until 2 Sep 2026: STOCK ids (EQUALIZER /
+        # DJ EQ). The dispatch tables are shared with FX1, so the old
+        # id hijacked that effect on both menus. schema.STOCK_FX2_IDS
+        # now rejects it at construction.
         donor_desc=0x400d58b8,        # DARK REV, the standing donor
         abbr=b"RNGS",
         fullname=b"Rungs",

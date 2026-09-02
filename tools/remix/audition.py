@@ -141,6 +141,10 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
     mod = registry.by_key(key)
     if rig.category(mod) == rig.SYSTEM:
         _die(f"{mod.name} is not an effect")
+    if rig.category(mod) == rig.STOCK:
+        _die(f"{mod.key} is a stock effect: no local render yet (dsp_host "
+             f"carries its code, but send_probe has no layout letter for a "
+             f"stock id) -- hear it on the unit")
     source = pathlib.Path(source)
     OUT.mkdir(parents=True, exist_ok=True)
     stem = f"{label + '_' if label else ''}{source.stem}_{mod.name}"

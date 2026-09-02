@@ -17,10 +17,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from remix import ledger  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
-                          Module, Param)
+                          Module, Param, YBase)
 
 
-def _effect(name, fx2_id, priority=0, reserved=(), buffers=False):
+def _effect(name, fx2_id, priority=0, reserved=(), buffers=False,
+            ybase=YBase.NEVER):
     return Module(
         name=name, key=name.upper(), kind=Kind.DSP_EFFECT,
         doc="fixture",
@@ -30,9 +31,20 @@ def _effect(name, fx2_id, priority=0, reserved=(), buffers=False):
         # No asm path on disk, so the ledger's scan finds nothing and only
         # the reserved words below are claimed -- which is what lets these
         # fixtures test the claim path in isolation.
-        dsp=DspSection(asm="does/not/exist.asm", priority=priority),
+        dsp=DspSection(asm="does/not/exist.asm", priority=priority,
+                       ybase=ybase),
         claims=Claims(reserved_private_y=reserved,
                       owns_fx2_buffers=buffers),
+    )
+
+
+def _stock(name, fx2_id, buffer):
+    """A stock FX2 effect as the registry carries it (tools/remix/stock.py)."""
+    return Module(
+        name=name, key=name.upper(), kind=Kind.STOCK, doc="fixture",
+        menu=MenuEntry(fx2_id=fx2_id, donor_desc=0x400d4772,
+                       abbr=b"STK", fullname=b"Stock"),
+        claims=Claims(stock_instance_buffer=buffer) if buffer else None,
     )
 
 
@@ -57,19 +69,38 @@ CASES = [
       _cave("beta", 0x400d7100, hook_addr=0x40004d40)], "hook site"),
     ("two effects claiming one core-private Y word",
      [_effect("alpha", 0x07, reserved=(0x0905,)),
-      _effect("beta", 0x08, reserved=(0x0905,))], "core-private Y"),
+      _effect("beta", 0x1e, reserved=(0x0905,))], "core-private Y"),
     # The shape this one guards is a module that works perfectly in every
     # test done alone: ChonVerb's tank and Nimbus's granular line are both
     # hardcoded into Y:0x4000-0xBFFF, which is per CORE.
     ("two effects owning the FX2 instance buffer region",
      [_effect("alpha", 0x07, buffers=True),
-      _effect("beta", 0x08, buffers=True)], "FX2 instance buffers"),
+      _effect("beta", 0x1e, buffers=True)], "FX2 instance buffers"),
+    # A BUFFERED stock effect takes a per-track base from the host's
+    # allocator, and those bases are the addresses the servers hardcode:
+    # CHORUS on T6 beside ChonVerb on T5 writes into the tank. Refused
+    # beside a module that owns the region ...
+    ("a buffered stock effect beside a module owning FX2 buffers",
+     [_stock("chorus", 0x12, True), _effect("beta", 0x07, buffers=True)],
+     "stock instance buffer"),
+    # ... and beside one whose lines live in the shared window (BongDelay:
+    # ybase ALWAYS), which is core 1's tracks 3-4 slots.
+    ("a buffered stock effect beside a shared-window module",
+     [_stock("comb", 0x13, True), _effect("beta", 0x07, ybase=YBase.ALWAYS)],
+     "stock instance buffer"),
 ]
 
 CLEAN = [_effect("alpha", 0x07, reserved=(0x0905,)),
-         _effect("beta", 0x08, reserved=(0x0906,)),
+         _effect("beta", 0x1e, reserved=(0x0906,), buffers=True),
          _cave("gamma", 0x400d7000, 64, hook_addr=0x40004d40),
-         _cave("delta", 0x400d7040, 64, hook_addr=0x40004d50)]
+         _cave("delta", 0x400d7040, 64, hook_addr=0x40004d50),
+         # Stock effects with NO buffer sit beside anything, and two
+         # buffered stock effects sit beside each other (the allocator
+         # keeps them apart -- that is what it is for).
+         _stock("filter", 0x04, False),
+         _stock("compressor", 0x18, False)]
+CLEAN_STOCK_PAIR = [_stock("chorus", 0x12, True), _stock("comb", 0x13, True),
+                    _effect("alpha", 0x07)]
 
 
 def main():
@@ -85,12 +116,25 @@ def main():
             bad += 1
             print(f"  [FAIL] {label}: expected a {expect!r} collision naming "
                   f"both modules, got {found}")
-    found = ledger.check(CLEAN)
-    if found:
+    for label, mods in (("modules that do not collide", CLEAN),
+                        ("two buffered stock effects + a zero-buffer insert",
+                         CLEAN_STOCK_PAIR)):
+        found = ledger.check(mods)
+        if found:
+            bad += 1
+            print(f"  [FAIL] {label} were reported: {found}")
+        else:
+            print(f"  [PASS] {label} are left alone")
+
+    # A module on a STOCK id would hijack that effect on BOTH menus (the
+    # dispatch tables are shared with FX1). Rungs shipped on EQUALIZER's
+    # 0x0c and Nimbus on DJ EQ's 0x0d before this line existed (2 Sep 2026).
+    try:
+        _effect("hijack", 0x0c)
         bad += 1
-        print(f"  [FAIL] modules that do not collide were reported: {found}")
-    else:
-        print("  [PASS] modules that do not collide are left alone")
+        print("  [FAIL] a module on a stock FX2 id (0x0c, EQUALIZER) was accepted")
+    except ValueError:
+        print("  [PASS] a module on a stock FX2 id is refused")
 
     # ---- the rig's derivations (tools/remix/rig.py) ---------------------
     # The track model is DERIVED, so hold the derivation to the measured
@@ -105,7 +149,7 @@ def main():
                     if mod.dsp.payloads == frozenset({"A"})
                     else rig.PAYLOAD_TRACKS["B"])
             ok = len(mod.dsp.payloads) == 1 and tr == want
-        elif cat == rig.INSERT:
+        elif cat in (rig.INSERT, rig.STOCK):
             ok = tr == rig.TRACKS
         else:
             ok = len(tr) == 0
@@ -165,7 +209,7 @@ def main():
     # (Length is capped so the help row stays one line; the schema already
     # pins labels to the declared count.)
     for mod in registry.modules().values():
-        if mod.menu is None:
+        if mod.menu is None or mod.is_stock:
             continue
         undocumented = [p.name.decode() for p in mod.params
                         if p.name and p.active and not p.doc]

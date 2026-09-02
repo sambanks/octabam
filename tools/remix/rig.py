@@ -22,6 +22,10 @@ here -- the manifest is the single place a module states what it is
           track 5, not track 1).
   INSERT  a DSP_EFFECT with a menu entry and no server role -- sits in both
           payloads, runs on any track.
+  STOCK   a stock FX2 effect the remix keeps in the chooser (Kind.STOCK,
+          tools/remix/stock.py) -- code already in both payloads, any
+          track. No knobs here: the workbench has no manifest for stock
+          params, and no local render yet either.
   SYSTEM  everything else: the SEND client, ColdFire patches. Plumbing the
           image needs, never something you put on a track.
 """
@@ -45,12 +49,14 @@ TRACKS = range(1, 9)
 # one place the workbench states it.
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
-SERVER, INSERT, SYSTEM = "server", "insert", "system"
+SERVER, INSERT, STOCK, SYSTEM = "server", "insert", "stock", "system"
 
 
 def category(mod) -> str:
     if mod.harness is not None and mod.harness.is_server:
         return SERVER
+    if mod.kind is Kind.STOCK:
+        return STOCK
     if mod.kind is Kind.DSP_EFFECT and mod.menu is not None:
         return INSERT
     return SYSTEM
@@ -59,7 +65,7 @@ def category(mod) -> str:
 def track_range(mod) -> range:
     """Tracks this module can be selected on. Empty range for SYSTEM."""
     cat = category(mod)
-    if cat == INSERT:
+    if cat in (INSERT, STOCK):
         return TRACKS
     if cat == SYSTEM:
         return range(0)
