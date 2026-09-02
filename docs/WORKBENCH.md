@@ -74,6 +74,23 @@ It can sit one past the last row: that position is `(end)`, and there `enter`
 appends instead of swapping. `left`/`right` in LOADED moves a row afterwards,
 and `enter` on an already-selected module removes it.
 
+**Rows are not the currency — words are.** The pane shows the budget
+(`donor region 2410/2724 · 314 free`) once `w` has measured, and this is the
+thing to watch, because:
+
+- a **chooser row costs nothing** (seven fit in place, up to 32 in the long
+  cave), and
+- a **stock effect costs nothing at all** — its code is already in the image
+  whether or not it has a row. **Swapping a stock effect out frees zero
+  words.** The swap gesture is about the panel SLOT, not about space.
+
+So the 2,724 words are spent only by modules of ours, and a swap is only
+1-for-1 in *rows*: Nimbus (500) could equally be Streamz (255) + WarpFold
+(322), or Hello World (27) + Ripple (347). Measured costs, payload A:
+Hello World 27, Streamz 255, WarpFold 322, Ripple 347, BodeShift 391,
+Nimbus 500, Rungs 880, Send 215, ChonVerb 2,411 (+24 LFO table), BongDelay
+2,469 (payload B).
+
 **One trade is often not enough**, and the status line names the next one
 rather than leaving it to the build to refuse:
 

@@ -484,6 +484,24 @@ class BenchScreen(Screen):
                 out.append(f"[dim] {pos:>2}   {name:<13}FX2[/]")
         probs = st.problems()
         out.append("")
+        # THE BUDGET, because it is the actual constraint and it was
+        # invisible. Rows are nearly free -- seven in place, up to 32 in the
+        # long cave -- and STOCK rows cost NOTHING AT ALL, since their code
+        # is already in the image whether or not they have a row. The 2,724
+        # words are spent only by modules of ours, so "will this fit" is a
+        # question about them alone, and a swap of a stock row for a module
+        # frees nothing.
+        code = [m for m in st.selected if m.dsp is not None]
+        known = [m for m in code if m.key in st.words]
+        if code and len(known) == len(code):
+            used = sum(st.words[m.key] for m in code)
+            free = DONOR_WORDS - used
+            out.append(f"[dim]donor region {used}/{DONOR_WORDS} · "
+                       f"{'[/][bold]' if free < 0 else ''}{free} free[/]")
+        elif code:
+            out.append(f"[dim]{len(code)} module"
+                       f"{'s' if len(code) != 1 else ''} spending the "
+                       f"{DONOR_WORDS}-word region — w measures[/]")
         out.append("[dim]● = in the built image · ◀fb = fallback[/]")
         out.append("[dim]dim = stock, lost to the donor region[/]"
                    if eats else
