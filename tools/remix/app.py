@@ -168,6 +168,30 @@ def placeable(sel, total, used):
     return max(0, cap - used), cap
 
 
+def chooser_slot(order, key):
+    """Where an effect goes when it is added: for a STOCK one, ITS OWN PLACE.
+
+    A stock effect has a position on the unit -- FILTER first, DARK REV
+    fourteenth -- and that order is the one the library lists it in and the
+    one an untouched chooser shows. Appending ignored it: remove PLATE REV
+    from row 12 and add it back and it landed at row 14, below DARK REV, so
+    a removal you undid left the panel reordered. Nothing warned, because
+    the order was still a legal chooser.
+
+    One of OURS has no such place -- the position is a real choice and the
+    end is the only honest default -- so it still appends, and left/right in
+    LOADED moves it.
+    """
+    seq = [m.key for m in stock.MODULES]
+    if key not in seq:
+        return len(order)
+    i = seq.index(key)
+    for j, k in enumerate(order):
+        if k in seq and seq.index(k) > i:
+            return j
+    return len(order)
+
+
 # Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
 # default (31 Aug 2026: test_audio + demo_sources are full of processed
 # renders and made the browser unusable), but a bench is used on whatever
@@ -353,12 +377,17 @@ region packs from PLATE upward, so holding a LOW reverb also makes the
 space above it unreachable — which is why keeping PLATE alone leaves
 2,130 words by size and 0 you can actually place.
 
-⚠️ The buffer slots count what a MODULE pins — ChonVerb holds all four
-of its core's, BongDelay two of its core's, Nimbus two of whichever
-core hosts it. A STOCK effect does not appear there: it takes a slot
-from the allocator at runtime, per instantiated effect per block, which
-no image can reserve. That runtime contest is what the ledger refuses a
-pinner beside an allocating stock effect for.
+⚠️ THERE IS ONE FX2 BUFFER PER TRACK, and "free" there means "no module
+has pinned it" — not "unused". A track whose buffer no module claims
+still HAS that buffer, ready for whatever is selected on it.
+
+The row counts what a MODULE pins, for the life of the image — ChonVerb
+holds all four of its core's, BongDelay two of its core's, Nimbus two of
+whichever core hosts it. A STOCK effect never appears there: it takes a
+slot from the allocator at runtime, per instantiated effect per block,
+and only while it is selected on that track, which no image can reserve.
+That runtime contest is what the ledger refuses a pinner beside an
+allocating stock effect for.
 
 [bold]the SOURCE row[/]
 `left`/`right` cycles the wavs in the source folder; `d` points it at
@@ -954,17 +983,16 @@ class BenchScreen(Screen):
         else:
             out.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
                        f"· not built[/]")
-        # What the words bar's three glyphs mean, and what a buffer count
-        # counts -- because it is not "slots in use": a stock effect takes
-        # one from the allocator at runtime, per instantiated effect per
-        # block, which no image can reserve. These are the ones a MODULE
-        # holds fixed, which is the part composing a remix actually decides.
-        out.append("[dim] words: # loaded by a module · - held by a listed "
+        # ONE legend line, decoding the ONE thing on this pane that is not
+        # already words: the bar's three glyphs. What an FX2 buffer count
+        # counts used to be spelled out here in two further lines of prose
+        # -- three of the pane's eleven lines spent on standing text -- and
+        # it read as an unexplained footnote rather than as a legend,
+        # because the rows it belonged to are two lines up and say "4 free
+        # of 4 · tracks 5-8 all keep their own" in words already. It is in
+        # `?` with the rest of the buffer story instead.
+        out.append("[dim] bar: # loaded by a module · - held by a listed "
                    "reverb · . free[/]")
-        out.append("[dim] one FX2 buffer per track. A module claims one for "
-                   "the whole image;[/]")
-        out.append("[dim] a stock effect uses its track's only while it is "
-                   "selected there.[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
@@ -1362,7 +1390,7 @@ class BenchScreen(Screen):
                 # no descriptor cloned). Only WORDS are scarce, and only for
                 # modules of ours. So add, and let the budget speak up if it
                 # is actually breached -- which is what the ⚠ line is for.
-                st.insert_at(mod.key, len(st.order))
+                st.insert_at(mod.key, chooser_slot(st.order, mod.key))
                 st.msg = f"added {disp(mod)}"
                 st.msg += self.ensure_fallback()
             st.loaded_name = ""
@@ -1393,6 +1421,15 @@ class BenchScreen(Screen):
         one swap happened.
         """
         st = self.app.state
+        # ⚠️ A SELECTION THAT IS STILL ALL STOCK DOES NOT WANT SEND. The
+        # "no fallback" problem is true of an untouched chooser -- that is
+        # why untouched_stock() exists to keep it off the ⚠ line -- so
+        # ensure_fallback fired on any stock ADD as well, and taking a stock
+        # reverb out and putting it back silently added Send. The rule the
+        # docstrings already state is the right one: SEND comes the moment a
+        # module of OURS goes in, and not before.
+        if not any(not m.is_stock for m in st.selected):
+            return ""
         if not any("no fallback" in p for p in st.problems()):
             return ""
         send = st.mods.get("SEND")
