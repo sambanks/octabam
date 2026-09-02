@@ -500,7 +500,13 @@ class BenchScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        with Horizontal():
+        # A TAB BAR, but only when the panes are not all on screen. It names
+        # all three and marks the one you are in, so a narrow terminal reads
+        # as a workbench showing you a third at a time rather than one with
+        # two thirds missing. Full width, because the titles carry context
+        # ("Loaded · chongbong") that will not fit in a 32-column pane head.
+        yield Static(id="tabbar")
+        with Horizontal(id="panes"):
             yield Static(id="pane_avail")
             yield Static(id="pane_load")
             yield Static(id="pane_unit")
@@ -554,6 +560,79 @@ class BenchScreen(Screen):
         self.set_interval(1.5, self._poll_source)
         self.measure_all()
         self.query_one("#log", RichLog).display = False
+        self._tnames = ["Available", "Loaded", "Unit"]
+        self._vis_panes = (AVAILABLE, LOADED, UNIT)
+        self._relayout()
+        self.rerender()
+
+    # ---- fitting the terminal you actually have --------------------------
+    # THREE COLUMNS NEED 118 OF THEM: 32 for the library, 40 for the image,
+    # and the rest for a UNIT pane whose widest content is the 46-column LCD
+    # the firmware itself draws. Below that the layout did not degrade, it
+    # broke -- at 80x24 the UNIT pane was handed six columns and wrapped
+    # `Stock` / `· id` / `0x04` one word per line down the screen, both list
+    # panes were cut off mid-list, and the Budget strip took nine of the
+    # twenty-four rows. An 80x24 terminal is what a new pair of hands opens,
+    # so that was the first impression the workbench made.
+    #
+    # Below the threshold it shows ONE pane at full width and `tab` moves
+    # between them, with the titles becoming a strip naming all three so the
+    # gesture is visible rather than remembered.
+    WIDE_COLS = 118
+    # And a middle band. At 100 columns three panes do not fit but two do
+    # comfortably, and dropping straight to one pane there wasted two thirds
+    # of the width on a 40-column list. The pair SLIDES with the focus --
+    # library+image while you are choosing, image+unit while you are dialling
+    # -- so the pane you are in always has its context beside it. 92 is the
+    # floor: 40 for the image plus 50 for a UNIT pane whose widest content is
+    # the 46-column LCD.
+    TWO_UP_COLS = 92
+    # And the Budget is the one thing here that is a fixed number of LINES
+    # rather than a list you scroll, so on a short terminal it is the thing
+    # that crowds everything else out. Under this it collapses to one line
+    # carrying the same numbers.
+    TALL_ROWS = 34
+
+    @property
+    def wide_screen(self):
+        return self.app.size.width >= self.WIDE_COLS
+
+    @property
+    def tall_screen(self):
+        return self.app.size.height >= self.TALL_ROWS
+
+    def _visible_panes(self):
+        """Which panes this terminal has room for, focus included."""
+        w = self.app.size.width
+        if w >= self.WIDE_COLS:
+            return (AVAILABLE, LOADED, UNIT)
+        if w >= self.TWO_UP_COLS:
+            start = min(self.pane, LOADED)
+            return (start, start + 1)
+        return (self.pane,)
+
+    def _relayout(self):
+        """Show three panes, two or one, by what the terminal can hold."""
+        vis = self._visible_panes()
+        self._vis_panes = vis
+        # A pane's fixed width is its content's; the LAST visible one takes
+        # the rest, so nothing is left with six columns to wrap into.
+        fixed = {AVAILABLE: 32, LOADED: 40, UNIT: 46}
+        for i, wid in enumerate(("#pane_avail", "#pane_load", "#pane_unit")):
+            pane = self.query_one(wid, Static)
+            pane.display = i in vis
+            pane.styles.width = "1fr" if i == vis[-1] else fixed[i]
+            # The divider belongs BETWEEN panes: on the leftmost visible one
+            # it reads as a column that lost its neighbour.
+            pane.set_class(i == vis[0], "first")
+        self.query_one("#tabbar").display = not self.wide_screen
+
+    def on_resize(self, ev):
+        self._relayout()
+        # Every pane's text is width-dependent (the budget lays out against
+        # app.size.width), and _paint skips a repaint when the text has not
+        # changed -- so a resize has to invalidate rather than trust it.
+        self._painted.clear()
         self.rerender()
 
     # ---- the rows each pane walks ---------------------------------------
@@ -653,11 +732,52 @@ class BenchScreen(Screen):
         """
         st = self.app.state
         probs = st.problems()
+        # The three titles are needed TOGETHER by the narrow layout's strip,
+        # and each pane only knows its own -- and on a narrow screen only one
+        # pane paints at all, so they cannot be collected on the way past.
+        mod = self.selected_module()
+        self._tnames = ["Available",
+                        f"Loaded · {st.loaded_name or 'unsaved'}",
+                        disp(mod) if mod is not None else "Unit"]
         self._pane_available(st)
         self._pane_loaded(st, probs)
         self._pane_unit(st, probs)
-        self._pane_budget(st)
+        self._pane_budget(st, probs)
+        if not self.wide_screen:
+            self._paint("#tabbar", "  ".join(
+                (f"[reverse bold] {escape(t)} [/]" if i == self.pane
+                 else f"[dim]{escape(t)}[/]")
+                for i, t in enumerate(self._tnames)) + "  [dim]· tab[/]")
         self._paint("#status", f"[dim]{escape(st.msg)}[/]")
+
+    def _fit(self, wid, out, cur_line, head, tail=0):
+        """A LIST TALLER THAN THE PANE HAS TO SCROLL, or the rows past the
+        fold are unreachable -- at 80x24 the library ran out nine modules
+        short and the cursor simply walked off the bottom of the screen with
+        nothing following it.
+
+        A Static clips, it does not scroll, so the window is chosen here:
+        the title stays pinned at the top, the pane's closing lines (the ⚠,
+        the hint) at the bottom, and the rows in between follow the cursor.
+        The first and last row of a clipped window say so, because a list
+        that silently starts at item nine is worse than one that scrolls.
+        """
+        h = self.query_one(wid, Static).content_size.height
+        if h <= 0 or len(out) <= h:          # h is 0 before the first layout
+            return out
+        body = out[head:len(out) - tail] if tail else out[head:]
+        tl = out[len(out) - tail:] if tail else []
+        room = h - head - len(tl)
+        if room < 3:
+            return out[:h]
+        i = max(0, cur_line - head)
+        top = max(0, min(i - room // 2, len(body) - room))
+        win = list(body[top:top + room])
+        if top:
+            win[0] = f"[dim] ↑ {top} more[/]"
+        if top + room < len(body):
+            win[-1] = f"[dim] ↓ {len(body) - top - room} more[/]"
+        return out[:head] + win + tl
 
     def _paint(self, wid, lines):
         """Update a pane only when its TEXT changed.
@@ -672,15 +792,24 @@ class BenchScreen(Screen):
         self._painted[wid] = text
         self.query_one(wid, Static).update(text)
 
-    def _title(self, text, pane):
+    def _head(self, text, pane):
+        """A pane's opening lines: its title, or nothing.
+
+        With the tab bar on screen the title would be the same words twice,
+        one line under the other -- and a line is what a short terminal is
+        short of.
+        """
+        if not self.wide_screen:
+            return []
         on = self.pane == pane
-        return (f"[reverse bold] {escape(text)} [/]" if on
-                else f"[bold]{escape(text)}[/]")
+        return [f"[reverse bold] {escape(text)} [/]" if on
+                else f"[bold]{escape(text)}[/]", ""]
 
     def _pane_available(self, st):
         rows = self.avail_rows()
-        out = [self._title("Available", AVAILABLE), ""]
-        group = None
+        out = self._head("Available", AVAILABLE)
+        head = len(out)
+        cur_line, group = head, None
         for i, m in enumerate(rows):
             g = "Stock Effects" if m.is_stock else titlecase(rig.category(m))
             if g != group:
@@ -692,16 +821,20 @@ class BenchScreen(Screen):
             nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
             pad = " " * max(0, 13 - len(disp(m)))
             line = f" {mark} {nm}{pad} [dim]{menus}[/]"
+            if here:
+                cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
         out.append(f"[dim]enter adds it to the image[/]")
-        self._paint("#pane_avail", out)
+        self._paint("#pane_avail", self._fit("#pane_avail", out, cur_line,
+                                             head=head, tail=2))
 
     def _pane_loaded(self, st, probs):
         rows = self.loaded_rows()
         name = st.loaded_name or "unsaved"
-        out = [self._title(f"Loaded · {name}", LOADED), ""]
-        pos = 0
+        out = self._head(f"Loaded · {name}", LOADED)
+        head = len(out)
+        cur_line, pos = head, 0
         for i, m in enumerate(rows):
             here = self.pane == LOADED and i == self.cur[LOADED]
             if m.menu is not None:
@@ -719,9 +852,12 @@ class BenchScreen(Screen):
             pad = " " * max(0, 13 - len(disp(m)))
             line = (f" [dim]{row}[/] {nm}{pad}"
                     f"[dim]{menus:<7}{cost}[/]{fb}")
+            if here:
+                cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
         if not rows:
             out.append("[dim] (empty — add from the left)[/]")
+        rows_end = len(out)
         # THE THREE REVERBS ARE PART OF A STOCK CHOOSER and belong in this
         # list, not off in the library: an unmodified unit shows fourteen FX2
         # effects, and these are three of them. They leave when something
@@ -760,9 +896,13 @@ class BenchScreen(Screen):
                        f"{escape(disp(pin[0]))}"
                        f"{' and ' + disp(pin[1]) if len(pin) > 1 else ''} "
                        f"pin their slots[/]")
+        # Everything from the notes down is the IMAGE speaking, not a row,
+        # so it stays on screen however long the list gets.
+        tail = len(out) - rows_end
         out.append("")
         out.append(self._ledger_line(st, probs))
-        self._paint("#pane_load", out)
+        self._paint("#pane_load", self._fit("#pane_load", out, cur_line,
+                                            head=head, tail=tail + 2))
 
     def _ledger_line(self, st, probs):
         """The fit, the blocker and the build state, in ONE line.
@@ -812,7 +952,7 @@ class BenchScreen(Screen):
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
 
-    def _pane_budget(self, st):
+    def _pane_budget(self, st, probs):
         """WHAT IS LEFT, standing under the effect you are looking at.
 
         Every other number in this workbench is read against this one -- "500
@@ -875,6 +1015,10 @@ class BenchScreen(Screen):
         nxt = min(held, key=stock.consumed_at) if held else None
 
         seen = set()                            # which bar glyphs are drawn
+        # THE SAME FOUR ANSWERS, for a terminal with no room for the rows.
+        # Collected as (label, coloured number) while the full rows are
+        # built, so the short form cannot drift from the long one.
+        brief = []
 
         def words_row(n, total, used):
             free, cap = placeable(st.sel, total, used)
@@ -885,6 +1029,7 @@ class BenchScreen(Screen):
             c = OK if free > 400 else WARN if free > 32 else BAD
             bar = (f"[{c}]" + "#" * fill + "[/][dim]" + "." * (edge - fill)
                    + "[/][dim red]" + "-" * (20 - edge) + "[/]")
+            brief.append((f"words {n}", f"[{c}]{free:,}[/]"))
             return (f" {'words ' + n:<{W}}{bar}  [{c}]{free:>5,}[/] free of "
                     f"{total:,} [dim]· {used:,} loaded[/]")
 
@@ -898,8 +1043,16 @@ class BenchScreen(Screen):
             for n in ("A", "B"):
                 out.append(words_row(n, DONOR_WORDS, 0))
         else:
-            out.append(f" {'words':<{W}}[dim]" + "?" * 20
-                       + "[/]  [dim]not built[/]")
+            # WHY it is not built, not just that it is not. This row is where
+            # the eye lands after the gesture that broke the selection, and
+            # `????  not built` sent you looking for a build key that does
+            # not exist. The ⚠ in LOADED holds the sentence; say which way to
+            # look and which key applies it.
+            why = ("[dim]not built — [/][bold]x[/][dim] applies the ⚠ in "
+                   "LOADED[/]" if self.blockers(probs)
+                   else "[dim]not built — see the ⚠ in LOADED[/]")
+            out.append(f" {'words':<{W}}[dim]" + "?" * 20 + f"[/]  {why}")
+            brief.append(("words", "[dim]not built[/]"))
         # THE TRADE, ONCE. It is identical for both payloads -- the same
         # three reverbs occupy both regions -- so printing it on each read as
         # two facts. NAME THE NEXT TRADE, not the state: "Plate Rev holds the
@@ -980,6 +1133,7 @@ class BenchScreen(Screen):
                 # WHICH ones are left, beside how many. The count answers
                 # "can I add another"; the list answers "where does it go".
                 bits.append(",".join(str(t) for t in free) + " free")
+            brief.append((f"buf {tag}", f"[{c}]{len(free)}/4[/]"))
             side.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
                        f"of 4 [dim]· "
                        + (" · ".join(bits) if bits
@@ -991,6 +1145,7 @@ class BenchScreen(Screen):
         used_rows = (st.chooser_rows if st.chooser_rows is not None
                      else len(st.menu_modules))
         c = OK if 31 - used_rows > 7 else WARN if used_rows < 31 else BAD
+        brief.append(("rows", f"[{c}]{31 - used_rows}[/]"))
         side.append(f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of 31 "
                    f"[dim]· {used_rows} loaded[/]")
         # And the cave. The build reports only what is LEFT, so the total
@@ -1001,13 +1156,16 @@ class BenchScreen(Screen):
         # not the wordless "untouched" this used to print.
         if st.cave_free is not None:
             c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
+            brief.append(("cave", f"[{c}]{st.cave_free:,} B[/]"))
             side.append(f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free of "
                        f"{CAVE_BYTES:,} B [dim]· "
                        f"{CAVE_BYTES - st.cave_free:,} loaded[/]")
         elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
+            brief.append(("cave", f"[{OK}]{CAVE_BYTES:,} B[/]"))
             side.append(f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free of "
                        f"{CAVE_BYTES:,} B [dim]· nothing of ours is placed[/]")
         else:
+            brief.append(("cave", "[dim]not built[/]"))
             side.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
                        f"· not built[/]")
         # ONE legend line, decoding the ONE thing on this pane that is not
@@ -1026,6 +1184,28 @@ class BenchScreen(Screen):
         key = [(g, w) for g, w in (("#", "loaded by a module"),
                                    ("-", "held by a reverb you kept listed"),
                                    (".", "free")) if g in seen]
+        # A SHORT TERMINAL GETS THE NUMBERS, NOT THE ROWS. Nine lines of
+        # budget out of twenty-four is the pane crowding out the thing it is
+        # supposed to be read against. One line keeps every figure and the
+        # colour that answers for it; `?` still carries what each one means.
+        # The word "free" is said ONCE, in front, because that is what every
+        # number on the line is -- repeating it six times is what made the
+        # long rows long.
+        if not self.tall_screen:
+            items = [f"[dim]{lab}[/] {val}" for lab, val in brief]
+            lines, cur = [], "[bold]Budget[/] [dim]free:[/]"
+            for it in items:
+                # Packed against the real width rather than hoped to fit: at
+                # 80 columns the one-line form wrapped mid-token, and a
+                # budget that wraps reads as a row that lost its label.
+                sep = "  [dim]·[/]  " if items.index(it) else "  "
+                if self._vis(cur + sep + it) > self.app.size.width - 2:
+                    lines.append(cur)
+                    cur = " " * 8 + it
+                else:
+                    cur += sep + it
+            self._paint("#pane_budget", lines + [cur])
+            return
         rows, wide = self._two_up(out, side)
         # THE KEY FOLLOWS THE LAYOUT. Stacked, it is one glyph per line --
         # three definitions strung along one line read as a run-on sentence,
@@ -1077,9 +1257,9 @@ class BenchScreen(Screen):
         mod = self.selected_module()
         if mod is None:
             self._paint("#pane_unit",
-                        self._title("Unit", UNIT) + "\n\n[dim]nothing selected[/]")
+                        self._head("Unit", UNIT) + ["[dim]nothing selected[/]"])
             return
-        out = [self._title(disp(mod), UNIT), ""]
+        out = self._head(disp(mod), UNIT)
         bits = [titlecase(rig.category(mod))]
         if mod.menu:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
@@ -1097,6 +1277,8 @@ class BenchScreen(Screen):
             out.append(f"[{WARN}]{escape(' · '.join(res))}[/]")
         out.append("")
 
+        head = len(out)
+        cur_line = head
         knobs = self.unit_rows(mod)
         vals = st.knobs_for(mod)
         for i, (name, slot) in enumerate(knobs):
@@ -1105,6 +1287,8 @@ class BenchScreen(Screen):
                 src = (self.app.source.name if self.app.source
                        else f"(none — no wavs in {source_dir()})")
                 line = f" [dim]SOURCE[/] [{SRC}]{escape(src)}[/]"
+                if here:
+                    cur_line = len(out)
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
             v = vals.get(name, 0)
@@ -1122,6 +1306,8 @@ class BenchScreen(Screen):
                        + "." * (12 - fill) + "[/]")
             page = "1" if slot < 6 else "2"
             line = f" {name:<6} {shown}[dim]\\[[/]{bar}[dim]] p{page}[/]"
+            if here:
+                cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
         if not knobs:
             out.append("[dim] (no drawn parameters)[/]")
@@ -1141,7 +1327,11 @@ class BenchScreen(Screen):
                    "[dim]tab here to change values and audition[/]")
         out.append("")
         out += self._preview(mod, probs)
-        self._paint("#pane_unit", out)
+        # No pinned tail: the knobs are what the cursor is in and the preview
+        # is what follows them, so a short pane shows as much of the page as
+        # is left over rather than reserving room for it.
+        self._paint("#pane_unit", self._fit("#pane_unit", out, cur_line,
+                                            head=head))
 
     # ---- the emulated panel ---------------------------------------------
     def _panel(self, mode, effect_id):
@@ -1337,6 +1527,7 @@ class BenchScreen(Screen):
 
     def action_pane(self, d):
         self.pane = (self.pane + d) % 3
+        self._relayout()          # on a narrow screen `tab` IS the layout
         self.rerender()
 
     def action_preview(self):
@@ -1884,8 +2075,13 @@ class Workbench(App):
                   border-left: dashed $surface; }
     #pane_unit  { width: 1fr; height: 100%; padding: 0 1;
                   border-left: dashed $surface; }
+    /* ONE PANE AT A TIME on a terminal too narrow for three columns. The
+       dividers go with them: a lone pane with a left border reads as a
+       column that lost its neighbour. */
+    #panes > Static.first { border-left: none; }
     #pane_budget { height: auto; padding: 0 1;
                    border-top: dashed $surface; }
+    #tabbar { height: 1; padding: 0 1; }
     #status { height: 1; padding: 0 1; }
     #log { height: 12; border-top: dashed $surface; }
     """
