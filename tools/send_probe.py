@@ -287,10 +287,20 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         _par = (rev_params if tgt == "R" else dpar if tgt == "D"
                 else insert_params if insert_params is not None
                 else MODULE_DEFAULTS.get(tgt, [0] * 12))
+        # THE AUDIO BLOCK IS AT X:0 ON HARDWARE (the dispatcher's `move #$0,r0`,
+        # P:0x42e) and the STOCK effects use the X memory right after it as
+        # scratch -- the flanger writes X:0x20-0xff every block. dsp_host's
+        # default puts the audio at X:0x80, inside that scratch, which turned
+        # the flanger's output into a Nyquist-rate alternation (+0.94/-0.02)
+        # and cost a false "not credible" verdict (2 Sep 2026). None of our
+        # own modules touch low X, so the default never mattered for them;
+        # a stock render gets the hardware address.
+        _tm = registry.by_id(SERVER_ID[tgt])
         cmd = [str(HOST), "-mem", str(mem),
                "-init", f"{ri:x}", "-proc", f"{rp:x}",
                "-inst", "1", "-r7", "2", "-alloc", "1",
                "-inmask", "1",                   # tone straight into the module
+               *(["-audio", "0"] if _tm is not None and _tm.is_stock else []),
                "-blocks", str(blocks), "-in", str(src), "-out", str(out),
                *(["-split", str(split)] if str(split) not in ("0", "") else []),
                "-params", ",".join(map(str, _par))]
