@@ -360,6 +360,15 @@ Both are then equally yours. Leaving an effect off a chooser takes that ROW and 
 
 `p` → FX1 draws the chooser you composed, as the firmware draws it.
 
+[bold]what the preview is for[/]
+It is the only way to see the PANEL side of an image without flashing one. The remixer's own panes say what you asked for; this says what the firmware will actually draw from the tables the build wrote — the effect names on the chooser rows, in the order they will scroll, and the knob labels the page will put under each encoder.
+
+That is a real class of bug and it has cost real days here: a cloned descriptor inherits its donor's display formatter, so a slot can carry the right count, default and name and still draw as something else entirely — or as nothing. Three of six page-2 slots drew wrong on one flash and every check passed, because every field they checked was right.
+
+TWO INDEPENDENT THINGS SHARE THE PAGE, which is why the columns beside a row are not that row's: the chooser list scrolls down the left, and the knob names belong to whichever effect the TRACK has selected — the one named in the caption, marked `▸` when its row is on screen.
+
+Honest limits: knob VALUES draw as dial graphics the string capture cannot read, so the numbers in the pane above are the truth for values and the picture is the truth for names. Nothing here touches hardware.
+
 [bold]what an FX1 row costs[/]
 No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
 
@@ -1427,10 +1436,18 @@ class RemixerScreen(Screen):
         # the same title and the same chooser column, so they look alike.
         # NOT the page title -- the LCD draws that itself two lines down,
         # and saying it twice is how the caption came to say nothing.
-        what = ("the main menu" if self.preview == "MENU"
-                else f"{escape(disp(mod))} on track 5")
-        head = [f"preview {modes}  [dim](p)[/]",
-                f"[dim]{what}, as the unit draws it[/]"]
+        # WHAT THE PAGE IS, in the terms of the two things on it. "as the
+        # unit draws it" said where the picture came from, which is the one
+        # thing you can already see.
+        # TWO THINGS ARE ON THIS PAGE and the caption has to name both, or
+        # the rows and the labels beside them read as a mapping. They are
+        # not: the chooser list scrolls down the left, and the knob names
+        # belong to whichever effect the TRACK has selected.
+        slot = self.preview
+        what = ("the main menu, as the unit draws it" if slot == "MENU"
+                else f"the {slot} menu's own rows, and {escape(disp(mod))}'s "
+                     f"knob names — both as the unit draws them")
+        head = [f"preview {modes}  [dim](p)[/]", f"[dim]{what}[/]"]
         # DO NOT DRAW SOMETHING THAT IS NOT THE SELECTION. The FX2 page
         # includes the firmware's own chooser list, so an image that is not
         # this selection puts a different set of effects on screen beside the
@@ -1479,11 +1496,26 @@ class RemixerScreen(Screen):
                 return head[:1] + ["[dim]not in the image yet[/]"]
             effect_id = mod.menu.fx2_id
         grid = self._panel(self.preview, effect_id)
+        # ⚠️ MARK THE SELECTED ROW. The page draws TWO independent things --
+        # the chooser list down the left, and the knob names of whichever
+        # effect the track has selected -- and our capture puts them on the
+        # same text rows, so `ChonVerb78   SHMR MODE DIFF` reads as a mapping
+        # from that row to those knobs. It is not one: the names belong to
+        # the selection, and the row beside them is just the next row of the
+        # list. The unit says which row is selected by XOR-highlighting it,
+        # which the string-capture hook cannot read (docs/EMU.md) -- but we
+        # know which effect we asked for, so say it here.
+        if effect_id is not None:
+            want = disp(mod).lower()
+            grid = [("▸" + ln[1:] if ln[1:].lower().startswith(want) else ln)
+                    for ln in grid]
         # The LCD frame is chrome; the firmware's own words are the content.
         edge = f"[{LCD}]"
-        # The no-fuse rule can push a fragment past the nominal 42 columns,
-        # and a row longer than the frame breaks it open.
-        w = 44
+        # The LCD is 32 characters wide (128 px / a 4 px cell, measured), and
+        # a row the no-fuse rule pushed past that is clipped rather than
+        # allowed to break the frame open.
+        import emu_bringup
+        w = emu_bringup.COLS
         return head + [f"{edge}." + "-" * w + ".[/]"] + \
             [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
              for ln in grid] + \

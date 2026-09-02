@@ -605,31 +605,103 @@ def part_label(draws):
     return None
 
 
-def layout_screen(draws, cols=42, rows=9):
+# ---- the LCD's own geometry, MEASURED (3 Sep 2026) -------------------------
+# A character cell is FOUR pixels wide, so the 128 px screen is 32 characters,
+# not the 42 this used to assume. The measurement is exact and falls out of
+# the capture: the same column drawn with labels of different length starts at
+# a different x, and the shift is 2 px per character -- i.e. the firmware
+# CENTRES each label on a fixed anchor.
+#
+#   page-2 col 1   '12dB' x=55   'LOW' x=57   'HP' x=59   -> centre 63
+#   page-1 col 1   'BASE' x=62   'ATK' x=64   'FB' x=66   -> centre 70
+#   page-2 col 2   'NONE' x=75   'NUM' x=77   'LP' x=79   'Q' x=81  -> 83
+#   page-1 col 2   'WDTH' x=82   'GN1' x=84                         -> 90
+#   page-2 col 3   'BASE' x=95   'ENV' x=97                         -> 103
+#   page-1 col 3   'RTIM' x=102  'MIX' x=104  'Q1' x=106  'Q' x=108 -> 110
+#
+# Three parameter columns, each drawn twice 7 px apart (the page-1 name above
+# its dial, the page-2 name and value beside it). At 4 px per character that
+# 7 px is under two characters, so preserving it buys a ragged indent and
+# nothing else -- the columns are SNAPPED to one anchor per column instead,
+# which is the whole point of a column.
+CELL = 4                                  # px per character
+COLS = 128 // CELL
+LEFT_X = 40                               # left of this, text is left-aligned
+                                          # (the chooser list, the page title)
+
+
+def _left_aligned(items):
+    """The x positions this screen draws text LEFT-aligned at.
+
+    ⚠️ NOT EVERY COLUMN IS CENTRED. The parameter columns are; a LIST is not
+    -- the MAIN MENU's two columns are rows of different lengths sharing one
+    left edge, and centre-snapping them shuffled `PROJECT` / `SYSTEM` /
+    `CONTROL` / `MIDI` into three different indents.
+
+    The two are told apart by the thing that distinguishes them in the
+    capture: a centred column's x SHIFTS with the label's length (2 px per
+    character), so one x carries one length. A left-aligned one carries
+    several.
+    """
+    lens = collections.defaultdict(set)
+    for x, _y, t in items:
+        lens[x].add(len(t))
+    return {x for x, seen in lens.items() if len(seen) > 1}
+
+
+def _anchors(items, left, tol=8):
+    """The centres the firmware is centring parameter labels on, clustered
+    out of this screen's own draws rather than written down -- so a page laid
+    out differently gets its own columns instead of these."""
+    cs = sorted({x + CELL * len(t) / 2 for x, _y, t in items
+                 if x >= LEFT_X and x not in left})
+    groups = []
+    for c in cs:
+        if groups and c - groups[-1][-1] <= tol:
+            groups[-1].append(c)
+        else:
+            groups.append([c])
+    return [sum(g) / len(g) for g in groups]
+
+
+def layout_screen(draws, cols=COLS, rows=9):
     """Arrange captured (x,y,text) draws into a text grid. The LCD is 128x64
     with a bottom-left-ish origin (the list drawer steps y DOWN per row, so
-    larger y = higher on screen); map pixel x/y to character cells.
+    larger y = higher on screen).
 
-    Two rules, and they are the two things the LCD does that a character grid
-    does not do by itself:
+    Three rules, and they are the three things the LCD does that a character
+    grid does not do by itself:
+
+    ⚠️ PARAMETER LABELS ARE CENTRED ON COLUMNS, not placed at a left edge.
+    Scaling each label's own x into a cell put a 4-character name and a
+    2-character one in different columns, which is what made the page look
+    ragged -- they are the same column on the unit, and the shorter label
+    simply starts further into it. A LIST is left-aligned and must not be
+    snapped that way (_left_aligned tells them apart).
 
     ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
-    parameter row in place, so the capture holds the label that WAS there
-    and then the one that is -- `PTCH` then `FRQ1` at the same x. Overlapping
-    spans are replaced, not shuffled aside, or the page shows both and reads
-    as an effect with seven parameters where the unit draws four.
+    parameter row in place, so the capture holds the label that WAS there and
+    then the one that is -- `PTCH` then `FRQ1` at the same x. Overlapping
+    spans are replaced, or the page shows both and reads as an effect with
+    seven parameters where the unit draws four.
 
     ⚠️ TWO STRINGS THAT DO NOT OVERLAP ARE NEVER FUSED. Writing character by
-    character into a fixed grid let a label whose cell was taken run straight
-    into its neighbour, and the result is a word that does not exist on the
-    unit -- `DJ EQUALIZER1`, `COMPRESSORT 1`. A label pushed one column right
-    is legible and obviously two things; a fused one is not obviously
-    anything.
+    character let a label whose cell was taken run into its neighbour, and
+    the result is a word that does not exist on the unit -- `DJ EQUALIZER1`,
+    `COMPRESSORT 1`.
     """
+    items = _clean(draws)
+    left = _left_aligned(items)
+    cols_px = _anchors(items, left)
     grid = [[] for _ in range(rows)]
-    for x, y, t in _clean(draws):
+    for x, y, t in items:
         cy = min(rows - 1, max(0, (64 - y) * rows // 64))
-        cx = min(cols - 1, max(0, x * cols // 128))
+        if x < LEFT_X or x in left or not cols_px:
+            cx = int(x / CELL + 0.5)
+        else:
+            a = min(cols_px, key=lambda c: abs(c - (x + CELL * len(t) / 2)))
+            cx = int(a / CELL - len(t) / 2 + 0.5)
+        cx = min(cols - 1, max(0, cx))
         row = grid[cy]
         row[:] = [(s0, s1) for s0, s1 in row
                   if s0 + len(s1) <= cx or s0 >= cx + len(t)]

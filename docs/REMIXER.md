@@ -670,7 +670,60 @@ Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
 
-⚠️ **Three things the capture does that a character grid does not** (all
+#### What it is for, and why two things share the page
+
+It is the only way to see the **panel** side of an image without flashing
+one. The remixer's own panes say what you asked for; this says what the
+firmware will actually draw from the tables the build wrote — the effect
+names on the chooser rows, in the order they will scroll, and the knob
+labels the page puts under each encoder. That is a real class of bug: a
+cloned descriptor inherits its donor's display formatter, so a slot can
+carry the right count, default, name and enable bit and still draw as
+something else entirely, or as nothing at all (17 Aug 2026 — three of six
+page-2 slots drew wrong on a flash, and every check passed because every
+field they checked was right).
+
+⚠️ **The columns beside a chooser row are not that row's.** Two independent
+things share the page, exactly as they do on the unit: the chooser list
+scrolls down the left, and the knob names belong to whichever effect the
+**track** has selected — the one the caption names, marked `▸` when its row
+is on screen. `ChonVerb78    SHMR MODE DIFF` is not a mapping.
+
+Knob **values** draw as dial graphics the string capture cannot read, so the
+numbers in the pane above are the truth for values and the picture is the
+truth for names.
+
+#### Reading the pixels as characters
+
+⚠️ **The cell is FOUR pixels, so the LCD is 32 characters wide** — not the 42
+this assumed until 3 Sep 2026, which is what made the page look ragged. The
+measurement falls out of the capture: the same column drawn with labels of
+different length starts at a different x, and the shift is 2 px per
+character, so the firmware **centres** each label on a fixed anchor.
+
+| | 4 chars | 3 | 2 | 1 | centre |
+|---|---|---|---|---|---|
+| page-2 col 1 | `12dB` 55 | `LOW` 57 | `HP` 59 | | **63** |
+| page-1 col 1 | `BASE` 62 | `ATK` 64 | `FB` 66 | | **70** |
+| page-2 col 2 | `NONE` 75 | `NUM` 77 | `LP` 79 | `Q` 81 | **83** |
+| page-1 col 2 | `WDTH` 82 | `GN1` 84 | | | **90** |
+| page-2 col 3 | `BASE` 95 | `ENV` 97 | | | **103** |
+| page-1 col 3 | `RTIM` 102 | `MIX` 104 | `Q1` 106 | `Q` 108 | **110** |
+
+Three parameter columns, each drawn twice 7 px apart. At 4 px per character
+that is under two characters, so preserving it buys a ragged indent and
+nothing else — the pair is **snapped to one column**, which is the whole
+point of a column. The anchors are clustered out of each screen's own draws,
+so a page laid out differently gets its own.
+
+⚠️ **Not every column is centred.** A LIST is left-aligned, and
+centre-snapping the MAIN MENU shuffled `PROJECT` / `SYSTEM` / `CONTROL` /
+`MIDI` into three different indents. The two are told apart by what
+distinguishes them in the capture: a centred column's x shifts with the
+label's length, so one x carries one length; a left-aligned one carries
+several.
+
+⚠️ **Two more things the capture does that a character grid does not** (all
 fixed 3 Sep 2026 — the page had become hard to read and, worse, wrong):
 
 - **A later draw over the same pixels WINS.** The firmware repaints a
