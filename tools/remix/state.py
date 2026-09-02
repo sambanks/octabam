@@ -136,8 +136,10 @@ class State:
         keystroke instead of at the next rebuild.
         """
         mod = self.mods.get(key)
-        if key not in self.sel or mod is None or mod.menu is None:
-            return "only an effect with a chooser row can have an FX1 one"
+        if mod is None or mod.menu is None:
+            return "this has no chooser row at all — nothing for FX1 to list"
+        if key not in self.sel:
+            return f"add {key} to the image first, then 1 gives it FX1 too"
         if mod.is_stock:
             return "a stock effect's FX1 row is stock's own — this cannot add or remove one"
         if mod.menu.replaces:
