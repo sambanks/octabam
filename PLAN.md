@@ -689,6 +689,15 @@ worth keeping.
   is a name nobody reviewed ... the thing is a remixer" — a rename cannot be
   applied to the text discussing the rename, and that is the one place to
   check by hand afterwards.
+- **BACKLOG (Sam, 3 Sep 2026): the docs over-name the MKII and it reads as a
+  restriction.** Sam: it works on MK1 and MK2 — they are the same machine
+  apart from a few buttons, and `docs/` already records that both run the
+  **same 1.40C image, hash-verified**. So every "MKII" that is really just
+  "the Octatrack" should say so. ⚠️ Keep the one distinction that is honest:
+  everything here has only ever been *tested* on an MKII, so the claim is
+  "the OS is the same, so it should run" (inferred) rather than "verified on
+  MK1" (not measured). Sweep `README.md` and `docs/` and say it once, in the
+  right place, instead of hedging in a dozen.
 - **BACKLOG (Sam, 3 Sep 2026): a freshly flashed unit keeps drawing the
   effect you had before.** After a flash the track still shows the PREVIOUS
   effect's controls, and only selecting SEND (or anything else) redraws it.
