@@ -38,7 +38,7 @@ try:
     from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
-    from textual.containers import Horizontal, Vertical
+    from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen, Screen
     from textual.widgets import Footer, Input, OptionList, RichLog, Static
     from textual.widgets.option_list import Option
@@ -313,131 +313,78 @@ class Chooser(ModalScreen[str]):
 
 
 HELP = {
-    "bench": """[bold]THE BENCH — one page, three panes[/]
+    # ⚠️ PARAGRAPHS ARE ONE LINE EACH, deliberately. Rich re-wraps to the
+    # box's real width, so prose hard-wrapped in this file wrapped TWICE --
+    # every paragraph ended in an orphan ("order", "draw", "your", "a") and
+    # the page read as broken. Only the key table is hard-wrapped, and it is
+    # short enough never to be re-flowed.
+    "bench": """[bold]THE BENCH[/] — compose the effects list your unit shows, and hear each one before you commit to it.
 
-[bold]AVAILABLE[/] everything that could be in an image: your modules,
-then the stock effects the unit already ships. [bold]LOADED[/] is the
-image you are composing, in CHOOSER ORDER — the order here is the order
-of rows on the panel, so left/right there is a real edit. [bold]UNIT[/]
-follows the cursor: the selected effect's knobs, the firmware's own draw
-of its page, and `r` to hear it on the SOURCE wav.
+[bold]AVAILABLE[/] is everything that COULD be in an image: your modules, then the stock effects the box already ships. [bold]LOADED[/] is the image you are composing, in the order the unit's chooser will show it. [bold]UNIT[/] follows the cursor — the selected effect's knobs, the firmware's own draw of its page, and `r` to hear it on the SOURCE wav.
 
-The loop is one move long: point at a stock effect in LOADED, highlight
-one of yours in AVAILABLE, `enter`. The image rebuilds and re-boots by
-itself, so the panel is never showing something else.
+The loop is one move long: highlight one of yours in AVAILABLE and press `enter`. The image rebuilds and re-boots by itself, so the panel on the right is never showing something else.
 
 [bold]keys[/]
-  tab  pane            up/down  move
-  enter  in AVAILABLE: ADD it to the image. On one already in,
-         just point at its row -- THE LIBRARY ONLY ADDS.
-         in LOADED: remove the row you are on.
-  left/right  knob value (UNIT) or row order (LOADED)
-              hold to run; SHIFT+left/right steps by TEN
-  r  render + hear     space  play last    p  preview mode
-  a / b  park what you hear as A / B      , / .  play A / B
-  x  apply the ⚠'s own fix
-  d  sample folder     l  load remix       s  save remix
-  c  full check        f  fallback         k  back to stock
-  ?  this
+  tab  next pane           up/down  move the cursor
+  enter   AVAILABLE: add it to the image (it displaces nothing).
+          LOADED: remove the row you are on.
+  left/right   UNIT: the knob value, hold to run, SHIFT for ×10
+               LOADED: move the row — this is the unit's own row order
+  r  render + hear     space  replay        p  which page is previewed
+  a / b  park what you just heard as A / B      , / .  play A / B
+  x  apply the fix the ⚠ is offering (only shown when there is one)
+  d  sample folder     l  load a remix      s  save this one as a remix
+  c  full check        f  choose the fallback        k  back to stock
+  ?  this              esc  stop audio      q  quit
 
-[bold]adding does not displace anything[/]
-`enter` used to SWAP -- the new effect took the highlighted row's slot
-and that row was dropped. That was the ledger's scarcity applied to your
-gesture, where it does not belong: the chooser cave holds 31 rows and a
-STOCK row costs zero words (no code placed, no descriptor cloned). Only
-WORDS are scarce, and only for modules of ours. So `enter` adds, and the
-one line under LOADED speaks up if the budget is actually breached.
+[bold]a narrow terminal shows fewer panes[/]
+Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).
+
+[bold]what is actually scarce[/]
+Four things, and the Budget strip is one row for each: the two donor regions of 2,724 words (one per payload, and only YOUR modules spend them), the FX2 buffer slots (one per track, per core), the 31 chooser rows, and the ColdFire cave. Every row reads the same way — [bold]N free of TOTAL, and what took the rest[/].
+
+Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 rows fit, and a stock effect costs zero words because its code is already in the image whether or not it has a row. Leaving a stock effect out takes its chooser row and nothing else — an old project that selects it still runs it.
+
+[bold]a reverb you keep listed is spending words[/]
+PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.
+
+You CAN keep them. The build takes only the reverbs your modules actually reach, and the pane says which went (`— Plate Rev  donor, taken`). `remixes/restock.py` is thirteen stock effects plus SEND: the smallest buildable image, costing only PLATE. (Until 2 Sep 2026 all three were nulled unconditionally and the honest answer here was "you cannot, ever". That is no longer true.)
+
+[bold]there is one FX2 buffer per track[/]
+"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. ChonVerb holds all four of its core's, BongDelay two of its core's, Nimbus two of whichever core hosts it — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
+
+A stock effect never appears in that row: it takes a slot from the allocator at runtime, per effect per block, only while it is selected on that track — which no image can reserve. That runtime contest is why the ledger refuses an allocating stock effect beside a pinner, and it is what the ⚠ is asking you to remove. FLANGER, CHORUS, SPATIALIZER and COMB FILTER keep their FX1 rows and still work; the three reverbs were FX2-only in stock and are lost outright.
 
 [bold]A / B compares two EFFECTS[/]
-Not two renders ago against now. `r` to hear one, `a` to park it, point
-at the rival, `b` -- which re-renders it on the SAME source -- then `,`
-and `.` to flip between them. That is the question a remixer exists to
-answer: is mine better than the one the box came with?
+Not two renders ago against now. `r` to hear one, `a` to park it, point at the rival, `b` — which re-renders it on the SAME source — then `,` and `.` to flip. That is the question a remixer exists to answer: is mine better than the one the box came with?
 
 [bold]why an effect can render DRY[/]
-SIX of the eleven stock effects ship with their wet control at zero —
-PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND) —
-so `r` on one of them at its defaults plays the source back unchanged.
-That is faithful: the defaults are read from the firmware's own
-descriptor, and an unmodified unit really does start them fully dry.
-The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
-
-[bold]the Budget pane[/]
-What is LEFT of the image, under the effect you are looking at. Four
-scarce things and only four: the two donor regions (one per payload),
-the FX2 buffer slots per core, the chooser rows, and the ColdFire cave.
-
-Every row is the same sentence — [bold]N free of TOTAL, and what took the
-rest[/] — so the default selection reads as what an unmodified core
-already spends rather than as a bare zero.
-
-⚠️ A REVERB YOU KEEP IN THE CHOOSER IS SPENDING WORDS. PLATE, SPRING and
-DARK REV's code IS the donor region, so the `held by` line is the trade:
-how much they are holding, and what dropping the next one buys. The
-region packs from PLATE upward, so holding a LOW reverb also makes the
-space above it unreachable — which is why keeping PLATE alone leaves
-2,130 words by size and 0 you can actually place.
-
-⚠️ THERE IS ONE FX2 BUFFER PER TRACK, and "free" there means "no module
-has pinned it" — not "unused". A track whose buffer no module claims
-still HAS that buffer, ready for whatever is selected on it.
-
-The row counts what a MODULE pins, for the life of the image — ChonVerb
-holds all four of its core's, BongDelay two of its core's, Nimbus two of
-whichever core hosts it. They go in PAIRS, so "4 free" is two pairs, not
-four independent slots: `owns_fx2_buffers` is the core-private pair
-(Y:0x4000/0x8000) and a substituted ybase is the shared-window pair
-(0x30000/0x34000 on core 0, 0x38000/0x3c000 on core 1). Two modules
-wanting the same pair is what the ledger refuses. A STOCK effect never appears there: it takes a
-slot from the allocator at runtime, per instantiated effect per block,
-and only while it is selected on that track, which no image can reserve.
-That runtime contest is what the ledger refuses a pinner beside an
-allocating stock effect for.
-
-[bold]the SOURCE row[/]
-`left`/`right` cycles the wavs in the source folder; `d` points it at
-another one and remembers the choice (out/_audition/workbench.json).
-`WORKBENCH_SOURCES` overrides both.
-
-[bold]the one line under LOADED[/]
-It says the only two things that can stop you: whether the selection
-fits the 2,724-word donor region, and — with a ⚠ — the effects you have
-to remove before it will build. Everything else the pane used to explain
-is here instead.
-
-[bold]why some stock effects go dim[/]
-Every image replaces the whole FX2 chooser, but only THREE stock effects
-are CONSUMED: PLATE, SPRING and DARK REV, whose code is the donor region
-your modules are written over. The other eleven keep their code and knobs
-in every image and only lose their chooser row — an old project that
-selects one still runs it. Four of them (SPATIALIZER, FLANGER, CHORUS,
-COMB FILTER) take a per-track instance buffer at the addresses the servers
-hardcode, so they cannot sit beside ChonVerb, Nimbus or BongDelay; that is
-what the ⚠ is telling you to remove.
+Six of the eleven stock effects ship with their wet control at zero — PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND) — so `r` on one at its defaults plays the source back unchanged. That is faithful: the defaults are read from the firmware's own descriptor. The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
 
 [bold]the fallback[/]
-An id the image does not implement aliases to the FALLBACK — normally
-SEND, so an old project degrades to a send instead of noise. It is added
-for you when a selection needs one; `f` chooses another. ◀fb marks it.
-
-[bold]you cannot get the three reverbs back[/]
-Not from here, and it is not the workbench refusing. Every buildable
-selection needs a fallback and SEND is the only safe one; SEND carries
-DSP code; and `build_bus.py` repoints PLATE/SPRING/DARK REV to the null
-stub UNCONDITIONALLY, whether or not code was placed over them. So every
-image loses them. PLAN.md §7 has the two build changes that would fix it
-and the argument for closing it instead.""",
+An id the image does not implement aliases to the FALLBACK — normally SEND, so an old project degrades to a send rather than to noise. It is added for you the moment a selection needs one; `f` chooses another; `◀fb` marks it. A stock chooser with no modules of ours cannot build for exactly this reason: it has no fallback to name, and no stock effect is a safe one.""",
 }
 
 
 class HelpScreen(ModalScreen[None]):
     """The ? overlay: what this view is, its keys, and the concepts."""
 
+    # ⚠️ IT WAS SILENTLY CLIPPED. A Static in an auto-height box stops at
+    # max-height with no scrollbar and no hint, so `?` showed about the
+    # first 60% of the page and the rest could not be reached at all --
+    # including every answer about the budget. It scrolls now, and the box
+    # is a PERCENTAGE so an 80-column terminal is not handed a 76-column
+    # box with two columns of padding.
     CSS = """
     HelpScreen { align: center middle; }
-    #box { width: 76; height: auto; max-height: 90%;
+    #box { width: 90%; max-width: 84; height: 90%;
            border: round $primary; padding: 1 2; }
+    #scroll { height: 1fr; }
     """
+
+    # The focused VerticalScroll already binds these; on_key must let them
+    # through rather than treating every key as "close".
+    SCROLL_KEYS = {"up", "down", "pageup", "pagedown", "home", "end"}
 
     def __init__(self, view):
         super().__init__()
@@ -445,10 +392,16 @@ class HelpScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="box"):
-            yield Static(HELP[self.view])
-            yield Static("[dim]any key closes[/]")
+            with VerticalScroll(id="scroll"):
+                yield Static(HELP[self.view])
+            yield Static("[dim]↑↓ / page  scroll  ·  any other key closes[/]")
+
+    def on_mount(self):
+        self.query_one("#scroll").focus()
 
     def on_key(self, ev):
+        if ev.key in self.SCROLL_KEYS:
+            return                       # the scroll view handles it
         ev.stop()
         self.dismiss(None)
 
@@ -489,7 +442,11 @@ class BenchScreen(Screen):
         Binding("b", "mark('B')", "B = this", show=False),
         Binding("comma", "play_mark('A')", "play A", show=False),
         Binding("full_stop", "play_mark('B')", "play B", show=False),
-        Binding("x", "fix", "apply the fix", show=False),
+        # SHOWN ONLY WHEN IT APPLIES (check_action). It is the key that
+        # gets a broken selection building again -- the one gesture the
+        # workbench is built around leaves one -- and it was the only
+        # important key hidden from the footer.
+        Binding("x", "fix", "fix it"),
         Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
         Binding("l", "load", "load"),
@@ -739,6 +696,10 @@ class BenchScreen(Screen):
         self._tnames = ["Available",
                         f"Loaded · {st.loaded_name or 'unsaved'}",
                         disp(mod) if mod is not None else "Unit"]
+        can_fix = bool(self.blockers(probs))
+        if can_fix != getattr(self, "_can_fix", None):
+            self._can_fix = can_fix
+            self.refresh_bindings()          # the footer follows it
         self._pane_available(st)
         self._pane_loaded(st, probs)
         self._pane_unit(st, probs)
@@ -890,19 +851,30 @@ class BenchScreen(Screen):
         # two bills for one debt -- ChonVerb and BongDelay showed identical
         # lists. It belongs to the image, so the image says it.
         pin = [m for m in st.selected if rig.pins_fx2(m)]
-        if pin:
-            out.append(f"[dim {WARN}]no room for "
-                       f"{escape(rig.allocating_names())} — "
-                       f"{escape(disp(pin[0]))}"
-                       f"{' and ' + disp(pin[1]) if len(pin) > 1 else ''} "
-                       f"pin their slots[/]")
+        # ⚠️ NOT WHILE THE ⚠ IS UP. The ⚠ below names the same seven effects
+        # AND the key that removes them, so both lines together spent seven
+        # of a forty-column pane's rows saying one thing twice -- and this
+        # one, phrased as "no room for", read as a second unresolved error.
+        # Once the fix has been applied it is no longer a problem, it is the
+        # shape of the image you chose, so it says that instead.
+        if pin and not probs:
+            who = " and ".join(disp(m) for m in pin)
+            out.append(f"[dim {WARN}]{escape(rig.allocating_names())} "
+                       f"cannot be listed — {escape(who)} "
+                       f"{'holds' if len(pin) == 1 else 'hold'} "
+                       f"the buffers they need[/]")
         # Everything from the notes down is the IMAGE speaking, not a row,
         # so it stays on screen however long the list gets.
         tail = len(out) - rows_end
         out.append("")
+        # THE PANE SAYS WHAT ITS KEYS DO, exactly as the library pane does.
+        # `left`/`right` here is a real edit -- the order of these rows IS
+        # the order of rows on the unit's chooser -- and it was documented
+        # only in `?`, which is the one place a newcomer looks last.
+        out.append("[dim]enter removes · ← → moves the row[/]")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", self._fit("#pane_load", out, cur_line,
-                                            head=head, tail=tail + 2))
+                                            head=head, tail=tail + 3))
 
     def _ledger_line(self, st, probs):
         """The fit, the blocker and the build state, in ONE line.
@@ -1286,6 +1258,13 @@ class BenchScreen(Screen):
             if name == "SOURCE":
                 src = (self.app.source.name if self.app.source
                        else f"(none — no wavs in {source_dir()})")
+                # A SAMPLE NAME IS ARBITRARILY LONG and this row is one row.
+                # Wrapped, it pushed every knob below it down the pane and
+                # read as two rows, one of them unlabelled. Trimmed from the
+                # FRONT: the end of a sample name is what distinguishes it.
+                room = self.query_one("#pane_unit", Static).size.width - 12
+                if room > 12 and len(src) > room:
+                    src = "…" + src[-(room - 1):]
                 line = f" [dim]SOURCE[/] [{SRC}]{escape(src)}[/]"
                 if here:
                     cur_line = len(out)
@@ -1622,7 +1601,11 @@ class BenchScreen(Screen):
         if not rows or self.cur[LOADED] >= len(rows):
             return
         i = self.cur[LOADED]
-        st.move(rows[i].key, step)
+        row = st.move(rows[i].key, step)
+        if row is not None:
+            st.msg = f"{disp(rows[i])} → chooser row {row}"
+        elif rows[i].key in st.sel:
+            st.msg = f"{disp(rows[i])} has no chooser row: order is moot"
         self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
         self.schedule_sync()      # placement order changes the image
 
@@ -1747,6 +1730,23 @@ class BenchScreen(Screen):
                     if m.is_stock and m.key in stock.CONSUMED
                     and m.key in self.sync_error]
         return out
+
+    def check_action(self, action, parameters):
+        """`x` is on the footer only while there is something to fix.
+
+        Recomputing it here would cost a problems() sweep (~2.4 ms) per
+        footer refresh, so rerender() -- which has already run one -- leaves
+        the answer behind in _can_fix.
+
+        ⚠️ FALSE HIDES; NONE SHOWS IT GREYED. Textual reads `is False` as
+        "disabled and not shown" and treats every other falsy value as
+        "disabled but listed", so returning None left `x fix it` on the
+        footer of a selection with nothing to fix -- which is the defect
+        this method was added to remove.
+        """
+        if action == "fix":
+            return bool(getattr(self, "_can_fix", False))
+        return True
 
     def action_fix(self):
         """Apply the ⚠'s own advice."""

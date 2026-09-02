@@ -155,16 +155,21 @@ class State:
         return True
 
     def move(self, key, delta):
-        """Shift a selected module earlier (-1) or later (+1) in chooser order."""
+        """Shift a selected module earlier (-1) or later (+1) in chooser
+        order. -> its new 1-based chooser row, or None if it has none."""
         if key not in self.sel:
             self.msg = "select it first -- only selected modules have a row"
-            return
+            return None
         i = self.order.index(key)
         j = max(0, min(len(self.order) - 1, i + delta))
         self.order[i], self.order[j] = self.order[j], self.order[i]
+        # The ROW NUMBER as the pane prints it -- 1-based. This said
+        # "chooser row 1" for the row drawn as `2`, which is an invitation to
+        # doubt every other number here. The NAME is left to the caller: the
+        # panel name (`BongDelay`) lives in app.disp(), and this module must
+        # not import the shell.
         rows = [m.key for m in self.menu_modules]
-        self.msg = (f"{self.mods[key].name} -> chooser row {rows.index(key)}"
-                    if key in rows else "no menu entry: order is moot")
+        return rows.index(key) + 1 if key in rows else None
 
     @property
     def selected(self):
