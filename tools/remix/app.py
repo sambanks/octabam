@@ -26,9 +26,11 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -55,13 +57,48 @@ def step_label(mod, name, v):
     return lab[v] if lab and v < len(lab) else str(v)
 
 
+# Words that are acronyms, not shouting, and stay upper in a title.
+_ACRONYMS = {"DJ", "EQ", "FX", "HP", "LP", "MS", "AB"}
+
+
+def titlecase(s: str) -> str:
+    """One naming rule for every name the workbench prints.
+
+    The lists mixed three conventions and it showed: OUR modules carry a
+    panel name in camel case (`BongDelay`), the STOCK effects carry the
+    firmware's own, which is upper (`DJ EQUALIZER`, `LO-FI`), and a module
+    with no chooser row falls back to its directory slug (`tempo-sync`). So
+    one column read BongDelay / EQUALIZER / tempo-sync.
+
+    Deliberate inner capitals are LEFT ALONE -- `BongDelay` must not become
+    `Bongdelay`, which is the failure mode of a naive .title(). A word is
+    only re-cased when it is entirely upper (or entirely lower), and known
+    acronyms keep their case.
+
+    ⚠️ This is the WORKBENCH's own text only. The emulated panel draws
+    strings captured from the firmware and is never re-cased -- it has to
+    show what the unit shows.
+    """
+    def word(w):
+        if not w:
+            return w
+        if w.upper() in _ACRONYMS:
+            return w.upper()
+        if not w.isupper() and any(c.isupper() for c in w[1:]):
+            return w                      # BongDelay, ChonVerb, WarpFold
+        return w[:1].upper() + w[1:].lower()
+    parts = re.split(r"([ \-/]+)", s)
+    return "".join(word(p) if i % 2 == 0 else p
+                   for i, p in enumerate(parts))
+
+
 def disp(mod) -> str:
     """What to CALL a module on screen: the name the panel shows, not the
     directory slug. `warpfold` is a path; `WarpFold` is what the operator
     reads on the unit."""
     if mod.menu is not None:
-        return mod.menu.fullname.decode("latin1") or mod.name
-    return mod.name
+        return titlecase(mod.menu.fullname.decode("latin1") or mod.name)
+    return titlecase(mod.name)
 
 
 # Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
@@ -199,8 +236,10 @@ itself, so the panel is never showing something else.
 
 [bold]keys[/]
   tab  pane            up/down  move
-  enter  SWAP the ▸ row for this one (at (end): append); on a
-         selected module, remove it
+  enter  in AVAILABLE: SWAP the ▸ row in LOADED for this one
+         (at (end): append). On one already in the image it just
+         points at its row -- THE LIBRARY ONLY ADDS.
+         in LOADED: remove the row you are on.
   left/right  knob value (UNIT) or row order (LOADED)
               hold to run; SHIFT+left/right steps by TEN
   r  render + hear     space  play last    p  preview mode
@@ -241,7 +280,15 @@ what the ⚠ is telling you to remove.
 [bold]the fallback[/]
 An id the image does not implement aliases to the FALLBACK — normally
 SEND, so an old project degrades to a send instead of noise. It is added
-for you when a selection needs one; `f` chooses another. ◀fb marks it.""",
+for you when a selection needs one; `f` chooses another. ◀fb marks it.
+
+[bold]you cannot get the three reverbs back[/]
+Not from here, and it is not the workbench refusing. Every buildable
+selection needs a fallback and SEND is the only safe one; SEND carries
+DSP code; and `build_bus.py` repoints PLATE/SPRING/DARK REV to the null
+stub UNCONDITIONALLY, whether or not code was placed over them. So every
+image loses them. PLAN.md §7 has the two build changes that would fix it
+and the argument for closing it instead.""",
 }
 
 
@@ -332,6 +379,15 @@ class BenchScreen(Screen):
         self.syncing = None
         self.sync_error = None
         self._panel_cache = (None, None)   # see _panel()
+        self._painted = {}                 # see _paint()
+        # COALESCED REPAINT. A held arrow key delivers events faster than
+        # three panes can be rebuilt, and rendering each one in turn is what
+        # makes the UI trail the key and overshoot after release. The VALUE
+        # changes on every event; the SCREEN catches up at 60 Hz, however
+        # many events arrived in between.
+        self._dirty = False
+        self.set_interval(1 / 60, self._flush)
+        self._run = (None, True, 0.0, 0)   # see _accel()
         self.query_one("#log", RichLog).display = False
         self.rerender()
 
@@ -435,7 +491,20 @@ class BenchScreen(Screen):
         self._pane_available(st)
         self._pane_loaded(st, probs)
         self._pane_unit(st, probs)
-        self.query_one("#status", Static).update(f"[dim]{escape(st.msg)}[/]")
+        self._paint("#status", f"[dim]{escape(st.msg)}[/]")
+
+    def _paint(self, wid, lines):
+        """Update a pane only when its TEXT changed.
+
+        Handing Textual an identical string still costs a Static re-render
+        and a screen diff, and a knob keystroke changes ONE pane -- the other
+        two were being rebuilt and re-diffed for nothing on every key.
+        """
+        text = "\n".join(lines) if isinstance(lines, list) else lines
+        if self._painted.get(wid) == text:
+            return
+        self._painted[wid] = text
+        self.query_one(wid, Static).update(text)
 
     def _title(self, text, pane):
         on = self.pane == pane
@@ -444,10 +513,10 @@ class BenchScreen(Screen):
 
     def _pane_available(self, st):
         rows = self.avail_rows()
-        out = [self._title("AVAILABLE", AVAILABLE), ""]
+        out = [self._title("Available", AVAILABLE), ""]
         group = None
         for i, m in enumerate(rows):
-            g = "stock effects" if m.is_stock else rig.category(m)
+            g = "Stock Effects" if m.is_stock else titlecase(rig.category(m))
             if g != group:
                 group = g
                 out.append(f"[dim]── {g} ──[/]")
@@ -458,12 +527,12 @@ class BenchScreen(Screen):
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
         out.append("[dim]enter SWAPS with ▸ in LOADED[/]")
-        self.query_one("#pane_avail", Static).update("\n".join(out))
+        self._paint("#pane_avail", out)
 
     def _pane_loaded(self, st, probs):
         rows = self.loaded_rows()
         name = st.loaded_name or "unsaved"
-        out = [self._title(f"LOADED · {name}", LOADED), ""]
+        out = [self._title(f"Loaded · {name}", LOADED), ""]
         pos = 0
         at = min(self.cur[LOADED], len(rows))      # the insertion point
         for i, m in enumerate(rows):
@@ -504,14 +573,14 @@ class BenchScreen(Screen):
         # and read as a fourth mystery row.
         eats = [m for m in st.selected if m.dsp is not None]
         if eats:
-            out.append("[dim] —  PLATE, SPRING, DARK REV (donors)[/]")
+            out.append("[dim] —  Plate, Spring, Dark Rev (donors)[/]")
         else:
             for cname in stock.CONSUMED:
                 pos += 1
-                out.append(f"[dim] {pos:>2} {cname:<13}FX2[/]")
+                out.append(f"[dim] {pos:>2} {titlecase(cname):<13}FX2[/]")
         out.append("")
         out.append(self._ledger_line(st, probs))
-        self.query_one("#pane_load", Static).update("\n".join(out))
+        self._paint("#pane_load", out)
 
     def _ledger_line(self, st, probs):
         """The fit, the blocker and the build state, in ONE line.
@@ -539,16 +608,21 @@ class BenchScreen(Screen):
         if st.regions:
             return "[dim]" + " · ".join(
                 f"{n} {f} free" for n, _u, f in st.regions) + "[/]"
-        return "[dim]a stock chooser: 14 effects, no modules[/]"
+        # No build has reported yet. Say which of the two reasons it is --
+        # this line used to claim "a stock chooser: 14 effects, no modules"
+        # for ANY unmeasured selection, including chongbong, which has three.
+        if not [m for m in st.selected if m.dsp is not None]:
+            return "[dim]a stock chooser: 14 effects, no modules[/]"
+        return "[dim]building…[/]"
 
     def _pane_unit(self, st, probs):
         mod = self.selected_module()
         if mod is None:
-            self.query_one("#pane_unit", Static).update(
-                self._title("UNIT", UNIT) + "\n\n[dim]nothing selected[/]")
+            self._paint("#pane_unit",
+                        self._title("Unit", UNIT) + "\n\n[dim]nothing selected[/]")
             return
         out = [self._title(disp(mod), UNIT), ""]
-        bits = [rig.category(mod)]
+        bits = [titlecase(rig.category(mod))]
         if mod.menu:
             bits.append(f"id 0x{mod.menu.fx2_id:02x}")
             bits.append("+".join(rig.menus(mod)))
@@ -599,7 +673,7 @@ class BenchScreen(Screen):
                    "[dim]tab here to change values and audition[/]")
         out.append("")
         out += self._preview(mod, probs)
-        self.query_one("#pane_unit", Static).update("\n".join(out))
+        self._paint("#pane_unit", out)
 
     # ---- the emulated panel ---------------------------------------------
     def _panel(self, mode, effect_id):
@@ -733,6 +807,15 @@ class BenchScreen(Screen):
         self.app.call_from_thread(self.rerender)
 
     # ---- input -----------------------------------------------------------
+    def rerender_soon(self):
+        """Mark the screen stale; _flush draws it on the next frame."""
+        self._dirty = True
+
+    def _flush(self):
+        if self._dirty:
+            self._dirty = False
+            self.rerender()
+
     def action_pane(self, d):
         self.pane = (self.pane + d) % 3
         self.rerender()
@@ -764,7 +847,38 @@ class BenchScreen(Screen):
                 return
         else:
             return
-        self.rerender()
+        # Coalesced: holding a key steps the value every event and repaints
+        # once a frame. Every other path still renders immediately.
+        self.rerender_soon()
+
+    # A HELD KEY ACCELERATES. The workbench stopped being the limit once the
+    # panel render was cached (0.012 ms per key event, 86k/s) -- but macOS
+    # repeats a held key at its default ~15/s after a 375 ms delay, so a
+    # 0..127 knob still took ~8.5 s to sweep and there is nothing an app can
+    # do about the RATE. So change the STEP instead: a run of events close
+    # together is a hold, and a hold means "get there", while a single tap
+    # still moves exactly one. Sweeps the full range in ~1.3 s at 15/s.
+    _RUN_GAP = 0.20              # longer than a 15/s repeat (66 ms), well
+                                 # under a deliberate double-tap
+    _RUN_STEPS = ((18, 16), (10, 8), (4, 4))   # (events held, multiplier)
+
+    def _accel(self, step, name, hi):
+        """The multiplier for this event, given how long the key has been
+        down. Only for the ±1 path -- shift is already an explicit ×10."""
+        now = time.monotonic()
+        same = (name == self._run[0]
+                and (step > 0) == self._run[1]
+                and now - self._run[2] < self._RUN_GAP)
+        run = self._run[3] + 1 if same else 0
+        self._run = (name, step > 0, now, run)
+        # A SELECT MUST NOT ACCELERATE: MODE has five positions and flying
+        # past them is not "faster", it is unusable. hi // 8 is 0 for every
+        # stepped slot and 15 for a 0..127 knob, so this gates itself.
+        ceiling = max(1, hi // 8)
+        for need, mult in self._RUN_STEPS:
+            if run >= need:
+                return step * min(mult, ceiling)
+        return step
 
     def adjust(self, step):
         """Change the selected row. Knob values live per MODULE."""
@@ -775,14 +889,19 @@ class BenchScreen(Screen):
             return
         name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
         if name == "SOURCE":
+            # Never accelerated: skipping files is not a faster way to pick
+            # one, and the list is short.
             files = wav_sources()
             if files:
                 i = (files.index(self.app.source)
                      if self.app.source in files else 0)
-                self.app.source = files[(i + step) % len(files)]
+                self.app.source = files[(i + (1 if step > 0 else -1))
+                                        % len(files)]
             return
         vals = st.knobs_for(mod)
         hi = rig.knob_max(mod, name)
+        if abs(step) == 1:
+            step = self._accel(step, name, hi)
         vals[name] = max(0, min(hi, vals.get(name, 0) + step))
 
     def move_row(self, step):
@@ -803,8 +922,20 @@ class BenchScreen(Screen):
             rows = self.avail_rows()
             mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
             if mod.key in st.sel:
-                st.toggle(mod.key)
-                st.msg = f"removed {disp(mod)}"
+                # ⚠️ THIS USED TO REMOVE IT, and that cost a chongbong user
+                # both servers. A ✓ in the LIBRARY means "already in the
+                # image", so `enter` there reads as "select this", not
+                # "throw it out" -- and once the first server was gone the ▸
+                # had moved onto the OTHER one, so re-adding the first
+                # swapped the second away. One keystroke, both servers lost,
+                # and nothing on screen said that was the deal.
+                # The library ADDS. LOADED removes. Point at the row.
+                self.pane = LOADED
+                self.cur[LOADED] = st.order.index(mod.key)
+                st.msg = (f"{disp(mod)} is already in the image — "
+                          f"enter here removes it")
+                self.rerender()
+                return
             else:
                 # SWAP, not insert. An image is a fixed budget -- 2,724
                 # words and a list somebody has to scroll -- so putting
@@ -835,7 +966,7 @@ class BenchScreen(Screen):
             mod = rows[self.cur[LOADED]]
             st.toggle(mod.key)
             st.loaded_name = ""
-            st.msg = f"removed {mod.key}"
+            st.msg = f"removed {disp(mod)}"
             self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
             self.schedule_sync()
         self.rerender()
