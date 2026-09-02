@@ -351,7 +351,9 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
 [bold]FX1 as well as FX2[/]
 The unit has two effect slots per track and stock lists different sets on them: ten effects on FX1, those ten plus DELAY and the three reverbs on FX2. `1` puts the highlighted effect of yours on FX1 too — the `FX1+FX2` column follows, and `s` saves it with the remix.
 
-It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row. An effect that replaces a stock one is already on FX1 and says so instead.
+It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row.
+
+Only a buffer-free INSERT can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. An effect that replaces a stock one is already on FX1 and says that instead.
 
 [bold]a narrow terminal shows fewer panes[/]
 Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).

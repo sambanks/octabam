@@ -276,12 +276,19 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
                       if mod.key in fx1_rows else ""))
     else:
         # Not on FX1 at all, so the FX1 allocator never hands it anything.
-        # The `1` hint only where `1` would work: on an effect that is in
-        # the image. Offering it beside one you are merely previewing sends
-        # you to a refusal.
-        out.append("FX1  no row — 1 adds one: no words, 4 slots of cycles"
-                   if selected and not mod.is_stock and mod.menu is not None
-                   else "FX1  no row — takes nothing")
+        # The `1` hint only where `1` would work. Offering it beside an
+        # effect you are merely previewing, or one the build would refuse,
+        # sends you to a refusal you could have been told about here --
+        # which is what this line exists for.
+        from remix.state import fx1_hazard
+        why = fx1_hazard(mod) if not mod.is_stock else None
+        if why:
+            out.append(f"FX1  no row — and cannot take one: {why}")
+        elif selected and not mod.is_stock and mod.menu is not None:
+            out.append("FX1  no row — 1 adds one: no words, 4 slots of "
+                       "cycles")
+        else:
+            out.append("FX1  no row — takes nothing")
 
     if mod.menu is None:
         pass

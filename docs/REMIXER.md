@@ -201,7 +201,15 @@ menus can double the worst per-core load — WarpFold goes from `4×` to `8×`,
 it, which is why that row exists (`PLAN.md` §2 called this "the real ceiling
 is cycles ×4").
 
-Two things are refused rather than allowed to go wrong: a module that
+**Only a buffer-free INSERT may take one**, and the UNIT pane says so where
+it applies rather than letting you find out from a refusal: `FX1  no row —
+and cannot take one: it sizes its buffer for an FX2 slot (16,384 words)`.
+An FX1 slot is **3,072** words; a module with **fixed** FX2 buffers would
+write into another track's; and a bus **server** is one per core. See
+`docs/MODULES.md` for the measured reason — it is `docs/DSP.md`'s "wrong
+claim 1", bisected on hardware.
+
+Two more things are refused rather than allowed to go wrong: a module that
 `replaces` a stock effect **already** has that effect's FX1 row (the build
 repoints both of FX1's tables in place), so asking for a second would list it
 twice; and a stock effect's FX1 row is stock's own business. `verify_menu`
