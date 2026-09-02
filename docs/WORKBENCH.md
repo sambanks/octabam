@@ -94,11 +94,21 @@ Nimbus 500, Rungs 880, Send 215, ChonVerb 2,411 (+24 LFO table), BongDelay
 **One trade is often not enough**, and the status line names the next one
 rather than leaving it to the build to refuse:
 
-| after the swap | what it says |
+| after the swap | what happens |
 |---|---|
-| the first module of ours, no SEND | `now needs Send — swap another row for it` |
+| no safe fallback | **SEND is added** — `added Send too (the only safe fallback)`. A row is free, so sacrificing an effect for it would be this UI's invention, not the image's constraint |
+| a buffer clash | `needs the FX2 buffer region — also swap out FLANGER, CHORUS, SPATIALIZER, COMB` |
 | past the donor region (after `w`) | `N words exceeds … ; swap something else out too` |
-| a pair the ledger refuses | the ledger's own sentence, naming both |
+
+**The buffer clash is the expensive one, and it is why adding ChonVerb to a
+stock chooser costs four effects.** FLANGER, CHORUS, SPATIALIZER and COMB
+each take a per-track instance buffer from the host's bump allocator, at
+exactly the addresses ChonVerb's tank hardcodes — so the ledger refuses each
+pair, and the chooser is one list for all eight tracks so the image cannot
+keep them apart. The ledger states it one PAIR at a time, which is four
+near-identical walls of text; the pane aggregates them into the sentence
+above. What you are left with — ChonVerb, the seven stock effects that can
+coexist, and Send — *is* `remixes/restored.py`.
 
 The three stock **reverbs** are not here — they are in LOADED, because they
 are part of a stock chooser. See below.

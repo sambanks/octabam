@@ -758,21 +758,59 @@ class BenchScreen(Screen):
     def knock_ons(self):
         """What ELSE this swap now requires -- the multi-swap case.
 
-        One trade is often not enough: the first module of ours needs SEND in
-        the list (nothing else is a safe fallback), a module can push the
-        selection past the donor region, and the ledger refuses some pairs
-        outright. All three are things the build would refuse LATER, so say
-        them at the moment the swap is made, and name the remedy rather than
-        the rule.
+        One trade is frequently not enough, and the reasons are unequal:
+
+        * A BUFFER CLASH is the expensive one and the ledger states it one
+          PAIR at a time -- adding ChonVerb to a stock chooser produces four
+          near-identical sentences (FLANGER, CHORUS, SPATIALIZER and COMB all
+          take a per-track instance buffer at the addresses its tank
+          hardcodes). Reported as four walls of text it is unreadable and it
+          is not obvious that the answer is "remove those four". Aggregated
+          into one sentence that names them.
+        * THE FALLBACK is cheap and is fixed here rather than reported. A
+          chooser row costs nothing (32 fit in the long cave), so making the
+          operator sacrifice an effect for SEND was an invention of this UI,
+          not a constraint of the image. It is added, and said out loud.
+        * WORDS are the real budget and the only one where something has to
+          go.
         """
-        probs = self.app.state.problems()
+        st = self.app.state
+        probs = st.problems()
+
+        # The fallback: satisfy it rather than demand a trade for it.
+        if any("no fallback" in p for p in probs) and "SEND" in st.mods:
+            send = st.mods["SEND"]
+            room = (send.key in st.words and
+                    sum(st.words[m.key] for m in st.selected
+                        if m.dsp is not None and m.key in st.words)
+                    + st.words[send.key] <= DONOR_WORDS)
+            if send.key not in st.sel and (room or send.key not in st.words):
+                st.insert_at(send.key, len(st.order))
+                probs = st.problems()
+                extra = "added Send too (the only safe fallback)"
+                rest = self._clash(probs)
+                return extra + (" · " + rest if rest else "")
+        rest = self._clash(probs)
+        return rest
+
+    def _clash(self, probs):
+        """One readable sentence for whatever still stands."""
         if not probs:
             return ""
+        buf = [p for p in probs if "stock instance buffer" in p]
+        if buf:
+            # "stock instance buffer: flanger and chonverb both claim ..."
+            names = []
+            for p in buf:
+                a = p.split(":", 1)[1].split(" and ")[0].strip()
+                names.append(a.upper())
+            return (f"needs the FX2 buffer region — also swap out "
+                    f"{', '.join(names)}")
         first = probs[0]
-        if "no fallback" in first:
-            return "now needs Send — swap another row for it"
         if "exceeds" in first:
             return first + "; swap something else out too"
+        if "no fallback" in first:
+            return "needs a fallback — press f to choose one"
         return first
 
     def action_stock(self):
