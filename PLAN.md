@@ -448,7 +448,7 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
-### 5. The remixer: remix TUI + a local ColdFire emulator (decided 31 Aug 2026)
+### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026)
 
 **The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
 of change that today costs a flash per attempt. Two backlog items merge into
@@ -494,7 +494,7 @@ the TUI is a shell around it.**
    list drawer `FUN_40037590`, sprintf `0x40013a08`) into a windows+strings
    model; inject keys at the software layer (the `[PAGE]` keycode-`0x1b`
    precedent). Not pixel-faithful — menu-walking faithful.
-3. **TUI shell** (upgrades the `make remix` remixer): remix pane + build
+3. **TUI shell** (upgrades the `make remix` composer): remix pane + build
    pane land first and are useful with no emulator; the emu pane plugs in
    when Tier 1 does. Schedules deliberately uncoupled.
 4. **Audio stays out.** The voicing loop (render → afplay → ear) is already
@@ -677,14 +677,18 @@ worth keeping.
   then verified the v6 seam-click fix. (The old blocker stands for a
   freeze toggled MID-render more than once; one engage per render is what
   the hook does.)
-- **BACKLOG (Sam, 3 Sep 2026): "remixer" is a name nobody reviewed.** It
-  arrived with the 31 Aug redesign and spread to `docs/REMIXER.md`, the
-  pane copy, the `?` overlay and a dozen comments without anyone deciding it
-  was the right word. The thing is a **remixer** — that is what the project
-  calls the concept everywhere else (`make remix`, `remixes/`,
-  `tools/remix/`), and the entry point is already `make remix`. Renaming is
-  cheap in the UI copy and the doc, and it removes a second vocabulary for
-  one tool. Decide the name first; the rename is mechanical after that.
+- ✅ **"the workbench" was a name nobody reviewed, and it is now "the
+  remixer"** (Sam raised it 3 Sep 2026; done the same day). It had arrived
+  with the 31 Aug redesign and spread to the doc, the pane copy, the `?`
+  overlay and about eighty comments — a second vocabulary for a tool the
+  project already calls a remix everywhere else (`make remix`, `remixes/`,
+  `tools/remix/`, the `Remix` dataclass). `docs/REMIXER.md` is the manual.
+  `WORKBENCH_SOURCES`, `WORKBENCH_THEME` and `out/_audition/workbench.json`
+  are still read, so nobody's shell profile or sample folder silently stops
+  working. ⚠️ The blanket substitution rewrote *this entry* into "'remixer'
+  is a name nobody reviewed ... the thing is a remixer" — a rename cannot be
+  applied to the text discussing the rename, and that is the one place to
+  check by hand afterwards.
 - **BACKLOG (Sam, 3 Sep 2026): a freshly flashed unit keeps drawing the
   effect you had before.** After a flash the track still shows the PREVIOUS
   effect's controls, and only selecting SEND (or anything else) redraws it.
