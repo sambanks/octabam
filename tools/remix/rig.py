@@ -16,7 +16,7 @@ Categories and track ranges are DERIVED from the manifests, never declared
 here -- the manifest is the single place a module states what it is
 (schema.py's whole reason to exist):
 
-  SERVER  harness.is_server -- pays the bus costs, lives in ONE payload, and
+  BUS     harness.is_server -- pays the bus costs, lives in ONE payload, and
           the payload decides its tracks: A serves TRACKS 5-8, B serves
           TRACKS 1-4 (measured 10 Aug 2026 via the MrkVerb32 marker flash,
           INVERTED from every earlier assumption -- test the reverb on
@@ -48,7 +48,14 @@ TRACKS = range(1, 9)
 # one place the workbench states it.
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
-SERVER, INSERT, STOCK, SYSTEM = "server", "insert", "stock", "system"
+# BUS, not "server". It is the natural opposite of INSERT and the word this
+# project already uses for the thing itself (docs/XBUS.md, `make bus`, the
+# bus accumulators): an effect either sits IN a track or is fed BY tracks
+# over the bus. The module KEYS stay "REVERB SERVER"/"DELAY SERVER" -- they
+# are written into saved remixes and the build report -- and `is_server` is
+# still what the manifest declares. This is the word the operator reads.
+BUS, INSERT, STOCK, SYSTEM = "bus", "insert", "stock", "system"
+SERVER = BUS                    # the old name, for anything still saying it
 
 
 def category(mod) -> str:
@@ -102,20 +109,30 @@ def menus(mod) -> tuple[str, ...]:
     them different lists: ten effects on FX1, those ten plus DELAY and the
     three reverbs on FX2.
 
-    Our own modules are FX2-only, and that is a BUILD limit rather than a
-    hardware one. The DSP dispatch tables are indexed by the raw id and
+    Our own modules are FX2-only UNLESS THEY REPLACE A STOCK EFFECT, in
+    which case they take that effect's FX1 row as well -- the build repoints
+    both FX1 tables (build_bus.py, docs/MODULES.md), confirmed by asking the
+    emulated firmware to draw the page. Everything below is about a module
+    wanting a NEW row rather than an existing one.
+
+    Otherwise our modules are FX2-only, and that is a BUILD limit rather than
+    a hardware one. The DSP dispatch tables are indexed by the raw id and
     SHARED between the two menus, so a module's code already runs from FX1
     the moment FX1 selects its id (that is exactly how Rungs ran wherever
     FX1 chose EQUALIZER). What is missing is the panel side: FX1's 15-entry
     chooser cannot grow in place and has to be relocated to a cave
     (`tools/build_fx1.py` proved it can be), and no manifest field asks for
     a row. `verify_menu` asserts FX1's list and id lookup are byte-identical
-    to stock, deliberately, until that lands.
+    to stock APART FROM the entries a declared replacement owns.
     """
     from remix import stock as _stock
     if mod.menu is None:
         return ()
     if mod.is_stock:
+        return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
+    # A replacement inherits its target's menus, because it inherits its id
+    # and the build repoints both of FX1's tables to it.
+    if mod.menu.replaces:
         return (FX1, FX2) if mod.menu.fx2_id in _stock.fx1_ids() else (FX2,)
     return (FX2,)
 
@@ -215,21 +232,30 @@ def resources(mod, words=None) -> list[str]:
         # region, so listing one costs whatever a module of ours would have
         # written over it.
         from remix import stock
-        out.append("its code IS the donor region"
-                   if mod.key in stock.CONSUMED else "0 words (already in the image)")
+        # A DONOR REVERB IS FREE UNTIL YOUR CODE REACHES IT. The region is
+        # packed from PLATE upward, so each one survives exactly as long as
+        # the modules of ours stay under its offset -- which is the number
+        # worth knowing, and it is arithmetic rather than a rule.
+        if mod.key in stock.CONSUMED:
+            at = stock.consumed_at(mod.key)
+            out.append("yours overwrite it first" if at == 0 else
+                       f"free while your modules stay under {at:,} words")
+        else:
+            out.append("free — already in the image")
     elif words:
-        out.append(f"{words} words")
+        out.append(f"{words} of 2,724 words")
     elif mod.dsp is not None:
-        out.append("words: build to measure")
-    if mod.dsp is not None and not mod.is_stock:
-        pay = getattr(mod.dsp, "payloads", None)
-        if pay:
-            out.append("payload " + "+".join(sorted(pay)))
+        out.append("measuring…")
     claims = getattr(mod, "claims", None)
+    # THE CONSEQUENCE, not the address. "pins Y:0x4000-0xBFFF" is where the
+    # buffer is; what the operator is deciding is what it will cost them,
+    # which is the seven stock effects it cannot sit beside. The address is
+    # in docs/DSP.md section 10 and belongs there.
     if claims is not None and getattr(claims, "owns_fx2_buffers", False):
-        out.append("pins Y:0x4000-0xBFFF (the FX2 buffer region)")
+        out.append(f"needs the whole FX2 buffer region "
+                   f"(blocks {_n_allocating()} stock effects)")
     if claims is not None and getattr(claims, "stock_instance_buffer", False):
-        out.append("takes an allocator buffer")
+        out.append("takes 1 of the 4 FX2 buffer slots")
     py = ledger.private_y(mod)
     if py:
         out.append(f"{len(py)} core-private Y word"
@@ -240,3 +266,12 @@ def resources(mod, words=None) -> list[str]:
         out.append(f"{len(caves)} ColdFire cave{'s' if len(caves) != 1 else ''}"
                    + (f", {hooks} hooked" if hooks else ""))
     return out
+
+
+def _n_allocating() -> int:
+    """How many stock effects take a buffer from the host's allocator, and so
+    cannot sit beside a module that pins the region. Counted, not written
+    down: it went from four to seven the day the reverbs became listable."""
+    from remix import stock
+    return sum(1 for m in stock.MODULES
+               if m.claims is not None and m.claims.stock_instance_buffer)

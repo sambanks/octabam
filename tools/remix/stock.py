@@ -179,8 +179,17 @@ def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
     return tuple(out)
 
 
+# key -> the words its DSP code occupies, from the payload module map. Only
+# the three donors' figures are load-bearing (the region is packed from PLATE
+# upward, so each survives while our modules stay under its offset); the rest
+# are recorded because the call sites already carried them and dropping them
+# on the floor is how a number goes stale unnoticed.
+WORDS: dict[str, int] = {}
+
+
 def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
            buffer=False):
+    WORDS[key] = words
     return Module(
         name=name, key=key, kind=Kind.STOCK, doc=doc,
         menu=MenuEntry(fx2_id=fx2_id, donor_desc=desc, abbr=abbr,
@@ -257,6 +266,21 @@ MODULES = (
 # that; the build reports which survived and the workbench reads its answer
 # (state.measure). Kept as a tuple because the ORDER is the meaning.
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
+
+
+def consumed_at(key: int | str) -> int:
+    """Words our modules may place before this donor's code is overwritten.
+
+    The region is contiguous and packed from PLATE upward, so PLATE goes
+    first and DARK survives longest. build_bus.py asserts the contiguity and
+    that the three sum to the region, so a drift here cannot pass quietly.
+    """
+    at = 0
+    for c in CONSUMED:
+        if c == key:
+            return at
+        at += WORDS[c]
+    raise KeyError(key)
 
 # The one stock row with nothing on the DSP to render.
 NO_DSP = frozenset({"DELAY"})

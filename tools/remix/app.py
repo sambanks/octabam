@@ -456,6 +456,7 @@ class BenchScreen(Screen):
         # the time it takes to switch windows.
         self._src = audition._newest_input_mtime()
         self.set_interval(1.5, self._poll_source)
+        self.measure_all()
         self.query_one("#log", RichLog).display = False
         self.rerender()
 
@@ -907,6 +908,17 @@ class BenchScreen(Screen):
         self.app.call_from_thread(self.rerender)
 
     # ---- input -----------------------------------------------------------
+    @work(thread=True, group="words")
+    def measure_all(self):
+        """Word counts for every module, so the library can say what a thing
+        costs BEFORE you add it. ~2 s once, then cached (state.measure_every).
+        """
+        try:
+            self.app.state.measure_every()
+        except Exception:                            # noqa: BLE001
+            return                     # a cost readout is never worth a crash
+        self.app.call_from_thread(self.rerender)
+
     def _poll_source(self):
         """Rebuild when a module's source changed under us."""
         try:
@@ -917,6 +929,7 @@ class BenchScreen(Screen):
             return
         self._src = now
         self.app.state.msg = "module source changed — rebuilding"
+        self.measure_all()             # its word count may have moved too
         # The AUDIO is not re-rendered: it plays out loud and would fire on
         # every save. The image and the panel refresh; `r` is one key.
         self.schedule_sync()

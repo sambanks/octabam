@@ -234,15 +234,43 @@ defaults (a stale default polluted every shimmer measurement until Round 12).
 ### What an effect COSTS, while you are choosing
 
 The UNIT pane carries a resource line under the doc, and the status line
-carries the same facts while you scroll: words, payload, whether it pins the
-FX2 buffer region or asks the allocator for a slot, core-private Y words,
-ColdFire caves. `rig.resources()`.
+carries the same facts while you scroll (`rig.resources()`):
+
+```
+ChonVerb   — bus · id 0x07 · 2411 of 2,724 words ·
+             needs the whole FX2 buffer region (blocks 7 stock effects) ·
+             2 core-private Y words · not in the image
+Dark Rev   — stock · id 0x16 · free while your modules stay under 1,657 words ·
+             takes 1 of the 4 FX2 buffer slots · in the image
+```
 
 "Will this fit beside what I already have" is what the library pane is really
-being asked, and every answer used to arrive only as a **refusal after
-adding it**. Everything there is derived where it can be — private Y is
-scanned from the source, caves and hooks counted from the manifest, words
-taken from the build — so it cannot go stale against the module it describes.
+being asked, and every answer used to arrive only as a **refusal after adding
+it**.
+
+**It says the CONSEQUENCE, not the address.** `pins Y:0x4000-0xBFFF` is where
+a buffer lives; what you are deciding is what it costs you, which is the
+seven stock effects it cannot sit beside. The addresses are in `docs/DSP.md`
+§10 and belong there — **the pane carries consequences, the docs carry
+mechanism.**
+
+A donor reverb states the budget you have left before it goes, because that
+is arithmetic rather than a rule: the region is packed from PLATE upward, so
+PLATE goes first and DARK survives while your modules stay under 1,657 words.
+The three figures sum to exactly the 2,724 the build asserts, which is the
+cross-check that keeps them honest.
+
+Everything is derived where it can be — private Y scanned from the source,
+caves and hooks counted from the manifest, the seven counted rather than
+written down (it was four until the reverbs became listable).
+
+⚠️ **Words used to read `build to measure`**, which was both jargon and
+circular: the build only reports what it PLACED, so a module you had not
+added had no number — and the cost is exactly what you want *before* adding
+it. Every module of ours is now assembled once beside SEND (0.19 s each,
+~2 s for all eleven) in a background worker at startup, cached to
+`out/_audition/words.json` against the newest module source, and re-measured
+when you edit one.
 
 ### A / B compares two EFFECTS
 

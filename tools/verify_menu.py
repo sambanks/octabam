@@ -295,12 +295,37 @@ def main():
     print("\n=== FX1 untouched: its own id lookup and chooser list, and every "
           "donor's OWN descriptor bytes outside our clone caves, are "
           "byte-identical to the pristine image ===")
-    check(img[FX1_ID_LOOKUP - BASE:FX1_ID_LOOKUP - BASE + 0x80] ==
-          stock[FX1_ID_LOOKUP - BASE:FX1_ID_LOOKUP - BASE + 0x80],
-          "FX1 id lookup table (0x400d5f58, 32 entries) unchanged")
-    check(img[FX1_CHOOSER - BASE:FX1_CHOOSER - BASE + 0x40] ==
-          stock[FX1_CHOOSER - BASE:FX1_CHOOSER - BASE + 0x40],
-          "FX1 chooser list (0x400d6060, 15 entries) unchanged")
+    # A DECLARED REPLACEMENT owns its target's two FX1 entries and nothing
+    # else may move. Without a replacement in the remix these are exact
+    # equality, which is what they were written as -- the exception is
+    # enumerated from the manifests rather than loosened to a range, so an
+    # undeclared change to FX1 still fails.
+    _rep_ids = {m.menu.fx2_id for m in _MODS.values()
+                if m.menu is not None and m.menu.replaces
+                and m.key in REMIX.modules}
+    _skip = set()
+    for _eid in _rep_ids:
+        _a = FX1_ID_LOOKUP + _eid * 4 - BASE
+        _skip.update(range(_a, _a + 4))
+        _stock_P = next((m.menu.donor_desc + 0x38 for m in _MODS.values()
+                         if m.is_stock and m.menu.fx2_id == _eid), None)
+        for _o in range(0, 0x40, 4):
+            if int.from_bytes(stock[FX1_CHOOSER - BASE + _o:
+                                    FX1_CHOOSER - BASE + _o + 4], "big") == _stock_P:
+                _skip.update(range(FX1_CHOOSER - BASE + _o,
+                                   FX1_CHOOSER - BASE + _o + 4))
+
+    def _same(lo, ln, what):
+        bad = [i for i in range(lo, lo + ln)
+               if i not in _skip and img[i] != stock[i]]
+        check(not bad, what + (f" -- {len(bad)} byte(s) moved that no "
+                               f"replacement declared" if bad else ""))
+    _same(FX1_ID_LOOKUP - BASE, 0x80,
+          "FX1 id lookup table (0x400d5f58, 32 entries) unchanged"
+          + (" apart from declared replacements" if _rep_ids else ""))
+    _same(FX1_CHOOSER - BASE, 0x40,
+          "FX1 chooser list (0x400d6060, 15 entries) unchanged"
+          + (" apart from declared replacements" if _rep_ids else ""))
     for name, donor_E in (("SPRING", 0x400d5726), ("DARK", 0x400d58b8),
                            ("FILTER", 0x400d4772)):
         check(img[donor_E - BASE:donor_E - BASE + 0x192] ==

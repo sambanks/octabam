@@ -285,6 +285,64 @@ class State:
             for junk in (ROOT / "remixes/__pycache__").glob("_tui_scratch*"):
                 junk.unlink(missing_ok=True)
 
+    def measure_every(self, note=None):
+        """Word counts for EVERY module of ours, not just the selection.
+
+        The build only reports what it PLACED, so a module you have not added
+        had no number and the pane said "build to measure" -- which is
+        circular: the cost is what you want to know BEFORE adding it. Each
+        module is assembled once beside SEND, which is what audition.py
+        already does for an insert, and one takes ~0.19 s.
+
+        Cached on disk against the newest module source, so it is paid once
+        per session and again only when something is edited.
+        """
+        import json
+        newest = 0.0
+        for f in (ROOT / "modules").rglob("*"):
+            if f.is_file() and "__pycache__" not in f.parts:
+                newest = max(newest, f.stat().st_mtime)
+        cache = ROOT / "out/_audition/words.json"
+        try:
+            have = json.loads(cache.read_text())
+            if have.get("stamp") == newest:
+                self.words.update(have["words"])
+                return
+        except Exception:                            # noqa: BLE001
+            pass
+        got = {}
+        for key, m in self.mods.items():
+            if m.is_stock or m.dsp is None or key in got:
+                continue
+            mods = (key,) if key == "SEND" else (key, "SEND")
+            tmp = ROOT / "remixes/_words.py"
+            tmp.write_text(
+                f'"""_words -- scratch: one module, to read its word count."""\n'
+                f'from remix.schema import Remix\n'
+                f'REMIX = Remix(name="_words", doc="one module", '
+                f'modules={mods!r}, fallback="SEND")\n')
+            try:
+                r = subprocess.run(
+                    [sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                    env={**os.environ, "REMIX": "_words", "XBUS": "1",
+                         "SPEC": "1"}, capture_output=True, text=True)
+                for line in r.stdout.splitlines():
+                    mm = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
+                                  r"\s+\(\s*(\d+) words\)", line)
+                    if mm and mm.group(1).strip() in self.mods:
+                        got[mm.group(1).strip()] = int(mm.group(2))
+            finally:
+                tmp.unlink(missing_ok=True)
+                for junk in (ROOT / "remixes/__pycache__").glob("_words*"):
+                    junk.unlink(missing_ok=True)
+        self.words.update(got)
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"stamp": newest, "words": got},
+                                        indent=2) + "\n")
+        except OSError:
+            pass
+
     # ---- scratch builds --------------------------------------------------
     def scratch_remix(self):
         """Write the live selection as the scratch remix and return its NAME,
