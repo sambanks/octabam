@@ -664,7 +664,31 @@ effect id, build) and `problems()` is computed once per pass. Measured
 A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
 
 Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
-`FX2`, then `MENU` — showing the firmware's own draw of that page.
+`FX2`, then `MENU` — showing the firmware's own draw of that page, under a
+caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+Not the page title, which the LCD draws itself two lines down; the FX pages
+all open with the same title and the same chooser column, so saying it twice
+is how the caption came to say nothing.
+
+⚠️ **Three things the capture does that a character grid does not** (all
+fixed 3 Sep 2026 — the page had become hard to read and, worse, wrong):
+
+- **A later draw over the same pixels WINS.** The firmware repaints a
+  parameter row in place, so the capture holds the label that *was* there and
+  then the one that is — `PTCH` then `FRQ1` at the same x. Overlapping spans
+  are replaced. Left side by side, the page showed `LEV FRQ1 PTCH STRT GN1
+  LEN Q1` and read as an effect with seven parameters where the unit draws
+  four.
+- **Two strings that do not overlap are never fused.** Writing character by
+  character let a label whose cell was taken run into its neighbour, and the
+  result is a word that does not exist on the unit: **`DJ EQUALIZER1`**,
+  `COMPRESSORT 1`, `SMOD` (which is `SIZE`'s row eating ChonVerb's `MOD`). A
+  label pushed one column right is legible and obviously two things.
+- **The PART window's text is a caption, not a row.** `Pt:1 PART 1` comes
+  with both FX pages and its coordinates belong to a *different* window's
+  space, so it lands in the middle of the effect list — it is the `1` in `DJ
+  EQUALIZER1`. `part_label()` lifts it out; the caption says `on track 5`
+  instead, which is the same fact in words.
 
 ⚠️ **The FX and MENU page entry points TOGGLE**: calling one opens the page,
 calling it again closes it, so consecutive renders used to alternate between

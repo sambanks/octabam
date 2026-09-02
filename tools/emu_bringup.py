@@ -19,6 +19,7 @@ details and the fork past the trap: docs/EMU.md.
 """
 import collections
 import os
+import re
 import sys
 
 try:
@@ -571,20 +572,76 @@ def render_fx1(r, track=4, effect_id=0x04):
     return list(r._draws)
 
 
+# The PART window's own text, which the FX pages drag in with them. Its
+# coordinates belong to a DIFFERENT window's space, so it lands in the middle
+# of the effect list and fuses with it -- "DJ EQUALIZER1" is `DJ EQUALIZER`
+# plus the trailing 1 of `Pt:1 PART 1`. It is real, and it is not this page,
+# so it comes out as a caption instead of a row (see part_label).
+_PART = re.compile(r"^Pt:\d")
+
+
+def _clean(draws):
+    """Deduped, blank-free, this-window-only draws.
+
+    The capture holds each string once per call and the page functions are
+    re-issued when nothing came back, so exact duplicates are routine.
+    """
+    seen, out = set(), []
+    for x, y, t in draws:
+        if not t.strip() or not (0 <= x <= 128 and 0 <= y <= 64):
+            continue
+        if _PART.match(t) or (x, y, t) in seen:
+            continue
+        seen.add((x, y, t))
+        out.append((x, y, t))
+    return out
+
+
+def part_label(draws):
+    """The PART window's caption, if this capture dragged one in."""
+    for _x, _y, t in draws:
+        if _PART.match(t):
+            return " ".join(t.split())
+    return None
+
+
 def layout_screen(draws, cols=42, rows=9):
     """Arrange captured (x,y,text) draws into a text grid. The LCD is 128x64
     with a bottom-left-ish origin (the list drawer steps y DOWN per row, so
-    larger y = higher on screen); map pixel x/y to character cells."""
-    grid = [[" "] * cols for _ in range(rows)]
-    for x, y, t in draws:
-        if not (0 <= x <= 128 and 0 <= y <= 64):     # skip bogus coords
-            continue
-        cx = min(cols - 1, max(0, x * cols // 128))
+    larger y = higher on screen); map pixel x/y to character cells.
+
+    Two rules, and they are the two things the LCD does that a character grid
+    does not do by itself:
+
+    ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
+    parameter row in place, so the capture holds the label that WAS there
+    and then the one that is -- `PTCH` then `FRQ1` at the same x. Overlapping
+    spans are replaced, not shuffled aside, or the page shows both and reads
+    as an effect with seven parameters where the unit draws four.
+
+    ⚠️ TWO STRINGS THAT DO NOT OVERLAP ARE NEVER FUSED. Writing character by
+    character into a fixed grid let a label whose cell was taken run straight
+    into its neighbour, and the result is a word that does not exist on the
+    unit -- `DJ EQUALIZER1`, `COMPRESSORT 1`. A label pushed one column right
+    is legible and obviously two things; a fused one is not obviously
+    anything.
+    """
+    grid = [[] for _ in range(rows)]
+    for x, y, t in _clean(draws):
         cy = min(rows - 1, max(0, (64 - y) * rows // 64))
-        for i, ch in enumerate(t):
-            if cx + i < cols:
-                grid[cy][cx + i] = ch
-    return ["".join(row).rstrip() for row in grid]
+        cx = min(cols - 1, max(0, x * cols // 128))
+        row = grid[cy]
+        row[:] = [(s0, s1) for s0, s1 in row
+                  if s0 + len(s1) <= cx or s0 >= cx + len(t)]
+        row.append((cx, t))
+    out = []
+    for frags in grid:
+        row = ""
+        for cx, t in sorted(frags):
+            at = max(cx, len(row) + 1) if row else cx
+            row += " " * (at - len(row)) + t
+        out.append(row.rstrip())
+    return out
 
 
 def _cli():

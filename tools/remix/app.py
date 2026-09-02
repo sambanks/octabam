@@ -1420,8 +1420,17 @@ class RemixerScreen(Screen):
         st = self.app.state
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
+        # WHAT IT IS SHOWING, not that it is showing something. "drawn by
+        # the firmware, from your selection" said where the picture came
+        # from, which is the one thing you can see; what was missing is
+        # WHICH page and for WHICH effect -- and the FX pages all open with
+        # the same title and the same chooser column, so they look alike.
+        # NOT the page title -- the LCD draws that itself two lines down,
+        # and saying it twice is how the caption came to say nothing.
+        what = ("the main menu" if self.preview == "MENU"
+                else f"{escape(disp(mod))} on track 5")
         head = [f"preview {modes}  [dim](p)[/]",
-                "[dim]— drawn by the firmware, from your selection —[/]"]
+                f"[dim]{what}, as the unit draws it[/]"]
         # DO NOT DRAW SOMETHING THAT IS NOT THE SELECTION. The FX2 page
         # includes the firmware's own chooser list, so an image that is not
         # this selection puts a different set of effects on screen beside the
@@ -1455,8 +1464,9 @@ class RemixerScreen(Screen):
                 # would be added to -- said, rather than left to look like
                 # this effect's page.
                 effect_id = 0x04
-                head = head[:1] + [f"[dim]— {escape(disp(mod))} has no FX1 "
-                                   f"row; this is stock's chooser —[/]"]
+                head = head[:1] + [
+                    f"[dim]{escape(disp(mod))} has no FX1 row — this is the "
+                    f"chooser without it[/]"]
         elif self.preview == "FX2":
             if mod.menu is None:
                 return head + ["[dim]no chooser row: this module patches the "
@@ -1471,10 +1481,13 @@ class RemixerScreen(Screen):
         grid = self._panel(self.preview, effect_id)
         # The LCD frame is chrome; the firmware's own words are the content.
         edge = f"[{LCD}]"
-        return head + [f"{edge}." + "-" * 44 + ".[/]"] + \
-            [f"{edge}|[/]" + escape(ln.ljust(44)) + f"{edge}|[/]"
+        # The no-fuse rule can push a fragment past the nominal 42 columns,
+        # and a row longer than the frame breaks it open.
+        w = 44
+        return head + [f"{edge}." + "-" * w + ".[/]"] + \
+            [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
              for ln in grid] + \
-            [f"{edge}'" + "-" * 44 + "'[/]"]
+            [f"{edge}'" + "-" * w + "'[/]"]
 
     # ---- keeping the image equal to the selection ------------------------
     # There used to be a stale() gate here: the preview refused to draw when
