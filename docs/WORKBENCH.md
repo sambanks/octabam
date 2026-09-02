@@ -249,10 +249,27 @@ being asked, and every answer used to arrive only as a **refusal after adding
 it**.
 
 **It says the CONSEQUENCE, not the address.** `pins Y:0x4000-0xBFFF` is where
-a buffer lives; what you are deciding is what it costs you, which is the
-seven stock effects it cannot sit beside. The addresses are in `docs/DSP.md`
-§10 and belong there — **the pane carries consequences, the docs carry
-mechanism.**
+a buffer lives; what you are deciding is what it costs you — and because that
+set is FIXED, it names them: `pins all 4 FX2 buffer slots — costs Flanger,
+Chorus, Spatializer, Comb Filter and the 3 reverbs`. A count ("blocks 7
+stock effects") just makes you go and find out which seven, and the answer
+never changes. The addresses are in `docs/DSP.md` §10 and belong there —
+**the pane carries consequences, the docs carry mechanism.**
+
+How many slots differs by module, and it is **measured** — `X:0x255` read
+from both payloads:
+
+| | core 0 FX2 | core 1 FX2 |
+|---|---|---|
+| allocator hands out | `0x4000 0x8000 0x30000 0x34000` | `0x4000 0x8000 0x38000 0x3c000` |
+
+ChonVerb is **all four** of core 0's — tank in the core-private pair,
+relocated buffers in the shared-window pair. Nimbus is the core-private pair
+only. BongDelay is core 1's shared-window pair only (its lines are based at
+`0x38000`), so a stock effect there collides *only if* the allocator hands it
+slot 3 or 4 — which depends on how many FX2 effects the dispatcher has
+already walked this block. **Unpredictable is still a refusal**, and each
+works perfectly alone, which is the worst shape a defect can have.
 
 A donor reverb states the budget you have left before it goes, because that
 is arithmetic rather than a rule: the region is packed from PLATE upward, so

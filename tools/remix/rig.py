@@ -271,7 +271,7 @@ def resources(mod, words=None) -> list[str]:
         where = ("all 4 FX2 buffer slots" if n == 4 else
                  "2 core-private FX2 slots" if pins else
                  "2 shared-window FX2 slots")
-        out.append(f"pins {where} (blocks {_n_allocating()} stock effects)")
+        out.append(f"pins {where} — costs {_allocating_names()}")
     if claims is not None and getattr(claims, "stock_instance_buffer", False):
         out.append("takes 1 of the 4 FX2 buffer slots")
     py = ledger.private_y(mod)
@@ -286,10 +286,27 @@ def resources(mod, words=None) -> list[str]:
     return out
 
 
-def _n_allocating() -> int:
-    """How many stock effects take a buffer from the host's allocator, and so
-    cannot sit beside a module that pins the region. Counted, not written
-    down: it went from four to seven the day the reverbs became listable."""
+def _allocating_names() -> str:
+    """WHICH stock effects a buffer-pinning module costs you, by name.
+
+    It is a fixed set, so naming it beats counting it -- "blocks 7 stock
+    effects" makes you go and find out which seven, and the answer never
+    changes. The three reverbs collapse to a phrase because they always go
+    together (their code IS the donor region) and spelling all three out
+    doubles the line for nothing.
+
+    Derived from the manifests, not written down: it went from four to seven
+    the day the reverbs became listable.
+    """
     from remix import stock
-    return sum(1 for m in stock.MODULES
-               if m.claims is not None and m.claims.stock_instance_buffer)
+    names = [m for m in stock.MODULES
+             if m.claims is not None and m.claims.stock_instance_buffer]
+    revs = [m for m in names if m.key in stock.CONSUMED]
+    rest = [m.menu.fullname.decode("latin1").title()
+            for m in names if m.key not in stock.CONSUMED]
+    if len(revs) == len(stock.CONSUMED) and revs:
+        rest.append(f"the {len(revs)} reverbs")
+    elif revs:
+        rest += [m.menu.fullname.decode("latin1").title() for m in revs]
+    return ", ".join(rest[:-1]) + " and " + rest[-1] if len(rest) > 1 else \
+        (rest[0] if rest else "nothing")
