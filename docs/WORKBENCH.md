@@ -394,18 +394,28 @@ else gets any:
 
 | what | colour | why |
 |---|---|---|
-| **whose it is** | cyan = one of *ours*, plain = the box's own | in a remixer this is what you scan for, and nothing carried it |
-| **state** | green fits · yellow is a trade or a caution · red blocks | the free-word count is coloured by its own answer |
-| **one-of-a-kind** | magenta | `◀fb`, the fallback |
-| **the panel** | blue frame | chrome, so the firmware's own words stay plain |
+| **whose it is** | aqua `#8ec07c` = one of *ours*, plain = the box's own | in a remixer this is what you scan for, and nothing carried it |
+| **state** | green `#b8bb26` fits · ochre `#d79921` is a trade or caution · red `#fb4934` blocks | the free-word count is coloured by its own answer |
+| **a knob's level** | a warm ramp, green → ochre → orange `#fe8019`, by where the value sits in its own range | the variety comes from the values, so a row's colour means something |
+| **the source wav** | muted blue `#83a598` | what you are auditioning on, distinct from what you are auditioning |
+| **one-of-a-kind** | soft purple `#d3869b` | `◀fb`, the fallback |
+| **the panel** | grey `#665c54` frame | chrome, so the firmware's own words stay plain |
 
 The free-word thresholds come from what this project actually lives with:
 payload A has shipped at `FREE 4` and B at `FREE 5`, so **double digits is
 already spent** and gets the alarm colour; over 400 is comfortable.
 
-Colours are **ANSI names, not hex** — the workbench runs Textual's
-`ansi-dark`, so it wears your terminal's own sixteen colours and a hex triple
-would fight whatever palette the terminal is set to.
+⚠️ **These were ANSI names first, and that was wrong twice over.** `cyan`
+rendered as `#00ffff` and `yellow` as `#ffff00` — Rich resolves a colour NAME
+to its standard value rather than delegating to the terminal, so the "it
+wears your palette" reasoning did not hold, and against a warm dark ground it
+read as a wall of electric blue. They are gruvbox's own tones now.
+
+**No red in the knob ramp**, deliberately: a filter cutoff at full is not an
+alarm. And the bars were briefly *neutral* — one flat tint across twelve rows
+made the accent the largest thing on screen and told you nothing, but taking
+the colour out entirely went too far the other way. Grading them by value is
+what makes them worth colouring at all.
 
 ## Editing in another window
 

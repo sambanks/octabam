@@ -61,21 +61,39 @@ def step_label(mod, name, v):
 # COLOUR CARRIES MEANING HERE, it does not decorate. Three axes, and nothing
 # else gets colour:
 #
-#   whose is it   OURS is cyan, the box's own is plain. In a remixer that is
+#   whose is it   OURS is aqua, the box's own is plain. In a remixer that is
 #                 the distinction you scan for -- "which of these did we
 #                 write" -- and it was carried by nothing at all.
-#   what state    green fits / yellow is a trade or a caution / red blocks.
-#   what is live  magenta for the one-of-a-kind markers (the fallback).
+#   what state    green fits / ochre is a trade or a caution / red blocks.
+#   what is live  a soft purple for the one-of-a-kind markers (the fallback).
 #
-# ANSI NAMES ON PURPOSE, not hex: the workbench runs Textual's `ansi-dark`
-# so it wears the terminal's own 16 colours (WORKBENCH_THEME overrides), and
-# a hex triple would fight whatever palette Alacritty is set to.
-OURS = "cyan"          # a module from modules/
-OK = "green"           # fits, present, healthy
-WARN = "yellow"        # a trade, a caution, a knob that renders dry
-BAD = "red"            # it will not build
-MARK = "magenta"       # the fallback, and other one-of-a-kind markers
-LCD = "blue"           # the emulated panel's frame
+# ⚠️ THESE WERE ANSI NAMES AND THEY CAME OUT AS SATURATED PRIMARIES --
+# `cyan` rendered #00ffff, `yellow` #ffff00 -- because Rich resolves a name
+# to its standard value rather than delegating to the terminal, so the
+# "it wears your palette" reasoning was simply wrong. Against a warm dark
+# background that read as a wall of electric blue. These are gruvbox's own
+# tones instead: same three axes, desaturated, and chosen to sit on a dark
+# ground rather than shout off it.
+#
+# WHERE colour goes matters as much as which. The knob bars are twelve rows
+# deep, so ONE tint across them made the accent the largest thing on screen
+# and said nothing -- but neutralising them entirely went too far the other
+# way. They are graded by their OWN VALUE instead: a soft warm ramp, so the
+# variety comes from the values themselves and a row's colour means
+# something. No red in the ramp -- a full LP cutoff is not an alarm.
+OURS = "#8ec07c"       # aqua -- a module from modules/
+OK = "#b8bb26"         # green -- fits, present, healthy
+WARN = "#d79921"       # ochre -- a trade, a caution, a knob that renders dry
+BAD = "#fb4934"        # red -- it will not build
+MARK = "#d3869b"       # soft purple -- the fallback, and other lone markers
+LCD = "#665c54"        # the emulated panel's frame: chrome, so it recedes
+SRC = "#83a598"        # muted blue -- the wav you are auditioning on
+BAR = ("#b8bb26", "#d79921", "#fe8019")     # the knob ramp, low -> high
+
+
+def bar_colour(v, hi):
+    """A knob's fill colour, from where it sits in its own range."""
+    return BAR[min(int(3 * v / max(hi, 1)), 2)]
 
 
 # Words that are acronyms, not shouting, and stay upper in a title.
@@ -705,7 +723,7 @@ class BenchScreen(Screen):
             if name == "SOURCE":
                 src = (self.app.source.name if self.app.source
                        else f"(none — no wavs in {source_dir()})")
-                line = f" [dim]SOURCE[/] [{OURS}]{escape(src)}[/]"
+                line = f" [dim]SOURCE[/] [{SRC}]{escape(src)}[/]"
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
             v = vals.get(name, 0)
@@ -715,11 +733,11 @@ class BenchScreen(Screen):
                 # accent and a flat bar -- no fill to imply a range it does
                 # not have.
                 shown = f"[{WARN}]{step_label(mod, name, v):<7}[/]"
-                bar = "[dim]" + "·" * 12 + "[/]"
+                bar = f"[{LCD}]" + "·" * 12 + "[/]"
             else:
                 shown = f"{v:>3}    "
                 fill = round(12 * v / max(hi, 1))
-                bar = (f"[{OURS}]" + "#" * fill + "[/][dim]"
+                bar = (f"[{bar_colour(v, hi)}]" + "#" * fill + "[/][dim]"
                        + "." * (12 - fill) + "[/]")
             page = "1" if slot < 6 else "2"
             line = f" {name:<6} {shown}[dim]\\[[/]{bar}[dim]] p{page}[/]"
@@ -728,7 +746,7 @@ class BenchScreen(Screen):
             out.append("[dim] (no drawn parameters)[/]")
         dry = self.dry_control(mod, vals)
         if dry:
-            out.append(f"[bold {WARN}]⚠ {dry} is 0 — this renders DRY[/]")
+            out.append(f"[{WARN}]⚠ {dry} is 0 — this renders DRY[/]")
         if self.pane == UNIT and knobs:
             name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
             hint = (f"the wav auditioned through this effect — left/right "
