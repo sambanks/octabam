@@ -341,7 +341,9 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
 Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).
 
 [bold]what is actually scarce[/]
-Four things, and the Budget strip is one row for each: the two donor regions of 2,724 words (one per payload, and only YOUR modules spend them), the FX2 buffer slots (one per track, per core), the 31 chooser rows, and the ColdFire cave. Every row reads the same way — [bold]N free of TOTAL, and what took the rest[/].
+Five things, and the Budget strip is one row for each: the two donor regions of 2,724 words (one per payload, and only YOUR modules spend them), the FX2 buffer slots (one per track, per core), the per-core CYCLES, the 31 chooser rows, and the ColdFire cave. Every row reads the same way — [bold]N free of TOTAL, and what took the rest[/].
+
+CYCLES is the one that does not fail as a refusal. Over budget the DSP does not decline to build, it wedges — so the row prices the WORST core under the worst mix this selection allows, which for a card of inserts is four copies of the dearest one: nothing stops all four tracks selecting it. The budget of 3,120 is what our code may spend after stock's own share, measured 23 Aug 2026, and the count is a floor: exact for the code, optimistic about memory contention.
 
 Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 rows fit, and a stock effect costs zero words because its code is already in the image whether or not it has a row. Leaving a stock effect out takes its chooser row and nothing else — an old project that selects it still runs it.
 
@@ -1111,6 +1113,25 @@ class BenchScreen(Screen):
                        + (" · ".join(bits) if bits
                           else f"tracks {tracks.start}-{tracks.stop - 1}, "
                                f"no module claims one") + "[/]")
+
+        # CYCLES. The fourth scarce thing was really the fifth: over the
+        # per-core budget the DSP does not refuse the image, it WEDGES
+        # (PLAN.md s2 -- "the wall is a CLIFF", +200 cycles was a hard hang
+        # with zero warning). So it is the one resource here whose overrun
+        # you cannot discover by building, and it lived behind `c` and a
+        # full `make check`. It is the WORST core, under the worst mix of
+        # this selection's own effects across the four FX2 slots -- an image
+        # cannot stop the operator putting the heaviest one on all four.
+        if st.cycles:
+            worst, usable, mix = st.cycles
+            free = usable - worst
+            c = OK if free > 800 else WARN if free > 0 else BAD
+            how = " + ".join(
+                f"{n}× {disp(st.mods[k]) if k in st.mods else titlecase(k)}"
+                for k, n in mix.items()) or "nothing of ours"
+            brief.append(("cycles", f"[{c}]{free:,}[/]"))
+            side.append(f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
+                        f"{usable:,} [dim]· worst core: {escape(how)}[/]")
 
         # Rows are countable without a build; the cave is not.
         # Same sentence again: 31 exist, this selection loaded N.

@@ -500,7 +500,21 @@ def main():
                               per_effect={m["name"]: m["cycles"] for m in rows},
                               worst_core=worst,
                               worst_core_mix=dict(picks),
+                              # The same mix keyed by MODULE KEY rather than
+                              # by asm stem, so a caller can print the name
+                              # the operator reads on the panel: `reverb
+                              # server` is a filename, `ChonVerb` is what the
+                              # workbench calls it everywhere else.
+                              worst_core_modules={
+                                  next(m["key"] for m in mods
+                                       if m["stem"] == stem): n
+                                  for stem, n in picks},
                               bank=bank, headroom=room,
+                              # What OUR code may spend, per core. The
+                              # workbench's budget row is read against this
+                              # rather than against core_total, and there
+                              # must be one source for the figure.
+                              usable=USABLE,
                               burn_spare_measured=BURN_SPARE,
                               bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))

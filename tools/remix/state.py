@@ -12,6 +12,7 @@ substitutions all affect the count and only the build knows them.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -65,7 +66,11 @@ class State:
         # the last build reported them. None until one has.
         self.cave_free: int | None = None
         self.chooser_rows: int | None = None
-        self.msg = "enter swaps · r hears it · ? for keys"
+        # (worst per-core cycles, what our code may spend, the mix that
+        # produced it) -- tools/cycle_count.py against this selection.
+        self.cycles: tuple[int, int, dict] | None = None
+        # ⚠️ `enter` stopped swapping on 2 Sep 2026; this line did not.
+        self.msg = "enter adds · r hears it · ? for keys"
         # Per-MODULE knob values, so an effect's settings belong to the effect
         # rather than to a track. (The retired rig kept these per track, which
         # was the redundancy: one knob set per effect is what a remix means.)
@@ -265,6 +270,7 @@ class State:
         stops being buildable: these numbers describe the image you HAD, and
         a budget that silently belongs to two edits ago is worse than none."""
         self.regions = []
+        self.cycles = None
         self.cave_free = None
         self.chooser_rows = None
         self.donors_kept = set()
@@ -349,6 +355,24 @@ class State:
             self.donors_kept = kept if saw_donor_line else set()
             self.cave_free = cave_free
             self.chooser_rows = rows
+            # ---- CYCLES, the fifth scarce thing --------------------------
+            # It is the one that breaks AUDIO rather than the build: over
+            # budget the core does not refuse, it wedges (PLAN.md s2, "the
+            # wall is a CLIFF"). cycle_count.py is already remix-aware and
+            # costs 0.17 s, so it rides the same scratch remix rather than
+            # waiting for `make check` -- which is where this answer lived,
+            # behind a key, after the fact.
+            self.cycles = None
+            c = subprocess.run([sys.executable, "tools/cycle_count.py",
+                                "--json"], cwd=ROOT, env=env,
+                               capture_output=True, text=True)
+            if c.returncode == 0:
+                try:
+                    j = json.loads(c.stdout[c.stdout.index("{"):])
+                    self.cycles = (j["worst_core"], j["usable"],
+                                   j["worst_core_modules"])
+                except (ValueError, KeyError):
+                    pass
             if failed:
                 tail = (r.stdout + r.stderr).strip().splitlines()
                 return False, (tail[-1] if tail else "build failed")
