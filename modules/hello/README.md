@@ -125,7 +125,34 @@ actually writes, tag included.
   so this is schema work, not a hardware wall.
 - **Per-block coefficient step**: no slew. Fine for a gain; a future taper
   pass could add one if knob sweeps zipper audibly on hardware.
-- **`dsp_host -dispatch` (faithful mode) wedges** with wild memory reads on
-  any image the author tested, on two machines. Reported with the module,
-  **not verified here** — the gates drive `-init`/`-proc` directly and never
-  touch that path.
+- **`dsp_host -dispatch` (faithful mode) is broken, and it is TWO faults,
+  not one.** Reported with the module as "wedges with wild memory reads on
+  any image, on two machines"; reproduced here 2 Sep 2026 and taken apart.
+
+  **Measured:** block 0 always completes; block 1 never does. The process
+  sits at **0% CPU**, sleeping — it is not a runaway. A stack sample puts
+  it inside `HDI08::writeTX` → `ConditionVariable::wait`: faithful mode runs
+  the firmware's own host writes, the emulator's TX ring is 8192 words and
+  **blocking**, and dsp_host models no ColdFire to read them, so once the
+  ring fills `movep a,x:<<M_HTX` parks forever. It is not the image and not
+  the DSP code — the 400,000-step ceiling cannot catch it, because the
+  process is stuck inside a single instruction. Draining the ring between
+  instructions does **not** fix it: the writes happen inside a hardware DO
+  loop that the emulator runs to completion in one `execInterpreter()` call,
+  so the harness never gets a turn.
+
+  `setTransmitDataAlwaysEmpty(false)` (now set, scoped to dispatch mode
+  only — every other path is byte-for-byte unaffected, `make check` and the
+  gates above confirm) makes the write overwrite and return instead of
+  waiting. The wedge is gone. **Faithful mode then SIGSEGVs on block 1**,
+  `KERN_INVALID_ADDRESS`, which is the "wild memory reads" half of the
+  original report — a second, separate defect the hang had been masking.
+
+  **Inferred, not chased:** the likely candidate is that each block is
+  entered with `dsp.setPC(0x372)` without resetting the DSP's stack, loop
+  and status state, so whatever block 0 left on the stack accumulates. That
+  is a harness modelling gap in the same family as the TX one. Falsifier:
+  reset SP/LA/LC between blocks and see whether block 1 survives. **Nobody
+  has done this**, and until someone does, faithful mode remains unusable —
+  which matters, because it is the only thing that would validate the
+  hand-rolled calling convention the rest of the harness assumes.

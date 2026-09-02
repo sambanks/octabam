@@ -642,6 +642,33 @@ int main(int argc, char** argv) {
                             t, a.fxid, incoming ? a.prevfx : a.fxid,
                             incoming ? a.split : 0, incoming ? "   <- BEING ADDED" : "");
         }
+        // ---- drain the host transmit FIFO -------------------------------
+        // FAITHFUL MODE RUNS THE FIRMWARE'S OWN HOST WRITES, and we model no
+        // ColdFire to read them. HDI08's TX ring is 8192 words and BLOCKING:
+        // once it fills, `movep a,x:<<M_HTX` parks inside HDI08::writeTX on a
+        // condition variable and never returns. It is not a hang in the DSP
+        // code and the 400,000-step ceiling below cannot catch it -- the
+        // process sits at 0% CPU inside ONE instruction, which is why it
+        // reads as a wedge rather than an error. Block 0 fits in the ring;
+        // block 1 does not, so `-dispatch` looked broken on every image
+        // (reported 2 Sep 2026 with the HELLO WORLD contribution, diagnosed
+        // by stack sample). Reading the words back is what the hardware host
+        // does, so this is more faithful than blocking, not less.
+        // periphX is the 56362, which is the one carrying the HDI08 here;
+        // the 56367 (periphY) has only the ESAI.
+        //
+        // Draining between instructions is NOT enough on its own: the stack
+        // sample puts the writes inside DSP::do_exec, a hardware DO loop the
+        // emulator runs to completion in ONE execInterpreter() call, so it
+        // pushes past 8192 without ever giving the harness a turn. The flag
+        // is what actually unblocks it -- with it clear, writeTX overwrites
+        // the head and returns instead of calling waitNotFull(). We keep the
+        // drain as well so `hasTX()` stays a useful thing to inspect.
+        periphX.getHDI08().setTransmitDataAlwaysEmpty(false);
+        auto drainHostTX = [&]() {
+            auto& h = periphX.getHDI08();
+            while (h.hasTX()) h.readTX();
+        };
         for (int b = 0; b < a.blocks; ++b) {
             dsp.setPC(0x372);
             bool ok = false;
@@ -653,8 +680,12 @@ int main(int argc, char** argv) {
                     recent.push_back(pc);
                     if (recent.size() > 40) recent.erase(recent.begin());
                 }
+                // Cheap enough at 1/1024 instructions, and it has to be
+                // INSIDE the block: the ring can fill mid-block.
+                if ((i & 0x3ff) == 0) drainHostTX();
                 dsp.execInterpreter();
             }
+            drainHostTX();
             if (!ok && a.trace && !recent.empty()) {
                 std::printf("  last 40 PCs: ");
                 for (TWord q : recent) std::printf("%05x ", q);
