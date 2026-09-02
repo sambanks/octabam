@@ -236,17 +236,31 @@ itself, so the panel is never showing something else.
 
 [bold]keys[/]
   tab  pane            up/down  move
-  enter  in AVAILABLE: SWAP the ▸ row in LOADED for this one
-         (at (end): append). On one already in the image it just
-         points at its row -- THE LIBRARY ONLY ADDS.
+  enter  in AVAILABLE: ADD it to the image. On one already in,
+         just point at its row -- THE LIBRARY ONLY ADDS.
          in LOADED: remove the row you are on.
   left/right  knob value (UNIT) or row order (LOADED)
               hold to run; SHIFT+left/right steps by TEN
   r  render + hear     space  play last    p  preview mode
-  a  mark it A         , / .  play A / B
+  a / b  park what you hear as A / B      , / .  play A / B
+  x  apply the ⚠'s own fix
   d  source folder     l  load remix       s  save remix
   c  full check        f  fallback         k  back to stock
   ?  this
+
+[bold]adding does not displace anything[/]
+`enter` used to SWAP -- the new effect took the highlighted row's slot
+and that row was dropped. That was the ledger's scarcity applied to your
+gesture, where it does not belong: the chooser cave holds 31 rows and a
+STOCK row costs zero words (no code placed, no descriptor cloned). Only
+WORDS are scarce, and only for modules of ours. So `enter` adds, and the
+one line under LOADED speaks up if the budget is actually breached.
+
+[bold]A / B compares two EFFECTS[/]
+Not two renders ago against now. `r` to hear one, `a` to park it, point
+at the rival, `b` -- which re-renders it on the SAME source -- then `,`
+and `.` to flip between them. That is the question a remixer exists to
+answer: is mine better than the one the box came with?
 
 [bold]why an effect can render DRY[/]
 SIX of the eleven stock effects ship with their wet control at zero —
@@ -342,9 +356,11 @@ class BenchScreen(Screen):
         Binding("r", "render", "hear it"),
         Binding("space", "play", "play last"),
         Binding("p", "preview", "preview page", show=False),
-        Binding("a", "mark('A')", "mark A", show=False),
+        Binding("a", "mark('A')", "A = this", show=False),
+        Binding("b", "mark('B')", "B = this", show=False),
         Binding("comma", "play_mark('A')", "play A", show=False),
         Binding("full_stop", "play_mark('B')", "play B", show=False),
+        Binding("x", "fix", "apply the fix", show=False),
         Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
         Binding("l", "load", "load remix"),
@@ -526,7 +542,7 @@ class BenchScreen(Screen):
             line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
-        out.append("[dim]enter SWAPS with ▸ in LOADED[/]")
+        out.append("[dim]enter adds it to the image[/]")
         self._paint("#pane_avail", out)
 
     def _pane_loaded(self, st, probs):
@@ -534,7 +550,6 @@ class BenchScreen(Screen):
         name = st.loaded_name or "unsaved"
         out = [self._title(f"Loaded · {name}", LOADED), ""]
         pos = 0
-        at = min(self.cur[LOADED], len(rows))      # the insertion point
         for i, m in enumerate(rows):
             here = self.pane == LOADED and i == self.cur[LOADED]
             if m.menu is not None:
@@ -546,18 +561,10 @@ class BenchScreen(Screen):
             words = st.words.get(m.key)
             cost = f"{words:>5}w" if words else "      "
             fb = "◀fb" if st.eff_fallback == m.key else ""
-            # ▸ marks where an `enter` from the library would land. It has
-            # to be visible from the OTHER pane too -- "adds at the LOADED
-            # cursor" is useless advice when the cursor is only drawn on the
-            # pane you are standing in.
-            caret = "▸" if i == at else " "
-            line = (f"{caret}{row} {disp(m):<13}"
-                    f"[dim]{menus:<7}{cost}[/]{fb}")
+            # No insertion caret any more: `enter` appends, so there is no
+            # second cursor in another pane to keep track of.
+            line = f" {row} {disp(m):<13}[dim]{menus:<7}{cost}[/]{fb}"
             out.append(f"[reverse]{line}[/]" if here else line)
-        if at >= len(rows):
-            tail = "▸    [dim](end)[/]"
-            out.append(f"[reverse]{tail}[/]"
-                       if self.pane == LOADED else tail)
         if not rows:
             out.append("[dim] (empty — add from the left)[/]")
         # THE THREE REVERBS ARE PART OF A STOCK CHOOSER and belong in this
@@ -830,9 +837,7 @@ class BenchScreen(Screen):
         rows = (self.avail_rows() if self.pane == AVAILABLE else
                 self.loaded_rows() if self.pane == LOADED else
                 self.unit_rows(self.selected_module()))
-        # LOADED gets one extra position, past the last row: that is "append",
-        # and without it there is no way to add at the end.
-        n = max(len(rows) + (1 if self.pane == LOADED else 0), 1)
+        n = max(len(rows), 1)
         if ev.key in ("down", "j"):
             self.cur[self.pane] = min(n - 1, self.cur[self.pane] + 1)
         elif ev.key in ("up", "k"):
@@ -937,32 +942,25 @@ class BenchScreen(Screen):
                 self.rerender()
                 return
             else:
-                # SWAP, not insert. An image is a fixed budget -- 2,724
-                # words and a list somebody has to scroll -- so putting
-                # something in normally means taking something out, and the
-                # new effect takes the old one's SLOT. The ▸ at (end) is the
-                # exception: there, it appends.
-                loaded = self.loaded_rows()
-                at = self.cur[LOADED]
-                if at < len(loaded) and st.swap(loaded[at].key, mod.key):
-                    rowno = len([k for k in st.order[:at + 1]
-                                 if st.mods[k].menu is not None])
-                    st.msg = (f"swapped {disp(loaded[at])} → {disp(mod)}"
-                              f" at chooser row {rowno}")
-                else:
-                    st.insert_at(mod.key, len(st.order))
-                    st.msg = f"added {disp(mod)} at the end"
-                # The consequences go to the ⚠ line, which is beside the
-                # rows they are about. Appending them here produced a
-                # run-on that the status bar then truncated -- and the part
-                # it cut was the only actionable half of the sentence.
+                # ⚠️ THIS USED TO SWAP: the module took the ▸ row's slot and
+                # that row was dropped. The justification was "an image is a
+                # fixed budget, so putting something in means taking
+                # something out" -- which is the LEDGER's scarcity imported
+                # into the operator's gesture, where it does not apply.
+                # Rows are not the scarce thing: the long-list cave holds 31
+                # of them, and a STOCK row costs zero words (no code placed,
+                # no descriptor cloned). Only WORDS are scarce, and only for
+                # modules of ours. So add, and let the budget speak up if it
+                # is actually breached -- which is what the ⚠ line is for.
+                st.insert_at(mod.key, len(st.order))
+                st.msg = f"added {disp(mod)}"
                 st.msg += self.ensure_fallback()
             st.loaded_name = ""
             self.schedule_sync()
         elif self.pane == LOADED:
             rows = self.loaded_rows()
             if not rows or self.cur[LOADED] >= len(rows):
-                return                       # the append position: no row
+                return
             mod = rows[self.cur[LOADED]]
             st.toggle(mod.key)
             st.loaded_name = ""
@@ -1008,6 +1006,42 @@ class BenchScreen(Screen):
                 and all("no fallback" in p for p in probs)
                 and not any(not m.is_stock for m in self.app.state.selected))
 
+    def blockers(self, probs):
+        """The modules whose removal would clear the ⚠, if that is the shape
+        of the problem.
+
+        A buffer clash is the one that costs four effects at once: FLANGER,
+        CHORUS, SPATIALIZER and COMB each take a per-track instance buffer at
+        exactly the addresses ChonVerb's tank and BongDelay's line hardcode.
+        Naming them was already better than four walls of text -- but naming
+        them still hands the operator a chore. `x` does it.
+        """
+        st = self.app.state
+        names = set()
+        for p_ in probs:
+            if "stock instance buffer" not in p_:
+                continue
+            # "stock instance buffer: flanger and chonverb both claim ..."
+            names.add(p_.split(":", 1)[1].split(" and ")[0].strip())
+        return [m for m in st.selected
+                if m.is_stock and m.name.lower() in names]
+
+    def action_fix(self):
+        """Apply the ⚠'s own advice."""
+        st = self.app.state
+        gone = self.blockers(st.problems())
+        if not gone:
+            st.msg = "nothing here that removing a row would fix"
+            self.rerender()
+            return
+        for m in gone:
+            st.toggle(m.key)
+        st.loaded_name = ""
+        st.msg = "removed " + ", ".join(disp(m) for m in gone)
+        self.cur[LOADED] = min(self.cur[LOADED], max(len(st.order) - 1, 0))
+        self.schedule_sync()
+        self.rerender()
+
     def _clash(self, probs):
         """One readable, IMPERATIVE sentence for whatever stands.
 
@@ -1021,7 +1055,10 @@ class BenchScreen(Screen):
             return ""
         buf = [p for p in probs if "stock instance buffer" in p]
         if buf:
-            # "stock instance buffer: flanger and chonverb both claim ..."
+            gone = self.blockers(probs)
+            if gone:
+                return ("x removes " + ", ".join(disp(m) for m in gone)
+                        + " — they need the same buffer")
             names = [p.split(":", 1)[1].split(" and ")[0].strip().upper()
                      for p in buf]
             return "also remove " + ", ".join(names)
@@ -1093,21 +1130,28 @@ class BenchScreen(Screen):
         self.app.push_screen(HelpScreen("bench"))
 
     # ---- audio -----------------------------------------------------------
-    def action_render(self):
+    def action_render(self, mark=None):
         app, st = self.app, self.app.state
         mod = self.selected_module()
         if mod is None or rig.category(mod) == rig.SYSTEM:
             st.msg = "that module is plumbing — nothing to hear"
         elif app.source is None:
-            st.msg = "no source wav — put some in out/dry/"
+            st.msg = f"no source wav in {source_dir()} — d changes folder"
         elif app.rendering:
             st.msg = "a render is already running"
         else:
-            self.render_worker(mod, dict(st.knobs_for(mod)), app.source)
+            # An A/B must compare EFFECTS, so B is rendered on A's source
+            # rather than on whatever the SOURCE row happens to say now.
+            src = app.source
+            if mark == "B" and "A" in app.marks:
+                src = app.ab_source or src
+            elif mark is None:
+                app.ab_source = None
+            self.render_worker(mod, dict(st.knobs_for(mod)), src, mark)
         self.rerender()
 
     @work(thread=True, exclusive=True, group="render")
-    def render_worker(self, mod, values, source):
+    def render_worker(self, mod, values, source, mark=None):
         app = self.app
 
         def log(msg):
@@ -1125,8 +1169,19 @@ class BenchScreen(Screen):
         changed = {n: v for n, v in values.items()
                    if v != rig.default_knobs(mod).get(n)}
         desc = " ".join(f"{n}={v}" for n, v in changed.items()) or "defaults"
-        app.history.append((f"{mod.name} · {desc}", path))
-        app.state.msg = f"rendered → {path.name}"
+        label = f"{disp(mod)} · {desc}"
+        app.history.append((label, path))
+        app.ab_source = source
+        if mark:
+            app.marks[mark] = (label, path)
+            audition._journal({"event": "mark", "which": mark,
+                               "label": label, "out": path.name})
+            other = app.marks.get("A" if mark == "B" else "B")
+            app.state.msg = (f"{mark} = {label}"
+                             + (f"   ·   , and . to A/B against "
+                                f"{other[0]}" if other else ""))
+        else:
+            app.state.msg = f"rendered → {path.name}"
         app.call_from_thread(app.play, path)
         app.call_from_thread(self.rerender)
 
@@ -1141,23 +1196,43 @@ class BenchScreen(Screen):
         self.rerender()
 
     def action_mark(self, which):
+        """Park the last render as A or B.
+
+        The A/B that matters in a REMIXER is not "two renders ago vs now" --
+        it is "the box's effect vs mine", which is the whole question an
+        upgraded LO-FI asks. So `a` parks what you just heard and `b`
+        RE-RENDERS the effect the cursor is on now, on the same source, so
+        the pair is always two effects rather than two accidents of history.
+        """
         app = self.app
-        if app.history:
+        if which == "A":
+            if not app.history:
+                app.state.msg = "nothing rendered yet — r first"
+                self.rerender()
+                return
             label, path = app.history[-1]
-            app.marks[which] = path
-            app.state.msg = f"marked {which}: {label}"
-            audition._journal({"event": "mark", "which": which,
+            app.marks["A"] = (label, path)
+            app.state.msg = f"A = {label} · now point at another effect and b"
+            audition._journal({"event": "mark", "which": "A",
                                "label": label, "out": path.name})
-        self.rerender()
+            self.rerender()
+            return
+        # B: render whatever the cursor is on, against the same source.
+        if "A" not in app.marks:
+            app.state.msg = "mark A first (a), then point at the rival and b"
+            self.rerender()
+            return
+        self.action_render(mark="B")
 
     def action_play_mark(self, which):
         app = self.app
-        p = app.marks.get(which)
-        if p:
-            app.play(p)
-            app.state.msg = f"playing {which}: {p.name}"
+        got = app.marks.get(which)
+        if got:
+            label, path = got
+            app.play(path)
+            app.state.msg = f"{which}: {label}"
         else:
-            app.state.msg = f"no {which} mark yet"
+            app.state.msg = f"no {which} yet"
         self.rerender()
 
     # ---- build, measure, load, save --------------------------------------
@@ -1259,7 +1334,8 @@ class Workbench(App):
         self.state = State()
         self.source = (wav_sources() or [None])[0]
         self.history = []                  # [(label, path)]
-        self.marks = {}                    # "A"/"B" -> path
+        self.marks = {}                    # "A"/"B" -> (label, path)
+        self.ab_source = None              # the wav an A/B pair shares
         self.status = ""                   # state.msg is the live line now
         self.rendering = False
         self.boot = None                   # the booted image, or None

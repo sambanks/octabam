@@ -61,18 +61,22 @@ Everything that *could* be in an image: your modules grouped **server** /
 **insert** / **system**, then the stock effects the unit already ships. `✓`
 marks what the current selection holds.
 
-**`enter` SWAPS the `▸` row in LOADED for the highlighted module.** Composing
-an image is *trading*, not accumulating: the donor region is 2,724 words and
-the chooser is a list somebody has to scroll, so putting something in
-normally means taking something out — and the new effect takes the old one's
-**slot**, because the row number *is* the panel position. The status line
-says what happened ("swapped FILTER → WarpFold at chooser row 1").
+**`enter` ADDS the highlighted module to the image.** It displaces nothing.
+`left`/`right` in LOADED moves a row afterwards; `enter` in LOADED removes
+the row you are on. The library only ever adds — `enter` on something already
+in the image just points at its row.
 
-The `▸` is drawn from either pane, because an insertion point you can only
-see while standing on it is no help when you are choosing from the library.
-It can sit one past the last row: that position is `(end)`, and there `enter`
-appends instead of swapping. `left`/`right` in LOADED moves a row afterwards,
-and `enter` on an already-selected module removes it.
+⚠️ **`enter` used to SWAP** (2 Sep 2026, reverted the same day): the module
+took the highlighted row's slot and that row was dropped, with a `▸` caret
+marking where it would land. The stated justification was "an image is a
+fixed budget, so putting something in means taking something out" — which is
+**the ledger's scarcity applied to the operator's gesture, where it does not
+belong**. Rows are not the scarce thing: the long-list cave holds **31** of
+them (`build_bus.py` LONG_LIST), and a **stock row costs zero words** — no
+code placed, no descriptor cloned. Only *words* are scarce, and only for
+modules of ours. Two things went wrong in practice: a chongbong user pressed
+`enter` on a server and lost the other one (the caret had moved onto it), and
+the caret itself was a second cursor in a pane you were not standing in.
 
 **Rows are not the currency — words are.** The pane's one status line shows
 the budget the way the build reports it — **per payload**, `A 74 free · B 5
@@ -104,11 +108,15 @@ Nimbus 500, Rungs 880, Send 215, ChonVerb 2,411 (+24 LFO table), BongDelay
 **One trade is often not enough**, and the status line names the next one
 rather than leaving it to the build to refuse:
 
-| after the swap | what happens |
+| after you add | what happens |
 |---|---|
 | no safe fallback | **SEND is added** — the status line says `added Send as the fallback`. A row is free, so sacrificing an effect for it would be this UI's invention, not the image's constraint |
-| a buffer clash | the ⚠ line reads `also remove FLANGER, CHORUS, SPATIALIZER, COMB` |
+| a buffer clash | the ⚠ line reads `x removes Flanger, Chorus, Spatializer, Comb Filter — they need the same buffer`, and **`x` does it** |
 | past a payload's region | the build refuses and names it: `payload B: RUNGS overruns the region (3599 > 2724 words)` |
+
+**The ⚠ offers its own fix.** Naming the four effects that have to go was
+already better than four walls of text, but it still handed you a chore —
+find four rows, remove each. `x` applies whatever the ⚠ just advised.
 
 **The consequence goes on the ⚠ line, not in the status bar.** Appending it
 to "swapped X → Y" produced a run-on the status bar then truncated — and the
@@ -193,6 +201,16 @@ before you add it. Shows its kind, id, menus and track range, its one-line
 doc, and its drawn parameters with values — `left`/`right` adjusts,
 `shift` for ×10. **Values live per module**, seeded from the manifest
 defaults (a stale default polluted every shimmer measurement until Round 12).
+
+### A / B compares two EFFECTS
+
+Not "two renders ago against now", which is what the marks used to hold. `r`
+hears the effect the cursor is on, `a` parks it as A, then point at the rival
+and `b` — which **re-renders it on the same source** — and `,` / `.` flip
+between them. That is the question a remixer exists to answer: *is mine
+better than the one the box came with?* It is also exactly the question an
+upgraded stock effect asks, which is why the pair is two effects rather than
+two accidents of history.
 
 **`SOURCE` is the first row**: `left`/`right` cycles the wavs in the source
 folder, so choosing what you audition on is one keypress from the knobs. `r`
