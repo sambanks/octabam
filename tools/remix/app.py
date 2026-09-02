@@ -652,6 +652,17 @@ class BenchScreen(Screen):
                            f"donor, taken[/]")
         elif [m for m in st.selected if m.dsp is not None]:
             out.append(f"[dim {WARN}] —  Plate, Spring, Dark Rev (donors)[/]")
+        # THE SHARED COST, ONCE. Every module that pins FX2 buffers costs
+        # the same seven stock effects, so saying it on each of them read as
+        # two bills for one debt -- ChonVerb and BongDelay showed identical
+        # lists. It belongs to the image, so the image says it.
+        pin = [m for m in st.selected if rig.pins_fx2(m)]
+        if pin:
+            out.append(f"[dim {WARN}]no room for "
+                       f"{escape(rig.allocating_names())} — "
+                       f"{escape(disp(pin[0]))}"
+                       f"{' and ' + disp(pin[1]) if len(pin) > 1 else ''} "
+                       f"pin their slots[/]")
         out.append("")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", out)

@@ -269,12 +269,25 @@ def resources(mod, words=None) -> list[str]:
     if mod.menu is None:
         pass
     elif pins or window:
+        # WHAT THIS MODULE PINS, AND WHERE. The list of stock effects it
+        # costs you does NOT belong here: it is the same seven for every
+        # pinner, so printing it per module made ChonVerb and BongDelay look
+        # like two separate bills for one debt. It is a property of the
+        # SELECTION -- the ledger refuses an allocating stock effect beside
+        # ANY pinner -- so the LOADED pane states it once.
+        #
+        # What genuinely differs is which slots, on which core, for which
+        # tracks, and that is worth saying: ChonVerb is all four of core 0's
+        # and BongDelay two of core 1's, and they serve different tracks.
         n = 2 * pins + 2 * window
-        which = ("all 4 slots" if n == 4 else
-                 "2 core-private slots" if pins else
-                 "2 shared-window slots")
-        out.append(f"FX2  pins {which} — costs the rows of "
-                   f"{_allocating_names()}")
+        which = ("all 4 buffer slots" if n == 4 else
+                 "2 core-private buffer slots" if pins else
+                 "2 shared-window buffer slots")
+        tr = track_range(mod)
+        where = (f"on the core serving tracks {tr.start}-{tr.stop - 1}"
+                 if len(tr) and len(tr) != len(TRACKS)
+                 else "on whichever core hosts it")
+        out.append(f"FX2  pins {which} {where}")
     elif allocates:
         out.append("FX2  takes 1 of the 4 slots (16,384 words each)")
     else:
@@ -303,7 +316,7 @@ def _allocating_on_fx1() -> int:
                and FX1 in menus(m))
 
 
-def _allocating_names() -> str:
+def allocating_names() -> str:
     """WHICH stock effects a buffer-pinning module costs you, by name.
 
     It is a fixed set, so naming it beats counting it -- "blocks 7 stock
@@ -339,3 +352,15 @@ def _allocating_names() -> str:
         rest += [m.menu.fullname.decode("latin1").title() for m in revs]
     return ", ".join(rest[:-1]) + " and " + rest[-1] if len(rest) > 1 else \
         (rest[0] if rest else "nothing")
+
+
+def pins_fx2(mod) -> bool:
+    """Does this module hold FX2 instance buffers at fixed addresses? The
+    ledger's own `fixed` test, in one place so the workbench cannot drift
+    from it (it did: BongDelay declares owns_fx2_buffers=False because its
+    lines are in the shared window, and the pane said nothing about buffers
+    for it while the ledger refused it beside all seven)."""
+    from remix.schema import YBase
+    c = getattr(mod, "claims", None)
+    return bool((c is not None and c.owns_fx2_buffers)
+                or (mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER))

@@ -293,6 +293,33 @@ allocator never hands them anything; FX1 slots go to stock effects only. A
 module with no chooser row at all (a ColdFire patch like tempo-sync) shows
 neither line.
 
+⚠️ **The list of effects a pinner costs you is NOT on the module line**, and
+that is deliberate: it is the same seven for every pinner, so printing it per
+module made ChonVerb and BongDelay show identical lists and read as two bills
+for one debt. It belongs to the **image** — the ledger refuses an allocating
+stock effect beside *any* pinner — so the LOADED pane says it once:
+
+```
+no room for Flanger, Chorus, Spatializer, Comb Filter and the 3 reverbs
+— ChonVerb and BongDelay pin their slots
+```
+
+What genuinely differs per module is which slots, on which core, for which
+tracks:
+
+```
+ChonVerb   FX2  pins all 4 buffer slots on the core serving tracks 5-8
+BongDelay  FX2  pins 2 shared-window buffer slots on the core serving tracks 1-4
+Nimbus     FX2  pins 2 core-private buffer slots on whichever core hosts it
+```
+
+**They are two effects, not one.** ChonVerb serves tracks 5-8 and BongDelay
+tracks 1-4, on different cores, and each ships alone: `verbonly` is ChonVerb
+without the delay, and a delay-only remix builds too (BongDelay lands on
+payload B and its id aliases to SEND on A, so selecting it on tracks 5-8
+makes a send rather than silence). Showing them as one "bus" would hide the
+track range, which is the thing you have to know to use either.
+
 ### It costs the FX2 ROW, not the effect
 
 **FLANGER, CHORUS, SPATIALIZER and COMB are still on FX1, and still work.**
