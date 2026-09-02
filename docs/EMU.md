@@ -186,7 +186,8 @@ FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
 **How the effect resolves.** The page draws the descriptor `table[id]` where
 `id` is a per-track byte in the project Part: FX2 at `PART + PAT*0x18b2 +
 track + 0x8ed88`, FX1 at `+0x8ed80` (`PART = *(u32*)0x46c82456`, `PAT =
-*(u8*)0x100b14cf`). Our boot loads no project, so `PART` is null — `_prime_part`
+*(u8*)0x100b14cf` — misnamed: that byte is the current **part**, not the
+pattern; the `0x18b2`-stride records are parts, `EXTERNAL.md` §6). Our boot loads no project, so `PART` is null — `_prime_part`
 maps a zeroed scratch Part and points the DB pointer at it, then `assign_fx2`/
 the FX1 path write the id byte. In the BUILT image the id→descriptor tables
 are patched (`build_bus.py`), so `0x07` is ChonVerb; in the raw image those

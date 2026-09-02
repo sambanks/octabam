@@ -189,9 +189,9 @@ Engine data map (all in the RAM window `0x80000000` = hot state):
 | "Active voice" query | `FUN_40000ee0(t)` reads `0x800049d8[t*0xA8]` | 0=inactive, 1/2 per `0x8000184a` |
 | "Something sounding" query | `FUN_400448dc` walks the 8 tracks | used by OS-upgrade to block |
 | MIDI tracks state | `0x80006500[t]`, global `0x800065b8` | MIDI mute/active flags |
-| Voice command mailboxes | `0x46c7e9fa`/`0x800018be`/`0x800018de` `[t*4]` | `FUN_40005178` queues per-track commands |
-| Per-track pattern data | `_DAT_46c82456 + pat*0x18b2 + trk*0xc` (+0x8f385) | sequenced data (trigs/params) |
-| Globals | current track `0x100b14cc`, current pattern `0x80000003` | live selection |
+| Voice command mailboxes | `0x46c7e9fa`/`0x800018be`/`0x800018de` `[t*4]` | `FUN_40005178` queues per-track commands *(2 Sep 2026: `0x800018be/de` = quantised staging, `0x46c7e9fa` = immediate; `EXTERNAL.md` §6)* |
+| Per-track pattern data | `_DAT_46c82456 + pat*0x18b2 + trk*0xc` (+0x8f385) | sequenced data (trigs/params) *(❌ 2 Sep 2026: this is the recorder TRIG byte, `+0x8f382+3`, and the `0x18b2` index is the PART; `EXTERNAL.md` §6)* |
+| Globals | current track `0x100b14cc`, current pattern `0x80000003` | live selection *(❌ 2 Sep 2026: `0x80000003` is the current PART; pattern is `0x80000004`)* |
 
 **Confirmed architecture — same pattern as storage**: `FUN_40005178` (command voice)
 writes mailboxes in RAM, consumed asynchronously by an ISR/feeder that feeds the DSP56xxx.

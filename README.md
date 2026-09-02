@@ -374,9 +374,10 @@ back as notes rather than pull requests. The upstream history is preserved in
 this repository's commit log.
 
 **Bryan T** answered the project's oldest open question — where the stock
-Echo Freeze Delay actually lives — along with the timestretch architecture and
-a shape-level atlas of the boot-uploaded DSP data tables. That work also
-retracted two claims of ours, one of which we then confirmed against our own
+Echo Freeze Delay actually lives — along with the timestretch architecture,
+a shape-level atlas of the boot-uploaded DSP data tables, and the track
+recorders' control path from parameter page to engine. That work also
+retracted claims of ours, several of which we then confirmed against our own
 disassembly. It is recorded, with its own confidence markers and ours, in
 `docs/EXTERNAL.md`.
 
