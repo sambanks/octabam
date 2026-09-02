@@ -638,6 +638,37 @@ select where one position silently does nothing, drawn as a bare `3`. With
 labels it draws `CLEAN` and the mystery is gone. This is the case that shows
 why numbers are not good enough: the select is CORRECT and still unusable.
 
+### 7. A stock-only build: "put my unit back" (backlogged 2 Sep 2026)
+
+The workbench opens on **stock** — the chooser an unmodified unit shows — and
+that selection **cannot be built**, which makes the default state a view
+rather than a starting point. Two things stand in the way, and neither is
+hardware:
+
+1. **A remix must name a fallback** (`schema.Remix`), and no stock effect is
+   a safe one: the fallback is what unimplemented ids alias to, and a real
+   effect would *process* the unknown id. `auto_fallback()` returns None and
+   `problems()` refuses. A selection with no modules of ours has nothing to
+   alias, so the requirement should be conditional rather than absolute.
+2. **`DONOR_IDS` (PLATE/SPRING/DARK REV) are repointed to the null stub
+   unconditionally** in `build_bus.py`, so even a build that placed no code
+   would silence the three reverbs. That is defensive, not necessary — and
+   there is a precedent for making it conditional: **CHORUS was a donor until
+   v98 and got its stock dispatch back the moment we stopped taking its
+   code.** The three reverbs are consumed because every buildable selection
+   so far contains at least SEND; they are not consumed by nature.
+
+Worth having because it is the honest bottom of the range: an image that
+restores an unmodified chooser, including the three reverbs, is *"undo my
+mods"* — the thing to flash before selling the box, or when a remix turns out
+badly. It also makes the workbench's default state buildable, which is what
+a person expects from a thing they are looking at.
+
+⚠️ It is NOT "flash the stock OS back" — that is what the official installer
+does, and it is simpler. This is the same image with our chooser edits
+reverted, which is only interesting if some ColdFire cave is worth keeping.
+If nothing is, say so and close this rather than building it.
+
 ## Open items and standing caveats
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**

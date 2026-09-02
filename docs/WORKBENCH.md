@@ -61,15 +61,27 @@ Everything that *could* be in an image: your modules grouped **server** /
 **insert** / **system**, then the stock effects the unit already ships. `✓`
 marks what the current selection holds.
 
-**`enter` adds at the LOADED pane's cursor**, not at the end — chooser order
-*is* the panel's row order, so "which slot" is the question, and the status
-line answers it ("added ChonVerb at chooser row 3"). `left`/`right` in LOADED
-moves a row afterwards.
+**`enter` adds at the `▸` in the LOADED pane**, not at the end — chooser
+order *is* the panel's row order, so "which slot" is the question, and the
+status line answers it ("added ChonVerb at chooser row 3"). The `▸` is drawn
+from either pane, because an insertion point you can only see while standing
+on it is no help when you are adding from the library. It can sit one past
+the last row — that position is `(end)`, and it is how you append.
+`left`/`right` in LOADED moves a row afterwards.
 
-The three stock **reverbs** are listed last under `consumed` and cannot be
-selected: PLATE, SPRING and DARK REV are the 2,724-word donor region every
-module packs into. They are shown rather than omitted because an effect that
-is simply absent reads as a bug.
+The three stock **reverbs** are listed last and cannot be selected: PLATE,
+SPRING and DARK REV are the 2,724-word donor region our modules are written
+over. They are shown rather than omitted because an effect that is simply
+absent reads as a bug.
+
+**Whether they are consumed depends on the selection**, and the pane says
+which: a selection carrying modules of ours names one of them ("their code
+is the region WarpFold sits in"); a selection carrying none says so instead.
+The precedent is CHORUS, which was a donor until v98 and got its stock
+dispatch back the moment the build stopped taking its code. ⚠️ A stock-only
+image would therefore keep all three — but cannot be built yet, because a
+remix must name a fallback and no stock effect is a safe one. `PLAN.md` §7
+backlogs it.
 
 The `FX1+FX2` column is which **chooser** the effect has a row on, derived
 from the pristine image rather than written down (`stock.fx1_ids()`). Stock

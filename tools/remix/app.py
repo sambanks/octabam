@@ -427,14 +427,29 @@ class BenchScreen(Screen):
             line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
         # The three stock REVERBS are absent from every list above, and their
-        # absence is the kind that reads as a bug. Say where they went.
-        out.append("[dim]── consumed ──[/]")
+        # absence is the kind that reads as a bug. Say where they went -- and
+        # say it CONDITIONALLY, because "consumed" is a property of the
+        # SELECTION, not a law. Their code is the region our modules are
+        # written over, so a selection carrying no module of ours takes
+        # nothing from them. (Precedent: CHORUS was a donor until v98 and got
+        # its dispatch back the moment we stopped taking its code.)
+        eats = [m for m in st.selected if m.dsp is not None]
+        out.append("[dim]── the three reverbs ──[/]")
         for name in stock.CONSUMED:
             out.append(f"[dim]   {name:<13} —[/]")
-        out.append("[dim]   these ARE the donor region")
-        out.append("   every module packs into[/]")
+        if eats:
+            out.append("[dim]   their code is the region")
+            out.append(f"   {escape(disp(eats[0]))} and "
+                       f"{len(eats) - 1} other" +
+                       ("s" if len(eats) != 2 else "") + " sit in[/]"
+                       if len(eats) > 1 else
+                       f"   {escape(disp(eats[0]))} sits in[/]")
+        else:
+            out.append("[dim]   nothing here takes their code —")
+            out.append("   a stock-only image would keep")
+            out.append("   them, but cannot be built yet[/]")
         out.append("")
-        out.append("[dim]enter adds at LOADED cursor[/]")
+        out.append("[dim]enter adds at ▸ in LOADED[/]")
         self.query_one("#pane_avail", Static).update("\n".join(out))
 
     def _pane_loaded(self, st):
@@ -442,6 +457,7 @@ class BenchScreen(Screen):
         name = st.loaded_name or "unsaved"
         out = [self._title(f"LOADED · {name}", LOADED), ""]
         pos = 0
+        at = min(self.cur[LOADED], len(rows))      # the insertion point
         for i, m in enumerate(rows):
             here = self.pane == LOADED and i == self.cur[LOADED]
             if m.menu is not None:
@@ -454,8 +470,17 @@ class BenchScreen(Screen):
             cost = f"[dim]{words:>5}w[/]" if words else "      "
             built = "●" if self.in_image(m) else " "
             fb = "◀fb" if st.eff_fallback == m.key else "   "
-            line = f" {row} {built} {disp(m):<13}[dim]{menus:<7}[/]{cost}{fb}"
+            # ▸ marks where an `enter` from the library would land. It has
+            # to be visible from the OTHER pane too -- "adds at the LOADED
+            # cursor" is useless advice when the cursor is only drawn on the
+            # pane you are standing in.
+            caret = "▸" if i == at else " "
+            line = f"{caret}{row} {built} {disp(m):<13}[dim]{menus:<7}[/]{cost}{fb}"
             out.append(f"[reverse]{line}[/]" if here else line)
+        if at >= len(rows):
+            tail = "▸    [dim](end)[/]"
+            out.append(f"[reverse]{tail}[/]"
+                       if self.pane == LOADED else tail)
         if not rows:
             out.append("[dim] (empty — add from the left)[/]")
         probs = st.problems()
@@ -622,7 +647,9 @@ class BenchScreen(Screen):
         rows = (self.avail_rows() if self.pane == AVAILABLE else
                 self.loaded_rows() if self.pane == LOADED else
                 self.unit_rows(self.selected_module()))
-        n = max(len(rows), 1)
+        # LOADED gets one extra position, past the last row: that is "append",
+        # and without it there is no way to add at the end.
+        n = max(len(rows) + (1 if self.pane == LOADED else 0), 1)
         if ev.key in ("down", "j"):
             self.cur[self.pane] = min(n - 1, self.cur[self.pane] + 1)
         elif ev.key in ("up", "k"):
@@ -663,9 +690,9 @@ class BenchScreen(Screen):
         so this is a real edit, not a view preference."""
         st = self.app.state
         rows = self.loaded_rows()
-        if not rows:
+        if not rows or self.cur[LOADED] >= len(rows):
             return
-        i = min(self.cur[LOADED], len(rows) - 1)
+        i = self.cur[LOADED]
         st.move(rows[i].key, step)
         self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
 
@@ -690,9 +717,9 @@ class BenchScreen(Screen):
             st.loaded_name = ""
         elif self.pane == LOADED:
             rows = self.loaded_rows()
-            if not rows:
-                return
-            mod = rows[min(self.cur[LOADED], len(rows) - 1)]
+            if not rows or self.cur[LOADED] >= len(rows):
+                return                       # the append position: no row
+            mod = rows[self.cur[LOADED]]
             st.toggle(mod.key)
             st.loaded_name = ""
             st.msg = f"removed {mod.key}"
