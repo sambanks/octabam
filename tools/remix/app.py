@@ -767,9 +767,15 @@ class BenchScreen(Screen):
             # region, on both payloads, and no build is needed to say so.
             # The "????" only ever appeared here, because that is the one
             # selection the build refuses.
+            # ⚠️ "all of it" was wrong-headed: the region is never EMPTY.
+            # It holds PLATE+SPRING+DARK's own code, which is exactly why it
+            # is the donor region. "Free" here means "yours to overwrite",
+            # not "unoccupied" -- and reading it as the latter is what
+            # prompted "so the stock doesn't use any of those resources?".
             for n in ("A", "B"):
                 out.append(row(f"words {n}", 0, 20, OK,
-                               f"{DONOR_WORDS:>4} free  [dim]all of it[/]"))
+                               f"{DONOR_WORDS:>4} free  "
+                               f"[dim]= the 3 reverbs' code[/]"))
         else:
             out.append(f" {'words':<{W}}[dim]"
                        + "?" * 20 + "[/]  [dim]not built[/]")
@@ -801,8 +807,17 @@ class BenchScreen(Screen):
             # MODULE holds fixed -- is not what a reader assumes a budget row
             # means. A stock effect is not in this count at all: it takes one
             # from the allocator at runtime, which no image can reserve.
+            # AND WHO ELSE WANTS THEM. "0 pinned of 4" is true and reads as
+            # "nothing is using these", which is false: every allocating
+            # stock effect in the chooser takes one at runtime. The image
+            # cannot reserve those, so they are not part of the count -- but
+            # leaving them unmentioned made the row lie by omission.
+            share = sum(1 for m in st.selected if m.is_stock
+                        and m.claims is not None
+                        and m.claims.stock_instance_buffer)
+            also = f"  [dim]+{share} stock share[/]" if share else ""
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       f"{taken} pinned of 4  [dim]tracks {tracks}[/]")
+                       f"{taken} pinned of 4  [dim]tracks {tracks}[/]{also}")
 
         # Rows are countable without a build; the cave is not.
         rows = (st.chooser_rows if st.chooser_rows is not None

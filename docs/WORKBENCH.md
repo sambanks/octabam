@@ -413,12 +413,21 @@ only ever appeared there, because that is the one selection the build
 refuses:
 
 ```
- words A   ....................  2724 free  all of it
- words B   ....................  2724 free  all of it
- FX2 buf A .... .... .... ....  0 pinned of 4  tracks 5-8
+ words A   ....................  2724 free  = the 3 reverbs' code
+ words B   ....................  2724 free  = the 3 reverbs' code
+ FX2 buf A .... .... .... ....  0 pinned of 4  tracks 5-8  +7 stock share
  rows      14 of 31 (the long chooser cave)
  cave      untouched — nothing of ours is placed
 ```
+
+⚠️ **"Free" does not mean empty, and stock is not idle.** The donor region is
+never unoccupied — it holds PLATE + SPRING + DARK's own code, which is
+*why* it is the donor region. `2724 free` means "yours to overwrite", and the
+row says whose code that is. Likewise `0 pinned of 4` is true and would read
+as "nothing is using these": every allocating stock effect in the chooser
+takes a slot **at runtime**, so the row names how many are waiting. What stock
+genuinely does not touch is the **cave** (free space we found) — and it does
+use **rows**, 14 of 31.
 
 ⚠️ **A selection that cannot build reports `not built`, not the last one's
 numbers.** `State.forget_build()` drops them when the selection stops being
