@@ -503,13 +503,18 @@ class BenchScreen(Screen):
         with Horizontal():
             yield Static(id="pane_avail")
             yield Static(id="pane_load")
-            # The third column is TWO stacked panes: the selected effect, and
-            # a standing budget under it. What is left of the image is the
-            # context you read every other number against, so it should not
-            # be something you have to go and ask for.
-            with Vertical(id="col_unit"):
-                yield Static(id="pane_unit")
-                yield Static(id="pane_budget")
+            yield Static(id="pane_unit")
+        # THE BUDGET IS A FULL-WIDTH STRIP, not the bottom half of the third
+        # column. It sat under the UNIT pane, on the argument that what is
+        # left of the image is the context you read every other number
+        # against -- true, but it is context for the IMAGE, not for the one
+        # effect the cursor is on, and it was charging the unit column ten
+        # lines for the privilege. The preview lives in that column and is
+        # the tallest thing in the workbench (the firmware's own draw of a
+        # page), so it was the one being truncated. Down here it costs the
+        # panes nothing, and the extra width lets it read in two columns
+        # instead of one long list.
+        yield Static(id="pane_budget")
         yield Static(id="status")
         yield RichLog(id="log", highlight=False, markup=False)
         yield Footer()
@@ -833,6 +838,12 @@ class BenchScreen(Screen):
         actually stopped.
         """
         out = ["[bold]Budget[/]"]
+        # TWO GROUPS, because the pane is now a full-width strip: what the
+        # WORDS cost (per payload, plus the reverbs holding the rest) and
+        # what the COUNTABLE things cost (buffers, rows, cave). They read
+        # side by side when the terminal is wide enough and stack when it is
+        # not -- one list either way, so nothing is hidden on a narrow one.
+        out, side = [], []
         W = 10                                  # one label column throughout
 
         def left(n, total, extra=""):
@@ -969,7 +980,7 @@ class BenchScreen(Screen):
                 # WHICH ones are left, beside how many. The count answers
                 # "can I add another"; the list answers "where does it go".
                 bits.append(",".join(str(t) for t in free) + " free")
-            out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
+            side.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
                        f"of 4 [dim]· "
                        + (" · ".join(bits) if bits
                           else f"tracks {tracks.start}-{tracks.stop - 1}, "
@@ -980,7 +991,7 @@ class BenchScreen(Screen):
         used_rows = (st.chooser_rows if st.chooser_rows is not None
                      else len(st.menu_modules))
         c = OK if 31 - used_rows > 7 else WARN if used_rows < 31 else BAD
-        out.append(f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of 31 "
+        side.append(f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of 31 "
                    f"[dim]· {used_rows} loaded[/]")
         # And the cave. The build reports only what is LEFT, so the total
         # comes from state.CAVE_BYTES (pinned to build_bus's own bounds by
@@ -990,14 +1001,14 @@ class BenchScreen(Screen):
         # not the wordless "untouched" this used to print.
         if st.cave_free is not None:
             c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
-            out.append(f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free of "
+            side.append(f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free of "
                        f"{CAVE_BYTES:,} B [dim]· "
                        f"{CAVE_BYTES - st.cave_free:,} loaded[/]")
         elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
-            out.append(f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free of "
+            side.append(f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free of "
                        f"{CAVE_BYTES:,} B [dim]· nothing of ours is placed[/]")
         else:
-            out.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
+            side.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
                        f"· not built[/]")
         # ONE legend line, decoding the ONE thing on this pane that is not
         # already words: the bar's three glyphs. What an FX2 buffer count
@@ -1015,10 +1026,52 @@ class BenchScreen(Screen):
         key = [(g, w) for g, w in (("#", "loaded by a module"),
                                    ("-", "held by a reverb you kept listed"),
                                    (".", "free")) if g in seen]
-        for i, (glyph, what) in enumerate(key):
-            out.append(f" {'bar' if not i else '':<{W}}"
-                       f"[dim]{glyph}  {what}[/]")
-        self._paint("#pane_budget", out)
+        rows, wide = self._two_up(out, side)
+        # THE KEY FOLLOWS THE LAYOUT. Stacked, it is one glyph per line --
+        # three definitions strung along one line read as a run-on sentence,
+        # which is what it was until 2 Sep 2026. Side by side there is room
+        # to space them out, and wide gaps make three columns of a key
+        # rather than a sentence.
+        if wide and len(key) > 1:
+            rows.append(f" {'bar':<{W}}[dim]"
+                        + "".join(f"{g}  {w}".ljust(38) for g, w in key)
+                        + "[/]")
+        else:
+            for i, (glyph, what) in enumerate(key):
+                rows.append(f" {'bar' if not i else '':<{W}}"
+                            f"[dim]{glyph}  {what}[/]")
+        self._paint("#pane_budget", ["[bold]Budget[/]"] + rows)
+
+    # Rich markup is not width: padding by len() on a marked-up string puts
+    # the second column somewhere different on every row.
+    _MARKUP = re.compile(r"\[/?[^\]]*\]")
+
+    @classmethod
+    def _vis(cls, line):
+        return len(cls._MARKUP.sub("", line))
+
+    def _two_up(self, left, right):
+        """Side by side if the terminal is wide enough, stacked if not.
+
+        The threshold is measured off the CONTENT, not guessed: the widest
+        line each column actually produced this render, plus a gutter. So a
+        selection whose held-by line is short gets two columns on a terminal
+        where a longer one would not, which is the right way round -- the
+        test is whether it fits, not whether the window is big.
+        """
+        lw = max((self._vis(x) for x in left), default=0)
+        rw = max((self._vis(x) for x in right), default=0)
+        gutter = 3
+        if not right or lw + gutter + rw + 2 > self.app.size.width:
+            return left + right, False
+        pad = lw + gutter
+        rows = max(len(left), len(right))
+        out = []
+        for i in range(rows):
+            a = left[i] if i < len(left) else ""
+            b = right[i] if i < len(right) else ""
+            out.append(a + " " * (pad - self._vis(a)) + b if b else a)
+        return out, True
 
     def _pane_unit(self, st, probs):
         mod = self.selected_module()
@@ -1829,9 +1882,8 @@ class Workbench(App):
     #pane_avail { width: 32; padding: 0 1; height: 100%; }
     #pane_load  { width: 40; padding: 0 1; height: 100%;
                   border-left: dashed $surface; }
-    #col_unit   { width: 1fr; height: 100%;
+    #pane_unit  { width: 1fr; height: 100%; padding: 0 1;
                   border-left: dashed $surface; }
-    #pane_unit  { height: 1fr; padding: 0 1; }
     #pane_budget { height: auto; padding: 0 1;
                    border-top: dashed $surface; }
     #status { height: 1; padding: 0 1; }
