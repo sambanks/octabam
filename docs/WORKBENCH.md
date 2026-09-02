@@ -114,7 +114,17 @@ rather than leaving it to the build to refuse:
 | a buffer clash | the ⚠ line reads `x removes Flanger, Chorus, Spatializer, Comb Filter — they need the same buffer`, and **`x` does it** |
 | past a payload's region | the build refuses and names it: `payload B: RUNGS overruns the region (3599 > 2724 words)` |
 
-**The ⚠ offers its own fix.** `x` applies whatever it just advised.
+**The ⚠ offers its own fix.** `x` applies whatever it just advised — and it
+names **every** row that has to go, not the first. The build used to `exit`
+on the first offending donor row, so clearing a selection meant iterating:
+remove PLATE, rebuild, fail on SPRING, remove that, rebuild. It knows all of
+them the moment it knows the cursor, and the one-key fix can only remove what
+the build named.
+
+⚠️ The ⚠ describes the **image**, not the cursor, so it does not change as
+you scroll. That is deliberate — it is the state of what you are composing —
+but it means a warning naming an effect you have scrolled away from is still
+current.
 
 It names the **cause and the count**, not the list: `Nimbus pins the buffer 7
 stock effects allocate — x removes them`. Naming all seven took four wrapped
@@ -388,6 +398,15 @@ numbers.** `State.forget_build()` drops them when the selection stops being
 buildable — a budget that silently belongs to the image you had two edits ago
 is worse than no budget at all. Rows are countable without a build, so they
 are still shown; the cave and the words are not.
+
+⚠️ **A build that FAILS still reports what it got to.** `measure()` used to
+return the moment the return code was non-zero, so every build-derived number
+kept the last *successful* build's value — a failed selection showed the
+budget of an image it was not. It parses the report first now, and a failure
+is usually still informative: a chooser-row refusal happens *after* the
+region line is printed, so `726 used, 1998 free` is exactly the fact that
+tells you the failure is not about space. Only the payload the build reached
+is shown.
 
 The pane dividers run the **full height** of the screen: a `Static` is only as
 tall as its text, so they used to stop wherever the shortest column ran out.

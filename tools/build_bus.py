@@ -2150,15 +2150,24 @@ mkgo:""",
         # A chooser row for a reverb whose words we just overwrote would
         # point at a live descriptor over dead code: the panel would draw
         # PLATE REV and the DSP would run ours. Refuse, loudly.
-        for _name in STOCK_ROWS:
-            _d = next((d for d, e in DONOR_IDS.items()
-                       if e == NEW_IDS[_name]), None)
-            if _d is not None and _d not in kept:
-                sys.exit(f"payload {tag}: {_name} is listed in the chooser but "
-                         f"this selection places code over it (region used "
-                         f"{cursor - base_a} words, {_d.upper()} starts at "
-                         f"{record(pp[_d])[1] - base_a}) -- remove the row or "
-                         f"free the words")
+        # ⚠️ NAME EVERY OFFENDER, NOT THE FIRST. Exiting on the first one
+        # made the operator iterate: remove PLATE, rebuild, fail on SPRING,
+        # remove that, rebuild, fail on DARK. The build knows all three the
+        # moment it knows the cursor, and the workbench's one-key fix can
+        # only remove what the build named.
+        _over = [(_name, record(pp[_d])[1] - base_a)
+                 for _name in STOCK_ROWS
+                 for _d in [next((d for d, e in DONOR_IDS.items()
+                                  if e == NEW_IDS[_name]), None)]
+                 if _d is not None and _d not in kept]
+        if _over:
+            _list = ", ".join(f"{n} (starts at {a})" for n, a in _over)
+            sys.exit(f"payload {tag}: {_list} "
+                     f"{'are' if len(_over) > 1 else 'is'} listed in the "
+                     f"chooser but this selection places code over "
+                     f"{'them' if len(_over) > 1 else 'it'} (region used "
+                     f"{cursor - base_a} words) -- remove the row"
+                     f"{'s' if len(_over) > 1 else ''} or free the words")
         if DEV:
             print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
                   f"its chorus. DEV builds are never flashed. ***")

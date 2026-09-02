@@ -249,9 +249,18 @@ class State:
             r = subprocess.run([sys.executable, "tools/build_bus.py"],
                                cwd=ROOT, env=env, capture_output=True,
                                text=True)
-            if r.returncode != 0:
-                tail = (r.stdout + r.stderr).strip().splitlines()
-                return False, (tail[-1] if tail else "build failed")
+            # ⚠️ PARSE THE REPORT EVEN WHEN THE BUILD FAILED. Returning
+            # here left every build-derived number -- the donor budget, the
+            # cave, the rows, which reverbs survived -- holding the LAST
+            # SUCCESSFUL build's values, so a failed selection showed the
+            # budget of an image it was not. And the report is usually still
+            # informative: a chooser-row refusal happens after the region
+            # line is printed, so "726 used, 1998 free" is exactly the fact
+            # that tells you the failure is not about space.
+            #
+            # forget_build() is the other half: when the parse yields
+            # nothing, the fields go empty rather than stale.
+            failed = r.returncode != 0
             words, regions, payload = {}, [], None
             kept, saw_donor_line = set(), False
             cave_free = rows = None
@@ -298,6 +307,9 @@ class State:
             self.donors_kept = kept if saw_donor_line else set()
             self.cave_free = cave_free
             self.chooser_rows = rows
+            if failed:
+                tail = (r.stdout + r.stderr).strip().splitlines()
+                return False, (tail[-1] if tail else "build failed")
             if regions:
                 return True, ("assembled: " + " · ".join(
                     f"{n} {u}/{u + f}" for n, u, f in regions))

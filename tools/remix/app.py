@@ -1255,9 +1255,11 @@ class BenchScreen(Screen):
         # placement knows where the cursor stopped -- so read it rather than
         # predicting it here.
         if self.sync_error:
+            # The build names EVERY donor row this selection overruns, so
+            # one press clears them all rather than one per rebuild.
             out += [m for m in st.selected
                     if m.is_stock and m.key in stock.CONSUMED
-                    and f"{m.key} is listed" in self.sync_error]
+                    and m.key in self.sync_error]
         return out
 
     def action_fix(self):
