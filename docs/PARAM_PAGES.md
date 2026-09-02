@@ -664,6 +664,13 @@ option 3's display half, and it is small; the DSP half (snap TIME to the
 nearest division inside the same tolerance) is ~100 words. Costed but NOT
 built (Sam: investigate only).
 
+**Reading the labels back (2 Sep 2026):** because the words are printed
+rather than stored, `tools/stock_labels.py` simply *calls* every stock
+select's A formatter on the emulated ColdFire (`emu_bringup._call`) for
+each legal value and records `buf` — FILTER HP/LP print "12dB|24dB", ENV
+"BASE|WDTH", EQ TYP "LOW|PEQ|HIGH", PHASER NUM "2..10", COMB PTCH note
+names "A#0".."A 9". Static decoding of eleven formatters was never needed.
+
 **Two things still unmeasured:** the buffer length behind `buf` (stock's
 longest label is "OFF"/"%d" of 3–4 chars; our labels would be ≤ 5,
 "1/16T"), and whether the A formatter is also consulted anywhere the B

@@ -11,6 +11,7 @@ on nothing.
 """
 
 import pathlib
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -242,6 +243,36 @@ def main():
                       f"({' '.join(names)})")
     else:
         print("  [SKIP] stock knobs: out/raw/section_3_MAIN_OS.bin not on disk")
+    # ---- stock selects carry the firmware's own labels ---------------------
+    # tools/stock_labels.py asked each select's display formatter what it
+    # prints; the JSON it wrote must cover every select at the right length,
+    # and -- when the emulator is on hand -- still match the firmware.
+    if stock.STOCK_IMAGE.exists():
+        missing = [f"{m.key}.{p.name.decode()}" for m in stock.MODULES
+                   for p in m.params
+                   if p.name and p.active and p.count is not None and not p.labels]
+        if missing:
+            bad += 1
+            print(f"  [FAIL] stock selects without firmware labels: {missing} "
+                  f"-- run: make stock-labels")
+        else:
+            n = sum(1 for m in stock.MODULES for p in m.params if p.labels)
+            print(f"  [PASS] all {n} stock selects carry the firmware's labels")
+        _venv = ROOT / ".venv/bin/python3"
+        if _venv.exists():
+            r = subprocess.run([str(_venv), "tools/stock_labels.py", "--check"],
+                               cwd=ROOT, capture_output=True, text=True)
+            if r.returncode == 0:
+                print("  [PASS] stock_labels.json matches what the emulated "
+                      "firmware prints")
+            else:
+                bad += 1
+                print("  [FAIL] stock_labels.json is stale: "
+                      + (r.stdout + r.stderr).strip().splitlines()[-1])
+        else:
+            print("  [SKIP] label check against the firmware: no .venv "
+                  "(make emu-setup)")
+
     # Every module in the registry needs a distinct layout letter or the
     # send_probe alphabet silently drops one.
     chars = [m.harness.layout_char for m in registry.modules().values()
@@ -260,7 +291,6 @@ def main():
     # DJ EQ, PHASER, SPATIALIZER and COMB were quietly 5-17 dB dirtier than
     # they should be (2 Sep 2026). Hold the line with the sharpest of them:
     # FLANGER at MIX=0 is a BIT-EXACT dry passthrough at the right address.
-    import subprocess
     _host = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
     _dump = ROOT / "out/dsp/_stock_A.mem"
     if _host.exists() and stock.STOCK_IMAGE.exists():
