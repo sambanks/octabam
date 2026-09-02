@@ -393,6 +393,18 @@ cave**. Everything else is unbounded in practice. Read from the build's own
 report wherever possible, because the build is the only thing that knows
 where the cursor actually stopped.
 
+⚠️ **The buffer rows count what a MODULE pins, not slots in use.** ChonVerb
+holds all four of its core's, BongDelay two of its core's, Nimbus two of
+whichever core hosts it. A **stock** effect never appears there: it takes a
+slot from the allocator *at runtime*, per instantiated effect per block, which
+no image can reserve — and that runtime contest is exactly what the ledger
+refuses a pinner beside an allocating stock effect for.
+
+The four slots are drawn as four groups so the picture and the number agree.
+They used to read `4 of 4` against an empty bar, which says "all four used"
+and meant the opposite; the bar shows what is **pinned**, the number what is
+**free**, and it now says `4 of 4 free`.
+
 ⚠️ **A selection that cannot build reports `not built`, not the last one's
 numbers.** `State.forget_build()` drops them when the selection stops being
 buildable — a budget that silently belongs to the image you had two edits ago

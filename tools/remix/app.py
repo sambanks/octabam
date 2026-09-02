@@ -309,6 +309,18 @@ That is faithful: the defaults are read from the firmware's own
 descriptor, and an unmodified unit really does start them fully dry.
 The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
 
+[bold]the Budget pane[/]
+What is LEFT of the image, under the effect you are looking at. Four
+scarce things and only four: the two donor regions (one per payload),
+the FX2 buffer slots per core, the chooser rows, and the ColdFire cave.
+
+⚠️ The buffer slots count what a MODULE pins — ChonVerb holds all four
+of its core's, BongDelay two of its core's, Nimbus two of whichever
+core hosts it. A STOCK effect does not appear there: it takes a slot
+from the allocator at runtime, per instantiated effect per block, which
+no image can reserve. That runtime contest is what the ledger refuses a
+pinner beside an allocating stock effect for.
+
 [bold]the SOURCE row[/]
 `left`/`right` cycles the wavs in the source folder; `d` points it at
 another one and remembers the choice (out/_audition/workbench.json).
@@ -766,8 +778,15 @@ class BenchScreen(Screen):
                     taken = max(taken, rig.pinned_slots(m))
             free = 4 - taken
             c = OK if free > 2 else WARN if free else BAD
-            out.append(row(f"FX2 buf {tag}", 5 * taken, 20, c,
-                           f"{free} of 4  [dim]tracks {tracks}[/]"))
+            # "4 of 4" was ambiguous and read as the opposite of what it
+            # meant: the bar shows what is PINNED and the number what is
+            # FREE, so an empty bar beside "4 of 4" looked like "all four
+            # used". Say "free", as the word rows do, and draw the four
+            # slots as four groups so the picture and the number agree.
+            slots = " ".join("####" if i < taken else "...."
+                             for i in range(4))
+            out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
+                       f"{free} of 4 free  [dim]tracks {tracks}[/]")
 
         # Rows are countable without a build; the cave is not.
         rows = (st.chooser_rows if st.chooser_rows is not None
@@ -779,6 +798,13 @@ class BenchScreen(Screen):
                 f"{st.cave_free:,}[/][dim] B free[/]"
                 if st.cave_free is not None else "[dim]not built[/]")
         out.append(f" {'cave':<{W}}{cave}")
+        # What the buffer rows COUNT, because it is not "slots in use": a
+        # stock effect takes one from the allocator at runtime, per
+        # instantiated effect per block, which no image can reserve. These
+        # are the ones a MODULE holds fixed, which is the part composing a
+        # remix actually decides.
+        out.append("[dim] buffer slots = pinned by modules; stock takes "
+                   "its own at runtime[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
