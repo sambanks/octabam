@@ -400,10 +400,25 @@ slot from the allocator *at runtime*, per instantiated effect per block, which
 no image can reserve — and that runtime contest is exactly what the ledger
 refuses a pinner beside an allocating stock effect for.
 
-The four slots are drawn as four groups so the picture and the number agree.
-They used to read `4 of 4` against an empty bar, which says "all four used"
-and meant the opposite; the bar shows what is **pinned**, the number what is
-**free**, and it now says `4 of 4 free`.
+The four slots are drawn as four groups so the picture and the number agree,
+and the number says what it counts: `0 pinned of 4`. Two earlier forms were
+worse — `4 of 4` against an empty bar says "all four used" and meant the
+opposite, and `4 of 4 free` still invited "free for *what*?".
+
+⚠️ **A stock chooser reports its real figures, not `????`.** A stock row
+places no code — no clone, no words, its dispatch is already in the image —
+so a selection with no modules of ours uses **zero** of either donor region
+and leaves the cave untouched, and no build is needed to say so. The `????`
+only ever appeared there, because that is the one selection the build
+refuses:
+
+```
+ words A   ....................  2724 free  all of it
+ words B   ....................  2724 free  all of it
+ FX2 buf A .... .... .... ....  0 pinned of 4  tracks 5-8
+ rows      14 of 31 (the long chooser cave)
+ cave      untouched — nothing of ours is placed
+```
 
 ⚠️ **A selection that cannot build reports `not built`, not the last one's
 numbers.** `State.forget_build()` drops them when the selection stops being

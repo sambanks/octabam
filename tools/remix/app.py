@@ -48,7 +48,7 @@ except ImportError:
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
 from remix import audition, registry, rig, stock  # noqa: E402
-from remix.state import BUILT_IMAGE, ROOT, State  # noqa: E402
+from remix.state import BUILT_IMAGE, DONOR_WORDS, ROOT, State  # noqa: E402
 
 
 def step_label(mod, name, v):
@@ -759,6 +759,17 @@ class BenchScreen(Screen):
                 fill = min(20, round(20 * used / max(used + free, 1)))
                 c = OK if free > 400 else WARN if free > 32 else BAD
                 out.append(row(f"words {n}", fill, 20, c, f"{free:>4} free"))
+        elif not [m for m in st.selected if m.dsp is not None]:
+            # ⚠️ "????  not built" for a STOCK chooser was a non-answer to a
+            # question with an exact answer. A stock row places no code --
+            # no clone, no words, its dispatch is already in the image -- so
+            # a selection with no modules of ours uses ZERO of the donor
+            # region, on both payloads, and no build is needed to say so.
+            # The "????" only ever appeared here, because that is the one
+            # selection the build refuses.
+            for n in ("A", "B"):
+                out.append(row(f"words {n}", 0, 20, OK,
+                               f"{DONOR_WORDS:>4} free  [dim]all of it[/]"))
         else:
             out.append(f" {'words':<{W}}[dim]"
                        + "?" * 20 + "[/]  [dim]not built[/]")
@@ -785,8 +796,13 @@ class BenchScreen(Screen):
             # slots as four groups so the picture and the number agree.
             slots = " ".join("####" if i < taken else "...."
                              for i in range(4))
+            # SAY WHAT IS COUNTED IN THE NUMBER ITSELF. "N of 4 free" still
+            # invited "free for what?", and the honest answer -- slots a
+            # MODULE holds fixed -- is not what a reader assumes a budget row
+            # means. A stock effect is not in this count at all: it takes one
+            # from the allocator at runtime, which no image can reserve.
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       f"{free} of 4 free  [dim]tracks {tracks}[/]")
+                       f"{taken} pinned of 4  [dim]tracks {tracks}[/]")
 
         # Rows are countable without a build; the cave is not.
         rows = (st.chooser_rows if st.chooser_rows is not None
@@ -794,17 +810,26 @@ class BenchScreen(Screen):
         c = OK if rows < 24 else WARN if rows < 31 else BAD
         out.append(f" {'rows':<{W}}[{c}]{rows}[/][dim] of 31 "
                    f"(the long chooser cave)[/]")
-        cave = (f"[{OK if st.cave_free > 512 else WARN if st.cave_free else BAD}]"
-                f"{st.cave_free:,}[/][dim] B free[/]"
-                if st.cave_free is not None else "[dim]not built[/]")
+        # Same again for the cave: a stock row clones no descriptor, plants
+        # no formatter and cuts no patch, so with no modules of ours the
+        # region is untouched. Said in words rather than a number, because
+        # the exact figure depends on where the chooser list landed and that
+        # is the build's arithmetic, not a fact to re-derive here.
+        if st.cave_free is not None:
+            c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
+            cave = f"[{c}]{st.cave_free:,}[/][dim] B free[/]"
+        elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
+            cave = f"[{OK}]untouched[/][dim] — nothing of ours is placed[/]"
+        else:
+            cave = "[dim]not built[/]"
         out.append(f" {'cave':<{W}}{cave}")
         # What the buffer rows COUNT, because it is not "slots in use": a
         # stock effect takes one from the allocator at runtime, per
         # instantiated effect per block, which no image can reserve. These
         # are the ones a MODULE holds fixed, which is the part composing a
         # remix actually decides.
-        out.append("[dim] buffer slots = pinned by modules; stock takes "
-                   "its own at runtime[/]")
+        out.append("[dim] pinned = held by a module; stock effects take "
+                   "theirs at runtime[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
