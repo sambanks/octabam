@@ -104,6 +104,9 @@ P_FMT1, P_FMT2, P_FMT3 = 0x0ca, 0x0fa, 0x12a
 # The enumerated-selector pair, taken from stock CHORUS.TAPS (count 5). Stock
 # uses all-zeros for a plain numeric knob.
 STEPPED_FMT = (0x4003c718, 0x40047254)
+# The ColdFire cave region (docs/PARAM_PAGES.md section 7): clones, the tempo
+# caves and PLAN §6's label formatters all live in here and nowhere else.
+CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
 TIME_FMT = 0x400d7080          # modules/tempo-sync/time_fmt.s cave (build_bus.py TIME_FMT_CAVE)
 
 
@@ -258,9 +261,24 @@ def main():
             f2 = rd32(img, P + P_FMT2 + i * 4)
             f3 = rd32(img, P + P_FMT3 + i * 4)
             if cnt < 128:
-                check((f1, f2) == STEPPED_FMT and f3 == 0,
+                # SINCE PLAN §6 the "A" callback may be one of our label
+                # caves instead of stock's 0x4003c718 -- that is the whole
+                # point: A decides WHAT IS PRINTED, and a select that prints
+                # ROOM/PLATE/BIG rather than 1/2/3 still has to be DRAWN as a
+                # select. So the invariant this check exists for is B and
+                # 0x12a, not A: B is the tick widget, and a non-zero 0x12a
+                # forces plain-knob drawing even with the right pair (which
+                # is the defect it was written for, 17 Aug 2026).
+                #
+                # A is still constrained -- stock's enumerated formatter or
+                # an address inside the cave region, never anything else.
+                # What each cave PRINTS is proven separately, by asking the
+                # emulated firmware: tools/verify_labels.py.
+                a_ok = f1 == STEPPED_FMT[0] or CAVE_LO <= f1 < CAVE_HI
+                check(a_ok and f2 == STEPPED_FMT[1] and f3 == 0,
                       f"{name}: p{i} count {cnt} is a SELECT, so it carries "
-                      f"the enumerated formatter pair and 0x12a=0 "
+                      f"the tick widget and 0x12a=0, with A either stock's "
+                      f"enumerated formatter or a label cave "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
             elif name == "DELAY SERVER" and i == 0 and f1 == TIME_FMT:
                 # TIME's sticky-snap label formatter (modules/tempo-sync/time_fmt.s, 24 Aug

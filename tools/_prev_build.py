@@ -95,7 +95,6 @@ from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
 from remix.schema import YBase  # noqa: E402
-import label_fmt  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -1120,48 +1119,6 @@ def main():
         print(f"  {_c.label}: {len(_b)} bytes at 0x{_c.cave_addr:08x}"
               f"{_hook}{_c.report_note}")
         _cave_top = _c.cave_addr + len(_b)
-
-    # ---- PLAN §6: the mode selects print their WORDS ---------------------
-    # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
-    # where the manifest has said FOLD RING BOTH all along -- because
-    # Param.labels was authored, schema-checked against count, and then never
-    # read. This is the pass that makes it load-bearing.
-    #
-    # Only the "A" array (P+0x0ca) moves. B stays 0x40047254, the CHORUS.TAPS
-    # tick widget the clone loop already chose: the ticks are the right
-    # picture for an enumerated control, and B=0 would drop back to a plain
-    # dial. So this replaces WHAT IS PRINTED, not how it is drawn.
-    #
-    # The bytes come from tools/label_fmt.py rather than a pinned CavePatch:
-    # twelve caves whose contents vary with the labels cannot be hand-pinned,
-    # and emit() is re-derived through m68k-elf-as whenever one is on PATH.
-    _lbl_top = max(_cave_top, cave_end)
-    _lbl = []
-    for name in CLONED_ORDER:
-        for _i, _p in enumerate(_MODS[name].params):
-            if not (_p.active and _p.labels):
-                continue
-            _bytes = label_fmt.emit(_p.labels)
-            label_fmt.verify(_p.labels)
-            if _lbl_top + len(_bytes) > cave_limit:
-                sys.exit(f"label formatters do not fit: {name} slot {_i} "
-                         f"needs {len(_bytes)} B at 0x{_lbl_top:08x}, limit "
-                         f"0x{cave_limit:08x}")
-            if any(img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)]):
-                sys.exit(f"label cave at 0x{_lbl_top:08x} is not free")
-            img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)] = _bytes
-            wr32(clone_addr[name] + 0x0ca + _i * 4, _lbl_top)
-            _lbl.append((name, _i, _p.name.decode("latin1"), _lbl_top,
-                         len(_bytes), _p.labels))
-            _lbl_top += len(_bytes)
-    for _n, _i, _nm, _a, _sz, _labels in _lbl:
-        print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
-              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})")
-    if _lbl:
-        print(f"  {len(_lbl)} label formatters, "
-              f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
-              f"({_lbl_top - max(_cave_top, cave_end)} B), "
-              f"{cave_limit - _lbl_top} B of cave left")
 
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its

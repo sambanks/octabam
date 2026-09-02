@@ -64,12 +64,17 @@ MODULE = Module(
         # TAPE was retired 18 Aug 2026 (its wow/flutter became the global
         # DPTH/RATE knobs, so TAPE was CLEAN with the knobs up) and its slot
         # was KEPT rather than closed up, because a part stores the raw value:
-        # renumbering would turn every saved GRAIN (3) into REVERSE. It is
-        # labelled for what it DOES, not for what it was -- "(tape)" read as
-        # a mode that exists, and on the unit it draws as a bare "3" today
-        # with nothing to say otherwise (PLAN §6 is the fix).
+        # renumbering would turn every saved GRAIN (3) into REVERSE.
+        #
+        # It is labelled CLEAN, plainly, because that is what it RUNS. Two
+        # earlier labels were both worse: "(tape)" named a mode that does not
+        # exist, and "(CLEAN)" carried an editorial aside in a field that can
+        # only hold a value's NAME -- the parentheses read as a defect rather
+        # than as a footnote. Since PLAN §6 the unit prints these words too,
+        # so the list reads CLEAN PITCH CLEAN GRAIN REVRS: two positions that
+        # do the same thing, which is the truth and needs no explaining.
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("CLEAN", "PITCH", "(CLEAN)", "GRAIN", "REVRS"),
+              labels=("CLEAN", "PITCH", "CLEAN", "GRAIN", "REVRS"),
               doc="engine select; 2 is the retired TAPE slot and runs CLEAN "
                   "(kept: parts store raw)"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.

@@ -113,6 +113,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/remix/selftest.py
 	python3 tools/verify_slots.py
 	python3 tools/verify_replaces.py
+	python3 tools/label_fmt.py
+	@$(PY) tools/verify_labels.py $(REMIX) 2>/dev/null || \
+	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 

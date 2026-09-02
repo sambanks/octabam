@@ -916,6 +916,30 @@ class BenchScreen(Screen):
         self.schedule_sync()
         self.rerender_soon()
 
+    def describe(self):
+        """The status line follows the CURSOR, not the last thing you did.
+
+        It was an action log -- "added Nimbus · added Send as the fallback" --
+        which is read as context for whatever is under the cursor now, so it
+        went stale the moment you scrolled and described a row you had left.
+        An action still writes it; moving replaces it.
+        """
+        st = self.app.state
+        mod = self.selected_module()
+        if mod is None or self.pane == UNIT:
+            return
+        bits = [rig.category(mod)]
+        if mod.menu is not None:
+            bits.append(f"id 0x{mod.menu.fx2_id:02x}")
+        w = st.words.get(mod.key)
+        if w:
+            bits.append(f"{w} words")
+        elif mod.is_stock:
+            bits.append("no code placed" if mod.key not in stock.CONSUMED
+                        else "its code IS the donor region")
+        bits.append("in the image" if mod.key in st.sel else "not in the image")
+        st.msg = f"{disp(mod)} — {' · '.join(bits)}"
+
     def rerender_soon(self):
         """Mark the screen stale; _flush draws it on the next frame."""
         self._dirty = True
@@ -942,8 +966,10 @@ class BenchScreen(Screen):
         n = max(len(rows), 1)
         if ev.key in ("down", "j"):
             self.cur[self.pane] = min(n - 1, self.cur[self.pane] + 1)
+            self.describe()
         elif ev.key in ("up", "k"):
             self.cur[self.pane] = max(0, self.cur[self.pane] - 1)
+            self.describe()
         elif ev.key in ("left", "right", "h", "shift+left", "shift+right"):
             step = 1 if ev.key in ("right", "shift+right") else -1
             if self.pane == UNIT:
@@ -1176,14 +1202,19 @@ class BenchScreen(Screen):
                 # WHICH module was doing it -- "why did adding nimbus remove
                 # so many?" is the question it produced. The list is one
                 # keystroke away and the reason is what is actually wanted.
+                # BOTH: the cause AND the names. Listing seven names alone
+                # produced "why did adding nimbus remove so many?"; replacing
+                # them with a count alone produced "it's worse now that it
+                # doesn't show which ones". The reason belongs first because
+                # it is the question, and the list belongs after it because
+                # it is the answer's evidence.
                 st = self.app.state
                 pin = [m for m in st.selected
                        if getattr(m, "claims", None) is not None
                        and m.claims.owns_fx2_buffers]
                 who = disp(pin[0]) if pin else "this module"
-                return (f"{who} pins the buffer {len(gone)} stock effect"
-                        f"{'s' if len(gone) != 1 else ''} allocate — "
-                        f"x removes them")
+                return (f"{who} pins the buffer these {len(gone)} allocate — "
+                        f"x removes " + ", ".join(disp(m) for m in gone))
             names = [p.split(":", 1)[1].split(" and ")[0].strip().upper()
                      for p in buf]
             return "also remove " + ", ".join(names)
