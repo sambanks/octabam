@@ -9,7 +9,8 @@ octabam's, and is recorded here as such — the status key below marks what we
 independently confirmed versus what we adopted on his evidence.
 
 Received 30 Aug 2026: `octatrack-delay-architecture.md`, `TABLE_ATLAS.md`
-(a revised version of an earlier atlas), `timestretch.md`. All three are
+(a revised version of an earlier atlas), `timestretch.md`; **2 Sep 2026:
+`octatrack-recorder-architecture.md`** (§6). All are
 careful work: they mark their own claims
 `[measured]` / `[inferred]` / `[open]`, state their method, and are explicit
 about what would falsify them — the same discipline `CLAUDE.md` asks for here.
@@ -330,6 +331,191 @@ hardware-confirmed besides.
 in one document.** Nothing consumed it: not the script that drives r2, not
 `DSP.md`, not this file's first draft.
 
+## 6. Track recorders: the control path (received 2 Sep 2026)
+
+`octatrack-recorder-architecture.md` ("Session 1"). Same author, same
+discipline, same hash-verified image. **Scope is the recorder's control
+path only** — parameters, storage, triggering, and the engine's arm/open
+machinery. The audio write path (where samples land in RAM) and the buffer
+addresses are explicitly *not* traced; §9 of his document lists them open.
+
+His motivation is the community's "clickless recorder" technique, which
+works at some Tempo/RLEN combinations and not others — so the tempo-dependent
+length arithmetic is what he went looking for. Ours is different: it is the
+first time a **non-FX setup page** has been followed from descriptor to
+shared RAM, and it fixes three labels of ours along the way.
+
+### ✅ Re-verified here, 2 Sep 2026
+
+All against our canonical `section_3_MAIN_OS.bin` (SHA-256 `164f3122…af0a84e`,
+the hash he quotes), read with Python at file offset `addr − 0x40000400` and
+`scripts/disasm.sh emac` (objdump `m68k:547x`):
+
+| his claim | what we read |
+|---|---|
+| descriptor entry 8 at `E = 0x400d3c74`, labels `INAB INCD RLEN TRIG SRC3 LOOP / FIN FOUT AB QREC QPL CD` | byte-identical |
+| defaults `E+0x96` | `1 1 64 1 0 1 0 0 0 255 255 0` |
+| min `E+0xa2` (u32 ×12) | `−1` for QREC and QPL only, else 0 |
+| count `E+0xd2` (u32 ×12) | `5 5 65 3 11 2 113 113 128 18 18 128` |
+| formatter `E+0x11a` | `0x4003b18c` |
+| QREC/QPL ladder at `0x400d80e0`, `0xFFFFFFFF` sentinel before it | `1 2 3 4 6 8 12 16 24 32 48 64 96 128 192 256` |
+| one-hot class table at `0x400d8120` | `1 2 4 1024 8 2048 16 4096 32 8192 64 16384 128 32768 256 65536 512` |
+| tempo chain `0x4000ca94..cabc` and publisher call at `0x4000cac2` | exact: `1814→181c`, `1818→1824`, `d1 = 0x80000000 ÷ [181c] → 1820`; then `pea 0x60 / pea 0x80000c94 / dest 0x80000cf4 + page×96` |
+| RLEN conversion at `0x4006e3b2` | exact: `mvsb 0x80000cf4(2,track)`, gate `≤ 63`, `(raw+1) × 63504000`, `remul` by `[0x80001814] << 2`, floor `64` |
+| arm caller `0x40005ff0` | exact: `[0x100b14cf] × 6322 + [0x46c82456] + track + 0x8eda2 == 4` gate; `a3 = 0x80000cf4 + 12·track + 96·page`; `L = table[a3@(7)]`; `addl d1,d1`; `macl d1, −[0x80001820]`; `(x+1)>>1` |
+| step ladder at `0x400ab63a` | `992250 × L`, 113 entries: `0, 1..32, 34..64 by 2, 68..128 by 4, 136..256 by 8, 272..512 by 16, 544..1024 by 32`, zeros after |
+
+### ✅ Three of his open items, closed from our side
+
+**(a) The `remsl` question is settled: it is a signed divide, quotient kept.**
+He flagged that everything in §8 hinges on whether ColdFire's `4c40/1801`
+encoding with `Dr == Dq` returns the quotient or the remainder, because
+objdump prints it `remsl`. Measured with the assembler rather than the
+manual: `m68k-elf-as -mcpu=5475` encodes `divs.l %d2,%d1` — the 32/32→32q
+form — as `4c42 1801`, **byte-identical to what objdump labels
+`remsl %d2,%d1,%d1`**, and it *rejects* `divs.l %d2,%d3:%d1` because ColdFire
+has no 64/32 divide. So `Dr == Dq` *is* `DIVS.L`; objdump's `remsl` is a
+disassembler tie-break over a shared opcode, not the ISA. Hence
+`[0x80001820] = −2³¹ / tempo24`, a negative Q31 reciprocal, exactly the
+"only self-consistent reading" he arrived at — and `DSP.md` §6c had already
+read the same word as the sequencer's phase increment from the other
+direction (sign corrected there today: it is stored negative, the consumers
+`negl` it).
+
+**(b) The units are samples, because we know what the tempo word is.**
+`[0x80001814]` is **BPM × 24**, clamped 720..7200 — measured on hardware by
+the tempo-sync work (`DSP.md` §6c, R56 on the unit). Put that into his RLEN
+conversion:
+
+```
+(raw+1) × 63504000 / (4 × 24 × BPM)  =  (raw+1) × 661500 / BPM
+661500 / BPM  =  44100 × 60 / (4 × BPM)  =  samples in one 16th-note step
+```
+
+**So recorder lengths are in 44.1 kHz samples, RLEN raw+1 is in sequencer
+steps, and the 64-unit floor is 64 samples = four 16-sample frames.** The
+`992250 = 22.5 × 44100` constant is the same identity at 1/16 of a step:
+`992250 / 24 = 41343.75 = 661500 / 16`, so `table[L] / tempo24` is
+`L/16` steps in samples.
+
+**(c) The `0x400ab63a` ladder IS the FIN/FOUT series, and the pickup arm
+length is FOUT in samples.** The table has 113 entries — the FIN/FOUT value
+count — and displayed as `L/16` steps it reads `0, 0.063, 0.125, …, 64`
+(`1/16`, `2/16`, … `1024/16`), which is the series he confirmed on the
+hardware menu. He had it as "a fade-length-shaped quantity" [inferred]; it
+is the exact display ladder. And the arithmetic in `0x40005ff0` nets to
+`round(table[FOUT] / tempo24)`: the explicit `addl d1,d1` doubles so that the
+trailing `(x+1) >> 1` rounds to nearest. ⚠️ One inference remains inside
+that: the EMAC `macl` must be running in *fractional* mode (product `>> 31`)
+for the result to land on the display series. It is the only mode that
+does, and it is the same left-shift-by-one alignment our own DSP trap about
+reading `a0` is made of — but nobody has read `MACSR`. **Why a pickup
+machine's arm length comes from the FOUT slot is open**; his display-order =
+raw-order check covered TRIG/RLEN/INAB/INCD, not slot 7.
+
+### ✅ "Current pattern" was the current PART — a label error of ours, found while checking
+
+His document says `[0x80000003]` and `0x100b14cf` are the current *part*.
+Our `ARCHITECTURE.md`, `EMU.md` and `tools/emu_bringup.py` all called them
+the current *pattern*. The writer at `0x40062120..48` settles it:
+
+```
+mvzb 0x80000004,%d0            ; index
+mulsl #0x8ed8,%d0              ; × 36568
+addl  0x46c82456,%d0           ; + bank blob
+moveb %a0@(0x8e56 + 1),%d0     ; a byte inside that record
+moveb %d0,0x80000003
+moveb %d0,0x100b14cf
+```
+
+`16 × 0x8ed8 = 0x8ed80` exactly: the sixteen pattern records fill
+`blob + 0 .. 0x8ed80`, and the `0x18b2`-stride records that start at
+`blob + 0x8ed80` — where the FX ids, machine types and recorder settings all
+live — are the four **parts**. So `[0x80000004]` is the current pattern, and
+`0x80000003` / `0x100b14cf` hold **the part that pattern is linked to**,
+which is what a part is in the manual's model. Corrected in place in all
+three files. It changes no result: the emulator writes 0 to both, and pattern
+0 links to part 0 in a fresh bank.
+
+The same fix reaches `docs/history/NOTES.md`, where "per-track pattern data
+`0x46c82456 + pat×0x18b2 + trk×0xc (+0x8f385)` — sequenced data" is,
+by his §4, the recorder **TRIG** byte (`+0x8f382 + 3`, read through his `+2`
+base and `@(1)` displacement) indexed by part. Annotated there, not rewritten.
+
+### 🟡 Adopted on his evidence
+
+- **Three storage tiers** for the twelve bytes: persistent in the bank blob
+  (`+0x8f382 + part×6322 + track×12`, through `[0x46c82456]`), a live SRAM
+  mirror at `0x100a54d0 + …`, and a **published copy in shared RAM** at
+  `0x80000cf4 + track×12 + page×96`, refreshed every frame from a staging
+  block at `0x80000c94` by the frame builder — `[0x800000e0]` is the same
+  page flip our DSP-frame work and his delay routine both key on. The
+  staging block's writer is open.
+- **`FUN_40005178` is the QREC scheduler.** We had it since the Ghidra pass
+  as "writes voice mailboxes" at `0x46c7e9fa` / `0x800018be` / `0x800018de`
+  without distinguishing them. His reading gives the three their roles:
+  `0x800018be/de` are the *staged, quantised* action (class word + value),
+  `0x46c7e9fa` the *immediate* one, and the per-tick comparator at
+  `0x4000b308` (class mask `[0x46c7fe94]`) moves the former into the latter
+  when its quantise class fires. The frame builder consumes only the
+  immediate array. Both descriptions are true; his is the finer one.
+- **His "bit semantics open" and our flag labels are the same bits.**
+  `ARCHITECTURE.md` §6 records the trig→voice path emitting `0x80` = start
+  and `0x10`/`0x8010`/`0xf010` = one-shot/hold/stop/retrig through that
+  function; he sees TRIG=ONE post `0x10|x`, ONE2 post `0x80`, other paths OR
+  in `0x40`. Neither side has verified the other's labels 🟡.
+- **The engine task.** His `0x460d17ce` queue, task loop `0x4008484e` and
+  46-entry jump table are inside the task `NOTES.md` calls `FUN_4008445c` —
+  the RELOAD BANK consumer (message types `0x14` and `6`). His "central
+  engine-command queue, not recorder-private" is therefore corroborated from
+  our side: bank reloads and recorder arms go through the same queue.
+- **Recorder buffers are object ids 128–135** in one 136-entry state-record
+  arena shared with the sample slots (`0x100b14f0 + id×1096`, control records
+  `0x46c922c4 + id×44`), armed by opcode `0x25` through the same open/arm
+  function as a sample slot. Arm floors the length at 64 and records LOOP
+  at state `+292`.
+- **The defaults anomaly is real and open**: a fresh part shows TRIG=ONE and
+  SRC3=MAIN where the descriptor says ONE2 and "–"; the initialiser copies
+  the descriptor verbatim to a *different* structure, and no template with
+  the hardware values exists in the image.
+
+### ❌ What it retracts of ours
+
+| where | we said | it is |
+|---|---|---|
+| `ARCHITECTURE.md` §7, `EMU.md`, `tools/emu_bringup.py` | `0x80000003` / `0x100b14cf` = current pattern | current **part** (✅ measured above) |
+| `history/NOTES.md` map | `+0x8f385` = sequenced trig/param data | recorder **TRIG** byte, part-indexed |
+| `DSP.md` §6c | `0x400060c4` reads `0x80001820` for "the timestretch/trig position" | the **PICKUP-machine record length**, FOUT ÷ tempo24, in samples (✅ code read above); the sibling `0x40006d48` is not re-read |
+| `DSP.md` §6c | `0x80001820 = 2³¹/tempo24` | `−2³¹/tempo24`; consumers negate it |
+| `DSP.md` §6c | only two tempo readers outside the sequencer, both UI | a third, `0x4006e3b2`, feeds the recorder; the conclusion (rates, not BPM, reach the DSP) stands |
+
+### What it changes for us
+
+Nothing we build — the recorder is CPU-side machinery around a write path
+that is still unlocated. What it hands us is a **mapped publish path for a
+setup page** (`0x80000c94` → `0x80000cf4` per frame) and the recorder's
+length arithmetic in known units, which is where any "clickless loop" patch
+would go. Neither is on the plan.
+
+### Notes back to Bryan
+
+Findings flow back as notes, by agreement. Worth sending, all measured here:
+
+1. `Dr == Dq` is `DIVS.L` (gas encodes `divs.l %d2,%d1` to `4c42 1801`);
+   `[0x80001820] = −2³¹/tempo24`.
+2. `[0x80001814] = BPM × 24` (hardware-confirmed, clamps 720..7200 = 30..300
+   BPM). Lengths are samples; `63504000/96 = 661500 = 44100 × 60/4`.
+3. `0x400ab63a` is the FIN/FOUT display ladder (`L/16` steps, 113 entries);
+   `0x40005ff0` nets to `round(table[FOUT]/tempo24)` — the `addl` and the
+   `(x+1)>>1` cancel.
+4. `[0x80000004]` is the current pattern; `0x80000003`/`0x100b14cf` are the
+   part it links to, written at `0x40062142..48` from pattern record byte
+   `+0x8e57`. Pattern records are `0x8ed8` bytes, parts `0x18b2`, parts start
+   at `blob + 0x8ed80`.
+5. The trig→voice path's flag words (`0x80` start; `0x10`/`0x8010`/`0xf010`
+   one-shot/hold/stop/retrig) — our labels for his open bit semantics.
+6. `0x460d17ce`'s consumer also handles RELOAD BANK (types `0x14`, `6`).
+
 ## Open threads worth knowing about
 
 Bryan flags these as still open:
@@ -345,3 +531,18 @@ Bryan flags these as still open:
 - Whether the second DSP's tracks (5–8) share the delay function or a twin.
 - The marker-list writer that BEAT snapping reads, and with it what TSNS
   actually parameterizes (inferred to select snap candidates).
+
+From the recorder session (2 Sep), still open on both sides:
+
+- **The audio write path and the recorder buffer addresses** — nothing in
+  the session touched the code that moves samples into the buffers. His
+  expectation is a frame-rate DMA sibling of `0x400031a0`; the state-record
+  length fields (`+300/304/308`) and the pointer at control `+20` are the
+  likely route.
+- The TRIG=ONE / SRC3=MAIN default fixup that the descriptor does not carry.
+- SRC3 routing, the AB/CD gain application point, FIN/FOUT fade generation,
+  QPL playback machinery (state `+297`), the ONE2 two-phase behaviour, and
+  why the pickup arm reads the FOUT slot.
+- The remaining 45 engine opcodes (we know two more than he lists: `0x14`
+  and `6` are RELOAD BANK); the other nine arm callers; who sets the
+  per-tick class mask `[0x46c7fe94]`.

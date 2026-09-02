@@ -765,8 +765,10 @@ is *read from code*, not measured on hardware; the TPROBE flash
 **What the tempo is.** `_DAT_80001814` holds **BPM × 24**, clamped to
 `0x2d0..0x1c20` (720..7200 = 30..300 BPM) at both writers (`0x40005c4a`,
 `0x4004bc7e`). It is shadowed to `0x80000020` and latched per frame into
-`0x8000181c`; the sequencer's phase increment is `0x80001820 = 2³¹/tempo24`
-(`NOTES.md`, and the frame builder at `0x4000ca96`).
+`0x8000181c`; the sequencer's phase increment is `0x80001820 = −2³¹/tempo24`
+(`NOTES.md`, and the frame builder at `0x4000ca96`; stored *negative* — a
+signed `divs.l` of `0x80000000` that objdump prints as `remsl`, settled
+2 Sep 2026 in `EXTERNAL.md` §6 — and negated by its consumers).
 
 **How a frame reaches the DSP** — the transfer routine at `0x40004860`, a
 7-step state machine (`0x46104d3e`) over eDMA channel 0 (TCD at
@@ -798,6 +800,10 @@ turning tempo into a *rate*, none copying it:
   The DSP receives an LFO phase increment.
 * `0x400060c4` / `0x40006d48` — read the phase increment `0x80001820`
   (negated) into per-voice records: the timestretch/trig position.
+  ❌ **Retracted for `0x400060c4`, 2 Sep 2026**: that site is the
+  PICKUP-machine recorder arm length — the FIN/FOUT ladder entry ÷ tempo24,
+  in samples, fed to the arm function (`EXTERNAL.md` §6). The value still
+  never reaches a frame record. `0x40006d48` has not been re-read.
 * `0x40004bd2` (runs right after the transfer) — advances a playback
   position by `tempo24 << 4` per frame **only when byte `+0x2b` of the
   per-voice record is set**, else by the constant `0xb40` (= 120 BPM × 24).
@@ -807,6 +813,10 @@ turning tempo into a *rate*, none copying it:
 The two remaining tempo readers outside the sequencer are UI: `0x40031d70`
 (`((x+1102)·2205/tempo24 + 3600)·7200`, one caller, a `sprintf` of
 `%03d/%03d` — sample length in bars) and `0x4002f7ec` (a `%ds` display).
+A third non-UI reader turned up 2 Sep 2026: `0x4006e3b2` converts the
+recorder's RLEN to samples, `(raw+1) × 63504000 / (4·tempo24)`
+(`EXTERNAL.md` §6). It feeds the CPU-side recorder, not a frame record, so
+the conclusion below is unchanged.
 
 **Conclusion of the static pass (inferred, one flash from measured):** the
 ColdFire computes every tempo-derived rate itself and ships rates, not BPM.

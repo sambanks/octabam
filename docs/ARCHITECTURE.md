@@ -129,12 +129,14 @@ Engine data structures (all in the `0x80000000` RAM window):
 | MIDI track state | `0x80006500[t]`, global `0x800065b8` |
 | Voice command mailboxes | `0x46c7e9fa` / `0x800018be` / `0x800018de` `[t*4]` |
 | Per-track pattern data | `_DAT_46c82456 + pattern*0x18b2 + track*0xc` |
-| Globals | current track `0x100b14cc`, current pattern `0x80000003` |
+| Globals | current track `0x100b14cc`, current **part** `0x80000003` (mirror `0x100b14cf`; current pattern is `0x80000004` — relabelled 2 Sep 2026, `EXTERNAL.md` §6) |
 
 **Audio pipeline (control path)**:
 ```
 sequencer trig
- → FUN_40005178 writes voice mailbox (RAM)
+ → FUN_40005178 writes voice mailbox (RAM) — the QREC scheduler: quantised actions are staged
+   at 0x800018be/de and moved into the immediate array 0x46c7e9fa by the per-tick comparator
+   at 0x4000b308 when their quantise class fires (EXTERNAL.md §6, Bryan T)
    → FUN_4000c8a4 (frame builder, control-rate): consumes mailboxes, updates 8 voices,
       assembles a parameter FRAME in a DOUBLE BUFFER in shared RAM 0x80000000 (ping-pong 0x800000e0)
      → handshake with the DSP via registers @ 0x20000000
@@ -155,7 +157,9 @@ itself). Args: `param_1`=program, `param_2`=length, `param_3`=load address in th
 
 **Trig → voice** ✓ (`FUN_400977cc`, dispatched by machine type): given a trig on a track, it reads its
 machine state (`FUN_40097168` → 0–4) and, depending on the event type, emits the voice command via
-`FUN_40005178` with flags (`0x80` start, `0x10`/`0x8010`/`0xf010` = one-shot/hold/stop/retrig).
+`FUN_40005178` with flags (`0x80` start, `0x10`/`0x8010`/`0xf010` = one-shot/hold/stop/retrig —
+labels from this pass, unverified; the recorder's TRIG-mode branch at `0x40083544` posts the
+same bits, `EXTERNAL.md` §6).
 It is the bridge "there is a trig on the step" → "the voice sounds".
 
 **Work split**: ColdFire = control (RTOS, sequencer, assembles parameters).

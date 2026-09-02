@@ -75,8 +75,9 @@ FX1_ID_OFF = 0x8ed80         # FX1 effect-id byte (inserts are all FX2, though)
 PARAM_VAL_OFF = 0x8f084      # + PAT*stride + track*30 + slot -> displayed value
 MACHINE_OFF = 0x8eda2        # + PAT*stride + track -> playback machine type
 FAKE_PART = 0x50000000       # where we map the scratch Part
-PAT_R = 0x100b14cf           # displayed pattern (resolver mirror)
-PAT_W = 0x80000003           # displayed pattern (window/drawer mirror)
+PAT_R = 0x100b14cf           # current PART (resolver mirror) -- named "PAT" historically;
+PAT_W = 0x80000003           # current PART (window/drawer mirror). Both are the part the
+                             # current pattern (0x80000004) links to; docs/EXTERNAL.md §6.
 
 
 class BootResult:

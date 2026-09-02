@@ -146,6 +146,23 @@ Record source AB/CD (5 values each), record length (65), trig mode (3), a third 
 with 11 options, fade in/out (113), and quantised record/play (18 values, default
 `255` = off). This is the whole sampling front-end's parameter model.
 
+**Decoded end to end by Bryan T, 2 Sep 2026 (`EXTERNAL.md` §6)** — the first
+non-FX page followed from this descriptor to shared RAM. Display values, all
+hardware-confirmed: INAB/INCD `-, A B, A, B, A+B`; RLEN `1…64, MAX` (raw+1,
+raw 64 = MAX); TRIG `ONE, ONE2, HOLD`; SRC3 `-, T1…T8, MAIN, CUE`; FIN/FOUT
+`0, 0.063, 0.125 … 64` steps (the 113-entry ladder at `0x400ab63a`, `L/16`);
+QREC/QPL `OFF, PLEN, 1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256` (min `−1`,
+the only two parameters with a negative minimum; the numeric ladder is a u32
+table at `0x400d80e0`). Storage is three-tiered: the bank blob at
+`+0x8f382 + part×6322 + track×12` (the "Part" of §5b/§5c, spelled out —
+`[0x46c82456]` is the current bank blob, and the part index is `0x100b14cf`),
+an SRAM mirror at `0x100a54d0 + …`, and a per-frame **published copy** at
+`0x80000cf4 + track×12 + [0x800000e0]×96` that the recorder's own code reads.
+RLEN reaches the engine as `(raw+1)` sequencer steps converted to samples at
+`0x4006e3b2`. ⚠️ Two defaults here are NOT what a fresh part shows: TRIG draws
+`ONE` (descriptor raw 1 = ONE2) and SRC3 draws `MAIN` (descriptor 0 = `-`); a
+fixup somewhere overrides the descriptor and has not been found.
+
 ## 3b. Free parameter slots — surveyed across every page
 
 Read straight from the per-parameter enable bitmaps (`P+0x18e` = slots 0-7,
