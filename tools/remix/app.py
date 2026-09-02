@@ -1798,7 +1798,7 @@ class RemixerScreen(Screen):
         mod = self.selected_module()
         if mod is None:
             return
-        st.msg = st.toggle_fx1(mod.key)
+        st.msg = st.toggle_fx1(mod.key, disp(mod))
         if mod.key in st.sel:
             st.loaded_name = ""
             self.schedule_sync()         # it changes the image

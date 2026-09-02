@@ -413,6 +413,24 @@ def main():
         print(f"  [FAIL] WarpFold is {rig.menus(_wf, {'WARPFOLD'})} with one")
     else:
         print("  [PASS] an fx1 row moves a module from FX2 to FX1+FX2")
+    # ⚠️ ONLY A BUFFER-FREE INSERT MAY TAKE AN FX1 ROW. The measured reason
+    # is docs/DSP.md's "wrong claim 1": a 16K layout at an FX1 base runs
+    # through the other FX1 buffers and into FX2 slot 0. Pinned per module so
+    # a manifest that starts reading the allocator cannot quietly become
+    # eligible.
+    _want = {"NIMBUS LITE": "sizes its buffer", "NIMBUS": "fixed FX2",
+             "REVERB SERVER": "bus server", "DELAY SERVER": "bus server",
+             "WARPFOLD": None, "RIPPLE": None, "RUNGS": None,
+             "STREAMZ": None, "BODESHIFT": None, "HELLO WORLD": None}
+    for _k, _frag in _want.items():
+        _why = state.fx1_hazard(registry.modules()[_k])
+        if (_frag is None) != (_why is None) or (_frag and _frag not in _why):
+            bad += 1
+            print(f"  [FAIL] fx1_hazard({_k}) = {_why!r}, wanted "
+                  f"{_frag!r}")
+    print(f"  [PASS] {len(_want)} modules classified for an FX1 row "
+          f"({sum(v is None for v in _want.values())} eligible)")
+
     # A REPLACEMENT IS ALREADY ON FX1 and listing it again would duplicate
     # the row; the build refuses it, and nothing shipped may do it.
     for _n in registry.remix_names():
@@ -423,7 +441,12 @@ def main():
                 bad += 1
                 print(f"  [FAIL] remix {_n!r} asks for an FX1 row for {_k}, "
                       f"which already has one")
-    print("  [PASS] no remix asks for an FX1 row a module already has")
+            _why = state.fx1_hazard(_m)
+            if _why:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r} asks for an FX1 row for {_k}: "
+                      f"{_why}")
+    print("  [PASS] no remix asks for an FX1 row a module may not have")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():

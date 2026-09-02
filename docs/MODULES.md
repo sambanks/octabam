@@ -610,12 +610,61 @@ FX1 is four more slots on the same four tracks, so listing an effect on both
 menus can double the worst per-core load (`make cycles` prices it; WarpFold
 goes 4× → 8×, 404 → 808 of the 3,120 our code may spend).
 
-Refused rather than allowed to go wrong: a `replaces` module (it already has
-that effect's FX1 row — a second would list it twice), a stock effect (its
-FX1 row is stock's own business), and a key with no FX2 chooser row of its
-own (nothing for FX1's list to point at). `verify_menu.py` proves the rest,
-and asserts FX1 is byte-identical to stock in every remix that asks for
-nothing.
+#### Only a buffer-free INSERT may take one
+
+`state.fx1_hazard()` is the single statement of the rule — read by both the
+remixer, at the keystroke, and `build_bus.py`, at the build, because those
+two drifting apart is how a UI comes to offer what the build refuses. Three
+classes are refused:
+
+| refused | why |
+|---|---|
+| a module that reads the allocator (`x:>$213`) | it sizes its buffer for an **FX2** slot, 16,384 words; an **FX1** slot is **3,072** |
+| a module with **fixed** buffers in the FX2 region | an FX1 instance still writes to `Y:0x4000`+, i.e. into another track's FX2 buffer |
+| a bus **server** | one per core by design; an FX1 row is a second instance on the same core |
+
+⚠️ **The first is measured, not reasoned.** It is `docs/DSP.md`'s "wrong
+claim 1", bisected on hardware: a 16K layout placed at an FX1 base "runs to
+`0x53ff`, through the other FX1 buffers and into FX2 slot 0". **NIMBUS LITE
+reads the allocator and is exposed** — the first draft of the schema comment
+claimed nothing of ours was, having checked only the fixed-base modules.
+
+The second is not a *new* hazard: Nimbus is already documented "one per
+core" because its buffers are fixed rather than per-instance. An FX1 row
+doubles the slots it can be reached from, a second instance on the **same
+track** included.
+
+What is left is exactly the INSERT class — WarpFold, Ripple, Rungs, Streamz,
+BodeShift, Hello World — plus SEND, which is buffer-free (untested there,
+but nothing measured argues against it). Those keep **all** their state in
+their own `r7` block, which the dispatcher hands out **per instance**, not
+per track: FX1 instance *k* and FX2 instance *k* get different blocks, so the
+same effect on both slots of one track is two independent instances that
+happen to run in series.
+
+Also refused: a `replaces` module (it already has that effect's FX1 row — a
+second would list it twice), a stock effect (its FX1 row is stock's own
+business), and a key with no FX2 chooser row of its own (nothing for FX1's
+list to point at). `verify_menu.py` proves the rest, and asserts FX1 is
+byte-identical to stock in every remix that asks for nothing.
+
+#### What is actually different about FX1
+
+For an eligible module: **the slot size, the state block, and nothing else.**
+The DSP dispatch is one shared table, the entry point is the same code, and
+`r0`/`r6`/`r7` are set the same way — so there is no separate FX1 build, no
+separate render, and locally nothing to test that the FX2 render does not
+already cover. The differences that exist are all about memory and order:
+
+| | FX1 | FX2 |
+|---|---|---|
+| buffer slot | `0x1000 0x1c00 0x2800 0x3400`, **3,072 words** each | `0x4000 0x8000` + the shared-window pair, **16,384** |
+| state block (`r7`) | instance *k* → `0x6000 + (1 + 2k) * 0x100` | instance *k* → `0x6000 + (2 + 2k) * 0x100` |
+| in the chain | first | second — it processes what FX1 produced |
+| cycles | 4 slots per core | 4 slots per core; both are paid |
+
+The last row is the one that bites, and it is why `make cycles` prices FX1's
+four slots: an effect on both menus can double the worst per-core load.
 
 ⚠️ Seen in the emulator, not on hardware: the firmware's own draw puts
 `WarpFold78` on row 11 of a twelve-entry FX1 chooser with its own knob names.

@@ -39,6 +39,32 @@ BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
 STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
 
 
+def fx1_hazard(mod) -> str | None:
+    """Why this module must not take an FX1 row, or None if it may.
+
+    ONE STATEMENT, read by both the remixer (at the keystroke) and
+    build_bus.py (at the build), because the two drifting apart is how a UI
+    comes to offer something the build refuses.
+
+    ⚠️ An FX1 slot is 3,072 words and an FX2 slot is 16,384, and the trap is
+    not theoretical: docs/DSP.md's "wrong claim 1" is this exact failure,
+    bisected on hardware -- a 16K layout placed at an FX1 base "runs through
+    the other FX1 buffers and into FX2 slot 0".
+    """
+    from remix.schema import BusRole, YBase
+    claims = getattr(mod, "claims", None)
+    if mod.dsp is not None and mod.dsp.bus_role is BusRole.SERVER:
+        return "a bus server is one per core; an FX1 row is a second instance"
+    if claims is not None and claims.stock_instance_buffer:
+        return ("it sizes its buffer for an FX2 slot (16,384 words) and an "
+                "FX1 slot is 3,072")
+    if (claims is not None and claims.owns_fx2_buffers) or (
+            mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER):
+        return ("its buffers are at fixed FX2 addresses, so an FX1 instance "
+                "writes into another track's buffer")
+    return None
+
+
 class State:
     def __init__(self):
         self.mods = registry.modules()
@@ -128,28 +154,40 @@ class State:
             self.knobs[mod.key] = rig.default_knobs(mod)
         return self.knobs[mod.key]
 
-    def toggle_fx1(self, key):
+    def toggle_fx1(self, key, name=None):
         """Give this module a row on FX1 as well, or take it away.
 
         -> a sentence for the status line. Refused rather than silently
         ignored where the build would refuse it, so the answer arrives at the
         keystroke instead of at the next rebuild.
+
+        `name` is what to CALL it: the caller passes the panel name, because
+        the module key ("REVERB SERVER") is not what the operator is looking
+        at ("ChonVerb") and this module must not import the shell.
         """
+        name = name or key
         mod = self.mods.get(key)
         if mod is None or mod.menu is None:
             return "this has no chooser row at all — nothing for FX1 to list"
         if key not in self.sel:
-            return f"add {key} to the image first, then 1 gives it FX1 too"
+            return f"add {name} to the image first, then 1 gives it FX1 too"
         if mod.is_stock:
             return "a stock effect's FX1 row is stock's own — this cannot add or remove one"
         if mod.menu.replaces:
-            return (f"{key} replaces stock {mod.menu.replaces}, so it "
+            return (f"{name} replaces stock {mod.menu.replaces}, so it "
                     f"already has that effect's FX1 row")
+        # ⚠️ ONLY A BUFFER-FREE INSERT CAN TAKE ONE, and the build refuses the
+        # rest for reasons worth arriving at the keystroke rather than at the
+        # next rebuild. See build_bus.py's fx1 block for the full statement.
+        why = fx1_hazard(mod)
+        if why:
+            return f"{name}: {why}"
         if key in self.fx1:
             self.fx1.discard(key)
-            return f"{key} is FX2 only again"
+            return f"{name} is FX2 only again"
         self.fx1.add(key)
-        return f"{key} gets a row on FX1 too — no words, but 4 more slots of cycles"
+        return (f"{name} gets a row on FX1 too — no words, but 4 more "
+                f"slots of cycles")
 
     def toggle(self, key):
         if key in self.sel:

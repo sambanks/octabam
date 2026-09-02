@@ -192,8 +192,15 @@ class MenuEntry:
     # FX2 size will overrun its allocation by 13,312 words the first time
     # somebody selects it on FX1. That is the same class as the stock
     # reverbs being FX2-only: they do not fit an FX1 allocation either.
-    # Nothing checks this -- a buffer size is not visible to the schema --
-    # so it is written here, where the id is taken.
+    #
+    # ✅ CHECKED SINCE 3 SEP 2026, where it can be. "Nothing checks this"
+    # stood while a buffer size was invisible to the schema -- but the three
+    # ways a module cannot survive on FX1 are declarable, and `Claims` and
+    # `DspSection` already declare them, so `state.fx1_hazard()` decides and
+    # build_bus.py refuses a replacement that inherits an FX1 row it cannot
+    # take. What is still on you is the SIZE ITSELF: a module that declares
+    # `stock_instance_buffer` is refused outright, so if you want the row you
+    # must not use the allocator at all.
     #
     # FX1's DESCRIPTOR IS REPOINTED TOO. FX1_IDS (0x400d5f58) and FX2_IDS
     # (0x400d5fdc) are separate tables -- the DSP dispatch is shared, the
@@ -569,14 +576,32 @@ class Remix:
     # it inherits the stock effect's row and has both of FX1's tables
     # repointed in place, so a second row would list it twice.
     #
-    # ⚠️ NOT FOR A MODULE THAT USES THE HOST'S BUFFER ALLOCATOR. FX1 and FX2
-    # keep SEPARATE allocator tables at different sizes (measured, X:0x255 in
-    # both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072. Code
-    # that reads `x:>$213` and assumes the FX2 size overruns its FX1
-    # allocation by 13,312 words. Everything of ours uses FIXED bases at
-    # 0x4000 and up, which an FX1 allocation (0x1000..0x3fff) physically
-    # cannot reach, so nothing is currently exposed to it -- but a module
-    # that starts using the allocator would be.
+    # ⚠️ ONLY A BUFFER-FREE INSERT MAY TAKE ONE. `state.fx1_hazard()` is the
+    # single statement of why, read by both the remixer and build_bus.py, and
+    # it refuses three classes:
+    #
+    #   * A module that reads the host's allocator (`x:>$213`). FX1 and FX2
+    #     keep SEPARATE allocator tables at different sizes (measured, X:0x255
+    #     in both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072.
+    #     ⚠️ This is not theoretical and it is not new -- docs/DSP.md's "wrong
+    #     claim 1" is this exact failure, bisected on hardware: a 16K layout
+    #     at an FX1 base "runs to 0x53ff, through the other FX1 buffers and
+    #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
+    #     an earlier draft of this comment claimed nothing was, which was
+    #     wrong -- it had checked only the fixed-base modules.
+    #   * A module with FIXED buffers in the FX2 region (ChonVerb, Nimbus,
+    #     BongDelay). An FX1 instance still writes to Y:0x4000 and up, i.e.
+    #     into some other track's FX2 buffer. The hazard exists on FX2 too --
+    #     it is why Nimbus is documented "one per core" -- but an FX1 row
+    #     doubles the slots it can be reached from, a second instance on the
+    #     SAME track included.
+    #   * A bus SERVER, which is one per core by design (SPEC places one
+    #     engine per payload). A second instance on a core is the open
+    #     "duplicate instances corrupt audio after ~5.45 s" item.
+    #
+    # What is left is exactly the INSERT class: WarpFold, Ripple, Rungs,
+    # Streamz, BodeShift, Hello World -- and SEND, which is buffer-free
+    # (untested there, but nothing measured argues against it).
     fx1: tuple[str, ...] = ()
 
     def __post_init__(self):

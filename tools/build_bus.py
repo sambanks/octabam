@@ -94,7 +94,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
-from remix.schema import NO_FALLBACK, YBase  # noqa: E402
+from remix.schema import NO_FALLBACK, BusRole, YBase  # noqa: E402
+from remix.state import fx1_hazard  # noqa: E402
 import label_fmt  # noqa: E402
 from remix import ledger  # noqa: E402
 
@@ -992,6 +993,18 @@ def main():
             sys.exit(f"{name}: FX1_IDS[0x{NEW_IDS[name]:02x}] is 0x{cur:08x}, "
                      f"not stock {rep}'s 0x{stock_P:08x} -- refusing to "
                      f"repoint a table that is not where we think it is")
+        # ⚠️ AN INHERITED FX1 ROW IS STILL AN FX1 ROW. This is the path the
+        # schema's `replaces` note described as "Nothing checks this": the
+        # module lands on FX1 whether or not it can survive there, and the
+        # three ways it cannot are the same three Remix.fx1 refuses. The
+        # difference is that here the row is not asked for -- it comes with
+        # the id -- so the refusal has to name the way out.
+        _hz = fx1_hazard(_MODS[name])
+        if _hz:
+            sys.exit(f"{name}: replacing {rep} puts it on FX1 too, and "
+                     f"{_hz}. Either take an id FX1 does not list, or make "
+                     f"it buffer-free (docs/MODULES.md, 'only a buffer-free "
+                     f"insert may take an FX1 row')")
         wr32(slot, clone_addr[name])
         # ...and the row the encoder scrolls, which holds the descriptor
         # pointer directly. Exactly one entry may match, or the assumption
@@ -1227,6 +1240,42 @@ def main():
                 sys.exit(f"fx1={_n!r}: a stock effect's FX1 row is stock's "
                          f"own business; this build does not add or remove "
                          f"one")
+            # A SERVER IS ONE PER CORE by design (SPEC places one engine per
+            # payload). An FX1 row is a second instance on the same core,
+            # which is the open "duplicate instances corrupt audio after
+            # ~5.45 s" item, reachable by two keystrokes.
+            if (_MODS[_n].dsp is not None
+                    and _MODS[_n].dsp.bus_role is BusRole.SERVER):
+                sys.exit(f"fx1={_n!r}: a bus server is one per core by "
+                         f"design; an FX1 row would be a second instance on "
+                         f"the same core")
+            # ⚠️ AN FX1 SLOT IS 3,072 WORDS AND AN FX2 SLOT IS 16,384, and
+            # the trap is not theoretical -- docs/DSP.md's "wrong claim 1"
+            # is this exact failure, bisected on hardware: a 16K layout
+            # placed at table[2] = 0x1c00 "runs to 0x53ff, through the other
+            # FX1 buffers and into FX2 slot 0". A module that reads the
+            # host's allocator (x:>$213) sizes itself for the slot it
+            # expects, and on FX1 it gets a quarter of it.
+            _c = getattr(_MODS[_n], "claims", None)
+            if _c is not None and _c.stock_instance_buffer:
+                sys.exit(f"fx1={_n!r}: it takes a buffer from the host's "
+                         f"allocator, sized for an FX2 slot (16,384 words). "
+                         f"An FX1 slot is 3,072 -- the layout would run "
+                         f"through the other FX1 buffers and into FX2 slot 0 "
+                         f"(docs/DSP.md, 'wrong claim 1', bisected on "
+                         f"hardware)")
+            # And a module with FIXED buffers hardcodes FX2-region addresses,
+            # so an FX1 instance writes into some OTHER track's FX2 buffer.
+            # That hazard exists on FX2 already -- it is why Nimbus is "one
+            # per core" -- but an FX1 row doubles the slots it can be reached
+            # from, including a second instance on the SAME track.
+            if (_c is not None and _c.owns_fx2_buffers) or (
+                    _MODS[_n].dsp is not None
+                    and _MODS[_n].dsp.ybase is not YBase.NEVER):
+                sys.exit(f"fx1={_n!r}: its buffers are at FIXED addresses in "
+                         f"the FX2 region, so an FX1 instance would write "
+                         f"into another track's FX2 buffer. Only a "
+                         f"buffer-free insert can take an FX1 row")
         _old = []
         _a = FX1_LIST
         while rd32(_a):
