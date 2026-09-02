@@ -70,8 +70,8 @@ MODULE = Module(
         # with nothing to say otherwise (PLAN §6 is the fix).
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
               labels=("CLEAN", "PITCH", "(CLEAN)", "GRAIN", "REVRS"),
-              doc="engine select; 2 is the retired TAPE slot, kept so stored "
-                  "TAPE parts still play, and it runs CLEAN"),
+              doc="engine select; 2 is the retired TAPE slot and runs CLEAN "
+                  "(kept: parts store raw)"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
