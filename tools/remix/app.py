@@ -958,8 +958,10 @@ class EmuScreen(Screen):
         if ev.key in tuple("12345678"):
             app.track = int(ev.key)
             if self.view == "fx2":
+                # Follow the new track's assignment; do NOT write back.
+                # Changing track is navigation, and an empty track would
+                # otherwise silently inherit whatever row happened to show.
                 self.sync_row()
-                self.pending = self.select_row()
         elif self.view == "fx2" and ev.key in ("left", "right", "h", "l"):
             rows = self.chooser()
             if not rows:
