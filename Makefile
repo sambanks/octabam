@@ -100,6 +100,10 @@ reverb: ## Render a wav through ChonVerb: make reverb IN=loop.wav [ARGS='-p MIX=
 cycles: ## Cycle cost per effect against the measured per-core budget
 	python3 tools/cycle_count.py
 
+.PHONY: stock-labels
+stock-labels: ## Re-ask the emulated firmware what every stock select prints -> tools/remix/stock_labels.json
+	$(PY) tools/stock_labels.py
+
 .PHONY: modmap
 modmap: ## DSP module load map — which bytes land at which P address
 	python3 tools/dsp_modmap.py

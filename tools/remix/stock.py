@@ -24,6 +24,14 @@ the workbench shows a stock effect's real page-1/page-2 controls and
 params back (a stock row is not cloned), and when the image is absent --
 a fresh clone before `make setup` -- the entry simply carries no params.
 
+A SELECT'S LABELS COME FROM THE FIRMWARE ITSELF: the words a stock select
+draws ("12dB|24dB", "NONE|HP|LP|BOTH", "A#0".."A 9") are not data in the
+image, they are printed by the slot's display-formatter FUNCTION, so
+tools/stock_labels.py runs each formatter on the emulated ColdFire for every
+value and checks the result in as stock_labels.json (2 Sep 2026). The
+registry reads that file; the selftest proves it still matches the firmware
+whenever the emulator is available.
+
 RENDERING. A stock effect renders locally the way an insert does: dsp_host
 runs its code straight from a dump of the STOCK image's payload A
 (tools/remix/audition.py), with `-alloc 1` so an effect that takes an
@@ -67,6 +75,19 @@ _P_NAMES, _P_DEFAULTS, _P_COUNTS = 0x16, 0x5e, 0x9a
 _P_PENABLE_LO, _P_PENABLE_HI = 0x18e, 0x18a
 
 _img: bytes | None = None
+LABELS_FILE = pathlib.Path(__file__).with_name("stock_labels.json")
+_labels: dict | None = None
+
+
+def _label_table():
+    global _labels
+    if _labels is None:
+        try:
+            import json
+            _labels = json.loads(LABELS_FILE.read_text())
+        except (OSError, ValueError):
+            _labels = {}
+    return _labels
 
 
 def _image():
@@ -76,7 +97,7 @@ def _image():
     return _img
 
 
-def _params(desc_E: int, effect: str) -> tuple[Param, ...]:
+def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
     """The twelve slots as the stock descriptor declares them, or () when
     the image is not on disk."""
     img = _image()
@@ -105,9 +126,14 @@ def _params(desc_E: int, effect: str) -> tuple[Param, ...]:
             name = name[:5] + b"2"
         seen.add(name)
         kind = (f"{count}-way select" if count < 128 else "knob")
+        # The firmware's own words for each value, when the table has them
+        # for exactly this count (a stale table must not mislabel a value).
+        lbl = _label_table().get(key, {}).get(name.decode("latin1"))
+        labels = tuple(lbl) if (count < 128 and lbl and len(lbl) == count) else None
         out.append(Param(
             name=name, default=min(default, max(count - 1, 0)),
             count=count if count < 128 else None, active=True,
+            labels=labels,
             doc=f"stock {effect} {name.decode('latin1')}: {kind}, page "
                 f"{1 if i < 6 else 2} -- see the Octatrack manual"))
     return tuple(out)
@@ -119,7 +145,7 @@ def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
         name=name, key=key, kind=Kind.STOCK, doc=doc,
         menu=MenuEntry(fx2_id=fx2_id, donor_desc=desc, abbr=abbr,
                        fullname=fullname),
-        params=_params(desc, fullname.decode("latin1")),
+        params=_params(desc, fullname.decode("latin1"), key),
         claims=Claims(stock_instance_buffer=buffer) if buffer else None,
         # The letter is what send_probe's layout alphabet and --pick use;
         # every module in the registry needs a distinct one, and R D S W F

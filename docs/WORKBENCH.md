@@ -114,8 +114,10 @@ ChonVerb, Nimbus or BongDelay, with the reason. Past seven rows the panel
 scrolls, and the composer says that too. `docs/MODULES.md` has the rules.
 
 In the RIG a stock effect shows its **real knobs** — names, defaults and
-value counts read from the stock descriptor in the pristine image (a
-select shows its count, not stock's word labels) — and **renders** like
+value counts read from the stock descriptor in the pristine image, and a
+select shows the **words the unit draws** ("12dB|24dB", "NONE|HP|LP|BOTH",
+the comb's note names), asked of the firmware's own display formatters on
+the emulated ColdFire (`make stock-labels`) — and **renders** like
 an insert, from a one-time dump of the stock image's payload A
 (`out/dsp/_stock_A.mem`), so nothing about the currently built remix
 matters. Ten of the eleven render (2 Sep 2026): FILTER, EQ, DJ EQ,
@@ -274,8 +276,7 @@ through `rich.markup.escape`.
 ## Known gaps
 
 - DELAY (stock) has no local render (ColdFire-side); LO-FI renders at
-  +6 dB at zero settings (unexplained). Stock select labels are counts,
-  not stock's word labels.
+  +6 dB at zero settings (unexplained).
 - A/B marks attach only to the most recent render (no history cursor).
 - No browse-anywhere source picker (one fixed directory, `out/dry/`).
 - Wet-only rendering is ChonVerb-only.

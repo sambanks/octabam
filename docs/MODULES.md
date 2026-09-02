@@ -213,7 +213,12 @@ descriptor's names, defaults, value counts and enable bitmap out of the
 pristine image (`out/raw/section_3_MAIN_OS.bin`), so `knob_map()`,
 `send_probe --set NAME=VAL` and the rig's knob rows all work by the panel's
 own names (a duplicated label, FILTER's two Qs, gets a `2` suffix on the
-later slot). Nothing is ever written back — a stock row is not cloned.
+later slot). A select carries the **firmware's own labels**: the words are
+printed by each slot's display-formatter function, not stored, so
+`tools/stock_labels.py` runs every formatter for every value on the
+emulated ColdFire and checks the result in as `tools/remix/stock_labels.json`
+(`make stock-labels`; the selftest re-asks the firmware whenever the venv
+exists). Nothing is ever written back — a stock row is not cloned.
 Each has a `layout_char` (L E J P A C Z O K I Y), so `--pick` takes it —
 or, more usefully, the key or name: `--pick chorus`.
 
