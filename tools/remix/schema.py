@@ -33,6 +33,25 @@ class Kind(Enum):
     DSP_CLIENT = "dsp_client"   # DSP code + menu entry, but serves no bus
     CF_PATCH = "cf_patch"       # ColdFire behaviour only, no DSP code
     HYBRID = "hybrid"           # both, e.g. an engine plus a display cave
+    STOCK = "stock"             # a STOCK FX2 effect kept in the chooser: no
+                                # code, no clone, no words -- its descriptor
+                                # and dispatch are already in the image
+                                # (tools/remix/stock.py is the whole list)
+
+
+# The fifteen FX2 ids stock assigns (docs/PARAM_PAGES.md section 2). Both
+# dispatch tables (X:0x215 init / X:0x235 process) are indexed by the RAW id
+# and are SHARED BETWEEN FX1 AND FX2, so a module that answers to one of
+# these hijacks the stock effect on both menus: its descriptor replaces the
+# stock one in FX2_IDS and its code replaces the stock code wherever that id
+# is selected, FX1 included. Found 2 Sep 2026 by making the stock effects
+# first-class: Rungs had shipped on 0x0c (EQUALIZER's id) and Nimbus on 0x0d
+# (DJ EQ's), so every image built since 29 Aug 2026 ran Rungs where FX1
+# selected EQUALIZER -- and the remixes WITHOUT Rungs aliased 0x0c to SEND,
+# which took FX1's EQUALIZER away in the shipping chongbong image too. Only
+# a Kind.STOCK module may carry one of these.
+STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
+                           0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
 
 class YBase(Enum):
@@ -256,6 +275,21 @@ class Claims:
     # down honestly. The shared window's are not, and a plausible claim
     # there would read as a guarantee.
     owns_fx2_buffers: bool = False
+    # A STOCK effect that allocates an FX2 instance buffer through the host's
+    # bump allocator (it reads X:0x213 at init -- docs/DSP.md section 10).
+    # The allocator hands the buffer out PER TRACK SLOT: on core 0 the four
+    # slots are Y:0x4000, 0x8000, 0x30000 and 0x34000, on core 1 0x4000,
+    # 0x8000, 0x38000 and 0x3c000 -- and those are exactly the addresses
+    # ChonVerb's tank, Nimbus's line and BongDelay's line hardcode. So a
+    # buffered stock effect on the wrong track silently corrupts a server
+    # on the same core, and the chooser is one list for all eight tracks,
+    # so the build cannot tell which track it will land on. The ledger
+    # refuses the pair. Measured 2 Sep 2026 by scanning the payload
+    # disassembly for `x:>$213` reads: SPATIALIZER, FLANGER, CHORUS and
+    # COMB read it; FILTER, EQ, DJ EQ, PHASER, COMPRESSOR and LO-FI do not.
+    # (Falsifier: an effect reaching its base another way -- dsp_host's
+    # -guard would show a stray write.)
+    stock_instance_buffer: bool = False
 
 
 @dataclass(frozen=True)
@@ -293,6 +327,18 @@ class Module:
         if self.params and len(self.params) != 12:
             raise ValueError(f"{self.name}: expected 12 param slots, "
                              f"got {len(self.params)}")
+        if (self.menu is not None and self.kind is not Kind.STOCK
+                and self.menu.fx2_id in STOCK_FX2_IDS):
+            raise ValueError(
+                f"{self.name}: fx2 id 0x{self.menu.fx2_id:02x} belongs to a "
+                f"STOCK effect -- the dispatch tables are shared with FX1, so "
+                f"this id would hijack that effect on both menus (see "
+                f"STOCK_FX2_IDS). Free ids: "
+                f"{', '.join(f'0x{i:02x}' for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)}")
+        if self.kind is Kind.STOCK and (self.dsp is not None or self.params
+                                        or self.cf_patches):
+            raise ValueError(f"{self.name}: a STOCK entry carries no code, "
+                             f"params or caves -- they are already in the image")
         # Page 2's three selects ARE the three companion byte fields, so a
         # stepped control can only physically live on 7, 9 or 11.
         for i, p in enumerate(self.params):
@@ -315,6 +361,13 @@ class Module:
     def is_cf_patch(self) -> bool:
         return bool(self.cf_patches)
 
+    @property
+    def is_stock(self) -> bool:
+        """A stock FX2 effect kept in the chooser: nothing is cloned, placed
+        or measured for it; the build only writes its list row and cursor
+        position."""
+        return self.kind is Kind.STOCK
+
     def knob_map(self) -> dict[str, int]:
         """Panel label -> slot index, for the test harness.
 
@@ -334,6 +387,14 @@ class Remix:
     order IS their row on the panel. Modules with no menu entry (a ColdFire
     patch, say) may sit anywhere in the list; they are filtered out where a
     chooser order is wanted.
+
+    STOCK effects are listed by the same keys ("FILTER", "CHORUS", ...):
+    tools/remix/stock.py. A stock effect NOT listed is not removed from the
+    image -- its code, descriptor and dispatch stay stock, so an old project
+    that selects it still runs it -- it just has no chooser row, which is
+    what every remix did to all fourteen of them before 2 Sep 2026. Only
+    the three reverbs are actually consumed (their code is the donor region
+    every module packs into) and they cannot be listed.
 
     THE FALLBACK IS NOT OPTIONAL, and it is the question a selective build
     forces. The FX2 chooser is one list shared by all eight tracks, and a

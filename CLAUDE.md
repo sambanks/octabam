@@ -224,6 +224,15 @@ reason. A delay based at `0x30000` sweeps the rotation word, all four ACC
 buffers and both role locks every 16,384 samples and blows up any
 multi-server layout (found 12 Aug, RDS full-scale garbage).
 
+**AN FX2 ID IS ALSO AN FX1 ID: the DSP dispatch tables are indexed by the
+raw id and shared by both menus.** A module on a stock effect's id replaces
+that effect's code wherever it is selected, FX1 included, and a remix that
+omits the module then aliases the id to SEND and takes the stock effect
+away from FX1 too. Rungs sat on EQUALIZER's `0x0c` and Nimbus on DJ EQ's
+`0x0d` from 29 Aug to 2 Sep 2026, in every local image, unflashed. The
+schema now refuses `STOCK_FX2_IDS`; the stock effects themselves are kept
+in a chooser by listing them in the remix (`tools/remix/stock.py`).
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

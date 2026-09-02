@@ -96,11 +96,22 @@ picker.
 ### REMIX — the composer
 
 The old workbench's job, reframed. Left: the modules, grouped **BUS
-EFFECTS** (with track range) / **INSERTS** (any track) / **SYSTEM**, with
-the cursored module's one-line doc below. Right: what the selection *is* —
-the FX2 chooser exactly as the unit will show it, the program-fit bar
-against the donor region, and the ledger's collision verdict (the same
-`ledger.check` the build runs, not a reimplementation).
+EFFECTS** (with track range) / **INSERTS** (any track) / **STOCK FX2** /
+**SYSTEM**, with the cursored module's one-line doc below. Right: what the
+selection *is* — the FX2 chooser exactly as the unit will show it, in
+**selection order** (`[` / `]` move the cursored module; a saved remix
+keeps that order), the program-fit bar against the donor region, and the
+ledger's collision verdict (the same `ledger.check` the build runs, not a
+reimplementation).
+
+**STOCK FX2** (since 2 Sep 2026) is the eleven stock effects the image
+would otherwise hide: every image replaces the whole chooser, but only
+PLATE/SPRING/DARK REV are actually consumed (their code is the donor
+region), and the panel now says so. Toggling a stock row costs nothing —
+no code, no words, no clone; the row is the only edit. The four that
+allocate a per-track buffer (SPAT, FLNG, CHOR, COMB) are refused beside
+ChonVerb, Nimbus or BongDelay, with the reason. Past seven rows the panel
+scrolls, and the composer says that too. `docs/MODULES.md` has the rules.
 
 ![The REMIX view: modules grouped by category with track ranges, the FX2
 menu as the unit will draw it, and the ledger's verdict —
@@ -109,6 +120,7 @@ chongbong loaded](img/workbench-remix.png)
 | key | action |
 |---|---|
 | `space` | toggle the module under the cursor |
+| `[` / `]` | move it earlier / later in the chooser |
 | `f` | make it the fallback (absent ids alias to the fallback — normally SEND, so a stale project degrades to a send, not noise; `*` explicit, `~` auto) |
 | `w` | assemble the selection and keep the real word counts |
 | `b` / `c` | `make bus` / `make check` on the **live** selection (via the scratch-remix mechanism — no save needed) |
@@ -221,7 +233,8 @@ Categories and track ranges are **derived from manifests**, never declared
 in the UI: `harness.is_server` + `dsp.payloads` (each server declares its
 single payload; a server without one is refused, not guessed at) →
 SERVER/T5-8 or T1-4; `DSP_EFFECT` with a menu → INSERT/any track;
-everything else → SYSTEM/no track.
+`Kind.STOCK` → STOCK/any track (no knobs, no render); everything else →
+SYSTEM/no track.
 
 Three `Param` fields exist purely for the workbench and are **proven
 display-only** — `scripts/refhash.sh check` ran bit-identical (26/26)
@@ -247,6 +260,8 @@ through `rich.markup.escape`.
 
 ## Known gaps
 
+- Stock rows have no knobs in the rig and no local render (the audition
+  says so rather than rendering a passthrough).
 - A/B marks attach only to the most recent render (no history cursor).
 - No browse-anywhere source picker (one fixed directory, `out/dry/`).
 - Wet-only rendering is ChonVerb-only.

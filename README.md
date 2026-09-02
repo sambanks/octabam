@@ -62,7 +62,9 @@ make bus REMIX=<name>       # build a selection
 `make remix` is the workbench, organized like the unit: eight tracks, an
 effect on each, its real knobs to dial and render and hear (every effect
 renders locally). Its composer view shows what would collide, what the FX2
-chooser ends up looking like on the panel, and what the selection costs
+chooser ends up looking like on the panel — including which **stock**
+effects the image keeps, hides or consumes (only the three reverbs are
+consumed; the rest can be kept for free) — and what the selection costs
 against the donor region — then builds or saves it.
 **[docs/WORKBENCH.md](docs/WORKBENCH.md)** is the manual.
 
