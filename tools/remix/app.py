@@ -57,6 +57,27 @@ def step_label(mod, name, v):
     return lab[v] if lab and v < len(lab) else str(v)
 
 
+# ---- the palette -----------------------------------------------------------
+# COLOUR CARRIES MEANING HERE, it does not decorate. Three axes, and nothing
+# else gets colour:
+#
+#   whose is it   OURS is cyan, the box's own is plain. In a remixer that is
+#                 the distinction you scan for -- "which of these did we
+#                 write" -- and it was carried by nothing at all.
+#   what state    green fits / yellow is a trade or a caution / red blocks.
+#   what is live  magenta for the one-of-a-kind markers (the fallback).
+#
+# ANSI NAMES ON PURPOSE, not hex: the workbench runs Textual's `ansi-dark`
+# so it wears the terminal's own 16 colours (WORKBENCH_THEME overrides), and
+# a hex triple would fight whatever palette Alacritty is set to.
+OURS = "cyan"          # a module from modules/
+OK = "green"           # fits, present, healthy
+WARN = "yellow"        # a trade, a caution, a knob that renders dry
+BAD = "red"            # it will not build
+MARK = "magenta"       # the fallback, and other one-of-a-kind markers
+LCD = "blue"           # the emulated panel's frame
+
+
 # Words that are acronyms, not shouting, and stay upper in a title.
 _ACRONYMS = {"DJ", "EQ", "FX", "HP", "LP", "MS", "AB"}
 
@@ -404,6 +425,15 @@ class BenchScreen(Screen):
         self._dirty = False
         self.set_interval(1 / 60, self._flush)
         self._run = (None, True, 0.0, 0)   # see _accel()
+        # EDIT THE SOURCE IN ANOTHER WINDOW AND THE BENCH FOLLOWS. The image
+        # already tracks the SELECTION; it has to track the CODE too, or the
+        # panel and every render silently describe the .asm you had a minute
+        # ago. Polled rather than watched: one stat sweep of modules/ is
+        # ~2 ms, a filesystem-event dependency is not worth adding to a venv
+        # that already carries unicorn and textual, and 1.5 s is far below
+        # the time it takes to switch windows.
+        self._src = audition._newest_input_mtime()
+        self.set_interval(1.5, self._poll_source)
         self.query_one("#log", RichLog).display = False
         self.rerender()
 
@@ -535,14 +565,16 @@ class BenchScreen(Screen):
             g = "Stock Effects" if m.is_stock else titlecase(rig.category(m))
             if g != group:
                 group = g
-                out.append(f"[dim]── {g} ──[/]")
+                out.append(f"[dim {WARN}]── {g} ──[/]")
             here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
-            mark = "✓" if m.key in st.sel else " "
+            mark = (f"[{OK}]✓[/]" if m.key in st.sel else " ")
             menus = "+".join(rig.menus(m)) or "—"
-            line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
+            nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
+            pad = " " * max(0, 13 - len(disp(m)))
+            line = f" {mark} {nm}{pad} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
-        out.append("[dim]enter adds it to the image[/]")
+        out.append(f"[dim]enter adds it to the image[/]")
         self._paint("#pane_avail", out)
 
     def _pane_loaded(self, st, probs):
@@ -560,10 +592,13 @@ class BenchScreen(Screen):
             menus = "+".join(rig.menus(m)) or "—"
             words = st.words.get(m.key)
             cost = f"{words:>5}w" if words else "      "
-            fb = "◀fb" if st.eff_fallback == m.key else ""
+            fb = f"[{MARK}]◀fb[/]" if st.eff_fallback == m.key else ""
             # No insertion caret any more: `enter` appends, so there is no
             # second cursor in another pane to keep track of.
-            line = f" {row} {disp(m):<13}[dim]{menus:<7}{cost}[/]{fb}"
+            nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
+            pad = " " * max(0, 13 - len(disp(m)))
+            line = (f" [dim]{row}[/] {nm}{pad}"
+                    f"[dim]{menus:<7}{cost}[/]{fb}")
             out.append(f"[reverse]{line}[/]" if here else line)
         if not rows:
             out.append("[dim] (empty — add from the left)[/]")
@@ -590,10 +625,10 @@ class BenchScreen(Screen):
             for cname in stock.CONSUMED:
                 if cname in st.sel or cname not in gone:
                     continue
-                out.append(f"[dim] —  {titlecase(cname):<13}"
+                out.append(f"[dim {WARN}] —  {titlecase(cname):<13}"
                            f"donor, taken[/]")
         elif [m for m in st.selected if m.dsp is not None]:
-            out.append("[dim] —  Plate, Spring, Dark Rev (donors)[/]")
+            out.append(f"[dim {WARN}] —  Plate, Spring, Dark Rev (donors)[/]")
         out.append("")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", out)
@@ -610,25 +645,34 @@ class BenchScreen(Screen):
         if self.untouched_stock(probs):
             return "[dim]stock — swap a module in to build it[/]"
         if probs:
-            return f"[bold]⚠ {escape(self._clash(probs) or probs[0])}[/]"
+            return (f"[bold {BAD}]⚠ "
+                    f"{escape(self._clash(probs) or probs[0])}[/]")
         if self.syncing is not None or self.synced != self.gen:
-            return "[dim]building…[/]"
+            return f"[dim {WARN}]building…[/]"
         if self.sync_error:
             # The build names the payload and the overrun; that IS the
             # actionable sentence, so print it rather than a pointer to it.
             gone = self.blockers([])
             if gone:
-                return ("[bold]⚠ x removes "
+                return (f"[bold {BAD}]⚠ x removes "
                         + ", ".join(disp(m) for m in gone)
                         + " — this selection needs its words[/]")
-            return f"[bold]⚠ {escape(self.sync_error)}[/]"
+            return f"[bold {BAD}]⚠ {escape(self.sync_error)}[/]"
         # THE BUILD'S OWN NUMBERS, one per payload. Not a sum of st.words
         # against DONOR_WORDS: there are TWO regions of that size and
         # SPEC=1 puts a server on each, so the sum is not a quantity
         # anything has to fit (see state.problems).
         if st.regions:
+            # The free-word count is the one number worth a glance, so let
+            # its COLOUR carry the answer: comfortable, tight, or spent.
+            def one(n, f):
+                # Thresholds from what this project actually lives with:
+                # payload A has shipped at FREE 4 and B at FREE 5, so double
+                # digits is already "spent" and deserves the alarm colour.
+                c = OK if f > 400 else WARN if f > 32 else BAD
+                return f"{n} [{c}]{f}[/] free"
             return "[dim]" + " · ".join(
-                f"{n} {f} free" for n, _u, f in st.regions) + "[/]"
+                one(n, f) for n, _u, f in st.regions) + "[/]"
         # No build has reported yet. Say which of the two reasons it is --
         # this line used to claim "a stock chooser: 14 effects, no modules"
         # for ANY unmeasured selection, including chongbong, which has three.
@@ -661,26 +705,30 @@ class BenchScreen(Screen):
             if name == "SOURCE":
                 src = (self.app.source.name if self.app.source
                        else f"(none — no wavs in {source_dir()})")
-                line = f" SOURCE {escape(src)}"
+                line = f" [dim]SOURCE[/] [{OURS}]{escape(src)}[/]"
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
             v = vals.get(name, 0)
             hi = rig.knob_max(mod, name)
             if hi < 8:
-                shown = f"{step_label(mod, name, v):<7}"
-                bar = "·" * 12
+                # A SELECT reads as a word, not a level, so it gets the
+                # accent and a flat bar -- no fill to imply a range it does
+                # not have.
+                shown = f"[{WARN}]{step_label(mod, name, v):<7}[/]"
+                bar = "[dim]" + "·" * 12 + "[/]"
             else:
                 shown = f"{v:>3}    "
                 fill = round(12 * v / max(hi, 1))
-                bar = "#" * fill + "." * (12 - fill)
+                bar = (f"[{OURS}]" + "#" * fill + "[/][dim]"
+                       + "." * (12 - fill) + "[/]")
             page = "1" if slot < 6 else "2"
-            line = f" {name:<6} {shown}\\[{bar}] [dim]p{page}[/]"
+            line = f" {name:<6} {shown}[dim]\\[[/]{bar}[dim]] p{page}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
         if not knobs:
             out.append("[dim] (no drawn parameters)[/]")
         dry = self.dry_control(mod, vals)
         if dry:
-            out.append(f"[bold]⚠ {dry} is 0 — this renders DRY[/]")
+            out.append(f"[bold {WARN}]⚠ {dry} is 0 — this renders DRY[/]")
         if self.pane == UNIT and knobs:
             name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
             hint = (f"the wav auditioned through this effect — left/right "
@@ -764,9 +812,12 @@ class BenchScreen(Screen):
                 return head[:1] + ["[dim]not in the image yet[/]"]
             effect_id = mod.menu.fx2_id
         grid = self._panel(self.preview, effect_id)
-        return head + ["." + "-" * 44 + "."] + \
-            ["|" + escape(ln.ljust(44)) + "|" for ln in grid] + \
-            ["'" + "-" * 44 + "'"]
+        # The LCD frame is chrome; the firmware's own words are the content.
+        edge = f"[{LCD}]"
+        return head + [f"{edge}." + "-" * 44 + ".[/]"] + \
+            [f"{edge}|[/]" + escape(ln.ljust(44)) + f"{edge}|[/]"
+             for ln in grid] + \
+            [f"{edge}'" + "-" * 44 + "'[/]"]
 
     # ---- keeping the image equal to the selection ------------------------
     # There used to be a stale() gate here: the preview refused to draw when
@@ -828,6 +879,21 @@ class BenchScreen(Screen):
         self.app.call_from_thread(self.rerender)
 
     # ---- input -----------------------------------------------------------
+    def _poll_source(self):
+        """Rebuild when a module's source changed under us."""
+        try:
+            now = audition._newest_input_mtime()
+        except OSError:
+            return                      # mid-write; the next tick catches it
+        if now == self._src:
+            return
+        self._src = now
+        self.app.state.msg = "module source changed — rebuilding"
+        # The AUDIO is not re-rendered: it plays out loud and would fire on
+        # every save. The image and the panel refresh; `r` is one key.
+        self.schedule_sync()
+        self.rerender_soon()
+
     def rerender_soon(self):
         """Mark the screen stale; _flush draws it on the next frame."""
         self._dirty = True

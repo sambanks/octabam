@@ -387,6 +387,39 @@ remix already says, and it forced a knob set per track when what an operator
 actually tunes is an effect. An old `_rig.json` on disk is inert and can be
 deleted.
 
+## Colour
+
+Colour carries meaning here; it does not decorate. Three axes, and nothing
+else gets any:
+
+| what | colour | why |
+|---|---|---|
+| **whose it is** | cyan = one of *ours*, plain = the box's own | in a remixer this is what you scan for, and nothing carried it |
+| **state** | green fits · yellow is a trade or a caution · red blocks | the free-word count is coloured by its own answer |
+| **one-of-a-kind** | magenta | `◀fb`, the fallback |
+| **the panel** | blue frame | chrome, so the firmware's own words stay plain |
+
+The free-word thresholds come from what this project actually lives with:
+payload A has shipped at `FREE 4` and B at `FREE 5`, so **double digits is
+already spent** and gets the alarm colour; over 400 is comfortable.
+
+Colours are **ANSI names, not hex** — the workbench runs Textual's
+`ansi-dark`, so it wears your terminal's own sixteen colours and a hex triple
+would fight whatever palette the terminal is set to.
+
+## Editing in another window
+
+**The bench follows the source.** Edit a module's `.asm` or manifest in your
+editor, or build in another terminal, and the image rebuilds and the panel
+re-boots on its own — the status line says `module source changed —
+rebuilding`. Polled, not watched: one stat sweep of `modules/` is **0.7 ms**,
+so a 1.5 s tick costs nothing and a filesystem-event dependency is not worth
+adding to a venv that already carries unicorn and textual.
+
+Audio is **not** re-rendered on a source change — it plays out loud, and
+firing on every save would be intolerable. The image and the panel refresh;
+`r` is one key.
+
 ## Theming
 
 The app renders in the **terminal's own 16-color ANSI palette** (Textual's
