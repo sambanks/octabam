@@ -199,9 +199,18 @@ Knob VALUES draw as dial graphics the text capture cannot read, so the
 rig's numbers are always the truth for values. The boot is cached and
 repeats only when the image changes.
 
+[bold]The FX2 view is the whole loop.[/] left/right cycles every effect
+the image offers AND every module that could be added; picking one the
+image HAS assigns it to the track (the rig follows). Picking one it does
+NOT have is not drawn — an id the image lacks resolves to the fallback,
+so the firmware would draw a convincing picture of the wrong effect —
+so [bold]a[/] stages it in the composer and [bold]b[/] builds and re-boots.
+Cycling past several unbuilt effects costs nothing; only b builds.
+
 [bold]keys[/]
-  m  main menu      f  FX2 (follows the rig's track + effect)
+  m  main menu      f  FX2 (cycles effects; the rig follows)
   o  FX1 (stock)    p  playback page
+  a  stage an unbuilt effect     b  build the selection + re-boot
   1-8  track        up/down  menu cursor   left/right  cycle""",
 }
 
@@ -767,6 +776,8 @@ class EmuScreen(Screen):
         Binding("m", "view('menu')", "menu"),
         Binding("f", "view('fx2')", "FX2"),
         Binding("left,right", "noop", "cycle effect"),
+        Binding("a", "stage", "stage effect"),
+        Binding("b", "build", "build + re-boot"),
         Binding("o", "view('fx1')", "FX1"),
         Binding("p", "view('play')", "playback"),
         Binding("v", "app.switch_mode('rig')", "rig"),
@@ -799,13 +810,53 @@ class EmuScreen(Screen):
         self.ensure_boot()
 
     def chooser(self):
-        """The built image's FX2 rows, re-read whenever the image changes."""
+        """Everything this view can cycle: the rows the BUILT IMAGE offers,
+        then every other module that COULD have a row, marked as not built.
+
+        The second group is the point of the view -- "the effect I want is
+        not in this image" is the normal case, and the answer has to be
+        reachable from here rather than a trip to the composer. A pending row
+        is never RENDERED: its id is not in the image, so it would resolve to
+        the fallback and draw a convincing picture of the wrong effect. That
+        is the 12 Aug trap in panel form, so the view refuses instead.
+        """
+        # ONLY the image can change these rows. Staging changes the
+        # composer's selection, not the image, and the "STAGED" wording is
+        # read live at render time -- rebuilding here on a selection change
+        # also reset the cursor to row 0, so pressing `a` walked away from
+        # the effect you had just staged.
         mt = BUILT_IMAGE.stat().st_mtime if BUILT_IMAGE.exists() else None
         if mt != self.rows_mtime:
-            self.rows, self.rows_mtime = rig.built_chooser(), mt
+            was = self.current_key()
+            built = [(eid, m, True) for eid, m in rig.built_chooser()]
+            have = {m.key for _, m, _ in built if m is not None}
+            pending = [(m.menu.fx2_id, m, False)
+                       for m in registry.modules().values()
+                       if m.menu is not None and m.key not in have
+                       and rig.category(m) != rig.SYSTEM]
+            pending.sort(key=lambda r: r[1].name)
+            self.rows = built + pending
+            self.rows_mtime = mt
             self.rowi = 0
-            self.sync_row()
+            # Stay on the same EFFECT across a rebuild -- you stage one, press
+            # b, and want to be looking at it now that it is built, not sent
+            # back to row 0.
+            if not (was and self.goto_key(was)):
+                self.sync_row()
         return self.rows
+
+    def current_key(self):
+        if self.rows and 0 <= self.rowi < len(self.rows):
+            _, m, _ = self.rows[self.rowi]
+            return m.key if m is not None else None
+        return None
+
+    def goto_key(self, key) -> bool:
+        for i, (_, m, _) in enumerate(self.rows):
+            if m is not None and m.key == key:
+                self.rowi = i
+                return True
+        return False
 
     def sync_row(self):
         """Point the cursor at whatever the rig has on this track, if the
@@ -814,8 +865,8 @@ class EmuScreen(Screen):
         mod = self.app.rig.effect(self.app.track)
         if mod is None:
             return
-        for i, (_, m) in enumerate(self.rows):
-            if m is not None and m.key == mod.key:
+        for i, (_, m, built) in enumerate(self.rows):
+            if built and m is not None and m.key == mod.key:
                 self.rowi = i
                 return
 
@@ -829,7 +880,9 @@ class EmuScreen(Screen):
         app = self.app
         if not self.rows:
             return ""
-        eid, mod = self.rows[self.rowi]
+        eid, mod, built = self.rows[self.rowi]
+        if not built:
+            return ""                    # nothing to assign until it is built
         if mod is None:
             return f"id 0x{eid:02x} is in the list but no manifest claims it"
         if rig.category(mod) == rig.SYSTEM:
@@ -910,16 +963,33 @@ class EmuScreen(Screen):
                 self.query_one("#emunote", Static).update("")
                 return
             self.rowi %= len(rows)
-            eid, mod = rows[self.rowi]
-            draws = emu_bringup.render_fx2(r, track=track0, effect_id=eid)
+            eid, mod, built = rows[self.rowi]
             name = (mod.menu.fullname.decode("latin1") if mod
                     else f"unclaimed 0x{eid:02x}")
+            if not built:
+                staged = mod.key in app.state.sel
+                self.query_one("#lcd", Static).update(
+                    f"[bold]{escape(name)}[/] (0x{eid:02x}) is "
+                    f"{'STAGED' if staged else 'NOT'} in this image.\n\n"
+                    + ("  staged in the composer — press [bold]b[/] to build "
+                       "it and re-boot\n" if staged else
+                       "  press [bold]a[/] to stage it, then [bold]b[/] to "
+                       "build and re-boot\n")
+                    + "\n  [dim]the page is not drawn: an id this image does "
+                      "not implement resolves to\n  the fallback, so the "
+                      "firmware would draw a convincing picture of the\n"
+                      "  WRONG effect (CLAUDE.md, 12 Aug 2026).[/]")
+                self.query_one("#emunote", Static).update(
+                    f"[dim]{escape(self.pending)}[/]" if self.pending else
+                    "[dim]left/right cycles · a stages · b builds[/]")
+                return
+            draws = emu_bringup.render_fx2(r, track=track0, effect_id=eid)
             title = (f"FX2 SETUP — T{app.track}, row {self.rowi + 1}/"
                      f"{len(rows)}: {name} (0x{eid:02x})")
             note = (self.pending or
-                    "left/right cycles the image's chooser · 1-8 changes "
-                    "track · values draw as dials the string hook cannot "
-                    "read, so the rig's numbers are the truth")
+                    "left/right cycles · a stages an unbuilt effect · b "
+                    "builds · 1-8 changes track · values draw as dials the "
+                    "string hook cannot read, so the rig's numbers are true")
             if mod and mod.name == "bongdelay":
                 note = ("a SPEC image aliases the delay's DSP to SEND on "
                         "payload A — the page may draw empty; " + note)
@@ -940,6 +1010,43 @@ class EmuScreen(Screen):
                         + ["'" + "-" * 46 + "'"])
         self.query_one("#lcd", Static).update(lcd)
         self.query_one("#emunote", Static).update(f"[dim]{note}[/]")
+
+    def action_stage(self):
+        """Add the cycled-to module to the COMPOSER's live selection. Staging
+        only -- the image is not rebuilt until `b`, so cycling past several
+        unbuilt effects costs nothing."""
+        rows = self.chooser()
+        if self.view != "fx2" or not rows:
+            return
+        _, mod, built = rows[self.rowi]
+        if built or mod is None:
+            self.pending = "already in this image — nothing to stage"
+        elif mod.key in self.app.state.sel:
+            self.pending = f"{mod.key} is already staged — b builds it"
+        else:
+            self.app.state.toggle(mod.key)
+            probs = self.app.state.problems()
+            self.pending = (f"staged {mod.key} — b builds and re-boots"
+                            if not probs else
+                            f"staged {mod.key}, but the build would refuse: "
+                            f"{probs[0]}")
+        self.rerender()
+
+    async def action_build(self):
+        """Build the composer's live selection. The build lives on the REMIX
+        screen because that is where its log pane is, and switching there IS
+        the useful behaviour: you watch it build.
+
+        ⚠️ `await` the mode switch. Firing the build straight after
+        `switch_mode` reaches the screen before its `on_mount` has run and
+        dies on a half-built widget -- the screen exists, its state does not.
+        """
+        if self.app.state.problems():
+            self.pending = f"refusing: {self.app.state.problems()[0]}"
+            self.rerender()
+            return
+        await self.app.switch_mode("remix")
+        self.app.screen.action_build("bus")
 
     def action_help(self, view):
         self.app.push_screen(HelpScreen(view))

@@ -160,13 +160,37 @@ faults here, not on the unit.
 | key | action |
 |---|---|
 | `m` | main menu (`up/down` moves the cursor) |
-| `f` | FX2 SETUP — follows the rig's selected track and its assigned effect |
+| `f` | FX2 SETUP — `left/right` cycles effects, the rig follows |
 | `o` | FX1 SETUP (stock effects; `left/right` cycles the id) |
 | `p` | PLAYBACK page (`left/right` cycles FLEX/STATIC/THRU/NEIGHBOR) |
+| `a` | stage the cycled-to effect in the composer (FX2 view) |
+| `b` | build the composer's live selection and re-boot |
 | `1`–`8` | change track |
 
 The boot (~4 s) is cached at app level and repeats only when the image's
 mtime changes.
+
+**The FX2 view closes the loop.** `left/right` cycles two groups: the rows
+the built image actually offers (read from the image on disk, in the panel's
+own order — `rig.built_chooser()`), then every other module that *could*
+have a row, marked as not built.
+
+- Landing on a **built** row draws the firmware's own EFFECT 2 SETUP and
+  **assigns it to the track** — the rig and this view are one selection, not
+  two. Where the rig cannot hold it the view says what the *unit* would do
+  instead: a server picked on the wrong core's tracks aliases to the
+  fallback and the track becomes a send; SEND is plumbing the chooser lists
+  and the rig does not hold.
+- Landing on a **pending** row is deliberately **not drawn**. An id the
+  image does not implement resolves to the fallback, and the firmware would
+  draw a convincing picture of the wrong effect — the 12 Aug 2026 trap in
+  panel form. `a` stages it in the composer, `b` builds and re-boots.
+  Cycling past several unbuilt effects costs nothing; only `b` builds.
+
+Changing track **follows** that track's assignment and never writes: an
+empty track would otherwise silently inherit whatever row was showing. The
+cursor also stays on the same *effect* across a rebuild, so staging one and
+pressing `b` leaves you looking at it, now built.
 
 Honest limits (all recorded in `docs/EMU.md`): no audio, no key matrix —
 navigation is done by poking state and re-calling draw functions. Knob
