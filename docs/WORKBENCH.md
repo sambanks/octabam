@@ -271,6 +271,28 @@ slot 3 or 4 — which depends on how many FX2 effects the dispatcher has
 already walked this block. **Unpredictable is still a refusal**, and each
 works perfectly alone, which is the worst shape a defect can have.
 
+### It costs the FX2 ROW, not the effect
+
+**FLANGER, CHORUS, SPATIALIZER and COMB are still on FX1, and still work.**
+Leaving a stock effect out of a remix takes its FX2 chooser row and nothing
+else — its code, descriptor and dispatch stay stock on both cores, which
+`verify_menu` and `verify_replaces` both assert.
+
+**And the collision cannot follow them to FX1.** The allocator keeps two
+separate tables, and the FX1 one is nowhere near a module's buffers:
+
+| | bases | each | tops out at |
+|---|---|---|---|
+| FX1 | `0x1000 0x1c00 0x2800 0x3400` | 3,072 words | `0x3fff` |
+| FX2 | `0x4000 0x8000` + the shared-window pair | 16,384 words | — |
+
+Every FX2 buffer a module of ours pins starts at `0x4000` or in the shared
+window, so an FX1 allocation **physically cannot reach one**. (It is also why
+the reverbs are FX2-only in stock: they do not fit in an FX1 allocation.)
+
+So of the seven, four cost you a row on one menu and the three reverbs are
+lost outright — and only because FX1 never listed them in the first place.
+
 A donor reverb states the budget you have left before it goes, because that
 is arithmetic rather than a rule: the region is packed from PLATE upward, so
 PLATE goes first and DARK survives while your modules stay under 1,657 words.

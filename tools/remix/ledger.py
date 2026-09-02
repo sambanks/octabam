@@ -150,13 +150,20 @@ def check(selected) -> list[str]:
     stocked = [m for m in selected
                if getattr(m, "claims", None) is not None
                and m.claims.stock_instance_buffer]
+    # ⚠️ THIS REFUSES AN FX2 CHOOSER ROW, NOT THE EFFECT. A stock effect left
+    # out of a remix keeps its code, descriptor and dispatch, so the four
+    # dual-menu ones are still on FX1 and still work -- and the collision
+    # cannot follow them there, because the allocator keeps SEPARATE tables
+    # and an FX1 slot tops out at 0x3fff while every FX2 buffer a module of
+    # ours pins starts at 0x4000 or in the shared window.
     for a in stocked:
         for b in fixed:
             clash("stock instance buffer", a.name, b.name,
-                  "the allocator's per-track buffer slots -- the stock "
+                  "the allocator's per-track FX2 buffer slots -- the stock "
                   "effect's buffer lands on whichever track hosts it and "
                   "that is where the module's fixed buffers are; the chooser "
-                  "cannot keep them on different cores")
+                  "cannot keep them on different cores. Its FX2 ROW is what "
+                  "is refused: on FX1 it keeps working, out of reach")
 
     # ---- core-private Y ---------------------------------------------------
     # Low Y is per CORE. Two effects that can share a core share these words,

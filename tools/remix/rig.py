@@ -272,6 +272,9 @@ def resources(mod, words=None) -> list[str]:
                  "2 core-private FX2 slots" if pins else
                  "2 shared-window FX2 slots")
         out.append(f"pins {where} — costs {_allocating_names()}")
+        # Precisely how many, because FX1 never listed the three reverbs:
+        # it keeps the four dual-menu ones, not all seven.
+        out.append(f"FX2 rows only — FX1 keeps its {_allocating_on_fx1()}")
     if claims is not None and getattr(claims, "stock_instance_buffer", False):
         out.append("takes 1 of the 4 FX2 buffer slots")
     py = ledger.private_y(mod)
@@ -286,6 +289,16 @@ def resources(mod, words=None) -> list[str]:
     return out
 
 
+def _allocating_on_fx1() -> int:
+    """How many of the allocating stock effects FX1 also lists -- the ones a
+    remix does NOT take away from you. The reverbs are not among them, which
+    is why this is counted rather than assumed to be all of them."""
+    from remix import stock
+    return sum(1 for m in stock.MODULES
+               if m.claims is not None and m.claims.stock_instance_buffer
+               and FX1 in menus(m))
+
+
 def _allocating_names() -> str:
     """WHICH stock effects a buffer-pinning module costs you, by name.
 
@@ -294,6 +307,18 @@ def _allocating_names() -> str:
     changes. The three reverbs collapse to a phrase because they always go
     together (their code IS the donor region) and spelling all three out
     doubles the line for nothing.
+
+    ⚠️ WHAT IS LOST IS THE FX2 ROW, NOT THE EFFECT. Leaving a stock effect
+    out of a remix takes its chooser row and nothing else -- its code,
+    descriptor and dispatch stay stock on both cores -- so FLANGER, CHORUS,
+    SPATIALIZER and COMB are still there on FX1, and still work.
+
+    And the collision cannot follow them there. The allocator keeps SEPARATE
+    tables: FX1 hands out 0x1000/0x1c00/0x2800/0x3400 at 3,072 words each,
+    topping out at 0x3fff, while every FX2 buffer a module of ours pins
+    starts at 0x4000 or in the shared window (measured, X:0x255 in both
+    payloads). An FX1 allocation physically cannot reach them. The three
+    reverbs are the exception only because FX1 never listed them.
 
     Derived from the manifests, not written down: it went from four to seven
     the day the reverbs became listable.
