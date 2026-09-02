@@ -1,28 +1,23 @@
 #!/usr/bin/env python3
-"""The remix workbench, organized the way an Octatrack user thinks: TRACKS.
+"""The remix workbench: swap effects, hear them, see the panel draw them.
 
     make remix          (or: .venv/bin/python3 tools/remix/app.py)
 
-Three views, one rig:
+ONE page, three panes -- AVAILABLE (what could be in the image), LOADED
+(what is), UNIT (the selected effect's knobs and the firmware's own draw of
+its page). The loop it exists for is one move long: point at a stock effect,
+`enter` to swap one of ours in, `r` to hear it.
 
-  RIG (home)   eight tracks, an effect on each. Pick a track, see the
-               effect's real param pages (manifest names, page 1 = knobs
-               A-F), dial values, render through the DSP emulator, hear it,
-               A/B renders. This is the trial-a-sound loop and the reason
-               the workbench exists.
-  REMIX        the composer: which modules the IMAGE contains, grouped as an
-               operator meets them -- bus servers (with their track range),
-               inserts (any track), system plumbing. Collisions, fit, save/
-               load, build and check -- on the LIVE selection, no save needed.
-  EMU          the built image booted in the Tier-0 ColdFire emulator
-               (docs/EMU.md), showing the firmware's own menu and param page
-               renders for the rig's selected track. Booting IS the no-flash
-               gate; the boot is cached until the image changes.
+THE IMAGE FOLLOWS THE SELECTION. Every selection change rebuilds and
+re-boots in the background -- a build is ~0.3 s and a ColdFire boot ~5 s --
+so the panel on the right always draws what the middle pane says. There is
+no build key and no stale state to reason about; that apparatus existed to
+spare the operator a quarter-second and cost more than it saved.
 
 The model layers are headless and live next door: state.py (the composer),
-rig.py (tracks), audition.py (rendering). This file is only the shell.
-Textual rather than curses: the workbench is already venv-hosted for the
-emulator, and the frontend rewrite is where hand-rolled layout stopped
+rig.py (categories, knobs), audition.py (rendering). This file is only the
+shell. Textual rather than curses: the workbench is already venv-hosted for
+the emulator, and the frontend rewrite is where hand-rolled layout stopped
 paying its way.
 """
 
@@ -49,8 +44,8 @@ except ImportError:
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
 from remix import audition, registry, rig, stock  # noqa: E402
-from remix.state import (BUILT_IMAGE, DONOR_WORDS, ROOT,  # noqa: E402
-                         STOCK_ROOTS, State)
+from remix.state import BUILT_IMAGE, ROOT, State  # noqa: E402
+
 
 def step_label(mod, name, v):
     """A select's value as the manifest labels it, else the raw number."""
@@ -150,107 +145,43 @@ HELP = {
 then the stock effects the unit already ships. [bold]LOADED[/] is the
 image you are composing, in CHOOSER ORDER — the order here is the order
 of rows on the panel, so left/right there is a real edit. [bold]UNIT[/]
-follows the cursor: the selected effect's knobs, and the firmware's own
-draw of its page.
+follows the cursor: the selected effect's knobs, the firmware's own draw
+of its page, and `r` to hear it on the SOURCE wav.
 
-You start at [bold]stock[/] — the chooser an unmodified unit shows, all
-fourteen effects including the three reverbs. Composing is [bold]trading[/]:
-the donor region is 2,724 words and the chooser is a list somebody has to
-scroll, so `enter` SWAPS the ▸ row for the highlighted module rather than
-growing the list. One trade is often not enough — the first module of
-ours needs SEND in the list, and a big one can push you past the region —
-and the status line names what else has to go.
-
-● in the LOADED pane means "in the image on disk". An effect that is
-loaded but not built is not previewed: its id is not in the image, so
-the firmware would draw a convincing picture of the WRONG effect.
+The loop is one move long: point at a stock effect in LOADED, highlight
+one of yours in AVAILABLE, `enter`. The image rebuilds and re-boots by
+itself, so the panel is never showing something else.
 
 [bold]keys[/]
   tab  pane            up/down  move
   enter  SWAP the ▸ row for this one (at (end): append); on a
          selected module, remove it
   left/right  knob value (UNIT) or row order (LOADED)
-  p  preview mode      r  render + hear     space  play last
-  b  build             c  check             w  word cost
-  l  load remix        s  save remix        f  fallback
-  k  back to stock     ?  this""",
-    "rig": """[bold]THE RIG — your bench, not the unit[/]
+  r  render + hear     space  play last    p  preview mode
+  a  mark it A         , / .  play A / B
+  l  load remix        s  save remix       f  fallback
+  c  full check        k  back to stock    ?  this
 
-Assign an effect to a track, dial its knobs, render a source wav through
-the effect's real DSP code and hear it. Audio comes from the local DSP
-emulator (~6x real time); nothing here touches hardware.
+[bold]the one line under LOADED[/]
+It says the only two things that can stop you: whether the selection
+fits the 2,724-word donor region, and — with a ⚠ — the effects you have
+to remove before it will build. Everything else the pane used to explain
+is here instead.
 
-[bold]keys[/]
-  1-8       select track             enter      pick the track's effect
-  up/down   move between rows        left/right adjust (shift = coarse)
-  r         render + play            space      replay the last render
-  a / b     mark the last render     , / .      replay mark A / B
-  esc       stop audio               backspace  clear the effect
-  x         the remix composer       e          the emulated unit
+[bold]why some stock effects go dim[/]
+Every image replaces the whole FX2 chooser, but only THREE stock effects
+are CONSUMED: PLATE, SPRING and DARK REV, whose code is the donor region
+your modules are written over. The other eleven keep their code and knobs
+in every image and only lose their chooser row — an old project that
+selects one still runs it. Four of them (SPATIALIZER, FLANGER, CHORUS,
+COMB FILTER) take a per-track instance buffer at the addresses the servers
+hardcode, so they cannot sit beside ChonVerb, Nimbus or BongDelay; that is
+what the ⚠ is telling you to remove.
 
-[bold]why some effects are missing on a track[/]
-The two BUS EFFECTS each live on one of the unit's two DSP cores:
-ChonVerb serves tracks 5-8 and BongDelay tracks 1-4 (measured, and
-inverted from what you'd guess). INSERTS run on any track. The knob
-rows mirror the unit's two FX2 SETUP pages: page 1 = encoders A-F,
-page 2 alternates knob/select. The dim ? line explains whichever
-knob the cursor is on.""",
-    "remix": """[bold]THE COMPOSER — what the firmware image contains[/]
-
-A remix is a named selection of modules built into one firmware image.
-Toggle modules here; the right panel answers, continuously: what the
-FX2 chooser will show on the unit, whether anything collides (the same
-ledger the build runs), and whether the DSP fits the 2724-word donor
-region (w assembles for real numbers).
-
-Effects the image leaves out don't vanish on the unit: an old project
-selecting an absent id is aliased to the FALLBACK (normally SEND), so
-it degrades to a send instead of noise. * marks an explicit fallback,
-~ an automatic one.
-
-[bold]what happens to the stock effects[/]
-Every image replaces the whole FX2 chooser, but only THREE stock
-effects are consumed -- PLATE, SPRING and DARK REV, whose code is the
-donor region the modules pack into. The other eleven keep their code
-and knobs in every image and only lose their row. Toggle one under
-STOCK FX2 to keep its row: it costs nothing. Four of them (SPAT, FLNG,
-CHOR, COMB) take a per-track buffer where the servers keep theirs, so
-they are refused beside ChonVerb, Nimbus or BongDelay. Row order is
-selection order; [ and ] move the cursored module. More than seven
-rows and the chooser scrolls, as stock's does.
-
-[bold]keys[/]
-  space  toggle module        f  make it the fallback
-  [ / ]  move earlier/later   w  assemble + measure
-  b      build the selection  c  build + full check
-  l      load a saved remix   s  save this selection
-  v      rig                  e  emulated unit""",
-    "emu": """[bold]THE EMULATED UNIT — the real firmware, screen only[/]
-
-Your built image, booted in a local ColdFire emulator, drawing its own
-screens: the MAIN MENU (patched-in entries render exactly as the unit
-would), the FX2/FX1 SETUP pages and the PLAYBACK page. There is no
-audio and no key matrix — this view is the no-flash confidence check:
-does the image boot cleanly, does the panel draw what the manifests
-promised.
-
-Knob VALUES draw as dial graphics the text capture cannot read, so the
-rig's numbers are always the truth for values. The boot is cached and
-repeats only when the image changes.
-
-[bold]The FX2 view is the whole loop.[/] left/right cycles every effect
-the image offers AND every module that could be added; picking one the
-image HAS assigns it to the track (the rig follows). Picking one it does
-NOT have is not drawn — an id the image lacks resolves to the fallback,
-so the firmware would draw a convincing picture of the wrong effect —
-so [bold]a[/] stages it in the composer and [bold]b[/] builds and re-boots.
-Cycling past several unbuilt effects costs nothing; only b builds.
-
-[bold]keys[/]
-  m  main menu      f  FX2 (cycles effects; the rig follows)
-  o  FX1 (stock)    p  playback page
-  a  stage an unbuilt effect     b  build the selection + re-boot
-  1-8  track        up/down  menu cursor   left/right  cycle""",
+[bold]the fallback[/]
+An id the image does not implement aliases to the FALLBACK — normally
+SEND, so an old project degrades to a send instead of noise. It is added
+for you when a selection needs one; `f` chooses another. ◀fb marks it.""",
 }
 
 
@@ -301,15 +232,13 @@ class BenchScreen(Screen):
         Binding("tab", "pane(1)", "pane"),
         Binding("shift+tab", "pane(-1)", "prev pane", show=False),
         Binding("enter", "add_remove", "swap / remove"),
-        Binding("p", "preview", "preview"),
-        Binding("r", "render", "render+hear"),
+        Binding("r", "render", "hear it"),
         Binding("space", "play", "play last"),
+        Binding("p", "preview", "preview page", show=False),
         Binding("a", "mark('A')", "mark A", show=False),
         Binding("comma", "play_mark('A')", "play A", show=False),
         Binding("full_stop", "play_mark('B')", "play B", show=False),
-        Binding("b", "build('bus')", "build"),
-        Binding("c", "build('check')", "check", show=False),
-        Binding("w", "measure", "word cost", show=False),
+        Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
         Binding("l", "load", "load remix"),
         Binding("s", "save", "save remix"),
@@ -331,9 +260,16 @@ class BenchScreen(Screen):
         self.pane = LOADED
         self.cur = [0, 0, 0]
         self.preview = "FX2"
-        self.booting = False
         self.rows_mtime = None
         self.built = []                  # (fx2_id, module) from the image
+        # The image tracks the selection: `gen` counts selection changes,
+        # `synced` is the one the booted image reflects, `syncing` is the one
+        # a worker is currently building. A rebuild is kicked whenever they
+        # disagree -- see schedule_sync().
+        self.gen = 0
+        self.synced = None
+        self.syncing = None
+        self.sync_error = None
         self.query_one("#log", RichLog).display = False
         self.rerender()
 
@@ -450,15 +386,15 @@ class BenchScreen(Screen):
                 row = " ·"                      # no chooser row (a CF patch)
             menus = "+".join(rig.menus(m)) or "—"
             words = st.words.get(m.key)
-            cost = f"[dim]{words:>5}w[/]" if words else "      "
-            built = "●" if self.in_image(m) else " "
-            fb = "◀fb" if st.eff_fallback == m.key else "   "
+            cost = f"{words:>5}w" if words else "      "
+            fb = "◀fb" if st.eff_fallback == m.key else ""
             # ▸ marks where an `enter` from the library would land. It has
             # to be visible from the OTHER pane too -- "adds at the LOADED
             # cursor" is useless advice when the cursor is only drawn on the
             # pane you are standing in.
             caret = "▸" if i == at else " "
-            line = f"{caret}{row} {built} {disp(m):<13}[dim]{menus:<7}[/]{cost}{fb}"
+            line = (f"{caret}{row} {disp(m):<13}"
+                    f"[dim]{menus:<7}{cost}[/]{fb}")
             out.append(f"[reverse]{line}[/]" if here else line)
         if at >= len(rows):
             tail = "▸    [dim](end)[/]"
@@ -471,47 +407,51 @@ class BenchScreen(Screen):
         # effects, and these are three of them. They leave when something
         # takes their space -- their code IS the donor region our modules are
         # written over -- so showing the trade where it happens is the point.
-        # (Precedent: CHORUS was a donor until v98 and got its stock dispatch
-        # back the moment the build stopped taking its code.)
+        # ONE dim line, not three: the old form repeated "taken by <module>"
+        # per reverb, which said one thing three times, named an arbitrary
+        # module as the taker (eats[0] is just the first selection with DSP
+        # code -- nothing here computes a per-reverb attribution), and
+        # overran the 38-column pane so its " +1" wrapped onto its own line
+        # and read as a fourth mystery row.
         eats = [m for m in st.selected if m.dsp is not None]
-        for name in stock.CONSUMED:
-            if eats:
-                out.append(f"[dim]  –  {name:<13} taken by "
-                           f"{escape(disp(eats[0]))}"
-                           f"{f' +{len(eats) - 1}' if len(eats) > 1 else ''}[/]")
-            else:
+        if eats:
+            out.append("[dim] —  PLATE, SPRING, DARK REV (donors)[/]")
+        else:
+            for cname in stock.CONSUMED:
                 pos += 1
-                out.append(f"[dim] {pos:>2}   {name:<13}FX2[/]")
-        probs = st.problems()
+                out.append(f"[dim] {pos:>2} {cname:<13}FX2[/]")
         out.append("")
-        # THE BUDGET, because it is the actual constraint and it was
-        # invisible. Rows are nearly free -- seven in place, up to 32 in the
-        # long cave -- and STOCK rows cost NOTHING AT ALL, since their code
-        # is already in the image whether or not they have a row. The 2,724
-        # words are spent only by modules of ours, so "will this fit" is a
-        # question about them alone, and a swap of a stock row for a module
-        # frees nothing.
-        code = [m for m in st.selected if m.dsp is not None]
-        known = [m for m in code if m.key in st.words]
-        if code and len(known) == len(code):
-            used = sum(st.words[m.key] for m in code)
-            free = DONOR_WORDS - used
-            out.append(f"[dim]donor region {used}/{DONOR_WORDS} · "
-                       f"{'[/][bold]' if free < 0 else ''}{free} free[/]")
-        elif code:
-            out.append(f"[dim]{len(code)} module"
-                       f"{'s' if len(code) != 1 else ''} spending the "
-                       f"{DONOR_WORDS}-word region — w measures[/]")
-        out.append("[dim]● = in the built image · ◀fb = fallback[/]")
-        out.append("[dim]dim = stock, lost to the donor region[/]"
-                   if eats else
-                   "[dim]a stock chooser: 14 effects, no modules[/]")
-        out.append("[dim]← → moves this row (= its panel slot)[/]"
-                   if self.pane == LOADED else
-                   "[dim]tab here to reorder or remove[/]")
-        if probs:
-            out.append(f"[bold]⚠ {escape(probs[0])}[/]")
+        out.append(self._ledger_line(st))
         self.query_one("#pane_load", Static).update("\n".join(out))
+
+    def _ledger_line(self, st):
+        """The fit, the blocker and the build state, in ONE line.
+
+        This pane used to close with five: a donor-region budget, a ● legend,
+        a "dim = stock" legend, a keys hint and a ⚠ -- roughly half its
+        height spent explaining constraints rather than showing the image.
+        Only two questions are actually live while swapping: does this fit,
+        and is the panel on the right showing it yet. The rest moved to `?`.
+        """
+        probs = st.problems()
+        if self.untouched_stock(probs):
+            return "[dim]stock — swap a module in to build it[/]"
+        if probs:
+            return f"[bold]⚠ {escape(self._clash(probs) or probs[0])}[/]"
+        if self.syncing is not None or self.synced != self.gen:
+            return "[dim]building…[/]"
+        if self.sync_error:
+            # The build names the payload and the overrun; that IS the
+            # actionable sentence, so print it rather than a pointer to it.
+            return f"[bold]⚠ {escape(self.sync_error)}[/]"
+        # THE BUILD'S OWN NUMBERS, one per payload. Not a sum of st.words
+        # against DONOR_WORDS: there are TWO regions of that size and
+        # SPEC=1 puts a server on each, so the sum is not a quantity
+        # anything has to fit (see state.problems).
+        if st.regions:
+            return "[dim]" + " · ".join(
+                f"{n} {f} free" for n, _u, f in st.regions) + "[/]"
+        return "[dim]a stock chooser: 14 effects, no modules[/]"
 
     def _pane_unit(self, st):
         mod = self.selected_module()
@@ -571,38 +511,29 @@ class BenchScreen(Screen):
         self.query_one("#pane_unit", Static).update("\n".join(out))
 
     # ---- the emulated panel ---------------------------------------------
-    def stale(self):
-        """Does the image on disk still match the selection? The preview
-        draws the IMAGE, and when the two disagree it shows one set of
-        effects while the LOADED pane shows another -- which reads as a bug
-        rather than as staleness unless it is said out loud."""
-        want = [m.key for m in self.app.state.menu_modules if not m.is_stock]
-        got = [m.key for _, m in self.image_rows() if m is not None
-               and not m.is_stock]
-        return want != got
-
     def _preview(self, mod):
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
         head = [f"preview {modes}  [dim](p)[/]",
-                "[dim]— drawn by the firmware, from the image on disk —[/]"]
-        # STALE MEANS DO NOT DRAW. Labelling it was not enough: the FX2 page
-        # includes the firmware's own chooser list, so a stale image puts a
-        # different set of effects on screen beside the LOADED pane and reads
-        # as "why are those loaded?". Same principle the unbuilt-module case
-        # already used -- do not draw a convincing picture of the wrong thing.
-        # ⚠️ Boot FIRST, then decide what to show. Returning early on stale
-        # skipped ensure_boot() entirely, so a workbench that opened stale --
-        # which is every fresh launch -- never started the emulator at all,
-        # and the preview stayed dead for the whole session.
+                "[dim]— drawn by the firmware, from your selection —[/]"]
+        # DO NOT DRAW SOMETHING THAT IS NOT THE SELECTION. The FX2 page
+        # includes the firmware's own chooser list, so an image that is not
+        # this selection puts a different set of effects on screen beside the
+        # LOADED pane and reads as "why are those loaded?". The answer is no
+        # longer to explain it -- ensure_sync() rebuilds -- but while that is
+        # in flight there is still nothing honest to show.
+        self.ensure_sync()
         r = self.app.boot
-        if r is None:
-            self.ensure_boot()
-            return head + ["[dim]booting the emulator...[/]"]
-        if self.stale():
-            return head[:1] + [
-                "[bold]the image on disk is not this selection[/]",
-                "[dim]b builds it, then this shows YOUR image[/]"]
+        probs = self.app.state.problems()
+        if self.untouched_stock(probs):
+            return head[:1] + ["[dim]swap a module in and this draws it[/]"]
+        if probs:
+            return head[:1] + ["[dim]not built — see the ⚠ in LOADED[/]"]
+        if self.sync_error:
+            return head[:1] + [f"[bold]build failed[/] [dim]— "
+                               f"{escape(self.sync_error)}[/]"]
+        if self.syncing is not None or r is None:
+            return head[:1] + ["[dim]building and booting…[/]"]
         if not r.reached_handoff:
             return head + ["[bold]did not reach the RTOS handoff[/] — a "
                            "patch may have broken early init"]
@@ -616,12 +547,11 @@ class BenchScreen(Screen):
                 return head + ["[dim]no chooser row: this module patches the "
                                "firmware rather than adding an effect[/]"]
             if not self.in_image(mod):
-                return head + [
-                    f"[bold]not in the built image[/] — b builds the "
-                    f"selection",
-                    "[dim]the page is not drawn: an id the image does not",
-                    "implement resolves to the fallback, so the firmware",
-                    "would draw the WRONG effect (CLAUDE.md, 12 Aug).[/]"]
+                # Rare now that the image follows the selection, but kept:
+                # an id the image does not implement resolves to the
+                # FALLBACK, so the firmware would draw a convincing picture
+                # of the wrong effect (CLAUDE.md, 12 Aug 2026).
+                return head[:1] + ["[dim]not in the image yet[/]"]
             draws = emu_bringup.render_fx2(r, track=4,
                                            effect_id=mod.menu.fx2_id)
         grid = emu_bringup.layout_screen(draws)
@@ -629,28 +559,63 @@ class BenchScreen(Screen):
             ["|" + escape(ln.ljust(44)) + "|" for ln in grid] + \
             ["'" + "-" * 44 + "'"]
 
-    def ensure_boot(self):
-        if not BUILT_IMAGE.exists() or self.booting:
-            return
-        mtime = BUILT_IMAGE.stat().st_mtime
-        if self.app.boot is not None and self.app.boot_mtime == mtime:
-            return
-        self.booting = True
-        self.boot_worker(mtime)
+    # ---- keeping the image equal to the selection ------------------------
+    # There used to be a stale() gate here: the preview refused to draw when
+    # the image on disk was not the selection, and printed a bold two-line
+    # disclaimer telling the operator to press b. Every fresh launch is
+    # stale, so the headline feature opened showing a disclaimer -- and what
+    # it was guarding is a 0.26 s build (`make bus` from a touched manifest,
+    # measured 2 Sep 2026) plus a 4.6 s ColdFire boot, both already on a
+    # worker thread. So the image just follows the selection instead.
+    def schedule_sync(self):
+        """The selection changed. Rebuild and re-boot, after a short pause so
+        a run of swaps costs one build rather than one per keystroke."""
+        self.gen += 1
+        self.set_timer(0.35, self.ensure_sync)
 
-    @work(thread=True, exclusive=True, group="boot")
-    def boot_worker(self, mtime):
-        app = self.app
-        try:
-            import emu_bringup
-            r = emu_bringup.boot(str(BUILT_IMAGE))
-        except Exception as e:                       # noqa: BLE001
-            r = None
-            app.state.msg = f"emulator unavailable — {e} (make emu-setup)"
-        self.booting = False
-        if r is not None:
-            app.boot, app.boot_mtime = r, mtime
-        app.call_from_thread(self.rerender)
+    def ensure_sync(self):
+        """Start the rebuild if the image is behind and nothing is in the
+        way. Idempotent and cheap -- rerender() calls it, so a kick that
+        arrives during a render or a build is simply picked up by the next
+        one rather than queued."""
+        if self.syncing is not None or self.synced == self.gen:
+            return
+        if self.app.rendering:
+            return          # both write out/mainos_bus.bin; the render's
+                            # closing rerender() will kick this again
+        if self.app.state.problems():
+            self.synced, self.app.boot = self.gen, None
+            return          # it would not build; the ⚠ line says why
+        self.syncing = self.gen
+        self.sync_worker(self.gen)
+
+    @work(thread=True, group="sync")
+    def sync_worker(self, gen):
+        """Build the live selection, then boot it.
+
+        state.measure() IS the build -- the same `REMIX=x XBUS=1 SPEC=1
+        build_bus.py` that `make bus` runs -- and it parses the per-module
+        word counts out of the build report on the way past. So one call
+        does what the old b (build) and w (word cost) keys did separately.
+        """
+        st = self.app.state
+        ok, note = st.measure(None)
+        r = None
+        if ok:
+            try:
+                import emu_bringup
+                r = emu_bringup.boot(str(BUILT_IMAGE))
+            except Exception as e:                   # noqa: BLE001
+                note = f"emulator unavailable — {e} (make emu-setup)"
+        if gen == self.gen:                          # not superseded
+            self.app.boot = r
+            self.sync_error = None if ok else note
+            self.synced = gen
+            self.rows_mtime = None                   # chooser rows re-read
+            if not ok:
+                st.msg = f"build failed: {note}"
+        self.syncing = None
+        self.app.call_from_thread(self.rerender)
 
     # ---- input -----------------------------------------------------------
     def action_pane(self, d):
@@ -715,6 +680,7 @@ class BenchScreen(Screen):
         i = self.cur[LOADED]
         st.move(rows[i].key, step)
         self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
+        self.schedule_sync()      # placement order changes the image
 
     def action_add_remove(self):
         st = self.app.state
@@ -740,10 +706,13 @@ class BenchScreen(Screen):
                 else:
                     st.insert_at(mod.key, len(st.order))
                     st.msg = f"added {disp(mod)} at the end"
-                more = self.knock_ons()
-                if more:
-                    st.msg += " · " + more
+                # The consequences go to the ⚠ line, which is beside the
+                # rows they are about. Appending them here produced a
+                # run-on that the status bar then truncated -- and the part
+                # it cut was the only actionable half of the sentence.
+                st.msg += self.ensure_fallback()
             st.loaded_name = ""
+            self.schedule_sync()
         elif self.pane == LOADED:
             rows = self.loaded_rows()
             if not rows or self.cur[LOADED] >= len(rows):
@@ -753,62 +722,66 @@ class BenchScreen(Screen):
             st.loaded_name = ""
             st.msg = f"removed {mod.key}"
             self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
+            self.schedule_sync()
         self.rerender()
 
-    def knock_ons(self):
-        """What ELSE this swap now requires -- the multi-swap case.
+    def ensure_fallback(self):
+        """Satisfy the fallback rule rather than demanding a trade for it.
 
-        One trade is frequently not enough, and the reasons are unequal:
+        A chooser row costs nothing (32 fit in the long cave), so making the
+        operator sacrifice an effect for SEND was an invention of this UI,
+        not a constraint of the image. Add it and say so in four words.
 
-        * A BUFFER CLASH is the expensive one and the ledger states it one
-          PAIR at a time -- adding ChonVerb to a stock chooser produces four
-          near-identical sentences (FLANGER, CHORUS, SPATIALIZER and COMB all
-          take a per-track instance buffer at the addresses its tank
-          hardcodes). Reported as four walls of text it is unreadable and it
-          is not obvious that the answer is "remove those four". Aggregated
-          into one sentence that names them.
-        * THE FALLBACK is cheap and is fixed here rather than reported. A
-          chooser row costs nothing (32 fit in the long cave), so making the
-          operator sacrifice an effect for SEND was an invention of this UI,
-          not a constraint of the image. It is added, and said out loud.
-        * WORDS are the real budget and the only one where something has to
-          go.
+        This is all that survives of knock_ons(), which also REPORTED the
+        buffer clashes and the word budget into the status line. Those two
+        belong on the ⚠ line beside the rows they are about, where they are
+        re-derived every render instead of being a snapshot of the moment
+        one swap happened.
         """
         st = self.app.state
-        probs = st.problems()
+        if not any("no fallback" in p for p in st.problems()):
+            return ""
+        send = st.mods.get("SEND")
+        if send is None or send.key in st.sel:
+            return ""
+        st.insert_at(send.key, len(st.order))
+        return " · added Send as the fallback"
 
-        # The fallback: satisfy it rather than demand a trade for it.
-        if any("no fallback" in p for p in probs) and "SEND" in st.mods:
-            send = st.mods["SEND"]
-            room = (send.key in st.words and
-                    sum(st.words[m.key] for m in st.selected
-                        if m.dsp is not None and m.key in st.words)
-                    + st.words[send.key] <= DONOR_WORDS)
-            if send.key not in st.sel and (room or send.key not in st.words):
-                st.insert_at(send.key, len(st.order))
-                probs = st.problems()
-                extra = "added Send too (the only safe fallback)"
-                rest = self._clash(probs)
-                return extra + (" · " + rest if rest else "")
-        rest = self._clash(probs)
-        return rest
+    def untouched_stock(self, probs):
+        """Is this the LAUNCH state rather than a mistake?
+
+        An untouched stock chooser cannot build and is documented not to
+        pretend it can (state.load_stock): a remix must name a fallback for
+        the ids it does not implement, and no stock effect is a safe one --
+        it would PROCESS the unknown id rather than pass it. But that is the
+        state the bench OPENS in, so reporting it as ⚠ makes a fresh launch
+        look broken. Say what the next move is instead. The moment a module
+        of ours goes in, SEND comes with it and this stops applying.
+        """
+        return (bool(probs)
+                and all("no fallback" in p for p in probs)
+                and not any(not m.is_stock for m in self.app.state.selected))
 
     def _clash(self, probs):
-        """One readable sentence for whatever still stands."""
+        """One readable, IMPERATIVE sentence for whatever stands.
+
+        A buffer clash is the expensive one and the ledger states it a PAIR
+        at a time -- adding ChonVerb to a stock chooser yields four
+        near-identical sentences (FLANGER, CHORUS, SPATIALIZER and COMB all
+        take a per-track instance buffer at the addresses its tank
+        hardcodes). Four walls of text do not read as "remove those four".
+        """
         if not probs:
             return ""
         buf = [p for p in probs if "stock instance buffer" in p]
         if buf:
             # "stock instance buffer: flanger and chonverb both claim ..."
-            names = []
-            for p in buf:
-                a = p.split(":", 1)[1].split(" and ")[0].strip()
-                names.append(a.upper())
-            return (f"needs the FX2 buffer region — also swap out "
-                    f"{', '.join(names)}")
+            names = [p.split(":", 1)[1].split(" and ")[0].strip().upper()
+                     for p in buf]
+            return "also remove " + ", ".join(names)
         first = probs[0]
         if "exceeds" in first:
-            return first + "; swap something else out too"
+            return first + " — remove something else"
         if "no fallback" in first:
             return "needs a fallback — press f to choose one"
         return first
@@ -816,6 +789,7 @@ class BenchScreen(Screen):
     def action_stock(self):
         self.app.state.load_stock()
         self.cur = [0, 0, 0]
+        self.schedule_sync()
         self.rerender()
 
     def action_fallback(self):
@@ -831,6 +805,7 @@ class BenchScreen(Screen):
             if key:
                 st.fallback = key
                 st.msg = f"unimplemented ids alias to {key}"
+                self.schedule_sync()
             self.rerender()
         self.app.push_screen(Chooser("unimplemented ids alias to:", opts), done)
 
@@ -906,18 +881,6 @@ class BenchScreen(Screen):
         self.rerender()
 
     # ---- build, measure, load, save --------------------------------------
-    def action_measure(self):
-        st = self.app.state
-        st.msg = "assembling for word counts..."
-        self.rerender()
-        self.measure_worker()
-
-    @work(thread=True, exclusive=True, group="measure")
-    def measure_worker(self):
-        st = self.app.state
-        st.measure(None)
-        self.app.call_from_thread(self.rerender)
-
     def action_build(self, target):
         st = self.app.state
         probs = st.problems()
@@ -944,11 +907,12 @@ class BenchScreen(Screen):
             rc = p.wait()
         finally:
             st.scratch_cleanup()
-        st.msg = (f"make {target}: {'OK' if rc == 0 else f'FAILED (rc {rc})'}"
-                  f" — the built image is this selection")
-        if rc == 0:
-            self.app.boot = None          # the preview must re-boot
-            self.rows_mtime = None        # and the ● markers re-read
+        st.msg = f"make {target}: {'OK' if rc == 0 else f'FAILED (rc {rc})'}"
+        # `make check` shells out to build_bus.py several times WITHOUT
+        # XBUS/SPEC (verify_burn does), so whatever it leaves at the
+        # artifact's path is not this selection. Re-sync rather than trust
+        # it -- the same reason the Makefile's own check target rebuilds.
+        self.synced = None
         self.app.call_from_thread(self.rerender)
 
     def action_load(self):
@@ -960,6 +924,7 @@ class BenchScreen(Screen):
             elif name:
                 self.app.state.load(name)
             self.cur = [0, 0, 0]
+            self.schedule_sync()
             self.rerender()
         self.app.push_screen(
             Chooser("load:", [("stock", "stock (an unmodified unit)")]
@@ -1017,8 +982,7 @@ class Workbench(App):
         self.marks = {}                    # "A"/"B" -> path
         self.status = ""                   # state.msg is the live line now
         self.rendering = False
-        self.boot = None                   # cached emulator BootResult
-        self.boot_mtime = None
+        self.boot = None                   # the booted image, or None
         self.player = None                 # the running afplay
 
     def on_mount(self):

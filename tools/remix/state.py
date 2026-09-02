@@ -42,7 +42,10 @@ class State:
         self.cursor = 0
         self.words: dict[str, int] = {}      # key -> words, from a real build
         self.words_from = ""                 # which remix produced them
-        self.msg = "space toggles; w assembles for word counts; ? for keys"
+        # [(payload, used, free)] as the last build reported them. TWO
+        # regions, one per payload -- see problems().
+        self.regions: list[tuple[str, int, int]] = []
+        self.msg = "enter swaps · r hears it · ? for keys"
         # Per-MODULE knob values, so an effect's settings belong to the effect
         # rather than to a track. (The retired rig kept these per track, which
         # was the redundancy: one knob set per effect is what a remix means.)
@@ -193,14 +196,20 @@ class State:
             out.append("no fallback and none can be picked automatically "
                        "(no SEND, and several effects) — press f to choose "
                        "which effect unimplemented ids alias to")
-        # A module whose words we know, summed against the region it must fit.
-        known = [k for k in self.sel if k in self.words]
-        if known and len(known) == len([k for k in self.sel
-                                        if self.mods[k].dsp is not None]):
-            total = sum(self.words[k] for k in known)
-            if total > DONOR_WORDS:
-                out.append(f"{total} words exceeds the {DONOR_WORDS}-word "
-                           f"donor region by {total - DONOR_WORDS}")
+        # THE WORD BUDGET IS NOT CHECKED HERE, deliberately. It used to be:
+        # every module's words summed against ONE 2,724-word region. There
+        # are TWO -- one per payload -- and SPEC=1 puts each server on its
+        # own, so the sum is not a quantity the image has to fit. It read
+        # chongbong, the SHIPPING remix, as "5130 words exceeds the 2724-word
+        # donor region by 2406" when the truth was A 2650/74 free and B
+        # 2719/5 free. The check was latent while the words were only known
+        # after an explicit keypress; it became a permanent false alarm the
+        # moment the workbench started measuring on every change.
+        #
+        # The build is the authority and it refuses per payload ("payload B:
+        # RUNGS overruns the region (3599 > 2724 words)"), so an overrun
+        # arrives as a build failure with the payload named. measure() keeps
+        # the real per-payload numbers in self.regions.
         return out
 
     # ---- the one thing that needs a real build --------------------------
@@ -227,20 +236,28 @@ class State:
             if r.returncode != 0:
                 tail = (r.stdout + r.stderr).strip().splitlines()
                 return False, (tail[-1] if tail else "build failed")
-            words, free = {}, None
+            words, regions, payload = {}, [], None
             for line in r.stdout.splitlines():
                 m = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
                              r"\s+\(\s*(\d+) words\)", line)
                 if m and m.group(1).strip() in self.mods:
                     words[m.group(1).strip()] = int(m.group(2))
-                m = re.search(r"used (\d+)\s+FREE (\d+)", line)
+                m = re.match(r"-- payload (\w+) --", line.strip())
                 if m:
-                    free = (int(m.group(1)), int(m.group(2)))
+                    payload = m.group(1)
+                # There is one of these PER PAYLOAD, each its own 2,724-word
+                # region. Keeping only the last was how the budget came to be
+                # reported as a single pool.
+                m = re.search(r"used (\d+)\s+FREE (\d+)", line)
+                if m and payload:
+                    regions.append((payload, int(m.group(1)),
+                                    int(m.group(2))))
             self.words.update(words)
             self.words_from = note
-            if free:
-                return True, (f"assembled: {free[0]} words used, "
-                              f"{free[1]} free in the donor region")
+            self.regions = regions
+            if regions:
+                return True, ("assembled: " + " · ".join(
+                    f"{n} {u}/{u + f}" for n, u, f in regions))
             return True, "assembled"
         finally:
             tmp.unlink(missing_ok=True)
