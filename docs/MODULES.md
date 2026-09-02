@@ -580,17 +580,34 @@ see below.
 The build asserts the tables hold stock's descriptor before touching them,
 and that the chooser list contains it exactly once.
 
-### An FX1 row without taking a stock id: `Remix.fx1`
+### The FX1 chooser: `Remix.fx1`
 
-A module on its own id can be listed on FX1 as well, and the remix says so —
-which menu an effect appears on is a composition choice, like the chooser
-order, not a property of the code:
+`modules` is the FX2 chooser in its own row order; `fx1` is the FX1 chooser
+in its own. Both hold the same kind of keys — stock effects and modules of
+ours — because which menu an effect appears on is a composition choice, not
+a property of the code. **Empty means unchanged**: FX1 keeps stock's own ten
+and the build writes not one byte, which is what keeps every remix that
+predates this byte-identical.
 
 ```python
 REMIX = Remix(name="bothslots", doc="…",
               modules=("WARPFOLD",), fallback="NONE",
-              fx1=("WARPFOLD",))          # also on the FX1 chooser
+              # FX1's chooser, in its own row order. Six of stock's ten,
+              # WarpFold among them; FLANGER, CHORUS, SPATIALIZER and COMB
+              # lose their FX1 row and nothing else.
+              fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "WARPFOLD",
+                   "COMPRESSOR", "LO-FI"))
 ```
+
+⚠️ **NONE is not listed and cannot be lost.** FX1 row 0 is the firmware's own
+NONE — how the slot is turned off — and the build always emits it first.
+
+⚠️ **A list SHORTER than stock's needs the viewport shrunk**, or the draw
+loop iterates its hard-coded row count past the terminator and renders raw
+memory as text (the "bunch of symbols" of hardware test 1, on FX2). FX1's
+literal is at `0x40059be6`, located 3 Sep 2026: FX1's setup function is
+**byte-identical to FX2's apart from the list address**, and this sits at
+the identical offset (+0x14) from FX1's own list reference.
 
 The DSP side needs nothing: the dispatch table is indexed by the raw id and
 shared, so the code already ran from FX1 the moment FX1 selected the id. The
@@ -600,9 +617,10 @@ id lookup and its cursor table. The build does all four:
 
 | table | what it gets |
 |---|---|
-| the chooser list | rebuilt in the cave, stock's eleven rows first, then yours; its three `lea` references (`0x40037990`, `0x40052706`, `0x40059bd2`) repointed |
+| the chooser list | rebuilt in the cave — NONE, then exactly what `fx1` names; its three `lea` references (`0x40037990`, `0x40052706`, `0x40059bd2`) repointed |
+| the viewport `0x40059be6` | `min(7, rows)`, so a list shorter than the screen has no rows left to pad |
 | `FX1_IDS` `0x400d5f58` | your descriptor clone — the **same** one FX2 resolves, as stock does for the ten shared effects |
-| `FX1_ID2POS` `0x400d60d0` | the row your id opens on. ⚠️ `tools/build_fx1.py`'s experiment never wrote this; without it the chooser opens on row 0 |
+| `FX1_ID2POS` `0x400d60d0` | the row each listed id opens on, and **0 for every id the list drops** — a shorter list would otherwise seed the cursor past the end for an old project holding a dropped id. ⚠️ `tools/build_fx1.py`'s experiment never wrote this table at all |
 | `FX2_IDS` / `ID2POS` | untouched by this — the FX2 row is the ordinary one |
 
 **It costs no words** — the code is placed either way — and it is not free:
@@ -619,6 +637,7 @@ classes are refused:
 
 | refused | why |
 |---|---|
+| a **stock** effect FX1 does not already list | DELAY and the three reverbs do not fit a 3,072-word FX1 allocation either — that is *why* stock keeps them off it |
 | a module that reads the allocator (`x:>$213`) | it sizes its buffer for an **FX2** slot, 16,384 words; an **FX1** slot is **3,072** |
 | a module with **fixed** buffers in the FX2 region | an FX1 instance still writes to `Y:0x4000`+, i.e. into another track's FX2 buffer |
 | a bus **server** | one per core by design; an FX1 row is a second instance on the same core |

@@ -1,33 +1,41 @@
-"""bothslots -- the WarpFold insert on BOTH effect slots, and nothing else.
+"""bothslots -- WarpFold on BOTH effect slots, and a curated FX1 chooser.
 
-The first remix to use `Remix.fx1`, and the point of it: until 3 Sep 2026 a
-module of ours could only be reached from the FX2 slot. Not for any DSP
-reason -- the dispatch tables are indexed by the raw id and shared by both
-menus, so WarpFold's code already ran the moment FX1 selected 0x0a -- but
-because FX1's chooser list ends at 0x400d608c and FX2's begins four bytes
-later, so it could not grow where it sat. It moves into the cave instead,
-exactly as the FX2 list already does when it outgrows its own.
+The worked example for `Remix.fx1`. Two things it demonstrates:
 
-It costs no words: 68 bytes of cave for the relocated list, and FX1's own id
-and cursor tables written for the one new row. What it DOES cost is cycles.
-FX1 is four more slots on the same four tracks, so the worst per-core load
-goes from 4x WarpFold to 8x -- 404 to 808 of the 3,120 our code may spend
-(`make cycles`). That trade is the whole reason this is a per-remix choice
-rather than a property of the module.
+**A module of ours on FX1.** Until 3 Sep 2026 an effect of ours could only be
+reached from the FX2 slot -- not for any DSP reason (the dispatch tables are
+indexed by the raw id and shared by both menus, so WarpFold's code already
+ran the moment FX1 selected 0x0a) but because FX1's chooser list ends at
+0x400d608c and FX2's begins four bytes later, so it could not grow where it
+sat. It moves into the cave instead, exactly as the FX2 list already does
+when it outgrows its own.
+
+**FX1 is COMPOSED, not just appended to.** This lists six of stock's ten and
+drops the other four, so the chooser is shorter than the one the box ships --
+which needs the viewport literal at 0x40059be6 shrunk to match, or the draw
+loop reads past the terminator and renders raw memory as text. The four that
+go (FLANGER, CHORUS, SPATIALIZER, COMB FILTER) lose their FX1 ROW and
+nothing else: their code, descriptors and dispatch stay stock, so an old
+project that selects one still runs it.
+
+It costs no words: 32 bytes of cave for the list plus FX1's id and cursor
+tables. What it DOES cost is cycles. FX1 is four more slots on the same four
+tracks, so the worst per-core load goes from 4x WarpFold to 8x -- 404 to 808
+of the 3,120 our code may spend (`make cycles`).
 
 ⚠️ UNFLASHED. The FX1 chooser has been seen only in the local ColdFire
-emulator, which draws it with the firmware's own code: `WarpFold78` appears
-as row 11 of a twelve-entry list, the page draws its own knob names
-(DRV/FREQ/TONE/MODE/MIX), and the cursor opens on that row rather than on
-row 0 -- which is what FX1's cursor table being written looks like.
+emulator, which draws it with the firmware's own code.
 """
 
 from remix.schema import Remix
 
 REMIX = Remix(
     name="bothslots",
-    doc="WarpFold, listed on FX1 as well as FX2. No bus, no servers.",
+    doc="WarpFold on FX1 and FX2, with a curated FX1 chooser.",
     modules=("WARPFOLD",),
     fallback="NONE",
-    fx1=("WARPFOLD",),
+    # The FX1 chooser, in its own row order. NONE is row 0 always and is not
+    # named here. Empty would mean "leave stock's ten alone".
+    fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "WARPFOLD",
+         "COMPRESSOR", "LO-FI"),
 )

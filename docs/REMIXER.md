@@ -47,21 +47,24 @@ works anywhere the DSP toolchain does.
 
 ## One page, three panes
 
-`make remix` opens a single screen. `tab` moves between panes, `up`/`down`
+`make remix` opens a single screen: **AVAILABLE** (everything that could be
+in an image), **CHOOSERS** (the unit's two effect menus, both being composed)
+and **UNIT** (the selected effect). `tab` moves between panes, `up`/`down`
 moves within one, `?` opens this page's short form, `esc` stops audio, `q`
 quits. **There is no per-track view** — the eight-track rig was retired 2 Sep
 2026 because it was a second place to say what a remix already says, and
 knob values belong to the effect rather than to a track.
 
 ```
-┌ AVAILABLE ───────┬ LOADED · chongbong ────┬ ChonVerb ────────────────────┐
-│ ── server ──     │ ▸1 ChonVerb  FX2  2411w│ server · id 0x07 · tracks 5-8│
-│    BongDelay FX2 │  2 BongDelay FX2  2469w│ TIME  64  [######......] p1  │
-│    ChonVerb  FX2 │  3 Send      FX2   250w│ MOD   30  [###.........] p1  │
-│ ── insert ──     │  · tempo-sync −     ◀fb│ …                            │
-│    WarpFold  FX2 │ —  PLATE, SPRING, DARK │ preview  FX1 FX2 MENU        │
-│ ── stock ──      │                        │ .--------------------------. │
-│  ✓ FILTER FX1+FX2│ A 74 free · B 5 free   │ | EFFECT 2 SETUP           | │
+┌ Available ───────┬ Choosers · chongbong ──┬ ChonVerb ────────────────────┐
+│ ── Bus ──        │ FX1  10 rows           │ Bus · id 0x07 · tracks 5-8   │
+│    BongDelay FX2 │   1 Filter             │ TIME  64  [######......] p1  │
+│  ✓ ChonVerb  FX2 │   2 Equalizer          │ MOD   30  [###.........] p1  │
+│ ── Insert ──     │   … 8 more             │ …                            │
+│    WarpFold  FX2 │ FX2  4 rows            │ preview  FX1 FX2 MENU        │
+│ ── Stock ──      │   1 ChonVerb    2411w  │ .--------------------------. │
+│  ✓ Filter FX1+FX2│   2 BongDelay   2469w  │ | EFFECT 2 SETUP           | │
+│                  │ A 74 free · B 5 free   │                              │
 └──────────────────┴────────────────────────┴──────────────────────────────┘
 ```
 
@@ -72,8 +75,8 @@ Everything that *could* be in an image: your modules grouped **server** /
 marks what the current selection holds.
 
 **`enter` ADDS the highlighted module to the image.** It displaces nothing.
-`left`/`right` in LOADED moves a row afterwards; `enter` in LOADED removes
-the row you are on. The library only ever adds — `enter` on something already
+`left`/`right` in CHOOSERS moves a row afterwards; `enter` there removes the
+row you are on, from its own list. The library only ever adds — `enter` on something already
 in the image just points at its row.
 
 ⚠️ **`enter` used to SWAP** (2 Sep 2026, reverted the same day): the module
@@ -168,7 +171,7 @@ near-identical walls of text; the pane aggregates them into the sentence
 above. What you are left with — ChonVerb, the seven stock effects that can
 coexist, and Send — *is* `remixes/restored.py`.
 
-The three stock **reverbs** are not here — they are in LOADED, because they
+The three stock **reverbs** are not here — they are in CHOOSERS, because they
 are part of a stock chooser. See below.
 
 The `FX1+FX2` column is which **chooser** the effect has a row on, derived
@@ -229,46 +232,77 @@ with the firmware's own code — `WarpFold78` as row 11 of a twelve-entry list,
 its own knob names on the page, the cursor opening on that row — which is the
 no-flash gate, not a hardware result.
 
-### The two menus are not the same shape
+### CHOOSERS — the unit's two effect menus, both composable
 
-This is the thing that was unclear while FX1 was a tag in a column. Every
-track has **two** effect slots, FX1 then FX2, and each has its own chooser
-list:
+Every track has **two** effect slots — FX1 then FX2, in that order through
+the audio — and each has its own chooser list. The middle pane holds **both,
+stacked**, and every gesture applies to the list you are standing in:
+`enter` removes from it, `←→` reorders within it (a row cannot cross from
+one list to the other by being nudged off the end), `1` puts the highlighted
+effect on FX1 or takes it off.
+
+They start from opposite places, and that is the only asymmetry left:
 
 | | FX2 | FX1 |
 |---|---|---|
-| who composes it | **you** — LOADED is that list | stock's own **ten**, and no image shortens it |
-| what a remix can do | list, unlist, reorder | **append only** (`1`) |
-| leaving a stock effect out | takes its FX2 row | takes nothing — it is still on FX1 |
-| an effect FX2 alone listed (DELAY, the reverbs) | takes its only row | — |
+| starts as | **nothing** — every row is one this remix listed | the **ten** stock ships, because that is what the box does |
+| what a remix can do | list, unlist, reorder | list, unlist, reorder |
+| leaving an effect off | takes that row, nothing else | takes that row, nothing else |
+| row 0 | none | the firmware's own **NONE**, always, not shown and not losable |
 
-So LOADED is titled **`FX2 chooser`** — its rows are FX2 rows, its numbers
-are FX2 row numbers, and `←→` reorders FX2 — and it closes with one line for
-the other list: `FX1 chooser  stock's 10 + WarpFold`, or `stock's 10,
-unchanged`.
+Leaving an effect off a chooser takes that **row** and nothing else — its
+code, descriptor and dispatch stay stock, so an old project that selects it
+still runs it, and dropping FLANGER from FX1 does not touch its FX2 row.
 
-**`p` → FX1 draws that chooser as the firmware would**, with your effect on
-it if it is there. ⚠️ It used to draw `effect_id 0x04` unconditionally, so it
-showed the stock FILTER's page whatever the cursor was on — harmless while
-nothing of ours could be on FX1, actively misleading the moment one could
-(fixed 3 Sep 2026). When the selected effect has no FX1 row it says so
-rather than letting stock's chooser look like that effect's page.
+`p` → **FX1** draws the chooser you composed, as the firmware draws it.
 
-⚠️ **The `FX1+FX2` column is CAPABILITY, not current rows** — which menus an
-effect *can* appear on. The `✓` beside it is what says whether it is in the
-image. Gating the FX2 half on the selection was tried the same day and
-reverted: it is more literally true, and it made the library read `—` against
-every module you had not added yet, which the missing `✓` already said, in
-place of the one thing the library is for. What leaving a stock effect out
-costs is on its resource line instead, in words: `not listed — it keeps its
-FX1 row; only the FX2 one is lost`.
+⚠️ **It was "append only" for one day** (3 Sep 2026), and that was this
+build's limitation stated as if it were the machine's — the pane said "FX1
+chooser: stock's 10 + WarpFold" and the docs said FX1's rows were "not ours
+to move". The list is rebuilt from scratch in the cave, so its contents were
+always ours to choose. What was actually missing was the **viewport
+literal** that lets a list get *shorter* without the draw loop reading past
+the terminator, and it is at `0x40059be6`: the exact analogue of FX2's, at
+the identical offset (+0x14) from FX1's own list reference, with identical
+bytes. FX1's setup function differs from FX2's **only in the list address**.
 
-### LOADED — the image being composed
+#### What an FX1 row costs
 
-The selection, **in chooser order** — the order here *is* the order of rows
-on the panel, so `left`/`right` is a real edit, not a view preference. The
-number column is the panel row; `·` means no chooser row at all (a ColdFire
-patch). `◀fb` marks the fallback. Each module's word cost comes from the real
+**No words.** The DSP dispatch table is indexed by the raw id and shared by
+both menus, so an effect's code already ran from FX1 the moment FX1 selected
+its id. Four bytes of cave per row, plus the relocated list.
+
+**Cycles.** FX1 is four more slots on the same four tracks, so an effect on
+both menus can double the worst per-core load — WarpFold 4× → 8×, 404 → 808
+of the 3,120 our code may spend. The Budget's `cycles` row prices it.
+
+**Only a buffer-free INSERT of ours can take one**, and the UNIT pane says
+which cannot and why: `FX1  no row — and cannot take one: it sizes its
+buffer for an FX2 slot (16,384 words) and an FX1 slot is 3,072`. The three
+classes are in `docs/MODULES.md`, with the measured reason. The same
+arithmetic is why stock keeps DELAY and the three reverbs off FX1 — they do
+not fit either, and the remixer refuses to list them there.
+
+⚠️ **Every id the list drops has its cursor row clamped to 0.** The FX2 path
+does not do this and does not need to — it has only ever been able to *grow*
+its list from three rows, so a stale position could not point past the end.
+FX1 can now be made shorter than stock's eleven, and an old project holding
+a dropped id would otherwise seed the chooser past the last row.
+
+⚠️ **The `FX1+FX2` column in the library is CAPABILITY, not current rows** —
+which menus an effect *can* appear on. The `✓` beside it is what says
+whether it is in the image. Gating it on the selection was tried on 3 Sep
+2026 and reverted: it is more literally true, and it made the library read
+`—` against every module you had not added yet, which the missing `✓`
+already said, in place of the one thing the library is for. What leaving a
+stock effect out costs is on its resource line instead, in words.
+
+### The FX2 list
+
+**In chooser order** — the order here *is* the order of rows on the panel,
+so `left`/`right` is a real edit, not a view preference. The number column
+is the panel row; `·` means no chooser row at all (a ColdFire patch). `◀fb`
+marks the fallback. Each module's word cost comes from the real
 assembly the background rebuild runs, so it is always filled in.
 
 **The three reverbs live here, and you can keep them.** An unmodified unit
@@ -398,7 +432,7 @@ neither line.
 that is deliberate: it is the same seven for every pinner, so printing it per
 module made ChonVerb and BongDelay show identical lists and read as two bills
 for one debt. It belongs to the **image** — the ledger refuses an allocating
-stock effect beside *any* pinner — so the LOADED pane says it once:
+stock effect beside *any* pinner — so the CHOOSERS pane says it once:
 
 ```
 no room for Flanger, Chorus, Spatializer, Comb Filter and the 3 reverbs
@@ -484,7 +518,7 @@ and only four — the **two donor regions** (one per payload), the **FX2 buffer
 slots** per core, the **chooser rows**, and the **ColdFire cave**. Everything
 else is unbounded in practice.
 
-⚠️ **A listed reverb is LOADED.** The build reports the whole 2,724 as free
+⚠️ **A listed reverb is loaded.** The build reports the whole 2,724 as free
 because nothing of *ours* is placed yet — but PLATE, SPRING and DARK REV's
 code is what occupies the region, so a reverb you keep in the chooser is
 spending its own words. A stock chooser holding all three therefore has **0
@@ -644,14 +678,14 @@ four times in a row and counting the draws.
 
 **The image follows the selection.** Every selection change rebuilds and
 re-boots on a worker thread after a 0.35 s debounce, so the preview always
-draws what LOADED says. There is no build key and no staleness to reason
+draws what CHOOSERS says. There is no build key and no staleness to reason
 about.
 
 ⚠️ This replaced a `stale()` gate that refused to draw when the image on disk
 was not the selection, printing a bold `the image on disk is not this
 selection / b builds it`. The gate's *reasoning* was right — the FX2 page
 includes the firmware's own chooser list, so a stale image puts a different
-set of effects on screen beside LOADED and reads as "why are those loaded?"
+set of effects on screen beside CHOOSERS and reads as "why are those loaded?"
 — but **every fresh launch is stale**, so the headline feature opened showing
 a disclaimer, and what it was guarding is a **0.26 s build** plus a 4.6 s
 ColdFire boot, both already on a worker thread (measured 2 Sep 2026). Changed

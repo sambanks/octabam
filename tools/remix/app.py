@@ -336,27 +336,38 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
 
 [bold]keys[/]
   tab  next pane           up/down  move the cursor
-  enter   AVAILABLE: add it to the image (it displaces nothing).
-          LOADED: remove the row you are on.
+  enter   AVAILABLE: add it to the FX2 chooser (it displaces nothing).
+          LOADED: remove the row you are on, from ITS list.
   left/right   UNIT: the knob value, hold to run, SHIFT for ×10
-               LOADED: move the row — this is the unit's own row order
+               LOADED: move the row within its own chooser
   r  render + hear     space  replay        p  which page is previewed
   a / b  park what you just heard as A / B      , / .  play A / B
-  1  give the highlighted effect a row on FX1 too (or take it away)
+  1  put the highlighted effect on the FX1 chooser (or take it off)
   x  apply the fix the ⚠ is offering (only shown when there is one)
   d  sample folder     l  load a remix      s  save this one as a remix
   c  full check        f  choose the fallback        k  back to stock
   ?  this              esc  stop audio      q  quit
 
-[bold]the two menus are not the same shape[/]
-Every track has TWO effect slots, FX1 then FX2, and each has its own chooser list. They are not symmetric and that is the thing to hold on to:
+[bold]two slots, two chooser lists[/]
+Every track has TWO effect slots — FX1 then FX2, in that order through the audio — and each has its own chooser list. The middle pane holds BOTH, stacked, and every gesture applies to the list you are standing in: `enter` removes from it, `←→` reorders within it (a row cannot cross from one list to the other by being nudged off the end), and `1` puts the highlighted effect on FX1 or takes it off.
 
-  [bold]FX2[/] is yours to compose. LOADED is that list — the rows, their order, what is on it at all. Leaving a stock effect out takes its FX2 row and NOTHING else: its code and dispatch stay stock, so an old project that selects it still runs it.
-  [bold]FX1[/] is stock's own ten, and no image shortens it. A remix can only APPEND: `1` puts the highlighted effect of yours on the end of it. You cannot remove or reorder FX1's rows, because they are not ours to move.
+They start from opposite places, and that is the only asymmetry left:
 
-So the line under LOADED reads `FX1 chooser  stock's 10 + WarpFold`, and `p` → FX1 draws that chooser as the firmware would — with your effect on it if it is there, and stock's own if it is not.
+  [bold]FX2[/] is built from nothing. Every row on it is one this remix listed.
+  [bold]FX1[/] starts as the ten stock ships, because that is what the box does. Drop them, reorder them, add yours.
 
-The `FX1+FX2` column says which menus an effect CAN appear on, not where its rows are today; the ✓ beside it is what says whether it is in the image.
+Both are then equally yours. Leaving an effect off a chooser takes that ROW and nothing else — its code, descriptor and dispatch stay stock, so an old project that selects it still runs it, and dropping FLANGER from FX1 does not touch its FX2 row.
+
+`p` → FX1 draws the chooser you composed, as the firmware draws it.
+
+[bold]what an FX1 row costs[/]
+No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
+
+Only a buffer-free INSERT of ours can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. The same three reasons are why stock keeps DELAY and the three reverbs off FX1 — they do not fit either.
+
+⚠️ The firmware's own NONE is always FX1 row 0 and is not shown here: it is how the slot is turned off, and no remix can lose it.
+
+The `FX1+FX2` column in the library says which menus an effect CAN appear on, not where its rows are today; the ✓ beside it is what says whether it is in the image.
 
 It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row.
 
@@ -637,8 +648,18 @@ class RemixerScreen(Screen):
         return mods + list(stock.MODULES)
 
     def loaded_rows(self):
+        """BOTH choosers, in one cursor path: FX1's rows then FX2's.
+
+        The unit has two effect slots and each has its own list; showing one
+        and tagging the other in a column was the confusion Sam named. They
+        stack, and the cursor walks through both -- so `enter` removes from
+        whichever list you are standing in and `←→` reorders that one.
+
+        -> [(menu, module)], menu being rig.FX1 or rig.FX2.
+        """
         st = self.app.state
-        return [st.mods[k] for k in st.order]
+        return ([(rig.FX1, st.mods[k]) for k in st.fx1 if k in st.mods]
+                + [(rig.FX2, st.mods[k]) for k in st.order])
 
     def unit_rows(self, mod):
         """What the UNIT cursor walks: the sample to audition, then the
@@ -676,9 +697,10 @@ class RemixerScreen(Screen):
     def selected_module(self):
         """The unit pane follows whichever pane the cursor is in -- point at
         something in the library and pane 3 previews it before you add it."""
-        rows = self.avail_rows() if self.pane == AVAILABLE else self.loaded_rows()
-        if self.pane == UNIT:
-            rows = self.loaded_rows()
+        if self.pane == AVAILABLE:
+            rows = self.avail_rows()
+        else:
+            rows = [m for _menu, m in self.loaded_rows()]
         if not rows:
             return None
         i = min(self.cur[min(self.pane, LOADED)], len(rows) - 1)
@@ -726,7 +748,7 @@ class RemixerScreen(Screen):
         # pane paints at all, so they cannot be collected on the way past.
         mod = self.selected_module()
         self._tnames = ["Available",
-                        f"FX2 chooser · {st.loaded_name or 'unsaved'}",
+                        f"Choosers · {st.loaded_name or 'unsaved'}",
                         disp(mod) if mod is not None else "Unit"]
         can_fix = bool(self.blockers(probs))
         if can_fix != getattr(self, "_can_fix", None):
@@ -823,33 +845,48 @@ class RemixerScreen(Screen):
                                              head=head, tail=2))
 
     def _pane_loaded(self, st, probs):
+        """BOTH chooser lists, stacked, both editable.
+
+        The unit has two effect slots per track and each has its own list.
+        Composing one of them while the other sat in a column as an
+        `FX1+FX2` tag is what made the relationship unreadable -- so they are
+        two headed sections here, one cursor path, and every gesture applies
+        to the list you are standing in.
+
+        ⚠️ THEY ARE NOT SYMMETRIC and the headers say how. FX2's list is
+        built from nothing: its rows, their order and its membership are all
+        the remix's. FX1's starts as stock's ten and the firmware's own NONE
+        is always its row 0, which is why no row here is numbered 0.
+        """
         rows = self.loaded_rows()
         name = st.loaded_name or "unsaved"
-        # IT IS THE FX2 CHOOSER. The rows are FX2 rows, the numbers are FX2
-        # row numbers, and `←→` reorders FX2 -- while an `FX1+FX2` in the
-        # column beside them invited "row 1 of both", which is not what any
-        # of it means. FX1's list is stock's own and is only ever appended
-        # to; the line under the rows says so.
-        out = self._head(f"FX2 chooser · {name}", LOADED)
+        out = self._head(f"Choosers · {name}", LOADED)
         head = len(out)
-        cur_line, pos = head, 0
-        for i, m in enumerate(rows):
+        cur_line = head
+        menu = None
+        pos = 0
+        for i, (mn, m) in enumerate(rows):
+            if mn != menu:
+                menu, pos = mn, 0
+                n = sum(1 for x, _ in rows if x == mn)
+                # ⚠️ JUST THE NAME AND THE COUNT. The header carried why
+                # the two lists differ ("stock's ten to start" / "yours to
+                # compose") and wrapped at 40 columns, which turns a header
+                # into two mystery rows. `?` says it in full.
+                out.append(f"[bold] {mn}[/][dim]  {n} row"
+                           f"{'' if n == 1 else 's'}[/]")
             here = self.pane == LOADED and i == self.cur[LOADED]
             if m.menu is not None:
                 pos += 1
                 row = f"{pos:>2}"
             else:
                 row = " ·"                      # no chooser row (a CF patch)
-            menus = "+".join(rig.menus(m, st.fx1)) or "—"
             words = st.words.get(m.key)
             cost = f"{words:>5}w" if words else "      "
             fb = f"[{MARK}]◀fb[/]" if st.eff_fallback == m.key else ""
-            # No insertion caret any more: `enter` appends, so there is no
-            # second cursor in another pane to keep track of.
             nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
-            pad = " " * max(0, 13 - len(disp(m)))
-            line = (f" [dim]{row}[/] {nm}{pad}"
-                    f"[dim]{menus:<7}{cost}[/]{fb}")
+            pad = " " * max(0, 14 - len(disp(m)))
+            line = f" [dim]{row}[/] {nm}{pad}[dim]{cost}[/]{fb}"
             if here:
                 cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
@@ -861,18 +898,8 @@ class RemixerScreen(Screen):
         # effects, and these are three of them. They leave when something
         # takes their space -- their code IS the donor region our modules are
         # written over -- so showing the trade where it happens is the point.
-        # ONE dim line, not three: the old form repeated "taken by <module>"
-        # per reverb, which said one thing three times, named an arbitrary
-        # module as the taker (eats[0] is just the first selection with DSP
-        # code -- nothing here computes a per-reverb attribution), and
-        # overran the 38-column pane so its " +1" wrapped onto its own line
-        # and read as a fourth mystery row.
         # WHICH REVERBS ARE ACTUALLY GONE, from the build's own report --
-        # not "all three, always", which is what this said before 2 Sep 2026
-        # and which was the reason the honest answer to "why can I never get
-        # the stock verbs back?" was "you cannot". A light selection keeps
-        # the ones the placement never reached; they are ordinary stock rows
-        # you can add from the library like any other.
+        # not "all three, always", which is what this said before 2 Sep 2026.
         gone = [c for c in stock.CONSUMED
                 if c.split()[0] not in st.donors_kept]
         if st.donors_kept or not gone:
@@ -885,56 +912,19 @@ class RemixerScreen(Screen):
             out.append(f"[dim {WARN}] —  Plate, Spring, Dark Rev (donors)[/]")
         # THE SHARED COST, ONCE. Every module that pins FX2 buffers costs
         # the same seven stock effects, so saying it on each of them read as
-        # two bills for one debt -- ChonVerb and BongDelay showed identical
-        # lists. It belongs to the image, so the image says it.
+        # two bills for one debt.
         pin = [m for m in st.selected if rig.pins_fx2(m)]
-        # ⚠️ NOT WHILE THE ⚠ IS UP. The ⚠ below names the same seven effects
-        # AND the key that removes them, so both lines together spent seven
-        # of a forty-column pane's rows saying one thing twice -- and this
-        # one, phrased as "no room for", read as a second unresolved error.
-        # Once the fix has been applied it is no longer a problem, it is the
-        # shape of the image you chose, so it says that instead.
         if pin and not probs:
             who = " and ".join(disp(m) for m in pin)
             out.append(f"[dim {WARN}]{escape(rig.allocating_names())} "
                        f"cannot be listed — {escape(who)} "
                        f"{'holds' if len(pin) == 1 else 'hold'} "
                        f"the buffers they need[/]")
-        # THE OTHER CHOOSER, in one line, under the one being composed.
-        # Composing FX2 while FX1 sat in a column beside it as a tag was the
-        # whole confusion: they are two lists, they are NOT symmetric, and
-        # only one of them is being composed here. FX1's is stock's own ten;
-        # a remix can append to it and can do nothing else to it -- no
-        # removing, no reordering, because those rows are not ours.
-        mine = [m for m in rows if m.key in st.fx1]
-        # TEN, not eleven: FX1's list carries the firmware's own NONE at row
-        # 0, which is not an effect. Counted off the stock rows rather than
-        # written down.
-        n_stock = sum(1 for m in stock.MODULES
-                      if m.menu.fx2_id in stock.fx1_ids())
-        lead = f" FX1 chooser  stock's {n_stock}"
-        if not mine:
-            # "(1 appends)" wrapped at 40 columns, and the hint line two
-            # rows down already says `1 FX1 row`.
-            tell = ", unchanged"
-        else:
-            # Names while they fit -- which one usually does -- and a count
-            # when they do not. A wrapped line here reads as an extra
-            # mystery row, the way the three-reverb `held by` line did.
-            names = ", ".join(disp(m) for m in mine)
-            room = self.query_one("#pane_load", Static).content_size.width
-            tell = (f" + {names}" if room <= 0 or len(lead) + 3 + len(names)
-                    <= room else f" + {len(mine)} of yours")
-        out.append(f"[dim {WARN}]{lead}{escape(tell)}[/]")
         # Everything from the notes down is the IMAGE speaking, not a row,
-        # so it stays on screen however long the list gets.
+        # so it stays on screen however long the lists get.
         tail = len(out) - rows_end
         out.append("")
-        # THE PANE SAYS WHAT ITS KEYS DO, exactly as the library pane does.
-        # `left`/`right` here is a real edit -- the order of these rows IS
-        # the order of rows on the unit's chooser -- and it was documented
-        # only in `?`, which is the one place a newcomer looks last.
-        out.append("[dim]enter removes · ←→ order · 1 FX1 row[/]")
+        out.append("[dim]enter removes · ←→ order · 1 → FX1[/]")
         out.append(self._ledger_line(st, probs))
         self._paint("#pane_load", self._fit("#pane_load", out, cur_line,
                                             head=head, tail=tail + 3))
@@ -1703,11 +1693,26 @@ class RemixerScreen(Screen):
         if not rows or self.cur[LOADED] >= len(rows):
             return
         i = self.cur[LOADED]
-        row = st.move(rows[i].key, step)
-        if row is not None:
-            st.msg = f"{disp(rows[i])} → chooser row {row}"
-        elif rows[i].key in st.sel:
-            st.msg = f"{disp(rows[i])} has no chooser row: order is moot"
+        menu, mod = rows[i]
+        # WITHIN ITS OWN LIST. The two choosers share a cursor path but not
+        # an order -- a row cannot move from FX1's list to FX2's by being
+        # nudged off the end of it, and stopping at the boundary is what
+        # says so.
+        span = [j for j, (mn, _m) in enumerate(rows) if mn == menu]
+        if i + step < span[0] or i + step > span[-1]:
+            st.msg = f"{disp(mod)} is already {'first' if step < 0 else 'last'} on {menu}"
+            return
+        if menu == rig.FX1:
+            j = st.fx1.index(mod.key)
+            st.fx1.insert(j + step, st.fx1.pop(j))
+            st.msg = f"{disp(mod)} → FX1 row {j + step + 1}"
+        else:
+            row = st.move(mod.key, step)
+            if row is not None:
+                st.msg = f"{disp(mod)} → FX2 row {row}"
+            elif mod.key in st.sel:
+                st.msg = f"{disp(mod)} has no chooser row: order is moot"
+        st.loaded_name = ""
         self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
         self.schedule_sync()      # placement order changes the image
 
@@ -1751,10 +1756,17 @@ class RemixerScreen(Screen):
             rows = self.loaded_rows()
             if not rows or self.cur[LOADED] >= len(rows):
                 return
-            mod = rows[self.cur[LOADED]]
-            st.toggle(mod.key)
+            menu, mod = rows[self.cur[LOADED]]
+            if menu == rig.FX1:
+                # OFF THE FX1 CHOOSER, not out of the image: for a stock
+                # effect the two lists are independent, and for one of ours
+                # the FX2 row is what carries the code.
+                st.fx1.remove(mod.key)
+                st.msg = f"{disp(mod)} is off the FX1 chooser"
+            else:
+                st.toggle(mod.key)
+                st.msg = f"removed {disp(mod)} from the FX2 chooser"
             st.loaded_name = ""
-            st.msg = f"removed {disp(mod)}"
             self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
             self.schedule_sync()
         self.rerender()

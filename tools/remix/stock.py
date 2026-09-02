@@ -129,12 +129,39 @@ def _chooser_ids(addr: int, limit: int = 32) -> frozenset[int]:
     return frozenset(out)
 
 
+def _chooser_order(addr: int, limit: int = 32) -> tuple[int, ...]:
+    """The same ids IN ROW ORDER. Membership answers "is it on FX1"; order
+    answers "where", which is what a remixer composing the list needs."""
+    img = _image()
+    if img is None:
+        return ()
+
+    def rd32(a):
+        i = a - BASE
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i <= len(img) - 4 else 0
+
+    out, a = [], addr
+    for _ in range(limit):
+        ptr = rd32(a)
+        if not ptr:
+            break
+        out.append(rd32(ptr) & 0xff)    # the descriptor's own id word, P+0
+        a += 4
+    return tuple(out)
+
+
 def fx1_ids() -> frozenset[int]:
     """Effect ids the STOCK FX1 chooser lists, read from the pristine image."""
     global _fx1_ids
     if _fx1_ids is None:
         _fx1_ids = _chooser_ids(FX1_CHOOSER)
     return _fx1_ids
+
+
+def fx1_order() -> tuple[int, ...]:
+    """Those ids in stock's own row order, NONE (0x00) included at row 0 --
+    which is where the remixer's default FX1 chooser comes from."""
+    return _chooser_order(FX1_CHOOSER)
 
 
 def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:

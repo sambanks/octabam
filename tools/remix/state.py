@@ -39,6 +39,15 @@ BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
 STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
 
 
+def stock_fx1_default() -> tuple[str, ...]:
+    """The FX1 chooser a stock unit shows, in ITS order, minus the NONE row
+    the build always emits. Read from the pristine image, never written
+    down."""
+    from remix import stock
+    by_id = {m.menu.fx2_id: m.key for m in stock.MODULES}
+    return tuple(by_id[i] for i in stock.fx1_order() if i in by_id)
+
+
 def fx1_hazard(mod) -> str | None:
     """Why this module must not take an FX1 row, or None if it may.
 
@@ -70,10 +79,11 @@ class State:
         self.mods = registry.modules()
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
-        # WHICH OF THEM ALSO GET A ROW ON FX1 (schema.Remix.fx1). Part of the
-        # selection, not of a module: which menu an effect appears on is a
-        # composition choice, like the chooser order beside it.
-        self.fx1: set[str] = set()
+        # THE FX1 CHOOSER, in its own row order (schema.Remix.fx1). A second
+        # list, not a flag on the first: FX1 and FX2 are two independent
+        # chooser lists and a remix composes both. Seeded from stock's ten,
+        # so an untouched selection saves `fx1=()` and writes nothing.
+        self.fx1: list[str] = []
         # Chooser ORDER. A remix's module list is ordered and that order is
         # the panel's row order, so the composer keeps it too -- the old set
         # alone wrote every saved remix alphabetically, which silently
@@ -125,7 +135,7 @@ class State:
         from remix import stock
         self.sel = {m.key for m in stock.MODULES}
         self.order = [m.key for m in stock.MODULES]
-        self.fx1 = set()
+        self.fx1 = list(stock_fx1_default())
         self.fallback = None
         self.loaded_name = "stock"
         self.msg = ("stock: the chooser an unmodified unit shows — "
@@ -138,7 +148,9 @@ class State:
         r = registry.remix(name)
         self.sel = set(r.modules)
         self.order = list(r.modules)
-        self.fx1 = set(r.fx1)
+        # `fx1=()` means "stock's, unchanged" -- so the pane shows stock's
+        # ten rather than an empty list, and saving it back writes `()` again.
+        self.fx1 = list(r.fx1) or list(stock_fx1_default())
         self.fallback = r.fallback
         self.loaded_name = name
         self.msg = f"loaded remix {name!r}"
@@ -169,10 +181,23 @@ class State:
         mod = self.mods.get(key)
         if mod is None or mod.menu is None:
             return "this has no chooser row at all — nothing for FX1 to list"
+        if mod.is_stock:
+            # A STOCK EFFECT NEEDS NO FX2 ROW TO SIT ON FX1: the two lists
+            # are independent. What it does need is for FX1 to be able to
+            # host it -- DELAY and the three reverbs are FX2-only because
+            # they do not fit a 3,072-word FX1 allocation.
+            from remix import stock
+            if mod.menu.fx2_id not in stock.fx1_ids():
+                return (f"{name} is FX2-only — it does not fit a 3,072-word "
+                        f"FX1 allocation, which is why stock never listed it "
+                        f"there")
+            if key in self.fx1:
+                self.fx1.remove(key)
+                return f"{name} is off the FX1 chooser"
+            self.fx1.append(key)
+            return f"{name} is back on the FX1 chooser"
         if key not in self.sel:
             return f"add {name} to the image first, then 1 gives it FX1 too"
-        if mod.is_stock:
-            return "a stock effect's FX1 row is stock's own — this cannot add or remove one"
         if mod.menu.replaces:
             return (f"{name} replaces stock {mod.menu.replaces}, so it "
                     f"already has that effect's FX1 row")
@@ -183,17 +208,23 @@ class State:
         if why:
             return f"{name}: {why}"
         if key in self.fx1:
-            self.fx1.discard(key)
-            return f"{name} is FX2 only again"
-        self.fx1.add(key)
-        return (f"{name} gets a row on FX1 too — no words, but 4 more "
+            self.fx1.remove(key)
+            return f"{name} is off the FX1 chooser"
+        self.fx1.append(key)
+        return (f"{name} joins the FX1 chooser — no words, but 4 more "
                 f"slots of cycles")
 
     def toggle(self, key):
         if key in self.sel:
             self.sel.discard(key)
             self.order.remove(key)
-            self.fx1.discard(key)
+            # ⚠️ ONLY FOR MODULES OF OURS. Their FX1 row points at the
+            # descriptor CLONE the FX2 row creates, so losing the FX2 row
+            # loses the FX1 one. A stock effect's FX1 row is independent --
+            # that is the whole asymmetry -- and taking it off the FX2
+            # chooser must not silently take it off FX1 as well.
+            if not self.mods[key].is_stock and key in self.fx1:
+                self.fx1.remove(key)
             if self.fallback == key:
                 self.fallback = None
         else:
@@ -532,11 +563,14 @@ class State:
     def as_remix(self, name, doc):
         mods = ", ".join(f'"{k}"' for k in self.order)
         fb = f'"{self.eff_fallback}"' if self.eff_fallback else "None"
-        # Emitted only when there is one, so every remix written before FX1
-        # rows existed still round-trips byte-for-byte through save/load.
-        rows = [k for k in self.order if k in self.fx1]
-        fx1 = (f'    fx1=({", ".join(chr(34) + k + chr(34) for k in rows)},),\n'
-               if rows else "")
+        # ⚠️ EMITTED ONLY WHEN IT DIFFERS FROM STOCK'S. `fx1=()` means "leave
+        # FX1 alone", and the build then writes not one byte -- which is what
+        # keeps every remix that predates FX1 composition byte-identical.
+        # An untouched chooser must therefore save as `()`, not as a
+        # spelled-out copy of stock's ten.
+        fx1 = ("" if tuple(self.fx1) == stock_fx1_default()
+               else '    fx1=('
+                    + ", ".join(f'"{k}"' for k in self.fx1) + ',),\n')
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by the remixer. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'

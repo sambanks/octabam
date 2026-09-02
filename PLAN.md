@@ -349,11 +349,13 @@ feedback. **FILTER is the outlier**: 727 words, the default FX1 effect, ~260
 cycles. Highest value, highest risk. ✅ Taking the three reverbs cost FX1
 nothing — they were never on its menu; FX1's ten effects are the whole pool.
 
-✅ **A module can be listed on FX1 since 3 Sep 2026** — `Remix.fx1`, the
-chooser list relocated into the cave with its three `lea` refs repointed and
-FX1's own id and cursor tables written (`docs/MODULES.md`). It costs no
-words; the bill is cycles, and `make cycles` now prices FX1's four slots, so
-the trade is visible before it is made. Emulator-verified, **unflashed**;
+✅ **FX1's chooser is COMPOSED since 3 Sep 2026** — `Remix.fx1` is FX1's row
+list exactly as `modules` is FX2's: list, unlist, reorder, stock effects and
+ours alike. The list is rebuilt in the cave with its three `lea` refs
+repointed, the viewport literal at `0x40059be6` sized to it, and FX1's own
+id and cursor tables written (`docs/MODULES.md`). It costs no words; the
+bill is cycles, and `make cycles` prices FX1's four slots, so the trade is
+visible before it is made. Emulator-verified, **unflashed**;
 `remixes/bothslots.py` is the worked example. That is orthogonal to the
 consolidation below, which is about freeing FX1's own words.
 

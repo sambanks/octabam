@@ -96,6 +96,7 @@ from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
 from remix.schema import NO_FALLBACK, BusRole, YBase  # noqa: E402
 from remix.state import fx1_hazard  # noqa: E402
+from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
 from remix import ledger  # noqa: E402
 
@@ -130,6 +131,13 @@ FX1_ID2POS = 0x400d60d0
 # The `lea.l FX1_LIST,aN` sites, the FX1 counterparts of LIST_REFS. Measured
 # by tools/build_fx1.py, which repoints exactly these three.
 FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
+# FX1's viewport literal, the analogue of ROWCOUNT_AT below. Located 3 Sep
+# 2026: FX1's setup code is BYTE-IDENTICAL to FX2's apart from the list
+# address, and this sits at the identical offset (+0x14) from FX1's own list
+# reference, as `pea (0x7).w` = 4878 0007. It is what makes an FX1 list
+# SHORTER than stock's eleven safe.
+FX1_ROWCOUNT_INSN = 0x40059be4
+FX1_ROWCOUNT_AT = 0x40059be6
 FX2_LIST = 0x400d6090
 ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
@@ -1223,67 +1231,43 @@ def main():
     # CYCLES: an FX1 effect runs on a track that is already running an FX2
     # one, so the worst per-core load can gain four more copies of it
     # (tools/cycle_count.py, which prices FX1 slots for exactly this reason).
-    _fx1 = [n for n in ORDER if n in REMIX.fx1]
+    _fx1 = list(REMIX.fx1)
     if _fx1:
-        # The remix names keys; only a module with a chooser row of its own
-        # has a descriptor for FX1's list to point at, and a REPLACEMENT
-        # already has FX1's tables repointed to it in place (above).
-        for _n in REMIX.fx1:
+        # WHAT EACH ROW MAY BE. A module of ours needs an FX2 row, because
+        # that is where its descriptor CLONE comes from, and must survive on
+        # FX1 at all (state.fx1_hazard: not an allocator reader, not fixed
+        # FX2 buffers, not a bus server). A stock effect must be one FX1
+        # already lists -- DELAY and the three reverbs are FX2-only on a
+        # stock unit for exactly the reason our allocator readers are, they
+        # do not fit a 3,072-word FX1 allocation.
+        _fx1_desc = []
+        for _n in _fx1:
+            _m = _MODS.get(_n)
+            if _m is None:
+                sys.exit(f"fx1={_n!r}: no such effect")
+            if _m.is_stock:
+                if _m.menu.fx2_id not in stock_mod.fx1_ids():
+                    sys.exit(f"fx1={_n!r}: stock does not list it on FX1, "
+                             f"and it is FX2-only because it does not fit a "
+                             f"3,072-word FX1 allocation")
+                _fx1_desc.append(_m.menu.donor_desc + 0x38)
+                continue
             if _n not in ORDER:
                 sys.exit(f"fx1={_n!r}: it has no FX2 chooser row, so there "
                          f"is no descriptor clone for FX1 to point at")
-            if _MODS[_n].menu.replaces:
-                sys.exit(f"fx1={_n!r}: it replaces stock "
-                         f"{_MODS[_n].menu.replaces}, which already gives it "
-                         f"that effect's FX1 row -- this would list it twice")
-            if _MODS[_n].is_stock:
-                sys.exit(f"fx1={_n!r}: a stock effect's FX1 row is stock's "
-                         f"own business; this build does not add or remove "
-                         f"one")
-            # A SERVER IS ONE PER CORE by design (SPEC places one engine per
-            # payload). An FX1 row is a second instance on the same core,
-            # which is the open "duplicate instances corrupt audio after
-            # ~5.45 s" item, reachable by two keystrokes.
-            if (_MODS[_n].dsp is not None
-                    and _MODS[_n].dsp.bus_role is BusRole.SERVER):
-                sys.exit(f"fx1={_n!r}: a bus server is one per core by "
-                         f"design; an FX1 row would be a second instance on "
-                         f"the same core")
-            # ⚠️ AN FX1 SLOT IS 3,072 WORDS AND AN FX2 SLOT IS 16,384, and
-            # the trap is not theoretical -- docs/DSP.md's "wrong claim 1"
-            # is this exact failure, bisected on hardware: a 16K layout
-            # placed at table[2] = 0x1c00 "runs to 0x53ff, through the other
-            # FX1 buffers and into FX2 slot 0". A module that reads the
-            # host's allocator (x:>$213) sizes itself for the slot it
-            # expects, and on FX1 it gets a quarter of it.
-            _c = getattr(_MODS[_n], "claims", None)
-            if _c is not None and _c.stock_instance_buffer:
-                sys.exit(f"fx1={_n!r}: it takes a buffer from the host's "
-                         f"allocator, sized for an FX2 slot (16,384 words). "
-                         f"An FX1 slot is 3,072 -- the layout would run "
-                         f"through the other FX1 buffers and into FX2 slot 0 "
-                         f"(docs/DSP.md, 'wrong claim 1', bisected on "
-                         f"hardware)")
-            # And a module with FIXED buffers hardcodes FX2-region addresses,
-            # so an FX1 instance writes into some OTHER track's FX2 buffer.
-            # That hazard exists on FX2 already -- it is why Nimbus is "one
-            # per core" -- but an FX1 row doubles the slots it can be reached
-            # from, including a second instance on the SAME track.
-            if (_c is not None and _c.owns_fx2_buffers) or (
-                    _MODS[_n].dsp is not None
-                    and _MODS[_n].dsp.ybase is not YBase.NEVER):
-                sys.exit(f"fx1={_n!r}: its buffers are at FIXED addresses in "
-                         f"the FX2 region, so an FX1 instance would write "
-                         f"into another track's FX2 buffer. Only a "
-                         f"buffer-free insert can take an FX1 row")
-        _old = []
-        _a = FX1_LIST
-        while rd32(_a):
-            _old.append(rd32(_a))
-            _a += 4
-            if len(_old) > 32:
-                sys.exit("FX1 chooser list has no terminator -- refusing")
-        _new = _old + [clone_addr[n] for n in _fx1] + [0]
+            if _m.menu.replaces:
+                sys.exit(f"fx1={_n!r}: it replaces stock {_m.menu.replaces}, "
+                         f"which already gives it that effect's FX1 row -- "
+                         f"listing it here would show it twice")
+            _hz = fx1_hazard(_m)
+            if _hz:
+                sys.exit(f"fx1={_n!r}: {_hz}")
+            _fx1_desc.append(clone_addr[_n])
+
+        # THE FIRMWARE'S OWN NONE IS ALWAYS ROW 0. It is how the slot is
+        # turned off, stock has it there, and a remix naming effects must not
+        # be able to lose it by omission.
+        _new = [FX1_NONE] + _fx1_desc + [0]
         _need = len(_new) * 4
         if _lbl_top + _need > cave_limit:
             sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
@@ -1307,22 +1291,49 @@ def main():
                 sys.exit(f"FX1 list ref at 0x{_r:08x} is not preceded by a "
                          f"lea.l opcode -- refusing")
             wr32(_r, _fx1_addr)
+        # AND SIZE THE VIEWPORT, which is what makes a list SHORTER than
+        # stock's safe: the draw loop iterates this literal independently of
+        # the real length, so a short list has it reading past the terminator
+        # and rendering raw memory as text (the "bunch of symbols" of
+        # hardware test 1, on FX2). Same instruction, same offset from the
+        # list reference, same bytes -- FX1's setup function differs from
+        # FX2's only in the list address.
+        if rd32(FX1_ROWCOUNT_INSN) != 0x48780007:
+            sys.exit(f"FX1 row-count site 0x{FX1_ROWCOUNT_INSN:08x} is not "
+                     f"`pea (0x7).w` -- refusing")
+        _fx1_rows = min(CHOOSER_ROWS, len(_new) - 1)
+        img[FX1_ROWCOUNT_AT - BASE:FX1_ROWCOUNT_AT - BASE + 2] = \
+            _fx1_rows.to_bytes(2, "big")
         # FX1 RESOLVES ITS OWN DESCRIPTOR AND ITS OWN CURSOR ROW. Writing
         # only the list would draw the row and then open the stock NONE page
         # under it -- "a slot can draw a knob and publish nothing", one table
         # further along.
-        for _n in _fx1:
-            _slot = FX1_IDS + NEW_IDS[_n] * 4
-            if rd32(_slot) != FX1_NONE:
-                sys.exit(f"{_n}: FX1_IDS[0x{NEW_IDS[_n]:02x}] is "
-                         f"0x{rd32(_slot):08x}, not NONE -- this id is "
-                         f"already on FX1 and the row would be a duplicate")
-            wr32(_slot, clone_addr[_n])
-            wr32(FX1_ID2POS + NEW_IDS[_n] * 4, len(_old) + _fx1.index(_n))
-        print(f"  FX1 chooser = {len(_new) - 1} entries at 0x{_fx1_addr:08x} "
-              f"(stock's {len(_old)} + {', '.join(_fx1)}), "
-              f"{len(FX1_LIST_REFS)} refs repointed, id table and cursor "
-              f"rows written -- no words: the code is already placed")
+        #
+        # ⚠️ AND EVERY OTHER ID IS CLAMPED TO ROW 0, which the FX2 path does
+        # NOT do. FX2 has only ever been able to grow its list from three
+        # rows, so a stale position could not point past the end; FX1 can now
+        # be made SHORTER than stock's eleven, and an old project holding an
+        # id this list dropped would seed the cursor past the last row.
+        for _i in range(0x20):
+            wr32(FX1_ID2POS + _i * 4, 0)
+        for _pos, _n in enumerate(_fx1):
+            _m = _MODS[_n]
+            _eid = _m.menu.fx2_id
+            if not _m.is_stock:
+                _slot = FX1_IDS + _eid * 4
+                if rd32(_slot) != FX1_NONE:
+                    sys.exit(f"{_n}: FX1_IDS[0x{_eid:02x}] is "
+                             f"0x{rd32(_slot):08x}, not NONE -- this id is "
+                             f"already on FX1 and the row would be a "
+                             f"duplicate")
+                wr32(_slot, clone_addr[_n])
+            wr32(FX1_ID2POS + _eid * 4, _pos + 1)      # past NONE at row 0
+        _ours = [n for n in _fx1 if not _MODS[n].is_stock]
+        print(f"  FX1 chooser = {len(_new) - 1} rows at 0x{_fx1_addr:08x} "
+              f"(NONE + {', '.join(_fx1)}), {len(FX1_LIST_REFS)} refs "
+              f"repointed, viewport {_fx1_rows}, id and cursor tables "
+              f"written -- {len(_ours)} of ours, no words: their code is "
+              f"already placed")
 
     # ALWAYS report the headroom, even when nothing was planted. It used to
     # ride on the label-formatter line, so a remix with no labelled select

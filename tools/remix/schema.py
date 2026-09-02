@@ -611,10 +611,9 @@ class Remix:
                 f"the remix, so ids aliased to it would dispatch nowhere")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
-        for k in self.fx1:
-            if k not in self.modules:
-                raise ValueError(
-                    f"remix {self.name!r}: fx1={k!r} is not in the remix, so "
-                    f"there is no descriptor for FX1's row to point at")
+        # ⚠️ NO PER-KEY CHECK HERE. An fx1 key may be a STOCK effect,
+        # which need not be in `modules` at all -- FX1's list and FX2's
+        # are independent. What each key may be is decided where the
+        # registry is in scope: build_bus.py refuses, selftest pins it.
         if len(set(self.fx1)) != len(self.fx1):
             raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")

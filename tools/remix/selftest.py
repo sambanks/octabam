@@ -392,15 +392,24 @@ def main():
     # The schema half. The BUILD half -- the relocated list, FX1's own id and
     # cursor tables, and stock's eleven rows unchanged and still first -- is
     # tools/verify_menu.py, which needs a built image and so runs there.
-    for _bad_fx1, _why in ((("NOT IN IT",), "a key that is not in the remix"),
-                           (("WARPFOLD", "WARPFOLD"), "a duplicate key")):
-        try:
-            schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
-                         fallback=schema.NO_FALLBACK, fx1=_bad_fx1)
-            bad += 1
-            print(f"  [FAIL] Remix(fx1=...) accepted {_why}")
-        except ValueError:
-            print(f"  [PASS] Remix(fx1=...) refuses {_why}")
+    try:
+        schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
+                     fallback=schema.NO_FALLBACK, fx1=("WARPFOLD", "WARPFOLD"))
+        bad += 1
+        print("  [FAIL] Remix(fx1=...) accepted a duplicate key")
+    except ValueError:
+        print("  [PASS] Remix(fx1=...) refuses a duplicate key")
+    # A STOCK effect may be on the FX1 list without an FX2 row -- the two
+    # lists are independent -- so the schema deliberately does NOT require
+    # every fx1 key to be in `modules`. Pinned, because it was required for
+    # one day and that would have made a curated FX1 chooser impossible.
+    try:
+        schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
+                     fallback=schema.NO_FALLBACK, fx1=("FILTER", "WARPFOLD"))
+        print("  [PASS] an fx1 row may be a stock effect with no FX2 row")
+    except ValueError as e:
+        bad += 1
+        print(f"  [FAIL] Remix(fx1=...) refused a stock key: {e}")
     # A module of ours is FX2-only until a remix says otherwise, and then it
     # is on both -- this is the derivation the remixer's menus column and
     # every resource line read.
@@ -431,22 +440,39 @@ def main():
     print(f"  [PASS] {len(_want)} modules classified for an FX1 row "
           f"({sum(v is None for v in _want.values())} eligible)")
 
-    # A REPLACEMENT IS ALREADY ON FX1 and listing it again would duplicate
-    # the row; the build refuses it, and nothing shipped may do it.
+    # WHAT EVERY SHIPPED FX1 CHOOSER MAY HOLD. A stock effect must be one
+    # FX1 already lists (DELAY and the reverbs are FX2-only because they do
+    # not fit a 3,072-word FX1 allocation); a module of ours must have an FX2
+    # row -- that is where its descriptor clone comes from -- must not be a
+    # `replaces` (which already inherits an FX1 row) and must clear
+    # fx1_hazard.
+    from remix import stock as _stk
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         for _k in _r.fx1:
-            _m = registry.modules()[_k]
-            if _m.is_stock or (_m.menu is not None and _m.menu.replaces):
+            _m = registry.modules().get(_k)
+            if _m is None or _m.menu is None:
                 bad += 1
-                print(f"  [FAIL] remix {_n!r} asks for an FX1 row for {_k}, "
-                      f"which already has one")
+                print(f"  [FAIL] remix {_n!r}: fx1={_k!r} is not an effect")
+                continue
+            if _m.is_stock:
+                if _m.menu.fx2_id not in _stk.fx1_ids():
+                    bad += 1
+                    print(f"  [FAIL] remix {_n!r}: stock {_k} is FX2-only")
+                continue
+            if _k not in _r.modules:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: {_k} has no FX2 row, so there "
+                      f"is no descriptor clone for FX1 to point at")
+            if _m.menu.replaces:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: {_k} replaces a stock effect "
+                      f"and already has its FX1 row")
             _why = state.fx1_hazard(_m)
             if _why:
                 bad += 1
-                print(f"  [FAIL] remix {_n!r} asks for an FX1 row for {_k}: "
-                      f"{_why}")
-    print("  [PASS] no remix asks for an FX1 row a module may not have")
+                print(f"  [FAIL] remix {_n!r}: {_k} on FX1 -- {_why}")
+    print("  [PASS] every shipped FX1 chooser holds only what FX1 can host")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():

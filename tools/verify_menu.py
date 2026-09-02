@@ -56,6 +56,7 @@ FX1_CHOOSER = 0x400d6060
 FX1_ID2POS = 0x400d60d0                 # FX1's own cursor-row table
 FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
 FX1_NONE = 0x400d4618
+FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 
 # name -> (effect id, chooser position), derived from the SELECTED REMIX
 # (REMIX=<name> env, same default as the build) -- the image being verified
@@ -329,12 +330,14 @@ def main():
     _fx1_ids = {_MODS[k].menu.fx2_id for k in REMIX.fx1}
     _skip = set()
     for _eid in _fx1_ids:
-        for _t in (FX1_ID_LOOKUP, FX1_ID2POS):
-            _a = _t + _eid * 4 - BASE
-            _skip.update(range(_a, _a + 4))
+        _a = FX1_ID_LOOKUP + _eid * 4 - BASE
+        _skip.update(range(_a, _a + 4))
     if REMIX.fx1:
-        # The stock list is left where it is; the refs point elsewhere.
+        # The stock list is left where it is; the refs point elsewhere. The
+        # cursor table is rewritten WHOLE (every dropped id clamped to row
+        # 0), which the FX1 section above checks entry by entry.
         _skip.update(range(FX1_CHOOSER - BASE, FX1_CHOOSER - BASE + 0x40))
+        _skip.update(range(FX1_ID2POS - BASE, FX1_ID2POS - BASE + 0x80))
     for _eid in _rep_ids:
         _a = FX1_ID_LOOKUP + _eid * 4 - BASE
         _skip.update(range(_a, _a + 4))
@@ -364,11 +367,12 @@ def main():
     # list, and FX1's own id lookup must resolve each row to the SAME
     # descriptor the list does -- "a slot can draw a knob and publish
     # nothing" is what a disagreement between them looks like on the unit.
-    print("\n=== FX1 rows (Remix.fx1): list relocated, its three refs in "
-          "agreement, and FX1's own id and cursor tables written ===")
+    print("\n=== FX1 chooser (Remix.fx1): the list relocated and composed, "
+          "its three refs in agreement, the viewport sized to it, and FX1's "
+          "own id and cursor tables written ===")
     if not REMIX.fx1:
-        print("  --   this remix asks for none; the checks below prove FX1 "
-              "is byte-identical to stock")
+        print("  --   this remix composes no FX1 chooser; the checks above "
+              "prove FX1 is byte-identical to stock")
     else:
         _live = rd32(img, FX1_LIST_REFS[0])
         check(_live != FX1_CHOOSER,
@@ -377,35 +381,58 @@ def main():
         for _r in FX1_LIST_REFS:
             check(rd32(img, _r) == _live,
                   f"FX1 list-ref operand at 0x{_r:08x} == 0x{_live:08x}")
-        _stock_n = 0
-        while rd32(stock, FX1_CHOOSER + _stock_n * 4):
-            _stock_n += 1
-        _live_list, _i = [], 0
+        _list, _i = [], 0
         while rd32(img, _live + _i * 4):
-            _live_list.append(rd32(img, _live + _i * 4))
+            _list.append(rd32(img, _live + _i * 4))
             _i += 1
-        check(_live_list[:_stock_n] ==
-              [rd32(stock, FX1_CHOOSER + j * 4) for j in range(_stock_n)],
-              f"stock's {_stock_n} FX1 rows are unchanged and still first")
-        check(len(_live_list) == _stock_n + len(REMIX.fx1),
-              f"FX1 list is {_stock_n} + {len(REMIX.fx1)} = "
-              f"{_stock_n + len(REMIX.fx1)} rows (got {len(_live_list)})")
+        # ROW 0 IS THE FIRMWARE'S OWN NONE, always. It is how the slot is
+        # turned off, and a remix naming effects must not be able to lose it
+        # by omission.
+        check(_list[:1] == [FX1_NONE],
+              f"row 0 is the firmware's own NONE (0x{FX1_NONE:08x})")
+        check(len(_list) == len(REMIX.fx1) + 1,
+              f"FX1 list is NONE + {len(REMIX.fx1)} = {len(REMIX.fx1) + 1} "
+              f"rows (got {len(_list)})")
+        # THE VIEWPORT IS WHAT MAKES A SHORT LIST SAFE: the draw loop
+        # iterates this literal independently of the real length, so an
+        # unshrunk viewport over a short list reads past the terminator and
+        # renders raw memory as text.
+        _rows = int.from_bytes(img[FX1_ROWCOUNT_AT - BASE:
+                                   FX1_ROWCOUNT_AT - BASE + 2], "big")
+        _want = min(CHOOSER_ROWS, len(_list))
+        check(_rows == _want,
+              f"FX1 viewport row count == {_want} (got {_rows})"
+              + (" -- it scrolls" if len(_list) > CHOOSER_ROWS else ""))
+        _listed = set()
         for _n, _k in enumerate(REMIX.fx1):
-            _eid = _MODS[_k].menu.fx2_id
-            _pos = _stock_n + _n
+            _m = _MODS[_k]
+            _eid = _m.menu.fx2_id
+            _listed.add(_eid)
+            _pos = _n + 1                        # past NONE at row 0
             _ids = rd32(img, FX1_ID_LOOKUP + _eid * 4)
-            check(_ids != FX1_NONE and _ids == _live_list[_pos],
+            check(_ids != FX1_NONE and _ids == _list[_pos],
                   f"{_k}: FX1_IDS[0x{_eid:02x}] and FX1 list row {_pos} "
                   f"resolve to the same descriptor (0x{_ids:08x})")
             check(rd32(img, FX1_ID2POS + _eid * 4) == _pos,
                   f"{_k}: FX1's cursor table puts id 0x{_eid:02x} on row "
                   f"{_pos} -- without it the chooser opens on row 0")
-            # THE SAME DESCRIPTOR BOTH MENUS USE. FX1 and FX2 keep separate
-            # id tables; pointing them at different clones would draw two
-            # different pages for one effect.
-            check(_ids == rd32(img, FX2_IDS + _eid * 4),
-                  f"{_k}: FX1 and FX2 resolve id 0x{_eid:02x} to the SAME "
-                  f"descriptor, as stock does for the ten shared effects")
+            if not _m.is_stock:
+                # THE SAME DESCRIPTOR BOTH MENUS USE. FX1 and FX2 keep
+                # separate id tables; pointing them at different clones
+                # would draw two different pages for one effect.
+                check(_ids == rd32(img, FX2_IDS + _eid * 4),
+                      f"{_k}: FX1 and FX2 resolve id 0x{_eid:02x} to the "
+                      f"SAME descriptor, as stock does for the ten shared")
+        # ⚠️ AND EVERY OTHER ID IS CLAMPED TO ROW 0. A composed FX1 list can
+        # be SHORTER than stock's eleven, so a stale cursor position from an
+        # old project holding a dropped id would seed the chooser past the
+        # last row.
+        _stale = [i for i in range(0x20)
+                  if i not in _listed and rd32(img, FX1_ID2POS + i * 4)]
+        check(not _stale,
+              "every id this list drops has its cursor row clamped to 0"
+              + (f" -- {len(_stale)} still point past the list" if _stale
+                 else ""))
 
     for name, donor_E in (("SPRING", 0x400d5726), ("DARK", 0x400d58b8),
                            ("FILTER", 0x400d4772)):
