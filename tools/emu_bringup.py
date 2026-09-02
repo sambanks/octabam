@@ -650,18 +650,29 @@ def _left_aligned(items):
 
 
 def _anchors(items, left, tol=8):
-    """The centres the firmware is centring parameter labels on, clustered
-    out of this screen's own draws rather than written down -- so a page laid
-    out differently gets its own columns instead of these."""
-    cs = sorted({x + CELL * len(t) / 2 for x, _y, t in items
-                 if x >= LEFT_X and x not in left})
+    """The parameter columns: each centre the firmware centres labels on,
+    and the widest label that column carries.
+
+    Clustered out of THIS screen's own draws rather than written down, so a
+    page laid out differently gets its own columns instead of these.
+
+    -> [(centre_px, widest)], and the widest is what turns a centred column
+    into a LEFT-ALIGNED one: see layout_screen.
+    """
+    seen = {}
+    for x, _y, t in items:
+        if x < LEFT_X or x in left:
+            continue
+        c = x + CELL * len(t) / 2
+        seen[c] = max(seen.get(c, 0), len(t))
     groups = []
-    for c in cs:
-        if groups and c - groups[-1][-1] <= tol:
-            groups[-1].append(c)
+    for c in sorted(seen):
+        if groups and c - groups[-1][-1][0] <= tol:
+            groups[-1].append((c, seen[c]))
         else:
-            groups.append([c])
-    return [sum(g) / len(g) for g in groups]
+            groups.append([(c, seen[c])])
+    return [(sum(c for c, _w in g) / len(g), max(w for _c, w in g))
+            for g in groups]
 
 
 def layout_screen(draws, cols=COLS, rows=9):
@@ -672,12 +683,14 @@ def layout_screen(draws, cols=COLS, rows=9):
     Three rules, and they are the three things the LCD does that a character
     grid does not do by itself:
 
-    ⚠️ PARAMETER LABELS ARE CENTRED ON COLUMNS, not placed at a left edge.
-    Scaling each label's own x into a cell put a 4-character name and a
-    2-character one in different columns, which is what made the page look
-    ragged -- they are the same column on the unit, and the shorter label
-    simply starts further into it. A LIST is left-aligned and must not be
-    snapped that way (_left_aligned tells them apart).
+    ⚠️ PARAMETER COLUMNS ARE FOUND BY CENTRE AND DRAWN LEFT-ALIGNED. The
+    firmware centres each label on a fixed anchor, which is how the columns
+    are identified at all -- but REPRODUCING the centring is what still read
+    as ragged, because a 2-character label centred in a 4-wide column starts
+    one column in and its left edge no longer lines up with anything. So
+    each column is laid out from the left edge of its WIDEST label, which is
+    what a column of text is normally expected to do. A LIST is left-aligned
+    already and must not be snapped at all (_left_aligned tells them apart).
 
     ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
     parameter row in place, so the capture holds the label that WAS there and
@@ -699,8 +712,9 @@ def layout_screen(draws, cols=COLS, rows=9):
         if x < LEFT_X or x in left or not cols_px:
             cx = int(x / CELL + 0.5)
         else:
-            a = min(cols_px, key=lambda c: abs(c - (x + CELL * len(t) / 2)))
-            cx = int(a / CELL - len(t) / 2 + 0.5)
+            a, w = min(cols_px,
+                       key=lambda c: abs(c[0] - (x + CELL * len(t) / 2)))
+            cx = int(a / CELL - w / 2 + 0.5)
         cx = min(cols - 1, max(0, cx))
         row = grid[cy]
         row[:] = [(s0, s1) for s0, s1 in row

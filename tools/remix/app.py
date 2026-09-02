@@ -1387,7 +1387,12 @@ class RemixerScreen(Screen):
                    if self.pane == UNIT else
                    "[dim]tab here to change values and audition[/]")
         out.append("")
-        out += self._preview(mod, probs)
+        # HOW MUCH ROOM IS LEFT FOR IT. The preview is the tallest thing in
+        # the remixer and it is last, so a short pane cut it mid-frame: the
+        # box lost its bottom border and its last rows with no sign that
+        # anything was missing.
+        room = self.query_one("#pane_unit", Static).content_size.height
+        out += self._preview(mod, probs, max(0, room - len(out)))
         # No pinned tail: the knobs are what the cursor is in and the preview
         # is what follows them, so a short pane shows as much of the page as
         # is left over rather than reserving room for it.
@@ -1425,7 +1430,7 @@ class RemixerScreen(Screen):
         self._panel_cache = (key, grid)
         return grid
 
-    def _preview(self, mod, probs):
+    def _preview(self, mod, probs, room=0):
         st = self.app.state
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
@@ -1445,8 +1450,8 @@ class RemixerScreen(Screen):
         # belong to whichever effect the TRACK has selected.
         slot = self.preview
         what = ("the main menu, as the unit draws it" if slot == "MENU"
-                else f"the {slot} menu's own rows, and {escape(disp(mod))}'s "
-                     f"knob names — both as the unit draws them")
+                else f"the {slot} menu's rows, and {escape(disp(mod))}'s "
+                     f"knob names")
         head = [f"preview {modes}  [dim](p)[/]", f"[dim]{what}[/]"]
         # DO NOT DRAW SOMETHING THAT IS NOT THE SELECTION. The FX2 page
         # includes the firmware's own chooser list, so an image that is not
@@ -1516,6 +1521,28 @@ class RemixerScreen(Screen):
         # allowed to break the frame open.
         import emu_bringup
         w = emu_bringup.COLS
+        # Trailing blank rows are the page having fewer parameters than the
+        # screen has lines, not content -- and they are the first thing to
+        # give up when the pane is short.
+        while grid and not grid[-1].strip():
+            grid.pop()
+        cut = len(head) + len(grid) + 2 - room
+        if room and len(grid) - cut < 4:
+            # Below a few rows the box says nothing and costs the lines it
+            # would have said it in.
+            return head[:1] + [f"[dim]the pane is {cut} row"
+                               f"{'' if cut == 1 else 's'} short of the "
+                               f"page — make the window taller[/]"]
+        if room and cut > 0:
+            # CLIP DELIBERATELY, and say so where the bottom border would
+            # have been. A frame with no bottom edge reads as a rendering
+            # fault rather than as a short window.
+            grid = grid[:max(0, len(grid) - cut - 1)]
+            return head + [f"{edge}." + "-" * w + ".[/]"] + \
+                [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
+                 for ln in grid] + \
+                [f"{edge}'[/][dim]" + f" {cut + 1} more rows — the pane is "
+                 f"short ".ljust(w, "-")[:w] + f"[/]{edge}'[/]"]
         return head + [f"{edge}." + "-" * w + ".[/]"] + \
             [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
              for ln in grid] + \
