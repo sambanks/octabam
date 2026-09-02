@@ -23,6 +23,15 @@ from remix import ledger, registry  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DONOR_WORDS = 2724          # per payload; build_bus.py prints the live figure
+# The ColdFire cave: the firmware's zero run at 0x400d6b00..0x400d7c3c, which
+# is where EVERYTHING a remix plants on the ColdFire lives -- the chooser
+# list, the descriptor clones, the caves and the label formatters. The build
+# reports what is LEFT of it, never the size, so the total is written down
+# here and pinned against build_bus's own NEW_LIST/ZERO_RUN_END by
+# tools/remix/selftest.py. Used is derived as CAVE_BYTES - free, which holds
+# for both list placements: a long chooser list moves the reported ceiling
+# down by exactly the 128 B the list then occupies.
+CAVE_BYTES = 0x400d7c3c - 0x400d6b00
 BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
 # Stock top-level menu, to highlight what a patch adds (docs/MAINMENU.md).
 STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
@@ -42,9 +51,12 @@ class State:
         self.cursor = 0
         self.words: dict[str, int] = {}      # key -> words, from a real build
         self.words_from = ""                 # which remix produced them
-        # [(payload, used, free)] as the last build reported them. TWO
-        # regions, one per payload -- see problems().
-        self.regions: list[tuple[str, int, int]] = []
+        # [(payload, total, used, free)] as the last build reported them.
+        # TWO regions, one per payload -- see problems(). The TOTAL is read
+        # from the build too rather than assumed to be DONOR_WORDS: a DEV
+        # build takes CHORUS's module as well, so the size of the region is
+        # a property of the build, not a constant of the firmware.
+        self.regions: list[tuple[str, int, int, int]] = []
         # Which of PLATE/SPRING/DARK the last build LEFT ALONE, upper-cased
         # as the build names them. Empty until a build has reported.
         self.donors_kept: set[str] = set()
@@ -275,10 +287,11 @@ class State:
                 # There is one of these PER PAYLOAD, each its own 2,724-word
                 # region. Keeping only the last was how the budget came to be
                 # reported as a single pool.
-                m = re.search(r"used (\d+)\s+FREE (\d+)", line)
+                m = re.search(r"\((\d+) words\)\s+used (\d+)\s+FREE (\d+)",
+                              line)
                 if m and payload:
                     regions.append((payload, int(m.group(1)),
-                                    int(m.group(2))))
+                                    int(m.group(2)), int(m.group(3))))
                 # WHICH DONORS SURVIVED, from the build rather than
                 # re-derived here. The three reverbs' code IS the donor
                 # region and the build nulls a donor id only where words
@@ -312,7 +325,7 @@ class State:
                 return False, (tail[-1] if tail else "build failed")
             if regions:
                 return True, ("assembled: " + " · ".join(
-                    f"{n} {u}/{u + f}" for n, u, f in regions))
+                    f"{n} {u}/{t}" for n, t, u, _f in regions))
             return True, "assembled"
         finally:
             tmp.unlink(missing_ok=True)

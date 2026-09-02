@@ -48,7 +48,8 @@ except ImportError:
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
 from remix import audition, registry, rig, stock  # noqa: E402
-from remix.state import BUILT_IMAGE, DONOR_WORDS, ROOT, State  # noqa: E402
+from remix.state import (BUILT_IMAGE, CAVE_BYTES, DONOR_WORDS, ROOT,  # noqa: E402
+                         State)
 
 
 def step_label(mod, name, v):
@@ -138,6 +139,33 @@ def disp(mod) -> str:
     if mod.menu is not None:
         return titlecase(mod.menu.fullname.decode("latin1") or mod.name)
     return titlecase(mod.name)
+
+
+def placeable(sel, total, used):
+    """Words this selection can still PLACE in one payload's donor region.
+
+    Not the build's own FREE figure, which reports the whole region as free
+    because nothing of OURS is in it yet: PLATE, SPRING and DARK REV's code
+    IS that region, so a reverb kept in the chooser is spending its own
+    words and has to be subtracted like anything else.
+
+    And the subtraction is not the reverbs' sizes. The region packs from
+    PLATE upward, so holding a LOW reverb makes the space above it
+    unreachable even though nothing occupies it -- keeping PLATE alone
+    leaves 2,130 words by size and 0 you can actually place. The ceiling is
+    the offset of the lowest reverb kept, which equals the plain subtraction
+    for every other combination (verified for all four).
+
+    Returns (free, cap): `total - cap` is what the listed reverbs hold, so
+    used + held + free is exactly total.
+
+    ONE definition of "free", used by both the line under LOADED and the
+    budget pane. They used to disagree on the same screen -- 2,509 there
+    against 379 here -- which is a good way to make a budget unreadable.
+    """
+    cap = min((stock.consumed_at(c) for c in stock.CONSUMED if c in sel),
+              default=total)
+    return max(0, cap - used), cap
 
 
 # Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
@@ -313,6 +341,17 @@ The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
 What is LEFT of the image, under the effect you are looking at. Four
 scarce things and only four: the two donor regions (one per payload),
 the FX2 buffer slots per core, the chooser rows, and the ColdFire cave.
+
+Every row is the same sentence — [bold]N free of TOTAL, and what took the
+rest[/] — so the default selection reads as what an unmodified core
+already spends rather than as a bare zero.
+
+⚠️ A REVERB YOU KEEP IN THE CHOOSER IS SPENDING WORDS. PLATE, SPRING and
+DARK REV's code IS the donor region, so the `held by` line is the trade:
+how much they are holding, and what dropping the next one buys. The
+region packs from PLATE upward, so holding a LOW reverb also makes the
+space above it unreachable — which is why keeping PLATE alone leaves
+2,130 words by size and 0 you can actually place.
 
 ⚠️ The buffer slots count what a MODULE pins — ChonVerb holds all four
 of its core's, BongDelay two of its core's, Nimbus two of whichever
@@ -718,14 +757,17 @@ class BenchScreen(Screen):
         if st.regions:
             # The free-word count is the one number worth a glance, so let
             # its COLOUR carry the answer: comfortable, tight, or spent.
+            # placeable() rather than the build's FREE, so this agrees with
+            # the budget pane two panes over -- see its docstring.
             def one(n, f):
                 # Thresholds from what this project actually lives with:
                 # payload A has shipped at FREE 4 and B at FREE 5, so double
                 # digits is already "spent" and deserves the alarm colour.
                 c = OK if f > 400 else WARN if f > 32 else BAD
-                return f"{n} [{c}]{f}[/] free"
+                return f"{n} [{c}]{f:,}[/] free"
             return "[dim]" + " · ".join(
-                one(n, f) for n, _u, f in st.regions) + "[/]"
+                one(n, placeable(st.sel, t, u)[0])
+                for n, t, u, _f in st.regions) + "[/]"
         # No build has reported yet. Say which of the two reasons it is --
         # this line used to claim "a stock chooser: 14 effects, no modules"
         # for ANY unmeasured selection, including chongbong, which has three.
@@ -743,6 +785,17 @@ class BenchScreen(Screen):
         chooser rows, and the ColdFire cave. Everything else is unbounded in
         practice.
 
+        EVERY ROW IS THE SAME SENTENCE: `N free of TOTAL · what took the
+        rest`. That uniformity is the whole point and it is what this pane
+        kept losing -- the rows line said "17 free of 31 (14 loaded)" while
+        the words line said a bare "0 free" with no total at all, and the
+        buffer line said "5,6,7,8 keep theirs" with neither. Three different
+        answers to one question is what made it unreadable.
+
+        And the TOTAL is stated even when nothing of ours is loaded, so the
+        default selection -- an unmodified unit -- says what a stock core
+        actually spends rather than reporting an alarming bare zero.
+
         Read from the BUILD's own report wherever possible (state.measure),
         because the build is the only thing that knows where the cursor
         actually stopped.
@@ -750,9 +803,10 @@ class BenchScreen(Screen):
         out = ["[bold]Budget[/]"]
         W = 10                                  # one label column throughout
 
-        def row(label, bar_full, bar_len, colour, tail):
-            return (f" {label:<{W}}[{colour}]" + "#" * bar_full + "[/][dim]"
-                    + "." * (bar_len - bar_full) + f"[/]  {tail}")
+        def left(n, total, extra=""):
+            """The one sentence every row here answers."""
+            return (f"{n:,} free of {total:,}"
+                    + (f" [dim]· {extra}[/]" if extra else ""))
 
         # EVERY ROW HERE IS: what exists, minus what this selection loaded.
         # Nothing is a constant and nothing is a build's leftover.
@@ -771,47 +825,71 @@ class BenchScreen(Screen):
         # alone leaves 2,130 words by size and 0 you can actually place. The
         # placeable figure is the offset of the lowest reverb kept, which
         # equals the subtraction for every other combination (verified for
-        # all four).
+        # all four). So `held` below is the whole tail from that reverb up,
+        # not the sum of the reverbs' own sizes -- and the three numbers on
+        # the row then add up exactly: loaded + held + free = total.
         held = [c for c in stock.CONSUMED if c in st.sel]
-        cap = min((stock.consumed_at(c) for c in held), default=DONOR_WORDS)
         nxt = min(held, key=stock.consumed_at) if held else None
 
-        def words_row(n, used):
-            free = max(0, cap - used)
-            fill = min(20, round(20 * used / DONOR_WORDS))
-            edge = min(20, round(20 * cap / DONOR_WORDS))
+        def words_row(n, total, used):
+            free, cap = placeable(st.sel, total, used)
+            fill = min(20, round(20 * used / total))
+            edge = max(fill, min(20, round(20 * cap / total)))
             c = OK if free > 400 else WARN if free > 32 else BAD
             bar = (f"[{c}]" + "#" * fill + "[/][dim]" + "." * (edge - fill)
                    + "[/][dim red]" + "-" * (20 - edge) + "[/]")
-            # NAME THE NEXT TRADE, not the state. "Plate Rev holds the
-            # rest" was true and useless -- it says which reverb is in the
-            # way without saying what dropping it buys, and at 0 free that
-            # is the only question. Both forms now answer it: how far you
-            # can go before the next one dies, or what the next one is worth.
-            gain = stock.WORDS[nxt] if nxt else 0
-            why = (f"  [dim]then {titlecase(nxt)} goes[/]" if nxt and free
-                   else f"  [dim]drop {titlecase(nxt)} for {gain:,} more[/]"
-                   if nxt else "")
-            return f" {'words ' + n:<{W}}{bar}  {free:>4} free{why}"
+            return (f" {'words ' + n:<{W}}{bar}  [{c}]{free:>5,}[/] free of "
+                    f"{total:,} [dim]· {used:,} loaded[/]")
 
         if st.regions:
-            for n, used, _f in st.regions:
-                out.append(words_row(n, used))
+            for n, total, used, _f in st.regions:
+                out.append(words_row(n, total, used))
         elif not [m for m in st.selected if m.dsp is not None]:
+            # No build to read -- and none is possible, because a selection
+            # with no module of ours has no fallback to name. The region is
+            # still fully accounted for: the three reverbs are in it.
             for n in ("A", "B"):
-                out.append(words_row(n, 0))
+                out.append(words_row(n, DONOR_WORDS, 0))
         else:
-            out.append(f" {'words':<{W}}[dim]"
-                       + "?" * 20 + "[/]  [dim]not built[/]")
+            out.append(f" {'words':<{W}}[dim]" + "?" * 20
+                       + "[/]  [dim]not built[/]")
+        # THE TRADE, ONCE. It is identical for both payloads -- the same
+        # three reverbs occupy both regions -- so printing it on each read as
+        # two facts. NAME THE NEXT TRADE, not the state: "Plate Rev holds the
+        # rest" was true and useless, because it says which reverb is in the
+        # way without saying what dropping it buys, and at 0 free that is the
+        # only live question.
+        if nxt:
+            # What dropping it actually BUYS is the gap up to the next reverb
+            # still listed, which is NOT the reverb's own size when the one
+            # above it has already gone: holding PLATE and DARK, dropping
+            # PLATE opens SPRING's words too (1,657, not 594).
+            cap = stock.consumed_at(nxt)
+            rest = min((stock.consumed_at(c) for c in held if c != nxt),
+                       default=DONOR_WORDS)
+            # "drop Dark Rev" beside "held by Dark Rev" says the name twice
+            # in eleven words; with one reverb held there is nothing to
+            # disambiguate, so it is "it".
+            which = titlecase(nxt) if len(held) > 1 else "it"
+            # The reverbs are named WITHOUT their " Rev" suffix here (the
+            # label already says these are the held reverbs) because the
+            # three-reverb form is the widest line in the pane and this pane
+            # is the narrowest column: at 77 columns it wrapped, and a
+            # wrapped budget row reads as an extra mystery row.
+            names = ", ".join(titlecase(c).replace(" Rev", "") for c in held)
+            out.append(f" {'held by':<{W}}[dim]{names} — "
+                       f"{DONOR_WORDS - cap:,} words; "
+                       f"drop {which} for {rest - cap:,} more[/]")
 
         # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
         # FX1 then FX2, so track k's FX2 effect always gets table entry 1+2k
         # -- 0x4000, 0x8000, then the shared-window pair (docs/DSP.md, "the
         # allocator's instance model").
         #
-        # So the four boxes are FOUR TRACKS, and the useful sentence is WHO
-        # has taken which and what is left. "4 of 4, none free" was accurate
-        # and told you neither.
+        # So there are FOUR, they are FOUR TRACKS, and the useful sentence is
+        # how many are left and who took the others. The old row drew them as
+        # four groups of four glyphs, which read as SIXTEEN slots; a count
+        # against a total cannot be misread that way.
         for tag in ("A", "B"):
             tracks = rig.PAYLOAD_TRACKS[tag]
             owner = {}
@@ -829,8 +907,6 @@ class BenchScreen(Screen):
                     owner.setdefault(2, m); owner.setdefault(3, m)
             free = [tracks.start + k for k in range(4) if k not in owner]
             c = OK if len(free) > 2 else WARN if free else BAD
-            slots = " ".join("####" if k in owner else "...."
-                             for k in range(4))
             said, bits = set(), []
             for k in sorted(owner):
                 mod = owner[k]
@@ -846,43 +922,45 @@ class BenchScreen(Screen):
             # the stock reverbs not use it?" -- they use their own track's,
             # when you select them on it, and listing one in the chooser
             # claims nothing. Only a MODULE claims a buffer for the life of
-            # the image, which is why only modules appear here.
-            if free:
-                bits.append(f"[{OK}]{','.join(str(t) for t in free)} "
-                            f"keep theirs[/]")
-            out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       + " · ".join(bits or
-                                    ["[dim]unclaimed — every track keeps its "
-                                     "own[/]"]))
+            # the image, which is why only modules appear here. The footnote
+            # below says so, once, rather than the row fighting the word.
+            out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
+                       f"of 4 [dim]· "
+                       + (" · ".join(bits) if bits
+                          else f"tracks {tracks.start}-{tracks.stop - 1} "
+                               f"all keep their own") + "[/]")
 
         # Rows are countable without a build; the cave is not.
-        # Same rule: 31 exist, this selection loaded N.
+        # Same sentence again: 31 exist, this selection loaded N.
         used_rows = (st.chooser_rows if st.chooser_rows is not None
                      else len(st.menu_modules))
-        free_rows = 31 - used_rows
-        c = OK if free_rows > 7 else WARN if free_rows else BAD
-        out.append(f" {'rows':<{W}}[{c}]{free_rows}[/][dim] free of 31 "
-                   f"({used_rows} loaded)[/]")
-        # Same again for the cave: a stock row clones no descriptor, plants
-        # no formatter and cuts no patch, so with no modules of ours the
-        # region is untouched. Said in words rather than a number, because
-        # the exact figure depends on where the chooser list landed and that
-        # is the build's arithmetic, not a fact to re-derive here.
+        c = OK if 31 - used_rows > 7 else WARN if used_rows < 31 else BAD
+        out.append(f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of 31 "
+                   f"[dim]· {used_rows} loaded[/]")
+        # And the cave. The build reports only what is LEFT, so the total
+        # comes from state.CAVE_BYTES (pinned to build_bus's own bounds by
+        # the selftest) and the used figure is the subtraction -- which is
+        # the point: a stock chooser plants nothing on the ColdFire, so the
+        # honest reading of the default selection is the whole region free,
+        # not the wordless "untouched" this used to print.
         if st.cave_free is not None:
             c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
-            cave = f"[{c}]{st.cave_free:,}[/][dim] B free[/]"
+            out.append(f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free of "
+                       f"{CAVE_BYTES:,} B [dim]· "
+                       f"{CAVE_BYTES - st.cave_free:,} loaded[/]")
         elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
-            cave = f"[{OK}]untouched[/][dim] — nothing of ours is placed[/]"
+            out.append(f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free of "
+                       f"{CAVE_BYTES:,} B [dim]· nothing of ours is placed[/]")
         else:
-            cave = "[dim]not built[/]"
-        out.append(f" {'cave':<{W}}{cave}")
-        # What the buffer rows COUNT, because it is not "slots in use": a
-        # stock effect takes one from the allocator at runtime, per
-        # instantiated effect per block, which no image can reserve. These
-        # are the ones a MODULE holds fixed, which is the part composing a
-        # remix actually decides.
-        out.append("[dim] # loaded by a module · - held by a listed reverb "
-                   "· . free[/]")
+            out.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
+                       f"· not built[/]")
+        # What the words bar's three glyphs mean, and what a buffer count
+        # counts -- because it is not "slots in use": a stock effect takes
+        # one from the allocator at runtime, per instantiated effect per
+        # block, which no image can reserve. These are the ones a MODULE
+        # holds fixed, which is the part composing a remix actually decides.
+        out.append("[dim] words: # loaded by a module · - held by a listed "
+                   "reverb · . free[/]")
         out.append("[dim] one FX2 buffer per track. A module claims one for "
                    "the whole image;[/]")
         out.append("[dim] a stock effect uses its track's only while it is "

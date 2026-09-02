@@ -11,13 +11,14 @@ on nothing.
 """
 
 import pathlib
+import re
 import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-from remix import ledger  # noqa: E402
+from remix import ledger, state  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
                           Module, Param, YBase)
 
@@ -321,6 +322,32 @@ def main():
                   f"stock scratch?")
     else:
         print("  [SKIP] stock render harness: dsp_host or the stock image is missing")
+
+    # THE BUDGET'S TOTALS ARE NOT THE BUDGET'S TO DECIDE. The workbench
+    # states "N free of TOTAL" for the ColdFire cave, and the build reports
+    # only what is LEFT of it -- so the total is written down in state.py and
+    # would go stale silently the day the cave's bounds move. Pin it to
+    # build_bus's own constants by reading them out of the source: a total
+    # that is quietly wrong is exactly the kind of confident stale number
+    # this project keeps getting burned by.
+    _bb = (ROOT / "tools/build_bus.py").read_text()
+    _bounds = {}
+    for _name in ("NEW_LIST", "ZERO_RUN_END"):
+        _m = re.search(rf"^{_name} = (0x[0-9a-f]+)", _bb, re.M)
+        if _m:
+            _bounds[_name] = int(_m.group(1), 16)
+    if len(_bounds) != 2:
+        bad += 1
+        print("  [FAIL] could not read NEW_LIST/ZERO_RUN_END out of "
+              "build_bus.py -- the cave total cannot be pinned")
+    elif _bounds["ZERO_RUN_END"] - _bounds["NEW_LIST"] == state.CAVE_BYTES:
+        print(f"  [PASS] the cave total ({state.CAVE_BYTES:,} B) matches "
+              f"build_bus's own bounds")
+    else:
+        bad += 1
+        print(f"  [FAIL] state.CAVE_BYTES is {state.CAVE_BYTES:,} B but "
+              f"build_bus's cave is "
+              f"{_bounds['ZERO_RUN_END'] - _bounds['NEW_LIST']:,} B")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():
