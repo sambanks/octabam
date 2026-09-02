@@ -124,13 +124,25 @@ def check(selected) -> list[str]:
                   "of them can be hosted on a given core; each works alone")
 
     # ---- stock effects that allocate an instance buffer -------------------
-    # The allocator's bases are per TRACK SLOT (docs/DSP.md section 10):
-    # core 0 hands out Y:0x4000 / 0x8000 / 0x30000 / 0x34000, core 1
-    # Y:0x4000 / 0x8000 / 0x38000 / 0x3c000. ChonVerb's tank is all four of
-    # core 0's, Nimbus's line the first two, BongDelay's line core 1's last
-    # two -- so CHORUS on track 6 beside ChonVerb on track 5 writes into the
-    # tank. Each works perfectly alone, and which track the operator picks
-    # is not something an image can constrain, so the PAIR is refused.
+    # The allocator's bases are per TRACK SLOT, and this is MEASURED -- read
+    # from X:0x255 in BOTH payloads of the pristine image, 2 Sep 2026 (the
+    # words are little-endian, which only shows above 0x10000, and reading
+    # them big-endian gives a plausible 0x00003 instead of 0x30000):
+    #
+    #   core 0 FX2:  0x4000  0x8000  0x30000  0x34000
+    #   core 1 FX2:  0x4000  0x8000  0x38000  0x3c000
+    #
+    # ChonVerb is ALL FOUR of core 0's -- tank in the first two, relocated
+    # buffers in the other two -- so any allocating stock effect sharing that
+    # core certainly collides. Nimbus is the first two. BongDelay is core 1's
+    # LAST TWO (its lines are based at 0x38000), so a stock effect there
+    # collides only if the allocator hands it slot 3 or 4.
+    #
+    # THAT IS STILL A REFUSAL, and the reason is the difference between
+    # "certain" and "unpredictable": which slot an effect gets depends on how
+    # many FX2 effects the dispatcher has already walked this block, and
+    # which track the operator picks is not something an image can constrain.
+    # Each works perfectly alone, which is the worst shape a defect can have.
     fixed = [m for m in selected
              if (getattr(m, "claims", None) is not None
                  and m.claims.owns_fx2_buffers)

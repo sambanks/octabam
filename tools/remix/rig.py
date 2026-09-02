@@ -251,9 +251,27 @@ def resources(mod, words=None) -> list[str]:
     # buffer is; what the operator is deciding is what it will cost them,
     # which is the seven stock effects it cannot sit beside. The address is
     # in docs/DSP.md section 10 and belongs there.
-    if claims is not None and getattr(claims, "owns_fx2_buffers", False):
-        out.append(f"needs the whole FX2 buffer region "
-                   f"(blocks {_n_allocating()} stock effects)")
+    # ⚠️ MIRROR THE LEDGER'S OWN TEST, or a module's cost goes unreported.
+    # BongDelay declares owns_fx2_buffers=False -- its lines are in the
+    # shared window, not the 0x4000 region -- so this line said nothing about
+    # buffers for it, while the ledger refused it beside all seven anyway.
+    # The ledger's `fixed` set is owns_fx2_buffers OR ybase is not NEVER, and
+    # the second half is why: core 1's allocator hands out 0x38000/0x3c000,
+    # which is exactly where a substituted ybase puts its buffers.
+    from remix.schema import YBase
+    pins = claims is not None and getattr(claims, "owns_fx2_buffers", False)
+    window = mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER
+    # HOW MANY, exactly: owns_fx2_buffers is the two CORE-PRIVATE slots
+    # (0x4000/0x8000) and a substituted ybase is the two SHARED-WINDOW ones
+    # (0x30000/0x34000 on core 0, 0x38000/0x3c000 on core 1 -- measured from
+    # X:0x255 in both payloads). ChonVerb has both and so takes all four;
+    # Nimbus only the first pair; BongDelay only the second.
+    if pins or window:
+        n = 2 * pins + 2 * window
+        where = ("all 4 FX2 buffer slots" if n == 4 else
+                 "2 core-private FX2 slots" if pins else
+                 "2 shared-window FX2 slots")
+        out.append(f"pins {where} (blocks {_n_allocating()} stock effects)")
     if claims is not None and getattr(claims, "stock_instance_buffer", False):
         out.append("takes 1 of the 4 FX2 buffer slots")
     py = ledger.private_y(mod)
