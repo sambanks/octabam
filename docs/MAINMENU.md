@@ -144,7 +144,7 @@ the viable designs all reuse the existing descriptor pipeline
   navigation jank goes away. ✅ **Traced end to end, 31 Aug 2026 — see §7**
   for the decoded open path, the handler, and the residual risks. (Still
   never executed: the Unicorn ColdFire harness was pruned, so a menu patch
-  goes static-verify → flash until the workbench emu of `PLAN.md` §5
+  goes static-verify → flash until the remixer emu of `PLAN.md` §5
   exists.)
 - **A bespoke PERSONALIZE-style list screen** whose setters call the stock
   parameter writer `FUN_40054cd8(track, flat, value)` for the host track, so

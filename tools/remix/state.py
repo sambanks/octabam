@@ -1,6 +1,6 @@
 """The composer's model: a module selection and what it costs to build.
 
-Extracted verbatim from the curses workbench (tools/remix/tui.py, retired by
+Extracted verbatim from the curses remixer (tools/remix/tui.py, retired by
 the track-centric app) so the Textual frontend and any headless caller share
 one model. Everything here is pure: no UI import, no terminal assumption.
 
@@ -94,7 +94,7 @@ class State:
         be a module of ours; ids this selection does not implement now
         resolve to the firmware's own NONE (schema.NO_FALLBACK), which is
         what an unassigned track shows on a stock unit anyway. Until then
-        the bench opened on a selection it had to apologise for.
+        the remixer opened on a selection it had to apologise for.
         """
         from remix import stock
         self.sel = {m.key for m in stock.MODULES}
@@ -287,7 +287,7 @@ class State:
         # donor region by 2406" when the truth was A 2650/74 free and B
         # 2719/5 free. The check was latent while the words were only known
         # after an explicit keypress; it became a permanent false alarm the
-        # moment the workbench started measuring on every change.
+        # moment the remixer started measuring on every change.
         #
         # The build is the authority and it refuses per payload ("payload B:
         # RUNGS overruns the region (3599 > 2724 words)"), so an overrun
@@ -361,7 +361,7 @@ class State:
                 # re-derived here. The three reverbs' code IS the donor
                 # region and the build nulls a donor id only where words
                 # actually landed, so "are they gone" is a question only the
-                # placement can answer -- and the workbench used to assume
+                # placement can answer -- and the remixer used to assume
                 # the answer was always yes.
                 m = re.search(r"KEPT STOCK: (\S+)", line)
                 if m:
@@ -482,7 +482,7 @@ class State:
         """
         tmp = ROOT / "remixes/_tui_scratch.py"
         tmp.write_text(self.as_remix("_tui_scratch",
-                                     "scratch selection from the workbench"))
+                                     "scratch selection from the remixer"))
         return "_tui_scratch"
 
     def scratch_cleanup(self):
@@ -500,7 +500,7 @@ class State:
         fx1 = (f'    fx1=({", ".join(chr(34) + k + chr(34) for k in rows)},),\n'
                if rows else "")
         return (f'"""{name} -- {doc}\n\n'
-                f'Written by the remix workbench. Edit freely: the docstring\n'
+                f'Written by the remixer. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
                 f'"""\n\n'
                 f'from remix.schema import Remix\n\n'

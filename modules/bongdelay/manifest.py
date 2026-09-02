@@ -103,7 +103,7 @@ MODULE = Module(
                                           # the algorithm still being designed
         # Payload B -> the core serving TRACKS 1-4 (the 10 Aug 2026 track/core
         # inversion). The build's SPEC table still hardcodes this pairing;
-        # here it is stated so the workbench can derive the track range.
+        # here it is stated so the remixer can derive the track range.
         payloads=frozenset({"B"}),
         bus_role=BusRole.SERVER,
         ybase=YBase.ALWAYS,               # its 32K of lines live at the base

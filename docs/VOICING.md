@@ -1947,7 +1947,7 @@ queued but the sound itself passes. Focus moves to the delay.
 
 ## R60 — REVERSE diagnosed: the ring is the segment comb (31 Aug 2026)
 
-Sam, from the workbench (piano_chords, TIME 68 FDBK 79 PING 16 -VRB 61
+Sam, from the remixer (piano_chords, TIME 68 FDBK 79 PING 16 -VRB 61
 DPTH 48 RATE 18 PTCH 1 DRV 55): REVERSE "sounds not great ... a fast
 metallicy ringing that seems to be specific to reverse."
 

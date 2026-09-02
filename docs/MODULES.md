@@ -98,15 +98,15 @@ what keeps `modules/_template/` out of every build.
 short, and its comments carry the reasoning behind each field.
 
 Copy `modules/_template/` to start (and read `modules/hello/` for a
-finished one), and `make remix` opens the workbench
+finished one), and `make remix` opens the remixer
 (`tools/remix/app.py`, Textual — provisioned by `make emu-setup`; the full
-manual is `docs/WORKBENCH.md`). Its home
+manual is `docs/REMIXER.md`). Its home
 view is a RIG of eight tracks: assign effects, dial their manifest-named
 knobs, render and hear them. Its REMIX view is the composer: collisions, the
 FX2 menu your selection produces, its word cost against the donor region,
 save/load, build and check.
 
-The workbench derives a **category** and a **track range** for every module
+The remixer derives a **category** and a **track range** for every module
 (`tools/remix/rig.py`) rather than asking for new declarations:
 
 - **bus effect** (`harness.is_server`) — lives in ONE payload, which the
@@ -126,7 +126,7 @@ and A/B mark is journalled to `out/_audition/log.jsonl` (track, effect,
 source, every knob), so a listening note like "this sounds boxy" plus the
 journal tail is a full repro.
 
-Two `Param` fields exist purely for the workbench (the build never reads
+Two `Param` fields exist purely for the remixer (the build never reads
 them — the refhash gate proves it): **`doc`**, one line saying what the knob
 does, shown under the knob cursor; and **`labels`**, one short label per
 value of a stepped select (the schema pins the length to `count`). The
@@ -277,7 +277,7 @@ Two rules, both enforced:
   yet measured — `restored` is the first image with more than seven rows
   and is unflashed.
 
-Stock rows appear in the workbench (a STOCK FX2 group in the composer, any
+Stock rows appear in the remixer (a STOCK FX2 group in the composer, any
 track in the rig) **with their real knobs**: `stock.py` reads each
 descriptor's names, defaults, value counts and enable bitmap out of the
 pristine image (`out/raw/section_3_MAIN_OS.bin`), so `knob_map()`,

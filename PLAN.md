@@ -68,7 +68,7 @@ twelve parameter slots, its DSP source, its ColdFire caves — and
 image and the reference every refactor proves itself against.
 
 ```sh
-make remix                # the workbench: compose a selection interactively
+make remix                # the remixer: compose a selection interactively
 make modules              # the module index and the available remixes
 make bus REMIX=<name>     # build a selection (default: chongbong)
 ```
@@ -448,7 +448,7 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
-### 5. The workbench: remix TUI + a local ColdFire emulator (decided 31 Aug 2026)
+### 5. The remixer: remix TUI + a local ColdFire emulator (decided 31 Aug 2026)
 
 **The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
 of change that today costs a flash per attempt. Two backlog items merge into
@@ -494,7 +494,7 @@ the TUI is a shell around it.**
    list drawer `FUN_40037590`, sprintf `0x40013a08`) into a windows+strings
    model; inject keys at the software layer (the `[PAGE]` keycode-`0x1b`
    precedent). Not pixel-faithful — menu-walking faithful.
-3. **TUI shell** (upgrades the `make remix` workbench): remix pane + build
+3. **TUI shell** (upgrades the `make remix` remixer): remix pane + build
    pane land first and are useful with no emulator; the emu pane plugs in
    when Tier 1 does. Schedules deliberately uncoupled.
 4. **Audio stays out.** The voicing loop (render → afplay → ear) is already
@@ -517,7 +517,7 @@ through all early hardware init, and stops exactly at the RTOS handoff
 completion-flag spins are auto-satisfied.
 
 **Milestone 1 is shipped**: the emulator is a library (`boot()` +
-`read_menu_tree()`), wired into the remix workbench — `make remix`, press
+`read_menu_tree()`), wired into the remixer — `make remix`, press
 **`e`** to boot the *built* image, confirm it reaches the handoff with no
 fault, and see the MAIN MENU walked from RAM with any patched-in entry
 highlighted. That is the crow-flies no-flash gate: a cave that breaks early
@@ -535,7 +535,7 @@ The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window,
 listing the built remix's own effects (`ChonVerb77`, `BongDelay77`, `Send`)
 and the param row.
 
-**Milestone 3 is shipped (31 Aug 2026): the track-centric workbench.** The
+**Milestone 3 is shipped (31 Aug 2026): the track-centric remixer.** The
 curses TUI is retired; `make remix` now runs `tools/remix/app.py` (Textual,
 in the same `.venv` extra as unicorn), organized the way an Octatrack user
 thinks. Home is a RIG of eight tracks: assign any effect the track can host
@@ -554,7 +554,7 @@ image changes and follows the rig's selected track. Follow-ups landed the
 same day: esc stops audio, Rich-markup escaping, per-knob docs + select
 labels in the manifests with `?` help overlays, the audition journal
 (`out/_audition/log.jsonl`), and the terminal-ANSI theme. The manual is
-`docs/WORKBENCH.md`.
+`docs/REMIXER.md`.
 
 Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the
@@ -633,7 +633,7 @@ those, and reports which: `donor ids taken (PLATE) ... KEPT STOCK:
 SPRING/DARK`.
 
 The three reverbs are now ordinary listable stock rows (`tools/remix/
-stock.py`), so the workbench offers them like any other effect. Two guards
+stock.py`), so the remixer offers them like any other effect. Two guards
 make that safe:
 
 - the **build** refuses a donor row whose words this selection took, by name
@@ -677,8 +677,8 @@ worth keeping.
   then verified the v6 seam-click fix. (The old blocker stands for a
   freeze toggled MID-render more than once; one engage per render is what
   the hook does.)
-- **BACKLOG (Sam, 3 Sep 2026): "workbench" is a name nobody reviewed.** It
-  arrived with the 31 Aug redesign and spread to `docs/WORKBENCH.md`, the
+- **BACKLOG (Sam, 3 Sep 2026): "remixer" is a name nobody reviewed.** It
+  arrived with the 31 Aug redesign and spread to `docs/REMIXER.md`, the
   pane copy, the `?` overlay and a dozen comments without anyone deciding it
   was the right word. The thing is a **remixer** — that is what the project
   calls the concept everywhere else (`make remix`, `remixes/`,

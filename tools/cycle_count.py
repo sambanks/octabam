@@ -521,14 +521,14 @@ def main():
                               # by asm stem, so a caller can print the name
                               # the operator reads on the panel: `reverb
                               # server` is a filename, `ChonVerb` is what the
-                              # workbench calls it everywhere else.
+                              # remixer calls it everywhere else.
                               worst_core_modules={
                                   next(m["key"] for m in mods
                                        if m["stem"] == stem): n
                                   for stem, n in picks},
                               bank=bank, headroom=room,
                               # What OUR code may spend, per core. The
-                              # workbench's budget row is read against this
+                              # remixer's budget row is read against this
                               # rather than against core_total, and there
                               # must be one source for the figure.
                               usable=USABLE,

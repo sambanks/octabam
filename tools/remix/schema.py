@@ -37,7 +37,7 @@ class Kind(Enum):
                                 # code, no clone, no words -- its descriptor
                                 # and dispatch are already in the image; its
                                 # params are read FROM that descriptor for the
-                                # workbench and harness, never written back
+                                # remixer and harness, never written back
                                 # (tools/remix/stock.py is the whole list)
 
 
@@ -121,7 +121,7 @@ class Param:
     count: int | None = None           # value count; None leaves the donor's
     active: bool = False               # drawn at all (the enable bitmap)
     formatter: Formatter = Formatter.INHERIT
-    # Display-only, consumed by the workbench and never by the build (the
+    # Display-only, consumed by the remixer and never by the build (the
     # refhash gate proves it): one line saying what the knob DOES, and for a
     # select, what each value means. The unit's panel cannot show either, so
     # this is where a contributor answers "what is this?" once instead of in
@@ -563,7 +563,7 @@ class Remix:
     # move standalone against the stock image). What it does cost is CYCLES:
     # an FX1 effect runs on a track that is already running an FX2 one, so
     # the worst per-core load can gain four more copies of it. cycle_count.py
-    # prices that, and the workbench's Budget row is where to look first.
+    # prices that, and the remixer's Budget row is where to look first.
     #
     # ⚠️ A `replaces` MODULE IS ALREADY ON FX1 and must not be listed here:
     # it inherits the stock effect's row and has both of FX1's tables

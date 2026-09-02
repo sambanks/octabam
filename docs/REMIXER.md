@@ -1,9 +1,19 @@
-# The workbench — `make remix`
+# The remixer — `make remix`
 
 The interactive front end of the project, organized the way an Octatrack
-user thinks: **tracks and effects**, not modules and payloads. Shipped
-31 Aug 2026 (PRs #40–#44), replacing the curses composer; PLAN.md §5 is the
-decision record, this page is the manual.
+user thinks: **effects**, not modules and payloads. Shipped 31 Aug 2026
+(PRs #40–#44), replacing the curses composer; PLAN.md §5 is the decision
+record, this page is the manual.
+
+⚠️ **It was called "the workbench" until 3 Sep 2026**, and that name arrived
+with the 31 Aug redesign without anyone deciding on it. The project calls
+the concept a **remix** everywhere else — `make remix`, `remixes/`,
+`tools/remix/` — so a second vocabulary for one tool was pure cost. Two
+things keep their old names working rather than silently reverting somebody's
+setup: `WORKBENCH_SOURCES` / `WORKBENCH_THEME` are still honoured (an env var
+lives in a shell profile, where a rename is not a rename but a stop working),
+and `out/_audition/workbench.json` is read as a fallback for the sample
+folder until the next save writes `remixer.json`.
 
 What it is for, in priority order (Sam's, stated when the redesign was
 commissioned):
@@ -17,20 +27,20 @@ commissioned):
 
 Audio comes from the local DSP emulator (~6× real time, `docs/HARNESS.md`);
 the ColdFire emulator (`docs/EMU.md`) provides the screens. Nothing in the
-workbench touches hardware.
+remixer touches hardware.
 
 ## Setup
 
 ```bash
 make emu-setup      # uv provisions .venv with unicorn + textual
-make remix          # the workbench (make bus first if out/mainos_bus.bin
+make remix          # the remixer (make bus first if out/mainos_bus.bin
                     # doesn't exist yet — the EMU view boots it)
 ```
 
 The frontend is `tools/remix/app.py` (Textual). `make remix` prefers
 `.venv/bin/python3`; on bare `python3` it exits with the setup hint. The
 build and every check remain dependency-free — only the interactive
-workbench lives in the venv.
+remixer lives in the venv.
 
 Playback is `afplay`, so hearing renders is macOS-only; everything else
 works anywhere the DSP toolchain does.
@@ -545,7 +555,7 @@ folder, so choosing what you audition on is one keypress from the knobs. `r`
 renders the effect over it and plays it; `space` replays.
 
 **`d` points the source folder somewhere else** and remembers it in
-`out/_audition/workbench.json`; `WORKBENCH_SOURCES` overrides both. The
+`out/_audition/remixer.json`; `REMIXER_SOURCES` overrides both. The
 default is `out/dry/`, the curated dry set — a good default, not a permanent
 one, since a bench gets used on whatever material is to hand. A path that is
 not a directory, or holds no wavs, is refused and the old one stands.
@@ -557,13 +567,13 @@ reads as "this effect does nothing" (it cost a report on 2 Sep 2026). **That
 is faithful and is not fixed by seeding a different value**: stock defaults
 are read from the firmware's own descriptor (`tools/remix/stock.py`), an
 unmodified unit really does start them fully dry, and inventing a value here
-would make the bench lie about the page it draws beside. The UNIT pane says
+would make the remixer lie about the page it draws beside. The UNIT pane says
 `⚠ MIX is 0 — this renders DRY` instead. None of *our* modules default this
 way.
 
 **Stepping knobs**: `left`/`right` is ±1 and **`shift`+`left`/`right` is
 ±10**. Holding the key runs; ~280 steps/second is sustainable (below), so
-key repeat is the limit, not the workbench.
+key repeat is the limit, not the remixer.
 
 ⚠️ **Holding an arrow key used to lag, and the cause was the emulated
 panel.** `rerender()` called `render_fx2` on *every* keystroke — 15–96 ms,
@@ -582,7 +592,7 @@ Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
 
 ⚠️ **The FX and MENU page entry points TOGGLE**: calling one opens the page,
 calling it again closes it, so consecutive renders used to alternate between
-a full screen and an empty one (26 draws, 0, 26, 0). A workbench that
+a full screen and an empty one (26 draws, 0, 26, 0). A remixer that
 re-renders on every keystroke therefore showed a blank LCD about half the
 time, and the MAIN MENU never drew at all — FX2 is the default view, so the
 menu render was always the second call and an FX page had already taken the
@@ -634,7 +644,7 @@ staleness gate coming back.** It genuinely cannot build: a remix must name a
 fallback for the ids it does not implement, and no stock effect is a safe one
 (it would *process* the unknown id) — `state.load_stock` is explicit that it
 "should not pretend to". So the launch state says `stock — swap a module in
-to build it` rather than `⚠`, because it is where the bench opens, not a
+to build it` rather than `⚠`, because it is where the remixer opens, not a
 mistake. One swap resolves it: SEND comes with the first module of ours.
 
 Honest limits (`docs/EMU.md`): no audio and no key matrix in the emulator —
@@ -732,7 +742,7 @@ what makes them worth colouring at all.
 
 ## Editing in another window
 
-**The bench follows the source.** Edit a module's `.asm` or manifest in your
+**The remixer follows the source.** Edit a module's `.asm` or manifest in your
 editor, or build in another terminal, and the image rebuilds and the panel
 re-boots on its own — the status line says `module source changed —
 rebuilding`. Polled, not watched: one stat sweep of `modules/` is **0.7 ms**,
@@ -747,7 +757,7 @@ firing on every save would be intolerable. The image and the panel refresh;
 
 The app renders in the **terminal's own 16-color ANSI palette** (Textual's
 `ansi-dark` theme), so it wears whatever colorscheme the terminal wears,
-background included. `WORKBENCH_THEME=<name> make remix` picks any
+background included. `REMIXER_THEME=<name> make remix` picks any
 built-in Textual theme (`gruvbox`, `nord`, `tokyo-night`, `textual-dark`
 for Textual's stock look, …); unknown names fall back to `ansi-dark`.
 
@@ -769,7 +779,7 @@ SERVER/T5-8 or T1-4; `DSP_EFFECT` with a menu → INSERT/any track;
 `Kind.STOCK` → STOCK/any track (no knobs, no render); everything else →
 SYSTEM/no track.
 
-Three `Param` fields exist purely for the workbench and are **proven
+Three `Param` fields exist purely for the remixer and are **proven
 display-only** — `scripts/refhash.sh check` ran bit-identical (26/26)
 after each manifest change that introduced them:
 

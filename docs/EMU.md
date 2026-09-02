@@ -1,6 +1,6 @@
 # Local ColdFire emulator — Tier-0 bring-up
 
-The workbench emu of `PLAN.md` §5. Goal: an iterate-with-a-cycle loop for
+The remixer emu of `PLAN.md` §5. Goal: an iterate-with-a-cycle loop for
 ColdFire/UI work (a menu patch, a cave) without a flash. This page is the
 Tier-0 record — how far the real firmware boots under emulation and what it
 needs on the way. `tools/emu_bringup.py` is the harness; re-run it to
@@ -89,20 +89,20 @@ Two facts for whoever crosses it:
   `0x40000d74` written to every slot). So the vector base is known at run
   time from that variable, which sidesteps the no-op register read.
 
-## Milestone 1 — boot-and-inspect, wired into the workbench ✅
+## Milestone 1 — boot-and-inspect, wired into the remixer ✅
 
 `emu_bringup.boot(image)` returns a warm machine; `read_menu_tree(uc)` walks
 the MAIN MENU tables (`docs/MAINMENU.md`) out of its RAM. `make remix`
-(the workbench, `tools/remix/app.py` — manual in `docs/WORKBENCH.md`; the
+(the remixer, `tools/remix/app.py` — manual in `docs/REMIXER.md`; the
 curses `tui.py` is retired, in history) has an **`e`** view: it boots the *built* image
 (`out/mainos_bus.bin` — byte-compatible with the raw section), confirms it
 reaches the RTOS handoff with no fault, and shows the firmware's own screens
 with any patched-in entry highlighted. This is the crow-flies form of the
 no-flash gate: a cave that breaks early init **faults here instead of on the
 unit**, and a menu-table patch is visible before a flash. It needs `unicorn`
-in the interpreter that runs the workbench; without it the view degrades to
-an "unavailable" message and the rest of the workbench is unaffected. The
-workbench caches one `BootResult` and re-boots only when the image's mtime
+in the interpreter that runs the remixer; without it the view degrades to
+an "unavailable" message and the rest of the remixer is unaffected. The
+remixer caches one `BootResult` and re-boots only when the image's mtime
 changes, so re-entering the view is instant; the FX2 page follows the rig's
 selected track (1-8) rather than a hardcoded track 5.
 
@@ -178,7 +178,7 @@ highlight is the next increment.
 
 `render_fx2(r, track, effect_id)` and `render_fx1(r, track, effect_id)` render
 the real FX2 / FX1 parameter pages — the effect's actual knob rows, not a
-default. In the workbench's emu view: `f` (FX2 — follows the rig's selected
+default. In the remixer's emu view: `f` (FX2 — follows the rig's selected
 track and its assigned effect) / `o` (FX1; left/right cycle the effect). FX2 with `0x07` shows ChonVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
 HP/LP/IN); FX1 shows the stock effects (FILTER's BASE/WDTH/ENV/ATK/DEC/…, EQ's
 FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
@@ -215,7 +215,7 @@ text is the remaining nicety.
 
 ## The RTOS fork — still open, still not forced
 
-Milestone 2 took route **B** (detour) and it carries the workbench: a menu- or
+Milestone 2 took route **B** (detour) and it carries the remixer: a menu- or
 cave-patch is visible and walkable without a flash. Route **A** (emulate the
 RTOS — dispatch `trap #0` via VBR `[0x400b9668]`, drive a timer tick, run the
 real scheduler) remains the later fidelity upgrade, the only one that could
@@ -234,9 +234,9 @@ The emulator's one dependency (`unicorn`, with QEMU's CFV4E core — the DEFAULT
 m68k core is plain-68k and cannot decode this CPU) lives in the uv-managed
 `.venv` as the optional `emu` extra (`pyproject.toml`). `make remix` prefers
 `.venv/bin/python3` and falls back to bare `python3`, where the emulator view
-reports itself unavailable and the rest of the workbench is unaffected.
+reports itself unavailable and the rest of the remixer is unaffected.
 
 The CLI prints the boot outcome (the `trap #0` boundary), the auto-pokes, the
 MAIN MENU walked from booted RAM, and the peripheral boot map. In the
-workbench, `e` does the same against `out/mainos_bus.bin` and highlights what
+remixer, `e` does the same against `out/mainos_bus.bin` and highlights what
 the selection's patches added.

@@ -19,7 +19,7 @@ it is its list row and its cursor position, and nothing else.
 ITS KNOBS ARE READ FROM THE STOCK DESCRIPTOR, not declared: names, defaults,
 value counts and the enable bitmap come out of the pristine image
 (out/raw/section_3_MAIN_OS.bin, the same record the panel draws from), so
-the workbench shows a stock effect's real page-1/page-2 controls and
+the remixer shows a stock effect's real page-1/page-2 controls and
 `send_probe --set` can drive them by name. The build never writes these
 params back (a stock row is not cloned), and when the image is absent --
 a fresh clone before `make setup` -- the entry simply carries no params.
@@ -160,7 +160,7 @@ def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
             continue
         # Two slots can share a panel label (FILTER draws Q on page 1 and a
         # 4-step Q select on page 2). knob_map() is name-keyed, so the later
-        # one gets its page number appended for the workbench and the
+        # one gets its page number appended for the remixer and the
         # harness; the panel itself is untouched (nothing here is written).
         if name in seen:
             name = name[:5] + b"2"
@@ -263,7 +263,7 @@ MODULES = (
 # The donor region, IN PLACEMENT ORDER. The build packs from PLATE upward,
 # so a selection loses them in this order and keeps the tail it never
 # reached -- which is why they are listable at all. Nothing here decides
-# that; the build reports which survived and the workbench reads its answer
+# that; the build reports which survived and the remixer reads its answer
 # (state.measure). Kept as a tuple because the ORDER is the meaning.
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
 

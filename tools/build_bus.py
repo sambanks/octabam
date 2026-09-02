@@ -1277,7 +1277,7 @@ def main():
 
     # ALWAYS report the headroom, even when nothing was planted. It used to
     # ride on the label-formatter line, so a remix with no labelled select
-    # (SEND alone, say) reported no cave figure at all and the workbench's
+    # (SEND alone, say) reported no cave figure at all and the remixer's
     # budget had a hole in it -- for a selection that builds perfectly well.
     print(f"  cave: 0x{_lbl_top:08x}..0x{cave_limit:08x}, "
           f"{cave_limit - _lbl_top} B of cave left")
@@ -2288,7 +2288,7 @@ mkgo:""",
         # ⚠️ NAME EVERY OFFENDER, NOT THE FIRST. Exiting on the first one
         # made the operator iterate: remove PLATE, rebuild, fail on SPRING,
         # remove that, rebuild, fail on DARK. The build knows all three the
-        # moment it knows the cursor, and the workbench's one-key fix can
+        # moment it knows the cursor, and the remixer's one-key fix can
         # only remove what the build named.
         _over = [(_name, record(pp[_d])[1] - base_a)
                  for _name in STOCK_ROWS

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the workbench emu).
+"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the remixer emu).
 
 Boots a MAIN OS image on Unicorn's ColdFire V4e core, modelling only as much
 of the hardware as the boot path actually touches, and stops at the RTOS
@@ -376,7 +376,7 @@ def _open_menu_window(uc):
     afterwards draws for a window that is no longer the menu's -- it captures
     NOTHING, silently, for the rest of the session. So the main-menu preview
     worked only if it happened to be the first thing rendered, and in the
-    workbench it never was: FX2 is the default view. Found 2 Sep 2026 by
+    remixer it never was: FX2 is the default view. Found 2 Sep 2026 by
     rendering the four views in sequence and counting the draws (12, 26, 0).
     Re-opening is cheap and the round trip works in both directions.
     """
@@ -449,7 +449,7 @@ def _call_page(uc, entry, draws):
 
     ⚠️ THESE ENTRY POINTS TOGGLE. `FX2_SETUP` opens the page on one call and
     closes it on the next, so consecutive renders alternate 26 draws, 0, 26,
-    0 -- and a workbench that re-renders on every keystroke showed an empty
+    0 -- and a remixer that re-renders on every keystroke showed an empty
     LCD half the time. Found 2 Sep 2026 by calling render_fx2 four times in
     a row and counting; it reads as "the emulator is broken", which is why
     it survived so long. A second call re-opens it.

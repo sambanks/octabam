@@ -55,19 +55,19 @@ real budget decision, not a label.
 | **`hello`** | HELLO WORLD + send | the reference minimal build, and the worked example to read first |
 
 ```bash
-make remix                  # the workbench: 8 tracks, hear effects, compose
+make remix                  # the remixer: 8 tracks, hear effects, compose
 make modules                # the index of what exists
 make bus REMIX=<name>       # build a selection
 ```
 
-`make remix` is the workbench, organized like the unit: eight tracks, an
+`make remix` is the remixer, organized like the unit: eight tracks, an
 effect on each, its real knobs to dial and render and hear (every effect
 renders locally). Its composer view shows what would collide, what the FX2
 chooser ends up looking like on the panel — including which **stock**
 effects the image keeps, hides or consumes (only the three reverbs are
 consumed; the rest can be kept for free) — and what the selection costs
 against the donor region — then builds or saves it.
-**[docs/WORKBENCH.md](docs/WORKBENCH.md)** is the manual.
+**[docs/REMIXER.md](docs/REMIXER.md)** is the manual.
 
 See **[docs/MODULES.md](docs/MODULES.md)** to write a module.
 
@@ -278,11 +278,11 @@ make bus       # build the effects into it
 make image     # repack as a card-flashable .bin
 ```
 
-`make remix` opens the workbench (`make emu-setup` provisions it): a rig of
+`make remix` opens the remixer (`make emu-setup` provisions it): a rig of
 eight tracks to trial effects on by ear, a composer showing collisions, the
 panel your choice produces and its word cost against the donor region, and
 the built image booted in the local ColdFire emulator — the manual is
-**[docs/WORKBENCH.md](docs/WORKBENCH.md)**.
+**[docs/REMIXER.md](docs/REMIXER.md)**.
 
 `make help` lists everything. The setup script assumes **macOS + Homebrew**;
 on Linux the substitutions are the obvious ones (the DSP toolchain itself is

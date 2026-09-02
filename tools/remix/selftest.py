@@ -205,7 +205,7 @@ def main():
         print("  [PASS] chonverb's manifest slots align with render_reverb")
 
     # ---- every drawn knob answers "what is this?" -----------------------
-    # The workbench shows Param.doc as the help line under the knob cursor,
+    # The remixer shows Param.doc as the help line under the knob cursor,
     # and a select's labels beside its value. A knob with neither is a knob
     # the operator has to reverse-engineer by ear, so hold the line: every
     # named, drawn param of every menu-bearing module carries a doc.
@@ -323,7 +323,7 @@ def main():
     else:
         print("  [SKIP] stock render harness: dsp_host or the stock image is missing")
 
-    # THE BUDGET'S TOTALS ARE NOT THE BUDGET'S TO DECIDE. The workbench
+    # THE BUDGET'S TOTALS ARE NOT THE BUDGET'S TO DECIDE. The remixer
     # states "N free of TOTAL" for the ColdFire cave, and the build reports
     # only what is LEFT of it -- so the total is written down in state.py and
     # would go stale silently the day the cave's bounds move. Pin it to
@@ -402,7 +402,7 @@ def main():
         except ValueError:
             print(f"  [PASS] Remix(fx1=...) refuses {_why}")
     # A module of ours is FX2-only until a remix says otherwise, and then it
-    # is on both -- this is the derivation the workbench's menus column and
+    # is on both -- this is the derivation the remixer's menus column and
     # every resource line read.
     _wf = registry.modules()["WARPFOLD"]
     if rig.menus(_wf) != (rig.FX2,):

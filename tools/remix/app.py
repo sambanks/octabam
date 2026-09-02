@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The remix workbench: swap effects, hear them, see the panel draw them.
+"""The remixer: swap effects, hear them, see the panel draw them.
 
     make remix          (or: .venv/bin/python3 tools/remix/app.py)
 
@@ -16,7 +16,7 @@ spare the operator a quarter-second and cost more than it saved.
 
 The model layers are headless and live next door: state.py (the composer),
 rig.py (categories, knobs), audition.py (rendering). This file is only the
-shell. Textual rather than curses: the workbench is already venv-hosted for
+shell. Textual rather than curses: the remixer is already venv-hosted for
 the emulator, and the frontend rewrite is where hand-rolled layout stopped
 paying its way.
 """
@@ -43,7 +43,7 @@ try:
     from textual.widgets import Footer, Input, OptionList, RichLog, Static
     from textual.widgets.option_list import Option
 except ImportError:
-    sys.exit("the workbench frontend needs textual -- run: make emu-setup")
+    sys.exit("the remixer frontend needs textual -- run: make emu-setup")
 
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
@@ -103,7 +103,7 @@ _ACRONYMS = {"DJ", "EQ", "FX", "HP", "LP", "MS", "AB"}
 
 
 def titlecase(s: str) -> str:
-    """One naming rule for every name the workbench prints.
+    """One naming rule for every name the remixer prints.
 
     The lists mixed three conventions and it showed: OUR modules carry a
     panel name in camel case (`BongDelay`), the STOCK effects carry the
@@ -116,7 +116,7 @@ def titlecase(s: str) -> str:
     only re-cased when it is entirely upper (or entirely lower), and known
     acronyms keep their case.
 
-    ⚠️ This is the WORKBENCH's own text only. The emulated panel draws
+    ⚠️ This is the REMIXER's own text only. The emulated panel draws
     strings captured from the firmware and is never re-cased -- it has to
     show what the unit shows.
     """
@@ -195,20 +195,26 @@ def chooser_slot(order, key):
 
 # Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
 # default (31 Aug 2026: test_audio + demo_sources are full of processed
-# renders and made the browser unusable), but a bench is used on whatever
+# renders and made the browser unusable), but a remixer gets used on whatever
 # material is to hand, so `d` points it somewhere else and CONFIG remembers.
-CONFIG = ROOT / "out" / "_audition" / "workbench.json"
+CONFIG = ROOT / "out" / "_audition" / "remixer.json"
+# Its name until 3 Sep 2026. Read as a fallback so the sample folder somebody
+# chose does not silently revert to out/dry/ because the tool was renamed;
+# the next save writes the new name and this stops mattering.
+OLD_CONFIG = ROOT / "out" / "_audition" / "workbench.json"
 DEFAULT_SOURCE_DIR = ROOT / "out" / "dry"
 
 
 def load_config():
     """{} on anything unreadable -- a corrupt settings file must not stop the
-    workbench opening, it is a convenience, not state anyone can lose work
+    remixer opening, it is a convenience, not state anyone can lose work
     from."""
-    try:
-        return json.loads(CONFIG.read_text())
-    except Exception:                                # noqa: BLE001
-        return {}
+    for path in (CONFIG, OLD_CONFIG):
+        try:
+            return json.loads(path.read_text())
+        except Exception:                            # noqa: BLE001
+            continue
+    return {}
 
 
 def save_config(cfg):
@@ -222,7 +228,11 @@ def save_config(cfg):
 def source_dir():
     """The directory the SOURCE row browses, in precedence order: the env
     override, what `d` last chose, then out/dry/."""
-    env = os.environ.get("WORKBENCH_SOURCES")
+    # WORKBENCH_SOURCES was its name until 3 Sep 2026 and is still honoured:
+    # an env var lives in somebody's shell profile, where a rename is not a
+    # rename but a silent stop working.
+    env = (os.environ.get("REMIXER_SOURCES")
+           or os.environ.get("WORKBENCH_SOURCES"))
     if env:
         return pathlib.Path(env).expanduser()
     saved = load_config().get("source_dir")
@@ -318,7 +328,7 @@ HELP = {
     # every paragraph ended in an orphan ("order", "draw", "your", "a") and
     # the page read as broken. Only the key table is hard-wrapped, and it is
     # short enough never to be re-flowed.
-    "bench": """[bold]THE BENCH[/] — compose the effects list your unit shows, and hear each one before you commit to it.
+    "remixer": """[bold]THE REMIXER[/] — compose the effects list your unit shows, and hear each one before you commit to it.
 
 [bold]AVAILABLE[/] is everything that COULD be in an image: your modules, then the stock effects the box already ships. [bold]LOADED[/] is the image you are composing, in the order the unit's chooser will show it. [bold]UNIT[/] follows the cursor — the selected effect's knobs, the firmware's own draw of its page, and `r` to hear it on the SOURCE wav.
 
@@ -414,14 +424,14 @@ class HelpScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
-# ---- THE BENCH: one page, three panes ---------------------------------------
+# ---- THE REMIXER: one page, three panes ---------------------------------------
 AVAILABLE, LOADED, UNIT = 0, 1, 2
 # The unit's own order: FX1 then FX2 are the two slots on a
 # track; MAIN MENU is the odd one out and goes last.
 PREVIEWS = ("FX1", "FX2", "MENU")
 
 
-class BenchScreen(Screen):
+class RemixerScreen(Screen):
     """One page: the library, the image being composed, and the selected unit.
 
     Three panes, left to right, matching how the work actually goes: what
@@ -452,7 +462,7 @@ class BenchScreen(Screen):
         Binding("full_stop", "play_mark('B')", "play B", show=False),
         # SHOWN ONLY WHEN IT APPLIES (check_action). It is the key that
         # gets a broken selection building again -- the one gesture the
-        # workbench is built around leaves one -- and it was the only
+        # remixer is built around leaves one -- and it was the only
         # important key hidden from the footer.
         Binding("x", "fix", "fix it"),
         Binding("c", "build('check')", "full check", show=False),
@@ -472,7 +482,7 @@ class BenchScreen(Screen):
     def compose(self) -> ComposeResult:
         # A TAB BAR, but only when the panes are not all on screen. It names
         # all three and marks the one you are in, so a narrow terminal reads
-        # as a workbench showing you a third at a time rather than one with
+        # as a remixer showing you a third at a time rather than one with
         # two thirds missing. Full width, because the titles carry context
         # ("Loaded · chongbong") that will not fit in a 32-column pane head.
         yield Static(id="tabbar")
@@ -486,7 +496,7 @@ class BenchScreen(Screen):
         # against -- true, but it is context for the IMAGE, not for the one
         # effect the cursor is on, and it was charging the unit column ten
         # lines for the privilege. The preview lives in that column and is
-        # the tallest thing in the workbench (the firmware's own draw of a
+        # the tallest thing in the remixer (the firmware's own draw of a
         # page), so it was the one being truncated. Down here it costs the
         # panes nothing, and the extra width lets it read in two columns
         # instead of one long list.
@@ -519,7 +529,7 @@ class BenchScreen(Screen):
         self._dirty = False
         self.set_interval(1 / 60, self._flush)
         self._run = (None, True, 0.0, 0)   # see _accel()
-        # EDIT THE SOURCE IN ANOTHER WINDOW AND THE BENCH FOLLOWS. The image
+        # EDIT THE SOURCE IN ANOTHER WINDOW AND THE REMIXER FOLLOWS. The image
         # already tracks the SELECTION; it has to track the CODE too, or the
         # panel and every render silently describe the .asm you had a minute
         # ago. Polled rather than watched: one stat sweep of modules/ is
@@ -543,7 +553,7 @@ class BenchScreen(Screen):
     # `Stock` / `· id` / `0x04` one word per line down the screen, both list
     # panes were cut off mid-list, and the Budget strip took nine of the
     # twenty-four rows. An 80x24 terminal is what a new pair of hands opens,
-    # so that was the first impression the workbench made.
+    # so that was the first impression the remixer made.
     #
     # Below the threshold it shows ONE pane at full width and `tab` moves
     # between them, with the titles becoming a strip naming all three so the
@@ -643,7 +653,7 @@ class BenchScreen(Screen):
         -- so pressing `r` on them plays the source back unchanged. That is
         FAITHFUL: the defaults are read from the firmware's own descriptor
         (tools/remix/stock.py), an unmodified unit really does start them
-        fully dry, and seeding a different value here would make the bench
+        fully dry, and seeding a different value here would make the remixer
         lie about the page it is drawing beside. But it reads as "this effect
         does nothing", which is what it cost on 2 Sep 2026. So say it.
         """
@@ -940,7 +950,7 @@ class BenchScreen(Screen):
     def _pane_budget(self, st, probs):
         """WHAT IS LEFT, standing under the effect you are looking at.
 
-        Every other number in this workbench is read against this one -- "500
+        Every other number in this remixer is read against this one -- "500
         words" means nothing without "and 313 are free" -- and it used to be
         something you inferred from a refusal. Four scarce things, and only
         four: the two donor regions, the FX2 buffer slots per core, the
@@ -1574,7 +1584,7 @@ class BenchScreen(Screen):
         # once a frame. Every other path still renders immediately.
         self.rerender_soon()
 
-    # A HELD KEY ACCELERATES. The workbench stopped being the limit once the
+    # A HELD KEY ACCELERATES. The remixer stopped being the limit once the
     # panel render was cached (0.012 ms per key event, 86k/s) -- but macOS
     # repeats a held key at its default ~15/s after a 375 ms delay, so a
     # 0..127 knob still took ~8.5 s to sweep and there is nothing an app can
@@ -1729,7 +1739,7 @@ class BenchScreen(Screen):
     # falls back to the firmware's own NONE (schema.NO_FALLBACK), places no
     # code and assembles to A 0/2724 · B 0/2724 -- the chooser an unmodified
     # unit shows, rebuilt from our own tables. It used to be unbuildable for
-    # one reason only: the fallback had to be a module of ours, so the bench
+    # one reason only: the fallback had to be a module of ours, so the remixer
     # opened on a selection it had to apologise for ("stock -- swap a module
     # in to build it") and the panel drew nothing until you did.
 
@@ -1889,9 +1899,9 @@ class BenchScreen(Screen):
     def action_source_dir(self):
         """Point the SOURCE row at another folder, and remember it.
 
-        A bench is used on whatever material is to hand; out/dry/ is a good
+        A remixer gets used on whatever material is to hand; out/dry/ is a good
         default, not a permanent one. Remembered in out/_audition/
-        workbench.json, and WORKBENCH_SOURCES overrides both.
+        remixer.json, and REMIXER_SOURCES overrides both.
         """
         st = self.app.state
         cur = source_dir()
@@ -1900,7 +1910,7 @@ class BenchScreen(Screen):
             if not text:
                 return
             # RESOLVED before it is stored: a relative path would be read
-            # back against whatever directory the workbench is next started
+            # back against whatever directory the remixer is next started
             # from, and `make remix` being run from the repo root is a
             # convention, not a guarantee.
             d = pathlib.Path(text.strip()).expanduser()
@@ -1921,7 +1931,7 @@ class BenchScreen(Screen):
             TextPrompt("source folder for the SOURCE row:", str(cur)), chosen)
 
     def action_help(self):
-        self.app.push_screen(HelpScreen("bench"))
+        self.app.push_screen(HelpScreen("remixer"))
 
     # ---- audio -----------------------------------------------------------
     def action_render(self, mark=None):
@@ -2099,7 +2109,7 @@ class BenchScreen(Screen):
             def documented(doc):
                 pth = ROOT / f"remixes/{name}.py"
                 pth.write_text(st.as_remix(
-                    name, doc or "a selection composed in the workbench"))
+                    name, doc or "a selection composed in the remixer"))
                 st.loaded_name = name
                 st.msg = f"wrote remixes/{name}.py"
                 self.rerender()
@@ -2109,8 +2119,8 @@ class BenchScreen(Screen):
 
 
 # ---- the app ---------------------------------------------------------------
-class Workbench(App):
-    TITLE = "remix workbench"
+class Remixer(App):
+    TITLE = "remixer"
     CSS = """
     /* The panes must FILL the row for their left borders to run the whole
        way down -- a Static is only as tall as its text, so the dividers
@@ -2131,7 +2141,7 @@ class Workbench(App):
     #status { height: 1; padding: 0 1; }
     #log { height: 12; border-top: dashed $surface; }
     """
-    MODES = {"bench": BenchScreen}
+    MODES = {"remixer": RemixerScreen}
     # App-level so it works from every view; modals handle their own escape
     # first, and no screen binds it, so escape is unambiguous.
     BINDINGS = [Binding("escape", "stop_play", "stop audio")]
@@ -2150,14 +2160,15 @@ class Workbench(App):
 
     def on_mount(self):
         # ansi-dark renders in the TERMINAL's own 16-color palette, so the
-        # workbench wears whatever theme Alacritty wears instead of Textual's
-        # truecolor default. WORKBENCH_THEME picks any built-in Textual theme
+        # remixer wears whatever theme Alacritty wears instead of Textual's
+        # truecolor default. REMIXER_THEME picks any built-in Textual theme
         # (e.g. gruvbox, nord, textual-dark) for anyone who wants otherwise.
         import os
         from textual.theme import BUILTIN_THEMES
-        want = os.environ.get("WORKBENCH_THEME", "ansi-dark")
+        want = (os.environ.get("REMIXER_THEME")
+                or os.environ.get("WORKBENCH_THEME") or "ansi-dark")
         self.theme = want if want in BUILTIN_THEMES else "ansi-dark"
-        self.switch_mode("bench")
+        self.switch_mode("remixer")
 
     def play(self, path):
         """afplay, one at a time -- a new play stops the old."""
@@ -2190,5 +2201,5 @@ class Workbench(App):
 
 if __name__ == "__main__":
     if not sys.stdout.isatty():
-        sys.exit("the remix workbench needs a terminal (try: make remix)")
-    Workbench().run()
+        sys.exit("the remixer needs a terminal (try: make remix)")
+    Remixer().run()

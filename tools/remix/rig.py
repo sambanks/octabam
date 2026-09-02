@@ -1,4 +1,4 @@
-"""What a module IS, in the terms the workbench and the harness need.
+"""What a module IS, in the terms the remixer and the harness need.
 
 Everything below this speaks modules and payloads. This layer answers the
 questions a person asks instead: what kind of thing is this, which tracks can
@@ -8,7 +8,7 @@ actually offer.
 ⚠️ The per-TRACK rig this file was named for is GONE (2 Sep 2026). Eight
 tracks with an effect on each was a second place to say what a remix already
 says, and knob values belong to the EFFECT rather than to a track -- so the
-workbench is one page about an image, and `State.knobs_for(mod)` holds the
+remixer is one page about an image, and `State.knobs_for(mod)` holds the
 values. The helpers below survived because they were never about tracks:
 they are about modules.
 
@@ -25,7 +25,7 @@ here -- the manifest is the single place a module states what it is
           payloads, runs on any track.
   STOCK   a stock FX2 effect the remix keeps in the chooser (Kind.STOCK,
           tools/remix/stock.py) -- code already in both payloads, any
-          track. No knobs here: the workbench has no manifest for stock
+          track. No knobs here: the remixer has no manifest for stock
           params, and no local render yet either.
   SYSTEM  everything else: the SEND client, ColdFire patches. Plumbing the
           image needs, never something you put on a track.
@@ -45,7 +45,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 TRACKS = range(1, 9)
 # Which tracks each payload's core serves. Measured 10 Aug 2026 (MrkVerb32
 # marker flash); the inversion from old docs cost two flashes, so this is the
-# one place the workbench states it.
+# one place the remixer states it.
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
 # BUS, not "server". It is the natural opposite of INSERT and the word this
@@ -373,7 +373,7 @@ def allocating_names() -> str:
 
 def pins_fx2(mod) -> bool:
     """Does this module hold FX2 instance buffers at fixed addresses? The
-    ledger's own `fixed` test, in one place so the workbench cannot drift
+    ledger's own `fixed` test, in one place so the remixer cannot drift
     from it (it did: BongDelay declares owns_fx2_buffers=False because its
     lines are in the shared window, and the pane said nothing about buffers
     for it while the ledger refused it beside all seven)."""
