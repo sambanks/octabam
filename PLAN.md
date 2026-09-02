@@ -561,6 +561,74 @@ is the slice of that road worth having.
 
 ---
 
+### 6. On-device labels for the mode selects (backlogged 2 Sep 2026)
+
+**Today every stepped select on the unit reads as a NUMBER.** WarpFold's MODE
+draws `1 2 3` where the manifest already says `FOLD RING BOTH`; the operator
+has to remember which is which, on all twelve of them:
+
+| module | slot | select | labels already authored |
+|---|---|---|---|
+| REVERB SERVER | 7 / 9 / 11 | MODE / SHFT / RATE | ROOM PLATE BIG · +12 +19 +7 −12 · 0.5x 1x 2x 4x |
+| DELAY SERVER | 7 / 9 / 11 | MODE / PTCH / FRZE | CLEAN PITCH (tape) GRAIN REVRS · +12 +7 −12 det · RUN HOLD |
+| WARPFOLD / RIPPLE / RUNGS / STREAMZ / BODESHIFT | 7 | MODE | FOLD RING BOTH · LP BP HP · STRING BELL GLASS · LPG VCF VCA · UP DOWN WIDE |
+| NIMBUS | 7 | FRZE | RUN HOLD |
+
+**Every piece already exists**, which is why this is a wiring job and not a
+project:
+
+- `docs/PARAM_PAGES.md` §7 has the ABI and the design: `void fmt(char *buf,
+  int value)`, every stock formatter a thin `sprintf` wrapper, and **"a
+  labelled select is a ~20-byte code cave"** — index a pointer table by
+  value, put the pointer where the format string goes, `jmp sprintf`. The
+  `0x4003c14c` (`ON`/`OFF`) formatter proves the shape: *the label IS the
+  format string.*
+- `CavePatch(registers_formatter=FormatterReg(module=..., slot=...))` is the
+  installer, and it is **hardware-proven** — `modules/tempo-sync/time_fmt.s`
+  has been drawing BongDelay's TIME as a tempo division since R56 (24 Aug,
+  confirmed on the unit).
+- `Param.labels` is **already authored and schema-validated** against
+  `count` in all twelve slots. The build never reads it (the refhash gate
+  proves that); this is the change that makes it load-bearing.
+
+**What is NEW since §7 was written on 24 Aug, and why it is worth another
+look now rather than then:**
+
+1. **§7 was derived with r2, and r2 cannot decode this CPU.** 6,757
+   instructions it mis-decodes, and it *invents plausible code* rather than
+   failing (`docs/EXTERNAL.md`, 30 Aug). The 90-address re-check found
+   nothing broken, but every formatter address in that table should be
+   re-read with `scripts/disasm.sh emac` before a byte is pinned against it.
+2. **We can now RUN a formatter and read what it prints.**
+   `tools/stock_labels.py` (2 Sep) drives every stock formatter for every
+   value on the emulated ColdFire and checks the words in. That is an
+   empirical oracle for the ABI *and* a ready-made harness for testing ours
+   against stock's before it ever reaches a unit.
+3. **The emulator draws the FX2 page.** `emu_bringup.render_fx2()` renders
+   EFFECT 2 SETUP from the built image. A new formatter can be seen working,
+   locally, with no flash — which was impossible in August and is the whole
+   reason this is cheap now.
+4. **The space is measured.** 2,612 B free in the cave region for
+   `chongbong`, 1,756 B for `mutables` (−416 B per additional cloned
+   effect). At ~20 bytes of code plus a pointer table plus the strings, all
+   twelve fit comfortably — but `mutables` carries five of them and is the
+   tightest remix, so cost it there, not on chongbong.
+
+**⚠️ Labels do not fix the WIDGET.** The "B" array is a separate drawer with
+its position count HARD-CODED (`0x40047254` is 5-tick, `0x40047424` is
+3-position), which is why BongDelay's 4-value PTCH sits on a 5-tick widget.
+A labelled select still draws on whatever tick count its donor's B callback
+has. Setting `B = 0` gives the plain dial that prints whatever A wrote —
+possibly the better answer for a 4- or 5-value select, and it is what stock
+DELAY TIME does. Decide that per slot; `verify_menu` already checks the
+renderer against the count and will refuse a mismatch.
+
+**Shape of the work**, smallest first: one generic cave that takes a table
+address, then one table per select generated from `Param.labels`, then a
+manifest field so a module asks for it declaratively rather than hand-writing
+a `CavePatch`. First customer should be a 3-value MODE whose donor widget
+already has three positions, so nothing about the widget is in play.
+
 ## Open items and standing caveats
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**
