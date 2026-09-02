@@ -570,7 +570,7 @@ has to remember which is which, on all twelve of them:
 | module | slot | select | labels already authored |
 |---|---|---|---|
 | REVERB SERVER | 7 / 9 / 11 | MODE / SHFT / RATE | ROOM PLATE BIG · +12 +19 +7 −12 · 0.5x 1x 2x 4x |
-| DELAY SERVER | 7 / 9 / 11 | MODE / PTCH / FRZE | CLEAN PITCH (tape) GRAIN REVRS · +12 +7 −12 det · RUN HOLD |
+| DELAY SERVER | 7 / 9 / 11 | MODE / PTCH / FRZE | CLEAN PITCH (CLEAN) GRAIN REVRS · +12 +7 −12 det · RUN HOLD |
 | WARPFOLD / RIPPLE / RUNGS / STREAMZ / BODESHIFT | 7 | MODE | FOLD RING BOTH · LP BP HP · STRING BELL GLASS · LPG VCF VCA · UP DOWN WIDE |
 | NIMBUS | 7 | FRZE | RUN HOLD |
 
