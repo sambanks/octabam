@@ -807,38 +807,43 @@ class BenchScreen(Screen):
         # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
         # FX1 then FX2, so track k's FX2 effect always gets table entry 1+2k
         # -- 0x4000, 0x8000, then the shared-window pair (docs/DSP.md, "the
-        # allocator's instance model"). So a slot is not "a buffer somebody
-        # might take", it is one particular track's buffer, and naming the
-        # tracks that are still free is the useful form: those are the ones
-        # that can still host an allocating stock effect.
-        for tag, tracks in (("A", rig.PAYLOAD_TRACKS["A"]),
-                            ("B", rig.PAYLOAD_TRACKS["B"])):
-            taken = set()
+        # allocator's instance model").
+        #
+        # So the four boxes are FOUR TRACKS, and the useful sentence is WHO
+        # has taken which and what is left. "4 of 4, none free" was accurate
+        # and told you neither.
+        for tag in ("A", "B"):
+            tracks = rig.PAYLOAD_TRACKS[tag]
+            owner = {}
             for m in st.selected:
                 if not rig.pins_fx2(m):
                     continue
                 tr = rig.track_range(m)
-                here = (not len(tr) or len(tr) == 8
-                        or tr.start == tracks.start)
-                if not here:
+                if not (not len(tr) or len(tr) == 8 or tr.start == tracks.start):
                     continue
-                # The core-private pair is tracks 1-2 of the core, the
-                # shared-window pair tracks 3-4 (rig.pinned_slots counts
-                # them; this needs to know WHICH).
                 cl = getattr(m, "claims", None)
-                if cl is not None and cl.owns_fx2_buffers:
-                    taken |= {0, 1}
                 from remix.schema import YBase
+                if cl is not None and cl.owns_fx2_buffers:
+                    owner.setdefault(0, m); owner.setdefault(1, m)
                 if m.dsp is not None and m.dsp.ybase is not YBase.NEVER:
-                    taken |= {2, 3}
-            free = [tracks.start + i for i in range(4) if i not in taken]
+                    owner.setdefault(2, m); owner.setdefault(3, m)
+            free = [tracks.start + k for k in range(4) if k not in owner]
             c = OK if len(free) > 2 else WARN if free else BAD
-            slots = " ".join("####" if i in taken else "...."
-                             for i in range(4))
-            tail = (f"[dim]free on {', '.join(str(t) for t in free)}[/]"
-                    if free else "[dim]none free[/]")
+            slots = " ".join("####" if k in owner else "...."
+                             for k in range(4))
+            said, bits = set(), []
+            for k in sorted(owner):
+                mod = owner[k]
+                if mod.key in said:
+                    continue
+                said.add(mod.key)
+                mine = ",".join(str(tracks.start + i) for i in sorted(owner)
+                                if owner[i] is mod)
+                bits.append(f"{disp(mod)} has {mine}")
+            if free:
+                bits.append(f"[{OK}]free {','.join(str(t) for t in free)}[/]")
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       f"{len(taken)} of 4  {tail}")
+                       + " · ".join(bits or ["[dim]all four free[/]"]))
 
         # Rows are countable without a build; the cave is not.
         # Same rule: 31 exist, this selection loaded N.
@@ -868,8 +873,8 @@ class BenchScreen(Screen):
         # remix actually decides.
         out.append("[dim] # loaded by a module · - held by a listed reverb "
                    "· . free[/]")
-        out.append("[dim] one FX2 buffer per track; a free one can host a "
-                   "stock effect[/]")
+        out.append("[dim] one FX2 buffer per track — a free track can still "
+                   "host a stock effect that needs one[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):
