@@ -405,12 +405,27 @@ even though it is unoccupied — keeping PLATE alone leaves 2,130 words by size
 and **0 you can actually place**. The figure shown is the placeable one; it
 equals the subtraction for every other combination (checked for all four).
 
-⚠️ **The buffer rows count what a MODULE pins, not slots in use.** ChonVerb
-holds all four of its core's, BongDelay two of its core's, Nimbus two of
-whichever core hosts it. A **stock** effect never appears there: it takes a
-slot from the allocator *at runtime*, per instantiated effect per block, which
-no image can reserve — and that runtime contest is exactly what the ledger
-refuses a pinner beside an allocating stock effect for.
+⚠️ **The FX2 buffer slots are ONE PER TRACK, not a pool.** Each track
+allocates an FX1 slot and then an FX2 slot, so track *k*'s FX2 effect always
+gets table entry `1 + 2k` — `0x4000`, `0x8000`, then the shared-window pair
+(`docs/DSP.md`, "the allocator's instance model"). Nothing is handed out
+first-come.
+
+So a slot is not "a buffer somebody might take", it is **one particular
+track's** buffer, and the row names the tracks still free — those are exactly
+the ones that can host an allocating stock effect:
+
+```
+ FX2 buf A #### #### #### ####  4 of 4  none free
+ FX2 buf B .... .... #### ####  2 of 4  free on 1, 2
+```
+
+With `chongbong`, ChonVerb holds all four of core 0's (tracks 5–8) and
+BongDelay tracks 3–4's on core 1 — so **FLANGER on track 1 or 2 would be
+fine**. The ledger still refuses it, and correctly: the FX2 chooser is one
+list for all eight tracks, so an image cannot say "FLANGER, but only on
+tracks 1–2". The refusal is the image being unable to constrain the operator,
+not a claim that every track collides.
 
 The four slots are drawn as four groups so the picture and the number agree,
 and the number says what it counts: `0 pinned of 4`. Two earlier forms were

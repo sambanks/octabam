@@ -804,44 +804,41 @@ class BenchScreen(Screen):
             out.append(f" {'words':<{W}}[dim]"
                        + "?" * 20 + "[/]  [dim]not built[/]")
 
-        # FX2 buffer slots, per core. Four each, and a pinner takes two or
-        # all four of ONE core's -- which is why the two servers coexist.
-        for tag, tracks in (("A", "5-8"), ("B", "1-4")):
-            taken = 0
+        # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
+        # FX1 then FX2, so track k's FX2 effect always gets table entry 1+2k
+        # -- 0x4000, 0x8000, then the shared-window pair (docs/DSP.md, "the
+        # allocator's instance model"). So a slot is not "a buffer somebody
+        # might take", it is one particular track's buffer, and naming the
+        # tracks that are still free is the useful form: those are the ones
+        # that can still host an allocating stock effect.
+        for tag, tracks in (("A", rig.PAYLOAD_TRACKS["A"]),
+                            ("B", rig.PAYLOAD_TRACKS["B"])):
+            taken = set()
             for m in st.selected:
                 if not rig.pins_fx2(m):
                     continue
                 tr = rig.track_range(m)
                 here = (not len(tr) or len(tr) == 8
-                        or (tag == "A" and tr.start == 5)
-                        or (tag == "B" and tr.start == 1))
-                if here:
-                    taken = max(taken, rig.pinned_slots(m))
-            free = 4 - taken
-            c = OK if free > 2 else WARN if free else BAD
-            # "4 of 4" was ambiguous and read as the opposite of what it
-            # meant: the bar shows what is PINNED and the number what is
-            # FREE, so an empty bar beside "4 of 4" looked like "all four
-            # used". Say "free", as the word rows do, and draw the four
-            # slots as four groups so the picture and the number agree.
-            slots = " ".join("####" if i < taken else "...."
+                        or tr.start == tracks.start)
+                if not here:
+                    continue
+                # The core-private pair is tracks 1-2 of the core, the
+                # shared-window pair tracks 3-4 (rig.pinned_slots counts
+                # them; this needs to know WHICH).
+                cl = getattr(m, "claims", None)
+                if cl is not None and cl.owns_fx2_buffers:
+                    taken |= {0, 1}
+                from remix.schema import YBase
+                if m.dsp is not None and m.dsp.ybase is not YBase.NEVER:
+                    taken |= {2, 3}
+            free = [tracks.start + i for i in range(4) if i not in taken]
+            c = OK if len(free) > 2 else WARN if free else BAD
+            slots = " ".join("####" if i in taken else "...."
                              for i in range(4))
-            # SAY WHAT IS COUNTED IN THE NUMBER ITSELF. "N of 4 free" still
-            # invited "free for what?", and the honest answer -- slots a
-            # MODULE holds fixed -- is not what a reader assumes a budget row
-            # means. A stock effect is not in this count at all: it takes one
-            # from the allocator at runtime, which no image can reserve.
-            # AND WHO ELSE WANTS THEM. "0 pinned of 4" is true and reads as
-            # "nothing is using these", which is false: every allocating
-            # stock effect in the chooser takes one at runtime. The image
-            # cannot reserve those, so they are not part of the count -- but
-            # leaving them unmentioned made the row lie by omission.
-            share = sum(1 for m in st.selected if m.is_stock
-                        and m.claims is not None
-                        and m.claims.stock_instance_buffer)
-            also = f"  [dim]+{share} stock share[/]" if share else ""
+            tail = (f"[dim]free on {', '.join(str(t) for t in free)}[/]"
+                    if free else "[dim]none free[/]")
             out.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{slots}[/]  "
-                       f"{taken} pinned of 4  [dim]tracks {tracks}[/]{also}")
+                       f"{len(taken)} of 4  {tail}")
 
         # Rows are countable without a build; the cave is not.
         # Same rule: 31 exist, this selection loaded N.
@@ -871,8 +868,8 @@ class BenchScreen(Screen):
         # remix actually decides.
         out.append("[dim] # loaded by a module · - held by a listed reverb "
                    "· . free[/]")
-        out.append("[dim] pinned = held by a module; stock effects take "
-                   "theirs at runtime[/]")
+        out.append("[dim] one FX2 buffer per track; a free one can host a "
+                   "stock effect[/]")
         self._paint("#pane_budget", out)
 
     def _pane_unit(self, st, probs):

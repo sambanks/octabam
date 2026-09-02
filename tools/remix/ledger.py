@@ -132,17 +132,21 @@ def check(selected) -> list[str]:
     #   core 0 FX2:  0x4000  0x8000  0x30000  0x34000
     #   core 1 FX2:  0x4000  0x8000  0x38000  0x3c000
     #
-    # ChonVerb is ALL FOUR of core 0's -- tank in the first two, relocated
-    # buffers in the other two -- so any allocating stock effect sharing that
-    # core certainly collides. Nimbus is the first two. BongDelay is core 1's
-    # LAST TWO (its lines are based at 0x38000), so a stock effect there
-    # collides only if the allocator hands it slot 3 or 4.
+    # ⚠️ AND THE SLOTS ARE ONE PER TRACK, not a pool: each track allocates
+    # FX1 then FX2, so track k's FX2 effect always gets entry 1+2k
+    # (docs/DSP.md, "the allocator's instance model"). Nothing is first-come.
     #
-    # THAT IS STILL A REFUSAL, and the reason is the difference between
-    # "certain" and "unpredictable": which slot an effect gets depends on how
-    # many FX2 effects the dispatcher has already walked this block, and
-    # which track the operator picks is not something an image can constrain.
-    # Each works perfectly alone, which is the worst shape a defect can have.
+    #   ChonVerb   all four of its core's -- tank in tracks 1-2's slots,
+    #              relocated buffers in tracks 3-4's. No track on that core
+    #              can host an allocating stock effect.
+    #   Nimbus     tracks 1-2's slots of whichever core hosts it.
+    #   BongDelay  tracks 3-4's (its lines are based at 0x38000/0x3c000), so
+    #              on ITS core an allocating stock effect is safe on tracks
+    #              1-2 and collides on 3-4.
+    #
+    # THAT IS STILL A REFUSAL, because the chooser is ONE LIST for all eight
+    # tracks: the image cannot say "FLANGER, but only on tracks 1-2". Each
+    # works perfectly alone, which is the worst shape a defect can have.
     fixed = [m for m in selected
              if (getattr(m, "claims", None) is not None
                  and m.claims.owns_fx2_buffers)
