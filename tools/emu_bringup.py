@@ -359,15 +359,30 @@ def _prime_menu(r):
     uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED
                 | UC_HOOK_MEM_FETCH_UNMAPPED, on_unmapped)
     uc.ctl_flush_tb()
-    _call(uc, MENU_OPEN)                     # allocate + set the menu window
-    uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
-    uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
+    _open_menu_window(uc)
     # The root descriptor's rows field (0x400cbd8c+0x18) IS the MENU_ROWS
     # global that render repoints, so capture the root list ONCE now — after
     # this, reading the root descriptor gives whatever we last rendered.
     r._root_rows = _u32(uc, MENU_ROOT_DESC + 0x18)
     r._root_count = _u32(uc, MENU_ROOT_DESC)
     r._menu_ready = True
+
+
+def _open_menu_window(uc):
+    """Make the MENU the CURRENT window again.
+
+    ⚠️ Not one-time setup, though it was written as if it were. Rendering an
+    FX page (`render_fx2`/`render_fx1`) opens ITS window, and `MENU_DRAW`
+    afterwards draws for a window that is no longer the menu's -- it captures
+    NOTHING, silently, for the rest of the session. So the main-menu preview
+    worked only if it happened to be the first thing rendered, and in the
+    workbench it never was: FX2 is the default view. Found 2 Sep 2026 by
+    rendering the four views in sequence and counting the draws (12, 26, 0).
+    Re-opening is cheap and the round trip works in both directions.
+    """
+    _call(uc, MENU_OPEN)                     # allocate + set the menu window
+    uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
+    uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
 
 
 def _list_of(r, desc):
@@ -407,9 +422,8 @@ def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
     uc = r.uc
     if uc is None or not r.reached_handoff:
         return []
-    try:
-        if not getattr(r, "_menu_ready", False):
-            _prime_menu(r)
+    def once():
+        _open_menu_window(uc)            # an FX render may own the window now
         rows, count = _list_of(r, desc)
         uc.mem_write(MENU_ROWS, rows.to_bytes(4, "big"))
         uc.mem_write(MENU_COUNT, count.to_bytes(4, "big"))
@@ -418,9 +432,32 @@ def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
         uc.mem_write(MENU_SELROW, int(cursor).to_bytes(4, "big"))
         r._draws.clear()
         _call(uc, MENU_DRAW)
+
+    try:
+        if not getattr(r, "_menu_ready", False):
+            _prime_menu(r)
+        once()
+        if not r._draws:                 # MENU_OPEN toggles, same as the FX
+            once()                       # pages -- see _call_page
     except UcError:
         pass
     return list(r._draws)
+
+
+def _call_page(uc, entry, draws):
+    """Call an FX SETUP entry point and make sure it actually DREW.
+
+    ⚠️ THESE ENTRY POINTS TOGGLE. `FX2_SETUP` opens the page on one call and
+    closes it on the next, so consecutive renders alternate 26 draws, 0, 26,
+    0 -- and a workbench that re-renders on every keystroke showed an empty
+    LCD half the time. Found 2 Sep 2026 by calling render_fx2 four times in
+    a row and counting; it reads as "the emulator is broken", which is why
+    it survived so long. A second call re-opens it.
+    """
+    draws.clear()
+    _call(uc, entry)
+    if not draws:
+        _call(uc, entry)
 
 
 def _prime_part(r):
@@ -478,8 +515,7 @@ def render_fx2(r, track=4, effect_id=0x07):
     try:
         if effect_id is not None:
             assign_fx2(r, track, effect_id)
-        r._draws.clear()
-        _call(uc, FX2_SETUP)
+        _call_page(uc, FX2_SETUP, r._draws)
     except UcError:
         pass
     return list(r._draws)
@@ -529,8 +565,7 @@ def render_fx1(r, track=4, effect_id=0x04):
             uc.mem_write(PAT_R, (0).to_bytes(1, "big"))
             uc.mem_write(_part_addr(uc, FX1_ID_OFF, track),
                          bytes([effect_id & 0xff]))
-        r._draws.clear()
-        _call(uc, FX1_SETUP)
+        _call_page(uc, FX1_SETUP, r._draws)
     except UcError:
         pass
     return list(r._draws)

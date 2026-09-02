@@ -113,8 +113,18 @@ defaults (a stale default polluted every shimmer measurement until Round 12).
 so choosing what you audition on is one keypress from the knobs. `r` renders
 the effect over it and plays it; `space` replays.
 
-Below that, `p` cycles the **preview**: the firmware's own draw of the
-effect's FX2 page, the MAIN MENU, or the FX1 page.
+Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
+`FX2`, then `MENU` — showing the firmware's own draw of that page.
+
+⚠️ **The FX and MENU page entry points TOGGLE**: calling one opens the page,
+calling it again closes it, so consecutive renders used to alternate between
+a full screen and an empty one (26 draws, 0, 26, 0). A workbench that
+re-renders on every keystroke therefore showed a blank LCD about half the
+time, and the MAIN MENU never drew at all — FX2 is the default view, so the
+menu render was always the second call and an FX page had already taken the
+window. `emu_bringup` now re-issues the call when nothing was captured
+(`_call_page`, `_open_menu_window`). Found 2 Sep 2026 by rendering each view
+four times in a row and counting the draws.
 
 ⚠️ **The preview is a picture of the IMAGE ON DISK, not of the selection**,
 and it says so. The FX2 page includes the firmware's own chooser list, so a

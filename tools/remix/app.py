@@ -274,7 +274,9 @@ class HelpScreen(ModalScreen[None]):
 
 # ---- THE BENCH: one page, three panes ---------------------------------------
 AVAILABLE, LOADED, UNIT = 0, 1, 2
-PREVIEWS = ("FX2", "MENU", "FX1")
+# The unit's own order: FX1 then FX2 are the two slots on a
+# track; MAIN MENU is the odd one out and goes last.
+PREVIEWS = ("FX1", "FX2", "MENU")
 
 
 class BenchScreen(Screen):
@@ -538,14 +540,24 @@ class BenchScreen(Screen):
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
         head = [f"preview {modes}  [dim](p)[/]",
-                "[dim]— drawn by the firmware, from the IMAGE ON DISK —[/]"]
-        if self.stale():
-            head.append("[bold]⚠ that image is NOT this selection[/]"
-                        "[dim] — b rebuilds[/]")
+                "[dim]— drawn by the firmware, from the image on disk —[/]"]
+        # STALE MEANS DO NOT DRAW. Labelling it was not enough: the FX2 page
+        # includes the firmware's own chooser list, so a stale image puts a
+        # different set of effects on screen beside the LOADED pane and reads
+        # as "why are those loaded?". Same principle the unbuilt-module case
+        # already used -- do not draw a convincing picture of the wrong thing.
+        # ⚠️ Boot FIRST, then decide what to show. Returning early on stale
+        # skipped ensure_boot() entirely, so a workbench that opened stale --
+        # which is every fresh launch -- never started the emulator at all,
+        # and the preview stayed dead for the whole session.
         r = self.app.boot
         if r is None:
             self.ensure_boot()
             return head + ["[dim]booting the emulator...[/]"]
+        if self.stale():
+            return head[:1] + [
+                "[bold]the image on disk is not this selection[/]",
+                "[dim]b builds it, then this shows YOUR image[/]"]
         if not r.reached_handoff:
             return head + ["[bold]did not reach the RTOS handoff[/] — a "
                            "patch may have broken early init"]
