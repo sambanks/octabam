@@ -233,6 +233,16 @@ away from FX1 too. Rungs sat on EQUALIZER's `0x0c` and Nimbus on DJ EQ's
 schema now refuses `STOCK_FX2_IDS`; the stock effects themselves are kept
 in a chooser by listing them in the remix (`tools/remix/stock.py`).
 
+**`dsp_host`'S DEFAULT AUDIO BLOCK (X:0x80) SITS INSIDE THE SCRATCH THE
+STOCK EFFECTS USE.** On hardware the dispatcher passes `r0 = 0`: the audio
+block is at X:0 and stock code scratches X:0x20–0xff every block. Our
+modules never touch low X, so the default was harmless for months and then
+made the stock FLANGER render as Nyquist-rate hash and five other stock
+effects 5–17 dB dirtier while passing as "credible" (2 Sep 2026). Eight
+instruction probes were spent clearing the emulator first. `send_probe`
+passes `-audio 0` for a stock render; if a stock effect sounds wrong
+locally, suspect the harness before the effect.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

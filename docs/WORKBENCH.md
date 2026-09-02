@@ -118,13 +118,13 @@ value counts read from the stock descriptor in the pristine image (a
 select shows its count, not stock's word labels) — and **renders** like
 an insert, from a one-time dump of the stock image's payload A
 (`out/dsp/_stock_A.mem`), so nothing about the currently built remix
-matters. Nine of the eleven render credibly (2 Sep 2026: FILTER, EQ,
-DJ EQ, PHASER, CHORUS, SPATIALIZER, COMB, COMPRESSOR, LO-FI — LO-FI
-needed an emulator patch, `tools/dsp56300.patch`, for the `mpyri`
-instruction). Two do not: **DELAY** runs on the ColdFire, so there is no
-DSP code to render and the audition says so; **FLANGER** renders but its
-output is not credible — MIX=0 is not dry and DEP=0/FB=0 still measures
-as broadband hash — cause open (`docs/MODULES.md`).
+matters. Ten of the eleven render (2 Sep 2026): FILTER, EQ, DJ EQ,
+PHASER, FLANGER, CHORUS, SPATIALIZER, COMB, COMPRESSOR, LO-FI — every one
+a bit-exact dry pass at its neutral settings, LO-FI at +6 dB (open) and
+after an emulator patch (`tools/dsp56300.patch`, `mpyri`). **DELAY** runs
+on the ColdFire, so there is no DSP code to render and the audition says
+so. `docs/MODULES.md` has the measurements and the harness lesson (the
+audio block sits at X:0 for a stock render, as on hardware).
 
 ![The REMIX view: modules grouped by category with track ranges, the FX2
 menu as the unit will draw it, and the ledger's verdict —
@@ -273,9 +273,9 @@ through `rich.markup.escape`.
 
 ## Known gaps
 
-- DELAY (stock) has no local render (ColdFire-side); FLANGER's local
-  render is not credible (open). Stock select labels are counts, not
-  stock's word labels.
+- DELAY (stock) has no local render (ColdFire-side); LO-FI renders at
+  +6 dB at zero settings (unexplained). Stock select labels are counts,
+  not stock's word labels.
 - A/B marks attach only to the most recent render (no history cursor).
 - No browse-anywhere source picker (one fixed directory, `out/dry/`).
 - Wet-only rendering is ChonVerb-only.

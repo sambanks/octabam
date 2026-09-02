@@ -94,11 +94,16 @@ panel scrolls — ⚠️ inferred from stock's fifteen-row list, unflashed.
 `docs/MODULES.md` "Keeping STOCK effects in the chooser". Later the same
 day the rig learned to **render them**: knobs read from the stock
 descriptors, audio from a dump of the pristine image through `dsp_host`.
-Nine of eleven render credibly; DELAY cannot (ColdFire-side); FLANGER's
-render is not credible and is open (a negative-immediate `mpyi` is the
-suspect). LO-FI needed the project's first patch to the vendored emulator
-(`tools/dsp56300.patch`, MPYRI) — worth knowing: stock code exercises
-instructions our own modules never did.
+Ten of eleven render, each a bit-exact dry pass at neutral settings;
+DELAY cannot (ColdFire-side). FLANGER looked broken until eight
+instruction probes cleared the emulator and the cause turned out to be the
+harness: hardware puts the audio block at X:0 and stock effects scratch
+right above it, while `dsp_host` defaulted to X:0x80 — fixing that also
+cleaned five other stock renders that had passed as "credible". LO-FI
+needed the project's first patch to the vendored emulator
+(`tools/dsp56300.patch`, MPYRI) and still passes at +6 dB at zero settings
+(open, needs a hardware A/B). Worth knowing: stock code exercises both
+instructions and conventions our own modules never did.
 
 Making them first-class exposed a latent id collision: the DSP dispatch
 tables are shared between FX1 and FX2, and Rungs (`0x0c`) and Nimbus

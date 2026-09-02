@@ -224,20 +224,35 @@ every build null-stubs the reverbs. dsp_host's `-alloc 1` gives a buffered
 effect Y:0x4000, as the hardware gives track 1. Measured 2 Sep 2026 on a
 438 Hz tone at 0.5 FS:
 
-| effect | result |
+| effect | result (audio block at X:0 — see below) |
 |---|---|
 | FILTER | unity at defaults; BASE=20 WDTH=10 Q=100 takes the tone down 27 dB |
-| EQ, DJ EQ, PHASER, COMPRESSOR | pass at defaults, THD −44…−54 dB |
+| EQ, DJ EQ, PHASER, SPATIALIZER, COMB, COMPRESSOR | bit-exact unity at defaults (THD −54 dB = the tone's own) |
+| FLANGER | MIX=0 is a **bit-exact** dry pass (THD −143 dB); full modulation gives a flanged tone |
 | CHORUS | MIX=0 is exactly dry; MIX=127 puts sidebands on the tone (THD −31 dB) |
-| SPATIALIZER, COMB | render, COMB's THD −36 dB is its comb |
-| LO-FI | rendered only after `tools/dsp56300.patch`: the vendored emulator had `mpyri` unimplemented in both interpreter and JIT and aborted at init |
+| LO-FI | rendered only after `tools/dsp56300.patch` (the vendored emulator had `mpyri` unimplemented in both interpreter and JIT and aborted at init). DIST, SRR and AMF/AMD all act. ⚠️ At all-zero settings it passes a clean tone at **exactly 2× the input** (+6 dB), independent of the control flags; whether the unit does the same is unmeasured — falsifier: a hardware A/B at zero settings |
 | DELAY | **no DSP code** — the Echo Freeze delay is ColdFire-side; the audition refuses with that reason |
-| FLANGER | **not credible**: MIX=0 is not dry, DEP=0/FB=0 still measures THD −2 dB (hash), all-zero knobs give near silence. Its process loop multiplies by a NEGATIVE immediate (`mpyi #>$f84c00`), which is the standing suspect for an emulator sign-handling defect; falsifier: a three-instruction probe of `mpyi` with that immediate in dsp_host. Open. |
+
+**The harness lesson that closed FLANGER (2 Sep 2026).** Its first render
+was a Nyquist-rate alternation (+0.94, −0.02, …) that read as hash and
+earned a "not credible" verdict; the emulator's handling of its negative
+immediate multiply was the suspect. Eight instruction probes with exact
+predicted results (modulo copies, `lua (r0)+n0,r4`, `asr #$a`, `lsr`,
+long moves, `move n7,a`) all passed, and its coefficient table was loaded.
+The cause was the harness: the dispatcher's `move #$0,r0` puts the audio
+block at **X:0** on hardware, and stock effects use the X memory right
+after it as scratch — the flanger writes X:0x20–0xff every block —
+while `dsp_host` defaulted the audio block to X:0x80, inside that
+scratch. `send_probe` now passes `-audio 0` for a stock render, which also
+cleaned EQ, DJ EQ, PHASER, SPATIALIZER and COMB by 5–17 dB (they had been
+quietly reading their own scratch as input). Our own modules never touch
+low X, which is why the default never mattered before. The selftest holds
+the line with FLANGER at MIX=0 being bit-exact dry.
 
 ⚠️ These are emulator renders of stock code that was never exercised under
 `dsp_host` before; the servers and inserts were written against it. A
-stock effect that sounds wrong locally is evidence about the emulator
-before it is evidence about the effect.
+stock effect that sounds wrong locally is evidence about the **harness or
+emulator** before it is evidence about the effect — twice now.
 
 ---
 

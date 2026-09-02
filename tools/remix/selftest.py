@@ -14,6 +14,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 from remix import ledger  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
@@ -250,6 +251,46 @@ def main():
         print(f"  [FAIL] duplicate layout letters: {sorted(chars)}")
     else:
         print(f"  [PASS] {len(chars)} distinct layout letters")
+
+    # ---- the stock-render harness puts the audio block where hardware does --
+    # The dispatcher's `move #$0,r0`: the audio block is at X:0 and stock
+    # effects use the X right after it as scratch (the flanger writes
+    # X:0x20-0xff every block). dsp_host's default of X:0x80 sat inside that
+    # scratch and turned FLANGER into a Nyquist-rate alternation while EQ,
+    # DJ EQ, PHASER, SPATIALIZER and COMB were quietly 5-17 dB dirtier than
+    # they should be (2 Sep 2026). Hold the line with the sharpest of them:
+    # FLANGER at MIX=0 is a BIT-EXACT dry passthrough at the right address.
+    import subprocess
+    _host = ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host"
+    _dump = ROOT / "out/dsp/_stock_A.mem"
+    if _host.exists() and stock.STOCK_IMAGE.exists():
+        if not _dump.exists():
+            import dsp_modmap
+            _dump.parent.mkdir(parents=True, exist_ok=True)
+            dsp_modmap.dumpmem(stock.STOCK_IMAGE.read_bytes(), ["A", str(_dump)])
+        r = subprocess.run([sys.executable, "tools/send_probe.py", "--mem",
+                            str(_dump), "--direct", "--pick", "flanger",
+                            "--dur", "0.45", "--tail", "0.05", "--set=MIX=0"],
+                           cwd=ROOT, capture_output=True, text=True)
+        import re as _re
+        m = _re.search(r"THD \(2f\.\.9f\) = *(-?[\d.]+) dB", r.stdout)
+        pk = _re.search(r"peak +([\d.]+) FS", r.stdout)
+        thd = float(m.group(1)) if m else None
+        peak = float(pk.group(1)) if pk else None
+        # The tone metric floors around -54 dB in send_probe's window (a
+        # unity pass of the 0.5 FS tone reads -53.8); the broken state read
+        # peak 1.000 / THD -2 dB. Either number alone discriminates.
+        if (r.returncode == 0 and thd is not None and peak is not None
+                and thd < -50 and abs(peak - 0.5) < 0.005):
+            print(f"  [PASS] stock FLANGER at MIX=0 is a dry pass (peak "
+                  f"{peak:.3f} FS, THD {thd:.0f} dB) -- the audio block is at X:0")
+        else:
+            bad += 1
+            print(f"  [FAIL] stock FLANGER at MIX=0 is not dry (peak {peak}, "
+                  f"THD {thd}) -- is dsp_host's audio block back inside "
+                  f"stock scratch?")
+    else:
+        print("  [SKIP] stock render harness: dsp_host or the stock image is missing")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():
