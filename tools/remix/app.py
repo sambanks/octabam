@@ -347,12 +347,17 @@ class BenchScreen(Screen):
         return [st.mods[k] for k in st.order]
 
     def unit_rows(self, mod):
-        """The knobs of the selected unit, in slot order."""
+        """What the UNIT cursor walks: the sample to audition, then the
+        effect's drawn knobs in slot order. SOURCE is a row rather than a
+        hidden setting because "what am I hearing this on" is the first
+        question at a bench, and it was the one thing the old per-track view
+        got right."""
+        rows = [("SOURCE", None)]
         if mod is None or not mod.params:
-            return []
-        return [(n, s) for n, s in sorted(mod.knob_map().items(),
-                                          key=lambda kv: kv[1])
-                if mod.params[s].active]
+            return rows
+        return rows + [(n, sl) for n, sl in sorted(mod.knob_map().items(),
+                                                   key=lambda kv: kv[1])
+                       if mod.params[sl].active]
 
     def selected_module(self):
         """The unit pane follows whichever pane the cursor is in -- point at
@@ -419,6 +424,15 @@ class BenchScreen(Screen):
             menus = "+".join(rig.menus(m)) or "—"
             line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
+        # The three stock REVERBS are absent from every list above, and their
+        # absence is the kind that reads as a bug. Say where they went.
+        out.append("[dim]── consumed ──[/]")
+        for name in stock.CONSUMED:
+            out.append(f"[dim]   {name:<13} —[/]")
+        out.append("[dim]   these ARE the donor region")
+        out.append("   every module packs into[/]")
+        out.append("")
+        out.append("[dim]enter adds at LOADED cursor[/]")
         self.query_one("#pane_avail", Static).update("\n".join(out))
 
     def _pane_loaded(self, st):
@@ -444,7 +458,10 @@ class BenchScreen(Screen):
             out.append("[dim] (empty — add from the left)[/]")
         probs = st.problems()
         out.append("")
-        out.append("[dim]● = in the built image[/]")
+        out.append("[dim]● = in the built image · ◀fb = fallback[/]")
+        out.append("[dim]← → moves this row (= its panel slot)[/]"
+                   if self.pane == LOADED else
+                   "[dim]tab here to reorder or remove[/]")
         if probs:
             out.append(f"[bold]⚠ {escape(probs[0])}[/]")
         self.query_one("#pane_load", Static).update("\n".join(out))
@@ -471,6 +488,12 @@ class BenchScreen(Screen):
         vals = st.knobs_for(mod)
         for i, (name, slot) in enumerate(knobs):
             here = self.pane == UNIT and i == self.cur[UNIT]
+            if name == "SOURCE":
+                src = (self.app.source.name if self.app.source
+                       else "(none — put wavs in out/dry/)")
+                line = f" SOURCE {escape(src)}"
+                out.append(f"[reverse]{line}[/]" if here else line)
+                continue
             v = vals.get(name, 0)
             hi = rig.knob_max(mod, name)
             if hi < 8:
@@ -487,21 +510,38 @@ class BenchScreen(Screen):
             out.append("[dim] (no drawn parameters)[/]")
         if self.pane == UNIT and knobs:
             name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
+            hint = ("the wav auditioned through this effect — left/right "
+                    "cycles what is in out/dry/" if name == "SOURCE"
+                    else rig.knob_doc(mod, name) or "")
             out.append("")
-            out.append(f"[dim]? {escape(rig.knob_doc(mod, name) or '')}[/]")
-
+            out.append(f"[dim]? {escape(hint)}[/]")
         out.append("")
-        src = self.app.source.name if self.app.source else "(none)"
-        out.append(f"[dim]source {escape(src)} · r renders · space plays[/]")
+        out.append("[dim]← → change · r render + hear · space replay[/]"
+                   if self.pane == UNIT else
+                   "[dim]tab here to change values and audition[/]")
         out.append("")
         out += self._preview(mod)
         self.query_one("#pane_unit", Static).update("\n".join(out))
 
     # ---- the emulated panel ---------------------------------------------
+    def stale(self):
+        """Does the image on disk still match the selection? The preview
+        draws the IMAGE, and when the two disagree it shows one set of
+        effects while the LOADED pane shows another -- which reads as a bug
+        rather than as staleness unless it is said out loud."""
+        want = [m.key for m in self.app.state.menu_modules if not m.is_stock]
+        got = [m.key for _, m in self.image_rows() if m is not None
+               and not m.is_stock]
+        return want != got
+
     def _preview(self, mod):
         modes = " ".join(f"[reverse]{m}[/]" if m == self.preview else
                          f"[dim]{m}[/]" for m in PREVIEWS)
-        head = [f"preview: {modes}  [dim](p)[/]"]
+        head = [f"preview {modes}  [dim](p)[/]",
+                "[dim]— drawn by the firmware, from the IMAGE ON DISK —[/]"]
+        if self.stale():
+            head.append("[bold]⚠ that image is NOT this selection[/]"
+                        "[dim] — b rebuilds[/]")
         r = self.app.boot
         if r is None:
             self.ensure_boot()
@@ -588,13 +628,20 @@ class BenchScreen(Screen):
         self.rerender()
 
     def adjust(self, step):
-        """Change the selected knob. Values live per MODULE."""
+        """Change the selected row. Knob values live per MODULE."""
         st = self.app.state
         mod = self.selected_module()
         knobs = self.unit_rows(mod)
         if not knobs:
             return
         name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
+        if name == "SOURCE":
+            files = wav_sources()
+            if files:
+                i = (files.index(self.app.source)
+                     if self.app.source in files else 0)
+                self.app.source = files[(i + step) % len(files)]
+            return
         vals = st.knobs_for(mod)
         hi = rig.knob_max(mod, name)
         vals[name] = max(0, min(hi, vals.get(name, 0) + step))
@@ -615,10 +662,20 @@ class BenchScreen(Screen):
         if self.pane == AVAILABLE:
             rows = self.avail_rows()
             mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
-            st.toggle(mod.key)
+            if mod.key in st.sel:
+                st.toggle(mod.key)
+                st.msg = f"removed {disp(mod)}"
+            else:
+                # AT THE LOADED CURSOR, not appended. Chooser order is the
+                # panel's row order, so where it lands is the question.
+                at = min(self.cur[LOADED], len(st.order))
+                st.insert_at(mod.key, at)
+                rowno = len([k for k in st.order[:at + 1]
+                              if st.mods[k].menu is not None])
+                st.msg = (f"added {disp(mod)} at chooser row {rowno}"
+                          if mod.menu is not None
+                          else f"added {disp(mod)} (no chooser row)")
             st.loaded_name = ""
-            st.msg = (f"added {mod.key}" if mod.key in st.sel
-                      else f"removed {mod.key}")
         elif self.pane == LOADED:
             rows = self.loaded_rows()
             if not rows:
@@ -815,7 +872,7 @@ class BenchScreen(Screen):
 class Workbench(App):
     TITLE = "remix workbench"
     CSS = """
-    #pane_avail { width: 30; padding: 0 1; }
+    #pane_avail { width: 32; padding: 0 1; }
     #pane_load  { width: 40; padding: 0 1; border-left: dashed $surface; }
     #pane_unit  { width: 1fr; padding: 0 1; border-left: dashed $surface; }
     #status { height: 1; padding: 0 1; }

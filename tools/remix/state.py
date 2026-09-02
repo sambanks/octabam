@@ -101,6 +101,15 @@ class State:
             self.sel.add(key)
             self.order.append(key)
 
+    def insert_at(self, key, i):
+        """Add a module at a CHOSEN position. Chooser order is the panel's row
+        order, so "which slot" is a real question and appending to the end is
+        only ever one answer to it."""
+        if key in self.sel:
+            return
+        self.sel.add(key)
+        self.order.insert(max(0, min(len(self.order), i)), key)
+
     def move(self, key, delta):
         """Shift a selected module earlier (-1) or later (+1) in chooser order."""
         if key not in self.sel:

@@ -59,7 +59,17 @@ knob values belong to the effect rather than to a track.
 
 Everything that *could* be in an image: your modules grouped **server** /
 **insert** / **system**, then the stock effects the unit already ships. `✓`
-marks what the current selection holds; `enter` adds or removes.
+marks what the current selection holds.
+
+**`enter` adds at the LOADED pane's cursor**, not at the end — chooser order
+*is* the panel's row order, so "which slot" is the question, and the status
+line answers it ("added ChonVerb at chooser row 3"). `left`/`right` in LOADED
+moves a row afterwards.
+
+The three stock **reverbs** are listed last under `consumed` and cannot be
+selected: PLATE, SPRING and DARK REV are the 2,724-word donor region every
+module packs into. They are shown rather than omitted because an effect that
+is simply absent reads as a bug.
 
 The `FX1+FX2` column is which **chooser** the effect has a row on, derived
 from the pristine image rather than written down (`stock.fx1_ids()`). Stock
@@ -99,10 +109,18 @@ doc, and its drawn parameters with values — `left`/`right` adjusts,
 `shift` for ×10. **Values live per module**, seeded from the manifest
 defaults (a stale default polluted every shimmer measurement until Round 12).
 
-`r` renders the effect over the selected source and plays it; `space`
-replays. Below that, `p` cycles the **preview**: the firmware's own draw of
-the effect's FX2 page, the MAIN MENU, or the FX1 page, from the built image
-in the Tier-0 ColdFire emulator.
+**`SOURCE` is the first row**: `left`/`right` cycles the wavs in `out/dry/`,
+so choosing what you audition on is one keypress from the knobs. `r` renders
+the effect over it and plays it; `space` replays.
+
+Below that, `p` cycles the **preview**: the firmware's own draw of the
+effect's FX2 page, the MAIN MENU, or the FX1 page.
+
+⚠️ **The preview is a picture of the IMAGE ON DISK, not of the selection**,
+and it says so. The FX2 page includes the firmware's own chooser list, so a
+freshly launched workbench showing `stock` in LOADED while the preview lists
+`ChonVerb78 / BongDelay78 / Send` is not a bug — it is last week's build. The
+pane warns when the two disagree, and `b` rebuilds.
 
 - **MAIN MENU** is the no-flash gate for ColdFire cave work — a patched-in
   top-level row draws here exactly as the unit would draw it.
