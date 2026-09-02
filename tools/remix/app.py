@@ -283,7 +283,7 @@ itself, so the panel is never showing something else.
   r  render + hear     space  play last    p  preview mode
   a / b  park what you hear as A / B      , / .  play A / B
   x  apply the ⚠'s own fix
-  d  source folder     l  load remix       s  save remix
+  d  sample folder     l  load remix       s  save remix
   c  full check        f  fallback         k  back to stock
   ?  this
 
@@ -391,9 +391,14 @@ class BenchScreen(Screen):
     BINDINGS = [
         Binding("tab", "pane(1)", "pane"),
         Binding("shift+tab", "pane(-1)", "prev pane", show=False),
-        Binding("enter", "add_remove", "swap / remove"),
+        # "swap / remove" was stale from the moment enter stopped swapping.
+        Binding("enter", "add_remove", "add / remove"),
         Binding("r", "render", "hear it"),
         Binding("space", "play", "play last"),
+        # The sample folder belongs on the footer: it is the one setting that
+        # is about YOUR material rather than about the image, so it is the
+        # one a new pair of hands looks for and cannot guess.
+        Binding("d", "source_dir", "sample folder"),
         Binding("p", "preview", "preview page", show=False),
         Binding("a", "mark('A')", "A = this", show=False),
         Binding("b", "mark('B')", "B = this", show=False),
@@ -402,10 +407,9 @@ class BenchScreen(Screen):
         Binding("x", "fix", "apply the fix", show=False),
         Binding("c", "build('check')", "full check", show=False),
         Binding("f", "fallback", "fallback", show=False),
-        Binding("l", "load", "load remix"),
-        Binding("s", "save", "save remix"),
+        Binding("l", "load", "load"),
+        Binding("s", "save", "save"),
         Binding("k", "stock", "reset to stock", show=False),
-        Binding("d", "source_dir", "source folder", show=False),
         Binding("question_mark", "help", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
@@ -1167,8 +1171,19 @@ class BenchScreen(Screen):
         if buf:
             gone = self.blockers(probs)
             if gone:
-                return ("x removes " + ", ".join(disp(m) for m in gone)
-                        + " — they need the same buffer")
+                # NAME THE CULPRIT AND COUNT THEM. Listing seven effects
+                # took four lines of the pane and still did not say WHY or
+                # WHICH module was doing it -- "why did adding nimbus remove
+                # so many?" is the question it produced. The list is one
+                # keystroke away and the reason is what is actually wanted.
+                st = self.app.state
+                pin = [m for m in st.selected
+                       if getattr(m, "claims", None) is not None
+                       and m.claims.owns_fx2_buffers]
+                who = disp(pin[0]) if pin else "this module"
+                return (f"{who} pins the buffer {len(gone)} stock effect"
+                        f"{'s' if len(gone) != 1 else ''} allocate — "
+                        f"x removes them")
             names = [p.split(":", 1)[1].split(" and ")[0].strip().upper()
                      for p in buf]
             return "also remove " + ", ".join(names)

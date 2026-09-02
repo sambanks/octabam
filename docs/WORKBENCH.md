@@ -114,9 +114,23 @@ rather than leaving it to the build to refuse:
 | a buffer clash | the ⚠ line reads `x removes Flanger, Chorus, Spatializer, Comb Filter — they need the same buffer`, and **`x` does it** |
 | past a payload's region | the build refuses and names it: `payload B: RUNGS overruns the region (3599 > 2724 words)` |
 
-**The ⚠ offers its own fix.** Naming the four effects that have to go was
-already better than four walls of text, but it still handed you a chore —
-find four rows, remove each. `x` applies whatever the ⚠ just advised.
+**The ⚠ offers its own fix.** `x` applies whatever it just advised.
+
+It names the **cause and the count**, not the list: `Nimbus pins the buffer 7
+stock effects allocate — x removes them`. Naming all seven took four wrapped
+lines of a 40-column pane and still said neither *which* module was doing it
+nor *why*, which is exactly the question it produced ("why did adding nimbus
+remove so many?"). The list is one keystroke away; the reason is what you
+actually want.
+
+⚠️ **Seven, not four, since the reverbs became listable.** PLATE, SPRING and
+DARK REV take a per-track instance buffer like FLANGER, CHORUS, SPATIALIZER
+and COMB — measured, they read `x:>$213`. **The image you end up with is
+unchanged**: Nimbus plus the seven stock effects that allocate nothing, plus
+SEND. The trade only *looks* bigger because the chooser now starts at
+fourteen rows instead of eleven. And two of the three would have gone anyway
+on words — Nimbus (500) + SEND (215) reaches into SPRING, so only DARK REV is
+refused purely for the buffer.
 
 **The consequence goes on the ⚠ line, not in the status bar.** Appending it
 to "swapped X → Y" produced a run-on the status bar then truncated — and the
