@@ -167,6 +167,31 @@ class MenuEntry:
     abbr: bytes                        # <=4 chars, in a 5-byte field
     fullname: bytes                    # <=12 chars, in a 13-byte field
     build_tag: bool = False            # append the image's build tag
+    # ---- taking a STOCK effect's id, on purpose -------------------------
+    # The key of the stock effect this module REPLACES, e.g. "LO-FI". Set it
+    # and the module may carry that effect's fx2 id; leave it None and a
+    # stock id is refused, which is the default and the safe one.
+    #
+    # WHAT YOU ARE ASKING FOR. The DSP dispatch tables are indexed by the raw
+    # id and shared by both menus, so your code runs wherever that id is
+    # selected -- FX2 and FX1 alike, and in every saved project that already
+    # chose it. That is the POINT of an upgraded stock effect and it is also
+    # the whole hazard: Rungs sat on EQUALIZER's 0x0c and Nimbus on DJ EQ's
+    # 0x0d from 29 Aug to 2 Sep 2026, in every local image, and the remixes
+    # WITHOUT them aliased those ids to SEND, taking FX1's EQUALIZER away
+    # too. The difference now is that it is declared and checked rather than
+    # accidental: a remix that omits a replacement leaves the stock effect
+    # exactly as it found it (build_bus.py), and verify_replaces.py proves
+    # both halves.
+    #
+    # ⚠️ FX1's DESCRIPTOR IS NOT REPOINTED. FX1_IDS (0x400d5f58) and FX2_IDS
+    # (0x400d5fdc) are separate tables: your code runs from FX1, but FX1's
+    # page still draws the STOCK effect's knob names. Same family as "a slot
+    # can draw a knob and publish nothing" -- the panel and the DSP are
+    # separate mechanisms and neither validates the other. Match the stock
+    # layout, or accept that FX1 mislabels it. (tools/build_fx1.py knows how
+    # to write that table if this is ever wanted.)
+    replaces: str | None = None
 
     def __post_init__(self):
         # 0x00-0x03 are the ids stock treats as bare synonyms for "no effect";
@@ -367,13 +392,25 @@ class Module:
             raise ValueError(f"{self.name}: expected 12 param slots, "
                              f"got {len(self.params)}")
         if (self.menu is not None and self.kind is not Kind.STOCK
-                and self.menu.fx2_id in STOCK_FX2_IDS):
+                and self.menu.fx2_id in STOCK_FX2_IDS
+                and not self.menu.replaces):
             raise ValueError(
                 f"{self.name}: fx2 id 0x{self.menu.fx2_id:02x} belongs to a "
                 f"STOCK effect -- the dispatch tables are shared with FX1, so "
                 f"this id would hijack that effect on both menus (see "
-                f"STOCK_FX2_IDS). Free ids: "
+                f"STOCK_FX2_IDS). Declare MenuEntry(replaces=\"<KEY>\") if "
+                f"that is what you mean. Free ids: "
                 f"{', '.join(f'0x{i:02x}' for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)}")
+        if self.menu is not None and self.menu.replaces:
+            if self.kind is Kind.STOCK:
+                raise ValueError(f"{self.name}: a STOCK entry cannot replace "
+                                 f"anything -- it IS the stock effect")
+            if self.menu.fx2_id not in STOCK_FX2_IDS:
+                raise ValueError(
+                    f"{self.name}: replaces={self.menu.replaces!r} but fx2 id "
+                    f"0x{self.menu.fx2_id:02x} is not a stock effect's -- a "
+                    f"replacement must carry the id it replaces, or the stock "
+                    f"effect stays and yours is a separate row")
         if self.kind is Kind.STOCK and (self.dsp is not None or self.cf_patches):
             raise ValueError(f"{self.name}: a STOCK entry carries no code or "
                              f"caves -- they are already in the image (its "

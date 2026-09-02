@@ -1088,9 +1088,22 @@ def main():
     _omitted = [m for m in remix_modules().values()
                 if m.menu is not None and m.key not in REMIX.modules
                 and not m.is_stock]
+    # ⚠️ A REPLACEMENT THAT IS NOT IN THIS REMIX LEAVES STOCK ALONE. Aliasing
+    # its id to the fallback would take the stock effect away from BOTH menus
+    # -- which is exactly what happened for four days when Rungs sat on
+    # EQUALIZER's 0x0c: the remixes without Rungs aliased 0x0c to SEND, so
+    # the shipping image had no EQUALIZER on FX1 either. The id belongs to a
+    # stock effect; absent our replacement, it goes back to being one.
+    _restored = [m for m in _omitted if m.menu.replaces]
+    _omitted = [m for m in _omitted if not m.menu.replaces]
     for _m in _omitted:
         wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
         wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
+    if _restored:
+        print(f"  not in this remix, LEFT STOCK: "
+              f"{', '.join(sorted(m.key for m in _restored))} -- each replaces "
+              f"a stock effect, so its id keeps that effect's descriptor and "
+              f"dispatch on both menus")
     if _omitted:
         print(f"  not in this remix: "
               f"{', '.join(sorted(m.key for m in _omitted))} -- their ids "

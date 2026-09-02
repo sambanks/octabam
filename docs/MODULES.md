@@ -474,3 +474,58 @@ renders with no hatch at all.
 believe the hardware and go looking for what the harness cannot see. A
 measurement can be structurally blind to the thing you are using it to rule
 out — `CLAUDE.md` has two instances that each cost hours.
+
+## Replacing a stock effect
+
+A module normally takes a **free** FX2 id and appears as an extra row. If
+instead you are writing an **upgraded version of a stock effect** — a better
+LO-FI, say — you want the stock effect's own id, so that FX1, FX2 and every
+saved project that already selected it get yours. Declare it:
+
+```python
+menu=MenuEntry(
+    fx2_id=0x1c,              # LO-FI's
+    replaces="LO-FI",         # ...and say so
+    ...
+)
+```
+
+Without `replaces`, a stock id is **refused** — that is the default and it is
+the safe one.
+
+**What you are asking for.** The DSP dispatch tables are indexed by the raw id
+and shared by both menus, so your code runs wherever that id is selected. That
+is the point, and it is also the whole hazard: Rungs sat on EQUALIZER's `0x0c`
+and Nimbus on DJ EQ's `0x0d` from 29 Aug to 2 Sep 2026, in every local image,
+and the remixes *without* them aliased those ids to SEND — which took FX1's
+EQUALIZER away in the shipping image too. Every existing check passed, because
+each module was individually correct.
+
+**What the build guarantees now.** A remix that omits your replacement leaves
+the stock effect **byte-identical to stock** — descriptor and dispatch, both
+payloads — rather than aliasing its id to the fallback. The build says so:
+`not in this remix, LEFT STOCK: <KEY>`. `tools/verify_replaces.py` (in `make
+check`) proves the property for every remix: every stock id is either stock's
+own or claimed by a module that declared it. The four cases it and the schema
+between them refuse:
+
+| you wrote | what happens |
+|---|---|
+| a stock id, no `replaces` | refused at import — the Rungs/Nimbus shape |
+| `replaces="PHASER"` on LO-FI's id | refused: the declaration must name the effect whose id you carry |
+| a remix with both LO-FI and your replacement | refused: `fx2 id: hijack and lofi both claim 0x1c` |
+| a remix with neither | LO-FI stays stock, untouched |
+
+⚠️ **FX1's descriptor is NOT repointed.** `FX1_IDS` (`0x400d5f58`) and
+`FX2_IDS` (`0x400d5fdc`) are separate tables, so your *code* runs from FX1
+while FX1's *page* still draws the stock effect's knob names. Same family as
+"a slot can draw a knob and publish nothing" — the panel and the DSP are
+separate mechanisms and neither validates the other. Either match the stock
+knob layout, or accept that FX1 mislabels it. (`tools/build_fx1.py` knows how
+to write that table if repointing it is ever wanted.)
+
+**Words.** Taking a stock effect's *id* does not give you its *code space* —
+you spend from the same 2,724-word donor region as every other module. The
+region has to be physically contiguous and the build asserts it, so only a
+module adjacent to it could ever join; `DEV=1`'s fourth donor is CHORUS
+specifically because it "sits immediately BELOW PLATE".

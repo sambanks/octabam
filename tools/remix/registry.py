@@ -94,11 +94,26 @@ def modules() -> dict[str, object]:
             raise SystemExit(f"module {seen_dirs[m.key]} claims the key "
                              f"{m.key!r}, which is a stock effect's")
         if m.menu.fx2_id in seen_ids:
-            raise SystemExit(
-                f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
-                f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
-                f"dispatch tables are shared with FX1, so it would hijack "
-                f"that effect on both menus")
+            # A DECLARED replacement is allowed to share the id -- that is
+            # what it declared. It must name THIS effect, though: replacing
+            # LO-FI while sitting on PHASER's id is a typo that would
+            # otherwise ship.
+            other = found.get(seen_ids[m.menu.fx2_id]) or \
+                next((x for x in found.values()
+                      if x.menu is not None
+                      and x.menu.fx2_id == m.menu.fx2_id), None)
+            rep = other.menu.replaces if (other is not None
+                                          and other.menu is not None) else None
+            if rep != m.key:
+                raise SystemExit(
+                    f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
+                    f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
+                    f"dispatch tables are shared with FX1, so it would hijack "
+                    f"that effect on both menus"
+                    + (f" (it declares replaces={rep!r}, not {m.key!r})"
+                       if rep else ""))
+            found[m.key] = m
+            continue
         seen_ids[m.menu.fx2_id] = m.key
         found[m.key] = m
     _cache = found
