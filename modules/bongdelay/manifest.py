@@ -60,9 +60,18 @@ MODULE = Module(
         Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
               doc="tape wow depth; 0 = none - GRAIN: density, full dial, "
                   "level-flat (R61)"),
+        # ⚠️ Position 2 is DEAD ON PURPOSE, and the numbering is load-bearing.
+        # TAPE was retired 18 Aug 2026 (its wow/flutter became the global
+        # DPTH/RATE knobs, so TAPE was CLEAN with the knobs up) and its slot
+        # was KEPT rather than closed up, because a part stores the raw value:
+        # renumbering would turn every saved GRAIN (3) into REVERSE. It is
+        # labelled for what it DOES, not for what it was -- "(tape)" read as
+        # a mode that exists, and on the unit it draws as a bare "3" today
+        # with nothing to say otherwise (PLAN §6 is the fix).
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("CLEAN", "PITCH", "(tape)", "GRAIN", "REVRS"),
-              doc="engine select; 2 is the retired TAPE slot and runs CLEAN"),
+              labels=("CLEAN", "PITCH", "(CLEAN)", "GRAIN", "REVRS"),
+              doc="engine select; 2 is the retired TAPE slot, kept so stored "
+                  "TAPE parts still play, and it runs CLEAN"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,

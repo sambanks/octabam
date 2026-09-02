@@ -766,6 +766,7 @@ class EmuScreen(Screen):
     BINDINGS = [
         Binding("m", "view('menu')", "menu"),
         Binding("f", "view('fx2')", "FX2"),
+        Binding("left,right", "noop", "cycle effect"),
         Binding("o", "view('fx1')", "FX1"),
         Binding("p", "view('play')", "playback"),
         Binding("v", "app.switch_mode('rig')", "rig"),
@@ -784,13 +785,64 @@ class EmuScreen(Screen):
         self.view = "fx2"
         self.cursor = 0
         self.eff = {"fx1": 0x04, "play": 1}
+        self.rows = []                 # the built image's FX2 chooser
+        self.rowi = 0
+        self.rows_mtime = None
+        self.pending = ""               # what the last selection did
         self.booting = False
         self.ensure_boot()
 
     def on_screen_resume(self):
         # The rig's selection is this view's default subject.
         self.view = "fx2"
+        self.sync_row()
         self.ensure_boot()
+
+    def chooser(self):
+        """The built image's FX2 rows, re-read whenever the image changes."""
+        mt = BUILT_IMAGE.stat().st_mtime if BUILT_IMAGE.exists() else None
+        if mt != self.rows_mtime:
+            self.rows, self.rows_mtime = rig.built_chooser(), mt
+            self.rowi = 0
+            self.sync_row()
+        return self.rows
+
+    def sync_row(self):
+        """Point the cursor at whatever the rig has on this track, if the
+        image offers it -- so entering the view shows the rig's subject and
+        cycling starts from there rather than from row 0."""
+        mod = self.app.rig.effect(self.app.track)
+        if mod is None:
+            return
+        for i, (_, m) in enumerate(self.rows):
+            if m is not None and m.key == mod.key:
+                self.rowi = i
+                return
+
+    def select_row(self):
+        """Write the cycled-to effect back to the RIG, so the emu view and
+        the rig are one selection rather than two. Returns a note saying what
+        happened -- including the cases where the rig cannot hold it, which
+        are NOT errors: the unit's chooser is one list for all eight tracks
+        and will happily let you pick any row on any track.
+        """
+        app = self.app
+        if not self.rows:
+            return ""
+        eid, mod = self.rows[self.rowi]
+        if mod is None:
+            return f"id 0x{eid:02x} is in the list but no manifest claims it"
+        if rig.category(mod) == rig.SYSTEM:
+            return (f"{mod.key} is plumbing, not a track effect — the unit "
+                    f"lists it, the rig does not hold it")
+        if app.track not in rig.track_range(mod):
+            tr = rig.track_range(mod)
+            return (f"selected on the unit, but {mod.name} is a SERVER on "
+                    f"tracks {tr.start}-{tr.stop - 1} — on T{app.track} its "
+                    f"id aliases to the fallback and the track becomes a send")
+        app.rig.set_effect(app.track, mod.key)
+        app.rig.save()
+        return f"assigned {mod.key} to T{app.track} — the rig followed"
 
     def ensure_boot(self):
         app = self.app
@@ -850,14 +902,24 @@ class EmuScreen(Screen):
             note = ("patched-in: " + ", ".join(added)) if added else ""
             title = "MAIN MENU — the firmware's own render"
         elif self.view == "fx2":
-            mod = app.rig.effect(app.track)
-            eid = mod.menu.fx2_id if mod else 0x07
+            rows = self.chooser()
+            if not rows:
+                self.query_one("#lcd", Static).update(
+                    "[bold]the built image offers no FX2 chooser rows[/] — "
+                    "build one from the REMIX view (b)")
+                self.query_one("#emunote", Static).update("")
+                return
+            self.rowi %= len(rows)
+            eid, mod = rows[self.rowi]
             draws = emu_bringup.render_fx2(r, track=track0, effect_id=eid)
-            title = (f"FX2 SETUP — T{app.track}, "
-                     f"{mod.menu.fullname.decode('latin1') if mod else 'stock'}"
-                     f" (0x{eid:02x})")
-            note = ("values draw as dials the string hook cannot read — "
-                    "the rig's numbers are the truth; 1-8 changes track")
+            name = (mod.menu.fullname.decode("latin1") if mod
+                    else f"unclaimed 0x{eid:02x}")
+            title = (f"FX2 SETUP — T{app.track}, row {self.rowi + 1}/"
+                     f"{len(rows)}: {name} (0x{eid:02x})")
+            note = (self.pending or
+                    "left/right cycles the image's chooser · 1-8 changes "
+                    "track · values draw as dials the string hook cannot "
+                    "read, so the rig's numbers are the truth")
             if mod and mod.name == "bongdelay":
                 note = ("a SPEC image aliases the delay's DSP to SEND on "
                         "payload A — the page may draw empty; " + note)
@@ -886,10 +948,25 @@ class EmuScreen(Screen):
         self.view = v
         self.rerender()
 
+    def action_noop(self):
+        """left/right are handled in on_key; the binding exists so the footer
+        advertises them."""
+
     def on_key(self, ev):
         app = self.app
+        self.pending = ""
         if ev.key in tuple("12345678"):
             app.track = int(ev.key)
+            if self.view == "fx2":
+                self.sync_row()
+                self.pending = self.select_row()
+        elif self.view == "fx2" and ev.key in ("left", "right", "h", "l"):
+            rows = self.chooser()
+            if not rows:
+                return
+            self.rowi = (self.rowi + (1 if ev.key in ("right", "l") else -1)) \
+                % len(rows)
+            self.pending = self.select_row()
         elif self.view == "menu" and ev.key in ("down", "j"):
             self.cursor += 1
         elif self.view == "menu" and ev.key in ("up", "k"):

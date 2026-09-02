@@ -91,6 +91,56 @@ def available(track: int) -> list:
     return [m for m in effects() if track in track_range(m)]
 
 
+# ---- what the BUILT IMAGE offers -------------------------------------------
+# The rig says what the operator is auditioning; this says what the image on
+# disk would actually put in the FX2 chooser, which is not the same thing --
+# the composer's live selection can be ahead of the last build, and the emu
+# view boots the FILE. Read from the image so the answer is the image's, not
+# a re-derivation of what we think we built.
+#
+# ⚠️ The two constants are copies. `tools/build_bus.py` writes the list and
+# `tools/verify_menu.py` checks it, and both spell them out with the same
+# provenance note; a third copy is the price of not importing a verify script
+# for its globals (verify_menu binds REMIX from the environment at import,
+# which is exactly the wrong source of truth here). If the caves ever move,
+# they move in three places -- `verify_menu` fails loudly if they disagree.
+BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
+_LIST_REF = 0x400375f4                  # the operand naming the live list
+_LIST_CAVES = (0x400d6b00, 0x400d7bbc)  # short list, or the long one
+
+
+def built_chooser(image=None) -> list[tuple[int, object]]:
+    """The FX2 chooser rows the built image offers, in the panel's own order.
+
+    -> [(fx2_id, module_or_None)], empty if there is no image or its list
+    does not land in a known cave. `module_or_None` is None for an id no
+    manifest claims, which should not happen in an image we built and is
+    surfaced rather than hidden if it does.
+    """
+    from dsp_modmap import BASE
+    img_path = pathlib.Path(image) if image else BUILT_IMAGE
+    if not img_path.exists():
+        return []
+    img = img_path.read_bytes()
+
+    def rd32(a):
+        i = a - BASE
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i <= len(img) - 4 else 0
+
+    live = rd32(_LIST_REF)
+    if live not in _LIST_CAVES:
+        return []
+    rows, a = [], live
+    while len(rows) < 32:                    # the long cave's capacity
+        ptr = rd32(a)
+        if not ptr:                          # the list's own terminator
+            break
+        fx_id = rd32(ptr) & 0xff             # descriptor's own id word, P+0
+        rows.append((fx_id, registry.by_id(fx_id)))
+        a += 4
+    return rows
+
+
 def default_knobs(mod) -> dict[str, int]:
     """Manifest defaults for every named, drawn slot -- the values a fresh
     part boots with, which is also the honest render baseline (the SHMR=64

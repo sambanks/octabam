@@ -629,6 +629,15 @@ manifest field so a module asks for it declaratively rather than hand-writing
 a `CavePatch`. First customer should be a 3-value MODE whose donor widget
 already has three positions, so nothing about the widget is in play.
 
+**The payoff this makes concrete — BongDelay's dead MODE position.** MODE
+counts five, and position 2 is the retired TAPE slot: it falls through to
+CLEAN. That is deliberate and the numbering is load-bearing — a part stores
+the raw value, so closing the gap would turn every saved GRAIN (3) into
+REVERSE. It cannot be renumbered, so the operator is left with a five-way
+select where one position silently does nothing, drawn as a bare `3`. With
+labels it draws `CLEAN` and the mystery is gone. This is the case that shows
+why numbers are not good enough: the select is CORRECT and still unusable.
+
 ## Open items and standing caveats
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**
