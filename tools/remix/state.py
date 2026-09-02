@@ -110,6 +110,24 @@ class State:
         self.sel.add(key)
         self.order.insert(max(0, min(len(self.order), i)), key)
 
+    def swap(self, out_key, in_key):
+        """Replace one entry with another IN ITS OWN SLOT.
+
+        Composing an image is trading, not accumulating: the donor region is
+        2,724 words and the chooser is a list somebody has to scroll, so
+        putting something in generally means taking something out. Keeping
+        the position is the whole point -- the row number IS the panel slot.
+        """
+        if out_key not in self.sel or in_key in self.sel:
+            return False
+        i = self.order.index(out_key)
+        self.order[i] = in_key
+        self.sel.discard(out_key)
+        self.sel.add(in_key)
+        if self.fallback == out_key:
+            self.fallback = None
+        return True
+
     def move(self, key, delta):
         """Shift a selected module earlier (-1) or later (+1) in chooser order."""
         if key not in self.sel:

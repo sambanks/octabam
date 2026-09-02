@@ -153,10 +153,13 @@ of rows on the panel, so left/right there is a real edit. [bold]UNIT[/]
 follows the cursor: the selected effect's knobs, and the firmware's own
 draw of its page.
 
-You start at [bold]stock[/] — the chooser an unmodified unit shows. Add
-to what the box already does. A remix must name a fallback for ids it
-does not implement (SEND is the safe one), so adding a module means
-adding SEND too; the LOADED pane says so when it matters.
+You start at [bold]stock[/] — the chooser an unmodified unit shows, all
+fourteen effects including the three reverbs. Composing is [bold]trading[/]:
+the donor region is 2,724 words and the chooser is a list somebody has to
+scroll, so `enter` SWAPS the ▸ row for the highlighted module rather than
+growing the list. One trade is often not enough — the first module of
+ours needs SEND in the list, and a big one can push you past the region —
+and the status line names what else has to go.
 
 ● in the LOADED pane means "in the image on disk". An effect that is
 loaded but not built is not previewed: its id is not in the image, so
@@ -164,7 +167,9 @@ the firmware would draw a convincing picture of the WRONG effect.
 
 [bold]keys[/]
   tab  pane            up/down  move
-  enter  add / remove  left/right  knob value (UNIT) or row order (LOADED)
+  enter  SWAP the ▸ row for this one (at (end): append); on a
+         selected module, remove it
+  left/right  knob value (UNIT) or row order (LOADED)
   p  preview mode      r  render + hear     space  play last
   b  build             c  check             w  word cost
   l  load remix        s  save remix        f  fallback
@@ -295,7 +300,7 @@ class BenchScreen(Screen):
     BINDINGS = [
         Binding("tab", "pane(1)", "pane"),
         Binding("shift+tab", "pane(-1)", "prev pane", show=False),
-        Binding("enter", "add_remove", "add / remove"),
+        Binding("enter", "add_remove", "swap / remove"),
         Binding("p", "preview", "preview"),
         Binding("r", "render", "render+hear"),
         Binding("space", "play", "play last"),
@@ -427,7 +432,7 @@ class BenchScreen(Screen):
             line = f" {mark} {disp(m):<13} [dim]{menus}[/]"
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
-        out.append("[dim]enter adds at ▸ in LOADED[/]")
+        out.append("[dim]enter SWAPS with ▸ in LOADED[/]")
         self.query_one("#pane_avail", Static).update("\n".join(out))
 
     def _pane_loaded(self, st):
@@ -702,15 +707,24 @@ class BenchScreen(Screen):
                 st.toggle(mod.key)
                 st.msg = f"removed {disp(mod)}"
             else:
-                # AT THE LOADED CURSOR, not appended. Chooser order is the
-                # panel's row order, so where it lands is the question.
-                at = min(self.cur[LOADED], len(st.order))
-                st.insert_at(mod.key, at)
-                rowno = len([k for k in st.order[:at + 1]
-                              if st.mods[k].menu is not None])
-                st.msg = (f"added {disp(mod)} at chooser row {rowno}"
-                          if mod.menu is not None
-                          else f"added {disp(mod)} (no chooser row)")
+                # SWAP, not insert. An image is a fixed budget -- 2,724
+                # words and a list somebody has to scroll -- so putting
+                # something in normally means taking something out, and the
+                # new effect takes the old one's SLOT. The ▸ at (end) is the
+                # exception: there, it appends.
+                loaded = self.loaded_rows()
+                at = self.cur[LOADED]
+                if at < len(loaded) and st.swap(loaded[at].key, mod.key):
+                    rowno = len([k for k in st.order[:at + 1]
+                                 if st.mods[k].menu is not None])
+                    st.msg = (f"swapped {disp(loaded[at])} → {disp(mod)}"
+                              f" at chooser row {rowno}")
+                else:
+                    st.insert_at(mod.key, len(st.order))
+                    st.msg = f"added {disp(mod)} at the end"
+                more = self.knock_ons()
+                if more:
+                    st.msg += " · " + more
             st.loaded_name = ""
         elif self.pane == LOADED:
             rows = self.loaded_rows()
@@ -722,6 +736,26 @@ class BenchScreen(Screen):
             st.msg = f"removed {mod.key}"
             self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
         self.rerender()
+
+    def knock_ons(self):
+        """What ELSE this swap now requires -- the multi-swap case.
+
+        One trade is often not enough: the first module of ours needs SEND in
+        the list (nothing else is a safe fallback), a module can push the
+        selection past the donor region, and the ledger refuses some pairs
+        outright. All three are things the build would refuse LATER, so say
+        them at the moment the swap is made, and name the remedy rather than
+        the rule.
+        """
+        probs = self.app.state.problems()
+        if not probs:
+            return ""
+        first = probs[0]
+        if "no fallback" in first:
+            return "now needs Send — swap another row for it"
+        if "exceeds" in first:
+            return first + "; swap something else out too"
+        return first
 
     def action_stock(self):
         self.app.state.load_stock()

@@ -61,13 +61,27 @@ Everything that *could* be in an image: your modules grouped **server** /
 **insert** / **system**, then the stock effects the unit already ships. `✓`
 marks what the current selection holds.
 
-**`enter` adds at the `▸` in the LOADED pane**, not at the end — chooser
-order *is* the panel's row order, so "which slot" is the question, and the
-status line answers it ("added ChonVerb at chooser row 3"). The `▸` is drawn
-from either pane, because an insertion point you can only see while standing
-on it is no help when you are adding from the library. It can sit one past
-the last row — that position is `(end)`, and it is how you append.
-`left`/`right` in LOADED moves a row afterwards.
+**`enter` SWAPS the `▸` row in LOADED for the highlighted module.** Composing
+an image is *trading*, not accumulating: the donor region is 2,724 words and
+the chooser is a list somebody has to scroll, so putting something in
+normally means taking something out — and the new effect takes the old one's
+**slot**, because the row number *is* the panel position. The status line
+says what happened ("swapped FILTER → WarpFold at chooser row 1").
+
+The `▸` is drawn from either pane, because an insertion point you can only
+see while standing on it is no help when you are choosing from the library.
+It can sit one past the last row: that position is `(end)`, and there `enter`
+appends instead of swapping. `left`/`right` in LOADED moves a row afterwards,
+and `enter` on an already-selected module removes it.
+
+**One trade is often not enough**, and the status line names the next one
+rather than leaving it to the build to refuse:
+
+| after the swap | what it says |
+|---|---|
+| the first module of ours, no SEND | `now needs Send — swap another row for it` |
+| past the donor region (after `w`) | `N words exceeds … ; swap something else out too` |
+| a pair the ledger refuses | the ledger's own sentence, naming both |
 
 The three stock **reverbs** are not here — they are in LOADED, because they
 are part of a stock chooser. See below.
