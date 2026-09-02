@@ -184,13 +184,24 @@ class MenuEntry:
     # exactly as it found it (build_bus.py), and verify_replaces.py proves
     # both halves.
     #
-    # ⚠️ FX1's DESCRIPTOR IS NOT REPOINTED. FX1_IDS (0x400d5f58) and FX2_IDS
-    # (0x400d5fdc) are separate tables: your code runs from FX1, but FX1's
-    # page still draws the STOCK effect's knob names. Same family as "a slot
-    # can draw a knob and publish nothing" -- the panel and the DSP are
-    # separate mechanisms and neither validates the other. Match the stock
-    # layout, or accept that FX1 mislabels it. (tools/build_fx1.py knows how
-    # to write that table if this is ever wanted.)
+    # ⚠️ IF YOUR REPLACEMENT ALLOCATES A BUFFER, SIZE IT FOR FX1. The host's
+    # allocator keeps SEPARATE tables and they are not the same size
+    # (measured, X:0x255 in both payloads): an FX2 slot is 16,384 words,
+    # an FX1 slot is 3,072. Your code runs from BOTH menus the moment it
+    # takes a stock id, so an effect that asks for a buffer and assumes the
+    # FX2 size will overrun its allocation by 13,312 words the first time
+    # somebody selects it on FX1. That is the same class as the stock
+    # reverbs being FX2-only: they do not fit an FX1 allocation either.
+    # Nothing checks this -- a buffer size is not visible to the schema --
+    # so it is written here, where the id is taken.
+    #
+    # FX1's DESCRIPTOR IS REPOINTED TOO. FX1_IDS (0x400d5f58) and FX2_IDS
+    # (0x400d5fdc) are separate tables -- the DSP dispatch is shared, the
+    # descriptors are not -- so a replacement that only took FX2 would RUN
+    # from FX1 under the stock effect's knob names, which is "a slot can draw
+    # a knob and publish nothing" in reverse. The build repoints both of
+    # FX1's tables (its id lookup and the row the encoder scrolls), in place,
+    # and verify_replaces.py checks both menus in both directions.
     replaces: str | None = None
 
     def __post_init__(self):

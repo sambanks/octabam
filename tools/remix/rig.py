@@ -214,28 +214,30 @@ def knob_max(mod, name: str) -> int:
 
 
 def resources(mod, words=None) -> list[str]:
-    """What this effect COSTS, in the terms the ledger refuses things over.
+    """What this effect COSTS, ONE LINE PER MENU.
 
-    Shown while scrolling, because "will this fit beside what I have" is the
-    question the library pane is really being asked, and every answer was
-    previously only available after a refusal.
+    Shown while scrolling, because "will this fit beside what I have" is what
+    the library pane is really being asked, and every answer used to arrive
+    only as a refusal after adding it.
 
-    Derived wherever it can be (private Y is scanned, caves and hooks are
-    counted from the manifest, words come from the build) so nothing here can
-    go stale against the module it describes.
+    ⚠️ THE MENUS ARE SEPARATE and running them together was unreadable. FX1
+    and FX2 have their OWN allocator tables (measured, X:0x255 in both
+    payloads): FX1 hands out 0x1000/0x1c00/0x2800/0x3400 at 3,072 words
+    each, FX2 hands out 0x4000/0x8000 plus a shared-window pair at 16,384.
+    They do not overlap, so a cost on one is not a cost on the other -- and
+    saying so in a subordinate clause ("FX2 rows only, FX1 keeps its 4") made
+    a simple fact sound like a caveat. A line each states it instead.
+
+    Derived wherever it can be: private Y is scanned from the module's own
+    source, caves counted from the manifest, words taken from a real build,
+    the affected stock effects read off their claims.
     """
-    from remix import ledger
+    from remix import ledger, stock
+    from remix.schema import YBase
     out = []
+
+    # ---- the donor region: words ----------------------------------------
     if mod.is_stock:
-        # A stock row places no code and clones no descriptor. The three
-        # reverbs are the exception that proves it: their code IS the donor
-        # region, so listing one costs whatever a module of ours would have
-        # written over it.
-        from remix import stock
-        # A DONOR REVERB IS FREE UNTIL YOUR CODE REACHES IT. The region is
-        # packed from PLATE upward, so each one survives exactly as long as
-        # the modules of ours stay under its offset -- which is the number
-        # worth knowing, and it is arithmetic rather than a rule.
         if mod.key in stock.CONSUMED:
             at = stock.consumed_at(mod.key)
             out.append("yours overwrite it first" if at == 0 else
@@ -246,37 +248,39 @@ def resources(mod, words=None) -> list[str]:
         out.append(f"{words} of 2,724 words")
     elif mod.dsp is not None:
         out.append("measuring…")
-    claims = getattr(mod, "claims", None)
-    # THE CONSEQUENCE, not the address. "pins Y:0x4000-0xBFFF" is where the
-    # buffer is; what the operator is deciding is what it will cost them,
-    # which is the seven stock effects it cannot sit beside. The address is
-    # in docs/DSP.md section 10 and belongs there.
-    # ⚠️ MIRROR THE LEDGER'S OWN TEST, or a module's cost goes unreported.
-    # BongDelay declares owns_fx2_buffers=False -- its lines are in the
-    # shared window, not the 0x4000 region -- so this line said nothing about
-    # buffers for it, while the ledger refused it beside all seven anyway.
-    # The ledger's `fixed` set is owns_fx2_buffers OR ybase is not NEVER, and
-    # the second half is why: core 1's allocator hands out 0x38000/0x3c000,
-    # which is exactly where a substituted ybase puts its buffers.
-    from remix.schema import YBase
-    pins = claims is not None and getattr(claims, "owns_fx2_buffers", False)
+
+    # ---- one line per menu ----------------------------------------------
+    allocates = (getattr(mod, "claims", None) is not None
+                 and mod.claims.stock_instance_buffer)
+    on = menus(mod)
+    pins = (getattr(mod, "claims", None) is not None
+            and mod.claims.owns_fx2_buffers)
     window = mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER
-    # HOW MANY, exactly: owns_fx2_buffers is the two CORE-PRIVATE slots
-    # (0x4000/0x8000) and a substituted ybase is the two SHARED-WINDOW ones
-    # (0x30000/0x34000 on core 0, 0x38000/0x3c000 on core 1 -- measured from
-    # X:0x255 in both payloads). ChonVerb has both and so takes all four;
-    # Nimbus only the first pair; BongDelay only the second.
-    if pins or window:
+
+    if mod.menu is None:
+        pass                    # no chooser row at all: neither menu applies
+    elif FX1 in on:
+        out.append("FX1  " + ("takes 1 of the 4 slots (3,072 words each)"
+                              if allocates else "no buffer"))
+    else:
+        # Not on FX1 at all, so the FX1 allocator never hands it anything.
+        out.append("FX1  no row — takes nothing")
+
+    if mod.menu is None:
+        pass
+    elif pins or window:
         n = 2 * pins + 2 * window
-        where = ("all 4 FX2 buffer slots" if n == 4 else
-                 "2 core-private FX2 slots" if pins else
-                 "2 shared-window FX2 slots")
-        out.append(f"pins {where} — costs {_allocating_names()}")
-        # Precisely how many, because FX1 never listed the three reverbs:
-        # it keeps the four dual-menu ones, not all seven.
-        out.append(f"FX2 rows only — FX1 keeps its {_allocating_on_fx1()}")
-    if claims is not None and getattr(claims, "stock_instance_buffer", False):
-        out.append("takes 1 of the 4 FX2 buffer slots")
+        which = ("all 4 slots" if n == 4 else
+                 "2 core-private slots" if pins else
+                 "2 shared-window slots")
+        out.append(f"FX2  pins {which} — costs the rows of "
+                   f"{_allocating_names()}")
+    elif allocates:
+        out.append("FX2  takes 1 of the 4 slots (16,384 words each)")
+    else:
+        out.append("FX2  no buffer")
+
+    # ---- everything else -------------------------------------------------
     py = ledger.private_y(mod)
     if py:
         out.append(f"{len(py)} core-private Y word"

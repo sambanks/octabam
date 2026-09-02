@@ -271,6 +271,28 @@ slot 3 or 4 — which depends on how many FX2 effects the dispatcher has
 already walked this block. **Unpredictable is still a refusal**, and each
 works perfectly alone, which is the worst shape a defect can have.
 
+### One line per menu
+
+FX1 and FX2 have **separate allocator tables**, so a cost on one is not a cost
+on the other — and saying that in a subordinate clause ("FX2 rows only, FX1
+keeps its 4") made a simple fact read as a caveat. There is a line each:
+
+```
+Nimbus          500 of 2,724 words
+                FX1  no row — takes nothing
+                FX2  pins 2 core-private slots — costs the rows of
+                     Flanger, Chorus, Spatializer, Comb Filter and the 3 reverbs
+
+Flanger         free — already in the image
+                FX1  takes 1 of the 4 slots (3,072 words each)
+                FX2  takes 1 of the 4 slots (16,384 words each)
+```
+
+**Nothing of ours takes an FX1 slot.** Our modules have no FX1 row, so the FX1
+allocator never hands them anything; FX1 slots go to stock effects only. A
+module with no chooser row at all (a ColdFire patch like tempo-sync) shows
+neither line.
+
 ### It costs the FX2 ROW, not the effect
 
 **FLANGER, CHORUS, SPATIALIZER and COMB are still on FX1, and still work.**

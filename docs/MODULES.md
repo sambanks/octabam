@@ -540,6 +540,16 @@ forgotten", which is the shape this half exists to prevent.
 reverbs are not on FX1 (their `FX1_IDS` slots are NONE), so there is nothing
 to repoint; the build says so rather than silently doing nothing.
 
+⚠️ **If your replacement allocates a buffer, size it for FX1.** The
+allocator keeps separate tables and they are not the same size (measured,
+`X:0x255` in both payloads): an **FX2 slot is 16,384 words, an FX1 slot is
+3,072**. Your code runs from *both* menus the moment it takes a stock id, so
+an effect that asks for a buffer and assumes the FX2 size overruns its
+allocation by 13,312 words the first time somebody selects it on FX1. Same
+class as the stock reverbs being FX2-only — they do not fit an FX1
+allocation either. **Nothing checks this**: a buffer size is not visible to
+the schema.
+
 **Words.** Taking a stock effect's *id* does not give you its *code space* —
 you spend from the same 2,724-word donor region as every other module. The
 region has to be physically contiguous and the build asserts it, so only a
