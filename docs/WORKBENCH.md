@@ -113,6 +113,19 @@ allocate a per-track buffer (SPAT, FLNG, CHOR, COMB) are refused beside
 ChonVerb, Nimbus or BongDelay, with the reason. Past seven rows the panel
 scrolls, and the composer says that too. `docs/MODULES.md` has the rules.
 
+In the RIG a stock effect shows its **real knobs** — names, defaults and
+value counts read from the stock descriptor in the pristine image (a
+select shows its count, not stock's word labels) — and **renders** like
+an insert, from a one-time dump of the stock image's payload A
+(`out/dsp/_stock_A.mem`), so nothing about the currently built remix
+matters. Nine of the eleven render credibly (2 Sep 2026: FILTER, EQ,
+DJ EQ, PHASER, CHORUS, SPATIALIZER, COMB, COMPRESSOR, LO-FI — LO-FI
+needed an emulator patch, `tools/dsp56300.patch`, for the `mpyri`
+instruction). Two do not: **DELAY** runs on the ColdFire, so there is no
+DSP code to render and the audition says so; **FLANGER** renders but its
+output is not credible — MIX=0 is not dry and DEP=0/FB=0 still measures
+as broadband hash — cause open (`docs/MODULES.md`).
+
 ![The REMIX view: modules grouped by category with track ranges, the FX2
 menu as the unit will draw it, and the ledger's verdict —
 chongbong loaded](img/workbench-remix.png)
@@ -260,8 +273,9 @@ through `rich.markup.escape`.
 
 ## Known gaps
 
-- Stock rows have no knobs in the rig and no local render (the audition
-  says so rather than rendering a passthrough).
+- DELAY (stock) has no local render (ColdFire-side); FLANGER's local
+  render is not credible (open). Stock select labels are counts, not
+  stock's word labels.
 - A/B marks attach only to the most recent render (no history cursor).
 - No browse-anywhere source picker (one fixed directory, `out/dry/`).
 - Wet-only rendering is ChonVerb-only.

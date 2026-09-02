@@ -625,10 +625,13 @@ def main():
     # the target fell back to "R", so it instantiated ChonVerb and LABELLED
     # the output "DELAY". Six documents described that command as the way to
     # render an insert. Derive the choices, like everything else here.
-    ap.add_argument("--pick", choices=sorted(SERVER_ID),
-                    help="which module's output to analyse. Defaults to the "
+    ap.add_argument("--pick",
+                    help="which module's output to analyse: its layout letter "
+                         f"({''.join(sorted(SERVER_ID))}), or its module key/"
+                         "name (e.g. FILTER, chorus). Defaults to the "
                          "layout's server (R, else D). REQUIRED with --direct "
-                         "for an insert, which has no bus and so no default")
+                         "for an insert or a stock effect, which has no bus "
+                         "and so no default")
     ap.add_argument("--direct", action="store_true",
                     help="CONTROL / the insert path: no SEND, tone straight "
                          "into the picked module's own track input")
@@ -641,6 +644,16 @@ def main():
                          "driving the wrong slot.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.pick is not None and a.pick not in SERVER_ID:
+        # A module key or name, resolved to its letter -- the letters are
+        # derived and nobody should have to know them.
+        _pm = next((m for m in registry.modules().values()
+                    if a.pick in (m.key, m.name, m.key.lower())
+                    and m.harness is not None and m.harness.layout_char), None)
+        if _pm is None:
+            die(f"--pick {a.pick!r}: not a layout letter "
+                f"({''.join(sorted(SERVER_ID))}) or a module key/name")
+        a.pick = _pm.harness.layout_char
 
     if a.build:
         r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,

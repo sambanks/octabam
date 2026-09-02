@@ -91,6 +91,15 @@ if [ ! -x "$DIS" ]; then
     [ -d vendor/dsp56300 ] || git clone --depth 1 \
       https://github.com/dsp56300/dsp56300.git vendor/dsp56300
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
+    # MPYRI (immediate multiply, rounded) is unimplemented upstream in both
+    # the interpreter and the JIT; Elektron's stock LO-FI uses it, so a
+    # render of LO-FI aborted with "Not Implemented: MPYRI" (2 Sep 2026).
+    EMUPATCH=$(pwd)/tools/dsp56300.patch
+    if git -C vendor/dsp56300 apply --check "$EMUPATCH" 2>/dev/null; then
+      git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI)"
+    else
+      echo "   emulator patch already applied (or upstream changed: check $EMUPATCH)"
+    fi
     stage_dsp_host
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
       && cmake --build vendor/dsp56300/build \

@@ -35,7 +35,9 @@ class Kind(Enum):
     HYBRID = "hybrid"           # both, e.g. an engine plus a display cave
     STOCK = "stock"             # a STOCK FX2 effect kept in the chooser: no
                                 # code, no clone, no words -- its descriptor
-                                # and dispatch are already in the image
+                                # and dispatch are already in the image; its
+                                # params are read FROM that descriptor for the
+                                # workbench and harness, never written back
                                 # (tools/remix/stock.py is the whole list)
 
 
@@ -335,10 +337,11 @@ class Module:
                 f"this id would hijack that effect on both menus (see "
                 f"STOCK_FX2_IDS). Free ids: "
                 f"{', '.join(f'0x{i:02x}' for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)}")
-        if self.kind is Kind.STOCK and (self.dsp is not None or self.params
-                                        or self.cf_patches):
-            raise ValueError(f"{self.name}: a STOCK entry carries no code, "
-                             f"params or caves -- they are already in the image")
+        if self.kind is Kind.STOCK and (self.dsp is not None or self.cf_patches):
+            raise ValueError(f"{self.name}: a STOCK entry carries no code or "
+                             f"caves -- they are already in the image (its "
+                             f"params are READ from the stock descriptor, "
+                             f"never written)")
         # Page 2's three selects ARE the three companion byte fields, so a
         # stepped control can only physically live on 7, 9 or 11.
         for i, p in enumerate(self.params):
