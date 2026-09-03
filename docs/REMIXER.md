@@ -448,6 +448,12 @@ that run's lowest address; anything the placer never reaches keeps its
 algorithm and its dispatch and simply has no chooser row — which is exactly
 what unlisting a stock effect has always done.
 
+`remixes/scattered.py` is the worked example: it gives up three separate runs
+(261 / 3,342 / 277 words) and the placer fills two of them — Streamz's 255
+words into Spatializer's 261-word opening, WarpFold's 322 into the big run.
+The map draws a bracket per run, so the stock effects between them read as
+what they are: the wall.
+
 ⚠️ **A gap is a wall, not a loss.** A module is one code stream, so it must
 fit inside a **single** run: two runs of 1,500 words will not take a
 2,000-word module, which is why the budget names the **largest opening**

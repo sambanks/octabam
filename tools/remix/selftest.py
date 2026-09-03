@@ -10,6 +10,7 @@ on nothing.
     python3 tools/remix/selftest.py
 """
 
+import os
 import pathlib
 import re
 import subprocess
@@ -441,7 +442,11 @@ def main():
              # deliberately gives up two more, to put a non-reverb donor on
              # the unit for the first time (docs/FLASHPLAN.md)
              "fieldtest": ("FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                           "DARK REV")}
+                           "DARK REV"),
+             # THREE runs on purpose -- the multi-run worked example. Its
+             # placement is checked for real below, not just its harvest.
+             "scattered": ("SPATIALIZER", "FLANGER", "CHORUS", "PLATE REV",
+                           "SPRING REV", "DARK REV", "COMB FILTER")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(
@@ -467,6 +472,83 @@ def main():
             print(f"  [FAIL] remix {_n!r}: the runs do not cover {_hv}")
     print(f"  [PASS] every remix's given-up effects group into contiguous "
           f"runs, and the shipped ones give up exactly what they always did")
+
+    # ---- MULTI-RUN PLACEMENT, actually built --------------------------
+    # ⚠️ THE GROUPING ABOVE IS ARITHMETIC; THIS IS THE BUILD. Nothing else
+    # here would notice the placer quietly reverting to one bump cursor:
+    # `scattered` would still assemble, still pass every other check, and
+    # simply leave its two smaller runs empty -- which is exactly the defect
+    # this replaced (3 Sep 2026, "when I remove some reverb it only shows
+    # the free reverb space"). So: build it, and require that two modules
+    # landed in two DIFFERENT runs.
+    r = subprocess.run([sys.executable, "tools/build_bus.py"],
+                       cwd=ROOT, capture_output=True, text=True,
+                       env={**os.environ, "REMIX": "scattered",
+                            "XBUS": "1", "SPEC": "1"})
+    if r.returncode:
+        bad += 1
+        print(f"  [FAIL] remix 'scattered' does not build:\n"
+              f"{r.stdout[-600:]}{r.stderr[-400:]}")
+    else:
+        # ⚠️ PER PAYLOAD. The two payloads put the same effects at
+        # DIFFERENT addresses, so merging their run lines checks neither --
+        # and "one instance is one payload" is exactly how this codebase
+        # has been bitten before (docs/DSP.md s11).
+        _by_pay, _pay = {}, None
+        for line in r.stdout.splitlines():
+            m = re.match(r"-- payload (\w+) --", line.strip())
+            if m:
+                _pay = m.group(1)
+                _by_pay[_pay] = {"runs": [], "at": {}}
+            if _pay is None:
+                continue
+            m = re.match(r"\s+run \d+ P:0x([0-9a-f]+)\.\.0x([0-9a-f]+)", line)
+            if m:
+                _by_pay[_pay]["runs"].append((int(m.group(1), 16),
+                                              int(m.group(2), 16)))
+            m = re.match(r"\s{2}(STREAMZ|WARPFOLD)\s+P:0x([0-9a-f]+)", line)
+            if m:
+                _by_pay[_pay]["at"][m.group(1)] = int(m.group(2), 16)
+        if sorted(_by_pay) != ["A", "B"]:
+            bad += 1
+            print(f"  [FAIL] 'scattered': expected both payloads, saw "
+                  f"{sorted(_by_pay)}")
+        else:
+            _ok = True
+            for _p, _d in sorted(_by_pay.items()):
+                _rs, _at = _d["runs"], _d["at"]
+                _in = {k: next((i for i, (lo, hi) in enumerate(_rs)
+                                if lo <= a < hi), None)
+                       for k, a in _at.items()}
+                if len(_rs) != 3:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: {len(_rs)} "
+                          f"runs, expected 3")
+                elif sorted(_at) != ["STREAMZ", "WARPFOLD"]:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: placed "
+                          f"{sorted(_at)}, expected both modules")
+                elif None in _in.values():
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: a module "
+                          f"landed outside every run -- {_at} vs {_rs}")
+                elif len(set(_in.values())) < 2:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: both modules "
+                          f"landed in the SAME run ({_in}) -- the placer is "
+                          f"not filling the smaller openings")
+                elif _in["STREAMZ"] != 0:
+                    # STREAMZ is 255 words and run 1 holds 261: first-fit
+                    # MUST take it. Anywhere else means the small opening
+                    # was skipped, which is the whole defect.
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: STREAMZ went "
+                          f"to run {_in['STREAMZ'] + 1}, not the 261-word "
+                          f"opening it fits")
+            if _ok:
+                print(f"  [PASS] 'scattered' fills 2 of its 3 non-contiguous "
+                      f"runs in BOTH payloads (STREAMZ into the 261-word "
+                      f"opening, WarpFold into the big run)")
 
     # ---- FX1 rows (Remix.fx1) -------------------------------------------
     # The schema half. The BUILD half -- the relocated list, FX1's own id and

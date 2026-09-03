@@ -1128,9 +1128,14 @@ class RemixerScreen(Screen):
             prev = (k, a + n)
         # Per-run usage when the build reported it; otherwise the whole
         # region is one run and the single figure IS that run's.
+        # ⚠️ BY RUN INDEX, NOT BY ADDRESS. The bar is drawn once from payload
+        # A's spans because the LAYOUT is identical in both, but the two
+        # payloads put those effects at different addresses (docs/DSP.md
+        # s11) -- so keying B's usage on A's bases found nothing and drew
+        # payload B as untouched however much had been placed in it.
         by_run = {}
-        for tag, b, _n, u in st.runs:
-            by_run.setdefault(tag, {})[b] = u
+        for tag, _b, _n, u in st.runs:
+            by_run.setdefault(tag, []).append(u)
 
         def bar(tag):
             got = placed.get(tag)
@@ -1140,10 +1145,11 @@ class RemixerScreen(Screen):
                 if k not in hv:
                     out += f"[dim]{'─' * c}[/]"
                     continue
-                grp = next(g for g in runs_cols if any(x[0] == k for x in g))
-                rbase = grp[0][1]
-                u = (used.get(rbase) if used is not None
-                     else (got if rbase == runs_cols[0][0][1] else 0))
+                ri = next(i for i, g in enumerate(runs_cols)
+                          if any(x[0] == k for x in g))
+                rbase = runs_cols[ri][0][1]
+                u = (used[ri] if used is not None and ri < len(used)
+                     else (got if ri == 0 else 0))
                 if u is None or got is None:
                     out += f"[dim]{'.' * c}[/]"
                 else:
