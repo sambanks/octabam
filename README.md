@@ -40,8 +40,9 @@ directory**.
 
 The build refuses to start if two selected modules collide — same FX2 id,
 ColdFire cave, hook site, core-private word or buffer region — and names both.
-Program space is finite and shared (2,724 words per payload), so a remix is a
-real budget decision, not a label.
+Program space is finite and shared — you get the code of whatever stock
+effects the remix gives up, from 0 to all 6,158 words per payload — so a
+remix is a real budget decision, not a label.
 
 ### What ships
 
@@ -166,7 +167,7 @@ measured rather than estimated:
 | resource | per core | state |
 |---|---|---|
 | Cycles | 4,535/sample | derived (200 MIPS ÷ 44.1 kHz). `make cycles` prints the worst load the selected remix can be asked for; the real ceiling is a cliff and only a hardware burn sweep measures it |
-| Program space | 8,192 words | donor region **2,724 words per payload**, shared by every module in the remix. `make bus` prints the live ledger |
+| Program space | 8,192 words | whatever the remix **gives up**: the 13 stock DSP effects are 6,158 words per payload, and taking one off both choosers hands you its span. The default (the three reverbs) is 2,724. A module must fit one contiguous run of what you gave up. `make bus` prints the live ledger |
 | Y memory | 65,536 words | 1.49 s, pooled from the private FX2 slots + the shared window. A module that wants a big buffer claims it, and only one per core may |
 
 `docs/CHIP.md` carries every one of these numbers with a confidence marker —
@@ -187,11 +188,13 @@ chip has more, stock runs the map that grants the least):
    ─────────────────────────────────    ─────────────────────────────────
 P  8,192 words                          8,192 words
    ├─ stock: dispatch, FX1, mixing…     ├─ stock: dispatch, FX1, mixing…
-   └─ donor region, 2,724 words         └─ donor region, 2,724 words
-      (was PLATE+SPRING+DARK)              (this core's copy of the same
-      the remix's modules go here           three slots)
-      -- `make bus` prints who got          same, for this core's half of
-      what and how much is left             the selection
+   └─ the 13 stock DSP effects,         └─ the same 13, at this core's
+      6,158 words                             own addresses
+      whichever ones the remix gives         same, for this core's half of
+      up become placeable ground             the selection
+      (default: the 3 reverbs, 2,724)
+      -- `make bus` prints who got
+      what and how much is left
 
 Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
    └─ two FX2 instance slots -- where a └─ same. At most ONE module per

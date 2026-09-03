@@ -230,10 +230,13 @@ claimed today.
 ## Keeping STOCK effects in the chooser
 
 Every image replaces the FX2 chooser wholesale, and until 2 Sep 2026 that
-hid all fourteen stock FX2 effects although only **three are consumed** —
-PLATE, SPRING and DARK REV, whose 2,724 words of code are the donor region
-every module packs into. The other eleven keep their code, descriptor and
-dispatch entries in every image; they only lost their row.
+hid all fourteen stock FX2 effects although only the ones a remix actually
+**gives up** are consumed — by default PLATE, SPRING and DARK REV, whose
+2,724 words every module packs into. The rest keep their code, descriptor
+and dispatch entries in every image; they only lost their row. Since 3 Sep
+2026 which ones are given up is derived from the choosers: an effect on
+neither FX1's nor FX2's list is one this remix does not want, and that IS
+the decision to take its words (`stock.harvested`).
 
 `tools/remix/stock.py` registers them under their own keys (`"FILTER"`,
 `"CHORUS"`, `"DELAY"`, …), so a remix keeps one by listing it exactly like
@@ -710,7 +713,15 @@ allocation either. **Nothing checks this**: a buffer size is not visible to
 the schema.
 
 **Words.** Taking a stock effect's *id* does not give you its *code space* —
-you spend from the same 2,724-word donor region as every other module. The
-region has to be physically contiguous and the build asserts it, so only a
-module adjacent to it could ever join; `DEV=1`'s fourth donor is CHORUS
-specifically because it "sits immediately BELOW PLATE".
+you spend from the ground the remix gave up, shared with every other module.
+Which ground that is depends on which effects are off BOTH choosers: their
+spans are grouped into contiguous **runs** (`stock.regions_of`) and each
+module is packed into a run it fits.
+
+⚠️ **A module must fit inside ONE run.** It is a single code stream, so
+3,880 words spread over three runs will not take a 3,500-word module — the
+remixer names the largest opening beside the total for that reason, and
+harvesting an effect that sits *between* two runs joins them. Until 3 Sep
+2026 the build wrote one contiguous stream and only the largest run was
+placeable at all; every other run was given up and then left empty.
+`remixes/scattered.py` is the worked example.

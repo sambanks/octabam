@@ -97,13 +97,18 @@ free` — and this is the thing to watch, because:
 
 - a **chooser row costs nothing** (seven fit in place, up to 32 in the long
   cave), and
-- a **stock effect costs nothing at all** — its code is already in the image
-  whether or not it has a row. **Swapping a stock effect out frees zero
-  words.** The swap gesture is about the panel SLOT, not about space.
+- a **stock effect on either menu costs nothing** — its code is already in
+  the image, and giving it a row adds none. But taking it off **both**
+  choosers is not free in the other direction: that is the decision to give
+  up its words, and they become ground your modules can be placed into
+  (`stock.harvested`, 3 Sep 2026). Removing it from one menu while it still
+  has a row on the other frees nothing, because the effect is still
+  reachable and its code has to stay.
 
-⚠️ **There are TWO 2,724-word regions, one per payload**, and `SPEC=1` puts
-each server on its own. Summing every module's words against a single region
-is wrong, and the pane used to do it: it read `chongbong`, the *shipping*
+⚠️ **There are TWO regions, one per payload** — the same effects at
+different addresses, so the same size, 2,724 words for the default harvest —
+and `SPEC=1` puts each server on its own. Summing every module's words
+against a single region is wrong, and the pane used to do it: it read `chongbong`, the *shipping*
 remix, as `5130 words exceeds the 2724-word donor region by 2406` when the
 truth was A 2,650/74 free and B 2,719/5 free. Fixed 2 Sep 2026 by reporting
 the build's own per-payload figures and deleting the reimplemented check
@@ -506,8 +511,8 @@ They are not. Every effect occupies words, a buffer slot and cycles.
 
 | | says |
 |---|---|
-| an ordinary stock effect | `727 words, already placed — listing it costs none and dropping it frees none` |
-| a donor reverb | `594 words — and they are the donor region` / `yours overwrite it first` |
+| a listed stock effect | `727 words, already placed` |
+| one given up (off both menus) | `594 words — off both menus, so they are yours to place into` / `yours overwrite it first` |
 | DELAY | `no DSP words — it runs on the ColdFire side` |
 | one of ours | `2,411 of 2,724 words` |
 
@@ -634,10 +639,13 @@ So of the seven, four cost you a row on one menu and the three reverbs are
 lost outright — and only because FX1 never listed them in the first place.
 
 A donor reverb states the budget you have left before it goes, because that
-is arithmetic rather than a rule: the region is packed from PLATE upward, so
-PLATE goes first and DARK survives while your modules stay under 1,657 words.
-The three figures sum to exactly the 2,724 the build asserts, which is the
-cross-check that keeps them honest.
+is arithmetic rather than a rule: the run is packed from PLATE upward, so
+PLATE goes first and DARK survives while your modules stay under 1,657
+words. The three figures sum to exactly the 2,724 the build reports, which
+is the cross-check that keeps them honest. ⚠️ This arithmetic walks the
+harvest as ONE packed stream, so the remixer shows it only when the harvest
+IS one run — with a gap, dropping an effect in the other run buys nothing
+here (`stock.consumed_at`).
 
 Everything is derived where it can be — private Y scanned from the source,
 caves and hooks counted from the manifest, the seven counted rather than

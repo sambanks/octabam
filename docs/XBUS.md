@@ -233,8 +233,10 @@ reason).
 
 Specialization (`SPEC=1`) is what pays for all of this: each payload
 carries SEND plus *its* server only, so the donor region (2,724 words per
-core, from the three stock FX2 reverb slots — which were never on the FX1
-menu, so FX1 lost nothing) is spent once per effect instead of twice.
+core for the DEFAULT harvest, from the three stock FX2 reverb slots — which
+were never on the FX1 menu, so FX1 lost nothing; since 3 Sep 2026 a remix
+can give up any of the thirteen, up to 6,158) is spent once per effect
+instead of twice.
 `SPEC=1` requires `XBUS=1` — without the bus, each half of the tracks can
 reach only its own core's server, **and the broken build still makes
 sound**, which is why the build guards the combination. The build report is

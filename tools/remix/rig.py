@@ -354,11 +354,19 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
             # These three are the exception that proves it: their words ARE
             # the donor region, so they are the only stock effects whose
             # words are yours to take.
-            at = stock.consumed_at(mod.key, tuple(harvest))
             out.append(f"{w:,} words — off both menus, so they are yours "
                        f"to place into")
-            out.append("yours overwrite it first" if at == 0 else
-                       f"survives while your modules stay under {at:,} words")
+            # ⚠️ ONLY WITH ONE RUN. consumed_at walks the harvest as a single
+            # packed stream, which is what the placer does with one opening
+            # and NOT what it does with two -- there, "stay under N" counts
+            # words in a run this effect is not even in. Say nothing rather
+            # than a number that is quietly wrong; the map's per-run
+            # brackets carry the sizes.
+            if len(stock.regions_of(tuple(harvest))) < 2:
+                at = stock.consumed_at(mod.key, tuple(harvest))
+                out.append("yours overwrite it first" if at == 0 else
+                           f"survives while your modules stay under "
+                           f"{at:,} words")
         elif w:
             # ⚠️ THE NUMBER, AND NOTHING ELSE. This said "— listing it costs
             # none and dropping it frees none" for one day, which is true and
