@@ -35,7 +35,7 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
 ## Measured (3 Sep 2026, local)
 
 - **983 words** (payload A; 1,016 on B with the tracked-rotation body), placed
-  by `remixes/_fs.py`. **339 cycles/sample** (`make cycles`): every
+  by `remixes/stations.py`. **339 cycles/sample** (`make cycles`): every
   r7-indexed access is two words in this assembler, and the loop is ~250
   instructions with two filters, the routing mix, the peak tracker and both
   sends. Stock FILTER is 192 for one filter. Seven of these on one core is
@@ -47,7 +47,7 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   LSB low); BASE 100 kills DC through the pair (4 LSB); WDTH 30 takes 55 dB
   off 8 kHz; RING at DC = 2·DC² to 5 LSB; VOWEL A vs I differ by 8.7 dB at
   1.1 kHz; every knob at both extremes renders. All PASS.
-- **Registration** (`send_probe` on the `_fs` bus dump, tone fed to the
+- **Registration** (`send_probe` on the `stations` bus dump, tone fed to the
   station's track only, `--amp 0.05` so the reverb stays linear):
 
   ```
@@ -58,7 +58,7 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   ```
 - Menu: `verify_menu`, `verify_replaces` (FX1 page taken, composed chooser
   lists the clone) and `verify_labels` (the three selects print their words
-  on the emulated firmware) all pass on `_fs`.
+  on the emulated firmware) all pass on `stations`.
 
 ## Open
 
