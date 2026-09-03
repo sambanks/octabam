@@ -418,7 +418,29 @@ three. Every shipped remix comes out identical, asserted in the selftest.
 
 ⚠️ **BOTH menus.** An effect off FX2 but still on FX1 is still wanted, and
 the DSP dispatch is one table shared by them — overwriting its code would
-take it off FX1 too.
+take it off FX1 too. A removal says which happened, because otherwise taking
+something off one list frees nothing and does not say why:
+
+```
+ removed Chorus from the FX2 chooser — still on FX1, so its 329 words
+   stay its own; take it off there too to free them
+ Chorus is off the FX1 chooser — off both menus now, so its 329 words
+   join the region (329 total)
+```
+
+⚠️ **The two lists stay independent, and they have to.** "Off one is off
+both" would be simpler to operate and would make the shipping remix
+impossible — measured:
+
+| | today | if off-one-is-off-both |
+|---|---|---|
+| **chongbong** | region 2,724 · FX1 keeps **10 of 10** | region 6,158 · FX1 keeps **0 of 10** |
+| restored | 2,724 · 10 of 10 | 3,342 · 6 of 10 |
+
+chongbong's whole shape is *FX2 is mine, FX1 stays stock*: its FX2 chooser is
+ChonVerb, BongDelay and Send, so every stock effect is off FX2. Taking them
+off FX1 with it would leave the unit with **no FX1 effects at all** and hand
+the modules all 6,158 words they did not ask for.
 
 ⚠️ **It only costs where your code reaches.** Modules go in the **largest
 unbroken run** of what you gave up, packed from its lowest address; anything

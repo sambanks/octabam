@@ -405,7 +405,9 @@ There is no separate harvest gesture, because there was never a separate choice:
 
 Add a module before giving anything up and the ⚠ says so, with `x` dropping the three reverbs — the biggest, and FX2-only, so they cost FX1 nothing.
 
-⚠️ BOTH menus. An effect off FX2 but still on FX1 is still wanted, and the DSP dispatch is one table shared by them, so overwriting its code would take it off FX1 too.
+⚠️ BOTH menus. An effect off FX2 but still on FX1 is still wanted, and the DSP dispatch is one table shared by them, so overwriting its code would take it off FX1 too. Removing it says which: `still on FX1, so its 329 words stay its own` or `off both menus now, so its 329 words join the region`.
+
+⚠️ THE TWO LISTS STAY INDEPENDENT, and they have to. "Off one is off both" would be simpler to operate and would make the shipping remix impossible: chongbong's FX2 chooser is ChonVerb, BongDelay and Send, so every stock effect is off FX2 — and taking them off FX1 with it would leave the unit with NO FX1 EFFECTS AT ALL and hand your modules all 6,158 words they did not ask for.
 
 ⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. Your modules go in the largest unbroken run of what you gave up, packed from its lowest address; anything the placer never gets to keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done.
 
@@ -1995,6 +1997,7 @@ class RemixerScreen(Screen):
             if not rows or self.cur[LOADED] >= len(rows):
                 return
             menu, mod = rows[self.cur[LOADED]]
+            was = set(st.harvest)
             if menu == rig.FX1:
                 # OFF THE FX1 CHOOSER, not out of the image: for a stock
                 # effect the two lists are independent, and for one of ours
@@ -2004,10 +2007,33 @@ class RemixerScreen(Screen):
             else:
                 st.toggle(mod.key)
                 st.msg = f"removed {disp(mod)} from the FX2 chooser"
+            # ⚠️ AND WHETHER THAT FREED ANYTHING. Giving up a stock effect's
+            # words means taking it off BOTH menus -- the DSP dispatch is one
+            # table shared by them -- so a removal that leaves it on the
+            # other one frees nothing, and said nothing about why. The two
+            # lists have to stay independent: chongbong's FX2 chooser is
+            # ChonVerb/BongDelay/Send, so "off one is off both" would strip
+            # FX1 to zero rows and take every stock effect with it.
+            st.msg += self._freed(mod, was, set(st.harvest))
             st.loaded_name = ""
             self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
             self.schedule_sync()
         self.rerender()
+
+    def _freed(self, mod, before, after):
+        """What a removal did to the region, in a clause."""
+        st = self.app.state
+        if not mod.is_stock or mod.key not in stock.p_spans("A"):
+            return ""
+        w = stock.WORDS.get(mod.key, 0)
+        if mod.key in after and mod.key not in before:
+            return (f" — off both menus now, so its {w:,} words join the "
+                    f"region ({stock.region_words(tuple(after)):,} total)")
+        if mod.key not in after:
+            other = "FX1" if mod.key in st.fx1 else "FX2"
+            return (f" — still on {other}, so its {w:,} words stay its own; "
+                    f"take it off there too to free them")
+        return ""
 
     def ensure_fallback(self):
         """Satisfy the fallback rule rather than demanding a trade for it.
