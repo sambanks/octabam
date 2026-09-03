@@ -48,6 +48,60 @@ flashes 2 and 3 are for.
 
 ---
 
+## Step 0b — a project whose effects are actually set
+
+⚠️ **The effect ids live in the PROJECT, not the OS.** They survive a flash,
+so a freshly flashed unit opens every track still holding the id it had
+before — which in the new image may be a different effect, or one the image
+does not implement (and so resolves to the fallback). That is why a flashed
+unit *"keeps the old effect graphics"* until you select something, and it is
+why **a flash test that starts from an old project is not a test of
+anything**: half the tracks are running whatever the last image left there.
+
+So before flash 1, make a project whose every bank, part and track is stamped
+with an id this image implements:
+
+```bash
+python3 tools/ot_project.py testproj \
+    ~/octa/backups/<a project you trust> /Volumes/<card>/OCTABAM_T1 chongbong
+```
+
+It copies (never edits the source), lays out **one effect per part on all
+eight tracks**, writes both the current parts and their saved copies,
+recomputes each bank's checksum, reads everything back, and drops
+`OCTABAM_TEST_MAP.txt` in the project so you can see at the unit what each
+part is:
+
+```
+bank A  part 1   FX1 0x00  FX2 0x0a   WARPFOLD on FX2
+bank B  part 2   FX1 0x04  FX2 0x00   FILTER on FX1
+bank D  part 3   FX1 0x0a  FX2 0x0f   WORST by cycles: BODESHIFT on FX2 + WARPFOLD on FX1
+```
+
+One effect per part **on all eight tracks** is deliberate: selecting a part
+then auditions that effect across both cores at once, which is the shape the
+cycle test wants and the shape that shows a payload asymmetry immediately —
+tracks 5–8 are payload A, 1–4 are payload B. Parts past the end of the plan
+are NONE on both slots, which is the silent control.
+
+⚠️ **Both the current parts and the saved copies.** A bank holds eight PART
+records: 1–4 current, 5–8 the copies the unit restores on RELOAD PART.
+Writing only the first four leaves the old assignment one keypress away.
+(Verified against 80 bank files: 5–8 are byte-identical to 1–4 in every one.)
+
+⚠️ **The checksum is not optional** — the last `u16` BE is an additive sum
+over `bytes[0x10:-2]` and the unit rejects a bank whose sum does not match.
+The tool recomputes it and then reads the file back; a mismatch aborts rather
+than handing you a card that fails on load.
+
+Measured on a real project: **1,968 bytes changed across sixteen banks, none
+of them outside the FX id fields**, and no other file touched.
+
+Make a fresh one per flash — `chongbong`, then `restored`, then `fieldtest` —
+because each image implements a different set of ids.
+
+---
+
 ## Flash 1 — the accumulated shipping build
 
 **Image:** `chongbong`, the shipping remix, at HEAD. Bump `BUILD` to 79.
@@ -194,6 +248,8 @@ donor work until it is understood.
 From `docs/FLASHING.md` and the card workflow this project already uses:
 
 - [ ] `make check` and `scripts/refhash.sh check` both green.
+- [ ] **A test project stamped for THIS image** (step 0b). Without it you are
+      testing whatever ids the last image left in the parts.
 - [ ] **Bump `BUILD`.** The tag is stamped into the effect name; a unit whose
       version you cannot map to a commit is a unit you are guessing about.
 - [ ] `make image` — `.bin` for the CF-card path (recommended), `.syx` for MIDI.

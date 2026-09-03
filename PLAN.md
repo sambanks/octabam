@@ -793,19 +793,22 @@ bit-identical, which is what that gate is for.
   "the OS is the same, so it should run" (inferred) rather than "verified on
   MK1" (not measured). Sweep `README.md` and `docs/` and say it once, in the
   right place, instead of hedging in a dozen.
-- **BACKLOG (Sam, 3 Sep 2026): a freshly flashed unit keeps drawing the
-  effect you had before.** After a flash the track still shows the PREVIOUS
-  effect's controls, and only selecting SEND (or anything else) redraws it.
-  Not yet investigated. The shape to check first: the stored per-part `fx2_id`
-  survives the flash (it lives in the project, not the OS), so the id resolves
-  through the NEW image's tables — a remix that dropped that module aliases it
-  to the fallback, and one that kept it on a different row draws the right
-  page but from a stale cursor. Either way, what is on screen is a page
-  STAGED at part-load time and not re-staged when the image under it changed.
-  Adjacent to "a slot can draw a knob and publish nothing" and to the
-  `ID2POS`/`FX2_IDS` pair that `verify_menu` already checks agree. **Polish
-  round, not a defect hunt** — decide what a flashed unit SHOULD show before
-  deciding what to change.
+- ✅ **A freshly flashed unit keeps drawing the PREVIOUS effect's controls —
+  CAUSE FOUND, 3 Sep 2026, and it is not a defect.** The per-part FX1/FX2 ids
+  live in the PROJECT (`bank##.work`, `PART+0x009` and `PART+0x011`, eight
+  bytes each — one per track), not in the OS, so they survive a flash and
+  resolve against the new image's tables. The unit is faithfully drawing the
+  effect the project still asks for; what changed underneath it is which
+  effect that id names. ⚠️ **Which also means a flash test that starts from
+  an old project is not a test of anything** — half the tracks are running
+  whatever the last image left there.
+  `tools/ot_project.py testproj SRC DEST REMIX` copies a project and stamps
+  every bank, part and track with an id the image implements, current parts
+  **and** their saved copies, checksums recomputed and read back.
+  `docs/FLASHPLAN.md` step 0b.
+  ⬜ Still open, and a smaller question than it looked: whether the panel
+  should RE-STAGE a page when the image under it changed, or whether "the
+  project asked for id 0x12 and got what 0x12 now is" is the right answer.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is the design rule;
   no product configuration has this.
