@@ -458,6 +458,12 @@ def main():
                           "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
                           "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
                           "COMB FILTER"),
+             # cfprobe is the rig plus HELLO WORLD and the ColdFire probe
+             # cave: the same harvest, 27 more words placed.
+             "cfprobe": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                         "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                         "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                         "COMB FILTER"),
              "stations": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
                           "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
                           "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",

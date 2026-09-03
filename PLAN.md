@@ -789,6 +789,47 @@ official installer does, and it is simpler. This is the same image with our
 chooser edits reverted, which is only interesting if some ColdFire cave is
 worth keeping.
 
+### 8. ColdFire machines — the headroom probe first, then Braids / the Pickup donor
+
+Asked 3 Sep 2026: is there room for more machines, and could something
+like Mutable's **Braids** come in? On the DSP the rig has **334 / 474
+words** free and only two FX2 ids, so a Braids subset (the table-free
+analogue models, ~1,000–1,500 words, hand-written) needs a lever first —
+the core-1 OMR flip or a dropped station. The wavetable families have
+nowhere to live on the DSP at all.
+
+**The ColdFire is the more interesting host, and it does not need the
+DSP.** The stock Echo Freeze already does per-sample EMAC work in 16-sample
+frames inside the audio interrupt (`docs/EXTERNAL.md` §1), so a cave in
+that routine can render into a track's ring. In its favour: Braids is
+integer C++ for a 72 MHz Cortex-M3 with no FPU and could be **compiled**
+(`m68k-elf-gcc`, not installed; the binutils are) rather than rewritten;
+the ColdFire owns the sequencer, so a trig and a note per track are native;
+and the local ColdFire emulator runs the EMAC exactly. Two unknowns block
+it, and both are cheap:
+
+- **ColdFire headroom is unmeasured.** ✅ **BUILT 4 Sep 2026:
+  `modules/cfprobe`** — a cave around the frame routine's only call site
+  (`0x40004b12`, IPL 5) reading DMA timer 3, a fader-driven burn inside the
+  measurement, and a readout on HELLO WORLD's GAIN. Emulator-proven
+  (`tools/verify_cfprobe.py`, 22 checks); the numbers are
+  `docs/FLASHPLAN.md` flash 5's to find. The interrupt level matters: the
+  routine runs ABOVE the RTOS time slice and the level-4 MIDI framer, so
+  UI or card streaming should give before audio; if audio gives first, the
+  audio DMA sits at or below level 5 and every added cycle is paid by audio.
+- **A code home.** The known free flash is 1 KB at `0x400c4702` and the
+  2 KB zero run; a Braids build is far larger. Unpriced.
+
+**The Pickup machine as a donor** (Sam, 4 Sep 2026: "a rich donor for new
+things"). What is known: its recorder arm length comes off the FIN/FOUT
+ladder ÷ tempo24 at `0x40005ff0` (`EXTERNAL.md` §6c), the arm site is
+`0x400060c4`, and it records into CPU-side SDRAM like the delay's rings.
+Unknown, and the next reading job: where its playback loop lives, whether
+it runs in the same per-frame routine as the delay, and what its per-track
+record looks like — because a machine that already owns a recorder ring, a
+trig path and a pitch/rate parameter page is most of what a ColdFire
+synth voice needs. Read it after the probe's numbers are in.
+
 ## The flash backlog
 
 **What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
@@ -802,7 +843,8 @@ hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
 `tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
 across the edit — with no return in the rig nothing changed, to the bit.
 
-**`docs/FLASHPLAN.md` is the schedule** — three images, ordered so the
+**`docs/FLASHPLAN.md` is the schedule** — three images plus the rig, and
+since 4 Sep 2026 a fifth, the ColdFire headroom probe (§8), ordered so the
 cheapest and safest goes first, each shaped to stack independent claims whose
 failures stay distinguishable, and each with what would falsify it. The
 platform work needs no flash at all: refhash proves a default selection is

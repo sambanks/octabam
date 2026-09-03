@@ -1134,6 +1134,14 @@ def main():
     for _c in _caves:
         _b = _c.pinned
         if _replay and _c.hook_addr is not None:
+            # Replaying displaced bytes at the cave's address only works for
+            # position-independent stock. cfprobe displaces a pc-relative
+            # jsr, which replayed from the cave would land in hyperspace
+            # inside the audio interrupt -- refuse rather than build that.
+            if _c.hook_stock[:2] in (b"\x4e\xba", b"\x4e\xbb") \
+                    or _c.hook_stock[:1] == b"\x61":
+                sys.exit(f"{_c.label}: TEMPOCAVE=replay cannot replay "
+                         f"pc-relative stock ({_c.hook_stock.hex()})")
             _b = _c.hook_stock + bytes.fromhex("4e75")
             print(f"  {_c.label}: REPLAY-ONLY diagnostic (TEMPOCAVE=replay)")
         _plan.append((_c, _b))
@@ -1208,14 +1216,24 @@ def main():
             img[_pa - BASE:_pa - BASE + len(_write)] = _write
             print(f"    poke 0x{_pa:08x}: {_expect.hex()} -> {_write.hex()}")
         if _c.hook_addr is not None:
-            img[_c.hook_addr - BASE:_c.hook_addr - BASE + 10] = \
-                b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
+            # The jsr is six bytes; the rest of the displaced span is nops.
+            # hook_stock is whole instructions, so its length is the span:
+            # ten for both tempo-sync caves, eight for cfprobe (a jsr plus
+            # a move-to-SR). Anything shorter than the jsr, or odd, is a
+            # manifest error.
+            _n = len(_c.hook_stock)
+            assert _n >= 6 and _n % 2 == 0, \
+                f"{_c.label}: hook_stock must be >= 6 even bytes, got {_n}"
+            img[_c.hook_addr - BASE:_c.hook_addr - BASE + _n] = \
+                b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") \
+                + b"\x4e\x71" * ((_n - 6) // 2)
         # A formatter registration names the module it draws for, so a remix
         # that omits that module skips the write instead of pointing into a
         # descriptor which was never cloned.
         _reg = _c.registers_formatter
         if _reg is not None and _reg.module in clone_addr:
-            wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4, _c.cave_addr)
+            wr32(clone_addr[_reg.module] + 0x0ca + _reg.slot * 4,
+                 _c.cave_addr + _reg.offset)
             wr32(clone_addr[_reg.module] + 0x0fa + _reg.slot * 4, 0)
         _hook = (f", hook at 0x{_c.hook_addr:08x}"
                  if _c.hook_addr is not None else "")
