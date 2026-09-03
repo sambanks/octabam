@@ -16,7 +16,7 @@ VERSION ?= OCTABAM$(BUILD)
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>.py is the selection. chongbong is the shipping one.
-REMIX   ?= chongbong
+REMIX   ?= bamsep26
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
 # ColdFire emulator (docs/EMU.md), which needs `unicorn` from the uv-managed

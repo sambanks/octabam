@@ -42,6 +42,21 @@ import json, pathlib, re, sys, glob
 # from coming back.
 PART_BASE, PART_STRIDE, NPARTS, NPARTS_ALL = 0x8eed6, 0x18bb, 4, 8
 FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
+# THE KNOB VALUES a part stores for each track's two effects (found 3 Sep
+# 2026 by pattern, against the ChongBongolo26 backups: stock FILTER's page-1
+# defaults 00 7f 00 40 00 40 recur at a 24-byte stride on the tracks whose
+# FX1 id is 0x04, and ChonVerb's stored page 2 reads back as EXACTLY its
+# manifest defaults 00 02 40 00 00 01). Two arrays of eight 24-byte blocks,
+# one per track: bytes 0-5 are FX1's six knobs, 6-11 FX2's, 12-23 belong to
+# two other pages. Page 1 at P1_OFF, page 2 (slots 6-11, a select stored as
+# its index) at P2_OFF. Both relative to the part record.
+#
+# ⚠️ WHY THIS MATTERS (plan item A6): the bytes are stored under the layout
+# of whatever effect the part chose. A station that REPLACES a stock effect
+# inherits them raw -- FILTER's DEC=64 on slot 5 becomes ->VRB 64 on every
+# melodic track, i.e. a part that never sent anything is suddenly a reverb
+# client after the flash. stamp_defaults() writes OUR defaults over them.
+P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24
 FX_NAMES = {0x06: "BongDelay", 0x07: "ChonVerb", 0x09: "SEND", 0x00: "-"}
 
 def read_project(pdir):
@@ -207,6 +222,76 @@ def fx_plan(remix_name):
     return out
 
 
+def _remix_defaults(remix_name, replaced_only):
+    """-> {fx id: 12 default bytes} for the modules this remix places.
+
+    replaced_only=True limits it to modules that REPLACE a stock effect (the
+    only ids whose stored bytes are in a foreign layout); False covers every
+    module of ours, which is what a freshly stamped test project wants.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from remix import registry
+    remix = registry.remix(remix_name)
+    mods = registry.modules()
+    out = {}
+    for k in remix.modules:
+        m = mods.get(k)
+        if m is None or m.menu is None or getattr(m, "is_stock", False):
+            continue
+        if replaced_only and not m.menu.replaces:
+            continue
+        vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
+        out[m.menu.fx2_id] = bytes(vals[:12])
+    return out
+
+
+def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
+    """Write our modules' manifest defaults into every part/track that names
+    one of their ids. Returns the number of (part, track, slot) writes."""
+    pdir = pathlib.Path(pdir)
+    defaults = _remix_defaults(remix_name, replaced_only)
+    if not defaults:
+        sys.exit(f"remix {remix_name!r} has no {'replacing ' if replaced_only else ''}modules to stamp")
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        done = []
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
+                        fid = data[off + idoff + t]
+                        if fid not in defaults:
+                            continue
+                        d = defaults[fid]
+                        a = off + P1_OFF + t * TRACK_STRIDE + sub
+                        b = off + P2_OFF + t * TRACK_STRIDE + sub
+                        data[a:a + 6] = d[:6]
+                        data[b:b + 6] = d[6:]
+                        done.append((p, t, sub, fid))
+
+        _bank_write(pdir, num, mut, guard=guard)
+        # READ IT BACK, as testproj does: a write this tool cannot verify is
+        # a write you find out about on the unit.
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, sub, fid in done:
+            off = PART_BASE + p * PART_STRIDE
+            a = off + P1_OFF + t * TRACK_STRIDE + sub
+            b = off + P2_OFF + t * TRACK_STRIDE + sub
+            if data[a:a + 6] + data[b:b + 6] != defaults[fid]:
+                sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
+        total += len(done)
+        if done:
+            print(f"bank{num:02d}: {len(done)} slots stamped with our defaults")
+    print(f"{total} slot(s) stamped for remix {remix_name!r} "
+          f"({'replaced ids only' if replaced_only else 'every id of ours'})")
+    return total
+
+
 def make_test_project(src, dest, remix_name):
     import shutil
     src, dest = pathlib.Path(src), pathlib.Path(dest)
@@ -247,6 +332,10 @@ def make_test_project(src, dest, remix_name):
             lines.append(f"bank {chr(64+num)}  part {p+1}   FX1 0x{f1:02x}  "
                          f"FX2 0x{f2:02x}   {lbl}")
     (dest / "OCTABAM_TEST_MAP.txt").write_text("\n".join(lines) + "\n")
+    # And the knobs: every slot that now names one of our ids gets that
+    # module's defaults, so no track boots holding another effect's bytes
+    # (plan A6 -- the stored layout is the chosen effect's, not ours).
+    stamp_defaults(dest, remix_name, replaced_only=False, guard=False)
     # READ IT BACK. A write this tool cannot verify is a write you find out
     # about on the unit.
     for bi, bank in enumerate(sorted(dest.glob("bank*.work"))):
@@ -273,4 +362,8 @@ if __name__ == "__main__":
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
     elif cmd == "track-slot": set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "stamp-defaults":
+        # a REAL set, before its first load on a flashed image: only the ids
+        # a station replaced are touched; ChonVerb/BongDelay keep Sam's knobs
+        stamp_defaults(pdir, sys.argv[3], replaced_only=True)
     else: sys.exit(f"unknown command {cmd!r}")

@@ -77,7 +77,7 @@ MODULE = Module(
               doc="one-pole damping inside the feedback path; lower = darker each pass"),
         Param(b"SHPE", 0, 4, active=True, formatter=_STEP,
               labels=("TRI", "SIN", "SQR", "SAW"),
-              doc="LFO shape; SQR steps the line, which is a chorus that jumps"),
+              doc="LFO shape: TRI, SIN, SQR (steps the line: a chorus that jumps), SAW (a ramp)"),
         Param(b"WID", 64, 128, active=True, formatter=_PLAIN,
               doc="how far the right channel's LFO lags the left, 0 = mono, 64 = quarter"),
         Param(b"STGS", 1, 4, active=True, formatter=_STEP,
