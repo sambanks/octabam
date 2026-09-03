@@ -56,7 +56,22 @@ FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
 # inherits them raw -- FILTER's DEC=64 on slot 5 becomes ->VRB 64 on every
 # melodic track, i.e. a part that never sent anything is suddenly a reverb
 # client after the flash. stamp_defaults() writes OUR defaults over them.
-P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24
+P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24     # RETRACTED for page 2, see below
+# ❌ 4 Sep 2026, found on the flash-4 unit: PAGE 2 IS NOT 24 BYTES PER TRACK.
+# Its per-track block is THIRTY bytes -- six FX1 page-2 bytes, six FX2, then
+# eighteen that belong to other pages -- and it starts at +0x325, not +0x331.
+# Measured on a part the UNIT had written (every track FILTER + DELAY, the
+# effects re-selected on the panel): under a 30-byte stride from 0x325, T1..T7
+# all read FILTER's page-2 descriptor defaults (00 00 01 00 03 00) then the
+# DELAY's (00 01 7f 01 00 00), byte for byte; under 24 from 0x331 they read as
+# noise. Page 1 IS 24 from 0x12f (the same part reads eight identical rows).
+# The 24-stride page-2 writes landed in other tracks' rows -- one casualty was
+# the stock DELAY's DIR, its dry level, which read 0 on T2/T4/T7 and made them
+# silent until the effect was re-selected. The "reads back EXACTLY as its
+# manifest defaults" above was a coincidence at T7's slot (MODE did not even
+# match). Falsifier: a unit-written part whose page 2 does not decode under
+# 0x325 + 30 * track.
+P2_OFF, P2_STRIDE = 0x325, 30
 FX_NAMES = {0x06: "BusDelay", 0x07: "BusVerb", 0x09: "SEND", 0x00: "-"}
 
 def read_project(pdir):
@@ -267,7 +282,7 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
                             continue
                         d = defaults[fid]
                         a = off + P1_OFF + t * TRACK_STRIDE + sub
-                        b = off + P2_OFF + t * TRACK_STRIDE + sub
+                        b = off + P2_OFF + t * P2_STRIDE + sub
                         data[a:a + 6] = d[:6]
                         data[b:b + 6] = d[6:]
                         done.append((p, t, sub, fid))
@@ -281,7 +296,7 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
         for p, t, sub, fid in done:
             off = PART_BASE + p * PART_STRIDE
             a = off + P1_OFF + t * TRACK_STRIDE + sub
-            b = off + P2_OFF + t * TRACK_STRIDE + sub
+            b = off + P2_OFF + t * P2_STRIDE + sub
             if data[a:a + 6] + data[b:b + 6] != defaults[fid]:
                 sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
         total += len(done)
@@ -419,7 +434,7 @@ def make_rig_project(src, dest, remix_name):
                     data[off + FX2_OFF + i] = id2
                     for sub, v in ((0, v1), (6, v2)):
                         a = off + P1_OFF + i * TRACK_STRIDE + sub
-                        b = off + P2_OFF + i * TRACK_STRIDE + sub
+                        b = off + P2_OFF + i * P2_STRIDE + sub
                         data[a:a + 6] = v[:6]
                         data[b:b + 6] = v[6:]
 
@@ -433,7 +448,7 @@ def make_rig_project(src, dest, remix_name):
                 i = t - 1
                 got = (data[off + FX1_OFF + i], data[off + FX2_OFF + i],
                        bytes(data[off + P1_OFF + i*TRACK_STRIDE: off + P1_OFF + i*TRACK_STRIDE + 12]),
-                       bytes(data[off + P2_OFF + i*TRACK_STRIDE: off + P2_OFF + i*TRACK_STRIDE + 12]))
+                       bytes(data[off + P2_OFF + i*P2_STRIDE: off + P2_OFF + i*P2_STRIDE + 12]))
                 if got != (id1, id2, v1[:6] + v2[:6], v1[6:] + v2[6:]):
                     sys.exit(f"{bank.name} part {p+1} T{t}: read-back disagrees")
     lines = [f"# RIG project for remix {remix_name!r} -- every part of every bank is this:",
