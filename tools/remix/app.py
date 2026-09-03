@@ -1264,7 +1264,11 @@ class RemixerScreen(Screen):
             # costs cycles when it is selected like any other. Only FILTER's
             # figure has ever been measured (192/instance, docs/CHIP.md), so
             # the row says what is missing rather than inventing the rest.
-            nstock = sum(1 for m in st.selected if m.is_stock)
+            # Not the ones this selection HARVESTED past: their code is
+            # gone, so nothing can select them and they cost no cycles.
+            nstock = sum(1 for m in st.selected if m.is_stock
+                         and (m.key not in st.harvest
+                              or m.key.split()[0] in st.donors_kept))
             gap = (f" · {nstock} stock rows not counted" if nstock else "")
             brief.append(("cycles", f"[{c}]{free:,}[/]"))
             side.append(f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
@@ -1900,8 +1904,11 @@ class RemixerScreen(Screen):
         if self.sync_error:
             # The build names EVERY donor row this selection overruns, so
             # one press clears them all rather than one per rebuild.
+            # ⚠️ THIS SELECTION'S HARVEST, not the three reverbs. The build
+            # refuses a listed effect whose words it placed over, and which
+            # effects those are is now the remix's own choice.
             out += [m for m in st.selected
-                    if m.is_stock and m.key in stock.CONSUMED
+                    if m.is_stock and m.key in st.harvest
                     and m.key in self.sync_error]
         return out
 

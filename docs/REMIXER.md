@@ -582,6 +582,14 @@ and only four — the **two donor regions** (one per payload), the **FX2 buffer
 slots** per core, the **chooser rows**, and the **ColdFire cave**. Everything
 else is unbounded in practice.
 
+⚠️ **Every row here follows the selection's own harvest.** The `words` rows'
+total is `stock.region_words(harvest)` — 2,724 for the default three, 3,053
+with CHORUS — and once a build lands they are the build's own figures, so
+they cannot drift from it. `held by` names whatever harvested effects are
+still listed and what dropping the lowest buys. The `cycles` row's `N stock
+rows not counted` excludes any the placer reached, because their code is gone
+and nothing can select them.
+
 ⚠️ **A listed reverb is loaded.** The build reports the whole 2,724 as free
 because nothing of *ours* is placed yet — but PLATE, SPRING and DARK REV's
 code is what occupies the region, so a reverb you keep in the chooser is

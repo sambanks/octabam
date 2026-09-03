@@ -52,7 +52,9 @@ def main():
             knobs = ", ".join(f"{n}@{i}" for n, i in sorted(
                 m.knob_map().items(), key=lambda kv: kv[1]))
             print(f"      knobs: {knobs}")
-    print(f"\n  consumed by every remix (their code is the donor region): "
+    # ⚠️ NOT "every remix" any more: the donor region is a CHOICE
+    # (schema.Remix.harvest), and each remix's is printed with it below.
+    print(f"\n  harvested by default (their code is the donor region): "
           f"{', '.join(stock.CONSUMED)}\n")
 
     print("REMIXES  (remixes/<name>.py)\n")
@@ -63,6 +65,8 @@ def main():
         print(f"      modules: {', '.join(r.modules)}")
         if r.fx1:
             print(f"      also on the FX1 chooser: {', '.join(r.fx1)}")
+        if tuple(r.harvest) != stock.CONSUMED:
+            print(f"      harvests: {', '.join(r.harvest)}")
         print(f"      unimplemented ids fall back to: {r.fallback}")
         print()
     print("Build one with:  make bus REMIX=<name>")
