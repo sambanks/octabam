@@ -145,6 +145,12 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 DESC_LEN = 0x192
 NEW_LIST = 0x400d6b00
+# The other unclaimed zero run docs/MAINMENU.md section 5 names -- 2,064 bytes
+# at 0x400d24d0. The menu shortcut cave is pinned at its start; label
+# formatters overflow into it when the clone window is full (the character
+# station's BUS-mode renames tipped the rig over by 56 bytes, 3 Sep 2026).
+OVERFLOW_RUN = 0x400d24d0
+OVERFLOW_RUN_END = 0x400d2ce0
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
 # NEW_LIST holds SEVEN rows plus its terminator before it runs into the
@@ -1130,6 +1136,11 @@ def main():
         print("  tempo cave OFF (NOTEMPO=1) -- SYNC reads zeros")
         _plan = []
     _cave_top = cave_end            # caves start past the descriptor clones
+    # The SECOND zero run (docs/MAINMENU.md section 5, 0x400d24d0..0x400d2ce0):
+    # pinned caves may live there, and since 3 Sep 2026 label formatters that
+    # no longer fit the clone window overflow into it, above whatever cave
+    # already sits there. _ovf_top is the first free byte of that run.
+    _ovf_top = OVERFLOW_RUN
     for _c, _b in _plan:
         if _c.cave_addr is None:
             # FLOATING (schema.CavePatch): first free address after what
@@ -1164,6 +1175,8 @@ def main():
             _b, _pokes = _c.emit(_c.cave_addr)
         if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)]):
             sys.exit(f"{_c.label} not free")
+        if OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
         # The bytes are PINNED so the build needs no m68k toolchain; when one
         # is present the source is re-assembled and compared, so a source that
         # has drifted from what we ship cannot pass unnoticed.
@@ -1240,17 +1253,30 @@ def main():
             else:
                 _bytes = label_fmt.emit(_p.labels)
                 label_fmt.verify(_p.labels)
-            if _lbl_top + len(_bytes) > cave_limit:
-                sys.exit(f"label formatters do not fit: {name} slot {_i} "
-                         f"needs {len(_bytes)} B at 0x{_lbl_top:08x}, limit "
-                         f"0x{cave_limit:08x}")
-            if any(img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)]):
-                sys.exit(f"label cave at 0x{_lbl_top:08x} is not free")
-            img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)] = _bytes
-            wr32(clone_addr[name] + 0x0ca + _i * 4, _lbl_top)
-            _lbl.append((name, _i, _p.name.decode("latin1"), _lbl_top,
+            # Past the clone window? Into the second zero run, above the
+            # caves pinned there. Either region is checked free; a formatter
+            # is position independent (pc-relative tables, absolute OS
+            # targets), so it neither knows nor cares which run it is in.
+            _at = _lbl_top
+            _ovf = _lbl_top + len(_bytes) > cave_limit
+            if _ovf:
+                _at = _ovf_top
+                if _at + len(_bytes) > OVERFLOW_RUN_END:
+                    sys.exit(f"label formatters do not fit: {name} slot {_i} "
+                             f"needs {len(_bytes)} B; the clone window ends at "
+                             f"0x{cave_limit:08x} and the overflow run at "
+                             f"0x{OVERFLOW_RUN_END:08x} (next free "
+                             f"0x{_at:08x})")
+            if any(img[_at - BASE:_at - BASE + len(_bytes)]):
+                sys.exit(f"label cave at 0x{_at:08x} is not free")
+            img[_at - BASE:_at - BASE + len(_bytes)] = _bytes
+            wr32(clone_addr[name] + 0x0ca + _i * 4, _at)
+            _lbl.append((name, _i, _p.name.decode("latin1"), _at,
                          len(_bytes), _p.labels, bool(_ren)))
-            _lbl_top += len(_bytes)
+            if _ovf:
+                _ovf_top = (_at + len(_bytes) + 3) & ~3
+            else:
+                _lbl_top += len(_bytes)
     for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
         print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
               f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})"
@@ -1258,7 +1284,10 @@ def main():
     if _lbl:
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
-              f"({_lbl_top - max(_cave_top, cave_end)} B)")
+              f"({_lbl_top - max(_cave_top, cave_end)} B)"
+              + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
+                 f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
+                 if _ovf_top > OVERFLOW_RUN else ""))
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from
@@ -1325,16 +1354,24 @@ def main():
         # be able to lose it by omission.
         _new = [FX1_NONE] + _fx1_desc + [0]
         _need = len(_new) * 4
+        # A table of absolute pointers: position independent, so it takes
+        # the overflow run when the clone window is full, like a formatter.
+        _fx1_addr, _fx1_ovf = _lbl_top, False
         if _lbl_top + _need > cave_limit:
-            sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
-                     f"{_need} B at 0x{_lbl_top:08x} and the cave ends at "
-                     f"0x{cave_limit:08x}")
-        if any(img[_lbl_top - BASE:_lbl_top - BASE + _need]):
-            sys.exit(f"FX1 chooser list cave at 0x{_lbl_top:08x} is not free")
-        _fx1_addr = _lbl_top
+            _fx1_addr, _fx1_ovf = _ovf_top, True
+            if _fx1_addr + _need > OVERFLOW_RUN_END:
+                sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
+                         f"{_need} B; the clone window ends at "
+                         f"0x{cave_limit:08x} and the overflow run at "
+                         f"0x{OVERFLOW_RUN_END:08x}")
+        if any(img[_fx1_addr - BASE:_fx1_addr - BASE + _need]):
+            sys.exit(f"FX1 chooser list cave at 0x{_fx1_addr:08x} is not free")
         for _i, _v in enumerate(_new):
             wr32(_fx1_addr + _i * 4, _v)
-        _lbl_top += _need
+        if _fx1_ovf:
+            _ovf_top = (_fx1_addr + _need + 3) & ~3
+        else:
+            _lbl_top += _need
         # REPOINT, having proved each site is what we think it is. A `lea.l
         # <abs>.l,aN` is 0x4?f9 followed by the address, so the two bytes
         # before the operand pin the instruction as well as the value.
@@ -1834,6 +1871,10 @@ mkgo:""",
             # still build a pre-v5 reference)
             n_want += (3 if "note starts at NONE" in src else 2) \
                 if "y:>$090a" in src else 0
+            # + 5 for the RETD return-liveness state (3 Sep 2026): the grace
+            # counter $090b (load + store) and this block's host print gain
+            # $090c (store, then one load per channel in the output stage)
+            n_want += 5 if "y:>$090b" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"

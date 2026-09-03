@@ -46,6 +46,7 @@
 ;   $28 slope     $29 sat mode      $2a cmod           $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff  $2f bypass
 ;   $30 ->DEL level     $31 ->VRB level
+;   $3e RVRB return level  $3f DLY return level   (BUS mode only, else 0)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the filter station 30
 ;   words before it was found):
@@ -54,6 +55,20 @@
 ;   $1d env fast (PERSISTENT)    $1e env slow (PERSISTENT, TRNS only)
 ;   $1f gr this sample           $32 key    $33 dry L park   $34 dry R park
 ;   $35 scratch (wet L)          $36 scratch (wet R)
+;   r4 / r5: the REVERB / DELAY wet read pointers (BUS mode), linear, per
+;   block from the rotation -- two buffers back, like every bus read.
+;
+; ---- BUS mode: the returns (3 Sep 2026) -----------------------------------
+; With SAT = BUS the station is the master's glue chain, and on a master
+; chain CRSH and RING are knobs nobody turns -- so BUS repurposes them as
+; the RVRB and DLY RETURN levels (the panel prints those names: ModeView in
+; the manifest). Each sample, AFTER the send taps, the two shared wet buffers
+; (stereo, four deep, docs/BUS.md "The returns") are read two buffers back
+; and added at those levels; and each block the station STAMPS the bus's
+; liveness word (y:$9d8 / y:$9d9) while a return level is up, which is what
+; tells that engine to stop printing its wet on its own host. Added after
+; the taps, never before: a return inside the tap would feed the wet back
+; into the bus and the reverb would run away.
 ;
 ; CYCLES_FORWARD_BRANCHES -- the SRR hold and the RING gate are the only
 ; branches left in the sample loop, both forward and both skipping work, so
@@ -311,6 +326,9 @@ ch_cdone:
         move    x0,x:(r7+$3a)
         move    #>$800000,x0            ; -1.0
         move    x0,x:(r7+$3b)
+        clr     a
+        move    a,x:(r7+$3e)            ; return levels: 0 outside BUS mode
+        move    a,x:(r7+$3f)
         move    x:(r6+$c),a
         and     #>$ff00,a
         move    a1,x0
@@ -341,6 +359,18 @@ ch_sbus:
         move    x0,x:(r7+$38)
         move    #>$7fffff,x0            ; ... post = 2.0
         move    x0,x:(r7+$39)
+; BUS: CRSH and RING are the RETURN levels. The crush mask goes all-ones and
+; the carrier step 0, so the stages those knobs used to drive are neutral.
+        move    #>$ffffff,x0
+        move    x0,x:(r7+$23)           ; crush: identity
+        clr     a
+        move    a,x:(r7+$24)            ; ring: no carrier
+        move    x:(r6+$2),x0
+        move    x0,x:(r7+$3e)           ; RVRB return level (the CRSH knob)
+        move    x:(r6+$d),a
+        and     #>$7f0000,a
+        move    a1,x0
+        move    x0,x:(r7+$3f)           ; DLY return level (the RING knob)
 ch_sdone:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
@@ -354,6 +384,38 @@ ch_sdone:
 ; WDTH/128, so it is stored as-is and the product is doubled back in the
 ; accumulator's guard bits. 64 -> 0.5 -> x2 = exactly 1.0, i.e. untouched.
         move    a,x:(r7+$2b)            ; side gain / 2
+; ---- the return read pointers, and the liveness stamps -------------------
+; Two buffers back, like every bus read (an idle block each side of the
+; reader on both cores); x2 throughout because the wet buffers are stereo,
+; 32 words each. The delay's page is the reverb's + $80 (spelled as base +
+; offset, so the XBUS relocation of `$9xx` literals catches the base).
+        move    x:(r7+$69),a            ; this block's write offset
+        add     #>$20,a
+        and     #>$30,a                 ; two back, mod 4
+        move    a1,x0
+        move    x0,a                    ; A2-clean after the and
+        add     x0,a                    ; x2
+        move    x:(r7+$67),b            ; split-aware frame offset
+        add     b,a
+        add     b,a                     ; + frame x2
+        add     #>$9da,a
+        move    a,r4                    ; REVERB wet [read]
+        add     #>$80,a
+        move    a,r5                    ; DELAY wet [read]
+        move    #>$ffffff,m4
+        move    #>$ffffff,m5
+        move    x:(r7+$3e),a            ; RVRB up: stamp the reverb's word
+        tst     a
+        beq     ch_nrv
+        move    #>$1,x0
+        move    x0,y:>$9d8
+ch_nrv:
+        move    x:(r7+$3f),a            ; DLY up: stamp the delay's word
+        tst     a
+        beq     ch_ndl
+        move    #>$1,x0
+        move    x0,y:>$9d9
+ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------
 ; DRV 0, FOLD 0, CRSH 0, COMP 0, MIX 127, RING 0, WDTH 64, SRR OFF. Every
 ; part that ever chose LO-FI runs this after the flash, so the neutral block
@@ -366,8 +428,13 @@ ch_sdone:
         move    x:(r6+$1),a             ; FOLD
         tst     a
         bne     ch_live
-        move    x:(r6+$2),a             ; CRSH
-        tst     a
+        move    x:(r7+$23),a            ; crush MASK (not the knob: in BUS
+        move    #>$ffffff,x0            ; mode the knob is RVRB and the mask
+        cmp     x0,a                    ; is identity)
+        bne     ch_live
+        move    x:(r7+$3e),a            ; a return level up needs the loop
+        move    x:(r7+$3f),b
+        add     b,a
         bne     ch_live
         move    x:(r6+$3),a             ; COMP
         tst     a
@@ -683,6 +750,35 @@ ch_grz:
         move    y:(r1),b
         add     b,a
         move    a,y:(r1)+
+; ---- the returns (BUS mode): added LAST, after the send taps -------------
+; Skipped per sample when both levels are 0 -- a forward skip, the class
+; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
+; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
+        move    x:(r7+$3e),a
+        move    x:(r7+$3f),b
+        add     b,a
+        beq     ch_noret
+        move    x:(r0),a
+        move    y:(r4)+,x0              ; reverb wet L
+        move    x:(r7+$3e),y1           ; RVRB
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0              ; delay wet L
+        move    x:(r7+$3f),y1           ; DLY
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0)
+        move    x:(r0+n0),a
+        move    y:(r4)+,x0              ; reverb wet R
+        move    x:(r7+$3e),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0              ; delay wet R
+        move    x:(r7+$3f),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0+n0)
+ch_noret:
         move    #>$2,n0
         move    (r0)+n0
         move    #>$1,n0
@@ -713,6 +809,36 @@ ch_bypass:
         move    y:(r1),b
         add     b,a
         move    a,y:(r1)+
+; ---- the returns (BUS mode): added LAST, after the send taps -------------
+; Skipped per sample when both levels are 0 -- a forward skip, the class
+; CYCLES_FORWARD_BRANCHES admits. The wet in x0 goes negative, so the mpy is
+; the audited-signed x0,y1 order; the level is the knob word (val/128, >= 0).
+        move    x:(r7+$3e),a
+        move    x:(r7+$3f),b
+        add     b,a
+        beq     ch_bynor
+        move    x:(r0),a
+        move    y:(r4)+,x0              ; reverb wet L
+        move    x:(r7+$3e),y1           ; RVRB
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0              ; delay wet L
+        move    x:(r7+$3f),y1           ; DLY
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0)
+        move    x:(r0+n0),a
+        move    y:(r4)+,x0              ; reverb wet R
+        move    x:(r7+$3e),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    y:(r5)+,x0              ; delay wet R
+        move    x:(r7+$3f),y1
+        mpy     x0,y1,b
+        add     b,a
+        move    a,x:(r0+n0)
+        move    x:(r7+$30),y1           ; ->DEL level back in y1
+ch_bynor:
         move    #>$2,n0
         move    (r0)+n0
         move    #>$1,n0

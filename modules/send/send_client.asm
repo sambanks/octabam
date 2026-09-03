@@ -55,21 +55,10 @@
 ;                       alone.
 ;   Y:0x901..0x940      REVERB bus accumulator, FOUR buffers of 16 words (one
 ;                       word per sample slot within a block), at +0/+16/+32/+48
-;   Y:0x941..0x960      REVERB bus wet, TWO buffers          (SERVER writes,
-;                                                             SEND never reads)
+;   Y:0x941..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
+;                        mono, never read. Left in place so nothing below moves.)
 ;   Y:0x961..0x9a0      DELAY  bus accumulator, FOUR buffers of 16 words
-;   Y:0x9a1..0x9c0      DELAY  bus wet, TWO buffers
-;                       ⚠️ THE WET BUFFERS STAY AT TWO. Nothing reads them --
-;                       they are a hook for BUS.md task 10's cross-bus reader
-;                       and are write-only today -- so they cannot carry a
-;                       race, and giving them four would have pushed the layout
-;                       past Y:0x9ff. That matters: build_bus.py relocates this
-;                       scratch by a BLANKET regex over `$9xx` literals, so a
-;                       layout that outgrows the 0x900 page would need the
-;                       substitution widened, which is exactly the class of
-;                       change CLAUDE.md's trap list is about. Their write
-;                       offset is therefore masked to `& $10` at the two sites
-;                       that address them, and nowhere else.
+;   Y:0x9a1..0x9c0      (DEAD: was the DELAY wet, same story)
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
 ;   Y:0x9c3..0x9c6      REVERB send COUNT, one per accumulator buffer -- how
@@ -94,8 +83,34 @@
 ;                        delay's own half-window is entirely line buffer.
 ;                        Nobody else reads or writes these eight words.
 ;
-;   The layout ends at Y:0x9d2 -- 211 words, from 144 before the fourth
-;   buffer. Under XBUS it relocates whole to 0x36000..0x360d2.
+;   Y:0x9d3..0x9d7      UNUSED, DELIBERATELY: under XBUS these are 0x360d3-5,
+;                       where R36's per-block state was DEAD ON HARDWARE
+;                       (writes and in-loop reads never met; mechanism
+;                       unknown -- build_bus.py's build log). Nothing of ours
+;                       goes there until someone explains it.
+;   Y:0x9d8             RETV -- the REVERB return's liveness stamp. A character
+;                       station in BUS mode writes it nonzero every block its
+;                       RVRB level is up; the reverb reads it, clears it, and
+;                       prints its wet on its own host only while no stamp has
+;                       arrived for 3 blocks (docs/BUS.md "The returns").
+;   Y:0x9d9             RETD -- the same for the DELAY.
+;   Y:0x9da..0xa59      REVERB bus WET, STEREO (L,R interleaved), FOUR buffers
+;                       of 32 words at +0/+32/+64/+96 -- the accumulators'
+;                       rotation, doubled for the stride. Written by the reverb
+;                       from its output stage (post-gate, pre-IN-makeup), read
+;                       two buffers back by a BUS-mode station. Four deep for
+;                       the same reason the accumulators are: it is read across
+;                       cores now.
+;   Y:0xa5a..0xad9      DELAY bus WET, same shape. ⚠️ Its base is spelled
+;                       `$9da + $80` in every source, never `$a5a`: build_bus.py
+;                       relocates `$9xx` literals only, and a fused `$a5a` would
+;                       stay core-private and silently miss the bus. Only the
+;                       BASE literal has to relocate -- the buffers themselves
+;                       run past the 0x900 page, and that is fine.
+;
+;   The layout ends at Y:0xad9 -- 474 words. Under XBUS it relocates whole to
+;   0x36000..0x361d9 (base + (old - 0x900)); the 0x360d3-5 hole rides along.
+;   It was 0x900..0x9d2 (211 words) until 3 Sep 2026.
 ;
 ; Latency, pinned per BUS.md: every block, whichever track is "position 0"
 ; (r7 == 0x6200 -- the FIRST FX2 dispatched in this bank, fixed by hardware

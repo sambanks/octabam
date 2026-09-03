@@ -31,6 +31,17 @@ rather than a fader for the dirt.
   GLUE + WDTH this is the master chain on T8's FX1.
 - **→DEL / →VRB** make it a bus client on the filter station's terms:
   knob-gated registration, and it never housekeeps.
+- **SAT = BUS is also the RETURN** (3 Sep 2026, `docs/BUS.md` "The
+  returns"). On a master chain CRSH and RING are knobs nobody turns, so BUS
+  repurposes them as **RVRB** and **DLY**, the two return levels — the panel
+  and the remixer print those names (`mode_views`), the crush and ring
+  stages go neutral, and after the send taps the station adds the shared
+  reverb and delay wet (stereo, four deep, two buffers back) at those
+  levels. While a level is up it stamps that bus's liveness word each
+  block, and the engine on the other end stops printing on its own host:
+  the reverb leaves T5 and enters the mix here. Levels down, any other SAT,
+  or no station, and within 3 blocks the engines print on their hosts as
+  before — bit-identically. Gate: `tools/verify_returns.py` (18 cases).
 
 ⚠️ **The detector reads `x:(r7+$32)`, the KEY**, which is the station's own
 input today. The →KEY bus send on the backlog writes another track's there

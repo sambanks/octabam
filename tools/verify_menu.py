@@ -119,6 +119,11 @@ STEPPED_FMT = (0x4003c718, 0x40047254)
 # The ColdFire cave region (docs/PARAM_PAGES.md section 7): clones, the tempo
 # caves and PLAN §6's label formatters all live in here and nowhere else.
 CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
+# ... and, since 3 Sep 2026, the second zero run docs/MAINMENU.md section 5
+# names: label formatters (and the FX1 list) overflow into it when the clone
+# window is full -- the character station's BUS-mode renames tipped the rig
+# over. build_bus.py's OVERFLOW_RUN / OVERFLOW_RUN_END.
+OVF_LO, OVF_HI = 0x400d24d0, 0x400d2ce0
 # TIME's sticky-snap formatter is the tempo-sync cave that registers itself
 # as DELAY SERVER slot 0. Its address FLOATS since 3 Sep 2026 (it sits
 # behind the descriptor clones, however many there are), so it is
@@ -308,7 +313,8 @@ def main():
                 # an address inside the cave region, never anything else.
                 # What each cave PRINTS is proven separately, by asking the
                 # emulated firmware: tools/verify_labels.py.
-                a_ok = f1 == STEPPED_FMT[0] or CAVE_LO <= f1 < CAVE_HI
+                a_ok = (f1 == STEPPED_FMT[0] or CAVE_LO <= f1 < CAVE_HI
+                        or OVF_LO <= f1 < OVF_HI)
                 check(a_ok and f2 == STEPPED_FMT[1] and f3 == 0,
                       f"{name}: p{i} count {cnt} is a SELECT, so it carries "
                       f"the tick widget and 0x12a=0, with A either stock's "

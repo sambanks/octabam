@@ -680,8 +680,25 @@ def main():
                          "effect -- servers and inserts alike -- without a "
                          "per-effect flag; an unknown name dies instead of "
                          "driving the wrong slot.")
+    ap.add_argument("--return", dest="ret", action="store_true",
+                    help="append a CHARACTER STATION in SAT=BUS with both "
+                         "return levels at 127 to the layout and measure "
+                         "ITS output: the engines' wet as the master hears "
+                         "it, two blocks late (docs/BUS.md 'The returns'). "
+                         "The servers' own streams then carry dry only.")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.ret:
+        _rl = next((m.harness.layout_char for m in registry.modules().values()
+                    if m.name == "charstation" and m.harness is not None), None)
+        if _rl is None:
+            die("--return needs the character station in the registry")
+        if _rl in a.layout.upper():
+            die(f"--return: the layout already has a {_rl!r}; set its knobs "
+                f"with --set {_rl}:SAT=3 etc. instead")
+        a.layout = a.layout + _rl
+        a.pick = _rl
+        a.set = [f"{_rl}:SAT=3", f"{_rl}:CRSH=127", f"{_rl}:RING=127"] + a.set
     if a.pick is not None and a.pick not in SERVER_ID:
         # A module key or name, resolved to its letter -- the letters are
         # derived and nobody should have to know them.
@@ -797,9 +814,19 @@ def main():
                 die(f"{tgt_mod.name} {name}={v} is out of range 0..{hi} -- a "
                     f"stepped select uses the value as an INDEX")
             tgt_base[slot] = v
+        # In a bus layout every per-letter list rides the dict, the render
+        # target's own included -- run() ignores a bare list there. And a
+        # `2:NAME=VAL` spec for the TARGET letter lands in `others`, so the
+        # target's list is the merge of both, never the defaults over the
+        # prefixed values (3 Sep 2026: `--pick 2 --set 2:SAT=3` rendered a
+        # station at its defaults and reported the bus silent).
+        if not a.direct and ins is not None:
+            if _st in others:
+                for _k, _v in enumerate(others[_st]):
+                    if _v != MODULE_DEFAULTS.get(_st, [0] * 12)[_k]:
+                        ins[_k] = _v
+            others[_st] = ins
         if others and not a.direct:
-            if ins is not None:
-                others[_st] = ins
             ins = others
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
                a.split, a.layout, delay_params=dpar, pick=a.pick,

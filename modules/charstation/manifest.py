@@ -32,10 +32,22 @@ the stamper (plan A6) writes ours.
 The compressor's detector reads a KEY that is the station's own input today;
 the ->KEY bus send on the backlog swaps in another track's, which is the
 only change needed for sidechain ducking.
+
+BUS MODE IS ALSO THE RETURN (3 Sep 2026, docs/BUS.md "The returns"). With
+SAT = BUS the station is the master's glue chain, and on a master chain
+CRSH and RING are knobs nobody turns -- so BUS repurposes them as the RVRB
+and DLY RETURN LEVELS: the panel prints those names (the ModeView below),
+the crush and ring stages go neutral, and each sample the two shared wet
+buffers are added in AFTER the send taps. While a return level is up the
+station stamps that bus's liveness word every block, and the engine on the
+other end stops printing its wet on its own host: the reverb leaves T5 and
+enters the mix here. Levels down, or any other SAT, and the engines print on
+their hosts exactly as before -- a wrong setting on the master can never
+make the reverb vanish from the set.
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
-                          MenuEntry, Module, Param, YBase)
+                          MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -60,7 +72,7 @@ MODULE = Module(
         Param(b"FOLD", 0, active=True, formatter=_PLAIN,
               doc="wavefolder drive, 1x..8x into the fold; 0 = no folding"),
         Param(b"CRSH", 0, active=True, formatter=_PLAIN,
-              doc="bit depth: 0 = 24 bits, 127 = about 3; the quantiser is mid-tread"),
+              doc="bit depth: 0 = 24 bits, 127 = about 3; in SAT=BUS it is RVRB, the reverb return"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
         Param(b"-DEL", 0, active=True, formatter=_PLAIN,
@@ -72,9 +84,9 @@ MODULE = Module(
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
         Param(b"SAT", 0, 4, active=True, formatter=_STEP,
               labels=("TAPE", "TUBE", "FUZZ", "BUS"),
-              doc="saturation character; BUS is the gentle one for a master chain"),
+              doc="saturation character; BUS = the master chain, and the returns come in"),
         Param(b"RING", 0, 128, active=True, formatter=_PLAIN,
-              doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off (no carrier at all)"),
+              doc="ring-mod carrier, ~5 Hz..3 kHz; 0 = off; in SAT=BUS it is DLY, the delay return"),
         Param(b"CMOD", 0, 3, active=True, formatter=_STEP,
               labels=("COMP", "GLUE", "TRNS"),
               doc="COMP fast 4:1 - GLUE slow soft-knee 2:1 (the master) - TRNS transient shaper"),
@@ -83,6 +95,14 @@ MODULE = Module(
         Param(b"SRR", 0, 4, active=True, formatter=_STEP,
               labels=("OFF", "/2", "/4", "/8"),
               doc="sample-rate reduction: hold each sample 2, 4 or 8 times"),
+    ),
+    # SAT = BUS renames the two knobs it repurposes and brings them up at
+    # unity: the engines' wet used to land on their hosts at exactly 1.
+    mode_slot=7,
+    mode_views=(
+        ModeView(mode=3,                        # BUS
+                 names={2: b"RVRB", 8: b"DLY"},
+                 defaults={2: 127, 8: 127}),
     ),
     dsp=DspSection(
         asm="modules/charstation/char_station.asm",

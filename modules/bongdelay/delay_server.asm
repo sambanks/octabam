@@ -629,20 +629,25 @@ bus_mine:
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
-; The WET buffers are TWO deep, not four -- nothing reads them, so they cannot
-; carry a race. This is the second of the two sites that narrows the offset.
+; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
+; Read now, by a character station in BUS mode -- the return on the master
+; (docs/BUS.md "The returns"), which is on the OTHER core -- so it takes the
+; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
+; interleaved: the ping-pong image is the point of the delay). The base is
+; the reverb's wet page plus $80 -- spelled as base + offset, NOT one literal,
+; because only `$9xx` literals relocate under XBUS and a fused `$a5a` would
+; stay core-private and silently miss the bus (the shared-window base rule).
         move    x1,a
-        and     #>$10,a                 ; write offset, narrowed to {0,16}
-        move    a,x0
-        move    #>$9a1,a
-        add     x0,a
+        add     x1,a                    ; write offset x2 (0/32/64/96)
         add     b,a
-        move    a,x:(r7+$64)            ; this call's DELAY WET write address
+        add     b,a                     ; + frame offset x2
+        add     #>$9da,a
+        add     #>$80,a                 ; the DELAY's page, after the reverb's
+        move    a,x:(r7+$64)            ; this call's WET write address (L; R at +1)
 
 ; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
-; ⚠️ x0 holds the NARROWED (wet) offset from the block just above, not the
-; write offset -- the REVERB accumulator is four deep, so this reloads from x1.
-; b (the split-aware frame offset) is still valid.
+; x1 still holds the write offset and b the split-aware frame offset (the wet
+; address above touched neither).
 ; ⚠️ THIS IS A CROSS-CORE WRITE. BongDelay runs on payload B and this line
 ; writes payload A's reverb accumulator, so the race documented in
 ; docs/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
@@ -653,6 +658,37 @@ bus_mine:
         add     x0,a
         add     b,a
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
+
+; ---- RETD: is a return live on the delay's wet? (clear-on-read stamp) -----
+; The reverb's mechanism verbatim (modules/chonverb/reverb_server.asm, RETV):
+; a return station stamps y:$9d9 nonzero each block it returns this bus; the
+; host prints its wet only while no stamp has arrived for 3 blocks, so with
+; no return in the rig the delay still comes out of its host, bit-identically
+; (print gain 1/2, doubled back in the guard bits). The grace counter and the
+; print gain live in CORE-PRIVATE Y, two words past the MIDI note's (r7 is
+; full, and the zero-padded spelling is what keeps the XBUS relocation off
+; them, exactly as RATE's state -- build_bus.py's census counts these five
+; refs, so this comment must not spell them).
+        move    y:>$090b,a              ; blocks of grace left
+        and     #>$3,a
+        move    a1,x0
+        move    x0,b                    ; A2-clean, boot garbage masked
+        move    #>$1,x0
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b                    ; floored at 0
+        move    y:>$9d9,a               ; the stamp
+        move    x0,y:>$9d9              ; clear-on-read (x0 is still 0)
+        move    #>$3,x0
+        tst     a
+        tne     x0,b                    ; stamped this block: 3 blocks of grace
+        move    b,y:>$090b
+        move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
+        move    #>$0,x0
+        tst     b
+        tne     x0,a                    ; a return is live: print nothing
+        move    a,y:>$090c              ; this block's host print gain
+        move    x:(r7+$67),b            ; the frame offset, back for what follows
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
@@ -2604,10 +2640,21 @@ pdone:
         mpy     y0,x0,b                 ; IN * wet
         asl     #$1,b,b                 ; 2*IN*wet
         add     b,a                     ; + the makeup
+        move    a,x0                    ; wet L, final -- PUBLISHED as-is
+        move    x:(r7+$64),b
+        move    b,r5
+        move    x0,y:(r5)               ; -> shared DELAY WET, L
+; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
+; while a return is live on this bus (RETD, per block). a1 is what the store
+; took before and what the mpy takes now: bit-identical with no return.
+        move    y:>$090c,y1             ; print gain
+        mpy     x0,y1,a                 ; (audited-signed x0,y1)
+        asl     #$1,a,a
         move    x:(r0),b                ; dry L, still in place
         add     b,a                     ; + dry at unity (v5)
         move    a,x:(r0)                ; L in place -- dry + wet
         move    x:(r7+$7c),x0           ; wet R = fR
+        move    x:(r7+$83),y1           ; d, reloaded (y1 carried the print gain)
         mpy     x0,y1,a
         asr     #$1,a,a
         add     x0,a
@@ -2623,22 +2670,28 @@ pdone:
         mpy     y0,x0,b                 ; makeup, R channel
         asl     #$1,b,b
         add     b,a
+        move    a,x0                    ; wet R, final -- PUBLISHED as-is
+        move    x:(r7+$64),b
+        add     #>$1,b
+        move    b,r5
+        move    x0,y:(r5)               ; -> shared DELAY WET, R
+        move    y:>$090c,y1             ; print gain, as on L
+        mpy     x0,y1,a
+        asl     #$1,a,a
         move    x:(r0+n0),b             ; dry R
         add     b,a
         move    a,x:(r0+n0)             ; R in place -- dry + wet
 
-; ---- write mono wet to the shared DELAY WET buffer (BUS.md) --------------
-        move    x:(r7+$64),a            ; this sample's WET write address
-        move    a,r5
+; ---- ->VERB stash: the mono average of the two lines, as before. (The
+; shared DELAY WET carries L and R now, written from the output stage.) ----
         move    x:(r7+$7b),a            ; fL
         move    x:(r7+$7c),x0           ; fR
         add     x0,a
         asr     #$1,a,a                 ; mono average
         move    a,x:(r7+$87)            ; stash for the ->VERB WET send below
-        move    a,y:(r5)
         move    x:(r7+$64),a
-        add     #>$1,a
-        move    a,x:(r7+$64)            ; advance WET write pointer
+        add     #>$2,a
+        move    a,x:(r7+$64)            ; WET pointer: one stereo frame on
 
 ; ---- ->VERB: wet (this delay's own output) + dry (this track's own
 ; pre-effect signal), scaled and summed into the shared REVERB ACC bus

@@ -792,7 +792,13 @@ worth keeping.
 **What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
 Everything since is unflashed: the delay's R59–R62 quality pass, the
 stepped-select labels, stock effects listable beside ours, the insert card,
-a module on FX1, and a donor region beyond the three reverbs.
+a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
+(three stations, BongDelay v5) — and, since 3 Sep 2026, **the returns**:
+the engines' wet published stereo and four deep, returned at the master by
+the character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
+hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
+`tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
+across the edit — with no return in the rig nothing changed, to the bit.
 
 **`docs/FLASHPLAN.md` is the schedule** — three images, ordered so the
 cheapest and safest goes first, each shaped to stack independent claims whose
