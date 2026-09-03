@@ -1,4 +1,4 @@
-"""BongDelay -- a multi-mode delay: CLEAN, PITCH, GRAIN, REVERSE.
+"""BongDelay -- a multi-mode delay: CLEAN, GRAIN (pitched), REVERSE.
 
 Hosted on payload B (core 1), which serves TRACKS 1-4. Any track can send
 into it, and its wet can be sent on into ChonVerb over the bus (-VRB) -- the
@@ -25,7 +25,7 @@ MODULE = Module(
     name="bongdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN/PITCH/GRAIN/REVERSE, tape wow, drive, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, drive, freeze.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -60,34 +60,21 @@ MODULE = Module(
         Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
               doc="tape wow depth; 0 = none - GRAIN: density, full dial, "
                   "level-flat (R61)"),
-        # ⚠️ Position 2 is DEAD ON PURPOSE, and the numbering is load-bearing.
-        # TAPE was retired 18 Aug 2026 (its wow/flutter became the global
-        # DPTH/RATE knobs, so TAPE was CLEAN with the knobs up) and its slot
-        # was KEPT rather than closed up, because a part stores the raw value:
-        # renumbering would turn every saved GRAIN (3) into REVERSE.
-        #
-        # It is labelled CLEAN, plainly, because that is what it RUNS. Two
-        # earlier labels were both worse: "(tape)" named a mode that does not
-        # exist, and "(CLEAN)" carried an editorial aside in a field that can
-        # only hold a value's NAME -- the parentheses read as a defect rather
-        # than as a footnote. Since PLAN §6 the unit prints these words too,
-        # so the list reads CLEAN PITCH CLEAN GRAIN REVRS: two positions that
-        # do the same thing, which is the truth and needs no explaining.
-        Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("CLEAN", "PITCH", "CLEAN", "GRAIN", "REVRS"),
-              doc="engine select; 2 is the retired TAPE slot and runs CLEAN "
-                  "(kept: parts store raw)"),
+        # v5 (3 Sep 2026): three real positions, nothing dead. The parts that
+        # stored PITCH (1) get GRAIN, which is its harmoniser now; the stamper
+        # writes fresh defaults for a replaced/renumbered effect anyway (plan A6).
+        Param(b"MODE", 0, 3, active=True, formatter=_STEP,
+              labels=("CLEAN", "GRAIN", "REVRS"),
+              doc="engine select: CLEAN, GRAIN (pitched cloud, v5), REVERSE"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
-              doc="wow LFO speed; 64 = exactly 1x (the DPTH=0 bypass law)"),
-        # PTCH is triple-meaning: the PITCH interval, GRAIN's grain SIZE
-        # (since v4, 3 Sep 2026) and REVERSE's segment size -- which is why
-        # its count stays 4.
-        Param(b"PTCH", 1, 4, active=True, formatter=_STEP,
-              labels=("+12", "+7", "-12", "det"),
-              doc="PITCH: interval - REVERSE: seg 46/93/23/12 ms, default 1 "
-                  "= 93 musical (R62) - GRAIN: size 23/46/93/186 ms (v4)"),
+              doc="wow LFO speed, 64 = 1x - GRAIN: pitch, +-2 oct, 64 = unison (v5)"),
+        # SIZE (the PTCH slot until v5): GRAIN's grain length and REVERSE's
+        # segment, one select read the same way by both. Count stays 4.
+        Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
+              labels=("46MS", "93MS", "23MS", "XTRM"),
+              doc="segment/grain size 46/93/23 ms; XTRM = 12 ms REVERSE, 186 ms GRAIN"),
         # DRV is drive in every mode but GRAIN, where the same byte is the
         # scatter depth. 0 = exact bypass, which outranks a scatter taste
         # that gets played by hand anyway.

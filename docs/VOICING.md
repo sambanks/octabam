@@ -2059,3 +2059,29 @@ material at matched settings.
 for: texture rather than pitch (no octave content now), the cloud morphing
 rather than stepping, no zipper at grain edges, and whether the 3.4 dB should
 go into the makeup law.
+
+## R64 — GRAIN v5: four per line, pitched, PITCH mode retired (3 Sep 2026)
+
+Sam heard v4's two-per-line cloud buzz at the grain rate with scatter up,
+and asked where GRAIN's pitch had gone: a four-position switch cannot be a
+pitch. So: four grains per line (v2's density), a continuous pitch on RATE
+(±2 octaves, 64 = unison; the latched MIDI note when one is held), and
+PITCH mode retired -- GRAIN at full density and zero scatter IS the
+harmoniser. MODE is CLEAN / GRAIN / REVRS; the PTCH switch is SIZE, in
+REVERSE's index order.
+
+Two defects found by measuring pitch rather than DC: Nimbus's read geometry
+plays an octave up at unity (955 Hz for 438 in -- the read moves with the
+head AND the phase), and dsp_host's boot garbage in the latched-note slot
+drove every local GRAIN render's pitch until the knob visibly did nothing.
+Both fixed; `modules/nimbus/README.md` carries the first as an open item.
+
+Numbers: delay 2,469 → 2,151 words (B FREE 323), 2,372 → 1,757 cycles.
+Pitch law measured to the grain-rate comb (see the module README's table);
+DC gate p-p 0; CLEAN/REVERSE/wow bit-identical to v3; density flat within
+1.3 dB from DPTH 32 up; v5 ~6 dB quieter than v3 on real material at
+matched settings (four decorrelated grains), a makeup decision for the ear.
+
+⬜ Ear pass pending (Sam): `out/ab/grain_v4/` -- `_v3` vs `_v5_r64_lm`
+(unison) and `_v5_r96_lm` (+12), glow_intro and guitar_dry.
+

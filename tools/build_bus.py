@@ -1787,9 +1787,14 @@ mkgo:""",
             # + 4 for the sticky-snap state: last knob + held division,
             # load + store each (24 Aug 2026)
             n_want += 4 if "y:>$0908" in src else 0
-            # + 2 for the MIDI branch (24 Aug 2026): latched note $090a,
-            # load + store
-            n_want += 2 if "y:>$090a" in src else 0
+            # + 3 for the MIDI branch (24 Aug 2026): latched note $090a,
+            # load + store, and since 3 Sep 2026 the warm-up's clear (the
+            # emulator's core-private Y is boot garbage, and a garbage
+            # note drove GRAIN's pitch in every local render)
+            # (2 for a source without the warm-up clear, so verify_delay can
+            # still build a pre-v5 reference)
+            n_want += (3 if "note starts at NONE" in src else 2) \
+                if "y:>$090a" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"

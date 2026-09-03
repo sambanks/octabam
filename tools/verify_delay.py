@@ -281,16 +281,17 @@ def main():
     if "; DMODE_OVERRIDE" in cand_src:
         clean_ref = render(ref_mem, dp(), source=source)
         MODES = [
-            ("PITCH +12", 1, 0, dp()),
-            ("PITCH detune (L/R steps differ)", 1, 3, dp()),
-            ("TAPE WOW=100", 2, None, dp(WOW=100)),
-            ("TAPE WOW=127 FDBK=127 (deep wobble + loop saturation)", 2, None,
-             dp(WOW=127, FDBK=127)),
-            ("GRAIN SPRAY=0 (every grain on the same read)", 3, 0, dp(SPRAY=0)),
-            ("GRAIN SPRAY=127 (full scatter)", 3, 0, dp(SPRAY=127)),
-            ("GRAIN rolling intervals (select 1)", 3, 1, dp(SPRAY=90)),
-            ("REVERSE size 4096 (93 ms, the line's ceiling)", 4, 0, dp()),
-            ("REVERSE size 512 (stutter) at TIME=127", 4, 3, dp(TIME=127)),
+            # v5 numbering (3 Sep 2026): 1 = GRAIN, 2 = REVERSE; PITCH mode is
+            # retired and its harmoniser lives in GRAIN's continuous pitch.
+            # DINT drives the SIZE select (the PTCH slot until v5).
+            ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(SPRAY=0)),
+            ("GRAIN unison SPRAY=127 (full scatter)", 1, 1, dp(SPRAY=127)),
+            ("GRAIN +12 on RATE, 23 ms grains", 1, 2, dp(SPRAY=60, RATE=96)),
+            ("GRAIN -12 on RATE, 186 ms grains (the distance clamp)", 1, 3,
+             dp(SPRAY=90, RATE=32)),
+            ("GRAIN sparse (DENS 0) at 93 ms", 1, 1, dp(SPRAY=64, WOW=0)),
+            ("REVERSE size 4096 (93 ms, the line's ceiling)", 2, 1, dp()),
+            ("REVERSE size 512 (stutter) at TIME=127", 2, 3, dp(TIME=127)),
         ]
         for label, dmode, dint, params in MODES:
             if dmode > shared_modes - 1:
@@ -318,9 +319,9 @@ def main():
         # ---- unknown MODE must fall back to CLEAN --------------------------
         # DMODE=5, not 3: 3 is GRAIN now, and a fallback case aimed at a mode
         # that EXISTS proves nothing. Keep this above the highest engine.
-        dm_mem, _, _ = build(args.candidate, "cand_dmode7", dmode=7)
+        dm_mem, _, _ = build(args.candidate, "cand_dmode5", dmode=5)
         d = render(dm_mem, dp(), source=source)
-        check("DMODE=7 (nonexistent mode) degrades to CLEAN, bit-identical",
+        check("DMODE=5 (nonexistent mode) degrades to CLEAN, bit-identical",
               d == clean_ref)
     else:
         print("  [ -- ] mode cases skipped: candidate has no "

@@ -136,6 +136,11 @@ on the RE below.
 
 ## Status (24 Aug 2026) — note → interval ON THE UNIT (R57, tag 76), hardware-confirmed
 
+⚠️ **v5 (3 Sep 2026, unflashed): the note drives GRAIN's continuous pitch**
+(2^((note−84)/12), ±24 semitones, MODE 1) — PITCH mode and its interval
+select are gone. `tools/verify_midi.py` checks the note against the RATE knob
+path (bit-identical at unison, spectral elsewhere). The cave is unchanged.
+
 - **Cave v2** (`modules/tempo-sync/tempo_cave.s`, 104 bytes, floating behind the
   descriptor clones — `0x400d7000` in the shipping image; the TIME formatter
   cave follows it, `0x400d7080` there): `r6+$8` = fader+1 (1 = fully B,
