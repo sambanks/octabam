@@ -386,6 +386,8 @@ Only a buffer-free INSERT can take one, and the UNIT pane says which cannot and 
 Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).
 
 [bold]what is actually scarce[/]
+Every row says what it IS in a column of its own, and under them is a MAP of the payload's effect code, drawn to scale from the real spans: thirteen segments, one per stock effect, `─` for the ones this selection keeps, `.` for the harvested run and `#` for how far your code reached into it. One bar per payload, because the layout is identical in both and only the fill differs. That is the picture the twenty-glyph `words` bar could not draw — it needed a legend and still said neither WHERE in the payload the region is nor WHICH effects it costs, and once the region became a choice those were the only two questions.
+
 Five things, and the Budget strip is one row for each: the two donor regions of 2,724 words (one per payload, and only YOUR modules spend them), the FX2 buffer slots (one per track, per core), the per-core CYCLES, the 31 chooser rows, and the ColdFire cave. Every row reads the same way — [bold]N free of TOTAL, and what took the rest[/].
 
 CYCLES is the one that does not fail as a refusal. Over budget the DSP does not decline to build, it wedges — so the row prices the WORST core under the worst mix this selection allows, which for a card of inserts is four copies of the dearest one: nothing stops all four tracks selecting it. The budget of 3,120 is what our code may spend after stock's own share, measured 23 Aug 2026, and the count is a floor: exact for the code, optimistic about memory contention.
@@ -1051,6 +1053,77 @@ class RemixerScreen(Screen):
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
 
+    # Short enough to label a segment of the map. The panel names are the
+    # firmware's own and too long for a bar thirteen effects wide.
+    _MAP_ABBR = {"FILTER": "FILT", "SPATIALIZER": "SPAT", "EQUALIZER": "EQ",
+                 "PHASER": "PHSR", "FLANGER": "FLNG", "CHORUS": "CHOR",
+                 "PLATE REV": "PLATE", "SPRING REV": "SPRING",
+                 "DARK REV": "DARK", "COMPRESSOR": "COMP", "LO-FI": "LOFI",
+                 "DJ EQ": "DJEQ", "COMB FILTER": "COMB"}
+
+    def _memory_map(self, st, width):
+        """The payload's effect code, to scale, with the harvested run marked.
+
+        ⚠️ THIS IS WHAT THE `words` BARS COULD NOT SAY. Twenty glyphs of
+        `#`/`-`/`.` needed a legend to decode and still showed neither WHERE
+        in the payload the region is nor WHICH effects it costs -- and once
+        the region became a choice (Remix.harvest) those were the two
+        questions. Drawn from stock.p_spans, so it cannot drift from what the
+        build places.
+
+        One label row, one bar per payload -- the layout is identical in both
+        and only the fill differs -- and a footer naming the run.
+        """
+        try:
+            sp = stock.p_spans("A")
+        except Exception:                            # noqa: BLE001
+            return []
+        run = sorted((a, n, k) for k, (a, n) in sp.items())
+        total = sum(n for _a, n, _k in run)
+        hv = set(st.harvest)
+        w = max(40, width - 6)
+        # ⚠️ CUMULATIVE ROUNDING, so the widths sum to exactly `w` and no
+        # segment is starved by the ones before it. Rounding each one on its
+        # own and giving the remainder to the last left COMB with two columns
+        # and its label cut to `CO`.
+        seg, off, col = [], 0, 0
+        for a, n, k in run:
+            off += n
+            nxt = round(off * w / total)
+            seg.append((k, a, n, nxt - col))
+            col = nxt
+        # A label needs four columns. Below that the names are noise and the
+        # bar still says everything the footer names.
+        label = ("".join(self._MAP_ABBR[k][:c].center(c)
+                         for k, _a, _n, c in seg)
+                 if min(c for _k, _a, _n, c in seg) >= 4 else None)
+        base = min((sp[h][0] for h in hv), default=0)
+        placed = {t: u for t, _tot, u, _f in st.regions}
+
+        def bar(tag):
+            got = placed.get(tag)
+            out = ""
+            for k, a, n, c in seg:
+                if k not in hv:
+                    out += f"[dim]{'─' * c}[/]"
+                elif got is None:
+                    out += f"[dim]{'.' * c}[/]"
+                else:
+                    fill = max(0, min(c, round((got - (a - base)) * c / n)))
+                    out += (f"[{OK}]{'#' * fill}[/][dim]{'.' * (c - fill)}[/]")
+            return out
+
+        # The footer brackets the harvested run under the bar it belongs to.
+        lo = sum(c for k, _a, _n, c in seg
+                 if sp[k][0] < min((sp[h][0] for h in hv), default=0))
+        span = sum(c for k, _a, _n, c in seg if k in hv)
+        foot = (" " * lo + "└" + f" harvested, {stock.region_words(tuple(hv)):,} "
+                f"words ".center(max(0, span - 2), "─") + "┘")[:w]
+        rows = (["  " + label] if label else []) + [f"[dim]A[/] " + bar("A")]
+        if len(placed) > 1 or not placed:
+            rows.append(f"[dim]B[/] " + bar("B"))
+        return rows + ["  " + f"[dim]{foot}[/]"]
+
     def _pane_budget(self, st, probs):
         """WHAT IS LEFT, standing under the effect you are looking at.
 
@@ -1090,6 +1163,38 @@ class RemixerScreen(Screen):
             return (f"{n:,} free of {total:,}"
                     + (f" [dim]· {extra}[/]" if extra else ""))
 
+        # ⚠️ WHAT EACH ROW *IS*. The numbers were self-consistent and still
+        # left "what is a cave?" unanswered, and the strip has forty columns
+        # spare. One short phrase each, in a column of its own so they read
+        # as a key rather than as more detail on the figure.
+        WHAT = {
+            "words A": "where your modules' code goes, core 0",
+            "words B": "the same on core 1",
+            "FX2 buf A": "one 16K Y buffer per track",
+            "FX2 buf B": "one 16K Y buffer per track",
+            "cycles": "DSP time, per core per sample",
+            "rows": "entries the FX2 menu can hold",
+            "cave": "spare ColdFire bytes for patches",
+        }
+        # The descriptor column is placed at the END, once every row's real
+        # width is known -- a fixed column either collides with the longest
+        # row or leaves a canyon after the shortest, and which is longest
+        # changes with the selection.
+        def why(key, line):
+            return f"\0{key}\0{line}"
+
+        def columns(rows, width):
+            """Lay the rows out with their descriptors in one column, or
+            without them when the terminal cannot hold both."""
+            split = [r.split("\0")[1:] if r.startswith("\0") else ["", r]
+                     for r in rows]
+            widest = max((self._vis(t) for _k, t in split), default=0)
+            longest = max((len(WHAT[k]) for k, _t in split if k), default=0)
+            if widest + 2 + longest > width:
+                return [t for _k, t in split]
+            return [t + " " * (widest + 2 - self._vis(t))
+                    + f"[dim]{WHAT[k]}[/]" if k else t for k, t in split]
+
         # EVERY ROW HERE IS: what exists, minus what this selection loaded.
         # Nothing is a constant and nothing is a build's leftover.
         #
@@ -1124,15 +1229,17 @@ class RemixerScreen(Screen):
         brief = []
 
         def words_row(n, total, used):
-            free, cap = placeable(st.sel, total, used, st.harvest)
-            fill = min(20, round(20 * used / total))
-            edge = max(fill, min(20, round(20 * cap / total)))
+            # ⚠️ NO BAR HERE ANY MORE. Twenty glyphs of `#`/`-`/`.` needed a
+            # legend to decode and still could not show WHERE in the payload
+            # the region is or which effects it costs. The map below is that
+            # picture, drawn from the real spans, and it does the job for
+            # both payloads at once.
+            free, _cap = placeable(st.sel, total, used, st.harvest)
             c = OK if free > 400 else WARN if free > 32 else BAD
-            bar = (f"[{c}]" + "#" * fill + "[/][dim]" + "." * (edge - fill)
-                   + "[/][dim red]" + "-" * (20 - edge) + "[/]")
             brief.append((f"words {n}", f"[{c}]{free:,}[/]"))
-            return (f" {'words ' + n:<{W}}{bar}  [{c}]{free:>5,}[/] free of "
-                    f"{total:,} [dim]· {used:,} loaded[/]")
+            return why(f"words {n}",
+                       f" {'words ' + n:<{W}}[{c}]{free:>5,}[/] free of "
+                       f"{total:,} [dim]· {used:,} loaded[/]")
 
         if st.regions:
             for n, total, used, _f in st.regions:
@@ -1152,10 +1259,13 @@ class RemixerScreen(Screen):
             # `????  not built` sent you looking for a build key that does
             # not exist. The ⚠ in LOADED holds the sentence; say which way to
             # look and which key applies it.
-            why = ("[dim]not built — [/][bold]x[/][dim] applies the ⚠ in "
-                   "LOADED[/]" if self.blockers(probs)
-                   else "[dim]not built — see the ⚠ in LOADED[/]")
-            out.append(f" {'words':<{W}}[dim]" + "?" * 20 + f"[/]  {why}")
+            # (named `unbuilt`, not `why` -- that is the descriptor helper
+            # three rows of this function down, and shadowing it turned every
+            # later row into "'str' object is not callable")
+            unbuilt = ("[dim]not built — [/][bold]x[/][dim] applies the ⚠ in "
+                       "CHOOSERS[/]" if self.blockers(probs)
+                       else "[dim]not built — see the ⚠ in CHOOSERS[/]")
+            out.append(f" {'words':<{W}}{unbuilt}")
             brief.append(("words", "[dim]not built[/]"))
         # THE TRADE, ONCE. It is identical for both payloads -- the same
         # three reverbs occupy both regions -- so printing it on each read as
@@ -1238,11 +1348,13 @@ class RemixerScreen(Screen):
                 # "can I add another"; the list answers "where does it go".
                 bits.append(",".join(str(t) for t in free) + " free")
             brief.append((f"buf {tag}", f"[{c}]{len(free)}/4[/]"))
-            side.append(f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] free "
-                       f"of 4 [dim]· "
-                       + (" · ".join(bits) if bits
-                          else f"tracks {tracks.start}-{tracks.stop - 1}, "
-                               f"no module claims one") + "[/]")
+            side.append(why("FX2 buf " + tag,
+                            f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] "
+                            f"free of 4 [dim]· "
+                            + (" · ".join(bits) if bits
+                               else f"tracks {tracks.start}-"
+                                    f"{tracks.stop - 1}, no module claims "
+                                    f"one") + "[/]"))
 
         # CYCLES. The fourth scarce thing was really the fifth: over the
         # per-core budget the DSP does not refuse the image, it WEDGES
@@ -1271,9 +1383,10 @@ class RemixerScreen(Screen):
                               or m.key.split()[0] in st.donors_kept))
             gap = (f" · {nstock} stock rows not counted" if nstock else "")
             brief.append(("cycles", f"[{c}]{free:,}[/]"))
-            side.append(f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
-                        f"{usable:,} [dim]· worst core: {escape(how)}"
-                        f"{gap}[/]")
+            side.append(why("cycles",
+                            f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
+                            f"{usable:,} [dim]· worst core: {escape(how)}"
+                            f"{gap}[/]"))
 
         # Rows are countable without a build; the cave is not.
         # Same sentence again: 31 exist, this selection loaded N.
@@ -1281,8 +1394,9 @@ class RemixerScreen(Screen):
                      else len(st.menu_modules))
         c = OK if 31 - used_rows > 7 else WARN if used_rows < 31 else BAD
         brief.append(("rows", f"[{c}]{31 - used_rows}[/]"))
-        side.append(f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of 31 "
-                   f"[dim]· {used_rows} loaded[/]")
+        side.append(why("rows",
+                        f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of "
+                        f"31 [dim]· {used_rows} loaded[/]"))
         # And the cave. The build reports only what is LEFT, so the total
         # comes from state.CAVE_BYTES (pinned to build_bus's own bounds by
         # the selftest) and the used figure is the subtraction -- which is
@@ -1292,17 +1406,21 @@ class RemixerScreen(Screen):
         if st.cave_free is not None:
             c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
             brief.append(("cave", f"[{c}]{st.cave_free:,} B[/]"))
-            side.append(f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free of "
-                       f"{CAVE_BYTES:,} B [dim]· "
-                       f"{CAVE_BYTES - st.cave_free:,} loaded[/]")
+            side.append(why("cave",
+                            f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free "
+                            f"of {CAVE_BYTES:,} B [dim]· "
+                            f"{CAVE_BYTES - st.cave_free:,} loaded[/]"))
         elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
             brief.append(("cave", f"[{OK}]{CAVE_BYTES:,} B[/]"))
-            side.append(f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free of "
-                       f"{CAVE_BYTES:,} B [dim]· nothing of ours is placed[/]")
+            side.append(why("cave",
+                            f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free "
+                            f"of {CAVE_BYTES:,} B [dim]· nothing of ours is "
+                            f"placed[/]"))
         else:
             brief.append(("cave", "[dim]not built[/]"))
-            side.append(f" {'cave':<{W}}[dim]    ? free of {CAVE_BYTES:,} B "
-                       f"· not built[/]")
+            side.append(why("cave",
+                            f" {'cave':<{W}}[dim]    ? free of "
+                            f"{CAVE_BYTES:,} B · not built[/]"))
         # ONE legend line, decoding the ONE thing on this pane that is not
         # already words: the bar's three glyphs. What an FX2 buffer count
         # counts used to be spelled out here in two further lines of prose
@@ -1349,7 +1467,11 @@ class RemixerScreen(Screen):
             self._budget_resized(len(lines) + 1)
             self._paint("#pane_budget", lines + [cur])
             return
-        rows, _wide = self._two_up(out, side)
+        # ⚠️ ONE COLUMN NOW, not two. The descriptor column is what the
+        # second column's width used to be spent on, and a row that says
+        # what it is beats a row that fits beside another one.
+        rows = columns(out + side, self.app.size.width - 2)
+        rows += self._memory_map(st, self.app.size.width - 2)
         # Its own height is what the panes above are laid out against, so a
         # change in it invalidates them.
         self._budget_resized(len(rows))

@@ -582,6 +582,40 @@ and only four — the **two donor regions** (one per payload), the **FX2 buffer
 slots** per core, the **chooser rows**, and the **ColdFire cave**. Everything
 else is unbounded in practice.
 
+### The map, and what each row is
+
+Every row carries a phrase saying what it *is*, in a column placed once every
+row's real width is known — a fixed column either collides with the longest
+row or leaves a canyon after the shortest, and which is longest changes with
+the selection. Under 100 columns or so the phrases drop rather than wrap.
+
+```
+ words A     403 free of 3,053 · 2,650 loaded          where your modules' code goes, core 0
+ words B   2,803 free of 3,053 · 250 loaded            the same on core 1
+ cycles    1,676 free of 3,120 · worst core: 1× ChonVerb …   DSP time, per core per sample
+        FILT   SPAT  EQ  PHSR FLNG  CHOR    PLATE       SPRING        DARK      COMP  LOFI DJEQ COMB
+ A ──────────────────────────────────#################################################.......────────────
+ B ──────────────────────────────────#####...................................................────────────
+                                     └──────────── harvested, 3,053 words ───────────┘
+```
+
+**And a MAP of the payload's effect code**, to scale from `stock.p_spans` so
+it cannot drift from what the build places: thirteen segments, one per stock
+effect, `─` for the ones this selection keeps, `.` for the harvested run,
+`#` for how far your code reached into it. One bar per payload — the layout
+is identical in both and only the fill differs.
+
+⚠️ It replaced the twenty-glyph `words` bar, which needed a legend to decode
+and still said neither **where** in the payload the region is nor **which**
+effects it costs. Once the region became a choice (`h`), those were the only
+two questions it was being asked.
+
+Widths are **cumulative-rounded** so they sum exactly and no segment is
+starved by the ones before it — rounding each on its own and giving the
+remainder to the last left COMB with two columns and its label cut to `CO`.
+Below four columns a segment cannot hold a name, so the label row drops and
+the bar and its footer carry on.
+
 ⚠️ **Every row here follows the selection's own harvest.** The `words` rows'
 total is `stock.region_words(harvest)` — 2,724 for the default three, 3,053
 with CHORUS — and once a build lands they are the build's own figures, so
