@@ -28,8 +28,8 @@ zipper), with two shaped copies — L and its WID-offset partner.
 ## FX1 only, and it enforces that itself
 
 It needs a per-track line, and beside the servers the only free per-track
-buffer is the FX1 slot: every FX2 instance buffer is ChonVerb's tank on core
-0 or BongDelay's line on tracks 3–4. It reads its base from the host's bump
+buffer is the FX1 slot: every FX2 instance buffer is BusVerb's tank on core
+0 or BusDelay's line on tracks 3–4. It reads its base from the host's bump
 allocator **at init and only there** (`docs/DSP.md` §10), and a base ≥ 0x4000
 sets a flag that sends proc down the dry path, which writes nothing to Y.
 `Claims(fx1_only=True, buffer_words=2048)` is that promise to the ledger, and

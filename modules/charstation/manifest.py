@@ -7,7 +7,7 @@ The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
     own pair, on one knob each way (CRSH = bits, SRR = the rate divider);
   * FOLD + RING -- WarpFold's wavefolder and its parabolic carrier, so the
     fold and the ring mod are here rather than needing a second insert;
-  * SATURATE -- BongDelay's satdrv curve (w - w^3/3, unity small-signal) in
+  * SATURATE -- BusDelay's satdrv curve (w - w^3/3, unity small-signal) in
     four flavours: TAPE (the curve alone), TUBE (asymmetric: positive half
     driven harder), FUZZ (hard clip after the curve) and BUS (soft, gentle,
     for the master);

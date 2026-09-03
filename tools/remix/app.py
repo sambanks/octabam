@@ -106,13 +106,13 @@ def titlecase(s: str) -> str:
     """One naming rule for every name the remixer prints.
 
     The lists mixed three conventions and it showed: OUR modules carry a
-    panel name in camel case (`BongDelay`), the STOCK effects carry the
+    panel name in camel case (`BusDelay`), the STOCK effects carry the
     firmware's own, which is upper (`DJ EQUALIZER`, `LO-FI`), and a module
     with no chooser row falls back to its directory slug (`tempo-sync`). So
-    one column read BongDelay / EQUALIZER / tempo-sync.
+    one column read BusDelay / EQUALIZER / tempo-sync.
 
-    Deliberate inner capitals are LEFT ALONE -- `BongDelay` must not become
-    `Bongdelay`, which is the failure mode of a naive .title(). A word is
+    Deliberate inner capitals are LEFT ALONE -- `BusDelay` must not become
+    `Busdelay`, which is the failure mode of a naive .title(). A word is
     only re-cased when it is entirely upper (or entirely lower), and known
     acronyms keep their case.
 
@@ -126,7 +126,7 @@ def titlecase(s: str) -> str:
         if w.upper() in _ACRONYMS:
             return w.upper()
         if not w.isupper() and any(c.isupper() for c in w[1:]):
-            return w                      # BongDelay, ChonVerb, WarpFold
+            return w                      # BusDelay, BusVerb, WarpFold
         return w[:1].upper() + w[1:].lower()
     parts = re.split(r"([ \-/]+)", s)
     return "".join(word(p) if i % 2 == 0 else p
@@ -409,7 +409,7 @@ Add a module before giving anything up and the ⚠ says so, with `x` dropping th
 
 ⚠️ BOTH menus. An effect off FX2 but still on FX1 is still wanted, and the DSP dispatch is one table shared by them, so overwriting its code would take it off FX1 too. Removing it says which: `still on FX1, so its 329 words stay its own` or `off both menus now, so its 329 words join the region`.
 
-⚠️ THE TWO LISTS STAY INDEPENDENT, and they have to. "Off one is off both" would be simpler to operate and would make the shipping remix impossible: chongbong's FX2 chooser is ChonVerb, BongDelay and Send, so every stock effect is off FX2 — and taking them off FX1 with it would leave the unit with NO FX1 EFFECTS AT ALL and hand your modules all 6,158 words they did not ask for.
+⚠️ THE TWO LISTS STAY INDEPENDENT, and they have to. "Off one is off both" would be simpler to operate and would make the plain `bus` remix impossible: its FX2 chooser is BusVerb, BusDelay and Send, so every stock effect is off FX2 — and taking them off FX1 with it would leave the unit with NO FX1 EFFECTS AT ALL and hand your modules all 6,158 words they did not ask for.
 
 ⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. What you gave up becomes one or more unbroken RUNS, and each module is packed into a run it fits, from that run's lowest address; anything the placer never reaches keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done. A module is one code stream, so it must fit inside a SINGLE run: two runs of 1,500 words will not take a 2,000-word module, and the budget says the largest opening for that reason.
 
@@ -419,7 +419,7 @@ PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is 
 You CAN keep them. The build takes only the reverbs your modules actually reach, and the pane says which went (`— Plate Rev  donor, taken`). `remixes/restock.py` is thirteen stock effects plus SEND: the smallest buildable image, costing only PLATE. (Until 2 Sep 2026 all three were nulled unconditionally and the honest answer here was "you cannot, ever". That is no longer true.)
 
 [bold]there is one FX2 buffer per track[/]
-"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. ChonVerb holds all four of its core's, BongDelay two of its core's, Nimbus two of whichever core hosts it — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
+"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. BusVerb holds all four of its core's, BusDelay two of its core's, Nimbus two of whichever core hosts it — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
 
 A stock effect never appears in that row: it takes a slot from the allocator at runtime, per effect per block, only while it is selected on that track — which no image can reserve. That runtime contest is why the ledger refuses an allocating stock effect beside a pinner, and it is what the ⚠ is asking you to remove. FLANGER, CHORUS, SPATIALIZER and COMB FILTER keep their FX1 rows and still work; the three reverbs were FX2-only in stock and are lost outright.
 
@@ -537,7 +537,7 @@ class RemixerScreen(Screen):
         # all three and marks the one you are in, so a narrow terminal reads
         # as a remixer showing you a third at a time rather than one with
         # two thirds missing. Full width, because the titles carry context
-        # ("Loaded · chongbong") that will not fit in a 32-column pane head.
+        # ("Loaded · bus") that will not fit in a 32-column pane head.
         yield Static(id="tabbar")
         with Horizontal(id="panes"):
             yield Static(id="pane_avail")
@@ -704,7 +704,7 @@ class RemixerScreen(Screen):
             return rows
         # ⚠️ THE NAMES FOLLOW THE MODE. A multi-mode effect reuses knobs, and
         # a bench that prints one name for both meanings is lying half the
-        # time -- BongDelay's MDEP is the tape depth in CLEAN and the grain
+        # time -- BusDelay's MDEP is the tape depth in CLEAN and the grain
         # scatter in GRAIN. Module.knob_map_in() is the same table the
         # ColdFire cave is emitted from, so the panel and the bench agree.
         kmap = mod.knob_map_in(self.mode_of(mod))
@@ -1080,7 +1080,7 @@ class RemixerScreen(Screen):
                 for n, t, u, _f in st.regions) + "[/]" + boot
         # No build has reported yet. Say which of the two reasons it is --
         # this line used to claim "a stock chooser: 14 effects, no modules"
-        # for ANY unmeasured selection, including chongbong, which has three.
+        # for ANY unmeasured selection, including `bus`, which has three.
         if not [m for m in st.selected if m.dsp is not None]:
             return "[dim]a stock chooser: 14 effects, no modules[/]"
         return "[dim]building…[/]"
@@ -2068,7 +2068,7 @@ class RemixerScreen(Screen):
             rows = self.avail_rows()
             mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
             if mod.key in st.sel:
-                # ⚠️ THIS USED TO REMOVE IT, and that cost a chongbong user
+                # ⚠️ THIS USED TO REMOVE IT, and that cost a `bus` user
                 # both servers. A ✓ in the LIBRARY means "already in the
                 # image", so `enter` there reads as "select this", not
                 # "throw it out" -- and once the first server was gone the ▸
@@ -2117,8 +2117,8 @@ class RemixerScreen(Screen):
             # words means taking it off BOTH menus -- the DSP dispatch is one
             # table shared by them -- so a removal that leaves it on the
             # other one frees nothing, and said nothing about why. The two
-            # lists have to stay independent: chongbong's FX2 chooser is
-            # ChonVerb/BongDelay/Send, so "off one is off both" would strip
+            # lists have to stay independent: `bus`'s FX2 chooser is
+            # BusVerb/BusDelay/Send, so "off one is off both" would strip
             # FX1 to zero rows and take every stock effect with it.
             st.msg += self._freed(mod, was, set(st.harvest))
             st.loaded_name = ""
@@ -2189,7 +2189,7 @@ class RemixerScreen(Screen):
 
         A buffer clash is the one that costs four effects at once: FLANGER,
         CHORUS, SPATIALIZER and COMB each take a per-track instance buffer at
-        exactly the addresses ChonVerb's tank and BongDelay's line hardcode.
+        exactly the addresses BusVerb's tank and BusDelay's line hardcode.
         Naming them was already better than four walls of text -- but naming
         them still hands the operator a chore. `x` does it.
         """
@@ -2198,7 +2198,7 @@ class RemixerScreen(Screen):
         for p_ in probs:
             if "stock instance buffer" not in p_:
                 continue
-            # "stock instance buffer: flanger and chonverb both claim ..."
+            # "stock instance buffer: flanger and busverb both claim ..."
             names.add(p_.split(":", 1)[1].split(" and ")[0].strip())
         out = [m for m in st.selected
                if m.is_stock and m.name.lower() in names]
@@ -2291,7 +2291,7 @@ class RemixerScreen(Screen):
         """One readable, IMPERATIVE sentence for whatever stands.
 
         A buffer clash is the expensive one and the ledger states it a PAIR
-        at a time -- adding ChonVerb to a stock chooser yields four
+        at a time -- adding BusVerb to a stock chooser yields four
         near-identical sentences (FLANGER, CHORUS, SPATIALIZER and COMB all
         take a per-track instance buffer at the addresses its tank
         hardcodes). Four walls of text do not read as "remove those four".

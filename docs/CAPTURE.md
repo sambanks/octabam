@@ -16,14 +16,14 @@ the first capture, so the hardware confirms or falsifies — never "explains".
 - Source material: `out/test_audio/click.wav` and `loop.wav` on the card as
   static samples (copied alongside the firmware). Trig the sample once per
   capture unless noted; let tails ring fully.
-- Bank shape for all captures unless noted: **T1 = BongDelay, T5 = ChonVerb,
+- Bank shape for all captures unless noted: **T1 = BusDelay, T5 = BusVerb,
   T2 = the source track (sample player), everything else Send or unused with
   all sends at 0.**
 
 ## The captures
 
 ### A. Decay vs TIME — THE MPY CHECK (the oldest unverified hardware risk)
-ChonVerb BIG (MODE pos 3), T2 plays `click`, T2's `-VRB` full, record T5.
+BusVerb BIG (MODE pos 3), T2 plays `click`, T2's `-VRB` full, record T5.
 One capture per TIME: **A1 = TIME 0, A2 = TIME 64, A3 = TIME 127.** ~8 s each.
 
 | capture | predicted decay |
@@ -51,7 +51,7 @@ in the tail grows ~+34 dB (−41.3 → −7.1).
 tail chops after the hold in each.
 
 ### D. Hardware-vs-emulator null — the delay
-T2 plays `loop`, T2's `-DEL` full, **BongDelay CLEAN, TIME 40, FDBK 60,
+T2 plays `loop`, T2's `-DEL` full, **BusDelay CLEAN, TIME 40, FDBK 60,
 TONE 127, PING knob position 1, IN 0, -VRB 0**, record T1 ~10 s.
 Reference: `out/hw/ref_delay_clean_loop.wav` (already rendered, peak 0.939 FS).
 I align and subtract; the residual spectrum is everything silicon does that
@@ -66,7 +66,7 @@ material flat). The old 1/N law would have shown −3 dB per step — that's wha
 you heard and reported; this is its formal close-out.
 
 ### F. -VRB wash sanity (new knob, first hardware outing)
-`loop` on T2, `-DEL` full, delay CLEAN, T5 ChonVerb: **F1 = delay `-VRB` 0
+`loop` on T2, `-DEL` full, delay CLEAN, T5 BusVerb: **F1 = delay `-VRB` 0
 (predict: NO wash, and senders' reverb level unchanged), F2 = `-VRB` 127.**
 
 ## What comes back

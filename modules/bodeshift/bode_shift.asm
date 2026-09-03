@@ -87,7 +87,7 @@ proc:
         mpy     x0,y1,a
         move    a,x:(r7+$22)
 
-; ---- MODE: page-2 slot 7 companion (ChonVerb's decode) --------------------
+; ---- MODE: page-2 slot 7 companion (BusVerb's decode) --------------------
 ; The direction is a per-block SIGN on Q rather than three copies of the
 ; sample loop: wetL = I*cos + sL*(Q*sin), wetR the same with sR. UP is
 ; (+1,+1), DOWN (-1,-1), WIDE (+1,-1).

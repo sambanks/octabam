@@ -213,12 +213,12 @@ not a pending change.
 
 **And nothing for the two servers — checked, both negative.**
 
-*ChonVerb:* there is no expensive shape to table. Its 1,384 cycles are eight
+*BusVerb:* there is no expensive shape to table. Its 1,384 cycles are eight
 tank lines, four allpass bodies and two rolled groups — memory reads and MACs,
 not function evaluation. Its LFO is a triangle, which is cheap by construction
 and already shared across lines by the roll.
 
-*BongDelay:* it does have one expensive shape — the **smoothstep** window
+*BusDelay:* it does have one expensive shape — the **smoothstep** window
 PITCH and GRAIN evaluate per head per sample — and it should **not** be
 tabled, for two independent reasons. No stock table is close: the best
 complementarity error among the candidate 128-word curves is 0.24 and the best

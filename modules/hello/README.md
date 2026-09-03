@@ -81,7 +81,7 @@ to `0x1b` on integration (0x17 became Rungs's on 2 Sep), and the tool then
 measured **the send client** for all six gains — and its `GAIN=127 bit-exact
 passthrough` gate PASSED, because a dry passthrough is exactly what unity
 gain looks like. Only the gain-law gates dissented. Same family as the 12 Aug
-2026 "BongDelay outputs nothing" session: an id an image does not implement
+2026 "BusDelay outputs nothing" session: an id an image does not implement
 aliases to the fallback and renders plausible, wrong audio.
 
 ## The 5-char abbr crash (found on hardware by Bryan T, 2 Sep 2026)

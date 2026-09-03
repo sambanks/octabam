@@ -1,7 +1,7 @@
-"""BongDelay -- a multi-mode delay: CLEAN, GRAIN (pitched), REVERSE.
+"""BusDelay -- a multi-mode delay: CLEAN, GRAIN (pitched), REVERSE.
 
 Hosted on payload B (core 1), which serves TRACKS 1-4. Any track can send
-into it, and its wet can be sent on into ChonVerb over the bus (-VRB) -- the
+into it, and its wet can be sent on into BusVerb over the bus (-VRB) -- the
 delay-into-reverb series topology the stock firmware has no path for.
 
 Clones SPRING REV's descriptor. That inheritance shipped a defect once: until
@@ -22,7 +22,7 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="bongdelay",
+    name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
     doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, drive, freeze.",
@@ -30,7 +30,7 @@ MODULE = Module(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
         abbr=b"BDLY",
-        fullname=b"BongDelay",
+        fullname=b"BusDelay",
         build_tag=False,              # the tag is added by the XBUS/DEV arms
     ),
     params=(
@@ -52,7 +52,7 @@ MODULE = Module(
         # delay as a reverb client whenever it exists, idle or not, diluting
         # every real sender.
         Param(b"-VRB", 0, active=True, formatter=_PLAIN,
-              doc="wet send into ChonVerb over the bus -- delay into reverb in series"),
+              doc="wet send into BusVerb over the bus -- delay into reverb in series"),
         # PTCH sits where IN did (v5.1, 3 Sep 2026): the host's own send is its
         # FX1 station's ->DEL now, and GRAIN's pitch belongs on the scene page.
         Param(b"PTCH", 64, active=True, formatter=_PLAIN,
@@ -103,7 +103,7 @@ MODULE = Module(
                            6: 48, 8: 64, 9: 1, 10: 0}),
     ),
     dsp=DspSection(
-        asm="modules/bongdelay/delay_server.asm",
+        asm="modules/busdelay/delay_server.asm",
         priority=2,                       # LAST, deliberately: the trailing
                                           # free words of the region belong to
                                           # the algorithm still being designed

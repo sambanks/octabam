@@ -157,7 +157,7 @@ captured as text yet.
 
 **The FX2 dials page renders too** — `render_fx2(r)` detours to the EFFECT 2
 SETUP window (`FUN_4005996c`) for track 5 and captures the chooser + param
-row; it lists the *built remix's own effects* (`ChonVerb77`, `BongDelay77`,
+row; it lists the *built remix's own effects* (`BusVerb77`, `BusDelay77`,
 `Send`). `make remix` → `e` → `f` shows it. (The effect's specific dial
 *values* — the reverb's SIZE/MODE — need the effect assigned to the track,
 i.e. a loaded project or a poked part-record; the chooser + param labels
@@ -179,7 +179,7 @@ highlight is the next increment.
 `render_fx2(r, track, effect_id)` and `render_fx1(r, track, effect_id)` render
 the real FX2 / FX1 parameter pages — the effect's actual knob rows, not a
 default. In the remixer's emu view: `f` (FX2 — follows the rig's selected
-track and its assigned effect) / `o` (FX1; left/right cycle the effect). FX2 with `0x07` shows ChonVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
+track and its assigned effect) / `o` (FX1; left/right cycle the effect). FX2 with `0x07` shows BusVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
 HP/LP/IN); FX1 shows the stock effects (FILTER's BASE/WDTH/ENV/ATK/DEC/…, EQ's
 FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
 
@@ -190,8 +190,8 @@ track + 0x8ed88`, FX1 at `+0x8ed80` (`PART = *(u32*)0x46c82456`, `PAT =
 pattern; the `0x18b2`-stride records are parts, `EXTERNAL.md` §6). Our boot loads no project, so `PART` is null — `_prime_part`
 maps a zeroed scratch Part and points the DB pointer at it, then `assign_fx2`/
 the FX1 path write the id byte. In the BUILT image the id→descriptor tables
-are patched (`build_bus.py`), so `0x07` is ChonVerb; in the raw image those
-slots are NONE. (`0x06`/BongDelay aliases to SEND in the payload-A SPEC image
+are patched (`build_bus.py`), so `0x07` is BusVerb; in the raw image those
+slots are NONE. (`0x06`/BusDelay aliases to SEND in the payload-A SPEC image
 and renders empty — it lives on payload B.)
 
 **Both SETUP windows** wrap the stage+draw: FX2 `FUN_4005996c` (drawer

@@ -56,7 +56,7 @@ core that track lives on.
 | **Y memory** | **per track, per slot** | allocated always, used or not | 16 384 per FX2 slot |
 
 The one that catches people is the middle row. Program space is paid **once**;
-cycles are paid **per track per slot per frame**. Eight tracks running ChonVerb
+cycles are paid **per track per slot per frame**. Eight tracks running BusVerb
 cost one copy of the code and eight times the cycles.
 
 ### The two menus, read off the image
@@ -96,7 +96,7 @@ point at the same implementations through that single dispatch table.
   **both** slots.
 
 That is exactly why the build **silences PLATE REV, SPRING REV and DARK REV on
-FX1**: their code is overwritten with ChonVerb, so if their ids still dispatched
+FX1**: their code is overwritten with BusVerb, so if their ids still dispatched
 normally, selecting one on FX1 would run the hardcoded-base engine a second,
 uncontrolled time. CHORUS was once a donor and is now byte-identical to
 stock, so FX1 gets its chorus back.
@@ -200,7 +200,7 @@ paying for four FX1 effects the sweep may not have included.
 
 ### The burn knob is a reusable CYCLE METER, not a one-shot test
 
-This is the part worth keeping. `BURN` sits on ChonVerb in any `BURN=1` build,
+This is the part worth keeping. `BURN` sits on BusVerb in any `BURN=1` build,
 so **any configuration can be measured, on demand, with no flash**:
 
 1. Set up the configuration you care about.
@@ -272,8 +272,8 @@ Retracted. There are ~1 200 usable cycles.
 
 | | cycles/sample | |
 |---|---|---|
-| `reverb_server` (ChonVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` — **pre-8-line reading**; **~1 133** with the 8-line tank |
-| `delay_server` (BongDelay, **placeholder**) | 163 | ✅ same |
+| `reverb_server` (BusVerb, with shimmer) | 758 | ✅ `tools/cycle_count.py` — **pre-8-line reading**; **~1 133** with the 8-line tank |
+| `delay_server` (BusDelay, **placeholder**) | 163 | ✅ same |
 | `send_client` × 2 | 36 | ✅ same |
 | **full bank** | **957** | ✅ same — pre-8-line; far larger since (the bank has grown 573 vs the burn measurement) |
 
@@ -282,7 +282,7 @@ stalls modelled — so they are a floor. `tools/dsp_host` **cannot** measure
 cycles: its `instructions/sample` is a constant divided by whatever frame count
 you ask for.
 
-**For scale:** the entire ChonVerb engine was 758 cycles when the spare was
+**For scale:** the entire BusVerb engine was 758 cycles when the spare was
 measured (~1 133 with the 8-line tank), and 1 392 was room for ~1.8 more complete
 reverbs on the same core — against today's ~819 spare, call it less than one
 more. A good delay is ~200–300;
@@ -348,7 +348,7 @@ on track 3*. The manual states the hardware directly and wins. One premise of
 that argument is false; the likeliest is the claim that stock stages per-frame
 parameters at `X:0x30000` at all.
 
-❌ **"BongDelay may use its full 32 768 words."** Retracted with it. The window
+❌ **"BusDelay may use its full 32 768 words."** Retracted with it. The window
 is not free ground to assume.
 
 ✅ **Zero wait states as X or Y** (1 as P) — so this memory is *not* slow, and
@@ -436,17 +436,17 @@ Anything from that pass must be disassembled before it is believed.
 
 | | |
 |---|---|
-| ChonVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
-| BongDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Renders locally under `DEV=1`; confirmed on hardware on its shipping payload-B path |
+| BusVerb | `Y:0x4000–0xBFFF` — 32 768 words, **hardcoded**, both payloads (different cores, so no collision) |
+| BusDelay | `Y:0x30000–0x37FFF` (A) / `Y:0x38000–0x3FFFF` (B) — 32 768 words each ⚠️ **COLLIDES AT BOTH BASES**, see §3a. Renders locally under `DEV=1`; confirmed on hardware on its shipping payload-B path |
 | Bus scratch | `Y:0x900–0xad9` — **474 words** (3 Sep 2026; was `0x900–0x9d2`, 211, until the returns): rotation word, then per bus 4 × 16-word accumulators, the old 2 × 16-word mono wets (dead), 4 per-buffer send counts, both role locks, the delay's 1/√N reciprocal table, a 5-word hole at `0x9d3–0x9d7` (its XBUS image `0x360d3-5` was dead on hardware for R36), the two return stamps `0x9d8`/`0x9d9`, and the two STEREO four-deep wet buffers `0x9da–0xa59` / `0xa5a–0xad9`. `modules/send/send_client.asm` is the authoritative map. ❌ This row read `0x900–0x980`, "parity word", 4 wet buffers until 30 Aug 2026 — wrong extent (it stopped before the role locks at `0x9c1`/`0x9c2`), wrong name ("parity" is the retired two-buffer term), wrong wet count. `XBUS.md` points HERE for the exact extent, so anyone sizing a module against it would have placed it on top of the locks. |
 | Per-instance base stash | `Y:0x795 + (r7>>8)` — one word per instance |
 | SEND | **nothing.** A zero-footprint client; never touches its own slot |
 
-**32 768 words is the hard ceiling per server** and ChonVerb is at it. That
+**32 768 words is the hard ceiling per server** and BusVerb is at it. That
 lever is spent.
 
 ⚠️ **`Y:0x34000` is FX2 slot 4's allocator base**, and the second half of
-BongDelay's pool. Writing a single word there from payload A was believed to
+BusDelay's pool. Writing a single word there from payload A was believed to
 corrupt that track's audio after ~5.45 s — **§6 retracts this** (falsified by
 bisect); do not design around it.
 
@@ -487,11 +487,11 @@ whole module.
 | Reverb/delay are FX2-only | FX1's 3 072 words are far too small | ✅ |
 | FX1 is **not** idle | dispatcher calls it every frame; a fresh part defaults FX1 = FILTER | ✅ |
 | Parameters per effect | **12** — 6 page-1 knobs, then 6 page-2 slots. The "3 knobs + 3 selects" split is how *stock* uses the fields, **not a hardware limit**: all six can be full-range knobs, measured on hardware (`DSP.md` §9 — which this row contradicted while citing it) | ✅ |
-| Menu | **remix-selected** — `make modules` lists what each carries; shipping `chongbong` has 3 entries, `mutables` 6. **No selectable NONE** in any | ✅ |
+| Menu | **remix-selected** — `make modules` lists what each carries; `bus` has 3 entries, `mutables` 6. **No selectable NONE** in any | ✅ |
 | Unassigned tracks | id 0 is aliased to **SEND**, so every unassigned track feeds the bus | ✅ |
 | Track↔core mapping | **payload A serves tracks 5-8, payload B serves tracks 1-4** — inverted from the natural assumption; unobservable before specialization (both payloads carried every effect) | ✅ marker-flash test |
-| `r7` state block | `$00–$83` usable. `$84–$8a` is host-owned and cannot hold state **across calls**; per-call scratch there is fine, and BongDelay ships using `$84`–`$88`. The blanket "HANGS" stood until 30 Aug 2026 | ✅ bisected |
-| ChonVerb's `r7` | **full** | ✅ |
+| `r7` state block | `$00–$83` usable. `$84–$8a` is host-owned and cannot hold state **across calls**; per-call scratch there is fine, and BusDelay ships using `$84`–`$88`. The blanket "HANGS" stood until 30 Aug 2026 | ✅ bisected |
+| BusVerb's `r7` | **full** | ✅ |
 
 Persistent state does **not** have to live in `r7` — `dsp/cycleburn.asm`
 (in git history) parks
@@ -518,7 +518,7 @@ hardware:
 | configuration | result |
 |---|---|
 | one `SharePrb` + three `Send`s | **clean** at every ADDR and INC |
-| `SharePrb` + `ChonVerb` on one bank | **clean** |
+| `SharePrb` + `BusVerb` on one bank | **clean** |
 | **two `SharePrb`s** on one bank | **noise after ~5.45 s**, regardless of address |
 
 So it needs **two instances of the same effect**, and the address is

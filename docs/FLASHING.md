@@ -114,8 +114,8 @@ at 31250 baud, so it takes seconds rather than minutes.
 
    🟡 The mechanism, inferred from the code and matching the symptom exactly
    (not yet measured on hardware): an engine skips warm-up when its tagged
-   counter holds a valid tag at full count — ChonVerb `$2c0000` at `r7+$82`,
-   BongDelay `$2e0000`, Nimbus `$2d0000` at `r7+$31`. **Any module that
+   counter holds a valid tag at full count — BusVerb `$2c0000` at `r7+$82`,
+   BusDelay `$2e0000`, Nimbus `$2d0000` at `r7+$31`. **Any module that
    tags warm-up state in r7 inherits this**, so if yours does, expect it. **An OS upgrade rewrites program memory
    but does not clear DSP state RAM.** If that word survives with a valid
    tag, the engine concludes it is already warmed up and runs on whatever is
@@ -171,11 +171,11 @@ insert-only image (`mutables`, `warped`, `nimbus`) has no reverb, no delay
 and no bus to check — steps 2–4 simply do not apply to it, and step 5 is the
 whole test.
 
-2. **A bank-bound server is restricted to its payload's tracks.** ChonVerb
+2. **A bank-bound server is restricted to its payload's tracks.** BusVerb
    runs on **tracks 5–8** (payload A runs the high tracks — measured, and
-   inverted from what you'd guess); BongDelay on **tracks 1–4**. Picking one
+   inverted from what you'd guess); BusDelay on **tracks 1–4**. Picking one
    on the wrong bank falls back to a SEND, deliberately, so a wrong guess
-   makes a send rather than silence. Assign ChonVerb on track 5, feed it via
+   makes a send rather than silence. Assign BusVerb on track 5, feed it via
    `IN`, step **MODE**: distinct ROOM → PLATE → BIG spaces.
 3. **The two servers are returns with a unity dry passthrough** (v5, 23 Aug
    2026): the host track's own audio passes untouched and `IN` adds it into
@@ -205,7 +205,7 @@ flash rather than spending a cycle of their own (`PLAN.md` work order):
 - **Sweep the cycle ceiling.** A `make burn` image puts the burn on `p3` at
   32 cycles/step. The number prices every FX1 decision.
 - **Does the stock delay's enable track the FX2 id?** Select DELAY on a
-  track, read the per-track record byte the delay gates on; select ChonVerb
+  track, read the per-track record byte the delay gates on; select BusVerb
   and read it again. If it is written separately from the dispatch id, then
   a cave can enable the CPU-side delay *downstream of our reverb* — a
   series routing the stock firmware has no path for. If it simply mirrors
@@ -250,7 +250,7 @@ and our descriptors only supply defaults when an effect is freshly selected.
 So a project saved on an older image loads with values that may now mean
 something else:
 
-1. **ChonVerb tracks that carried their own audio keep the dry again** (v5,
+1. **BusVerb tracks that carried their own audio keep the dry again** (v5,
    23 Aug 2026): the host's dry passes at unity under the wet. (In the
    R29–R41 window the return printed the wet alone and such tracks went
    silent — that behaviour is retired.) Note the dry is NOT the old MIX law:

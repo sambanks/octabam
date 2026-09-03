@@ -1,4 +1,4 @@
-| BongDelay tempo / fader / note publish -- ColdFire code cave (24 Aug 2026)
+| BusDelay tempo / fader / note publish -- ColdFire code cave (24 Aug 2026)
 |
 | Hooked from 0x40004d40 in the per-frame voice-record writer (0x40004bd2),
 | which is the routine that publishes the FX ids into the record the DSP

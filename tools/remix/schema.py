@@ -50,7 +50,7 @@ class Kind(Enum):
 # first-class: Rungs had shipped on 0x0c (EQUALIZER's id) and Nimbus on 0x0d
 # (DJ EQ's), so every image built since 29 Aug 2026 ran Rungs where FX1
 # selected EQUALIZER -- and the remixes WITHOUT Rungs aliased 0x0c to SEND,
-# which took FX1's EQUALIZER away in the shipping chongbong image too. Only
+# which took FX1's EQUALIZER away in the `bus` image too. Only
 # a Kind.STOCK module may carry one of these.
 STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
@@ -94,7 +94,7 @@ class Formatter(Enum):
     A cloned descriptor inherits the donor's formatter for every slot, and
     the formatter decides how the value is rendered regardless of the count
     written beside it. That is not a subtlety: it shipped on the 17 Aug 2026
-    flash, where BongDelay cloned SPRING REV and three of six page-2 slots
+    flash, where BusDelay cloned SPRING REV and three of six page-2 slots
     drew wrong -- WOW drew no knob at all (an enumerated renderer with three
     labels asked to draw 0..127), MODE drew as a bipolar balance dial reading
     -64..-60. Every field those checks knew about was correct.
@@ -374,7 +374,7 @@ class Claims:
 
     reserved_private_y: tuple[int, ...] = ()
     # Does this module hold memory in the per-core FX2 INSTANCE BUFFER region
-    # Y:0x4000-0xBFFF? ChonVerb's eight tank lines live there and so does
+    # Y:0x4000-0xBFFF? BusVerb's eight tank lines live there and so does
     # Nimbus's granular line, and two such modules on one core silently
     # corrupt each other -- each works perfectly alone, which is the worst
     # shape a defect can have.
@@ -398,7 +398,7 @@ class Claims:
     # The allocator hands the buffer out PER TRACK SLOT: on core 0 the four
     # slots are Y:0x4000, 0x8000, 0x30000 and 0x34000, on core 1 0x4000,
     # 0x8000, 0x38000 and 0x3c000 -- and those are exactly the addresses
-    # ChonVerb's tank, Nimbus's line and BongDelay's line hardcode. So a
+    # BusVerb's tank, Nimbus's line and BusDelay's line hardcode. So a
     # buffered stock effect on the wrong track silently corrupts a server
     # on the same core, and the chooser is one list for all eight tracks,
     # so the build cannot tell which track it will land on. The ledger
@@ -416,8 +416,8 @@ class Claims:
     # FX1-ONLY BY DESIGN: the module reads its allocator base at init and,
     # when the base is an FX2 slot (>= 0x4000), runs as a dry pass and
     # WRITES NOTHING. That is what lets it sit beside a server: the FX2
-    # slots it would otherwise be handed are ChonVerb's tank and
-    # BongDelay's line, and the ledger refuses every other allocator
+    # slots it would otherwise be handed are BusVerb's tank and
+    # BusDelay's line, and the ledger refuses every other allocator
     # reader beside them for exactly that reason. The claim is a promise
     # the module's render gate must prove (an FX2-slot instance renders
     # bit-exact dry and dsp_host's guard sees no write above 0x3fff).
@@ -464,7 +464,7 @@ class Harness:
 class ModeView:
     """What ONE position of a module's MODE select renames and re-defaults.
 
-    A multi-mode effect reuses knobs: BongDelay's MDEP is the tape modulation
+    A multi-mode effect reuses knobs: BusDelay's MDEP is the tape modulation
     depth in CLEAN and the grain scatter in GRAIN, and a panel that prints
     MDEP in both is telling the operator the wrong thing half the time (Sam,
     3 Sep 2026: "it's only got four settings ... just feels a lil confusing").
@@ -504,7 +504,7 @@ class ModeView:
 class Module:
     """One contribution, as declared by modules/<name>/manifest.py."""
 
-    name: str                    # directory slug, e.g. "chonverb"
+    name: str                    # directory slug, e.g. "busverb"
     key: str                     # build/report identifier, e.g. "REVERB SERVER"
                                  # -- REPORT-VISIBLE: verify_delay and
                                  # verify_roll parse it out of build stdout,
@@ -769,8 +769,8 @@ class Remix:
     #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
     #     an earlier draft of this comment claimed nothing was, which was
     #     wrong -- it had checked only the fixed-base modules.
-    #   * A module with FIXED buffers in the FX2 region (ChonVerb, Nimbus,
-    #     BongDelay). An FX1 instance still writes to Y:0x4000 and up, i.e.
+    #   * A module with FIXED buffers in the FX2 region (BusVerb, Nimbus,
+    #     BusDelay). An FX1 instance still writes to Y:0x4000 and up, i.e.
     #     into some other track's FX2 buffer. The hazard exists on FX2 too --
     #     it is why Nimbus is documented "one per core" -- but an FX1 row
     #     doubles the slots it can be reached from, a second instance on the

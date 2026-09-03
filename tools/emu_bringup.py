@@ -482,8 +482,8 @@ def _part_addr(uc, off, track=4, slot=0, track_stride=1):
 
 def assign_fx2(r, track=4, effect_id=0x07):
     """Assign an effect (by FX2 id) to a track so its param page resolves. In
-    the BUILT image the id->descriptor table is patched, so 0x07 is ChonVerb,
-    0x06 BongDelay, etc. (raw image: those slots are NONE)."""
+    the BUILT image the id->descriptor table is patched, so 0x07 is BusVerb,
+    0x06 BusDelay, etc. (raw image: those slots are NONE)."""
     uc = r.uc
     _prime_part(r)
     uc.mem_write(CUR_TRACK_B, int(track).to_bytes(1, "big"))
@@ -505,7 +505,7 @@ def set_fx2_value(r, track, slot, value):
 def render_fx2(r, track=4, effect_id=0x07):
     """Detour to EFFECT 2 SETUP for `track` (default 4 = track 5) with
     `effect_id` assigned, and capture what it draws — the chooser plus the
-    effect's REAL parameter knobs (e.g. ChonVerb's SHMR/MODE/DIFF/SHFT/GATE/
+    effect's REAL parameter knobs (e.g. BusVerb's SHMR/MODE/DIFF/SHFT/GATE/
     RATE). effect_id None leaves whatever is assigned.
     """
     uc = r.uc

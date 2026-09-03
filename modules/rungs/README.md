@@ -24,7 +24,7 @@ Mode frequencies are computed per block from the knobs; cos comes from a
 half-angle polynomial with ~0.2% tuning error at the extremes 🟡 — a
 resonator a few cents sharp at the top is character, not a defect. A future
 hook: the tempo-sync cave already publishes MIDI note, so FREQ could track
-played notes the way note→PITCH does on BongDelay.
+played notes the way note→PITCH does on BusDelay.
 
 ## Status
 

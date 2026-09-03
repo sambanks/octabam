@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Static dead-store check for the r7 state block in modules/chonverb/reverb_server.asm.
+Static dead-store check for the r7 state block in modules/busverb/reverb_server.asm.
 
 WHY. Three shipped bugs share one family: a state slot meaning two things at
 once. $83 (bit-23 garbage saturating the AGU -> the two-track freeze), $84+
@@ -53,7 +53,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from remix import registry  # noqa: E402
 
-SRC = sys.argv[1] if len(sys.argv) > 1 else registry.asm("chonverb")
+SRC = sys.argv[1] if len(sys.argv) > 1 else registry.asm("busverb")
 
 # Slots reachable through computed pointers, invisible to the direct-address
 # parser. Each entry: why it is exempt.

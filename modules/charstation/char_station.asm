@@ -847,10 +847,10 @@ ch_byz:
         rts
 
 ; ---------------------------------------------------------------------------
-; chsatur -- BongDelay's loop-saturation curve, sat = w - w^3/3.
+; chsatur -- BusDelay's loop-saturation curve, sat = w - w^3/3.
 ; In:  x:(r7+$35) = w (already limited by its store).  Out: a = sat.
 ; Unity small-signal by construction, monotonic, |out| bounded -- the same
-; argument modules/bongdelay/delay_server.asm's satdrv makes, which is why
+; argument modules/busdelay/delay_server.asm's satdrv makes, which is why
 ; this can sit in front of a compressor without adding gain.
 ; bsr, not jsr: dsp_asm implements only the relative b-forms.
 ; ---------------------------------------------------------------------------

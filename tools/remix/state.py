@@ -201,7 +201,7 @@ class State:
 
         `name` is what to CALL it: the caller passes the panel name, because
         the module key ("REVERB SERVER") is not what the operator is looking
-        at ("ChonVerb") and this module must not import the shell.
+        at ("BusVerb") and this module must not import the shell.
         """
         name = name or key
         mod = self.mods.get(key)
@@ -293,7 +293,7 @@ class State:
         # The ROW NUMBER as the pane prints it -- 1-based. This said
         # "chooser row 1" for the row drawn as `2`, which is an invitation to
         # doubt every other number here. The NAME is left to the caller: the
-        # panel name (`BongDelay`) lives in app.disp(), and this module must
+        # panel name (`BusDelay`) lives in app.disp(), and this module must
         # not import the shell.
         rows = [m.key for m in self.menu_modules]
         return rows.index(key) + 1 if key in rows else None
@@ -384,7 +384,7 @@ class State:
         # every module's words summed against ONE 2,724-word region. There
         # are TWO -- one per payload -- and SPEC=1 puts each server on its
         # own, so the sum is not a quantity the image has to fit. It read
-        # chongbong, the SHIPPING remix, as "5130 words exceeds the 2724-word
+        # `bus`, the plain two-server remix, as "5130 words exceeds the 2724-word
         # donor region by 2406" when the truth was A 2650/74 free and B
         # 2719/5 free. The check was latent while the words were only known
         # after an explicit keypress; it became a permanent false alarm the

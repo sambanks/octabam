@@ -9,8 +9,8 @@
 > design; claims that no longer hold are corrected in place. The sources this
 > file cites as `dsp/*.asm` have since moved into `modules/<name>/` (the
 > remix refactor, 29 Aug 2026): `send_client.asm` → `modules/send/`,
-> `reverb_server.asm` → `modules/chonverb/`, `delay_server.asm` →
-> `modules/bongdelay/`. The period citations below are left as written.
+> `reverb_server.asm` → `modules/busverb/`, `delay_server.asm` →
+> `modules/busdelay/`. The period citations below are left as written.
 
 **Status: both buses and the cross-bus sends are emulator-verified, and the
 ColdFire menu mechanism is hardware-verified.** (The "not flashed" notes in
@@ -47,7 +47,7 @@ something still unverified, that's called out.
 ## Start here
 
 **Built and running on hardware.** Three FX2 effects sharing a send bus:
-`ChonVerb`, `BongDelay`, `Send`. Build with `python3 tools/build_bus.py`
+`BusVerb`, `BusDelay`, `Send`. Build with `python3 tools/build_bus.py`
 (writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
 wrap and flash per `README.md` §3. `BUILD_TAG` in `tools/build_bus.py` is the
 build number stamped into the effect names.
@@ -74,7 +74,7 @@ overwritten on the way out, never destroyed.
 | sources | `dsp/reverb_server.asm`, `dsp/delay_server.asm`, `dsp/send_client.asm` |
 | probes | `dsp/page2_probe.asm`, `dsp/xmem_probe.asm` (diagnostics, `PROBE=1` / `XPROBE=1`) |
 
-**ChonVerb is feature-complete and voiced**:
+**BusVerb is feature-complete and voiced**:
 32K re-layout, tank headroom, modulated in-loop allpasses, early reflections, a
 MODE select varying six per-mode levers, and a dry/wet law that does not lose
 level as it is turned up — all confirmed on hardware. Per-mode voicing
@@ -1061,8 +1061,8 @@ their own parameter pages, and their own allocation from the bump allocator
 (`DSP.md` §10): **FX1 gets 3,072 words, FX2 gets 16,384.** That size difference
 is exactly why the reverbs are FX2-only — a reverb does not fit in 3,072.
 
-**Our bus replaces only the FX2 chooser.** FX1's list is untouched, so ChonVerb,
-BongDelay and Send are selectable *only* on FX2. That is what "we are FX2-only"
+**Our bus replaces only the FX2 chooser.** FX1's list is untouched, so BusVerb,
+BusDelay and Send are selectable *only* on FX2. That is what "we are FX2-only"
 means: not that FX1 is unavailable, but that we never put anything in it.
 
 **FX1 is NOT idle, and its memory is NOT a pool.** Both claims were made in
@@ -1075,7 +1075,7 @@ passing during this session and both are wrong:
 * The 4 × 3,072 words are only free if FX1 is unused across the *whole bank*,
   and they are four separate blocks at `0x1000`/`0x1c00`/`0x2800`/`0x3400`, not
   one contiguous 12K. **A delay line could not use them as a single buffer even
-  if they were free.** Do not count them toward BongDelay's memory.
+  if they were free.** Do not count them toward BusDelay's memory.
 
 **CHORUS is in FX1's list** — which is why the v98 restore mattered. Until then
 every track's FX1 chorus was silently a passthrough on our firmware.
@@ -1084,9 +1084,9 @@ every track's FX1 chorus was silently a passthrough on our firmware.
 
 **Measured on hardware: this project's code can hold stock DELAY's own
 slot.** With id
-`0x08` dispatched to the SEND client (`DELAYPROBE=send`, `ChonVerb22S`), the
+`0x08` dispatched to the SEND client (`DELAYPROBE=send`, `BusVerb22S`), the
 stock Echo Freeze Delay **still works**. So a track can run the stock delay on
-FX2 *and* feed the ChonVerb bus from that same slot — **the FX1 filter is not
+FX2 *and* feed the BusVerb bus from that same slot — **the FX1 filter is not
 the price after all**, and the ordering objection below (an FX1 send taps dry,
 so never delay-into-reverb) is moot because the send now sits at the FX2 point.
 
@@ -1136,12 +1136,12 @@ delay is applied downstream of the FX2 insert. So the co-located design gives
 hardware — but **not delay into reverb**, and no slot we can reach could ever
 give us that, because they are all upstream of the delay.
 
-**That hands BongDelay a clear purpose.** Delay-into-reverb is available only
+**That hands BusDelay a clear purpose.** Delay-into-reverb is available only
 through our own `DELAY SERVER` and its `→VERB` cross-send (task 10, already
-built). BongDelay is therefore not competing with the stock delay on sound — it
+built). BusDelay is therefore not competing with the stock delay on sound — it
 is *the delay you can route*, which is a thing the machine has never had.
 
-**Confirmed end-to-end:** with a ChonVerb server on another track in the bank
+**Confirmed end-to-end:** with a BusVerb server on another track in the bank
 and DELAY's `FB` knob up, the reverb send audibly works from inside the delay's
 slot. Delay and shared reverb on one track, costing neither the FX1 filter nor
 any further stock effect.
@@ -1163,7 +1163,7 @@ Recorded because the reasoning is worth keeping, **not currently being built.**
 
 The idea: put our `Send` client in the FX1 slot and restore stock **Echo Freeze
 Delay** to the FX2 menu. A track would then get the stock delay *and* the shared
-ChonVerb bus at once — which stock hardware cannot do at all (`PARAM_PAGES.md`
+BusVerb bus at once — which stock hardware cannot do at all (`PARAM_PAGES.md`
 §5d: two simultaneous reverbs already glitch).
 
 What makes it look cheap:

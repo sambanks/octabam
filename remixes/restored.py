@@ -1,4 +1,4 @@
-"""restored -- chongbong plus every stock FX2 effect that can sit beside it.
+"""restored -- `bus` plus every stock FX2 effect that can sit beside it.
 
 The shipping trio and tempo sync, then the seven stock effects the build
 had been hiding for no resource reason: FILTER, EQUALIZER, DJ EQ, PHASER,
@@ -7,8 +7,8 @@ is placed, no descriptor cloned, no words spent; each is one chooser row
 pointing at the descriptor stock already ships (tools/remix/stock.py).
 
 The four stock effects NOT here -- SPATIALIZER, FLANGER, CHORUS, COMB --
-allocate an instance buffer per track, on exactly the addresses ChonVerb's
-tank and BongDelay's line hardcode, so the ledger refuses them beside a
+allocate an instance buffer per track, on exactly the addresses BusVerb's
+tank and BusDelay's line hardcode, so the ledger refuses them beside a
 server. They are legal in an insert-only remix (`mutables` could carry all
 eleven).
 
@@ -23,7 +23,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="restored",
-    doc="chongbong + the seven stock FX2 effects that coexist with the servers.",
+    doc="`bus` + the seven stock FX2 effects that coexist with the servers.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "COMPRESSOR", "LO-FI",
              "DELAY", "TEMPO SYNC"),

@@ -1,4 +1,4 @@
-# ChonVerb
+# BusVerb
 
 An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, a
 shimmer, a gate and mid/side width. Hosted on payload A (core 0), which

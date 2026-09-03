@@ -16,10 +16,10 @@ audible on the unit.
 
 What ships:
 
-- **ChonVerb** — an eight-line FDN reverb (ROOM/PLATE/BIG), shimmer, a gated
+- **BusVerb** — an eight-line FDN reverb (ROOM/PLATE/BIG), shimmer, a gated
   mode, mid/side width, and a MOD speed select. Hosted on a track **5–8**
   (payload A / core 0); any track can send into it. `docs/REVERB.md`.
-- **BongDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
+- **BusDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
   cloud, v5: Nimbus's readers, four per line, ±2 octaves on RATE; the
   harmoniser since PITCH mode was retired 3 Sep 2026), REVERSE — with tape-style
   wow/flutter modulation (DPTH/RATE), drive (DRV, doubling as GRAIN's
@@ -42,7 +42,7 @@ What ships:
 - **Tempo sync (R56, 24 Aug 2026, ON THE UNIT, confirmed)** — two ColdFire *code*
   caves (the project's first): one publishes the project tempo into two
   dead parameter words of any track hosting one of our servers; the other
-  is BongDelay TIME's display formatter. **TIME is a free dial with a
+  is BusDelay TIME's display formatter. **TIME is a free dial with a
   sticky snap**: near a division (1/32T … 1/4) it snaps, holds that
   division through tempo changes, lets go when the knob moves; the panel
   prints "1/8" while held, ms otherwise. Plus a per-block TIME slew for the
@@ -65,18 +65,22 @@ tracks. Host the reverb on track 5, the delay on tracks 1–4.
 **A module is one contribution; a remix is a named selection of them.**
 `modules/<name>/manifest.py` declares what a module is — its menu entry, its
 twelve parameter slots, its DSP source, its ColdFire caves — and
-`remixes/<name>.py` selects a set. `remixes/chongbong.py` is the shipping
-image and the reference every refactor proves itself against.
+`remixes/<name>.py` selects a set. `remixes/bamsep26.py` is the rig — what
+goes on the unit, and `make`'s default; `remixes/bus.py` is the plain
+two-server image (BusVerb + BusDelay + send + tempo sync), the shape of tag
+77 on the unit today and the reference every build refactor proves itself
+against byte for byte.
 
 ```sh
 make remix                # the remixer: compose a selection interactively
 make modules              # the module index and the available remixes
-make bus REMIX=<name>     # build a selection (default: chongbong)
+make bus REMIX=<name>     # build a selection (default: bamsep26)
 ```
 
-What ships today is four modules: `chonverb`, `bongdelay`, `send`, and
+The plain image is four modules: `busverb`, `busdelay`, `send`, and
 `tempo-sync` — the last being a ColdFire patch rather than an effect, and the
-worked example of changing what the firmware *does*.
+worked example of changing what the firmware *does*. The rig adds the three
+stations, the stock DELAY row and the menu shortcut (`remixes/bamsep26.py`).
 
 **What a remix does to the STOCK effects (made explicit 2 Sep 2026).** Every
 image replaces the FX2 chooser wholesale, but only three stock effects are
@@ -87,7 +91,7 @@ and dispatch in every image and had merely lost their chooser row. A remix
 now keeps any of them by listing it by key (`tools/remix/stock.py`), in
 chooser order, at zero cost — the build writes the row and the cursor
 position and nothing else — and the composer shows a STOCK FX2 group, the
-consumed three, and the hidden count. `remixes/restored.py` is chongbong
+consumed three, and the hidden count. `remixes/restored.py` is `bus`
 plus the seven that can sit beside the servers; the other four allocate a
 per-track instance buffer on the addresses the servers hardcode and the
 ledger refuses them beside one. Past seven rows the list relocates and the
@@ -109,7 +113,7 @@ instructions and conventions our own modules never did.
 Making them first-class exposed a latent id collision: the DSP dispatch
 tables are shared between FX1 and FX2, and Rungs (`0x0c`) and Nimbus
 (`0x0d`) sat on EQUALIZER's and DJ EQ's ids from 29 Aug, so every local
-image since ran Rungs where FX1 selected EQUALIZER, and chongbong aliased
+image since ran Rungs where FX1 selected EQUALIZER, and the `bus` image aliased
 FX1's EQ and DJ EQ to SEND. Never flashed (tag 77 predates it). Both moved
 (`0x17`, `0x1a`); the schema refuses stock ids; the shipping image differs
 from before in exactly those four ids' entries, byte-diffed.
@@ -133,7 +137,7 @@ A fourth followed the same day — `nimbus`, a Clouds-ish granular texture
 (500 words): four grains over a continuously-recorded 743 ms line, POS/SIZE/
 DENS/MIX and a freeze. It gets its **own** remix because it owns the
 per-core FX2 buffer region `Y:0x4000–0xBFFF`, so it cannot share a core with
-ChonVerb's tank — a pair the ledger now refuses by name. Its window found a
+BusVerb's tank — a pair the ledger now refuses by name. Its window found a
 new trap, now in `CLAUDE.md`: **reading `a0` exposes the fractional left
 shift that reading `a1` hides**, so an `a0`-based integer scale is 2× the
 multiplier; the wrong one assembled and made plausible granular noise while
@@ -174,7 +178,7 @@ Three things follow that are worth knowing before editing anything:
   id, a ColdFire cave, a hook site or a core-private Y word, and names both.
   `tools/remix/ledger.py`; the negative tests are in `make check`. As of
   29 Aug it also refuses two modules that both own the **per-core FX2
-  instance buffer region** `Y:0x4000–0xBFFF` (ChonVerb's tank, Nimbus's
+  instance buffer region** `Y:0x4000–0xBFFF` (BusVerb's tank, Nimbus's
   line) — declared, not scanned, because a scan cannot tell an address from
   a mask. The shared 64K window is still **not** covered — its extents are
   not established well enough to write down, so `CLAUDE.md`'s ownership
@@ -194,7 +198,7 @@ Three things follow that are worth knowing before editing anything:
 
 **FX2 bus servers are asymmetric. FX1 inserts cannot be.**
 
-ChonVerb exists only on core 0; BongDelay only on core 1. That is what
+BusVerb exists only on core 0; BusDelay only on core 1. That is what
 specialization (`SPEC=1`) bought. But an FX1 insert must run on *any* of the
 8 tracks, so it must exist in **both** payloads — and program space is per
 core. Two consequences:
@@ -212,14 +216,14 @@ core. Two consequences:
 
 The build report is the live ledger — `make bus` prints it. Current build
 (29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,404, FREE 320 (v5.1: 2,154 words).** The older "A 55 / B 1" figures in this file predated the freeze
+FREE 30 — and since BusDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,404, FREE 320 (v5.1: 2,154 words).** The older "A 55 / B 1" figures in this file predated the freeze
 and roll work; both payloads are still effectively full, and new work needs
 a lever first.
 
 **Space levers, in order of preference:**
 
 - **The reverb LFO-block roll is built and PARKED, not available.**
-  `modules/chonverb/reverb_lforoll.asm` frees 51 words ✅ measured, but fails
+  `modules/busverb/reverb_lforoll.asm` frees 51 words ✅ measured, but fails
   `verify_roll` on the TIME=127 SIZE=127 DIFF=127 wet case — the only one
   that drives the allpass hard. Bisected: the shared triangle stash is
   innocent, loop order is irrelevant, the table is right; the remaining
@@ -227,7 +231,7 @@ a lever first.
   not more reading.
 - **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K,
   **+8,192 words**, costing `Y:0xA000–0xBFFF`. On core 0 it **evicts tank
-  lines 6–7** (ChonVerb's eight lines are `Y:0x4000–0xBFFF` at 4K each), so
+  lines 6–7** (BusVerb's eight lines are `Y:0x4000–0xBFFF` at 4K each), so
   core-0 OMR is reverb re-layout work, not a build flag. 🟡 OMR is per-core:
   core 1 alone can take Fig 3-3 with no tank cost — contingent on nothing
   else on that core using `Y:0xA000–0xBFFF`. ⚠️ No OMR risk can be de-risked
@@ -248,7 +252,7 @@ choosing the same one. Measured this way:
 
 | remix | worst core | what fills it |
 |---|---|---|
-| chongbong | **1,817** | 1× delay (v5, pitched GRAIN) + 3× send (was 2,432 with the v2 GRAIN delay) |
+| bus | **1,817** | 1× delay (v5, pitched GRAIN) + 3× send (was 2,432 with the v2 GRAIN delay) |
 | mutables | **1,376** | 4× BodeShift (the dearest insert) |
 | nimbus | **1,308** | 4× Nimbus |
 | verbonly | **1,444** | 1× reverb + 3× send |
@@ -436,7 +440,7 @@ produced.
 
 ### 2. FX1 consolidation — turning the stranded pool into capability
 
-The trick ChonVerb already ran: replace near-duplicates with one engine plus
+The trick BusVerb already ran: replace near-duplicates with one engine plus
 a MODE select.
 
 | cluster | stock words | one engine | freed **per payload** |
@@ -487,7 +491,7 @@ over SDRAM rings at `0x4F502C10` (`docs/EXTERNAL.md`, Bryan T). So the signal
 order for "our reverb into the stock delay" is already the right way round.
 The reverse — stock delay into our bus — is **impossible and now known to be
 so physically**: those rings are outside the DSP's 18-bit external address
-range, so no DSP code can ever read them. Delay→reverb stays BongDelay's
+range, so no DSP code can ever read them. Delay→reverb stays BusDelay's
 `→VERB`.
 
 **The crack — now ✅ MEASURED, 31 Aug 2026, by disassembling it here.** The
@@ -527,7 +531,7 @@ copying a word from the *other* per-track record at `0x80001a00 + 96*track`.
 
 **The experiment.** If that byte is decoupled from the dispatch id, a ColdFire
 cave — infrastructure we already fly — can set it for a track whose FX2 slot
-is running ChonVerb, giving **reverb → stock delay in series on one track**.
+is running BusVerb, giving **reverb → stock delay in series on one track**.
 Steps, cheapest first:
 
 1. ✅ **DONE** — the gate, its record and its filler are decoded above.
@@ -536,7 +540,7 @@ Steps, cheapest first:
    (`0x40003230`), on the same frame. Find a site in that window whose stock
    bytes can be replayed.
 3. Write the cave: force record+7 to 8 for the chosen track. Flash, select
-   ChonVerb on that track, and listen for repeats. The standing rule applies
+   BusVerb on that track, and listen for repeats. The standing rule applies
    — assert the stock bytes, replay what you displace.
 
 ⚠️ **Before spending the flash, settle the second condition** (the `==7`
@@ -545,7 +549,7 @@ its time source, step 3's cave needs to satisfy both.
 
 **Known unknowns before spending a flash on step 3.** The delay's TIME comes
 from a staged word at `0x80005fa0` whose writer is unmapped, so the delay may
-run with no controllable time; and a track hosting ChonVerb has no free
+run with no controllable time; and a track hosting BusVerb has no free
 parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
@@ -559,8 +563,8 @@ the TUI is a shell around it.**
 
 ```
 ┌─ remix ─────────────┐ ┌─ emulated OT ──────────┐
-│ [x] chonverb        │ │  MAIN MENU             │
-│ [x] bongdelay       │ │  > PROJECT             │
+│ [x] busverb        │ │  MAIN MENU             │
+│ [x] busdelay       │ │  > PROJECT             │
 │ [x] tempo-sync      │ │    REVERB    ← new row │
 │  build ▸ check ▸    │ │  (arrows/enter = keys) │
 └─────────────────────┘ └────────────────────────┘
@@ -634,7 +638,7 @@ so a patched-in entry renders as the firmware would draw it. Recipe and the
 JIT-cache gotcha are in `docs/EMU.md`.
 
 The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window,
-listing the built remix's own effects (`ChonVerb77`, `BongDelay77`, `Send`)
+listing the built remix's own effects (`BusVerb77`, `BusDelay77`, `Send`)
 and the param row.
 
 **Milestone 3 is shipped (31 Aug 2026): the track-centric remixer.** The
@@ -644,8 +648,8 @@ thinks. Home is a RIG of eight tracks: assign any effect the track can host
 (servers by payload — A serves T5-8, B serves T1-4, now DECLARED in the two
 server manifests; inserts anywhere), dial its manifest-named knobs on the
 real page-1/page-2 layout, render and hear it, A/B renders. EVERY effect
-renders locally (`tools/remix/audition.py`): ChonVerb via `render_reverb`,
-BongDelay via a staleness-checked DEV hatch build, inserts via a per-insert
+renders locally (`tools/remix/audition.py`): BusVerb via `render_reverb`,
+BusDelay via a staleness-checked DEV hatch build, inserts via a per-insert
 scratch image — and `send_probe --set NAME=VAL` now drives any knob of any
 module through its own `knob_map()`. The 12 Aug SEND-alias trap is guarded
 for every module (a `--pick` of an absent insert dies instead of rendering a
@@ -673,7 +677,7 @@ is the slice of that road worth having.
 
 ### 6b. Per-mode knob NAMES — DONE 3 Sep 2026, emulator-proven
 
-**A MODE select now renames the knobs around it.** BongDelay's MDEP/MRAT read
+**A MODE select now renames the knobs around it.** BusDelay's MDEP/MRAT read
 SCAT/DENS in GRAIN, and the modulation station's FDBK/DLY read RES and
 RING/PTCH in PHSR and COMB. `ModeView` in the manifest is the single
 declaration; the remixer's UNIT pane follows it, `send_probe --set` accepts
@@ -836,7 +840,7 @@ synth voice needs. Read it after the probe's numbers are in.
 Everything since is unflashed: the delay's R59–R62 quality pass, the
 stepped-select labels, stock effects listable beside ours, the insert card,
 a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
-(three stations, BongDelay v5) — and, since 3 Sep 2026, **the returns**:
+(three stations, BusDelay v5) — and, since 3 Sep 2026, **the returns**:
 the engines' wet published stereo and four deep, returned at the master by
 the character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
 hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
@@ -913,7 +917,7 @@ bit-identical, which is what that gate is for.
   (reverbs null-stubbed, Echo Freeze dispatch is a stock no-op); the
   survivors are dual FX1/FX2 shallow effects, 🟡 *inferred* to make no
   FX2-slot buffer writes. Falsifier: a legacy project with COMPRESSOR stored
-  on an FX2 slot of tracks 5–8 — listen for tank corruption while ChonVerb
+  on an FX2 slot of tracks 5–8 — listen for tank corruption while BusVerb
   plays.
 - ✅ **The hardware-mpy caveat is CLOSED**: silicon decay-vs-TIME matches the
   emulator within 13% at three points (`docs/CAPTURE.md`), so the emulator's
@@ -949,14 +953,14 @@ make bus                    # specialized, cross-core -- THE image
 make modules                # the module index and the available remixes
 make bus REMIX=verbonly     # a reduced selection (no delay, no caves)
 make render                 # build DEV + render the bus locally, no flash
-make render-delay           # the delay hatch -- all 3 servers real, renders BongDelay
+make render-delay           # the delay hatch -- all 3 servers real, renders BusDelay
 make image BUILD=002        # repack as a flashable .bin, version-stamped
 
 make check                  # bus + cycles + verify, everything without hardware
 make cycles                 # per-effect cycles against the measured budget
 make verify                 # ColdFire menu tables (burn probe SKIPs -- see above)
 make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
-make verify-delay CAND=modules/bongdelay/delay_new.asm   # bit-identity gate for delay refactors
+make verify-delay CAND=modules/busdelay/delay_new.asm   # bit-identity gate for delay refactors
 ```
 
 `make bus-plain` (both servers on both cores) does not build — that layout

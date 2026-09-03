@@ -20,7 +20,7 @@
 ;   p1 RES   damp = 0.992 - RES * 0.969       (RES=127 -> damp ~ 0.031, Q~30)
 ;   p2 DRV   gain = 1 + 3*DRV/128, clip at the rail
 ;   p3 MIX   out = dry + MIX*(wet - dry); MIX=0 is an exact passthrough
-;   p7 MODE  0 LP, 1 BP, 2 HP (ChonVerb's slot-7 decode; unexpected -> LP)
+;   p7 MODE  0 LP, 1 BP, 2 HP (BusVerb's slot-7 decode; unexpected -> LP)
 ;
 ; ---- r7 slots -------------------------------------------------------------
 ;   r7+$20  f     (per block)          r7+$24  lp state L (PERSISTENT)

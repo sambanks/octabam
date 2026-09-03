@@ -5,7 +5,7 @@ server and SEND (the fallback). FILTER is replaced by the station, so its
 727 words are ground; every other stock effect keeps its code.
 """
 from remix.schema import Remix
-REMIX = Remix(name="stations", doc="the three BamSep26 stations + ChonVerb + SEND",
+REMIX = Remix(name="stations", doc="the three BamSep26 stations + BusVerb + SEND",
               modules=("REVERB SERVER", "SEND", "FILTER STATION", "CHARACTER STATION",
                        "MODULATION STATION"),
               fallback="SEND",

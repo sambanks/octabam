@@ -45,7 +45,7 @@ def main():
     print("STOCK FX2 EFFECTS  (tools/remix/stock.py -- already in every image;\n"
           "list one in a remix to KEEP its chooser row, by key)\n")
     for m in stock.MODULES:
-        buf = "  [instance buffer -- not beside ChonVerb/Nimbus/BongDelay]" \
+        buf = "  [instance buffer -- not beside BusVerb/Nimbus/BusDelay]" \
             if m.claims is not None and m.claims.stock_instance_buffer else ""
         print(f"  {m.key:<12} FX2 id 0x{m.menu.fx2_id:02x}  {m.doc}{buf}")
         if m.params:

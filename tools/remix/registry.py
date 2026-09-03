@@ -167,7 +167,9 @@ def by_id(fx2_id: int):
 
 
 REMIXES_DIR = ROOT / "remixes"
-DEFAULT_REMIX = "chongbong"
+# The plain two-server image, the refhash gate's subject: what `tools/*.py`
+# build when REMIX is unset. `make` passes REMIX=bamsep26, the rig.
+DEFAULT_REMIX = "bus"
 
 
 def remix(name: str = DEFAULT_REMIX):

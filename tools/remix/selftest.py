@@ -75,19 +75,19 @@ CASES = [
      [_effect("alpha", 0x07, reserved=(0x0905,)),
       _effect("beta", 0x1e, reserved=(0x0905,))], "core-private Y"),
     # The shape this one guards is a module that works perfectly in every
-    # test done alone: ChonVerb's tank and Nimbus's granular line are both
+    # test done alone: BusVerb's tank and Nimbus's granular line are both
     # hardcoded into Y:0x4000-0xBFFF, which is per CORE.
     ("two effects owning the FX2 instance buffer region",
      [_effect("alpha", 0x07, buffers=True),
       _effect("beta", 0x1e, buffers=True)], "FX2 instance buffers"),
     # A BUFFERED stock effect takes a per-track base from the host's
     # allocator, and those bases are the addresses the servers hardcode:
-    # CHORUS on T6 beside ChonVerb on T5 writes into the tank. Refused
+    # CHORUS on T6 beside BusVerb on T5 writes into the tank. Refused
     # beside a module that owns the region ...
     ("a buffered stock effect beside a module owning FX2 buffers",
      [_stock("chorus", 0x12, True), _effect("beta", 0x07, buffers=True)],
      "stock instance buffer"),
-    # ... and beside one whose lines live in the shared window (BongDelay:
+    # ... and beside one whose lines live in the shared window (BusDelay:
     # ybase ALWAYS), which is core 1's tracks 3-4 slots.
     ("a buffered stock effect beside a shared-window module",
      [_stock("comb", 0x13, True), _effect("beta", 0x07, ybase=YBase.ALWAYS)],
@@ -200,10 +200,10 @@ def main():
                 render_reverb.NAMES[rr_name] == slot
         if not ok:
             bad += 1
-            print(f"  [FAIL] chonverb {name}@{slot} has no aligned "
+            print(f"  [FAIL] busverb {name}@{slot} has no aligned "
                   f"render_reverb param")
     else:
-        print("  [PASS] chonverb's manifest slots align with render_reverb")
+        print("  [PASS] busverb's manifest slots align with render_reverb")
 
     # ---- every drawn knob answers "what is this?" -----------------------
     # The remixer shows Param.doc as the help line under the knob cursor,

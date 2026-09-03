@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A MODE select's formatter that also RENAMES the knobs around it.
 
-A multi-mode effect reuses its knobs. BongDelay's MDEP is the tape modulation
+A multi-mode effect reuses its knobs. BusDelay's MDEP is the tape modulation
 depth in CLEAN and the grain scatter in GRAIN; its MRAT is the modulation rate
 and the grain density. The panel printed one name for both meanings until
 this existed, and Sam said so plainly (3 Sep 2026): *"can we label the depth

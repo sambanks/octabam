@@ -9,7 +9,7 @@ instrument, not the code (see the lessons at the bottom).
 
 ## Verdict: 24/24 functional checks pass. No code defect found.
 
-### Reverb (ChonVerb)
+### Reverb (BusVerb)
 | check | result |
 |---|---|
 | 3 modes render distinct, no rail at defaults | ✅ peaks .22/.19/.55 FS |
@@ -22,7 +22,7 @@ instrument, not the code (see the lessons at the bottom).
 | GATE chops the tail | ✅ late tail −39.2 → silence |
 | →DEL select feeds the delay | ✅ 0.375 FS at 3; digital silence at 0 |
 
-### Delay (BongDelay)
+### Delay (BusDelay)
 | check | result |
 |---|---|
 | 5 modes distinct, no rail | ✅ peaks .12–.39 FS |
@@ -64,7 +64,7 @@ must land per-mode or after §1.4) and mode balance (voicing, by ear).
 
 ---
 
-## Addendum, same day: ChonVerb v4 (the RETURN conversion) — gate results
+## Addendum, same day: BusVerb v4 (the RETURN conversion) — gate results
 
 The MIX rows above describe the pre-v4 insert and are HISTORICAL as of
 `5924c8b`. The v4 gate, all measured:

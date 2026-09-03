@@ -37,9 +37,9 @@ modules/*/*.asm (+ dsp/ probes)
 Three commands cover most days **if you are working on a bus server**:
 
 ```bash
-make reverb IN=loop.wav ARGS='--wet --mode all'   # hear ChonVerb
+make reverb IN=loop.wav ARGS='--wet --mode all'   # hear BusVerb
 make render                                       # the full bus, SEND → REVERB
-make render-delay                                 # BongDelay via the DEV hatch
+make render-delay                                 # BusDelay via the DEV hatch
 ```
 
 **An INSERT is rendered differently, and none of those three do it.** An
@@ -130,7 +130,7 @@ but sample-exact measurements shift: the bus latency is exactly 2 blocks —
 
 ## render_reverb.py — judging by ear
 
-`make reverb IN=loop.wav` pushes a wav through ChonVerb and writes a wav
+`make reverb IN=loop.wav` pushes a wav through BusVerb and writes a wav
 back. `-p NAME=VAL` sets knobs by name, `--sweep NAME=a,b,c` renders one file
 per value, `--wet` isolates the tail, `--mode all` renders every character.
 Voicing decisions in `docs/VOICING.md` are all listening results from this
@@ -185,7 +185,7 @@ perfectly on any spur metric.
 
 ### The DEV hatch (`make render-delay`)
 
-The shipping build (`SPEC=1`) puts BongDelay in payload B only — and
+The shipping build (`SPEC=1`) puts BusDelay in payload B only — and
 dsp_host cannot boot payload B. Worse, a SPEC dump *aliases* the absent
 delay's dispatch id to the SEND client (deliberately, so a wrong chooser
 pick becomes a send), which locally renders a plausible dry passthrough: the

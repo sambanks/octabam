@@ -2,7 +2,7 @@
 ; X/Y ALIAS PROBE -- do Program, X and Y really map to the same physical words
 ; in the shared 64K, as the reference manual says?
 ;
-; Built with BURN=1, in DELAY SERVER's slot (BongDelay is a placeholder, so its
+; Built with BURN=1, in DELAY SERVER's slot (BusDelay is a placeholder, so its
 ; 507 words are the cheapest diagnostic space on the chip).
 ;
 ; ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@
 ;
 ; Both cannot be right, and it matters: dsp/delay_server.asm claims all 32,768
 ; words from that base. If the manual is right, one premise of that argument is
-; false -- most likely the X:0x30000 staging claim -- and BongDelay's memory has
+; false -- most likely the X:0x30000 staging claim -- and BusDelay's memory has
 ; to be re-planned before a single line of it is written.
 ;
 ; A manual describes the part; it does not describe how Elektron configured it.
@@ -140,7 +140,7 @@ ad3:
 ;
 ;   SPACE = 0   read back via X  -> does X alias Y? Settles the manual against
 ;                                   commit 0f93639, and decides whether
-;                                   BongDelay's 32K claim is safe.
+;                                   BusDelay's 32K claim is safe.
 ;   SPACE > 0   read back via P  -> does P alias Y? If it does, the shared 64K
 ;                                   is PROGRAM-ADDRESSABLE, and the program
 ;                                   space wall (11 words free) has a door in

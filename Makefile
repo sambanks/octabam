@@ -15,7 +15,9 @@ BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
 
 # Which modules the image carries. `make modules` lists what is available;
-# remixes/<name>.py is the selection. chongbong is the shipping one.
+# remixes/<name>.py is the selection. bamsep26 is the rig and the default;
+# bus is the plain two-server image (BusVerb + BusDelay + send + tempo sync)
+# that scripts/refhash.sh proves build changes against.
 REMIX   ?= bamsep26
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
@@ -72,7 +74,7 @@ render: ## Build the DEV image and render the bus locally (no hardware)
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
 .PHONY: render-delay
-render-delay: ## Build the DELAY hatch (all 3 servers real) and render BongDelay locally
+render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
 	@# NO SPEC: a SPEC dump has no delay in payload A (id 0x06 -> SEND alias).
 	@# Overwrites mem_dev_A.mem -- send_probe refuses to run a D layout
 	@# against a SPEC dump, so a stale mix-up dies loudly instead of
@@ -90,7 +92,7 @@ verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
 
 .PHONY: reverb
-reverb: ## Render a wav through ChonVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
+reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }
 	python3 tools/render_reverb.py $(IN) $(ARGS)
 
@@ -126,13 +128,13 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify_burn.py
 
 .PHONY: verify-roll
-verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/chonverb/reverb_lforoll.asm
-	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=modules/chonverb/reverb_lforoll.asm"; exit 1; }
+verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/busverb/reverb_lforoll.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=modules/busverb/reverb_lforoll.asm"; exit 1; }
 	python3 tools/verify_roll.py $(CAND)
 
 .PHONY: verify-delay
-verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/bongdelay/delay_new.asm
-	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/bongdelay/delay_new.asm [REF=modules/bongdelay/delay_server.asm]"; exit 1; }
+verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/busdelay/delay_new.asm
+	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/busdelay/delay_new.asm [REF=modules/busdelay/delay_server.asm]"; exit 1; }
 	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
 
 .PHONY: verify-bus

@@ -413,10 +413,10 @@ is equally consistent with every remaining hypothesis about *where*. The
 location question is still open.
 
 **Design consequence.** A track can run
-the stock delay on FX2 *and* feed the ChonVerb bus from the same slot — so the
+the stock delay on FX2 *and* feed the BusVerb bus from the same slot — so the
 FX1 filter is no longer the price. See BUS.md.
 
-**Confirmed end-to-end.** With a ChonVerb server on another track
+**Confirmed end-to-end.** With a BusVerb server on another track
 in the bank and DELAY's `FB` knob turned up, the reverb send audibly works from
 inside the delay's slot. So our send client is not merely dispatched there — it
 is tapping the audio and reaching the bus, while the stock delay runs.
@@ -465,7 +465,7 @@ not the modulo scan.
 
 ### Stock uses `X:0x30000` as per-frame parameter staging
 
-This matters for `modules/bongdelay/delay_server.asm`. Frame setup copies 72 words out of
+This matters for `modules/busdelay/delay_server.asm`. Frame setup copies 72 words out of
 `X:0x30000` into `y:0x1b8`, then writes parameter values back into `X:0x30000`:
 
 ```asm
@@ -477,7 +477,7 @@ This matters for `modules/bongdelay/delay_server.asm`. Frame setup copies 72 wor
 0000b6: move  a1,x:(r1)+        ; and writes params back into 0x30000
 ```
 
-**BongDelay hardcodes `Y:0x30000` / `Y:0x38000` as its delay-line base — and
+**BusDelay hardcodes `Y:0x30000` / `Y:0x38000` as its delay-line base — and
 X, Y and P DO alias in the shared window `0x30000`–`0x3FFFF`.** Measured with
 `dsp/alias_probe.asm`; see `CHIP.md`. The per-server ceiling there is
 **65,536 shared-window words (1.49 s)**. Reason about the shared window as ONE
@@ -755,7 +755,7 @@ wholesale.
 
 ## 6c. Tempo and the DSP — the ColdFire side, read (24 Aug 2026)
 
-Sam wants tempo sync for BongDelay. The question is whether the DSP is ever
+Sam wants tempo sync for BusDelay. The question is whether the DSP is ever
 told the tempo. This is a **static** pass over the ColdFire image with r2
 (`scripts/disasm.sh`; Ghidra is no longer installed here). Every claim below
 is *read from code*, not measured on hardware; the TPROBE flash
@@ -826,7 +826,7 @@ whose 60→180 BPM ratio is 3 (or ⅓). A word that *scales* with tempo but is
 not the tempo — an LFO increment on a track with a tempo-synced LFO — is
 the expected false positive; run the probe with the LFO off.
 
-**If falsified: cheap.** Read the word in BongDelay; ~40 words of payload B.
+**If falsified: cheap.** Read the word in BusDelay; ~40 words of payload B.
 **If confirmed: a ColdFire code patch** — the first in this project — to
 store `tempo24` into a spare word of the per-track record inside the
 packer (the record is 84 words, the DSP stages 72; whether the tail 12 are
@@ -868,7 +868,7 @@ then **only for FX2 id 6 or 7** stores `tempo24` to `+0x24` (`r6+$6`) and
 down to 30 BPM — to `+0x26` (`r6+$7`), using the ColdFire's `divu.l`. d0/d1
 saved; ~40 cycles per our-track per frame. `NOTEMPO=1` omits it.
 
-DSP side (`modules/bongdelay/delay_server.asm`, the block after the TIME decode), final
+DSP side (`modules/busdelay/delay_server.asm`, the block after the TIME decode), final
 form after three revisions in the day — **TIME is a free dial with a STICKY
 SNAP** (R56): `free = knob·128+64`, `tol = free/16`; the last division
 M ∈ {2,3,4,6,8,9,12,16,18,24} clocks (1/32T … 1/4) with `|ticks·M − free|
@@ -1346,7 +1346,7 @@ Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
 > slot 6's value also appears at `$b`; on hardware, an engine reading a
 > page-2 knob from `$b` alone is **dead silent** while the panel demonstrably
 > publishes (MODE — `$c` mid — and the `$e` knob both respond). Slot 6 lands
-> in `$c`'s **knob field**, as the table says. ChonVerb reads SHMR from the
+> in `$c`'s **knob field**, as the table says. BusVerb reads SHMR from the
 > `$c` knob field OR'd with `$b` (robust to either).
 
 > **All six page-2 slots can be full-range knobs — measured on hardware.**
@@ -1354,7 +1354,7 @@ Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
 > uses the fields; it is not a hardware limit. Five full 0–127 controls, two
 > of them in companion fields, have run on the unit at once. (Both shipping
 > effects nonetheless give every companion field a small-count select —
-> ChonVerb WIDTH/RATE, BongDelay MODE/PTCH/FRZE — following an on-unit
+> BusVerb WIDTH/RATE, BusDelay MODE/PTCH/FRZE — following an on-unit
 > reading that a count-128 companion publishes **near-boolean**;
 > `build_bus.py`'s `PAGE2_COUNTS` carries that rationale. That reading and
 > the full-range measurement above have not been reconciled against each

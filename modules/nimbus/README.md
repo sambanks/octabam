@@ -22,7 +22,7 @@ The buffer is the fixed core-private FX2-instance region `Y:0x4000–0xBFFF` —
 not per-instance. That ground is only free because every other insert has no
 Y footprint at all (the argument `BUS.md`'s hardcoded-base probe made), so:
 two Nimbus instances on one core would share one buffer, and it cannot
-coexist with ChonVerb, whose tank lives in exactly that region. Hence its own
+coexist with BusVerb, whose tank lives in exactly that region. Hence its own
 remix, `nimbus`, rather than a seat in `mutables`. The legacy-stock-FX2
 caveat `PLAN.md` records for the servers applies here identically.
 
@@ -70,7 +70,7 @@ both geometries:**
 | `- phase` (as shipped until today) | **441 Hz, unity** — the octave-up claim below is NOT reproduced here | p-p ripple **−3.2 dB** |
 | `+ phase` (now) | 441 Hz, 2f/f −42 dB | flat, −180 dB |
 
-So the delay's measurement did not transfer: BongDelay v5's copy of this
+So the delay's measurement did not transfer: BusDelay v5's copy of this
 geometry carries an `advance` term this module never had, and that is where
 its octave came from. The `+ phase` term is kept anyway — it is the geometry
 that reads a fixed tap behind the moving head, and with it the window sum
@@ -82,7 +82,7 @@ is what stands; the story is a candidate.
 ### The note as it was written (kept: it is what sent us looking)
 
 
-BongDelay v5 took this engine's read geometry -- a grain reads
+BusDelay v5 took this engine's read geometry -- a grain reads
 `W - (POSbase + s + G + 1 - phase)` -- and measured it with a tone: at
 "unity" the output was **2x the input frequency**. The write head `W` moves
 one sample per sample and `phase` grows one per sample, so the absolute read

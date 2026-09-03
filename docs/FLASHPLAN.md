@@ -33,7 +33,7 @@ flashes 2 and 3 are for.
 
 | | what it changes | first flashed |
 |---|---|---|
-| BongDelay R59–R62 | GRAIN density was a 2-position switch (now a full dial) + makeup gain; REVERSE default = 93 ms segment; the −19 interval swap | never |
+| BusDelay R59–R62 | GRAIN density was a 2-position switch (now a full dial) + makeup gain; REVERSE default = 93 ms segment; the −19 interval swap | never |
 | Stepped-select labels (PLAN §6) | twelve selects print words instead of `1 2 3` — `Param.labels` was authored, schema-checked and never read until 2 Sep | never |
 
 ### C. New capability, never on hardware at all — flashes 2 and 3
@@ -64,7 +64,7 @@ with an id this image implements:
 
 ```bash
 python3 tools/ot_project.py testproj \
-    ~/octa/backups/<a project you trust> /Volumes/<card>/OCTABAM_T1 chongbong
+    ~/octa/backups/<a project you trust> /Volumes/<card>/OCTABAM_T1 bus
 ```
 
 It copies (never edits the source), lays out **one effect per part on all
@@ -98,14 +98,14 @@ than handing you a card that fails on load.
 Measured on a real project: **1,968 bytes changed across sixteen banks, none
 of them outside the FX id fields**, and no other file touched.
 
-Make a fresh one per flash — `chongbong`, then `restored`, then `fieldtest` —
+Make a fresh one per flash — `bus`, then `restored`, then `fieldtest` —
 because each image implements a different set of ids.
 
 ---
 
 ## Flash 1 — the accumulated shipping build
 
-**Image:** `chongbong`, the shipping remix, at HEAD. Bump `BUILD` to 79.
+**Image:** `bus`, the plain two-server image (the shape of tag 77), at HEAD. Bump `BUILD` to 79.
 
 ```bash
 make check && scripts/refhash.sh check     # both must be green
@@ -123,15 +123,15 @@ that the platform refactor really was inert.
 1. **It boots.** Anything else is moot. The emulator has already reached the
    RTOS handoff on this image (`make remix`, the CHOOSERS line ends `boots`),
    so a failure here means something the emulator cannot see.
-2. **The chooser reads `ChonVerb79 / BongDelay79 / Send`.** The tag is how you
+2. **The chooser reads `BusVerb79 / BusDelay79 / Send`.** The tag is how you
    know which build is running — three rounds were lost to not being able to
    tell "the change did not work" from "the flash did not apply".
 3. **Every stepped select prints words.** WarpFold is not in this image;
-   check BongDelay's `MODE`, `RATE`, `FRZE` and ChonVerb's `MODE`, `SHFT`,
+   check BusDelay's `MODE`, `RATE`, `FRZE` and BusVerb's `MODE`, `SHFT`,
    `RATE`. ⚠️ **Falsifier: a select still showing `1 2 3`.** That is the
    formatter not taking, and it is a descriptor field a clone inherits from
    its donor — the 17 Aug class of bug.
-4. **BongDelay GRAIN `DENS` sweeps.** It behaved as a two-position switch
+4. **BusDelay GRAIN `DENS` sweeps.** It behaved as a two-position switch
    before R61. Turn it slowly across the full range and listen for continuous
    change. ⚠️ **Falsifier: it still jumps between two densities.**
 5. **Levels.** R61 added makeup gain to keep GRAIN level-flat (±1.2 dB
@@ -151,7 +151,7 @@ is a wide net, but `git bisect` with `make render` is cheap.
 
 ## Flash 2 — stock effects beside ours
 
-**Image:** `restored` — chongbong plus the seven stock effects that can
+**Image:** `restored` — bus plus the seven stock effects that can
 coexist with the servers. Bump `BUILD` to 80.
 
 **What it proves.** That a stock effect and one of ours can share a chooser
@@ -161,7 +161,7 @@ nothing has ever checked the permission on hardware.
 
 **Checks:**
 
-1. **The chooser lists both.** Seven stock rows plus ChonVerb / BongDelay /
+1. **The chooser lists both.** Seven stock rows plus BusVerb / BusDelay /
    Send, in the order `restored` declares.
 2. **Each stock row actually runs.** Select FILTER, EQUALIZER, DJ EQ, PHASER,
    COMPRESSOR, LO-FI and DELAY in turn on **tracks 1–4** and confirm each is
@@ -169,7 +169,7 @@ nothing has ever checked the permission on hardware.
    ⚠️ **Falsifier: a listed stock effect that is silent** — that is its
    dispatch pointing at the null stub, i.e. the build nulled something it
    should not have.
-3. **A stock effect on tracks 1–4 while ChonVerb runs on 5–8.** This is the
+3. **A stock effect on tracks 1–4 while BusVerb runs on 5–8.** This is the
    coexistence claim in the shape that matters. Play both. ⚠️ **Falsifier:
    tank corruption on the reverb** — a rising, grainy or metallic tail that
    is not there when tracks 1–4 are silent. That is the buffer collision the
@@ -256,11 +256,11 @@ python3 tools/ot_project.py rigproj ~/octa/backups/<trusted project> /Volumes/<c
 
 | track | FX1 | FX2 | what it is |
 |---|---|---|---|
-| T1 | character stn, →VRB 30 | **BongDelay** | the delay's host — plays its own material DRY while T8 returns |
+| T1 | character stn, →VRB 30 | **BusDelay** | the delay's host — plays its own material DRY while T8 returns |
 | T2 | filter stn, →VRB 40 →DEL 30 | stock DELAY | synths in |
 | T3 | filter stn, →VRB 30 | character stn | bass |
 | T4 | filter stn, →DEL 40 | stock DELAY | lead |
-| T5 | modulation stn, →VRB 40 | **ChonVerb** | the reverb's host, dry likewise |
+| T5 | modulation stn, →VRB 40 | **BusVerb** | the reverb's host, dry likewise |
 | T6 | filter stn, →VRB 50 | stock DELAY | melodic |
 | T7 | character stn, →VRB 40 →DEL 20 | stock DELAY | vocal / guitar |
 | T8 | character stn, **SAT=BUS**, RVRB 127, DLY 127, GLUE, COMP 40 | — | the master: glue, and the only place the wet enters |
@@ -279,13 +279,13 @@ each one's failure has a different shape from the next.
 
 | | claim | how to see it | falsified by |
 |---|---|---|---|
-| i | six descriptor clones + floated caves; label formatters and the FX1 list in the SECOND zero run | every station's page draws all twelve names; MODE/SAT/CMOD print words; BongDelay TIME prints `1/8`; FX1 chooser = NONE + three stations | garbage names, a select printing a number, a chooser with junk rows |
+| i | six descriptor clones + floated caves; label formatters and the FX1 list in the SECOND zero run | every station's page draws all twelve names; MODE/SAT/CMOD print words; BusDelay TIME prints `1/8`; FX1 chooser = NONE + three stations | garbage names, a select printing a number, a chooser with junk rows |
 | ii | FX1 default = filter station, dry at defaults | a part that chose FILTER runs the station and sounds unchanged | any tone change on a track at station defaults |
-| iii | the modulation station is dry on FX2 and modulates on FX1 | T5's FX1 modstation audible in CHOR; the same module chosen on T3's FX2 is a dry pass | **test on T7/T8 first** — a wrong FX1 detection on tracks 5–6 writes into ChonVerb's tank |
+| iii | the modulation station is dry on FX2 and modulates on FX1 | T5's FX1 modstation audible in CHOR; the same module chosen on T3's FX2 is a dry pass | **test on T7/T8 first** — a wrong FX1 detection on tracks 5–6 writes into BusVerb's tank |
 | iv | harvested ids from an old project = silence, not noise | load the untouched set: tracks that named PLATE/SPRING/COMB etc. are silent | noise, a hang |
 | v | **an FX1 station sending on T5** — a bus participant on FX1 has never run on hardware | T5's →VRB reaches the reverb; sweep tracks × modes and listen for the rotation-class artefacts (stutter, a block-rate buzz) | stutter that follows dispatch position |
 | vi | stock DELAY on FX2 beside a sending station on FX1 | T2: delay repeats in the mix, the reverb of the DRY signal on the bus, not of the repeats | silence on FX2, or the repeats reaching the reverb |
-| vii | GRAIN v5 by ear | BongDelay MODE=GRAIN, PTCH around 64 | (tomorrow's listening) |
+| vii | GRAIN v5 by ear | BusDelay MODE=GRAIN, PTCH around 64 | (tomorrow's listening) |
 | viii | **THE RETURNS** — the reverb and delay arrive once, at T8; T1 and T5 leave dry; hosts print again when the return goes | mute T8: the reverb and delay vanish from the mix. Turn T8's RVRB to 0: within 3 blocks the reverb comes back out of T5. Mute T5 with RVRB up: the reverb stays (it is T8's now) | reverb audible from BOTH T5 and T8 (a lost stamp); the delay's return stuttering or torn (the wet crossing cores — the accumulators' race in a new place); nothing returning at all (suspect `0x360d3-5`, dead on hardware for R36, next door to the new words) |
 | ix | MAIN MENU > CONTROL > REVERB / DELAY | the rows exist and open the host's FX2 page | (~65%: the open/close path is untested) |
 

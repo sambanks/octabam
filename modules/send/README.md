@@ -1,7 +1,7 @@
 # SEND
 
-The bus client. Two knobs, one per bus: `-DEL` into BongDelay, `-VRB` into
-ChonVerb. Driving the wrong one renders silence, which reads as a broken
+The bus client. Two knobs, one per bus: `-DEL` into BusDelay, `-VRB` into
+BusVerb. Driving the wrong one renders silence, which reads as a broken
 algorithm — they are separate knobs on separate accumulators.
 
 It never writes the audio buffer, only taps it, so a SEND with both levels at

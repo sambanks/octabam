@@ -13,7 +13,7 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
                   PART stride 0x18bb from 0x8eed6.
                   PART+0x009: FX1 effect id per track (8 bytes)
                   PART+0x011: FX2 effect id per track (8 bytes)
-                             (BongDelay=0x06, ChonVerb=0x07, SEND=0x09)
+                             (BusDelay=0x06, BusVerb=0x07, SEND=0x09)
                   PART+0x01b: 8 pairs (track LEVEL, cue level)
                   PART+0x2d3 + 5*track: static slot, 0-based (5-byte/track blocks)
                   PTRN tail byte at (next_chunk - 5): part assignment 0-3
@@ -45,7 +45,7 @@ FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
 # THE KNOB VALUES a part stores for each track's two effects (found 3 Sep
 # 2026 by pattern, against the ChongBongolo26 backups: stock FILTER's page-1
 # defaults 00 7f 00 40 00 40 recur at a 24-byte stride on the tracks whose
-# FX1 id is 0x04, and ChonVerb's stored page 2 reads back as EXACTLY its
+# FX1 id is 0x04, and BusVerb's stored page 2 reads back as EXACTLY its
 # manifest defaults 00 02 40 00 00 01). Two arrays of eight 24-byte blocks,
 # one per track: bytes 0-5 are FX1's six knobs, 6-11 FX2's, 12-23 belong to
 # two other pages. Page 1 at P1_OFF, page 2 (slots 6-11, a select stored as
@@ -57,7 +57,7 @@ FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
 # melodic track, i.e. a part that never sent anything is suddenly a reverb
 # client after the flash. stamp_defaults() writes OUR defaults over them.
 P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24
-FX_NAMES = {0x06: "BongDelay", 0x07: "ChonVerb", 0x09: "SEND", 0x00: "-"}
+FX_NAMES = {0x06: "BusDelay", 0x07: "BusVerb", 0x09: "SEND", 0x00: "-"}
 
 def read_project(pdir):
     raw = (pdir / "project.work").read_bytes().decode("latin1")
@@ -459,6 +459,6 @@ if __name__ == "__main__":
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "stamp-defaults":
         # a REAL set, before its first load on a flashed image: only the ids
-        # a station replaced are touched; ChonVerb/BongDelay keep Sam's knobs
+        # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs
         stamp_defaults(pdir, sys.argv[3], replaced_only=True)
     else: sys.exit(f"unknown command {cmd!r}")

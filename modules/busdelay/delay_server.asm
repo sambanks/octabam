@@ -1,11 +1,11 @@
 ; ---------------------------------------------------------------------------
-; BongDelay v2, STAGE 1: CLEAN (PLAN.md 3.1, 12 Aug 2026).
+; BusDelay v2, STAGE 1: CLEAN (PLAN.md 3.1, 12 Aug 2026).
 ;
 ; This file is v1's engine carried bit-identically through the v2 spine --
 ; the refactor-first gate (tools/verify_delay.py, the verify_roll pattern):
 ; prove equivalence, THEN add modes. Two spine changes, no behavior change:
 ;
-;   * MODE select read (page-2 slot 7, r6+$c bits 8-15, ChonVerb's exact
+;   * MODE select read (page-2 slot 7, r6+$c bits 8-15, BusVerb's exact
 ;     idiom). Stage 1 has one engine, so every value runs CLEAN -- the
 ;     dispatch grows compares when PITCH lands, and unknown values must
 ;     keep degrading to CLEAN (the trad delay), never to silence.
@@ -29,7 +29,7 @@
 ; ---------------------------------------------------------------------------
 ; BUS.md task 9: DELAY SERVER. An algorithm from scratch -- unlike REVERB
 ; SERVER (task 8), there is no existing engine to reuse, so this file is the
-; first build of it. Same three structural pieces as modules/chonverb/reverb_server.asm
+; first build of it. Same three structural pieces as modules/busverb/reverb_server.asm
 ; (hardcoded base, shared bus plumbing duplicated verbatim, everything else
 ; is this file's own new code):
 ;
@@ -65,7 +65,7 @@
 ;
 ; 2. SHARED BUS PLUMBING. Every proc() call runs the same position-0
 ;    rotation-flip-and-clear housekeeping as modules/send/send_client.asm and
-;    modules/chonverb/reverb_server.asm, split-aware-offset fix included, copied
+;    modules/busverb/reverb_server.asm, split-aware-offset fix included, copied
 ;    byte-for-byte (BUS.md Known limitations: this duplication is mandatory,
 ;    not stylistic -- a divergent copy desyncs the bus silently). The engine's
 ;    own input additionally sums in the shared DELAY bus accumulator, and its
@@ -119,7 +119,7 @@
 ;    THE HOST TRACK IS A RETURN, NOT AN INSERT (v3 stage 1, 17 Aug 2026;
 ;    dry passthrough added in v5, 23 Aug 2026).
 ;    This is the architectural decision the rest of the file now assumes, so
-;    it is stated once, here. The track BongDelay sits on prints the delay's
+;    it is stated once, here. The track BusDelay sits on prints the delay's
 ;    wet PLUS ITS OWN DRY AT UNITY (v5 -- v3..v4 printed the wet alone,
 ;    which muted any audio living on the host track); its OT track fader is
 ;    the output level; and its own audio reaches the ENGINE only through the
@@ -147,7 +147,7 @@
 ;    return track has no pre-effect signal worth forwarding, and delay ->
 ;    reverb is the designed topology rather than a routing option.
 ;    Delay->reverb is allowed to carry WET;
-;    reverb->delay (modules/chonverb/reverb_server.asm's ->DELAY send) is dry only -- see
+;    reverb->delay (modules/busverb/reverb_server.asm's ->DELAY send) is dry only -- see
 ;    that file's header for why the wet direction only ever runs one way
 ;    (closing it both ways reproduces the self-oscillation this project has
 ;    already seen once).
@@ -195,7 +195,7 @@
 ;                       never re-enters the feedback -- the non-cascading
 ;                       topology, v2 stage 2c
 ;   r7+$31              LineL base (hardcoded literal, stashed for symmetry
-;                       with modules/chonverb/reverb_server.asm's convention)
+;                       with modules/busverb/reverb_server.asm's convention)
 ;   r7+$32              GRAIN base age, Q11.12 (persistent, masked on load AND
 ;                       save -- same discipline as $6c/$6d). ONE age serves
 ;                       all four grains; each takes a fixed quarter-cycle
@@ -384,7 +384,7 @@
 
 init:
 ; Hardcoded base, no per-instance stash needed -- literal is identical for
-; every instance, same reasoning as modules/chonverb/reverb_server.asm's init.
+; every instance, same reasoning as modules/busverb/reverb_server.asm's init.
 ; ---- seed the tracked rotation, so a cold boot cannot start out of step ---
 ; ⚠️ THE TRACKING CANNOT SELF-CORRECT A BAD START, and the commit that added it
 ; claimed otherwise. "This client legitimately read PRE-FLIP" and "this client
@@ -413,7 +413,7 @@ proc:
         move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
 
 ; ---- BUS.md: split-aware frame offset + position-0 election --------------
-; Verbatim from modules/send/send_client.asm / modules/chonverb/reverb_server.asm (BUS.md Known
+; Verbatim from modules/send/send_client.asm / modules/busverb/reverb_server.asm (BUS.md Known
 ; limitations: this copy must stay byte-identical across all three files).
         clr     a
         move    a,x:(r7+$67)            ; default: offset 0 (first call)
@@ -453,7 +453,7 @@ bus_off_done:
 
 ; ---- position-0 housekeeping: flip the shared bus rotation, clear the new
 ; write-target ACC buffers. Gated on r7==0x6200 AND offset==0 -- copied from
-; modules/send/send_client.asm / modules/chonverb/reverb_server.asm, must stay identical.
+; modules/send/send_client.asm / modules/busverb/reverb_server.asm, must stay identical.
 ; Housekeeping is normally done by position 0 (r7 == 0x6200, the bank's first
 ; FX2 call). That alone breaks the moment the first track's FX2 is NONE: our
 ; code never runs there, so nobody flips the rotation or clears the
@@ -539,7 +539,7 @@ bus_zclr:
         move    a,y:>$9c1               ; DELAY SERVER role owner
         move    a,y:>$9c2               ; REVERB SERVER role owner
 ; ---- reset the new write buffer's SEND COUNTs, alongside its accumulators --
-; Kept in step with modules/send/send_client.asm / modules/chonverb/reverb_server.asm (the standing
+; Kept in step with modules/send/send_client.asm / modules/busverb/reverb_server.asm (the standing
 ; rule: the housekeeping copies must stay identical). NOTE this copy was
 ; MISSING the REVERB count reset from v121 until the delay auto-gain landed -- dead
 ; code in every live build, because the XBUS payload gate keeps this payload
@@ -648,7 +648,7 @@ bus_mine:
 ; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
 ; x1 still holds the write offset and b the split-aware frame offset (the wet
 ; address above touched neither).
-; ⚠️ THIS IS A CROSS-CORE WRITE. BongDelay runs on payload B and this line
+; ⚠️ THIS IS A CROSS-CORE WRITE. BusDelay runs on payload B and this line
 ; writes payload A's reverb accumulator, so the race documented in
 ; docs/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
 ; at the delay, and the delay's ->VERB damaged what arrived at the reverb.
@@ -660,7 +660,7 @@ bus_mine:
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
 
 ; ---- RETD: is a return live on the delay's wet? (clear-on-read stamp) -----
-; The reverb's mechanism verbatim (modules/chonverb/reverb_server.asm, RETV):
+; The reverb's mechanism verbatim (modules/busverb/reverb_server.asm, RETV):
 ; a return station stamps y:$9d9 nonzero each block it returns this bus; the
 ; host prints its wet only while no stamp has arrived for 3 blocks, so with
 ; no return in the rig the delay still comes out of its host, bit-identically
@@ -775,7 +775,7 @@ bus_mine:
 ; ---- register as a REVERB bus client, once per block (v3 stage 1) --------
 ; The ->VERB send below writes the REVERB accumulator every sample, so this
 ; server must appear in the REVERB count exactly as SEND does and as
-; reverb_server does for the DELAY count -- otherwise ChonVerb's auto-gain divides
+; reverb_server does for the DELAY count -- otherwise BusVerb's auto-gain divides
 ; by one client too few and our contribution comes out x8/N louder than it
 ; should. That was the shipping defect ("->VERB usable only to about VRBW
 ; 50"); the 5g /8 fix removed the constant factor and this removes the
@@ -789,7 +789,7 @@ bus_mine:
         tst     a
         bne     vrcnt_done              ; not this block's first call
 ; ---- and ONLY while -VRB is up (18 Aug 2026) -- the phantom-client gate,
-; the same block as ChonVerb's ->DEL and SEND's per-bus registrations: knob
+; the same block as BusVerb's ->DEL and SEND's per-bus registrations: knob
 ; read from r6 DIRECTLY (the per-block decode runs later), clr BEFORE the tst,
 ; increment through x0 (Tcc takes a register), b carrying the flag across the
 ; address arithmetic below (which touches a and x0 but not b).
@@ -816,7 +816,7 @@ vrcnt_done:
 ; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
 ; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
 ; SOURCE default; build_bus.py substitutes the correct half-window base per
-; payload at build time (SOLVED -- see this file's header; BongDelay ships
+; payload at build time (SOLVED -- see this file's header; BusDelay ships
 ; on payload B, base 0x38000, serving tracks 1-4).
         move    #>$ffffff,m0            ; audio is read and written via r0
         move    #>$ffffff,m4            ; GRAIN walks its table with r4 -- the
@@ -826,7 +826,7 @@ vrcnt_done:
         move    x0,x:(r7+$31)
 
 ; ---- warm-up: zero both lines and persistent state before running --------
-; Same tagged-counter idiom as dsp/reverb89.asm/modules/chonverb/reverb_server.asm, but a
+; Same tagged-counter idiom as dsp/reverb89.asm/modules/busverb/reverb_server.asm, but a
 ; DIFFERENT TAG -- $2e0000, where reverb_server uses $2c0000. Both effects
 ; keep their counter in the same r7+$82 slot and the dispatcher does NOT clear
 ; the state block when a track's effect changes, so with a shared tag the
@@ -1150,8 +1150,8 @@ dwarmdone:
         move    a,x:(r7+$76)            ; IN = 0, always
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
-; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
-; (modules/chonverb/reverb_server.asm). STAGE 1: CLEAN is the only engine, so every value
+; Same field, same extract, same MSB-aligned convention as BusVerb's MODE
+; (modules/busverb/reverb_server.asm). STAGE 1: CLEAN is the only engine, so every value
 ; -- including whatever an undefined descriptor slot leaves in this word on
 ; hardware -- runs CLEAN. When PITCH lands, the dispatch compares MSB-aligned
 ; short immediates on $69, and unknown values must keep falling through to
@@ -1325,7 +1325,7 @@ wowlive:
 
 ; ---- FREEZE select (v2 stage 3) ------------------------------------------
 ; Page-2 slot 11's companion field, r6+$e LOW bits -- the same low-byte
-; select idiom as PTCH ($d low) and ChonVerb's WIDTH/->DEL, count 2. Any
+; select idiom as PTCH ($d low) and BusVerb's WIDTH/->DEL, count 2. Any
 ; nonzero value freezes, so boot garbage in the field cannot do anything
 ; worse than hold; the masked read also keeps a wild value out of the flag.
 ; Decoded every block regardless of MODE: freeze is orthogonal to the engine
@@ -1438,7 +1438,7 @@ rlagok:
         add     x0,a                    ; min(TIME, cap)
         move    a,x:(r7+$62)            ; RLAG0, the reversed chunk's lag floor
 
-; ---- GRAIN v5 per-block decode (BongDelay v5, 3 Sep 2026) ----------------
+; ---- GRAIN v5 per-block decode (BusDelay v5, 3 Sep 2026) ----------------
 ; Nimbus's grain family from the SIZE select ($5f), in REVERSE's index order
 ; so one select reads the same way in both modes: 0 = 46 ms (G 2048),
 ; 1 = 93 ms (4096, the default), 2 = 23 ms (1024), 3 = 186 ms (8192). Per
@@ -1761,9 +1761,9 @@ gvrdone:
 ; NON-CASCADING PITCH. Until stage 2c the shifted taps WERE the loop's taps,
 ; so every repeat was shifted again: repeat n had been through the shifter n
 ; times and carried n generations of splice artifact. That compounding, not
-; the splice itself, is most of what an ear calls "machine" -- and ChonVerb
+; the splice itself, is most of what an ear calls "machine" -- and BusVerb
 ; hit exactly this and fixed it the same way (its shimmer deliberately cut
-; its own cascade; see modules/chonverb/reverb_server.asm's SHIMMER block).
+; its own cascade; see modules/busverb/reverb_server.asm's SHIMMER block).
 ;
 ; Now the loop recirculates the CLEAN tap and the shifter sits on the OUTPUT
 ; only, so every repeat is shifted exactly ONCE: a fixed-interval harmoniser
@@ -1913,7 +1913,7 @@ gvrdone:
 ;
 ; What it keeps from v2: the density gate (a grain drawn muted at its wrap
 ; stays silent for its life) and the R61 makeup law, the SPRAY scatter on
-; DRV, the PRNG (BongDelay's xorshift, which Nimbus copied verbatim), the
+; DRV, the PRNG (BusDelay's xorshift, which Nimbus copied verbatim), the
 ; shifted-output substitution via $24/$25 and the $33 flag, and TIME as the
 ; read-back distance -- so this is still a granular DELAY, reading TIME
 ; behind the write head, not a Clouds on the input.
@@ -1944,7 +1944,7 @@ gvrdone:
 ; audited `mpy x0,y1` form; y1 only ever carries a window gain or a
 ; multiplier, both non-negative.
 gmode:
-; ---- PRNG advance: BongDelay's 23-bit xorshift 15/15/8 -------------------
+; ---- PRNG advance: BusDelay's 23-bit xorshift 15/15/8 -------------------
         move    x:(r7+$18),a            ; state
         move    a1,x0
         asl     #$f,a,a
@@ -2696,7 +2696,7 @@ pdone:
 ; ---- ->VERB: wet (this delay's own output) + dry (this track's own
 ; pre-effect signal), scaled and summed into the shared REVERB ACC bus
 ; (BUS.md task 10). One-directional by construction -- see this file's
-; header and modules/chonverb/reverb_server.asm's ->DELAY note for why the reverse never
+; header and modules/busverb/reverb_server.asm's ->DELAY note for why the reverse never
 ; carries wet.
         move    x:(r7+$87),x0           ; delay's own wet, this sample
         move    x:(r7+$85),y1           ; -VRB (p5; hardwired v3..R29)

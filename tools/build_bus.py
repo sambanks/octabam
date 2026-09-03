@@ -29,7 +29,7 @@ Layout, in address order from PLATE's base:
 
   SEND           166 words
   REVERB SERVER 1999
-  DELAY SERVER   507   <- last DELIBERATELY: BongDelay is the algorithm still
+  DELAY SERVER   507   <- last DELIBERATELY: BusDelay is the algorithm still
                           to be designed, so it gets the trailing free words
                           (see the build report for the live count) and is
                           adjacent to COMPRESSOR's module if
@@ -183,8 +183,8 @@ ROWCOUNT_INSN = 0x40059a54
 NONE_ID = 0x00                  # a fresh part's FX2 id -- aliased to SEND below
 
 # WHICH MODULES THIS IMAGE CARRIES. REMIX=<name> selects remixes/<name>.py;
-# chongbong is the shipping selection and the one every refactor proves itself
-# against. A module with no menu entry (a ColdFire patch) takes no chooser row,
+# bus is the plain two-server selection and the one every refactor proves
+# itself against (scripts/refhash.sh); bamsep26, the rig, is make's default. A module with no menu entry (a ColdFire patch) takes no chooser row,
 # so ORDER is the menu modules alone, in the remix's declared order.
 REMIX = remix_registry.remix(os.environ.get("REMIX")
                              or remix_registry.DEFAULT_REMIX)
@@ -212,14 +212,14 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # 37 -> 38, 13 Aug 2026: 35-37 were stamped for reverb rounds R16/R17/R18 and
 # NONE of them ever reached a card, so 37's contents kept growing under a tag
 # that had already been "assigned" -- by the time it was wrapped it also
-# carried the whole of BongDelay v2 (five modes, GRAIN through 5g). A tag that
+# carried the whole of BusDelay v2 (five modes, GRAIN through 5g). A tag that
 # names two different images is the failure at 31 all over again, so the wrap
 # gets a fresh number: 38 == OCTABAMR19 == everything through R18 plus
-# BongDelay v2. 35, 36 and 37 were never on hardware and never will be.
+# BusDelay v2. 35, 36 and 37 were never on hardware and never will be.
 # 40 was allocated to the HKB=1 DIAGNOSTIC wrap (OCTABAMR21, 17 Aug) -- an
 # image that swaps which payload housekeeps, built as a falsifier and never
 # flashed. It is superseded: the race was confirmed for free by moving
-# BongDelay between tracks 1 and 4, and the falsifier was weaker than it
+# BusDelay between tracks 1 and 4, and the falsifier was weaker than it
 # looked anyway (swapping the housekeeper TRANSPOSES the hazard rather than
 # removing it). Tag 40 is burned rather than reused, because a tag that names
 # two different images is the failure at 31 all over again.
@@ -230,11 +230,11 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # 42 == OCTABAMR23 == R22 plus SEND registering per bus and only when sending.
 # ⚠️ THIS ONE IS MUCH LOUDER -- up to +17 dB for a real sender in a sparse
 # bank, because idle tracks (which alias to SEND) were each taking a 1/N share.
-# Send knobs and track faders set against R22 will be wrong, and ChonVerb's
+# Send knobs and track faders set against R22 will be wrong, and BusVerb's
 # BIG mode clips at a 0.25-0.5 FS input, so back it off by hand.
 # R23 is also the image that FOUND the second cross-core defect: static that
 # needed a specific (core-1 track, delay mode) pair, moved when either changed,
-# and vanished when track 5 -- core 0's housekeeper -- stopped being a ChonVerb.
+# and vanished when track 5 -- core 0's housekeeper -- stopped being a BusVerb.
 # 43 == OCTABAMR24 == R23 plus per-core rotation tracking, the fix for it.
 # R24 took the artifact from moving across the whole sweep to ONE combination
 # in fifteen: T4 sending, delay MODE 1. T4 is the LAST core-1 track and CLEAN
@@ -252,7 +252,7 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # BITS 8-15, not the low byte. Wakes five knobs that have NEVER worked on
 # hardware -- delay WOW/PTCH/FRZE, reverb WIDTH and ->DEL. All five CONFIRMED
 # on the unit, 17 Aug.
-# 48 == OCTABAMR29 == R28 plus ChonVerb v4: the RETURN conversion. The reverb
+# 48 == OCTABAMR29 == R28 plus BusVerb v4: the RETURN conversion. The reverb
 # now mirrors the delay -- wet-only output, MIX -> IN (default 0), host counted
 # as a client only while sending. ⚠️ A reverb track with audio and IN=0 is
 # SILENT by design; reverb level rides the track fader now. Ear-passed by Sam
@@ -261,7 +261,7 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # (p5, default 0, registration follows it). ⚠️ NO WASH out of the box until
 # -VRB comes up -- and see docs/FLASHING.md's "first load of an existing
 # project" step: old VRBW/MIX values load as -VRB/IN.
-# 50 == OCTABAMR31 == R30 minus ChonVerb's ->DEL send (the vestige twin of
+# 50 == OCTABAMR31 == R30 minus BusVerb's ->DEL send (the vestige twin of
 # VRBD; retired, slot 11 blank). The reverb writes NO bus at all now -- the
 # only wet-crossing edge is delay->reverb, under the -VRB knob.
 # ⚠️ R30 AND R31 CARRY A BROKEN DELAY IN (the -VRB splice deleted its decode;
@@ -347,7 +347,7 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # instance takes the duplicate exit (rts = dry passthrough) and nobody
 # consumes the ACC. The election should self-heal that, so hardware is
 # doing something the single-core emulator cannot see. NEXT OCCURRENCE'S
-# ONE DIAGNOSTIC: check whether tracks 1-4 sends -> BongDelay ALSO died.
+# ONE DIAGNOSTIC: check whether tracks 1-4 sends -> BusDelay ALSO died.
 # The same housekeeper serves both buses: delay dead too = housekeeping
 # died (mechanism located); delay alive = reverb-instance-local. (The
 # duplicate-instance case itself is verified INERT in-model: an RRS layout
@@ -398,7 +398,7 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # exchange. ⚠️ Stored parts with DPTH ~48 in GRAIN come up MID density on
 # this tag -- the knob working for the first time; the makeup holds level.
 # 79 == OCTABAM79 == the BamSep26 rig + THE RETURNS (3 Sep 2026): three
-# stations (FILTER/LO-FI/CHORUS replaced, all bus senders), BongDelay v5,
+# stations (FILTER/LO-FI/CHORUS replaced, all bus senders), BusDelay v5,
 # the character station returning both wets on the master (RVRB/DLY in
 # SAT=BUS), hosts quiet only while a return is live; label formatters
 # overflow into the second zero run. Flash 4, docs/FLASHPLAN.md.
@@ -484,7 +484,7 @@ def penable(active):
                                             # (was -DEL until 18 Aug 2026)
 
 
-# ---- PROBE MODE (PROBE=1): swap ChongVerb for dsp/page2_probe.asm and expose
+# ---- PROBE MODE (PROBE=1): swap BusVerb for dsp/page2_probe.asm and expose
 # all six page-2 display slots, to measure display-slot -> r6-offset directly.
 # Temporary diagnostic; the normal build is unaffected.
 #
@@ -519,7 +519,7 @@ if os.environ.get("TPROBE") == "1":
                               [(i, f"P{i}".encode()) for i in range(6, 12)]
     DEFAULTS["REVERB SERVER"] = [(i, 0) for i in range(6, 12)]
 
-# ---- BURN MODE (BURN=1): swap ChonVerb for dsp/burn_probe.asm, the same
+# ---- BURN MODE (BURN=1): swap BusVerb for dsp/burn_probe.asm, the same
 # engine plus a knob-swept cycle burn on p3. Measures the per-DSP cycle
 # ceiling, which has never actually been measured -- 1080 is a figure that was
 # SURVIVED (REVERB_LOG.md, stageprobe5), not a wall anyone found. The knob is
@@ -529,15 +529,15 @@ if os.environ.get("TPROBE") == "1":
 # ---- XBUS MODE (XBUS=1): the CROSS-CORE BUS test ---------------------------
 # The bus accumulators move from core-private Y:0x900 into the shared window,
 # and housekeeping is gated to payload A. Names say so on the panel, because
-# this build's ChonVerb is NOT the shipping one and BongDelay is a bare stub.
+# this build's BusVerb is NOT the shipping one and BusDelay is a bare stub.
 if os.environ.get("XBUS") == "1":
     if os.environ.get("SPEC") == "1" or os.environ.get("DEV") == "1":
         # SPEC/DEV: BOTH servers are real -- the product names, tag-stamped.
         # (The XVerb/NotUsed names below date from the v111 architecture test,
         # where the delay really was a stub. Leaving "NotUsed" on a real
-        # BongDelay cost a debugging round on 10 Aug 2026.)
-        FULLNAME["REVERB SERVER"] = b"ChonVerb" + BUILD_TAG
-        FULLNAME["DELAY SERVER"] = b"BongDelay" + BUILD_TAG
+        # BusDelay cost a debugging round on 10 Aug 2026.)
+        FULLNAME["REVERB SERVER"] = b"BusVerb" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BusDelay" + BUILD_TAG
     elif not _REVERB_IS_PROBE:
         # ⚠️ `elif not _REVERB_IS_PROBE`, not `else`. This block runs AFTER the
         # probe naming above, so a plain `else` renamed a PROBE build's reverb
@@ -562,7 +562,7 @@ if os.environ.get("MARKER") == "1":
 if os.environ.get("BURN") == "1":
     FULLNAME["REVERB SERVER"] = b"BurnProb" + BUILD_TAG
     ABBR["REVERB SERVER"] = b"BURN"
-    # BongDelay's slot carries the X/Y ALIAS probe in this build. It is a
+    # BusDelay's slot carries the X/Y ALIAS probe in this build. It is a
     # placeholder algorithm, so its 507 words are the cheapest diagnostic space
     # on the chip. dsp/alias_probe.asm rides the SAME per-payload
     # $30000 -> $38000 substitution DELAY SERVER already uses, but as a BASE
@@ -599,7 +599,7 @@ if os.environ.get("BURN") == "1":
 
 # ---- DEV=1: the local-render escape hatch -----------------------------------
 # XBUS=1 stubs the DELAY SERVER out (see ASM_SRC below), and the specialized
-# build that follows it puts BongDelay in payload B ONLY. Both leave the delay
+# build that follows it puts BusDelay in payload B ONLY. Both leave the delay
 # with NO REAL CODE IN PAYLOAD A -- and tools/dsp_host cannot boot payload B at
 # all (REVERB.md). So the moment the architecture lands, the delay loses its
 # local render loop and goes back to one hardware flash per iteration, which is
@@ -627,8 +627,8 @@ if DEV:
                  f"which is the opposite of what DEV is for")
 
 # ---- SPEC=1: SPECIALIZE THE PAYLOADS ---------------------------------------
-# One server per core. Payload A carries SEND + ChonVerb; payload B carries
-# SEND + BongDelay. Neither carries the other's engine.
+# One server per core. Payload A carries SEND + BusVerb; payload B carries
+# SEND + BusDelay. Neither carries the other's engine.
 #
 # TRACK MAPPING -- MEASURED, 10 Aug 2026, and INVERTED from what every doc
 # assumed: payload A serves TRACKS 5-8 and payload B serves TRACKS 1-4.
@@ -657,7 +657,7 @@ if DEV:
 #
 # THE ABSENT SERVER'S ID IS ALIASED TO SEND, deliberately (XBUS.md risk 3).
 # The FX2 chooser is one ColdFire list shared by all eight tracks, so nothing
-# stops a user selecting ChonVerb on track 6. Its id must dispatch to
+# stops a user selecting BusVerb on track 6. Its id must dispatch to
 # SOMETHING on payload B; left alone it would run whatever code now occupies
 # that address. Aliasing to SEND is the same fail-safe mechanism id 0 already
 # uses, and it degrades in the useful direction: the track feeds the bus.
@@ -687,7 +687,7 @@ if SPEC:
 # ---- DSP code placement (task 13) ------------------------------------------
            # DLSRC= swaps the delay engine for an alternate source file --
            # the same mechanism as RVSRC below, for the same reason: the
-           # BongDelay v2 refactor gate (tools/verify_delay.py) builds and
+           # BusDelay v2 refactor gate (tools/verify_delay.py) builds and
            # renders two engines in one script and compares byte-for-byte.
            # It only means anything where the real delay is placed (DEV/SPEC/
            # plain); the XBUS stub and BURN probe arms ignore it.
@@ -773,7 +773,7 @@ def _dev_hooks(key, src):
     # from sample 0. Without it the frozen cloud cannot be heard locally at
     # all: a static FRZE=1 holds the silence the warm-up just cleared, so the
     # only thing a render proves is that the write head stopped. Exactly the
-    # gap DFRZAT was built to close for BongDelay, and the same shape of fix.
+    # gap DFRZAT was built to close for BusDelay, and the same shape of fix.
     if os.environ.get("DEV") is None:
         sys.exit("NFRZAT=n is a DEV-only repro hook (its counter word lives "
                  "in payload A's shared-window half) -- set DEV=1")
@@ -831,9 +831,9 @@ def main():
     if delayprobe:
         # Make it unmistakable ON THE UNIT which firmware is running. Three
         # debugging rounds were lost to exactly this ambiguity, and a probe
-        # build that reads "ChonVerb22" like the product build is that hazard
+        # build that reads "BusVerb22" like the product build is that hazard
         # in its worst form -- this one deliberately silences a stock effect.
-        FULLNAME["REVERB SERVER"] = (b"ChonVerb" + BUILD_TAG +
+        FULLNAME["REVERB SERVER"] = (b"BusVerb" + BUILD_TAG +
                                      {"silence": b"P", "send": b"S",
                                       "stock": b"C"}[probe])
     if not DIS.exists():
@@ -866,9 +866,9 @@ def main():
     # so the tagged name still terminates. The check below enforces it for
     # every arm that writes a name, not just these two.
     if os.environ.get("TEMPOCAVE") == "replay":
-        FULLNAME["DELAY SERVER"] = b"BongDlyRPL" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BusDlyRPL" + BUILD_TAG
     elif os.environ.get("NOTEMPO") == "1":
-        FULLNAME["DELAY SERVER"] = b"BongDlyNOC" + BUILD_TAG
+        FULLNAME["DELAY SERVER"] = b"BusDlyNOC" + BUILD_TAG
     cave_end = CLONE_BASE + CLONE_STRIDE * len(CLONED_ORDER)
     if any(img[NEW_LIST - BASE:cave_end - BASE]):
         sys.exit("menu cave not free")
@@ -927,7 +927,7 @@ def main():
         #
         # ⚠️ THIS PASS RAN FOR THE REVERB ONLY UNTIL 17 Aug 2026, and the delay
         # paid for it on the first flash that had page 2 enabled (R19). Cloning
-        # SPRING REV, BongDelay inherited SPRING's formatters verbatim:
+        # SPRING REV, BusDelay inherited SPRING's formatters verbatim:
         #   slot 6  WOW  count 128, inherited SPRING TYPE's WORD-LABEL pair
         #                (0x4003c718 + 0x40047424, a 3-entry table) -- an
         #                enumerated renderer asked to draw 0..127 from three
@@ -1264,7 +1264,7 @@ def main():
                 continue
             # A MODE select with views gets the BIGGER cave: it renames the
             # knobs around it before printing its own word, so the panel
-            # stops calling BongDelay's grain scatter "MDEP" (tools/
+            # stops calling BusDelay's grain scatter "MDEP" (tools/
             # mode_names.py). Everything else keeps the plain label cave.
             _mod = _MODS[name]
             _ren = (mode_names.complete(_mod)
@@ -1546,7 +1546,7 @@ def main():
             sys.exit(f"{'/'.join(_rset)} set, but remix {REMIX.name!r} "
                      f"carries no REVERB SERVER")
     if os.environ.get("PROBE") == "1":
-        print("  *** PROBE BUILD: ChongVerb replaced by dsp/page2_probe.asm ***")
+        print("  *** PROBE BUILD: BusVerb replaced by dsp/page2_probe.asm ***")
     send_src = (pathlib.Path(ASM_SRC["SEND"]).read_text()
                 if "SEND" in ASM_SRC else None)
     # MODE=n substitutes a literal for the page-2 MODE read, so each character
@@ -1574,7 +1574,7 @@ def main():
 
     # ---- MARKER=1: inject the staged audible execution marks ---------------
     # See the MARKER MODE naming block above. Three marks, three sites in
-    # modules/chonverb/reverb_server.asm, each a distinct sound so one flash reports how
+    # modules/busverb/reverb_server.asm, each a distinct sound so one flash reports how
     # far proc() executes on hardware:
     #   M1 proc entry      -> whole block asr #2   = -12 dB, always
     #   M2 past role lock  -> extra -6 dB on alternating calls = ~1.4 kHz AM
@@ -1724,10 +1724,10 @@ mkgo:""",
                  "shimmer interval select, and dsp_host drives companion "
                  "fields directly -- use render_reverb -p SHFT=n")
 
-    # DMODE=n forces BongDelay's MODE select, same mechanism and reason as
+    # DMODE=n forces BusDelay's MODE select, same mechanism and reason as
     # MODE= above: dsp_host writes only the knob field of a param word, so a
     # companion-field select cannot be driven by -params at all. The v2 engine
-    # (PLAN.md 3.1) reads its MODE from r6+$c bits 8-15 exactly like ChonVerb;
+    # (PLAN.md 3.1) reads its MODE from r6+$c bits 8-15 exactly like BusVerb;
     # << 16 makes the immediate MSB-aligned to match the `asl #$8` extract.
     dmode_env = os.environ.get("DMODE")
     if dmode_env is not None:
@@ -1744,9 +1744,9 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DMODE_OVERRIDE",
             "        move    #>%d,a" % (int(dmode_env) << 16))
-        print(f"  *** DMODE OVERRIDE: BongDelay MODE forced to {int(dmode_env)} ***")
+        print(f"  *** DMODE OVERRIDE: BusDelay MODE forced to {int(dmode_env)} ***")
 
-    # DINT=n forces BongDelay's PITCH interval select (0=+12, 1=+7, 2=-12,
+    # DINT=n forces BusDelay's PITCH interval select (0=+12, 1=+7, 2=-12,
     # 3=detune), same mechanism and reason as DMODE: the select is a companion
     # LOW-byte field (r6+$d), which dsp_host's -params cannot drive. Plain
     # small index, decimal for consistency with the DMODE precedent.
@@ -1759,9 +1759,9 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DINT_OVERRIDE",
             "        move    #>%d,a" % int(dint_env))
-        print(f"  *** DINT OVERRIDE: BongDelay PITCH interval forced to {int(dint_env)} ***")
+        print(f"  *** DINT OVERRIDE: BusDelay PITCH interval forced to {int(dint_env)} ***")
 
-    # DFRZ=n forces BongDelay's FREEZE select (0 = running, nonzero = hold),
+    # DFRZ=n forces BusDelay's FREEZE select (0 = running, nonzero = hold),
     # same mechanism and reason as DMODE/DINT: slot 11 is a companion LOW-byte
     # field (r6+$e) and dsp_host's -params cannot drive it.
     dfrz_env = os.environ.get("DFRZ")
@@ -1773,7 +1773,7 @@ mkgo:""",
         delay_src = delay_src.replace(
             "; DFRZ_OVERRIDE",
             "        move    #>%d,a" % int(dfrz_env))
-        print(f"  *** DFRZ OVERRIDE: BongDelay FREEZE forced to {int(dfrz_env)} ***")
+        print(f"  *** DFRZ OVERRIDE: BusDelay FREEZE forced to {int(dfrz_env)} ***")
 
     # DNOTE=n forces the MIDI-note word the ColdFire cave publishes at r6+$9
     # (0 = no note ever; 72..96 = the OT's chromatic range, 84 = unison).
@@ -1788,7 +1788,7 @@ mkgo:""",
                      "; DNOTE_OVERRIDE marker")
         delay_src = delay_src.replace(
             "; DNOTE_OVERRIDE", "        move    #>%d,a" % int(dnote_env))
-        print(f"  *** DNOTE OVERRIDE: BongDelay MIDI note word forced to {int(dnote_env)} ***")
+        print(f"  *** DNOTE OVERRIDE: BusDelay MIDI note word forced to {int(dnote_env)} ***")
 
     # DFRZAT=n engages FREEZE after n post-warm-up BLOCKS instead of from
     # sample 0 -- the missing repro lever PLAN.md's "FREEZE cannot be
@@ -1823,7 +1823,7 @@ mkgo:""",
             "        tmi     x0,a\n"
             "        move    #>1,x0\n"
             "        tpl     x0,a" % int(dfrzat_env))
-        print(f"  *** DFRZAT OVERRIDE: BongDelay freezes after "
+        print(f"  *** DFRZAT OVERRIDE: BusDelay freezes after "
               f"{int(dfrzat_env)} post-warm blocks ***")
 
     # ---- XBUS=1: move the bus scratch into the SHARED window ---------------
@@ -1853,9 +1853,9 @@ mkgo:""",
     # when the two cores access different 8K blocks".
     #
     # NOTE for any real build: 0x36000 is inside core 0's FX2 SLOT 4
-    # (0x34000-0x37FFF). Harmless while every core-0 track is ChonVerb
+    # (0x34000-0x37FFF). Harmless while every core-0 track is BusVerb
     # (hardcoded Y:0x4000) or a SEND (zero-footprint), but it is not free
-    # ground and BongDelay would contend for it.
+    # ground and BusDelay would contend for it.
     #
     # The map is mechanical: new = 0x3E000 + (old - 0x900), so the whole 0x900
     # -0x9d2 layout keeps its shape and all three files stay in agreement --
@@ -1911,8 +1911,8 @@ mkgo:""",
             # feature -- see the XBUS.md entry on the cross-core accumulator
             # race. Housekeeping (the parity flip AND the clearing of the new
             # write buffer) has always run on payload A, which is also where
-            # ChonVerb lives -- so the reverb is inherently in lockstep with
-            # it and can never race. BongDelay is on payload B and reads
+            # BusVerb lives -- so the reverb is inherently in lockstep with
+            # it and can never race. BusDelay is on payload B and reads
             # buffers the OTHER core flips and zeroes asynchronously, which is
             # the leading explanation for the metallic hash Sam measured on
             # the delay bus (+22..31 dB of inharmonic HF vs the host path).
@@ -1967,11 +1967,11 @@ mkgo:""",
                   "no housekeeping to gate")
         # ...except under DEV, where the delay IS present and must reach the
         # same relocated scratch as everyone else -- 14 scratch refs and a
-        # ; XBUS_GATE marker are already in modules/bongdelay/delay_server.asm, and its
+        # ; XBUS_GATE marker are already in modules/busdelay/delay_server.asm, and its
         # housekeeping block exits to bus_notfirst exactly like the reverb's.
         # A delay that still read Y:0x900 would find an empty accumulator and
         # render silence, which is the failure this hatch exists to prevent.
-        # ...and under SPEC for the same reason: payload B's BongDelay IS a real
+        # ...and under SPEC for the same reason: payload B's BusDelay IS a real
         # server reading the shared accumulator, so it needs the identical
         # relocation. Its housekeeping gate is what keeps payload B from
         # zeroing buffers payload A owns.
@@ -2150,7 +2150,7 @@ mkgo:""",
         # broadband hash, linear in the send level, character invariant.
         #
         # Proven by changing track 5 -- core 0's POSITION 0, i.e. the
-        # housekeeper -- from ChonVerb to Send, which cured static on a core-1
+        # housekeeper -- from BusVerb to Send, which cured static on a core-1
         # path with nothing on core 1 touched.
         #
         # PAYLOAD A NEEDS NOTHING and pays 6 words for the uniform interface;
@@ -2311,7 +2311,7 @@ mkgo:""",
         # ...EXCEPT under DEV, where the delay is placed in payload A but must
         # keep its SHIPPING address, 0x38000 (payload B's half) -- found 12 Aug
         # 2026 after the RDS layout rendered full-scale garbage. Payload A's
-        # half of the window is FULLY OWNED: ChonVerb's relocated buffers sit
+        # half of the window is FULLY OWNED: BusVerb's relocated buffers sit
         # at 0x30000/0x34000 and the bus scratch at XBUS_BASE (0x36000), so a
         # delay based at 0x30000 writes its 32K lines straight through both --
         # LineR alone crosses the parity word, all four ACC buffers and both

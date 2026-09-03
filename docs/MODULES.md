@@ -140,7 +140,7 @@ by ear.
 
 ```python
 MODULE = Module(
-    name="chonverb",          # the directory. Must match.
+    name="busverb",          # the directory. Must match.
     key="REVERB SERVER",      # the build identifier
     ...
 )
@@ -164,7 +164,7 @@ Every field you do not write stays the donor's. That inheritance is the single
 most expensive thing about this mechanism, so the schema makes you state
 things you might assume:
 
-- **A formatter overrides the value count it sits beside.** BongDelay clones
+- **A formatter overrides the value count it sits beside.** BusDelay clones
   SPRING REV; until this was fixed, three of six page-2 slots drew as whatever
   SPRING REV drew — WOW drew no knob *at all* (an enumerated renderer with
   three labels asked to draw 0..127), MODE drew as a bipolar balance dial
@@ -215,7 +215,7 @@ the id is selected — FX1 included — and a remix that *omits* the module
 then aliases the id to SEND, which takes the stock effect away from FX1 as
 well. Rungs shipped on `0x0c` (EQUALIZER) and Nimbus on `0x0d` (DJ EQ) from
 29 Aug until 2 Sep 2026, so every local image in between ran Rungs where
-FX1 selected EQUALIZER and the chongbong image aliased FX1's EQ to a send.
+FX1 selected EQUALIZER and the bus image aliased FX1's EQ to a send.
 It never reached the unit (tag 77 predates it); the schema now refuses at
 construction. Free ids: `0x06 0x07 0x09 0x0a 0x0b 0x0e 0x0f 0x17 0x1a 0x1b
 0x1d 0x1e 0x1f`, of which all but `0x1d 0x1e 0x1f` are taken.
@@ -231,7 +231,7 @@ claimed today.
 
 A multi-mode effect reuses its knobs, and a panel that prints one name for
 both meanings is telling the operator the wrong thing half the time.
-BongDelay's MDEP is the tape modulation depth in CLEAN and the grain scatter
+BusDelay's MDEP is the tape modulation depth in CLEAN and the grain scatter
 in GRAIN; its MRAT is the rate and the density. Declare the difference:
 
 ```python
@@ -327,7 +327,7 @@ build writes is its list row and its cursor position; `verify_menu` checks
 that its descriptor and id entry are byte-identical to stock. A stock
 effect a remix leaves *out* is left alone entirely — an old project that
 selects it still runs it, it just has no row — which is what keeps FX1
-whole. `remixes/restored.py` is chongbong plus the seven that can sit
+whole. `remixes/restored.py` is `bus` plus the seven that can sit
 beside the servers.
 
 `remixes/restock.py` is all fourteen and nothing else: zero words placed,
@@ -339,8 +339,8 @@ Two rules, both enforced:
   FLANGER, CHORUS, COMB read `X:0x213` at init (measured 2 Sep 2026 by
   scanning the payload disassembly; the other seven do not). The
   allocator hands out a base **per track slot**, and those bases are the
-  addresses ChonVerb's tank, Nimbus's line and BongDelay's line hardcode:
-  CHORUS on track 6 beside ChonVerb on track 5 writes into the tank. The
+  addresses BusVerb's tank, Nimbus's line and BusDelay's line hardcode:
+  CHORUS on track 6 beside BusVerb on track 5 writes into the tank. The
   chooser is one list for all eight tracks, so an image cannot keep them
   apart; the ledger refuses the pair (`Claims.stock_instance_buffer`
   against any module with `owns_fx2_buffers` or a non-`NEVER` `ybase`).
@@ -559,7 +559,7 @@ for a word you mean to own but do not yet reference.
 
 **`Y:0x4000`–`0xBFFF` is DECLARED, not derived** —
 `Claims(owns_fx2_buffers=True)`. That region is two FX2 instance slots *per
-core*: ChonVerb's tank is hardcoded there and so is Nimbus's granular line,
+core*: BusVerb's tank is hardcoded there and so is Nimbus's granular line,
 so two such modules on one core overwrite each other while each works
 perfectly alone. It is declared because a scan cannot tell an address from a
 mask — scanning for the range flags `and #>$7fff` and any coefficient that
@@ -613,7 +613,7 @@ full list. All of them assemble clean and do the wrong thing.
 
 **`dsp_host` cannot boot payload B.** Local testability therefore depends on
 which payload a module lands on — and that is a SERVER's problem, because
-specialization is what puts a server on one core. BongDelay ships on payload
+specialization is what puts a server on one core. BusDelay ships on payload
 B and can only be rendered locally through the DEV hatch, which places it out
 of region in payload A; a server on core 1 inherits that constraint.
 
@@ -779,8 +779,8 @@ to stock in every remix that asks for nothing.
 #### An FX1-ONLY allocator reader — `Claims(fx1_only=True)`
 
 An effect that needs a per-track delay line has exactly one safe place for
-it beside the servers: the **FX1** slot. Every FX2 slot is ChonVerb's tank
-on core 0 or BongDelay's line on tracks 3–4, which is why the ledger refuses
+it beside the servers: the **FX1** slot. Every FX2 slot is BusVerb's tank
+on core 0 or BusDelay's line on tracks 3–4, which is why the ledger refuses
 every other allocator reader beside them. A module declaring
 `Claims(stock_instance_buffer=True, buffer_words=N, fx1_only=True)` (N ≤
 3,072) promises that it reads its base at **init** and, when the base is an

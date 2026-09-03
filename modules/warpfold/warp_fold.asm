@@ -3,7 +3,7 @@
 ;
 ; A per-track INSERT, not a bus effect: it reads this track's stereo frames
 ; from x:(r0)/x:(r0+n0) and writes the processed frames back in place, the
-; way the stock FX2 inserts do and the way ChonVerb writes its dry+wet. It
+; way the stock FX2 inserts do and the way BusVerb writes its dry+wet. It
 ; touches no bus scratch, no shared window and no absolute Y at all -- every
 ; word of state lives in this instance's own r7 block, which is per instance
 ; by construction (X:0x20a allocator, DSP.md section 10), so eight tracks can
@@ -22,7 +22,7 @@
 ;   p3 MIX   x:(r6+$3)  dry/wet: out = dry + MIX*(wet - dry). MIX=0 is an
 ;            EXACT passthrough (the dry word is stored back untouched by
 ;            arithmetic that adds exactly zero).
-;   p7 MODE  x:(r6+$c) bits 8-15 (ChonVerb's exact decode): 0 FOLD, 1 RING,
+;   p7 MODE  x:(r6+$c) bits 8-15 (BusVerb's exact decode): 0 FOLD, 1 RING,
 ;            2 BOTH (fold, then ring the folded signal). Anything unexpected
 ;            runs FOLD.
 ;
@@ -46,7 +46,7 @@
 ; * The fold is the wrap-and-reflect identity fold(v) = 2*|wrap((v+1)/2)|-1,
 ;   with wrap done by extracting A1 -- a plain register move, so no logical
 ;   op ever touches an accumulator whose extension byte then goes stale.
-;   The one `and` in the file (the MODE field mask) is followed by ChonVerb's
+;   The one `and` in the file (the MODE field mask) is followed by BusVerb's
 ;   exact A1-clean dance before the value is compared.
 ; * 2|s|-1 is computed as (|s| - 0.5) << 1 so no intermediate needs +1.0,
 ;   which Q23 cannot represent.
@@ -90,7 +90,7 @@ proc:
         move    x:(r6+$3),x0
         move    x0,x:(r7+$26)
 
-; ---- MODE: page-2 slot 7 companion, bits 8-15 -- ChonVerb's exact decode --
+; ---- MODE: page-2 slot 7 companion, bits 8-15 -- BusVerb's exact decode --
         move    x:(r6+$c),a
         and     #>$ff00,a               ; slot 7's field, NOT the knob field
         move    a1,x0                   ; AND cleans A1 only
