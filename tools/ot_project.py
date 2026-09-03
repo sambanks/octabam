@@ -61,17 +61,26 @@ P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24     # RETRACTED for page 2, see 
 # Its per-track block is THIRTY bytes -- six FX1 page-2 bytes, six FX2, then
 # eighteen that belong to other pages -- and it starts at +0x325, not +0x331.
 # Measured on a part the UNIT had written (every track FILTER + DELAY, the
-# effects re-selected on the panel): under a 30-byte stride from 0x325, T1..T7
-# all read FILTER's page-2 descriptor defaults (00 00 01 00 03 00) then the
-# DELAY's (00 01 7f 01 00 00), byte for byte; under 24 from 0x331 they read as
-# noise. Page 1 IS 24 from 0x12f (the same part reads eight identical rows).
-# The 24-stride page-2 writes landed in other tracks' rows -- one casualty was
-# the stock DELAY's DIR, its dry level, which read 0 on T2/T4/T7 and made them
-# silent until the effect was re-selected. The "reads back EXACTLY as its
-# manifest defaults" above was a coincidence at T7's slot (MODE did not even
-# match). Falsifier: a unit-written part whose page 2 does not decode under
-# 0x325 + 30 * track.
-P2_OFF, P2_STRIDE = 0x325, 30
+# effects re-selected on the panel): under a 30-byte stride from 0x307, ALL
+# EIGHT tracks read FILTER's page-2 descriptor defaults (00 00 01 00 03 00)
+# then the DELAY's (00 01 7f 01 00 00), byte for byte; T1's BongDelay in the
+# live parts reads its manifest page 2 (30 00 40 01 00 00) and T8's ChonVerb
+# its own; and two on-unit re-selects of the DELAY (T4, T7, 4 Sep 2026) wrote
+# their rows at exactly 0x367 and 0x3c1 = 0x307 + 6 + 30 * track. Page 1 IS
+# 24 from 0x12f (the same part reads eight identical rows).
+#
+# ⚠️ TWO WRONG LAYOUTS SHIPPED IN ONE DAY. The 24-stride writes landed in
+# other tracks' rows (the stock DELAY's DIR, its dry level, read 0 on T2/T4/
+# T7: silent until re-selected). The first fix, 0x325 + 30 * track, was
+# ONE BLOCK LATE: it wrote every track's page 2 into the NEXT track's block,
+# so T4's DELAY row landed on T5's BusVerb (DIFF 127: the tank self-
+# oscillates and nothing but a reboot stops it) and T2's on T3's character
+# station (RING 127). Seven tracks decoding right under 0x325 was the trap:
+# a stride fits at any phase that lands on rows the unit happened to have
+# written the same way. What settled it was a write the unit made on a
+# NAMED track. Falsifier now: a unit re-select on track t whose row is not
+# at 0x307 + 30 * (t - 1) (+6 for FX2).
+P2_OFF, P2_STRIDE = 0x307, 30
 FX_NAMES = {0x06: "BusDelay", 0x07: "BusVerb", 0x09: "SEND", 0x00: "-"}
 
 def read_project(pdir):
