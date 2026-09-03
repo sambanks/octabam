@@ -373,24 +373,39 @@ def harvested(listed) -> frozenset[str]:
     return frozenset(k for k in p_spans("A") if k not in listed)
 
 
-def region_of(harvest) -> tuple[str, ...]:
-    """The largest CONTIGUOUS run of harvested effects, in address order.
+def regions_of(harvest) -> tuple[tuple[str, ...], ...]:
+    """Harvested effects grouped into CONTIGUOUS runs, in address order.
 
-    A module of ours is one code stream, so it needs unbroken ground. The
-    effects outside the chosen run are not lost -- nothing is placed over
-    them, so they keep their code and simply have no chooser row.
+    A module of ours is one code stream, so it must fit inside ONE run --
+    but different modules can sit in different runs, which is what
+    build_bus.py's placer does. So every harvested effect is placeable
+    ground, and the only cost of a gap is fragmentation: a module larger
+    than the biggest run has nowhere to go even when the total is ample.
+
+    Until 3 Sep 2026 this returned the LARGEST run alone and the rest were
+    given up for nothing -- visible in the remixer as "drop two effects,
+    free only the reverbs" (Sam, 3 Sep). A stranded run is now placeable.
     """
     sp = p_spans("A")
     runs, cur = [], []
     for a, k in sorted((sp[k][0], k) for k in harvest if k in sp):
         if cur and sp[cur[-1]][0] + sp[cur[-1]][1] != a:
-            runs.append(cur)
+            runs.append(tuple(cur))
             cur = []
         cur.append(k)
     if cur:
-        runs.append(cur)
-    return tuple(max(runs, key=lambda g: sum(sp[k][1] for k in g),
-                     default=[]))
+        runs.append(tuple(cur))
+    return tuple(runs)
+
+
+def region_of(harvest) -> tuple[str, ...]:
+    """Every harvested effect with DSP code, in address order.
+
+    Kept as the name the callers use for "the placeable set". It is no
+    longer a single run -- see regions_of() for the grouping the placer
+    needs.
+    """
+    return tuple(k for run in regions_of(harvest) for k in run)
 
 
 def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
@@ -409,8 +424,10 @@ def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
 def consumed_at(key: int | str, harvest=CONSUMED) -> int:
     """Words our modules may place before this effect's code is overwritten.
 
-    build_bus.py asserts the harvested run is contiguous and places from its
-    lowest address, so a drift here cannot pass quietly.
+    ⚠️ ONLY MEANINGFUL FOR A SINGLE RUN. It walks the harvested set as one
+    packed stream; since 3 Sep 2026 the placer fills each contiguous run
+    separately (regions_of), so with a gap this over-counts what precedes an
+    effect in the later run. Callers gate on len(regions_of(...)) < 2.
     """
     at = 0
     for c in harvest_order(harvest):

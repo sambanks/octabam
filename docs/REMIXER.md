@@ -442,12 +442,19 @@ ChonVerb, BongDelay and Send, so every stock effect is off FX2. Taking them
 off FX1 with it would leave the unit with **no FX1 effects at all** and hand
 the modules all 6,158 words they did not ask for.
 
-⚠️ **It only costs where your code reaches.** Modules go in the **largest
-unbroken run** of what you gave up, packed from its lowest address; anything
-the placer never gets to keeps its algorithm and its dispatch and simply has
-no chooser row — which is exactly what unlisting a stock effect has always
-done. So a non-contiguous set is not a refusal any more: the leftovers are
-just unlisted.
+⚠️ **It only costs where your code reaches.** What you gave up becomes one or
+more unbroken **runs**, and each module is packed into a run it fits, from
+that run's lowest address; anything the placer never reaches keeps its
+algorithm and its dispatch and simply has no chooser row — which is exactly
+what unlisting a stock effect has always done.
+
+⚠️ **A gap is a wall, not a loss.** A module is one code stream, so it must
+fit inside a **single** run: two runs of 1,500 words will not take a
+2,000-word module, which is why the budget names the **largest opening**
+beside the total. Harvesting an effect that sits *between* two runs joins
+them into one. Until 3 Sep 2026 only the largest run was placeable at all
+and every other run was given up for nothing — visible in the remixer as
+"drop two effects and the free space does not move".
 
 ⚠️ **`remixes/bothslots.py` gives up four more than it used to.** Its curated
 FX1 chooser drops FLANGER, CHORUS, SPATIALIZER and COMB, and its FX2 chooser

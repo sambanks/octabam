@@ -18,10 +18,16 @@ loop reads past the terminator and renders raw memory as text.
 ⚠️ AND THOSE FOUR ARE ON NO MENU AT ALL. FLANGER, CHORUS, SPATIALIZER and
 COMB FILTER are off this FX1 list and were never on its FX2 one, so they are
 unreachable -- and since 3 Sep 2026 that IS the decision to give up their
-words (stock.harvested). CHORUS and FLANGER sit immediately below PLATE, so
-the region runs from FLANGER: 3,342 words rather than 2,724, and WarpFold's
-322 land at FLANGER's address. Their dispatch goes to the null stub. If you
-want them kept, put them back on either chooser.
+words (stock.harvested). Their dispatch goes to the null stub. If you want
+them kept, put them back on either chooser.
+
+⚠️ AND THEY DO NOT MAKE ONE REGION. SPATIALIZER sits above FILTER, and COMB
+above DJ EQ, so this selection gives up THREE separate runs: 261 words
+(SPATIALIZER), 3,342 (FLANGER/CHORUS + the three reverbs) and 277 (COMB).
+The placer fills each one, so all 3,880 words are usable -- but a single
+module still has to fit inside ONE of them, and WarpFold's 322 therefore go
+to the big run at FLANGER's address, not to SPATIALIZER's 261-word opening.
+Until 3 Sep the smaller two were given up and then left empty.
 
 It costs no words: 32 bytes of cave for the list plus FX1's id and cursor
 tables. What it DOES cost is cycles. FX1 is four more slots on the same four

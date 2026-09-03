@@ -452,12 +452,21 @@ def main():
         if tuple(_hv) != tuple(_exp):
             bad += 1
             print(f"  [FAIL] remix {_n!r} gives up {_hv}, expected {_exp}")
-        _run = sorted(_sp[k] for k in _hv)
-        if any(a + n != a2 for (a, n), (a2, _x) in zip(_run, _run[1:])):
+        # ⚠️ RUNS, NOT ONE RUN. Since 3 Sep 2026 a gap is two placeable
+        # openings rather than a refusal, so what has to hold is that the
+        # grouping is sound: every run internally contiguous, and the runs
+        # together covering exactly the harvested set.
+        _runs = stock.regions_of(_hv)
+        for _g in _runs:
+            _run = [_sp[k] for k in _g]
+            if any(a + n != a2 for (a, n), (a2, _x) in zip(_run, _run[1:])):
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: run {_g} is not contiguous")
+        if sorted(k for g in _runs for k in g) != sorted(_hv):
             bad += 1
-            print(f"  [FAIL] remix {_n!r}: its region is not contiguous")
-    print(f"  [PASS] every remix gives up a contiguous run, and the shipped "
-          f"ones give up exactly what they always did")
+            print(f"  [FAIL] remix {_n!r}: the runs do not cover {_hv}")
+    print(f"  [PASS] every remix's given-up effects group into contiguous "
+          f"runs, and the shipped ones give up exactly what they always did")
 
     # ---- FX1 rows (Remix.fx1) -------------------------------------------
     # The schema half. The BUILD half -- the relocated list, FX1's own id and

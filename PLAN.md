@@ -385,11 +385,30 @@ different bases (`P:0x00591..0x01d9f`, the same 6,158 words); ✅ per-effect
 spans in `stock.p_spans()`, *derived* from the module map by record-size
 fingerprint rather than written down, so a firmware whose layout differs
 raises instead of being written over; ✅ `Remix.harvest`, defaulting to the
-three reverbs; ✅ `build_bus.py` places into the harvested run, refusing a
-non-contiguous set by name; ✅ every harvested effect the cursor reached is
-nulled and the survivors keep their algorithm, by SPAN rather than by a
-hand-written donor list; ✅ selftest asserts contiguity in both payloads and
-that every shipped remix harvests a run; ✅ **refhash 26/26 bit-identical**.
+three reverbs; ✅ `build_bus.py` places into the harvested run; ✅ every
+harvested effect the placer reached is nulled and the survivors keep their
+algorithm, by SPAN rather than by a hand-written donor list; ✅ selftest
+asserts contiguity in both payloads and that every shipped remix harvests a
+run; ✅ **refhash 26/26 bit-identical**.
+
+✅ **EVERY RUN IS PLACEABLE, not just the largest** (3 Sep 2026). The build
+refused a non-contiguous harvest, so `stock.region_of` handed it the biggest
+run alone and every other run was given up and then left empty — Sam, from
+the budget map: *"when I remove the modulation it shows free space. But when
+I remove some reverb it only shows the free reverb space."* Two adjacent
+effects (EQ+PHASER, 489 words) simply vanished behind the reverbs' 2,724.
+Now `stock.regions_of()` groups the harvest into runs and the placer
+first-fits each module into a run it fits — assembling once per candidate,
+since a module's origin is an argument. Proven: STREAMZ placed into
+SPATIALIZER's isolated 261-word opening renders **bit-identical** to the
+same module in a single 2,724-word run. `bothslots` goes 3,342 → 3,880
+usable words. ⚠️ The residual cost of a gap is **fragmentation** — a module
+is one code stream and must fit ONE run — so the budget names the largest
+opening beside the total, the map draws a bracket per run instead of one
+across the wall, and `consumed_at`'s single-stream arithmetic is gated to
+the one-run case rather than left to be quietly wrong. ✅ refhash 26/26
+bit-identical (the single-run report wording, failure text included, is
+frozen for exactly this reason).
 
 ✅ **And the remixer composes it.** `h` harvests the highlighted stock
 effect, `⌁` marks it, `consumed_at`/`region_words`/`placeable` all take the

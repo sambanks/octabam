@@ -1945,24 +1945,43 @@ mkgo:""",
                      f"{sum(n for _a, n in _want)} words but their P records "
                      f"total {_have} -- the module map and stock.p_spans "
                      f"disagree")
-        for (_, a, cnt, _), (_, a2, _, _) in zip(region, region[1:]):
-            if a + cnt != a2:
-                # A module of ours is ONE code stream, so a gap is not a
-                # smaller region, it is two -- and nothing here chooses
-                # between them. Refuse and name the survivor in the way.
-                between = sorted(k for k, (ad, _n) in _sp.items()
-                                 if a + cnt <= ad < a2)
-                sys.exit(f"payload {tag}: the harvested effects are not "
-                         f"contiguous (0x{a:05x}+{cnt} != 0x{a2:05x}) -- "
-                         f"{', '.join(between) or 'something'} "
-                         f"{'sit' if len(between) != 1 else 'sits'} between "
-                         f"them and a single code stream cannot span it")
+        # ⚠️ A GAP IS TWO RUNS, NOT A SMALLER REGION. A module of ours is one
+        # code stream, so it must fit inside a single run -- but different
+        # modules can sit in different runs, and the placer below packs them
+        # that way. Until 3 Sep 2026 this refused any gap and the caller
+        # handed us the largest run alone, so harvesting two separated groups
+        # gave up the smaller one for nothing (Sam, 3 Sep: "when I remove some
+        # reverb it only shows the free reverb space"). Splitting here is what
+        # makes every harvested word placeable; the only residual cost of a
+        # gap is FRAGMENTATION, which the placer reports by name.
+        runs = []
+        for _rec in region:
+            if runs and runs[-1]["base"] + runs[-1]["words"] == _rec[1]:
+                runs[-1]["words"] += _rec[2]
+            else:
+                runs.append({"base": _rec[1], "words": _rec[2]})
+        for _r in runs:
+            _r["cursor"] = _r["base"]
         # With nothing harvested there is no region at all -- legal, and
         # what a pure stock chooser is. `_need` above has already refused it
         # if anything wanted placing, so the rest of this runs over an empty
         # stream and writes nothing.
         base_a = region[0][1] if region else 0
         budget = sum(m[2] for m in region)
+
+        def _end_of_run(a):
+            """End address of the run containing `a` (its own value if none)."""
+            for r in runs:
+                if r["base"] <= a < r["base"] + r["words"]:
+                    return r["base"] + r["words"]
+            return a
+
+        def _written(a):
+            """Did the placed code actually reach address `a`?"""
+            for r in runs:
+                if r["base"] <= a < r["base"] + r["words"]:
+                    return a < r["cursor"]
+            return False
 
         def place(words, start):
             """Write a contiguous word stream at P address `start`.
@@ -2266,18 +2285,9 @@ mkgo:""",
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         for name, src in plan:
-            if "$facade" in src:
-                if src.count("$facade") != 1:
-                    sys.exit(f"payload {tag}: {name} has multiple $facade "
-                             f"LFOTAB literals -- expected exactly one")
-                tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
-                place(tab, cursor)
-                src = src.replace("$facade", f"${cursor:x}")
-                print(f"  LFOTAB        P:0x{cursor:05x}.."
-                      f"0x{cursor + len(tab):05x} "
-                      f"({len(tab):4d} words)  rolled LFO lines "
-                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
-                cursor += len(tab)
+            if "$facade" in src and src.count("$facade") != 1:
+                sys.exit(f"payload {tag}: {name} has multiple $facade "
+                         f"LFOTAB literals -- expected exactly one")
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
@@ -2303,11 +2313,56 @@ mkgo:""",
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue
-            words, init_a, proc_a = assemble(src, cursor)
-            if cursor + len(words) > base_a + budget:
-                sys.exit(f"payload {tag}: {name} overruns the region "
-                         f"({cursor + len(words) - base_a} > {budget} words)")
+            # ---- pick a RUN that fits, lowest address first --------------
+            # A module is one code stream, so it goes wholly inside one run.
+            # First-fit in address order: with a single run this is exactly
+            # the old bump cursor, byte for byte (refhash). The LFO table
+            # rides with its module so the address the module was assembled
+            # against is always in the same run.
+            # ⚠️ THE MODULE IS ASSEMBLED ONCE PER CANDIDATE, because its
+            # origin is an argument -- cheap (the whole build is ~0.3 s) and
+            # it keeps the length honest instead of assuming origin-invariant
+            # encoding, which is exactly the kind of assumption this codebase
+            # has been burned by.
+            _fit, _last = None, None
+            for _r in runs:
+                _c, _end = _r["cursor"], _r["base"] + _r["words"]
+                _tab, _s2 = None, src
+                if "$facade" in src:
+                    _tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
+                    if _c + len(_tab) > _end:
+                        continue
+                    _s2 = src.replace("$facade", f"${_c:x}")
+                    _c += len(_tab)
+                _w, _ia, _pa = assemble(_s2, _c)
+                _last = (_c, len(_w))
+                if _c + len(_w) <= _end:
+                    _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
+                    break
+            if _fit is None:
+                if len(runs) < 2 and _last is not None:
+                    # ⚠️ WORDING FROZEN: the build report is API (refhash
+                    # hashes the failure text of the overrun cases too).
+                    sys.exit(f"payload {tag}: {name} overruns the region "
+                             f"({_last[0] + _last[1] - base_a} > {budget} "
+                             f"words)")
+                _big = max((r["base"] + r["words"] - r["cursor"]
+                            for r in runs), default=0)
+                _tot = sum(r["base"] + r["words"] - r["cursor"] for r in runs)
+                sys.exit(f"payload {tag}: {name} does not fit any harvested "
+                         f"run -- {_tot} words are free across {len(runs)} "
+                         f"separate runs but the largest single opening has "
+                         f"only {_big}; harvest an effect BETWEEN two runs to "
+                         f"join them into one")
+            _r, tab, src, cursor, words, init_a, proc_a = _fit
+            if tab is not None:
+                place(tab, _r["cursor"])
+                print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
+                      f"0x{_r['cursor'] + len(tab):05x} "
+                      f"({len(tab):4d} words)  rolled LFO lines "
+                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
             place(words, cursor)
+            _r["cursor"] = cursor + len(words)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
             if name == REMIX.fallback:
@@ -2343,7 +2398,7 @@ mkgo:""",
         if probe == "silence":
             words, init_a, proc_a = assemble(
                 pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
-            if cursor + len(words) > base_a + budget:
+            if cursor + len(words) > _end_of_run(cursor):
                 sys.exit("silence stub does not fit the region's free tail")
             place(words, cursor)
             wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, init_a)
@@ -2377,9 +2432,28 @@ mkgo:""",
             print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
-        print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
-              f"({budget} words)  used {cursor - base_a}  "
-              f"FREE {base_a + budget - cursor}")
+        if len(runs) < 2:
+            # ⚠️ WORDING FROZEN for a single run: the build report is API
+            # (refhash hashes it verbatim, verify_* parse it).
+            print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
+                  f"({budget} words)  used {cursor - base_a}  "
+                  f"FREE {base_a + budget - cursor}")
+        else:
+            # ⚠️ THE SUMMARY KEEPS THE SINGLE-RUN SHAPE `(N words) used U
+            # FREE F` -- state.measure() reads the budget off it, and there
+            # must be exactly ONE such line per payload. The per-run lines
+            # below are deliberately spelled so they do NOT match it.
+            _used = sum(r["cursor"] - r["base"] for r in runs)
+            print(f"  region {len(runs)} runs ({budget} words)  "
+                  f"used {_used}  FREE {budget - _used}")
+            for _i, _r in enumerate(runs, 1):
+                _e = _r["base"] + _r["words"]
+                _in = "/".join(k for k in _harvest
+                               if _r["base"] <= _sp[k][0] < _e)
+                print(f"    run {_i} P:0x{_r['base']:05x}..0x{_e:05x} "
+                      f"{_r['words']:5d} w  used "
+                      f"{_r['cursor'] - _r['base']:5d}  spare "
+                      f"{_e - _r['cursor']:5d}  {_in}")
 
         # ---- donor ids -> the null stub, BUT ONLY WHERE OUR CODE LANDED --
         # This used to null all three unconditionally, so a build that placed
@@ -2404,7 +2478,10 @@ mkgo:""",
         # REV", so the first word is what keeps every existing report line
         # byte-identical (refhash) and every existing parser working.
         _short = {k: k.split()[0].upper() for k in _hv}
-        kept = [d for d, (a, _n) in _hv.items() if a >= cursor]
+        # ⚠️ PER RUN. One global cursor was right only while the region was
+        # one run; with two, an effect in a run we never opened is untouched
+        # however far the other run was packed.
+        kept = [d for d, (a, _n) in _hv.items() if not _written(a)]
         for donor, (a, _n) in _hv.items():
             if donor in kept:
                 continue
@@ -2433,7 +2510,9 @@ mkgo:""",
             print(f"  donor ids taken ({'/'.join(_gone) or 'none'}) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x}; "
                   f"KEPT STOCK: {'/'.join(_short[k] for k in kept)} -- this selection "
-                  f"stops at P:0x{cursor:05x} and never touched their code")
+                  + (f"stops at P:0x{cursor:05x} and never touched their code"
+                     if len(runs) < 2 else
+                     f"never reached into their runs"))
         # A chooser row for a reverb whose words we just overwrote would
         # point at a live descriptor over dead code: the panel would draw
         # PLATE REV and the DSP would run ours. Refuse, loudly.

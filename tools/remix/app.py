@@ -409,7 +409,7 @@ Add a module before giving anything up and the ⚠ says so, with `x` dropping th
 
 ⚠️ THE TWO LISTS STAY INDEPENDENT, and they have to. "Off one is off both" would be simpler to operate and would make the shipping remix impossible: chongbong's FX2 chooser is ChonVerb, BongDelay and Send, so every stock effect is off FX2 — and taking them off FX1 with it would leave the unit with NO FX1 EFFECTS AT ALL and hand your modules all 6,158 words they did not ask for.
 
-⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. Your modules go in the largest unbroken run of what you gave up, packed from its lowest address; anything the placer never gets to keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done.
+⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. What you gave up becomes one or more unbroken RUNS, and each module is packed into a run it fits, from that run's lowest address; anything the placer never reaches keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done. A module is one code stream, so it must fit inside a SINGLE run: two runs of 1,500 words will not take a 2,000-word module, and the budget says the largest opening for that reason.
 
 [bold]a reverb you keep listed is spending words[/]
 PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.
@@ -1111,19 +1111,43 @@ class RemixerScreen(Screen):
         label = ("".join(self._MAP_ABBR[k][:c].center(c)
                          for k, _a, _n, c in seg)
                  if min(c for _k, _a, _n, c in seg) >= 4 else None)
-        base = min((sp[h][0] for h in hv), default=0)
         placed = {t: u for t, _tot, u, _f in st.regions}
+        # ⚠️ THE HARVESTED EFFECTS NEED NOT BE ONE RUN, and a gap is a real
+        # wall: a module is one code stream and must fit inside a single
+        # opening. Group the columns into runs and fill each from its OWN
+        # base, or a module placed low in run 2 draws as fill across run 1.
+        runs_cols, prev = [], None
+        for k, a, n, c in seg:
+            if k not in hv:
+                prev = None
+                continue
+            if prev is not None and prev[1] == a:
+                runs_cols[-1].append((k, a, n, c))
+            else:
+                runs_cols.append([(k, a, n, c)])
+            prev = (k, a + n)
+        # Per-run usage when the build reported it; otherwise the whole
+        # region is one run and the single figure IS that run's.
+        by_run = {}
+        for tag, b, _n, u in st.runs:
+            by_run.setdefault(tag, {})[b] = u
 
         def bar(tag):
             got = placed.get(tag)
+            used = by_run.get(tag)
             out = ""
             for k, a, n, c in seg:
                 if k not in hv:
                     out += f"[dim]{'─' * c}[/]"
-                elif got is None:
+                    continue
+                grp = next(g for g in runs_cols if any(x[0] == k for x in g))
+                rbase = grp[0][1]
+                u = (used.get(rbase) if used is not None
+                     else (got if rbase == runs_cols[0][0][1] else 0))
+                if u is None or got is None:
                     out += f"[dim]{'.' * c}[/]"
                 else:
-                    fill = max(0, min(c, round((got - (a - base)) * c / n)))
+                    fill = max(0, min(c, round((u - (a - rbase)) * c / n)))
                     out += (f"[{OK}]{'#' * fill}[/][dim]{'.' * (c - fill)}[/]")
             return out
 
@@ -1160,9 +1184,32 @@ class RemixerScreen(Screen):
         # than the span pushes `┘` past the last harvested segment and the
         # footer then claims ground it does not mean, so it steps down to a
         # shorter form rather than overflowing.
-        what = next((t for t in tries if len(t) <= max(0, span - 2)),
-                    tries[-1][:max(0, span - 2)])
-        foot = (" " * lo + "└" + what.center(max(0, span - 2), "─") + "┘")[:w]
+        def bracket(text_tries, at, cols):
+            """`└──── caption ────┘` occupying `cols` columns from `at`."""
+            t = next((t for t in text_tries if len(t) <= max(0, cols - 2)),
+                     text_tries[-1][:max(0, cols - 2)])
+            return (at, "└" + t.center(max(0, cols - 2), "─") + "┘")
+        if len(runs_cols) < 2:
+            # ⚠️ ONE RUN KEEPS THE ORIGINAL SENTENCE, unchanged.
+            parts = [bracket(tries, lo, span)]
+        else:
+            # ⚠️ A BRACKET PER RUN. One spanning bracket would draw straight
+            # across the stock effects between them and say those words are
+            # yours, which is exactly backwards -- they are the wall. And the
+            # LARGEST run is the real limit on a single module, so each says
+            # its own size rather than sharing the total.
+            parts = []
+            for g in runs_cols:
+                off = sum(c for k, _a, _n, c in seg
+                          if sp[k][0] < g[0][1])
+                cols = sum(c for _k, _a, _n, c in g)
+                gw = sum(n for _k, _a, n, _c in g)
+                parts.append(bracket([f" {gw:,} words ", f" {gw:,}w ",
+                                      f"{gw:,}"], off, cols))
+        foot = ""
+        for at, txt in parts:
+            foot = foot.ljust(at) + txt
+        foot = foot[:w]
         rows = (["  " + label] if label else []) + [f"[dim]A[/] " + bar("A")]
         if len(placed) > 1 or not placed:
             rows.append(f"[dim]B[/] " + bar("B"))
@@ -1298,6 +1345,17 @@ class RemixerScreen(Screen):
         elif st.regions:
             for n, total, used, _f in st.regions:
                 out.append(words_row(n, total, used))
+            _rs = stock.regions_of(tuple(st.harvest))
+            if len(_rs) > 1:
+                # ⚠️ THE TOTAL IS NOT THE LIMIT ON ONE MODULE. A module is a
+                # single code stream, so it must fit inside ONE opening --
+                # 3,213 words across two runs will not take a 3,000-word
+                # module. Say the largest opening beside the total, or the
+                # budget promises room the placer will refuse.
+                _big = max(sum(stock.WORDS[k] for k in g) for g in _rs)
+                out.append(
+                    f" {'':<{W}}[dim]{len(_rs)} separate runs — one module "
+                    f"must fit one run, largest is {_big:,} words[/]")
             out.append(None)                # the key goes here -- see below
         elif not [m for m in st.selected if m.dsp is not None]:
             # No build to read -- and none is possible, because a selection
@@ -1327,7 +1385,13 @@ class RemixerScreen(Screen):
         # rest" was true and useless, because it says which reverb is in the
         # way without saying what dropping it buys, and at 0 free that is the
         # only live question.
-        if nxt:
+        # ⚠️ ONLY WITH ONE RUN. The arithmetic below walks the harvested
+        # effects as a single packed stream (stock.consumed_at), which is
+        # what the placer does with one opening and NOT what it does with
+        # two -- there, dropping an effect in the other run buys nothing
+        # here. Rather than print a number that is quietly wrong, say
+        # nothing; the per-run brackets in the map already carry the sizes.
+        if nxt and len(stock.regions_of(tuple(st.harvest))) < 2:
             # What dropping it actually BUYS is the gap up to the next reverb
             # still listed, which is NOT the reverb's own size when the one
             # above it has already gone: holding PLATE and DARK, dropping

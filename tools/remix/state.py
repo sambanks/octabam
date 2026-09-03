@@ -103,6 +103,9 @@ class State:
         # build takes CHORUS's module as well, so the size of the region is
         # a property of the build, not a constant of the firmware.
         self.regions: list[tuple[str, int, int, int]] = []
+        # (payload, base, words, used) per RUN -- empty when the harvested
+        # effects form one unbroken run, which is the common case.
+        self.runs: list[tuple[str, int, int, int]] = []
         # Which of PLATE/SPRING/DARK the last build LEFT ALONE, upper-cased
         # as the build names them. Empty until a build has reported.
         self.donors_kept: set[str] = set()
@@ -399,6 +402,7 @@ class State:
         stops being buildable: these numbers describe the image you HAD, and
         a budget that silently belongs to two edits ago is worse than none."""
         self.regions = []
+        self.runs = []
         self.cycles = None
         self.cave_free = None
         self.chooser_rows = None
@@ -437,7 +441,7 @@ class State:
             # forget_build() is the other half: when the parse yields
             # nothing, the fields go empty rather than stale.
             failed = r.returncode != 0
-            words, regions, payload = {}, [], None
+            words, regions, payload, runs = {}, [], None, []
             kept, saw_donor_line = set(), False
             cave_free = rows = None
             for line in r.stdout.splitlines():
@@ -462,6 +466,15 @@ class State:
                 # actually landed, so "are they gone" is a question only the
                 # placement can answer -- and the remixer used to assume
                 # the answer was always yes.
+                # ⚠️ ONE ENTRY PER RUN, and only when the region is split.
+                # The map needs to know WHICH opening a module went into --
+                # a single global cursor cannot say, and drawing one bracket
+                # across a gap claims ground the placer cannot use.
+                m = re.match(r"\s+run \d+ P:0x([0-9a-f]+)\.\.0x[0-9a-f]+"
+                             r"\s+(\d+) w\s+used (\d+)", line)
+                if m and payload:
+                    runs.append((payload, int(m.group(1), 16),
+                                 int(m.group(2)), int(m.group(3))))
                 m = re.search(r"KEPT STOCK: (\S+)", line)
                 if m:
                     kept |= {w.strip() for w in m.group(1).split("/")}
@@ -474,6 +487,7 @@ class State:
             self.words.update(words)
             self.words_from = note
             self.regions = regions
+            self.runs = runs
             # Both payloads report; a donor survives only if BOTH kept it.
             for line in r.stdout.splitlines():
                 if "donor ids" in line:
