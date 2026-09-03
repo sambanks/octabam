@@ -610,6 +610,21 @@ and still said neither **where** in the payload the region is nor **which**
 effects it costs. Once the region became a choice (`h`), those were the only
 two questions it was being asked.
 
+⚠️ **`.` is "offered", not "lost", and the footer says which.** On a stock
+chooser the whole run is dotted and **nothing has been overwritten** — every
+one of those effects still works — so reading the dots as sacrifice is the
+obvious mistake, and the footer used to invite it by saying "harvested"
+whether or not a word had been placed:
+
+```
+ nothing placed   └─ 2,724 words yours to place into — none taken yet ─┘
+ ChonVerb placed  └──── harvested, 2,724 words — 3 overwritten ────────┘
+```
+
+The sentence steps down to a shorter form rather than overflowing: a footer
+wider than the run it brackets puts `┘` past the last harvested segment and
+claims ground it does not mean.
+
 Widths are **cumulative-rounded** so they sum exactly and no segment is
 starved by the ones before it — rounding each on its own and giving the
 remainder to the last left COMB with two columns and its label cut to `CO`.

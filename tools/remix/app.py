@@ -1113,12 +1113,35 @@ class RemixerScreen(Screen):
                     out += (f"[{OK}]{'#' * fill}[/][dim]{'.' * (c - fill)}[/]")
             return out
 
-        # The footer brackets the harvested run under the bar it belongs to.
+        # ⚠️ THE FOOTER SAYS WHAT HAS ACTUALLY HAPPENED, not what could.
+        # `.` means "offered to the placer", and on a stock chooser with
+        # nothing of ours in it that is the whole run and NOTHING has been
+        # overwritten -- every one of those effects still works. Reading the
+        # dots as loss is the obvious mistake and the footer used to invite
+        # it by saying "harvested" whether or not a word had been placed.
         lo = sum(c for k, _a, _n, c in seg
                  if sp[k][0] < min((sp[h][0] for h in hv), default=0))
         span = sum(c for k, _a, _n, c in seg if k in hv)
-        foot = (" " * lo + "└" + f" harvested, {stock.region_words(tuple(hv)):,} "
-                f"words ".center(max(0, span - 2), "─") + "┘")[:w]
+        n_w = stock.region_words(tuple(hv))
+        if not any(placed.values()):
+            tries = [f" {n_w:,} words yours to place into — none taken yet ",
+                     f" {n_w:,} words, none taken ", f" {n_w:,} words "]
+        else:
+            lost = [k for k in stock.harvest_order(tuple(hv))
+                    if k.split()[0] not in st.donors_kept]
+            gone = ", ".join(titlecase(k) for k in lost)
+            tries = [f" harvested, {n_w:,} words — {gone} overwritten "
+                     if lost else f" harvested, {n_w:,} words — none "
+                                  f"overwritten ",
+                     f" harvested, {n_w:,} words — {len(lost)} overwritten ",
+                     f" harvested, {n_w:,} words "]
+        # ⚠️ THE BRACKET MUST MATCH THE RUN IT BRACKETS. A sentence longer
+        # than the span pushes `┘` past the last harvested segment and the
+        # footer then claims ground it does not mean, so it steps down to a
+        # shorter form rather than overflowing.
+        what = next((t for t in tries if len(t) <= max(0, span - 2)),
+                    tries[-1][:max(0, span - 2)])
+        foot = (" " * lo + "└" + what.center(max(0, span - 2), "─") + "┘")[:w]
         rows = (["  " + label] if label else []) + [f"[dim]A[/] " + bar("A")]
         if len(placed) > 1 or not placed:
             rows.append(f"[dim]B[/] " + bar("B"))
