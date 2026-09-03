@@ -19,7 +19,7 @@
 ;   is EVEN -- odd grain counts ripple at the grain rate (BongDelay, 12 Aug).
 ;   Grains 0/2 sum to L, 1/3 to R: per channel two triangle windows at a
 ;   half-period offset, which sum to constant power by construction.
-; * A grain reads W - (POSbase + s_g + G - phase): it plays FORWARD at unity
+; * A grain reads W - (POSbase + s_g + G + 1 + phase): it plays FORWARD at unity
 ;   rate relative to the moving write head, always at least POSbase+s_g+1
 ;   behind it, so no head ever reads ahead of the write.
 ; * s_g is a per-grain scatter LATCHED AT THAT GRAIN'S OWN WRAP from the
@@ -291,13 +291,15 @@ nb_g0:
         move    x0,a                    ; reloaded clean: A2 consistent
         abs     a
         move    a,y1                    ; window gain = |wrap(2*phase/G)|
-        move    x:(r7+$22),a            ; dist = POSbase + s_g + G - phase
+        move    x:(r7+$22),a            ; dist = POSbase + s_g + G + 1 + phase
         move    x:(r7+$2a),x0
         add     x0,a
         move    x:(r7+$23),x0
         add     x0,a
         add     #>$1,a
-        sub     x1,a
+        add     x1,a                    ; + phase: unity is a FIXED tap behind
+                                        ; the moving head (3 Sep 2026; was
+                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a                    ; W - dist
@@ -338,7 +340,9 @@ nb_g1:
         move    x:(r7+$23),x0
         add     x0,a
         add     #>$1,a
-        sub     x1,a
+        add     x1,a                    ; + phase: unity is a FIXED tap behind
+                                        ; the moving head (3 Sep 2026; was
+                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a
@@ -380,7 +384,9 @@ nb_g2:
         move    x:(r7+$23),x0
         add     x0,a
         add     #>$1,a
-        sub     x1,a
+        add     x1,a                    ; + phase: unity is a FIXED tap behind
+                                        ; the moving head (3 Sep 2026; was
+                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a
@@ -423,7 +429,9 @@ nb_g3:
         move    x:(r7+$23),x0
         add     x0,a
         add     #>$1,a
-        sub     x1,a
+        add     x1,a                    ; + phase: unity is a FIXED tap behind
+                                        ; the moving head (3 Sep 2026; was
+                                        ; `- phase`, an octave up -- README)
         move    a,x0
         move    x:(r7+$28),a
         sub     x0,a

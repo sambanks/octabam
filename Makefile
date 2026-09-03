@@ -11,12 +11,12 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # Stamped into the OS version field (max 10 chars) so the unit tells you which
 # build it is running. Bump BUILD every time you flash: a unit whose version
 # string you cannot map back to a commit is a unit you are guessing about.
-BUILD   ?= 001
+BUILD   ?= 79
 VERSION ?= OCTABAM$(BUILD)
 
 # Which modules the image carries. `make modules` lists what is available;
 # remixes/<name>.py is the selection. chongbong is the shipping one.
-REMIX   ?= chongbong
+REMIX   ?= bamsep26
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
 # ColdFire emulator (docs/EMU.md), which needs `unicorn` from the uv-managed

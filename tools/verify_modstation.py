@@ -162,6 +162,25 @@ check("the LFO is square-law in RATE: the top of the knob is many times the bott
       fast_n > slow_n * 4 and fast_n > 2,
       f"RATE 20 -> {slow_n:.1f} cycles in 0.68 s, RATE 110 -> {fast_n:.1f}")
 
+# ---- 4b. the shapes are four, not three (3 Sep 2026: SAW fell through to TRI)
+# TREM on DC again: the output IS the LFO, so the fraction of the cycle spent
+# RISING tells the shapes apart -- a triangle rises half the time, a saw
+# nearly all of it, a square (steps) almost never.
+def shape_stats(shpe):
+    """-> (fraction of MOVING samples that rise, fraction of samples FLAT)"""
+    L, _ = render([int(0.4 * 8388607)] * LONG, MODE=4, MIX=127, DPTH=127, RATE=60, SHPE=shpe)
+    seg = L[LONG//4:]
+    up = sum(1 for a, b in zip(seg, seg[1:]) if b > a)
+    dn = sum(1 for a, b in zip(seg, seg[1:]) if b < a)
+    flat = sum(1 for a, b in zip(seg, seg[1:]) if b == a)
+    return up / max(1, up + dn), flat / (len(seg) - 1)
+(tri_r, tri_fl), (saw_r, saw_fl), (sqr_r, sqr_fl) = (shape_stats(0), shape_stats(3), shape_stats(2))
+check("SHPE: TRI rises half the time and is never flat; SAW rises nearly always; "
+      "SQR sits on its plateaus most of the time",
+      0.4 < tri_r < 0.6 and tri_fl < 0.05 and saw_r > 0.9 and sqr_fl > 0.7,
+      f"rising TRI {tri_r:.2f} SAW {saw_r:.2f} SQR {sqr_r:.2f}; "
+      f"flat TRI {tri_fl:.2f} SAW {saw_fl:.2f} SQR {sqr_fl:.2f}")
+
 # ---- 5. the line is really read: an impulse comes back delayed ---------------
 imp = [0] * N
 imp[100] = 6000000

@@ -42,7 +42,9 @@
 ; Per SAMPLE, not per block: at a 15-sample block a per-block LFO steps at
 ; 2.9 kHz, which a chorus hears as zipper. Two shaped copies, L and its
 ; WID-offset partner, from one phase accumulator. TRI is the basis; SIN is
-; the parabola 2t - t|t| blended in; SQR is TRI multiplied up and clamped by
+; the parabola 2t - t|t| blended in; SAW is the phase itself, 2t - 1,
+; blended in the same way (3 Sep 2026: it FELL THROUGH TO TRI until then --
+; four labels, three shapes); SQR is TRI multiplied up and clamped by
 ; a limiting store. All three are one code path with per-block weights.
 ;
 ; ---- r7 slots -------------------------------------------------------------
@@ -58,6 +60,7 @@
 ;   $23 feedback                     $24 tone coefficient
 ;   $25 WID phase offset             $26 LFO increment per sample
 ;   $27 sin blend weight             $28 square gain / 8
+;   $18 saw blend weight             $17 saw this sample (shape scratch)
 ;   $29 engine class                 $2a scratch (shape)
 ;   $2b..$2e phaser tap weights      $2f phaser coefficient depth
 ;   $30 ->DEL level                  $31 ->VRB level
@@ -228,9 +231,10 @@ mocntz:
         move    x0,a
         asr     #$1,a,a                 ; 0 .. ~0.5 of a cycle
         move    a,x:(r7+$25)
-; SHPE (slot 9 select of r6+$d): the sin blend and the square gain
+; SHPE (slot 9 select of r6+$d): the sin blend, the saw blend, the square gain
         clr     a
         move    a,x:(r7+$27)            ; sin weight 0
+        move    a,x:(r7+$18)            ; saw weight 0
         move    #>$100000,x0            ; square gain / 8 = 1/8, i.e. gain 1
         move    x0,x:(r7+$28)
         move    x:(r6+$d),a
@@ -244,6 +248,9 @@ mocntz:
         move    #>$20000,x0
         cmp     x0,a
         beq     mo_shsqr
+        move    #>$30000,x0
+        cmp     x0,a
+        beq     mo_shsaw
         bra     mo_shdone               ; TRI, and anything unexpected
 mo_shsin:
         move    #>$7fffff,x0            ; the parabola, all of it
@@ -252,6 +259,10 @@ mo_shsin:
 mo_shsqr:
         move    #>$7fffff,x0            ; gain 8, clamped by a limiting store
         move    x0,x:(r7+$28)
+        bra     mo_shdone
+mo_shsaw:
+        move    #>$7fffff,x0            ; the saw, all of it
+        move    x0,x:(r7+$18)
 mo_shdone:
 ; TONE -> the one-pole coefficient inside the feedback path
         move    x:(r6+$d),a
@@ -680,6 +691,10 @@ moshap:
         move    x0,a
         move    a,x:(r7+$1c)
         move    #>$400000,x0
+        move    a,b
+        sub     x0,b                    ; phase - 0.5 ...
+        asl     #$1,b,b                 ; ... x2: the saw, -1 .. 1
+        move    b,x:(r7+$17)            ; LIMITING store, for the blend below
         sub     x0,a                    ; phase - 0.5
         abs     a                       ; 0 .. 0.5
         asl     #$2,a,a                 ; 0 .. 2, in the guard bits
@@ -704,6 +719,15 @@ moshap:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     x1,a                    ; tri + w*(parabola - tri)
+        move    a,x1                    ; the wave so far (|.| <= 1)
+        move    x:(r7+$17),a            ; the saw
+        sub     x1,a                    ; saw - wave
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r7+$18),y1           ; the saw blend
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x1,a                    ; wave + w*(saw - wave)
         move    a,x0
         move    x:(r7+$28),y1           ; the square gain / 8
         mpy     x0,y1,a
@@ -718,6 +742,10 @@ moshap:
         move    a1,x0
         move    x0,a
         move    #>$400000,x0
+        move    a,b
+        sub     x0,b                    ; phase - 0.5 ...
+        asl     #$1,b,b                 ; ... x2: the saw, -1 .. 1
+        move    b,x:(r7+$17)            ; LIMITING store, for the blend below
         sub     x0,a                    ; phase - 0.5
         abs     a                       ; 0 .. 0.5
         asl     #$2,a,a                 ; 0 .. 2, in the guard bits
@@ -742,6 +770,15 @@ moshap:
         mpy     x0,y1,a
         asl     #$1,a,a
         add     x1,a                    ; tri + w*(parabola - tri)
+        move    a,x1                    ; the wave so far (|.| <= 1)
+        move    x:(r7+$17),a            ; the saw
+        sub     x1,a                    ; saw - wave
+        asr     #$1,a,a
+        move    a,x0
+        move    x:(r7+$18),y1           ; the saw blend
+        mpy     x0,y1,a
+        asl     #$1,a,a
+        add     x1,a                    ; wave + w*(saw - wave)
         move    a,x0
         move    x:(r7+$28),y1           ; the square gain / 8
         mpy     x0,y1,a

@@ -42,6 +42,21 @@ import json, pathlib, re, sys, glob
 # from coming back.
 PART_BASE, PART_STRIDE, NPARTS, NPARTS_ALL = 0x8eed6, 0x18bb, 4, 8
 FX1_OFF, FX2_OFF, NTRACKS = 0x009, 0x011, 8
+# THE KNOB VALUES a part stores for each track's two effects (found 3 Sep
+# 2026 by pattern, against the ChongBongolo26 backups: stock FILTER's page-1
+# defaults 00 7f 00 40 00 40 recur at a 24-byte stride on the tracks whose
+# FX1 id is 0x04, and ChonVerb's stored page 2 reads back as EXACTLY its
+# manifest defaults 00 02 40 00 00 01). Two arrays of eight 24-byte blocks,
+# one per track: bytes 0-5 are FX1's six knobs, 6-11 FX2's, 12-23 belong to
+# two other pages. Page 1 at P1_OFF, page 2 (slots 6-11, a select stored as
+# its index) at P2_OFF. Both relative to the part record.
+#
+# ⚠️ WHY THIS MATTERS (plan item A6): the bytes are stored under the layout
+# of whatever effect the part chose. A station that REPLACES a stock effect
+# inherits them raw -- FILTER's DEC=64 on slot 5 becomes ->VRB 64 on every
+# melodic track, i.e. a part that never sent anything is suddenly a reverb
+# client after the flash. stamp_defaults() writes OUR defaults over them.
+P1_OFF, P2_OFF, TRACK_STRIDE = 0x12f, 0x331, 24
 FX_NAMES = {0x06: "BongDelay", 0x07: "ChonVerb", 0x09: "SEND", 0x00: "-"}
 
 def read_project(pdir):
@@ -207,6 +222,76 @@ def fx_plan(remix_name):
     return out
 
 
+def _remix_defaults(remix_name, replaced_only):
+    """-> {fx id: 12 default bytes} for the modules this remix places.
+
+    replaced_only=True limits it to modules that REPLACE a stock effect (the
+    only ids whose stored bytes are in a foreign layout); False covers every
+    module of ours, which is what a freshly stamped test project wants.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from remix import registry
+    remix = registry.remix(remix_name)
+    mods = registry.modules()
+    out = {}
+    for k in remix.modules:
+        m = mods.get(k)
+        if m is None or m.menu is None or getattr(m, "is_stock", False):
+            continue
+        if replaced_only and not m.menu.replaces:
+            continue
+        vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
+        out[m.menu.fx2_id] = bytes(vals[:12])
+    return out
+
+
+def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
+    """Write our modules' manifest defaults into every part/track that names
+    one of their ids. Returns the number of (part, track, slot) writes."""
+    pdir = pathlib.Path(pdir)
+    defaults = _remix_defaults(remix_name, replaced_only)
+    if not defaults:
+        sys.exit(f"remix {remix_name!r} has no {'replacing ' if replaced_only else ''}modules to stamp")
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        done = []
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
+                        fid = data[off + idoff + t]
+                        if fid not in defaults:
+                            continue
+                        d = defaults[fid]
+                        a = off + P1_OFF + t * TRACK_STRIDE + sub
+                        b = off + P2_OFF + t * TRACK_STRIDE + sub
+                        data[a:a + 6] = d[:6]
+                        data[b:b + 6] = d[6:]
+                        done.append((p, t, sub, fid))
+
+        _bank_write(pdir, num, mut, guard=guard)
+        # READ IT BACK, as testproj does: a write this tool cannot verify is
+        # a write you find out about on the unit.
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, sub, fid in done:
+            off = PART_BASE + p * PART_STRIDE
+            a = off + P1_OFF + t * TRACK_STRIDE + sub
+            b = off + P2_OFF + t * TRACK_STRIDE + sub
+            if data[a:a + 6] + data[b:b + 6] != defaults[fid]:
+                sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
+        total += len(done)
+        if done:
+            print(f"bank{num:02d}: {len(done)} slots stamped with our defaults")
+    print(f"{total} slot(s) stamped for remix {remix_name!r} "
+          f"({'replaced ids only' if replaced_only else 'every id of ours'})")
+    return total
+
+
 def make_test_project(src, dest, remix_name):
     import shutil
     src, dest = pathlib.Path(src), pathlib.Path(dest)
@@ -247,6 +332,10 @@ def make_test_project(src, dest, remix_name):
             lines.append(f"bank {chr(64+num)}  part {p+1}   FX1 0x{f1:02x}  "
                          f"FX2 0x{f2:02x}   {lbl}")
     (dest / "OCTABAM_TEST_MAP.txt").write_text("\n".join(lines) + "\n")
+    # And the knobs: every slot that now names one of our ids gets that
+    # module's defaults, so no track boots holding another effect's bytes
+    # (plan A6 -- the stored layout is the chosen effect's, not ours).
+    stamp_defaults(dest, remix_name, replaced_only=False, guard=False)
     # READ IT BACK. A write this tool cannot verify is a write you find out
     # about on the unit.
     for bi, bank in enumerate(sorted(dest.glob("bank*.work"))):
@@ -265,6 +354,100 @@ def make_test_project(src, dest, remix_name):
     print(f"map also at {dest / 'OCTABAM_TEST_MAP.txt'}")
 
 
+# ---- the RIG project: the set's layout, with the returns wired ------------
+# One part = the whole rig on its eight tracks, as designed (the BamSep26
+# page and docs/BUS.md "The returns"): stations on FX1 everywhere, the two
+# engines in T1's and T5's FX2, the stock delay where a track wants one, and
+# T8's character station in SAT=BUS with both returns up. Every part of every
+# bank gets the same layout, so any pattern is the rig. Knob bytes are the
+# manifest defaults with the few deliberate exceptions listed per track.
+RIG = (
+    # track, FX1 (key, {knob: val}),                FX2 (key, {knob: val})
+    (1, ("CHARACTER STATION", {"-VRB": 30}),        ("DELAY SERVER", {})),
+    (2, ("FILTER STATION", {"-VRB": 40, "-DEL": 30}), ("DELAY", {})),
+    (3, ("FILTER STATION", {"-VRB": 30}),           ("CHARACTER STATION", {})),
+    (4, ("FILTER STATION", {"-DEL": 40}),           ("DELAY", {})),
+    (5, ("MODULATION STATION", {"-VRB": 40}),       ("REVERB SERVER", {})),
+    (6, ("FILTER STATION", {"-VRB": 50}),           ("DELAY", {})),
+    (7, ("CHARACTER STATION", {"-VRB": 40, "-DEL": 20}), ("DELAY", {})),
+    (8, ("CHARACTER STATION", {"SAT": 3, "CRSH": 127, "RING": 127,
+                               "CMOD": 1, "COMP": 40}), (None, {})),
+)
+
+
+def make_rig_project(src, dest, remix_name):
+    """Copy a project and write the RIG layout into every part of every bank:
+    ids AND knob bytes, both current parts and their saved copies, checksums
+    recomputed, everything read back."""
+    import shutil
+    src, dest = pathlib.Path(src), pathlib.Path(dest)
+    if dest.exists():
+        sys.exit(f"{dest} exists -- refusing to overwrite. Pick a new name.")
+    if not (src / "project.work").is_file():
+        sys.exit(f"{src} is not an Octatrack project directory")
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from remix import registry
+    remix = registry.remix(remix_name)
+    mods = registry.modules()
+
+    def slot(spec):
+        key, knobs = spec
+        if key is None:
+            return 0x00, bytes(12)
+        m = mods[key]
+        if key not in remix.modules:
+            sys.exit(f"rig names {key!r}, which remix {remix_name!r} does not place")
+        vals = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
+        kmap = m.knob_map_all() if not getattr(m, "is_stock", False) else {}
+        for n, v in knobs.items():
+            if n not in kmap:
+                sys.exit(f"{key} has no knob {n!r}")
+            vals[kmap[n]] = v
+        return m.menu.fx2_id, bytes(vals[:12])
+
+    plan = [(t, slot(f1), slot(f2)) for t, f1, f2 in RIG]
+    shutil.copytree(src, dest)
+    for bank in sorted(dest.glob("bank*.work")):
+        num = int(bank.name[4:6])
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t, (id1, v1), (id2, v2) in plan:
+                    i = t - 1
+                    data[off + FX1_OFF + i] = id1
+                    data[off + FX2_OFF + i] = id2
+                    for sub, v in ((0, v1), (6, v2)):
+                        a = off + P1_OFF + i * TRACK_STRIDE + sub
+                        b = off + P2_OFF + i * TRACK_STRIDE + sub
+                        data[a:a + 6] = v[:6]
+                        data[b:b + 6] = v[6:]
+
+        _bank_write(dest, num, mut, guard=False)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p in range(NPARTS_ALL):
+            off = PART_BASE + p * PART_STRIDE
+            for t, (id1, v1), (id2, v2) in plan:
+                i = t - 1
+                got = (data[off + FX1_OFF + i], data[off + FX2_OFF + i],
+                       bytes(data[off + P1_OFF + i*TRACK_STRIDE: off + P1_OFF + i*TRACK_STRIDE + 12]),
+                       bytes(data[off + P2_OFF + i*TRACK_STRIDE: off + P2_OFF + i*TRACK_STRIDE + 12]))
+                if got != (id1, id2, v1[:6] + v2[:6], v1[6:] + v2[6:]):
+                    sys.exit(f"{bank.name} part {p+1} T{t}: read-back disagrees")
+    lines = [f"# RIG project for remix {remix_name!r} -- every part of every bank is this:",
+             f"# copied from {src}", ""]
+    for t, f1, f2 in RIG:
+        lines.append(f"T{t}  FX1 {f1[0] or '-':20s} {f1[1]}   FX2 {f2[0] or '-':20s} {f2[1]}")
+    lines += ["", "T1 hosts the delay, T5 the reverb: both play their own material DRY",
+              "while T8 returns them (SAT=BUS, RVRB/DLY = CRSH/RING at 127). Turn",
+              "T8's RVRB to 0 and the reverb comes back out of T5 within 3 blocks."]
+    (dest / "OCTABAM_RIG_MAP.txt").write_text("\n".join(lines) + "\n")
+    print(f"{len(list(dest.glob('bank*.work')))} banks written and verified -> {dest}")
+    print(f"map at {dest / 'OCTABAM_RIG_MAP.txt'}")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]; pdir = pathlib.Path(sys.argv[2])
     if cmd == "report": cmd_report(pdir)
@@ -273,4 +456,9 @@ if __name__ == "__main__":
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
     elif cmd == "track-slot": set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "stamp-defaults":
+        # a REAL set, before its first load on a flashed image: only the ids
+        # a station replaced are touched; ChonVerb/BongDelay keep Sam's knobs
+        stamp_defaults(pdir, sys.argv[3], replaced_only=True)
     else: sys.exit(f"unknown command {cmd!r}")
