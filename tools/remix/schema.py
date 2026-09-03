@@ -335,6 +335,20 @@ class CavePatch:
     hook_addr: int | None = None        # where the jsr is planted
     hook_stock: bytes = b""             # bytes that MUST be there first
     registers_formatter: FormatterReg | None = None
+    # ---- a cave whose CONTENT depends on where it lands -------------------
+    # `pinned` is bytes decided before the build. A cave that contains
+    # POINTERS TO ITSELF -- a relocated menu row array, whose rows name their
+    # own labels and handlers -- cannot be: its bytes are a function of its
+    # address, and since 3 Sep 2026 addresses float. So a module may hand the
+    # build a callable instead:
+    #
+    #     emit(addr) -> (bytes, ((poke_addr, expect_stock, write), ...))
+    #
+    # The build resolves the address, calls it, plants the bytes, then asserts
+    # each poke site still holds the stock bytes before writing -- the same
+    # discipline `hook_stock` applies to a hook site, for the same reason: a
+    # table that has moved under us must stop the build, not be written over.
+    emit: object | None = None
     # Trailing prose for this cave's line in the build report, separator
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.

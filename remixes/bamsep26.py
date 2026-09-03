@@ -16,6 +16,8 @@ https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
     ModStn      replaces CHORUS  (id 0x12), FX1 only
     TEMPO SYNC  the two ColdFire caves: BongDelay's TIME reads 1/8 rather
                 than milliseconds
+    MENU SHORTCUT  MAIN MENU > CONTROL > REVERB / DELAY jumps to whichever
+                track hosts that server, and opens its FX2 page
 
 Seven FX2 rows, which is exactly the in-place chooser list -- no scrolling.
 FX1 is NONE plus the three stations: every station takes the FX1 row of the
@@ -40,7 +42,7 @@ REMIX = Remix(
     doc="The rig: ChonBong bus + three stations + the stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "FILTER STATION", "CHARACTER STATION", "MODULATION STATION",
-             "TEMPO SYNC"),
+             "TEMPO SYNC", "MENU SHORTCUT"),
     fallback="SEND",
     fx1=("FILTER STATION", "CHARACTER STATION", "MODULATION STATION"),
 )

@@ -110,6 +110,37 @@ holds a pointer back to the descriptor. ✅ Resolved (31 Aug 2026): it is the
 nav engine reads and writes; it persists across menu close (the menu
 remembers its position), which is stock behavior.
 
+## 4b. BUILT: `modules/menushortcut/` — CONTROL > REVERB / DELAY ✅ (3 Sep 2026)
+
+**Two rows, emulator-walked, unflashed.** `modules/menushortcut/manifest.py`
+copies CONTROL's six rows into a cave, appends REVERB and DELAY, repoints the
+rows pointer at `0x400cbd6c` and bumps the count at `0x400cbd54` to 8 — the
+§5 move, applied to CONTROL rather than the root for the reason §7 gives.
+Both writes assert the stock bytes first.
+
+The action (`menu_shortcut.s`, 92 bytes, assembled and pinned) is §7's
+sketch with one change: **the track is not hardcoded.** It scans the eight
+per-track FX2 id bytes at `0x80000ecc` for its server's id — 7 ChonVerb,
+6 BongDelay — and selects whichever track hosts it, so the row follows the
+project rather than assuming T5. If that address is wrong the scan simply
+never matches and the handler opens the current track's page: a wrong
+screen, not a crash, which is why it scans rather than trusting.
+
+⚠️ The cave is PINNED at `0x400d24d0`, the unclaimed 2,064-byte zero run §5
+names, **not** in the clone/label region — the BamSep26 rig leaves 84 bytes
+there and this cave is 300. `build_bus.py` allows a cave outside that window;
+it still refuses one whose target is not free.
+
+`tools/verify_menushortcut.py` (in `make check`) checks the table statically,
+boots the image and walks the menu out of RAM with the firmware's own layout
+— both rows resolve with their labels, id 0 (the action path) and actions in
+the cave — and calls the REVERB action with MIDI mode set, where it must
+return having touched nothing.
+
+⬜ What no local test can reach: whether closing the menu from inside an
+action and then selecting a track lands on the FX2 page. That is §7's ~65%
+and the flash is the test.
+
 ## 5. Why this matters: adding a fifth top-level entry is two writes ✅
 
 **The root row array `0x400cc698` has exactly ONE reference in the whole

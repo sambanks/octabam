@@ -1138,21 +1138,37 @@ def main():
             # image pinned -- and with six it clears the clone block that
             # used to run straight into them.
             _c = dataclasses.replace(_c, cave_addr=(_cave_top + 0x7f) & ~0x7f)
-        assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
-        assert _c.cave_addr + len(_b) <= cave_limit, \
-            "past the stock zero run (or into the long chooser list)"
+        # ⚠️ A CAVE MAY LIVE OUTSIDE THE CLONE WINDOW. The region from
+        # CLONE_BASE to the chooser list is crowded -- six descriptor clones
+        # and fifteen label formatters left 84 bytes on the rig -- and
+        # docs/MAINMENU.md names two other unclaimed runs. A cave pinned into
+        # one of those is checked for being FREE (below) and for not
+        # overlapping another module's cave (the ledger), but it neither
+        # follows nor advances this region's cursor.
+        _inside = CLONE_BASE <= _c.cave_addr < cave_limit
+        if _inside:
+            assert _c.cave_addr >= _cave_top, \
+                f"{_c.label} overlaps what precedes it"
+            assert _c.cave_addr + len(_b) <= cave_limit, \
+                "past the stock zero run (or into the long chooser list)"
         if _c.hook_addr is not None:
             got = bytes(img[_c.hook_addr - BASE:
                             _c.hook_addr - BASE + len(_c.hook_stock)])
             if got != _c.hook_stock:
                 sys.exit(f"{_c.label} hook site 0x{_c.hook_addr:08x} is not "
                          f"stock ({got.hex()}) -- refusing")
+        _pokes = ()
+        if _c.emit is not None:
+            # A cave that points at itself: its bytes are a function of the
+            # address the line above just resolved (schema.CavePatch.emit).
+            _b, _pokes = _c.emit(_c.cave_addr)
         if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)]):
             sys.exit(f"{_c.label} not free")
         # The bytes are PINNED so the build needs no m68k toolchain; when one
         # is present the source is re-assembled and compared, so a source that
         # has drifted from what we ship cannot pass unnoticed.
-        if (_c.source and not _replay and shutil.which("m68k-elf-as")
+        if (_c.source and _c.emit is None and not _replay
+                and shutil.which("m68k-elf-as")
                 and shutil.which("m68k-elf-objcopy")):
             with tempfile.TemporaryDirectory() as td:
                 o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
@@ -1165,6 +1181,14 @@ def main():
                              f"pinned bytes -- re-pin them in the "
                              f"manifest deliberately")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        for _pa, _expect, _write in _pokes:
+            _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
+            if _got != _expect:
+                sys.exit(f"{_c.label}: 0x{_pa:08x} holds {_got.hex()}, not "
+                         f"stock {_expect.hex()} -- refusing to write over a "
+                         f"table that is not where we think it is")
+            img[_pa - BASE:_pa - BASE + len(_write)] = _write
+            print(f"    poke 0x{_pa:08x}: {_expect.hex()} -> {_write.hex()}")
         if _c.hook_addr is not None:
             img[_c.hook_addr - BASE:_c.hook_addr - BASE + 10] = \
                 b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
@@ -1179,7 +1203,8 @@ def main():
                  if _c.hook_addr is not None else "")
         print(f"  {_c.label}: {len(_b)} bytes at 0x{_c.cave_addr:08x}"
               f"{_hook}{_c.report_note}")
-        _cave_top = _c.cave_addr + len(_b)
+        if _inside:
+            _cave_top = _c.cave_addr + len(_b)
 
     # ---- PLAN §6: the mode selects print their WORDS ---------------------
     # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
