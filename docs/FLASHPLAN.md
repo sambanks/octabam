@@ -244,13 +244,66 @@ donor work until it is understood.
 
 ---
 
+## Flash 4 — the rig: BamSep26 with the returns (OCTABAM79)
+
+**The image:** `make image` on `main` at tag 79 — `REMIX` defaults to
+`bamsep26` now. **The project:** the set's real layout, written into every
+part of every bank so any pattern is the rig:
+
+```bash
+python3 tools/ot_project.py rigproj ~/octa/backups/<trusted project> /Volumes/<card>/OCTABAM_RIG bamsep26
+```
+
+| track | FX1 | FX2 | what it is |
+|---|---|---|---|
+| T1 | character stn, →VRB 30 | **BongDelay** | the delay's host — plays its own material DRY while T8 returns |
+| T2 | filter stn, →VRB 40 →DEL 30 | stock DELAY | synths in |
+| T3 | filter stn, →VRB 30 | character stn | bass |
+| T4 | filter stn, →DEL 40 | stock DELAY | lead |
+| T5 | modulation stn, →VRB 40 | **ChonVerb** | the reverb's host, dry likewise |
+| T6 | filter stn, →VRB 50 | stock DELAY | melodic |
+| T7 | character stn, →VRB 40 →DEL 20 | stock DELAY | vocal / guitar |
+| T8 | character stn, **SAT=BUS**, RVRB 127, DLY 127, GLUE, COMP 40 | — | the master: glue, and the only place the wet enters |
+
+For a REAL set (not the rig project), run `stamp-defaults` on a copy first —
+the parts hold FILTER/LO-FI/CHORUS knob bytes under the stock layouts, and the
+stations would read them raw (FILTER's DEC=64 → a →VRB send of 64 on every
+melodic track):
+
+```bash
+python3 tools/ot_project.py stamp-defaults /Volumes/<card>/<set copy> bamsep26
+```
+
+**Claims, stacked so failures stay distinguishable.** Test in this order;
+each one's failure has a different shape from the next.
+
+| | claim | how to see it | falsified by |
+|---|---|---|---|
+| i | six descriptor clones + floated caves; label formatters and the FX1 list in the SECOND zero run | every station's page draws all twelve names; MODE/SAT/CMOD print words; BongDelay TIME prints `1/8`; FX1 chooser = NONE + three stations | garbage names, a select printing a number, a chooser with junk rows |
+| ii | FX1 default = filter station, dry at defaults | a part that chose FILTER runs the station and sounds unchanged | any tone change on a track at station defaults |
+| iii | the modulation station is dry on FX2 and modulates on FX1 | T5's FX1 modstation audible in CHOR; the same module chosen on T3's FX2 is a dry pass | **test on T7/T8 first** — a wrong FX1 detection on tracks 5–6 writes into ChonVerb's tank |
+| iv | harvested ids from an old project = silence, not noise | load the untouched set: tracks that named PLATE/SPRING/COMB etc. are silent | noise, a hang |
+| v | **an FX1 station sending on T5** — a bus participant on FX1 has never run on hardware | T5's →VRB reaches the reverb; sweep tracks × modes and listen for the rotation-class artefacts (stutter, a block-rate buzz) | stutter that follows dispatch position |
+| vi | stock DELAY on FX2 beside a sending station on FX1 | T2: delay repeats in the mix, the reverb of the DRY signal on the bus, not of the repeats | silence on FX2, or the repeats reaching the reverb |
+| vii | GRAIN v5 by ear | BongDelay MODE=GRAIN, PTCH around 64 | (tomorrow's listening) |
+| viii | **THE RETURNS** — the reverb and delay arrive once, at T8; T1 and T5 leave dry; hosts print again when the return goes | mute T8: the reverb and delay vanish from the mix. Turn T8's RVRB to 0: within 3 blocks the reverb comes back out of T5. Mute T5 with RVRB up: the reverb stays (it is T8's now) | reverb audible from BOTH T5 and T8 (a lost stamp); the delay's return stuttering or torn (the wet crossing cores — the accumulators' race in a new place); nothing returning at all (suspect `0x360d3-5`, dead on hardware for R36, next door to the new words) |
+| ix | MAIN MENU > CONTROL > REVERB / DELAY | the rows exist and open the host's FX2 page | (~65%: the open/close path is untested) |
+
+viii's three listening tests take a minute and separate the three failure
+modes completely: double = stamp, torn = race, silent = memory. Write down
+which.
+
+---
+
 ## Before every flash
 
 From `docs/FLASHING.md` and the card workflow this project already uses:
 
 - [ ] `make check` and `scripts/refhash.sh check` both green.
-- [ ] **A test project stamped for THIS image** (step 0b). Without it you are
-      testing whatever ids the last image left in the parts.
+- [ ] **A test project stamped for THIS image** (step 0b; for the rig,
+      `rigproj`). Without it you are testing whatever ids the last image
+      left in the parts — and since 3 Sep 2026 whatever KNOB BYTES too:
+      `stamp-defaults` a copy of any real set before its first load.
 - [ ] **Bump `BUILD`.** The tag is stamped into the effect name; a unit whose
       version you cannot map to a commit is a unit you are guessing about.
 - [ ] `make image` — `.bin` for the CF-card path (recommended), `.syx` for MIDI.

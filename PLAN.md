@@ -688,7 +688,9 @@ own name, and that an out-of-range value clamps to mode 0.
 
 ⚠️ Inferred, not measured: the rename lands on the next redraw if the panel
 draws names before formatting MODE, and the descriptor is shared by every
-track running that effect. ⚠️ 84 bytes of cave left on the rig.
+track running that effect. (The rig's clone window is FULL since the
+returns' BUS-mode renames, 3 Sep 2026: label formatters and the FX1 list
+overflow into the second zero run at `0x400d24d0`, ~1.6 KB spare there.)
 
 ⬜ **Per-mode DEFAULTS are the other half and are NOT on the unit.** The
 remixer applies them the moment MODE changes; doing it on the box means

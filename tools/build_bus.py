@@ -397,7 +397,12 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # REVERSE proven bit-identical through R61, and R62's swap proven an exact
 # exchange. ⚠️ Stored parts with DPTH ~48 in GRAIN come up MID density on
 # this tag -- the knob working for the first time; the makeup holds level.
-BUILD_TAG = b"78"
+# 79 == OCTABAM79 == the BamSep26 rig + THE RETURNS (3 Sep 2026): three
+# stations (FILTER/LO-FI/CHORUS replaced, all bus senders), BongDelay v5,
+# the character station returning both wets on the master (RVRB/DLY in
+# SAT=BUS), hosts quiet only while a return is live; label formatters
+# overflow into the second zero run. Flash 4, docs/FLASHPLAN.md.
+BUILD_TAG = b"79"
 
 # ---- the module tables, derived from modules/*/manifest.py ------------------
 # One statement per fact, living in the module that owns it. These dicts keep
