@@ -227,6 +227,33 @@ is not when it lands — HELLO WORLD arrived on `0x17` and was moved to `0x1b`,
 `0x17` having become Rungs's on 2 Sep 2026. `make modules` prints what is
 claimed today.
 
+## A STATION: an insert that is also a bus client
+
+The BamSep26 stations (`modules/filterstation/` is the first) are per-track
+inserts that also SEND: page-1 →DEL / →VRB knobs, the processed mono added
+into both accumulators. What that takes, beyond the insert contract:
+
+- `Harness(bus_client=True)` on a `Kind.DSP_EFFECT`, so the registry treats
+  the image as having a bus (`fallback="SEND"`, never NONE), and the build
+  relocates the module's `$9xx` scratch literals under XBUS exactly as
+  SEND's — **without** the housekeeping gate, because
+- **a station never housekeeps.** It carries SEND's split-offset block, the
+  `; ROTINIT` / `; ROTLATCH` markers (substituted per payload, keyed on
+  `r7_latch_slot=0x69`), the knob-gated registration and the per-sample
+  writer — but not the election. An FX1 instance on track 5 runs BEFORE that
+  track's FX2 instance, and position 0 housekeeps unconditionally, so an
+  electing FX1 participant would flip the rotation twice in the first block
+  and leave core 1's private tracking one step behind forever. The price is
+  16 samples less bus latency for a station on core 0 (it adds into the
+  buffer written last block, which is read next block); nothing is lost.
+- The layout alphabet is exhausted (A–W, Y, Z), so stations take DIGITS as
+  `layout_char`. `send_probe --feed 1 --set 1:-VRB=100` feeds the tone to
+  the station's own track and drives its knob; `LETTER:NAME=VAL` drives any
+  live slot. The registration gate is: a second instance with its send at
+  zero must not move the server's level (the N/(N+1) trap).
+- Every slot the sample loop touches sits **below `$40`**: the module's
+  README records why.
+
 ## Keeping STOCK effects in the chooser
 
 Every image replaces the FX2 chooser wholesale, and until 2 Sep 2026 that

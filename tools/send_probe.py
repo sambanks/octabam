@@ -208,7 +208,7 @@ def entry_points(mem_path, fxid):
 def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         direct=False, wave_src=None, split=0, layout='RS', delay_params=None,
         inall=False,
-        pick=None, tempo=None, insert_params=None):
+        pick=None, tempo=None, insert_params=None, feed=None):
     """-> instance 0 (the reverb) as a list of 24-bit ints, warm-up trimmed.
 
     direct=True is the CONTROL: no SEND instance at all, the tone goes into the
@@ -358,12 +358,17 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         # every local render was blind to until 12 Aug 2026. --inall feeds
         # every live slot, so the delay's own dry is real and MIX can be
         # measured for what it does on the unit.
+        # `feed` names the letters whose tracks receive the tone (3 Sep
+        # 2026: a station sends from its OWN track, so the tone has to reach
+        # it and NOT the server, whose own dry would swamp the measurement).
         inmask = sum(1 << i for i, (_, c) in enumerate(live)
-                     if c == "S" or inall)
+                     if c == "S" or inall or (feed and c in feed))
         # The three the CLI has flags for keep their flag-driven values;
         # anything else falls back to what its own manifest declares.
         par = dict(MODULE_DEFAULTS)
         par.update({"R": rev_params, "S": send_params, "D": dpar})
+        if isinstance(insert_params, dict):     # per-letter overrides
+            par.update(insert_params)
         cmd = [str(HOST), "-mem", str(mem),
                "-init", ",".join(f"{entry(c)[0]:x}" for _, c in live),
                "-proc", ",".join(f"{entry(c)[1]:x}" for _, c in live),
@@ -664,6 +669,10 @@ def main():
     ap.add_argument("--direct", action="store_true",
                     help="CONTROL / the insert path: no SEND, tone straight "
                          "into the picked module's own track input")
+    ap.add_argument("--feed", default="", metavar="LETTERS",
+                    help="also feed the tone to these layout letters' tracks "
+                         "(a client insert sends from its own track); SENDs "
+                         "are always fed, --inall feeds everything")
     ap.add_argument("--set", action="append", default=[], metavar="NAME=VAL",
                     help="drive any knob of the RENDERED module by its "
                          "manifest name (repeatable). Resolved through the "
@@ -759,23 +768,42 @@ def main():
             base = dpar = list(dpar) if dpar is not None else list(DELAY_PARAMS)
         else:
             base = ins = list(MODULE_DEFAULTS.get(_st, [0] * 12))
+        # A `LETTER:NAME=VAL` spec drives ANOTHER live slot of a bus layout
+        # (3 Sep 2026, for the stations: a client insert's send level has to
+        # be set on the instance that sends, not on the server being
+        # measured). Per-letter lists ride `insert_params` as a dict.
+        others = {}
         for spec in a.set:
+            tgt_mod, tgt_base = _mod, base
+            if ":" in spec.split("=", 1)[0]:
+                letter, _, spec = spec.partition(":")
+                letter = letter.strip().upper()
+                if letter not in SERVER_ID:
+                    die(f"--set {letter}: is not a layout letter")
+                tgt_mod = registry.by_id(SERVER_ID[letter])
+                tgt_base = others.setdefault(
+                    letter, list(MODULE_DEFAULTS.get(letter, [0] * 12)))
+            kmap2 = tgt_mod.knob_map()
             name, _, val = spec.partition("=")
             name = name.strip().upper()
-            if name not in kmap:
-                die(f"{_mod.name} has no knob named {name!r} -- it has: "
-                    f"{' '.join(sorted(kmap))}")
-            slot = kmap[name]
+            if name not in kmap2:
+                die(f"{tgt_mod.name} has no knob named {name!r} -- it has: "
+                    f"{' '.join(sorted(kmap2))}")
+            slot = kmap2[name]
             v = int(val)
-            count = _mod.params[slot].count
+            count = tgt_mod.params[slot].count
             hi = (count - 1) if count is not None else 127
             if not 0 <= v <= hi:
-                die(f"{_mod.name} {name}={v} is out of range 0..{hi} -- a "
+                die(f"{tgt_mod.name} {name}={v} is out of range 0..{hi} -- a "
                     f"stepped select uses the value as an INDEX")
-            base[slot] = v
+            tgt_base[slot] = v
+        if others and not a.direct:
+            if ins is not None:
+                others[_st] = ins
+            ins = others
     L, R = run(mem, a.dur, a.tail, rev, snd, a.verbose, a.amp, a.direct, wsrc,
                a.split, a.layout, delay_params=dpar, pick=a.pick,
-               inall=a.inall, insert_params=ins)
+               inall=a.inall, insert_params=ins, feed=a.feed)
     # Where the tone stops, so the analysis window is the end of the TONE
     # rather than the silence after it -- see analyse().
     _tone_end = len(wsrc) if wsrc is not None else int(a.dur * SR)

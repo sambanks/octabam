@@ -2237,12 +2237,31 @@ mkgo:""",
         if delay_src is not None:
             _texts["DELAY SERVER"] = delay_src
         # Any other selected module with DSP code loads straight from its
-        # manifest's source and gets no bus treatment, but MAY declare its own
-        # DEV repro hooks below -- the generic version of the arms the three
+        # manifest's source. A module that is a BUS CLIENT without being one
+        # of the three (a BamSep26 station: Harness.bus_client on an insert)
+        # gets the one bus treatment it needs -- its `$9xx` scratch literals
+        # relocated to the shared window under XBUS, exactly SEND's regex --
+        # and NOT the housekeeping gate, because a station never elects (its
+        # source has no XBUS_GATE marker and reads the rotation only). Its
+        # ROTINIT / ROTLATCH markers are substituted by _prep like SEND's.
+        # It MAY also declare its own DEV repro hooks below -- the generic version of the arms the three
         # core sources have at the top of main().
         for _k in ORDER:
             if _k not in _texts and _k in ASM_SRC:
-                _texts[_k] = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _src_k = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _mk = remix_modules().get(_k)
+                if (_x and _mk is not None and _mk.harness is not None
+                        and _mk.harness.bus_client):
+                    _n9 = len(re.findall(r"\$9[0-9a-f]{2}\b", _src_k))
+                    if not _n9:
+                        sys.exit(f"XBUS: {_k} is a bus client with no bus scratch "
+                                 f"literals to move")
+                    _src_k = re.sub(r"\$9([0-9a-f]{2})\b",
+                                    lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)),
+                                    _src_k)
+                    print(f"  XBUS: {_k} -- {_n9} scratch refs moved to 0x{XBUS_BASE:x}, "
+                          f"a client that never housekeeps")
+                _texts[_k] = _src_k
 
         def _ybase(m, src):
             if DEV and m.dsp.dev_pin_ybase is not None:
