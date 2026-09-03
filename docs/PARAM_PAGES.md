@@ -565,7 +565,7 @@ COMPANION field at BITS 8–15.** Not the low byte. The low byte is never
 published.
 
 **The rule is slot -> word -> bit field, whatever a module calls its knobs.**
-The examples below are named `<ChonVerb> / <BongDelay>` because those were the
+The examples below are named `<BusVerb> / <BusDelay>` because those were the
 only two effects when this was measured; a module names its own twelve slots
 in its manifest and the mapping is unchanged. Note the consequence: because
 the companion fields ARE slots 7, 9 and 11, a stepped control can only live
@@ -588,7 +588,7 @@ documented anywhere:
   positions, repeatedly.
 - **SHMR independently needed `$c`'s knob field, not `$b`'s** — the
   same off-by-one word.
-- **Slot 11 confirmed dead for both effects TESTED** (ChonVerb's →DEL and BongDelay's
+- **Slot 11 confirmed dead for both effects TESTED** (BusVerb's →DEL and BusDelay's
   FRZE), which rules out a per-effect descriptor fault and leaves the
   slot itself.
 
@@ -607,8 +607,8 @@ map.
 param-driven companion renders **bit-identical** to the
 build-time overrides (`MODE=`/`DMODE=`) it duplicates — with negative
 controls. `send_probe` has `--dmode/--dptch/--dfrz/--width/--gate/--rdel`.
-The end-to-end path is proven locally: ChonVerb's `-DEL` select at 3 feeds
-BongDelay at 0.375 FS peak; at 0, digital silence.
+The end-to-end path is proven locally: BusVerb's `-DEL` select at 3 feeds
+BusDelay at 0.375 FS peak; at 0, digital silence.
 ⚠️ What is STILL impossible locally: changing a parameter **mid-run** —
 dsp_host writes params once before the first block — so FREEZE still engages
 at sample 0 and holds silence. Testing freeze-on-a-filled-line remains

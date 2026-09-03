@@ -9,7 +9,7 @@ the crossfader position and any held MIDI note into four halfwords of the
 record that are written every frame and never read. They arrive on the DSP
 side as `r6+$6..$9`. Without it the DSP has no way to know what a bar is.
 
-**The formatter cave** draws BongDelay's TIME knob: the division name while
+**The formatter cave** draws BusDelay's TIME knob: the division name while
 the DSP's sticky snap holds one, milliseconds otherwise.
 
 `NOTEMPO=1` installs neither, and the DSP side then reads zeros with SYNC a

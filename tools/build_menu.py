@@ -120,8 +120,8 @@ RENAMES = {
         (6, b""), (7, b""), (8, b""), (9, b""), (10, b""), (11, b""),
     ],
 }
-ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"CVRB", "SEND": b"SEND"}
-FULLNAME = {"DELAY SERVER": b"BongDelay", "REVERB SERVER": b"ChonVerb",
+ABBR = {"DELAY SERVER": b"BDLY", "REVERB SERVER": b"BVRB", "SEND": b"SEND"}
+FULLNAME = {"DELAY SERVER": b"BusDelay", "REVERB SERVER": b"BusVerb",
             "SEND": b"Send"}
 
 # (page-array index, default byte). Set explicitly for every knob we enable,

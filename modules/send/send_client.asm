@@ -22,7 +22,7 @@
 ;
 ;                       ⚠️ FOUR ACCUMULATOR BUFFERS, NOT TWO, AND THAT IS THE
 ;                       WHOLE CROSS-CORE RACE FIX (docs/XBUS.md step 3;
-;                       hardware-confirmed 17 Aug 2026 by moving BongDelay
+;                       hardware-confirmed 17 Aug 2026 by moving BusDelay
 ;                       between tracks 1 and 4, which killed the stutter --
 ;                       a dispatch-position dependency no algorithmic cause
 ;                       has). TWO CANNOT BE MADE SAFE AT ANY CLEAR TIME: at
@@ -73,7 +73,7 @@
 ;                        sixteen, so these are the ONLY sites that scale the
 ;                        offset back down to a bare index (`asr #$4`).
 ;   Y:0x9c7..0x9ca      DELAY send COUNT, one per accumulator buffer -- the same
-;                        mechanism for the DELAY bus (landed with BongDelay's
+;                        mechanism for the DELAY bus (landed with BusDelay's
 ;                        auto-gain). Every DELAY-bus writer registers here:
 ;                        SEND (this file) and REVERB SERVER's ->DEL send, both
 ;                        unconditionally, because both write the accumulator
@@ -349,7 +349,7 @@ notfirst:
 ; with the send and never changes character.
 ;
 ; CONFIRMED ON HARDWARE 17 Aug 2026: changing track 5 -- core 0's POSITION 0,
-; the housekeeper -- from ChonVerb to Send cured static on a core-1 signal
+; the housekeeper -- from BusVerb to Send cured static on a core-1 signal
 ; path, with nothing on core 1 touched. Only the flip's timing changed.
 ; Full evidence table in docs/XBUS.md step 3.
 ;
@@ -398,8 +398,8 @@ notfirst:
 ; -29.76 / -31.10 dB for N = 0..6. That tracks 20*log10(1/(N+1)) to 0.01 dB
 ; the whole way -- every idle client cost a full share. Sam heard it as the
 ; bus path being "much quieter" than the same audio on its own track.
-; Same defect and same fix as ChonVerb's phantom ->DEL registration; this is
-; the bigger one, because ChonVerb is on one track and SEND is on all of them.
+; Same defect and same fix as BusVerb's phantom ->DEL registration; this is
+; the bigger one, because BusVerb is on one track and SEND is on all of them.
 ;
 ; ⚠️ THE KNOBS ARE READ STRAIGHT FROM r6, not from a decoded copy: the
 ; per-sample loop below reads exactly these two words as its multipliers, so

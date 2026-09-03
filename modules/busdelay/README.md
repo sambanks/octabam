@@ -1,10 +1,10 @@
-# BongDelay
+# BusDelay
 
 A multi-mode delay — CLEAN, GRAIN (a pitched granular cloud over the delay
 lines: Nimbus's grain readers, four per line, one continuous pitch) and
 REVERSE — with tape-style wow/flutter (DPTH/RATE), drive (DRV, doubling as
 GRAIN's scatter depth) and a FREEZE hold available in **every** mode. PITCH
-mode was retired in v5 (3 Sep 2026): GRAIN's pitch is the harmoniser now. Its wet can be sent on into ChonVerb over the bus (`-VRB`),
+mode was retired in v5 (3 Sep 2026): GRAIN's pitch is the harmoniser now. Its wet can be sent on into BusVerb over the bus (`-VRB`),
 which is the series topology the stock firmware has no path for.
 
 Hosted on payload B (core 1), which serves **tracks 1–4**.

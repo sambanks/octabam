@@ -1,4 +1,4 @@
-"""ChonVerb -- an eight-line FDN reverb with shimmer, gating and mode select.
+"""BusVerb -- an eight-line FDN reverb with shimmer, gating and mode select.
 
 Hosted on payload A (core 0), which serves TRACKS 5-8 -- measured 10 Aug 2026
 and inverted from what every doc assumed before then. Test it on track 5.
@@ -17,15 +17,15 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="chonverb",
+    name="busverb",
     key="REVERB SERVER",
     kind=Kind.DSP_EFFECT,
     doc="Eight-line FDN reverb: ROOM/PLATE/BIG, shimmer, gate, mid/side width.",
     menu=MenuEntry(
         fx2_id=0x07,
         donor_desc=0x400d58b8,        # DARK REV
-        abbr=b"CVRB",
-        fullname=b"ChonVerb",
+        abbr=b"BVRB",
+        fullname=b"BusVerb",
         build_tag=True,
     ),
     params=(
@@ -76,7 +76,7 @@ MODULE = Module(
               doc="MOD speed multiplier; the panel shows it 1-based"),
     ),
     dsp=DspSection(
-        asm="modules/chonverb/reverb_server.asm",
+        asm="modules/busverb/reverb_server.asm",
         priority=1,                       # after SEND, before the delay
         # Payload A -> the core serving TRACKS 5-8 (the docstring's measured
         # inversion). The build's SPEC table still hardcodes this pairing;

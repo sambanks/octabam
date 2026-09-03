@@ -63,7 +63,7 @@ proc:
         add     #>$4000,a
         move    a,x:(r7+$2f)
 
-; ---- MODE: pick the partial-ratio table (ChonVerb's slot-7 decode) --------
+; ---- MODE: pick the partial-ratio table (BusVerb's slot-7 decode) --------
         move    x:(r6+$c),a
         and     #>$ff00,a
         move    a1,x0

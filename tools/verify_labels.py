@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Our mode selects print their WORDS on the unit, not their numbers.
 
-    python3 tools/verify_labels.py [remix]        (default: chongbong)
+    python3 tools/verify_labels.py [remix]        (default: bus)
 
 PLAN §6's gate. `Param.labels` used to be authored, schema-checked and then
 never read -- the panel drew `1 2 3` where the manifest said FOLD RING BOTH.
@@ -32,7 +32,7 @@ IMAGE = pathlib.Path("out/mainos_bus.bin")
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "chongbong"
+    name = sys.argv[1] if len(sys.argv) > 1 else "bus"
     env = {**os.environ, "REMIX": name, "XBUS": "1", "SPEC": "1"}
     r = subprocess.run([sys.executable, "tools/build_bus.py"],
                        capture_output=True, text=True, env=env)

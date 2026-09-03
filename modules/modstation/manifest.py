@@ -15,7 +15,7 @@ box never had -- tremolo, vibrato and auto-pan:
 
 ⚠️ **FX1 ONLY, and it enforces that itself.** It needs a per-track delay line,
 and beside the servers the only free per-track buffer is the FX1 slot: every
-FX2 instance buffer is ChonVerb's tank on core 0 or BongDelay's line on
+FX2 instance buffer is BusVerb's tank on core 0 or BusDelay's line on
 tracks 3-4. It reads its base from the host's bump allocator at INIT (never
 in proc -- docs/DSP.md section 10), and if that base is an FX2 slot
 (>= 0x4000) it runs as a dry pass and writes NOTHING. That promise is what

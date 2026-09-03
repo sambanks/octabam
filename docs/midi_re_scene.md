@@ -120,7 +120,7 @@ Event loop `FUN_40061a94`, queue `0x460d17ae`, jump table `0x40061cfa`
 
 ## 4. Assessment for our slots
 
-**None of ChonVerb SHMR (6) / MODE (7) / GATE (10), BongDelay FRZE (11) /
+**None of BusVerb SHMR (6) / MODE (7) / GATE (10), BusDelay FRZE (11) /
 MODE (7) can be scene-locked**, and nothing on page 1 can carry a companion
 lock either. Page-1 slots 0..5 of both effects morph today with no work.
 

@@ -22,7 +22,7 @@ raw image. `aaa` segfaults on this image.
    selective assignment like any stock effect. Page 1 already scene-locks;
    page 2 cannot; so nothing is done. (The cave still publishes fader+1 at
    `r6+$8`, unread — a spare word, not a feature.)
-3. **Tier 3 — notes.** **Note → BongDelay PITCH interval** first ("funnest").
+3. **Tier 3 — notes.** **Note → BusDelay PITCH interval** first ("funnest").
    HOLD semantics: the last note sticks after note-off; retune by tapping.
    A never-received note (0) → the PTCH select behaves exactly as today.
 4. `midi` off `main` @ `1a1929b`; caves in `modules/tempo-sync/` (originally `cf/`); the level-voicing session
@@ -40,8 +40,8 @@ a clock/tempo estimator writing `0x80001818/14`).
 **CC map** (handler `0x4000e79c`): CC 16–45 → `idx = cc−16` (bounds `< 30`),
 posted as kind `0x40` to the kernel queue `0x460d17ae`; consumer `0x40062496`
 maps `idx/6` through `{0,2,1,3,4}` to page_kind, `flat = page_kind·6 + idx%6`.
-**CC 40–45 = FX2 slots 0–5** — our page-1 knobs (ChonVerb TIME/MOD/SIZE/HP/LP/IN,
-BongDelay TIME/FDBK/TONE/PING/-VRB/IN, SEND -DEL/-VRB) should be live TODAY;
+**CC 40–45 = FX2 slots 0–5** — our page-1 knobs (BusVerb TIME/MOD/SIZE/HP/LP/IN,
+BusDelay TIME/FDBK/TONE/PING/-VRB/IN, SEND -DEL/-VRB) should be live TODAY;
 unverified on hardware ⬜. Other CCs: 7/46 level, 47 cue, 8 AMP BAL, **48
 crossfader**, 49–51 mute/solo/cue, 52–54 arm, 55/56 scene select, 59/60 synth
 note on/off, 61 send request, 112–127 → `0x8000000c`.
@@ -122,7 +122,7 @@ cost only. Local verification: `dsp_host` pokes `r6+$9`, render PITCH mode
 with a tone, measure the shifted partial against `2^(n/12)`.
 
 ### Tier 2 DSP: fader → FREEZE (and more)
-BongDelay: `FRZE = knob select OR (fader ≥ 96 with release at ≤ 80)` — the
+BusDelay: `FRZE = knob select OR (fader ≥ 96 with release at ≤ 80)` — the
 existing freeze crossfade handles engage/disengage. ~12 words. Later: fader →
 `-VRB` blend, reverb SHMR, a runaway feedback — each a few words, all voicing.
 
@@ -146,7 +146,7 @@ path (page 1 since v5.1; bit-identical at unison, spectral elsewhere). The cave 
   cave follows it, `0x400d7080` there): `r6+$8` = fader+1 (1 = fully B,
   128 = fully A, 0 = no cave), `r6+$9` = held note or 0. Bytes pinned in
   `build_bus.py`. ✅ assembled, ⬜ hardware.
-- **Note → PITCH interval** (`modules/bongdelay/delay_server.asm` after `pintend`): the
+- **Note → PITCH interval** (`modules/busdelay/delay_server.asm` after `pintend`): the
   DSP latches the note in `y:>$090a` (HOLD); iterative `2^(-1/12)` multiply,
   ≤ 25 mpys per block. ✅ `make verify-midi`: notes 96/91/72/84 land within
   15 cents of the +12/+7/−12/unison selects; no-note is bit-identical.
@@ -172,8 +172,8 @@ path (page 1 since v5.1; bit-identical at unison, spectral elsewhere). The cave 
 
 ## Work order
 
-1. ✅ **Tier-1 page 1 on hardware (24 Aug, no flash)**: CC 40 on T3's channel moved BongDelay TIME, CC 7 moved LEVEL; the OT echoes TIME as CC 40 with CC OUT on. Driven from `tools/ot_midi.py` (CoreMIDI via ctypes, no deps) through a Midihub `FROM A → FILTER(drop realtime) → OCTATRACK` pipe. Previously: ⬜: CC 40–45 on T1's channel
-   → BongDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
+1. ✅ **Tier-1 page 1 on hardware (24 Aug, no flash)**: CC 40 on T3's channel moved BusDelay TIME, CC 7 moved LEVEL; the OT echoes TIME as CC 40 with CC OUT on. Driven from `tools/ot_midi.py` (CoreMIDI via ctypes, no deps) through a Midihub `FROM A → FILTER(drop realtime) → OCTATRACK` pipe. Previously: ⬜: CC 40–45 on T1's channel
+   → BusDelay TIME etc. (Sam, any controller.) Falsifier: nothing moves →
    the descriptor enable bitmap or the writer's disabled-slot check bites us.
 2. ✅ **Cave v2** (built; relocation to the `0xff` padding deferred — the zero-run site is hardware-proven) (`modules/tempo-sync/tempo_cave.s`): fader + note words, relocate to the
    `0xff` padding. `make check` + hardware: `TPROBE`-style probe reading

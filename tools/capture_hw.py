@@ -38,7 +38,7 @@ that are easy to tell apart in a spectrum:
     hardware pass found it unreachable from a sane mix. Do not dismiss a real
     distortion report by comparing against 0.35.
 
-HOW TO USE IT. Play a steady tone or a simple loop into the send with ChonVerb
+HOW TO USE IT. Play a steady tone or a simple loop into the send with BusVerb
 on the receiving track, capture ~8 s, then run --analyse. Capture the WORKING
 case too if one exists (send level at zero, or the reverb on its own track):
 the comparison is worth far more than either recording alone.

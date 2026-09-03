@@ -317,7 +317,7 @@ def _measure_loop(name, src, lines, i):
     # and the span is corrected below from "every alternative summed" to
     # "dispatch + the worst alternative", so the count stays a per-sample
     # ceiling for whichever mode is selected instead of pricing every engine
-    # at once. N MIDs are allowed: BongDelay has CLEAN/PITCH/TAPE, and
+    # at once. N MIDs are allowed: BusDelay has CLEAN/PITCH/TAPE, and
     # pricing PITCH+TAPE together would overstate it by a whole engine.
     fork = {}
     mids = []
@@ -491,7 +491,7 @@ def main():
 
     # The modules to price come from the SELECTED REMIX, not a hard-coded
     # list -- a card of inserts and the shipping image are different loads,
-    # and until 29 Aug this tool priced chongbong's engines whatever REMIX
+    # and until 29 Aug this tool priced `bus`'s engines whatever REMIX
     # said, which made every insert's cost an inspection guess.
     import os
     from remix.schema import BusRole
@@ -542,7 +542,7 @@ def main():
                               # The same mix keyed by MODULE KEY rather than
                               # by asm stem, so a caller can print the name
                               # the operator reads on the panel: `reverb
-                              # server` is a filename, `ChonVerb` is what the
+                              # server` is a filename, `BusVerb` is what the
                               # remixer calls it everywhere else.
                               worst_core_modules={
                                   next(m["key"] for m in mods

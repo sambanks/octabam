@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """NIMBUS render gates: the grains play at UNITY, and the window sums flat.
 
-The open item on modules/nimbus/README.md (3 Sep 2026): BongDelay v5 took
+The open item on modules/nimbus/README.md (3 Sep 2026): BusDelay v5 took
 this engine's read geometry and measured 2x the input frequency at "unity"
 -- the write head advances a sample per sample and the distance did not grow
 with the grain's phase, so the read position advanced at TWO samples per

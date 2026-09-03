@@ -3,7 +3,7 @@
 Nimbus owns the core-private FX2 buffer region Y:0x4000-0xBFFF, which is
 only free because every other module in an insert remix has no Y footprint
 at all. That makes it a deliberately narrow selection: ONE Nimbus per core
-(two instances would share one buffer), and no server, since ChonVerb's tank
+(two instances would share one buffer), and no server, since BusVerb's tank
 lives in exactly that region.
 
 `mutables` carries the three zero-footprint inserts together; this remix is

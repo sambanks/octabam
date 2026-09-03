@@ -4,7 +4,7 @@ A Mutable-Instruments-Warps-flavoured **ring modulator / wavefolder**, and the
 first module built entirely against the manifest contract (`docs/MODULES.md`)
 with no build knowledge of its own.
 
-Unlike ChonVerb and BongDelay it is a plain **per-track insert**: no bus role,
+Unlike BusVerb and BusDelay it is a plain **per-track insert**: no bus role,
 no shared-window buffers, placed in **both payloads**, so it runs on any of
 the eight tracks and several tracks can host their own instance at once. All
 state lives in the instance's own r7 block.

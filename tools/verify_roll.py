@@ -2,7 +2,7 @@
 """Prove an alternate reverb engine is BIT-IDENTICAL to the shipping one.
 
     python3 tools/verify_roll.py dsp/reverb_rolled.asm
-    python3 tools/verify_roll.py cand.asm --ref modules/chonverb/reverb_server.asm
+    python3 tools/verify_roll.py cand.asm --ref modules/busverb/reverb_server.asm
 
 PLAN.md step 1 rolled the tank into a loop and moved per-line state out of
 the full `r7` block into absolute Y (landed; the shipping engine is the
@@ -157,7 +157,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("candidate", help="the engine under test, e.g. dsp/reverb_rolled.asm")
-    ap.add_argument("--ref", default=registry.asm("chonverb"),
+    ap.add_argument("--ref", default=registry.asm("busverb"),
                     help="the engine it must match (default: the shipping one)")
     args = ap.parse_args()
 
@@ -179,7 +179,7 @@ def main():
 
     # ---- the control, first: can this comparison see anything? -----------
     # Build the REFERENCE once with no MODE override and render it at two HP
-    # settings. HP=0 is documented in modules/chonverb/reverb_server.asm as an exact bypass
+    # settings. HP=0 is documented in modules/busverb/reverb_server.asm as an exact bypass
     # of the in-loop low cut, so HP=0 vs HP=64 is a real change to the audio.
     ref_mem, ref_words, ref_free = build(args.ref, None, "ref_default")
     c0 = render(ref_mem, wav, SCRATCH / "ctl_hp0.wav", ("HP=0",))

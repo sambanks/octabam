@@ -440,14 +440,14 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
     elif pins or window:
         # WHAT THIS MODULE PINS, AND WHERE. The list of stock effects it
         # costs you does NOT belong here: it is the same seven for every
-        # pinner, so printing it per module made ChonVerb and BongDelay look
+        # pinner, so printing it per module made BusVerb and BusDelay look
         # like two separate bills for one debt. It is a property of the
         # SELECTION -- the ledger refuses an allocating stock effect beside
         # ANY pinner -- so the LOADED pane states it once.
         #
         # What genuinely differs is which slots, on which core, for which
-        # tracks, and that is worth saying: ChonVerb is all four of core 0's
-        # and BongDelay two of core 1's, and they serve different tracks.
+        # tracks, and that is worth saying: BusVerb is all four of core 0's
+        # and BusDelay two of core 1's, and they serve different tracks.
         n = 2 * pins + 2 * window
         which = ("all 4 buffer slots" if n == 4 else
                  "2 core-private buffer slots" if pins else
@@ -526,7 +526,7 @@ def allocating_names() -> str:
 def pins_fx2(mod) -> bool:
     """Does this module hold FX2 instance buffers at fixed addresses? The
     ledger's own `fixed` test, in one place so the remixer cannot drift
-    from it (it did: BongDelay declares owns_fx2_buffers=False because its
+    from it (it did: BusDelay declares owns_fx2_buffers=False because its
     lines are in the shared window, and the pane said nothing about buffers
     for it while the ledger refused it beside all seven)."""
     from remix.schema import YBase
@@ -541,8 +541,8 @@ def pinned_slots(mod) -> int:
     owns_fx2_buffers is the two CORE-PRIVATE slots (0x4000/0x8000); a
     substituted ybase is the two SHARED-WINDOW ones (0x30000/0x34000 on core
     0, 0x38000/0x3c000 on core 1 -- measured, X:0x255 in both payloads).
-    ChonVerb has both and so holds all four; Nimbus the first pair;
-    BongDelay the second.
+    BusVerb has both and so holds all four; Nimbus the first pair;
+    BusDelay the second.
     """
     from remix.schema import YBase
     c = getattr(mod, "claims", None)

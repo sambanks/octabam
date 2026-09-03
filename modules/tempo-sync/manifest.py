@@ -19,7 +19,7 @@ changes its fx2 id does not change this cave, and the two then disagree
 silently -- the DSP simply never sees a tempo. Until the build can patch
 values into a cave, an id change here means re-assembling and re-pinning.
 
-The formatter cave is BongDelay TIME's display: it prints the division name
+The formatter cave is BusDelay TIME's display: it prints the division name
 ("1/8") while the DSP's sticky snap holds one and milliseconds otherwise,
 using the same integers as the DSP rule. It is position-independent and its
 two state longs live inside the cave.
@@ -57,7 +57,7 @@ MODULE = Module(
     key="TEMPO SYNC",
     kind=Kind.CF_PATCH,
     doc="ColdFire caves: publishes tempo/fader/note to the DSP, and draws "
-        "BongDelay TIME as a tempo division.",
+        "BusDelay TIME as a tempo division.",
     cf_patches=(
         CavePatch(
             label="tempo cave",
@@ -78,7 +78,7 @@ MODULE = Module(
             # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --
             # stock DELAY TIME's own configuration.
             registers_formatter=FormatterReg(module="DELAY SERVER", slot=0),
-            report_note=", registered as BongDelay TIME's formatter",
+            report_note=", registered as BusDelay TIME's formatter",
         ),
     ),
 )

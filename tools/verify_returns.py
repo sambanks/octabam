@@ -19,7 +19,7 @@ What it proves, and the control that makes each proof mean something:
                        survives; a mono M would have thrown it away)
   not BUS           -> SAT=TAPE with CRSH=127 returns nothing (it crushes),
                        and the host keeps printing
-  delay             -> the same four for BongDelay, on the DLY knob (RING)
+  delay             -> the same four for BusDelay, on the DLY knob (RING)
   both              -> both returns at once = the sum of each alone
   no runaway        -> a station that SENDS ->VRB while RETURNING the reverb
                        does not feed the return back into the bus: the tail

@@ -1,4 +1,4 @@
-| BongDelay TIME display formatter -- ColdFire code cave #2 (24 Aug 2026)
+| BusDelay TIME display formatter -- ColdFire code cave #2 (24 Aug 2026)
 |
 | Registered as TIME's P+0x0ca ("A") formatter with B = 0: stock DELAY
 | TIME's own configuration (a plain dial that prints whatever A writes).

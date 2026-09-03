@@ -10,7 +10,7 @@ us about), and FRZE stops the write head so the last 743 ms becomes a frozen
 cloud to graze.
 
 ⚠️ ONE NIMBUS PER CORE. The buffer is the fixed core-private FX2-instance
-region Y:0x4000-0xBFFF -- the same ground ChonVerb's tank uses in chongbong.
+region Y:0x4000-0xBFFF -- the same ground BusVerb's tank uses in `bus`.
 Safe in an insert remix because every module there is zero-Y-footprint
 (exactly the argument BUS.md made for the hardcoded-base server), but two
 Nimbus instances on one core would share one buffer, and a legacy project
@@ -69,7 +69,7 @@ MODULE = Module(
         gate_label=None,
     ),
     # The 743 ms line is hardcoded into Y:0x4000-0xBFFF -- the same per-CORE
-    # region ChonVerb's tank uses, which is why the two cannot share a core
+    # region BusVerb's tank uses, which is why the two cannot share a core
     # and why this module has its own remix.
     claims=Claims(owns_fx2_buffers=True),
     harness=Harness(layout_char="N", is_server=False),

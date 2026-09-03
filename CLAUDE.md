@@ -136,7 +136,7 @@ memory and each half of the tracks can reach only its own core's server — wors
 than today, **and it still makes sound.** The build guards this. Do not ungate it.
 
 **The track↔core mapping is INVERTED from old assumptions**: payload A serves
-**tracks 5-8** (ChonVerb), payload B serves **tracks 1-4** (BongDelay).
+**tracks 5-8** (BusVerb), payload B serves **tracks 1-4** (BusDelay).
 Measured 10 Aug 2026 via the MrkVerb32 marker flash, after the assumption cost
 two flashes and a session chasing "R13 is dead" (it was alive on tracks 5-8).
 Kept deliberately: delay on low tracks, reverb downstream. Test the reverb on
@@ -148,7 +148,7 @@ Driving the wrong one renders silence, which reads as a broken algorithm.
 **A DESCRIPTOR'S DISPLAY FORMATTER OVERRIDES ITS VALUE COUNT, and a cloned
 descriptor inherits the DONOR's.** A slot can carry a correct count, default,
 name and enable bit and still draw as something else entirely — or as nothing
-at all. Found on the 17 Aug flash: BongDelay clones SPRING REV, the formatter
+at all. Found on the 17 Aug flash: BusDelay clones SPRING REV, the formatter
 fix-up in `build_bus.py` was gated to the reverb, and three of six page-2
 slots drew wrong. WOW inherited SPRING TYPE's word-label renderer whose table
 has THREE entries, was asked to draw 0..127, and **drew no knob at all**;
@@ -183,9 +183,9 @@ broken, believe the hardware and go looking for what the harness omits.
 LEVEL.** The auto-gain divides the accumulator by the number of registered
 clients, so a writer that registers unconditionally and then writes zero
 dilutes the real senders by N/(N+1) — **−6 dB with a single sender.** Two
-instances found the same day, 17 Aug: ChonVerb registered for its `→DEL` send
+instances found the same day, 17 Aug: BusVerb registered for its `→DEL` send
 even when `→DEL` was off (since gated on the knob, measured −6.02 → +0.00 dB;
-the send itself was later retired), and BongDelay's own `IN` knob would have
+the send itself was later retired), and BusDelay's own `IN` knob would have
 done it too if its default
 had stayed non-zero on a return track with no audio to send. **Gate the
 registration on the knob, and remember the level knob is usually decoded
@@ -205,7 +205,7 @@ does not contain.** `SPEC=1` (which `make render` sets) aliases the absent
 server's id to the SEND client — deliberately, so a wrong chooser pick
 becomes a send. Locally that alias renders a dry passthrough: silence over
 the bus, dry in a `--direct` control, no error anywhere. This produced the
-12 Aug "BongDelay outputs nothing in any config" session — the delay was
+12 Aug "BusDelay outputs nothing in any config" session — the delay was
 never instantiated; every measurement ran a SEND. Delay work needs the
 hatch (`make render-delay`), and `send_probe.py` now dies when a D layout's
 DELAY entry equals SEND's. The general rule: before believing a *negative*
@@ -214,7 +214,7 @@ family as "disassemble what you assemble".
 
 **IN THE SHIPPING REMIX, payload A's half of the shared window is FULLY
 OWNED** (a remix without the reverb frees it, which is how the insert
-collection has room to stack): ChonVerb's
+collection has room to stack): BusVerb's
 relocated buffers at `0x30000`/`0x34000`, bus scratch at `0x36000-0x360d2`
 (grew 12 Aug for the DELAY send counts + reciprocal table, and again 17 Aug
 when the accumulators went to FOUR buffers for the cross-core race fix).
@@ -257,8 +257,8 @@ ASCII is a smashed return address, so the copy destination is fixed-size —
 INFERRED, the copy is not located; the rule itself is measured (all 30 stock
 page descriptors are ≤4 chars with byte 5 zero). `schema.MenuEntry` now
 refuses both over-lengths and `build_bus.py` re-checks the string it writes,
-tag included — which caught two diagnostic delay names (`BongDlyRPLY`,
-`BongDlyNOCF`) that had been filling all 13 bytes since 24 Aug 2026.
+tag included — which caught two diagnostic delay names (`BusDlyRPLY`,
+`BusDlyNOCF`) that had been filling all 13 bytes since 24 Aug 2026.
 
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so

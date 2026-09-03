@@ -15,9 +15,9 @@ other across the core boundary. This document is the mechanism.
 ## The design
 
 ```
-CORE 0   track 5    ChonVerb    Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo) = 65,536 words = 1.49 s
+CORE 0   track 5    BusVerb    Y:0x4000-0xBFFF (private) + Y:0x30000-0x37FFF (shared lo) = 65,536 words = 1.49 s
          6, 7, 8    Send
-CORE 1   track 1    BongDelay   Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi) = 65,536 words = 1.49 s
+CORE 1   track 1    BusDelay   Y:0x4000-0xBFFF (private) + Y:0x38000-0x3FFFF (shared hi) = 65,536 words = 1.49 s
          2, 3, 4    Send
 
          every track sends to both buses, through accumulators in the shared window
@@ -56,7 +56,7 @@ into the current write accumulator of each bus it feeds and registers
 itself in that bus's client count. Servers consume the *summed previous*
 work — the bus is deliberately block-late.
 
-BongDelay's own wet can be sent onward into the reverb (`-VRB`, default 0):
+BusDelay's own wet can be sent onward into the reverb (`-VRB`, default 0):
 a **core-1 writer into core-0's reverb accumulator**, the series route. The
 reverse route (reverb → delay) is forbidden by design — it closes a
 feedback loop across both cores.
@@ -129,7 +129,7 @@ a per-block client count; the server multiplies the summed block by
 ❌ **This said 1/N until 30 Aug 2026, and the law changed on 17 Aug** (shipped
 as R27). N sources sum as N only when they are CORRELATED; real tracks are
 not, and sum as √N — so dividing by N over-corrects real material by √N,
-3 dB per doubling. `modules/chonverb/reverb_server.asm` §"THE LAW IS
+3 dB per doubling. `modules/busverb/reverb_server.asm` §"THE LAW IS
 1/sqrt(N)" is the authority, and `docs/CAPTURE.md` capture E measured it.
 
 ❌ The justification quoted here was worse than the number: *"Measured flat:
@@ -184,9 +184,9 @@ it, swapping what ran on track 5 — is in `docs/history/XBUS_LOG.md`.
   single-core and always trivially in lockstep. The bit-identity gate
   proves a change preserved behaviour; only the unit can say a timing
   defect is gone, and the decisive configuration is the one that exposed
-  it: BongDelay on track 1, fed over the bus.
+  it: BusDelay on track 1, fed over the bus.
 - **The free diagnostic lever, costing no flash: change what is on track
-  5.** T5 is core 0's position 0 — the housekeeper — so swapping ChonVerb
+  5.** T5 is core 0's position 0 — the housekeeper — so swapping BusVerb
   for a Send there moves the flip in time and nothing else. It has isolated
   core-1 defects repeatedly.
 - Characterised, unexplained residual: at 6–7 senders, 2 samples in 16,305
@@ -210,10 +210,10 @@ separating the layout change from the latency change completely. See
 | range | what | notes |
 |---|---|---|
 | `0x30000–0x30047` | stock's per-frame parameter staging ✅ | rewritten every frame — never usable |
-| `0x30000–0x37FFF` | core 0's half: ChonVerb's relocated buffers (`0x30000`, `0x34000`), shimmer line, tank state | fully owned — no free ground (`CLAUDE.md`) |
+| `0x30000–0x37FFF` | core 0's half: BusVerb's relocated buffers (`0x30000`, `0x34000`), shimmer line, tank state | fully owned — no free ground (`CLAUDE.md`) |
 | `0x31000` / `0x32000` | stock bootstraps A and B ✅ | dead after boot |
 | `0x36000+` | **bus scratch** — rotation, 4×2 accumulator sets, counts, reciprocals, role locks | the one region both cores touch |
-| `0x38000–0x3FFFF` | core 1's half: BongDelay's LineL + LineR, 16,384 words each | ping-pong, ~371 ms per line |
+| `0x38000–0x3FFFF` | core 1's half: BusDelay's LineL + LineR, 16,384 words each | ping-pong, ~371 ms per line |
 
 Constraints that shaped it: AGU modulo addressing needs power-of-2
 alignment, so big buffers start at `0x30000`/`0x34000`/`0x38000`/`0x3C000`;

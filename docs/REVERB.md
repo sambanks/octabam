@@ -1,10 +1,10 @@
-# ChonVerb — the custom reverb
+# BusVerb — the custom reverb
 
 An eight-line FDN reverb (an earlier four-line engine's source is deleted —
 recover it with `git show c1ce08d:dsp/reverb_server.asm`, in git history). It
-ships as **ChonVerb**, one of the three effects
+ships as **BusVerb**, one of the three effects
 on the shared send bus (`BUS.md`), running on the FX2 slot of any track in a
-bank. Built by `tools/build_bus.py`; source `modules/chonverb/reverb_server.asm`.
+bank. Built by `tools/build_bus.py`; source `modules/busverb/reverb_server.asm`.
 
 > ⚠️ **Reading this file:** sections below describing the four-line tank, the
 > six-tap early-reflection section, the HALL mode, or the 2048-word static
@@ -23,7 +23,7 @@ bank. Built by `tools/build_bus.py`; source `modules/chonverb/reverb_server.asm`
 > **The old standalone DARK REV replacement is retired.** Earlier builds
 > (`dsp/reverb88.asm` via `tools/build_reverb.py`) replaced stock DARK REV in
 > place, inheriting its descriptor and knob labels. That is no longer the
-> product and is not being maintained — ChonVerb has its own cloned descriptor,
+> product and is not being maintained — BusVerb has its own cloned descriptor,
 > its own id, and its own knob layout. Where this document still describes the
 > old build, it is history; the sections below marked **current** are not.
 
@@ -161,7 +161,7 @@ explicit default — an unlisted one silently keeps the donor's.
 
 ## Memory layout
 
-**Current layout (✅ measured; map from `modules/chonverb/reverb_server.asm`'s
+**Current layout (✅ measured; map from `modules/busverb/reverb_server.asm`'s
 header):** the private allocation at the hardcoded
 base `Y:0x4000` (32,768 words, `0x4000–0xBFFF`) now carries tank lines only;
 every other buffer moved to the shared window, giving **65,536 words (1.49 s)
@@ -301,7 +301,7 @@ against.
 
 ## Build, verify, flash
 
-ChonVerb ships through the bus build, not the retired `build_reverb.py` path:
+BusVerb ships through the bus build, not the retired `build_reverb.py` path:
 
 ```sh
 python3 tools/build_bus.py                          # -> out/mainos_bus.bin
@@ -386,7 +386,7 @@ its traps.
 
 ## The cycle budget — measured, and much larger than assumed
 
-**There is one ChonVerb per bank**, enforced by the server-role lock in
+**There is one BusVerb per bank**, enforced by the server-role lock in
 `BUS.md` — a bank's four FX2 slots hold one reverb, one delay and two sends,
 not four reverbs. The engine was originally shaped around fitting four reverb
 instances on one chip — that is what forced the density pass
@@ -585,7 +585,7 @@ One lever is left, and one is spent:
 
 Smaller items: MOD depth's range wants calibrating by ear (older records call
 this "SHVG's range" — SHVG is a *stock DARK REV* knob label the retired build
-inherited, and ChonVerb names its own knobs, so the item is just MOD); and
+inherited, and BusVerb names its own knobs, so the item is just MOD); and
 there is an unexplained emulator-only divergence between one and two
 instances under a nonzero split.
 
@@ -748,7 +748,7 @@ not. Verified against the engine, 30 Aug 2026:
 - **BIG's decay scale is 0.67578** (R18), not 1.00.
 - ROOM and PLATE now share a diffusion coefficient, and BIG was raised.
 
-`modules/chonverb/reverb_server.asm` is the authority for every one of these
+`modules/busverb/reverb_server.asm` is the authority for every one of these
 and `docs/VOICING.md` records why each moved. The table is kept below because
 the *structure* — which levers MODE varies — is still right, and because the
 starting point is worth seeing; **read no constant out of it.**

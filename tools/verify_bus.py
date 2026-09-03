@@ -5,7 +5,7 @@ The same shape as tools/verify_roll.py (reverb engine) and tools/verify_delay.py
 (delay engine), for the third thing that has no gate of its own: the bus itself
 -- the parity word, the accumulator/wet buffers, the per-buffer send counts and
 the three copies of the housekeeping block that must stay identical across
-modules/send/send_client.asm, modules/chonverb/reverb_server.asm and modules/bongdelay/delay_server.asm.
+modules/send/send_client.asm, modules/busverb/reverb_server.asm and modules/busdelay/delay_server.asm.
 
 WHY THIS EXISTS. The bus is the one piece of this project whose defining
 property cannot be measured locally at all: dsp_host is single-core, so it is

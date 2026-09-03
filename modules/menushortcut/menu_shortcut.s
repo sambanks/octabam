@@ -13,7 +13,7 @@
 |   0x4005996c      open EFFECT 2 SETUP (takes no arguments; toggles)
 |
 | WHICH TRACK. Not hardcoded: the handler scans the eight per-track FX2 id
-| bytes at 0x80000ecc for the id it wants (7 = ChonVerb, 6 = BongDelay) and
+| bytes at 0x80000ecc for the id it wants (7 = BusVerb, 6 = BusDelay) and
 | selects the one that matches. The base is 0x80000110 + track + 0xdbc, the
 | same byte modules/tempo-sync/tempo_cave.s reads through its own hook.
 | ⚠️ If that address is wrong the scan simply never matches, and the handler
@@ -24,9 +24,9 @@
 | scratch.
 
         .text
-hrev:   moveq   #7,%d0                  | ChonVerb's FX2 id
+hrev:   moveq   #7,%d0                  | BusVerb's FX2 id
         bra.s   hcom
-hdly:   moveq   #6,%d0                  | BongDelay's FX2 id
+hdly:   moveq   #6,%d0                  | BusDelay's FX2 id
 hcom:   tst.l   0x80000012              | MIDI mode? kind 4 would resolve
         bne.s   hout                    | track+8 -- bail, menu stays open
         moveq   #4,%d1

@@ -271,7 +271,7 @@ def main():
         # THE FORMATTER MUST MATCH THE KIND OF CONTROL THE COUNT SAYS IT IS.
         # This invariant did not exist and a build that violated it SHIPPED
         # AND FLASHED (R19, tag 38): the formatter fix-up in build_bus.py was
-        # gated to the reverb, so BongDelay's page 2 inherited SPRING REV's
+        # gated to the reverb, so BusDelay's page 2 inherited SPRING REV's
         # renderers and three of six slots drew wrong on hardware --
         #   WOW  (count 128) drew NOTHING, having inherited SPRING TYPE's
         #        word-label renderer and its THREE-entry label table;

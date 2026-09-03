@@ -16,7 +16,7 @@ rather than a fader for the dirt.
 - **CRSH / SRR** are LO-FI's pair: a bit mask built once per block (0..21 bits
   cleared) and a sample-and-hold of 2, 4 or 8.
 - **FOLD / RING** are WarpFold's wavefolder and its parabolic carrier.
-- **SAT** is BongDelay's `w − w³/3` with four characters, and since the
+- **SAT** is BusDelay's `w − w³/3` with four characters, and since the
   branchless pass they are **four per-block coefficients** — `neg` (TUBE's
   asymmetry: the negative half scaled 0.75 before the curve), `pre`/`post`
   (BUS drives at half and doubles back — the gentlest knee, for a master) and

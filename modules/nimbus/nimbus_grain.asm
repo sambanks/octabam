@@ -11,24 +11,24 @@
 ; insert remix (every other module is zero-Y-footprint -- the same argument
 ; BUS.md's hardcoded-base probe made), wrong the moment two instances on one
 ; core both select Nimbus. The legacy-stock-FX2 caveat from PLAN.md applies
-; here exactly as it does to ChonVerb's tank.
+; here exactly as it does to BusVerb's tank.
 ;
 ; ---- structure ------------------------------------------------------------
 ; * Grain g's phase is (age + g*G/4) & (G-1): ONE age serves all four (the
 ;   GRAIN architecture), so a single advance moves the cloud, and the count
-;   is EVEN -- odd grain counts ripple at the grain rate (BongDelay, 12 Aug).
+;   is EVEN -- odd grain counts ripple at the grain rate (BusDelay, 12 Aug).
 ;   Grains 0/2 sum to L, 1/3 to R: per channel two triangle windows at a
 ;   half-period offset, which sum to constant power by construction.
 ; * A grain reads W - (POSbase + s_g + G + 1 + phase): it plays FORWARD at unity
 ;   rate relative to the moving write head, always at least POSbase+s_g+1
 ;   behind it, so no head ever reads ahead of the write.
 ; * s_g is a per-grain scatter LATCHED AT THAT GRAIN'S OWN WRAP from the
-;   xorshift PRNG (23-bit, shifts 15/15/8 -- BongDelay's, verbatim, with its
+;   xorshift PRNG (23-bit, shifts 15/15/8 -- BusDelay's, verbatim, with its
 ;   A2-clean dances). The latch is a branch over two moves, so no Tcc shares
 ;   condition codes with anything (the GRAIN 5d trap).
 ; * FRZE=1 stops the write head (write AND advance): the last 743 ms becomes
 ;   a static cloud, and every read stays behind the frozen W by construction.
-; * WARM-UP, ChonVerb's tagged-counter idiom (tag $2d0000|count at r7+$31,
+; * WARM-UP, BusVerb's tagged-counter idiom (tag $2d0000|count at r7+$31,
 ;   a garbage tag restarts at zero): the first 256 blocks clear 128 words
 ;   each -- the whole buffer -- zero the states, seed the PRNG, and leave the
 ;   frames untouched (pure dry out). Boot garbage is never played.
@@ -41,7 +41,7 @@
 ;   p2 DENS  scatter depth: each grain's latched start offset is
 ;            prng * DENS, up to ~4064 samples (92 ms)
 ;   p3 MIX   out = dry + MIX*(wet - dry); MIX=0 is an exact passthrough
-;   p7 FRZE  0 recording, 1 FROZEN (slot-7 companion, ChonVerb's decode)
+;   p7 FRZE  0 recording, 1 FROZEN (slot-7 companion, BusVerb's decode)
 ;
 ; ---- r7 slots -------------------------------------------------------------
 ;   $20 m        $21 scat depth Q23   $22 POSbase    $23 G-1 mask
@@ -91,7 +91,7 @@ proc:
         move    #>$ffffff,m1
         move    #>$ffffff,m2
 
-; ---- warm-up: ChonVerb's tagged counter, buffer-sized ---------------------
+; ---- warm-up: BusVerb's tagged counter, buffer-sized ---------------------
         move    x:(r7+$31),a
         move    #>$fffe00,x0
         and     x0,a                    ; tag field -- AND cleans A1 only
@@ -194,7 +194,7 @@ nb_s10:
         move    #>$2000,x0             ; 2^(23-10)
         move    x0,x:(r7+$26)
 nb_sdone:
-; FRZE: slot-7 companion (ChonVerb's decode); any nonzero value freezes.
+; FRZE: slot-7 companion (BusVerb's decode); any nonzero value freezes.
 ; The marker is the DEV freeze hook's splice point (NFRZAT=n, build_bus.py's
 ; _dev_hooks): it replaces the decoded value in `a` with a block counter's
 ; verdict, so a render can capture real material and THEN freeze it. A
@@ -215,7 +215,7 @@ nb_sdone:
         add     x0,a
         asr     #$1,a,a
         move    a,x:(r7+$32)
-; PRNG advance (BongDelay's 23-bit xorshift 15/15/8, verbatim)
+; PRNG advance (BusDelay's 23-bit xorshift 15/15/8, verbatim)
         move    x:(r7+$2e),a
         move    a1,x0
         asl     #$f,a,a

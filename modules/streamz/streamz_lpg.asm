@@ -95,7 +95,7 @@ proc:
         mpy     x0,y1,a
         move    a,x:(r7+$23)
 
-; ---- MODE: page-2 slot 7 companion (ChonVerb's decode) --------------------
+; ---- MODE: page-2 slot 7 companion (BusVerb's decode) --------------------
         move    x:(r6+$c),a
         and     #>$ff00,a
         move    a1,x0

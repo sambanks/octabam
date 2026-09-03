@@ -56,14 +56,14 @@ quits. **There is no per-track view** — the eight-track rig was retired 2 Sep
 knob values belong to the effect rather than to a track.
 
 ```
-┌ Available ───────┬ Choosers · chongbong ──┬ ChonVerb ────────────────────┐
+┌ Available ───────┬ Choosers · bus ──┬ BusVerb ────────────────────┐
 │ ── Bus ──        │ FX1  10 rows           │ Bus · id 0x07 · tracks 5-8   │
-│    BongDelay FX2 │   1 Filter             │ TIME  64  [######......] p1  │
-│  ✓ ChonVerb  FX2 │   2 Equalizer          │ MOD   30  [###.........] p1  │
+│    BusDelay FX2 │   1 Filter             │ TIME  64  [######......] p1  │
+│  ✓ BusVerb  FX2 │   2 Equalizer          │ MOD   30  [###.........] p1  │
 │ ── Insert ──     │   … 8 more             │ …                            │
 │    WarpFold  FX2 │ FX2  4 rows            │ preview  FX1 FX2 MENU        │
-│ ── Stock ──      │   1 ChonVerb    2411w  │ .--------------------------. │
-│  ✓ Filter FX1+FX2│   2 BongDelay   2469w  │ | EFFECT 2 SETUP           | │
+│ ── Stock ──      │   1 BusVerb    2411w  │ .--------------------------. │
+│  ✓ Filter FX1+FX2│   2 BusDelay   2469w  │ | EFFECT 2 SETUP           | │
 │                  │ A 74 free · B 5 free   │                              │
 └──────────────────┴────────────────────────┴──────────────────────────────┘
 ```
@@ -87,7 +87,7 @@ fixed budget, so putting something in means taking something out" — which is
 belong**. Rows are not the scarce thing: the long-list cave holds **31** of
 them (`build_bus.py` LONG_LIST), and a **stock row costs zero words** — no
 code placed, no descriptor cloned. Only *words* are scarce, and only for
-modules of ours. Two things went wrong in practice: a chongbong user pressed
+modules of ours. Two things went wrong in practice: a `bus` user pressed
 `enter` on a server and lost the other one (the caret had moved onto it), and
 the caret itself was a second cursor in a pane you were not standing in.
 
@@ -108,8 +108,8 @@ free` — and this is the thing to watch, because:
 ⚠️ **There are TWO regions, one per payload** — the same effects at
 different addresses, so the same size, 2,724 words for the default harvest —
 and `SPEC=1` puts each server on its own. Summing every module's words
-against a single region is wrong, and the pane used to do it: it read `chongbong`, the *shipping*
-remix, as `5130 words exceeds the 2724-word donor region by 2406` when the
+against a single region is wrong, and the pane used to do it: it read `bus`, the plain
+two-server remix, as `5130 words exceeds the 2724-word donor region by 2406` when the
 truth was A 2,650/74 free and B 2,719/5 free. Fixed 2 Sep 2026 by reporting
 the build's own per-payload figures and deleting the reimplemented check
 (`state.problems`). An overrun now arrives as the build's own refusal, which
@@ -120,8 +120,8 @@ So the words are spent only by modules of ours, and a swap is only
 1-for-1 in *rows*: Nimbus (500) could equally be Streamz (255) + WarpFold
 (322), or Hello World (27) + Ripple (347). Measured costs, payload A:
 Hello World 27, Streamz 255, WarpFold 322, Ripple 347, BodeShift 391,
-Nimbus 500, Rungs 880, Send 215, ChonVerb 2,411 (+24 LFO table), BongDelay
-2,154 (payload B; 2,469 before BongDelay v5).
+Nimbus 500, Rungs 880, Send 215, BusVerb 2,411 (+24 LFO table), BusDelay
+2,154 (payload B; 2,469 before BusDelay v5).
 
 **One trade is often not enough**, and the status line names the next one
 rather than leaving it to the build to refuse:
@@ -166,14 +166,14 @@ half it cut was the only actionable one. The ⚠ line sits under the rows it
 is about and is re-derived every render rather than being a snapshot of the
 moment one swap happened.
 
-**The buffer clash is the expensive one, and it is why adding ChonVerb to a
+**The buffer clash is the expensive one, and it is why adding BusVerb to a
 stock chooser costs four effects.** FLANGER, CHORUS, SPATIALIZER and COMB
 each take a per-track instance buffer from the host's bump allocator, at
-exactly the addresses ChonVerb's tank hardcodes — so the ledger refuses each
+exactly the addresses BusVerb's tank hardcodes — so the ledger refuses each
 pair, and the chooser is one list for all eight tracks so the image cannot
 keep them apart. The ledger states it one PAIR at a time, which is four
 near-identical walls of text; the pane aggregates them into the sentence
-above. What you are left with — ChonVerb, the seven stock effects that can
+above. What you are left with — BusVerb, the seven stock effects that can
 coexist, and Send — *is* `remixes/restored.py`.
 
 The three stock **reverbs** are not here — they are in CHOOSERS, because they
@@ -343,7 +343,7 @@ take a per-track instance buffer, which is **measured** — each reads
 FLANGER, CHORUS and COMB.
 
 ⚠️ It used to be three lines, one per reverb, each reading `– PLATE REV
-taken by BongDelay +1`. That said one thing three times; it named an
+taken by BusDelay +1`. That said one thing three times; it named an
 arbitrary module as the taker (`eats[0]` is just the first selection with DSP
 code — **nothing computes a per-reverb attribution**, and the `+1` was SEND);
 and at 40 columns the ` +1` wrapped onto its own line, so it read as a fourth
@@ -443,11 +443,11 @@ impossible — measured:
 
 | | today | if off-one-is-off-both |
 |---|---|---|
-| **chongbong** | region 2,724 · FX1 keeps **10 of 10** | region 6,158 · FX1 keeps **0 of 10** |
+| **bus** | region 2,724 · FX1 keeps **10 of 10** | region 6,158 · FX1 keeps **0 of 10** |
 | restored | 2,724 · 10 of 10 | 3,342 · 6 of 10 |
 
-chongbong's whole shape is *FX2 is mine, FX1 stays stock*: its FX2 chooser is
-ChonVerb, BongDelay and Send, so every stock effect is off FX2. Taking them
+`bus`'s whole shape is *FX2 is mine, FX1 stays stock*: its FX2 chooser is
+BusVerb, BusDelay and Send, so every stock effect is off FX2. Taking them
 off FX1 with it would leave the unit with **no FX1 effects at all** and hand
 the modules all 6,158 words they did not ask for.
 
@@ -532,7 +532,7 @@ inventing the rest: `cycles  3,120 free of 3,120 · worst core: nothing of
 ours · 14 stock rows not counted`.
 
 ```
-ChonVerb   — bus · id 0x07 · 2411 of 2,724 words ·
+BusVerb   — bus · id 0x07 · 2411 of 2,724 words ·
              needs the whole FX2 buffer region (blocks 7 stock effects) ·
              2 core-private Y words · not in the image
 Dark Rev   — stock · id 0x16 · free while your modules stay under 1,657 words ·
@@ -558,9 +558,9 @@ from both payloads:
 |---|---|---|
 | allocator hands out | `0x4000 0x8000 0x30000 0x34000` | `0x4000 0x8000 0x38000 0x3c000` |
 
-ChonVerb is **all four** of core 0's — tank in the core-private pair,
+BusVerb is **all four** of core 0's — tank in the core-private pair,
 relocated buffers in the shared-window pair. Nimbus is the core-private pair
-only. BongDelay is core 1's shared-window pair only (its lines are based at
+only. BusDelay is core 1's shared-window pair only (its lines are based at
 `0x38000`), so a stock effect there collides *only if* the allocator hands it
 slot 3 or 4 — which depends on how many FX2 effects the dispatcher has
 already walked this block. **Unpredictable is still a refusal**, and each
@@ -595,27 +595,27 @@ neither line.
 
 ⚠️ **The list of effects a pinner costs you is NOT on the module line**, and
 that is deliberate: it is the same seven for every pinner, so printing it per
-module made ChonVerb and BongDelay show identical lists and read as two bills
+module made BusVerb and BusDelay show identical lists and read as two bills
 for one debt. It belongs to the **image** — the ledger refuses an allocating
 stock effect beside *any* pinner — so the CHOOSERS pane says it once:
 
 ```
 no room for Flanger, Chorus, Spatializer, Comb Filter and the 3 reverbs
-— ChonVerb and BongDelay pin their slots
+— BusVerb and BusDelay pin their slots
 ```
 
 What genuinely differs per module is which slots, on which core, for which
 tracks:
 
 ```
-ChonVerb   FX2  pins all 4 buffer slots on the core serving tracks 5-8
-BongDelay  FX2  pins 2 shared-window buffer slots on the core serving tracks 1-4
+BusVerb   FX2  pins all 4 buffer slots on the core serving tracks 5-8
+BusDelay  FX2  pins 2 shared-window buffer slots on the core serving tracks 1-4
 Nimbus     FX2  pins 2 core-private buffer slots on whichever core hosts it
 ```
 
-**They are two effects, not one.** ChonVerb serves tracks 5-8 and BongDelay
-tracks 1-4, on different cores, and each ships alone: `verbonly` is ChonVerb
-without the delay, and a delay-only remix builds too (BongDelay lands on
+**They are two effects, not one.** BusVerb serves tracks 5-8 and BusDelay
+tracks 1-4, on different cores, and each ships alone: `verbonly` is BusVerb
+without the delay, and a delay-only remix builds too (BusDelay lands on
 payload B and its id aliases to SEND on A, so selecting it on tracks 5-8
 makes a send rather than silence). Showing them as one "bus" would hide the
 track range, which is the thing you have to know to use either.
@@ -696,7 +696,7 @@ the selection. Under 100 columns or so the phrases drop rather than wrap.
 ```
  words A     403 free of 3,053 · 2,650 loaded          where your modules' code goes, core 0
  words B   2,803 free of 3,053 · 250 loaded            the same on core 1
- cycles    1,676 free of 3,120 · worst core: 1× ChonVerb …   DSP time, per core per sample
+ cycles    1,676 free of 3,120 · worst core: 1× BusVerb …   DSP time, per core per sample
         FILT   SPAT  EQ  PHSR FLNG  CHOR    PLATE       SPRING        DARK      COMP  LOFI DJEQ COMB
  A ──────────────────────────────────#################################################.......────────────
  B ──────────────────────────────────#####...................................................────────────
@@ -722,7 +722,7 @@ whether or not a word had been placed:
 
 ```
  nothing placed   └─ 2,724 words yours to place into — none taken yet ─┘
- ChonVerb placed  └──── harvested, 2,724 words — 3 overwritten ────────┘
+ BusVerb placed  └──── harvested, 2,724 words — 3 overwritten ────────┘
 ```
 
 The sentence steps down to a shorter form rather than overflowing: a footer
@@ -766,8 +766,8 @@ track's** buffer, and the row names the tracks still free — those are exactly
 the ones that can host an allocating stock effect:
 
 ```
- FX2 buf A #### #### #### ####  ChonVerb has 5,6,7,8
- FX2 buf B .... .... #### ####  BongDelay has 3,4 · 1,2 keep theirs
+ FX2 buf A #### #### #### ####  BusVerb has 5,6,7,8
+ FX2 buf B .... .... #### ####  BusDelay has 3,4 · 1,2 keep theirs
 ```
 
 ⚠️ **"Free" was the wrong word and kept being read as "unused".** A track
@@ -782,8 +782,8 @@ The two panes are consistent once the timing is clear: the library says
 `Plate Rev … FX2 takes 1 of the 4 slots` (what it does *when selected on a
 track*), and the budget says what is claimed *by the image*.
 
-With `chongbong`, ChonVerb holds all four of core 0's (tracks 5–8) and
-BongDelay tracks 3–4's on core 1 — so **FLANGER on track 1 or 2 would be
+With `bus`, BusVerb holds all four of core 0's (tracks 5–8) and
+BusDelay tracks 3–4's on core 1 — so **FLANGER on track 1 or 2 would be
 fine**. The ledger still refuses it, and correctly: the FX2 chooser is one
 list for all eight tracks, so an image cannot say "FLANGER, but only on
 tracks 1–2". The refusal is the image being unable to constrain the operator,
@@ -914,7 +914,7 @@ A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
 
 Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
 `FX2`, then `MENU` — showing the firmware's own draw of that page, under a
-caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+caption saying **what** it is: `BusVerb on track 5, as the unit draws it`.
 Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
@@ -961,9 +961,9 @@ in place passed, because every field they checked was right.
 of the built image with no emulator involved:
 
 ```
-ok   REVERB SERVER: the panel prints 'ChonVerb78', which starts with the
-     declared 'ChonVerb' (the build tag follows it)
-ok   REVERB SERVER: its abbreviation is 'CVRB' == 'CVRB'
+ok   REVERB SERVER: the panel prints 'BusVerb78', which starts with the
+     declared 'BusVerb' (the build tag follows it)
+ok   REVERB SERVER: its abbreviation is 'BVRB' == 'BVRB'
 ok   REVERB SERVER: its 12 drawn slot names are the manifest's, in order
 ```
 
@@ -1021,7 +1021,7 @@ A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
 
 Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
 `FX2`, then `MENU` — showing the firmware's own draw of that page, under a
-caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+caption saying **what** it is: `BusVerb on track 5, as the unit draws it`.
 Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
@@ -1172,7 +1172,7 @@ A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
 
 Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
 `FX2`, then `MENU` — showing the firmware's own draw of that page, under a
-caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+caption saying **what** it is: `BusVerb on track 5, as the unit draws it`.
 Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
@@ -1194,7 +1194,7 @@ field they checked was right).
 things share the page, exactly as they do on the unit: the chooser list
 scrolls down the left, and the knob names belong to whichever effect the
 **track** has selected — the one the caption names, marked `▸` when its row
-is on screen. `ChonVerb78    SHMR MODE DIFF` is not a mapping.
+is on screen. `BusVerb78    SHMR MODE DIFF` is not a mapping.
 
 Knob **values** draw as dial graphics the string capture cannot read, so the
 numbers in the pane above are the truth for values and the picture is the
@@ -1242,7 +1242,7 @@ fixed 3 Sep 2026 — the page had become hard to read and, worse, wrong):
 - **Two strings that do not overlap are never fused.** Writing character by
   character let a label whose cell was taken run into its neighbour, and the
   result is a word that does not exist on the unit: **`DJ EQUALIZER1`**,
-  `COMPRESSORT 1`, `SMOD` (which is `SIZE`'s row eating ChonVerb's `MOD`). A
+  `COMPRESSORT 1`, `SMOD` (which is `SIZE`'s row eating BusVerb's `MOD`). A
   label pushed one column right is legible and obviously two things.
 - **The PART window's text is a caption, not a row.** `Pt:1 PART 1` comes
   with both FX pages and its coordinates belong to a *different* window's
@@ -1324,8 +1324,8 @@ which harness ran. All knobs are addressed by **manifest names** —
 
 | effect | path |
 |---|---|
-| chonverb | `tools/render_reverb.py` — manifest slot → its positional param name (the two tables are proven slot-aligned by the selftest); MODE via `--mode`, wet via `--wet` |
-| bongdelay | the DEV hatch (`DEV=1 XBUS=1` build → `out/dsp/mem_dev_A.mem`, rebuilt when stale) then `send_probe --layout DS --in … --wav …` |
+| busverb | `tools/render_reverb.py` — manifest slot → its positional param name (the two tables are proven slot-aligned by the selftest); MODE via `--mode`, wet via `--wet` |
+| busdelay | the DEV hatch (`DEV=1 XBUS=1` build → `out/dsp/mem_dev_A.mem`, rebuilt when stale) then `send_probe --layout DS --in … --wav …` |
 | inserts | a per-insert scratch image (`_audition` remix = the insert + SEND), dumped to `out/dsp/_audition_<name>_A.mem`; the build saves and restores `out/mainos_bus.bin` so the EMU view never silently boots a scratch |
 
 Knob overrides ride `send_probe --set=NAME=VAL` (one token — the delay's
@@ -1336,7 +1336,7 @@ Knob overrides ride `send_probe --set=NAME=VAL` (one token — the delay's
 to the fallback, which renders a *plausible dry passthrough* — peak equals
 the input amplitude, THD at the noise floor, no error anywhere (this cost a
 session on 12 Aug 2026 and was reproduced live on 31 Aug with `--pick B`
-against a chongbong image). `send_probe` now refuses to render **any**
+against a `bus` image). `send_probe` now refuses to render **any**
 module whose dispatch entry equals SEND's.
 
 Renders land in `out/_audition/`.
@@ -1348,8 +1348,8 @@ Every render — and every A/B mark — appends one JSON line to
 
 ```json
 {"t": "2026-08-31T12:45:41", "event": "render", "label": "T5",
- "effect": "chonverb", "source": "bass.wav", "wet": false,
- "knobs": {"TIME": 80, "...": 0}, "out": "T5_bass_chonverb_BIG.wav"}
+ "effect": "busverb", "source": "bass.wav", "wet": false,
+ "knobs": {"TIME": 80, "...": 0}, "out": "T5_bass_busverb_BIG.wav"}
 ```
 
 That makes a listening session addressable: "this sounds boxy" plus the
@@ -1458,7 +1458,7 @@ after each manifest change that introduced them:
 
 `tools/remix/selftest.py` (in `make verify`) holds the lines: the
 category/track-range derivation matches the measured facts for every
-module; a payload-less server is refused; chonverb's manifest slots stay
+module; a payload-less server is refused; busverb's manifest slots stay
 aligned with `render_reverb`'s positional table; and **every named, drawn
 param of every menu-bearing module must carry a `doc`** — an undocumented
 knob fails the build's checks.
@@ -1476,6 +1476,6 @@ through `rich.markup.escape`.
 - A/B marks attach only to the most recent render (no history cursor).
 - The source picker takes one directory at a time (`d`), not a tree —
   no recursion into subfolders and no in-TUI file browser.
-- Wet-only rendering is ChonVerb-only.
+- Wet-only rendering is BusVerb-only.
 - The emulator limits listed above (values, key injection, delay page
   under SPEC).

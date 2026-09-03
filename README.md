@@ -48,11 +48,12 @@ remix is a real budget decision, not a label.
 
 | remix | contains | why you would build it |
 |---|---|---|
-| **`chongbong`** | ChonVerb + BongDelay + send bus + tempo sync | the shipping image, and the default |
+| **`bamsep26`** | BusVerb + BusDelay + send + stock DELAY + three stations + tempo sync + menu shortcut | the rig: what goes on the unit, and the default |
+| **`bus`** | BusVerb + BusDelay + send bus + tempo sync | the plain two-server image — the shape of tag 77 on the unit, and the bit-identity gate's subject |
 | **`mutables`** | five inserts + send | a card of stacking effects, no servers |
 | **`nimbus`** | Nimbus + send | the granular texture, which needs a buffer region to itself |
 | **`warped`** | WarpFold + send | the smallest real selection |
-| **`verbonly`** | ChonVerb + send | the reverb alone; proves selection works |
+| **`verbonly`** | BusVerb + send | the reverb alone; proves selection works |
 | **`hello`** | HELLO WORLD + send | the reference minimal build, and the worked example to read first |
 
 ```bash
@@ -87,8 +88,8 @@ than the audio at all.
 
 | | |
 |---|---|
-| **ChonVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear. |
-| **BongDelay** | A multi-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), GRAIN (a granular cloud) and REVERSE — with tape-style wow/flutter, drive, and a FREEZE hold available in **every** mode. Its wet can be sent on into the reverb, across cores. |
+| **BusVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear. |
+| **BusDelay** | A multi-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), GRAIN (a granular cloud) and REVERSE — with tape-style wow/flutter, drive, and a FREEZE hold available in **every** mode. Its wet can be sent on into the reverb, across cores. |
 | **Send** | The bus client: any track can select it and feed `-DEL` / `-VRB`. It is also the fallback an unimplemented id degrades to. |
 
 ### Effects that run on one track
@@ -114,7 +115,7 @@ read.
 |---|---|
 | **Tempo sync** | Two ColdFire code caves: one publishes the project tempo, crossfader and held MIDI note where the DSP can read them; the other draws a TIME knob as a tempo division. The worked example of patching what the firmware *does*. |
 
-⚠️ **ChonVerb, BongDelay, Send and Tempo sync are confirmed on hardware. The
+⚠️ **BusVerb, BusDelay, Send and Tempo sync are confirmed on hardware. The
 six Mutable-flavoured inserts are not** — they are verified by local render
 and measurement and have never been flashed. Whoever flashes them is the
 first to run them on a real machine. Hello World was flashed and measured by
@@ -138,8 +139,8 @@ the same one. Nothing negotiates with anything, so inserts **stack**: one
 image can carry a whole set of them. This is far the easier thing to
 contribute, and the seven above are all of this kind.
 
-A **server** owns a bus accumulator and is *bank-bound*. ChonVerb exists only
-on core 0 and BongDelay only on core 1, one per core by design rule. That
+A **server** owns a bus accumulator and is *bank-bound*. BusVerb exists only
+on core 0 and BusDelay only on core 1, one per core by design rule. That
 asymmetry is what bought each of them a whole donor region's worth of program
 space, and it is why they can be big.
 
@@ -212,7 +213,7 @@ Below, what the *shipping* remix does with that space — one arrangement of
 many, not a property of the machine:
 
 ```
-   payload A (ChonVerb)                 payload B (BongDelay)
+   payload A (BusVerb)                 payload B (BusDelay)
    ├─ the tank: 8 lines x 4,096         └─ LineL + LineR, 16,384 each
    ├─ 4 input + 2 in-loop allpasses        (ping-pong, ~371 ms per line)
    ├─ shimmer pitch-shift line (2 K)
@@ -231,12 +232,12 @@ The bus itself lives in that scratch block — and it is the whole trick:
 ```
  any track
    SEND ──→DELAY ─────────►┌────────────────┐
-   SEND ──→REVERB ────┐    │ DELAY bus acc  │──► BONGDELAY ─► wet out on its
+   SEND ──→REVERB ────┐    │ DELAY bus acc  │──► BUSDELAY ─► wet out on its
                       │    └────────────────┘        │         track (1–4)
                       ▼                              │ -VRB send — this
               ┌────────────────┐                     ▼ write CROSSES CORES
               │ REVERB bus acc │◄────────────────────┘
-              └────────────────┘──► CHONVERB ─► wet out on its track (5–8)
+              └────────────────┘──► BUSVERB ─► wet out on its track (5–8)
 ```
 
 Every writer accumulates per block; each bus keeps **four rotating
@@ -300,9 +301,9 @@ This matters more than it sounds. A flash cycle is slow and manual, so the
 project is built around **not needing one** to make a judgement:
 
 ```bash
-make render                      # the send bus: SEND -> ChonVerb
+make render                      # the send bus: SEND -> BusVerb
 make render-delay                # the delay hatch, all servers real
-make reverb IN=loop.wav          # push audio through ChonVerb
+make reverb IN=loop.wav          # push audio through BusVerb
 make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
 ```
 
@@ -339,7 +340,7 @@ compose one, `make bus REMIX=<name>` to build it.
 ```
 PLAN.md          Read this first. End state, resource ledger, work order.
 modules/         The contributions. One directory each — this is the product.
-remixes/         Named selections of modules. chongbong is the shipping one.
+remixes/         Named selections of modules. bamsep26 is the rig and the default.
 dsp/             Shared DSP infrastructure: the null stub and the probes.
 tools/           Build, render, measure, verify.
 tools/remix/     The module schema, registry, ledger and build engine.
@@ -357,7 +358,7 @@ The documents that stay current:
 | `docs/HARNESS.md` | Rendering and measuring a module without hardware |
 | `docs/XBUS.md` | How the cross-core bus works, and why |
 | `docs/CHIP.md` | Cycles and memory, every number with a confidence marker |
-| `docs/REVERB.md` | ChonVerb: structure, parameters, memory layout |
+| `docs/REVERB.md` | BusVerb: structure, parameters, memory layout |
 | `modules/*/README.md` | Each module's own notes: what it is, what was measured, what is open |
 | `docs/VOICING.md` | What was decided by listening, and why |
 | `docs/FLASHING.md` | Getting an image onto hardware, and back off it |

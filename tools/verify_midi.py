@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Local verification of the MIDI note path (24 Aug 2026; v5 3 Sep 2026):
-note -> BongDelay GRAIN pitch (r6+$9, latched). dsp_host has no ColdFire
+note -> BusDelay GRAIN pitch (r6+$9, latched). dsp_host has no ColdFire
 cave, so the word is forced with the DNOTE= build override and the result
 compared with the PTCH knob, which drives the same 2^x law.
 

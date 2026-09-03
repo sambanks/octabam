@@ -1,6 +1,6 @@
 """Render ANY effect on a source wav, knobs addressed by their MANIFEST names.
 
-The one audition entry point for the remixer: chonverb goes through
+The one audition entry point for the remixer: busverb goes through
 tools/render_reverb.py (wet extraction, per-mode image cache, ring-out tail),
 everything else through tools/send_probe.py --wav. The caller never learns
 which -- it says "render warpfold with MIX=127 on this wav" and gets a path.
@@ -9,8 +9,8 @@ WHICH IMAGE A RENDER RUNS AGAINST is the part that has burned sessions
 (12 + 31 Aug 2026: an id absent from the image aliases to SEND and renders a
 plausible dry passthrough). So:
 
-  chonverb   render_reverb's own fingerprinted engine cache.
-  bongdelay  the DEV hatch dump (out/dsp/mem_dev_A.mem) -- rebuilt here when
+  busverb   render_reverb's own fingerprinted engine cache.
+  busdelay  the DEV hatch dump (out/dsp/mem_dev_A.mem) -- rebuilt here when
              stale, exactly `make render-delay`'s build line.
   inserts    a per-insert scratch dump (out/dsp/_audition_<name>_A.mem) built
              from a two-module remix (the insert + SEND), because the user's
@@ -167,7 +167,7 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
     OUT.mkdir(parents=True, exist_ok=True)
     stem = f"{label + '_' if label else ''}{source.stem}_{mod.name}"
 
-    if mod.name == "chonverb":
+    if mod.name == "busverb":
         sys.path.insert(0, str(ROOT / "tools"))
         import render_reverb
         mode = values.get("MODE", 2)
@@ -195,7 +195,7 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         return got
 
     # Everything else goes through send_probe --wav.
-    if mod.name == "bongdelay":
+    if mod.name == "busdelay":
         mem = _ensure_delay_mem(log)
         route = ["--layout", "DS"]        # SEND -> bus -> delay, the rig path
         tail = 3.0 if tail is None else tail

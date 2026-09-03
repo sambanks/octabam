@@ -10,7 +10,7 @@ us about), and FRZE stops the write head so the last 743 ms becomes a frozen
 cloud to graze.
 
 ⚠️ ONE NIMBUS PER CORE. The buffer is the fixed core-private FX2-instance
-region Y:0x4000-0xBFFF -- the same ground ChonVerb's tank uses in chongbong.
+region Y:0x4000-0xBFFF -- the same ground BusVerb's tank uses in `bus`.
 Safe in an insert remix because every module there is zero-Y-footprint
 (exactly the argument BUS.md made for the hardcoded-base server), but two
 Nimbus instances on one core would share one buffer, and a legacy project
@@ -75,9 +75,9 @@ MODULE = Module(
     # 16,384-word slot at init (docs/DSP.md section 10) exactly as those
     # stock effects do, so they coexist and two instances get two slots.
     #
-    # It still cannot sit beside a module with FIXED buffers there (ChonVerb,
+    # It still cannot sit beside a module with FIXED buffers there (BusVerb,
     # Nimbus): two of the allocator's four FX2 bases are 0x30000/0x34000, in
-    # payload A's half of the shared window, which is where ChonVerb's
+    # payload A's half of the shared window, which is where BusVerb's
     # relocated tank and the bus scratch live. stock_instance_buffer is the
     # claim that says "I take an allocator slot", and the ledger already
     # refuses that pairing.

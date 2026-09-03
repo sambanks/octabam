@@ -25,8 +25,8 @@ WHAT IS CHECKED, and how it knows:
   stock buffers      declared (Claims.stock_instance_buffer, from a scan
                      of the payload disassembly). A stock effect that takes
                      an instance buffer from the host's bump allocator gets
-                     a PER-TRACK base -- the very addresses ChonVerb,
-                     Nimbus and BongDelay hardcode -- and the chooser is
+                     a PER-TRACK base -- the very addresses BusVerb,
+                     Nimbus and BusDelay hardcode -- and the chooser is
                      one list for all eight tracks, so the build cannot
                      know which track it lands on. Refused beside any
                      module with fixed Y buffers.
@@ -111,7 +111,7 @@ def check(selected) -> list[str]:
 
     # ---- the per-core FX2 instance buffer region --------------------------
     # Y:0x4000-0xBFFF is TWO FX2 instance slots of 16,384 words, per core and
-    # not per instance in any sense a module can rely on: ChonVerb hardcodes
+    # not per instance in any sense a module can rely on: BusVerb hardcodes
     # its tank there and Nimbus hardcodes its granular line there, so two of
     # them on one core write over each other. Each works perfectly alone.
     # Declared rather than scanned -- see Claims.owns_fx2_buffers for why a
@@ -138,11 +138,11 @@ def check(selected) -> list[str]:
     # FX1 then FX2, so track k's FX2 effect always gets entry 1+2k
     # (docs/DSP.md, "the allocator's instance model"). Nothing is first-come.
     #
-    #   ChonVerb   all four of its core's -- tank in tracks 1-2's slots,
+    #   BusVerb   all four of its core's -- tank in tracks 1-2's slots,
     #              relocated buffers in tracks 3-4's. No track on that core
     #              can host an allocating stock effect.
     #   Nimbus     tracks 1-2's slots of whichever core hosts it.
-    #   BongDelay  tracks 3-4's (its lines are based at 0x38000/0x3c000), so
+    #   BusDelay  tracks 3-4's (its lines are based at 0x38000/0x3c000), so
     #              on ITS core an allocating stock effect is safe on tracks
     #              1-2 and collides on 3-4.
     #

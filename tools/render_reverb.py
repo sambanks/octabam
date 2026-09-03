@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Render real audio through ChonVerb in the emulator, so voicing can be judged by
+Render real audio through BusVerb in the emulator, so voicing can be judged by
 ear without a flash.
 
     python3 tools/render_reverb.py loop.wav
@@ -218,7 +218,7 @@ def engine():
     the four-line one. Every artifact below therefore carries the engine's
     stem, and build_bus.py's fixed output path is treated as scratch that is
     moved into the keyed cache immediately after each build."""
-    rv = os.environ.get("RVSRC") or registry.asm("chonverb")
+    rv = os.environ.get("RVSRC") or registry.asm("busverb")
     if not (ROOT / rv).exists():
         die(f"RVSRC={rv} does not exist")
     return rv, re.sub(r"[^A-Za-z0-9]+", "-", pathlib.Path(rv).stem)
@@ -282,7 +282,7 @@ def ensure_mem(build):
     return mem
 
 
-MODES = ["ROOM", "PLATE", "BIG"]     # modules/chonverb/reverb_server.asm's md_* order
+MODES = ["ROOM", "PLATE", "BIG"]     # modules/busverb/reverb_server.asm's md_* order
 
 
 def ensure_mode_mem(mode, build):
@@ -440,7 +440,7 @@ def report(label, L, R, src_len, normalized=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Render audio through ChonVerb in the emulator.")
+    ap = argparse.ArgumentParser(description="Render audio through BusVerb in the emulator.")
     ap.add_argument("input", help="source .wav (mono or stereo; 44.1 kHz preferred)")
     ap.add_argument("-o", "--out", help="output .wav (default: alongside the source)")
     ap.add_argument("-p", "--param", action="append", default=[], metavar="NAME=VAL",

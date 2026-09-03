@@ -127,14 +127,14 @@ register. So:
   inversions) against the shapes our modules compute by hand: best match for
   `k²` is 0.040 RMS, for `(1−k)³` also 0.040 — rough enough to feel different,
   and more expensive than the arithmetic they would replace.
-- ❌ **Nothing for ChonVerb.** Its cost is tank lines, allpasses and MACs —
+- ❌ **Nothing for BusVerb.** Its cost is tank lines, allpasses and MACs —
   memory access, not function evaluation. Its eight LFOs are triangles
   generated **per block** (~5 cycles/sample for all eight); a table read
   would cost more than the three instructions they take.
 - ❌ **Nothing in the bus path.** `send_client` is 19 instructions a sample
   of sum-and-accumulate with no function evaluation at all, and the delay's
   1/√N table is eight immediates written per block (~1 cycle/sample).
-- ⚠️ **BongDelay: two of five, and not worth it.** `smoothw` (`s = g²(3−2g)`,
+- ⚠️ **BusDelay: two of five, and not worth it.** `smoothw` (`s = g²(3−2g)`,
   18 instructions, ~24 cycles a call) has **five call sites**, and they are
   not the same kind of thing:
 
@@ -152,7 +152,7 @@ register. So:
   The two TAPE LFOs genuinely could use the sine table, and TAPE is global so
   they are paid on every path. But the saving is **~28 cycles of 2,338 (1.2%)**
   after the read's own cost, the sonic difference between a smoothstepped
-  triangle and a true sine at ~1 Hz is negligible, and **BongDelay has the
+  triangle and a true sine at ~1 Hz is negligible, and **BusDelay has the
   tightest register pressure of any module** (r7 `$00..$83` full, r0–r5 in
   use). Spending an address and a modulo register for 1.2% is a poor trade.
   Logged so it is not rediscovered; not recommended.

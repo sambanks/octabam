@@ -1,10 +1,10 @@
-"""BamSep26 -- the rig: the ChonBong bus, three stations, and the stock delay.
+"""BamSep26 -- the rig: the bus (BusVerb + BusDelay), three stations, and the stock delay.
 
 The image the set runs on. Design page:
 https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
 
-    ChonVerb    the shared reverb, hosted on one of tracks 5-8
-    BongDelay   the shared delay (v5: CLEAN / pitched GRAIN / REVERSE),
+    BusVerb    the shared reverb, hosted on one of tracks 5-8
+    BusDelay   the shared delay (v5: CLEAN / pitched GRAIN / REVERSE),
                 hosted on one of tracks 1-4, with its own ->VRB
     Send        the plain two-knob client, for a track with no station
     DELAY       stock Echo Freeze, per track: it runs on the ColdFire and
@@ -14,7 +14,7 @@ https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
     FilterStn   replaces FILTER  (id 0x04)
     Character   replaces LO-FI   (id 0x1c)
     ModStn      replaces CHORUS  (id 0x12), FX1 only
-    TEMPO SYNC  the two ColdFire caves: BongDelay's TIME reads 1/8 rather
+    TEMPO SYNC  the two ColdFire caves: BusDelay's TIME reads 1/8 rather
                 than milliseconds
     MENU SHORTCUT  MAIN MENU > CONTROL > REVERB / DELAY jumps to whichever
                 track hosts that server, and opens its FX2 page
@@ -39,7 +39,7 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="bamsep26",
-    doc="The rig: ChonBong bus + three stations + the stock delay.",
+    doc="The rig: bus (BusVerb + BusDelay) + three stations + the stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
              "FILTER STATION", "CHARACTER STATION", "MODULATION STATION",
              "TEMPO SYNC", "MENU SHORTCUT"),

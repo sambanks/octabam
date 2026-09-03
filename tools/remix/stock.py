@@ -50,7 +50,7 @@ Two of them are special:
   a buffer       instance buffer through the host's bump allocator (they
                  read X:0x213 at init; docs/DSP.md section 10), and the
                  allocator hands out per-TRACK bases that are exactly the
-                 addresses ChonVerb, Nimbus and BongDelay hardcode. The
+                 addresses BusVerb, Nimbus and BusDelay hardcode. The
                  ledger refuses them beside any module with fixed Y
                  buffers; see Claims.stock_instance_buffer.
 

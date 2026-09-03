@@ -24,7 +24,7 @@
 ;      without any, and a probe needs no bus anyway)
 ;      make -o bus image BUILD=T1        (-o skips the bus rebuild: `make
 ;      bus` forces SPEC=1, which refuses probe builds)
-;      The probe replaces ChonVerb; flash as usual (docs/FLASHING.md).
+;      The probe replaces BusVerb; flash as usual (docs/FLASHING.md).
 ;   2. Assign the probe to an FX2 slot on a track 5-8, capture its outputs
 ;      (MicroBook ch3/4 direct, docs/CAPTURE.md) for ~5 s at BPM 60.000.
 ;   3. Change ONLY the project tempo to 180.000, capture ~5 s again.

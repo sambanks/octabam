@@ -1,4 +1,4 @@
-# ChonVerb per-mode voicing log
+# BusVerb per-mode voicing log
 
 The last open item on the reverb (`REVERB.md`): MODE's per-mode constants —
 tap scale, early-reflection level, diffusion offset — are first-pass, chosen by
@@ -18,7 +18,7 @@ buildup · `LW Pad Softspoken` sustained → tail density.
 
 ## The constants under test
 
-`modules/chonverb/reverb_server.asm`, the `md_*` block. Three values per mode:
+`modules/busverb/reverb_server.asm`, the `md_*` block. Three values per mode:
 
 | mode | tap scale | early reflections | diffusion offset |
 |---|---|---|---|
@@ -155,7 +155,7 @@ Chased properly rather than guessed at, and each step ruled something out:
 | **MOD=0 vs MOD=40, level-matched** | **crackle only with modulation on** |
 
 **It is not mine.** HALL's mod-depth scale is unity in v95, so its modulation
-path is byte-identical to `ChonVerb19` — the build already on hardware.
+path is byte-identical to `BusVerb19` — the build already on hardware.
 
 **Mechanism**: `dsp/reverb_server.asm:1112` gates the LFO advance on the call
 flag, so the modulation offset is constant within a block and jumps at every
@@ -291,7 +291,7 @@ cycles, no words.
 
 **Not yet judged by ear, and this one needs it.** It is exactly the shape
 `REVERB.md` warns about: an accidental noise source that may have been doing
-perceptual work. `ChonVerb19` — the build on hardware, the one that was liked
+perceptual work. `BusVerb19` — the build on hardware, the one that was liked
 — has this bug. Removing it may expose ringing the sawtooth was smearing, in
 which case the answer is deliberate randomisation, not putting the swap back.
 
@@ -311,7 +311,7 @@ candidates that lost were the two that had been argued for most confidently
 in Rounds 2c and 2d. Neither cost a flash.
 
 **Open: did removing it expose ringing?** The v72 caution applies directly —
-the sawtooth was an accidental dither and `ChonVerb19` has it. First listen on
+the sawtooth was an accidental dither and `BusVerb19` has it. First listen on
 the 4–12 s tail was inconclusive ("would need another couple listens").
 
 The measurement leans toward yes but **cannot settle it, for the reason
@@ -543,7 +543,7 @@ control that should move it is a broken measurement, not a null result.** The
 fourth was caught by demanding bit-identical output from a change that should
 have been a no-op. Both are cheaper than the debugging they prevent.
 
-### Hardware, 5 Aug 2026 — `ChonVerb21`, confirmed
+### Hardware, 5 Aug 2026 — `BusVerb21`, confirmed
 
 Flashed and heard on the unit. **"Much better."** Everything voiced in Rounds
 2d–5 plus the MIX law was emulator-only until this point; it all holds up on
@@ -949,8 +949,8 @@ DECAY 2.02 s, damping 6 kHz / HighShelf −24 dB, BassMult 1.5×@300 Hz, mod
 2.53 Hz/38%, COLOR 1980s, mix 100%. Sam's bounces: `out/vv_ref/{room,plate,
 hall}/{pad,stab,hat,melody}_1.wav` (48k/24-bit; stab hits every ~4 s, hat
 every ~2 s — consistent hit levels across the file prove no demo fade landed).
-Supermassive is REASSIGNED to BongDelay (a diffused feedback delay is what it
-is); ChonVerb voices against VintageVerb alone.
+Supermassive is REASSIGNED to BusDelay (a diffused feedback delay is what it
+is); BusVerb voices against VintageVerb alone.
 
 Round 10 verdicts (pad A/B, level-matched): **B > A clearly** (per-line gains
 keep the tail dense) but the bar is not met: tail still metallic + wrong
@@ -1081,7 +1081,7 @@ fine: VV's own DECAY runs to 70 s, the knob top is for long tails.
    right; whether 93 ms lines kill the ring is the ear's call.
 
 **Renders**: `out/vv_ab/` — {pad, stab, hat, melody} × {ROOM, PLATE, BIG},
-**A = VintageVerb** (Sam's bounces, trimmed to 12 s), **B = ChonVerb** at
+**A = VintageVerb** (Sam's bounces, trimmed to 12 s), **B = BusVerb** at
 the matched TIME above, wet-only, level-matched to −20 dBFS active-RMS,
 24-bit I/O, flatness+duration screen run before writing (Round 11's rule).
 **Play**: `out/vv_ab/ab.sh stab PLATE` (A/B/A/B; third arg = repeats).
@@ -1454,9 +1454,9 @@ line weight between 0.5 and 1, or per-mode), 6-9k crest still 32 vs VV
 
 ---
 
-## BongDelay v2 stage 5 -- GRAIN, ear round 1 (12 Aug 2026)
+## BusDelay v2 stage 5 -- GRAIN, ear round 1 (12 Aug 2026)
 
-**PASSED FIRST TIME**, which no BongDelay mode had done: PITCH's first ear
+**PASSED FIRST TIME**, which no BusDelay mode had done: PITCH's first ear
 pass failed the splice and needed a window fix, a retraction, jitter and
 the cascade cut before it was usable.
 
@@ -1511,7 +1511,7 @@ delay->reverb wash the whole framing assumes).
 
 ---
 
-## BongDelay v2 stages 5b–5e — the voicing pass (12–13 Aug 2026)
+## BusDelay v2 stages 5b–5e — the voicing pass (12–13 Aug 2026)
 
 Method: Sam's own source material (`melody_1_dry.wav` and friends, 48k mono)
 rendered through the DS layout, level-matched, one file per play, narrated.
@@ -1719,7 +1719,7 @@ Noted so nobody "fixes" a default that is already correct.)
 
 One of the two combinations PLAN had listed as unheard since GRAIN landed.
 Rendered honestly: BOTH outputs taken from ONE `--layout RDS` run (`--pick D`
-and `--pick R`), so the wash really is this grain through ChonVerb rather
+and `--pick R`), so the wash really is this grain through BusVerb rather
 than a separate reverb pass, then summed offline against the dry at the
 approved DENS 45 balance. **Sam: "sounds great."** at wash -8 dB and +2.9 dB
 relative to the grain.
@@ -1736,11 +1736,11 @@ VRBW 25 gives 0.220 and VRBW 50 gives 0.426, so the usable range is roughly
 This is the unregistered x8/N writer already on the voicing list; fix it
 before the cross-send ships.~~
 
-✅ **CLOSED 17 Aug 2026 (BongDelay v3 stage 1) -- BY DELETING THE KNOB.** The
+✅ **CLOSED 17 Aug 2026 (BusDelay v3 stage 1) -- BY DELETING THE KNOB.** The
 /8 half landed in 5g; the range refit never did, and v3 made it unnecessary:
 `->VERB` is now a hardwired constant (`$7fffff`, the maximum a Q1.23
 multiplier carries -- ear-picked 17 Aug from $2d0000 / $5a0000 / $7fffff on
-GRAIN through ChonVerb; Sam took the loudest, and max is exactly ONE FULL
+GRAIN through BusVerb; Sam took the loudest, and max is exactly ONE FULL
 CLIENT'S SHARE of the reverb bus, the most any single track can drive it) and the send
 REGISTERS in the REVERB count, which was the deferred half. Both were needed
 together: an unregistered writer's effective level is x8/N_registered, so a
@@ -1824,7 +1824,7 @@ scripted CC/notes -> EVO4 capture -> metrics; Rytm-over-USB transport control;
 chromatic note 84 on a track's channel as the deterministic one-shot stimulus —
 sample-trig notes 36-43 never fired and T1 turned out to be a THRU track from
 the Rytm, so chromatic one-shots on T3/T4/T6 are THE stimulus method).
-Layout measured: T1 thru (Rytm), T3 bass + BongDelay, T4 acid, T5 ChonVerb,
+Layout measured: T1 thru (Rytm), T3 bass + BusDelay, T4 acid, T5 BusVerb,
 T6 lead, T7 empty, T8 master. Wet-only instrument: solo the host track
 (+ AMP VOL 0 on T3 so only bus-fed wet remains).
 
@@ -1872,7 +1872,7 @@ and a card pulled mid-session degrades Static-machine stimuli. Every "it
 went quiet" had a rig cause, never a DSP one.
 
 **Cross-bus residual check (same evening):** the open "T4 sending + delay
-MODE 1 (CLEAN)" combo from XBUS.md, on Sam's set layout (ChonVerb on T5 as
+MODE 1 (CLEAN)" combo from XBUS.md, on Sam's set layout (BusVerb on T5 as
 housekeeper, delay on T3): rolling-pattern and one-shot wet captures show no
 hash (CLEAN wet correlates 0.90/zero-shift with the PITCH wet of the same
 stimulus), and **Sam's ear on the monitors: "sounded clean."** Caveats: T2
@@ -1896,7 +1896,7 @@ serial ping-pong, accepted. Tag 77. FLASHED + hardware-ratified the same night: 
 
 The Round-12 A/B kit rebuilt from scratch against the CURRENT build:
 `out/vv_ab2/` (12 pairs, {pad,stab,hat,melody} x {ROOM,PLATE,BIG}, A = the
-9 Aug VV bounces, B = wet-only ChonVerb, 24-bit 44.1k STEREO — width has
+9 Aug VV bounces, B = wet-only BusVerb, 24-bit 44.1k STEREO — width has
 been pinned wide since v6, so the Round-11 mono limitation is gone), built
 by `out/vv_ab2/build_kit.py`: ffmpeg-sinc prep (no naive resample in the
 path), -20 dBFS active-RMS level match with the peak trim applied to the

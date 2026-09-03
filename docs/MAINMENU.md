@@ -120,8 +120,8 @@ Both writes assert the stock bytes first.
 
 The action (`menu_shortcut.s`, 92 bytes, assembled and pinned) is §7's
 sketch with one change: **the track is not hardcoded.** It scans the eight
-per-track FX2 id bytes at `0x80000ecc` for its server's id — 7 ChonVerb,
-6 BongDelay — and selects whichever track hosts it, so the row follows the
+per-track FX2 id bytes at `0x80000ecc` for its server's id — 7 BusVerb,
+6 BusDelay — and selects whichever track hosts it, so the row follows the
 project rather than assuming T5. If that address is wrong the scan simply
 never matches and the handler opens the current track's page: a wrong
 screen, not a crash, which is why it scans rather than trusting.
