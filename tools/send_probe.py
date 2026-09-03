@@ -761,7 +761,7 @@ def main():
             die(f"--set needs a render target -- pass --pick <letter> "
                 f"(one of {''.join(sorted(SERVER_ID))})")
         _mod = registry.by_id(SERVER_ID[_st])
-        kmap = _mod.knob_map()
+        kmap = _mod.knob_map_all()
         if _st == "R":
             base = rev
         elif _st == "D":
@@ -783,7 +783,7 @@ def main():
                 tgt_mod = registry.by_id(SERVER_ID[letter])
                 tgt_base = others.setdefault(
                     letter, list(MODULE_DEFAULTS.get(letter, [0] * 12)))
-            kmap2 = tgt_mod.knob_map()
+            kmap2 = tgt_mod.knob_map_all()
             name, _, val = spec.partition("=")
             name = name.strip().upper()
             if name not in kmap2:

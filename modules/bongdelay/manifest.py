@@ -15,7 +15,7 @@ cave that prints the tempo division while the DSP's sticky snap holds one,
 installed by the tempo-sync patch and registered over slot 0 afterwards.
 """
 
-from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter, Harness, Kind,
+from remix.schema import (ModeView, BusRole, Claims, YBase, DspSection, Formatter, Harness, Kind,
                           MenuEntry, Module, Param)
 
 _PLAIN = Formatter.PLAIN
@@ -83,6 +83,24 @@ MODULE = Module(
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
               labels=("RUN", "HOLD"),
               doc="freeze the line as a loop -- loop length = TIME"),
+    ),
+    # ---- what each MODE renames and re-defaults (v5.1, 3 Sep 2026) --------
+    # MDEP and MRAT are the tape modulation depth and rate in CLEAN and
+    # REVERSE, and the grain scatter and density in GRAIN; PTCH is the grain
+    # pitch and idle elsewhere. The panel printed one name for both meanings
+    # until this table existed.
+    mode_slot=7,
+    mode_views=(
+        ModeView(mode=0,                        # CLEAN
+                 defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
+                           6: 48, 8: 64, 10: 0}),
+        ModeView(mode=1,                        # GRAIN
+                 names={6: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
+                 defaults={0: 36, 1: 40, 2: 100, 3: 127, 5: 64,
+                           6: 40, 8: 127, 9: 1, 10: 0}),
+        ModeView(mode=2,                        # REVERSE
+                 defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
+                           6: 48, 8: 64, 9: 1, 10: 0}),
     ),
     dsp=DspSection(
         asm="modules/bongdelay/delay_server.asm",

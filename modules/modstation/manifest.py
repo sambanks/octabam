@@ -35,7 +35,7 @@ stamper (plan A6) writes ours.
 """
 
 from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
-                          Kind, MenuEntry, Module, Param, YBase)
+                          Kind, MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
@@ -83,6 +83,33 @@ MODULE = Module(
         Param(b"STGS", 1, 4, active=True, formatter=_STEP,
               labels=("2P", "4P", "6P", "8P"),
               doc="PHSR only: where the allpass chain is tapped, 2 to 8 poles"),
+    ),
+    # ---- what each MODE renames and re-defaults ---------------------------
+    # DLY is the line's centre time in the line modes, the comb's PITCH, and
+    # dead in the amplitude ones; FDBK is the flanger's jet and the comb's
+    # ring and nothing at all in TREM/PAN; STGS is the phaser's alone.
+    mode_slot=7,
+    mode_views=(
+        ModeView(mode=0,                        # CHOR
+                 defaults={0: 30, 1: 48, 2: 0, 3: 64, 6: 30, 10: 64}),
+        ModeView(mode=1,                        # FLNG
+                 defaults={0: 24, 1: 90, 2: 90, 3: 64, 6: 10, 10: 64}),
+        # ⚠️ ONLY SLOTS WHOSE MEANING CHANGES ARE RENAMED. Marking a knob
+        # dead with "----" in the four modes that ignore it read well and
+        # cost 56 bytes of a cave with 4 to spare -- the doc line says it
+        # instead. Renaming is for a knob that does something ELSE.
+        ModeView(mode=2,                        # PHSR
+                 names={2: b"RES"},
+                 defaults={0: 30, 1: 90, 2: 40, 3: 64, 11: 1}),
+        ModeView(mode=3,                        # COMB
+                 names={2: b"RING", 6: b"PTCH"},
+                 defaults={0: 8, 1: 20, 2: 110, 3: 64, 6: 20}),
+        ModeView(mode=4,                        # TREM
+                 defaults={0: 70, 1: 90, 2: 0, 3: 127}),
+        ModeView(mode=5,                        # VIB
+                 defaults={0: 45, 1: 40, 2: 0, 3: 127, 6: 20, 10: 64}),
+        ModeView(mode=6,                        # PAN
+                 defaults={0: 55, 1: 100, 2: 0, 3: 127}),
     ),
     dsp=DspSection(
         asm="modules/modstation/mod_station.asm",

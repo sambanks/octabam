@@ -227,6 +227,53 @@ is not when it lands — HELLO WORLD arrived on `0x17` and was moved to `0x1b`,
 `0x17` having become Rungs's on 2 Sep 2026. `make modules` prints what is
 claimed today.
 
+## PER-MODE KNOB NAMES AND DEFAULTS -- `ModeView`
+
+A multi-mode effect reuses its knobs, and a panel that prints one name for
+both meanings is telling the operator the wrong thing half the time.
+BongDelay's MDEP is the tape modulation depth in CLEAN and the grain scatter
+in GRAIN; its MRAT is the rate and the density. Declare the difference:
+
+```python
+mode_slot=7,                       # which slot carries the MODE select
+mode_views=(
+    ModeView(mode=0, defaults={0: 40, 1: 60}),          # CLEAN
+    ModeView(mode=1, names={6: b"SCAT", 8: b"DENS"},    # GRAIN
+             defaults={0: 36, 6: 40, 8: 127}),
+),
+```
+
+Both maps are SPARSE and both are optional. `names` renames a slot for that
+mode -- four characters, the field's width. `defaults` is where the OTHER
+knobs should land when the operator arrives at this mode.
+
+**What each half drives:**
+
+| | the remixer | the unit |
+|---|---|---|
+| `names` | the UNIT pane's rows follow the current MODE (`Module.knob_map_in`), and `send_probe --set SCAT=40` resolves the alias | ✅ `tools/mode_names.py` emits a MODE formatter that REWRITES the descriptor's name fields before printing its own word |
+| `defaults` | applied the moment MODE changes | ⬜ not yet: it needs a write into the part, which nothing here does live |
+
+**How the unit half works, and why it needs no new hook.** A descriptor
+carries its twelve parameter names as 12 x 6 bytes at `E+0x4e`
+(`docs/PARAM_PAGES.md`), and our clones are ordinary writable RAM. PLAN §6
+already gives every stepped select a formatter cave that the panel calls as
+`fmt(buf, value)` **with the value in hand**, so the rename rides in there:
+no per-frame writer, no decode of which track is selected, no read of the
+part. `tools/verify_modenames.py` (in `make check`) calls each MODE formatter
+on the emulated ColdFire and reads the names back out of the clone.
+
+⚠️ **Two limits, both inferred rather than measured.** The rename lands on
+the draw AFTER the one that formats MODE, if the panel draws names first --
+invisible when you turn the encoder, since that redraws. And the descriptor
+is shared by every track running that effect, so two tracks in different
+modes have one set of names between them: the one drawn last.
+
+⚠️ **The names are not free.** Each mode's block is 8 bytes per renamed slot
+plus a terminator, in a cave that had 84 bytes to spare on the shipping rig.
+Rename a slot whose MEANING changes; a knob that is merely unused in a mode
+keeps its name and says so in its `doc`.
+
 ## A STATION: an insert that is also a bus client
 
 The BamSep26 stations (`modules/filterstation/` is the first) are per-track

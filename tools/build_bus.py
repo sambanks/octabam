@@ -99,6 +99,7 @@ from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
 from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
+import mode_names  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -1200,8 +1201,20 @@ def main():
         for _i, _p in enumerate(_MODS[name].params):
             if not (_p.active and _p.labels):
                 continue
-            _bytes = label_fmt.emit(_p.labels)
-            label_fmt.verify(_p.labels)
+            # A MODE select with views gets the BIGGER cave: it renames the
+            # knobs around it before printing its own word, so the panel
+            # stops calling BongDelay's grain scatter "MDEP" (tools/
+            # mode_names.py). Everything else keeps the plain label cave.
+            _mod = _MODS[name]
+            _ren = (mode_names.complete(_mod)
+                    if _i == _mod.mode_slot and _mod.mode_views else {})
+            if _ren:
+                _desc = clone_addr[name] + mode_names.NAMES_AT
+                _bytes = mode_names.emit(_p.labels, _desc, _ren)
+                mode_names.verify(_p.labels, _desc, _ren)
+            else:
+                _bytes = label_fmt.emit(_p.labels)
+                label_fmt.verify(_p.labels)
             if _lbl_top + len(_bytes) > cave_limit:
                 sys.exit(f"label formatters do not fit: {name} slot {_i} "
                          f"needs {len(_bytes)} B at 0x{_lbl_top:08x}, limit "
@@ -1211,11 +1224,12 @@ def main():
             img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)] = _bytes
             wr32(clone_addr[name] + 0x0ca + _i * 4, _lbl_top)
             _lbl.append((name, _i, _p.name.decode("latin1"), _lbl_top,
-                         len(_bytes), _p.labels))
+                         len(_bytes), _p.labels, bool(_ren)))
             _lbl_top += len(_bytes)
-    for _n, _i, _nm, _a, _sz, _labels in _lbl:
+    for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
         print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
-              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})")
+              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})"
+              + (" + RENAMES its neighbours per mode" if _rn else ""))
     if _lbl:
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "

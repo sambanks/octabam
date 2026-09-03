@@ -702,9 +702,25 @@ class RemixerScreen(Screen):
         rows = [("SOURCE", None)]
         if mod is None or not mod.params:
             return rows
-        return rows + [(n, sl) for n, sl in sorted(mod.knob_map().items(),
+        # ⚠️ THE NAMES FOLLOW THE MODE. A multi-mode effect reuses knobs, and
+        # a bench that prints one name for both meanings is lying half the
+        # time -- BongDelay's MDEP is the tape depth in CLEAN and the grain
+        # scatter in GRAIN. Module.knob_map_in() is the same table the
+        # ColdFire cave is emitted from, so the panel and the bench agree.
+        kmap = mod.knob_map_in(self.mode_of(mod))
+        return rows + [(n, sl) for n, sl in sorted(kmap.items(),
                                                    key=lambda kv: kv[1])
                        if mod.params[sl].active]
+
+    def mode_of(self, mod):
+        """This module's current MODE value in the bench, or None."""
+        if mod is None or mod.mode_slot is None:
+            return None
+        vals = self.app.state.knobs_for(mod)
+        for nm, sl in mod.knob_map().items():
+            if sl == mod.mode_slot:
+                return vals.get(nm, mod.params[sl].default or 0)
+        return None
 
     @staticmethod
     def dry_control(mod, vals):
@@ -1686,13 +1702,17 @@ class RemixerScreen(Screen):
                     cur_line = len(out)
                 out.append(f"[reverse]{line}[/]" if here else line)
                 continue
-            v = vals.get(name, 0)
-            hi = rig.knob_max(mod, name)
+            # ⚠️ THE DISPLAY NAME IS NOT THE STORAGE KEY. A mode view renames
+            # a slot (MDEP -> SCAT in GRAIN); storing under the display name
+            # would make the value look reset every time the mode moved.
+            canon = mod.canon_name(slot)
+            v = vals.get(canon, 0)
+            hi = rig.knob_max(mod, canon)
             if hi < 8:
                 # A SELECT reads as a word, not a level, so it gets the
                 # accent and a flat bar -- no fill to imply a range it does
                 # not have.
-                shown = f"[{WARN}]{step_label(mod, name, v):<7}[/]"
+                shown = f"[{WARN}]{step_label(mod, canon, v):<7}[/]"
                 bar = f"[{LCD}]" + "·" * 12 + "[/]"
             else:
                 shown = f"{v:>3}    "
@@ -1992,10 +2012,24 @@ class RemixerScreen(Screen):
                                         % len(files)]
             return
         vals = st.knobs_for(mod)
-        hi = rig.knob_max(mod, name)
+        slot = knobs[min(self.cur[UNIT], len(knobs) - 1)][1]
+        canon = mod.canon_name(slot)          # the store's key, not the label
+        hi = rig.knob_max(mod, canon)
         if abs(step) == 1:
-            step = self._accel(step, name, hi)
-        vals[name] = max(0, min(hi, vals.get(name, 0) + step))
+            step = self._accel(step, canon, hi)
+        vals[canon] = max(0, min(hi, vals.get(canon, 0) + step))
+        # ⚠️ A MODE CHANGE RE-DEFAULTS THE OTHER KNOBS (Sam, 3 Sep 2026: "can
+        # you adjust all of the settings to their defaults when they switch").
+        # Landing on GRAIN with the tape depth still where CLEAN left it is
+        # not a starting point, it is a puzzle. Only slots the view names are
+        # touched; everything else the operator dialled survives.
+        if mod.mode_slot is not None and slot == mod.mode_slot:
+            view = mod.view_for(vals[canon])
+            if view is not None:
+                by_slot = {sl: nm for nm, sl in mod.knob_map().items()}
+                for slot, val in view.defaults.items():
+                    if slot in by_slot:
+                        vals[by_slot[slot]] = val
 
     def move_row(self, step):
         """Reorder the loaded pane -- chooser ORDER is the panel's row order,
