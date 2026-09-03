@@ -59,7 +59,28 @@ on-unit reconfirm.
 - Voicing: grain density is fixed at four. Clouds' texture/diffusion stage
   and pitch-shifted grains are both out of scope for v1.
 
-## ⚠️ Open (found 3 Sep 2026, from BongDelay v5): the grains may play an octave UP
+## Closed 3 Sep 2026 (evening): the read geometry now carries `+ phase`; what the measurement actually showed
+
+`tools/verify_nimbus.py` renders this module (its own audition dump, rebuilt
+every run) and measures the two things the note below names. **Measured,
+both geometries:**
+
+| | tone 438 Hz, MIX 127, FRZE 0, DENS 127 | DC in, same knobs |
+|---|---|---|
+| `- phase` (as shipped until today) | **441 Hz, unity** — the octave-up claim below is NOT reproduced here | p-p ripple **−3.2 dB** |
+| `+ phase` (now) | 441 Hz, 2f/f −42 dB | flat, −180 dB |
+
+So the delay's measurement did not transfer: BongDelay v5's copy of this
+geometry carries an `advance` term this module never had, and that is where
+its octave came from. The `+ phase` term is kept anyway — it is the geometry
+that reads a fixed tap behind the moving head, and with it the window sum
+is exact where it was 3 dB of ripple before. Why the old geometry rippled at
+DC is **inferred, not shown**: with the distance shrinking as the grain ages,
+a pair's two reads no longer sit a half period apart in the line. The gate
+is what stands; the story is a candidate.
+
+### The note as it was written (kept: it is what sent us looking)
+
 
 BongDelay v5 took this engine's read geometry -- a grain reads
 `W - (POSbase + s + G + 1 - phase)` -- and measured it with a tone: at
