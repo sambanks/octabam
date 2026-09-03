@@ -742,6 +742,19 @@ official installer does, and it is simpler. This is the same image with our
 chooser edits reverted, which is only interesting if some ColdFire cave is
 worth keeping.
 
+## The flash backlog
+
+**What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
+Everything since is unflashed: the delay's R59–R62 quality pass, the
+stepped-select labels, stock effects listable beside ours, the insert card,
+a module on FX1, and a donor region beyond the three reverbs.
+
+**`docs/FLASHPLAN.md` is the schedule** — three images, ordered so the
+cheapest and safest goes first, each shaped to stack independent claims whose
+failures stay distinguishable, and each with what would falsify it. The
+platform work needs no flash at all: refhash proves a default selection is
+bit-identical, which is what that gate is for.
+
 ## Open items and standing caveats
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**

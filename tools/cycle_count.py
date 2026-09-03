@@ -555,8 +555,12 @@ def main():
     mix = " + ".join(f"{n}x {k}" for k, n in picks) or "(nothing of ours)"
     print(f"{'WORST ONE CORE':{w}}  {worst:>13}   {mix}")
     print(f"{'':{w}}  {'':>13}   4 FX2 slots, at most one server (the design rule)")
-    if remix.fx1:
-        print(f"{'':{w}}  {'':>13}   + 4 FX1 slots: {', '.join(remix.fx1)} "
+    # ⚠️ ONLY THE ONES PRICED. remix.fx1 is the whole FX1 chooser, stock
+    # rows included, and stock code is NOT counted here -- naming them made
+    # the line read as if FILTER's cycles were in the figure.
+    _ours = [m["key"] for m in mods if m["key"] in remix.fx1]
+    if _ours:
+        print(f"{'':{w}}  {'':>13}   + 4 FX1 slots: {', '.join(_ours)} "
               f"listed on FX1 too")
     if worst > CORE_TOTAL:
         print(f"{'':{w}}  {'':>13}   *** OVER the arithmetic ceiling ***")

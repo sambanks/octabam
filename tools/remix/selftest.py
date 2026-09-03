@@ -434,7 +434,14 @@ def main():
     _sp = stock.p_spans("A")
     _fx1_all = {k for k in _sp
                 if registry.modules()[k].menu.fx2_id in stock.fx1_ids()}
-    _want = {"restock": (), "nimbuslite": ("PLATE REV", "SPRING REV")}
+    # The three that differ, and why -- a remix reaching this list by
+    # accident is the thing being guarded against.
+    _want = {"restock": (),                       # lists all fourteen
+             "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
+             # deliberately gives up two more, to put a non-reverb donor on
+             # the unit for the first time (docs/FLASHPLAN.md)
+             "fieldtest": ("FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                           "DARK REV")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(
