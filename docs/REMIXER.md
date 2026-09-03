@@ -403,10 +403,35 @@ deliberate: every remix that predates this needs its region, and refhash is
 rows needs no region at all — and `build_bus.py` refuses it only when there
 is code to place.
 
-### The harvest itself
+### Taking an effect off BOTH menus is that decision
 
-`h` harvests the highlighted stock effect's words for your modules; `⌁` marks
-it in the library. The thirteen DSP effects are laid out **contiguously** —
+⚠️ **There is no separate harvest gesture** (3 Sep 2026), because there was
+never a separate choice. Sam: *"harvest and remove from chooser should be
+same logic, not a new h click."* An effect on **neither** chooser is one you
+do not want, so its words are where your modules go — derived from the two
+lists rather than held as a third thing. `⌁` marks it in the library.
+
+It reproduces what the build has always done, which is why removing the
+explicit field was safe: FX1 lists ten of the thirteen and the reverbs are
+FX2-only, so a remix listing none of them on FX2 gives up exactly those
+three. Every shipped remix comes out identical, asserted in the selftest.
+
+⚠️ **BOTH menus.** An effect off FX2 but still on FX1 is still wanted, and
+the DSP dispatch is one table shared by them — overwriting its code would
+take it off FX1 too.
+
+⚠️ **It only costs where your code reaches.** Modules go in the **largest
+unbroken run** of what you gave up, packed from its lowest address; anything
+the placer never gets to keeps its algorithm and its dispatch and simply has
+no chooser row — which is exactly what unlisting a stock effect has always
+done. So a non-contiguous set is not a refusal any more: the leftovers are
+just unlisted.
+
+⚠️ **`remixes/bothslots.py` gives up four more than it used to.** Its curated
+FX1 chooser drops FLANGER, CHORUS, SPATIALIZER and COMB, and its FX2 chooser
+lists only WarpFold — so those four are on no menu at all, genuinely
+unreachable, and their words are free. `verify_replaces` had assumed only the
+three reverbs could ever be nulled. The thirteen DSP effects are laid out **contiguously** —
 6,158 words in each payload — and every one is **self-contained**, so any
 unbroken run of them is ground a module can be placed into (`docs/MODULES.md`
 has the measurement). The three reverbs are only the **default**: they are

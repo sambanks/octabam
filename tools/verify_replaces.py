@@ -98,6 +98,14 @@ def check_image(name, img, pristine, fails):
         m = mods.get(key)
         if m is not None and m.menu is not None and m.menu.replaces:
             declared[m.menu.fx2_id] = m.key
+    # WHAT THIS REMIX GIVES UP, derived from its two choosers exactly as the
+    # build derives it: an effect on neither is one it does not want, so its
+    # words are the region and its dispatch may legitimately be the null stub.
+    _sp = stock.p_spans("A")
+    _fx1_all = {k for k in _sp
+                if mods[k].menu.fx2_id in stock.fx1_ids()}
+    _given_up = set(stock.region_of(stock.harvested(
+        set(remix.modules) | set(remix.fx1 or _fx1_all))))
     for eff in stock.MODULES:
         eid = eff.menu.fx2_id
         want_desc = eff.menu.donor_desc + 0x38
@@ -124,7 +132,7 @@ def check_image(name, img, pristine, fails):
                 print(f"  [PASS] {name}: {declared[eid]} took {eff.key}'s FX1 "
                       f"page as well as FX2's")
             continue
-        if on_fx1:
+        if on_fx1 and eff.key not in _given_up:
             for a in (fx1_slot,) + tuple(
                     x for x in _fx1_rows(pristine)
                     if rd32(pristine, x) == want_desc):
@@ -146,13 +154,18 @@ def check_image(name, img, pristine, fails):
                 want = rdw(pristine, xtab + slot * 3)
                 if got == want:
                     continue
-                if eid in DONOR_IDS and got == nul:
+                # ⚠️ ANY EFFECT ON NEITHER CHOOSER MAY HAVE BEEN HARVESTED,
+                # not just the three reverbs. Which a remix gives up is
+                # derived from its two choosers (stock.harvested), so the
+                # null stub is legitimate for any of them -- and DONOR_IDS
+                # was the last place this file assumed the fixed three.
+                if got == nul and eff.key in _given_up:
                     continue               # its words were taken; see above
                 fails.append(
                     f"{name}: payload {tag} dispatch[0x{eid:02x}] "
                     f"({eff.key}) is 0x{got:05x}, not stock's 0x{want:05x}"
                     + (f" (nor the null stub 0x{nul:05x})"
-                       if eid in DONOR_IDS else ""))
+                       if eff.key in _given_up else ""))
 
 
 def main():

@@ -523,9 +523,15 @@ def on_the_bus(mod) -> bool:
     return h is not None and (h.is_server or h.bus_client)
 
 
-# The three the project has always harvested: the biggest stock effects, and
-# FX2-only, so taking them costs FX1 nothing. They are the DEFAULT rather
-# than the rule -- see Remix.harvest.
+# The three the project has always harvested, and what `x` offers when a
+# selection has nowhere to place: the biggest stock effects, and FX2-only, so
+# taking them costs FX1 nothing.
+#
+# ⚠️ THIS IS NOT A FIELD ANY MORE. Which effects a remix gives up is DERIVED
+# from its two choosers -- an effect on neither is one it does not want, and
+# "remove from the chooser" and "harvest" were the same act described twice
+# (stock.harvested). It reproduces every shipped remix exactly, because FX1
+# lists ten of the thirteen and the reverbs are FX2-only.
 DEFAULT_HARVEST = ("PLATE REV", "SPRING REV", "DARK REV")
 
 
@@ -609,28 +615,6 @@ class Remix:
     # Streamz, BodeShift, Hello World -- and SEND, which is buffer-free
     # (untested there, but nothing measured argues against it).
     fx1: tuple[str, ...] = ()
-    # ---- which stock effects this remix HARVESTS for their words ----------
-    # The donor region is not a place, it is a CHOICE. The thirteen DSP
-    # effects are laid out contiguously -- 6,158 words in both payloads --
-    # and every one is self-contained, so any of them can be overwritten with
-    # a module of ours (measured 3 Sep 2026; stock.p_spans has the layout and
-    # the containment sweep is in tools/dsp_reach.py). What has always been
-    # "the 2,724-word donor region" is the middle third of that run, chosen
-    # because the three reverbs are the biggest and the least missed.
-    #
-    # ⚠️ THEY MUST BE CONTIGUOUS. A module of ours is one code stream, so the
-    # harvested set has to be an unbroken run; the build refuses a gap rather
-    # than silently placing across a survivor.
-    #
-    # ⚠️ HARVESTED IS NOT THE SAME AS UNLISTED. Leaving a stock effect out of
-    # `modules` takes its chooser row and nothing else -- its code, descriptor
-    # and dispatch stay stock, so an old project that selects it still runs
-    # it. Naming it here offers its words to the placer, and it loses its
-    # algorithm only where our code actually REACHED it: the region is packed
-    # from the lowest harvested address upward and the build reports which
-    # survived. That is exactly how the three reverbs have always behaved
-    # (remixes/restock.py keeps two of them), generalised to any effect.
-    harvest: tuple[str, ...] = DEFAULT_HARVEST
 
     def __post_init__(self):
         if self.fallback != NO_FALLBACK and self.fallback not in self.modules:
@@ -645,10 +629,4 @@ class Remix:
         # registry is in scope: build_bus.py refuses, selftest pins it.
         if len(set(self.fx1)) != len(self.fx1):
             raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")
-        if len(set(self.harvest)) != len(self.harvest):
-            raise ValueError(f"remix {self.name!r}: duplicate harvest keys")
-        # ⚠️ `harvest=()` IS LEGAL. On an unmodified unit every one of the
-        # 6,158 words is allocated -- each stock effect is using its own --
-        # so "nothing harvested" is the honest starting point, and a remix of
-        # nothing but stock rows needs no region at all. build_bus.py refuses
-        # it only when there is code to place.
+

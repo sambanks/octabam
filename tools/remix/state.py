@@ -82,11 +82,7 @@ class State:
         self.mods = registry.modules()
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
-        # WHICH STOCK EFFECTS THIS SELECTION MAY PLACE INTO
-        # (schema.Remix.harvest). The donor region is a choice, not a place:
-        # any contiguous run of the thirteen DSP effects is placeable ground.
-        from remix.schema import DEFAULT_HARVEST
-        self.harvest: list[str] = list(DEFAULT_HARVEST)
+        # ⚠️ THE HARVEST IS DERIVED, not held. See the `harvest` property.
         # THE FX1 CHOOSER, in its own row order (schema.Remix.fx1). A second
         # list, not a flag on the first: FX1 and FX2 are two independent
         # chooser lists and a remix composes both. Seeded from stock's ten,
@@ -144,12 +140,6 @@ class State:
         self.sel = {m.key for m in stock.MODULES}
         self.order = [m.key for m in stock.MODULES]
         self.fx1 = list(stock_fx1_default())
-        # ⚠️ NOTHING HARVESTED. An unmodified unit has every one of its 6,158
-        # words allocated -- each stock effect is using its own -- so a stock
-        # selection must show that, not a region already taken from the
-        # reverbs. Harvesting is the operator's choice and the first module
-        # added is what makes it necessary.
-        self.harvest = []
         self.fallback = None
         self.loaded_name = "stock"
         self.msg = ("stock: the chooser an unmodified unit shows — "
@@ -165,7 +155,6 @@ class State:
         # `fx1=()` means "stock's, unchanged" -- so the pane shows stock's
         # ten rather than an empty list, and saving it back writes `()` again.
         self.fx1 = list(r.fx1) or list(stock_fx1_default())
-        self.harvest = list(r.harvest)
         self.fallback = r.fallback
         self.loaded_name = name
         self.msg = f"loaded remix {name!r}"
@@ -181,41 +170,22 @@ class State:
             self.knobs[mod.key] = rig.default_knobs(mod)
         return self.knobs[mod.key]
 
-    def toggle_harvest(self, key, name=None):
-        """Offer this stock effect's words to the placer, or take it back.
+    @property
+    def harvest(self) -> list[str]:
+        """The stock effects this selection gives up, in address order.
 
-        -> a sentence for the status line. The harvested set must stay
-        CONTIGUOUS -- a module of ours is one code stream, so a gap is not a
-        smaller region, it is two -- and refusing here rather than at the
-        build means the answer arrives at the keystroke.
+        ⚠️ DERIVED FROM THE CHOOSERS, not toggled. Taking an effect off both
+        of the unit's menus IS the decision to give up its words -- "remove
+        from the chooser" and "harvest" were the same act described twice,
+        and the second one needed its own key, its own field and its own
+        contiguity rule. It reproduces every shipped remix exactly: FX1
+        lists ten of the thirteen and the three reverbs are FX2-only, so a
+        remix that lists none of them on FX2 harvests exactly those three,
+        which is what the build has always done.
         """
         from remix import stock
-        name = name or key
-        mod = self.mods.get(key)
-        if mod is None or not mod.is_stock:
-            return "only a stock effect's words can be harvested"
-        sp = stock.p_spans("A")
-        if key not in sp:
-            return f"{name} has no DSP code to take — it runs on the ColdFire"
-        want = [k for k in self.harvest if k != key] if key in self.harvest \
-            else self.harvest + [key]
-        if not want:
-            return ("something has to be harvested — with nothing to place "
-                    "into, no module of ours can go in the image")
-        run = sorted(sp[k] for k in want)
-        for (a, n), (a2, _n) in zip(run, run[1:]):
-            if a + n == a2:
-                continue
-            between = sorted(k for k, (ad, _w) in sp.items()
-                             if a + n <= ad < a2)
-            return (f"{name}: that would leave {', '.join(between)} in the "
-                    f"middle, and one module cannot span a gap")
-        self.harvest = [k for k, _v in sorted(
-            ((k, sp[k]) for k in want), key=lambda kv: kv[1])]
-        n_w = stock.region_words(tuple(self.harvest))
-        return (f"{name} is no longer harvested — {n_w:,} words to place into"
-                if key not in self.harvest else
-                f"{name} harvested — {n_w:,} words to place into")
+        return list(stock.region_of(
+            stock.harvested(set(self.order) | set(self.fx1))))
 
     def toggle_fx1(self, key, name=None):
         """Give this module a row on FX1 as well, or take it away.
@@ -400,9 +370,10 @@ class State:
         # be made about which one to give up. It arrives as a problem with a
         # one-key fix rather than as a build failure.
         if not self.harvest and [m for m in self.selected if m.dsp is not None]:
-            out.append("nothing is harvested, so there is nowhere to place "
-                       "your modules — x takes the three reverbs (2,724 "
-                       "words), or h takes whichever you would rather lose")
+            out.append("every stock effect is on a chooser, so there is "
+                       "nowhere to place your modules — x drops the three "
+                       "reverbs (2,724 words), or take off whichever you "
+                       "would rather lose")
         if self.eff_fallback is None:
             out.append("no fallback and none can be picked automatically "
                        "(no SEND, and several effects) — press f to choose "
@@ -630,10 +601,9 @@ class State:
         fx1 = ("" if tuple(self.fx1) == stock_fx1_default()
                else '    fx1=('
                     + ", ".join(f'"{k}"' for k in self.fx1) + ',),\n')
-        from remix.schema import DEFAULT_HARVEST
-        harvest = ("" if tuple(self.harvest) == DEFAULT_HARVEST
-                   else '    harvest=('
-                        + "".join(f'"{k}", ' for k in self.harvest) + '),\n')
+        # No `harvest=` line: it is derived from the two choosers, so
+        # writing it out would be a second copy of what `modules` and `fx1`
+        # already say -- and the first one to go stale.
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by the remixer. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
@@ -645,5 +615,4 @@ class State:
                 f'    modules=({mods},),\n'
                 f'    fallback={fb},\n'
                 f'{fx1}'
-                f'{harvest}'
                 f')\n')

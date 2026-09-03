@@ -426,22 +426,31 @@ def main():
         elif not _wrong:
             print(f"  [PASS] payload {_pay}: {len(_sp)} effects contiguous, "
                   f"P:0x{_lo:05x}..0x{_hi:05x} = {_hi - _lo:,} words")
-    # And nothing shipped may harvest a non-contiguous set -- the build
-    # refuses it, and a remix that cannot build is not much of a remix.
+    # ⚠️ AND THE DERIVED HARVEST MUST REPRODUCE WHAT THE BUILD HAS ALWAYS
+    # DONE. "On neither chooser" gives every shipped remix exactly the three
+    # reverbs -- FX1 lists ten of the thirteen and the reverbs are FX2-only
+    # -- which is the whole reason removing the explicit field was safe.
+    # restock lists all fourteen and places nothing, so it gives up nothing.
+    _sp = stock.p_spans("A")
+    _fx1_all = {k for k in _sp
+                if registry.modules()[k].menu.fx2_id in stock.fx1_ids()}
+    _want = {"restock": (), "nimbuslite": ("PLATE REV", "SPRING REV")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
-        _sp = stock.p_spans("A")
-        _bad = [k for k in _r.harvest if k not in _sp]
-        if _bad:
+        _hv = stock.region_of(stock.harvested(
+            set(_r.modules) | set(_r.fx1 or _fx1_all)))
+        _exp = _want.get(_n, stock.CONSUMED)
+        if _n == "bothslots":
+            continue                     # its curated FX1 list gives it more
+        if tuple(_hv) != tuple(_exp):
             bad += 1
-            print(f"  [FAIL] remix {_n!r}: harvest={_bad} have no DSP code")
-            continue
-        _run = sorted(_sp[k] for k in _r.harvest)
-        if any(a + n != a2 for (a, n), (a2, _n) in zip(_run, _run[1:])):
+            print(f"  [FAIL] remix {_n!r} gives up {_hv}, expected {_exp}")
+        _run = sorted(_sp[k] for k in _hv)
+        if any(a + n != a2 for (a, n), (a2, _x) in zip(_run, _run[1:])):
             bad += 1
-            print(f"  [FAIL] remix {_n!r}: its harvested effects are not "
-                  f"contiguous")
-    print(f"  [PASS] every remix harvests a contiguous run")
+            print(f"  [FAIL] remix {_n!r}: its region is not contiguous")
+    print(f"  [PASS] every remix gives up a contiguous run, and the shipped "
+          f"ones give up exactly what they always did")
 
     # ---- FX1 rows (Remix.fx1) -------------------------------------------
     # The schema half. The BUILD half -- the relocated list, FX1's own id and

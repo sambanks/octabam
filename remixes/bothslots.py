@@ -13,10 +13,15 @@ when it outgrows its own.
 **FX1 is COMPOSED, not just appended to.** This lists six of stock's ten and
 drops the other four, so the chooser is shorter than the one the box ships --
 which needs the viewport literal at 0x40059be6 shrunk to match, or the draw
-loop reads past the terminator and renders raw memory as text. The four that
-go (FLANGER, CHORUS, SPATIALIZER, COMB FILTER) lose their FX1 ROW and
-nothing else: their code, descriptors and dispatch stay stock, so an old
-project that selects one still runs it.
+loop reads past the terminator and renders raw memory as text.
+
+⚠️ AND THOSE FOUR ARE ON NO MENU AT ALL. FLANGER, CHORUS, SPATIALIZER and
+COMB FILTER are off this FX1 list and were never on its FX2 one, so they are
+unreachable -- and since 3 Sep 2026 that IS the decision to give up their
+words (stock.harvested). CHORUS and FLANGER sit immediately below PLATE, so
+the region runs from FLANGER: 3,342 words rather than 2,724, and WarpFold's
+322 land at FLANGER's address. Their dispatch goes to the null stub. If you
+want them kept, put them back on either chooser.
 
 It costs no words: 32 bytes of cave for the list plus FX1's id and cursor
 tables. What it DOES cost is cycles. FX1 is four more slots on the same four

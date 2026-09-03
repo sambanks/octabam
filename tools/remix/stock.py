@@ -357,6 +357,42 @@ def p_spans(payload: str) -> dict[str, tuple[int, int]]:
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
 
 
+def harvested(listed) -> frozenset[str]:
+    """Stock effects with DSP code that are on NEITHER chooser.
+
+    ⚠️ HARVESTING IS NOT A SEPARATE GESTURE. Taking an effect off both of the
+    unit's menus IS the decision to give it up -- there is no third thing to
+    remember and no second key. What it costs is only paid where our code
+    actually reaches: an unlisted effect the placer never gets to keeps its
+    algorithm and its dispatch, exactly as it always has.
+
+    ⚠️ BOTH choosers. An effect off FX2 but still on FX1 is still wanted, and
+    the DSP dispatch is one table shared by the menus -- overwriting its code
+    would take it off FX1 too.
+    """
+    return frozenset(k for k in p_spans("A") if k not in listed)
+
+
+def region_of(harvest) -> tuple[str, ...]:
+    """The largest CONTIGUOUS run of harvested effects, in address order.
+
+    A module of ours is one code stream, so it needs unbroken ground. The
+    effects outside the chosen run are not lost -- nothing is placed over
+    them, so they keep their code and simply have no chooser row.
+    """
+    sp = p_spans("A")
+    runs, cur = [], []
+    for a, k in sorted((sp[k][0], k) for k in harvest if k in sp):
+        if cur and sp[cur[-1]][0] + sp[cur[-1]][1] != a:
+            runs.append(cur)
+            cur = []
+        cur.append(k)
+    if cur:
+        runs.append(cur)
+    return tuple(max(runs, key=lambda g: sum(sp[k][1] for k in g),
+                     default=[]))
+
+
 def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
     """A harvested set in P-ADDRESS order, which is placement order.
 
@@ -382,22 +418,6 @@ def consumed_at(key: int | str, harvest=CONSUMED) -> int:
             return at
         at += WORDS[c]
     raise KeyError(key)
-
-
-def harvest_neighbours(harvest=CONSUMED) -> frozenset[str]:
-    """The effects that could JOIN a harvested run without breaking it.
-
-    A module of ours is one code stream, so the run has to stay contiguous:
-    only the effect immediately below the bottom of it and the one
-    immediately above the top can be added.
-    """
-    sp = p_spans("A")
-    run = sorted(sp[k] for k in harvest if k in sp)
-    if not run:
-        return frozenset(sp)
-    lo, (ha, hn) = run[0][0], run[-1]
-    return frozenset(k for k, (a, n) in sp.items()
-                     if a + n == lo or a == ha + hn)
 
 
 def region_words(harvest=CONSUMED) -> int:

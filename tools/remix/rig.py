@@ -355,8 +355,8 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
             # the donor region, so they are the only stock effects whose
             # words are yours to take.
             at = stock.consumed_at(mod.key, tuple(harvest))
-            out.append(f"{w:,} words — harvested, so they are yours to "
-                       f"place into")
+            out.append(f"{w:,} words — off both menus, so they are yours "
+                       f"to place into")
             out.append("yours overwrite it first" if at == 0 else
                        f"survives while your modules stay under {at:,} words")
         elif w:
@@ -367,12 +367,7 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
             # rows. Same shape as the `bar` legend and as the buffer-clash
             # lists before it: an image-level fact charged to every row. The
             # Budget's `held by` line says it once, where it belongs.
-            # ⚠️ ONLY WHERE `h` WOULD WORK. The run has to stay contiguous,
-            # so offering it beside an effect in the middle of the survivors
-            # sends you to a refusal this line could have spared you.
-            out.append(f"{w:,} words, already placed — h harvests them"
-                       if mod.key in stock.harvest_neighbours(harvest) else
-                       f"{w:,} words, already placed")
+            out.append(f"{w:,} words, already placed")
         else:
             out.append("no DSP words — it runs on the ColdFire side")
         # WHAT LEAVING IT OUT ACTUALLY COSTS, in words rather than by a dash

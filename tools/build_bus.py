@@ -1892,7 +1892,25 @@ mkgo:""",
         # contiguity assert is what proves that rather than assuming it.
         # Dev-only; the flashable build leaves CHORUS alone unless a remix
         # asks for it.
-        _harvest = list(REMIX.harvest) + (["CHORUS"] if DEV else [])
+        # ⚠️ DERIVED FROM THE TWO CHOOSERS. An effect on neither is one this
+        # remix does not want, and giving up its words is the same decision
+        # -- see stock.harvested(). The largest contiguous run of them is the
+        # region; the rest are simply unlisted and keep their code.
+        _listed = set(REMIX.modules) | set(
+            REMIX.fx1 or [k for k in stock_mod.p_spans("A")
+                          if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
+        # ⚠️ IN ADDRESS ORDER. DEV's CHORUS sits BELOW the reverbs, and the
+        # report lists the donors in this order -- appending it put CHORUS
+        # last and changed every DEV case's report hash (refhash caught it).
+        _derived = stock_mod.region_of(stock_mod.harvested(_listed))
+        _dev_chorus = DEV and "CHORUS" not in _derived
+        _harvest = sorted(
+            set(_derived)
+            # DEV takes CHORUS whether or not a chooser lists it -- that is
+            # the hatch's whole point, and why a DEV build is never flashed
+            # ("taking CHORUS costs FX1 its chorus", the module docstring).
+            | ({"CHORUS"} if DEV else set()),
+            key=lambda k: stock_mod.p_spans(tag)[k][0])
         if not _harvest:
             # Nothing harvested is the honest default for a stock chooser --
             # every word belongs to a stock effect that is using it -- but a
@@ -1903,7 +1921,8 @@ mkgo:""",
                          f"nowhere to place "
                          f"{', '.join(sorted(m.key for m in _need))}. Name "
                          f"the stock effects whose words this remix may take "
-                         f"(schema.Remix.harvest).")
+                         f"Take one off both choosers to give up "
+                         f"its words.")
         _sp = stock_mod.p_spans(tag)
         for _k in _harvest:
             if _k not in _sp:
@@ -2397,10 +2416,14 @@ mkgo:""",
             # API (refhash hashes it, and verify_* parse it). Every shipping
             # layout packs past all three, so this is the line every existing
             # case still prints.
-            _dflt = list(REMIX.harvest) == list(DEFAULT_HARVEST)
-            _all = ("CHORUS/" if DEV else "") + (
+            # ⚠️ WORDING FROZEN for the default: the report is API (refhash
+            # hashes it verbatim). DEV's CHORUS is named by the prefix, so it
+            # must not also appear in the list behind it.
+            _rest = [k for k in _harvest if not (_dev_chorus and k == "CHORUS")]
+            _dflt = list(_rest) == list(DEFAULT_HARVEST)
+            _all = ("CHORUS/" if _dev_chorus else "") + (
                 "PLATE/SPRING/DARK REV" if _dflt
-                else "/".join(_short.values()))
+                else "/".join(_short[k] for k in _rest))
             print(f"  donor ids ({_all}) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
                   f"path resolving a donor id gets silence, not our code "

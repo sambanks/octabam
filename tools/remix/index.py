@@ -52,9 +52,10 @@ def main():
             knobs = ", ".join(f"{n}@{i}" for n, i in sorted(
                 m.knob_map().items(), key=lambda kv: kv[1]))
             print(f"      knobs: {knobs}")
-    # ⚠️ NOT "every remix" any more: the donor region is a CHOICE
-    # (schema.Remix.harvest), and each remix's is printed with it below.
-    print(f"\n  harvested by default (their code is the donor region): "
+    # ⚠️ NOT "every remix" any more: what a remix gives up is DERIVED from
+    # its two choosers -- an effect on neither is one it does not want -- and
+    # each remix's is printed with it below when it differs from these.
+    print(f"\n  given up by most remixes (on neither chooser): "
           f"{', '.join(stock.CONSUMED)}\n")
 
     print("REMIXES  (remixes/<name>.py)\n")
@@ -65,8 +66,13 @@ def main():
         print(f"      modules: {', '.join(r.modules)}")
         if r.fx1:
             print(f"      also on the FX1 chooser: {', '.join(r.fx1)}")
-        if tuple(r.harvest) != stock.CONSUMED:
-            print(f"      harvests: {', '.join(r.harvest)}")
+        _hv = stock.region_of(stock.harvested(
+            set(r.modules) | set(r.fx1 or [
+                k for k in stock.p_spans("A")
+                if registry.modules()[k].menu.fx2_id in stock.fx1_ids()])))
+        if tuple(_hv) != stock.CONSUMED:
+            print(f"      gives up (on neither chooser): "
+                  f"{', '.join(_hv) or 'nothing'}")
         print(f"      unimplemented ids fall back to: {r.fallback}")
         print()
     print("Build one with:  make bus REMIX=<name>")

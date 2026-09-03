@@ -344,7 +344,6 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
   r  render + hear     space  replay
   a / b  park what you just heard as A / B      , / .  play A / B
   1  put the highlighted effect on the FX1 chooser (or take it off)
-  h  harvest a stock effect's WORDS for your modules (or give them back)
   x  apply the fix the ⚠ is offering (only shown when there is one)
   d  sample folder     l  load a remix      s  save this one as a remix
   c  full check        f  choose the fallback        k  back to stock
@@ -399,13 +398,16 @@ Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 r
 Measured 3 Sep 2026 and it says the limit is ours to lift: the thirteen DSP effects are laid out CONTIGUOUSLY in 6,158 words (`P:0x007d1..0x01fdf`, no other module between them), and every one of them is SELF-CONTAINED — no control flow leaves its own span and nothing enters it but its own dispatch entry. So any effect's words could be freed by dropping it, and a run of dropped neighbours would be one bigger region. What that costs is the effect itself: today an unlisted stock effect keeps working and only loses its row, and one harvested for its words would not.
 
 [bold]on an unmodified unit every word is allocated[/]
-All 6,158 words of the payload's effect code belong to a stock effect that is using them, and the remixer opens saying exactly that: `no region — every word is a stock effect's`, the map all `─`, `all 6,158 words allocated`. NOTHING is set aside for you until you decide what to give up.
+All 6,158 words of the payload's effect code belong to a stock effect that is using them, and the remixer opens saying exactly that: `no region — every word is a stock effect's`, the map all `─`. NOTHING is set aside for you until you decide what to give up.
 
-`h` harvests the highlighted stock effect's words and `⌁` marks it in the library. The thirteen effects are laid out contiguously and every one is self-contained, so any unbroken run of them is ground your modules can be placed into. Add a module before harvesting anything and the ⚠ says so, with `x` taking the three reverbs — the biggest, and FX2-only, so they cost FX1 nothing — which is the conventional choice and not one the image imposes.
+[bold]taking an effect off BOTH menus is that decision[/]
+There is no separate harvest gesture, because there was never a separate choice: an effect on neither chooser is one you do not want, so its words are where your modules go. `⌁` marks it in the library. That is derived from the two lists, not a third thing to manage — and it reproduces what the build has always done, because FX1 lists ten of the thirteen and the reverbs are FX2-only, so a remix listing none of them on FX2 gives up exactly those three.
 
-⚠️ The run has to stay CONTIGUOUS — a module of ours is one code stream, so a gap is not a smaller region, it is two — and only the effect just below the bottom of the run or just above its top can join it. `h` says what is in the way rather than letting the build refuse later.
+Add a module before giving anything up and the ⚠ says so, with `x` dropping the three reverbs — the biggest, and FX2-only, so they cost FX1 nothing.
 
-⚠️ HARVESTED IS NOT THE SAME AS UNLISTED, and this is the one thing here that takes something away. Leaving a stock effect off a chooser costs it that row and nothing else — its code, descriptor and dispatch stay stock, so an old project that selects it still runs it. Harvesting OFFERS its words to the placer, and it loses its algorithm only where your code actually reached: the region is packed from the lowest address upward and the build reports which survived. So an effect can be `✓⌁` — listed and harvested — right up until something is placed over it.
+⚠️ BOTH menus. An effect off FX2 but still on FX1 is still wanted, and the DSP dispatch is one table shared by them, so overwriting its code would take it off FX1 too.
+
+⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. Your modules go in the largest unbroken run of what you gave up, packed from its lowest address; anything the placer never gets to keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done.
 
 [bold]a reverb you keep listed is spending words[/]
 PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.
@@ -519,10 +521,6 @@ class RemixerScreen(Screen):
         # be reached from the FX2 slot, and only because FX1's chooser list
         # could not grow where it sits.
         Binding("1", "fx1", "FX1 row", show=False),
-        # "h" for harvest: offer a stock effect's WORDS to the placer. The
-        # third state a stock effect has -- listed, unlisted, harvested --
-        # and the only one that takes something away.
-        Binding("h", "harvest", "harvest", show=False),
         Binding("l", "load", "load"),
         Binding("s", "save", "save"),
         Binding("k", "stock", "reset to stock", show=False),
@@ -888,10 +886,10 @@ class RemixerScreen(Screen):
                 group = g
                 out.append(f"[dim {WARN}]── {g} ──[/]")
             here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
-            # TWO MARKS, because a stock effect has three states and they are
-            # independent: `✓` is on a chooser, `⌁` is HARVESTED -- its words
-            # offered to the placer, which is the one thing here that takes
-            # something away. An effect can be both until our code reaches it.
+            # TWO MARKS: `✓` is on a chooser, `⌁` is in the region -- off
+            # BOTH choosers, so its words are where your modules go. The
+            # second is DERIVED from the first, which is the point: taking an
+            # effect off both menus is the decision to give up its words.
             mark = ((f"[{OK}]✓[/]" if m.key in st.sel else " ")
                     + (f"[{WARN}]⌁[/]" if m.key in st.harvest else " "))
             menus = "+".join(rig.menus(m, st.fx1)) or "—"
@@ -902,7 +900,7 @@ class RemixerScreen(Screen):
                 cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
-        out.append(f"[dim]enter adds · h harvests its words (⌁)[/]")
+        out.append(f"[dim]enter adds · ⌁ = off both menus, words yours[/]")
         self._paint("#pane_avail", self._fit("#pane_avail", out, cur_line,
                                              head=head, tail=2))
 
@@ -1013,9 +1011,8 @@ class RemixerScreen(Screen):
             # whose fix ADDS rather than removes, `x` applies it first, and a
             # ⚠ saying "x removes Flanger…" while x actually harvested the
             # reverbs is the worst kind of wrong.
-            first = next((p_ for p_ in probs if p_.startswith("nothing is "
-                                                              "harvested")),
-                         None)
+            first = next((p_ for p_ in probs
+                          if p_.startswith("every stock effect")), None)
             return (f"[bold {BAD}]⚠ "
                     f"{escape(first or self._clash(probs) or probs[0])}[/]")
         if self.syncing is not None or self.synced != self.gen:
@@ -1143,7 +1140,7 @@ class RemixerScreen(Screen):
             # EVERY WORD IS A STOCK EFFECT'S. That is what an unmodified unit
             # looks like and the map has to say so, not imply a region is
             # waiting.
-            tries = [f" all {total:,} words allocated — h harvests one ",
+            tries = [f" all {total:,} words allocated to stock effects ",
                      f" all {total:,} words allocated ", f" {total:,} words "]
         elif not any(placed.values()):
             tries = [f" {n_w:,} words yours to place into — none taken yet ",
@@ -2106,17 +2103,6 @@ class RemixerScreen(Screen):
             return bool(getattr(self, "_can_fix", False))
         return True
 
-    def action_harvest(self):
-        """Offer the highlighted stock effect's words to the placer."""
-        st = self.app.state
-        mod = self.selected_module()
-        if mod is None:
-            return
-        st.msg = st.toggle_harvest(mod.key, disp(mod))
-        st.loaded_name = ""
-        self.schedule_sync()
-        self.rerender()
-
     def action_fx1(self):
         """Give the highlighted effect a row on FX1 too, or take it away."""
         st = self.app.state
@@ -2139,11 +2125,17 @@ class RemixerScreen(Screen):
         # image imposes.
         if not st.harvest and [m for m in st.selected if m.dsp is not None]:
             from remix.schema import DEFAULT_HARVEST
-            st.harvest = list(DEFAULT_HARVEST)
+            for k in DEFAULT_HARVEST:
+                if k in st.sel:
+                    st.toggle(k)
+                if k in st.fx1:
+                    st.fx1.remove(k)
             st.loaded_name = ""
-            st.msg = (f"harvested {', '.join(titlecase(k) for k in st.harvest)}"
-                      f" — {stock.region_words(DEFAULT_HARVEST):,} words to "
-                      f"place into. h picks different ones.")
+            st.msg = (f"dropped {', '.join(titlecase(k) for k in DEFAULT_HARVEST)}"
+                      f" from the choosers — "
+                      f"{stock.region_words(DEFAULT_HARVEST):,} words to place "
+                      f"into. Take off different ones for a different region.")
+            self.cur[LOADED] = min(self.cur[LOADED], max(len(st.order) - 1, 0))
             self.schedule_sync()
             self.rerender()
             return
