@@ -413,7 +413,17 @@ def main():
             bad += 1
             print(f"  [FAIL] payload {_pay}: {_wrong} disagree with "
                   f"stock.WORDS")
-        else:
+        # ⚠️ AND EVERY SPAN KEY MUST BE A REAL STOCK KEY. `COMB` against the
+        # registry's `COMB FILTER` made `h` answer "it runs on the ColdFire"
+        # for an effect with 277 words of DSP code -- a silent miss, because
+        # a missing key looks exactly like an effect with no code.
+        _reg = {m.key for m in stock.MODULES}
+        _orphan = sorted(set(_sp) - _reg)
+        if _orphan:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: span keys not in the registry: "
+                  f"{_orphan}")
+        elif not _wrong:
             print(f"  [PASS] payload {_pay}: {len(_sp)} effects contiguous, "
                   f"P:0x{_lo:05x}..0x{_hi:05x} = {_hi - _lo:,} words")
     # And nothing shipped may harvest a non-contiguous set -- the build

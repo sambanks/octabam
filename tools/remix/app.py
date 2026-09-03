@@ -142,7 +142,7 @@ def disp(mod) -> str:
     return titlecase(mod.name)
 
 
-def placeable(sel, total, used):
+def placeable(sel, total, used, harvest=None):
     """Words this selection can still PLACE in one payload's donor region.
 
     Not the build's own FREE figure, which reports the whole region as free
@@ -164,7 +164,8 @@ def placeable(sel, total, used):
     budget pane. They used to disagree on the same screen -- 2,509 there
     against 379 here -- which is a good way to make a budget unreadable.
     """
-    cap = min((stock.consumed_at(c) for c in stock.CONSUMED if c in sel),
+    hv = tuple(harvest) if harvest else stock.CONSUMED
+    cap = min((stock.consumed_at(c, hv) for c in hv if c in sel),
               default=total)
     return max(0, cap - used), cap
 
@@ -343,6 +344,7 @@ The loop is one move long: highlight one of yours in AVAILABLE and press `enter`
   r  render + hear     space  replay
   a / b  park what you just heard as A / B      , / .  play A / B
   1  put the highlighted effect on the FX1 chooser (or take it off)
+  h  harvest a stock effect's WORDS for your modules (or give them back)
   x  apply the fix the ⚠ is offering (only shown when there is one)
   d  sample folder     l  load a remix      s  save this one as a remix
   c  full check        f  choose the fallback        k  back to stock
@@ -393,6 +395,13 @@ Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 r
 ⚠️ TODAY THE DONOR REGION IS FIXED, and that is a property of this BUILD, not of the machine. Every effect states what it occupies — `727 words, already placed` for FILTER, `2,411 of 2,724 words` for ChonVerb — but only one region is currently harvestable: the 2,724 words PLATE, SPRING and DARK REV's code occupies, which is the only space `build_bus.py` will place a module into. So dropping FILTER frees none of its 727 *yet*.
 
 Measured 3 Sep 2026 and it says the limit is ours to lift: the thirteen DSP effects are laid out CONTIGUOUSLY in 6,158 words (`P:0x007d1..0x01fdf`, no other module between them), and every one of them is SELF-CONTAINED — no control flow leaves its own span and nothing enters it but its own dispatch entry. So any effect's words could be freed by dropping it, and a run of dropped neighbours would be one bigger region. What that costs is the effect itself: today an unlisted stock effect keeps working and only loses its row, and one harvested for its words would not.
+
+[bold]the donor region is a CHOICE, not a place[/]
+The thirteen DSP effects are laid out contiguously — 6,158 words in each payload — and every one is self-contained, so ANY unbroken run of them is ground your modules can be placed into. `h` harvests the highlighted stock effect's words and `⌁` marks it in the library. The three reverbs are only the default: they are the biggest and FX2-only, so taking them costs FX1 nothing.
+
+⚠️ The run has to stay CONTIGUOUS — a module of ours is one code stream, so a gap is not a smaller region, it is two — and only the effect just below the bottom of the run or just above its top can join it. `h` says what is in the way rather than letting the build refuse later.
+
+⚠️ HARVESTED IS NOT THE SAME AS UNLISTED, and this is the one thing here that takes something away. Leaving a stock effect off a chooser costs it that row and nothing else — its code, descriptor and dispatch stay stock, so an old project that selects it still runs it. Harvesting OFFERS its words to the placer, and it loses its algorithm only where your code actually reached: the region is packed from the lowest address upward and the build reports which survived. So an effect can be `✓⌁` — listed and harvested — right up until something is placed over it.
 
 [bold]a reverb you keep listed is spending words[/]
 PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.
@@ -506,6 +515,10 @@ class RemixerScreen(Screen):
         # be reached from the FX2 slot, and only because FX1's chooser list
         # could not grow where it sits.
         Binding("1", "fx1", "FX1 row", show=False),
+        # "h" for harvest: offer a stock effect's WORDS to the placer. The
+        # third state a stock effect has -- listed, unlisted, harvested --
+        # and the only one that takes something away.
+        Binding("h", "harvest", "harvest", show=False),
         Binding("l", "load", "load"),
         Binding("s", "save", "save"),
         Binding("k", "stock", "reset to stock", show=False),
@@ -870,16 +883,21 @@ class RemixerScreen(Screen):
                 group = g
                 out.append(f"[dim {WARN}]── {g} ──[/]")
             here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
-            mark = (f"[{OK}]✓[/]" if m.key in st.sel else " ")
+            # TWO MARKS, because a stock effect has three states and they are
+            # independent: `✓` is on a chooser, `⌁` is HARVESTED -- its words
+            # offered to the placer, which is the one thing here that takes
+            # something away. An effect can be both until our code reaches it.
+            mark = ((f"[{OK}]✓[/]" if m.key in st.sel else " ")
+                    + (f"[{WARN}]⌁[/]" if m.key in st.harvest else " "))
             menus = "+".join(rig.menus(m, st.fx1)) or "—"
             nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
             pad = " " * max(0, 13 - len(disp(m)))
-            line = f" {mark} {nm}{pad} [dim]{menus}[/]"
+            line = f" {mark}{nm}{pad} [dim]{menus}[/]"
             if here:
                 cur_line = len(out)
             out.append(f"[reverse]{line}[/]" if here else line)
         out.append("")
-        out.append(f"[dim]enter adds it to the image[/]")
+        out.append(f"[dim]enter adds · h harvests its words (⌁)[/]")
         self._paint("#pane_avail", self._fit("#pane_avail", out, cur_line,
                                              head=head, tail=2))
 
@@ -939,10 +957,10 @@ class RemixerScreen(Screen):
         # written over -- so showing the trade where it happens is the point.
         # WHICH REVERBS ARE ACTUALLY GONE, from the build's own report --
         # not "all three, always", which is what this said before 2 Sep 2026.
-        gone = [c for c in stock.CONSUMED
+        gone = [c for c in st.harvest
                 if c.split()[0] not in st.donors_kept]
         if st.donors_kept or not gone:
-            for cname in stock.CONSUMED:
+            for cname in st.harvest:
                 if cname in st.sel or cname not in gone:
                     continue
                 out.append(f"[dim {WARN}] —  {titlecase(cname):<13}"
@@ -1024,7 +1042,7 @@ class RemixerScreen(Screen):
                     " [dim]· boots[/]" if r.reached_handoff else
                     f" [{BAD}]· DID NOT REACH THE RTOS HANDOFF[/]")
             return "[dim]" + " · ".join(
-                one(n, placeable(st.sel, t, u)[0])
+                one(n, placeable(st.sel, t, u, st.harvest)[0])
                 for n, t, u, _f in st.regions) + "[/]" + boot
         # No build has reported yet. Say which of the two reasons it is --
         # this line used to claim "a stock chooser: 14 effects, no modules"
@@ -1092,8 +1110,13 @@ class RemixerScreen(Screen):
         # all four). So `held` below is the whole tail from that reverb up,
         # not the sum of the reverbs' own sizes -- and the three numbers on
         # the row then add up exactly: loaded + held + free = total.
-        held = [c for c in stock.CONSUMED if c in st.sel]
-        nxt = min(held, key=stock.consumed_at) if held else None
+        # WHAT THIS SELECTION HARVESTS, not the three reverbs. A listed
+        # effect whose words are harvestable is spending its own words, and
+        # the region packs from the lowest upward, so the lowest one still
+        # listed is the ceiling.
+        hv = tuple(st.harvest)
+        held = [c for c in stock.harvest_order(hv) if c in st.sel]
+        nxt = min(held, key=lambda c: stock.consumed_at(c, hv)) if held else None
 
         # THE SAME FOUR ANSWERS, for a terminal with no room for the rows.
         # Collected as (label, coloured number) while the full rows are
@@ -1101,7 +1124,7 @@ class RemixerScreen(Screen):
         brief = []
 
         def words_row(n, total, used):
-            free, cap = placeable(st.sel, total, used)
+            free, cap = placeable(st.sel, total, used, st.harvest)
             fill = min(20, round(20 * used / total))
             edge = max(fill, min(20, round(20 * cap / total)))
             c = OK if free > 400 else WARN if free > 32 else BAD
@@ -1120,7 +1143,8 @@ class RemixerScreen(Screen):
             # with no module of ours has no fallback to name. The region is
             # still fully accounted for: the three reverbs are in it.
             for n in ("A", "B"):
-                out.append(words_row(n, DONOR_WORDS, 0))
+                out.append(words_row(n, stock.region_words(tuple(st.harvest)),
+                                     0))
             out.append(None)
         else:
             # WHY it is not built, not just that it is not. This row is where
@@ -1144,9 +1168,9 @@ class RemixerScreen(Screen):
             # still listed, which is NOT the reverb's own size when the one
             # above it has already gone: holding PLATE and DARK, dropping
             # PLATE opens SPRING's words too (1,657, not 594).
-            cap = stock.consumed_at(nxt)
-            rest = min((stock.consumed_at(c) for c in held if c != nxt),
-                       default=DONOR_WORDS)
+            cap = stock.consumed_at(nxt, hv)
+            rest = min((stock.consumed_at(c, hv) for c in held if c != nxt),
+                       default=stock.region_words(hv))
             # "drop Dark Rev" beside "held by Dark Rev" says the name twice
             # in eleven words; with one reverb held there is nothing to
             # disambiguate, so it is "it".
@@ -1158,7 +1182,7 @@ class RemixerScreen(Screen):
             # wrapped budget row reads as an extra mystery row.
             names = ", ".join(titlecase(c).replace(" Rev", "") for c in held)
             out.append(f" {'held by':<{W}}[dim]{names} — "
-                       f"{DONOR_WORDS - cap:,} words; "
+                       f"{stock.region_words(hv) - cap:,} words; "
                        f"drop {which} for {rest - cap:,} more[/]")
 
         # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
@@ -1384,7 +1408,7 @@ class RemixerScreen(Screen):
         # and a simple fact read as a caveat -- which is the exact mistake
         # that split them into separate strings in the first place.
         res = rig.resources(mod, st.words.get(mod.key), st.fx1,
-                            mod.key in st.sel)
+                            mod.key in st.sel, st.harvest)
         for line in res:
             out.append(f"[{WARN}]{escape(line)}[/]")
         out.append("")
@@ -1897,6 +1921,17 @@ class RemixerScreen(Screen):
         if action == "fix":
             return bool(getattr(self, "_can_fix", False))
         return True
+
+    def action_harvest(self):
+        """Offer the highlighted stock effect's words to the placer."""
+        st = self.app.state
+        mod = self.selected_module()
+        if mod is None:
+            return
+        st.msg = st.toggle_harvest(mod.key, disp(mod))
+        st.loaded_name = ""
+        self.schedule_sync()
+        self.rerender()
 
     def action_fx1(self):
         """Give the highlighted effect a row on FX1 too, or take it away."""

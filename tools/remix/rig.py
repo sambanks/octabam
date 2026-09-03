@@ -313,7 +313,8 @@ def knob_max(mod, name: str) -> int:
     return (count - 1) if count is not None else 127
 
 
-def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
+def resources(mod, words=None, fx1_rows=(), selected=True,
+              harvest=()) -> list[str]:
     """What this effect COSTS, ONE LINE PER MENU.
 
     Shown while scrolling, because "will this fit beside what I have" is what
@@ -334,6 +335,7 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
     """
     from remix import ledger, stock
     from remix.schema import YBase
+    harvest = tuple(harvest) or stock.CONSUMED
     out = []
 
     # ---- the donor region: words ----------------------------------------
@@ -348,12 +350,13 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
     # of them occupies words, a buffer slot and cycles.
     if mod.is_stock:
         w = stock.WORDS.get(mod.key, 0)
-        if mod.key in stock.CONSUMED:
+        if mod.key in harvest:
             # These three are the exception that proves it: their words ARE
             # the donor region, so they are the only stock effects whose
             # words are yours to take.
-            at = stock.consumed_at(mod.key)
-            out.append(f"{w:,} words — and they are the donor region")
+            at = stock.consumed_at(mod.key, tuple(harvest))
+            out.append(f"{w:,} words — harvested, so they are yours to "
+                       f"place into")
             out.append("yours overwrite it first" if at == 0 else
                        f"survives while your modules stay under {at:,} words")
         elif w:
@@ -364,7 +367,12 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
             # rows. Same shape as the `bar` legend and as the buffer-clash
             # lists before it: an image-level fact charged to every row. The
             # Budget's `held by` line says it once, where it belongs.
-            out.append(f"{w:,} words, already placed")
+            # ⚠️ ONLY WHERE `h` WOULD WORK. The run has to stay contiguous,
+            # so offering it beside an effect in the middle of the survivors
+            # sends you to a refusal this line could have spared you.
+            out.append(f"{w:,} words, already placed — h harvests them"
+                       if mod.key in stock.harvest_neighbours(harvest) else
+                       f"{w:,} words, already placed")
         else:
             out.append("no DSP words — it runs on the ColdFire side")
         # WHAT LEAVING IT OUT ACTUALLY COSTS, in words rather than by a dash

@@ -391,10 +391,21 @@ nulled and the survivors keep their algorithm, by SPAN rather than by a
 hand-written donor list; ✅ selftest asserts contiguity in both payloads and
 that every shipped remix harvests a run; ✅ **refhash 26/26 bit-identical**.
 
-⬜ **Left:** `stock.consumed_at()` still walks the three reverbs rather than
-the selection's own harvest order; the remixer's `DONOR_WORDS = 2724` is
-still a constant; and the **third state** — a stock effect is listed /
-unlisted / harvested, and only the first two are expressible in the UI.
+✅ **And the remixer composes it.** `h` harvests the highlighted stock
+effect, `⌁` marks it, `consumed_at`/`region_words`/`placeable` all take the
+selection's own harvest, and the Budget's `held by` row follows
+(`Chorus, Plate, Spring, Dark — 3,053 words; drop Chorus for 329 more`). The
+run is kept contiguous at the KEYSTROKE, naming what is in the way, and the
+resource line offers `h harvests them` only on the two effects that could
+legally join.
+
+⬜ **Left, and it is the interesting half now:** nothing has been *flashed*,
+and harvesting a non-reverb has never run on hardware. The measurement says
+each effect is self-contained; what it cannot say is whether anything
+outside the DSP — a ColdFire path, a descriptor, the allocator table — cares
+that CHORUS's algorithm is gone. The cheapest real test is a card with
+`harvest=("CHORUS", ...)` and CHORUS left off both choosers, listening for
+anything but silence on its id.
 
 ⚠️ **One constraint found the hard way: the build report's donor names must
 be ONE WORD.** `state.measure()` reads `KEPT STOCK: (\S+)` and splits on

@@ -371,6 +371,39 @@ defaults (a stale default polluted every shimmer measurement until Round 12).
 The UNIT pane carries a resource line under the doc, and the status line
 carries the same facts while you scroll (`rig.resources()`):
 
+### The donor region is a CHOICE, not a place
+
+`h` harvests the highlighted stock effect's words for your modules; `⌁` marks
+it in the library. The thirteen DSP effects are laid out **contiguously** —
+6,158 words in each payload — and every one is **self-contained**, so any
+unbroken run of them is ground a module can be placed into (`docs/MODULES.md`
+has the measurement). The three reverbs are only the **default**: they are
+the biggest and FX2-only, so taking them costs FX1 nothing.
+
+```
+ ✓⌁ Chorus        FX1+FX2          library: listed AND harvested
+    329 words — harvested, so they are yours to place into
+    yours overwrite it first
+ held by  Chorus, Plate, Spring, Dark — 3,053 words; drop Chorus for 329 more
+```
+
+⚠️ **The run has to stay contiguous** — a module of ours is one code stream,
+so a gap is not a smaller region, it is two, and nothing chooses between
+them. Only the effect just below the bottom of the run or just above its top
+can join it; `h` names what is in the way rather than letting the build
+refuse later, and the resource line offers `h harvests them` only where it
+would work.
+
+⚠️ **Harvested is not the same as unlisted, and it is the one thing here that
+takes something away.** Leaving a stock effect off a chooser costs it that
+row and nothing else — code, descriptor and dispatch stay stock, so an old
+project that selects it still runs it. Harvesting *offers* its words to the
+placer, and it loses its algorithm only where your code actually **reached**:
+the region packs from the lowest address upward and the build reports which
+survived. So an effect can be `✓⌁` — listed and harvested — right up until
+something is placed over it. That is exactly what the three reverbs have
+always done (`remixes/restock.py` keeps two of them), generalised.
+
 ⚠️ **A stock effect says what it USES, like everything else here.** It used
 to say **"free"**, which is a *marginal* cost worn as an absolute: listing it
 costs no donor words because its code is already placed, and that is true —

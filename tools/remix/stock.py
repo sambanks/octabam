@@ -312,7 +312,7 @@ _P_ORDER = (("FILTER", (727,)), ("SPATIALIZER", (261,)), ("EQUALIZER", (282,)),
             ("PHASER", (157, 6, 6, 6, 32)), ("FLANGER", (289,)),
             ("CHORUS", (329,)), ("PLATE REV", (594,)), ("SPRING REV", (1063,)),
             ("DARK REV", (1067,)), ("COMPRESSOR", (180,)), ("LO-FI", (537,)),
-            ("DJ EQ", (345,)), ("COMB", (277,)))
+            ("DJ EQ", (345,)), ("COMB FILTER", (277,)))
 _spans: dict[str, dict[str, tuple[int, int]]] = {}
 
 
@@ -357,19 +357,53 @@ def p_spans(payload: str) -> dict[str, tuple[int, int]]:
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
 
 
-def consumed_at(key: int | str) -> int:
-    """Words our modules may place before this donor's code is overwritten.
+def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
+    """A harvested set in P-ADDRESS order, which is placement order.
 
-    The region is contiguous and packed from PLATE upward, so PLATE goes
-    first and DARK survives longest. build_bus.py asserts the contiguity and
-    that the three sum to the region, so a drift here cannot pass quietly.
+    The region is packed from its lowest address upward, so the effect at the
+    bottom goes first and the one at the top survives longest. Written down
+    for the three reverbs until 3 Sep 2026; sorted from the image now,
+    because any run of effects can be harvested and nothing says a remix
+    lists them in address order.
+    """
+    sp = p_spans("A")
+    return tuple(sorted(harvest, key=lambda k: sp[k][0]))
+
+
+def consumed_at(key: int | str, harvest=CONSUMED) -> int:
+    """Words our modules may place before this effect's code is overwritten.
+
+    build_bus.py asserts the harvested run is contiguous and places from its
+    lowest address, so a drift here cannot pass quietly.
     """
     at = 0
-    for c in CONSUMED:
+    for c in harvest_order(harvest):
         if c == key:
             return at
         at += WORDS[c]
     raise KeyError(key)
+
+
+def harvest_neighbours(harvest=CONSUMED) -> frozenset[str]:
+    """The effects that could JOIN a harvested run without breaking it.
+
+    A module of ours is one code stream, so the run has to stay contiguous:
+    only the effect immediately below the bottom of it and the one
+    immediately above the top can be added.
+    """
+    sp = p_spans("A")
+    run = sorted(sp[k] for k in harvest if k in sp)
+    if not run:
+        return frozenset(sp)
+    lo, (ha, hn) = run[0][0], run[-1]
+    return frozenset(k for k, (a, n) in sp.items()
+                     if a + n == lo or a == ha + hn)
+
+
+def region_words(harvest=CONSUMED) -> int:
+    """The whole placeable region for a harvested set. 2,724 for the three
+    reverbs, which is the figure every document quoted as a constant."""
+    return sum(WORDS[k] for k in harvest)
 
 # The one stock row with nothing on the DSP to render.
 NO_DSP = frozenset({"DELAY"})
