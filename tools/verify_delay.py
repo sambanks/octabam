@@ -94,10 +94,14 @@ SR = 44100
 # bit-compare (both sides got the same wrong knob) and wrong as a description
 # of what was exercised -- the same shape as the SLOT fix below, which landed
 # on 23 Aug and did not reach this line.
-BASE = [40, 60, 100, 64, 0, 90, 0, 0, 0, 0, 0, 0]
+# v5.1: slot 5 is PTCH (IN retired). 0 here so a pre-v5 REFERENCE gets
+# IN=0 and stays comparable; the GRAIN cases set PTCH explicitly.
+BASE = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0, 0, 0]
 
-SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "MIX": 5,
-        "WOW": 6, "SPRAY": 9}
+SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "VRB": 4, "PTCH": 5,
+        "MDEP": 6, "MRAT": 8, "DRV": 10}
+# v5.1 (3 Sep 2026): slot 5 is PTCH (IN retired), MDEP = wow depth / GRAIN
+# scatter, MRAT = wow rate / GRAIN density, DRV = drive in every mode.
 # ⚠️ MIX (= IN since v3) moved to slot 5 in the 18 Aug 2026 IN/-VRB swap;
 # this map said 4 until 23 Aug, so the "MIX=0" case was actually pinning
 # -VRB -- harmless for its bit-compare purpose (both sides got the same
@@ -258,7 +262,6 @@ def main():
         # crossfade. At 0 the two are identical by construction, so this case
         # is what proves the change touched only the blend and nothing else
         # -- the cases above it are EXPECTED to differ across that commit.
-        ("MIX=0 (dry path untouched by the crossfade)", dp(MIX=0), 0),
     ]
     for label, params, split in CASES:
         a = render(ref_mem, params, split, source)
@@ -284,12 +287,12 @@ def main():
             # v5 numbering (3 Sep 2026): 1 = GRAIN, 2 = REVERSE; PITCH mode is
             # retired and its harmoniser lives in GRAIN's continuous pitch.
             # DINT drives the SIZE select (the PTCH slot until v5).
-            ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(SPRAY=0)),
-            ("GRAIN unison SPRAY=127 (full scatter)", 1, 1, dp(SPRAY=127)),
-            ("GRAIN +12 on RATE, 23 ms grains", 1, 2, dp(SPRAY=60, RATE=96)),
-            ("GRAIN -12 on RATE, 186 ms grains (the distance clamp)", 1, 3,
-             dp(SPRAY=90, RATE=32)),
-            ("GRAIN sparse (DENS 0) at 93 ms", 1, 1, dp(SPRAY=64, WOW=0)),
+            ("GRAIN unison SPRAY=0 (every grain on the same read)", 1, 1, dp(MDEP=0, PTCH=64)),
+            ("GRAIN unison SPRAY=127 (full scatter)", 1, 1, dp(MDEP=127, PTCH=64)),
+            ("GRAIN +12 on PTCH, 23 ms grains", 1, 2, dp(MDEP=60, PTCH=96)),
+            ("GRAIN -12 on PTCH, 186 ms grains (the distance clamp)", 1, 3,
+             dp(MDEP=90, PTCH=32)),
+            ("GRAIN sparse (MRAT 0) at 93 ms", 1, 1, dp(MDEP=64, MRAT=0, PTCH=64)),
             ("REVERSE size 4096 (93 ms, the line's ceiling)", 2, 1, dp()),
             ("REVERSE size 512 (stutter) at TIME=127", 2, 3, dp(TIME=127)),
         ]

@@ -267,11 +267,10 @@
 ;   r7+$73              FDBK coefficient (per block)
 ;   r7+$74              PING amount (per block)
 ;   r7+$75              TIME, integer sample count (per block)
-;   r7+$76              IN -- this track's OWN send level into the delay
-;                       (per block, raw knob used directly as Q1.23). Was
-;                       MIX; v3 stage 1 made the host track a return, so
-;                       there is no dry left to cross-fade and the knob
-;                       became the host's counterpart of send_client's p0
+;   r7+$76              IN -- pinned to 0 since v5.1 (3 Sep 2026): slot 5 is
+;                       PTCH now and the host's own send is its FX1 client.
+;                       The IN arithmetic is still in the loop (x0 = exactly
+;                       zero contribution); removing it is a cycle trim
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
 ;   r7+$79/$7a          scratch: dL/dR, raw taps (per sample)
 ;   r7+$7b/$7c          scratch: fL/fR, damped taps == this sample's wet
@@ -723,13 +722,9 @@ bus_mine:
 ; Tcc needs an accumulator, so it takes b and the base is RE-LOADED below
 ; rather than "still live". Costs one word; the version that trusted the old
 ; comment indexed the table at address 0 or 1, a wild Y read.
-        move    #>$1,x0                 ; the "one more client" increment
-        clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$5),a             ; IN (p5 since the 18 Aug swap), read
-                                        ;  from the knob directly: the per-block
-                                        ;  decode runs AFTER this block
-        tst     a                       ; Z set == IN is 0 == not sending
-        tne     x0,b                    ; sending -> b = 1
+        clr     b                       ; b = 0: IN is retired (v5.1), the host
+                                        ; never counts itself -- its own send
+                                        ; is an FX1 client like any other
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
@@ -1111,8 +1106,12 @@ dwarmdone:
 ; NEITHER FLASHED. The matrix now has an IN-nonzero render so a dead IN can
 ; never again pass silently -- verify_bus alone cannot see it because every
 ; default render has IN at 0.
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$76)           ; IN, 0 .. ~0.99
+; v5.1 (3 Sep 2026): IN IS RETIRED. Slot 5 is PTCH, GRAIN's pitch; the host
+; track's own send into the delay is its FX1 station's ->DEL (or SEND on
+; FX1). The IN machinery below is kept and pinned to 0 -- bit-identical to
+; every IN=0 render, and a cycle trim for later rather than a risk now.
+        clr     a
+        move    a,x:(r7+$76)            ; IN = 0, always
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
@@ -1214,6 +1213,17 @@ dwarmdone:
                                         ; 8-15; on $b nothing shared the word
         move    a1,x0
         move    x0,a                    ; A2-clean
+; ---- v5.1: GRAIN carries a FIXED GENTLE wow (Sam, 3 Sep 2026) ------------
+; MDEP is scatter there, so the depth cannot come from the knob; and the
+; grains read the same lines the repeats recirculate through, so DPTH 127
+; had them wobbling by +-254 samples ("modulating heavily"). Knob 12's worth,
+; ~+-24 samples at 1x: a tape's breath rather than a wobble.
+        move    x:(r7+$69),b            ; MODE
+        move    #>$10000,x0             ; 1 << 16 = GRAIN
+        cmp     x0,b
+        bne     wowlive
+        move    #>$18000,a              ; 12 << 13
+wowlive:
         move    a,x:(r7+$2d)            ; WOWD
         asr     #$3,a,a
         move    a1,x0
@@ -1231,8 +1241,14 @@ dwarmdone:
 ; XBUS): r7 is full, and the server-role lock guarantees ONE delay per bank,
 ; so the shared words have one writer.
         move    x:(r6+$d),a
-        and     #>$7f0000,a             ; RATE knob field
+        and     #>$7f0000,a             ; MRAT knob field
         move    a1,x0
+        move    x:(r7+$69),b            ; v5.1: in GRAIN MRAT is density and the
+        move    #>$10000,x0             ; mod rate is fixed at exactly 1x (64),
+        cmp     x0,b                    ; the DPTH=0 bypass law's own value.
+        move    #>$400000,x0            ; 64 << 16 -- a move between the cmp
+        teq     x0,a                    ; and the Tcc is fine; Tcc's DESTINATION
+        move    a1,x0                   ; is an accumulator, never a register
         move    #>$130,y1
         mpy     x0,y1,a                 ; wow inc = $98 * val/64
 ; ⚠️ 0901h-0904h: CORE-PRIVATE Y, and the ZERO-PADDED SPELLING IS LOAD-BEARING.
@@ -1256,21 +1272,11 @@ dwarmdone:
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
         move    a,y:>$0902
 
-; ---- DRIVE amount: p10 in every mode but GRAIN --------------------------
-; GRAIN's p10 is SPRA (scatter), the established multi-meaning pattern -- so
-; in GRAIN, d is pinned 0 and the grains run undriven; everywhere else the
-; knob is DRV. knob<<16 IS d in Q1.23 (the MIX/PING trick). Y 0903h:
-; same reasoning as the RATE increments above.
-        move    x:(r7+$69),b            ; MODE
-        move    #>$10000,x0             ; 1 << 16 = GRAIN (v5 numbering)
-        cmp     x0,b
-        beq     drvz
+; ---- DRIVE amount: p10, EVERY mode (v5.1: scatter moved to MDEP, so the ---
+; grains read a driven line like the repeats do). knob<<16 IS d in Q1.23
+; (the MIX/PING trick). Y 0903h: same reasoning as the RATE increments above.
         move    x:(r6+$e),a             ; p10 knob field
         and     #>$7f0000,a
-        bra     drvw
-drvz:
-        clr     a
-drvw:
         move    a,x:(r7+$83)            ; d -> r7 (18 Aug 2026, probe V0/V127:
                                         ; d via Y read INSIDE the bsr callee
                                         ; measured dead on hardware -- crest
@@ -1317,17 +1323,15 @@ drvw:
         teq     x0,b                    ; running -> re-arm
         move    b,y:>$0904
 
-; ---- SPRAY: GRAIN scatter depth (v2 stage 5) ------------------------------
-; Page-2 slot 10's KNOB field -- the SAME WORD as FRZE, whose select is its
-; low byte, which is why the two masks here are disjoint and neither reads
-; the other's field. knob<<16 already IS value/128 in Q1.23, so it is used
+; ---- SPRAY: GRAIN scatter depth (v2 stage 5; on MDEP since v5.1) ----------
+; Page-2 slot 6's KNOB field (r6+$c, the word MODE's select shares). knob<<16 already IS value/128 in Q1.23, so it is used
 ; directly as a multiplier with no mpy to build it (the MIX/PING trick).
 ; SPRAY=0 puts every grain on the same read position -- four heads in a
 ; cluster, the most coherent and least granular end -- and 127 gives the
 ; full 0..1015-sample scatter. Decoded every block regardless of MODE, like
 ; PTCH and FRZE; harmless in the modes that never read it.
-        move    x:(r6+$e),a
-        and     #>$7f0000,a             ; knob field only
+        move    x:(r6+$c),a             ; MDEP's knob field: SCATTER in GRAIN
+        and     #>$7f0000,a             ; (v5.1 -- the mod depth is fixed there)
         move    a1,x0
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         move    a,x:(r7+$5c)            ; SPRAY, 0 .. ~0.992 as Q23
@@ -1532,8 +1536,8 @@ gvn0:
         bra     gvoct
 gvknob:
 ; knob path: e = RATE - 64 (-64..63); oct = e >> 5; f = (e & 31) << 18
-        move    x:(r6+$d),a             ; page-2 slot 8 KNOB field
-        and     #>$7f0000,a
+        move    x:(r6+$5),a             ; PTCH: page-1 slot 5 (IN until v5.1),
+        and     #>$7f0000,a             ; a plain knob, val << 16
         move    a1,x0
         move    x0,a
         asr     #$10,a,a                ; the integer knob 0..127
@@ -1622,8 +1626,9 @@ gvrdone:
 ; the R61 full-dial law; and the level MAKEUP coeff = 1/2 + (7-dens3)/14 in
 ; Q23 (R61, verbatim: flattens the gate's energy loss within ~1.2 dB; the top
 ; of the ramp is $7FFFFF by construction, so the sum cannot wrap).
-        move    x:(r7+$2d),a
-        asr     #$11,a,a
+        move    x:(r6+$d),a             ; MRAT's knob field: DENSITY in GRAIN
+        and     #>$7f0000,a             ; (v5.1 -- the mod rate is fixed there)
+        asr     #$14,a,a                ; knob >> 4 = dens3, 0..7
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$3c)            ; dens3 (lag's park is consumed)

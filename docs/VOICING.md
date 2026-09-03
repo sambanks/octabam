@@ -2085,3 +2085,16 @@ matched settings (four decorrelated grains), a makeup decision for the ear.
 ⬜ Ear pass pending (Sam): `out/ab/grain_v4/` -- `_v3` vs `_v5_r64_lm`
 (unison) and `_v5_r96_lm` (+12), glow_intro and guitar_dry.
 
+### R64 addendum — v5.1, the knob map done in one pass (3 Sep 2026)
+
+Sam, rightly: the mode change had been patched knob by knob (RATE meant
+pitch AND wow speed, DPTH meant density AND wow depth in GRAIN). One pass,
+one meaning per knob per mode: IN retired (the host's own send is its FX1
+station), PTCH on page 1 in its place, MDEP = mod depth / GRAIN scatter,
+MRAT = mod rate / GRAIN density, DRV = drive in every mode, GRAIN with a
+fixed gentle wow. Measured after: CLEAN bit-identical to v3; pitch on PTCH
+438/869/223 Hz at 64/96/32; density on MRAT −15.1 → −12.0 dBFS (0 → 127);
+scatter on MDEP −7.1 (coherent) → −11.8 dBFS; DC gate p-p 0. The Nimbus
+comparison stands: Sam's Nimbus was the octave-up one, so PTCH 96 is the
+sound he knew, MDEP 40, MRAT 127, SIZE 93MS, TIME 36, FDBK 40, PING 127.
+

@@ -53,13 +53,13 @@ MODULE = Module(
         # every real sender.
         Param(b"-VRB", 0, active=True, formatter=_PLAIN,
               doc="wet send into ChonVerb over the bus -- delay into reverb in series"),
-        # IN sits bottom-right to match the reverb's IN (the 18 Aug swap).
-        Param(b"IN", 0, active=True, formatter=_PLAIN,
-              doc="this track's own send into the delay; 0 = off (and off the bus)"),
+        # PTCH sits where IN did (v5.1, 3 Sep 2026): the host's own send is its
+        # FX1 station's ->DEL now, and GRAIN's pitch belongs on the scene page.
+        Param(b"PTCH", 64, active=True, formatter=_PLAIN,
+              doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
         # ---- page 2 -------------------------------------------------------
-        Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
-              doc="tape wow depth; 0 = none - GRAIN: density, full dial, "
-                  "level-flat (R61)"),
+        Param(b"MDEP", 48, 128, active=True, formatter=_PLAIN,
+              doc="tape mod (wow) depth; 0 = none - GRAIN: scatter, how far apart the grains read"),
         # v5 (3 Sep 2026): three real positions, nothing dead. The parts that
         # stored PITCH (1) get GRAIN, which is its harmoniser now; the stamper
         # writes fresh defaults for a replaced/renumbered effect anyway (plan A6).
@@ -68,8 +68,8 @@ MODULE = Module(
               doc="engine select: CLEAN, GRAIN (pitched cloud, v5), REVERSE"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
-        Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
-              doc="wow LFO speed, 64 = 1x - GRAIN: pitch, +-2 oct, 64 = unison (v5)"),
+        Param(b"MRAT", 64, 128, active=True, formatter=_PLAIN,
+              doc="tape mod (wow) rate, 64 = 1x - GRAIN: density, full dial, level-flat (R61)"),
         # SIZE (the PTCH slot until v5): GRAIN's grain length and REVERSE's
         # segment, one select read the same way by both. Count stays 4.
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
@@ -79,7 +79,7 @@ MODULE = Module(
         # scatter depth. 0 = exact bypass, which outranks a scatter taste
         # that gets played by hand anyway.
         Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
-              doc="drive on the repeats; in GRAIN it is the scatter depth; 0 = bypass"),
+              doc="drive on the repeats, every mode; 0 = bypass"),
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
               labels=("RUN", "HOLD"),
               doc="freeze the line as a loop -- loop length = TIME"),

@@ -446,7 +446,13 @@ def main():
              # THREE runs on purpose -- the multi-run worked example. Its
              # placement is checked for real below, not just its harvest.
              "scattered": ("SPATIALIZER", "FLANGER", "CHORUS", "PLATE REV",
-                           "SPRING REV", "DARK REV", "COMB FILTER")}
+                           "SPRING REV", "DARK REV", "COMB FILTER"),
+             # the BamSep26 stations beside the reverb: FILTER is REPLACED
+             # (its words are the station's ground) and the FX1 list keeps
+             # only DJ EQ, COMPRESSOR and LO-FI, so ten of thirteen go
+             "stations": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                          "DARK REV", "COMB FILTER")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(

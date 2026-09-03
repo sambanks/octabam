@@ -125,8 +125,8 @@ DELAY_ID = SERVER_ID.get("D")
 REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "IN", "shmr": "SHMR",
              "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dvrbw": "-VRB", "dmix": "IN", "dwow": "DPTH",
-               "dmode": "MODE", "drate": "RATE", "dptch": "PTCH",
+               "dping": "PING", "dvrbw": "-VRB", "dmix": "PTCH", "dwow": "MDEP",
+               "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
                "dspray": "DRV", "dfrz": "FRZE"}
 
 

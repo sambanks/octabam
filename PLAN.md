@@ -212,7 +212,7 @@ core. Two consequences:
 
 The build report is the live ledger — `make bus` prints it. Current build
 (29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,401, FREE 323.** The older "A 55 / B 1" figures in this file predated the freeze
+FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,404, FREE 320 (v5.1: 2,154 words).** The older "A 55 / B 1" figures in this file predated the freeze
 and roll work; both payloads are still effectively full, and new work needs
 a lever first.
 
