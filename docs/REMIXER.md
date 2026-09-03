@@ -408,6 +408,11 @@ works perfectly alone, which is the worst shape a defect can have.
 
 ### One line per menu
 
+**And one LINE per menu.** They are returned as separate strings and printed
+as separate rows; joining them with ` · ` made one long sentence that Textual
+then flowed, so the FX1 and FX2 answers broke across lines mid-phrase — which
+is the exact mistake that split them apart in the first place.
+
 FX1 and FX2 have **separate allocator tables**, so a cost on one is not a cost
 on the other — and saying that in a subordinate clause ("FX2 rows only, FX1
 keeps its 4") made a simple fact read as a caveat. There is a line each:
@@ -568,6 +573,30 @@ The four slots are drawn as four groups so the picture and the number agree,
 and the number says what it counts: `0 pinned of 4`. Two earlier forms were
 worse — `4 of 4` against an empty bar says "all four used" and meant the
 opposite, and `4 of 4 free` still invited "free for *what*?".
+
+⚠️ **There is no glyph legend, and no status line repeating this pane.**
+Both were removed 3 Sep 2026 for the same reason: they said again what was
+already on screen beside them.
+
+- The legend sat at the bottom of the strip labelled **`bar`** — in the same
+  label column as `words A`, `cycles` and `cave`, so it read as a fifth
+  scarce thing called "bar" whose value was "held by a reverb you kept
+  listed". Moving it under the bars it decodes fixed the mislabelling and
+  left the better question standing: every row already says in **words** what
+  its bar says in glyphs (`0 free of 2,724 · 0 loaded`, `held by Plate,
+  Spring, Dark`), so it was decoding a picture of a sentence printed beside
+  it.
+- The **status line** wrote the selected effect's category, id, resource
+  sentence and membership on every cursor move — word for word what the UNIT
+  pane prints under the effect's name, except that the pane wraps and the
+  status bar was one row, so the copy that got truncated mid-sentence was the
+  redundant one. ⚠️ Deleted rather than moved into the strip: a column there
+  is 62 characters against the 138 the status line already had, so "give it
+  more room" and "put it in the strip" pull opposite ways. What remains is
+  the right half of the old behaviour — moving the cursor **clears** it, so
+  an action message ("added Nimbus · added Send as the fallback") cannot sit
+  there describing a row you have since left — and the row collapses to
+  nothing when there is nothing to say.
 
 ⚠️ **A stock chooser reports its real figures, not `????`.** A stock row
 places no code — no clone, no words, its dispatch is already in the image —

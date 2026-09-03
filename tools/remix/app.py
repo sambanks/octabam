@@ -1091,7 +1091,6 @@ class RemixerScreen(Screen):
         held = [c for c in stock.CONSUMED if c in st.sel]
         nxt = min(held, key=stock.consumed_at) if held else None
 
-        seen = set()                            # which bar glyphs are drawn
         # THE SAME FOUR ANSWERS, for a terminal with no room for the rows.
         # Collected as (label, coloured number) while the full rows are
         # built, so the short form cannot drift from the long one.
@@ -1099,8 +1098,6 @@ class RemixerScreen(Screen):
 
         def words_row(n, total, used):
             free, cap = placeable(st.sel, total, used)
-            seen.update(g for g, n in (("#", used), ("-", total - cap),
-                                       (".", free)) if n)
             fill = min(20, round(20 * used / total))
             edge = max(fill, min(20, round(20 * cap / total)))
             c = OK if free > 400 else WARN if free > 32 else BAD
@@ -1113,12 +1110,14 @@ class RemixerScreen(Screen):
         if st.regions:
             for n, total, used, _f in st.regions:
                 out.append(words_row(n, total, used))
+            out.append(None)                # the key goes here -- see below
         elif not [m for m in st.selected if m.dsp is not None]:
             # No build to read -- and none is possible, because a selection
             # with no module of ours has no fallback to name. The region is
             # still fully accounted for: the three reverbs are in it.
             for n in ("A", "B"):
                 out.append(words_row(n, DONOR_WORDS, 0))
+            out.append(None)
         else:
             # WHY it is not built, not just that it is not. This row is where
             # the eye lands after the gesture that broke the selection, and
@@ -1277,9 +1276,16 @@ class RemixerScreen(Screen):
         # -- which is fair, because it IS three unrelated definitions, and
         # the only thing on the pane a reader cannot decode from the words
         # beside it. Aligned under the label column so it reads as a key.
-        key = [(g, w) for g, w in (("#", "loaded by a module"),
-                                   ("-", "held by a reverb you kept listed"),
-                                   (".", "free")) if g in seen]
+        # ⚠️ THERE IS NO GLYPH LEGEND ANY MORE. It sat at the bottom of the
+        # strip labelled `bar`, in the same label column as `words A`,
+        # `cycles` and `cave` -- so it read as a fifth scarce thing called
+        # "bar" whose value was "held by a reverb you kept listed". Moving it
+        # under the bars it decodes fixed the mislabelling and left the
+        # better question standing: every row already says in WORDS what its
+        # bar says in glyphs (`0 free of 2,724 · 0 loaded`, `held by Plate,
+        # Spring, Dark`), so the legend was decoding a picture of a sentence
+        # printed beside it.
+        out = [ln for ln in out if ln is not None]
         # A SHORT TERMINAL GETS THE NUMBERS, NOT THE ROWS. Nine lines of
         # budget out of twenty-four is the pane crowding out the thing it is
         # supposed to be read against. One line keeps every figure and the
@@ -1303,20 +1309,7 @@ class RemixerScreen(Screen):
             self._budget_resized(len(lines) + 1)
             self._paint("#pane_budget", lines + [cur])
             return
-        rows, wide = self._two_up(out, side)
-        # THE KEY FOLLOWS THE LAYOUT. Stacked, it is one glyph per line --
-        # three definitions strung along one line read as a run-on sentence,
-        # which is what it was until 2 Sep 2026. Side by side there is room
-        # to space them out, and wide gaps make three columns of a key
-        # rather than a sentence.
-        if wide and len(key) > 1:
-            rows.append(f" {'bar':<{W}}[dim]"
-                        + "".join(f"{g}  {w}".ljust(38) for g, w in key)
-                        + "[/]")
-        else:
-            for i, (glyph, what) in enumerate(key):
-                rows.append(f" {'bar' if not i else '':<{W}}"
-                            f"[dim]{glyph}  {what}[/]")
+        rows, _wide = self._two_up(out, side)
         # Its own height is what the panes above are laid out against, so a
         # change in it invalidates them.
         self._budget_resized(len(rows))
@@ -1372,10 +1365,16 @@ class RemixerScreen(Screen):
         # WHAT IT COSTS, while you are still deciding. "Will this fit beside
         # what I already have" is what the library pane is really asked, and
         # every answer used to arrive only as a refusal after adding it.
+        # ⚠️ ONE LINE EACH, which is how resources() has always returned
+        # them and what docs/REMIXER.md's "one line per menu" describes.
+        # Joining them with ` · ` made one long sentence that Textual then
+        # flowed, so the FX1 and FX2 answers broke across lines mid-phrase
+        # and a simple fact read as a caveat -- which is the exact mistake
+        # that split them into separate strings in the first place.
         res = rig.resources(mod, st.words.get(mod.key), st.fx1,
                             mod.key in st.sel)
-        if res:
-            out.append(f"[{WARN}]{escape(' · '.join(res))}[/]")
+        for line in res:
+            out.append(f"[{WARN}]{escape(line)}[/]")
         out.append("")
 
         head = len(out)
@@ -1599,24 +1598,23 @@ class RemixerScreen(Screen):
         self.rerender_soon()
 
     def describe(self):
-        """The status line follows the CURSOR, not the last thing you did.
+        """Moving the cursor CLEARS the status line.
 
-        It was an action log -- "added Nimbus · added Send as the fallback" --
-        which is read as context for whatever is under the cursor now, so it
-        went stale the moment you scrolled and described a row you had left.
-        An action still writes it; moving replaces it.
+        ⚠️ IT USED TO REPEAT THE UNIT PANE. Every cursor move wrote the
+        effect's category, id, resource sentence and membership into the
+        status bar -- which is word for word what the UNIT pane already
+        prints under the effect's name, except that the pane WRAPS and this
+        was one row, so the copy that got truncated mid-sentence was the
+        redundant one. Deleted rather than moved: a column of the budget
+        strip is 62 columns against the 138 this already had, so "give it
+        more room" and "put it in the strip" pull opposite ways.
+
+        Clearing is what is left, and it is the right half of the old
+        behaviour: an action message ("added Nimbus · added Send as the
+        fallback") is context for the moment it happened, so it must not
+        still be sitting there describing a row you have since left.
         """
-        st = self.app.state
-        mod = self.selected_module()
-        if mod is None or self.pane == UNIT:
-            return
-        bits = [rig.category(mod)]
-        if mod.menu is not None:
-            bits.append(f"id 0x{mod.menu.fx2_id:02x}")
-        bits += rig.resources(mod, st.words.get(mod.key), st.fx1,
-                              mod.key in st.sel)
-        bits.append("in the image" if mod.key in st.sel else "not in the image")
-        st.msg = f"{disp(mod)} — {' · '.join(bits)}"
+        self.app.state.msg = ""
 
     def rerender_soon(self):
         """Mark the screen stale; _flush draws it on the next frame."""
@@ -2234,7 +2232,8 @@ class Remixer(App):
     #pane_budget { height: auto; padding: 0 1;
                    border-top: dashed $surface; }
     #tabbar { height: 1; padding: 0 1; }
-    #status { height: 1; padding: 0 1; }
+    /* auto, so an empty status line takes no row at all. */
+    #status { height: auto; padding: 0 1; }
     #log { height: 12; border-top: dashed $surface; }
     """
     MODES = {"remixer": RemixerScreen}
