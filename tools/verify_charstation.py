@@ -42,6 +42,16 @@ SR = 44100
 TMP = pathlib.Path("out/_chgate")
 TMP.mkdir(parents=True, exist_ok=True)
 
+# ⚠️ REBUILD THE DUMP, ALWAYS. The audition caches its scratch image against
+# the newest mtime under modules/, and a stale hit here does not fail -- it
+# silently measures the STOCK effect whose id this module replaces. That cost
+# an hour on 3 Sep 2026: every mode read as a dry pass, because the dump's
+# dispatch still pointed at stock CHORUS, and the emulator eventually died on
+# a stock instruction it does not implement.
+pathlib.Path(MEM).unlink(missing_ok=True)
+subprocess.run([sys.executable, "tools/remix/audition.py", MOD.name,
+                "out/dry/drums_110.wav"], capture_output=True)
+
 if not pathlib.Path(MEM).exists():
     sys.exit(f"no {MEM} -- build it first:\n"
              f"  python3 tools/remix/audition.py {MOD.name} out/dry/drums_110.wav")

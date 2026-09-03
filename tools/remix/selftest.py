@@ -450,9 +450,18 @@ def main():
              # the BamSep26 stations beside the reverb: FILTER is REPLACED
              # (its words are the station's ground) and the FX1 list keeps
              # only DJ EQ, COMPRESSOR and LO-FI, so ten of thirteen go
+             # the three stations take FILTER, LO-FI and CHORUS by name and
+             # nothing else is listed, so all thirteen go: one 6,158-word run.
+             # bamsep26 is the rig and has the same shape (stock DELAY is on
+             # its chooser, but it has no DSP code to give up).
+             "bamsep26": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                          "COMB FILTER"),
              "stations": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
                           "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
-                          "DARK REV", "COMB FILTER")}
+                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                          "COMB FILTER")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
         _hv = stock.region_of(stock.harvested(
