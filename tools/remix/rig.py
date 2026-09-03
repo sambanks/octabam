@@ -163,6 +163,65 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
 # without booting anything.
 MENU_TABLES = (0x400cbc00, 0x400cc700)
 
+# The id-indexed tables each menu resolves, and the two name fields inside a
+# page descriptor (docs/PARAM_PAGES.md section 2). Read from the BUILT image
+# rather than from the manifest: the manifest is what was ASKED for, and the
+# whole point of looking is that a cloned descriptor can carry something else.
+_FX1_IDS, _FX2_IDS = 0x400d5f58, 0x400d5fdc
+_FX1_ID2POS, _FX2_ID2POS = 0x400d60d0, 0x400d6150
+_NONE_DESC = 0x400d4618
+_P_ABBR, _P_FULLNAME = 0x04, 0x09
+_P_NAMES, _P_PENABLE_LO, _P_PENABLE_HI = 0x16, 0x18e, 0x18a
+
+
+def drawn_as(fx2_id: int, img: bytes | None = None):
+    """What the built image will make the unit PRINT for this id, and the
+    chooser row each menu opens on.
+
+    -> {"name", "abbr", "slots", "fx1", "fx2"} -- fx1/fx2 being the cursor
+    row or None when that menu does not list the id at all -- or None if
+    there is no image. `img` defaults to the built one; verify_menu passes
+    the bytes it already has.
+    """
+    if img is None:
+        from remix.state import BUILT_IMAGE
+        if not BUILT_IMAGE.exists():
+            return None
+        img = BUILT_IMAGE.read_bytes()
+    base = 0x40000400
+
+    def rd32(a):
+        i = a - base
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i < len(img) - 3 else 0
+
+    def field(p, off, n):
+        i = p - base + off
+        return img[i:i + n].split(b"\0")[0].decode("latin1", "replace")
+
+    p2 = rd32(_FX2_IDS + fx2_id * 4)
+    p1 = rd32(_FX1_IDS + fx2_id * 4)
+    desc = p2 if p2 and p2 != _NONE_DESC else p1
+    if not desc or desc == _NONE_DESC:
+        return None
+    # THE TWELVE SLOT NAMES the panel will print, and which are enabled --
+    # the same two words stock.py reads, from the same descriptor. This is
+    # the field a CLONE inherits from its donor, so reading it back out of
+    # the built image is the check that the build wrote what was asked for.
+    lo = rd32(desc + _P_PENABLE_LO)
+    hi = rd32(desc + _P_PENABLE_HI)
+    slots = []
+    for i in range(12):
+        on = bool(((lo if i < 8 else hi) >> (4 * (i if i < 8 else i - 8))) & 1)
+        nm = field(desc, _P_NAMES + i * 6, 6)
+        slots.append(nm if on and nm else None)
+    return {"name": field(desc, _P_FULLNAME, 13),
+            "abbr": field(desc, _P_ABBR, 5),
+            "slots": tuple(slots),
+            "fx1": (rd32(_FX1_ID2POS + fx2_id * 4)
+                    if p1 and p1 != _NONE_DESC else None),
+            "fx2": (rd32(_FX2_ID2POS + fx2_id * 4)
+                    if p2 and p2 != _NONE_DESC else None)}
+
 
 def menu_patched() -> int:
     """Bytes of the MAIN MENU tables this build changed. 0 = the unit's own

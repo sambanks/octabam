@@ -670,6 +670,113 @@ Not the page title, which the LCD draws itself two lines down; the FX pages
 all open with the same title and the same chooser column, so saying it twice
 is how the caption came to say nothing.
 
+### The no-flash gate
+
+The CHOOSERS line ends in **`boots`** when the built image reaches the RTOS
+handoff in the local ColdFire emulator. That is the whole of it, and it is
+worth having: a cave that breaks early init faults there instead of on the
+unit. It is a fact about the **image**, so it sits on the image's own line.
+
+If a selection ever patches the unit's top-level menu, the MAIN MENU appears
+under CHOOSERS as the firmware draws it. **None do yet** — a selection
+changes it only by writing the tables at `0x400cbc00`, and every remix so far
+changes **zero** bytes of them (`rig.menu_patched()`, a byte diff against the
+pristine image, no boot).
+
+### ⚠️ The per-effect preview is gone, and why
+
+The UNIT pane used to close with the firmware's own draw of that effect's
+page. Sam asked what it was for four times on 3 Sep 2026 and the honest
+answer, arrived at far too slowly, was **nothing this pane should do**:
+
+- The rows above it **already list every drawn parameter with its page
+  number**, from the same descriptor. The picture said it again.
+- The CHOOSERS pane already lists the chooser rows — and the capture only
+  ever held the **seven** the screen shows, so that half could never show all
+  ten of FX1's or all fourteen of FX2's anyway.
+- **A picture of that screen is not possible.** The chooser list and the
+  parameter block are two overlaid windows whose coordinates are not
+  comparable — fourteen text baselines in 64 pixels with a 7 px font; the
+  list steps exactly 7 and the parameter block falls 1–3 px off it. Three
+  rounds of column work went into finding that out.
+- The MAIN MENU view was the same picture every time.
+
+What it was really being squinted at for is whether the descriptor the build
+**wrote** matches the manifest that **asked for it** — a clone inherits its
+donor's name fields and slot names, so it can carry the right count, default
+and enable bit and still be labelled as the effect it was copied from. Three
+of six page-2 slots drew wrong on the 17 Aug 2026 flash and every check then
+in place passed, because every field they checked was right.
+
+**That is a check, and it now lives in `verify_menu.py`**, read straight out
+of the built image with no emulator involved:
+
+```
+ok   REVERB SERVER: the panel prints 'ChonVerb78', which starts with the
+     declared 'ChonVerb' (the build tag follows it)
+ok   REVERB SERVER: its abbreviation is 'CVRB' == 'CVRB'
+ok   REVERB SERVER: its 12 drawn slot names are the manifest's, in order
+```
+
+A mismatch now **fails `make check`** instead of having to be noticed in the
+corner of a pane. That is the general lesson and it is worth writing down: a
+fact you have to look at is not a check, and dressing it up better does not
+make it one.
+
+### A / B compares two EFFECTS
+
+Not "two renders ago against now", which is what the marks used to hold. `r`
+hears the effect the cursor is on, `a` parks it as A, then point at the rival
+and `b` — which **re-renders it on the same source** — and `,` / `.` flip
+between them. That is the question a remixer exists to answer: *is mine
+better than the one the box came with?* It is also exactly the question an
+upgraded stock effect asks, which is why the pair is two effects rather than
+two accidents of history.
+
+**`SOURCE` is the first row**: `left`/`right` cycles the wavs in the source
+folder, so choosing what you audition on is one keypress from the knobs. `r`
+renders the effect over it and plays it; `space` replays.
+
+**`d` points the source folder somewhere else** and remembers it in
+`out/_audition/remixer.json`; `REMIXER_SOURCES` overrides both. The
+default is `out/dry/`, the curated dry set — a good default, not a permanent
+one, since a bench gets used on whatever material is to hand. A path that is
+not a directory, or holds no wavs, is refused and the old one stands.
+
+⚠️ **Six of the eleven stock effects render DRY at their defaults** —
+PHASER, FLANGER, CHORUS and COMB sit at `MIX 0`, SPATIALIZER and DELAY at
+`SEND 0` — so pressing `r` on one plays the source back unchanged, which
+reads as "this effect does nothing" (it cost a report on 2 Sep 2026). **That
+is faithful and is not fixed by seeding a different value**: stock defaults
+are read from the firmware's own descriptor (`tools/remix/stock.py`), an
+unmodified unit really does start them fully dry, and inventing a value here
+would make the remixer lie about the page it draws beside. The UNIT pane says
+`⚠ MIX is 0 — this renders DRY` instead. None of *our* modules default this
+way.
+
+**Stepping knobs**: `left`/`right` is ±1 and **`shift`+`left`/`right` is
+±10**. Holding the key runs; ~280 steps/second is sustainable (below), so
+key repeat is the limit, not the remixer.
+
+⚠️ **Holding an arrow key used to lag, and the cause was the emulated
+panel.** `rerender()` called `render_fx2` on *every* keystroke — 15–96 ms,
+mean 32 (`render_fx1` 16, `render_menu` 8; measured 2 Sep 2026) — plus three
+independent `problems()` calls at 2.4 ms each. Under key repeat the work per
+key exceeded the repeat interval, so the UI fell behind the held key and kept
+stepping after release; single presses always felt fine, which is why it
+presented as "slow when holding" rather than as latency. **Nothing a keystroke
+does can change that picture** — knob *values* draw as dial graphics the
+string-capture hook cannot read — so the panel is now cached on (page,
+effect id, build) and `problems()` is computed once per pass. Measured
+A/B: **18.1 ms → 3.6 ms per step, 55/s → 281/s.**
+
+Below that, `p` cycles the **preview** in the unit's own order — `FX1`,
+`FX2`, then `MENU` — showing the firmware's own draw of that page, under a
+caption saying **what** it is: `ChonVerb on track 5, as the unit draws it`.
+Not the page title, which the LCD draws itself two lines down; the FX pages
+all open with the same title and the same chooser column, so saying it twice
+is how the caption came to say nothing.
+
 #### What it is for
 
 It is the only way to see the **panel** side of an image without flashing

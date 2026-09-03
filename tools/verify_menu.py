@@ -38,6 +38,7 @@ import os, pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE  # noqa: E402
 from remix import registry as _reg  # noqa: E402
+from remix import rig as _rig  # noqa: E402
 from remix.schema import NO_FALLBACK as _NO_FALLBACK  # noqa: E402
 
 STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
@@ -433,6 +434,46 @@ def main():
               "every id this list drops has its cursor row clamped to 0"
               + (f" -- {len(_stale)} still point past the list" if _stale
                  else ""))
+
+    # ==== the descriptor each module's id RESOLVES TO ======================
+    # ⚠️ THE FIELDS A CLONE INHERITS FROM ITS DONOR. A cloned descriptor is
+    # copied whole and then written over, so anything the build does not
+    # write stays the donor's -- and some of those fields outrank the ones it
+    # does write. A slot can carry the right count, default, name and enable
+    # bit and still draw as something else entirely, or as nothing at all:
+    # three of six page-2 slots drew wrong on the 17 Aug 2026 flash and every
+    # check then in place passed, because every field they checked was right.
+    #
+    # So the built descriptor is read BACK and compared to the manifest that
+    # asked for it. This lived in the remixer's UNIT pane for a day (3 Sep
+    # 2026) and does not belong there: it is a check, and a check belongs
+    # where a mismatch FAILS THE BUILD rather than where it has to be
+    # noticed in the corner of a pane.
+    print("\n=== every module's descriptor, read back out of the image: the "
+          "name and abbreviation the panel will print, and the twelve slot "
+          "names -- all fields a clone inherits from its donor ===")
+    for name in _ORDER:
+        mod = _MODS[name]
+        if mod.is_stock:
+            continue
+        got = _rig.drawn_as(mod.menu.fx2_id, img)
+        if got is None:
+            check(False, f"{name}: its id resolves to no descriptor")
+            continue
+        want_name = mod.menu.fullname.decode("latin1")
+        check(got["name"].startswith(want_name),
+              f"{name}: the panel prints {got['name']!r}, which starts with "
+              f"the declared {want_name!r} (the build tag follows it)")
+        check(got["abbr"] == mod.menu.abbr.decode("latin1"),
+              f"{name}: its abbreviation is "
+              f"{got['abbr']!r} == {mod.menu.abbr.decode('latin1')!r}")
+        want_slots = [p.name.decode("latin1") for p in mod.params
+                      if p.active and p.name]
+        drew = [x for x in got["slots"] if x]
+        check(drew == want_slots,
+              f"{name}: its {len(want_slots)} drawn slot names are the "
+              f"manifest's, in order"
+              + ("" if drew == want_slots else f" -- got {drew}"))
 
     for name, donor_E in (("SPRING", 0x400d5726), ("DARK", 0x400d58b8),
                            ("FILTER", 0x400d4772)):

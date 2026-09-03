@@ -330,7 +330,7 @@ HELP = {
     # short enough never to be re-flowed.
     "remixer": """[bold]THE REMIXER[/] — compose the effects list your unit shows, and hear each one before you commit to it.
 
-[bold]AVAILABLE[/] is everything that COULD be in an image: your modules, then the stock effects the box already ships. [bold]LOADED[/] is the image you are composing, in the order the unit's chooser will show it. [bold]UNIT[/] follows the cursor — the selected effect's knobs, the firmware's own draw of its page, and `r` to hear it on the SOURCE wav.
+[bold]AVAILABLE[/] is everything that COULD be in an image: your modules, then the stock effects the box already ships. [bold]CHOOSERS[/] is the image you are composing — the unit's two effect menus, FX1 above FX2, each in the row order the panel will show. [bold]UNIT[/] follows the cursor — the selected effect's knobs, what it costs, and `r` to hear it on the SOURCE wav.
 
 The loop is one move long: highlight one of yours in AVAILABLE and press `enter`. The image rebuilds and re-boots by itself, so the panel on the right is never showing something else.
 
@@ -360,18 +360,12 @@ Both are then equally yours. Leaving an effect off a chooser takes that ROW and 
 
 `p` → FX1 draws the chooser you composed, as the firmware draws it.
 
-[bold]what the preview is for[/]
-It is the only way to see the PANEL side of an image without flashing one. The remixer's own panes say what you asked for; this says what the firmware will actually draw from the tables the build wrote — the effect names on the chooser rows, in the order they will scroll, and the knob labels the page will put under each encoder.
+[bold]the no-flash gate[/]
+The CHOOSERS line ends in `boots` when the built image reaches the RTOS handoff in the local ColdFire emulator. That is the whole of it: a cave that breaks early init faults there instead of on your unit. It is a fact about the IMAGE, so it is on the image's line.
 
-That is a real class of bug and it has cost real days here: a cloned descriptor inherits its donor's display formatter, so a slot can carry the right count, default and name and still draw as something else entirely — or as nothing. Three of six page-2 slots drew wrong on one flash and every check passed, because every field they checked was right.
+If a selection ever patches the unit's top-level menu, the MAIN MENU appears under CHOOSERS as the firmware draws it. None do yet — a selection changes it only by writing the tables at `0x400cbc00` and every remix so far changes zero bytes of them.
 
-BOTH MENUS AT ONCE, no switcher, docked to the bottom of the pane so it does not move as you scroll between effects with different numbers of knobs. It shows the effect's knob names in the unit's own words, in the banks the encoders are in, and each chooser's rows as the firmware lists them (`▸` marks the row this effect is on).
-
-⚠️ There WAS a `p` key cycling FX1 / FX2 / MENU, and all three of its problems were the switcher. FX1 and FX2 resolve the SAME descriptor for anything listed on both — the build points both id tables at one clone — so switching showed the same knob names twice and only the chooser rows differed, which is the one thing worth seeing side by side. And the MAIN MENU is the same picture in every remix that exists: a selection changes it only by writing the tables at 0x400cbc00, and every remix so far changes ZERO bytes of them. So it is a line — `menu unchanged by this selection` — and it becomes a picture on the day something patches it, which is the day that view was built for.
-
-⚠️ A picture of an FX page is not available: the chooser list and the parameter block are two overlaid WINDOWS whose coordinates are not comparable — fourteen text baselines in 64 pixels with a 7 px font — so flattening them into one grid interleaves them and reads as a mapping from each row to the labels beside it, which is not what any of it means. The strings are still the firmware's own; only their arrangement stops being a reconstruction.
-
-Honest limits: knob VALUES draw as dial graphics the string capture cannot read, so only a stepped select prints one; the numbers in the pane above are the truth for values. Nothing here touches hardware.
+⚠️ There used to be a per-effect block here showing the firmware's own draw of the page. It is gone (3 Sep 2026) and the reason is worth knowing: the rows above already list every drawn parameter with its page number, from the same descriptor, so the picture said it again — and a picture of that screen is not even possible, because the chooser list and the parameter block are two overlaid windows whose coordinates are not comparable. What it was really being squinted at for is whether the descriptor the build WROTE matches the manifest that asked for it: a clone inherits its donor's name fields and slot names, so it can carry the right count, default and enable bit and still be labelled as the effect it was copied from. That is a CHECK, and it now lives in `verify_menu`, where a mismatch fails `make check` instead of having to be noticed in the corner of a pane.
 
 [bold]what an FX1 row costs[/]
 No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
@@ -464,7 +458,8 @@ AVAILABLE, LOADED, UNIT = 0, 1, 2
 # ⚠️ THERE WAS A `p` KEY cycling FX1 / FX2 / MENU here. Both FX pages are the
 # same descriptor for anything listed on both, so it showed the same knob
 # names twice; the MAIN MENU is the same picture in every remix that exists.
-# Both are on screen at once now -- see _panel_block.
+# Neither is a per-effect view: what survives of both is in verify_menu and
+# on the CHOOSERS pane's own line -- see _ledger_line.
 
 
 class RemixerScreen(Screen):
@@ -960,6 +955,14 @@ class RemixerScreen(Screen):
                        f"cannot be listed — {escape(who)} "
                        f"{'holds' if len(pin) == 1 else 'hold'} "
                        f"the buffers they need[/]")
+        # THE MAIN MENU, only when this selection changes it -- which is
+        # never, so far. It is the image's business, not one effect's, so it
+        # sits here rather than following the cursor in the UNIT pane.
+        self.ensure_sync(probs)
+        if not probs and not self.sync_error and self.app.boot is not None:
+            n = rig.menu_patched()
+            if n:
+                out += self._menu_picture(n)
         # Everything from the notes down is the IMAGE speaking, not a row,
         # so it stays on screen however long the lists get.
         tail = len(out) - rows_end
@@ -1007,9 +1010,18 @@ class RemixerScreen(Screen):
                 # digits is already "spent" and deserves the alarm colour.
                 c = OK if f > 400 else WARN if f > 32 else BAD
                 return f"{n} [{c}]{f:,}[/] free"
+            # AND WHETHER IT BOOTS. That is the ColdFire emulator's real
+            # job here -- a cave that breaks early init faults locally
+            # instead of on the unit -- and it is a fact about the IMAGE, so
+            # it belongs on the image's own line. It spent a day in the UNIT
+            # pane, where it followed the cursor for no reason.
+            r = self.app.boot
+            boot = ("" if r is None else
+                    " [dim]· boots[/]" if r.reached_handoff else
+                    f" [{BAD}]· DID NOT REACH THE RTOS HANDOFF[/]")
             return "[dim]" + " · ".join(
                 one(n, placeable(st.sel, t, u)[0])
-                for n, t, u, _f in st.regions) + "[/]"
+                for n, t, u, _f in st.regions) + "[/]" + boot
         # No build has reported yet. Say which of the two reasons it is --
         # this line used to claim "a stock chooser: 14 effects, no modules"
         # for ANY unmeasured selection, including chongbong, which has three.
@@ -1421,36 +1433,23 @@ class RemixerScreen(Screen):
         out.append("[dim]← → change · r render + hear · space replay[/]"
                    if self.pane == UNIT else
                    "[dim]tab here to change values and audition[/]")
-        out.append("")
-        # ⚠️ DOCKED TO THE BOTTOM. The block sat straight after the knob
-        # rows, so it moved up and down the pane with the number of knobs --
-        # five for WarpFold, thirteen for Filter -- and the thing you were
-        # reading was never in the same place twice.
-        block = self._panel_block(mod, probs)
-        # ⚠️ THE ARITHMETIC IS DONE HERE, not in _fit. This pane has three
-        # parts with three different claims on the space -- a fixed head, a
-        # scrollable middle the cursor lives in, and a block that must stay
-        # docked at the bottom -- and threading that through the generic
-        # windower produced a pane whose block was sometimes simply absent.
-        # One row of slack, deliberately: content_size read DURING a render
-        # is the previous layout's and came back a row optimistic often
-        # enough to clip the block's last line away silently. Being wrong by
-        # one costs a blank row; being right to the row costs a line.
-        room = self.query_one("#pane_unit", Static).content_size.height - 1
-        # ⚠️ WHEN BOTH CANNOT FIT, THE BLOCK GOES AND SAYS SO. Windowing the
-        # knobs down to nothing to keep it would take away the thing the
-        # cursor is standing in; silently dropping it is what a docked block
-        # must never do.
-        if room > 0 and room - len(out) - len(block) < -6:
-            block = [f"[dim]what the unit will draw — the pane is "
-                     f"{len(block) + len(out) - room} rows short[/]"]
-        out += [""] * max(0, room - len(out) - len(block)) + block
+        # ⚠️ THE UNIT PANE ENDS HERE. It used to close with a block showing
+        # the firmware's own draw of this effect's page -- and the answer to
+        # "what is that for?", asked four times on 3 Sep 2026, turned out to
+        # be "nothing this pane should do". The rows above already list every
+        # drawn parameter with its page number, from the same descriptor, so
+        # the picture said it again; CHOOSERS lists the chooser rows; and
+        # what was left were two ASSERTIONS about the built descriptor and a
+        # boolean about the boot. The assertions moved to verify_menu, where
+        # a mismatch fails `make check` instead of having to be noticed in
+        # the corner of a pane; the boot is one line under CHOOSERS, where it
+        # belongs, because it is a fact about the IMAGE and not about the
+        # effect the cursor is on.
         self._paint("#pane_unit", self._fit("#pane_unit", out, cur_line,
-                                            head=head, tail=len(block),
-                                            height=room))
+                                            head=head))
 
     # ---- the emulated panel ---------------------------------------------
-    def _panel(self, mode, effect_id):
+    def _panel(self, mode, effect_id=None):
         """The firmware's own draw of one page, CACHED.
 
         ⚠️ This is what made a HELD arrow key lag. render_fx2 costs 15-96 ms
@@ -1486,153 +1485,25 @@ class RemixerScreen(Screen):
         self._panel_cache[key] = list(draws)
         return self._panel_cache[key]
 
-    def _page_rows(self, mod, draws):
-        """An FX page's knob names, in the banks the encoders are in.
+    def _menu_picture(self, n):
+        """The MAIN MENU as the firmware draws it.
 
-        ⚠️ NOT A PICTURE OF THE SCREEN. The chooser list and the parameter
-        block are two overlaid windows whose y origins are not comparable
-        (fourteen text baselines in 64 pixels with a 7 px font --
-        emu_bringup.read_screen has the measurement), so flattening them into
-        one grid interleaves them and reads as a mapping from each chooser
-        row to the labels beside it. The STRINGS are still the firmware's
-        own, which is the whole point of the view; only their arrangement
-        stops being a reconstruction.
+        ⚠️ SHOWN ONLY WHEN THE SELECTION ACTUALLY CHANGES IT, which is the
+        case this view was built for -- a patched-in top-level row
+        (PLAN.md section 5) -- and which no remix yet hits: a selection can
+        change the top-level menu only by writing the tables at 0x400cbc00,
+        and every one of them changes ZERO bytes of it. As a permanent
+        fixture it was the same picture every time.
         """
         import emu_bringup
-        scr = emu_bringup.read_screen(draws)
-        # WHICH PAGE A ROW BELONGS TO, decided against the effect's own
-        # parameters rather than against the pixel columns -- and by
-        # MAJORITY, because a select's VALUE can coincide with a parameter's
-        # name (`BASE` is both one of FILTER's page-1 knobs and what its
-        # page-2 ENV prints).
-        page = {n: ("page 1" if slot < 6 else "page 2")
-                for n, slot in self.unit_rows(mod) if n != "SOURCE"}
-        banks = {"page 1": [], "page 2": [], "": []}
-        lev = None
-        for row in scr["params"]:
-            if row and row[0] == "LEV":
-                lev, row = row[0], row[1:]
-            votes = [page.get(n, "") for n in row]
-            kind = max(set(votes), key=votes.count) if votes else ""
-            banks[kind].append(row)
-        out, w = [], 6
-        for kind in ("page 1", "page 2", ""):
-            if not banks[kind]:
-                continue
-            line = f" [dim]{kind:<7}[/]" if kind else " " * 8
-            # LEV IS ITS OWN COLUMN, not a fourth entry in the first bank:
-            # the unit puts it on the page-1 name row and the banks are
-            # threes, so folding it in knocked every column after it out of
-            # step with the rows below.
-            line += (lev or "").ljust(w)
-            for bank in banks[kind]:
-                line += "".join(escape(n).ljust(w) for n in bank).ljust(3 * w)
-                line += "  "
-            out.append(line.rstrip())
-            lev = None
-        return out or ["[dim] no parameters drawn[/]"]
-
-    def _rows_line(self, label, draws, mod):
-        """One chooser's rows as the FIRMWARE lists them, packed to the pane.
-
-        Not the same statement as the CHOOSERS pane, which shows what you
-        asked for: this is what the build actually wrote into the image, in
-        the window the screen shows. `▸` is the row this effect sits on --
-        the unit says so by XOR-highlighting it, which the string capture
-        cannot read (docs/EMU.md).
-        """
-        import emu_bringup
-        want = disp(mod).lower()
-        names = [(f"[reverse]▸{escape(n)}[/]"
-                  if n.lower().startswith(want) else escape(n))
-                 for n in emu_bringup.read_screen(draws)["list"]]
-        if not names:
-            return [f" [dim]{label:<5}no rows drawn[/]"]
-        # PACKED, not truncated: the name that gets cut is as likely to be
-        # the one you were looking for as any other.
-        # ⚠️ FLOORED AT 30. content_size read during a render is the previous
-        # layout's, and a stale narrow one packed the names ONE PER LINE --
-        # fourteen lines of chooser on a pane that had two to spare.
-        room = max(30, self.query_one("#pane_unit", Static).content_size.width
-                   - 2)
-        lead, out, cur = f" [dim]{label:<5}[/]", [], ""
-        for n in names:
-            bit = (" [dim]·[/] " if cur else "") + n
-            if cur and self._vis(lead + cur + bit) > room:
-                if len(out) == 1:               # two lines is the whole budget
-                    cur += " [dim]…[/]"
-                    break
-                out.append(lead + cur)
-                lead, cur = " " * 6, n
-            else:
-                cur += bit
-        return out + [lead + cur]
-
-    def _panel_block(self, mod, probs):
-        """WHAT THE UNIT WILL DRAW, both menus at once, no switcher.
-
-        ⚠️ THERE WAS A `p` KEY cycling FX1 / FX2 / MENU, and all three of its
-        problems were the switcher. The FX1 and FX2 pages are the SAME
-        descriptor for anything listed on both -- the build points both id
-        tables at one clone and verify_menu asserts it -- so switching
-        between them showed the same knob names twice and only the chooser
-        rows differed, which is the one thing worth seeing side by side. And
-        the MAIN MENU is the same picture in every remix that exists: a
-        selection changes it only by writing the tables at 0x400cbc00, and
-        every remix so far changes ZERO bytes of them (rig.menu_patched).
-        So it is a line, and it becomes a picture on the day something
-        patches it -- which is the day that view was built for.
-        """
-        st = self.app.state
-        head = ["[bold]what the unit will draw[/]"]
-        self.ensure_sync(probs)
-        r = self.app.boot
-        if probs:
-            return head + ["[dim]not built — see the ⚠ in CHOOSERS[/]"]
-        if self.sync_error:
-            return head + [f"[dim]build failed — {escape(self.sync_error)}[/]"]
-        if self.syncing is not None or r is None:
-            return head + ["[dim]building and booting…[/]"]
-        if not r.reached_handoff:
-            return head + ["[bold]did not reach the RTOS handoff[/] — a "
-                           "patch may have broken early init"]
-        if mod.menu is None:
-            return head + ["[dim]no chooser row: this module patches the "
-                           "firmware rather than adding an effect[/]"]
-        if not self.in_image(mod):
-            # An id the image does not implement resolves to the FALLBACK,
-            # so the firmware would draw a convincing picture of the wrong
-            # effect (CLAUDE.md, 12 Aug 2026).
-            return head + ["[dim]not in the image yet[/]"]
-        eid = mod.menu.fx2_id
-        on_fx1 = rig.FX1 in rig.menus(mod, st.fx1)
-        d2 = self._panel("FX2", eid)
-        out = head + self._page_rows(mod, d2)
-        # FX1's chooser is stock's own when this effect has no row on it, and
-        # saying so is the point: it is where an FX1 row WOULD be added.
-        out += self._rows_line("FX1", self._panel("FX1", eid if on_fx1
-                                                  else 0x04), mod)
-        out += self._rows_line("FX2", d2, mod)
-        n = rig.menu_patched()
-        out.append(f" [dim]menu [/]" + ("[dim]unchanged by this selection[/]"
-                                        if not n else
-                                        f"[{WARN}]{n} bytes patched[/]"))
-        if n:
-            out += self._menu_picture()
-        return out
-
-    def _menu_picture(self):
-        """The MAIN MENU as the firmware draws it -- shown only when the
-        selection actually changes it, which is the case that view exists
-        for (a patched-in top-level row, PLAN.md section 5)."""
-        import emu_bringup
-        grid = emu_bringup.layout_screen(self._panel("MENU", None))
+        head = [f"[{WARN}]main menu — {n} bytes patched[/]"]
+        grid = emu_bringup.layout_screen(self._panel("MENU"))
         while grid and not grid[-1].strip():
             grid.pop()
         while grid and not grid[0].strip():
             grid.pop(0)
         edge, w = f"[{LCD}]", emu_bringup.COLS
-        return [f"{edge}." + "-" * w + ".[/]"] + \
+        return head + [f"{edge}." + "-" * w + ".[/]"] + \
             [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
              for ln in grid] + [f"{edge}'" + "-" * w + "'[/]"]
 
