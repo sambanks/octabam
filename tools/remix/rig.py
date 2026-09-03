@@ -357,10 +357,14 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
             out.append("yours overwrite it first" if at == 0 else
                        f"survives while your modules stay under {at:,} words")
         elif w:
-            # The consequence, not the mechanism: they are not in the donor
-            # region, so they are not yours to trade either way.
-            out.append(f"{w:,} words, already placed — listing it costs none "
-                       f"and dropping it frees none")
+            # ⚠️ THE NUMBER, AND NOTHING ELSE. This said "— listing it costs
+            # none and dropping it frees none" for one day, which is true and
+            # is a property of the DONOR REGION rather than of this effect,
+            # so it printed the same sentence on ten of the fourteen stock
+            # rows. Same shape as the `bar` legend and as the buffer-clash
+            # lists before it: an image-level fact charged to every row. The
+            # Budget's `held by` line says it once, where it belongs.
+            out.append(f"{w:,} words, already placed")
         else:
             out.append("no DSP words — it runs on the ColdFire side")
         # WHAT LEAVING IT OUT ACTUALLY COSTS, in words rather than by a dash

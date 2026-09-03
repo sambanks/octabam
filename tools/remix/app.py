@@ -388,7 +388,11 @@ Five things, and the Budget strip is one row for each: the two donor regions of 
 
 CYCLES is the one that does not fail as a refusal. Over budget the DSP does not decline to build, it wedges — so the row prices the WORST core under the worst mix this selection allows, which for a card of inserts is four copies of the dearest one: nothing stops all four tracks selecting it. The budget of 3,120 is what our code may spend after stock's own share, measured 23 Aug 2026, and the count is a floor: exact for the code, optimistic about memory contention.
 
-Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 rows fit, and a stock effect costs zero words because its code is already in the image whether or not it has a row. Leaving a stock effect out takes its chooser row and nothing else — an old project that selects it still runs it.
+Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 rows fit, and leaving a stock effect out takes its chooser row and nothing else — an old project that selects it still runs it.
+
+⚠️ TODAY THE DONOR REGION IS FIXED, and that is a property of this BUILD, not of the machine. Every effect states what it occupies — `727 words, already placed` for FILTER, `2,411 of 2,724 words` for ChonVerb — but only one region is currently harvestable: the 2,724 words PLATE, SPRING and DARK REV's code occupies, which is the only space `build_bus.py` will place a module into. So dropping FILTER frees none of its 727 *yet*.
+
+Measured 3 Sep 2026 and it says the limit is ours to lift: the thirteen DSP effects are laid out CONTIGUOUSLY in 6,158 words (`P:0x007d1..0x01fdf`, no other module between them), and every one of them is SELF-CONTAINED — no control flow leaves its own span and nothing enters it but its own dispatch entry. So any effect's words could be freed by dropping it, and a run of dropped neighbours would be one bigger region. What that costs is the effect itself: today an unlisted stock effect keeps working and only loses its row, and one harvested for its words would not.
 
 [bold]a reverb you keep listed is spending words[/]
 PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.

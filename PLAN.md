@@ -334,6 +334,62 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   costs level (the reference manages loud AND sparse). Needs makeup gain on
   the surviving grains, which does not exist yet.
 
+### 1b. DYNAMIC DONOR REGIONS — measured feasible, 3 Sep 2026
+
+**Sam's framing, and it is the right one: if the goal is to mix and match all
+effects freely, dropping any stock effect should give you its words.** Today
+only three can be harvested — the donor region is exactly PLATE + SPRING +
+DARK REV — and every other stock effect answers "what does this cost?" with a
+number you cannot spend. That is a property of THIS BUILD, not of the
+machine, and the difference had been showing up as UI copy nobody could make
+read straight ("dropping it frees none").
+
+**The two facts that make it possible are measured** (`tools/dsp_reach.py`
+disassembly of payload A, against the module records and the spans in
+`docs/DSP.md` §8):
+
+- **The thirteen DSP effects are CONTIGUOUS**, `P:0x007d1..0x01fdf`, **6,158
+  words**, with no other module between them:
+
+  | | | | | |
+  |---|---|---|---|---|
+  | `007d1` FILTER 727 | `00aa8` SPATIALIZER 261 | `00bad` EQUALIZER 282 | `00cc7` PHASER 157+41 | `00d96` FLANGER 289 |
+  | `00eb7` CHORUS 329 | `01000` PLATE 594 | `01252` SPRING 1063 | `01679` DARK 1067 | `01aa4` COMPRESSOR 180 |
+  | `01b58` LO-FI 537 | `01d71` DJ EQ 345 | `01eca` COMB 277 | | |
+
+  The current 2,724-word donor region is the middle third of that run.
+- **Every one is SELF-CONTAINED.** No control flow leaves an effect's own
+  span, and nothing enters one but its own dispatch entry. The single
+  apparent exception is PLATE's `do #<$6,>$1267` — a loop END address, which
+  is exclusive, so it is its own boundary rather than a jump into SPRING.
+  (⚠️ PHASER is the known irregular one: its true extent runs 41 words past
+  its record into four small blocks, `docs/DSP.md` §8. Its span is the true
+  one above.)
+
+**So the ceiling is 6,158 words against today's 2,724 — 2.26×** — and
+anything between: drop CHORUS and the region grows *downward* from PLATE
+because CHORUS is its neighbour.
+
+**What it costs, and this is the new decision it forces.** Today an unlisted
+stock effect keeps working — its code, descriptor and dispatch stay stock, so
+an old project that selects it still runs it, and leaving it out costs only a
+chooser row. A stock effect *harvested for its words* is gone: its dispatch
+must go to the null stub, exactly as the donors' do. So a stock effect stops
+having two states and gains three — **listed** / **unlisted but intact** /
+**harvested** — and the remixer has to make that choice legible, because it
+is the first one in this tool that actually takes something away.
+
+**The work, in order:** ⬜ re-run the containment sweep on payload B (same
+code, other payload, unmeasured); ⬜ per-effect spans into `stock.py` beside
+`WORDS`; ⬜ `build_bus.py` places into a computed run of harvested effects
+rather than the fixed region, packing from the lowest freed address (the
+`consumed_at` ladder generalises to "which effect does the cursor reach");
+⬜ null the dispatch of anything harvested, which the donor path already
+does; ⬜ `verify_menu`/`verify_slots` assert the harvested set matches what
+was placed; ⬜ the remixer's third state and the Budget's words row.
+⬜ **`refhash` is the gate** — a selection harvesting only the three reverbs
+must stay bit-identical to today.
+
 ### 2. FX1 consolidation — turning the stranded pool into capability
 
 The trick ChonVerb already ran: replace near-duplicates with one engine plus
