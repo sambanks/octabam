@@ -337,13 +337,32 @@ def resources(mod, words=None, fx1_rows=(), selected=True) -> list[str]:
     out = []
 
     # ---- the donor region: words ----------------------------------------
+    #
+    # ⚠️ A STOCK EFFECT SAYS WHAT IT USES, like everything else here. It used
+    # to say "free", which is a MARGINAL cost worn as an absolute: listing it
+    # costs no donor words because its code is already placed, and that is
+    # true -- but in a remixer whose whole point is mixing stock and ours
+    # freely, one kind of effect answering "how much does this use?" with
+    # "free" and the other with "2,411 of 2,724 words" makes them look like
+    # different KINDS of thing. They are not. They are effects, and every one
+    # of them occupies words, a buffer slot and cycles.
     if mod.is_stock:
+        w = stock.WORDS.get(mod.key, 0)
         if mod.key in stock.CONSUMED:
+            # These three are the exception that proves it: their words ARE
+            # the donor region, so they are the only stock effects whose
+            # words are yours to take.
             at = stock.consumed_at(mod.key)
+            out.append(f"{w:,} words — and they are the donor region")
             out.append("yours overwrite it first" if at == 0 else
-                       f"free while your modules stay under {at:,} words")
+                       f"survives while your modules stay under {at:,} words")
+        elif w:
+            # The consequence, not the mechanism: they are not in the donor
+            # region, so they are not yours to trade either way.
+            out.append(f"{w:,} words, already placed — listing it costs none "
+                       f"and dropping it frees none")
         else:
-            out.append("free — already in the image")
+            out.append("no DSP words — it runs on the ColdFire side")
         # WHAT LEAVING IT OUT ACTUALLY COSTS, in words rather than by a dash
         # in a column. The two menus are not symmetric: FX1's chooser is
         # stock's own and no image shortens it, so an unlisted effect that

@@ -1231,9 +1231,17 @@ class RemixerScreen(Screen):
             how = " + ".join(
                 f"{n}× {disp(st.mods[k]) if k in st.mods else titlecase(k)}"
                 for k, n in mix.items()) or "nothing of ours"
+            # ⚠️ STOCK ROWS ARE NOT IN THIS FIGURE, and on a card that mixes
+            # stock and ours freely that is a real hole -- a stock effect
+            # costs cycles when it is selected like any other. Only FILTER's
+            # figure has ever been measured (192/instance, docs/CHIP.md), so
+            # the row says what is missing rather than inventing the rest.
+            nstock = sum(1 for m in st.selected if m.is_stock)
+            gap = (f" · {nstock} stock rows not counted" if nstock else "")
             brief.append(("cycles", f"[{c}]{free:,}[/]"))
             side.append(f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
-                        f"{usable:,} [dim]· worst core: {escape(how)}[/]")
+                        f"{usable:,} [dim]· worst core: {escape(how)}"
+                        f"{gap}[/]")
 
         # Rows are countable without a build; the cave is not.
         # Same sentence again: 31 exist, this selection loaded N.
@@ -2215,6 +2223,12 @@ class RemixerScreen(Screen):
 # ---- the app ---------------------------------------------------------------
 class Remixer(App):
     TITLE = "remixer"
+    # ⚠️ TEXTUAL'S COMMAND PALETTE IS OFF. It advertised itself permanently in
+    # the footer (`^p palette`) and offered five things, none of them ours:
+    # Quit and Keys duplicate `q` and `?`, Maximize does nothing useful to a
+    # pane that is not a focusable widget, and Theme and Screenshot are worth
+    # less than the footer space and the "what is that?" it cost.
+    ENABLE_COMMAND_PALETTE = False
     CSS = """
     /* The panes must FILL the row for their left borders to run the whole
        way down -- a Static is only as tall as its text, so the dividers

@@ -371,6 +371,32 @@ defaults (a stale default polluted every shimmer measurement until Round 12).
 The UNIT pane carries a resource line under the doc, and the status line
 carries the same facts while you scroll (`rig.resources()`):
 
+⚠️ **A stock effect says what it USES, like everything else here.** It used
+to say **"free"**, which is a *marginal* cost worn as an absolute: listing it
+costs no donor words because its code is already placed, and that is true —
+but in a remixer whose whole point is mixing stock and ours freely, one kind
+of effect answering "how much does this use?" with `free` and the other with
+`2,411 of 2,724 words` makes them look like different **kinds** of thing.
+They are not. Every effect occupies words, a buffer slot and cycles.
+
+| | says |
+|---|---|
+| an ordinary stock effect | `727 words, already placed — listing it costs none and dropping it frees none` |
+| a donor reverb | `594 words — and they are the donor region` / `yours overwrite it first` |
+| DELAY | `no DSP words — it runs on the ColdFire side` |
+| one of ours | `2,411 of 2,724 words` |
+
+The three reverbs are the exception that proves it: their words **are** the
+donor region, so they are the only stock effects whose words are yours to
+take.
+
+⚠️ **Stock rows are not in the cycles figure**, and on a card that mixes
+stock and ours freely that is a real hole — a stock effect costs cycles when
+it is selected like any other. Only FILTER's has ever been measured
+(192/instance, `docs/CHIP.md`), so the row says what is missing rather than
+inventing the rest: `cycles  3,120 free of 3,120 · worst core: nothing of
+ours · 14 stock rows not counted`.
+
 ```
 ChonVerb   — bus · id 0x07 · 2411 of 2,724 words ·
              needs the whole FX2 buffer region (blocks 7 stock effects) ·
@@ -1192,6 +1218,14 @@ adding to a venv that already carries unicorn and textual.
 Audio is **not** re-rendered on a source change — it plays out loud, and
 firing on every save would be intolerable. The image and the panel refresh;
 `r` is one key.
+
+## No command palette
+
+Textual's `^p` palette is off. It advertised itself permanently in the footer
+and offered five things, none of them ours: **Quit** and **Keys** duplicate
+`q` and `?`, **Maximize** does nothing useful to a pane that is not a
+focusable widget, and **Theme** and **Screenshot** are worth less than the
+footer space and the "what is that?" it cost. `ENABLE_COMMAND_PALETTE`.
 
 ## Theming
 
