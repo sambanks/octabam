@@ -12,9 +12,9 @@ Each is printed by the slot's "A" display formatter, a ColdFire function
 `fmt(char *buf, int value)` (docs/PARAM_PAGES.md section 7). So rather than
 hand-decode eleven formatters and keep the table honest by inspection, this
 runs each one on the emulated ColdFire (tools/emu_bringup.py's detour call,
-the same machine the workbench draws its screens with) for every legal
+the same machine the remixer draws its screens with) for every legal
 value and records what it wrote. The result is checked in as JSON because
-the emulator lives in the workbench's venv and the registry must load
+the emulator lives in the remixer's venv and the registry must load
 without it; `--check` (run by the selftest when unicorn is present) proves
 the JSON is still what the firmware prints.
 

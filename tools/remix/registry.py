@@ -22,6 +22,9 @@ import sys
 import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 MODULES_DIR = ROOT / "modules"
 
 _cache: dict[str, object] | None = None
@@ -94,11 +97,26 @@ def modules() -> dict[str, object]:
             raise SystemExit(f"module {seen_dirs[m.key]} claims the key "
                              f"{m.key!r}, which is a stock effect's")
         if m.menu.fx2_id in seen_ids:
-            raise SystemExit(
-                f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
-                f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
-                f"dispatch tables are shared with FX1, so it would hijack "
-                f"that effect on both menus")
+            # A DECLARED replacement is allowed to share the id -- that is
+            # what it declared. It must name THIS effect, though: replacing
+            # LO-FI while sitting on PHASER's id is a typo that would
+            # otherwise ship.
+            other = found.get(seen_ids[m.menu.fx2_id]) or \
+                next((x for x in found.values()
+                      if x.menu is not None
+                      and x.menu.fx2_id == m.menu.fx2_id), None)
+            rep = other.menu.replaces if (other is not None
+                                          and other.menu is not None) else None
+            if rep != m.key:
+                raise SystemExit(
+                    f"module {seen_ids[m.menu.fx2_id]} claims FX2 id "
+                    f"0x{m.menu.fx2_id:02x}, which is stock {m.key}'s -- the "
+                    f"dispatch tables are shared with FX1, so it would hijack "
+                    f"that effect on both menus"
+                    + (f" (it declares replaces={rep!r}, not {m.key!r})"
+                       if rep else ""))
+            found[m.key] = m
+            continue
         seen_ids[m.menu.fx2_id] = m.key
         found[m.key] = m
     _cache = found
@@ -169,6 +187,22 @@ def remix(name: str = DEFAULT_REMIX):
         if k not in known:
             raise SystemExit(f"remix {name!r} selects unknown module {k!r} -- "
                              f"have {sorted(known)}")
+    # ⚠️ THE FIRMWARE'S OWN NONE IS ONLY SAFE WHEN THERE IS NO BUS. An
+    # unassigned track then runs nothing at all -- including the housekeeping
+    # block -- and a remix with a server on one core and no participant on
+    # core 0 would leave the rotation frozen and the accumulators uncleared.
+    # With neither a server nor a client in the image there is no bus to
+    # keep, so the question does not arise. See schema.NO_FALLBACK for the
+    # whole argument and for why it cannot be settled by a local test.
+    if r.fallback == NO_FALLBACK:
+        on_bus = [k for k in r.modules if on_the_bus(known[k])]
+        if on_bus:
+            raise SystemExit(
+                f"remix {name!r}: fallback {NO_FALLBACK!r} is only for a remix "
+                f"with no bus participant, and this one has "
+                f"{', '.join(sorted(on_bus))} -- an unassigned track would run "
+                f"nothing, so nobody would flip the rotation or clear the "
+                f"accumulators. Use fallback=\"SEND\".")
     return r
 
 

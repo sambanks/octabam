@@ -98,15 +98,15 @@ what keeps `modules/_template/` out of every build.
 short, and its comments carry the reasoning behind each field.
 
 Copy `modules/_template/` to start (and read `modules/hello/` for a
-finished one), and `make remix` opens the workbench
+finished one), and `make remix` opens the remixer
 (`tools/remix/app.py`, Textual — provisioned by `make emu-setup`; the full
-manual is `docs/WORKBENCH.md`). Its home
+manual is `docs/REMIXER.md`). Its home
 view is a RIG of eight tracks: assign effects, dial their manifest-named
 knobs, render and hear them. Its REMIX view is the composer: collisions, the
 FX2 menu your selection produces, its word cost against the donor region,
 save/load, build and check.
 
-The workbench derives a **category** and a **track range** for every module
+The remixer derives a **category** and a **track range** for every module
 (`tools/remix/rig.py`) rather than asking for new declarations:
 
 - **bus effect** (`harness.is_server`) — lives in ONE payload, which the
@@ -126,7 +126,7 @@ and A/B mark is journalled to `out/_audition/log.jsonl` (track, effect,
 source, every knob), so a listening note like "this sounds boxy" plus the
 journal tail is a full repro.
 
-Two `Param` fields exist purely for the workbench (the build never reads
+Two `Param` fields exist purely for the remixer (the build never reads
 them — the refhash gate proves it): **`doc`**, one line saying what the knob
 does, shown under the knob cursor; and **`labels`**, one short label per
 value of a stepped select (the schema pins the length to `count`). The
@@ -253,6 +253,9 @@ selects it still runs it, it just has no row — which is what keeps FX1
 whole. `remixes/restored.py` is chongbong plus the seven that can sit
 beside the servers.
 
+`remixes/restock.py` is all fourteen and nothing else: zero words placed,
+all three reverbs alive — the unit's own chooser, rebuilt from our tables.
+
 Two rules, both enforced:
 
 - **Four stock effects allocate an instance buffer** — SPATIALIZER,
@@ -274,7 +277,7 @@ Two rules, both enforced:
   yet measured — `restored` is the first image with more than seven rows
   and is unflashed.
 
-Stock rows appear in the workbench (a STOCK FX2 group in the composer, any
+Stock rows appear in the remixer (a STOCK FX2 group in the composer, any
 track in the rig) **with their real knobs**: `stock.py` reads each
 descriptor's names, defaults, value counts and enable bitmap out of the
 pristine image (`out/raw/section_3_MAIN_OS.bin`), so `knob_map()`,
@@ -327,6 +330,53 @@ stock effect that sounds wrong locally is evidence about the **harness or
 emulator** before it is evidence about the effect — twice now.
 
 ---
+
+## What an unimplemented id falls back to
+
+The build rewrites the FX2 dispatch tables wholesale, so every one of the 32
+ids has to point at a descriptor and a DSP entry — including **id 0, which
+is what a fresh part's FX2 slot holds**. `Remix.fallback` names where they
+go, and there are two answers.
+
+**`fallback="SEND"` — for a remix with a bus.** The send client passes the
+audio through and only taps it, so an id aliased to it degrades in the
+useful direction: a track that selects a missing effect becomes a send, not
+silence and not noise. No *stock* effect is a safe target — it would
+PROCESS the unknown id on whatever knobs the part holds — and the target
+must be a module of ours anyway: it needs a cloned descriptor, a cursor
+position in the list, and placed code.
+
+**`fallback="NONE"` — for a remix with no bus.** Unimplemented ids resolve
+to the **firmware's own NONE**: the descriptor a stock chooser carries at
+list row 0 (which our rebuilt list otherwise drops) and, on the DSP side,
+the per-payload null stub the build already points silenced donor ids at.
+It costs one chooser row — four bytes of cave — and **not one word**.
+
+That matters more than it sounds. Every insert-only remix used to carry
+SEND purely to satisfy the rule, at 215–250 words, for a bus client nothing
+in the image reads: with no server, nothing ever consumes the accumulators
+it writes. On `restock` those words landed on PLATE REV's, which is the only
+reason the stock chooser was ever thirteen effects instead of fourteen.
+
+⚠️ **`NONE` is refused beside any bus participant**, and that refusal is the
+whole safety argument. Housekeeping — flipping the rotation word and
+clearing the accumulators, once per block — is gated to payload A and done
+by the first core-0 participant dispatched that block (`send_client.asm`'s
+`bus_seen` election). With SEND on every unassigned track, core 0 always has
+one. Under `NONE` an unassigned track runs *nothing*, so a project with
+tracks 5–8 all unassigned would have no housekeeper, and a server on the
+other core would read an accumulator that is never rotated and never
+cleared. With no server and no SEND in the image there is no bus, no
+rotation and nothing to clear, so the question does not arise — and that is
+the only case this is allowed in. `registry.remix()` enforces it.
+
+⚠️ And it could not be settled by measurement either way: `dsp_host` is
+single-core, so **no local test can reproduce a bus timing defect**. The
+refusal keeps the question off the table rather than answered by inference.
+
+Declare `bus_client=True` in a module's `Harness` if it writes the shared
+accumulators, the way `modules/send` does; `is_server=True` is the other
+half. Those two are what `schema.on_the_bus()` reads.
 
 ## Declaring DSP code
 
@@ -474,3 +524,193 @@ renders with no hatch at all.
 believe the hardware and go looking for what the harness cannot see. A
 measurement can be structurally blind to the thing you are using it to rule
 out — `CLAUDE.md` has two instances that each cost hours.
+
+## Replacing a stock effect
+
+A module normally takes a **free** FX2 id and appears as an extra row. If
+instead you are writing an **upgraded version of a stock effect** — a better
+LO-FI, say — you want the stock effect's own id, so that FX1, FX2 and every
+saved project that already selected it get yours. Declare it:
+
+```python
+menu=MenuEntry(
+    fx2_id=0x1c,              # LO-FI's
+    replaces="LO-FI",         # ...and say so
+    ...
+)
+```
+
+Without `replaces`, a stock id is **refused** — that is the default and it is
+the safe one.
+
+**What you are asking for.** The DSP dispatch tables are indexed by the raw id
+and shared by both menus, so your code runs wherever that id is selected. That
+is the point, and it is also the whole hazard: Rungs sat on EQUALIZER's `0x0c`
+and Nimbus on DJ EQ's `0x0d` from 29 Aug to 2 Sep 2026, in every local image,
+and the remixes *without* them aliased those ids to SEND — which took FX1's
+EQUALIZER away in the shipping image too. Every existing check passed, because
+each module was individually correct.
+
+**What the build guarantees now.** A remix that omits your replacement leaves
+the stock effect **byte-identical to stock** — descriptor and dispatch, both
+payloads — rather than aliasing its id to the fallback. The build says so:
+`not in this remix, LEFT STOCK: <KEY>`. `tools/verify_replaces.py` (in `make
+check`) proves the property for every remix: every stock id is either stock's
+own or claimed by a module that declared it. The four cases it and the schema
+between them refuse:
+
+| you wrote | what happens |
+|---|---|
+| a stock id, no `replaces` | refused at import — the Rungs/Nimbus shape |
+| `replaces="PHASER"` on LO-FI's id | refused: the declaration must name the effect whose id you carry |
+| a remix with both LO-FI and your replacement | refused: `fx2 id: hijack and lofi both claim 0x1c` |
+| a remix with neither | LO-FI stays stock, untouched |
+
+**FX1 is taken over too.** `FX1_IDS` (`0x400d5f58`) and `FX2_IDS`
+(`0x400d5fdc`) are separate tables — the DSP dispatch is shared, the
+descriptors are not — so a replacement that only took FX2 would *run* from
+FX1 under the stock effect's knob names. Both FX1 tables are therefore
+repointed as well: the id-indexed lookup, and the row the encoder scrolls.
+
+Both writes are **in place**, because a replacement's effect is already on
+FX1 — there is no list to grow and no cave to relocate into. Adding a row for
+a module on a *new* id does need both, and that is the other way onto FX1:
+see below.
+
+The build asserts the tables hold stock's descriptor before touching them,
+and that the chooser list contains it exactly once.
+
+### The FX1 chooser: `Remix.fx1`
+
+`modules` is the FX2 chooser in its own row order; `fx1` is the FX1 chooser
+in its own. Both hold the same kind of keys — stock effects and modules of
+ours — because which menu an effect appears on is a composition choice, not
+a property of the code. **Empty means unchanged**: FX1 keeps stock's own ten
+and the build writes not one byte, which is what keeps every remix that
+predates this byte-identical.
+
+```python
+REMIX = Remix(name="bothslots", doc="…",
+              modules=("WARPFOLD",), fallback="NONE",
+              # FX1's chooser, in its own row order. Six of stock's ten,
+              # WarpFold among them; FLANGER, CHORUS, SPATIALIZER and COMB
+              # lose their FX1 row and nothing else.
+              fx1=("FILTER", "EQUALIZER", "DJ EQ", "PHASER", "WARPFOLD",
+                   "COMPRESSOR", "LO-FI"))
+```
+
+⚠️ **NONE is not listed and cannot be lost.** FX1 row 0 is the firmware's own
+NONE — how the slot is turned off — and the build always emits it first.
+
+⚠️ **A list SHORTER than stock's needs the viewport shrunk**, or the draw
+loop iterates its hard-coded row count past the terminator and renders raw
+memory as text (the "bunch of symbols" of hardware test 1, on FX2). FX1's
+literal is at `0x40059be6`, located 3 Sep 2026: FX1's setup function is
+**byte-identical to FX2's apart from the list address**, and this sits at
+the identical offset (+0x14) from FX1's own list reference.
+
+The DSP side needs nothing: the dispatch table is indexed by the raw id and
+shared, so the code already ran from FX1 the moment FX1 selected the id. The
+panel side needs the list **relocated** — FX1's ends at `0x400d608c` and
+FX2's begins at `0x400d6090`, so it cannot grow in place — plus FX1's own
+id lookup and its cursor table. The build does all four:
+
+| table | what it gets |
+|---|---|
+| the chooser list | rebuilt in the cave — NONE, then exactly what `fx1` names; its three `lea` references (`0x40037990`, `0x40052706`, `0x40059bd2`) repointed |
+| the viewport `0x40059be6` | `min(7, rows)`, so a list shorter than the screen has no rows left to pad |
+| `FX1_IDS` `0x400d5f58` | your descriptor clone — the **same** one FX2 resolves, as stock does for the ten shared effects |
+| `FX1_ID2POS` `0x400d60d0` | the row each listed id opens on, and **0 for every id the list drops** — a shorter list would otherwise seed the cursor past the end for an old project holding a dropped id. ⚠️ `tools/build_fx1.py`'s experiment never wrote this table at all |
+| `FX2_IDS` / `ID2POS` | untouched by this — the FX2 row is the ordinary one |
+
+**It costs no words** — the code is placed either way — and it is not free:
+FX1 is four more slots on the same four tracks, so listing an effect on both
+menus can double the worst per-core load (`make cycles` prices it; WarpFold
+goes 4× → 8×, 404 → 808 of the 3,120 our code may spend).
+
+#### Only a buffer-free INSERT may take one
+
+`state.fx1_hazard()` is the single statement of the rule — read by both the
+remixer, at the keystroke, and `build_bus.py`, at the build, because those
+two drifting apart is how a UI comes to offer what the build refuses. Three
+classes are refused:
+
+| refused | why |
+|---|---|
+| a **stock** effect FX1 does not already list | DELAY and the three reverbs do not fit a 3,072-word FX1 allocation either — that is *why* stock keeps them off it |
+| a module that reads the allocator (`x:>$213`) | it sizes its buffer for an **FX2** slot, 16,384 words; an **FX1** slot is **3,072** |
+| a module with **fixed** buffers in the FX2 region | an FX1 instance still writes to `Y:0x4000`+, i.e. into another track's FX2 buffer |
+| a bus **server** | one per core by design; an FX1 row is a second instance on the same core |
+
+⚠️ **The first is measured, not reasoned.** It is `docs/DSP.md`'s "wrong
+claim 1", bisected on hardware: a 16K layout placed at an FX1 base "runs to
+`0x53ff`, through the other FX1 buffers and into FX2 slot 0". **NIMBUS LITE
+reads the allocator and is exposed** — the first draft of the schema comment
+claimed nothing of ours was, having checked only the fixed-base modules.
+
+The second is not a *new* hazard: Nimbus is already documented "one per
+core" because its buffers are fixed rather than per-instance. An FX1 row
+doubles the slots it can be reached from, a second instance on the **same
+track** included.
+
+What is left is exactly the INSERT class — WarpFold, Ripple, Rungs, Streamz,
+BodeShift, Hello World — plus SEND, which is buffer-free (untested there,
+but nothing measured argues against it). Those keep **all** their state in
+their own `r7` block, which the dispatcher hands out **per instance**, not
+per track: FX1 instance *k* and FX2 instance *k* get different blocks, so the
+same effect on both slots of one track is two independent instances that
+happen to run in series.
+
+Also refused: a `replaces` module (it already has that effect's FX1 row — a
+second would list it twice), a stock effect (its FX1 row is stock's own
+business), and a key with no FX2 chooser row of its own (nothing for FX1's
+list to point at). `verify_menu.py` proves the rest, and asserts FX1 is
+byte-identical to stock in every remix that asks for nothing.
+
+#### What is actually different about FX1
+
+For an eligible module: **the slot size, the state block, and nothing else.**
+The DSP dispatch is one shared table, the entry point is the same code, and
+`r0`/`r6`/`r7` are set the same way — so there is no separate FX1 build, no
+separate render, and locally nothing to test that the FX2 render does not
+already cover. The differences that exist are all about memory and order:
+
+| | FX1 | FX2 |
+|---|---|---|
+| buffer slot | `0x1000 0x1c00 0x2800 0x3400`, **3,072 words** each | `0x4000 0x8000` + the shared-window pair, **16,384** |
+| state block (`r7`) | instance *k* → `0x6000 + (1 + 2k) * 0x100` | instance *k* → `0x6000 + (2 + 2k) * 0x100` |
+| in the chain | first | second — it processes what FX1 produced |
+| cycles | 4 slots per core | 4 slots per core; both are paid |
+
+The last row is the one that bites, and it is why `make cycles` prices FX1's
+four slots: an effect on both menus can double the worst per-core load.
+
+⚠️ Seen in the emulator, not on hardware: the firmware's own draw puts
+`WarpFold78` on row 11 of a twelve-entry FX1 chooser with its own knob names.
+
+Confirmed without a flash: with a throwaway module on LO-FI's id, the
+emulated firmware draws `HIJACK` in LO-FI's slot on the **FX1** chooser and
+its own `GAIN` knob on the page. `verify_replaces.py` checks both tables in
+both directions, and was itself negative-tested by restoring FX1's two
+entries to stock in a built image — it catches "FX2 repointed, FX1
+forgotten", which is the shape this half exists to prevent.
+
+⚠️ **Replacing an FX2-ONLY effect leaves FX1 alone.** DELAY and the three
+reverbs are not on FX1 (their `FX1_IDS` slots are NONE), so there is nothing
+to repoint; the build says so rather than silently doing nothing.
+
+⚠️ **If your replacement allocates a buffer, size it for FX1.** The
+allocator keeps separate tables and they are not the same size (measured,
+`X:0x255` in both payloads): an **FX2 slot is 16,384 words, an FX1 slot is
+3,072**. Your code runs from *both* menus the moment it takes a stock id, so
+an effect that asks for a buffer and assumes the FX2 size overruns its
+allocation by 13,312 words the first time somebody selects it on FX1. Same
+class as the stock reverbs being FX2-only — they do not fit an FX1
+allocation either. **Nothing checks this**: a buffer size is not visible to
+the schema.
+
+**Words.** Taking a stock effect's *id* does not give you its *code space* —
+you spend from the same 2,724-word donor region as every other module. The
+region has to be physically contiguous and the build asserts it, so only a
+module adjacent to it could ever join; `DEV=1`'s fourth donor is CHORUS
+specifically because it "sits immediately BELOW PLATE".

@@ -10,14 +10,16 @@ on nothing.
     python3 tools/remix/selftest.py
 """
 
+import os
 import pathlib
+import re
 import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-from remix import ledger  # noqa: E402
+from remix import ledger, registry, schema, state, stock  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
                           Module, Param, YBase)
 
@@ -142,7 +144,7 @@ def main():
     # The track model is DERIVED, so hold the derivation to the measured
     # facts: payload A serves TRACKS 5-8, B serves 1-4 (10 Aug 2026), an
     # insert runs anywhere, SYSTEM modules never sit on a track.
-    from remix import registry, rig
+    from remix import rig
     for mod in registry.modules().values():
         cat = rig.category(mod)
         tr = rig.track_range(mod)
@@ -204,7 +206,7 @@ def main():
         print("  [PASS] chonverb's manifest slots align with render_reverb")
 
     # ---- every drawn knob answers "what is this?" -----------------------
-    # The workbench shows Param.doc as the help line under the knob cursor,
+    # The remixer shows Param.doc as the help line under the knob cursor,
     # and a select's labels beside its value. A knob with neither is a knob
     # the operator has to reverse-engineer by ear, so hold the line: every
     # named, drawn param of every menu-bearing module carries a doc.
@@ -321,6 +323,318 @@ def main():
                   f"stock scratch?")
     else:
         print("  [SKIP] stock render harness: dsp_host or the stock image is missing")
+
+    # THE BUDGET'S TOTALS ARE NOT THE BUDGET'S TO DECIDE. The remixer
+    # states "N free of TOTAL" for the ColdFire cave, and the build reports
+    # only what is LEFT of it -- so the total is written down in state.py and
+    # would go stale silently the day the cave's bounds move. Pin it to
+    # build_bus's own constants by reading them out of the source: a total
+    # that is quietly wrong is exactly the kind of confident stale number
+    # this project keeps getting burned by.
+    _bb = (ROOT / "tools/build_bus.py").read_text()
+    _bounds = {}
+    for _name in ("NEW_LIST", "ZERO_RUN_END"):
+        _m = re.search(rf"^{_name} = (0x[0-9a-f]+)", _bb, re.M)
+        if _m:
+            _bounds[_name] = int(_m.group(1), 16)
+    if len(_bounds) != 2:
+        bad += 1
+        print("  [FAIL] could not read NEW_LIST/ZERO_RUN_END out of "
+              "build_bus.py -- the cave total cannot be pinned")
+    elif _bounds["ZERO_RUN_END"] - _bounds["NEW_LIST"] == state.CAVE_BYTES:
+        print(f"  [PASS] the cave total ({state.CAVE_BYTES:,} B) matches "
+              f"build_bus's own bounds")
+    else:
+        bad += 1
+        print(f"  [FAIL] state.CAVE_BYTES is {state.CAVE_BYTES:,} B but "
+              f"build_bus's cave is "
+              f"{_bounds['ZERO_RUN_END'] - _bounds['NEW_LIST']:,} B")
+
+    # THE NONE FALLBACK IS ONLY SAFE WITHOUT A BUS, and that is a refusal,
+    # not a convention -- an unassigned track then runs nothing at all, so
+    # nobody flips the rotation or clears the accumulators. dsp_host is
+    # single-core and can never reproduce the defect, so this check is the
+    # only thing standing between the two. See schema.NO_FALLBACK.
+    _probe = ROOT / "remixes/_selftest_nofb.py"
+    try:
+        _probe.write_text(
+            "from remix.schema import Remix\n\n"
+            "REMIX = Remix(name='_selftest_nofb', doc='scratch',\n"
+            "              modules=('WARPFOLD', 'SEND'), fallback='NONE')\n")
+        registry.remix("_selftest_nofb")
+        bad += 1
+        print("  [FAIL] fallback='NONE' was accepted beside SEND -- an "
+              "unassigned track would leave the bus unhousekept")
+    except SystemExit as e:
+        if "no bus participant" in str(e):
+            print("  [PASS] fallback='NONE' is refused beside a bus participant")
+        else:
+            bad += 1
+            print(f"  [FAIL] fallback='NONE' beside SEND was refused for the "
+                  f"wrong reason: {e}")
+    finally:
+        _probe.unlink(missing_ok=True)
+        for junk in (ROOT / "remixes/__pycache__").glob("_selftest_nofb*"):
+            junk.unlink(missing_ok=True)
+
+    # And the same rule read off the SHIPPED remixes, which is where it would
+    # actually go wrong: nothing may pair NO_FALLBACK with a bus module.
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        _bus = [k for k in _r.modules
+                if schema.on_the_bus(registry.modules()[k])]
+        if _r.fallback == schema.NO_FALLBACK and _bus:
+            bad += 1
+            print(f"  [FAIL] remix {_n!r} falls back to NONE but carries "
+                  f"{', '.join(_bus)}")
+    print(f"  [PASS] every remix's fallback matches whether it has a bus")
+
+    # ---- dynamic donor regions (Remix.harvest) ---------------------------
+    # The property the whole idea rests on: the thirteen DSP effects are
+    # CONTIGUOUS in both payloads and their record sizes match what stock.py
+    # says they cost. Derived from the module map every run, so a firmware
+    # whose layout differs fails here rather than being written over.
+    for _pay in ("A", "B"):
+        try:
+            _sp = stock.p_spans(_pay)
+        except Exception as e:                       # noqa: BLE001
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: no effect run found -- {e}")
+            continue
+        _run = sorted(_sp.values())
+        _lo, _hi = _run[0][0], _run[-1][0] + _run[-1][1]
+        _gap = [a for (a, n), (a2, _n) in zip(_run, _run[1:]) if a + n != a2]
+        if _gap:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: effect code is not contiguous")
+        _wrong = [k for k, (_a, n) in _sp.items()
+                  if k in stock.WORDS and stock.WORDS[k] != n
+                  and k != "PHASER"]
+        if _wrong:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: {_wrong} disagree with "
+                  f"stock.WORDS")
+        # ⚠️ AND EVERY SPAN KEY MUST BE A REAL STOCK KEY. `COMB` against the
+        # registry's `COMB FILTER` made `h` answer "it runs on the ColdFire"
+        # for an effect with 277 words of DSP code -- a silent miss, because
+        # a missing key looks exactly like an effect with no code.
+        _reg = {m.key for m in stock.MODULES}
+        _orphan = sorted(set(_sp) - _reg)
+        if _orphan:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: span keys not in the registry: "
+                  f"{_orphan}")
+        elif not _wrong:
+            print(f"  [PASS] payload {_pay}: {len(_sp)} effects contiguous, "
+                  f"P:0x{_lo:05x}..0x{_hi:05x} = {_hi - _lo:,} words")
+    # ⚠️ AND THE DERIVED HARVEST MUST REPRODUCE WHAT THE BUILD HAS ALWAYS
+    # DONE. "On neither chooser" gives every shipped remix exactly the three
+    # reverbs -- FX1 lists ten of the thirteen and the reverbs are FX2-only
+    # -- which is the whole reason removing the explicit field was safe.
+    # restock lists all fourteen and places nothing, so it gives up nothing.
+    _sp = stock.p_spans("A")
+    _fx1_all = {k for k in _sp
+                if registry.modules()[k].menu.fx2_id in stock.fx1_ids()}
+    # The three that differ, and why -- a remix reaching this list by
+    # accident is the thing being guarded against.
+    _want = {"restock": (),                       # lists all fourteen
+             "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
+             # deliberately gives up two more, to put a non-reverb donor on
+             # the unit for the first time (docs/FLASHPLAN.md)
+             "fieldtest": ("FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                           "DARK REV"),
+             # THREE runs on purpose -- the multi-run worked example. Its
+             # placement is checked for real below, not just its harvest.
+             "scattered": ("SPATIALIZER", "FLANGER", "CHORUS", "PLATE REV",
+                           "SPRING REV", "DARK REV", "COMB FILTER")}
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        _hv = stock.region_of(stock.harvested(
+            set(_r.modules) | set(_r.fx1 or _fx1_all)))
+        _exp = _want.get(_n, stock.CONSUMED)
+        if _n == "bothslots":
+            continue                     # its curated FX1 list gives it more
+        if tuple(_hv) != tuple(_exp):
+            bad += 1
+            print(f"  [FAIL] remix {_n!r} gives up {_hv}, expected {_exp}")
+        # ⚠️ RUNS, NOT ONE RUN. Since 3 Sep 2026 a gap is two placeable
+        # openings rather than a refusal, so what has to hold is that the
+        # grouping is sound: every run internally contiguous, and the runs
+        # together covering exactly the harvested set.
+        _runs = stock.regions_of(_hv)
+        for _g in _runs:
+            _run = [_sp[k] for k in _g]
+            if any(a + n != a2 for (a, n), (a2, _x) in zip(_run, _run[1:])):
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: run {_g} is not contiguous")
+        if sorted(k for g in _runs for k in g) != sorted(_hv):
+            bad += 1
+            print(f"  [FAIL] remix {_n!r}: the runs do not cover {_hv}")
+    print(f"  [PASS] every remix's given-up effects group into contiguous "
+          f"runs, and the shipped ones give up exactly what they always did")
+
+    # ---- MULTI-RUN PLACEMENT, actually built --------------------------
+    # ⚠️ THE GROUPING ABOVE IS ARITHMETIC; THIS IS THE BUILD. Nothing else
+    # here would notice the placer quietly reverting to one bump cursor:
+    # `scattered` would still assemble, still pass every other check, and
+    # simply leave its two smaller runs empty -- which is exactly the defect
+    # this replaced (3 Sep 2026, "when I remove some reverb it only shows
+    # the free reverb space"). So: build it, and require that two modules
+    # landed in two DIFFERENT runs.
+    r = subprocess.run([sys.executable, "tools/build_bus.py"],
+                       cwd=ROOT, capture_output=True, text=True,
+                       env={**os.environ, "REMIX": "scattered",
+                            "XBUS": "1", "SPEC": "1"})
+    if r.returncode:
+        bad += 1
+        print(f"  [FAIL] remix 'scattered' does not build:\n"
+              f"{r.stdout[-600:]}{r.stderr[-400:]}")
+    else:
+        # ⚠️ PER PAYLOAD. The two payloads put the same effects at
+        # DIFFERENT addresses, so merging their run lines checks neither --
+        # and "one instance is one payload" is exactly how this codebase
+        # has been bitten before (docs/DSP.md s11).
+        _by_pay, _pay = {}, None
+        for line in r.stdout.splitlines():
+            m = re.match(r"-- payload (\w+) --", line.strip())
+            if m:
+                _pay = m.group(1)
+                _by_pay[_pay] = {"runs": [], "at": {}}
+            if _pay is None:
+                continue
+            m = re.match(r"\s+run \d+ P:0x([0-9a-f]+)\.\.0x([0-9a-f]+)", line)
+            if m:
+                _by_pay[_pay]["runs"].append((int(m.group(1), 16),
+                                              int(m.group(2), 16)))
+            m = re.match(r"\s{2}(STREAMZ|WARPFOLD)\s+P:0x([0-9a-f]+)", line)
+            if m:
+                _by_pay[_pay]["at"][m.group(1)] = int(m.group(2), 16)
+        if sorted(_by_pay) != ["A", "B"]:
+            bad += 1
+            print(f"  [FAIL] 'scattered': expected both payloads, saw "
+                  f"{sorted(_by_pay)}")
+        else:
+            _ok = True
+            for _p, _d in sorted(_by_pay.items()):
+                _rs, _at = _d["runs"], _d["at"]
+                _in = {k: next((i for i, (lo, hi) in enumerate(_rs)
+                                if lo <= a < hi), None)
+                       for k, a in _at.items()}
+                if len(_rs) != 3:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: {len(_rs)} "
+                          f"runs, expected 3")
+                elif sorted(_at) != ["STREAMZ", "WARPFOLD"]:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: placed "
+                          f"{sorted(_at)}, expected both modules")
+                elif None in _in.values():
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: a module "
+                          f"landed outside every run -- {_at} vs {_rs}")
+                elif len(set(_in.values())) < 2:
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: both modules "
+                          f"landed in the SAME run ({_in}) -- the placer is "
+                          f"not filling the smaller openings")
+                elif _in["STREAMZ"] != 0:
+                    # STREAMZ is 255 words and run 1 holds 261: first-fit
+                    # MUST take it. Anywhere else means the small opening
+                    # was skipped, which is the whole defect.
+                    bad += 1; _ok = False
+                    print(f"  [FAIL] 'scattered' payload {_p}: STREAMZ went "
+                          f"to run {_in['STREAMZ'] + 1}, not the 261-word "
+                          f"opening it fits")
+            if _ok:
+                print(f"  [PASS] 'scattered' fills 2 of its 3 non-contiguous "
+                      f"runs in BOTH payloads (STREAMZ into the 261-word "
+                      f"opening, WarpFold into the big run)")
+
+    # ---- FX1 rows (Remix.fx1) -------------------------------------------
+    # The schema half. The BUILD half -- the relocated list, FX1's own id and
+    # cursor tables, and stock's eleven rows unchanged and still first -- is
+    # tools/verify_menu.py, which needs a built image and so runs there.
+    try:
+        schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
+                     fallback=schema.NO_FALLBACK, fx1=("WARPFOLD", "WARPFOLD"))
+        bad += 1
+        print("  [FAIL] Remix(fx1=...) accepted a duplicate key")
+    except ValueError:
+        print("  [PASS] Remix(fx1=...) refuses a duplicate key")
+    # A STOCK effect may be on the FX1 list without an FX2 row -- the two
+    # lists are independent -- so the schema deliberately does NOT require
+    # every fx1 key to be in `modules`. Pinned, because it was required for
+    # one day and that would have made a curated FX1 chooser impossible.
+    try:
+        schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
+                     fallback=schema.NO_FALLBACK, fx1=("FILTER", "WARPFOLD"))
+        print("  [PASS] an fx1 row may be a stock effect with no FX2 row")
+    except ValueError as e:
+        bad += 1
+        print(f"  [FAIL] Remix(fx1=...) refused a stock key: {e}")
+    # A module of ours is FX2-only until a remix says otherwise, and then it
+    # is on both -- this is the derivation the remixer's menus column and
+    # every resource line read.
+    _wf = registry.modules()["WARPFOLD"]
+    if rig.menus(_wf) != (rig.FX2,):
+        bad += 1
+        print(f"  [FAIL] WarpFold is {rig.menus(_wf)} with no fx1 row")
+    elif rig.menus(_wf, {"WARPFOLD"}) != (rig.FX1, rig.FX2):
+        bad += 1
+        print(f"  [FAIL] WarpFold is {rig.menus(_wf, {'WARPFOLD'})} with one")
+    else:
+        print("  [PASS] an fx1 row moves a module from FX2 to FX1+FX2")
+    # ⚠️ ONLY A BUFFER-FREE INSERT MAY TAKE AN FX1 ROW. The measured reason
+    # is docs/DSP.md's "wrong claim 1": a 16K layout at an FX1 base runs
+    # through the other FX1 buffers and into FX2 slot 0. Pinned per module so
+    # a manifest that starts reading the allocator cannot quietly become
+    # eligible.
+    _want = {"NIMBUS LITE": "sizes its buffer", "NIMBUS": "fixed FX2",
+             "REVERB SERVER": "bus server", "DELAY SERVER": "bus server",
+             "WARPFOLD": None, "RIPPLE": None, "RUNGS": None,
+             "STREAMZ": None, "BODESHIFT": None, "HELLO WORLD": None}
+    for _k, _frag in _want.items():
+        _why = state.fx1_hazard(registry.modules()[_k])
+        if (_frag is None) != (_why is None) or (_frag and _frag not in _why):
+            bad += 1
+            print(f"  [FAIL] fx1_hazard({_k}) = {_why!r}, wanted "
+                  f"{_frag!r}")
+    print(f"  [PASS] {len(_want)} modules classified for an FX1 row "
+          f"({sum(v is None for v in _want.values())} eligible)")
+
+    # WHAT EVERY SHIPPED FX1 CHOOSER MAY HOLD. A stock effect must be one
+    # FX1 already lists (DELAY and the reverbs are FX2-only because they do
+    # not fit a 3,072-word FX1 allocation); a module of ours must have an FX2
+    # row -- that is where its descriptor clone comes from -- must not be a
+    # `replaces` (which already inherits an FX1 row) and must clear
+    # fx1_hazard.
+    from remix import stock as _stk
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        for _k in _r.fx1:
+            _m = registry.modules().get(_k)
+            if _m is None or _m.menu is None:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: fx1={_k!r} is not an effect")
+                continue
+            if _m.is_stock:
+                if _m.menu.fx2_id not in _stk.fx1_ids():
+                    bad += 1
+                    print(f"  [FAIL] remix {_n!r}: stock {_k} is FX2-only")
+                continue
+            if _k not in _r.modules:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: {_k} has no FX2 row, so there "
+                      f"is no descriptor clone for FX1 to point at")
+            if _m.menu.replaces:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: {_k} replaces a stock effect "
+                      f"and already has its FX1 row")
+            _why = state.fx1_hazard(_m)
+            if _why:
+                bad += 1
+                print(f"  [FAIL] remix {_n!r}: {_k} on FX1 -- {_why}")
+    print("  [PASS] every shipped FX1 chooser holds only what FX1 can host")
 
     # And the real thing: every shipped remix must be clean.
     for name in registry.remix_names():

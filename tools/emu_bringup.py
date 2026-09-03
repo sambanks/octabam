@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the workbench emu).
+"""Tier-0 ColdFire bring-up harness (PLAN.md §5, the remixer emu).
 
 Boots a MAIN OS image on Unicorn's ColdFire V4e core, modelling only as much
 of the hardware as the boot path actually touches, and stops at the RTOS
@@ -19,6 +19,7 @@ details and the fork past the trap: docs/EMU.md.
 """
 import collections
 import os
+import re
 import sys
 
 try:
@@ -359,15 +360,30 @@ def _prime_menu(r):
     uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED
                 | UC_HOOK_MEM_FETCH_UNMAPPED, on_unmapped)
     uc.ctl_flush_tb()
-    _call(uc, MENU_OPEN)                     # allocate + set the menu window
-    uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
-    uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
+    _open_menu_window(uc)
     # The root descriptor's rows field (0x400cbd8c+0x18) IS the MENU_ROWS
     # global that render repoints, so capture the root list ONCE now — after
     # this, reading the root descriptor gives whatever we last rendered.
     r._root_rows = _u32(uc, MENU_ROOT_DESC + 0x18)
     r._root_count = _u32(uc, MENU_ROOT_DESC)
     r._menu_ready = True
+
+
+def _open_menu_window(uc):
+    """Make the MENU the CURRENT window again.
+
+    ⚠️ Not one-time setup, though it was written as if it were. Rendering an
+    FX page (`render_fx2`/`render_fx1`) opens ITS window, and `MENU_DRAW`
+    afterwards draws for a window that is no longer the menu's -- it captures
+    NOTHING, silently, for the rest of the session. So the main-menu preview
+    worked only if it happened to be the first thing rendered, and in the
+    remixer it never was: FX2 is the default view. Found 2 Sep 2026 by
+    rendering the four views in sequence and counting the draws (12, 26, 0).
+    Re-opening is cheap and the round trip works in both directions.
+    """
+    _call(uc, MENU_OPEN)                     # allocate + set the menu window
+    uc.mem_write(MENU_STATE, (1).to_bytes(4, "big"))       # tree state
+    uc.mem_write(MENU_VIEWPORT, (6).to_bytes(4, "big"))    # visible rows
 
 
 def _list_of(r, desc):
@@ -407,9 +423,8 @@ def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
     uc = r.uc
     if uc is None or not r.reached_handoff:
         return []
-    try:
-        if not getattr(r, "_menu_ready", False):
-            _prime_menu(r)
+    def once():
+        _open_menu_window(uc)            # an FX render may own the window now
         rows, count = _list_of(r, desc)
         uc.mem_write(MENU_ROWS, rows.to_bytes(4, "big"))
         uc.mem_write(MENU_COUNT, count.to_bytes(4, "big"))
@@ -418,9 +433,32 @@ def render_menu(r, desc=MENU_ROOT_DESC, cursor=0):
         uc.mem_write(MENU_SELROW, int(cursor).to_bytes(4, "big"))
         r._draws.clear()
         _call(uc, MENU_DRAW)
+
+    try:
+        if not getattr(r, "_menu_ready", False):
+            _prime_menu(r)
+        once()
+        if not r._draws:                 # MENU_OPEN toggles, same as the FX
+            once()                       # pages -- see _call_page
     except UcError:
         pass
     return list(r._draws)
+
+
+def _call_page(uc, entry, draws):
+    """Call an FX SETUP entry point and make sure it actually DREW.
+
+    ⚠️ THESE ENTRY POINTS TOGGLE. `FX2_SETUP` opens the page on one call and
+    closes it on the next, so consecutive renders alternate 26 draws, 0, 26,
+    0 -- and a remixer that re-renders on every keystroke showed an empty
+    LCD half the time. Found 2 Sep 2026 by calling render_fx2 four times in
+    a row and counting; it reads as "the emulator is broken", which is why
+    it survived so long. A second call re-opens it.
+    """
+    draws.clear()
+    _call(uc, entry)
+    if not draws:
+        _call(uc, entry)
 
 
 def _prime_part(r):
@@ -478,8 +516,7 @@ def render_fx2(r, track=4, effect_id=0x07):
     try:
         if effect_id is not None:
             assign_fx2(r, track, effect_id)
-        r._draws.clear()
-        _call(uc, FX2_SETUP)
+        _call_page(uc, FX2_SETUP, r._draws)
     except UcError:
         pass
     return list(r._draws)
@@ -529,27 +566,234 @@ def render_fx1(r, track=4, effect_id=0x04):
             uc.mem_write(PAT_R, (0).to_bytes(1, "big"))
             uc.mem_write(_part_addr(uc, FX1_ID_OFF, track),
                          bytes([effect_id & 0xff]))
-        r._draws.clear()
-        _call(uc, FX1_SETUP)
+        _call_page(uc, FX1_SETUP, r._draws)
     except UcError:
         pass
     return list(r._draws)
 
 
-def layout_screen(draws, cols=42, rows=9):
+# The PART window's own text, which the FX pages drag in with them. Its
+# coordinates belong to a DIFFERENT window's space, so it lands in the middle
+# of the effect list and fuses with it -- "DJ EQUALIZER1" is `DJ EQUALIZER`
+# plus the trailing 1 of `Pt:1 PART 1`. It is real, and it is not this page,
+# so it comes out as a caption instead of a row (see part_label).
+_PART = re.compile(r"^Pt:\d")
+
+
+def _clean(draws):
+    """Deduped, blank-free, this-window-only draws.
+
+    The capture holds each string once per call and the page functions are
+    re-issued when nothing came back, so exact duplicates are routine.
+    """
+    seen, out = set(), []
+    for x, y, t in draws:
+        if not t.strip() or not (0 <= x <= 128 and 0 <= y <= 64):
+            continue
+        if _PART.match(t) or (x, y, t) in seen:
+            continue
+        seen.add((x, y, t))
+        out.append((x, y, t))
+    return out
+
+
+def part_label(draws):
+    """The PART window's caption, if this capture dragged one in."""
+    for _x, _y, t in draws:
+        if _PART.match(t):
+            return " ".join(t.split())
+    return None
+
+
+# ---- the LCD's own geometry, MEASURED (3 Sep 2026) -------------------------
+# A character cell is FOUR pixels wide, so the 128 px screen is 32 characters,
+# not the 42 this used to assume. The measurement is exact and falls out of
+# the capture: the same column drawn with labels of different length starts at
+# a different x, and the shift is 2 px per character -- i.e. the firmware
+# CENTRES each label on a fixed anchor.
+#
+#   page-2 col 1   '12dB' x=55   'LOW' x=57   'HP' x=59   -> centre 63
+#   page-1 col 1   'BASE' x=62   'ATK' x=64   'FB' x=66   -> centre 70
+#   page-2 col 2   'NONE' x=75   'NUM' x=77   'LP' x=79   'Q' x=81  -> 83
+#   page-1 col 2   'WDTH' x=82   'GN1' x=84                         -> 90
+#   page-2 col 3   'BASE' x=95   'ENV' x=97                         -> 103
+#   page-1 col 3   'RTIM' x=102  'MIX' x=104  'Q1' x=106  'Q' x=108 -> 110
+#
+# Three parameter columns, each drawn twice 7 px apart (the page-1 name above
+# its dial, the page-2 name and value beside it). At 4 px per character that
+# 7 px is under two characters, so preserving it buys a ragged indent and
+# nothing else -- the columns are SNAPPED to one anchor per column instead,
+# which is the whole point of a column.
+CELL = 4                                  # px per character
+COLS = 128 // CELL
+LEFT_X = 40                               # left of this, text is left-aligned
+                                          # (the chooser list, the page title)
+
+
+def _left_aligned(items):
+    """The x positions this screen draws text LEFT-aligned at.
+
+    ⚠️ NOT EVERY COLUMN IS CENTRED. The parameter columns are; a LIST is not
+    -- the MAIN MENU's two columns are rows of different lengths sharing one
+    left edge, and centre-snapping them shuffled `PROJECT` / `SYSTEM` /
+    `CONTROL` / `MIDI` into three different indents.
+
+    The two are told apart by the thing that distinguishes them in the
+    capture: a centred column's x SHIFTS with the label's length (2 px per
+    character), so one x carries one length. A left-aligned one carries
+    several.
+    """
+    lens = collections.defaultdict(set)
+    for x, _y, t in items:
+        lens[x].add(len(t))
+    return {x for x, seen in lens.items() if len(seen) > 1}
+
+
+def _anchors(items, left, tol=8):
+    """The parameter columns: each centre the firmware centres labels on,
+    and the widest label that column carries.
+
+    Clustered out of THIS screen's own draws rather than written down, so a
+    page laid out differently gets its own columns instead of these.
+
+    -> [(centre_px, widest)], and the widest is what turns a centred column
+    into a LEFT-ALIGNED one: see layout_screen.
+    """
+    seen = {}
+    for x, _y, t in items:
+        if x < LEFT_X or x in left:
+            continue
+        c = x + CELL * len(t) / 2
+        seen[c] = max(seen.get(c, 0), len(t))
+    groups = []
+    for c in sorted(seen):
+        if groups and c - groups[-1][-1][0] <= tol:
+            groups[-1].append((c, seen[c]))
+        else:
+            groups.append([(c, seen[c])])
+    return [(sum(c for c, _w in g) / len(g), max(w for _c, w in g))
+            for g in groups]
+
+
+def _resolve(frags):
+    """One row's fragments, in draw order, with overpainted ones dropped.
+
+    ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
+    parameter row in place, so the capture holds the label that WAS there
+    and then the one that is -- `PTCH` then `FRQ1` at the same x. Keeping
+    both makes the page read as an effect with seven parameters where the
+    unit draws four.
+    """
+    out = []
+    for x, t in frags:
+        lo, hi = x, x + CELL * len(t)
+        out = [(x0, t0) for x0, t0 in out
+               if x0 + CELL * len(t0) <= lo or x0 >= hi]
+        out.append((x, t))
+    return sorted(out)
+
+
+def read_screen(draws):
+    """The captured strings, sorted into what they ARE rather than into a
+    picture of where they were.
+
+    ⚠️ A CHARACTER GRID CANNOT BE FAITHFUL TO THIS SCREEN, which is why this
+    exists. Measured on one FX page, the text baselines top to bottom are
+
+        57 title | 56 param | 48 param | 47 LIST | 40 LIST | 33 LIST
+        30 param | 28 param | 26 LIST  | 21 param | 19 LIST | 12 LIST
+         5 LIST  |  3 param
+
+    -- the LIST steps exactly 7 px and is internally consistent, and the
+    PARAMETER block has its own lines falling 1-3 px from it. Fourteen
+    baselines in 64 pixels with a 7 px font are not fourteen lines: they are
+    two overlaid WINDOWS whose y origins are not comparable, the same thing
+    `Pt:1 PART 1` shows in x. Flattening both into nine rows interleaves them
+    and reads as a mapping from each chooser row to the labels beside it,
+    which is not what any of it means.
+
+    The STRINGS are still the firmware's own, and they are what the view is
+    for. Only their arrangement stops being a reconstruction.
+
+    -> {"title", "list": [str], "params": [[str]]}, list and params each in
+    top-to-bottom order.
+    """
+    items = _clean(draws)
+    rows = collections.defaultdict(list)
+    for x, y, t in items:
+        rows[y].append((x, t))
+    title, listed, params = None, [], []
+    for y in sorted(rows, reverse=True):
+        frags = _resolve(rows[y])
+        if all(x < LEFT_X for x, _t in frags):
+            # The topmost left-aligned row is the page's title; the rest are
+            # the chooser, which is why the title is taken before the loop
+            # settles into the list's own 7 px pitch.
+            if title is None and len(frags) == 1:
+                title = frags[0][1]
+            else:
+                listed += [t for _x, t in frags]
+            continue
+        # A row may carry a list entry AND parameters; they are separate
+        # windows and go to separate places.
+        listed += [t for x, t in frags if x < LEFT_X]
+        params.append([t for x, t in frags if x >= LEFT_X])
+    return {"title": title, "list": listed, "params": params}
+
+
+def layout_screen(draws, cols=COLS, rows=9):
     """Arrange captured (x,y,text) draws into a text grid. The LCD is 128x64
     with a bottom-left-ish origin (the list drawer steps y DOWN per row, so
-    larger y = higher on screen); map pixel x/y to character cells."""
-    grid = [[" "] * cols for _ in range(rows)]
-    for x, y, t in draws:
-        if not (0 <= x <= 128 and 0 <= y <= 64):     # skip bogus coords
-            continue
-        cx = min(cols - 1, max(0, x * cols // 128))
+    larger y = higher on screen).
+
+    Three rules, and they are the three things the LCD does that a character
+    grid does not do by itself:
+
+    ⚠️ PARAMETER COLUMNS ARE FOUND BY CENTRE AND DRAWN LEFT-ALIGNED. The
+    firmware centres each label on a fixed anchor, which is how the columns
+    are identified at all -- but REPRODUCING the centring is what still read
+    as ragged, because a 2-character label centred in a 4-wide column starts
+    one column in and its left edge no longer lines up with anything. So
+    each column is laid out from the left edge of its WIDEST label, which is
+    what a column of text is normally expected to do. A LIST is left-aligned
+    already and must not be snapped at all (_left_aligned tells them apart).
+
+    ⚠️ A LATER DRAW OVER THE SAME PIXELS WINS. The firmware repaints a
+    parameter row in place, so the capture holds the label that WAS there and
+    then the one that is -- `PTCH` then `FRQ1` at the same x. Overlapping
+    spans are replaced, or the page shows both and reads as an effect with
+    seven parameters where the unit draws four.
+
+    ⚠️ TWO STRINGS THAT DO NOT OVERLAP ARE NEVER FUSED. Writing character by
+    character let a label whose cell was taken run into its neighbour, and
+    the result is a word that does not exist on the unit -- `DJ EQUALIZER1`,
+    `COMPRESSORT 1`.
+    """
+    items = _clean(draws)
+    left = _left_aligned(items)
+    cols_px = _anchors(items, left)
+    grid = [[] for _ in range(rows)]
+    for x, y, t in items:
         cy = min(rows - 1, max(0, (64 - y) * rows // 64))
-        for i, ch in enumerate(t):
-            if cx + i < cols:
-                grid[cy][cx + i] = ch
-    return ["".join(row).rstrip() for row in grid]
+        if x < LEFT_X or x in left or not cols_px:
+            cx = int(x / CELL + 0.5)
+        else:
+            a, w = min(cols_px,
+                       key=lambda c: abs(c[0] - (x + CELL * len(t) / 2)))
+            cx = int(a / CELL - w / 2 + 0.5)
+        cx = min(cols - 1, max(0, cx))
+        row = grid[cy]
+        row[:] = [(s0, s1) for s0, s1 in row
+                  if s0 + len(s1) <= cx or s0 >= cx + len(t)]
+        row.append((cx, t))
+    out = []
+    for frags in grid:
+        row = ""
+        for cx, t in sorted(frags):
+            at = max(cx, len(row) + 1) if row else cx
+            row += " " * (at - len(row)) + t
+        out.append(row.rstrip())
+    return out
 
 
 def _cli():

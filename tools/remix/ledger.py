@@ -124,13 +124,29 @@ def check(selected) -> list[str]:
                   "of them can be hosted on a given core; each works alone")
 
     # ---- stock effects that allocate an instance buffer -------------------
-    # The allocator's bases are per TRACK SLOT (docs/DSP.md section 10):
-    # core 0 hands out Y:0x4000 / 0x8000 / 0x30000 / 0x34000, core 1
-    # Y:0x4000 / 0x8000 / 0x38000 / 0x3c000. ChonVerb's tank is all four of
-    # core 0's, Nimbus's line the first two, BongDelay's line core 1's last
-    # two -- so CHORUS on track 6 beside ChonVerb on track 5 writes into the
-    # tank. Each works perfectly alone, and which track the operator picks
-    # is not something an image can constrain, so the PAIR is refused.
+    # The allocator's bases are per TRACK SLOT, and this is MEASURED -- read
+    # from X:0x255 in BOTH payloads of the pristine image, 2 Sep 2026 (the
+    # words are little-endian, which only shows above 0x10000, and reading
+    # them big-endian gives a plausible 0x00003 instead of 0x30000):
+    #
+    #   core 0 FX2:  0x4000  0x8000  0x30000  0x34000
+    #   core 1 FX2:  0x4000  0x8000  0x38000  0x3c000
+    #
+    # ⚠️ AND THE SLOTS ARE ONE PER TRACK, not a pool: each track allocates
+    # FX1 then FX2, so track k's FX2 effect always gets entry 1+2k
+    # (docs/DSP.md, "the allocator's instance model"). Nothing is first-come.
+    #
+    #   ChonVerb   all four of its core's -- tank in tracks 1-2's slots,
+    #              relocated buffers in tracks 3-4's. No track on that core
+    #              can host an allocating stock effect.
+    #   Nimbus     tracks 1-2's slots of whichever core hosts it.
+    #   BongDelay  tracks 3-4's (its lines are based at 0x38000/0x3c000), so
+    #              on ITS core an allocating stock effect is safe on tracks
+    #              1-2 and collides on 3-4.
+    #
+    # THAT IS STILL A REFUSAL, because the chooser is ONE LIST for all eight
+    # tracks: the image cannot say "FLANGER, but only on tracks 1-2". Each
+    # works perfectly alone, which is the worst shape a defect can have.
     fixed = [m for m in selected
              if (getattr(m, "claims", None) is not None
                  and m.claims.owns_fx2_buffers)
@@ -138,13 +154,20 @@ def check(selected) -> list[str]:
     stocked = [m for m in selected
                if getattr(m, "claims", None) is not None
                and m.claims.stock_instance_buffer]
+    # ⚠️ THIS REFUSES AN FX2 CHOOSER ROW, NOT THE EFFECT. A stock effect left
+    # out of a remix keeps its code, descriptor and dispatch, so the four
+    # dual-menu ones are still on FX1 and still work -- and the collision
+    # cannot follow them there, because the allocator keeps SEPARATE tables
+    # and an FX1 slot tops out at 0x3fff while every FX2 buffer a module of
+    # ours pins starts at 0x4000 or in the shared window.
     for a in stocked:
         for b in fixed:
             clash("stock instance buffer", a.name, b.name,
-                  "the allocator's per-track buffer slots -- the stock "
+                  "the allocator's per-track FX2 buffer slots -- the stock "
                   "effect's buffer lands on whichever track hosts it and "
                   "that is where the module's fixed buffers are; the chooser "
-                  "cannot keep them on different cores")
+                  "cannot keep them on different cores. Its FX2 ROW is what "
+                  "is refused: on FX1 it keeps working, out of reach")
 
     # ---- core-private Y ---------------------------------------------------
     # Low Y is per CORE. Two effects that can share a core share these words,

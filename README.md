@@ -55,19 +55,22 @@ real budget decision, not a label.
 | **`hello`** | HELLO WORLD + send | the reference minimal build, and the worked example to read first |
 
 ```bash
-make remix                  # the workbench: 8 tracks, hear effects, compose
+make remix                  # the remixer: swap effects, hear them, compose
 make modules                # the index of what exists
 make bus REMIX=<name>       # build a selection
 ```
 
-`make remix` is the workbench, organized like the unit: eight tracks, an
-effect on each, its real knobs to dial and render and hear (every effect
-renders locally). Its composer view shows what would collide, what the FX2
+`make remix` is the remixer: one page holding the library of everything that
+could be in an image, the image you are composing, and the selected effect —
+its real knobs to dial, render and hear (every effect renders locally), and
+the firmware's own draw of its page. It shows what would collide, what the
 chooser ends up looking like on the panel — including which **stock**
 effects the image keeps, hides or consumes (only the three reverbs are
 consumed; the rest can be kept for free) — and what the selection costs
-against the donor region — then builds or saves it.
-**[docs/WORKBENCH.md](docs/WORKBENCH.md)** is the manual.
+against the five scarce things: the two donor regions, the FX2 buffer slots,
+the per-core cycles, the chooser rows and the ColdFire cave. Then it builds
+or saves it.
+**[docs/REMIXER.md](docs/REMIXER.md)** is the manual.
 
 See **[docs/MODULES.md](docs/MODULES.md)** to write a module.
 
@@ -278,11 +281,11 @@ make bus       # build the effects into it
 make image     # repack as a card-flashable .bin
 ```
 
-`make remix` opens the workbench (`make emu-setup` provisions it): a rig of
-eight tracks to trial effects on by ear, a composer showing collisions, the
-panel your choice produces and its word cost against the donor region, and
-the built image booted in the local ColdFire emulator — the manual is
-**[docs/WORKBENCH.md](docs/WORKBENCH.md)**.
+`make remix` opens the remixer (`make emu-setup` provisions it): every
+effect auditionable by ear, a composer showing collisions, the panel your
+choice produces and what it costs against each scarce resource, and the
+built image booted in the local ColdFire emulator — the manual is
+**[docs/REMIXER.md](docs/REMIXER.md)**.
 
 `make help` lists everything. The setup script assumes **macOS + Homebrew**;
 on Linux the substitutions are the obvious ones (the DSP toolchain itself is

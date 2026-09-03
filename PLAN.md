@@ -68,7 +68,7 @@ twelve parameter slots, its DSP source, its ColdFire caves — and
 image and the reference every refactor proves itself against.
 
 ```sh
-make remix                # the workbench: compose a selection interactively
+make remix                # the remixer: compose a selection interactively
 make modules              # the module index and the available remixes
 make bus REMIX=<name>     # build a selection (default: chongbong)
 ```
@@ -334,6 +334,105 @@ capability: 70 ms lines per track — doublers, short slaps, wide chorus.
   costs level (the reference manages loud AND sparse). Needs makeup gain on
   the surviving grains, which does not exist yet.
 
+### 1b. DYNAMIC DONOR REGIONS — measured feasible, 3 Sep 2026
+
+**Sam's framing, and it is the right one: if the goal is to mix and match all
+effects freely, dropping any stock effect should give you its words.** Today
+only three can be harvested — the donor region is exactly PLATE + SPRING +
+DARK REV — and every other stock effect answers "what does this cost?" with a
+number you cannot spend. That is a property of THIS BUILD, not of the
+machine, and the difference had been showing up as UI copy nobody could make
+read straight ("dropping it frees none").
+
+**The two facts that make it possible are measured** (`tools/dsp_reach.py`
+disassembly of payload A, against the module records and the spans in
+`docs/DSP.md` §8):
+
+- **The thirteen DSP effects are CONTIGUOUS**, `P:0x007d1..0x01fdf`, **6,158
+  words**, with no other module between them:
+
+  | | | | | |
+  |---|---|---|---|---|
+  | `007d1` FILTER 727 | `00aa8` SPATIALIZER 261 | `00bad` EQUALIZER 282 | `00cc7` PHASER 157+41 | `00d96` FLANGER 289 |
+  | `00eb7` CHORUS 329 | `01000` PLATE 594 | `01252` SPRING 1063 | `01679` DARK 1067 | `01aa4` COMPRESSOR 180 |
+  | `01b58` LO-FI 537 | `01d71` DJ EQ 345 | `01eca` COMB 277 | | |
+
+  The current 2,724-word donor region is the middle third of that run.
+- **Every one is SELF-CONTAINED.** No control flow leaves an effect's own
+  span, and nothing enters one but its own dispatch entry. The single
+  apparent exception is PLATE's `do #<$6,>$1267` — a loop END address, which
+  is exclusive, so it is its own boundary rather than a jump into SPRING.
+  (⚠️ PHASER is the known irregular one: its true extent runs 41 words past
+  its record into four small blocks, `docs/DSP.md` §8. Its span is the true
+  one above.)
+
+**So the ceiling is 6,158 words against today's 2,724 — 2.26×** — and
+anything between: drop CHORUS and the region grows *downward* from PLATE
+because CHORUS is its neighbour.
+
+**What it costs, and this is the new decision it forces.** Today an unlisted
+stock effect keeps working — its code, descriptor and dispatch stay stock, so
+an old project that selects it still runs it, and leaving it out costs only a
+chooser row. A stock effect *harvested for its words* is gone: its dispatch
+must go to the null stub, exactly as the donors' do. So a stock effect stops
+having two states and gains three — **listed** / **unlisted but intact** /
+**harvested** — and the remixer has to make that choice legible, because it
+is the first one in this tool that actually takes something away.
+
+**The work, in order:** ✅ containment sweep on payload B — **all twelve
+self-contained there too**, and B carries the same thirteen effects at
+different bases (`P:0x00591..0x01d9f`, the same 6,158 words); ✅ per-effect
+spans in `stock.p_spans()`, *derived* from the module map by record-size
+fingerprint rather than written down, so a firmware whose layout differs
+raises instead of being written over; ✅ `Remix.harvest`, defaulting to the
+three reverbs; ✅ `build_bus.py` places into the harvested run; ✅ every
+harvested effect the placer reached is nulled and the survivors keep their
+algorithm, by SPAN rather than by a hand-written donor list; ✅ selftest
+asserts contiguity in both payloads and that every shipped remix harvests a
+run; ✅ **refhash 26/26 bit-identical**.
+
+✅ **EVERY RUN IS PLACEABLE, not just the largest** (3 Sep 2026). The build
+refused a non-contiguous harvest, so `stock.region_of` handed it the biggest
+run alone and every other run was given up and then left empty — Sam, from
+the budget map: *"when I remove the modulation it shows free space. But when
+I remove some reverb it only shows the free reverb space."* Two adjacent
+effects (EQ+PHASER, 489 words) simply vanished behind the reverbs' 2,724.
+Now `stock.regions_of()` groups the harvest into runs and the placer
+first-fits each module into a run it fits — assembling once per candidate,
+since a module's origin is an argument. Proven: STREAMZ placed into
+SPATIALIZER's isolated 261-word opening renders **bit-identical** to the
+same module in a single 2,724-word run. `bothslots` goes 3,342 → 3,880
+usable words. ⚠️ The residual cost of a gap is **fragmentation** — a module
+is one code stream and must fit ONE run — so the budget names the largest
+opening beside the total, the map draws a bracket per run instead of one
+across the wall, and `consumed_at`'s single-stream arithmetic is gated to
+the one-run case rather than left to be quietly wrong. ✅ refhash 26/26
+bit-identical (the single-run report wording, failure text included, is
+frozen for exactly this reason).
+
+✅ **And the remixer composes it.** `h` harvests the highlighted stock
+effect, `⌁` marks it, `consumed_at`/`region_words`/`placeable` all take the
+selection's own harvest, and the Budget's `held by` row follows
+(`Chorus, Plate, Spring, Dark — 3,053 words; drop Chorus for 329 more`). The
+run is kept contiguous at the KEYSTROKE, naming what is in the way, and the
+resource line offers `h harvests them` only on the two effects that could
+legally join.
+
+⬜ **Left, and it is the interesting half now:** nothing has been *flashed*,
+and harvesting a non-reverb has never run on hardware. The measurement says
+each effect is self-contained; what it cannot say is whether anything
+outside the DSP — a ColdFire path, a descriptor, the allocator table — cares
+that CHORUS's algorithm is gone. The cheapest real test is a card with
+`harvest=("CHORUS", ...)` and CHORUS left off both choosers, listening for
+anything but silence on its id.
+
+⚠️ **One constraint found the hard way: the build report's donor names must
+be ONE WORD.** `state.measure()` reads `KEPT STOCK: (\S+)` and splits on
+`/`, so `PLATE REV/SPRING REV/DARK REV` truncates the whole list at the
+first space. The report is API — refhash hashes it and three verifiers parse
+it — so the first word is emitted, exactly as the old lowercase donor keys
+produced.
+
 ### 2. FX1 consolidation — turning the stranded pool into capability
 
 The trick ChonVerb already ran: replace near-duplicates with one engine plus
@@ -348,6 +447,16 @@ All four in row 1 are the same structure — a short modulated delay with
 feedback. **FILTER is the outlier**: 727 words, the default FX1 effect, ~260
 cycles. Highest value, highest risk. ✅ Taking the three reverbs cost FX1
 nothing — they were never on its menu; FX1's ten effects are the whole pool.
+
+✅ **FX1's chooser is COMPOSED since 3 Sep 2026** — `Remix.fx1` is FX1's row
+list exactly as `modules` is FX2's: list, unlist, reorder, stock effects and
+ours alike. The list is rebuilt in the cave with its three `lea` refs
+repointed, the viewport literal at `0x40059be6` sized to it, and FX1's own
+id and cursor tables written (`docs/MODULES.md`). It costs no words; the
+bill is cycles, and `make cycles` prices FX1's four slots, so the trade is
+visible before it is made. Emulator-verified, **unflashed**;
+`remixes/bothslots.py` is the worked example. That is orthogonal to the
+consolidation below, which is about freeing FX1's own words.
 
 ⚠️ Sequence FX1 ambition after the burn sweep (§3) — its real ceiling is
 cycles ×4. Note the spare HAS been measured per core since 23 Aug 2026
@@ -440,7 +549,7 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
-### 5. The workbench: remix TUI + a local ColdFire emulator (decided 31 Aug 2026)
+### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026)
 
 **The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
 of change that today costs a flash per attempt. Two backlog items merge into
@@ -486,7 +595,7 @@ the TUI is a shell around it.**
    list drawer `FUN_40037590`, sprintf `0x40013a08`) into a windows+strings
    model; inject keys at the software layer (the `[PAGE]` keycode-`0x1b`
    precedent). Not pixel-faithful — menu-walking faithful.
-3. **TUI shell** (upgrades the `make remix` workbench): remix pane + build
+3. **TUI shell** (upgrades the `make remix` composer): remix pane + build
    pane land first and are useful with no emulator; the emu pane plugs in
    when Tier 1 does. Schedules deliberately uncoupled.
 4. **Audio stays out.** The voicing loop (render → afplay → ear) is already
@@ -509,7 +618,7 @@ through all early hardware init, and stops exactly at the RTOS handoff
 completion-flag spins are auto-satisfied.
 
 **Milestone 1 is shipped**: the emulator is a library (`boot()` +
-`read_menu_tree()`), wired into the remix workbench — `make remix`, press
+`read_menu_tree()`), wired into the remixer — `make remix`, press
 **`e`** to boot the *built* image, confirm it reaches the handoff with no
 fault, and see the MAIN MENU walked from RAM with any patched-in entry
 highlighted. That is the crow-flies no-flash gate: a cave that breaks early
@@ -527,7 +636,7 @@ The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window,
 listing the built remix's own effects (`ChonVerb77`, `BongDelay77`, `Send`)
 and the param row.
 
-**Milestone 3 is shipped (31 Aug 2026): the track-centric workbench.** The
+**Milestone 3 is shipped (31 Aug 2026): the track-centric remixer.** The
 curses TUI is retired; `make remix` now runs `tools/remix/app.py` (Textual,
 in the same `.venv` extra as unicorn), organized the way an Octatrack user
 thinks. Home is a RIG of eight tracks: assign any effect the track can host
@@ -546,7 +655,7 @@ image changes and follows the rig's selected track. Follow-ups landed the
 same day: esc stops audio, Rich-markup escaping, per-knob docs + select
 labels in the manifests with `?` help overlays, the audition journal
 (`out/_audition/log.jsonl`), and the terminal-ANSI theme. The manual is
-`docs/WORKBENCH.md`.
+`docs/REMIXER.md`.
 
 Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the
@@ -560,6 +669,110 @@ Not pursued: a gearmulator-style full-machine port with plugin packaging.
 is the slice of that road worth having.
 
 ---
+
+### 6. On-device labels for the mode selects — DONE 2 Sep 2026
+
+**Every stepped select now prints its words on the unit.** WarpFold's MODE
+draws `FOLD RING BOTH` where it drew `1 2 3`; the twelve labelled selects the
+manifests had authored all along are load-bearing at last.
+
+`Param.labels` was written, schema-checked against `count`, and then never
+read by the build — the refhash gate *proved* it was never read. This is the
+pass that changed that (`tools/build_bus.py`, the section after the cave
+patches).
+
+**How.** Every per-slot "A" formatter (`P+0x0ca`) has one signature —
+`void fmt(char *buf, int value)` — and `0x4003c14c` (ON/OFF) proves the shape
+that matters: **the label IS the format string**. So a labelled select is a
+small cave: bounds-check the value, index a `.word` offset table, overwrite
+the value slot with the pointer, and tail-`jmp` into `sprintf`. 40 bytes of
+code plus 2 bytes and a string per label — 54 to 82 bytes each, **386 bytes
+for the shipping remix's six**, with 2,330 bytes of cave left.
+
+**Only "A" moves.** B stays `0x40047254`, the CHORUS.TAPS tick widget the
+clone pass already chose, so this changes *what is printed*, not *how it is
+drawn*. `verify_menu` used to pin A to stock's `0x4003c718`; it now requires
+B and `0x12a` (the invariant it was actually written for, 17 Aug 2026) and
+allows A to be stock's or a cave address.
+
+**The bytes are emitted, not assembled** (`tools/label_fmt.py`). A CavePatch
+carries *pinned* bytes so the build needs no m68k toolchain, and twelve caves
+whose contents vary with the labels cannot be hand-pinned — so `emit()`
+produces them and `verify()` re-derives them through `m68k-elf-as -mcpu=5407`
+whenever one is on PATH. All twelve match byte-for-byte.
+
+**Verified without a flash.** `tools/verify_labels.py` (in `make check`)
+*calls* each formatter on the emulated ColdFire and compares what it printed
+with the manifest — the same method `stock_labels.py` uses, and the only
+honest one, because the words are printed rather than stored. It also feeds
+each select an **out-of-range** value: a part stores the raw byte, so a saved
+project can hand a select a value past its count, and the formatter clamps to
+label 0 rather than indexing off the end of its table (value 200 → `ROOM`).
+
+⚠️ **The page render cannot show this** — knob *values* draw as dial graphics
+the string-capture hook cannot read (`docs/EMU.md`), so the emulator proves
+it by calling the formatter, not by photographing the screen. Still
+**UNFLASHED**: what is unverified on hardware is the buffer length behind
+`buf` (our longest label is 5 chars, `1/16T`; stock's longest is 4) and
+whether anything else consults A where the B widget's count matters.
+
+Confinement, measured on the shipping build: **296 bytes differ from the
+pre-§6 image, all of them inside the cave region — zero anywhere else.**
+
+### 7. Putting the unit back — CLOSED 2 Sep 2026
+
+**Item 2 is done and item 1 is moot.** `restock` is the remix: thirteen of
+the fourteen stock effects, **including SPRING REV and DARK REV**, plus SEND.
+
+What was wrong: `build_bus.py` repointed all three donor ids to the null stub
+**unconditionally**, so a build that placed 250 words silenced 2,724 words'
+worth of reverb, and the answer to *"why can I never get the stock verbs
+back?"* was "you cannot, ever". The code stream is contiguous from PLATE
+upward, so the written span is `[base_a, cursor)` and a donor whose record
+starts at or after the cursor **still holds its own code**. It now keeps
+those, and reports which: `donor ids taken (PLATE) ... KEPT STOCK:
+SPRING/DARK`.
+
+The three reverbs are now ordinary listable stock rows (`tools/remix/
+stock.py`), so the remixer offers them like any other effect. Two guards
+make that safe:
+
+- the **build** refuses a donor row whose words this selection took, by name
+  — only the placement knows where the cursor stopped, so nothing predicts
+  it; and
+- the **ledger** refuses a reverb beside a module with fixed Y buffers.
+  `buffer=True` on all three is **measured, not assumed**: each reads
+  `x:>$213` — the host's bump allocator — within ~25 words of its entry
+  (PLATE `0x01018`, SPRING `0x01267`, DARK `0x01692`; payload A
+  disassembly), exactly like the four stock effects already flagged.
+
+Item 1 (the fallback requirement) was never the real blocker: SEND costs one
+row and 215 words, which only ever takes PLATE — the *smallest* reverb,
+because the region packs from PLATE upward. So the minimum image costs one
+reverb, not three, and no schema change was needed.
+
+Bit-identity: the two shipping layouts (`bus`, `plain`) are **unchanged**.
+Four of the 26 refhash cases moved — `render` and the three `xbus-*probe`
+diagnostics — and every diff is the intended one: a build that placed few
+words no longer silences reverbs it never touched.
+
+⚠️ **UNFLASHED**, and it is NOT "flash the stock OS back" — that is what the
+official installer does, and it is simpler. This is the same image with our
+chooser edits reverted, which is only interesting if some ColdFire cave is
+worth keeping.
+
+## The flash backlog
+
+**What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
+Everything since is unflashed: the delay's R59–R62 quality pass, the
+stepped-select labels, stock effects listable beside ours, the insert card,
+a module on FX1, and a donor region beyond the three reverbs.
+
+**`docs/FLASHPLAN.md` is the schedule** — three images, ordered so the
+cheapest and safest goes first, each shaped to stack independent claims whose
+failures stay distinguishable, and each with what would falsify it. The
+platform work needs no flash at all: refhash proves a default selection is
+bit-identical, which is what that gate is for.
 
 ## Open items and standing caveats
 
@@ -578,6 +791,43 @@ is the slice of that road worth having.
   then verified the v6 seam-click fix. (The old blocker stands for a
   freeze toggled MID-render more than once; one engage per render is what
   the hook does.)
+- ✅ **"the workbench" was a name nobody reviewed, and it is now "the
+  remixer"** (Sam raised it 3 Sep 2026; done the same day). It had arrived
+  with the 31 Aug redesign and spread to the doc, the pane copy, the `?`
+  overlay and about eighty comments — a second vocabulary for a tool the
+  project already calls a remix everywhere else (`make remix`, `remixes/`,
+  `tools/remix/`, the `Remix` dataclass). `docs/REMIXER.md` is the manual.
+  `WORKBENCH_SOURCES`, `WORKBENCH_THEME` and `out/_audition/workbench.json`
+  are still read, so nobody's shell profile or sample folder silently stops
+  working. ⚠️ The blanket substitution rewrote *this entry* into "'remixer'
+  is a name nobody reviewed ... the thing is a remixer" — a rename cannot be
+  applied to the text discussing the rename, and that is the one place to
+  check by hand afterwards.
+- **BACKLOG (Sam, 3 Sep 2026): the docs over-name the MKII and it reads as a
+  restriction.** Sam: it works on MK1 and MK2 — they are the same machine
+  apart from a few buttons, and `docs/` already records that both run the
+  **same 1.40C image, hash-verified**. So every "MKII" that is really just
+  "the Octatrack" should say so. ⚠️ Keep the one distinction that is honest:
+  everything here has only ever been *tested* on an MKII, so the claim is
+  "the OS is the same, so it should run" (inferred) rather than "verified on
+  MK1" (not measured). Sweep `README.md` and `docs/` and say it once, in the
+  right place, instead of hedging in a dozen.
+- ✅ **A freshly flashed unit keeps drawing the PREVIOUS effect's controls —
+  CAUSE FOUND, 3 Sep 2026, and it is not a defect.** The per-part FX1/FX2 ids
+  live in the PROJECT (`bank##.work`, `PART+0x009` and `PART+0x011`, eight
+  bytes each — one per track), not in the OS, so they survive a flash and
+  resolve against the new image's tables. The unit is faithfully drawing the
+  effect the project still asks for; what changed underneath it is which
+  effect that id names. ⚠️ **Which also means a flash test that starts from
+  an old project is not a test of anything** — half the tracks are running
+  whatever the last image left there.
+  `tools/ot_project.py testproj SRC DEST REMIX` copies a project and stamps
+  every bank, part and track with an id the image implements, current parts
+  **and** their saved copies, checksums recomputed and read back.
+  `docs/FLASHPLAN.md` step 0b.
+  ⬜ Still open, and a smaller question than it looked: whether the panel
+  should RE-STAGE a page when the image under it changed, or whether "the
+  project asked for id 0x12 and got what 0x12 now is" is the right answer.
 - **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
   address, mechanism unestablished. One server per bank is the design rule;
   no product configuration has this.

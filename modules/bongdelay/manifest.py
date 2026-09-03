@@ -60,9 +60,23 @@ MODULE = Module(
         Param(b"DPTH", 48, 128, active=True, formatter=_PLAIN,
               doc="tape wow depth; 0 = none - GRAIN: density, full dial, "
                   "level-flat (R61)"),
+        # ⚠️ Position 2 is DEAD ON PURPOSE, and the numbering is load-bearing.
+        # TAPE was retired 18 Aug 2026 (its wow/flutter became the global
+        # DPTH/RATE knobs, so TAPE was CLEAN with the knobs up) and its slot
+        # was KEPT rather than closed up, because a part stores the raw value:
+        # renumbering would turn every saved GRAIN (3) into REVERSE.
+        #
+        # It is labelled CLEAN, plainly, because that is what it RUNS. Two
+        # earlier labels were both worse: "(tape)" named a mode that does not
+        # exist, and "(CLEAN)" carried an editorial aside in a field that can
+        # only hold a value's NAME -- the parentheses read as a defect rather
+        # than as a footnote. Since PLAN §6 the unit prints these words too,
+        # so the list reads CLEAN PITCH CLEAN GRAIN REVRS: two positions that
+        # do the same thing, which is the truth and needs no explaining.
         Param(b"MODE", 0, 5, active=True, formatter=_STEP,
-              labels=("CLEAN", "PITCH", "(tape)", "GRAIN", "REVRS"),
-              doc="engine select; 2 is the retired TAPE slot and runs CLEAN"),
+              labels=("CLEAN", "PITCH", "CLEAN", "GRAIN", "REVRS"),
+              doc="engine select; 2 is the retired TAPE slot and runs CLEAN "
+                  "(kept: parts store raw)"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
         Param(b"RATE", 64, 128, active=True, formatter=_PLAIN,
@@ -89,7 +103,7 @@ MODULE = Module(
                                           # the algorithm still being designed
         # Payload B -> the core serving TRACKS 1-4 (the 10 Aug 2026 track/core
         # inversion). The build's SPEC table still hardcodes this pairing;
-        # here it is stated so the workbench can derive the track range.
+        # here it is stated so the remixer can derive the track range.
         payloads=frozenset({"B"}),
         bus_role=BusRole.SERVER,
         ybase=YBase.ALWAYS,               # its 32K of lines live at the base

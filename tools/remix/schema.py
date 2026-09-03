@@ -37,7 +37,7 @@ class Kind(Enum):
                                 # code, no clone, no words -- its descriptor
                                 # and dispatch are already in the image; its
                                 # params are read FROM that descriptor for the
-                                # workbench and harness, never written back
+                                # remixer and harness, never written back
                                 # (tools/remix/stock.py is the whole list)
 
 
@@ -121,7 +121,7 @@ class Param:
     count: int | None = None           # value count; None leaves the donor's
     active: bool = False               # drawn at all (the enable bitmap)
     formatter: Formatter = Formatter.INHERIT
-    # Display-only, consumed by the workbench and never by the build (the
+    # Display-only, consumed by the remixer and never by the build (the
     # refhash gate proves it): one line saying what the knob DOES, and for a
     # select, what each value means. The unit's panel cannot show either, so
     # this is where a contributor answers "what is this?" once instead of in
@@ -167,6 +167,49 @@ class MenuEntry:
     abbr: bytes                        # <=4 chars, in a 5-byte field
     fullname: bytes                    # <=12 chars, in a 13-byte field
     build_tag: bool = False            # append the image's build tag
+    # ---- taking a STOCK effect's id, on purpose -------------------------
+    # The key of the stock effect this module REPLACES, e.g. "LO-FI". Set it
+    # and the module may carry that effect's fx2 id; leave it None and a
+    # stock id is refused, which is the default and the safe one.
+    #
+    # WHAT YOU ARE ASKING FOR. The DSP dispatch tables are indexed by the raw
+    # id and shared by both menus, so your code runs wherever that id is
+    # selected -- FX2 and FX1 alike, and in every saved project that already
+    # chose it. That is the POINT of an upgraded stock effect and it is also
+    # the whole hazard: Rungs sat on EQUALIZER's 0x0c and Nimbus on DJ EQ's
+    # 0x0d from 29 Aug to 2 Sep 2026, in every local image, and the remixes
+    # WITHOUT them aliased those ids to SEND, taking FX1's EQUALIZER away
+    # too. The difference now is that it is declared and checked rather than
+    # accidental: a remix that omits a replacement leaves the stock effect
+    # exactly as it found it (build_bus.py), and verify_replaces.py proves
+    # both halves.
+    #
+    # ⚠️ IF YOUR REPLACEMENT ALLOCATES A BUFFER, SIZE IT FOR FX1. The host's
+    # allocator keeps SEPARATE tables and they are not the same size
+    # (measured, X:0x255 in both payloads): an FX2 slot is 16,384 words,
+    # an FX1 slot is 3,072. Your code runs from BOTH menus the moment it
+    # takes a stock id, so an effect that asks for a buffer and assumes the
+    # FX2 size will overrun its allocation by 13,312 words the first time
+    # somebody selects it on FX1. That is the same class as the stock
+    # reverbs being FX2-only: they do not fit an FX1 allocation either.
+    #
+    # ✅ CHECKED SINCE 3 SEP 2026, where it can be. "Nothing checks this"
+    # stood while a buffer size was invisible to the schema -- but the three
+    # ways a module cannot survive on FX1 are declarable, and `Claims` and
+    # `DspSection` already declare them, so `state.fx1_hazard()` decides and
+    # build_bus.py refuses a replacement that inherits an FX1 row it cannot
+    # take. What is still on you is the SIZE ITSELF: a module that declares
+    # `stock_instance_buffer` is refused outright, so if you want the row you
+    # must not use the allocator at all.
+    #
+    # FX1's DESCRIPTOR IS REPOINTED TOO. FX1_IDS (0x400d5f58) and FX2_IDS
+    # (0x400d5fdc) are separate tables -- the DSP dispatch is shared, the
+    # descriptors are not -- so a replacement that only took FX2 would RUN
+    # from FX1 under the stock effect's knob names, which is "a slot can draw
+    # a knob and publish nothing" in reverse. The build repoints both of
+    # FX1's tables (its id lookup and the row the encoder scrolls), in place,
+    # and verify_replaces.py checks both menus in both directions.
+    replaces: str | None = None
 
     def __post_init__(self):
         # 0x00-0x03 are the ids stock treats as bare synonyms for "no effect";
@@ -342,6 +385,17 @@ class Harness:
 
     layout_char: str | None = None    # its letter in send_probe layout strings
     is_server: bool = False
+    # Does this module take part in the cross-core bus as a CLIENT -- write
+    # the shared accumulators and carry the housekeeping block? Declared, not
+    # inferred: `is_server` is the other half and neither is derivable from
+    # the kind (SEND is a DSP_CLIENT, but so would a non-bus utility be).
+    #
+    # It exists for ONE decision, and it is a safety one: an image with no
+    # bus participant at all has no rotation to flip and no accumulator to
+    # clear, which is the only condition under which unimplemented ids may
+    # fall back to the firmware's own NONE rather than to SEND. See
+    # NO_FALLBACK below.
+    bus_client: bool = False
 
 
 @dataclass(frozen=True)
@@ -367,13 +421,25 @@ class Module:
             raise ValueError(f"{self.name}: expected 12 param slots, "
                              f"got {len(self.params)}")
         if (self.menu is not None and self.kind is not Kind.STOCK
-                and self.menu.fx2_id in STOCK_FX2_IDS):
+                and self.menu.fx2_id in STOCK_FX2_IDS
+                and not self.menu.replaces):
             raise ValueError(
                 f"{self.name}: fx2 id 0x{self.menu.fx2_id:02x} belongs to a "
                 f"STOCK effect -- the dispatch tables are shared with FX1, so "
                 f"this id would hijack that effect on both menus (see "
-                f"STOCK_FX2_IDS). Free ids: "
+                f"STOCK_FX2_IDS). Declare MenuEntry(replaces=\"<KEY>\") if "
+                f"that is what you mean. Free ids: "
                 f"{', '.join(f'0x{i:02x}' for i in range(0x04, 0x20) if i not in STOCK_FX2_IDS)}")
+        if self.menu is not None and self.menu.replaces:
+            if self.kind is Kind.STOCK:
+                raise ValueError(f"{self.name}: a STOCK entry cannot replace "
+                                 f"anything -- it IS the stock effect")
+            if self.menu.fx2_id not in STOCK_FX2_IDS:
+                raise ValueError(
+                    f"{self.name}: replaces={self.menu.replaces!r} but fx2 id "
+                    f"0x{self.menu.fx2_id:02x} is not a stock effect's -- a "
+                    f"replacement must carry the id it replaces, or the stock "
+                    f"effect stays and yours is a separate row")
         if self.kind is Kind.STOCK and (self.dsp is not None or self.cf_patches):
             raise ValueError(f"{self.name}: a STOCK entry carries no code or "
                              f"caves -- they are already in the image (its "
@@ -419,6 +485,56 @@ class Module:
                 if p.name}
 
 
+# ---- the fallback that is not a module -------------------------------------
+# An unimplemented id has to dispatch SOMEWHERE, and the answer has always
+# been a module of ours -- SEND, which passes the audio through and only taps
+# it. That costs 215-250 words, and an INSERT-ONLY remix was paying them for
+# a client nothing reads: with no server in the image, nothing ever consumes
+# the bus accumulators SEND writes. restock.py says so in its own docstring
+# -- PLATE REV is missing from it ONLY because SEND's words land on PLATE's.
+#
+# So a remix may name this sentinel instead, and unimplemented ids resolve to
+# the FIRMWARE's own NONE: its descriptor (the one at list position 0 of a
+# stock FX2 chooser, which our rebuilt list otherwise drops) and, on the DSP
+# side, the per-payload null stub the build already points silenced donor ids
+# at. It costs one list row -- four bytes of cave -- and no words at all.
+#
+# ⚠️ IT IS REFUSED BESIDE ANY BUS PARTICIPANT, and that is the whole safety
+# argument. Housekeeping -- flipping the rotation word and clearing the
+# accumulators, once per block -- is gated to payload A and done by the FIRST
+# CORE-0 PARTICIPANT DISPATCHED that block (send_client.asm's `bus_seen`
+# election). Today every unassigned track runs SEND, so core 0 always has
+# one. Under this fallback an unassigned track runs nothing, so a project
+# with tracks 5-8 all unassigned has no housekeeper -- and a server on the
+# OTHER core then reads an accumulator that is never rotated and never
+# cleared. With no server and no client in the image there is no bus, no
+# rotation and nothing to clear, so the question does not arise. That is the
+# only case this is allowed in; registry.remix() enforces it.
+#
+# ⚠️ AND IT CANNOT BE SETTLED LOCALLY EITHER WAY: dsp_host is single-core, so
+# no local test can reproduce a bus timing defect (CLAUDE.md). The refusal is
+# what keeps the question off the table rather than answered by inference.
+NO_FALLBACK = "NONE"
+
+
+def on_the_bus(mod) -> bool:
+    """Does this module take part in the cross-core bus, either end?"""
+    h = getattr(mod, "harness", None)
+    return h is not None and (h.is_server or h.bus_client)
+
+
+# The three the project has always harvested, and what `x` offers when a
+# selection has nowhere to place: the biggest stock effects, and FX2-only, so
+# taking them costs FX1 nothing.
+#
+# ⚠️ THIS IS NOT A FIELD ANY MORE. Which effects a remix gives up is DERIVED
+# from its two choosers -- an effect on neither is one it does not want, and
+# "remove from the chooser" and "harvest" were the same act described twice
+# (stock.harvested). It reproduces every shipped remix exactly, because FX1
+# lists ten of the thirteen and the reverbs are FX2-only.
+DEFAULT_HARVEST = ("PLATE REV", "SPRING REV", "DARK REV")
+
+
 @dataclass(frozen=True)
 class Remix:
     """A named selection of modules, composed into one firmware image.
@@ -450,12 +566,67 @@ class Remix:
     name: str
     doc: str
     modules: tuple[str, ...]
-    fallback: str                # module KEY that unimplemented ids alias to
+    fallback: str                # module KEY that unimplemented ids alias to,
+                                 # or NO_FALLBACK for the firmware's own NONE
+    # ---- which of them ALSO get a row on FX1 ------------------------------
+    # THE OTHER HALF OF "BOTH SLOTS", and it belongs to the REMIX rather than
+    # to the module: which menu an effect appears on is a composition choice,
+    # like the chooser order beside it, not a property of the code. The DSP
+    # dispatch is ONE table indexed by the raw id and shared by both menus,
+    # so a listed module's code ALREADY runs from FX1 -- what this adds is
+    # the panel side, which stock keeps in FX1's own tables.
+    #
+    # IT COSTS NO WORDS. Four bytes of cave per row, plus FX1's chooser list
+    # relocated into the cave (it ends at 0x400d608c with FX2's beginning at
+    # 0x400d6090, so it cannot grow in place -- tools/build_fx1.py proved the
+    # move standalone against the stock image). What it does cost is CYCLES:
+    # an FX1 effect runs on a track that is already running an FX2 one, so
+    # the worst per-core load can gain four more copies of it. cycle_count.py
+    # prices that, and the remixer's Budget row is where to look first.
+    #
+    # ⚠️ A `replaces` MODULE IS ALREADY ON FX1 and must not be listed here:
+    # it inherits the stock effect's row and has both of FX1's tables
+    # repointed in place, so a second row would list it twice.
+    #
+    # ⚠️ ONLY A BUFFER-FREE INSERT MAY TAKE ONE. `state.fx1_hazard()` is the
+    # single statement of why, read by both the remixer and build_bus.py, and
+    # it refuses three classes:
+    #
+    #   * A module that reads the host's allocator (`x:>$213`). FX1 and FX2
+    #     keep SEPARATE allocator tables at different sizes (measured, X:0x255
+    #     in both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072.
+    #     ⚠️ This is not theoretical and it is not new -- docs/DSP.md's "wrong
+    #     claim 1" is this exact failure, bisected on hardware: a 16K layout
+    #     at an FX1 base "runs to 0x53ff, through the other FX1 buffers and
+    #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
+    #     an earlier draft of this comment claimed nothing was, which was
+    #     wrong -- it had checked only the fixed-base modules.
+    #   * A module with FIXED buffers in the FX2 region (ChonVerb, Nimbus,
+    #     BongDelay). An FX1 instance still writes to Y:0x4000 and up, i.e.
+    #     into some other track's FX2 buffer. The hazard exists on FX2 too --
+    #     it is why Nimbus is documented "one per core" -- but an FX1 row
+    #     doubles the slots it can be reached from, a second instance on the
+    #     SAME track included.
+    #   * A bus SERVER, which is one per core by design (SPEC places one
+    #     engine per payload). A second instance on a core is the open
+    #     "duplicate instances corrupt audio after ~5.45 s" item.
+    #
+    # What is left is exactly the INSERT class: WarpFold, Ripple, Rungs,
+    # Streamz, BodeShift, Hello World -- and SEND, which is buffer-free
+    # (untested there, but nothing measured argues against it).
+    fx1: tuple[str, ...] = ()
 
     def __post_init__(self):
-        if self.fallback not in self.modules:
+        if self.fallback != NO_FALLBACK and self.fallback not in self.modules:
             raise ValueError(
                 f"remix {self.name!r}: fallback {self.fallback!r} is not in "
                 f"the remix, so ids aliased to it would dispatch nowhere")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
+        # ⚠️ NO PER-KEY CHECK HERE. An fx1 key may be a STOCK effect,
+        # which need not be in `modules` at all -- FX1's list and FX2's
+        # are independent. What each key may be is decided where the
+        # registry is in scope: build_bus.py refuses, selftest pins it.
+        if len(set(self.fx1)) != len(self.fx1):
+            raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")
+

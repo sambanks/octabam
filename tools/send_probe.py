@@ -180,15 +180,27 @@ def entry_points(mem_path, fxid):
     init, proc = found.get(INIT_TAB + fxid), found.get(PROC_TAB + fxid)
     if init is None or proc is None:
         die(f"no dispatch entry for fx id 0x{fxid:02x} in {pathlib.Path(mem_path).name}")
-    # ⚠️ `proc == init + 1` USED TO BE THE TEST, and it was an accident of every
-    # init being a bare `rts`. It stopped being true on 17 Aug 2026 when the
-    # bus clients gained a rotation seed at init, and it failed as "implausible
-    # entry points" -- which reads like a stale dispatch table rather than a
-    # tool assumption. The real invariant is that proc follows init and init is
-    # SHORT: it seeds per-instance state, it does not process audio.
-    if not 0 < init < 0x20000 or not init < proc <= init + 64:
+    # ⚠️ THIS BOUND HAS BEEN WRONG TWICE, BOTH TIMES BY BEING FITTED TO THE
+    # EFFECTS THAT HAPPENED TO HAVE BEEN RENDERED. `proc == init + 1` was the
+    # first test, an accident of every init being a bare `rts`; it broke on
+    # 17 Aug 2026 when the bus clients gained a rotation seed. `init + 64`
+    # was the second, and it broke on 2 Sep 2026 the moment the three stock
+    # reverbs became renderable -- they seed a tank, so their init is real
+    # code. Both failed as "implausible entry points", which reads like a
+    # stale dispatch table rather than a tool assumption.
+    #
+    # MEASURED, every effect in the pristine image (payload A) plus ours:
+    #   ours, and stock DELAY        1
+    #   the other ten stock effects  5..32   (max CHORUS 32)
+    #   PLATE / SPRING / DARK REV    85 / 108 / 162
+    # So 256: comfortably past the real maximum, and still tight enough that
+    # a wrong table -- which gives a wild address or proc before init -- is
+    # caught. The invariant itself is unchanged: proc follows init, and init
+    # seeds per-instance state rather than processing audio.
+    _MAX_INIT = 256
+    if not 0 < init < 0x20000 or not init < proc <= init + _MAX_INIT:
         die(f"implausible entry points for 0x{fxid:02x}: init 0x{init:05x} "
-            f"proc 0x{proc:05x} (want init < proc <= init+64)")
+            f"proc 0x{proc:05x} (want init < proc <= init+{_MAX_INIT})")
     return init, proc
 
 

@@ -19,7 +19,7 @@ it is its list row and its cursor position, and nothing else.
 ITS KNOBS ARE READ FROM THE STOCK DESCRIPTOR, not declared: names, defaults,
 value counts and the enable bitmap come out of the pristine image
 (out/raw/section_3_MAIN_OS.bin, the same record the panel draws from), so
-the workbench shows a stock effect's real page-1/page-2 controls and
+the remixer shows a stock effect's real page-1/page-2 controls and
 `send_probe --set` can drive them by name. The build never writes these
 params back (a stock row is not cloned), and when the image is absent --
 a fresh clone before `make setup` -- the entry simply carries no params.
@@ -97,6 +97,73 @@ def _image():
     return _img
 
 
+# ---- which MENU a stock effect appears on ----------------------------------
+# FX1 and FX2 are two slots on the same track, and stock gives them DIFFERENT
+# chooser lists: FX1 offers ten effects, FX2 offers those ten plus DELAY and
+# the three reverbs. That asymmetry is why taking the reverbs as donors cost
+# FX1 nothing -- they were never on its menu.
+#
+# Read from the pristine image rather than written down, so it cannot drift.
+# (Both stock lists open with a NONE row, id 0x00 -- which our rebuilt FX2
+# list drops. Noted 2 Sep 2026 from an outside report; see PLAN.)
+FX1_CHOOSER, FX2_CHOOSER = 0x400d6060, 0x400d6090
+_fx1_ids: frozenset[int] | None = None
+
+
+def _chooser_ids(addr: int, limit: int = 32) -> frozenset[int]:
+    img = _image()
+    if img is None:
+        return frozenset()
+
+    def rd32(a):
+        i = a - BASE
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i <= len(img) - 4 else 0
+
+    out, a = set(), addr
+    for _ in range(limit):
+        ptr = rd32(a)
+        if not ptr:
+            break
+        out.add(rd32(ptr) & 0xff)       # the descriptor's own id word, P+0
+        a += 4
+    return frozenset(out)
+
+
+def _chooser_order(addr: int, limit: int = 32) -> tuple[int, ...]:
+    """The same ids IN ROW ORDER. Membership answers "is it on FX1"; order
+    answers "where", which is what a remixer composing the list needs."""
+    img = _image()
+    if img is None:
+        return ()
+
+    def rd32(a):
+        i = a - BASE
+        return int.from_bytes(img[i:i + 4], "big") if 0 <= i <= len(img) - 4 else 0
+
+    out, a = [], addr
+    for _ in range(limit):
+        ptr = rd32(a)
+        if not ptr:
+            break
+        out.append(rd32(ptr) & 0xff)    # the descriptor's own id word, P+0
+        a += 4
+    return tuple(out)
+
+
+def fx1_ids() -> frozenset[int]:
+    """Effect ids the STOCK FX1 chooser lists, read from the pristine image."""
+    global _fx1_ids
+    if _fx1_ids is None:
+        _fx1_ids = _chooser_ids(FX1_CHOOSER)
+    return _fx1_ids
+
+
+def fx1_order() -> tuple[int, ...]:
+    """Those ids in stock's own row order, NONE (0x00) included at row 0 --
+    which is where the remixer's default FX1 chooser comes from."""
+    return _chooser_order(FX1_CHOOSER)
+
+
 def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
     """The twelve slots as the stock descriptor declares them, or () when
     the image is not on disk."""
@@ -120,7 +187,7 @@ def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
             continue
         # Two slots can share a panel label (FILTER draws Q on page 1 and a
         # 4-step Q select on page 2). knob_map() is name-keyed, so the later
-        # one gets its page number appended for the workbench and the
+        # one gets its page number appended for the remixer and the
         # harness; the panel itself is untouched (nothing here is written).
         if name in seen:
             name = name[:5] + b"2"
@@ -139,8 +206,17 @@ def _params(desc_E: int, effect: str, key: str) -> tuple[Param, ...]:
     return tuple(out)
 
 
+# key -> the words its DSP code occupies, from the payload module map. Only
+# the three donors' figures are load-bearing (the region is packed from PLATE
+# upward, so each survives while our modules stay under its offset); the rest
+# are recorded because the call sites already carried them and dropping them
+# on the floor is how a number goes stale unnoticed.
+WORDS: dict[str, int] = {}
+
+
 def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
            buffer=False):
+    WORDS[key] = words
     return Module(
         name=name, key=key, kind=Kind.STOCK, doc=doc,
         menu=MenuEntry(fx2_id=fx2_id, donor_desc=desc, abbr=abbr,
@@ -183,12 +259,188 @@ MODULES = (
            "Stock Echo Freeze delay -- runs on the ColdFire, so it costs the "
            "DSP nothing; the row works as on a stock unit. No local render.",
            "Y"),
+    # ---- THE THREE REVERBS, listable since 2 Sep 2026 -------------------
+    # Their code IS the donor region, so they are the only stock rows whose
+    # availability depends on the rest of the selection: the build packs from
+    # PLATE upward and nulls a donor id ONLY where words actually landed
+    # (build_bus.py), so a light selection keeps the ones it never reached.
+    # It refuses a row whose words were taken, which is the guard that makes
+    # listing them safe.
+    #
+    # buffer=True is MEASURED, not assumed: all three read x:>$213 -- the
+    # host's bump allocator -- within the first ~25 words of their entry
+    # (PLATE 0x01018, SPRING 0x01267, DARK 0x01692; payload A disassembly,
+    # 2 Sep 2026), exactly like the four stock effects already flagged. So
+    # the ledger refuses them beside any module with fixed Y buffers, on the
+    # same grounds and with the same evidence.
+    _stock("PLATE REV", "plate", 0x14, 0x400d5594, b"PLTE", b"PLATE REV", 594,
+           "Stock plate reverb. Its 594 words are the FIRST of the donor "
+           "region, so it is the first row any module of ours takes.",
+           "T", buffer=True),
+    _stock("SPRING REV", "spring", 0x15, 0x400d5726, b"SPRG", b"SPRING REV",
+           1063,
+           "Stock spring reverb. 1,063 words, second in the donor region.",
+           "U", buffer=True),
+    _stock("DARK REV", "dark", 0x16, 0x400d58b8, b"DARK", b"DARK REV", 1067,
+           "Stock dark reverb. 1,067 words, last in the donor region -- so "
+           "it is the one a small selection is most likely to keep.",
+           "V", buffer=True),
 )
 
-# What every remix consumes, whether it lists anything or not: the three
-# reverbs whose code IS the donor region. Named here so the composer can
-# say so rather than leaving it to be inferred from a manifest comment.
+# The donor region, IN PLACEMENT ORDER. The build packs from PLATE upward,
+# so a selection loses them in this order and keeps the tail it never
+# reached -- which is why they are listable at all. Nothing here decides
+# that; the build reports which survived and the remixer reads its answer
+# (state.measure). Kept as a tuple because the ORDER is the meaning.
+# ---- where each effect's CODE lives, per payload ---------------------------
+# The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
+# self-contained: no control flow leaves its own span and nothing enters it
+# but its own dispatch entry (measured 3 Sep 2026, tools/dsp_reach.py over
+# both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
+# whose operand is a loop END and therefore exclusive). That is what makes
+# any of them harvestable for its words, not just the three reverbs.
+#
+#   payload A  P:0x007d1..0x01fdf     payload B  P:0x00591..0x01d9f
+#   6,158 words each, same effects, same sizes, different bases.
+#
+# ⚠️ DERIVED FROM THE MODULE MAP, not written down. The record SIZES in P
+# order are the fingerprint, and PHASER is four records past its own -- its
+# true extent runs 41 words past what its record claims (docs/DSP.md s8), so
+# it is matched as a group. A firmware whose layout differs fails to match
+# and raises rather than handing back plausible addresses.
+_P_ORDER = (("FILTER", (727,)), ("SPATIALIZER", (261,)), ("EQUALIZER", (282,)),
+            ("PHASER", (157, 6, 6, 6, 32)), ("FLANGER", (289,)),
+            ("CHORUS", (329,)), ("PLATE REV", (594,)), ("SPRING REV", (1063,)),
+            ("DARK REV", (1067,)), ("COMPRESSOR", (180,)), ("LO-FI", (537,)),
+            ("DJ EQ", (345,)), ("COMB FILTER", (277,)))
+_spans: dict[str, dict[str, tuple[int, int]]] = {}
+
+
+def p_spans(payload: str) -> dict[str, tuple[int, int]]:
+    """{effect key: (P address, words)} for one payload's DSP effect code.
+
+    The run is found by matching the record-size fingerprint above, so the
+    addresses come from the image every time and a layout change is a
+    KeyError rather than a wrong write.
+    """
+    if payload in _spans:
+        return _spans[payload]
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    import dsp_modmap as dm
+    img = dm.IMG.read_bytes()
+    va, ln = [(v, l) for t, v, l in dm.PAYLOADS if t == payload][0]
+    mods, _b = dm.modules(img, va, ln)
+    recs = [(a, c) for sp, a, c, _o in sorted(mods, key=lambda m: m[1])
+            if sp == 0]
+    want = [n for _k, g in _P_ORDER for n in g]
+    sizes = [c for _a, c in recs]
+    for i in range(len(sizes) - len(want) + 1):
+        if sizes[i:i + len(want)] != want:
+            continue
+        out, j = {}, i
+        for key, group in _P_ORDER:
+            out[key] = (recs[j][0], sum(group))
+            j += len(group)
+        # Contiguity is the property the whole idea rests on -- assert it
+        # rather than trusting that adjacent records are adjacent addresses.
+        run = sorted(out.values())
+        for (a, n), (a2, _n2) in zip(run, run[1:]):
+            if a + n != a2:
+                raise ValueError(f"payload {payload}: effect code is not "
+                                 f"contiguous at P:0x{a:05x}+{n}")
+        _spans[payload] = out
+        return out
+    raise ValueError(f"payload {payload}: no run matches the effect layout")
+
+
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
+
+
+def harvested(listed) -> frozenset[str]:
+    """Stock effects with DSP code that are on NEITHER chooser.
+
+    ⚠️ HARVESTING IS NOT A SEPARATE GESTURE. Taking an effect off both of the
+    unit's menus IS the decision to give it up -- there is no third thing to
+    remember and no second key. What it costs is only paid where our code
+    actually reaches: an unlisted effect the placer never gets to keeps its
+    algorithm and its dispatch, exactly as it always has.
+
+    ⚠️ BOTH choosers. An effect off FX2 but still on FX1 is still wanted, and
+    the DSP dispatch is one table shared by the menus -- overwriting its code
+    would take it off FX1 too.
+    """
+    return frozenset(k for k in p_spans("A") if k not in listed)
+
+
+def regions_of(harvest) -> tuple[tuple[str, ...], ...]:
+    """Harvested effects grouped into CONTIGUOUS runs, in address order.
+
+    A module of ours is one code stream, so it must fit inside ONE run --
+    but different modules can sit in different runs, which is what
+    build_bus.py's placer does. So every harvested effect is placeable
+    ground, and the only cost of a gap is fragmentation: a module larger
+    than the biggest run has nowhere to go even when the total is ample.
+
+    Until 3 Sep 2026 this returned the LARGEST run alone and the rest were
+    given up for nothing -- visible in the remixer as "drop two effects,
+    free only the reverbs" (Sam, 3 Sep). A stranded run is now placeable.
+    """
+    sp = p_spans("A")
+    runs, cur = [], []
+    for a, k in sorted((sp[k][0], k) for k in harvest if k in sp):
+        if cur and sp[cur[-1]][0] + sp[cur[-1]][1] != a:
+            runs.append(tuple(cur))
+            cur = []
+        cur.append(k)
+    if cur:
+        runs.append(tuple(cur))
+    return tuple(runs)
+
+
+def region_of(harvest) -> tuple[str, ...]:
+    """Every harvested effect with DSP code, in address order.
+
+    Kept as the name the callers use for "the placeable set". It is no
+    longer a single run -- see regions_of() for the grouping the placer
+    needs.
+    """
+    return tuple(k for run in regions_of(harvest) for k in run)
+
+
+def harvest_order(harvest=CONSUMED) -> tuple[str, ...]:
+    """A harvested set in P-ADDRESS order, which is placement order.
+
+    The region is packed from its lowest address upward, so the effect at the
+    bottom goes first and the one at the top survives longest. Written down
+    for the three reverbs until 3 Sep 2026; sorted from the image now,
+    because any run of effects can be harvested and nothing says a remix
+    lists them in address order.
+    """
+    sp = p_spans("A")
+    return tuple(sorted(harvest, key=lambda k: sp[k][0]))
+
+
+def consumed_at(key: int | str, harvest=CONSUMED) -> int:
+    """Words our modules may place before this effect's code is overwritten.
+
+    ⚠️ ONLY MEANINGFUL FOR A SINGLE RUN. It walks the harvested set as one
+    packed stream; since 3 Sep 2026 the placer fills each contiguous run
+    separately (regions_of), so with a gap this over-counts what precedes an
+    effect in the later run. Callers gate on len(regions_of(...)) < 2.
+    """
+    at = 0
+    for c in harvest_order(harvest):
+        if c == key:
+            return at
+        at += WORDS[c]
+    raise KeyError(key)
+
+
+def region_words(harvest=CONSUMED) -> int:
+    """The whole placeable region for a harvested set. 2,724 for the three
+    reverbs, which is the figure every document quoted as a constant."""
+    return sum(WORDS[k] for k in harvest)
 
 # The one stock row with nothing on the DSP to render.
 NO_DSP = frozenset({"DELAY"})

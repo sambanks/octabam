@@ -114,9 +114,15 @@ _ASM = registry.asm_by_stem()
 BANK = {"reverb_server": 1, "delay_server": 1, "send_client": 2}
 
 FX2_SLOTS = 4           # per core: four tracks, one FX2 each
+# AND FOUR FX1 SLOTS, on the same four tracks. Stock's own FX1 load is
+# already inside STOCK_SHARE (the 7 Aug sweep measured the spare with four
+# FILTERs running), so a module of ours listed on FX1 is charged ON TOP
+# without crediting back the stock effect it displaces. That is the
+# conservative direction, and the same one the FX2 slots are priced in.
+FX1_SLOTS = 4
 
 
-def bank_worst(rows, mods):
+def bank_worst(rows, mods, fx1=()):
     """The worst per-core load the SELECTED remix can actually be asked for.
 
     Four FX2 slots on a core, and the modules that can occupy them are the
@@ -131,6 +137,13 @@ def bank_worst(rows, mods):
         same insert, so the worst case is four copies of the dearest one --
         the number that matters for a card of inserts, and the one no
         previous version of this tool could produce.
+
+    AND FX1 IS A SECOND SET OF FOUR SLOTS on the same four tracks. A module
+    the remix lists on FX1 (Remix.fx1) can be selected there as well, on top
+    of whatever that track's FX2 slot is running -- which is why PLAN.md s2
+    puts FX1's real ceiling at "cycles x4". The dearest FX1-listed module is
+    charged four times, without crediting back the stock effect it displaces
+    (stock's own FX1 load is inside STOCK_SHARE already).
 
     Returns (total, [(name, count), ...]).
     """
@@ -149,6 +162,10 @@ def bank_worst(rows, mods):
         # anything of ours; those tracks run stock, which this tool does not
         # price. Say so rather than inventing a number for them.
         pass
+    fx1_mods = [m for m in mods if m["key"] in fx1 and m["stem"] in cyc]
+    if fx1_mods:
+        picks += [max(fx1_mods, key=lambda m: cyc[m["stem"]])["stem"]] \
+            * FX1_SLOTS
     counts = {}
     for n in picks:
         counts[n] = counts.get(n, 0) + 1
@@ -486,7 +503,7 @@ def main():
             if not ok:
                 sys.exit("marker changed codegen -- the count is not trustworthy")
 
-    worst, picks = bank_worst(rows, mods)
+    worst, picks = bank_worst(rows, mods, remix.fx1)
     # The legacy composition, and ONLY when the remix still carries the
     # modules it was measured with -- otherwise the comparison to the 7 Aug
     # hardware sweep is against a bank that shares nothing with it.
@@ -500,7 +517,21 @@ def main():
                               per_effect={m["name"]: m["cycles"] for m in rows},
                               worst_core=worst,
                               worst_core_mix=dict(picks),
+                              # The same mix keyed by MODULE KEY rather than
+                              # by asm stem, so a caller can print the name
+                              # the operator reads on the panel: `reverb
+                              # server` is a filename, `ChonVerb` is what the
+                              # remixer calls it everywhere else.
+                              worst_core_modules={
+                                  next(m["key"] for m in mods
+                                       if m["stem"] == stem): n
+                                  for stem, n in picks},
                               bank=bank, headroom=room,
+                              # What OUR code may spend, per core. The
+                              # remixer's budget row is read against this
+                              # rather than against core_total, and there
+                              # must be one source for the figure.
+                              usable=USABLE,
                               burn_spare_measured=BURN_SPARE,
                               bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))
@@ -524,6 +555,13 @@ def main():
     mix = " + ".join(f"{n}x {k}" for k, n in picks) or "(nothing of ours)"
     print(f"{'WORST ONE CORE':{w}}  {worst:>13}   {mix}")
     print(f"{'':{w}}  {'':>13}   4 FX2 slots, at most one server (the design rule)")
+    # ⚠️ ONLY THE ONES PRICED. remix.fx1 is the whole FX1 chooser, stock
+    # rows included, and stock code is NOT counted here -- naming them made
+    # the line read as if FILTER's cycles were in the figure.
+    _ours = [m["key"] for m in mods if m["key"] in remix.fx1]
+    if _ours:
+        print(f"{'':{w}}  {'':>13}   + 4 FX1 slots: {', '.join(_ours)} "
+              f"listed on FX1 too")
     if worst > CORE_TOTAL:
         print(f"{'':{w}}  {'':>13}   *** OVER the arithmetic ceiling ***")
     # The measured spare is what was left ON TOP of a full bank plus four FX1

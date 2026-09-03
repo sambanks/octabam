@@ -1,37 +1,36 @@
 #!/usr/bin/env python3
-"""The remix workbench, organized the way an Octatrack user thinks: TRACKS.
+"""The remixer: swap effects, hear them, see the panel draw them.
 
     make remix          (or: .venv/bin/python3 tools/remix/app.py)
 
-Three views, one rig:
+ONE page, three panes -- AVAILABLE (what could be in the image), LOADED
+(what is), UNIT (the selected effect's knobs and the firmware's own draw of
+its page). The loop it exists for is one move long: point at a stock effect,
+`enter` to swap one of ours in, `r` to hear it.
 
-  RIG (home)   eight tracks, an effect on each. Pick a track, see the
-               effect's real param pages (manifest names, page 1 = knobs
-               A-F), dial values, render through the DSP emulator, hear it,
-               A/B renders. This is the trial-a-sound loop and the reason
-               the workbench exists.
-  REMIX        the composer: which modules the IMAGE contains, grouped as an
-               operator meets them -- bus servers (with their track range),
-               inserts (any track), system plumbing. Collisions, fit, save/
-               load, build and check -- on the LIVE selection, no save needed.
-  EMU          the built image booted in the Tier-0 ColdFire emulator
-               (docs/EMU.md), showing the firmware's own menu and param page
-               renders for the rig's selected track. Booting IS the no-flash
-               gate; the boot is cached until the image changes.
+THE IMAGE FOLLOWS THE SELECTION. Every selection change rebuilds and
+re-boots in the background -- a build is ~0.3 s and a ColdFire boot ~5 s --
+so the panel on the right always draws what the middle pane says. There is
+no build key and no stale state to reason about; that apparatus existed to
+spare the operator a quarter-second and cost more than it saved.
 
 The model layers are headless and live next door: state.py (the composer),
-rig.py (tracks), audition.py (rendering). This file is only the shell.
-Textual rather than curses: the workbench is already venv-hosted for the
-emulator, and the frontend rewrite is where hand-rolled layout stopped
+rig.py (categories, knobs), audition.py (rendering). This file is only the
+shell. Textual rather than curses: the remixer is already venv-hosted for
+the emulator, and the frontend rewrite is where hand-rolled layout stopped
 paying its way.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -39,18 +38,20 @@ try:
     from textual import work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
-    from textual.containers import Horizontal, Vertical
+    from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen, Screen
     from textual.widgets import Footer, Input, OptionList, RichLog, Static
     from textual.widgets.option_list import Option
 except ImportError:
-    sys.exit("the workbench frontend needs textual -- run: make emu-setup")
+    sys.exit("the remixer frontend needs textual -- run: make emu-setup")
 
 from rich.markup import escape  # noqa: E402  (rich ships with textual)
 
-from remix import audition, registry, rig  # noqa: E402
-from remix.state import (BUILT_IMAGE, DONOR_WORDS, ROOT,  # noqa: E402
-                         STOCK_ROOTS, State)
+from remix import audition, registry, rig, stock  # noqa: E402
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
+from remix.state import (BUILT_IMAGE, CAVE_BYTES, DONOR_WORDS, ROOT,  # noqa: E402
+                         State)
+
 
 def step_label(mod, name, v):
     """A select's value as the manifest labels it, else the raw number."""
@@ -58,21 +59,203 @@ def step_label(mod, name, v):
     return lab[v] if lab and v < len(lab) else str(v)
 
 
-def wav_sources():
-    """Source WAVs to audition: out/dry/ -- the curated DRY set (31 Aug 2026;
-    test_audio + demo_sources are full of processed renders and made the
-    browser unusable). Falls back to the old dirs only when out/dry is
-    missing or empty (a fresh tree before anyone copies sources in)."""
-    d = ROOT / "out" / "dry"
+# ---- the palette -----------------------------------------------------------
+# COLOUR CARRIES MEANING HERE, it does not decorate. Three axes, and nothing
+# else gets colour:
+#
+#   whose is it   OURS is aqua, the box's own is plain. In a remixer that is
+#                 the distinction you scan for -- "which of these did we
+#                 write" -- and it was carried by nothing at all.
+#   what state    green fits / ochre is a trade or a caution / red blocks.
+#   what is live  a soft purple for the one-of-a-kind markers (the fallback).
+#
+# ⚠️ THESE WERE ANSI NAMES AND THEY CAME OUT AS SATURATED PRIMARIES --
+# `cyan` rendered #00ffff, `yellow` #ffff00 -- because Rich resolves a name
+# to its standard value rather than delegating to the terminal, so the
+# "it wears your palette" reasoning was simply wrong. Against a warm dark
+# background that read as a wall of electric blue. These are gruvbox's own
+# tones instead: same three axes, desaturated, and chosen to sit on a dark
+# ground rather than shout off it.
+#
+# WHERE colour goes matters as much as which. The knob bars are twelve rows
+# deep, so ONE tint across them made the accent the largest thing on screen
+# and said nothing -- but neutralising them entirely went too far the other
+# way. They are graded by their OWN VALUE instead: a soft warm ramp, so the
+# variety comes from the values themselves and a row's colour means
+# something. No red in the ramp -- a full LP cutoff is not an alarm.
+OURS = "#8ec07c"       # aqua -- a module from modules/
+OK = "#b8bb26"         # green -- fits, present, healthy
+WARN = "#d79921"       # ochre -- a trade, a caution, a knob that renders dry
+BAD = "#fb4934"        # red -- it will not build
+MARK = "#d3869b"       # soft purple -- the fallback, and other lone markers
+LCD = "#665c54"        # the emulated panel's frame: chrome, so it recedes
+SRC = "#83a598"        # muted blue -- the wav you are auditioning on
+BAR = ("#b8bb26", "#d79921", "#fe8019")     # the knob ramp, low -> high
+
+
+def bar_colour(v, hi):
+    """A knob's fill colour, from where it sits in its own range."""
+    return BAR[min(int(3 * v / max(hi, 1)), 2)]
+
+
+# Words that are acronyms, not shouting, and stay upper in a title.
+_ACRONYMS = {"DJ", "EQ", "FX", "HP", "LP", "MS", "AB"}
+
+
+def titlecase(s: str) -> str:
+    """One naming rule for every name the remixer prints.
+
+    The lists mixed three conventions and it showed: OUR modules carry a
+    panel name in camel case (`BongDelay`), the STOCK effects carry the
+    firmware's own, which is upper (`DJ EQUALIZER`, `LO-FI`), and a module
+    with no chooser row falls back to its directory slug (`tempo-sync`). So
+    one column read BongDelay / EQUALIZER / tempo-sync.
+
+    Deliberate inner capitals are LEFT ALONE -- `BongDelay` must not become
+    `Bongdelay`, which is the failure mode of a naive .title(). A word is
+    only re-cased when it is entirely upper (or entirely lower), and known
+    acronyms keep their case.
+
+    ⚠️ This is the REMIXER's own text only. The emulated panel draws
+    strings captured from the firmware and is never re-cased -- it has to
+    show what the unit shows.
+    """
+    def word(w):
+        if not w:
+            return w
+        if w.upper() in _ACRONYMS:
+            return w.upper()
+        if not w.isupper() and any(c.isupper() for c in w[1:]):
+            return w                      # BongDelay, ChonVerb, WarpFold
+        return w[:1].upper() + w[1:].lower()
+    parts = re.split(r"([ \-/]+)", s)
+    return "".join(word(p) if i % 2 == 0 else p
+                   for i, p in enumerate(parts))
+
+
+def disp(mod) -> str:
+    """What to CALL a module on screen: the name the panel shows, not the
+    directory slug. `warpfold` is a path; `WarpFold` is what the operator
+    reads on the unit."""
+    if mod.menu is not None:
+        return titlecase(mod.menu.fullname.decode("latin1") or mod.name)
+    return titlecase(mod.name)
+
+
+def placeable(sel, total, used, harvest=None):
+    """Words this selection can still PLACE in one payload's donor region.
+
+    Not the build's own FREE figure, which reports the whole region as free
+    because nothing of OURS is in it yet: PLATE, SPRING and DARK REV's code
+    IS that region, so a reverb kept in the chooser is spending its own
+    words and has to be subtracted like anything else.
+
+    And the subtraction is not the reverbs' sizes. The region packs from
+    PLATE upward, so holding a LOW reverb makes the space above it
+    unreachable even though nothing occupies it -- keeping PLATE alone
+    leaves 2,130 words by size and 0 you can actually place. The ceiling is
+    the offset of the lowest reverb kept, which equals the plain subtraction
+    for every other combination (verified for all four).
+
+    Returns (free, cap): `total - cap` is what the listed reverbs hold, so
+    used + held + free is exactly total.
+
+    ONE definition of "free", used by both the line under LOADED and the
+    budget pane. They used to disagree on the same screen -- 2,509 there
+    against 379 here -- which is a good way to make a budget unreadable.
+    """
+    hv = tuple(harvest) if harvest else stock.CONSUMED
+    cap = min((stock.consumed_at(c, hv) for c in hv if c in sel),
+              default=total)
+    return max(0, cap - used), cap
+
+
+def chooser_slot(order, key):
+    """Where an effect goes when it is added: for a STOCK one, ITS OWN PLACE.
+
+    A stock effect has a position on the unit -- FILTER first, DARK REV
+    fourteenth -- and that order is the one the library lists it in and the
+    one an untouched chooser shows. Appending ignored it: remove PLATE REV
+    from row 12 and add it back and it landed at row 14, below DARK REV, so
+    a removal you undid left the panel reordered. Nothing warned, because
+    the order was still a legal chooser.
+
+    One of OURS has no such place -- the position is a real choice and the
+    end is the only honest default -- so it still appends, and left/right in
+    LOADED moves it.
+    """
+    seq = [m.key for m in stock.MODULES]
+    if key not in seq:
+        return len(order)
+    i = seq.index(key)
+    for j, k in enumerate(order):
+        if k in seq and seq.index(k) > i:
+            return j
+    return len(order)
+
+
+# Where the SOURCE row browses. out/dry/ is the curated dry set and stays the
+# default (31 Aug 2026: test_audio + demo_sources are full of processed
+# renders and made the browser unusable), but a remixer gets used on whatever
+# material is to hand, so `d` points it somewhere else and CONFIG remembers.
+CONFIG = ROOT / "out" / "_audition" / "remixer.json"
+# Its name until 3 Sep 2026. Read as a fallback so the sample folder somebody
+# chose does not silently revert to out/dry/ because the tool was renamed;
+# the next save writes the new name and this stops mattering.
+OLD_CONFIG = ROOT / "out" / "_audition" / "workbench.json"
+DEFAULT_SOURCE_DIR = ROOT / "out" / "dry"
+
+
+def load_config():
+    """{} on anything unreadable -- a corrupt settings file must not stop the
+    remixer opening, it is a convenience, not state anyone can lose work
+    from."""
+    for path in (CONFIG, OLD_CONFIG):
+        try:
+            return json.loads(path.read_text())
+        except Exception:                            # noqa: BLE001
+            continue
+    return {}
+
+
+def save_config(cfg):
+    try:
+        CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG.write_text(json.dumps(cfg, indent=2) + "\n")
+    except OSError:
+        pass                                    # not worth an error dialog
+
+
+def source_dir():
+    """The directory the SOURCE row browses, in precedence order: the env
+    override, what `d` last chose, then out/dry/."""
+    # WORKBENCH_SOURCES was its name until 3 Sep 2026 and is still honoured:
+    # an env var lives in somebody's shell profile, where a rename is not a
+    # rename but a silent stop working.
+    env = (os.environ.get("REMIXER_SOURCES")
+           or os.environ.get("WORKBENCH_SOURCES"))
+    if env:
+        return pathlib.Path(env).expanduser()
+    saved = load_config().get("source_dir")
+    if saved:
+        return pathlib.Path(saved).expanduser()
+    return DEFAULT_SOURCE_DIR
+
+
+def wav_sources(d=None):
+    """The wavs in the source directory. Falls back to the old scattered dirs
+    only when the chosen one is missing or empty -- a fresh tree, before
+    anyone has copied sources in."""
+    d = d or source_dir()
     if d.is_dir():
         out = sorted(d.glob("*.wav"))
         if out:
             return out
     out = []
-    for sub in ("test_audio", "demo_sources"):
-        d = ROOT / "out" / sub
-        if d.is_dir():
-            out += sorted(d.glob("*.wav"))
+    for name in ("dry", "test_audio", "demo_sources"):
+        alt = ROOT / "out" / name
+        if alt.is_dir() and alt != d:
+            out += sorted(alt.glob("*.wav"))
     return out
 
 
@@ -85,14 +268,20 @@ class TextPrompt(ModalScreen[str]):
     #box { width: 60; height: auto; border: round $primary; padding: 1; }
     """
 
-    def __init__(self, question):
+    def __init__(self, question, value=""):
         super().__init__()
         self.question = question
+        self.value = value
 
     def compose(self) -> ComposeResult:
         with Vertical(id="box"):
-            yield Static(self.question)
-            yield Input()
+            # ESCAPED, because a question is data. A path in the prompt --
+            # "source folder [/Users/.../out/dry]:" -- parsed as Rich markup
+            # and raised MarkupError: closing tag does not match any open
+            # tag. Same family as the 31 Aug pass that escaped every
+            # data-driven string in the panes; a prompt is one too.
+            yield Static(escape(self.question))
+            yield Input(value=self.value)
 
     def on_input_submitted(self, ev):
         self.dismiss(ev.value.strip())
@@ -135,85 +324,133 @@ class Chooser(ModalScreen[str]):
 
 
 HELP = {
-    "rig": """[bold]THE RIG — your bench, not the unit[/]
+    # ⚠️ PARAGRAPHS ARE ONE LINE EACH, deliberately. Rich re-wraps to the
+    # box's real width, so prose hard-wrapped in this file wrapped TWICE --
+    # every paragraph ended in an orphan ("order", "draw", "your", "a") and
+    # the page read as broken. Only the key table is hard-wrapped, and it is
+    # short enough never to be re-flowed.
+    "remixer": """[bold]THE REMIXER[/] — compose the effects list your unit shows, and hear each one before you commit to it.
 
-Assign an effect to a track, dial its knobs, render a source wav through
-the effect's real DSP code and hear it. Audio comes from the local DSP
-emulator (~6x real time); nothing here touches hardware.
+[bold]AVAILABLE[/] is everything that COULD be in an image: your modules, then the stock effects the box already ships. [bold]CHOOSERS[/] is the image you are composing — the unit's two effect menus, FX1 above FX2, each in the row order the panel will show. [bold]UNIT[/] follows the cursor — the selected effect's knobs, what it costs, and `r` to hear it on the SOURCE wav.
 
-[bold]keys[/]
-  1-8       select track             enter      pick the track's effect
-  up/down   move between rows        left/right adjust (shift = coarse)
-  r         render + play            space      replay the last render
-  a / b     mark the last render     , / .      replay mark A / B
-  esc       stop audio               backspace  clear the effect
-  x         the remix composer       e          the emulated unit
-
-[bold]why some effects are missing on a track[/]
-The two BUS EFFECTS each live on one of the unit's two DSP cores:
-ChonVerb serves tracks 5-8 and BongDelay tracks 1-4 (measured, and
-inverted from what you'd guess). INSERTS run on any track. The knob
-rows mirror the unit's two FX2 SETUP pages: page 1 = encoders A-F,
-page 2 alternates knob/select. The dim ? line explains whichever
-knob the cursor is on.""",
-    "remix": """[bold]THE COMPOSER — what the firmware image contains[/]
-
-A remix is a named selection of modules built into one firmware image.
-Toggle modules here; the right panel answers, continuously: what the
-FX2 chooser will show on the unit, whether anything collides (the same
-ledger the build runs), and whether the DSP fits the 2724-word donor
-region (w assembles for real numbers).
-
-Effects the image leaves out don't vanish on the unit: an old project
-selecting an absent id is aliased to the FALLBACK (normally SEND), so
-it degrades to a send instead of noise. * marks an explicit fallback,
-~ an automatic one.
-
-[bold]what happens to the stock effects[/]
-Every image replaces the whole FX2 chooser, but only THREE stock
-effects are consumed -- PLATE, SPRING and DARK REV, whose code is the
-donor region the modules pack into. The other eleven keep their code
-and knobs in every image and only lose their row. Toggle one under
-STOCK FX2 to keep its row: it costs nothing. Four of them (SPAT, FLNG,
-CHOR, COMB) take a per-track buffer where the servers keep theirs, so
-they are refused beside ChonVerb, Nimbus or BongDelay. Row order is
-selection order; [ and ] move the cursored module. More than seven
-rows and the chooser scrolls, as stock's does.
+The loop is one move long: highlight one of yours in AVAILABLE and press `enter`. The image rebuilds and re-boots by itself, so the panel on the right is never showing something else.
 
 [bold]keys[/]
-  space  toggle module        f  make it the fallback
-  [ / ]  move earlier/later   w  assemble + measure
-  b      build the selection  c  build + full check
-  l      load a saved remix   s  save this selection
-  v      rig                  e  emulated unit""",
-    "emu": """[bold]THE EMULATED UNIT — the real firmware, screen only[/]
+  tab  next pane           up/down  move the cursor
+  enter   AVAILABLE: add it to the FX2 chooser (it displaces nothing).
+          LOADED: remove the row you are on, from ITS list.
+  left/right   UNIT: the knob value, hold to run, SHIFT for ×10
+               LOADED: move the row within its own chooser
+  r  render + hear     space  replay
+  a / b  park what you just heard as A / B      , / .  play A / B
+  1  put the highlighted effect on the FX1 chooser (or take it off)
+  x  apply the fix the ⚠ is offering (only shown when there is one)
+  d  sample folder     l  load a remix      s  save this one as a remix
+  c  full check        f  choose the fallback        k  back to stock
+  ?  this              esc  stop audio      q  quit
 
-Your built image, booted in a local ColdFire emulator, drawing its own
-screens: the MAIN MENU (patched-in entries render exactly as the unit
-would), the FX2/FX1 SETUP pages and the PLAYBACK page. There is no
-audio and no key matrix — this view is the no-flash confidence check:
-does the image boot cleanly, does the panel draw what the manifests
-promised.
+[bold]two slots, two chooser lists[/]
+Every track has TWO effect slots — FX1 then FX2, in that order through the audio — and each has its own chooser list. The middle pane holds BOTH, stacked, and every gesture applies to the list you are standing in: `enter` removes from it, `←→` reorders within it (a row cannot cross from one list to the other by being nudged off the end), and `1` puts the highlighted effect on FX1 or takes it off.
 
-Knob VALUES draw as dial graphics the text capture cannot read, so the
-rig's numbers are always the truth for values. The boot is cached and
-repeats only when the image changes.
+They start from opposite places, and that is the only asymmetry left:
 
-[bold]keys[/]
-  m  main menu      f  FX2 (follows the rig's track + effect)
-  o  FX1 (stock)    p  playback page
-  1-8  track        up/down  menu cursor   left/right  cycle""",
+  [bold]FX2[/] is built from nothing. Every row on it is one this remix listed.
+  [bold]FX1[/] starts as the ten stock ships, because that is what the box does. Drop them, reorder them, add yours.
+
+Both are then equally yours. Leaving an effect off a chooser takes that ROW and nothing else — its code, descriptor and dispatch stay stock, so an old project that selects it still runs it, and dropping FLANGER from FX1 does not touch its FX2 row.
+
+`p` → FX1 draws the chooser you composed, as the firmware draws it.
+
+[bold]the no-flash gate[/]
+The CHOOSERS line ends in `boots` when the built image reaches the RTOS handoff in the local ColdFire emulator. That is the whole of it: a cave that breaks early init faults there instead of on your unit. It is a fact about the IMAGE, so it is on the image's line.
+
+If a selection ever patches the unit's top-level menu, the MAIN MENU appears under CHOOSERS as the firmware draws it. None do yet — a selection changes it only by writing the tables at `0x400cbc00` and every remix so far changes zero bytes of them.
+
+⚠️ There used to be a per-effect block here showing the firmware's own draw of the page. It is gone (3 Sep 2026) and the reason is worth knowing: the rows above already list every drawn parameter with its page number, from the same descriptor, so the picture said it again — and a picture of that screen is not even possible, because the chooser list and the parameter block are two overlaid windows whose coordinates are not comparable. What it was really being squinted at for is whether the descriptor the build WROTE matches the manifest that asked for it: a clone inherits its donor's name fields and slot names, so it can carry the right count, default and enable bit and still be labelled as the effect it was copied from. That is a CHECK, and it now lives in `verify_menu`, where a mismatch fails `make check` instead of having to be noticed in the corner of a pane.
+
+[bold]what an FX1 row costs[/]
+No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
+
+Only a buffer-free INSERT of ours can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. The same three reasons are why stock keeps DELAY and the three reverbs off FX1 — they do not fit either.
+
+⚠️ The firmware's own NONE is always FX1 row 0 and is not shown here: it is how the slot is turned off, and no remix can lose it.
+
+The `FX1+FX2` column in the library says which menus an effect CAN appear on, not where its rows are today; the ✓ beside it is what says whether it is in the image.
+
+It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row.
+
+Only a buffer-free INSERT can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. An effect that replaces a stock one is already on FX1 and says that instead.
+
+[bold]a narrow terminal shows fewer panes[/]
+Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).
+
+[bold]what is actually scarce[/]
+Every row says what it IS in a column of its own, and under them is a MAP of the payload's effect code, drawn to scale from the real spans: thirteen segments, one per stock effect, `─` for the ones this selection keeps, `.` for the harvested run and `#` for how far your code reached into it. One bar per payload, because the layout is identical in both and only the fill differs. That is the picture the twenty-glyph `words` bar could not draw — it needed a legend and still said neither WHERE in the payload the region is nor WHICH effects it costs, and once the region became a choice those were the only two questions.
+
+Five things, and the Budget strip is one row for each: the two donor regions of 2,724 words (one per payload, and only YOUR modules spend them), the FX2 buffer slots (one per track, per core), the per-core CYCLES, the 31 chooser rows, and the ColdFire cave. Every row reads the same way — [bold]N free of TOTAL, and what took the rest[/].
+
+CYCLES is the one that does not fail as a refusal. Over budget the DSP does not decline to build, it wedges — so the row prices the WORST core under the worst mix this selection allows, which for a card of inserts is four copies of the dearest one: nothing stops all four tracks selecting it. The budget of 3,120 is what our code may spend after stock's own share, measured 23 Aug 2026, and the count is a floor: exact for the code, optimistic about memory contention.
+
+Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 rows fit, and leaving a stock effect out takes its chooser row and nothing else — an old project that selects it still runs it.
+
+⚠️ TODAY THE DONOR REGION IS FIXED, and that is a property of this BUILD, not of the machine. Every effect states what it occupies — `727 words, already placed` for FILTER, `2,411 of 2,724 words` for ChonVerb — but only one region is currently harvestable: the 2,724 words PLATE, SPRING and DARK REV's code occupies, which is the only space `build_bus.py` will place a module into. So dropping FILTER frees none of its 727 *yet*.
+
+Measured 3 Sep 2026 and it says the limit is ours to lift: the thirteen DSP effects are laid out CONTIGUOUSLY in 6,158 words (`P:0x007d1..0x01fdf`, no other module between them), and every one of them is SELF-CONTAINED — no control flow leaves its own span and nothing enters it but its own dispatch entry. So any effect's words could be freed by dropping it, and a run of dropped neighbours would be one bigger region. What that costs is the effect itself: today an unlisted stock effect keeps working and only loses its row, and one harvested for its words would not.
+
+[bold]on an unmodified unit every word is allocated[/]
+All 6,158 words of the payload's effect code belong to a stock effect that is using them, and the remixer opens saying exactly that: `no region — every word is a stock effect's`, the map all `─`. NOTHING is set aside for you until you decide what to give up.
+
+[bold]taking an effect off BOTH menus is that decision[/]
+There is no separate harvest gesture, because there was never a separate choice: an effect on neither chooser is one you do not want, so its words are where your modules go. `⌁` marks it in the library. That is derived from the two lists, not a third thing to manage — and it reproduces what the build has always done, because FX1 lists ten of the thirteen and the reverbs are FX2-only, so a remix listing none of them on FX2 gives up exactly those three.
+
+Add a module before giving anything up and the ⚠ says so, with `x` dropping the three reverbs — the biggest, and FX2-only, so they cost FX1 nothing.
+
+⚠️ BOTH menus. An effect off FX2 but still on FX1 is still wanted, and the DSP dispatch is one table shared by them, so overwriting its code would take it off FX1 too. Removing it says which: `still on FX1, so its 329 words stay its own` or `off both menus now, so its 329 words join the region`.
+
+⚠️ THE TWO LISTS STAY INDEPENDENT, and they have to. "Off one is off both" would be simpler to operate and would make the shipping remix impossible: chongbong's FX2 chooser is ChonVerb, BongDelay and Send, so every stock effect is off FX2 — and taking them off FX1 with it would leave the unit with NO FX1 EFFECTS AT ALL and hand your modules all 6,158 words they did not ask for.
+
+⚠️ AND IT ONLY COSTS WHERE YOUR CODE REACHES. What you gave up becomes one or more unbroken RUNS, and each module is packed into a run it fits, from that run's lowest address; anything the placer never reaches keeps its algorithm and its dispatch and simply has no chooser row — which is exactly what unlisting a stock effect has always done. A module is one code stream, so it must fit inside a SINGLE run: two runs of 1,500 words will not take a 2,000-word module, and the budget says the largest opening for that reason.
+
+[bold]a reverb you keep listed is spending words[/]
+PLATE, SPRING and DARK REV's code IS the donor region, so the `held by` line is the live trade: what they are holding, and what dropping the next one buys. The region packs from PLATE upward, so holding a LOW reverb also makes the space above it unreachable — keeping PLATE alone leaves 2,130 words by size and 0 you can actually place.
+
+You CAN keep them. The build takes only the reverbs your modules actually reach, and the pane says which went (`— Plate Rev  donor, taken`). `remixes/restock.py` is thirteen stock effects plus SEND: the smallest buildable image, costing only PLATE. (Until 2 Sep 2026 all three were nulled unconditionally and the honest answer here was "you cannot, ever". That is no longer true.)
+
+[bold]there is one FX2 buffer per track[/]
+"Free" there means "no module has pinned it", not "unused": a track whose buffer no module claims still HAS that buffer, ready for whatever is selected on it. Only a MODULE claims one for the life of the image. ChonVerb holds all four of its core's, BongDelay two of its core's, Nimbus two of whichever core hosts it — and they go in PAIRS, so "4 free" is two pairs, not four independent slots.
+
+A stock effect never appears in that row: it takes a slot from the allocator at runtime, per effect per block, only while it is selected on that track — which no image can reserve. That runtime contest is why the ledger refuses an allocating stock effect beside a pinner, and it is what the ⚠ is asking you to remove. FLANGER, CHORUS, SPATIALIZER and COMB FILTER keep their FX1 rows and still work; the three reverbs were FX2-only in stock and are lost outright.
+
+[bold]A / B compares two EFFECTS[/]
+Not two renders ago against now. `r` to hear one, `a` to park it, point at the rival, `b` — which re-renders it on the SAME source — then `,` and `.` to flip. That is the question a remixer exists to answer: is mine better than the one the box came with?
+
+[bold]why an effect can render DRY[/]
+Six of the eleven stock effects ship with their wet control at zero — PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND) — so `r` on one at its defaults plays the source back unchanged. That is faithful: the defaults are read from the firmware's own descriptor. The UNIT pane says `⚠ MIX is 0 — this renders DRY` when it applies.
+
+[bold]the fallback[/]
+An id the image does not implement aliases to the FALLBACK — normally SEND, so an old project degrades to a send rather than to noise. It is added for you the moment a selection needs one; `f` chooses another; `◀fb` marks it. A stock chooser with no modules of ours cannot build for exactly this reason: it has no fallback to name, and no stock effect is a safe one.""",
 }
 
 
 class HelpScreen(ModalScreen[None]):
     """The ? overlay: what this view is, its keys, and the concepts."""
 
+    # ⚠️ IT WAS SILENTLY CLIPPED. A Static in an auto-height box stops at
+    # max-height with no scrollbar and no hint, so `?` showed about the
+    # first 60% of the page and the rest could not be reached at all --
+    # including every answer about the budget. It scrolls now, and the box
+    # is a PERCENTAGE so an 80-column terminal is not handed a 76-column
+    # box with two columns of padding.
     CSS = """
     HelpScreen { align: center middle; }
-    #box { width: 76; height: auto; max-height: 90%;
+    #box { width: 90%; max-width: 84; height: 90%;
            border: round $primary; padding: 1 2; }
+    #scroll { height: 1fr; }
     """
+
+    # The focused VerticalScroll already binds these; on_key must let them
+    # through rather than treating every key as "close".
+    SCROLL_KEYS = {"up", "down", "pageup", "pagedown", "home", "end"}
 
     def __init__(self, view):
         super().__init__()
@@ -221,230 +458,1941 @@ class HelpScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="box"):
-            yield Static(HELP[self.view])
-            yield Static("[dim]any key closes[/]")
+            with VerticalScroll(id="scroll"):
+                yield Static(HELP[self.view])
+            yield Static("[dim]↑↓ / page  scroll  ·  any other key closes[/]")
+
+    def on_mount(self):
+        self.query_one("#scroll").focus()
 
     def on_key(self, ev):
+        if ev.key in self.SCROLL_KEYS:
+            return                       # the scroll view handles it
         ev.stop()
         self.dismiss(None)
 
 
-# ---- RIG -------------------------------------------------------------------
-class RigScreen(Screen):
-    """Eight tracks; the selected one shows its pages and renders."""
+# ---- THE REMIXER: one page, three panes ---------------------------------------
+AVAILABLE, LOADED, UNIT = 0, 1, 2
+# The unit's own order: FX1 then FX2 are the two slots on a
+# track; MAIN MENU is the odd one out and goes last.
+# ⚠️ THERE WAS A `p` KEY cycling FX1 / FX2 / MENU here. Both FX pages are the
+# same descriptor for anything listed on both, so it showed the same knob
+# names twice; the MAIN MENU is the same picture in every remix that exists.
+# Neither is a per-effect view: what survives of both is in verify_menu and
+# on the CHOOSERS pane's own line -- see _ledger_line.
+
+
+class RemixerScreen(Screen):
+    """One page: the library, the image being composed, and the selected unit.
+
+    Three panes, left to right, matching how the work actually goes: what
+    COULD be in the image, what IS, and what the selected effect looks like on
+    the unit. There is no per-track view -- a remix is a statement about an
+    IMAGE, and the eight tracks were a second place to say the same thing.
+    Knob values belong to the effect, not to a track.
+
+    The default selection is STOCK: the chooser an unmodified unit shows. You
+    add to what the box already does rather than to somebody else's remix.
+    """
 
     BINDINGS = [
-        Binding("r", "render", "render+hear"),
+        Binding("tab", "pane(1)", "pane"),
+        Binding("shift+tab", "pane(-1)", "prev pane", show=False),
+        # "swap / remove" was stale from the moment enter stopped swapping.
+        Binding("enter", "add_remove", "add / remove"),
+        Binding("r", "render", "hear it"),
         Binding("space", "play", "play last"),
-        Binding("enter", "pick_effect", "effect"),
-        Binding("backspace", "clear_effect", "clear fx", show=False),
-        Binding("a", "mark('A')", "mark A"),
-        Binding("b", "mark('B')", "mark B"),
-        Binding("comma", "play_mark('A')", "play A"),
-        Binding("full_stop", "play_mark('B')", "play B"),
-        Binding("x", "app.switch_mode('remix')", "remix"),
-        Binding("e", "app.switch_mode('emu')", "emu"),
-        Binding("question_mark", "help('rig')", "what is this?"),
+        # The sample folder belongs on the footer: it is the one setting that
+        # is about YOUR material rather than about the image, so it is the
+        # one a new pair of hands looks for and cannot guess.
+        Binding("d", "source_dir", "sample folder"),
+        Binding("a", "mark('A')", "A = this", show=False),
+        Binding("b", "mark('B')", "B = this", show=False),
+        Binding("comma", "play_mark('A')", "play A", show=False),
+        Binding("full_stop", "play_mark('B')", "play B", show=False),
+        # SHOWN ONLY WHEN IT APPLIES (check_action). It is the key that
+        # gets a broken selection building again -- the one gesture the
+        # remixer is built around leaves one -- and it was the only
+        # important key hidden from the footer.
+        Binding("x", "fix", "fix it"),
+        Binding("c", "build('check')", "full check", show=False),
+        Binding("f", "fallback", "fallback", show=False),
+        # "1" for FX1, on the row the cursor is on. This is the other half
+        # of a GLOBAL remixer: until 3 Sep 2026 an effect of ours could only
+        # be reached from the FX2 slot, and only because FX1's chooser list
+        # could not grow where it sits.
+        Binding("1", "fx1", "FX1 row", show=False),
+        Binding("l", "load", "load"),
+        Binding("s", "save", "save"),
+        Binding("k", "stock", "reset to stock", show=False),
+        Binding("question_mark", "help", "what is this?"),
         Binding("q", "app.quit", "quit"),
     ]
 
     def compose(self) -> ComposeResult:
-        yield Static(id="strip")
-        yield Static(id="detail")
-        yield Static(id="history")
+        # A TAB BAR, but only when the panes are not all on screen. It names
+        # all three and marks the one you are in, so a narrow terminal reads
+        # as a remixer showing you a third at a time rather than one with
+        # two thirds missing. Full width, because the titles carry context
+        # ("Loaded · chongbong") that will not fit in a 32-column pane head.
+        yield Static(id="tabbar")
+        with Horizontal(id="panes"):
+            yield Static(id="pane_avail")
+            yield Static(id="pane_load")
+            yield Static(id="pane_unit")
+        # THE BUDGET IS A FULL-WIDTH STRIP, not the bottom half of the third
+        # column. It sat under the UNIT pane, on the argument that what is
+        # left of the image is the context you read every other number
+        # against -- true, but it is context for the IMAGE, not for the one
+        # effect the cursor is on, and it was charging the unit column ten
+        # lines for the privilege. The preview lives in that column and is
+        # the tallest thing in the remixer (the firmware's own draw of a
+        # page), so it was the one being truncated. Down here it costs the
+        # panes nothing, and the extra width lets it read in two columns
+        # instead of one long list.
+        yield Static(id="pane_budget")
         yield Static(id="status")
+        yield RichLog(id="log", highlight=False, markup=False)
         yield Footer()
 
     def on_mount(self):
-        self.cursor = 0                     # row in the detail list
+        self.pane = LOADED
+        self.cur = [0, 0, 0]
+        self.rows_mtime = None
+        self.built = []                  # (fx2_id, module) from the image
+        # The image tracks the selection: `gen` counts selection changes,
+        # `synced` is the one the booted image reflects, `syncing` is the one
+        # a worker is currently building. A rebuild is kicked whenever they
+        # disagree -- see schedule_sync().
+        self.gen = 0
+        self.synced = None
+        self.syncing = None
+        self.sync_error = None
+        self._panel_cache = {}              # see _panel()
+        self._painted = {}                 # see _paint()
+        # COALESCED REPAINT. A held arrow key delivers events faster than
+        # three panes can be rebuilt, and rendering each one in turn is what
+        # makes the UI trail the key and overshoot after release. The VALUE
+        # changes on every event; the SCREEN catches up at 60 Hz, however
+        # many events arrived in between.
+        self._dirty = False
+        self.set_interval(1 / 60, self._flush)
+        self._run = (None, True, 0.0, 0)   # see _accel()
+        # EDIT THE SOURCE IN ANOTHER WINDOW AND THE REMIXER FOLLOWS. The image
+        # already tracks the SELECTION; it has to track the CODE too, or the
+        # panel and every render silently describe the .asm you had a minute
+        # ago. Polled rather than watched: one stat sweep of modules/ is
+        # ~2 ms, a filesystem-event dependency is not worth adding to a venv
+        # that already carries unicorn and textual, and 1.5 s is far below
+        # the time it takes to switch windows.
+        self._src = audition._newest_input_mtime()
+        self.set_interval(1.5, self._poll_source)
+        self.measure_all()
+        self.query_one("#log", RichLog).display = False
+        self._tnames = ["Available", "Loaded", "Unit"]
+        self._vis_panes = (AVAILABLE, LOADED, UNIT)
+        self._relayout()
         self.rerender()
 
-    # ---- the rows the cursor walks (SOURCE, WET, then the knobs) --------
-    def rows(self):
-        app = self.app
-        mod = app.rig.effect(app.track)
-        rows = [("SOURCE", None), ("WET", None)]
-        if mod:
-            for name, slot in sorted(mod.knob_map().items(),
-                                     key=lambda kv: kv[1]):
-                if mod.params[slot].active:
-                    rows.append((name, slot))
-        return rows
+    # ---- fitting the terminal you actually have --------------------------
+    # THREE COLUMNS NEED 118 OF THEM: 32 for the library, 40 for the image,
+    # and the rest for a UNIT pane whose widest content is the 46-column LCD
+    # the firmware itself draws. Below that the layout did not degrade, it
+    # broke -- at 80x24 the UNIT pane was handed six columns and wrapped
+    # `Stock` / `· id` / `0x04` one word per line down the screen, both list
+    # panes were cut off mid-list, and the Budget strip took nine of the
+    # twenty-four rows. An 80x24 terminal is what a new pair of hands opens,
+    # so that was the first impression the remixer made.
+    #
+    # Below the threshold it shows ONE pane at full width and `tab` moves
+    # between them, with the titles becoming a strip naming all three so the
+    # gesture is visible rather than remembered.
+    WIDE_COLS = 118
+    # And a middle band. At 100 columns three panes do not fit but two do
+    # comfortably, and dropping straight to one pane there wasted two thirds
+    # of the width on a 40-column list. The pair SLIDES with the focus --
+    # library+image while you are choosing, image+unit while you are dialling
+    # -- so the pane you are in always has its context beside it. 92 is the
+    # floor: 40 for the image plus 50 for a UNIT pane whose widest content is
+    # the 46-column LCD.
+    TWO_UP_COLS = 92
+    # And the Budget is the one thing here that is a fixed number of LINES
+    # rather than a list you scroll, so on a short terminal it is the thing
+    # that crowds everything else out. Under this it collapses to one line
+    # carrying the same numbers.
+    TALL_ROWS = 34
 
+    @property
+    def wide_screen(self):
+        return self.app.size.width >= self.WIDE_COLS
+
+    @property
+    def tall_screen(self):
+        return self.app.size.height >= self.TALL_ROWS
+
+    def _visible_panes(self):
+        """Which panes this terminal has room for, focus included."""
+        w = self.app.size.width
+        if w >= self.WIDE_COLS:
+            return (AVAILABLE, LOADED, UNIT)
+        if w >= self.TWO_UP_COLS:
+            start = min(self.pane, LOADED)
+            return (start, start + 1)
+        return (self.pane,)
+
+    def _relayout(self):
+        """Show three panes, two or one, by what the terminal can hold."""
+        vis = self._visible_panes()
+        self._vis_panes = vis
+        # A pane's fixed width is its content's; the LAST visible one takes
+        # the rest, so nothing is left with six columns to wrap into.
+        fixed = {AVAILABLE: 32, LOADED: 40, UNIT: 46}
+        for i, wid in enumerate(("#pane_avail", "#pane_load", "#pane_unit")):
+            pane = self.query_one(wid, Static)
+            pane.display = i in vis
+            pane.styles.width = "1fr" if i == vis[-1] else fixed[i]
+            # The divider belongs BETWEEN panes: on the leftmost visible one
+            # it reads as a column that lost its neighbour.
+            pane.set_class(i == vis[0], "first")
+        self.query_one("#tabbar").display = not self.wide_screen
+
+    def on_resize(self, ev):
+        self._relayout()
+        # Every pane's text is width-dependent (the budget lays out against
+        # app.size.width), and _paint skips a repaint when the text has not
+        # changed -- so a resize has to invalidate rather than trust it.
+        self._painted.clear()
+        self.rerender()
+
+    # ---- the rows each pane walks ---------------------------------------
+    # Group order for the library pane: the way you meet them -- the two big
+    # bus effects, then the inserts that stack, then plumbing, then stock.
+    _GROUPS = (rig.SERVER, rig.INSERT, rig.SYSTEM)
+
+    def avail_rows(self):
+        """Everything that COULD be in an image: our modules, then stock."""
+        mods = [m for m in registry.modules().values() if not m.is_stock]
+        mods.sort(key=lambda m: (self._GROUPS.index(rig.category(m)),
+                                 disp(m).lower()))
+        return mods + list(stock.MODULES)
+
+    def loaded_rows(self):
+        """BOTH choosers, in one cursor path: FX1's rows then FX2's.
+
+        The unit has two effect slots and each has its own list; showing one
+        and tagging the other in a column was the confusion Sam named. They
+        stack, and the cursor walks through both -- so `enter` removes from
+        whichever list you are standing in and `←→` reorders that one.
+
+        -> [(menu, module)], menu being rig.FX1 or rig.FX2.
+        """
+        st = self.app.state
+        return ([(rig.FX1, st.mods[k]) for k in st.fx1 if k in st.mods]
+                + [(rig.FX2, st.mods[k]) for k in st.order])
+
+    def unit_rows(self, mod):
+        """What the UNIT cursor walks: the sample to audition, then the
+        effect's drawn knobs in slot order. SOURCE is a row rather than a
+        hidden setting because "what am I hearing this on" is the first
+        question at a bench, and it was the one thing the old per-track view
+        got right."""
+        rows = [("SOURCE", None)]
+        if mod is None or not mod.params:
+            return rows
+        return rows + [(n, sl) for n, sl in sorted(mod.knob_map().items(),
+                                                   key=lambda kv: kv[1])
+                       if mod.params[sl].active]
+
+    @staticmethod
+    def dry_control(mod, vals):
+        """The wet/dry control that is sitting at zero, if one is.
+
+        SIX of the eleven stock effects ship with their wet control at 0 --
+        PHASER, FLANGER, CHORUS and COMB (MIX), SPATIALIZER and DELAY (SEND)
+        -- so pressing `r` on them plays the source back unchanged. That is
+        FAITHFUL: the defaults are read from the firmware's own descriptor
+        (tools/remix/stock.py), an unmodified unit really does start them
+        fully dry, and seeding a different value here would make the remixer
+        lie about the page it is drawing beside. But it reads as "this effect
+        does nothing", which is what it cost on 2 Sep 2026. So say it.
+        """
+        if mod is None:
+            return None
+        for name in ("MIX", "SEND"):
+            if name in vals and vals[name] == 0:
+                return name
+        return None
+
+    def selected_module(self):
+        """The unit pane follows whichever pane the cursor is in -- point at
+        something in the library and pane 3 previews it before you add it."""
+        if self.pane == AVAILABLE:
+            rows = self.avail_rows()
+        else:
+            rows = [m for _menu, m in self.loaded_rows()]
+        if not rows:
+            return None
+        i = min(self.cur[min(self.pane, LOADED)], len(rows) - 1)
+        return rows[i]
+
+    def image_rows(self):
+        """What the BUILT image offers -- re-read when the image changes."""
+        mt = BUILT_IMAGE.stat().st_mtime if BUILT_IMAGE.exists() else None
+        if mt != self.rows_mtime:
+            self.built, self.rows_mtime = rig.built_chooser(), mt
+        return self.built
+
+    def in_image(self, mod):
+        """Would this effect's page actually resolve in the image on disk?
+
+        A STOCK effect always does. A remix that leaves one out does not
+        REMOVE it -- its code, descriptor and dispatch entry stay stock, and
+        an old project that selects it still runs it; it only loses its
+        chooser row. So chooser membership is the wrong test for stock, and
+        using it made every effect unpreviewable on a fresh all-stock launch.
+
+        One of OURS is another matter: if it was not built, its id resolves
+        to the fallback. (The schema forbids our modules on stock ids, so
+        these two cases cannot overlap.)
+        """
+        if mod is None or mod.menu is None:
+            return False
+        if mod.is_stock:
+            return True
+        return any(m is not None and m.key == mod.key
+                   for _, m in self.image_rows())
+
+    # ---- render ----------------------------------------------------------
     def rerender(self):
-        app = self.app
-        r = app.rig
-        # -- strip ---------------------------------------------------------
-        cells = []
-        for t in rig.TRACKS:
-            mod = r.effect(t)
-            name = (mod.menu.abbr.decode("latin1") if mod and mod.menu
-                    else "--")
-            sel = "reverse bold" if t == app.track else "dim"
-            cells.append(f"[{sel}] T{t} {name:<5}[/]")
-        self.query_one("#strip", Static).update(
-            "  ".join(cells) + "\n" + "─" * 78)
+        """One pass over the three panes.
 
-        # -- detail --------------------------------------------------------
-        mod = r.effect(app.track)
-        lines = []
-        tr = f"T{app.track}"
-        if mod:
-            full = mod.menu.fullname.decode("latin1")
-            lines.append(f"[bold]{tr} · {escape(full)}[/]   "
-                         f"(tracks {rig.track_range(mod).start}-"
-                         f"{rig.track_range(mod).stop - 1})")
-        else:
-            avail = ", ".join(m.name for m in rig.available(app.track))
-            lines.append(f"[bold]{tr} · no effect[/]   (here: {avail})")
-        lines.append("")
-        rows = self.rows()
-        for i, (name, slot) in enumerate(rows):
-            cur = i == self.cursor
-            mark = "[reverse]" if cur else ""
-            end = "[/]" if cur else ""
-            if name == "SOURCE":
-                src = app.source.name if app.source else "(none — add wavs "\
-                    "to out/dry/)"
-                lines.append(f" {mark}SOURCE  {escape(src)}{end}")
-            elif name == "WET":
-                w = "WET only (reverb render)" if app.wet else "full (dry+wet)"
-                lines.append(f" {mark}RENDER  {w}{end}")
+        problems() runs the ledger and costs ~2.4 ms (measured 2 Sep 2026);
+        three panes asking it independently made every keystroke pay ~7 ms
+        for one answer. Compute it here and hand it down.
+        """
+        st = self.app.state
+        probs = st.problems()
+        # The three titles are needed TOGETHER by the narrow layout's strip,
+        # and each pane only knows its own -- and on a narrow screen only one
+        # pane paints at all, so they cannot be collected on the way past.
+        mod = self.selected_module()
+        self._tnames = ["Available",
+                        f"Choosers · {st.loaded_name or 'unsaved'}",
+                        disp(mod) if mod is not None else "Unit"]
+        can_fix = bool(self.blockers(probs)) or (
+            not st.harvest and [m for m in st.selected if m.dsp is not None])
+        if can_fix != getattr(self, "_can_fix", None):
+            self._can_fix = can_fix
+            self.refresh_bindings()          # the footer follows it
+        # ⚠️ THE BUDGET IS PAINTED FIRST, and it changes the panes' HEIGHT.
+        # It is `height: auto`, so a row appearing there -- the cycles row
+        # arriving when a build lands, the legend gaining a glyph -- steals a
+        # row from the three panes above. Nothing resized, so on_resize does
+        # not fire and _paint sees unchanged text, and the panes went on
+        # laying out against a height they no longer had: the bottom line of
+        # the unit pane was clipped away with nothing saying so.
+        self._pane_budget(st, probs)
+        self._pane_available(st)
+        self._pane_loaded(st, probs)
+        self._pane_unit(st, probs)
+        if not self.wide_screen:
+            self._paint("#tabbar", "  ".join(
+                (f"[reverse bold] {escape(t)} [/]" if i == self.pane
+                 else f"[dim]{escape(t)}[/]")
+                for i, t in enumerate(self._tnames)) + "  [dim]· tab[/]")
+        self._paint("#status", f"[dim]{escape(st.msg)}[/]")
+
+    def _budget_resized(self, n):
+        """The budget's own height changed, so the panes above it are laid
+        out against a stale one.
+
+        ⚠️ READING content_size DURING A RENDER GIVES THE PREVIOUS LAYOUT --
+        Textual has not re-laid-out yet -- so invalidating the panes is not
+        enough on its own: the pass that follows must be a SEPARATE one. The
+        symptom was the unit pane's last line clipped away with nothing
+        saying so, on the render where the cycles row arrived and took a row
+        off every pane.
+        """
+        if n == getattr(self, "_budget_h", None):
+            return
+        self._budget_h = n
+        for wid in ("#pane_avail", "#pane_load", "#pane_unit"):
+            self._painted.pop(wid, None)
+        self.rerender_soon()
+
+    def _fit(self, wid, out, cur_line, head, tail=0, height=None):
+        """A LIST TALLER THAN THE PANE HAS TO SCROLL, or the rows past the
+        fold are unreachable -- at 80x24 the library ran out nine modules
+        short and the cursor simply walked off the bottom of the screen with
+        nothing following it.
+
+        A Static clips, it does not scroll, so the window is chosen here:
+        the title stays pinned at the top, the pane's closing lines (the ⚠,
+        the hint) at the bottom, and the rows in between follow the cursor.
+        The first and last row of a clipped window say so, because a list
+        that silently starts at item nine is worse than one that scrolls.
+        """
+        h = (self.query_one(wid, Static).content_size.height
+             if height is None else height)
+        if h <= 0 or len(out) <= h:          # h is 0 before the first layout
+            return out
+        body = out[head:len(out) - tail] if tail else out[head:]
+        tl = out[len(out) - tail:] if tail else []
+        room = h - head - len(tl)
+        if room < 3:
+            return out[:h]
+        i = max(0, cur_line - head)
+        top = max(0, min(i - room // 2, len(body) - room))
+        win = list(body[top:top + room])
+        if top:
+            win[0] = f"[dim] ↑ {top} more[/]"
+        if top + room < len(body):
+            win[-1] = f"[dim] ↓ {len(body) - top - room} more[/]"
+        return out[:head] + win + tl
+
+    def _paint(self, wid, lines):
+        """Update a pane only when its TEXT changed.
+
+        Handing Textual an identical string still costs a Static re-render
+        and a screen diff, and a knob keystroke changes ONE pane -- the other
+        two were being rebuilt and re-diffed for nothing on every key.
+        """
+        text = "\n".join(lines) if isinstance(lines, list) else lines
+        if self._painted.get(wid) == text:
+            return
+        self._painted[wid] = text
+        self.query_one(wid, Static).update(text)
+
+    def _head(self, text, pane):
+        """A pane's opening lines: its title, or nothing.
+
+        With the tab bar on screen the title would be the same words twice,
+        one line under the other -- and a line is what a short terminal is
+        short of.
+        """
+        if not self.wide_screen:
+            return []
+        on = self.pane == pane
+        return [f"[reverse bold] {escape(text)} [/]" if on
+                else f"[bold]{escape(text)}[/]", ""]
+
+    def _pane_available(self, st):
+        rows = self.avail_rows()
+        out = self._head("Available", AVAILABLE)
+        head = len(out)
+        cur_line, group = head, None
+        for i, m in enumerate(rows):
+            g = "Stock Effects" if m.is_stock else titlecase(rig.category(m))
+            if g != group:
+                group = g
+                out.append(f"[dim {WARN}]── {g} ──[/]")
+            here = self.pane == AVAILABLE and i == self.cur[AVAILABLE]
+            # TWO MARKS: `✓` is on a chooser, `⌁` is in the region -- off
+            # BOTH choosers, so its words are where your modules go. The
+            # second is DERIVED from the first, which is the point: taking an
+            # effect off both menus is the decision to give up its words.
+            mark = ((f"[{OK}]✓[/]" if m.key in st.sel else " ")
+                    + (f"[{WARN}]⌁[/]" if m.key in st.harvest else " "))
+            menus = "+".join(rig.menus(m, st.fx1)) or "—"
+            nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
+            pad = " " * max(0, 13 - len(disp(m)))
+            line = f" {mark}{nm}{pad} [dim]{menus}[/]"
+            if here:
+                cur_line = len(out)
+            out.append(f"[reverse]{line}[/]" if here else line)
+        out.append("")
+        out.append(f"[dim]enter adds · ⌁ = off both menus, words yours[/]")
+        self._paint("#pane_avail", self._fit("#pane_avail", out, cur_line,
+                                             head=head, tail=2))
+
+    def _pane_loaded(self, st, probs):
+        """BOTH chooser lists, stacked, both editable.
+
+        The unit has two effect slots per track and each has its own list.
+        Composing one of them while the other sat in a column as an
+        `FX1+FX2` tag is what made the relationship unreadable -- so they are
+        two headed sections here, one cursor path, and every gesture applies
+        to the list you are standing in.
+
+        ⚠️ THEY ARE NOT SYMMETRIC and the headers say how. FX2's list is
+        built from nothing: its rows, their order and its membership are all
+        the remix's. FX1's starts as stock's ten and the firmware's own NONE
+        is always its row 0, which is why no row here is numbered 0.
+        """
+        rows = self.loaded_rows()
+        name = st.loaded_name or "unsaved"
+        out = self._head(f"Choosers · {name}", LOADED)
+        head = len(out)
+        cur_line = head
+        menu = None
+        pos = 0
+        for i, (mn, m) in enumerate(rows):
+            if mn != menu:
+                menu, pos = mn, 0
+                n = sum(1 for x, _ in rows if x == mn)
+                # ⚠️ JUST THE NAME AND THE COUNT. The header carried why
+                # the two lists differ ("stock's ten to start" / "yours to
+                # compose") and wrapped at 40 columns, which turns a header
+                # into two mystery rows. `?` says it in full.
+                out.append(f"[bold] {mn}[/][dim]  {n} row"
+                           f"{'' if n == 1 else 's'}[/]")
+            here = self.pane == LOADED and i == self.cur[LOADED]
+            if m.menu is not None:
+                pos += 1
+                row = f"{pos:>2}"
             else:
-                v = r.knobs[app.track].get(name, 0)
-                hi = rig.knob_max(mod, name)
-                if hi < 8:                                # a select
-                    val = f"{step_label(mod, name, v):<6}"
-                    bar = "·" * 16
+                row = " ·"                      # no chooser row (a CF patch)
+            words = st.words.get(m.key)
+            cost = f"{words:>5}w" if words else "      "
+            fb = f"[{MARK}]◀fb[/]" if st.eff_fallback == m.key else ""
+            nm = disp(m) if m.is_stock else f"[{OURS}]{disp(m)}[/]"
+            pad = " " * max(0, 14 - len(disp(m)))
+            line = f" [dim]{row}[/] {nm}{pad}[dim]{cost}[/]{fb}"
+            if here:
+                cur_line = len(out)
+            out.append(f"[reverse]{line}[/]" if here else line)
+        if not rows:
+            out.append("[dim] (empty — add from the left)[/]")
+        rows_end = len(out)
+        # THE THREE REVERBS ARE PART OF A STOCK CHOOSER and belong in this
+        # list, not off in the library: an unmodified unit shows fourteen FX2
+        # effects, and these are three of them. They leave when something
+        # takes their space -- their code IS the donor region our modules are
+        # written over -- so showing the trade where it happens is the point.
+        # WHICH REVERBS ARE ACTUALLY GONE, from the build's own report --
+        # not "all three, always", which is what this said before 2 Sep 2026.
+        gone = [c for c in st.harvest
+                if c.split()[0] not in st.donors_kept]
+        if st.donors_kept or not gone:
+            for cname in st.harvest:
+                if cname in st.sel or cname not in gone:
+                    continue
+                out.append(f"[dim {WARN}] —  {titlecase(cname):<13}"
+                           f"donor, taken[/]")
+        elif [m for m in st.selected if m.dsp is not None]:
+            out.append(f"[dim {WARN}] —  Plate, Spring, Dark Rev (donors)[/]")
+        # THE SHARED COST, ONCE. Every module that pins FX2 buffers costs
+        # the same seven stock effects, so saying it on each of them read as
+        # two bills for one debt.
+        pin = [m for m in st.selected if rig.pins_fx2(m)]
+        if pin and not probs:
+            who = " and ".join(disp(m) for m in pin)
+            out.append(f"[dim {WARN}]{escape(rig.allocating_names())} "
+                       f"cannot be listed — {escape(who)} "
+                       f"{'holds' if len(pin) == 1 else 'hold'} "
+                       f"the buffers they need[/]")
+        # THE MAIN MENU, only when this selection changes it -- which is
+        # never, so far. It is the image's business, not one effect's, so it
+        # sits here rather than following the cursor in the UNIT pane.
+        self.ensure_sync(probs)
+        if not probs and not self.sync_error and self.app.boot is not None:
+            n = rig.menu_patched()
+            if n:
+                out += self._menu_picture(n)
+        # Everything from the notes down is the IMAGE speaking, not a row,
+        # so it stays on screen however long the lists get.
+        tail = len(out) - rows_end
+        out.append("")
+        out.append("[dim]enter removes · ←→ order · 1 → FX1[/]")
+        out.append(self._ledger_line(st, probs))
+        self._paint("#pane_load", self._fit("#pane_load", out, cur_line,
+                                            head=head, tail=tail + 3))
+
+    def _ledger_line(self, st, probs):
+        """The fit, the blocker and the build state, in ONE line.
+
+        This pane used to close with five: a donor-region budget, a ● legend,
+        a "dim = stock" legend, a keys hint and a ⚠ -- roughly half its
+        height spent explaining constraints rather than showing the image.
+        Only two questions are actually live while swapping: does this fit,
+        and is the panel on the right showing it yet. The rest moved to `?`.
+        """
+        if probs:
+            # ⚠️ NOTHING TO PLACE INTO OUTRANKS THE REST. It is the only one
+            # whose fix ADDS rather than removes, `x` applies it first, and a
+            # ⚠ saying "x removes Flanger…" while x actually harvested the
+            # reverbs is the worst kind of wrong.
+            first = next((p_ for p_ in probs
+                          if p_.startswith("every stock effect")), None)
+            return (f"[bold {BAD}]⚠ "
+                    f"{escape(first or self._clash(probs) or probs[0])}[/]")
+        if self.syncing is not None or self.synced != self.gen:
+            return f"[dim {WARN}]building…[/]"
+        if self.sync_error:
+            # The build names the payload and the overrun; that IS the
+            # actionable sentence, so print it rather than a pointer to it.
+            gone = self.blockers([])
+            if gone:
+                return (f"[bold {BAD}]⚠ x removes "
+                        + ", ".join(disp(m) for m in gone)
+                        + " — this selection needs its words[/]")
+            return f"[bold {BAD}]⚠ {escape(self.sync_error)}[/]"
+        # THE BUILD'S OWN NUMBERS, one per payload. Not a sum of st.words
+        # against DONOR_WORDS: there are TWO regions of that size and
+        # SPEC=1 puts a server on each, so the sum is not a quantity
+        # anything has to fit (see state.problems).
+        if st.regions:
+            # The free-word count is the one number worth a glance, so let
+            # its COLOUR carry the answer: comfortable, tight, or spent.
+            # placeable() rather than the build's FREE, so this agrees with
+            # the budget pane two panes over -- see its docstring.
+            def one(n, f):
+                # Thresholds from what this project actually lives with:
+                # payload A has shipped at FREE 4 and B at FREE 5, so double
+                # digits is already "spent" and deserves the alarm colour.
+                c = OK if f > 400 else WARN if f > 32 else BAD
+                return f"{n} [{c}]{f:,}[/] free"
+            # AND WHETHER IT BOOTS. That is the ColdFire emulator's real
+            # job here -- a cave that breaks early init faults locally
+            # instead of on the unit -- and it is a fact about the IMAGE, so
+            # it belongs on the image's own line. It spent a day in the UNIT
+            # pane, where it followed the cursor for no reason.
+            r = self.app.boot
+            boot = ("" if r is None else
+                    " [dim]· boots[/]" if r.reached_handoff else
+                    f" [{BAD}]· DID NOT REACH THE RTOS HANDOFF[/]")
+            # "0 free" against a region that does not exist reads as "no
+            # space"; the truth is that nothing has been given up yet.
+            if not st.harvest:
+                return ("[dim]no region — every word is a stock effect's[/]"
+                        + boot)
+            return "[dim]" + " · ".join(
+                one(n, placeable(st.sel, t, u, st.harvest)[0])
+                for n, t, u, _f in st.regions) + "[/]" + boot
+        # No build has reported yet. Say which of the two reasons it is --
+        # this line used to claim "a stock chooser: 14 effects, no modules"
+        # for ANY unmeasured selection, including chongbong, which has three.
+        if not [m for m in st.selected if m.dsp is not None]:
+            return "[dim]a stock chooser: 14 effects, no modules[/]"
+        return "[dim]building…[/]"
+
+    # Short enough to label a segment of the map. The panel names are the
+    # firmware's own and too long for a bar thirteen effects wide.
+    _MAP_ABBR = {"FILTER": "FILT", "SPATIALIZER": "SPAT", "EQUALIZER": "EQ",
+                 "PHASER": "PHSR", "FLANGER": "FLNG", "CHORUS": "CHOR",
+                 "PLATE REV": "PLATE", "SPRING REV": "SPRING",
+                 "DARK REV": "DARK", "COMPRESSOR": "COMP", "LO-FI": "LOFI",
+                 "DJ EQ": "DJEQ", "COMB FILTER": "COMB"}
+
+    def _memory_map(self, st, width):
+        """The payload's effect code, to scale, with the harvested run marked.
+
+        ⚠️ THIS IS WHAT THE `words` BARS COULD NOT SAY. Twenty glyphs of
+        `#`/`-`/`.` needed a legend to decode and still showed neither WHERE
+        in the payload the region is nor WHICH effects it costs -- and once
+        the region became a choice (Remix.harvest) those were the two
+        questions. Drawn from stock.p_spans, so it cannot drift from what the
+        build places.
+
+        One label row, one bar per payload -- the layout is identical in both
+        and only the fill differs -- and a footer naming the run.
+        """
+        try:
+            sp = stock.p_spans("A")
+        except Exception:                            # noqa: BLE001
+            return []
+        run = sorted((a, n, k) for k, (a, n) in sp.items())
+        total = sum(n for _a, n, _k in run)
+        hv = set(st.harvest)
+        w = max(40, width - 6)
+        # ⚠️ CUMULATIVE ROUNDING, so the widths sum to exactly `w` and no
+        # segment is starved by the ones before it. Rounding each one on its
+        # own and giving the remainder to the last left COMB with two columns
+        # and its label cut to `CO`.
+        seg, off, col = [], 0, 0
+        for a, n, k in run:
+            off += n
+            nxt = round(off * w / total)
+            seg.append((k, a, n, nxt - col))
+            col = nxt
+        # A label needs four columns. Below that the names are noise and the
+        # bar still says everything the footer names.
+        label = ("".join(self._MAP_ABBR[k][:c].center(c)
+                         for k, _a, _n, c in seg)
+                 if min(c for _k, _a, _n, c in seg) >= 4 else None)
+        placed = {t: u for t, _tot, u, _f in st.regions}
+        # ⚠️ THE HARVESTED EFFECTS NEED NOT BE ONE RUN, and a gap is a real
+        # wall: a module is one code stream and must fit inside a single
+        # opening. Group the columns into runs and fill each from its OWN
+        # base, or a module placed low in run 2 draws as fill across run 1.
+        runs_cols, prev = [], None
+        for k, a, n, c in seg:
+            if k not in hv:
+                prev = None
+                continue
+            if prev is not None and prev[1] == a:
+                runs_cols[-1].append((k, a, n, c))
+            else:
+                runs_cols.append([(k, a, n, c)])
+            prev = (k, a + n)
+        # Per-run usage when the build reported it; otherwise the whole
+        # region is one run and the single figure IS that run's.
+        # ⚠️ BY RUN INDEX, NOT BY ADDRESS. The bar is drawn once from payload
+        # A's spans because the LAYOUT is identical in both, but the two
+        # payloads put those effects at different addresses (docs/DSP.md
+        # s11) -- so keying B's usage on A's bases found nothing and drew
+        # payload B as untouched however much had been placed in it.
+        by_run = {}
+        for tag, _b, _n, u in st.runs:
+            by_run.setdefault(tag, []).append(u)
+
+        def bar(tag):
+            got = placed.get(tag)
+            used = by_run.get(tag)
+            out = ""
+            for k, a, n, c in seg:
+                if k not in hv:
+                    out += f"[dim]{'─' * c}[/]"
+                    continue
+                ri = next(i for i, g in enumerate(runs_cols)
+                          if any(x[0] == k for x in g))
+                rbase = runs_cols[ri][0][1]
+                u = (used[ri] if used is not None and ri < len(used)
+                     else (got if ri == 0 else 0))
+                if u is None or got is None:
+                    out += f"[dim]{'.' * c}[/]"
                 else:
-                    val = f"{v:>3}   "
-                    fill = round(16 * v / max(hi, 1))
-                    bar = "#" * fill + "." * (16 - fill)
-                page = "1" if slot < 6 else "2"
-                knob = "ABCDEF"[slot % 6]
-                lines.append(f" {mark}{name:<6} {val} \\[{bar}]  "
-                             f"p{page}·{knob}{end}")
-        # -- the "what is this?" line for whatever the cursor is on ------
-        name, slot = rows[self.cursor]
-        if name == "SOURCE":
-            hint = ("the wav rendered through the effect -- drop files in "
-                    "out/dry/; left/right cycles")
-        elif name == "WET":
-            hint = ("WET = the reverb's wet alone (exact dry subtraction); "
-                    "other effects always render their normal output")
-        elif mod:
-            hint = rig.knob_doc(mod, name) or "(this knob has no doc yet)"
+                    fill = max(0, min(c, round((u - (a - rbase)) * c / n)))
+                    out += (f"[{OK}]{'#' * fill}[/][dim]{'.' * (c - fill)}[/]")
+            return out
+
+        # ⚠️ THE FOOTER SAYS WHAT HAS ACTUALLY HAPPENED, not what could.
+        # `.` means "offered to the placer", and on a stock chooser with
+        # nothing of ours in it that is the whole run and NOTHING has been
+        # overwritten -- every one of those effects still works. Reading the
+        # dots as loss is the obvious mistake and the footer used to invite
+        # it by saying "harvested" whether or not a word had been placed.
+        lo = (0 if not hv else
+              sum(c for k, _a, _n, c in seg
+                  if sp[k][0] < min(sp[h][0] for h in hv)))
+        span = sum(c for k, _a, _n, c in seg if k in hv) if hv else w
+        n_w = stock.region_words(tuple(hv))
+        if not hv:
+            # EVERY WORD IS A STOCK EFFECT'S. That is what an unmodified unit
+            # looks like and the map has to say so, not imply a region is
+            # waiting.
+            tries = [f" all {total:,} words allocated to stock effects ",
+                     f" all {total:,} words allocated ", f" {total:,} words "]
+        elif not any(placed.values()):
+            tries = [f" {n_w:,} words yours to place into — none taken yet ",
+                     f" {n_w:,} words, none taken ", f" {n_w:,} words "]
         else:
-            hint = ""
-        lines.append("")
-        lines.append(f"[dim]? {escape(hint)}[/]")
-        if mod and mod.name == "chonverb":
-            lines.append("[dim]MODE renders as its own image (cached per "
-                         "mode); WET applies to the reverb only.[/]")
-        self.query_one("#detail", Static).update("\n".join(lines))
+            lost = [k for k in stock.harvest_order(tuple(hv))
+                    if k.split()[0] not in st.donors_kept]
+            gone = ", ".join(titlecase(k) for k in lost)
+            tries = [f" harvested, {n_w:,} words — {gone} overwritten "
+                     if lost else f" harvested, {n_w:,} words — none "
+                                  f"overwritten ",
+                     f" harvested, {n_w:,} words — {len(lost)} overwritten ",
+                     f" harvested, {n_w:,} words "]
+        # ⚠️ THE BRACKET MUST MATCH THE RUN IT BRACKETS. A sentence longer
+        # than the span pushes `┘` past the last harvested segment and the
+        # footer then claims ground it does not mean, so it steps down to a
+        # shorter form rather than overflowing.
+        def bracket(text_tries, at, cols):
+            """`└──── caption ────┘` occupying `cols` columns from `at`."""
+            t = next((t for t in text_tries if len(t) <= max(0, cols - 2)),
+                     text_tries[-1][:max(0, cols - 2)])
+            return (at, "└" + t.center(max(0, cols - 2), "─") + "┘")
+        if len(runs_cols) < 2:
+            # ⚠️ ONE RUN KEEPS THE ORIGINAL SENTENCE, unchanged.
+            parts = [bracket(tries, lo, span)]
+        else:
+            # ⚠️ A BRACKET PER RUN. One spanning bracket would draw straight
+            # across the stock effects between them and say those words are
+            # yours, which is exactly backwards -- they are the wall. And the
+            # LARGEST run is the real limit on a single module, so each says
+            # its own size rather than sharing the total.
+            parts = []
+            for g in runs_cols:
+                off = sum(c for k, _a, _n, c in seg
+                          if sp[k][0] < g[0][1])
+                cols = sum(c for _k, _a, _n, c in g)
+                gw = sum(n for _k, _a, n, _c in g)
+                parts.append(bracket([f" {gw:,} words ", f" {gw:,}w ",
+                                      f"{gw:,}"], off, cols))
+        foot = ""
+        for at, txt in parts:
+            foot = foot.ljust(at) + txt
+        foot = foot[:w]
+        rows = (["  " + label] if label else []) + [f"[dim]A[/] " + bar("A")]
+        if len(placed) > 1 or not placed:
+            rows.append(f"[dim]B[/] " + bar("B"))
+        return rows + ["  " + f"[dim]{foot}[/]"]
 
-        # -- history -------------------------------------------------------
-        h = ["[bold]RENDERS[/]"]
-        for i, (label, path) in enumerate(reversed(app.history[-6:])):
-            marks = "".join(m for m, p in app.marks.items() if p == path)
-            h.append(f" {('\\[' + marks + '] ') if marks else '    '}"
-                     f"{escape(label)}")
-        self.query_one("#history", Static).update(
-            "\n".join(h) if len(h) > 1 else
-            "[dim]r renders the selected track; a/b mark a render, "
-            ", . replay the marks[/]")
-        self.query_one("#status", Static).update(
-            f"[dim]{escape(app.status)}[/]")
+    def _pane_budget(self, st, probs):
+        """WHAT IS LEFT, standing under the effect you are looking at.
 
-    # ---- input ----------------------------------------------------------
-    def on_key(self, ev):
-        app = self.app
-        if ev.key in tuple("12345678"):
-            app.track = int(ev.key)
-            self.cursor = 0
+        Every other number in this remixer is read against this one -- "500
+        words" means nothing without "and 313 are free" -- and it used to be
+        something you inferred from a refusal. Four scarce things, and only
+        four: the two donor regions, the FX2 buffer slots per core, the
+        chooser rows, and the ColdFire cave. Everything else is unbounded in
+        practice.
+
+        EVERY ROW IS THE SAME SENTENCE: `N free of TOTAL · what took the
+        rest`. That uniformity is the whole point and it is what this pane
+        kept losing -- the rows line said "17 free of 31 (14 loaded)" while
+        the words line said a bare "0 free" with no total at all, and the
+        buffer line said "5,6,7,8 keep theirs" with neither. Three different
+        answers to one question is what made it unreadable.
+
+        And the TOTAL is stated even when nothing of ours is loaded, so the
+        default selection -- an unmodified unit -- says what a stock core
+        actually spends rather than reporting an alarming bare zero.
+
+        Read from the BUILD's own report wherever possible (state.measure),
+        because the build is the only thing that knows where the cursor
+        actually stopped.
+        """
+        out = ["[bold]Budget[/]"]
+        # TWO GROUPS, because the pane is now a full-width strip: what the
+        # WORDS cost (per payload, plus the reverbs holding the rest) and
+        # what the COUNTABLE things cost (buffers, rows, cave). They read
+        # side by side when the terminal is wide enough and stack when it is
+        # not -- one list either way, so nothing is hidden on a narrow one.
+        out, side = [], []
+        W = 10                                  # one label column throughout
+
+        def left(n, total, extra=""):
+            """The one sentence every row here answers."""
+            return (f"{n:,} free of {total:,}"
+                    + (f" [dim]· {extra}[/]" if extra else ""))
+
+        # ⚠️ WHAT EACH ROW *IS*. The numbers were self-consistent and still
+        # left "what is a cave?" unanswered, and the strip has forty columns
+        # spare. One short phrase each, in a column of its own so they read
+        # as a key rather than as more detail on the figure.
+        WHAT = {
+            "words A": "where your modules' code goes, core 0",
+            "words B": "the same on core 1",
+            "FX2 buf A": "one 16K Y buffer per track",
+            "FX2 buf B": "one 16K Y buffer per track",
+            "cycles": "DSP time, per core per sample",
+            "rows": "entries the FX2 menu can hold",
+            "cave": "spare ColdFire bytes for patches",
+        }
+        # The descriptor column is placed at the END, once every row's real
+        # width is known -- a fixed column either collides with the longest
+        # row or leaves a canyon after the shortest, and which is longest
+        # changes with the selection.
+        def why(key, line):
+            return f"\0{key}\0{line}"
+
+        def columns(rows, width):
+            """Lay the rows out with their descriptors in one column, or
+            without them when the terminal cannot hold both."""
+            split = [r.split("\0")[1:] if r.startswith("\0") else ["", r]
+                     for r in rows]
+            widest = max((self._vis(t) for _k, t in split), default=0)
+            longest = max((len(WHAT[k]) for k, _t in split if k), default=0)
+            if widest + 2 + longest > width:
+                return [t for _k, t in split]
+            return [t + " " * (widest + 2 - self._vis(t))
+                    + f"[dim]{WHAT[k]}[/]" if k else t for k, t in split]
+
+        # EVERY ROW HERE IS: what exists, minus what this selection loaded.
+        # Nothing is a constant and nothing is a build's leftover.
+        #
+        # ⚠️ A LISTED REVERB IS LOADED. The build reports the whole 2,724 as
+        # free because nothing of OURS is placed yet -- but PLATE, SPRING and
+        # DARK REV's code is what occupies the region, so a reverb you keep
+        # in the chooser is spending its own words. Subtract them like
+        # anything else. That is the correction to "2724 free" on a stock
+        # chooser, which called the region yours while the three effects
+        # living in it were still listed.
+        #
+        # ⚠️ AND ONE PLACE THE PLAIN SUBTRACTION IS TOO GENEROUS: the region
+        # packs from PLATE upward, so holding a LOW reverb makes the space
+        # above it unreachable even though it is unoccupied. Keeping PLATE
+        # alone leaves 2,130 words by size and 0 you can actually place. The
+        # placeable figure is the offset of the lowest reverb kept, which
+        # equals the subtraction for every other combination (verified for
+        # all four). So `held` below is the whole tail from that reverb up,
+        # not the sum of the reverbs' own sizes -- and the three numbers on
+        # the row then add up exactly: loaded + held + free = total.
+        # WHAT THIS SELECTION HARVESTS, not the three reverbs. A listed
+        # effect whose words are harvestable is spending its own words, and
+        # the region packs from the lowest upward, so the lowest one still
+        # listed is the ceiling.
+        hv = tuple(st.harvest)
+        held = [c for c in stock.harvest_order(hv) if c in st.sel]
+        nxt = min(held, key=lambda c: stock.consumed_at(c, hv)) if held else None
+
+        # THE SAME FOUR ANSWERS, for a terminal with no room for the rows.
+        # Collected as (label, coloured number) while the full rows are
+        # built, so the short form cannot drift from the long one.
+        brief = []
+
+        def words_row(n, total, used):
+            # ⚠️ NO BAR HERE ANY MORE. Twenty glyphs of `#`/`-`/`.` needed a
+            # legend to decode and still could not show WHERE in the payload
+            # the region is or which effects it costs. The map below is that
+            # picture, drawn from the real spans, and it does the job for
+            # both payloads at once.
+            free, _cap = placeable(st.sel, total, used, st.harvest)
+            c = OK if free > 400 else WARN if free > 32 else BAD
+            brief.append((f"words {n}", f"[{c}]{free:,}[/]"))
+            return why(f"words {n}",
+                       f" {'words ' + n:<{W}}[{c}]{free:>5,}[/] free of "
+                       f"{total:,} [dim]· {used:,} loaded[/]")
+
+        if not st.harvest:
+            # ⚠️ NOT "0 free of 0". A build with nothing harvested reports a
+            # zero-word region, which is true and reads as "you have no
+            # space" -- the truth is that nothing has been given up yet and
+            # every word belongs to a stock effect that is using it.
+            for n in ("A", "B"):
+                brief.append((f"words {n}", "[dim]none[/]"))
+                out.append(why(f"words {n}",
+                               f" {'words ' + n:<{W}}[dim]no region — every "
+                               f"word is a stock effect's[/]"))
+        elif st.regions:
+            for n, total, used, _f in st.regions:
+                out.append(words_row(n, total, used))
+            _rs = stock.regions_of(tuple(st.harvest))
+            if len(_rs) > 1:
+                # ⚠️ THE TOTAL IS NOT THE LIMIT ON ONE MODULE. A module is a
+                # single code stream, so it must fit inside ONE opening --
+                # 3,213 words across two runs will not take a 3,000-word
+                # module. Say the largest opening beside the total, or the
+                # budget promises room the placer will refuse.
+                _big = max(sum(stock.WORDS[k] for k in g) for g in _rs)
+                out.append(
+                    f" {'':<{W}}[dim]{len(_rs)} separate runs — one module "
+                    f"must fit one run, largest is {_big:,} words[/]")
+            out.append(None)                # the key goes here -- see below
+        elif not [m for m in st.selected if m.dsp is not None]:
+            # No build to read -- and none is possible, because a selection
+            # with no module of ours has no fallback to name. The region is
+            # still fully accounted for: the three reverbs are in it.
+            reg = stock.region_words(tuple(st.harvest))
+            for n in ("A", "B"):
+                out.append(words_row(n, reg, 0))
+            out.append(None)
+        else:
+            # WHY it is not built, not just that it is not. This row is where
+            # the eye lands after the gesture that broke the selection, and
+            # `????  not built` sent you looking for a build key that does
+            # not exist. The ⚠ in LOADED holds the sentence; say which way to
+            # look and which key applies it.
+            # (named `unbuilt`, not `why` -- that is the descriptor helper
+            # three rows of this function down, and shadowing it turned every
+            # later row into "'str' object is not callable")
+            unbuilt = ("[dim]not built — [/][bold]x[/][dim] applies the ⚠ in "
+                       "CHOOSERS[/]" if self.blockers(probs)
+                       else "[dim]not built — see the ⚠ in CHOOSERS[/]")
+            out.append(f" {'words':<{W}}{unbuilt}")
+            brief.append(("words", "[dim]not built[/]"))
+        # THE TRADE, ONCE. It is identical for both payloads -- the same
+        # three reverbs occupy both regions -- so printing it on each read as
+        # two facts. NAME THE NEXT TRADE, not the state: "Plate Rev holds the
+        # rest" was true and useless, because it says which reverb is in the
+        # way without saying what dropping it buys, and at 0 free that is the
+        # only live question.
+        # ⚠️ ONLY WITH ONE RUN. The arithmetic below walks the harvested
+        # effects as a single packed stream (stock.consumed_at), which is
+        # what the placer does with one opening and NOT what it does with
+        # two -- there, dropping an effect in the other run buys nothing
+        # here. Rather than print a number that is quietly wrong, say
+        # nothing; the per-run brackets in the map already carry the sizes.
+        if nxt and len(stock.regions_of(tuple(st.harvest))) < 2:
+            # What dropping it actually BUYS is the gap up to the next reverb
+            # still listed, which is NOT the reverb's own size when the one
+            # above it has already gone: holding PLATE and DARK, dropping
+            # PLATE opens SPRING's words too (1,657, not 594).
+            cap = stock.consumed_at(nxt, hv)
+            rest = min((stock.consumed_at(c, hv) for c in held if c != nxt),
+                       default=stock.region_words(hv))
+            # "drop Dark Rev" beside "held by Dark Rev" says the name twice
+            # in eleven words; with one reverb held there is nothing to
+            # disambiguate, so it is "it".
+            which = titlecase(nxt) if len(held) > 1 else "it"
+            # The reverbs are named WITHOUT their " Rev" suffix here (the
+            # label already says these are the held reverbs) because the
+            # three-reverb form is the widest line in the pane and this pane
+            # is the narrowest column: at 77 columns it wrapped, and a
+            # wrapped budget row reads as an extra mystery row.
+            names = ", ".join(titlecase(c).replace(" Rev", "") for c in held)
+            out.append(f" {'held by':<{W}}[dim]{names} — "
+                       f"{stock.region_words(hv) - cap:,} words; "
+                       f"drop {which} for {rest - cap:,} more[/]")
+
+        # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
+        # FX1 then FX2, so track k's FX2 effect always gets table entry 1+2k
+        # -- 0x4000, 0x8000, then the shared-window pair (docs/DSP.md, "the
+        # allocator's instance model").
+        #
+        # So there are FOUR, they are FOUR TRACKS, and the useful sentence is
+        # how many are left and who took the others. The old row drew them as
+        # four groups of four glyphs, which read as SIXTEEN slots; a count
+        # against a total cannot be misread that way.
+        for tag in ("A", "B"):
+            tracks = rig.PAYLOAD_TRACKS[tag]
+            owner = {}
+            for m in st.selected:
+                if not rig.pins_fx2(m):
+                    continue
+                tr = rig.track_range(m)
+                if not (not len(tr) or len(tr) == 8 or tr.start == tracks.start):
+                    continue
+                cl = getattr(m, "claims", None)
+                from remix.schema import YBase
+                if cl is not None and cl.owns_fx2_buffers:
+                    owner.setdefault(0, m); owner.setdefault(1, m)
+                if m.dsp is not None and m.dsp.ybase is not YBase.NEVER:
+                    owner.setdefault(2, m); owner.setdefault(3, m)
+            free = [tracks.start + k for k in range(4) if k not in owner]
+            c = OK if len(free) > 2 else WARN if free else BAD
+            said, bits = set(), []
+            for k in sorted(owner):
+                mod = owner[k]
+                if mod.key in said:
+                    continue
+                said.add(mod.key)
+                mine = ",".join(str(tracks.start + i) for i in sorted(owner)
+                                if owner[i] is mod)
+                bits.append(f"{disp(mod)} has {mine}")
+            # ⚠️ "free" KEEPS BEING READ AS "unused", and it is not: a track
+            # whose buffer no module has claimed still HAS that buffer, ready
+            # for whatever is selected there. That is the whole answer to "do
+            # the stock reverbs not use it?" -- they use their own track's,
+            # when you select them on it, and listing one in the chooser
+            # claims nothing. Only a MODULE claims a buffer for the life of
+            # the image, which is why only modules appear here. The footnote
+            # below says so, once, rather than the row fighting the word.
+            # NAME THE TRACKS FIRST. "FX2 buf A · 4 free of 4" was read as
+            # four spare buffers on an "FX2 bus"; there is no bus and they
+            # are not spare. They are the four TRACKS this payload serves,
+            # one buffer each, and the count is how many no module has
+            # pinned. Leading with the range says which four.
+            if bits and free:
+                # WHICH ones are left, beside how many. The count answers
+                # "can I add another"; the list answers "where does it go".
+                bits.append(",".join(str(t) for t in free) + " free")
+            brief.append((f"buf {tag}", f"[{c}]{len(free)}/4[/]"))
+            side.append(why("FX2 buf " + tag,
+                            f" {'FX2 buf ' + tag:<{W}}[{c}]{len(free):>5}[/] "
+                            f"free of 4 [dim]· "
+                            + (" · ".join(bits) if bits
+                               else f"tracks {tracks.start}-"
+                                    f"{tracks.stop - 1}, no module claims "
+                                    f"one") + "[/]"))
+
+        # CYCLES. The fourth scarce thing was really the fifth: over the
+        # per-core budget the DSP does not refuse the image, it WEDGES
+        # (PLAN.md s2 -- "the wall is a CLIFF", +200 cycles was a hard hang
+        # with zero warning). So it is the one resource here whose overrun
+        # you cannot discover by building, and it lived behind `c` and a
+        # full `make check`. It is the WORST core, under the worst mix of
+        # this selection's own effects across the four FX2 slots -- an image
+        # cannot stop the operator putting the heaviest one on all four.
+        if st.cycles:
+            worst, usable, mix = st.cycles
+            free = usable - worst
+            c = OK if free > 800 else WARN if free > 0 else BAD
+            how = " + ".join(
+                f"{n}× {disp(st.mods[k]) if k in st.mods else titlecase(k)}"
+                for k, n in mix.items()) or "nothing of ours"
+            # ⚠️ STOCK ROWS ARE NOT IN THIS FIGURE, and on a card that mixes
+            # stock and ours freely that is a real hole -- a stock effect
+            # costs cycles when it is selected like any other. Only FILTER's
+            # figure has ever been measured (192/instance, docs/CHIP.md), so
+            # the row says what is missing rather than inventing the rest.
+            # Not the ones this selection HARVESTED past: their code is
+            # gone, so nothing can select them and they cost no cycles.
+            nstock = sum(1 for m in st.selected if m.is_stock
+                         and (m.key not in st.harvest
+                              or m.key.split()[0] in st.donors_kept))
+            gap = (f" · {nstock} stock rows not counted" if nstock else "")
+            brief.append(("cycles", f"[{c}]{free:,}[/]"))
+            side.append(why("cycles",
+                            f" {'cycles':<{W}}[{c}]{free:>5,}[/] free of "
+                            f"{usable:,} [dim]· worst core: {escape(how)}"
+                            f"{gap}[/]"))
+
+        # Rows are countable without a build; the cave is not.
+        # Same sentence again: 31 exist, this selection loaded N.
+        used_rows = (st.chooser_rows if st.chooser_rows is not None
+                     else len(st.menu_modules))
+        c = OK if 31 - used_rows > 7 else WARN if used_rows < 31 else BAD
+        brief.append(("rows", f"[{c}]{31 - used_rows}[/]"))
+        side.append(why("rows",
+                        f" {'rows':<{W}}[{c}]{31 - used_rows:>5}[/] free of "
+                        f"31 [dim]· {used_rows} loaded[/]"))
+        # And the cave. The build reports only what is LEFT, so the total
+        # comes from state.CAVE_BYTES (pinned to build_bus's own bounds by
+        # the selftest) and the used figure is the subtraction -- which is
+        # the point: a stock chooser plants nothing on the ColdFire, so the
+        # honest reading of the default selection is the whole region free,
+        # not the wordless "untouched" this used to print.
+        if st.cave_free is not None:
+            c = OK if st.cave_free > 512 else WARN if st.cave_free else BAD
+            brief.append(("cave", f"[{c}]{st.cave_free:,} B[/]"))
+            side.append(why("cave",
+                            f" {'cave':<{W}}[{c}]{st.cave_free:>5,}[/] free "
+                            f"of {CAVE_BYTES:,} B [dim]· "
+                            f"{CAVE_BYTES - st.cave_free:,} loaded[/]"))
+        elif not [m for m in st.selected if m.dsp is not None or m.cf_patches]:
+            brief.append(("cave", f"[{OK}]{CAVE_BYTES:,} B[/]"))
+            side.append(why("cave",
+                            f" {'cave':<{W}}[{OK}]{CAVE_BYTES:>5,}[/] free "
+                            f"of {CAVE_BYTES:,} B [dim]· nothing of ours is "
+                            f"placed[/]"))
+        else:
+            brief.append(("cave", "[dim]not built[/]"))
+            side.append(why("cave",
+                            f" {'cave':<{W}}[dim]    ? free of "
+                            f"{CAVE_BYTES:,} B · not built[/]"))
+        # ONE legend line, decoding the ONE thing on this pane that is not
+        # already words: the bar's three glyphs. What an FX2 buffer count
+        # counts used to be spelled out here in two further lines of prose
+        # -- three of the pane's eleven lines spent on standing text -- and
+        # it read as an unexplained footnote rather than as a legend,
+        # because the rows it belonged to are two lines up and say "4 free
+        # of 4 · tracks 5-8 all keep their own" in words already. It is in
+        # `?` with the rest of the buffer story instead.
+        # A KEY, one glyph per line. Three items strung along one line with
+        # `·` separators read as a run-on sentence rather than as a legend
+        # -- which is fair, because it IS three unrelated definitions, and
+        # the only thing on the pane a reader cannot decode from the words
+        # beside it. Aligned under the label column so it reads as a key.
+        # ⚠️ THERE IS NO GLYPH LEGEND ANY MORE. It sat at the bottom of the
+        # strip labelled `bar`, in the same label column as `words A`,
+        # `cycles` and `cave` -- so it read as a fifth scarce thing called
+        # "bar" whose value was "held by a reverb you kept listed". Moving it
+        # under the bars it decodes fixed the mislabelling and left the
+        # better question standing: every row already says in WORDS what its
+        # bar says in glyphs (`0 free of 2,724 · 0 loaded`, `held by Plate,
+        # Spring, Dark`), so the legend was decoding a picture of a sentence
+        # printed beside it.
+        out = [ln for ln in out if ln is not None]
+        # A SHORT TERMINAL GETS THE NUMBERS, NOT THE ROWS. Nine lines of
+        # budget out of twenty-four is the pane crowding out the thing it is
+        # supposed to be read against. One line keeps every figure and the
+        # colour that answers for it; `?` still carries what each one means.
+        # The word "free" is said ONCE, in front, because that is what every
+        # number on the line is -- repeating it six times is what made the
+        # long rows long.
+        if not self.tall_screen:
+            items = [f"[dim]{lab}[/] {val}" for lab, val in brief]
+            lines, cur = [], "[bold]Budget[/] [dim]free:[/]"
+            for it in items:
+                # Packed against the real width rather than hoped to fit: at
+                # 80 columns the one-line form wrapped mid-token, and a
+                # budget that wraps reads as a row that lost its label.
+                sep = "  [dim]·[/]  " if items.index(it) else "  "
+                if self._vis(cur + sep + it) > self.app.size.width - 2:
+                    lines.append(cur)
+                    cur = " " * 8 + it
+                else:
+                    cur += sep + it
+            self._budget_resized(len(lines) + 1)
+            self._paint("#pane_budget", lines + [cur])
+            return
+        # ⚠️ ONE COLUMN NOW, not two. The descriptor column is what the
+        # second column's width used to be spent on, and a row that says
+        # what it is beats a row that fits beside another one.
+        rows = columns(out + side, self.app.size.width - 2)
+        rows += self._memory_map(st, self.app.size.width - 2)
+        # Its own height is what the panes above are laid out against, so a
+        # change in it invalidates them.
+        self._budget_resized(len(rows))
+        self._paint("#pane_budget", ["[bold]Budget[/]"] + rows)
+
+    # Rich markup is not width: padding by len() on a marked-up string puts
+    # the second column somewhere different on every row.
+    _MARKUP = re.compile(r"\[/?[^\]]*\]")
+
+    @classmethod
+    def _vis(cls, line):
+        return len(cls._MARKUP.sub("", line))
+
+    def _two_up(self, left, right):
+        """Side by side if the terminal is wide enough, stacked if not.
+
+        The threshold is measured off the CONTENT, not guessed: the widest
+        line each column actually produced this render, plus a gutter. So a
+        selection whose held-by line is short gets two columns on a terminal
+        where a longer one would not, which is the right way round -- the
+        test is whether it fits, not whether the window is big.
+        """
+        lw = max((self._vis(x) for x in left), default=0)
+        rw = max((self._vis(x) for x in right), default=0)
+        gutter = 3
+        if not right or lw + gutter + rw + 2 > self.app.size.width:
+            return left + right, False
+        pad = lw + gutter
+        rows = max(len(left), len(right))
+        out = []
+        for i in range(rows):
+            a = left[i] if i < len(left) else ""
+            b = right[i] if i < len(right) else ""
+            out.append(a + " " * (pad - self._vis(a)) + b if b else a)
+        return out, True
+
+    def _pane_unit(self, st, probs):
+        mod = self.selected_module()
+        if mod is None:
+            self._paint("#pane_unit",
+                        self._head("Unit", UNIT) + ["[dim]nothing selected[/]"])
+            return
+        out = self._head(disp(mod), UNIT)
+        bits = [titlecase(rig.category(mod))]
+        if mod.menu:
+            bits.append(f"id 0x{mod.menu.fx2_id:02x}")
+            bits.append("+".join(rig.menus(mod, st.fx1)))
+        tr = rig.track_range(mod)
+        if len(tr):
+            bits.append(f"tracks {tr.start}-{tr.stop - 1}")
+        out.append(f"[dim]{' · '.join(bits)}[/]")
+        out.append(f"[dim]{escape(mod.doc)}[/]")
+        # WHAT IT COSTS, while you are still deciding. "Will this fit beside
+        # what I already have" is what the library pane is really asked, and
+        # every answer used to arrive only as a refusal after adding it.
+        # ⚠️ ONE LINE EACH, which is how resources() has always returned
+        # them and what docs/REMIXER.md's "one line per menu" describes.
+        # Joining them with ` · ` made one long sentence that Textual then
+        # flowed, so the FX1 and FX2 answers broke across lines mid-phrase
+        # and a simple fact read as a caveat -- which is the exact mistake
+        # that split them into separate strings in the first place.
+        res = rig.resources(mod, st.words.get(mod.key), st.fx1,
+                            mod.key in st.sel, st.harvest)
+        for line in res:
+            out.append(f"[{WARN}]{escape(line)}[/]")
+        out.append("")
+
+        head = len(out)
+        cur_line = head
+        knobs = self.unit_rows(mod)
+        vals = st.knobs_for(mod)
+        for i, (name, slot) in enumerate(knobs):
+            here = self.pane == UNIT and i == self.cur[UNIT]
+            if name == "SOURCE":
+                src = (self.app.source.name if self.app.source
+                       else f"(none — no wavs in {source_dir()})")
+                # A SAMPLE NAME IS ARBITRARILY LONG and this row is one row.
+                # Wrapped, it pushed every knob below it down the pane and
+                # read as two rows, one of them unlabelled. Trimmed from the
+                # FRONT: the end of a sample name is what distinguishes it.
+                room = self.query_one("#pane_unit", Static).size.width - 12
+                if room > 12 and len(src) > room:
+                    src = "…" + src[-(room - 1):]
+                line = f" [dim]SOURCE[/] [{SRC}]{escape(src)}[/]"
+                if here:
+                    cur_line = len(out)
+                out.append(f"[reverse]{line}[/]" if here else line)
+                continue
+            v = vals.get(name, 0)
+            hi = rig.knob_max(mod, name)
+            if hi < 8:
+                # A SELECT reads as a word, not a level, so it gets the
+                # accent and a flat bar -- no fill to imply a range it does
+                # not have.
+                shown = f"[{WARN}]{step_label(mod, name, v):<7}[/]"
+                bar = f"[{LCD}]" + "·" * 12 + "[/]"
+            else:
+                shown = f"{v:>3}    "
+                fill = round(12 * v / max(hi, 1))
+                bar = (f"[{bar_colour(v, hi)}]" + "#" * fill + "[/][dim]"
+                       + "." * (12 - fill) + "[/]")
+            page = "1" if slot < 6 else "2"
+            line = f" {name:<6} {shown}[dim]\\[[/]{bar}[dim]] p{page}[/]"
+            if here:
+                cur_line = len(out)
+            out.append(f"[reverse]{line}[/]" if here else line)
+        if not knobs:
+            out.append("[dim] (no drawn parameters)[/]")
+        dry = self.dry_control(mod, vals)
+        if dry:
+            out.append(f"[{WARN}]⚠ {dry} is 0 — this renders DRY[/]")
+        if self.pane == UNIT and knobs:
+            name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
+            hint = (f"the wav auditioned through this effect — left/right "
+                    f"cycles {source_dir()}, d changes it"
+                    if name == "SOURCE" else rig.knob_doc(mod, name) or "")
+            out.append("")
+            out.append(f"[dim]? {escape(hint)}[/]")
+        out.append("")
+        out.append("[dim]← → change · r render + hear · space replay[/]"
+                   if self.pane == UNIT else
+                   "[dim]tab here to change values and audition[/]")
+        # ⚠️ THE UNIT PANE ENDS HERE. It used to close with a block showing
+        # the firmware's own draw of this effect's page -- and the answer to
+        # "what is that for?", asked four times on 3 Sep 2026, turned out to
+        # be "nothing this pane should do". The rows above already list every
+        # drawn parameter with its page number, from the same descriptor, so
+        # the picture said it again; CHOOSERS lists the chooser rows; and
+        # what was left were two ASSERTIONS about the built descriptor and a
+        # boolean about the boot. The assertions moved to verify_menu, where
+        # a mismatch fails `make check` instead of having to be noticed in
+        # the corner of a pane; the boot is one line under CHOOSERS, where it
+        # belongs, because it is a fact about the IMAGE and not about the
+        # effect the cursor is on.
+        self._paint("#pane_unit", self._fit("#pane_unit", out, cur_line,
+                                            head=head))
+
+    # ---- the emulated panel ---------------------------------------------
+    def _panel(self, mode, effect_id=None):
+        """The firmware's own draw of one page, CACHED.
+
+        ⚠️ This is what made a HELD arrow key lag. render_fx2 costs 15-96 ms
+        (mean 32; render_fx1 16, render_menu 8 -- measured 2 Sep 2026), and
+        rerender() ran it on every keystroke, so under key repeat the work
+        per key exceeded the repeat interval and the UI fell behind the key,
+        then kept stepping after release. Single presses always felt fine,
+        which is why it read as "slow when holding" rather than as latency.
+
+        Nothing a keystroke does can change this picture: knob VALUES draw as
+        dial graphics the string-capture hook cannot read (docs/EMU.md), so
+        the page depends only on WHICH page, WHICH effect, and which boot.
+        """
+        key = (mode, effect_id, self.synced)
+        if key in self._panel_cache:
+            return self._panel_cache[key]
+        import emu_bringup
+        r = self.app.boot
+        if mode == "MENU":
+            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC, 0)
+        elif mode == "FX1":
+            draws = emu_bringup.render_fx1(r, track=4,
+                                           effect_id=effect_id or 0x04)
+        else:
+            draws = emu_bringup.render_fx2(r, track=4, effect_id=effect_id)
+        # The RAW draws, because the two readings of them -- the structured
+        # one for an FX page and the picture for the menu -- are both derived
+        # and only the capture is expensive. Several are held at once: BOTH
+        # menus are on screen at all times now, so a keystroke that changes
+        # neither must not re-capture either.
+        if len(self._panel_cache) > 8:
+            self._panel_cache.clear()
+        self._panel_cache[key] = list(draws)
+        return self._panel_cache[key]
+
+    def _menu_picture(self, n):
+        """The MAIN MENU as the firmware draws it.
+
+        ⚠️ SHOWN ONLY WHEN THE SELECTION ACTUALLY CHANGES IT, which is the
+        case this view was built for -- a patched-in top-level row
+        (PLAN.md section 5) -- and which no remix yet hits: a selection can
+        change the top-level menu only by writing the tables at 0x400cbc00,
+        and every one of them changes ZERO bytes of it. As a permanent
+        fixture it was the same picture every time.
+        """
+        import emu_bringup
+        head = [f"[{WARN}]main menu — {n} bytes patched[/]"]
+        grid = emu_bringup.layout_screen(self._panel("MENU"))
+        while grid and not grid[-1].strip():
+            grid.pop()
+        while grid and not grid[0].strip():
+            grid.pop(0)
+        edge, w = f"[{LCD}]", emu_bringup.COLS
+        return head + [f"{edge}." + "-" * w + ".[/]"] + \
+            [f"{edge}|[/]" + escape(ln[:w].ljust(w)) + f"{edge}|[/]"
+             for ln in grid] + [f"{edge}'" + "-" * w + "'[/]"]
+
+    # ---- keeping the image equal to the selection ------------------------
+    # There used to be a stale() gate here: the preview refused to draw when
+    # the image on disk was not the selection, and printed a bold two-line
+    # disclaimer telling the operator to press b. Every fresh launch is
+    # stale, so the headline feature opened showing a disclaimer -- and what
+    # it was guarding is a 0.26 s build (`make bus` from a touched manifest,
+    # measured 2 Sep 2026) plus a 4.6 s ColdFire boot, both already on a
+    # worker thread. So the image just follows the selection instead.
+    def schedule_sync(self):
+        """The selection changed. Rebuild and re-boot, after a short pause so
+        a run of swaps costs one build rather than one per keystroke."""
+        self.gen += 1
+        self.set_timer(0.35, self.ensure_sync)
+
+    def ensure_sync(self, probs=None):
+        """Start the rebuild if the image is behind and nothing is in the
+        way. Idempotent and cheap -- rerender() calls it, so a kick that
+        arrives during a render or a build is simply picked up by the next
+        one rather than queued. `probs` is rerender's already-computed
+        answer; the timer path has none and pays for its own."""
+        if self.syncing is not None or self.synced == self.gen:
+            return
+        if self.app.rendering:
+            return          # both write out/mainos_bus.bin; the render's
+                            # closing rerender() will kick this again
+        if self.app.state.problems() if probs is None else probs:
+            # AND FORGET THE LAST BUILD'S NUMBERS. They describe a different
+            # selection, and a budget that silently belongs to the image you
+            # had two edits ago is worse than no budget at all.
+            self.app.state.forget_build()
+            self.synced, self.app.boot = self.gen, None
+            return          # it would not build; the ⚠ line says why
+        self.syncing = self.gen
+        self.sync_worker(self.gen)
+
+    @work(thread=True, group="sync")
+    def sync_worker(self, gen):
+        """Build the live selection, then boot it.
+
+        state.measure() IS the build -- the same `REMIX=x XBUS=1 SPEC=1
+        build_bus.py` that `make bus` runs -- and it parses the per-module
+        word counts out of the build report on the way past. So one call
+        does what the old b (build) and w (word cost) keys did separately.
+        """
+        st = self.app.state
+        ok, note = st.measure(None)
+        r = None
+        if ok:
+            try:
+                import emu_bringup
+                r = emu_bringup.boot(str(BUILT_IMAGE))
+            except Exception as e:                   # noqa: BLE001
+                note = f"emulator unavailable — {e} (make emu-setup)"
+        if gen == self.gen:                          # not superseded
+            self.app.boot = r
+            self.sync_error = None if ok else note
+            self.synced = gen
+            self.rows_mtime = None                   # chooser rows re-read
+            if not ok:
+                st.msg = f"build failed: {note}"
+        self.syncing = None
+        self.app.call_from_thread(self.rerender)
+
+    # ---- input -----------------------------------------------------------
+    @work(thread=True, group="words")
+    def measure_all(self):
+        """Word counts for every module, so the library can say what a thing
+        costs BEFORE you add it. ~2 s once, then cached (state.measure_every).
+        """
+        try:
+            self.app.state.measure_every()
+        except Exception:                            # noqa: BLE001
+            return                     # a cost readout is never worth a crash
+        self.app.call_from_thread(self.rerender)
+
+    def _poll_source(self):
+        """Rebuild when a module's source changed under us."""
+        try:
+            now = audition._newest_input_mtime()
+        except OSError:
+            return                      # mid-write; the next tick catches it
+        if now == self._src:
+            return
+        self._src = now
+        self.app.state.msg = "module source changed — rebuilding"
+        self.measure_all()             # its word count may have moved too
+        # The AUDIO is not re-rendered: it plays out loud and would fire on
+        # every save. The image and the panel refresh; `r` is one key.
+        self.schedule_sync()
+        self.rerender_soon()
+
+    def describe(self):
+        """Moving the cursor CLEARS the status line.
+
+        ⚠️ IT USED TO REPEAT THE UNIT PANE. Every cursor move wrote the
+        effect's category, id, resource sentence and membership into the
+        status bar -- which is word for word what the UNIT pane already
+        prints under the effect's name, except that the pane WRAPS and this
+        was one row, so the copy that got truncated mid-sentence was the
+        redundant one. Deleted rather than moved: a column of the budget
+        strip is 62 columns against the 138 this already had, so "give it
+        more room" and "put it in the strip" pull opposite ways.
+
+        Clearing is what is left, and it is the right half of the old
+        behaviour: an action message ("added Nimbus · added Send as the
+        fallback") is context for the moment it happened, so it must not
+        still be sitting there describing a row you have since left.
+        """
+        self.app.state.msg = ""
+
+    def rerender_soon(self):
+        """Mark the screen stale; _flush draws it on the next frame."""
+        self._dirty = True
+
+    def _flush(self):
+        if self._dirty:
+            self._dirty = False
             self.rerender()
-            return
-        rows = self.rows()
-        if ev.key in ("down", "j"):
-            self.cursor = min(len(rows) - 1, self.cursor + 1)
-        elif ev.key in ("up", "k"):
-            self.cursor = max(0, self.cursor - 1)
-        elif ev.key in ("left", "right", "h", "l",
-                        "shift+left", "shift+right"):
-            step = 1 if ev.key in ("right", "l", "shift+right") else -1
-            if "shift" in ev.key:
-                step *= 10
-            self.adjust(rows[self.cursor], step)
-        else:
-            return
+
+    def action_pane(self, d):
+        self.pane = (self.pane + d) % 3
+        self._relayout()          # on a narrow screen `tab` IS the layout
         self.rerender()
 
-    def adjust(self, row, step):
-        app = self.app
-        name, slot = row
+    def on_key(self, ev):
+        st = self.app.state
+        rows = (self.avail_rows() if self.pane == AVAILABLE else
+                self.loaded_rows() if self.pane == LOADED else
+                self.unit_rows(self.selected_module()))
+        n = max(len(rows), 1)
+        if ev.key in ("down", "j"):
+            self.cur[self.pane] = min(n - 1, self.cur[self.pane] + 1)
+            self.describe()
+        elif ev.key in ("up", "k"):
+            self.cur[self.pane] = max(0, self.cur[self.pane] - 1)
+            self.describe()
+        elif ev.key in ("left", "right", "h", "shift+left", "shift+right"):
+            step = 1 if ev.key in ("right", "shift+right") else -1
+            if self.pane == UNIT:
+                self.adjust(step * (10 if "shift" in ev.key else 1))
+            elif self.pane == LOADED:
+                self.move_row(step)
+            else:
+                return
+        else:
+            return
+        # Coalesced: holding a key steps the value every event and repaints
+        # once a frame. Every other path still renders immediately.
+        self.rerender_soon()
+
+    # A HELD KEY ACCELERATES. The remixer stopped being the limit once the
+    # panel render was cached (0.012 ms per key event, 86k/s) -- but macOS
+    # repeats a held key at its default ~15/s after a 375 ms delay, so a
+    # 0..127 knob still took ~8.5 s to sweep and there is nothing an app can
+    # do about the RATE. So change the STEP instead: a run of events close
+    # together is a hold, and a hold means "get there", while a single tap
+    # still moves exactly one. Sweeps the full range in ~1.3 s at 15/s.
+    _RUN_GAP = 0.20              # longer than a 15/s repeat (66 ms), well
+                                 # under a deliberate double-tap
+    _RUN_STEPS = ((18, 16), (10, 8), (4, 4))   # (events held, multiplier)
+
+    def _accel(self, step, name, hi):
+        """The multiplier for this event, given how long the key has been
+        down. Only for the ±1 path -- shift is already an explicit ×10."""
+        now = time.monotonic()
+        same = (name == self._run[0]
+                and (step > 0) == self._run[1]
+                and now - self._run[2] < self._RUN_GAP)
+        run = self._run[3] + 1 if same else 0
+        self._run = (name, step > 0, now, run)
+        # A SELECT MUST NOT ACCELERATE: MODE has five positions and flying
+        # past them is not "faster", it is unusable. hi // 8 is 0 for every
+        # stepped slot and 15 for a 0..127 knob, so this gates itself.
+        ceiling = max(1, hi // 8)
+        for need, mult in self._RUN_STEPS:
+            if run >= need:
+                return step * min(mult, ceiling)
+        return step
+
+    def adjust(self, step):
+        """Change the selected row. Knob values live per MODULE."""
+        st = self.app.state
+        mod = self.selected_module()
+        knobs = self.unit_rows(mod)
+        if not knobs:
+            return
+        name, _ = knobs[min(self.cur[UNIT], len(knobs) - 1)]
         if name == "SOURCE":
+            # Never accelerated: skipping files is not a faster way to pick
+            # one, and the list is short.
             files = wav_sources()
             if files:
-                i = files.index(app.source) if app.source in files else 0
-                app.source = files[(i + step) % len(files)]
-        elif name == "WET":
-            app.wet = not app.wet
-        else:
-            mod = app.rig.effect(app.track)
-            hi = rig.knob_max(mod, name)
-            v = app.rig.knobs[app.track].get(name, 0)
-            app.rig.knobs[app.track][name] = max(0, min(hi, v + step))
-            app.rig.save()
+                i = (files.index(self.app.source)
+                     if self.app.source in files else 0)
+                self.app.source = files[(i + (1 if step > 0 else -1))
+                                        % len(files)]
+            return
+        vals = st.knobs_for(mod)
+        hi = rig.knob_max(mod, name)
+        if abs(step) == 1:
+            step = self._accel(step, name, hi)
+        vals[name] = max(0, min(hi, vals.get(name, 0) + step))
 
-    def action_pick_effect(self):
-        app = self.app
-        opts = [(m.key, f"{escape(m.menu.fullname.decode('latin1')):<13} "
-                        f"\\[{rig.category(m)}]\n[dim]{escape(m.doc)}[/]")
-                for m in rig.available(app.track)] + [("__none__", "(none)")]
+    def move_row(self, step):
+        """Reorder the loaded pane -- chooser ORDER is the panel's row order,
+        so this is a real edit, not a view preference."""
+        st = self.app.state
+        rows = self.loaded_rows()
+        if not rows or self.cur[LOADED] >= len(rows):
+            return
+        i = self.cur[LOADED]
+        menu, mod = rows[i]
+        # WITHIN ITS OWN LIST. The two choosers share a cursor path but not
+        # an order -- a row cannot move from FX1's list to FX2's by being
+        # nudged off the end of it, and stopping at the boundary is what
+        # says so.
+        span = [j for j, (mn, _m) in enumerate(rows) if mn == menu]
+        if i + step < span[0] or i + step > span[-1]:
+            st.msg = f"{disp(mod)} is already {'first' if step < 0 else 'last'} on {menu}"
+            return
+        if menu == rig.FX1:
+            j = st.fx1.index(mod.key)
+            st.fx1.insert(j + step, st.fx1.pop(j))
+            st.msg = f"{disp(mod)} → FX1 row {j + step + 1}"
+        else:
+            row = st.move(mod.key, step)
+            if row is not None:
+                st.msg = f"{disp(mod)} → FX2 row {row}"
+            elif mod.key in st.sel:
+                st.msg = f"{disp(mod)} has no chooser row: order is moot"
+        st.loaded_name = ""
+        self.cur[LOADED] = max(0, min(len(rows) - 1, i + step))
+        self.schedule_sync()      # placement order changes the image
+
+    def action_add_remove(self):
+        st = self.app.state
+        if self.pane == AVAILABLE:
+            rows = self.avail_rows()
+            mod = rows[min(self.cur[AVAILABLE], len(rows) - 1)]
+            if mod.key in st.sel:
+                # ⚠️ THIS USED TO REMOVE IT, and that cost a chongbong user
+                # both servers. A ✓ in the LIBRARY means "already in the
+                # image", so `enter` there reads as "select this", not
+                # "throw it out" -- and once the first server was gone the ▸
+                # had moved onto the OTHER one, so re-adding the first
+                # swapped the second away. One keystroke, both servers lost,
+                # and nothing on screen said that was the deal.
+                # The library ADDS. LOADED removes. Point at the row.
+                self.pane = LOADED
+                self.cur[LOADED] = st.order.index(mod.key)
+                st.msg = (f"{disp(mod)} is already in the image — "
+                          f"enter here removes it")
+                self.rerender()
+                return
+            else:
+                # ⚠️ THIS USED TO SWAP: the module took the ▸ row's slot and
+                # that row was dropped. The justification was "an image is a
+                # fixed budget, so putting something in means taking
+                # something out" -- which is the LEDGER's scarcity imported
+                # into the operator's gesture, where it does not apply.
+                # Rows are not the scarce thing: the long-list cave holds 31
+                # of them, and a STOCK row costs zero words (no code placed,
+                # no descriptor cloned). Only WORDS are scarce, and only for
+                # modules of ours. So add, and let the budget speak up if it
+                # is actually breached -- which is what the ⚠ line is for.
+                st.insert_at(mod.key, chooser_slot(st.order, mod.key))
+                st.msg = f"added {disp(mod)}"
+                st.msg += self.ensure_fallback()
+            st.loaded_name = ""
+            self.schedule_sync()
+        elif self.pane == LOADED:
+            rows = self.loaded_rows()
+            if not rows or self.cur[LOADED] >= len(rows):
+                return
+            menu, mod = rows[self.cur[LOADED]]
+            was = set(st.harvest)
+            if menu == rig.FX1:
+                # OFF THE FX1 CHOOSER, not out of the image: for a stock
+                # effect the two lists are independent, and for one of ours
+                # the FX2 row is what carries the code.
+                st.fx1.remove(mod.key)
+                st.msg = f"{disp(mod)} is off the FX1 chooser"
+            else:
+                st.toggle(mod.key)
+                st.msg = f"removed {disp(mod)} from the FX2 chooser"
+            # ⚠️ AND WHETHER THAT FREED ANYTHING. Giving up a stock effect's
+            # words means taking it off BOTH menus -- the DSP dispatch is one
+            # table shared by them -- so a removal that leaves it on the
+            # other one frees nothing, and said nothing about why. The two
+            # lists have to stay independent: chongbong's FX2 chooser is
+            # ChonVerb/BongDelay/Send, so "off one is off both" would strip
+            # FX1 to zero rows and take every stock effect with it.
+            st.msg += self._freed(mod, was, set(st.harvest))
+            st.loaded_name = ""
+            self.cur[LOADED] = max(0, self.cur[LOADED] - 1)
+            self.schedule_sync()
+        self.rerender()
+
+    def _freed(self, mod, before, after):
+        """What a removal did to the region, in a clause."""
+        st = self.app.state
+        if not mod.is_stock or mod.key not in stock.p_spans("A"):
+            return ""
+        w = stock.WORDS.get(mod.key, 0)
+        if mod.key in after and mod.key not in before:
+            return (f" — off both menus now, so its {w:,} words join the "
+                    f"region ({stock.region_words(tuple(after)):,} total)")
+        if mod.key not in after:
+            other = "FX1" if mod.key in st.fx1 else "FX2"
+            return (f" — still on {other}, so its {w:,} words stay its own; "
+                    f"take it off there too to free them")
+        return ""
+
+    def ensure_fallback(self):
+        """Satisfy the fallback rule rather than demanding a trade for it.
+
+        A chooser row costs nothing (32 fit in the long cave), so making the
+        operator sacrifice an effect for SEND was an invention of this UI,
+        not a constraint of the image. Add it and say so in four words.
+
+        This is all that survives of knock_ons(), which also REPORTED the
+        buffer clashes and the word budget into the status line. Those two
+        belong on the ⚠ line beside the rows they are about, where they are
+        re-derived every render instead of being a snapshot of the moment
+        one swap happened.
+        """
+        st = self.app.state
+        # ⚠️ A SELECTION WITH NO BUS DOES NOT NEED SEND AT ALL. Unimplemented
+        # ids resolve to the firmware's own NONE, which costs no words --
+        # see schema.NO_FALLBACK and state.auto_fallback. Conscripting SEND
+        # into an insert collection cost it 215-250 words for a client
+        # nothing in that image reads; on restock it cost PLATE REV.
+        # (This also covers the all-stock case: an untouched chooser has no
+        # bus either, and re-adding a stock reverb used to add Send because
+        # "no fallback" is true of the launch state -- which is exactly what
+        # untouched_stock() exists to keep off the ⚠ line.)
+        if not any(on_the_bus(m) for m in st.selected):
+            return ""
+        if not any("no fallback" in p for p in st.problems()):
+            return ""
+        send = st.mods.get("SEND")
+        if send is None or send.key in st.sel:
+            return ""
+        st.insert_at(send.key, len(st.order))
+        return " · added Send as the fallback"
+
+    # untouched_stock() lived here until 2 Sep 2026. THE LAUNCH STATE BUILDS
+    # NOW, so there is nothing to special-case: an untouched stock chooser
+    # falls back to the firmware's own NONE (schema.NO_FALLBACK), places no
+    # code and assembles to A 0/2724 · B 0/2724 -- the chooser an unmodified
+    # unit shows, rebuilt from our own tables. It used to be unbuildable for
+    # one reason only: the fallback had to be a module of ours, so the remixer
+    # opened on a selection it had to apologise for ("stock -- swap a module
+    # in to build it") and the panel drew nothing until you did.
+
+    def blockers(self, probs):
+        """The modules whose removal would clear the ⚠, if that is the shape
+        of the problem.
+
+        A buffer clash is the one that costs four effects at once: FLANGER,
+        CHORUS, SPATIALIZER and COMB each take a per-track instance buffer at
+        exactly the addresses ChonVerb's tank and BongDelay's line hardcode.
+        Naming them was already better than four walls of text -- but naming
+        them still hands the operator a chore. `x` does it.
+        """
+        st = self.app.state
+        names = set()
+        for p_ in probs:
+            if "stock instance buffer" not in p_:
+                continue
+            # "stock instance buffer: flanger and chonverb both claim ..."
+            names.add(p_.split(":", 1)[1].split(" and ")[0].strip())
+        out = [m for m in st.selected
+               if m.is_stock and m.name.lower() in names]
+        # A DONOR ROW WHOSE WORDS THIS SELECTION TOOK. The build refuses it
+        # by name ("PLATE REV is listed in the chooser but this selection
+        # places code over it"), and that verdict is exact -- only the
+        # placement knows where the cursor stopped -- so read it rather than
+        # predicting it here.
+        if self.sync_error:
+            # The build names EVERY donor row this selection overruns, so
+            # one press clears them all rather than one per rebuild.
+            # ⚠️ THIS SELECTION'S HARVEST, not the three reverbs. The build
+            # refuses a listed effect whose words it placed over, and which
+            # effects those are is now the remix's own choice.
+            out += [m for m in st.selected
+                    if m.is_stock and m.key in st.harvest
+                    and m.key in self.sync_error]
+        return out
+
+    def check_action(self, action, parameters):
+        """`x` is on the footer only while there is something to fix.
+
+        Recomputing it here would cost a problems() sweep (~2.4 ms) per
+        footer refresh, so rerender() -- which has already run one -- leaves
+        the answer behind in _can_fix.
+
+        ⚠️ FALSE HIDES; NONE SHOWS IT GREYED. Textual reads `is False` as
+        "disabled and not shown" and treats every other falsy value as
+        "disabled but listed", so returning None left `x fix it` on the
+        footer of a selection with nothing to fix -- which is the defect
+        this method was added to remove.
+        """
+        if action == "fix":
+            return bool(getattr(self, "_can_fix", False))
+        return True
+
+    def action_fx1(self):
+        """Give the highlighted effect a row on FX1 too, or take it away."""
+        st = self.app.state
+        mod = self.selected_module()
+        if mod is None:
+            return
+        st.msg = st.toggle_fx1(mod.key, disp(mod))
+        if mod.key in st.sel:
+            st.loaded_name = ""
+            self.schedule_sync()         # it changes the image
+        self.rerender()
+
+    def action_fix(self):
+        """Apply the ⚠'s own advice."""
+        st = self.app.state
+        # NOTHING TO PLACE INTO comes first: it is the only ⚠ whose fix ADDS
+        # rather than removes, and on a stock chooser it is the first one you
+        # meet. The three reverbs are the conventional choice -- the biggest,
+        # and FX2-only, so taking them costs FX1 nothing -- not a default the
+        # image imposes.
+        if not st.harvest and [m for m in st.selected if m.dsp is not None]:
+            from remix.schema import DEFAULT_HARVEST
+            for k in DEFAULT_HARVEST:
+                if k in st.sel:
+                    st.toggle(k)
+                if k in st.fx1:
+                    st.fx1.remove(k)
+            st.loaded_name = ""
+            st.msg = (f"dropped {', '.join(titlecase(k) for k in DEFAULT_HARVEST)}"
+                      f" from the choosers — "
+                      f"{stock.region_words(DEFAULT_HARVEST):,} words to place "
+                      f"into. Take off different ones for a different region.")
+            self.cur[LOADED] = min(self.cur[LOADED], max(len(st.order) - 1, 0))
+            self.schedule_sync()
+            self.rerender()
+            return
+        gone = self.blockers(st.problems())
+        if not gone:
+            gone = self.blockers([])
+        if not gone:
+            st.msg = "nothing here that removing a row would fix"
+            self.rerender()
+            return
+        for m in gone:
+            st.toggle(m.key)
+        st.loaded_name = ""
+        st.msg = "removed " + ", ".join(disp(m) for m in gone)
+        self.cur[LOADED] = min(self.cur[LOADED], max(len(st.order) - 1, 0))
+        self.schedule_sync()
+        self.rerender()
+
+    def _clash(self, probs):
+        """One readable, IMPERATIVE sentence for whatever stands.
+
+        A buffer clash is the expensive one and the ledger states it a PAIR
+        at a time -- adding ChonVerb to a stock chooser yields four
+        near-identical sentences (FLANGER, CHORUS, SPATIALIZER and COMB all
+        take a per-track instance buffer at the addresses its tank
+        hardcodes). Four walls of text do not read as "remove those four".
+        """
+        if not probs:
+            return ""
+        buf = [p for p in probs if "stock instance buffer" in p]
+        if buf:
+            gone = self.blockers(probs)
+            if gone:
+                # NAME THE CULPRIT AND COUNT THEM. Listing seven effects
+                # took four lines of the pane and still did not say WHY or
+                # WHICH module was doing it -- "why did adding nimbus remove
+                # so many?" is the question it produced. The list is one
+                # keystroke away and the reason is what is actually wanted.
+                # BOTH: the cause AND the names. Listing seven names alone
+                # produced "why did adding nimbus remove so many?"; replacing
+                # them with a count alone produced "it's worse now that it
+                # doesn't show which ones". The reason belongs first because
+                # it is the question, and the list belongs after it because
+                # it is the answer's evidence.
+                st = self.app.state
+                pin = [m for m in st.selected
+                       if getattr(m, "claims", None) is not None
+                       and m.claims.owns_fx2_buffers]
+                who = disp(pin[0]) if pin else "this module"
+                return (f"{who} pins the buffer these {len(gone)} allocate — "
+                        f"x removes " + ", ".join(disp(m) for m in gone))
+            names = [p.split(":", 1)[1].split(" and ")[0].strip().upper()
+                     for p in buf]
+            return "also remove " + ", ".join(names)
+        first = probs[0]
+        if "exceeds" in first:
+            return first + " — remove something else"
+        if "no fallback" in first:
+            return "needs a fallback — press f to choose one"
+        return first
+
+    def action_stock(self):
+        self.app.state.load_stock()
+        self.cur = [0, 0, 0]
+        self.schedule_sync()
+        self.rerender()
+
+    def action_fallback(self):
+        st = self.app.state
+        opts = [(m.key, f"{m.name} (0x{m.menu.fx2_id:02x})")
+                for m in st.menu_modules]
+        # The firmware's own NONE is an option whenever this selection has no
+        # bus, and the RIGHT one there: an unassigned track is off, as on a
+        # stock unit, and it costs no words. It is not offered beside a bus
+        # participant, because nothing would then flip the rotation or clear
+        # the accumulators -- see schema.NO_FALLBACK.
+        if not any(on_the_bus(m) for m in st.selected):
+            opts.insert(0, (NO_FALLBACK,
+                            "NONE -- the firmware's own, no words"))
+        if not opts:
+            st.msg = "nothing with a chooser row to fall back to"
+            self.rerender()
+            return
 
         def done(key):
             if key:
-                app.rig.set_effect(app.track,
-                                   None if key == "__none__" else key)
-                app.rig.save()
-                self.cursor = 0
-                self.rerender()
-        app.push_screen(Chooser(f"FX2 on T{app.track}:", opts), done)
+                st.fallback = key
+                st.msg = f"unimplemented ids alias to {key}"
+                self.schedule_sync()
+            self.rerender()
+        self.app.push_screen(Chooser("unimplemented ids alias to:", opts), done)
 
-    def action_clear_effect(self):
-        self.app.rig.set_effect(self.app.track, None)
-        self.app.rig.save()
-        self.cursor = 0
-        self.rerender()
+    def action_source_dir(self):
+        """Point the SOURCE row at another folder, and remember it.
 
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
+        A remixer gets used on whatever material is to hand; out/dry/ is a good
+        default, not a permanent one. Remembered in out/_audition/
+        remixer.json, and REMIXER_SOURCES overrides both.
+        """
+        st = self.app.state
+        cur = source_dir()
 
-    def action_render(self):
-        app = self.app
-        mod = app.rig.effect(app.track)
-        if mod is None:
-            app.status = "no effect on this track — enter picks one"
+        def chosen(text):
+            if not text:
+                return
+            # RESOLVED before it is stored: a relative path would be read
+            # back against whatever directory the remixer is next started
+            # from, and `make remix` being run from the repo root is a
+            # convention, not a guarantee.
+            d = pathlib.Path(text.strip()).expanduser()
+            d = d.resolve() if d.exists() else d
+            if not d.is_dir():
+                st.msg = f"not a directory: {d}"
+            elif not sorted(d.glob("*.wav")):
+                st.msg = f"no .wav files in {d}"
+            else:
+                cfg = load_config()
+                cfg["source_dir"] = str(d)
+                save_config(cfg)
+                files = wav_sources(d)
+                self.app.source = files[0] if files else None
+                st.msg = f"{len(files)} wavs from {d}"
+            self.rerender()
+        self.app.push_screen(
+            TextPrompt("source folder for the SOURCE row:", str(cur)), chosen)
+
+    def action_help(self):
+        self.app.push_screen(HelpScreen("remixer"))
+
+    # ---- audio -----------------------------------------------------------
+    def action_render(self, mark=None):
+        app, st = self.app, self.app.state
+        mod = self.selected_module()
+        if mod is None or rig.category(mod) == rig.SYSTEM:
+            st.msg = "that module is plumbing — nothing to hear"
         elif app.source is None:
-            app.status = "no source wav — put some in out/dry/"
+            st.msg = f"no source wav in {source_dir()} — d changes folder"
         elif app.rendering:
-            app.status = "a render is already running"
+            st.msg = "a render is already running"
         else:
-            self.render_worker(mod, dict(app.rig.knobs[app.track]),
-                               app.source, app.wet, app.track)
+            # An A/B must compare EFFECTS, so B is rendered on A's source
+            # rather than on whatever the SOURCE row happens to say now.
+            src = app.source
+            if mark == "B" and "A" in app.marks:
+                src = app.ab_source or src
+            elif mark is None:
+                app.ab_source = None
+            self.render_worker(mod, dict(st.knobs_for(mod)), src, mark)
         self.rerender()
 
     @work(thread=True, exclusive=True, group="render")
-    def render_worker(self, mod, values, source, wet, track):
+    def render_worker(self, mod, values, source, mark=None):
         app = self.app
 
         def log(msg):
-            app.call_from_thread(self.set_status, msg)
+            app.state.msg = msg
+            app.call_from_thread(self.rerender)
         app.rendering = True
         log(f"rendering {mod.name} on {source.name} ...")
         try:
-            path = audition.render(mod.key, values, source, wet=wet,
-                                   label=f"T{track}", log=log)
+            path = audition.render(mod.key, values, source, log=log)
         except RuntimeError as e:
             app.rendering = False
             log(str(e))
@@ -453,242 +2401,73 @@ class RigScreen(Screen):
         changed = {n: v for n, v in values.items()
                    if v != rig.default_knobs(mod).get(n)}
         desc = " ".join(f"{n}={v}" for n, v in changed.items()) or "defaults"
-        app.history.append((f"T{track} {mod.name} · {desc}", path))
-        app.call_from_thread(self.set_status, f"rendered → {path.name}")
+        label = f"{disp(mod)} · {desc}"
+        app.history.append((label, path))
+        app.ab_source = source
+        if mark:
+            app.marks[mark] = (label, path)
+            audition._journal({"event": "mark", "which": mark,
+                               "label": label, "out": path.name})
+            other = app.marks.get("A" if mark == "B" else "B")
+            app.state.msg = (f"{mark} = {label}"
+                             + (f"   ·   , and . to A/B against "
+                                f"{other[0]}" if other else ""))
+        else:
+            app.state.msg = f"rendered → {path.name}"
         app.call_from_thread(app.play, path)
         app.call_from_thread(self.rerender)
-
-    def set_status(self, msg):
-        self.app.status = msg
-        self.rerender()
 
     def action_play(self):
         app = self.app
         if app.history:
-            app.play(app.history[-1][1])
-            app.status = f"playing {app.history[-1][1].name}"
+            label, path = app.history[-1]
+            app.play(path)
+            app.state.msg = f"playing {label}"
         else:
-            app.status = "nothing rendered yet"
+            app.state.msg = "nothing rendered yet"
         self.rerender()
 
     def action_mark(self, which):
+        """Park the last render as A or B.
+
+        The A/B that matters in a REMIXER is not "two renders ago vs now" --
+        it is "the box's effect vs mine", which is the whole question an
+        upgraded LO-FI asks. So `a` parks what you just heard and `b`
+        RE-RENDERS the effect the cursor is on now, on the same source, so
+        the pair is always two effects rather than two accidents of history.
+        """
         app = self.app
-        if app.history:
+        if which == "A":
+            if not app.history:
+                app.state.msg = "nothing rendered yet — r first"
+                self.rerender()
+                return
             label, path = app.history[-1]
-            app.marks[which] = path
-            app.status = f"marked {which}: {label}"
-            audition._journal({"event": "mark", "which": which,
+            app.marks["A"] = (label, path)
+            app.state.msg = f"A = {label} · now point at another effect and b"
+            audition._journal({"event": "mark", "which": "A",
                                "label": label, "out": path.name})
-        self.rerender()
+            self.rerender()
+            return
+        # B: render whatever the cursor is on, against the same source.
+        if "A" not in app.marks:
+            app.state.msg = "mark A first (a), then point at the rival and b"
+            self.rerender()
+            return
+        self.action_render(mark="B")
 
     def action_play_mark(self, which):
         app = self.app
-        p = app.marks.get(which)
-        if p:
-            app.play(p)
-            app.status = f"playing {which}: {p.name}"
+        got = app.marks.get(which)
+        if got:
+            label, path = got
+            app.play(path)
+            app.state.msg = f"{which}: {label}"
         else:
-            app.status = f"no {which} mark yet — render, then press "\
-                         f"{'a' if which == 'A' else 'b'}"
+            app.state.msg = f"no {which} yet"
         self.rerender()
 
-
-# ---- REMIX -----------------------------------------------------------------
-class RemixScreen(Screen):
-    """The composer: what the image contains, whether it builds, what it costs.
-
-    Grouped the way an operator meets the modules -- servers with their track
-    range, inserts, then the system plumbing that never sits on a track."""
-
-    BINDINGS = [
-        Binding("space", "toggle", "toggle"),
-        Binding("f", "fallback", "fallback"),
-        Binding("w", "measure", "words"),
-        Binding("b", "build('bus')", "build"),
-        Binding("c", "build('check')", "check"),
-        Binding("l", "load", "load"),
-        Binding("s", "save", "save"),
-        Binding("v", "app.switch_mode('rig')", "rig"),
-        Binding("e", "app.switch_mode('emu')", "emu"),
-        Binding("question_mark", "help('remix')", "what is this?"),
-        Binding("q", "app.quit", "quit"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            yield Static(id="mods")
-            yield Static(id="panel")
-        yield RichLog(id="log", max_lines=400, wrap=True)
-        yield Footer()
-
-    def on_mount(self):
-        self.cursor = 0
-        log = self.query_one("#log", RichLog)
-        log.display = False
-        self.rerender()
-
-    def grouped(self):
-        """[(key or None, line-label)] with None rows as group headers."""
-        st = self.app.state
-        cats = {rig.SERVER: [], rig.INSERT: [], rig.STOCK: [],
-                rig.SYSTEM: []}
-        for k in st.keys:
-            cats[rig.category(st.mods[k])].append(k)
-        # Stock rows in stock's own chooser order, not alphabetical.
-        from remix import stock
-        cats[rig.STOCK] = [m.key for m in stock.MODULES]
-        out = []
-        for cat, title in ((rig.SERVER, "BUS EFFECTS (one per payload)"),
-                           (rig.INSERT, "INSERTS (any track)"),
-                           (rig.STOCK, "STOCK FX2 (in every image; "
-                                       "toggle = keep its row, free)"),
-                           (rig.SYSTEM, "SYSTEM (never on a track)")):
-            if cats[cat]:
-                out.append((None, title))
-                out += [(k, "") for k in cats[cat]]
-        return out
-
-    def key_rows(self):
-        return [i for i, (k, _) in enumerate(self.grouped()) if k]
-
-    def rerender(self):
-        st = self.app.state
-        rows = self.grouped()
-        krows = self.key_rows()
-        self.cursor = min(self.cursor, len(krows) - 1)
-        lines = ["[bold]THE IMAGE[/] — modules composed into the firmware\n"]
-        for i, (k, title) in enumerate(rows):
-            if k is None:
-                lines.append(f"[bold dim]{title}[/]")
-                continue
-            m = st.mods[k]
-            on = "x" if k in st.sel else " "
-            fb = ("*" if st.fallback == k
-                  else "~" if k == st.eff_fallback else " ")
-            tr = rig.track_range(m)
-            trs = f"T{tr.start}-{tr.stop - 1}" if len(tr) else "     "
-            wd = (" stock" if m.is_stock
-                  else f"{st.words[k]:>5}w" if k in st.words else "     -")
-            cur = krows[self.cursor] == i
-            mark = "[reverse]" if cur else ("" if k in st.sel else "[dim]")
-            end = "[/]" if mark else ""
-            lines.append(f" {mark}\\[{on}]{fb} {m.name:<11}{trs} {wd}{end}")
-        lines.append("")
-        lines.append("[bold dim]REMIXES[/] [dim]" + " ".join(
-            n for n in registry.remix_names() if not n.startswith("_"))
-            + "[/]")
-        lines.append("")
-        lines.append(f"[dim]? {escape(st.mods[self.current_key()].doc)}[/]")
-        self.query_one("#mods", Static).update("\n".join(lines))
-
-        # -- right panel: the unit's FX2 menu + fit + problems --------------
-        p = ["[bold]THE FX2 MENU[/] — as the unit will show it\n"]
-        for i, m in enumerate(st.menu_modules):
-            star = ""
-            if m.key == st.eff_fallback:
-                star = (" ← fallback (auto)" if st.fallback_is_auto
-                        else " ← fallback")
-            p.append(f"  {i}. {escape(m.menu.fullname.decode('latin1')):<13} "
-                     f"0x{m.menu.fx2_id:02x}{star}")
-        from remix import stock
-        n_menu = len(st.menu_modules)
-        if n_menu > 7:
-            p.append(f"  [dim]{n_menu} rows: the panel shows 7 and scrolls[/]")
-        absent = [m for m in st.mods.values()
-                  if m.menu is not None and m.key not in st.sel
-                  and not m.is_stock]
-        if absent and st.eff_fallback:
-            p.append(f"  [dim]{len(absent)} absent module id(s) alias to "
-                     f"{st.mods[st.eff_fallback].name}[/]")
-        hidden = [m.key for m in stock.MODULES if m.key not in st.sel]
-        if hidden:
-            p.append(f"  [dim]{len(hidden)} stock effects hidden (no row; "
-                     f"still run for old projects)[/]")
-        p.append(f"  [dim]consumed by every remix: {', '.join(stock.CONSUMED)}"
-                 f" — their code is the donor region[/]")
-        p.append("")
-        dsp = [m for m in st.selected if m.dsp is not None]
-        known = [m for m in dsp if m.key in st.words]
-        if known:
-            total = sum(st.words[m.key] for m in known)
-            partial = ("" if len(known) == len(dsp)
-                       else f" ({len(known)}/{len(dsp)} measured)")
-            fill = min(30, round(30 * total / DONOR_WORDS))
-            over = total > DONOR_WORDS
-            p.append(f"program: [{'bold red' if over else 'bold'}]{total}[/] "
-                     f"of {DONOR_WORDS} words{partial}")
-            p.append("[" + "#" * fill + "." * (30 - fill) + "]")
-        else:
-            p.append("[dim]program: press w to assemble and measure[/]")
-        p.append("")
-        probs = st.problems()
-        if probs:
-            p.append(f"[bold red]WILL NOT BUILD ({len(probs)})[/]")
-            p += [f"  {escape(x)}" for x in probs]
-        else:
-            p.append("[bold green]no LEDGER collisions — this selection "
-                     "builds[/]")
-            p.append("[dim]not checked: the shared 64K window "
-                     "(see CLAUDE.md for who owns what)[/]")
-            buffered = [m for m in st.selected
-                        if m.claims is not None and m.claims.owns_fx2_buffers]
-            if buffered:
-                p.append(f"[dim]{buffered[0].name} owns Y:0x4000-0xBFFF — "
-                         f"the only such module on its core[/]")
-        p.append("")
-        p.append(f"[dim]{escape(st.msg)}[/]")
-        self.query_one("#panel", Static).update("\n".join(p))
-
-    def on_key(self, ev):
-        krows = self.key_rows()
-        if ev.key in ("down", "j"):
-            self.cursor = min(len(krows) - 1, self.cursor + 1)
-        elif ev.key in ("up", "k"):
-            self.cursor = max(0, self.cursor - 1)
-        elif ev.character in ("[", "]"):
-            self.app.state.move(self.current_key(),
-                                -1 if ev.character == "[" else +1)
-        else:
-            return
-        self.rerender()
-
-    def current_key(self):
-        return self.grouped()[self.key_rows()[self.cursor]][0]
-
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
-
-    def action_toggle(self):
-        st = self.app.state
-        k = self.current_key()
-        st.toggle(k)
-        if k in st.sel and st.mods[k].is_stock:
-            st.msg = f"{k}: stock row kept -- no code, no words, no clone"
-        self.rerender()
-
-    def action_fallback(self):
-        st = self.app.state
-        k = self.current_key()
-        if k in st.sel and st.mods[k].menu is not None:
-            st.fallback = k
-            st.msg = f"fallback: {st.mods[k].name}"
-        else:
-            st.msg = "the fallback must be selected and have a menu entry"
-        self.rerender()
-
-    def action_measure(self):
-        st = self.app.state
-        st.msg = "assembling..."
-        self.rerender()
-        self.measure_worker()
-
-    @work(thread=True, exclusive=True, group="build")
-    def measure_worker(self):
-        st = self.app.state
-        ok, msg = st.measure("this selection")
-        st.msg = msg
-        self.app.call_from_thread(self.rerender)
-
+    # ---- build, measure, load, save --------------------------------------
     def action_build(self, target):
         st = self.app.state
         probs = st.problems()
@@ -715,21 +2494,28 @@ class RemixScreen(Screen):
             rc = p.wait()
         finally:
             st.scratch_cleanup()
-        st.msg = (f"make {target}: {'OK' if rc == 0 else f'FAILED (rc {rc})'}"
-                  f" — the built image is this selection")
-        if rc == 0:
-            self.app.boot = None          # the emu view must re-boot
+        st.msg = f"make {target}: {'OK' if rc == 0 else f'FAILED (rc {rc})'}"
+        # `make check` shells out to build_bus.py several times WITHOUT
+        # XBUS/SPEC (verify_burn does), so whatever it leaves at the
+        # artifact's path is not this selection. Re-sync rather than trust
+        # it -- the same reason the Makefile's own check target rebuilds.
+        self.synced = None
         self.app.call_from_thread(self.rerender)
 
     def action_load(self):
         names = [n for n in registry.remix_names() if not n.startswith("_")]
 
         def done(name):
-            if name:
+            if name == "stock":
+                self.app.state.load_stock()
+            elif name:
                 self.app.state.load(name)
-                self.rerender()
+            self.cur = [0, 0, 0]
+            self.schedule_sync()
+            self.rerender()
         self.app.push_screen(
-            Chooser("load remix:", [(n, n) for n in names]), done)
+            Chooser("load:", [("stock", "stock (an unmodified unit)")]
+                    + [(n, n) for n in names]), done)
 
     def action_save(self):
         st = self.app.state
@@ -749,9 +2535,10 @@ class RemixScreen(Screen):
                 return
 
             def documented(doc):
-                p = ROOT / f"remixes/{name}.py"
-                p.write_text(st.as_remix(
-                    name, doc or "a selection composed in the workbench"))
+                pth = ROOT / f"remixes/{name}.py"
+                pth.write_text(st.as_remix(
+                    name, doc or "a selection composed in the remixer"))
+                st.loaded_name = name
                 st.msg = f"wrote remixes/{name}.py"
                 self.rerender()
             self.app.push_screen(TextPrompt("one-line description:"),
@@ -759,169 +2546,37 @@ class RemixScreen(Screen):
         self.app.push_screen(TextPrompt("save as remix:"), named)
 
 
-# ---- EMU -------------------------------------------------------------------
-class EmuScreen(Screen):
-    """The built image, booted and drawing its own screens (docs/EMU.md)."""
-
-    BINDINGS = [
-        Binding("m", "view('menu')", "menu"),
-        Binding("f", "view('fx2')", "FX2"),
-        Binding("o", "view('fx1')", "FX1"),
-        Binding("p", "view('play')", "playback"),
-        Binding("v", "app.switch_mode('rig')", "rig"),
-        Binding("x", "app.switch_mode('remix')", "remix"),
-        Binding("question_mark", "help('emu')", "what is this?"),
-        Binding("q", "app.switch_mode('rig')", "back"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        yield Static(id="emuhead")
-        yield Static(id="lcd")
-        yield Static(id="emunote")
-        yield Footer()
-
-    def on_mount(self):
-        self.view = "fx2"
-        self.cursor = 0
-        self.eff = {"fx1": 0x04, "play": 1}
-        self.booting = False
-        self.ensure_boot()
-
-    def on_screen_resume(self):
-        # The rig's selection is this view's default subject.
-        self.view = "fx2"
-        self.ensure_boot()
-
-    def ensure_boot(self):
-        app = self.app
-        if not BUILT_IMAGE.exists():
-            self.query_one("#emuhead", Static).update(
-                "[bold]no built image[/] — build one from the REMIX view (b)")
-            return
-        mtime = BUILT_IMAGE.stat().st_mtime
-        if app.boot is not None and app.boot_mtime == mtime:
-            self.rerender()
-            return
-        if not self.booting:
-            self.booting = True
-            self.query_one("#emuhead", Static).update(
-                f"booting {BUILT_IMAGE.name} in the Tier-0 emulator (~4 s)...")
-            self.boot_worker(mtime)
-
-    @work(thread=True, exclusive=True, group="boot")
-    def boot_worker(self, mtime):
-        app = self.app
-        try:
-            import emu_bringup
-            r = emu_bringup.boot(str(BUILT_IMAGE))
-        except Exception as e:                       # noqa: BLE001
-            r = None
-            app.call_from_thread(
-                self.query_one("#emuhead", Static).update,
-                f"[bold]emulator unavailable[/] — {e} (make emu-setup)")
-        self.booting = False
-        if r is not None:
-            app.boot, app.boot_mtime = r, mtime
-            app.call_from_thread(self.rerender)
-
-    def rerender(self):
-        app = self.app
-        r = app.boot
-        if r is None:
-            return
-        import emu_bringup
-        head = (f"[bold]{'BOOTS CLEAN' if r.clean else 'FAULT'}[/] · "
-                f"{r.instrs:,} instrs · {r.stopped} · cached until rebuilt")
-        self.query_one("#emuhead", Static).update(head)
-        note = ""
-        if not r.uc or not r.reached_handoff:
-            self.query_one("#lcd", Static).update(
-                "[bold]did not reach the RTOS handoff — a patch may have "
-                "broken early init.[/]")
-            self.query_one("#emunote", Static).update("")
-            return
-        track0 = app.track - 1               # emu_bringup tracks are 0-based
-        if self.view == "menu":
-            roots = emu_bringup.menu_children(r)
-            self.cursor %= max(len(roots), 1)
-            draws = emu_bringup.render_menu(r, emu_bringup.MENU_ROOT_DESC,
-                                            self.cursor)
-            added = [k[0] for k in roots if k[0] not in STOCK_ROOTS]
-            note = ("patched-in: " + ", ".join(added)) if added else ""
-            title = "MAIN MENU — the firmware's own render"
-        elif self.view == "fx2":
-            mod = app.rig.effect(app.track)
-            eid = mod.menu.fx2_id if mod else 0x07
-            draws = emu_bringup.render_fx2(r, track=track0, effect_id=eid)
-            title = (f"FX2 SETUP — T{app.track}, "
-                     f"{mod.menu.fullname.decode('latin1') if mod else 'stock'}"
-                     f" (0x{eid:02x})")
-            note = ("values draw as dials the string hook cannot read — "
-                    "the rig's numbers are the truth; 1-8 changes track")
-            if mod and mod.name == "bongdelay":
-                note = ("a SPEC image aliases the delay's DSP to SEND on "
-                        "payload A — the page may draw empty; " + note)
-        elif self.view == "fx1":
-            draws = emu_bringup.render_fx1(r, track=track0,
-                                           effect_id=self.eff["fx1"])
-            title = (f"FX1 SETUP — T{app.track}, effect "
-                     f"0x{self.eff['fx1']:02x} (left/right cycles)")
-        else:
-            names = ["FLEX", "STATIC", "THRU", "NEIGHBOR"]
-            mi = self.eff["play"]
-            draws = emu_bringup.render_playback(r, track=track0, machine=mi)
-            title = f"PLAYBACK — T{app.track}, {names[mi]} (left/right cycles)"
-        grid = emu_bringup.layout_screen(draws)
-        lcd = "\n".join(["[bold]" + escape(title) + "[/]", "",
-                         "." + "-" * 46 + "."]
-                        + ["|" + escape(ln.ljust(46)) + "|" for ln in grid]
-                        + ["'" + "-" * 46 + "'"])
-        self.query_one("#lcd", Static).update(lcd)
-        self.query_one("#emunote", Static).update(f"[dim]{note}[/]")
-
-    def action_help(self, view):
-        self.app.push_screen(HelpScreen(view))
-
-    def action_view(self, v):
-        self.view = v
-        self.rerender()
-
-    def on_key(self, ev):
-        app = self.app
-        if ev.key in tuple("12345678"):
-            app.track = int(ev.key)
-        elif self.view == "menu" and ev.key in ("down", "j"):
-            self.cursor += 1
-        elif self.view == "menu" and ev.key in ("up", "k"):
-            self.cursor -= 1
-        elif self.view == "fx1" and ev.key in ("left", "right", "h", "l"):
-            d = 1 if ev.key in ("right", "l") else -1
-            e = self.eff["fx1"] + d
-            self.eff["fx1"] = 0x04 if e > 0x0f else 0x0f if e < 0x04 else e
-        elif self.view == "play" and ev.key in ("left", "right", "h", "l"):
-            d = 1 if ev.key in ("right", "l") else -1
-            self.eff["play"] = (self.eff["play"] + d) % 4
-        else:
-            return
-        self.rerender()
-
-
 # ---- the app ---------------------------------------------------------------
-class Workbench(App):
-    TITLE = "remix workbench"
+class Remixer(App):
+    TITLE = "remixer"
+    # ⚠️ TEXTUAL'S COMMAND PALETTE IS OFF. It advertised itself permanently in
+    # the footer (`^p palette`) and offered five things, none of them ours:
+    # Quit and Keys duplicate `q` and `?`, Maximize does nothing useful to a
+    # pane that is not a focusable widget, and Theme and Screenshot are worth
+    # less than the footer space and the "what is that?" it cost.
+    ENABLE_COMMAND_PALETTE = False
     CSS = """
-    #strip { height: 2; padding: 0 1; }
-    #detail { height: 1fr; padding: 0 2; }
-    #history { height: 8; padding: 0 2; border-top: dashed $surface; }
-    #status { height: 1; padding: 0 1; }
-    #mods { width: 44; padding: 0 1; }
-    #panel { width: 1fr; padding: 0 1; border-left: dashed $surface; }
+    /* The panes must FILL the row for their left borders to run the whole
+       way down -- a Static is only as tall as its text, so the dividers
+       stopped wherever the shortest column ran out. */
+    Horizontal { height: 1fr; }
+    #pane_avail { width: 32; padding: 0 1; height: 100%; }
+    #pane_load  { width: 40; padding: 0 1; height: 100%;
+                  border-left: dashed $surface; }
+    #pane_unit  { width: 1fr; height: 100%; padding: 0 1;
+                  border-left: dashed $surface; }
+    /* ONE PANE AT A TIME on a terminal too narrow for three columns. The
+       dividers go with them: a lone pane with a left border reads as a
+       column that lost its neighbour. */
+    #panes > Static.first { border-left: none; }
+    #pane_budget { height: auto; padding: 0 1;
+                   border-top: dashed $surface; }
+    #tabbar { height: 1; padding: 0 1; }
+    /* auto, so an empty status line takes no row at all. */
+    #status { height: auto; padding: 0 1; }
     #log { height: 12; border-top: dashed $surface; }
-    #emuhead { height: 2; padding: 0 2; }
-    #lcd { height: 1fr; padding: 0 2; }
-    #emunote { height: 2; padding: 0 2; }
     """
-    MODES = {"rig": RigScreen, "remix": RemixScreen, "emu": EmuScreen}
+    MODES = {"remixer": RemixerScreen}
     # App-level so it works from every view; modals handle their own escape
     # first, and no screen binds it, so escape is unambiguous.
     BINDINGS = [Binding("escape", "stop_play", "stop audio")]
@@ -929,29 +2584,26 @@ class Workbench(App):
     def __init__(self):
         super().__init__()
         self.state = State()
-        self.rig = rig.Rig()
-        self.track = 5                     # ChonVerb's home; T5 is the test track
         self.source = (wav_sources() or [None])[0]
-        self.wet = False
         self.history = []                  # [(label, path)]
-        self.marks = {}                    # "A"/"B" -> path
-        self.status = ("1-8 pick a track · enter picks its effect · "
-                       "r renders · x composes the image")
+        self.marks = {}                    # "A"/"B" -> (label, path)
+        self.ab_source = None              # the wav an A/B pair shares
+        self.status = ""                   # state.msg is the live line now
         self.rendering = False
-        self.boot = None                   # cached emulator BootResult
-        self.boot_mtime = None
+        self.boot = None                   # the booted image, or None
         self.player = None                 # the running afplay
 
     def on_mount(self):
         # ansi-dark renders in the TERMINAL's own 16-color palette, so the
-        # workbench wears whatever theme Alacritty wears instead of Textual's
-        # truecolor default. WORKBENCH_THEME picks any built-in Textual theme
+        # remixer wears whatever theme Alacritty wears instead of Textual's
+        # truecolor default. REMIXER_THEME picks any built-in Textual theme
         # (e.g. gruvbox, nord, textual-dark) for anyone who wants otherwise.
         import os
         from textual.theme import BUILTIN_THEMES
-        want = os.environ.get("WORKBENCH_THEME", "ansi-dark")
+        want = (os.environ.get("REMIXER_THEME")
+                or os.environ.get("WORKBENCH_THEME") or "ansi-dark")
         self.theme = want if want in BUILTIN_THEMES else "ansi-dark"
-        self.switch_mode("rig")
+        self.switch_mode("remixer")
 
     def play(self, path):
         """afplay, one at a time -- a new play stops the old."""
@@ -971,8 +2623,8 @@ class Workbench(App):
         return False
 
     def action_stop_play(self):
-        self.status = ("stopped" if self.stop_play()
-                       else "nothing playing")
+        self.state.msg = ("stopped" if self.stop_play()
+                          else "nothing playing")
         scr = self.screen
         if hasattr(scr, "rerender"):
             scr.rerender()
@@ -984,5 +2636,5 @@ class Workbench(App):
 
 if __name__ == "__main__":
     if not sys.stdout.isatty():
-        sys.exit("the remix workbench needs a terminal (try: make remix)")
-    Workbench().run()
+        sys.exit("the remixer needs a terminal (try: make remix)")
+    Remixer().run()

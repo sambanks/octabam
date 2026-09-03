@@ -1,6 +1,6 @@
 """The composer's model: a module selection and what it costs to build.
 
-Extracted verbatim from the curses workbench (tools/remix/tui.py, retired by
+Extracted verbatim from the curses remixer (tools/remix/tui.py, retired by
 the track-centric app) so the Textual frontend and any headless caller share
 one model. Everything here is pure: no UI import, no terminal assumption.
 
@@ -12,6 +12,7 @@ substitutions all affect the count and only the build knows them.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -20,12 +21,60 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from remix import ledger, registry  # noqa: E402
+from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DONOR_WORDS = 2724          # per payload; build_bus.py prints the live figure
+# Per payload, for the DEFAULT harvest (the three reverbs). It is no longer a
+# constant of the image -- Remix.harvest decides the region -- so this is the
+# fallback for "no selection in hand"; ask stock.region_words(sel.harvest).
+DONOR_WORDS = 2724
+# The ColdFire cave: the firmware's zero run at 0x400d6b00..0x400d7c3c, which
+# is where EVERYTHING a remix plants on the ColdFire lives -- the chooser
+# list, the descriptor clones, the caves and the label formatters. The build
+# reports what is LEFT of it, never the size, so the total is written down
+# here and pinned against build_bus's own NEW_LIST/ZERO_RUN_END by
+# tools/remix/selftest.py. Used is derived as CAVE_BYTES - free, which holds
+# for both list placements: a long chooser list moves the reported ceiling
+# down by exactly the 128 B the list then occupies.
+CAVE_BYTES = 0x400d7c3c - 0x400d6b00
 BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
 # Stock top-level menu, to highlight what a patch adds (docs/MAINMENU.md).
 STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
+
+
+def stock_fx1_default() -> tuple[str, ...]:
+    """The FX1 chooser a stock unit shows, in ITS order, minus the NONE row
+    the build always emits. Read from the pristine image, never written
+    down."""
+    from remix import stock
+    by_id = {m.menu.fx2_id: m.key for m in stock.MODULES}
+    return tuple(by_id[i] for i in stock.fx1_order() if i in by_id)
+
+
+def fx1_hazard(mod) -> str | None:
+    """Why this module must not take an FX1 row, or None if it may.
+
+    ONE STATEMENT, read by both the remixer (at the keystroke) and
+    build_bus.py (at the build), because the two drifting apart is how a UI
+    comes to offer something the build refuses.
+
+    ⚠️ An FX1 slot is 3,072 words and an FX2 slot is 16,384, and the trap is
+    not theoretical: docs/DSP.md's "wrong claim 1" is this exact failure,
+    bisected on hardware -- a 16K layout placed at an FX1 base "runs through
+    the other FX1 buffers and into FX2 slot 0".
+    """
+    from remix.schema import BusRole, YBase
+    claims = getattr(mod, "claims", None)
+    if mod.dsp is not None and mod.dsp.bus_role is BusRole.SERVER:
+        return "a bus server is one per core; an FX1 row is a second instance"
+    if claims is not None and claims.stock_instance_buffer:
+        return ("it sizes its buffer for an FX2 slot (16,384 words) and an "
+                "FX1 slot is 3,072")
+    if (claims is not None and claims.owns_fx2_buffers) or (
+            mod.dsp is not None and mod.dsp.ybase is not YBase.NEVER):
+        return ("its buffers are at fixed FX2 addresses, so an FX1 instance "
+                "writes into another track's buffer")
+    return None
 
 
 class State:
@@ -33,6 +82,12 @@ class State:
         self.mods = registry.modules()
         self.keys = sorted(self.mods)
         self.sel: set[str] = set()
+        # ⚠️ THE HARVEST IS DERIVED, not held. See the `harvest` property.
+        # THE FX1 CHOOSER, in its own row order (schema.Remix.fx1). A second
+        # list, not a flag on the first: FX1 and FX2 are two independent
+        # chooser lists and a remix composes both. Seeded from stock's ten,
+        # so an untouched selection saves `fx1=()` and writes nothing.
+        self.fx1: list[str] = []
         # Chooser ORDER. A remix's module list is ordered and that order is
         # the panel's row order, so the composer keeps it too -- the old set
         # alone wrote every saved remix alphabetically, which silently
@@ -42,9 +97,56 @@ class State:
         self.cursor = 0
         self.words: dict[str, int] = {}      # key -> words, from a real build
         self.words_from = ""                 # which remix produced them
-        self.msg = "space toggles; w assembles for word counts; ? for keys"
-        self.load("chongbong" if "chongbong" in registry.remix_names()
-                  else (registry.remix_names() or [None])[0])
+        # [(payload, total, used, free)] as the last build reported them.
+        # TWO regions, one per payload -- see problems(). The TOTAL is read
+        # from the build too rather than assumed to be DONOR_WORDS: a DEV
+        # build takes CHORUS's module as well, so the size of the region is
+        # a property of the build, not a constant of the firmware.
+        self.regions: list[tuple[str, int, int, int]] = []
+        # (payload, base, words, used) per RUN -- empty when the harvested
+        # effects form one unbroken run, which is the common case.
+        self.runs: list[tuple[str, int, int, int]] = []
+        # Which of PLATE/SPRING/DARK the last build LEFT ALONE, upper-cased
+        # as the build names them. Empty until a build has reported.
+        self.donors_kept: set[str] = set()
+        # Bytes left in the ColdFire cave region and rows in the chooser, as
+        # the last build reported them. None until one has.
+        self.cave_free: int | None = None
+        self.chooser_rows: int | None = None
+        # (worst per-core cycles, what our code may spend, the mix that
+        # produced it) -- tools/cycle_count.py against this selection.
+        self.cycles: tuple[int, int, dict] | None = None
+        # ⚠️ `enter` stopped swapping on 2 Sep 2026; this line did not.
+        self.msg = "enter adds · r hears it · ? for keys"
+        # Per-MODULE knob values, so an effect's settings belong to the effect
+        # rather than to a track. (The retired rig kept these per track, which
+        # was the redundancy: one knob set per effect is what a remix means.)
+        self.knobs: dict[str, dict[str, int]] = {}
+        self.loaded_name = ""
+        self.load_stock()
+
+    # ---- the default: an unmodified unit --------------------------------
+    def load_stock(self):
+        """The chooser an UNMODIFIED unit shows: every stock FX2 effect, no
+        modules of ours. The honest starting point -- you add to what the box
+        already does rather than to somebody else's selection.
+
+        ⚠️ IT BUILDS, since 2 Sep 2026 -- to A 0/2724 · B 0/2724, not one
+        word placed, all three reverbs alive: the unit's own chooser rebuilt
+        from our tables. It could not, until the fallback stopped having to
+        be a module of ours; ids this selection does not implement now
+        resolve to the firmware's own NONE (schema.NO_FALLBACK), which is
+        what an unassigned track shows on a stock unit anyway. Until then
+        the remixer opened on a selection it had to apologise for.
+        """
+        from remix import stock
+        self.sel = {m.key for m in stock.MODULES}
+        self.order = [m.key for m in stock.MODULES]
+        self.fx1 = list(stock_fx1_default())
+        self.fallback = None
+        self.loaded_name = "stock"
+        self.msg = ("stock: the chooser an unmodified unit shows — "
+                    "add modules from the left")
 
     # ---- selection ----------------------------------------------------
     def load(self, name):
@@ -53,30 +155,149 @@ class State:
         r = registry.remix(name)
         self.sel = set(r.modules)
         self.order = list(r.modules)
+        # `fx1=()` means "stock's, unchanged" -- so the pane shows stock's
+        # ten rather than an empty list, and saving it back writes `()` again.
+        self.fx1 = list(r.fx1) or list(stock_fx1_default())
         self.fallback = r.fallback
+        self.loaded_name = name
         self.msg = f"loaded remix {name!r}"
+
+    # ---- per-module knob values -----------------------------------------
+    def knobs_for(self, mod) -> dict[str, int]:
+        """This module's current knob values, seeded from its manifest
+        defaults the first time it is asked for. Manifest defaults are the
+        honest baseline -- a stale default polluted every shimmer measurement
+        until Round 12."""
+        from remix import rig
+        if mod.key not in self.knobs:
+            self.knobs[mod.key] = rig.default_knobs(mod)
+        return self.knobs[mod.key]
+
+    @property
+    def harvest(self) -> list[str]:
+        """The stock effects this selection gives up, in address order.
+
+        ⚠️ DERIVED FROM THE CHOOSERS, not toggled. Taking an effect off both
+        of the unit's menus IS the decision to give up its words -- "remove
+        from the chooser" and "harvest" were the same act described twice,
+        and the second one needed its own key, its own field and its own
+        contiguity rule. It reproduces every shipped remix exactly: FX1
+        lists ten of the thirteen and the three reverbs are FX2-only, so a
+        remix that lists none of them on FX2 harvests exactly those three,
+        which is what the build has always done.
+        """
+        from remix import stock
+        return list(stock.region_of(
+            stock.harvested(set(self.order) | set(self.fx1))))
+
+    def toggle_fx1(self, key, name=None):
+        """Give this module a row on FX1 as well, or take it away.
+
+        -> a sentence for the status line. Refused rather than silently
+        ignored where the build would refuse it, so the answer arrives at the
+        keystroke instead of at the next rebuild.
+
+        `name` is what to CALL it: the caller passes the panel name, because
+        the module key ("REVERB SERVER") is not what the operator is looking
+        at ("ChonVerb") and this module must not import the shell.
+        """
+        name = name or key
+        mod = self.mods.get(key)
+        if mod is None or mod.menu is None:
+            return "this has no chooser row at all — nothing for FX1 to list"
+        if mod.is_stock:
+            # A STOCK EFFECT NEEDS NO FX2 ROW TO SIT ON FX1: the two lists
+            # are independent. What it does need is for FX1 to be able to
+            # host it -- DELAY and the three reverbs are FX2-only because
+            # they do not fit a 3,072-word FX1 allocation.
+            from remix import stock
+            if mod.menu.fx2_id not in stock.fx1_ids():
+                return (f"{name} is FX2-only — it does not fit a 3,072-word "
+                        f"FX1 allocation, which is why stock never listed it "
+                        f"there")
+            if key in self.fx1:
+                self.fx1.remove(key)
+                return f"{name} is off the FX1 chooser"
+            self.fx1.append(key)
+            return f"{name} is back on the FX1 chooser"
+        if key not in self.sel:
+            return f"add {name} to the image first, then 1 gives it FX1 too"
+        if mod.menu.replaces:
+            return (f"{name} replaces stock {mod.menu.replaces}, so it "
+                    f"already has that effect's FX1 row")
+        # ⚠️ ONLY A BUFFER-FREE INSERT CAN TAKE ONE, and the build refuses the
+        # rest for reasons worth arriving at the keystroke rather than at the
+        # next rebuild. See build_bus.py's fx1 block for the full statement.
+        why = fx1_hazard(mod)
+        if why:
+            return f"{name}: {why}"
+        if key in self.fx1:
+            self.fx1.remove(key)
+            return f"{name} is off the FX1 chooser"
+        self.fx1.append(key)
+        return (f"{name} joins the FX1 chooser — no words, but 4 more "
+                f"slots of cycles")
 
     def toggle(self, key):
         if key in self.sel:
             self.sel.discard(key)
             self.order.remove(key)
+            # ⚠️ ONLY FOR MODULES OF OURS. Their FX1 row points at the
+            # descriptor CLONE the FX2 row creates, so losing the FX2 row
+            # loses the FX1 one. A stock effect's FX1 row is independent --
+            # that is the whole asymmetry -- and taking it off the FX2
+            # chooser must not silently take it off FX1 as well.
+            if not self.mods[key].is_stock and key in self.fx1:
+                self.fx1.remove(key)
             if self.fallback == key:
                 self.fallback = None
         else:
             self.sel.add(key)
             self.order.append(key)
 
+    def insert_at(self, key, i):
+        """Add a module at a CHOSEN position. Chooser order is the panel's row
+        order, so "which slot" is a real question and appending to the end is
+        only ever one answer to it."""
+        if key in self.sel:
+            return
+        self.sel.add(key)
+        self.order.insert(max(0, min(len(self.order), i)), key)
+
+    def swap(self, out_key, in_key):
+        """Replace one entry with another IN ITS OWN SLOT.
+
+        Composing an image is trading, not accumulating: the donor region is
+        2,724 words and the chooser is a list somebody has to scroll, so
+        putting something in generally means taking something out. Keeping
+        the position is the whole point -- the row number IS the panel slot.
+        """
+        if out_key not in self.sel or in_key in self.sel:
+            return False
+        i = self.order.index(out_key)
+        self.order[i] = in_key
+        self.sel.discard(out_key)
+        self.sel.add(in_key)
+        if self.fallback == out_key:
+            self.fallback = None
+        return True
+
     def move(self, key, delta):
-        """Shift a selected module earlier (-1) or later (+1) in chooser order."""
+        """Shift a selected module earlier (-1) or later (+1) in chooser
+        order. -> its new 1-based chooser row, or None if it has none."""
         if key not in self.sel:
             self.msg = "select it first -- only selected modules have a row"
-            return
+            return None
         i = self.order.index(key)
         j = max(0, min(len(self.order) - 1, i + delta))
         self.order[i], self.order[j] = self.order[j], self.order[i]
+        # The ROW NUMBER as the pane prints it -- 1-based. This said
+        # "chooser row 1" for the row drawn as `2`, which is an invitation to
+        # doubt every other number here. The NAME is left to the caller: the
+        # panel name (`BongDelay`) lives in app.disp(), and this module must
+        # not import the shell.
         rows = [m.key for m in self.menu_modules]
-        self.msg = (f"{self.mods[key].name} -> chooser row {rows.index(key)}"
-                    if key in rows else "no menu entry: order is moot")
+        return rows.index(key) + 1 if key in rows else None
 
     @property
     def selected(self):
@@ -89,13 +310,27 @@ class State:
         return [m for m in self.selected if m.menu is not None]
 
     def auto_fallback(self):
-        """The fallback to use when none is set explicitly. SEND is the safe
-        catch-all -- an unimplemented id aliased to it becomes a harmless dry
-        passthrough, not garbage -- so prefer it; if there is exactly one
-        menu-bearing module, it is the only choice. Otherwise there is no safe
-        automatic pick (any real effect would PROCESS the unknown id), so
-        return None and let problems() ask for an explicit choice.
+        """The fallback to use when none is set explicitly.
+
+        THE FIRMWARE'S OWN NONE, whenever this selection has no bus. An
+        unimplemented id then resolves to the descriptor a stock chooser
+        carries at row 0 and to the payload's null stub -- an unassigned
+        track is simply OFF, exactly as on an unmodified unit -- and it costs
+        no words. That is the honest answer for an insert collection, which
+        used to be made to carry SEND (215-250 words) for a bus client
+        nothing in the image reads. See schema.NO_FALLBACK, which is also
+        what refuses this beside a bus participant: with a server or a SEND
+        in the image, an unassigned track running nothing would leave the
+        rotation unflipped and the accumulators uncleared.
+
+        With a bus, SEND is the safe catch-all -- aliasing to it makes the
+        id a harmless dry passthrough rather than garbage -- so prefer it. If
+        there is exactly one menu-bearing module, it is the only choice.
+        Otherwise there is no safe automatic pick (any real effect would
+        PROCESS the unknown id), so return None and let problems() ask.
         """
+        if not any(on_the_bus(m) for m in self.selected):
+            return NO_FALLBACK
         for k in self.order:
             if self.mods[k].name == "send" and self.mods[k].menu is not None:
                 return k
@@ -106,7 +341,13 @@ class State:
     def eff_fallback(self):
         """What the build will actually use: the explicit choice if valid,
         else the intelligent default."""
-        if self.fallback and self.fallback in self.sel \
+        # NO_FALLBACK is not a module, so it is valid exactly when the
+        # selection still has no bus participant -- otherwise it falls
+        # through to the automatic pick, which will be SEND.
+        if self.fallback == NO_FALLBACK:
+            if not any(on_the_bus(m) for m in self.selected):
+                return NO_FALLBACK
+        elif self.fallback and self.fallback in self.sel \
                 and self.mods[self.fallback].menu is not None:
             return self.fallback
         return self.auto_fallback()
@@ -127,19 +368,45 @@ class State:
         if not self.menu_modules:
             out.append("no module with a menu entry: nothing would be "
                        "selectable on the panel")
+        # ⚠️ NOTHING TO PLACE INTO. On a stock chooser every word is a stock
+        # effect's, so adding a module of ours is the moment a choice has to
+        # be made about which one to give up. It arrives as a problem with a
+        # one-key fix rather than as a build failure.
+        if not self.harvest and [m for m in self.selected if m.dsp is not None]:
+            out.append("every stock effect is on a chooser, so there is "
+                       "nowhere to place your modules — x drops the three "
+                       "reverbs (2,724 words), or take off whichever you "
+                       "would rather lose")
         if self.eff_fallback is None:
             out.append("no fallback and none can be picked automatically "
                        "(no SEND, and several effects) — press f to choose "
                        "which effect unimplemented ids alias to")
-        # A module whose words we know, summed against the region it must fit.
-        known = [k for k in self.sel if k in self.words]
-        if known and len(known) == len([k for k in self.sel
-                                        if self.mods[k].dsp is not None]):
-            total = sum(self.words[k] for k in known)
-            if total > DONOR_WORDS:
-                out.append(f"{total} words exceeds the {DONOR_WORDS}-word "
-                           f"donor region by {total - DONOR_WORDS}")
+        # THE WORD BUDGET IS NOT CHECKED HERE, deliberately. It used to be:
+        # every module's words summed against ONE 2,724-word region. There
+        # are TWO -- one per payload -- and SPEC=1 puts each server on its
+        # own, so the sum is not a quantity the image has to fit. It read
+        # chongbong, the SHIPPING remix, as "5130 words exceeds the 2724-word
+        # donor region by 2406" when the truth was A 2650/74 free and B
+        # 2719/5 free. The check was latent while the words were only known
+        # after an explicit keypress; it became a permanent false alarm the
+        # moment the remixer started measuring on every change.
+        #
+        # The build is the authority and it refuses per payload ("payload B:
+        # RUNGS overruns the region (3599 > 2724 words)"), so an overrun
+        # arrives as a build failure with the payload named. measure() keeps
+        # the real per-payload numbers in self.regions.
         return out
+
+    def forget_build(self):
+        """Drop everything only a build can know. Called when the selection
+        stops being buildable: these numbers describe the image you HAD, and
+        a budget that silently belongs to two edits ago is worse than none."""
+        self.regions = []
+        self.runs = []
+        self.cycles = None
+        self.cave_free = None
+        self.chooser_rows = None
+        self.donors_kept = set()
 
     # ---- the one thing that needs a real build --------------------------
     def measure(self, note):
@@ -162,28 +429,162 @@ class State:
             r = subprocess.run([sys.executable, "tools/build_bus.py"],
                                cwd=ROOT, env=env, capture_output=True,
                                text=True)
-            if r.returncode != 0:
-                tail = (r.stdout + r.stderr).strip().splitlines()
-                return False, (tail[-1] if tail else "build failed")
-            words, free = {}, None
+            # ⚠️ PARSE THE REPORT EVEN WHEN THE BUILD FAILED. Returning
+            # here left every build-derived number -- the donor budget, the
+            # cave, the rows, which reverbs survived -- holding the LAST
+            # SUCCESSFUL build's values, so a failed selection showed the
+            # budget of an image it was not. And the report is usually still
+            # informative: a chooser-row refusal happens after the region
+            # line is printed, so "726 used, 1998 free" is exactly the fact
+            # that tells you the failure is not about space.
+            #
+            # forget_build() is the other half: when the parse yields
+            # nothing, the fields go empty rather than stale.
+            failed = r.returncode != 0
+            words, regions, payload, runs = {}, [], None, []
+            kept, saw_donor_line = set(), False
+            cave_free = rows = None
             for line in r.stdout.splitlines():
                 m = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
                              r"\s+\(\s*(\d+) words\)", line)
                 if m and m.group(1).strip() in self.mods:
                     words[m.group(1).strip()] = int(m.group(2))
-                m = re.search(r"used (\d+)\s+FREE (\d+)", line)
+                m = re.match(r"-- payload (\w+) --", line.strip())
                 if m:
-                    free = (int(m.group(1)), int(m.group(2)))
+                    payload = m.group(1)
+                # There is one of these PER PAYLOAD, each its own 2,724-word
+                # region. Keeping only the last was how the budget came to be
+                # reported as a single pool.
+                m = re.search(r"\((\d+) words\)\s+used (\d+)\s+FREE (\d+)",
+                              line)
+                if m and payload:
+                    regions.append((payload, int(m.group(1)),
+                                    int(m.group(2)), int(m.group(3))))
+                # WHICH DONORS SURVIVED, from the build rather than
+                # re-derived here. The three reverbs' code IS the donor
+                # region and the build nulls a donor id only where words
+                # actually landed, so "are they gone" is a question only the
+                # placement can answer -- and the remixer used to assume
+                # the answer was always yes.
+                # ⚠️ ONE ENTRY PER RUN, and only when the region is split.
+                # The map needs to know WHICH opening a module went into --
+                # a single global cursor cannot say, and drawing one bracket
+                # across a gap claims ground the placer cannot use.
+                m = re.match(r"\s+run \d+ P:0x([0-9a-f]+)\.\.0x[0-9a-f]+"
+                             r"\s+(\d+) w\s+used (\d+)", line)
+                if m and payload:
+                    runs.append((payload, int(m.group(1), 16),
+                                 int(m.group(2)), int(m.group(3))))
+                m = re.search(r"KEPT STOCK: (\S+)", line)
+                if m:
+                    kept |= {w.strip() for w in m.group(1).split("/")}
+                m = re.search(r"(\d+) B of cave left", line)
+                if m:
+                    cave_free = int(m.group(1))
+                m = re.search(r"chooser list = (\d+) entries", line)
+                if m:
+                    rows = int(m.group(1))
             self.words.update(words)
             self.words_from = note
-            if free:
-                return True, (f"assembled: {free[0]} words used, "
-                              f"{free[1]} free in the donor region")
+            self.regions = regions
+            self.runs = runs
+            # Both payloads report; a donor survives only if BOTH kept it.
+            for line in r.stdout.splitlines():
+                if "donor ids" in line:
+                    saw_donor_line = True
+                    if "KEPT STOCK:" not in line:
+                        kept = set()
+                        break
+            self.donors_kept = kept if saw_donor_line else set()
+            self.cave_free = cave_free
+            self.chooser_rows = rows
+            # ---- CYCLES, the fifth scarce thing --------------------------
+            # It is the one that breaks AUDIO rather than the build: over
+            # budget the core does not refuse, it wedges (PLAN.md s2, "the
+            # wall is a CLIFF"). cycle_count.py is already remix-aware and
+            # costs 0.17 s, so it rides the same scratch remix rather than
+            # waiting for `make check` -- which is where this answer lived,
+            # behind a key, after the fact.
+            self.cycles = None
+            c = subprocess.run([sys.executable, "tools/cycle_count.py",
+                                "--json"], cwd=ROOT, env=env,
+                               capture_output=True, text=True)
+            if c.returncode == 0:
+                try:
+                    j = json.loads(c.stdout[c.stdout.index("{"):])
+                    self.cycles = (j["worst_core"], j["usable"],
+                                   j["worst_core_modules"])
+                except (ValueError, KeyError):
+                    pass
+            if failed:
+                tail = (r.stdout + r.stderr).strip().splitlines()
+                return False, (tail[-1] if tail else "build failed")
+            if regions:
+                return True, ("assembled: " + " · ".join(
+                    f"{n} {u}/{t}" for n, t, u, _f in regions))
             return True, "assembled"
         finally:
             tmp.unlink(missing_ok=True)
             for junk in (ROOT / "remixes/__pycache__").glob("_tui_scratch*"):
                 junk.unlink(missing_ok=True)
+
+    def measure_every(self, note=None):
+        """Word counts for EVERY module of ours, not just the selection.
+
+        The build only reports what it PLACED, so a module you have not added
+        had no number and the pane said "build to measure" -- which is
+        circular: the cost is what you want to know BEFORE adding it. Each
+        module is assembled once beside SEND, which is what audition.py
+        already does for an insert, and one takes ~0.19 s.
+
+        Cached on disk against the newest module source, so it is paid once
+        per session and again only when something is edited.
+        """
+        import json
+        newest = 0.0
+        for f in (ROOT / "modules").rglob("*"):
+            if f.is_file() and "__pycache__" not in f.parts:
+                newest = max(newest, f.stat().st_mtime)
+        cache = ROOT / "out/_audition/words.json"
+        try:
+            have = json.loads(cache.read_text())
+            if have.get("stamp") == newest:
+                self.words.update(have["words"])
+                return
+        except Exception:                            # noqa: BLE001
+            pass
+        got = {}
+        for key, m in self.mods.items():
+            if m.is_stock or m.dsp is None or key in got:
+                continue
+            mods = (key,) if key == "SEND" else (key, "SEND")
+            tmp = ROOT / "remixes/_words.py"
+            tmp.write_text(
+                f'"""_words -- scratch: one module, to read its word count."""\n'
+                f'from remix.schema import Remix\n'
+                f'REMIX = Remix(name="_words", doc="one module", '
+                f'modules={mods!r}, fallback="SEND")\n')
+            try:
+                r = subprocess.run(
+                    [sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                    env={**os.environ, "REMIX": "_words", "XBUS": "1",
+                         "SPEC": "1"}, capture_output=True, text=True)
+                for line in r.stdout.splitlines():
+                    mm = re.match(r"\s{2}(\S.*?)\s+P:0x[0-9a-f]+\.\.0x[0-9a-f]+"
+                                  r"\s+\(\s*(\d+) words\)", line)
+                    if mm and mm.group(1).strip() in self.mods:
+                        got[mm.group(1).strip()] = int(mm.group(2))
+            finally:
+                tmp.unlink(missing_ok=True)
+                for junk in (ROOT / "remixes/__pycache__").glob("_words*"):
+                    junk.unlink(missing_ok=True)
+        self.words.update(got)
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"stamp": newest, "words": got},
+                                        indent=2) + "\n")
+        except OSError:
+            pass
 
     # ---- scratch builds --------------------------------------------------
     def scratch_remix(self):
@@ -194,7 +595,7 @@ class State:
         """
         tmp = ROOT / "remixes/_tui_scratch.py"
         tmp.write_text(self.as_remix("_tui_scratch",
-                                     "scratch selection from the workbench"))
+                                     "scratch selection from the remixer"))
         return "_tui_scratch"
 
     def scratch_cleanup(self):
@@ -206,8 +607,19 @@ class State:
     def as_remix(self, name, doc):
         mods = ", ".join(f'"{k}"' for k in self.order)
         fb = f'"{self.eff_fallback}"' if self.eff_fallback else "None"
+        # ⚠️ EMITTED ONLY WHEN IT DIFFERS FROM STOCK'S. `fx1=()` means "leave
+        # FX1 alone", and the build then writes not one byte -- which is what
+        # keeps every remix that predates FX1 composition byte-identical.
+        # An untouched chooser must therefore save as `()`, not as a
+        # spelled-out copy of stock's ten.
+        fx1 = ("" if tuple(self.fx1) == stock_fx1_default()
+               else '    fx1=('
+                    + ", ".join(f'"{k}"' for k in self.fx1) + ',),\n')
+        # No `harvest=` line: it is derived from the two choosers, so
+        # writing it out would be a second copy of what `modules` and `fx1`
+        # already say -- and the first one to go stale.
         return (f'"""{name} -- {doc}\n\n'
-                f'Written by the remix workbench. Edit freely: the docstring\n'
+                f'Written by the remixer. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'
                 f'"""\n\n'
                 f'from remix.schema import Remix\n\n'
@@ -216,4 +628,5 @@ class State:
                 f'    doc="{doc}",\n'
                 f'    modules=({mods},),\n'
                 f'    fallback={fb},\n'
+                f'{fx1}'
                 f')\n')

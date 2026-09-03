@@ -1,6 +1,6 @@
 """Render ANY effect on a source wav, knobs addressed by their MANIFEST names.
 
-The one audition entry point for the workbench: chonverb goes through
+The one audition entry point for the remixer: chonverb goes through
 tools/render_reverb.py (wet extraction, per-mode image cache, ring-out tail),
 everything else through tools/send_probe.py --wav. The caller never learns
 which -- it says "render warpfold with MIX=127 on this wav" and gets a path.
@@ -96,7 +96,7 @@ def _ensure_insert_mem(mod, log=print):
     send = registry.by_name("send")
     scratch = ROOT / "remixes/_audition.py"
     scratch.write_text(
-        f'"""_audition -- scratch: {mod.name} + SEND, for the workbench.\n\n'
+        f'"""_audition -- scratch: {mod.name} + SEND, for the remixer.\n\n'
         f'Written and removed by tools/remix/audition.py.\n"""\n\n'
         f'from remix.schema import Remix\n\n'
         f'REMIX = Remix(\n'

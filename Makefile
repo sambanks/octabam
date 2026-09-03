@@ -112,6 +112,10 @@ modmap: ## DSP module load map — which bytes land at which P address
 verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it currently SKIPS)
 	python3 tools/remix/selftest.py
 	python3 tools/verify_slots.py
+	python3 tools/verify_replaces.py
+	python3 tools/label_fmt.py
+	@$(PY) tools/verify_labels.py $(REMIX) 2>/dev/null || \
+	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 
@@ -159,13 +163,13 @@ modules: ## List the module index and the available remixes
 	python3 tools/remix/index.py
 
 .PHONY: remix
-remix: ## The workbench: 8 tracks, dial + hear effects, compose + build the image
+remix: ## The remixer: swap effects in and out, dial + hear them, build the image
 	$(PY) tools/remix/app.py
 
 .PHONY: emu-setup
-emu-setup: ## Provision the workbench deps (unicorn + textual) into .venv via uv
+emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
-	@echo "workbench ready — 'make remix' (docs/EMU.md for the emulator view)"
+	@echo "remixer ready — 'make remix' (docs/EMU.md for the emulator view)"
 
 # -------------------------------------------------------------------- misc --
 

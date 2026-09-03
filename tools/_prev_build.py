@@ -94,11 +94,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
-from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
-                          YBase)
-from remix.state import fx1_hazard  # noqa: E402
-from remix import stock as stock_mod  # noqa: E402
-import label_fmt  # noqa: E402
+from remix.schema import YBase  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -120,25 +116,6 @@ FX2_IDS = 0x400d5fdc
 FX1_IDS = 0x400d5f58        # id-indexed, 32 slots; NONE for an FX2-only effect
 FX1_LIST = 0x400d6060       # the chooser list FX1 scrolls, NUL-terminated
 FX1_NONE = 0x400d4618       # the descriptor every unused id points at
-# FX1's OWN cursor-position table, the exact analogue of ID2POS below, found
-# 3 Sep 2026 by reading the four tables in address order: FX1_LIST (11
-# entries) at 0x400d6060, FX2_LIST (15) at 0x400d6090, then two 32-entry
-# id->row tables back to back. It is FX1's because its FX2-only ids are all
-# zero -- DELAY (0x08) and the three reverbs (0x14-0x16) -- where ID2POS
-# gives them rows 0x0b and 0x0c-0x0e. tools/build_fx1.py's experiment never
-# wrote it, which is a real gap: without it a project that has one of our
-# effects stored on FX1 opens the chooser with the cursor on row 0.
-FX1_ID2POS = 0x400d60d0
-# The `lea.l FX1_LIST,aN` sites, the FX1 counterparts of LIST_REFS. Measured
-# by tools/build_fx1.py, which repoints exactly these three.
-FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
-# FX1's viewport literal, the analogue of ROWCOUNT_AT below. Located 3 Sep
-# 2026: FX1's setup code is BYTE-IDENTICAL to FX2's apart from the list
-# address, and this sits at the identical offset (+0x14) from FX1's own list
-# reference, as `pea (0x7).w` = 4878 0007. It is what makes an FX1 list
-# SHORTER than stock's eleven safe.
-FX1_ROWCOUNT_INSN = 0x40059be4
-FX1_ROWCOUNT_AT = 0x40059be6
 FX2_LIST = 0x400d6090
 ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
@@ -183,13 +160,6 @@ REMIX = remix_registry.remix(os.environ.get("REMIX")
                              or remix_registry.DEFAULT_REMIX)
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
-# THE FIRMWARE'S OWN NONE AS THE FALLBACK, for a remix with no bus (see
-# schema.NO_FALLBACK, which is also what refuses it beside a bus
-# participant). Unimplemented ids -- and id 0, a fresh part's -- then resolve
-# to stock's NONE descriptor and to the payload's null stub, instead of to a
-# module of ours that has to be listed and placed. The one thing it costs is
-# a chooser row, restored at position 0 where a stock unit has it.
-NO_FB = REMIX.fallback == NO_FALLBACK
 
 # BUILD TAG, stamped into the effect's displayed name. Three rounds were lost
 # to not being able to tell WHICH build was running on the unit: a symptom
@@ -1002,18 +972,6 @@ def main():
             sys.exit(f"{name}: FX1_IDS[0x{NEW_IDS[name]:02x}] is 0x{cur:08x}, "
                      f"not stock {rep}'s 0x{stock_P:08x} -- refusing to "
                      f"repoint a table that is not where we think it is")
-        # ⚠️ AN INHERITED FX1 ROW IS STILL AN FX1 ROW. This is the path the
-        # schema's `replaces` note described as "Nothing checks this": the
-        # module lands on FX1 whether or not it can survive there, and the
-        # three ways it cannot are the same three Remix.fx1 refuses. The
-        # difference is that here the row is not asked for -- it comes with
-        # the id -- so the refusal has to name the way out.
-        _hz = fx1_hazard(_MODS[name])
-        if _hz:
-            sys.exit(f"{name}: replacing {rep} puts it on FX1 too, and "
-                     f"{_hz}. Either take an id FX1 does not list, or make "
-                     f"it buffer-free (docs/MODULES.md, 'only a buffer-free "
-                     f"insert may take an FX1 row')")
         wr32(slot, clone_addr[name])
         # ...and the row the encoder scrolls, which holds the descriptor
         # pointer directly. Exactly one entry may match, or the assumption
@@ -1044,9 +1002,6 @@ def main():
         clone_addr[name] = stock_P
         print(f"  {name:14s} id 0x{NEW_IDS[name]:02x}  STOCK P=0x{stock_P:08x}"
               f"  (no clone, no code: the row is the only edit)")
-    if delayprobe == "send" and NO_FB:
-        sys.exit("DELAYPROBE=send reuses the SEND client, and this remix has "
-                 f"no SEND (fallback={NO_FALLBACK})")
     if delayprobe and "DELAY" in ORDER:
         sys.exit("DELAYPROBE puts stock DELAY back in the menu, but this remix "
                  "already lists it -- drop one")
@@ -1057,12 +1012,6 @@ def main():
     # making every unassigned track a SEND removes the "first track set to NONE
     # stalls the bus" hazard by construction rather than patching around it.
     real = [(n, clone_addr[n]) for n in ORDER]
-    if NO_FB:
-        # NONE goes back where stock has it: list position 0. It clones no
-        # descriptor and places no code -- FX1_NONE is the firmware's own,
-        # already in the image -- so the row is four bytes of cave and the
-        # only edit.
-        real = [("NONE", FX1_NONE)] + real
     if delayprobe:
         # Stock DELAY needs no clone -- it has its own descriptor and its own
         # FX2_IDS entry, both untouched by this build. It only needs putting
@@ -1096,10 +1045,8 @@ def main():
         if rd32(r) != FX2_LIST:
             sys.exit(f"list ref at 0x{r:08x} not stock FX2_LIST -- refusing")
         wr32(r, list_addr)
-    # The cursor position of every listed effect, past the NONE row if one
-    # was restored -- ID2POS is an index into `real`, not into ORDER.
     for pos, name in enumerate(ORDER):
-        wr32(ID2POS + NEW_IDS[name] * 4, pos + (1 if NO_FB else 0))
+        wr32(ID2POS + NEW_IDS[name] * 4, pos)
     # ==== 1b. ColdFire caves, from whichever modules carry them =============
     # A cave is how a module changes the firmware's BEHAVIOUR rather than
     # adding an effect: assert the hook site still holds the stock bytes,
@@ -1173,183 +1120,11 @@ def main():
               f"{_hook}{_c.report_note}")
         _cave_top = _c.cave_addr + len(_b)
 
-    # ---- PLAN §6: the mode selects print their WORDS ---------------------
-    # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
-    # where the manifest has said FOLD RING BOTH all along -- because
-    # Param.labels was authored, schema-checked against count, and then never
-    # read. This is the pass that makes it load-bearing.
-    #
-    # Only the "A" array (P+0x0ca) moves. B stays 0x40047254, the CHORUS.TAPS
-    # tick widget the clone loop already chose: the ticks are the right
-    # picture for an enumerated control, and B=0 would drop back to a plain
-    # dial. So this replaces WHAT IS PRINTED, not how it is drawn.
-    #
-    # The bytes come from tools/label_fmt.py rather than a pinned CavePatch:
-    # twelve caves whose contents vary with the labels cannot be hand-pinned,
-    # and emit() is re-derived through m68k-elf-as whenever one is on PATH.
-    _lbl_top = max(_cave_top, cave_end)
-    _lbl = []
-    for name in CLONED_ORDER:
-        for _i, _p in enumerate(_MODS[name].params):
-            if not (_p.active and _p.labels):
-                continue
-            _bytes = label_fmt.emit(_p.labels)
-            label_fmt.verify(_p.labels)
-            if _lbl_top + len(_bytes) > cave_limit:
-                sys.exit(f"label formatters do not fit: {name} slot {_i} "
-                         f"needs {len(_bytes)} B at 0x{_lbl_top:08x}, limit "
-                         f"0x{cave_limit:08x}")
-            if any(img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)]):
-                sys.exit(f"label cave at 0x{_lbl_top:08x} is not free")
-            img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)] = _bytes
-            wr32(clone_addr[name] + 0x0ca + _i * 4, _lbl_top)
-            _lbl.append((name, _i, _p.name.decode("latin1"), _lbl_top,
-                         len(_bytes), _p.labels))
-            _lbl_top += len(_bytes)
-    for _n, _i, _nm, _a, _sz, _labels in _lbl:
-        print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
-              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})")
-    if _lbl:
-        print(f"  {len(_lbl)} label formatters, "
-              f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
-              f"({_lbl_top - max(_cave_top, cave_end)} B)")
-    # ==== 1d. FX1 ROWS, for modules that asked for one =====================
-    # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
-    # the raw id and shared by the menus, so a module's CODE already runs from
-    # FX1 the moment FX1 selects its id -- and a REPLACEMENT already gets the
-    # row, because it inherits the stock effect's (above, in place). What was
-    # missing is a row for a module on a NEW id, and it was missing for one
-    # mechanical reason: FX1's list ends at 0x400d608c and FX2's begins at
-    # 0x400d6090, so it cannot grow where it is.
-    #
-    # So it moves, exactly as the FX2 list does when it outgrows NEW_LIST:
-    # rebuilt in the cave, three `lea` references repointed. That relocation
-    # is not new -- tools/build_fx1.py proved it standalone against the stock
-    # image (data only, 74 bytes changed) and it still applies today.
-    #
-    # It costs NO WORDS. The code is in the image either way; this is four
-    # bytes of cave per row plus the relocated list. What it does cost is
-    # CYCLES: an FX1 effect runs on a track that is already running an FX2
-    # one, so the worst per-core load can gain four more copies of it
-    # (tools/cycle_count.py, which prices FX1 slots for exactly this reason).
-    _fx1 = list(REMIX.fx1)
-    if _fx1:
-        # WHAT EACH ROW MAY BE. A module of ours needs an FX2 row, because
-        # that is where its descriptor CLONE comes from, and must survive on
-        # FX1 at all (state.fx1_hazard: not an allocator reader, not fixed
-        # FX2 buffers, not a bus server). A stock effect must be one FX1
-        # already lists -- DELAY and the three reverbs are FX2-only on a
-        # stock unit for exactly the reason our allocator readers are, they
-        # do not fit a 3,072-word FX1 allocation.
-        _fx1_desc = []
-        for _n in _fx1:
-            _m = _MODS.get(_n)
-            if _m is None:
-                sys.exit(f"fx1={_n!r}: no such effect")
-            if _m.is_stock:
-                if _m.menu.fx2_id not in stock_mod.fx1_ids():
-                    sys.exit(f"fx1={_n!r}: stock does not list it on FX1, "
-                             f"and it is FX2-only because it does not fit a "
-                             f"3,072-word FX1 allocation")
-                _fx1_desc.append(_m.menu.donor_desc + 0x38)
-                continue
-            if _n not in ORDER:
-                sys.exit(f"fx1={_n!r}: it has no FX2 chooser row, so there "
-                         f"is no descriptor clone for FX1 to point at")
-            if _m.menu.replaces:
-                sys.exit(f"fx1={_n!r}: it replaces stock {_m.menu.replaces}, "
-                         f"which already gives it that effect's FX1 row -- "
-                         f"listing it here would show it twice")
-            _hz = fx1_hazard(_m)
-            if _hz:
-                sys.exit(f"fx1={_n!r}: {_hz}")
-            _fx1_desc.append(clone_addr[_n])
-
-        # THE FIRMWARE'S OWN NONE IS ALWAYS ROW 0. It is how the slot is
-        # turned off, stock has it there, and a remix naming effects must not
-        # be able to lose it by omission.
-        _new = [FX1_NONE] + _fx1_desc + [0]
-        _need = len(_new) * 4
-        if _lbl_top + _need > cave_limit:
-            sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
-                     f"{_need} B at 0x{_lbl_top:08x} and the cave ends at "
-                     f"0x{cave_limit:08x}")
-        if any(img[_lbl_top - BASE:_lbl_top - BASE + _need]):
-            sys.exit(f"FX1 chooser list cave at 0x{_lbl_top:08x} is not free")
-        _fx1_addr = _lbl_top
-        for _i, _v in enumerate(_new):
-            wr32(_fx1_addr + _i * 4, _v)
-        _lbl_top += _need
-        # REPOINT, having proved each site is what we think it is. A `lea.l
-        # <abs>.l,aN` is 0x4?f9 followed by the address, so the two bytes
-        # before the operand pin the instruction as well as the value.
-        for _r in FX1_LIST_REFS:
-            if rd32(_r) != FX1_LIST:
-                sys.exit(f"FX1 list ref at 0x{_r:08x} is 0x{rd32(_r):08x}, "
-                         f"not stock FX1_LIST -- refusing")
-            if bytes(img[_r - BASE - 2:_r - BASE]) not in (
-                    b"\x41\xf9", b"\x47\xf9", b"\x4b\xf9"):
-                sys.exit(f"FX1 list ref at 0x{_r:08x} is not preceded by a "
-                         f"lea.l opcode -- refusing")
-            wr32(_r, _fx1_addr)
-        # AND SIZE THE VIEWPORT, which is what makes a list SHORTER than
-        # stock's safe: the draw loop iterates this literal independently of
-        # the real length, so a short list has it reading past the terminator
-        # and rendering raw memory as text (the "bunch of symbols" of
-        # hardware test 1, on FX2). Same instruction, same offset from the
-        # list reference, same bytes -- FX1's setup function differs from
-        # FX2's only in the list address.
-        if rd32(FX1_ROWCOUNT_INSN) != 0x48780007:
-            sys.exit(f"FX1 row-count site 0x{FX1_ROWCOUNT_INSN:08x} is not "
-                     f"`pea (0x7).w` -- refusing")
-        _fx1_rows = min(CHOOSER_ROWS, len(_new) - 1)
-        img[FX1_ROWCOUNT_AT - BASE:FX1_ROWCOUNT_AT - BASE + 2] = \
-            _fx1_rows.to_bytes(2, "big")
-        # FX1 RESOLVES ITS OWN DESCRIPTOR AND ITS OWN CURSOR ROW. Writing
-        # only the list would draw the row and then open the stock NONE page
-        # under it -- "a slot can draw a knob and publish nothing", one table
-        # further along.
-        #
-        # ⚠️ AND EVERY OTHER ID IS CLAMPED TO ROW 0, which the FX2 path does
-        # NOT do. FX2 has only ever been able to grow its list from three
-        # rows, so a stale position could not point past the end; FX1 can now
-        # be made SHORTER than stock's eleven, and an old project holding an
-        # id this list dropped would seed the cursor past the last row.
-        for _i in range(0x20):
-            wr32(FX1_ID2POS + _i * 4, 0)
-        for _pos, _n in enumerate(_fx1):
-            _m = _MODS[_n]
-            _eid = _m.menu.fx2_id
-            if not _m.is_stock:
-                _slot = FX1_IDS + _eid * 4
-                if rd32(_slot) != FX1_NONE:
-                    sys.exit(f"{_n}: FX1_IDS[0x{_eid:02x}] is "
-                             f"0x{rd32(_slot):08x}, not NONE -- this id is "
-                             f"already on FX1 and the row would be a "
-                             f"duplicate")
-                wr32(_slot, clone_addr[_n])
-            wr32(FX1_ID2POS + _eid * 4, _pos + 1)      # past NONE at row 0
-        _ours = [n for n in _fx1 if not _MODS[n].is_stock]
-        print(f"  FX1 chooser = {len(_new) - 1} rows at 0x{_fx1_addr:08x} "
-              f"(NONE + {', '.join(_fx1)}), {len(FX1_LIST_REFS)} refs "
-              f"repointed, viewport {_fx1_rows}, id and cursor tables "
-              f"written -- {len(_ours)} of ours, no words: their code is "
-              f"already placed")
-
-    # ALWAYS report the headroom, even when nothing was planted. It used to
-    # ride on the label-formatter line, so a remix with no labelled select
-    # (SEND alone, say) reported no cave figure at all and the remixer's
-    # budget had a hole in it -- for a selection that builds perfectly well.
-    print(f"  cave: 0x{_lbl_top:08x}..0x{cave_limit:08x}, "
-          f"{cave_limit - _lbl_top} B of cave left")
-
     # A fresh part's FX2 id is 0. Rather than hunt down the part-init template,
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
-    fb_desc = FX1_NONE if NO_FB else clone_addr[REMIX.fallback]
-    fb_pos = 0 if NO_FB else ORDER.index(REMIX.fallback)
-    wr32(FX2_IDS + NONE_ID * 4, fb_desc)
-    wr32(ID2POS + NONE_ID * 4, fb_pos)
+    wr32(FX2_IDS + NONE_ID * 4, clone_addr[REMIX.fallback])
+    wr32(ID2POS + NONE_ID * 4, ORDER.index(REMIX.fallback))
     # A module this remix leaves out still owns an id, and a saved project can
     # carry it. Alias it to the fallback for exactly the reason id 0 is
     # aliased: the alternative is a chooser entry dispatching into whatever
@@ -1372,8 +1147,8 @@ def main():
     _restored = [m for m in _omitted if m.menu.replaces]
     _omitted = [m for m in _omitted if not m.menu.replaces]
     for _m in _omitted:
-        wr32(FX2_IDS + _m.menu.fx2_id * 4, fb_desc)
-        wr32(ID2POS + _m.menu.fx2_id * 4, fb_pos)
+        wr32(FX2_IDS + _m.menu.fx2_id * 4, clone_addr[REMIX.fallback])
+        wr32(ID2POS + _m.menu.fx2_id * 4, ORDER.index(REMIX.fallback))
     if _restored:
         print(f"  not in this remix, LEFT STOCK: "
               f"{', '.join(sorted(m.key for m in _restored))} -- each replaces "
@@ -1389,19 +1164,14 @@ def main():
             sys.exit("DELAY's FX2_IDS entry is not stock -- refusing to probe")
         print(f"  *** DELAY PROBE: stock DELAY restored to the menu at "
               f"position {len(real) - 1} ***")
-    _none = "with NONE at row 0" if NO_FB else "no NONE"
-    print(f"  chooser list = {len(real)} entries, {_none}, viewport shrunk to "
+    print(f"  chooser list = {len(real)} entries, no NONE, viewport shrunk to "
           f"{len(real)} rows (no padding)" if len(real) <= CHOOSER_ROWS else
           f"  chooser list = {len(real)} entries at 0x{list_addr:08x} (the "
-          f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
+          f"long list cave), no NONE, viewport {rows} rows -- it scrolls")
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")
-    # ⚠️ WORDING FROZEN for the SEND arm: the build report is API (refhash
-    # hashes it verbatim). Only the NONE arm is new.
-    print(f"  id 0x00 aliased to NONE: a fresh/unassigned track is off, as "
-          f"on a stock unit\n" if NO_FB else
-          f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
+    print(f"  id 0x00 aliased to SEND: a fresh/unassigned track is a send\n")
 
     # ==== 2. DSP code placement + dispatch (task 13) ========================
     print("=== DSP: code placed, dispatch wired, both payloads ===")
@@ -1880,108 +1650,21 @@ mkgo:""",
 
         print(f"-- payload {tag} --")
 
-        # ---- the servers pack into the HARVESTED effects' code -----------
-        # The donor region is not a place, it is a choice: the thirteen DSP
-        # effects are contiguous and each is self-contained, so any unbroken
-        # run of them is placeable ground (schema.Remix.harvest,
-        # stock.p_spans). `DEFAULT_HARVEST` is the three reverbs, which is
-        # what every remix did before 3 Sep 2026 -- so a default selection
-        # writes the same bytes it always has (refhash).
-        #
-        # DEV=1 adds CHORUS, which sits immediately BELOW PLATE; the
-        # contiguity assert is what proves that rather than assuming it.
-        # Dev-only; the flashable build leaves CHORUS alone unless a remix
-        # asks for it.
-        # ⚠️ DERIVED FROM THE TWO CHOOSERS. An effect on neither is one this
-        # remix does not want, and giving up its words is the same decision
-        # -- see stock.harvested(). The largest contiguous run of them is the
-        # region; the rest are simply unlisted and keep their code.
-        _listed = set(REMIX.modules) | set(
-            REMIX.fx1 or [k for k in stock_mod.p_spans("A")
-                          if _MODS[k].menu.fx2_id in stock_mod.fx1_ids()])
-        # ⚠️ IN ADDRESS ORDER. DEV's CHORUS sits BELOW the reverbs, and the
-        # report lists the donors in this order -- appending it put CHORUS
-        # last and changed every DEV case's report hash (refhash caught it).
-        _derived = stock_mod.region_of(stock_mod.harvested(_listed))
-        _dev_chorus = DEV and "CHORUS" not in _derived
-        _harvest = sorted(
-            set(_derived)
-            # DEV takes CHORUS whether or not a chooser lists it -- that is
-            # the hatch's whole point, and why a DEV build is never flashed
-            # ("taking CHORUS costs FX1 its chorus", the module docstring).
-            | ({"CHORUS"} if DEV else set()),
-            key=lambda k: stock_mod.p_spans(tag)[k][0])
-        if not _harvest:
-            # Nothing harvested is the honest default for a stock chooser --
-            # every word belongs to a stock effect that is using it -- but a
-            # module of ours has to go somewhere.
-            _need = [m for m in _SEL if m.dsp is not None]
-            if _need:
-                sys.exit(f"payload {tag}: nothing is harvested, so there is "
-                         f"nowhere to place "
-                         f"{', '.join(sorted(m.key for m in _need))}. Name "
-                         f"the stock effects whose words this remix may take "
-                         f"Take one off both choosers to give up "
-                         f"its words.")
-        _sp = stock_mod.p_spans(tag)
-        for _k in _harvest:
-            if _k not in _sp:
-                sys.exit(f"harvest={_k!r}: not a stock effect with DSP code "
-                         f"in payload {tag} (have: "
-                         f"{', '.join(sorted(_sp))})")
-        # ⚠️ EVERY RECORD INSIDE A HARVESTED SPAN, not one per effect. PHASER
-        # is FIVE records -- its true extent runs 41 words past the one that
-        # bears its name, into four small blocks it enters by falling off its
-        # own end (docs/DSP.md s8) -- so keying the region by effect would
-        # have placed 157 of its 207 words and left the rest as a hole in the
-        # middle of the stream.
-        _want = [_sp[k] for k in _harvest]
-        region = sorted((m for m in mods if m[0] == 0
-                         and any(a <= m[1] < a + n for a, n in _want)),
-                        key=lambda m: m[1])
-        _have = sum(m[2] for m in region)
-        if _have != sum(n for _a, n in _want):
-            sys.exit(f"payload {tag}: the harvested spans cover "
-                     f"{sum(n for _a, n in _want)} words but their P records "
-                     f"total {_have} -- the module map and stock.p_spans "
-                     f"disagree")
-        # ⚠️ A GAP IS TWO RUNS, NOT A SMALLER REGION. A module of ours is one
-        # code stream, so it must fit inside a single run -- but different
-        # modules can sit in different runs, and the placer below packs them
-        # that way. Until 3 Sep 2026 this refused any gap and the caller
-        # handed us the largest run alone, so harvesting two separated groups
-        # gave up the smaller one for nothing (Sam, 3 Sep: "when I remove some
-        # reverb it only shows the free reverb space"). Splitting here is what
-        # makes every harvested word placeable; the only residual cost of a
-        # gap is FRAGMENTATION, which the placer reports by name.
-        runs = []
-        for _rec in region:
-            if runs and runs[-1]["base"] + runs[-1]["words"] == _rec[1]:
-                runs[-1]["words"] += _rec[2]
-            else:
-                runs.append({"base": _rec[1], "words": _rec[2]})
-        for _r in runs:
-            _r["cursor"] = _r["base"]
-        # With nothing harvested there is no region at all -- legal, and
-        # what a pure stock chooser is. `_need` above has already refused it
-        # if anything wanted placing, so the rest of this runs over an empty
-        # stream and writes nothing.
-        base_a = region[0][1] if region else 0
+        # ---- all three servers pack into PLATE + SPRING + DARK ------------
+        # v98: CHORUS is not a donor any more. See the module docstring.
+        # DEV=1 takes it back as a fourth donor -- it sits immediately BELOW
+        # PLATE and the contiguity assert below is what proves that rather than
+        # assuming it. Dev-only; the flashable build still leaves CHORUS alone.
+        _donors = ("chorus", "plate", "spring", "dark") if DEV else \
+                  ("plate", "spring", "dark")
+        region = sorted((record(pp[k]) for k in _donors), key=lambda m: m[1])
+        for (_, a, cnt, _), (_, a2, _, _) in zip(region, region[1:]):
+            if a + cnt != a2:
+                sys.exit(f"payload {tag}: PLATE/SPRING/DARK are not contiguous "
+                         f"(0x{a:05x}+{cnt} != 0x{a2:05x}) -- a single code "
+                         f"stream cannot span them")
+        base_a = region[0][1]
         budget = sum(m[2] for m in region)
-
-        def _end_of_run(a):
-            """End address of the run containing `a` (its own value if none)."""
-            for r in runs:
-                if r["base"] <= a < r["base"] + r["words"]:
-                    return r["base"] + r["words"]
-            return a
-
-        def _written(a):
-            """Did the placed code actually reach address `a`?"""
-            for r in runs:
-                if r["base"] <= a < r["base"] + r["words"]:
-                    return a < r["cursor"]
-            return False
 
         def place(words, start):
             """Write a contiguous word stream at P address `start`.
@@ -2248,15 +1931,6 @@ mkgo:""",
             # away, and its id is already handled by the omitted-id alias.
             if absent not in NEW_IDS:
                 absent = None
-        if NO_FB:
-            # The DSP half of the NONE fallback, and it needs no new code:
-            # the per-payload null stub is already in the image and is what
-            # the build points a silenced donor id at, described there as
-            # proven. Set before placement because nothing below assigns
-            # fb_init/fb_proc when the fallback is not a module.
-            fb_init, fb_proc = pp["nul_i"], pp["nul_p"]
-            wrw_p(pp["xtab"] + NONE_ID * 3, fb_init)
-            wrw_p(pp["xtab"] + (32 + NONE_ID) * 3, fb_proc)
         cursor = base_a
         # LFO roll table (10 Aug 2026): reverb_server.asm's rolled lines 2-7
         # read per-line [rate const, phase slot, int slot, frac slot] from a
@@ -2285,9 +1959,18 @@ mkgo:""",
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
         for name, src in plan:
-            if "$facade" in src and src.count("$facade") != 1:
-                sys.exit(f"payload {tag}: {name} has multiple $facade "
-                         f"LFOTAB literals -- expected exactly one")
+            if "$facade" in src:
+                if src.count("$facade") != 1:
+                    sys.exit(f"payload {tag}: {name} has multiple $facade "
+                             f"LFOTAB literals -- expected exactly one")
+                tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
+                place(tab, cursor)
+                src = src.replace("$facade", f"${cursor:x}")
+                print(f"  LFOTAB        P:0x{cursor:05x}.."
+                      f"0x{cursor + len(tab):05x} "
+                      f"({len(tab):4d} words)  rolled LFO lines "
+                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
+                cursor += len(tab)
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
@@ -2313,56 +1996,11 @@ mkgo:""",
                       f"  id 0x{NEW_IDS[name]:02x}  Y base 0x38000  "
                       f"(DEV: OUT OF REGION, code lives in the .mem dump)")
                 continue
-            # ---- pick a RUN that fits, lowest address first --------------
-            # A module is one code stream, so it goes wholly inside one run.
-            # First-fit in address order: with a single run this is exactly
-            # the old bump cursor, byte for byte (refhash). The LFO table
-            # rides with its module so the address the module was assembled
-            # against is always in the same run.
-            # ⚠️ THE MODULE IS ASSEMBLED ONCE PER CANDIDATE, because its
-            # origin is an argument -- cheap (the whole build is ~0.3 s) and
-            # it keeps the length honest instead of assuming origin-invariant
-            # encoding, which is exactly the kind of assumption this codebase
-            # has been burned by.
-            _fit, _last = None, None
-            for _r in runs:
-                _c, _end = _r["cursor"], _r["base"] + _r["words"]
-                _tab, _s2 = None, src
-                if "$facade" in src:
-                    _tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
-                    if _c + len(_tab) > _end:
-                        continue
-                    _s2 = src.replace("$facade", f"${_c:x}")
-                    _c += len(_tab)
-                _w, _ia, _pa = assemble(_s2, _c)
-                _last = (_c, len(_w))
-                if _c + len(_w) <= _end:
-                    _fit = (_r, _tab, _s2, _c, _w, _ia, _pa)
-                    break
-            if _fit is None:
-                if len(runs) < 2 and _last is not None:
-                    # ⚠️ WORDING FROZEN: the build report is API (refhash
-                    # hashes the failure text of the overrun cases too).
-                    sys.exit(f"payload {tag}: {name} overruns the region "
-                             f"({_last[0] + _last[1] - base_a} > {budget} "
-                             f"words)")
-                _big = max((r["base"] + r["words"] - r["cursor"]
-                            for r in runs), default=0)
-                _tot = sum(r["base"] + r["words"] - r["cursor"] for r in runs)
-                sys.exit(f"payload {tag}: {name} does not fit any harvested "
-                         f"run -- {_tot} words are free across {len(runs)} "
-                         f"separate runs but the largest single opening has "
-                         f"only {_big}; harvest an effect BETWEEN two runs to "
-                         f"join them into one")
-            _r, tab, src, cursor, words, init_a, proc_a = _fit
-            if tab is not None:
-                place(tab, _r["cursor"])
-                print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
-                      f"0x{_r['cursor'] + len(tab):05x} "
-                      f"({len(tab):4d} words)  rolled LFO lines "
-                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
+            words, init_a, proc_a = assemble(src, cursor)
+            if cursor + len(words) > base_a + budget:
+                sys.exit(f"payload {tag}: {name} overruns the region "
+                         f"({cursor + len(words) - base_a} > {budget} words)")
             place(words, cursor)
-            _r["cursor"] = cursor + len(words)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
             wrw_p(pp["xtab"] + (32 + NEW_IDS[name]) * 3, proc_a)
             if name == REMIX.fallback:
@@ -2398,7 +2036,7 @@ mkgo:""",
         if probe == "silence":
             words, init_a, proc_a = assemble(
                 pathlib.Path("dsp/silence_stub.asm").read_text(), cursor)
-            if cursor + len(words) > _end_of_run(cursor):
+            if cursor + len(words) > base_a + budget:
                 sys.exit("silence stub does not fit the region's free tail")
             place(words, cursor)
             wrw_p(pp["xtab"] + STOCK_DELAY_ID * 3, init_a)
@@ -2432,28 +2070,9 @@ mkgo:""",
             print(f"  {'SEND @ 0x08':13} P:0x{fb_init:05x} "
                   f"(reuses the SEND client)  id 0x{STOCK_DELAY_ID:02x} "
                   f"*** DELAY's slot now runs SEND; audio passes through ***")
-        if len(runs) < 2:
-            # ⚠️ WORDING FROZEN for a single run: the build report is API
-            # (refhash hashes it verbatim, verify_* parse it).
-            print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
-                  f"({budget} words)  used {cursor - base_a}  "
-                  f"FREE {base_a + budget - cursor}")
-        else:
-            # ⚠️ THE SUMMARY KEEPS THE SINGLE-RUN SHAPE `(N words) used U
-            # FREE F` -- state.measure() reads the budget off it, and there
-            # must be exactly ONE such line per payload. The per-run lines
-            # below are deliberately spelled so they do NOT match it.
-            _used = sum(r["cursor"] - r["base"] for r in runs)
-            print(f"  region {len(runs)} runs ({budget} words)  "
-                  f"used {_used}  FREE {budget - _used}")
-            for _i, _r in enumerate(runs, 1):
-                _e = _r["base"] + _r["words"]
-                _in = "/".join(k for k in _harvest
-                               if _r["base"] <= _sp[k][0] < _e)
-                print(f"    run {_i} P:0x{_r['base']:05x}..0x{_e:05x} "
-                      f"{_r['words']:5d} w  used "
-                      f"{_r['cursor'] - _r['base']:5d}  spare "
-                      f"{_e - _r['cursor']:5d}  {_in}")
+        print(f"  region P:0x{base_a:05x}..0x{base_a + budget:05x} "
+              f"({budget} words)  used {cursor - base_a}  "
+              f"FREE {base_a + budget - cursor}")
 
         # ---- donor ids -> the null stub, BUT ONLY WHERE OUR CODE LANDED --
         # This used to null all three unconditionally, so a build that placed
@@ -2465,72 +2084,38 @@ mkgo:""",
         # The stream is contiguous from base_a, so the written span is
         # [base_a, cursor) and a donor whose record STARTS at or after the
         # cursor still holds its own code, untouched. Give it back.
-        # ⚠️ BY SPAN, NOT BY A HAND-WRITTEN DONOR LIST. Every harvested
-        # effect whose code the stream did not reach keeps its algorithm and
-        # its dispatch; every one it did reach is silenced. That is what the
-        # three reverbs have always done, now true of whatever was harvested.
-        _hv = {k: _sp[k] for k in _harvest}
-        # ⚠️ THE REPORT NAMES ARE ONE WORD, and that is load-bearing rather
-        # than cosmetic: state.measure() reads `KEPT STOCK: (\S+)` and splits
-        # on "/", so a name with a space in it truncates the whole list at
-        # the first one. The old code took the lowercase donor keys and
-        # upper-cased them ("plate" -> "PLATE"); the module keys are "PLATE
-        # REV", so the first word is what keeps every existing report line
-        # byte-identical (refhash) and every existing parser working.
-        _short = {k: k.split()[0].upper() for k in _hv}
-        # ⚠️ PER RUN. One global cursor was right only while the region was
-        # one run; with two, an effect in a run we never opened is untouched
-        # however far the other run was packed.
-        kept = [d for d, (a, _n) in _hv.items() if not _written(a)]
-        for donor, (a, _n) in _hv.items():
+        kept = [d for d in DONOR_IDS if record(pp[d])[1] >= cursor]
+        for donor, eid in DONOR_IDS.items():
             if donor in kept:
                 continue
-            eid = _MODS[donor].menu.fx2_id
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
         if not kept:
-            # ⚠️ WORDING FROZEN for the default harvest: the build report is
-            # API (refhash hashes it, and verify_* parse it). Every shipping
-            # layout packs past all three, so this is the line every existing
-            # case still prints.
-            # ⚠️ WORDING FROZEN for the default: the report is API (refhash
-            # hashes it verbatim). DEV's CHORUS is named by the prefix, so it
-            # must not also appear in the list behind it.
-            _rest = [k for k in _harvest if not (_dev_chorus and k == "CHORUS")]
-            _dflt = list(_rest) == list(DEFAULT_HARVEST)
-            _all = ("CHORUS/" if _dev_chorus else "") + (
-                "PLATE/SPRING/DARK REV" if _dflt
-                else "/".join(_short[k] for k in _rest))
-            print(f"  donor ids ({_all}) "
+            # ⚠️ WORDING FROZEN: the build report is API (refhash hashes it,
+            # and verify_* parse it). Every shipping layout packs past all
+            # three, so this is the line every existing case still prints.
+            print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
                   f"path resolving a donor id gets silence, not our code "
                   f"(defensive: the FX1 menu never listed the reverbs)")
         else:
-            _gone = [_short[d] for d in _hv if d not in kept]
-            print(f"  donor ids taken ({'/'.join(_gone) or 'none'}) "
+            _gone = [d for d in DONOR_IDS if d not in kept]
+            print(f"  donor ids taken ({'/'.join(_gone).upper() or 'none'}) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x}; "
-                  f"KEPT STOCK: {'/'.join(_short[k] for k in kept)} -- this selection "
-                  + (f"stops at P:0x{cursor:05x} and never touched their code"
-                     if len(runs) < 2 else
-                     f"never reached into their runs"))
+                  f"KEPT STOCK: {'/'.join(kept).upper()} -- this selection "
+                  f"stops at P:0x{cursor:05x} and never touched their code")
         # A chooser row for a reverb whose words we just overwrote would
         # point at a live descriptor over dead code: the panel would draw
         # PLATE REV and the DSP would run ours. Refuse, loudly.
-        # ⚠️ NAME EVERY OFFENDER, NOT THE FIRST. Exiting on the first one
-        # made the operator iterate: remove PLATE, rebuild, fail on SPRING,
-        # remove that, rebuild, fail on DARK. The build knows all three the
-        # moment it knows the cursor, and the remixer's one-key fix can
-        # only remove what the build named.
-        _over = [(_name, _hv[_name][0] - base_a) for _name in STOCK_ROWS
-                 if _name in _hv and _name not in kept]
-        if _over:
-            _list = ", ".join(f"{n} (starts at {a})" for n, a in _over)
-            sys.exit(f"payload {tag}: {_list} "
-                     f"{'are' if len(_over) > 1 else 'is'} listed in the "
-                     f"chooser but this selection places code over "
-                     f"{'them' if len(_over) > 1 else 'it'} (region used "
-                     f"{cursor - base_a} words) -- remove the row"
-                     f"{'s' if len(_over) > 1 else ''} or free the words")
+        for _name in STOCK_ROWS:
+            _d = next((d for d, e in DONOR_IDS.items()
+                       if e == NEW_IDS[_name]), None)
+            if _d is not None and _d not in kept:
+                sys.exit(f"payload {tag}: {_name} is listed in the chooser but "
+                         f"this selection places code over it (region used "
+                         f"{cursor - base_a} words, {_d.upper()} starts at "
+                         f"{record(pp[_d])[1] - base_a}) -- remove the row or "
+                         f"free the words")
         if DEV:
             print(f"  *** CHORUS (id 0x12) TAKEN as a fourth donor -- FX1 loses "
                   f"its chorus. DEV builds are never flashed. ***")
