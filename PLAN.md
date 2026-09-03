@@ -19,8 +19,9 @@ What ships:
 - **ChonVerb** — an eight-line FDN reverb (ROOM/PLATE/BIG), shimmer, a gated
   mode, mid/side width, and a MOD speed select. Hosted on a track **5–8**
   (payload A / core 0); any track can send into it. `docs/REVERB.md`.
-- **BongDelay** — a multi-mode delay: CLEAN, PITCH (a once-per-repeat
-  harmoniser), GRAIN (a granular cloud), REVERSE — with tape-style
+- **BongDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
+  cloud, v5: Nimbus's readers, four per line, ±2 octaves on RATE; the
+  harmoniser since PITCH mode was retired 3 Sep 2026), REVERSE — with tape-style
   wow/flutter modulation (DPTH/RATE), drive (DRV, doubling as GRAIN's
   scatter depth) and a FREEZE hold available in **every** mode. (MODE still
   counts five positions; the former TAPE slot aliases CLEAN now that the
@@ -211,7 +212,7 @@ core. Two consequences:
 
 The build report is the live ledger — `make bus` prints it. Current build
 (29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30.** The older "A 55 / B 1" figures in this file predated the freeze
+FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,401, FREE 323.** The older "A 55 / B 1" figures in this file predated the freeze
 and roll work; both payloads are still effectively full, and new work needs
 a lever first.
 
@@ -247,13 +248,13 @@ choosing the same one. Measured this way:
 
 | remix | worst core | what fills it |
 |---|---|---|
-| chongbong | **2,398** | 1× delay + 3× send |
+| chongbong | **1,817** | 1× delay (v5, pitched GRAIN) + 3× send (was 2,432 with the v2 GRAIN delay) |
 | mutables | **1,376** | 4× BodeShift (the dearest insert) |
 | nimbus | **1,308** | 4× Nimbus |
 | verbonly | **1,444** | 1× reverb + 3× send |
 
 against ~3,125 usable after stock's own ~1,410. Per-module: reverb 1,384,
-delay 2,338 (GRAIN worst path), Nimbus 327, BodeShift 344, Rungs 238,
+delay 1,757 (GRAIN v5, pitched, four per line, 3 Sep 2026; was 2,372 with the v2 GRAIN), Nimbus 327, BodeShift 344, Rungs 238,
 Streamz 154, WarpFold 101, Ripple 93, send 20.
 
 The old headline summed reverb + delay + sends onto one core — a load no

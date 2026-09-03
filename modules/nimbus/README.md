@@ -58,3 +58,17 @@ on-unit reconfirm.
 
 - Voicing: grain density is fixed at four. Clouds' texture/diffusion stage
   and pitch-shifted grains are both out of scope for v1.
+
+## ⚠️ Open (found 3 Sep 2026, from BongDelay v5): the grains may play an octave UP
+
+BongDelay v5 took this engine's read geometry -- a grain reads
+`W - (POSbase + s + G + 1 - phase)` -- and measured it with a tone: at
+"unity" the output was **2x the input frequency**. The write head `W` moves
+one sample per sample and `phase` grows one per sample, so the absolute read
+position advances at TWO samples per sample: unity relative to the moving
+head is an octave up in absolute terms. The DC gate cannot see rate, which
+is why it passed. In FREEZE the head is still, so frozen clouds play at
+unity, which is the case that was listened to. **Unverified here** (this
+module was not re-rendered); the fix in the delay is a `+ phase` term in the
+distance so unity is a fixed tap behind the head. Falsifier: a tone through
+this module at MIX=127 with FRZE=0 reads back at its own frequency.
