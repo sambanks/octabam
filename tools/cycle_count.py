@@ -122,7 +122,7 @@ FX2_SLOTS = 4           # per core: four tracks, one FX2 each
 FX1_SLOTS = 4
 
 
-def bank_worst(rows, mods, fx1=()):
+def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
     """The worst per-core load the SELECTED remix can actually be asked for.
 
     Four FX2 slots on a core, and the modules that can occupy them are the
@@ -162,7 +162,13 @@ def bank_worst(rows, mods, fx1=()):
         # anything of ours; those tracks run stock, which this tool does not
         # price. Say so rather than inventing a number for them.
         pass
-    fx1_mods = [m for m in mods if m["key"] in fx1 and m["stem"] in cyc]
+    # ON FX1 = listed there by name, OR a replacement (MenuEntry.replaces)
+    # inheriting the stock row when the remix leaves stock's FX1 list
+    # alone: FILTER STATION on FILTER's id is on FX1 whether or not
+    # anyone typed it, so it is priced x4 like anything else there.
+    fx1_mods = [m for m in mods if m["stem"] in cyc
+                and (m["key"] in fx1
+                     or (not fx1 and m.get("replaces") in stock_fx1_keys))]
     if fx1_mods:
         picks += [max(fx1_mods, key=lambda m: cyc[m["stem"]])["stem"]] \
             * FX1_SLOTS
@@ -491,8 +497,24 @@ def main():
     from remix.schema import BusRole
     remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
     mods = [dict(stem=pathlib.Path(m.dsp.asm).stem, key=m.key,
-                 server=(m.dsp.bus_role is BusRole.SERVER))
+                 server=(m.dsp.bus_role is BusRole.SERVER),
+                 replaces=(m.menu.replaces if m.menu is not None else None))
             for m in registry.selected(remix) if m.dsp is not None]
+    from remix import stock as _stock
+    _all = registry.modules()
+    _stock_fx1 = {k for k in _stock.MODULES_BY_KEY
+                  if _all[k].menu.fx2_id in _stock.fx1_ids()} \
+        if hasattr(_stock, "MODULES_BY_KEY") else \
+        {e.key for e in _stock.MODULES if e.menu.fx2_id in _stock.fx1_ids()}
+    # STOCK FILTER'S OWN LOAD IS INSIDE STOCK_SHARE: the 23 Aug budget was
+    # measured with four FILTERs running (192 each, CHIP.md s2). An image
+    # in which FILTER cannot run -- harvested off both choosers, or its
+    # id taken by a replacement -- gets those 768 back for our code.
+    _fx1_keys = set(remix.fx1) if remix.fx1 else _stock_fx1
+    _filter_listed = "FILTER" in set(remix.modules) | _fx1_keys
+    _filter_replaced = any(m["replaces"] == "FILTER" for m in mods)
+    filter_credit = 0 if (_filter_listed and not _filter_replaced) \
+        else 4 * 192
     rows = [measure(m["stem"]) for m in mods]
 
     if "--verify" in args:
@@ -503,7 +525,7 @@ def main():
             if not ok:
                 sys.exit("marker changed codegen -- the count is not trustworthy")
 
-    worst, picks = bank_worst(rows, mods, remix.fx1)
+    worst, picks = bank_worst(rows, mods, remix.fx1, _stock_fx1)
     # The legacy composition, and ONLY when the remix still carries the
     # modules it was measured with -- otherwise the comparison to the 7 Aug
     # hardware sweep is against a bank that shares nothing with it.
@@ -532,6 +554,9 @@ def main():
                               # rather than against core_total, and there
                               # must be one source for the figure.
                               usable=USABLE,
+                              # +768 when stock FILTER cannot run in
+                              # this image (see the printed line).
+                              filter_credit=filter_credit,
                               burn_spare_measured=BURN_SPARE,
                               bank_at_measure=BANK_AT_MEASURE,
                               core_total=CORE_TOTAL), indent=2))
@@ -571,8 +596,13 @@ def main():
     print(f"{'budget/core':{w}}  {CORE_TOTAL:>13}   (200 MIPS / 44.1 kHz)")
     print(f"{'usable by us':{w}}  {USABLE:>13}   measured 23 Aug 2026; stock takes "
           f"the other ~{STOCK_SHARE}")
-    print(f"{'headroom':{w}}  {USABLE - worst:>13}   against the worst core above"
-          + ("   *** OVER ***" if worst > USABLE else ""))
+    if filter_credit:
+        print(f"{'FILTER credit':{w}}  {filter_credit:>13}   stock FILTER cannot run "
+              f"in this image (harvested or replaced): its 4 x 192 inside "
+              f"stock's share come back to us (CHIP.md s2)")
+    _usable = USABLE + filter_credit
+    print(f"{'headroom':{w}}  {_usable - worst:>13}   against the worst core above"
+          + ("   *** OVER ***" if worst > _usable else ""))
     print(f"{'':{w}}  {'':>13}   ⚠️ the counter reads ~270 LOW on the reverb "
           f"(CHIP.md s2); the wall is a CLIFF")
     if bank is None:

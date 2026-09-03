@@ -94,6 +94,8 @@ def check(selected) -> list[str]:
     hooks: dict[int, str] = {}
     for m in selected:
         for c in m.cf_patches:
+            if c.cave_addr is None:      # floating: the build allocates
+                continue                 # it after everything pinned
             for start, length, owner, label in caves:
                 if _overlap(start, length, c.cave_addr, len(c.pinned)):
                     clash("ColdFire cave", f"{owner}'s {label}",
@@ -151,9 +153,14 @@ def check(selected) -> list[str]:
              if (getattr(m, "claims", None) is not None
                  and m.claims.owns_fx2_buffers)
              or (m.dsp is not None and m.dsp.ybase is not YBase.NEVER)]
+    # An FX1-ONLY allocator reader (Claims.fx1_only) is exempt: on an FX2
+    # slot it writes nothing, and on FX1 the allocator tops out at 0x3fff,
+    # below every buffer a module of ours pins. Its render gate proves
+    # the dry FX2 pass; the ledger takes the declaration.
     stocked = [m for m in selected
                if getattr(m, "claims", None) is not None
-               and m.claims.stock_instance_buffer]
+               and m.claims.stock_instance_buffer
+               and not m.claims.fx1_only]
     # ⚠️ THIS REFUSES AN FX2 CHOOSER ROW, NOT THE EFFECT. A stock effect left
     # out of a remix keeps its code, descriptor and dispatch, so the four
     # dual-menu ones are still on FX1 and still work -- and the collision

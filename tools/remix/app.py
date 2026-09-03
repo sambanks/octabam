@@ -371,7 +371,7 @@ If a selection ever patches the unit's top-level menu, the MAIN MENU appears und
 [bold]what an FX1 row costs[/]
 No words: the DSP dispatch table is indexed by the raw id and shared by both menus, so an effect's code already ran from FX1 the moment FX1 selected its id. It costs CYCLES — FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load; watch the Budget's `cycles` row.
 
-Only a buffer-free INSERT of ours can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. The same three reasons are why stock keeps DELAY and the three reverbs off FX1 — they do not fit either.
+Only a buffer-free INSERT of ours, or one whose buffer is declared to fit an FX1 slot, can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. The same reasons are why stock keeps DELAY and the three reverbs off FX1 — they do not fit either. An FX1-ONLY module (it passes dry on FX2) says so on its resource line.
 
 ⚠️ The firmware's own NONE is always FX1 row 0 and is not shown here: it is how the slot is turned off, and no remix can lose it.
 
@@ -379,7 +379,7 @@ The `FX1+FX2` column in the library says which menus an effect CAN appear on, no
 
 It costs no words. The DSP dispatch table is indexed by the raw id and shared by both menus, so the code already ran from FX1 the moment FX1 selected the id; what `1` adds is the panel side. What it DOES cost is cycles: FX1 is four more slots on the same four tracks, so an effect on both menus can double the worst per-core load — watch the Budget's `cycles` row.
 
-Only a buffer-free INSERT can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. An effect that replaces a stock one is already on FX1 and says that instead.
+Only a buffer-free INSERT, or one whose buffer is declared to fit an FX1 slot, can take one, and the UNIT pane says which cannot and why: an FX1 buffer slot is 3,072 words against FX2's 16,384, a module with fixed FX2 buffers would write into another track's, and a bus server is one per core. An effect that replaces a stock one is listed here by its own name; with FX1 left stock it inherits that effect's row.
 
 [bold]a narrow terminal shows fewer panes[/]
 Under 118 columns the panes come in pairs that slide with the focus; under 92, one at a time. The tab bar at the top names all three and marks where you are. Lists longer than the pane scroll with the cursor and say so (`↑ 6 more`).

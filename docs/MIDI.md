@@ -136,8 +136,9 @@ on the RE below.
 
 ## Status (24 Aug 2026) — note → interval ON THE UNIT (R57, tag 76), hardware-confirmed
 
-- **Cave v2** (`modules/tempo-sync/tempo_cave.s`, 104 bytes at `0x400d7000`; the TIME
-  formatter cave moved to `0x400d7080`): `r6+$8` = fader+1 (1 = fully B,
+- **Cave v2** (`modules/tempo-sync/tempo_cave.s`, 104 bytes, floating behind the
+  descriptor clones — `0x400d7000` in the shipping image; the TIME formatter
+  cave follows it, `0x400d7080` there): `r6+$8` = fader+1 (1 = fully B,
   128 = fully A, 0 = no cave), `r6+$9` = held note or 0. Bytes pinned in
   `build_bus.py`. ✅ assembled, ⬜ hardware.
 - **Note → PITCH interval** (`modules/bongdelay/delay_server.asm` after `pintend`): the

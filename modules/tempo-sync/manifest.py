@@ -61,7 +61,7 @@ MODULE = Module(
     cf_patches=(
         CavePatch(
             label="tempo cave",
-            cave_addr=0x400d7000,
+            cave_addr=None,          # floats: 0x400d7000 behind three clones
             pinned=TEMPO_CAVE_BYTES,
             source="modules/tempo-sync/tempo_cave.s",
             hook_addr=TEMPO_HOOK,
@@ -72,7 +72,7 @@ MODULE = Module(
         CavePatch(
             label="time_fmt cave",
             # Moved here 24 Aug 2026 when the tempo cave grew to 104 bytes.
-            cave_addr=0x400d7080,
+            cave_addr=None,          # floats: 0x400d7080 behind the tempo cave
             pinned=TIME_FMT_BYTES,
             source="modules/tempo-sync/time_fmt.s",
             # A (P+0x0ca) points at the cave and B (P+0x0fa) stays zero --

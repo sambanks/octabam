@@ -308,9 +308,16 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
         # own modules touch low X, so the default never mattered for them;
         # a stock render gets the hardware address.
         _tm = registry.by_id(SERVER_ID[tgt])
+        # An FX1-ONLY module (Claims.fx1_only) passes dry on an FX2 slot,
+        # so its render is an FX1 instance: state block 0x6100 and the
+        # allocator's first FX1 entry (Y:0x1000). Everything else renders
+        # as FX2 instance 1 (0x6200 / Y:0x4000), as it always has.
+        _fx1o = (_tm is not None and getattr(_tm, "claims", None) is not None
+                 and _tm.claims.fx1_only)
         cmd = [str(HOST), "-mem", str(mem),
                "-init", f"{ri:x}", "-proc", f"{rp:x}",
-               "-inst", "1", "-r7", "2", "-alloc", "1",
+               "-inst", "1", "-r7", "1" if _fx1o else "2",
+               "-alloc", "0" if _fx1o else "1",
                "-inmask", "1",                   # tone straight into the module
                *(["-audio", "0"] if _tm is not None and _tm.is_stock else []),
                "-blocks", str(blocks), "-in", str(src), "-out", str(out),

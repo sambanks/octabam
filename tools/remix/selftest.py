@@ -621,15 +621,18 @@ def main():
                 if _m.menu.fx2_id not in _stk.fx1_ids():
                     bad += 1
                     print(f"  [FAIL] remix {_n!r}: stock {_k} is FX2-only")
+                _rep = [x for x in _r.modules if registry.modules()[x].menu is not None
+                        and registry.modules()[x].menu.replaces == _k]
+                if _rep:
+                    bad += 1
+                    print(f"  [FAIL] remix {_n!r}: fx1 lists stock {_k}, "
+                          f"which {_rep[0]} replaces -- list the "
+                          f"replacement")
                 continue
             if _k not in _r.modules:
                 bad += 1
                 print(f"  [FAIL] remix {_n!r}: {_k} has no FX2 row, so there "
                       f"is no descriptor clone for FX1 to point at")
-            if _m.menu.replaces:
-                bad += 1
-                print(f"  [FAIL] remix {_n!r}: {_k} replaces a stock effect "
-                      f"and already has its FX1 row")
             _why = state.fx1_hazard(_m)
             if _why:
                 bad += 1

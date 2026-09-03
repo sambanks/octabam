@@ -88,7 +88,7 @@ code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
 times. The old docstring here claimed "exactly one occurrence", which was
 never true for the XBUS path.
 """
-import os, pathlib, re, subprocess, sys
+import dataclasses, os, pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
@@ -1130,6 +1130,13 @@ def main():
         _plan = []
     _cave_top = cave_end            # caves start past the descriptor clones
     for _c, _b in _plan:
+        if _c.cave_addr is None:
+            # FLOATING (schema.CavePatch): first free address after what
+            # precedes it, rounded up to 0x80. With three clones this is
+            # 0x400d7000 then 0x400d7080 -- the addresses the shipping
+            # image pinned -- and with six it clears the clone block that
+            # used to run straight into them.
+            _c = dataclasses.replace(_c, cave_addr=(_cave_top + 0x7f) & ~0x7f)
         assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
         assert _c.cave_addr + len(_b) <= cave_limit, \
             "past the stock zero run (or into the long chooser list)"
@@ -1247,6 +1254,12 @@ def main():
             if _m is None:
                 sys.exit(f"fx1={_n!r}: no such effect")
             if _m.is_stock:
+                _rep = [k for k in ORDER if _MODS[k].menu is not None
+                        and _MODS[k].menu.replaces == _n]
+                if _rep:
+                    sys.exit(f"fx1={_n!r}: {_rep[0]} replaces it in this "
+                             f"remix, so its row would draw the stock name "
+                             f"over our code -- list {_rep[0]!r} instead")
                 if _m.menu.fx2_id not in stock_mod.fx1_ids():
                     sys.exit(f"fx1={_n!r}: stock does not list it on FX1, "
                              f"and it is FX2-only because it does not fit a "
@@ -1256,10 +1269,13 @@ def main():
             if _n not in ORDER:
                 sys.exit(f"fx1={_n!r}: it has no FX2 chooser row, so there "
                          f"is no descriptor clone for FX1 to point at")
-            if _m.menu.replaces:
-                sys.exit(f"fx1={_n!r}: it replaces stock {_m.menu.replaces}, "
-                         f"which already gives it that effect's FX1 row -- "
-                         f"listing it here would show it twice")
+            # A REPLACEMENT is listed by its own key. The composed list is
+            # rebuilt from scratch in the cave, so the stock row its id
+            # inherited (the in-place repoint above edits the STOCK list,
+            # which the three `lea` refs no longer point at) cannot show
+            # beside it. Until 3 Sep 2026 this exited as "would show it
+            # twice", which was true of the stock list and false of the
+            # composed one.
             _hz = fx1_hazard(_m)
             if _hz:
                 sys.exit(f"fx1={_n!r}: {_hz}")
@@ -1322,7 +1338,9 @@ def main():
             _eid = _m.menu.fx2_id
             if not _m.is_stock:
                 _slot = FX1_IDS + _eid * 4
-                if rd32(_slot) != FX1_NONE:
+                # A replacement's slot already holds its clone: the
+                # repoint above wrote it there in place of stock's.
+                if rd32(_slot) not in (FX1_NONE, clone_addr[_n]):
                     sys.exit(f"{_n}: FX1_IDS[0x{_eid:02x}] is "
                              f"0x{rd32(_slot):08x}, not NONE -- this id is "
                              f"already on FX1 and the row would be a "
@@ -2481,9 +2499,22 @@ mkgo:""",
         # ⚠️ PER RUN. One global cursor was right only while the region was
         # one run; with two, an effect in a run we never opened is untouched
         # however far the other run was packed.
-        kept = [d for d, (a, _n) in _hv.items() if not _written(a)]
+        _replaced = {_MODS[n].menu.replaces: n for n in CLONED_ORDER
+                     if _MODS[n].menu.replaces}
+        # (kept = harvested, unreached, and NOT replaced: a replaced effect's
+        # code may be untouched but its dispatch is ours, so it is not
+        # stock any more and must not be reported as kept.)
+        kept = [d for d, (a, _n) in _hv.items()
+                if not _written(a) and d not in _replaced]
+        # ⚠️ A REPLACED effect's dispatch is OURS, not the null stub's.
+        # A module with MenuEntry(replaces=...) carries the stock id and
+        # the placement above already wrote its entries there; its
+        # stock code is harvested ground like any other. This pass ran
+        # AFTER placement and, by span, nulled the very entry it had
+        # just written -- found by tracing on 3 Sep 2026, never hit
+        # because no shipped module replaced anything yet.
         for donor, (a, _n) in _hv.items():
-            if donor in kept:
+            if donor in kept or donor in _replaced:
                 continue
             eid = _MODS[donor].menu.fx2_id
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
@@ -2513,6 +2544,12 @@ mkgo:""",
                   + (f"stops at P:0x{cursor:05x} and never touched their code"
                      if len(runs) < 2 else
                      f"never reached into their runs"))
+        if any(d in _replaced for d in _hv):
+            # Its own clause, emitted only when a replacement is selected,
+            # so every existing report line stays byte-identical.
+            print("  REPLACED: " + ", ".join(
+                f"{_short[d]}->{_replaced[d]}" for d in _hv if d in _replaced)
+                + " -- dispatch is the replacement's, not the null stub")
         # A chooser row for a reverb whose words we just overwrote would
         # point at a live descriptor over dead code: the panel would draw
         # PLATE REV and the DSP would run ours. Refuse, loudly.
