@@ -292,6 +292,68 @@ MODULES = (
 # reached -- which is why they are listable at all. Nothing here decides
 # that; the build reports which survived and the remixer reads its answer
 # (state.measure). Kept as a tuple because the ORDER is the meaning.
+# ---- where each effect's CODE lives, per payload ---------------------------
+# The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
+# self-contained: no control flow leaves its own span and nothing enters it
+# but its own dispatch entry (measured 3 Sep 2026, tools/dsp_reach.py over
+# both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
+# whose operand is a loop END and therefore exclusive). That is what makes
+# any of them harvestable for its words, not just the three reverbs.
+#
+#   payload A  P:0x007d1..0x01fdf     payload B  P:0x00591..0x01d9f
+#   6,158 words each, same effects, same sizes, different bases.
+#
+# ⚠️ DERIVED FROM THE MODULE MAP, not written down. The record SIZES in P
+# order are the fingerprint, and PHASER is four records past its own -- its
+# true extent runs 41 words past what its record claims (docs/DSP.md s8), so
+# it is matched as a group. A firmware whose layout differs fails to match
+# and raises rather than handing back plausible addresses.
+_P_ORDER = (("FILTER", (727,)), ("SPATIALIZER", (261,)), ("EQUALIZER", (282,)),
+            ("PHASER", (157, 6, 6, 6, 32)), ("FLANGER", (289,)),
+            ("CHORUS", (329,)), ("PLATE REV", (594,)), ("SPRING REV", (1063,)),
+            ("DARK REV", (1067,)), ("COMPRESSOR", (180,)), ("LO-FI", (537,)),
+            ("DJ EQ", (345,)), ("COMB", (277,)))
+_spans: dict[str, dict[str, tuple[int, int]]] = {}
+
+
+def p_spans(payload: str) -> dict[str, tuple[int, int]]:
+    """{effect key: (P address, words)} for one payload's DSP effect code.
+
+    The run is found by matching the record-size fingerprint above, so the
+    addresses come from the image every time and a layout change is a
+    KeyError rather than a wrong write.
+    """
+    if payload in _spans:
+        return _spans[payload]
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    import dsp_modmap as dm
+    img = dm.IMG.read_bytes()
+    va, ln = [(v, l) for t, v, l in dm.PAYLOADS if t == payload][0]
+    mods, _b = dm.modules(img, va, ln)
+    recs = [(a, c) for sp, a, c, _o in sorted(mods, key=lambda m: m[1])
+            if sp == 0]
+    want = [n for _k, g in _P_ORDER for n in g]
+    sizes = [c for _a, c in recs]
+    for i in range(len(sizes) - len(want) + 1):
+        if sizes[i:i + len(want)] != want:
+            continue
+        out, j = {}, i
+        for key, group in _P_ORDER:
+            out[key] = (recs[j][0], sum(group))
+            j += len(group)
+        # Contiguity is the property the whole idea rests on -- assert it
+        # rather than trusting that adjacent records are adjacent addresses.
+        run = sorted(out.values())
+        for (a, n), (a2, _n2) in zip(run, run[1:]):
+            if a + n != a2:
+                raise ValueError(f"payload {payload}: effect code is not "
+                                 f"contiguous at P:0x{a:05x}+{n}")
+        _spans[payload] = out
+        return out
+    raise ValueError(f"payload {payload}: no run matches the effect layout")
+
+
 CONSUMED = ("PLATE REV", "SPRING REV", "DARK REV")
 
 

@@ -94,7 +94,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
 from remix import registry as remix_registry  # noqa: E402
 from remix.registry import modules as remix_modules  # noqa: E402
-from remix.schema import NO_FALLBACK, BusRole, YBase  # noqa: E402
+from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
+                          YBase)
 from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
@@ -1879,19 +1880,53 @@ mkgo:""",
 
         print(f"-- payload {tag} --")
 
-        # ---- all three servers pack into PLATE + SPRING + DARK ------------
-        # v98: CHORUS is not a donor any more. See the module docstring.
-        # DEV=1 takes it back as a fourth donor -- it sits immediately BELOW
-        # PLATE and the contiguity assert below is what proves that rather than
-        # assuming it. Dev-only; the flashable build still leaves CHORUS alone.
-        _donors = ("chorus", "plate", "spring", "dark") if DEV else \
-                  ("plate", "spring", "dark")
-        region = sorted((record(pp[k]) for k in _donors), key=lambda m: m[1])
+        # ---- the servers pack into the HARVESTED effects' code -----------
+        # The donor region is not a place, it is a choice: the thirteen DSP
+        # effects are contiguous and each is self-contained, so any unbroken
+        # run of them is placeable ground (schema.Remix.harvest,
+        # stock.p_spans). `DEFAULT_HARVEST` is the three reverbs, which is
+        # what every remix did before 3 Sep 2026 -- so a default selection
+        # writes the same bytes it always has (refhash).
+        #
+        # DEV=1 adds CHORUS, which sits immediately BELOW PLATE; the
+        # contiguity assert is what proves that rather than assuming it.
+        # Dev-only; the flashable build leaves CHORUS alone unless a remix
+        # asks for it.
+        _harvest = list(REMIX.harvest) + (["CHORUS"] if DEV else [])
+        _sp = stock_mod.p_spans(tag)
+        for _k in _harvest:
+            if _k not in _sp:
+                sys.exit(f"harvest={_k!r}: not a stock effect with DSP code "
+                         f"in payload {tag} (have: "
+                         f"{', '.join(sorted(_sp))})")
+        # ⚠️ EVERY RECORD INSIDE A HARVESTED SPAN, not one per effect. PHASER
+        # is FIVE records -- its true extent runs 41 words past the one that
+        # bears its name, into four small blocks it enters by falling off its
+        # own end (docs/DSP.md s8) -- so keying the region by effect would
+        # have placed 157 of its 207 words and left the rest as a hole in the
+        # middle of the stream.
+        _want = [_sp[k] for k in _harvest]
+        region = sorted((m for m in mods if m[0] == 0
+                         and any(a <= m[1] < a + n for a, n in _want)),
+                        key=lambda m: m[1])
+        _have = sum(m[2] for m in region)
+        if _have != sum(n for _a, n in _want):
+            sys.exit(f"payload {tag}: the harvested spans cover "
+                     f"{sum(n for _a, n in _want)} words but their P records "
+                     f"total {_have} -- the module map and stock.p_spans "
+                     f"disagree")
         for (_, a, cnt, _), (_, a2, _, _) in zip(region, region[1:]):
             if a + cnt != a2:
-                sys.exit(f"payload {tag}: PLATE/SPRING/DARK are not contiguous "
-                         f"(0x{a:05x}+{cnt} != 0x{a2:05x}) -- a single code "
-                         f"stream cannot span them")
+                # A module of ours is ONE code stream, so a gap is not a
+                # smaller region, it is two -- and nothing here chooses
+                # between them. Refuse and name the survivor in the way.
+                between = sorted(k for k, (ad, _n) in _sp.items()
+                                 if a + cnt <= ad < a2)
+                sys.exit(f"payload {tag}: the harvested effects are not "
+                         f"contiguous (0x{a:05x}+{cnt} != 0x{a2:05x}) -- "
+                         f"{', '.join(between) or 'something'} "
+                         f"{'sit' if len(between) != 1 else 'sits'} between "
+                         f"them and a single code stream cannot span it")
         base_a = region[0][1]
         budget = sum(m[2] for m in region)
 
@@ -2322,25 +2357,44 @@ mkgo:""",
         # The stream is contiguous from base_a, so the written span is
         # [base_a, cursor) and a donor whose record STARTS at or after the
         # cursor still holds its own code, untouched. Give it back.
-        kept = [d for d in DONOR_IDS if record(pp[d])[1] >= cursor]
-        for donor, eid in DONOR_IDS.items():
+        # ⚠️ BY SPAN, NOT BY A HAND-WRITTEN DONOR LIST. Every harvested
+        # effect whose code the stream did not reach keeps its algorithm and
+        # its dispatch; every one it did reach is silenced. That is what the
+        # three reverbs have always done, now true of whatever was harvested.
+        _hv = {k: _sp[k] for k in _harvest}
+        # ⚠️ THE REPORT NAMES ARE ONE WORD, and that is load-bearing rather
+        # than cosmetic: state.measure() reads `KEPT STOCK: (\S+)` and splits
+        # on "/", so a name with a space in it truncates the whole list at
+        # the first one. The old code took the lowercase donor keys and
+        # upper-cased them ("plate" -> "PLATE"); the module keys are "PLATE
+        # REV", so the first word is what keeps every existing report line
+        # byte-identical (refhash) and every existing parser working.
+        _short = {k: k.split()[0].upper() for k in _hv}
+        kept = [d for d, (a, _n) in _hv.items() if a >= cursor]
+        for donor, (a, _n) in _hv.items():
             if donor in kept:
                 continue
+            eid = _MODS[donor].menu.fx2_id
             wrw_p(pp["xtab"] + eid * 3, pp["nul_i"])
             wrw_p(pp["xtab"] + (32 + eid) * 3, pp["nul_p"])
         if not kept:
-            # ⚠️ WORDING FROZEN: the build report is API (refhash hashes it,
-            # and verify_* parse it). Every shipping layout packs past all
-            # three, so this is the line every existing case still prints.
-            print(f"  donor ids ({'CHORUS/' if DEV else ''}PLATE/SPRING/DARK REV) "
+            # ⚠️ WORDING FROZEN for the default harvest: the build report is
+            # API (refhash hashes it, and verify_* parse it). Every shipping
+            # layout packs past all three, so this is the line every existing
+            # case still prints.
+            _dflt = list(REMIX.harvest) == list(DEFAULT_HARVEST)
+            _all = ("CHORUS/" if DEV else "") + (
+                "PLATE/SPRING/DARK REV" if _dflt
+                else "/".join(_short.values()))
+            print(f"  donor ids ({_all}) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x} -- any "
                   f"path resolving a donor id gets silence, not our code "
                   f"(defensive: the FX1 menu never listed the reverbs)")
         else:
-            _gone = [d for d in DONOR_IDS if d not in kept]
-            print(f"  donor ids taken ({'/'.join(_gone).upper() or 'none'}) "
+            _gone = [_short[d] for d in _hv if d not in kept]
+            print(f"  donor ids taken ({'/'.join(_gone) or 'none'}) "
                   f"-> null stub P:0x{pp['nul_i']:05x}/0x{pp['nul_p']:05x}; "
-                  f"KEPT STOCK: {'/'.join(kept).upper()} -- this selection "
+                  f"KEPT STOCK: {'/'.join(_short[k] for k in kept)} -- this selection "
                   f"stops at P:0x{cursor:05x} and never touched their code")
         # A chooser row for a reverb whose words we just overwrote would
         # point at a live descriptor over dead code: the panel would draw
@@ -2350,11 +2404,8 @@ mkgo:""",
         # remove that, rebuild, fail on DARK. The build knows all three the
         # moment it knows the cursor, and the remixer's one-key fix can
         # only remove what the build named.
-        _over = [(_name, record(pp[_d])[1] - base_a)
-                 for _name in STOCK_ROWS
-                 for _d in [next((d for d, e in DONOR_IDS.items()
-                                  if e == NEW_IDS[_name]), None)]
-                 if _d is not None and _d not in kept]
+        _over = [(_name, _hv[_name][0] - base_a) for _name in STOCK_ROWS
+                 if _name in _hv and _name not in kept]
         if _over:
             _list = ", ".join(f"{n} (starts at {a})" for n, a in _over)
             sys.exit(f"payload {tag}: {_list} "

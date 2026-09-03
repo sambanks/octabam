@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-from remix import ledger, registry, schema, state  # noqa: E402
+from remix import ledger, registry, schema, state, stock  # noqa: E402
 from remix.schema import (CavePatch, Claims, DspSection, Kind, MenuEntry,  # noqa: E402
                           Module, Param, YBase)
 
@@ -387,6 +387,51 @@ def main():
             print(f"  [FAIL] remix {_n!r} falls back to NONE but carries "
                   f"{', '.join(_bus)}")
     print(f"  [PASS] every remix's fallback matches whether it has a bus")
+
+    # ---- dynamic donor regions (Remix.harvest) ---------------------------
+    # The property the whole idea rests on: the thirteen DSP effects are
+    # CONTIGUOUS in both payloads and their record sizes match what stock.py
+    # says they cost. Derived from the module map every run, so a firmware
+    # whose layout differs fails here rather than being written over.
+    for _pay in ("A", "B"):
+        try:
+            _sp = stock.p_spans(_pay)
+        except Exception as e:                       # noqa: BLE001
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: no effect run found -- {e}")
+            continue
+        _run = sorted(_sp.values())
+        _lo, _hi = _run[0][0], _run[-1][0] + _run[-1][1]
+        _gap = [a for (a, n), (a2, _n) in zip(_run, _run[1:]) if a + n != a2]
+        if _gap:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: effect code is not contiguous")
+        _wrong = [k for k, (_a, n) in _sp.items()
+                  if k in stock.WORDS and stock.WORDS[k] != n
+                  and k != "PHASER"]
+        if _wrong:
+            bad += 1
+            print(f"  [FAIL] payload {_pay}: {_wrong} disagree with "
+                  f"stock.WORDS")
+        else:
+            print(f"  [PASS] payload {_pay}: {len(_sp)} effects contiguous, "
+                  f"P:0x{_lo:05x}..0x{_hi:05x} = {_hi - _lo:,} words")
+    # And nothing shipped may harvest a non-contiguous set -- the build
+    # refuses it, and a remix that cannot build is not much of a remix.
+    for _n in registry.remix_names():
+        _r = registry.remix(_n)
+        _sp = stock.p_spans("A")
+        _bad = [k for k in _r.harvest if k not in _sp]
+        if _bad:
+            bad += 1
+            print(f"  [FAIL] remix {_n!r}: harvest={_bad} have no DSP code")
+            continue
+        _run = sorted(_sp[k] for k in _r.harvest)
+        if any(a + n != a2 for (a, n), (a2, _n) in zip(_run, _run[1:])):
+            bad += 1
+            print(f"  [FAIL] remix {_n!r}: its harvested effects are not "
+                  f"contiguous")
+    print(f"  [PASS] every remix harvests a contiguous run")
 
     # ---- FX1 rows (Remix.fx1) -------------------------------------------
     # The schema half. The BUILD half -- the relocated list, FX1's own id and

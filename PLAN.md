@@ -379,16 +379,29 @@ having two states and gains three — **listed** / **unlisted but intact** /
 **harvested** — and the remixer has to make that choice legible, because it
 is the first one in this tool that actually takes something away.
 
-**The work, in order:** ⬜ re-run the containment sweep on payload B (same
-code, other payload, unmeasured); ⬜ per-effect spans into `stock.py` beside
-`WORDS`; ⬜ `build_bus.py` places into a computed run of harvested effects
-rather than the fixed region, packing from the lowest freed address (the
-`consumed_at` ladder generalises to "which effect does the cursor reach");
-⬜ null the dispatch of anything harvested, which the donor path already
-does; ⬜ `verify_menu`/`verify_slots` assert the harvested set matches what
-was placed; ⬜ the remixer's third state and the Budget's words row.
-⬜ **`refhash` is the gate** — a selection harvesting only the three reverbs
-must stay bit-identical to today.
+**The work, in order:** ✅ containment sweep on payload B — **all twelve
+self-contained there too**, and B carries the same thirteen effects at
+different bases (`P:0x00591..0x01d9f`, the same 6,158 words); ✅ per-effect
+spans in `stock.p_spans()`, *derived* from the module map by record-size
+fingerprint rather than written down, so a firmware whose layout differs
+raises instead of being written over; ✅ `Remix.harvest`, defaulting to the
+three reverbs; ✅ `build_bus.py` places into the harvested run, refusing a
+non-contiguous set by name; ✅ every harvested effect the cursor reached is
+nulled and the survivors keep their algorithm, by SPAN rather than by a
+hand-written donor list; ✅ selftest asserts contiguity in both payloads and
+that every shipped remix harvests a run; ✅ **refhash 26/26 bit-identical**.
+
+⬜ **Left:** `stock.consumed_at()` still walks the three reverbs rather than
+the selection's own harvest order; the remixer's `DONOR_WORDS = 2724` is
+still a constant; and the **third state** — a stock effect is listed /
+unlisted / harvested, and only the first two are expressible in the UI.
+
+⚠️ **One constraint found the hard way: the build report's donor names must
+be ONE WORD.** `state.measure()` reads `KEPT STOCK: (\S+)` and splits on
+`/`, so `PLATE REV/SPRING REV/DARK REV` truncates the whole list at the
+first space. The report is API — refhash hashes it and three verifiers parse
+it — so the first word is emitted, exactly as the old lowercase donor keys
+produced.
 
 ### 2. FX1 consolidation — turning the stranded pool into capability
 
