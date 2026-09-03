@@ -2241,10 +2241,11 @@ class RemixerScreen(Screen):
         mod = self.selected_module()
         if mod is None:
             return
+        before = tuple(st.fx1)
         st.msg = st.toggle_fx1(mod.key, disp(mod))
-        if mod.key in st.sel:
+        if tuple(st.fx1) != before:
             st.loaded_name = ""
-            self.schedule_sync()         # it changes the image
+            self.schedule_sync()         # chooser change changes the image/harvest
         self.rerender()
 
     def action_fix(self):
