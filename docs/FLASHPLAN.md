@@ -295,6 +295,30 @@ which.
 
 ---
 
+## Flash 5 — the ColdFire headroom probe (cfprobe)
+
+**The image:** `REMIX=cfprobe make image` — the rig plus HELLO WORLD and
+CF PROBE. **The question:** how much of each audio frame a ColdFire-side
+machine could take (PLAN §8: a Braids port, a Pickup-machine descendant).
+`modules/cfprobe/README.md` is the full procedure; `tools/verify_cfprobe.py`
+(22 checks, emulator-driven) is the gate.
+
+Independent of flash 4's claims and cheap to stack on the same day, but a
+SEPARATE image: the burn is the crossfader and the readout is a diagnostic
+knob, so it is not something to leave on the unit.
+
+| | claim | how to see it | falsified by |
+|---|---|---|---|
+| i | the hook runs once per 16-sample frame at a 132 MHz bus clock | HELLO WORLD's GAIN at 0–31 prints ≈ `47891` | a clean multiple (the interrupt runs per DMA block: still a measurement, bigger frame); any other value (the clock inference is wrong; the ratios still hold); `-` after ten seconds (the hook is not running per frame at all) |
+| ii | the delay routine's cost at rest | GAIN 64–95 prints `r<pct>`; GAIN 96–127 prints the same `t<pct>` at fader 0 | `t` ≠ `r` at fader 0 — the probe is wrong, stop |
+| iii | the routine has no expensive occasional path | GAIN 32–63 `x` ≈ `r` at rest; move a stock DELAY's TIME and watch `x` | `x` ≫ `r` |
+| iv | **the starvation point and what starves first** | full set playing, sample streaming, MIDI clock in, UI scrolling; fader up 8 steps at a time, record `t`/`x` and the first symptom | (this is the measurement) — UI lag, streaming stutter, MIDI drift, audio crackle, hang, in rising order of what it would mean |
+
+Write down `t` at the first symptom and `r` at rest: the difference is the
+frame fraction a ColdFire machine may take. Core cycles ≈ 2× the ticks 🟡.
+
+---
+
 ## Before every flash
 
 From `docs/FLASHING.md` and the card workflow this project already uses:
@@ -331,7 +355,8 @@ gets written down, which this project has been burned by more than once.
 
 ## What is deliberately not in this plan
 
-- **The main-menu shortcut** (PLAN §5) — not built, so nothing to flash.
+- ~~The main-menu shortcut — not built~~ Built 3 Sep 2026 and in the rig:
+  flash 4's claim ix.
 - **An FX1 chooser SHORTER than the viewport.** `fieldtest` lists ten, above
   the seven-row window, so the shrink path is exercised but not the extreme.
   A three-row FX1 list is the interesting case for the viewport literal and

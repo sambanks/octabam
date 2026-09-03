@@ -508,6 +508,19 @@ bytes, plant a `jsr` to the cave, and have the cave replay what it displaced
 before doing its own work. The installer is generic — contributing a cave
 needs no change to the build.
 
+**The hook span is `len(hook_stock)`** (4 Sep 2026): the six-byte `jsr`
+followed by nops to the end of the displaced instructions, so `hook_stock`
+must be whole instructions, at least six bytes and even. Both tempo-sync
+hooks are ten; `modules/cfprobe` is the first eight-byte one (a `jsr` and a
+move-to-SR). A pc-relative instruction in `hook_stock` is fine to *replace*
+— the cave does the work itself — but cannot be *replayed* at the cave's
+address, so `TEMPOCAVE=replay` refuses such a cave rather than mis-jump.
+
+**A cave can be both a hook target and a formatter**: `FormatterReg(offset=…)`
+registers an entry *inside* the cave (`cfprobe` puts its formatter at
+`+0x100` with an `.org`), so one address and one pc-relative state block
+serve the interrupt and the panel. `offset=0` is the tempo-sync shape.
+
 **Caves float unless pinned** (3 Sep 2026). A remix with more than three
 descriptor clones used to run the clone block straight into the tempo cave
 pinned at `0x400d7000` — three clones end exactly there, so the shipping

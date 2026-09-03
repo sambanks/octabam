@@ -296,6 +296,13 @@ class FormatterReg:
 
     module: str        # target module KEY, e.g. "DELAY SERVER"
     slot: int          # which of its twelve parameters this formatter draws
+    # Byte offset of the formatter's entry INSIDE the cave. 0 (the default)
+    # is a cave that is nothing but a formatter, the tempo-sync shape. A
+    # cave that is also a HOOK target keeps its hook entry at +0 (the
+    # installer's jsr lands there) and puts the formatter further in --
+    # modules/cfprobe puts it at +0x100 with an `.org`, so one cave, one
+    # address and one pc-relative state block serve both callers.
+    offset: int = 0
 
 
 @dataclass(frozen=True)

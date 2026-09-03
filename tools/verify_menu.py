@@ -124,20 +124,16 @@ CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
 # window is full -- the character station's BUS-mode renames tipped the rig
 # over. build_bus.py's OVERFLOW_RUN / OVERFLOW_RUN_END.
 OVF_LO, OVF_HI = 0x400d24d0, 0x400d2ce0
-# TIME's sticky-snap formatter is the tempo-sync cave that registers itself
-# as DELAY SERVER slot 0. Its address FLOATS since 3 Sep 2026 (it sits
-# behind the descriptor clones, however many there are), so it is
-# recognised by its pinned bytes in the image rather than by a constant.
-def _time_fmt_cave():
-    _ts = _MODS.get("TEMPO SYNC")
-    if _ts is None:
-        return None
-    for _c in _ts.cf_patches:
-        _r = _c.registers_formatter
-        if _r is not None and _r.module == "DELAY SERVER" and _r.slot == 0:
-            return _c
-    return None
-TIME_FMT_CAVE = _time_fmt_cave()
+# A cave may register itself as some module's per-slot label formatter:
+# the tempo-sync cave draws DELAY SERVER's TIME as `1/8`, and the cfprobe
+# cave draws its readout on HELLO WORLD's GAIN from an entry 0x100 inside
+# itself (schema.FormatterReg.offset). Cave addresses FLOAT since 3 Sep
+# 2026, so a registration is recognised by the cave's pinned bytes in the
+# image at the entry minus its offset, not by a constant.
+REG_FMT = {(_c.registers_formatter.module, _c.registers_formatter.slot):
+           (_c.pinned, _c.registers_formatter.offset)
+           for _k in REMIX.modules for _c in _MODS[_k].cf_patches
+           if _c.registers_formatter is not None}
 
 
 def main():
@@ -320,16 +316,20 @@ def main():
                       f"the tick widget and 0x12a=0, with A either stock's "
                       f"enumerated formatter or a label cave "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
-            elif (name == "DELAY SERVER" and i == 0 and TIME_FMT_CAVE is not None
-                  and CAVE_LO <= f1 < CAVE_HI
-                  and img[f1 - BASE:f1 - BASE + len(TIME_FMT_CAVE.pinned)]
-                  == TIME_FMT_CAVE.pinned):
-                # TIME's sticky-snap label formatter (modules/tempo-sync/time_fmt.s, 24 Aug
-                # 2026): a knob with A = our cave and B = 0 -- stock DELAY
-                # TIME's own shape (A = 0x4003c718, B = 0).
+            elif ((name, i) in REG_FMT
+                  and (CAVE_LO <= f1 < CAVE_HI or OVF_LO <= f1 < OVF_HI)
+                  and img[f1 - REG_FMT[(name, i)][1] - BASE:
+                          f1 - REG_FMT[(name, i)][1] - BASE
+                          + len(REG_FMT[(name, i)][0])]
+                  == REG_FMT[(name, i)][0]):
+                # A registered label formatter (time_fmt.s, 24 Aug 2026;
+                # cfprobe.s, 4 Sep 2026): a knob with A = our cave's entry
+                # and B = 0 -- stock DELAY TIME's own shape (A = 0x4003c718,
+                # B = 0). Without the cave (NOTEMPO=1) the slot falls through
+                # to the plain-knob rule below, as before.
                 check(f2 == 0,
-                      f"{name}: p0 TIME carries the label formatter, so B is 0 "
-                      f"(got 0x{f2:08x})")
+                      f"{name}: p{i} carries a registered label formatter at "
+                      f"0x{f1:08x}, so B is 0 (got 0x{f2:08x})")
             else:
                 check(f1 == 0 and f2 == 0,
                       f"{name}: p{i} count {cnt} is a KNOB, so both formatters "
