@@ -1893,6 +1893,17 @@ mkgo:""",
         # Dev-only; the flashable build leaves CHORUS alone unless a remix
         # asks for it.
         _harvest = list(REMIX.harvest) + (["CHORUS"] if DEV else [])
+        if not _harvest:
+            # Nothing harvested is the honest default for a stock chooser --
+            # every word belongs to a stock effect that is using it -- but a
+            # module of ours has to go somewhere.
+            _need = [m for m in _SEL if m.dsp is not None]
+            if _need:
+                sys.exit(f"payload {tag}: nothing is harvested, so there is "
+                         f"nowhere to place "
+                         f"{', '.join(sorted(m.key for m in _need))}. Name "
+                         f"the stock effects whose words this remix may take "
+                         f"(schema.Remix.harvest).")
         _sp = stock_mod.p_spans(tag)
         for _k in _harvest:
             if _k not in _sp:
@@ -1927,7 +1938,11 @@ mkgo:""",
                          f"{', '.join(between) or 'something'} "
                          f"{'sit' if len(between) != 1 else 'sits'} between "
                          f"them and a single code stream cannot span it")
-        base_a = region[0][1]
+        # With nothing harvested there is no region at all -- legal, and
+        # what a pure stock chooser is. `_need` above has already refused it
+        # if anything wanted placing, so the rest of this runs over an empty
+        # stream and writes nothing.
+        base_a = region[0][1] if region else 0
         budget = sum(m[2] for m in region)
 
         def place(words, start):

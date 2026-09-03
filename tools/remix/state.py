@@ -144,8 +144,12 @@ class State:
         self.sel = {m.key for m in stock.MODULES}
         self.order = [m.key for m in stock.MODULES]
         self.fx1 = list(stock_fx1_default())
-        from remix.schema import DEFAULT_HARVEST
-        self.harvest = list(DEFAULT_HARVEST)
+        # ⚠️ NOTHING HARVESTED. An unmodified unit has every one of its 6,158
+        # words allocated -- each stock effect is using its own -- so a stock
+        # selection must show that, not a region already taken from the
+        # reverbs. Harvesting is the operator's choice and the first module
+        # added is what makes it necessary.
+        self.harvest = []
         self.fallback = None
         self.loaded_name = "stock"
         self.msg = ("stock: the chooser an unmodified unit shows — "
@@ -391,6 +395,14 @@ class State:
         if not self.menu_modules:
             out.append("no module with a menu entry: nothing would be "
                        "selectable on the panel")
+        # ⚠️ NOTHING TO PLACE INTO. On a stock chooser every word is a stock
+        # effect's, so adding a module of ours is the moment a choice has to
+        # be made about which one to give up. It arrives as a problem with a
+        # one-key fix rather than as a build failure.
+        if not self.harvest and [m for m in self.selected if m.dsp is not None]:
+            out.append("nothing is harvested, so there is nowhere to place "
+                       "your modules — x takes the three reverbs (2,724 "
+                       "words), or h takes whichever you would rather lose")
         if self.eff_fallback is None:
             out.append("no fallback and none can be picked automatically "
                        "(no SEND, and several effects) — press f to choose "
@@ -621,7 +633,7 @@ class State:
         from remix.schema import DEFAULT_HARVEST
         harvest = ("" if tuple(self.harvest) == DEFAULT_HARVEST
                    else '    harvest=('
-                        + ", ".join(f'"{k}"' for k in self.harvest) + ',),\n')
+                        + "".join(f'"{k}", ' for k in self.harvest) + '),\n')
         return (f'"""{name} -- {doc}\n\n'
                 f'Written by the remixer. Edit freely: the docstring\n'
                 f'is the only thing here a human is expected to improve.\n'

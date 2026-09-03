@@ -647,7 +647,8 @@ class Remix:
             raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")
         if len(set(self.harvest)) != len(self.harvest):
             raise ValueError(f"remix {self.name!r}: duplicate harvest keys")
-        if not self.harvest:
-            raise ValueError(
-                f"remix {self.name!r}: harvest=() leaves nowhere to place a "
-                f"module. Name the stock effects whose words it may take.")
+        # ⚠️ `harvest=()` IS LEGAL. On an unmodified unit every one of the
+        # 6,158 words is allocated -- each stock effect is using its own --
+        # so "nothing harvested" is the honest starting point, and a remix of
+        # nothing but stock rows needs no region at all. build_bus.py refuses
+        # it only when there is code to place.

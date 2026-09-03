@@ -398,8 +398,10 @@ Rows are NOT the scarce thing, which is why `enter` adds rather than swaps: 31 r
 
 Measured 3 Sep 2026 and it says the limit is ours to lift: the thirteen DSP effects are laid out CONTIGUOUSLY in 6,158 words (`P:0x007d1..0x01fdf`, no other module between them), and every one of them is SELF-CONTAINED — no control flow leaves its own span and nothing enters it but its own dispatch entry. So any effect's words could be freed by dropping it, and a run of dropped neighbours would be one bigger region. What that costs is the effect itself: today an unlisted stock effect keeps working and only loses its row, and one harvested for its words would not.
 
-[bold]the donor region is a CHOICE, not a place[/]
-The thirteen DSP effects are laid out contiguously — 6,158 words in each payload — and every one is self-contained, so ANY unbroken run of them is ground your modules can be placed into. `h` harvests the highlighted stock effect's words and `⌁` marks it in the library. The three reverbs are only the default: they are the biggest and FX2-only, so taking them costs FX1 nothing.
+[bold]on an unmodified unit every word is allocated[/]
+All 6,158 words of the payload's effect code belong to a stock effect that is using them, and the remixer opens saying exactly that: `no region — every word is a stock effect's`, the map all `─`, `all 6,158 words allocated`. NOTHING is set aside for you until you decide what to give up.
+
+`h` harvests the highlighted stock effect's words and `⌁` marks it in the library. The thirteen effects are laid out contiguously and every one is self-contained, so any unbroken run of them is ground your modules can be placed into. Add a module before harvesting anything and the ⚠ says so, with `x` taking the three reverbs — the biggest, and FX2-only, so they cost FX1 nothing — which is the conventional choice and not one the image imposes.
 
 ⚠️ The run has to stay CONTIGUOUS — a module of ours is one code stream, so a gap is not a smaller region, it is two — and only the effect just below the bottom of the run or just above its top can join it. `h` says what is in the way rather than letting the build refuse later.
 
@@ -778,7 +780,8 @@ class RemixerScreen(Screen):
         self._tnames = ["Available",
                         f"Choosers · {st.loaded_name or 'unsaved'}",
                         disp(mod) if mod is not None else "Unit"]
-        can_fix = bool(self.blockers(probs))
+        can_fix = bool(self.blockers(probs)) or (
+            not st.harvest and [m for m in st.selected if m.dsp is not None])
         if can_fix != getattr(self, "_can_fix", None):
             self._can_fix = can_fix
             self.refresh_bindings()          # the footer follows it
@@ -1006,8 +1009,15 @@ class RemixerScreen(Screen):
         and is the panel on the right showing it yet. The rest moved to `?`.
         """
         if probs:
+            # ⚠️ NOTHING TO PLACE INTO OUTRANKS THE REST. It is the only one
+            # whose fix ADDS rather than removes, `x` applies it first, and a
+            # ⚠ saying "x removes Flanger…" while x actually harvested the
+            # reverbs is the worst kind of wrong.
+            first = next((p_ for p_ in probs if p_.startswith("nothing is "
+                                                              "harvested")),
+                         None)
             return (f"[bold {BAD}]⚠ "
-                    f"{escape(self._clash(probs) or probs[0])}[/]")
+                    f"{escape(first or self._clash(probs) or probs[0])}[/]")
         if self.syncing is not None or self.synced != self.gen:
             return f"[dim {WARN}]building…[/]"
         if self.sync_error:
@@ -1043,6 +1053,11 @@ class RemixerScreen(Screen):
             boot = ("" if r is None else
                     " [dim]· boots[/]" if r.reached_handoff else
                     f" [{BAD}]· DID NOT REACH THE RTOS HANDOFF[/]")
+            # "0 free" against a region that does not exist reads as "no
+            # space"; the truth is that nothing has been given up yet.
+            if not st.harvest:
+                return ("[dim]no region — every word is a stock effect's[/]"
+                        + boot)
             return "[dim]" + " · ".join(
                 one(n, placeable(st.sel, t, u, st.harvest)[0])
                 for n, t, u, _f in st.regions) + "[/]" + boot
@@ -1119,11 +1134,18 @@ class RemixerScreen(Screen):
         # overwritten -- every one of those effects still works. Reading the
         # dots as loss is the obvious mistake and the footer used to invite
         # it by saying "harvested" whether or not a word had been placed.
-        lo = sum(c for k, _a, _n, c in seg
-                 if sp[k][0] < min((sp[h][0] for h in hv), default=0))
-        span = sum(c for k, _a, _n, c in seg if k in hv)
+        lo = (0 if not hv else
+              sum(c for k, _a, _n, c in seg
+                  if sp[k][0] < min(sp[h][0] for h in hv)))
+        span = sum(c for k, _a, _n, c in seg if k in hv) if hv else w
         n_w = stock.region_words(tuple(hv))
-        if not any(placed.values()):
+        if not hv:
+            # EVERY WORD IS A STOCK EFFECT'S. That is what an unmodified unit
+            # looks like and the map has to say so, not imply a region is
+            # waiting.
+            tries = [f" all {total:,} words allocated — h harvests one ",
+                     f" all {total:,} words allocated ", f" {total:,} words "]
+        elif not any(placed.values()):
             tries = [f" {n_w:,} words yours to place into — none taken yet ",
                      f" {n_w:,} words, none taken ", f" {n_w:,} words "]
         else:
@@ -1264,7 +1286,17 @@ class RemixerScreen(Screen):
                        f" {'words ' + n:<{W}}[{c}]{free:>5,}[/] free of "
                        f"{total:,} [dim]· {used:,} loaded[/]")
 
-        if st.regions:
+        if not st.harvest:
+            # ⚠️ NOT "0 free of 0". A build with nothing harvested reports a
+            # zero-word region, which is true and reads as "you have no
+            # space" -- the truth is that nothing has been given up yet and
+            # every word belongs to a stock effect that is using it.
+            for n in ("A", "B"):
+                brief.append((f"words {n}", "[dim]none[/]"))
+                out.append(why(f"words {n}",
+                               f" {'words ' + n:<{W}}[dim]no region — every "
+                               f"word is a stock effect's[/]"))
+        elif st.regions:
             for n, total, used, _f in st.regions:
                 out.append(words_row(n, total, used))
             out.append(None)                # the key goes here -- see below
@@ -1272,9 +1304,9 @@ class RemixerScreen(Screen):
             # No build to read -- and none is possible, because a selection
             # with no module of ours has no fallback to name. The region is
             # still fully accounted for: the three reverbs are in it.
+            reg = stock.region_words(tuple(st.harvest))
             for n in ("A", "B"):
-                out.append(words_row(n, stock.region_words(tuple(st.harvest)),
-                                     0))
+                out.append(words_row(n, reg, 0))
             out.append(None)
         else:
             # WHY it is not built, not just that it is not. This row is where
@@ -2100,6 +2132,21 @@ class RemixerScreen(Screen):
     def action_fix(self):
         """Apply the ⚠'s own advice."""
         st = self.app.state
+        # NOTHING TO PLACE INTO comes first: it is the only ⚠ whose fix ADDS
+        # rather than removes, and on a stock chooser it is the first one you
+        # meet. The three reverbs are the conventional choice -- the biggest,
+        # and FX2-only, so taking them costs FX1 nothing -- not a default the
+        # image imposes.
+        if not st.harvest and [m for m in st.selected if m.dsp is not None]:
+            from remix.schema import DEFAULT_HARVEST
+            st.harvest = list(DEFAULT_HARVEST)
+            st.loaded_name = ""
+            st.msg = (f"harvested {', '.join(titlecase(k) for k in st.harvest)}"
+                      f" — {stock.region_words(DEFAULT_HARVEST):,} words to "
+                      f"place into. h picks different ones.")
+            self.schedule_sync()
+            self.rerender()
+            return
         gone = self.blockers(st.problems())
         if not gone:
             gone = self.blockers([])

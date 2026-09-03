@@ -371,7 +371,39 @@ defaults (a stale default polluted every shimmer measurement until Round 12).
 The UNIT pane carries a resource line under the doc, and the status line
 carries the same facts while you scroll (`rig.resources()`):
 
-### The donor region is a CHOICE, not a place
+### On an unmodified unit, every word is allocated
+
+⚠️ **The remixer opens with NOTHING harvested** (3 Sep 2026). All 6,158 words
+of the payload's effect code belong to a stock effect that is using them, and
+a stock chooser has to say so:
+
+```
+ words A   no region — every word is a stock effect's
+ A ────────────────────────────────────────────────────────────────────────
+   └─────────────── all 6,158 words allocated — h harvests one ───────────┘
+```
+
+It used to open with the three reverbs already harvested, because that is
+what the build had always done — so the map dotted them and the budget said
+`0 free of 2,724` on a selection where **nothing had been given up**. Sam,
+twice: *"why does it show verb on full stock? nothing is sacrificed?"* and
+*"a stock firmware should show everything as allocated, that the stock
+effects use. harvesting should be free choose."*
+
+Adding a module before harvesting anything is now a ⚠ with a one-key fix —
+`nothing is harvested, so there is nowhere to place your modules — x takes
+the three reverbs (2,724 words), or h takes whichever you would rather
+lose`. It is the only ⚠ whose fix **adds** rather than removes, so it
+outranks the others: an ⚠ reading "x removes Flanger…" while `x` actually
+harvested the reverbs is the worst kind of wrong.
+
+⚠️ **`Remix.harvest` still defaults to the three reverbs**, and that is
+deliberate: every remix that predates this needs its region, and refhash is
+26/26 on that default. `harvest=()` is legal — a remix of nothing but stock
+rows needs no region at all — and `build_bus.py` refuses it only when there
+is code to place.
+
+### The harvest itself
 
 `h` harvests the highlighted stock effect's words for your modules; `⌁` marks
 it in the library. The thirteen DSP effects are laid out **contiguously** —
