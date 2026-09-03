@@ -22,6 +22,34 @@ label comes from the [`tempo-sync`](../tempo-sync/) module's formatter cave.
 hatch (`make render-delay`), which places it out of region in payload A.
 `DFRZAT=n` engages FREEZE after n blocks so a render can catch it mid-flight.
 
+## The knob map since v5.1 (3 Sep 2026) — one meaning per knob per mode
+
+Sam's redesign, done in one pass after a day of piecemeal fixes: IN is
+retired (the host track's own send into the delay is its FX1 station's
+→DEL, or SEND on FX1), GRAIN's pitch moves onto the scene page in its place,
+and the two tape-modulation knobs are named for what they are.
+
+| | CLEAN | GRAIN | REVERSE |
+|---|---|---|---|
+| **page 1** TIME · FDBK · TONE · PING · →VRB | the same everywhere | | |
+| **PTCH** (page 1, was IN) | no effect | pitch, ±2 oct, 64 = unison; a held MIDI note overrides | no effect |
+| MDEP | tape mod depth | **scatter** | tape mod depth |
+| MODE | CLEAN | GRAIN | REVRS |
+| MRAT | tape mod rate, 64 = 1× | **density** | tape mod rate |
+| SIZE | unused | grain size | segment |
+| DRV | drive | drive | drive |
+| FRZE | freeze | freeze | freeze |
+
+GRAIN carries a **fixed gentle wow** (knob 12's worth at exactly 1×) that no
+knob touches: the grains read the lines the repeats recirculate through, and
+at MDEP 127 they used to wobble by ±254 samples ("modulating heavily"). The
+per-mode label cave on the backlog will print SCAT / DENS in GRAIN. The IN
+arithmetic is still in the loop, pinned to exactly zero (bit-identical to
+every IN=0 render); removing it is a cycle trim.
+
+⚠️ Old parts store IN's value in slot 5, which is PTCH now: the project
+stamper (plan A6) writes fresh defaults.
+
 ## GRAIN v5 (3 Sep 2026) — Nimbus's readers over the delay lines, pitched; PITCH mode retired
 
 The v2 GRAIN was the delay's cost centre (eight lerped heads, per-grain
@@ -36,10 +64,10 @@ topology) and it is gone: **MODE is CLEAN / GRAIN / REVRS**, three positions.
 The PTCH switch is **SIZE** (46 / 93 / 23 ms, XTRM = 186 ms grains or 12 ms
 REVERSE segments — REVERSE's own order, one select for both modes).
 
-Knobs in GRAIN: TIME = position, SIZE = grain length, RATE = pitch, DRV =
-scatter depth (up to 4,095 samples), DPTH = density (R61 law and makeup),
-FREEZE holds the lines and the grains keep grazing them. A held MIDI note
-(the tempo cave's `r6+$9`, latched) replaces the RATE knob with
+Knobs in GRAIN (v5.1 names): TIME = position, SIZE = grain length, PTCH =
+pitch (page 1), MDEP = scatter (up to 4,095 samples), MRAT = density (R61 law
+and makeup), DRV = drive, FREEZE holds the lines and the grains keep grazing
+them. A held MIDI note (the tempo cave's `r6+$9`, latched) replaces PTCH with
 2^((note−84)/12), ±24 semitones — the same law the retired mode drove.
 
 **Cost:** delay 2,469 → **2,151 words** (payload B FREE 5 → **323**); worst
@@ -61,9 +89,9 @@ path 2,372 → **1,757 cycles** (GRAIN, rolled: 345 words + 718 of roll).
 
 Measured (`make render-delay` hatch, 438 Hz tone, 93 ms grains, TIME 127):
 
-| RATE | measured | expected | note | measured | expected |
+| PTCH | measured | expected | note | measured | expected |
 |---|---|---|---|---|---|
-| 64 | 438.7 | 438 | 84 | = RATE 64, bit-identical | |
+| 64 | 438.7 | 438 | 84 | = PTCH 64, bit-identical | |
 | 96 | 869.4 | 876 | 96 | 869.4 | 876 |
 | 32 | 223.4 | 219 | 91 | 654.1 | 656 |
 | 48 | 309.5 | 310 | 72 | 223.4 | 219 |

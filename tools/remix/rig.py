@@ -302,13 +302,14 @@ def knob_doc(mod, name: str) -> str:
 
 def knob_labels(mod, name: str):
     """Per-value labels for a select, or None for a plain dial."""
-    return mod.params[mod.knob_map()[name]].labels
+    return mod.params[mod.knob_map_all()[name]].labels
 
 
 def knob_max(mod, name: str) -> int:
     """Highest legal value: count-1 where the manifest states a count,
-    else the stock 0..127 dial."""
-    slot = mod.knob_map()[name]
+    else the stock 0..127 dial. Accepts a MODE-view alias (SCAT for MDEP)
+    as well as the Param's own name."""
+    slot = mod.knob_map_all()[name]
     count = mod.params[slot].count
     return (count - 1) if count is not None else 127
 

@@ -40,7 +40,7 @@
 ;    below, the warm-up, all of it -- is untouched.
 ;
 ; 4. ❌ CROSS-BUS SEND (->DELAY, dry only) -- RETIRED 18 Aug 2026. The
-;    reverb writes NO bus at all now, r7 $68/$69/$6a are FREE, and $e's
+;    reverb writes NO bus at all now, r7 $68/$69 hold RETV's grace and the host print gain (3 Sep 2026) and $6a is FREE, and $e's
 ;    low bits carry RATE. The description below is HISTORY; see the
 ;    'RETIRED with the ->DEL send' block in the code.
 ;    (was: ->DELAY, dry only.) (R16: the send
@@ -223,7 +223,8 @@
 ;   r7+$08..$0a   per-block (2048-tap) temp for lines 4..6
 ;   r7+$4b        per-block (2048-tap) temp for line 7
 ;   r7+$15..$66   per-sample scratch
-;   r7+$68/$69/$6a  FREE (18 Aug 2026, the ->DEL retirement -- with $71 from
+;   r7+$68/$69      RETV grace counter / host print gain (3 Sep 2026); $6a FREE
+;                 (18 Aug 2026, the ->DEL retirement -- with $71 from
 ;                 the v4 MIX removal, the first free r7 slots since the 10 Aug
 ;                 "completely full" note). Were the ->DEL machinery: DELAY ACC
 ;                 write address / send level / pre-effect dry stash
@@ -479,23 +480,58 @@ bus_mine:
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's ACC read address
-; The WET buffers are TWO deep, not four -- nothing reads them, so they cannot
-; carry a race and they are not worth 32 more words of a page that has to stay
-; inside 0x9xx. This is one of the two sites that narrows the offset for them.
+; ---- this call's REVERB WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
+; The wet is READ now -- by a character station in BUS mode, the return on
+; the master (docs/BUS.md "The returns") -- so it carries the same cross-core
+; race the accumulators do and takes the same four-buffer rotation, and it
+; carries L and R (32 words a buffer, interleaved) because the return is what
+; the master hears: a mono M would have thrown the reverb's width away. The
+; buffers sit PAST the old layout end, at $9da (modules/send/send_client.asm
+; has the map); the old two-deep mono words at $941 are dead. The write
+; offset is the accumulators' (x1), doubled for the 32-word stride, and the
+; frame offset (b) is doubled for the same reason.
         move    x1,a
-        and     #>$10,a                 ; write offset, narrowed to {0,16}
-        move    a,x0
-        move    #>$941,a
-        add     x0,a
+        add     x1,a                    ; write offset x2 (0/32/64/96)
         add     b,a
-        move    a,x:(r7+$64)            ; this call's WET write address
+        add     b,a                     ; + frame offset x2
+        add     #>$9da,a
+        move    a,x:(r7+$64)            ; this call's WET write address (L; R at +1)
+
+; ---- RETV: is a return live on the reverb's wet? (clear-on-read stamp) -----
+; A return station stamps y:$9d8 nonzero every block it returns this bus.
+; The engine reads the stamp, clears it, and prints its wet on the host only
+; while no stamp has arrived for 3 blocks -- so with no return in the rig the
+; reverb still comes out of its host exactly as before (bit-identical: the
+; print gain is 1/2 doubled back in the guard bits), and with one it leaves
+; the host and enters at the master. The 3-block grace covers a stamp lost
+; to the other core's timing; the mask on load covers boot garbage. Every
+; select is a Tcc off the ONE flag-setting op above it, moves between.
+        move    x:(r7+$68),a            ; blocks of grace left
+        and     #>$3,a
+        move    a1,x0
+        move    x0,b                    ; A2-clean
+        move    #>$1,x0
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b                    ; floored at 0
+        move    y:>$9d8,a               ; the stamp
+        move    x0,y:>$9d8              ; clear-on-read (x0 is still 0)
+        move    #>$3,x0
+        tst     a
+        tne     x0,b                    ; stamped this block: 3 blocks of grace
+        move    b,x:(r7+$68)
+        move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
+        move    #>$0,x0
+        tst     b
+        tne     x0,a                    ; a return is live: print nothing
+        move    a,x:(r7+$69)            ; this block's host print gain
 
 ; ---- (the DELAY ACC write address lived here until 18 Aug 2026) -----------
 ; RETIRED with the ->DEL send. The reverb no longer writes the DELAY bus at
 ; all: its twin (the delay's VRBD) went in v3 with "a return track has no
 ; pre-effect signal worth forwarding", and the reverb's -DEL only outlived it
 ; because the reverb was converted to a return a day later. Audio that wants
-; both buses belongs on a SEND track. r7 $68/$69/$6a are FREE (first free
+; both buses belongs on a SEND track. r7 $68/$69 hold RETV's grace and the host print gain (3 Sep 2026) and $6a is FREE (first free
 ; slots since the 10 Aug "completely full" note).
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer ------
@@ -3624,18 +3660,9 @@ fbB:
         move    a,x:(r7+$79)
         move    a,x:(r7+$26)            ; w*S, high-cut
 
-; ---- write M to the shared REVERB WET buffer (BUS.md task 8) ------------
-; Pre-WIDTH, pre-MIX: the bus carries this reverb's own clean output, not
-; this track's own colouring of it. x0/a/b/r5 are all free here (x0's old
-; value, S, is done -- w*S is already stashed above -- and the next line
-; reloads x0 fresh).
-        move    x:(r7+$64),a
-        move    a,r5
-        move    x:(r7+$25),b
-        move    b,y:(r5)
-        move    #>$1,x0
-        add     x0,a
-        move    a,x:(r7+$64)
+; ---- (the mono M write to the shared REVERB WET lived here until 3 Sep 2026;
+; the wet is published STEREO from the output stage below, post-gate, so the
+; return carries what the host used to print) ------------------------------
 
 ; DRY AT UNITY + WET (v5, 23 Aug 2026). The host stays a RETURN in every
 ; bus-arithmetic sense (engine feed and client registration still gated on
@@ -3668,7 +3695,10 @@ fbB:
 ; ear-passed at R29 is preserved to the bit. y0 is free here (GLVL consumed
 ; by the mpy above; the R channel reloads it); the mpy is the audited-signed
 ; y0,x0 form, never x0,y0 (the mpysu trap's discovery site).
-        move    a,x0                    ; gated wet
+        move    a,x0                    ; gated wet L -- PUBLISHED as-is
+        move    x:(r7+$64),b            ; (pre-IN-makeup: the return's level is
+        move    b,r5                    ; the pure-return level Sam ear-passed)
+        move    x0,y:(r5)               ; -> shared REVERB WET, L
         move    x:(r7+$70),y0           ; IN
         mpy     y0,x0,a                 ; IN * wet
         asl     #$1,a,a                 ; x2: makeup = 1 + 2*IN (v8 -- Sam
@@ -3676,6 +3706,14 @@ fbB:
                                         ; quiet; +9.5 dB at full IN now, and
                                         ; IN=0 is STILL exactly x1)
         add     x0,a                    ; wet * (1 + 2*IN)
+; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
+; while a return station is live on this bus (RETV, per block above). a1 is
+; what the store took before and is what the mpy takes now, so the printed
+; path is bit-identical to v8 with no return in the rig.
+        move    a,x0
+        move    x:(r7+$69),y0           ; print gain
+        mpy     y0,x0,a                 ; (audited-signed y0,x0)
+        asl     #$1,a,a
         move    x:(r0),x0               ; dry L, still in place
         add     x0,a                    ; + dry at unity (v5)
         move    a,x:(r0)                ; L in place -- dry + wet (MIX's old
@@ -3691,14 +3729,25 @@ fbB:
         move    a,x0                    ; GATE: same gate level on the right
         move    x:(r7+$62),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
-        move    a,x0                    ; gated wet -- IN makeup, R channel
+        move    a,x0                    ; gated wet R -- PUBLISHED as-is
+        move    x:(r7+$64),b
+        add     #>$1,b
+        move    b,r5
+        move    x0,y:(r5)               ; -> shared REVERB WET, R
         move    x:(r7+$70),y0           ; IN
         mpy     y0,x0,a                 ; (audited-signed y0,x0)
         asl     #$1,a,a                 ; x2 (v8, as on L)
         add     x0,a                    ; wet * (1 + 2*IN)
+        move    a,x0
+        move    x:(r7+$69),y0           ; print gain, as on L
+        mpy     y0,x0,a
+        asl     #$1,a,a
         move    x:(r0+n0),x0            ; dry R, still in place
         add     x0,a                    ; + dry at unity (v5)
         move    a,x:(r0+n0)             ; R in place -- dry + wet
+        move    x:(r7+$64),b
+        add     #>$2,b
+        move    b,x:(r7+$64)            ; WET pointer: one stereo frame on
         move    (r1)+                   ; all four line pointers advance together
         move    (r2)+                   ; and each wraps inside its own line
         move    (r3)+                   ; under m1..m4 = $fff

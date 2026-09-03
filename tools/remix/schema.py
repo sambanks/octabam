@@ -56,6 +56,11 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
 
+# Page 2 is knob/select/knob/select/knob/select, so only these three slots
+# can carry a stepped select -- and therefore a MODE.
+STEPPED_ONLY = (7, 9, 11)
+
+
 class YBase(Enum):
     """When a module's `$30000` literal is rewritten to the payload's own base.
 
@@ -330,6 +335,20 @@ class CavePatch:
     hook_addr: int | None = None        # where the jsr is planted
     hook_stock: bytes = b""             # bytes that MUST be there first
     registers_formatter: FormatterReg | None = None
+    # ---- a cave whose CONTENT depends on where it lands -------------------
+    # `pinned` is bytes decided before the build. A cave that contains
+    # POINTERS TO ITSELF -- a relocated menu row array, whose rows name their
+    # own labels and handlers -- cannot be: its bytes are a function of its
+    # address, and since 3 Sep 2026 addresses float. So a module may hand the
+    # build a callable instead:
+    #
+    #     emit(addr) -> (bytes, ((poke_addr, expect_stock, write), ...))
+    #
+    # The build resolves the address, calls it, plants the bytes, then asserts
+    # each poke site still holds the stock bytes before writing -- the same
+    # discipline `hook_stock` applies to a hook site, for the same reason: a
+    # table that has moved under us must stop the build, not be written over.
+    emit: object | None = None
     # Trailing prose for this cave's line in the build report, separator
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
@@ -435,6 +454,46 @@ class Harness:
 
 
 @dataclass(frozen=True)
+class ModeView:
+    """What ONE position of a module's MODE select renames and re-defaults.
+
+    A multi-mode effect reuses knobs: BongDelay's MDEP is the tape modulation
+    depth in CLEAN and the grain scatter in GRAIN, and a panel that prints
+    MDEP in both is telling the operator the wrong thing half the time (Sam,
+    3 Sep 2026: "it's only got four settings ... just feels a lil confusing").
+
+    `names` renames slots for this mode -- 4 characters, the field's width,
+    exactly as MenuEntry.abbr is. `defaults` is what the OTHER knobs should
+    be when the operator lands on this mode; the remixer applies them the
+    moment MODE changes, and on the unit the same table drives the cave.
+
+    Both are SPARSE: a slot absent from `names` keeps the name its Param
+    declares, and a slot absent from `defaults` keeps whatever the operator
+    had. Only name a slot whose meaning actually changes.
+    """
+
+    mode: int                                   # the select value
+    names: dict[int, bytes] = field(default_factory=dict)
+    defaults: dict[int, int] = field(default_factory=dict)
+
+    def __post_init__(self):
+        for slot, nm in self.names.items():
+            if not 0 <= slot <= 11:
+                raise ValueError(f"mode {self.mode}: slot {slot} is not 0..11")
+            if len(nm) > 4:
+                raise ValueError(
+                    f"mode {self.mode}: name {nm!r} is {len(nm)} characters; "
+                    f"the field holds FOUR plus a terminator (the 'HELL' "
+                    f"crash, CLAUDE.md)")
+        for slot, val in self.defaults.items():
+            if not 0 <= slot <= 11:
+                raise ValueError(f"mode {self.mode}: slot {slot} is not 0..11")
+            if not 0 <= val <= 127:
+                raise ValueError(f"mode {self.mode}: default {val} for slot "
+                                 f"{slot} is outside 0..127")
+
+
+@dataclass(frozen=True)
 class Module:
     """One contribution, as declared by modules/<name>/manifest.py."""
 
@@ -451,11 +510,38 @@ class Module:
     cf_patches: tuple[CavePatch, ...] = ()
     claims: Claims | None = None
     harness: Harness | None = None
+    # Which slot carries the MODE select, and what each of its positions
+    # renames and re-defaults. Empty for a single-engine module.
+    mode_slot: int | None = None
+    mode_views: tuple[ModeView, ...] = ()
 
     def __post_init__(self):
         if self.params and len(self.params) != 12:
             raise ValueError(f"{self.name}: expected 12 param slots, "
                              f"got {len(self.params)}")
+        if self.mode_views and self.mode_slot is None:
+            raise ValueError(f"{self.name}: mode_views without a mode_slot")
+        if self.mode_slot is not None:
+            if self.mode_slot not in STEPPED_ONLY:
+                raise ValueError(
+                    f"{self.name}: mode_slot {self.mode_slot} -- a select can "
+                    f"only sit on slot {', '.join(map(str, STEPPED_ONLY))}")
+            _cnt = self.params[self.mode_slot].count if self.params else None
+            _seen = set()
+            for v in self.mode_views:
+                if v.mode in _seen:
+                    raise ValueError(f"{self.name}: two views for mode {v.mode}")
+                _seen.add(v.mode)
+                if _cnt is not None and v.mode >= _cnt:
+                    raise ValueError(
+                        f"{self.name}: a view for mode {v.mode}, but the "
+                        f"select has {_cnt} positions")
+                for slot, val in v.defaults.items():
+                    _c = self.params[slot].count if self.params else None
+                    if _c is not None and val >= _c:
+                        raise ValueError(
+                            f"{self.name}: mode {v.mode} defaults slot {slot} "
+                            f"to {val}, past its {_c} positions")
         if (self.menu is not None and self.kind is not Kind.STOCK
                 and self.menu.fx2_id in STOCK_FX2_IDS
                 and not self.menu.replaces):
@@ -488,6 +574,45 @@ class Module:
                 raise ValueError(
                     f"{self.name}: slot {i} is stepped, but the companion "
                     f"byte fields are slots 7, 9 and 11")
+
+    def view_for(self, mode: int):
+        """The ModeView for a MODE value, or None. Unknown values fall back
+        to the declared names, the same way every mode decode on the DSP side
+        treats an unexpected select as its default engine."""
+        for v in self.mode_views:
+            if v.mode == mode:
+                return v
+        return None
+
+    def knob_map_in(self, mode: int | None = None) -> dict[str, int]:
+        """knob_map(), but with this MODE's renames applied. The remixer draws
+        from here and the ColdFire cave is emitted from the same table, so the
+        panel and the bench cannot drift apart."""
+        base = self.knob_map()
+        v = self.view_for(mode) if mode is not None else None
+        if v is None:
+            return base
+        by_slot = {sl: nm for nm, sl in base.items()}
+        by_slot.update({sl: nm.decode("latin1") for sl, nm in v.names.items()})
+        return {nm: sl for sl, nm in by_slot.items()}
+
+    def knob_map_all(self) -> dict[str, int]:
+        """Every name a slot answers to: its own, plus each MODE view's alias.
+        The test harness resolves `--set SCAT=40` through this, so a name the
+        panel prints is a name the bench accepts."""
+        out = dict(self.knob_map())
+        for v in self.mode_views:
+            for slot, nm in v.names.items():
+                out.setdefault(nm.decode("latin1"), slot)
+        return out
+
+    def canon_name(self, slot: int) -> str:
+        """The Param's OWN name for a slot -- what knob values are stored
+        under, whatever the current mode calls it."""
+        for nm, sl in self.knob_map().items():
+            if sl == slot:
+                return nm
+        return ""
 
     @property
     def active_params(self) -> list[int]:

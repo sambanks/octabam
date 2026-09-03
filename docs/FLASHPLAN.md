@@ -45,6 +45,7 @@ flashes 2 and 3 are for.
 | A module on FX1 | FX1's chooser relocated into the cave, its three `lea` refs repointed, its own id **and cursor** tables written | ColdFire emulator only |
 | A donor region beyond the reverbs | any stock effect's words can be taken; every one is self-contained | `dsp_reach` over both payloads — **static** |
 | Hello World (Bryan T) | builds and runs | flashed on **his** unit, not Sam's |
+| **The returns** (3 Sep 2026) | the engines' wet arrives once, at the master, through the character station in BUS mode (RVRB/DLY); the hosts go quiet ONLY while a return is live, and print as before otherwise | `tools/verify_returns.py` 18/18 and `make verify-bus` 19/19 — single-core: the delay's wet and its RETD stamp both cross cores on the unit, which no local test can see; and `0x360d3-5` next door was dead on hardware for R36 |
 
 ---
 

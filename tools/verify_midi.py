@@ -2,13 +2,13 @@
 """Local verification of the MIDI note path (24 Aug 2026; v5 3 Sep 2026):
 note -> BongDelay GRAIN pitch (r6+$9, latched). dsp_host has no ColdFire
 cave, so the word is forced with the DNOTE= build override and the result
-compared with the RATE knob, which drives the same 2^x law.
+compared with the PTCH knob, which drives the same 2^x law.
 
   EXACT (bit-identical):
-    no note (DNOTE=0)  == RATE 64         (nothing changes)
-    note 84 (unison)   == RATE 64         (f = 0 on both paths)
+    no note (DNOTE=0)  == PTCH 64         (nothing changes)
+    note 84 (unison)   == PTCH 64         (f = 0 on both paths)
   WITHIN 40 CENTS OF NOMINAL (the grain-rate comb), 15 of the knob path (spectral peak of the wet):
-    note 96 ~ +12 (RATE 96), note 91 ~ +7, note 72 ~ -12 (RATE 32)
+    note 96 ~ +12 (PTCH 96), note 91 ~ +7, note 72 ~ -12 (PTCH 32)
 
 Slow (8 DEV builds + renders, ~1 min); not part of make check.
 """
@@ -70,23 +70,23 @@ def same(a, b):
 
 
 # v5 (3 Sep 2026): the note drives GRAIN's continuous pitch (MODE 1), the
-# same law the RATE knob uses -- so the knob path is the reference, and two
+# same law the PTCH knob uses -- so the knob path is the reference, and two
 # of the cases are BIT-IDENTICAL rather than spectral: no note ever == the
-# knob, and note 84 (the OT's unison) == RATE 64, because both feed the same
+# knob, and note 84 (the OT's unison) == PTCH 64, because both feed the same
 # 2^x arithmetic with f = 0.
-G = ("--set", "MODE=1", "--set", "DPTH=127", "--set", "DRV=0", "--set", "FDBK=0",
-     "--set", "PING=0", "--set", "TIME=127", "--set", "SIZE=1")
-knob64 = render("knob64", {}, *G, "--set", "RATE=64")
-check("DNOTE=0 == the RATE knob (no note ever: unchanged)",
-      same(knob64, render("note0", {"DNOTE": "0"}, *G, "--set", "RATE=64")))
-check("note 84 (unison) == RATE 64, bit-identical (one 2^x law, f = 0)",
-      same(knob64, render("note84", {"DNOTE": "84"}, *G, "--set", "RATE=64")))
-clean = render("clean", {}, "--set", "MODE=0", "--set", "DPTH=0", "--set", "FDBK=0",
+G = ("--set", "MODE=1", "--set", "MRAT=127", "--set", "MDEP=0", "--set", "DRV=0",
+     "--set", "FDBK=0", "--set", "PING=0", "--set", "TIME=127", "--set", "SIZE=1")
+knob64 = render("knob64", {}, *G, "--set", "PTCH=64")
+check("DNOTE=0 == the PTCH knob (no note ever: unchanged)",
+      same(knob64, render("note0", {"DNOTE": "0"}, *G, "--set", "PTCH=64")))
+check("note 84 (unison) == PTCH 64, bit-identical (one 2^x law, f = 0)",
+      same(knob64, render("note84", {"DNOTE": "84"}, *G, "--set", "PTCH=64")))
+clean = render("clean", {}, "--set", "MODE=0", "--set", "MDEP=0", "--set", "FDBK=0",
                "--set", "PING=0", "--set", "TIME=127")
 uni = peak_hz(clean, 80, 3000)
 for note, want, rate in ((96, 1200, 96), (91, 700, None), (72, -1200, 32)):
     got = 1200 * math.log2(peak_hz(render(f"note{note}", {"DNOTE": str(note)}, *G,
-                                          "--set", "RATE=64"), 80, 3000) / uni)
+                                          "--set", "PTCH=64"), 80, 3000) / uni)
     detail = f"got {got:+.1f}"
     # 40 cents of NOMINAL: the peak is read off a comb at the grain rate
     # (10.8 Hz at 93 ms), so a line's worth of error is the finder's, and
@@ -95,9 +95,9 @@ for note, want, rate in ((96, 1200, 96), (91, 700, None), (72, -1200, 32)):
     ok = abs(got - want) < 40
     if rate is not None:
         refc = 1200 * math.log2(peak_hz(render(f"rate{rate}", {}, *G, "--set",
-                                               f"RATE={rate}"), 80, 3000) / uni)
+                                               f"PTCH={rate}"), 80, 3000) / uni)
         ok = ok and abs(got - refc) < 15
-        detail += f", RATE={rate} knob path {refc:+.1f}"
+        detail += f", PTCH={rate} knob path {refc:+.1f}"
     check(f"note {note} -> {want:+5d} cents", ok, detail)
 print(f"{fails} check(s) failed" if fails else "all MIDI checks passed")
 sys.exit(1 if fails else 0)

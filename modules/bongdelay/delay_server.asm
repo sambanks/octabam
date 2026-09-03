@@ -267,11 +267,10 @@
 ;   r7+$73              FDBK coefficient (per block)
 ;   r7+$74              PING amount (per block)
 ;   r7+$75              TIME, integer sample count (per block)
-;   r7+$76              IN -- this track's OWN send level into the delay
-;                       (per block, raw knob used directly as Q1.23). Was
-;                       MIX; v3 stage 1 made the host track a return, so
-;                       there is no dry left to cross-fade and the knob
-;                       became the host's counterpart of send_client's p0
+;   r7+$76              IN -- pinned to 0 since v5.1 (3 Sep 2026): slot 5 is
+;                       PTCH now and the host's own send is its FX1 client.
+;                       The IN arithmetic is still in the loop (x0 = exactly
+;                       zero contribution); removing it is a cycle trim
 ;   r7+$77/$78          TONE filter state, line L / R (persistent)
 ;   r7+$79/$7a          scratch: dL/dR, raw taps (per sample)
 ;   r7+$7b/$7c          scratch: fL/fR, damped taps == this sample's wet
@@ -630,20 +629,25 @@ bus_mine:
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
-; The WET buffers are TWO deep, not four -- nothing reads them, so they cannot
-; carry a race. This is the second of the two sites that narrows the offset.
+; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
+; Read now, by a character station in BUS mode -- the return on the master
+; (docs/BUS.md "The returns"), which is on the OTHER core -- so it takes the
+; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
+; interleaved: the ping-pong image is the point of the delay). The base is
+; the reverb's wet page plus $80 -- spelled as base + offset, NOT one literal,
+; because only `$9xx` literals relocate under XBUS and a fused `$a5a` would
+; stay core-private and silently miss the bus (the shared-window base rule).
         move    x1,a
-        and     #>$10,a                 ; write offset, narrowed to {0,16}
-        move    a,x0
-        move    #>$9a1,a
-        add     x0,a
+        add     x1,a                    ; write offset x2 (0/32/64/96)
         add     b,a
-        move    a,x:(r7+$64)            ; this call's DELAY WET write address
+        add     b,a                     ; + frame offset x2
+        add     #>$9da,a
+        add     #>$80,a                 ; the DELAY's page, after the reverb's
+        move    a,x:(r7+$64)            ; this call's WET write address (L; R at +1)
 
 ; ---- this call's REVERB ACC write address (BUS.md task 10: ->VERB sends) --
-; ⚠️ x0 holds the NARROWED (wet) offset from the block just above, not the
-; write offset -- the REVERB accumulator is four deep, so this reloads from x1.
-; b (the split-aware frame offset) is still valid.
+; x1 still holds the write offset and b the split-aware frame offset (the wet
+; address above touched neither).
 ; ⚠️ THIS IS A CROSS-CORE WRITE. BongDelay runs on payload B and this line
 ; writes payload A's reverb accumulator, so the race documented in
 ; docs/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
@@ -654,6 +658,37 @@ bus_mine:
         add     x0,a
         add     b,a
         move    a,x:(r7+$84)            ; this call's REVERB ACC write address
+
+; ---- RETD: is a return live on the delay's wet? (clear-on-read stamp) -----
+; The reverb's mechanism verbatim (modules/chonverb/reverb_server.asm, RETV):
+; a return station stamps y:$9d9 nonzero each block it returns this bus; the
+; host prints its wet only while no stamp has arrived for 3 blocks, so with
+; no return in the rig the delay still comes out of its host, bit-identically
+; (print gain 1/2, doubled back in the guard bits). The grace counter and the
+; print gain live in CORE-PRIVATE Y, two words past the MIDI note's (r7 is
+; full, and the zero-padded spelling is what keeps the XBUS relocation off
+; them, exactly as RATE's state -- build_bus.py's census counts these five
+; refs, so this comment must not spell them).
+        move    y:>$090b,a              ; blocks of grace left
+        and     #>$3,a
+        move    a1,x0
+        move    x0,b                    ; A2-clean, boot garbage masked
+        move    #>$1,x0
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b                    ; floored at 0
+        move    y:>$9d9,a               ; the stamp
+        move    x0,y:>$9d9              ; clear-on-read (x0 is still 0)
+        move    #>$3,x0
+        tst     a
+        tne     x0,b                    ; stamped this block: 3 blocks of grace
+        move    b,y:>$090b
+        move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
+        move    #>$0,x0
+        tst     b
+        tne     x0,a                    ; a return is live: print nothing
+        move    a,y:>$090c              ; this block's host print gain
+        move    x:(r7+$67),b            ; the frame offset, back for what follows
 
 ; ---- bus auto-gain: resolve 1/sqrt(N) for this block's READ buffer --------
 ; The DELAY-bus mirror of the reverb's v121 fix (XBUS.md "Gain staging"):
@@ -723,13 +758,9 @@ bus_mine:
 ; Tcc needs an accumulator, so it takes b and the base is RE-LOADED below
 ; rather than "still live". Costs one word; the version that trusted the old
 ; comment indexed the table at address 0 or 1, a wild Y read.
-        move    #>$1,x0                 ; the "one more client" increment
-        clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$5),a             ; IN (p5 since the 18 Aug swap), read
-                                        ;  from the knob directly: the per-block
-                                        ;  decode runs AFTER this block
-        tst     a                       ; Z set == IN is 0 == not sending
-        tne     x0,b                    ; sending -> b = 1
+        clr     b                       ; b = 0: IN is retired (v5.1), the host
+                                        ; never counts itself -- its own send
+                                        ; is an FX1 client like any other
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
@@ -1111,8 +1142,12 @@ dwarmdone:
 ; NEITHER FLASHED. The matrix now has an IN-nonzero render so a dead IN can
 ; never again pass silently -- verify_bus alone cannot see it because every
 ; default render has IN at 0.
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$76)           ; IN, 0 .. ~0.99
+; v5.1 (3 Sep 2026): IN IS RETIRED. Slot 5 is PTCH, GRAIN's pitch; the host
+; track's own send into the delay is its FX1 station's ->DEL (or SEND on
+; FX1). The IN machinery below is kept and pinned to 0 -- bit-identical to
+; every IN=0 render, and a cycle trim for later rather than a risk now.
+        clr     a
+        move    a,x:(r7+$76)            ; IN = 0, always
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as ChonVerb's MODE
@@ -1214,6 +1249,17 @@ dwarmdone:
                                         ; 8-15; on $b nothing shared the word
         move    a1,x0
         move    x0,a                    ; A2-clean
+; ---- v5.1: GRAIN carries a FIXED GENTLE wow (Sam, 3 Sep 2026) ------------
+; MDEP is scatter there, so the depth cannot come from the knob; and the
+; grains read the same lines the repeats recirculate through, so DPTH 127
+; had them wobbling by +-254 samples ("modulating heavily"). Knob 12's worth,
+; ~+-24 samples at 1x: a tape's breath rather than a wobble.
+        move    x:(r7+$69),b            ; MODE
+        move    #>$10000,x0             ; 1 << 16 = GRAIN
+        cmp     x0,b
+        bne     wowlive
+        move    #>$18000,a              ; 12 << 13
+wowlive:
         move    a,x:(r7+$2d)            ; WOWD
         asr     #$3,a,a
         move    a1,x0
@@ -1231,8 +1277,14 @@ dwarmdone:
 ; XBUS): r7 is full, and the server-role lock guarantees ONE delay per bank,
 ; so the shared words have one writer.
         move    x:(r6+$d),a
-        and     #>$7f0000,a             ; RATE knob field
+        and     #>$7f0000,a             ; MRAT knob field
         move    a1,x0
+        move    x:(r7+$69),b            ; v5.1: in GRAIN MRAT is density and the
+        move    #>$10000,x0             ; mod rate is fixed at exactly 1x (64),
+        cmp     x0,b                    ; the DPTH=0 bypass law's own value.
+        move    #>$400000,x0            ; 64 << 16 -- a move between the cmp
+        teq     x0,a                    ; and the Tcc is fine; Tcc's DESTINATION
+        move    a1,x0                   ; is an accumulator, never a register
         move    #>$130,y1
         mpy     x0,y1,a                 ; wow inc = $98 * val/64
 ; ⚠️ 0901h-0904h: CORE-PRIVATE Y, and the ZERO-PADDED SPELLING IS LOAD-BEARING.
@@ -1256,21 +1308,11 @@ dwarmdone:
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
         move    a,y:>$0902
 
-; ---- DRIVE amount: p10 in every mode but GRAIN --------------------------
-; GRAIN's p10 is SPRA (scatter), the established multi-meaning pattern -- so
-; in GRAIN, d is pinned 0 and the grains run undriven; everywhere else the
-; knob is DRV. knob<<16 IS d in Q1.23 (the MIX/PING trick). Y 0903h:
-; same reasoning as the RATE increments above.
-        move    x:(r7+$69),b            ; MODE
-        move    #>$10000,x0             ; 1 << 16 = GRAIN (v5 numbering)
-        cmp     x0,b
-        beq     drvz
+; ---- DRIVE amount: p10, EVERY mode (v5.1: scatter moved to MDEP, so the ---
+; grains read a driven line like the repeats do). knob<<16 IS d in Q1.23
+; (the MIX/PING trick). Y 0903h: same reasoning as the RATE increments above.
         move    x:(r6+$e),a             ; p10 knob field
         and     #>$7f0000,a
-        bra     drvw
-drvz:
-        clr     a
-drvw:
         move    a,x:(r7+$83)            ; d -> r7 (18 Aug 2026, probe V0/V127:
                                         ; d via Y read INSIDE the bsr callee
                                         ; measured dead on hardware -- crest
@@ -1317,17 +1359,15 @@ drvw:
         teq     x0,b                    ; running -> re-arm
         move    b,y:>$0904
 
-; ---- SPRAY: GRAIN scatter depth (v2 stage 5) ------------------------------
-; Page-2 slot 10's KNOB field -- the SAME WORD as FRZE, whose select is its
-; low byte, which is why the two masks here are disjoint and neither reads
-; the other's field. knob<<16 already IS value/128 in Q1.23, so it is used
+; ---- SPRAY: GRAIN scatter depth (v2 stage 5; on MDEP since v5.1) ----------
+; Page-2 slot 6's KNOB field (r6+$c, the word MODE's select shares). knob<<16 already IS value/128 in Q1.23, so it is used
 ; directly as a multiplier with no mpy to build it (the MIX/PING trick).
 ; SPRAY=0 puts every grain on the same read position -- four heads in a
 ; cluster, the most coherent and least granular end -- and 127 gives the
 ; full 0..1015-sample scatter. Decoded every block regardless of MODE, like
 ; PTCH and FRZE; harmless in the modes that never read it.
-        move    x:(r6+$e),a
-        and     #>$7f0000,a             ; knob field only
+        move    x:(r6+$c),a             ; MDEP's knob field: SCATTER in GRAIN
+        and     #>$7f0000,a             ; (v5.1 -- the mod depth is fixed there)
         move    a1,x0
         move    x0,a                    ; A2-clean (AND cleans A1 only)
         move    a,x:(r7+$5c)            ; SPRAY, 0 .. ~0.992 as Q23
@@ -1532,8 +1572,8 @@ gvn0:
         bra     gvoct
 gvknob:
 ; knob path: e = RATE - 64 (-64..63); oct = e >> 5; f = (e & 31) << 18
-        move    x:(r6+$d),a             ; page-2 slot 8 KNOB field
-        and     #>$7f0000,a
+        move    x:(r6+$5),a             ; PTCH: page-1 slot 5 (IN until v5.1),
+        and     #>$7f0000,a             ; a plain knob, val << 16
         move    a1,x0
         move    x0,a
         asr     #$10,a,a                ; the integer knob 0..127
@@ -1622,8 +1662,9 @@ gvrdone:
 ; the R61 full-dial law; and the level MAKEUP coeff = 1/2 + (7-dens3)/14 in
 ; Q23 (R61, verbatim: flattens the gate's energy loss within ~1.2 dB; the top
 ; of the ramp is $7FFFFF by construction, so the sum cannot wrap).
-        move    x:(r7+$2d),a
-        asr     #$11,a,a
+        move    x:(r6+$d),a             ; MRAT's knob field: DENSITY in GRAIN
+        and     #>$7f0000,a             ; (v5.1 -- the mod rate is fixed there)
+        asr     #$14,a,a                ; knob >> 4 = dens3, 0..7
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$3c)            ; dens3 (lag's park is consumed)
@@ -2599,10 +2640,21 @@ pdone:
         mpy     y0,x0,b                 ; IN * wet
         asl     #$1,b,b                 ; 2*IN*wet
         add     b,a                     ; + the makeup
+        move    a,x0                    ; wet L, final -- PUBLISHED as-is
+        move    x:(r7+$64),b
+        move    b,r5
+        move    x0,y:(r5)               ; -> shared DELAY WET, L
+; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
+; while a return is live on this bus (RETD, per block). a1 is what the store
+; took before and what the mpy takes now: bit-identical with no return.
+        move    y:>$090c,y1             ; print gain
+        mpy     x0,y1,a                 ; (audited-signed x0,y1)
+        asl     #$1,a,a
         move    x:(r0),b                ; dry L, still in place
         add     b,a                     ; + dry at unity (v5)
         move    a,x:(r0)                ; L in place -- dry + wet
         move    x:(r7+$7c),x0           ; wet R = fR
+        move    x:(r7+$83),y1           ; d, reloaded (y1 carried the print gain)
         mpy     x0,y1,a
         asr     #$1,a,a
         add     x0,a
@@ -2618,22 +2670,28 @@ pdone:
         mpy     y0,x0,b                 ; makeup, R channel
         asl     #$1,b,b
         add     b,a
+        move    a,x0                    ; wet R, final -- PUBLISHED as-is
+        move    x:(r7+$64),b
+        add     #>$1,b
+        move    b,r5
+        move    x0,y:(r5)               ; -> shared DELAY WET, R
+        move    y:>$090c,y1             ; print gain, as on L
+        mpy     x0,y1,a
+        asl     #$1,a,a
         move    x:(r0+n0),b             ; dry R
         add     b,a
         move    a,x:(r0+n0)             ; R in place -- dry + wet
 
-; ---- write mono wet to the shared DELAY WET buffer (BUS.md) --------------
-        move    x:(r7+$64),a            ; this sample's WET write address
-        move    a,r5
+; ---- ->VERB stash: the mono average of the two lines, as before. (The
+; shared DELAY WET carries L and R now, written from the output stage.) ----
         move    x:(r7+$7b),a            ; fL
         move    x:(r7+$7c),x0           ; fR
         add     x0,a
         asr     #$1,a,a                 ; mono average
         move    a,x:(r7+$87)            ; stash for the ->VERB WET send below
-        move    a,y:(r5)
         move    x:(r7+$64),a
-        add     #>$1,a
-        move    a,x:(r7+$64)            ; advance WET write pointer
+        add     #>$2,a
+        move    a,x:(r7+$64)            ; WET pointer: one stereo frame on
 
 ; ---- ->VERB: wet (this delay's own output) + dry (this track's own
 ; pre-effect signal), scaled and summed into the shared REVERB ACC bus

@@ -180,6 +180,11 @@ Y:0x921..0x940     REVERB bus wet, buffers 0 and 1        (servers write,
 Y:0x941..0x980     DELAY  bus accumulator + wet, same shape  SEND never reads)
 ```
 
+(The map above is the ORIGINAL two-buffer layout, kept with its measurement
+log. The current one — four-deep accumulators, four-deep STEREO wets past
+`0x9d2`, the return stamps — is `modules/send/send_client.asm`'s header, and
+"The returns" below.)
+
 The swap needs exactly one piece of code to run it once per block, not once
 per track, and BUS.md doesn't get to assume a global hook for that — so
 whichever physical track is **position 0** (`r7 == 0x6200`, DSP.md §11's
@@ -901,6 +906,81 @@ them.
 into reverb — it fills the `p5` slot the file's header had already reserved
 for exactly this, and it cost nothing extra to build as a knob once the
 ACC-write addressing needed for the dry sends already existed.
+
+## The returns
+
+**Built and emulator-verified, 3 Sep 2026 (`tools/verify_returns.py`, 18
+gates); not flashed.** The two engines' wet leaves the bus and enters the mix
+at the MASTER, through a character station in BUS mode — so the host tracks
+(the delay's on 1–4, the reverb's on 5–8) play their own material dry, like
+every other track, and the reverb and delay each arrive once, at one level,
+under one knob. Design page:
+<https://claude.ai/code/artifact/58c5577f-1a5d-45dc-9897-b275599cca15>.
+
+**What is published.** Each engine writes its finished wet — the reverb's
+post-gate, post-mode-gain, post-width L/R (before the IN makeup, i.e. the
+pure-return level ear-passed at R29); the delay's post-makeup, post-ping-shelf
+L/R — every sample into a shared, STEREO, FOUR-DEEP wet buffer:
+`Y:0x9da..0xa59` reverb, `Y:0xa5a..0xad9` delay (`modules/send/send_client.asm`
+is the map; the old two-deep mono words at `0x941`/`0x9a1` are dead). Four
+deep because the delay's wet is written on core 1 and read on core 0 — the
+accumulators' race, the accumulators' fix. Stereo because the return is what
+the master hears; a mono M would have thrown the reverb's width and the
+delay's ping-pong away.
+
+**What reads it.** `modules/charstation/` with `SAT = BUS`. On a master
+chain CRSH and RING are knobs nobody turns, so BUS repurposes them as the
+**RVRB** and **DLY** return levels (a `ModeView` renames them on the panel and
+in the remixer, and the crush and ring stages go neutral). Each sample, AFTER
+the send taps and the MIX write-back, the station reads both wet buffers two
+buffers back — the same idle-block margin every bus read has — and adds
+`RVRB × wet_reverb + DLY × wet_delay` to its frame. After the taps, never
+before: a return inside the tap would feed the wet back into the bus and the
+reverb would run away (gate: the tail after a tone decays, on a station that
+both sends `→VRB` and returns RVRB).
+
+**The engines stop printing — only while someone is returning.** A return
+station stamps one word per bus (`Y:0x9d8` RETV, `0x9d9` RETD) nonzero every
+block its level is up. The engine reads the stamp, clears it (clear-on-read,
+single writer, single reader), and prints its wet on its own host only while
+no stamp has arrived for 3 blocks. So:
+
+  * no return in the rig → the reverb comes out of T5 exactly as before —
+    **bit-identical**, `make verify-bus` 19/19 across the edit, because the
+    print gain is 1/2 doubled back in the guard bits;
+  * a return live → the host's stream is digital silence (dry only) and the
+    station's stream is the host's old wet, 30 samples late and ×127/128,
+    to −120 dB (the sample match, not a level match — a wrong rotation or
+    frame doubling would read a stale or torn buffer and fail it);
+  * levels down, or SAT ≠ BUS, or the station gone → within 3 blocks the
+    engine prints again. A wrong setting on the master can never make the
+    reverb vanish from a set.
+
+The 3-block grace is for a stamp the other core's timing loses; the mask on
+load is for boot garbage. The delay's counter and print gain live in
+core-private Y two words past the MIDI note (r7 is full); the reverb's in
+r7 `$68`/`$69`.
+
+**Costs.** Reverb +25 words, delay +50, station +137 (+31 cycles on the
+worst path — the return block is a forward skip outside BUS mode, so real
+cycles are unchanged elsewhere). The bus layout grows from 211 to 474 words;
+under XBUS it ends at `0x361d9`, still inside the init-zeroed 8K block. The
+BUS-mode rename cave tipped the ColdFire clone window over by 56 bytes, so
+label formatters (and the FX1 list) now overflow into the second zero run at
+`0x400d24d0`, above the menu shortcut.
+
+**What it does not fix, and what only hardware can show.** The engines'
+FX2 slots are still spent; two servers still mean two hosts. Two blocks of
+latency on the return (~0.7 ms) on top of the send's. ⚠️ Unmeasured: whether
+an insert on a master-configured T8 sees the summed mix — the rig already
+runs the reverb there as a return, consistent with yes; if no, the return
+lands on an ordinary track and nothing breaks. ⚠️ `dsp_host` is single-core,
+so the delay-wet-across-cores case and the RETD stamp crossing cores are
+flash-4 claims, like every bus timing claim before them. ⚠️ `0x360d3-5` (the
+words right after the old layout end) were DEAD on hardware for R36's
+per-block state, mechanism unknown — the new words start at `0x360d8`, and
+if the stamps or the first wet buffer misbehave on the unit, that hole is
+the first suspect.
 
 ## Known limitations
 

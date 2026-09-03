@@ -99,6 +99,7 @@ from remix.schema import (DEFAULT_HARVEST, NO_FALLBACK, BusRole,  # noqa: E402
 from remix.state import fx1_hazard  # noqa: E402
 from remix import stock as stock_mod  # noqa: E402
 import label_fmt  # noqa: E402
+import mode_names  # noqa: E402
 from remix import ledger  # noqa: E402
 
 OUT = pathlib.Path("out/mainos_bus.bin")
@@ -144,6 +145,12 @@ ID2POS = 0x400d6150
 LIST_REFS = [0x400375f4, 0x40052496, 0x40059a42]
 DESC_LEN = 0x192
 NEW_LIST = 0x400d6b00
+# The other unclaimed zero run docs/MAINMENU.md section 5 names -- 2,064 bytes
+# at 0x400d24d0. The menu shortcut cave is pinned at its start; label
+# formatters overflow into it when the clone window is full (the character
+# station's BUS-mode renames tipped the rig over by 56 bytes, 3 Sep 2026).
+OVERFLOW_RUN = 0x400d24d0
+OVERFLOW_RUN_END = 0x400d2ce0
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
 # NEW_LIST holds SEVEN rows plus its terminator before it runs into the
@@ -1129,6 +1136,11 @@ def main():
         print("  tempo cave OFF (NOTEMPO=1) -- SYNC reads zeros")
         _plan = []
     _cave_top = cave_end            # caves start past the descriptor clones
+    # The SECOND zero run (docs/MAINMENU.md section 5, 0x400d24d0..0x400d2ce0):
+    # pinned caves may live there, and since 3 Sep 2026 label formatters that
+    # no longer fit the clone window overflow into it, above whatever cave
+    # already sits there. _ovf_top is the first free byte of that run.
+    _ovf_top = OVERFLOW_RUN
     for _c, _b in _plan:
         if _c.cave_addr is None:
             # FLOATING (schema.CavePatch): first free address after what
@@ -1137,21 +1149,39 @@ def main():
             # image pinned -- and with six it clears the clone block that
             # used to run straight into them.
             _c = dataclasses.replace(_c, cave_addr=(_cave_top + 0x7f) & ~0x7f)
-        assert _c.cave_addr >= _cave_top, f"{_c.label} overlaps what precedes it"
-        assert _c.cave_addr + len(_b) <= cave_limit, \
-            "past the stock zero run (or into the long chooser list)"
+        # ⚠️ A CAVE MAY LIVE OUTSIDE THE CLONE WINDOW. The region from
+        # CLONE_BASE to the chooser list is crowded -- six descriptor clones
+        # and fifteen label formatters left 84 bytes on the rig -- and
+        # docs/MAINMENU.md names two other unclaimed runs. A cave pinned into
+        # one of those is checked for being FREE (below) and for not
+        # overlapping another module's cave (the ledger), but it neither
+        # follows nor advances this region's cursor.
+        _inside = CLONE_BASE <= _c.cave_addr < cave_limit
+        if _inside:
+            assert _c.cave_addr >= _cave_top, \
+                f"{_c.label} overlaps what precedes it"
+            assert _c.cave_addr + len(_b) <= cave_limit, \
+                "past the stock zero run (or into the long chooser list)"
         if _c.hook_addr is not None:
             got = bytes(img[_c.hook_addr - BASE:
                             _c.hook_addr - BASE + len(_c.hook_stock)])
             if got != _c.hook_stock:
                 sys.exit(f"{_c.label} hook site 0x{_c.hook_addr:08x} is not "
                          f"stock ({got.hex()}) -- refusing")
+        _pokes = ()
+        if _c.emit is not None:
+            # A cave that points at itself: its bytes are a function of the
+            # address the line above just resolved (schema.CavePatch.emit).
+            _b, _pokes = _c.emit(_c.cave_addr)
         if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)]):
             sys.exit(f"{_c.label} not free")
+        if OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
         # The bytes are PINNED so the build needs no m68k toolchain; when one
         # is present the source is re-assembled and compared, so a source that
         # has drifted from what we ship cannot pass unnoticed.
-        if (_c.source and not _replay and shutil.which("m68k-elf-as")
+        if (_c.source and _c.emit is None and not _replay
+                and shutil.which("m68k-elf-as")
                 and shutil.which("m68k-elf-objcopy")):
             with tempfile.TemporaryDirectory() as td:
                 o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
@@ -1164,6 +1194,14 @@ def main():
                              f"pinned bytes -- re-pin them in the "
                              f"manifest deliberately")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
+        for _pa, _expect, _write in _pokes:
+            _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
+            if _got != _expect:
+                sys.exit(f"{_c.label}: 0x{_pa:08x} holds {_got.hex()}, not "
+                         f"stock {_expect.hex()} -- refusing to write over a "
+                         f"table that is not where we think it is")
+            img[_pa - BASE:_pa - BASE + len(_write)] = _write
+            print(f"    poke 0x{_pa:08x}: {_expect.hex()} -> {_write.hex()}")
         if _c.hook_addr is not None:
             img[_c.hook_addr - BASE:_c.hook_addr - BASE + 10] = \
                 b"\x4e\xb9" + _c.cave_addr.to_bytes(4, "big") + b"\x4e\x71\x4e\x71"
@@ -1178,7 +1216,8 @@ def main():
                  if _c.hook_addr is not None else "")
         print(f"  {_c.label}: {len(_b)} bytes at 0x{_c.cave_addr:08x}"
               f"{_hook}{_c.report_note}")
-        _cave_top = _c.cave_addr + len(_b)
+        if _inside:
+            _cave_top = _c.cave_addr + len(_b)
 
     # ---- PLAN §6: the mode selects print their WORDS ---------------------
     # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
@@ -1200,26 +1239,55 @@ def main():
         for _i, _p in enumerate(_MODS[name].params):
             if not (_p.active and _p.labels):
                 continue
-            _bytes = label_fmt.emit(_p.labels)
-            label_fmt.verify(_p.labels)
-            if _lbl_top + len(_bytes) > cave_limit:
-                sys.exit(f"label formatters do not fit: {name} slot {_i} "
-                         f"needs {len(_bytes)} B at 0x{_lbl_top:08x}, limit "
-                         f"0x{cave_limit:08x}")
-            if any(img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)]):
-                sys.exit(f"label cave at 0x{_lbl_top:08x} is not free")
-            img[_lbl_top - BASE:_lbl_top - BASE + len(_bytes)] = _bytes
-            wr32(clone_addr[name] + 0x0ca + _i * 4, _lbl_top)
-            _lbl.append((name, _i, _p.name.decode("latin1"), _lbl_top,
-                         len(_bytes), _p.labels))
-            _lbl_top += len(_bytes)
-    for _n, _i, _nm, _a, _sz, _labels in _lbl:
+            # A MODE select with views gets the BIGGER cave: it renames the
+            # knobs around it before printing its own word, so the panel
+            # stops calling BongDelay's grain scatter "MDEP" (tools/
+            # mode_names.py). Everything else keeps the plain label cave.
+            _mod = _MODS[name]
+            _ren = (mode_names.complete(_mod)
+                    if _i == _mod.mode_slot and _mod.mode_views else {})
+            if _ren:
+                _desc = clone_addr[name] + mode_names.NAMES_AT
+                _bytes = mode_names.emit(_p.labels, _desc, _ren)
+                mode_names.verify(_p.labels, _desc, _ren)
+            else:
+                _bytes = label_fmt.emit(_p.labels)
+                label_fmt.verify(_p.labels)
+            # Past the clone window? Into the second zero run, above the
+            # caves pinned there. Either region is checked free; a formatter
+            # is position independent (pc-relative tables, absolute OS
+            # targets), so it neither knows nor cares which run it is in.
+            _at = _lbl_top
+            _ovf = _lbl_top + len(_bytes) > cave_limit
+            if _ovf:
+                _at = _ovf_top
+                if _at + len(_bytes) > OVERFLOW_RUN_END:
+                    sys.exit(f"label formatters do not fit: {name} slot {_i} "
+                             f"needs {len(_bytes)} B; the clone window ends at "
+                             f"0x{cave_limit:08x} and the overflow run at "
+                             f"0x{OVERFLOW_RUN_END:08x} (next free "
+                             f"0x{_at:08x})")
+            if any(img[_at - BASE:_at - BASE + len(_bytes)]):
+                sys.exit(f"label cave at 0x{_at:08x} is not free")
+            img[_at - BASE:_at - BASE + len(_bytes)] = _bytes
+            wr32(clone_addr[name] + 0x0ca + _i * 4, _at)
+            _lbl.append((name, _i, _p.name.decode("latin1"), _at,
+                         len(_bytes), _p.labels, bool(_ren)))
+            if _ovf:
+                _ovf_top = (_at + len(_bytes) + 3) & ~3
+            else:
+                _lbl_top += len(_bytes)
+    for _n, _i, _nm, _a, _sz, _labels, _rn in _lbl:
         print(f"  {_n:13s} slot {_i:<2} {_nm:<5} prints "
-              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})")
+              f"{'|'.join(_labels)}  ({_sz} B at 0x{_a:08x})"
+              + (" + RENAMES its neighbours per mode" if _rn else ""))
     if _lbl:
         print(f"  {len(_lbl)} label formatters, "
               f"0x{max(_cave_top, cave_end):08x}..0x{_lbl_top:08x} "
-              f"({_lbl_top - max(_cave_top, cave_end)} B)")
+              f"({_lbl_top - max(_cave_top, cave_end)} B)"
+              + (f"; {sum(1 for x in _lbl if x[3] >= OVERFLOW_RUN and x[3] < OVERFLOW_RUN_END)} "
+                 f"overflowed into 0x{OVERFLOW_RUN:08x}.. (next free 0x{_ovf_top:08x})"
+                 if _ovf_top > OVERFLOW_RUN else ""))
     # ==== 1d. FX1 ROWS, for modules that asked for one =====================
     # THE OTHER HALF OF "BOTH SLOTS". The DSP dispatch is ONE table indexed by
     # the raw id and shared by the menus, so a module's CODE already runs from
@@ -1286,16 +1354,24 @@ def main():
         # be able to lose it by omission.
         _new = [FX1_NONE] + _fx1_desc + [0]
         _need = len(_new) * 4
+        # A table of absolute pointers: position independent, so it takes
+        # the overflow run when the clone window is full, like a formatter.
+        _fx1_addr, _fx1_ovf = _lbl_top, False
         if _lbl_top + _need > cave_limit:
-            sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
-                     f"{_need} B at 0x{_lbl_top:08x} and the cave ends at "
-                     f"0x{cave_limit:08x}")
-        if any(img[_lbl_top - BASE:_lbl_top - BASE + _need]):
-            sys.exit(f"FX1 chooser list cave at 0x{_lbl_top:08x} is not free")
-        _fx1_addr = _lbl_top
+            _fx1_addr, _fx1_ovf = _ovf_top, True
+            if _fx1_addr + _need > OVERFLOW_RUN_END:
+                sys.exit(f"FX1 chooser list of {len(_new) - 1} rows needs "
+                         f"{_need} B; the clone window ends at "
+                         f"0x{cave_limit:08x} and the overflow run at "
+                         f"0x{OVERFLOW_RUN_END:08x}")
+        if any(img[_fx1_addr - BASE:_fx1_addr - BASE + _need]):
+            sys.exit(f"FX1 chooser list cave at 0x{_fx1_addr:08x} is not free")
         for _i, _v in enumerate(_new):
             wr32(_fx1_addr + _i * 4, _v)
-        _lbl_top += _need
+        if _fx1_ovf:
+            _ovf_top = (_fx1_addr + _need + 3) & ~3
+        else:
+            _lbl_top += _need
         # REPOINT, having proved each site is what we think it is. A `lea.l
         # <abs>.l,aN` is 0x4?f9 followed by the address, so the two bytes
         # before the operand pin the instruction as well as the value.
@@ -1795,6 +1871,10 @@ mkgo:""",
             # still build a pre-v5 reference)
             n_want += (3 if "note starts at NONE" in src else 2) \
                 if "y:>$090a" in src else 0
+            # + 5 for the RETD return-liveness state (3 Sep 2026): the grace
+            # counter $090b (load + store) and this block's host print gain
+            # $090c (store, then one load per channel in the output stage)
+            n_want += 5 if "y:>$090b" in src else 0
             if name == "DELAY SERVER" and n_priv != n_want:
                 sys.exit(f"XBUS: {name} expected exactly {n_want} core-private "
                          f"$09xx refs (RATE/DRV state"
@@ -2237,12 +2317,31 @@ mkgo:""",
         if delay_src is not None:
             _texts["DELAY SERVER"] = delay_src
         # Any other selected module with DSP code loads straight from its
-        # manifest's source and gets no bus treatment, but MAY declare its own
-        # DEV repro hooks below -- the generic version of the arms the three
+        # manifest's source. A module that is a BUS CLIENT without being one
+        # of the three (a BamSep26 station: Harness.bus_client on an insert)
+        # gets the one bus treatment it needs -- its `$9xx` scratch literals
+        # relocated to the shared window under XBUS, exactly SEND's regex --
+        # and NOT the housekeeping gate, because a station never elects (its
+        # source has no XBUS_GATE marker and reads the rotation only). Its
+        # ROTINIT / ROTLATCH markers are substituted by _prep like SEND's.
+        # It MAY also declare its own DEV repro hooks below -- the generic version of the arms the three
         # core sources have at the top of main().
         for _k in ORDER:
             if _k not in _texts and _k in ASM_SRC:
-                _texts[_k] = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _src_k = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
+                _mk = remix_modules().get(_k)
+                if (_x and _mk is not None and _mk.harness is not None
+                        and _mk.harness.bus_client):
+                    _n9 = len(re.findall(r"\$9[0-9a-f]{2}\b", _src_k))
+                    if not _n9:
+                        sys.exit(f"XBUS: {_k} is a bus client with no bus scratch "
+                                 f"literals to move")
+                    _src_k = re.sub(r"\$9([0-9a-f]{2})\b",
+                                    lambda m: "$%x" % (XBUS_BASE + int(m.group(1), 16)),
+                                    _src_k)
+                    print(f"  XBUS: {_k} -- {_n9} scratch refs moved to 0x{XBUS_BASE:x}, "
+                          f"a client that never housekeeps")
+                _texts[_k] = _src_k
 
         def _ybase(m, src):
             if DEV and m.dsp.dev_pin_ybase is not None:

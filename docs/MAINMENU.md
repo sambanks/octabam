@@ -110,6 +110,37 @@ holds a pointer back to the descriptor. ✅ Resolved (31 Aug 2026): it is the
 nav engine reads and writes; it persists across menu close (the menu
 remembers its position), which is stock behavior.
 
+## 4b. BUILT: `modules/menushortcut/` — CONTROL > REVERB / DELAY ✅ (3 Sep 2026)
+
+**Two rows, emulator-walked, unflashed.** `modules/menushortcut/manifest.py`
+copies CONTROL's six rows into a cave, appends REVERB and DELAY, repoints the
+rows pointer at `0x400cbd6c` and bumps the count at `0x400cbd54` to 8 — the
+§5 move, applied to CONTROL rather than the root for the reason §7 gives.
+Both writes assert the stock bytes first.
+
+The action (`menu_shortcut.s`, 92 bytes, assembled and pinned) is §7's
+sketch with one change: **the track is not hardcoded.** It scans the eight
+per-track FX2 id bytes at `0x80000ecc` for its server's id — 7 ChonVerb,
+6 BongDelay — and selects whichever track hosts it, so the row follows the
+project rather than assuming T5. If that address is wrong the scan simply
+never matches and the handler opens the current track's page: a wrong
+screen, not a crash, which is why it scans rather than trusting.
+
+⚠️ The cave is PINNED at `0x400d24d0`, the unclaimed 2,064-byte zero run §5
+names, **not** in the clone/label region — the BamSep26 rig leaves 84 bytes
+there and this cave is 300. `build_bus.py` allows a cave outside that window;
+it still refuses one whose target is not free.
+
+`tools/verify_menushortcut.py` (in `make check`) checks the table statically,
+boots the image and walks the menu out of RAM with the firmware's own layout
+— both rows resolve with their labels, id 0 (the action path) and actions in
+the cave — and calls the REVERB action with MIDI mode set, where it must
+return having touched nothing.
+
+⬜ What no local test can reach: whether closing the menu from inside an
+action and then selecting a track lands on the FX2 page. That is §7's ~65%
+and the flash is the test.
+
 ## 5. Why this matters: adding a fifth top-level entry is two writes ✅
 
 **The root row array `0x400cc698` has exactly ONE reference in the whole
@@ -268,3 +299,65 @@ teardown) and the two `0x46c7d8d8` readers — plus everything
 (`PTR_FUN_400bb7f0` etc.) covers. None of it blocks the two-write table
 extension in §5 or the §7 shortcut; authoring a *new* screen of your own is
 the part that still costs real decode work.
+
+## 9. The global edit screen: the four unknowns, measured (3 Sep 2026)
+
+Sam's actual ask, once §4b landed: *"I missed that it would still be on the
+track, that was the whole point"*. A shortcut removes the hunting; it does not
+remove the coupling. What CAN move is where you edit from -- §6's bespoke list
+screen, whose setters call the stock parameter writer for the host track. Four
+things had to be known before that could be priced. Three are now known.
+
+### 9a. Relocating the menu-state table ✅ EASY
+
+`0x400cbdac` is named by exactly **three `lea` immediates** -- `0x40064bd2`,
+`0x40064e34`, `0x400650e6`, all `lea 0x400cbdac,%aN` -- and by no pointer
+cell. Extending it is therefore the same relocate-and-repoint move the build
+already performs for the FX1 chooser list: copy 16 x 0x14 bytes to a cave,
+append a 17th, patch three 4-byte operands.
+
+Read out of booted RAM, the entries confirm the layout
+`{on_enter, on_exit, draw, key_handler, encoder_handler}` and that **a NULL
+member is skipped** (`tstl %a0 / beqs / jsr %a0@`), so an unused handler can
+be left zero. State 0 is all zeros but is unreachable: id 0 is the action
+path, which is why §3's "all 15 occupied" stands.
+
+### 9b. Where the values live ✅ BOTH SOURCES LOCATED
+
+- **The staged page**, which is what the panel draws:
+  `0x46C7D244 + slot * 0x14` (`FUN_400326d4` builds it;
+  `docs/midi_re_cc.md` already knew `0x46c7d244[2*slot+1] = 0x14` as the
+  redraw marker). Only valid for the page currently staged -- so a global
+  screen cannot read it without staging the page it is trying to avoid.
+- **The Part**, which is what the writer commits to and therefore the
+  authoritative store: `*(0x46c82456) + part * 6322 + 0x8EDA2 + track` is the
+  per-track id byte (`0x100b14cf` is the current part), with the parameter
+  bytes in the same record. A global screen reads and writes here.
+
+### 9c. The `flat` index 🟡 PARTLY
+
+`FUN_40054cd8(track, flat, value)` decomposes `flat` **by six**: two `rems.l
+#6` give slot = flat mod 6 and page = flat / 6, and the page is handed to
+`FUN_40031da4(track, kind)` -- the same resolver the [FX2] key path uses. So
+`flat = page * 6 + slot`, which page index means FX2 page 1 and page 2 is
+NOT yet confirmed.
+
+⚠️ **And it cannot be confirmed in the emulator as it stands**: the machine
+boots to DEMO with no CF card, so `*(0x46c82456)` is 0 and the current part
+and track bytes are 0. Anything that touches Part storage has no storage to
+touch. **This is the real limit on the feature's local testability** -- the
+draw half can be proven locally, the write half cannot, until either a
+project is faked in RAM or the harness learns to mount a card image.
+
+### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
+
+Every stock encoder handler examined (states 3 and 4, `0x400658f0` and
+`0x40065c98`) opens identically: push `%a2` and `%d2`, then `%sp@(12)` ->
+`%a2` and `%sp@(16)` -> `%d2`. So it is two stack arguments after the usual
+prologue. **Which is the encoder index and which is the delta is unsettled**:
+the same value is used as a pointer base (`pea %a2@(56)`) and compared
+against a small integer a few instructions later, which is either a
+re-load this reading missed or a desynchronised stream. Not guessed at --
+`CLAUDE.md`'s standing rule about r2 inventing plausible code applies to any
+disassembly read past the point where it stops making sense.
+

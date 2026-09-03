@@ -212,7 +212,7 @@ core. Two consequences:
 
 The build report is the live ledger — `make bus` prints it. Current build
 (29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,401, FREE 323.** The older "A 55 / B 1" figures in this file predated the freeze
+FREE 30 — and since BongDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,404, FREE 320 (v5.1: 2,154 words).** The older "A 55 / B 1" figures in this file predated the freeze
 and roll work; both payloads are still effectively full, and new work needs
 a lever first.
 
@@ -671,6 +671,31 @@ is the slice of that road worth having.
 
 ---
 
+### 6b. Per-mode knob NAMES — DONE 3 Sep 2026, emulator-proven
+
+**A MODE select now renames the knobs around it.** BongDelay's MDEP/MRAT read
+SCAT/DENS in GRAIN, and the modulation station's FDBK/DLY read RES and
+RING/PTCH in PHSR and COMB. `ModeView` in the manifest is the single
+declaration; the remixer's UNIT pane follows it, `send_probe --set` accepts
+the aliases, and `tools/mode_names.py` emits a MODE formatter that rewrites
+the descriptor's 6-byte name fields (`E+0x4e`) before printing its own word.
+
+No new hook: PLAN §6's formatter cave is already called with the value when
+the page draws that slot. `tools/verify_modenames.py` (in `make check`) calls
+each formatter on the emulated ColdFire and reads the names back — 12 checks
+on the rig, including that a mode which does not rename a slot RESTORES its
+own name, and that an out-of-range value clamps to mode 0.
+
+⚠️ Inferred, not measured: the rename lands on the next redraw if the panel
+draws names before formatting MODE, and the descriptor is shared by every
+track running that effect. ⚠️ 84 bytes of cave left on the rig.
+
+⬜ **Per-mode DEFAULTS are the other half and are NOT on the unit.** The
+remixer applies them the moment MODE changes; doing it on the box means
+writing the part's parameter bytes when the encoder moves, which nothing here
+does live (`ot_project.py` writes parts offline, on a card). That is the next
+ColdFire job, and it wants the part-write path PLAN §4 started decoding.
+
 ### 6. On-device labels for the mode selects — DONE 2 Sep 2026
 
 **Every stepped select now prints its words on the unit.** WarpFold's MODE
@@ -767,7 +792,13 @@ worth keeping.
 **What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
 Everything since is unflashed: the delay's R59–R62 quality pass, the
 stepped-select labels, stock effects listable beside ours, the insert card,
-a module on FX1, and a donor region beyond the three reverbs.
+a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
+(three stations, BongDelay v5) — and, since 3 Sep 2026, **the returns**:
+the engines' wet published stereo and four deep, returned at the master by
+the character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
+hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
+`tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
+across the edit — with no return in the rig nothing changed, to the bit.
 
 **`docs/FLASHPLAN.md` is the schedule** — three images, ordered so the
 cheapest and safest goes first, each shaped to stack independent claims whose
