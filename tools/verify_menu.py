@@ -119,7 +119,20 @@ STEPPED_FMT = (0x4003c718, 0x40047254)
 # The ColdFire cave region (docs/PARAM_PAGES.md section 7): clones, the tempo
 # caves and PLAN §6's label formatters all live in here and nowhere else.
 CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
-TIME_FMT = 0x400d7080          # modules/tempo-sync/time_fmt.s cave (build_bus.py TIME_FMT_CAVE)
+# TIME's sticky-snap formatter is the tempo-sync cave that registers itself
+# as DELAY SERVER slot 0. Its address FLOATS since 3 Sep 2026 (it sits
+# behind the descriptor clones, however many there are), so it is
+# recognised by its pinned bytes in the image rather than by a constant.
+def _time_fmt_cave():
+    _ts = _MODS.get("TEMPO SYNC")
+    if _ts is None:
+        return None
+    for _c in _ts.cf_patches:
+        _r = _c.registers_formatter
+        if _r is not None and _r.module == "DELAY SERVER" and _r.slot == 0:
+            return _c
+    return None
+TIME_FMT_CAVE = _time_fmt_cave()
 
 
 def main():
@@ -301,7 +314,10 @@ def main():
                       f"the tick widget and 0x12a=0, with A either stock's "
                       f"enumerated formatter or a label cave "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
-            elif name == "DELAY SERVER" and i == 0 and f1 == TIME_FMT:
+            elif (name == "DELAY SERVER" and i == 0 and TIME_FMT_CAVE is not None
+                  and CAVE_LO <= f1 < CAVE_HI
+                  and img[f1 - BASE:f1 - BASE + len(TIME_FMT_CAVE.pinned)]
+                  == TIME_FMT_CAVE.pinned):
                 # TIME's sticky-snap label formatter (modules/tempo-sync/time_fmt.s, 24 Aug
                 # 2026): a knob with A = our cave and B = 0 -- stock DELAY
                 # TIME's own shape (A = 0x4003c718, B = 0).

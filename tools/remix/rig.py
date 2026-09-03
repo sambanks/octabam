@@ -409,7 +409,12 @@ def resources(mod, words=None, fx1_rows=(), selected=True,
         # bill is CYCLES, and it is a big one: FX1 is four more slots on the
         # same four tracks, so listing an effect on both menus can double the
         # worst per-core load. The Budget's cycles row carries the number.
-        out.append("FX1  " + ("takes 1 of the 4 slots (3,072 words each)"
+        _fx1o = (getattr(mod, "claims", None) is not None
+                 and mod.claims.fx1_only)
+        out.append("FX1  " + ((f"takes 1 of the 4 slots ({mod.claims.buffer_words:,} "
+                               f"of 3,072 words) · FX1 ONLY: passes dry on FX2")
+                              if _fx1o else
+                              "takes 1 of the 4 slots (3,072 words each)"
                               if allocates else "no buffer")
                    + (" · a row costs no words, 4 slots of cycles"
                       if mod.key in fx1_rows else ""))

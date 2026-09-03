@@ -419,7 +419,9 @@ the worked example.
 ```python
 cf_patches=(CavePatch(
     label="my cave",
-    cave_addr=0x400d7100,
+    cave_addr=None,            # floats: first free 0x80-aligned address past
+                               # the clones and earlier caves; pin an int only
+                               # if the code is not position-independent
     pinned=MY_BYTES,
     source="modules/<name>/my_cave.s",
     hook_addr=0x400xxxxx,
@@ -431,6 +433,15 @@ The pattern is always the same: assert the hook site still holds the stock
 bytes, plant a `jsr` to the cave, and have the cave replay what it displaced
 before doing its own work. The installer is generic — contributing a cave
 needs no change to the build.
+
+**Caves float unless pinned** (3 Sep 2026). A remix with more than three
+descriptor clones used to run the clone block straight into the tempo cave
+pinned at `0x400d7000` — three clones end exactly there, so the shipping
+image had fit by arithmetic coincidence. `cave_addr=None` plants the cave at
+the first free address after whatever precedes it, rounded up to `0x80`,
+which reproduces the shipping image byte for byte and clears six clones.
+Only position-independent code may float: short branches and OS absolutes,
+no absolute reference to itself (both tempo-sync caves qualify).
 
 `pinned` is what actually gets written, so the build needs no m68k toolchain.
 When one *is* present the source is re-assembled and compared, so a source
@@ -641,7 +652,7 @@ classes are refused:
 | refused | why |
 |---|---|
 | a **stock** effect FX1 does not already list | DELAY and the three reverbs do not fit a 3,072-word FX1 allocation either — that is *why* stock keeps them off it |
-| a module that reads the allocator (`x:>$213`) | it sizes its buffer for an **FX2** slot, 16,384 words; an **FX1** slot is **3,072** |
+| a module that reads the allocator (`x:>$213`) **without saying how much it uses** | it sizes its buffer for an **FX2** slot, 16,384 words; an **FX1** slot is **3,072**. Declare `Claims(stock_instance_buffer=True, buffer_words=N)` with N ≤ 3,072 and the row is allowed; add `fx1_only=True` and it may also sit beside a server (see below) |
 | a module with **fixed** buffers in the FX2 region | an FX1 instance still writes to `Y:0x4000`+, i.e. into another track's FX2 buffer |
 | a bus **server** | one per core by design; an FX1 row is a second instance on the same core |
 
@@ -664,11 +675,37 @@ per track: FX1 instance *k* and FX2 instance *k* get different blocks, so the
 same effect on both slots of one track is two independent instances that
 happen to run in series.
 
-Also refused: a `replaces` module (it already has that effect's FX1 row — a
-second would list it twice), a stock effect (its FX1 row is stock's own
-business), and a key with no FX2 chooser row of its own (nothing for FX1's
-list to point at). `verify_menu.py` proves the rest, and asserts FX1 is
-byte-identical to stock in every remix that asks for nothing.
+**A `replaces` module is listed on FX1 by its own key** (since 3 Sep 2026):
+`fx1=("FILTER STATION", ...)`, never the stock key it replaces — the build
+refuses `fx1=("FILTER",)` beside a module that replaces FILTER, because
+that row would draw the stock name over our code. A composed list is
+rebuilt from scratch in the cave, so the stock row the replacement inherited
+cannot appear beside it (the old refusal, "would list it twice", was true
+of the in-place stock list and false of the composed one). With `fx1=()` the
+stock list stands and the replacement inherits its effect's row there, as
+before. Also refused: a stock effect FX1 never listed, and a key with no FX2
+chooser row of its own (nothing for FX1's list to point at).
+`verify_menu.py` proves the rest, `verify_replaces.py` walks the composed
+list for every declared replacement, and both assert FX1 is byte-identical
+to stock in every remix that asks for nothing.
+
+#### An FX1-ONLY allocator reader — `Claims(fx1_only=True)`
+
+An effect that needs a per-track delay line has exactly one safe place for
+it beside the servers: the **FX1** slot. Every FX2 slot is ChonVerb's tank
+on core 0 or BongDelay's line on tracks 3–4, which is why the ledger refuses
+every other allocator reader beside them. A module declaring
+`Claims(stock_instance_buffer=True, buffer_words=N, fx1_only=True)` (N ≤
+3,072) promises that it reads its base at **init** and, when the base is an
+FX2 slot (`>= 0x4000`), runs as a dry pass and **writes nothing** — so the
+ledger admits it beside a server, `fx1_hazard` admits it on FX1, and
+`send_probe` renders it as an FX1 instance (`-r7 1 -alloc 0`). The claim is
+a promise the module's render gate must prove: an FX2-slot render
+(`-alloc 1 -r7 2`) bit-exact dry at any setting, and `dsp_host`'s guard
+seeing no write above `0x3fff` on every FX1 base. ⚠️ FX1 bases are
+`0x1000 0x1c00 0x2800 0x3400` — only 1,024-aligned on two of the four — so
+modulo addressing over more than 1,024 words needs the linear-plus-mask
+idiom (`modules/nimbuslite/`), not an `m` register.
 
 #### What is actually different about FX1
 

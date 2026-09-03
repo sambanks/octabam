@@ -67,7 +67,9 @@ def fx1_hazard(mod) -> str | None:
     claims = getattr(mod, "claims", None)
     if mod.dsp is not None and mod.dsp.bus_role is BusRole.SERVER:
         return "a bus server is one per core; an FX1 row is a second instance"
-    if claims is not None and claims.stock_instance_buffer:
+    if (claims is not None and claims.stock_instance_buffer
+            and not (claims.buffer_words is not None
+                     and claims.buffer_words <= 3072)):
         return ("it sizes its buffer for an FX2 slot (16,384 words) and an "
                 "FX1 slot is 3,072")
     if (claims is not None and claims.owns_fx2_buffers) or (
@@ -222,9 +224,6 @@ class State:
             return f"{name} is back on the FX1 chooser"
         if key not in self.sel:
             return f"add {name} to the image first, then 1 gives it FX1 too"
-        if mod.menu.replaces:
-            return (f"{name} replaces stock {mod.menu.replaces}, so it "
-                    f"already has that effect's FX1 row")
         # ⚠️ ONLY A BUFFER-FREE INSERT CAN TAKE ONE, and the build refuses the
         # rest for reasons worth arriving at the keystroke rather than at the
         # next rebuild. See build_bus.py's fx1 block for the full statement.
@@ -512,7 +511,7 @@ class State:
             if c.returncode == 0:
                 try:
                     j = json.loads(c.stdout[c.stdout.index("{"):])
-                    self.cycles = (j["worst_core"], j["usable"],
+                    self.cycles = (j["worst_core"], j["usable"] + j.get("filter_credit", 0),
                                    j["worst_core_modules"])
                 except (ValueError, KeyError):
                     pass

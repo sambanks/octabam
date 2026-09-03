@@ -60,6 +60,22 @@ def rdw(img, p):
     return int.from_bytes(img[p - BASE:p - BASE + 3], "little")
 
 
+# The three `lea` operands the firmware reads the FX1 chooser list from
+# (build_bus.FX1_LIST_REFS). When a remix composes FX1 the list is rebuilt
+# in the cave and these are repointed, so the LIVE list is what they name.
+FX1_LIST_REFS = [0x40037990, 0x40052706, 0x40059bd2]
+
+
+def _live_fx1_list(img):
+    """Descriptor pointers of the FX1 chooser the built image actually
+    draws: the list its first `lea` names, walked to the terminator."""
+    out, a = [], rd32(img, FX1_LIST_REFS[0])
+    while rd32(img, a) != 0 and len(out) < 32:
+        out.append(rd32(img, a))
+        a += 4
+    return out
+
+
 def _fx1_rows(pristine):
     """Addresses of the FX1 chooser list's entries, from the pristine image
     (the list is never relocated by build_bus -- a replacement rewrites a row
@@ -128,9 +144,29 @@ def check_image(name, img, pristine, fails):
                 fails.append(
                     f"{name}: the FX1 chooser row for {eff.key} still points "
                     f"at stock's descriptor, but {declared[eid]} replaces it")
+            # A COMPOSED FX1 chooser is rebuilt in the cave, so the row a
+            # replacement inherited is whatever the composed list says:
+            # the clone if the remix listed the replacement by name, no
+            # row at all if it did not -- never stock's descriptor.
+            if remix.fx1:
+                _live = _live_fx1_list(img)
+                _clone = rd32(img, FX2_IDS + eid * 4)
+                if want_desc in _live:
+                    fails.append(
+                        f"{name}: the composed FX1 chooser still draws stock "
+                        f"{eff.key}'s row, but {declared[eid]} replaces it")
+                if (declared[eid] in remix.fx1) != (_clone in _live):
+                    fails.append(
+                        f"{name}: {declared[eid]} is "
+                        f"{'' if declared[eid] in remix.fx1 else 'not '}in "
+                        f"Remix.fx1 but its clone is "
+                        f"{'' if _clone in _live else 'not '}in the composed "
+                        f"FX1 list")
             if got_id != want_desc and (not got_row or got_row[0] != want_desc):
                 print(f"  [PASS] {name}: {declared[eid]} took {eff.key}'s FX1 "
-                      f"page as well as FX2's")
+                      f"page as well as FX2's"
+                      + (" and the composed chooser lists the clone"
+                         if remix.fx1 and declared[eid] in remix.fx1 else ""))
             continue
         if on_fx1 and eff.key not in _given_up:
             for a in (fx1_slot,) + tuple(

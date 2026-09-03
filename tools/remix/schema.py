@@ -314,7 +314,17 @@ class CavePatch:
     """
 
     label: str                          # name used in the build report
-    cave_addr: int
+    # Where the cave is planted. None = FLOATING: the build places it at
+    # the first free address after whatever precedes it (the descriptor
+    # clones, then earlier caves), rounded up to 0x80. A cave may float
+    # only if its code is position-independent -- short branches and OS
+    # absolutes, no absolute reference to itself -- which both tempo-sync
+    # caves are. Pinned addresses stood until 3 Sep 2026, when a remix with
+    # more than three descriptor clones ran the clone block straight into
+    # the tempo cave at 0x400d7000: three clones end EXACTLY there, so the
+    # shipping image had fit by arithmetic coincidence. For that image the
+    # floating rule reproduces the old addresses byte for byte.
+    cave_addr: int | None                # None = floating; pass it explicitly
     pinned: bytes
     source: str | None = None           # .s re-assembled and compared
     hook_addr: int | None = None        # where the jsr is planted
@@ -372,6 +382,32 @@ class Claims:
     # (Falsifier: an effect reaching its base another way -- dsp_host's
     # -guard would show a stray write.)
     stock_instance_buffer: bool = False
+    # HOW MUCH of the allocator's buffer the module touches, from its base.
+    # None = "sized for an FX2 slot" (16,384 words), the stock reverbs'
+    # shape and the reason they are FX2-only. A module that declares
+    # buffer_words <= 3072 fits an FX1 slot and may take an FX1 row.
+    buffer_words: int | None = None
+    # FX1-ONLY BY DESIGN: the module reads its allocator base at init and,
+    # when the base is an FX2 slot (>= 0x4000), runs as a dry pass and
+    # WRITES NOTHING. That is what lets it sit beside a server: the FX2
+    # slots it would otherwise be handed are ChonVerb's tank and
+    # BongDelay's line, and the ledger refuses every other allocator
+    # reader beside them for exactly that reason. The claim is a promise
+    # the module's render gate must prove (an FX2-slot instance renders
+    # bit-exact dry and dsp_host's guard sees no write above 0x3fff).
+    fx1_only: bool = False
+
+    def __post_init__(self):
+        if self.buffer_words is not None and not self.stock_instance_buffer:
+            raise ValueError("buffer_words without stock_instance_buffer: "
+                             "only an allocator reader has a sized buffer")
+        if self.fx1_only:
+            if not self.stock_instance_buffer:
+                raise ValueError("fx1_only is for allocator readers -- a "
+                                 "buffer-free module runs on both menus")
+            if self.buffer_words is None or self.buffer_words > 3072:
+                raise ValueError("fx1_only needs buffer_words <= 3072: an "
+                                 "FX1 slot is 3,072 words (docs/DSP.md 10)")
 
 
 @dataclass(frozen=True)
