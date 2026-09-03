@@ -121,7 +121,7 @@ So the words are spent only by modules of ours, and a swap is only
 (322), or Hello World (27) + Ripple (347). Measured costs, payload A:
 Hello World 27, Streamz 255, WarpFold 322, Ripple 347, BodeShift 391,
 Nimbus 500, Rungs 880, Send 215, ChonVerb 2,411 (+24 LFO table), BongDelay
-2,469 (payload B).
+2,308 (payload B; 2,469 before GRAIN v4).
 
 **One trade is often not enough**, and the status line names the next one
 rather than leaving it to the build to refuse:

@@ -211,7 +211,7 @@ core. Two consequences:
 
 The build report is the live ledger — `make bus` prints it. Current build
 (29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30.** The older "A 55 / B 1" figures in this file predated the freeze
+FREE 30 — and since GRAIN v4 (3 Sep 2026) B used 2,558, FREE 166.** The older "A 55 / B 1" figures in this file predated the freeze
 and roll work; both payloads are still effectively full, and new work needs
 a lever first.
 
@@ -247,13 +247,13 @@ choosing the same one. Measured this way:
 
 | remix | worst core | what fills it |
 |---|---|---|
-| chongbong | **2,398** | 1× delay + 3× send |
+| chongbong | **1,444** | 1× reverb + 3× send (was 2,432 with the v2 GRAIN delay: 1× delay + 3× send) |
 | mutables | **1,376** | 4× BodeShift (the dearest insert) |
 | nimbus | **1,308** | 4× Nimbus |
 | verbonly | **1,444** | 1× reverb + 3× send |
 
 against ~3,125 usable after stock's own ~1,410. Per-module: reverb 1,384,
-delay 2,338 (GRAIN worst path), Nimbus 327, BodeShift 344, Rungs 238,
+delay 1,255 (PITCH worst path since GRAIN v4, 3 Sep 2026; was 2,372 with the v2 GRAIN), Nimbus 327, BodeShift 344, Rungs 238,
 Streamz 154, WarpFold 101, Ripple 93, send 20.
 
 The old headline summed reverb + delay + sends onto one core — a load no
