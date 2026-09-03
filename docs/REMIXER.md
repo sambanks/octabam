@@ -682,6 +682,33 @@ enable bit and still draw as something else entirely, or as nothing at all
 (17 Aug 2026 — three of six page-2 slots drew wrong on a flash, and every
 check passed because every field they checked was right).
 
+#### Both menus at once, docked, no switcher
+
+The block sits at the **bottom** of the UNIT pane and stays there: it used to
+follow the knob rows, so it moved up and down with the number of knobs — five
+for WarpFold, thirteen for Filter — and the thing you were reading was never
+in the same place twice.
+
+⚠️ **There was a `p` key cycling FX1 / FX2 / MENU, and all three of its
+problems were the switcher.** FX1 and FX2 resolve the **same descriptor** for
+anything listed on both — the build points both id tables at one clone and
+`verify_menu` asserts it — so switching between them showed the same knob
+names twice, and only the chooser rows differed, which is the one thing worth
+seeing side by side. And the **MAIN MENU is the same picture in every remix
+that exists**: a selection changes it only by writing the tables at
+`0x400cbc00`, and every remix so far changes **zero** bytes of them
+(`rig.menu_patched()` — a byte diff against the pristine image, no boot). So
+it is a line, `menu unchanged by this selection`, and it becomes a picture on
+the day something patches it, which is the day that view was built for.
+
+⚠️ **The Budget strip changes the panes' HEIGHT.** It is `height: auto`, so a
+row appearing there — the `cycles` row arriving when a build lands — steals a
+row from the three panes above. Nothing *resized*, so `on_resize` does not
+fire and `_paint` sees unchanged text, and the panes went on laying out
+against a height they no longer had. It is painted first now and invalidates
+them; and because `content_size` read **during** a render is the previous
+layout's, the pane works to one row of slack rather than to the row.
+
 #### An FX page is read, not photographed
 
 ```

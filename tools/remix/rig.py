@@ -156,6 +156,28 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
     return tuple(on)
 
 
+# The MAIN MENU's tables: the five list descriptors and the row arrays they
+# point at (docs/MAINMENU.md section 2). A remix changes the top-level menu
+# only by writing here, so comparing this span against the pristine image
+# answers "does this selection change the main menu" exactly, instantly, and
+# without booting anything.
+MENU_TABLES = (0x400cbc00, 0x400cc700)
+
+
+def menu_patched() -> int:
+    """Bytes of the MAIN MENU tables this build changed. 0 = the unit's own
+    menu, unchanged -- which is every remix so far."""
+    from remix.state import BUILT_IMAGE
+    from remix import stock as _stock
+    img = BUILT_IMAGE.read_bytes() if BUILT_IMAGE.exists() else None
+    raw = _stock._image()
+    if img is None or raw is None:
+        return 0
+    lo, hi = (a - 0x40000400 for a in MENU_TABLES)
+    return sum(1 for i in range(lo, min(hi, len(img), len(raw)))
+               if img[i] != raw[i])
+
+
 # ---- what the BUILT IMAGE offers -------------------------------------------
 # The rig says what the operator is auditioning; this says what the image on
 # disk would actually put in the FX2 chooser, which is not the same thing --
