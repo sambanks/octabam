@@ -26,7 +26,18 @@ STATE_TABLE = 0x400cbdac
 ENTRY_LEN, ENTRY_N = 0x14, 16
 DRAW_MEMBER = 2                        # {enter,exit,DRAW,key,enc}
 KEY_MEMBER = 3
-KEY_OFF = 0x11a                        # key: entry point offset within HANDLER
+KEY_OFF = 0x11a                        # key:   entry offset within HANDLER
+ENTER_OFF = 0x148                      # enter: the CONTROL-row action offset
+
+# The CONTROL submenu (docs/MAINMENU.md 2, same as modules/menushortcut): its
+# count is at CONTROL_DESC+0 and its row-array pointer at +0x18. We relocate
+# the six rows into the cave, append a "BUS FX" row whose action enters the
+# screen, repoint the pointer and bump the count to 7. An action row is
+# window 0, child 0, id 0 -- the id-0 path calls +0x08 with argument 0.
+CONTROL_DESC = 0x400cbd54
+CONTROL_ROWS = 0x400cc5a8
+ROW_LEN, ROW_N = 24, 6
+BUS_LABEL = b"BUS FX\0" 
 
 # EVERY reference to the state table, as (operand_addr, stock_operand,
 # member_offset). docs/MAINMENU.md 9a listed only the three `lea` sites for the
@@ -53,7 +64,7 @@ TABLE_REFS = (
 # verify_busscreen re-assembles the source and compares, so a drifted source
 # cannot pass unnoticed.
 HANDLER = bytes.fromhex(
-    "4fefffd448d77cfc286f00304a8c670001002e3946c82456670000f67000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad0042006721e4c0100002647d7fc0008f084d7c076002803e78c5084203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824353c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef00187000103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff5e4cd77cfc4fef002c4e75202f0004223940bad0107433b48066084a8167185381600e7434b480660e740bb4816708528123c140bad0104e75")
+    "4fefffd448d77cfc286f00304a8c670001002e3946c82456670000f67000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad0042006721e4c0100002647d7fc0008f084d7c076002803e78c5084203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824353c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef00187000103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff5e4cd77cfc4fef002c4e75202f0004223940bad0107433b48066084a8167185381600e7434b480660e740bb4816708528123c140bad0104e75701023c0400cbf40700d23c0400cbd9c4e75")
 # placeholder marker -> which emitted-blob field it is patched to.
 MARKS = {
     "40bad000": "verbtab",
@@ -79,6 +90,12 @@ def _stock_table() -> bytes:
     d = _STOCK.read_bytes()
     a = STATE_TABLE - _BASE
     return d[a:a + ENTRY_LEN * ENTRY_N]
+
+
+def _stock_control_rows() -> bytes:
+    d = _STOCK.read_bytes()
+    a = CONTROL_ROWS - _BASE
+    return d[a:a + ROW_LEN * ROW_N]
 
 
 def emit(addr):
@@ -136,10 +153,30 @@ def emit(addr):
     entry[DRAW_MEMBER * 4:DRAW_MEMBER * 4 + 4] = (addr + handler_off).to_bytes(4, "big")
     entry[KEY_MEMBER * 4:KEY_MEMBER * 4 + 4] = (addr + handler_off + KEY_OFF).to_bytes(4, "big")
 
+    # ---- a CONTROL row that opens the screen -----------------------------
+    enter_here = handler_off + ENTER_OFF
+    bus_label_here = body_off + len(data)
+    data.extend(BUS_LABEL)
+    while (body_off + len(data)) % 4:
+        data.append(0)
+    ctrl_rows_here = body_off + len(data)
+    rows = bytearray(_stock_control_rows())
+    rows += (addr + bus_label_here).to_bytes(4, "big")   # +0x00 label
+    rows += b"\0" * 4                                     # +0x04 no window
+    rows += (addr + enter_here).to_bytes(4, "big")        # +0x08 action
+    rows += b"\0" * 4                                     # +0x0c
+    rows += b"\0" * 4                                     # +0x10 no child
+    rows += b"\0" * 4                                     # +0x14 id 0 -> action
+    data.extend(rows)
+
     blob = bytes(table) + bytes(entry) + bytes(handler) + bytes(data)
     pokes = tuple(
         (op, stock.to_bytes(4, "big"), (addr + moff).to_bytes(4, "big"))
         for op, stock, moff in TABLE_REFS
+    ) + (
+        (CONTROL_DESC, ROW_N.to_bytes(4, "big"), (ROW_N + 1).to_bytes(4, "big")),
+        (CONTROL_DESC + 0x18, CONTROL_ROWS.to_bytes(4, "big"),
+         (addr + ctrl_rows_here).to_bytes(4, "big")),
     )
     return blob, pokes
 

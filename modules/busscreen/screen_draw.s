@@ -137,3 +137,14 @@ key:    movel   %sp@(4),%d0              | keycode
         addql   #1,%d1
 kstore: movel   %d1,CURSOR
 kdone:  rts
+
+| ---- enter() -- a CONTROL row action: show the screen ---------------------
+| Called as action(0) from the id-0 row path. Sets the menu state to ours and
+| a full viewport, then returns; the menu loop redraws, landing on state 16.
+| (State 16 is past the id-path's 1..15 bounds check, so a row's id cannot
+| reach it -- the action-fn path is the only way in, docs/MAINMENU.md 7.)
+enter:  moveq   #16,%d0
+        movel   %d0,0x400cbf40          | MENU_STATE = our state
+        moveq   #13,%d0
+        movel   %d0,0x400cbd9c          | MENU_VIEWPORT = show all rows
+        rts

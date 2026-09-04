@@ -121,8 +121,18 @@ def main():
     check(grown_boot.clean,
           f"grown image boots to the RTOS handoff ({grown_boot.stopped})")
     grown_tree = emu.read_menu_tree(grown_boot.uc)
-    check(grown_tree == ref_tree,
-          "MAIN MENU tree walks identically to the un-grown image")
+    def labels(tree):
+        out = []
+        for node in tree:
+            out.append(node["name"])
+            out.extend(labels(node["children"]))
+        return out
+    ref_l, grown_l = labels(ref_tree), labels(grown_tree)
+    added = [x for x in grown_l if x not in ref_l]
+    removed = [x for x in ref_l if x not in grown_l]
+    check(added == ["BUS FX"] and removed == [],
+          f"menu tree gains exactly the BUS FX row, nothing else "
+          f"(added {added}, removed {removed})")
 
     # 4) enter state 16 and confirm the handler renders NAME + VALUE per row,
     #    and that the label set follows the host effect id.
@@ -195,9 +205,42 @@ def main():
     draw_state_16()
     check(cursor_row() == 0, f"up clamps at row 0 (got {cursor_row()})")
 
+    # 6) the CONTROL row that ENTERS the screen
+    CONTROL_DESC, CONTROL_ROWS_STOCK = 0x400cbd54, 0x400cc5a8
+    ROW_LEN = 24
+    count = rd32(CONTROL_DESC)
+    rows_ptr = rd32(CONTROL_DESC + 0x18)
+    check(count == 7, f"CONTROL row count bumped to 7 (got {count})")
+    check(rows_ptr != CONTROL_ROWS_STOCK and rows_ptr != 0,
+          f"CONTROL rows relocated (-> 0x{rows_ptr:08x})")
+    # the appended 7th row (index 6): label + action
+    row = rows_ptr + 6 * ROW_LEN
+    label_ptr = rd32(row)
+    action = rd32(row + 8)
+    rid = rd32(row + 0x14)
+    label = ""
+    a = label_ptr - BASE
+    while 0 <= a < len(img) and img[a]:
+        label += chr(img[a]); a += 1
+    check(label == "BUS FX", f"the new row's label is BUS FX (got {label!r})")
+    check(rid == 0 and new_base < action < new_base + 0x400,
+          f"the row is an action row into the cave (id {rid}, action 0x{action:08x})")
+    # invoking the action enters state 16 and the screen draws
+    for _ in range(3):
+        if u32(0x400cbf4c) != 0:
+            break
+        emu._call(uc, emu.MENU_OPEN)
+    emu._call(uc, action, (0,))
+    check(u32(0x400cbf40) == 16, f"the action sets MENU_STATE to 16 (got {u32(0x400cbf40)})")
+    grown_boot._draws.clear()
+    emu._call(uc, emu.MENU_DRAW)
+    drawn = [t for _x, _y, t in grown_boot._draws]
+    check(all(n in drawn for n in names),
+          f"after entering, the screen draws its rows (got {[d for d in drawn if d][:14]})")
+
     if backup is not None:
         IMAGE.write_bytes(backup)       # restore for the rest of make check
-    print(f"\n{'FAILED' if fails else 'busscreen step 1 OK'}: "
+    print(f"\n{'FAILED' if fails else 'busscreen OK (draw + nav + entry)'}: "
           f"{len(fails)} failure(s)")
     sys.exit(1 if fails else 0)
 
