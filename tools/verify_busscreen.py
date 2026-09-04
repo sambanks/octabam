@@ -142,7 +142,7 @@ def main():
     dly_action = rd32(rows_ptr + 7 * 24 + 8)
     e17_key = int.from_bytes(e17[12:16], "big")
     e17_enc = int.from_bytes(e17[16:20], "big")
-    KEY_UP, KEY_DOWN = 0x34, 0x33        # UP arrow / LEFT arrow (confirmed)
+    KEY_UP, KEY_DOWN = 0x34, 0x33        # UP / DOWN as they move on the unit
 
     def draw():
         for _ in range(3):

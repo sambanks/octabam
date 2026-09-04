@@ -184,18 +184,18 @@ ddone:  movem.l %sp@,%d2-%d7/%a2-%a6
         rts
 
 | ---- key(keycode): up/down through 0..11, WRAPPING (infinite scroll) -----
-| Confirmed reaching (tag 86): 0x33 LEFT, 0x34 UP. UP arrow = up. DOWN arrow is
-| one of 0x32/0x35/0x36 (not 0x33/0x34, and 0x35/0x36 alone did not move it),
-| so all three are accepted as down, with LEFT kept as down too.
+| Confirmed on hardware (tags 86-89): 0x34 moves UP and 0x33 moves DOWN --
+| the key Sam has under his thumb as "left" sends 0x33 and it is the one that
+| goes down; nothing in 0x32/0x35/0x36 moved the cursor. Kept as-is per Sam.
 key:    movel   %sp@(4),%d0
         movel   CURSOR,%d1
         moveq   #0x34,%d2               | UP arrow -> up
         cmpl    %d0,%d2
         beq.s   kup
-        moveq   #0x33,%d2               | LEFT -> down (known to work)
+        moveq   #0x33,%d2               | the key that moves DOWN on the unit
         cmpl    %d0,%d2
         beq.s   kdn
-        moveq   #0x32,%d2               | DOWN arrow candidates
+        moveq   #0x32,%d2               | (other candidates, harmless)
         cmpl    %d0,%d2
         beq.s   kdn
         moveq   #0x35,%d2
@@ -292,12 +292,18 @@ x1:     movel   %a6@(0,%d3:l:4),%a5
         movel   %d2,%sp@-
         jsr     P2EDIT                  | the editor: all its stores + dirty bits
         addql   #8,%sp
-        movel   %a5,%d0
-        beq     xdone                   | a knob: the editor's 0..127 was right
-        | a SELECT: the editor ignores the count, so set the value ourselves:
-        | new = clamp(before + delta, 0 .. count-1), into Part, live, mirror
-        movel   %a5@,%d1
-        subql   #1,%d1                  | count-1
+        | The editor clamps against whatever descriptor its page table holds,
+        | which this screen never stages -- so its clamp is STALE (it squashed
+        | GATE/DRV to 0..3 and ramped selects to 127). Never trust it: set the
+        | value ourselves for EVERY page-2 slot, count = 128 for a knob or the
+        | select record's count. new = clamp(before + delta, 0..count-1) into
+        | Part, the live byte the DSP frame reads, and the working mirror.
+        movel   %a5,%d1
+        beq.s   xknob
+        movel   %a5@,%d1                | a select: its count
+        bra.s   xcnt
+xknob:  movel   #128,%d1                | a knob: 0..127
+xcnt:   subql   #1,%d1                  | count-1
         movel   %d4,%d0
         addl    %d5,%d0
         cmpl    %d1,%d0
