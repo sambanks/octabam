@@ -745,7 +745,34 @@ made the select path researchable without flashes; it is parked in
 `PLAN.md` as the next emulator milestone, for the next project-dependent
 path, not for this one.
 
-### 9e. The twelve-row bus screen — build plan (4 Sep 2026)
+### 9e. The twelve-row bus screen — BUILT (4 Sep 2026, `modules/busscreen`)
+
+✅ **The screen is built and emulator-proven, unflashed.** `modules/busscreen`
+(remix `busscreen`, `tools/verify_busscreen.py` in `make check`) grows the
+menu-state table to a 17th state and fills its draw/key/encoder members:
+
+- **Reachable:** CONTROL gains a `BUS FX` row whose action enters the state.
+- **Draws twelve rows:** name + live value for every control of the host
+  engine, the label set following the FX2 id (7 BusVerb, 6 BusDelay).
+- **Navigable:** a clamped cursor, up/down on 0x33/0x34.
+- **Edits page 1 (rows 0–5) locally-proven:** the encoder reads the value,
+  adds the delta, clamps, and writes through the self-contained
+  `0x40054cd8(track, 24+slot, value)`; the verifier drives a turn and the
+  drawn value moves.
+- **Edits page 2 (rows 6–11) built, FLASH QUESTION:** the encoder calls
+  `0x4003a474(slot-6, delta)` with the FX2 page global set; whether the value
+  moves needs live page-dispatcher state the emulator cannot supply.
+
+Draw and edit read/write the SAME Part arrays (`0x8ee9a` page 1, `0x8ef5a`
+page 2), keyed by the `0x80000000/03` track/part pair, so an edit is visible
+by construction. What only the flash can settle: the panel up/down keycodes
+and [NO]/exit, whether the loop redraws the state after the action, and the
+page-2 edit landing.
+
+The original plan (kept below for provenance):
+
+#### Original plan (4 Sep 2026)
+
 
 The goal is a MAIN MENU screen that edits ALL TWELVE controls of BusVerb and
 BusDelay, off the track. `modules/menushortcut` already reaches the twelve
