@@ -408,11 +408,39 @@ Three things worth having:
 and the second is a routine we can call the same way the panel does rather
 than arithmetic we reimplement.
 
-⚠️ **What is NOT yet read:** this routine's entry point and signature. The
-disassembly above is its body; the call site that reaches it, and therefore
-what it expects on the stack and in `d4`/`d5`/`a2`/`a4`, still has to be
-traced back before anything calls it. That is the next read, and it is a
-small one.
+✅ **The entry point, traced (4 Sep 2026): `FUN_4003a474`.**
+
+```c
+void fx_page2_edit(int slot, int delta);      /* 4(sp), 8(sp) */
+```
+
+- **Two stack arguments.** The prologue is `lea -32(sp),sp` + `movem.l
+  d2-d5/a2-a5,(sp)`, so the args sit at `sp@(36)` and `sp@(40)`: the first
+  goes to `a3`, the second to `d3`.
+- **`a3` is the SLOT, not an encoder position.** It is compared against
+  **6** and branches to its own arm — and 6 is the first page-2 slot, which
+  is exactly the boundary a page-2 editor would special-case.
+- **`d3` is a DELTA, and this is a read-modify-write.** The body reads the
+  current byte (`mvsb (a0),d2` off the `+0x8ef5a` array), adds `d3`, clamps
+  against the descriptor's range, and stores. It does NOT take an absolute
+  value the way the page-1 writer does.
+- **Track and part come from GLOBALS, not arguments**: `0x80000000` (current
+  audio track) and `0x80000003` (current part). §7 already established that
+  a page edit keys off those globals rather than taking a track, which is
+  why the FX2 shortcut has to SELECT the host track rather than aim at it.
+
+**What this means for a twelve-row screen.** Page 1 is set absolutely
+through the stock writer; page 2 is nudged relatively through this one. That
+is not a problem — the screen can read the current value and pass the
+difference — but it is a real difference in shape, and a screen that assumes
+both calls take an absolute value would write page 2 to a value that drifts
+by whatever was already there.
+
+⚠️ **Still inferred, not measured:** the slot boundary reading (`a3 == 6`
+being the page-2 arm) and the exact clamp semantics come from reading the
+body, not from calling it. Both are cheap to settle on the warm emulator the
+way the page-1 writer was: call it with a known slot and delta and watch
+which byte moves.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
