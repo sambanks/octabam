@@ -334,45 +334,44 @@ path, which is why §3's "all 15 occupied" stands.
   per-track id byte (`0x100b14cf` is the current part), with the parameter
   bytes in the same record. A global screen reads and writes here.
 
-### 9c. The `flat` index 🟡 ADVANCED, STILL NOT SETTLED (4 Sep 2026)
+### 9c. The `flat` index ✅ RESOLVED, and the answer constrains the screen (4 Sep 2026)
 
-`FUN_40054cd8(track, flat, value)` decomposes `flat` **by six** — two
-`rems.l #6` give slot = flat mod 6 and page = flat / 6, and the page goes to
-`FUN_40031da4(track, kind)`, the resolver the [FX2] key path uses. So
-`flat = page * 6 + slot`. Which page index is FX2 page 1, and which is page
-2, is what a screen needs and it is still open.
+`FUN_40054cd8(track, flat, value)` splits `flat` by six into page and slot,
+and the page goes to the same resolver the [FX2] key path uses. Read past
+the early bail, the address arithmetic is explicit:
 
-**What 4 Sep measured, on a booted machine with a faked Part** (T5, FX1 =
-Spectrum, FX2 = BusVerb):
+| | |
+|---|---|
+| page 0, `flat` 0–5 | `DB + part*6322 + 0x8edaa + track*30 + machine*6 + slot` — the PLAYBACK page, which varies by MACHINE TYPE, hence the extra term |
+| pages 1–4, `flat` 6–29 | `DB + part*6322 + 0x8ee9a + track*24 + (flat − 6)` — one flat 24-byte block per track: AMP, LFO, FX1, **FX2** |
 
-- ✅ **`flat` addresses a CONTIGUOUS byte array**, one byte per parameter:
-  every write landed at `ParamBase + flat`, with `flat` 11 → `+11` and 24 →
-  `+24` in the same run. Not a per-page array with its own stride.
-- ✅ **The writer also writes a working mirror at `0x100a4f70`+**, which the
-  emulator does not map by default; an unmapped-write fault there is the
-  write having happened, not having failed. A screen must go through the
-  writer rather than poke the Part, or the frame builder keeps reading the
-  stale mirror.
-- ✅ **Live indices under that configuration:** 0–16, 18–29, then only
-  31, 33, 37, 39, 43, 45, 49, 51, 55, 57 — pairs at +1 and +3 of each
-  six-block above 30, which looks like page-2 select slots but is not
-  established.
-- ❌ **The obvious experiment does not separate FX1 from FX2.** Changing
-  either slot's effect (FX2 → SEND, or FX1 → NONE) makes the writer bail for
-  EVERY flat, not just that slot's: the live set went from 39 indices to
-  none. So "which flats died" cannot attribute a flat to a page, and the
-  4 Sep attempt to do it that way proved nothing.
+**FX2 page 1 is `flat` 24–29.** ✅ Derived from the code above and measured
+independently on the booted machine: every write landed at `0x8ee9a +
+track*24 + flat − 6`, checked at two tracks and a dozen indices.
 
-**What would settle it:** reading the writer's body past its early bail
-(`btst #0,d1` after `FUN_400a6994`) to see what it requires of each page
-kind, or an emulator with a real project loaded rather than a zeroed Part,
-which `docs/EMU.md` already names as the limit on this feature's local
-testability.
+**❌ FX2 PAGE 2 IS NOT REACHABLE THROUGH THIS FUNCTION, and neither is any
+other page's.** The writer covers 30 values — five pages of six — and two
+things in its own body cap it there:
 
-⚠️ **The bus screens are blocked on this.** A screen that edits the wrong
-six bytes edits some other page's knobs, which is the same class of defect
-as the stamping tool's two wrong page-2 layouts on 4 Sep — and that one cost
-a day of hardware time.
+- it clears a scene-lock bit with `1 << flat` in a **32-bit** word per track
+  (`0x80000110 + (track + 1290)*4`), so `flat` ≥ 32 shifts out of the mask;
+- it zeroes `0x80001658 + track*32 + flat`, a **32-entry** per-track array.
+
+✅ **This agrees with something already measured from the other side.**
+`docs/MIDI.md` records that page 2 is unreachable from CC and cannot be
+scene-locked. Same 32-slot ceiling, found independently — which is the
+cross-check that makes this worth relying on.
+
+**What it means for the bus screens.** A screen built on the stock writer
+edits an engine's **page-1 six knobs only**: BusVerb's TIME MOD SIZE HP LP
+IN, BusDelay's TIME FDBK TONE PING →VRB PTCH. Page 2 — MODE, DIFF, SHFT,
+GATE, RATE, and the delay's MDEP MODE MRAT SIZE DRV FRZE — needs a
+different path: a direct Part write plus the working mirror at
+`0x100a4f70`+, which is exactly the coupling the writer exists to hide, or
+another firmware entry point nobody has found. That is the next question,
+and it is a smaller one than the six-versus-twelve decision it forces:
+**a twelve-row screen is not free, and a six-row screen leaves each engine's
+mode select on a page nobody can reach.**
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
