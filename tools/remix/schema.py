@@ -782,6 +782,30 @@ class Remix:
     # What is left is exactly the INSERT class: WarpFold, Ripple, Rungs,
     # Streamz, BodeShift, Hello World -- and SEND, which is buffer-free
     # (untested there, but nothing measured argues against it).
+    # PLACED BUT NOT LISTED. Each key here is carried by the image -- code,
+    # id, descriptor clone -- and takes NO CHOOSER ROW, with its twelve
+    # parameter names blanked so the track page it lands on draws no knobs.
+    #
+    # This is how an effect stops being a per-track choice and becomes part
+    # of the instrument: the two bus engines are hosted by the project stamp,
+    # not by turning a chooser, and their controls live on a main-menu screen
+    # instead of a track page (docs/MAINMENU.md section 6). Blanking the
+    # NAMES is what empties the page: the parameter COUNTS and enable bits
+    # stay, so the stock parameter writer still clamps and commits every slot
+    # and the frame builder still carries it to the DSP -- measured in the
+    # emulator, 4 Sep 2026, both halves (the page drew nothing; the writer
+    # landed a value in the Part).
+    #
+    # ⚠️ IT BELONGS TO THE REMIX, NOT THE MODULE, and the bit-identity gate
+    # is what said so: declared on the module, hiding the engines emptied
+    # the plain `bus` image's chooser too, from three rows to one. A remix
+    # hides an engine only when it also carries the screen that edits it.
+    #
+    # ⚠️ IT DOES NOT MAKE THE ID PRIVATE. Dispatch is per id and shared by
+    # every track and both menus, so a saved part that names this id ANYWHERE
+    # runs this code. A module that must run on one track only has to detect
+    # that itself, the way modules/modulation does with its allocator slot.
+    hidden: tuple[str, ...] = ()
     fx1: tuple[str, ...] = ()
 
     def __post_init__(self):

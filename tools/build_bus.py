@@ -190,6 +190,13 @@ REMIX = remix_registry.remix(os.environ.get("REMIX")
                              or remix_registry.DEFAULT_REMIX)
 ORDER = [k for k in REMIX.modules
          if remix_modules()[k].menu is not None]
+# A HIDDEN module (schema.Remix.hidden) is placed, dispatched and cloned but
+# takes no chooser row: it reaches a track through the project's stored id,
+# never through the panel. ORDER is what the chooser lists; CARRIED is what
+# gets a clone, code and a dispatch entry.
+CARRIED = ORDER
+HIDDEN = [k for k in CARRIED if k in REMIX.hidden]
+ORDER = [k for k in CARRIED if k not in HIDDEN]
 # THE FIRMWARE'S OWN NONE AS THE FALLBACK, for a remix with no bus (see
 # schema.NO_FALLBACK, which is also what refuses it beside a bus
 # participant). Unimplemented ids -- and id 0, a fresh part's -- then resolve
@@ -415,7 +422,7 @@ BUILD_TAG = b"79"
 # bare synonyms for "no effect". 0x06 is the exact id tools/build_dspprobe.py
 # proved runs custom DSP code on real hardware. schema.py enforces the range.
 _MODS = remix_modules()
-_SEL = [_MODS[k] for k in ORDER]
+_SEL = [_MODS[k] for k in CARRIED]
 # A STOCK row (tools/remix/stock.py) gets no clone, no code and no words:
 # its descriptor and dispatch are where stock put them. The build writes
 # its list row and cursor position and nothing else, so everything derived
@@ -431,8 +438,13 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
             for m in _CLONED}
 # A name of None means "leave the donor's", which is a different thing from
 # b"" (blank the slot). Both are in use: SEND blanks ten of FILTER's names.
-RENAMES = {m.key: [(i, p.name) for i, p in enumerate(m.params)
-                   if p.name is not None] for m in _CLONED}
+# A HIDDEN module's twelve names are blanked (b"" -- not None, which would
+# leave the donor's), so its track page draws no knobs. Counts, defaults and
+# enable bits are untouched, which is what keeps the parameter writer and the
+# frame builder working for the menu screen that edits it.
+RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in HIDDEN else
+                   [(i, p.name) for i, p in enumerate(m.params)
+                    if p.name is not None]) for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
 # different algorithm on that slot. DARK REV's MIX default is 0 (a freshly
 # selected reverb would be silent) and SPRING's TONE-slot default is 0 (our
@@ -713,7 +725,7 @@ ASM_SRC = {k: v for k, v in {**_DEF_ASM,
                              else "dsp/page2_probe.asm" if os.environ.get("PROBE") == "1"
                              else "dsp/tempoprobe.asm" if os.environ.get("TPROBE") == "1"
                              else os.environ.get("RVSRC") or _DEF_ASM.get("REVERB SERVER")),
-           "SEND": _DEF_ASM.get("SEND")}.items() if k in ORDER}
+           "SEND": _DEF_ASM.get("SEND")}.items() if k in CARRIED}
 
 # per payload: donor P addresses for CODE space, the proven null stub, the
 # X:0x215/X:0x235 module address, and DELAY SERVER's payload-specific Y base
@@ -1108,10 +1120,16 @@ def main():
         if rd32(r) != FX2_LIST:
             sys.exit(f"list ref at 0x{r:08x} not stock FX2_LIST -- refusing")
         wr32(r, list_addr)
+    fb_pos = 0 if NO_FB else ORDER.index(REMIX.fallback)
     # The cursor position of every listed effect, past the NONE row if one
     # was restored -- ID2POS is an index into `real`, not into ORDER.
     for pos, name in enumerate(ORDER):
         wr32(ID2POS + NEW_IDS[name] * 4, pos + (1 if NO_FB else 0))
+    # A HIDDEN module has no row, so it has no cursor position of its own.
+    # Point it at the fallback's, so opening the chooser on the track that
+    # hosts it lands somewhere real instead of on whatever stock left there.
+    for name in HIDDEN:
+        wr32(ID2POS + NEW_IDS[name] * 4, fb_pos)
     # ==== 1b. ColdFire caves, from whichever modules carry them =============
     # A cave is how a module changes the firmware's BEHAVIOUR rather than
     # adding an effect: assert the hook site still holds the stock bytes,
@@ -1345,7 +1363,7 @@ def main():
             if _m is None:
                 sys.exit(f"fx1={_n!r}: no such effect")
             if _m.is_stock:
-                _rep = [k for k in ORDER if _MODS[k].menu is not None
+                _rep = [k for k in CARRIED if _MODS[k].menu is not None
                         and _MODS[k].menu.replaces == _n]
                 if _rep:
                     sys.exit(f"fx1={_n!r}: {_rep[0]} replaces it in this "
@@ -1464,7 +1482,6 @@ def main():
     # alias id 0 to SEND: its descriptor, its cursor position, and (below) its
     # DSP dispatch. Every unassigned track is then a SEND automatically.
     fb_desc = FX1_NONE if NO_FB else clone_addr[REMIX.fallback]
-    fb_pos = 0 if NO_FB else ORDER.index(REMIX.fallback)
     wr32(FX2_IDS + NONE_ID * 4, fb_desc)
     wr32(ID2POS + NONE_ID * 4, fb_pos)
     # A module this remix leaves out still owns an id, and a saved project can
@@ -1511,6 +1528,10 @@ def main():
           f"{len(real)} rows (no padding)" if len(real) <= CHOOSER_ROWS else
           f"  chooser list = {len(real)} entries at 0x{list_addr:08x} (the "
           f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
+    if HIDDEN:
+        print(f"  placed but NOT LISTED: {', '.join(HIDDEN)} -- code, id and "
+              f"clone present, no chooser row, twelve names blanked so the "
+              f"track page draws nothing")
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")
@@ -2349,7 +2370,7 @@ mkgo:""",
         # ROTINIT / ROTLATCH markers are substituted by _prep like SEND's.
         # It MAY also declare its own DEV repro hooks below -- the generic version of the arms the three
         # core sources have at the top of main().
-        for _k in ORDER:
+        for _k in CARRIED:
             if _k not in _texts and _k in ASM_SRC:
                 _src_k = _dev_hooks(_k, pathlib.Path(ASM_SRC[_k]).read_text())
                 _mk = remix_modules().get(_k)
@@ -2375,7 +2396,7 @@ mkgo:""",
 
         plan = tuple(
             (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
-            for m in sorted((remix_modules()[k] for k in ORDER
+            for m in sorted((remix_modules()[k] for k in CARRIED
                              if k in _texts), key=lambda m: m.dsp.priority))
         if _x:
             _g = [n for n, t in plan if "never housekeeps" in t]

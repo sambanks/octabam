@@ -521,6 +521,45 @@ registers an entry *inside* the cave (`cfprobe` puts its formatter at
 `+0x100` with an `.org`), so one address and one pc-relative state block
 serve the interrupt and the panel. `offset=0` is the tempo-sync shape.
 
+## PLACED BUT NOT LISTED -- `Remix.hidden`
+
+A remix can carry a module with **no chooser row and no knobs on the page**:
+
+```python
+REMIX = Remix(name="...", modules=(..., "REVERB SERVER"),
+              hidden=("REVERB SERVER",), fallback="SEND")
+```
+
+The module's code is placed, its id dispatches to it and its descriptor is
+cloned as usual. What changes is that it takes no row, and its twelve
+parameter NAMES are written blank -- which is what empties the page. The
+counts, defaults and enable bits are untouched, so the firmware's own
+parameter writer still clamps and commits every slot and the frame builder
+still carries it to the DSP. Both halves measured in the emulator, 4 Sep
+2026: the page drew nothing, and a write landed in the Part.
+
+That is how an effect stops being a per-track choice and becomes part of the
+instrument -- the bus engines are hosted by the project's stamp, and their
+controls belong on a main-menu screen (`docs/MAINMENU.md` section 6).
+
+⚠️ **It belongs to the REMIX, not the module**, and the bit-identity gate is
+what said so: declared on the module, hiding the engines emptied the plain
+`bus` image's chooser too, three rows to one. A remix hides an engine only
+when it also carries the screen that edits it.
+
+⚠️ **It does not make the id private.** Dispatch is per id and shared by
+every track and both menus, so a saved part naming that id ANYWHERE runs the
+code. A module that must run on one track only has to detect that itself,
+the way `modules/modulation` does with its allocator slot.
+
+`tools/verify_hidden.py` is the gate: the clone and its id, blank names,
+manifest defaults and enable bits intact, absent from the chooser list, a
+cursor entry pointing at the fallback, a page that draws none of its names
+(against a baseline render, because the playback page's own knobs are
+captured too and one of them is called RATE), a control render that DOES
+draw a listed module's names, the writer still landing a value, and DSP
+entry points that are the module's own rather than the fallback's.
+
 **Caves float unless pinned** (3 Sep 2026). A remix with more than three
 descriptor clones used to run the clone block straight into the tempo cave
 pinned at `0x400d7000` — three clones end exactly there, so the shipping
