@@ -27,10 +27,10 @@ ENTRY_LEN, ENTRY_N = 0x14, 16
 DRAW_MEMBER = 2                        # {enter,exit,DRAW,key,enc}
 KEY_MEMBER = 3
 ENC_MEMBER = 4
-KEY_OFF = 0x154                        # key
-ENTER_REV_OFF = 0x1a4                  # REVERB row action
-ENTER_DLY_OFF = 0x1a8                  # DELAY row action
-ENC_OFF = 0x1ee                        # encoder
+KEY_OFF = 0x180                        # key
+ENTER_REV_OFF = 0x1de                  # REVERB row action
+ENTER_DLY_OFF = 0x1e2                  # DELAY row action
+ENC_OFF = 0x228                        # encoder
 
 # The CONTROL submenu (docs/MAINMENU.md 2, same as modules/menushortcut): its
 # count is at CONTROL_DESC+0 and its row-array pointer at +0x18. We relocate
@@ -68,7 +68,7 @@ TABLE_REFS = (
 # verify_busscreen re-assembles the source and compares, so a drifted source
 # cannot pass unnoticed.
 HANDLER = bytes.fromhex(
-    "4fefffd448d77cfc286f00304a8c6700013a2e3946c82456670001307000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad004200672184c0100002647d7fc0008ee9ad7c0d7fc000000122006721e4c0100002447d5fc0008ef5ad5c0d5fc000000122e3940bad01870064c00780076002803e78c50842a03da87203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824355c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef001870007206b2856e06103258006004103358002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef001852837006b0836e00ff4e4cd77cfc4fef002c4e75202f0004223940bad010243940bad0187633b68066124a816704538160244a82672c53827205601a7634b68066207605b68167045281600a7601b68267105282720023c140bad01023c240bad0184e7570076002700641f980000ecc720014180282000000ffb480670a52817408b4816eec600613c180000000700023c040bad01023c040bad018701023c0400cbf40700d23c0400cbd9c4e754fefffd448d77cfc2a2f0034263940bad01870064c003800203940bad010d6807c001c39800000007000103980000003223c000018b24c0100002e3946c82456de807006b0836e1a700423c0460d5c3020035d802f052f004eb94003a474508f6044200672184c0100002047d1fc0008ee9ad1c0d1fc00000012d1c370001010d0856c027000727fb2806c02200122030681000000182f002f012f064eb940054cd84fef000c4cd77cfc4fef002c4e75")
+    "4fefffd448d77cfc286f00304a8c670001662e3946c824566700015c7000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0004df940bad01c7206b280660c4bf940bad0044df940bad020200672184c0100002647d7fc0008ee9ad7c0d7fc000000122006721e4c0100002447d5fc0008ef5ad5c0d5fc000000122e3940bad01870064c00780076002803e78c50842a03da87203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824355c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef001870007206b2856e061032580060041033580022765c002209671622115381b0816f0220014a806c02700024310c04601e2f00487940bad008487940bad00c4eb940013a084fef000c243c40bad00c2803e78c50842f024878ffff2f04487800362f0c4879400ba8764eb940012bd84fef001852837006b0836e00ff2e4cd77cfc4fef002c4e75202f0004223940bad010243940bad0187633b68067147634b680670e7635b680671a7636b680671460324a8167045381601e4a8267265382720560147605b68167045281600a7601b68267105282720023c140bad01023c240bad0184e7570076002700641f980000ecc720014180282000000ffb480670a52817408b4816eec600613c180000000700023c040bad01023c040bad018701023c0400cbf40700d23c0400cbd9c4e754fefffd448d77cfc2a2f0034263940bad01870064c003800203940bad010d6807c001c39800000007000103980000003223c000018b24c0100002e3946c82456de807006b0836e1a700423c0460d5c3020035d802f052f004eb94003a474508f6044200672184c0100002047d1fc0008ee9ad1c0d1fc00000012d1c370001010d0856c027000727fb2806c02200122030681000000182f002f012f064eb940054cd84fef000c4cd77cfc4fef002c4e75")
 # placeholder marker -> which emitted-blob field it is patched to.
 MARKS = {
     "40bad000": "verbtab",
@@ -78,6 +78,8 @@ MARKS = {
     "40bad010": "cursor",
     "40bad014": "gt",
     "40bad018": "page",
+    "40bad01c": "verbsel",
+    "40bad020": "dlysel",
 }
 
 # The twelve parameter names of each engine, slot order (page 1 then page 2),
@@ -86,6 +88,16 @@ VERB_NAMES = (b"TIME", b"MOD", b"SIZE", b"HP", b"LP", b"IN",
               b"MODE", b"SHMR", b"DIFF", b"SHFT", b"GATE", b"RATE")
 DLY_NAMES = (b"TIME", b"FDBK", b"TONE", b"PING", b"-VRB", b"PTCH",
              b"MDEP", b"MODE", b"MRAT", b"SIZE", b"DRV", b"FRZE")
+
+# Per-engine SELECT slots and their labels (count < 128 in the manifests),
+# so the screen prints ROOM/PLATE/BIG etc. instead of a raw number. slot ->
+# labels, value clamped to the count.
+VERB_SELECTS = {6: (b"ROOM", b"PLATE", b"BIG"),
+                9: (b"+12", b"+19", b"+7", b"-12"),
+                11: (b"0.5x", b"1x", b"2x", b"4x")}
+DLY_SELECTS = {6: (b"CLEAN", b"GRAIN", b"REVRS"),
+               9: (b"46MS", b"93MS", b"23MS", b"XTRM"),
+               11: (b"RUN", b"HOLD")}
 
 _STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 _BASE = 0x40000400
@@ -129,6 +141,31 @@ def emit(addr):
     data.extend(b"".join(x.to_bytes(4, "big") for x in verb_ptrs))
     dlytab_here = body_off + len(data)
     data.extend(b"".join(x.to_bytes(4, "big") for x in dly_ptrs))
+
+    # per-engine SELECT records: for each slot a {count, labelptr...} record,
+    # then a 12-entry table (0 for a knob). The draw indexes it by slot.
+    def place_selects(selmap):
+        recs = [0] * 12
+        for slot, labels in selmap.items():
+            ptrs = []
+            for lb in labels:
+                ptrs.append(addr + body_off + len(data))
+                data.extend(lb + b"\0")
+            while (body_off + len(data)) % 4:
+                data.append(0)
+            rec_here = body_off + len(data)
+            data.extend(len(labels).to_bytes(4, "big"))
+            for pr in ptrs:
+                data.extend(pr.to_bytes(4, "big"))
+            recs[slot] = addr + rec_here
+        while (body_off + len(data)) % 4:
+            data.append(0)
+        tab_here = body_off + len(data)
+        for e in recs:
+            data.extend((e or 0).to_bytes(4, "big"))
+        return tab_here
+    verbsel_here = place_selects(VERB_SELECTS)
+    dlysel_here = place_selects(DLY_SELECTS)
     scratch_here = body_off + len(data)
     data.extend(b"\0" * 8)
     cursor_here = body_off + len(data)
@@ -146,6 +183,8 @@ def emit(addr):
         "cursor": addr + cursor_here,
         "page": addr + page_here,
         "gt": addr + gt_here,
+        "verbsel": addr + verbsel_here,
+        "dlysel": addr + dlysel_here,
     }
     handler = bytearray(HANDLER)
     for mark, field in MARKS.items():

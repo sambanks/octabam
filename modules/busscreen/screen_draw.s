@@ -27,6 +27,8 @@
         .set    CURSOR,  0x40bad010
         .set    GT,      0x40bad014
         .set    PAGE,    0x40bad018
+        .set    VERBSEL, 0x40bad01c    | per-slot select records, verb
+        .set    DLYSEL,  0x40bad020    | per-slot select records, delay
         .set    DRAW_STRING, 0x40012bd8
         .set    SPRINTF, 0x40013a08
         .set    P1WRITE, 0x40054cd8
@@ -66,10 +68,12 @@ draw:   lea     %sp@(-44),%sp
         moveq   #0,%d0
         moveb   %a0@,%d0
         lea     VERBTAB,%a5
+        lea     VERBSEL,%a6
         moveq   #6,%d1
         cmpl    %d0,%d1
         bne.s   1f
         lea     DLYTAB,%a5
+        lea     DLYSEL,%a6
 1:      | page-1 base -> a3 (a3 + slot), page-2 base -> a2 (a2 + slot)
         movel   %d6,%d0
         moveq   #24,%d1
@@ -117,7 +121,7 @@ dloop:  movel   %d3,%d4
         pea     CONTEXT
         jsr     DRAW_STRING
         lea     %sp@(24),%sp
-        | value at x=54 (page-1 vs page-2 array by slot)
+        | value at x=54: raw byte from page-1 or page-2 array
         moveq   #0,%d0
         moveq   #6,%d1
         cmpl    %d5,%d1
@@ -125,15 +129,33 @@ dloop:  movel   %d3,%d4
         moveb   %a2@(0,%d5:l),%d0
         bra.s   4f
 3:      moveb   %a3@(0,%d5:l),%d0
-4:      movel   %d0,%sp@-
+4:      | select? a6[slot] is a record {count, labelptr...} or 0 for a knob
+        movel   %a6@(0,%d5:l:4),%a1
+        movel   %a1,%d1
+        beq.s   5f                      | 0 -> plain number
+        | clamp value to count-1, fetch the label
+        movel   %a1@,%d1                | count
+        subql   #1,%d1                  | max index
+        cmpl    %d1,%d0
+        ble.s   6f
+        movel   %d1,%d0                 | clamp high
+6:      tstl    %d0
+        bge.s   7f
+        moveq   #0,%d0                  | clamp low
+7:      movel   %a1@(4,%d0:l:4),%d2     | label pointer
+        bra.s   8f
+5:      | plain number: sprintf %d into SCRATCH
+        movel   %d0,%sp@-
         pea     FMT
         pea     SCRATCH
         jsr     SPRINTF
         lea     %sp@(12),%sp
+        movel   #SCRATCH,%d2
+8:      | draw d2 (label or number) at x=54
         movel   %d3,%d4
         lsll    #3,%d4
         addql   #8,%d4
-        pea     SCRATCH
+        movel   %d2,%sp@-
         pea     0xffffffff
         movel   %d4,%sp@-
         pea     54
@@ -150,34 +172,47 @@ ddone:  movem.l %sp@,%d2-%d7/%a2-%a6
         rts
 
 | ---- key(keycode): up/down move the cursor, crossing pages ----------------
+| The physical arrows are position-dependent (Sam: LEFT=0x33, UP=0x34). To be
+| robust to which code DOWN/RIGHT send, UP is 0x33 OR 0x34 and DOWN is 0x35 OR
+| 0x36 -- so the UP arrow moves up and the DOWN arrow moves down whichever of
+| the pair it is, with left/right as bonus up/down.
 key:    movel   %sp@(4),%d0
         movel   CURSOR,%d1
         movel   PAGE,%d2
-        moveq   #0x33,%d3               | up
+        | is it an UP key (0x33 or 0x34)?
+        moveq   #0x33,%d3
         cmpl    %d0,%d3
-        bne.s   kd
-        tstl    %d1
-        beq.s   kup0                    | at top of page
+        beq.s   kup
+        moveq   #0x34,%d3
+        cmpl    %d0,%d3
+        beq.s   kup
+        | a DOWN key (0x35 or 0x36)?
+        moveq   #0x35,%d3
+        cmpl    %d0,%d3
+        beq.s   kdn
+        moveq   #0x36,%d3
+        cmpl    %d0,%d3
+        beq.s   kdn
+        bra.s   kdone
+kup:    tstl    %d1
+        beq.s   kup0
         subql   #1,%d1
         bra.s   kstore
-kup0:   tstl    %d2                     | page 0? nowhere to go
+kup0:   tstl    %d2
         beq.s   kdone
-        subql   #1,%d2                  | page--
-        moveq   #PGROWS-1,%d1           | cursor = 5
+        subql   #1,%d2
+        moveq   #PGROWS-1,%d1
         bra.s   kstore
-kd:     moveq   #0x34,%d3               | down
-        cmpl    %d0,%d3
-        bne.s   kdone
-        moveq   #PGROWS-1,%d3
+kdn:    moveq   #PGROWS-1,%d3
         cmpl    %d1,%d3
-        beq.s   kdn5                    | at bottom of page
+        beq.s   kdn5
         addql   #1,%d1
         bra.s   kstore
 kdn5:   moveq   #1,%d3
         cmpl    %d2,%d3
-        beq.s   kdone                   | already page 1
-        addql   #1,%d2                  | page++
-        moveq   #0,%d1                  | cursor = 0
+        beq.s   kdone
+        addql   #1,%d2
+        moveq   #0,%d1
 kstore: movel   %d1,CURSOR
         movel   %d2,PAGE
 kdone:  rts

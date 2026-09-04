@@ -165,6 +165,7 @@ def main():
                 return int(t) if t.lstrip("-").isdigit() else None
         return None
 
+    KEY_UP, KEY_DOWN = 0x34, 0x35        # UP arrow / DOWN arrow (see key handler)
     def press(kc):
         e17_key = int.from_bytes(e17[12:16], "big")
         emu._call(uc, e17_key, (kc,))
@@ -200,24 +201,24 @@ def main():
 
     # ---- navigation across the page boundary -----------------------------
     for _ in range(5):
-        press(0x34)
+        press(KEY_DOWN)
     draw()
     check(cursor_row() == 5, f"five downs -> row 5, still page 1 (got {cursor_row()})")
     check(all(n in texts() for n in want_p1),
           "still page 1 at row 5")
-    press(0x34); draw()
+    press(KEY_DOWN); draw()
     want_p2 = [n.decode() for n in src.VERB_NAMES[6:]]
     check(cursor_row() == 0 and all(n in texts() for n in want_p2),
           f"down past row 5 flips to page 2 row 0 (cursor {cursor_row()}, "
           f"got {[t for t in texts() if t][:10]})")
-    press(0x33); draw()
+    press(KEY_UP); draw()
     check(cursor_row() == 5 and all(n in texts() for n in want_p1),
           f"up from page 2 row 0 returns to page 1 row 5 (cursor {cursor_row()})")
 
     # ---- edit a page-1 row (locally proven) ------------------------------
     for _ in range(5):
-        press(0x33)                              # back to page 1 row 0
-    press(0x34); press(0x34)                      # row 2 = SIZE
+        press(KEY_UP)                              # back to page 1 row 0
+    press(KEY_DOWN); press(KEY_DOWN)                      # row 2 = SIZE
     draw()
     check(cursor_row() == 2, f"cursor on row 2 (got {cursor_row()})")
     v0 = value_row(2)
@@ -228,7 +229,7 @@ def main():
           f"encoder +5 moves the page-1 value {v0} -> {v0 + 5} (got {value_row(2)})")
 
     # page-2 edit: runs without fault (value-move is the flash test)
-    press(0x34); press(0x34); press(0x34); press(0x34)   # into page 2
+    press(KEY_DOWN); press(KEY_DOWN); press(KEY_DOWN); press(KEY_DOWN)   # into page 2
     st_before = u32(0x400cbf40)
     ok_p2 = True
     try:
@@ -248,6 +249,31 @@ def main():
     want_d1 = [n.decode() for n in src.DLY_NAMES[:6]]
     check(all(n in texts() for n in want_d1),
           f"DELAY draws the delay's names (got {[t for t in texts() if t][:10]})")
+
+    # selects render as WORDS, not numbers (the "wrong type" fix)
+    def value_row_any(row):
+        y = 8 + row * 8
+        for x, yy, t in grown_boot._draws:
+            if yy == y and x == 54:
+                return t
+        return None
+    # BusVerb MODE (slot 6, page 1 row... slot6 = page 1 row? PAGE0 rows are
+    # slots 0..5; MODE is slot 6 = page 1 (second page) row 0). Put a value and
+    # read the word.
+    emu.assign_fx2(grown_boot, track=4, effect_id=7)
+    uc.mem_write(ID_BASE + 4, bytes([7]))
+    # MODE = 2 -> BIG (slot 6). slot6 lives on page 1 (0-indexed page 1), row 0.
+    DBv = u32(0x46c82456); pv = uc.mem_read(0x80000003, 1)[0]
+    uc.mem_write(DBv + pv * 6322 + 4 * 30 + 0x8ef5a + 18 + 6, bytes([2]))
+    uc.mem_write(DBv + pv * 6322 + 4 * 30 + 0x8ef5a + 18 + 9, bytes([2]))
+    emu._call(uc, rev_action, (0,))
+    for _ in range(6):
+        press(KEY_DOWN)                  # onto page with slots 6..11
+    draw()
+    check("BIG" in texts(),
+          f"MODE renders as its word BIG, not a number (got {[t for t in texts() if t][:10]})")
+    check("+7" in texts(),
+          f"SHFT renders as its word +7 (got {[t for t in texts() if t][:10]})")
 
     if backup is not None:
         IMAGE.write_bytes(backup)                  # restore for the rest of make check
