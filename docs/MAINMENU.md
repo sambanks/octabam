@@ -607,8 +607,26 @@ where they will be.
 into `0x46c8d19c` — the committer's two inputs — then dispatches on
 `kind == 4`. So the aiming API has the shape we wanted.
 
-❌ **But driving it writes nothing either**, at any kind. It is another
-layer of the same UI stack, with its own gates.
+✅ **AND THE EDIT IS TWO-PHASE — STAGE, THEN COMMIT (4 Sep 2026).** That is
+why single calls wrote nothing. `0x46c8d1a0` is a PHASE selector, not a
+slot:
+
+| its value | what the call does |
+|---|---|
+| 1 or 4 | **stages**: bounds `0x46c8d19c` at 135, indexes a 1096-byte-stride table at `0x100b14f0`, and writes the pending edit into `0x460be9e8`/`0x460be9ec`. Track and part come from the UI globals `0x100b14cc` and `0x100b14cf` |
+| 0 | **commits**: writes the select array, the machine byte, the dirty bit and the bookkeeping word, then redraws |
+
+**Driven end to end:** stage with `0x46c8d1a0 = 4` and an index in
+`0x46c8d19c`, then call again with `0x46c8d1a0 = 0` and the VALUE in
+`0x46c8d19c`, and **the select array takes the value**. Two calls to one
+entry point, no arguments, everything through globals.
+
+⚠️ **The offset still lands at zero.** The value went to `+0x8f04a` exactly,
+not to the staged track's block, so something the staging phase is meant to
+leave behind is not surviving into the commit on a machine with no project
+loaded — the commit's address term reads state the staging phase populates.
+Both phases now run and the array is written, which is further than this
+had got; what is not yet controlled is WHICH byte.
 
 ⚠️ **THE PATTERN IS NOW THE FINDING, across five routines.** Every panel
 edit path here — the page-1 writer, the page-2 knob editor, the select
