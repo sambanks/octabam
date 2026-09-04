@@ -45,17 +45,7 @@ MODULE = Module(
         # ---- page 1 -------------------------------------------------------
         Param(b"GAIN", 127, 128, active=True, formatter=Formatter.PLAIN,
               doc="linear level, out = in x GAIN/128; 127 exact pass, 0 silence"),
-        # ⚠️ A DELIBERATE DO-NOTHING KNOB. The engine reads slot 0 and nothing
-        # else, so this changes no audio -- it exists so a probe registered on
-        # GAIN can be REFRESHED without moving GAIN. A formatter only runs
-        # when the page redraws, and on the unit the only way to force a
-        # redraw was to wiggle the very knob whose value selects what the
-        # probe shows (modules/selprobe): the refresh gesture perturbed the
-        # measurement. Turning this one redraws the page and leaves GAIN
-        # alone.
-        Param(b"RDRW", 0, active=True, formatter=Formatter.PLAIN,
-              doc="does nothing to the audio; turn it to force a redraw"),
-        Param(), Param(), Param(), Param(),
+        Param(), Param(), Param(), Param(), Param(),
         # ---- page 2: none in v1 (taper select will land on slot 7) --------
         Param(), Param(), Param(), Param(), Param(), Param(),
     ),
