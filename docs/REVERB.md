@@ -100,18 +100,23 @@ was **measured**, not inferred (`DSP.md` §9). Hardware-confirmed.
 | 1 | 3 | HP | `r6+$3` | **LO** — high-pass inside the feedback path |
 | 1 | 4 | LP | `r6+$4` | **HI** — high-cut damping inside the feedback path |
 | 1 | 5 | IN | `r6+$5` | **this track's own send** into the reverb (default 0). The host's dry always passes at unity (v5); IN adds it into the engine on top, **and scales the wet's output makeup ×(1+IN)** (v7 — +6 dB at full, exactly ×1 at 0). IN>0 also registers the host as a bus client, so a non-zero default would dilute real senders |
-| 2 | 6 | SHMR | `r6+$c` knob \| `$b` | shimmer amount (read from the `$c` knob field OR'd with `$b`; the panel publishes slot 6 to `$c` — DSP.md §9) |
-| 2 | 7 | MODE | `$c` bits 8-15 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG |
+| 2 | 6 | MODE | `$c` bits 16-23 | **stepped select**: 0 ROOM, 1 PLATE, 2 BIG. Slot 6 since v7 (4 Sep 2026; slot 7 / bits 8-15 before): an EVEN slot is one the panel's page-2 knob editor can write, so a main-menu screen can set MODE through the firmware's own routine (`docs/MAINMENU.md` §9c-ii) |
+| 2 | 7 | SHMR | `$c` bits 8-15 | shimmer amount, 0 = off (slot 6 / the knob field until v7). A 128-count knob in a companion field — stock does this (FILTER DIST on 11, CHORUS FBLP on 9) and DSP.md records two full-range companion knobs measured on the unit; the 10 Aug "near-boolean" reading predates the field-map and formatter fixes. ⬜ First flash: sweep SHMR and confirm it is smooth |
 | 2 | 8 | DIFF | `r6+$d` knob | allpass coefficient, ~0.38–0.80 |
 | 2 | 9 | SHFT | `r6+$d` low | **4-step select** (v7, 23 Aug 2026 — was WIDTH, retired; width is pinned wide): the shimmer interval, **+12 / +19 / +7 / −12**, default +12 = the R18 voicing bit-exactly. Companion fields read near-boolean at count 128 on hardware, so a small count publishes |
 | 2 | 10 | GATE | `r6+$e` knob | **gated reverb** (Phil-Collins slam). 0 = off; up = hold time (~46 ms–780 ms) before the wet slams shut. Envelope keyed on the tank input ($1b, so sends trigger it), fast attack + ~20 ms eased release, applied as a per-sample multiply on the wet L/R. Replaced PRE (pre-delay was buffer-capped at 93 ms, not worth a knob) |
 | 2 | 11 | RATE | `r6+$e` low | **4-step select** for the tank-mod LFO speed: 0.5×/1×/2×/4× of the pinned base rate — companion field, same reason as WIDTH. (This slot previously carried a `→DEL` send select, retired because a return reverb's dry is normally silence) |
 
-**Page-2 budget: three smooth knobs + three selects.** The three knob
-fields (`$c` SHMR, `$d` DIFF, `$e` GATE) publish as full-travel knobs; the three
-companion fields (`$c` mid MODE, `$d` low SHFT (was WIDTH), `$e` low RATE) publish only as
-small-count selects — a smooth knob in a companion field reads near-boolean on
-hardware. This is the actual page-2 control budget.
+**Page-2 fields: three knob fields + three companion fields, any count on
+either** (retracted 4 Sep 2026: "three smooth knobs + three selects" was our
+convention, not the panel's — stock CHORUS TAPS is a select on slot 6 and
+FILTER DIST a smooth knob on slot 11). Since v7 the knob fields carry MODE
+(`$c`), DIFF (`$d`) and GATE (`$e`); the companion fields carry SHMR (`$c`),
+SHFT (`$d`) and RATE (`$e`). The old "a smooth knob in a companion field
+reads near-boolean" reading (10 Aug 2026) came from before the bits-8–15
+field map and the formatter fix-up; DSP.md's later measurement of two
+full-range companion knobs on the unit contradicts it, and SHMR on slot 7 is
+the re-test.
 
 **Page-2 slots pair up**: a knob arrives as `value<<16` occupying bits 16-22,
 leaving the low bits of the same word as an independent field. Even slot =

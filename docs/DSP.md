@@ -1358,8 +1358,14 @@ Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
 > reading that a count-128 companion publishes **near-boolean**;
 > `build_bus.py`'s `PAGE2_COUNTS` carries that rationale. That reading and
 > the full-range measurement above have not been reconciled against each
-> other — re-test before designing a smooth companion knob. `$e`'s knob
-> field carries GATE.)
+> other. **4 Sep 2026: the re-test is now scheduled** — both bus engines
+> moved MODE to slot 6 and their SHMR / MDEP knobs to slot 7, a count-128
+> companion field, with the formatters written explicitly (plain numeric),
+> which the 10 Aug reading did not have. Stock FILTER DIST (slot 11) and
+> CHORUS FBLP (slot 9) are count-128 companion knobs too. If SHMR sweeps
+> smoothly on the unit the near-boolean reading was the inherited
+> formatter; if it does not, SHMR becomes a small-count select and this note
+> stands. `$e`'s knob field carries GATE.)
 >
 > What makes a companion field *look* like a two-state control is the
 > **per-parameter display formatter at `P+0x0ca`**, inherited from the donor

@@ -192,8 +192,8 @@ def main():
     import render_reverb
     cv = registry.by_key("REVERB SERVER")
     for name, slot in sorted(cv.knob_map().items(), key=lambda kv: kv[1]):
-        if slot == 7:
-            ok = render_reverb.PARAMS[slot][0] == "_C"   # MODE goes via --mode
+        if name == "MODE":                               # goes via --mode
+            ok = render_reverb.PARAMS[slot][0] == "_C"   # (slot 6 since v7)
         else:
             rr_name = render_reverb.PARAMS[slot][0]
             ok = rr_name in render_reverb.NAMES and \

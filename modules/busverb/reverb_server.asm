@@ -996,13 +996,16 @@ warmdone:
                                         ; 0x4000, so every line is 4096-aligned
                                         ; as modulo requires.
 
-; ---- MODE: character select, page-2 slot 7 ($c bits 8-15) (v93) ---------
+; ---- MODE: character select, page-2 slot 6 ($c bits 16-23; v7 4 Sep 2026,
+; slot 7 / bits 8-15 before that -- moved so the panel's own page-2 knob
+; editor, which writes even slots only, can set it from a main-menu screen)
 ; Three characters. MODE reconfigures tap length, diffusion depth, damping
 ; and modulation together — not merely rescaling SIZE.
 ;
 ; Read here, before the SIZE block, because it scales the tap lengths that
-; block computes. The companion field carries a small step count (0..2), not
-; a left-aligned knob -- see the page-2 rejig note above.
+; block computes. The knob field carries a small step count (0..2) at
+; $010000 per step -- which is already the MSB-aligned scale the dispatch
+; below compares against, so no shift is needed (the companion read had one).
 ;
 ;   0 ROOM   short tap scale, high diffusion, fast damping — close walls
 ;   1 PLATE  medium tap scale, highest diffusion, bright — metallic sheet
@@ -1016,12 +1019,12 @@ warmdone:
 ; SIZE, TIME, DIFF and the rest still work inside whichever character is
 ; chosen; MODE moves the centre, the knobs move around it.
         move    x:(r6+$c),a
-        and     #>$ff00,a               ; slot 7's field, NOT the knob field
+        and     #>$ff0000,a             ; slot 6's KNOB field, not SHMR's
+                                        ; companion byte below it
         move    a1,x0                   ; AND cleans A1 only
-        move    x0,a
-        asl     #$8,a,a                 ; -> 0..3, MSB-ALIGNED ($010000 per
-                                        ; step) to match the short immediates
-                                        ; the dispatch below compares against
+        move    x0,a                    ; -> 0..2, MSB-ALIGNED ($010000 per
+                                        ; step) as the short immediates the
+                                        ; dispatch below compares against
 ; MODE_OVERRIDE
         move    a,x:(r7+$6e)
 
@@ -1814,20 +1817,17 @@ shfst:
 ; inside the sample loop: r6 is the PRE-DELAY POINTER in there (y:(r6+n6)), not
 ; the parameter block, so x:(r6+$b) in the loop reads whatever the pre-delay
 ; buffer happens to be near. That cost a debugging round.
-; SHMR amount, value<<16. Read from BOTH $c's knob field and $b, OR'd.
-; The page-2 probe (v7, DSP.md section 9) found display-slot 6 lands in
-; $c bits 16-22 (the knob field); MODE uses $c's mid byte ($ff00), so the
-; knob field is free. The old read used $b alone, on that section's softer
-; "slot 6 also appears at $b" note -- which hardware FALSIFIED 10 Aug 2026:
-; SHMR was silent on the unit (Sam, A/B'd against a local render that has
-; audible +12 shimmer). Only one field is populated by the panel, so OR'ing
-; the two is robust to which one it actually is, at ~3 words.
+; SHMR amount, value<<16. Slot 7 since v7 (4 Sep 2026): $c's COMPANION
+; field, bits 8-15, shifted up to the knob scale. Until then it was slot 6,
+; $c's knob field, read OR'd with $b as a hedge from the 10 Aug 2026 session
+; in which the $b-only read was silent on the unit; PARAM_PAGES.md has since
+; settled that $b is not a page-2 word at all, so the hedge is gone with the
+; move. MODE now owns the knob field of this word.
         move    x:(r6+$c),a
-        and     #>$7f0000,a             ; $c knob field (probe's primary finding)
+        and     #>$7f00,a               ; slot 7's companion field
         move    a1,x0
-        move    x:(r6+$b),a
-        and     #>$7f0000,a             ; $b (the old read; kept as fallback)
-        or      x0,a                    ; combine: whichever the panel filled
+        move    x0,a                    ; A2-clean before the shift
+        asl     #$8,a,a                 ; -> value<<16, the knob scale
         move    a1,x0                   ; SCALED TO A QUARTER. The raw knob is a
         move    #>$600000,y1            ; loop gain on TOP of the tank's own
         mpy     x0,y1,a                 ; feedback, and by ear 25/127 raw (0.20)

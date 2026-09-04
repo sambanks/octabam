@@ -663,11 +663,40 @@ X" should be traced before it is believed.
   effect id from a struct, verified locally, is exactly what a screen that
   CHOOSES an effect would call — the thing `Remix.hidden` currently does by
   taking the chooser away.
-**The shape of the problem, stated once.** Page 2's six slots alternate
-knob, select, knob, select, knob, select — the panel's own layout, not a
-choice a module makes. So EVERY effect has exactly three selects, and no
-rearrangement of a knob map avoids them. A twelve-row screen needs all three
-paths, or it edits nine controls and leaves MODE alone.
+**The shape of the problem, stated once — and then RETRACTED (4 Sep 2026).**
+This said: page 2 alternates knob, select, knob, select, the panel's own
+layout, so every effect has exactly three selects on 7/9/11 and no knob map
+avoids them. **False.** The stock descriptors put CHORUS TAPS (5-way) on
+slot 6, FILTER's HP/ENV/Q2 on 6/8/10, and 128-value knobs on 9 and 11. The
+alternation was our schema's rule. The field a slot is delivered in is fixed
+(even → bits 16–23, odd → bits 8–15); count and renderer are free.
+
+✅ **RESOLVED by moving MODE to slot 6 in both bus engines** (same day). Slot
+6 is written by the page-2 knob editor `0x4003a474(slot, delta)`, which is
+driven and clamps to the descriptor's count — so MODE now sits on a path
+that is callable and aimed, and the select committer, its two-phase
+staging and the array formula are no longer needed for the screen. Option 1
+above becomes a nine-row screen WITH MODE: page 1's six through
+`0x40054cd8`, and slots 6/8/10 (MODE, DIFF, GATE / MODE, MRAT, DRV)
+through `0x4003a474`. Off the screen: the odd slots (SHMR, SHFT, RATE /
+MDEP, SIZE, FRZE), still on the track page. Proven locally: all six
+engine-modes render bit-identically through the new fields. ⬜ One flash
+confirms the tick widget draws on slot 6 (its renderer pair is CHORUS
+TAPS's, which IS a slot-6 control).
+
+**The SELECT PROBE line is closed.** Four builds (80–83) and no signal on
+the fourth either: after the re-slot nothing depends on the select array
+formula, so it is not worth a fifth. The unresolved ambiguity is recorded
+here rather than chased: either the panel commits a select turn to the Part
+array later than the turn (staged page and live byte first), or the probe's
+UI track/part globals (`0x100b14cc/cf`) are not the ones the writer keys on
+(`0x80000000/03`). A zero-flash discriminator exists on image 83 — turn
+MODE, SAVE the part, re-read — if anyone ever needs it.
+
+**Card emulation** (a project loaded in the emulator) is what would have
+made the select path researchable without flashes; it is parked in
+`PLAN.md` as the next emulator milestone, for the next project-dependent
+path, not for this one.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 

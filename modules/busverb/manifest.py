@@ -49,16 +49,25 @@ MODULE = Module(
         # rather than a silent track.
         Param(b"IN", 0, active=True, formatter=_PLAIN,
               doc="this track's own send into the reverb; 0 = exact passthrough"),
-        # ---- page 2: three knobs and three selects, in that alternation ----
-        # SHMR defaults OFF. The slot used to be SPEED (the LFO rate) with a
-        # default of 48; when it became the shimmer amount the default was
-        # never revisited, so a fresh part booted with the shimmer half up.
-        # SHMR=0 is bit-identical to the pre-shimmer engine.
-        Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN,
-              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
+        # ---- page 2 ---------------------------------------------------------
+        # MODE on slot 6 (v7, 4 Sep 2026; was slot 7). Even slots are what the
+        # panel's page-2 knob editor writes, so a main-menu screen can set
+        # MODE through the firmware's own routine; slot 7's select path needs
+        # UI state nobody has mapped (docs/MAINMENU.md 9c-ii). The DSP reads
+        # it from $c's KNOB field now (bits 16-23). A part saved before the
+        # swap loads its old SHMR byte as MODE and its old MODE as SHMR --
+        # ROOM and a whisper of shimmer at worst; re-select the effect.
         Param(b"MODE", 2, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
               doc="voicing; the modes sit 7-9 dB apart and BIG clips first"),
+        # SHMR defaults OFF. The slot used to be SPEED (the LFO rate) with a
+        # default of 48; when it became the shimmer amount the default was
+        # never revisited, so a fresh part booted with the shimmer half up.
+        # SHMR=0 is bit-identical to the pre-shimmer engine. On slot 7 it is
+        # delivered in $c's companion field (bits 8-15), like stock FILTER's
+        # DIST knob on slot 11.
+        Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN,
+              doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
         Param(b"DIFF", 64, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
         # SHFT selects the shimmer interval +12/+19/+7/-12 (v6; was WIDTH,

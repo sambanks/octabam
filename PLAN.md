@@ -669,6 +669,20 @@ something needs task-interleaving behaviour, route **A** (emulate the RTOS:
 dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
 far needs A; `docs/EMU.md` keeps it on the table.
 
+**Next emulator milestone, parked 4 Sep 2026: a LOADED PROJECT (card
+emulation).** The emulator boots with no project, so `PART` is null and every
+panel path that keys off the project — the select committer, part save and
+load, stamp defaults, the untraced recorder write path — cannot be driven to
+the right address; that gap is what turned the select-array question into
+four hardware probe flashes (80–83) with no signal. The firmware does its own
+FAT parsing, so the emulator only has to answer ATA sector reads from an
+image file (`docs/ARCHITECTURE.md` §5 has the opcodes and task-file
+registers); the image is a FAT16 volume with a project from
+`tools/ot_project.py`. The open risk is the async completion path through
+the RTOS queues, the same interrupt-injection question as the tick. Start it
+when the SECOND project-dependent path shows up; the first (the bus screen's
+MODE) was solved by moving MODE to a slot the emulator could already drive.
+
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above
 is the slice of that road worth having.
@@ -855,6 +869,20 @@ platform work needs no flash at all: refhash proves a default selection is
 bit-identical, which is what that gate is for.
 
 ## Open items and standing caveats
+
+- **MODE is on page-2 slot 6 in both bus engines (4 Sep 2026, unflashed;
+  BusVerb v7, BusDelay v6).** It swapped places with SHMR / MDEP so that it
+  sits on a slot the panel's own page-2 knob editor writes, which is what a
+  main-menu bus screen needs (`docs/MAINMENU.md` §9c-ii: nine rows WITH
+  MODE, on two firmware routines already driven). Proven locally to the bit
+  in every mode of both engines through the new fields. Two claims for the
+  flash that carries it: (1) MODE draws as a select on slot 6 (its renderer
+  pair is CHORUS TAPS's, itself a slot-6 control); (2) SHMR / MDEP sweep
+  smoothly from slot 7 — a count-128 companion knob, the re-test DSP.md
+  asked for. Parts saved before the swap load their old slot-6/7 bytes
+  crossed (ROOM + a whisper of shimmer; delay MDEP 48 → REVRS): re-select
+  the effect or stamp defaults. The SELECT PROBE line (builds 80–83) is
+  closed; nothing depends on that formula now.
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**
   (clear-vs-read → four buffers; rotation-read jitter → per-core tracking,

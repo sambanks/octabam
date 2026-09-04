@@ -194,12 +194,20 @@ things you might assume:
   string it actually writes. `modules/hello/README.md` separates what was
   measured there from what is still inferred about the mechanism.
 
-### Page 2 is three knobs and three selects
+### Page 2: even slots are knob fields, odd slots are companion fields
 
-Slots 6–11 alternate knob, select, knob, select, knob, select. The selects
-*are* the companion byte fields, so a stepped control can only live on slot 7,
-9 or 11 — the schema enforces it. A companion field set to count 128 does not
-become continuous; it stays a select and reads as a near-boolean.
+Slots 6/8/10 are delivered in bits 16–23 of `r6+$c/$d/$e` and slots 7/9/11
+in bits 8–15 of the same words (`docs/PARAM_PAGES.md`). **Any slot may carry
+any count.** Until 4 Sep 2026 this page said a stepped control could only
+live on 7, 9 or 11; stock CHORUS TAPS sits on slot 6 and stock FILTER's DIST
+knob on slot 11, so the panel never had that rule — only our schema did.
+
+**Put a MODE on an EVEN slot.** The panel's page-2 knob editor writes even
+slots only (`docs/MAINMENU.md` §9c-ii), so a select there can be set from a
+cave or a main-menu screen through the firmware's own routine; the odd
+slots' select path depends on UI state nobody has mapped. Both bus engines
+moved their MODE to slot 6 on 4 Sep 2026 for exactly this. Whatever slot
+you choose, the DSP read must take the field that slot is delivered in.
 
 ### FX2 ids
 

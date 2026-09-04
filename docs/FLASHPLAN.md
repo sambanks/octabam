@@ -319,6 +319,26 @@ frame fraction a ColdFire machine may take. Core cycles ≈ 2× the ticks 🟡.
 
 ---
 
+## The MODE re-slot — two claims for whichever image carries it (4 Sep 2026)
+
+Both bus engines moved MODE to page-2 slot 6 and SHMR / MDEP to slot 7
+(`docs/MAINMENU.md` §9c-ii, `docs/PARAM_PAGES.md`). Locally bit-identical in
+every mode through the new fields; what only the panel can show:
+
+1. **MODE draws as a 3-way select on slot 6** and steps ROOM/PLATE/BIG
+   (CLEAN/GRAIN/REVRS) with the engine following. Falsifier: a dial, or a
+   select that draws but the sound does not change. The renderer pair is
+   stock CHORUS TAPS's, a slot-6 control, so a dial here would mean the
+   clone's slot-6 formatter fields were not written.
+2. **SHMR (BusVerb) and MDEP (BusDelay) sweep smoothly from slot 7.** Turn
+   SHMR 0 → 127 on a held chord: the octave-up bloom should grow
+   continuously. Falsifier: off-then-full at some threshold — the 10 Aug
+   "near-boolean companion" reading — in which case SHMR becomes a
+   small-count select and MODE stays where it is.
+
+Do this on a **freshly re-selected** BusVerb / BusDelay: a part saved before
+the swap has its slot-6/7 bytes crossed.
+
 ## Before every flash
 
 From `docs/FLASHING.md` and the card workflow this project already uses:
