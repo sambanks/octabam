@@ -251,13 +251,14 @@ MODULE = Module(
     doc="A MAIN MENU screen that draws the bus effects' twelve rows.",
     cf_patches=(CavePatch(
         label="bus screen: menu-state table + draw handler",
-        # PINNED into the 15,153-byte zero run at 0x401087e4: the rig's six
-        # clones and fifteen label formatters fill the floating window and the
-        # overflow run, leaving less than this cave. The run was proven dead
-        # in the emulator (4 Sep 2026): no read or write across boot, the
-        # menus, both FX pages and this screen, still all-zero after. The
-        # build still refuses if it is not zero.
-        cave_addr=0x40108800,
+        # FLOATS in the decoded ColdFire free region (docs/MAINMENU.md 9a):
+        # the build places it after the clones/formatters, rounded to 0x80.
+        # This is where tag 85-90 ran it, safely. It was briefly PINNED at
+        # 0x40108800 for the rig, which crashed on [PROJ] -- that address is
+        # the OS image's bss, not free space (build_bus SAFE_CAVE_CEIL guards
+        # it now). A remix too full to float the cave in the safe band cannot
+        # carry the screen until the cave is split or the remix trimmed.
+        cave_addr=None,
         pinned=b"",
         source="modules/busscreen/screen_draw.s",
         emit=emit,
