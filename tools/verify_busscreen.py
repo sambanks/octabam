@@ -93,13 +93,13 @@ def main():
     e17 = grown[ENTRY_LEN * ENTRY_N:]
     draw = int.from_bytes(e17[8:12], "big")            # {enter,exit,DRAW,key,enc}
     keym = int.from_bytes(e17[12:16], "big")
-    unused = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1, 4)]
-    check(new_base < draw < new_base + 0x400,
-          f"17th entry's DRAW member points into the cave (0x{draw:08x})")
-    check(new_base < keym < new_base + 0x400 and keym > draw,
-          f"17th entry's KEY member points into the cave, past draw (0x{keym:08x})")
+    encm = int.from_bytes(e17[16:20], "big")
+    unused = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1)]
+    for nm, v in (("DRAW", draw), ("KEY", keym), ("ENC", encm)):
+        check(new_base < v < new_base + 0x600,
+              f"17th entry's {nm} member points into the cave (0x{v:08x})")
     check(all(o == 0 for o in unused),
-          "17th entry's enter/exit/enc members are 0 (skipped)")
+          "17th entry's enter/exit members are 0 (skipped)")
 
     # the shipped handler bytes still match the source
     import shutil, subprocess, tempfile
@@ -165,11 +165,26 @@ def main():
         emu._call(uc, key_addr, (kc,))
 
     TRACK = 4
+    def val_addr(slot):
+        DB = u32(0x46c82456); part = uc.mem_read(0x80000003, 1)[0]
+        track = uc.mem_read(0x80000000, 1)[0]
+        base = DB + part * 6322 + track * (24 if slot < 6 else 30)
+        return base + (0x8ee9a + 18 + slot if slot < 6
+                       else 0x8ef5a + 18 + slot)
+    def plant(slot, v):
+        uc.mem_write(val_addr(slot), bytes([v & 0xff]))
+    def value_row(row):
+        y = 8 + row * 8
+        for x, yy, t in grown_boot._draws:
+            if yy == y and x == 54:
+                return int(t) if t.lstrip("-").isdigit() else None
+        return None
+
     # BusVerb (id 7): plant a distinct value per slot, expect name + value
     emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
     vals = [i * 10 + 3 for i in range(12)]        # 3,13,...,113 -- all distinct
     for i, v in enumerate(vals):
-        emu.set_fx2_value(grown_boot, TRACK, i, v)
+        plant(i, v)
     drawn = draw_state_16()
     names = [n.decode() for n in VERB_NAMES]
     check(all(n in drawn for n in names),
@@ -237,6 +252,42 @@ def main():
     drawn = [t for _x, _y, t in grown_boot._draws]
     check(all(n in drawn for n in names),
           f"after entering, the screen draws its rows (got {[d for d in drawn if d][:14]})")
+
+    # 7) the encoder EDITS the cursor row -- page 1 (locally verifiable) --------
+    # 0x40054cd8 is self-contained; a page-1 turn must move the drawn value.
+    enc_addr = int.from_bytes(img[(new_base + ENTRY_LEN * 16 + 16) - BASE:
+                                   (new_base + ENTRY_LEN * 16 + 16) - BASE + 4], "big")
+    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
+    plant(2, 40)                       # SIZE (page-1 row 2) = 40
+    # cursor to row 2
+    for _ in range(20):
+        press(0x33)
+    press(0x34); press(0x34)
+    draw_state_16()
+    check(cursor_row() == 2 and value_row(2) == 40,
+          f"cursor on row 2, SIZE reads 40 (cursor {cursor_row()}, val {value_row(2)})")
+    emu._call(uc, enc_addr, (0, 5))    # enc(index=0, delta=+5)
+    draw_state_16()
+    check(value_row(2) == 45,
+          f"encoder +5 moves the page-1 value 40 -> 45 (got {value_row(2)})")
+    emu._call(uc, enc_addr, (0, (-10) & 0xffffffff))
+    draw_state_16()
+    check(value_row(2) == 35,
+          f"encoder -10 moves it 45 -> 35 (got {value_row(2)})")
+
+    # page 2 (rows 6..11): the edit RUNS without faulting; whether the value
+    # moves is the flash question (9c-ii), so this only asserts it is callable
+    # and leaves the screen intact.
+    for _ in range(20):
+        press(0x34)                     # cursor to row 11
+    st_before = u32(0x400cbf40)
+    try:
+        emu._call(uc, enc_addr, (0, 1))
+        p2_ok = True
+    except Exception:
+        p2_ok = False
+    check(p2_ok and u32(0x400cbf40) == st_before,
+          "page-2 encoder call runs without fault (value-move is the flash test)")
 
     if backup is not None:
         IMAGE.write_bytes(backup)       # restore for the rest of make check
