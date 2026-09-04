@@ -50,8 +50,9 @@ MODULE = Module(
         Param(b"IN", 0, active=True, formatter=_PLAIN,
               doc="this track's own send into the reverb; 0 = exact passthrough"),
         # ---- page 2 ---------------------------------------------------------
-        # MODE on slot 6 (v7, 4 Sep 2026; was slot 7). Even slots are what the
-        # panel's page-2 knob editor writes, so a main-menu screen can set
+        # MODE on slot 6 (v7, 4 Sep 2026; was slot 7). An even slot is the
+        # proven slot the panel's page-2 knob editor writes, so a main-menu
+        # screen can set
         # MODE through the firmware's own routine; slot 7's select path needs
         # UI state nobody has mapped (docs/MAINMENU.md 9c-ii). The DSP reads
         # it from $c's KNOB field now (bits 16-23). A part saved before the

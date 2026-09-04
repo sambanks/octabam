@@ -210,12 +210,16 @@ any count.** Until 4 Sep 2026 this page said a stepped control could only
 live on 7, 9 or 11; stock CHORUS TAPS sits on slot 6 and stock FILTER's DIST
 knob on slot 11, so the panel never had that rule — only our schema did.
 
-**Put a MODE on an EVEN slot.** The panel's page-2 knob editor writes even
-slots only (`docs/MAINMENU.md` §9c-ii), so a select there can be set from a
-cave or a main-menu screen through the firmware's own routine; the odd
-slots' select path depends on UI state nobody has mapped. Both bus engines
-moved their MODE to slot 6 on 4 Sep 2026 for exactly this. Whatever slot
-you choose, the DSP read must take the field that slot is delivered in.
+**Put a MODE on an EVEN slot.** The panel's page-2 knob editor
+(`0x4003a474`) was first read as writing even slots only, so a select there
+is settable from a cave or main-menu screen through the firmware's own
+routine while the odd slots looked to need unmapped UI state. Both bus
+engines moved MODE to slot 6 on 4 Sep 2026 for that, and slot 6 is
+HARDWARE-CONFIRMED (tag 84). 🟡 A later emulator run showed the same editor
+writing ALL SIX page-2 slots — see `docs/MAINMENU.md` §9c-ii / §9e — so the
+odd-slot restriction is in doubt; an even slot is simply the proven choice.
+Whatever slot you pick, the DSP read must take the field that slot is
+delivered in (even → bits 16–23, odd → bits 8–15).
 
 ### FX2 ids
 

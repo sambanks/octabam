@@ -58,8 +58,9 @@ MODULE = Module(
         Param(b"PTCH", 64, active=True, formatter=_PLAIN,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
         # ---- page 2 -------------------------------------------------------
-        # MODE on slot 6 (v6, 4 Sep 2026; was slot 7): even slots are what the
-        # panel's page-2 knob editor writes, so a main-menu screen can set it
+        # MODE on slot 6 (v6, 4 Sep 2026; was slot 7): an even slot is the
+        # proven slot the panel's page-2 knob editor writes, so a main-menu
+        # screen can set it
         # through the firmware's own routine (docs/MAINMENU.md 9c-ii). The DSP
         # reads $c's KNOB field for it now. A part saved before the swap loads
         # its old MDEP byte as MODE (48 clamps to REVRS) and 0/1/2 as MDEP;

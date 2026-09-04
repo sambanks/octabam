@@ -59,8 +59,10 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
 # A stepped select -- and therefore a MODE -- may sit on any page-2 slot.
 # (7, 9, 11) until 4 Sep 2026, on the belief that the companion byte fields
 # were the only place the panel draws a select; stock CHORUS TAPS on slot 6
-# says otherwise. Even slots are the ones the panel's page-2 knob editor can
-# write from a cave, so that is where a MODE belongs now.
+# says otherwise. An even slot is the PROVEN place for a MODE: the panel's
+# page-2 knob editor (0x4003a474) was first read as even-only; slot 6 is
+# hardware-confirmed. A later emulator run showed it writing all six slots
+# (docs/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
 STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
@@ -122,8 +124,10 @@ class Param:
     delivered in the KNOB field (bits 16-23) of r6+$c/$d/$e, odd slots in the
     COMPANION field (bits 8-15) of the same word. Any slot may carry any
     count -- stock puts 5-way selects on slot 6 and 128-value knobs on 9 --
-    and a MODE goes on an EVEN slot so the panel's own page-2 knob editor can
-    reach it (4 Sep 2026; it used to be forced onto 7/9/11).
+    and a MODE goes on an EVEN slot -- the proven place for the panel's own
+    page-2 knob editor to reach it (4 Sep 2026; it used to be forced onto
+    7/9/11). Whether that editor also reaches the odd slots is unresolved
+    (docs/MAINMENU.md 9e); an even slot does not depend on the answer.
     """
 
     name: bytes | None = None          # 6-byte panel label; b"" blanks it
@@ -587,8 +591,9 @@ class Module:
         # DIST). The field a slot is DELIVERED in is fixed by the slot (even ->
         # bits 16-23, odd -> bits 8-15); its count and renderer are free. The
         # reason to prefer an even slot for a MODE: the panel's page-2 knob
-        # editor (0x4003a474, docs/MAINMENU.md 9c-ii) writes even slots only,
-        # so a select there is reachable from a cave; one on 7/9/11 is not.
+        # editor (0x4003a474, docs/MAINMENU.md 9c-ii/9e) is PROVEN to reach
+        # even slots (MODE on slot 6, hardware tag 84); whether it reaches the
+        # odd slots too is unresolved. Either way any page-2 slot is allowed.
         # Page 1 is untested for the tick widget and stays refused.
         for i, p in enumerate(self.params):
             if p.formatter is Formatter.STEPPED and i < 6:

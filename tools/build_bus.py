@@ -470,7 +470,9 @@ DEFAULTS = {m.key: [(i, p.default) for i, p in enumerate(m.params)
 # inverse of the trap that a slot can draw a knob and publish nothing. Both
 # have shipped.
 ACTIVE_PARAMS = {m.key: m.active_params for m in _CLONED}
-# Value counts. Page 2 is THREE KNOBS AND THREE SELECTS: the knob fields take
+# Value counts. Page 2 pairs a knob field and a companion field per word (any
+# count on either -- stock puts selects on even slots and knobs on odd; see
+# docs/MAINMENU.md 9e). Historically "three knobs and three selects": the knob fields take
 # 128, the companion byte fields take a small step count. Setting a companion
 # to 128 does not make it continuous -- it stays a select and reads as a
 # near-boolean, which is what hardware showed.

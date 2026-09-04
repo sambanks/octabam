@@ -777,15 +777,37 @@ cave. §9c-ii enumerated why — the page-2 knob editor alone makes nine
 distinct stores, four of them invisible to a read hook and one the path to
 the DSP. Call the firmware's routines.
 
-### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
+### 9d. The encoder handler's ABI ✅ SETTLED (4 Sep 2026)
 
-Every stock encoder handler examined (states 3 and 4, `0x400658f0` and
-`0x40065c98`) opens identically: push `%a2` and `%d2`, then `%sp@(12)` ->
-`%a2` and `%sp@(16)` -> `%d2`. So it is two stack arguments after the usual
-prologue. **Which is the encoder index and which is the delta is unsettled**:
-the same value is used as a pointer base (`pea %a2@(56)`) and compared
-against a small integer a few instructions later, which is either a
-re-load this reading missed or a desynchronised stream. Not guessed at --
-`CLAUDE.md`'s standing rule about r2 inventing plausible code applies to any
-disassembly read past the point where it stops making sense.
+`encoder_handler(index, delta)` — two longs, cdecl. Both stock handlers
+(states 3 and 4, `0x400658f0` and `0x40065c98`) are **byte-identical** in the
+prologue, disassembled with objdump cfv4e (`scripts/disasm.sh emac`, the tool
+that decodes this CPU; the earlier "unsettled" read was before this pass):
+
+```
+    movel %a2,%sp@-        ; save
+    movel %d2,%sp@-
+    moveal %sp@(12),%a2    ; arg1 -> a2   THE INDEX
+    movel  %sp@(16),%d2    ; arg2 -> d2   THE DELTA
+    pea    %a2@(56)        ; predicate keyed by the index
+    jsr    0x4003171c
+    tstl %d0 / beqs ...    ; if it returns nonzero:
+    movel %d2,%d0 / lsll #3,%d0 / subl %d2,%d0 / movel %d0,%d2   ; d2 = delta*7
+    moveq #6,%d0 / cmpl %a2,%d0 / bnes ...                       ; index==6 arm
+```
+
+- **arg1 is the INDEX.** It is compared against the small integer 6 and
+  dispatched, so it holds a small int, not a pointer. (`pea %a2@(56)` passes
+  `index+56` to a predicate `0x4003171c` — an enum arg, not a dereference;
+  that is what the old reading mistook for a pointer base.)
+- **arg2 is the DELTA, and it arrives RAW.** The `delta*7` is the handler's
+  own fast-turn acceleration, applied only when `0x4003171c` returns nonzero
+  — so a screen handler receives the plain encoder step and is free to ignore
+  the acceleration. Perfect for feeding `0x4003a474(slot, delta)`, which is
+  itself a read-modify-write by delta.
+
+**The m68k toolchain is on PATH here** (`m68k-elf-as`, used by `build_bus.py`
+for every cave), so a screen's draw and encoder handlers can be assembled and
+walked in the emulator with no flash — the §9e order stands, and step 4 is
+now done.
 
