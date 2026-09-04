@@ -783,9 +783,30 @@ draw / key / encoder members. As shipped on tag 90:
   one of the 24 slot/engine pairs proven on the harness to draw and edit as
   its type, and confirmed on the unit.
 
+- **A 13th row in the rig: the bus's RETURN level** (added 4 Sep pm, the
+  artifact's spec). When T8's FX1 is the Character station (BUS mode = the
+  master's return point), each screen grows a row 6 on the left: **RVRB** on
+  REVERB = T8 FX1 page-1 slot 2 (CRSH, Part `+0x8ef50`, edited through the
+  page-1 writer on track 7, flat 20); **DLY** on DELAY = T8 FX1 page-2 index 2
+  (RING, Part `+0x8f040`, live `0x80000a2a`, mirror `0x100a518e` — traced —
+  edited by calling the editor on (track 7, page 3) with the host track
+  restored after, then the value set here). The enter action sets NSLOT to
+  13 only when T8's FX1 id is `0x1c`; otherwise the screen is twelve rows and
+  the return row does not exist, so the plain `busscreen` remix cannot poke
+  a stock effect on T8. Emulator-proven both ways (`verify_busscreen`'s rig
+  phase, on `bamsep27`).
+- **The cave is PINNED at `0x40108800`**, inside a 15,153-byte zero run at
+  `0x401087e4` that the rig needed: `bamsep27`'s six clones and fifteen
+  label formatters fill the floating window and the overflow run. The run
+  was proven dead in the emulator — no read or write across boot, the menus,
+  both FX pages and this screen; still all-zero after — and the build still
+  refuses it if it is ever not zero. ⬜ That the unit treats it the same is
+  the flash-5 claim.
+
 Draw and edit read/write the SAME Part arrays (`0x8ee9a` page 1, `0x8ef5a`
 page 2) keyed by the `0x80000000/03` track/part pair, so an edit is visible
-by construction.
+by construction. **`bamsep27`, the design-pass-2 rig, now carries BUS
+SCREEN in place of MENU SHORTCUT.**
 
 ⚠️ **`busscreen` SUPERSEDES `menushortcut` and the two cannot coexist**: both
 grow the CONTROL submenu (relocate its rows, bump its count), and the build

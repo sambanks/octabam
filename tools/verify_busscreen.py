@@ -309,6 +309,83 @@ def main():
     check(value_at(6) == DLY_SELECTS[6][1].decode(),
           f"DELAY MODE shows its word (got {value_at(6)!r})")
 
+    # ---- the RIG (bamsep27): the 13th RETURN row --------------------------
+    # With the Character station on T8's FX1 (the master, BUS mode), each
+    # screen gains a 13th row: RVRB = its CRSH (page 1 slot 2, via the page-1
+    # writer on track 7), DLY = its RING (page 2 index 2, via the editor on
+    # (track 7, page 3) then the value set here: Part +0x8f040, live
+    # 0x80000a2a, mirror 0x100a518e -- traced 4 Sep 2026). Absent otherwise.
+    _build("bamsep27")
+    rb = emu.boot(str(IMAGE))
+    check(rb.clean, f"rig (bamsep27) with the screen boots ({rb.stopped})")
+    ruc = rb.uc
+    emu._prime_menu(rb)
+    for b in (0x100a0000, 0x100f0000):
+        try:
+            ruc.mem_map(b, 0x10000)
+        except Exception:
+            pass
+    def _rstub(u, addr, size, user):
+        sp = u.reg_read(UC_M68K_REG_A7)
+        ret = int.from_bytes(u.mem_read(sp, 4), "big")
+        u.reg_write(UC_M68K_REG_A7, sp + 4); u.reg_write(UC_M68K_REG_D0, 0)
+        u.reg_write(UC_M68K_REG_PC, ret)
+    ruc.hook_add(UC_HOOK_CODE, _rstub, begin=0x4003249c, end=0x4003249c)
+    def ru32(a):
+        return int.from_bytes(ruc.mem_read(a, 4), "big")
+    rnb = ru32(0x40064bd4)
+    check(rnb == 0x40108800, f"rig: cave pinned into the dead run (0x{rnb:08x})")
+    re17 = rnb + 16 * ENTRY_LEN
+    rkey, renc = ru32(re17 + 12), ru32(re17 + 16)
+    rrows = ru32(CONTROL_DESC + 0x18)
+    rrev, rdly = ru32(rrows + 6 * 24 + 8), ru32(rrows + 7 * 24 + 8)
+    def rdraw():
+        for _ in range(3):
+            if ru32(0x400cbf4c) != 0:
+                break
+            emu._call(ruc, emu.MENU_OPEN)
+        ruc.mem_write(0x400cbf40, (16).to_bytes(4, "big"))
+        ruc.mem_write(emu.MENU_VIEWPORT, (13).to_bytes(4, "big"))
+        rb._draws.clear()
+        emu._call(ruc, emu.MENU_DRAW)
+    def rtexts():
+        return [t for _x, _y, t in rb._draws]
+    def rrow6():
+        for x, y, t in rb._draws:
+            if y == 4 + 6 * 7 + 1 and x == 32:
+                return t
+        return None
+    emu._prime_part(rb)
+    DBr = ru32(0x46c82456)
+    ruc.mem_write(DBr + 0x8ed80 + 7, bytes([0x1c]))        # T8 FX1 = CHARACTER
+    ruc.mem_write(DBr + 0x8ef50, bytes([30]))               # CRSH = RVRB
+    ruc.mem_write(DBr + 0x8f040, bytes([40]))               # RING = DLY
+    ruc.mem_write(ID_BASE + 4, bytes([7])); emu.assign_fx2(rb, track=4, effect_id=7)
+    ruc.mem_write(ID_BASE + 0, bytes([6])); ruc.mem_write(DBr + 0x8ed88 + 0, bytes([6]))
+    emu._call(ruc, rrev, (0,)); rdraw()
+    check("RVRB" in rtexts() and rrow6() == "30",
+          f"rig REVERB: 13th row RVRB reads T8 CRSH = 30 (got {rrow6()!r})")
+    for _ in range(12):
+        emu._call(ruc, rkey, (0x33,))                        # down x12 -> slot 12
+    emu._call(ruc, renc, (0, 5)); rdraw()
+    check(ruc.mem_read(DBr + 0x8ef50, 1)[0] == 35 and ruc.mem_read(0x80000a1c, 1)[0] == 35
+          and rrow6() == "35",
+          "rig REVERB: RVRB +5 -> 35 in Part, live byte and drawn")
+    emu._call(ruc, rkey, (0x33,)); rdraw()
+    check("TIME" in rtexts(), "rig: cursor wraps 12 -> 0")
+    emu._call(ruc, rdly, (0,)); rdraw()
+    check("DLY" in rtexts() and rrow6() == "40",
+          f"rig DELAY: 13th row DLY reads T8 RING = 40 (got {rrow6()!r})")
+    for _ in range(12):
+        emu._call(ruc, rkey, (0x33,))
+    emu._call(ruc, renc, (0, 5)); rdraw()
+    check(ruc.mem_read(DBr + 0x8f040, 1)[0] == 45 and ruc.mem_read(0x80000a2a, 1)[0] == 45
+          and ruc.mem_read(0x100a518e, 1)[0] == 45 and ruc.mem_read(0x80000000, 1)[0] == 0,
+          "rig DELAY: DLY +5 -> 45 in Part, live, mirror; host track restored")
+    ruc.mem_write(DBr + 0x8ed80 + 7, bytes([0x04]))        # no Character on T8
+    emu._call(ruc, rrev, (0,)); rdraw()
+    check("RVRB" not in rtexts(), "rig: no Character on T8 -> no return row")
+
     if backup is not None:
         IMAGE.write_bytes(backup)                  # restore for the rest of make check
     print(f"\n{'FAILED' if fails else 'busscreen OK (2 rows, double-wide, all 24 edit)'}: "

@@ -29,7 +29,10 @@ fresh or unassigned track still dispatches to real code, and it is hidden
 too: its knobs default to 0, so such a track is inert and looks like every
 other empty FX2.
 
-Still to come: the two menu screens that edit the engines.
+The two menu screens that edit the engines are BUS SCREEN (4 Sep 2026):
+CONTROL > REVERB / DELAY, each selecting its host track and drawing all
+twelve controls double-wide. It supersedes MENU SHORTCUT, which cannot
+coexist with it (both grow CONTROL).
 """
 
 from remix.schema import Remix
@@ -39,7 +42,7 @@ REMIX = Remix(
     doc="Design pass 2: the rig with the engines hidden and no stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "MENU SHORTCUT"),
+             "TEMPO SYNC", "BUS SCREEN"),
     hidden=("REVERB SERVER", "DELAY SERVER", "SEND",
             "SPECTRUM", "CHARACTER", "MODULATION"),
     grains=2,          # the cycle lever: four stations beside the delay

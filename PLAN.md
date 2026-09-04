@@ -879,7 +879,13 @@ bit-identical, which is what that gate is for.
   cursor, selects as words), level knob edits, cursor wraps. Every slot
   confirmed on the unit. The one RE finding it produced: the page-2 editor
   `0x4003a474` clamps against a STALE descriptor from outside a staged page
-  (MAINMENU §9c-ii) — the screen sets values itself. Docs: MAINMENU §9e.
+  (MAINMENU §9c-ii) — the screen sets values itself. **Evening: the screen
+  is IN THE RIG** — `bamsep27` carries BUS SCREEN in place of MENU SHORTCUT
+  (they cannot coexist), the cave pinned into a proven-dead 15 KB zero run at
+  `0x40108800`, and each screen has its 13th row, the bus's RETURN level at
+  the master (T8 Character CRSH / RING), emulator-proven. All gates green on
+  `bamsep27`. **`OCTATRACK_OCTABAM91.bin` is built = FLASH 5**, claims in
+  FLASHPLAN. Docs: MAINMENU §9e.
 - **MODE is on page-2 slot 6 in both bus engines (4 Sep 2026, unflashed;
   BusVerb v7, BusDelay v6).** It swapped places with SHMR / MDEP so that it
   sits on a slot the panel's own page-2 knob editor writes, which is what a

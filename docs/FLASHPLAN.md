@@ -319,6 +319,37 @@ frame fraction a ColdFire machine may take. Core cycles ≈ 2× the ticks 🟡.
 
 ---
 
+## Flash 5 — the rig with the bus screens (`bamsep27`, tag 91) — READY, UNFLASHED
+
+**Image:** `out/OCTATRACK_OCTABAM91.bin` = `bamsep27`: the design-pass-2 rig
+(engines hidden, GRAIN at two grains, stock DELAY gone, three stations) with
+`busscreen` in place of `menushortcut`. Built and gated 4 Sep 2026 evening:
+`REMIX=bamsep27 make check` green, `verify_hidden` green, `verify_busscreen`
+(both phases) green. **Stamp the project first** (`ot_project.py
+stamp-defaults <project> bamsep27`, or the rigproj tool) — the hidden engines
+are placed by the project only, and the MODE re-slot crossed the old slot
+6/7 bytes.
+
+Claims, cheapest and most separable first:
+
+1. **It boots and the cave in the dead run is real.** The screen's cave is
+   pinned at `0x40108800`, a zero run the emulator never touched. Falsifier:
+   a boot that wedges, or CONTROL › REVERB opening onto garbage — either
+   means the unit uses that run where the emulator did not.
+2. **The hosts' FX2 pages draw nothing** (hidden engines), and every station
+   page draws as flash 4 did. Falsifier: a host page showing knob names.
+3. **CONTROL › REVERB / DELAY open onto the right engine from any track**,
+   double-wide, selects as words, level knob edits, keys as on tag 90.
+4. **The 13th row.** With Character on T8's FX1 in SAT = BUS, each screen
+   shows a bottom-left RVRB / DLY row. Turning it changes the return level
+   at the master — the reverb gets louder or quieter in the mix. Falsifier:
+   the row present but the mix unchanged (the return path, not the screen);
+   the row ABSENT with Character on T8 (the id read); a crush or ring
+   artefact appearing instead (Character not in BUS mode — that is the SAT
+   select on T8's own page, not a defect).
+5. **The returns, finally** (carried from flash 4): T8's RVRB to 0 brings
+   the reverb back out of T5 within a beat; up moves it to the master.
+
 ## The MODE re-slot — two claims, BOTH CONFIRMED on tag 84 (4 Sep 2026)
 
 ✅ **Flashed as `OCTATRACK_OCTABAM84.bin` (remix `bus`, PR #95) the same
