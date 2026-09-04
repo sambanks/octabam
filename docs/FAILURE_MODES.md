@@ -11,7 +11,7 @@ Confidence, per `CLAUDE.md`: separate measured from inferred. A fix that only
 
 ---
 
-## Audio engine wedged, sequencer alive 🟡 CAUSE OPEN
+## Audio engine wedged, sequencer alive ✅ FIX CONFIRMED, cause open
 
 **Symptom.** The sequencer runs (steps advance, transport works), but **no
 audio plays** — not the tracks, and a **sample preview triggers but is
@@ -24,9 +24,9 @@ wedged, not the whole DSP. Candidates, unconfirmed: a cross-core bus /
 accumulator wedge (this class has bitten before — `docs/XBUS.md`), a
 transient cycle overrun on a core near budget, or stale DSP audio state.
 
-**Fix.** **Power-cycle.** Reported by Sam as a recurring mode that a reboot
-clears (5 Sep 2026, on the tag-93 rig, mid-play). ⬜ Confirm the reboot
-clears it and, if it recurs, capture what was playing when it wedged.
+**Fix.** **Power-cycle** — CONFIRMED (5 Sep 2026: wedged mid-play on the
+tag-93 rig, a power-cycle brought audio straight back). Recurring; Sam has
+seen it before. If it recurs, capture what was playing when it wedged.
 
 **Falsifier / next step.** If it recurs on a specific action (a bank change,
 a heavy station turned up, the returns engaging), that names the cause. Log
