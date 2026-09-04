@@ -58,14 +58,22 @@ MODULE = Module(
         Param(b"PTCH", 64, active=True, formatter=_PLAIN,
               doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
         # ---- page 2 -------------------------------------------------------
-        Param(b"MDEP", 48, 128, active=True, formatter=_PLAIN,
-              doc="tape mod (wow) depth; 0 = none - GRAIN: scatter, how far apart the grains read"),
+        # MODE on slot 6 (v6, 4 Sep 2026; was slot 7): even slots are what the
+        # panel's page-2 knob editor writes, so a main-menu screen can set it
+        # through the firmware's own routine (docs/MAINMENU.md 9c-ii). The DSP
+        # reads $c's KNOB field for it now. A part saved before the swap loads
+        # its old MDEP byte as MODE (48 clamps to REVRS) and 0/1/2 as MDEP;
+        # re-select the effect or stamp defaults.
         # v5 (3 Sep 2026): three real positions, nothing dead. The parts that
         # stored PITCH (1) get GRAIN, which is its harmoniser now; the stamper
         # writes fresh defaults for a replaced/renumbered effect anyway (plan A6).
         Param(b"MODE", 0, 3, active=True, formatter=_STEP,
               labels=("CLEAN", "GRAIN", "REVRS"),
               doc="engine select: CLEAN, GRAIN (pitched cloud, v5), REVERSE"),
+        # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
+        # stock FILTER's DIST knob is on slot 11.
+        Param(b"MDEP", 48, 128, active=True, formatter=_PLAIN,
+              doc="tape mod (wow) depth; 0 = none - GRAIN: scatter, how far apart the grains read"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
         Param(b"MRAT", 64, 128, active=True, formatter=_PLAIN,
@@ -89,18 +97,18 @@ MODULE = Module(
     # REVERSE, and the grain scatter and density in GRAIN; PTCH is the grain
     # pitch and idle elsewhere. The panel printed one name for both meanings
     # until this table existed.
-    mode_slot=7,
+    mode_slot=6,
     mode_views=(
         ModeView(mode=0,                        # CLEAN
                  defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
-                           6: 48, 8: 64, 10: 0}),
+                           7: 48, 8: 64, 10: 0}),
         ModeView(mode=1,                        # GRAIN
-                 names={6: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
+                 names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
                  defaults={0: 36, 1: 40, 2: 100, 3: 127, 5: 64,
-                           6: 40, 8: 127, 9: 1, 10: 0}),
+                           7: 40, 8: 127, 9: 1, 10: 0}),
         ModeView(mode=2,                        # REVERSE
                  defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
-                           6: 48, 8: 64, 9: 1, 10: 0}),
+                           7: 48, 8: 64, 9: 1, 10: 0}),
     ),
     dsp=DspSection(
         asm="modules/busdelay/delay_server.asm",

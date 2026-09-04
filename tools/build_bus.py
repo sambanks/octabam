@@ -1749,8 +1749,9 @@ mkgo:""",
         reverb_src = reverb_src.replace(
             "; MODE_OVERRIDE",
             # << 16: the dispatch compares against SHORT immediates, which the
-            # DSP56300 places MSB-aligned, and the extract above is `asl #$8`
-            # to match. A low-aligned override would miss every compare and
+            # DSP56300 places MSB-aligned, and the extract above (the knob
+            # field of $c since 4 Sep 2026; `asl #$8` of the companion byte
+            # before) matches. A low-aligned override would miss every compare and
             # land on BIG -- exactly the bug 2da90f0 fixed.
             # DECIMAL immediate: MODE=3 << 16 spelled $30000 is the payload-A
             # Y base literal, which the XBUS _sub would rewrite to $38000

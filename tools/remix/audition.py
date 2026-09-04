@@ -179,7 +179,7 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         kmap = mod.knob_map()
         for name, v in values.items():
             slot = kmap[name]
-            if slot == 7:
+            if name == "MODE":
                 continue                  # MODE went in via --mode
             argv += ["-p", f"{render_reverb.PARAMS[slot][0]}={v}"]
         r = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)

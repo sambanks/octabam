@@ -567,16 +567,34 @@ published.
 **The rule is slot -> word -> bit field, whatever a module calls its knobs.**
 The examples below are named `<BusVerb> / <BusDelay>` because those were the
 only two effects when this was measured; a module names its own twelve slots
-in its manifest and the mapping is unchanged. Note the consequence: because
-the companion fields ARE slots 7, 9 and 11, a stepped control can only live
-there — `schema.py` enforces it.
+in its manifest and the mapping is unchanged.
 
-| slot | word | field | example |
+❌ **RETRACTED 4 Sep 2026: "a stepped control can only live on 7, 9 or 11".**
+That was our convention, not the panel's. The stock descriptors put CHORUS
+TAPS (a 5-way select) on slot 6, FILTER's HP/ENV/Q2 on 6/8/10, and plain
+128-value knobs on 9 and 11 (CHORUS FBLP, FILTER DIST); COMB FILTER's PTCH
+(108 values) is on page 1. The field a slot is DELIVERED in is fixed by the
+slot; its count and renderer are free. **Both bus engines' MODE moved to
+slot 6 the same day**, because the panel's page-2 knob editor
+(`docs/MAINMENU.md` §9c-ii) writes even slots only — a MODE there can be set
+from a main-menu screen through the firmware's own routine, one on 7/9/11
+cannot. Proven locally: every mode of both engines renders bit-identically
+through the new fields (`send_probe --rmode/--dmode`, which drives the
+parameter word; `render_reverb --mode` forces the decoded value and cannot
+see this). ✅ **Confirmed on hardware the same day (tag 84):** MODE draws
+and steps as a select on slot 6, and SHMR / MDEP sweep smoothly from slot 7 —
+a count-128 knob in a companion field works, so the 10 Aug "near-boolean
+companion" reading is retired (it was the inherited formatter). ⚠️ The
+first play stalled the sequencer until the project was refreshed: parts
+saved under the old layout hand the count-3 slot a 0–127 byte
+(`docs/FLASHPLAN.md`, the MODE re-slot).
+
+| slot | word | field | example (since 4 Sep 2026) |
 |---|---|---|---|
-| 6 | `$c` | knob, bits 16–23 | SHMR / DPTH |
-| 7 | `$c` | **bits 8–15** | MODE |
-| 8 | `$d` | knob, bits 16–23 | DIFF / RATE |
-| 9 | `$d` | **bits 8–15** | WIDTH / PTCH |
+| 6 | `$c` | knob, bits 16–23 | **MODE** / **MODE** |
+| 7 | `$c` | **bits 8–15** | SHMR / MDEP |
+| 8 | `$d` | knob, bits 16–23 | DIFF / MRAT |
+| 9 | `$d` | **bits 8–15** | SHFT / SIZE |
 | 10 | `$e` | knob, bits 16–23 | GATE / DRV |
 | 11 | `$e` | **bits 8–15** | RATE / FRZE |
 
@@ -584,8 +602,9 @@ there — `schema.py` enforces it.
 
 **The evidence**, because the map was inferred from behaviour rather than
 documented anywhere:
-- **MODE (slot 7) reads bits 8–15 and works** — swept on hardware across five
-  positions, repeatedly.
+- **MODE (then slot 7) read bits 8–15 and worked** — swept on hardware across
+  five positions, repeatedly. (Slot 6 / bits 16–23 since 4 Sep 2026; the
+  field map itself is what this measured, and it stands.)
 - **SHMR independently needed `$c`'s knob field, not `$b`'s** — the
   same off-by-one word.
 - **Slot 11 confirmed dead for both effects TESTED** (BusVerb's →DEL and BusDelay's

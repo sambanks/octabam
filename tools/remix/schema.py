@@ -56,9 +56,12 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
                            0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1c})
 
 
-# Page 2 is knob/select/knob/select/knob/select, so only these three slots
-# can carry a stepped select -- and therefore a MODE.
-STEPPED_ONLY = (7, 9, 11)
+# A stepped select -- and therefore a MODE -- may sit on any page-2 slot.
+# (7, 9, 11) until 4 Sep 2026, on the belief that the companion byte fields
+# were the only place the panel draws a select; stock CHORUS TAPS on slot 6
+# says otherwise. Even slots are the ones the panel's page-2 knob editor can
+# write from a cave, so that is where a MODE belongs now.
+STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
 class YBase(Enum):
@@ -115,10 +118,12 @@ class Param:
     `None` means "do not write this field", which leaves the donor's value in
     place. That is a real and different thing from writing a zero.
 
-    Page 1 is slots 0-5 (r6+0..5). Page 2 is slots 6-11, and is THREE KNOBS
-    AND THREE SELECTS by hardware budget: knob, select, knob, select, knob,
-    select. The selects are the companion byte fields, which is why any
-    stepped slot lands on 7, 9 or 11 by construction.
+    Page 1 is slots 0-5 (r6+0..5). Page 2 is slots 6-11: even slots are
+    delivered in the KNOB field (bits 16-23) of r6+$c/$d/$e, odd slots in the
+    COMPANION field (bits 8-15) of the same word. Any slot may carry any
+    count -- stock puts 5-way selects on slot 6 and 128-value knobs on 9 --
+    and a MODE goes on an EVEN slot so the panel's own page-2 knob editor can
+    reach it (4 Sep 2026; it used to be forced onto 7/9/11).
     """
 
     name: bytes | None = None          # 6-byte panel label; b"" blanks it
@@ -574,13 +579,22 @@ class Module:
                              f"caves -- they are already in the image (its "
                              f"params are READ from the stock descriptor, "
                              f"never written)")
-        # Page 2's three selects ARE the three companion byte fields, so a
-        # stepped control can only physically live on 7, 9 or 11.
+        # A stepped control may sit on ANY page-2 slot. Until 4 Sep 2026 this
+        # refused everything but 7/9/11 on the reasoning that the companion
+        # byte fields are the selects -- but that was our convention, not the
+        # panel's: stock CHORUS TAPS (count 5) sits on slot 6, FILTER's HP/ENV/
+        # Q2 on 6/8/10, and stock knobs sit on 9 and 11 (CHORUS FBLP, FILTER
+        # DIST). The field a slot is DELIVERED in is fixed by the slot (even ->
+        # bits 16-23, odd -> bits 8-15); its count and renderer are free. The
+        # reason to prefer an even slot for a MODE: the panel's page-2 knob
+        # editor (0x4003a474, docs/MAINMENU.md 9c-ii) writes even slots only,
+        # so a select there is reachable from a cave; one on 7/9/11 is not.
+        # Page 1 is untested for the tick widget and stays refused.
         for i, p in enumerate(self.params):
-            if p.formatter is Formatter.STEPPED and i not in (7, 9, 11):
+            if p.formatter is Formatter.STEPPED and i < 6:
                 raise ValueError(
-                    f"{self.name}: slot {i} is stepped, but the companion "
-                    f"byte fields are slots 7, 9 and 11")
+                    f"{self.name}: slot {i} is stepped, but page 1 has never "
+                    f"been drawn with the tick widget -- put it on page 2")
 
     def view_for(self, mode: int):
         """The ModeView for a MODE value, or None. Unknown values fall back

@@ -5,7 +5,8 @@
 ; the refactor-first gate (tools/verify_delay.py, the verify_roll pattern):
 ; prove equivalence, THEN add modes. Two spine changes, no behavior change:
 ;
-;   * MODE select read (page-2 slot 7, r6+$c bits 8-15, BusVerb's exact
+;   * MODE select read (page-2 slot 6, r6+$c bits 16-23 since v6 4 Sep 2026;
+;     slot 7 / bits 8-15 before that, BusVerb's exact
 ;     idiom). Stage 1 has one engine, so every value runs CLEAN -- the
 ;     dispatch grows compares when PITCH lands, and unknown values must
 ;     keep degrading to CLEAN (the trad delay), never to silence.
@@ -332,7 +333,8 @@
 ;   p5       -> IN (see above). ❌ "FREE / the send is hardwired" is stale:
 ;              -VRB is a KNOB again since 18 Aug 2026, on p4.
 ;   p8       -> FREE. Was ->VERB DRY; the send is gone entirely.
-;   p7 MODE  -> engine select, page-2 slot 7 companion (r6+$c bits 8-15),
+;   p6 MODE  -> engine select, page-2 slot 6 KNOB field (r6+$c bits 16-23;
+;              slot 7 companion until v6, 4 Sep 2026),
 ;              count 5: 0 = CLEAN, 1 = PITCH, 2 = (was TAPE -- retired
 ;              18 Aug 2026, falls through to CLEAN), 3 = GRAIN,
 ;              4 = REVERSE. Landed with stage 2, per the stage-1 rule that a
@@ -344,7 +346,8 @@
 ;              offset: 0 = every grain reads the same place (four heads, one
 ;              position -- the coherent, most PITCH-like end), 127 = the full
 ;              0..1015-sample scatter. Only read in GRAIN.
-;   p6 DPTH  -> TAPE wow depth, PAGE-2 slot 6, the KNOB field of r6+$c
+;   p7 MDEP  -> TAPE wow depth, PAGE-2 slot 7, the COMPANION field of r6+$c
+;               (v6, 4 Sep 2026: swapped with MODE, which is p6 / the KNOB field)
 ;              (NOT page-1, NOT $b -- the $b reading is exactly why this
 ;              knob worked locally and never on hardware; PARAM_PAGES.md).
 ;              0..127.
@@ -1203,10 +1206,14 @@ dwarmdone:
 ; at the marker below (dsp_host can also drive companions via -params 7/9/11;
 ; the override forces the decoded VALUE, so DFRZ=2 means frozen, not SYNC).
         move    x:(r6+$c),a
-        and     #>$ff00,a               ; slot 7's companion field, not the knob
+        and     #>$ff0000,a             ; slot 6's KNOB field (v6, 4 Sep 2026;
+                                        ; slot 7's companion byte before --
+                                        ; moved so the panel's page-2 knob
+                                        ; editor can set MODE from a screen)
         move    a1,x0
-        move    x0,a                    ; A2-clean (AND cleans A1 only)
-        asl     #$8,a,a                 ; -> MSB-aligned ($010000 per step)
+        move    x0,a                    ; A2-clean (AND cleans A1 only); the
+                                        ; knob field is already MSB-aligned
+                                        ; ($010000 per step), so no shift
 ; DMODE_OVERRIDE
         move    a,x:(r7+$69)            ; MODE, this block (0 = CLEAN)
 
@@ -1265,9 +1272,10 @@ dwarmdone:
         move    b,x:(r7+$6a)            ; this block's note for GRAIN (0 = none)
 
 ; ---- TAPE depths from the WOW knob (v2 stage 4) --------------------------
-; Page-2 slot 6 is a KNOB field (the KNOB half of r6+$c, value<<16, 0..127),
-; not a select. (This comment said "page-1 ... r6+$b" until 30 Aug 2026,
-; directly above the line that correctly reads x:(r6+$c).):
+; MDEP is page-2 slot 7 since v6 (4 Sep 2026): the COMPANION half of r6+$c,
+; bits 8-15, 0..127 -- it swapped places with MODE, which now owns the knob
+; half. (Slot 6 / the knob half before that; and "page-1 ... r6+$b" until
+; 30 Aug 2026, directly above a line that correctly read x:(r6+$c).):
 ; wow depth is a continuous voicing control unlike MODE/PTCH/FRZE.
 ;   wow depth = knob << 10  -> up to 31.75 samples, Q11.12
 ;   flutter   = wow >> 3    -> up to  3.97 samples
@@ -1277,9 +1285,9 @@ dwarmdone:
 ; the sample about to be written, which is a whole lap old (a full-scale
 ; discontinuity every LFO cycle). Any future depth increase must re-check
 ; that sum against TIME's floor.
-        move    x:(r6+$c),a             ; $c, NOT $b: the panel publishes slot 6
-        and     #>$7f0000,a             ; to $c's KNOB field (R16's SHMR probe
-        asr     #$3,a,a         ; x8 RELAW (18 Aug 2026): the old law's
+        move    x:(r6+$c),a             ; $c: slot 7 is its COMPANION field
+        and     #>$7f00,a               ; (bits 8-15); knob<<8, so <<5 more
+        asl     #$5,a,a         ; = knob<<13, the x8 RELAW (18 Aug 2026): the old law's
                                         ; full-knob wobble measured +-2 CENTS --
                                         ; inaudible by construction, which is
                                         ; why 'mod does nothing' was true on
@@ -1402,16 +1410,19 @@ wowlive:
         move    b,y:>$0904
 
 ; ---- SPRAY: GRAIN scatter depth (v2 stage 5; on MDEP since v5.1) ----------
-; Page-2 slot 6's KNOB field (r6+$c, the word MODE's select shares). knob<<16 already IS value/128 in Q1.23, so it is used
-; directly as a multiplier with no mpy to build it (the MIX/PING trick).
+; Page-2 slot 7's COMPANION field (r6+$c bits 8-15, the word MODE's knob
+; field shares; slot 6 / the knob field until v6, 4 Sep 2026). Shifted up
+; to knob<<16, which already IS value/128 in Q1.23, so it is used directly
+; as a multiplier with no mpy to build it (the MIX/PING trick).
 ; SPRAY=0 puts every grain on the same read position -- four heads in a
 ; cluster, the most coherent and least granular end -- and 127 gives the
 ; full 0..1015-sample scatter. Decoded every block regardless of MODE, like
 ; PTCH and FRZE; harmless in the modes that never read it.
-        move    x:(r6+$c),a             ; MDEP's knob field: SCATTER in GRAIN
-        and     #>$7f0000,a             ; (v5.1 -- the mod depth is fixed there)
+        move    x:(r6+$c),a             ; MDEP's companion field: SCATTER in
+        and     #>$7f00,a               ; GRAIN (v5.1 -- the mod depth is fixed there)
         move    a1,x0
         move    x0,a                    ; A2-clean (AND cleans A1 only)
+        asl     #$8,a,a                 ; -> knob<<16
         move    a,x:(r7+$5c)            ; SPRAY, 0 .. ~0.992 as Q23
         move    #>4,n4                  ; GRAIN's readers stride one record
                                         ; past the other line's, per block so

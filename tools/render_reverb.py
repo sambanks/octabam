@@ -120,13 +120,16 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # `-p GATE=n` never reached the gate, found 18 Aug 2026 when a gated-drums
 # render measured bit-identical at GATE 8/20/40.
 #
-# MODE (slot 7) still goes in via --mode / build_bus.py's MODE= override, kept
-# because the override predates companion driving and is proven equivalent.
+# MODE (slot 6 since v7, 4 Sep 2026; slot 7 before -- so SPEED/SHMR is index
+# 7 now, in the companion field) still goes in via --mode / build_bus.py's
+# MODE= override, kept because the override predates companion driving and is
+# proven equivalent. ⚠️ That means THIS renderer cannot prove the MODE extract
+# itself; send_probe --rmode drives it through the parameter word.
 # MIX (idx 5) has been IN since the v4 return -- the host's own send level,
 # not a crossfade; the name stays so existing command lines keep working.
 # RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
 PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
-          ("MIX", 64), ("SPEED", 0), ("_C", 0), ("DIFF", 64), ("SHFT", 0),
+          ("MIX", 64), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
 # SHFT (idx 9) was WIDTH until v6 (23 Aug 2026): width is pinned wide and the
 # slot selects the shimmer interval, 0/1/2/3 = +12/+19/+7/-12. Audited the
@@ -138,7 +141,7 @@ PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
 # without) and Sam heard it as "a high zingy bit in the bg". The voicing
 # baseline is the clean verb; ask for shimmer explicitly with -p SPEED=n.
 NAMES = {n: i for i, (n, _) in enumerate(PARAMS)}
-# _C (index 7) is MODE's companion slot; --mode owns it, so no knob.
+# _C (index 6) is MODE's slot; --mode owns it, so no knob.
 KNOBS = ", ".join(n for n, _ in PARAMS if n != "_C")
 
 

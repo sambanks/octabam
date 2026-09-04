@@ -566,7 +566,7 @@ def main():
     ap.add_argument("--mod", type=int, default=0,
                     help="MOD depth (slot 1). Zeroed in the THD tests to keep LFO\nsidebands out of the metric -- which also suppressed any\ninterpolation artifact the modulation would have caused.")
     ap.add_argument("--shmr", type=int, default=0,
-                    help="SHIMMER amount (param slot 6 -> the KNOB field of r6+$c, NOT $b -- the $b\nreading is why the delay's WOW worked locally and never on hardware; see\nPARAM_PAGES.md). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
+                    help="SHIMMER amount (param slot 7 since v7, 4 Sep 2026 -> the COMPANION field of r6+$c; slot 6's knob field before, NOT $b -- the $b\nreading is why the delay's WOW worked locally and never on hardware; see\nPARAM_PAGES.md). v101 replaced\nSPEED with SHMR; render_reverb.py still calls this slot SPEED.\nBuilds before 41d252c default it to 48, not 0.")
     ap.add_argument("--dtime", type=int, default=None,
                     help="DELAY TIME 0..127 (delay slot 0, default 40 -- the\nboot default). PITCH mode caps the lag at 14335 samples,\ni.e. TIME ~111.")
     ap.add_argument("--dfdbk", type=int, default=None,

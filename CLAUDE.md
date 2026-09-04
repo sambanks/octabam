@@ -260,6 +260,19 @@ refuses both over-lengths and `build_bus.py` re-checks the string it writes,
 tag included — which caught two diagnostic delay names (`BusDlyRPLY`,
 `BusDlyNOCF`) that had been filling all 13 bytes since 24 Aug 2026.
 
+**A PART SAVED UNDER AN OLDER SLOT LAYOUT FEEDS THE NEW LAYOUT ITS OLD
+BYTES, AND THE SEQUENCER STALLS ON THE FIRST PLAY.** Moving MODE from slot 7
+to slot 6 (4 Sep 2026) passed every local check and both hardware claims —
+then pressing play went 1, 2, 1 and froze, because every other track's part
+still held a 0–127 SHMR/MDEP byte in what was now a count-3 select, the
+"value outside its count is used as an index" trap in stored form. The
+schema cannot see stored data. Re-selecting the effect on the track you are
+looking at is NOT enough; the sequencer runs every track of the part. After
+any change to a slot's count, position or meaning: `tools/ot_project.py
+stamp-defaults <project> <remix>` on the card BEFORE play, and say so in the
+flash notes. (Cause inferred from the symptom and a refreshed project
+running clean; not measured.)
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.
