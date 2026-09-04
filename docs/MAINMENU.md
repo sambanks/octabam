@@ -457,18 +457,42 @@ cmp a3,d4; bcs exit`). The `a3 == 6` arm is real but is a different thing,
 gated on `0x460d1a48 == 1`, and it is not the page-2 boundary the earlier
 read took it for.
 
-⚠️ **AND ONLY THE KNOBS WRITE: slots 0, 2 and 4 moved a byte; 1, 3 and 5 did
-nothing.** That is the page-2 map `docs/PARAM_PAGES.md` already records from
-the other direction — each page-2 word carries a KNOB at bits 16–23 and a
-COMPANION at bits 8–15, and the companions ARE the odd slots. So this
-routine edits the three page-2 KNOBS and not the three SELECTS.
+⚠️ **First reading (4 Sep 2026 am): ONLY THE KNOBS WRITE — slots 0, 2 and 4
+moved a byte; 1, 3 and 5 did nothing.** That matched the page-2 map
+`docs/PARAM_PAGES.md` records from the other direction and was taken to mean
+the routine edits the three page-2 KNOBS and not the three SELECTS.
 
-**Where that leaves a twelve-row screen.** Nine of the twelve controls have
-a supported path today: six on page 1 through the stock writer, three page-2
-knobs through this one. The remaining three are the page-2 SELECTS — which
-for BusVerb are MODE, SHFT and RATE, and for BusDelay MODE, SIZE and FRZE.
-**Both engines' MODE is in that set**, so this is not a corner: it is the
-control most worth having on the screen.
+🟡 **CHALLENGED, same day pm (emulator, tag-84 image).** Driven again on a
+warm machine with its **page global set** — `0x460d5c30`, the FX2 page kind,
+which the first run left at whatever the cold detour had — `0x4003a474(slot,
+delta)` returned cleanly for **all six** page-2 slots on both engines and
+stored a distinct byte per slot into the page-2 array (`+0x8ef5a + track*30 +
+page*6 + slot`) AND the live DSP byte (`0x80000950 + slot`). The trace also
+found the routine calls a helper at `0x4003249c` that spins on a cold
+machine; stubbing it (`moveq #0,d0; rts`) is what let the call complete, and
+mapping the `0x100a0000` mirror page stopped an unmapped-write fault that was
+masking the store. So the "odd slots do nothing" reading is suspect: it may
+have been the un-set page global or the un-mapped mirror, not the slot parity.
+
+**Which is right is a HARDWARE question and unresolved.** The emulator has
+known blind spots (`CLAUDE.md`), and the two readings disagree. If the
+emulator is right, this one routine edits all six page-2 slots and a
+twelve-row screen needs no select-committer work at all. **The screen itself
+is the test:** build twelve rows, and whether the odd slots move on the unit
+settles it — no separate probe. Falsifier for the optimistic reading: an
+odd-slot row that draws and steps but whose sound does not change.
+
+**Where that leaves a twelve-row screen (revised 4 Sep 2026 pm).** The
+target is and has always been TWELVE rows. Two firmware writers reach them:
+`0x40054cd8(track, flat, value)` for page 1's six, and `0x4003a474(slot,
+delta)` for page 2. The open question is only how many of page 2's six the
+second routine reaches — the am reading said three (the even/knob slots), the
+pm reading said all six. If it is all six, twelve rows are buildable on those
+two routines alone. If it is three, the three odd slots (BusVerb SHFT/RATE
+plus whichever slot MODE is NOT on; BusDelay SIZE/FRZE likewise) still need
+the select path below, and card emulation earns its place. **We resolve this
+by building the twelve-row screen and flashing it, not by more probing** —
+the probes are what this note is retiring.
 
 **The selects' path, part-way (4 Sep 2026).**
 
@@ -639,9 +663,13 @@ Driving them piecemeal from a cave is working against how they are written.
 **So the honest options for the bus screens are three, and the choice is a
 design one rather than a research one:**
 
-1. **A NINE-ROW screen**, on the two paths that are callable and aimed
-   today: page 1's six and page-2's three knobs. It leaves the three page-2
-   SELECTS out, and both engines' MODE is among them.
+1. ~~**A NINE-ROW screen**~~ — SUPERSEDED 4 Sep 2026. This was written when
+   (a) MODE was on an odd slot and (b) the page-2 editor was read as
+   even-slots-only. Both changed the same day: MODE moved to slot 6 (an even
+   slot, HARDWARE-CONFIRMED on tag 84), and the emulator then showed
+   `0x4003a474` writing all six page-2 slots. The goal is TWELVE rows; nine
+   was an artifact of those two now-stale facts, not a decision. See the
+   revised "where that leaves a twelve-row screen" above.
 2. **Keep digging for the select aiming.** Narrow, but this thread has cost
    five reads and each answer has produced another layer.
 3. **Use the shortcut that is already built.** `modules/menushortcut`
@@ -698,6 +726,56 @@ MODE, SAVE the part, re-read — if anyone ever needs it.
 made the select path researchable without flashes; it is parked in
 `PLAN.md` as the next emulator milestone, for the next project-dependent
 path, not for this one.
+
+### 9e. The twelve-row bus screen — build plan (4 Sep 2026)
+
+The goal is a MAIN MENU screen that edits ALL TWELVE controls of BusVerb and
+BusDelay, off the track. `modules/menushortcut` already reaches the twelve
+controls ON the track (it opens the host's FX2 page); this replaces "on the
+track" with "a screen of its own". What made that the swamp §6 declined was
+the select-committer's unmapped aiming state — and the MODE re-slot plus the
+pm re-reading of `0x4003a474` together remove it, IF the all-six reading
+holds. So the screen is now the cheapest way to settle that too.
+
+**The pieces, known vs open:**
+
+1. ✅ **Relocate the menu-state table (§9a).** Copy 16 × 0x14 from
+   `0x400cbdac` to a cave, append a 17th entry, patch the three `lea`
+   immediates (`0x40064bd2/e34`, `0x400650e6`). Same relocate-and-repoint the
+   FX1 chooser build already does. A NULL handler member is skipped, so an
+   unused one is left zero.
+2. ✅ **Add the row to CONTROL (or the root).** `menushortcut` already does
+   exactly this for its two action rows; the screen is one more row whose
+   action enters the new menu-state instead of opening the FX2 page.
+3. 🟡 **The draw handler.** Render twelve labelled rows with live values. The
+   pieces are decoded — window ctor `FUN_4005829c`, list drawer
+   `FUN_40037590`, sprintf `0x40013a08`, and the value source is the Part
+   arrays (`+0x8ee9a` page 1, `+0x8ef5a` page 2) for the host track. Novel
+   code, but every primitive it calls is already used elsewhere.
+4. 🟡 **The encoder handler.** On a turn of the selected row, call the writer
+   for that slot: `0x40054cd8(track, flat, value)` for rows 0–5,
+   `0x4003a474(slot, delta)` for rows 6–11. Its ABI is §9d, SHAPE ONLY — two
+   stack args, index vs delta unsettled. **This is the first thing to settle,
+   and it is a local read, no flash:** disassemble the two stock encoder
+   handlers (`0x400658f0`, `0x40065c98`) far enough to fix the argument
+   order, then confirm in the emulator by driving one.
+5. ⬜ **Which track the screen edits.** Reuse `menushortcut`'s scan of the
+   per-track FX2 id bytes so the screen follows the project rather than
+   assuming T5, or make the screen itself track-agnostic and edit whichever
+   track is current.
+
+**Order of work:** (4) first — settling the encoder ABI is the gate and costs
+no flash. Then (1)+(2) under the emulator's menu walk (a cave that breaks
+early init faults in the emulator, not on the unit). Then (3), drawing the
+real values. One flash carries the lot, and that flash is also the odd-slot
+test from §9c-ii: if rows 6–11 all edit on the unit, the pm reading was
+right and the screen is done; if only the even ones move, the three odd rows
+fall back to the select path and card emulation.
+
+**What NOT to do:** hand-roll any of the three parameter writers into the
+cave. §9c-ii enumerated why — the page-2 knob editor alone makes nine
+distinct stores, four of them invisible to a read hook and one the path to
+the DSP. Call the firmware's routines.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
