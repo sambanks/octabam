@@ -575,9 +575,36 @@ reimplementing.
 ✅ **So: call the firmware's routines, do not reproduce them.** Two of the
 three are callable today, with signatures confirmed by driving them:
 `0x40054cd8(track, flat, value)` for page 1 and `0x4003a474(slot, delta)`
-for page-2 knobs. The select committer `0x40079424` still bails on
-unidentified UI state, and hand-rolling it is now known to be unsafe rather
+for page-2 knobs. Hand-rolling any of them is now known to be unsafe rather
 than merely untidy.
+
+✅ **The select committer, driven (4 Sep 2026).** `0x40079424` reads two
+globals at entry — `0x46c8d19c` (a value) and `0x46c8d1a0` — and **branches
+on the second**: nonzero takes an arm needing state we have not mapped,
+**zero takes the arm that stores.** With it zero the routine runs to
+completion, through the redraw calls at its tail, and writes:
+
+```
+    DB + 0x8f04a      the select array        <- the value
+    DB + 0x8eda2      machine type
+    DB + 0x95048      the per-track dirty bit
+    DB + 0x9b332      the bookkeeping word the page-2 knob editor also writes
+```
+
+So it is callable, and it does the FULL job rather than a partial one —
+which, after the enumeration above, is the property that matters.
+
+⚠️ **What is not yet controllable is WHICH control it targets.** The store
+landed at `+0x8f04a` exactly — offset zero, so track 0, page 0, slot 0 —
+because in that arm the address term comes from the same global that has to
+be zero to reach the store at all. It writes, and writes correctly, but the
+inputs that aim it are unidentified. Its caller (`0x4005a7d8`, the FX-page
+region) sets more state than those two globals before calling, and that is
+where they will be.
+
+**Status for a twelve-row screen:** page 1 and page-2 knobs are callable AND
+aimed; page-2 selects are callable but NOT aimed. That is the last question,
+and it is narrower than it was.
 
 ⚠️ **The lesson is the method, not the addresses.** Four of the nine stores
 were invisible to reading and obvious to a write hook, and one of them is
