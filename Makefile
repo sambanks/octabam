@@ -11,7 +11,8 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # Stamped into the OS version field (max 10 chars) so the unit tells you which
 # build it is running. Bump BUILD every time you flash: a unit whose version
 # string you cannot map back to a commit is a unit you are guessing about.
-BUILD   ?= 79
+BUILD   ?= 79          # the image's version AND the build tag the panel
+                       # shows in every effect name (tools/build_bus.py)
 VERSION ?= OCTABAM$(BUILD)
 
 # Which modules the image carries. `make modules` lists what is available;
@@ -46,7 +47,7 @@ recon: ## Unpack + static recon -> out/raw/section_3_MAIN_OS.bin
 
 .PHONY: bus
 bus: ## THE build: one server per core, cross-core bus -> out/mainos_bus.bin
-	REMIX=$(REMIX) XBUS=1 SPEC=1 python3 tools/build_bus.py
+	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 python3 tools/build_bus.py
 
 .PHONY: bus-plain
 bus-plain: ## Build without specialization (both servers on both cores)

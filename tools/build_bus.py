@@ -409,7 +409,16 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # the Character station returning both wets on the master (RVRB/DLY in
 # SAT=BUS), hosts quiet only while a return is live; label formatters
 # overflow into the second zero run. Flash 4, docs/FLASHPLAN.md.
-BUILD_TAG = b"79"
+# ⚠️ IT FOLLOWS THE MAKEFILE'S `BUILD` (4 Sep 2026). It was a literal here
+# and the Makefile's BUILD chose the FILENAME, so `BUILD=80 make image` wrote
+# OCTATRACK_OCTABAM80.bin whose panel said `BusVerb79` -- the file and the
+# unit disagreeing about which image it is, which is the exact ambiguity
+# this tag exists to prevent. The default stays 79, so an unset BUILD builds
+# what it always did; refhash's 26 cases are bit-identical across the change.
+BUILD_TAG = os.environ.get("BUILD", "79").encode()
+if not (BUILD_TAG.isdigit() and 1 <= len(BUILD_TAG) <= 2):
+    sys.exit(f"BUILD={BUILD_TAG.decode()!r}: the tag is appended to a 13-byte "
+             f"name field, so it must be one or two digits")
 
 # ---- the module tables, derived from modules/*/manifest.py ------------------
 # One statement per fact, living in the module that owns it. These dicts keep
