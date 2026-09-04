@@ -436,11 +436,41 @@ difference — but it is a real difference in shape, and a screen that assumes
 both calls take an absolute value would write page 2 to a value that drifts
 by whatever was already there.
 
-⚠️ **Still inferred, not measured:** the slot boundary reading (`a3 == 6`
-being the page-2 arm) and the exact clamp semantics come from reading the
-body, not from calling it. Both are cheap to settle on the warm emulator the
-way the page-1 writer was: call it with a known slot and delta and watch
-which byte moves.
+✅ **CALLED ON THE WARM MACHINE (4 Sep 2026), and it corrects one reading.**
+
+```
+    address = DB + part*6322 + 0x8ef5a + track*30 + page*6 + slot
+```
+
+measured by sweeping both arguments with the page global set by hand:
+
+| what was checked | result |
+|---|---|
+| the address | page 4, slot 2, track 4 landed at `0x8efec` = `0x8ef5a + 120 + 24 + 2` ✅ |
+| the page | pages 0–4 stepped the target by exactly 6 bytes each ✅ — **page 4 is FX2**, the same numbering the page-1 writer uses |
+| the delta | a slot at 5 took `+3` and became **8**: read-modify-write ✅ |
+| the clamp | `+5` into pages 0 and 1 landed on **1**, not 5 — clamped to a two-value control's range, while pages 2–4 took the full 5 ✅ |
+
+❌ **`a3` is NOT the absolute slot 0–11.** It is the slot WITHIN page 2,
+0–5, and the general arm rejects anything above 5 outright (`moveq #5,d4;
+cmp a3,d4; bcs exit`). The `a3 == 6` arm is real but is a different thing,
+gated on `0x460d1a48 == 1`, and it is not the page-2 boundary the earlier
+read took it for.
+
+⚠️ **AND ONLY THE KNOBS WRITE: slots 0, 2 and 4 moved a byte; 1, 3 and 5 did
+nothing.** That is the page-2 map `docs/PARAM_PAGES.md` already records from
+the other direction — each page-2 word carries a KNOB at bits 16–23 and a
+COMPANION at bits 8–15, and the companions ARE the odd slots. So this
+routine edits the three page-2 KNOBS and not the three SELECTS.
+
+**Where that leaves a twelve-row screen.** Nine of the twelve controls have
+a supported path today: six on page 1 through the stock writer, three page-2
+knobs through this one. The remaining three are the page-2 SELECTS — which
+for BusVerb are MODE, SHFT and RATE, and for BusDelay MODE, SIZE and FRZE.
+**Both engines' MODE is in that set**, so this is not a corner: it is the
+control most worth having on the screen. Finding the selects' write path is
+the next read, and the `a3 == 6` arm with its `0x460d1a48` gate is the first
+place to look.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
