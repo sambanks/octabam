@@ -910,6 +910,29 @@ dwarmz:
                                         ; what verify-delay bit-compares
         move    b,x:(r7+$32)            ; GRAIN base age
         move    b,x:(r7+$5e)            ; REVERSE segment phase
+; ---- THE GRAIN COUNT IS A BUILD-TIME LEVER (4 Sep 2026) -------------------
+; Four grains per line is what this source assembles to. A remix that
+; declares `grains=2` (schema.Remix) has build_bus.py substitute three
+; things at the markers below, and nothing else changes:
+;
+;   ; GRAINCNT  the two rolled loops count 2 instead of 4
+;   ; GRAINOFF  the grain-to-grain phase offset doubles, G/4 -> G/2, so two
+;              grains still tile the cycle
+;   ; GRAINMK   the makeup doubles, because FOUR triangle windows at quarter
+;              offsets sum to exactly 2 while TWO at half offsets sum to
+;              exactly 1 -- so the same coefficient would land 6 dB down
+;
+; WHY: cycles, not sound. The delay's core cannot carry four active stations
+; beside a four-grain GRAIN (3,294 of 3,120 by the pricer); at two grains it
+; fits. The cost is half the simultaneous grain voices, which is an ear
+; decision, not a correctness one.
+;
+; ⚠️ THE HALF-OFFSET CASE HAS AN EXACT TEST and the quarter-offset one does
+; not: two triangle windows a half period apart sum to exactly 1, so DC in
+; must come back flat. That is the gate that caught Nimbus's double-rate
+; window (CLAUDE.md, the a0 trap), and it is why the two-grain build is the
+; better-checked of the two.
+;
 ; GRAIN v5's PERSISTENT latches: eight scatters, eight window multipliers
 ; and eight read advances, each re-latched at its own grain's wrap. A garbage scatter subtracts
 ; straight into a read address and a garbage multiplier is a garbage window
@@ -1512,6 +1535,7 @@ gvs0:
         move    #>$200000,x0            ; 2^(32-11)
         move    x0,x:(r7+$3f)
 gvsz:
+; GRAINOFF
 ; the read distance base: lag + G + 2, with lag = min(TIME, 12286 - mask).
 ; A grain at unity reads W - (lag + s + G + 2 - phase): at least lag + s + 2
 ; behind the write head and at most lag + s + G + 1 behind it; s tops out at
@@ -2028,6 +2052,7 @@ gmode:
         move    x0,x:(r7+$5d)           ; cursor = age (grain 0's phase)
         clr     a
         move    a,x:(r7+$1e)
+; GRAINCNT
         do      #4,>gvlz
         move    x:(r7+$5d),a            ; this grain's phase
         tst     a                       ; Z SET == its wrap
@@ -2134,6 +2159,7 @@ gvlz:
         move    x:(r7+$1e),x0
         move    x:(r7+$3d),y1           ; makeup coeff
         mpy     x0,y1,b
+; GRAINMK
         move    b,x:(r7+$24)            ; shifted OUTPUT tap L
 ; ---- READER, line R: four grains, ROLLED (v5) ----------------------------
 ; Records of THREE words at r7+$4c: s (latched scatter), w (window
@@ -2151,6 +2177,7 @@ gvlz:
         move    x0,x:(r7+$5d)           ; cursor = age (grain 0's phase)
         clr     a
         move    a,x:(r7+$1f)
+; GRAINCNT
         do      #4,>gvrz
         move    x:(r7+$5d),a            ; this grain's phase
         tst     a                       ; Z SET == its wrap
@@ -2254,6 +2281,7 @@ gvrz:
         move    x:(r7+$1f),x0
         move    x:(r7+$3d),y1
         mpy     x0,y1,b
+; GRAINMK
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
         bra     pdone
 ; MODEFORK_MID -- alternative 2: REVERSE

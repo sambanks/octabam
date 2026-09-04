@@ -222,6 +222,15 @@ def main():
     mem_a = pathlib.Path("out/dsp/mem_dev_A.mem")
     scratch = pathlib.Path("out/_hidden")
     scratch.mkdir(parents=True, exist_ok=True)
+    # ⚠️ BUILD THE DUMP HERE, ALWAYS. These gates run in sequence under
+    # `make verify` and several of them rebuild the same .mem files -- the
+    # delay's bit-identity gate writes the hatch dump with no guard at all,
+    # so a render against whatever was left on disk reported a guarded engine
+    # as wet. Same lesson as the station gates' audition cache (3 Sep 2026):
+    # a stale dump does not fail, it measures the wrong image.
+    subprocess.run([sys.executable, "tools/build_bus.py"],
+                   capture_output=True, text=True,
+                   env={**os.environ, "REMIX": name, "DEV": "1", "XBUS": "1"})
     if pathlib.Path(HOST).exists() and mem_a.exists():
         FRAMES, N = 15, 6000
         src = scratch / "in.raw"

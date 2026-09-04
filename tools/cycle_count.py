@@ -27,6 +27,7 @@ as a floor. It is exact for the code and optimistic about the bus.
 
 Usage:  python3 tools/cycle_count.py [--verify] [--json]
 """
+import os
 import json
 import pathlib
 import re
@@ -228,6 +229,15 @@ def prep(name):
         return src
     src = _ASM[name].read_text()
     if name == "delay_server":
+        # THE GRAIN LEVER, priced as built. schema.Remix.grains rolls the
+        # reader to two grains per line for the cycles; pricing the source
+        # instead reports the four-grain figure for a two-grain image, which
+        # is the saving invisible in the tool that measures it.
+        _g = registry.remix(os.environ.get("REMIX")
+                            or registry.DEFAULT_REMIX).grains
+        if _g != 4:
+            from remix import grains as _grains
+            src = _grains.roll(src, _g)
         # build_bus.py rewrites this per payload; the value cannot change the
         # word count, but assert the shape it relies on so a drift is loud.
         if src.count("$30000") != 1:

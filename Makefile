@@ -126,6 +126,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] cf probe: no .venv, or this remix has none"
 	@$(PY) tools/verify_hidden.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
+	python3 tools/verify_grains.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 

@@ -521,6 +521,40 @@ registers an entry *inside* the cave (`cfprobe` puts its formatter at
 `+0x100` with an `.org`), so one address and one pc-relative state block
 serve the interrupt and the panel. `offset=0` is the tempo-sync shape.
 
+## THE GRAIN COUNT IS A REMIX LEVER -- `Remix.grains`
+
+BusDelay's GRAIN reader runs four grains per line, or two:
+
+```python
+REMIX = Remix(name="...", modules=(...), grains=2, fallback="SEND")
+```
+
+**Cycles, not sound.** A core cannot carry four active stations beside a
+four-grain GRAIN -- 3,294 of 3,120 usable by the pricer -- and at two grains
+it fits. Measured saving: **1,775 -> 1,305 cycles, 470**.
+
+`tools/remix/grains.py` holds the substitution, imported by BOTH the builder
+and `cycle_count.py`. That sharing is not tidiness: the first version of the
+lever was applied only in the build, so `make cycles` priced four grains for
+a two-grain image and the saving was invisible in the tool that measures it.
+
+Three edits at censused markers in the engine, and nothing else: the two
+rolled loops count 2; the grain-to-grain phase offset doubles, `G/4 -> G/2`,
+so two grains still tile the cycle; and the makeup doubles, because **four
+triangle windows at quarter offsets sum to exactly 2 while two at half
+offsets sum to exactly 1** -- the same coefficient would land 6 dB down.
+
+`tools/verify_grains.py` is the gate: the markers are where the lever expects
+them, the pricer sees the saving, and -- rendered through the real send path
+by `verify_delay` -- every NON-GRAIN case is bit-identical while every GRAIN
+case differs. Both halves matter: all-identical would mean the lever did
+nothing, a difference in CLEAN would mean it did too much.
+
+⚠️ **What is not checked is how two grains SOUND.** The arithmetic that would
+make it exactly checkable -- two half-offset triangle windows summing to 1,
+so DC in comes back flat, the identity that caught Nimbus's double-rate
+window -- needs a DC feed over the delay bus that this harness does not have.
+
 ## PLACED BUT NOT LISTED -- `Remix.hidden`
 
 A remix can carry a module with **no chooser row and no knobs on the page**:
