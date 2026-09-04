@@ -387,13 +387,21 @@ def make_test_project(src, dest, remix_name):
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
     # track, FX1 (key, {knob: val}),                FX2 (key, {knob: val})
+    # FX2 on the six ordinary tracks is SEND (the fallback: two send knobs,
+    # drawn blank because hidden). The stock DELAY row is gone after flash 4;
+    # the sends live on the FX1 stations. T1 hosts the delay engine, T5 the
+    # reverb, T8 (master) has no FX2.
     (1, ("CHARACTER", {"-VRB": 30}),        ("DELAY SERVER", {})),
-    (2, ("SPECTRUM", {"-VRB": 40, "-DEL": 30}), ("DELAY", {})),
-    (3, ("SPECTRUM", {"-VRB": 30}),           ("CHARACTER", {})),
-    (4, ("SPECTRUM", {"-DEL": 40}),           ("DELAY", {})),
+    (2, ("SPECTRUM", {"-VRB": 40, "-DEL": 30}), ("SEND", {})),
+    (3, ("SPECTRUM", {"-VRB": 30}),           ("SEND", {})),
+    (4, ("SPECTRUM", {"-DEL": 40}),           ("SEND", {})),
     (5, ("MODULATION", {"-VRB": 40}),       ("REVERB SERVER", {})),
-    (6, ("SPECTRUM", {"-VRB": 50}),           ("DELAY", {})),
-    (7, ("CHARACTER", {"-VRB": 40, "-DEL": 20}), ("DELAY", {})),
+    (6, ("SPECTRUM", {"-VRB": 50}),           ("SEND", {})),
+    (7, ("SPECTRUM", {"-VRB": 40, "-DEL": 20}),  ("SEND", {})),    # SPECTRUM, not
+    # Character: T5 Modulation + T8 Character are core 0's two heavy already;
+    # a third here (was CHARACTER) priced ~3106 of 3120 as a FLOOR and hung
+    # the sequencer on frame 1 (tag 91, step 1 solid). Character on T7 for a
+    # vocal set is a manual part swap that drops T5 to Spectrum -- design page.
     (8, ("CHARACTER", {"SAT": 3, "CRSH": 127, "RING": 127,
                                "CMOD": 1, "COMP": 40}), (None, {})),
 )
