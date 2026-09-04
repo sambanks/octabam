@@ -46,8 +46,8 @@ MODULE = Module(
         fx2_id=0x04,
         replaces="FILTER",            # stock FILTER's id: both menus, every part
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects on 7/9/11
-        abbr=b"FLTS",
-        fullname=b"FilterStn",
+        abbr=b"SPEC",
+        fullname=b"Spectrum",
         build_tag=True,
     ),
     params=(

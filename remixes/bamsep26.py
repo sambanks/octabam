@@ -11,9 +11,9 @@ https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
                 costs the DSP nothing, so every track can have its own delay
                 IN PARALLEL with the shared reverb -- which the stock box
                 cannot do, because only a station's send reaches the bus
-    FilterStn   replaces FILTER  (id 0x04)
+    Spectrum    the filter station, on FILTER's old id 0x04
     Character   replaces LO-FI   (id 0x1c)
-    ModStn      replaces CHORUS  (id 0x12), FX1 only
+    Modulation  on CHORUS's old id 0x12, FX1 only
     TEMPO SYNC  the two ColdFire caves: BusDelay's TIME reads 1/8 rather
                 than milliseconds
     MENU SHORTCUT  MAIN MENU > CONTROL > REVERB / DELAY jumps to whichever
