@@ -373,6 +373,47 @@ and it is a smaller one than the six-versus-twelve decision it forces:
 **a twelve-row screen is not free, and a six-row screen leaves each engine's
 mode select on a page nobody can reach.**
 
+### 9c-ii. The PAGE-2 store, located ✅ (4 Sep 2026)
+
+The stock page-1 writer stops at 30 values (9c). The panel edits page 2
+every time you turn an encoder there, so a second path exists, and this is
+it: the routine around **`0x4003a548..0x4003a5e8`**, reached from the FX
+page's own edit path.
+
+It is the mirror image of the page-1 writer, over a different array:
+
+```
+    a0 = DB + part*6322 + track*30 + slot + 0x8ef5a      ; the PAGE-2 array
+    moveb  d2,(a0)                                        ; the value
+    moveb  d2,(a1 + 0x100a50a8 + slot)                    ; the WORKING MIRROR
+    or     1<<track, byte[DB + 0x95048]                   ; per-track dirty bit
+    or     1<<track, byte[0x100b145e]                     ; the UI's own dirty bit
+```
+
+Three things worth having:
+
+- ✅ **The page-2 array is `+0x8ef5a`, stride 30 per track**, which is the
+  same stride the PROJECT FILE uses for page 2 (`tools/ot_project.py`,
+  `P2_STRIDE`) — two independent decodings agreeing, after that stride cost
+  a day of hardware time on 4 Sep.
+- ✅ **It writes a working mirror too**, at `0x100a50a8`+, exactly as the
+  page-1 writer writes its own at `0x100a4f70`+. A screen that pokes the
+  Part and skips the mirror gets a value the panel shows and the frame
+  builder never reads — the failure mode that is invisible locally.
+- ✅ **It marks the part dirty**, twice: a per-track bit in the project DB
+  and one in a UI byte at `0x100b145e`. That is what makes an edit survive
+  a part save, and skipping it would lose every screen edit on reload.
+
+**So a twelve-row screen is buildable on two firmware calls**, one per page,
+and the second is a routine we can call the same way the panel does rather
+than arithmetic we reimplement.
+
+⚠️ **What is NOT yet read:** this routine's entry point and signature. The
+disassembly above is its body; the call site that reaches it, and therefore
+what it expects on the stack and in `d4`/`d5`/`a2`/`a4`, still has to be
+traced back before anything calls it. That is the next read, and it is a
+small one.
+
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
 Every stock encoder handler examined (states 3 and 4, `0x400658f0` and
