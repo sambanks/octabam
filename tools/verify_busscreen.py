@@ -180,6 +180,24 @@ def main():
     from unicorn.m68k_const import UC_M68K_REG_A7
     uc.hook_add(UC_HOOK_CODE, _inv_hook, begin=0x40012254, end=0x40012254)
 
+    # The page-2 editor 0x4003a474 calls a helper 0x4003249c that reads the
+    # staged page and SPINS on a cold machine (docs/MAINMENU.md 9c-ii). On
+    # hardware it returns. Stub it (moveq #0,d0; rts) so the editor returns
+    # and the screen's own select-clamp code after the call is exercised.
+    from unicorn.m68k_const import UC_M68K_REG_PC, UC_M68K_REG_D0
+    def _stub(u, addr, size, user):
+        sp = u.reg_read(UC_M68K_REG_A7)
+        ret = int.from_bytes(u.mem_read(sp, 4), "big")
+        u.reg_write(UC_M68K_REG_A7, sp + 4)
+        u.reg_write(UC_M68K_REG_D0, 0)
+        u.reg_write(UC_M68K_REG_PC, ret)
+    uc.hook_add(UC_HOOK_CODE, _stub, begin=0x4003249c, end=0x4003249c)
+    for b in (0x100a0000, 0x100f0000):
+        try:
+            uc.mem_map(b, 0x10000)
+        except Exception:
+            pass
+
     def cursor_slot():
         # the last invert of a draw with a row-sized bar y (4 + row*7)
         for x1, y1 in reversed(inverts):
@@ -234,14 +252,17 @@ def main():
         press(KEY_UP)
     draw()
     check(cursor_slot() == 4, f"three ups -> slot 4 (got {cursor_slot()})")
-    for _ in range(30):
-        press(KEY_DOWN)
+    # infinite scroll: wraps both ways (4 -> 11 downs -> 3 ... use exact counts)
+    for _ in range(7):
+        press(KEY_DOWN)                  # 4 -> 11
     draw()
-    check(cursor_slot() == 11, f"down clamps at slot 11 (got {cursor_slot()})")
-    for _ in range(30):
-        press(KEY_UP)
-    draw()
-    check(cursor_slot() == 0, f"up clamps at slot 0 (got {cursor_slot()})")
+    check(cursor_slot() == 11, f"seven downs from 4 -> slot 11 (got {cursor_slot()})")
+    press(KEY_DOWN); draw()
+    check(cursor_slot() == 0, f"down from 11 WRAPS to 0 (got {cursor_slot()})")
+    press(KEY_UP); draw()
+    check(cursor_slot() == 11, f"up from 0 WRAPS to 11 (got {cursor_slot()})")
+    press(KEY_DOWN); draw()              # back to 0
+    check(cursor_slot() == 0, "back at slot 0")
 
     # edit a page-1 knob (slot 2 = SIZE)
     press(KEY_DOWN); press(KEY_DOWN)
@@ -252,17 +273,25 @@ def main():
     check(int(value_at(2)) == v0 + 5,
           f"encoder +5 moves SIZE {v0} -> {v0 + 5} (got {value_at(2)})")
 
-    # a select edit runs (value-move on hardware is the earlier flash result)
+    # a SELECT edit steps by its COUNT (the editor alone ramps 0..127):
+    # MODE (slot 6, count 3): 0 -> 1 -> 2 -> clamps at 2; Part + live byte
     for _ in range(4):
-        press(KEY_DOWN)                  # to slot 6 (MODE)
-    stb = u32(0x400cbf40)
-    ok_sel = True
-    try:
+        press(KEY_DOWN)                  # slot 2 -> slot 6 (MODE)
+    draw()
+    check(cursor_slot() == 6, f"cursor on MODE, slot 6 (got {cursor_slot()})")
+    uc.mem_write(val_addr(4, 6), bytes([0]))
+    seq = []
+    for _ in range(3):
         emu._call(uc, e17_enc, (0, 1))
-    except Exception:
-        ok_sel = False
-    check(ok_sel and u32(0x400cbf40) == stb,
-          "select encoder call runs without fault")
+        draw()
+        seq.append((uc.mem_read(val_addr(4, 6), 1)[0],
+                    uc.mem_read(0x80000950, 1)[0], value_at(6)))
+    check(seq == [(1, 1, "PLATE"), (2, 2, "BIG"), (2, 2, "BIG")],
+          f"MODE +1 x3 steps 0->1->2 and clamps at 2 in Part, live byte and word (got {seq})")
+    emu._call(uc, e17_enc, (0, (-5) & 0xffffffff))
+    draw()
+    check(uc.mem_read(val_addr(4, 6), 1)[0] == 0 and value_at(6) == "ROOM",
+          f"MODE -5 clamps at 0 -> ROOM (got {value_at(6)!r})")
 
     # ---- DELAY: selects host track 2, switches label set -----------------
     uc.mem_write(0x80000000, bytes([0]))

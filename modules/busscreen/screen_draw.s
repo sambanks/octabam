@@ -183,13 +183,19 @@ ddone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         rts
 
-| ---- key(keycode): linear up/down through 0..11 --------------------------
+| ---- key(keycode): up/down through 0..11, WRAPPING (infinite scroll) -----
+| Confirmed reaching (tag 86): 0x33 LEFT, 0x34 UP. UP arrow = up. DOWN arrow is
+| one of 0x32/0x35/0x36 (not 0x33/0x34, and 0x35/0x36 alone did not move it),
+| so all three are accepted as down, with LEFT kept as down too.
 key:    movel   %sp@(4),%d0
         movel   CURSOR,%d1
         moveq   #0x34,%d2               | UP arrow -> up
         cmpl    %d0,%d2
         beq.s   kup
-        moveq   #0x33,%d2               | LEFT arrow -> down
+        moveq   #0x33,%d2               | LEFT -> down (known to work)
+        cmpl    %d0,%d2
+        beq.s   kdn
+        moveq   #0x32,%d2               | DOWN arrow candidates
         cmpl    %d0,%d2
         beq.s   kdn
         moveq   #0x35,%d2
@@ -200,13 +206,17 @@ key:    movel   %sp@(4),%d0
         beq.s   kdn
         bra.s   kdone
 kup:    tstl    %d1
-        beq.s   kdone
-        subql   #1,%d1
+        bne.s   kup1
+        moveq   #NSLOTS-1,%d1           | wrap 0 -> 11
+        bra.s   kstore
+kup1:   subql   #1,%d1
         bra.s   kstore
 kdn:    moveq   #NSLOTS-1,%d2
         cmpl    %d1,%d2
-        beq.s   kdone
-        addql   #1,%d1
+        bne.s   kdn1
+        moveq   #0,%d1                  | wrap 11 -> 0
+        bra.s   kstore
+kdn1:   addql   #1,%d1
 kstore: movel   %d1,CURSOR
 kdone:  rts
 
@@ -249,16 +259,59 @@ enc:    lea     %sp@(-44),%sp
         addl    %d0,%d7
         moveq   #6,%d0
         cmpl    %d3,%d0
-        bgt.s   xp1
+        bgt     xp1                     | slot < 6 -> page 1
+        | ---- page 2 ----
+        | select record for this slot: a6 = engine's table, a5 = rec or 0
+        movel   %d7,%a0
+        addal   #IDOFF,%a0
+        addal   %d6,%a0
+        moveq   #0,%d0
+        moveb   %a0@,%d0
+        lea     VERBSEL,%a6
+        moveq   #6,%d1
+        cmpl    %d0,%d1
+        bne.s   x1
+        lea     DLYSEL,%a6
+x1:     movel   %a6@(0,%d3:l:4),%a5
+        | a2 = &Part[slot] = DB+part*6322 + 0x8ef5a + track*30 + 18 + slot
+        movel   %d6,%d0
+        moveq   #30,%d1
+        mulu.l  %d1,%d0
+        movel   %d7,%a2
+        addal   #P2OFF,%a2
+        addal   %d0,%a2
+        addal   #18,%a2
+        addal   %d3,%a2
+        moveq   #0,%d4
+        moveb   %a2@,%d4                | d4 = value BEFORE the edit
         moveq   #4,%d0
         movel   %d0,PAGEGLOB
-        movel   %d3,%d0
-        subq.l  #6,%d0
+        movel   %d3,%d2
+        subq.l  #6,%d2                  | d2 = slot within page 2
         movel   %d5,%sp@-
-        movel   %d0,%sp@-
-        jsr     P2EDIT
+        movel   %d2,%sp@-
+        jsr     P2EDIT                  | the editor: all its stores + dirty bits
         addql   #8,%sp
-        bra.s   xdone
+        movel   %a5,%d0
+        beq     xdone                   | a knob: the editor's 0..127 was right
+        | a SELECT: the editor ignores the count, so set the value ourselves:
+        | new = clamp(before + delta, 0 .. count-1), into Part, live, mirror
+        movel   %a5@,%d1
+        subql   #1,%d1                  | count-1
+        movel   %d4,%d0
+        addl    %d5,%d0
+        cmpl    %d1,%d0
+        ble.s   x2
+        movel   %d1,%d0
+x2:     tstl    %d0
+        bge.s   x3
+        moveq   #0,%d0
+x3:     moveb   %d0,%a2@                | Part (what the screen reads/saves)
+        lea     0x80000950,%a0
+        moveb   %d0,%a0@(0,%d2:l)       | live byte the DSP frame reads
+        lea     0x100a5138,%a0
+        moveb   %d0,%a0@(0,%d2:l)       | working mirror
+        bra     xdone
 xp1:    movel   %d6,%d0
         moveq   #24,%d1
         mulu.l  %d1,%d0
