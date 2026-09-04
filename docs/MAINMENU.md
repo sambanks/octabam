@@ -487,9 +487,37 @@ control most worth having on the screen.
   must be zero — with a page-0 arm that reads the struct at offsets 18 and
   19, the pair a staging copy elsewhere fills from the page-1 and page-2
   arrays. A general commit path, not a two-argument setter.
-- ⚠️ **No direct caller** shows up when scanning for its address as an
-  immediate, so it is reached through a pointer table. Finding that table is
-  the next thread, and it is what would show how the struct is built.
+- ✅ **THE CALLER, found (4 Sep 2026).** Not a pointer table at all: the
+  address appears in NO data word in the image, and the two calls are
+  **pc-relative**, at `0x40028f9a` and `0x40028fda` — which is why scanning
+  for the immediate found nothing. The call site pushes:
+
+  ```
+      pea  0x460bf218        ; arg1: the context struct -- a FIXED GLOBAL
+      move.l d5,-(sp)        ; arg2
+      move.l d4,-(sp)        ; arg3   (the part; the body multiplies by 6322)
+      move.l d3,-(sp)        ; arg4   (the page kind, 0-4, the jump table)
+      move.l d2,-(sp)        ; arg5   (must be 0 for the main path)
+      jsr    0x40027e4c
+  ```
+
+  **The struct is not built per call.** `0x460bf218` is a fixed global, so a
+  screen can pass the same pointer the firmware does — which was the open
+  question and is the reason this path looked harder than it is.
+
+- ❌ **AND IT CANNOT BE EXERCISED LOCALLY.** Called on the warm machine with
+  that pointer, the routine dispatches correctly through its jump table to
+  the kind-4 arm and then bails: the arms read the struct's contents (the
+  kind-0 arm wants `struct+0x8ed8 == 26`), and on a machine with no project
+  loaded that struct is zeros. Traced, not guessed — the instruction path
+  reaches the `jmp` and leaves.
+
+  This is the limit `docs/EMU.md` already names, hit for the third time
+  today: **the boot has no CF card, so the project DB and every structure
+  hanging off it are empty.** The page-1 writer and the page-2 knob writer
+  were callable because they take their inputs as arguments; this one reads
+  state. Either the harness learns to mount a card image, or this call's
+  behaviour is a flash test.
 
 **The shape of the problem, stated once.** Page 2's six slots alternate
 knob, select, knob, select, knob, select — the panel's own layout, not a
