@@ -581,8 +581,13 @@ from a main-menu screen through the firmware's own routine, one on 7/9/11
 cannot. Proven locally: every mode of both engines renders bit-identically
 through the new fields (`send_probe --rmode/--dmode`, which drives the
 parameter word; `render_reverb --mode` forces the decoded value and cannot
-see this). ⬜ The panel drawing MODE's tick widget on slot 6 is what the next
-flash confirms; the renderer pair is CHORUS TAPS's own, taken from slot 6.
+see this). ✅ **Confirmed on hardware the same day (tag 84):** MODE draws
+and steps as a select on slot 6, and SHMR / MDEP sweep smoothly from slot 7 —
+a count-128 knob in a companion field works, so the 10 Aug "near-boolean
+companion" reading is retired (it was the inherited formatter). ⚠️ The
+first play stalled the sequencer until the project was refreshed: parts
+saved under the old layout hand the count-3 slot a 0–127 byte
+(`docs/FLASHPLAN.md`, the MODE re-slot).
 
 | slot | word | field | example (since 4 Sep 2026) |
 |---|---|---|---|

@@ -680,9 +680,10 @@ above becomes a nine-row screen WITH MODE: page 1's six through
 `0x40054cd8`, and slots 6/8/10 (MODE, DIFF, GATE / MODE, MRAT, DRV)
 through `0x4003a474`. Off the screen: the odd slots (SHMR, SHFT, RATE /
 MDEP, SIZE, FRZE), still on the track page. Proven locally: all six
-engine-modes render bit-identically through the new fields. ⬜ One flash
-confirms the tick widget draws on slot 6 (its renderer pair is CHORUS
-TAPS's, which IS a slot-6 control).
+engine-modes render bit-identically through the new fields. ✅ **Confirmed
+on hardware, tag 84, the same day:** MODE draws and steps as a select on
+slot 6; SHMR / MDEP sweep smoothly from slot 7. (The first play stalled the
+sequencer on a project saved under the old layout — `docs/FLASHPLAN.md`.)
 
 **The SELECT PROBE line is closed.** Four builds (80–83) and no signal on
 the fourth either: after the re-slot nothing depends on the select array

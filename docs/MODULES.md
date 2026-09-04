@@ -176,7 +176,15 @@ things you might assume:
   descriptor is a label no tool can read, and the harness reads these.
 - **A default outside its own value count is used as an INDEX.** That shipped
   once (slot 7, default 64, count 5) and stalled the sequencer on hardware
-  after two steps. The schema now rejects it at construction.
+  after two steps. The schema now rejects it at construction. **A STORED
+  value does the same, and the schema cannot see it**: when MODE moved to
+  slot 6 (4 Sep 2026), every part saved under the old layout still held a
+  0–127 knob byte in what was now a count-3 slot, and the first play stalled
+  the sequencer the same way (inferred from the symptom; a refreshed project
+  ran clean). **Changing a slot's count or moving a select means stamping
+  every project before anyone presses play** — `tools/ot_project.py
+  stamp-defaults <project> <remix>` — not re-selecting the one track under
+  test, because the sequencer runs every track of the part.
 - **A slot the panel does not draw is unreachable**, however completely it is
   named, defaulted and implemented — set `active=True`. The inverse trap is
   real too: a slot can draw a knob and publish nothing. See

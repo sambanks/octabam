@@ -850,8 +850,10 @@ synth voice needs. Read it after the probe's numbers are in.
 
 ## The flash backlog
 
-**What is on the unit is tag 77 / R58, 24 August 2026** — 134 commits ago.
-Everything since is unflashed: the delay's R59–R62 quality pass, the
+**What is on the unit is tag 84 (4 Sep 2026): remix `bus` at PR #95, the
+MODE re-slot** — the first non-probe image since tag 77 / R58 (24 Aug), and
+it carries everything below that the `bus` remix contains. Still unflashed
+on the unit as of that flash: the delay's R59–R62 quality pass, the
 stepped-select labels, stock effects listable beside ours, the insert card,
 a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
 (three stations, BusDelay v5) — and, since 3 Sep 2026, **the returns**:
@@ -875,14 +877,16 @@ bit-identical, which is what that gate is for.
   sits on a slot the panel's own page-2 knob editor writes, which is what a
   main-menu bus screen needs (`docs/MAINMENU.md` §9c-ii: nine rows WITH
   MODE, on two firmware routines already driven). Proven locally to the bit
-  in every mode of both engines through the new fields. Two claims for the
-  flash that carries it: (1) MODE draws as a select on slot 6 (its renderer
-  pair is CHORUS TAPS's, itself a slot-6 control); (2) SHMR / MDEP sweep
-  smoothly from slot 7 — a count-128 companion knob, the re-test DSP.md
-  asked for. Parts saved before the swap load their old slot-6/7 bytes
-  crossed (ROOM + a whisper of shimmer; delay MDEP 48 → REVRS): re-select
-  the effect or stamp defaults. The SELECT PROBE line (builds 80–83) is
-  closed; nothing depends on that formula now.
+  in every mode of both engines, then ✅ **CONFIRMED ON HARDWARE the same
+  day (tag 84, remix `bus`)**: MODE draws and steps as a select on slot 6,
+  and SHMR / MDEP sweep smoothly from slot 7 — the count-128 companion knob
+  works, retiring the 10 Aug "near-boolean" reading. ⚠️ The first play
+  stalled the sequencer (1, 2, 1, solid) until the project was refreshed:
+  parts saved under the old layout hand the count-3 slot their old SHMR /
+  MDEP byte. 🟡 Inferred from the symptom matching the recorded index trap
+  and the refreshed project running clean. **Stamp a pre-84 project before
+  pressing play** (`ot_project.py stamp-defaults <project> bus`). The SELECT
+  PROBE line (builds 80–83) is closed; nothing depends on that formula now.
 
 - **Cross-core bus: three defects found and fixed, all hardware-confirmed**
   (clear-vs-read → four buffers; rotation-read jitter → per-core tracking,

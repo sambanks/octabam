@@ -319,7 +319,26 @@ frame fraction a ColdFire machine may take. Core cycles ≈ 2× the ticks 🟡.
 
 ---
 
-## The MODE re-slot — two claims for whichever image carries it (4 Sep 2026)
+## The MODE re-slot — two claims, BOTH CONFIRMED on tag 84 (4 Sep 2026)
+
+✅ **Flashed as `OCTATRACK_OCTABAM84.bin` (remix `bus`, PR #95) the same
+afternoon. Both claims held: MODE draws and steps as a 3-way select on slot
+6, SHMR / MDEP sweep smoothly from slot 7.** So the 10 Aug "near-boolean
+companion" reading is retired: it was the inherited formatter.
+
+⚠️ **AND THEN THE SEQUENCER STALLED — 1, 2, back to 1, solid — on the
+first play.** 🟡 Inferred cause, matching a trap already on record
+(`docs/MODULES.md`: a select value outside its count is used as an index and
+stalled the sequencer after two steps): every part saved under the OLD layout
+still held its slot-6 byte, which was SHMR (0–127) or MDEP (48 by default),
+and the panel now reads that slot with a count of 3. Re-selecting on the one
+track under test is not enough — the sequencer runs every track of the part.
+A project refreshed for this build ran clean ("confirmed working"), which is
+consistent with the cause and does not prove it; the falsifier is a stall on
+a project whose every BusVerb/BusDelay slot has been stamped.
+**Before playing a pre-84 project on this or any later image: `python3
+tools/ot_project.py stamp-defaults <project> bus`, or re-select the effect on
+every track of every part that carries it.**
 
 Both bus engines moved MODE to page-2 slot 6 and SHMR / MDEP to slot 7
 (`docs/MAINMENU.md` §9c-ii, `docs/PARAM_PAGES.md`). Locally bit-identical in
@@ -337,7 +356,8 @@ every mode through the new fields; what only the panel can show:
    small-count select and MODE stays where it is.
 
 Do this on a **freshly re-selected** BusVerb / BusDelay: a part saved before
-the swap has its slot-6/7 bytes crossed.
+the swap has its slot-6/7 bytes crossed — and see the stall above: stamp the
+WHOLE project before pressing play, not just the track you are looking at.
 
 ## Before every flash
 

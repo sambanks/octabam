@@ -1362,10 +1362,11 @@ Slot 6 moves `$c` bits 16-22 and slot 7 moves `$c` bits
 > moved MODE to slot 6 and their SHMR / MDEP knobs to slot 7, a count-128
 > companion field, with the formatters written explicitly (plain numeric),
 > which the 10 Aug reading did not have. Stock FILTER DIST (slot 11) and
-> CHORUS FBLP (slot 9) are count-128 companion knobs too. If SHMR sweeps
-> smoothly on the unit the near-boolean reading was the inherited
-> formatter; if it does not, SHMR becomes a small-count select and this note
-> stands. `$e`'s knob field carries GATE.)
+> CHORUS FBLP (slot 9) are count-128 companion knobs too. ✅ **Tag 84, the
+> same day: SHMR and MDEP sweep smoothly from slot 7.** The near-boolean
+> reading is RETIRED — it was the inherited formatter, as the paragraph
+> below already suspected. A companion field carries a full-range knob.
+> `$e`'s knob field carries GATE.)
 >
 > What makes a companion field *look* like a two-state control is the
 > **per-parameter display formatter at `P+0x0ca`**, inherited from the donor
