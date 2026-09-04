@@ -505,20 +505,35 @@ control most worth having on the screen.
   screen can pass the same pointer the firmware does — which was the open
   question and is the reason this path looked harder than it is.
 
-- ❌ **AND IT CANNOT BE EXERCISED LOCALLY.** Called on the warm machine with
-  that pointer, the routine dispatches correctly through its jump table to
-  the kind-4 arm and then bails: the arms read the struct's contents (the
-  kind-0 arm wants `struct+0x8ed8 == 26`), and on a machine with no project
-  loaded that struct is zeros. Traced, not guessed — the instruction path
-  reaches the `jmp` and leaves.
+- ❌ **AND `0x40027e4c` IS NOT THE SELECT WRITER.** Read properly, it is a
+  GENERIC EDIT APPLIER: `arg1` points at a struct carrying a TYPE TAG at
+  `+0x8ed8` and a payload at `+18`/`+19`, and the five-way jump table is on
+  the page kind. Its **kind-4 arm demands tag 29 and writes the payload to
+  `DB + part*6322 + track + 0x8ed88` — the FX2 EFFECT ID byte**, mirroring
+  it at `0x100a4ed6`. The `+0x8f04a` store that led here is in a DIFFERENT
+  arm (kind 0, tag 26). So the array and mirror are real; the function is
+  not a parameter setter.
 
-  This is the limit `docs/EMU.md` already names, hit for the third time
-  today: **the boot has no CF card, so the project DB and every structure
-  hanging off it are empty.** The page-1 writer and the page-2 knob writer
-  were callable because they take their inputs as arguments; this one reads
-  state. Either the harness learns to mount a card image, or this call's
-  behaviour is a flash test.
+- ✅ **Driven end to end on the warm machine (4 Sep 2026)**, which is what
+  settles it: write 29 at `struct+0x8ed8` and an effect id at `struct+18`,
+  call `(struct, 0, track, 4, 0)`, and **the track's FX2 effect id changed
+  from `0x07` to `0x1c`.** The struct is a fixed global and its fields can
+  simply be filled, so no card image was needed after all — the blocker was
+  the tag, not an empty project.
 
+  ⚠️ Its mirror write faults on an unmapped page in a bare emulator, as the
+  parameter writers' do; that is the write happening, not failing.
+
+- 🟡 **So the live-edit path for a page-2 SELECT is still unidentified.**
+  What is now known is where a select's value LIVES (`+0x8f04a`, mirror
+  `0x100a5198`) and that one arm of the edit applier writes there. The
+  encoder path that a panel select turn takes is most likely a sibling of
+  `0x4003a474`, the page-2 knob editor, and that is the next read.
+
+- ✅ **Worth having on its own:** an entry point that sets a track's FX2
+  effect id from a struct, verified locally, is exactly what a screen that
+  CHOOSES an effect would call — the thing `Remix.hidden` currently does by
+  taking the chooser away.
 **The shape of the problem, stated once.** Page 2's six slots alternate
 knob, select, knob, select, knob, select — the panel's own layout, not a
 choice a module makes. So EVERY effect has exactly three selects, and no
