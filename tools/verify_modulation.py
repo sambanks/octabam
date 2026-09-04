@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MODULATION STATION render gates -- and the FX1-ONLY PROMISE.
+"""MODULATION render gates -- and the FX1-ONLY PROMISE.
 
 The station takes a per-track line from the host's bump allocator, which is
 only safe in an FX1 slot: every FX2 instance buffer is a server's ground.
@@ -17,8 +17,8 @@ Gates:
   TREM/PAN      -> amplitude moves, and PAN moves the two channels apart
   every knob    -> renders without dsp_host dying
 
-    python3 tools/remix/audition.py modstation out/dry/drums_110.wav
-    python3 tools/verify_modstation.py
+    python3 tools/remix/audition.py modulation out/dry/drums_110.wav
+    python3 tools/verify_modulation.py
 """
 import math, pathlib, struct, subprocess, sys
 
@@ -26,7 +26,7 @@ sys.path.insert(0, "tools")
 import send_probe  # reuse its dispatch-table entry resolution
 from remix import registry
 
-MOD = registry.by_name("modstation")
+MOD = registry.by_name("modulation")
 SEND = registry.by_name("send")
 K = MOD.knob_map()
 MEM = f"out/dsp/_audition_{MOD.name}_A.mem"

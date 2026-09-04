@@ -911,7 +911,7 @@ ACC-write addressing needed for the dry sends already existed.
 
 **Built and emulator-verified, 3 Sep 2026 (`tools/verify_returns.py`, 18
 gates); not flashed.** The two engines' wet leaves the bus and enters the mix
-at the MASTER, through a character station in BUS mode — so the host tracks
+at the MASTER, through a Character station in BUS mode — so the host tracks
 (the delay's on 1–4, the reverb's on 5–8) play their own material dry, like
 every other track, and the reverb and delay each arrive once, at one level,
 under one knob. Design page:
@@ -928,7 +928,7 @@ accumulators' race, the accumulators' fix. Stereo because the return is what
 the master hears; a mono M would have thrown the reverb's width and the
 delay's ping-pong away.
 
-**What reads it.** `modules/charstation/` with `SAT = BUS`. On a master
+**What reads it.** `modules/character/` with `SAT = BUS`. On a master
 chain CRSH and RING are knobs nobody turns, so BUS repurposes them as the
 **RVRB** and **DLY** return levels (a `ModeView` renames them on the panel and
 in the remixer, and the crush and ring stages go neutral). Each sample, AFTER

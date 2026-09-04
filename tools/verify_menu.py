@@ -121,7 +121,7 @@ STEPPED_FMT = (0x4003c718, 0x40047254)
 CAVE_LO, CAVE_HI = 0x400d6b20, 0x400d7c3c
 # ... and, since 3 Sep 2026, the second zero run docs/MAINMENU.md section 5
 # names: label formatters (and the FX1 list) overflow into it when the clone
-# window is full -- the character station's BUS-mode renames tipped the rig
+# window is full -- the Character station's BUS-mode renames tipped the rig
 # over. build_bus.py's OVERFLOW_RUN / OVERFLOW_RUN_END.
 OVF_LO, OVF_HI = 0x400d24d0, 0x400d2ce0
 # A cave may register itself as some module's per-slot label formatter:

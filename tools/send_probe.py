@@ -681,7 +681,7 @@ def main():
                          "per-effect flag; an unknown name dies instead of "
                          "driving the wrong slot.")
     ap.add_argument("--return", dest="ret", action="store_true",
-                    help="append a CHARACTER STATION in SAT=BUS with both "
+                    help="append a CHARACTER in SAT=BUS with both "
                          "return levels at 127 to the layout and measure "
                          "ITS output: the engines' wet as the master hears "
                          "it, two blocks late (docs/BUS.md 'The returns'). "
@@ -690,9 +690,9 @@ def main():
     a = ap.parse_args()
     if a.ret:
         _rl = next((m.harness.layout_char for m in registry.modules().values()
-                    if m.name == "charstation" and m.harness is not None), None)
+                    if m.name == "character" and m.harness is not None), None)
         if _rl is None:
-            die("--return needs the character station in the registry")
+            die("--return needs the Character station in the registry")
         if _rl in a.layout.upper():
             die(f"--return: the layout already has a {_rl!r}; set its knobs "
                 f"with --set {_rl}:SAT=3 etc. instead")

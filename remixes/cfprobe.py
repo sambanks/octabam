@@ -22,8 +22,8 @@ REMIX = Remix(
     name="cfprobe",
     doc="The rig plus the ColdFire headroom probe, read out on HELLO WORLD.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
-             "FILTER STATION", "CHARACTER STATION", "MODULATION STATION",
+             "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MENU SHORTCUT", "HELLO WORLD", "CF PROBE"),
     fallback="SEND",
-    fx1=("FILTER STATION", "CHARACTER STATION", "MODULATION STATION"),
+    fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

@@ -11,7 +11,7 @@ https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
                 costs the DSP nothing, so every track can have its own delay
                 IN PARALLEL with the shared reverb -- which the stock box
                 cannot do, because only a station's send reaches the bus
-    Spectrum    the filter station, on FILTER's old id 0x04
+    Spectrum    the Spectrum station, on FILTER's old id 0x04
     Character   replaces LO-FI   (id 0x1c)
     Modulation  on CHORUS's old id 0x12, FX1 only
     TEMPO SYNC  the two ColdFire caves: BusDelay's TIME reads 1/8 rather
@@ -22,7 +22,7 @@ https://claude.ai/code/artifact/1f1bfff2-9d4e-41b6-b0a7-91a3c8989aaf
 Seven FX2 rows, which is exactly the in-place chooser list -- no scrolling.
 FX1 is NONE plus the three stations: every station takes the FX1 row of the
 stock effect it replaces, so a saved part that chose FILTER now runs the
-filter station, which is why all three default to a bit-exact passthrough.
+Spectrum station, which is why all three default to a bit-exact passthrough.
 
 ⚠️ EVERY OTHER STOCK EFFECT IS HARVESTED. Thirteen effects, 6,158 words per
 payload in one contiguous run, and an old project that still names one of
@@ -41,8 +41,8 @@ REMIX = Remix(
     name="bamsep26",
     doc="The rig: bus (BusVerb + BusDelay) + three stations + the stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND", "DELAY",
-             "FILTER STATION", "CHARACTER STATION", "MODULATION STATION",
+             "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MENU SHORTCUT"),
     fallback="SEND",
-    fx1=("FILTER STATION", "CHARACTER STATION", "MODULATION STATION"),
+    fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

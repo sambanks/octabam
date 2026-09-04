@@ -630,7 +630,7 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
 ; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
-; Read now, by a character station in BUS mode -- the return on the master
+; Read now, by a Character station in BUS mode -- the return on the master
 ; (docs/BUS.md "The returns"), which is on the OTHER core -- so it takes the
 ; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
 ; interleaved: the ping-pong image is the point of the delay). The base is

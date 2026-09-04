@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CHARACTER STATION render gates, with arithmetic you can predict.
+"""CHARACTER render gates, with arithmetic you can predict.
 
 Renders the station straight through dsp_host (verify_hello's shape: the id
 and the slots come from the manifest, the entry points are checked against
@@ -22,8 +22,8 @@ Gates:
 The dump comes from the audition, which builds a scratch image that really
 contains this station beside SEND:
 
-    python3 tools/remix/audition.py charstation out/dry/drums_110.wav
-    python3 tools/verify_charstation.py
+    python3 tools/remix/audition.py character out/dry/drums_110.wav
+    python3 tools/verify_character.py
 """
 import math, pathlib, struct, subprocess, sys
 
@@ -31,7 +31,7 @@ sys.path.insert(0, "tools")
 import send_probe  # reuse its dispatch-table entry resolution
 from remix import registry
 
-MOD = registry.by_name("charstation")
+MOD = registry.by_name("character")
 SEND = registry.by_name("send")
 K = MOD.knob_map()
 MEM = f"out/dsp/_audition_{MOD.name}_A.mem"

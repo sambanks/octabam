@@ -399,7 +399,7 @@ NO_FB = REMIX.fallback == NO_FALLBACK
 # this tag -- the knob working for the first time; the makeup holds level.
 # 79 == OCTABAM79 == the BamSep26 rig + THE RETURNS (3 Sep 2026): three
 # stations (FILTER/LO-FI/CHORUS replaced, all bus senders), BusDelay v5,
-# the character station returning both wets on the master (RVRB/DLY in
+# the Character station returning both wets on the master (RVRB/DLY in
 # SAT=BUS), hosts quiet only while a return is live; label formatters
 # overflow into the second zero run. Flash 4, docs/FLASHPLAN.md.
 BUILD_TAG = b"79"

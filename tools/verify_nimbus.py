@@ -13,7 +13,7 @@ sample. The DC gate cannot see rate, which is why it passed.
             sum to exactly 1 (the a0 2x trap's gate, kept)
 
 The dump comes from the audition (rebuilt every run -- a stale one silently
-measures the stock effect whose id this module holds, see verify_charstation).
+measures the stock effect whose id this module holds, see verify_character).
 """
 import math, pathlib, struct, subprocess, sys
 

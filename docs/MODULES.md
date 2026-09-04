@@ -276,7 +276,7 @@ keeps its name and says so in its `doc`.
 
 ## A STATION: an insert that is also a bus client
 
-The BamSep26 stations (`modules/filterstation/` is the first) are per-track
+The BamSep26 stations (`modules/spectrum/` is the first) are per-track
 inserts that also SEND: page-1 →DEL / →VRB knobs, the processed mono added
 into both accumulators. What that takes, beyond the insert contract:
 
@@ -763,7 +763,7 @@ same effect on both slots of one track is two independent instances that
 happen to run in series.
 
 **A `replaces` module is listed on FX1 by its own key** (since 3 Sep 2026):
-`fx1=("FILTER STATION", ...)`, never the stock key it replaces — the build
+`fx1=("SPECTRUM", ...)`, never the stock key it replaces — the build
 refuses `fx1=("FILTER",)` beside a module that replaces FILTER, because
 that row would draw the stock name over our code. A composed list is
 rebuilt from scratch in the cave, so the stock row the replacement inherited

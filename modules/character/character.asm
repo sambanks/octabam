@@ -1,13 +1,13 @@
 ; ---------------------------------------------------------------------------
-; CHARACTER STATION -- crush, fold, ring, saturate, compress, width, sends.
+; CHARACTER -- crush, fold, ring, saturate, compress, width, sends.
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. PLUS
 ; the bus-client contract from modules/send/send_client.asm, exactly as
-; modules/filterstation/ carries it: the PROCESSED mono goes into both
+; modules/spectrum/ carries it: the PROCESSED mono goes into both
 ; accumulators, registration is gated on each send knob, and the station
 ; NEVER HOUSEKEEPS (an FX1 instance runs before its track's FX2 one, so an
-; electing station would double-flip the rotation -- see filterstation's
+; electing station would double-flip the rotation -- see spectrum's
 ; header for the full argument).
 ;
 ; ---- the chain, fixed order ----------------------------------------------
@@ -48,7 +48,7 @@
 ;   $30 ->DEL level     $31 ->VRB level
 ;   $3e RVRB return level  $3f DLY return level   (BUS mode only, else 0)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
-;   assembles to the two-word long form, which cost the filter station 30
+;   assembles to the two-word long form, which cost the Spectrum station 30
 ;   words before it was found):
 ;   $19 held L (PERSISTENT)      $1a held R (PERSISTENT)
 ;   $1b srr counter (PERSISTENT) $1c carrier phase (PERSISTENT)
