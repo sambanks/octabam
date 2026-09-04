@@ -2410,6 +2410,23 @@ mkgo:""",
                 return _sub(src)
             return src
 
+        # ---- GRAINS: BusDelay's GRAIN reader, four per line or two -------
+        # A CYCLE LEVER (schema.Remix.grains). The substitution itself lives
+        # in tools/remix/grains.py, imported by the PRICER too -- they
+        # disagreed the first time this was written, and an image rolled to
+        # two grains that `make cycles` still prices at four hides the exact
+        # saving the lever exists for.
+        if REMIX.grains != 4 and "DELAY SERVER" in _texts:
+            from remix import grains as _grains
+            try:
+                _texts["DELAY SERVER"] = _grains.roll(_texts["DELAY SERVER"],
+                                                      REMIX.grains)
+            except ValueError as _e:
+                sys.exit(f"grains={REMIX.grains}: {_e} -- the GRAIN reader "
+                         f"moved under the lever")
+            print(f"  GRAINS: BusDelay's GRAIN reader rolled to "
+                  f"{REMIX.grains} per line (offset G/2, makeup doubled)")
+
         # ---- HOSTGUARD: a HIDDEN engine runs on its host slot only --------
         # A hidden engine (schema.Remix.hidden) is hosted by the project's
         # stamp, not by the chooser. Dispatch is per id and shared by every

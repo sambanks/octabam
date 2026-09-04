@@ -29,9 +29,7 @@ fresh or unassigned track still dispatches to real code, and it is hidden
 too: its knobs default to 0, so such a track is inert and looks like every
 other empty FX2.
 
-Still to come: GRAIN drops to two grains (the cycle lever the delay core
-needs once the stations are actually turned up), and the two menu screens
-that edit the engines.
+Still to come: the two menu screens that edit the engines.
 """
 
 from remix.schema import Remix
@@ -44,6 +42,7 @@ REMIX = Remix(
              "TEMPO SYNC", "MENU SHORTCUT"),
     hidden=("REVERB SERVER", "DELAY SERVER", "SEND",
             "SPECTRUM", "CHARACTER", "MODULATION"),
+    grains=2,          # the cycle lever: four stations beside the delay
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

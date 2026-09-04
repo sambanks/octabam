@@ -806,9 +806,30 @@ class Remix:
     # runs this code. A module that must run on one track only has to detect
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
+    # GRAINS PER LINE in BusDelay's GRAIN mode: 4 (the source's own) or 2.
+    #
+    # A CYCLE LEVER, not a voicing choice. The delay's core cannot carry four
+    # active stations beside a four-grain GRAIN -- 3,294 of 3,120 usable by
+    # the pricer -- and at two grains it fits with room. The cost is half the
+    # simultaneous grain voices.
+    #
+    # build_bus.py substitutes at three markers in the engine: the two rolled
+    # loops count 2, the grain-to-grain phase offset doubles (G/4 -> G/2, so
+    # two grains still tile the cycle), and the makeup doubles, because four
+    # triangle windows at quarter offsets sum to exactly 2 while two at half
+    # offsets sum to exactly 1.
+    #
+    # ⚠️ The two-grain build is the BETTER-CHECKED one: two triangle windows
+    # a half period apart sum to exactly 1, so DC in must come back flat --
+    # the gate that caught Nimbus's double-rate window. Four at quarter
+    # offsets have no such exact identity.
+    grains: int = 4
     fx1: tuple[str, ...] = ()
 
     def __post_init__(self):
+        if self.grains not in (2, 4):
+            raise ValueError(f"grains={self.grains}: BusDelay's GRAIN reader "
+                             f"is built for 4 or 2 per line, nothing else")
         if self.fallback != NO_FALLBACK and self.fallback not in self.modules:
             raise ValueError(
                 f"remix {self.name!r}: fallback {self.fallback!r} is not in "
