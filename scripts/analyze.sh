@@ -11,7 +11,14 @@ EXTRACTED=downloads/extracted
 OUT=out
 mkdir -p "$OUT"
 
-mapfile -t ARTIFACTS < <(find "$EXTRACTED" -type f \( -iname '*.bin' -o -iname '*.syx' \) 2>/dev/null)
+# `mapfile` is a bash 4+ builtin. macOS ships /bin/bash 3.2 (frozen there for
+# GPLv3 reasons), where it doesn't exist -- so this line broke for anyone on
+# stock macOS despite the project assuming "macOS + Homebrew" throughout. The
+# while/read form below is bash-3.2-safe and needs nothing extra installed.
+ARTIFACTS=()
+while IFS= read -r f; do
+  ARTIFACTS+=("$f")
+done < <(find "$EXTRACTED" -type f \( -iname '*.bin' -o -iname '*.syx' \) 2>/dev/null)
 if [ "${#ARTIFACTS[@]}" -eq 0 ]; then
   echo "[analyze] no .bin/.syx under $EXTRACTED — run scripts/fetch-os.sh first." >&2
   exit 1
