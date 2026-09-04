@@ -57,9 +57,11 @@ def main():
         if not ok:
             fails.append(msg)
 
+    # snapshot whatever make check built (the default remix) BEFORE we
+    # rebuild, so it can be restored for the rest of the run.
+    backup = IMAGE.read_bytes() if IMAGE.exists() else None
     # reference walk on the un-grown image
     _build("bus")
-    backup = IMAGE.read_bytes()
     ref = emu.boot(str(IMAGE))
     if not ref.clean:
         sys.exit(f"reference image did not boot: {ref.stopped}")
@@ -247,7 +249,8 @@ def main():
     check(all(n in texts() for n in want_d1),
           f"DELAY draws the delay's names (got {[t for t in texts() if t][:10]})")
 
-    IMAGE.write_bytes(backup)                      # restore for the rest of make check
+    if backup is not None:
+        IMAGE.write_bytes(backup)                  # restore for the rest of make check
     print(f"\n{'FAILED' if fails else 'busscreen OK (2 rows, paged, edit)'}: "
           f"{len(fails)} failure(s)")
     sys.exit(1 if fails else 0)
