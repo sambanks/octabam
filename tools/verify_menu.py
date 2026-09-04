@@ -67,7 +67,13 @@ FX1_ROWCOUNT_AT = 0x40059be6            # FX1's viewport literal
 # module made a per-remix hand copy impossible (29 Aug 2026).
 REMIX = _reg.remix(os.environ.get("REMIX") or _reg.DEFAULT_REMIX)
 _MODS = _reg.modules()
-_ORDER = [k for k in REMIX.modules if _MODS[k].menu is not None]
+# A HIDDEN module (schema.Remix.hidden) is carried but takes no chooser row,
+# so it is not in the order the list, the positions or the row count are
+# checked against. Its own gate is tools/verify_hidden.py, which checks the
+# things this file would otherwise have to invert: no row, blank names, and
+# the writer still reaching it.
+_ORDER = [k for k in REMIX.modules
+          if _MODS[k].menu is not None and k not in REMIX.hidden]
 EXPECT = {k: (_MODS[k].menu.fx2_id, i) for i, k in enumerate(_ORDER)}
 # WITH NO FALLBACK the firmware's own NONE goes back at row 0, as a stock
 # unit has it, so the list is one longer than the modules and every position

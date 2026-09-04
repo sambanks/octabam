@@ -460,6 +460,13 @@ def main():
                           "COMB FILTER"),
              # cfprobe is the rig plus HELLO WORLD and the ColdFire probe
              # cave: the same harvest, 27 more words placed.
+             # bamsep27 is design pass 2: the same three stations, so the
+             # same harvest, minus the stock DELAY row (which has no DSP
+             # code to give up anyway).
+             "bamsep27": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                          "COMB FILTER"),
              "cfprobe": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
