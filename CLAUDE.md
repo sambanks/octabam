@@ -281,6 +281,10 @@ See `docs/PARAM_PAGES.md`.
 **Flash cycles are expensive** — each one is a manual firmware write. Render
 locally and measure instead of guessing. This is why the emulator path exists.
 
+**When the unit misbehaves, check `docs/FAILURE_MODES.md` first** — the
+register of hardware failure modes (symptom -> cause -> fix). Add any new one
+the moment it is seen; do not let it live only in a commit message.
+
 ## How claims are written here
 
 The project has been burned by stale confident numbers more than once — a

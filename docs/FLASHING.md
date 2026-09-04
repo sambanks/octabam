@@ -62,6 +62,9 @@ MIDI. Read §1 first.
 
 ---
 
+> The register of hardware failure modes (symptom → cause → fix) is
+> `docs/FAILURE_MODES.md`. Check it when the unit misbehaves.
+
 ## 1. Safety net — the recovery path (READ THIS FIRST)
 
 If something goes wrong (a "Z" screen, won't boot, a hang), **don't panic**:
