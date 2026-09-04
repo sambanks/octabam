@@ -17,9 +17,22 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 BASE = 0x40000400
 STATE_TABLE = 0x400cbdac
 ENTRY_LEN, ENTRY_N = 0x14, 16
-LEA_SITES = (0x40064bd2, 0x40064e34, 0x400650e6)
 DONOR_STATE = 2
 
+
+def _load_src():
+    """HANDLER and LABELS from the manifest, without importing the package."""
+    import types
+    ns = types.ModuleType("busscreen_src")
+    src = (ROOT / "modules/busscreen/manifest.py").read_text()
+    # execute only the top-level assignments we need (HANDLER, LABELS, offs)
+    g = {"pathlib": pathlib}
+    for line in src.splitlines():
+        if line.startswith(("HANDLER", "LABELS", "LABELTAB_OFF", "LABELTAB_MARK")) or line.strip().startswith(('"', "'", ")", "b\"")) or line.strip().endswith((",", "+")) or line.strip().startswith("bytes.fromhex"):
+            pass
+    exec(compile(src[:src.index("def _stock_table")], "manifest", "exec"), g)
+    ns.HANDLER = g["HANDLER"]; ns.LABELS = g["LABELS"]
+    sys.modules["busscreen_src"] = ns
 
 def _build(remix):
     env = {**os.environ, "REMIX": remix, "XBUS": "1", "SPEC": "1"}
@@ -32,6 +45,7 @@ def _build(remix):
 def main():
     import emu_bringup as emu
     import shutil
+    _load_src()
     fails = []
     # build_bus.py overwrites out/mainos_bus.bin; make check runs other
     # checks against it, so save whatever is there and put it back at the end.
@@ -56,19 +70,18 @@ def main():
     def rd32(a):
         return int.from_bytes(img[a - BASE:a - BASE + 4], "big")
 
-    # the three lea operands now point at the cave, not the stock table
-    new_base = rd32(LEA_SITES[0] + 2)
+    # all six references (3 enter leas + draw/key/enc addal immediates) now
+    # point at the cave, each at its own member offset
+    REFS = ((0x40064bd4, 0x0), (0x40064e36, 0x0), (0x400650e8, 0x0),
+            (0x40064e04, 0x8), (0x4006511c, 0xc), (0x40065086, 0x10))
+    new_base = rd32(REFS[0][0])
     check(new_base != STATE_TABLE and new_base != 0,
-          f"lea[0] repointed off the stock table (-> 0x{new_base:08x})")
-    for s in LEA_SITES:
-        check(rd32(s + 2) == new_base,
-              f"lea at 0x{s:08x} operand -> 0x{new_base:08x}")
-        check(img[s - BASE:s - BASE + 2] in
-              (b"\x41\xf9", b"\x43\xf9", b"\x45\xf9",
-               b"\x47\xf9", b"\x49\xf9", b"\x4b\xf9"),
-              f"site 0x{s:08x} is still a lea")
+          f"table relocated off 0x{STATE_TABLE:08x} (-> 0x{new_base:08x})")
+    for op, moff in REFS:
+        check(rd32(op) == new_base + moff,
+              f"ref at 0x{op:08x} -> 0x{new_base + moff:08x} (member +0x{moff:x})")
 
-    # the relocated table: 16 stock entries + a 17th = clone of DONOR_STATE
+    # the relocated table: 16 stock entries copied verbatim, 17th appended
     stock = (ROOT / "out/raw/section_3_MAIN_OS.bin").read_bytes()
     st = STATE_TABLE - BASE
     stock_tab = stock[st:st + ENTRY_LEN * ENTRY_N]
@@ -76,9 +89,28 @@ def main():
     grown = img[cave:cave + ENTRY_LEN * (ENTRY_N + 1)]
     check(grown[:ENTRY_LEN * ENTRY_N] == stock_tab,
           "16 stock entries copied verbatim into the cave")
-    donor = stock_tab[DONOR_STATE * ENTRY_LEN:(DONOR_STATE + 1) * ENTRY_LEN]
-    check(grown[ENTRY_LEN * ENTRY_N:] == donor,
-          f"17th entry is a byte-clone of state {DONOR_STATE}")
+    e17 = grown[ENTRY_LEN * ENTRY_N:]
+    draw = int.from_bytes(e17[8:12], "big")            # {enter,exit,DRAW,...}
+    others = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1, 3, 4)]
+    check(new_base < draw < new_base + 0x400,
+          f"17th entry's DRAW member points into the cave (0x{draw:08x})")
+    check(all(o == 0 for o in others),
+          "17th entry's enter/exit/key/enc members are 0 (skipped)")
+
+    # the shipped handler bytes still match the source
+    import shutil, subprocess, tempfile
+    from busscreen_src import HANDLER          # loaded below
+    if shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy"):
+        with tempfile.TemporaryDirectory() as td:
+            o, bp = td + "/c.o", td + "/c.bin"
+            subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
+                            str(ROOT / "modules/busscreen/screen_draw.s")], check=True)
+            subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
+                            o, bp], check=True)
+            check(pathlib.Path(bp).read_bytes() == HANDLER,
+                  "screen_draw.s still assembles to the shipped HANDLER bytes")
+    else:
+        print("  [SKIP] source re-assembly: no m68k-elf-as")
 
     # 3) it still boots and the menu tree is identical
     grown_boot = emu.boot(str(IMAGE))
@@ -87,6 +119,30 @@ def main():
     grown_tree = emu.read_menu_tree(grown_boot.uc)
     check(grown_tree == ref_tree,
           "MAIN MENU tree walks identically to the un-grown image")
+
+    # 4) enter state 16 and confirm the draw handler renders the 12 labels
+    from busscreen_src import LABELS
+    uc = grown_boot.uc
+    if not getattr(grown_boot, "_menu_ready", False):
+        emu._prime_menu(grown_boot)
+    def u32(a):
+        return int.from_bytes(uc.mem_read(a, 4), "big")
+    def draw_state_16():
+        # MENU_DRAW bails unless the window-context pointer 0x400cbf4c is set;
+        # MENU_OPEN toggles it, so open until it is non-zero.
+        for _ in range(3):
+            if u32(0x400cbf4c) != 0:
+                break
+            emu._call(uc, emu.MENU_OPEN)
+        uc.mem_write(emu.MENU_STATE, (16).to_bytes(4, "big"))
+        uc.mem_write(emu.MENU_VIEWPORT, (13).to_bytes(4, "big"))
+        grown_boot._draws.clear()
+        emu._call(uc, emu.MENU_DRAW)
+        return [t for _x, _y, t in grown_boot._draws]
+    drawn = draw_state_16()
+    want = [s.decode() for s in LABELS]
+    check(all(w in drawn for w in want),
+          f"state 16 draws all 12 labels (drew {len(drawn)}: {drawn[:14]})")
 
     if backup is not None:
         IMAGE.write_bytes(backup)       # restore for the rest of make check
