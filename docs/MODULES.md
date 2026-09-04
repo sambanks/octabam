@@ -552,6 +552,27 @@ every track and both menus, so a saved part naming that id ANYWHERE runs the
 code. A module that must run on one track only has to detect that itself,
 the way `modules/modulation` does with its allocator slot.
 
+**A hidden engine also gets a HOST GUARD.** Hiding takes an engine off the
+panel; it does not make its id private, because dispatch is per id and shared
+by every track. So `build_bus.py` substitutes a gate at each engine's
+`; HOSTGUARD` marker for the remixes that hide it: the engine runs on the
+bank's FIRST FX2 state block (`r7 == 0x6200` — `docs/DSP.md`, "The
+allocator's instance model") and passes dry on every other, which is exactly
+the condition its position-0 housekeeping election already uses, so the two
+can never disagree. An old part naming the id on another track then gets a
+bit-exact dry pass instead of a second instance writing the host's tank.
+
+⚠️ **Substituted, never compiled in unconditionally**, and the local harness
+is why: `render_reverb.py` runs the reverb at `-r7 4`, the bank's SECOND
+slot, so a guard in the shipped source would render every voicing pass and
+every `verify_roll` comparison dry.
+
+⚠️ **Two traps bit while placing that marker**, both caught by refhash and
+both of the family CLAUDE.md names. The comment first contained the phrase
+the payload-gate census greps for, which reported the untouched `bus` image's
+payload A as gated out; and it sat inside the burn probe's cut anchor,
+which made `make burn` refuse. A comment is build input here.
+
 `tools/verify_hidden.py` is the gate: the clone and its id, blank names,
 manifest defaults and enable bits intact, absent from the chooser list, a
 cursor entry pointing at the fallback, a page that draws none of its names

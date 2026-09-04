@@ -411,6 +411,25 @@ proc:
 ; re-derives from r7 state per call, so the two sub-calls of a split block
 ; are sample-continuous by construction.
         move    a,x:(r7+$14)            ; call flag: $010000 = the a=1 call
+; build_bus.py substitutes a host-slot gate at the marker below, for a
+; remix that HIDES this engine (schema.Remix.hidden). A hidden engine is hosted by
+; the project's stamp rather than by the chooser, so it should run on its
+; host track and nowhere else: dispatch is per id and shared by every track,
+; so an old part naming this id on another track would otherwise get a
+; SECOND instance sharing this one's hardcoded Y base. The gate is r7 ==
+; 0x6200, the bank's first FX2 state block (measured, docs/DSP.md "The
+; allocator's instance model"), which is the same condition the position-0
+; housekeeping election below already uses -- so a guarded instance is never
+; a housekeeper that has gone dry, nor a wet engine that skips the
+; election. (Worded around the phrase build_bus.py censuses for: it
+; greps the SOURCE for the payload-gate marker, comments included, so
+; writing that phrase here reported the plain `bus` image's payload A
+; as gated out -- caught by refhash, and the same family as the
+; base-literal census CLAUDE.md warns about, which refused the build
+; when this very comment first tried to name it.)
+; Inert in a normal build: it is a comment, and local renders (which run at
+; -r7 4, the bank's SECOND slot) are unaffected unless a remix asks for it.
+; HOSTGUARD
 
 ; ---- BUS.md: split-aware frame offset + position-0 election --------------
 ; Verbatim from modules/send/send_client.asm / modules/busverb/reverb_server.asm (BUS.md Known

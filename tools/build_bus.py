@@ -2394,6 +2394,38 @@ mkgo:""",
                 return _sub(src)
             return src
 
+        # ---- HOSTGUARD: a HIDDEN engine runs on its host slot only --------
+        # A hidden engine (schema.Remix.hidden) is hosted by the project's
+        # stamp, not by the chooser. Dispatch is per id and shared by every
+        # track, so an old part naming that id on another track would get a
+        # SECOND instance sharing this one's hardcoded Y base -- two reverbs
+        # writing one tank. The gate is r7 == 0x6200, the bank's first FX2
+        # state block (docs/DSP.md "The allocator's instance model"), which
+        # is exactly the condition the engines' position-0 housekeeping
+        # election already uses, so the two can never disagree.
+        #
+        # ⚠️ SUBSTITUTED, NOT SHIPPED IN THE SOURCE, and the local render
+        # harness is why: render_reverb.py runs the reverb at -r7 4, the
+        # bank's SECOND slot, so a guard compiled in unconditionally would
+        # render every voicing pass and every verify_roll comparison DRY.
+        # It goes in only for a remix that asks, and `hidden` is the ask.
+        for _k in HIDDEN:
+            if _k not in _texts:
+                continue
+            if _texts[_k].count("; HOSTGUARD\n") != 1:
+                sys.exit(f"{_k} is hidden, but its source has no single "
+                         f"; HOSTGUARD marker to gate on")
+            _texts[_k] = _texts[_k].replace("; HOSTGUARD\n", """
+        move    r7,a
+        move    #>$6200,x0
+        cmp     x0,a
+        bne     hostquit                ; not the host slot: exact dry pass
+""", 1) + """
+hostquit:
+        rts
+"""
+            print(f"  HOSTGUARD: {_k} runs on r7=0x6200 only, dry elsewhere")
+
         plan = tuple(
             (m.key, _prep(_ybase(m, _texts[m.key]), m.key, m.dsp.r7_latch_slot))
             for m in sorted((remix_modules()[k] for k in CARRIED
