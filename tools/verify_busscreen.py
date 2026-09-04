@@ -91,12 +91,15 @@ def main():
     check(grown[:ENTRY_LEN * ENTRY_N] == stock_tab,
           "16 stock entries copied verbatim into the cave")
     e17 = grown[ENTRY_LEN * ENTRY_N:]
-    draw = int.from_bytes(e17[8:12], "big")            # {enter,exit,DRAW,...}
-    others = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1, 3, 4)]
+    draw = int.from_bytes(e17[8:12], "big")            # {enter,exit,DRAW,key,enc}
+    keym = int.from_bytes(e17[12:16], "big")
+    unused = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1, 4)]
     check(new_base < draw < new_base + 0x400,
           f"17th entry's DRAW member points into the cave (0x{draw:08x})")
-    check(all(o == 0 for o in others),
-          "17th entry's enter/exit/key/enc members are 0 (skipped)")
+    check(new_base < keym < new_base + 0x400 and keym > draw,
+          f"17th entry's KEY member points into the cave, past draw (0x{keym:08x})")
+    check(all(o == 0 for o in unused),
+          "17th entry's enter/exit/enc members are 0 (skipped)")
 
     # the shipped handler bytes still match the source
     import shutil, subprocess, tempfile
@@ -139,6 +142,18 @@ def main():
         emu._call(uc, emu.MENU_DRAW)
         return [t for _x, _y, t in grown_boot._draws]
 
+    # the key handler address = 17th entry's key member (index 3)
+    key_addr = rd32(new_base + ENTRY_LEN * ENTRN + 3 * 4) if False else \
+               int.from_bytes(img[(new_base + ENTRY_LEN * 16 + 12) - BASE:
+                                   (new_base + ENTRY_LEN * 16 + 12) - BASE + 4], "big")
+    def cursor_row():
+        for x, y, t in grown_boot._draws:
+            if t == ">":
+                return (y - 8) // 8
+        return None
+    def press(kc):
+        emu._call(uc, key_addr, (kc,))
+
     TRACK = 4
     # BusVerb (id 7): plant a distinct value per slot, expect name + value
     emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
@@ -158,6 +173,27 @@ def main():
     dnames = [n.decode() for n in DLY_NAMES]
     check(all(n in drawn for n in dnames),
           f"BusDelay: label set switched to its 12 names (got {[d for d in drawn if d][:14]})")
+
+    # 5) navigation: the cursor highlight and the key handler
+    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
+    draw_state_16()
+    check(cursor_row() == 0, f"cursor starts on row 0 (got {cursor_row()})")
+    press(0x34); draw_state_16()
+    check(cursor_row() == 1, f"down moves the cursor to row 1 (got {cursor_row()})")
+    for _ in range(4):
+        press(0x34)
+    draw_state_16()
+    check(cursor_row() == 5, f"four more downs -> row 5 (got {cursor_row()})")
+    press(0x33); draw_state_16()
+    check(cursor_row() == 4, f"up moves back to row 4 (got {cursor_row()})")
+    for _ in range(20):
+        press(0x34)
+    draw_state_16()
+    check(cursor_row() == 11, f"down clamps at the last row 11 (got {cursor_row()})")
+    for _ in range(20):
+        press(0x33)
+    draw_state_16()
+    check(cursor_row() == 0, f"up clamps at row 0 (got {cursor_row()})")
 
     if backup is not None:
         IMAGE.write_bytes(backup)       # restore for the rest of make check

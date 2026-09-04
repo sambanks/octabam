@@ -24,7 +24,9 @@ from remix.schema import CavePatch, Kind, Module
 
 STATE_TABLE = 0x400cbdac
 ENTRY_LEN, ENTRY_N = 0x14, 16
-DRAW_MEMBER = 2                        # {enter,exit,DRAW,key,enc}: draw is index 2
+DRAW_MEMBER = 2                        # {enter,exit,DRAW,key,enc}
+KEY_MEMBER = 3
+KEY_OFF = 0x11a                        # key: entry point offset within HANDLER
 
 # EVERY reference to the state table, as (operand_addr, stock_operand,
 # member_offset). docs/MAINMENU.md 9a listed only the three `lea` sites for the
@@ -51,13 +53,15 @@ TABLE_REFS = (
 # verify_busscreen re-assembles the source and compares, so a drifted source
 # cannot pass unnoticed.
 HANDLER = bytes.fromhex(
-    "4fefffd448d77cfc286f00304a8c670000d42e3946c82456670000ca7000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad0042006721e4c0100002647d7fc0008f084d7c076002803e78c508424353c002f024878ffff2f04487800082f0c4879400ba8764eb940012bd84fef00187000103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800342f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff8a4cd77cfc4fef002c4e75")
+    "4fefffd448d77cfc286f00304a8c670001002e3946c82456670000f67000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad0042006721e4c0100002647d7fc0008f084d7c076002803e78c5084203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824353c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef00187000103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff5e4cd77cfc4fef002c4e75202f0004223940bad0107433b48066084a8167185381600e7434b480660e740bb4816708528123c140bad0104e75")
 # placeholder marker -> which emitted-blob field it is patched to.
 MARKS = {
     "40bad000": "verbtab",
     "40bad004": "dlytab",
     "40bad008": "fmt",
     "40bad00c": "scratch",
+    "40bad010": "cursor",
+    "40bad014": "gt",
 }
 
 # The twelve parameter names of each engine, slot order (page 1 then page 2),
@@ -105,12 +109,18 @@ def emit(addr):
     data.extend(b"".join(x.to_bytes(4, "big") for x in dly_ptrs))
     scratch_here = body_off + len(data)
     data.extend(b"\0" * 8)
+    cursor_here = body_off + len(data)
+    data.extend(b"\0" * 4)                            # the cursor row, init 0
+    gt_here = body_off + len(data)
+    data.extend(b">\0")
 
     targets = {
         "verbtab": addr + verbtab_here,
         "dlytab": addr + dlytab_here,
         "fmt": addr + fmt_here,
         "scratch": addr + scratch_here,
+        "cursor": addr + cursor_here,
+        "gt": addr + gt_here,
     }
     handler = bytearray(HANDLER)
     for mark, field in MARKS.items():
@@ -124,6 +134,7 @@ def emit(addr):
 
     entry = bytearray(b"\0" * ENTRY_LEN)
     entry[DRAW_MEMBER * 4:DRAW_MEMBER * 4 + 4] = (addr + handler_off).to_bytes(4, "big")
+    entry[KEY_MEMBER * 4:KEY_MEMBER * 4 + 4] = (addr + handler_off + KEY_OFF).to_bytes(4, "big")
 
     blob = bytes(table) + bytes(entry) + bytes(handler) + bytes(data)
     pokes = tuple(
