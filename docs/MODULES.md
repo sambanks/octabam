@@ -542,6 +542,17 @@ That is how an effect stops being a per-track choice and becomes part of the
 instrument -- the bus engines are hosted by the project's stamp, and their
 controls belong on a main-menu screen (`docs/MAINMENU.md` section 6).
 
+⚠️ **A hidden module that is also on the FX1 chooser KEEPS its names.** One
+descriptor serves both menus, so blanking it would empty its FX1 page too.
+The rule is automatic: `hidden` minus `fx1` is what gets blanked, which is
+how the stations come off the FX2 chooser and still draw when chosen on FX1.
+
+⚠️ **The fallback may be hidden.** It has no row to park a cursor on, so the
+cursor goes to 0; its descriptor is still cloned and its id still resolves to
+it, which is the half that matters -- an unassigned track has to dispatch to
+real code. Hide every module and the FX2 chooser is a bare terminator with a
+zero-row viewport; the window still opens and draws (emulator, 4 Sep 2026).
+
 ⚠️ **It belongs to the REMIX, not the module**, and the bit-identity gate is
 what said so: declared on the module, hiding the engines emptied the plain
 `bus` image's chooser too, three rows to one. A remix hides an engine only

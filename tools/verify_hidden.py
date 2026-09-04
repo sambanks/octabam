@@ -89,21 +89,50 @@ def main():
               [clones[o] for o in clones if o != key], f"0x{P:08x}")
         names = [bytes(img[P - BASE + P_PARAM_NAMES + 6 * i:][:6]).split(b"\0")[0]
                  for i in range(12)]
-        check(f"{key}: all twelve parameter names are blank",
-              not any(names), " ".join(n.decode("latin1") or "-" for n in names))
+        # ⚠️ A HIDDEN MODULE THAT IS ALSO ON FX1 KEEPS ITS NAMES. One
+        # descriptor serves both menus, so blanking it would empty its FX1
+        # page too -- the stations are hidden from the FX2 chooser and still
+        # have to draw when they are selected on FX1.
+        if key in remix.fx1:
+            want = [(p.name or b"") for p in mods[key].params]
+            check(f"{key}: on FX1, so its names are KEPT, not blanked",
+                  names == want,
+                  " ".join(n.decode("latin1") or "-" for n in names[:6]))
+        else:
+            check(f"{key}: all twelve parameter names are blank",
+                  not any(names),
+                  " ".join(n.decode("latin1") or "-" for n in names))
+        # ⚠️ OVER THE ACTIVE SLOTS ONLY. A module need not use all twelve --
+        # SEND has two knobs -- and an inactive slot keeps whatever byte the
+        # cloned DONOR had there, which is not a defect and not the
+        # manifest's. Checking all twelve reported SEND as broken.
+        act = [i for i, p in enumerate(mods[key].params) if p.active]
         defaults = list(img[P - BASE + P_DEFAULTS:][:12])
         want = [(p.default or 0) & 0x7f for p in mods[key].params]
-        check(f"{key}: its defaults are the manifest's, untouched by hiding",
-              defaults == want, f"{defaults[:6]}...")
+        check(f"{key}: its {len(act)} active defaults are the manifest's",
+              all(defaults[i] == want[i] for i in act),
+              " ".join(f"{defaults[i]}" for i in act[:6]))
         lo, hi = u32(P + P_PENABLE_LO), u32(P + P_PENABLE_HI)
-        check(f"{key}: its enable bits are set, so the DSP still receives",
-              (lo & 0x11111111) == 0x11111111 and (hi & 0x11111111) != 0,
-              f"lo={lo:08x} hi={hi:08x}")
+        bits = ((hi & 0xffffffff) << 32) | (lo & 0xffffffff)
+        on = [i for i in range(12) if (bits >> (4 * i)) & 1]
+        check(f"{key}: exactly its active slots are enabled, so the DSP "
+              f"still receives", on == act,
+              f"enabled {on} vs active {act}")
         check(f"{key}: its cursor entry is the fallback's, not stock's",
               u32(ID2POS + mods[key].menu.fx2_id * 4) == fb_pos, f"{fb_pos}")
 
     # the chooser list is exactly the listed modules
-    for cand in (NEW_LIST, LONG_LIST):
+    # ⚠️ AN EMPTY CHOOSER IS A VALID OUTCOME, and the loop below cannot find
+    # a list that has no rows: with every module hidden the list is a bare
+    # terminator. Check that shape directly rather than reporting "not found".
+    listed_p = [clones[k] for k in listed]
+    if not listed_p:
+        check("the chooser list is empty: a bare terminator, no rows",
+              u32(NEW_LIST) == 0, f"first word 0x{u32(NEW_LIST):08x}")
+        for key in hidden:
+            check(f"{key} is not in the chooser list", True)
+        cand = None
+    for cand in ((NEW_LIST, LONG_LIST) if listed_p else ()):
         row = [u32(cand + 4 * i) for i in range(16)]
         if row[0] in clones.values():
             entries = []
@@ -111,7 +140,6 @@ def main():
                 if v == 0:
                     break
                 entries.append(v)
-            listed_p = [clones[k] for k in listed]
             check("the chooser lists exactly the modules that are not hidden",
                   entries == listed_p,
                   f"{len(entries)} rows at 0x{cand:08x}, expected {len(listed_p)}")
@@ -120,7 +148,8 @@ def main():
                       clones[key] not in entries)
             break
     else:
-        check("found the chooser list in the image", False)
+        if listed_p:
+            check("found the chooser list in the image", False)
 
     # ---- 2 and 3. the booted machine -------------------------------------
     import emu_bringup as emu
@@ -137,7 +166,8 @@ def main():
     # BusVerb's slot 11, so comparing the engine's names against the raw
     # capture reports a knob that is not the engine's. Subtract a baseline
     # render -- the same track with an id that draws nothing of its own.
-    key = hidden[0]
+    blanked = [k for k in hidden if k not in remix.fx1]
+    key = blanked[0] if blanked else hidden[0]
     hid_id = mods[key].menu.fx2_id
     base_texts = set(texts(emu.render_fx2(boot, track=4, effect_id=0x02)))
     drew_hidden = set(texts(emu.render_fx2(boot, track=4, effect_id=hid_id)))
@@ -145,8 +175,11 @@ def main():
     check(f"{key}'s page draws none of its knob names",
           not (hid_names & (drew_hidden - base_texts)),
           " ".join(sorted(hid_names & (drew_hidden - base_texts))) or "none drawn")
-    ctl = listed[0] if listed else None
-    if ctl and not mods[ctl].is_stock:
+    # the control: a module whose names ARE drawn -- a listed one, or a
+    # hidden one kept for FX1
+    ctl = next((k for k in listed if not mods[k].is_stock),
+               next((k for k in hidden if k in remix.fx1), None))
+    if ctl:
         drew_listed = set(texts(emu.render_fx2(boot, track=4,
                                                effect_id=mods[ctl].menu.fx2_id)))
         ctl_names = {p.name.decode("latin1") for p in mods[ctl].params if p.name}
@@ -225,7 +258,7 @@ def main():
             w = struct.unpack(f"<{len(d)//4}i", d)
             return list(w[0::2])[:N]
 
-        for key in hidden:
+        for key in [k for k in hidden if k in ("REVERB SERVER", "DELAY SERVER")]:
             # ⚠️ AT ITS DEFAULTS AN ENGINE IS ALREADY A DRY PASS -- both
             # engines are RETURNS whose IN defaults to 0 (v5, 23 Aug 2026),
             # so a control render has to open the input, or "the guard went
