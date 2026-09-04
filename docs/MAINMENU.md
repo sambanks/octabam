@@ -462,37 +462,42 @@ moved a byte; 1, 3 and 5 did nothing.** That matched the page-2 map
 `docs/PARAM_PAGES.md` records from the other direction and was taken to mean
 the routine edits the three page-2 KNOBS and not the three SELECTS.
 
-🟡 **CHALLENGED, same day pm (emulator, tag-84 image).** Driven again on a
-warm machine with its **page global set** — `0x460d5c30`, the FX2 page kind,
-which the first run left at whatever the cold detour had — `0x4003a474(slot,
-delta)` returned cleanly for **all six** page-2 slots on both engines and
-stored a distinct byte per slot into the page-2 array (`+0x8ef5a + track*30 +
-page*6 + slot`) AND the live DSP byte (`0x80000950 + slot`). The trace also
-found the routine calls a helper at `0x4003249c` that spins on a cold
-machine; stubbing it (`moveq #0,d0; rts`) is what let the call complete, and
-mapping the `0x100a0000` mirror page stopped an unmapped-write fault that was
-masking the store. So the "odd slots do nothing" reading is suspect: it may
-have been the un-set page global or the un-mapped mirror, not the slot parity.
+🟡 **CHALLENGED, same day pm (emulator, tag-84 image) — but only partly, and
+here is exactly how far.** Driven again on a warm machine with its **page
+global set** (`0x460d5c30` = FX2 kind), the `0x4003249c` spin-helper stubbed,
+and the `0x100a0000` mirror mapped, `0x4003a474(slot, delta)` **runs to
+completion for all six page-2 slots** on both engines and reads/writes the
+per-slot byte at `+0x8ef5a + track*30 + page*6 + slot`. That much is solid.
 
-**Which is right is a HARDWARE question and unresolved.** The emulator has
-known blind spots (`CLAUDE.md`), and the two readings disagree. If the
-emulator is right, this one routine edits all six page-2 slots and a
-twelve-row screen needs no select-committer work at all. **The screen itself
-is the test:** build twelve rows, and whether the odd slots move on the unit
-settles it — no separate probe. Falsifier for the optimistic reading: an
-odd-slot row that draws and steps but whose sound does not change.
+⚠️ **What is NOT shown: that the delta is applied.** Seed that byte to any
+value, call with delta ±1, and it comes back UNCHANGED — the routine reads
+the current value (measured: it reads that same `+0x8ef5a` byte, at PC
+`0x4003a560`) but the modify-and-store does not land a changed value from
+this cold, un-staged context. So the pm run downgrades the am "only even
+slots write" to "the reading is not trustworthy either way": neither
+even-only nor all-six is demonstrated, because from outside a live FX2 page
+the editor does not visibly edit. This is the CLAUDE.md blind spot — these
+panel routines expect to be entered with the page staged, and the emulator
+cannot stand in for that.
+
+**So the honest state:** whether a screen can drive page 2 through this
+routine is UNRESOLVED, and the resolver is the flash, not the emulator.
+**The screen itself is the test:** build twelve rows, and whether each page-2
+row moves on the unit settles it — no separate probe. Falsifier: a page-2
+row that draws and steps but whose sound does not change.
 
 **Where that leaves a twelve-row screen (revised 4 Sep 2026 pm).** The
 target is and has always been TWELVE rows. Two firmware writers reach them:
 `0x40054cd8(track, flat, value)` for page 1's six, and `0x4003a474(slot,
 delta)` for page 2. The open question is only how many of page 2's six the
 second routine reaches — the am reading said three (the even/knob slots), the
-pm reading said all six. If it is all six, twelve rows are buildable on those
-two routines alone. If it is three, the three odd slots (BusVerb SHFT/RATE
-plus whichever slot MODE is NOT on; BusDelay SIZE/FRZE likewise) still need
-the select path below, and card emulation earns its place. **We resolve this
-by building the twelve-row screen and flashing it, not by more probing** —
-the probes are what this note is retiring.
+pm reading said all six. The emulator shows the page-2 editor RUNNING for all six slots but not
+visibly applying a delta from a cold context, so how many slots a screen can
+truly drive is unresolved and the flash is the arbiter. If all six edit,
+twelve rows are buildable on those two routines alone; if only the even ones
+do, the odd slots still need the select path below and card emulation earns
+its place. **We resolve this by building the twelve-row screen and flashing
+it, not by more probing** — the probes are what this note is retiring.
 
 **The selects' path, part-way (4 Sep 2026).**
 
@@ -668,8 +673,8 @@ design one rather than a research one:**
    even-slots-only. Both changed the same day: MODE moved to slot 6 (an even
    slot, HARDWARE-CONFIRMED on tag 84), and the emulator then showed
    `0x4003a474` writing all six page-2 slots. The goal is TWELVE rows; nine
-   was an artifact of those two now-stale facts, not a decision. See the
-   revised "where that leaves a twelve-row screen" above.
+   was an artifact of those two facts (one now stale, one now in doubt), not
+   a decision. See the revised "where that leaves a twelve-row screen" above.
 2. **Keep digging for the select aiming.** Narrow, but this thread has cost
    five reads and each answer has produced another layer.
 3. **Use the shortcut that is already built.** `modules/menushortcut`
@@ -747,6 +752,13 @@ holds. So the screen is now the cheapest way to settle that too.
 2. ✅ **Add the row to CONTROL (or the root).** `menushortcut` already does
    exactly this for its two action rows; the screen is one more row whose
    action enters the new menu-state instead of opening the FX2 page.
+⚠️ **Before the handlers, one emulator caveat carried from §9c-ii:** the
+editor `0x4003a474` runs for all six slots but does not visibly apply a delta
+from outside a staged FX2 page, so the encoder-handler design below may need
+to STAGE the host's FX2 page (`FUN_400554e0(4)`) before calling it — the same
+`_call(uc, PAGE_STAGE, (4,))` the emulator's `render_fx2` does. That staging
+step is unproven and is part of what the flash tests.
+
 3. 🟡 **The draw handler.** Render twelve labelled rows with live values. The
    pieces are decoded — window ctor `FUN_4005829c`, list drawer
    `FUN_40037590`, sprintf `0x40013a08`, and the value source is the Part
