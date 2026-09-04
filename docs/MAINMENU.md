@@ -334,20 +334,45 @@ path, which is why §3's "all 15 occupied" stands.
   per-track id byte (`0x100b14cf` is the current part), with the parameter
   bytes in the same record. A global screen reads and writes here.
 
-### 9c. The `flat` index 🟡 PARTLY
+### 9c. The `flat` index 🟡 ADVANCED, STILL NOT SETTLED (4 Sep 2026)
 
-`FUN_40054cd8(track, flat, value)` decomposes `flat` **by six**: two `rems.l
-#6` give slot = flat mod 6 and page = flat / 6, and the page is handed to
-`FUN_40031da4(track, kind)` -- the same resolver the [FX2] key path uses. So
-`flat = page * 6 + slot`, which page index means FX2 page 1 and page 2 is
-NOT yet confirmed.
+`FUN_40054cd8(track, flat, value)` decomposes `flat` **by six** — two
+`rems.l #6` give slot = flat mod 6 and page = flat / 6, and the page goes to
+`FUN_40031da4(track, kind)`, the resolver the [FX2] key path uses. So
+`flat = page * 6 + slot`. Which page index is FX2 page 1, and which is page
+2, is what a screen needs and it is still open.
 
-⚠️ **And it cannot be confirmed in the emulator as it stands**: the machine
-boots to DEMO with no CF card, so `*(0x46c82456)` is 0 and the current part
-and track bytes are 0. Anything that touches Part storage has no storage to
-touch. **This is the real limit on the feature's local testability** -- the
-draw half can be proven locally, the write half cannot, until either a
-project is faked in RAM or the harness learns to mount a card image.
+**What 4 Sep measured, on a booted machine with a faked Part** (T5, FX1 =
+Spectrum, FX2 = BusVerb):
+
+- ✅ **`flat` addresses a CONTIGUOUS byte array**, one byte per parameter:
+  every write landed at `ParamBase + flat`, with `flat` 11 → `+11` and 24 →
+  `+24` in the same run. Not a per-page array with its own stride.
+- ✅ **The writer also writes a working mirror at `0x100a4f70`+**, which the
+  emulator does not map by default; an unmapped-write fault there is the
+  write having happened, not having failed. A screen must go through the
+  writer rather than poke the Part, or the frame builder keeps reading the
+  stale mirror.
+- ✅ **Live indices under that configuration:** 0–16, 18–29, then only
+  31, 33, 37, 39, 43, 45, 49, 51, 55, 57 — pairs at +1 and +3 of each
+  six-block above 30, which looks like page-2 select slots but is not
+  established.
+- ❌ **The obvious experiment does not separate FX1 from FX2.** Changing
+  either slot's effect (FX2 → SEND, or FX1 → NONE) makes the writer bail for
+  EVERY flat, not just that slot's: the live set went from 39 indices to
+  none. So "which flats died" cannot attribute a flat to a page, and the
+  4 Sep attempt to do it that way proved nothing.
+
+**What would settle it:** reading the writer's body past its early bail
+(`btst #0,d1` after `FUN_400a6994`) to see what it requires of each page
+kind, or an emulator with a real project loaded rather than a zeroed Part,
+which `docs/EMU.md` already names as the limit on this feature's local
+testability.
+
+⚠️ **The bus screens are blocked on this.** A screen that edits the wrong
+six bytes edits some other page's knobs, which is the same class of defect
+as the stamping tool's two wrong page-2 layouts on 4 Sep — and that one cost
+a day of hardware time.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
