@@ -468,9 +468,34 @@ a supported path today: six on page 1 through the stock writer, three page-2
 knobs through this one. The remaining three are the page-2 SELECTS — which
 for BusVerb are MODE, SHFT and RATE, and for BusDelay MODE, SIZE and FRZE.
 **Both engines' MODE is in that set**, so this is not a corner: it is the
-control most worth having on the screen. Finding the selects' write path is
-the next read, and the `a3 == 6` arm with its `0x460d1a48` gate is the first
-place to look.
+control most worth having on the screen.
+
+**The selects' path, part-way (4 Sep 2026).**
+
+- ❌ **Not the `a3 == 6` arm.** Read: a repeat-by-delta loop that calls
+  through the pointer at `0x4007ec7c` once per step, behind a
+  `0x460d1a48 == 1` gate. A stepping action, not a parameter store.
+- **The SELECT values have their own array and their own working mirror**,
+  the same shape as the other two: `DB + part*6322 + 0x8f04a + ...` with the
+  mirror at `0x100a5198 + ...`, found at the store `0x40027ebc` (`moveb
+  d7,(a0)` into the array, then the same byte into the mirror). So there are
+  three arrays and three mirrors, one per control kind: page-1 values,
+  page-2 knobs, page-2 selects.
+- 🟡 **The function that owns that store, `0x40027e4c`, is a bigger thing
+  than the other two:** five stack arguments — a struct pointer, two values,
+  a page kind 0–4 dispatched through a five-way jump table, and a fifth that
+  must be zero — with a page-0 arm that reads the struct at offsets 18 and
+  19, the pair a staging copy elsewhere fills from the page-1 and page-2
+  arrays. A general commit path, not a two-argument setter.
+- ⚠️ **No direct caller** shows up when scanning for its address as an
+  immediate, so it is reached through a pointer table. Finding that table is
+  the next thread, and it is what would show how the struct is built.
+
+**The shape of the problem, stated once.** Page 2's six slots alternate
+knob, select, knob, select, knob, select — the panel's own layout, not a
+choice a module makes. So EVERY effect has exactly three selects, and no
+rearrangement of a knob map avoids them. A twelve-row screen needs all three
+paths, or it edits nine controls and leaves MODE alone.
 
 ### 9d. The encoder handler's ABI 🟡 SHAPE ONLY
 
