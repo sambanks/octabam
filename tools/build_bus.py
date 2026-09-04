@@ -151,6 +151,17 @@ NEW_LIST = 0x400d6b00
 # station's BUS-mode renames tipped the rig over by 56 bytes, 3 Sep 2026).
 OVERFLOW_RUN = 0x400d24d0
 OVERFLOW_RUN_END = 0x400d2ce0
+# ⚠️ THE SAFE CAVE CEILING. Caves live in the decoded ColdFire free region
+# (~0x400d2000..0x400d8000): descriptor clones, the tempo/label caves, the
+# chooser relocations. Anything ABOVE this is NOT free space -- the OS image
+# runs to ~0x4010fdf0 and its last ~30 KB (from ~0x40108000) is a ZERO RUN
+# AT REST that is really uninitialised OS data (the PROJECT subsystem's RAM,
+# among others). A cave pinned there passes a static "is it zero" check and a
+# no-project emulator boot, then COLLIDES the moment a project loads or the
+# PROJECT menu opens -- a line-F exception on the unit (tag 91, 4 Sep 2026:
+# the bus-screen cave was pinned at 0x40108800 and crashed on [PROJ]). Refuse
+# any pinned cave at or above this; the emulator cannot catch it.
+SAFE_CAVE_CEIL = 0x400d8000
 CLONE_BASE = 0x400d6b20
 CLONE_STRIDE = 0x1a0
 # NEW_LIST holds SEVEN rows plus its terminator before it runs into the
@@ -1209,6 +1220,14 @@ def main():
         # one of those is checked for being FREE (below) and for not
         # overlapping another module's cave (the ledger), but it neither
         # follows nor advances this region's cursor.
+        if _c.cave_addr >= SAFE_CAVE_CEIL:
+            sys.exit(
+                f"{_c.label}: cave pinned at 0x{_c.cave_addr:08x}, at or above "
+                f"the safe ceiling 0x{SAFE_CAVE_CEIL:08x}. That is OS image "
+                f"data (bss), not free space -- it reads zero at rest and the "
+                f"PROJECT subsystem clobbers it at runtime (tag 91 crashed on "
+                f"[PROJ]). Place the cave in the decoded 0x400d2000..0x400d8000 "
+                f"free region.")
         _inside = CLONE_BASE <= _c.cave_addr < cave_limit
         if _inside:
             assert _c.cave_addr >= _cave_top, \
