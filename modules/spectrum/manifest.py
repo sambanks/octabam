@@ -1,4 +1,4 @@
-"""FILTER STATION -- two filters in one insert, and a bus sender.
+"""SPECTRUM -- two filters in one insert, and a bus sender.
 
 The first BamSep26 station. A per-track INSERT that REPLACES stock FILTER
 (id 0x04, both menus, and every saved part that chose FILTER), built the way
@@ -38,8 +38,8 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="filterstation",
-    key="FILTER STATION",
+    name="spectrum",
+    key="SPECTRUM",
     kind=Kind.DSP_EFFECT,
     doc="BamSep26 station: dual filter (SVF + base/width), LFO/env, SER/PAR/RING/FM, sends.",
     menu=MenuEntry(
@@ -82,7 +82,7 @@ MODULE = Module(
               doc="what DPTH applies: the envelope follower, the LFO, or half of each"),
     ),
     dsp=DspSection(
-        asm="modules/filterstation/filter_station.asm",
+        asm="modules/spectrum/spectrum.asm",
         priority=12,                  # after every existing module
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,

@@ -1,4 +1,4 @@
-"""MODULATION STATION -- one modulated line, seven modes, FX1 only.
+"""MODULATION -- one modulated line, seven modes, FX1 only.
 
 The third BamSep26 station. It REPLACES stock CHORUS (id 0x12) and covers
 what stock spreads over CHORUS, FLANGER, PHASER and COMB, plus the three the
@@ -41,8 +41,8 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="modstation",
-    key="MODULATION STATION",
+    name="modulation",
+    key="MODULATION",
     kind=Kind.DSP_EFFECT,
     doc="BamSep26 station: chorus/flanger/phaser/comb/trem/vib/pan, FX1 only.",
     menu=MenuEntry(
@@ -112,8 +112,8 @@ MODULE = Module(
                  defaults={0: 55, 1: 100, 2: 0, 3: 127}),
     ),
     dsp=DspSection(
-        asm="modules/modstation/mod_station.asm",
-        priority=14,                  # after the character station
+        asm="modules/modulation/modulation.asm",
+        priority=14,                  # after the Character station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,
         r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
@@ -122,7 +122,7 @@ MODULE = Module(
     # The FX1-only allocator buffer: two 1,024-word lines out of the 3,072 an
     # FX1 slot gives. `fx1_only` is the promise that an FX2 instance writes
     # nothing -- the ledger admits it beside a server on that basis, and
-    # tools/verify_modstation.py is what proves it.
+    # tools/verify_modulation.py is what proves it.
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
     harness=Harness(layout_char="3", is_server=False, bus_client=True),
 )

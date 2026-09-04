@@ -1,8 +1,8 @@
 ; ---------------------------------------------------------------------------
-; MODULATION STATION -- one modulated line, seven modes, FX1 only.
+; MODULATION -- one modulated line, seven modes, FX1 only.
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm) plus the bus-client contract
-; the other two stations carry (modules/filterstation/): the processed mono
+; the other two stations carry (modules/spectrum/): the processed mono
 ; goes into both accumulators, registration is gated on each send knob, and
 ; the station NEVER HOUSEKEEPS -- an FX1 instance runs before its track's FX2
 ; one, so an electing station would double-flip the rotation.
@@ -15,7 +15,7 @@
 ; 0, BusDelay's line on tracks 3-4. So a base >= 0x4000 sets a flag that
 ; sends proc down the DRY path, which writes NOTHING to Y. That promise is
 ; what Claims(fx1_only=True) declares to the ledger, and tools/
-; verify_modstation.py is what proves it.
+; verify_modulation.py is what proves it.
 ;
 ; Two lines of 1,024 words, L at base+0 and R at base+1024: 23 ms each, out
 ; of the 3,072 an FX1 slot gives. The read offset is MASKED (& $3ff), not the
@@ -50,7 +50,7 @@
 ; ---- r7 slots -------------------------------------------------------------
 ;   $14 $65..$69  bus bookkeeping, SEND's layout ($69 = this block's offset)
 ;   ⚠️ EVERY SLOT THE SAMPLE LOOPS TOUCH IS BELOW $40: an r7 displacement past
-;   63 assembles to the two-word long form (it cost the filter station 30
+;   63 assembles to the two-word long form (it cost the Spectrum station 30
 ;   words before that was found).
 ;   $19 line base (per instance)     $1a dry flag: 1 = FX2 slot or MIX 0
 ;   $1b write phase (PERSISTENT)     $1c LFO phase (PERSISTENT)
@@ -74,7 +74,7 @@
 ; second. Every Tcc reads the ONE compare above it with nothing but moves
 ; between (the flag-clobber trap). No label here is a PREFIX of another --
 ; dsp_asm resolves by prefix, and `ch_sat` inside `ch_satr` cost the
-; character station an afternoon.
+; Character station an afternoon.
 ; ---------------------------------------------------------------------------
 
 init:

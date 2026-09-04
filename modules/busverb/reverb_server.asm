@@ -481,7 +481,7 @@ bus_mine:
         add     b,a
         move    a,x:(r7+$63)            ; this call's ACC read address
 ; ---- this call's REVERB WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
-; The wet is READ now -- by a character station in BUS mode, the return on
+; The wet is READ now -- by a Character station in BUS mode, the return on
 ; the master (docs/BUS.md "The returns") -- so it carries the same cross-core
 ; race the accumulators do and takes the same four-buffer rotation, and it
 ; carries L and R (32 words a buffer, interleaved) because the return is what

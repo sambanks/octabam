@@ -678,7 +678,7 @@ is the slice of that road worth having.
 ### 6b. Per-mode knob NAMES — DONE 3 Sep 2026, emulator-proven
 
 **A MODE select now renames the knobs around it.** BusDelay's MDEP/MRAT read
-SCAT/DENS in GRAIN, and the modulation station's FDBK/DLY read RES and
+SCAT/DENS in GRAIN, and the Modulation station's FDBK/DLY read RES and
 RING/PTCH in PHSR and COMB. `ModeView` in the manifest is the single
 declaration; the remixer's UNIT pane follows it, `send_probe --set` accepts
 the aliases, and `tools/mode_names.py` emits a MODE formatter that rewrites
@@ -842,7 +842,7 @@ stepped-select labels, stock effects listable beside ours, the insert card,
 a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
 (three stations, BusDelay v5) — and, since 3 Sep 2026, **the returns**:
 the engines' wet published stereo and four deep, returned at the master by
-the character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
+the Character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
 hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
 `tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
 across the edit — with no return in the rig nothing changed, to the bit.

@@ -1,4 +1,4 @@
-# MODULATION STATION
+# MODULATION
 
 The third BamSep26 station: one modulated line, seven modes, **FX1 only**,
 replacing stock CHORUS (id 0x12). Design page:
@@ -43,7 +43,7 @@ allocator put us.
 
 - **1,133 words** (payload A, 1,166 on B), **402 cycles/sample** (the LINE
   loop is the worst of the four; PHSR is 354, AMP 193, dry 20).
-- `tools/verify_modstation.py`, **9 gates, all PASS**:
+- `tools/verify_modulation.py`, **9 gates, all PASS**:
   - MIX=0 is a bit-exact passthrough in all seven modes;
   - **an FX2 instance is a bit-exact dry pass in all seven modes at any
     setting**, and `dsp_host -guard` reports "nothing written over a loaded

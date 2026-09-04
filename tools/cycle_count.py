@@ -164,7 +164,7 @@ def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
         pass
     # ON FX1 = listed there by name, OR a replacement (MenuEntry.replaces)
     # inheriting the stock row when the remix leaves stock's FX1 list
-    # alone: FILTER STATION on FILTER's id is on FX1 whether or not
+    # alone: SPECTRUM on FILTER's id is on FX1 whether or not
     # anyone typed it, so it is priced x4 like anything else there.
     fx1_mods = [m for m in mods if m["stem"] in cyc
                 and (m["key"] in fx1

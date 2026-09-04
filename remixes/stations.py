@@ -6,7 +6,7 @@ server and SEND (the fallback). FILTER is replaced by the station, so its
 """
 from remix.schema import Remix
 REMIX = Remix(name="stations", doc="the three BamSep26 stations + BusVerb + SEND",
-              modules=("REVERB SERVER", "SEND", "FILTER STATION", "CHARACTER STATION",
-                       "MODULATION STATION"),
+              modules=("REVERB SERVER", "SEND", "SPECTRUM", "CHARACTER",
+                       "MODULATION"),
               fallback="SEND",
-              fx1=("FILTER STATION", "CHARACTER STATION", "MODULATION STATION"))
+              fx1=("SPECTRUM", "CHARACTER", "MODULATION"))

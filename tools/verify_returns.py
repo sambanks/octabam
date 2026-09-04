@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """THE RETURNS: the engines' wet, published to the bus and returned at the
-master by a character station in BUS mode (docs/BUS.md "The returns").
+master by a Character station in BUS mode (docs/BUS.md "The returns").
 
 Renders through send_probe.run() against the DEV dump (all three servers
 real), so a layout can hold the reverb, the delay and the station at once.
@@ -41,7 +41,7 @@ import send_probe
 from remix import registry
 
 MEM = pathlib.Path("out/dsp/mem_dev_A.mem")
-# ⚠️ REBUILD THE DUMP, ALWAYS (verify_charstation's rule). mem_dev_A.mem is
+# ⚠️ REBUILD THE DUMP, ALWAYS (verify_character's rule). mem_dev_A.mem is
 # whatever the last DEV build left -- verify-bus rebuilds it from the DEFAULT
 # remix, which has no station, and then id 0x1c dispatches to STOCK LO-FI:
 # the host keeps printing, the "return" is LO-FI processing silence, and
@@ -55,7 +55,7 @@ if _r.returncode != 0:
     sys.exit("the DEV build failed:\n" + _r.stdout[-2000:] + _r.stderr[-2000:])
 if not MEM.exists():
     sys.exit("the DEV build wrote no out/dsp/mem_dev_A.mem")
-CH = registry.by_name("charstation")
+CH = registry.by_name("character")
 L2 = CH.harness.layout_char
 K = CH.knob_map_all()
 for c in ("R", "D", "S", L2):
@@ -65,7 +65,7 @@ for c in ("R", "D", "S", L2):
 # renders a plausible dry passthrough (CLAUDE.md).
 if send_probe.entry_points(str(MEM), send_probe.SERVER_ID[L2]) == \
         send_probe.entry_points(str(MEM), send_probe.SERVER_ID["S"]):
-    sys.exit("the character station is not in this dump (its entry is SEND's)")
+    sys.exit("the Character station is not in this dump (its entry is SEND's)")
 
 FRAMES = send_probe.FRAMES
 REV = list(send_probe.REV_PARAMS)          # IN = 0: a pure return

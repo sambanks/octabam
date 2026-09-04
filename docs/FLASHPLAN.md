@@ -45,7 +45,7 @@ flashes 2 and 3 are for.
 | A module on FX1 | FX1's chooser relocated into the cave, its three `lea` refs repointed, its own id **and cursor** tables written | ColdFire emulator only |
 | A donor region beyond the reverbs | any stock effect's words can be taken; every one is self-contained | `dsp_reach` over both payloads — **static** |
 | Hello World (Bryan T) | builds and runs | flashed on **his** unit, not Sam's |
-| **The returns** (3 Sep 2026) | the engines' wet arrives once, at the master, through the character station in BUS mode (RVRB/DLY); the hosts go quiet ONLY while a return is live, and print as before otherwise | `tools/verify_returns.py` 18/18 and `make verify-bus` 19/19 — single-core: the delay's wet and its RETD stamp both cross cores on the unit, which no local test can see; and `0x360d3-5` next door was dead on hardware for R36 |
+| **The returns** (3 Sep 2026) | the engines' wet arrives once, at the master, through the Character station in BUS mode (RVRB/DLY); the hosts go quiet ONLY while a return is live, and print as before otherwise | `tools/verify_returns.py` 18/18 and `make verify-bus` 19/19 — single-core: the delay's wet and its RETD stamp both cross cores on the unit, which no local test can see; and `0x360d3-5` next door was dead on hardware for R36 |
 
 ---
 
@@ -280,8 +280,8 @@ each one's failure has a different shape from the next.
 | | claim | how to see it | falsified by |
 |---|---|---|---|
 | i | six descriptor clones + floated caves; label formatters and the FX1 list in the SECOND zero run | every station's page draws all twelve names; MODE/SAT/CMOD print words; BusDelay TIME prints `1/8`; FX1 chooser = NONE + three stations | garbage names, a select printing a number, a chooser with junk rows |
-| ii | FX1 default = filter station, dry at defaults | a part that chose FILTER runs the station and sounds unchanged | any tone change on a track at station defaults |
-| iii | the modulation station is dry on FX2 and modulates on FX1 | T5's FX1 modstation audible in CHOR; the same module chosen on T3's FX2 is a dry pass | **test on T7/T8 first** — a wrong FX1 detection on tracks 5–6 writes into BusVerb's tank |
+| ii | FX1 default = Spectrum station, dry at defaults | a part that chose FILTER runs the station and sounds unchanged | any tone change on a track at station defaults |
+| iii | the Modulation station is dry on FX2 and modulates on FX1 | T5's FX1 modulation audible in CHOR; the same module chosen on T3's FX2 is a dry pass | **test on T7/T8 first** — a wrong FX1 detection on tracks 5–6 writes into BusVerb's tank |
 | iv | harvested ids from an old project = silence, not noise | load the untouched set: tracks that named PLATE/SPRING/COMB etc. are silent | noise, a hang |
 | v | **an FX1 station sending on T5** — a bus participant on FX1 has never run on hardware | T5's →VRB reaches the reverb; sweep tracks × modes and listen for the rotation-class artefacts (stutter, a block-rate buzz) | stutter that follows dispatch position |
 | vi | stock DELAY on FX2 beside a sending station on FX1 | T2: delay repeats in the mix, the reverb of the DRY signal on the bus, not of the repeats | silence on FX2, or the repeats reaching the reverb |

@@ -1,4 +1,4 @@
-"""CHARACTER STATION -- everything that dirties or tightens, and a bus sender.
+"""CHARACTER -- everything that dirties or tightens, and a bus sender.
 
 The second BamSep26 station. A per-track INSERT that REPLACES stock LO-FI
 (id 0x1c, both menus, and every saved part that chose LO-FI):
@@ -53,8 +53,8 @@ _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
 MODULE = Module(
-    name="charstation",
-    key="CHARACTER STATION",
+    name="character",
+    key="CHARACTER",
     kind=Kind.DSP_EFFECT,
     doc="BamSep26 station: crush, fold/ring, saturation, compressor, width, sends.",
     menu=MenuEntry(
@@ -105,8 +105,8 @@ MODULE = Module(
                  defaults={2: 127, 8: 127}),
     ),
     dsp=DspSection(
-        asm="modules/charstation/char_station.asm",
-        priority=13,                  # after the filter station
+        asm="modules/character/character.asm",
+        priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,
         r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here

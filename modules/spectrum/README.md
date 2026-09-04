@@ -1,4 +1,4 @@
-# FILTER STATION
+# SPECTRUM
 
 The first BamSep26 station: two filters, four routings, one modulation and
 two bus sends in one insert, **replacing stock FILTER** (id 0x04) on both
@@ -41,7 +41,7 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   sends. Stock FILTER is 192 for one filter. Seven of these on one core is
   at the cliff by the pricer; four on FX1 plus three SENDs beside the reverb
   is 1,384 + 1,356 + 60.
-- `tools/verify_filterstation.py` (needs the audition dump): defaults
+- `tools/verify_spectrum.py` (needs the audition dump): defaults
   bit-exact on a full-scale ramp; LP 12.9 dB/oct between 2 and 4 kHz at
   FREQ 30; HP and BP at DC → 0 (−2 / −1 LSB); NOTCH and LP at DC → DC (5
   LSB low); BASE 100 kills DC through the pair (4 LSB); WDTH 30 takes 55 dB

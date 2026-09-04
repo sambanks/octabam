@@ -1,5 +1,5 @@
 ; ---------------------------------------------------------------------------
-; FILTER STATION -- two filters, four routings, one modulation, two sends.
+; SPECTRUM -- two filters, four routings, one modulation, two sends.
 ;
 ; Insert contract (modules/ripple/ripple_svf.asm): frames in place at
 ; x:(r0)/x:(r0+n0), knobs from r6, state in this instance's r7 block. PLUS

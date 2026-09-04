@@ -382,19 +382,19 @@ def make_test_project(src, dest, remix_name):
 # One part = the whole rig on its eight tracks, as designed (the BamSep26
 # page and docs/BUS.md "The returns"): stations on FX1 everywhere, the two
 # engines in T1's and T5's FX2, the stock delay where a track wants one, and
-# T8's character station in SAT=BUS with both returns up. Every part of every
+# T8's Character station in SAT=BUS with both returns up. Every part of every
 # bank gets the same layout, so any pattern is the rig. Knob bytes are the
 # manifest defaults with the few deliberate exceptions listed per track.
 RIG = (
     # track, FX1 (key, {knob: val}),                FX2 (key, {knob: val})
-    (1, ("CHARACTER STATION", {"-VRB": 30}),        ("DELAY SERVER", {})),
-    (2, ("FILTER STATION", {"-VRB": 40, "-DEL": 30}), ("DELAY", {})),
-    (3, ("FILTER STATION", {"-VRB": 30}),           ("CHARACTER STATION", {})),
-    (4, ("FILTER STATION", {"-DEL": 40}),           ("DELAY", {})),
-    (5, ("MODULATION STATION", {"-VRB": 40}),       ("REVERB SERVER", {})),
-    (6, ("FILTER STATION", {"-VRB": 50}),           ("DELAY", {})),
-    (7, ("CHARACTER STATION", {"-VRB": 40, "-DEL": 20}), ("DELAY", {})),
-    (8, ("CHARACTER STATION", {"SAT": 3, "CRSH": 127, "RING": 127,
+    (1, ("CHARACTER", {"-VRB": 30}),        ("DELAY SERVER", {})),
+    (2, ("SPECTRUM", {"-VRB": 40, "-DEL": 30}), ("DELAY", {})),
+    (3, ("SPECTRUM", {"-VRB": 30}),           ("CHARACTER", {})),
+    (4, ("SPECTRUM", {"-DEL": 40}),           ("DELAY", {})),
+    (5, ("MODULATION", {"-VRB": 40}),       ("REVERB SERVER", {})),
+    (6, ("SPECTRUM", {"-VRB": 50}),           ("DELAY", {})),
+    (7, ("CHARACTER", {"-VRB": 40, "-DEL": 20}), ("DELAY", {})),
+    (8, ("CHARACTER", {"SAT": 3, "CRSH": 127, "RING": 127,
                                "CMOD": 1, "COMP": 40}), (None, {})),
 )
 
