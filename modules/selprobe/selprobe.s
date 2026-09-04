@@ -102,13 +102,22 @@ fmt:    lea     -16(%sp),%sp
         moveq   #0,%d1
         move.b  (%a0),%d1               | the byte the formula addresses
 
-| print as page*4096 + slot*256 + value, so the row being read is always
-| visible beside the byte and a mis-set knob cannot look like a wrong formula
-        move.l  %d4,%d0
+| ---- THE BYTE COMES FIRST -------------------------------------------------
+| Printed page*4096 + slot*256 + byte, a MODE step moved the number by ONE in
+| five digits -- 12544 to 12545 -- which on the unit was unreadable, and the
+| operator could not tell "it did not move" from "I could not see it move".
+| The byte is what the measurement is ABOUT, so it leads:
+|
+|     byte*256 + page*16 + slot
+|
+| A MODE step is now a jump of 256: 49, 305, 561, 817, 1073 for MODE 0..4 on
+| page 3 slot 1. The row is still visible in the last two digits, so a
+| knob that slipped is still distinguishable from a byte that changed.
+        move.l  %d1,%d0
+        lsl.l   #4,%d0
+        add.l   %d4,%d0
         lsl.l   #4,%d0
         add.l   %d2,%d0
-        lsl.l   #8,%d0
-        add.l   %d1,%d0
         movem.l (%sp),%d2-%d4
         lea     16(%sp),%sp
         move.l  %d0,-(%sp)

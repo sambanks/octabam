@@ -31,10 +31,22 @@ project, and **writes nothing**.
    | **24–29** | **4 — FX2** |
    | 30+ | pinned to page 4, slot 5 |
 
-   The number printed is `page * 4096 + slot * 256 + the byte`, so the row
-   being read is always visible beside the value. `-` means no project.
-4. On the **same track**, open page 2 of its FX2 effect and turn a select.
-5. Go back to HELLO WORLD's GAIN and read it again.
+   The number printed is **`byte * 256 + page * 16 + slot`** — the byte
+   LEADS. Printed the other way round, a MODE step moved a five-digit
+   number by one and was unreadable on the unit. A MODE step is now a jump
+   of 256. The row is still in the last two digits. `-` means no project.
+
+4. ⚠️ **Refresh with `RDRW`, HELLO WORLD's second knob — never with GAIN.**
+   A formatter runs only when the page redraws, and GAIN's value is what
+   selects the row, so wiggling GAIN to force a redraw MOVES WHAT YOU ARE
+   LOOKING AT. On the first hardware attempt that made the reading
+   unusable: "it did not move" could not be told from "I could not see it
+   move". `RDRW` changes no audio and exists only to redraw the page.
+5. **On the SAME track** — the probe reads whichever track you are viewing —
+   open FX1 page 2 and turn a select. On Spectrum those are MODE (slot 1),
+   ROUT (slot 3) and SRC (slot 5); the even slots are knobs and live in a
+   different array, so they will read 0 here whatever you do.
+6. Come back, turn `RDRW` to refresh, and read GAIN again.
 
 ## What the answer means
 
