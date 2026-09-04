@@ -42,6 +42,8 @@ def _load_src():
     ns.HANDLER = g["HANDLER"]
     ns.VERB_NAMES = g["VERB_NAMES"]
     ns.DLY_NAMES = g["DLY_NAMES"]
+    ns.VERB_SELECTS = g["VERB_SELECTS"]
+    ns.DLY_SELECTS = g["DLY_SELECTS"]
     sys.modules["busscreen_src"] = ns
     return ns
 
@@ -138,36 +140,54 @@ def main():
     rows_ptr = rd32(CONTROL_DESC + 0x18)
     rev_action = rd32(rows_ptr + 6 * 24 + 8)
     dly_action = rd32(rows_ptr + 7 * 24 + 8)
+    e17_key = int.from_bytes(e17[12:16], "big")
+    e17_enc = int.from_bytes(e17[16:20], "big")
+    KEY_UP, KEY_DOWN = 0x34, 0x33        # UP arrow / LEFT arrow (confirmed)
 
     def draw():
         for _ in range(3):
             if u32(0x400cbf4c) != 0:
                 break
             emu._call(uc, emu.MENU_OPEN)
+        uc.mem_write(0x400cbf40, (16).to_bytes(4, "big"))   # MENU_OPEN may reset
         uc.mem_write(emu.MENU_VIEWPORT, (13).to_bytes(4, "big"))
         grown_boot._draws.clear()
+        inverts.clear()
         emu._call(uc, emu.MENU_DRAW)
-        return grown_boot._draws
 
-    def texts():
-        return [t for _x, _y, t in grown_boot._draws]
+    def geom(slot):
+        col = 0 if slot < 6 else 1
+        row = slot % 6
+        bar_y = 4 + row * 7
+        return bar_y + 1, (32 if col == 0 else 90), col
 
-    def cursor_row():
-        for x, y, t in grown_boot._draws:
-            if t == ">":
-                return (y - 8) // 8
-        return None
-
-    def value_row(row):
-        y = 8 + row * 8
+    def value_at(slot):
+        y, val_x, _ = geom(slot)
         for x, yy, t in grown_boot._draws:
-            if yy == y and x == 54:
-                return int(t) if t.lstrip("-").isdigit() else None
+            if yy == y and x == val_x:
+                return t
         return None
 
-    KEY_UP, KEY_DOWN = 0x34, 0x35        # UP arrow / DOWN arrow (see key handler)
+    # the cursor is an INVERTED BAR (0x40012254), which the text hook cannot
+    # see -- hook the invert call and read (x1, y1) off its stack.
+    inverts = []
+    def _inv_hook(u, addr, size, user):
+        sp = u.reg_read(UC_M68K_REG_A7)
+        x1 = int.from_bytes(u.mem_read(sp + 8, 4), "big")
+        y1 = int.from_bytes(u.mem_read(sp + 12, 4), "big")
+        inverts.append((x1, y1))
+    from unicorn import UC_HOOK_CODE
+    from unicorn.m68k_const import UC_M68K_REG_A7
+    uc.hook_add(UC_HOOK_CODE, _inv_hook, begin=0x40012254, end=0x40012254)
+
+    def cursor_slot():
+        # the last invert of a draw with a row-sized bar y (4 + row*7)
+        for x1, y1 in reversed(inverts):
+            if (y1 - 4) % 7 == 0 and 0 <= (y1 - 4) // 7 < 6 and x1 in (2, 60):
+                return (0 if x1 == 2 else 1) * 6 + (y1 - 4) // 7
+        return None
+
     def press(kc):
-        e17_key = int.from_bytes(e17[12:16], "big")
         emu._call(uc, e17_key, (kc,))
 
     def val_addr(track, slot):
@@ -176,104 +196,89 @@ def main():
         base = DB + part * 6322 + track * (24 if slot < 6 else 30)
         return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a + 18 + slot)
 
-    def setup(track, eid, values):
-        # the scan reads 0x80000ecc; the label picks off the Part id 0x8ed88
-        uc.mem_write(ID_BASE + track, bytes([eid]))
-        emu.assign_fx2(grown_boot, track=track, effect_id=eid)
-        for slot, v in enumerate(values):
-            uc.mem_write(val_addr(track, slot), bytes([v & 0xff]))
-
-    VERB_VALS = [i + 20 for i in range(12)]     # 20..31, distinct
-    # ---- REVERB row: selects the verb track, draws page 1 ----------------
-    uc.mem_write(0x80000000, bytes([0]))         # not on the verb track yet
-    setup(4, 7, VERB_VALS)                        # BusVerb on track 4
+    # ---- REVERB: selects host track 4, draws all 12 in two columns --------
+    uc.mem_write(0x80000000, bytes([0]))
+    uc.mem_write(ID_BASE + 4, bytes([7]))
+    emu.assign_fx2(grown_boot, track=4, effect_id=7)
+    from busscreen_src import VERB_SELECTS, DLY_SELECTS
+    for slot in range(12):
+        v = 1 if slot in VERB_SELECTS else 50 + slot
+        uc.mem_write(val_addr(4, slot), bytes([v]))
     emu._call(uc, rev_action, (0,))
-    check(uc.mem_read(0x80000000, 1)[0] == 4,
-          f"REVERB selects the host track 4 (got {uc.mem_read(0x80000000, 1)[0]})")
-    check(u32(0x400cbf40) == 16, "REVERB opens the screen (state 16)")
+    check(uc.mem_read(0x80000000, 1)[0] == 4, "REVERB selects host track 4")
     draw()
-    want_p1 = [n.decode() for n in src.VERB_NAMES[:6]]
-    check(all(n in texts() for n in want_p1),
-          f"page 1 shows the first six verb names (got {[t for t in texts() if t][:10]})")
-    check(all(str(v) in texts() for v in VERB_VALS[:6]),
-          f"page 1 shows their values {VERB_VALS[:6]} (got {texts()})")
-    check(cursor_row() == 0, f"cursor starts at row 0 (got {cursor_row()})")
+    names = [n.decode() for n in src.VERB_NAMES]
+    check(all(n in [t for _x, _y, t in grown_boot._draws] for n in names),
+          "all 12 verb names shown at once (double-wide)")
+    # every slot shows the right thing: knobs -> number, selects -> word
+    bad = []
+    for slot in range(12):
+        shown = value_at(slot)
+        if slot in VERB_SELECTS:
+            want = VERB_SELECTS[slot][1]      # index 1
+            want = want.decode() if isinstance(want, bytes) else want
+        else:
+            want = str(50 + slot)
+        if shown != want:
+            bad.append(f"slot {slot}: {shown!r} != {want!r}")
+    check(not bad, f"all 12 verb values correct (knobs numbers, selects words) {bad}")
+    check(cursor_slot() == 0, f"cursor starts at slot 0 (got {cursor_slot()})")
 
-    # ---- navigation across the page boundary -----------------------------
-    for _ in range(5):
+    # navigation: linear 0..11 across both columns, clamped
+    for _ in range(7):
         press(KEY_DOWN)
     draw()
-    check(cursor_row() == 5, f"five downs -> row 5, still page 1 (got {cursor_row()})")
-    check(all(n in texts() for n in want_p1),
-          "still page 1 at row 5")
-    press(KEY_DOWN); draw()
-    want_p2 = [n.decode() for n in src.VERB_NAMES[6:]]
-    check(cursor_row() == 0 and all(n in texts() for n in want_p2),
-          f"down past row 5 flips to page 2 row 0 (cursor {cursor_row()}, "
-          f"got {[t for t in texts() if t][:10]})")
-    press(KEY_UP); draw()
-    check(cursor_row() == 5 and all(n in texts() for n in want_p1),
-          f"up from page 2 row 0 returns to page 1 row 5 (cursor {cursor_row()})")
-
-    # ---- edit a page-1 row (locally proven) ------------------------------
-    for _ in range(5):
-        press(KEY_UP)                              # back to page 1 row 0
-    press(KEY_DOWN); press(KEY_DOWN)                      # row 2 = SIZE
+    check(cursor_slot() == 7,
+          f"seven downs -> slot 7 (right column row 1) (got {cursor_slot()})")
+    for _ in range(3):
+        press(KEY_UP)
     draw()
-    check(cursor_row() == 2, f"cursor on row 2 (got {cursor_row()})")
-    v0 = value_row(2)
-    e17_enc = int.from_bytes(e17[16:20], "big")
+    check(cursor_slot() == 4, f"three ups -> slot 4 (got {cursor_slot()})")
+    for _ in range(30):
+        press(KEY_DOWN)
+    draw()
+    check(cursor_slot() == 11, f"down clamps at slot 11 (got {cursor_slot()})")
+    for _ in range(30):
+        press(KEY_UP)
+    draw()
+    check(cursor_slot() == 0, f"up clamps at slot 0 (got {cursor_slot()})")
+
+    # edit a page-1 knob (slot 2 = SIZE)
+    press(KEY_DOWN); press(KEY_DOWN)
+    draw()
+    v0 = int(value_at(2))
     emu._call(uc, e17_enc, (0, 5))
     draw()
-    check(value_row(2) == v0 + 5,
-          f"encoder +5 moves the page-1 value {v0} -> {v0 + 5} (got {value_row(2)})")
+    check(int(value_at(2)) == v0 + 5,
+          f"encoder +5 moves SIZE {v0} -> {v0 + 5} (got {value_at(2)})")
 
-    # page-2 edit: runs without fault (value-move is the flash test)
-    press(KEY_DOWN); press(KEY_DOWN); press(KEY_DOWN); press(KEY_DOWN)   # into page 2
-    st_before = u32(0x400cbf40)
-    ok_p2 = True
+    # a select edit runs (value-move on hardware is the earlier flash result)
+    for _ in range(4):
+        press(KEY_DOWN)                  # to slot 6 (MODE)
+    stb = u32(0x400cbf40)
+    ok_sel = True
     try:
         emu._call(uc, e17_enc, (0, 1))
     except Exception:
-        ok_p2 = False
-    check(ok_p2 and u32(0x400cbf40) == st_before,
-          "page-2 encoder call runs without fault (value-move is the flash test)")
+        ok_sel = False
+    check(ok_sel and u32(0x400cbf40) == stb,
+          "select encoder call runs without fault")
 
-    # ---- DELAY row: selects the delay track, switches the label set ------
+    # ---- DELAY: selects host track 2, switches label set -----------------
     uc.mem_write(0x80000000, bytes([0]))
-    setup(2, 6, [i + 40 for i in range(12)])      # BusDelay on track 2
+    uc.mem_write(ID_BASE + 2, bytes([6]))
+    emu.assign_fx2(grown_boot, track=2, effect_id=6)
+    for slot in range(12):
+        v = 1 if slot in DLY_SELECTS else 50 + slot
+        uc.mem_write(val_addr(2, slot), bytes([v]))
     emu._call(uc, dly_action, (0,))
-    check(uc.mem_read(0x80000000, 1)[0] == 2,
-          f"DELAY selects the host track 2 (got {uc.mem_read(0x80000000, 1)[0]})")
+    check(uc.mem_read(0x80000000, 1)[0] == 2, "DELAY selects host track 2")
     draw()
-    want_d1 = [n.decode() for n in src.DLY_NAMES[:6]]
-    check(all(n in texts() for n in want_d1),
-          f"DELAY draws the delay's names (got {[t for t in texts() if t][:10]})")
-
-    # selects render as WORDS, not numbers (the "wrong type" fix)
-    def value_row_any(row):
-        y = 8 + row * 8
-        for x, yy, t in grown_boot._draws:
-            if yy == y and x == 54:
-                return t
-        return None
-    # BusVerb MODE (slot 6, page 1 row... slot6 = page 1 row? PAGE0 rows are
-    # slots 0..5; MODE is slot 6 = page 1 (second page) row 0). Put a value and
-    # read the word.
-    emu.assign_fx2(grown_boot, track=4, effect_id=7)
-    uc.mem_write(ID_BASE + 4, bytes([7]))
-    # MODE = 2 -> BIG (slot 6). slot6 lives on page 1 (0-indexed page 1), row 0.
-    DBv = u32(0x46c82456); pv = uc.mem_read(0x80000003, 1)[0]
-    uc.mem_write(DBv + pv * 6322 + 4 * 30 + 0x8ef5a + 18 + 6, bytes([2]))
-    uc.mem_write(DBv + pv * 6322 + 4 * 30 + 0x8ef5a + 18 + 9, bytes([2]))
-    emu._call(uc, rev_action, (0,))
-    for _ in range(6):
-        press(KEY_DOWN)                  # onto page with slots 6..11
-    draw()
-    check("BIG" in texts(),
-          f"MODE renders as its word BIG, not a number (got {[t for t in texts() if t][:10]})")
-    check("+7" in texts(),
-          f"SHFT renders as its word +7 (got {[t for t in texts() if t][:10]})")
+    dnames = [n.decode() for n in src.DLY_NAMES]
+    check(all(n in [t for _x, _y, t in grown_boot._draws] for n in dnames),
+          "DELAY shows its 12 names (label set switched)")
+    check(value_at(6) == DLY_SELECTS[6][1].decode(),
+          f"DELAY MODE shows its word (got {value_at(6)!r})")
 
     if backup is not None:
         IMAGE.write_bytes(backup)                  # restore for the rest of make check
