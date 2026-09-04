@@ -43,23 +43,29 @@ TABLE_REFS = (
     (0x40065086, STATE_TABLE + 0x10, 0x10),  # enc,   addal (d1fc)
 )
 
-# screen_draw.s, assembled with m68k-elf-as -mcpu=5407. The one self-reference
-# is `lea LABELTAB,%a5` at byte 18: a placeholder 0x40bad000 the build patches
-# to the cave's own pointer-table address. verify_busscreen re-assembles the
-# source and compares, so a drifted source cannot pass unnoticed.
+# screen_draw.s, assembled with m68k-elf-as -mcpu=5407. Four self-references
+# the build patches to cave addresses (placeholders 0x40bad000/4/8/c):
+#   VERBTAB, DLYTAB -- the two twelve-entry name pointer tables
+#   FMT             -- the sprintf format string
+#   SCRATCH         -- an 8-byte number buffer (appears twice in the code)
+# verify_busscreen re-assembles the source and compares, so a drifted source
+# cannot pass unnoticed.
 HANDLER = bytes.fromhex(
-    "4fefffd848d77c7c286f002c4a8c6738"
-    "4bf940bad00076002435" "3c002803e78c5084"
-    "2f024878ffff2f0448780008" "2f0c4879400ba8764eb940012bd8"
-    "4fef00185283700cb0836ed04cd77c7c4fef00284e75")
-LABELTAB_OFF = 18                      # the placeholder operand, patched in emit
-LABELTAB_MARK = bytes.fromhex("40bad000")
+    "4fefffd448d77cfc286f00304a8c670000d42e3946c82456670000ca7000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad0042006721e4c0100002647d7fc0008f084d7c076002803e78c508424353c002f024878ffff2f04487800082f0c4879400ba8764eb940012bd84fef00187000103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800342f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff8a4cd77cfc4fef002c4e75")
+# placeholder marker -> which emitted-blob field it is patched to.
+MARKS = {
+    "40bad000": "verbtab",
+    "40bad004": "dlytab",
+    "40bad008": "fmt",
+    "40bad00c": "scratch",
+}
 
-# BusVerb's twelve parameter names, slot order (page 1 then page 2). Step 3
-# replaces these with per-engine names AND live values; for now they are the
-# static proof that twelve rows draw.
-LABELS = (b"TIME", b"MOD", b"SIZE", b"HP", b"LP", b"IN",
-          b"MODE", b"SHMR", b"DIFF", b"SHFT", b"GATE", b"RATE")
+# The twelve parameter names of each engine, slot order (page 1 then page 2),
+# matching modules/busverb and modules/busdelay.
+VERB_NAMES = (b"TIME", b"MOD", b"SIZE", b"HP", b"LP", b"IN",
+              b"MODE", b"SHMR", b"DIFF", b"SHFT", b"GATE", b"RATE")
+DLY_NAMES = (b"TIME", b"FDBK", b"TONE", b"PING", b"-VRB", b"PTCH",
+             b"MDEP", b"MODE", b"MRAT", b"SIZE", b"DRV", b"FRZE")
 
 _STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 _BASE = 0x40000400
@@ -71,51 +77,60 @@ def _stock_table() -> bytes:
     return d[a:a + ENTRY_LEN * ENTRY_N]
 
 
-def emit(addr: int):
-    """The relocated 17-entry table (17th = a state-2 clone with its DRAW
-    field repointed at our handler and its other members zeroed), the draw
-    handler, the twelve label strings, and the pointer table the handler
-    walks. Then the three `lea` operand rewrites that move every reference to
-    the table. Layout is a function of `addr` (the handler names its own
-    pointer table), which is why this is emit() rather than pinned bytes."""
+def emit(addr):
+    """Relocated 17-entry table (17th DRAW -> our handler), the handler, both
+    name tables and their strings, the sprintf format and a scratch buffer,
+    then the six table-reference rewrites. Layout depends on `addr`, so this
+    is emit() not pinned bytes."""
     table = bytearray(_stock_table())
+    handler_off = ENTRY_LEN * (ENTRY_N + 1)
+    body_off = handler_off + len(HANDLER)
 
-    draw_off = ENTRY_LEN * (ENTRY_N + 1)                 # handler follows 17 entries
-    strings_off = draw_off + len(HANDLER)
+    data = bytearray()
+    def place(names):
+        ptrs = []
+        for nm in names:
+            ptrs.append(addr + body_off + len(data))
+            data.extend(nm + b"\0")
+        return ptrs
+    verb_ptrs = place(VERB_NAMES)
+    dly_ptrs = place(DLY_NAMES)
+    fmt_here = body_off + len(data)
+    data.extend(b"%d\0")
+    while (body_off + len(data)) % 4:
+        data.append(0)
+    verbtab_here = body_off + len(data)
+    data.extend(b"".join(x.to_bytes(4, "big") for x in verb_ptrs))
+    dlytab_here = body_off + len(data)
+    data.extend(b"".join(x.to_bytes(4, "big") for x in dly_ptrs))
+    scratch_here = body_off + len(data)
+    data.extend(b"\0" * 8)
 
-    # place the strings, remember each absolute address
-    blob = bytearray()
-    str_at = []
-    cur = strings_off
-    strings = bytearray()
-    for s in LABELS:
-        str_at.append(addr + cur)
-        strings += s + b"\0"
-        cur += len(s) + 1
-    while cur % 4:                                       # align the pointer table
-        strings += b"\0"
-        cur += 1
-    ptrtab_off = cur
-    ptrtab = b"".join(a.to_bytes(4, "big") for a in str_at)
-
-    # the 17th entry: clone of state 2, draw member -> our handler, rest zeroed
-    entry = bytearray(b"\0" * ENTRY_LEN)
-    entry[DRAW_MEMBER * 4:DRAW_MEMBER * 4 + 4] = (addr + draw_off).to_bytes(4, "big")
-
-    # the handler, with its LABELTAB placeholder patched to the pointer table
+    targets = {
+        "verbtab": addr + verbtab_here,
+        "dlytab": addr + dlytab_here,
+        "fmt": addr + fmt_here,
+        "scratch": addr + scratch_here,
+    }
     handler = bytearray(HANDLER)
-    assert handler[LABELTAB_OFF:LABELTAB_OFF + 4] == LABELTAB_MARK, \
-        "screen_draw.s LABELTAB placeholder moved -- re-pin HANDLER/LABELTAB_OFF"
-    handler[LABELTAB_OFF:LABELTAB_OFF + 4] = (addr + ptrtab_off).to_bytes(4, "big")
+    for mark, field in MARKS.items():
+        mb = bytes.fromhex(mark)
+        want = targets[field].to_bytes(4, "big")
+        i = handler.find(mb)
+        assert i >= 0, "placeholder %s missing" % mark
+        while i >= 0:
+            handler[i:i + 4] = want
+            i = handler.find(mb, i + 4)
 
-    blob = bytes(table) + bytes(entry) + bytes(handler) + bytes(strings) + ptrtab
+    entry = bytearray(b"\0" * ENTRY_LEN)
+    entry[DRAW_MEMBER * 4:DRAW_MEMBER * 4 + 4] = (addr + handler_off).to_bytes(4, "big")
 
+    blob = bytes(table) + bytes(entry) + bytes(handler) + bytes(data)
     pokes = tuple(
         (op, stock.to_bytes(4, "big"), (addr + moff).to_bytes(4, "big"))
         for op, stock, moff in TABLE_REFS
     )
     return blob, pokes
-
 
 MODULE = Module(
     name="busscreen",

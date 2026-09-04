@@ -31,7 +31,8 @@ def _load_src():
         if line.startswith(("HANDLER", "LABELS", "LABELTAB_OFF", "LABELTAB_MARK")) or line.strip().startswith(('"', "'", ")", "b\"")) or line.strip().endswith((",", "+")) or line.strip().startswith("bytes.fromhex"):
             pass
     exec(compile(src[:src.index("def _stock_table")], "manifest", "exec"), g)
-    ns.HANDLER = g["HANDLER"]; ns.LABELS = g["LABELS"]
+    ns.HANDLER = g["HANDLER"]
+    ns.VERB_NAMES = g["VERB_NAMES"]; ns.DLY_NAMES = g["DLY_NAMES"]
     sys.modules["busscreen_src"] = ns
 
 def _build(remix):
@@ -99,7 +100,7 @@ def main():
 
     # the shipped handler bytes still match the source
     import shutil, subprocess, tempfile
-    from busscreen_src import HANDLER          # loaded below
+    from busscreen_src import HANDLER, VERB_NAMES, DLY_NAMES
     if shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy"):
         with tempfile.TemporaryDirectory() as td:
             o, bp = td + "/c.o", td + "/c.bin"
@@ -120,16 +121,14 @@ def main():
     check(grown_tree == ref_tree,
           "MAIN MENU tree walks identically to the un-grown image")
 
-    # 4) enter state 16 and confirm the draw handler renders the 12 labels
-    from busscreen_src import LABELS
+    # 4) enter state 16 and confirm the handler renders NAME + VALUE per row,
+    #    and that the label set follows the host effect id.
     uc = grown_boot.uc
     if not getattr(grown_boot, "_menu_ready", False):
         emu._prime_menu(grown_boot)
     def u32(a):
         return int.from_bytes(uc.mem_read(a, 4), "big")
     def draw_state_16():
-        # MENU_DRAW bails unless the window-context pointer 0x400cbf4c is set;
-        # MENU_OPEN toggles it, so open until it is non-zero.
         for _ in range(3):
             if u32(0x400cbf4c) != 0:
                 break
@@ -139,10 +138,26 @@ def main():
         grown_boot._draws.clear()
         emu._call(uc, emu.MENU_DRAW)
         return [t for _x, _y, t in grown_boot._draws]
+
+    TRACK = 4
+    # BusVerb (id 7): plant a distinct value per slot, expect name + value
+    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
+    vals = [i * 10 + 3 for i in range(12)]        # 3,13,...,113 -- all distinct
+    for i, v in enumerate(vals):
+        emu.set_fx2_value(grown_boot, TRACK, i, v)
     drawn = draw_state_16()
-    want = [s.decode() for s in LABELS]
-    check(all(w in drawn for w in want),
-          f"state 16 draws all 12 labels (drew {len(drawn)}: {drawn[:14]})")
+    names = [n.decode() for n in VERB_NAMES]
+    check(all(n in drawn for n in names),
+          f"BusVerb: all 12 names drawn (got {[d for d in drawn if d][:14]})")
+    check(all(str(v) in drawn for v in vals),
+          f"BusVerb: all 12 live values drawn (wanted {vals}, got {drawn})")
+
+    # BusDelay (id 6): the label set switches
+    emu.assign_fx2(grown_boot, track=TRACK, effect_id=6)
+    drawn = draw_state_16()
+    dnames = [n.decode() for n in DLY_NAMES]
+    check(all(n in drawn for n in dnames),
+          f"BusDelay: label set switched to its 12 names (got {[d for d in drawn if d][:14]})")
 
     if backup is not None:
         IMAGE.write_bytes(backup)       # restore for the rest of make check
