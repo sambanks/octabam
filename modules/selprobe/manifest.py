@@ -17,10 +17,19 @@ HOW TO READ IT. The readout is HELLO WORLD's GAIN, and GAIN's own value
 picks BOTH the page and the slot -- `slot = value mod 6`, `page = value div
 6` -- so one knob reads the whole parameter space: 0-5 is page 0, 6-11 page
 1, 12-17 page 2, **18-23 page 3 (FX1)**, **24-29 page 4 (FX2)**, and
-anything above 29 pins to page 4 slot 5. The number printed is
-`page * 4096 + slot * 256 + value`, so the row being read is always visible
-beside the byte and a mis-set knob cannot be mistaken for a wrong formula.
-`-` means no project.
+anything above 29 pins to page 4 slot 5. The number printed is **`byte * 256 + page * 16 + slot`** -- the BYTE
+LEADS, because printed the other way round a MODE step moved the number by
+one in five digits (12544 to 12545) and was unreadable on the unit. A MODE
+step is now a jump of 256. The row is still in the last two digits, so a
+knob that slipped is still distinguishable from a byte that changed. `-`
+means no project.
+
+⚠️ **REFRESH WITH HELLO WORLD'S SECOND KNOB, `RDRW`, NOT WITH GAIN.** A
+formatter runs only when the page redraws, and GAIN's value is what selects
+the row -- so wiggling GAIN to force a redraw MOVES WHAT YOU ARE LOOKING AT.
+That made the first hardware attempt unreadable: "it did not move" could not
+be told from "I could not see it move". `RDRW` changes no audio and exists
+purely to redraw the page with GAIN untouched.
 
 ⚠️ THE FIRST BUILD READ FX2 ONLY, and shipped in an image that HIDES every
 effect with an FX2 page-2 select -- so there was nothing on the unit to turn
@@ -44,7 +53,7 @@ PROBE_BYTES = bytes.fromhex(
     "b2836c02260172064c4130032803220376064c031000242f0018761db6826c02"
     "24039481263946c82456676670001039100b14cf223c000018b24c010000d680"
     "70001039100b14cc721e4c010000d68006830008f04a200472064c010000d680"
-    "d6822043720012102004e988d082e188d0814cd7001c4fef00102f004879400b"
+    "d6822043720012102001e988d084e988d0824cd7001c4fef00102f004879400b"
     "465d2f2f000c4eb940013a084fef000c4e754cd7001c4fef0010487a00102f2f"
     "00084eb940013a08508f4e752d000000"
 )
@@ -62,9 +71,8 @@ MODULE = Module(
             pinned=PROBE_BYTES,
             source="modules/selprobe/selprobe.s",
             registers_formatter=FormatterReg(module="HELLO WORLD", slot=0),
-            report_note=" (HELLO WORLD GAIN prints page*4096 + slot*256 + "
-                        "the select byte at DB+0x8f04a + track*30 + "
-                        "page*6 + slot)",
+            report_note=" (HELLO WORLD GAIN picks page+slot and prints "
+                        "byte*256 + page*16 + slot; RDRW refreshes)",
         ),
     ),
 )
