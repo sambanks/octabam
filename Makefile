@@ -92,6 +92,12 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
 
+.PHONY: midi-flash
+midi-flash: ## RECOVERY: flash a .syx over MIDI (Startup Menu). make midi-flash PORT=A SYX=downloads/extracted/OCTATRACK_OS1.40C.syx
+	@test -n "$(SYX)" || { echo "usage: make midi-flash PORT=A SYX=<file.syx>  (OT: Startup Menu -> TRIG 3 -> READY TO RECEIVE)"; exit 1; }
+	$(PY) tools/midi_flash.py $(PORT) $(SYX)
+PORT ?= A
+
 .PHONY: reverb
 reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }
