@@ -45,14 +45,40 @@
         .text
 fmt:    lea     -16(%sp),%sp
         movem.l %d2-%d4,(%sp)           | 12 bytes: buf 20(sp), value 24(sp)
+| ---- GAIN encodes PAGE and SLOT, not slot alone -------------------------
+| The first build read FX2's page only, and the image it shipped in hides
+| every effect that HAS an FX2 page-2 select -- so there was nothing on the
+| unit to turn and nothing the probe could ever see move. One knob now reads
+| the whole space instead of assuming a page:
+|
+|     slot = value mod 6,  page = value div 6,  clamped to page 4
+|
+| so GAIN 0..5 is page 0, 6..11 page 1, 12..17 page 2, 18..23 page 3 (FX1),
+| 24..29 page 4 (FX2), and anything above 29 pins to page 4 slot 5.
         move.l  24(%sp),%d0             | GAIN 0..127
-        move.l  #21,%d1
-        divu.l  %d1,%d0                 | slot = value / 21
-        moveq   #5,%d1
+        moveq   #29,%d1
         cmp.l   %d0,%d1
         bge.s   1f
-        move.l  %d1,%d0                 | the top band is 105..127
-1:      move.l  %d0,%d2                 | d2 = slot 0..5
+        move.l  %d1,%d0                 | above 29: pin to page 4, slot 5
+1:      moveq   #6,%d1
+        divu.l  %d1,%d0                 | d0 = page, remainder in the pair
+        move.l  24(%sp),%d3
+        moveq   #29,%d1
+        cmp.l   %d3,%d1
+        bge.s   2f
+        move.l  %d1,%d3
+2:      moveq   #6,%d1
+        divu.l  %d1,%d3
+        move.l  %d3,%d4                 | d4 = page (again, for the address)
+        move.l  %d3,%d1
+        moveq   #6,%d3
+        mulu.l  %d3,%d1
+        move.l  24(%sp),%d2
+        moveq   #29,%d3
+        cmp.l   %d2,%d3
+        bge.s   3f
+        move.l  %d3,%d2
+3:      sub.l   %d1,%d2                 | d2 = slot = value - page*6
 
         move.l  0x46c82456,%d3          | the project DB base
         beq.s   none                    | no project: nothing to read
@@ -67,15 +93,22 @@ fmt:    lea     -16(%sp),%sp
         mulu.l  %d1,%d0                 | track*30
         add.l   %d0,%d3
         add.l   #0x8f04a,%d3            | the select array
-        add.l   #24,%d3                 | page 4 -> +4*6
+        move.l  %d4,%d0
+        moveq   #6,%d1
+        mulu.l  %d1,%d0
+        add.l   %d0,%d3                 | + page*6
         add.l   %d2,%d3                 | + slot
         move.l  %d3,%a0
         moveq   #0,%d1
         move.b  (%a0),%d1               | the byte the formula addresses
 
-        move.l  %d2,%d0
+| print as page*4096 + slot*256 + value, so the row being read is always
+| visible beside the byte and a mis-set knob cannot look like a wrong formula
+        move.l  %d4,%d0
+        lsl.l   #4,%d0
+        add.l   %d2,%d0
         lsl.l   #8,%d0
-        add.l   %d1,%d0                 | print as slot*256 + value
+        add.l   %d1,%d0
         movem.l (%sp),%d2-%d4
         lea     16(%sp),%sp
         move.l  %d0,-(%sp)
