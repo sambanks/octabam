@@ -448,7 +448,7 @@ measured by sweeping both arguments with the page global set by hand:
 |---|---|
 | the address | page 4, slot 2, track 4 landed at `0x8efec` = `0x8ef5a + 120 + 24 + 2` ✅ |
 | the page | pages 0–4 stepped the target by exactly 6 bytes each ✅ — **page 4 is FX2**, the same numbering the page-1 writer uses |
-| the delta | a slot at 5 took `+3` and became **8**: read-modify-write ✅ |
+| the delta | a slot at 5 was reported taking `+3` to become **8** — ⚠️ **NOT REPRODUCED 4 Sep pm**: the delta does not re-apply on later emulator runs under any setup tried (staged page, page open, helper live) |
 | the clamp | `+5` into pages 0 and 1 landed on **1**, not 5 — clamped to a two-value control's range, while pages 2–4 took the full 5 ✅ |
 
 ❌ **`a3` is NOT the absolute slot 0–11.** It is the slot WITHIN page 2,
@@ -480,8 +480,21 @@ the editor does not visibly edit. This is the CLAUDE.md blind spot — these
 panel routines expect to be entered with the page staged, and the emulator
 cannot stand in for that.
 
+**Traced to the cause (4 Sep pm).** The delta is not stored directly: the
+editor computes an increment via `0x4003249c` and adds it to the current
+value (`d0 = 0x4003249c(slot,delta) + current`, at `0x4003a574`). That helper
+reads the **staged page** `0x46c7d244` and loops on it. In the emulator it
+either spins (staged page empty) or, with the page opened, returns an
+increment of zero — so the value never changes. Staging the page, leaving it
+open, and running the helper live were all tried; none moved a mid-range
+knob, and the AM "5→8" could not be reproduced. So the dependency is **live
+encoder/page-dispatcher state** (what `0x4003249c` reads while a page is
+actively being edited), PLAN §5's RTOS "route A" — NOT a loaded project.
+**Card emulation does not close this gap.**
+
 **So the honest state:** whether a screen can drive page 2 through this
-routine is UNRESOLVED, and the resolver is the flash, not the emulator.
+routine is UNRESOLVED, and the resolver is the flash (or route A), not a
+loaded project.
 **The screen itself is the test:** build twelve rows, and whether each page-2
 row moves on the unit settles it — no separate probe. Falsifier: a page-2
 row that draws and steps but whose sound does not change.
@@ -752,12 +765,15 @@ holds. So the screen is now the cheapest way to settle that too.
 2. ✅ **Add the row to CONTROL (or the root).** `menushortcut` already does
    exactly this for its two action rows; the screen is one more row whose
    action enters the new menu-state instead of opening the FX2 page.
-⚠️ **Before the handlers, one emulator caveat carried from §9c-ii:** the
-editor `0x4003a474` runs for all six slots but does not visibly apply a delta
-from outside a staged FX2 page, so the encoder-handler design below may need
-to STAGE the host's FX2 page (`FUN_400554e0(4)`) before calling it — the same
-`_call(uc, PAGE_STAGE, (4,))` the emulator's `render_fx2` does. That staging
-step is unproven and is part of what the flash tests.
+⚠️ **The DRAW side is locally verifiable; the EDIT side is not.** The draw
+handler (piece 3) renders in the emulator and can be walked with no flash.
+The encoder handler (piece 4) calls `0x4003a474`, whose delta comes from
+`0x4003249c` reading live page-dispatcher state the emulator does not supply
+(traced 4 Sep pm, above) — staging the page did not help, and a loaded
+project would not either, so **card emulation is not the lever here**. The
+edit side is a flash question (or an RTOS "route A" build, PLAN §5). Build the
+draw side and the plumbing locally; let the flash settle whether turning a
+row moves the value.
 
 3. 🟡 **The draw handler.** Render twelve labelled rows with live values. The
    pieces are decoded — window ctor `FUN_4005829c`, list drawer
