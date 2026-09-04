@@ -879,13 +879,16 @@ bit-identical, which is what that gate is for.
   cursor, selects as words), level knob edits, cursor wraps. Every slot
   confirmed on the unit. The one RE finding it produced: the page-2 editor
   `0x4003a474` clamps against a STALE descriptor from outside a staged page
-  (MAINMENU §9c-ii) — the screen sets values itself. **Evening: the screen
-  is IN THE RIG** — `bamsep27` carries BUS SCREEN in place of MENU SHORTCUT
-  (they cannot coexist), the cave pinned into a proven-dead 15 KB zero run at
-  `0x40108800`, and each screen has its 13th row, the bus's RETURN level at
-  the master (T8 Character CRSH / RING), emulator-proven. All gates green on
-  `bamsep27`. **`OCTATRACK_OCTABAM91.bin` is built = FLASH 5**, claims in
-  FLASHPLAN. Docs: MAINMENU §9e.
+  (MAINMENU §9c-ii) — the screen sets values itself. The plain `busscreen`
+  remix carries the full screen (float cave, safe band), validated on tags
+  85–90.
+  ❌ **Screen-in-rig ATTEMPTED and RETRACTED (tag 91).** Putting BUS SCREEN in
+  `bamsep27` needed the cave pinned at `0x40108800` (the safe band was full);
+  that address is OS `.bss` and the unit crashed the instant [PROJ] was
+  pressed. The build now guards it (`SAFE_CAVE_CEIL`), `bamsep27` is back to
+  MENU SHORTCUT, and screen-in-rig waits on a split/trimmed cave and a
+  PROJECT-exercising gate. tag-91/92 images quarantined. The 13th return row
+  is built but dormant. Docs: MAINMENU §9e, FLASHPLAN Flash 5.
 - **MODE is on page-2 slot 6 in both bus engines (4 Sep 2026, unflashed;
   BusVerb v7, BusDelay v6).** It swapped places with SHMR / MDEP so that it
   sits on a slot the panel's own page-2 knob editor writes, which is what a
