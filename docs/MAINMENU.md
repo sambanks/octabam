@@ -602,9 +602,39 @@ inputs that aim it are unidentified. Its caller (`0x4005a7d8`, the FX-page
 region) sets more state than those two globals before calling, and that is
 where they will be.
 
-**Status for a twelve-row screen:** page 1 and page-2 knobs are callable AND
-aimed; page-2 selects are callable but NOT aimed. That is the last question,
-and it is narrower than it was.
+**The front door that sets those globals, found (4 Sep 2026):
+`0x4006de34(kind, value)`.** It stashes `kind` into `0x46c8d1a0` and `value`
+into `0x46c8d19c` — the committer's two inputs — then dispatches on
+`kind == 4`. So the aiming API has the shape we wanted.
+
+❌ **But driving it writes nothing either**, at any kind. It is another
+layer of the same UI stack, with its own gates.
+
+⚠️ **THE PATTERN IS NOW THE FINDING, across five routines.** Every panel
+edit path here — the page-1 writer, the page-2 knob editor, the select
+committer, the edit applier, and this setter — is layered UI code that
+expects to be entered from the key and encoder dispatcher with a live page
+open. Two of them happen to take enough as arguments to be driven from
+outside. The rest do not, and each one costs a session to find that out.
+Driving them piecemeal from a cave is working against how they are written.
+
+**So the honest options for the bus screens are three, and the choice is a
+design one rather than a research one:**
+
+1. **A NINE-ROW screen**, on the two paths that are callable and aimed
+   today: page 1's six and page-2's three knobs. It leaves the three page-2
+   SELECTS out, and both engines' MODE is among them.
+2. **Keep digging for the select aiming.** Narrow, but this thread has cost
+   five reads and each answer has produced another layer.
+3. **Use the shortcut that is already built.** `modules/menushortcut`
+   already puts REVERB and DELAY in the main menu and opens the host track's
+   FX2 page, which gives ALL TWELVE controls with no new reverse
+   engineering at all. What it does not give is a blank host page — the
+   controls are on the track, reached from the menu, rather than off it.
+
+Option 3 is the original §6 shortcut design, and it is worth re-reading
+before spending more on 2: the goal that grew into "a screen" started as
+"reachable without hunting", which the shortcut already does.
 
 ⚠️ **The lesson is the method, not the addresses.** Four of the nine stores
 were invisible to reading and obvious to a write hook, and one of them is
