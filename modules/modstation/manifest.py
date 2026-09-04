@@ -49,8 +49,8 @@ MODULE = Module(
         fx2_id=0x12,
         replaces="CHORUS",
         donor_desc=0x400d58b8,        # DARK REV: 12 active slots, selects 7/9/11
-        abbr=b"MODS",
-        fullname=b"ModStn",
+        abbr=b"MODU",
+        fullname=b"Modulation",
         build_tag=True,
     ),
     params=(
