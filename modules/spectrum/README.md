@@ -70,3 +70,33 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
 - The layout alphabet lists this station under both `1` and `L` (stock
   FILTER's letter) because both map to id 0x04 — harmless, cosmetic.
 - ⚠️ UNFLASHED. The FX1-participant bus case is flash 4's claim (v).
+
+## Cycle trim — the parallel-move relayout (evaluated 4 Sep 2026, not done)
+
+Spectrum is the light station (341 cycles) and runs up to four times a core,
+so it is the highest-leverage place to save cycles — every cycle shaved is
+worth ×4 on the delay core. Where the cycles are: the per-sample loop is a
+straight sequence of `move x:(r7+$xx),y1 / mpy x0,y1,a`, one memory access per
+arithmetic word.
+
+The 56300 can fold an X-read AND a Y-read into the same word as a multiply,
+which would roughly halve the loop — a saving of ~80–100 cycles per instance,
+enough to bring BusDelay's GRAIN back to four grains on the delay core with a
+one-for-one Spectrum trim on each of its four tracks.
+
+**Why it is not a quick pass:** a parallel move's operand must be
+register-indirect (`(rn)+`, `(rn+nn)`), and this loop addresses everything as
+`x:(r7+displacement)`, which the parallel forms forbid. Realising the saving
+needs the classic filter relayout — coefficients contiguous in X, state
+contiguous in Y, each walked by a dedicated address register (r3/r4/n3/n4 are
+free in the loop; r0/r1/r2/r7 are taken) — which is ~150 lines rewritten with
+the silent-mis-encode trap (`docs/DSP.md`) live on every new parallel move.
+`dsp_asm` DOES encode the legal parallel forms correctly (probed 4 Sep 2026;
+`mpy x0,y1,a x:(r3)+,x0 y:(r4)+,y1` round-trips), so the trap is only the
+illegal ones — but disassemble every one.
+
+**The gate is ready:** `tools/verify_spectrum_ident.py ref` captured 26 hashes
+across every MODE × ROUT, every SRC, defaults, zeros and maxima; a rewrite
+must `check` bit-identical. Do the relayout only when four grains (or a
+tighter card) actually needs the cycles — today both cores have margin at two
+grains, so there is no consumer.

@@ -83,7 +83,7 @@ SR = 44100
 # send_probe.DELAY_PARAMS order, which since the 18 Aug 2026 swap is:
 #   0 TIME  1 FDBK  2 TONE  3 PING  4 -VRB  5 PTCH  6 MODE  7 MDEP  8 MRAT
 #   9 SIZE  10 DRV  11 FRZE     (v6, 4 Sep 2026: MODE and MDEP swapped so
-#   MODE sits on an even slot the panel's page-2 knob editor can write)
+#   MODE sits on an even slot the panel's page-2 knob editor is proven to write)
 # ⚠️ Slot 6 is the KNOB field of r6+$c, NOT $b -- the old "$b/$c/$d/$e"
 # reading is the exact error PARAM_PAGES.md names as why the delay's WOW
 # worked locally and never on hardware. Odd slots (7/9/11) are companion

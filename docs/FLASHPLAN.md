@@ -319,7 +319,29 @@ frame fraction a ColdFire machine may take. Core cycles ≈ 2× the ticks 🟡.
 
 ---
 
-## The MODE re-slot — two claims, BOTH CONFIRMED on tag 84 (4 Sep 2026)
+## Flash 5 — the rig with the bus screens — ❌ BLOCKED (tag 91 crashed on [PROJ])
+
+tag 91 (`bamsep27` with the screen) was built and flashed, and **crashed with
+a line-F exception the moment [PROJ] was pressed.** Cause: the screen's cave
+was pinned at `0x40108800`, inside the OS image's `.bss` tail — a zero run at
+rest that the PROJECT subsystem uses as RAM once a project is loaded. Our cave
+and the project's own memory collided. The single-core, no-project emulator
+could not see it, and the "proven dead" test never opened PROJECT. The
+tag-91/92 images are quarantined in `out/BAD_DO_NOT_FLASH/`.
+
+Fixed and prevented: `build_bus` now refuses a cave at or above
+`SAFE_CAVE_CEIL` (0x400d8000). But the rig has no safe hole for the
+2,296-byte cave, so **screen-in-rig is deferred** — `bamsep27` is back to
+MENU SHORTCUT, which is what flash 4 shipped and is known good. The plain
+`busscreen` remix carries the full screen safely (tags 85–90).
+
+⬜ **Before any rig-with-screen flash again:** the cave must live in the
+decoded free band (split across the 1,988- and 1,609-byte holes, or the rig
+trimmed to make one hole), and the PROJECT menu must be exercised in the
+emulator — the gate that was blind here. Until then flash 5 is the plain
+`busscreen` screen (already validated on the unit) or the shortcut rig.
+
+## The MODE re-slot — two claims, BOTH CONFIRMED on tag 84 (4 Sep 2026)## The MODE re-slot — two claims, BOTH CONFIRMED on tag 84 (4 Sep 2026)
 
 ✅ **Flashed as `OCTATRACK_OCTABAM84.bin` (remix `bus`, PR #95) the same
 afternoon. Both claims held: MODE draws and steps as a 3-way select on slot

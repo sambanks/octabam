@@ -998,7 +998,7 @@ warmdone:
 
 ; ---- MODE: character select, page-2 slot 6 ($c bits 16-23; v7 4 Sep 2026,
 ; slot 7 / bits 8-15 before that -- moved so the panel's own page-2 knob
-; editor, which writes even slots only, can set it from a main-menu screen)
+; editor -- an even slot is its proven target -- can set it from a screen)
 ; Three characters. MODE reconfigures tap length, diffusion depth, damping
 ; and modulation together — not merely rescaling SIZE.
 ;

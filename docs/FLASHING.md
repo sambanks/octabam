@@ -62,6 +62,9 @@ MIDI. Read §1 first.
 
 ---
 
+> The register of hardware failure modes (symptom → cause → fix) is
+> `docs/FAILURE_MODES.md`. Check it when the unit misbehaves.
+
 ## 1. Safety net — the recovery path (READ THIS FIRST)
 
 If something goes wrong (a "Z" screen, won't boot, a hang), **don't panic**:
@@ -149,7 +152,11 @@ container before it will produce a modified one.
 3. On the Octatrack: power off, hold **[FUNC]**, power on → **STARTUP MENU**.
 4. Press **[TRIG 3]** (MIDI UPGRADE) → **"READY TO RECEIVE MIDI UPGRADE…"**.
 5. Send the file. The **[TRIG]** lights come on one by one as it receives —
-   it takes a while.
+   it takes a while. **From this repo you can drive the send** instead of a
+   SysEx app: `make midi-flash PORT=A SYX=downloads/extracted/OCTATRACK_OS1.40C.syx`
+   (`tools/midi_flash.py`) paces the ~7,460 messages at the DIN rate through a
+   named MIDI destination. FILTER MIDI CLOCK on that port. Retry-safe: on a
+   lost send, re-enter the Startup Menu and run it again (`--ms 60` to slow it).
 6. When the transfer finishes: **"PREPARING FLASH"**, then **"UPDATING
    FLASH"**. **⚠️ DO NOT POWER OFF OR DISCONNECT** during "…FLASH" —
    interrupting here corrupts the OS (→ "Z" screen, → §1).

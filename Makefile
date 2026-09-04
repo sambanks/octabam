@@ -92,6 +92,12 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
 
+.PHONY: midi-flash
+midi-flash: ## RECOVERY: flash a .syx over MIDI (Startup Menu). make midi-flash PORT=A SYX=downloads/extracted/OCTATRACK_OS1.40C.syx
+	@test -n "$(SYX)" || { echo "usage: make midi-flash PORT=A SYX=<file.syx>  (OT: Startup Menu -> TRIG 3 -> READY TO RECEIVE)"; exit 1; }
+	$(PY) tools/midi_flash.py $(PORT) $(SYX)
+PORT ?= A
+
 .PHONY: reverb
 reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }
@@ -125,6 +131,8 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] menu shortcut: no .venv, or this remix has none"
 	@$(PY) tools/verify_cfprobe.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] cf probe: no .venv, or this remix has none"
+	@$(PY) tools/verify_busscreen.py 2>/dev/null || \
+	  echo "  [SKIP] bus screen table relocation: no .venv"
 	@$(PY) tools/verify_hidden.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
 	python3 tools/verify_grains.py $(REMIX)

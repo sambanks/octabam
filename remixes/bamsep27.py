@@ -29,7 +29,12 @@ fresh or unassigned track still dispatches to real code, and it is hidden
 too: its knobs default to 0, so such a track is inert and looks like every
 other empty FX2.
 
-Still to come: the two menu screens that edit the engines.
+⚠️ BUS SCREEN (the twelve-row editor) is NOT in the rig yet. It floats its
+cave in the decoded free band, and the rig's clones + label formatters fill
+that band, so it does not fit. Pinning it into the image tail crashed on
+[PROJ] (tag 91: that tail is OS bss, not free space). The rig keeps MENU
+SHORTCUT for now; screen-in-rig waits on a split cave or a trimmed rig. The
+plain `busscreen` remix carries the screen and floats it safely.
 """
 
 from remix.schema import Remix
