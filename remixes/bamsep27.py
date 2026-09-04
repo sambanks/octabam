@@ -1,28 +1,37 @@
-"""BamSep27 -- the rig with the engines off the chooser (design pass 2).
+"""BamSep27 -- the rig with an empty FX2 chooser (design pass 2).
 
-The second design pass, built one step at a time. What is different from
-`bamsep26` today:
+Every track is the same shape: a STATION on FX1, carrying that track's two
+bus sends, and NOTHING on FX2. What differs from `bamsep26`:
 
-  * BusVerb and BusDelay are HIDDEN -- placed, dispatched and cloned, but on
-    no chooser row and drawn with no knobs. A track hosts an engine because
-    the project says so, not because somebody turned the chooser, and the
-    engines' controls belong on the two main-menu screens (docs/MAINMENU.md
-    section 6, not built yet).
+  * NOTHING IS ON THE FX2 CHOOSER -- zero rows. The two engines, the SEND
+    client and the three stations are all placed, dispatched and cloned, and
+    none of them is listed. A track hosts an engine because the project says
+    so; a station is chosen on FX1; and an FX2 slot is simply empty.
+  * The engines and SEND are drawn BLANK: their twelve names are cleared, so
+    the host's FX2 page shows nothing at all. The stations keep their names,
+    because one descriptor serves both menus and blanking them would empty
+    their FX1 page too.
+  * Each engine also gets the HOST GUARD: it runs on the bank's first FX2
+    state block and passes dry on every other, so an old part naming its id
+    on another track cannot start a second instance writing the host's tank.
   * The stock DELAY row is gone. Flash 4 (4 Sep 2026) wedged the unit every
     time a part LOADED with it selected -- a squeal that survived a project
     change and needed a power cycle, where re-selecting the same effect on
     the panel did not. Unexplained, and not worth explaining: the rig does
     not want it.
 
-Still to come before this remix is the rig: the sends move off the stations
-and onto the engines' otherwise blank pages, GRAIN drops to two grains (the
-cycle lever the delay core needs once the stations are actually turned up),
-and the two menu screens.
+⚠️ THE SENDS STAY ON THE STATIONS. Design pass 2 first moved them to FX2,
+and the arithmetic refused: both engines already use all twelve parameter
+slots, and putting their controls on a menu screen frees none of them --
+the screen edits those same twelve. Sends on the stations are uniform
+anyway, since every track has one. SEND is kept only as the FALLBACK, so a
+fresh or unassigned track still dispatches to real code, and it is hidden
+too: its knobs default to 0, so such a track is inert and looks like every
+other empty FX2.
 
-⚠️ An id dispatches the same code on every track, so hiding an engine does
-not stop an old part naming it on some other track. What stops that is the
-engine reading its own allocator slot and passing dry off its host, the
-idiom modules/modulation already uses. Not built yet either.
+Still to come: GRAIN drops to two grains (the cycle lever the delay core
+needs once the stations are actually turned up), and the two menu screens
+that edit the engines.
 """
 
 from remix.schema import Remix
@@ -33,7 +42,8 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MENU SHORTCUT"),
-    hidden=("REVERB SERVER", "DELAY SERVER"),
+    hidden=("REVERB SERVER", "DELAY SERVER", "SEND",
+            "SPECTRUM", "CHARACTER", "MODULATION"),
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),
 )

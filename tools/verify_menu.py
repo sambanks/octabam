@@ -197,8 +197,14 @@ def main():
     # script assumed a module every time and died with a KeyError on `warped`
     # and every other no-bus remix -- a traceback, not a failed check, so
     # `REMIX=warped make verify` reported nothing at all. Found 3 Sep 2026.
+    # A HIDDEN fallback is not in EXPECT (it has no chooser row), and its
+    # cursor parks at 0 because there is no row to point at. Its descriptor
+    # is still cloned and its id still resolves to it, which is the half
+    # that matters -- an unassigned track has to dispatch to real code.
     if FALLBACK == _NO_FALLBACK:
         fb_p, fb_pos = FX1_NONE, 0
+    elif FALLBACK in REMIX.hidden:
+        fb_p, fb_pos = rd32(img, FX2_IDS + _MODS[FALLBACK].menu.fx2_id * 4), 0
     else:
         fb_p, fb_pos = rd32(img, FX2_IDS + EXPECT[FALLBACK][0] * 4), \
             EXPECT[FALLBACK][1]

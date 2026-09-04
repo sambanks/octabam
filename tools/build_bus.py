@@ -442,7 +442,12 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # leave the donor's), so its track page draws no knobs. Counts, defaults and
 # enable bits are untouched, which is what keeps the parameter writer and the
 # frame builder working for the menu screen that edits it.
-RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in HIDDEN else
+# ⚠️ NOT EVERY HIDDEN MODULE GETS BLANK NAMES. One descriptor serves BOTH
+# menus, so blanking a module that is also on the FX1 chooser would empty its
+# FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
+# only a hidden module that is nowhere on FX1 is drawn empty.
+BLANKED = [k for k in HIDDEN if k not in REMIX.fx1]
+RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
 # Explicit per-knob defaults -- NOT the donor's, which are sized for a
@@ -1120,7 +1125,13 @@ def main():
         if rd32(r) != FX2_LIST:
             sys.exit(f"list ref at 0x{r:08x} not stock FX2_LIST -- refusing")
         wr32(r, list_addr)
-    fb_pos = 0 if NO_FB else ORDER.index(REMIX.fallback)
+    # The fallback's cursor position. A HIDDEN fallback has no row of its
+    # own, so there is no position to point at: park the cursor at 0. A
+    # fresh track then dispatches to the fallback's code and its chooser
+    # opens on row 0, which in a remix that hides its fallback is whatever
+    # row 0 is -- or nothing, if the chooser is empty by design.
+    fb_pos = (0 if (NO_FB or REMIX.fallback in HIDDEN)
+              else ORDER.index(REMIX.fallback))
     # The cursor position of every listed effect, past the NONE row if one
     # was restored -- ID2POS is an index into `real`, not into ORDER.
     for pos, name in enumerate(ORDER):
@@ -1375,9 +1386,9 @@ def main():
                              f"3,072-word FX1 allocation")
                 _fx1_desc.append(_m.menu.donor_desc + 0x38)
                 continue
-            if _n not in ORDER:
-                sys.exit(f"fx1={_n!r}: it has no FX2 chooser row, so there "
-                         f"is no descriptor clone for FX1 to point at")
+            if _n not in CARRIED:
+                sys.exit(f"fx1={_n!r}: this remix does not carry it, so "
+                         f"there is no descriptor clone for FX1 to point at")
             # A REPLACEMENT is listed by its own key. The composed list is
             # rebuilt from scratch in the cave, so the stock row its id
             # inherited (the in-place repoint above edits the STOCK list,
@@ -1529,9 +1540,14 @@ def main():
           f"  chooser list = {len(real)} entries at 0x{list_addr:08x} (the "
           f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
     if HIDDEN:
-        print(f"  placed but NOT LISTED: {', '.join(HIDDEN)} -- code, id and "
-              f"clone present, no chooser row, twelve names blanked so the "
-              f"track page draws nothing")
+        _b = [k for k in HIDDEN if k in BLANKED]
+        _n = [k for k in HIDDEN if k not in BLANKED]
+        print(f"  placed but NOT LISTED on FX2: {', '.join(HIDDEN)} -- code, "
+              f"id and clone present, no chooser row"
+              + (f"; names blanked (page draws nothing): {', '.join(_b)}" if _b
+                 else "")
+              + (f"; names KEPT (on the FX1 chooser): {', '.join(_n)}" if _n
+                 else ""))
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")
@@ -2409,12 +2425,15 @@ mkgo:""",
         # bank's SECOND slot, so a guard compiled in unconditionally would
         # render every voicing pass and every verify_roll comparison DRY.
         # It goes in only for a remix that asks, and `hidden` is the ask.
+        # A module OPTS IN by carrying the marker. Hiding alone must not
+        # gate anything: SEND is hidden in a remix whose FX2 pages are all
+        # blank, and it still has to run on every track -- a fresh track IS
+        # a send, and it does the bus housekeeping.
         for _k in HIDDEN:
-            if _k not in _texts:
+            if _k not in _texts or "; HOSTGUARD\n" not in _texts[_k]:
                 continue
             if _texts[_k].count("; HOSTGUARD\n") != 1:
-                sys.exit(f"{_k} is hidden, but its source has no single "
-                         f"; HOSTGUARD marker to gate on")
+                sys.exit(f"{_k}: more than one ; HOSTGUARD marker")
             _texts[_k] = _texts[_k].replace("; HOSTGUARD\n", """
         move    r7,a
         move    #>$6200,x0

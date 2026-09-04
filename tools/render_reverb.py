@@ -333,6 +333,23 @@ REVERB_ID = 0x07                 # NEW_IDS["REVERB SERVER"] in build_bus.py
 INIT_TAB, PROC_TAB = 0x215, 0x235    # X memory, the dispatcher's two tables
 
 
+def _guarded(mem):
+    """Does the SELECTED REMIX compile the HOSTGUARD into the reverb?
+
+    Read from the remix rather than from the dump: a .mem carries no marker
+    that survives assembly cleanly, and every other tool here already keys
+    off REMIX. A remix that hides the reverb guards it (build_bus.py), and a
+    guarded engine only runs on the bank's FIRST FX2 slot.
+    """
+    try:
+        sys.path.insert(0, str(ROOT / "tools"))
+        from remix import registry
+        r = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
+        return "REVERB SERVER" in r.hidden
+    except Exception:
+        return False
+
+
 def entry_points(mem_path):
     """Read the reverb's init/proc addresses out of the dump being rendered.
 
@@ -397,8 +414,17 @@ def run(mem, src, values, tail_s, verbose, entry=None):
             f.write(struct.pack("<i", max(-8388608, min(8388607, int(v * 8388607)))))
 
     init, proc = entry or entry_points(mem)
+    # ⚠️ THE STATE BLOCK IS NOT FREE TO CHOOSE ANY MORE. A remix that HIDES
+    # the reverb compiles in build_bus.py's HOSTGUARD, which runs the engine
+    # on the bank's FIRST FX2 slot (r7 = 0x6200, `-r7 2`) and passes dry on
+    # every other -- so the historical `-r7 4`, the SECOND slot, renders
+    # silence and every comparison built on it goes blind. verify_burn caught
+    # exactly that on the first guarded remix: it reported its own harness
+    # insensitive rather than reporting a result, which is the gate working.
+    # RVR7 overrides; the default follows the image on disk.
+    r7 = os.environ.get("RVR7") or ("2" if _guarded(mem) else "4")
     cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}",
-           "-inst", "1", "-r7", "4", "-alloc", "3", "-blocks", str(blocks),
+           "-inst", "1", "-r7", r7, "-alloc", "3", "-blocks", str(blocks),
            "-in", str(tmp), "-out", str(out),
            "-params", ",".join(str(v) for v in values)]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
