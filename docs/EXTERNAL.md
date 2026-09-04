@@ -546,3 +546,67 @@ From the recorder session (2 Sep), still open on both sides:
 - The remaining 45 engine opcodes (we know two more than he lists: `0x14`
   and `6` are RELOAD BANK); the other nine arm callers; who sets the
   per-tick class mask `[0x46c7fe94]`.
+
+---
+
+## 7. Two parallel projects, scanned 4 Sep 2026
+
+Scanned against three questions: does anyone document the part record's
+parameter arrays, has the contributor revised his documents, and has anyone
+mapped the panel's parameter-edit path. **Neither answers any of the three**
+— but one gave a cross-check worth keeping and the other is a standing item.
+
+### `bryantysinger/octa-bt-pt` — a parameter-defaults patcher
+
+A Streamlit tool that rewrites stock effect DEFAULTS in an OS 1.40C image.
+Its own words: it "patches values, not code". No firmware RE, no file
+format. `patch_tool/registry.json` enumerates 61 parameters across 14 stock
+effects with slot index, page, conversion type and default.
+
+✅ **An independent enumeration to check ours against, and 12 of 14 agree
+exactly** on the parameter count per effect — FILTER 12, SPATIALIZER 10,
+DELAY 12, EQUALIZER 8, DJ EQ 5, PHASER 7, FLANGER 6, CHORUS 8, COMB 5,
+SPRING 6, COMPRESSOR 7, LO-FI 6.
+
+⚠️ **Two differ, and both are reverbs: PLATE and DARK.** We read 10 active
+slots, they list 9. Ours are `TIME DAMP GATE HP LP MIX GVOL BAL MONO MIXF`
+and `TIME SHVG SHVF HP LP MIX PRE BAL MONO MIXF`; the likely candidate for
+the discrepancy is the trailing `MIXF`, which is also the slot our own
+formatter fix-up treats specially. Not resolved, and worth one look before
+anything relies on either reverb's slot 11 — they are donors, so this has
+never mattered to us, but it would matter to a module that took one of
+their ids.
+
+✅ **It confirms, from hardware, something this repo has had to correct
+itself on repeatedly:** its `fx1_disallowed_effects` is exactly DELAY,
+PLATE, SPRING and DARK, with the note that the restriction is a menu
+restriction "confirmed on real hardware (not an addressing/patching
+constraint)". That is `docs/MODULES.md`'s FX1 story from an independent
+source.
+
+Two addresses it cites we already hold: `0x460d1700` (the per-track bitmask
+of tracks whose FX2 is the delay, `docs/DSP.md`) and `0x4003c718` (the
+`value + 1` stepped-select formatter, `docs/PARAM_PAGES.md` §7).
+
+### `emuyia/ems-octakit` — 256 kits instead of 64 parts
+
+A firmware mod that **replaces the Parts system**: "64 Parts (4 per Bank)
+have been replaced with 256 Kits per Project (untethered from Banks)", with
+old projects migrated into the first 64 kit slots.
+
+❌ **Nothing to read.** Browser-based patcher, no source published, no
+technical documentation — README and CHANGELOG only.
+
+🟡 **But it is an existence proof that matters to us.** Restructuring parts
+into kits means its author necessarily knows the part record's layout and
+every consumer of it — the exact knowledge that cost this project a day on
+4 Sep 2026 through two wrong page-2 layouts. That makes them a person to
+ask rather than a repository to read.
+
+⚠️ **And a compatibility question we now own.** Sam wants octakit rolled in
+eventually. Both projects patch the same OS 1.40C image and both touch the
+part record: octakit changes what a part IS, and `tools/ot_project.py`
+writes per-part effect ids and knob bytes at fixed offsets. Those cannot
+both be right unless the offsets are rederived under octakit. Nothing here
+is blocked by that today; it is a constraint to carry into any
+"octabam + octakit" plan rather than discover during one.
