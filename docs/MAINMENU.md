@@ -524,11 +524,46 @@ control most worth having on the screen.
   ⚠️ Its mirror write faults on an unmapped page in a bare emulator, as the
   parameter writers' do; that is the write happening, not failing.
 
-- 🟡 **So the live-edit path for a page-2 SELECT is still unidentified.**
-  What is now known is where a select's value LIVES (`+0x8f04a`, mirror
-  `0x100a5198`) and that one arm of the edit applier writes there. The
-  encoder path that a panel select turn takes is most likely a sibling of
-  `0x4003a474`, the page-2 knob editor, and that is the next read.
+- ✅ **The select's COMMITTER, found (4 Sep 2026): `0x40079424`.** Same
+  shape as the page-2 knob editor — array, mirror, two dirty bits:
+
+  ```
+      a0 = DB + part*6322 + ... + 0x8f04a ; moveb d1,(a0)   ; the select array
+      moveb d1,(0x100a5198 + ...)                            ; its mirror
+      or 1<<track into the DB's per-track dirty byte
+      or 1<<track into 0x100b145e                            ; the UI's dirty byte
+  ```
+
+  It takes its **value from `0x46c8d19c` and its slot from `0x46c8d1a0`**,
+  globals rather than arguments. Its caller in the FX-page region
+  (`0x4005a7d8`) reads the current select out of `+0x8f04a` first and
+  compares before calling — a UI edit path, not a setter.
+
+- ❌ **Setting those two globals and calling it writes nothing.** Tried on
+  the warm machine: it bails on further UI state that has not been
+  identified. That is the THIRD of these paths to depend on state rather
+  than arguments, and the pattern is the point — **the panel's edit paths
+  are written to be called by the panel.**
+
+**So the recommended shape for the screens has changed.** All three control
+kinds are now fully mapped, and each is the same five stores:
+
+| control kind | array | mirror |
+|---|---|---|
+| page-1 values | `+0x8ee9a` (track*24) | `0x100a4f70` |
+| page-2 knobs | `+0x8ef5a` (track*30 + page*6) | `0x100a50a8` |
+| page-2 selects | `+0x8f04a` (track*30 + page*6) | `0x100a5198` |
+
+plus the per-track dirty bit in the DB and the UI's own at `0x100b145e`.
+**A screen can do those stores itself** and clamp from the descriptor's own
+count, which it already reads to draw the row — rather than calling three
+firmware routines, two of which demand UI state we would have to fake.
+
+⚠️ The risk of doing it ourselves is a step the firmware takes that we have
+not seen — a staged-page refresh, say. That is exactly what the page-1
+writer's mirror was, and we only found it by reading. Before building on
+this, one more pass over the three committers to enumerate every store each
+makes, and match it. That is a bounded read, not an open one.
 
 - ✅ **Worth having on its own:** an entry point that sets a track's FX2
   effect id from a struct, verified locally, is exactly what a screen that
