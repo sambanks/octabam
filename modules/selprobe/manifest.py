@@ -14,10 +14,19 @@ if this number follows it, the formula is right; if it does not, the value
 shown says how far off it is.
 
 HOW TO READ IT. The readout is HELLO WORLD's GAIN, and GAIN's own value
-picks which of the six page-2 slots is shown, so one knob reads the whole
-block: 0-20 is slot 0, then 21 per slot up to slot 5. The number printed is
-`slot * 256 + value`, so the slot is always visible beside the byte and a
-mis-set knob cannot be mistaken for a wrong formula. `-` means no project.
+picks BOTH the page and the slot -- `slot = value mod 6`, `page = value div
+6` -- so one knob reads the whole parameter space: 0-5 is page 0, 6-11 page
+1, 12-17 page 2, **18-23 page 3 (FX1)**, **24-29 page 4 (FX2)**, and
+anything above 29 pins to page 4 slot 5. The number printed is
+`page * 4096 + slot * 256 + value`, so the row being read is always visible
+beside the byte and a mis-set knob cannot be mistaken for a wrong formula.
+`-` means no project.
+
+⚠️ THE FIRST BUILD READ FX2 ONLY, and shipped in an image that HIDES every
+effect with an FX2 page-2 select -- so there was nothing on the unit to turn
+and nothing the probe could ever see move. The stations on FX1 do have
+selects (Spectrum's MODE, ROUT and SRC), which is why the page is now part
+of what the knob chooses rather than an assumption baked into the cave.
 
 ⚠️ MUTUALLY EXCLUSIVE WITH `modules/cfprobe`: both register on HELLO
 WORLD's GAIN. `remixes/selprobe.py` carries this one alone.
@@ -31,11 +40,13 @@ nothing and stores nothing but the caller's sprintf buffer.
 from remix.schema import CavePatch, FormatterReg, Kind, Module
 
 PROBE_BYTES = bytes.fromhex(
-    "4feffff048d7001c202f001872154c4100007205b2806c0220012400263946c8"
-    "2456675e70001039100b14cf223c000018b24c010000d68070001039100b14cc"
-    "721e4c010000d68006830008f04a068300000018d6822043720012102002e188"
-    "d0814cd7001c4fef00102f004879400b465d2f2f000c4eb940013a084fef000c"
-    "4e754cd7001c4fef0010487a00102f2f00084eb940013a08508f4e752d000000"
+    "4feffff048d7001c202f0018721db2806c02200172064c410000262f0018721d"
+    "b2836c02260172064c4130032803220376064c031000242f0018761db6826c02"
+    "24039481263946c82456676670001039100b14cf223c000018b24c010000d680"
+    "70001039100b14cc721e4c010000d68006830008f04a200472064c010000d680"
+    "d6822043720012102004e988d082e188d0814cd7001c4fef00102f004879400b"
+    "465d2f2f000c4eb940013a084fef000c4e754cd7001c4fef0010487a00102f2f"
+    "00084eb940013a08508f4e752d000000"
 )
 
 MODULE = Module(
@@ -51,8 +62,9 @@ MODULE = Module(
             pinned=PROBE_BYTES,
             source="modules/selprobe/selprobe.s",
             registers_formatter=FormatterReg(module="HELLO WORLD", slot=0),
-            report_note=" (HELLO WORLD GAIN prints slot*256 + the select "
-                        "byte at DB+0x8f04a + track*30 + 24 + slot)",
+            report_note=" (HELLO WORLD GAIN prints page*4096 + slot*256 + "
+                        "the select byte at DB+0x8f04a + track*30 + "
+                        "page*6 + slot)",
         ),
     ),
 )

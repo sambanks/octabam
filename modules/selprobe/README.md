@@ -18,11 +18,21 @@ project, and **writes nothing**.
 
 1. Build and flash `REMIX=selprobe make image`. Load a project.
 2. Put **HELLO WORLD** on any track's FX2 and open that page.
-3. **GAIN is the readout.** Its own value picks which of the six page-2
-   slots is shown — 0–20 is slot 0, then 21 per slot up to slot 5 — and the
-   number printed is `slot * 256 + the byte`, so the slot is always visible
-   beside the value and a mis-set knob cannot be mistaken for a wrong
-   formula. `-` means no project is loaded.
+3. **GAIN is the readout.** Its value picks BOTH the page and the slot —
+   `slot = value mod 6`, `page = value div 6` — so one knob reads the whole
+   parameter space:
+
+   | GAIN | page |
+   |---|---|
+   | 0–5 | 0 |
+   | 6–11 | 1 |
+   | 12–17 | 2 |
+   | **18–23** | **3 — FX1** |
+   | **24–29** | **4 — FX2** |
+   | 30+ | pinned to page 4, slot 5 |
+
+   The number printed is `page * 4096 + slot * 256 + the byte`, so the row
+   being read is always visible beside the value. `-` means no project.
 4. On the **same track**, open page 2 of its FX2 effect and turn a select.
 5. Go back to HELLO WORLD's GAIN and read it again.
 
@@ -48,6 +58,26 @@ caller's sprintf buffer.
 
 ⚠️ Mutually exclusive with `modules/cfprobe`: both register on HELLO WORLD's
 GAIN. `remixes/selprobe.py` carries this one alone.
+
+## What the unit has already said (4 Sep 2026, build 80)
+
+The first build read FX2's page only, and shipped in an image that hides
+every effect having an FX2 page-2 select — so there was nothing to turn.
+It still returned a result, from two tracks read at the same slot:
+
+| track | printed | slot | byte |
+|---|---|---|---|
+| T3 | 1281 | 5 | 1 |
+| T4 | 1344 | 5 | 64 |
+
+✅ **Different tracks give different bytes, so the `track*30` term is
+LIVE.** Had the track offset been ignored — which is exactly what happened
+in the emulator, where every write landed at offset zero — both tracks would
+have read the same byte. That was the single most doubtful term in the
+formula, and it is now the one with evidence behind it.
+
+Still unconfirmed: the `page*6 + slot` terms, which is what the page-walking
+build above is for.
 
 ## Verified locally
 
