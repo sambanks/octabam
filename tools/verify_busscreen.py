@@ -311,7 +311,7 @@ def main():
 
     if backup is not None:
         IMAGE.write_bytes(backup)                  # restore for the rest of make check
-    print(f"\n{'FAILED' if fails else 'busscreen OK (2 rows, paged, edit)'}: "
+    print(f"\n{'FAILED' if fails else 'busscreen OK (2 rows, double-wide, all 24 edit)'}: "
           f"{len(fails)} failure(s)")
     sys.exit(1 if fails else 0)
 

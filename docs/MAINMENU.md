@@ -492,25 +492,36 @@ encoder/page-dispatcher state** (what `0x4003249c` reads while a page is
 actively being edited), PLAN §5's RTOS "route A" — NOT a loaded project.
 **Card emulation does not close this gap.**
 
-**So the honest state:** whether a screen can drive page 2 through this
-routine is UNRESOLVED, and the resolver is the flash (or route A), not a
-loaded project.
-**The screen itself is the test:** build twelve rows, and whether each page-2
-row moves on the unit settles it — no separate probe. Falsifier: a page-2
-row that draws and steps but whose sound does not change.
+✅ **RESOLVED ON HARDWARE (tags 85–90, 4 Sep 2026).** The screen was built
+and flashed, and `0x4003a474` **edits all six page-2 slots** from a menu
+state on the unit — knobs and selects, even and odd. The emulator's
+zero-increment was the blind spot, not a property of the routine: the
+"even slots only" am reading is retired.
+
+⚠️ **The defect that WAS real: the editor's clamp is STALE.** It clamps a
+turn against the descriptor it finds in its own page-kind table
+(`0x400d5f38[page]`, read at `0x4003a524`), which is whatever page was
+staged LAST. A menu-state screen never stages the FX2 page, so on the unit
+that table pointed at some other effect: page-2 index 4 (GATE / DRV) was
+squashed to 0..3 — Sam saw GATE become "a 3-way chooser" — and the selects
+were ramped to 127, which the engines do not decode, so MODE looked stuck.
+Its STORE addresses are computed from slot and track and were always right;
+only the clamp consulted the wrong descriptor. **Fix (`modules/busscreen`):
+call the editor for its stores, mirror and dirty bits, then set the value
+yourself** — `clamp(before + delta, 0..count-1)`, count 128 for a knob or
+the select's own — into the Part, the live byte `0x80000950 + slot2` the
+DSP frame reads, and the working mirror `0x100a5138 + slot2`. Never trust
+that clamp from outside a staged page.
 
 **Where that leaves a twelve-row screen (revised 4 Sep 2026 pm).** The
 target is and has always been TWELVE rows. Two firmware writers reach them:
 `0x40054cd8(track, flat, value)` for page 1's six, and `0x4003a474(slot,
 delta)` for page 2. The open question is only how many of page 2's six the
 second routine reaches — the am reading said three (the even/knob slots), the
-pm reading said all six. The emulator shows the page-2 editor RUNNING for all six slots but not
-visibly applying a delta from a cold context, so how many slots a screen can
-truly drive is unresolved and the flash is the arbiter. If all six edit,
-twelve rows are buildable on those two routines alone; if only the even ones
-do, the odd slots still need the select path below and card emulation earns
-its place. **We resolve this by building the twelve-row screen and flashing
-it, not by more probing** — the probes are what this note is retiring.
+pm reading said all six. ✅ Settled on hardware: all six edit (tags 85–90). Twelve rows ARE built on
+those two routines alone; the select path below and card emulation were not
+needed. The probes are what this note retired, and the screen is what
+answered the question they could not.
 
 **The selects' path, part-way (4 Sep 2026).**
 
@@ -745,29 +756,41 @@ made the select path researchable without flashes; it is parked in
 `PLAN.md` as the next emulator milestone, for the next project-dependent
 path, not for this one.
 
-### 9e. The twelve-row bus screen — BUILT (4 Sep 2026, `modules/busscreen`)
+### 9e. The twelve-row bus screen — SHIPPED (4 Sep 2026, `modules/busscreen`, tags 85–90)
 
-✅ **The screen is built and emulator-proven, unflashed.** `modules/busscreen`
-(remix `busscreen`, `tools/verify_busscreen.py` in `make check`) grows the
-menu-state table to a 17th state and fills its draw/key/encoder members:
+✅ **Built, emulator-proven, and walked on the unit across six flashes.**
+`modules/busscreen` (remix `busscreen` = `bus` + this; `tools/verify_busscreen.py`
+in `make check`) grows the menu-state table to a 17th state and fills its
+draw / key / encoder members. As shipped on tag 90:
 
-- **Reachable:** CONTROL gains a `BUS FX` row whose action enters the state.
-- **Draws twelve rows:** name + live value for every control of the host
-  engine, the label set following the FX2 id (7 BusVerb, 6 BusDelay).
-- **Navigable:** a clamped cursor, up/down on 0x33/0x34.
-- **Edits page 1 (rows 0–5) locally-proven:** the encoder reads the value,
-  adds the delta, clamps, and writes through the self-contained
-  `0x40054cd8(track, 24+slot, value)`; the verifier drives a turn and the
-  drawn value moves.
-- **Edits page 2 (rows 6–11) built, FLASH QUESTION:** the encoder calls
-  `0x4003a474(slot-6, delta)` with the FX2 page global set; whether the value
-  moves needs live page-dispatcher state the emulator cannot supply.
+- **Two CONTROL rows, REVERB and DELAY.** Each scans the per-track FX2 ids
+  at `0x80000ecc` for its engine (7 / 6), selects that track (`0x80000000`),
+  and opens the screen — so you edit the reverb or the delay from anywhere.
+  The label set follows the selected track's id.
+- **Double-wide: all twelve at once.** Two columns of six (left slots 0–5,
+  right 6–11), name + value, on the stock 7px row pitch. No scroll, no page.
+- **Stock look.** The cursor row is the same inverted bar the stock lists
+  draw, via the firmware's own rect-invert `0x40012254(window,x1,y1,x2,y2,-1)`
+  after the row's text.
+- **Selects read as words** (MODE ROOM/PLATE/BIG or CLEAN/GRAIN/REVRS, SHFT,
+  RATE, SIZE, FRZE), knobs as numbers — per-engine label records in the cave.
+- **Keys:** `0x34` (the UP arrow) moves up, `0x33` moves down — the key under
+  Sam's thumb as "left" is what goes down on this unit, kept per his call;
+  `0x32/0x35/0x36` also accepted as down. Cursor WRAPS 0 ↔ 11.
+- **Edits:** page 1 through the self-contained `0x40054cd8(track, 24+slot,
+  value)`; page 2 through `0x4003a474` for its stores, then the screen sets
+  the count-clamped value itself (the stale-clamp finding, §9c-ii). Every
+  one of the 24 slot/engine pairs proven on the harness to draw and edit as
+  its type, and confirmed on the unit.
 
 Draw and edit read/write the SAME Part arrays (`0x8ee9a` page 1, `0x8ef5a`
-page 2), keyed by the `0x80000000/03` track/part pair, so an edit is visible
-by construction. What only the flash can settle: the panel up/down keycodes
-and [NO]/exit, whether the loop redraws the state after the action, and the
-page-2 edit landing.
+page 2) keyed by the `0x80000000/03` track/part pair, so an edit is visible
+by construction.
+
+⚠️ **`busscreen` SUPERSEDES `menushortcut` and the two cannot coexist**: both
+grow the CONTROL submenu (relocate its rows, bump its count), and the build
+refuses the second because CONTROL's count is no longer stock. The screen's
+REVERB/DELAY rows do everything the shortcut's did and more.
 
 The original plan (kept below for provenance):
 

@@ -1,21 +1,26 @@
-"""BUS SCREEN -- a MAIN MENU editor for the bus effects.
+"""BUS SCREEN -- a MAIN MENU editor for the bus effects (shipped 4 Sep 2026).
 
-Goal: a twelve-row screen that edits every control of BusVerb and BusDelay
-off the track (docs/MAINMENU.md 9c-ii, 9e). Built in steps, each verifiable
-in the emulator with no flash (the EDIT side alone is a flash question, 9c-ii):
+Every control of BusVerb and BusDelay, edited OFF the track. CONTROL gains
+REVERB and DELAY rows; each scans the per-track FX2 ids for its engine,
+selects that track, and opens a 17th menu state that draws all twelve
+controls at once in two columns of six (stock 7px pitch, stock inverted-bar
+cursor via the firmware's rect-invert), selects as their words, knobs as
+numbers. The level knob edits the cursor row; up (0x34) / down (0x33) move
+it, wrapping. docs/MAINMENU.md 9e is the record, 9c-ii the RE behind it.
 
-  STEP 1 -- grow the menu-state table at 0x400cbdac from 16 entries to 17,
-    relocated to a cave with the three `lea` references repointed (9a).
-  STEP 2 (this commit) -- the 17th state's DRAW handler renders twelve
-    labelled rows through the firmware's own text primitive. Labels are
-    BusVerb's twelve parameter names; live VALUES and engine-switch are
-    step 3, and the encoder handler (the edit) is step 4.
+HOW: the menu-state table at 0x400cbdac (16 x 0x14) is relocated to a cave
+with a 17th entry appended and its SIX references repointed (three `lea` for
+the enter member, `addal` immediates for draw/key/enc). Page-1 edits go
+through the self-contained writer 0x40054cd8(track, 24+slot, value). Page-2
+edits call the editor 0x4003a474 for its stores/mirror/dirty bits and then
+SET THE VALUE THEMSELVES, count-clamped -- that editor clamps against a
+stale descriptor from outside a staged page (9c-ii). Draw and edit use the
+same Part arrays so an edit is visible by construction.
 
-The 17th entry: draw = our handler in the cave; on_enter/on_exit/key/encoder
-are 0 (NULL members are skipped -- 9a), so the state draws and does nothing
-else yet. tools/verify_busscreen.py enters state 16 in the emulator and
-confirms the twelve names are drawn, and re-assembles screen_draw.s to prove
-the shipped bytes still match the source.
+Supersedes modules/menushortcut and cannot coexist with it (both grow the
+CONTROL menu; the build refuses the second). tools/verify_busscreen.py (in
+make check) proves it all in the emulator: relocation, boot, the two rows,
+all 24 slot/engine draws and edits, navigation, the label switch.
 """
 
 import pathlib
