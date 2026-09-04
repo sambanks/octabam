@@ -545,8 +545,8 @@ control most worth having on the screen.
   than arguments, and the pattern is the point — **the panel's edit paths
   are written to be called by the panel.**
 
-**So the recommended shape for the screens has changed.** All three control
-kinds are now fully mapped, and each is the same five stores:
+**The three arrays, for reference.** Each control kind has its own array and
+its own working mirror:
 
 | control kind | array | mirror |
 |---|---|---|
@@ -554,16 +554,35 @@ kinds are now fully mapped, and each is the same five stores:
 | page-2 knobs | `+0x8ef5a` (track*30 + page*6) | `0x100a50a8` |
 | page-2 selects | `+0x8f04a` (track*30 + page*6) | `0x100a5198` |
 
-plus the per-track dirty bit in the DB and the UI's own at `0x100b145e`.
-**A screen can do those stores itself** and clamp from the descriptor's own
-count, which it already reads to draw the row — rather than calling three
-firmware routines, two of which demand UI state we would have to fake.
+❌ **AND A SCREEN MUST NOT WRITE THEM ITSELF.** That was the plan for one
+afternoon, on the reasoning that each committer was "an array, a mirror and
+two dirty bits" — five stores a cave could make. **Traced with a write hook
+rather than read, the page-2 knob editor makes NINE distinct non-stack
+stores**, and the four that would have been missed are the ones that matter:
 
-⚠️ The risk of doing it ourselves is a step the firmware takes that we have
-not seen — a staged-page refresh, say. That is exactly what the page-1
-writer's mirror was, and we only found it by reading. Before building on
-this, one more pass over the three committers to enumerate every store each
-makes, and match it. That is a bounded read, not an open one.
+| store | what it is |
+|---|---|
+| `0x46c7d244 + slot*0x14`, two words | the **STAGED PAGE** — what the knob drawer reads. Skip it and the panel shows the old value |
+| `0x80000952` | the value into the `0x8000xxxx` block, which is where the frame builder and the DSP side live. **Skip it and the edit never reaches the audio** |
+| `DB + 0x9b332` | bookkeeping, unidentified |
+| `0x100f8598` | bookkeeping, unidentified |
+
+on top of the array, the mirror, and the two dirty bits. The page-1 writer
+does **substantially more again** — its trace reaches UI redraw work and
+even a UART register — so it is further still from anything worth
+reimplementing.
+
+✅ **So: call the firmware's routines, do not reproduce them.** Two of the
+three are callable today, with signatures confirmed by driving them:
+`0x40054cd8(track, flat, value)` for page 1 and `0x4003a474(slot, delta)`
+for page-2 knobs. The select committer `0x40079424` still bails on
+unidentified UI state, and hand-rolling it is now known to be unsafe rather
+than merely untidy.
+
+⚠️ **The lesson is the method, not the addresses.** Four of the nine stores
+were invisible to reading and obvious to a write hook, and one of them is
+the path to the DSP. Any future claim of the form "this routine just writes
+X" should be traced before it is believed.
 
 - ✅ **Worth having on its own:** an entry point that sets a track's FX2
   effect id from a struct, verified locally, is exactly what a screen that
