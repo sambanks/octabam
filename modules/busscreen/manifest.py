@@ -27,9 +27,10 @@ ENTRY_LEN, ENTRY_N = 0x14, 16
 DRAW_MEMBER = 2                        # {enter,exit,DRAW,key,enc}
 KEY_MEMBER = 3
 ENC_MEMBER = 4
-KEY_OFF = 0x144                        # key:   entry offset within HANDLER
-ENTER_OFF = 0x172                      # enter: the CONTROL-row action offset
-ENC_OFF = 0x184                        # enc:   the encoder member offset
+KEY_OFF = 0x154                        # key
+ENTER_REV_OFF = 0x1a4                  # REVERB row action
+ENTER_DLY_OFF = 0x1a8                  # DELAY row action
+ENC_OFF = 0x1ee                        # encoder
 
 # The CONTROL submenu (docs/MAINMENU.md 2, same as modules/menushortcut): its
 # count is at CONTROL_DESC+0 and its row-array pointer at +0x18. We relocate
@@ -39,7 +40,8 @@ ENC_OFF = 0x184                        # enc:   the encoder member offset
 CONTROL_DESC = 0x400cbd54
 CONTROL_ROWS = 0x400cc5a8
 ROW_LEN, ROW_N = 24, 6
-BUS_LABEL = b"BUS FX\0" 
+REV_LABEL = b"REVERB\0"
+DLY_LABEL = b"DELAY\0"
 
 # EVERY reference to the state table, as (operand_addr, stock_operand,
 # member_offset). docs/MAINMENU.md 9a listed only the three `lea` sites for the
@@ -66,7 +68,7 @@ TABLE_REFS = (
 # verify_busscreen re-assembles the source and compares, so a drifted source
 # cannot pass unnoticed.
 HANDLER = bytes.fromhex(
-    "4fefffd448d77cfc286f00304a8c6700012a2e3946c82456670001207000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad004200672184c0100002647d7fc0008ee9ad7c0d7fc000000122006721e4c0100002447d5fc0008ef5ad5c0d5fc0000001276002803e78c5084203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824353c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef001870007206b2836e06103238006004103338002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef00185283700cb0836e00ff524cd77cfc4fef002c4e75202f0004223940bad0107433b48066084a8167185381600e7434b480660e740bb4816708528123c140bad0104e75701023c0400cbf40700d23c0400cbd9c4e754fefffd448d77cfc2a2f0034263940bad0107c001c39800000007000103980000003223c000018b24c0100002e3946c82456de807006b0836e1a700423c0460d5c3020035d802f052f004eb94003a474508f6044200672184c0100002047d1fc0008ee9ad1c0d1fc00000012d1c370001010d0856c027000727fb2806c02200122030681000000182f002f012f064eb940054cd84fef000c4cd77cfc4fef002c4e75")
+    "4fefffd448d77cfc286f00304a8c6700013a2e3946c82456670001307000103980000003223c000018b24c010000de807c001c39800000002047d1fc0008ed88d1c6700010104bf940bad0007206b28066064bf940bad004200672184c0100002647d7fc0008ee9ad7c0d7fc000000122006721e4c0100002447d5fc0008ef5ad5c0d5fc000000122e3940bad01870064c00780076002803e78c50842a03da87203940bad010b0836622487940bad0144878ffff2f04487800012f0c4879400ba8764eb940012bd84fef001824355c002f024878ffff2f044878000a2f0c4879400ba8764eb940012bd84fef001870007206b2856e06103258006004103358002f00487940bad008487940bad00c4eb940013a084fef000c2803e78c5084487940bad00c4878ffff2f04487800362f0c4879400ba8764eb940012bd84fef001852837006b0836e00ff4e4cd77cfc4fef002c4e75202f0004223940bad010243940bad0187633b68066124a816704538160244a82672c53827205601a7634b68066207605b68167045281600a7601b68267105282720023c140bad01023c240bad0184e7570076002700641f980000ecc720014180282000000ffb480670a52817408b4816eec600613c180000000700023c040bad01023c040bad018701023c0400cbf40700d23c0400cbd9c4e754fefffd448d77cfc2a2f0034263940bad01870064c003800203940bad010d6807c001c39800000007000103980000003223c000018b24c0100002e3946c82456de807006b0836e1a700423c0460d5c3020035d802f052f004eb94003a474508f6044200672184c0100002047d1fc0008ee9ad1c0d1fc00000012d1c370001010d0856c027000727fb2806c02200122030681000000182f002f012f064eb940054cd84fef000c4cd77cfc4fef002c4e75")
 # placeholder marker -> which emitted-blob field it is patched to.
 MARKS = {
     "40bad000": "verbtab",
@@ -75,6 +77,7 @@ MARKS = {
     "40bad00c": "scratch",
     "40bad010": "cursor",
     "40bad014": "gt",
+    "40bad018": "page",
 }
 
 # The twelve parameter names of each engine, slot order (page 1 then page 2),
@@ -129,7 +132,9 @@ def emit(addr):
     scratch_here = body_off + len(data)
     data.extend(b"\0" * 8)
     cursor_here = body_off + len(data)
-    data.extend(b"\0" * 4)                            # the cursor row, init 0
+    data.extend(b"\0" * 4)                            # cursor row 0..5, init 0
+    page_here = body_off + len(data)
+    data.extend(b"\0" * 4)                            # page 0/1, init 0
     gt_here = body_off + len(data)
     data.extend(b">\0")
 
@@ -139,6 +144,7 @@ def emit(addr):
         "fmt": addr + fmt_here,
         "scratch": addr + scratch_here,
         "cursor": addr + cursor_here,
+        "page": addr + page_here,
         "gt": addr + gt_here,
     }
     handler = bytearray(HANDLER)
@@ -156,20 +162,25 @@ def emit(addr):
     entry[KEY_MEMBER * 4:KEY_MEMBER * 4 + 4] = (addr + handler_off + KEY_OFF).to_bytes(4, "big")
     entry[ENC_MEMBER * 4:ENC_MEMBER * 4 + 4] = (addr + handler_off + ENC_OFF).to_bytes(4, "big")
 
-    # ---- a CONTROL row that opens the screen -----------------------------
-    enter_here = handler_off + ENTER_OFF
-    bus_label_here = body_off + len(data)
-    data.extend(BUS_LABEL)
+    # ---- two CONTROL rows: REVERB and DELAY ------------------------------
+    rev_action = handler_off + ENTER_REV_OFF
+    dly_action = handler_off + ENTER_DLY_OFF
+    rev_label_here = body_off + len(data)
+    data.extend(REV_LABEL)
+    dly_label_here = body_off + len(data)
+    data.extend(DLY_LABEL)
     while (body_off + len(data)) % 4:
         data.append(0)
     ctrl_rows_here = body_off + len(data)
     rows = bytearray(_stock_control_rows())
-    rows += (addr + bus_label_here).to_bytes(4, "big")   # +0x00 label
-    rows += b"\0" * 4                                     # +0x04 no window
-    rows += (addr + enter_here).to_bytes(4, "big")        # +0x08 action
-    rows += b"\0" * 4                                     # +0x0c
-    rows += b"\0" * 4                                     # +0x10 no child
-    rows += b"\0" * 4                                     # +0x14 id 0 -> action
+    for label_here, action in ((rev_label_here, rev_action),
+                               (dly_label_here, dly_action)):
+        rows += (addr + label_here).to_bytes(4, "big")   # +0x00 label
+        rows += b"\0" * 4                                 # +0x04 no window
+        rows += (addr + action).to_bytes(4, "big")        # +0x08 action
+        rows += b"\0" * 4                                 # +0x0c
+        rows += b"\0" * 4                                 # +0x10 no child
+        rows += b"\0" * 4                                 # +0x14 id 0 -> action
     data.extend(rows)
 
     blob = bytes(table) + bytes(entry) + bytes(handler) + bytes(data)
@@ -177,7 +188,7 @@ def emit(addr):
         (op, stock.to_bytes(4, "big"), (addr + moff).to_bytes(4, "big"))
         for op, stock, moff in TABLE_REFS
     ) + (
-        (CONTROL_DESC, ROW_N.to_bytes(4, "big"), (ROW_N + 1).to_bytes(4, "big")),
+        (CONTROL_DESC, ROW_N.to_bytes(4, "big"), (ROW_N + 2).to_bytes(4, "big")),
         (CONTROL_DESC + 0x18, CONTROL_ROWS.to_bytes(4, "big"),
          (addr + ctrl_rows_here).to_bytes(4, "big")),
     )

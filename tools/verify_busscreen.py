@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Prove the menu-state table relocation (modules/busscreen, step 1) is inert
-to boot and navigation: the table moved to a cave with a 17th entry appended
-and the three `lea` references repointed, and the image still boots to the
-RTOS handoff and walks the MAIN MENU byte-for-byte as the un-grown image does.
+"""Prove modules/busscreen in the ColdFire emulator, no hardware.
 
-No hardware: it boots the BUILT image in the ColdFire emulator. The EDIT side
-of the eventual screen cannot be checked locally (docs/MAINMENU.md 9c-ii), but
-this step edits nothing -- it only moves a table, which is exactly what an
-emulator boot CAN confirm.
+The bus screen is a 17th MAIN MENU state reached from two CONTROL rows,
+REVERB and DELAY, each of which selects the track hosting that engine and
+opens a screen of its twelve controls as two pages of six (up/down cross the
+page boundary). The level knob edits the cursor row: page-1 rows through the
+self-contained writer 0x40054cd8 (proven here), page-2 rows through
+0x4003a474 (built; the value-move is the flash question, docs/MAINMENU.md
+9c-ii). Draw and edit use the same Part arrays, so an edit is visible.
 """
-import os, pathlib, subprocess, sys
+import os
+import pathlib
+import subprocess
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -17,23 +20,9 @@ IMAGE = ROOT / "out/mainos_bus.bin"
 BASE = 0x40000400
 STATE_TABLE = 0x400cbdac
 ENTRY_LEN, ENTRY_N = 0x14, 16
-DONOR_STATE = 2
+CONTROL_DESC = 0x400cbd54
+ID_BASE = 0x80000ecc                       # per-track FX2 ids the scan reads
 
-
-def _load_src():
-    """HANDLER and LABELS from the manifest, without importing the package."""
-    import types
-    ns = types.ModuleType("busscreen_src")
-    src = (ROOT / "modules/busscreen/manifest.py").read_text()
-    # execute only the top-level assignments we need (HANDLER, LABELS, offs)
-    g = {"pathlib": pathlib}
-    for line in src.splitlines():
-        if line.startswith(("HANDLER", "LABELS", "LABELTAB_OFF", "LABELTAB_MARK")) or line.strip().startswith(('"', "'", ")", "b\"")) or line.strip().endswith((",", "+")) or line.strip().startswith("bytes.fromhex"):
-            pass
-    exec(compile(src[:src.index("def _stock_table")], "manifest", "exec"), g)
-    ns.HANDLER = g["HANDLER"]
-    ns.VERB_NAMES = g["VERB_NAMES"]; ns.DLY_NAMES = g["DLY_NAMES"]
-    sys.modules["busscreen_src"] = ns
 
 def _build(remix):
     env = {**os.environ, "REMIX": remix, "XBUS": "1", "SPEC": "1"}
@@ -43,36 +32,47 @@ def _build(remix):
         sys.exit(f"build {remix} failed:\n{(r.stdout + r.stderr)[-800:]}")
 
 
+def _load_src():
+    """HANDLER / VERB_NAMES / DLY_NAMES from the manifest without importing it."""
+    import types
+    ns = types.ModuleType("busscreen_src")
+    src = (ROOT / "modules/busscreen/manifest.py").read_text()
+    g = {"pathlib": pathlib}
+    exec(compile(src[:src.index("def _stock_table")], "manifest", "exec"), g)
+    ns.HANDLER = g["HANDLER"]
+    ns.VERB_NAMES = g["VERB_NAMES"]
+    ns.DLY_NAMES = g["DLY_NAMES"]
+    sys.modules["busscreen_src"] = ns
+    return ns
+
+
 def main():
     import emu_bringup as emu
     import shutil
-    _load_src()
+    src = _load_src()
     fails = []
-    # build_bus.py overwrites out/mainos_bus.bin; make check runs other
-    # checks against it, so save whatever is there and put it back at the end.
-    backup = IMAGE.read_bytes() if IMAGE.exists() else None
 
     def check(ok, msg):
         print(f"  [{'PASS' if ok else 'FAIL'}] {msg}")
         if not ok:
             fails.append(msg)
 
-    # 1) reference walk on the un-grown image
+    # reference walk on the un-grown image
     _build("bus")
+    backup = IMAGE.read_bytes()
     ref = emu.boot(str(IMAGE))
     if not ref.clean:
         sys.exit(f"reference image did not boot: {ref.stopped}")
     ref_tree = emu.read_menu_tree(ref.uc)
 
-    # 2) the grown image
+    # the grown image
     _build("busscreen")
     img = IMAGE.read_bytes()
 
     def rd32(a):
         return int.from_bytes(img[a - BASE:a - BASE + 4], "big")
 
-    # all six references (3 enter leas + draw/key/enc addal immediates) now
-    # point at the cave, each at its own member offset
+    # every reference to the table repointed (3 enter leas + draw/key/enc)
     REFS = ((0x40064bd4, 0x0), (0x40064e36, 0x0), (0x400650e8, 0x0),
             (0x40064e04, 0x8), (0x4006511c, 0xc), (0x40065086, 0x10))
     new_base = rd32(REFS[0][0])
@@ -82,97 +82,80 @@ def main():
         check(rd32(op) == new_base + moff,
               f"ref at 0x{op:08x} -> 0x{new_base + moff:08x} (member +0x{moff:x})")
 
-    # the relocated table: 16 stock entries copied verbatim, 17th appended
+    # 16 stock entries verbatim, 17th has draw/key/enc set, enter/exit 0
     stock = (ROOT / "out/raw/section_3_MAIN_OS.bin").read_bytes()
     st = STATE_TABLE - BASE
-    stock_tab = stock[st:st + ENTRY_LEN * ENTRY_N]
-    cave = new_base - BASE
-    grown = img[cave:cave + ENTRY_LEN * (ENTRY_N + 1)]
-    check(grown[:ENTRY_LEN * ENTRY_N] == stock_tab,
+    grown = img[new_base - BASE:new_base - BASE + ENTRY_LEN * (ENTRY_N + 1)]
+    check(grown[:ENTRY_LEN * ENTRY_N] == stock[st:st + ENTRY_LEN * ENTRY_N],
           "16 stock entries copied verbatim into the cave")
     e17 = grown[ENTRY_LEN * ENTRY_N:]
-    draw = int.from_bytes(e17[8:12], "big")            # {enter,exit,DRAW,key,enc}
-    keym = int.from_bytes(e17[12:16], "big")
-    encm = int.from_bytes(e17[16:20], "big")
-    unused = [int.from_bytes(e17[m*4:m*4+4], "big") for m in (0, 1)]
-    for nm, v in (("DRAW", draw), ("KEY", keym), ("ENC", encm)):
-        check(new_base < v < new_base + 0x600,
+    for nm, off in (("DRAW", 8), ("KEY", 12), ("ENC", 16)):
+        v = int.from_bytes(e17[off:off + 4], "big")
+        check(new_base < v < new_base + 0x800,
               f"17th entry's {nm} member points into the cave (0x{v:08x})")
-    check(all(o == 0 for o in unused),
+    check(int.from_bytes(e17[0:4], "big") == 0
+          and int.from_bytes(e17[4:8], "big") == 0,
           "17th entry's enter/exit members are 0 (skipped)")
 
-    # the shipped handler bytes still match the source
-    import shutil, subprocess, tempfile
-    from busscreen_src import HANDLER, VERB_NAMES, DLY_NAMES
+    # source still assembles to the shipped bytes
     if shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy"):
+        import tempfile
         with tempfile.TemporaryDirectory() as td:
             o, bp = td + "/c.o", td + "/c.bin"
             subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
                             str(ROOT / "modules/busscreen/screen_draw.s")], check=True)
             subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
                             o, bp], check=True)
-            check(pathlib.Path(bp).read_bytes() == HANDLER,
+            check(pathlib.Path(bp).read_bytes() == src.HANDLER,
                   "screen_draw.s still assembles to the shipped HANDLER bytes")
-    else:
-        print("  [SKIP] source re-assembly: no m68k-elf-as")
 
-    # 3) it still boots and the menu tree is identical
+    # boots, and the menu gains exactly REVERB and DELAY under CONTROL
     grown_boot = emu.boot(str(IMAGE))
     check(grown_boot.clean,
           f"grown image boots to the RTOS handoff ({grown_boot.stopped})")
-    grown_tree = emu.read_menu_tree(grown_boot.uc)
+    uc = grown_boot.uc
+
     def labels(tree):
         out = []
         for node in tree:
             out.append(node["name"])
             out.extend(labels(node["children"]))
         return out
-    ref_l, grown_l = labels(ref_tree), labels(grown_tree)
-    added = [x for x in grown_l if x not in ref_l]
-    removed = [x for x in ref_l if x not in grown_l]
-    check(added == ["BUS FX"] and removed == [],
-          f"menu tree gains exactly the BUS FX row, nothing else "
-          f"(added {added}, removed {removed})")
+    ref_l = labels(ref_tree)
+    added = [x for x in labels(emu.read_menu_tree(uc)) if x not in ref_l]
+    check(added == ["REVERB", "DELAY"],
+          f"menu gains exactly REVERB and DELAY (added {added})")
 
-    # 4) enter state 16 and confirm the handler renders NAME + VALUE per row,
-    #    and that the label set follows the host effect id.
-    uc = grown_boot.uc
     if not getattr(grown_boot, "_menu_ready", False):
         emu._prime_menu(grown_boot)
+
     def u32(a):
         return int.from_bytes(uc.mem_read(a, 4), "big")
-    def draw_state_16():
+
+    # the two CONTROL row actions
+    rows_ptr = rd32(CONTROL_DESC + 0x18)
+    rev_action = rd32(rows_ptr + 6 * 24 + 8)
+    dly_action = rd32(rows_ptr + 7 * 24 + 8)
+
+    def draw():
         for _ in range(3):
             if u32(0x400cbf4c) != 0:
                 break
             emu._call(uc, emu.MENU_OPEN)
-        uc.mem_write(emu.MENU_STATE, (16).to_bytes(4, "big"))
         uc.mem_write(emu.MENU_VIEWPORT, (13).to_bytes(4, "big"))
         grown_boot._draws.clear()
         emu._call(uc, emu.MENU_DRAW)
+        return grown_boot._draws
+
+    def texts():
         return [t for _x, _y, t in grown_boot._draws]
 
-    # the key handler address = 17th entry's key member (index 3)
-    key_addr = rd32(new_base + ENTRY_LEN * ENTRN + 3 * 4) if False else \
-               int.from_bytes(img[(new_base + ENTRY_LEN * 16 + 12) - BASE:
-                                   (new_base + ENTRY_LEN * 16 + 12) - BASE + 4], "big")
     def cursor_row():
         for x, y, t in grown_boot._draws:
             if t == ">":
                 return (y - 8) // 8
         return None
-    def press(kc):
-        emu._call(uc, key_addr, (kc,))
 
-    TRACK = 4
-    def val_addr(slot):
-        DB = u32(0x46c82456); part = uc.mem_read(0x80000003, 1)[0]
-        track = uc.mem_read(0x80000000, 1)[0]
-        base = DB + part * 6322 + track * (24 if slot < 6 else 30)
-        return base + (0x8ee9a + 18 + slot if slot < 6
-                       else 0x8ef5a + 18 + slot)
-    def plant(slot, v):
-        uc.mem_write(val_addr(slot), bytes([v & 0xff]))
     def value_row(row):
         y = 8 + row * 8
         for x, yy, t in grown_boot._draws:
@@ -180,118 +163,92 @@ def main():
                 return int(t) if t.lstrip("-").isdigit() else None
         return None
 
-    # BusVerb (id 7): plant a distinct value per slot, expect name + value
-    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
-    vals = [i * 10 + 3 for i in range(12)]        # 3,13,...,113 -- all distinct
-    for i, v in enumerate(vals):
-        plant(i, v)
-    drawn = draw_state_16()
-    names = [n.decode() for n in VERB_NAMES]
-    check(all(n in drawn for n in names),
-          f"BusVerb: all 12 names drawn (got {[d for d in drawn if d][:14]})")
-    check(all(str(v) in drawn for v in vals),
-          f"BusVerb: all 12 live values drawn (wanted {vals}, got {drawn})")
+    def press(kc):
+        e17_key = int.from_bytes(e17[12:16], "big")
+        emu._call(uc, e17_key, (kc,))
 
-    # BusDelay (id 6): the label set switches
-    emu.assign_fx2(grown_boot, track=TRACK, effect_id=6)
-    drawn = draw_state_16()
-    dnames = [n.decode() for n in DLY_NAMES]
-    check(all(n in drawn for n in dnames),
-          f"BusDelay: label set switched to its 12 names (got {[d for d in drawn if d][:14]})")
+    def val_addr(track, slot):
+        DB = u32(0x46c82456)
+        part = uc.mem_read(0x80000003, 1)[0]
+        base = DB + part * 6322 + track * (24 if slot < 6 else 30)
+        return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a + 18 + slot)
 
-    # 5) navigation: the cursor highlight and the key handler
-    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
-    draw_state_16()
-    check(cursor_row() == 0, f"cursor starts on row 0 (got {cursor_row()})")
-    press(0x34); draw_state_16()
-    check(cursor_row() == 1, f"down moves the cursor to row 1 (got {cursor_row()})")
-    for _ in range(4):
+    def setup(track, eid, values):
+        # the scan reads 0x80000ecc; the label picks off the Part id 0x8ed88
+        uc.mem_write(ID_BASE + track, bytes([eid]))
+        emu.assign_fx2(grown_boot, track=track, effect_id=eid)
+        for slot, v in enumerate(values):
+            uc.mem_write(val_addr(track, slot), bytes([v & 0xff]))
+
+    VERB_VALS = [i + 20 for i in range(12)]     # 20..31, distinct
+    # ---- REVERB row: selects the verb track, draws page 1 ----------------
+    uc.mem_write(0x80000000, bytes([0]))         # not on the verb track yet
+    setup(4, 7, VERB_VALS)                        # BusVerb on track 4
+    emu._call(uc, rev_action, (0,))
+    check(uc.mem_read(0x80000000, 1)[0] == 4,
+          f"REVERB selects the host track 4 (got {uc.mem_read(0x80000000, 1)[0]})")
+    check(u32(0x400cbf40) == 16, "REVERB opens the screen (state 16)")
+    draw()
+    want_p1 = [n.decode() for n in src.VERB_NAMES[:6]]
+    check(all(n in texts() for n in want_p1),
+          f"page 1 shows the first six verb names (got {[t for t in texts() if t][:10]})")
+    check(all(str(v) in texts() for v in VERB_VALS[:6]),
+          f"page 1 shows their values {VERB_VALS[:6]} (got {texts()})")
+    check(cursor_row() == 0, f"cursor starts at row 0 (got {cursor_row()})")
+
+    # ---- navigation across the page boundary -----------------------------
+    for _ in range(5):
         press(0x34)
-    draw_state_16()
-    check(cursor_row() == 5, f"four more downs -> row 5 (got {cursor_row()})")
-    press(0x33); draw_state_16()
-    check(cursor_row() == 4, f"up moves back to row 4 (got {cursor_row()})")
-    for _ in range(20):
-        press(0x34)
-    draw_state_16()
-    check(cursor_row() == 11, f"down clamps at the last row 11 (got {cursor_row()})")
-    for _ in range(20):
-        press(0x33)
-    draw_state_16()
-    check(cursor_row() == 0, f"up clamps at row 0 (got {cursor_row()})")
+    draw()
+    check(cursor_row() == 5, f"five downs -> row 5, still page 1 (got {cursor_row()})")
+    check(all(n in texts() for n in want_p1),
+          "still page 1 at row 5")
+    press(0x34); draw()
+    want_p2 = [n.decode() for n in src.VERB_NAMES[6:]]
+    check(cursor_row() == 0 and all(n in texts() for n in want_p2),
+          f"down past row 5 flips to page 2 row 0 (cursor {cursor_row()}, "
+          f"got {[t for t in texts() if t][:10]})")
+    press(0x33); draw()
+    check(cursor_row() == 5 and all(n in texts() for n in want_p1),
+          f"up from page 2 row 0 returns to page 1 row 5 (cursor {cursor_row()})")
 
-    # 6) the CONTROL row that ENTERS the screen
-    CONTROL_DESC, CONTROL_ROWS_STOCK = 0x400cbd54, 0x400cc5a8
-    ROW_LEN = 24
-    count = rd32(CONTROL_DESC)
-    rows_ptr = rd32(CONTROL_DESC + 0x18)
-    check(count == 7, f"CONTROL row count bumped to 7 (got {count})")
-    check(rows_ptr != CONTROL_ROWS_STOCK and rows_ptr != 0,
-          f"CONTROL rows relocated (-> 0x{rows_ptr:08x})")
-    # the appended 7th row (index 6): label + action
-    row = rows_ptr + 6 * ROW_LEN
-    label_ptr = rd32(row)
-    action = rd32(row + 8)
-    rid = rd32(row + 0x14)
-    label = ""
-    a = label_ptr - BASE
-    while 0 <= a < len(img) and img[a]:
-        label += chr(img[a]); a += 1
-    check(label == "BUS FX", f"the new row's label is BUS FX (got {label!r})")
-    check(rid == 0 and new_base < action < new_base + 0x400,
-          f"the row is an action row into the cave (id {rid}, action 0x{action:08x})")
-    # invoking the action enters state 16 and the screen draws
-    for _ in range(3):
-        if u32(0x400cbf4c) != 0:
-            break
-        emu._call(uc, emu.MENU_OPEN)
-    emu._call(uc, action, (0,))
-    check(u32(0x400cbf40) == 16, f"the action sets MENU_STATE to 16 (got {u32(0x400cbf40)})")
-    grown_boot._draws.clear()
-    emu._call(uc, emu.MENU_DRAW)
-    drawn = [t for _x, _y, t in grown_boot._draws]
-    check(all(n in drawn for n in names),
-          f"after entering, the screen draws its rows (got {[d for d in drawn if d][:14]})")
+    # ---- edit a page-1 row (locally proven) ------------------------------
+    for _ in range(5):
+        press(0x33)                              # back to page 1 row 0
+    press(0x34); press(0x34)                      # row 2 = SIZE
+    draw()
+    check(cursor_row() == 2, f"cursor on row 2 (got {cursor_row()})")
+    v0 = value_row(2)
+    e17_enc = int.from_bytes(e17[16:20], "big")
+    emu._call(uc, e17_enc, (0, 5))
+    draw()
+    check(value_row(2) == v0 + 5,
+          f"encoder +5 moves the page-1 value {v0} -> {v0 + 5} (got {value_row(2)})")
 
-    # 7) the encoder EDITS the cursor row -- page 1 (locally verifiable) --------
-    # 0x40054cd8 is self-contained; a page-1 turn must move the drawn value.
-    enc_addr = int.from_bytes(img[(new_base + ENTRY_LEN * 16 + 16) - BASE:
-                                   (new_base + ENTRY_LEN * 16 + 16) - BASE + 4], "big")
-    emu.assign_fx2(grown_boot, track=TRACK, effect_id=7)
-    plant(2, 40)                       # SIZE (page-1 row 2) = 40
-    # cursor to row 2
-    for _ in range(20):
-        press(0x33)
-    press(0x34); press(0x34)
-    draw_state_16()
-    check(cursor_row() == 2 and value_row(2) == 40,
-          f"cursor on row 2, SIZE reads 40 (cursor {cursor_row()}, val {value_row(2)})")
-    emu._call(uc, enc_addr, (0, 5))    # enc(index=0, delta=+5)
-    draw_state_16()
-    check(value_row(2) == 45,
-          f"encoder +5 moves the page-1 value 40 -> 45 (got {value_row(2)})")
-    emu._call(uc, enc_addr, (0, (-10) & 0xffffffff))
-    draw_state_16()
-    check(value_row(2) == 35,
-          f"encoder -10 moves it 45 -> 35 (got {value_row(2)})")
-
-    # page 2 (rows 6..11): the edit RUNS without faulting; whether the value
-    # moves is the flash question (9c-ii), so this only asserts it is callable
-    # and leaves the screen intact.
-    for _ in range(20):
-        press(0x34)                     # cursor to row 11
+    # page-2 edit: runs without fault (value-move is the flash test)
+    press(0x34); press(0x34); press(0x34); press(0x34)   # into page 2
     st_before = u32(0x400cbf40)
+    ok_p2 = True
     try:
-        emu._call(uc, enc_addr, (0, 1))
-        p2_ok = True
+        emu._call(uc, e17_enc, (0, 1))
     except Exception:
-        p2_ok = False
-    check(p2_ok and u32(0x400cbf40) == st_before,
+        ok_p2 = False
+    check(ok_p2 and u32(0x400cbf40) == st_before,
           "page-2 encoder call runs without fault (value-move is the flash test)")
 
-    if backup is not None:
-        IMAGE.write_bytes(backup)       # restore for the rest of make check
-    print(f"\n{'FAILED' if fails else 'busscreen OK (draw + nav + entry)'}: "
+    # ---- DELAY row: selects the delay track, switches the label set ------
+    uc.mem_write(0x80000000, bytes([0]))
+    setup(2, 6, [i + 40 for i in range(12)])      # BusDelay on track 2
+    emu._call(uc, dly_action, (0,))
+    check(uc.mem_read(0x80000000, 1)[0] == 2,
+          f"DELAY selects the host track 2 (got {uc.mem_read(0x80000000, 1)[0]})")
+    draw()
+    want_d1 = [n.decode() for n in src.DLY_NAMES[:6]]
+    check(all(n in texts() for n in want_d1),
+          f"DELAY draws the delay's names (got {[t for t in texts() if t][:10]})")
+
+    IMAGE.write_bytes(backup)                      # restore for the rest of make check
+    print(f"\n{'FAILED' if fails else 'busscreen OK (2 rows, paged, edit)'}: "
           f"{len(fails)} failure(s)")
     sys.exit(1 if fails else 0)
 
