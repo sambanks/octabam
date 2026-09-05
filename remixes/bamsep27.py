@@ -45,7 +45,11 @@ REMIX = Remix(
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
              "TEMPO SYNC", "MENU SHORTCUT", "CC PAGE 2"),
-    hidden=("REVERB SERVER", "DELAY SERVER", "SEND",
+    # SEND is NOT hidden any more (5 Sep 2026): hiding it blanked its two knob
+    # names, so every non-host track's FX2 page drew no knobs at all. Visible,
+    # it is the labelled send pair (->DEL / ->VRB) the design asked for, and
+    # the one row the FX2 chooser carries.
+    hidden=("REVERB SERVER", "DELAY SERVER",
             "SPECTRUM", "CHARACTER", "MODULATION"),
     grains=2,          # the cycle lever: four stations beside the delay
     fallback="SEND",
