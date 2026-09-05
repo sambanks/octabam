@@ -67,6 +67,11 @@ def main():
         mod = mods.get(key)
         if mod is None or not mod.mode_views or mod.mode_slot is None:
             continue
+        # A BLANKED module (hidden, nowhere on FX1) draws no knobs and gets
+        # no MODE formatter from the build (5 Sep 2026), so there is nothing
+        # to rename on its page; the bus screen prints its own mode words.
+        if key in remix.hidden and key not in remix.fx1:
+            continue
         want = mode_names.complete(mod)
         if not want:
             continue
