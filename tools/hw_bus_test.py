@@ -90,9 +90,13 @@ def load_ch1(path):
     return [v / full for v in a[0::n]], sr
 
 
-def toggle_capture(out, ch, cc, va, vb, period, cycles, tag):
+def toggle_capture(out, ch, cc, va, vb, period, cycles, tag, nudge=None):
     """Record continuously while toggling cc between va/vb every `period` s.
-    Returns the list of per-segment (value, rms, tilt), START-aligned."""
+    Returns the list of per-segment (value, rms, tilt), START-aligned.
+    `nudge=(cc, val)`: sent right after every toggle. A page-1 CC at an
+    unchanged value makes the stock writer call the resolver 0x4009da20 for
+    the track, republishing its parameters -- the zero-flash test of whether
+    a page-2 store only lacks that publish call."""
     total = period * cycles * 2 + 1.0
     wav = str(OUT / f"{tag}.wav")
     proc = subprocess.Popen([REC, f"{total:.1f}", wav],
@@ -116,6 +120,8 @@ def toggle_capture(out, ch, cc, va, vb, period, cycles, tag):
         while time.time() - t0 < rel:
             time.sleep(0.002)
         out.send([0xB0 | (ch - 1), cc, val])
+        if nudge:
+            out.send([0xB0 | (ch - 1), nudge[0], nudge[1]])
         schedule.append((rel, val))
     proc.wait()
 
@@ -156,8 +162,8 @@ def stats(xs):
     return mean, sd, t
 
 
-def run_param(out, ch, cc, va, vb, period, cycles, tag, name):
-    segs = toggle_capture(out, ch, cc, va, vb, period, cycles, tag)
+def run_param(out, ch, cc, va, vb, period, cycles, tag, name, nudge=None):
+    segs = toggle_capture(out, ch, cc, va, vb, period, cycles, tag, nudge)
     dr, dt, dg = paired(segs, va, vb)
     mr, sdr, tr = stats(dr)
     mt, sdt, tt = stats(dt)
@@ -186,6 +192,10 @@ def main():
     ap.add_argument("--solo", dest="solo", action="store_true", default=True,
                     help="solo the host track (CC 50) so its dry+wet is isolated")
     ap.add_argument("--no-solo", dest="solo", action="store_false")
+    ap.add_argument("--nudge-cc", type=int, default=0,
+                    help="page-1 CC re-sent after every TEST toggle (0 = off); "
+                         "makes stock call the resolver 0x4009da20 for the track")
+    ap.add_argument("--nudge-val", type=int, default=127)
     args = ap.parse_args()
 
     if not os.path.exists(REC):
@@ -208,8 +218,12 @@ def main():
     print("  (adjacent-paired; |t|>~3 = a real, repeatable effect)")
     ctrl_t = run_param(out, args.ch, args.control, args.ca, args.cb,
                        args.period, args.cycles, "control", "CONTROL page-1")
+    nudge = (args.nudge_cc, args.nudge_val) if args.nudge_cc else None
+    if nudge:
+        print(f"  (TEST toggles followed by a page-1 nudge CC{nudge[0]}={nudge[1]} "
+              "-> stock republishes the track via 0x4009da20)")
     test_t = run_param(out, args.ch, args.test, args.a, args.b,
-                       args.period, args.cycles, "test", "TEST page-2")
+                       args.period, args.cycles, "test", "TEST page-2", nudge)
 
     print("\nverdict:")
     if ctrl_t < 3:

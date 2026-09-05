@@ -64,9 +64,10 @@ mine:   lea     %sp@(-28),%sp
         andil   #0x7f,%d5
         movel   MAPGLOB,%d3            | mimic stock register environment
         jsr     MAPBUILD               | rebuild CHANMASK[16]
-        moveb   CCIN,%d0
-        andil   #1,%d0
-        beq.s   done                   | AUDIO CC IN off -> nothing (as stock)
+        tstb    CCIN                   | any non-zero = on, exactly as stock
+        beq.s   done                   | (0x4000e962 tstb/bne); a mask on bit 0
+                                       | would silently skip if the flag byte
+                                       | holds another value
         moveq   #0,%d0
         moveb   %a2@,%d0
         andil   #15,%d0                | channel = status & 15
