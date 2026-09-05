@@ -816,7 +816,20 @@ The two remaining tempo readers outside the sequencer are UI: `0x40031d70`
 A third non-UI reader turned up 2 Sep 2026: `0x4006e3b2` converts the
 recorder's RLEN to samples, `(raw+1) × 63504000 / (4·tempo24)`
 (`EXTERNAL.md` §6). It feeds the CPU-side recorder, not a frame record, so
-the conclusion below is unchanged.
+the conclusion below is unchanged. (5 Sep 2026: the converter that actually
+reaches the recorder's `arm()` is `0x40006dfc`, which *rounds*; `0x4006e3b2`'s
+consumer is open — `EXTERNAL.md` §6, Sessions 2–4.)
+
+**tempo24 is an integer count of 1/24 BPM, and the UI grid is ten uneven
+24ths per BPM** (measured 5 Sep 2026): the setter `0x4009c7c4(bpm, tenths)`
+computes `24·bpm + (23·tenths + 4)/9` (truncating), so tenths `0..9` become
+`0 3 5 8 10 13 15 18 20 23` — a displayed `.5` is +0.5417 BPM. `0x4009c5f4`
+displays it back (`÷24`, `mod 24`, `(9·f + 11)/23`); `0x4009c5b8` returns
+the pattern's own word (`blob + pattern×0x8ed8 + 0x8e58`) when
+`[0x80000024]` is set, else `0x80000020`; the writer at `0x4004bc54` scales
+it by `[0x46c7d328]/1000` with a truncating `divs` (nominal 1000, clamp
+≤1100 — the tempo nudge, inferred from shape) before the 720..7200 clamp.
+`EXTERNAL.md` §6 has the recorder consequences.
 
 **Conclusion of the static pass (inferred, one flash from measured):** the
 ColdFire computes every tempo-derived rate itself and ships rates, not BPM.
