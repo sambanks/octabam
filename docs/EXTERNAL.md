@@ -338,6 +338,7 @@ discipline, same hash-verified image. **Scope is the recorder's control
 path only** — parameters, storage, triggering, and the engine's arm/open
 machinery. The audio write path (where samples land in RAM) and the buffer
 addresses are explicitly *not* traced; §9 of his document lists them open.
+**Sessions 2–4 (received 5 Sep 2026, ingested below) close both.**
 
 His motivation is the community's "clickless recorder" technique, which
 works at some Tempo/RLEN combinations and not others — so the tempo-dependent
@@ -492,7 +493,7 @@ base and `@(1)` displacement) indexed by part. Annotated there, not rewritten.
 ### What it changes for us
 
 Nothing we build — the recorder is CPU-side machinery around a write path
-that is still unlocated. What it hands us is a **mapped publish path for a
+that Sessions 2–4 (below) then located. What it hands us is a **mapped publish path for a
 setup page** (`0x80000c94` → `0x80000cf4` per frame) and the recorder's
 length arithmetic in known units, which is where any "clickless loop" patch
 would go. Neither is on the plan.
@@ -516,6 +517,206 @@ Findings flow back as notes, by agreement. Worth sending, all measured here:
    one-shot/hold/stop/retrig) — our labels for his open bit semantics.
 6. `0x460d17ce`'s consumer also handles RELOAD BANK (types `0x14`, `6`).
 
+### Sessions 2–4 (received 5 Sep 2026): the pool, the write path, the loop point
+
+Same file, extended in place — his §12, §13 and §14, with §9's open list
+amended. Scope moves from the control path to everything Session 1 left
+open: **where the buffers are, how samples get in, and what happens at the
+loop point.** His motivating question — is there a crossfade at the wrap —
+is answered: **no, it is a hard cut.** Sessions 2 and 3 are largely a record
+of leads that failed, and his §14.9 retracts three of §13's own conclusions
+in a table; the results are in §14. He rebuilt the image twice from CF-card
+update files with a Python port of the aPLib depacker and got our hash both
+times, and confirmed `m68k:547x` and `m68k:cfv4e` are the same decoder.
+
+#### ✅ Re-verified here, 5 Sep 2026
+
+Same method as above: canonical image, `scripts/disasm.sh emac`, plus a
+byte sweep for his literals and negative results.
+
+| his claim | what we read |
+|---|---|
+| pool cold init `0x40096f7a`: cursor `0x8000691c := 0`, count `14602 → 0x80006920`, block array `0x46c2e9c0`, index table `0x46c2e580`, fill `1..14602` | byte-identical |
+| block address `= blk×6144 + 0x40A955E0` as `lsll #13` − `lsll #11` at `0x400963b4` | exact |
+| recorder row `(track+2) × 14602` at `0x40095aa4` and in the segment builder `0x40006fc4` | both exact |
+| segment emission `0x40007298`: `muluw #6144`, `mulsl` bytes-per-frame, `addil #0x40A955E0`, ptr / signed count at `a1@` / `a1@(4)` | exact |
+| lazy allocation `0x40007196–e2`: `tstw` the row entry, `tstb 0x80000052` (`DYNAMIC_RECORDERS`), pop the free list, clear both halves | exact |
+| pack loop `0x40007854`: `movel / moveb / movel / movew` — 6 B per 24-bit stereo frame | exact |
+| position advance `0x400072ba–be`; loop point `clrl %fp@(24)` at `0x4000703c`; ping-pong flip `0x40007032–36`; wrap test `cmpl %fp@(24),%d4 / bhis` at `0x40007004` | exact |
+| 16-sample limit extension `0x40006e2a–4c`: `addil #15 / cmpl %sp@(64) / blts / addil #16` | exact |
+| the converter that feeds `arm()`, `0x40006dfc–10`: `#31752000 / mulsl / macl / movclrl / addql #1 / asrl #1` | exact — it **rounds** half-up |
+| "exactly one `andil #-16` in the image, at `0x40003646` in the delay" | our sweep: exactly one, that address |
+| settings keys `RECORD_24BIT`, `DYNAMIC_RECORDERS`, `RESERVED_RECORDER_COUNT/LENGTH`; metadata keys `BPMx24`, `LOOP_BARSx100`, `TSMODE`, `LOOPMODE` | all present, `0x400b7d49–0x400b7d80` and `0x400b79fc–0x400b7a26` |
+| `0x40A955E0` as a literal | 23 sites, including his boot memcpy `0x4000045e/4c8`, the emission `0x400072a8`, `0x400963c6` |
+| per-frame dispatcher `0x4000d2a0–86`: 8 tracks × { `0x400068e4(track, page e4, 0, nibble)`; if `word & 0xd0`: `0x40005ff0(track, word)`; `0x400068e4(track, page e0, nibble, 16)` } | exact; note the two halves use the two page-flip globals `0x800000e4` and `0x800000e0` |
+
+#### 🟡 Adopted (we read the same bytes; the interpretation is his)
+
+- **Recorder buffers are not rings.** Each is a chain of 6144-byte blocks
+  drawn lazily from one shared pool of 14,602 blocks at `0x40A955E0`
+  (85.56 MiB — the Flex RAM figure). Ten rows of block numbers live at
+  `0x46c2e9c0`: rows 0–1 are the double-buffered free/sample map, rows 2–9
+  are recorder tracks 0–7. Blocks are popped from the free list as the
+  write position reaches them, which is why MAX consumes all RAM.
+- **The write path is a read-modify-write** in the per-track engine-service
+  function `0x400068e4`, called twice per frame per track: unpack the
+  existing content (`0x400072f2`) → EMAC mix of four sources with per-sample
+  gain ramps (`0x40007680`, output `0x800062cc`) → pack back to the same
+  segments (`0x40007826`). Overdub is the native operation.
+- **The loop point is a hard cut, taken inside the frame.** The segment
+  builder emits up to four segments per 16-sample call (a frame may straddle
+  a block boundary *and* the loop point), tests the position against the
+  boundary and resets it to zero mid-frame. No blend, no tail read-back,
+  anywhere on the path. **The 16-sample frame does not quantise a LOOP
+  length.**
+- `length = round(steps × 15876000 / tempo24)` samples, half-up, at the
+  converter that feeds `arm()`. That is a **different converter** from the
+  truncating `0x4006e3b2` we verified on 2 Sep; that one compares its result
+  against 64 and does not reach `arm()`, so its role is now open.
+- **The 16-sample limit extension** (`0x40006e2a`): when fewer than 16
+  samples remain to the recording *limit*, the limit becomes
+  `position + 16`. It extends, never truncates, and it is the recording END,
+  not the loop wrap; whether it applies once or per wrap is his open item.
+- Settings schema (`DYNAMIC_RECORDERS`, `RECORD_24BIT`, the reserve pair —
+  `RESERVED_RECORDER_LENGTH × 44100` is the seconds→samples path), the
+  saved-metadata field map at state `+272..+296`, and DMA channels 1 and 6
+  as input-capture staging (`0x80003390` page-flipped, `0x80005e60` fixed)
+  — his inference from count and shape, not confirmed by an INAB/INCD
+  reference.
+
+#### ❌ What it retracts of ours
+
+| where | we said | it is |
+|---|---|---|
+| this section, 2 Sep | write path and buffer addresses unlocated; buffers possibly neighbouring the delay rings at `0x4F502C10` | pool at `0x40A955E0`, block-chained, unrelated to the delay's contiguous rings |
+| `PLAN.md` §5 | "the untraced recorder write path" among the project-dependent paths the emulator cannot drive | traced; still project-dependent (it needs a part with a recorder armed), so the emulator point stands |
+
+#### ❌ One correction for him
+
+His §13.2 reads the interrupt handler at `0x40004860–0x40004bd0` — the
+round-robin state machine on DMA channel 0 writing to a `0x2000_00xx`
+interface — as **control-surface polling, "ruled out"**. It is the
+**ColdFire→DSP audio frame transfer** we documented in `DSP.md` §6c: the
+7-step machine at `0x46104d3e`, TCD `0xFC045000`, the DSP host port at
+`0x2000001c`, 336-word per-track records per ping. Measured from our side
+for months — every module in this repo receives its parameters through it.
+The "no recorder-table reference" observation is correct and expected: what
+crosses that port is the mixed frame, not a buffer.
+
+#### Our own measured additions, 5 Sep 2026
+
+**tempo24 is an integer count of 1/24 BPM, and the displayed tempo is not
+always representable.** `0x4009c5f4` splits the tempo word into `÷24` and
+`mod 24` for display; the source routine `0x4009c5b8` returns the pattern's
+own word (`blob + pattern×0x8ed8 + 0x8e58`) when `[0x80000024]` (per-pattern
+tempo) is set, else the global `0x80000020`. The writer at `0x4004bc54`
+scales it by `[0x46c7d328] / 1000` with a **truncating** `divs` before the
+720..7200 clamp (nominal 1000, clamped ≤1100, stepped by 20 and set to 1010
+in the same function — the tempo nudge 🟡 inferred from the shape). Two
+consequences for his §14.8:
+
+1. A displayed `x.y` BPM with `y ∉ {0, 5}` is one of two adjacent tempo24
+   values, and the UI conversion site is not read. He assumed
+   `round(BPM×24)`. Under the other choice his 298.2/2 row becomes 4,437
+   samples (error 0.116, rounded *up*) and 286.2/2 becomes 4,623 (0.18):
+   the **divisibility condition is unaffected** (`BPM×24` is integral iff
+   the tenths digit is 0 or 5), but the "error magnitude ranks severity"
+   fit loses two of its four non-zero points. Test at `.0`/`.5` tempos, or
+   read the word back.
+2. **His clickless count does not reproduce.** Over BPM 30.0–300.0 by 0.1 ×
+   RLEN 2–64 (170,163 combinations, matching his denominator) exact
+   divisibility gives 4,560 under `round`, 5,804 under truncation, 5,909 as
+   an exact rational; he reports 5,279. The `MOD 16` subset under `round`
+   is 1,357 (he: 2,017). The headline — the mod-16 sheet is a strict subset
+   discarding roughly three quarters of the usable settings — survives; the
+   figures need his grid definition.
+
+Under external MIDI clock (Sam's rig: the Rytm is master) tempo24 is
+whatever the clock-follower computes; nothing then divides, and the
+technique cannot be relied on at all. 🟡 inferred — the follower's write is
+not read.
+
+#### The 16-sample question — an answer to his confusion, all inferred
+
+He was confident the 16-sample frame dictated the bad sound-on-sound
+behaviour, found the one place 16 appears, and his session then falsified
+it as the click mechanism. Both halves are right, and they are about
+**two different 16s**:
+
+- **The 16 he expected — length quantised to frames, hence "hard
+  truncation" — is not there.** The wrap is sample-accurate (segment
+  builder, above), and his own clean rows prove it: 88,200, 22,050 and
+  4,410 are integer lengths that are **not** multiples of 16 (≡ 8, 2, 10
+  mod 16) and all loop cleanly. That alone kills "16 dictates SOS" and
+  shows why the community `MOD 16` rule works: it is sufficient only because
+  it implies an integer length. The 16 he found is an end-of-recording
+  *extension*; on a LOOP=ON buffer it may never run.
+- **Where 16 plausibly still bites: the relative frame phase of two
+  processes over one buffer.** In an SOS patch the recorder's
+  read-modify-write and the flex playback read both walk the same block
+  chain in 16-sample frames. Within a frame their order is fixed. If the
+  two heads are offset by `d` samples, the reader sees either all
+  this-pass content or all last-pass content — consistent, no seam — unless
+  `d` falls in a **15-sample band next to zero** (which side depends on the
+  fixed order), where every frame returns a mixture: a new/old
+  discontinuity **once per frame, at 2,756 Hz**, with the amplitude of the
+  newest layer. That is a buzz, not a tick, and it needs no crossfade to
+  explain. With exact divisibility `d` never moves. With per-pass error `ε`
+  it walks at `ε` per pass, enters the band after about `0.5/ε` passes and
+  leaves after about `16/ε` — so the model predicts the clicking **starts
+  within a few passes, lasts `16/ε` passes** (≈33 loops at ε = 0.48, about
+  10 s at 199/4 and 3 s at 298.2/2; ≈48 loops at 251/16, about 46 s) **and
+  then stops** until `d` has walked the whole buffer, thousands of passes
+  later. It also predicts a **direction dependence**: only drift toward the
+  band clicks, so roughly half the non-divisible settings should go clean
+  for good after a short latency shift. His four clicking rows do not split
+  cleanly by rounding direction under either tempo24 rule, which counts
+  against the simplest form of this; a second reader (the recorder's own
+  RMW read is one) would put a band on both sides.
+- **The simpler alternative** is the per-pass seam itself: a flex retrig or
+  a wrap on a buffer whose length differs from the sequencer period by less
+  than a sample gives one dropped or repeated sample per pass — a small
+  tick, indefinitely, every pass. It cannot produce "clicks horribly", but
+  it may be what the `.0/.5`-tempo rows that still click are hearing.
+
+**What discriminates them, on his unit, no firmware needed:**
+
+1. Does the clicking **stop** after `~16/ε` passes (frame phase), or
+   continue for as long as it runs (seam)?
+2. Record, **stop** the recorder, then play the buffer looped. No live
+   writer → no frame-phase seam. If it still clicks, it is the seam.
+3. Run the set at `.0`/`.5` tempos only, so tempo24 is unambiguous, and log
+   the rounding **direction** with the outcome.
+4. State the patch exactly: **what is trigged per pass** — a REC trig, a
+   PLAY trig, both, or neither (one arm, both free-running)? The drift
+   argument needs one side re-triggered by the sequencer and the other
+   free-running at `L`; with both free-running the offset is constant and
+   the mechanism is something else again. His document never says, and the
+   answer changes which of the above can even apply. Note his own §12.2:
+   the arm-time position `+300` **survives a re-arm** (re-bounded, not
+   zeroed) — if the live position inherits that, a REC trig per pass does
+   not re-synchronise the recorder either.
+
+Finally, the sub-frame trig nibble he names as prime suspect
+(`0x46104d26`, low nibble = sample offset within the frame) is the *same*
+rounding seen from the sequencer side — a trig at fractional position `kP`
+lands on an integer sample, so consecutive passes land one sample apart —
+not an independent mechanism. It is what makes the sequencer sample-accurate
+inside the 16-sample frame, and so it is the second reason the frame size
+does not appear in his data.
+
+#### Notes back to Bryan (5 Sep)
+
+1. DMA channel 0 / `0x40004860` is the ColdFire→DSP frame transfer, not
+   control-surface polling (`DSP.md` §6c).
+2. tempo24 is an integer; `x.y` BPM is ambiguous unless `y ∈ {0, 5}`;
+   the nudge scales it with a truncating divide (`0x4004bc54`).
+3. The 5,279 / 2,017 counts do not reproduce under `round` (4,560 / 1,357)
+   or truncation (5,804); which grid?
+4. The frame-phase-band hypothesis and the four discriminating tests above.
+5. `0x4006e3b2` (truncating RLEN converter) is now the one whose consumer is
+   open, since `0x40006dfc` is the one that reaches `arm()`.
+
 ## Open threads worth knowing about
 
 Bryan flags these as still open:
@@ -532,13 +733,21 @@ Bryan flags these as still open:
 - The marker-list writer that BEAT snapping reads, and with it what TSNS
   actually parameterizes (inferred to select snap candidates).
 
-From the recorder session (2 Sep), still open on both sides:
+From the recorder sessions (2 and 5 Sep), still open on both sides:
 
-- **The audio write path and the recorder buffer addresses** — nothing in
-  the session touched the code that moves samples into the buffers. His
-  expectation is a frame-rate DMA sibling of `0x400031a0`; the state-record
-  length fields (`+300/304/308`) and the pointer at control `+20` are the
-  likely route.
+- ~~**The audio write path and the recorder buffer addresses**~~ ✅ **CLOSED
+  by his Session 4, 5 Sep 2026**: pool `0x40A955E0`, 6144-byte block chains,
+  read-modify-write in `0x400068e4`, hard cut at the loop point (§6 above).
+  Not a DMA sibling of the delay after all — the CPU packs the samples.
+- **Why a sub-sample per-pass rounding error becomes an audible splice** —
+  his §14.8 fit is empirically strong and mechanically empty; the
+  frame-phase-band hypothesis and four hardware tests above are our offer.
+- Whether the 16-sample limit extension (`0x40006e2a`) runs once at record
+  end or at every wrap; which caller passes `%fp@(32) = 0`.
+- The consumer of the truncating RLEN converter `0x4006e3b2`, now that
+  `0x40006dfc` is the one that reaches `arm()`.
+- How the UI turns a displayed `x.y` BPM into the integer tempo24 (round or
+  truncate), and what the MIDI-clock follower writes.
 - The TRIG=ONE / SRC3=MAIN default fixup that the descriptor does not carry.
 - SRC3 routing, the AB/CD gain application point, FIN/FOUT fade generation,
   QPL playback machinery (state `+297`), the ONE2 two-phase behaviour, and

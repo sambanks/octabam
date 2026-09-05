@@ -672,7 +672,7 @@ far needs A; `docs/EMU.md` keeps it on the table.
 **Next emulator milestone, parked 4 Sep 2026: a LOADED PROJECT (card
 emulation).** The emulator boots with no project, so `PART` is null and every
 panel path that keys off the project — the select committer, part save and
-load, stamp defaults, the untraced recorder write path — cannot be driven to
+load, stamp defaults, the recorder write path — cannot be driven to
 the right address; that gap is what turned the select-array question into
 four hardware probe flashes (80–83) with no signal. The firmware does its own
 FAT parsing, so the emulator only has to answer ATA sector reads from an
