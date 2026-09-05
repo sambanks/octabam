@@ -381,6 +381,46 @@ Do this on a **freshly re-selected** BusVerb / BusDelay: a part saved before
 the swap has its slot-6/7 bytes crossed — and see the stall above: stamp the
 WHOLE project before pressing play, not just the track you are looking at.
 
+## Tag 16 — the rig with real send knobs on the host pages (5 Sep 2026)
+
+`bamsep27`, `BUILD=16`. On top of tag 15 (bus screen in the rig, page-2
+store at +0, SEND labelled): each host's FX2 page now carries its own send
+pair, per Sam's call — "delay drive and reverb single tone".
+
+| engine | slot | was | now |
+|---|---|---|---|
+| BusVerb | 3 | HP | **TONE** — 0..64 = old LP 0..127 (dark → flat), 64..127 = old HP 0..126 (flat → thin); **64 = old HP 0 / LP 127 bit-identical** |
+| BusVerb | 4 | LP | **-DEL** — dry send into the delay bus, default 0 |
+| BusDelay | 10 | DRV | **-DEL** — dry send into its own delay (the retired IN path), default 0; drive pinned to 0 |
+
+⚠️ **STAMP-DEFAULTS BEFORE PLAY, no exceptions.** A part saved under tag ≤15
+holds LP=127 in slot 4 and HP=0 in slot 3: under tag 16 that is **-DEL 127
+(the reverb host sending full-tilt into the delay) and TONE 0 (a fully dark
+tail)** on every BusVerb track of every part — legal values, so nothing
+refuses, it just sounds wrong and blames the engine. And BusDelay's old DRV
+byte becomes its send level. `tools/ot_project.py stamp-defaults <project>
+bamsep27` on the card first (the tag-84 lesson, in stored-byte form).
+
+Claims to settle on the unit (emulator says: reverb host `-DEL` 100/127 =
+a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;
+`verify-bus` 19/19; TONE 64 render bit-identical to tag 15):
+- [ ] T5 (BusVerb host) FX2 page 1 reads TIME MOD SIZE **TONE -DEL** IN;
+      T1 (BusDelay host) page 2 reads MODE MDEP MRAT SIZE **-DEL** FRZE.
+- [ ] T5 `-DEL` up: T5's dry audible in the delay on T1, at the level a
+      station's `->DEL` at the same value gives. **This is the cross-core
+      claim no local test can reach**: the client flag is a per-block write
+      on core 0 read per block on core 1 (`Y:0x941`, RETV's shape).
+      Falsifier: the send arrives but the delay's level drops when it does
+      (flag seen, contribution not) or the send never arrives (contribution
+      not seen); either way say which.
+- [ ] T5 `-DEL` at 0 with a station sending: the delay's level is what tag
+      15 gave (no phantom client).
+- [ ] TONE: 64 sounds like tag 15's default; sweep down darkens, up thins;
+      nothing steps or clicks at 64 (the two halves meet there).
+- [ ] T1 `-DEL` up on the delay host: T1's dry repeats; at 0, nothing.
+- [ ] Bus screen (CONTROL → REVERB / DELAY) rows 3/4 and 10 draw the new
+      names and edit them (tag 15's own claims still open, see Flash 5).
+
 ## Before every flash
 
 From `docs/FLASHING.md` and the card workflow this project already uses:

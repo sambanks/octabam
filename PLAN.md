@@ -22,8 +22,9 @@ What ships:
 - **BusDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
   cloud, v5: Nimbus's readers, four per line, ±2 octaves on RATE; the
   harmoniser since PITCH mode was retired 3 Sep 2026), REVERSE — with tape-style
-  wow/flutter modulation (DPTH/RATE), drive (DRV, doubling as GRAIN's
-  scatter depth) and a FREEZE hold available in **every** mode. (MODE still
+  wow/flutter modulation (DPTH/RATE), the host's own `-DEL` send (slot 10;
+  it was the drive until 5 Sep 2026, given up for the send knob) and a
+  FREEZE hold available in **every** mode. (MODE still
   counts five positions; the former TAPE slot aliases CLEAN now that the
   tape character is global.) Hosted on a track **1–4** (payload B / core 1);
   any track can send into it. Its wet can be sent on into the reverb over

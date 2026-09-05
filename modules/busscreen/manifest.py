@@ -132,10 +132,14 @@ MARKS = {
 
 # The twelve parameter names of each engine, slot order (page 1 then page 2),
 # matching modules/busverb and modules/busdelay.
-VERB_NAMES = (b"TIME", b"MOD", b"SIZE", b"HP", b"LP", b"IN",
+# (5 Sep 2026: TONE/-DEL replace HP/LP on the reverb and -DEL replaces DRV
+# on the delay -- the hosts' own send pair. The delay's MODE is slot 6 and
+# MDEP slot 7, per its manifest and DLY_SELECTS below; this table had them
+# swapped until the same day.)
+VERB_NAMES = (b"TIME", b"MOD", b"SIZE", b"TONE", b"-DEL", b"IN",
               b"MODE", b"SHMR", b"DIFF", b"SHFT", b"GATE", b"RATE")
 DLY_NAMES = (b"TIME", b"FDBK", b"TONE", b"PING", b"-VRB", b"PTCH",
-             b"MDEP", b"MODE", b"MRAT", b"SIZE", b"DRV", b"FRZE")
+             b"MODE", b"MDEP", b"MRAT", b"SIZE", b"-DEL", b"FRZE")
 
 # Per-engine SELECT slots and their labels (count < 128 in the manifests),
 # so the screen prints ROOM/PLATE/BIG etc. instead of a raw number. slot ->

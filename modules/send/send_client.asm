@@ -55,7 +55,12 @@
 ;                       alone.
 ;   Y:0x901..0x940      REVERB bus accumulator, FOUR buffers of 16 words (one
 ;                       word per sample slot within a block), at +0/+16/+32/+48
-;   Y:0x941..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
+;   Y:0x941             BusVerb host's ->DEL knob field (v8, 5 Sep 2026): the
+;                        reverb writes it every block, the delay's auto-gain
+;                        counts it as one more client while nonzero, the
+;                        delay's warm-up zeroes it. A single-writer word in
+;                        place of a cross-core count RMW.
+;   Y:0x942..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
 ;                        mono, never read. Left in place so nothing below moves.)
 ;   Y:0x961..0x9a0      DELAY  bus accumulator, FOUR buffers of 16 words
 ;   Y:0x9a1..0x9c0      (DEAD: was the DELAY wet, same story)
@@ -74,10 +79,11 @@
 ;                        offset back down to a bare index (`asr #$4`).
 ;   Y:0x9c7..0x9ca      DELAY send COUNT, one per accumulator buffer -- the same
 ;                        mechanism for the DELAY bus (landed with BusDelay's
-;                        auto-gain). Every DELAY-bus writer registers here:
-;                        SEND (this file) and REVERB SERVER's ->DEL send, both
-;                        unconditionally, because both write the accumulator
-;                        unconditionally (zeros count too).
+;                        auto-gain). SEND (this file) and BusDelay's own -DEL
+;                        register here, gated on their knobs (17 Aug 2026: an
+;                        idle client that registers dilutes the real ones).
+;                        BusVerb's ->DEL send is counted through Y:0x941
+;                        instead, see above.
 ;   Y:0x9cb..0x9d2      DELAY SERVER's 1/sqrt(N) reciprocal table, rebuilt by it
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.

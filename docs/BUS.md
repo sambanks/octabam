@@ -872,6 +872,29 @@ buses:
 | `DELAY SERVER` | runs delay | `→VERB` **wet** (its own repeats bleed into reverb) + `→VERB` **dry** (its own signal, parallel) |
 | `REVERB SERVER` | runs reverb | `→DELAY` **dry** only (parallel) |
 
+**`REVERB SERVER`'s `→DEL` was retired on 18 Aug 2026 and is BACK since
+5 Sep 2026 (v8), on page-1 slot 4** — the rig puts each host's own send pair
+on its FX2 page ("real send knobs"), and a BusVerb host has no station to
+carry `→DEL`. The 18 Aug reason (a return's dry is silence) stopped holding
+when v5 made the host pass its dry at unity. It is still a DRY tap: the
+one-wet-crossing rule (delay → reverb only) stands. To fit — payload A had
+35 words — HP and LP became one TONE knob (`REVERB.md`), and the
+registration is not a count RMW any more: the reverb writes its `→DEL` knob
+field to `Y:0x941` every block (one writer, one word, the dead REVERB-wet
+range) and the delay's auto-gain resolve counts it as one client while
+nonzero; the delay's warm-up zeroes it. The loop's copy of the level lives
+in core-private `Y:$09f0` (r7 is full again, and `r6` is not the knob block
+inside the reverb's loop — the first cut read it there and sent silence).
+**Measured in the DEV hatch (emulator, single core):** reverb host `→DEL`
+100 / 127 lands in the delay at 0.131 / 0.166 FS — the same figures as a
+SEND client at 100 / 127; SEND 127 + reverb host 127 gives 0.235 FS, the
+same as two SENDs (the 1/√N count sees the flag as a client); `→DEL` 0 is
+silent (no phantom share). `verify-bus` 19/19 bit-identical, TONE 64 render
+bit-identical to the old HP 0 / LP 127. What no local test can show: the
+flag word crossing cores — a per-block write on core 0, a per-block read on
+core 1, RETV's proven shape, and NOT the in-loop shared-window read that
+R36 found dead.
+
 **Delay → reverb (wet) is one-directional, deliberately.** This mirrors the
 real Digitakt II, confirmed by its manual: the delay page carries its own
 reverb-send parameter, signal order delay → reverb. There is **no**

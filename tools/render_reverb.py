@@ -128,7 +128,10 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # MIX (idx 5) has been IN since the v4 return -- the host's own send level,
 # not a crossfade; the name stays so existing command lines keep working.
 # RATE default 1 = 1x MOD speed, the hardware boot value (0 would halve it).
-PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("HP", 0), ("LP", 127),
+# TONE (idx 3) and DEL (idx 4) replaced HP/LP on 5 Sep 2026 (v8): TONE 64 is
+# the old HP 0 / LP 127 exactly; DEL is the host's dry send into the DELAY
+# bus, inert in this single-effect renderer (nothing reads the bus).
+PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64), ("DEL", 0),
           ("MIX", 64), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
 # SHFT (idx 9) was WIDTH until v6 (23 Aug 2026): width is pinned wide and the

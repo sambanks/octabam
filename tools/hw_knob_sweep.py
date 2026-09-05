@@ -25,14 +25,16 @@ LOG = pathlib.Path("out/hw/bustest/sweep.log")
 
 # (cc, name, a, b)  -- BusVerb slot order: page 1 then page 2
 VERB = [
-    (41, "MOD",  0, 127), (42, "SIZE", 0, 127), (43, "HP", 0, 127), (44, "LP", 0, 127), (45, "IN", 0, 127),
+    (41, "MOD",  0, 127), (42, "SIZE", 0, 127), (43, "TONE", 0, 127), (44, "-DEL", 0, 127), (45, "IN", 0, 127),
     (62, "MODE", 0, 2),   (63, "SHMR", 0, 127), (64, "DIFF", 0, 127), (65, "SHFT", 0, 3),
     (66, "GATE", 0, 127), (67, "RATE", 0, 3),
 ]
+# CC 62-67 = page-2 slots 6-11 = MODE MDEP MRAT SIZE -DEL FRZE (the manifest's
+# order; this table was one slot off until 5 Sep 2026).
 DELAY = [
     (41, "FDBK", 0, 127), (42, "TONE", 0, 127), (43, "PING", 0, 127), (44, "-VRB", 0, 127), (45, "PTCH", 0, 127),
-    (62, "MODE", 0, 2),   (63, "MRAT", 0, 127), (64, "SIZE", 0, 3),  (65, "DRV", 0, 127),
-    (66, "FRZE", 0, 1),   (67, "RATE", 0, 127),
+    (62, "MODE", 0, 2),   (63, "MDEP", 0, 127), (64, "MRAT", 0, 127), (65, "SIZE", 0, 3),
+    (66, "-DEL", 0, 127), (67, "FRZE", 0, 1),
 ]
 RESTORE = {40: 90, 41: 20, 42: 64, 43: 0, 44: 127, 45: 100,
            62: 1, 63: 0, 64: 64, 65: 0, 66: 0, 67: 1}

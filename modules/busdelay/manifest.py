@@ -25,7 +25,7 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, drive, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -84,11 +84,15 @@ MODULE = Module(
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
               doc="segment/grain size 46/93/23 ms; XTRM = 12 ms REVERSE, 186 ms GRAIN"),
-        # DRV is drive in every mode but GRAIN, where the same byte is the
-        # scatter depth. 0 = exact bypass, which outranks a scatter taste
-        # that gets played by hand anyway.
-        Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
-              doc="drive on the repeats, every mode; 0 = bypass"),
+        # -DEL (v7, 5 Sep 2026; was DRV): the host's OWN dry send into its
+        # delay, back on the page now that the FX2 page is where the sends
+        # live (the drive went: Sam's call, "delay drive"). It rides the
+        # retired IN machinery, so it is headroomed, summed before the
+        # auto-gain and counted as a client only while nonzero -- 0 default
+        # for the phantom-client reason. The drive is pinned to 0 = exact
+        # bypass, bit-identical to DRV=0.
+        Param(b"-DEL", 0, 128, active=True, formatter=_PLAIN,
+              doc="this track's dry send into the delay; 0 = none"),
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
               labels=("RUN", "HOLD"),
               doc="freeze the line as a loop -- loop length = TIME"),

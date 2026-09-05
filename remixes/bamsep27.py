@@ -20,14 +20,15 @@ bus sends, and NOTHING on FX2. What differs from `bamsep26`:
     the panel did not. Unexplained, and not worth explaining: the rig does
     not want it.
 
-⚠️ THE SENDS STAY ON THE STATIONS. Design pass 2 first moved them to FX2,
-and the arithmetic refused: both engines already use all twelve parameter
-slots, and putting their controls on a menu screen frees none of them --
-the screen edits those same twelve. Sends on the stations are uniform
-anyway, since every track has one. SEND is kept only as the FALLBACK, so a
-fresh or unassigned track still dispatches to real code, and it is hidden
-too: its knobs default to 0, so such a track is inert and looks like every
-other empty FX2.
+THE HOSTS CARRY THEIR OWN SEND PAIR (5 Sep 2026, Sam: "the plan was real
+send knobs"). Design pass 2 first found the arithmetic refused -- both
+engines used all twelve slots -- so each gave one up: BusVerb's HP and LP
+became one TONE knob (slot 3) and slot 4 is its -DEL; BusDelay dropped the
+drive and slot 10 is its -DEL. With IN / -VRB already on the pages, each
+host now has its send into its own engine and into the other. Every other
+track's sends are on its station. SEND is kept as the FALLBACK, so a fresh
+or unassigned track still dispatches to real code, and it is the one row
+the FX2 chooser carries.
 
 BUS SCREEN IS IN THE RIG (5 Sep 2026): CONTROL -> REVERB / DELAY opens the
 twelve-row editor. It fits because (a) the screen is now three caves -- its

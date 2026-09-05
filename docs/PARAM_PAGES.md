@@ -595,7 +595,7 @@ saved under the old layout hand the count-3 slot a 0–127 byte
 | 7 | `$c` | **bits 8–15** | SHMR / MDEP |
 | 8 | `$d` | knob, bits 16–23 | DIFF / MRAT |
 | 9 | `$d` | **bits 8–15** | SHFT / SIZE |
-| 10 | `$e` | knob, bits 16–23 | GATE / DRV |
+| 10 | `$e` | knob, bits 16–23 | GATE / -DEL (DRV until 5 Sep 2026) |
 | 11 | `$e` | **bits 8–15** | RATE / FRZE |
 
 ⚠️ **Slot 6 is on `$c`, not `$b`.** `$b` is not a page-2 parameter word at all.

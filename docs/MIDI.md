@@ -40,8 +40,8 @@ a clock/tempo estimator writing `0x80001818/14`).
 **CC map** (handler `0x4000e79c`): CC 16–45 → `idx = cc−16` (bounds `< 30`),
 posted as kind `0x40` to the kernel queue `0x460d17ae`; consumer `0x40062496`
 maps `idx/6` through `{0,2,1,3,4}` to page_kind, `flat = page_kind·6 + idx%6`.
-**CC 40–45 = FX2 slots 0–5** — our page-1 knobs (BusVerb TIME/MOD/SIZE/HP/LP/IN,
-BusDelay TIME/FDBK/TONE/PING/-VRB/IN, SEND -DEL/-VRB) should be live TODAY;
+**CC 40–45 = FX2 slots 0–5** — our page-1 knobs (BusVerb TIME/MOD/SIZE/TONE/-DEL/IN
+since 5 Sep 2026, HP/LP before; BusDelay TIME/FDBK/TONE/PING/-VRB/PTCH, SEND -DEL/-VRB) should be live TODAY;
 unverified on hardware ⬜. Other CCs: 7/46 level, 47 cue, 8 AMP BAL, **48
 crossfader**, 49–51 mute/solo/cue, 52–54 arm, 55/56 scene select, 59/60 synth
 note on/off, 61 send request, 112–127 → `0x8000000c`.
