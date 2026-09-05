@@ -198,6 +198,17 @@ CC 16–45 on the auto channel to track 8 regardless of AUDIO CC IN
 
 ## 6. Page-2 CC → DSP: the delivery path is NOT the live byte (5 Sep 2026)
 
+> **⚠️ SUPERSEDED the same day by §7.** The measurements in this section stand
+> (page-1 works, page-2 was inert, the frame-builder / `0x40171xxx` reading),
+> but its CONCLUSION was wrong: the live `+0x20` byte is exactly right and is
+> shipped to the DSP every frame by the copier at `0x4000cae8`. Page-2 was
+> inert because the cave omitted the *bookkeeping stores* P2EDIT makes and
+> wrote the Part store at the wrong displacement. See §7 for the mechanism
+> as measured on hardware; the "open contradiction" below is resolved there
+> (the `0x40170f8a` refreshers are load-time, the marker packer is page-1
+> only, and page-2 is carried by the copier's lane, not by `0x80000a50`).
+
+
 `modules/ccpage2` adds CC 62-67 → FX2 page-2 (§ docs/MIDI.md). On hardware
 (build OCTABAM94, flashed 5 Sep) **page-1 CC works but page-2 CC does not
 reach the DSP**, measured, not inferred:
@@ -250,3 +261,70 @@ two-core staging (CLAUDE.md: a single-core emulator cannot show a race
 between two cores). Even/odd slot split (even = knob bits 16-23, odd =
 companion bits 8-15; docs/PARAM_PAGES §2, the R28 companion work) applies to
 page 2 and must be honoured in the eventual write.
+
+## 7. Page-2 over CC: the mechanism, MEASURED on hardware (5 Sep 2026, tags 94-13)
+
+Twelve flashes of `modules/ccpage2` bracketed the answer. Everything below is
+hardware-measured unless marked.
+
+**How the panel edits page 2.** The page-2 editor `P2EDIT = 0x4003a474
+(slot2, delta)` (reached through the 7-record page table at `0x400bb6f8`,
+each record's encoder handler) does, in order:
+
+1. reads the current value from the Part store
+   `DB + part*6322 + 0x8ef5a + track*30 + page*6 + slot2`, with
+   `part = byte 0x80000003`, `track = byte 0x80000000`,
+   `page = long 0x460d5c30` (the staged page index) — `0x4003a4a8..a560`;
+2. clamps with the descriptor's min/count at index `slot2+6`
+   (`a5@(0x6a+(slot+6)*4)`, `+0x9a`) — page-2 slots are descriptor
+   indices 6..11;
+3. stores the value to the Part store (above), to a **shadow**
+   `0x100a50a8 + part*6322 + track*30 + page*6 + slot2`, sets
+   `DB+0x95048 |= 1<<part`, `0x100b145e |= 1<<part`, `DB+0x9b332 = 1` and
+   the global `0x100f8598 = 1` (461 writers image-wide: the generic
+   "edited" flag) — `0x4003a5ba..a5f4`;
+4. writes the **live lane byte `0x80000830 + track*72 + slot2`**, sets the
+   redraw flag `0x46c7d244[slot2*20+4] = 0x14`, and tail-jumps to the page
+   redraw `*(0x400bb7f4) = 0x4003c830`.
+
+There is **no DSP post** on this path (unlike page 1, where the writer calls
+the resolver `0x4009da20`, which posts a kind-0x0f record to the DSP
+parameter queue `0x460d17ee`, consumed at `0x4009204c`). Page-2 reaches the
+engine through the live lane: the per-frame copier `0x4000cae8` (and its twin
+`0x40003d14`) ships `0x80000a50`'s halfwords **and the `+0x20` lane bytes**
+to the host-port staging every frame, unconditionally. The `0x40170f8a` /
+`0x4017107a` "frame builders" (four instances) are load-time refreshers from
+project storage, and the `0x80000db4` marker packer (`0xa0` = a 160-frame
+slew countdown) covers page-1 bytes 0..31 only — neither touches page 2.
+
+**What the cave got wrong, in the order it was found (all retracted):**
+
+| tag | change | result | lesson |
+|---|---|---|---|
+| 94 | direct Part(`+18`)+live+mirror, no flags | dial dead, sound dead | — |
+| 95 | + display array `0x8f084` | same | the dial reads the Part via the page cache, not `0x8f084` |
+| 96 | + `tstb` CC-IN gate, Part id, canary | canary (CC67→IN via stock writer) **fires** | branch runs, track resolves; `and #1` was NOT the bug (parser stores 1); MAPBUILD does NOT clobber d5-d7 (170 B, no calls); the id mirror IS loader-filled |
+| 97 | part from `0x100b14cf`, `+24` | dead | `0x100b14cf` is the page-1 writer's part; P2EDIT uses `0x80000003` |
+| 98 | + shadow, part bits, `DB+0x9b332` | dead | — |
+| 99 | + part back to `0x80000003` | dead | the store was still at the wrong displacement |
+| 10 (=100) | page index read LIVE from `0x460d5c30` (+ global flag) | **works, page on screen** | the displacement was the last bug |
+| 11 | pinned `+18` (page 3, from a `4→3` remap I misread) | dead | — |
+| 12 | live index, GATE ← index*16 | **GATE sat at 0**; MODE/SHMR moved | **the staged index is 0 → the FX2 page-2 store is `+0 + slot2`** |
+| 13 | pinned `+0`, reveal removed | **works with the page NOT on screen** | production |
+
+So the two real defects were: (a) the **bookkeeping stores** (shadow, part
+bits, `DB+0x9b332`, `0x100f8598`) — without them the Part store is inert;
+(b) the **Part displacement**: the busscreen's `+18` (which its own draw also
+uses, so it was self-consistent and never caught) and my `+24` are both
+wrong; the page-2 store for the staged page is `+0`. ⚠️ The busscreen
+therefore reads and writes the wrong page-2 bytes for display — a separate
+fix (`modules/busscreen`, P2OFF displacement 18 → 0, and P2EDIT must be
+called with the real staged index, not `PAGEGLOB=4`).
+
+**Tooling that made this measurable.** `tools/hw_bus_test.py` (synchronous
+paired A/B over MIDI with EVO capture, T5 soloed, reverb-tail gap-floor
+metric, a page-1 control proving the harness each run); an emulator
+write-diff of P2EDIT vs the cave (every store, same inputs) which found the
+last missing flag; and the CC-67→IN canary through the stock writer, which
+separated "the branch never runs" from "the bytes are wrong" in one flash.
+`tools/hw_knob_sweep.py` runs the harness over every page-1/page-2 knob.

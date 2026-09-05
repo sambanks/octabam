@@ -74,9 +74,9 @@ def _part_base(uc):
 
 def _addrs(uc, track, slot2):
     base = _part_base(uc)
-    return (base + 0x8ef5a + track * 30 + 18 + slot2,   # Part
+    return (base + 0x8ef5a + track * 30 + 0 + slot2,    # Part: page*6+slot2, FX2 stages index 0 (hw-measured 5 Sep, tag 12)
             0x80000810 + track * 72 + 0x20 + slot2,       # live
-            0x100a50c0 + track * 30 + slot2)              # mirror
+            0x100a50a8 + 0 + track * 30 + slot2)          # shadow: 0x100a50a8+part*6322+track*30+page*6+slot2 (P2EDIT 0x4003a5bc), part 0, index 0
 
 
 def main():
@@ -89,7 +89,9 @@ def main():
     r = emu.boot("out/mainos_bus.bin")
     uc = r.uc
     assert r.clean
-    for b in (CAVE_AT, MSG_AT, 0x100a0000):
+    # the cave also writes the shadow (0x100a5xxx), the part-modified byte
+    # (0x100b145e) and the global changed flag (0x100f8598): map those pages
+    for b in (CAVE_AT, MSG_AT, 0x100a0000, 0x100b0000, 0x100f0000, 0x460d0000):
         try:
             uc.mem_map(b & ~0xFFFF, 0x10000)
         except Exception:
@@ -109,6 +111,7 @@ def main():
     def send(track, effect_id, cc, value, channel=3):
         emu.assign_fx2(r, track=track, effect_id=effect_id)
         uc.mem_write(PARTB, b"\x00")
+        uc.mem_write(0x460d5c30, (0).to_bytes(4, "big"))   # staged page index 0 (the cave pins +0 anyway)
         uc.mem_write(AUDIO_CC_IN, b"\x01")
         uc.mem_write(AUTO_CH, b"\xff")
         # every track off, then our track listens on `channel`
