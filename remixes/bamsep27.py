@@ -44,7 +44,7 @@ REMIX = Remix(
     doc="Design pass 2: the rig with the engines hidden and no stock delay.",
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "TEMPO SYNC", "MENU SHORTCUT"),
+             "TEMPO SYNC", "MENU SHORTCUT", "CC PAGE 2"),
     hidden=("REVERB SERVER", "DELAY SERVER", "SEND",
             "SPECTRUM", "CHARACTER", "MODULATION"),
     grains=2,          # the cycle lever: four stations beside the delay

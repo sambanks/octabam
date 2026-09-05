@@ -150,7 +150,15 @@ array `0x80000a50` as `value << 8` — which is exactly why knob values sit at
 bits 16–23 of the DSP word (`PARAM_PAGES.md`). The same loop also fills a
 second byte lane at `+0x20` (`0x80000830..`) from `0x4017113a`/`0x40171252`
 and six more at `+0x3e`; that lane is the natural home of the page-2 /
-companion bytes 🟡 (its source arrays were not traced). The `0xa0` marker
+companion bytes 🟡 (its source arrays were not traced). **UPDATE 5 Sep 2026
+✅:** page-2 IS that `+0x20` lane (`0x80000810 + track*72 + 0x20 + slot2`,
+traced tracks 0/1/4/7). And `0x40171xxx` is NOT the value source: tracing
+every write of the page-2 editor `0x4003a474` shows it writes the live byte
+(`0x80000950` for track 4) and the mirror (`0x100a50c0 + track*30 + slot2`)
+directly, plus the redraw marker `0x46c7d248 = 0x14`, and touches nothing in
+`0x40171xxx`. So the live byte is the DSP-facing store; a direct
+Part+live+mirror write reproduces the editor's stores with no `0x40171xxx`
+update and no call to `0x4003a474`. The `0xa0` marker
 array `0x80000db4` is walked by the packer at `0x4000d648`. So a CC write
 lands in the next frame's record; there is no explicit "publish" call.
 

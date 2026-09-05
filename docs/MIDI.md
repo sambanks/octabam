@@ -58,8 +58,12 @@ byte `0x80000810[track·72 + flat]`**; the frame builder `0x4000c0f0` copies
 those `<<8` into the DSP frame every frame (that is why knobs sit at bits
 16–23). The UI knob path is a near-copy `FUN_40055008(slot, delta)`. **Page-2
 storage is untraced** — likely Part `+0x8ef5a` 🟡; the live-byte block is 72
-per track, which is 6 × 12 🟡 — page 2 may live in the same block at `+6..+11`
-of each 12. ⬜ The single RE item that gates tier 1.
+per track. **Page-2 IS in the same 72-byte block** ✅ (measured 5 Sep 2026):
+an FX2 page-2 slot's live byte is `0x80000810 + track·72 + 32 + slot2`
+(traced tracks 0/1/4/7 = 0x830/0x878/0x950/0xa28, all exactly +32). Page-1
+occupies `+0..+29`; page-2 begins at `+32`. The frame builder copies the
+whole block unconditionally, so a CC→page-2 cave needs only a real writer to
+this byte + the Part — **no staged FX page required** (see retraction below).
 
 ### Scenes / crossfader ✅ (corrects `docs/history/NOTES.md`)
 `FUN_4003f1b4` is NOT the general morph — it handles only STRT/LEN/RATE. The
@@ -194,7 +198,9 @@ path (page 1 since v5.1; bit-identical at unison, spectral elsewhere). The cave 
   track; whether it checks machine type is unread ⬜). If so, the delay host
   needs a sample machine with nothing loaded, or the cave reads the note from
   a different track (the source track) — a design choice, not a blocker.
-- Page-2 live bytes not in the 72-byte block → tier 1 costs a real writer.
+- ~~Page-2 live bytes not in the 72-byte block → tier 1 costs a real writer.~~
+  **RETRACTED 5 Sep 2026** — page-2 IS in the block at `+32`; a real writer is
+  still needed but it targets a known byte, no staged page (see above).
 
 ## Hardware findings — full MIDI-driven voice pass (24 Aug 2026 evening)
 
@@ -207,6 +213,13 @@ path (page 1 since v5.1; bit-identical at unison, spectral elsewhere). The cave 
   frame-builder path for this one slot is the remaining suspect. 🟡 UNTRACED.
   Practical rule for sets: automate TIME/FDBK/PING/-VRB/IN freely; TONE by
   hand.
+  **⚠️ Scope of this finding (clarified 5 Sep 2026):** this is a SINGLE-SLOT
+  anomaly (CC 42 / slot 2 only). It is NOT a general "params need the page on
+  screen" rule and must NOT be generalised to page 2. The frame builder reads
+  the whole 72-byte live block unconditionally; the busscreen edits page-2
+  from a menu state (FX page not up) and changes the sound on hardware. Any
+  earlier phrasing that page-2 CC "inherits a staged-page dependency" is
+  retracted — the dependency, whatever its cause, is specific to CC 42.
 - Chromatic notes 72-96 on a track's channel are the reliable remote
   trigger; **sample-trig notes 36-43 never fired on this project** (and a
   THRU track has nothing to trig). A note to the panel-SELECTED track is
