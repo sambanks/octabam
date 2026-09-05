@@ -396,6 +396,14 @@ def stamp_slot(pdir, which, slot, value=None, guard=True):
                         done.append((p, t, a, data[a]))
                         data[a] = value
 
+        # Dry run first: a bank that already holds the value is left alone
+        # (no rewrite, no mtime churn -- the unit's save times stay honest).
+        mut(bytearray(bank.read_bytes()))
+        if all(old == value for _, _, _, old in done):
+            if done:
+                print(f"bank{num:02d}: {len(done)} slot(s) already {value}, untouched")
+            continue
+        done = []
         _bank_write(pdir, num, mut, guard=guard)
         data = bank.read_bytes()
         if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):

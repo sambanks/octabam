@@ -410,10 +410,15 @@ python3 tools/ot_project.py stamp-slot "<project>" busverb  -DEL
 python3 tools/ot_project.py stamp-slot "<project>" busdelay -DEL
 ```
 
-**Done on the card 5 Sep 2026** for `PRESETS/PROJECT 260810` (the rig
-project: T5 BusVerb had 0 / **127** stored, T1 BusDelay had **87**) and
-`PROJECT 260804` (T1 BusVerb 0 / **93**) — every one of them would have
+**Done on the card 5 Sep 2026** for all three projects that name the
+engines: `PRESETS/OCTABAM_RIG` (THE rig project, in use that day — 16 banks
+× 8 parts, every T5 BusVerb stored HP 0 / **LP 127**, BusDelay's slot 10
+already 0), `PROJECT 260810` (T5 BusVerb 0 / **127**, T1 BusDelay DRV
+**87**) and `PROJECT 260804` (T1 BusVerb 0 / **93**) — every one would have
 loaded as a hot send. Backup: `~/octa/backups/PRESETS_20260905_pretag16/`.
+(The first pass missed OCTABAM_RIG: a `find | head -20` cut the listing
+short. List the whole set; the loaded project is the one with today's bank
+mtimes.)
 
 Claims to settle on the unit (emulator says: reverb host `-DEL` 100/127 =
 a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;
