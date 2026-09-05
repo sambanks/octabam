@@ -398,8 +398,22 @@ holds LP=127 in slot 4 and HP=0 in slot 3: under tag 16 that is **-DEL 127
 (the reverb host sending full-tilt into the delay) and TONE 0 (a fully dark
 tail)** on every BusVerb track of every part — legal values, so nothing
 refuses, it just sounds wrong and blames the engine. And BusDelay's old DRV
-byte becomes its send level. `tools/ot_project.py stamp-defaults <project>
-bamsep27` on the card first (the tag-84 lesson, in stored-byte form).
+byte becomes its send level. ⚠️ `stamp-defaults` does NOT do this: it
+touches only the ids a station replaced and keeps the engines' bytes on
+purpose. Use the targeted `stamp-slot` (added 5 Sep 2026), which writes one
+byte and leaves the other eleven knobs as Sam set them:
+
+```sh
+# module by key/name, knob by its manifest name, value = the manifest default
+python3 tools/ot_project.py stamp-slot "<project>" busverb  TONE
+python3 tools/ot_project.py stamp-slot "<project>" busverb  -DEL
+python3 tools/ot_project.py stamp-slot "<project>" busdelay -DEL
+```
+
+**Done on the card 5 Sep 2026** for `PRESETS/PROJECT 260810` (the rig
+project: T5 BusVerb had 0 / **127** stored, T1 BusDelay had **87**) and
+`PROJECT 260804` (T1 BusVerb 0 / **93**) — every one of them would have
+loaded as a hot send. Backup: `~/octa/backups/PRESETS_20260905_pretag16/`.
 
 Claims to settle on the unit (emulator says: reverb host `-DEL` 100/127 =
 a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;

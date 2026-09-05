@@ -27,6 +27,10 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/ot_project.py report PROJECT_DIR
     python3 tools/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
+    python3 tools/ot_project.py stamp-defaults PROJECT_DIR REMIX  # station ids only
+    python3 tools/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE]
+        # one knob byte on every part/track naming MODULE (key, name or id);
+        # SLOT by manifest name or index; VALUE defaults to the manifest's
 
 Writes edit GAIN= lines only, preserve CRLF and byte length discipline of the
 rest of the file, and refuse to run without a same-day backup directory
@@ -316,6 +320,96 @@ def stamp_defaults(pdir, remix_name, replaced_only=True, guard=True):
     return total
 
 
+def _resolve_module(which):
+    """A module by key ("REVERB SERVER"), name ("busverb") or fx id (0x07 /
+    7) -> (fx id, Module or None). Names come from the registry, so a tool
+    invocation never carries an id that could go stale."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from remix import registry
+    mods = registry.modules()
+    try:
+        fx_id = int(str(which), 0)
+        for m in mods.values():
+            if m.menu is not None and m.menu.fx2_id == fx_id:
+                return fx_id, m
+        return fx_id, None
+    except ValueError:
+        pass
+    w = str(which).upper()
+    for k, m in mods.items():
+        if m.menu is not None and (k.upper() == w or m.name.upper() == w):
+            return m.menu.fx2_id, m
+    sys.exit(f"no module named {which!r} (keys: "
+             f"{', '.join(k for k, m in mods.items() if m.menu is not None)})")
+
+
+def _resolve_slot(mod, slot):
+    """Slot by index (0..11) or by the module's own knob name ("TONE")."""
+    try:
+        s = int(slot)
+    except ValueError:
+        if mod is None:
+            sys.exit(f"slot {slot!r} needs a module with a manifest, not a bare id")
+        names = [p.name.decode("latin1").upper() for p in mod.params]
+        if str(slot).upper() not in names:
+            sys.exit(f"{mod.key} has no knob {slot!r}; it has {' '.join(names)}")
+        s = names.index(str(slot).upper())
+    if not 0 <= s < 12:
+        sys.exit("slot is 0..11")
+    return s
+
+
+def stamp_slot(pdir, which, slot, value=None, guard=True):
+    """Write ONE knob byte for every part/track that names the module (FX2
+    or FX1), leaving the other eleven alone. `which` is a module key, name
+    or fx id; `slot` an index or the knob's manifest name; `value` defaults
+    to the manifest default. For a slot whose MEANING changed (5 Sep 2026:
+    BusVerb's LP -> -DEL, HP -> TONE; BusDelay's DRV -> -DEL): stamp-defaults
+    keeps the engines' bytes deliberately ("Sam's knobs"), and re-stamping all
+    twelve would throw those away. Page 1 is slot < 6."""
+    pdir = pathlib.Path(pdir)
+    fx_id, mod = _resolve_module(which)
+    slot = _resolve_slot(mod, slot)
+    if value is None:
+        if mod is None:
+            sys.exit("a bare id has no manifest default -- give the value")
+        value = mod.params[slot].default or 0
+    value = int(value) & 0x7f
+    label = (f"{mod.key} {mod.params[slot].name.decode('latin1')}"
+             if mod is not None else f"id 0x{fx_id:02x}")
+    total = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+        done = []
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                for t in range(NTRACKS):
+                    for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
+                        if data[off + idoff + t] != fx_id:
+                            continue
+                        if slot < 6:
+                            a = off + P1_OFF + t * TRACK_STRIDE + sub + slot
+                        else:
+                            a = off + P2_OFF + t * P2_STRIDE + sub + slot - 6
+                        done.append((p, t, a, data[a]))
+                        data[a] = value
+
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        for p, t, a, old in done:
+            if data[a] != value:
+                sys.exit(f"{bank.name} part {p+1} T{t+1}: read-back disagrees")
+            print(f"bank{num:02d} part {p+1} T{t+1} {label} (id 0x{fx_id:02x} "
+                  f"slot {slot}): {old} -> {value}")
+        total += len(done)
+    print(f"{total} byte(s) stamped ({label}, slot {slot} = {value})")
+    return total
+
+
 def make_test_project(src, dest, remix_name):
     import shutil
     src, dest = pathlib.Path(src), pathlib.Path(dest)
@@ -493,4 +587,12 @@ if __name__ == "__main__":
         # a REAL set, before its first load on a flashed image: only the ids
         # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs
         stamp_defaults(pdir, sys.argv[3], replaced_only=True)
+    elif cmd == "stamp-slot":
+        # one knob byte, every part/track naming that module: for a slot
+        # whose meaning changed. Module by key/name/id, slot by name/index,
+        # value optional (manifest default). e.g.
+        #   stamp-slot PROJ "REVERB SERVER" TONE      -> 64, from the manifest
+        #   stamp-slot PROJ busdelay -DEL 0
+        stamp_slot(pdir, sys.argv[3], sys.argv[4],
+                   sys.argv[5] if len(sys.argv) > 5 else None)
     else: sys.exit(f"unknown command {cmd!r}")
