@@ -820,14 +820,16 @@ the conclusion below is unchanged. (5 Sep 2026: the converter that actually
 reaches the recorder's `arm()` is `0x40006dfc`, which *rounds*; `0x4006e3b2`'s
 consumer is open — `EXTERNAL.md` §6, Sessions 2–4.)
 
-**tempo24 is an integer count of 1/24 BPM** (measured 5 Sep 2026):
-`0x4009c5f4` splits it `÷24` / `mod 24` for display; `0x4009c5b8` returns
+**tempo24 is an integer count of 1/24 BPM, and the UI grid is ten uneven
+24ths per BPM** (measured 5 Sep 2026): the setter `0x4009c7c4(bpm, tenths)`
+computes `24·bpm + (23·tenths + 4)/9` (truncating), so tenths `0..9` become
+`0 3 5 8 10 13 15 18 20 23` — a displayed `.5` is +0.5417 BPM. `0x4009c5f4`
+displays it back (`÷24`, `mod 24`, `(9·f + 11)/23`); `0x4009c5b8` returns
 the pattern's own word (`blob + pattern×0x8ed8 + 0x8e58`) when
 `[0x80000024]` is set, else `0x80000020`; the writer at `0x4004bc54` scales
 it by `[0x46c7d328]/1000` with a truncating `divs` (nominal 1000, clamp
 ≤1100 — the tempo nudge, inferred from shape) before the 720..7200 clamp.
-A displayed `x.y` BPM is therefore not exactly representable unless
-`y ∈ {0, 5}`; the UI's rounding rule is not read.
+`EXTERNAL.md` §6 has the recorder consequences.
 
 **Conclusion of the static pass (inferred, one flash from measured):** the
 ColdFire computes every tempo-derived rate itself and ships rates, not BPM.

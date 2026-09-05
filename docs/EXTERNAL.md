@@ -605,36 +605,73 @@ crosses that port is the mixed frame, not a buffer.
 
 #### Our own measured additions, 5 Sep 2026
 
-**tempo24 is an integer count of 1/24 BPM, and the displayed tempo is not
-always representable.** `0x4009c5f4` splits the tempo word into `÷24` and
-`mod 24` for display; the source routine `0x4009c5b8` returns the pattern's
-own word (`blob + pattern×0x8ed8 + 0x8e58`) when `[0x80000024]` (per-pattern
-tempo) is set, else the global `0x80000020`. The writer at `0x4004bc54`
-scales it by `[0x46c7d328] / 1000` with a **truncating** `divs` before the
-720..7200 clamp (nominal 1000, clamped ≤1100, stepped by 20 and set to 1010
-in the same function — the tempo nudge 🟡 inferred from the shape). Two
-consequences for his §14.8:
+**How the tempo is stored, and the UI conversion his sweep needed.**
+tempo24 is an integer count of 1/24 BPM. The UI setter
+`0x4009c7c4(bpm, tenths)` computes
 
-1. A displayed `x.y` BPM with `y ∉ {0, 5}` is one of two adjacent tempo24
-   values, and the UI conversion site is not read. He assumed
-   `round(BPM×24)`. Under the other choice his 298.2/2 row becomes 4,437
-   samples (error 0.116, rounded *up*) and 286.2/2 becomes 4,623 (0.18):
-   the **divisibility condition is unaffected** (`BPM×24` is integral iff
-   the tenths digit is 0 or 5), but the "error magnitude ranks severity"
-   fit loses two of its four non-zero points. Test at `.0`/`.5` tempos, or
-   read the word back.
-2. **His clickless count does not reproduce.** Over BPM 30.0–300.0 by 0.1 ×
-   RLEN 2–64 (170,163 combinations, matching his denominator) exact
-   divisibility gives 4,560 under `round`, 5,804 under truncation, 5,909 as
-   an exact rational; he reports 5,279. The `MOD 16` subset under `round`
-   is 1,357 (he: 2,017). The headline — the mod-16 sheet is a strict subset
-   discarding roughly three quarters of the usable settings — survives; the
-   figures need his grid definition.
+```
+tempo24 = 24·bpm + (23·tenths + 4) / 9        (truncating divs; clamp 30.0..300.0)
+tenths 0..9  →  frac24  0 3 5 8 10 13 15 18 20 23
+```
 
-Under external MIDI clock (Sam's rig: the Rytm is master) tempo24 is
-whatever the clock-follower computes; nothing then divides, and the
-technique cannot be relied on at all. 🟡 inferred — the follower's write is
-not read.
+— not `round(2.4·tenths)` (`0 2 5 7 10 12 14 17 19 22`), which agrees only
+at `.0`, `.2` and `.4`. So a displayed tempo is one exact tempo24, but its
+BPM is not what the screen says: `.5` is +0.5417 BPM, `.9` is +0.9583. The
+display helper `0x4009c5f4` inverts it (`÷24`, `mod 24`, `(9·f + 11)/23`).
+The source routine `0x4009c5b8` returns the pattern's own word
+(`blob + pattern×0x8ed8 + 0x8e58`) when `[0x80000024]` (per-pattern tempo)
+is set, else the global `0x80000020`; all seven callers of the raw setter
+`0x4009c708` pass stored words (state `+276` snapshots, pattern records, the
+`0xb40` = 120 BPM default). The nudge writer at `0x4004bc54` scales by
+`[0x46c7d328]/1000`, truncating (nominal 1000, clamp ≤1100 — the tempo nudge
+🟡 inferred from shape). Under external MIDI clock (Sam's rig: the Rytm is
+master) the follower's word need not sit on this grid at all, so nothing
+divides — 🟡 its writer is not read.
+
+**His counts reproduce exactly under that mapping**: 5,279
+exactly-divisible settings and 2,017 with length ≡ 0 mod 16, over 2,701
+tempos × 63 RLEN values. Of the 5,279, 3,000 are at `.0`; `.5` and `.9`
+contribute 17 each. His two fractional rows are both `.2`, where the rules
+agree, so his table stands as printed. ❌ *Retracted the same day:* the
+first draft of this section said the counts did not reproduce (4,560 /
+1,357); that used `round(BPM×24)`, wrong for seven of the ten tenths.
+
+**The 16-sample limit extension runs at arm time, not per wrap** (measured
+by location): `0x40006e2a` sits inside the arm-calling converter, between
+the length computation and its `jsr arm` at `0x40006edc`, operating on the
+per-track record that call passes to `arm()`; the segment builder's wrap
+path (`0x4000703c`) is inline arithmetic and does not reach it. A LOOP=ON
+buffer armed once sees it once. That closes his §14.7 open item and removes
+the last way 16 could have quantised a loop.
+
+**The frame-phase model, simulated** — `tools/recorder_framephase.py`.
+Pass-id stamping, no audio: the recorder free-runs at `L` in 16-sample
+frames, the flex read is retriggered at `round(k·P)`, both in a fixed order
+per frame; a read frame is a seam if the pass id changes between two
+consecutive buffer positions other than the wrap itself. Results over his
+table:
+
+| setting | L | ε = P − L | write-first | read-first |
+|---|---|---|---|---|
+| 199/4 | 13,296 | +0.482 | clean | seams passes 2–32 (9.3 s), then clean |
+| 298.2/2 | 4,436 | +0.496 | clean | seams 2–31 (3.0 s), then clean |
+| 286.2/2 | 4,623 | −0.493 | seams 2–31 (3.1 s), then clean | clean |
+| 251/16 | 42,167 | +0.331 | clean | seams 2–46 (43 s), then clean |
+| 198/16 | 53,455 | −0.455 | seams 2–34 (40 s), then clean | clean |
+| 229/16 | 46,218 | +0.341 | clean | seams 2–45 (46 s), then clean |
+| 120/16, 120/4, 300/2 | — | 0 | clean | clean |
+| 199/4, both free-running (flex loops at L, never retriggered) | | | clean | clean |
+
+While in the band **every** frame of the pass is a seam frame — a 2,756 Hz
+buzz, not a tick. The zero-error rows are clean under both orders, as
+observed. The direction rule is strict: rounded-down lengths seam only when
+the flex read precedes the recorder write within a frame, rounded-up
+lengths only under the opposite order. Three of his four clicking rows are
+rounded-down; **286.2/2 is rounded-up**, so a single fixed order predicts
+it clean and his log says it clicks. Either the model needs a second reader
+(the recorder's own read-modify-write read is one) or that row is the one
+to repeat first. The model is arithmetic, not the firmware; it says what
+the hypothesis predicts, so the hardware test has numbers to hit or miss.
 
 #### The 16-sample question — an answer to his confusion, all inferred
 
@@ -669,10 +706,10 @@ it as the click mechanism. Both halves are right, and they are about
   then stops** until `d` has walked the whole buffer, thousands of passes
   later. It also predicts a **direction dependence**: only drift toward the
   band clicks, so roughly half the non-divisible settings should go clean
-  for good after a short latency shift. His four clicking rows do not split
-  cleanly by rounding direction under either tempo24 rule, which counts
-  against the simplest form of this; a second reader (the recorder's own
-  RMW read is one) would put a band on both sides.
+  for good after a short latency shift. Simulated above: three of his four
+  clicking rows fit one frame order, 286.2/2 fits the other; a second
+  reader (the recorder's own RMW read is one) would put a band on both
+  sides.
 - **The simpler alternative** is the per-pass seam itself: a flex retrig or
   a wrap on a buffer whose length differs from the sequencer period by less
   than a sample gives one dropped or repeated sample per pass — a small
@@ -696,6 +733,9 @@ it as the click mechanism. Both halves are right, and they are about
    the arm-time position `+300` **survives a re-arm** (re-bounded, not
    zeroed) — if the live position inherits that, a REC trig per pass does
    not re-synchronise the recorder either.
+5. Repeat **286.2/2** first, and add **198/16** (rounded-up, ε = −0.455):
+   if both click, the single-order model is dead; if 198/16 is clean and
+   286.2/2 was a different patch, it lives.
 
 Finally, the sub-frame trig nibble he names as prime suspect
 (`0x46104d26`, low nibble = sample offset within the frame) is the *same*
@@ -709,11 +749,12 @@ does not appear in his data.
 
 1. DMA channel 0 / `0x40004860` is the ColdFire→DSP frame transfer, not
    control-surface polling (`DSP.md` §6c).
-2. tempo24 is an integer; `x.y` BPM is ambiguous unless `y ∈ {0, 5}`;
-   the nudge scales it with a truncating divide (`0x4004bc54`).
-3. The 5,279 / 2,017 counts do not reproduce under `round` (4,560 / 1,357)
-   or truncation (5,804); which grid?
-4. The frame-phase-band hypothesis and the four discriminating tests above.
+2. The UI tempo conversion is `tempo24 = 24·bpm + (23·tenths + 4)/9`
+   (`0x4009c7c4`, truncating); his 5,279 / 2,017 reproduce exactly under
+   it. `.5` is not half a BPM.
+3. The 16-sample limit extension is arm-time (by location), closing §14.7.
+4. The frame-phase-band model, its simulation (`tools/recorder_framephase.py`)
+   and the five discriminating tests above; 286.2/2 and 198/16 first.
 5. `0x4006e3b2` (truncating RLEN converter) is now the one whose consumer is
    open, since `0x40006dfc` is the one that reaches `arm()`.
 
@@ -742,12 +783,12 @@ From the recorder sessions (2 and 5 Sep), still open on both sides:
 - **Why a sub-sample per-pass rounding error becomes an audible splice** —
   his §14.8 fit is empirically strong and mechanically empty; the
   frame-phase-band hypothesis and four hardware tests above are our offer.
-- Whether the 16-sample limit extension (`0x40006e2a`) runs once at record
-  end or at every wrap; which caller passes `%fp@(32) = 0`.
+- Which arm caller passes `%fp@(32) = 0` (the 16-sample extension itself is
+  settled: arm-time, §6 above).
 - The consumer of the truncating RLEN converter `0x4006e3b2`, now that
   `0x40006dfc` is the one that reaches `arm()`.
-- How the UI turns a displayed `x.y` BPM into the integer tempo24 (round or
-  truncate), and what the MIDI-clock follower writes.
+- What the MIDI-clock follower writes to tempo24 (the UI conversion is
+  measured, §6 above).
 - The TRIG=ONE / SRC3=MAIN default fixup that the descriptor does not carry.
 - SRC3 routing, the AB/CD gain application point, FIN/FOUT fade generation,
   QPL playback machinery (state `+297`), the ONE2 two-phase behaviour, and
