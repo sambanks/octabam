@@ -212,7 +212,7 @@ def main():
         DB = u32(0x46c82456)
         part = uc.mem_read(0x80000003, 1)[0]
         base = DB + part * 6322 + track * (24 if slot < 6 else 30)
-        return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a + 18 + slot)
+        return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a - 6 + slot)   # page 2: +0+slot2, staged index 0 (measured 5 Sep)
 
     # ---- REVERB: selects host track 4, draws all 12 in two columns --------
     uc.mem_write(0x80000000, bytes([0]))

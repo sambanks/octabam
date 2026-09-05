@@ -12,7 +12,9 @@
 |
 | Values live in the Part arrays the writers use:
 |   page 1: DB + part*6322 + 0x8ee9a + track*24 + 18 + slot
-|   page 2: DB + part*6322 + 0x8ef5a + track*30 + 18 + slot
+|   page 2: DB + part*6322 + 0x8ef5a + track*30 + (slot-6)   [staged index 0;
+|           was +18+slot = +24+slot2 until 5 Sep 2026 -- wrong slot, see
+|           docs/midi_re_cc.md 7; edits still sounded right via P2EDIT's lane]
 |   RVRB:   DB + part*6322 + 0x8ef50   (T8 FX1 p1 slot 2 = flat 20)
 |   DLY:    DB + part*6322 + 0x8f040   (T8 FX1 p2 idx 2; live 0x80000a2a,
 |                                        mirror 0x100a518e -- traced 4 Sep)
@@ -98,7 +100,10 @@ draw:   lea     %sp@(-44),%sp
         movel   %d0,%a2
         addal   #P2OFF,%a2
         addal   %d2,%a2
-        addal   #18,%a2                 | a2 + slot, slots 6..11
+        addal   #-6,%a2                 | a2 + (slot-6): the staged FX2 page-2
+                                        | store is +0+slot2 (measured 5 Sep, tags
+                                        | 12/13; docs/midi_re_cc.md 7). +18+slot
+                                        | (= +24+slot2) was a self-consistent guess.
         moveq   #0,%d3
 dloop:  moveq   #12,%d0
         cmpl    %d3,%d0
@@ -344,12 +349,12 @@ x1:     movel   %a6@(0,%d3:l:4),%a5
         movel   %d7,%a2
         addal   #P2OFF,%a2
         addal   %d0,%a2
-        addal   #18,%a2
+        addal   #-6,%a2                 | +0+slot2 (see the draw)
         addal   %d3,%a2
         moveq   #0,%d4
         moveb   %a2@,%d4                | before
-        moveq   #4,%d0
-        movel   %d0,PAGEGLOB
+        moveq   #0,%d0                  | the FX2 page stages index 0 (measured);
+        movel   %d0,PAGEGLOB            | P2EDIT's own Part store then lands at +0
         movel   %d3,%d2
         subq.l  #6,%d2
         movel   %d5,%sp@-
@@ -373,7 +378,7 @@ x2:     tstl    %d0
 x3:     moveb   %d0,%a2@
         lea     0x80000950,%a0
         moveb   %d0,%a0@(0,%d2:l)
-        lea     0x100a5138,%a0
+        lea     0x100a5120,%a0          | shadow 0x100a50a8 + 4*30 + 0 (was +24)
         moveb   %d0,%a0@(0,%d2:l)
         bra     xdone
 xp1:    movel   %d6,%d0
