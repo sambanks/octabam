@@ -55,6 +55,7 @@ MENU_COUNT = 0x400cbda0      # current display list: row count
 MENU_FOCUS = 0x400cbda8      # focus descriptor
 CALL_SP = 0x47f00000         # scratch stack for a detour call
 CALL_RET = 0x000000f0        # sentinel return address a detour stops at
+EXTRA_OVERRIDES = {}         # extra peripheral read replies, merged into boot()'s map
 
 # EFFECT 1 / EFFECT 2 SETUP window openers (docs/MAINMENU.md §7) — the chooser
 # + dials. FX1 is page_kind 3 (id byte +0x8ed80); our inserts are all FX2, so
@@ -141,6 +142,8 @@ def boot(image=None, count=BUDGET, on_draw=None):
         # Clock/PLL: firmware halts (0x4000fa8c) unless (reg>>24)*12MHz==264MHz,
         # so the top byte must be 22 (0x16). entry 0x40000418, gate 0x4000fa78.
         0xfc0c4000: 0x16000000,
+        # callers (tools/emu_card.py) add peripheral replies here before boot()
+        **EXTRA_OVERRIDES,
     }
     seen = set()
     def _log(kind, pc, addr, size, val=None):
@@ -213,6 +216,7 @@ def boot(image=None, count=BUDGET, on_draw=None):
     st = {"wc": 0}
     mu.hook_add(UC_HOOK_MEM_WRITE,
                 lambda u, ac, ad, sz, v, x: st.update(wc=st["wc"] + 1))
+    r._wc = st                     # _run_until reads it to tell a poll from slow progress
 
     # -- burst execution ----------------------------------------------------
     # A per-instruction Python hook over ~7M instructions costs ~16s; native
@@ -249,6 +253,7 @@ def boot(image=None, count=BUDGET, on_draw=None):
                 stop["stuck"] = (pc, pc); break
 
     r.uc = mu
+    mu.octa_boot = r            # lets _call see traps raised inside a detour
     if r.trap:
         r.stopped = (f"trap #{r.trap[0]-32} at 0x{r.trap[1]:08x} "
                      "(RTOS handoff)")
@@ -310,12 +315,110 @@ def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
     return out
 
 
+# ColdFire ISA_C ops Unicorn's CFV4E core does NOT implement — it raises the
+# illegal-instruction exception (vector 4) on each. 437 sites in the image
+# (147 bitrev, 219 byterev, 71 ff1); the FAT code is full of byterev and the
+# RTOS event-bit allocator uses bitrev+ff1, so every storage detour hits them.
+# Found 5 Sep 2026 when card init stopped silently at 0x40015a22 (`bitrev %d1`).
+# objdump prints them as `.short 0x00c1` etc. — it cannot decode them either.
+ISA_C_OPS = {0x00C0: "bitrev", 0x02C0: "byterev", 0x04C0: "ff1"}
+_DREGS = None
+
+
+class DetourTrap(Exception):
+    """A firmware function run cold raised an exception the shims do not cover."""
+    def __init__(self, vector, pc, where):
+        self.vector, self.pc, self.where = vector, pc, where
+        super().__init__(f"trap vector {vector} at 0x{pc:08x} inside {where}")
+
+
+def _movem_shim(uc, r):
+    """ColdFire executes misaligned MOVEM (the firmware's memset clears 16 B at
+    a time into odd addresses); Unicorn's core raises an address error
+    (vector 3). Emulate the long-form movem at the faulting PC and step over."""
+    if not r.trap or r.trap[0] not in (2, 3):
+        return None
+    for pc in (r.trap[1], r.trap[1] - 4):
+        w = int.from_bytes(uc.mem_read(pc, 2), "big")
+        if (w & 0xFB80) != 0x4880 or not (w & 0x0040):     # movem.l only
+            continue
+        to_regs = bool(w & 0x0400)
+        mode, reg = (w >> 3) & 7, w & 7
+        mask = int.from_bytes(uc.mem_read(pc + 2, 2), "big")
+        regs = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7,
+                UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,
+                UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_A7]
+        an = regs[8 + reg]
+        base = uc.reg_read(an) & 0xFFFFFFFF
+        size = 4
+        if mode == 2:   ea, post, ilen = base, None, 4
+        elif mode == 3: ea, post, ilen = base, "inc", 4
+        elif mode == 4:
+            n = bin(mask).count("1")
+            ea, post, ilen = (base - size * n) & 0xFFFFFFFF, "dec", 4
+            mask = int(f"{mask:016b}"[::-1], 2)          # predecrement lists reversed
+        elif mode == 5:
+            d16 = int.from_bytes(uc.mem_read(pc + 4, 2), "big", signed=True)
+            ea, post, ilen = (base + d16) & 0xFFFFFFFF, None, 6
+        else:
+            return None
+        a = ea
+        for i in range(16):
+            if mask & (1 << i):
+                if to_regs:
+                    uc.reg_write(regs[i], int.from_bytes(uc.mem_read(a, 4), "big"))
+                else:
+                    uc.mem_write(a, (uc.reg_read(regs[i]) & 0xFFFFFFFF).to_bytes(4, "big"))
+                a += 4
+        if post == "inc":
+            uc.reg_write(an, a & 0xFFFFFFFF)
+        elif post == "dec":
+            uc.reg_write(an, ea)
+        r.trap = None
+        r.movem_shims = getattr(r, "movem_shims", 0) + 1
+        return pc + ilen
+    return None
+
+
+def _isa_c_shim(uc, r):
+    """If the recorded trap is vector 4 on an ISA_C op, emulate it and return
+    the PC to resume at; else None."""
+    global _DREGS
+    if not r.trap or r.trap[0] != 4:
+        return None
+    pc = r.trap[1]
+    w = int.from_bytes(uc.mem_read(pc, 2), "big")
+    op, reg = w & 0xFFF8, w & 7
+    if op not in ISA_C_OPS:
+        return None
+    if _DREGS is None:
+        _DREGS = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                  UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7]
+    v = uc.reg_read(_DREGS[reg]) & 0xFFFFFFFF
+    if op == 0x00C0:                                   # bitrev: reverse 32 bits
+        v = int(f"{v:032b}"[::-1], 2)
+    elif op == 0x02C0:                                 # byterev: swap the 4 bytes
+        v = int.from_bytes(v.to_bytes(4, "big")[::-1], "big")
+    else:                                              # ff1: leading-zero count
+        sr = uc.reg_read(UC_M68K_REG_SR) & ~0x0F       # N Z from the SOURCE; V C clear
+        sr |= 0x08 if v & 0x80000000 else 0
+        sr |= 0x04 if v == 0 else 0
+        uc.reg_write(UC_M68K_REG_SR, sr)
+        v = 32 - v.bit_length()
+    uc.reg_write(_DREGS[reg], v)
+    r.trap = None
+    r.isa_c_shims = getattr(r, "isa_c_shims", 0) + 1
+    return pc + 2
+
+
 def _call(uc, addr, args=(), count=20_000_000):
     """Invoke a firmware function on a warm machine and run until it returns.
 
     Sets a scratch stack with a sentinel return address (and cdecl args above
     it) and executes until the function's rts pops it back. Faults propagate
-    as UcError.
+    as UcError. ISA_C instructions the core lacks are emulated and stepped
+    over (`_isa_c_shim`); any other trap ends the call with `r.trap` set.
     """
     sp = CALL_SP - 4 * len(args)
     uc.reg_write(UC_M68K_REG_A7, sp)
@@ -323,7 +426,56 @@ def _call(uc, addr, args=(), count=20_000_000):
     for i, a in enumerate(args):
         uc.mem_write(sp + 4 + 4 * i, (a & 0xFFFFFFFF).to_bytes(4, "big"))
     uc.reg_write(UC_M68K_REG_SR, 0x2700)
-    uc.emu_start(addr, CALL_RET, count=count)
+    trap = _run_until(uc, addr, CALL_RET, count)
+    if trap is not None:
+        raise DetourTrap(trap[0], trap[1], f"0x{addr:08x}")
+
+
+def _run_until(uc, pc, until, count=20_000_000):
+    """emu_start(pc -> until) with the ISA_C shim: an illegal-instruction trap
+    on bitrev/byterev/ff1 is emulated and execution resumes after it."""
+    r = getattr(uc, "octa_boot", None)
+    budget = 8_000_000_000        # a bank load is ~1M instructions per sector
+    burst = min(count, 5_000_000)
+    window = collections.deque(maxlen=4)   # (pc, write count) per burst
+    while budget > 0:
+        if r is not None:
+            r.trap = None
+        uc.emu_start(pc, until, count=burst)
+        if r is None:
+            return None
+        npc = _isa_c_shim(uc, r) or _movem_shim(uc, r)
+        if npc is not None:
+            pc = npc               # a shimmed burst is short: don't charge it
+            continue
+        budget -= burst
+        if r.trap is not None:
+            return r.trap          # (vector, pc) — a real exception
+        pc = uc.reg_read(UC_M68K_REG_PC)
+        if pc == until:
+            return None            # clean stop
+        # the burst ran out mid-way. A PC pinned to one small window for four
+        # bursts (20M instructions) is a poll on a peripheral we answer
+        # wrongly, not progress: give up fast with the address.
+        wc = r._wc["wc"] if hasattr(r, "_wc") else 0
+        window.append((pc, wc))
+        if len(window) == 4:
+            pcs = [w[0] for w in window]
+            writes = window[-1][1] - window[0][1]
+            if STALL_DETECT and max(pcs) - min(pcs) <= 64 and writes < 2000:
+                raise DetourStall(pc, until)
+    raise DetourStall(pc, until, exhausted=True)
+
+
+STALL_DETECT = True
+
+
+class DetourStall(Exception):
+    """A cold-run function spun in place (a poll we answer wrongly)."""
+    def __init__(self, pc, until, exhausted=False):
+        self.pc = pc
+        what = "run budget exhausted" if exhausted else "stalled"
+        super().__init__(f"{what} at 0x{pc:08x} (running to 0x{until:08x})")
 
 
 def _prime_menu(r):

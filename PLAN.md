@@ -669,8 +669,11 @@ something needs task-interleaving behaviour, route **A** (emulate the RTOS:
 dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
 far needs A; `docs/EMU.md` keeps it on the table.
 
-**Next emulator milestone, parked 4 Sep 2026: a LOADED PROJECT (card
-emulation).** The emulator boots with no project, so `PART` is null and every
+**Emulator milestone 4, BUILT 5 Sep 2026: a LOADED PROJECT (card
+emulation) — `tools/emu_card.py`, `make emu-card PROJECT=<dir>`, `docs/EMU.md`
+M4.** The trigger below arrived with the recorder work; the paragraph is kept
+as the design record. The async-completion risk turned out to be one hook on
+the RTOS event wait. The emulator booted with no project, so `PART` was null and every
 panel path that keys off the project — the select committer, part save and
 load, stamp defaults, the recorder write path — cannot be driven to
 the right address; that gap is what turned the select-array question into

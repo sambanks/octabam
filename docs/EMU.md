@@ -213,10 +213,131 @@ the string hook — the audio side (`render_reverb`, the `v` audition view) is
 where knob values are heard. Editing a value in the page + reading it back as
 text is the remaining nicety.
 
+## Milestone 4 — the card, and a project loaded from it ✅ (5 Sep 2026)
+
+`tools/emu_card.py`. The trigger PLAN.md §5 set for this — "the SECOND
+project-dependent path" — arrived with the recorder work (the write path can
+only be armed from a part on a loaded project), and the parts work had been
+waiting on it since the probe flashes of 4 Sep. Run:
+
+```sh
+.venv/bin/python3 tools/emu_card.py --project <dir> --set OCTABAM --name RIG
+make emu-card PROJECT=<dir>            # same, defaults
+```
+
+builds `out/emu_card.img`, boots the raw image, attaches the card, runs the
+firmware's own storage bring-up and loads `/OCTABAM/RIG` through the engine
+task. Everything below is measured in the emulator against the canonical
+image unless marked.
+
+**The card is a FAT16 image the firmware mounts itself.** A pure-Python
+builder (`build_image`) writes MBR + one partition + BPB + FATs + a
+directory tree with VFAT long names. The firmware's mount is picky in
+exactly the ways the code says (`0x400168e8`: `0x55AA`, partition type 4 /
+6 / 0x0e or a bare FAT32 BPB; `0x40017ad4`: 512-byte sectors, ≤ 16384
+sectors per FAT), and macOS mounts the same image and reads the files back
+byte-identical, which is the independent check on the builder.
+
+**The ATA model is small because the driver is.** Task-file registers in
+the FlexBus window `0x90000000` (`ARCHITECTURE.md` §5), IDENTIFY answering
+"PIO only" so the variant detection at `0x40015e28` never touches the
+on-chip DMA channel, READ/WRITE SECTORS, and the handful of no-data
+commands the driver issues (SET FEATURES, STANDBY, CFA). The ATA host
+status byte `0xfc0a4039` must read with bit 3 clear (the code moves it into
+CCR and tests N), which the all-ones default violates — `EXTRA_OVERRIDES`
+in `emu_bringup.boot` exists for that.
+
+**The RTOS boundary was one hook, not a scheduler.** The PIO handlers
+(`0x40014b94` READ, `0x40014c48` WRITE, `0x400159bc` IDENTIFY) only program
+the registers; the data phase is the ATA interrupt handler at `0x40015304`,
+which streams 256 words per sector and signals the RTOS event the queue
+primitive `0x4001568c` blocks on (`0x40000818`). We never take the
+interrupt. A hook on `0x40000818` performs the transfer the handler would
+have — same bookkeeping words (`0x46c8c592` count, `0x46c8c594` buffer,
+`0x46c8c593` command, `0x460bac18` IDENTIFY buffer, `0x460bae18` lock) —
+and returns as if the event had fired; a second hook at the primitive's
+no-wait return (`0x40015786`) completes asynchronous commands the same way.
+Timer waits (the delay helper `0x40020c7c`) pass instantly. Every other wait
+is logged, so a silently satisfied wait for something that never happened
+is visible in the record.
+
+**Cold init is the main task's own list.** After the ATA subsystem init
+(`0x400160f8`: interrupt vector 0xb6, the two 64/32-entry command queues,
+16 event objects) the main init task (`0x4001fc00`) runs eight subsystem
+inits before parking; `card_init` runs the same list, plus the engine-side
+queue creator `0x40040b14` (queues `0x460d17ce/ee/ae`, 1024-entry rings)
+which the list does not reach. Then card detect/mount `0x40061648(1)`
+returns 0 with `0x460d1cb8 = 1`: IDENTIFY, SET FEATURES, LBA 0 (MBR), the
+BPB and the first 256 FAT sectors, in that order.
+
+**Loading a project is engine command 4, run by the real engine task.**
+The UI's `0x40023c7c(name)` posts a slot (opcode 4, the name, three
+callbacks) to `0x460d17ce`; the engine task (`0x4008445c`, Bryan T's
+46-opcode dispatcher, `EXTERNAL.md` §6) does the work. Its handlers address
+locals through the task's frame pointer, so they only run inside the task:
+`engine_start` runs it from its entry to the first receive call, and
+`engine_run_once` resumes at that call with a message queued and stops when
+the loop comes back round to it, keeping the task's registers between calls.
+Opcode 4 reads `project.work`, `markers.work`, the eight arrangements and
+**all sixteen bank files**, probes every sample slot (the firmware's own
+log on the card records each missing sample, which is how the load was
+first proven real), and sets the project database pointer
+(`0x46c82456 = 0x400e21e0`, the bank-blob base Bryan's doc predicts). The
+RIG project loads in ~35 s: 30,955 sectors read, 300 written (the log).
+RELOAD BANK, opcode 20 (`0x40022778(mask)`, message "RELOADING BANK"), is
+the same loader for a **bitmask** of banks — bank A is mask 1, not index 0.
+
+**The proof.** Part 1 of bank A in RAM (`PART + 0x8ed80/+0x8ed88 + track`)
+reads FX1 `[28,4,4,4,18,4,28,28]` and FX2 `[6,8,27,8,7,9,8,0]`; the same
+bytes in `bank01.work` on disk (`ot_project.py`'s `0x8eed6 + 9/+0x11`) are
+identical, and `render_fx2(r, track, effect_id=None)` draws the bank's own
+part name, `Pt:1 VERSE`. (The knob rows draw blank against the RAW image,
+which has no descriptors for the octabam effect ids; use the built image.)
+
+**The set name is an absolute path.** The firmware's default is
+`"/PRESETS"` (`0x400b46ef`) and its log names bank files
+`/PRESETS/<project>/bank01.work`. Named `"OCTABAM"` without the slash, the
+project itself loaded (relative to the root) and every bank was then
+"missing. Initializing to empty bank" — the loader had changed into the
+project directory. `set_names` prefixes the slash. On Sam's card the set
+folder IS `PRESETS`, holding `OCTABAM_RIG`, `ChongBongolo 26`, and the rest.
+
+**Three things Unicorn's CFV4E core cannot do, now shimmed in `_run_until`:**
+
+- `bitrev`, `byterev`, `ff1` (ColdFire ISA_C) raise the illegal-instruction
+  exception. 437 sites in the image — 219 `byterev`, most of them in the
+  FAT code swapping little-endian fields, and the RTOS event-bit allocator
+  is `bitrev`+`ff1`. objdump cannot decode them either (`.short 0x02c0`).
+- A misaligned `movem.l` may raise an address error (the firmware's memset
+  clears 16 bytes at a time and was seen with an odd destination). A shim
+  emulates the long form, modes (An), (An)+, −(An), (d16,An) — but it has
+  **not fired** in any successful run (the stop that prompted it was the
+  budget, below), so it is an untested guard, marked as such.
+- Long detours: a project load runs for hundreds of millions of
+  instructions, so the old 20M-instruction call budget silently cut the
+  loader short with no trap. `_run_until` now runs to its stop address in
+  bursts and tells a poll (PC pinned, no writes) from slow progress. (The
+  reads themselves are quick: ~2,000 sectors in 23 s.)
+
+**Two traps for whoever extends this.**
+
+- The first project load "succeeded" with default effect ids in every part:
+  it had stopped at the instruction budget, not at the end. A cold detour
+  that returns quietly is not evidence it finished — `_run_until` now runs
+  to its stop address and raises `DetourTrap` / `DetourStall` otherwise.
+- The WRITE SECTORS handler streams the first sector through the data
+  register itself and decrements the count byte before returning, so at
+  completion the count byte is SECTORS REMAINING and reads 0 for a
+  one-sector write. Treating 0 as 256 (the READ convention) turned the
+  log-file appends into 256-sector writes and wiped the card image; the
+  next load then found an empty root. The model commits per sector as data
+  arrives and only writes the remainder at completion.
+
 ## The RTOS fork — still open, still not forced
 
-Milestone 2 took route **B** (detour) and it carries the remixer: a menu- or
-cave-patch is visible and walkable without a flash. Route **A** (emulate the
+Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
+the card: a menu- or cave-patch is visible and walkable without a flash, and
+a project loads through the firmware's own storage stack. Route **A** (emulate the
 RTOS — dispatch `trap #0` via VBR `[0x400b9668]`, drive a timer tick, run the
 real scheduler) remains the later fidelity upgrade, the only one that could
 show behaviour emerging from real task interleaving. Nothing built so far

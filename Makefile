@@ -191,6 +191,17 @@ emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
 	@echo "remixer ready — 'make remix' (docs/EMU.md for the emulator view)"
 
+# The card: build a FAT16 image from a project directory, boot, mount it with
+# the firmware's own storage stack and load the project (docs/EMU.md M4).
+#   make emu-card PROJECT=~/octa/backups/<snapshot>/<project> [SET=OCTABAM NAME=RIG]
+PROJECT ?=
+SET ?= OCTABAM
+NAME ?=
+.PHONY: emu-card
+emu-card: ## Boot with an emulated CF card holding PROJECT and load it
+	@test -n "$(PROJECT)" || { echo "usage: make emu-card PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
+	$(PY) tools/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
+
 # -------------------------------------------------------------------- misc --
 
 .PHONY: disasm
