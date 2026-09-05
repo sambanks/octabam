@@ -340,12 +340,14 @@
 ;              4 = REVERSE. Landed with stage 2, per the stage-1 rule that a
 ;              one-value select draws a dead knob; every unknown value still
 ;              falls through to CLEAN.
-;   p10 SPRAY-> GRAIN scatter depth, page-2 slot 10 KNOB field (r6+$e bits
-;              16-22 -- the SAME WORD as FRZE, which is its low byte), 0..127
-;              used directly as a Q23 multiplier on each grain's random source
-;              offset: 0 = every grain reads the same place (four heads, one
-;              position -- the coherent, most PITCH-like end), 127 = the full
-;              0..1015-sample scatter. Only read in GRAIN.
+;   p10 -DEL -> the host's OWN dry send into this delay (v7, 5 Sep 2026),
+;              page-2 slot 10 KNOB field (r6+$e bits 16-23 -- the SAME WORD
+;              as FRZE, which is its low byte), 0..127. Decoded into r7+$76,
+;              the retired IN's slot, so it takes IN's whole path: headroomed,
+;              summed before the auto-gain, counted as a client while nonzero.
+;              Was DRV (drive, every mode) from 18 Aug to 5 Sep 2026; the
+;              drive's d is pinned to 0 now, bit-identical to DRV=0. (Before
+;              that, SPRAY: the GRAIN scatter, which is MDEP's job in GRAIN.)
 ;   p7 MDEP  -> TAPE wow depth, PAGE-2 slot 7, the COMPANION field of r6+$c
 ;               (v6, 4 Sep 2026: swapped with MODE, which is p6 / the KNOB field)
 ;              (NOT page-1, NOT $b -- the $b reading is exactly why this
@@ -780,9 +782,27 @@ bus_mine:
 ; Tcc needs an accumulator, so it takes b and the base is RE-LOADED below
 ; rather than "still live". Costs one word; the version that trusted the old
 ; comment indexed the table at address 0 or 1, a wild Y read.
-        clr     b                       ; b = 0: IN is retired (v5.1), the host
-                                        ; never counts itself -- its own send
-                                        ; is an FX1 client like any other
+; ->DEL (5 Sep 2026): the host's own send into its delay is BACK, on page-2
+; slot 10 (DRV's slot; drive is retired). Same discipline as the -VRB gate
+; below: knob read from r6 DIRECTLY (the per-block decode runs later), masked
+; to the knob field, clr BEFORE the tst, the increment through x0.
+        move    #>$1,x0                 ; the "one more client" increment
+        clr     b                       ; b = 0 -- BEFORE the tst below
+        move    x:(r6+$e),a             ; ->DEL, p10 knob field (bits 16-23)
+        and     #>$7f0000,a             ; knob field only ($e's low bits = FRZE)
+        tst     a
+        tne     x0,b                    ; sending -> b = 1: we count ourselves
+; ->DEL from the REVERB host (v8, 5 Sep 2026): BusVerb writes its ->DEL knob
+; field to y:$941 every block -- a single-writer word, not a count RMW -- and
+; it is one more client while nonzero. x0 is still the increment; the Tcc
+; reads the tst with nothing between; a zero word leaves a = 0, which IS the
+; right count. The warm-up below zeroes the word, so a rig with no reverb
+; never counts boot garbage (and one block of it before the first warm-up
+; is masked to 0..7 like everything else here).
+        move    y:>$941,a
+        tst     a
+        tne     x0,a                    ; a = 1 if the reverb host is sending
+        add     a,b                     ; ... one more client
         move    y:(r5),a                ; clients that wrote the buffer we read
         add     b,a                     ; ... plus ourselves, if sending
         and     #>$7,a                  ; masked: boot garbage cannot index wild
@@ -894,6 +914,9 @@ dwarmz:
         move    b,x:(r7+$71)
         move    b,x:(r7+$77)
         move    b,x:(r7+$78)
+        move    b,y:>$941               ; the REVERB host's ->DEL flag (v8):
+                                        ; zeroed once here, so a rig without
+                                        ; a reverb never counts garbage in it
         move    b,x:(r7+$6c)            ; PITCH head ages start at 0 (they are
         move    b,x:(r7+$6d)            ; masked on load too, but determinism
                                         ; is what verify-delay bit-compares)
@@ -1187,12 +1210,17 @@ dwarmdone:
 ; NEITHER FLASHED. The matrix now has an IN-nonzero render so a dead IN can
 ; never again pass silently -- verify_bus alone cannot see it because every
 ; default render has IN at 0.
-; v5.1 (3 Sep 2026): IN IS RETIRED. Slot 5 is PTCH, GRAIN's pitch; the host
-; track's own send into the delay is its FX1 station's ->DEL (or SEND on
-; FX1). The IN machinery below is kept and pinned to 0 -- bit-identical to
-; every IN=0 render, and a cycle trim for later rather than a risk now.
-        clr     a
-        move    a,x:(r7+$76)            ; IN = 0, always
+; v5.1 (3 Sep 2026): IN IS RETIRED from p5. Slot 5 is PTCH, GRAIN's pitch.
+; ->DEL (5 Sep 2026, Sam's call: "delay drive"): the host's own send into its
+; delay RETURNS on page-2 slot 10 -- DRV's slot, drive retired -- so the host
+; page carries a real send knob like every station's. It feeds the SAME $76
+; machinery (scaled, headroomed, summed, counted), read from $e's knob field
+; (bits 16-23; the low bits are FRZE). knob<<16 IS val/128 in Q1.23, the
+; MIX/PING trick, used directly as the per-sample multiplier. Default 0 is
+; load-bearing: a nonzero default would register every idle host as a client.
+        move    x:(r6+$e),a             ; p10 knob field
+        and     #>$7f0000,a
+        move    a,x:(r7+$76)            ; ->DEL, this block
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as BusVerb's MODE
@@ -1358,12 +1386,13 @@ wowlive:
         mpy     x0,y1,a                 ; flutter inc = $56d * val/64
         move    a,y:>$0902
 
-; ---- DRIVE amount: p10, EVERY mode (v5.1: scatter moved to MDEP, so the ---
-; grains read a driven line like the repeats do). knob<<16 IS d in Q1.23
-; (the MIX/PING trick). Y 0903h: same reasoning as the RATE increments above.
-        move    x:(r6+$e),a             ; p10 knob field
-        and     #>$7f0000,a
-        move    a,x:(r7+$83)            ; d -> r7 (18 Aug 2026, probe V0/V127:
+; ---- DRIVE: RETIRED (5 Sep 2026) -- p10 is ->DEL now, see the IN block. ----
+; The drive stage itself stays in the loop with d pinned to 0, which the
+; manifest documented as bypass ("0 = bypass"): bit-identical to every DRV=0
+; render, and a cycle trim for later rather than a risk now. Its history is
+; in git (the v5.1 block read $e's knob field into $83).
+        clr     a
+        move    a,x:(r7+$83)            ; d = 0, always (18 Aug 2026, probe V0/V127:
                                         ; d via Y read INSIDE the bsr callee
                                         ; measured dead on hardware -- crest
                                         ; unchanged at levels where a 4x knee

@@ -601,6 +601,18 @@ descriptor serves both menus, so blanking it would empty its FX1 page too.
 The rule is automatic: `hidden` minus `fx1` is what gets blanked, which is
 how the stations come off the FX2 chooser and still draw when chosen on FX1.
 
+⚠️ **A blanked page gets no formatters (5 Sep 2026).** Nothing ever calls a
+select-label formatter or a formatter-registering cave for a module whose
+names are blank, so `build_bus.py` emits neither for `hidden` minus `fx1`
+(the two hosts' six label caves and BusDelay's TIME formatter, ~800 B on the
+rig -- the room the bus screen needs). `verify_labels` exempts those
+modules: the firmware printing plain numbers for their selects is correct.
+
+⚠️ **Do not hide a module whose page IS the thing you want to see.** SEND's
+page is the labelled send pair every non-host track shows; hidden, it was
+blanked with the rest and every send page went empty (found on the unit,
+5 Sep 2026). Visible, it is the FX2 chooser's one row and the pair draws.
+
 ⚠️ **The fallback may be hidden.** It has no row to park a cursor on, so the
 cursor goes to 0; its descriptor is still cloned and its id still resolves to
 it, which is the half that matters -- an unassigned track has to dispatch to

@@ -4,10 +4,11 @@ Hosted on payload A (core 0), which serves TRACKS 5-8 -- measured 10 Aug 2026
 and inverted from what every doc assumed before then. Test it on track 5.
 Any track can send into it over the bus.
 
-Clones DARK REV's descriptor. Slots 0, 3 and 4 are written with the names the
-donor already carries (TIME/HP/LP), so the write is a no-op in bytes but the
-label is stated here rather than inherited silently -- the harness reads these
-names, and a name that exists only in a donor is a name no tool can see.
+Clones DARK REV's descriptor. Slot 0 is written with the name the donor
+already carries (TIME), so the write is a no-op in bytes but the label is
+stated here rather than inherited silently -- the harness reads these names,
+and a name that exists only in a donor is a name no tool can see. (Slots 3
+and 4 were the donor's HP/LP until v8; they are TONE and -DEL now.)
 """
 
 from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter,
@@ -36,10 +37,18 @@ MODULE = Module(
               doc="tank modulation depth -- 0 static, high = chorused tail; speed is RATE"),
         Param(b"SIZE", 100, active=True, formatter=_PLAIN,
               doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
-        Param(b"HP", 0, active=True, formatter=_PLAIN,
-              doc="low cut inside the feedback path -- thins mud out of the tail"),
-        Param(b"LP", 127, active=True, formatter=_PLAIN,
-              doc="high cut / damping -- darkens the tail; 127 = wide open"),
+        # TONE (v8, 5 Sep 2026) is the old HP + LP pair on ONE knob, so that
+        # slot 4 can carry the host's ->DEL send: 0..64 closes the high cut
+        # (dark), 64..127 opens the low cut inside the loop (thin). 64 IS the
+        # old defaults (HP 0 / LP 127), bit-identical.
+        Param(b"TONE", 64, active=True, formatter=_PLAIN,
+              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
+        # -DEL: this track's dry into BusDelay over the bus -- the host's own
+        # send pair, now that its FX2 page is where the sends live. 0 for the
+        # same load-bearing reason as IN: a non-zero default would register
+        # every idle host as a delay client and dilute the real senders.
+        Param(b"-DEL", 0, active=True, formatter=_PLAIN,
+              doc="this track's dry send into BusDelay over the bus"),
         # IN is this track's own send into its own reverb. 0 IS LOAD-BEARING
         # (v4, the return conversion): a non-zero default registers every idle
         # host as a bus client, and the 1/sqrt(N) auto-gain then hands it a

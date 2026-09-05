@@ -112,7 +112,8 @@ DELAY_ID = SERVER_ID.get("D")
 
 # CLI flag -> the module's own knob NAME, and the SLOT then comes from the
 # manifest. The flag names are historical and several no longer match the
-# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives DRV,
+# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives the host's
+# -DEL send (slot 10, DRV until 5 Sep 2026),
 # --width drives SHFT -- so they are kept as aliases for existing invocations
 # and docs while the index they resolve to stays honest.
 #
@@ -123,11 +124,13 @@ DELAY_ID = SERVER_ID.get("D")
 # a wrapper that had not been audited after a slot moved. There is now
 # nothing to audit.
 REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "IN", "shmr": "SHMR",
-             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE"}
+             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
+             # v8 (5 Sep 2026): TONE and -DEL replaced HP/LP on slots 3/4.
+             "rtone": "TONE", "rdel": "-DEL"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
                "dping": "PING", "dvrbw": "-VRB", "dmix": "PTCH", "dwow": "MDEP",
                "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
-               "dspray": "DRV", "dfrz": "FRZE"}
+               "dspray": "-DEL", "dfrz": "FRZE"}
 
 
 def _slots(key, flags):
@@ -523,7 +526,11 @@ def write_wav(path, L, R):
 # idx11 is the RATE select (0.5/1/2/4x MOD speed) since 18 Aug 2026 -- 1 = 1x,
 # the hardware boot default. 0 halved the MOD speed of every render between
 # RATE's birth and this default catching up (both 18 Aug 2026).
-REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 1]
+# Slots 3/4 are TONE (64 = the old HP 0 / LP 127) and -DEL (0) since v8,
+# 5 Sep 2026. The old `0, 127` here read as TONE 0 / -DEL 127 for one build:
+# every verify-bus case went dark and the reverb host sent full-tilt into the
+# delay bus -- the harness-knob-drift trap, again.
+REV_PARAMS  = [64, 0, 127, 64, 0, 0, 0, 0, 64, 0, 0, 1]
 # send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
 SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
@@ -637,10 +644,15 @@ def main():
     ap.add_argument("--gate", type=int, default=None,
                     help="reverb GATE 0..127 (slot-10 KNOB).")
     ap.add_argument("--rdel", type=int, default=None,
-                    help="RETIRED (18 Aug 2026): the reverb's ->DEL send is\n"
-                         "gone (the twin of the delay's VRBD, same rationale).\n"
-                         "A TRUE no-op now -- slot 11 is the RATE select, and\n"
-                         "until 18 Aug 2026 this flag silently drove it.")
+                    help="reverb -DEL 0..127 (page-1 slot 4, default 0): the\n"
+                         "host's own dry send into the DELAY bus, back on\n"
+                         "5 Sep 2026 (v8; retired 18 Aug 2026 -- the flag\n"
+                         "was a no-op in between). Registration follows the\n"
+                         "knob, so 0 takes no auto-gain share.")
+    ap.add_argument("--rtone", type=int, default=None,
+                    help="reverb TONE 0..127 (page-1 slot 3, default 64): the\n"
+                         "old HP+LP pair on one knob -- below 64 darkens\n"
+                         "(LP), above 64 thins (HP), 64 = HP 0 / LP 127.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -725,10 +737,9 @@ def main():
     for _f, _v in (("mix", a.mix), ("shmr", a.shmr), ("mod", a.mod),
                    ("time", a.time)):
         rev[_rs[_f]] = _v                      # --mix drives IN (post-v4)
-    if a.rdel is not None:
-        print("--rdel is retired (slot 11 is the RATE select now); ignored")
     for _f, val in (("rmode", a.rmode), ("width", a.width),
-                    ("gate", a.gate), ("rrate", a.rrate)):
+                    ("gate", a.gate), ("rrate", a.rrate),
+                    ("rtone", a.rtone), ("rdel", a.rdel)):
         if val is not None:
             rev[_rs[_f]] = val
     # Which server is being measured decides which SEND knob has to be up.

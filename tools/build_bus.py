@@ -1177,6 +1177,13 @@ def main():
     # is a no-op by design.
     import shutil, tempfile
     _caves = [c for k in REMIX.modules for c in remix_modules()[k].cf_patches]
+    # A cave that exists only to draw a BLANKED module's slot (a formatter
+    # registration naming a module whose page draws no knobs) is dead
+    # weight: drop it before it is placed (5 Sep 2026 -- BusDelay's TIME
+    # formatter, 288 B the bus screen needs on the rig).
+    _caves = [c for c in _caves
+              if not (c.registers_formatter is not None
+                      and c.registers_formatter.module in BLANKED)]
     _replay = os.environ.get("TEMPOCAVE") == "replay"
     # TEMPOCAVE=replay: the hook with a cave that ONLY replays the displaced
     # instructions -- isolates the hook mechanism from the stores (R48/R49
@@ -1318,6 +1325,12 @@ def main():
     _lbl_top = max(_cave_top, cave_end)
     _lbl = []
     for name in CLONED_ORDER:
+        # A BLANKED module's page draws no knobs, so nothing ever calls its
+        # label formatters: skip them (5 Sep 2026). On the rig that is the
+        # two hosts' six select labels, ~500 B the bus screen needs. The
+        # screen prints its own words (busscreen VERB_SELECTS / DLY_SELECTS).
+        if name in BLANKED:
+            continue
         for _i, _p in enumerate(_MODS[name].params):
             if not (_p.active and _p.labels):
                 continue

@@ -20,3 +20,4 @@ vendor/
 __pycache__/
 .venv/
 *.pyc
+tools/rec

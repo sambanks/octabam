@@ -82,7 +82,7 @@ SR = 44100
 
 # send_probe.DELAY_PARAMS order, which since the 18 Aug 2026 swap is:
 #   0 TIME  1 FDBK  2 TONE  3 PING  4 -VRB  5 PTCH  6 MODE  7 MDEP  8 MRAT
-#   9 SIZE  10 DRV  11 FRZE     (v6, 4 Sep 2026: MODE and MDEP swapped so
+#   9 SIZE  10 -DEL 11 FRZE     (v6, 4 Sep 2026: MODE and MDEP swapped so
 #   MODE sits on an even slot the panel's page-2 knob editor is proven to write)
 # ⚠️ Slot 6 is the KNOB field of r6+$c, NOT $b -- the old "$b/$c/$d/$e"
 # reading is the exact error PARAM_PAGES.md names as why the delay's WOW
@@ -100,9 +100,10 @@ SR = 44100
 BASE = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0, 0, 0]
 
 SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "VRB": 4, "PTCH": 5,
-        "MDEP": 7, "MRAT": 8, "DRV": 10}
+        "MDEP": 7, "MRAT": 8, "DEL": 10}
 # v5.1 (3 Sep 2026): slot 5 is PTCH (IN retired), MDEP = wow depth / GRAIN
-# scatter, MRAT = wow rate / GRAIN density, DRV = drive in every mode.
+# scatter, MRAT = wow rate / GRAIN density. v7 (5 Sep 2026): slot 10 is the
+# host's -DEL send (was DRV; the drive is pinned to 0 = bypass).
 # ⚠️ MIX (= IN since v3) moved to slot 5 in the 18 Aug 2026 IN/-VRB swap;
 # this map said 4 until 23 Aug, so the "MIX=0" case was actually pinning
 # -VRB -- harmless for its bit-compare purpose (both sides got the same

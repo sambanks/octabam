@@ -12,7 +12,9 @@
 |
 | Values live in the Part arrays the writers use:
 |   page 1: DB + part*6322 + 0x8ee9a + track*24 + 18 + slot
-|   page 2: DB + part*6322 + 0x8ef5a + track*30 + 18 + slot
+|   page 2: DB + part*6322 + 0x8ef5a + track*30 + (slot-6)   [staged index 0;
+|           was +18+slot = +24+slot2 until 5 Sep 2026 -- wrong slot, see
+|           docs/midi_re_cc.md 7; edits still sounded right via P2EDIT's lane]
 |   RVRB:   DB + part*6322 + 0x8ef50   (T8 FX1 p1 slot 2 = flat 20)
 |   DLY:    DB + part*6322 + 0x8f040   (T8 FX1 p2 idx 2; live 0x80000a2a,
 |                                        mirror 0x100a518e -- traced 4 Sep)
@@ -98,7 +100,10 @@ draw:   lea     %sp@(-44),%sp
         movel   %d0,%a2
         addal   #P2OFF,%a2
         addal   %d2,%a2
-        addal   #18,%a2                 | a2 + slot, slots 6..11
+        addal   #-6,%a2                 | a2 + (slot-6): the staged FX2 page-2
+                                        | store is +0+slot2 (measured 5 Sep, tags
+                                        | 12/13; docs/midi_re_cc.md 7). +18+slot
+                                        | (= +24+slot2) was a self-consistent guess.
         moveq   #0,%d3
 dloop:  moveq   #12,%d0
         cmpl    %d3,%d0
@@ -281,24 +286,8 @@ esc:    moveb   %a0@+,%d2
         bgt.s   esc
         bra.s   eopen
 efound: moveb   %d1,TRACKB
-eopen:  | NSLOT = 13 if T8's FX1 is the Character station, else 12
-        movel   DBPTR,%d0
-        moveq   #0,%d1
-        moveb   PARTB,%d1
-        movel   #6322,%d2
-        mulu.l  %d2,%d1
-        addl    %d1,%d0
-        movel   %d0,%a0
-        addal   #FX1IDOFF,%a0
-        addal   #MASTER,%a0
-        moveq   #0,%d1
-        moveb   %a0@,%d1
-        moveq   #12,%d0
-        moveq   #CHARID,%d2
-        cmpl    %d1,%d2
-        bne.s   6f
-        moveq   #13,%d0
-6:      movel   %d0,NSLOT
+eopen:  moveq   #12,%d0                 | twelve rows (the 13th return row was
+        movel   %d0,NSLOT               | stripped 5 Sep 2026, see enc)
         moveq   #0,%d0
         movel   %d0,CURSOR
         moveq   #16,%d0
@@ -320,9 +309,6 @@ enc:    lea     %sp@(-44),%sp
         mulu.l  %d1,%d0
         movel   DBPTR,%d7
         addl    %d0,%d7                 | d7 = DB + part*6322
-        moveq   #12,%d0
-        cmpl    %d3,%d0
-        beq     eret                    | the return row
         moveq   #6,%d0
         cmpl    %d3,%d0
         bgt     xp1                     | slot < 6 -> page 1
@@ -344,12 +330,12 @@ x1:     movel   %a6@(0,%d3:l:4),%a5
         movel   %d7,%a2
         addal   #P2OFF,%a2
         addal   %d0,%a2
-        addal   #18,%a2
+        addal   #-6,%a2                 | +0+slot2 (see the draw)
         addal   %d3,%a2
         moveq   #0,%d4
         moveb   %a2@,%d4                | before
-        moveq   #4,%d0
-        movel   %d0,PAGEGLOB
+        moveq   #0,%d0                  | the FX2 page stages index 0 (measured);
+        movel   %d0,PAGEGLOB            | P2EDIT's own Part store then lands at +0
         movel   %d3,%d2
         subq.l  #6,%d2
         movel   %d5,%sp@-
@@ -373,7 +359,7 @@ x2:     tstl    %d0
 x3:     moveb   %d0,%a2@
         lea     0x80000950,%a0
         moveb   %d0,%a0@(0,%d2:l)
-        lea     0x100a5138,%a0
+        lea     0x100a5120,%a0          | shadow 0x100a50a8 + 4*30 + 0 (was +24)
         moveb   %d0,%a0@(0,%d2:l)
         bra     xdone
 xp1:    movel   %d6,%d0
@@ -401,61 +387,10 @@ xp3:    movel   %d3,%d1
         jsr     P1WRITE
         lea     %sp@(12),%sp
         bra     xdone
-eret:   | which engine? the host's FX2 id
-        movel   %d7,%a0
-        addal   #IDOFF,%a0
-        addal   %d6,%a0
-        moveq   #0,%d0
-        moveb   %a0@,%d0
-        moveq   #6,%d1
-        cmpl    %d0,%d1
-        beq.s   edly
-        | RVRB: T8 FX1 page-1 slot 2 = flat 20, the self-contained writer
-        movel   %d7,%a0
-        addal   #RVRBOFF,%a0
-        moveq   #0,%d0
-        moveb   %a0@,%d0
-        addl    %d5,%d0
-        bge.s   7f
-        moveq   #0,%d0
-7:      moveq   #127,%d1
-        cmpl    %d0,%d1
-        bge.s   8f
-        movel   %d1,%d0
-8:      movel   %d0,%sp@-
-        pea     20
-        pea     MASTER
-        jsr     P1WRITE
-        lea     %sp@(12),%sp
-        bra     xdone
-edly:   | DLY: T8 FX1 page-2 idx 2 -- the editor on (track 7, page 3), then
-        | the value set here into its Part, live and mirror bytes
-        movel   %d7,%a2
-        addal   #DLYOFF,%a2
-        moveq   #0,%d4
-        moveb   %a2@,%d4                | before
-        moveq   #MASTER,%d0
-        moveb   %d0,TRACKB              | the editor keys off the track global
-        moveq   #3,%d0
-        movel   %d0,PAGEGLOB            | page kind 3 = FX1
-        movel   %d5,%sp@-
-        pea     2
-        jsr     P2EDIT
-        addql   #8,%sp
-        moveb   %d6,TRACKB              | back to the host track
-        movel   %d4,%d0
-        addl    %d5,%d0
-        bge.s   9f
-        moveq   #0,%d0
-9:      moveq   #127,%d1
-        cmpl    %d0,%d1
-        bge.s   10f
-        movel   %d1,%d0
-10:     moveb   %d0,%a2@
-        lea     DLYLIVE,%a0
-        moveb   %d0,%a0@
-        lea     DLYMIRR,%a0
-        moveb   %d0,%a0@
+        | (the 13th "return row" editor -- T8 Character's RVRB/DLY at the
+        | master -- was stripped 5 Sep 2026 to fit the screen into the rig;
+        | NSLOT is pinned to 12 in `eopen`, so it was unreachable anyway.
+        | It lives in history: git show 44aa987:modules/busscreen/screen_draw.s)
 xdone:  movem.l %sp@,%d2-%d7/%a2-%a6
         lea     %sp@(44),%sp
         rts
