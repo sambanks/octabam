@@ -333,6 +333,77 @@ folder IS `PRESETS`, holding `OCTABAM_RIG`, `ChongBongolo 26`, and the rest.
   next load then found an empty root. The model commits per sector as data
   arrives and only writes the remainder at completion.
 
+## Milestone 5 — frames and ticks, cold (IN PROGRESS, 6 Sep 2026)
+
+`tools/emu_frames.py`. The aim is Bryan T's session-5 ask (`EXTERNAL.md`
+§6): with a project loaded and the sequencer running, log the per-track
+trigger word the per-frame dispatcher reads (`0x4000d32e`), whose low
+nibble is a trig's sample offset within the 16-sample frame, and see whether
+it walks from pass to pass. What runs, all measured in the emulator:
+
+**The frame builder is an interrupt handler.** `0x4000aad0` (installed on
+vector 0x41 at `0x4001fbf8`): `lea sp@(-252) / moveml d0-fp`, re-entry
+guard `0x46104d4e`, ping index read from the DSP host port `0x2000001c`
+(must be 0 or 1 or it `halt`s at `0x4000ab40`), a poll of `0x20000004`
+until bit 7 clears, ..., the per-track dispatcher `0x4000d2a0`, the packer,
+`rte` at `0x4000d9ae`. `run_frame` pushes a ColdFire exception frame with
+the detour sentinel as return PC and runs to the `rte`, which Unicorn
+reports as exception 256 rather than executing. 12,000 frames run clean.
+
+**The sequencer tick is a forced interrupt, not a timer.** `0x400a1e10`
+(saves all registers, acks INTC `0xfc048010`, sends MIDI clock `0xF8`) is
+raised by the frame handler itself: a countdown `0x46107570`, decremented
+by `tempo24 << 4` per frame, expires and the frame handler ORs bit 0 into
+`0xfc048010` (`0x4000ae00`; a re-sync variant at `0x4000aea0`). The tick
+handler runs four times per MIDI clock (96 PPQN): its tail reloads
+`0x46107568 := 2,646,000` (one 16th step / 6, in units where one sample is
+`tempo24`) and only every fourth call advances the tick clock `0x4610757c`
+and re-syncs the frame clock `0x46104cf4` to it. `emu_frames` hooks both
+force sites and runs the tick after the frame that raised it; interrupt
+priority (whether the tick pre-empts the frame handler mid-way on hardware)
+is the one thing not modelled.
+
+**The trig-time loop — the producer of the nibble Bryan could not trace.**
+`0x4000aef6`: for each of 31 entries in the event table `0x80001904`,
+`dt = event − now` (`now = 0x46104cf0 = 0x46104cf4 + tempo24 << 4`),
+`smi` flags the past, `msacl dt × Q` with `Q = −2³¹/tempo24` (MACSR 0x20,
+fractional, truncating) gives the offset in samples, `+16`, `spl`-clamped
+to ≥ 0, stored as a byte in `0x800017d6[]` (flags to `0x80001798[]`). The
+dispatcher's word is assembled at `0x4000c98c`: `byte | 0x0210 |
+(0x46c7faa4[track] & 0xF000)` — only for a track whose immediate-action
+slot `0x46c7e9fa[track]` (written by the QREC scheduler `0x40005178` when
+a step trig fires) is non-zero. So the nibble is the truncated fractional
+sample position of the event, and a walk is arithmetically expected
+whenever the pattern period in samples is not an integer.
+
+**Transport.** `0x4009b964(arg)` with the sequencer stopped runs the start
+case: state `0x800065b8 := 1`, phase increment `0x46107570 := tempo24 << 4`,
+a post to the UI queue `0x460d1664`. The project's MIDI byte `0x80000028`
+bit 0 is CLOCK RECEIVE; Sam's projects have it set (the Rytm is master), and
+with it set the engine waits for an external clock that never comes —
+`--internal-clock` clears it.
+
+**Two more things Unicorn's core lacks, shimmed in `_run_until`:** the EMAC
+**MAC-with-parallel-load** forms (`msacl Ry,Rx,<ea>,Rw,ACC`, used by the
+trig-time loop, the packer and the delay routine) — the shim does the load
+and address update in Python and executes the plain form natively from a
+trampoline so the accumulator state stays in the core; address-register
+operands and the inverted acc bit of the load form are handled per
+binutils' reading of this image. And Unicorn's `until` address is not
+honoured when the instruction there raises: the trampoline parks on a
+`nop` instead.
+
+**Where it stands.** With the RIG or ChongBongolo 26 project loaded, the
+transport started on the internal clock and 12,000 frames run: ticks fire
+at the right rate, the tick and frame clocks track, the step engine
+(`0x400a1f68`) is entered every fourth tick and the event table advances —
+but **no step trig ever fires**: the QREC scheduler is never called and the
+per-track running states `0x80006500[t]` stay 0 (the transport's start
+case only promotes them from state 2; the pattern records in RAM are dense
+and valid). The per-track loop at `0x400a28f0` is the next thing to read.
+`--kick` forces `0x80006514`, which turned out to be a pattern-change
+countdown, not the step clock (one write, at `0x400a223c`, then nothing).
+
 ## The RTOS fork — still open, still not forced
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and

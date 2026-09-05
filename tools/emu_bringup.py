@@ -55,7 +55,8 @@ MENU_COUNT = 0x400cbda0      # current display list: row count
 MENU_FOCUS = 0x400cbda8      # focus descriptor
 CALL_SP = 0x47f00000         # scratch stack for a detour call
 CALL_RET = 0x000000f0        # sentinel return address a detour stops at
-EXTRA_OVERRIDES = {}         # extra peripheral read replies, merged into boot()'s map
+EXTRA_OVERRIDES = {}         # extra peripheral read replies (value or f(uc, addr, size)),
+                             # merged into boot()'s map
 
 # EFFECT 1 / EFFECT 2 SETUP window openers (docs/MAINMENU.md §7) — the chooser
 # + dials. FX1 is page_kind 3 (id byte +0x8ed80); our inserts are all FX2, so
@@ -154,7 +155,10 @@ def boot(image=None, count=BUDGET, on_draw=None):
     def periph_read(uc, off, size, b):
         a = b + off
         _log("R", uc.reg_read(UC_M68K_REG_PC), a, size)
-        return OVERRIDES.get(a, (1 << (size * 8)) - 1)
+        v = OVERRIDES.get(a, (1 << (size * 8)) - 1)
+        if callable(v):                    # a stateful reply (e.g. a ping index that toggles)
+            v = v(uc, a, size)
+        return v
 
     def periph_write(uc, off, size, val, b):
         _log("W", uc.reg_read(UC_M68K_REG_PC), b + off, size, val)
@@ -431,6 +435,81 @@ def _call(uc, addr, args=(), count=20_000_000):
         raise DetourTrap(trap[0], trap[1], f"0x{addr:08x}")
 
 
+TRAMP = 0x47ef0000           # scratch page for the EMAC-with-load trampoline
+_AREGS = None
+
+
+def _emac_load_shim(uc, r):
+    """Unicorn's CFV4E executes the plain EMAC forms (`macl Ry,Rx,ACC`,
+    `movclrl`) but raises illegal-instruction on the MAC-WITH-PARALLEL-LOAD
+    form (`msacl Ry,Rx,<ea>,Rw,ACC`), which the sequencer's trig-time loop at
+    0x4000aef6 uses. Do the parallel load and the address update here, then
+    execute the equivalent plain form natively from a trampoline so the
+    accumulator state stays inside the core. Returns the resume PC or None.
+    Encoding per binutils' reading of this image: load form opcode
+    `1010 Rw 0 a mmm rrr` (acc bit 0 INVERTED), ext `Rx U/L sc sc msac ? ? m acc1 ? Ry`;
+    plain form opcode `1010 Rx 0 a 000 Ry` with the acc bit straight."""
+    global _AREGS, _DREGS
+    if not r.trap or r.trap[0] != 4:
+        return None
+    pc = r.trap[1]
+    op = int.from_bytes(uc.mem_read(pc, 2), "big")
+    if (op & 0xF100) != 0xA000 or (op & 0x0030) == 0:
+        return None                                    # not a MAC with load
+    ext = int.from_bytes(uc.mem_read(pc + 2, 2), "big")
+    if _DREGS is None:
+        _DREGS = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                  UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7]
+    if _AREGS is None:
+        _AREGS = [UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,
+                  UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_A7]
+    rw = (op >> 9) & 7
+    mode, reg = (op >> 3) & 7, op & 7
+    acc = ((~op >> 7) & 1) | ((ext >> 3) & 2)
+    rx, ry = (ext >> 12) & 0xF, ext & 0xF              # 4-bit: 0-7 = Dn, 8-15 = An
+    size_l = (ext >> 11) & 1
+    width = 4                                          # the parallel load is always a longword
+    an = _AREGS[reg]
+    base = uc.reg_read(an) & 0xFFFFFFFF
+    ilen = 4
+    if mode == 2:   ea = base
+    elif mode == 3: ea = base; uc.reg_write(an, (base + width) & 0xFFFFFFFF)
+    elif mode == 4: ea = (base - width) & 0xFFFFFFFF; uc.reg_write(an, ea)
+    elif mode == 5:
+        d16 = int.from_bytes(uc.mem_read(pc + 4, 2), "big", signed=True)
+        ea = (base + d16) & 0xFFFFFFFF; ilen = 6
+    else:
+        return None
+    val = int.from_bytes(uc.mem_read(ea, width), "big")
+    if ext & 0x0020:                                   # '&' form: AND with the MASK register
+        return None                                    # not modelled; surface it
+    uc.reg_write(_DREGS[rw], val)
+    # plain form: msacl/macl Ry,Rx,ACC — same ext bits minus the load-form fields
+    # plain form (from the image: `macl %d5,%d0,%acc0` = a005, `macl %a1,%d0,%acc1`
+    # = a089): Ry in bits 3:0 with bit 3 = A/D, Rx in bits 11:9 with A/D at bit 6,
+    # acc bit 0 at bit 7 (straight, unlike the load form)
+    plain_op = 0xA000 | ((rx & 7) << 9) | (((rx >> 3) & 1) << 6) | ((acc & 1) << 7) | ry
+    plain_ext = (ext & 0x0F00) | (size_l << 11) | ((acc >> 1) << 4)
+    try:
+        uc.mem_map(TRAMP, 0x1000)
+    except UcError:
+        pass
+    nxt = pc + ilen
+    # plain form, then jump to a nop at TRAMP+0x100 and stop there: stopping
+    # AT `nxt` is unsafe when `nxt` is itself an instruction the core rejects
+    # (a byterev followed one of these) — the exception beats the stop.
+    park = TRAMP + 0x100
+    uc.mem_write(TRAMP, plain_op.to_bytes(2, "big") + plain_ext.to_bytes(2, "big")
+                 + b"\x4e\xf9" + park.to_bytes(4, "big"))
+    uc.mem_write(park, b"\x4e\x71\x4e\x71")           # nop nop
+    r.trap = None
+    uc.emu_start(TRAMP, park, count=3)
+    if r.trap is not None or uc.reg_read(UC_M68K_REG_PC) != park:
+        return None                                    # the plain form failed too
+    r.emac_shims = getattr(r, "emac_shims", 0) + 1
+    return nxt
+
+
 def _run_until(uc, pc, until, count=20_000_000):
     """emu_start(pc -> until) with the ISA_C shim: an illegal-instruction trap
     on bitrev/byterev/ff1 is emulated and execution resumes after it."""
@@ -444,7 +523,7 @@ def _run_until(uc, pc, until, count=20_000_000):
         uc.emu_start(pc, until, count=burst)
         if r is None:
             return None
-        npc = _isa_c_shim(uc, r) or _movem_shim(uc, r)
+        npc = _isa_c_shim(uc, r) or _movem_shim(uc, r) or _emac_load_shim(uc, r)
         if npc is not None:
             pc = npc               # a shimmed burst is short: don't charge it
             continue
