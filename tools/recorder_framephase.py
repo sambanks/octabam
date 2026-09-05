@@ -12,7 +12,8 @@ its last write.  A read frame is a SEAM frame if the pass number changes
 between two consecutive read samples at buffer positions (p, p+1) with p != L-1
 (a change across L-1 -> 0 is consecutive writing: continuous content).
 
-Length: L = round(steps * 15876000 / tempo24) (0x40006dfc).  tempo24 from the
+Length: the firmware's own arithmetic (firmware_length: truncating EMAC, see
+below; round-half-up is wrong on ~1 in 8 cells).  tempo24 from the
 displayed tempo is the MEASURED UI mapping (0x4009c7c4):
     tempo24 = 24*bpm + (23*tenths + 4) // 9
 Run:  python3 tools/recorder_framephase.py
@@ -66,22 +67,36 @@ def summarise(name, L, P, eps, order, mode="rec-free/play-retrig"):
     desc = "; ".join(f"passes {a}-{b} ({b-a+1} = {(b-a+1)*P/FS:.1f} s, mean seam frac {sum(s[a:b+1])/(b-a+1):.2f})" for a, b in runs)
     print(tag + "SEAMS " + desc + f"; then clean to pass {len(s)}")
 
-rows = [(199, 4), (298.2, 2), (286.2, 2), (251, 16), (198, 16), (229, 16), (120, 16), (120, 4), (300, 2)]
+rows = [(199, 4), (298.2, 2), (286.2, 2), (251, 16), (198, 16), (229, 16), (120, 16), (120, 4), (300, 2),
+        (261.3, 2), (128, 16), (128, 4), (128, 32)]
+# Bryan T's hardware log (sessions 4-5). NOTE his epsilon is L - P; ours below is P - L.
 obs = {(199, 4): "clicks", (298.2, 2): "clicks", (286.2, 2): "clicks", (251, 16): "clicks",
-       (120, 16): "clean", (120, 4): "clean", (300, 2): "clean"}
+       (120, 16): "clean", (120, 4): "clean", (300, 2): "clean",
+       (261.3, 2): "clicks (session 5)", (128, 16): "clicks (session 5, predicted)"}
 
 def tempo24(bpm):
     """Measured UI conversion, 0x4009c7c4: integer BPM plus a tenths digit."""
     b = int(bpm); tenths = int(round((bpm - b) * 10))
     return 24 * b + (23 * tenths + 4) // 9
 
+
+def firmware_length(steps, t24):
+    """The converter that feeds arm(), 0x40006dfc-0x40006e10, exactly:
+    Q = trunc(2^31 / tempo24) (0x4000cab8, biased low), A = steps x 31752000,
+    the EMAC multiply truncates (MACSR = 0x20 at 0x4000cf62: fractional,
+    round/truncate bit clear -- Bryan T, 6 Sep 2026), then (x + 1) >> 1.
+    Differs from round-half-up on ~1 in 8 grid cells, never on exact ones."""
+    Q = (1 << 31) // t24
+    return (((steps * 31752000 * Q) >> 31) + 1) >> 1
+
+
 for bpm, rlen in rows:
-    t24 = tempo24(bpm); P = rlen * 15876000 / t24; L = int(P + 0.5); eps = P - L
+    t24 = tempo24(bpm); P = rlen * 15876000 / t24; L = firmware_length(rlen, t24); eps = P - L
     print(f"{bpm}/{rlen}: tempo24={t24} P={P:.3f} L={L} (L mod 16 = {L%16})  observed: {obs.get((bpm,rlen),'not recorded')}")
     for order in ("write-first", "read-first"):
         summarise(f"{bpm}/{rlen}", L, P, eps, order)
 
 print("\n=== control: both free-running (flex loops at L itself, never retriggered), 199/4 ===")
-t24 = tempo24(199); P = 4 * 15876000 / t24; L = int(P + 0.5)
+t24 = tempo24(199); P = 4 * 15876000 / t24; L = firmware_length(4, t24)
 for order in ("write-first", "read-first"):
     summarise("199/4", L, P, P - L, order, mode="both-free")

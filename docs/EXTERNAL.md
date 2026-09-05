@@ -410,7 +410,13 @@ trailing `(x+1) >> 1` rounds to nearest. ⚠️ One inference remains inside
 that: the EMAC `macl` must be running in *fractional* mode (product `>> 31`)
 for the result to land on the display series. It is the only mode that
 does, and it is the same left-shift-by-one alignment our own DSP trap about
-reading `a0` is made of — but nobody has read `MACSR`. **Why a pickup
+reading `a0` is made of — but nobody has read `MACSR`. ✅ **Closed 6 Sep
+2026 (Bryan's session-5 note, re-verified here): `MACSR = 0x20`** — set by
+`moveq #32 / movel %d0,%macsr` at `0x4000cf60` in the frame builder and
+re-set immediately (`movel #32,%macsr`) at `0x4000d3ae`: fractional, signed,
+no saturation, and the round/truncate bit CLEAR, so the extraction
+*truncates*. objdump mis-syncs the first site (it prints an `andil`), which
+is why it went unfound. **Why a pickup
 machine's arm length comes from the FOUT slot is open**; his display-order =
 raw-order check covered TRIG/RLEN/INAB/INCD, not slot 7.
 
@@ -651,27 +657,38 @@ per frame; a read frame is a seam if the pass id changes between two
 consecutive buffer positions other than the wrap itself. Results over his
 table:
 
-| setting | L | ε = P − L | write-first | read-first |
-|---|---|---|---|---|
-| 199/4 | 13,296 | +0.482 | clean | seams passes 2–32 (9.3 s), then clean |
-| 298.2/2 | 4,436 | +0.496 | clean | seams 2–31 (3.0 s), then clean |
-| 286.2/2 | 4,623 | −0.493 | seams 2–31 (3.1 s), then clean | clean |
-| 251/16 | 42,167 | +0.331 | clean | seams 2–46 (43 s), then clean |
-| 198/16 | 53,455 | −0.455 | seams 2–34 (40 s), then clean | clean |
-| 229/16 | 46,218 | +0.341 | clean | seams 2–45 (46 s), then clean |
-| 120/16, 120/4, 300/2 | — | 0 | clean | clean |
-| 199/4, both free-running (flex loops at L, never retriggered) | | | clean | clean |
+| setting | L | ε = P − L | write-first | read-first | hardware |
+|---|---|---|---|---|---|
+| 199/4 | 13,296 | +0.482 | clean | seams passes 2–32 (9.3 s), then clean | clicks |
+| 298.2/2 | 4,436 | +0.496 | clean | seams 2–31 (3.0 s), then clean | clicks |
+| 286.2/2 | 4,623 | −0.493 | seams 2–31 (3.1 s), then clean | clean | clicks |
+| 251/16 | 42,167 | +0.331 | clean | seams 2–46 (43 s), then clean | clicks |
+| 198/16 | 53,454 | +0.545 | clean | seams 1–28 (34 s), then clean | not recorded |
+| 229/16 | 46,218 | +0.341 | clean | seams 2–45 (46 s), then clean | not recorded |
+| 261.3/2 | 5,062 | +0.500 | clean | seams 2–30 (3.3 s), then clean | clicks |
+| 128/16 | 82,687 | +0.500 | clean | seams 1–31 (58 s), then clean | clicks (predicted, then observed) |
+| 128/4 | 20,672 | −0.125 | seams 5–123 (56 s), then clean | clean | his proposed test |
+| 120/16, 120/4, 300/2, 128/32 | — | 0 | clean | clean | clean |
+| 199/4, both free-running (flex loops at L, never retriggered) | | | clean | clean | |
+
+(Lengths are the firmware's own arithmetic — see the 6 Sep correction
+below; the first version of this table used round-half-up and had 198/16 as
+53,455, rounded up. `ε` here is `P − L`; Bryan's sign is the reverse.)
 
 While in the band **every** frame of the pass is a seam frame — a 2,756 Hz
 buzz, not a tick. The zero-error rows are clean under both orders, as
 observed. The direction rule is strict: rounded-down lengths seam only when
 the flex read precedes the recorder write within a frame, rounded-up
-lengths only under the opposite order. Three of his four clicking rows are
-rounded-down; **286.2/2 is rounded-up**, so a single fixed order predicts
-it clean and his log says it clicks. Either the model needs a second reader
-(the recorder's own read-modify-write read is one) or that row is the one
-to repeat first. The model is arithmetic, not the firmware; it says what
-the hypothesis predicts, so the hardware test has numbers to hit or miss.
+lengths only under the opposite order. With the corrected lengths **every
+clicking row he has measured is rounded-down except 286.2/2**, and all of
+them seam under the read-first order; 286.2/2 alone would need the other.
+So the direction question now rests on two rows: 286.2/2, and his own
+proposed 128/4 (rounded-up, ε = −0.125), which the read-first model
+predicts clean. If 128/4 clicks, a single fixed order is dead and the model
+needs a second reader (the recorder's own read-modify-write read is one) or
+a second error source (trig placement, which he now argues is independent
+of length). The model is arithmetic, not the firmware; it says what the
+hypothesis predicts, so the hardware test has numbers to hit or miss.
 
 #### The 16-sample question — an answer to his confusion, all inferred
 
@@ -733,9 +750,10 @@ it as the click mechanism. Both halves are right, and they are about
    the arm-time position `+300` **survives a re-arm** (re-bounded, not
    zeroed) — if the live position inherits that, a REC trig per pass does
    not re-synchronise the recorder either.
-5. Repeat **286.2/2** first, and add **198/16** (rounded-up, ε = −0.455):
-   if both click, the single-order model is dead; if 198/16 is clean and
-   286.2/2 was a different patch, it lives.
+5. Repeat **286.2/2** first, and add **128/4** (rounded-up, ε = −0.125):
+   if both click, the single-order model is dead. (This test first named
+   198/16 as the rounded-up row; that value was his transcription slip,
+   corrected 6 Sep — 198/16 is rounded-down like the rest.)
 
 Finally, the sub-frame trig nibble he names as prime suspect
 (`0x46104d26`, low nibble = sample offset within the frame) is the *same*
@@ -744,6 +762,59 @@ lands on an integer sample, so consecutive passes land one sample apart —
 not an independent mechanism. It is what makes the sequencer sample-accurate
 inside the 16-sample frame, and so it is the second reason the frame size
 does not appear in his data.
+
+#### Session-5 note (received 6 Sep 2026): the MAC truncates, and one row of his was wrong
+
+`note-for-bam-session5.md`, plus the four sessions consolidated as
+`RECORDER.md` (new header, §14.8a, the §14.8 row corrected inline). Same
+image, every instruction machine-checked against objdump.
+
+**✅ Re-verified here.** `MACSR = 0x20` at `0x4000cf60` (`moveq #32` into
+`movel %d0,%macsr`; objdump mis-syncs it) and `0x4000d3ae` (`movel
+#32,%macsr`). The length arithmetic, final form:
+
+```
+tempo24 = 24·bpm + (23·tenths + 4)/9
+Q       = trunc(2³¹ / tempo24)                      0x4000cab8, biased low
+L       = ( ((steps × 31,752,000) × Q >> 31) + 1 ) >> 1     0x40006dfc..e10
+```
+
+Run over his rows here it reproduces all thirteen (including the FOUT
+cross-check: 1 step at 120 BPM → 5,512, not 5,513). It disagrees with
+round-half-up on **20,205** of the 170,163 grid cells by our count — he
+reports 41,860, which we take as a different definition of the comparison
+rather than an error, and have not resolved. Never on an exact cell: the
+5,279 / 2,017 clean sets are identical under both, so the practical result
+stands.
+
+**❌ His 198/16 row was his own transcription slip**, not our disagreement:
+correct value 53,454, rounded *down*, `ε = +0.545` in our sign (his is
+`L − P`). Our simulation table and test 5 above are corrected accordingly,
+and `tools/recorder_framephase.py` now uses the firmware's arithmetic.
+
+**What he retracts of his own:** §13.2 (DMA ch0 as control-surface
+scanning — he found it in our `DSP.md` §6c) and §13.9's hardware-modulo-DMA
+hypothesis (no ring, nothing to wrap). He lists our storage addresses (ATA
+ISR `0x40015304`, queue primitive `0x4001568c`, event wait `0x40000818`,
+queue creator `0x40040b14`, RELOAD BANK = opcode 20 bitmask, LOAD PROJECT
+via `0x40023c7c`, set name `0x100f8480`) as **reported by us, unverified by
+him** — the right status; they are measured in the emulator, not on hardware.
+
+**New hardware rows:** 261.3/2 and 128/16 click on the first repeat (the
+second predicted before testing). He reads them with 286.2/2 as "both
+directions click"; in the corrected arithmetic they are all rounded-down
+except 286.2/2, so the direction evidence is that one row (table above).
+
+**His ask, restated, is our next emulator milestone:** log the per-track
+trigger word across frames with a recorder armed — the slot is
+`%sp@(144)` at dispatcher entry (`0x4000d32a`), low nibble = sample offset
+within the frame, bits `0xD0` gate the arm-caller, written back at
+`0x4000d378` — for **128 BPM / RLEN 4** (ε ≠ 0) against **128 / RLEN 32**
+(ε = 0). If the nibble walks in the first and holds in the second, the
+click's other error source is found. Static reading cannot show an
+accumulator advancing during a wait; a frame-by-frame trace can. With a
+project now loading in the emulator (`EMU.md` M4) the remaining pieces are
+the frame builder run per frame and the transport started.
 
 #### Notes back to Bryan (5 Sep)
 
@@ -757,6 +828,12 @@ does not appear in his data.
    and the five discriminating tests above; 286.2/2 and 198/16 first.
 5. `0x4006e3b2` (truncating RLEN converter) is now the one whose consumer is
    open, since `0x40006dfc` is the one that reaches `arm()`.
+
+**6 Sep:** MACSR and both writers re-verified; his thirteen rows reproduce
+under the final formula; our 20,205 vs his 41,860 is unresolved and flagged
+as definitional; 198/16 corrected in our table; 128/4 replaces 198/16 as
+the rounded-up test alongside 286.2/2; the trigger-word log is the next
+emulator milestone.
 
 ## Open threads worth knowing about
 
