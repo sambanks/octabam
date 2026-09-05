@@ -195,3 +195,58 @@ CC 16–45 on the auto channel to track 8 regardless of AUDIO CC IN
   `cc−0x70 ≤ 7` then `cc ≥ 0x78`).
 - A value outside `[min, min+count)` reaching `0x80000810`: would mean the
   clamp at `0x40054dee` is bypassed (only the three callers above exist).
+
+## 6. Page-2 CC → DSP: the delivery path is NOT the live byte (5 Sep 2026)
+
+`modules/ccpage2` adds CC 62-67 → FX2 page-2 (§ docs/MIDI.md). On hardware
+(build OCTABAM94, flashed 5 Sep) **page-1 CC works but page-2 CC does not
+reach the DSP**, measured, not inferred:
+
+- **MIDI arrives**: Midihub MIDI Monitor shows `b4 2d ..` (CC 45 ch5) in and
+  out to the OT; T5 = Ch5, AUDIO CC IN on. Page-1 CC 45 moves the dial.
+- **Audio A/B** (`tools/hw_bus_test.py`, T5 soloed, synchronous paired
+  detection, reverb-tail "gap floor" metric): page-1 **TIME** moved the
+  reverb **+2.66 dB (t≈2.3)** in the right direction; page-2 **MODE** was
+  **+0.13 dB (t≈0.1)** — flat. So page-2's value is not reaching the engine.
+
+Two separate mechanisms were found; only the first is fixed.
+
+**(a) The FX2 dial reads a different byte than ccpage2 wrote — FIXED.** An
+emu read-hook during the FX2 page draw shows the dial reads the displayed
+value at **`0x8f084 + track*30 + slot`** (`PARAM_VAL_OFF`), for slots 0-11.
+ccpage2 wrote the Part storage `0x8ef5a` and the live block, not `0x8f084`,
+so the dial could never reflect a CC even when the write landed. ccpage2 now
+also writes `0x8f084 + track*30 + slot` (slot = slot2+6). This makes the dial
+track CC on redraw; it does NOT by itself fix the sound.
+
+**(b) The `0x80000810` "live byte" is a frame-builder DESTINATION, not the
+DSP source — UNRESOLVED.** The frame builder `0x4000c0f0` runs two copy
+loops that fill the per-track live block `0x80000810 + track*72`:
+- loop 1 (6 iters, page-2): `moveb (a2),(a0)` and `moveb (a3)+,32(a0)` with
+  `a2 = 0x40170f8a + …`, `a3 = 0x4017113a + …`, `a0 = 0x80000810+track*72` —
+  and `a1 = 0x80000a50+track*64` gets `a2<<8` (the DSP halfword array).
+- loop 2 (30 iters, page-1): the same shape with `a2 = 0x4017107a + …`,
+  companion `0x40171252 + …`, into `0x80000816+track*72` and the DSP array.
+
+So the block and the DSP halfword array are BOTH written **from**
+`0x40171xxx` (`0x40170f8a`/`0x4017107a` main, `0x4017113a`/`0x40171252`
+companion), per track and per pattern (`d6`,`d7` scale `635712` and `6322`).
+A CPU write to `0x80000810` is overwritten each frame. That is almost
+certainly why ccpage2's page-2 write (to the live block's `+0x20` lane) is
+inert on the DSP.
+
+**⚠️ Open contradiction to resolve first.** The stock writer `0x40054cd8`
+ALSO stores page-1 to `0x80000810+track*72+flat` (0x40054e22) — yet page-1
+CC works. So either a pipeline stage copies `0x80000810 → 0x40171xxx` (not
+yet located), or `0x4000c0f0` is not the live per-frame path (init only), or
+the exact block/offset mapping above is misread (the two loops' `+0x20`
+destinations appear to overlap page-1 main, which cannot be right). Until
+this is settled, the correct page-2 target byte is unknown, and NO page-2
+DSP write should be flashed. Next step: trace who WRITES `0x40170f8a` /
+`0x4017107a`, and confirm whether the stock page-1 write reaches the DSP via
+`0x80000810` or via `0x4017107a`. This needs a hardware check to confirm —
+`dsp_host` pokes r6 directly and the single-core emu never runs this
+two-core staging (CLAUDE.md: a single-core emulator cannot show a race
+between two cores). Even/odd slot split (even = knob bits 16-23, odd =
+companion bits 8-15; docs/PARAM_PAGES §2, the R28 companion work) applies to
+page 2 and must be honoured in the eventual write.

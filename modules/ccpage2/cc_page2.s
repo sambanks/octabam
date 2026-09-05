@@ -34,7 +34,8 @@
         .set    IDLIVE,   0x80000ecc   | per-track live FX2 id (1 byte/track)
         .set    DBPTR,    0x46c82456   | long: the Part DB base
         .set    PARTB,    0x80000003   | byte: current part index
-        .set    P2OFF,    0x8ef5a      | page-2 Part offset
+        .set    P2OFF,    0x8ef5a      | page-2 Part offset (storage)
+        .set    DISPOFF,  0x8f084      | displayed-value array the FX2 dial READS
         .set    LIVEB,    0x80000810    | live block base
         .set    MIRRB,    0x100a50c0   | page-2 mirror base
         .set    VERBID,   7            | BusVerb FX2 id
@@ -124,6 +125,15 @@ wpos:   | d2 = clamped value (>=0 by construction)
         addal   #18,%a0
         addal   %d4,%a0
         moveb   %d2,%a0@               | Part <- value
+        | display = base + DISPOFF + track*30 + 6 + slot2 -- the byte the stock
+        | FX2 dial READS (0x8f084, confirmed by an emu read-hook). d0 still
+        | holds base, d1 still holds track*30 from the Part write above.
+        moveal  %d0,%a0
+        addal   #DISPOFF,%a0
+        addal   %d1,%a0
+        addal   #6,%a0
+        addal   %d4,%a0
+        moveb   %d2,%a0@               | displayed value <- value
         | live = LIVEB + track*72 + 0x20 + slot2
         movel   %d6,%d1
         moveq   #72,%d3
