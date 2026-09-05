@@ -913,3 +913,20 @@ for every cave), so a screen's draw and encoder handlers can be assembled and
 walked in the emulator with no flash — the §9e order stands, and step 4 is
 now done.
 
+
+### 9e-i. Correction, 5 Sep 2026 — the page-2 store the screen reads/writes
+
+The screen read and overwrote the page-2 Part byte at
+`DB+part*6322+0x8ef5a+track*30+18+slot` (= `+24+slot2`), staging
+`PAGEGLOB = 4` for `0x4003a474`. That is the wrong slot. The FX2 page really
+stages **index 0**, so the store is `+0+slot2` — measured on hardware by
+`modules/ccpage2` (tag 12 wrote the staged index into GATE and the dial sat at
+zero; tag 13 pinned `+0` and works with the page off screen;
+`docs/midi_re_cc.md` §7). The screen was self-consistent (draw and edit both
+`+24`) so it drew correctly, and its edits DID change the sound, because
+`0x4003a474`'s live-lane write (`0x80000830+track*72+slot2`) carries the
+value to the DSP regardless of where the Part byte lands — but the stored
+bytes would not survive a part reload. Fixed in commit 2fcdca3 (`+0`,
+`PAGEGLOB 0`, track-4 shadow `0x100a5120`); `verify_busscreen` green;
+**unflashed**. The T8-FX1 return row (`0x8f040`, `PAGEGLOB 3`) is left as it
+was: its staged index has not been measured.
