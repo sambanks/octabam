@@ -1400,3 +1400,35 @@ from the code but has not been tried on the unit.) Three FLEX fixtures
 (machine type 0, T1 slot byte 128 / 129 / 0 — the encoding of "R1" in the
 part's slot byte is unknown) are running to get past the gate and watch
 the converter.
+
+### 10.12 The FLEX fixtures no-op at the same gate — because route A never loads a sample (6 Sep 2026, late — measured, and the limit is the emulator's)
+
+Three fixtures, machine type 0 (FLEX) on T1, slot byte 128 / 129 / 0, RLEN
+3, 128 BPM, 1,600 frames each: **identical** to the THRU case — the arm
+caller enters once with `0x72fe` and returns −1 at `0x40006712` in the
+same sample; no post, no converter. And the decisive number: the
+sample-slot control record `0x80004f1c..+84` received **0 writes in every
+run, load included** — for all three slot bytes and for the THRU runs
+before them.
+
+**Why (measured by reading the tool, not the firmware):** `stage_project`
+copies the project's `.work`/`.strd` files onto the emulated card and
+**skips every `.wav` and `.ot`** (emu_rtos.py: `p.suffix.lower() not in
+(".wav", ".ot")`). Nothing can populate a slot record if no sample exists
+to load, and the recorder buffer's own record may need the same
+initialisation. The 17 literal readers/writers of `0x80004f1c` include the
+candidates `0x4000f5fe` (walks the records at stride 84 and reads a
+`+0x23` field), `0x4004c294` (same stride) and `0x400971f6`; none of them
+ran. So **the fixed-RLEN arm path is blocked in route A by an unmodelled
+prerequisite, not by the fixture** — the same shape as CLAUDE.md's
+"a measurement can be structurally blind": the null is real, the
+instrument cannot see past it.
+
+**Next (not tonight):** stage the slot-1 sample (`.wav` + `.ot`) on the
+emulated card — the FAT16 model's capacity is the first thing to check —
+and watch `0x80004f1c` during the load; if the record fills, re-run the
+128/RLEN 4 FLEX fixture and the converter question answers itself
+(`0x40006dfc` vs `0x4006e3b2`, the `macl` at `0x400060ca`, the `jsr arm`
+at `0x40006edc`, and the length word in the buffer's state record). Also
+worth one line to Bryan: on hardware, does a fixed-RLEN recorder trig on a
+THRU track (no sample slot) record at all? The code says no.
