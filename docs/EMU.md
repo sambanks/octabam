@@ -436,7 +436,7 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — M6a and M6b done 6 Sep 2026 (`tools/emu_rtos.py`)
+## The RTOS fork — M6a and M6b done, M6c's mechanism built 6 Sep 2026 (`tools/emu_rtos.py`)
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
@@ -489,6 +489,22 @@ subroutine) is unsafe for anything that can genuinely block — main is the
 kernel's only always-ready task, so blocking it starves the scheduler.
 `FW_CARD_INIT` proved this by crashing it; the fix routes blocking calls
 through a real task's own context instead (post it a message).
+
+**M6c (same day): the sequencer mechanism is built; the fidelity gate is
+not.** `out/_testproj` is rebuilt (a project freshly saved on the unit,
+reproduces this doc's own frame-344 finding exactly under a fresh cold
+run). The frame IRQ (source 1 of INTC0, a free-running 16-sample clock,
+opt-in so M6a/M6b stay exactly as verified) and the M5-detour transport
+start (`call_as_main`, confirmed non-blocking) are both wired through the
+same real interrupt-controller model M6a already built. What isn't wired
+yet is a real second frame: the handler masks its own interrupt source at
+entry and, on the code path a real load-and-play run actually takes, never
+unmasks it again — `frame_count` reaches 1 and stops, measured across a
+3-second run. The unmask instruction exists, on a different, conditional
+branch this run didn't take. `RTOS_FORK.md` §8 has the byte-exact trace and
+two live hypotheses (a missed second unmask site vs. the "16-sample frame
+interrupt" design assumption itself being wrong for this firmware) — a
+judgment call, not a guess to make mechanically.
 
 ## Reproduce
 

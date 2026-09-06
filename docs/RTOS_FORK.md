@@ -337,7 +337,9 @@ model can take the mechanical parts. Tagged accordingly.
   must land the same byte in `0x46104d15[0]` at the same frame (344, `0xb6`)
   under route A as it does cold. If it doesn't, the difference *is* the
   pre-emption M5 could not model, and it needs reading before anything is
-  built on it.
+  built on it. **Mechanism built 6 Sep 2026 (Sonnet), fidelity gate NOT yet
+  reached — a judgment question, flagged for Fable, is in the way.** §8 has
+  the measured facts and the two live hypotheses.
 - **M6d — input.** *(mechanical)* Feed key events into the UI task's queue
   (the post primitive against whichever queue `0x4005593c` blocks on — to be
   read in M6c) so PLAY and the REC-arm action run the firmware's own path.
@@ -537,3 +539,80 @@ task), `--watch-calls A,B` (entries with caller and first argument),
 (O(1), tcb → its most recent block) and `Rtos.blocks` (the full log).
 `emu_bringup` and `emu_frames` are untouched; `emu_card` gained the one
 flag.
+
+## 8. M6c — the mechanism is built; the fidelity gate is blocked on a judgment call
+
+`out/_testproj` (gone from the checkout, per §7's own note that this was
+needed) is rebuilt as a symlink to a project **freshly saved on the unit
+6 Sep 2026** (`OCTABAM_RIG_20260906_cleared`, `~/octa/backups/`) — chosen
+because a cold run against it reproduces this document's own frame-344
+claim exactly (`tools/emu_frames.py --project out/_testproj --frames 400
+--start --internal-clock --poke-trig 2`: track 1's live nibble fires at
+frame 344, matching the M5 write-up byte-for-byte on the frame number).
+The BYTE differs from the old note (`0xd3` measured here vs `0xb6`
+written down at the time) — not chased further; the fidelity gate below
+never got far enough to need it, and self-consistency between cold and
+route A on THIS byte, whatever it is today, is the actual target, not a
+historical number.
+
+**Mechanism built (Sonnet, mechanical — the scope in §5 specifies both
+pieces byte-exact):**
+- The frame clock: source 1 of INTC0, a free-running 16-sample period
+  with no registers (unlike PIT0/PIT1), delivered through the exact same
+  generic `Intc` model M6a already built. **Opt-in** (`Rtos(frame=True)` /
+  CLI `--sequencer`, default off): main's boot tail unmasks source 1
+  unconditionally as part of its normal, already-verified init sequence,
+  so modelling it un-gated would make it fire in every M6a/M6b run
+  regardless of need — confirmed this stays inert by default (M6a's gate
+  re-run clean with `frame=False`, the default, after every change below).
+- `Rtos.start_transport_live()` / `Rtos.poke_trig()`: the M5 detour
+  (`FW_TRANSPORT`, `FW_START_TRACK`, the pattern's trig mask) driven
+  through `call_as_main`, exactly as §5 allows for M6c. Both confirmed
+  non-blocking the same way `request_card_mount` is — no repeat of the
+  `FW_CARD_INIT` crash `call_as_main`'s docstring warns about.
+- `--sequencer` CLI action: gate, load, start transport, poke, run N
+  frames, report `FW_LIVE_NIBBLE`/`FW_TRIG_WORDS` — the same shape as
+  `emu_frames.py`'s cold run, so the two are directly comparable once the
+  gate below is passable.
+
+**Why the gate can't run yet — measured, not guessed.** The frame handler
+(`0x4000aad0`) masks its OWN interrupt source at entry
+(`moveb #1,0xfc04801c` — confirmed a genuine SIMR write by tracing every
+INTC0 mask-register write across a 3-second, fully-loaded, transport-running
+run) and is **never unmasked again on the path it actually took**:
+`frame_count` reaches exactly 1 and stops, for the whole 3-second window.
+The unmask instruction exists (`moveb #1,0xfc04801d` at `0x4000a918`), but
+only on a conditional early-exit branch (`0x4000ab0e`: if `0x4001c9b0()` —
+a one-line getter of `0x460bb422` — returns nonzero, ping the DSP with host
+command `139`, re-arm, and skip straight to the handler's tail; if zero, as
+measured here every time, take the long path through the full per-track
+dispatcher). A whole-image literal scan for `0xfc04801d` (CIMR) found no
+second unmask site anywhere, including inside the long path's own body.
+`0x460bb422` is cleared by a handler in `sys`'s message table
+(`0x4001e52a`, in the storage/card message range) but no site in the image
+sets it nonzero via an immediate move — it may be reached only through a
+base-register-relative store a literal-address scan can't see, unexamined.
+
+**Two live hypotheses, neither chased down (the judgment call this needs):**
+- The long path is genuinely missing its own re-arm further into the
+  handler's body (it is large — per-track dispatcher, the trig-time loop,
+  the packer — and this pass did not disassemble all of it). A full
+  disassembly of `0x4000aad0`–`0x4000d9ae` would settle this directly.
+- Or the design assumption this whole document makes in §4 — "a frame
+  interrupt every 16 samples" driving the sequencer continuously — is
+  wrong for what this firmware revision actually does, and ordinary
+  operation hands frame-rate timing to something else (the voice/DSP
+  mailbox task, priority 6, is the obvious candidate) once the ColdFire's
+  one bootstrap interrupt has kicked it off. Route A surfacing a wrong
+  design assumption would not be a first — M6b's bank-ordering finding
+  (§7) was the same shape: a plausible story that turned out to need a
+  hardware-grade re-read rather than a second guess.
+
+Reproduce:
+```sh
+.venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --poke-trig 2 --frames 400 --ms 6000
+```
+Expect `frame_count: 1` and no further `FW_LIVE_NIBBLE` writes past
+whatever the handler does on its one delivery — that is the measured,
+reproducible state this section describes, not a crash to fix.

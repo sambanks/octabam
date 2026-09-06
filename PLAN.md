@@ -704,14 +704,21 @@ scheduler.
 | M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
 | **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
 | M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7) |
-| M6c sequencer under the scheduler | 🟡 **in progress, branch `rtos-m6c`** | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
+| M6c sequencer under the scheduler | 🟡 **mechanism built, gate blocked on a judgment call** | `out/_testproj` rebuilt (frame 344 reproduces exactly); the frame IRQ, forced tick and M5-detour transport start all wired and confirmed inert-by-default for M6a/M6b. Blocked: the frame handler masks its own interrupt at entry and the path it took under a real load+transport never unmasks it again (`frame_count` stops at 1) — RTOS_FORK §8 has the byte-exact trace and two hypotheses, handed to Fable |
 | M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes |
 | M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
 
-Where to resume: **M6c** — `out/_testproj` needs rebuilding (gone from the
-main checkout; `tools/ot_project.py testproj <src> <dest> <remix>`), then
-M5's one-trig fidelity gate. One hardware question is queued for whenever
-the unit is next on: **load the RIG project and read the bank indicator**
+Where to resume: **M6c's gate** — RTOS_FORK §8 has the byte-exact trace
+of why frame delivery stops after one interrupt and the two hypotheses
+(a missed second unmask site further into the handler body, or the
+"frame interrupt every 16 samples" design assumption itself being wrong
+for this firmware). Read `0x4000aad0`–`0x4000d9ae` in full before
+touching the code further — a Fable pass, per the routing rule below.
+Reproduce with `tools/emu_rtos.py --project out/_testproj --set OCTABAM
+--name RIG --sequencer --poke-trig 2 --frames 400 --ms 6000`.
+
+Also queued, independent of M6c: one hardware question for whenever the
+unit is next on — **load the RIG project and read the bank indicator**
 — the emulator comes up on bank A because the engine's own reset-time
 "select bank 0" reaches `sys` after the file's `BANK=1` is parsed; if the
 unit comes up on B, the emulator's ordering is unfaithful there (RTOS_FORK

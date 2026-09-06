@@ -118,6 +118,20 @@ PLL_REG, PLL_VAL = 0xfc0c4000, 0x16000000       # emu_bringup's one load-bearing
 
 SAMPLE_HZ = 44100.0
 
+# M6c: the DSP audio-frame interrupt (INTC0 source 1, vector 0x41) is a
+# free-running hardware clock, unlike PIT0/PIT1 -- fixed period, no enable
+# bit, no registers (RTOS_FORK.md §4: "a frame interrupt every 16 samples").
+# Its ICR level and CIMR unmask are programmed by main's own boot tail
+# (0x4001fc2e..0x4001fc3e, byte-exact from the M6a scan) and its handler
+# installed on the vector by main's own init (0x4001fbf8) -- both run for
+# real under our scheduler, so nothing needs seeding here, only the source.
+FRAME_PERIOD = 16.0                # samples per DSP-frame interrupt
+FW_FRAME_ISR = 0x4000aad0          # the frame builder (emu_frames.FW_FRAME_ISR)
+FW_TRANSPORT = 0x4009b964          # (arg) transport start/stop; start posts to the UI queue
+FW_START_TRACK = 0x4009b5c8        # (track) promote a track to running (emu_frames.py names both)
+FW_LIVE_NIBBLE = 0x46104d15        # per-track byte a fired trig actually changes (emu_frames.py)
+FW_TRIG_WORDS = 0x46104d26         # per-track word Bryan named; stays zero in every run so far
+
 
 class Pit:
     """MCF547x programmable interrupt timer, counted in samples.
@@ -358,11 +372,20 @@ class Rtos:
     """The event loop over a booted machine. Construct via `attach()`."""
 
     def __init__(self, r, ips=3990.0, pit_clock_hz=264e6, quantum=4096,
-                 step_quantum=32, tick=True, trace=None):
+                 step_quantum=32, tick=True, frame=False, trace=None):
         self.r, self.uc = r, r.uc
         self.ips = float(ips)
         self.quantum, self.step_quantum = int(quantum), int(step_quantum)
         self.tick = tick
+        # M6c's frame clock (source 1) is OFF by default: main's own boot
+        # tail unmasks it unconditionally (0x4001fc2e), so once modelled it
+        # fires every 16 samples in EVERY run regardless of whether anything
+        # needs the sequencer -- M6a's gate and M6b's load were built and
+        # verified without it (~16x more dispatches otherwise: PIT0's own
+        # 220-sample period is the coarsest timer beforehand). Same pattern
+        # as `tick`: the register state is real either way, only the model's
+        # assertion is gated.
+        self.frame = frame
         self.trace = trace                   # callable(str) or None
         self.sample = 0.0
         self.instrs = 0
@@ -388,9 +411,22 @@ class Rtos:
         self.pit0, self.pit1 = Pit("PIT0", pit_clock_hz), Pit("PIT1", pit_clock_hz)
         self.uart64, self.uart68 = Uart("UART@fc064000", 0xfc064000), Uart("UART@fc068000", 0xfc068000)
         self.dspi = Dspi()
-        # INTC0 sources 27/28 -> vectors 0x5b/0x5c -> handlers 0x400109bc/0x40010b88
-        # (vector-install scan, 6 Sep 2026); INTC1 source 43 = PIT0.
-        self.intc0 = Intc("INTC0", 64, {27: lambda: self.uart64.irq, 28: lambda: self.uart68.irq})
+        # M6c: the DSP frame clock (source 1, FRAME_PERIOD above). A count,
+        # not a flag -- more than one boundary can cross in a single burst
+        # if the burst was sized loosely; _next_expiry keeps that rare.
+        # Cleared on delivery (INFERRED as edge-triggered: no ack register
+        # for it appears anywhere in the docs, unlike PIT0's PIF or the
+        # ATA/UART status reads -- the frame ISR's own `rte`, per emu_frames,
+        # is what "finishes" a frame in the cold model, so one push = one
+        # frame taken).
+        self.next_frame = FRAME_PERIOD
+        self.frame_pending = 0
+        self.frame_count = 0
+        # INTC0 sources: 1 = DSP frame (vector 0x41); 27/28 -> vectors
+        # 0x5b/0x5c -> handlers 0x400109bc/0x40010b88 (vector-install scan,
+        # 6 Sep 2026); INTC1 source 43 = PIT0.
+        self.intc0 = Intc("INTC0", 64, {1: lambda: self.frame and bool(self.frame_pending),
+                                        27: lambda: self.uart64.irq, 28: lambda: self.uart68.irq})
         self.ata_irq = False                 # the card's INTRQ (INTC1 source 54, vector 0xb6)
         # INTC1: 43 = PIT0 (vector 171, the scheduler), 44 = PIT1 (vector 0xac,
         # the storage layer's delay timer, handler 0x40020d38), 54 = ATA (0xb6)
@@ -702,6 +738,9 @@ class Rtos:
             return False
         sr = self._sr()
         self._push(vec, self.pc, (sr & ~0x8700) | 0x2000 | (level << 8))
+        if name == "INTC0" and src == 1:
+            self.frame_pending -= 1
+            self.frame_count += 1
         self._t(f"irq {name} src {src} vec {vec} level {level} -> {self.pc:#x} (was ipl {ipl})")
         return True
 
@@ -711,6 +750,8 @@ class Rtos:
 
     def _next_expiry(self):
         ex = [p.expiry for p in (self.pit0, self.pit1) if p.expiry is not None]
+        if self.frame:
+            ex.append(self.next_frame)
         return min(ex) if ex else None
 
     # -- the loop ------------------------------------------------------------
@@ -756,6 +797,10 @@ class Rtos:
         if self.pit0.advance(self.sample):
             self._t(f"PIT0 expiry #{self.pit0.fired}")
         self.pit1.advance(self.sample)
+        if self.frame:
+            while self.sample >= self.next_frame:
+                self.frame_pending += 1
+                self.next_frame += FRAME_PERIOD
 
     def run(self, ms=None, until=None, max_bursts=None):
         """Run until `ms` emulated milliseconds elapse, `until(self)` is true,
@@ -883,6 +928,53 @@ class Rtos:
         saved_bank = (saved[-1] - BANK_BLOB) // BANK_STRIDE if saved else None
         final_bank = self.uc.mem_read(CUR_BANK, 1)[0]
         return mounted, posted, saved_bank, final_bank, (self.sample - start) / SAMPLE_HZ * 1000.0
+
+    # -- M6c: the sequencer under the real scheduler --------------------------
+    def start_transport_live(self):
+        """Start the sequencer the way `emu_frames.start_transport` does
+        cold, but through the real tasks: `FW_TRANSPORT(0)`'s start case
+        only sets state and posts to the UI queue (`0x460d1664`, EMU.md
+        M5) -- no wait primitive on that path -- and `FW_START_TRACK(t)`
+        writes a per-track state byte directly, no queue at all. Both
+        confirmed safe under `call_as_main` (6 Sep 2026): unlike
+        `FW_CARD_INIT`, neither ever blocked in testing. This is the "M5
+        detour" route RTOS_FORK.md §5 explicitly allows for M6c -- real key
+        injection into the UI queue is M6d's job, not required here."""
+        self.run(until=lambda r: r.pc == MAIN_SPIN)
+        self.call_as_main(FW_TRANSPORT, args=(0,))
+        for t in range(8):
+            self.run(until=lambda r: r.pc == MAIN_SPIN)
+            self.call_as_main(FW_START_TRACK, args=(t,))
+
+    def poke_trig(self, step):
+        """Set a trig on track 1 at `step` (1-8), same bytes as
+        `emu_frames.poke_trig` (track 1's 64-step mask, big-endian, byte 7
+        bit 0 = step 1) against whichever bank PART_PTR currently names."""
+        blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
+        v = self.uc.mem_read(blob + 7, 1)[0] | (1 << (step - 1))
+        self.uc.mem_write(blob + 7, bytes([v]))
+        return v
+
+    def install_trig_log(self):
+        """As `emu_frames.install_trig_log`, keyed by `self.frame_count`
+        (this module's own frame clock) instead of a hand-kept counter."""
+        live, words = [], []
+
+        def on_live(u, acc, addr, size, val, d):
+            val &= 0xFF
+            if val:
+                live.append((self.frame_count, addr - FW_LIVE_NIBBLE, val))
+
+        def on_word(u, acc, addr, size, val, d):
+            val &= 0xFFFF
+            if val:
+                words.append((self.frame_count, (addr - FW_TRIG_WORDS) // 2, val))
+
+        self.uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_live, begin=FW_LIVE_NIBBLE, end=FW_LIVE_NIBBLE + 7)
+        self.uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_word, begin=FW_TRIG_WORDS, end=FW_TRIG_WORDS + 15)
+        self.uc.ctl_flush_tb()
+        self.live_nibble_log, self.trig_words_log = live, words
+        return live
 
     # -- the M6a gate --------------------------------------------------------
     def ran(self):
@@ -1072,6 +1164,12 @@ def _cli():
     ap.add_argument("--watch-pc", default="", help="comma-separated addresses: log registers there")
     ap.add_argument("--load-project", action="store_true",
                     help="M6b: after the gate, drive a project load through the real tasks (needs --project)")
+    ap.add_argument("--sequencer", action="store_true",
+                    help="M6c: enable the frame clock, start transport, run the sequencer for real "
+                         "(needs --project; --load-project is implied)")
+    ap.add_argument("--poke-trig", type=int, default=0,
+                    help="with --sequencer: set a trig on track 1 at this step (1-8) after loading")
+    ap.add_argument("--frames", type=int, default=400, help="with --sequencer: DSP frames to run")
     a = ap.parse_args()
 
     card = None
@@ -1080,7 +1178,7 @@ def _cli():
         card, staged_name = stage_project(a.project, a.set, a.name)
     t0 = time.perf_counter()
     r, rt = attach(a.image, card, ips=a.ips, pit_clock_hz=a.pit_clock, quantum=a.quantum,
-                   step_quantum=a.step_quantum, tick=not a.no_tick,
+                   step_quantum=a.step_quantum, tick=not a.no_tick, frame=a.sequencer,
                    trace=(lambda s: print(s, flush=True)) if a.trace else None)
     if a.watch_calls:
         rt.watch_calls([int(x, 0) for x in a.watch_calls.split(",")])
@@ -1099,6 +1197,40 @@ def _cli():
             acc, addr, size, pc = rt.unmapped
             why += f" unmapped {'write' if acc in (eb.UC_MEM_WRITE_UNMAPPED,) else 'read'} {addr:#x} size {size} at pc {pc:#x}"
         return why
+
+    if a.sequencer:
+        if not a.project:
+            print("--sequencer needs --project"); return 1
+        try:
+            if not rt.gate_m6a()[0]:
+                rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
+            mounted, posted, saved_bank, final_bank, elapsed = rt.load_project_live(
+                a.set, staged_name, run_ms=a.ms)
+            rt.start_transport_live()
+            if a.poke_trig:
+                v = rt.poke_trig(a.poke_trig)
+                print(f"poke trig  : track 1 step {a.poke_trig} -> mask byte 7 = {v:#04x}")
+            rt.install_trig_log()
+            target = rt.frame_count + a.frames
+            rt.run(ms=a.frames * FRAME_PERIOD / SAMPLE_HZ * 1000.0 * 5 + 2000,
+                   until=lambda x: x.frame_count >= target)
+        except (RtosFault, eb.UcError) as e:
+            print(f"stopped    : {_fault(e)}")
+            print(rt.report())
+            print(rt.starvation())
+            return 1
+        print(rt.report())
+        print(f"load       : mounted={mounted} saved_bank={saved_bank} final_bank={final_bank}")
+        print(f"frames run : {rt.frame_count} (target {target})")
+        print(f"FW_LIVE_NIBBLE (0x{FW_LIVE_NIBBLE:x}) writes ({len(rt.live_nibble_log)}):")
+        for frame, track, val in rt.live_nibble_log:
+            print(f"   frame {frame:5d} track {track} byte {val:#04x}  nibble {val & 0xf:x}  flags {val & 0xf0:#04x}")
+        print(f"FW_TRIG_WORDS (0x{FW_TRIG_WORDS:x}) nonzero writes ({len(rt.trig_words_log)}): {rt.trig_words_log}")
+        ok = rt.frame_count >= target
+        if not ok:
+            print(rt.starvation())
+        print("M6c run    :", "PASS (ran to target)" if ok else "FAIL (stopped short)")
+        return 0 if ok else 1
 
     if a.load_project:
         if not a.project:
