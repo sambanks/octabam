@@ -937,3 +937,76 @@ writes per-part effect ids and knob bytes at fixed offsets. Those cannot
 both be right unless the offsets are rederived under octakit. Nothing here
 is blocked by that today; it is a constraint to carry into any
 "octabam + octakit" plan rather than discover during one.
+
+## 8. Bryan T's primer and spreadsheet (received 6 Sep 2026, revision of 5 Sep) — mapped to what is measured
+
+Two user-facing documents: *Sound-on-Sound Looping with the Octatrack — A
+Practical Guide* (PDF, "the clickless-looping section … drawn from a
+firmware-level analysis of the Octatrack's recorder") and its companion
+`octatrack_clickless_loops.xlsx` (Read Me, Calculator, Clean Combinations,
+Golden BPMs, Bar Lengths — "every figure … computed by formula from the two
+constants"). Neither is in this repo (his documents; cite, don't copy). What
+follows is each firmware-facing claim beside the code or measurement that
+backs it, so the two sides can be kept in step. The primer's musical
+content (delay-as-vibrato, scenes, phase-cycle loops) is not firmware and
+is not assessed here.
+
+### 8.1 The spreadsheet's arithmetic IS the firmware's — cross-checked
+
+| in the workbook | in the firmware (§6 above) | status |
+|---|---|---|
+| `tempo24 = 24·INT(bpm) + INT((23·tenths + 4)/9)` (Calculator B8, every sheet's tempo24 column) | the UI setter `0x4009c7c4`, our 5 Sep measurement — he adopted it verbatim | ✅ identical |
+| "Samples in 360 beats" = 15,876,000; length = RLEN × 15,876,000 / tempo24 | the RLEN converter `0x4006e3b2`: `(raw+1) × 63,504,000 / (tempo24 << 2)` — 63,504,000 = 4 × 15,876,000, the `<<2` cancels it | ✅ same quotient |
+| verdict: clean ⇔ `MOD(8·RLEN·15,876,000, 8·M·tempo24) = 0` | exactness is the right test whichever converter runs: the one that feeds `arm()` (`0x40006dfc`, §6 table) **rounds half-up** (128/4 → 20,672 from 20,671.875, ε = −0.125), the other (`0x4006e3b2`) truncates and its consumer is open. Either way a non-exact quotient is off by up to half a sample per pass | ✅ exactness test agrees with the converter arithmetic at all 2,701 × 63 settings (recounted 6 Sep, 0 disagreements) |
+| 5,279 clean pairs (Clean Combinations, 5,279 rows), 60 golden tempos, 86 bar-length tempos | our recount under the measured tempo24 mapping: 5,279, 60 and 86 | ✅ all three |
+| the ×8 in the verdict | keeps `M × tempo24` integral for M ∈ {0.125 … 2} — a spreadsheet device, not a firmware quantity | n/a |
+
+**Bryan's own note (via Sam, 6 Sep, late):** the workbook's default
+example — **128.0 BPM, RLEN 4, multiplier 1** — is the clicking case. The
+sheet says NOT CLEAN (20,671.875 samples); the firmware's arm-feeding
+converter makes that 20,672, rounded UP, and §6's hardware table carries
+128/4 as *his proposed test*, which the single-order frame-phase model
+predicts CLEAN. 🟡 Whether "clicks" here is a hardware measurement or the
+sheet's verdict is not stated in the note. **If it is hardware, it is the
+falsifier §6 asked for**: a rounded-up length that clicks means one fixed
+read/write order cannot be the whole story, and the model needs a second
+reader or a second error source. Worth one sentence back to him.
+
+So the workbook is a faithful calculator for **the converter's rounding
+error**. What it cannot say — and does not claim — is whether that error
+is the whole click: §6's frame-phase model and the 13-row hardware table
+are the open half (a rounded-down length that lands on a 16-sample frame
+boundary may or may not seam; see the `write-first`/`read-first` columns).
+
+### 8.2 The primer's firmware claims
+
+| primer says | what we have | status |
+|---|---|---|
+| "Every time a record trig arms the recorder, the Octatrack works out how long the buffer should be … afresh on every single arm" | the converter runs on the arm path, not at setup — **and the arm path is now traced live** (`RTOS_FORK.md` §10.7–10.8): recorder trig → sequencer mask tests (`0x20/0x28/0x30` = REC1/2/3) → flag word → frame builder → arm caller `0x40005ff0` → engine opcode `0x22` → `0x40085bde` → recorder buffer (id `track+128`) released and re-allocated from the PCM pool. Which converter runs on that path (`0x4006e3b2` vs the arm-calling `0x40006dfc`) is being measured (runs E/F, 6 Sep late) | ✅ mechanism; 🟡 which converter |
+| "The displayed BPM is not the actual BPM … .6 is 65 + 15/24" | `0x4009c7c4`, and the display inverse `0x4009c5f4` | ✅ measured |
+| "the answer has to be a whole number of samples … the machine has to round" | the arm-feeding converter rounds half-up (`addql #1 / asrl #1`, §6); the 64 is a minimum length, not the rounding | ✅ measured by code read; the DIRECTION matters to §6's frame-phase model (rounded-up rows seam only under one frame order) |
+| "60.0 BPM (11,025 samples per trig) and 65.6 BPM (10,080)" | 15,876,000 / 1440 = 11,025; / 1575 = 10,080 | ✅ arithmetic |
+| "RLEN is measured against the master clock … a track at half or quarter speed … still sizes the buffer as though the track were running at 1×" | the converter reads `[0x80001814]` = the master tempo24 and the RLEN byte only; no per-track scale term in `0x4006e3b2` (§6 code read) | ✅ consistent with the code; hardware-checked by him |
+| "At MAX the recording runs until the next record trig … 15,876,000 × S / (M × tempo24)" | RLEN raw 64 = MAX fails the converter's `≤ 63` gate and takes the other branch (§6: "gate ≤ 63"); the end is then the NEXT trig, which the sequencer places on the track's own scale — exactly what `RTOS_FORK.md` §10.7 measured the other way round: bank A's A01 steps at 1/4 rate (1,379 frames/step, not 344), so a MAX recording there is 4× the 1× length | ✅ consistent; the MAX-branch length itself not yet watched |
+| "120 BPM is not golden at 1× but is golden on a 3/4× track" | 15,876,000 / 2880 = 5,512.5 (not integral); / (0.75 × 2880) = 7,350 ✓ | ✅ arithmetic; his hardware check |
+| "128 BPM … no clean one-bar loop; only 32 and 64" | tempo24 = 3072; 16 × 15,876,000 / 3072 = 82,687.5; 32 × → 165,375 ✓ | ✅ arithmetic; 128/16 is in §6's hardware table as a first-repeat click |
+| "The filter … introduces clicks at the loop point" | not a recorder-arithmetic effect; the FILTER is a stock DSP insert (`CLAUDE.md`: "FILTER 192" cycles). Untested here | ❓ open — plausibly its own state at the buffer seam |
+| "an implicit 16-trig delay built into every loop … the 17th trig" | a play trig on step 1 reads the buffer the previous pass filled; not a firmware constant | n/a (usage) |
+| LFO-modulated delay time "introduces a small gain loss per cycle" | interpolation loss in the stock delay's read pointer — the delay's EMAC block is one of §6's open threads | ❓ open |
+
+### 8.3 What the live trace adds beyond the primer (6 Sep 2026, emulator, no audio)
+
+- **A recorder trig on disk reaches the arm** through the real sequencer,
+  the real scheduler and the real engine task, with nothing poked
+  (`RTOS_FORK.md` §10.7). The masks are `0x20`/`0x28`/`0x30` (one per
+  source; `0x28` = REC2 measured on the unit).
+- The engine's `0x22` handler runs ~152 samples (~3.4 ms) of work at the
+  trig: release + allocate from the PCM pool. An opcode `0x25` (his "arm"
+  opcode) handler runs immediately after — its poster is being located.
+- Neither the word `0x800066a0` nor the sample-slot control record moves
+  at a recorder trig; both were candidates in earlier notes and are ruled
+  out for the recorder.
+- Not yet seen: the host-port write that tells the DSP to sample. The
+  frame exchange (§6's correction) carries the mixed frame, so the
+  recorder's own start may travel as a flag in the per-track record rather
+  than as a separate message — 🟡 to be watched.

@@ -697,7 +697,16 @@ class Rtos:
 
         def on_pc(u, addr, size, user):
             vals = " ".join(f"{n}={u.reg_read(r) & 0xffffffff:#x}" for n, r in regs)
-            line = f"at {addr:#x} {vals} cur={self._cur():#x} in {self._name(self._cur())}"
+            # the return address and the first four stack args, so a hit on
+            # a callee (a kernel post, say) names its caller and arguments
+            sp = u.reg_read(eb.UC_M68K_REG_A7)
+            try:
+                st = u.mem_read(sp, 20)
+                stack = " ".join(f"{int.from_bytes(st[i:i+4], 'big'):#x}" for i in range(0, 20, 4))
+            except Exception:
+                stack = "?"
+            line = (f"at {addr:#x} {vals} cur={self._cur():#x} in {self._name(self._cur())}"
+                    f" [sp: {stack}]")
             if len(self.pc_hits) < 2000:
                 self.pc_hits.append((self.sample, line))
             self._t(line)
