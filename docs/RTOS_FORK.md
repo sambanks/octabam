@@ -1352,3 +1352,51 @@ plus one at load.
 `0x25` = "arm it with these parameters" — Bryan's opcode names hold.
 Whether the `0x25` record carries the length is the next thing to read
 (`0x46105366`'s bytes at the post — a `--watch-mem 0x46105366,0x20` run).
+
+**Run I — the `0x25` record itself (measured):** built inside
+`0x40005c7c` at `0x40005e08..1c` — `[0x46105366] = 0x25`, word `+2 =
+0x0080`, long `+4 = 1` (pending) — and the engine's handler calls
+**`0x40099680(1, 0x80)`**: flag 1, **object id 128 = track 0's recorder
+buffer** (Bryan's ids 128–135). No length travels in the message; the
+length lives in the buffer's state record (`0x100b14f0 + id×1096`, the
+`+276..+288` words the frame builder copies at `0x40006ae2..0x40006b02`
+just before posting), which is where the `arm()` floor-at-64 Bryan read
+would see it. `0x40099680` = Bryan's open/arm ✅ by the call shape.
+
+### 10.11 With a FIXED RLEN the arm caller takes the length path — and a THRU track no-ops at the sample-slot gate (runs H/J, 6 Sep 2026, late — measured)
+
+Fixture: the step-2 copy with `recorder-setup … RLEN 3` (display 4) and
+`set-tempo 128.0` — Bryan's default clicking case, 128 / RLEN 4 / 1×.
+Confirmed in the run: `0x80001820 = 0xfff55556 = −2³¹/3072`, and the trig
+lands at frame **1292** = 4 × 322.5 + 2 (344 × 120/128, the quarter-rate
+pattern).
+
+**H:** Bryan's trig word `0x46104d26` goes nonzero at 1292 (`0x72fe`,
+then `14`/frame) — but **no `0x22` or `0x25` post, no engine handler, and
+none of the three converters** ran in 1,600 frames. **J (3,200 frames,
+every call site inside the arm caller under `--watch-pc`):** `0x40005ff0`
+entered ONCE (`track 0, word 0x72fe`) and hit **`rts` at `0x40006712` in
+the same sample with `d0 = −1`**, touching none of its eight call sites.
+Nothing staged into `0x800018be..` either.
+
+**Why — the trig word's low byte chooses the path.** At MAX the word was
+`0x7257`/`0x7235`/`0x72d2`: low byte bit 7 CLEAR → `tstb %d7 / bgew
+0x40006238` at `0x4000607a` is taken, past the slot check, to the branch
+that posts `0x22` + `0x25` (§10.8/10.10). With RLEN fixed the word is
+`0x72fe`: bit 7 SET → falls through to `0x40006080..a6`, which indexes the
+**sample-slot control record** `0x80004f1c + track×84 (+672 by a bit of
+`0x80004f18`)` and tests its byte `+2` — **zero for a THRU track**, so
+`beqw 0x40006708` → return −1. EXTERNAL.md §6 had this gate from the code
+read ("slot-valid … or the whole call no-ops at 0x40006708"); this is it
+firing. Only past it comes the length arithmetic (`table[a3@(7)]`, `macl`
+with `−[0x80001820]` at `0x400060c0..ca`, the `0x40006dfc` converter and
+the `jsr arm` at `0x40006edc`).
+
+So the primer's setup is not incidental: **a Flex machine pointed at the
+recorder buffer is what makes that slot record valid**, and a fixed RLEN
+needs it; a THRU track with a fixed-RLEN recorder trig arms nothing. (🟡
+That THRU tracks cannot use fixed-RLEN recorder trigs on hardware follows
+from the code but has not been tried on the unit.) Three FLEX fixtures
+(machine type 0, T1 slot byte 128 / 129 / 0 — the encoding of "R1" in the
+part's slot byte is unknown) are running to get past the gate and watch
+the converter.
