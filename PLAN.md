@@ -704,7 +704,7 @@ scheduler.
 | M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
 | **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
 | M6b real waits + mount | ✅ **done 6 Sep** | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the correct project pointer, for real. One loose end root-caused and handed to M6d: a live UI-screen mechanism (only active because the UI isn't driven yet) independently keeps forcing track 0 current, reverting the pointer — not a mount/load defect, RTOS_FORK §7 has the trace |
-| M6c sequencer under the scheduler | ⏳ judgment | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
+| M6c sequencer under the scheduler | 🟡 **in progress, branch `rtos-m6c`** | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
 | M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes; also inherits the track-select contest below |
 | M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
 
