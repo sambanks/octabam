@@ -93,9 +93,10 @@ def main():
         # descriptor serves both menus, so blanking it would empty its FX1
         # page too -- the stations are hidden from the FX2 chooser and still
         # have to draw when they are selected on FX1.
-        if key in remix.fx1:
+        if key not in remix.blanked:
             want = [(p.name or b"") for p in mods[key].params]
-            check(f"{key}: on FX1, so its names are KEPT, not blanked",
+            why = "on FX1" if key in remix.fx1 else "NAMED"
+            check(f"{key}: {why}, so its names are KEPT, not blanked",
                   names == want,
                   " ".join(n.decode("latin1") or "-" for n in names[:6]))
         else:
@@ -166,15 +167,34 @@ def main():
     # BusVerb's slot 11, so comparing the engine's names against the raw
     # capture reports a knob that is not the engine's. Subtract a baseline
     # render -- the same track with an id that draws nothing of its own.
-    blanked = [k for k in hidden if k not in remix.fx1]
+    base_texts = set(texts(emu.render_fx2(boot, track=4, effect_id=0x02)))
+
+    def drawn_names(key):
+        drew = set(texts(emu.render_fx2(boot, track=4,
+                                        effect_id=mods[key].menu.fx2_id)))
+        names = {p.name.decode("latin1") for p in mods[key].params if p.name}
+        return names & (drew - base_texts)
+    blanked = [k for k in hidden if k in remix.blanked]
+    # the module sections 3-5 below exercise: a blanked one if any, else the
+    # first hidden (a NAMED host in the rig)
     key = blanked[0] if blanked else hidden[0]
     hid_id = mods[key].menu.fx2_id
-    base_texts = set(texts(emu.render_fx2(boot, track=4, effect_id=0x02)))
-    drew_hidden = set(texts(emu.render_fx2(boot, track=4, effect_id=hid_id)))
-    hid_names = {p.name.decode("latin1") for p in mods[key].params if p.name}
-    check(f"{key}'s page draws none of its knob names",
-          not (hid_names & (drew_hidden - base_texts)),
-          " ".join(sorted(hid_names & (drew_hidden - base_texts))) or "none drawn")
+    if blanked:
+        got = drawn_names(key)
+        check(f"{key}'s page draws none of its knob names",
+              not got, " ".join(sorted(got)) or "none drawn")
+    # A NAMED hidden module is the opposite claim, and the one that matters
+    # on the panel (6 Sep 2026, tag 16: dials with no labels): its host page
+    # MUST draw its knob names. Page 1's six are what the render shows.
+    for key in [k for k in hidden if k in remix.named]:
+        got = drawn_names(key)
+        # a name the PLAYBACK page also draws (PTCH, RATE ...) is in the
+        # baseline and cannot be proven by this capture -- leave it out
+        want = {p.name.decode("latin1") for p in mods[key].params[:6]
+                if p.name} - base_texts
+        check(f"{key}: NAMED, so its host page DRAWS its page-1 knob names",
+              want <= got, f"drew {' '.join(sorted(got)) or 'nothing'}; "
+              f"missing {' '.join(sorted(want - got)) or 'none'}")
     # the control: a module whose names ARE drawn -- a listed one, or a
     # hidden one kept for FX1
     ctl = next((k for k in listed if not mods[k].is_stock),

@@ -601,6 +601,18 @@ descriptor serves both menus, so blanking it would empty its FX1 page too.
 The rule is automatic: `hidden` minus `fx1` is what gets blanked, which is
 how the stations come off the FX2 chooser and still draw when chosen on FX1.
 
+**`named` -- hidden but drawn (6 Sep 2026).** A hidden module listed in
+`Remix.named` keeps its twelve names: off the chooser, reached only by the
+project stamp, and its host page draws every knob, labelled, like any
+track's. This is the rig's shape from tag 17: tag 16 shipped the two hosts
+BLANK -- six dials and no labels, which Sam called "the worst result
+possible" -- because a main-menu screen was to edit them and that screen's
+CONTROL rows never appeared on the unit (`docs/FAILURE_MODES.md`). **Rule: a
+hidden module may go blank only when the screen that edits it has been
+proven on hardware.** `Remix.blanked` (hidden, not on FX1, not named) is the
+one definition the build and every verifier share; `verify_hidden` renders
+a named host's page in the ColdFire emulator and requires its page-1 names.
+
 ⚠️ **A blanked page gets no formatters (5 Sep 2026).** Nothing ever calls a
 select-label formatter or a formatter-registering cave for a module whose
 names are blank, so `build_bus.py` emits neither for `hidden` minus `fx1`

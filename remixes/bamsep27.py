@@ -7,10 +7,12 @@ bus sends, and NOTHING on FX2. What differs from `bamsep26`:
     client and the three stations are all placed, dispatched and cloned, and
     none of them is listed. A track hosts an engine because the project says
     so; a station is chosen on FX1; and an FX2 slot is simply empty.
-  * The engines and SEND are drawn BLANK: their twelve names are cleared, so
-    the host's FX2 page shows nothing at all. The stations keep their names,
-    because one descriptor serves both menus and blanking them would empty
-    their FX1 page too.
+  * The engines are NAMED (tag 17, 6 Sep 2026): off the chooser, but the
+    host's FX2 page draws all twelve knobs, labelled, sends among them, so T5
+    and T1 read like any track. (Tags 15-16 drew them BLANK -- dials with no
+    labels, "the worst result possible" -- for a bus screen whose CONTROL
+    rows never appeared on the unit.) The stations keep their names too:
+    one descriptor serves both menus.
   * Each engine also gets the HOST GUARD: it runs on the bank's first FX2
     state block and passes dry on every other, so an old part naming its id
     on another track cannot start a second instance writing the host's tank.
@@ -30,8 +32,11 @@ track's sends are on its station. SEND is kept as the FALLBACK, so a fresh
 or unassigned track still dispatches to real code, and it is the one row
 the FX2 chooser carries.
 
-BUS SCREEN IS IN THE RIG (5 Sep 2026): CONTROL -> REVERB / DELAY opens the
-twelve-row editor. It fits because (a) the screen is now three caves -- its
+BUS SCREEN IS OUT OF THE RIG (6 Sep 2026, tag 17): on tag 16 the CONTROL
+menu showed its stock six rows although the image carried eight (count and
+pointer patched at 0x400cbd54) -- the firmware reads that menu from somewhere
+the patch does not reach. It goes back when the ColdFire emulator's own menu
+shows the rows. When it was in (5 Sep 2026) it fit because (a) the screen is now three caves -- its
 menu-state table floats first in the clone window, its handler and data are
 pinned into the second zero run where MENU SHORTCUT used to sit; (b) a
 BLANKED module gets no label formatters and no TIME formatter (build rule),
@@ -55,13 +60,20 @@ REMIX = Remix(
     # handler and data are pinned into the second zero run.
     modules=("REVERB SERVER", "DELAY SERVER", "SEND",
              "SPECTRUM", "CHARACTER", "MODULATION",
-             "BUS SCREEN", "TEMPO SYNC", "CC PAGE 2"),
+             "TEMPO SYNC", "CC PAGE 2"),
     # SEND is NOT hidden any more (5 Sep 2026): hiding it blanked its two knob
     # names, so every non-host track's FX2 page drew no knobs at all. Visible,
     # it is the labelled send pair (->DEL / ->VRB) the design asked for, and
     # the one row the FX2 chooser carries.
     hidden=("REVERB SERVER", "DELAY SERVER",
             "SPECTRUM", "CHARACTER", "MODULATION"),
+    # THE HOSTS ARE NAMED (6 Sep 2026, tag 17): off the chooser, but T5's and
+    # T1's FX2 pages draw all twelve knobs, labelled, sends among them. Tag
+    # 16 shipped them BLANK (dials, no labels -- "the worst result possible",
+    # Sam) because the bus screen was to edit them, and its CONTROL rows
+    # never appeared on the unit. BUS SCREEN is out of the rig until it draws
+    # in the emulator's own menu; its module and verifier stay in the tree.
+    named=("REVERB SERVER", "DELAY SERVER"),
     grains=2,          # the cycle lever: four stations beside the delay
     fallback="SEND",
     fx1=("SPECTRUM", "CHARACTER", "MODULATION"),

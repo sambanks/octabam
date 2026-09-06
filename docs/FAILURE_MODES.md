@@ -126,3 +126,25 @@ the two cores. `docs/XBUS.md`.
 **Fix.** The shipped fixes (four ACC buffers, per-core rotation tracking).
 ⚠️ **No local test is evidence here** — `dsp_host` is single-core, so a bus
 race never reproduces off the unit. Believe the hardware.
+
+## CONTROL menu shows its stock six rows though the image carries eight 🔴
+
+**Symptom.** MAIN MENU › CONTROL lists AUDIO … PERSONALIZE exactly as stock;
+the REVERB / DELAY rows a module appended (modules/busscreen, also
+modules/menushortcut's mechanism) are not there. Everything else in the
+image works.
+
+**Seen.** Tag 16, 6 Sep 2026. The image was checked afterwards: row count
+at 0x400cbd54 = 8, the row pointer at +0x18 repointed to the relocated rows,
+both labels present. The bytes are right; the firmware is not reading them.
+
+**Cause.** Unknown (inferred: the CONTROL rows are copied or built elsewhere
+-- a RAM copy at boot, a second descriptor, or the menu code takes its count
+from another table). Not diagnosed.
+
+**Fix.** None yet. BUS SCREEN is out of the rig (tag 17). Before any flash
+that appends CONTROL rows again: navigate to CONTROL in the ColdFire
+emulator's own menu and count rows; if it shows six there too, the emulator
+can find where the count really comes from. Flash 4 (tag 79, MENU SHORTCUT)
+used the same patch -- whether its rows appeared was never recorded.
+

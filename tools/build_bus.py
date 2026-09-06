@@ -466,7 +466,7 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # menus, so blanking a module that is also on the FX1 chooser would empty its
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
-BLANKED = [k for k in HIDDEN if k not in REMIX.fx1]
+BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
@@ -1584,13 +1584,16 @@ def main():
           f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
     if HIDDEN:
         _b = [k for k in HIDDEN if k in BLANKED]
-        _n = [k for k in HIDDEN if k not in BLANKED]
+        _f = [k for k in HIDDEN if k not in BLANKED and k in REMIX.fx1]
+        _n = [k for k in HIDDEN if k not in BLANKED and k not in REMIX.fx1]
         print(f"  placed but NOT LISTED on FX2: {', '.join(HIDDEN)} -- code, "
               f"id and clone present, no chooser row"
               + (f"; names blanked (page draws nothing): {', '.join(_b)}" if _b
                  else "")
-              + (f"; names KEPT (on the FX1 chooser): {', '.join(_n)}" if _n
-                 else ""))
+              + (f"; names KEPT (on the FX1 chooser): {', '.join(_f)}" if _f
+                 else "")
+              + (f"; names KEPT (NAMED: the host page draws all twelve): "
+                 f"{', '.join(_n)}" if _n else ""))
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")

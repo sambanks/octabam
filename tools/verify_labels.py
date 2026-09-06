@@ -59,7 +59,7 @@ def main():
         # build gives it no label formatters (5 Sep 2026); the firmware
         # printing plain numbers for its selects is correct, not a failure.
         # (Keep `cloned` unfiltered: ci is the clone's position.)
-        if key in remix.hidden and key not in remix.fx1:
+        if key in remix.blanked:
             continue
         for i, p in enumerate(m.params):
             if not (p.active and p.labels):

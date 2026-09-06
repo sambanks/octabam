@@ -423,8 +423,13 @@ mtimes.)
 Claims to settle on the unit (emulator says: reverb host `-DEL` 100/127 =
 a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;
 `verify-bus` 19/19; TONE 64 render bit-identical to tag 15):
-- [ ] T5 (BusVerb host) FX2 page 1 reads TIME MOD SIZE **TONE -DEL** IN;
-      T1 (BusDelay host) page 2 reads MODE MDEP MRAT SIZE **-DEL** FRZE.
+- [ ] ⚠️ In `bamsep27` the hosts are HIDDEN and their twelve names BLANK
+      (remix docstring): T5's FX2 page draws six unlabelled dials, and that
+      is BY DESIGN (seen 6 Sep 2026, tag 16 — it read as "still got all the
+      blank knobs"). The labelled view is the bus screen: MAIN MENU →
+      CONTROL → REVERB reads TIME MOD SIZE **TONE -DEL** IN / MODE SHMR DIFF
+      SHFT GATE RATE; CONTROL → DELAY reads TIME FDBK TONE PING -VRB PTCH /
+      MODE MDEP MRAT SIZE **-DEL** FRZE. TONE 64, both -DEL 0 (the stamp).
 - [ ] T5 `-DEL` up: T5's dry audible in the delay on T1, at the level a
       station's `->DEL` at the same value gives. **This is the cross-core
       claim no local test can reach**: the client flag is a per-block write
@@ -439,6 +444,45 @@ a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;
 - [ ] T1 `-DEL` up on the delay host: T1's dry repeats; at 0, nothing.
 - [ ] Bus screen (CONTROL → REVERB / DELAY) rows 3/4 and 10 draw the new
       names and edit them (tag 15's own claims still open, see Flash 5).
+
+### Tag 16 on the unit (6 Sep 2026) -- ❌ two findings, the rest not reached
+
+- ❌ **The host pages drew six dials with NO labels** (photo: FX2 > BusVerb16
+  on T5). That was the remix's design (hidden = blank names) and it is the
+  worst outcome the panel can show -- Sam: "blank labels but with knobs
+  still showing is the worst result possible". The spec (the BamSep26 design
+  page) says a host page shows the two labelled send knobs and nothing else,
+  like SEND's; "nothing else" had been built as "nothing".
+- ❌ **CONTROL showed no REVERB / DELAY rows.** The image carries the patch
+  (row count 6→8 and the pointer at 0x400cbd54, labels present), so the
+  firmware reads its CONTROL menu from somewhere the patch does not reach.
+  `docs/FAILURE_MODES.md`. Not diagnosed; the emulator's own menu is the
+  place to look before another flash.
+- The send / TONE / bus-screen claims were not reached.
+
+## Tag 17 -- the hosts NAMED, the bus screen out (6 Sep 2026)
+
+`bamsep27`, `BUILD=17`. Sam's fallback: "if we have to go back to them
+displaying on the host I could live with it." The engines stay off the
+chooser (`hidden`) and keep their names (`named`): T5's FX2 page reads TIME
+MOD SIZE TONE -DEL IN / MODE SHMR DIFF SHFT GATE RATE, T1's TIME FDBK TONE
+PING -VRB PTCH / MODE MDEP MRAT SIZE -DEL FRZE. BUS SCREEN is out of the
+remix. Nothing else changed from tag 16: same DSP, same slot meanings, so
+**no stamp is needed** (the tag-16 stamp stands). `make check` green (291),
+`refhash` 26/26, `verify_hidden` renders both host pages in the ColdFire
+emulator and sees every page-1 name.
+
+Claims:
+- [ ] T5 FX2 page 1/2 and T1 FX2 page 1/2 draw the names above, with values
+      (TONE 64, both -DEL 0). Selects print words (MODE, SHFT, RATE, SIZE,
+      FRZE), BusDelay TIME prints a division.
+- [ ] The FX2 chooser still has ONE row (SEND); FX1 = NONE + three stations.
+- [ ] T5 `-DEL` up: T5's dry audible in T1's delay at a station-send level
+      (the cross-core flag, `Y:0x941`); at 0 with a station sending, no
+      level drop on the delay.
+- [ ] TONE: 64 = tag 15/16 default; down darkens, up thins, no step at 64.
+- [ ] T1 `-DEL` up: T1's dry repeats; at 0 nothing.
+- [ ] Sequencer plays through a part change with no stall.
 
 ## Before every flash
 
