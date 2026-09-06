@@ -1,6 +1,6 @@
 # The RTOS fork (emulator route A) — scope
 
-Scoped 6 Sep 2026. Status: **M6a done, M6b done (6 Sep 2026)** —
+Scoped 6 Sep 2026. Status: **M6a/M6b/M6c/M6d done (6 Sep 2026)** —
 `tools/emu_rtos.py` runs the firmware's own scheduler: the handoff trap
 dispatched by hand, PIT0 ticking, eleven tasks created and each run once,
 tasks posting to each other through the kernel, and now a real card mount
@@ -123,8 +123,8 @@ later task creates):
 |---|---|---|---|---|---|
 | 6 | `0x46c7fb0c` | `0x40005540` | `0x46c7ea20` +0x1000 | main | voice / DSP mailbox task |
 | 5 | `0x460bcc2c` | `0x4001ee30` | `0x460bc42c` +0x800 | sys | storage (FAT/ATA) |
-| 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | sys | UI |
-| 3 | `0x460d59d4` | `0x40056c40` | `0x460d51d4` +0x800 | sys | ❓ (new) |
+| 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | sys | key-repeat timer (was "UI" — retracted, §9) |
+| 3 | `0x460d59d4` | `0x40056c40` | `0x460d51d4` +0x800 | sys | **UI** (was "❓ (new)" — this is the real queue_receive(UI_QUEUE), §9) |
 | 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | ❓ |
 | 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | ❓ |
 | 2 | `0x460e0e38` | `0x4009203c` | `0x460dee38` +0x2000 | main | ❓ (new; ping-pongs with sys) |
@@ -345,13 +345,26 @@ model can take the mechanical parts. Tagged accordingly.
   now modelled), a forced interrupt is not subject to the mask (reference
   manual, §17.2.3), and the load leaves the *sequencer* on bank A by the
   same ordering §7 flagged (re-selected through the load's own last step).
-- **M6d — input.** *(mechanical)* Feed key events into the UI task's queue
-  (the post primitive against whichever queue `0x4005593c` blocks on — to be
-  read in M6c) so PLAY and the REC-arm action run the firmware's own path.
-  This is what makes Bryan's recorder test reachable without RAM pokes
-  (`EMU.md` M5, "path B"). (PR #103's hand-off of a "track-select contest"
-  to this milestone is withdrawn — §7 retraction; there is no UI mechanism
-  in it.)
+- **M6d — input.** **Done 6 Sep 2026, and the premise above was wrong** — §9
+  has the retraction and the measurements. Key events do NOT arrive via a
+  post to `0x4005593c`'s queue: that task doesn't consume a queue at all,
+  and `UI_QUEUE` (`0x460d1664`) only carries state-change notices (posted
+  by e.g. FW_TRANSPORT itself) to a different, previously-unidentified task
+  (`0x40056c40`). PLAY/REC/STOP instead dispatch through a per-key jump
+  table at `0x400d2d54`, called directly — the same shape as the FX2
+  shortcut in `MAINMENU.md`. `tools/emu_rtos.py`'s `press_play_live()` /
+  `press_rec_live()` call PLAY/REC through their own firmware handlers
+  (`call_as_main`, confirmed non-blocking by disassembly); `press_play_live`
+  reproduces M6c's fidelity gate exactly (frame 344, byte `0xd3`) — the
+  `--sequencer --via-key` CLI flag runs that regression. REC starts the
+  transport the same way PLAY does on a project with no recorder-configured
+  track, and leaves the record-arm byte (`0x800066a0`) untouched — arming a
+  track's recorder for real is still open, needing a project with a track's
+  machine set to a recorder (the same gap `EMU.md`'s M5 section already
+  flagged), which is what makes Bryan's recorder test reachable without RAM
+  pokes (`EMU.md` M5, "path B") and is M6e's job, not this one's. (PR #103's
+  hand-off of a "track-select contest" to this milestone stays withdrawn —
+  §7 retraction; there is no UI mechanism in it.)
 - **M6e — use it.** *(judgment)* The recorder-arm trace for Bryan; the tick
   pre-emption question; whatever the kit/parts work needs.
 
@@ -723,3 +736,100 @@ Reproduce:
 .venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
   --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
 ```
+
+## 9. M6d — the real key path, and a retraction of the milestone's own premise (6 Sep 2026)
+
+The scope in §5 assumed the task named "UI" (`0x460d4f80`, entry
+`0x4005593c`) blocks in the kernel's queue-receive against whichever queue
+it reads, and that feeding a message there is how PLAY/REC reach the
+firmware's own path. **Both halves were wrong**, found by disassembling the
+task's own entry rather than reasoning from its name — the family of bug
+this project keeps re-learning (`CLAUDE.md`'s "disassemble what you
+assemble").
+
+### 9.1 `0x4005593c` is not a queue consumer ✅
+
+Its entry (`scripts/disasm.sh emac 0x4005593c 80`) is fourteen instructions:
+a counting-wait (`0x400007a4`) on `0x46c7e0e2`, then a loop that waits on it
+again and calls `0x4001387c` — a 136-slot countdown-timer scan (decrement
+each of 136 four-byte counters; on one reaching zero, clear its bit in a
+bitmap at `0x460b a9ae` and call a handler through `0x400136a8`). That is a
+**key-repeat timer**, not an input queue. Nothing in the loop names
+`0x40000d00`/`0x40000d1a` (queue receive) or `0x460d1664` (`UI_QUEUE`, see
+9.2). `0x46c7e0e2` is signalled once per key-scan interrupt tick
+(`0x40055cb8`, an INTC1 handler measured decrementing a separate countdown
+`0x400c0cf0` and posting to two OTHER queues every second tick) — so this
+task's real job is advancing key-repeat, on a fixed schedule, regardless of
+what keys are down.
+
+### 9.2 The real `UI_QUEUE` consumer, and why the wrong TCB looked right ✅
+
+A literal-address scan of the raw image (`out/raw/section_3_MAIN_OS.bin`)
+for the four bytes of `0x460d1664` finds it in six places: one `queue_init`
+call (`0x40040b70`, ring buffer `0x460d4fd4`, size `0x80`) and five posts —
+FW_TRANSPORT's start case (`0x4009c506`, msg `*0x400abaca`), a tick-boundary
+notice (`0x400a4dd2`, msg `*0x400abacb`), and the key-scan ISR's periodic
+post (`0x40055cd6`, msg `*0x400a727a`, every second tick alongside a post to
+`SYS_QUEUE`) — but **no receive**. The receive is inside `0x40056c40`
+(TCB `0x460d59d4`, prio 3, created by `sys` — the row §2 could only mark
+"❓ (new)"): `pea 0x460d1664; jsr 0x40000d00` at `0x40056c72`, return value
+dereferenced and its first byte compared against 1 (the opcode
+FW_TRANSPORT's start case posts) before running clock-related follow-up
+work on `0x46104ca8`/`0x46104cac`.
+
+The queue's **ring buffer** (`0x460d4fd4`) sits 0x54 bytes past
+`0x460d4f80` — the key-repeat TCB from 9.1. That adjacency, not any real
+relationship, is almost certainly why the earlier "by neighbourhood" pass
+named `0x460d4f80` "ui": it is next to the queue's storage, not the task
+that reads it. `tools/emu_rtos.py`'s `TASK_NAMES` swapped the two labels to
+match (`0x460d4f80` -> `"keyrepeat"`, `0x460d59d4` -> `"ui"`).
+
+### 9.3 Physical keys don't use this queue at all ✅
+
+A second literal scan, for the addresses of two candidate key handlers,
+finds them as consecutive longs in a jump table at `0x400d2d54`:
+`0x400d2dc0` = `0x4000a274` (**REC**), `0x400d2dc4` = `0x4000a200`
+(**PLAY**), `0x400d2dc8` = `0x4000a1e0` (**STOP**, inferred from its shape
+— checks `0x80000029`, then `0x40033968`, then tail-calls one of two
+`0x4009fxxx` targets — not run in this pass). Walking the table from its
+start (`0x400d2d54`) shows eight distinct entries before a run of the
+default handler `0x4000184c` — almost certainly the eight **track keys** —
+then a second populated run (indices 13–31 of the table) holding PLAY/REC/
+STOP among other function keys, then `0x400019f4` filling every remaining
+slot to the table's end. This is a keycode-indexed jump table, called
+directly (`action(edge)`) the same way `MAINMENU.md`'s FX2 shortcut and
+page-key handler work — not a message queue.
+
+Both PLAY (`0x4000a200`) and REC (`0x4000a274`) were disassembled end to
+end, including everything they call (`0x400a013c`, `0x400a030c`,
+`0x400a14a4`, `0x400a10c8`, `0x40033968`, `0x4009b290`): no reference to any
+blocking kernel primitive (`0x40000818` event wait, `0x400007a4` counting
+wait, `0x40000d00` queue receive) anywhere in the chain, only plain
+subroutines, memory reads/writes, and non-blocking posts (`0x40000c3c`).
+Both are safe under `call_as_main`, the same conclusion M6c already reached
+for `FW_TRANSPORT`/`FW_START_TRACK` — unsurprising, since PLAY's own
+handler tail-calls `FW_TRANSPORT` after some clock-sync bookkeeping gated
+on CLOCK RECEIVE (`0x80000028` bit 0), and REC's reaches it too through
+`0x400a030c` when nothing is already armed.
+
+### 9.4 Measured, against `out/_testproj` (6 Sep 2026)
+
+- **`0x80000029`** (the byte PLAY's handler tests first, `beqs` a bare `rts`
+  if clear) is **already `0x01`** right after a real `load_project_live` —
+  no setup needed to exercise PLAY through its real handler.
+- **`press_play_live()` reproduces §8.4's fidelity gate exactly**: transport
+  running (`0x800065b8` 0->1), then `FW_START_TRACK` ×8, then the same trig
+  — track 0, byte `0xd3`, 344 frames after the start frame — as both cold
+  and M6c's direct `FW_TRANSPORT` call. `--sequencer --via-key` on the CLI
+  runs this as a regression.
+- **`press_rec_live()`** on this project (no track's machine set to a
+  recorder) also starts the transport (`0x800065b8` 0->1) and leaves the
+  record-arm byte `0x800066a0` at 0 through two presses — consistent with
+  there being nothing to arm. Confirms the mechanism reaches real firmware
+  code; does **not** answer what REC does on a recorder-configured track —
+  that project doesn't exist yet (same gap `EMU.md`'s M5 section flagged),
+  and closing it is M6e's job.
+
+What would falsify this: a project with a track's machine set to a recorder
+and RSRC armed, run through `press_rec_live()`, showing `0x800066a0`
+actually change — the one thing this pass could not test.

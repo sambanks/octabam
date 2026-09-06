@@ -436,7 +436,7 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — M6a and M6b done, M6c's mechanism built 6 Sep 2026 (`tools/emu_rtos.py`)
+## The RTOS fork — M6a/M6b/M6c/M6d done 6 Sep 2026 (`tools/emu_rtos.py`)
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
@@ -515,6 +515,33 @@ saved pattern?). Frame mode counts instructions exactly (`exact_clock`)
 rather than by quantum, which over-charged 2.1×. The previous paragraph
 here, and §8's two hypotheses, were wrong and are retracted in place.
 
+**M6d (same day): real key injection — and the milestone's own premise was
+wrong.** The scope assumed PLAY/REC reach the firmware by posting into the
+queue the task named "UI" blocks on. Disassembling that task
+(`0x4005593c`) shows it waits on an unrelated counting semaphore and spends
+its life decrementing a 136-slot key-repeat timer array — it isn't a queue
+consumer at all, and the label came from being next to the queue's ring
+buffer in memory (`0x460d4fd4`, `0x54` bytes past the TCB), not from
+reading it. The real consumer of `UI_QUEUE` (`0x460d1664`) is a different,
+previously-unidentified task (`0x40056c40`, TCB `0x460d59d4`, `RTOS_FORK.md`
+§2's "❓ (new)" row) — and that queue only carries state-change notices
+(FW_TRANSPORT's own start-case post among them), not raw key events at all.
+Physical keys — a literal-address scan found PLAY (`0x4000a200`), REC
+(`0x4000a274`) and STOP (`0x4000a1e0`) as three consecutive entries in a
+per-key jump table at `0x400d2d54` — dispatch through direct calls, the
+same shape as `MAINMENU.md`'s FX2 shortcut. Both PLAY and REC's full call
+chains were disassembled and hold no blocking kernel primitive, so both are
+safe under `call_as_main`; `press_play_live()` calls PLAY's own handler and
+**reproduces M6c's fidelity gate exactly** (frame 344, byte `0xd3`) — a
+stronger result than M6c's direct `FW_TRANSPORT` call, since it goes
+through the firmware's real clock-sync bookkeeping first. `press_rec_live()`
+starts the transport the same way on a project with no recorder-configured
+track and leaves the record-arm byte (`0x800066a0`) untouched — arming a
+track's recorder for real still needs a project with a track's machine set
+to a recorder, which does not exist yet; that, and Bryan's actual recorder
+question, are M6e's job. `RTOS_FORK.md` §9 has the full measurements and
+the task-table correction.
+
 ## Reproduce
 
 ```sh
@@ -525,6 +552,8 @@ make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate 
 .venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
 .venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
   --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000   # M6c: the trig under real tasks
+.venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 --via-key   # M6d: same trig, via the real PLAY key
 .venv/bin/python3 tools/emu_rtos.py --selftest   # the SR-read trap, pinned
 ```
 
