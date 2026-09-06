@@ -1289,3 +1289,32 @@ told to start sampling (nothing here writes the host port), what the
 ([[octabam-recorder-control-path]]) — the click is in the recorder's
 PLAYBACK block chain, which this milestone has only just reached the
 allocation of.
+
+### 10.9 At RLEN = MAX no length converter runs — and the tempo/setup words are refreshed every frame (6 Sep 2026, late — measured)
+
+Runs E/F on the step-2 copy (T1's RECORDING SETUP as saved by the unit:
+`INAB 1, INCD 1, RLEN 64 = MAX, TRIG 0, SRC3 0, LOOP 1 | FIN 0, FOUT 0,
+AB 0, QREC 255, QPL 255, CD 0`), 1,600 frames, the trig at ~1,379:
+
+- **None of the three length converters ran**: `0x4006e3b2` (truncating,
+  `EXTERNAL.md` §6), `0x400060c4` (the pickup FOUT length) and
+  `0x40006d48` — **0 entries each**, while the trig's `0x22` post, its
+  handler and the `0x25` handler all ran once. So at MAX the arm computes
+  no length, which is the primer's "at MAX the recording runs until the
+  next record trig" seen from the code side. The converter question
+  (§8.2 of `EXTERNAL.md`) therefore needs a fixed-RLEN fixture — built as
+  `ot_project.py recorder-setup <proj> 1 1 0 RLEN 3` + `set-tempo <proj>
+  128.0` (Bryan's own clicking default, 128 / RLEN 4 / 1×); run H.
+- **`0x80001820` (= −2³¹/tempo24) is rewritten every 16 samples**, twice
+  per frame, by `0x4000ac9a` and `0x4000cabc` in `main` — value
+  `0xfff49f4a` = −745,654 = −2³¹/2880 ✓ (120 BPM). The tempo reciprocal
+  is a per-frame publication, not a set-once word.
+- **The live RECORDING SETUP page `0x80000cf4` is re-copied from staging
+  every 2 frames** (`0x400208f2`, `main`): `0x01014000 0x00010000
+  0x00ffff00` = exactly the twelve bytes above. So a change to those bytes
+  in the part reaches the recorder within two frames — the "afresh on
+  every arm" the primer describes has the fresh values available on
+  every frame, whichever converter consumes them.
+- `0x40099680` (open/arm, Bryan's opcode-`0x25` function) at the trig is
+  entered from the `0x25` handler with `d0 = 0x80` — 290 entries over the
+  run, the rest at load time from `0x40023ad4/aee` and `0x4002585a`.
