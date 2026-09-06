@@ -1365,6 +1365,11 @@ would see it. `0x40099680` = Bryan's open/arm ✅ by the call shape.
 
 ### 10.11 With a FIXED RLEN the arm caller takes the length path — and a THRU track no-ops at the sample-slot gate (runs H/J, 6 Sep 2026, late — measured)
 
+**❌ RETRACTED 7 Sep 2026 (§10.13):** the measurements stand, both readings do not. The
+record at `0x80004f1c` is the track's RECORDER state record, not a sample-slot
+record, and bit 7 of the word is the sign of a TIMING byte, not "fixed RLEN" —
+the fixture's 128 BPM flipped it, and RLEN 3 at 120 BPM arms exactly as MAX does.
+
 Fixture: the step-2 copy with `recorder-setup … RLEN 3` (display 4) and
 `set-tempo 128.0` — Bryan's default clicking case, 128 / RLEN 4 / 1×.
 Confirmed in the run: `0x80001820 = 0xfff55556 = −2³¹/3072`, and the trig
@@ -1402,6 +1407,10 @@ part's slot byte is unknown) are running to get past the gate and watch
 the converter.
 
 ### 10.12 The FLEX fixtures no-op at the same gate — because route A never loads a sample (6 Sep 2026, late — measured, and the limit is the emulator's)
+
+**❌ RETRACTED 7 Sep 2026 (§10.13):** no sample was ever the prerequisite. Route A
+does not load samples (that measurement holds), but nothing on the recorder path
+reads a sample slot; the "sample loader" milestone this section set up is void.
 
 Three fixtures, machine type 0 (FLEX) on T1, slot byte 128 / 129 / 0, RLEN
 3, 128 BPM, 1,600 frames each: **identical** to the THRU case — the arm
@@ -1469,3 +1478,139 @@ tweak: find who loads a slot (the writers of `0x80004f1c+2`, e.g.
 reach it. Until then the fixed-RLEN recorder path — and with it the
 converter question and Bryan's 128/4 arithmetic in situ — is out of the
 emulator's reach. The MAX path (§10.7–10.10) is fully reachable.
+
+
+### 10.13 The "sample loader" was never the prerequisite: the gate is the track's RECORDER record, bit 7 is a timing sign, and the machine-type values are settled (7 Sep 2026 — measured, with two retractions of §10.11–10.12)
+
+Resumed at §10.12's "find the sample loader". Instrumented before theorising
+(the §8 rule): a load-only run watching BOTH banks of the record
+(`0x80004f1c..+0x540`, not the 84 bytes every earlier watch covered), the
+machine-type bytes of both bank blobs, and every candidate function; then
+sequencer runs on fixtures built after reading the firmware's own slot
+layout. Driver scripts lived in the session scratchpad (`slotprobe.py`,
+`seqprobe.py`); the tool changes are in `tools/ot_project.py`.
+
+**1. The machine-type file offset is right; the "file says 0, RAM says 2"
+discrepancy of §10.12's retraction was bank A vs bank B ✅.** After the
+load, bank A's blob (`0x400e21e0`) reads `[0,0,0,0,0,0,0,0]` for part 1 —
+exactly `bank01.work` — and bank B's blob (`0x4017d520`) reads
+`[2,2,0,0,0,0,0,1]`, which is `bank02.work`. §10.1's readback was taken
+from bank B while the patch went to bank01. The machine-type writes seen
+during the load are all the reset-to-defaults pass (`0x400056a6` /
+`0x400209a4`, part init) then the file copy; nothing derives them. (Parts
+5–8's RAM rows sit 2 bytes off the `part*0x18b2` formula — the mirror block
+has a 2-byte gap; the file offsets the tool writes are unaffected.)
+
+**2. The machine-type VALUES: 0 = STATIC, 1 = FLEX, 4 = PICKUP — by code
+and by data ✅, contradicting `PARAM_PAGES.md`'s inferred 0/1 = FLEX/STATIC.**
+The trig-side slot lookup `0x400050b8..0x400050fc` sends type 0 to the
+STATIC arena (`0x100d5b30 + id×1096`, ids ≤ 128) and types 1 and 4 to the
+FLEX arena (`0x100b14f0 + id×1096`, ids ≤ 135, i.e. including the recorder
+buffers 128–135); `0x40099374`'s kind 0 / kind 1-or-4 split is the same
+pair. And the RIG's bank B carries `128+` values (recorder buffers) in the
+type-1 slot byte of T2–T7 and 1..128 values in the type-0 byte — only a
+FLEX machine can play a recorder buffer. So every "FLEX fixture" of
+§10.12 (type 0) was a STATIC fixture, and the baseline T1 under route A
+has been STATIC-on-slot-1 all along.
+
+**3. The per-track slot record is FIVE bytes, indexed by machine type ✅.**
+`0x4000504e..0x4000507e`: `blob + part*0x18b2 + track*5 + machine_type +
+0x8f04a` (34 literal readers of that base). File offset = part record
+`+0x2d3 + 5*track + type`: byte +0 the STATIC slot, +1 the FLEX slot, +4
+the PICKUP buffer, which the PICKUP setter `0x400972fc` forces to
+`128+track` (own recorder). Slot bytes are 0-based (0 = slot 1, 128 = R1,
+the file's `SLOT=129`). `ot_project.py track-slot` had only ever written
+byte +0 (the STATIC slot); it now takes `flex|static|pickup`.
+
+**4. `0x80004f1c` is the track's RECORDER state record, not a sample-slot
+record ✅ — and nothing on the recorder path needs a sample.** Sixteen
+84-byte records: two banks of eight, the bank bit per track in
+`0x80004f18`, the OTHER bank being the one written. The writer is the arm
+caller itself: word bit 7 clear → `0x40006238` → bit 4 (recorder trig) →
+non-PICKUP → `0x40006714` → `0x40006262`/`0x40006268` fill the other
+bank's record (header `0x00000101`: byte +2 = **1, pending**; +8 the
+INAB/INCD/SRC bytes from the live setup page; +12 the source bits;
+sentinels `0xf0000000` at +36..+44) → `0x400066b0` → `0x40005304` (post
+`0x22`). The per-frame track function `0x400068e4` (25,600 calls in
+1,600 frames = 8 tracks × 2 per frame, from the frame builder
+`0x4000d342`/`0x4000d36e`) finds the other bank's state 1, sets it to **2**
+and flips the bank bit (`0x400069de`/`0x400069e6`) in the same sample;
+from then on the record carries the recording (`0x40007192`/`0x400072be`
+counters, `0x40007738` positions). Measured on the FLEX-on-R1 fixture at
+MAX: 3 writes of the load's own watch, then the full sequence above at
+frame 1379. Every earlier watch of "`0x80004f1c..+84`" was bank 0 / T1
+only, so it could not see the pending write (bank 1, `0x800051bc`), and
+the ones that reported "0 writes, load included" were correct and blind at
+once. What §10.11 called the sample-slot gate at `0x400060a6` is this
+record's state byte: the bit-7 path is a follow-up on an EXISTING
+recording (it posts through `0x40005c7c` with a length from the FOUT
+table `0x400ab63a`, sets state 3 — Bryan's "pickup arm reads the FOUT
+slot", EXTERNAL.md §6). The FLEX bind for a NOTE trig (`0x4000f450`,
+3 calls from `0x4000d49e`) does fail on this fixture — R1's control
+record has length +16 = 0 and pointer +20 = 0 after the load, and an
+empty recorder buffer has nothing to play — but that is a separate
+mechanism, off the recorder path, and probably what hardware does too.
+
+**5. Bit 7 of the trig word is the SIGN OF A TIMING BYTE, not "fixed
+RLEN" ❌ — the fixture's tempo change flipped it.** The word is composed
+in the frame builder at `0x4000c99a..0x4000ca7a`: `0x800017d6[32 + 8*sub
++ track]` (the lane's timing byte) `| 0x210` `| (flag word & 0xf000)`.
+That byte table is filled every frame at `0x4000aece..0x4000af22`: for
+each of 62 lanes, `16 + (now − event_time) × (−1/tempo24)` in EMAC
+fractional arithmetic, floored at 0 and truncated to 8 bits — measured
+as +8 per frame (2-sample units) counting up toward the lane's scheduled
+event. Two fixtures identical but for tempo: RLEN 3 at **120 BPM** → word
+`0x7257` (byte `0x47|0x10`, positive), arm caller → `0x40006238` →
+`0x40005304`, `0x22` and `0x25` handlers, the record filled, 3,997 record
+writes; RLEN MAX at **128 BPM** → `0x72fe` (byte `0xfe|0x10`: the event is
+still 4 samples ahead when the word is composed, a frame before the
+sequencer's own EVT/FLAG update at `0x400a33f2`/`0x400a3426`), arm caller
+→ `0x400060a6` → state 0 → `rts −1`. The 6 Sep fixture had changed BOTH
+RLEN and tempo. §10.11's "with a FIXED RLEN the word has bit 7 set" is
+withdrawn; §10.7's Sam-trig word `0x72d2` and the RIG's bank-B trig
+(`0x72d3`, frame 345 — the same low byte as M6c's `0xd3` live nibble) are
+negative too, so under route A those recorder trigs are DROPPED at the
+state gate. Whether the unit drops them is the open question of this
+section: a recorder trig at 128 BPM on a fresh project records on
+hardware (everyone's default), so either the emulator's phase between
+the tick-driven scheduler and the frame clock presents negative offsets
+the hardware never does for a first trig, or hardware initialises the
+record before it (🟡 both open; the falsifier is one emulator run with
+`--watch-mem 0x46104d26,2` at each of several tempos on the unit's own
+saved trig, against what the unit records at those tempos).
+
+**6. The converter, answered at 120 BPM ✅:** with RLEN fixed the per-frame
+site `0x40006dfc` (`d0 × 31,752,000` = 44,100 × 720, `macl` with the tempo
+reciprocal, `+1 / asr 1` — samples per step, round-half-up) runs **twice
+per frame for the whole recording** (2,443 entries over 1,221 frames);
+at MAX it runs 0 times (control, same fixture). `0x4006e3b2`,
+`0x40006d48`, `0x400060c4` and `0x40006edc`: 0 in both. The length itself
+is not yet settled. The 7,400-frame run (RLEN 3 = display 4, 120 BPM,
+trig at 1379) ended with the record still in state 2, its counters at
++24/+28 = `0xc00`, length +32 = 0, and R1's control record `+16` =
+**11,025** = 44,100 × 720 / 2880 — the converter's per-step product at 120
+BPM BEFORE its `+1 / asr 1` (one 16th is 5,512.5 samples; Bryan's sheet
+rounds it to 5,513). No end of recording was seen in ~6,000 frames
+(~96,000 samples, against 22,050 for four 16ths), so either the end is
+tied to the quarter-rate pattern's own step length (4 × 22,064 = 88,256
+samples, which the run should also have passed) or the stop lives in a
+state this watch did not cover. 🟡 Next: watch the R1 control record and
+the `0x40006dfc` operands per frame, on bank B (344-frame steps) once the
+§5 drop is understood.
+
+**7. Route A does not load samples, and it does not matter here (holds).**
+`stage_project` still skips `.wav`/`.ot`; the load's 289 `0x40099680`
+calls are the reset loops (136 FLEX + 129 STATIC ids from `0x40023a1c`/
+`0x40023a38`) plus 24 from `0x4002585a` (one per `[SAMPLE]` entry), and the
+card paths formatted are only the project files. The PCM pool init
+`0x40096f24` does run (main init and again inside LOAD PROJECT at
+`0x400853b8`; `0x46105408` = 1 after the load) and names the eight
+recorder buffers, but their control records stay length 0 until a
+recording writes them.
+
+**Tools:** `ot_project.py track-slot <proj> <bank> <part> <track> <slot>
+[flex|static|pickup]` (default flex); the MTYPE comment corrected. Fixtures
+this session (scratchpad, rebuildable): `recproj_fxR1` = RECTRIG + T1 type 1
++ flex slot 129; `_maxR1` = + masks at step 2; `_r3t120` = maxR1 + RLEN 3;
+`_maxt128` = maxR1 + 128 BPM; `_fxR1_128r4` = both; `_B_r3` = the cleared
+RIG (bank B) + RLEN 3, poked at step 2.
