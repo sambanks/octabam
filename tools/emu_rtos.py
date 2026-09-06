@@ -64,6 +64,11 @@ HANDOFF = 0x40000e46               # the boot's trap #0
 LOCK_TRAP = 0x40000a78             # the lock primitive's (0x400009f4) block trap
 SR_TRAMP = 0x47ef0800              # `movew %sr,%d0; nop` -- see Rtos._sr (emu_bringup's
                                    # EMAC trampoline lives at 0x47ef0000..0x47ef01ff)
+KERNEL_POST = 0x40000c3c           # post(queue, msg) -- non-blocking, see Rtos.post_message
+SYS_TCB = 0x46c7bed8
+SYS_QUEUE = 0x460d17ae             # the sys task's own command queue
+SYS_MSG_SCRATCH = 0x46c00000       # scratch for a hand-built message -- see request_card_mount;
+                                   # inside the boot's 0x46000000+32MB map, far from any named global
 
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
@@ -312,6 +317,25 @@ class Dspi:
             self.regs[off] = val
 
 
+MEDIA_KICK = 0xfc0b01bc
+MEDIA_KICK_VAL = 0x00020002
+# The card-detect interrupt handler (0x4001e594, vector 0xaf source 47) kicks
+# whatever sits at 0xfc0b01bc (writes 0x00010001, later 0x00010000 swapped)
+# and spins reading it back until bits 0/16 (the ones the busy mask 0x10001
+# tests) clear -- a start/busy register for a block nothing else in this
+# trace touches (not the ATA task-file window; a card-presence debounce or a
+# small DMA channel, address range unidentified further, 6 Sep 2026). Once
+# clear, the SAME handler re-reads the register and tests bits 1/17
+# separately, gating the two posts to the storage queue (0x4001e844,
+# 0x4001e8fc) that a fully all-ones or fully-zero reply both defeat: all-ones
+# never clears the busy bits (infinite spin, found first); all-zero clears
+# them but also clears 1/17, so neither post fires and the "card present"
+# outcome we know is correct (a card genuinely is attached) never triggers.
+# Modelled as a constant reply with 0/16 clear (instant completion) and 1/17
+# set (the detect IS relevant) -- inferred from what the two readings must
+# mean for the branch we know should be taken, not from a spec for the block.
+
+
 class RtosFault(Exception):
     pass
 
@@ -333,7 +357,8 @@ class Rtos:
         self.pc = None
         self.trap = r.trap                   # the boot's (32, HANDOFF)
         self.created = []                    # (sample, tcb, entry, prio, stack, size, creator)
-        self.blocks = []                     # (sample, tcb, trap pc, caller, object)
+        self.blocks = []                     # (sample, tcb, trap pc, caller, object, owner)
+        self.last_block = {}                  # tcb -> the same tuple, O(1) lookup
         self.dispatches = []                 # (sample, tcb, pc) at every scheduler rte
         self.switches = 0
         self.forces = 0
@@ -344,6 +369,7 @@ class Rtos:
         self.unmapped = None
         self._sr_cache = None
         self._force_stop = False
+        self.card = None                     # set by attach_card
         # peripheral models
         self.pit0, self.pit1 = Pit("PIT0", pit_clock_hz), Pit("PIT1", pit_clock_hz)
         self.uart64, self.uart68 = Uart("UART@fc064000", 0xfc064000), Uart("UART@fc068000", 0xfc068000)
@@ -525,6 +551,8 @@ class Rtos:
                 return u.read(a - u.base, size)
         if DSPI <= a < DSPI + 0x100:
             return self.dspi.read(a - DSPI, size)
+        if a == MEDIA_KICK:
+            return MEDIA_KICK_VAL
         v = PLL_VAL if a == PLL_REG else eb.EXTRA_OVERRIDES.get(a, (1 << (size * 8)) - 1)
         if callable(v):
             v = v(self.uc, a, size)
@@ -620,7 +648,9 @@ class Rtos:
             else:
                 caller, obj = struct.unpack(">II", self.uc.mem_read(sp, 8))
                 owner = None
-            self.blocks.append((self.sample, frm, pc, caller, obj, owner))
+            entry = (self.sample, frm, pc, caller, obj, owner)
+            self.blocks.append(entry)
+            self.last_block[frm] = entry
             self._push(32, pc + 2, (self._sr() | 0x2000) & ~0x8000)
             if self.first_switch is None:
                 self.first_switch = [frm, None]
@@ -726,6 +756,112 @@ class Rtos:
             if max_bursts is not None and n >= max_bursts:
                 self.stop_reason = "bursts"; return self.stop_reason
             self.step(); n += 1
+
+    def call_as_main(self, addr, args=(), budget=4_000_000):
+        """Borrow main's idle slot to call an OS subroutine the way a UI
+        action would call it -- not a cold detour: the normal trap-dispatch
+        loop stays live underneath, so any REAL waits inside the call run
+        correctly against every other task and interrupt. Requires
+        `self.pc == MAIN_SPIN` (run with `until=lambda r: r.pc == MAIN_SPIN`
+        first). Convention matches the sites calling FW_POST_LOAD_PROJECT
+        (`pea a1; pea a0; jsr addr`): retaddr at [sp], args at [sp+4],
+        [sp+8], ... in the order given. Returns D0 once the call `rts`s back
+        to the spin.
+
+        ONLY for a call that CANNOT genuinely block (post/signal, or a query
+        confirmed instant). Main is priority 0 and never legitimately blocks
+        on hardware -- Fact 1, RTOS_FORK.md -- so it is the kernel's de facto
+        idle backstop: main being non-ready is a state the block path never
+        expects. Borrowing main to call FW_CARD_INIT (which waits on a real
+        timer) proved this the hard way (6 Sep 2026): main blocked, nothing
+        else was ready either, and the scheduler dispatched a garbage TCB
+        (`rte ... would return to user mode`). A call that can block belongs
+        to a real task instead -- post it a message and let it run for real
+        (see `request_card_mount`)."""
+        if self.pc != MAIN_SPIN:
+            raise RtosFault(f"call_as_main({addr:#x}): pc is {self.pc:#x}, not the main spin")
+        uc = self.uc
+        sp = uc.reg_read(eb.UC_M68K_REG_A7) - 4 * (1 + len(args))
+        uc.mem_write(sp, struct.pack(f">{1 + len(args)}I", MAIN_SPIN, *args))
+        uc.reg_write(eb.UC_M68K_REG_A7, sp)
+        self.pc = addr
+        n = 0
+        while self.pc != MAIN_SPIN:
+            self.step()
+            n += 1
+            if n > budget:
+                raise RtosFault(f"call_as_main({addr:#x}) did not return in {budget} steps")
+        return uc.reg_read(eb.UC_M68K_REG_D0)
+
+    def post_message(self, queue, msg):
+        """`0x40000c3c(queue, msg)` -- the kernel post primitive, guaranteed
+        non-blocking (a post/signal can never itself wait), so safe through
+        `call_as_main` regardless of what the woken task goes on to do."""
+        return self.call_as_main(KERNEL_POST, args=(queue, msg))
+
+    def request_card_mount(self):
+        """Post to the SYS task's own queue (0x460d17ae) the message its
+        dispatch table (decoded 6 Sep 2026: table at 0x40061cfa, 78 entries,
+        index = msg[0]-1) sends to table[15] = 0x40061f7c -- the case that
+        checks `0x460d1cb8` (card ready) and, if clear, calls FW_CARD_INIT
+        for real from SYS's own task context (priority 1, safe to block).
+        msg[0]=16 selects that case; msg[1] nonzero is required to reach it
+        (`tstb a2@(1)`, else the handler returns having done nothing)."""
+        self.uc.mem_write(SYS_MSG_SCRATCH, bytes([16, 1]))
+        return self.post_message(SYS_QUEUE, SYS_MSG_SCRATCH)
+
+    def load_project_live(self, set_name, project_name, run_ms=3000, mount_ms=3000):
+        """M6b: drive a project load the way hardware would, then let the
+        REAL sys, engine and storage tasks do the rest -- no engine_run_once
+        stand-in, no hand-run init list. Two real actions, neither of which
+        anything at boot does on its own (both are normally UI/button
+        triggers): ask SYS to mount the card (`request_card_mount`, which
+        blocks SYS on real ATA commands completed through vector 0xb6, not
+        main -- see `call_as_main`'s docstring for why that distinction
+        matters), then post LOAD PROJECT (opcode 4) to the engine's queue
+        exactly as `FW_POST_LOAD_PROJECT` does. Returns (mounted, posted,
+        changed, part_ptr, elapsed_ms); `changed` compares part_ptr against
+        its PRE-load value, not against zero -- the project pointer's rest
+        value is a stale nonzero code address, not null. `changed` becoming
+        true is evidence a load started, not proof it finished: a full load
+        reads all sixteen banks (M4's cold proof: ~30,955 sectors) and this
+        runs only `run_ms` of it.
+
+        Deliberately does NOT call `FW_SET_PROJECT_EXISTS`: with no card
+        mounted it returns near-instantly (a genuine short-circuit, which is
+        why it looked call_as_main-safe at first), but once a card IS
+        present it does real FAT lookups (`0x40025230`) and blocks -- the
+        same main-blocks-and-nothing-else-is-ready crash `FW_CARD_INIT` hit,
+        found the same way (6 Sep 2026). It is a pure diagnostic in route B
+        (its result is never used to gate the load); dropping it costs
+        nothing here."""
+        self.run(until=lambda r: r.pc == MAIN_SPIN)
+        before = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
+        mount_req = self.sample
+        self.request_card_mount()
+        self.run(ms=mount_ms, until=lambda r: int.from_bytes(
+            r.uc.mem_read(0x460d1cb8, 4), "big") != 0)
+        mounted = int.from_bytes(self.uc.mem_read(0x460d1cb8, 4), "big")
+        # SYS's opcode-15 handler does not finish the instant 0x460d1cb8
+        # goes ready: it runs on for a while afterward and, once, was seen
+        # writing PART_PTR back to its empty-sentinel value on its way out
+        # (0x400622aa, ~1500 samples after ready) -- clobbering a load
+        # started in that window. Wait for SYS to return to blocking on its
+        # OWN queue (its handler provably finished) before posting the load.
+        self.run(ms=mount_ms, until=lambda r: (
+            b := r.last_block.get(SYS_TCB)) and b[0] > mount_req and b[4] == SYS_QUEUE)
+        self.run(until=lambda r: r.pc == MAIN_SPIN)
+        ec.set_names(self, set_name, project_name)
+        posted = self.call_as_main(ec.FW_POST_LOAD_PROJECT, args=(ec.FW_PROJECT_NAME,))
+        start = self.sample
+        # No early stop on "part_ptr changed": that fires on the FIRST write
+        # (project.work alone), while a full load reads all sixteen banks --
+        # M4's cold proof took ~30,955 sectors. Run the whole budget and
+        # report what actually accumulated; this is proof the mount+post
+        # mechanism works for real, not yet a parity check against M4.
+        self.run(ms=run_ms)
+        part = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
+        return mounted, posted, part != before, part, (self.sample - start) / SAMPLE_HZ * 1000.0
 
     # -- the M6a gate --------------------------------------------------------
     def ran(self):
@@ -913,11 +1049,14 @@ def _cli():
     ap.add_argument("--watch-calls", default="", help="comma-separated addresses to log entries to")
     ap.add_argument("--watch-mem", default="", help="ADDR,LEN: log every write into that range")
     ap.add_argument("--watch-pc", default="", help="comma-separated addresses: log registers there")
+    ap.add_argument("--load-project", action="store_true",
+                    help="M6b: after the gate, drive a project load through the real tasks (needs --project)")
     a = ap.parse_args()
 
     card = None
+    staged_name = a.name
     if a.project:
-        card, _ = stage_project(a.project, a.set, a.name)
+        card, staged_name = stage_project(a.project, a.set, a.name)
     t0 = time.perf_counter()
     r, rt = attach(a.image, card, ips=a.ips, pit_clock_hz=a.pit_clock, quantum=a.quantum,
                    step_quantum=a.step_quantum, tick=not a.no_tick,
@@ -932,14 +1071,44 @@ def _cli():
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
-    until = (lambda x: x.gate_m6a()[0]) if a.until_gate else None
-    try:
-        why = rt.run(ms=a.ms, until=until)
-    except (RtosFault, eb.UcError) as e:
+
+    def _fault(e):
         why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
         if rt.unmapped:
             acc, addr, size, pc = rt.unmapped
             why += f" unmapped {'write' if acc in (eb.UC_MEM_WRITE_UNMAPPED,) else 'read'} {addr:#x} size {size} at pc {pc:#x}"
+        return why
+
+    if a.load_project:
+        if not a.project:
+            print("--load-project needs --project"); return 1
+        try:
+            if not rt.gate_m6a()[0]:
+                rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
+            mounted, posted, changed, part, elapsed = rt.load_project_live(
+                a.set, staged_name, run_ms=a.ms)
+        except (RtosFault, eb.UcError) as e:
+            print(f"stopped    : {_fault(e)}")
+            print(rt.report())
+            print(rt.starvation())
+            return 1
+        print(rt.report())
+        print(f"mount      : ready={mounted} posted={posted} part_changed={changed} "
+              f"part={part:#x} ({elapsed:.1f} ms emulated after posting)")
+        if rt.card:
+            print(f"card       : {len(rt.card.log)} commands, {rt.card.reads} sectors read, "
+                  f"{rt.card.writes} written; last: {rt.card.log[-8:]}")
+        ok = bool(mounted)
+        if not ok:
+            print(rt.starvation())
+        print("M6b mount  :", "PASS" if ok else "FAIL")
+        return 0 if ok else 1
+
+    until = (lambda x: x.gate_m6a()[0]) if a.until_gate else None
+    try:
+        why = rt.run(ms=a.ms, until=until)
+    except (RtosFault, eb.UcError) as e:
+        why = _fault(e)
     print(f"stopped    : {why}")
     print(rt.report())
     ok, problems = rt.gate_m6a()
