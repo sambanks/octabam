@@ -690,9 +690,17 @@ class Rtos:
                 ("a1", eb.UC_M68K_REG_A1), ("a3", eb.UC_M68K_REG_A3), ("sp", eb.UC_M68K_REG_A7),
                 ("sr", eb.UC_M68K_REG_SR)]
 
+        # Kept in a list AND traced: the trace-only form printed nothing
+        # without --trace -- the third silent instrument of 6 Sep 2026
+        # (after --watch-calls and --watch-mem). The CLI prints the list.
+        self.pc_hits = getattr(self, "pc_hits", [])
+
         def on_pc(u, addr, size, user):
             vals = " ".join(f"{n}={u.reg_read(r) & 0xffffffff:#x}" for n, r in regs)
-            self._t(f"at {addr:#x} {vals} cur={self._cur():#x} in {self._name(self._cur())}")
+            line = f"at {addr:#x} {vals} cur={self._cur():#x} in {self._name(self._cur())}"
+            if len(self.pc_hits) < 2000:
+                self.pc_hits.append((self.sample, line))
+            self._t(line)
         for a in addrs:
             self.uc.hook_add(eb.UC_HOOK_CODE, on_pc, begin=a, end=a)
         self.uc.ctl_flush_tb()
@@ -1601,6 +1609,11 @@ def _cli():
                 n, callers = seen.get(a_, (0, set()))
                 where = (", callers " + ", ".join(f"{c:#x}" for c in sorted(callers)[:4])) if callers else ""
                 print(f"watch-call : {a_:#x} entered {n} time(s){where}")
+        hits = getattr(rt, "pc_hits", None)
+        if hits is not None:
+            print(f"watch-pc   : {len(hits)} hit(s)")
+            for sample, line in hits:
+                print(f"   [{sample:10.1f}] {line}")
         writes = getattr(rt, "mem_writes", None)
         if writes is not None:
             # ⚠️ `load_project_live` installs its own watch_mem and shares

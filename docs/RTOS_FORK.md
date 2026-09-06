@@ -1216,8 +1216,12 @@ watch reads its rows **9×**, one per 344-frame step. (The baseline's bank B pat
 steps at 344, which is where the 344-frame gate and the "step 9 ≈ 2,750"
 arithmetic came from; the RIG's A01 evidently carries a 1/4× scale or
 equivalent length setting — not located in the PTRN record, inferred
-from the timing 🟡.) So Sam's step-9 recorder trig is at ~11,032 frames;
-a run to 11,500 is in flight to land it.
+from the timing 🟡.) ✅ **Sam's own step-9 trig, landed** (`--frames
+11500`, the unmodified `out/_recproj`): flag word `0x7020`, `0x4009d9f6`
+×1, arm caller ×1 from `0x4000d35c`, `0x46104d26` `0x72d2` at **frame
+11026** then `2`/frame — 8 × 1378.25, the same chain as the step-2 copy
+and the RAM-poke control. The trig the unit wrote, through the file, the
+card model, the real load and the real sequencer, with nothing poked.
 
 **What this establishes (measured, one emulator, no hardware audio):**
 a recorder trig on disk → card → real LOAD PROJECT → the sequencer's mask
@@ -1227,3 +1231,61 @@ needs, reachable from a project file. Not yet measured: what the arm
 caller does next (`0x40005ff0` ran once — its class-2 path, the sample-
 slot control record, the DSP-side start), and whether the byte-`0x30`
 live flag is what the DSP's recorder reads.
+
+### 10.8 Past the arm caller: the trig becomes an ENGINE message, and the engine allocates the recorder buffer (6 Sep 2026, late — measured)
+
+Runs on the step-2 copy of the fixture (`--frames 1600`), `--watch-calls`
+over the arm caller's callees (static: `0x40005ff0` runs `0x40005ff0..
+0x40006712`, calling only `0x40005c7c`, `0x40097168`, `0x40005304`) and
+the engine's handlers.
+
+**The arm caller posts an engine message.** `0x40005304` entered once,
+from `0x400066b6` inside the arm caller; `0x40097168` (the machine==4
+classifier) 0× — the track's machine is THRU (type 2), so the PICKUP
+branch is not taken, and the recorder still arms. `0x40005304` is a
+poster: an 8-byte record at `0x46104d52 + track*8` — opcode `0x22`,
+byte 1 = 1, word 2 = track, long 4 = 1 (pending) — posted with
+`0x40000c3c` to **`0x460d17ce`, the engine task's command queue** (the
+same queue LOAD PROJECT and RELOAD BANK use, EMU.md; Bryan's "central
+engine-command queue" is corroborated a second time). Not touched by the
+trig: the sample-slot control record `0x80004f1c..+84` (0 writes) and
+`0x800066a0` (only the load's zero stores — three fixtures now say that
+word is not the recorder arm).
+
+**The engine handles it.** Its dispatcher (`0x4008484e`: `queue_receive`
+on `0x460d17ce`, opcode ≤ 45, 16-bit offset table at `0x40084870`, base
+`0x40000400` for the raw image) sends opcode `0x22` to **`0x40085bde`**:
+
+```
+[1355822.8] [0x46104d52] <- 0x22   main   0x4000531a   <- the post (opcode, flag=1, track=0, pending=1)
+[1355825.0] [0x46104d53] <- 0x0    engine 0x40085bee   <- 2.2 samples later: handler takes the flag
+            0x40095a90(track)  from 0x40085c02          <- release the track's recorder state
+            0x400948cc(track)  from 0x40085c0a          <- allocate a chain from the PCM pool
+[1355975.2] [0x46104d56] <- 0x0    engine 0x40085c2c   <- 152 samples later: pending cleared
+```
+
+Both callees index **`track + 128`** — the recorder-buffer object ids
+Bryan named — into the arena at `0x46c2e9c0` (strides `0x390a` /
+`0x7214` per `(track+2)`), the table `0x461053a8[track]` and
+`0x46c75e88`. `0x400948cc` reads the pool pointers `0x8000691c`/
+`0x80006920` and returns **−5** when there is no room; the handler turns
+−5 into a message to `sys` (`0x400d1662`, track in byte 1) — the "no
+memory" path. Each also ran 16× more from `0x4009636c`/`0x40097132`
+(load-time, 8 tracks × 2 🟡 by count, not timed).
+
+**Opcode `0x25` (Bryan's "arm" opcode) ALSO ran once** — handler
+`0x40085c88` → `0x40099680(1, track)` (the open/arm function, 290× in
+the run, the rest from load-time sites `0x40023ad4/aee`, `0x4002585a`).
+Whether that one post came at the trig or during the load is **not
+timed** (the call summary has no timestamps) — the next run should
+`--watch-mem` the `0x25` record and `--watch-pc 0x40085c88`.
+
+**What this establishes:** recorder trig (disk) → sequencer mask tests →
+flag word → frame builder → arm caller → engine opcode `0x22` → recorder
+buffer released and re-allocated from the PCM pool, ~3.4 ms of engine
+work, all under the real scheduler. **What it does not:** how the DSP is
+told to start sampling (nothing here writes the host port), what the
+`0x22`/`0x25` split means (start vs. arm?), and the loop-point click
+([[octabam-recorder-control-path]]) — the click is in the recorder's
+PLAYBACK block chain, which this milestone has only just reached the
+allocation of.
