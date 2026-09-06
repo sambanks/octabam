@@ -490,21 +490,30 @@ kernel's only always-ready task, so blocking it starves the scheduler.
 `FW_CARD_INIT` proved this by crashing it; the fix routes blocking calls
 through a real task's own context instead (post it a message).
 
-**M6c (same day): the sequencer mechanism is built; the fidelity gate is
-not.** `out/_testproj` is rebuilt (a project freshly saved on the unit,
-reproduces this doc's own frame-344 finding exactly under a fresh cold
-run). The frame IRQ (source 1 of INTC0, a free-running 16-sample clock,
-opt-in so M6a/M6b stay exactly as verified) and the M5-detour transport
-start (`call_as_main`, confirmed non-blocking) are both wired through the
-same real interrupt-controller model M6a already built. What isn't wired
-yet is a real second frame: the handler masks its own interrupt source at
-entry and, on the code path a real load-and-play run actually takes, never
-unmasks it again — `frame_count` reaches 1 and stops, measured across a
-3-second run. The unmask instruction exists, on a different, conditional
-branch this run didn't take. `RTOS_FORK.md` §8 has the byte-exact trace and
-two live hypotheses (a missed second unmask site vs. the "16-sample frame
-interrupt" design assumption itself being wrong for this firmware) — a
-judgment call, not a guess to make mechanically.
+**M6c (same day): the sequencer under the real scheduler — the fidelity
+gate passed.** `out/_testproj` is a project freshly saved on the unit;
+cold, it lands track 1's trig at frame 344, byte `0xd3`. Under route A
+(real mount and load, real interrupts, the tick pre-empting the frame
+handler for real) the same trig lands with the same byte, on the same
+track, 344 frames after the transport-start frame, with the same 28 ticks
+and the same six start-frame writes. Three things stood between the
+mechanism and that result, each measured (`RTOS_FORK.md` §8): the frame
+handler masks its own source and the re-arm is state 7 of the **eDMA
+completion interrupt** — the DMA chain the handler kicks (ch1 → 6 → 7 →
+source 15, then the ISR's own SSRTs and the ColdFire's per-frame EMAC
+routine) is now modelled, completing at the DSP's next frame boundary,
+which gives a 16.0-sample period exactly; the sequencer tick is a
+**forced** interrupt the firmware never unmasks, and the reference manual
+says a forced request is not affected by the mask (§17.2.3) — the INTC
+model now agrees; and the load's last step copies the bank byte into the
+sequencer's own playing-bank byte at a moment when `sys` has already
+applied the engine's reset-time "select bank 0" in the handler's real card
+waits, so the sequencer walked bank A's empty pattern — the tool re-issues
+that last step with the file's bytes (`seq_select_live`), and §7's
+one-press hardware falsifier gained a second observable (does PLAY run the
+saved pattern?). Frame mode counts instructions exactly (`exact_clock`)
+rather than by quantum, which over-charged 2.1×. The previous paragraph
+here, and §8's two hypotheses, were wrong and are retracted in place.
 
 ## Reproduce
 
@@ -514,6 +523,8 @@ make remix                           # then press e to boot the built image
 .venv/bin/python3 tools/emu_bringup.py [image]   # or the CLI directly
 make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate (RTOS_FORK.md §5)
 .venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
+.venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000   # M6c: the trig under real tasks
 .venv/bin/python3 tools/emu_rtos.py --selftest   # the SR-read trap, pinned
 ```
 
