@@ -1318,3 +1318,37 @@ AB 0, QREC 255, QPL 255, CD 0`), 1,600 frames, the trig at ~1,379:
 - `0x40099680` (open/arm, Bryan's opcode-`0x25` function) at the trig is
   entered from the `0x25` handler with `d0 = 0x80` — 290 entries over the
   run, the rest at load time from `0x40023ad4/aee` and `0x4002585a`.
+
+### 10.10 Who posts opcode `0x25` — settled (run G, 6 Sep 2026, late — measured)
+
+`--watch-pc 0x40000c3c` (the kernel post) with the return address and
+stack args logged, step-2 fixture. In the trig window:
+
+```
+[1355822.8] post  ret 0x4000533c  queue 0x460d17ce  msg 0x46104d52   <- opcode 0x22, from the arm caller (0x40005304)
+[1355823.8] post  ret 0x40006b1c  queue 0x460d17ce  msg 0x46105366   <- opcode 0x25, ONE SAMPLE LATER, same queue
+[1355825.0] engine: 0x40085bde (0x22 handler)            ... 152 samples of release/allocate ...
+[1355844.2] post  ret 0x400a4dde  queue 0x460d1664  msg 0x400abacb   <- the engine notifies the UI queue mid-handler
+[1355975.2] engine: 0x40085c88 (0x25 handler) -> 0x40099680(1, track)
+```
+
+So both messages come from the frame builder's own pass, back to back:
+the `0x25` is posted through `0x40005c7c`, called at `0x40006b18` inside
+the function that runs `0x40006a2c..0x40006c30` — the one that clamps
+`0x461053a8[track] = min(computed, 0x461053e8[track])` and copies four
+state words (`+276..+288`, two of them `lsll`'d by `a2@(6) − 1`) from the
+recorder-buffer record `0x100b14f0 + (128+track)×1096` (Bryan's arena)
+into the live record. `0x40005c7c` is therefore "post a recorder command
+to the engine" (it also flips `0x800065bc` and notifies `sys` when the
+track changes); the queue argument it passes is the engine's, not `sys`'s
+as its first `pea` suggested. The engine drains the two in order: `0x22`
+(release + allocate) then `0x25` (open/arm, `0x40099680(1, track)`), with
+a UI notice in between. Over the whole run the kernel post was called
+320×: 176 to `sys`, 112 to `0x460d17ee` (the third engine-side queue),
+29 to the UI queue, **3 to the engine's command queue** — the two above
+plus one at load.
+
+**Reading (🟡, from the code shape):** `0x22` = "(re)take the buffer",
+`0x25` = "arm it with these parameters" — Bryan's opcode names hold.
+Whether the `0x25` record carries the length is the next thing to read
+(`0x46105366`'s bytes at the post — a `--watch-mem 0x46105366,0x20` run).
