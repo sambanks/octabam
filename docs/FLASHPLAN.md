@@ -473,8 +473,14 @@ remix. Nothing else changed from tag 16: same DSP, same slot meanings, so
 emulator and sees every page-1 name.
 
 Claims:
-- [ ] T5 FX2 page 1/2 and T1 FX2 page 1/2 draw the names above, with values
-      (TONE 64, both -DEL 0). Selects print words (MODE, SHFT, RATE, SIZE,
+- [x] ✅ **CONFIRMED ON THE UNIT, 6 Sep 2026** (Sam: "knobs show as
+      described"): T5 FX2 page 1/2 and T1 FX2 page 1/2 draw the names above,
+      with values (TONE 64, both -DEL 0). The first correct host pages since
+      flash 4.
+      ⚠️ The rest of tag 17's claims were never reached: the session found the
+      master loop instead, and the rig has since been redirected to the ONE
+      AUX BUS (PLAN.md's banner). These slot meanings are what the card's
+      projects are stamped for. Selects print words (MODE, SHFT, RATE, SIZE,
       FRZE), BusDelay TIME prints a division.
 - [ ] The FX2 chooser still has ONE row (SEND); FX1 = NONE + three stations.
 - [ ] T5 `-DEL` up: T5's dry audible in T1's delay at a station-send level
