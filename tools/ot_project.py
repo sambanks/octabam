@@ -249,6 +249,40 @@ def set_pattern_trig(pdir, banknum, pattern, track, step, mask=0x00, guard=True)
     print(f"bank{banknum:02d} pattern{pattern} T{track+1} mask {mask:#04x} "
           f"step {step} set")
 
+REC_FIELDS = ["INAB", "INCD", "RLEN", "TRIG", "SRC3", "LOOP",
+              "FIN", "FOUT", "AB", "QREC", "QPL", "CD"]   # descriptor order, EXTERNAL.md section 6
+REC_SETUP_OFF = 0x60b   # part-relative file offset of track 0's 12 recorder-setup bytes
+                        # (RAM 0x8f382 vs the machine-type byte's 0x8eda2, + the +9 IFF shift)
+
+def set_recorder_setup(pdir, banknum, part, track, field, value, guard=True):
+    """Write one RECORDING SETUP byte for a track, in part `part` (1-4) AND
+    its saved mirror (part+4). RLEN is stored raw: display 1..64 -> 0..63,
+    MAX -> 64. Measured 6 Sep 2026: the live page at 0x80000cf4 reads back
+    these bytes verbatim ([1,1,64,0,0,1 | 0,0,0,255,255,0] for the RIG)."""
+    fi = REC_FIELDS.index(field.upper())
+    def mut(data):
+        for pi in (part - 1, part - 1 + NPARTS):
+            off = PART_BASE + pi * PART_STRIDE + REC_SETUP_OFF + track * 12 + fi
+            data[off] = value & 0xFF
+    _bank_write(pdir, banknum, mut, guard=guard)
+    print(f"bank{banknum:02d} part {part}(+{part+NPARTS}) T{track+1} {field.upper()} = {value}")
+
+def tempo24_of(bpm):
+    """The UI setter's conversion (0x4009c7c4, measured): 24*whole + (23*tenths+4)//9."""
+    whole = int(bpm); tenths = round((bpm - whole) * 10)
+    return 24 * whole + (23 * tenths + 4) // 9
+
+def set_tempo(pdir, bpm):
+    """Set project.work's TEMPOx24 from a displayed BPM."""
+    path = pdir / "project.work"
+    raw = path.read_bytes().decode("latin1")
+    t = tempo24_of(float(bpm))
+    new, k = re.subn(r"(TEMPOx24=)\d+", lambda m: m.group(1) + str(t), raw, count=1)
+    if k != 1:
+        sys.exit("TEMPOx24 not found in project.work")
+    path.write_bytes(new.encode("latin1"))
+    print(f"TEMPOx24={t} ({bpm} BPM)")
+
 def pattern_masks(pdir, banknum):
     """Every non-zero step mask in the bank: {(pattern, track, mask): value}."""
     data = (pdir / f"bank{banknum:02d}.work").read_bytes()
@@ -605,6 +639,12 @@ if __name__ == "__main__":
     elif cmd == "pattern-diff":
         # <projectA> <projectB> <bank>
         pattern_diff(sys.argv[2], sys.argv[3], int(sys.argv[4]))
+    elif cmd == "recorder-setup":
+        # <project> <bank> <part> <track0> <FIELD> <value>  (RLEN raw: display-1, MAX=64)
+        set_recorder_setup(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), sys.argv[6], int(sys.argv[7], 0))
+    elif cmd == "set-tempo":
+        # <project> <bpm>   (TEMPOx24 via the measured UI conversion)
+        set_tempo(pdir, sys.argv[3])
     elif cmd == "machine-type":
         # <project> <bank> <part> <track> <type>; writes the part's saved
         # mirror too, the way a bank's eight PART records require
