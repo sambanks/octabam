@@ -436,7 +436,7 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — M6a and M6b done 6 Sep 2026 (`tools/emu_rtos.py`)
+## The RTOS fork — M6a and M6b done, M6c's mechanism built 6 Sep 2026 (`tools/emu_rtos.py`)
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
@@ -490,6 +490,31 @@ kernel's only always-ready task, so blocking it starves the scheduler.
 `FW_CARD_INIT` proved this by crashing it; the fix routes blocking calls
 through a real task's own context instead (post it a message).
 
+**M6c (same day): the sequencer under the real scheduler — the fidelity
+gate passed.** `out/_testproj` is a project freshly saved on the unit;
+cold, it lands track 1's trig at frame 344, byte `0xd3`. Under route A
+(real mount and load, real interrupts, the tick pre-empting the frame
+handler for real) the same trig lands with the same byte, on the same
+track, 344 frames after the transport-start frame, with the same 28 ticks
+and the same six start-frame writes. Three things stood between the
+mechanism and that result, each measured (`RTOS_FORK.md` §8): the frame
+handler masks its own source and the re-arm is state 7 of the **eDMA
+completion interrupt** — the DMA chain the handler kicks (ch1 → 6 → 7 →
+source 15, then the ISR's own SSRTs and the ColdFire's per-frame EMAC
+routine) is now modelled, completing at the DSP's next frame boundary,
+which gives a 16.0-sample period exactly; the sequencer tick is a
+**forced** interrupt the firmware never unmasks, and the reference manual
+says a forced request is not affected by the mask (§17.2.3) — the INTC
+model now agrees; and the load's last step copies the bank byte into the
+sequencer's own playing-bank byte at a moment when `sys` has already
+applied the engine's reset-time "select bank 0" in the handler's real card
+waits, so the sequencer walked bank A's empty pattern — the tool re-issues
+that last step with the file's bytes (`seq_select_live`), and §7's
+one-press hardware falsifier gained a second observable (does PLAY run the
+saved pattern?). Frame mode counts instructions exactly (`exact_clock`)
+rather than by quantum, which over-charged 2.1×. The previous paragraph
+here, and §8's two hypotheses, were wrong and are retracted in place.
+
 ## Reproduce
 
 ```sh
@@ -498,6 +523,8 @@ make remix                           # then press e to boot the built image
 .venv/bin/python3 tools/emu_bringup.py [image]   # or the CLI directly
 make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate (RTOS_FORK.md §5)
 .venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
+.venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000   # M6c: the trig under real tasks
 .venv/bin/python3 tools/emu_rtos.py --selftest   # the SR-read trap, pinned
 ```
 
