@@ -717,10 +717,15 @@ the recorder SETUP page's TRIG *mode* byte, in the part. ✅ **The recorder
 trig's masks are SETTLED on the unit (6 Sep evening): `0x20`+`0x28`+`0x30`,
 all three for one trig** (one per REC source, inferred) — `pattern-diff`
 against the `RECTRIG` project Sam saved with one trig on T1 step 9
-(RTOS_FORK §10.6; fixture `out/_recproj`). Next: run that fixture under
-`emu_rtos` with `--frames 3000` (step 9 is ~2,750 frames in; 400 never
-reaches it) and watch the staged/immediate/armed recorder slots for what
-the trig actually does — that is Bryan's click question.
+(RTOS_FORK §10.6; fixture `out/_recproj`). ✅ **And the trig FIRES under
+route A, from the file, with nothing poked** (§10.7: bank A's A01 steps at
+1/4 rate, step 9 = frame 11026; flag word, arm caller, Bryan's trig word
+`0x46104d26` nonzero for the first time), and the chain past the arm
+caller is measured (§10.8): engine opcode `0x22` → handler `0x40085bde` →
+recorder buffer released + re-allocated from the PCM pool (`track+128`).
+Next: time the opcode-`0x25` post, find how the DSP is told to sample
+(no host-port write seen yet), then the playback block chain where the
+click lives.
 M6c's gate is the regression to keep green while doing it:
 `tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
 --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
