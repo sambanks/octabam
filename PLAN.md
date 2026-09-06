@@ -703,8 +703,8 @@ scheduler.
 | M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
 | M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
 | **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
-| M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7) |
-| M6c sequencer under the scheduler | ✅ **done 6 Sep — gate passed** | the one-trig test lands the same byte (`0xd3`), same track, 344 frames after the start frame, 28 ticks, under real tasks and real interrupts as it does cold. Three findings on the way (RTOS_FORK §8): the frame source is re-armed by the **eDMA completion ISR** (eDMA now modelled, 16.0-sample period); a **forced interrupt bypasses the mask** (MCF54455RM §17.2.3 — the tick is never unmasked and never needed to be); the load leaves the **sequencer's** playing bank on A by §7's ordering (re-selected through the load's own last step; the hardware falsifier gained a second observable). Sonnet's two §8 hypotheses retracted |
+| M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7). ✅ **Falsifier run on the unit 6 Sep evening: B01, and PLAY runs the pattern** — the EMULATOR's ordering is the unfaithful one; `select_bank_live`/`seq_select_live` are compensation for an emulator defect and go once the load's timing is fixed (open) |
+| M6c sequencer under the scheduler | ✅ **done 6 Sep — gate passed** | the one-trig test lands the same byte (`0xd3`), same track, 344 frames after the start frame, 28 ticks, under real tasks and real interrupts as it does cold. Three findings on the way (RTOS_FORK §8): the frame source is re-armed by the **eDMA completion ISR** (eDMA now modelled, 16.0-sample period); a **forced interrupt bypasses the mask** (MCF54455RM §17.2.3 — the tick is never unmasked and never needed to be); the load leaves the **sequencer's** playing bank on A by §7's ordering (re-selected through the load's own last step; the hardware falsifier gained a second observable — and the unit answered it: the saved pattern runs, so the re-select is compensating for the emulator, RTOS_FORK §8.3). Sonnet's two §8 hypotheses retracted |
 | M6d key injection | ✅ **done 6 Sep — and the premise was wrong** | PLAY/REC do NOT arrive via a post to `0x4005593c`'s queue — that task isn't a queue consumer at all (a key-repeat timer, mislabeled "UI" by neighbourhood to the real queue's ring buffer). The real `UI_QUEUE` (`0x460d1664`) consumer is a different, previously-unidentified task (`0x40056c40`); physical keys dispatch through a separate per-key jump table (`0x400d2d54`) instead, the same shape as the FX2 shortcut. `press_play_live()`/`press_rec_live()` call PLAY/REC through their own firmware handlers (`call_as_main`, confirmed non-blocking by disassembly); PLAY reproduces M6c's fidelity gate exactly (RTOS_FORK §9) |
 | M6e use it | 🟡 in progress (6 Sep) | the recorder-project fixture exists (`ot_project.py machine-type` + the `tools/scratch/` wrapper: track 1 -> machine type 4, verified by RAM readback) and with it track 1 stops writing `FW_LIVE_NIBBLE` at all, 8 writes -> 5. ❌ **The first pass's reading of that — "confirms machine-type-branched trig dispatch" — is RETRACTED**: type 7, out of range for the 0..4 dispatch, gives the IDENTICAL signature and type 3 (NEIGHBOR) gives the baseline, so it reads "type >= 4 / not started"; and the vanished writes include the **frame-0 transport-start** one, so the track never starts and nothing measured happens at the trig. §9.4's own falsifier finally ran (`--via-rec`, PLAY-then-REC) and was **aimed at the wrong mechanism**: REC leaves `0x800066a0` at 0 on the recorder-configured project as on the plain one, and per the manual it would — `[REC]` activates GRID RECORDING mode, and a **recorder trig** is what starts a track recorder sampling. Two instrument defects found on the way, both silent: `--watch-calls`/`--watch-mem` printed nothing without `--trace` (fixed; the zero-call flag re-derived and it holds), and `0x800065b8`/`0x800066a0` are longwords that read as a flat 0 byte-wise. The arm/record path is still unlocated; `0x4000b800` gets zero calls even on a successful trig, and `watch_calls` is a code hook, so that means never executed by any route. RTOS_FORK §10 |
 
@@ -713,23 +713,27 @@ reading has been retracted (RTOS_FORK §10). The on-disk **trig fixture is built
 proven** (`ot_project.py pattern-trig`: step 2 written to the file, no RAM
 poke, lands `0xd3` on track 0 at frame 344 — M6c's own gate), along with
 the pattern format it needed (RTOS_FORK §10.6). ⚠️ Not `+0x8f385`: that is
-the recorder SETUP page's TRIG *mode* byte, in the part. **The open half is
-which step mask holds the recorder's trigs**, and the emulator did not
-settle it — `ot_project.py pattern-diff` against two projects saved on the
-unit (one with a recorder trig, one without) answers it in one command, and
-that is a 30-second job at the hardware. Then Bryan's
-click question.
+the recorder SETUP page's TRIG *mode* byte, in the part. ✅ **The recorder
+trig's masks are SETTLED on the unit (6 Sep evening): `0x20`+`0x28`+`0x30`,
+all three for one trig** (one per REC source, inferred) — `pattern-diff`
+against the `RECTRIG` project Sam saved with one trig on T1 step 9
+(RTOS_FORK §10.6; fixture `out/_recproj`). Next: run that fixture under
+`emu_rtos` with `--frames 3000` (step 9 is ~2,750 frames in; 400 never
+reaches it) and watch the staged/immediate/armed recorder slots for what
+the trig actually does — that is Bryan's click question.
 M6c's gate is the regression to keep green while doing it:
 `tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
 --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
 [--via-key]` must keep landing `0xd3` on track 0, 344 frames after the
 start frame, with 28 ticks (both with and without `--via-key`). Two
 of M6c's helpers are M5-detour compensation for §7's ordering
-(`select_bank_live`, `seq_select_live`); if the hardware falsifier below
-says the unit ends on the saved bank, the faithful fix is in the load's
-timing, and both helpers should become unnecessary.
+(`select_bank_live`, `seq_select_live`); the hardware falsifier below
+HAS said the unit ends on the saved bank (6 Sep evening), so the faithful
+fix is in the load's timing, and both helpers are to be removed once it
+is made. Open.
 
-Also queued, independent of M6c: one hardware question for whenever the
+✅ ANSWERED 6 Sep evening (B01, plays — emulator unfaithful; kept for the
+reasoning): one hardware question for whenever the
 unit is next on — **load the RIG project, read the bank indicator, then
 press PLAY** — the emulator comes up on bank A because the engine's own
 reset-time "select bank 0" reaches `sys` after the file's `BANK=1` is

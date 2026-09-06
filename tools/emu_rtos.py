@@ -1255,12 +1255,16 @@ class Rtos:
         return self.press_key_live(KEY_REC)
 
     def poke_trig(self, step):
-        """Set a trig on track 1 at `step` (1-8), same bytes as
+        """Set a trig on track 1 at `step` (1-64), same bytes as
         `emu_frames.poke_trig` (track 1's 64-step mask, big-endian, byte 7
         bit 0 = step 1) against whichever bank PART_PTR currently names."""
+        # 64 steps: byte 7 - (step-1)//8, bit (step-1)%8 -- the same layout
+        # ot_project.set_pattern_trig writes on disk. The 1-8 form threw
+        # "bytes must be in range" at step 9 (6 Sep 2026).
         blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
-        v = self.uc.mem_read(blob + 7, 1)[0] | (1 << (step - 1))
-        self.uc.mem_write(blob + 7, bytes([v]))
+        at = blob + 7 - (step - 1) // 8
+        v = self.uc.mem_read(at, 1)[0] | (1 << ((step - 1) % 8))
+        self.uc.mem_write(at, bytes([v]))
         return v
 
     def watch_reads(self, addr, length, cap=200000):
@@ -1307,8 +1311,9 @@ class Rtos:
         0x30 -> bit 14 and 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
         """
         base = self.pattern_base() + track * TRAC_STRIDE + off
-        v = self.uc.mem_read(base + 7, 1)[0] | (1 << (step - 1))
-        self.uc.mem_write(base + 7, bytes([v]))
+        at = base + 7 - (step - 1) // 8          # 64 steps, as poke_trig
+        v = self.uc.mem_read(at, 1)[0] | (1 << ((step - 1) % 8))
+        self.uc.mem_write(at, bytes([v]))
         return v
 
     def install_trig_log(self):
@@ -1508,6 +1513,10 @@ def _cli():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--image", default=None, help="MAIN OS image (default: the raw stock image)")
     ap.add_argument("--project", default=None, help="project dir to put on an emulated card")
+    ap.add_argument("--tree", default="out/_emu_rtos_tree",
+                    help="scratch dir the emulated card is staged in; it is WIPED at "
+                         "start, so two concurrent runs need two trees (three runs "
+                         "launched together died on this, 6 Sep 2026)")
     ap.add_argument("--set", default="OCTABAM")
     ap.add_argument("--name", default=None)
     ap.add_argument("--ms", type=float, default=100.0, help="emulated milliseconds to run")
@@ -1557,7 +1566,7 @@ def _cli():
     card = None
     staged_name = a.name
     if a.project:
-        card, staged_name = stage_project(a.project, a.set, a.name)
+        card, staged_name = stage_project(a.project, a.set, a.name, tree=a.tree)
     t0 = time.perf_counter()
     r, rt = attach(a.image, card, ips=a.ips, pit_clock_hz=a.pit_clock, quantum=a.quantum,
                    step_quantum=a.step_quantum, tick=not a.no_tick,
@@ -1599,11 +1608,16 @@ def _cli():
             # -- the addresses below say which is which.
             print(f"watch-mem  : {len(writes)} write(s) logged "
                   f"(the load's own watch shares this list)")
-            for sample, task, pc, addr_, size, val in writes[:12]:
+            # Print them ALL (capped only against a flood): the first
+            # version showed 12 and "... 111 more", and the 111 were the
+            # only writes that mattered -- a watch that hides its hits is
+            # the silent-instrument trap again (RTOS_FORK section 10.3b).
+            cap = 4000
+            for sample, task, pc, addr_, size, val in writes[:cap]:
                 print(f"   [{sample:10.1f}] [{addr_:#x}] <- {val:#x} ({size}) "
                       f"at pc {pc:#x} in {rt._name(task)}")
-            if len(writes) > 12:
-                print(f"   ... {len(writes) - 12} more")
+            if len(writes) > cap:
+                print(f"   ... {len(writes) - cap} more (raise cap in emu_rtos.py)")
 
     def _fault(e):
         why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
@@ -1628,10 +1642,12 @@ def _cli():
             # from-boot form for Python callers.
             bank = a.bank if a.bank is not None else saved_bank
             if bank is not None and final_bank != bank:
-                # The load ends on bank A (sys applies the engine's own
-                # reset-time "select bank 0" after the BANK= parse -- section
-                # 7's open ordering question); the cold reference sits on the
-                # SAVED bank. Put the run there through sys's own switch.
+                # The load ends on bank A here (sys applies the engine's own
+                # reset-time "select bank 0" after the BANK= parse). The UNIT
+                # does not: it comes up on the saved bank and plays it
+                # (measured 6 Sep 2026, RTOS_FORK section 7), so this switch
+                # and seq_select_live below compensate for an emulator timing
+                # defect; both go once the load's timing is made faithful.
                 final_bank = rt.select_bank_live(bank)
             pattern = rt.uc.mem_read(CUR_PATTERN, 1)[0]
             seq_bank, seq_pattern = rt.seq_select_live(final_bank, pattern)

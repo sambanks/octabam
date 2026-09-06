@@ -497,7 +497,9 @@ run ends on bank A because the LOAD PROJECT handler's own first step is a
 reset that posts "select bank 0" to `sys`, and `sys` — busy with p2c
 traffic ahead of it in its FIFO — applies it ~870 samples later, after the
 engine has parsed `BANK=1`. A real cross-task ordering, measured, with a
-one-press hardware falsifier (does the unit come up on the saved bank?).
+one-press hardware falsifier (does the unit come up on the saved bank?) —
+**answered on the unit 6 Sep evening: it comes up on B and plays**, so
+the ordering is the emulator's defect (`RTOS_FORK.md` §7), still to fix.
 `load_project_live` reports the bank the engine parsed beside the bank
 the run ended on.
 Also found: `call_as_main` (borrow main's idle slot to call a plain OS
@@ -527,7 +529,8 @@ applied the engine's reset-time "select bank 0" in the handler's real card
 waits, so the sequencer walked bank A's empty pattern — the tool re-issues
 that last step with the file's bytes (`seq_select_live`), and §7's
 one-press hardware falsifier gained a second observable (does PLAY run the
-saved pattern?). Frame mode counts instructions exactly (`exact_clock`)
+saved pattern? — it does, unit 6 Sep evening; the re-issue is compensation
+for the emulator's own ordering and goes when the load's timing is fixed). Frame mode counts instructions exactly (`exact_clock`)
 rather than by quantum, which over-charged 2.1×. The previous paragraph
 here, and §8's two hypotheses, were wrong and are retracted in place.
 
