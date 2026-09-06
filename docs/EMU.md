@@ -436,7 +436,7 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — M6a done, M6b started 6 Sep 2026 (`tools/emu_rtos.py`)
+## The RTOS fork — M6a and M6b done 6 Sep 2026 (`tools/emu_rtos.py`)
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
@@ -465,19 +465,25 @@ session (reading SR through the API at a burst boundary corrupts the
 condition codes — a trampoline `movew %sr,%d0` does not; memory-write hooks
 do fire on MMIO).
 
-**M6b (same day): the mount and the load, both real, plus one open race.**
-The engine's own LOAD PROJECT handler doesn't mount the card; that's a
-*different* task's job — `sys` (`0x46c7bed8`), which has its own 78-entry
-dispatch table nothing had decoded before. `Rtos.request_card_mount()`
-sends it the message that reaches `FW_CARD_INIT`; `Rtos.load_project_live()`
-then posts LOAD PROJECT exactly as route B builds it. Real ATA IDENTIFY and
-READ commands follow (6,189 commands / 30,467 sectors in one run, matching
-M4's cold proof — ~30,955 sectors — to within 1.5%), and the engine writes
-the project pointer to route B's own known-good value. A second real task
-then overwrites it back to empty ~568 samples later, and the load free-runs
-afterward without setting it again — traced byte-exact, not yet closed.
-`RTOS_FORK.md` §7 has the full trace, what's ruled out (not a settle-timing
-issue; tried and it didn't move the gap), and the two remaining candidates.
+**M6b (same day): the mount and the load, both real.** The engine's own
+LOAD PROJECT handler doesn't mount the card; that's a *different* task's
+job — `sys` (`0x46c7bed8`), which has its own 78-entry dispatch table
+nothing had decoded before. `Rtos.request_card_mount()` sends it the
+message that reaches `FW_CARD_INIT`; `Rtos.load_project_live()` then posts
+LOAD PROJECT exactly as route B builds it. Real ATA IDENTIFY and READ
+commands follow (6,189 commands / 30,467 sectors in one run, matching M4's
+cold proof — ~30,955 sectors — to within 1.5%), and the engine writes the
+project pointer to route B's own known-good value. A **separate, generic
+"select track" routine independently insists track 0 is current** and
+reverts both the current-track byte and the project pointer within a few
+thousand samples of the engine setting track 1 — reactive to the track
+change itself (confirmed with a register-state watch at the write site),
+not a timer and not something reposting the load can outrun. It's a live
+UI-screen behaviour, firing only because the emulator doesn't yet drive the
+UI to the screen a real load flow would be on — root-caused and hard-owned
+by **M6d**, not a defect in the mount or the load. `RTOS_FORK.md` §7 has
+the full trace; `load_project_live` reports `loaded=True` the instant the
+pointer is ever seen correct, independent of what happens to it after.
 Also found: `call_as_main` (borrow main's idle slot to call a plain OS
 subroutine) is unsafe for anything that can genuinely block — main is the
 kernel's only always-ready task, so blocking it starves the scheduler.
@@ -491,7 +497,7 @@ make emu-setup                       # uv sync --extra emu -> .venv with unicorn
 make remix                           # then press e to boot the built image
 .venv/bin/python3 tools/emu_bringup.py [image]   # or the CLI directly
 make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate (RTOS_FORK.md §5)
-.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 5000
+.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
 .venv/bin/python3 tools/emu_rtos.py --selftest   # the SR-read trap, pinned
 ```
 
