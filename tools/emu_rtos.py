@@ -69,9 +69,20 @@ SYS_TCB = 0x46c7bed8
 SYS_QUEUE = 0x460d17ae             # the sys task's own command queue
 SYS_MSG_SCRATCH = 0x46c00000       # scratch for a hand-built message -- see request_card_mount;
                                    # inside the boot's 0x46000000+32MB map, far from any named global
-PART_EMPTY = 0x400e21e0            # the firmware's own "no project loaded" sentinel for
-                                   # ec.PART_PTR -- a fixed OS constant, not project-specific data
-                                   # (the engine itself writes it, from 0x40025aa2, before loading)
+# The bank blobs in RAM: PART_PTR (ec.PART_PTR, 0x46c82456) = BANK_BLOB +
+# bank * BANK_STRIDE, i.e. the CURRENT BANK's data; 0x400e21e0 is bank A,
+# 0x4017d520 bank B. 0x80000002 is the current BANK (emu_card.FW_CUR_BANK),
+# 0x80000004 the current pattern. Read 6 Sep 2026 from the engine's LOAD
+# PROJECT handler, which parses the project file's BANK= and PATTERN= keys
+# (0x40087d0e..0x40087d44) -- correcting an earlier reading of this module
+# that called 0x400e21e0 an "empty sentinel" and 0x80000002 the current
+# track (docs/RTOS_FORK.md section 7 has the retraction).
+BANK_BLOB = 0x400e21e0
+BANK_STRIDE = 635712
+CUR_BANK = 0x80000002
+CUR_PATTERN = 0x80000004
+ENGINE_BANK_WRITE = 0x40087d44     # LOAD PROJECT writes PART_PTR from the file's BANK= here
+SELECT_BANK_CASE = 0x40062288      # sys table[20]: "select bank msg[1]" -- switch the working bank
 
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
@@ -823,39 +834,28 @@ class Rtos:
         main -- see `call_as_main`'s docstring for why that distinction
         matters), then post LOAD PROJECT (opcode 4) to the engine's queue
         exactly as `FW_POST_LOAD_PROJECT` does. Returns (mounted, posted,
-        loaded, part_ptr, elapsed_ms). `loaded` is True the instant `PART_PTR`
-        is EVER seen at its correct value during the run, even if something
-        later overwrites it -- see below, that overwrite is real and
-        currently expected. `part_ptr` is the value at the end.
+        saved_bank, final_bank, elapsed_ms): `saved_bank` is the bank the
+        engine parsed from the project file's BANK= key and wrote to
+        PART_PTR (None if that write never happened -- the load did not get
+        that far); `final_bank` is the current bank at the end of the run.
 
-        THE RACE, ROOT-CAUSED 6 Sep 2026 (not the vaguer "SYS clobbers it
-        once" writeup this replaces): two independent, real mechanisms both
-        write the current-track byte (`0x80000002`) and `PART_PTR` together,
-        and they disagree.
-        - The engine, finishing LOAD PROJECT, sets track 1 current
-          (`0x40087d26`, immediately before its own correct `PART_PTR` write
-          at `0x40087d44`).
-        - A SEPARATE, generic "select track N" routine (`0x40062288`,
-          `PART_PTR := 0x400e21e0 + N*635712`, a per-track factory-default
-          table baked into the image) is invoked REPEATEDLY throughout the
-          WHOLE run -- observed firing before the mount even starts, and
-          again periodically after -- always with N=0, always called with
-          the same fixed argument pointer (`0x400d64b9`, static data, not
-          our message). It reacts within ~500-3000 samples of the track
-          ACTUALLY changing away from 0, then goes quiet again until the
-          next change: not a one-shot housekeeping step, a live watcher.
-
-        So whichever fires second wins, and reposting LOAD PROJECT does NOT
-        help (tried, 6 Sep 2026): every repost sets track 1 again, and the
-        watcher notices and corrects it back to 0 again, on the same short
-        delay, every time. The watcher's trigger (`0x400d64b9`, and whatever
-        decides to call the select-track routine with it) is a UI/screen
-        state question -- almost certainly a screen that assumes track 0 is
-        current, live because we never drove the UI to the screen a real
-        project-load flow would be on. That is M6d's territory (real key
-        injection), not something to paper over here. Fix belongs there:
-        drive the UI to a track-1-appropriate (or track-agnostic) screen
-        before posting the load, or find what selects track 0 and see why.
+        THE TWO CAN DIFFER, and that is a real cross-task ordering, not a
+        load failure (root-caused 6 Sep 2026, correcting an earlier reading
+        of this code that mistook the bank byte for the current track and
+        bank A's blob for an "empty" sentinel). The engine's LOAD PROJECT
+        handler starts with a reset to bank A / pattern 1 that, among other
+        things, posts "select bank 0" to SYS's queue (from the pattern-load
+        routine, sites 0x4000a150/0x40009638, twice), then reads the files,
+        then parses BANK= and switches PART_PTR to the saved bank. SYS
+        consumes the reset's queued "select bank 0" whenever the scheduler
+        next gives it the CPU -- and if that is AFTER the engine's BANK=
+        parse, SYS switches the working bank back to A, overriding the
+        saved bank. Route B (cold) never showed this because SYS never ran
+        at all there, so it froze on the engine's value. Whether hardware
+        orders it the same way is exactly the class of question route A
+        exists to ask; the run's dispatch log answers it for the emulator,
+        and the cheap hardware observable is: does the unit come up on the
+        saved bank after LOAD PROJECT?
 
         Deliberately does NOT call `FW_SET_PROJECT_EXISTS`: with no card
         mounted it returns near-instantly (a genuine short-circuit, which is
@@ -876,12 +876,13 @@ class Rtos:
         if not getattr(self, "_watching_part_ptr", False):
             self.watch_mem(ec.PART_PTR, 4)
             self._watching_part_ptr = True
-        write_count_before = len(self.mem_writes)
+        n0 = len(self.mem_writes)
         posted = self.call_as_main(ec.FW_POST_LOAD_PROJECT, args=(ec.FW_PROJECT_NAME,))
         self.run(ms=run_ms)
-        part = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
-        loaded = any(val != PART_EMPTY for *_, val in self.mem_writes[write_count_before:])
-        return mounted, posted, loaded, part, (self.sample - start) / SAMPLE_HZ * 1000.0
+        saved = [val for _, _, pc, _, _, val in self.mem_writes[n0:] if pc == ENGINE_BANK_WRITE]
+        saved_bank = (saved[-1] - BANK_BLOB) // BANK_STRIDE if saved else None
+        final_bank = self.uc.mem_read(CUR_BANK, 1)[0]
+        return mounted, posted, saved_bank, final_bank, (self.sample - start) / SAMPLE_HZ * 1000.0
 
     # -- the M6a gate --------------------------------------------------------
     def ran(self):
@@ -1105,7 +1106,7 @@ def _cli():
         try:
             if not rt.gate_m6a()[0]:
                 rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
-            mounted, posted, loaded, part, elapsed = rt.load_project_live(
+            mounted, posted, saved_bank, final_bank, elapsed = rt.load_project_live(
                 a.set, staged_name, run_ms=a.ms)
         except (RtosFault, eb.UcError) as e:
             print(f"stopped    : {_fault(e)}")
@@ -1113,18 +1114,19 @@ def _cli():
             print(rt.starvation())
             return 1
         print(rt.report())
-        stuck = loaded and part == PART_EMPTY
-        print(f"mount      : ready={mounted} posted={posted} loaded={loaded} "
-              f"part={part:#x}{' (raced away, see docstring)' if stuck else ''} "
-              f"({elapsed:.1f} ms emulated total)")
+        part = int.from_bytes(rt.uc.mem_read(ec.PART_PTR, 4), "big")
+        print(f"load       : ready={mounted} posted={posted} saved_bank={saved_bank} "
+              f"final_bank={final_bank} PART_PTR={part:#x} ({elapsed:.1f} ms emulated total)")
+        if saved_bank is not None and final_bank != saved_bank:
+            print("             final bank != saved bank: SYS applied the engine's own reset-time "
+                  "'select bank 0' after the BANK= parse (RTOS_FORK.md section 7)")
         if rt.card:
             print(f"card       : {len(rt.card.log)} commands, {rt.card.reads} sectors read, "
                   f"{rt.card.writes} written; last: {rt.card.log[-8:]}")
-        ok = bool(mounted) and loaded
+        ok = bool(mounted) and saved_bank is not None
         if not ok:
             print(rt.starvation())
-        print("M6b load   :", "PASS" if ok else "FAIL",
-              "(raced away by the track-select watcher after loading correctly)" if stuck else "")
+        print("M6b load   :", "PASS" if ok else "FAIL")
         return 0 if ok else 1
 
     until = (lambda x: x.gate_m6a()[0]) if a.until_gate else None
