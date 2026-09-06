@@ -1451,3 +1451,21 @@ on the machine type. What does not survive: any statement about FLEX.
 The setter now refuses track 0. A run with the slot-1 STATIC sample
 actually staged (`--stage-audio`, new) is in flight to see whether the
 record fills at all.
+
+**Staged-sample run (7 Sep 2026, 01:00 — measured, and it ends the
+night's thread):** the slot-1 STATIC sample (`Didnt U - Bass.wav` + `.ot`,
+18 MB, project-local) staged on a 256 MB emulated card via
+`--stage-audio`, same 128/RLEN 4 fixture. Card traffic rose by only
+~1,085 sectors (32,000 vs 30,915 — directory and FAT, not 18 MB of
+audio), the control record `0x80004f1c..+84` still got **0 writes**, none
+of the three populator candidates ran, and the arm caller no-op'd at the
+same gate. So having the file on the card is not enough: **route A's
+LOAD PROJECT does not load samples**, presumably because the sample loader
+is a different consumer (the `storage` task, a p2x task, or an on-demand
+path after the DSP reports ready — none identified). That is the next
+emulator prerequisite, and it is a milestone of its own, not a fixture
+tweak: find who loads a slot (the writers of `0x80004f1c+2`, e.g.
+`0x4000f5fe`'s stride-84 walk), what wakes it, and whether route A can
+reach it. Until then the fixed-RLEN recorder path — and with it the
+converter question and Bryan's 128/4 arithmetic in situ — is out of the
+emulator's reach. The MAX path (§10.7–10.10) is fully reachable.
