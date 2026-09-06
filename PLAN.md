@@ -666,13 +666,19 @@ Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the
 XOR-highlight `FUN_40012254`, and assign the effect to the track) and, only if
 something needs task-interleaving behaviour, route **A** (emulate the RTOS:
-dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
-far needs A; `docs/EMU.md` keeps it on the table.
+dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). **Scoped 6 Sep
+2026 — `docs/RTOS_FORK.md`**: kernel decoded, feasibility spike passed, five
+milestones (M6a–e) with the fidelity gate that M5's one-trig test must land
+identically under the real scheduler. The recorder-arm path (M5 "path B") is
+the first consumer; Sam chose it as the next emulator lift.
 
-**Next emulator milestone, parked 4 Sep 2026: a LOADED PROJECT (card
-emulation).** The emulator boots with no project, so `PART` is null and every
+**Emulator milestone 4, BUILT 5 Sep 2026: a LOADED PROJECT (card
+emulation) — `tools/emu_card.py`, `make emu-card PROJECT=<dir>`, `docs/EMU.md`
+M4.** The trigger below arrived with the recorder work; the paragraph is kept
+as the design record. The async-completion risk turned out to be one hook on
+the RTOS event wait. The emulator booted with no project, so `PART` was null and every
 panel path that keys off the project — the select committer, part save and
-load, stamp defaults, the untraced recorder write path — cannot be driven to
+load, stamp defaults, the recorder write path — cannot be driven to
 the right address; that gap is what turned the select-array question into
 four hardware probe flashes (80–83) with no signal. The firmware does its own
 FAT parsing, so the emulator only has to answer ATA sector reads from an
