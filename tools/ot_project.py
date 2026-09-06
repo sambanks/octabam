@@ -167,12 +167,28 @@ def set_part_name(pdir, banknum, part, name):
     _bank_write(pdir, banknum, mut)
     print(f"bank{banknum:02d} part{part} name -> {name}")
 
-def set_track_slot(pdir, banknum, part, track, slot_1based):
+# A track's sample-slot record is FIVE bytes, one per machine type, and the
+# firmware indexes it BY THE MACHINE-TYPE VALUE: `0x4000504e..0x4000507e`
+# adds the type byte to `blob + part*0x18b2 + track*5 + 0x8f04a` (34 literal
+# readers of that base; the PICKUP setter `0x400972fc` writes byte +4 =
+# 128+track, its own recorder buffer). So byte +0 is the type-0 machine's
+# slot, +1 the type-1 machine's, +4 PICKUP's. Slot bytes are 0-based (0 =
+# slot 1, 128 = R1 -- the file's SLOT=129). Measured 7 Sep 2026 on the RIG's
+# bank B: T2..T7 carry 128+ values in byte +1 and 1..128 values in byte +0,
+# and only a FLEX machine can play a recorder buffer -- so type 1 is FLEX and
+# type 0 STATIC (🟡 by that argument; PARAM_PAGES' 0/1 = FLEX/STATIC was an
+# inference and is contradicted by this). The earlier form of this function
+# wrote byte +0 only, i.e. the STATIC slot, for every caller.
+SLOT_KIND = {"static": 0, "flex": 1, "pickup": 4}
+
+def set_track_slot(pdir, banknum, part, track, slot_1based, kind="flex"):
+    if not (1 <= part <= NPARTS_ALL and 1 <= track <= 8):
+        sys.exit(f"track-slot: part {part} / track {track} must be 1-based")
     def mut(data):
-        off = PART_BASE + (part-1)*PART_STRIDE + 0x2d3 + (track-1)*5
+        off = PART_BASE + (part-1)*PART_STRIDE + 0x2d3 + (track-1)*5 + SLOT_KIND[kind]
         data[off] = slot_1based - 1
     _bank_write(pdir, banknum, mut)
-    print(f"bank{banknum:02d} part{part} T{track} slot -> {slot_1based}")
+    print(f"bank{banknum:02d} part{part} T{track} {kind} slot -> {slot_1based}")
 
 # The machine-type byte, one per track per part. RAM offset (EMU.md /
 # EXTERNAL.md §6) is `PART_PTR + part*0x18b2 + 0x8eda2 + track`; the file
@@ -181,11 +197,13 @@ def set_track_slot(pdir, banknum, part, track, slot_1based):
 # their own RAM-relative 0 and 8. ✅ Verified 6 Sep 2026 by patching one
 # track and reading the byte back out of RAM after a real LOAD PROJECT.
 #
-# ⚠️ The VALUES are inferred, not confirmed: PARAM_PAGES.md reads 0/1 =
-# FLEX/STATIC, 2 = THRU, 3 = NEIGHBOR, 4 = PICKUP from the parameter sets
-# of the five PLAYBACK descriptor pages, matching a 0..4 dispatch, and says
-# in as many words that the mapping is not confirmed against the dispatch
-# order. Treat 4 as "the value the inference calls PICKUP", not as PICKUP.
+# The VALUES (measured 7 Sep 2026, RTOS_FORK section 10.13): 0 = STATIC,
+# 1 = FLEX, 2 = THRU, 3 = NEIGHBOR, 4 = PICKUP. The trig-side slot lookup
+# (0x400050b8..) sends type 0 to the STATIC arena and types 1/4 to the FLEX
+# arena (which holds the recorder buffers), and the RIG's bank B carries
+# recorder-buffer ids in its type-1 slot bytes. PARAM_PAGES.md's inferred
+# 0/1 = FLEX/STATIC was the reverse. Also: the 6 Sep "file says 0, RAM says
+# 2" worry was bank A's file against bank B's RAM -- the offset is right.
 MTYPE_OFF, MTYPE_MIRROR = 0x02b, 4      # + track; part N's saved copy is part N+4
 
 def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True):
@@ -635,7 +653,10 @@ if __name__ == "__main__":
     elif cmd == "set-gain": apply_gains(pdir, {sys.argv[3]: sys.argv[4]})
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
-    elif cmd == "track-slot": set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
+    elif cmd == "track-slot":
+        # <project> <bank> <part> <track> <slot_1based> [flex|static|pickup]  (default flex)
+        set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]),
+                       sys.argv[7] if len(sys.argv) > 7 else "flex")
     elif cmd == "pattern-trig":
         # <project> <bank> <pattern> <track0> <step> [mask]
         set_pattern_trig(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]),

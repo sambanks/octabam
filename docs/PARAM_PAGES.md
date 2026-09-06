@@ -125,8 +125,8 @@ from the parameter sets**, not yet confirmed against the dispatch order:
 
 | # | page 1 | page 2 | reading |
 |---|---|---|---|
-| 0 | PTCH STRT LEN RATE RTRG RTIM | LOOP SLIC LEN RATE TSTR TSNS | FLEX / STATIC |
-| 1 | *(identical to 0)* | | STATIC / FLEX |
+| 0 | PTCH STRT LEN RATE RTRG RTIM | LOOP SLIC LEN RATE TSTR TSNS | **STATIC** (✅ 7 Sep 2026: type 0 reads the STATIC arena, RTOS_FORK §10.13) |
+| 1 | *(identical to 0)* | | **FLEX** (✅ same: type 1 reads the FLEX arena, whose ids include the recorder buffers) |
 | 2 | INAB VOL --- INCD VOL --- | all `---` | **THRU** (input AB/CD volume) |
 | 3 | all `---` | all `---` | **NEIGHBOR** (no parameters) |
 | 4 | PTCH DIR LEN RATE GAIN OP | --- --- --- --- TSTR TSNS | **PICKUP** |
@@ -551,8 +551,8 @@ effect will still appear unselectable.
 - The six `E+0x00` per-encoder pointers — purpose inferred, not confirmed.
 - Why the effects split across two page classes.
 - What `0x800000a0` (PERSONALIZE word) actually switches.
-- Which of entries 0/1 is FLEX and which STATIC; the machine-type ordering against
-  `FUN_40097168`.
+- ~~Which of entries 0/1 is FLEX and which STATIC~~ — settled 7 Sep 2026: 0 = STATIC,
+  1 = FLEX (RTOS_FORK §10.13). The ordering against `FUN_40097168` is still unread.
 - Whether the sparse effect-id gaps are usable for a new effect slot.
 
 

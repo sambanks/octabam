@@ -200,7 +200,7 @@ assigning the id is the whole recipe.
 
 **The PLAYBACK page** (`render_playback`, `e` → `p`) is the same idea for
 page_kind 0: set the machine-type byte at `PART + PAT*0x18b2 + track + 0x8eda2`
-(0/1 = FLEX/STATIC sample players), stage the page (`FUN_400554e0(0)`), then
+(0 = STATIC, 1 = FLEX — measured 7 Sep 2026, RTOS_FORK §10.13; this note used to say the reverse), stage the page (`FUN_400554e0(0)`), then
 redraw the track screen (`FUN_4004d948`) — the sample row LEV/PTCH/STRT/LEN/
 RATE draws. That is "a sample loaded on the track", on the UI side; the audio
 side (loading a WAV and hearing it) is the `v` audition view.

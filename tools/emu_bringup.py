@@ -756,7 +756,8 @@ def render_fx2(r, track=4, effect_id=0x07):
 def render_playback(r, track=4, machine=1):
     """Render the PLAYBACK page (page_kind 0) with a sample machine assigned —
     the sample-loaded track view (LEV/PTCH/STRT/LEN/RATE). `machine` indexes
-    the machine-type table: 0/1 = FLEX/STATIC (sample players), higher = THRU/
+    the machine-type table: 0 = STATIC, 1 = FLEX (measured 7 Sep 2026, RTOS_FORK
+    §10.13; earlier text had them swapped), higher = THRU/
     NEIGHBOR (input/routing). Stages the page then redraws the track screen.
     """
     uc = r.uc
