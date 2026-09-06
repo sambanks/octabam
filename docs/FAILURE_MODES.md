@@ -32,6 +32,39 @@ seen it before. If it recurs, capture what was playing when it wedged.
 a heavy station turned up, the returns engaging), that names the cause. Log
 the trigger here when seen.
 
+**Recurrence, 6 Sep 2026 — WEDGED ON EVERY COLD BOOT INTO OCTABAM_RIG,
+three images in a row (tags 16, 17, 18), NOT cleared by power-cycles.**
+Localised without a flash:
+- The image is innocent: tag 18's DSP is byte-identical to tag 13's, which
+  played (807 ColdFire bytes differ, all chooser/descriptor plumbing).
+- The project stamp is innocent: PROJECT 260810, stamped the same way, plays.
+- A Pheasant set (no octabam engines) plays.
+- **Cleared by SWITCHING PROJECTS and back** (Pheasant → 260810 → OCTABAM_RIG:
+  "playing now without me doing anything"); reboots are clean since. So it
+  is PERSISTENT STATE that the project switch REWROTE — the unit writes the
+  current project's files before loading another. The wedging state is in
+  the Friday backup (`~/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG`)
+  and the cleared state is on the card: **diff the two on the next mount
+  (project files first, then banks) — the changed bytes name the state.**
+- What OCTABAM_RIG has that 260810 does not: the RETURN engaged on every
+  part (T8 FX1 = Character, SAT = BUS, RVRB 127, DLY 127 — never before run
+  on hardware), and in bank02 the master's own -VRB send at 71 (the loop the
+  spec forbade). Sam suspected a loop first; the "a loop would squeal, not
+  go silent" dismissal was reasoning, not measurement — RETRACTED. Whether
+  either is the cause is NOT established.
+- **MEASURED (next mount, 6 Sep):** card vs the wedging backup — banks differ
+  ONLY by the stamp (18 bytes each); `project.work` differs in TWO fields:
+  the header's OS version string `OCTABAM13` → `OCTABAM18`, and `TRACK=4`
+  (T5, the reverb host, selected) → `TRACK=7` (T8). Nothing else. Backup of
+  the cleared state: `~/octa/backups/OCTABAM_RIG_20260906_cleared`.
+  Prediction to test: tag 17 on the card, project says 18 → if the cold boot
+  wedges, the saved-OS-version mismatch is the suspect (and every flash
+  needs a project switch after it); if it plays, the selected-track-at-boot
+  is what remains (select T5, save, cold boot).
+- ⚠️ Two wrong calls made the same day, both logic leaps: "intermittent"
+  (it never cleared on a reboot) and "cleared by a power-cycle" (that was
+  the 5 Sep instance, not this one). Say only what was observed.
+
 ---
 
 ## Sequencer stuck on step 1 (DSP hang) — CYCLE OVERRUN or a wild value
