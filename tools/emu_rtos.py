@@ -1,0 +1,955 @@
+#!/usr/bin/env python3
+"""Emulator route A: the firmware's own scheduler, running (docs/RTOS_FORK.md).
+
+M1-M5 run firmware COLD: a function called against the warm machine, an
+interrupt handler pushed a fake frame. This module crosses the `trap #0`
+boundary and lets the kernel run: the trap is dispatched by hand into the
+scheduler entry, every `rte` is popped by hand (Unicorn's CFV4E raises
+intno 256 instead of executing it), PIT0 is modelled as a timer counted in
+SAMPLES, and the two interrupt controllers are register-level models whose
+asserted sources are injected between bursts.
+
+M6a (done 6 Sep 2026): boot, dispatch the handoff, run until every task has
+been created and each has run at least once. The exit gate compares what the
+emulator observes against EXPECTED_TASKS below -- eleven tasks, measured
+here and written back into docs/RTOS_FORK.md §2 (the scope's eight came from
+a literal scan that missed the create sites called through a register).
+
+Three facts from the 6 Sep 2026 idle read that shape the loop (byte-exact,
+scripts/disasm.sh emac):
+  * the main task parks in `bras .` at 0x4001fc9c and never blocks, so
+    level 0 is never empty: no idle task exists, and a PC parked there means
+    "skip to the next timer event";
+  * a reschedule IS a forced PIT0 interrupt -- signal/post set INTFRCH bit 11
+    of INTC1 (source 43, vector 171 = the scheduler entry), which lands only
+    once the primitive restores the caller's SR; so an INTFRC write ends the
+    burst at once and a pending-but-masked interrupt is re-checked at a fine
+    grain until the IPL drops;
+  * make-ready (0x4000063c) does NOT force: after main creates the seven
+    tasks nothing switches until the first real tick.
+
+Time accounting: a burst is charged its full instruction quantum even when
+an exception or a hook stopped it early (Unicorn does not report how far it
+got); the error is bounded by one quantum per event and the clock runs
+slightly FAST, never slow. `--ips` (instructions per sample) is a knob with
+a default, not a measurement -- RTOS_FORK.md §6.
+
+    .venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --ms 100
+"""
+import argparse
+import collections
+import os
+import pathlib
+import struct
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import emu_bringup as eb           # noqa: E402
+import emu_card as ec              # noqa: E402
+
+# --- the kernel, byte-exact (docs/RTOS_FORK.md §2) --------------------------
+VBR = 0x40000000                   # [0x400b9668]; the image's own first KB
+SCHED = 0x40000550                 # one handler for trap #0 (vec 32) and PIT0 (vec 171)
+SCHED_RTE = 0x400005a6             # the scheduler's rte: a task is being (re)entered
+CREATE = 0x400005fc                # create(tcb, entry, prio, stack, size)
+CUR_TCB = 0x800068fc               # current TCB
+TOP_PRIO = 0x800068d8              # -> into the list-head array
+LIST_HEADS = 0x800068dc            # [8] circular-list heads, higher = higher prio
+TCB_A7 = 0x48                      # moveml d0-sp from +0x0c: a7 at +0x48
+MAIN_SPIN = 0x4001fc9c             # `bras .` -- main's park, the idle point
+MAIN_TCB = 0x46c7ae84
+BOOT_TCB = 0x46c7ae30              # the pre-multitasking context the first trap saves
+HANDOFF = 0x40000e46               # the boot's trap #0
+LOCK_TRAP = 0x40000a78             # the lock primitive's (0x400009f4) block trap
+SR_TRAMP = 0x47ef0800              # `movew %sr,%d0; nop` -- see Rtos._sr (emu_bringup's
+                                   # EMAC trampoline lives at 0x47ef0000..0x47ef01ff)
+
+# The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
+# hook below): (tcb, entry, prio, stack, size, creator). Main is created by
+# the boot before our hooks exist. RTOS_FORK.md §2's table of eight was read
+# from the five `jsr` create sites the literal scan finds; the other five
+# sites call through a register and were missed. Ten are created: seven by
+# main's init list, three by the prio-1 task at 0x40061a94 once its own
+# start-up traffic (serial link, SPI) is done.
+EXPECTED_TASKS = (
+    (0x46c7fb0c, 0x40005540, 6, 0x46c7ea20, 0x1000, MAIN_TCB),     # voice / DSP mailbox
+    (0x460fab80, 0x40091d18, 2, 0x460fabd4, 0x2000, MAIN_TCB),
+    (0x460ffd44, 0x400921c4, 2, 0x460fdd44, 0x2000, MAIN_TCB),
+    (0x460e0e38, 0x4009203c, 2, 0x460dee38, 0x2000, MAIN_TCB),     # not in the §2 table
+    (0x460ddde4, 0x4008445c, 1, 0x460d9de4, 0x4000, MAIN_TCB),     # engine
+    (0x46105508, 0x40098a5c, 1, 0x4610555c, 0x2000, MAIN_TCB),
+    (0x46c7bed8, 0x40061a94, 1, 0x460d6de4, 0x2000, MAIN_TCB),     # not in the §2 table: creates the three below
+    (0x460bcc2c, 0x4001ee30, 5, 0x460bc42c, 0x0800, 0x46c7bed8),   # storage
+    (0x460d4f80, 0x4005593c, 4, 0x460d4780, 0x0800, 0x46c7bed8),   # UI
+    (0x460d59d4, 0x40056c40, 3, 0x460d51d4, 0x0800, 0x46c7bed8),   # not in the §2 table
+)
+ALL_TCBS = frozenset(t[0] for t in EXPECTED_TASKS) | {MAIN_TCB}
+TASK_NAMES = {0x46c7fb0c: "voice", 0x460bcc2c: "storage", 0x460d4f80: "ui",
+              0x460fab80: "p2a", 0x460ffd44: "p2b", 0x460e0e38: "p2c",
+              0x460ddde4: "engine", 0x46105508: "p1b", 0x46c7bed8: "sys",
+              0x460d59d4: "p3", MAIN_TCB: "main", BOOT_TCB: "boot"}
+
+# --- peripherals ------------------------------------------------------------
+PERIPH_BASE, PERIPH_SIZE = 0xfc000000, 0x100000
+INTC0, INTC1 = 0xfc048000, 0xfc04c000
+PIT0, PIT1 = 0xfc080000, 0xfc084000
+DSPI = 0xfc05c000
+PLL_REG, PLL_VAL = 0xfc0c4000, 0x16000000       # emu_bringup's one load-bearing reply
+
+SAMPLE_HZ = 44100.0
+
+
+class Pit:
+    """MCF547x programmable interrupt timer, counted in samples.
+
+    PCSR bits: EN 0, RLD 1, PIF 2 (write-1-clear), PIE 3, OVW 4, DBG 5,
+    DOZE 6, PRE 8-11 (clock / 2**PRE). PMR at +2, PCNTR (read-only) at +4.
+    The clock the prescaler divides is a knob: the firmware sizes PMR from a
+    264 MHz constant (0x400005b4) and that is the default; if the PIT runs
+    off the 132 MHz bus clock every period below is 2x longer.
+    """
+    EN, RLD, PIF, PIE, OVW = 1, 2, 4, 8, 16
+
+    def __init__(self, name, clock_hz):
+        self.name, self.clock_hz = name, clock_hz
+        self.pcsr, self.pmr = 0, 0xffff
+        self.expiry = None          # sample at which PCNTR next reaches 0
+        self.fired = 0
+
+    def period_samples(self):
+        pre = (self.pcsr >> 8) & 0xf
+        return (self.pmr + 1) * (1 << pre) / self.clock_hz * SAMPLE_HZ
+
+    def _arm(self, now):
+        self.expiry = now + self.period_samples() if self.pcsr & self.EN else None
+
+    @property
+    def irq(self):
+        return bool(self.pcsr & self.PIF) and bool(self.pcsr & self.PIE)
+
+    def read(self, off, size, now):
+        if off == 0:
+            return self.pcsr
+        if off == 2:
+            return self.pmr
+        if off == 4:                 # PCNTR: what is left of the current period
+            if self.expiry is None:
+                return self.pmr
+            frac = max(0.0, self.expiry - now) / max(self.period_samples(), 1e-9)
+            return int(frac * self.pmr) & 0xffff
+        return (1 << (size * 8)) - 1
+
+    def write(self, off, size, val, now):
+        if off == 0:
+            was_en = self.pcsr & self.EN
+            pif_clear = val & self.PIF
+            self.pcsr = (val & ~self.PIF) | (self.pcsr & self.PIF)
+            if pif_clear:
+                self.pcsr &= ~self.PIF
+            if (self.pcsr & self.EN) and not was_en:
+                self._arm(now)
+            elif not self.pcsr & self.EN:
+                self.expiry = None
+        elif off == 2:
+            self.pmr = val & 0xffff
+            if self.pcsr & self.OVW or self.expiry is None:
+                self._arm(now)
+
+    def advance(self, now):
+        """Fire every expiry up to `now`; returns the number fired."""
+        n = 0
+        while self.expiry is not None and now >= self.expiry:
+            self.pcsr |= self.PIF
+            self.fired += 1; n += 1
+            self.expiry = self.expiry + self.period_samples() if self.pcsr & self.RLD else None
+        return n
+
+    def seed(self, pcsr, pmr, now):
+        """State the boot left behind the generic stub (0x400005a8..0x400005f6)."""
+        self.pcsr, self.pmr = pcsr, pmr
+        self._arm(now)
+
+
+class Intc:
+    """MCF547x interrupt controller: IMRH/L +0x08/+0x0c, INTFRCH/L +0x10/+0x14,
+    SIMR/CIMR bytes at +0x1c/+0x1d (value = source, 0x40 = all), ICRn at
+    +0x40+n. IPRH/L (+0x00/+0x04) read back the asserted sources. Vector =
+    `vec_base + source`. `lines` maps a source to a callable giving its level.
+    """
+    def __init__(self, name, vec_base, lines=None):
+        self.name, self.vec_base = name, vec_base
+        self.imr = 0xffffffff_ffffffff      # bit n = source n masked; bit 0 = mask all
+        self.intfrc = 0
+        self.icr = [0] * 64
+        self.lines = dict(lines or {})
+        self.on_force = None                # called when an INTFRC bit is set
+
+    def asserted(self):
+        a = self.intfrc
+        for src, fn in self.lines.items():
+            if fn():
+                a |= 1 << src
+        return a
+
+    def pending(self):
+        """[(level, source)] asserted and unmasked, highest level first."""
+        a = self.asserted() & ~self.imr
+        if self.imr & 1:
+            a = 0
+        out = [(self.icr[s], s) for s in range(1, 64) if a >> s & 1 and self.icr[s]]
+        out.sort(reverse=True)
+        return out
+
+    def read(self, off, size):
+        if off < 0x18 and size == 4:
+            a = self.asserted()
+            return {0x00: a >> 32, 0x04: a & 0xffffffff,
+                    0x08: self.imr >> 32, 0x0c: self.imr & 0xffffffff,
+                    0x10: self.intfrc >> 32, 0x14: self.intfrc & 0xffffffff}.get(off, 0)
+        if 0x40 <= off < 0x80 and size == 1:
+            return self.icr[off - 0x40]
+        return (1 << (size * 8)) - 1
+
+    def write(self, off, size, val):
+        if off == 0x08 and size == 4:
+            self.imr = (val << 32) | (self.imr & 0xffffffff)
+        elif off == 0x0c and size == 4:
+            self.imr = (self.imr & ~0xffffffff) | val
+        elif off in (0x10, 0x14) and size == 4:
+            before = self.intfrc
+            if off == 0x10:
+                self.intfrc = (val << 32) | (self.intfrc & 0xffffffff)
+            else:
+                self.intfrc = (self.intfrc & ~0xffffffff) | val
+            if self.intfrc & ~before and self.on_force:
+                self.on_force(self, self.intfrc & ~before)
+        elif off == 0x1c and size == 1:      # SIMR: set mask
+            self.imr = 0xffffffff_ffffffff if val & 0x40 else self.imr | (1 << (val & 0x3f))
+        elif off == 0x1d and size == 1:      # CIMR: clear mask
+            # ...and MASKALL (IMRL bit 0) with it: nothing in the image ever
+            # writes IMRH/IMRL (literal scan, 6 Sep 2026), the firmware unmasks
+            # only through CIMR, and the unit takes interrupts. Inferred.
+            self.imr = 0 if val & 0x40 else self.imr & ~((1 << (val & 0x3f)) | 1)
+        elif 0x40 <= off < 0x80 and size == 1:
+            self.icr[off - 0x40] = val & 7
+
+
+class Uart:
+    """One of the serial blocks at 0xfc064000/0xfc068000, modelled from the
+    firmware's own use of it (handler 0x400109bc, ring writer 0x40010b1c,
+    polled sender 0x40010a4c; read 6 Sep 2026):
+      +0x04 status: bit 0 = receive ready (must read 0 with nothing queued,
+            or the handler's receive loop never ends), bit 2 = transmit ready
+            (the code loads the byte into CCR and tests Z);
+      +0x0c data: read = next received byte, write = one byte sent;
+      +0x14 mask: 3 = transmit + receive interrupts, 2 = receive only.
+    Transmit is always ready here, so the line is asserted exactly while the
+    transmit interrupt is enabled -- the handler drains the ring and drops
+    the mask to 2 itself. Every byte sent is kept in `tx`.
+    """
+    RXRDY, TXRDY = 1, 4
+
+    def __init__(self, name, base):
+        self.name, self.base = name, base
+        self.imr = 0
+        self.regs = {}
+        self.tx = bytearray()
+        self.rx = collections.deque()
+
+    @property
+    def irq(self):
+        return bool(self.imr & 1) or (bool(self.imr & 2) and bool(self.rx))
+
+    def read(self, off, size):
+        if off == 0x04:
+            return self.TXRDY | (self.RXRDY if self.rx else 0)
+        if off == 0x0c:
+            return self.rx.popleft() if self.rx else 0
+        if off == 0x14:
+            return self.imr
+        return self.regs.get(off, (1 << (size * 8)) - 1)
+
+    def write(self, off, size, val, replay=False):
+        if off == 0x0c:
+            if not replay:
+                self.tx.append(val & 0xff)
+        elif off == 0x14:
+            self.imr = val & 0xff
+        else:
+            self.regs[off] = val
+
+
+class Dspi:
+    """The DSPI at 0xfc05c000 as a loopback: every frame pushed (PUSHR +0x34)
+    yields one received frame (POPR +0x38, value 0), and the status register
+    (+0x2c) reports the receive count in bits 4-7 with TCF (31) and TFFF (25)
+    set. Sites read 6 Sep 2026: 0x4001c398 pushes three and waits for three;
+    0x40040b94 waits for two (the card boot's fixed reply of 2, which can
+    never satisfy the first). What sits on the far end is not modelled: the
+    reply is 0 and the config registers are stored and read back.
+    """
+    SR, PUSHR, POPR = 0x2c, 0x34, 0x38
+
+    def __init__(self):
+        self.rx = collections.deque()
+        self.regs = {}
+        self.pushed = 0
+
+    def read(self, off, size):
+        if off == self.SR:
+            return 0x82000000 | (min(len(self.rx), 15) << 4)
+        if off == self.POPR:
+            return self.rx.popleft() if self.rx else 0
+        return self.regs.get(off, (1 << (size * 8)) - 1)
+
+    def write(self, off, size, val, replay=False):
+        if off == self.PUSHR:
+            if not replay:
+                self.rx.append(0)
+                self.pushed += 1
+        elif off != self.SR:
+            self.regs[off] = val
+
+
+class RtosFault(Exception):
+    pass
+
+
+class Rtos:
+    """The event loop over a booted machine. Construct via `attach()`."""
+
+    def __init__(self, r, ips=3990.0, pit_clock_hz=264e6, quantum=4096,
+                 step_quantum=32, tick=True, trace=None):
+        self.r, self.uc = r, r.uc
+        self.ips = float(ips)
+        self.quantum, self.step_quantum = int(quantum), int(step_quantum)
+        self.tick = tick
+        self.trace = trace                   # callable(str) or None
+        self.sample = 0.0
+        self.instrs = 0
+        self.bursts = 0
+        self.wall = 0.0
+        self.pc = None
+        self.trap = r.trap                   # the boot's (32, HANDOFF)
+        self.created = []                    # (sample, tcb, entry, prio, stack, size, creator)
+        self.blocks = []                     # (sample, tcb, trap pc, caller, object)
+        self.dispatches = []                 # (sample, tcb, pc) at every scheduler rte
+        self.switches = 0
+        self.forces = 0
+        self.idle_skips = 0
+        self.first_switch = None             # (from_tcb, to_tcb)
+        self.pc_samples = collections.Counter()   # (tcb, pc) per burst end
+        self.stop_reason = None
+        self.unmapped = None
+        self._sr_cache = None
+        self._force_stop = False
+        # peripheral models
+        self.pit0, self.pit1 = Pit("PIT0", pit_clock_hz), Pit("PIT1", pit_clock_hz)
+        self.uart64, self.uart68 = Uart("UART@fc064000", 0xfc064000), Uart("UART@fc068000", 0xfc068000)
+        self.dspi = Dspi()
+        # INTC0 sources 27/28 -> vectors 0x5b/0x5c -> handlers 0x400109bc/0x40010b88
+        # (vector-install scan, 6 Sep 2026); INTC1 source 43 = PIT0.
+        self.intc0 = Intc("INTC0", 64, {27: lambda: self.uart64.irq, 28: lambda: self.uart68.irq})
+        self.ata_irq = False                 # the card's INTRQ (INTC1 source 54, vector 0xb6)
+        # INTC1: 43 = PIT0 (vector 171, the scheduler), 44 = PIT1 (vector 0xac,
+        # the storage layer's delay timer, handler 0x40020d38), 54 = ATA (0xb6)
+        self.intc1 = Intc("INTC1", 128, {43: lambda: self.tick and self.pit0.irq,
+                                         44: lambda: self.pit1.irq,
+                                         54: lambda: self.ata_irq})
+        self.intc0.on_force = self.intc1.on_force = self._on_force
+
+    # -- attach --------------------------------------------------------------
+    def attach_card(self, card):
+        """Interpose on the card's task-file window so the card raises INTRQ
+        the way ATA does (handler 0x40015304, read 6 Sep 2026: one sector per
+        interrupt, completion signalled when the count reaches zero):
+        asserted when a command completes or a sector is ready, after each
+        sector consumed with more to come, and after each sector absorbed by
+        a WRITE; cleared by a read of the status register (not the alternate
+        status). The card model itself is emu_card's, untouched."""
+        uc = self.uc
+        self.card = card
+
+        def rd(u, off, size, d):
+            v = card.read(off, size)
+            if off == ec.R_CMD:
+                self.ata_irq = False
+            elif off == ec.R_DATA and card.dpos % ec.SECTOR == 0 and card.dpos < len(card.data):
+                self.ata_irq = True
+            return v
+
+        def wr(u, off, size, val, d):
+            before = card.writes
+            card.write(off, size, val)
+            if off == ec.R_CMD:
+                self.ata_irq = (val & 0xff) != 0x30
+            elif off == ec.R_DATA and card.writes > before:
+                self.ata_irq = True
+        uc.mem_unmap(ec.ATA_BASE, 0x1000)
+        uc.mmio_map(ec.ATA_BASE, 0x1000, rd, None, wr, None)
+        return self
+
+    def watch_calls(self, addrs):
+        """Log every entry to each address as (sample, task, addr, caller) in
+        `self.calls` -- a cheap diagnostic (single-address code hooks)."""
+        self.calls = []
+
+        def on_call(u, addr, size, user):
+            sp = u.reg_read(eb.UC_M68K_REG_A7)
+            ret, arg = struct.unpack(">II", u.mem_read(sp, 8))
+            self.calls.append((self.sample, self._cur(), addr, ret, arg))
+            self._t(f"call {addr:#x} from {ret:#x} arg={arg:#x} in {self._name(self._cur())}")
+        for a in addrs:
+            self.uc.hook_add(eb.UC_HOOK_CODE, on_call, begin=a, end=a)
+        self.uc.ctl_flush_tb()
+        return self
+
+    def watch_pc(self, addrs):
+        """Log registers each time one of `addrs` is about to execute."""
+        regs = [("d0", eb.UC_M68K_REG_D0), ("d1", eb.UC_M68K_REG_D1), ("a0", eb.UC_M68K_REG_A0),
+                ("a1", eb.UC_M68K_REG_A1), ("a3", eb.UC_M68K_REG_A3), ("sp", eb.UC_M68K_REG_A7),
+                ("sr", eb.UC_M68K_REG_SR)]
+
+        def on_pc(u, addr, size, user):
+            vals = " ".join(f"{n}={u.reg_read(r) & 0xffffffff:#x}" for n, r in regs)
+            self._t(f"at {addr:#x} {vals} cur={self._cur():#x} in {self._name(self._cur())}")
+        for a in addrs:
+            self.uc.hook_add(eb.UC_HOOK_CODE, on_pc, begin=a, end=a)
+        self.uc.ctl_flush_tb()
+        return self
+
+    def watch_mem(self, addr, length):
+        """Log every write into [addr, addr+length) as (sample, task, pc,
+        address, size, value) in `self.mem_writes` -- a diagnostic."""
+        self.mem_writes = []
+
+        def on_write(u, acc, a, size, val, user):
+            pc = u.reg_read(eb.UC_M68K_REG_PC)
+            self.mem_writes.append((self.sample, self._cur(), pc, a, size, val))
+            self._t(f"write [{a:#x}] <- {val:#x} ({size}) at {pc:#x} in {self._name(self._cur())}")
+        self.uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_write, begin=addr, end=addr + length - 1)
+        self.uc.ctl_flush_tb()
+        return self
+
+    def install(self):
+        uc = self.uc
+        vec = int.from_bytes(uc.mem_read(VBR + 0x80, 4), "big")
+        if vec != SCHED:
+            raise RtosFault(f"vector 32 -> {vec:#x}, expected the scheduler {SCHED:#x}")
+        vec171 = int.from_bytes(uc.mem_read(VBR + 4 * 171, 4), "big")
+        if vec171 != SCHED:
+            raise RtosFault(f"vector 171 -> {vec171:#x}, expected the scheduler {SCHED:#x}")
+        # Main's init reads a magic word at 0x1ffffe (0x4003232c: == 0xdcba means
+        # a test-mode flash); the boot maps only the first 64 KB. Zero = no magic.
+        # The settings reset (0x4001f298) clears 0x100fff04..0x10100004, four
+        # bytes past the SRAM window (a firmware off-by-four hardware absorbs).
+        for base, size in ((0x00010000, 0x001f0000), (0x10100000, 0x1000)):
+            try:
+                uc.mem_map(base, size)
+            except eb.UcError:
+                pass
+        uc.mem_write(SR_TRAMP, bytes.fromhex("40c0" "4e71"))     # movew %sr,%d0 ; nop
+        # the whole window, not a sub-range: Unicorn's MMIO split is unproven here
+        uc.mem_unmap(PERIPH_BASE, PERIPH_SIZE)
+        uc.mmio_map(PERIPH_BASE, PERIPH_SIZE,
+                    lambda u, off, size, d: self._pread(PERIPH_BASE + off, size), None,
+                    lambda u, off, size, val, d: self._pwrite(PERIPH_BASE + off, size, val), None)
+        # Seed the models with what the boot wrote into the generic stub before
+        # we existed: attach() logs every write to the window (7,886 on the
+        # stock image) and we replay them in order. Without a log, fall back to
+        # the handful read from the image (0x400005a8..f6, 0x40010fb2..ba).
+        boot_writes = getattr(self.r, "rtos_boot_writes", None)
+        if boot_writes:
+            for a, size, val in boot_writes:
+                val &= (1 << (size * 8)) - 1
+                # An all-ones value is a read-modify-write of the stub's
+                # all-ones reply (PIT0's `PCSR |= 9` arrives as 0xffff), not a
+                # value the firmware chose: skip it. Nothing in the boot writes
+                # all-ones on purpose (7,886 writes, stock image, 6 Sep 2026).
+                if val == (1 << (size * 8)) - 1:
+                    continue
+                self._pwrite(a, size, val, replay=True)
+            self.seeded = len(boot_writes)
+            # Boot artefact: the boot enables the transmit interrupt from its
+            # ring writer, and on hardware the driver's handler (installed at
+            # 0x40010faa) drains the ring during the boot, before the kernel
+            # init at 0x40000db0 refills every vector slot with the trampoline
+            # 0x40000d74. The cold boot here takes no interrupts, so the mask
+            # arrives at the handoff still armed with the trampoline as its
+            # handler, which storms. Main re-installs the handler (0x40010efc)
+            # and re-arms transmit on its first write; the ring's leftover
+            # bytes go out then. Inferred from the storm, not measured.
+            for u in (self.uart64, self.uart68):
+                u.imr &= ~1
+        else:
+            self.pit0.seed(0x0b3f, 643, self.sample)
+            self.intc1.icr[43] = 1
+            self.intc1.write(0x1d, 1, 43)
+            self.intc0.icr[27] = 6
+            self.intc0.write(0x1d, 1, 27)
+            self.seeded = 0
+
+        def on_create(u, addr, size, user):
+            sp = u.reg_read(eb.UC_M68K_REG_A7)
+            args = struct.unpack(">5I", u.mem_read(sp + 4, 20))
+            self.created.append((self.sample,) + args + (self._cur(),))
+            self._t(f"create tcb={args[0]:#x} entry={args[1]:#x} prio={args[2]} "
+                    f"stack={args[3]:#x}+{args[4]:#x} by {self._name(self._cur())}")
+        uc.hook_add(eb.UC_HOOK_CODE, on_create, begin=CREATE, end=CREATE)
+
+        def on_idle(u, addr, size, user):
+            self._force_stop = "idle"
+            u.emu_stop()
+        uc.hook_add(eb.UC_HOOK_CODE, on_idle, begin=MAIN_SPIN, end=MAIN_SPIN)
+
+        def on_unmapped(u, access, addr, size, value, user):
+            self.unmapped = (access, addr, size, u.reg_read(eb.UC_M68K_REG_PC))
+            return False
+        uc.hook_add(eb.UC_HOOK_MEM_READ_UNMAPPED | eb.UC_HOOK_MEM_WRITE_UNMAPPED, on_unmapped)
+        uc.ctl_flush_tb()
+        return self
+
+    # -- peripheral window ---------------------------------------------------
+    def _pread(self, a, size):
+        if INTC0 <= a < INTC0 + 0x100:
+            return self.intc0.read(a - INTC0, size)
+        if INTC1 <= a < INTC1 + 0x100:
+            return self.intc1.read(a - INTC1, size)
+        if PIT0 <= a < PIT0 + 0x10:
+            return self.pit0.read(a - PIT0, size, self.sample)
+        if PIT1 <= a < PIT1 + 0x10:
+            return self.pit1.read(a - PIT1, size, self.sample)
+        for u in (self.uart64, self.uart68):
+            if u.base <= a < u.base + 0x20:
+                return u.read(a - u.base, size)
+        if DSPI <= a < DSPI + 0x100:
+            return self.dspi.read(a - DSPI, size)
+        v = PLL_VAL if a == PLL_REG else eb.EXTRA_OVERRIDES.get(a, (1 << (size * 8)) - 1)
+        if callable(v):
+            v = v(self.uc, a, size)
+        return v
+
+    def _pwrite(self, a, size, val, replay=False):
+        if INTC0 <= a < INTC0 + 0x100:
+            self.intc0.write(a - INTC0, size, val)
+        elif INTC1 <= a < INTC1 + 0x100:
+            self.intc1.write(a - INTC1, size, val)
+        elif PIT0 <= a < PIT0 + 0x10:
+            self.pit0.write(a - PIT0, size, val, self.sample)
+        elif PIT1 <= a < PIT1 + 0x10:
+            self.pit1.write(a - PIT1, size, val, self.sample)
+        elif DSPI <= a < DSPI + 0x100:
+            self.dspi.write(a - DSPI, size, val, replay=replay)
+        else:
+            for u in (self.uart64, self.uart68):
+                if u.base <= a < u.base + 0x20:
+                    u.write(a - u.base, size, val, replay=replay)
+
+    def _on_force(self, intc, bits):
+        # a reschedule request: end the burst so it is seen within the instruction
+        self.forces += 1
+        self._force_stop = "force"
+        self.uc.emu_stop()
+
+    # -- exception plumbing --------------------------------------------------
+    def _sr(self):
+        """The true SR. NOT `reg_read(SR)`: at a burst boundary Unicorn
+        2.1.4's m68k SR read computes the condition codes wrong AND installs
+        them, so the next conditional branch goes the wrong way (measured
+        6 Sep 2026 with a cmpl/bne pair split across a burst: Z lost, branch
+        taken; reading D2 instead is harmless). Executing `movew %sr,%d0`
+        from a trampoline flushes the flags through the translator's own
+        path and returns them intact. Cached until the next burst."""
+        if self._sr_cache is None:
+            uc = self.uc
+            d0 = uc.reg_read(eb.UC_M68K_REG_D0)
+            uc.emu_start(SR_TRAMP, 0, count=1)
+            self._sr_cache = uc.reg_read(eb.UC_M68K_REG_D0) & 0xffff
+            uc.reg_write(eb.UC_M68K_REG_D0, d0)
+        return self._sr_cache
+
+    def _push(self, vec, ret_pc, new_sr):
+        uc = self.uc
+        sr = self._sr()
+        sp = uc.reg_read(eb.UC_M68K_REG_A7) - 8
+        uc.mem_write(sp, struct.pack(">HHI", 0x4000 | (vec << 2), sr, ret_pc & 0xffffffff))
+        uc.reg_write(eb.UC_M68K_REG_SR, new_sr)      # SR before A7 (bank select)
+        self._sr_cache = new_sr
+        uc.reg_write(eb.UC_M68K_REG_A7, sp)
+        self.pc = int.from_bytes(uc.mem_read(VBR + 4 * vec, 4), "big")
+
+    def _pop(self, rte_pc):
+        uc = self.uc
+        sp = uc.reg_read(eb.UC_M68K_REG_A7)
+        fmt, sr, pc = struct.unpack(">HHI", uc.mem_read(sp, 8))
+        if fmt >> 12 != 4:
+            raise RtosFault(f"rte at {rte_pc:#x}: frame format {fmt:#06x} is not a 4-word frame")
+        if not sr & 0x2000:
+            raise RtosFault(f"rte at {rte_pc:#x} would return to user mode (SR {sr:#06x})")
+        uc.reg_write(eb.UC_M68K_REG_SR, sr)          # SR before A7
+        self._sr_cache = sr
+        uc.reg_write(eb.UC_M68K_REG_A7, sp + 8)
+        self.pc = pc
+        if rte_pc == SCHED_RTE:
+            cur = self._cur()
+            if self.dispatches and self.dispatches[-1][1] != cur:
+                self.switches += 1
+            self.dispatches.append((self.sample, cur, pc))
+            self._t(f"dispatch -> {self._name(cur)} pc={pc:#x} sr={sr:#06x}")
+
+    def _cur(self):
+        return int.from_bytes(self.uc.mem_read(CUR_TCB, 4), "big")
+
+    def _name(self, tcb):
+        return TASK_NAMES.get(tcb, f"{tcb:#x}")
+
+    def _handle_trap(self):
+        intno, pc = self.trap
+        self.trap = None
+        if intno == 32:
+            frm = self._cur()
+            # a primitive's trap: [sp] = its caller, [sp+4] = its object
+            sp = self.uc.reg_read(eb.UC_M68K_REG_A7)
+            # event/semaphore waits trap with [sp]=caller,[sp+4]=object; the
+            # lock primitive 0x400009f4 traps at 0x40000a78 under 12 bytes of
+            # saved registers, and its object's first word is the owner TCB
+            if pc == LOCK_TRAP:
+                caller, obj = struct.unpack(">II", self.uc.mem_read(sp + 12, 8))
+                owner = int.from_bytes(self.uc.mem_read(obj, 4), "big")
+            else:
+                caller, obj = struct.unpack(">II", self.uc.mem_read(sp, 8))
+                owner = None
+            self.blocks.append((self.sample, frm, pc, caller, obj, owner))
+            self._push(32, pc + 2, (self._sr() | 0x2000) & ~0x8000)
+            if self.first_switch is None:
+                self.first_switch = [frm, None]
+            self._t(f"trap #0 at {pc:#x} from {self._name(frm)} caller={caller:#x} obj={obj:#x}")
+            return
+        if intno == 256:
+            self._pop(pc)
+            if self.first_switch and self.first_switch[1] is None and pc == SCHED_RTE:
+                self.first_switch[1] = self._cur()
+            return
+        r = self.r
+        r.trap = (intno, pc)
+        npc = eb._isa_c_shim(self.uc, r) or eb._movem_shim(self.uc, r) or eb._emac_load_shim(self.uc, r)
+        r.trap = None
+        if npc is None:
+            raise RtosFault(f"unhandled exception {intno} at {pc:#x} in {self._name(self._cur())}")
+        self.pc = npc
+
+    # -- interrupts ----------------------------------------------------------
+    def _candidates(self):
+        out = []
+        for intc in (self.intc0, self.intc1):
+            for level, src in intc.pending():
+                out.append((level, intc.vec_base + src, intc.name, src))
+        out.sort(reverse=True)
+        return out
+
+    def _deliver(self):
+        c = self._candidates()
+        if not c:
+            return False
+        level, vec, name, src = c[0]
+        ipl = (self._sr() >> 8) & 7
+        if level <= ipl:
+            return False
+        sr = self._sr()
+        self._push(vec, self.pc, (sr & ~0x8700) | 0x2000 | (level << 8))
+        self._t(f"irq {name} src {src} vec {vec} level {level} -> {self.pc:#x} (was ipl {ipl})")
+        return True
+
+    def _masked_pending(self):
+        c = self._candidates()
+        return bool(c) and c[0][0] <= ((self._sr() >> 8) & 7)
+
+    def _next_expiry(self):
+        ex = [p.expiry for p in (self.pit0, self.pit1) if p.expiry is not None]
+        return min(ex) if ex else None
+
+    # -- the loop ------------------------------------------------------------
+    def _t(self, s):
+        if self.trace:
+            self.trace(f"[{self.sample:10.1f}] {s}")
+
+    def step(self):
+        uc = self.uc
+        if self.trap:
+            self._handle_trap()
+        while self._deliver():
+            pass
+        if self.pc == MAIN_SPIN and not self._candidates():
+            ex = self._next_expiry()
+            if ex is None:
+                raise RtosFault("idle at main's spin with no timer armed: deadlock")
+            self.sample = max(self.sample, ex)
+            self.idle_skips += 1
+            self._tick_timers()
+            return
+        n = self.quantum
+        if self._masked_pending():
+            n = self.step_quantum
+        ex = self._next_expiry()
+        if ex is not None:
+            n = max(1, min(n, int((ex - self.sample) * self.ips) + 1))
+        self.r.trap = None
+        self._force_stop = None
+        self._sr_cache = None
+        t0 = time.perf_counter()
+        uc.emu_start(self.pc, 0, count=n)
+        self.wall += time.perf_counter() - t0
+        self.bursts += 1
+        self.instrs += n
+        self.sample += n / self.ips
+        self.trap = self.r.trap
+        self.pc = self.trap[1] if self.trap else uc.reg_read(eb.UC_M68K_REG_PC)
+        self.pc_samples[(self._cur(), self.pc)] += 1
+        self._tick_timers()
+
+    def _tick_timers(self):
+        if self.pit0.advance(self.sample):
+            self._t(f"PIT0 expiry #{self.pit0.fired}")
+        self.pit1.advance(self.sample)
+
+    def run(self, ms=None, until=None, max_bursts=None):
+        """Run until `ms` emulated milliseconds elapse, `until(self)` is true,
+        or `max_bursts` bursts. Returns the reason."""
+        end = None if ms is None else self.sample + ms * SAMPLE_HZ / 1000.0
+        n = 0
+        while True:
+            if until is not None and until(self):
+                self.stop_reason = "until"; return self.stop_reason
+            if end is not None and self.sample >= end:
+                self.stop_reason = "time"; return self.stop_reason
+            if max_bursts is not None and n >= max_bursts:
+                self.stop_reason = "bursts"; return self.stop_reason
+            self.step(); n += 1
+
+    # -- the M6a gate --------------------------------------------------------
+    def ran(self):
+        return {d[1] for d in self.dispatches}
+
+    def gate_m6a(self):
+        problems = []
+        got = sorted(tuple(c[1:7]) for c in self.created)
+        want = sorted(EXPECTED_TASKS)
+        if got != want:
+            problems.append(f"created {len(got)} tasks, table differs: "
+                            f"missing {[hex(t[0]) for t in want if t not in got]} "
+                            f"extra {[hex(t[0]) for t in got if t not in want]}")
+        missing = ALL_TCBS - self.ran()
+        if missing:
+            problems.append("never ran: " + ", ".join(self._name(t) for t in sorted(missing)))
+        if self.first_switch != [BOOT_TCB, MAIN_TCB]:
+            problems.append(f"first switch {self.first_switch}, expected boot -> main")
+        return not problems, problems
+
+    def report(self):
+        lines = []
+        lines.append(f"sample {self.sample:.1f} ({self.sample / SAMPLE_HZ * 1000:.2f} ms), "
+                     f"{self.instrs:,} instrs charged in {self.bursts} bursts, "
+                     f"{self.wall:.2f} s wall ({self.instrs / max(self.wall, 1e-9) / 1e6:.2f} M instr/s), "
+                     f"{self.idle_skips} idle skips, {self.forces} INTFRC writes, PIT0 fired {self.pit0.fired}")
+        lines.append(f"seeded from {self.seeded} boot writes; serial sent: "
+                     f"{len(self.uart64.tx)} B on {self.uart64.name}, {len(self.uart68.tx)} B on {self.uart68.name}")
+        lines.append("created:")
+        for c in self.created:
+            ok = tuple(c[1:7]) in EXPECTED_TASKS
+            lines.append(f"  [{c[0]:9.1f}] {self._name(c[1]):8s} tcb={c[1]:#x} entry={c[2]:#x} "
+                         f"prio={c[3]} stack={c[4]:#x}+{c[5]:#x} by {self._name(c[6]):8s} "
+                         f"{'ok' if ok else 'NOT IN TABLE'}")
+        lines.append(f"dispatches ({len(self.dispatches)}, {self.switches} switches):")
+        last = None
+        for s, t, pc in self.dispatches:
+            if t != last:
+                lines.append(f"  [{s:9.1f}] {self._name(t):8s} pc={pc:#x}")
+            last = t
+        lines.append("last block per task (trap site, caller, object):")
+        last = {}
+        for smp, t, pc, caller, obj, owner in self.blocks:
+            last[t] = (smp, pc, caller, obj, owner)
+        for t, (smp, pc, caller, obj, owner) in sorted(last.items(), key=lambda kv: kv[1][0]):
+            lines.append(f"  [{smp:9.1f}] {self._name(t):8s} at {pc:#x} caller={caller:#x} obj={obj:#x}"
+                         + (f" held by {self._name(owner)}" if owner is not None else ""))
+        for pit in (self.pit0, self.pit1):
+            lines.append(f"{pit.name}: pcsr={pit.pcsr:#06x} pmr={pit.pmr} expiry={pit.expiry} fired={pit.fired}")
+        card = getattr(self, "card", None)
+        if card is not None:
+            lines.append(f"card: {len(card.log)} commands, {card.reads} sectors read, {card.writes} written; "
+                         f"last: {card.log[-5:]}")
+        ran = self.ran()
+        lines.append("ran: " + " ".join(self._name(t) for t in sorted(ALL_TCBS) if t in ran)
+                     + ("   never: " + " ".join(self._name(t) for t in sorted(ALL_TCBS - ran)) if ALL_TCBS - ran else ""))
+        return "\n".join(lines)
+
+    def starvation(self, top=6):
+        by = collections.defaultdict(collections.Counter)
+        for (t, pc), n in self.pc_samples.items():
+            by[t][pc] += n
+        lines = ["burst-end PCs per task (who is spinning where):"]
+        for t, ctr in sorted(by.items(), key=lambda kv: -sum(kv[1].values())):
+            tot = sum(ctr.values())
+            lines.append(f"  {self._name(t):8s} {tot:6d}: " +
+                         " ".join(f"{pc:#x}x{n}" for pc, n in ctr.most_common(top)))
+        return "\n".join(lines)
+
+
+def stage_project(project, set_name, name, tree="out/_emu_rtos_tree"):
+    """Copy a project directory into <tree>/<SET>/<NAME> (no audio) and build
+    a 64 MB card image from it -- the same staging emu_frames does."""
+    import shutil
+    src = pathlib.Path(project)
+    name = name or src.name
+    tree = pathlib.Path(tree)
+    if tree.exists():
+        shutil.rmtree(tree)
+    dst = tree / set_name / name
+    dst.mkdir(parents=True)
+    (tree / set_name / "AUDIO").mkdir()
+    for p in sorted(src.iterdir()):
+        if p.is_file() and not p.name.startswith("._") and p.suffix.lower() not in (".wav", ".ot"):
+            shutil.copy2(p, dst / p.name)
+    return ec.build_image(str(tree), 64), name
+
+
+def attach(image=None, card_image=None, log=None, **kw):
+    """Boot to the handoff, attach the card WITHOUT its cold-detour hooks,
+    install the route-A models. Returns (BootResult, Rtos)."""
+    ping = {"v": 0}
+
+    def dsp_ping(uc, addr, size):
+        ping["v"] ^= 1
+        return ping["v"]
+    # Log every peripheral write the boot makes, to seed the models from
+    # (Rtos.install). The PLL read at 0x40000418 is the first peripheral
+    # access, so its reply callable is where the write hook gets installed.
+    boot_writes = []
+    hooked = {"done": False}
+
+    def pll_probe(uc, addr, size):
+        if not hooked["done"]:
+            hooked["done"] = True
+            uc.hook_add(eb.UC_HOOK_MEM_WRITE,
+                        lambda u, acc, a, sz, val, x: boot_writes.append((a, sz, val)),
+                        begin=PERIPH_BASE, end=PERIPH_BASE + PERIPH_SIZE - 1)
+        return PLL_VAL
+    eb.EXTRA_OVERRIDES[PLL_REG] = pll_probe
+    # the DSP host port as M5 faked it, and the two replies the card needs
+    eb.EXTRA_OVERRIDES[0x2000001c] = dsp_ping
+    eb.EXTRA_OVERRIDES[0x20000004] = 0x0000
+    eb.EXTRA_OVERRIDES[ec.FW_ATA_HOST_STATUS] = 0x00
+    eb.EXTRA_OVERRIDES[0xfc05c02c] = 0x00000020
+    r = eb.boot(image)
+    if not r.reached_handoff:
+        raise RtosFault(f"boot did not reach the handoff: {r.stopped}")
+    if r.trap != (32, HANDOFF):
+        raise RtosFault(f"handoff trap is {r.trap}, expected (32, {HANDOFF:#x})")
+    r.rtos_boot_writes = boot_writes
+    rt = Rtos(r, **kw)
+    if card_image is not None:
+        s = ec.attach(r, card_image, log, cold_hooks=False)
+        rt.attach_card(s.card)
+    rt.install()
+    return r, rt
+
+
+def selftest():
+    """Pin the Unicorn fact Rtos._sr rests on: a `cmpl`/`bne` pair split
+    across two bursts branches right on its own and wrong after a
+    `reg_read(SR)` in between; the trampoline read keeps it right. Code at
+    0x1000: cmpl d1,d0 / bnes +4 / moveq #1,d0 / nop / moveq #2,d0 / nop."""
+    code = bytes.fromhex("b081" "6604" "7001" "4e71" "7002" "4e71" "4e71" "4e71")
+
+    def run(read):
+        mu = eb.Uc(eb.UC_ARCH_M68K, eb.UC_MODE_BIG_ENDIAN)
+        mu.ctl_set_cpu_model(eb.UC_CPU_M68K_CFV4E)
+        mu.mem_map(0, 0x10000)
+        mu.mem_write(0x1000, code)
+        mu.mem_write(0x2000, bytes.fromhex("40c0" "4e71"))
+        mu.reg_write(eb.UC_M68K_REG_SR, 0x2700)
+        mu.reg_write(eb.UC_M68K_REG_A7, 0x8000)
+        mu.reg_write(eb.UC_M68K_REG_D0, 5)
+        mu.reg_write(eb.UC_M68K_REG_D1, 5)
+        mu.emu_start(0x1000, 0, count=1)
+        pc = mu.reg_read(eb.UC_M68K_REG_PC)
+        sr = None
+        if read == "api":
+            sr = mu.reg_read(eb.UC_M68K_REG_SR)
+        elif read == "tramp":
+            d0 = mu.reg_read(eb.UC_M68K_REG_D0)
+            mu.emu_start(0x2000, 0, count=1)
+            sr = mu.reg_read(eb.UC_M68K_REG_D0) & 0xffff
+            mu.reg_write(eb.UC_M68K_REG_D0, d0)
+        mu.emu_start(pc, 0, count=3)
+        return mu.reg_read(eb.UC_M68K_REG_D0), sr
+    plain, api, tramp = run(None), run("api"), run("tramp")
+    print(f"split, no read : d0={plain[0]} (want 1)")
+    print(f"split, API read: d0={api[0]} sr={api[1]:#06x} (Unicorn 2.1.4: d0=2, Z lost)")
+    print(f"split, tramp   : d0={tramp[0]} sr={tramp[1]:#06x} (want 1, 0x2704)")
+    ok = plain[0] == 1 and tramp == (1, 0x2704)
+    print("selftest:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+def _cli():
+    if "--selftest" in sys.argv:
+        return selftest()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--image", default=None, help="MAIN OS image (default: the raw stock image)")
+    ap.add_argument("--project", default=None, help="project dir to put on an emulated card")
+    ap.add_argument("--set", default="OCTABAM")
+    ap.add_argument("--name", default=None)
+    ap.add_argument("--ms", type=float, default=100.0, help="emulated milliseconds to run")
+    ap.add_argument("--ips", type=float, default=3990.0, help="instructions per sample (a knob)")
+    ap.add_argument("--pit-clock", type=float, default=264e6, help="PIT prescaler input, Hz (a knob)")
+    ap.add_argument("--quantum", type=int, default=4096)
+    ap.add_argument("--step-quantum", type=int, default=32)
+    ap.add_argument("--no-tick", action="store_true", help="PIT0 never asserts (step-1 checkpoint)")
+    ap.add_argument("--until-gate", action="store_true", help="stop as soon as the M6a gate passes")
+    ap.add_argument("--trace", action="store_true", help="print every dispatch/irq/create")
+    ap.add_argument("--starvation", action="store_true", help="print burst-end PCs per task")
+    ap.add_argument("--watch-calls", default="", help="comma-separated addresses to log entries to")
+    ap.add_argument("--watch-mem", default="", help="ADDR,LEN: log every write into that range")
+    ap.add_argument("--watch-pc", default="", help="comma-separated addresses: log registers there")
+    a = ap.parse_args()
+
+    card = None
+    if a.project:
+        card, _ = stage_project(a.project, a.set, a.name)
+    t0 = time.perf_counter()
+    r, rt = attach(a.image, card, ips=a.ips, pit_clock_hz=a.pit_clock, quantum=a.quantum,
+                   step_quantum=a.step_quantum, tick=not a.no_tick,
+                   trace=(lambda s: print(s, flush=True)) if a.trace else None)
+    if a.watch_calls:
+        rt.watch_calls([int(x, 0) for x in a.watch_calls.split(",")])
+    if a.watch_mem:
+        wa, wl = a.watch_mem.split(",")
+        rt.watch_mem(int(wa, 0), int(wl, 0))
+    if a.watch_pc:
+        rt.watch_pc([int(x, 0) for x in a.watch_pc.split(",")])
+    print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
+    print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
+          f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
+    until = (lambda x: x.gate_m6a()[0]) if a.until_gate else None
+    try:
+        why = rt.run(ms=a.ms, until=until)
+    except (RtosFault, eb.UcError) as e:
+        why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
+        if rt.unmapped:
+            acc, addr, size, pc = rt.unmapped
+            why += f" unmapped {'write' if acc in (eb.UC_MEM_WRITE_UNMAPPED,) else 'read'} {addr:#x} size {size} at pc {pc:#x}"
+    print(f"stopped    : {why}")
+    print(rt.report())
+    ok, problems = rt.gate_m6a()
+    if a.starvation or not ok:
+        print(rt.starvation())
+    print("M6a gate   :", "PASS" if ok else "FAIL")
+    for p in problems:
+        print("   -", p)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(_cli())

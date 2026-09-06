@@ -488,8 +488,13 @@ class CardSession:
         uc.reg_write(eb.UC_M68K_REG_PC, ret)
 
 
-def attach(r, image, log=None):
-    """Map the card into a warm machine (after `emu_bringup.boot`)."""
+def attach(r, image, log=None, cold_hooks=True):
+    """Map the card into a warm machine (after `emu_bringup.boot`).
+
+    cold_hooks=False leaves out the two hooks that satisfy waits by hand
+    (`on_wait`, `on_nowait`) -- for route A (tools/emu_rtos.py), where the
+    kernel's own event wait must block and the ATA interrupt must complete
+    the command. The observers (messages, paths) stay."""
     uc = r.uc
     card = AtaCard(image, log)
     s = CardSession(r, card)
@@ -534,7 +539,8 @@ def attach(r, image, log=None):
         s.waits += 1
         s.wait_log.append((ret, ev, kind))
         s._emulate_rts(u, 0)
-    uc.hook_add(eb.UC_HOOK_CODE, on_wait, begin=FW_WAIT_EVENT, end=FW_WAIT_EVENT)
+    if cold_hooks:
+        uc.hook_add(eb.UC_HOOK_CODE, on_wait, begin=FW_WAIT_EVENT, end=FW_WAIT_EVENT)
 
     def on_nowait(u, addr, size, user):
         # An asynchronous command (queue primitive called with flag bit 1)
@@ -546,7 +552,8 @@ def attach(r, image, log=None):
         if u.mem_read(FW_CMD, 1)[0]:
             card.complete(u)
             s.async_completions += 1
-    uc.hook_add(eb.UC_HOOK_CODE, on_nowait, begin=FW_QUEUE_NOWAIT_RET, end=FW_QUEUE_NOWAIT_RET)
+    if cold_hooks:
+        uc.hook_add(eb.UC_HOOK_CODE, on_nowait, begin=FW_QUEUE_NOWAIT_RET, end=FW_QUEUE_NOWAIT_RET)
 
     def on_message(u, addr, size, user):
         sp = u.reg_read(eb.UC_M68K_REG_A7)
