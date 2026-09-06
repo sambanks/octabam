@@ -101,6 +101,15 @@ KEY_REC = 0x4000a274
 KEY_PLAY = 0x4000a200               # gated on 0x80000029 (nonzero from boot in the test project);
                                      # sets clock-sync fields, then tail-calls FW_TRANSPORT
 KEY_STOP = 0x4000a1e0
+REC_ARM = 0x800066a0                 # the record-arm state REC's own handler tests
+TRANSPORT = 0x800065b8               # 0 -> 1 when the transport starts (§9.4)
+# ⚠️ BOTH ARE LONGWORDS, NOT BYTES. The transport start is a 4-byte store of
+# 1 at 0x800065b8 (measured 6 Sep 2026: `[0x800065b8] <- 0x1 (4)` at pc
+# 0x4009c3d4 in main), so the byte AT 0x800065b8 stays 0 and the 1 lands in
+# 0x800065bb. Reading either of these a byte at a time reports "never
+# changed" no matter what the firmware does -- read the word.
+def _word(rt, addr):
+    return int.from_bytes(rt.uc.mem_read(addr, 4), "big")
 
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
@@ -1478,6 +1487,11 @@ def _cli():
     ap.add_argument("--via-key", action="store_true",
                     help="with --sequencer: start transport through the real PLAY key handler "
                          "(press_play_live, M6d) instead of calling FW_TRANSPORT directly")
+    ap.add_argument("--via-rec", action="store_true",
+                    help="with --sequencer: start the transport through the real REC key "
+                         "handler INSTEAD of PLAY (REC starts it too, §9.4) and report the "
+                         "record-arm byte (0x800066a0) either side of the press -- RTOS_FORK "
+                         "section 9.4's falsifier. Overrides --via-key")
     a = ap.parse_args()
 
     card = None
@@ -1498,6 +1512,38 @@ def _cli():
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
+
+    def _watch_report():
+        """Print what --watch-calls / --watch-mem actually collected.
+
+        ⚠️ Both hooks appended to `rt.calls` / `rt.mem_writes` and the CLI
+        printed NEITHER unless --trace was also on, so a watched address
+        that never fired and one that fired every frame looked exactly the
+        same from the command line: silence. Anything concluded from "the
+        watch printed nothing" is worthless without this (M6e, 6 Sep 2026).
+        """
+        calls = getattr(rt, "calls", None)
+        if calls is not None:
+            seen = {}
+            for _, _, addr, ret, _ in calls:
+                e = seen.setdefault(addr, [0, set()])
+                e[0] += 1; e[1].add(ret)
+            for a_ in [int(x, 0) for x in a.watch_calls.split(",")]:
+                n, callers = seen.get(a_, (0, set()))
+                where = (", callers " + ", ".join(f"{c:#x}" for c in sorted(callers)[:4])) if callers else ""
+                print(f"watch-call : {a_:#x} entered {n} time(s){where}")
+        writes = getattr(rt, "mem_writes", None)
+        if writes is not None:
+            # ⚠️ `load_project_live` installs its own watch_mem and shares
+            # this list, so a run that loads a project carries its writes too
+            # -- the addresses below say which is which.
+            print(f"watch-mem  : {len(writes)} write(s) logged "
+                  f"(the load's own watch shares this list)")
+            for sample, task, pc, addr_, size, val in writes[:12]:
+                print(f"   [{sample:10.1f}] [{addr_:#x}] <- {val:#x} ({size}) "
+                      f"at pc {pc:#x} in {rt._name(task)}")
+            if len(writes) > 12:
+                print(f"   ... {len(writes) - 12} more")
 
     def _fault(e):
         why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
@@ -1534,7 +1580,29 @@ def _cli():
             rt.frame = True
             rt.next_frame = rt.sample + FRAME_PERIOD
             rt.exact_clock()
-            if a.via_key:
+            rec_arm = None
+            if a.via_rec:
+                # RTOS_FORK §9.4's falsifier, on a project whose track 1 IS
+                # configured as a recorder machine: does REC through its own
+                # handler move the record-arm byte? Read `0x800066a0` and the
+                # transport byte either side of the press.
+                #
+                # ⚠️ ORDER IS LOAD-BEARING, and two orders are already known
+                # bad (measured 6 Sep 2026, BOTH on the plain project too, so
+                # neither is a recorder finding): REC then PLAY delivers 400
+                # frames with ZERO FW_LIVE_NIBBLE writes -- REC starts the
+                # transport itself (§9.4), so PLAY toggles it back off -- and
+                # REC alone, with the tracks started by hand the way
+                # press_play_live does, ALSO gives zero. Only PLAY first,
+                # then REC, keeps M6c's gate intact, which is what makes the
+                # arm reading here mean anything: if the trig still lands at
+                # frame 344, the run is faithful and the arm byte was
+                # genuinely watched over a working transport.
+                rt.press_play_live()
+                before = (_word(rt, TRANSPORT), _word(rt, REC_ARM))
+                rt.press_rec_live()
+                rec_arm = (before, (_word(rt, TRANSPORT), _word(rt, REC_ARM)))
+            elif a.via_key:
                 rt.press_play_live()
             else:
                 rt.start_transport_live()
@@ -1556,6 +1624,12 @@ def _cli():
             return 1
         print(rt.report())
         print(f"sequencer  : playing bank {seq_bank} pattern {seq_pattern} (re-selected through the load's own last step)")
+        if rec_arm is not None:
+            (t0b, a0b), (t1b, a1b) = rec_arm
+            print(f"REC        : across the press -- transport {TRANSPORT:#x} "
+                  f"{t0b:#x} -> {t1b:#x}, record-arm {REC_ARM:#x} {a0b:#x} -> {a1b:#x} "
+                  f"(longwords); after the run {_word(rt, TRANSPORT):#x} / "
+                  f"{_word(rt, REC_ARM):#x}")
         print(f"load       : mounted={mounted} saved_bank={saved_bank} bank={final_bank} "
               f"clock={'internal' if a.internal_clock else 'external (CLOCK RECEIVE as saved)'}")
         print(f"frames run : {rt.frame_count - frame0} since transport start (target {a.frames}; "
@@ -1567,6 +1641,7 @@ def _cli():
         ok = rt.frame_count >= target
         if not ok:
             print(rt.starvation())
+        _watch_report()
         label = "M6d run (via-key)" if a.via_key else "M6c run"
         print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")
         return 0 if ok else 1

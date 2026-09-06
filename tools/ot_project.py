@@ -174,6 +174,29 @@ def set_track_slot(pdir, banknum, part, track, slot_1based):
     _bank_write(pdir, banknum, mut)
     print(f"bank{banknum:02d} part{part} T{track} slot -> {slot_1based}")
 
+# The machine-type byte, one per track per part. RAM offset (EMU.md /
+# EXTERNAL.md §6) is `PART_PTR + part*0x18b2 + 0x8eda2 + track`; the file
+# offset below is that plus the flat 9-byte IFF chunk header every PART
+# chunk carries -- the same +9 that FX1_OFF/FX2_OFF already carry over
+# their own RAM-relative 0 and 8. ✅ Verified 6 Sep 2026 by patching one
+# track and reading the byte back out of RAM after a real LOAD PROJECT.
+#
+# ⚠️ The VALUES are inferred, not confirmed: PARAM_PAGES.md reads 0/1 =
+# FLEX/STATIC, 2 = THRU, 3 = NEIGHBOR, 4 = PICKUP from the parameter sets
+# of the five PLAYBACK descriptor pages, matching a 0..4 dispatch, and says
+# in as many words that the mapping is not confirmed against the dispatch
+# order. Treat 4 as "the value the inference calls PICKUP", not as PICKUP.
+MTYPE_OFF, MTYPE_MIRROR = 0x02b, 4      # + track; part N's saved copy is part N+4
+
+def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True):
+    parts = (part, part + MTYPE_MIRROR) if mirror else (part,)
+    def mut(data):
+        for p in parts:
+            data[PART_BASE + (p-1)*PART_STRIDE + MTYPE_OFF + (track-1)] = mtype
+    _bank_write(pdir, banknum, mut, guard=guard)
+    print(f"bank{banknum:02d} part{','.join(str(p) for p in parts)} "
+          f"T{track} machine type -> {mtype}")
+
 # ---------------------------------------------------------------------------
 # A DETERMINISTIC TEST PROJECT
 #
@@ -487,6 +510,10 @@ if __name__ == "__main__":
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
     elif cmd == "track-slot": set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
+    elif cmd == "machine-type":
+        # <project> <bank> <part> <track> <type>; writes the part's saved
+        # mirror too, the way a bank's eight PART records require
+        set_machine_type(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
     elif cmd == "testproj": make_test_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "rigproj": make_rig_project(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "stamp-defaults":

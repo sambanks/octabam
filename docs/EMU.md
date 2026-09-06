@@ -426,7 +426,11 @@ under the real scheduler, including on the same project/trig this section
 describes (which still lands `0xd3` at frame 344 exactly as here) — so PC
 never equalled that literal address in that run, while `0x4000d2a0`
 (watched the same way, same run) fired 400/400 as expected, ruling out a
-hooking-mechanism problem. Not retracted outright — the write into
+hooking-mechanism problem. Note what the instrument is: `watch_calls`
+installs a `UC_HOOK_CODE` at the address itself, so a zero count means
+that instruction **never executed, by any route** — not merely that no
+`jsr` reached it. (The first write-up of this said "not reached via
+`jsr`", which understates it.) Not retracted outright — the write into
 `0x46104d15[track]` still happens on schedule, so SOME code does this; only
 the specific entry address is now unconfirmed under route A. Left as an
 open flag rather than corrected in place, since this reading long predates
@@ -555,20 +559,41 @@ question, are M6e's job. `RTOS_FORK.md` §9 has the full measurements and
 the task-table correction.
 
 **M6e, first pass (same day): the recorder project now exists — the arm
-path still doesn't.** `tools/scratch/make_recorder_testproj.py` patches
-track 1's machine-type byte to 4 (PICKUP1) in a copy of the real project,
-verified by RAM readback after a real load (`[4, 2, 0, 0, 0, 0, 0, 1]`
-where the source reads `[2, 2, 0, 0, 0, 0, 0, 1]`). With it, track 1's
-existing trig (the one M6c/M6d's gate fires at frame 344) stops writing
-`FW_LIVE_NIBBLE` entirely — the first real evidence machine-type dispatch
-(`ARCHITECTURE.md`'s "trig -> voice, dispatched by machine type") actually
-branches for PICKUP. But the arm/record path itself is still unlocated:
-every named candidate function logged zero calls across 400 frames,
-including `0x4000b800` on the ORIGINAL project's own successful trig — so
-that address isn't reached the way this document previously assumed,
-independent of the recorder question. Likely missing piece: a recorder
-buffer assignment (ids 128-135) the way a STATIC track needs a sample
-slot — not yet located. `RTOS_FORK.md` §10 has the full measurements.
+path still doesn't, and the pass's own headline claim is retracted.**
+`ot_project.py machine-type` (and the `tools/scratch/` wrapper) patches
+track 1's machine-type byte to 4 in a copy of the real project, verified
+by RAM readback after a real load (`[4, 2, 0, 0, 0, 0, 0, 1]` where the
+source reads `[2, 2, 0, 0, 0, 0, 0, 1]`). With it, track 1 stops writing
+`FW_LIVE_NIBBLE` entirely: 8 writes -> 5.
+
+❌ **That was written up as evidence that trig dispatch branches for
+PICKUP. It is not** (controls, same command, same day): machine type **7**
+— out of range for the 0..4 dispatch `PARAM_PAGES.md` names — gives the
+IDENTICAL 5-write signature, and machine type **3** (NEIGHBOR, in range)
+gives the baseline 8 with `0xd3` at frame 344. And the writes that vanish
+include track 1's **frame-0 transport-start** `0x10`, one of the six in
+M6c's fidelity table — so the track never starts, and nothing being
+measured here happens at the trig at all. The signature reads "type >= 4 /
+this track is not started".
+
+§9.4's own falsifier finally ran too, and **it was aimed at the wrong
+mechanism**: REC through its own handler over a running transport leaves
+`0x800066a0` at 0 on the recorder-configured project exactly as on the
+plain one — and per the Octatrack manual it would, because `[REC]`
+activates GRID RECORDING mode and it is a **recorder trig**, trigged by
+the sequencer, that starts a track recorder sampling. The lever is that
+trig (`EXTERNAL.md`'s recorder TRIG byte at `+0x8f385`, part-indexed), not
+the key.
+
+The arm/record path itself is still unlocated: every named candidate
+function logged zero calls across 400 frames, including `0x4000b800` on
+the ORIGINAL project's own successful trig — re-derived 6 Sep with a
+working readout, after the discovery that `--watch-calls`/`--watch-mem`
+printed nothing unless `--trace` was on — so that address isn't reached
+the way this document previously assumed, independent of the recorder
+question. ⚠️ Also `0x800065b8`/`0x800066a0` are **longwords**: read a byte
+at a time they report "never changed" whatever the firmware does.
+`RTOS_FORK.md` §10 has the full measurements.
 
 ## Reproduce
 
