@@ -1,24 +1,44 @@
 #!/usr/bin/env python3
 """Run the firmware's audio-frame interrupt handler cold, one frame at a time,
-and log the per-track trigger word the per-frame dispatcher reads.
+with the sequencer transport started, and log what a step trig actually does
+to the per-track state the frame dispatcher reads.
 
 Why: Bryan T's session-5 ask (docs/EXTERNAL.md §6, 6 Sep 2026) — with a
-project loaded and the sequencer running, does the low nibble of the
-per-track trigger word (the trig's sample offset within the 16-sample frame)
-walk from pass to pass when the pattern length in samples is not an integer
-number of frames? Static reading cannot show an accumulator moving; a
-frame-by-frame trace can.
+project loaded and the sequencer running, does the low nibble of a trig's
+per-track word (its sample offset within the 16-sample frame) walk from pass
+to pass when the pattern length in samples is not an integer number of
+frames? Static reading cannot show an accumulator moving; a frame-by-frame
+trace can.
 
-What runs: the frame builder `0x4000aad0` is the DSP-frame INTERRUPT handler
-(prologue `lea sp@(-252) / moveml d0-fp`, re-entry guard `0x46104d4e`, ping
-swap `0x800000e0 -> e4`, ..., the per-track dispatcher `0x4000d2a0`, the
-packer `0x4000d3fc`, `rte`). We push a ColdFire exception frame whose return
-PC is the detour sentinel and run it to the `rte`. The dispatcher reads each
-track's word through the slot `%sp@(144)` = `0x46104d26 + 2*track` at
-`0x4000d32e` (Bryan's anchor; the pointer is planted at `0x4000c87c`) — a hook
-there logs (frame, track, word).
+What runs, measured in the emulator (docs/EMU.md M5 has the full account):
 
-Run:  .venv/bin/python3 tools/emu_frames.py --project <dir> --frames 3000 [--bpm 128]
+- The frame builder `0x4000aad0` is the DSP-frame interrupt handler; `run_frame`
+  pushes a ColdFire exception frame and runs it to its own `rte`.
+- The sequencer tick `0x400a1e10` is a FORCED interrupt the frame handler
+  raises itself (a countdown at `0x46107570`, decremented by `tempo24<<4` per
+  frame); `Clock` hooks the force sites and runs the tick right after the
+  frame that raised it.
+- The transport `0x4009b964(0)` + per-track `0x4009b5c8(t)` start the
+  sequencer; with a mask bit set, the per-track step handler `0x4009d1e8`
+  schedules an absolute fire time into the event table `0x80001904[track]`.
+- Each frame, the trig-time loop `0x4000aef6` turns "time - now" into a
+  clamped sample offset for every entry and stores it per track at
+  `0x800017d6[]`. The per-frame gate at `0x4000b800` (NOT `0x4000d32e`/
+  `0x46104d26` -- see below) tests the event against the frame clock and,
+  when due and the track isn't muted for it, copies that byte into
+  `0x46104d15[track]` and ORs in flag bits (`0x10` = hold, confirmed here).
+  This is the live artifact: FW_TRIG_WORDS never moved in any run so far.
+
+**Open finding, not yet resolved**: `FW_TRIG_WORDS` (`0x46104d26`, the array
+Bryan named and the one `0x4000d32e` reads) stayed all-zero through every
+run here, including one where a trig demonstrably fired and reached
+`0x46104d15`. `0x4000d378` (its only writer found so far) writes zero to it
+every frame regardless. Bryan's literal ask needs a RECORDER ARMED on the
+track, which this harness has not set up (the test project has an ordinary
+playback trig, not a record-enabled track) -- that is the next step, not
+something this run answers.
+
+Run:  .venv/bin/python3 tools/emu_frames.py --project <dir> --frames 3000 [--bpm 128] --start --internal-clock --poke-trig N
 """
 import argparse
 import collections
@@ -36,14 +56,24 @@ FW_TICK_ISR = 0x400a1e10         # sequencer tick interrupt handler (MIDI clock 
                                  # 2,646,000 (= a 16th step / 6) and re-syncs the frame clock
                                  # 0x46104cf4 to it, then steps the sequencer
 TICK_UNITS = 2_646_000           # tick clock units: 1 sample = tempo24 units
-FW_FORCE_TICKS = (0x4000ae00, 0x4000aea0)  # frame handler: `orl %d0,0xfc048010` — the regular tick force
+FW_FORCE_TICKS = (0x4000ae00, 0x4000aea0)  # frame handler: `orl %d0,0xfc048010` -- the regular tick force
                                  # forced interrupt when its countdown (0x46107568, decremented by
                                  # tempo24<<4 per frame) expires; the tick handler acks it on entry
 FW_MIDI_SETTINGS = 0x80000028    # project MIDI byte: bit 0 = clock receive (external clock)
-FW_DISPATCH_READ = 0x4000d32e    # `mvzw %a0@,%d2` — the per-track trigger word
-FW_TRIG_WORDS = 0x46104d26       # 8 x u16, one per track (Bryan T §14.10)
+FW_DISPATCH_READ = 0x4000d32e    # `mvzw %a0@,%d2` -- reads FW_TRIG_WORDS[track]; stayed zero here
+FW_TRIG_WORDS = 0x46104d26       # 8 x u16, one per track (Bryan T §14.10); NOT the live artifact
+                                 # in an ordinary-trig test -- see module docstring
+FW_LIVE_NIBBLE = 0x46104d15      # 8 x u8, one per track: the byte that DOES change on a fired trig
+                                 # (sub-frame sample offset in the low bits, flags OR'd in above it:
+                                 # 0x10 = hold, confirmed 6 Sep); written at 0x4000b910 (copy) and
+                                 # 0x4000b9bc/0x4000b9f2 (flag OR), gated by the due-check at
+                                 # 0x4000b84c and the mute-check at 0x4000b8de
 FW_SEQ_STATE = 0x800065b8        # 0 stopped, 1 playing, 2 (seen in 0x4009f5bc)
 FW_TRANSPORT = 0x4009b964        # (arg) sequencer transport routine; start case at 0x4009c458
+FW_START_TRACK = 0x4009b5c8      # (track): sets the per-track running state 0x80006500[t] := 1 if
+                                 # the playing pattern marks the track active (pattern rec +84 +
+                                 # 2330*t); the PLAY key path calls it per track, the transport
+                                 # start only promotes tracks already in state 2
 FW_TEMPO24 = 0x80001814
 FW_TEMPO_SHADOW = 0x80000020
 FRAME_SP = 0x47f70000            # stack for the cold-run interrupt handler
@@ -88,7 +118,7 @@ class Clock:
     """The tick is a FORCED interrupt the frame handler raises when its own
     countdown expires (no hardware timer): hook that write, and run the tick
     handler right after the frame that raised it. Interrupt priority is the
-    one thing not modelled — on hardware the forced tick may pre-empt the
+    one thing not modelled -- on hardware the forced tick may pre-empt the
     frame handler before it finishes rather than follow it."""
     def __init__(self, s, t24):
         self.t24 = t24
@@ -107,15 +137,6 @@ class Clock:
             self.pending = False
             run_tick(s)
             self.ticks += 1; ran += 1
-            if getattr(s, "tick_trace", None) is not None and self.ticks <= 60:
-                u = s.uc
-                r32 = lambda a: int.from_bytes(u.mem_read(a, 4), "big")
-                s.tick_trace.append((self.ticks, self.sample, r32(0x4610757c), r32(0x46104cf4),
-                                     r32(0x46107568), r32(0x4610756c), r32(0x46107564),
-                                     r32(FW_SEQ_STATE), u.mem_read(0x80006511, 1)[0],
-                                     u.mem_read(0x8000005b, 1)[0], r32(0x800066d4),
-                                     u.mem_read(0x80000028, 1)[0], u.mem_read(0x80001860, 1)[0],
-                                     bytes(u.mem_read(0x80001904, 16)).hex()))
         self.sample += 16
         return ran
 
@@ -128,22 +149,60 @@ def set_tempo(s, bpm, tenths=0):
 
 
 def install_trig_log(s):
+    """Log every nonzero byte written to FW_LIVE_NIBBLE (a trig actually
+    landing) and every nonzero write FW_TRIG_WORDS ever gets (Bryan's named
+    array; empty in every ordinary-trig run so far -- see module docstring)."""
     uc = s.uc
-    log = []
-    state = {"frame": 0, "track": 0}
+    live = []
+    words = []
+    state = {"frame": 0}
 
-    def on_read(u, addr, size, user):
-        a0 = u.reg_read(eb.UC_M68K_REG_A0)
-        d3 = u.reg_read(eb.UC_M68K_REG_D3)          # the dispatcher's track counter
-        w = int.from_bytes(u.mem_read(a0, 2), "big")
-        state["reads"] = state.get("reads", 0) + 1
-        if w:
-            log.append((state["frame"], d3, w))
-    uc.hook_add(eb.UC_HOOK_CODE, on_read, begin=FW_DISPATCH_READ, end=FW_DISPATCH_READ)
+    def on_live(u, acc, addr, size, val, d):
+        val &= 0xFF
+        if val:
+            live.append((state["frame"], addr - FW_LIVE_NIBBLE, val))
+
+    def on_word(u, acc, addr, size, val, d):
+        val &= 0xFFFF
+        if val:
+            words.append((state["frame"], (addr - FW_TRIG_WORDS) // 2, val))
+
+    uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_live, begin=FW_LIVE_NIBBLE, end=FW_LIVE_NIBBLE + 7)
+    uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_word, begin=FW_TRIG_WORDS, end=FW_TRIG_WORDS + 15)
     uc.ctl_flush_tb()
-    s.trig_log = log
+    s.live_nibble_log = live
+    s.trig_words_log = words
     s.frame_state = state
-    return log
+    return live
+
+
+def start_transport(s):
+    """Run the transport start case, then promote every track. Returns the
+    disassembled block path taken (for diagnosing a cold-start divergence
+    from the PLAY key's path -- see docs/EMU.md M5)."""
+    tblocks = []
+    h = s.uc.hook_add(eb.UC_HOOK_BLOCK,
+                       lambda u, ad, sz, d: 0x4009b964 <= ad < 0x4009c600 and len(tblocks) < 300 and tblocks.append(ad))
+    eb._call(s.uc, FW_TRANSPORT, [0])
+    s.uc.hook_del(h)
+    for t in range(8):
+        eb._call(s.uc, FW_START_TRACK, [t])
+    path = []
+    for b in tblocks:
+        if not path or path[-1] != b:
+            path.append(b)
+    return path
+
+
+def poke_trig(s, step):
+    """Set a trig on track 1 at `step` (1-8) directly in the loaded pattern
+    record (head = track 1's 64-step trig mask, big-endian; byte 7 bit 0 =
+    step 1). Useful for exercising the sequencer without re-saving a
+    project from the unit each time."""
+    blob = int.from_bytes(s.uc.mem_read(0x46c82456, 4), "big")
+    v = s.uc.mem_read(blob + 7, 1)[0] | (1 << (step - 1))
+    s.uc.mem_write(blob + 7, bytes([v]))
+    return v
 
 
 def _cli():
@@ -151,12 +210,11 @@ def _cli():
     ap.add_argument("--project", required=True)
     ap.add_argument("--set", default="OCTABAM")
     ap.add_argument("--name", default=None)
-    ap.add_argument("--image", default="out/emu_card.img")
     ap.add_argument("--firmware", default=None)
     ap.add_argument("--frames", type=int, default=200)
     ap.add_argument("--bpm", type=float, default=None)
     ap.add_argument("--start", action="store_true", help="start the sequencer via the transport routine")
-    ap.add_argument("--kick", type=int, default=0, help="force the step countdown word 0x80006514 after start")
+    ap.add_argument("--poke-trig", type=int, default=0, help="set a trig on track 1 at this step (1-8) in RAM after load")
     ap.add_argument("--internal-clock", action="store_true",
                     help="clear the project's CLOCK RECEIVE bit so the sequencer runs on its own clock")
     a = ap.parse_args()
@@ -192,51 +250,18 @@ def _cli():
         s.uc.mem_write(FW_MIDI_SETTINGS, bytes([midi & ~1]))
         print("midi byte  : clock receive cleared -> internal clock")
     if a.start:
-        # the transport routine 0x4009b964(arg): with the sequencer stopped it
-        # runs the start case (state := 1, phase increment := tempo24 << 4 at
-        # 0x46107570, per-track states, a post to the timer queue 0x460d1664)
-        eb._call(s.uc, FW_TRANSPORT, [0])
+        path = start_transport(s)
+        print("transport path:", " ".join(hex(b) for b in path))
         print("transport  : state", int.from_bytes(s.uc.mem_read(FW_SEQ_STATE, 4), "big"),
-              " phase inc 0x46107570:", int.from_bytes(s.uc.mem_read(0x46107570, 4), "big"))
-    if a.kick:
-        s.uc.mem_write(0x80006514, (a.kick).to_bytes(2, "big"))
-        print(f"kick       : step countdown 0x80006514 := {a.kick}")
-    w6514 = []
-    s.uc.hook_add(eb.UC_HOOK_MEM_WRITE,
-                  lambda u, acc, ad, sz, val, d: len(w6514) < 30 and w6514.append((s.frame_state.get("frame", -1) if hasattr(s, "frame_state") else -1, hex(u.reg_read(eb.UC_M68K_REG_PC)), val)),
-                  begin=0x80006514, end=0x80006515)
-    log = install_trig_log(s)
-    # diagnostics: QREC scheduler calls, immediate-array writes, tick-advance calls
-    diag = collections.Counter()
-    imm_writes = []
-    s.uc.hook_add(eb.UC_HOOK_CODE, lambda u, ad, sz, d: diag.update(["qrec 0x40005178"]), begin=0x40005178, end=0x40005178)
-    s.uc.hook_add(eb.UC_HOOK_CODE, lambda u, ad, sz, d: diag.update(["advance 0x400a1608"]), begin=0x400a1608, end=0x400a1608)
-    gate = []
-    def on_gate(u, ad, sz, d):
-        diag.update(["step engine 0x400a1f68"])
-        if len(gate) < 24:
-            r = lambda a: int.from_bytes(u.mem_read(a, 4), "big")
-            gate.append((r(0x46107568), r(0x4610756c), r(0x46107570), r(0x4610757c)))
-    s.uc.hook_add(eb.UC_HOOK_CODE, on_gate, begin=0x400a1f68, end=0x400a1f68)
-    probe = []
-    def on_probe(u, ad, sz, d):
-        if len(probe) < 24:
-            r = lambda a: int.from_bytes(u.mem_read(a, 4), "big")
-            probe.append((hex(ad), r(0x46107568), r(0x4610756c), r(0x46107570)))
-    for site in (0x400a1e68, 0x400a1eb0, 0x400a1eda, 0x400a1f22):
-        s.uc.hook_add(eb.UC_HOOK_CODE, on_probe, begin=site, end=site)
-    s.uc.hook_add(eb.UC_HOOK_CODE, lambda u, ad, sz, d: diag.update(["step engine skip 0x400a2530"]), begin=0x400a2530, end=0x400a2530)
-    def on_imm(u, access, addr, size, val, d):
-        if len(imm_writes) < 40:
-            imm_writes.append((s.frame_state["frame"], hex(addr), hex(val), hex(u.reg_read(eb.UC_M68K_REG_PC))))
-    s.uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_imm, begin=0x46c7e9fa, end=0x46c7e9fa + 0x20)
-    blocks = collections.Counter()
-    s.uc.hook_add(eb.UC_HOOK_BLOCK, lambda u, ad, sz, d: blocks.update([ad >> 8]))
-    s.uc.ctl_flush_tb()
+              " phase inc 0x46107570:", int.from_bytes(s.uc.mem_read(0x46107570, 4), "big"),
+              " track states 0x80006500:", bytes(s.uc.mem_read(0x80006500, 8)).hex())
+    if a.poke_trig:
+        v = poke_trig(s, a.poke_trig)
+        print(f"poke trig  : track 1 step {a.poke_trig} -> mask byte 7 = {v:#04x}")
+
+    live = install_trig_log(s)
     t24 = int.from_bytes(s.uc.mem_read(FW_TEMPO24, 4), "big")
     clock = Clock(s, t24)
-    seq_before = bytes(s.uc.mem_read(0x800065b0, 0x150))
-    s.tick_trace = []
     for f in range(a.frames):
         s.frame_state["frame"] = f
         try:
@@ -246,49 +271,13 @@ def _cli():
         except (eb.DetourTrap, eb.DetourStall) as e:
             print(f"frame {f}: {e}  pc={s.uc.reg_read(eb.UC_M68K_REG_PC):#x}")
             break
-    print(f"frames run : {f + 1}  ticks: {clock.ticks}  trig words seen: {len(log)}")
-    print("hot pages  :", [(hex(k << 8), v) for k, v in blocks.most_common(12)])
-    for e in log[:24]:
-        print("   frame %5d track %d word %04x nibble %x flags %02x" % (e[0], e[1], e[2], e[2] & 0xF, e[2] & 0xF0))
-    # per track: sample position of each trig word, and the deltas between them
-    by_track = collections.defaultdict(list)
-    for fr, tr, w in log:
-        by_track[tr].append(fr * 16 + (w & 0xF))
-    for tr in sorted(by_track):
-        pos = by_track[tr]
-        deltas = [b - a for a, b in zip(pos, pos[1:])]
-        print(f"track {tr + 1}: {len(pos)} trigs; positions {pos[:10]}; deltas {deltas[:12]}")
-    print("tick trace (tick, sample, tickclk, frameclk, 7568, 756c, 7564, state, step, plen, 66d4, 0x28, 0x1860, events[0:16]):")
-    for t in s.tick_trace[:40]:
-        print("   ", t)
-    u = s.uc
-    r32 = lambda a: int.from_bytes(u.mem_read(a, 4), "big")
-    print("dispatch reads:", s.frame_state.get("reads", 0), " bypass 0x800018fe:", r32(0x800018fe),
-          " step 0x80006511:", u.mem_read(0x80006511, 1)[0], " plen 0x8000005b:", u.mem_read(0x8000005b, 1)[0],
-          " 0x80006686:", u.mem_read(0x80006686, 1)[0], " countdown 0x46107570:", r32(0x46107570))
-    print("trig words 0x46104d26:", bytes(u.mem_read(FW_TRIG_WORDS, 16)).hex())
-    print("events 0x80001904:", bytes(u.mem_read(0x80001904, 64)).hex())
-    print("tick trace rows:", len(s.tick_trace))
-    seq_after = bytes(u.mem_read(0x800065b0, 0x150))
-    print("seq block 0x800065b0 before:", seq_before[:0x60].hex())
-    print("seq block 0x800065b0 after :", seq_after[:0x60].hex())
-    diffs = [(hex(0x800065b0 + i), seq_before[i], seq_after[i]) for i in range(len(seq_before)) if seq_before[i] != seq_after[i]]
-    print("changed bytes:", diffs[:40])
-    print("playing bank 0x800065bd:", u.mem_read(0x800065bd, 1).hex(), " pattern 0x800065be:", u.mem_read(0x800065be, 1).hex(),
-          " 0x800065bc:", u.mem_read(0x800065bc, 1).hex(), " preroll 0x80006687:", u.mem_read(0x80006687, 1).hex(),
-          " cur bank 0x80000002:", u.mem_read(0x80000002, 1).hex(), " pattern 0x80000004:", u.mem_read(0x80000004, 1).hex())
-    print("diag:", dict(diag))
-    print("writes to 0x80006514 (frame, pc, val):", w6514[:30])
-    print("at step-engine gate (7568, 756c, 7570, tickclk):", gate[:16])
-    print("probes through the tick handler (site, 7568, 756c, 7570):", probe[:24])
-    print("immediate-array writes:", imm_writes[:20])
-    print("tick counter 0x46c7a19c:", r32(0x46c7a19c), " 0x46107574:", r32(0x46107574), " 0x800066d4:", r32(0x800066d4))
-    print("tick clock 0x4610757c:", int.from_bytes(s.uc.mem_read(0x4610757c, 4), "big"),
-          " frame clock 0x46104cf4:", int.from_bytes(s.uc.mem_read(0x46104cf4, 4), "big"))
-    print("seq state  :", int.from_bytes(s.uc.mem_read(FW_SEQ_STATE, 4), "big"),
-          " tempo24:", int.from_bytes(s.uc.mem_read(FW_TEMPO24, 4), "big"),
-          " 0x8000181c:", int.from_bytes(s.uc.mem_read(0x8000181c, 4), "big"),
-          " 0x80001820:", hex(int.from_bytes(s.uc.mem_read(0x80001820, 4), "big")))
+    print(f"frames run : {f + 1}  ticks: {clock.ticks}")
+    print(f"FW_LIVE_NIBBLE (0x46104d15) writes ({len(live)}):")
+    for fr, track, val in live:
+        print(f"   frame {fr:5d} track {track} byte {val:#04x}  nibble {val & 0xF:x}  flags {val & 0xF0:#04x}")
+    print(f"FW_TRIG_WORDS (0x46104d26) nonzero writes ({len(s.trig_words_log)}):", s.trig_words_log[:20])
+    print("final FW_TRIG_WORDS bytes  :", bytes(s.uc.mem_read(FW_TRIG_WORDS, 16)).hex())
+    print("final FW_LIVE_NIBBLE bytes :", bytes(s.uc.mem_read(FW_LIVE_NIBBLE, 8)).hex())
 
 
 if __name__ == "__main__":

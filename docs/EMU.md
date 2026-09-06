@@ -393,16 +393,48 @@ binutils' reading of this image. And Unicorn's `until` address is not
 honoured when the instruction there raises: the trampoline parks on a
 `nop` instead.
 
-**Where it stands.** With the RIG or ChongBongolo 26 project loaded, the
-transport started on the internal clock and 12,000 frames run: ticks fire
-at the right rate, the tick and frame clocks track, the step engine
-(`0x400a1f68`) is entered every fourth tick and the event table advances —
-but **no step trig ever fires**: the QREC scheduler is never called and the
-per-track running states `0x80006500[t]` stay 0 (the transport's start
-case only promotes them from state 2; the pattern records in RAM are dense
-and valid). The per-track loop at `0x400a28f0` is the next thing to read.
-`--kick` forces `0x80006514`, which turned out to be a pattern-change
-countdown, not the step clock (one write, at `0x400a223c`, then nothing).
+**Retracted: "no step trig ever fires."** That was true only for a
+project whose per-track running states start at 0 (the transport's start
+case promotes a track from state 2, and the RIG/ChongBongolo projects never
+reach state 2 cold). With a card **freshly saved on the unit** carrying one
+trig (track 1, step 1, `out/_testproj`, 6 Sep) and `--poke-trig` setting a
+second step directly in the loaded pattern record, the whole path now runs
+end to end: `--start` (transport `0x4009b964(0)` then `0x4009b5c8(t)` for
+every track) promotes all eight tracks to state 1 (`0x80006500` reads
+`01` × 8), the step handler `0x4009d1e8` is called at every boundary for
+every track, and on the boundary carrying the set mask bit it takes the
+trig path (`0x4009d422`) and schedules an absolute fire time into the event
+table `0x80001904[track]`.
+
+**Where the trig actually lands is not `0x4000d32e` / `0x46104d26`.** That
+was Bryan's anchor and the header comment's original claim; both are real
+code, but in this run neither ever carries the fired trig. The live path is
+a *different* per-frame gate at `0x4000b800` (called once per track from
+the frame handler, before the `0x4000d2a0` dispatcher): it tests the
+scheduled time against the frame clock, and — when due and the track isn't
+muted for that event — copies the trig-time loop's clamped sample-offset
+byte (`0x800017d6[track]`) into `0x46104d15[track]` and ORs in flag bits
+above it (`0x4000b9bc`/`0x4000b9f2`; bit 4 = hold, confirmed here: byte
+`0xa6` OR `0x10` → `0xb6`). `0x46104d26` (`FW_TRIG_WORDS`) stayed all-zero
+through the whole 400-frame run that produced this trig; its only writer
+found so far (`0x4000d378`) writes zero every frame regardless of whether
+anything is due.
+
+**Open, and this is the actual gap against Bryan's ask**: `RLEN` (the value
+he asked to vary, 4 vs 32) is a **recorder** parameter — its converter
+(`0x4006e3b2`) reads a per-track byte at `0x80000cf4`, which only means
+anything for a track with a recorder machine armed. The test project used
+here has an ordinary trig on an unconfigured track (`machine types part 1`
+all zero) — that is almost certainly why `0x46104d26` never lit up: the
+array may genuinely be recorder-specific, reached only along the arm/RLEN
+path this project never exercises. Confirming that needs a project with a
+track's machine set to a recorder and RSRC armed, which has not been built
+yet — this run establishes the mechanics (frames, ticks, transport, an
+ordinary trig landing in RAM) but does not answer Bryan's literal question.
+`tools/emu_frames.py` now logs both arrays every run (`FW_LIVE_NIBBLE` and
+`FW_TRIG_WORDS`) so the next attempt, once a recorder-armed project exists,
+needs no new instrumentation — just `--bpm 128` and a pattern length of 4
+vs 32 steps.
 
 ## The RTOS fork — still open, still not forced
 
