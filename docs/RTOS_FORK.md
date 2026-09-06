@@ -1432,3 +1432,22 @@ and watch `0x80004f1c` during the load; if the record fills, re-run the
 at `0x40006edc`, and the length word in the buffer's state record). Also
 worth one line to Bryan: on hardware, does a fixed-RLEN recorder trig on a
 THRU track (no sample slot) record at all? The code says no.
+
+
+**❌ RETRACTION of §10.12's framing (7 Sep 2026, 00:50, by a raw dump):**
+the three "FLEX fixtures" were not FLEX. `ot_project.py machine-type`
+takes a **1-based** track and I passed 0, so each call wrote the byte
+BEFORE T1's machine-type slot (`+0x2a`, one of a run of three `108`s in
+the part record — 108 → 0 or 1, a corruption of unknown effect) and left
+T1's own byte untouched. Worse, that byte reads **0 in the cleared
+baseline and in every fixture** (`+0x2b..+0x32` = eight zeros), while
+§10.1's RAM readback of the same project reported `[2, 2, 0, 0, 0, 0, 0,
+1]` — so **the file offset or the encoding of the machine-type byte is
+unverified**: either the RAM word is derived at load (from the slot
+assignment?) or §10.1's readback location was wrong. What survives from
+§10.12: the sample-slot control record got 0 writes in every run, load
+included, and the tool stages no samples — that finding does not depend
+on the machine type. What does not survive: any statement about FLEX.
+The setter now refuses track 0. A run with the slot-1 STATIC sample
+actually staged (`--stage-audio`, new) is in flight to see whether the
+record fills at all.
