@@ -1585,8 +1585,18 @@ reciprocal, `+1 / asr 1` — samples per step, round-half-up) runs **twice
 per frame for the whole recording** (2,443 entries over 1,221 frames);
 at MAX it runs 0 times (control, same fixture). `0x4006e3b2`,
 `0x40006d48`, `0x400060c4` and `0x40006edc`: 0 in both. The length itself
-is not yet read back: the quarter-rate A01 puts a 4-step end ~5,500
-frames past the trig; a 7,400-frame run is in flight when this is written.
+is not yet settled. The 7,400-frame run (RLEN 3 = display 4, 120 BPM,
+trig at 1379) ended with the record still in state 2, its counters at
++24/+28 = `0xc00`, length +32 = 0, and R1's control record `+16` =
+**11,025** = 44,100 × 720 / 2880 — the converter's per-step product at 120
+BPM BEFORE its `+1 / asr 1` (one 16th is 5,512.5 samples; Bryan's sheet
+rounds it to 5,513). No end of recording was seen in ~6,000 frames
+(~96,000 samples, against 22,050 for four 16ths), so either the end is
+tied to the quarter-rate pattern's own step length (4 × 22,064 = 88,256
+samples, which the run should also have passed) or the stop lives in a
+state this watch did not cover. 🟡 Next: watch the R1 control record and
+the `0x40006dfc` operands per frame, on bank B (344-frame steps) once the
+§5 drop is understood.
 
 **7. Route A does not load samples, and it does not matter here (holds).**
 `stage_project` still skips `.wav`/`.ot`; the load's 289 `0x40099680`
