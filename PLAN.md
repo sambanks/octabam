@@ -554,7 +554,7 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
-### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026)
+### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026; STATUS BOARD at the end of this section, 6 Sep 2026)
 
 **The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
 of change that today costs a flash per attempt. Two backlog items merge into
@@ -688,6 +688,43 @@ registers); the image is a FAT16 volume with a project from
 the RTOS queues, the same interrupt-injection question as the tick. Start it
 when the SECOND project-dependent path shows up; the first (the bus screen's
 MODE) was solved by moving MODE to a slot the emulator could already drive.
+
+**EMULATOR STATUS BOARD — the pick-up point (6 Sep 2026).** Two routes
+exist and both are in main. Route B (detours) is what everything above
+uses: boot to the handoff, then call firmware functions by hand. Route A
+(`tools/emu_rtos.py`, `docs/RTOS_FORK.md`) runs the firmware's own
+scheduler.
+
+| milestone | state | what it gives you today |
+|---|---|---|
+| M1 boot to the handoff | ✅ shipped | `make remix` → `e`: a cave that breaks early init faults here, not on the unit |
+| M2 live screen | ✅ shipped | the main menu drawn by the firmware's own code, walkable |
+| M3 track-centric remixer | ✅ shipped | every effect auditionable; FX2 page renders |
+| M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
+| M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
+| **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
+| M6b real waits + mount | ⏳ **NEXT (mechanical)** | storage parks on its queue, the card sees zero commands: find what requests the mount (RTOS_FORK §5 names the suspects), then the RIG load under real tasks, part bytes = M4's |
+| M6c sequencer under the scheduler | ⏳ judgment | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
+| M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes |
+| M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
+
+Where to resume: `docs/RTOS_FORK.md` §5–§7 (M6b's open item and the
+diagnostics that found everything), `tools/emu_rtos.py --selftest`, then
+`make emu-rtos PROJECT=/Users/sambanks/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG`
+(absolute path; a tilde inside the quoted make variable is not expanded).
+Two Unicorn facts to keep in view: reading SR through the API at a burst
+boundary corrupts the condition codes (the tool uses a `movew %sr,%d0`
+trampoline), and memory-write hooks fire on MMIO. What route A corrected:
+eleven tasks, not eight; `0x400009f4` is a lock, not a semaphore; a
+reschedule is a forced PIT0 interrupt.
+
+**Bryan's stake.** His click sits on the recorder's loop point, reached by
+one task staging the REC-arm and the tick promoting it — the interleaving
+route A now does for real. It becomes usable for him at M6d (his project
+loaded under real tasks, PLAY/REC-arm injected as keys); M6b and M6d are
+the mechanical steps between. Already useful to him: the measured task and
+vector tables in RTOS_FORK §2, and the panel serial link captured byte by
+byte.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above
