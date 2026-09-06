@@ -189,6 +189,11 @@ def set_track_slot(pdir, banknum, part, track, slot_1based):
 MTYPE_OFF, MTYPE_MIRROR = 0x02b, 4      # + track; part N's saved copy is part N+4
 
 def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True):
+    """part and track are 1-BASED (part 1-4, track 1-8). A track of 0 wrote
+    the byte BEFORE T1's (+0x2a, a run of 108s) in three fixtures on 7 Sep
+    2026 and was only caught by a raw dump -- hence the check."""
+    if not (1 <= part <= NPARTS and 1 <= track <= 8):
+        sys.exit(f"machine-type: part {part} / track {track} must be 1-based (1-4 / 1-8)")
     parts = (part, part + MTYPE_MIRROR) if mirror else (part,)
     def mut(data):
         for p in parts:

@@ -1427,9 +1427,18 @@ class Rtos:
         return "\n".join(lines)
 
 
-def stage_project(project, set_name, name, tree="out/_emu_rtos_tree"):
-    """Copy a project directory into <tree>/<SET>/<NAME> (no audio) and build
-    a 64 MB card image from it -- the same staging emu_frames does."""
+def stage_project(project, set_name, name, tree="out/_emu_rtos_tree",
+                  audio=(), image_mb=64):
+    """Copy a project directory into <tree>/<SET>/<NAME> and build a card
+    image from it -- the same staging emu_frames does.
+
+    No audio by default: every .wav/.ot is skipped, which is why no sample
+    slot ever became valid under route A (RTOS_FORK section 10.12 -- the
+    sample-slot control record 0x80004f1c got 0 writes in every run). `audio`
+    is a list of "<src file>:<card-relative path>" pairs to stage as well,
+    e.g. "~/octa/pool/x.wav:AUDIO/Loopmasters/x.wav" (relative to the SET
+    folder, the way project.work's PATH=../AUDIO/... resolves). The image
+    grows to `image_mb`."""
     import shutil
     src = pathlib.Path(project)
     name = name or src.name
@@ -1442,7 +1451,13 @@ def stage_project(project, set_name, name, tree="out/_emu_rtos_tree"):
     for p in sorted(src.iterdir()):
         if p.is_file() and not p.name.startswith("._") and p.suffix.lower() not in (".wav", ".ot"):
             shutil.copy2(p, dst / p.name)
-    return ec.build_image(str(tree), 64), name
+    for spec in audio:
+        f, rel = spec.split(":", 1)
+        f = pathlib.Path(f).expanduser()
+        out = tree / set_name / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, out)
+    return ec.build_image(str(tree), image_mb), name
 
 
 def attach(image=None, card_image=None, log=None, **kw):
@@ -1534,6 +1549,10 @@ def _cli():
                     help="scratch dir the emulated card is staged in; it is WIPED at "
                          "start, so two concurrent runs need two trees (three runs "
                          "launched together died on this, 6 Sep 2026)")
+    ap.add_argument("--stage-audio", default="",
+                    help="';'-separated '<file>:<SET-relative card path>' pairs to stage "
+                         "beside the project (default: no audio at all -- see stage_project)")
+    ap.add_argument("--image-mb", type=int, default=64, help="emulated card image size")
     ap.add_argument("--set", default="OCTABAM")
     ap.add_argument("--name", default=None)
     ap.add_argument("--ms", type=float, default=100.0, help="emulated milliseconds to run")
@@ -1583,7 +1602,9 @@ def _cli():
     card = None
     staged_name = a.name
     if a.project:
-        card, staged_name = stage_project(a.project, a.set, a.name, tree=a.tree)
+        card, staged_name = stage_project(a.project, a.set, a.name, tree=a.tree,
+                                          audio=[x for x in a.stage_audio.split(";") if x],
+                                          image_mb=a.image_mb)
     t0 = time.perf_counter()
     r, rt = attach(a.image, card, ips=a.ips, pit_clock_hz=a.pit_clock, quantum=a.quantum,
                    step_quantum=a.step_quantum, tick=not a.no_tick,
