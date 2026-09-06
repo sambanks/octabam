@@ -723,9 +723,15 @@ route A, from the file, with nothing poked** (§10.7: bank A's A01 steps at
 `0x46104d26` nonzero for the first time), and the chain past the arm
 caller is measured (§10.8): engine opcode `0x22` → handler `0x40085bde` →
 recorder buffer released + re-allocated from the PCM pool (`track+128`).
-Next: time the opcode-`0x25` post, find how the DSP is told to sample
-(no host-port write seen yet), then the playback block chain where the
-click lives.
+Then (6 Sep, late, §10.9–10.12): at RLEN=MAX no converter runs; `0x25` is
+posted one sample after `0x22` and carries the buffer id (128+track); with
+a FIXED RLEN the trig word's bit 7 routes through the sample-slot gate,
+which no-ops in route A because `stage_project` stages no `.wav`/`.ot` —
+so no slot record is ever populated. **Resume: stage the slot-1 sample on
+the emulated card, watch `0x80004f1c` fill during the load, then re-run
+the 128/RLEN 4 FLEX fixture (`scratchpad`-built via `ot_project.py
+recorder-setup` / `set-tempo` / `machine-type`) for the converter.** Then
+how the DSP is told to sample, then the playback block chain (the click).
 M6c's gate is the regression to keep green while doing it:
 `tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
 --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
