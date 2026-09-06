@@ -1,7 +1,10 @@
 # The RTOS fork (emulator route A) — scope
 
-Scoped 6 Sep 2026. Status: **not started**; feasibility **measured**, kernel
-**decoded**, plan below. `EMU.md` has the history of route B (detours) that
+Scoped 6 Sep 2026. Status: **M6a done (6 Sep 2026)** — `tools/emu_rtos.py`
+runs the firmware's own scheduler: the handoff trap dispatched by hand, PIT0
+ticking, eleven tasks created and each run once, tasks posting to each other
+through the kernel. §5 carries the measured result and what it corrected in
+§2 (the task table was wrong in five rows); M6b is next. `EMU.md` has the history of route B (detours) that
 this replaces for the paths that need real task interleaving.
 
 Confidence markers as in `CHIP.md`: ✅ measured in the emulator or read
@@ -76,31 +79,59 @@ literal scan): create `0x400005fc(tcb, entry, prio, stack, size)`; make-ready
 (count > 0: consume and return; else park the current TCB in the event,
 unlink it, `trap #0`); queue post `0x40000c3c(queue, msg)` (ring at
 `queue+0x14`, mask `+0x10`, head `+0x18`; wakes the waiter at `+0x0c` and
-raises its level); event signal `0x40000888`; semaphore take/give
-`0x40000a94`/`0x400009f4` (used by the delay helper); queue init
-`0x40000bd4`; task exit `0x400006e4`. Vector install `0x40000d50(vec, fn)`
-(the frame handler goes on vector `0x41` at `0x4001fbf8`); the default
+raises its level); queue receive `0x40000d1a` (what most tasks block in);
+event signal `0x40000888`; counting wait `0x400007a4` (decrement, or park
+and `trap #0` at `0x40000810`); queue init `0x40000bd4`; task exit
+`0x400006e4`. **`0x400009f4` is a lock, not a semaphore** (corrected 6 Sep
+under M6a by reading it): owner TCB at `+0`, waiter list `+4`/`+8` chained
+through `TCB+0x50`, a contended take unlinks the caller and traps at
+`0x40000a78`; unlock `0x40000ab4` hands the lock to the first waiter, makes
+it ready, and **traps into the scheduler itself** if the waiter outranks the
+top pointer; `0x40000a94` is try-lock and `0x400009e4` the lock init. The
+serial-link driver wraps this lock at `0x40010db0`/`0x40010d90`.
+
+**A reschedule is a forced PIT0 interrupt** ✅: signal (`0x400008ea`) and
+post set **INTFRCH bit 11 of INTC1** (`0xfc04c010`) — source 43, vector 171,
+the scheduler entry, which clears the bit. It can only land once the
+primitive restores the caller's SR, one to three instructions later. Make-
+ready (`0x4000063c`) does NOT force; it only raises the top pointer, so after
+main creates its tasks nothing switches until the first real tick (measured:
+the first switch is the first tick after the creates, sample 8,812).
+
+Vector install `0x40000d50(vec, fn)` writes `[VBR + 4·vec]`; the default
 handler `0x40000d74` is a trampoline that calls one settable pointer
-`[0x460ba970]` (set by `0x40000da4`) and `rte`s.
+`[0x460ba970]` (set by `0x40000da4`, from `0x40040b88`) and `rte`s. **The
+kernel init `0x40000db0` refills all 256 slots with the trampoline**, so
+handlers installed before it (the UART driver's, `0x40010faa`, during the
+boot) are gone at the handoff and re-installed by main.
 
-**Tasks — eight** ✅ (seven `create` sites plus the boot's main task; entries
-and priorities read from the pushed arguments):
+**Tasks — eleven** ✅ (MEASURED 6 Sep 2026 under the real scheduler, by a
+hook on `create`; the earlier "eight" came from the five `jsr` create sites
+the literal scan finds — the other five sites call through a register and
+were missed, so two rows were absent and two were credited to main that a
+later task creates):
 
-| prio | TCB | entry | stack | what (🟡 by neighbourhood) |
-|---|---|---|---|---|
-| 6 | `0x46c7fb0c` | `0x40005540` | `0x46c7ea20` +0x1000 | voice / DSP mailbox task |
-| 5 | `0x460bcc2c` | `0x4001ee30` | `0x460bc42c` +0x800 | storage (FAT/ATA) |
-| 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | UI |
-| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | ❓ |
-| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | ❓ |
-| 1 | `0x460ddde4` | `0x4008445c` | `0x460d9de4` +0x4000 | **engine** (the 46-opcode dispatcher, `EXTERNAL.md` §6) |
-| 1 | `0x46105508` | `0x40098a5c` | `0x4610555c` +0x2000 | ❓ |
-| 0 | `0x46c7ae84` | `0x4001f834` | top `0x46c7becc` | **main** — runs the init list, then parks |
+| prio | TCB | entry | stack | created by | what (🟡 by neighbourhood) |
+|---|---|---|---|---|---|
+| 6 | `0x46c7fb0c` | `0x40005540` | `0x46c7ea20` +0x1000 | main | voice / DSP mailbox task |
+| 5 | `0x460bcc2c` | `0x4001ee30` | `0x460bc42c` +0x800 | sys | storage (FAT/ATA) |
+| 4 | `0x460d4f80` | `0x4005593c` | `0x460d4780` +0x800 | sys | UI |
+| 3 | `0x460d59d4` | `0x40056c40` | `0x460d51d4` +0x800 | sys | ❓ (new) |
+| 2 | `0x460fab80` | `0x40091d18` | `0x460fabd4` +0x2000 | main | ❓ |
+| 2 | `0x460ffd44` | `0x400921c4` | `0x460fdd44` +0x2000 | main | ❓ |
+| 2 | `0x460e0e38` | `0x4009203c` | `0x460dee38` +0x2000 | main | ❓ (new; ping-pongs with sys) |
+| 1 | `0x460ddde4` | `0x4008445c` | `0x460d9de4` +0x4000 | main | **engine** (the 46-opcode dispatcher, `EXTERNAL.md` §6) |
+| 1 | `0x46105508` | `0x40098a5c` | `0x4610555c` +0x2000 | main | ❓ |
+| 1 | `0x46c7bed8` | `0x40061a94` | `0x460d6de4` +0x2000 | main | **sys** (new): serial + SPI start-up, then creates storage, UI, p3 |
+| 0 | `0x46c7ae84` | `0x4001f834` | top `0x46c7becc` | boot | **main** — runs the init list, then parks in `bras .` at `0x4001fc9c` |
 
 At the handoff only main is on a ready list (measured: level 0, one TCB);
 the current TCB `0x46c7ae30` is the pre-multitasking context that the first
-`trap #0` saves and never resumes. The other seven are created by main's
-init list — the same list `card_init` runs by hand today.
+`trap #0` saves and never resumes. Main's init list — the same list
+`card_init` runs by hand on route B — creates seven; the eighth-to-tenth
+come from sys once its serial-link traffic and a three-frame SPI exchange
+(`0x4001c398`) are done. **Idle is main**: it never blocks, so level 0 is
+never empty and no idle task exists (closes §4's ❓).
 
 **Interrupt controllers — two** ✅. INTC0 at `0xfc048000` takes vectors
 `64 + source`: the DSP frame handler is source 1 (vector `0x41`, level 5,
@@ -111,6 +142,29 @@ ATA interrupt is source 54 (vector `0xb6`). **VBR is `0x40000000`** — the
 image's own first KB is the vector table (`[0x400b9668]`), which is why the
 no-op `movec` never mattered. At the handoff exactly two slots are
 non-default: 32 and 171, both `0x40000550`.
+
+**Every vector install site** ✅ (literal scan of `jsr 0x40000d50`, 6 Sep):
+
+| vector | source | handler | installed at | what |
+|---|---|---|---|---|
+| `0x41` | INTC0 1 | `0x4000aad0` | `0x4001fc02` (main) | DSP frame |
+| `0x47` | INTC0 7 | `0x4001fca0` | `0x4001f81c` | halt path (`SR 0x2700`, `bras .`) |
+| `0x5a` | INTC0 26 | `0x400106ec` | `0x400110ae` | serial block ❓ |
+| `0x5b` | INTC0 27 | `0x400109bc` | `0x40010faa` (UART init `0x40010efc`, 312,500 baud) | **serial link `0xfc064000`**, level 6: RX callback + TX ring drain |
+| `0x5c` | INTC0 28 | `0x40010b88` | `0x40010d6e` | serial block `0xfc068000`, RX only |
+| `0x60` | INTC0 32 | `0x400a1e0c` | `0x400a109c` | M5's forced sequencer tick |
+| `0x61`/`0x62` | INTC0 33/34 | `0x40055cb8`/`0x400409f4` | `0x40040482`/`0x4004044c` | ❓ |
+| `0x64`/`0x65` | INTC0 36/37 | `0x40092bf4`/`0x4009228c` | `0x40092f10`/`0x4009268c` | ❓ |
+| `0xac` | INTC1 44 | `0x40020d38` | `0x40020c5e` | PIT1, the storage delay timer |
+| `0xaf` | INTC1 47 | `0x4001e594` | `0x4001e01a` (next to the storage create) | ❓ |
+| `0xb1` | INTC1 49 | `0x4001c244` | `0x4001c2fc` | counter + ack of `0xfc0bc008` |
+| `0xb6` | INTC1 54 | `0x40015304` | `0x40016128` (ATA init `0x400160f8`, main) | **ATA**: one sector per interrupt, signal at count 0 |
+
+**Masking** 🟡: the firmware never writes IMRH/IMRL (no reference in the
+image); it unmasks only through the byte register CIMR (`+0x1d`, value =
+source, `0x40` = all) and sets ICRn at `+0x40+n`. Since the unit takes
+interrupts, a CIMR write must also clear IMRL's MASKALL bit — modelled so,
+inferred from that alone.
 
 **The time-slice** ✅: PIT0 at `0xfc080000`, prescaler 2¹¹ (PCSR `0x0b36`
 at init, `0x0b3f` on every switch), PMR `264,000,000 / 409,600 − 1 = 643`
@@ -147,6 +201,25 @@ all work by letting the burst stop on the exception and fixing it up after
 `emu_start` returns; the INTR hook already sees those (`intno` 4 etc.) and
 must keep letting them through unchanged.
 
+**Two more Unicorn facts, measured under M6a (6 Sep 2026):**
+- **Reading SR through the API at a burst boundary corrupts the condition
+  codes.** A `cmpl`/`bne` pair split across two `emu_start` calls branches
+  correctly on its own, and still does if D2 is read in between — but a
+  `reg_read(SR)` in between returns SR with Z clear and installs it, and the
+  `bne` is then taken. It cost a session: the serial driver's unlock
+  (`0x40000ac8`) compared owner and current, equal, and skipped the release,
+  and the next take deadlocked the task on its own lock — once in ~50
+  iterations, because the pending tick had shrunk the bursts to 32
+  instructions. `emu_rtos` reads SR by executing `movew %sr,%d0` from a
+  trampoline (`0x47ef0800`), which flushes the flags through the
+  translator's own path; `tools/emu_rtos.py --selftest` pins it. Writing SR
+  (a push or a pop) is fine.
+- **`UC_HOOK_MEM_WRITE` fires on MMIO-mapped windows**, so the boot's 7,886
+  peripheral writes can be logged (hook installed from the first PLL read's
+  reply callable) and replayed to seed the models. One rule: an all-ones
+  value in that log is a read-modify-write of the stub's all-ones reply, not
+  the firmware's choice (PIT0's `PCSR |= 9` arrives as `0xffff`); skip it.
+
 ## 4. Design
 
 One new module, `tools/emu_rtos.py`, on top of `emu_bringup` (unchanged) and
@@ -179,27 +252,64 @@ them, `INTFRC` writes become pending events); the DSP host port as in M5
 (ping index, command register). ATA is the existing model, completing by
 raising vector `0xb6` instead of finishing inside the wait hook.
 
-**Idle** ❓: what the kernel does when *no* task is ready is not read yet
-(the block path scans down to level 0, where main lives, and main parks —
-whether it parks by blocking or by spinning decides whether an "idle" level
-must be modelled). Read `0x4001f834`'s tail before M6a.
+**Idle** ✅ (read 6 Sep, before M6a): main parks in `bras .` at
+`0x4001fc9c` and never blocks, so level 0 is never empty and there is no
+idle path to model. The loop treats a PC parked there as "advance the sample
+clock to the next timer expiry" (`idle skips` in the report).
+
+**What M6a met that the scope did not list** — each modelled from the
+firmware's own use, all in `emu_rtos.py`: the serial link at `0xfc064000`
+(status bit 0 receive-ready, bit 2 transmit-ready, data `+0xc`, mask `+0x14`;
+a 2,048-byte transmit ring drained by vector `0x5b` — 4,831 bytes go out
+during start-up) and its twin at `0xfc068000`; the DSPI at `0xfc05c000` as a
+loopback FIFO (sites wait for 2 or 3 received frames); a test-mode magic
+word read at `0x1ffffe` (`0x4003232c`, expects `0xdcba`; zero = normal); a
+settings-reset loop that clears four bytes past the 1 MB SRAM window
+(`0x4001f298`). Three seeding subtleties: the transmit interrupt arrives at
+the handoff still armed with the trampoline as its handler (the cold boot
+took no interrupts, hardware drained the ring during the boot) — cleared at
+attach; the vector slot is refilled by main (`0x40010efc`); PIT1 is the
+storage delay timer and must be wired to source 44 or the delay helper
+never returns.
 
 ## 5. Milestones, and which model each wants
 
 Sam asked (6 Sep) to be told when the judgment work is done so a cheaper
 model can take the mechanical parts. Tagged accordingly.
 
-- **M6a — first real context switch.** *(judgment)* The INTR dispatcher,
-  the `rte` pop, the PIT0 model and the event loop; boot to `trap #0`, let
-  the dispatcher take it, and run until all eight tasks have been created and
-  every one has run at least once. Exit gate: the task table above matches
-  what the emulator observes; `emu_bringup`'s cold path is untouched
-  (`refhash`-style: M1–M5 outputs identical with route A off).
-- **M6b — waits become real.** *(mechanical once M6a exists)* PIT1 model;
-  ATA completion through vector `0xb6`; retire `emu_card`'s `0x40000818`
-  hook (keep it behind a flag). Exit gate: the RIG project loads through the
-  real storage and engine tasks with the hook off, part bytes identical to
-  M4's proof.
+- **M6a — first real context switch.** ✅ **DONE 6 Sep 2026** *(judgment)*
+  `tools/emu_rtos.py`: the handoff trap dispatched post-burst (the boot's
+  own INTR hook stops the burst; no second hook), `rte` popped by hand, PIT0
+  and both INTCs as register models seeded by replaying the boot's logged
+  writes, interrupts injected between bursts with two speeds (4,096
+  instructions, or 32 while a source is pending under a raised mask),
+  INTFRC writes ending the burst at once, idle skipping at main's spin.
+  Gate: `--until-gate` exits 0 at **205 ms emulated** — ten creates match
+  the table above field by field including the creator, all eleven tasks
+  ran, first switch boot → main. The cascade after the first tick is strict
+  priority: voice, p2a, p2b, p2c, p1b, engine, sys, each to its first real
+  wait. Measured rate **~1.5 M instr/s** (23 s wall per 400 ms emulated at
+  the default `--ips`), so ~60× slower than real time under load; idle time
+  is free. Sensitivity: at half and double `--ips` the creation order and
+  the task set are identical; the interleaving shifts by one dispatch of the
+  creator (a tick lands between two creates) and the sys↔p2c ping-pong
+  starts one slot apart — tick phase against init length, as expected. M1–M5
+  unchanged: `make verify` and the M4 card load reproduce their step-0
+  captures with route A off (`emu_card.attach(..., cold_hooks=True)` is the
+  default; `emu_bringup`/`emu_frames` untouched).
+- **M6b — waits become real.** *(mechanical once M6a exists)* Pulled
+  forward into M6a because the gate needed them: the PIT1 model (generic
+  `Pit`, wired to source 44) and **ATA completion through vector `0xb6`**
+  (`Rtos.attach_card`: INTRQ per sector, cleared by a status read, over
+  `emu_card`'s untouched card model); `emu_card.attach(cold_hooks=False)`
+  leaves the `0x40000818`/`0x40015786` hooks out. **Still open**: the mount
+  itself — under route A the storage task parks on its queue (`0x460bb3a8`)
+  and the card sees **zero commands** in 2 s; nothing has asked for a
+  mount. Find what posts it (card-detect on `0xfc0a4039`/`0xfc0a403a`? a
+  UI/sys request after start-up? `0x4001e594` on vector `0xaf`, installed
+  beside the storage create, is the first suspect). Exit gate unchanged:
+  the RIG project loads through the real storage and engine tasks, part
+  bytes identical to M4's proof.
 - **M6c — the sequencer under the real scheduler.** *(judgment)* Frame IRQ
   on vector `0x41`, the forced tick through `INTFRCH`, transport started by
   the real UI path or by the M5 detour. Exit gate — **the fidelity check for
@@ -243,9 +353,20 @@ M6b and M6d one each on the cheaper model, M6e open.
   log-append path that once wiped an image (`EMU.md` M4) runs for real. Keep
   images disposable.
 
-## 7. First step
+## 7. Next step
 
-Read `0x4001f834`'s tail (idle), then build M6a against the raw image with
-the card attached, stopping at "eight tasks created, each ran once". Nothing
-in `emu_bringup`, `emu_card` or `emu_frames` changes until M6c's gate
-passes.
+M6a is done (§5). Next is M6b's open item: find what requests the mount
+and let it happen under the real tasks, then the RIG load. Reproduce M6a:
+
+```sh
+make emu-rtos PROJECT=~/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG
+.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --ms 400 --until-gate
+.venv/bin/python3 tools/emu_rtos.py --selftest      # the SR-read trap, pinned
+```
+
+Diagnostics that found everything above and stay in the tool: `--trace`
+(every trap, dispatch, irq, create), `--starvation` (burst-end PCs per
+task), `--watch-calls A,B` (entries with caller and first argument),
+`--watch-mem ADDR,LEN` (every write, with task and PC), `--watch-pc A`
+(registers at an instruction). `emu_bringup` and `emu_frames` are untouched;
+`emu_card` gained the one flag.

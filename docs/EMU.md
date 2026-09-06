@@ -436,7 +436,7 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — scoped 6 Sep 2026, not started
+## The RTOS fork — M6a done 6 Sep 2026 (`tools/emu_rtos.py`)
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
@@ -444,13 +444,27 @@ a project loads through the firmware's own storage stack. Route **A** —
 run the firmware's own scheduler — is the fidelity upgrade that shows
 behaviour emerging from real task interleaving, and M5's recorder-arm path
 ("path B" above) is the first thing that needs it. **`docs/RTOS_FORK.md`
-is the scope**: the kernel decoded byte-exact (a ~0x200-byte scheduler,
-eight tasks, one entry shared by `trap #0` and a 5 ms PIT tick, VBR =
-`0x40000000`), a passing feasibility spike (Unicorn raises intno 256 at
-`rte` and dispatches nothing itself, so the exception mechanism is ours to
-run — and it works), the design (time in samples, events delivered at burst
-boundaries), five milestones tagged judgment/mechanical, and the fidelity
-gate: M5's one-trig test must land identically under route A.
+is the scope and the record.**
+
+M6a runs the kernel for real: `emu_rtos.attach()` boots to the handoff as
+before, attaches the card without its cold-detour hooks
+(`emu_card.attach(..., cold_hooks=False)`), swaps the peripheral window for
+register models (two interrupt controllers, both PITs, the two serial
+blocks, the DSPI) seeded by replaying the 7,886 writes the boot made into
+the generic stub, and then loops: bursts of `emu_start(count=…)` sized to
+the next timer event, the boot's own INTR hook stopping each burst on
+`trap #0` (dispatched by hand into the scheduler) or `rte` (popped by
+hand), interrupts injected between bursts when their level beats the SR
+mask. Time is counted in samples. The M6a gate — every task created and run
+once — passes at 205 ms emulated: **eleven** tasks, not the eight the scope
+read from the image (five create sites call through a register and were
+missed), the first switch at the first 5 ms tick after main's creates, the
+cascade in strict priority order, then tasks posting to each other. The
+scope's §2 is corrected in place; §3 records two Unicorn facts that cost the
+session (reading SR through the API at a burst boundary corrupts the
+condition codes — a trampoline `movew %sr,%d0` does not; memory-write hooks
+do fire on MMIO). What remains for M6b: nothing has asked the storage task
+for a mount yet, so the RIG load under route A is still to come.
 
 ## Reproduce
 
@@ -458,6 +472,8 @@ gate: M5's one-trig test must land identically under route A.
 make emu-setup                       # uv sync --extra emu -> .venv with unicorn
 make remix                           # then press e to boot the built image
 .venv/bin/python3 tools/emu_bringup.py [image]   # or the CLI directly
+make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate (RTOS_FORK.md §5)
+.venv/bin/python3 tools/emu_rtos.py --selftest   # the SR-read trap, pinned
 ```
 
 The emulator's one dependency (`unicorn`, with QEMU's CFV4E core — the DEFAULT
