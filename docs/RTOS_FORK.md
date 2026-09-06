@@ -833,3 +833,264 @@ on CLOCK RECEIVE (`0x80000028` bit 0), and REC's reaches it too through
 What would falsify this: a project with a track's machine set to a recorder
 and RSRC armed, run through `press_rec_live()`, showing `0x800066a0`
 actually change — the one thing this pass could not test.
+
+## 10. M6e (6 Sep 2026) — the recorder project exists, one claim of this section's own first pass is RETRACTED, and the arm path is still unlocated
+
+The first pass of this section (PR #108) built the fixture and read one
+result out of it. The fixture stands; the reading does not. Both are below,
+with the controls that separate them — every number here is from
+`--sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000`, the
+M6c gate's own command, varying only the project.
+
+### 10.1 The fixture ✅
+
+The project §9.4 said didn't exist now does. The byte is a track's
+**machine type**, one per track per part, and it now has a real home in the
+toolkit rather than a scratch copy of the offsets:
+
+```sh
+python3 tools/ot_project.py machine-type <project> <bank> <part> <track> <type>
+# and the emulator wrapper, which also writes the part's saved mirror:
+.venv/bin/python3 tools/scratch/make_recorder_testproj.py out/_recproj [type]
+```
+
+`ot_project.set_machine_type` writes part N **and** its saved mirror N+4
+(the "eight PART records, not four" rule) and fixes the bank checksum
+through the existing `_bank_write`. Track 1 keeps its existing trig
+(pattern 1 step 2 — the one M6c/M6d's gate fires at frame 344, byte
+`0xd3`), so no on-disk trig edit is needed.
+
+**Verified ✅**: loading the patched project through the real M6b path and
+reading RAM back, all 8 tracks' machine types are `[4, 2, 0, 0, 0, 0, 0,
+1]` where the source project reads `[2, 2, 0, 0, 0, 0, 0, 1]` — only track
+1 changed, exactly as patched. File-offset math: RAM's `PART_PTR +
+part*0x18b2 + 0x8eda2 + track` maps to file offset `PART_BASE +
+part*PART_STRIDE + 0x2b + track` — a flat +9-byte IFF chunk-header shift,
+the same shift `ot_project.py`'s `FX1_OFF`/`FX2_OFF` already carry relative
+to their own RAM offsets (0 and 8).
+
+⚠️ **The type NAMES are inferred, and the first pass wrote "4 (PICKUP1)" as
+if measured.** `PARAM_PAGES.md` derives 0/1 = FLEX/STATIC, 2 = THRU, 3 =
+NEIGHBOR, 4 = PICKUP from the five PLAYBACK descriptor pages' parameter
+sets and says in as many words that the mapping is **not confirmed against
+the dispatch order**. Read 4 below as "the value the inference calls
+PICKUP".
+
+### 10.2 What the trig test measures ✅, and what it does not ❌
+
+With track 1 at type 4, its `FW_LIVE_NIBBLE` writes (`0x46104d15`) go from
+**8 to 5**. That much reproduces exactly (re-run twice, 6 Sep).
+
+The first pass called this "the first empirical confirmation that
+machine-type dispatch genuinely branches for PICKUP". **It is not.** Two
+things falsify that reading, neither of which needed new machinery:
+
+| track 1's machine type | FW_LIVE_NIBBLE writes | |
+|---|---|---|
+| 2 (the project as shipped) | 8, incl. `0xd3` at frame 344 | the M6c gate |
+| 3 — NEIGHBOR, in range | **8, identical to baseline** | a different valid type changes nothing |
+| 4 — "PICKUP" | 5 | |
+| 7 — **out of range** for the 0..4 dispatch `PARAM_PAGES.md` names | **5, identical to type 4** | |
+
+An out-of-range machine type produces the same signature as the one under
+test, so the measurement carries no PICKUP-specific information: it reads
+**"type >= 4 / this track is not started"**, not "PICKUP branches".
+
+And the writes that disappear are not only the trig's. They are:
+
+```
+   frame     0 track 0 byte 0x10        <- the transport-start write, GONE
+   frame   344 track 0 byte 0xd3  x2    <- the trig, GONE
+```
+
+That frame-0 `0x10` is one of the **six start-frame writes in §8's own
+fidelity table**. The track drops out at `FW_START_TRACK`, before any trig
+exists — so nothing being measured here happens at trig dispatch at all.
+
+**What would falsify the replacement reading**: a type-4 run in which the
+track *does* start (say, once a recorder buffer is assigned to it) and the
+trig then behaves differently from type 2's. That would make the difference
+PICKUP-specific after all — and it is the same experiment as §10.5's next
+step, which is why this is worth re-testing rather than closing.
+
+### 10.3 §9.4's falsifier, run at last — and it was aimed at the wrong mechanism
+
+§9.4 named the test exactly: *"a project with a track's machine set to a
+recorder and RSRC armed, run through `press_rec_live()`, showing
+`0x800066a0` actually change."* The first pass built half the fixture and
+then ran the PLAY/trig test instead; §10 as written never mentioned REC.
+Run now, on the type-4 project, `--via-rec`:
+
+**Measured ✅**: pressing REC through its own firmware handler over a
+running transport moves the record-arm word `0x800066a0` **not at all** —
+`0x0` across the press, `0x0` after 400 frames, and `--watch-mem` over it
+shows its only writes are eleven zero stores during the LOAD (pcs
+`0x4002095e`, `0x4009ae56`, task `engine`), none at the press. Same on the
+plain project. The run stays faithful while it does so: the baseline
+control under the same flag keeps M6c's gate (8 writes, `0xd3` at frame
+344), which is what makes the null readable.
+
+**❌ But the null says nothing about the recorder, because REC is not what
+arms one.** From the Octatrack manual: `[REC]` activates **GRID RECORDING
+mode** — a sequencer mode — and *"once a record trig has been trigged by
+the sequencer the track recorder will start to sample"*. Sampling is
+initiated by a **recorder trig**, not by the transport REC key; the key's
+role is only to make the sequencer honour those trigs. So §9.4's falsifier
+expected a mechanism the key does not drive, `0x800066a0` is most likely
+the grid/live record MODE state rather than an audio-recorder arm 🟡, and
+"REC leaves it at 0" is the expected result on any project, recorder-
+configured or not. It is now measured on both, and that is where its value
+ends.
+
+The lever is §10.5's first item. M6d's per-key jump table (`0x400d2d54`,
+eight track-key entries) stays relevant for the `[TRACK]`+`[YES]` re-arm
+gesture the manual describes, but the trig is the primary path.
+
+⚠️ **Two orderings are known bad, and both fail on the PLAIN project too**
+(so neither is a recorder finding): REC-then-PLAY delivers 400 frames with
+**zero** `FW_LIVE_NIBBLE` writes — REC starts the transport itself, so PLAY
+toggles it back off — and REC alone, with the tracks started by hand the
+way `press_play_live` does, also gives zero. Only PLAY-then-REC keeps the
+gate. `--via-rec` now does that, and the comment in `emu_rtos.py` says why.
+
+### 10.3b Two instrument defects found while doing it — both silent
+
+Neither changed a conclusion in the end, but either could have invented
+one, and one of them is the exact shape of `CLAUDE.md`'s "a measurement can
+be structurally blind to the thing you are using it to rule out".
+
+- **`--watch-calls` and `--watch-mem` printed NOTHING unless `--trace` was
+  also on.** Both hooks appended to `rt.calls` / `rt.mem_writes`; the CLI
+  read neither. An address that never fired and one that fired every frame
+  looked identical from the command line: silence. The CLI now prints a
+  per-address entry count and the writes. ✅ **Re-derived with the working
+  readout**, and §10.4's null survives it: `0x4000b800` **0**,
+  `FUN_400977cc` **0**, `0x4000d2a0` **400**, one run, same command.
+- **`0x800065b8` and `0x800066a0` are LONGWORDS, and were being read a byte
+  at a time.** The transport start is a 4-byte store of 1 (`[0x800065b8] <-
+  0x1 (4)` at pc `0x4009c3d4` in `main`, measured), so the *byte* at
+  `0x800065b8` stays 0 while the 1 lands in `0x800065bb`. A byte read of
+  either address reports "never changed" no matter what the firmware does.
+  §9.4's "`0x800065b8` 0->1" is right about the word and would have read as
+  a flat 0 to anyone checking it as a byte — which is how this surfaced.
+  Both are read as words now.
+
+### 10.4 The `0x4000b800` flag ✅ — and it is stronger than the first pass wrote
+
+`watch_calls` on every candidate this session could name from the existing
+docs — `FUN_400977cc`, `FUN_40097168`, the recorder TRIG branch
+`0x40083544`, the QREC scheduler `FUN_40005178`, the arm caller
+`0x40005ff0`, and the per-frame trig gate `0x4000b800` `EMU.md`'s M5
+section names — logged **zero calls** across 400 frames, `0x4000b800`
+included on the ORIGINAL project's own successful trig. `0x4000d2a0` fires
+400/400 in the same runs, so the instrumentation works.
+
+⚠️ Those zeros were originally read off a CLI that printed nothing either
+way (§10.3b). They have since been **re-derived with a working readout** —
+`0x4000b800` 0, `FUN_400977cc` 0, `0x4000d2a0` 400/400 in one run — so the
+flag stands on a measurement now rather than on an absence of output.
+
+The first pass concluded that address "is not reached via `jsr`". That
+understates the instrument: `watch_calls` installs a `UC_HOOK_CODE` **at
+the address**, so a zero count means that instruction **never executed, by
+any route** — jsr, branch or fallthrough. `EMU.md`'s claim that
+`0x4000b800` is the trig-write site is unconfirmed under route A, and the
+write still happens on schedule, so some other code does it.
+
+### 10.6 The pattern format, and an on-disk TRIG fixture that works ✅
+
+The recorder-trig fixture needed the pattern format first, so that is now
+measured rather than assumed.
+
+**A bank is IFF.** Sixteen `PTRN` chunks (file stride `0x8eec`), each holding
+eight `TRAC` sub-chunks (file stride `0x922`) for the audio tracks and then
+eight `MTRA` for the MIDI ones, and after all sixteen patterns the eight
+`PART` records at `0x8eed6`. The RAM strides are 8 and 9 less respectively
+(`0x8ed8` per pattern, `0x91a` per track) because the chunk headers are
+stripped on load.
+
+⚠️ **A `PTRN`'s header is 8 bytes and a `TRAC`'s is NINE** — tag, length and
+one pad, the same +9 the PART records carry. Read as 8 it is not obviously
+wrong: every mask shifts one byte, still looks like a plausible trig
+pattern, and a step you set lands eight steps away — which is exactly what
+happened here (a step-2 trig written at +8 became steps 10 and 12 and simply
+never fired inside a 400-frame window). Settled by loading the project and
+reading the RAM record back: +9 matches byte for byte, +8 does not. Same
+family as every other "verify by readback" rule in this file.
+
+**A `TRAC` opens with 64-bit big-endian step masks at an 8-byte stride**,
+bit (step-1). `mulsl #0x91a,%d7` with `d7` = track, at `0x4009d376` and its
+siblings, is where the stride is measured from. What the sequencer does with
+them (`--watch-pattern` over a live record, then `scripts/disasm.sh emac`):
+
+| mask | consumer | what it does |
+|---|---|---|
+| `0x00` | `0x4009d41c` | the note/sample trig — the one `poke_trig` sets |
+| `0x00\|0x08\|0x10\|0x18` | `0x4009d382..9a` | ORed into the "anything on this step" test |
+| `0x20` | `0x4009d93c` | sets bit 12 of the per-track flag word at `0x46c7a6c0` |
+| `0x28` | `0x4009d96e` | bit 13 |
+| `0x30` | `0x4009d99a` | bit 14 |
+| `0x38` | `0x4009d9f6` | bits 5+8 (else bit 5); only read when 12/13/14 fired |
+| `0x40` | `0x4009d3d6` | gates a per-step byte at `+0x52` into a `x110250` timing calc |
+
+`0x40`/`0x48` are **not** masks: they read as a run of `0xaa`, a
+default-filled per-step byte array.
+
+**The fixture** (`ot_project.py`, so it composes with the rest of the
+toolkit rather than living in `tools/scratch/`):
+
+```sh
+python3 tools/ot_project.py pattern-trig <project> <bank> <pattern> <track0> <step> [mask]
+python3 tools/ot_project.py pattern-diff <projectA> <projectB> <bank>
+```
+
+✅ **Proven end to end**: `pattern-trig out/_trigproj 2 0 0 2` — step 2, on
+disk, no RAM poke anywhere — lands `0xd3` on track 0 at **frame 344**, the
+same byte, track and frame as `--poke-trig 2`, which is M6c's own fidelity
+gate. File -> card -> real LOAD PROJECT -> sequencer, with nothing poked.
+
+❓ **Which mask is the RECORDER trig is still open**, and the emulator did
+not settle it. Setting step 2 in every candidate mask on the type-4 track
+produces exactly one call to `0x40005ff0` (the "arm caller") where the same
+run without the pokes produces none — but bisecting into halves gives one
+call from *either* half, so that observable is not specific enough to name a
+mask. `0x40005ff0`'s call site (`0x4000d35a`) explains why it is a weak
+signal: the frame builder calls it whenever a track's live byte has any of
+bits `0xd0` set, which the ordinary trig byte `0xd3` also satisfies.
+
+**`pattern-diff` is what finishes this, and it needs the unit, not more
+emulation**: save a project, add ONE recorder trig on the unit, save it
+again under another name, run `pattern-diff` on the pair. The mask offset
+and the step fall out with no reverse engineering at all. That is a
+30-second job at the hardware and it is the cheapest measurement left in
+this milestone.
+
+### 10.5 Where this actually goes next
+
+- **A RECORDER TRIG on the pattern.** This is the mechanism, per the
+  manual (§10.3): the sequencer trigs it and the track recorder starts to
+  sample. ⚠️ **Not `+0x8f385`** — that is the recorder SETUP page's TRIG
+  *mode* (ONE/ONE2/HOLD), one of the twelve bytes at `0x8f382 +
+  part*6322 + track*12`, and it lives in the PART, not the pattern. The
+  fixture that writes a per-step trig is built and proven (§10.6); the
+  open half is **which mask** the recorder's trigs live in, and
+  `pattern-diff` against a pair of projects saved on the unit answers it
+  in one command.
+- **A recorder buffer assignment** (object ids 128-135, control records at
+  `0x46c922c4 + id*44`, `EXTERNAL.md` §6) the way a STATIC track needs a
+  sample slot (`ot_project.py`'s `set_track_slot`). Still not located; it
+  is also what §10.2's falsifier needs.
+- **Not** another round of `watch_calls` on addresses pulled from prose.
+  Six were spent that way for six zeros.
+- **The tick pre-emption question** in M6e's own scope is untouched. §8's
+  gate is evidence it changed nothing *in that one test*, and no more.
+
+Reproduce (both projects; `[type]` 3 and 7 are the controls of §10.2):
+
+```sh
+cp -R <a real project dir> out/_recproj
+.venv/bin/python3 tools/scratch/make_recorder_testproj.py out/_recproj 4
+.venv/bin/python3 tools/emu_rtos.py --project out/_recproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 [--via-rec]
+# the control is the same command against out/_testproj
+```

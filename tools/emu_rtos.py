@@ -101,6 +101,15 @@ KEY_REC = 0x4000a274
 KEY_PLAY = 0x4000a200               # gated on 0x80000029 (nonzero from boot in the test project);
                                      # sets clock-sync fields, then tail-calls FW_TRANSPORT
 KEY_STOP = 0x4000a1e0
+REC_ARM = 0x800066a0                 # the record-arm state REC's own handler tests
+TRANSPORT = 0x800065b8               # 0 -> 1 when the transport starts (§9.4)
+# ⚠️ BOTH ARE LONGWORDS, NOT BYTES. The transport start is a 4-byte store of
+# 1 at 0x800065b8 (measured 6 Sep 2026: `[0x800065b8] <- 0x1 (4)` at pc
+# 0x4009c3d4 in main), so the byte AT 0x800065b8 stays 0 and the 1 lands in
+# 0x800065bb. Reading either of these a byte at a time reports "never
+# changed" no matter what the firmware does -- read the word.
+def _word(rt, addr):
+    return int.from_bytes(rt.uc.mem_read(addr, 4), "big")
 
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
@@ -162,6 +171,8 @@ FW_SEQ_SELECT = 0x400a1030         # sequencer select(bank, pattern): the LOAD P
                                    # last step (0x40025b16), also the sequencer init's (0x400a1088)
 FW_SEQ_BANK = 0x800065bd           # the sequencer's own playing bank byte (FW_START_TRACK: x 635712)
 FW_SEQ_PATTERN = 0x800065be        # ...and playing pattern (x 36568)
+PATTERN_STRIDE = 0x8ed8            # 36568; sixteen records fill blob+0..0x8ed80
+TRAC_STRIDE = 0x91a                # one audio track's sequencer record inside a pattern
 
 
 class Pit:
@@ -1252,6 +1263,54 @@ class Rtos:
         self.uc.mem_write(blob + 7, bytes([v]))
         return v
 
+    def watch_reads(self, addr, length, cap=200000):
+        """Log READS into [addr, addr+length) as {(offset, pc): count}.
+
+        The counterpart of `watch_mem`, for finding which fields of a
+        record the firmware actually consults: the sequencer's step
+        handler reads the pattern record, so watching that record says
+        where a trig array is instead of guessing its offset.
+        """
+        self.reads = {}
+        self._read_base = addr
+
+        def on_read(u, acc, a, size, val, d):
+            if len(self.reads) < cap:
+                pc = u.reg_read(eb.UC_M68K_REG_PC)
+                k = (a - addr, size, pc)
+                self.reads[k] = self.reads.get(k, 0) + 1
+        self.uc.hook_add(eb.UC_HOOK_MEM_READ, on_read, begin=addr, end=addr + length - 1)
+        self.uc.ctl_flush_tb()
+        return self
+
+    def pattern_base(self):
+        """Base of the CURRENT pattern's record: the bank blob plus
+        `pattern * 0x8ed8` (sixteen records fill blob+0..0x8ed80, the parts
+        follow -- EXTERNAL.md §6). Track 1's note-trig mask is its first
+        eight bytes, which is what `poke_trig` writes."""
+        blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
+        return blob + self.uc.mem_read(CUR_PATTERN, 1)[0] * PATTERN_STRIDE
+
+    def poke_mask(self, off, step, track=1):
+        """Set `step`'s bit in the 64-bit mask at `off` in a track's TRAC
+        record, in the CURRENT pattern.
+
+        The pattern record is eight TRAC records of **0x91a** bytes (the
+        file carries them as `TRAC` sub-chunks of 0x922, tag+len more), and
+        each begins with a run of 64-bit step masks at an 8-byte stride:
+        `mulsl #0x91a,%d7` with d7 = track, at 0x4009d376 and every sibling
+        site, is where that stride is measured from. Mask `0x00` is the one
+        `poke_trig` writes; the sequencer ORs 0x00/0x08/0x10/0x18 into its
+        "anything on this step" test (0x4009d382..0x4009d39a), reads a
+        per-step value behind 0x40 (0x4009d3d6), and builds a per-track flag
+        word in `0x46c7a6c0` out of 0x20 -> bit 12, 0x28 -> bit 13,
+        0x30 -> bit 14 and 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
+        """
+        base = self.pattern_base() + track * TRAC_STRIDE + off
+        v = self.uc.mem_read(base + 7, 1)[0] | (1 << (step - 1))
+        self.uc.mem_write(base + 7, bytes([v]))
+        return v
+
     def install_trig_log(self):
         """As `emu_frames.install_trig_log`, keyed by `self.frame_count`
         (this module's own frame clock) instead of a hand-kept counter."""
@@ -1478,6 +1537,21 @@ def _cli():
     ap.add_argument("--via-key", action="store_true",
                     help="with --sequencer: start transport through the real PLAY key handler "
                          "(press_play_live, M6d) instead of calling FW_TRANSPORT directly")
+    ap.add_argument("--poke-mask", default="",
+                    help="with --sequencer and --poke-trig: also set that step's bit in "
+                         "each comma-separated TRAC mask offset (e.g. 0x08,0x10) on track 1 "
+                         "-- for finding which mask a trig type lives in")
+    ap.add_argument("--poke-mask-track", type=int, default=1,
+                    help="which track --poke-mask writes (0-7, default 1)")
+    ap.add_argument("--watch-pattern", type=lambda x: int(x, 0), default=0,
+                    help="with --sequencer: log every READ into the first N bytes of the "
+                         "current pattern record and report them by offset -- finds the "
+                         "trig arrays instead of guessing their offsets")
+    ap.add_argument("--via-rec", action="store_true",
+                    help="with --sequencer: start the transport through the real REC key "
+                         "handler INSTEAD of PLAY (REC starts it too, §9.4) and report the "
+                         "record-arm byte (0x800066a0) either side of the press -- RTOS_FORK "
+                         "section 9.4's falsifier. Overrides --via-key")
     a = ap.parse_args()
 
     card = None
@@ -1498,6 +1572,38 @@ def _cli():
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
+
+    def _watch_report():
+        """Print what --watch-calls / --watch-mem actually collected.
+
+        ⚠️ Both hooks appended to `rt.calls` / `rt.mem_writes` and the CLI
+        printed NEITHER unless --trace was also on, so a watched address
+        that never fired and one that fired every frame looked exactly the
+        same from the command line: silence. Anything concluded from "the
+        watch printed nothing" is worthless without this (M6e, 6 Sep 2026).
+        """
+        calls = getattr(rt, "calls", None)
+        if calls is not None:
+            seen = {}
+            for _, _, addr, ret, _ in calls:
+                e = seen.setdefault(addr, [0, set()])
+                e[0] += 1; e[1].add(ret)
+            for a_ in [int(x, 0) for x in a.watch_calls.split(",")]:
+                n, callers = seen.get(a_, (0, set()))
+                where = (", callers " + ", ".join(f"{c:#x}" for c in sorted(callers)[:4])) if callers else ""
+                print(f"watch-call : {a_:#x} entered {n} time(s){where}")
+        writes = getattr(rt, "mem_writes", None)
+        if writes is not None:
+            # ⚠️ `load_project_live` installs its own watch_mem and shares
+            # this list, so a run that loads a project carries its writes too
+            # -- the addresses below say which is which.
+            print(f"watch-mem  : {len(writes)} write(s) logged "
+                  f"(the load's own watch shares this list)")
+            for sample, task, pc, addr_, size, val in writes[:12]:
+                print(f"   [{sample:10.1f}] [{addr_:#x}] <- {val:#x} ({size}) "
+                      f"at pc {pc:#x} in {rt._name(task)}")
+            if len(writes) > 12:
+                print(f"   ... {len(writes) - 12} more")
 
     def _fault(e):
         why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
@@ -1534,13 +1640,45 @@ def _cli():
             rt.frame = True
             rt.next_frame = rt.sample + FRAME_PERIOD
             rt.exact_clock()
-            if a.via_key:
+            if a.watch_pattern:
+                pbase = rt.pattern_base()
+                print(f"pattern    : record at {pbase:#x} "
+                      f"(pattern {rt.uc.mem_read(CUR_PATTERN, 1)[0]}), "
+                      f"watching reads of its first {a.watch_pattern:#x} bytes")
+                rt.watch_reads(pbase, a.watch_pattern)
+            rec_arm = None
+            if a.via_rec:
+                # RTOS_FORK §9.4's falsifier, on a project whose track 1 IS
+                # configured as a recorder machine: does REC through its own
+                # handler move the record-arm byte? Read `0x800066a0` and the
+                # transport byte either side of the press.
+                #
+                # ⚠️ ORDER IS LOAD-BEARING, and two orders are already known
+                # bad (measured 6 Sep 2026, BOTH on the plain project too, so
+                # neither is a recorder finding): REC then PLAY delivers 400
+                # frames with ZERO FW_LIVE_NIBBLE writes -- REC starts the
+                # transport itself (§9.4), so PLAY toggles it back off -- and
+                # REC alone, with the tracks started by hand the way
+                # press_play_live does, ALSO gives zero. Only PLAY first,
+                # then REC, keeps M6c's gate intact, which is what makes the
+                # arm reading here mean anything: if the trig still lands at
+                # frame 344, the run is faithful and the arm byte was
+                # genuinely watched over a working transport.
+                rt.press_play_live()
+                before = (_word(rt, TRANSPORT), _word(rt, REC_ARM))
+                rt.press_rec_live()
+                rec_arm = (before, (_word(rt, TRANSPORT), _word(rt, REC_ARM)))
+            elif a.via_key:
                 rt.press_play_live()
             else:
                 rt.start_transport_live()
             if a.poke_trig:
                 v = rt.poke_trig(a.poke_trig)
                 print(f"poke trig  : track 1 step {a.poke_trig} -> mask byte 7 = {v:#04x}")
+                for off in [int(x, 0) for x in a.poke_mask.split(",") if x.strip()]:
+                    v = rt.poke_mask(off, a.poke_trig, a.poke_mask_track)
+                    print(f"poke mask  : track {a.poke_mask_track} mask {off:#04x} "
+                          f"step {a.poke_trig} -> byte 7 = {v:#04x}")
             rt.install_trig_log()
             # Frame 0 = the first frame delivered after the transport start
             # returned, which is what emu_frames.py's cold run calls frame 0:
@@ -1556,6 +1694,12 @@ def _cli():
             return 1
         print(rt.report())
         print(f"sequencer  : playing bank {seq_bank} pattern {seq_pattern} (re-selected through the load's own last step)")
+        if rec_arm is not None:
+            (t0b, a0b), (t1b, a1b) = rec_arm
+            print(f"REC        : across the press -- transport {TRANSPORT:#x} "
+                  f"{t0b:#x} -> {t1b:#x}, record-arm {REC_ARM:#x} {a0b:#x} -> {a1b:#x} "
+                  f"(longwords); after the run {_word(rt, TRANSPORT):#x} / "
+                  f"{_word(rt, REC_ARM):#x}")
         print(f"load       : mounted={mounted} saved_bank={saved_bank} bank={final_bank} "
               f"clock={'internal' if a.internal_clock else 'external (CLOCK RECEIVE as saved)'}")
         print(f"frames run : {rt.frame_count - frame0} since transport start (target {a.frames}; "
@@ -1567,6 +1711,18 @@ def _cli():
         ok = rt.frame_count >= target
         if not ok:
             print(rt.starvation())
+        reads = getattr(rt, "reads", None)
+        if reads:
+            by_off = {}
+            for (off, size, pc), n in reads.items():
+                e = by_off.setdefault(off, [0, size, set()])
+                e[0] += n; e[2].add(pc)
+            print(f"pattern rd : {len(by_off)} distinct offsets read")
+            for off in sorted(by_off):
+                n, size, pcs = by_off[off]
+                print(f"   +{off:#06x} size {size} x{n:<5d} pc "
+                      + ", ".join(f"{c:#x}" for c in sorted(pcs)[:3]))
+        _watch_report()
         label = "M6d run (via-key)" if a.via_key else "M6c run"
         print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")
         return 0 if ok else 1
