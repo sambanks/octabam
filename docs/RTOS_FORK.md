@@ -5,11 +5,12 @@ Scoped 6 Sep 2026. Status: **M6a done, M6b done (6 Sep 2026)** —
 dispatched by hand, PIT0 ticking, eleven tasks created and each run once,
 tasks posting to each other through the kernel, and now a real card mount
 plus a real LOAD PROJECT reaching the firmware's own correct project
-pointer for real, matching the cold proof's read count. One loose end was
-root-caused and handed to **M6d**: a UI-screen mechanism (live only because
-the emulator doesn't yet drive the UI) insists on track 0 and reverts the
-just-loaded pointer — not a defect in the mount or the load, §7 has the
-byte-exact trace. §5 carries both measured results and what M6a corrected
+pointer for real, matching the cold proof's read count. §7 carries a
+**retraction**: PR #103's "track-select watcher" reading of the load's end
+state was wrong — the bytes are the current *bank*, the run ends on bank A
+because the engine's own reset-time "select bank 0" is applied by `sys`
+after the file's `BANK=1` was parsed, and whether hardware orders it the
+same way is the open question, with a one-press falsifier. §5 carries both measured results and what M6a corrected
 in §2 (the task table was wrong in five rows). `EMU.md` has the history of
 route B (detours) that this replaces for the paths that need real task
 interleaving.
@@ -317,18 +318,18 @@ model can take the mechanical parts. Tagged accordingly.
   (~30,955 sectors) to within 1.5%, and the engine writes PART_PTR to
   route B's own known-good value (`0x4017d520`, confirmed against a fresh
   `emu_card.load_project()` run on the same image) from a real dispatch site
-  (`0x40087d44`). **Root-caused, same day**: a separate, generic
-  "select track" routine (`0x40062288`) independently insists track 0 is
-  current and reverts both the current-track byte and PART_PTR ~500-3,000
-  samples after the engine sets track 1 — reactive to the track change, not
-  a one-shot or a timer, so reposting the load never outruns it (tried).
-  This is a live UI-screen behaviour firing only because the emulator never
-  puts the UI on the screen a real load flow would have it on — **M6d's
-  territory, not a defect in the mount or the load.** §7 has the full trace.
-  Exit gate: `load_project_live` returns `loaded=True` the instant PART_PTR
-  is ever seen correct during the run (a permanent watch, independent of
-  what a live screen does to it afterward) — the honest claim this milestone
-  can make, and the one M6d inherits.
+  (`0x40087d44`). **Then misread, then corrected (§7 retraction)**: the
+  engine's final state is bank B because the project file says `BANK=1`
+  (`0x80000002` is the current BANK, not the track; `0x400e21e0` and
+  `0x4017d520` are bank A's and bank B's blobs, not "empty" and "correct").
+  Under route A the LOAD PROJECT handler's own first step — a reset to
+  bank A that posts "select bank 0" to `sys` — is consumed by `sys` after
+  the engine has already parsed `BANK=1`, so the run ends on bank A. Real
+  cross-task ordering, not a load failure; whether hardware orders it the
+  same way is an open question with a one-press hardware falsifier (§7).
+  Exit gate: `load_project_live` reports the bank the engine parsed from
+  the file (the load reached its finish line) beside the bank the run
+  ended on.
 - **M6c — the sequencer under the real scheduler.** *(judgment)* Frame IRQ
   on vector `0x41`, the forced tick through `INTFRCH`, transport started by
   the real UI path or by the M5 detour. Exit gate — **the fidelity check for
@@ -341,10 +342,9 @@ model can take the mechanical parts. Tagged accordingly.
   (the post primitive against whichever queue `0x4005593c` blocks on — to be
   read in M6c) so PLAY and the REC-arm action run the firmware's own path.
   This is what makes Bryan's recorder test reachable without RAM pokes
-  (`EMU.md` M5, "path B"). **Also inherits M6b's track-select contest** (§7):
-  find what calls the "select track 0" routine from `0x400d64b9` and put the
-  UI on whatever screen makes it stop, so a loaded project's track stays
-  current.
+  (`EMU.md` M5, "path B"). (PR #103's hand-off of a "track-select contest"
+  to this milestone is withdrawn — §7 retraction; there is no UI mechanism
+  in it.)
 - **M6e — use it.** *(judgment)* The recorder-arm trace for Bryan; the tick
   pre-emption question; whatever the kit/parts work needs.
 
@@ -438,62 +438,90 @@ as route B builds it) afterward drives the engine into genuine file reads —
 confirmed as the *correct* value by running route B's own
 `emu_card.load_project()` against the same card image cold.
 
-**The race, root-caused (not the earlier vaguer "SYS clobbers it").** Two
-independent, real mechanisms both write the current-track byte (`0x80000002`)
-and `PART_PTR` together, and they disagree:
-- The **engine**, finishing LOAD PROJECT, sets track **1** current
-  (`0x40087d26`), immediately before its own correct `PART_PTR` write
-  (`0x40087d44`).
-- A separate, generic **"select track N" routine** (`0x40062288`) computes
-  `PART_PTR := 0x400e21e0 + N·635712` — a per-track **factory-default table
-  baked into the image**, unrelated to any loaded project — and is invoked
-  **repeatedly across the whole run**, always with `N=0`, always called with
-  the *same fixed argument pointer* (`0x400d64b9`, static data — not our
-  message, not `sys`'s queue message at all: `a2` at entry is constant
-  across every firing, so this is reached via a completely different call
-  path than the `table[15]` dispatch that mounts the card). It reacts within
-  ~500–3,000 samples of the current track **actually changing away from
-  0** (confirmed with a register-state watch at `0x40062288`/`0x400622aa`:
-  `d2=0` and the write target both track it exactly), then goes quiet until
-  the next change — a live watcher, not a one-shot step. `sys` also writes
-  `0x80000002 := 0` in the same handler (`0x400622b8`), confirmed by
-  watching that byte directly: engine sets it to `1` at sample 13838, `sys`
-  sets it back to `0` at 14406.
+**Retraction (6 Sep 2026, correction pass on Fable): the "track-select
+watcher" story that shipped in PR #103 was wrong, and so was PR #102's
+"empty sentinel".** What was measured then (the addresses, the timings, the
+fact that reposting the load never wins) stands; what it *meant* was
+misread by trusting the cold path's frozen value as ground truth and by
+not cross-checking a constant this repo had already named. The corrected
+reading, every step of it re-measured:
 
-**So whichever fires second wins, and reposting LOAD PROJECT does not
-help** — tried directly (three attempts, `run_ms=6000` apart): every repost
-sets track 1 again, and the watcher notices and corrects it back to 0 again,
-on the same short delay, every single time (samples 13838→14406,
-278477→279009, 543079→543611 — three attempts, the identical ~530-sample
-gap each time). It isn't sluggish start-up and it isn't periodic on a fixed
-timer; it's reactive to the track change itself, so nothing short of not
-changing the track (or changing what the watcher thinks the "right" track
-is) makes it stop. The interrupt path (vector `0xaf`) is unrelated — checked
-directly, it never fires during a `request_card_mount`-driven load (the
-mount posts straight to `sys`'s queue, bypassing the interrupt entirely).
+- **`0x80000002` is the current BANK** (`emu_card.FW_CUR_BANK`, already
+  named there), and `0x80000004` the current PATTERN. The engine's LOAD
+  PROJECT handler parses the project file's `BANK=` and `PATTERN=` keys
+  (strings at `0x400b39be`/`0x400b4c8b`, atoi at `0x40087d0a`, clamped
+  0–15 at `0x40087d1e`) and writes them there (`0x40087d26`, `0x40087d82`).
+- **`PART_PTR = 0x400e21e0 + bank × 635,712`** is the current bank's blob
+  in RAM (`0x40087d34`–`0x40087d44`, and `0x4000faf0(bank)` copies 585,088
+  bytes from it into SRAM at `0x1001614e` — that is the bank switch). So
+  `0x400e21e0` is **bank A**, `0x4017d520` is **bank B**
+  (`0x400e21e0 + 635,712` exactly). Neither is empty; nothing here is
+  per-track.
+- **The RIG project saves `BANK=1`** (`[STATES]` in `project.work`). The
+  engine ending on bank B is therefore the *saved* state, and route B's
+  `0x4017d520` was right for that reason — not because the cold path is
+  ground truth, but because it happens to freeze at the engine's value.
+- **The "select bank 0" message is posted by the engine itself.** The
+  static message at `0x400d64b9` is opcode 21 (`sys` table index 20 =
+  `0x40062288`, "select bank msg[1]"), and both sites that post it
+  (`0x4000a150`, `0x40009638`) write the bank byte from a register first —
+  it was never a hard-coded 0. Call chain, measured off the stack at the
+  post: `0x40085336` (LOAD PROJECT, opcode 4) → `0x400909d8` at
+  `0x4008534c` → `0x40025aa2…` → the pattern-load routine → post. That is
+  the handler's **first step: a reset to bank A / pattern 1**, before any
+  file is read. It runs twice (samples 12,407 and 13,535 in the trace),
+  then the files are read, then `BANK=` is parsed (13,838) and PART_PTR
+  goes to bank B.
+- **`sys` consumes those queued resets whenever it next runs.** The first
+  it consumed within one sample (12,408; bank already 0, so a no-op). The
+  second pair it consumed at 14,405 — *after* the engine had parsed
+  `BANK=1` — and switched the working bank back to A (`0x400622aa`,
+  `0x400622b8`). That is the whole "race": the engine's own reset-time
+  request, applied late by the task it was sent to, overriding the saved
+  bank the engine had set in the meantime.
 
-**Whose bug is this, really: none, on real hardware — it's an artifact of
-not driving the UI.** `0x400d64b9`'s repeated calls, always for track 0,
-look like a screen that assumes or enforces track 0 is current — plausibly
-whatever the unit is sitting on before a project gets loaded through it.
-`Rtos.request_card_mount` and `load_project_live` post kernel messages
-straight to `sys` and the engine, which is exactly what let M6b prove the
-mount and the load work without needing any UI machinery — but it also
-means the emulator never puts the UI on the screen a real load flow would
-have it on, so this screen's "keep showing track 0" behaviour keeps firing
-when it normally wouldn't be live at all. **This is M6d's territory (real
-key injection)**, not something to paper over in M6b: find what selects
-track 0 from `0x400d64b9`'s caller and see when it should legitimately stop
-running, or drive the UI to a screen where it doesn't.
+Two things that looked like evidence for the old story and were not: the
+posts recurring "throughout the run" were the reset step of *each* load
+attempt (the tool was reposting the load); and "reacts to the track
+changing" was the case handler's own guard (`cmpl` current bank against
+the request at `0x40062296` — it only writes when they differ), which
+made the no-op consumes invisible and the late one look reactive.
 
-**Where this leaves M6b's exit gate.** `Rtos.load_project_live` now returns
-`loaded` — true the instant `PART_PTR` is *ever* seen at a value other than
-the empty sentinel during the run (via a permanent `watch_mem`), independent
-of whatever happens to it afterward. That is the honest, checkable claim:
-the mount and the load mechanism both work, for real, through real tasks,
-matching M4's read-count proof — the subsequent contest over which track is
-"current" is a separate, now precisely-understood problem with a named
-owner (M6d), not a reason to call the load itself broken.
+**Why `sys` applied the second pair late — measured.** It was not
+starved: between the posts (13,535/13,539) and the consume (14,405) the
+scheduler dispatched `sys` fifteen times, alternating with the engine's
+ATA-wait wakeups, every time into `0x400934d0` — the p2c↔sys exchange
+that M6a's dispatch log already showed as a ping-pong. `sys`'s queue is
+FIFO; the two "select bank 0" messages sat behind a run of p2c traffic
+and were serviced ~870 samples after they were posted, by which point the
+engine (blocking and resuming on ATA reads throughout) had reached the
+`BANK=` parse (13,838). So the emulator's ordering is a plain consequence
+of queue depth and round-robin at priority 1, not of anything the tool
+does. **Whether hardware orders it the same way is the open question, and
+it is the right kind for route A**: a cross-task ordering whose answer
+decides whether the unit comes up on the saved bank after LOAD PROJECT.
+The hardware observable is one button press — load the RIG project and
+read the bank indicator. If the unit comes up on **B**, the emulator's
+p2c traffic or its timing knob is unfaithful here and M6c gains a second
+calibration point; if it comes up on **A**, the firmware really does
+apply its own stale reset and route B has been hiding it. Recorded as
+the falsifier; not resolved in this pass.
+
+**A diagnostic rule found the hard way in this pass:** never call
+`Rtos._sr()` (or anything that runs `emu_start`) from inside a Unicorn
+hook callback. It is re-entrant, undefined, and silently derails the run
+— one trace logged a single post instead of six before this was spotted.
+Read registers directly in hooks; read SR only between bursts.
+
+**Where this leaves M6b's exit gate.** `Rtos.load_project_live` returns
+`(mounted, posted, saved_bank, final_bank, elapsed_ms)`: `saved_bank` is
+the bank the engine parsed from the file and wrote to PART_PTR (None if
+the load never got that far), `final_bank` is where the run ended. The CLI
+passes on `saved_bank` being set — the mount and the load work, for real,
+through real tasks, at M4's read-count scale — and prints the two side by
+side, naming the stale-reset ordering when they differ. The "M6d
+inherits a UI-screen contest" hand-off in PR #103 is withdrawn; there is
+no UI mechanism in this story.
 
 ```sh
 make emu-rtos PROJECT=/absolute/path/to/OCTABAM_RIG

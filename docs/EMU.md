@@ -472,18 +472,18 @@ nothing had decoded before. `Rtos.request_card_mount()` sends it the
 message that reaches `FW_CARD_INIT`; `Rtos.load_project_live()` then posts
 LOAD PROJECT exactly as route B builds it. Real ATA IDENTIFY and READ
 commands follow (6,189 commands / 30,467 sectors in one run, matching M4's
-cold proof — ~30,955 sectors — to within 1.5%), and the engine writes the
-project pointer to route B's own known-good value. A **separate, generic
-"select track" routine independently insists track 0 is current** and
-reverts both the current-track byte and the project pointer within a few
-thousand samples of the engine setting track 1 — reactive to the track
-change itself (confirmed with a register-state watch at the write site),
-not a timer and not something reposting the load can outrun. It's a live
-UI-screen behaviour, firing only because the emulator doesn't yet drive the
-UI to the screen a real load flow would be on — root-caused and hard-owned
-by **M6d**, not a defect in the mount or the load. `RTOS_FORK.md` §7 has
-the full trace; `load_project_live` reports `loaded=True` the instant the
-pointer is ever seen correct, independent of what happens to it after.
+cold proof — ~30,955 sectors — to within 1.5%), and the engine parses the
+project file's `BANK=1` and switches to bank B, the saved bank. **Then a
+retraction** (`RTOS_FORK.md` §7): two readings shipped the same day called
+that pointer "empty" vs "correct" and blamed a "track-select watcher"; the
+bytes are the current *bank* and the two values are bank A and bank B. The
+run ends on bank A because the LOAD PROJECT handler's own first step is a
+reset that posts "select bank 0" to `sys`, and `sys` — busy with p2c
+traffic ahead of it in its FIFO — applies it ~870 samples later, after the
+engine has parsed `BANK=1`. A real cross-task ordering, measured, with a
+one-press hardware falsifier (does the unit come up on the saved bank?).
+`load_project_live` reports the bank the engine parsed beside the bank
+the run ended on.
 Also found: `call_as_main` (borrow main's idle slot to call a plain OS
 subroutine) is unsafe for anything that can genuinely block — main is the
 kernel's only always-ready task, so blocking it starves the scheduler.

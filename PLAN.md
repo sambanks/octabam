@@ -703,37 +703,39 @@ scheduler.
 | M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
 | M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
 | **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
-| M6b real waits + mount | ✅ **done 6 Sep** | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the correct project pointer, for real. One loose end root-caused and handed to M6d: a live UI-screen mechanism (only active because the UI isn't driven yet) independently keeps forcing track 0 current, reverting the pointer — not a mount/load defect, RTOS_FORK §7 has the trace |
+| M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7) |
 | M6c sequencer under the scheduler | 🟡 **in progress, branch `rtos-m6c`** | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
-| M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes; also inherits the track-select contest below |
+| M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes |
 | M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
 
 Where to resume: **M6c** — `out/_testproj` needs rebuilding (gone from the
-main checkout), then M5's one-trig fidelity gate. `docs/RTOS_FORK.md` §7 has
-M6b's track-select finding byte-exact if M6d needs it first: a generic
-"select track" routine (`0x40062288`) reacts to the current track changing
-away from 0 and reverts it (and the project pointer with it) within a few
-thousand samples, every time — a live UI-screen behaviour, root-caused, not
-a bug in the mount or the load. Reproduce with `tools/emu_rtos.py --project
-<abs dir> --set OCTABAM --name RIG --load-project --ms 6000` (absolute
-path; a tilde inside the quoted make variable is not expanded), or
-`tools/emu_rtos.py --selftest` for the SR trap alone. Keep in view: reading
-SR through the API at a burst boundary corrupts the condition codes (the
-tool uses a `movew %sr,%d0` trampoline); memory-write hooks fire on MMIO;
-`call_as_main` (borrow main's idle slot) is unsafe for any call that can
-genuinely block — route it through a real task's own context instead
-(`request_card_mount`'s pattern). What route A corrected: eleven tasks, not
-eight; `0x400009f4` is a lock, not a semaphore; a reschedule is a forced
-PIT0 interrupt; the mount is `sys`'s job, not the engine's.
+main checkout; `tools/ot_project.py testproj <src> <dest> <remix>`), then
+M5's one-trig fidelity gate. One hardware question is queued for whenever
+the unit is next on: **load the RIG project and read the bank indicator**
+— the emulator comes up on bank A because the engine's own reset-time
+"select bank 0" reaches `sys` after the file's `BANK=1` is parsed; if the
+unit comes up on B, the emulator's ordering is unfaithful there (RTOS_FORK
+§7). Reproduce with `tools/emu_rtos.py --project <abs dir> --set OCTABAM
+--name RIG --load-project --ms 6000` (absolute path; a tilde inside the
+quoted make variable is not expanded), or `tools/emu_rtos.py --selftest`
+for the SR trap alone. Keep in view: reading SR through the API at a burst
+boundary corrupts the condition codes (the tool uses a `movew %sr,%d0`
+trampoline) and never run the trampoline from inside a hook; memory-write
+hooks fire on MMIO; `call_as_main` (borrow main's idle slot) is unsafe for
+any call that can genuinely block — route it through a real task's own
+context instead (`request_card_mount`'s pattern). What route A corrected:
+eleven tasks, not eight; `0x400009f4` is a lock, not a semaphore; a
+reschedule is a forced PIT0 interrupt; the mount is `sys`'s job, not the
+engine's; `0x80000002` is the current bank and `PART_PTR` its blob.
 
 **Bryan's stake.** His click sits on the recorder's loop point, reached by
 one task staging the REC-arm and the tick promoting it — the interleaving
 route A now does for real. M6b's mount+load now work for real, matching M4's
 proof; it becomes usable for him at M6d (his project loaded under real
-tasks, PLAY/REC-arm injected as keys, and the same UI-driving work that
-closes the track-select contest above). Already useful to him today: the
+tasks, PLAY/REC-arm injected as keys). Already useful to him today: the
 measured task and vector tables in RTOS_FORK §2, `sys`'s own dispatch table
-(§7), and the panel serial link captured byte by byte.
+(§7), the bank/pattern state bytes and the bank blob layout, and the panel
+serial link captured byte by byte.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above
