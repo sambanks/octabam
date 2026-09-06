@@ -198,6 +198,93 @@ def set_machine_type(pdir, banknum, part, track, mtype, mirror=True, guard=True)
           f"T{track} machine type -> {mtype}")
 
 # ---------------------------------------------------------------------------
+# PATTERN DATA: the sequencer's own records, and the step masks at their head
+#
+# A bank file is IFF: sixteen `PTRN` chunks (file stride 0x8eec), each holding
+# eight `TRAC` sub-chunks (file stride 0x922) for the audio tracks and then
+# eight `MTRA` for the MIDI ones. Every chunk is tag+len, so a record's DATA
+# starts 8 bytes past its tag -- which is why the RAM strides are 8 less
+# (0x8ed8 per pattern, 0x91a per track: `mulsl #0x91a,%d7` at 0x4009d376 and
+# its siblings, with d7 = track).
+#
+# A TRAC record begins with a run of 64-bit big-endian STEP MASKS at an
+# 8-byte stride: bit (step-1), so byte 7 bit 0 = step 1. Mask 0x00 is the
+# note/sample trig -- the one `emu_rtos.poke_trig` sets in RAM, and the one
+# whose bits you can read straight out of a real project (the rig project's
+# track 1 reads 0x0001000100010001: trigs on steps 1, 17, 33 and 49).
+# ✅ END TO END: setting step 2 here, on disk, with no RAM poke at all,
+# lands `0xd3` on track 0 at frame 344 -- byte, track and frame identical to
+# what `--poke-trig 2` produces, which is M6c's own fidelity gate.
+# The sequencer ORs
+# 0x00/0x08/0x10/0x18 for its "anything on this step" test (0x4009d382..9a)
+# and builds a per-track flag word from 0x20 -> bit 12, 0x28 -> bit 13,
+# 0x30 -> bit 14, 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
+#
+# ⚠️ WHICH MASK IS THE RECORDER TRIG IS NOT KNOWN. 0x40/0x48 are not masks at
+# all -- they read as a run of 0xaa, a default-filled per-step byte array.
+# The cheap way to settle it is `pattern-diff` below against two projects
+# saved from the unit, one with a recorder trig and one without; nothing in
+# the emulator identifies it as directly.
+PTRN0, PTRN_FSTRIDE, TRAC_FSTRIDE, NMASKS = 0x16, 0x8eec, 0x922, 8
+
+def trac_off(pattern, track):
+    """File offset of a pattern's track record DATA (0-based indices).
+
+    ⚠️ The PTRN chunk's header is 8 bytes (tag+len) but a TRAC's is **9** --
+    tag, length and one pad byte, the same +9 the PART records carry
+    (PART_STRIDE 0x18bb = RAM's 0x18b2 + 9). Reading it as 8 shifts every
+    mask one byte and is not obviously wrong: the masks still look like
+    plausible trig patterns, and a step you set then lands eight steps away.
+    ✅ Settled by loading a project through the real path and reading the RAM
+    record back -- the file with +9 matches it byte for byte, +8 does not.
+    """
+    return PTRN0 + pattern*PTRN_FSTRIDE + 8 + track*TRAC_FSTRIDE + 9
+
+def set_pattern_trig(pdir, banknum, pattern, track, step, mask=0x00, guard=True):
+    """Set `step` (1-64) in one TRAC step mask, on disk."""
+    def mut(data):
+        off = trac_off(pattern, track) + mask + 7 - (step - 1) // 8
+        data[off] |= 1 << ((step - 1) % 8)
+    _bank_write(pdir, banknum, mut, guard=guard)
+    print(f"bank{banknum:02d} pattern{pattern} T{track+1} mask {mask:#04x} "
+          f"step {step} set")
+
+def pattern_masks(pdir, banknum):
+    """Every non-zero step mask in the bank: {(pattern, track, mask): value}."""
+    data = (pdir / f"bank{banknum:02d}.work").read_bytes()
+    out = {}
+    for pat in range(16):
+        for trk in range(8):
+            base = trac_off(pat, trk)
+            for m in range(NMASKS):
+                v = int.from_bytes(data[base + m*8:base + m*8 + 8], "big")
+                if v:
+                    out[(pat, trk, m*8)] = v
+    return out
+
+def pattern_diff(dir_a, dir_b, banknum):
+    """Report every step-mask difference between two projects' banks.
+
+    The intended use: save a project from the unit, add ONE trig of the type
+    you are hunting, save it again under another name, and run this. The mask
+    offset and the step fall out with no reverse engineering at all.
+    """
+    a, b = pattern_masks(pathlib.Path(dir_a), banknum), pattern_masks(pathlib.Path(dir_b), banknum)
+    keys = sorted(set(a) | set(b))
+    n = 0
+    for k in keys:
+        va, vb = a.get(k, 0), b.get(k, 0)
+        if va != vb:
+            n += 1
+            pat, trk, mask = k
+            steps = [i + 1 for i in range(64) if ((va ^ vb) >> i) & 1]
+            print(f"pattern {pat:2d} T{trk+1} mask {mask:#04x}: "
+                  f"{va:016x} -> {vb:016x}  steps {steps}")
+    print(f"{n} mask(s) differ in bank{banknum:02d}")
+    return n
+
+
+# ---------------------------------------------------------------------------
 # A DETERMINISTIC TEST PROJECT
 #
 # ⚠️ THE EFFECT IDS LIVE IN THE PROJECT, NOT THE OS. They survive a flash, so
@@ -510,6 +597,14 @@ if __name__ == "__main__":
     elif cmd == "apply": apply_gains(pdir, json.loads(pathlib.Path(sys.argv[3]).read_text()))
     elif cmd == "part-name": set_part_name(pdir, int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
     elif cmd == "track-slot": set_track_slot(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
+    elif cmd == "pattern-trig":
+        # <project> <bank> <pattern> <track0> <step> [mask]
+        set_pattern_trig(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]),
+                         int(sys.argv[6]),
+                         int(sys.argv[7], 0) if len(sys.argv) > 7 else 0x00)
+    elif cmd == "pattern-diff":
+        # <projectA> <projectB> <bank>
+        pattern_diff(sys.argv[2], sys.argv[3], int(sys.argv[4]))
     elif cmd == "machine-type":
         # <project> <bank> <part> <track> <type>; writes the part's saved
         # mirror too, the way a bank's eight PART records require

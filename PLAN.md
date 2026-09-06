@@ -709,11 +709,15 @@ scheduler.
 | M6e use it | 🟡 in progress (6 Sep) | the recorder-project fixture exists (`ot_project.py machine-type` + the `tools/scratch/` wrapper: track 1 -> machine type 4, verified by RAM readback) and with it track 1 stops writing `FW_LIVE_NIBBLE` at all, 8 writes -> 5. ❌ **The first pass's reading of that — "confirms machine-type-branched trig dispatch" — is RETRACTED**: type 7, out of range for the 0..4 dispatch, gives the IDENTICAL signature and type 3 (NEIGHBOR) gives the baseline, so it reads "type >= 4 / not started"; and the vanished writes include the **frame-0 transport-start** one, so the track never starts and nothing measured happens at the trig. §9.4's own falsifier finally ran (`--via-rec`, PLAY-then-REC) and was **aimed at the wrong mechanism**: REC leaves `0x800066a0` at 0 on the recorder-configured project as on the plain one, and per the manual it would — `[REC]` activates GRID RECORDING mode, and a **recorder trig** is what starts a track recorder sampling. Two instrument defects found on the way, both silent: `--watch-calls`/`--watch-mem` printed nothing without `--trace` (fixed; the zero-call flag re-derived and it holds), and `0x800065b8`/`0x800066a0` are longwords that read as a flat 0 byte-wise. The arm/record path is still unlocated; `0x4000b800` gets zero calls even on a successful trig, and `watch_calls` is a code hook, so that means never executed by any route. RTOS_FORK §10 |
 
 Where to resume: **M6e, use it** — the fixture exists and its first
-reading has been retracted (RTOS_FORK §10). Next is a **RECORDER TRIG on the
-pattern** — the manual's own mechanism, and `EXTERNAL.md`'s recorder TRIG
-byte at `+0x8f385` (part-indexed) is the field, on disk, so it is a
-fixture like the machine-type one — plus the recorder-buffer assignment
-(ids 128-135), rather than more blind `watch_calls` guesses. Then Bryan's
+reading has been retracted (RTOS_FORK §10). The on-disk **trig fixture is built and
+proven** (`ot_project.py pattern-trig`: step 2 written to the file, no RAM
+poke, lands `0xd3` on track 0 at frame 344 — M6c's own gate), along with
+the pattern format it needed (RTOS_FORK §10.6). ⚠️ Not `+0x8f385`: that is
+the recorder SETUP page's TRIG *mode* byte, in the part. **The open half is
+which step mask holds the recorder's trigs**, and the emulator did not
+settle it — `ot_project.py pattern-diff` against two projects saved on the
+unit (one with a recorder trig, one without) answers it in one command, and
+that is a 30-second job at the hardware. Then Bryan's
 click question.
 M6c's gate is the regression to keep green while doing it:
 `tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG

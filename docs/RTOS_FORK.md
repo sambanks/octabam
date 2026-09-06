@@ -997,15 +997,85 @@ any route** — jsr, branch or fallthrough. `EMU.md`'s claim that
 `0x4000b800` is the trig-write site is unconfirmed under route A, and the
 write still happens on schedule, so some other code does it.
 
+### 10.6 The pattern format, and an on-disk TRIG fixture that works ✅
+
+The recorder-trig fixture needed the pattern format first, so that is now
+measured rather than assumed.
+
+**A bank is IFF.** Sixteen `PTRN` chunks (file stride `0x8eec`), each holding
+eight `TRAC` sub-chunks (file stride `0x922`) for the audio tracks and then
+eight `MTRA` for the MIDI ones, and after all sixteen patterns the eight
+`PART` records at `0x8eed6`. The RAM strides are 8 and 9 less respectively
+(`0x8ed8` per pattern, `0x91a` per track) because the chunk headers are
+stripped on load.
+
+⚠️ **A `PTRN`'s header is 8 bytes and a `TRAC`'s is NINE** — tag, length and
+one pad, the same +9 the PART records carry. Read as 8 it is not obviously
+wrong: every mask shifts one byte, still looks like a plausible trig
+pattern, and a step you set lands eight steps away — which is exactly what
+happened here (a step-2 trig written at +8 became steps 10 and 12 and simply
+never fired inside a 400-frame window). Settled by loading the project and
+reading the RAM record back: +9 matches byte for byte, +8 does not. Same
+family as every other "verify by readback" rule in this file.
+
+**A `TRAC` opens with 64-bit big-endian step masks at an 8-byte stride**,
+bit (step-1). `mulsl #0x91a,%d7` with `d7` = track, at `0x4009d376` and its
+siblings, is where the stride is measured from. What the sequencer does with
+them (`--watch-pattern` over a live record, then `scripts/disasm.sh emac`):
+
+| mask | consumer | what it does |
+|---|---|---|
+| `0x00` | `0x4009d41c` | the note/sample trig — the one `poke_trig` sets |
+| `0x00\|0x08\|0x10\|0x18` | `0x4009d382..9a` | ORed into the "anything on this step" test |
+| `0x20` | `0x4009d93c` | sets bit 12 of the per-track flag word at `0x46c7a6c0` |
+| `0x28` | `0x4009d96e` | bit 13 |
+| `0x30` | `0x4009d99a` | bit 14 |
+| `0x38` | `0x4009d9f6` | bits 5+8 (else bit 5); only read when 12/13/14 fired |
+| `0x40` | `0x4009d3d6` | gates a per-step byte at `+0x52` into a `x110250` timing calc |
+
+`0x40`/`0x48` are **not** masks: they read as a run of `0xaa`, a
+default-filled per-step byte array.
+
+**The fixture** (`ot_project.py`, so it composes with the rest of the
+toolkit rather than living in `tools/scratch/`):
+
+```sh
+python3 tools/ot_project.py pattern-trig <project> <bank> <pattern> <track0> <step> [mask]
+python3 tools/ot_project.py pattern-diff <projectA> <projectB> <bank>
+```
+
+✅ **Proven end to end**: `pattern-trig out/_trigproj 2 0 0 2` — step 2, on
+disk, no RAM poke anywhere — lands `0xd3` on track 0 at **frame 344**, the
+same byte, track and frame as `--poke-trig 2`, which is M6c's own fidelity
+gate. File -> card -> real LOAD PROJECT -> sequencer, with nothing poked.
+
+❓ **Which mask is the RECORDER trig is still open**, and the emulator did
+not settle it. Setting step 2 in every candidate mask on the type-4 track
+produces exactly one call to `0x40005ff0` (the "arm caller") where the same
+run without the pokes produces none — but bisecting into halves gives one
+call from *either* half, so that observable is not specific enough to name a
+mask. `0x40005ff0`'s call site (`0x4000d35a`) explains why it is a weak
+signal: the frame builder calls it whenever a track's live byte has any of
+bits `0xd0` set, which the ordinary trig byte `0xd3` also satisfies.
+
+**`pattern-diff` is what finishes this, and it needs the unit, not more
+emulation**: save a project, add ONE recorder trig on the unit, save it
+again under another name, run `pattern-diff` on the pair. The mask offset
+and the step fall out with no reverse engineering at all. That is a
+30-second job at the hardware and it is the cheapest measurement left in
+this milestone.
+
 ### 10.5 Where this actually goes next
 
 - **A RECORDER TRIG on the pattern.** This is the mechanism, per the
   manual (§10.3): the sequencer trigs it and the track recorder starts to
-  sample. `EXTERNAL.md`'s own retraction table already names the field —
-  the recorder **TRIG byte at `+0x8f385`, part-indexed** — and it is on
-  disk, so it is a fixture like §10.1's rather than a RAM poke. Build it
-  the same way (`ot_project.py`), then watch what a trigged recorder
-  touches; that is the trace M6e was scoped to produce.
+  sample. ⚠️ **Not `+0x8f385`** — that is the recorder SETUP page's TRIG
+  *mode* (ONE/ONE2/HOLD), one of the twelve bytes at `0x8f382 +
+  part*6322 + track*12`, and it lives in the PART, not the pattern. The
+  fixture that writes a per-step trig is built and proven (§10.6); the
+  open half is **which mask** the recorder's trigs live in, and
+  `pattern-diff` against a pair of projects saved on the unit answers it
+  in one command.
 - **A recorder buffer assignment** (object ids 128-135, control records at
   `0x46c922c4 + id*44`, `EXTERNAL.md` §6) the way a STATIC track needs a
   sample slot (`ot_project.py`'s `set_track_slot`). Still not located; it

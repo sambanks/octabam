@@ -582,8 +582,8 @@ mechanism**: REC through its own handler over a running transport leaves
 plain one — and per the Octatrack manual it would, because `[REC]`
 activates GRID RECORDING mode and it is a **recorder trig**, trigged by
 the sequencer, that starts a track recorder sampling. The lever is that
-trig (`EXTERNAL.md`'s recorder TRIG byte at `+0x8f385`, part-indexed), not
-the key.
+trig — a per-step bit in the PATTERN record, not `+0x8f385`, which is the
+recorder SETUP page's TRIG *mode* byte in the part.
 
 The arm/record path itself is still unlocated: every named candidate
 function logged zero calls across 400 frames, including `0x4000b800` on

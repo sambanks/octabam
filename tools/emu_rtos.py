@@ -171,6 +171,8 @@ FW_SEQ_SELECT = 0x400a1030         # sequencer select(bank, pattern): the LOAD P
                                    # last step (0x40025b16), also the sequencer init's (0x400a1088)
 FW_SEQ_BANK = 0x800065bd           # the sequencer's own playing bank byte (FW_START_TRACK: x 635712)
 FW_SEQ_PATTERN = 0x800065be        # ...and playing pattern (x 36568)
+PATTERN_STRIDE = 0x8ed8            # 36568; sixteen records fill blob+0..0x8ed80
+TRAC_STRIDE = 0x91a                # one audio track's sequencer record inside a pattern
 
 
 class Pit:
@@ -1261,6 +1263,54 @@ class Rtos:
         self.uc.mem_write(blob + 7, bytes([v]))
         return v
 
+    def watch_reads(self, addr, length, cap=200000):
+        """Log READS into [addr, addr+length) as {(offset, pc): count}.
+
+        The counterpart of `watch_mem`, for finding which fields of a
+        record the firmware actually consults: the sequencer's step
+        handler reads the pattern record, so watching that record says
+        where a trig array is instead of guessing its offset.
+        """
+        self.reads = {}
+        self._read_base = addr
+
+        def on_read(u, acc, a, size, val, d):
+            if len(self.reads) < cap:
+                pc = u.reg_read(eb.UC_M68K_REG_PC)
+                k = (a - addr, size, pc)
+                self.reads[k] = self.reads.get(k, 0) + 1
+        self.uc.hook_add(eb.UC_HOOK_MEM_READ, on_read, begin=addr, end=addr + length - 1)
+        self.uc.ctl_flush_tb()
+        return self
+
+    def pattern_base(self):
+        """Base of the CURRENT pattern's record: the bank blob plus
+        `pattern * 0x8ed8` (sixteen records fill blob+0..0x8ed80, the parts
+        follow -- EXTERNAL.md §6). Track 1's note-trig mask is its first
+        eight bytes, which is what `poke_trig` writes."""
+        blob = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
+        return blob + self.uc.mem_read(CUR_PATTERN, 1)[0] * PATTERN_STRIDE
+
+    def poke_mask(self, off, step, track=1):
+        """Set `step`'s bit in the 64-bit mask at `off` in a track's TRAC
+        record, in the CURRENT pattern.
+
+        The pattern record is eight TRAC records of **0x91a** bytes (the
+        file carries them as `TRAC` sub-chunks of 0x922, tag+len more), and
+        each begins with a run of 64-bit step masks at an 8-byte stride:
+        `mulsl #0x91a,%d7` with d7 = track, at 0x4009d376 and every sibling
+        site, is where that stride is measured from. Mask `0x00` is the one
+        `poke_trig` writes; the sequencer ORs 0x00/0x08/0x10/0x18 into its
+        "anything on this step" test (0x4009d382..0x4009d39a), reads a
+        per-step value behind 0x40 (0x4009d3d6), and builds a per-track flag
+        word in `0x46c7a6c0` out of 0x20 -> bit 12, 0x28 -> bit 13,
+        0x30 -> bit 14 and 0x38 -> bits 5+8 (0x4009d93c..0x4009da12).
+        """
+        base = self.pattern_base() + track * TRAC_STRIDE + off
+        v = self.uc.mem_read(base + 7, 1)[0] | (1 << (step - 1))
+        self.uc.mem_write(base + 7, bytes([v]))
+        return v
+
     def install_trig_log(self):
         """As `emu_frames.install_trig_log`, keyed by `self.frame_count`
         (this module's own frame clock) instead of a hand-kept counter."""
@@ -1487,6 +1537,16 @@ def _cli():
     ap.add_argument("--via-key", action="store_true",
                     help="with --sequencer: start transport through the real PLAY key handler "
                          "(press_play_live, M6d) instead of calling FW_TRANSPORT directly")
+    ap.add_argument("--poke-mask", default="",
+                    help="with --sequencer and --poke-trig: also set that step's bit in "
+                         "each comma-separated TRAC mask offset (e.g. 0x08,0x10) on track 1 "
+                         "-- for finding which mask a trig type lives in")
+    ap.add_argument("--poke-mask-track", type=int, default=1,
+                    help="which track --poke-mask writes (0-7, default 1)")
+    ap.add_argument("--watch-pattern", type=lambda x: int(x, 0), default=0,
+                    help="with --sequencer: log every READ into the first N bytes of the "
+                         "current pattern record and report them by offset -- finds the "
+                         "trig arrays instead of guessing their offsets")
     ap.add_argument("--via-rec", action="store_true",
                     help="with --sequencer: start the transport through the real REC key "
                          "handler INSTEAD of PLAY (REC starts it too, §9.4) and report the "
@@ -1580,6 +1640,12 @@ def _cli():
             rt.frame = True
             rt.next_frame = rt.sample + FRAME_PERIOD
             rt.exact_clock()
+            if a.watch_pattern:
+                pbase = rt.pattern_base()
+                print(f"pattern    : record at {pbase:#x} "
+                      f"(pattern {rt.uc.mem_read(CUR_PATTERN, 1)[0]}), "
+                      f"watching reads of its first {a.watch_pattern:#x} bytes")
+                rt.watch_reads(pbase, a.watch_pattern)
             rec_arm = None
             if a.via_rec:
                 # RTOS_FORK §9.4's falsifier, on a project whose track 1 IS
@@ -1609,6 +1675,10 @@ def _cli():
             if a.poke_trig:
                 v = rt.poke_trig(a.poke_trig)
                 print(f"poke trig  : track 1 step {a.poke_trig} -> mask byte 7 = {v:#04x}")
+                for off in [int(x, 0) for x in a.poke_mask.split(",") if x.strip()]:
+                    v = rt.poke_mask(off, a.poke_trig, a.poke_mask_track)
+                    print(f"poke mask  : track {a.poke_mask_track} mask {off:#04x} "
+                          f"step {a.poke_trig} -> byte 7 = {v:#04x}")
             rt.install_trig_log()
             # Frame 0 = the first frame delivered after the transport start
             # returned, which is what emu_frames.py's cold run calls frame 0:
@@ -1641,6 +1711,17 @@ def _cli():
         ok = rt.frame_count >= target
         if not ok:
             print(rt.starvation())
+        reads = getattr(rt, "reads", None)
+        if reads:
+            by_off = {}
+            for (off, size, pc), n in reads.items():
+                e = by_off.setdefault(off, [0, size, set()])
+                e[0] += n; e[2].add(pc)
+            print(f"pattern rd : {len(by_off)} distinct offsets read")
+            for off in sorted(by_off):
+                n, size, pcs = by_off[off]
+                print(f"   +{off:#06x} size {size} x{n:<5d} pc "
+                      + ", ".join(f"{c:#x}" for c in sorted(pcs)[:3]))
         _watch_report()
         label = "M6d run (via-key)" if a.via_key else "M6c run"
         print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")
