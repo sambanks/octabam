@@ -84,6 +84,24 @@ CUR_PATTERN = 0x80000004
 ENGINE_BANK_WRITE = 0x40087d44     # LOAD PROJECT writes PART_PTR from the file's BANK= here
 SELECT_BANK_CASE = 0x40062288      # sys table[20]: "select bank msg[1]" -- switch the working bank
 
+# M6d: the real key-press path. UI_QUEUE (0x460d1664) is what FW_TRANSPORT
+# posts to (EMU.md, "a post to the UI queue"); its ring buffer sits at
+# 0x460d4fd4 (queue_init site 0x40040b70), 0x54 bytes past the TCB this
+# module used to call "ui" -- which is why that TCB was misnamed (see the
+# TASK_NAMES retraction below). The keys themselves are found in a jump
+# table at 0x400d2d54 (8 track-key entries, a gap, then a function-key run);
+# REC/PLAY/STOP sit at consecutive indices 24/25/26. All three call chains
+# (checked by disassembly, 6 Sep 2026: 0x400a013c, 0x400a030c, 0x400a14a4,
+# 0x400a10c8, 0x40033968, 0x4009b290 -- everything PLAY and REC reach) are
+# free of the blocking primitives (0x40000818/0x400007a4/0x40000d00), so
+# call_as_main is safe for both, the same way it already was for
+# FW_TRANSPORT/FW_START_TRACK.
+UI_QUEUE = 0x460d1664
+KEY_REC = 0x4000a274
+KEY_PLAY = 0x4000a200               # gated on 0x80000029 (nonzero from boot in the test project);
+                                     # sets clock-sync fields, then tail-calls FW_TRANSPORT
+KEY_STOP = 0x4000a1e0
+
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
 # the boot before our hooks exist. RTOS_FORK.md §2's table of eight was read
@@ -100,14 +118,22 @@ EXPECTED_TASKS = (
     (0x46105508, 0x40098a5c, 1, 0x4610555c, 0x2000, MAIN_TCB),
     (0x46c7bed8, 0x40061a94, 1, 0x460d6de4, 0x2000, MAIN_TCB),     # not in the §2 table: creates the three below
     (0x460bcc2c, 0x4001ee30, 5, 0x460bc42c, 0x0800, 0x46c7bed8),   # storage
-    (0x460d4f80, 0x4005593c, 4, 0x460d4780, 0x0800, 0x46c7bed8),   # UI
-    (0x460d59d4, 0x40056c40, 3, 0x460d51d4, 0x0800, 0x46c7bed8),   # not in the §2 table
+    (0x460d4f80, 0x4005593c, 4, 0x460d4780, 0x0800, 0x46c7bed8),   # repeat-key timer, NOT ui (M6d retraction)
+    (0x460d59d4, 0x40056c40, 3, 0x460d51d4, 0x0800, 0x46c7bed8),   # ui -- the real UI_QUEUE receiver (M6d)
 )
 ALL_TCBS = frozenset(t[0] for t in EXPECTED_TASKS) | {MAIN_TCB}
-TASK_NAMES = {0x46c7fb0c: "voice", 0x460bcc2c: "storage", 0x460d4f80: "ui",
+# M6d retraction: 0x460d4f80 (entry 0x4005593c) was named "ui" by
+# neighbourhood -- its ring buffer (0x460d4fd4) sits just past this TCB, but
+# the task itself waits on an unrelated counting semaphore (0x46c7e0e2) and
+# spends its life decrementing a 136-slot key-repeat timer array
+# (0x4001387c). The task that actually calls queue_receive(UI_QUEUE)
+# (0x40000d00, confirmed by disassembly 6 Sep 2026) is 0x460d59d4, entry
+# 0x40056c40 -- previously the unidentified "p3". Names swapped here to
+# match; RTOS_FORK.md's table carries the same correction.
+TASK_NAMES = {0x46c7fb0c: "voice", 0x460bcc2c: "storage", 0x460d4f80: "keyrepeat",
               0x460fab80: "p2a", 0x460ffd44: "p2b", 0x460e0e38: "p2c",
               0x460ddde4: "engine", 0x46105508: "p1b", 0x46c7bed8: "sys",
-              0x460d59d4: "p3", MAIN_TCB: "main", BOOT_TCB: "boot"}
+              0x460d59d4: "ui", MAIN_TCB: "main", BOOT_TCB: "boot"}
 
 # --- peripherals ------------------------------------------------------------
 PERIPH_BASE, PERIPH_SIZE = 0xfc000000, 0x100000
@@ -1167,6 +1193,56 @@ class Rtos:
             self.run(until=lambda r: r.pc == MAIN_SPIN)
             self.call_as_main(FW_START_TRACK, args=(t,))
 
+    # -- M6d: real key injection -----------------------------------------------
+    def press_key_live(self, handler, edge=0):
+        """Call one of the firmware's own key-press handlers (`KEY_PLAY`,
+        `KEY_REC`, `KEY_STOP`) directly, `action(edge)` -- the same shape as
+        the FX2-shortcut handler in MAINMENU.md and PLAY/REC's own chosen
+        entry in the per-key jump table at `0x400d2d54` (indices 24/25/26;
+        the first 8 entries are the track keys, `0x4000184c` fills unused
+        scan positions). Confirmed call_as_main-safe by disassembly (see the
+        module header comment by `UI_QUEUE`) and empirically: run against
+        `out/_testproj`, `press_key_live(KEY_PLAY)` reproduces M6c's fidelity
+        gate exactly (frame 344, byte 0xd3), and `0x80000029` -- the byte
+        PLAY's handler tests before doing anything -- is already nonzero
+        after a real LOAD PROJECT, so no extra setup is needed. `edge=0` is
+        press; the handlers never read past it in what PLAY/REC/STOP reach.
+        Retracts RTOS_FORK.md's M6d premise that key events arrive via a
+        post to the UI task's queue -- they don't: `UI_QUEUE` (0x460d1664)
+        only carries state-change notices (FW_TRANSPORT's own post included)
+        to the real UI task (TASK_NAMES's "ui", TCB 0x460d59d4); physical
+        keys dispatch straight through this jump table instead."""
+        self.run(until=lambda r: r.pc == MAIN_SPIN)
+        return self.call_as_main(handler, args=(edge,))
+
+    def press_play_live(self):
+        """PLAY, through its own firmware handler rather than FW_TRANSPORT
+        directly: sets the same clock-sync fields hardware would (only when
+        CLOCK RECEIVE is on) before tail-calling FW_TRANSPORT(1). Still needs
+        `FW_START_TRACK` for each track afterward, exactly as
+        `start_transport_live` does -- PLAY's handler only starts the
+        transport state machine, not the eight tracks."""
+        self.exact_clock()
+        d0 = self.press_key_live(KEY_PLAY)
+        for t in range(8):
+            self.run(until=lambda r: r.pc == MAIN_SPIN)
+            self.call_as_main(FW_START_TRACK, args=(t,))
+        return d0
+
+    def press_rec_live(self):
+        """REC, through its own firmware handler. Measured 6 Sep 2026 against
+        `out/_testproj` (no track configured as a recorder): starts the
+        transport exactly like PLAY (`0x800065b8` 0->1) and leaves
+        `0x800066a0` (the record-arm state byte its own code tests) at 0 --
+        consistent with EMU.md's open gap that the recorder-arm path needs a
+        project with a track's machine set to a recorder, which this method
+        does not supply. A second press does not toggle anything back off
+        with no recorder armed. Does NOT call FW_START_TRACK -- unlike PLAY,
+        untested here whether REC's own path reaches it for a plain project;
+        pair with `press_play_live` or call FW_START_TRACK by hand if tracks
+        need to run."""
+        return self.press_key_live(KEY_REC)
+
     def poke_trig(self, step):
         """Set a trig on track 1 at `step` (1-8), same bytes as
         `emu_frames.poke_trig` (track 1's 64-step mask, big-endian, byte 7
@@ -1399,6 +1475,9 @@ def _cli():
                     help="with --sequencer: clear CLOCK RECEIVE so the sequencer runs on its own clock")
     ap.add_argument("--bank", type=int, default=None,
                     help="with --sequencer: switch to this bank via sys before starting (default: the file's saved bank)")
+    ap.add_argument("--via-key", action="store_true",
+                    help="with --sequencer: start transport through the real PLAY key handler "
+                         "(press_play_live, M6d) instead of calling FW_TRANSPORT directly")
     a = ap.parse_args()
 
     card = None
@@ -1455,7 +1534,10 @@ def _cli():
             rt.frame = True
             rt.next_frame = rt.sample + FRAME_PERIOD
             rt.exact_clock()
-            rt.start_transport_live()
+            if a.via_key:
+                rt.press_play_live()
+            else:
+                rt.start_transport_live()
             if a.poke_trig:
                 v = rt.poke_trig(a.poke_trig)
                 print(f"poke trig  : track 1 step {a.poke_trig} -> mask byte 7 = {v:#04x}")
@@ -1485,7 +1567,8 @@ def _cli():
         ok = rt.frame_count >= target
         if not ok:
             print(rt.starvation())
-        print("M6c run    :", "PASS (ran to target)" if ok else "FAIL (stopped short)")
+        label = "M6d run (via-key)" if a.via_key else "M6c run"
+        print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")
         return 0 if ok else 1
 
     if a.load_project:
