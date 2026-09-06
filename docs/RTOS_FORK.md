@@ -525,7 +525,20 @@ read the bank indicator. If the unit comes up on **B**, the emulator's
 p2c traffic or its timing knob is unfaithful here and M6c gains a second
 calibration point; if it comes up on **A**, the firmware really does
 apply its own stale reset and route B has been hiding it. Recorded as
-the falsifier; not resolved in this pass. **M6c found the same ordering
+the falsifier; not resolved in this pass.
+
+✅ **RESOLVED ON THE UNIT, 6 Sep 2026 (Sam, ~21:30): load OCTABAM_RIG →
+the bank indicator reads B01, and PLAY runs the saved pattern.** Both
+observables of the one-press test came back on the "emulator is
+unfaithful" branch: the firmware does NOT apply its own reset-time "select
+bank 0" after the `BANK=` parse. So the ~870-sample lag `sys` shows here
+is the emulator's — the p2c traffic ahead of the reset in `sys`'s FIFO,
+or the engine's card-wait length, is not what the hardware does. The two
+compensating helpers (`select_bank_live`, `seq_select_live`) are now
+known to be papering over an emulator defect, not a firmware behaviour;
+the faithful fix is in the load's timing, after which both should be
+deleted and `load_project_live` should end on bank B unaided. Not yet
+done — this pass only recorded the measurement. **M6c found the same ordering
 has a second victim (§8.3):** the load's last step copies the bank byte
 into the *sequencer's* own playing-bank byte, so the reset arriving
 mid-handler leaves the sequencer on bank A too — press PLAY after the
@@ -697,6 +710,12 @@ comes up on B playing pattern 1, the emulator's `sys` timing (the p2c
 traffic ahead of the reset message, or the engine's card-wait length) is
 what is unfaithful, and `load_project_live` should end where the unit
 does without help.
+
+✅ **It does come up on B, playing (unit, 6 Sep 2026 — §7).** Both helpers
+are therefore compensation for an emulator defect and are to be removed
+once the load's timing is fixed; until then every `--sequencer` run
+carries them, and the "re-selected through the load's own last step" line
+in the tool's output is the reminder.
 
 ### 8.4 The gate
 
@@ -1049,8 +1068,48 @@ disk, no RAM poke anywhere — lands `0xd3` on track 0 at **frame 344**, the
 same byte, track and frame as `--poke-trig 2`, which is M6c's own fidelity
 gate. File -> card -> real LOAD PROJECT -> sequencer, with nothing poked.
 
-❓ **Which mask is the RECORDER trig is still open**, and the emulator did
-not settle it. Setting step 2 in every candidate mask on the type-4 track
+✅ **SETTLED ON THE UNIT, 6 Sep 2026 — a recorder trig is masks `0x20`,
+`0x28` and `0x30`, all three at once.** Procedure: a byte-exact copy of the
+cleared baseline went onto the card as project `RECTRIG`; Sam loaded it on
+bank A pattern A01, selected track 1, opened RECORDING SETUP 1
+(`[FUNC]`+`[REC1]`), entered GRID RECORDING, pressed `[TRIG]` 9 once (red),
+quick-saved (`[FUNC]`+`[PROJ]`), synced. `pattern-diff <baseline> <RECTRIG>
+1`:
+
+```
+pattern  0 T1 mask 0x20: 0000000000000000 -> 0000000000000100  steps [9]
+pattern  0 T1 mask 0x28: 0000000000000000 -> 0000000000000100  steps [9]
+pattern  0 T1 mask 0x30: 0000000000000000 -> 0000000000000100  steps [9]
+```
+
+A whole-file byte diff of `bank01.work` shows exactly those three bits
+(`+0x26`, `+0x2e`, `+0x36` from TRAC(0,0)) and the bank checksum
+(`0x9b4d0`, `0x4c` → `0x4f`) — nothing else. These are the three masks the
+format note above maps to bits 12/13/14 of the per-track flag word at
+`0x46c7a6c0`. **Three masks for one trig** lines up with the manual's "a
+recorder trig defaults to sampling from all three input sources": the
+reading that `0x20`/`0x28`/`0x30` are REC1/REC2/REC3 respectively was
+then half-measured the same evening: Sam held `[TRIG]` 9 in RECORDING
+SETUP 1 and pressed the second source key to toggle REC2 off, saved, and
+`pattern-diff` between the two saves shows **only `0x28` cleared** (file
+byte `0x55` `01` → `00`, plus the checksum) — so **`0x28` = REC2 ✅
+measured**, and `0x20` = REC1 / `0x30` = REC3 follow by order 🟡 (not
+separately toggled). Second save: `~/octa/backups/RECTRIG_20260906_step9_noREC2`.
+The returned project is
+`~/octa/backups/RECTRIG_20260906_step9` (work + strd files only; its
+`project.work` came back with `BANK=0`/`TRACK=0`, so unlike the baseline
+this fixture does not meet §7's ordering at all) and `out/_recproj`
+points at it. **`+0x8f385` stays what §10.5 says it is**: the part's TRIG
+mode byte, not the trig.
+
+⚠️ A run budget trap that cost one run: at 120 BPM a sixteenth is 344
+frames, so **step 9 is at ~2,750 frames** — `--frames 400` (the gate's
+budget, sized for step 2) ends 145 ms after the transport starts and never
+reaches it; the run passes the gate and reports nothing, which looks like
+"the recorder trig does nothing". Use `--frames 3000 --ms 30000`.
+
+The paragraph below is the state before that measurement, kept for the
+method: the emulator did not settle it. Setting step 2 in every candidate mask on the type-4 track
 produces exactly one call to `0x40005ff0` (the "arm caller") where the same
 run without the pokes produces none — but bisecting into halves gives one
 call from *either* half, so that observable is not specific enough to name a
@@ -1094,3 +1153,77 @@ cp -R <a real project dir> out/_recproj
   --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 [--via-rec]
 # the control is the same command against out/_testproj
 ```
+
+### 10.7 The recorder trig under emulation (6 Sep 2026, evening) — the path LIGHTS UP from a RAM poke, and the on-disk fixture never reached it
+
+All runs: `--sequencer --internal-clock --frames 3000 --ms 30000` (step 9
+needs ~2,750 frames — §10.6's budget trap), watches as named. The
+fixture is `out/_recproj` (bank A, pattern A01, T1: note trig step 1 +
+recorder trig step 9 = masks `0x20`/`0x28`/`0x30`).
+
+**The fixture, five instruments, five nulls ✅ (measured):**
+
+| watch | result over 3,000 frames |
+|---|---|
+| `FW_LIVE_NIBBLE` / `FW_TRIG_WORDS` | only the frame-0 start writes (T1, T6 ×2, T8 — bank A's step-1 trigs); `0x46104d26` never nonzero |
+| eight arm-path candidates (`0x40005ff0`, `0x40097168`, `0x400977cc`, `0x40006dfc`, `0x40083544`, `0x4000b308`, `0x4000b800`) | 0 entries each; `0x4000c8e0` 24,000 = 8/frame, the frame builder |
+| staged slots `0x800018be..e6`, immediate slot `0x46c7e9fa`, armed bitmask `0x8000184a` | no writes (the bitmask gets three zero stores at the run's last sample, `main` `0x4000bf22/30` — teardown) |
+| per-track flag word `0x46c7a6c0..e0` | 120 writes, ALL zero (15 clears × 8 words, `0x4009e3cc`) |
+| the three mask tests `0x4009d93c/96e/99a` | entered 160× each; the follow-on at `0x4009d9f6` (taken only when a bit was set) **0×** |
+| `--watch-pattern 0x40` (reads of T1's mask rows) | rows `+0x04, 0x0c, 0x14, 0x1c, 0x24, 0x2c, 0x34` read **3× each** — low 32-bit halves only |
+
+The disassembly (`scripts/disasm.sh emac 0x4009d900`) says what §10.6's
+table called "sets bit 12" is the **test**: `andl %a0@(0,%a3:l),%d0` with
+`d0` = the step bit, then `bset #13,%d3` on nonzero; the OR'd `d3` is
+stored to `0x46c7a6c0` at `0x4009da12` only if nonzero. So a zero flag
+word means the step bit never matched a mask row in RAM — the code
+path is consistent with itself, and the question became whether the
+sequencer ever evaluated step 9 of THIS pattern.
+
+**Control: the same three masks poked into RAM at step 9 of the BASELINE
+(bank B, pattern 0, T1), `--poke-trig 9 --poke-mask 0x20,0x28,0x30
+--poke-mask-track 0` — everything fires ✅ (measured):**
+
+```
+frame  2756 track 0 byte 0x35  nibble 5  flags 0x30     <- the note trig, step 9 (344 x 8 = 2752)
+[0x46c7a6c0] <- 0x7020  at pc 0x4009da12 in main         <- bits 12/13/14 (+ bit 5), the store above
+watch-call : 0x4009d9f6 entered 1 time(s)
+watch-call : 0x40005ff0 entered 1 time(s), callers 0x4000d35c   <- the arm caller, once
+FW_TRIG_WORDS (0x46104d26) nonzero writes (245): (2757, 0, 0x7235), then (frame, 0, 5) every frame to 3000
+```
+
+`0x46104d26` — Bryan's anchor, zero in every run since M5 — goes
+nonzero one frame after the trig (`0x7235`, then a steady `5` per frame).
+The live byte carries flags `0x30` instead of the note trig's `0xd0`.
+**This is path B** ([[octabam-emu-frames]]: staged → immediate →
+`0x4000c8e0` word assembly → `0x46104d26` + arm caller), reached by the
+sequencer's own recorder masks with no REC key and no machine-type change
+— the M6e first pass was looking for it on the wrong track and with the
+wrong lever. Two tool fixes on the way: `poke_trig`/`poke_mask` only knew
+steps 1–8 (`bytes must be in range` at step 9), now 64; and
+`--watch-mem` printed 12 writes and hid the rest.
+
+**Why the on-disk fixture did not fire — settled ✅ (measured): bank A's
+pattern A01 steps at ONE QUARTER the rate, and step 9 is ~11,000 frames
+in, not 2,750.** The same three masks written ON DISK at step 2 of a copy
+of the fixture (`pattern-trig … 1 0 0 2 0x20`, `0x28`, `0x30`; no RAM
+poke) fire the identical chain — flag word `0x7020` at `0x4009da12`,
+`0x4009d9f6` ×1, arm caller ×1 from `0x4000d35c`, `0x46104d26` `0x7257`
+then `7`/frame — at **frame 1379**, which is 4 × 344 + 3. The read watch
+agrees: T1's rows are read at 0, ~1379, ~2758 — three evaluations in
+3,000 frames, one per step at that scale; the baseline under the same
+watch reads its rows **9×**, one per 344-frame step. (The baseline's bank B pattern
+steps at 344, which is where the 344-frame gate and the "step 9 ≈ 2,750"
+arithmetic came from; the RIG's A01 evidently carries a 1/4× scale or
+equivalent length setting — not located in the PTRN record, inferred
+from the timing 🟡.) So Sam's step-9 recorder trig is at ~11,032 frames;
+a run to 11,500 is in flight to land it.
+
+**What this establishes (measured, one emulator, no hardware audio):**
+a recorder trig on disk → card → real LOAD PROJECT → the sequencer's mask
+tests → the flag word → the frame builder's arm caller → Bryan's trig
+word, with nothing poked. That is the mechanism the recorder question
+needs, reachable from a project file. Not yet measured: what the arm
+caller does next (`0x40005ff0` ran once — its class-2 path, the sample-
+slot control record, the DSP-side start), and whether the byte-`0x30`
+live flag is what the DSP's recorder reads.
