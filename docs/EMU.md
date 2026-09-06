@@ -420,6 +420,18 @@ through the whole 400-frame run that produced this trig; its only writer
 found so far (`0x4000d378`) writes zero every frame regardless of whether
 anything is due.
 
+**⚠️ `0x4000b800`'s own claim is now in question (M6e, 6 Sep 2026, route A).**
+`watch_calls([0x4000b800])` logged **zero** hits across a 400-frame run
+under the real scheduler, including on the same project/trig this section
+describes (which still lands `0xd3` at frame 344 exactly as here) — so PC
+never equalled that literal address in that run, while `0x4000d2a0`
+(watched the same way, same run) fired 400/400 as expected, ruling out a
+hooking-mechanism problem. Not retracted outright — the write into
+`0x46104d15[track]` still happens on schedule, so SOME code does this; only
+the specific entry address is now unconfirmed under route A. Left as an
+open flag rather than corrected in place, since this reading long predates
+route A and nothing here re-derived where the write's PC actually is.
+
 **Open, and this is the actual gap against Bryan's ask**: `RLEN` (the value
 he asked to vary, 4 vs 32) is a **recorder** parameter — its converter
 (`0x4006e3b2`) reads a per-track byte at `0x80000cf4`, which only means
@@ -541,6 +553,22 @@ track's recorder for real still needs a project with a track's machine set
 to a recorder, which does not exist yet; that, and Bryan's actual recorder
 question, are M6e's job. `RTOS_FORK.md` §9 has the full measurements and
 the task-table correction.
+
+**M6e, first pass (same day): the recorder project now exists — the arm
+path still doesn't.** `tools/scratch/make_recorder_testproj.py` patches
+track 1's machine-type byte to 4 (PICKUP1) in a copy of the real project,
+verified by RAM readback after a real load (`[4, 2, 0, 0, 0, 0, 0, 1]`
+where the source reads `[2, 2, 0, 0, 0, 0, 0, 1]`). With it, track 1's
+existing trig (the one M6c/M6d's gate fires at frame 344) stops writing
+`FW_LIVE_NIBBLE` entirely — the first real evidence machine-type dispatch
+(`ARCHITECTURE.md`'s "trig -> voice, dispatched by machine type") actually
+branches for PICKUP. But the arm/record path itself is still unlocated:
+every named candidate function logged zero calls across 400 frames,
+including `0x4000b800` on the ORIGINAL project's own successful trig — so
+that address isn't reached the way this document previously assumed,
+independent of the recorder question. Likely missing piece: a recorder
+buffer assignment (ids 128-135) the way a STATIC track needs a sample
+slot — not yet located. `RTOS_FORK.md` §10 has the full measurements.
 
 ## Reproduce
 

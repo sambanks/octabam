@@ -706,13 +706,13 @@ scheduler.
 | M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7) |
 | M6c sequencer under the scheduler | ✅ **done 6 Sep — gate passed** | the one-trig test lands the same byte (`0xd3`), same track, 344 frames after the start frame, 28 ticks, under real tasks and real interrupts as it does cold. Three findings on the way (RTOS_FORK §8): the frame source is re-armed by the **eDMA completion ISR** (eDMA now modelled, 16.0-sample period); a **forced interrupt bypasses the mask** (MCF54455RM §17.2.3 — the tick is never unmasked and never needed to be); the load leaves the **sequencer's** playing bank on A by §7's ordering (re-selected through the load's own last step; the hardware falsifier gained a second observable). Sonnet's two §8 hypotheses retracted |
 | M6d key injection | ✅ **done 6 Sep — and the premise was wrong** | PLAY/REC do NOT arrive via a post to `0x4005593c`'s queue — that task isn't a queue consumer at all (a key-repeat timer, mislabeled "UI" by neighbourhood to the real queue's ring buffer). The real `UI_QUEUE` (`0x460d1664`) consumer is a different, previously-unidentified task (`0x40056c40`); physical keys dispatch through a separate per-key jump table (`0x400d2d54`) instead, the same shape as the FX2 shortcut. `press_play_live()`/`press_rec_live()` call PLAY/REC through their own firmware handlers (`call_as_main`, confirmed non-blocking by disassembly); PLAY reproduces M6c's fidelity gate exactly (RTOS_FORK §9) |
-| M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
+| M6e use it | 🟡 in progress (6 Sep) | the recorder-project fixture now exists (`tools/scratch/make_recorder_testproj.py`: track 1 -> machine type 4/PICKUP1, verified by RAM readback); with it, track 1's existing trig stops producing the ordinary `FW_LIVE_NIBBLE` write entirely — confirms machine-type-branched trig dispatch (`ARCHITECTURE.md`), the first real signal PICKUP takes a different path. The actual arm/record code path is still unlocated: every named candidate (`FUN_400977cc`, `FUN_40097168`, the recorder TRIG branch `0x40083544`, `FUN_40005178`, the arm caller `0x40005ff0`, even `0x4000b800`) logged zero calls, `0x4000b800` included on the ORIGINAL project's own successful trig — so that address isn't reached the way `EMU.md` assumed, independent of the recorder question. Best untested guess: a PICKUP machine needs a recorder-buffer assignment (ids 128-135) the way a STATIC track needs a sample slot, and this pass only touched the raw machine-type byte. RTOS_FORK §10 |
 
-Where to resume: **M6e, use it** (judgment) — the recorder-arm path still
-needs a project with a track's machine set to a recorder (REC through
-`press_rec_live()` starts the transport but leaves `0x800066a0` untouched
-with nothing to arm); build that project, then trace what Bryan's click
-actually needs. M6c's gate is the regression to keep green while doing it:
+Where to resume: **M6e, use it** — the recorder-project fixture exists;
+next is locating the real per-step arm/record path (start from a buffer-
+assignment field, by analogy with `ot_project.py`'s static-slot field,
+rather than more blind `watch_calls` guesses) and Bryan's click question.
+M6c's gate is the regression to keep green while doing it:
 `tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
 --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
 [--via-key]` must keep landing `0xd3` on track 0, 344 frames after the

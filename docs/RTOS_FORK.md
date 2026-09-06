@@ -833,3 +833,67 @@ on CLOCK RECEIVE (`0x80000028` bit 0), and REC's reaches it too through
 What would falsify this: a project with a track's machine set to a recorder
 and RSRC armed, run through `press_rec_live()`, showing `0x800066a0`
 actually change — the one thing this pass could not test.
+
+## 10. M6e, first pass (6 Sep 2026) — the recorder project now exists; the arm/record code path still doesn't
+
+The project §9.4 said didn't exist now does: `tools/scratch/make_recorder_testproj.py`
+patches track 1's machine-type byte to 4 (PICKUP1) in a copy of the real
+project `out/_testproj` symlinks to, in both the current part (1) and its
+saved mirror (part 5 — `ot_project.py`'s "eight part records, not four").
+Nothing else changes: track 1 keeps its existing trig (pattern 1 step 2,
+the one M6c/M6d's fidelity gate fires at frame 344 byte `0xd3`), so no
+on-disk trig edit was needed.
+
+**Verified ✅**: loading the patched project through the real M6b path and
+reading RAM back, all 8 tracks' machine types are `[4, 2, 0, 0, 0, 0, 0,
+1]` where the source project reads `[2, 2, 0, 0, 0, 0, 0, 1]` — only track
+1 changed, exactly as patched. File-offset math: RAM's
+`PART_PTR + part*0x18b2 + 0x8eda2 + track` (EMU.md/EXTERNAL.md §6) maps to
+file offset `PART_BASE + part*PART_STRIDE + 0x2b + track` — a flat +9-byte
+IFF chunk-header shift, the same shift `ot_project.py`'s `FX1_OFF`/`FX2_OFF`
+already carry relative to their own RAM offsets (0 and 8), which is what
+made the file-offset guess trustworthy enough to try before verifying it.
+
+**Measured ✅**: with `press_play_live()` + `poke_trig(2)` + 400 frames
+against the patched project, **the ordinary `FW_LIVE_NIBBLE` write at
+frame 344 disappears entirely** — no byte lands in `0x46104d15[track]` at
+all, where every other machine type on this exact trig produces `0xd3`.
+This is the first empirical confirmation of `ARCHITECTURE.md`'s "trig ->
+voice, dispatched by machine type" claim: PICKUP genuinely takes a
+different runtime path, not just a cosmetic one.
+
+**Open ❓ — the real path is still unlocated.** `watch_calls` on every
+candidate this session could name from the existing docs —
+`FUN_400977cc` (0x400977cc, the general trig->voice bridge),
+`FUN_40097168` (0x40097168, machine-state resolver), the recorder's
+TRIG-mode branch `0x40083544`, the QREC scheduler `FUN_40005178`
+(0x40005178), the arm caller `0x40005ff0`, and even the per-frame trig
+gate `0x4000b800` EMU.md's M5 section names — logged **zero calls** for
+this trig across 400 frames. The last one is the important control: run
+the same watch against the ORIGINAL, unmodified project (whose trig at
+this exact step DOES land `0xd3` at frame 344), `0x4000b800` still gets
+zero calls. So that address is not reached via `jsr` under route A the way
+EMU.md's route-B reading assumed — a mismatch independent of the recorder
+question, and worth its own look before trusting that address again.
+Meanwhile `0x4000d2a0` (the per-frame dispatcher) fires 400/400 times in
+both configurations, confirming the instrumentation itself works; it's the
+finer-grained candidates that never light up.
+
+**Most likely explanation, not yet tested**: a PICKUP machine probably
+needs a **recorder buffer assigned** (object ids 128-135, `EXTERNAL.md` §6,
+control records at `0x46c922c4 + id*44`) the same way a STATIC track needs
+a sample slot (`ot_project.py`'s `set_track_slot`, `PART+0x2d3+track*5` on
+disk) — and this pass only flipped the raw machine-type byte, nothing else.
+Locating that assignment field (closest candidate: something near the
+static-slot field's own offset, by analogy) is the next concrete step, not
+another round of blind `watch_calls` guesses on more addresses pulled from
+prose.
+
+Reproduce:
+```sh
+cp -R <a real project dir> out/_recproj
+.venv/bin/python3 tools/scratch/make_recorder_testproj.py out/_recproj
+.venv/bin/python3 tools/emu_rtos.py --project out/_recproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
+# compare FW_LIVE_NIBBLE writes against the same command run on out/_testproj
+```
