@@ -1,3 +1,20 @@
+> ## ⚠️ DIRECTION CHANGED 6 Sep 2026 — READ THIS BEFORE THE BUS SECTIONS
+>
+> The two-bus topology described below (a `->DEL` and a `->VRB` send on every
+> track, stations as bus clients, two accumulators, two returns) is
+> **SUPERSEDED**. Sam's call after it went circular: *"Hard wire all the routing
+> that would be hard wired in a live mixer rig."*
+>
+> **The rig is now ONE AUX BUS**: a single `AUX` send per track, a chain of
+> delay then reverb, and the wet returning on **track 8**, always. Each stage
+> stamps itself live and takes its input from the last live stage — so any
+> subset (delay only, reverb only, both, neither) works and no project setting
+> can silence the aux. Each engine gets a `MIX` knob.
+>
+> **The spec:** https://claude.ai/code/artifact/ec5a3f41-e407-4162-8529-c6dd495f62cc
+> **Build:** branch `spec-rig`, step 1 (the bus collapse) committed at 3504c77.
+> Everything below about two buses is history until it is rewritten.
+
 # The plan: end state, resource ledger, and work order
 
 **This is the cold-start document — read it before `docs/XBUS.md`**, which is
