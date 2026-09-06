@@ -703,28 +703,35 @@ scheduler.
 | M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
 | M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
 | **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
-| M6b real waits + mount | ⏳ **NEXT (mechanical)** | storage parks on its queue, the card sees zero commands: find what requests the mount (RTOS_FORK §5 names the suspects), then the RIG load under real tasks, part bytes = M4's |
+| M6b real waits + mount | 🟡 **started 6 Sep, one race open** | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the correct project pointer — then a second real task clobbers it ~13 ms later and the load free-runs without re-setting it. RTOS_FORK §7 has the byte-exact trace and two untried candidates |
 | M6c sequencer under the scheduler | ⏳ judgment | the fidelity gate: M5's one-trig test lands the same byte at the same frame under route A (needs `out/_testproj` rebuilt) |
 | M6d key injection | ⏳ mechanical | PLAY and REC-arm through the firmware's own path, no RAM pokes |
 | M6e use it | ⏳ judgment | the recorder-arm trace for Bryan; the tick pre-emption question |
 
-Where to resume: `docs/RTOS_FORK.md` §5–§7 (M6b's open item and the
-diagnostics that found everything), `tools/emu_rtos.py --selftest`, then
-`make emu-rtos PROJECT=/Users/sambanks/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG`
-(absolute path; a tilde inside the quoted make variable is not expanded).
-Two Unicorn facts to keep in view: reading SR through the API at a burst
-boundary corrupts the condition codes (the tool uses a `movew %sr,%d0`
-trampoline), and memory-write hooks fire on MMIO. What route A corrected:
-eleven tasks, not eight; `0x400009f4` is a lock, not a semaphore; a
-reschedule is a forced PIT0 interrupt.
+Where to resume: `docs/RTOS_FORK.md` §7 has the M6b race byte-exact (two
+untried candidates — watch whether INTC1 source 47 re-asserts during a
+load; read `0x40061f7c` onward past `0x40062090` for a self-repost) and
+every diagnostic that found it. Reproduce with
+`tools/emu_rtos.py --project <abs dir> --set OCTABAM --name RIG
+--load-project --ms 5000` (absolute path; a tilde inside the quoted make
+variable is not expanded), or `tools/emu_rtos.py --selftest` for the SR
+trap alone. Keep in view: reading SR through the API at a burst boundary
+corrupts the condition codes (the tool uses a `movew %sr,%d0` trampoline);
+memory-write hooks fire on MMIO; `call_as_main` (borrow main's idle slot)
+is unsafe for any call that can genuinely block — route it through a real
+task's own context instead (`request_card_mount`'s pattern). What route A
+corrected: eleven tasks, not eight; `0x400009f4` is a lock, not a
+semaphore; a reschedule is a forced PIT0 interrupt; the mount is `sys`'s
+job, not the engine's.
 
 **Bryan's stake.** His click sits on the recorder's loop point, reached by
 one task staging the REC-arm and the tick promoting it — the interleaving
 route A now does for real. It becomes usable for him at M6d (his project
-loaded under real tasks, PLAY/REC-arm injected as keys); M6b and M6d are
-the mechanical steps between. Already useful to him: the measured task and
-vector tables in RTOS_FORK §2, and the panel serial link captured byte by
-byte.
+loaded under real tasks, PLAY/REC-arm injected as keys); M6b's mount+load
+now works for real up to the point of the race above, and M6d is the
+mechanical step after it closes. Already useful to him today: the measured
+task and vector tables in RTOS_FORK §2, `sys`'s own dispatch table (§7),
+and the panel serial link captured byte by byte.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above

@@ -1,11 +1,16 @@
 # The RTOS fork (emulator route A) — scope
 
-Scoped 6 Sep 2026. Status: **M6a done (6 Sep 2026)** — `tools/emu_rtos.py`
-runs the firmware's own scheduler: the handoff trap dispatched by hand, PIT0
-ticking, eleven tasks created and each run once, tasks posting to each other
-through the kernel. §5 carries the measured result and what it corrected in
-§2 (the task table was wrong in five rows); M6b is next. `EMU.md` has the history of route B (detours) that
-this replaces for the paths that need real task interleaving.
+Scoped 6 Sep 2026. Status: **M6a done (6 Sep 2026)**, **M6b started the same
+day, one race open** — `tools/emu_rtos.py` runs the firmware's own
+scheduler: the handoff trap dispatched by hand, PIT0 ticking, eleven tasks
+created and each run once, tasks posting to each other through the kernel,
+and now a real card mount plus a real LOAD PROJECT reaching the firmware's
+own correct project pointer — which a second real task then clobbers a few
+hundred samples later. §5 carries both measured results and what M6a
+corrected in §2 (the task table was wrong in five rows); §7 has the M6b
+race, byte-exact, as the pick-up point. `EMU.md` has the history of route B
+(detours) that this replaces for the paths that need real task
+interleaving.
 
 Confidence markers as in `CHIP.md`: ✅ measured in the emulator or read
 byte-exact from the image, 🟡 inferred, ❓ open (with how to close it).
@@ -297,19 +302,26 @@ model can take the mechanical parts. Tagged accordingly.
   unchanged: `make verify` and the M4 card load reproduce their step-0
   captures with route A off (`emu_card.attach(..., cold_hooks=True)` is the
   default; `emu_bringup`/`emu_frames` untouched).
-- **M6b — waits become real.** *(mechanical once M6a exists)* Pulled
-  forward into M6a because the gate needed them: the PIT1 model (generic
-  `Pit`, wired to source 44) and **ATA completion through vector `0xb6`**
-  (`Rtos.attach_card`: INTRQ per sector, cleared by a status read, over
-  `emu_card`'s untouched card model); `emu_card.attach(cold_hooks=False)`
-  leaves the `0x40000818`/`0x40015786` hooks out. **Still open**: the mount
-  itself — under route A the storage task parks on its queue (`0x460bb3a8`)
-  and the card sees **zero commands** in 2 s; nothing has asked for a
-  mount. Find what posts it (card-detect on `0xfc0a4039`/`0xfc0a403a`? a
-  UI/sys request after start-up? `0x4001e594` on vector `0xaf`, installed
-  beside the storage create, is the first suspect). Exit gate unchanged:
-  the RIG project loads through the real storage and engine tasks, part
-  bytes identical to M4's proof.
+- **M6b — waits become real.** *(mechanical once M6a exists — mostly held;
+  §7 below has one judgment-shaped race in it)* PIT1 (source 44) and **ATA
+  completion through vector `0xb6`** (`Rtos.attach_card`) were pulled
+  forward into M6a because the gate needed them; `emu_card.attach(...,
+  cold_hooks=False)` leaves the `0x40000818`/`0x40015786` hooks out. The rest
+  landed 6 Sep 2026: `Rtos.request_card_mount` and `Rtos.load_project_live`
+  drive a real mount and a real LOAD PROJECT through the real `sys` and
+  `engine` tasks — no `engine_run_once`, no hand-run init list. Measured:
+  the mount alone reads real ATA IDENTIFY/READ commands and the project load
+  reaches **6,189 ATA commands / 30,467 sectors**, matching M4's cold proof
+  (~30,955 sectors) to within 1.5%, and the engine writes PART_PTR to
+  route B's own known-good value (`0x4017d520`, confirmed against a fresh
+  `emu_card.load_project()` run on the same image) from a real dispatch site
+  (`0x40087d44`). **Still open, found the same day**: `sys`'s card handler
+  (table[15], §2) resets PART_PTR back to its empty value ~568 samples
+  later, from `0x400622aa`, and the load then free-runs for the rest of the
+  budget (20 s tried) without ever setting it again — see §7 for the
+  byte-exact trace and what's ruled in/out. Exit gate unchanged: the RIG
+  project loads through the real tasks, part bytes identical to M4's proof,
+  and stays that way.
 - **M6c — the sequencer under the real scheduler.** *(judgment)* Frame IRQ
   on vector `0x41`, the forced tick through `INTFRCH`, transport started by
   the real UI path or by the M5 detour. Exit gate — **the fidelity check for
@@ -353,14 +365,109 @@ M6b and M6d one each on the cheaper model, M6e open.
   log-append path that once wiped an image (`EMU.md` M4) runs for real. Keep
   images disposable.
 
-## 7. Next step
+## 7. What requests the mount — found 6 Sep 2026, and the race it left open
 
-M6a is done (§5). Next is M6b's open item: find what requests the mount
-and let it happen under the real tasks, then the RIG load. Reproduce M6a:
+**The engine's own LOAD PROJECT handler (opcode 4, table at `0x40084870`,
+index 4 → `0x40085336`) does not mount the card.** It goes straight into
+file-loading calls (`0x4009000c`, `0x40090334`, …). The mount call
+(`0x40061648(1)`, what route B calls by hand) lives in a **different, larger
+dispatch** belonging to the **`sys` task itself** (`0x46c7bed8`,
+`0x40061a94`): its own queue receive at `0x40061cd8` (`0x40000d00` on
+`0x460d17ae`), a **78-entry** table at `0x40061cfa` (index = `msg[0]-1`,
+range-checked against 77 at `0x40061cea`), decoded in full 6 Sep 2026.
+`table[15] = 0x40061f7c` is the case that checks `0x460d1cb8` (card ready)
+and calls `FW_CARD_INIT` if it's clear — reached with `msg[0]=16`, and it
+also requires `msg[1]` nonzero (`tstb a2@(1)` at `0x40061f82`, else it
+returns having done nothing).
+
+**A card-detect hardware interrupt exists and was traced but is NOT this
+path.** Vector `0xaf` (INTC1 source 47, handler `0x4001e594`) is a real,
+correctly-configured interrupt (`icr[47]=4`, unmasked, confirmed live in the
+emulator) whose own state machine — traced instruction-by-instruction 6 Sep
+2026 — reads/acks a block at `0xfc0b0144`/`0xfc0b01ac`/`0xfc0b01bc` nobody
+had met (`0xfc0b01bc` is a start/busy register: write `0x00010001`, poll
+until bits 0/16 clear, then bits 1/17 of a re-read gate two further posts to
+the **storage** queue `0x460bb3a0` — modelled as a constant `0x00020002`
+reply, `MEDIA_KICK`/`MEDIA_KICK_VAL` in `emu_rtos.py`) — but in every traced
+firing it exits without ever reaching `sys`'s table[15] or posting anything
+that leads there (`0x460bb40c`/`0x460bb408`, the flags gating those two
+storage-queue posts, read zero every time; unproven whether that's because
+nothing preceded the interrupt with the right setup, or because this ISR
+handles a different condition than "mount an already-present card"). **Not
+resolved**: what real event sends `sys` message `[16, 1]`. Likely a UI
+action (this reads like "user opened the load-project screen" or similar),
+not a boot-time automatic. `Rtos.request_card_mount()` sends that message
+directly, bypassing whatever the real trigger is — legitimate for driving
+the mount (§ risk below), same as route B's `card_init()` already does by
+calling `FW_CARD_INIT` directly.
+
+**`call_as_main` is unsafe for anything that can genuinely block**, found by
+crashing it: main (priority 0) is the kernel's only always-ready task (§4,
+idle) — the block path's downward scan has nothing to fall back to if main
+itself goes non-ready. Borrowing main's context to call `FW_CARD_INIT`
+directly (mirroring route B) produced exactly that: main blocked on a real
+ATA wait, nothing else was ready either, and the scheduler dispatched a
+garbage TCB (`rte ... would return to user mode`, current-TCB pointer
+pointing at `TOP_PRIO`, not a task). **Fix, and the actual mount path**:
+`Rtos.request_card_mount()` posts `sys` a message instead (`post_message`,
+the kernel's `0x40000c3c` primitive, provably non-blocking — a post/signal
+can never itself wait) and lets `sys`'s own real task context do the
+blocking. `FW_SET_PROJECT_EXISTS` has the identical hazard *conditionally*:
+harmless (near-instant, no card touched) when no card is mounted, but once
+one is, it does real FAT lookups (`0x40025230`) and blocks — found the same
+way, same fix (drop it; it's a route B diagnostic never used to gate the
+load, `load_project_live` doesn't call it).
+
+**With the mount driven this way, real ATA activity follows immediately**:
+`IDENTIFY`/`READ` commands, PIT1 firing (the storage delay timer), and
+`0x460d1cb8` going ready. Posting `FW_POST_LOAD_PROJECT` (opcode 4, exactly
+as route B builds it) afterward drives the engine into genuine file reads —
+**6,189 commands, 30,467 sectors** in one run, matching M4's cold proof
+(~30,955 sectors, all sixteen banks) to within 1.5%. The engine writes
+`PART_PTR` (`0x46c82456`) to `0x4017d520` from `0x40087d44` — independently
+confirmed as the *correct* value by running route B's own
+`emu_card.load_project()` against the same card image cold.
+
+**The open race**: `sys`'s handler writes `PART_PTR` back to `0x400e21e0`
+(the empty/no-project sentinel — also legitimate, the engine itself writes
+this value earlier from `0x40025aa2` as part of clearing prior state, so
+it's a real firmware constant, not garbage) from `0x400622aa`, **~568
+samples (~13 ms) after** the engine's correct write — reproduced twice,
+sample deltas 13838→14405 and 146029→146597, the SAME ~568-sample gap at
+two completely different absolute times. After the clobber, the load
+free-runs: card activity continues (the 30,467 sectors above is the total
+through a 20-second run, not just the first pass) but `PART_PTR` is never
+written again — `watch_mem` on it over the full 20 s shows exactly the four
+writes above and nothing more, so whatever runs afterward is re-reading
+without ever completing to the same finish line. **Waiting for `sys` to
+return to blocking on its own queue before posting LOAD PROJECT does not
+close the gap** (tried; the clobber still lands ~568 samples after the
+engine's write, unchanged) — `sys` re-enters its handler again regardless of
+how long the wait was, which is what points at the LOAD itself (or the
+consequence of mounting) as the re-trigger, not sluggish start-up. Two
+candidates for the actual cause, neither checked yet:
+- `request_card_mount`'s hand-built message (`msg=[16,1]`) may not be the
+  exact encoding real hardware sends — `msg[1]`'s meaning beyond "nonzero"
+  is unread, and a wrong value could make `sys` treat this as an ongoing
+  poll rather than a one-shot mount, re-queuing itself.
+- The card-detect interrupt (vector `0xaf`) may be genuinely
+  level-triggered and re-assert from something the LOAD touches (an ATA
+  register the file reads pass through that our `MEDIA_KICK`/status-block
+  model doesn't clear the way real hardware would) — worth an INTC1-source-47
+  watch (`rt.intc1.pending()` each step, or `--watch-pc 0x4001e594`) across
+  a load to see if it fires again *during* the read burst, not just once at
+  the start.
+
+**Next step**: instrument INTC1 source 47 across a full `load_project_live`
+run (does it re-assert?) before touching `sys`'s message contents further;
+if it doesn't re-assert, read `0x40061f7c` onward past where the 6 Sep trace
+stopped (`0x40062090`) for a self-re-post (`jsr 0x40000c3c` targeting
+`SYS_QUEUE` again) inside table[15]'s own handler. Reproduce everything in
+this section:
 
 ```sh
-make emu-rtos PROJECT=~/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG
-.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --ms 400 --until-gate
+make emu-rtos PROJECT=/absolute/path/to/OCTABAM_RIG
+.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 5000
 .venv/bin/python3 tools/emu_rtos.py --selftest      # the SR-read trap, pinned
 ```
 
@@ -368,5 +475,7 @@ Diagnostics that found everything above and stay in the tool: `--trace`
 (every trap, dispatch, irq, create), `--starvation` (burst-end PCs per
 task), `--watch-calls A,B` (entries with caller and first argument),
 `--watch-mem ADDR,LEN` (every write, with task and PC), `--watch-pc A`
-(registers at an instruction). `emu_bringup` and `emu_frames` are untouched;
-`emu_card` gained the one flag.
+(registers at an instruction), and in Python directly: `Rtos.last_block`
+(O(1), tcb → its most recent block) and `Rtos.blocks` (the full log).
+`emu_bringup` and `emu_frames` are untouched; `emu_card` gained the one
+flag.
