@@ -436,15 +436,21 @@ ordinary trig landing in RAM) but does not answer Bryan's literal question.
 needs no new instrumentation — just `--bpm 128` and a pattern length of 4
 vs 32 steps.
 
-## The RTOS fork — still open, still not forced
+## The RTOS fork — scoped 6 Sep 2026, not started
 
 Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
 the card: a menu- or cave-patch is visible and walkable without a flash, and
-a project loads through the firmware's own storage stack. Route **A** (emulate the
-RTOS — dispatch `trap #0` via VBR `[0x400b9668]`, drive a timer tick, run the
-real scheduler) remains the later fidelity upgrade, the only one that could
-show behaviour emerging from real task interleaving. Nothing built so far
-needs it.
+a project loads through the firmware's own storage stack. Route **A** —
+run the firmware's own scheduler — is the fidelity upgrade that shows
+behaviour emerging from real task interleaving, and M5's recorder-arm path
+("path B" above) is the first thing that needs it. **`docs/RTOS_FORK.md`
+is the scope**: the kernel decoded byte-exact (a ~0x200-byte scheduler,
+eight tasks, one entry shared by `trap #0` and a 5 ms PIT tick, VBR =
+`0x40000000`), a passing feasibility spike (Unicorn raises intno 256 at
+`rte` and dispatches nothing itself, so the exception mechanism is ours to
+run — and it works), the design (time in samples, events delivered at burst
+boundaries), five milestones tagged judgment/mechanical, and the fidelity
+gate: M5's one-trig test must land identically under route A.
 
 ## Reproduce
 

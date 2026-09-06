@@ -666,8 +666,11 @@ Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the
 XOR-highlight `FUN_40012254`, and assign the effect to the track) and, only if
 something needs task-interleaving behaviour, route **A** (emulate the RTOS:
-dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
-far needs A; `docs/EMU.md` keeps it on the table.
+dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). **Scoped 6 Sep
+2026 — `docs/RTOS_FORK.md`**: kernel decoded, feasibility spike passed, five
+milestones (M6a–e) with the fidelity gate that M5's one-trig test must land
+identically under the real scheduler. The recorder-arm path (M5 "path B") is
+the first consumer; Sam chose it as the next emulator lift.
 
 **Emulator milestone 4, BUILT 5 Sep 2026: a LOADED PROJECT (card
 emulation) — `tools/emu_card.py`, `make emu-card PROJECT=<dir>`, `docs/EMU.md`

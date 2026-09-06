@@ -89,8 +89,10 @@ It is a custom microkernel with all the classic components:
   that is waiting and forces a reschedule with `0xFC04_C010 |= 0x800` (ColdFire interrupt controller).
 
 **Scheduler / context switch core** ✓ (`FUN_4000056e`, reached by `TRAP #0` and by the timer):
-1. Saves ALL of the current task's registers (D0–D7, A0–A6, SR) into its TCB `_DAT_800068fc`
-   at offsets `0x0c`–`0x48` (hence the TCB layout: saved context at `0x0c`+, SP at `0x38`).
+1. Saves ALL of the current task's registers (D0–D7, A0–A7) into its TCB `_DAT_800068fc`
+   at offsets `0x0c`–`0x4b` (`moveml d0-sp`; **SP at `0x48`** — corrected 6 Sep 2026 from
+   "`0x38`", read byte-exact at `0x40000560`/`0x4000062c`; SR is not in the block, it
+   travels in the exception frame the `rte` pops). Full layout in `docs/RTOS_FORK.md` §2.
 2. Takes the highest-priority ready task (head of the queue at `_DAT_800068d8`).
 3. Clears the reschedule bit (`0xFC04_C010 &= ~0x800`) and **re-arms the ColdFire PIT timer
    `0xFC08_0000` (reload `0xb3f`)** = the time-slice quantum → **time-preemptive** scheduler.
