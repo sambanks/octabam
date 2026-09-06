@@ -28,7 +28,7 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/ot_project.py set-gain PROJECT_DIR SLOT DB      # e.g. 12 -3.5
     python3 tools/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
     python3 tools/ot_project.py stamp-defaults PROJECT_DIR REMIX  # station ids only
-    python3 tools/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE]
+    python3 tools/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
         # one knob byte on every part/track naming MODULE (key, name or id);
         # SLOT by manifest name or index; VALUE defaults to the manifest's
 
@@ -560,14 +560,17 @@ def _resolve_slot(mod, slot):
     return s
 
 
-def stamp_slot(pdir, which, slot, value=None, guard=True):
+def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     """Write ONE knob byte for every part/track that names the module (FX2
     or FX1), leaving the other eleven alone. `which` is a module key, name
     or fx id; `slot` an index or the knob's manifest name; `value` defaults
     to the manifest default. For a slot whose MEANING changed (5 Sep 2026:
     BusVerb's LP -> -DEL, HP -> TONE; BusDelay's DRV -> -DEL): stamp-defaults
     keeps the engines' bytes deliberately ("Sam's knobs"), and re-stamping all
-    twelve would throw those away. Page 1 is slot < 6."""
+    twelve would throw those away. Page 1 is slot < 6. `tracks` (1-based,
+    e.g. {8}) limits the stamp to those tracks -- the same module on another
+    track keeps its byte (6 Sep 2026: the MASTER's Character -VRB must be 0,
+    T1's Character -VRB is a real send)."""
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)
     slot = _resolve_slot(mod, slot)
@@ -587,6 +590,8 @@ def stamp_slot(pdir, which, slot, value=None, guard=True):
             for p in range(NPARTS_ALL):
                 off = PART_BASE + p * PART_STRIDE
                 for t in range(NTRACKS):
+                    if tracks is not None and (t + 1) not in tracks:
+                        continue
                     for idoff, sub in ((FX1_OFF, 0), (FX2_OFF, 6)):
                         if data[off + idoff + t] != fx_id:
                             continue
@@ -615,7 +620,8 @@ def stamp_slot(pdir, which, slot, value=None, guard=True):
             print(f"bank{num:02d} part {p+1} T{t+1} {label} (id 0x{fx_id:02x} "
                   f"slot {slot}): {old} -> {value}")
         total += len(done)
-    print(f"{total} byte(s) stamped ({label}, slot {slot} = {value})")
+    print(f"{total} byte(s) stamped ({label}, slot {slot} = {value}"
+          + (f", tracks {sorted(tracks)}" if tracks else "") + ")")
     return total
 
 
@@ -831,6 +837,13 @@ if __name__ == "__main__":
         # value optional (manifest default). e.g.
         #   stamp-slot PROJ "REVERB SERVER" TONE      -> 64, from the manifest
         #   stamp-slot PROJ busdelay -DEL 0
-        stamp_slot(pdir, sys.argv[3], sys.argv[4],
-                   sys.argv[5] if len(sys.argv) > 5 else None)
+        #   stamp-slot PROJ character -VRB 0 --track 8   (the master only)
+        args = sys.argv[3:]
+        tracks = None
+        if "--track" in args:
+            i = args.index("--track")
+            tracks = {int(x) for x in args[i + 1].split(",")}
+            del args[i:i + 2]
+        stamp_slot(pdir, args[0], args[1], args[2] if len(args) > 2 else None,
+                   tracks=tracks)
     else: sys.exit(f"unknown command {cmd!r}")
