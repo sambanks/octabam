@@ -1352,3 +1352,13 @@ plus one at load.
 `0x25` = "arm it with these parameters" — Bryan's opcode names hold.
 Whether the `0x25` record carries the length is the next thing to read
 (`0x46105366`'s bytes at the post — a `--watch-mem 0x46105366,0x20` run).
+
+**Run I — the `0x25` record itself (measured):** built inside
+`0x40005c7c` at `0x40005e08..1c` — `[0x46105366] = 0x25`, word `+2 =
+0x0080`, long `+4 = 1` (pending) — and the engine's handler calls
+**`0x40099680(1, 0x80)`**: flag 1, **object id 128 = track 0's recorder
+buffer** (Bryan's ids 128–135). No length travels in the message; the
+length lives in the buffer's state record (`0x100b14f0 + id×1096`, the
+`+276..+288` words the frame builder copies at `0x40006ae2..0x40006b02`
+just before posting), which is where the `arm()` floor-at-64 Bryan read
+would see it. `0x40099680` = Bryan's open/arm ✅ by the call shape.
