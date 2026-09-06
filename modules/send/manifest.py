@@ -33,11 +33,10 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"-DEL", 0, active=True,
-              doc="this track's send level onto the DELAY bus"),
-        Param(b"-VRB", 0, active=True,
-              doc="this track's send level onto the REVERB bus"),
-        _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"AUX", 0, active=True,
+              doc="this track's send level onto the one aux bus (6 Sep 2026: "
+                  "one bus, delay then reverb, wet back on track 8)"),
+        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     dsp=DspSection(

@@ -412,18 +412,13 @@ bus_dohk:                               ; nobody did -- take over this block
         and     #>$30,a                 ; write target, idle right now
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$901,a
-        add     x0,a
-        move    a,r1                    ; r1 = REVERB ACC[new] base
-        move    #>$961,b                ; the DELAY accumulator's base MOVED when
-        add     x0,b                    ; the REVERB one grew to four buffers
-        move    b,r2                    ; r2 = DELAY  ACC[new] base
-        move    #>$ffffff,m1
+        move    #>$961,b                ; ONE BUS (6 Sep 2026): the AUX
+        add     x0,b                    ; accumulator, the only one left
+        move    b,r2                    ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
         clr     a
         move    #>16,y0
         do      y0,>bus_zclr
-        move    a,y:(r1)+
         move    a,y:(r2)+
 bus_zclr:
         nop
@@ -442,14 +437,11 @@ bus_zclr:
 ; places the offset is scaled back down to a bare index.
         move    x0,a                    ; the SAME buffer the clear loop just
         asr     #$4,a,a                 ; zeroed: count and accumulator move
-        move    #>$9c3,x0               ; together (0..3)
+        move    #>$9c7,x0               ; together (0..3); the AUX count
         add     x0,a
         move    a,r1
         clr     a
-        move    a,y:(r1)                ; REVERB count = 0
-        move    #4,n1                   ; SHORT immediate: 1 word (address reg).
-        move    (r1)+n1                 ; 4, not 2: four buffers -> four counts
-        move    a,y:(r1)                ; DELAY count = 0
+        move    a,y:(r1)                ; AUX count = 0
 bus_seen:
         move    y:>$900,a               ; remember this block's offset so next
         and     #>$30,a                 ; block we can tell whether anybody
@@ -502,8 +494,9 @@ bus_mine:
         add     #>$20,a                    ; two buffers on == two buffers back
         and     #>$30,a                    ; mod 4
         move    a,x0                    ; x0 = the read offset
-        move    #>$901,a
-        add     x0,a
+        move    #>$961,a                ; the AUX accumulator (one bus, 6 Sep
+        add     x0,a                    ; 2026; 0x901-0x940 is free for the
+                                        ; chain buffer)
         move    x:(r7+$67),b            ; this call's split-aware frame offset
         add     b,a
         move    a,x:(r7+$63)            ; this call's ACC read address
@@ -647,7 +640,7 @@ bus_mine:
         add     #>$20,a                    ; read offset = write + 2 buffers
         and     #>$30,a                    ; mod 4
         asr     #$4,a,a                 ; -> bare index (0..3)
-        move    #>$9c3,x0
+        move    #>$9c7,x0               ; the AUX count (one bus)
         add     x0,a
         move    a,r5
 ; ⚠️ THIS TRACK COUNTS AS A CLIENT TOO (v4 return) -- the delay's block,

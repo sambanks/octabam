@@ -290,18 +290,13 @@ bus_dohk:                               ; nobody did -- take over this block
         and     #>$30,a                 ; write target, idle right now
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$901,a
-        add     x0,a
-        move    a,r1                     ; r1 = REVERB ACC[new] base
-        move    #>$961,b
-        add     x0,b
-        move    b,r2                     ; r2 = DELAY  ACC[new] base
-        move    #>$ffffff,m1
+        move    #>$961,b                 ; ONE BUS (6 Sep 2026): the AUX
+        add     x0,b                     ; accumulator is the only one left.
+        move    b,r2                     ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
         clr     a
         move    #>16,y0
         do      y0,>zclr
-        move    a,y:(r1)+
         move    a,y:(r2)+
 zclr:
         nop
@@ -318,15 +313,12 @@ zclr:
                                         ; always move together (0..3)
         move    a1,x0
         move    x0,a
-        move    #>$9c3,x0
+        move    #>$9c7,x0               ; the AUX count region
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
         clr     a
-        move    a,y:(r3)                ; REVERB count = 0
-        move    #4,n3                   ; SHORT immediate: 1 word (address reg).
-        move    (r3)+n3                 ; 4, not 2: four buffers -> four counts
-        move    a,y:(r3)                ; DELAY count = 0; a stays 0 for the
+        move    a,y:(r3)                ; AUX count = 0; a stays 0 for the
                                         ; locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
@@ -369,16 +361,18 @@ notfirst:
 ; in r7+$69, which every site downstream now reads instead of y:>$900.
 ; ROTLATCH
         move    a,x0
-        move    #>$901,a
+        move    #>$961,a
         add     x0,a
         move    x:(r7+$67),b             ; this call's split-aware frame offset
         add     b,a
-        move    a,r1                     ; r1 = REVERB ACC[write] base + offset
-        move    #>$961,a
-        add     x0,a
-        add     b,a
-        move    a,r2                     ; r2 = DELAY  ACC[write] base + offset
-        move    #>$ffffff,m1
+        move    a,r2                     ; r2 = AUX ACC[write] base + offset.
+                                         ; ONE BUS as of 6 Sep 2026: this is the
+                                         ; old DELAY accumulator, kept because
+                                         ; the delay -- chain stage 1 -- already
+                                         ; reads it, so its input never changed.
+                                         ; 0x901-0x940 and 0x9c3-0x9c6 (the old
+                                         ; REVERB accumulator and its counts) are
+                                         ; FREE and nothing writes them.
         move    #>$ffffff,m2
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
@@ -430,32 +424,22 @@ notfirst:
                                         ; shared word here would reintroduce
                                         ; exactly the disagreement the resolve
                                         ; block above exists to remove.
-        move    #>$9c3,x0
-        add     x0,a
+        move    #>$9c7,x0               ; THE AUX count (the old DELAY count
+        add     x0,a                    ; region; 0x9c3-0x9c6 is now free)
         move    a,r3
         move    #>$ffffff,m3
-        move    #>$1,x0                 ; the increment, shared by both Tccs
+        move    #>$1,x0                 ; the increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+1),a              ; ->REVERB level
+        move    x:(r6),a                ; AUX level, the one knob
         tst     a                       ; Z set == silent == not a client
         tne     x0,b                    ; sending -> b = 1
         move    y:(r3),a
         add     b,a
-        move    a,y:(r3)                ; REVERB count += 1 ONLY if sending
-        move    #4,n3                   ; four buffers -> four counts per bus
-        move    (r3)+n3                 ; -> the DELAY count, same buffer
-        clr     b                       ; again BEFORE its own tst
-        move    x:(r6),a                ; ->DELAY level
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)                ; DELAY count += 1 ONLY if sending
+        move    a,y:(r3)                ; AUX count += 1 ONLY if sending
 cnt_done:
 
-; ---- per-sample: mono dry sum, scaled into both accumulators -------------
-        move    x:(r6+1),y0              ; ->REVERB level
-        move    x:(r6),y1                ; ->DELAY level
+; ---- per-sample: mono dry sum, scaled into the ONE accumulator -----------
+        move    x:(r6),y1                ; AUX level, the one knob
         move    #>$1,n0
         do      n7,>send_end
         move    x:(r0),a                 ; L
@@ -464,27 +448,19 @@ cnt_done:
         asr     #$1,a,a                  ; a = mono
         move    a,x1                     ; x1 = mono, the mpy operand
 
-        mpy     x1,y1,a                  ; a = mono * ->DELAY level
-        asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM, mirror of
-                                         ; the REVERB path below -- the DELAY
-                                         ; SERVER shifts it back up by 3
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+                ; DELAY  ACC[write][i] += contribution
-
-        mpy     x1,y0,a                  ; a = mono * ->REVERB level
+        mpy     x1,y1,a                  ; a = mono * AUX level
         asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM. Eight clients
-                                         ; at full scale now sum to exactly 1.0
+                                         ; at full scale sum to exactly 1.0
                                          ; instead of 8.0, so the shared word can
                                          ; no longer be summed into its rail --
                                          ; measured, it clamped at seven sends
                                          ; even once the auto-gain divided right.
-                                         ; The server shifts it back up by 3, so
-                                         ; this costs resolution (21 bits of 24)
-                                         ; and nothing else.
-        move    y:(r1),b
+                                         ; Chain stage 1 shifts it back up by 3,
+                                         ; so this costs resolution (21 bits of
+                                         ; 24) and nothing else.
+        move    y:(r2),b
         add     b,a
-        move    a,y:(r1)+                ; REVERB ACC[write][i] += contribution
+        move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
 
         move    #>$2,n0
         move    (r0)+n0                  ; next stereo frame
