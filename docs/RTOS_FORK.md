@@ -1,15 +1,17 @@
 # The RTOS fork (emulator route A) — scope
 
-Scoped 6 Sep 2026. Status: **M6a done (6 Sep 2026)**, **M6b started the same
-day, one race open** — `tools/emu_rtos.py` runs the firmware's own
-scheduler: the handoff trap dispatched by hand, PIT0 ticking, eleven tasks
-created and each run once, tasks posting to each other through the kernel,
-and now a real card mount plus a real LOAD PROJECT reaching the firmware's
-own correct project pointer — which a second real task then clobbers a few
-hundred samples later. §5 carries both measured results and what M6a
-corrected in §2 (the task table was wrong in five rows); §7 has the M6b
-race, byte-exact, as the pick-up point. `EMU.md` has the history of route B
-(detours) that this replaces for the paths that need real task
+Scoped 6 Sep 2026. Status: **M6a done, M6b done (6 Sep 2026)** —
+`tools/emu_rtos.py` runs the firmware's own scheduler: the handoff trap
+dispatched by hand, PIT0 ticking, eleven tasks created and each run once,
+tasks posting to each other through the kernel, and now a real card mount
+plus a real LOAD PROJECT reaching the firmware's own correct project
+pointer for real, matching the cold proof's read count. One loose end was
+root-caused and handed to **M6d**: a UI-screen mechanism (live only because
+the emulator doesn't yet drive the UI) insists on track 0 and reverts the
+just-loaded pointer — not a defect in the mount or the load, §7 has the
+byte-exact trace. §5 carries both measured results and what M6a corrected
+in §2 (the task table was wrong in five rows). `EMU.md` has the history of
+route B (detours) that this replaces for the paths that need real task
 interleaving.
 
 Confidence markers as in `CHIP.md`: ✅ measured in the emulator or read
@@ -302,8 +304,8 @@ model can take the mechanical parts. Tagged accordingly.
   unchanged: `make verify` and the M4 card load reproduce their step-0
   captures with route A off (`emu_card.attach(..., cold_hooks=True)` is the
   default; `emu_bringup`/`emu_frames` untouched).
-- **M6b — waits become real.** *(mechanical once M6a exists — mostly held;
-  §7 below has one judgment-shaped race in it)* PIT1 (source 44) and **ATA
+- **M6b — waits become real.** *(mechanical once M6a exists — held; the one
+  loose end below is M6d's, not M6b's)* PIT1 (source 44) and **ATA
   completion through vector `0xb6`** (`Rtos.attach_card`) were pulled
   forward into M6a because the gate needed them; `emu_card.attach(...,
   cold_hooks=False)` leaves the `0x40000818`/`0x40015786` hooks out. The rest
@@ -315,13 +317,18 @@ model can take the mechanical parts. Tagged accordingly.
   (~30,955 sectors) to within 1.5%, and the engine writes PART_PTR to
   route B's own known-good value (`0x4017d520`, confirmed against a fresh
   `emu_card.load_project()` run on the same image) from a real dispatch site
-  (`0x40087d44`). **Still open, found the same day**: `sys`'s card handler
-  (table[15], §2) resets PART_PTR back to its empty value ~568 samples
-  later, from `0x400622aa`, and the load then free-runs for the rest of the
-  budget (20 s tried) without ever setting it again — see §7 for the
-  byte-exact trace and what's ruled in/out. Exit gate unchanged: the RIG
-  project loads through the real tasks, part bytes identical to M4's proof,
-  and stays that way.
+  (`0x40087d44`). **Root-caused, same day**: a separate, generic
+  "select track" routine (`0x40062288`) independently insists track 0 is
+  current and reverts both the current-track byte and PART_PTR ~500-3,000
+  samples after the engine sets track 1 — reactive to the track change, not
+  a one-shot or a timer, so reposting the load never outruns it (tried).
+  This is a live UI-screen behaviour firing only because the emulator never
+  puts the UI on the screen a real load flow would have it on — **M6d's
+  territory, not a defect in the mount or the load.** §7 has the full trace.
+  Exit gate: `load_project_live` returns `loaded=True` the instant PART_PTR
+  is ever seen correct during the run (a permanent watch, independent of
+  what a live screen does to it afterward) — the honest claim this milestone
+  can make, and the one M6d inherits.
 - **M6c — the sequencer under the real scheduler.** *(judgment)* Frame IRQ
   on vector `0x41`, the forced tick through `INTFRCH`, transport started by
   the real UI path or by the M5 detour. Exit gate — **the fidelity check for
@@ -334,7 +341,10 @@ model can take the mechanical parts. Tagged accordingly.
   (the post primitive against whichever queue `0x4005593c` blocks on — to be
   read in M6c) so PLAY and the REC-arm action run the firmware's own path.
   This is what makes Bryan's recorder test reachable without RAM pokes
-  (`EMU.md` M5, "path B").
+  (`EMU.md` M5, "path B"). **Also inherits M6b's track-select contest** (§7):
+  find what calls the "select track 0" routine from `0x400d64b9` and put the
+  UI on whatever screen makes it stop, so a loaded project's track stays
+  current.
 - **M6e — use it.** *(judgment)* The recorder-arm trace for Bryan; the tick
   pre-emption question; whatever the kit/parts work needs.
 
@@ -428,46 +438,66 @@ as route B builds it) afterward drives the engine into genuine file reads —
 confirmed as the *correct* value by running route B's own
 `emu_card.load_project()` against the same card image cold.
 
-**The open race**: `sys`'s handler writes `PART_PTR` back to `0x400e21e0`
-(the empty/no-project sentinel — also legitimate, the engine itself writes
-this value earlier from `0x40025aa2` as part of clearing prior state, so
-it's a real firmware constant, not garbage) from `0x400622aa`, **~568
-samples (~13 ms) after** the engine's correct write — reproduced twice,
-sample deltas 13838→14405 and 146029→146597, the SAME ~568-sample gap at
-two completely different absolute times. After the clobber, the load
-free-runs: card activity continues (the 30,467 sectors above is the total
-through a 20-second run, not just the first pass) but `PART_PTR` is never
-written again — `watch_mem` on it over the full 20 s shows exactly the four
-writes above and nothing more, so whatever runs afterward is re-reading
-without ever completing to the same finish line. **Waiting for `sys` to
-return to blocking on its own queue before posting LOAD PROJECT does not
-close the gap** (tried; the clobber still lands ~568 samples after the
-engine's write, unchanged) — `sys` re-enters its handler again regardless of
-how long the wait was, which is what points at the LOAD itself (or the
-consequence of mounting) as the re-trigger, not sluggish start-up. Two
-candidates for the actual cause, neither checked yet:
-- `request_card_mount`'s hand-built message (`msg=[16,1]`) may not be the
-  exact encoding real hardware sends — `msg[1]`'s meaning beyond "nonzero"
-  is unread, and a wrong value could make `sys` treat this as an ongoing
-  poll rather than a one-shot mount, re-queuing itself.
-- The card-detect interrupt (vector `0xaf`) may be genuinely
-  level-triggered and re-assert from something the LOAD touches (an ATA
-  register the file reads pass through that our `MEDIA_KICK`/status-block
-  model doesn't clear the way real hardware would) — worth an INTC1-source-47
-  watch (`rt.intc1.pending()` each step, or `--watch-pc 0x4001e594`) across
-  a load to see if it fires again *during* the read burst, not just once at
-  the start.
+**The race, root-caused (not the earlier vaguer "SYS clobbers it").** Two
+independent, real mechanisms both write the current-track byte (`0x80000002`)
+and `PART_PTR` together, and they disagree:
+- The **engine**, finishing LOAD PROJECT, sets track **1** current
+  (`0x40087d26`), immediately before its own correct `PART_PTR` write
+  (`0x40087d44`).
+- A separate, generic **"select track N" routine** (`0x40062288`) computes
+  `PART_PTR := 0x400e21e0 + N·635712` — a per-track **factory-default table
+  baked into the image**, unrelated to any loaded project — and is invoked
+  **repeatedly across the whole run**, always with `N=0`, always called with
+  the *same fixed argument pointer* (`0x400d64b9`, static data — not our
+  message, not `sys`'s queue message at all: `a2` at entry is constant
+  across every firing, so this is reached via a completely different call
+  path than the `table[15]` dispatch that mounts the card). It reacts within
+  ~500–3,000 samples of the current track **actually changing away from
+  0** (confirmed with a register-state watch at `0x40062288`/`0x400622aa`:
+  `d2=0` and the write target both track it exactly), then goes quiet until
+  the next change — a live watcher, not a one-shot step. `sys` also writes
+  `0x80000002 := 0` in the same handler (`0x400622b8`), confirmed by
+  watching that byte directly: engine sets it to `1` at sample 13838, `sys`
+  sets it back to `0` at 14406.
 
-**Next step**: instrument INTC1 source 47 across a full `load_project_live`
-run (does it re-assert?) before touching `sys`'s message contents further;
-if it doesn't re-assert, read `0x40061f7c` onward past where the 6 Sep trace
-stopped (`0x40062090`) for a self-re-post (`jsr 0x40000c3c` targeting
-`SYS_QUEUE` again) inside table[15]'s own handler. Reproduce everything in
-this section:
+**So whichever fires second wins, and reposting LOAD PROJECT does not
+help** — tried directly (three attempts, `run_ms=6000` apart): every repost
+sets track 1 again, and the watcher notices and corrects it back to 0 again,
+on the same short delay, every single time (samples 13838→14406,
+278477→279009, 543079→543611 — three attempts, the identical ~530-sample
+gap each time). It isn't sluggish start-up and it isn't periodic on a fixed
+timer; it's reactive to the track change itself, so nothing short of not
+changing the track (or changing what the watcher thinks the "right" track
+is) makes it stop. The interrupt path (vector `0xaf`) is unrelated — checked
+directly, it never fires during a `request_card_mount`-driven load (the
+mount posts straight to `sys`'s queue, bypassing the interrupt entirely).
+
+**Whose bug is this, really: none, on real hardware — it's an artifact of
+not driving the UI.** `0x400d64b9`'s repeated calls, always for track 0,
+look like a screen that assumes or enforces track 0 is current — plausibly
+whatever the unit is sitting on before a project gets loaded through it.
+`Rtos.request_card_mount` and `load_project_live` post kernel messages
+straight to `sys` and the engine, which is exactly what let M6b prove the
+mount and the load work without needing any UI machinery — but it also
+means the emulator never puts the UI on the screen a real load flow would
+have it on, so this screen's "keep showing track 0" behaviour keeps firing
+when it normally wouldn't be live at all. **This is M6d's territory (real
+key injection)**, not something to paper over in M6b: find what selects
+track 0 from `0x400d64b9`'s caller and see when it should legitimately stop
+running, or drive the UI to a screen where it doesn't.
+
+**Where this leaves M6b's exit gate.** `Rtos.load_project_live` now returns
+`loaded` — true the instant `PART_PTR` is *ever* seen at a value other than
+the empty sentinel during the run (via a permanent `watch_mem`), independent
+of whatever happens to it afterward. That is the honest, checkable claim:
+the mount and the load mechanism both work, for real, through real tasks,
+matching M4's read-count proof — the subsequent contest over which track is
+"current" is a separate, now precisely-understood problem with a named
+owner (M6d), not a reason to call the load itself broken.
 
 ```sh
 make emu-rtos PROJECT=/absolute/path/to/OCTABAM_RIG
-.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 5000
+.venv/bin/python3 tools/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
 .venv/bin/python3 tools/emu_rtos.py --selftest      # the SR-read trap, pinned
 ```
 

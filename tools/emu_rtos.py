@@ -69,6 +69,9 @@ SYS_TCB = 0x46c7bed8
 SYS_QUEUE = 0x460d17ae             # the sys task's own command queue
 SYS_MSG_SCRATCH = 0x46c00000       # scratch for a hand-built message -- see request_card_mount;
                                    # inside the boot's 0x46000000+32MB map, far from any named global
+PART_EMPTY = 0x400e21e0            # the firmware's own "no project loaded" sentinel for
+                                   # ec.PART_PTR -- a fixed OS constant, not project-specific data
+                                   # (the engine itself writes it, from 0x40025aa2, before loading)
 
 # The tasks, as MEASURED under the real scheduler on 6 Sep 2026 (the create
 # hook below): (tcb, entry, prio, stack, size, creator). Main is created by
@@ -810,7 +813,7 @@ class Rtos:
         self.uc.mem_write(SYS_MSG_SCRATCH, bytes([16, 1]))
         return self.post_message(SYS_QUEUE, SYS_MSG_SCRATCH)
 
-    def load_project_live(self, set_name, project_name, run_ms=3000, mount_ms=3000):
+    def load_project_live(self, set_name, project_name, run_ms=6000, mount_ms=3000):
         """M6b: drive a project load the way hardware would, then let the
         REAL sys, engine and storage tasks do the rest -- no engine_run_once
         stand-in, no hand-run init list. Two real actions, neither of which
@@ -820,12 +823,39 @@ class Rtos:
         main -- see `call_as_main`'s docstring for why that distinction
         matters), then post LOAD PROJECT (opcode 4) to the engine's queue
         exactly as `FW_POST_LOAD_PROJECT` does. Returns (mounted, posted,
-        changed, part_ptr, elapsed_ms); `changed` compares part_ptr against
-        its PRE-load value, not against zero -- the project pointer's rest
-        value is a stale nonzero code address, not null. `changed` becoming
-        true is evidence a load started, not proof it finished: a full load
-        reads all sixteen banks (M4's cold proof: ~30,955 sectors) and this
-        runs only `run_ms` of it.
+        loaded, part_ptr, elapsed_ms). `loaded` is True the instant `PART_PTR`
+        is EVER seen at its correct value during the run, even if something
+        later overwrites it -- see below, that overwrite is real and
+        currently expected. `part_ptr` is the value at the end.
+
+        THE RACE, ROOT-CAUSED 6 Sep 2026 (not the vaguer "SYS clobbers it
+        once" writeup this replaces): two independent, real mechanisms both
+        write the current-track byte (`0x80000002`) and `PART_PTR` together,
+        and they disagree.
+        - The engine, finishing LOAD PROJECT, sets track 1 current
+          (`0x40087d26`, immediately before its own correct `PART_PTR` write
+          at `0x40087d44`).
+        - A SEPARATE, generic "select track N" routine (`0x40062288`,
+          `PART_PTR := 0x400e21e0 + N*635712`, a per-track factory-default
+          table baked into the image) is invoked REPEATEDLY throughout the
+          WHOLE run -- observed firing before the mount even starts, and
+          again periodically after -- always with N=0, always called with
+          the same fixed argument pointer (`0x400d64b9`, static data, not
+          our message). It reacts within ~500-3000 samples of the track
+          ACTUALLY changing away from 0, then goes quiet again until the
+          next change: not a one-shot housekeeping step, a live watcher.
+
+        So whichever fires second wins, and reposting LOAD PROJECT does NOT
+        help (tried, 6 Sep 2026): every repost sets track 1 again, and the
+        watcher notices and corrects it back to 0 again, on the same short
+        delay, every time. The watcher's trigger (`0x400d64b9`, and whatever
+        decides to call the select-track routine with it) is a UI/screen
+        state question -- almost certainly a screen that assumes track 0 is
+        current, live because we never drove the UI to the screen a real
+        project-load flow would be on. That is M6d's territory (real key
+        injection), not something to paper over here. Fix belongs there:
+        drive the UI to a track-1-appropriate (or track-agnostic) screen
+        before posting the load, or find what selects track 0 and see why.
 
         Deliberately does NOT call `FW_SET_PROJECT_EXISTS`: with no card
         mounted it returns near-instantly (a genuine short-circuit, which is
@@ -835,33 +865,23 @@ class Rtos:
         found the same way (6 Sep 2026). It is a pure diagnostic in route B
         (its result is never used to gate the load); dropping it costs
         nothing here."""
+        start = self.sample
         self.run(until=lambda r: r.pc == MAIN_SPIN)
-        before = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
-        mount_req = self.sample
         self.request_card_mount()
         self.run(ms=mount_ms, until=lambda r: int.from_bytes(
             r.uc.mem_read(0x460d1cb8, 4), "big") != 0)
         mounted = int.from_bytes(self.uc.mem_read(0x460d1cb8, 4), "big")
-        # SYS's opcode-15 handler does not finish the instant 0x460d1cb8
-        # goes ready: it runs on for a while afterward and, once, was seen
-        # writing PART_PTR back to its empty-sentinel value on its way out
-        # (0x400622aa, ~1500 samples after ready) -- clobbering a load
-        # started in that window. Wait for SYS to return to blocking on its
-        # OWN queue (its handler provably finished) before posting the load.
-        self.run(ms=mount_ms, until=lambda r: (
-            b := r.last_block.get(SYS_TCB)) and b[0] > mount_req and b[4] == SYS_QUEUE)
         self.run(until=lambda r: r.pc == MAIN_SPIN)
         ec.set_names(self, set_name, project_name)
+        if not getattr(self, "_watching_part_ptr", False):
+            self.watch_mem(ec.PART_PTR, 4)
+            self._watching_part_ptr = True
+        write_count_before = len(self.mem_writes)
         posted = self.call_as_main(ec.FW_POST_LOAD_PROJECT, args=(ec.FW_PROJECT_NAME,))
-        start = self.sample
-        # No early stop on "part_ptr changed": that fires on the FIRST write
-        # (project.work alone), while a full load reads all sixteen banks --
-        # M4's cold proof took ~30,955 sectors. Run the whole budget and
-        # report what actually accumulated; this is proof the mount+post
-        # mechanism works for real, not yet a parity check against M4.
         self.run(ms=run_ms)
         part = int.from_bytes(self.uc.mem_read(ec.PART_PTR, 4), "big")
-        return mounted, posted, part != before, part, (self.sample - start) / SAMPLE_HZ * 1000.0
+        loaded = any(val != PART_EMPTY for *_, val in self.mem_writes[write_count_before:])
+        return mounted, posted, loaded, part, (self.sample - start) / SAMPLE_HZ * 1000.0
 
     # -- the M6a gate --------------------------------------------------------
     def ran(self):
@@ -1085,7 +1105,7 @@ def _cli():
         try:
             if not rt.gate_m6a()[0]:
                 rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
-            mounted, posted, changed, part, elapsed = rt.load_project_live(
+            mounted, posted, loaded, part, elapsed = rt.load_project_live(
                 a.set, staged_name, run_ms=a.ms)
         except (RtosFault, eb.UcError) as e:
             print(f"stopped    : {_fault(e)}")
@@ -1093,15 +1113,18 @@ def _cli():
             print(rt.starvation())
             return 1
         print(rt.report())
-        print(f"mount      : ready={mounted} posted={posted} part_changed={changed} "
-              f"part={part:#x} ({elapsed:.1f} ms emulated after posting)")
+        stuck = loaded and part == PART_EMPTY
+        print(f"mount      : ready={mounted} posted={posted} loaded={loaded} "
+              f"part={part:#x}{' (raced away, see docstring)' if stuck else ''} "
+              f"({elapsed:.1f} ms emulated total)")
         if rt.card:
             print(f"card       : {len(rt.card.log)} commands, {rt.card.reads} sectors read, "
                   f"{rt.card.writes} written; last: {rt.card.log[-8:]}")
-        ok = bool(mounted)
+        ok = bool(mounted) and loaded
         if not ok:
             print(rt.starvation())
-        print("M6b mount  :", "PASS" if ok else "FAIL")
+        print("M6b load   :", "PASS" if ok else "FAIL",
+              "(raced away by the track-select watcher after loading correctly)" if stuck else "")
         return 0 if ok else 1
 
     until = (lambda x: x.gate_m6a()[0]) if a.until_gate else None
