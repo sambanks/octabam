@@ -11,7 +11,7 @@ Confidence, per `CLAUDE.md`: separate measured from inferred. A fix that only
 
 ---
 
-## Audio engine wedged, sequencer alive ✅ FIX CONFIRMED, cause open
+## Audio engine wedged, sequencer alive ✅ CAUSE MEASURED 6 Sep 2026: the MASTER LOOP
 
 **Symptom.** The sequencer runs (steps advance, transport works), but **no
 audio plays** — not the tracks, and a **sample preview triggers but is
@@ -61,6 +61,22 @@ Localised without a flash:
   wedges, the saved-OS-version mismatch is the suspect (and every flash
   needs a project switch after it); if it plays, the selected-track-at-boot
   is what remains (select T5, save, cold boot).
+- **✅ MEASURED, 6 Sep 2026 (tag 17, OCTABAM_RIG silent after a project
+  switch): turning T8's FX1 -VRB from 71 down to 0 brought the audio back,
+  live.** The master's station (Character, SAT = BUS = the return point)
+  was SENDING into the reverb bus it RETURNS — the one loop the design
+  forbids ("a master that sends into a bus it returns is the one loop
+  left"). Sam called it a loop on the first symptom. Why the loop reads as
+  SILENCE rather than a squeal is not established (inferred: the bus
+  auto-gain / the return's clear-on-read stamp collapsing, not measured).
+  The version-string idea was falsified the same hour (switching back under
+  a matching tag was still silent) and the one earlier "cleared by a
+  switch" was a different bank coming up: bank01's parts have T8 -VRB 0,
+  bank02's have 71.
+- **Fix, immediate:** T8 -VRB = 0 in every part (a track-filtered
+  `stamp-slot`), and SAVE. **Fix, structural:** a station in BUS mode must
+  not register or send at all — closes the loop by construction — and the
+  spec's rule stands: the master's station carries no sends.
 - ⚠️ Two wrong calls made the same day, both logic leaps: "intermittent"
   (it never cleared on a reboot) and "cleared by a power-cycle" (that was
   the 5 Sep instance, not this one). Say only what was observed.
