@@ -27,6 +27,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "card.h"
 #include "machine.h"
 #include "periph.h"
 
@@ -42,6 +43,18 @@ namespace ot
 	inline constexpr uint32_t g_mainTcb   = 0x46c7ae84;
 	inline constexpr uint32_t g_bootTcb   = 0x46c7ae30;		// the context the first trap saves
 	inline constexpr uint32_t g_handoff   = 0x40000e46;		// the boot's trap #0
+
+	inline constexpr uint32_t g_kernelPost    = 0x40000c3c;	// post(queue, msg): never blocks
+	inline constexpr uint32_t g_sysQueue      = 0x460d17ae;	// the sys task's command queue
+	inline constexpr uint32_t g_sysMsgScratch = 0x46c00000;	// scratch for a hand-built message
+	inline constexpr uint32_t g_ataSource     = 54;			// INTC1 source 54 -> vector 0xb6
+
+	// The project load, from `emu_card.py`'s constants.
+	inline constexpr uint32_t g_cardReady   = 0x460d1cb8;	// := 1 after a successful init+mount
+	inline constexpr uint32_t g_setName     = 0x100f8480;	// current SET folder (0x104 bytes)
+	inline constexpr uint32_t g_projectName = 0x100f8378;	// current PROJECT folder
+	inline constexpr uint32_t g_postLoad    = 0x40023c7c;	// (name*) -> posts engine command 4
+	inline constexpr uint32_t g_partPtr     = 0x46c82456;	// null until a project loads
 
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
@@ -82,6 +95,67 @@ namespace ot
 		enum class Stop { Gate, Time, Fault, Illegal };
 		Stop run(double _ms, bool _untilGate = true);
 
+		// Run until the PC is parked at main's spin -- what `callAsMain`
+		// needs before it can borrow the slot.
+		Stop runToMainSpin(double _ms = 5000.0);
+
+		// ---- the card ------------------------------------------------------
+		// Interpose on the task-file window so the card raises INTRQ the way
+		// ATA does (handler 0x40015304: one sector per interrupt, completion
+		// signalled when the count reaches zero): asserted when a command
+		// completes or a sector is ready, after each sector consumed with
+		// more to come, and after each sector absorbed by a WRITE; cleared by
+		// a read of the STATUS register, not the alternate status.
+		//
+		// ⚠️ This is route A's `cold_hooks=False` path: the kernel's own event
+		// wait really blocks and the ATA interrupt really completes the
+		// command. `emu_card.attach`'s `on_wait`/`on_nowait` shortcuts are
+		// deliberately NOT translated -- they are for the cold detours, not
+		// for a machine running its own RTOS.
+		void attachCard(AtaCard& _card);
+		void mapCardMemory();
+
+		// Borrow main's idle slot to call an OS subroutine the way a UI action
+		// would, with the normal trap-dispatch loop still live underneath, so
+		// any REAL wait inside the call runs correctly against every other
+		// task and interrupt. Convention: retaddr at [sp], args at [sp+4]...
+		//
+		// ⚠️ ONLY for a call that CANNOT genuinely block. Main is priority 0
+		// and never legitimately blocks on hardware, so it is the kernel's de
+		// facto idle backstop and main being non-ready is a state the block
+		// path never expects -- route A proved it the hard way by borrowing
+		// main for a call that waits on a real timer: main blocked, nothing
+		// else was ready either, and the scheduler dispatched a garbage TCB.
+		// A call that CAN block belongs to a real task: post it a message.
+		bool callAsMain(uint32_t _addr, const std::vector<uint32_t>& _args, uint32_t& _d0,
+			uint64_t _budget = 4000000);
+		bool postMessage(uint32_t _queue, uint32_t _msg, uint32_t& _d0);
+
+		// Post to the SYS task's own queue the message its dispatch table
+		// sends to the card case: it checks "card ready" and, if clear, calls
+		// the card init FOR REAL from SYS's context (priority 1, safe to
+		// block). msg[0]=16 selects the case; msg[1] must be non-zero to
+		// reach it (`tstb a2@(1)`, else the handler returns having done
+		// nothing).
+		bool requestCardMount();
+
+		// ⚠️ The SET name is an ABSOLUTE path on the card -- the firmware's
+		// own default is "/PRESETS". Without the leading slash the project
+		// loads (relative to the root) and then every bank is "missing",
+		// because the loader has already changed into the project directory.
+		void setNames(const std::string& _set, const std::string& _project);
+
+		// The whole M6b sequence: park, ask SYS to mount, wait for the card
+		// to come ready, set the names, and post LOAD PROJECT the way the UI
+		// does. ⚠️ Deliberately does NOT call the "does SET/PROJECT exist"
+		// helper: with no card it short-circuits, but once a card IS present
+		// it does real FAT lookups and BLOCKS -- and borrowing main for a
+		// call that blocks is the crash `callAsMain` warns about.
+		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0;
+			std::string postWhy; };
+		LoadResult loadProjectLive(const std::string& _set, const std::string& _project,
+			double _runMs = 6000.0, double _mountMs = 3000.0);
+
 		// -- what the oracle compares ---------------------------------------
 		struct Created { double sample; uint32_t tcb, entry, prio, stack, size, creator; };
 		struct Dispatch { double sample; uint32_t tcb, pc; };
@@ -93,8 +167,27 @@ namespace ot
 		double sample() const { return m_sample; }
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
+		uint64_t ataInterrupts() const { return m_ataInterrupts; }
+		bool ataLineAsserted() const { return m_ataIrq; }
+		// Every access to the task-file window, in order, for diffing against
+		// route A's: "R|W off size value pc". The first divergence names the
+		// defect; reasoning about it does not.
+		void setAtaTrace(bool _on) { m_ataTraceOn = _on; }
+		const std::vector<std::string>& ataTrace() const { return m_ataTrace; }
+
 		uint64_t idleSkips() const { return m_idleSkips; }
 		uint64_t forces() const { return m_forces; }
+		uint32_t currentTcb() { return curTcb(); }
+		void setAtaLatency(double _samples) { m_ataLatency = _samples; }
+		void armPcRing(size_t _size, uint64_t _budget) { m_pcRing.assign(_size, 0); m_pcRingBudget = _budget; }
+		const std::vector<uint32_t>& pcRing() const { return m_pcRing; }
+		size_t pcRingPos() const { return m_pcRingPos; }
+		bool pcRingArmed() const { return m_pcRingArmed; }
+		// Every vector the CPU acknowledged: (sample, vector, level, tcb, pc it
+		// interrupted, slot contents). Which handler an interrupt actually
+		// went to is a measurement, not a table lookup.
+		struct Ack { double sample; uint8_t vector, level; uint32_t tcb, pc, slot; };
+		const std::vector<Ack>& acks() const { return m_acks; }
 		size_t seeded() const { return m_seeded; }
 		size_t serialSent() const { return m_uart64.tx().size() + m_uart68.tx().size(); }
 		const std::vector<uint8_t>& serialTxA() const { return m_uart64.tx(); }
@@ -114,6 +207,9 @@ namespace ot
 		bool peripheralRead(uint32_t _addr, uint8_t _size, uint32_t& _out);
 		void peripheralWrite(uint32_t _addr, uint8_t _size, uint32_t _val, bool _replay);
 		void tickTimers();
+		// One instruction plus everything the run loop does around it, so a
+		// borrowed call runs against the same live machine the loop does.
+		bool stepOnce();
 		bool deliver();
 		bool anyPending() const;
 		bool nextExpiry(double& _out) const;
@@ -127,6 +223,31 @@ namespace ot
 		Intc m_intc0, m_intc1;
 		Uart m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
 		Dspi m_dspi;
+		AtaCard* m_card = nullptr;
+		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
+		// driver writes the command and THEN calls the RTOS event wait; a
+		// drive that asserted INTRQ on the same instruction would run the ISR,
+		// signal the event, and finish before the waiter ever waits -- and the
+		// wait then blocks forever on a signal that already happened.
+		// Measured 8 Sep 2026: that is exactly what this port did (1 IDENTIFY,
+		// card-ready never set). Route A survives it only by accident of
+		// granularity -- it delivers interrupts at burst boundaries, which
+		// gives the caller time to reach the wait. A real CF card takes tens
+		// of microseconds to fetch a sector, so the latency below is the
+		// PHYSICAL behaviour and route A's is the artefact.
+		bool m_ataIrq = false;
+		double m_ataIrqDue = 0.0;			// 0 = nothing pending
+		double m_ataLatency = 1.0;			// samples; ~23 us at 44.1 kHz
+		uint64_t m_ataInterrupts = 0;
+		std::vector<std::string> m_ataTrace;
+		bool m_ataTraceOn = false;
+		std::vector<Ack> m_acks;
+		// A PC ring armed by the first ATA command: what the ISR does and
+		// where the machine goes afterwards, which is the whole question.
+		std::vector<uint32_t> m_pcRing;
+		size_t m_pcRingPos = 0;
+		bool m_pcRingArmed = false;
+		uint64_t m_pcRingBudget = 0;
 
 		std::vector<Created> m_created;
 		std::vector<Dispatch> m_dispatches;
