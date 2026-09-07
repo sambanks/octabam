@@ -1662,6 +1662,24 @@ milestone (**M6f, sequencer clock lock**), not a knob. 🟡 Falsifier on the
 unit: a recorder trig on the RIG at 120 BPM records (it will); the
 emulator's `d3` says it would not.
 
+**Sam's correction (7 Sep 2026, same hour): the unit is SLAVED to the Rytm,
+and bank B runs at 121 BPM from its clock.** That is not a detail. The RIG
+saves CLOCK RECEIVE set, which is exactly the bit `--internal-clock` clears
+— and exactly the gate of the tick-side lock `0x400a1e92`; the other gate,
+`0x46104ca8`, is written by the MIDI-clock receiver (`0x4000a21c`/`0x4000a294`
+and neighbours, the level-4 framer's tick path). So on the rig the firmware
+runs the external-clock lock every tick, and route A has never run the
+sequencer in that mode at all: `--internal-clock` is a detour that switches
+the lock off, and every sweep above is a measurement of the detour. Two
+consequences. (1) The hardware test is not "120 BPM internal": run it as
+the rig runs, slaved to the Rytm at 121, and it is not a falsifier of the
+table above but the baseline M6f must reproduce. (2) **M6f = model external
+MIDI clock** (0xF8 at 24 PPQN into the MIDI UART model, the level-4 framer,
+`0x46104ca8` and the lock), run the RIG at 121 BPM with CLOCK RECEIVE as
+saved, and read the timing byte — expected `0x10`-ish every time. The
+internal-clock lock (whatever holds it on a unit running free) is the
+second half of M6f and matters for Bryan if he runs internal; ask him.
+
 **The lever.** `emu_rtos.py --arm-phase-fix` (`Rtos.arm_phase_fix()`): at
 the arm caller's entry clear bit 7 of the word when the track's recorder
 record is zero in both banks, and log it. Compensation in the
