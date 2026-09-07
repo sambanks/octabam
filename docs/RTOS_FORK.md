@@ -1691,6 +1691,21 @@ the 508 frames after the trig (2 per frame). **Bryan's 128 / RLEN 4
 configuration is now reachable in situ**, one flag, every use printed.
 
 
+**✅ HARDWARE RESULT (Sam, 7 Sep 2026, internal clock):** two projects
+built from RECTRIG and put on the card by Claude — CLOCK RECEIVE off in the
+file, tempo fixed in the file (120 / 128), ONE recorder trig on T1 at step 2
+(the original step-9 trig removed, since it would have armed a recording of
+its own), T2 a FLEX machine on R1 with note trigs at steps 10 and 14, direct
+monitoring off so the only sound is T2 playing R1. First pass after loading,
+Rytm into inputs A/B: **120 → sound, 128 → sound.** The emulator, on those
+exact files, said 120 arms and 128 is dropped (`0x72fe`). So the drop is the
+emulator's, on INTERNAL clock — the firmware's internal-clock lock (whatever
+holds it on a free-running unit) is what route A lacks, and that is the
+first half of M6f, ahead of external MIDI clock. `--arm-phase-fix` stands as
+the compensation until then. (Sam's earlier observation on the first cut of
+the fixture — "silent until 9/64, then sound" — was the step-9 trig doing
+its own job and could not be scored; the test was redesigned in the hour.)
+
 **M6f scoping notes (7 Sep 2026, read, not built — paused, see PLAN):**
 MIDI IN is UART0 `0xfc060000` (not modelled; the harness has `0xfc064000`/
 `0xfc068000` on INTC sources 27/28, so UART0 is source 26 with the same
