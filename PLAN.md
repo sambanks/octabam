@@ -51,6 +51,30 @@ What ships:
   (never init-build tables in Y through `(r1)+` — R48–R50 killed every
   voice). `docs/PARAM_PAGES.md` §7 decodes the formatter ABI.
 
+- **The whole rig renders locally, on BOTH cores (7 Sep 2026, tier 1 of
+  the emulator uplift).** `tools/dsp_host` boots payload A *and* payload B
+  as two DSPs in one process with the shared window `0x30000–0x3FFFF`
+  really shared (a patch to the vendored emulator's `Memory`), each core
+  running its own setup routine (payload B's found by opcode pattern at
+  `P:0x17a`; the year-old "cannot boot payload B" was three hardcoded
+  payload-A addresses). `tools/rig_render.py` / `make render-rig` drives
+  all eight tracks — T1–T4 on core 1, T5–T8 on core 0, FX1→FX2 chained per
+  track, ids and knob bytes from a real project part or by name, stems in,
+  per-track + mix wavs and a per-block instruction meter out — at about
+  real time. ✅ **Measured**: SEND and BusDelay on the *real* payload B
+  feeding BusVerb on payload A (send hop, delay hop, delay→reverb series
+  hop, two senders per core) render bit-identical to the DEV hatch, and
+  stay identical under four instruction-level interleave skews
+  (`tools/verify_twocore.py`, in `make check`) — payload B's `$38000`
+  placement had only ever been checked statically. ⚠️ What this is NOT:
+  the chip's timing (lock-step, or a guessed `-skew`: a local mismatch is
+  a defect, identity is not evidence), the cycle cliff (instructions per
+  block, no contention stall), or the ColdFire (knobs poked into `r6`, a
+  unity mixer, stems instead of sample playback). `docs/HARNESS.md` "Two
+  cores". Tiers 2 (the ColdFire's per-frame parameter records replayed
+  into this harness) and 3 (audio through the host port, ~100× slower than
+  real time) are scoped in the 7 Sep session notes and not started.
+
 **Hosting is bank-bound; serving is not.** Either effect serves all eight
 tracks over the bus, but each can only be *hosted* on its own core's bank —
 and picking one on the wrong bank runs a SEND instead (the absent server's

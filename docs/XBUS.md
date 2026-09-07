@@ -180,8 +180,11 @@ it, swapping what ran on track 5 — is in `docs/history/XBUS_LOG.md`.
   time, and it moves when the mode or core 0's load changes. Spot-checks
   have passed builds that a sweep then failed — any "fixed" claim needs a
   track × mode sweep.
-- ⚠️ **No local test is evidence about a cross-core race.** `dsp_host` is
-  single-core and always trivially in lockstep. The bit-identity gate
+- ⚠️ **No local test is evidence about a cross-core race.** `dsp_host`
+  runs both cores since 7 Sep 2026, lock-step by default or under a chosen
+  `-skew` interleave — a fuzz of the hardware's timing, never the timing
+  (`docs/HARNESS.md`, "Two cores"). A mismatch under skew is a real defect;
+  identity is not evidence. The bit-identity gate
   proves a change preserved behaviour; only the unit can say a timing
   defect is gone, and the decisive configuration is the one that exposed
   it: BusDelay on track 1, fed over the bus.
