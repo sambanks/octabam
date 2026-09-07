@@ -7,10 +7,10 @@ from unicorn.m68k_const import *
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 ap = argparse.ArgumentParser()
 ap.add_argument("--project", required=True); ap.add_argument("--tree", required=True)
-ap.add_argument("--name", default="RECTRIG"); ap.add_argument("--frames", type=int, default=7000)
+ap.add_argument("--name", default="RECTRIG"); ap.add_argument("--frames", type=int, default=7000); ap.add_argument("--image", default=None)
 a = ap.parse_args()
 card, name = er.stage_project(a.project, "OCTABAM", a.name, tree=a.tree)
-r, rt = er.attach(None, card)
+r, rt = er.attach(a.image, card)
 ev = []
 def rd(u, r): return u.reg_read(r) & 0xffffffff
 def m32(u, ad): return int.from_bytes(u.mem_read(ad, 4), "big")
