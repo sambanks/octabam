@@ -31,7 +31,13 @@ start the next one, and it does not loosen the gate.
 5. **Git:** branch, PR, merge. Never commit to main (O3 was committed to main
    by mistake and had to be moved; do not repeat it).
 6. `ctest` in `out/emu` must stay green. `make check` must stay green.
-7. **Ask nothing of the user mid-milestone.** Everything a milestone needs is
+7. **Before trusting an agreement, check the two machines are the same
+   machine.** O5's gate passed on its first run and the agreement was an
+   artefact: the port answered all-ones where the oracle answered zero, and
+   the bytes that would have disagreed were being dropped on the floor. A
+   knob sweep run on an instrument that cannot see the thing measures the
+   instrument (`CLAUDE.md`, the `send_probe` THD entry).
+8. **Ask nothing of the user mid-milestone.** Everything a milestone needs is
    in this file, `COLDFIRE_PORT.md`, `RTOS_FORK.md` and the route A source.
    If it is genuinely not, that is a BLOCKED PR, not a question.
 
@@ -63,7 +69,8 @@ route A fact, not the port's problem; the golden command above already does it.
 | O1 | boots to the RTOS handoff | reaches `trap #0` | ✅ same PC `0x40000e46`, same two auto-pokes |
 | O2 | the EMAC (fractional, `msac`, A-line dispatch) | `ctest` emac | ✅ hardware's three cases |
 | O3 | PIT + INTC models | `ctest` periph, 14 rules | (wired in by O4) |
-| O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 8/8 fields; 10 created, 11 ran, 204.88 ms vs 204.95 |
+| O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 6 compared fields (❌ was written "8/8": the diff counted 2 it never compared); 10 created, 11 ran, 204.88 ms vs 204.95 |
+| O5 | the rest of the memory; the serial stream | `ctest` rtos + the oracle diff | ✅ 8 compared fields; route A's 4831 serial bytes matched byte for byte |
 
 ## Queue
 
@@ -124,17 +131,29 @@ and written into this entry with the two emulators' values side by side.
 
 </details>
 
-### O5 — the remaining peripherals *(Opus, mechanical)*
+### ~~O5 — the remaining peripherals~~ ✅ DONE (8 Sep 2026)
 
-⚠️ **`Uart` and `Dspi` are already done** (O4 needed them). What is left:
-the serial-link handling in `install`, the test-mode word at `0x1ffffe`
-(`0x4003232c` expects `0xdcba`; zero = normal), the settings-reset loop past
-the 1 MB SRAM window (`0x4001f298`). Each is a class in `periph.{h,cpp}`
-with its rules tested in `test_periph.cpp` **before** it is wired in.
+See `COLDFIRE_PORT.md`. Three things O6 and O7 must know:
 
-**Gate:** the O4 oracle diff still passes, and `ot_emu` reports the same
-serial byte count route A does (`report()`: "serial sent: 4831 B") --
-`Rtos::serialSent()` already exposes it, and it is NOT yet compared.
+1. **Route A does NOT fault on unmapped memory in the golden configuration.**
+   `_prime_menu` installs a hook that maps a zero page and returns True, and
+   it stays installed; route A's region list goes 9 → 15 by the M6a gate. The
+   port now grows the same way (`Machine::setAutoMap`, 4 KB pages, zeroed).
+   Before concluding anything from a difference, check whether the two
+   machines answer an unmapped address the same way — for months they did not.
+2. **The serial count is a clock artefact; the serial STREAM is not.** The
+   ring drains in bursts (5731 bytes at ips 3900/3990, 4831 at 4100 and up),
+   and every one of those streams shares route A's 4831 as an exact prefix.
+   The gate compares bytes over the common length.
+3. **`oracle.py` used to count fields it never compared.** It now prints a
+   `REPORTED` line for `gate_ms`, `pit0_fired` and `serial_sent`. When a
+   milestone adds a field, compare it or expect to see it listed there.
+
+The port still auto-maps **20.3 M accesses** on the way to the gate, almost
+all of them a 64 MB clear at `0x42000000` and a 10.8 MB clear at `0x4f502c10`.
+That is not a defect — route A covers the same spans — but O7's card is what
+would make the two machines allocate from the same place, and it is worth
+re-checking the span list once the project loads.
 
 ### O6 — the eDMA and the frame clock *(Opus, but read §8.1 first)*
 
@@ -184,5 +203,5 @@ One session per milestone, in a terminal left open:
 /loop Take the next milestone in docs/COLDFIRE_WORKORDER.md that is not done and not BLOCKED. Work on a branch named for it. Follow the standing rules. Open a PR when its gate passes, or a draft PR titled BLOCKED with the measurement. Then stop.
 ```
 
-Use **Opus** for O4–O7. Switch to Fable for O8 and for any BLOCKED PR.
+Use **Opus** for O6 and O7. Switch to Fable for O8 and for any BLOCKED PR.
 Nothing here needs a flash, the card, or the user.

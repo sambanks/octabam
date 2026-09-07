@@ -1,5 +1,7 @@
 #include "rtos.h"
 
+#include <utility>
+
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
@@ -114,6 +116,23 @@ namespace ot
 			return;
 		}
 
+		// Two spans the BOOT does not map and main's init needs, added here
+		// because route A adds them here (`install`), with its reasons:
+		//
+		//   * Main's init reads a magic word at 0x1ffffe (0x4003232c: equal to
+		//     0xdcba means a test-mode flash) and the boot maps only the first
+		//     64 KB. Zero = no magic. ⚠️ THE PORT WAS ANSWERING ALL-ONES HERE
+		//     and route A answers zero -- both fail the 0xdcba test, so the
+		//     behaviour matched by luck rather than by model, and a machine
+		//     that never faults on unmapped memory gets no warning about that.
+		//   * The settings reset (0x4001f298) clears up to 0x10100004, four
+		//     bytes past the SRAM window -- a firmware off-by-four that
+		//     hardware absorbs. ✅ Reproduced here: the port's own unmapped
+		//     log shows exactly four byte-accesses at 0x10100000.
+		for(const auto& [base, size] : {std::pair<uint32_t, uint32_t>{0x00010000, 0x001f0000},
+			std::pair<uint32_t, uint32_t>{0x10100000, 0x1000}})
+			m_machine.mapRegion(base, size);
+
 		// SEED the models by replaying what the boot wrote into the all-ones
 		// stub before they existed. Route A's rule, including its exclusion:
 		//
@@ -130,8 +149,9 @@ namespace ot
 			peripheralWrite(w.addr, w.size, val, true);
 		}
 		m_seeded = m_machine.peripheralWrites().size();
-		for(auto* u : {&m_uart64, &m_uart68})
-			u->clearTransmitInterrupt();
+		if(m_quirks.clearTransmitInterrupt)
+			for(auto* u : {&m_uart64, &m_uart68})
+				u->clearTransmitInterrupt();
 
 		m_machine.setPeripheralHandlers(
 			[this](uint32_t a, uint8_t s, uint32_t& o) { return peripheralRead(a, s, o); },
@@ -383,6 +403,29 @@ namespace ot
 		return problems.empty();
 	}
 
+	namespace
+	{
+		std::string base64(const std::vector<uint8_t>& _in)
+		{
+			static const char* const g_alphabet =
+				"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+			std::string out;
+			out.reserve((_in.size() + 2) / 3 * 4);
+			for(size_t i = 0; i < _in.size(); i += 3)
+			{
+				const uint32_t a = _in[i];
+				const uint32_t b = i + 1 < _in.size() ? _in[i + 1] : 0;
+				const uint32_t c = i + 2 < _in.size() ? _in[i + 2] : 0;
+				const uint32_t v = (a << 16) | (b << 8) | c;
+				out += g_alphabet[(v >> 18) & 63];
+				out += g_alphabet[(v >> 12) & 63];
+				out += i + 1 < _in.size() ? g_alphabet[(v >> 6) & 63] : '=';
+				out += i + 2 < _in.size() ? g_alphabet[v & 63] : '=';
+			}
+			return out;
+		}
+	}
+
 	void Rtos::writeGoldenJson(const std::string& _path) const
 	{
 		std::ofstream f(_path);
@@ -432,6 +475,13 @@ namespace ot
 		f << (first ? "" : "\n ") << "],\n";
 
 		f << " \"gate_ms\": " << ms() << ",\n";
-		f << " \"pit0_fired\": " << pit0Fired() << "\n}\n";
+		f << " \"pit0_fired\": " << pit0Fired() << ",\n";
+		// THE SERIAL STREAM, not its length -- see route A's golden writer and
+		// the O5 section of COLDFIRE_PORT.md. ⚠️ The COUNT tracks the `ips`
+		// knob (5731 at 3900/3990, 4831 at 4100/4200/4300) because the
+		// transmit ring drains in bursts; the BYTES do not.
+		f << " \"serial_sent\": [" << serialA() << ", " << serialB() << "],\n";
+		f << " \"serial_a\": \"" << base64(serialTxA()) << "\",\n";
+		f << " \"serial_b\": \"" << base64(serialTxB()) << "\"\n}\n";
 	}
 }

@@ -43,6 +43,10 @@ What it checks, in the order a port reaches them:
                  and an unequal one is not evidence of anything. What a real
                  divergence looks like instead: a different TASK, a different
                  ORDER, or a time more than a period out -- all still fatal.
+  serial_a/_b    the BYTES each UART transmitted, compared over the length
+                 both reached: one must be a prefix of the other. The total
+                 is reported, never compared -- it tracks the ips knob
+                 because the transmit ring drains in bursts (milestone O5)
   gate_ms        when the gate passed
 
 A field the port has not produced yet is reported as MISSING, not as a
@@ -64,11 +68,13 @@ def main():
         sys.exit(__doc__)
     a, b = load(sys.argv[1]), load(sys.argv[2])
     problems, missing, notes = [], [], []
+    compared = []
 
     def field(name):
         if name not in b:
             missing.append(name)
             return None
+        compared.append(name)
         return b[name]
 
     if (v := field("handoff_pc")) is not None and v != a["handoff_pc"]:
@@ -101,6 +107,40 @@ def main():
 
     if (v := field("first_switch")) is not None and v != a["first_switch"]:
         problems.append(f"first_switch: oracle {[hex(x) for x in a['first_switch']]}, port {[hex(x) for x in v]}")
+
+    if field("serial_a") is not None and field("serial_b") is not None:
+        # THE SERIAL STREAM. What is compared is the BYTES over the length
+        # both emulators reached -- one must be a prefix of the other -- and
+        # NOT the total, which is a clock artefact.
+        #
+        # ⚠️ Measured 8 Sep 2026, and it is the reason this is written the
+        # awkward way. The firmware drains its transmit ring in bursts, so
+        # whether the last ~900-byte drain lands before or after the M6a gate
+        # depends on the instruction budget per sample. Same image, same
+        # everything else:
+        #
+        #     ips 3900  5731 B     ips 4100  4831 B
+        #     ips 3990  5731 B     ips 4200  4831 B
+        #     route A   4831 B     ips 4300  4831 B
+        #
+        # and at ips 4100 the port's 4831 bytes are byte-for-byte route A's,
+        # while at 3990 route A's 4831 are an exact prefix of the port's 5731.
+        # So an equal COUNT would be a coincidence of clock accounting, and an
+        # unequal one is not evidence of anything -- but a byte that differs
+        # inside the common prefix is a different code path, and fatal.
+        import base64
+        for name in ("serial_a", "serial_b"):
+            oa = base64.b64decode(a[name])
+            ob = base64.b64decode(b[name])
+            n = min(len(oa), len(ob))
+            if oa[:n] != ob[:n]:
+                first = next(i for i in range(n) if oa[i] != ob[i])
+                problems.append(f"{name}: the streams differ at byte {first} of {n} "
+                                f"(oracle {oa[first]:#04x}, port {ob[first]:#04x})")
+            elif len(oa) != len(ob):
+                notes.append(f"{name}: {len(oa)} bytes in the oracle, {len(ob)} in the port, "
+                             f"identical over the first {n} -- the ring drains in bursts and "
+                             f"the last one tracks the ips knob")
 
     if (v := field("dispatches")) is not None:
         # THE STRICT PART: the order in which each task FIRST runs, and when.
@@ -148,17 +188,29 @@ def main():
                 notes.append(f"dispatches[{i}]: same task at the same time, resumed at "
                              f"{da['pc']:#x} (oracle) vs {db['pc']:#x} (port)")
 
+    # ⚠️ COUNT ONLY WHAT WAS ACTUALLY COMPARED. The summary used to say
+    # "N field(s) agree" where N was every field in the golden, which quietly
+    # took credit for `gate_ms`, `pit0_fired` and `serial_sent` -- none of
+    # which this script has ever compared, because all three track the ips
+    # knob. A gate that reports fields it did not check is the same defect as
+    # a watch that prints nothing (RTOS_FORK section 10.3b). Fixed 8 Sep 2026.
+    reported = [k for k in a if k not in compared and k not in missing]
     for n in notes:
         print(f"NOTE     {n}")
     for m in missing:
         print(f"MISSING  {m} (the port does not produce it yet)")
     for p in problems:
         print(f"DIFFERS  {p}")
-    checked = len(a) - len(missing)
+    if reported:
+        print("REPORTED " + ", ".join(sorted(reported)) + " -- present in both, NOT compared "
+              "(these track the instruction-budget knob; see the header)")
     if problems:
-        print(f"oracle: {len(problems)} disagreement(s) over {checked} field(s) -- a finding, go and measure")
+        print(f"oracle: {len(problems)} disagreement(s) over {len(compared)} compared field(s) "
+              f"-- a finding, go and measure")
         return 1
-    print(f"oracle: {checked} field(s) agree" + (f", {len(missing)} not yet produced" if missing else "")
+    print(f"oracle: {len(compared)} compared field(s) agree"
+          + (f", {len(reported)} reported only" if reported else "")
+          + (f", {len(missing)} not yet produced" if missing else "")
           + (f", {len(notes)} note(s)" if notes else ""))
     return 0
 

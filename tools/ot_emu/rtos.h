@@ -64,6 +64,16 @@ namespace ot
 	public:
 		explicit Rtos(Machine& _m, double _ips = 3990.0, double _pitClockHz = 264e6);
 
+		// A DELIBERATE DEPARTURE FROM ROUTE A, for the negative control only.
+		// The gate compares the serial byte count, and a gate that has never
+		// failed proves nothing (the standing rule, and why
+		// `tools/verify_bus.py` carries a selftest). `test_rtos` runs the
+		// machine a second time with `clearTransmitInterrupt` false and
+		// requires the count to CHANGE, which is what makes the comparison
+		// evidence rather than decoration. Nothing but the test sets it.
+		struct Quirks { bool clearTransmitInterrupt = true; };
+		void setQuirks(const Quirks& _q) { m_quirks = _q; }
+
 		// Install the models over the peripheral window and SEED them by
 		// replaying every write the boot made into the stub. Route A's
 		// `install()`; it must be called after the boot and before `run`.
@@ -87,6 +97,10 @@ namespace ot
 		uint64_t forces() const { return m_forces; }
 		size_t seeded() const { return m_seeded; }
 		size_t serialSent() const { return m_uart64.tx().size() + m_uart68.tx().size(); }
+		const std::vector<uint8_t>& serialTxA() const { return m_uart64.tx(); }
+		const std::vector<uint8_t>& serialTxB() const { return m_uart68.tx(); }
+		size_t serialA() const { return m_uart64.tx().size(); }
+		size_t serialB() const { return m_uart68.tx().size(); }
 		const std::string& why() const { return m_why; }
 
 		// Route A's `gate_m6a`: every expected task created with its fields,
@@ -120,6 +134,7 @@ namespace ot
 		uint64_t m_idleSkips = 0, m_forces = 0;
 		size_t m_seeded = 0;
 		std::string m_why;
+		Quirks m_quirks;
 		bool m_installed = false;
 		bool m_gateDirty = true;
 		uint32_t m_injectedLevel = 0, m_injectedVector = 0;   // the line currently offered

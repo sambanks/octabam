@@ -1598,11 +1598,26 @@ def attach(image=None, card_image=None, log=None, **kw):
     if r.trap != (32, HANDOFF):
         raise RtosFault(f"handoff trap is {r.trap}, expected (32, {HANDOFF:#x})")
     r.rtos_boot_writes = boot_writes
+    # The region set the BOOT ends with, captured rather than written down.
+    # ⚠️ It grows on its own from here: `_prime_menu` (emu_bringup) installs
+    # an unmapped-access hook that maps a zero page and returns True -- a
+    # workaround for a stale formatter pointer in the menu render -- and it
+    # stays installed, so route A does not fault on unmapped memory on any
+    # path that has primed the menu. Measured 8 Sep 2026: the card attach and
+    # main's own init grow FOUR spans this way before the M6a gate, and they
+    # are exactly the four the C++ port was answering all-ones for
+    # (COLDFIRE_PORT.md, O5).
+    _boot_regions = {(b, e) for b, e, _ in r.uc.mem_regions()}
     rt = Rtos(r, **kw)
     if card_image is not None:
         s = ec.attach(r, card_image, log, cold_hooks=False)
         rt.attach_card(s.card)
     rt.install()
+    # The region set the run STARTS from, captured rather than written down:
+    # an unmapped access auto-maps a zero page once `_prime_menu` has run, so
+    # the list grows, and the growth is the interesting part (see the report
+    # at the end of the until-gate path).
+    rt._base_regions = _boot_regions
     return r, rt
 
 
@@ -1667,6 +1682,8 @@ def _cli():
     ap.add_argument("--step-quantum", type=int, default=32)
     ap.add_argument("--no-tick", action="store_true", help="PIT0 never asserts (step-1 checkpoint)")
     ap.add_argument("--until-gate", action="store_true", help="stop as soon as the M6a gate passes")
+    ap.add_argument("--serial-out", default="",
+                    help="write the bytes each UART transmitted to FILE.a / FILE.b")
     ap.add_argument("--golden", default="",
                     help="write the M6a facts (created tasks, which ran, the first switch, the first "
                          "dispatches, the handoff PC and the boot's auto-pokes) as JSON: THE ORACLE the "
@@ -1976,7 +1993,34 @@ def _cli():
     print("M6a gate   :", "PASS" if ok else "FAIL")
     for p in problems:
         print("   -", p)
+    # ⚠️ --watch-pc / --watch-calls / --watch-mem printed NOTHING on this
+    # path: `_watch_report` was only called from the M6c branch, so a watched
+    # address that never fired and one that fired constantly looked identical
+    # here -- silence. That is the same silent-instrument trap section 10.3b
+    # records for --trace, surviving in a second branch; found 8 Sep 2026
+    # while asking whether route A ever executes the two large clear loops the
+    # C++ port runs (COLDFIRE_PORT.md, O5). Nothing concluded from a silent
+    # watch on this path before today is worth anything.
+    _watch_report()
+    # ⚠️ HOW MANY REGIONS ARE MAPPED, and it is not a constant. `_prime_menu`
+    # (emu_bringup) installs an unmapped-access hook that MAPS A ZERO PAGE and
+    # returns True -- a menu-render workaround for a stale formatter pointer --
+    # and it stays installed for the rest of the run. So on any path that has
+    # primed the menu, route A does NOT fault on unmapped memory: it silently
+    # grows a zero page. Printed because the C++ port answers ALL-ONES and
+    # drops the write instead, which is a different machine (COLDFIRE_PORT.md,
+    # O5, 8 Sep 2026).
+    _now = {(b, e) for b, e, _ in rt.uc.mem_regions()}
+    _grew = sorted(_now - getattr(rt, "_base_regions", _now))
+    print(f"regions    : {len(_now)} mapped at the stop, {len(_grew)} GREW after the boot"
+          + (": " + ", ".join(f"{b:#x}-{e:#x}" for b, e in _grew) if _grew else ""))
+    if a.serial_out:
+        for suffix, u in (("a", rt.uart64), ("b", rt.uart68)):
+            pathlib.Path(a.serial_out + "." + suffix).write_bytes(bytes(u.tx))
+        print(f"serial out : {a.serial_out}.a ({len(rt.uart64.tx)} B), "
+              f"{a.serial_out}.b ({len(rt.uart68.tx)} B)")
     if a.golden:
+        import base64
         import json
         gold = dict(
             handoff_pc=HANDOFF,
@@ -1988,6 +2032,19 @@ def _cli():
             dispatches=[dict(sample=round(s_, 1), tcb=t, pc=pc) for s_, t, pc in rt.dispatches[:200]],
             gate_ms=round(rt.sample / SAMPLE_HZ * 1000, 2),
             pit0_fired=rt.pit0.fired,
+            # THE SERIAL STREAM, not its length. ⚠️ The COUNT is a clock
+            # artefact and the bytes are not: the transmit ring is drained in
+            # bursts, so whether the last ~900-byte drain lands before or
+            # after the gate depends on the instruction budget per sample.
+            # Measured 8 Sep 2026 on the C++ port, same image, same
+            # everything else: ips 3900 and 3990 stop with 5731 bytes sent,
+            # ips 4100, 4200 and 4300 with 4831 -- and every one of those
+            # streams has this one as an exact prefix. So the oracle compares
+            # the BYTES over the length both reached, which is a real property
+            # of the code path, and reports the length difference.
+            serial_sent=[len(rt.uart64.tx), len(rt.uart68.tx)],
+            serial_a=base64.b64encode(bytes(rt.uart64.tx)).decode(),
+            serial_b=base64.b64encode(bytes(rt.uart68.tx)).decode(),
         )
         pathlib.Path(a.golden).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(a.golden).write_text(json.dumps(gold, indent=1))

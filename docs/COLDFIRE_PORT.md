@@ -169,7 +169,18 @@ first switch boot → main, the M6a gate reached at **204.88 ms** against route
 A's 204.95. `ctest` is **6 tests, all passing** (the new `rtos` one is route
 A's M6a gate, self-contained).
 
-**The oracle diff passes 8 of 8 fields** (`tools/ot_emu/oracle.py`).
+**The oracle diff passes** (`tools/ot_emu/oracle.py`).
+
+> ❌ **RETRACTED 8 Sep 2026: "8 of 8 fields".** The diff's summary counted
+> every field in the golden, including three it has never compared —
+> `gate_ms`, `pit0_fired` and (later) `serial_sent`, all of which track the
+> `ips` knob. O4 actually agreed on **6 compared fields**: `handoff_pc`,
+> `auto_pokes`, `created`, `ran`, `first_switch`, `dispatches`. The claim was
+> inflated by the script, not by the port — nothing about O4's result changes,
+> only what it is honest to say about it. `oracle.py` now counts only what it
+> compared and prints a `REPORTED` line for the rest. Same defect as a watch
+> that prints nothing: a gate that takes credit for fields it did not check
+> (RTOS_FORK §10.3b).
 
 ### The one deliberate divergence from route A
 
@@ -238,6 +249,100 @@ tick). So that is the strict criterion, along with the created fields, the set
 that ran, the first switch and each task's first-run time within one PIT
 period; the resumed PCs and the preemption count are **reported as notes**.
 The gate is still sharp: at ips 4100 it fails on first-run times.
+
+## Milestone O5 — the rest of the memory, and what the oracle really does ✅ (8 Sep 2026)
+
+O5 was written as "the remaining peripherals" and its list was nearly empty:
+the UARTs and the DSPI had already moved into O4, leaving two memory spans
+route A maps in `install` and a serial byte count to compare. Both were done
+in minutes, **and the gate passed on the first run** — which, by the standing
+rule that a gate which has never failed proves nothing, is where the milestone
+actually started.
+
+### The two maps, translated
+
+`Rtos::install` now adds route A's own two spans, with its reasons:
+`0x00010000+0x1f0000` so the test-mode magic word at `0x1ffffe` reads **zero**
+(`0x4003232c` takes `0xdcba` as a test-mode flash), and `0x10100000+0x1000`
+for the settings reset's off-by-four past the SRAM window. ✅ Both are visible
+in the port's own access log: exactly **one read at `0x1ffffe`** (pc
+`0x4003233e`) and exactly **four byte-writes at `0x10100000`**, which is the
+off-by-four reproduced rather than assumed. Neither changed the gate.
+
+### ⚠️ The finding: route A does not fault on unmapped memory, and this port was not the same machine
+
+The port answers **all-ones** for an address in no region and drops the write;
+Unicorn raises `UC_ERR_READ_UNMAPPED`. That difference was assumed to be
+harmless because route A "always faults". It does not. `_prime_menu`
+(`emu_bringup`) installs an unmapped-access hook that **maps a zero page and
+returns True** — a workaround for a stale formatter pointer in the menu
+render — and it stays installed for the rest of the run. So in the golden
+configuration route A *grows*:
+
+| | measured |
+|---|---|
+| regions after the boot | 9 |
+| regions at the M6a gate | 15 |
+| grown by `install`'s two explicit maps | `0x10000-0x1fffff`, `0x10100000-0x10100fff` |
+| grown by the auto-map hook | `0x10000000-0x100affff`, `0x100c0000-0x100fffff`, `0x42000000-0x45ffffff`, `0x48100000-0x4fffffff` |
+
+Those four are, page for page, the four spans this port was answering all-ones
+for — **20,348,069 accesses** (14,073 read, 20,333,996 written). Their two
+largest sources are both plain literal loops, disassembled rather than
+inferred:
+
+- `0x400209a4` is a `moveml`-based `bzero`, called on **64 MB at
+  `0x42000000`** — precisely the gap between route A's two SDRAM regions.
+- `0x40002fb4` is `lea 0x4f502c10,%a0` / `movel #705664,%d0` and a 16-byte
+  clear loop: **10.8 MB**, both bounds hard-coded in the image.
+
+✅ Without a project route A really does fault (`unmapped read 0x100fff04 at
+pc 0x4001fa4e`), which is the behaviour its own note in the work order
+describes — but the oracle is the golden configuration, and there it grows. So
+the port now grows too, at route A's granularity (`addr & ~0xfff`, 4 KB): a
+first touch allocates a **zeroed** page and the access proceeds. `19,385`
+pages, 77 MB, on the run to the gate. `setAutoMap(false)` restores the
+all-ones stub, and then the counter is a work list again.
+
+### ⚠️ The serial byte count was an artefact of the missing memory
+
+The count agreed at **4831** before the auto-map change and disagreed
+(**5731** against route A's 4831) after it. The temptation is to read that as
+the change breaking something. It is the opposite: the port's transmit ring
+lived in memory that was being dropped, so the bytes were never counted.
+
+The streams themselves are **identical**: route A's 4831 bytes are an exact
+prefix of the port's 5731, and at ips 4100 the port's stream is byte-for-byte
+route A's whole stream. The difference is one ~900-byte ring drain landing
+either side of the gate, and it tracks the clock knob — the same shape as O4's
+resumed PCs:
+
+| ips | 3900 | 3990 | 4100 | 4200 | 4300 |
+|---|---|---|---|---|---|
+| bytes sent | 5731 | 5731 | 4831 | 4831 | 4831 |
+
+❌ **Retracted the same day it was written:** an earlier sweep in this session
+found 4831 at every `ips` and concluded the count was clock-independent. That
+sweep was run on the all-ones machine, where the ring writes were being
+discarded — it measured the absence of the memory, not a property of the
+firmware. **A knob sweep on an instrument that cannot see the thing is not
+evidence**, which is the `send_probe` THD lesson in a new costume.
+
+So the gate compares the **bytes over the length both runs reached** — one
+must be a prefix of the other — and reports the totals. That is 4831 bytes of
+content instead of one integer, and it is clock-independent by construction.
+`test_rtos` checks the same thing self-contained, as an FNV-1a over the first
+4831 bytes (`0x208868fc`).
+
+### The negative control
+
+`test_rtos` boots a second machine with `Rtos::Quirks::clearTransmitInterrupt`
+false — the one thing in `install` that changes which serial writes happen —
+and **requires the count to move**. It goes 4831 → 0. Without that, the serial
+comparison would be decoration.
+
+**Gate:** `ctest` 6/6; the oracle diff reports **8 compared fields agree, 0
+disagreements**; `make check` green.
 
 ## What is NOT here yet
 
