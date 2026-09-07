@@ -310,6 +310,11 @@ def main():
             # AUX since the one-aux rig (7 Sep 2026): the host's own send
             # goes round through the accumulator and back into the engine
             wet = {} if "AUX" in _names else ({"IN": 127} if "IN" in _names else {})
+            # The delay's default TIME (40 -> 5,184 samples) puts its first
+            # repeat past this 6,000-sample window once the 256-call warm-up
+            # is spent; TIME 0 (the 64-sample floor) brings the repeats in.
+            if key == "DELAY SERVER" and "TIME" in _names:
+                wet["TIME"] = 0
             host = render(key, 2, **wet)
             away = render(key, 4, **wet)
             if host is None or away is None:
