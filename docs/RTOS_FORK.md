@@ -2113,3 +2113,22 @@ quantisation releases as one whole sample every 1/ε passes, while the
 recorder's length never moves. Clean ⇔ the period is an integer (his
 exactness test, with the truncated-reciprocal length of §10.16.4 for the
 x.5 cases).
+
+#### 10.16.6 RLEN MAX with a trig every 4 steps: no end post at all, so no seam on the ColdFire side (7 Sep 2026 — measured)
+
+Same 1× fixture, RLEN 64 (MAX), 128 BPM, ten trigs (`recproj_loop1x_max`):
+the trigs land where §10.16.5's do (spacings 20,672 ×7, 20,671, 20,672),
+the control record gets the MAX buffer length once (`0x98b000`), and **no
+end post ever goes out** — each pass is one arm post (opcode 0x25, the
+other bank's record) and the running recording's end is the new arm
+itself (the per-frame commit parks its position, `0x46c7fe24[track]`, at
+the arm's sample offset). With a single event defining both the old end
+and the new start there is nothing to be a sample short or long: **MAX +
+a recorder trig every N steps is seam-free by construction on the
+ColdFire side, at any tempo.** What the engine does with that position is
+still the DSP's, but there is no ordering for it to get wrong. This is a
+hardware test Bryan can run today: his 128 / RLEN 4 loop with RLEN set to
+MAX and the same trigs — if the click goes, fixed-RLEN recordings are the
+only place the seam error lives, and a patch that ends a fixed-RLEN
+recording at the next arm (or sizes it from the lane's next event) is the
+target.
