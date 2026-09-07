@@ -622,15 +622,19 @@ reports itself unavailable and the rest of the remixer is unaffected.
 **Route A additionally needs the EMAC-fixed Unicorn** (`make emu-unicorn`,
 7 Sep 2026): stock Unicorn 2.1.4 computes the ColdFire's fractional-mode
 `macl`/`macw` as an unsigned product `>> 32` where the chip does a signed
-product `>> 31`, so every EMAC result under emulation was half of
-hardware's — the recorder length, the recorder's block walk, the
-sequencer's timing byte (RTOS_FORK §10.16). `scripts/build_unicorn.sh`
+product `>> 31`, and decodes MAC-vs-MSAC from the wrong word so `msac`
+adds, so every EMAC result under emulation was half of hardware's and
+every subtract-accumulate had the wrong sign — the recorder length, the
+recorder's block walk, the sequencer's timing byte (RTOS_FORK §10.16). `scripts/build_unicorn.sh`
 downloads the 2.1.4 sdist, applies `tools/unicorn_emac_fractional.patch`
-(one function, `HELPER(macmulf)`), builds the m68k-only library into
+(`HELPER(macmulf)` in `helper.c`, the MSAC bit in `translate.c`), builds the m68k-only library into
 `.venv/lib/unicorn-emac/`, and `emu_bringup` points the stock Python
 bindings at it through `LIBUNICORN_PATH`. `emu_bringup.emac_selftest()`
-pins the semantics (`0xc00 × 0x200000` must give 3, and `−0xc00` must give
-−3); `emu_rtos.py` refuses to run on a stock EMAC unless `--stock-emac`.
+pins the semantics (`0xc00 × 0x200000` must give 3, `−0xc00` must give −3,
+and `msacl` must give −3); `emu_rtos.py` refuses to run on a stock EMAC unless `--stock-emac`.
+A third defect was the harness's own: the EMAC-with-load shim rewrote one
+trampoline address per shimmed instruction and Unicorn served it stale
+(§10.16.2); the shim now keeps one slot per distinct instruction.
 The `.venv` must be the host's native architecture: an x86_64 (Rosetta)
 build with Xcode 26's clang crashed on its first `emu_start` here while
 the PyPI wheel did not, and the native arm64 build is what was measured.
