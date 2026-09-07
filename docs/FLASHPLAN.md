@@ -430,3 +430,27 @@ gets written down, which this project has been burned by more than once.
   hash-identical 1.40C image on both marks, so an octabam image is
   *plausibly* MK1-compatible 🟡 — but that remains inferred, and an MK1 owner
   flashing it is the test pilot.
+
+## Flash — the recorder seam cave, tag 19 (`seamtest` = bus + `recorder-seam`), staged 7 Sep 2026
+
+On the card: `OCTATRACK_OCTABAM19.bin` at the root (tag 17 removed) and
+project `PRESETS/SEAMTEST` = the hardware `RECTRIG128` with A01 at 1X / 16
+steps, T1 recorder trigs at 2/6/10/14 with RLEN 4, T2 FLEX-on-R1 play trigs
+at 2/6/10/14, 128 BPM. `stamp-defaults` had nothing to stamp (no replacing
+modules in this remix). **Ran on Sam's unit, 7 Sep 2026 — the smoke test passed, the ear test did
+not happen here.** Tag 19 boots, loads SEAMTEST, runs the pattern and
+records with the cave live — no fault, no stall, so the cave's stack offset
+(`160(%sp)`) and lane assumption hold on real hardware, which was the real
+first-flash risk. The A/B click test could NOT be isolated on this rig: the
+project resampled an internal track (only drums on input 1), so source and
+recording were the same sound, and muting the source killed the recorder
+pickup. Two process lessons landed instead — `ot_project` wrote only
+`.work` and a RELOAD reverted every edit (fixed, PR #130, writes `.strd`
+too), and STATIC slots are 0-based with a bare-filename PATH (measured).
+
+**The click A/B is handed to Bryan** (his sound-on-sound rig, his ear). He
+is on the shared tree: `modules/recorder-seam/`, remix `seamtest`, mechanism
+in RTOS_FORK §10.16.4–§10.17. **Claim:** the click at 128 / RLEN 4, once
+every 2 bars, is gone. **Falsifier:** it persists → the seam is not the
+recorder length; or a per-track-scale pattern faults → the lane-index
+assumption is wrong. **Control:** 120 BPM unchanged.
