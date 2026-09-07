@@ -1257,7 +1257,7 @@ def main():
                 and shutil.which("m68k-elf-objcopy")):
             with tempfile.TemporaryDirectory() as td:
                 o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
-                subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
+                subprocess.run(["m68k-elf-as", "-mcpu=5475", "-o", o,
                                 _c.source], check=True)
                 subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
                                 ".text", o, bp], check=True)

@@ -2132,3 +2132,55 @@ MAX and the same trigs — if the click goes, fixed-RLEN recordings are the
 only place the seam error lives, and a patch that ends a fixed-RLEN
 recording at the next arm (or sizes it from the lane's next event) is the
 target.
+
+### 10.17 The seam patch: a ColdFire cave that sizes a fixed-RLEN recording from the sequencer's next event (7 Sep 2026 — measured in route A, UNFLASHED)
+
+Sam wants fixed RLEN to stay, so the fix goes where the seam error is
+made: the length. `modules/recorder-seam` (`Kind.CF_PATCH`, remix
+`seamtest` = `bus` + the cave; 102 bytes, floating, built at `0x400d7200`)
+hooks the converter's last three instructions at `0x40006e0c`, replays
+them, and then recomputes the length every call as
+
+    s_next = [0x46104cf8] + 16 + floor(([0x80001904 + 4·track] − [0x46104cf0]) × r)
+    L'     = s_next − [0x46c7fa84 + 4·track]
+
+with `r = −[0x80001820]` through the same fractional `macl` the frame
+builder uses — so `s_next` is exactly where the frame builder will fire
+the next step's trig (validated first with a Python model inside the
+converter, `tools/scratch/predprobe.py`: it predicts the second arm's
+dispatcher sample, 25,839, from every frame of the first pass), and
+`[0x46c7fa84]` is the arm sample the firmware stores per track at the
+state-1 commit. `L'` replaces the stock `d4` only when `|L' − L| ≤ 1`, so
+a recording whose next step is not its re-trig (RLEN shorter than the trig
+spacing, a single trig, RLEN MAX never reaches this code) keeps its RLEN.
+The converter runs twice per frame for the whole recording and the end
+test reads its result, so the substitution is live by the frame the end is
+decided — and since the lane holds the next STEP, it holds the re-trig's
+step exactly then.
+
+Two things went wrong on the way, both caught by the emulator: the build's
+cave verifier assembled with `-mcpu=5407`, which has no EMAC (now `5475`;
+`scripts/refhash.sh check` = 26 cases bit-identical), and the first cave
+read the track from `164(%sp)` instead of `160(%sp)` (return address 4 +
+saved registers 20 + the caller's `sp(136)`), which "worked" — it wrote
+20,671 for 300 frames of the first pass and left the eighth seam at −1.
+
+**Measured, patched image (`out/mainos_seamtest.bin`) against the stock
+numbers of §10.16.4–5, same fixtures, `recloop.py --image`:**
+
+| fixture | spacings | lengths written | seams |
+|---|---|---|---|
+| 128 / RLEN 4 / 1×, ten trigs | 20,672 ×7, 20,671, 20,672 | 20,672 ×7, **20,671**, 20,672 | **0 ×9** (stock: −1 on the eighth) |
+| 128 / RLEN 16 / ¼×, four trigs | 82,688, 82,687, 82,688 | **82,688, 82,687, 82,688** | **0 ×3** (stock: +1, 0, +1) |
+| 120 / RLEN 4 / 1×, ten trigs | 22,050 ×9 | 22,050 ×9 | 0 ×9 (unchanged) |
+
+The recording is now exactly as long as the sequencer's spacing to the
+next trig, hole and overlap both gone, and a clean tempo is untouched.
+
+**What would falsify it:** the unit (flash `seamtest`, Bryan's 128 / RLEN
+4 loop, the click every two bars); a PER TRACK scale pattern (the lane
+index is assumed to be the track — every lane held the same event in the
+fixtures); a recorder trig that is not on the next step (the guard must
+keep RLEN, and it does by arithmetic but is unmeasured); the first pass
+after a pattern change. Drivers: `tools/scratch/recloop.py --image`,
+`predprobe.py`, `seamsum.py`.
