@@ -115,6 +115,7 @@ version:
 | `tools/dsp_host` | the emulator harness itself — boots a payload dump (both payloads since 7 Sep 2026, `-memB`, shared window shared), calls effects through the recovered ABI, captures audio, polices memory, meters instructions per block |
 | `tools/rig_render.py` (`make render-rig`) | the whole rig locally: eight tracks on both cores, FX1→FX2 chained per track, ids and knobs from a project part or by name, stems in, per-track + mix wavs and `meter.txt` out |
 | `tools/verify_twocore.py` (`make verify-twocore`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
+| `tools/verify_onebus.py` (`make verify-onebus`, in `make check`) | THE ONE AUX BUS on both cores: the chain, the last-live-stage return, MIX passthrough (sample-exact), hosts quiet under a return, the track-8 send refusal, stations without sends, four skews. Replaced `verify_returns.py` (7 Sep 2026) |
 | `tools/render_reverb.py` (`make reverb IN=..`) | wav → BusVerb → wav, knobs by name, sweeps, wet-only — the voicing instrument **for the reverb specifically** |
 | `tools/send_probe.py` (`make render`, `make render-delay`) | renders a real SEND→bus→server path and measures it numerically. `--direct` puts audio through one module on its own track instead — **the way an insert is rendered**, since an insert has no bus accumulator to analyse |
 | `scripts/make_test_audio.py` | synthesises the standard audition material into `out/test_audio/` |

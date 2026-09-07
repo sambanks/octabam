@@ -46,6 +46,15 @@ something still unverified, that's called out.
 
 ## Start here
 
+> **THE BUS IS ONE AUX SINCE 7 SEP 2026 — read "The one aux bus" below
+> first.** The two-bus topology this file grew up describing (`→DEL` and
+> `→VRB` on every track, two accumulators, two returns, cross-bus sends) is
+> superseded: one `AUX` send per track, a chain hardwired delay → reverb,
+> one return on track 8. The sections "Cross-bus sends" and "The returns"
+> are kept as the record of how the pieces were built; the mechanism they
+> describe (four-deep buffers, liveness stamps, the host print gain) is what
+> the one-aux chain is made of.
+
 **Built and running on hardware.** Three FX2 effects sharing a send bus:
 `BusVerb`, `BusDelay`, `Send`. Build with `python3 tools/build_bus.py`
 (writes `out/mainos_bus.bin`), check with `python3 tools/verify_menu.py`, then
@@ -395,6 +404,123 @@ buffers between blocks, so multi-active-block runs (needed for the WET test
 above) accumulate every active block's contribution into the same words —
 expected and accounted for above, not a bug, and irrelevant on real hardware
 where whichever track holds position 0 clears the buffer every block.
+
+## The one aux bus (7 Sep 2026 — built, gated on both cores, UNFLASHED)
+
+Sam's direction of 6 Sep 2026, after the two-bus design went circular:
+*"Hard wire all the routing that would be hard wired in a live mixer rig.
+Just hardwire delay to reverb on that bus. Remove the independent sends. We
+are effectively making a single aux channel with a wet return onto the
+master bus which will always be on track 8."* Approved the same day; built
+7 Sep on branch `onebus`.
+
+**The shape.**
+
+```
+every track  ──AUX──▶  [aux accumulator]  ──▶  BusDelay  ──chain──▶  BusVerb  ──▶  RETURN on T8
+  (SEND's one knob;                          (stage 1,            (stage 2,          (Character, SAT=BUS,
+   the hosts' too)                            MIX)                 MIX)               one level: RET)
+```
+
+- **One send.** `SEND` has one knob, `AUX` (slot 0). Both engines carry
+  `AUX` at slot 0 as well — the host's own dry into the same accumulator,
+  through the same headroom, count and auto-gain a SEND takes (it is the
+  v8 `->DEL`/`IN` machinery, renamed and re-slotted). The stations carry
+  **no sends** any more: their `-DEL`/`-VRB` slots are blank and their
+  levels are forced to 0 in code, so a part that stored 127 there sends
+  nothing (gated).
+- **A chain, not a wire.** Each stage stamps a shared word every block it
+  really runs (after its warm-up): the delay `Y:0x9c3` (read by the reverb)
+  and `Y:0x9c5` (read by the return), the reverb `Y:0x9c4`. Clear-on-read,
+  one writer one reader each, three blocks of grace — RETV's proven shape.
+  The delay's **stage output** goes, mono, at unity, into the **chain
+  buffer** `Y:0x901..0x940` (the old REVERB accumulator: four rotations ×
+  16 words, stored not accumulated, never cleared). While the delay is
+  live the reverb reads the chain buffer instead of the aux accumulator
+  and its bus gain becomes exactly 1/8 so the loop's `asl #3` lands the
+  sample untouched; otherwise it reads the aux with the 1/√N auto-gain as
+  before. So **delay only, reverb only, both, or neither all work**, and
+  no project setting can silence the aux (gated: "last live stage").
+- **MIX on each engine** (slot 5; IN and -VRB are gone). A stage's output
+  is `in × (1 − MIX) + wet × MIX`, where `in` is the stage's chain input
+  (the aux, or the delay's output). MIX 0 passes the input through
+  untouched — the delay at 0 is a clean reverb send with the delay still
+  in the chain (gated **sample-exact**: residual −111 dB against a
+  reverb-only run fed the same tone two blocks later); the reverb at half
+  lets the repeats survive the tail. 127 is the old wet-only output. Each
+  stage publishes its output stereo, four deep, where the wet used to go
+  (`0x9da` reverb, `0xa5a` delay); the host prints `wet × MIX` under its
+  dry, or nothing while a return is live (RETV/RETD, unchanged).
+- **One return, on track 8.** A Character station in `SAT = BUS` has ONE
+  level, `RET` (the CRSH knob; RING is inert in BUS mode). It returns the
+  **last live stage's** output — the reverb's if the reverb runs, else the
+  delay's, else digital silence — and stamps BOTH hosts quiet while it is
+  up. The return is **pinned to dispatch position 3** (`r7 $6700/$6800`):
+  track 8 on core 0, and the mirror slot, track 4, on core 1 — a BUS-mode
+  station anywhere else returns nothing. (Position, not track number: a
+  DSP instance does not know its track; core 1's position 3 is T4 and it
+  cannot be told apart without a per-payload gate.)
+- **The send is refused on track 8.** `SEND` at core 0's position 3
+  contributes nothing and registers nothing whatever its knob says — the
+  master loop that silenced the unit on 6 Sep 2026 (`FAILURE_MODES.md`) is
+  impossible by construction. Payload B's position 3 (T4) sends normally:
+  the payload is told apart by SEND's `$30000` base literal, which the
+  build rewrites to `$38000` on B (SEND's manifest is `YBase.XBUS` for
+  exactly this; in a plain non-XBUS build both payloads refuse position 3,
+  and plain builds do not ship).
+
+**Slots (the re-slot every project must be stamped for).**
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SEND | AUX | | | | | | | | | | | |
+| BusVerb | AUX | TIME | MOD | SIZE | TONE | MIX | MODE | SHMR | DIFF | SHFT | GATE | RATE |
+| BusDelay | AUX | TIME | FDBK | TONE | PING | MIX | MODE | MDEP | MRAT | SIZE | PTCH | FRZE |
+| Character (BUS) | DRV | FOLD | **RET** | COMP | — | — | MIX | SAT | — | CMOD | WDTH | SRR |
+
+Page 1 of both engines shifted right by one (AUX took 0); the delay's PTCH
+moved to page-2 slot 10 (the `$e` knob field). ⚠️ **A part saved under the
+old layout hands every knob to its neighbour** — TIME becomes AUX, MOD
+becomes TIME, and so on — and PTCH's old page-1 byte becomes MIX. Stamp
+before play (`tools/ot_project.py stamp-defaults <project> bamsep27`, and
+`rigproj` for the rig), the MODE re-slot lesson.
+
+**Gated on both cores** (`tools/verify_onebus.py`, in `make check`): the
+senders and the delay on payload B, the reverb and the return on payload A,
+so the chain buffer, the stamps and the return all cross the real core
+boundary in the emulator: the return is the reverb's output and both hosts
+are silent under it; delay-only falls through to the delay's output;
+neither engine returns digital silence; delay MIX 0 == no delay, two
+blocks later, sample-exact; reverb MIX 0 returns the aux itself; hosts print
+with no station; a SEND on core-0 position 3 at AUX 127 changes nothing
+and the mirror position on core 1 does; a station with stored send bytes
+contributes nothing; the chain is identical under four instruction-level
+skews. `make verify-twocore` still passes (SEND, delay and series hops on
+their real cores == the DEV hatch), and `make verify-bus` is re-stamped
+for the new arithmetic.
+
+**Costs.** Payload A in the plain `bus` remix: **FREE 2** (the two liveness
+readers share one subroutine, `stampgr`, to get there); the rig
+(`bamsep27`): A FREE 244, B FREE 436. The reverb's IN-keyed wet makeup went
+with IN; SEND-fed returns never had it, so the return level is unchanged —
+but a render of the host's own material (`render_reverb` with AUX 64)
+prints 6 dB lower than v8 did.
+
+**What only hardware can show.** The stamps and the chain buffer cross
+cores under the chip's timing, not the emulator's; the position-3 pin and
+the refusal are measured in the emulator's instance model (r7 = $6200 +
+$200 × position), which hardware has confirmed for positions 0 and 1 only.
+Falsifiers: a return that flickers (a stamp lost across cores beyond three
+blocks); T8's SEND audible in the return (the pin is wrong); the delay's
+repeats missing from the reverb (the chain buffer's rotation).
+
+**Voicing item, open.** The return's balance between repeats and reverb is
+now the reverb's MIX alone, and the reverb's wet sits ~25 dB under a
+sustained input where the delay's output sits near it (measured in the gate:
+delay-only return −11 dB rms, reverb-only −36 dB for the same tone at two
+senders). At MIX 64 the repeats are −6 dB and the wet is −6 dB relative:
+the reverb all but disappears. Whether the reverb stage wants a fixed
+makeup on its wet (the old +9.5 dB IN makeup, unkeyed) is an ear question.
 
 ## Menu and slot layout
 
@@ -862,6 +988,11 @@ something to listen to.
 
 ## Cross-bus sends
 
+> **SUPERSEDED 7 Sep 2026** by the one aux bus (above): there is one
+> accumulator, and the delay → reverb hop is the hardwired chain buffer.
+> Kept as the record of how the four-deep rotation and the registration
+> discipline were built.
+
 **Built and emulator-verified, task 10 (Mechanism section above has the
 test evidence). Not flashed.** Every track, server or client, can reach both
 buses:
@@ -871,6 +1002,29 @@ buses:
 | `SEND` | — | `→DELAY` and `→REVERB` knobs, dry, parallel |
 | `DELAY SERVER` | runs delay | `→VERB` **wet** (its own repeats bleed into reverb) + `→VERB` **dry** (its own signal, parallel) |
 | `REVERB SERVER` | runs reverb | `→DELAY` **dry** only (parallel) |
+
+**`REVERB SERVER`'s `→DEL` was retired on 18 Aug 2026 and is BACK since
+5 Sep 2026 (v8), on page-1 slot 4** — the rig puts each host's own send pair
+on its FX2 page ("real send knobs"), and a BusVerb host has no station to
+carry `→DEL`. The 18 Aug reason (a return's dry is silence) stopped holding
+when v5 made the host pass its dry at unity. It is still a DRY tap: the
+one-wet-crossing rule (delay → reverb only) stands. To fit — payload A had
+35 words — HP and LP became one TONE knob (`REVERB.md`), and the
+registration is not a count RMW any more: the reverb writes its `→DEL` knob
+field to `Y:0x941` every block (one writer, one word, the dead REVERB-wet
+range) and the delay's auto-gain resolve counts it as one client while
+nonzero; the delay's warm-up zeroes it. The loop's copy of the level lives
+in core-private `Y:$09f0` (r7 is full again, and `r6` is not the knob block
+inside the reverb's loop — the first cut read it there and sent silence).
+**Measured in the DEV hatch (emulator, single core):** reverb host `→DEL`
+100 / 127 lands in the delay at 0.131 / 0.166 FS — the same figures as a
+SEND client at 100 / 127; SEND 127 + reverb host 127 gives 0.235 FS, the
+same as two SENDs (the 1/√N count sees the flag as a client); `→DEL` 0 is
+silent (no phantom share). `verify-bus` 19/19 bit-identical, TONE 64 render
+bit-identical to the old HP 0 / LP 127. What no local test can show: the
+flag word crossing cores — a per-block write on core 0, a per-block read on
+core 1, RETV's proven shape, and NOT the in-loop shared-window read that
+R36 found dead.
 
 **Delay → reverb (wet) is one-directional, deliberately.** This mirrors the
 real Digitakt II, confirmed by its manual: the delay page carries its own
@@ -908,6 +1062,12 @@ for exactly this, and it cost nothing extra to build as a knob once the
 ACC-write addressing needed for the dry sends already existed.
 
 ## The returns
+
+> **SUPERSEDED 7 Sep 2026** by the one aux bus (above): one return, `RET`,
+> the last live stage's output, pinned to track 8. The mechanism below —
+> the stereo four-deep buffers, RETV/RETD, the host print gain — is what
+> it is built from; `tools/verify_returns.py` is retired in favour of
+> `tools/verify_onebus.py`.
 
 **Built and emulator-verified, 3 Sep 2026 (`tools/verify_returns.py`, 18
 gates); not flashed.** The two engines' wet leaves the bus and enters the mix

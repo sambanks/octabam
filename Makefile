@@ -100,6 +100,10 @@ render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks
 verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
 	python3 tools/verify_twocore.py
 
+.PHONY: verify-onebus
+verify-onebus: ## THE ONE AUX BUS on both cores: chain, last-live-stage return, MIX passthrough, T8 refusal, no station sends (~2 min)
+	python3 tools/verify_onebus.py
+
 .PHONY: verify-midi
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
@@ -145,12 +149,15 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] cf probe: no .venv, or this remix has none"
 	@$(PY) tools/verify_busscreen.py 2>/dev/null || \
 	  echo "  [SKIP] bus screen table relocation: no .venv"
+	@$(PY) tools/verify_ccpage2.py 2>/dev/null || \
+	  echo "  [SKIP] cc page-2 cave: no .venv"
 	@$(PY) tools/verify_hidden.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
 	python3 tools/verify_grains.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
 	python3 tools/verify_twocore.py
+	python3 tools/verify_onebus.py
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/busverb/reverb_lforoll.asm

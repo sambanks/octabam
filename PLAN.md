@@ -1,3 +1,27 @@
+> ## ⚠️ THE BUS IS ONE AUX — BUILT 7 Sep 2026, GATED ON BOTH CORES, UNFLASHED
+>
+> The two-bus topology described below (a `->DEL` and a `->VRB` send on every
+> track, stations as bus clients, two accumulators, two returns) is
+> **SUPERSEDED**. Sam's call after it went circular (6 Sep): *"Hard wire all
+> the routing that would be hard wired in a live mixer rig."*
+>
+> **The rig is ONE AUX BUS**: a single `AUX` send per track (slot 0, hosts
+> included), a chain hardwired delay → reverb through a chain buffer, each
+> stage stamping itself live so the next stage and the return take the LAST
+> LIVE stage's output (delay only, reverb only, both, neither all work), a
+> `MIX` crossfade on each engine (0 passes the chain input through, gated
+> sample-exact), ONE return (`RET`) on a BUS-mode Character station pinned to
+> track 8, the SEND refused on track 8 by construction, and the stations
+> without sends. `docs/BUS.md` "The one aux bus" is the record;
+> `tools/verify_onebus.py` (in `make check`) measures every property with
+> the senders and delay on payload B and the reverb and return on payload A.
+> ⚠️ Every project must be `stamp-defaults`'d for the re-slot before play
+> (page 1 of both engines shifted right by one). ⚠️ Open ear item: the
+> repeats-vs-reverb balance at the return is the reverb's MIX alone, and the
+> reverb's wet is ~25 dB under a sustained input where the delay's is not.
+> (The spec artifact is gone; the design is in the memory and in BUS.md.)
+> Sections below that describe two buses are history.
+
 # The plan: end state, resource ledger, and work order
 
 **This is the cold-start document — read it before `docs/XBUS.md`**, which is
@@ -22,8 +46,9 @@ What ships:
 - **BusDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
   cloud, v5: Nimbus's readers, four per line, ±2 octaves on RATE; the
   harmoniser since PITCH mode was retired 3 Sep 2026), REVERSE — with tape-style
-  wow/flutter modulation (DPTH/RATE), drive (DRV, doubling as GRAIN's
-  scatter depth) and a FREEZE hold available in **every** mode. (MODE still
+  wow/flutter modulation (DPTH/RATE), the host's own `-DEL` send (slot 10;
+  it was the drive until 5 Sep 2026, given up for the send knob) and a
+  FREEZE hold available in **every** mode. (MODE still
   counts five positions; the former TAPE slot aliases CLEAN now that the
   tape character is global.) Hosted on a track **1–4** (payload B / core 1);
   any track can send into it. Its wet can be sent on into the reverb over

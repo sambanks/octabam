@@ -40,6 +40,9 @@ def _load_src():
     g = {"pathlib": pathlib}
     exec(compile(src[:src.index("def _stock_table")], "manifest", "exec"), g)
     ns.HANDLER = g["HANDLER"]
+    ns.HANDLER_AT = g["HANDLER_AT"]          # the handler is PINNED (5 Sep 2026)
+    ns.KEY_OFF = g["KEY_OFF"]
+    ns.ENC_OFF = g["ENC_OFF"]
     ns.VERB_NAMES = g["VERB_NAMES"]
     ns.DLY_NAMES = g["DLY_NAMES"]
     ns.VERB_SELECTS = g["VERB_SELECTS"]
@@ -93,10 +96,15 @@ def main():
     check(grown[:ENTRY_LEN * ENTRY_N] == stock[st:st + ENTRY_LEN * ENTRY_N],
           "16 stock entries copied verbatim into the cave")
     e17 = grown[ENTRY_LEN * ENTRY_N:]
-    for nm, off in (("DRAW", 8), ("KEY", 12), ("ENC", 16)):
+    # The handler is a separate PINNED cave (5 Sep 2026): the 17th entry's
+    # members are exact addresses into it, not offsets into the table's cave.
+    for nm, off, want in (("DRAW", 8, src.HANDLER_AT),
+                          ("KEY", 12, src.HANDLER_AT + src.KEY_OFF),
+                          ("ENC", 16, src.HANDLER_AT + src.ENC_OFF)):
         v = int.from_bytes(e17[off:off + 4], "big")
-        check(new_base < v < new_base + 0x800,
-              f"17th entry's {nm} member points into the cave (0x{v:08x})")
+        check(v == want,
+              f"17th entry's {nm} member is the pinned handler's "
+              f"(0x{v:08x}, want 0x{want:08x})")
     check(int.from_bytes(e17[0:4], "big") == 0
           and int.from_bytes(e17[4:8], "big") == 0,
           "17th entry's enter/exit members are 0 (skipped)")
@@ -212,7 +220,7 @@ def main():
         DB = u32(0x46c82456)
         part = uc.mem_read(0x80000003, 1)[0]
         base = DB + part * 6322 + track * (24 if slot < 6 else 30)
-        return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a + 18 + slot)
+        return base + (0x8ee9a + 18 + slot if slot < 6 else 0x8ef5a - 6 + slot)   # page 2: +0+slot2, staged index 0 (measured 5 Sep)
 
     # ---- REVERB: selects host track 4, draws all 12 in two columns --------
     uc.mem_write(0x80000000, bytes([0]))

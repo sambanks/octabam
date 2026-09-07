@@ -2098,3 +2098,25 @@ scatter on MDEP −7.1 (coherent) → −11.8 dBFS; DC gate p-p 0. The Nimbus
 comparison stands: Sam's Nimbus was the octave-up one, so PTCH 96 is the
 sound he knew, MDEP 40, MRAT 127, SIZE 93MS, TIME 36, FDBK 40, PING 127.
 
+
+
+## R63 — the one aux bus (7 Sep 2026): what changed for the ear, unheard
+
+Built and gated on both cores (`docs/BUS.md` "The one aux bus"), not yet
+listened to. What the ear will meet, from the numbers:
+
+- **The reverb's IN-keyed wet makeup is gone with IN.** SEND-fed returns
+  never had it, so the return level of a sent track is unchanged to the
+  bit. A render of the reverb host's OWN material (`render_reverb`, AUX 64)
+  prints 6 dB lower than v8 at the same tank drive; the bench baselines in
+  this file predate that.
+- **The return's repeats-vs-reverb balance is the reverb's MIX alone.** The
+  reverb's stage output is `in × (1 − MIX) + wet × MIX` where `in` is the
+  delay's output. Measured in `verify_onebus` with a 438 Hz tone at two
+  senders: the delay-only return sits at −11 dB rms, the reverb-only at
+  −36 dB. At MIX 64 both halve, and the reverb all but vanishes under the
+  repeats. **Open**: whether the reverb stage wants a fixed (unkeyed) wet
+  makeup of the +9.5 dB the IN law used to give at full IN, so MIX behaves
+  like a mixer's wet/dry over its whole travel. Decide by ear on the rig
+  (T2 AUX up, reverb MIX swept), not on the tone.
+- **PTCH moved to page 2** (slot 10), MIX took page-1 slot 5 on the delay.

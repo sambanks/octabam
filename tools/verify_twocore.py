@@ -50,20 +50,38 @@ DEV_MEM = OUT / "mem_dev_A.mem"
 BLOCKS = 700
 SKEWS = (1, 37, 333, -250)
 
-R = [64, 30, 100, 0, 127, 0, 2, 0, 64, 0, 0, 1]          # manifest defaults
-D = [40, 60, 100, 127, 127, 64, 0, 48, 64, 1, 0, 0]      # -VRB 127: wet on into the reverb
-S_DEL = [127, 0] + [0] * 10
-S_VRB = [0, 127] + [0] * 10
+from remix import registry  # noqa: E402
+
+
+def knobs(key, **kw):
+    """a module's manifest defaults with named overrides (slots from the
+    manifest, never by number -- the harness-knob-drift rule)"""
+    m = registry.by_key(key)
+    v = [(p.default or 0) & 0x7f for p in m.params] + [0] * 12
+    km = m.knob_map_all()
+    for n, x in kw.items():
+        v[km[n]] = x
+    return v[:12]
+
+
+R = knobs("REVERB SERVER")
+D = knobs("DELAY SERVER")
+S_DEL = knobs("SEND", AUX=127)          # one aux (7 Sep 2026): the one send
+S_VRB = S_DEL
 
 # layout: list of (letter, core, params); instance order is dispatch order
 CASES = {
     "RS   send on B -> reverb on A":            [("R", 0, R), ("S", 1, S_VRB)],
     "DS   send on B -> delay on B":             [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
     "RDS  delay on B -> reverb on A (series)":  [("R", 0, R), ("D", 1, D), ("S", 1, S_DEL)],
-    "SSSR two senders per core":                [("R", 0, R), ("S", 0, S_VRB), ("S", 1, S_VRB), ("S", 1, S_VRB)],
+    # NOT four instances: on one core the fourth sits at position 3, which is
+    # track 8 on payload A, where the SEND is refused by design (the one-aux
+    # rig, 7 Sep 2026) -- so a four-instance one-core control is not the same
+    # layout. tools/verify_onebus.py pins the refusal itself.
+    "SSR  a sender on each core":               [("R", 0, R), ("S", 0, S_VRB), ("S", 1, S_VRB)],
 }
 # which instance's stream each case compares (the server being measured)
-PICK = {"RS": 0, "DS": 1, "RDS": 0, "SSSR": 0}
+PICK = {"RS": 0, "DS": 1, "RDS": 0, "SSR": 0}
 
 
 def build(env, log):

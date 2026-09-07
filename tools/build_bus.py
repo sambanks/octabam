@@ -466,7 +466,7 @@ FULLNAME = {m.key: m.menu.fullname + (BUILD_TAG if m.menu.build_tag else b"")
 # menus, so blanking a module that is also on the FX1 chooser would empty its
 # FX1 page too. A hidden module on FX1 loses its FX2 row and keeps its names;
 # only a hidden module that is nowhere on FX1 is drawn empty.
-BLANKED = [k for k in HIDDEN if k not in REMIX.fx1]
+BLANKED = [k for k in HIDDEN if k in REMIX.blanked]   # schema.Remix.blanked
 RENAMES = {m.key: ([(i, b"") for i in range(12)] if m.key in BLANKED else
                    [(i, p.name) for i, p in enumerate(m.params)
                     if p.name is not None]) for m in _CLONED}
@@ -1177,6 +1177,13 @@ def main():
     # is a no-op by design.
     import shutil, tempfile
     _caves = [c for k in REMIX.modules for c in remix_modules()[k].cf_patches]
+    # A cave that exists only to draw a BLANKED module's slot (a formatter
+    # registration naming a module whose page draws no knobs) is dead
+    # weight: drop it before it is placed (5 Sep 2026 -- BusDelay's TIME
+    # formatter, 288 B the bus screen needs on the rig).
+    _caves = [c for c in _caves
+              if not (c.registers_formatter is not None
+                      and c.registers_formatter.module in BLANKED)]
     _replay = os.environ.get("TEMPOCAVE") == "replay"
     # TEMPOCAVE=replay: the hook with a cave that ONLY replays the displaced
     # instructions -- isolates the hook mechanism from the stores (R48/R49
@@ -1318,6 +1325,12 @@ def main():
     _lbl_top = max(_cave_top, cave_end)
     _lbl = []
     for name in CLONED_ORDER:
+        # A BLANKED module's page draws no knobs, so nothing ever calls its
+        # label formatters: skip them (5 Sep 2026). On the rig that is the
+        # two hosts' six select labels, ~500 B the bus screen needs. The
+        # screen prints its own words (busscreen VERB_SELECTS / DLY_SELECTS).
+        if name in BLANKED:
+            continue
         for _i, _p in enumerate(_MODS[name].params):
             if not (_p.active and _p.labels):
                 continue
@@ -1571,13 +1584,16 @@ def main():
           f"long list cave), {_none}, viewport {rows} rows -- it scrolls")
     if HIDDEN:
         _b = [k for k in HIDDEN if k in BLANKED]
-        _n = [k for k in HIDDEN if k not in BLANKED]
+        _f = [k for k in HIDDEN if k not in BLANKED and k in REMIX.fx1]
+        _n = [k for k in HIDDEN if k not in BLANKED and k not in REMIX.fx1]
         print(f"  placed but NOT LISTED on FX2: {', '.join(HIDDEN)} -- code, "
               f"id and clone present, no chooser row"
               + (f"; names blanked (page draws nothing): {', '.join(_b)}" if _b
                  else "")
-              + (f"; names KEPT (on the FX1 chooser): {', '.join(_n)}" if _n
-                 else ""))
+              + (f"; names KEPT (on the FX1 chooser): {', '.join(_f)}" if _f
+                 else "")
+              + (f"; names KEPT (NAMED: the host page draws all twelve): "
+                 f"{', '.join(_n)}" if _n else ""))
     if STOCK_ROWS:
         print(f"  stock rows kept: {', '.join(STOCK_ROWS)} -- descriptors, "
               f"code and dispatch untouched on both cores")

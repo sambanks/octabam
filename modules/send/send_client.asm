@@ -1,7 +1,8 @@
 ; ---------------------------------------------------------------------------
 ; BUS.md task 7: SEND client stub.
 ;
-; Two knobs, page 1: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level.
+; ONE knob, page 1: x:(r6+0) = AUX, this track's send into the one aux bus
+; (delay, then reverb, wet back on track 8 -- the one-aux rig, 7 Sep 2026).
 ; Dry, parallel taps -- SEND never touches its own audio buffer at all, so it
 ; is the zero-footprint client both bus servers rely on (see BUS.md's Memory
 ; section and dsp/probe_hardcoded_base.asm, which proved a hardcoded-base
@@ -53,31 +54,45 @@
 ;                       stay identical. Storing the scaled offset is what made
 ;                       going to four buffers a change the housekeeper makes
 ;                       alone.
-;   Y:0x901..0x940      REVERB bus accumulator, FOUR buffers of 16 words (one
-;                       word per sample slot within a block), at +0/+16/+32/+48
-;   Y:0x941..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
+;   Y:0x901..0x940      THE CHAIN BUFFER (one-aux rig, 7 Sep 2026): the
+;                       delay's stage output, MONO, at unity, FOUR buffers
+;                       of 16 words at +0/+16/+32/+48 -- written (stored,
+;                       not accumulated, and never cleared) by the delay
+;                       every block it runs, read two back by the reverb
+;                       while the delay is live. Was the REVERB accumulator.
+;   Y:0x941             BusVerb host's AUX knob field (v8's ->DEL word): the
+;                        reverb writes it every block, the delay's auto-gain
+;                        AND the reverb's own count it as one more client
+;                        while nonzero, the delay's warm-up zeroes it. A
+;                        single-writer word in place of a cross-core count RMW.
+;   Y:0x942..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
 ;                        mono, never read. Left in place so nothing below moves.)
-;   Y:0x961..0x9a0      DELAY  bus accumulator, FOUR buffers of 16 words
+;   Y:0x961..0x9a0      THE AUX accumulator, FOUR buffers of 16 words: every
+;                       track's one send (SEND's AUX, the hosts' AUX)
 ;   Y:0x9a1..0x9c0      (DEAD: was the DELAY wet, same story)
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
-;   Y:0x9c3..0x9c6      REVERB send COUNT, one per accumulator buffer -- how
-;                        many SEND clients wrote that buffer this block.
-;                        Indexed by the same rotation as the accumulators,
-;                        because the server reads LAST block's sum and so needs
-;                        LAST block's count. The server divides by it, so N
-;                        tracks sending at full drive the reverb exactly as hard
-;                        as one track does, and the shared accumulator can no
-;                        longer be summed into its rail.
+;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read):
+;                       the delay writes 1 every block it processes; the
+;                       reverb reads it, clears it, keeps 3 blocks of grace
+;                       and takes its input from the CHAIN buffer while live
+;   Y:0x9c4             REVERB LIVE stamp for the return station (same shape)
+;   Y:0x9c5             DELAY LIVE stamp for the return station (same shape)
+;   Y:0x9c6             free
+;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer -- how many
+;                        clients wrote that buffer this block. Indexed by the
+;                        same rotation as the accumulators, because a server
+;                        reads LAST block's sum and so needs LAST block's
+;                        count. The delay (and the reverb, with no delay
+;                        live) divides by it, so N tracks sending at full
+;                        drive the chain exactly as hard as one does. SEND
+;                        (this file) and BusDelay's own AUX register here,
+;                        gated on their knobs (17 Aug 2026: an idle client
+;                        that registers dilutes the real ones); BusVerb's
+;                        AUX is counted through Y:0x941 instead, see above.
 ;                        ⚠️ One word per buffer where the accumulators have
 ;                        sixteen, so these are the ONLY sites that scale the
 ;                        offset back down to a bare index (`asr #$4`).
-;   Y:0x9c7..0x9ca      DELAY send COUNT, one per accumulator buffer -- the same
-;                        mechanism for the DELAY bus (landed with BusDelay's
-;                        auto-gain). Every DELAY-bus writer registers here:
-;                        SEND (this file) and REVERB SERVER's ->DEL send, both
-;                        unconditionally, because both write the accumulator
-;                        unconditionally (zeros count too).
 ;   Y:0x9cb..0x9d2      DELAY SERVER's 1/sqrt(N) reciprocal table, rebuilt by it
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.
@@ -88,20 +103,20 @@
 ;                       (writes and in-loop reads never met; mechanism
 ;                       unknown -- build_bus.py's build log). Nothing of ours
 ;                       goes there until someone explains it.
-;   Y:0x9d8             RETV -- the REVERB return's liveness stamp. A character
-;                       station in BUS mode writes it nonzero every block its
-;                       RVRB level is up; the reverb reads it, clears it, and
+;   Y:0x9d8             RETV -- "someone is returning": a character station
+;                       in BUS mode writes it nonzero every block its RET
+;                       level is up; the reverb reads it, clears it, and
 ;                       prints its wet on its own host only while no stamp has
 ;                       arrived for 3 blocks (docs/BUS.md "The returns").
-;   Y:0x9d9             RETD -- the same for the DELAY.
-;   Y:0x9da..0xa59      REVERB bus WET, STEREO (L,R interleaved), FOUR buffers
-;                       of 32 words at +0/+32/+64/+96 -- the accumulators'
-;                       rotation, doubled for the stride. Written by the reverb
-;                       from its output stage (post-gate, pre-IN-makeup), read
-;                       two buffers back by a BUS-mode station. Four deep for
-;                       the same reason the accumulators are: it is read across
-;                       cores now.
-;   Y:0xa5a..0xad9      DELAY bus WET, same shape. ⚠️ Its base is spelled
+;   Y:0x9d9             RETD -- the same for the DELAY (stamped together).
+;   Y:0x9da..0xa59      REVERB STAGE OUTPUT, STEREO (L,R interleaved), FOUR
+;                       buffers of 32 words at +0/+32/+64/+96 -- the
+;                       accumulators' rotation, doubled for the stride:
+;                       in*(1-MIX) + wet*MIX, written from the output stage,
+;                       read two buffers back by the BUS-mode station on
+;                       track 8. Four deep for the same reason the
+;                       accumulators are: it is read across cores.
+;   Y:0xa5a..0xad9      DELAY STAGE OUTPUT, same shape. ⚠️ Its base is spelled
 ;                       `$9da + $80` in every source, never `$a5a`: build_bus.py
 ;                       relocates `$9xx` literals only, and a fused `$a5a` would
 ;                       stay core-private and silently miss the bus. Only the
@@ -284,18 +299,13 @@ bus_dohk:                               ; nobody did -- take over this block
         and     #>$30,a                 ; write target, idle right now
         move    a,x0                    ; bases for the clear AND the count
 
-        move    #>$901,a
-        add     x0,a
-        move    a,r1                     ; r1 = REVERB ACC[new] base
-        move    #>$961,b
-        add     x0,b
-        move    b,r2                     ; r2 = DELAY  ACC[new] base
-        move    #>$ffffff,m1
+        move    #>$961,b                 ; ONE BUS (6 Sep 2026): the AUX
+        add     x0,b                     ; accumulator is the only one left.
+        move    b,r2                     ; r2 = AUX ACC[new] base
         move    #>$ffffff,m2
         clr     a
         move    #>16,y0
         do      y0,>zclr
-        move    a,y:(r1)+
         move    a,y:(r2)+
 zclr:
         nop
@@ -312,15 +322,12 @@ zclr:
                                         ; always move together (0..3)
         move    a1,x0
         move    x0,a
-        move    #>$9c3,x0
+        move    #>$9c7,x0               ; the AUX count region
         add     x0,a
         move    a,r3
         move    #>$ffffff,m3
         clr     a
-        move    a,y:(r3)                ; REVERB count = 0
-        move    #4,n3                   ; SHORT immediate: 1 word (address reg).
-        move    (r3)+n3                 ; 4, not 2: four buffers -> four counts
-        move    a,y:(r3)                ; DELAY count = 0; a stays 0 for the
+        move    a,y:(r3)                ; AUX count = 0; a stays 0 for the
                                         ; locks below
 ; ---- release both server-role locks for this block (BUS.md hardware test 3)
 ; a is still 0 from the clear loop above. Whichever of the three effects is
@@ -363,16 +370,18 @@ notfirst:
 ; in r7+$69, which every site downstream now reads instead of y:>$900.
 ; ROTLATCH
         move    a,x0
-        move    #>$901,a
+        move    #>$961,a
         add     x0,a
         move    x:(r7+$67),b             ; this call's split-aware frame offset
         add     b,a
-        move    a,r1                     ; r1 = REVERB ACC[write] base + offset
-        move    #>$961,a
-        add     x0,a
-        add     b,a
-        move    a,r2                     ; r2 = DELAY  ACC[write] base + offset
-        move    #>$ffffff,m1
+        move    a,r2                     ; r2 = AUX ACC[write] base + offset.
+                                         ; ONE BUS as of 6 Sep 2026: this is the
+                                         ; old DELAY accumulator, kept because
+                                         ; the delay -- chain stage 1 -- already
+                                         ; reads it, so its input never changed.
+                                         ; 0x901-0x940 and 0x9c3-0x9c6 (the old
+                                         ; REVERB accumulator and its counts) are
+                                         ; FREE and nothing writes them.
         move    #>$ffffff,m2
 
 ; ---- register as a bus client, once per block, PER BUS, ONLY IF SENDING ---
@@ -413,6 +422,26 @@ notfirst:
 ; noise wash on one channel. Tcc takes a REGISTER source, never an
 ; accumulator, so the increment travels through x0. Branchless: no new label,
 ; which also keeps dsp_asm's prefix-resolution trap out of it.
+; ---- THE SEND IS REFUSED ON TRACK 8 (the one-aux rig, 7 Sep 2026) --------
+; Track 8 is where the aux returns (a Character station in BUS mode), so a
+; send from it would feed the return back into the bus it returns -- the
+; master loop that silenced the unit on 6 Sep 2026 (FAILURE_MODES). Refused
+; by construction, not by discipline: on PAYLOAD A, core 0's position 3
+; (r7 == $6800, the FX2 slot of track 8) contributes nothing and registers
+; nothing, whatever its knob says. Payload B's position 3 is track 4 and
+; sends normally. The payload is told apart by its Y base literal, which
+; build_bus.py rewrites to $38000 for payload B and leaves at $30000 for A
+; (the same discriminator the HKB diagnostic used); the literal is never
+; used as an address here.
+        move    #>$30000,a              ; this payload's base ($38000 on B)
+        move    #>$38000,x0
+        cmp     x0,a
+        beq     send_ok                 ; payload B: every position sends
+        move    r7,a
+        move    #>$6800,x0
+        cmp     x0,a
+        beq     send_refused            ; payload A position 3 = track 8
+send_ok:
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
@@ -424,32 +453,22 @@ notfirst:
                                         ; shared word here would reintroduce
                                         ; exactly the disagreement the resolve
                                         ; block above exists to remove.
-        move    #>$9c3,x0
-        add     x0,a
+        move    #>$9c7,x0               ; THE AUX count (the old DELAY count
+        add     x0,a                    ; region; 0x9c3-0x9c6 is now free)
         move    a,r3
         move    #>$ffffff,m3
-        move    #>$1,x0                 ; the increment, shared by both Tccs
+        move    #>$1,x0                 ; the increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+1),a              ; ->REVERB level
+        move    x:(r6),a                ; AUX level, the one knob
         tst     a                       ; Z set == silent == not a client
         tne     x0,b                    ; sending -> b = 1
         move    y:(r3),a
         add     b,a
-        move    a,y:(r3)                ; REVERB count += 1 ONLY if sending
-        move    #4,n3                   ; four buffers -> four counts per bus
-        move    (r3)+n3                 ; -> the DELAY count, same buffer
-        clr     b                       ; again BEFORE its own tst
-        move    x:(r6),a                ; ->DELAY level
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)                ; DELAY count += 1 ONLY if sending
+        move    a,y:(r3)                ; AUX count += 1 ONLY if sending
 cnt_done:
 
-; ---- per-sample: mono dry sum, scaled into both accumulators -------------
-        move    x:(r6+1),y0              ; ->REVERB level
-        move    x:(r6),y1                ; ->DELAY level
+; ---- per-sample: mono dry sum, scaled into the ONE accumulator -----------
+        move    x:(r6),y1                ; AUX level, the one knob
         move    #>$1,n0
         do      n7,>send_end
         move    x:(r0),a                 ; L
@@ -458,31 +477,24 @@ cnt_done:
         asr     #$1,a,a                  ; a = mono
         move    a,x1                     ; x1 = mono, the mpy operand
 
-        mpy     x1,y1,a                  ; a = mono * ->DELAY level
-        asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM, mirror of
-                                         ; the REVERB path below -- the DELAY
-                                         ; SERVER shifts it back up by 3
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+                ; DELAY  ACC[write][i] += contribution
-
-        mpy     x1,y0,a                  ; a = mono * ->REVERB level
+        mpy     x1,y1,a                  ; a = mono * AUX level
         asr     #$3,a,a                  ; 3 BITS OF BUS HEADROOM. Eight clients
-                                         ; at full scale now sum to exactly 1.0
+                                         ; at full scale sum to exactly 1.0
                                          ; instead of 8.0, so the shared word can
                                          ; no longer be summed into its rail --
                                          ; measured, it clamped at seven sends
                                          ; even once the auto-gain divided right.
-                                         ; The server shifts it back up by 3, so
-                                         ; this costs resolution (21 bits of 24)
-                                         ; and nothing else.
-        move    y:(r1),b
+                                         ; Chain stage 1 shifts it back up by 3,
+                                         ; so this costs resolution (21 bits of
+                                         ; 24) and nothing else.
+        move    y:(r2),b
         add     b,a
-        move    a,y:(r1)+                ; REVERB ACC[write][i] += contribution
+        move    a,y:(r2)+                ; AUX ACC[write][i] += contribution
 
         move    #>$2,n0
         move    (r0)+n0                  ; next stereo frame
         move    #>$1,n0
 send_end:
         nop
+send_refused:
         rts

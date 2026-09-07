@@ -295,6 +295,50 @@ which.
 
 ---
 
+## Flash 6 — THE ONE AUX RIG (bamsep27, 7 Sep 2026) — NEXT
+
+**The image:** `REMIX=bamsep27 make image` on branch `onebus` (PR pending).
+What it changes against tag 17 on the unit: ONE `AUX` send per track (SEND's
+one knob; the hosts' slot 0), the chain delay → reverb hardwired through a
+chain buffer with liveness stamps, `MIX` on both engines, ONE return (`RET`,
+the CRSH knob of a BUS-mode Character) pinned to track 8, the SEND refused
+on track 8, the stations without sends. `docs/BUS.md` "The one aux bus".
+
+**Before play, no exceptions — the re-slot.** Page 1 of both engines shifted
+right by one (AUX took slot 0): a part saved under tag 17 hands TIME to AUX,
+MOD to TIME, … and the delay's old PTCH byte to MIX. The MODE re-slot stalled
+the sequencer on the first play for exactly this reason.
+
+```bash
+python3 tools/ot_project.py rigproj ~/octa/backups/OCTABAM_RIG_20260906_cleared /Volumes/<card>/OCTABAM_ONEAUX bamsep27
+# or, for a real set on a copy:
+python3 tools/ot_project.py stamp-defaults /Volumes/<card>/<set copy> bamsep27
+```
+
+`rigproj` writes the new RIG table: stations with no sends, SEND `AUX`
+30–50 on T2–T4/T6–T7, the hosts' `AUX` on T1/T5, T8 = Character SAT=BUS
+RET 127 and NO FX2 (nothing to refuse). T8's old `-VRB 71` (the master loop)
+cannot exist: the station has no send slot and the SEND is refused there.
+
+**Claims, in this order (each failure has its own shape):**
+
+| | claim | how to see it | falsified by |
+|---|---|---|---|
+| i | the re-slot | every host page reads AUX TIME MOD SIZE TONE MIX / AUX TIME FDBK TONE PING MIX; the delay's page 2 ends PTCH FRZE | a knob doing its neighbour's job |
+| ii | the chain | T2 sends AUX: repeats AND reverb arrive on T8 with nothing on T1/T5's own outputs | reverb without repeats (chain buffer), repeats without reverb (stamp), or the hosts still printing (RETV/RETD) |
+| iii | last live stage | select NONE on T5 (no reverb): the repeats still return; NONE on T1 too: silence, not garbage | silence with the delay alone (the fall-through), garbage with neither (the level gate) |
+| iv | MIX | delay MIX 0: the reverb of the DRY sends, no repeats; reverb MIX 64: repeats under the tail | MIX changing level but not blend |
+| v | the refusal | put SEND on T8's FX2 with AUX 127: nothing changes; the same on T4: it sends | T8 audible in the return (the position pin is wrong) |
+| vi | stations silent | a station on any track with its old send bytes (a tag-17 part, unstamped, on a scratch copy) sends nothing | a station's track in the reverb with its AUX at 0 |
+| vii | the return pin | a BUS-mode Character on T7: returns nothing; on T8: returns | a return from T7 |
+| viii | cross-core stamps | play for minutes: no flicker of the return, no host print creeping back | the return dropping out and back (a stamp lost > 3 blocks) |
+
+**Stop condition:** any of ii–iv failing on the unit after passing
+`make verify-onebus` locally is a cross-core timing fact — record the exact
+configuration (which core, which position) before touching code.
+
+---
+
 ## Flash 5 — the ColdFire headroom probe (cfprobe)
 
 **The image:** `REMIX=cfprobe make image` — the rig plus HELLO WORLD and
@@ -380,6 +424,115 @@ every mode through the new fields; what only the panel can show:
 Do this on a **freshly re-selected** BusVerb / BusDelay: a part saved before
 the swap has its slot-6/7 bytes crossed — and see the stall above: stamp the
 WHOLE project before pressing play, not just the track you are looking at.
+
+## Tag 16 — the rig with real send knobs on the host pages (5 Sep 2026)
+
+`bamsep27`, `BUILD=16`. On top of tag 15 (bus screen in the rig, page-2
+store at +0, SEND labelled): each host's FX2 page now carries its own send
+pair, per Sam's call — "delay drive and reverb single tone".
+
+| engine | slot | was | now |
+|---|---|---|---|
+| BusVerb | 3 | HP | **TONE** — 0..64 = old LP 0..127 (dark → flat), 64..127 = old HP 0..126 (flat → thin); **64 = old HP 0 / LP 127 bit-identical** |
+| BusVerb | 4 | LP | **-DEL** — dry send into the delay bus, default 0 |
+| BusDelay | 10 | DRV | **-DEL** — dry send into its own delay (the retired IN path), default 0; drive pinned to 0 |
+
+⚠️ **STAMP-DEFAULTS BEFORE PLAY, no exceptions.** A part saved under tag ≤15
+holds LP=127 in slot 4 and HP=0 in slot 3: under tag 16 that is **-DEL 127
+(the reverb host sending full-tilt into the delay) and TONE 0 (a fully dark
+tail)** on every BusVerb track of every part — legal values, so nothing
+refuses, it just sounds wrong and blames the engine. And BusDelay's old DRV
+byte becomes its send level. ⚠️ `stamp-defaults` does NOT do this: it
+touches only the ids a station replaced and keeps the engines' bytes on
+purpose. Use the targeted `stamp-slot` (added 5 Sep 2026), which writes one
+byte and leaves the other eleven knobs as Sam set them:
+
+```sh
+# module by key/name, knob by its manifest name, value = the manifest default
+python3 tools/ot_project.py stamp-slot "<project>" busverb  TONE
+python3 tools/ot_project.py stamp-slot "<project>" busverb  -DEL
+python3 tools/ot_project.py stamp-slot "<project>" busdelay -DEL
+```
+
+**Done on the card 5 Sep 2026** for all three projects that name the
+engines: `PRESETS/OCTABAM_RIG` (THE rig project, in use that day — 16 banks
+× 8 parts, every T5 BusVerb stored HP 0 / **LP 127**, BusDelay's slot 10
+already 0), `PROJECT 260810` (T5 BusVerb 0 / **127**, T1 BusDelay DRV
+**87**) and `PROJECT 260804` (T1 BusVerb 0 / **93**) — every one would have
+loaded as a hot send. Backup: `~/octa/backups/PRESETS_20260905_pretag16/`.
+(The first pass missed OCTABAM_RIG: a `find | head -20` cut the listing
+short. List the whole set; the loaded project is the one with today's bank
+mtimes.)
+
+Claims to settle on the unit (emulator says: reverb host `-DEL` 100/127 =
+a SEND client at 100/127 exactly; two clients = two SENDs; `-DEL` 0 silent;
+`verify-bus` 19/19; TONE 64 render bit-identical to tag 15):
+- [ ] ⚠️ In `bamsep27` the hosts are HIDDEN and their twelve names BLANK
+      (remix docstring): T5's FX2 page draws six unlabelled dials, and that
+      is BY DESIGN (seen 6 Sep 2026, tag 16 — it read as "still got all the
+      blank knobs"). The labelled view is the bus screen: MAIN MENU →
+      CONTROL → REVERB reads TIME MOD SIZE **TONE -DEL** IN / MODE SHMR DIFF
+      SHFT GATE RATE; CONTROL → DELAY reads TIME FDBK TONE PING -VRB PTCH /
+      MODE MDEP MRAT SIZE **-DEL** FRZE. TONE 64, both -DEL 0 (the stamp).
+- [ ] T5 `-DEL` up: T5's dry audible in the delay on T1, at the level a
+      station's `->DEL` at the same value gives. **This is the cross-core
+      claim no local test can reach**: the client flag is a per-block write
+      on core 0 read per block on core 1 (`Y:0x941`, RETV's shape).
+      Falsifier: the send arrives but the delay's level drops when it does
+      (flag seen, contribution not) or the send never arrives (contribution
+      not seen); either way say which.
+- [ ] T5 `-DEL` at 0 with a station sending: the delay's level is what tag
+      15 gave (no phantom client).
+- [ ] TONE: 64 sounds like tag 15's default; sweep down darkens, up thins;
+      nothing steps or clicks at 64 (the two halves meet there).
+- [ ] T1 `-DEL` up on the delay host: T1's dry repeats; at 0, nothing.
+- [ ] Bus screen (CONTROL → REVERB / DELAY) rows 3/4 and 10 draw the new
+      names and edit them (tag 15's own claims still open, see Flash 5).
+
+### Tag 16 on the unit (6 Sep 2026) -- ❌ two findings, the rest not reached
+
+- ❌ **The host pages drew six dials with NO labels** (photo: FX2 > BusVerb16
+  on T5). That was the remix's design (hidden = blank names) and it is the
+  worst outcome the panel can show -- Sam: "blank labels but with knobs
+  still showing is the worst result possible". The spec (the BamSep26 design
+  page) says a host page shows the two labelled send knobs and nothing else,
+  like SEND's; "nothing else" had been built as "nothing".
+- ❌ **CONTROL showed no REVERB / DELAY rows.** The image carries the patch
+  (row count 6→8 and the pointer at 0x400cbd54, labels present), so the
+  firmware reads its CONTROL menu from somewhere the patch does not reach.
+  `docs/FAILURE_MODES.md`. Not diagnosed; the emulator's own menu is the
+  place to look before another flash.
+- The send / TONE / bus-screen claims were not reached.
+
+## Tag 17 -- the hosts NAMED, the bus screen out (6 Sep 2026)
+
+`bamsep27`, `BUILD=17`. Sam's fallback: "if we have to go back to them
+displaying on the host I could live with it." The engines stay off the
+chooser (`hidden`) and keep their names (`named`): T5's FX2 page reads TIME
+MOD SIZE TONE -DEL IN / MODE SHMR DIFF SHFT GATE RATE, T1's TIME FDBK TONE
+PING -VRB PTCH / MODE MDEP MRAT SIZE -DEL FRZE. BUS SCREEN is out of the
+remix. Nothing else changed from tag 16: same DSP, same slot meanings, so
+**no stamp is needed** (the tag-16 stamp stands). `make check` green (291),
+`refhash` 26/26, `verify_hidden` renders both host pages in the ColdFire
+emulator and sees every page-1 name.
+
+Claims:
+- [x] ✅ **CONFIRMED ON THE UNIT, 6 Sep 2026** (Sam: "knobs show as
+      described"): T5 FX2 page 1/2 and T1 FX2 page 1/2 draw the names above,
+      with values (TONE 64, both -DEL 0). The first correct host pages since
+      flash 4.
+      ⚠️ The rest of tag 17's claims were never reached: the session found the
+      master loop instead, and the rig has since been redirected to the ONE
+      AUX BUS (PLAN.md's banner). These slot meanings are what the card's
+      projects are stamped for. Selects print words (MODE, SHFT, RATE, SIZE,
+      FRZE), BusDelay TIME prints a division.
+- [ ] The FX2 chooser still has ONE row (SEND); FX1 = NONE + three stations.
+- [ ] T5 `-DEL` up: T5's dry audible in T1's delay at a station-send level
+      (the cross-core flag, `Y:0x941`); at 0 with a station sending, no
+      level drop on the delay.
+- [ ] TONE: 64 = tag 15/16 default; down darkens, up thins, no step at 64.
+- [ ] T1 `-DEL` up: T1's dry repeats; at 0 nothing.
+- [ ] Sequencer plays through a part change with no stall.
 
 ## Before every flash
 

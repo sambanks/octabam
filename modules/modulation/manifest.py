@@ -40,6 +40,8 @@ from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness,
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
+_BLANK = Param(b"", 0)
+
 MODULE = Module(
     name="modulation",
     key="MODULATION",
@@ -63,10 +65,8 @@ MODULE = Module(
               doc="feedback around the line: the flanger's jet, the comb's ring; 0 = none"),
         Param(b"MIX", 0, active=True, formatter=_PLAIN,
               doc="dry/wet; 0 = exact passthrough, 64 = classic chorus, 127 = vibrato"),
-        Param(b"-DEL", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the DELAY bus; 0 = not a client"),
-        Param(b"-VRB", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the REVERB bus; 0 = not a client"),
+        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
+        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"DLY", 30, 128, active=True, formatter=_PLAIN,
               doc="the line's centre time, 0.2..23 ms -- in COMB it is the pitch"),

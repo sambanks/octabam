@@ -825,6 +825,22 @@ class Remix:
     # runs this code. A module that must run on one track only has to detect
     # that itself, the way modules/modulation does with its allocator slot.
     hidden: tuple[str, ...] = ()
+    # HIDDEN BUT NAMED: a hidden module that KEEPS its twelve names, so it is
+    # off the chooser (reached only by the project stamp) and its host page
+    # still draws every knob, labelled. This is the rig's FALLBACK SHAPE
+    # (Sam, 6 Sep 2026): a blank page with dials and no labels is the worst
+    # outcome, and a hidden engine may only go blank when the screen that
+    # edits it has been PROVEN ON HARDWARE -- the bus screen has not (tag 16:
+    # its CONTROL rows never appeared). Keys must be in `hidden`.
+    named: tuple[str, ...] = ()
+
+    @property
+    def blanked(self) -> tuple[str, ...]:
+        """The hidden modules drawn EMPTY: hidden, nowhere on FX1 (one
+        descriptor serves both menus) and not `named`. The ONE definition
+        the build and every verifier share."""
+        return tuple(k for k in self.hidden
+                     if k not in self.fx1 and k not in self.named)
     # GRAINS PER LINE in BusDelay's GRAIN mode: 4 (the source's own) or 2.
     #
     # A CYCLE LEVER, not a voicing choice. The delay's core cannot carry four
@@ -853,6 +869,11 @@ class Remix:
             raise ValueError(
                 f"remix {self.name!r}: fallback {self.fallback!r} is not in "
                 f"the remix, so ids aliased to it would dispatch nowhere")
+        bad = [k for k in self.named if k not in self.hidden]
+        if bad:
+            raise ValueError(
+                f"remix {self.name!r}: named={bad} are not in hidden -- "
+                f"`named` only says which HIDDEN modules keep their names")
         if len(set(self.modules)) != len(self.modules):
             raise ValueError(f"remix {self.name!r}: duplicate module keys")
         # ⚠️ NO PER-KEY CHECK HERE. An fx1 key may be a STOCK effect,

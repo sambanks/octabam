@@ -112,7 +112,8 @@ DELAY_ID = SERVER_ID.get("D")
 
 # CLI flag -> the module's own knob NAME, and the SLOT then comes from the
 # manifest. The flag names are historical and several no longer match the
-# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives DRV,
+# panel -- --dwow drives DPTH, --dmix drives IN, --dspray drives the host's
+# -DEL send (slot 10, DRV until 5 Sep 2026),
 # --width drives SHFT -- so they are kept as aliases for existing invocations
 # and docs while the index they resolve to stays honest.
 #
@@ -122,12 +123,18 @@ DELAY_ID = SERVER_ID.get("D")
 # the IN/-VRB swap, which made a delay makeup test measure +0.0 dB. Both were
 # a wrapper that had not been audited after a slot moved. There is now
 # nothing to audit.
-REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "IN", "shmr": "SHMR",
-             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE"}
+# THE ONE-AUX LAYOUT (7 Sep 2026): AUX at slot 0 on both engines (the
+# host's own send into the one aux bus), MIX at 5 (the stage crossfade);
+# IN, -DEL and -VRB are gone. Flag names are historical; the SLOT comes from
+# the manifest, so a stale name here dies instead of driving the wrong knob.
+REV_FLAGS = {"time": "TIME", "mod": "MOD", "mix": "MIX", "raux": "AUX",
+             "shmr": "SHMR",
+             "rmode": "MODE", "width": "SHFT", "gate": "GATE", "rrate": "RATE",
+             "rtone": "TONE"}
 DELAY_FLAGS = {"dtime": "TIME", "dfdbk": "FDBK", "dtone": "TONE",
-               "dping": "PING", "dvrbw": "-VRB", "dmix": "PTCH", "dwow": "MDEP",
+               "dping": "PING", "dmix": "MIX", "din": "AUX", "dwow": "MDEP",
                "dmode": "MODE", "drate": "MRAT", "dptch": "SIZE",
-               "dspray": "DRV", "dfrz": "FRZE"}
+               "dspray": "MDEP", "dpitch": "PTCH", "dfrz": "FRZE"}
 
 
 def _slots(key, flags):
@@ -526,9 +533,16 @@ def write_wav(path, L, R):
 # idx11 is the RATE select (0.5/1/2/4x MOD speed) since 18 Aug 2026 -- 1 = 1x,
 # the hardware boot default. 0 halved the MOD speed of every render between
 # RATE's birth and this default catching up (both 18 Aug 2026).
-REV_PARAMS  = [64, 0, 127, 0, 127, 0, 0, 0, 64, 0, 0, 1]
-# send: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level
-SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+# Slots 3/4 are TONE (64 = the old HP 0 / LP 127) and -DEL (0) since v8,
+# 5 Sep 2026. The old `0, 127` here read as TONE 0 / -DEL 127 for one build:
+# every verify-bus case went dark and the reverb host sent full-tilt into the
+# delay bus -- the harness-knob-drift trap, again.
+# ONE AUX (7 Sep 2026): slot 0 AUX (the host's own send, 0 = not a client),
+# 1 TIME, 2 MOD, 3 SIZE, 4 TONE (64 = flat), 5 MIX (127 = wet-only stage
+# output, the old return level), then page 2 as before.
+REV_PARAMS  = [0, 64, 0, 127, 64, 127, 0, 0, 64, 0, 0, 1]
+# send: x:(r6+0) = AUX, the one send; main() sets it from --level
+SEND_PARAMS = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # delay: build_bus.py's DEFAULTS for DELAY SERVER, which are the knob positions
 # a fresh part boots with -- TIME FDBK TONE PING MIX, then VRBW, then index 8 =
 # VRBD ($d's knob field). MIX 90 so a render is audibly wet without argument.
@@ -543,7 +557,10 @@ SEND_PARAMS = [0, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 # LFO speed, the pre-knob law. The 0 that sat here from RATE's birth (18 Aug
 # 2026) until later the same day froze both drift LFOs, so every DPTH
 # render between was wobble-free.
-DELAY_PARAMS = [40, 60, 100, 64, 0, 0, 0, 0, 64, 0, 0, 0]
+# ONE AUX (7 Sep 2026): 0 AUX, 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX (127 =
+# repeats only, the old behaviour), 6 MODE, 7 MDEP, 8 MRAT (64 = 1x), 9 SIZE,
+# 10 PTCH (64 = unison), 11 FRZE.
+DELAY_PARAMS = [0, 40, 60, 100, 64, 127, 0, 0, 64, 0, 64, 0]
 
 
 def main():
@@ -557,13 +574,20 @@ def main():
     ap.add_argument("--wav", help="also write the reverb output here")
     ap.add_argument("--label", default="send->reverb")
     ap.add_argument("--amp", type=float, default=0.5, help="tone amplitude FS")
-    ap.add_argument("--level", type=int, default=127, help="SEND ->REVERB level 0..127")
+    ap.add_argument("--level", type=int, default=127,
+                    help="SEND AUX level 0..127 -- the ONE send (7 Sep 2026)")
     ap.add_argument("--dlevel", type=int, default=None,
-                    help="SEND ->DELAY level 0..127 (x:(r6+0)). Defaults to\n"
-                         "--level when the target is the DELAY, else 0 -- the\n"
-                         "two buses have SEPARATE send knobs, and driving the\n"
-                         "reverb's while measuring the delay renders silence.")
-    ap.add_argument("--mix", type=int, default=127, help="reverb MIX 0..127")
+                    help="alias of --level (there is one bus now; kept so old\n"
+                         "command lines parse). If both are given --dlevel wins.")
+    ap.add_argument("--mix", type=int, default=127,
+                    help="reverb MIX 0..127: the STAGE crossfade (7 Sep 2026),\n"
+                         "127 = wet-only output as before, 0 passes the chain\n"
+                         "input through. (It was IN, the host's own send, v4-v8:\n"
+                         "that is --raux now.)")
+    ap.add_argument("--raux", "--rin", "--rdel", type=int, default=0, dest="raux",
+                    help="reverb AUX 0..127 (slot 0): the host's own dry send\n"
+                         "into the one aux bus. 0 = not a client. --rdel and\n"
+                         "--rin are aliases (the old -DEL / IN knobs).")
     ap.add_argument("--time", type=int, default=64,
                     help="TIME/decay (slot 0). MODE scales this by its own decay\nconstant in r7+$1e -- BIG's is 1.000000, i.e. NO headroom.")
     ap.add_argument("--mod", type=int, default=0,
@@ -577,15 +601,16 @@ def main():
     ap.add_argument("--dwow", type=int, default=None,
                     help="DELAY WOW depth 0..127 (delay slot 6, default 0).\n"
                          "TAPE's wow/flutter depth; ignored by the other modes.")
-    ap.add_argument("--dmix", "--din", type=int, default=None, dest="dmix",
-                    help="DELAY IN 0..127 (delay slot 4, default 0) -- this\n"
-                         "track's OWN send level into the delay. Was MIX, a\n"
-                         "dry/wet crossfade, until v3 stage 1 made the host\n"
-                         "track a return (wet alone v3..v4; since v5 the\n"
-                         "host's dry rides under the wet at unity).\n"
-                         "--din is the name that matches the panel; --dmix\n"
-                         "still works so older command lines do not break,\n"
-                         "but they now mean something different.")
+    ap.add_argument("--dmix", type=int, default=None,
+                    help="DELAY MIX 0..127 (slot 5, default 127): the STAGE\n"
+                         "crossfade (7 Sep 2026) -- 0 passes the aux through,\n"
+                         "127 = repeats only.")
+    ap.add_argument("--din", "--daux", type=int, default=None, dest="din",
+                    help="DELAY AUX 0..127 (slot 0, default 0): this track's\n"
+                         "OWN send into the one aux bus (the old IN / -DEL).")
+    ap.add_argument("--dpitch", type=int, default=None,
+                    help="DELAY PTCH 0..127 (page-2 slot 10 since 7 Sep 2026;\n"
+                         "64 = unison): GRAIN's pitch.")
     ap.add_argument("--dtone", type=int, default=None,
                     help="DELAY TONE 0..127 (delay slot 2, default 100)")
     ap.add_argument("--dping", type=int, default=None,
@@ -605,10 +630,9 @@ def main():
                          "read position, 127 spreads them over 1015 samples.\n"
                          "Only read in GRAIN (DMODE=3); inert elsewhere.")
     ap.add_argument("--dvrbw", type=int, default=None,
-                    help="delay -VRB 0..127 (p5) -- the delay's send into the\n"
-                         "reverb, A KNOB AGAIN from 18 Aug 2026 (hardwired at\n"
-                         "max v3..R29). Default 0: the wash is opt-in, and\n"
-                         "registration follows the knob.")
+                    help="RETIRED (7 Sep 2026): the delay feeds the reverb\n"
+                         "unconditionally now (the one aux chain). Parsed so\n"
+                         "old command lines do not break; ignored with a note.")
     ap.add_argument("--dmode", type=int, default=None,
                     help="delay MODE 0..4 via the slot-7 COMPANION field --\n"
                          "runtime equivalent of the DMODE= build override\n"
@@ -639,11 +663,10 @@ def main():
                          "but it selects the interval, not the image.")
     ap.add_argument("--gate", type=int, default=None,
                     help="reverb GATE 0..127 (slot-10 KNOB).")
-    ap.add_argument("--rdel", type=int, default=None,
-                    help="RETIRED (18 Aug 2026): the reverb's ->DEL send is\n"
-                         "gone (the twin of the delay's VRBD, same rationale).\n"
-                         "A TRUE no-op now -- slot 11 is the RATE select, and\n"
-                         "until 18 Aug 2026 this flag silently drove it.")
+    ap.add_argument("--rtone", type=int, default=None,
+                    help="reverb TONE 0..127 (page-1 slot 3, default 64): the\n"
+                         "old HP+LP pair on one knob -- below 64 darkens\n"
+                         "(LP), above 64 thins (HP), 64 = HP 0 / LP 127.")
     ap.add_argument("--in", dest="infile",
                     help="source .wav instead of the tone (THD is then not meaningful)")
     ap.add_argument("--split", default="0",
@@ -701,7 +724,7 @@ def main():
                 f"with --set {_rl}:SAT=3 etc. instead")
         a.layout = a.layout + _rl
         a.pick = _rl
-        a.set = [f"{_rl}:SAT=3", f"{_rl}:CRSH=127", f"{_rl}:RING=127"] + a.set
+        a.set = [f"{_rl}:SAT=3", f"{_rl}:RET=127"] + a.set
     if a.pick is not None and a.pick not in SERVER_ID:
         # A module key or name, resolved to its letter -- the letters are
         # derived and nobody should have to know them.
@@ -726,19 +749,18 @@ def main():
     _rs = _slots("REVERB SERVER", REV_FLAGS)
     rev = list(REV_PARAMS)
     for _f, _v in (("mix", a.mix), ("shmr", a.shmr), ("mod", a.mod),
-                   ("time", a.time)):
-        rev[_rs[_f]] = _v                      # --mix drives IN (post-v4)
-    if a.rdel is not None:
-        print("--rdel is retired (slot 11 is the RATE select now); ignored")
+                   ("time", a.time), ("raux", a.raux)):
+        rev[_rs[_f]] = _v
     for _f, val in (("rmode", a.rmode), ("width", a.width),
-                    ("gate", a.gate), ("rrate", a.rrate)):
+                    ("gate", a.gate), ("rrate", a.rrate),
+                    ("rtone", a.rtone)):
         if val is not None:
             rev[_rs[_f]] = val
-    # Which server is being measured decides which SEND knob has to be up.
-    _tgt = "D" if (a.pick == "D" or "R" not in a.layout.upper()) else "R"
+    if a.dvrbw is not None:
+        print("note: --dvrbw is retired -- the delay feeds the reverb unconditionally (one aux)")
+    # ONE bus: the SEND's one knob, whichever server is measured.
     snd = list(SEND_PARAMS)
-    snd[1] = a.level                                    # ->REVERB, x:(r6+1)
-    snd[0] = a.dlevel if a.dlevel is not None else (a.level if _tgt == "D" else 0)
+    snd[0] = a.dlevel if a.dlevel is not None else a.level     # AUX, x:(r6+0)
     wsrc = None
     if a.infile:
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -747,7 +769,7 @@ def main():
         if sr != SR:
             wsrc = render_reverb.resample(wsrc, sr, SR)
     dpar = None
-    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.dvrbw, a.dwow,
+    if any(v is not None for v in (a.dtime, a.dfdbk, a.dmix, a.din, a.dpitch, a.dwow,
                                    a.dtone, a.dping, a.dspray, a.dmode,
                                    a.drate, a.dptch, a.dfrz)):
         dpar = list(DELAY_PARAMS)
@@ -764,7 +786,7 @@ def main():
         _ds = _slots("DELAY SERVER", DELAY_FLAGS)
         for _f, val in (("dtime", a.dtime), ("dfdbk", a.dfdbk),
                         ("dtone", a.dtone), ("dping", a.dping),
-                        ("dmix", a.dmix), ("dvrbw", a.dvrbw),
+                        ("dmix", a.dmix), ("din", a.din), ("dpitch", a.dpitch),
                         ("dwow", a.dwow), ("dmode", a.dmode),
                         ("drate", a.drate), ("dptch", a.dptch),
                         ("dspray", a.dspray), ("dfrz", a.dfrz)):
@@ -864,7 +886,7 @@ def main():
     path = (f"{_srv} on its own track (--direct)" if a.direct
             else f"SEND -> bus -> {_srv}")
     print(f"{a.label}:  tone {TONE_HZ:.2f} Hz through {path} "
-          f"(amp {a.amp}, ->REVERB {snd[1]}, ->DELAY {snd[0]})")
+          f"(amp {a.amp}, AUX {snd[0]})")
     if thd is None:
         print(f"  !! SILENT (peak {pk:.2e}, rms {rms:.2e}) -- the bus carried nothing.")
         print("     A silent render is a FAILED measurement, not a clean one.")

@@ -25,7 +25,7 @@ MODULE = Module(
     name="busdelay",
     key="DELAY SERVER",
     kind=Kind.DSP_EFFECT,
-    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, drive, freeze.",
+    doc="Multi-mode delay: CLEAN / pitched GRAIN cloud / REVERSE, tape wow, freeze.",
     menu=MenuEntry(
         fx2_id=0x06,
         donor_desc=0x400d5726,        # SPRING REV
@@ -35,6 +35,11 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
+        # THE ONE-AUX RE-SLOT (7 Sep 2026): AUX at slot 0 on EVERY track,
+        # hosts included -- this host's own dry send into the aux (the IN /
+        # ->DEL machinery: headroomed, summed, counted only while nonzero).
+        Param(b"AUX", 0, active=True, formatter=_PLAIN,
+              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 40, active=True, formatter=_PLAIN,
               doc="delay time -- a free dial that sticky-snaps to tempo divisions"),
         Param(b"FDBK", 60, active=True, formatter=_PLAIN,
@@ -47,16 +52,13 @@ MODULE = Module(
         # ping-pong, and where the lean is smallest.
         Param(b"PING", 127, active=True, formatter=_PLAIN,
               doc="stereo ping-pong spread; 127 = the classic alternation (least lean)"),
-        # -VRB: this delay's wet send into the reverb. 0 for the same
-        # load-bearing reason as IN -- a non-zero default would register the
-        # delay as a reverb client whenever it exists, idle or not, diluting
-        # every real sender.
-        Param(b"-VRB", 0, active=True, formatter=_PLAIN,
-              doc="wet send into BusVerb over the bus -- delay into reverb in series"),
-        # PTCH sits where IN did (v5.1, 3 Sep 2026): the host's own send is its
-        # FX1 station's ->DEL now, and GRAIN's pitch belongs on the scene page.
-        Param(b"PTCH", 64, active=True, formatter=_PLAIN,
-              doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
+        # MIX (one-aux rig, 7 Sep 2026; -VRB and PTCH moved): the STAGE's
+        # crossfade. The delay is chain stage 1: out = in*(1-MIX) + wet*MIX
+        # goes on to the reverb and to the return, so MIX 0 is a clean
+        # reverb send with the delay still in the chain and 127 the old
+        # wet-only behaviour. The chain itself is hardwired, unscaled.
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="stage dry/wet: 0 passes the aux through, 127 = repeats only"),
         # ---- page 2 -------------------------------------------------------
         # MODE on slot 6 (v6, 4 Sep 2026; was slot 7): an even slot is the
         # proven slot the panel's page-2 knob editor writes, so a main-menu
@@ -84,11 +86,11 @@ MODULE = Module(
         Param(b"SIZE", 1, 4, active=True, formatter=_STEP,
               labels=("46MS", "93MS", "23MS", "XTRM"),
               doc="segment/grain size 46/93/23 ms; XTRM = 12 ms REVERSE, 186 ms GRAIN"),
-        # DRV is drive in every mode but GRAIN, where the same byte is the
-        # scatter depth. 0 = exact bypass, which outranks a scatter taste
-        # that gets played by hand anyway.
-        Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
-              doc="drive on the repeats, every mode; 0 = bypass"),
+        # PTCH on page-2 slot 10 (one-aux re-slot, 7 Sep 2026; page-1 slot
+        # 5 until then, which is MIX now). The DSP reads $e's KNOB field for
+        # it. GRAIN's pitch; idle in other modes.
+        Param(b"PTCH", 64, 128, active=True, formatter=_PLAIN,
+              doc="GRAIN pitch, +-2 oct, 64 = unison (a held MIDI note overrides); idle in other modes"),
         Param(b"FRZE", 0, 2, active=True, formatter=_STEP,
               labels=("RUN", "HOLD"),
               doc="freeze the line as a loop -- loop length = TIME"),
@@ -100,16 +102,18 @@ MODULE = Module(
     # until this table existed.
     mode_slot=6,
     mode_views=(
+        # (slots are the one-aux layout: 1 TIME, 2 FDBK, 3 TONE, 4 PING,
+        # 5 MIX, 10 PTCH -- AUX at 0 is never re-defaulted by a mode)
         ModeView(mode=0,                        # CLEAN
-                 defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
-                           7: 48, 8: 64, 10: 0}),
+                 defaults={1: 40, 2: 60, 3: 100, 4: 127, 5: 127,
+                           7: 48, 8: 64, 10: 64}),
         ModeView(mode=1,                        # GRAIN
                  names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
-                 defaults={0: 36, 1: 40, 2: 100, 3: 127, 5: 64,
-                           7: 40, 8: 127, 9: 1, 10: 0}),
+                 defaults={1: 36, 2: 40, 3: 100, 4: 127, 5: 127,
+                           7: 40, 8: 127, 9: 1, 10: 64}),
         ModeView(mode=2,                        # REVERSE
-                 defaults={0: 40, 1: 60, 2: 100, 3: 127, 5: 64,
-                           7: 48, 8: 64, 9: 1, 10: 0}),
+                 defaults={1: 40, 2: 60, 3: 100, 4: 127, 5: 127,
+                           7: 48, 8: 64, 9: 1, 10: 64}),
     ),
     dsp=DspSection(
         asm="modules/busdelay/delay_server.asm",

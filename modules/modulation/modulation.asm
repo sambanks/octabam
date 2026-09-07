@@ -184,7 +184,9 @@ mooffok:
         move    #>$ffffff,m3
         move    #>$1,x0
         clr     b
-        move    x:(r6+$5),a             ; ->VRB level
+        clr     a                       ; NO STATION SENDS (one-aux rig, 7 Sep
+                                        ; 2026): the level is 0 whatever the
+                                        ; part stores, so nothing registers
         tst     a
         tne     x0,b
         move    y:(r3),a
@@ -193,17 +195,16 @@ mooffok:
         move    #4,n3
         move    (r3)+n3
         clr     b
-        move    x:(r6+$4),a             ; ->DEL level
+        clr     a                       ; (no sends: never a client)
         tst     a
         tne     x0,b
         move    y:(r3),a
         add     b,a
         move    a,y:(r3)
 mocntz:
-        move    x:(r6+$4),x0
-        move    x0,x:(r7+$30)           ; ->DEL
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$31)           ; ->VRB
+        move    #>$0,x0                 ; the send levels are 0: the stations
+        move    x0,x:(r7+$30)           ; lost their sends in the one-aux
+        move    x0,x:(r7+$31)           ; rig (every track sends from FX2's AUX)
 
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE

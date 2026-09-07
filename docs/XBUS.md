@@ -90,7 +90,10 @@ race fix, and the shape is forced:
 
 All bus state — the rotation word, the four buffer sets for both buses, the
 client counts, the reciprocal tables and both role locks — lives in the
-**bus scratch block at `Y:0x36000`**, carved out of core 0's half of the
+**bus scratch block at `Y:0x36000`** (one-aux layout since 7 Sep 2026: the
+chain buffer at `+0x001`, the liveness stamps at `+0x0c3..0c5`, the stage
+output buffers where the wets were — `modules/send/send_client.asm` is the
+map; `docs/BUS.md` "The one aux bus"), carved out of core 0's half of the
 shared window (`docs/CHIP.md` for the exact extent). Role locks make the
 first instance of a server the *only* one: a second instance of the same
 server returns as a passthrough, so one server per bank is enforced, and a

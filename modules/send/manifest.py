@@ -33,11 +33,10 @@ MODULE = Module(
         build_tag=False,
     ),
     params=(
-        Param(b"-DEL", 0, active=True,
-              doc="this track's send level onto the DELAY bus"),
-        Param(b"-VRB", 0, active=True,
-              doc="this track's send level onto the REVERB bus"),
-        _BLANK, _BLANK, _BLANK, _BLANK,
+        Param(b"AUX", 0, active=True,
+              doc="this track's level onto the one aux bus: delay, "
+                  "then reverb, wet back on track 8"),
+        _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
         _BLANK, _BLANK, _BLANK, _BLANK, _BLANK, _BLANK,
     ),
     dsp=DspSection(
@@ -46,7 +45,13 @@ MODULE = Module(
                                           # points at SEND's entry points, so
                                           # it must already be placed
         bus_role=BusRole.CLIENT,
-        ybase=YBase.NEVER,                # carries no shared-window literal
+        # XBUS, not NEVER, since the one-aux rig (7 Sep 2026): the source
+        # carries ONE `$30000` literal, the payload discriminator of the
+        # track-8 send refusal (payload A keeps $30000, B is rewritten to
+        # $38000 -- the HKB diagnostic's trick), never used as an address.
+        # ⚠️ In a plain (non-XBUS) build it is not rewritten, so BOTH
+        # payloads refuse position 3; plain builds do not ship.
+        ybase=YBase.XBUS,
         r7_latch_slot=0x69,
         gate_label="notfirst",
     ),

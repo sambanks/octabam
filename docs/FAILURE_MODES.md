@@ -11,7 +11,12 @@ Confidence, per `CLAUDE.md`: separate measured from inferred. A fix that only
 
 ---
 
-## Audio engine wedged, sequencer alive ✅ FIX CONFIRMED, cause open
+## Audio engine wedged, sequencer alive ✅ CAUSE MEASURED 6 Sep 2026: the MASTER LOOP
+
+> **STRUCTURAL FIX BUILT 7 Sep 2026 (one-aux rig, unflashed):** the
+> stations have no sends, and the SEND is REFUSED at track 8's dispatch
+> position on payload A whatever its knob says, so the master cannot send
+> into the bus it returns. `tools/verify_onebus.py` pins both.
 
 **Symptom.** The sequencer runs (steps advance, transport works), but **no
 audio plays** — not the tracks, and a **sample preview triggers but is
@@ -31,6 +36,55 @@ seen it before. If it recurs, capture what was playing when it wedged.
 **Falsifier / next step.** If it recurs on a specific action (a bank change,
 a heavy station turned up, the returns engaging), that names the cause. Log
 the trigger here when seen.
+
+**Recurrence, 6 Sep 2026 — WEDGED ON EVERY COLD BOOT INTO OCTABAM_RIG,
+three images in a row (tags 16, 17, 18), NOT cleared by power-cycles.**
+Localised without a flash:
+- The image is innocent: tag 18's DSP is byte-identical to tag 13's, which
+  played (807 ColdFire bytes differ, all chooser/descriptor plumbing).
+- The project stamp is innocent: PROJECT 260810, stamped the same way, plays.
+- A Pheasant set (no octabam engines) plays.
+- **Cleared by SWITCHING PROJECTS and back** (Pheasant → 260810 → OCTABAM_RIG:
+  "playing now without me doing anything"); reboots are clean since. So it
+  is PERSISTENT STATE that the project switch REWROTE — the unit writes the
+  current project's files before loading another. The wedging state is in
+  the Friday backup (`~/octa/backups/PRESETS_20260905_pretag16/OCTABAM_RIG`)
+  and the cleared state is on the card: **diff the two on the next mount
+  (project files first, then banks) — the changed bytes name the state.**
+- What OCTABAM_RIG has that 260810 does not: the RETURN engaged on every
+  part (T8 FX1 = Character, SAT = BUS, RVRB 127, DLY 127 — never before run
+  on hardware), and in bank02 the master's own -VRB send at 71 (the loop the
+  spec forbade). Sam suspected a loop first; the "a loop would squeal, not
+  go silent" dismissal was reasoning, not measurement — RETRACTED. Whether
+  either is the cause is NOT established.
+- **MEASURED (next mount, 6 Sep):** card vs the wedging backup — banks differ
+  ONLY by the stamp (18 bytes each); `project.work` differs in TWO fields:
+  the header's OS version string `OCTABAM13` → `OCTABAM18`, and `TRACK=4`
+  (T5, the reverb host, selected) → `TRACK=7` (T8). Nothing else. Backup of
+  the cleared state: `~/octa/backups/OCTABAM_RIG_20260906_cleared`.
+  Prediction to test: tag 17 on the card, project says 18 → if the cold boot
+  wedges, the saved-OS-version mismatch is the suspect (and every flash
+  needs a project switch after it); if it plays, the selected-track-at-boot
+  is what remains (select T5, save, cold boot).
+- **✅ MEASURED, 6 Sep 2026 (tag 17, OCTABAM_RIG silent after a project
+  switch): turning T8's FX1 -VRB from 71 down to 0 brought the audio back,
+  live.** The master's station (Character, SAT = BUS = the return point)
+  was SENDING into the reverb bus it RETURNS — the one loop the design
+  forbids ("a master that sends into a bus it returns is the one loop
+  left"). Sam called it a loop on the first symptom. Why the loop reads as
+  SILENCE rather than a squeal is not established (inferred: the bus
+  auto-gain / the return's clear-on-read stamp collapsing, not measured).
+  The version-string idea was falsified the same hour (switching back under
+  a matching tag was still silent) and the one earlier "cleared by a
+  switch" was a different bank coming up: bank01's parts have T8 -VRB 0,
+  bank02's have 71.
+- **Fix, immediate:** T8 -VRB = 0 in every part (a track-filtered
+  `stamp-slot`), and SAVE. **Fix, structural:** a station in BUS mode must
+  not register or send at all — closes the loop by construction — and the
+  spec's rule stands: the master's station carries no sends.
+- ⚠️ Two wrong calls made the same day, both logic leaps: "intermittent"
+  (it never cleared on a reboot) and "cleared by a power-cycle" (that was
+  the 5 Sep instance, not this one). Say only what was observed.
 
 ---
 
@@ -128,3 +182,25 @@ the two cores. `docs/XBUS.md`.
 lock-step or under a guessed interleave (`-skew`), so a bus race that fails
 to reproduce locally is not shown absent. A local mismatch under skew IS a
 defect. Believe the hardware.
+
+## CONTROL menu shows its stock six rows though the image carries eight 🔴
+
+**Symptom.** MAIN MENU › CONTROL lists AUDIO … PERSONALIZE exactly as stock;
+the REVERB / DELAY rows a module appended (modules/busscreen, also
+modules/menushortcut's mechanism) are not there. Everything else in the
+image works.
+
+**Seen.** Tag 16, 6 Sep 2026. The image was checked afterwards: row count
+at 0x400cbd54 = 8, the row pointer at +0x18 repointed to the relocated rows,
+both labels present. The bytes are right; the firmware is not reading them.
+
+**Cause.** Unknown (inferred: the CONTROL rows are copied or built elsewhere
+-- a RAM copy at boot, a second descriptor, or the menu code takes its count
+from another table). Not diagnosed.
+
+**Fix.** None yet. BUS SCREEN is out of the rig (tag 17). Before any flash
+that appends CONTROL rows again: navigate to CONTROL in the ColdFire
+emulator's own menu and count rows; if it shows six there too, the emulator
+can find where the count really comes from. Flash 4 (tag 79, MENU SHORTCUT)
+used the same patch -- whether its rows appeared was never recorded.
+

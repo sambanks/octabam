@@ -93,9 +93,10 @@ def main():
         # descriptor serves both menus, so blanking it would empty its FX1
         # page too -- the stations are hidden from the FX2 chooser and still
         # have to draw when they are selected on FX1.
-        if key in remix.fx1:
+        if key not in remix.blanked:
             want = [(p.name or b"") for p in mods[key].params]
-            check(f"{key}: on FX1, so its names are KEPT, not blanked",
+            why = "on FX1" if key in remix.fx1 else "NAMED"
+            check(f"{key}: {why}, so its names are KEPT, not blanked",
                   names == want,
                   " ".join(n.decode("latin1") or "-" for n in names[:6]))
         else:
@@ -166,15 +167,34 @@ def main():
     # BusVerb's slot 11, so comparing the engine's names against the raw
     # capture reports a knob that is not the engine's. Subtract a baseline
     # render -- the same track with an id that draws nothing of its own.
-    blanked = [k for k in hidden if k not in remix.fx1]
+    base_texts = set(texts(emu.render_fx2(boot, track=4, effect_id=0x02)))
+
+    def drawn_names(key):
+        drew = set(texts(emu.render_fx2(boot, track=4,
+                                        effect_id=mods[key].menu.fx2_id)))
+        names = {p.name.decode("latin1") for p in mods[key].params if p.name}
+        return names & (drew - base_texts)
+    blanked = [k for k in hidden if k in remix.blanked]
+    # the module sections 3-5 below exercise: a blanked one if any, else the
+    # first hidden (a NAMED host in the rig)
     key = blanked[0] if blanked else hidden[0]
     hid_id = mods[key].menu.fx2_id
-    base_texts = set(texts(emu.render_fx2(boot, track=4, effect_id=0x02)))
-    drew_hidden = set(texts(emu.render_fx2(boot, track=4, effect_id=hid_id)))
-    hid_names = {p.name.decode("latin1") for p in mods[key].params if p.name}
-    check(f"{key}'s page draws none of its knob names",
-          not (hid_names & (drew_hidden - base_texts)),
-          " ".join(sorted(hid_names & (drew_hidden - base_texts))) or "none drawn")
+    if blanked:
+        got = drawn_names(key)
+        check(f"{key}'s page draws none of its knob names",
+              not got, " ".join(sorted(got)) or "none drawn")
+    # A NAMED hidden module is the opposite claim, and the one that matters
+    # on the panel (6 Sep 2026, tag 16: dials with no labels): its host page
+    # MUST draw its knob names. Page 1's six are what the render shows.
+    for key in [k for k in hidden if k in remix.named]:
+        got = drawn_names(key)
+        # a name the PLAYBACK page also draws (PTCH, RATE ...) is in the
+        # baseline and cannot be proven by this capture -- leave it out
+        want = {p.name.decode("latin1") for p in mods[key].params[:6]
+                if p.name} - base_texts
+        check(f"{key}: NAMED, so its host page DRAWS its page-1 knob names",
+              want <= got, f"drew {' '.join(sorted(got)) or 'nothing'}; "
+              f"missing {' '.join(sorted(want - got)) or 'none'}")
     # the control: a module whose names ARE drawn -- a listed one, or a
     # hidden one kept for FX1
     ctl = next((k for k in listed if not mods[k].is_stock),
@@ -248,6 +268,16 @@ def main():
             if not pathlib.Path(mem).exists():
                 return None
             init, proc = send_probe.entry_points(mem, mods[key].menu.fx2_id)
+            # ONE AUX (7 Sep 2026): an engine's only input is the aux bus --
+            # its own AUX goes round through the accumulator, and that
+            # needs a rotation, i.e. a housekeeper. A lone delay under the
+            # DEV hatch is never the housekeeper (it behaves as payload B),
+            # so the engine renders with a SEND at the other slot, fed the
+            # tone at AUX 127: SEND's self-healing election keeps the bus
+            # turning whichever slot the engine is on, and "runs" means the
+            # sent tone comes out of the engine as wet.
+            sinit, sproc = send_probe.entry_points(mem, send_probe.SERVER_ID["S"])
+            other = 4 if r7 == 2 else 2
             out = scratch / f"out_{r7}.raw"
             vals = [(p.default or 0) & 0x7f for p in mods[key].params]
             kmap = {(p.name or b"").decode("latin1"): i
@@ -256,10 +286,14 @@ def main():
                 vals[kmap[n]] = v
             params = ",".join(str(v) for v in vals)
             r = subprocess.run(
-                [HOST, "-mem", mem, "-init", f"{init:x}", "-proc", f"{proc:x}",
-                 "-inst", "1", "-r7", str(r7), "-alloc", "1", "-inmask", "1",
+                [HOST, "-mem", mem, "-init", f"{init:x},{sinit:x}",
+                 "-proc", f"{proc:x},{sproc:x}",
+                 "-inst", "2", "-r7", f"{r7},{other}", "-alloc", "1,3",
+                 "-inmask", "3",         # the engine's own track too: the
+                                         # guard's dry pass is INPUT == OUTPUT
                  "-frames", str(FRAMES), "-blocks", str(N // FRAMES),
-                 "-in", str(src), "-out", str(out), "-params", params],
+                 "-in", str(src), "-out", str(out), "-params", params,
+                 "-params", "127,0,0,0,0,0,0,0,0,0,0,0"],
                 capture_output=True, text=True)
             if r.returncode != 0:
                 return None
@@ -272,8 +306,15 @@ def main():
             # engines are RETURNS whose IN defaults to 0 (v5, 23 Aug 2026),
             # so a control render has to open the input, or "the guard went
             # dry" and "the engine is dry anyway" are the same picture.
-            wet = {"IN": 127} if "IN" in [ (p.name or b"").decode("latin1")
-                                           for p in mods[key].params ] else {}
+            _names = [(p.name or b"").decode("latin1") for p in mods[key].params]
+            # AUX since the one-aux rig (7 Sep 2026): the host's own send
+            # goes round through the accumulator and back into the engine
+            wet = {} if "AUX" in _names else ({"IN": 127} if "IN" in _names else {})
+            # The delay's default TIME (40 -> 5,184 samples) puts its first
+            # repeat past this 6,000-sample window once the 256-call warm-up
+            # is spent; TIME 0 (the 64-sample floor) brings the repeats in.
+            if key == "DELAY SERVER" and "TIME" in _names:
+                wet["TIME"] = 0
             host = render(key, 2, **wet)
             away = render(key, 4, **wet)
             if host is None or away is None:

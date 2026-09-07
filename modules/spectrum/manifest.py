@@ -37,6 +37,8 @@ from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
+_BLANK = Param(b"", 0)
+
 MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
@@ -60,10 +62,8 @@ MODULE = Module(
               doc="filter B high-pass corner (12 dB/oct); 0 = open"),
         Param(b"WDTH", 127, active=True, formatter=_PLAIN,
               doc="filter B low-pass corner above BASE (12 dB/oct); 127 = open"),
-        Param(b"-DEL", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the DELAY bus; 0 = not a client"),
-        Param(b"-VRB", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the REVERB bus; 0 = not a client"),
+        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
+        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"DRV", 0, 128, active=True, formatter=_PLAIN,
               doc="drive into filter A, 1..4x, clipped at the rail; 0 = unity"),

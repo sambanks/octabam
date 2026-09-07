@@ -261,6 +261,12 @@ What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
 the mixer are a unity sum, samples do not play (stems stand in), and the
 stock DELAY is not on the DSP at all.
 
+**The first thing it was built for** (`tools/verify_onebus.py`, in `make
+check`, same day): the one-aux rig's chain, liveness stamps, MIX
+passthrough, last-live-stage return, track-8 send refusal and station
+silence, all with the senders and the delay on payload B and the reverb and
+the return on payload A — `docs/BUS.md` "The one aux bus".
+
 ## What the harness cannot see
 
 Every item here has cost a real session at least once. Local-clean does not

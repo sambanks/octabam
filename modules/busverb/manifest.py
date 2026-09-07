@@ -4,10 +4,11 @@ Hosted on payload A (core 0), which serves TRACKS 5-8 -- measured 10 Aug 2026
 and inverted from what every doc assumed before then. Test it on track 5.
 Any track can send into it over the bus.
 
-Clones DARK REV's descriptor. Slots 0, 3 and 4 are written with the names the
-donor already carries (TIME/HP/LP), so the write is a no-op in bytes but the
-label is stated here rather than inherited silently -- the harness reads these
-names, and a name that exists only in a donor is a name no tool can see.
+Clones DARK REV's descriptor. Slot 0 is written with the name the donor
+already carries (TIME), so the write is a no-op in bytes but the label is
+stated here rather than inherited silently -- the harness reads these names,
+and a name that exists only in a donor is a name no tool can see. (Slots 3
+and 4 were the donor's HP/LP until v8; they are TONE and -DEL now.)
 """
 
 from remix.schema import (BusRole, Claims, YBase, DspSection, Formatter,
@@ -30,25 +31,32 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
+        # THE ONE-AUX RE-SLOT (7 Sep 2026): AUX at slot 0 on EVERY track,
+        # hosts included -- it is the host's own dry send into the one aux
+        # bus (the v8 ->DEL machinery). 0 is load-bearing: a non-zero default
+        # would register every idle host as a client and dilute the real
+        # senders (the -6.02 dB phantom-client defect).
+        Param(b"AUX", 0, active=True, formatter=_PLAIN,
+              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="decay time -- how long the tail rings"),
         Param(b"MOD", 30, active=True, formatter=_PLAIN,
               doc="tank modulation depth -- 0 static, high = chorused tail; speed is RATE"),
         Param(b"SIZE", 100, active=True, formatter=_PLAIN,
               doc="room size -- scales the eight tank lines (taps up to ~89 ms)"),
-        Param(b"HP", 0, active=True, formatter=_PLAIN,
-              doc="low cut inside the feedback path -- thins mud out of the tail"),
-        Param(b"LP", 127, active=True, formatter=_PLAIN,
-              doc="high cut / damping -- darkens the tail; 127 = wide open"),
-        # IN is this track's own send into its own reverb. 0 IS LOAD-BEARING
-        # (v4, the return conversion): a non-zero default registers every idle
-        # host as a bus client, and the 1/sqrt(N) auto-gain then hands it a
-        # share whether or not it has audio to contribute -- measured at
-        # exactly -6.02 dB for one such phantom client. Since v5 the host's
-        # dry rides under the wet at unity, so IN=0 is an exact passthrough
-        # rather than a silent track.
-        Param(b"IN", 0, active=True, formatter=_PLAIN,
-              doc="this track's own send into the reverb; 0 = exact passthrough"),
+        # TONE (v8, 5 Sep 2026) is the old HP + LP pair on ONE knob, so that
+        # slot 4 can carry the host's ->DEL send: 0..64 closes the high cut
+        # (dark), 64..127 opens the low cut inside the loop (thin). 64 IS the
+        # old defaults (HP 0 / LP 127), bit-identical.
+        Param(b"TONE", 64, active=True, formatter=_PLAIN,
+              doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
+        # MIX (one-aux rig, 7 Sep 2026; IN until then): the STAGE's crossfade.
+        # The reverb is chain stage 2: out = in*(1-MIX) + wet*MIX, where `in`
+        # is the delay's output while the delay is live, else the aux. 127
+        # is the old wet-only return; lower lets the delay's repeats (or the
+        # dry aux) survive the tail. The host prints wet*MIX under its dry.
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="stage dry/wet: 0 passes the chain input through, 127 = wet only"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6 (v7, 4 Sep 2026; was slot 7). An even slot is the
         # proven slot the panel's page-2 knob editor writes, so a main-menu
