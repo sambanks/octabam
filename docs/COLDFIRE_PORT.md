@@ -139,8 +139,8 @@ the CLI prints them every run rather than hiding them.
 `periph.{h,cpp}`: the **PIT** and the **INTC**, translated from route A rule
 for rule, with each rule's measurement or failure carried across rather than
 summarised. `tools/ot_emu/test_periph.cpp` checks fourteen of them; `ctest`
-now runs **6 tests, all passing** (emac, periph, and the vendored core's
-three).
+now runs **5 tests, all passing** (emac, periph, and the vendored core's
+timing, divide and HI08 tests).
 
 The rules worth naming, because none is obvious and each was a silent failure
 in route A first:
