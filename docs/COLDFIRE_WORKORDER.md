@@ -71,6 +71,7 @@ route A fact, not the port's problem; the golden command above already does it.
 | O3 | PIT + INTC models | `ctest` periph, 14 rules | (wired in by O4) |
 | O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 6 compared fields (❌ was written "8/8": the diff counted 2 it never compared); 10 created, 11 ran, 204.88 ms vs 204.95 |
 | O5 | the rest of the memory; the serial stream | `ctest` rtos + the oracle diff | ✅ 8 compared fields; route A's 4831 serial bytes matched byte for byte (❌ its account of *why* route A has the extra memory was wrong — corrected in O7) |
+| O7 | the card, the mount, the project load | route A's ATA command log is a prefix of the port's | ✅ all 6,189 commands identical, 297 written; ⚠️ OPEN: the port runs on to 12,373 and route A stops at 6,189 at ANY budget (`COLDFIRE_PORT.md` O7) |
 
 ## Queue
 
@@ -155,6 +156,35 @@ That is not a defect — route A covers the same spans — but O7's card is what
 would make the two machines allocate from the same place, and it is worth
 re-checking the span list once the project loads.
 
+### O6 — the eDMA and the frame clock — **UNBLOCKED, NEXT** (O7 landed 8 Sep 2026)
+
+**The code is written and unit-gated; its FIDELITY gate can now run.** Do
+not re-do the model. What O6 still needs is the rest of the live-call
+surface, translated from `emu_rtos.py`: `start_transport_live` (line 1312),
+`poke_trig` (1379), `install_trig_log` (1441), and `select_bank_live`
+(1210) — `callAsMain`/`postMessage`/`loadProjectLive` already exist and are
+the pattern. Then: load `OCTABAM/ONEAUX` (or `out/_testproj`), turn the
+frame clock on the way route A's sequencer path does (AFTER the load, not
+from boot — `--frame` from boot wedges, see below), poke a trig, run 400
+frames, and compare byte `0xd3` at `0x46104d15[0]` at frame 344 with 28
+ticks. The oracle is `tools/emu_frames.py --project out/_testproj --frames
+400 --start --internal-clock --poke-trig 2` (RTOS_FORK.md §8). ⚠️ The
+first thing to read on any early stop is the load report's `load run
+ended:` line — O7's "stall" was an ILLEGAL that looked like one.
+
+### O7b — why the port loads twice — *(Opus, measurement first)*
+
+Route A's load ends at 6,189 ATA commands at any budget; the port's runs to
+12,373 with route A's log as an exact prefix. Find which task and PC issue
+command 6,190 (`--ata-trace` carries the PC; raise or re-arm its 200,000-
+access cap), find the same site in route A, and say why one runs it and the
+other does not. 🟡 The hypothesis is SYS's reset-time "select bank 0"
+(RTOS_FORK.md §7) going to the card in the port and not in route A. Not a
+blocker for O6 (the load's first half is identical and the part pointer
+agrees), but it decides which emulator is telling the truth about the load.
+
+<details><summary>the BLOCKED entry it replaces</summary>
+
 ### O6 — the eDMA and the frame clock — ⛔ **BLOCKED on O7** (8 Sep 2026)
 
 **The code is written and unit-gated; its FIDELITY gate cannot run.** Do not
@@ -200,6 +230,8 @@ disagreements, `ctest` 6/6, `make check` green.
 
 **To unblock:** land O7, then run M6c and compare against `RTOS_FORK.md` §8.
 
+</details>
+
 <details><summary>the original entry</summary>
 
 ### O6 — the eDMA and the frame clock *(Opus, but read §8.1 first)*
@@ -219,7 +251,7 @@ after transport start, with 28 ticks in 400 frames. `RTOS_FORK.md` §8.
 Requires the project load (O7) — so O6 and O7 may be one session.
 
 </details>
-### O7 — the card and the project load — ⛔ **BLOCKED** (8 Sep 2026)
+### ~~O7 — the card and the project load~~ ✅ DONE (8 Sep 2026)
 
 **Most of it is built and gated; the mount does not complete.** Do not re-do
 the card model — pick up at the missing wake-up.
@@ -266,7 +298,22 @@ matches route A exactly**, and one ATA interrupt arrives per sector. ⛔ The
 load then STOPS rather than running slowly: 30,000 ms of emulated time gives
 the same 1,407 commands as 6,000. It ends with the **engine task cycling at
 `0x400165dc`** and the in-flight word (`0x46c8c58a`) clear. Route A's targets
-are 6,189 / 30,467 / 297. **That stall is the next thing to chase.**
+are 6,189 / 30,467 / 297. ~~**That stall is the next thing to chase.**~~
+
+**✅ THE STALL WAS A FAULT (8 Sep 2026, third session).** The V4e layer
+refused `mov3ql #-1,%a0@+` at `0x4009d8d0` ("only Dn is reached by this
+firmware" — ❌ retracted), the firmware took a real line-A exception, its
+panic handler printed `EXCEPTION VEC:0A ADDR:4009D8D0` over the panel UART
+and then polled TXEMP forever, which the UART model never set. Fix =
+MOV3Q to every alterable destination (`writeEaLong`); TXEMP is reported
+too, which is what made the fault legible. **Now: 12,373 commands / 60,677
+sectors / 562 written, and route A's whole 6,189-command log is an exact
+prefix.** ⚠️ Route A stops at 6,189 at a 12 s budget too, so the port's
+extra 6,184 commands are an OPEN divergence (a second bank parse, 🟡
+inferred), carried as O7b below. `COLDFIRE_PORT.md` has the instrument-by-instrument account and
+the attribution. Instruments added: `--cmd-log FILE`, a true PC ring, and
+the load report's `load run ended: TIME|FAULT|ILLEGAL` line — **read that
+line before calling anything a stall.**
 
 The instruments that found all of this are in the tree and off by default:
 `--ata-trace`, `--periph-trace`, `--pc-ring N`, `--peek`, and the
@@ -317,5 +364,16 @@ One session per milestone, in a terminal left open:
 /loop Take the next milestone in docs/COLDFIRE_WORKORDER.md that is not done and not BLOCKED. Work on a branch named for it. Follow the standing rules. Open a PR when its gate passes, or a draft PR titled BLOCKED with the measurement. Then stop.
 ```
 
-Use **Opus** for O6 and O7. Switch to Fable for O8 and for any BLOCKED PR.
+**Model routing (8 Sep 2026, after the Fable credit ran out mid-session):**
+- **Opus** for O6's live-call translation, O7b's measurement, and any
+  milestone whose oracle exists — the work is translate-and-diff, and Opus
+  found and fixed O7's fault end to end (cmd-log diff → PC ring → TXEMP →
+  panic text → MOV3Q) without judgment calls.
+- **Fable** only for a BLOCKED PR where the oracle itself is in question
+  (route A cannot do it, or the two disagree and hardware must decide), for
+  O8's DSP join, and for the roundup/merge pass at the end of a run. Do not
+  spend it on translation.
+- Whatever the model: **no claim without the instrument line that produced
+  it**, and "stall" is not a finding until `load run ended:` says TIME.
+
 Nothing here needs a flash, the card, or the user.

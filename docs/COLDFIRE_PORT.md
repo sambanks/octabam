@@ -413,7 +413,7 @@ edge, and counting them delivered ~540 phantom frames back to back in route A.
   is not established, and only M6c establishes it.**
 - ✅ No regression with the clock off: the oracle diff is still 8 compared
   fields, zero disagreements; `ctest` 6/6; `make check` green.
-## Milestone O7 — the card and the project load ⛔ BLOCKED (8 Sep 2026)
+## Milestone O7 — the card and the project load ✅ (8 Sep 2026; the stall was a fault)
 
 The card model, its memory map and the live-call machinery are in and gated;
 **the mount does not complete**, so the milestone's own gate (6,189 ATA
@@ -522,6 +522,80 @@ travels.
 
 **No regression:** the oracle diff is still 8 compared fields with zero
 disagreements, `ctest` 6/6, `make check` green.
+
+### ✅ THE "STALL" AT 1,407 COMMANDS WAS A LINE-A EXCEPTION, AND THE UART HID IT
+
+Measured 8 Sep 2026, third session. The port ended the load with the engine
+task cycling at `0x400165dc`, 1,407 ATA commands at 6,000 ms and at 30,000 ms,
+and it was written up as a stall to chase. It was not a stall.
+
+**How it was found, in order — each step an instrument, not a theory:**
+
+1. `--cmd-log` dumps every ATA command in route A's own log order, and route
+   A's log was dumped the same way. `diff` said the port's 1,407 were
+   **byte-identical to route A's first 1,407**. So nothing the card did was
+   wrong; whatever stopped the load stopped it *between* commands.
+2. The PC ring was rewritten as a true ring (the last N instructions, not the
+   first N — a stall asks what was running, not what the ISR did). The tail
+   was a three-instruction spin at `0x4003afa0`:
+   `moveb 0xfc064004,%d0 / movew %d0,%ccr / bpls` — **polling bit 3 of the
+   panel UART's status, TXEMP,** which `Uart::read` never set (it reported
+   TXRDY only, as route A's model does).
+3. Setting TXEMP (a model that consumes every byte at once is always both
+   READY and EMPTY; TXRDY-only describes a shift register with a byte stuck
+   in it forever) turned the spin into a **`halt`** at `0x4003b108`, and the
+   load report — which now names how its run ENDED, not just the counts —
+   said `ILLEGAL -- unimplemented opcode 4ac8 at 4003b108`. Halt is the
+   last instruction of a printer. `--serial-out` showed what it had printed:
+
+   ```
+   EXCEPTION
+   SSP:4 VEC:0A
+   FS:0 SR:2004
+   ADDR:4009D8D0
+   ```
+
+   VEC:0A is the line-A exception. The firmware's own panic handler had
+   named the faulting instruction; with TXRDY only it could never finish
+   saying so.
+4. `0x4009d8d0` is `mov3ql #-1,%a0@+` (`a158`), eight in a row clearing a
+   structure. `v4e.cpp`'s MOV3Q handled **Dn only** — "only Dn is reached
+   by this firmware" — and returned Unhandled for everything else, which
+   the A-line dispatch turned into a real exception.
+
+**The fix, attributed separately:** `writeEaLong` + MOV3Q to every
+alterable destination. On its own it takes the load from 1,407 commands to
+**12,373**, and the whole of route A's 6,189-command log is an exact prefix
+of the port's. TXEMP on its own changes nothing about the load; it is the
+change that made the fault *legible*. Both are kept.
+
+**Why route A never saw it:** Unicorn's m68k implements MOV3Q natively, so
+route A has no shim to get wrong, and it never reaches the exception
+printer, so its identical TXEMP gap costs it nothing. "Route A does not have
+it either" was true of both and evidence of neither — same family as the
+`byterev`/`ff1` retraction in O4 (a toolchain that will not assemble an
+opcode is not evidence the part lacks it; the image is).
+
+**Gate:** `test_emac` now holds MOV3Q's memory forms (`#-1,%a0@+`,
+`#1,%a0@+`, and the post-increment), watched failing on the old code.
+`ctest` 6/6; oracle diff 8 compared fields, zero disagreements; the serial
+stream 5,731 bytes identical.
+
+**⚠️ OPEN — the port runs PAST route A's end, and that is a divergence, not
+a budget.** Route A stops at 6,189 commands with `M6b load: PASS` at a
+6,000 ms budget **and at a 12,000 ms budget** (re-measured 8 Sep 2026: same
+6,189 / 30,467 / 297). The port's load runs on to **12,373 commands /
+60,677 sectors / 562 written** and parks in main, the same total at 6,000
+and at 20,000 ms. The extra 6,184 are 5,919 READs and 265 WRITEs over the
+same FAT and bank sectors (2301, 2333, 22889 …) — the shape of a second
+bank parse. 🟡 Inferred, not measured: the port performs a bank (re)load
+that route A's SYS skips — route A ends "saved_bank=1, final_bank=0" with
+SYS applying the engine's reset-time "select bank 0" (RTOS_FORK.md §7), and
+in the port that select may be going to the card. Nothing on hardware says
+which is right. **The next measurement is which task and PC issue command
+6,190 in the port** (`--ata-trace` carries the PC; its 200,000-access cap
+will need raising or arming at a command index), then the same site in
+route A to see why it does not.
 
 ## What is NOT here yet
 
