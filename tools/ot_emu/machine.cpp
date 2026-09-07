@@ -334,6 +334,14 @@ namespace ot
 		}
 	}
 
+	uint32_t Machine::readIrqUserVector(const uint8_t _level)
+	{
+		const auto vec = Mc68k::readIrqUserVector(_level);
+		if(m_ack && vec != 0xffffffffu)
+			m_ack(static_cast<uint8_t>(vec), _level);
+		return vec;
+	}
+
 	uint32_t Machine::peek32(const uint32_t _addr)
 	{
 		return read32(_addr);

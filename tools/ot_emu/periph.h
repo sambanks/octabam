@@ -134,6 +134,84 @@ namespace ot
 		uint64_t m_pushed = 0;
 	};
 
+	// ---- eDMA --------------------------------------------------------------
+	// The MCF5445x eDMA, as far as the DSP frame exchange and the ColdFire's
+	// per-frame EMAC work use it. Route A's `class Edma`, rule for rule.
+	//
+	// Registers: TCDs at 0xfc045000, 32 bytes per channel (SADDR +0, SOFF +4,
+	// ATTR +6, NBYTES +8, SLAST +0xc, DADDR +0x10, CITER +0x14, DOFF +0x16,
+	// DLAST_SGA +0x18, BITER +0x1c, CSR +0x1e); control bytes at 0xfc04401c
+	// CINT (clear a channel's request; 0x40 = all), +0x1e SSRT (software-start
+	// a channel), +0x1f CDNE (clear DONE). A channel starts by SSRT or by
+	// CSR.START. On completion DONE is set; if CSR.INTMAJOR its INTC0 source
+	// (8 + channel) is asserted until CINT; if CSR.MAJORELINK the channel in
+	// CSR bits 8-12 starts.
+	//
+	// That last rule IS the audio chain the frame handler kicks: ch1 CSR 0x621
+	// links to ch6, ch6's 0x720 links to ch7, ch7's 0x0002 raises source 15,
+	// and the seven-step completion ISR then SSRTs ch1 and ch0 in turn.
+	//
+	// ⚠️ NO DATA MOVES. Audio is out of route A's scope and out of this
+	// model's; COMPLETION TIMING is the one thing that has to be right,
+	// because the exchange is a two-frame pipeline with ~64k instructions of
+	// EMAC work inside it. THREE RULES, and each wrong version produced its
+	// own reproducible symptom in route A (RTOS_FORK.md §8.1):
+	//
+	//   * a CSR.START of a HOST-PORT channel (SADDR or DADDR inside
+	//     0x20000000-0x20000fff) is the frame's audio stream, and the chain it
+	//     links completes at the DSP's NEXT 16-SAMPLE BOUNDARY, as a whole.
+	//     ❌ "kick + 16" gave an 18.5-sample period and dropped every sixth
+	//     frame. ❌ "at once" re-raised source 15 before state 0 could ack it
+	//     and the ISR spun in state 6.
+	//   * an SSRT is one of the ISR's 256-byte control transfers over the same
+	//     host port: bus speed, completes AT ONCE.
+	//   * a CSR.START of a MEMORY-TO-MEMORY channel is a copy the caller
+	//     busy-waits for at 0x400035a8: AT ONCE. ❌ Holding it for a frame
+	//     spun forever.
+	//
+	// A linked channel completes WITH its parent (a burst), which is why the
+	// chain is one event and not three.
+	class Edma
+	{
+	public:
+		static constexpr uint32_t g_base = 0xfc044000, g_tcd = 0xfc045000;
+		enum : uint32_t { CINT = 0x1c, SSRT = 0x1e, CDNE = 0x1f };
+		enum : uint16_t { START = 0x0001, INTMAJOR = 0x0002, MAJORELINK = 0x0020, DONE = 0x0080 };
+		static constexpr uint32_t g_hostPortLo = 0x20000000, g_hostPortHi = 0x20001000;
+
+		bool irq(uint32_t _ch) const { return m_irq[_ch & 15]; }
+		uint64_t started() const { return m_started; }
+		size_t outstanding() const { return m_due.size(); }
+
+		// The DSP's next frame boundary; `Rtos::tickTimers` keeps it current.
+		void setBoundary(double _b) { m_boundary = _b; }
+		void advance(double _now);
+
+		uint32_t read(uint32_t _addr, uint32_t _size) const;
+		void write(uint32_t _addr, uint32_t _size, uint32_t _val, bool _replay);
+
+		// The TAPE hook: (channel, paced). Route A's `on_transfer`.
+		void setTransferHook(std::function<void(uint32_t, bool)> _fn) { m_onTransfer = std::move(_fn); }
+
+		uint32_t tcdField(uint32_t _ch, uint32_t _off, uint32_t _n) const { return field(_ch, _off, _n); }
+
+	private:
+		uint32_t field(uint32_t _ch, uint32_t _off, uint32_t _n) const;
+		uint16_t csr(uint32_t _ch) const { return static_cast<uint16_t>(field(_ch, 0x1e, 2)); }
+		void setCsr(uint32_t _ch, uint16_t _v);
+		bool paced(uint32_t _ch) const;
+		void start(uint32_t _ch, bool _paced);
+		void complete(uint32_t _ch);
+
+		std::array<uint8_t, 16 * 32> m_tcd = {};
+		std::unordered_map<uint32_t, uint32_t> m_regs;
+		std::array<bool, 16> m_irq = {};
+		std::unordered_map<uint32_t, double> m_due;		// channel -> sample it completes at
+		double m_boundary = g_framePeriod;
+		uint64_t m_started = 0;
+		std::function<void(uint32_t, bool)> m_onTransfer;
+	};
+
 	// ---- INTC --------------------------------------------------------------
 	// MCF54455RM rev 5 chapter 17. IPRH/L +0x00/+0x04 (read back what is
 	// asserted), IMRH/L +0x08/+0x0c, INTFRCH/L +0x10/+0x14, SIMR/CIMR bytes at

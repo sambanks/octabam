@@ -45,6 +45,7 @@ int main(int _argc, char** _argv)
 	std::string serialOut;
 	double runMs = 1000.0;
 	double ips = 3990.0;
+	bool frame = false;			// the DSP frame clock; off by default, as in route A
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -57,6 +58,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--serial-out" && i + 1 < _argc)	serialOut = _argv[++i];
 		else if(a == "--ms" && i + 1 < _argc)	runMs = std::atof(_argv[++i]);
 		else if(a == "--ips" && i + 1 < _argc)	ips = std::atof(_argv[++i]);
+		else if(a == "--frame")					frame = true;
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -103,7 +105,7 @@ int main(int _argc, char** _argv)
 	if(stop == ot::Machine::Stop::Handoff)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
-		ot::Rtos rtos(m, ips);
+		ot::Rtos rtos(m, ips, 264e6, frame);
 		rtos.install();
 		const auto rs = rtos.run(runMs);
 		static const char* const g_rtosNames[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
@@ -113,6 +115,10 @@ int main(int _argc, char** _argv)
 			rtos.ms(), rtos.created().size(), rtos.dispatches().size(), rtos.ran().size(),
 			static_cast<unsigned long long>(rtos.pit0Fired()),
 			static_cast<unsigned long long>(rtos.idleSkips()), rtos.seeded());
+		std::printf("frame      : %s -- %llu frame interrupt(s) taken, %llu eDMA transfer(s) started\n",
+			frame ? "on" : "off (route A's default: main unmasks source 1 unconditionally)",
+			static_cast<unsigned long long>(rtos.frameCount()),
+			static_cast<unsigned long long>(rtos.edmaStarted()));
 		std::vector<std::string> problems;
 		const bool ok = rtos.gate(&problems);
 		std::printf("M6a gate   : %s\n", ok ? "PASS" : "FAIL");

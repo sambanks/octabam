@@ -344,6 +344,53 @@ comparison would be decoration.
 **Gate:** `ctest` 6/6; the oracle diff reports **8 compared fields agree, 0
 disagreements**; `make check` green.
 
+## Milestone O6 — the eDMA and the frame clock ⛔ BLOCKED on O7 (8 Sep 2026)
+
+The model is written and unit-gated; its **fidelity** gate is M6c, which needs
+a loaded project and a started transport — O7. `COLDFIRE_WORKORDER.md` carries
+the full entry; the two things worth keeping here:
+
+**The three completion rules, and watching the gate fail.** `Edma` was
+implemented first with route A's own *wrong* rule — everything completes at
+once — and the gate failed on exactly the four paced assertions and nothing
+else, which is the symptom route A recorded ("re-raised source 15 before state
+0 could ack it; the ISR spun in state 6"). Fixing `start` to book a paced
+channel at the DSP's next 16-sample boundary turned all 19 green. The other
+two rules (an `SSRT` is bus speed; a memory-to-memory `START` is a copy the
+caller busy-waits for) complete at once, and a linked channel is a burst that
+completes **with** its parent, so ch1 → ch6 → ch7 is one boundary event.
+
+✅ A detail that fell out of writing the test: **ch1's CSR `0x621` has no
+INTMAJOR.** Only ch7 raises a line, and channel 7 is INTC0 source 8 + 7 = 15
+— exactly the source route A names for the end of that chain. The first
+version of the test asserted a line for ch1 and was wrong; the model was
+right.
+
+**The frame latch is cleared on the interrupt ACKNOWLEDGE.** Route A clears
+`frame_pending` as it pushes the frame, because it hand-rolls the push. This
+port lets Musashi dispatch the exception, so offering a line and having it
+taken are different events — the latch is cleared from
+`Machine::readIrqUserVector`, the core's own acknowledge, which is the same
+moment. It is a **latch, not a count**: a masked edge source remembers one
+edge, and counting them delivered ~540 phantom frames back to back in route A.
+
+### What was measured about the block, rather than assumed
+
+- ✅ Route A **cannot run with the frame clock on from boot**: a bare
+  `Rtos(frame=True)` faults on unmapped memory, and priming the auto-map hook
+  leaves its own state unusable. So there is no intermediate oracle
+  comparison for the frame clock — it is M6c or nothing.
+- ✅ The port with `--frame` is identical to frame-off through 100 ms, then
+  wedges: dispatches frozen at 40 from 205 ms through 400 ms while PIT0 keeps
+  firing, **1 frame interrupt taken, 0 eDMA transfers started**. No frame is
+  delivered before main's unmask, so the mask is respected.
+- 🟡 The wedge is *inferred* to be the ISR waiting for a DSP exchange nothing
+  starts (the host port is O8, the chain is kicked from the sequencer path in
+  O7). **Whether the frame model is right in the configuration that matters
+  is not established, and only M6c establishes it.**
+- ✅ No regression with the clock off: the oracle diff is still 8 compared
+  fields, zero disagreements; `ctest` 6/6; `make check` green.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

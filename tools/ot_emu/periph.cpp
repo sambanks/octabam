@@ -124,6 +124,132 @@ namespace ot
 			m_regs[_off] = _val;
 	}
 
+	// ---- eDMA --------------------------------------------------------------
+	uint32_t Edma::field(const uint32_t _ch, const uint32_t _off, const uint32_t _n) const
+	{
+		uint32_t v = 0;
+		for(uint32_t i = 0; i < _n; ++i)
+			v = (v << 8) | m_tcd[(_ch & 15) * 32 + _off + i];
+		return v;
+	}
+
+	void Edma::setCsr(const uint32_t _ch, const uint16_t _v)
+	{
+		m_tcd[(_ch & 15) * 32 + 0x1e] = static_cast<uint8_t>(_v >> 8);
+		m_tcd[(_ch & 15) * 32 + 0x1f] = static_cast<uint8_t>(_v);
+	}
+
+	// A host-port channel: either end of the transfer is inside the DSP's
+	// window. Route A checks SADDR and DADDR, and nothing else.
+	bool Edma::paced(const uint32_t _ch) const
+	{
+		for(const uint32_t off : {0u, 0x10u})
+		{
+			const auto a = field(_ch, off, 4);
+			if(a >= g_hostPortLo && a < g_hostPortHi)
+				return true;
+		}
+		return false;
+	}
+
+	void Edma::start(const uint32_t _ch, const bool _paced)
+	{
+		if(m_onTransfer)
+			m_onTransfer(_ch, _paced);
+		setCsr(_ch, static_cast<uint16_t>(csr(_ch) & ~DONE));
+		++m_started;
+		if(_paced)
+			// The DSP delivers its frame on ITS clock, so the completion is
+			// booked for the next 16-sample boundary -- NOT kick + 16, which
+			// gave an 18.5-sample period and dropped every sixth frame, and
+			// NOT at once, which re-raised source 15 before state 0 could ack
+			// it and left the ISR spinning in state 6. `setdefault`: a channel
+			// already booked keeps its EARLIER completion.
+			m_due.emplace(_ch & 15, m_boundary);
+		else
+			complete(_ch);
+	}
+
+	void Edma::complete(const uint32_t _ch)
+	{
+		const auto c = csr(_ch);
+		setCsr(_ch, static_cast<uint16_t>((c & ~START) | DONE));
+		if(c & INTMAJOR)
+			m_irq[_ch & 15] = true;
+		if(c & MAJORELINK)					// the linked channel is a BURST:
+			start((c >> 8) & 0x1f, false);	// it completes with its parent
+	}
+
+	void Edma::advance(const double _now)
+	{
+		for(auto it = m_due.begin(); it != m_due.end();)
+		{
+			if(_now >= it->second)
+			{
+				const auto ch = it->first;
+				it = m_due.erase(it);
+				complete(ch);
+			}
+			else
+				++it;
+		}
+	}
+
+	uint32_t Edma::read(const uint32_t _addr, const uint32_t _size) const
+	{
+		if(_addr >= g_tcd && _addr < g_tcd + m_tcd.size())
+		{
+			const auto off = _addr - g_tcd;
+			uint32_t v = 0;
+			for(uint32_t i = 0; i < _size && off + i < m_tcd.size(); ++i)
+				v = (v << 8) | m_tcd[off + i];
+			return v;
+		}
+		const auto it = m_regs.find(_addr);
+		return it != m_regs.end() ? it->second : 0;
+	}
+
+	void Edma::write(const uint32_t _addr, const uint32_t _size, const uint32_t _val, const bool _replay)
+	{
+		if(_addr >= g_tcd && _addr < g_tcd + m_tcd.size())
+		{
+			const auto off = _addr - g_tcd;
+			for(uint32_t i = 0; i < _size && off + i < m_tcd.size(); ++i)
+				m_tcd[off + i] = static_cast<uint8_t>(_val >> (8 * (_size - 1 - i)));
+			// A write that REACHES the CSR and carries START kicks the
+			// channel -- route A's `off % 32 + size > 0x1e and (val & START)`.
+			if(!_replay && (off % 32) + _size > 0x1e && (_val & START))
+			{
+				const auto ch = static_cast<uint32_t>(off / 32);
+				start(ch, paced(ch));
+			}
+			return;
+		}
+		const auto off = _addr - g_base;
+		if(off == SSRT && _size == 1)
+		{
+			if(!_replay)
+				start(_val & 0x0f, false);	// a control transfer: bus speed
+		}
+		else if(off == CINT && _size == 1)
+		{
+			if(_val & 0x40)
+				m_irq = {};
+			else
+				m_irq[_val & 0x0f] = false;
+		}
+		else if(off == CDNE && _size == 1)
+		{
+			if(_val & 0x40)
+				for(uint32_t c = 0; c < 16; ++c)
+					setCsr(c, static_cast<uint16_t>(csr(c) & ~DONE));
+			else
+				setCsr(_val & 0x0f, static_cast<uint16_t>(csr(_val & 0x0f) & ~DONE));
+		}
+		else
+			m_regs[_addr] = _val;
+	}
+
 	// ---- DSPI --------------------------------------------------------------
 	uint32_t Dspi::read(const uint32_t _off, const uint32_t _size)
 	{

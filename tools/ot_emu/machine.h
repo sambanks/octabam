@@ -93,6 +93,16 @@ namespace ot
 
 		uint32_t onIllegalInstruction(uint32_t _opcode) override;
 
+		// The interrupt ACKNOWLEDGE: the core calls this when it actually
+		// takes a queued vector, which is the moment route A clears its frame
+		// latch (`_deliver` clears `frame_pending` as it pushes the frame).
+		// Offering a line and having it taken are different events here --
+		// Musashi dispatches the exception itself -- so the latch has to be
+		// cleared from the ack, not from the offer.
+		uint32_t readIrqUserVector(uint8_t _level) override;
+		using AckHook = std::function<void(uint8_t _vector, uint8_t _level)>;
+		void setAckHook(AckHook _h) { m_ack = std::move(_h); }
+
 		// -- driving it ------------------------------------------------------
 		// Run until `trap #0` (the handoff), an illegal instruction, or the
 		// budget. Returns why it stopped. This is the BOOT: it carries the
@@ -263,6 +273,7 @@ namespace ot
 		std::vector<uint8_t>* m_lastAutoData = nullptr;
 		uint8_t* autoByte(uint32_t _addr, bool _create);
 		std::function<void(Machine&, uint32_t)> m_step;
+		AckHook m_ack;
 		uint64_t m_instructions = 0;
 		uint64_t m_v4e = 0;			// instructions the V4e layer supplied
 		uint32_t m_profileEvery = 0;

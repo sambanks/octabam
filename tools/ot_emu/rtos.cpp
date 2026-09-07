@@ -41,7 +41,7 @@ namespace ot
 		}
 	}
 
-	Rtos::Rtos(Machine& _m, const double _ips, const double _pitClockHz)
+	Rtos::Rtos(Machine& _m, const double _ips, const double _pitClockHz, const bool _frame)
 		: m_machine(_m)
 		, m_ips(_ips)
 		, m_pit0("PIT0", _pitClockHz)
@@ -60,6 +60,13 @@ namespace ot
 		m_intc1.addLine(44, [this] { return m_pit1.irq(); });
 		m_intc0.addLine(27, [this] { return m_uart64.irq(); });
 		m_intc0.addLine(28, [this] { return m_uart68.irq(); });
+		// INTC0 source 1 = the DSP frame clock (vector 0x41), and sources
+		// 8..23 are eDMA channels 0..15 (MCF5445x). 8, 9 and 15 are the ones
+		// the frame exchange raises.
+		m_frame = _frame;
+		m_intc0.addLine(1, [this] { return m_frame && m_framePending; });
+		for(uint32_t ch = 0; ch < 16; ++ch)
+			m_intc0.addLine(8 + ch, [this, ch] { return m_edma.irq(ch); });
 	}
 
 	uint32_t Rtos::curTcb()
@@ -74,6 +81,7 @@ namespace ot
 		if(_addr >= g_pit0 && _addr < g_pit0 + 0x10)    { _out = m_pit0.read(_addr - g_pit0, _size, m_sample); return true; }
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
 		if(_addr >= g_dspi && _addr < g_dspi + 0x100)   { _out = m_dspi.read(_addr - g_dspi, _size); return true; }
+		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) { _out = m_edma.read(_addr, _size); return true; }
 		for(auto* u : {&m_uart64, &m_uart68})
 			if(_addr >= u->base() && _addr < u->base() + 0x20)
 			{
@@ -90,6 +98,7 @@ namespace ot
 		else if(_addr >= g_pit0 && _addr < g_pit0 + 0x10) m_pit0.write(_addr - g_pit0, _size, _val, m_sample);
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
+		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) m_edma.write(_addr, _size, _val, _replay);
 		else
 		{
 			for(auto* u : {&m_uart64, &m_uart68})
@@ -161,6 +170,17 @@ namespace ot
 		// the instruction that made it. This loop steps one instruction at a
 		// time and re-evaluates interrupts after every one, so the hook only
 		// has to count them -- route A needed it to break its burst.
+		// The frame latch is cleared when the CPU TAKES vector 0x41 (INTC0
+		// base 64 + source 1), which is where route A clears it.
+		m_machine.setAckHook([this](const uint8_t _vec, uint8_t)
+		{
+			if(_vec == m_intc0.vectorBase() + 1)
+			{
+				m_framePending = false;
+				++m_frameCount;
+			}
+		});
+
 		m_intc0.setForceHook([this](uint64_t) { ++m_forces; });
 		m_intc1.setForceHook([this](uint64_t) { ++m_forces; });
 		m_installed = true;
@@ -170,6 +190,17 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
+		if(m_frame)
+			while(m_sample >= m_nextFrame)
+			{
+				m_framePending = true;			// a latch, not a count: a masked
+				m_nextFrame += g_framePeriod;	// edge source remembers ONE edge
+			}
+		// The eDMA is told the boundary even when the frame clock is off:
+		// its paced completions are the DSP's clock, not the interrupt's, and
+		// the TCD state is real in every run.
+		m_edma.setBoundary(m_nextFrame);
+		m_edma.advance(m_sample);
 	}
 
 	bool Rtos::anyPending() const
@@ -180,8 +211,8 @@ namespace ot
 
 	bool Rtos::nextExpiry(double& _out) const
 	{
-		bool any = false;
-		double best = 0;
+		bool any = m_frame;
+		double best = m_nextFrame;
 		for(const auto* p : {&m_pit0, &m_pit1})
 		{
 			double e;
