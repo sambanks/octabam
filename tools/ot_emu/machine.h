@@ -97,7 +97,9 @@ namespace ot
 		// takes a queued vector. Offering a line and having it taken are
 		// different events here, because Musashi dispatches the exception
 		// itself, so anything that has to happen "when the interrupt is
-		// delivered" hangs off this.
+		// delivered" hangs off this -- including the frame latch, which route A
+		// clears as it pushes the frame (`_deliver` clears `frame_pending`), so
+		// it must be cleared from the ack and not from the offer.
 		uint32_t readIrqUserVector(uint8_t _level) override;
 		using AckHook = std::function<void(uint8_t _vector, uint8_t _level)>;
 		void setAckHook(AckHook _h) { m_ack = std::move(_h); }

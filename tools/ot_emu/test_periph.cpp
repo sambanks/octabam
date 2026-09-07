@@ -126,6 +126,128 @@ int main()
 		checkEq("IPRL reads back the asserted sources", pri.read(0x04, 4), (1u << 3) | (1u << 4));
 	}
 
+	// ---- eDMA ------------------------------------------------------------
+	// The three completion rules. Each wrong version below is one route A
+	// actually shipped, with the symptom it produced (RTOS_FORK.md §8.1), so
+	// these are negative controls and not decoration.
+	{
+		const uint32_t tcd = ot::Edma::g_tcd;
+		const auto csrAddr = [tcd](uint32_t ch) { return tcd + ch * 32 + 0x1e; };
+		const auto saddr   = [tcd](uint32_t ch) { return tcd + ch * 32 + 0x00; };
+		const auto daddr   = [tcd](uint32_t ch) { return tcd + ch * 32 + 0x10; };
+
+		// RULE 1: a CSR.START of a HOST-PORT channel completes at the DSP's
+		// NEXT 16-sample boundary, not instantly and not at kick + 16.
+		{
+			ot::Edma e;
+			e.write(daddr(1), 4, 0x2000001c, false);		// ch1: host port -> RAM
+			e.setBoundary(16.0);
+			e.write(csrAddr(1), 2, ot::Edma::START | ot::Edma::INTMAJOR, false);
+			check("a host-port START does NOT complete at once",
+				!(e.read(csrAddr(1), 2) & ot::Edma::DONE) && !e.irq(1));
+			e.advance(5.0);
+			check("... nor part-way through the frame", !e.irq(1));
+			// ❌ "kick + 16": kicked at 5, that version completed at 21 and
+			// the period came out 18.5 samples, dropping every sixth frame.
+			e.advance(15.9);
+			check("... nor at kick + 16 (that gave an 18.5-sample period)", !e.irq(1));
+			e.advance(16.0);
+			check("... it completes AT the boundary", e.irq(1));
+			checkEq("... and DONE is set", e.read(csrAddr(1), 2) & ot::Edma::DONE, ot::Edma::DONE);
+		}
+
+		// RULE 2: an SSRT is a control transfer over the same host port and
+		// completes AT ONCE, even though the channel looks paced.
+		{
+			ot::Edma e;
+			e.write(saddr(0), 4, 0x2000001c, false);
+			e.write(csrAddr(0), 2, ot::Edma::INTMAJOR, false);	// no START bit
+			e.setBoundary(16.0);
+			e.write(ot::Edma::g_base + ot::Edma::SSRT, 1, 0, false);
+			check("an SSRT completes at once, host port or not", e.irq(0));
+		}
+
+		// RULE 3: a memory-to-memory START completes at once -- the caller
+		// busy-waits on it at 0x400035a8 and holding it for a frame spun
+		// forever.
+		{
+			ot::Edma e;
+			e.write(saddr(2), 4, 0x4f502c10, false);			// the delay ring
+			e.write(daddr(2), 4, 0x46000000, false);
+			e.setBoundary(16.0);
+			e.write(csrAddr(2), 2, ot::Edma::START | ot::Edma::INTMAJOR, false);
+			check("a memory-to-memory START completes at once", e.irq(2));
+		}
+
+		// THE CHAIN, which is the audio path: ch1 (0x621) links to ch6, ch6
+		// (0x720) links to ch7, ch7 (0x0002) raises source 15. It is ONE
+		// event at the boundary, not three -- a linked channel is a burst and
+		// completes with its parent.
+		{
+			ot::Edma e;
+			e.write(daddr(1), 4, 0x2000001c, false);
+			e.write(csrAddr(6), 2, 0x0720, false);				// link to ch7
+			e.write(csrAddr(7), 2, 0x0002, false);				// INTMAJOR, no link
+			e.setBoundary(16.0);
+			e.write(csrAddr(1), 2, 0x0621, false);				// START|MAJORELINK|link ch6
+			check("the chain has not fired before the boundary", !e.irq(7));
+			e.advance(16.0);
+			// ✅ Only ch7 raises a line: 0x621 and 0x720 have no INTMAJOR, and
+			// channel 7 is INTC0 source 8 + 7 = 15, which is exactly the
+			// source route A names for the end of this chain.
+			check("ch1 -> ch6 -> ch7 complete together, and only ch7 raises a line",
+				e.irq(7) && !e.irq(1) && !e.irq(6));
+			checkEq("the whole chain is one boundary event, 3 starts", e.started(), 3);
+		}
+
+		// CINT and CDNE, the acks.
+		{
+			ot::Edma e;
+			e.write(saddr(3), 4, 0x46000000, false);
+			e.write(daddr(3), 4, 0x46100000, false);
+			e.write(csrAddr(3), 2, ot::Edma::START | ot::Edma::INTMAJOR, false);
+			check("INTMAJOR holds the line until CINT", e.irq(3));
+			e.write(ot::Edma::g_base + ot::Edma::CINT, 1, 3, false);
+			check("CINT drops it", !e.irq(3));
+			checkEq("DONE survives CINT", e.read(csrAddr(3), 2) & ot::Edma::DONE, ot::Edma::DONE);
+			e.write(ot::Edma::g_base + ot::Edma::CDNE, 1, 3, false);
+			checkEq("CDNE clears DONE", e.read(csrAddr(3), 2) & ot::Edma::DONE, 0);
+		}
+		{
+			ot::Edma e;
+			for(uint32_t ch : {4u, 5u})
+			{
+				e.write(saddr(ch), 4, 0x46000000, false);
+				e.write(csrAddr(ch), 2, ot::Edma::START | ot::Edma::INTMAJOR, false);
+			}
+			check("two lines up", e.irq(4) && e.irq(5));
+			e.write(ot::Edma::g_base + ot::Edma::CINT, 1, 0x40, false);
+			check("CINT 0x40 clears them all", !e.irq(4) && !e.irq(5));
+		}
+
+		// A REPLAYED write is the boot's, not the firmware's: it must set the
+		// register state and start NOTHING. Same rule the UART and the PIT
+		// carry, and the reason `install` can seed from the boot's log.
+		{
+			ot::Edma e;
+			e.write(saddr(8), 4, 0x46000000, true);
+			e.write(csrAddr(8), 2, ot::Edma::START | ot::Edma::INTMAJOR, true);
+			check("a replayed START does not run the channel", !e.irq(8));
+			checkEq("... but the CSR is stored", e.read(csrAddr(8), 2) & ot::Edma::START, ot::Edma::START);
+		}
+
+		// A channel whose TCD does not ask for an interrupt must not raise
+		// one: ch0 and ch1 carry INTMAJOR from the boot, and route A's note
+		// is that nothing in the model asserts a source the TCD did not ask
+		// for.
+		{
+			ot::Edma e;
+			e.write(saddr(9), 4, 0x46000000, false);
+			e.write(csrAddr(9), 2, ot::Edma::START, false);		// no INTMAJOR
+			check("no INTMAJOR, no line", !e.irq(9));
+		}
+	}
+
 	// ---- the ATA card ----------------------------------------------------
 	// The task-file model. The image here is synthetic -- a real card image is
 	// built by route A's own Python (`emu_rtos.stage_project`) and read from

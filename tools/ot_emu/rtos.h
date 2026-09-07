@@ -75,7 +75,16 @@ namespace ot
 	class Rtos
 	{
 	public:
-		explicit Rtos(Machine& _m, double _ips = 3990.0, double _pitClockHz = 264e6);
+		// ⚠️ `_frame` is OFF by default, as it is in route A, and the reason
+		// is not caution: main's own boot tail unmasks INTC0 source 1
+		// unconditionally (0x4001fc2e), so once the clock is modelled it
+		// fires every 16 samples in EVERY run whether or not anything needs
+		// the sequencer -- about 16x more dispatches, since PIT0's 220-sample
+		// period is the coarsest timer otherwise. M6a's gate and the O5
+		// serial comparison were both established without it. The register
+		// state is real either way; only the model's assertion is gated.
+		explicit Rtos(Machine& _m, double _ips = 3990.0, double _pitClockHz = 264e6,
+			bool _frame = false);
 
 		// A DELIBERATE DEPARTURE FROM ROUTE A, for the negative control only.
 		// The gate compares the serial byte count, and a gate that has never
@@ -167,6 +176,9 @@ namespace ot
 		double sample() const { return m_sample; }
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
+		uint64_t frameCount() const { return m_frameCount; }
+		uint64_t edmaStarted() const { return m_edma.started(); }
+		Edma& edma() { return m_edma; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
 		// Every access to the task-file window, in order, for diffing against
@@ -220,6 +232,7 @@ namespace ot
 		double m_sample = 0.0;
 
 		Pit m_pit0, m_pit1;
+		Edma m_edma;
 		Intc m_intc0, m_intc1;
 		Uart m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
 		Dspi m_dspi;
@@ -253,6 +266,17 @@ namespace ot
 		std::vector<Dispatch> m_dispatches;
 		std::pair<uint32_t, uint32_t> m_firstSwitch{0, 0};
 		uint64_t m_idleSkips = 0, m_forces = 0;
+		// ⚠️ A LATCH, NOT A COUNT. While the source is masked -- through the
+		// boot, and through the handler's own self-mask for the whole DSP
+		// exchange -- a real edge source remembers ONE edge, not how many it
+		// missed. Route A counted them once and delivered ~540 phantom frames
+		// back to back the moment main unmasked (measured 6 Sep 2026). The
+		// handler re-arms itself only through the eDMA exchange; the ISR's
+		// `rte` is not the ack.
+		bool m_frame = false;
+		bool m_framePending = false;
+		double m_nextFrame = g_framePeriod;
+		uint64_t m_frameCount = 0;
 		size_t m_seeded = 0;
 		std::string m_why;
 		Quirks m_quirks;

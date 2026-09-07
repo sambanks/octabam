@@ -155,6 +155,53 @@ That is not a defect — route A covers the same spans — but O7's card is what
 would make the two machines allocate from the same place, and it is worth
 re-checking the span list once the project loads.
 
+### O6 — the eDMA and the frame clock — ⛔ **BLOCKED on O7** (8 Sep 2026)
+
+**The code is written and unit-gated; its FIDELITY gate cannot run.** Do not
+re-do the model — take O7, then come back and run M6c.
+
+`periph.{h,cpp}` now carries `Edma`, translated rule for rule, and
+`rtos.{h,cpp}` carries the frame clock (INTC0 source 1 as a LATCH, eDMA
+sources 8..23, the boundary fed from `tickTimers`, and the latch cleared on
+the CPU's interrupt ACKNOWLEDGE — `Machine::readIrqUserVector`, which is
+where route A clears it). `test_periph` gates 19 assertions: all three
+completion rules, each of route A's wrong versions, the ch1→ch6→ch7 chain as
+one boundary event, CINT/CDNE, replay, and "no INTMAJOR, no line". ✅ The
+gate was watched FAILING first, on route A's own "completes at once" version
+— the four paced assertions, and only those.
+
+**What blocks it.** O6's gate is M6c, which needs a loaded project, a started
+transport, a poked trig and the trig log — that is O7 *plus* the live-call
+machinery (`call_as_main`, `start_transport_live`, `poke_trig`,
+`install_trig_log`). There is no intermediate oracle comparison, and this was
+checked rather than assumed:
+
+- ✅ Route A **cannot be run with the frame clock on from boot at all.** A
+  bare `Rtos(frame=True)` faults on unmapped memory immediately (nothing has
+  primed the auto-map hook), and priming it leaves route A's own `Rtos` state
+  unusable (`self.pc` is None). Its sequencer path turns the frame clock on
+  only *after* the load, which is exactly what the O7 dependency is.
+- ✅ The port with `--frame` from boot is **identical to frame-off through
+  100 ms** (21 dispatches, 0 tasks either way), then wedges between 100 and
+  205 ms: dispatches frozen at 40 from 205 ms through 400 ms while PIT0 keeps
+  firing (41 → 80), **exactly 1 frame interrupt taken, 0 eDMA transfers
+  started, 0 tasks created.** The mask is respected — no frame is delivered
+  before 100 ms.
+- 🟡 **Inferred, not measured:** the wedge is the frame ISR self-masking and
+  waiting for a DSP exchange that never starts, because nothing drives the
+  host port (O8) and the eDMA chain is only kicked from the sequencer path
+  (O7). **Nobody has established that the port's frame model is right in the
+  configuration that matters** — the unit gate covers the rules, M6c covers
+  the fidelity, and only M6c decides.
+
+✅ **No regression:** with the frame clock off (the default, as in route A)
+nothing changed — the oracle diff is still 8 compared fields with zero
+disagreements, `ctest` 6/6, `make check` green.
+
+**To unblock:** land O7, then run M6c and compare against `RTOS_FORK.md` §8.
+
+<details><summary>the original entry</summary>
+
 ### O6 — the eDMA and the frame clock *(Opus, but read §8.1 first)*
 
 **Translates:** `class Edma` — the TCD register file, `SSRT`/`CINT`/`CDNE`,
@@ -171,6 +218,7 @@ poked trig) lands **the same byte `0xd3` in `0x46104d15[0]` at frame 344**
 after transport start, with 28 ticks in 400 frames. `RTOS_FORK.md` §8.
 Requires the project load (O7) — so O6 and O7 may be one session.
 
+</details>
 ### O7 — the card and the project load — ⛔ **BLOCKED** (8 Sep 2026)
 
 **Most of it is built and gated; the mount does not complete.** Do not re-do
