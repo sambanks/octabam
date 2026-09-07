@@ -77,6 +77,17 @@ namespace ot
 		void     write16(uint32_t _addr, uint16_t _val) override;
 		uint16_t readImm16(uint32_t _addr) override;
 
+		// ⚠️ 32-BIT ACCESSES MUST ARRIVE WHOLE. Musashi's memoryOps compose a
+		// longword from two 16-bit halves unless the machine provides these,
+		// and a peripheral register is not two halves: the DSPI's status word
+		// (0xfc05c02c) came back as 0x0000ffff instead of its real value, so
+		// the firmware's `(SR >> 4) & 15 == 2` wait at 0x4001c504 could never
+		// match and main parked there forever -- no task was ever created
+		// (measured 7 Sep 2026, the second run of the O4 loop). The same class
+		// as the PLL truncation that stalled the boot in O1.
+		uint32_t read32(uint32_t _addr);
+		void     write32(uint32_t _addr, uint32_t _val);
+
 		uint32_t getResetPC() override { return g_imageBase; }
 		uint32_t getResetSP() override { return g_resetSp; }
 
@@ -84,14 +95,59 @@ namespace ot
 
 		// -- driving it ------------------------------------------------------
 		// Run until `trap #0` (the handoff), an illegal instruction, or the
-		// budget. Returns why it stopped.
+		// budget. Returns why it stopped. This is the BOOT: it carries the
+		// stall detector and the auto-poke, and it stops AT the handoff
+		// without dispatching it, the way route A's `boot()` does.
 		enum class Stop { Handoff, Illegal, Budget, Fault };
 		Stop run(uint64_t _maxInstructions);
+
+		// One instruction, with the V4e layer and the A-line dispatch, and
+		// nothing else -- no stall detector, no handoff check. This is what
+		// `Rtos` drives once the boot has handed over; it returns false if an
+		// opcode was genuinely unknown (`why()` says which).
+		bool step();
+
+		// The vector base register. The firmware sets it itself with a
+		// `movec %a0,%vbr` at 0x40000db6, so after a boot this reads
+		// 0x40000000 -- ✅ checked rather than assumed, because Musashi's
+		// ColdFire support for that register is what makes native exception
+		// dispatch possible at all (route A had to hand-roll it: Unicorn's
+		// CFV4E treats VBR as a no-op).
+		uint32_t vbr() const;
 
 		uint64_t instructions() const { return m_instructions; }
 		uint64_t v4eExecuted() const { return m_v4e; }
 		uint32_t pc() const;
 		std::string why() const { return m_why; }
+
+		// -- the peripheral window -------------------------------------------
+		// A handler that answers reads and takes writes for 0xfc000000 and the
+		// other windows. Returning false from the reader falls through to the
+		// boot's override table (and to all-ones), which is how the models can
+		// be installed for the addresses they own and no others.
+		//
+		// Route A's shape, deliberately: the BOOT runs against the all-ones
+		// stub with no models at all, and the models are installed afterwards
+		// and seeded by REPLAYING the writes the boot made. Modelling during
+		// the boot would answer its wait-until-set spins differently and the
+		// two emulators would stop being comparable.
+		using PeriphRead  = std::function<bool(uint32_t _addr, uint8_t _size, uint32_t& _out)>;
+		using PeriphWrite = std::function<void(uint32_t _addr, uint8_t _size, uint32_t _val)>;
+		void setPeripheralHandlers(PeriphRead _r, PeriphWrite _w)
+		{
+			m_periphReadFn = std::move(_r);
+			m_periphWriteFn = std::move(_w);
+		}
+
+		// Every write the run made into a peripheral window, in order: what
+		// `Rtos` replays to seed its models (route A logs 7,886 of them on the
+		// stock image).
+		struct PeriphWriteRec { uint32_t addr; uint8_t size; uint32_t val; };
+		const std::vector<PeriphWriteRec>& peripheralWrites() const { return m_periphWrites; }
+
+		// A stateful peripheral reply, for the handful the boot needs that are
+		// not constants (the DSP host port's ping index toggles 0/1).
+		void setOverrideFn(uint32_t _addr, std::function<uint32_t()> _fn) { m_overrideFns[_addr] = std::move(_fn); }
 
 		// Interception, the whole point of a headless build: a callback per
 		// instruction (nullptr = off), and direct memory access for probes.
@@ -132,7 +188,11 @@ namespace ot
 		// the PLL register read back 0x0000ffff instead of 0x16000000 and the
 		// firmware spun forever in its clock check at 0x4000f9e8.
 		std::unordered_map<uint32_t, uint8_t> m_overrides;
+		std::unordered_map<uint32_t, std::function<uint32_t()>> m_overrideFns;
 		void override32(uint32_t _addr, uint32_t _val);
+		PeriphRead m_periphReadFn;
+		PeriphWrite m_periphWriteFn;
+		std::vector<PeriphWriteRec> m_periphWrites;
 		std::vector<Access> m_periphLog;
 		std::function<void(Machine&, uint32_t)> m_step;
 		uint64_t m_instructions = 0;

@@ -18,8 +18,10 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <string>
 
 #include "machine.h"
+#include "rtos.h"
 
 namespace
 {
@@ -38,6 +40,9 @@ int main(int _argc, char** _argv)
 	uint64_t maxInstructions = 50'000'000;	// route A's own budget
 	bool showPeripherals = false;
 	bool profile = false;
+	std::string golden;
+	double runMs = 1000.0;
+	double ips = 3990.0;
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -46,9 +51,13 @@ int main(int _argc, char** _argv)
 		else if(a == "--max" && i + 1 < _argc)	maxInstructions = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--periph")				showPeripherals = true;
 		else if(a == "--profile")				profile = true;
+		else if(a == "--golden" && i + 1 < _argc)	golden = _argv[++i];
+		else if(a == "--ms" && i + 1 < _argc)	runMs = std::atof(_argv[++i]);
+		else if(a == "--ips" && i + 1 < _argc)	ips = std::atof(_argv[++i]);
 		else
 		{
-			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph]\n");
+			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
+			"              [--golden FILE] [--ms N]\n");
 			return 2;
 		}
 	}
@@ -84,6 +93,32 @@ int main(int _argc, char** _argv)
 			m.disassemble(hot[i].first, buf);
 			std::printf("   %#08x  %8llu  %s\n", hot[i].first,
 				static_cast<unsigned long long>(hot[i].second), buf);
+		}
+	}
+
+	// -- past the handoff: the RTOS itself (milestone O4) -------------------
+	if(stop == ot::Machine::Stop::Handoff)
+	{
+		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
+		ot::Rtos rtos(m, ips);
+		rtos.install();
+		const auto rs = rtos.run(runMs);
+		static const char* const g_rtosNames[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
+		std::printf("rtos       : %s -- %s\n", g_rtosNames[static_cast<int>(rs)], rtos.why().c_str());
+		std::printf("             %.2f ms, %zu tasks created, %zu dispatches, %zu ran, "
+			"PIT0 fired %llu, %llu idle skips, seeded from %zu boot writes\n",
+			rtos.ms(), rtos.created().size(), rtos.dispatches().size(), rtos.ran().size(),
+			static_cast<unsigned long long>(rtos.pit0Fired()),
+			static_cast<unsigned long long>(rtos.idleSkips()), rtos.seeded());
+		std::vector<std::string> problems;
+		const bool ok = rtos.gate(&problems);
+		std::printf("M6a gate   : %s\n", ok ? "PASS" : "FAIL");
+		for(const auto& p : problems)
+			std::printf("   - %s\n", p.c_str());
+		if(!golden.empty())
+		{
+			rtos.writeGoldenJson(golden);
+			std::printf("golden     : %s\n", golden.c_str());
 		}
 	}
 

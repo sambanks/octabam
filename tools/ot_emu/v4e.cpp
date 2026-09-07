@@ -370,6 +370,59 @@ namespace ot::v4e
 			return Result::Handled;
 		}
 
+		// ---- ISA_C: BITREV / BYTEREV / FF1 ---------------------------------
+		// `0000 0ooo 1100 0rrr`: 0x00C0 bitrev, 0x02C0 byterev, 0x04C0 ff1,
+		// each ORed with the data register.
+		//
+		// ❌ THIS RETRACTS O2's NOTE that "byterev and ff1 are not V4e ...
+		// nothing needs them". The assembler does refuse them for -mcpu=5475
+		// and objdump prints `.short 0x04c2` rather than decoding it -- but
+		// the FIRMWARE CONTAINS THEM and reaches one at 0x4004098e, in the
+		// task-creation path, which is where the O4 run loop stopped
+		// (measured 7 Sep 2026). A toolchain that will not assemble an opcode
+		// is not evidence the part lacks it; the image is.
+		//
+		// ✅ The semantics are route A's `emu_bringup._isa_c_shim`, which is
+		// the oracle: ff1 counts LEADING ZEROS and sets N and Z from the
+		// SOURCE (not the result) with V and C cleared; bitrev and byterev
+		// leave the condition codes alone.
+		if((_opcode & 0xfff8) == 0x00c0 || (_opcode & 0xfff8) == 0x02c0 || (_opcode & 0xfff8) == 0x04c0)
+		{
+			const uint32_t rn = _opcode & 7;
+			uint32_t v = reg(_m, dReg(rn));
+			switch(_opcode & 0xfff8)
+			{
+			case 0x00c0:					// bitrev: reverse all 32 bits
+				{
+					uint32_t out = 0;
+					for(uint32_t i = 0; i < 32; ++i)
+						out |= ((v >> i) & 1u) << (31 - i);
+					v = out;
+				}
+				break;
+			case 0x02c0:					// byterev: reverse the four bytes
+				v = ((v & 0x000000ffu) << 24) | ((v & 0x0000ff00u) << 8)
+				  | ((v & 0x00ff0000u) >> 8) | ((v & 0xff000000u) >> 24);
+				break;
+			default:						// ff1: leading-zero count
+				{
+					auto sr = reg(_m, M68K_REG_SR) & ~0x0fu;
+					if(v & 0x80000000u)		// N and Z from the SOURCE
+						sr |= g_ccrN;
+					if(v == 0)
+						sr |= g_ccrZ;
+					setReg(_m, M68K_REG_SR, sr);
+					uint32_t bits = 0;
+					for(uint32_t t = v; t; t >>= 1)
+						++bits;
+					v = 32 - bits;
+				}
+				break;
+			}
+			setReg(_m, dReg(rn), v);
+			return Result::Handled;
+		}
+
 		// ---- the EMAC ------------------------------------------------------
 		// The gate this port must pass before anything it computes is
 		// trusted: `tools/ot_emu/test_emac.cpp`, and the hardware semantics it
