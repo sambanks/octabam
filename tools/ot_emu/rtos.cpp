@@ -82,6 +82,26 @@ namespace ot
 		if(_addr >= g_pit1 && _addr < g_pit1 + 0x10)    { _out = m_pit1.read(_addr - g_pit1, _size, m_sample); return true; }
 		if(_addr >= g_dspi && _addr < g_dspi + 0x100)   { _out = m_dspi.read(_addr - g_dspi, _size); return true; }
 		if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) { _out = m_edma.read(_addr, _size); return true; }
+		if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
+		{
+			const auto off = _addr - AtaCard::g_base;
+			_out = m_card->read(off, _size);
+			if(m_ataTraceOn && m_ataTrace.size() < 200000)
+			{
+				char line[64];
+				std::snprintf(line, sizeof line, "R %02x %u %04x %08x", off, _size, _out & 0xffff, m_machine.pc());
+				m_ataTrace.emplace_back(line);
+			}
+			// INTRQ is cleared by a read of the STATUS register (not the
+			// alternate status), and raised again when the next sector is
+			// ready: one interrupt per sector.
+			if(off == AtaCard::R_CMD)
+				m_ataIrq = false;
+			else if(off == AtaCard::R_DATA && m_card->dataPos() % AtaCard::g_sector == 0
+				&& m_card->dataPos() < m_card->dataSize())
+				m_ataIrqDue = m_sample + m_ataLatency;
+			return true;
+		}
 		for(auto* u : {&m_uart64, &m_uart68})
 			if(_addr >= u->base() && _addr < u->base() + 0x20)
 			{
@@ -99,6 +119,29 @@ namespace ot
 		else if(_addr >= g_pit1 && _addr < g_pit1 + 0x10) m_pit1.write(_addr - g_pit1, _size, _val, m_sample);
 		else if(_addr >= g_dspi && _addr < g_dspi + 0x100) m_dspi.write(_addr - g_dspi, _size, _val, _replay);
 		else if(_addr >= Edma::g_base && _addr < Edma::g_tcd + 16 * 32) m_edma.write(_addr, _size, _val, _replay);
+		else if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
+		{
+			const auto off = _addr - AtaCard::g_base;
+			if(m_ataTraceOn && m_ataTrace.size() < 200000)
+			{
+				char line[64];
+				std::snprintf(line, sizeof line, "W %02x %u %04x %08x", off, _size, _val & 0xffff, m_machine.pc());
+				m_ataTrace.emplace_back(line);
+			}
+			const auto before = m_card->sectorsWritten();
+			m_card->write(off, _size, _val);
+			// A command asserts INTRQ at once -- except a WRITE, which
+			// asserts only once the drive has absorbed a sector.
+			if(off == AtaCard::R_CMD)
+			{
+				if((_val & 0xff) != 0x30)
+					m_ataIrqDue = m_sample + m_ataLatency;
+				if(!m_pcRing.empty() && !m_pcRingArmed)
+					m_pcRingArmed = true;
+			}
+			else if(off == AtaCard::R_DATA && m_card->sectorsWritten() > before)
+				m_ataIrqDue = m_sample + m_ataLatency;
+		}
 		else
 		{
 			for(auto* u : {&m_uart64, &m_uart68})
@@ -172,13 +215,18 @@ namespace ot
 		// has to count them -- route A needed it to break its burst.
 		// The frame latch is cleared when the CPU TAKES vector 0x41 (INTC0
 		// base 64 + source 1), which is where route A clears it.
-		m_machine.setAckHook([this](const uint8_t _vec, uint8_t)
+		m_machine.setAckHook([this](const uint8_t _vec, const uint8_t _level)
 		{
 			if(_vec == m_intc0.vectorBase() + 1)
 			{
 				m_framePending = false;
 				++m_frameCount;
 			}
+			if(m_card && _vec == m_intc1.vectorBase() + g_ataSource)
+				++m_ataInterrupts;
+			if(m_acks.size() < 100000)
+				m_acks.push_back({m_sample, _vec, _level, curTcb(), m_machine.pc(),
+					m_machine.peek32(g_vbr + 4u * _vec)});
 		});
 
 		m_intc0.setForceHook([this](uint64_t) { ++m_forces; });
@@ -201,6 +249,11 @@ namespace ot
 		// the TCD state is real in every run.
 		m_edma.setBoundary(m_nextFrame);
 		m_edma.advance(m_sample);
+		if(m_ataIrqDue != 0.0 && m_sample >= m_ataIrqDue)
+		{
+			m_ataIrqDue = 0.0;
+			m_ataIrq = true;
+		}
 	}
 
 	bool Rtos::anyPending() const
@@ -211,8 +264,18 @@ namespace ot
 
 	bool Rtos::nextExpiry(double& _out) const
 	{
-		bool any = m_frame;
-		double best = m_nextFrame;
+		bool any = false;
+		double best = 0.0;
+		if(m_frame)
+		{
+			best = m_nextFrame;
+			any = true;
+		}
+		if(m_ataIrqDue != 0.0 && (!any || m_ataIrqDue < best))
+		{
+			best = m_ataIrqDue;
+			any = true;
+		}
 		for(const auto* p : {&m_pit0, &m_pit1})
 		{
 			double e;
@@ -347,41 +410,215 @@ namespace ot
 			}
 			idleRuns = 0;
 
-			if(pc == g_create)
-				recordCreate();
-
-			// The scheduler's `rte` is the moment a task is (re)entered: the
-			// TCB it is entering is already current, and the PC it resumes at
-			// is the one the frame pops. So the record is taken AFTER the
-			// instruction, from the new PC -- route A records exactly the
-			// popped PC, not the address of the rte.
-			const bool atSchedRte = pc == g_schedRte;
-
-			if(!m_machine.step())
-			{
-				m_why = m_machine.why();
+			if(!stepOnce())
 				return Stop::Illegal;
-			}
-			m_sample += 1.0 / m_ips;
-
-			if(atSchedRte)
-			{
-				const auto cur = curTcb();
-				m_dispatches.push_back({m_sample, cur, m_machine.pc()});
-				m_gateDirty = true;
-				if(m_firstSwitch.first && !m_firstSwitch.second)
-					m_firstSwitch.second = cur;
-			}
-			// The first trap #0 is the boot handing over: whatever context it
-			// saves is the "from" half of the first switch.
-			if(!m_firstSwitch.first && pc == g_handoff)
-				m_firstSwitch.first = curTcb();
-
-			tickTimers();
-			deliver();
 		}
 		m_why = "time";
 		return Stop::Time;
+	}
+
+	// One instruction and everything the loop does around it. Factored out so
+	// `callAsMain` runs against the SAME live machine -- the whole point of
+	// borrowing main rather than detouring is that interrupts and the other
+	// tasks keep running underneath the call.
+	bool Rtos::stepOnce()
+	{
+		const auto pc = m_machine.pc();
+		// The FIRST N after arming, not the last: the question is what the ISR
+		// does, and by the end everything is parked at main's spin.
+		if(m_pcRingArmed && m_pcRingPos < m_pcRing.size())
+			m_pcRing[m_pcRingPos++] = pc;
+		if(pc == g_create)
+			recordCreate();
+
+		// The scheduler's `rte` is the moment a task is (re)entered: the TCB
+		// it is entering is already current, and the PC it resumes at is the
+		// one the frame pops. So the record is taken AFTER the instruction,
+		// from the new PC -- route A records exactly the popped PC, not the
+		// address of the rte.
+		const bool atSchedRte = pc == g_schedRte;
+
+		if(!m_machine.step())
+		{
+			m_why = m_machine.why();
+			return false;
+		}
+		m_sample += 1.0 / m_ips;
+
+		if(atSchedRte)
+		{
+			const auto cur = curTcb();
+			m_dispatches.push_back({m_sample, cur, m_machine.pc()});
+			m_gateDirty = true;
+			if(m_firstSwitch.first && !m_firstSwitch.second)
+				m_firstSwitch.second = cur;
+		}
+		// The first trap #0 is the boot handing over: whatever context it
+		// saves is the "from" half of the first switch.
+		if(!m_firstSwitch.first && pc == g_handoff)
+			m_firstSwitch.first = curTcb();
+
+		tickTimers();
+		deliver();
+		return true;
+	}
+
+	Rtos::Stop Rtos::runToMainSpin(const double _ms)
+	{
+		const double end = m_sample + _ms * g_sampleHz / 1000.0;
+		while(m_sample < end)
+		{
+			// ⚠️ THE PC ALONE, as route A's `until=lambda r: r.pc == MAIN_SPIN`.
+			// Requiring nothing to be pending as well never comes true once
+			// the card is live: the ATA and serial lines assert constantly,
+			// so the park never returned and the load never started.
+			if(m_machine.pc() == g_mainSpin)
+				return Stop::Gate;
+			if(!stepOnce())
+				return Stop::Illegal;
+		}
+		m_why = "never reached main's spin";
+		return Stop::Time;
+	}
+
+	void Rtos::mapCardMemory()
+	{
+		// ✅ MEASURED, and it CORRECTS THE O5 RECORD. These four spans are
+		// mapped EXPLICITLY by route A's `emu_card.attach`, with its own
+		// comment: the boot maps 32 MB at 0x40000000, 32 MB at 0x46000000,
+		// 1 MB at 0x48000000 and 64 KB at 0x100b0000, and the storage stack
+		// and the project loader use the REST of the 256 MB -- the PCM pool,
+		// the sector buffers at 0x4ece3000/0x4eceb200, the delay rings at
+		// 0x4f502c10 -- plus the on-chip SRAM around the boot's window, where
+		// the names (0x100f8480) and the object tables
+		// (0x100b14f0..0x100f7f30) live.
+		//
+		// ❌ O5 concluded that route A GROWS these through `_prime_menu`'s
+		// auto-mapping hook. It does not. `_prime_menu` is called only from
+		// the menu RENDER helpers, none of which run on the golden path, so
+		// that hook is never installed there and route A really does fault on
+		// anything outside its maps. The spans O5 identified were right; the
+		// mechanism was wrong, and the difference matters: an explicit map has
+		// KNOWN BOUNDS, so a wild pointer outside them is still a fault in
+		// route A while this port's auto-map would absorb it silently.
+		for(const auto& [base, size] : {std::pair<uint32_t, uint32_t>{0x42000000, 0x04000000},
+			std::pair<uint32_t, uint32_t>{0x48100000, 0x07f00000},
+			std::pair<uint32_t, uint32_t>{0x10000000, 0x000b0000},
+			std::pair<uint32_t, uint32_t>{0x100c0000, 0x00040000}})
+			m_machine.mapRegion(base, size);
+	}
+
+	void Rtos::attachCard(AtaCard& _card)
+	{
+		m_card = &_card;
+		mapCardMemory();
+		// ⚠️ THE ATA HOST STATUS BYTE, and without it nothing happens at all.
+		// 0xfc0a4039 bit 3 must read CLEAR (`movew` into the CCR, then `bpl`);
+		// an unmodelled peripheral answers all-ones, the bit is set, and the
+		// driver concludes there is no card -- the request posts, SYS runs the
+		// card case, and ZERO ATA commands are issued, with no error anywhere.
+		// Measured on the first run of this milestone. Route A carries it in
+		// `EXTRA_OVERRIDES` from the boot; here it belongs with the card.
+		m_machine.setOverride8(0xfc0a4039, 0x00);
+		m_intc1.addLine(g_ataSource, [this] { return m_ataIrq; });
+	}
+
+	bool Rtos::callAsMain(const uint32_t _addr, const std::vector<uint32_t>& _args, uint32_t& _d0,
+		const uint64_t _budget)
+	{
+		if(m_machine.pc() != g_mainSpin)
+		{
+			char msg[160];
+			std::snprintf(msg, sizeof msg, "callAsMain(%#x): pc is %#x, not main's spin %#x",
+				_addr, m_machine.pc(), g_mainSpin);
+			m_why = msg;
+			return false;
+		}
+		// retaddr at [sp], then the args in the order given -- the convention
+		// the firmware's own call sites use (`pea a1; pea a0; jsr addr`).
+		const auto sp = m_machine.getA7() - 4 * static_cast<uint32_t>(1 + _args.size());
+		m_machine.poke32(sp, g_mainSpin);
+		for(size_t i = 0; i < _args.size(); ++i)
+			m_machine.poke32(sp + 4 * static_cast<uint32_t>(i + 1), _args[i]);
+		m_machine.setA7(sp);
+		m_machine.setPC(_addr);
+
+		for(uint64_t n = 0; n < _budget; ++n)
+		{
+			if(m_machine.pc() == g_mainSpin)
+			{
+				_d0 = m_machine.getD0();
+				return true;
+			}
+			if(!stepOnce())
+				return false;
+		}
+		char msg[160];
+		std::snprintf(msg, sizeof msg, "callAsMain(%#x) did not return in %llu steps",
+			_addr, static_cast<unsigned long long>(_budget));
+		m_why = msg;
+		return false;
+	}
+
+	bool Rtos::postMessage(const uint32_t _queue, const uint32_t _msg, uint32_t& _d0)
+	{
+		return callAsMain(g_kernelPost, {_queue, _msg}, _d0);
+	}
+
+	void Rtos::setNames(const std::string& _set, const std::string& _project)
+	{
+		const auto write = [this](uint32_t _addr, const std::string& _s)
+		{
+			for(size_t i = 0; i < _s.size() && i < 0x100; ++i)
+				m_machine.write8(_addr + static_cast<uint32_t>(i), static_cast<uint8_t>(_s[i]));
+			m_machine.write8(_addr + static_cast<uint32_t>(std::min<size_t>(_s.size(), 0x100)), 0);
+		};
+		write(g_setName, _set.empty() || _set[0] == '/' ? _set : "/" + _set);
+		write(g_projectName, _project);
+	}
+
+	Rtos::LoadResult Rtos::loadProjectLive(const std::string& _set, const std::string& _project,
+		const double _runMs, const double _mountMs)
+	{
+		LoadResult out;
+		const double start = m_sample;
+
+		if(runToMainSpin() != Stop::Gate)
+			return out;
+		if(!requestCardMount())
+			return out;
+
+		// Wait for the card to come READY rather than for a fixed time: the
+		// mount runs in the SYS task against real ATA commands completed
+		// through vector 0xb6.
+		const double mountEnd = m_sample + _mountMs * g_sampleHz / 1000.0;
+		while(m_sample < mountEnd && m_machine.peek32(g_cardReady) == 0)
+			if(!stepOnce())
+				return out;
+		out.ready = m_machine.peek32(g_cardReady);
+
+		if(runToMainSpin() != Stop::Gate)
+			return out;
+		setNames(_set, _project);
+		uint32_t d0 = 0;
+		// A generous budget: with the card live the borrowed call is preempted
+		// constantly, so the step count is dominated by the OTHER tasks
+		// running underneath it, not by the call itself.
+		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
+		if(!out.posted)
+			out.postWhy = m_why;
+		run(_runMs, false);
+		out.partPtr = m_machine.peek32(g_partPtr);
+		out.ms = (m_sample - start) / g_sampleHz * 1000.0;
+		return out;
+	}
+
+	bool Rtos::requestCardMount()
+	{
+		// msg[0] = 16 selects the card case; msg[1] must be non-zero.
+		m_machine.poke32(g_sysMsgScratch, 0x10010000);
+		uint32_t d0 = 0;
+		return postMessage(g_sysQueue, g_sysMsgScratch, d0);
 	}
 
 	std::unordered_set<uint32_t> Rtos::ran() const

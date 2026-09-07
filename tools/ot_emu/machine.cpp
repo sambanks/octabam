@@ -161,6 +161,8 @@ namespace ot
 			{
 				if(m_periphLog.size() < 4096)
 					m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 				return v;
 			}
 		}
@@ -169,6 +171,8 @@ namespace ot
 			const auto v = it->second();
 			if(m_periphLog.size() < 4096)
 				m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 			return v;
 		}
 		// Byte by byte, big-endian, so an access of any width or alignment sees
@@ -182,6 +186,8 @@ namespace ot
 		}
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 		return v;
 	}
 
@@ -190,6 +196,8 @@ namespace ot
 		m_periphWrites.push_back({_addr, _size, _val});
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'W', pc(), _addr, _size, _val});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'W', pc(), _addr, _size, _val});
 		if(m_periphWriteFn)
 			m_periphWriteFn(_addr, _size, _val);
 	}
@@ -340,6 +348,21 @@ namespace ot
 		if(m_ack && vec != 0xffffffffu)
 			m_ack(static_cast<uint8_t>(vec), _level);
 		return vec;
+	}
+
+	uint32_t Machine::getA7() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_A7);
+	}
+
+	void Machine::setA7(const uint32_t _v)
+	{
+		m68k_set_reg(getCpuState(), M68K_REG_A7, _v);
+	}
+
+	uint32_t Machine::getD0() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_D0);
 	}
 
 	uint32_t Machine::peek32(const uint32_t _addr)

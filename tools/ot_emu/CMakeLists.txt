@@ -22,7 +22,7 @@ set(OT_VENDOR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor" CACHE PATH "vendored em
 # divide and HI08 tests, and they are the contract this port stands on.
 add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
 
-add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h rtos.cpp rtos.h)
+add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h card.cpp card.h rtos.cpp rtos.h)
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ot_machine PUBLIC 68kEmu)
 

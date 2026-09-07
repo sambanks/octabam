@@ -118,6 +118,14 @@ namespace ot::v4e
 		case 0:														// Dn
 			_out = reg(_m, dReg(_reg));
 			return true;
+		case 1:														// An
+			// ✅ MEASURED, not assumed: the storage stack reaches
+			// `mvzw %a0,%d0` at 0x40017c10 (objdump -m m68k:cfv4e decodes it
+			// exactly so), and another at 0x40017c2c. An address register IS
+			// a legal MVS/MVZ source on this part, and leaving it out stopped
+			// the card mount dead with "unimplemented opcode 71c8".
+			_out = reg(_m, aReg(_reg));
+			return true;
 		case 2:														// (An)
 			_out = load(reg(_m, aReg(_reg)));
 			return true;

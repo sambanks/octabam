@@ -94,11 +94,12 @@ namespace ot
 		uint32_t onIllegalInstruction(uint32_t _opcode) override;
 
 		// The interrupt ACKNOWLEDGE: the core calls this when it actually
-		// takes a queued vector, which is the moment route A clears its frame
-		// latch (`_deliver` clears `frame_pending` as it pushes the frame).
-		// Offering a line and having it taken are different events here --
-		// Musashi dispatches the exception itself -- so the latch has to be
-		// cleared from the ack, not from the offer.
+		// takes a queued vector. Offering a line and having it taken are
+		// different events here, because Musashi dispatches the exception
+		// itself, so anything that has to happen "when the interrupt is
+		// delivered" hangs off this -- including the frame latch, which route A
+		// clears as it pushes the frame (`_deliver` clears `frame_pending`), so
+		// it must be cleared from the ack and not from the offer.
 		uint32_t readIrqUserVector(uint8_t _level) override;
 		using AckHook = std::function<void(uint8_t _vector, uint8_t _level)>;
 		void setAckHook(AckHook _h) { m_ack = std::move(_h); }
@@ -159,6 +160,11 @@ namespace ot
 		// not constants (the DSP host port's ping index toggles 0/1).
 		void setOverrideFn(uint32_t _addr, std::function<uint32_t()> _fn) { m_overrideFns[_addr] = std::move(_fn); }
 
+		// A single peripheral BYTE that must not read all-ones. Route A keeps
+		// these in `EXTRA_OVERRIDES`; the boot needs only the PLL, the card
+		// needs one more (see `Rtos::attachCard`).
+		void setOverride8(uint32_t _addr, uint8_t _val) { m_overrides[_addr] = _val; }
+
 		// Interception, the whole point of a headless build: a callback per
 		// instruction (nullptr = off), and direct memory access for probes.
 		void setStepHook(std::function<void(Machine&, uint32_t _pc)> _h) { m_step = std::move(_h); }
@@ -169,6 +175,12 @@ namespace ot
 		// thing (its stall detector) for the same reason.
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
+		// Registers a borrowed call needs: main's stack pointer to push the
+		// frame onto, and D0 for the return value.
+		uint32_t getA7() const;
+		void     setA7(uint32_t _v);
+		uint32_t getD0() const;
+
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);
 
@@ -233,6 +245,11 @@ namespace ot
 		struct Access { char kind; uint32_t pc, addr; uint8_t size; uint32_t val; };
 		const std::vector<Access>& peripheralLog() const { return m_periphLog; }
 
+		// EVERY peripheral access in order, not just first touches, while
+		// switched on: for diffing a window of the run against route A's.
+		void setPeriphTrace(bool _on) { m_periphTraceOn = _on; }
+		const std::vector<Access>& periphTrace() const { return m_periphTrace; }
+
 		// Every completion flag the stall detector had to satisfy, as
 		// (loop pc, flag address, value): route A keeps the same list and it
 		// is the honest record of where this emulator is standing in for
@@ -259,6 +276,8 @@ namespace ot
 		PeriphWrite m_periphWriteFn;
 		std::vector<PeriphWriteRec> m_periphWrites;
 		std::vector<Access> m_periphLog;
+		std::vector<Access> m_periphTrace;
+		bool m_periphTraceOn = false;
 		void noteUnmapped(char _kind, uint32_t _addr, uint8_t _size, uint32_t _val);
 		std::vector<Unmapped> m_unmapped;
 		uint64_t m_unmappedCount = 0, m_unmappedReads = 0;

@@ -269,6 +269,29 @@ in the port's own access log: exactly **one read at `0x1ffffe`** (pc
 `0x4003233e`) and exactly **four byte-writes at `0x10100000`**, which is the
 off-by-four reproduced rather than assumed. Neither changed the gate.
 
+> ❌ **RETRACTED 8 Sep 2026 (O7): the MECHANISM below is wrong.** The four
+> spans are real and the measurement stands, but route A does **not** grow
+> them through `_prime_menu`'s auto-mapping hook. That hook is installed only
+> by the menu RENDER helpers (`menu_children`, `render_menu`, `render_fx2`,
+> `render_playback`, `render_fx1`), **none of which run on the golden path** —
+> so it is never installed there, and route A really does fault on unmapped
+> memory. What actually maps the four spans is `emu_card.attach`, explicitly,
+> with its own comment naming what lives in them (the PCM pool, the sector
+> buffers, the delay rings, the on-chip SRAM around the boot's window). The
+> two O5 added in `install` are route A's too. So the golden run has them
+> because it has a **card**, which is also why route A faults at
+> `0x100fff04` without one: that address is inside the card's own
+> `0x100c0000+0x40000` map.
+>
+> **Why the difference matters, and it is not pedantic:** an explicit map has
+> KNOWN BOUNDS. Route A faults on a wild pointer outside them; this port's
+> auto-map absorbs it silently. O7 adds the four spans explicitly
+> (`Rtos::mapCardMemory`), and with a card attached the auto-mapped count
+> falls from **20,348,051 to 4** — the residual three addresses
+> (`0x04020000`, `0x100a0000`, `0xffff0000`) are boot-time touches outside
+> every map route A has, and so are places the two emulators still differ
+> silently. That is the honest work list the auto-map was hiding.
+
 ### ⚠️ The finding: route A does not fault on unmapped memory, and this port was not the same machine
 
 The port answers **all-ones** for an address in no region and drops the write;
@@ -390,6 +413,115 @@ edge, and counting them delivered ~540 phantom frames back to back in route A.
   is not established, and only M6c establishes it.**
 - ✅ No regression with the clock off: the oracle diff is still 8 compared
   fields, zero disagreements; `ctest` 6/6; `make check` green.
+## Milestone O7 — the card and the project load ⛔ BLOCKED (8 Sep 2026)
+
+The card model, its memory map and the live-call machinery are in and gated;
+**the mount does not complete**, so the milestone's own gate (6,189 ATA
+commands / 30,467 sectors) is nowhere near. What is measured:
+
+**What works.** `card.{h,cpp}` is route A's `AtaCard` — the task file at
+`0x90000000`, IDENTIFY/READ/WRITE/CFA-TRANSLATE, and the ATA rule that a task
+file count of 0 means 256. ⚠️ **The FAT16 image builder is deliberately not
+ported**: route A builds the image from a directory tree in Python, and that
+is a build-time tool producing bytes, not machine behaviour — this port reads
+the same `.img`, so both emulators are guaranteed to be looking at identical
+media. `Rtos` carries `attachCard` (the INTRQ rules, one interrupt per
+sector, cleared by a read of the STATUS register), `callAsMain`,
+`postMessage`, `requestCardMount`, `setNames` and `loadProjectLive`.
+
+**✅ The ATA host-status byte, without which nothing happens at all.**
+`0xfc0a4039` bit 3 must read CLEAR. An unmodelled peripheral answers all-ones,
+the bit is set, the driver concludes there is no card — and the mount request
+posts, SYS runs the card case, and **zero ATA commands** are issued, with no
+error anywhere. Route A carries it in `EXTRA_OVERRIDES` from the boot.
+
+**✅ The card's four memory maps are what O5 misattributed** — see the
+retraction in the O5 section above. With them, the auto-mapped access count
+falls from 20,348,051 to **4**.
+
+### ⚠️ THE MOUNT'S REAL DEFECT: INTRQ IS NOT INSTANTANEOUS, AND THE FIRMWARE DEPENDS ON THAT
+
+✅ **Measured 8 Sep 2026, and it is the finding of the milestone.** The port
+asserted INTRQ on the same instruction that wrote the ATA command. A PC ring
+armed at the first command shows what that costs, in order:
+
+```
+0x40015a50   the driver writes the command
+0x40015308   the ISR runs ON THE VERY NEXT INSTRUCTION
+   ...       256 words streamed, byte-for-byte route A's
+0x40000968   the ISR SIGNALS the event
+0x40015a58   only now does the caller execute its next instruction
+0x40000818   ... and call the RTOS event WAIT
+0x40000550   the scheduler: nothing to run but main
+0x4001fc9c   main's spin, forever
+```
+
+The signal arrives **before the waiter waits**, so the wait blocks on an event
+that already happened. ⚠️ **Route A survives this only by accident of
+granularity** — it delivers interrupts at burst boundaries, which happens to
+give the caller time to reach the wait. A real CF card takes tens of
+microseconds to fetch a sector, so a completion LATENCY is the physical
+behaviour and instantaneous assertion is the artefact. `Rtos::m_ataLatency`
+(1 sample, ~23 µs) books the assertion forward; `tickTimers` fires it.
+
+This is the "a lock-step emulator cannot show you a race" lesson inverted: the
+port's finer granularity **exposed** a race route A's coarse bursts hide.
+
+### ✅ `mvz` takes an ADDRESS REGISTER source, and the storage stack needs it
+
+With the latency in, the mount died at `unimplemented opcode 71c8 at
+0x40017c10`. That disassembles under `m68k:cfv4e` as **`mvzw %a0,%d0`** (and
+another at `0x40017c2c`): the V4e layer's effective-address reader handled
+`Dn` but not `An` direct. Same family as O4's `ff1` — the image is the
+evidence, not the toolchain.
+
+### Where it stops NOW
+
+With the latency, the `An` source, route A's own park condition (the PC alone —
+requiring nothing pending as well never comes true once the card is live) and a
+step budget that survives preemption, **the mount succeeds**:
+
+| | port | route A |
+|---|---|---|
+| card ready (`0x460d1cb8`) | **1** | 1 |
+| ATA commands | **1,407** | 6,189 |
+| sectors read | **10,695** | 30,467 |
+| sectors written | **297** | **297** ✅ |
+| `LOAD PROJECT` posted | **yes** | yes |
+
+The written count matches exactly, and one ATA interrupt arrives per sector
+(10,994 for 10,695 sectors). ⛔ The load then **stops** rather than running
+slowly: 30,000 ms of emulated time produces the same 1,407 commands as 6,000.
+It ends with the engine task cycling at **`0x400165dc`**, with `main` and `sys`,
+and the in-flight word (`0x46c8c58a`) clear. That is the next thing to chase.
+
+<details><summary>the earlier stopping point, before the race was found</summary>
+
+**⛔ Where it stopped.** With the card attached and the host-status
+byte modelled, the machine parks at main's spin, the mount request posts, and:
+
+| | |
+|---|---|
+| ATA commands issued | **1** (IDENTIFY) — route A's load issues 6,189 |
+| ATA interrupts taken | **1**, and the line is left deasserted |
+| card-ready (`0x460d1cb8`) | **0** — never set, so `LOAD PROJECT` is never posted |
+| the machine afterwards | **idle**, not spinning: a profile over the mount window is indistinguishable from a boot-only profile |
+
+So the IDENTIFY completes and its interrupt is delivered and acknowledged, and
+then SYS is **blocked waiting for something that never arrives** — a missing
+wake-up, not a wrong loop. (✅ It was the INTRQ race above.)
+
+</details>
+
+**Route A's own numbers for this project, re-measured today:** 6,189 commands,
+30,467 sectors read, 297 written, `saved_bank=1`, `final_bank=0`. ⚠️ Note that
+`PART_PTR` reads `0x400e21e0` **before any load** — it is the bank blob's base,
+so a non-null `PART_PTR` is NOT evidence a project loaded. The work order's
+`0x4017d520` is from a different project; the count pair is the gate that
+travels.
+
+**No regression:** the oracle diff is still 8 compared fields with zero
+disagreements, `ctest` 6/6, `make check` green.
 
 ## What is NOT here yet
 

@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cmath>
 
+#include "card.h"
 #include "periph.h"
 
 namespace
@@ -245,6 +246,84 @@ int main()
 			e.write(csrAddr(9), 2, ot::Edma::START, false);		// no INTMAJOR
 			check("no INTMAJOR, no line", !e.irq(9));
 		}
+	}
+
+	// ---- the ATA card ----------------------------------------------------
+	// The task-file model. The image here is synthetic -- a real card image is
+	// built by route A's own Python (`emu_rtos.stage_project`) and read from
+	// disk, so the two emulators are looking at identical media.
+	{
+		std::vector<uint8_t> img(64 * ot::AtaCard::g_sector);
+		for(size_t i = 0; i < img.size(); ++i)
+			img[i] = static_cast<uint8_t>(i * 7 + (i >> 9));
+		ot::AtaCard c(img);
+		const uint32_t b = ot::AtaCard::g_base;	// offsets are window-relative
+		(void)b;
+
+		checkEq("the image is 64 sectors", c.totalSectors(), 64);
+
+		// IDENTIFY: the words the driver's variant detection reads. Word 49
+		// bit 8 CLEAR and word 53 zero are what keep it on the PIO path and
+		// stop it programming the on-chip DMA channel.
+		c.write(ot::AtaCard::R_CMD, 1, 0xec);
+		check("IDENTIFY raises DRQ", (c.status() & ot::AtaCard::ST_DRQ) != 0);
+		{
+			const auto w = ot::AtaCard::identifyWords(64);
+			checkEq("word 0 is the CF signature", w[0], 0x848a);
+			checkEq("word 49: LBA supported, DMA bit CLEAR", w[49] & 0x0100, 0);
+			checkEq("word 53 is zero, so words 54-58/64-70 are 'not valid'", w[53], 0);
+			checkEq("words 60/61 carry the sector count", (w[61] << 16) | w[60], 64);
+		}
+		// The data register streams the buffer and drops DRQ at the end.
+		size_t n = 0;
+		while(c.status() & ot::AtaCard::ST_DRQ)
+		{
+			c.read(ot::AtaCard::R_DATA, 2);
+			if(++n > 512)
+				break;
+		}
+		checkEq("IDENTIFY streams exactly 256 words", n, 256);
+
+		// READ SECTORS: count 0 means 256 in the TASK FILE.
+		c.write(ot::AtaCard::R_LBA0, 1, 2);
+		c.write(ot::AtaCard::R_COUNT, 1, 3);
+		c.write(ot::AtaCard::R_CMD, 1, 0x20);
+		checkEq("READ logs its LBA and count", c.log().back().lba, 2);
+		checkEq("... and its count", c.log().back().count, 3);
+		checkEq("... and the sector tally follows it", c.sectorsRead(), 3);
+		{
+			const auto first = c.read(ot::AtaCard::R_DATA, 2);
+			const size_t o = 2 * ot::AtaCard::g_sector;
+			checkEq("the data register returns the image, big-endian on the bus",
+				first, static_cast<uint32_t>((img[o] << 8) | img[o + 1]));
+		}
+
+		// WRITE SECTORS: one sector streamed through the data register lands
+		// in the image, and DRQ drops when the last one is absorbed.
+		{
+			ot::AtaCard w(img);
+			w.write(ot::AtaCard::R_LBA0, 1, 5);
+			w.write(ot::AtaCard::R_COUNT, 1, 1);
+			w.write(ot::AtaCard::R_CMD, 1, 0x30);
+			check("WRITE raises DRQ", (w.status() & ot::AtaCard::ST_DRQ) != 0);
+			for(size_t i = 0; i < ot::AtaCard::g_sector / 2; ++i)
+				w.write(ot::AtaCard::R_DATA, 2, 0xbeef);
+			checkEq("one sector absorbed", w.sectorsWritten(), 1);
+			check("DRQ drops when the count is exhausted",
+				(w.status() & ot::AtaCard::ST_DRQ) == 0);
+			// and it is readable back
+			w.write(ot::AtaCard::R_LBA0, 1, 5);
+			w.write(ot::AtaCard::R_COUNT, 1, 1);
+			w.write(ot::AtaCard::R_CMD, 1, 0x20);
+			checkEq("the written sector reads back", w.read(ot::AtaCard::R_DATA, 2), 0xbeef);
+		}
+
+		// An unsupported command ABORTs rather than being ignored: the
+		// firmware checks the error register, and a silent success here would
+		// send the storage stack down a path that never happened.
+		c.write(ot::AtaCard::R_CMD, 1, 0x99);
+		check("an unknown command sets ABRT and the error bit",
+			(c.status() & 1) != 0 && c.log().back().what.rfind("UNSUPPORTED", 0) == 0);
 	}
 
 	std::printf("%s\n", g_failures ? "PERIPHERAL GATE FAILED" : "peripheral gate passed.");
