@@ -124,8 +124,10 @@ residual on T4 + delay MODE 1).** The shared-window accumulators raced across
 the two cores. `docs/XBUS.md`.
 
 **Fix.** The shipped fixes (four ACC buffers, per-core rotation tracking).
-⚠️ **No local test is evidence here** — `dsp_host` is single-core, so a bus
-race never reproduces off the unit. Believe the hardware.
+⚠️ **No local test is evidence here** — `dsp_host` runs both cores only
+lock-step or under a guessed interleave (`-skew`), so a bus race that fails
+to reproduce locally is not shown absent. A local mismatch under skew IS a
+defect. Believe the hardware.
 
 ## CONTROL menu shows its stock six rows though the image carries eight 🔴
 

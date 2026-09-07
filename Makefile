@@ -88,6 +88,18 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
+.PHONY: render-rig
+render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks 1-4 on B, 5-8 on A). TRACKS=T1=D,T2=S,.. STEMS=dir
+	@# tools/rig_render.py --help for --project/--set/--stem/--skew. The
+	@# image is this remix's `make bus`; both payloads are dumped from it.
+	python3 tools/rig_render.py --image out/mainos_bus.bin --remix $(REMIX) \
+	  $(if $(TRACKS),--tracks "$(TRACKS)",--tracks "T1=D,T2=S,T3=S,T4=S,T5=R,T6=S,T7=S,T8=S" --set T2:-VRB=100 --set T3:-DEL=100 --set T6:-VRB=100 --set T7:-DEL=80 --set T1:-VRB=100) \
+	  $(if $(STEMS),--stems $(STEMS),--stems out/test_audio --seconds 4) $(RIGARGS)
+
+.PHONY: verify-twocore
+verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
+	python3 tools/verify_twocore.py
+
 .PHONY: verify-midi
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
@@ -140,6 +152,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify_grains.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
+	python3 tools/verify_twocore.py
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/busverb/reverb_lforoll.asm
@@ -192,6 +205,37 @@ remix: ## The remixer: swap effects in and out, dial + hear them, build the imag
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
 	@echo "remixer ready — 'make remix' (docs/EMU.md for the emulator view)"
+	@echo "route A (emu_rtos) also needs the EMAC-fixed Unicorn: make emu-unicorn"
+
+# Route A needs a Unicorn whose ColdFire EMAC multiplies like the MCF5445x
+# (stock 2.1.4 halves every fractional-mode product -- RTOS_FORK section
+# 10.16). Builds it from the PyPI sdist + tools/unicorn_emac_fractional.patch
+# into .venv/lib/unicorn-emac, where emu_bringup picks it up. The .venv's
+# Python must be the host's native architecture (arm64 on Apple silicon):
+# the script checks, and emu_rtos refuses to run on a stock EMAC.
+.PHONY: emu-unicorn
+emu-unicorn: ## Build the EMAC-fixed Unicorn library for route A (needs cmake)
+	@arch=$$($(PY) -c 'import platform; print(platform.machine())'); host=$$(uname -m); \
+	  if [ "$$arch" != "$$host" ]; then echo "$(PY) is $$arch on a $$host host -- recreate .venv with a native Python first (uv python install; uv sync --extra emu)"; exit 1; fi
+	scripts/build_unicorn.sh
+
+# The card: build a FAT16 image from a project directory, boot, mount it with
+# the firmware's own storage stack and load the project (docs/EMU.md M4).
+#   make emu-card PROJECT=~/octa/backups/<snapshot>/<project> [SET=OCTABAM NAME=RIG]
+PROJECT ?=
+SET ?= OCTABAM
+NAME ?=
+.PHONY: emu-card
+emu-card: ## Boot with an emulated CF card holding PROJECT and load it
+	@test -n "$(PROJECT)" || { echo "usage: make emu-card PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
+	$(PY) tools/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
+
+# Route A: the firmware's own scheduler running (docs/RTOS_FORK.md). Exits 0
+# when the M6a gate passes: every task created and run once.
+.PHONY: emu-rtos
+emu-rtos: ## Boot with the card and run the real scheduler to the M6a gate
+	@test -n "$(PROJECT)" || { echo "usage: make emu-rtos PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
+	$(PY) tools/emu_rtos.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",) --ms 400 --until-gate
 
 # -------------------------------------------------------------------- misc --
 

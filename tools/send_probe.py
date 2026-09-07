@@ -155,11 +155,14 @@ def die(msg):
 
 
 # ---- payload dump --------------------------------------------------------
-def dump_mem(image, mem):
+def dump_mem(image, mem, payload="A"):
+    """Dump one payload of a built image for dsp_host. "A" is core 0 (tracks
+    5-8), "B" core 1 (tracks 1-4); dsp_host boots either since 7 Sep 2026."""
     sys.path.insert(0, str(ROOT / "tools"))
     import dsp_modmap
+    mem = pathlib.Path(mem)
     mem.parent.mkdir(parents=True, exist_ok=True)
-    dsp_modmap.dumpmem(pathlib.Path(image).read_bytes(), ["A", str(mem)])
+    dsp_modmap.dumpmem(pathlib.Path(image).read_bytes(), [payload, str(mem)])
     return mem
 
 

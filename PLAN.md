@@ -69,6 +69,30 @@ What ships:
   (never init-build tables in Y through `(r1)+` — R48–R50 killed every
   voice). `docs/PARAM_PAGES.md` §7 decodes the formatter ABI.
 
+- **The whole rig renders locally, on BOTH cores (7 Sep 2026, tier 1 of
+  the emulator uplift).** `tools/dsp_host` boots payload A *and* payload B
+  as two DSPs in one process with the shared window `0x30000–0x3FFFF`
+  really shared (a patch to the vendored emulator's `Memory`), each core
+  running its own setup routine (payload B's found by opcode pattern at
+  `P:0x17a`; the year-old "cannot boot payload B" was three hardcoded
+  payload-A addresses). `tools/rig_render.py` / `make render-rig` drives
+  all eight tracks — T1–T4 on core 1, T5–T8 on core 0, FX1→FX2 chained per
+  track, ids and knob bytes from a real project part or by name, stems in,
+  per-track + mix wavs and a per-block instruction meter out — at about
+  real time. ✅ **Measured**: SEND and BusDelay on the *real* payload B
+  feeding BusVerb on payload A (send hop, delay hop, delay→reverb series
+  hop, two senders per core) render bit-identical to the DEV hatch, and
+  stay identical under four instruction-level interleave skews
+  (`tools/verify_twocore.py`, in `make check`) — payload B's `$38000`
+  placement had only ever been checked statically. ⚠️ What this is NOT:
+  the chip's timing (lock-step, or a guessed `-skew`: a local mismatch is
+  a defect, identity is not evidence), the cycle cliff (instructions per
+  block, no contention stall), or the ColdFire (knobs poked into `r6`, a
+  unity mixer, stems instead of sample playback). `docs/HARNESS.md` "Two
+  cores". Tiers 2 (the ColdFire's per-frame parameter records replayed
+  into this harness) and 3 (audio through the host port, ~100× slower than
+  real time) are scoped in the 7 Sep session notes and not started.
+
 **Hosting is bank-bound; serving is not.** Either effect serves all eight
 tracks over the bus, but each can only be *hosted* on its own core's bank —
 and picking one on the wrong bank runs a SEND instead (the absent server's
@@ -572,7 +596,7 @@ parameter slot to put a delay control on. Treat a first result of "it makes
 delayed sound at some arbitrary time" as success for the experiment and a
 separate problem for the design.
 
-### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026)
+### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026; STATUS BOARD at the end of this section, 6 Sep 2026)
 
 **The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
 of change that today costs a flash per attempt. Two backlog items merge into
@@ -684,13 +708,19 @@ Remaining toward full fidelity: item-level menu descent and live dial *values*
 (same detour shape — drive the real key handler `FUN_40064e64`, capture the
 XOR-highlight `FUN_40012254`, and assign the effect to the track) and, only if
 something needs task-interleaving behaviour, route **A** (emulate the RTOS:
-dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). Nothing built so
-far needs A; `docs/EMU.md` keeps it on the table.
+dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). **Scoped 6 Sep
+2026 — `docs/RTOS_FORK.md`**: kernel decoded, feasibility spike passed, five
+milestones (M6a–e) with the fidelity gate that M5's one-trig test must land
+identically under the real scheduler. The recorder-arm path (M5 "path B") is
+the first consumer; Sam chose it as the next emulator lift.
 
-**Next emulator milestone, parked 4 Sep 2026: a LOADED PROJECT (card
-emulation).** The emulator boots with no project, so `PART` is null and every
+**Emulator milestone 4, BUILT 5 Sep 2026: a LOADED PROJECT (card
+emulation) — `tools/emu_card.py`, `make emu-card PROJECT=<dir>`, `docs/EMU.md`
+M4.** The trigger below arrived with the recorder work; the paragraph is kept
+as the design record. The async-completion risk turned out to be one hook on
+the RTOS event wait. The emulator booted with no project, so `PART` was null and every
 panel path that keys off the project — the select committer, part save and
-load, stamp defaults, the untraced recorder write path — cannot be driven to
+load, stamp defaults, the recorder write path — cannot be driven to
 the right address; that gap is what turned the select-array question into
 four hardware probe flashes (80–83) with no signal. The firmware does its own
 FAT parsing, so the emulator only has to answer ATA sector reads from an
@@ -700,6 +730,92 @@ registers); the image is a FAT16 volume with a project from
 the RTOS queues, the same interrupt-injection question as the tick. Start it
 when the SECOND project-dependent path shows up; the first (the bus screen's
 MODE) was solved by moving MODE to a slot the emulator could already drive.
+
+**EMULATOR STATUS BOARD — the pick-up point (6 Sep 2026).** Two routes
+exist and both are in main. Route B (detours) is what everything above
+uses: boot to the handoff, then call firmware functions by hand. Route A
+(`tools/emu_rtos.py`, `docs/RTOS_FORK.md`) runs the firmware's own
+scheduler.
+
+| milestone | state | what it gives you today |
+|---|---|---|
+| M1 boot to the handoff | ✅ shipped | `make remix` → `e`: a cave that breaks early init faults here, not on the unit |
+| M2 live screen | ✅ shipped | the main menu drawn by the firmware's own code, walkable |
+| M3 track-centric remixer | ✅ shipped | every effect auditionable; FX2 page renders |
+| M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
+| M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
+| **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
+| M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7). ✅ **Falsifier run on the unit 6 Sep evening: B01, and PLAY runs the pattern** — the EMULATOR's ordering is the unfaithful one; `select_bank_live`/`seq_select_live` are compensation for an emulator defect and go once the load's timing is fixed (open) |
+| M6c sequencer under the scheduler | ✅ **done 6 Sep — gate passed** | the one-trig test lands the same byte (`0xd3`), same track, 344 frames after the start frame, 28 ticks, under real tasks and real interrupts as it does cold. Three findings on the way (RTOS_FORK §8): the frame source is re-armed by the **eDMA completion ISR** (eDMA now modelled, 16.0-sample period); a **forced interrupt bypasses the mask** (MCF54455RM §17.2.3 — the tick is never unmasked and never needed to be); the load leaves the **sequencer's** playing bank on A by §7's ordering (re-selected through the load's own last step; the hardware falsifier gained a second observable — and the unit answered it: the saved pattern runs, so the re-select is compensating for the emulator, RTOS_FORK §8.3). Sonnet's two §8 hypotheses retracted |
+| M6d key injection | ✅ **done 6 Sep — and the premise was wrong** | PLAY/REC do NOT arrive via a post to `0x4005593c`'s queue — that task isn't a queue consumer at all (a key-repeat timer, mislabeled "UI" by neighbourhood to the real queue's ring buffer). The real `UI_QUEUE` (`0x460d1664`) consumer is a different, previously-unidentified task (`0x40056c40`); physical keys dispatch through a separate per-key jump table (`0x400d2d54`) instead, the same shape as the FX2 shortcut. `press_play_live()`/`press_rec_live()` call PLAY/REC through their own firmware handlers (`call_as_main`, confirmed non-blocking by disassembly); PLAY reproduces M6c's fidelity gate exactly (RTOS_FORK §9) |
+| M6e use it | 🟡 in progress (6 Sep) | the recorder-project fixture exists (`ot_project.py machine-type` + the `tools/scratch/` wrapper: track 1 -> machine type 4, verified by RAM readback) and with it track 1 stops writing `FW_LIVE_NIBBLE` at all, 8 writes -> 5. ❌ **The first pass's reading of that — "confirms machine-type-branched trig dispatch" — is RETRACTED**: type 7, out of range for the 0..4 dispatch, gives the IDENTICAL signature and type 3 (NEIGHBOR) gives the baseline, so it reads "type >= 4 / not started"; and the vanished writes include the **frame-0 transport-start** one, so the track never starts and nothing measured happens at the trig. §9.4's own falsifier finally ran (`--via-rec`, PLAY-then-REC) and was **aimed at the wrong mechanism**: REC leaves `0x800066a0` at 0 on the recorder-configured project as on the plain one, and per the manual it would — `[REC]` activates GRID RECORDING mode, and a **recorder trig** is what starts a track recorder sampling. Two instrument defects found on the way, both silent: `--watch-calls`/`--watch-mem` printed nothing without `--trace` (fixed; the zero-call flag re-derived and it holds), and `0x800065b8`/`0x800066a0` are longwords that read as a flat 0 byte-wise. The arm/record path is still unlocated; `0x4000b800` gets zero calls even on a successful trig, and `watch_calls` is a code hook, so that means never executed by any route. RTOS_FORK §10. ✅ **7 Sep: the "sample loader" prerequisite of §10.12 is VOID** — `0x80004f1c` is the track's RECORDER state record (written by the arm caller, committed per frame, double-buffered: every earlier watch covered the wrong bank), machine types are 0 = STATIC / 1 = FLEX / 4 = PICKUP by code and data, the per-track slot record is 5 bytes indexed by type (`track-slot` now takes the kind), and "fixed RLEN sets bit 7" was the fixture's tempo change: bit 7 is the sign of the frame builder's timing byte; RLEN 3 at 120 BPM arms and records with the per-frame converter `0x40006dfc` (0 calls at MAX). OPEN: at 128 BPM (and on the RIG's own bank B) the word is composed a frame early with a negative offset and the arm caller drops the trig — emulator phase or hardware behaviour, one measurement each side decides (RTOS_FORK §10.13). ✅ **Same day, decided on the emulator side (§10.14)**: an 8-tempo sweep drops half of them, the PIT clock changes nothing, and neither of the firmware's two step-clock/frame-clock re-lock sites runs under route A (one gated on the CLOCK RECEIVE bit `--internal-clock` clears, one on a request flag nothing sets) — so the timing byte wanders and that is the emulator's. `--arm-phase-fix` is the logged compensation; with it Bryan's 128 / RLEN 4 case arms and runs the per-frame converter. **M6f (sequencer clock lock) is the next fidelity milestone** — and Sam's correction sharpens it: the rig is SLAVED to the Rytm (bank B at 121 BPM), CLOCK RECEIVE saved set is the very bit `--internal-clock` clears and the gate of the firmware's tick-side lock, so route A has never run the sequencer in the rig's real mode; M6f = model external MIDI clock first, hardware baseline = the rig slaved at 121. **Paused 7 Sep on Sam's question (side quest or not?)**: the arm-phase lever already reaches Bryan's mechanism (converter, buffer, length, end); the clock lock only becomes load-bearing when the question is sample-accurate start/end phase (the clicks) — and which lock to model depends on whether Bryan runs internal or slaved. Order: finish the mechanism with the lever, ask Bryan, then M6f in his mode (scoping notes at RTOS_FORK §10.14 end). ✅ **Hardware, same day, internal clock: 120 records AND 128 records** on the exact files the emulator scored 120 yes / 128 dropped — the drop is the emulator's; M6f's first half is the INTERNAL clock lock. ✅ **128 / RLEN 4 in situ (§10.15)**: the firmware writes 10,336 (2-sample units) = Bryan's 20,672 into R1's control record — his arithmetic reproduces; ❌ the recording never ENDS in route A (position counters saturate at 0xc00; the end test cannot pass; the DSP command slot is never written) — the recorder's position feed / the DSP is the prerequisite for the end, the loop point and the click. ~~RESUME (7 Sep checkpoint): scope the recorder position feed~~ — **there is no position feed. ✅ 7 Sep, later (§10.16, PR pending): instrumenting the block walk instead of scoping it found the stall was the EMULATOR's — stock Unicorn 2.1.4 halves every ColdFire fractional-mode EMAC product (unsigned `>> 32`; the chip is signed `>> 31`, and the firmware's own `2^31 / blocksize` reciprocals prove which). One defect, three retracted findings: the '2-sample units' (unit is one sample), the 'DSP position feed' (the ColdFire paces the recorder itself; the read-back block is its audio), and the 'dropped trig / clock lock / --arm-phase-fix' (the timing byte was halved). With the fixed library (`tools/unicorn_emac_fractional.patch`, `make emu-unicorn`; route A refuses a stock EMAC): the 128 / RLEN 4 trig arms with no lever, the firmware writes Bryan's 20,672, the recording ENDS (end decided one frame early at frame granularity, end post carries the full length; the sub-frame offset path is PICKUP-only), and all eight sweep tempos arm. Bryan (relayed): the 128/4 click is hardware and he attributes it to the fractional residue. ✅ **Same day, later (§10.16.1–10.16.4):** two MORE emulator defects under the first — Unicorn decodes MAC/MSAC from the wrong word (`msac` added), and the harness's own EMAC-with-load shim rewrote one trampoline that Unicorn served stale — both fixed (patch + one slot per instruction); the `.venv` is native arm64 and `make emu-unicorn` built the library through the shipped script. With all three: the frame builder's timing byte is the firmware's arithmetic (byte = 16 + ⌊(event − lookahead)/tempo24⌋, trig at ⌊event⌋), the 8-tempo sweep arms 8/8 with every sub-frame nibble predicted, and **the seam is measured**: 128/RLEN 16 writes 82,687 (truncated-reciprocal rounding, not the sheet's 82,688) with trigs 82,688/82,687/82,688 apart → a one-sample hole on alternate passes, first at the first repeat (Bryan's row); 120/RLEN 16 writes 88,200 with zero gap. ✅ **§10.16.5:** the pattern SCALE byte found (PTRN tail, second pair; 2 = 1X, 5 = 1/4X; `ot_project.py pattern-scale`), and **Bryan's 128 / RLEN 4 at 1× measured over ten trigs: length 20,672 every pass, spacings 20,672 ×7 then 20,671, seam 0 ×7 then −1** — the ninth arm lands on the eighth recording's last sample, once every 8 passes = every 2 bars; 120 BPM control: 22,050 everywhere, seam 0 ×9. ✅ **§10.16.6: RLEN MAX + trig every 4 steps = no end post, the next arm IS the end — seam-free on the ColdFire side at any tempo (hardware test for Bryan).** Patch candidates if fixed RLEN must stay: end-at-next-arm, or length from the lane's next event. ✅ **§10.17 THE PATCH (PR pending, UNFLASHED): `modules/recorder-seam`, a ColdFire cave at the converter's tail that sizes a fixed-RLEN recording from the sequencer's next step event (frame-builder arithmetic, ±1-sample guard); remix `seamtest`. Route A: 128/RLEN 4 seams 0 ×9 (eighth length 20,671), 128/RLEN 16 seams 0 ×3 (82,688/82,687/82,688), 120 unchanged. Build: cave verifier now `-mcpu=5475` (refhash 26/26).** ✅ **Flashed tag 19 (`seamtest`) on Sam's unit 7 Sep: boots, loads, plays, RECORDS with the cave live — no fault/stall, so the `160(%sp)` offset + lane assumption hold on hardware.** The A/B click test was NOT isolable on Sam's rig (drums-only input, resample entangled source and recording) and is handed to Bryan (shared tree: `modules/recorder-seam/`, remix `seamtest`, RTOS_FORK §10.16.4–§10.17). Byproduct fixes: `ot_project` now writes `.work`+`.strd` (PR #130; a RELOAD had reverted every edit), STATIC slot byte 0-based + bare-filename PATH (measured). **RESUME HERE (recorder work): (1) await Bryan's ear verdict; if the click clears, fold `recorder-seam` into the rig remix; (2) the DSP side of a one-sample overlap (who gets the shared sample) remains the one open question, and it — plus local bus/effect tuning — is what a DSP-in-the-loop route A would unlock (the next fork milestone, scoped but not started); (3) M6f 'clock lock' is closed. The EMAC-fixed Unicorn (`make emu-unicorn`, native-arm64 `.venv`) is a prerequisite for any further route-A work.** |
+
+Where to resume: **M6e, use it** — the fixture exists and its first
+reading has been retracted (RTOS_FORK §10). The on-disk **trig fixture is built and
+proven** (`ot_project.py pattern-trig`: step 2 written to the file, no RAM
+poke, lands `0xd3` on track 0 at frame 344 — M6c's own gate), along with
+the pattern format it needed (RTOS_FORK §10.6). ⚠️ Not `+0x8f385`: that is
+the recorder SETUP page's TRIG *mode* byte, in the part. ✅ **The recorder
+trig's masks are SETTLED on the unit (6 Sep evening): `0x20`+`0x28`+`0x30`,
+all three for one trig** (one per REC source, inferred) — `pattern-diff`
+against the `RECTRIG` project Sam saved with one trig on T1 step 9
+(RTOS_FORK §10.6; fixture `out/_recproj`). ✅ **And the trig FIRES under
+route A, from the file, with nothing poked** (§10.7: bank A's A01 steps at
+1/4 rate, step 9 = frame 11026; flag word, arm caller, Bryan's trig word
+`0x46104d26` nonzero for the first time), and the chain past the arm
+caller is measured (§10.8): engine opcode `0x22` → handler `0x40085bde` →
+recorder buffer released + re-allocated from the PCM pool (`track+128`).
+Then (6 Sep, late, §10.9–10.12): at RLEN=MAX no converter runs; `0x25` is
+posted one sample after `0x22` and carries the buffer id (128+track); with
+a FIXED RLEN the trig word's bit 7 routes through the sample-slot gate,
+which no-ops in route A because `stage_project` stages no `.wav`/`.ot` —
+so no slot record is ever populated. **Resume: stage the slot-1 sample on
+the emulated card, watch `0x80004f1c` fill during the load, then re-run
+the 128/RLEN 4 FLEX fixture (`scratchpad`-built via `ot_project.py
+recorder-setup` / `set-tempo` / `machine-type`) for the converter.** Then
+how the DSP is told to sample, then the playback block chain (the click).
+M6c's gate is the regression to keep green while doing it:
+`tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
+--sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
+[--via-key]` must keep landing `0xd3` on track 0, 344 frames after the
+start frame, with 28 ticks (both with and without `--via-key`). Two
+of M6c's helpers are M5-detour compensation for §7's ordering
+(`select_bank_live`, `seq_select_live`); the hardware falsifier below
+HAS said the unit ends on the saved bank (6 Sep evening), so the faithful
+fix is in the load's timing, and both helpers are to be removed once it
+is made. Open.
+
+✅ ANSWERED 6 Sep evening (B01, plays — emulator unfaithful; kept for the
+reasoning): one hardware question for whenever the
+unit is next on — **load the RIG project, read the bank indicator, then
+press PLAY** — the emulator comes up on bank A because the engine's own
+reset-time "select bank 0" reaches `sys` after the file's `BANK=1` is
+parsed, and M6c found the same ordering leaves the *sequencer* on bank A
+too (the saved pattern would not run). If the unit comes up on B and
+plays the saved pattern, the emulator's ordering is unfaithful there
+(RTOS_FORK §7, §8.3). Reproduce with `tools/emu_rtos.py --project <abs dir> --set OCTABAM
+--name RIG --load-project --ms 6000` (absolute path; a tilde inside the
+quoted make variable is not expanded), or `tools/emu_rtos.py --selftest`
+for the SR trap alone. Keep in view: reading SR through the API at a burst
+boundary corrupts the condition codes (the tool uses a `movew %sr,%d0`
+trampoline) and never run the trampoline from inside a hook; memory-write
+hooks fire on MMIO; `call_as_main` (borrow main's idle slot) is unsafe for
+any call that can genuinely block — route it through a real task's own
+context instead (`request_card_mount`'s pattern). What route A corrected:
+eleven tasks, not eight; `0x400009f4` is a lock, not a semaphore; a
+reschedule is a forced PIT0 interrupt; the mount is `sys`'s job, not the
+engine's; `0x80000002` is the current bank and `PART_PTR` its blob.
+
+**Bryan's stake.** His click sits on the recorder's loop point, reached by
+one task staging the REC-arm and the tick promoting it — the interleaving
+route A now does for real. M6b's mount+load work for real, matching M4's
+proof, and M6d's `press_play_live()`/`press_rec_live()` inject PLAY/REC as
+real keys — but REC-arm itself is still unobserved: it needs a project
+with a track's machine set to a recorder, which is M6e's first job.
+Already useful to him today: the
+measured task and vector tables in RTOS_FORK §2, `sys`'s own dispatch table
+(§7), the bank/pattern state bytes and the bank blob layout, and the panel
+serial link captured byte by byte.
 
 Not pursued: a gearmulator-style full-machine port with plugin packaging.
 `dsp_host` already runs on that project's DSP core; the ColdFire half above

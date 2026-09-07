@@ -338,6 +338,7 @@ discipline, same hash-verified image. **Scope is the recorder's control
 path only** — parameters, storage, triggering, and the engine's arm/open
 machinery. The audio write path (where samples land in RAM) and the buffer
 addresses are explicitly *not* traced; §9 of his document lists them open.
+**Sessions 2–4 (received 5 Sep 2026, ingested below) close both.**
 
 His motivation is the community's "clickless recorder" technique, which
 works at some Tempo/RLEN combinations and not others — so the tempo-dependent
@@ -409,7 +410,13 @@ trailing `(x+1) >> 1` rounds to nearest. ⚠️ One inference remains inside
 that: the EMAC `macl` must be running in *fractional* mode (product `>> 31`)
 for the result to land on the display series. It is the only mode that
 does, and it is the same left-shift-by-one alignment our own DSP trap about
-reading `a0` is made of — but nobody has read `MACSR`. **Why a pickup
+reading `a0` is made of — but nobody has read `MACSR`. ✅ **Closed 6 Sep
+2026 (Bryan's session-5 note, re-verified here): `MACSR = 0x20`** — set by
+`moveq #32 / movel %d0,%macsr` at `0x4000cf60` in the frame builder and
+re-set immediately (`movel #32,%macsr`) at `0x4000d3ae`: fractional, signed,
+no saturation, and the round/truncate bit CLEAR, so the extraction
+*truncates*. **And the emulator had the shift wrong (7 Sep 2026, RTOS_FORK §10.16): stock Unicorn computes this `macl` as `>> 32`, unsigned — every route-A count before that date was half of hardware's; the fixed library gives `>> 31` and the firmware writes the sheet's 20,672.** objdump mis-syncs the first site (it prints an `andil`), which
+is why it went unfound. **Why a pickup
 machine's arm length comes from the FOUT slot is open**; his display-order =
 raw-order check covered TRIG/RLEN/INAB/INCD, not slot 7.
 
@@ -492,7 +499,7 @@ base and `@(1)` displacement) indexed by part. Annotated there, not rewritten.
 ### What it changes for us
 
 Nothing we build — the recorder is CPU-side machinery around a write path
-that is still unlocated. What it hands us is a **mapped publish path for a
+that Sessions 2–4 (below) then located. What it hands us is a **mapped publish path for a
 setup page** (`0x80000c94` → `0x80000cf4` per frame) and the recorder's
 length arithmetic in known units, which is where any "clickless loop" patch
 would go. Neither is on the plan.
@@ -516,6 +523,318 @@ Findings flow back as notes, by agreement. Worth sending, all measured here:
    one-shot/hold/stop/retrig) — our labels for his open bit semantics.
 6. `0x460d17ce`'s consumer also handles RELOAD BANK (types `0x14`, `6`).
 
+### Sessions 2–4 (received 5 Sep 2026): the pool, the write path, the loop point
+
+Same file, extended in place — his §12, §13 and §14, with §9's open list
+amended. Scope moves from the control path to everything Session 1 left
+open: **where the buffers are, how samples get in, and what happens at the
+loop point.** His motivating question — is there a crossfade at the wrap —
+is answered: **no, it is a hard cut.** Sessions 2 and 3 are largely a record
+of leads that failed, and his §14.9 retracts three of §13's own conclusions
+in a table; the results are in §14. He rebuilt the image twice from CF-card
+update files with a Python port of the aPLib depacker and got our hash both
+times, and confirmed `m68k:547x` and `m68k:cfv4e` are the same decoder.
+
+#### ✅ Re-verified here, 5 Sep 2026
+
+Same method as above: canonical image, `scripts/disasm.sh emac`, plus a
+byte sweep for his literals and negative results.
+
+| his claim | what we read |
+|---|---|
+| pool cold init `0x40096f7a`: cursor `0x8000691c := 0`, count `14602 → 0x80006920`, block array `0x46c2e9c0`, index table `0x46c2e580`, fill `1..14602` | byte-identical |
+| block address `= blk×6144 + 0x40A955E0` as `lsll #13` − `lsll #11` at `0x400963b4` | exact |
+| recorder row `(track+2) × 14602` at `0x40095aa4` and in the segment builder `0x40006fc4` | both exact |
+| segment emission `0x40007298`: `muluw #6144`, `mulsl` bytes-per-frame, `addil #0x40A955E0`, ptr / signed count at `a1@` / `a1@(4)` | exact |
+| lazy allocation `0x40007196–e2`: `tstw` the row entry, `tstb 0x80000052` (`DYNAMIC_RECORDERS`), pop the free list, clear both halves | exact |
+| pack loop `0x40007854`: `movel / moveb / movel / movew` — 6 B per 24-bit stereo frame | exact |
+| position advance `0x400072ba–be`; loop point `clrl %fp@(24)` at `0x4000703c`; ping-pong flip `0x40007032–36`; wrap test `cmpl %fp@(24),%d4 / bhis` at `0x40007004` | exact |
+| 16-sample limit extension `0x40006e2a–4c`: `addil #15 / cmpl %sp@(64) / blts / addil #16` | exact |
+| the converter that feeds `arm()`, `0x40006dfc–10`: `#31752000 / mulsl / macl / movclrl / addql #1 / asrl #1` | exact — it **rounds** half-up |
+| "exactly one `andil #-16` in the image, at `0x40003646` in the delay" | our sweep: exactly one, that address |
+| settings keys `RECORD_24BIT`, `DYNAMIC_RECORDERS`, `RESERVED_RECORDER_COUNT/LENGTH`; metadata keys `BPMx24`, `LOOP_BARSx100`, `TSMODE`, `LOOPMODE` | all present, `0x400b7d49–0x400b7d80` and `0x400b79fc–0x400b7a26` |
+| `0x40A955E0` as a literal | 23 sites, including his boot memcpy `0x4000045e/4c8`, the emission `0x400072a8`, `0x400963c6` |
+| per-frame dispatcher `0x4000d2a0–86`: 8 tracks × { `0x400068e4(track, page e4, 0, nibble)`; if `word & 0xd0`: `0x40005ff0(track, word)`; `0x400068e4(track, page e0, nibble, 16)` } | exact; note the two halves use the two page-flip globals `0x800000e4` and `0x800000e0` |
+
+#### 🟡 Adopted (we read the same bytes; the interpretation is his)
+
+- **Recorder buffers are not rings.** Each is a chain of 6144-byte blocks
+  drawn lazily from one shared pool of 14,602 blocks at `0x40A955E0`
+  (85.56 MiB — the Flex RAM figure). Ten rows of block numbers live at
+  `0x46c2e9c0`: rows 0–1 are the double-buffered free/sample map, rows 2–9
+  are recorder tracks 0–7. Blocks are popped from the free list as the
+  write position reaches them, which is why MAX consumes all RAM.
+- **The write path is a read-modify-write** in the per-track engine-service
+  function `0x400068e4`, called twice per frame per track: unpack the
+  existing content (`0x400072f2`) → EMAC mix of four sources with per-sample
+  gain ramps (`0x40007680`, output `0x800062cc`) → pack back to the same
+  segments (`0x40007826`). Overdub is the native operation.
+- **The loop point is a hard cut, taken inside the frame.** The segment
+  builder emits up to four segments per 16-sample call (a frame may straddle
+  a block boundary *and* the loop point), tests the position against the
+  boundary and resets it to zero mid-frame. No blend, no tail read-back,
+  anywhere on the path. **The 16-sample frame does not quantise a LOOP
+  length.**
+- `length = round(steps × 15876000 / tempo24)` samples, half-up, at the
+  converter that feeds `arm()`. That is a **different converter** from the
+  truncating `0x4006e3b2` we verified on 2 Sep; that one compares its result
+  against 64 and does not reach `arm()`, so its role is now open.
+- **The 16-sample limit extension** (`0x40006e2a`): when fewer than 16
+  samples remain to the recording *limit*, the limit becomes
+  `position + 16`. It extends, never truncates, and it is the recording END,
+  not the loop wrap; whether it applies once or per wrap is his open item.
+- Settings schema (`DYNAMIC_RECORDERS`, `RECORD_24BIT`, the reserve pair —
+  `RESERVED_RECORDER_LENGTH × 44100` is the seconds→samples path), the
+  saved-metadata field map at state `+272..+296`, and DMA channels 1 and 6
+  as input-capture staging (`0x80003390` page-flipped, `0x80005e60` fixed)
+  — his inference from count and shape, not confirmed by an INAB/INCD
+  reference.
+
+#### ❌ What it retracts of ours
+
+| where | we said | it is |
+|---|---|---|
+| this section, 2 Sep | write path and buffer addresses unlocated; buffers possibly neighbouring the delay rings at `0x4F502C10` | pool at `0x40A955E0`, block-chained, unrelated to the delay's contiguous rings |
+| `PLAN.md` §5 | "the untraced recorder write path" among the project-dependent paths the emulator cannot drive | traced; still project-dependent (it needs a part with a recorder armed), so the emulator point stands |
+
+#### ❌ One correction for him
+
+His §13.2 reads the interrupt handler at `0x40004860–0x40004bd0` — the
+round-robin state machine on DMA channel 0 writing to a `0x2000_00xx`
+interface — as **control-surface polling, "ruled out"**. It is the
+**ColdFire→DSP audio frame transfer** we documented in `DSP.md` §6c: the
+7-step machine at `0x46104d3e`, TCD `0xFC045000`, the DSP host port at
+`0x2000001c`, 336-word per-track records per ping. Measured from our side
+for months — every module in this repo receives its parameters through it.
+The "no recorder-table reference" observation is correct and expected: what
+crosses that port is the mixed frame, not a buffer.
+
+#### Our own measured additions, 5 Sep 2026
+
+**How the tempo is stored, and the UI conversion his sweep needed.**
+tempo24 is an integer count of 1/24 BPM. The UI setter
+`0x4009c7c4(bpm, tenths)` computes
+
+```
+tempo24 = 24·bpm + (23·tenths + 4) / 9        (truncating divs; clamp 30.0..300.0)
+tenths 0..9  →  frac24  0 3 5 8 10 13 15 18 20 23
+```
+
+— not `round(2.4·tenths)` (`0 2 5 7 10 12 14 17 19 22`), which agrees only
+at `.0`, `.2` and `.4`. So a displayed tempo is one exact tempo24, but its
+BPM is not what the screen says: `.5` is +0.5417 BPM, `.9` is +0.9583. The
+display helper `0x4009c5f4` inverts it (`÷24`, `mod 24`, `(9·f + 11)/23`).
+The source routine `0x4009c5b8` returns the pattern's own word
+(`blob + pattern×0x8ed8 + 0x8e58`) when `[0x80000024]` (per-pattern tempo)
+is set, else the global `0x80000020`; all seven callers of the raw setter
+`0x4009c708` pass stored words (state `+276` snapshots, pattern records, the
+`0xb40` = 120 BPM default). The nudge writer at `0x4004bc54` scales by
+`[0x46c7d328]/1000`, truncating (nominal 1000, clamp ≤1100 — the tempo nudge
+🟡 inferred from shape). Under external MIDI clock (Sam's rig: the Rytm is
+master) the follower's word need not sit on this grid at all, so nothing
+divides — 🟡 its writer is not read.
+
+**His counts reproduce exactly under that mapping**: 5,279
+exactly-divisible settings and 2,017 with length ≡ 0 mod 16, over 2,701
+tempos × 63 RLEN values. Of the 5,279, 3,000 are at `.0`; `.5` and `.9`
+contribute 17 each. His two fractional rows are both `.2`, where the rules
+agree, so his table stands as printed. ❌ *Retracted the same day:* the
+first draft of this section said the counts did not reproduce (4,560 /
+1,357); that used `round(BPM×24)`, wrong for seven of the ten tenths.
+
+**The 16-sample limit extension runs at arm time, not per wrap** (measured
+by location): `0x40006e2a` sits inside the arm-calling converter, between
+the length computation and its `jsr arm` at `0x40006edc`, operating on the
+per-track record that call passes to `arm()`; the segment builder's wrap
+path (`0x4000703c`) is inline arithmetic and does not reach it. A LOOP=ON
+buffer armed once sees it once. That closes his §14.7 open item and removes
+the last way 16 could have quantised a loop.
+
+**The frame-phase model, simulated** — `tools/recorder_framephase.py`.
+Pass-id stamping, no audio: the recorder free-runs at `L` in 16-sample
+frames, the flex read is retriggered at `round(k·P)`, both in a fixed order
+per frame; a read frame is a seam if the pass id changes between two
+consecutive buffer positions other than the wrap itself. Results over his
+table:
+
+| setting | L | ε = P − L | write-first | read-first | hardware |
+|---|---|---|---|---|---|
+| 199/4 | 13,296 | +0.482 | clean | seams passes 2–32 (9.3 s), then clean | clicks |
+| 298.2/2 | 4,436 | +0.496 | clean | seams 2–31 (3.0 s), then clean | clicks |
+| 286.2/2 | 4,623 | −0.493 | seams 2–31 (3.1 s), then clean | clean | clicks |
+| 251/16 | 42,167 | +0.331 | clean | seams 2–46 (43 s), then clean | clicks |
+| 198/16 | 53,454 | +0.545 | clean | seams 1–28 (34 s), then clean | not recorded |
+| 229/16 | 46,218 | +0.341 | clean | seams 2–45 (46 s), then clean | not recorded |
+| 261.3/2 | 5,062 | +0.500 | clean | seams 2–30 (3.3 s), then clean | clicks |
+| 128/16 | 82,687 | +0.500 | clean | seams 1–31 (58 s), then clean | clicks (predicted, then observed) |
+| 128/4 | 20,672 | −0.125 | seams 5–123 (56 s), then clean | clean | his proposed test |
+| 120/16, 120/4, 300/2, 128/32 | — | 0 | clean | clean | clean |
+| 199/4, both free-running (flex loops at L, never retriggered) | | | clean | clean | |
+
+(Lengths are the firmware's own arithmetic — see the 6 Sep correction
+below; the first version of this table used round-half-up and had 198/16 as
+53,455, rounded up. `ε` here is `P − L`; Bryan's sign is the reverse.)
+
+While in the band **every** frame of the pass is a seam frame — a 2,756 Hz
+buzz, not a tick. The zero-error rows are clean under both orders, as
+observed. The direction rule is strict: rounded-down lengths seam only when
+the flex read precedes the recorder write within a frame, rounded-up
+lengths only under the opposite order. With the corrected lengths **every
+clicking row he has measured is rounded-down except 286.2/2**, and all of
+them seam under the read-first order; 286.2/2 alone would need the other.
+So the direction question now rests on two rows: 286.2/2, and his own
+proposed 128/4 (rounded-up, ε = −0.125), which the read-first model
+predicts clean. If 128/4 clicks, a single fixed order is dead and the model
+needs a second reader (the recorder's own read-modify-write read is one) or
+a second error source (trig placement, which he now argues is independent
+of length). The model is arithmetic, not the firmware; it says what the
+hypothesis predicts, so the hardware test has numbers to hit or miss.
+
+#### The 16-sample question — an answer to his confusion, all inferred
+
+He was confident the 16-sample frame dictated the bad sound-on-sound
+behaviour, found the one place 16 appears, and his session then falsified
+it as the click mechanism. Both halves are right, and they are about
+**two different 16s**:
+
+- **The 16 he expected — length quantised to frames, hence "hard
+  truncation" — is not there.** The wrap is sample-accurate (segment
+  builder, above), and his own clean rows prove it: 88,200, 22,050 and
+  4,410 are integer lengths that are **not** multiples of 16 (≡ 8, 2, 10
+  mod 16) and all loop cleanly. That alone kills "16 dictates SOS" and
+  shows why the community `MOD 16` rule works: it is sufficient only because
+  it implies an integer length. The 16 he found is an end-of-recording
+  *extension*; on a LOOP=ON buffer it may never run.
+- **Where 16 plausibly still bites: the relative frame phase of two
+  processes over one buffer.** In an SOS patch the recorder's
+  read-modify-write and the flex playback read both walk the same block
+  chain in 16-sample frames. Within a frame their order is fixed. If the
+  two heads are offset by `d` samples, the reader sees either all
+  this-pass content or all last-pass content — consistent, no seam — unless
+  `d` falls in a **15-sample band next to zero** (which side depends on the
+  fixed order), where every frame returns a mixture: a new/old
+  discontinuity **once per frame, at 2,756 Hz**, with the amplitude of the
+  newest layer. That is a buzz, not a tick, and it needs no crossfade to
+  explain. With exact divisibility `d` never moves. With per-pass error `ε`
+  it walks at `ε` per pass, enters the band after about `0.5/ε` passes and
+  leaves after about `16/ε` — so the model predicts the clicking **starts
+  within a few passes, lasts `16/ε` passes** (≈33 loops at ε = 0.48, about
+  10 s at 199/4 and 3 s at 298.2/2; ≈48 loops at 251/16, about 46 s) **and
+  then stops** until `d` has walked the whole buffer, thousands of passes
+  later. It also predicts a **direction dependence**: only drift toward the
+  band clicks, so roughly half the non-divisible settings should go clean
+  for good after a short latency shift. Simulated above: three of his four
+  clicking rows fit one frame order, 286.2/2 fits the other; a second
+  reader (the recorder's own RMW read is one) would put a band on both
+  sides.
+- **The simpler alternative** is the per-pass seam itself: a flex retrig or
+  a wrap on a buffer whose length differs from the sequencer period by less
+  than a sample gives one dropped or repeated sample per pass — a small
+  tick, indefinitely, every pass. It cannot produce "clicks horribly", but
+  it may be what the `.0/.5`-tempo rows that still click are hearing.
+
+**What discriminates them, on his unit, no firmware needed:**
+
+1. Does the clicking **stop** after `~16/ε` passes (frame phase), or
+   continue for as long as it runs (seam)?
+2. Record, **stop** the recorder, then play the buffer looped. No live
+   writer → no frame-phase seam. If it still clicks, it is the seam.
+3. Run the set at `.0`/`.5` tempos only, so tempo24 is unambiguous, and log
+   the rounding **direction** with the outcome.
+4. State the patch exactly: **what is trigged per pass** — a REC trig, a
+   PLAY trig, both, or neither (one arm, both free-running)? The drift
+   argument needs one side re-triggered by the sequencer and the other
+   free-running at `L`; with both free-running the offset is constant and
+   the mechanism is something else again. His document never says, and the
+   answer changes which of the above can even apply. Note his own §12.2:
+   the arm-time position `+300` **survives a re-arm** (re-bounded, not
+   zeroed) — if the live position inherits that, a REC trig per pass does
+   not re-synchronise the recorder either.
+5. Repeat **286.2/2** first, and add **128/4** (rounded-up, ε = −0.125):
+   if both click, the single-order model is dead. (This test first named
+   198/16 as the rounded-up row; that value was his transcription slip,
+   corrected 6 Sep — 198/16 is rounded-down like the rest.)
+
+Finally, the sub-frame trig nibble he names as prime suspect
+(`0x46104d26`, low nibble = sample offset within the frame) is the *same*
+rounding seen from the sequencer side — a trig at fractional position `kP`
+lands on an integer sample, so consecutive passes land one sample apart —
+not an independent mechanism. It is what makes the sequencer sample-accurate
+inside the 16-sample frame, and so it is the second reason the frame size
+does not appear in his data.
+
+#### Session-5 note (received 6 Sep 2026): the MAC truncates, and one row of his was wrong
+
+`note-for-bam-session5.md`, plus the four sessions consolidated as
+`RECORDER.md` (new header, §14.8a, the §14.8 row corrected inline). Same
+image, every instruction machine-checked against objdump.
+
+**✅ Re-verified here.** `MACSR = 0x20` at `0x4000cf60` (`moveq #32` into
+`movel %d0,%macsr`; objdump mis-syncs it) and `0x4000d3ae` (`movel
+#32,%macsr`). The length arithmetic, final form:
+
+```
+tempo24 = 24·bpm + (23·tenths + 4)/9
+Q       = trunc(2³¹ / tempo24)                      0x4000cab8, biased low
+L       = ( ((steps × 31,752,000) × Q >> 31) + 1 ) >> 1     0x40006dfc..e10
+```
+
+Run over his rows here it reproduces all thirteen (including the FOUT
+cross-check: 1 step at 120 BPM → 5,512, not 5,513). It disagrees with
+round-half-up on **20,205** of the 170,163 grid cells by our count — he
+reports 41,860, which we take as a different definition of the comparison
+rather than an error, and have not resolved. Never on an exact cell: the
+5,279 / 2,017 clean sets are identical under both, so the practical result
+stands.
+
+**❌ His 198/16 row was his own transcription slip**, not our disagreement:
+correct value 53,454, rounded *down*, `ε = +0.545` in our sign (his is
+`L − P`). Our simulation table and test 5 above are corrected accordingly,
+and `tools/recorder_framephase.py` now uses the firmware's arithmetic.
+
+**What he retracts of his own:** §13.2 (DMA ch0 as control-surface
+scanning — he found it in our `DSP.md` §6c) and §13.9's hardware-modulo-DMA
+hypothesis (no ring, nothing to wrap). He lists our storage addresses (ATA
+ISR `0x40015304`, queue primitive `0x4001568c`, event wait `0x40000818`,
+queue creator `0x40040b14`, RELOAD BANK = opcode 20 bitmask, LOAD PROJECT
+via `0x40023c7c`, set name `0x100f8480`) as **reported by us, unverified by
+him** — the right status; they are measured in the emulator, not on hardware.
+
+**New hardware rows:** 261.3/2 and 128/16 click on the first repeat (the
+second predicted before testing). He reads them with 286.2/2 as "both
+directions click"; in the corrected arithmetic they are all rounded-down
+except 286.2/2, so the direction evidence is that one row (table above).
+
+**His ask, restated, is our next emulator milestone:** log the per-track
+trigger word across frames with a recorder armed — the slot is
+`%sp@(144)` at dispatcher entry (`0x4000d32a`), low nibble = sample offset
+within the frame, bits `0xD0` gate the arm-caller, written back at
+`0x4000d378` — for **128 BPM / RLEN 4** (ε ≠ 0) against **128 / RLEN 32**
+(ε = 0). If the nibble walks in the first and holds in the second, the
+click's other error source is found. Static reading cannot show an
+accumulator advancing during a wait; a frame-by-frame trace can. With a
+project now loading in the emulator (`EMU.md` M4) the remaining pieces are
+the frame builder run per frame and the transport started.
+
+#### Notes back to Bryan (5 Sep)
+
+1. DMA channel 0 / `0x40004860` is the ColdFire→DSP frame transfer, not
+   control-surface polling (`DSP.md` §6c).
+2. The UI tempo conversion is `tempo24 = 24·bpm + (23·tenths + 4)/9`
+   (`0x4009c7c4`, truncating); his 5,279 / 2,017 reproduce exactly under
+   it. `.5` is not half a BPM.
+3. The 16-sample limit extension is arm-time (by location), closing §14.7.
+4. The frame-phase-band model, its simulation (`tools/recorder_framephase.py`)
+   and the five discriminating tests above; 286.2/2 and 198/16 first.
+5. `0x4006e3b2` (truncating RLEN converter) is now the one whose consumer is
+   open, since `0x40006dfc` is the one that reaches `arm()`.
+
+**6 Sep:** MACSR and both writers re-verified; his thirteen rows reproduce
+under the final formula; our 20,205 vs his 41,860 is unresolved and flagged
+as definitional; 198/16 corrected in our table; 128/4 replaces 198/16 as
+the rounded-up test alongside 286.2/2; the trigger-word log is the next
+emulator milestone.
+
 ## Open threads worth knowing about
 
 Bryan flags these as still open:
@@ -532,13 +851,21 @@ Bryan flags these as still open:
 - The marker-list writer that BEAT snapping reads, and with it what TSNS
   actually parameterizes (inferred to select snap candidates).
 
-From the recorder session (2 Sep), still open on both sides:
+From the recorder sessions (2 and 5 Sep), still open on both sides:
 
-- **The audio write path and the recorder buffer addresses** — nothing in
-  the session touched the code that moves samples into the buffers. His
-  expectation is a frame-rate DMA sibling of `0x400031a0`; the state-record
-  length fields (`+300/304/308`) and the pointer at control `+20` are the
-  likely route.
+- ~~**The audio write path and the recorder buffer addresses**~~ ✅ **CLOSED
+  by his Session 4, 5 Sep 2026**: pool `0x40A955E0`, 6144-byte block chains,
+  read-modify-write in `0x400068e4`, hard cut at the loop point (§6 above).
+  Not a DMA sibling of the delay after all — the CPU packs the samples.
+- **Why a sub-sample per-pass rounding error becomes an audible splice** —
+  his §14.8 fit is empirically strong and mechanically empty; the
+  frame-phase-band hypothesis and four hardware tests above are our offer.
+- Which arm caller passes `%fp@(32) = 0` (the 16-sample extension itself is
+  settled: arm-time, §6 above).
+- The consumer of the truncating RLEN converter `0x4006e3b2`, now that
+  `0x40006dfc` is the one that reaches `arm()`.
+- What the MIDI-clock follower writes to tempo24 (the UI conversion is
+  measured, §6 above).
 - The TRIG=ONE / SRC3=MAIN default fixup that the descriptor does not carry.
 - SRC3 routing, the AB/CD gain application point, FIN/FOUT fade generation,
   QPL playback machinery (state `+297`), the ONE2 two-phase behaviour, and
@@ -610,3 +937,80 @@ writes per-part effect ids and knob bytes at fixed offsets. Those cannot
 both be right unless the offsets are rederived under octakit. Nothing here
 is blocked by that today; it is a constraint to carry into any
 "octabam + octakit" plan rather than discover during one.
+
+## 8. Bryan T's primer and spreadsheet (received 6 Sep 2026, revision of 5 Sep) — mapped to what is measured
+
+Two user-facing documents: *Sound-on-Sound Looping with the Octatrack — A
+Practical Guide* (PDF, "the clickless-looping section … drawn from a
+firmware-level analysis of the Octatrack's recorder") and its companion
+`octatrack_clickless_loops.xlsx` (Read Me, Calculator, Clean Combinations,
+Golden BPMs, Bar Lengths — "every figure … computed by formula from the two
+constants"). Neither is in this repo (his documents; cite, don't copy). What
+follows is each firmware-facing claim beside the code or measurement that
+backs it, so the two sides can be kept in step. The primer's musical
+content (delay-as-vibrato, scenes, phase-cycle loops) is not firmware and
+is not assessed here.
+
+### 8.1 The spreadsheet's arithmetic IS the firmware's — cross-checked
+
+| in the workbook | in the firmware (§6 above) | status |
+|---|---|---|
+| `tempo24 = 24·INT(bpm) + INT((23·tenths + 4)/9)` (Calculator B8, every sheet's tempo24 column) | the UI setter `0x4009c7c4`, our 5 Sep measurement — he adopted it verbatim | ✅ identical |
+| "Samples in 360 beats" = 15,876,000; length = RLEN × 15,876,000 / tempo24 | the RLEN converter `0x4006e3b2`: `(raw+1) × 63,504,000 / (tempo24 << 2)` — 63,504,000 = 4 × 15,876,000, the `<<2` cancels it | ✅ same quotient |
+| verdict: clean ⇔ `MOD(8·RLEN·15,876,000, 8·M·tempo24) = 0` | exactness is the right test whichever converter runs: the one that feeds `arm()` (`0x40006dfc`, §6 table) **rounds half-up** (128/4 → 20,672 from 20,671.875, ε = −0.125), the other (`0x4006e3b2`) truncates and its consumer is open. Either way a non-exact quotient is off by up to half a sample per pass | ✅ exactness test agrees with the converter arithmetic at all 2,701 × 63 settings (recounted 6 Sep, 0 disagreements) |
+| 5,279 clean pairs (Clean Combinations, 5,279 rows), 60 golden tempos, 86 bar-length tempos | our recount under the measured tempo24 mapping: 5,279, 60 and 86 | ✅ all three |
+| the ×8 in the verdict | keeps `M × tempo24` integral for M ∈ {0.125 … 2} — a spreadsheet device, not a firmware quantity | n/a |
+
+**Bryan's own note (via Sam, 6 Sep, late):** the workbook's default
+example — **128.0 BPM, RLEN 4, multiplier 1** — is the clicking case. The
+sheet says NOT CLEAN (20,671.875 samples); the firmware's arm-feeding
+converter makes that 20,672, rounded UP, and §6's hardware table carries
+128/4 as *his proposed test*, which the single-order frame-phase model
+predicts CLEAN. 🟡 Whether "clicks" here is a hardware measurement or the
+sheet's verdict is not stated in the note. **If it is hardware, it is the
+falsifier §6 asked for**: a rounded-up length that clicks means one fixed
+read/write order cannot be the whole story, and the model needs a second
+reader or a second error source. Worth one sentence back to him.
+
+So the workbook is a faithful calculator for **the converter's rounding
+error**. What it cannot say — and does not claim — is whether that error
+is the whole click: §6's frame-phase model and the 13-row hardware table
+are the open half (a rounded-down length that lands on a 16-sample frame
+boundary may or may not seam; see the `write-first`/`read-first` columns).
+
+### 8.2 The primer's firmware claims
+
+| primer says | what we have | status |
+|---|---|---|
+| "Every time a record trig arms the recorder, the Octatrack works out how long the buffer should be … afresh on every single arm" | the converter runs on the arm path, not at setup — **and the arm path is now traced live** (`RTOS_FORK.md` §10.7–10.8): recorder trig → sequencer mask tests (`0x20/0x28/0x30` = REC1/2/3) → flag word → frame builder → arm caller `0x40005ff0` → engine opcode `0x22` → `0x40085bde` → recorder buffer (id `track+128`) released and re-allocated from the PCM pool. At RLEN = MAX **no** converter runs (the recording ends at the next trig, §10.9); ~~with a fixed RLEN the arm caller takes the length path … because the emulated card carries no samples~~ ❌ withdrawn 7 Sep 2026: that gate was the track's recorder record and the bit was a timing sign (§10.13). With RLEN fixed, the recording runs the per-frame converter `0x40006dfc` (samples per step = steps × 44,100 × 720 / tempo24, round-half-up), twice per frame for the whole recording, and never at MAX — measured at 120 BPM; at 128 BPM route A drops the trig a frame early (§10.13 open) | ✅ mechanism; ✅ which converter (`0x40006dfc`, per frame; `0x4006e3b2` never) |
+| "The displayed BPM is not the actual BPM … .6 is 65 + 15/24" | `0x4009c7c4`, and the display inverse `0x4009c5f4` | ✅ measured |
+| "the answer has to be a whole number of samples … the machine has to round" | the arm-feeding converter rounds half-up (`addql #1 / asrl #1`, §6); the 64 is a minimum length, not the rounding | ✅ measured by code read; the DIRECTION matters to §6's frame-phase model (rounded-up rows seam only under one frame order) |
+| "60.0 BPM (11,025 samples per trig) and 65.6 BPM (10,080)" | 15,876,000 / 1440 = 11,025; / 1575 = 10,080 | ✅ arithmetic |
+| "RLEN is measured against the master clock … a track at half or quarter speed … still sizes the buffer as though the track were running at 1×" | the converter reads `[0x80001814]` = the master tempo24 and the RLEN byte only; no per-track scale term in `0x4006e3b2` (§6 code read) | ✅ consistent with the code; hardware-checked by him |
+| "At MAX the recording runs until the next record trig … 15,876,000 × S / (M × tempo24)" | RLEN raw 64 = MAX fails the converter's `≤ 63` gate and takes the other branch (§6: "gate ≤ 63"); the end is then the NEXT trig, which the sequencer places on the track's own scale — exactly what `RTOS_FORK.md` §10.7 measured the other way round: bank A's A01 steps at 1/4 rate (1,379 frames/step, not 344), so a MAX recording there is 4× the 1× length | ✅ consistent; the MAX-branch length itself not yet watched |
+| "120 BPM is not golden at 1× but is golden on a 3/4× track" | 15,876,000 / 2880 = 5,512.5 (not integral); / (0.75 × 2880) = 7,350 ✓ | ✅ arithmetic; his hardware check |
+| "128 BPM … no clean one-bar loop; only 32 and 64" | tempo24 = 3072; 16 × 15,876,000 / 3072 = 82,687.5; 32 × → 165,375 ✓ | ✅ arithmetic; 128/16 is in §6's hardware table as a first-repeat click |
+| (7 Sep 2026, RTOS_FORK §10.16.5) **128 / RLEN 4 at 1×, ten trigs:** length 20,672 every pass, spacings 20,672 ×7 then 20,671 — the ninth arm lands on the eighth recording's last sample, one seam defect every 8 passes (2 bars); 120 / RLEN 4: 22,050 everywhere, seam 0. The residue accumulates in the sequencer's exact event times and is released as one whole sample by the ⌊event⌋ quantisation; the length never moves | ✅ measured (emulator) |
+| (7 Sep 2026, emulator with the EMAC fixes, RTOS_FORK §10.16.4) 128/16 writes **82,687**, not the sheet's rounded-up 82,688: the converter multiplies by the TRUNCATED reciprocal ⌊2³¹/tempo24⌋, so an exact x.5 quotient rounds DOWN. The trigs land at ⌊event⌋ (offsets 15, 15, 14, 14) and the seam is a one-sample hole on alternate passes, the first at the first repeat — his row, mechanised | ✅ measured (emulator) |
+| "The filter … introduces clicks at the loop point" | not a recorder-arithmetic effect; the FILTER is a stock DSP insert (`CLAUDE.md`: "FILTER 192" cycles). Untested here | ❓ open — plausibly its own state at the buffer seam |
+| "an implicit 16-trig delay built into every loop … the 17th trig" | a play trig on step 1 reads the buffer the previous pass filled; not a firmware constant | n/a (usage) |
+| LFO-modulated delay time "introduces a small gain loss per cycle" | interpolation loss in the stock delay's read pointer — the delay's EMAC block is one of §6's open threads | ❓ open |
+
+### 8.3 What the live trace adds beyond the primer (6 Sep 2026, emulator, no audio)
+
+- **A recorder trig on disk reaches the arm** through the real sequencer,
+  the real scheduler and the real engine task, with nothing poked
+  (`RTOS_FORK.md` §10.7). The masks are `0x20`/`0x28`/`0x30` (one per
+  source; `0x28` = REC2 measured on the unit).
+- The engine's `0x22` handler runs ~152 samples (~3.4 ms) of work at the
+  trig: release + allocate from the PCM pool. An opcode `0x25` (his "arm"
+  opcode) handler runs immediately after — its poster is being located.
+- Neither the word `0x800066a0` nor ~~the sample-slot control record~~ moves
+  at a recorder trig — ❌ the second half is withdrawn (7 Sep 2026): the
+  record at `0x80004f1c` IS the track's recorder state record, written by
+  the arm caller into the OTHER of its two banks, which the earlier watch
+  did not cover (RTOS_FORK §10.13).
+- Not yet seen: the host-port write that tells the DSP to sample. The
+  frame exchange (§6's correction) carries the mixed frame, so the
+  recorder's own start may travel as a flag in the per-track record rather
+  than as a separate message — 🟡 to be watched.

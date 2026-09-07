@@ -22,6 +22,16 @@ import os
 import re
 import sys
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The patched Unicorn (scripts/build_unicorn.sh): stock 2.1.4's ColdFire EMAC
+# halves every fractional-mode product (docs/RTOS_FORK.md section 10.16).
+# The Python bindings load the library named by LIBUNICORN_PATH, so point
+# them at the built one whenever it exists and the caller has not chosen.
+EMAC_LIB_DIR = os.path.join(REPO, ".venv", "lib", "unicorn-emac")
+if "LIBUNICORN_PATH" not in os.environ and os.path.isdir(EMAC_LIB_DIR):
+    os.environ["LIBUNICORN_PATH"] = EMAC_LIB_DIR
+
 try:
     from unicorn import *
     from unicorn.m68k_const import *
@@ -29,7 +39,35 @@ try:
 except ImportError:
     HAVE_UNICORN = False
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def emac_selftest():
+    """Does this Unicorn's EMAC multiply in fractional mode the way the
+    MCF5445x does? Runs `movel #0x20,%macsr; macl %d0,%d1,%acc0; movclrl
+    %acc0,%d0` on 0xc00 x 0x200000 (the firmware's own block-walk idiom:
+    position x 2^31/blocksize) and on a negative operand. Hardware: 3 and
+    -3 (signed product >> 31). Stock Unicorn 2.1.4: 1 and 0x1ffffe
+    (unsigned product >> 32). Third case: `msacl` must SUBTRACT (-3); stock
+    tests the wrong bit and adds. Returns (ok, detail)."""
+    if not HAVE_UNICORN:
+        return False, "unicorn not importable"
+    code = (b"\xa9\x3c\x00\x00\x00\x20"   # movel #0x20,%macsr (fractional, signed)
+            b"\xa2\x00\x08\x00"           # macl %d0,%d1,%acc0
+            b"\xa1\xc0"                     # movclrl %acc0,%d0
+            b"\x4e\x71")                    # nop
+    msac = code[:6] + b"\xa2\x00\x09\x00" + code[10:]   # msacl %d0,%d1,%acc0: ext bit 8 = subtract
+    got = []
+    for prog, d0 in ((code, 0xc00), (code, (-0xc00) & 0xffffffff), (msac, 0xc00)):
+        uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+        uc.mem_map(0x1000, 0x1000)
+        uc.mem_write(0x1000, prog)
+        uc.reg_write(UC_M68K_REG_D0, d0)
+        uc.reg_write(UC_M68K_REG_D1, 0x200000)
+        uc.emu_start(0x1000, 0x1000 + len(prog))
+        got.append(uc.reg_read(UC_M68K_REG_D0) & 0xffffffff)
+    want = [3, 0xfffffffd, 0xfffffffd]
+    lib = os.environ.get("LIBUNICORN_PATH", "<pip wheel>")
+    return got == want, (f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x}, "
+                         f"msacl -> {got[2]:#x} (want 0x3, 0xfffffffd, 0xfffffffd); lib {lib}")
 STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
 BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000
@@ -55,6 +93,8 @@ MENU_COUNT = 0x400cbda0      # current display list: row count
 MENU_FOCUS = 0x400cbda8      # focus descriptor
 CALL_SP = 0x47f00000         # scratch stack for a detour call
 CALL_RET = 0x000000f0        # sentinel return address a detour stops at
+EXTRA_OVERRIDES = {}         # extra peripheral read replies (value or f(uc, addr, size)),
+                             # merged into boot()'s map
 
 # EFFECT 1 / EFFECT 2 SETUP window openers (docs/MAINMENU.md §7) — the chooser
 # + dials. FX1 is page_kind 3 (id byte +0x8ed80); our inserts are all FX2, so
@@ -141,6 +181,8 @@ def boot(image=None, count=BUDGET, on_draw=None):
         # Clock/PLL: firmware halts (0x4000fa8c) unless (reg>>24)*12MHz==264MHz,
         # so the top byte must be 22 (0x16). entry 0x40000418, gate 0x4000fa78.
         0xfc0c4000: 0x16000000,
+        # callers (tools/emu_card.py) add peripheral replies here before boot()
+        **EXTRA_OVERRIDES,
     }
     seen = set()
     def _log(kind, pc, addr, size, val=None):
@@ -151,7 +193,10 @@ def boot(image=None, count=BUDGET, on_draw=None):
     def periph_read(uc, off, size, b):
         a = b + off
         _log("R", uc.reg_read(UC_M68K_REG_PC), a, size)
-        return OVERRIDES.get(a, (1 << (size * 8)) - 1)
+        v = OVERRIDES.get(a, (1 << (size * 8)) - 1)
+        if callable(v):                    # a stateful reply (e.g. a ping index that toggles)
+            v = v(uc, a, size)
+        return v
 
     def periph_write(uc, off, size, val, b):
         _log("W", uc.reg_read(UC_M68K_REG_PC), b + off, size, val)
@@ -213,6 +258,7 @@ def boot(image=None, count=BUDGET, on_draw=None):
     st = {"wc": 0}
     mu.hook_add(UC_HOOK_MEM_WRITE,
                 lambda u, ac, ad, sz, v, x: st.update(wc=st["wc"] + 1))
+    r._wc = st                     # _run_until reads it to tell a poll from slow progress
 
     # -- burst execution ----------------------------------------------------
     # A per-instruction Python hook over ~7M instructions costs ~16s; native
@@ -249,6 +295,7 @@ def boot(image=None, count=BUDGET, on_draw=None):
                 stop["stuck"] = (pc, pc); break
 
     r.uc = mu
+    mu.octa_boot = r            # lets _call see traps raised inside a detour
     if r.trap:
         r.stopped = (f"trap #{r.trap[0]-32} at 0x{r.trap[1]:08x} "
                      "(RTOS handoff)")
@@ -310,12 +357,110 @@ def read_menu_tree(uc, desc=MENU_ROOT_DESC, depth=0, _seen=None):
     return out
 
 
+# ColdFire ISA_C ops Unicorn's CFV4E core does NOT implement — it raises the
+# illegal-instruction exception (vector 4) on each. 437 sites in the image
+# (147 bitrev, 219 byterev, 71 ff1); the FAT code is full of byterev and the
+# RTOS event-bit allocator uses bitrev+ff1, so every storage detour hits them.
+# Found 5 Sep 2026 when card init stopped silently at 0x40015a22 (`bitrev %d1`).
+# objdump prints them as `.short 0x00c1` etc. — it cannot decode them either.
+ISA_C_OPS = {0x00C0: "bitrev", 0x02C0: "byterev", 0x04C0: "ff1"}
+_DREGS = None
+
+
+class DetourTrap(Exception):
+    """A firmware function run cold raised an exception the shims do not cover."""
+    def __init__(self, vector, pc, where):
+        self.vector, self.pc, self.where = vector, pc, where
+        super().__init__(f"trap vector {vector} at 0x{pc:08x} inside {where}")
+
+
+def _movem_shim(uc, r):
+    """ColdFire executes misaligned MOVEM (the firmware's memset clears 16 B at
+    a time into odd addresses); Unicorn's core raises an address error
+    (vector 3). Emulate the long-form movem at the faulting PC and step over."""
+    if not r.trap or r.trap[0] not in (2, 3):
+        return None
+    for pc in (r.trap[1], r.trap[1] - 4):
+        w = int.from_bytes(uc.mem_read(pc, 2), "big")
+        if (w & 0xFB80) != 0x4880 or not (w & 0x0040):     # movem.l only
+            continue
+        to_regs = bool(w & 0x0400)
+        mode, reg = (w >> 3) & 7, w & 7
+        mask = int.from_bytes(uc.mem_read(pc + 2, 2), "big")
+        regs = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7,
+                UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,
+                UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_A7]
+        an = regs[8 + reg]
+        base = uc.reg_read(an) & 0xFFFFFFFF
+        size = 4
+        if mode == 2:   ea, post, ilen = base, None, 4
+        elif mode == 3: ea, post, ilen = base, "inc", 4
+        elif mode == 4:
+            n = bin(mask).count("1")
+            ea, post, ilen = (base - size * n) & 0xFFFFFFFF, "dec", 4
+            mask = int(f"{mask:016b}"[::-1], 2)          # predecrement lists reversed
+        elif mode == 5:
+            d16 = int.from_bytes(uc.mem_read(pc + 4, 2), "big", signed=True)
+            ea, post, ilen = (base + d16) & 0xFFFFFFFF, None, 6
+        else:
+            return None
+        a = ea
+        for i in range(16):
+            if mask & (1 << i):
+                if to_regs:
+                    uc.reg_write(regs[i], int.from_bytes(uc.mem_read(a, 4), "big"))
+                else:
+                    uc.mem_write(a, (uc.reg_read(regs[i]) & 0xFFFFFFFF).to_bytes(4, "big"))
+                a += 4
+        if post == "inc":
+            uc.reg_write(an, a & 0xFFFFFFFF)
+        elif post == "dec":
+            uc.reg_write(an, ea)
+        r.trap = None
+        r.movem_shims = getattr(r, "movem_shims", 0) + 1
+        return pc + ilen
+    return None
+
+
+def _isa_c_shim(uc, r):
+    """If the recorded trap is vector 4 on an ISA_C op, emulate it and return
+    the PC to resume at; else None."""
+    global _DREGS
+    if not r.trap or r.trap[0] != 4:
+        return None
+    pc = r.trap[1]
+    w = int.from_bytes(uc.mem_read(pc, 2), "big")
+    op, reg = w & 0xFFF8, w & 7
+    if op not in ISA_C_OPS:
+        return None
+    if _DREGS is None:
+        _DREGS = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                  UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7]
+    v = uc.reg_read(_DREGS[reg]) & 0xFFFFFFFF
+    if op == 0x00C0:                                   # bitrev: reverse 32 bits
+        v = int(f"{v:032b}"[::-1], 2)
+    elif op == 0x02C0:                                 # byterev: swap the 4 bytes
+        v = int.from_bytes(v.to_bytes(4, "big")[::-1], "big")
+    else:                                              # ff1: leading-zero count
+        sr = uc.reg_read(UC_M68K_REG_SR) & ~0x0F       # N Z from the SOURCE; V C clear
+        sr |= 0x08 if v & 0x80000000 else 0
+        sr |= 0x04 if v == 0 else 0
+        uc.reg_write(UC_M68K_REG_SR, sr)
+        v = 32 - v.bit_length()
+    uc.reg_write(_DREGS[reg], v)
+    r.trap = None
+    r.isa_c_shims = getattr(r, "isa_c_shims", 0) + 1
+    return pc + 2
+
+
 def _call(uc, addr, args=(), count=20_000_000):
     """Invoke a firmware function on a warm machine and run until it returns.
 
     Sets a scratch stack with a sentinel return address (and cdecl args above
     it) and executes until the function's rts pops it back. Faults propagate
-    as UcError.
+    as UcError. ISA_C instructions the core lacks are emulated and stepped
+    over (`_isa_c_shim`); any other trap ends the call with `r.trap` set.
     """
     sp = CALL_SP - 4 * len(args)
     uc.reg_write(UC_M68K_REG_A7, sp)
@@ -323,7 +468,165 @@ def _call(uc, addr, args=(), count=20_000_000):
     for i, a in enumerate(args):
         uc.mem_write(sp + 4 + 4 * i, (a & 0xFFFFFFFF).to_bytes(4, "big"))
     uc.reg_write(UC_M68K_REG_SR, 0x2700)
-    uc.emu_start(addr, CALL_RET, count=count)
+    trap = _run_until(uc, addr, CALL_RET, count)
+    if trap is not None:
+        raise DetourTrap(trap[0], trap[1], f"0x{addr:08x}")
+
+
+TRAMP = 0x47ef0000           # 3 pages: +0x800 emu_rtos SR trampoline, +0x1000 EMAC slots, +0x2000 diagnostics
+_AREGS = None
+
+
+def _emac_load_shim(uc, r):
+    """Unicorn's CFV4E executes the plain EMAC forms (`macl Ry,Rx,ACC`,
+    `movclrl`) but raises illegal-instruction on the MAC-WITH-PARALLEL-LOAD
+    form (`msacl Ry,Rx,<ea>,Rw,ACC`), which the sequencer's trig-time loop at
+    0x4000aef6 uses. Do the parallel load and the address update here, then
+    execute the equivalent plain form natively from a trampoline so the
+    accumulator state stays inside the core. Returns the resume PC or None.
+    Encoding per binutils' reading of this image: load form opcode
+    `1010 Rw 0 a mmm rrr` (acc bit 0 INVERTED), ext `Rx U/L sc sc msac ? ? m acc1 ? Ry`;
+    plain form opcode `1010 Rx 0 a 000 Ry` with the acc bit straight."""
+    global _AREGS, _DREGS
+    if not r.trap or r.trap[0] != 4:
+        return None
+    pc = r.trap[1]
+    op = int.from_bytes(uc.mem_read(pc, 2), "big")
+    if (op & 0xF100) != 0xA000 or (op & 0x0030) == 0:
+        return None                                    # not a MAC with load
+    ext = int.from_bytes(uc.mem_read(pc + 2, 2), "big")
+    if _DREGS is None:
+        _DREGS = [UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2, UC_M68K_REG_D3,
+                  UC_M68K_REG_D4, UC_M68K_REG_D5, UC_M68K_REG_D6, UC_M68K_REG_D7]
+    if _AREGS is None:
+        _AREGS = [UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,
+                  UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6, UC_M68K_REG_A7]
+    rw = (op >> 9) & 7
+    mode, reg = (op >> 3) & 7, op & 7
+    acc = ((~op >> 7) & 1) | ((ext >> 3) & 2)
+    rx, ry = (ext >> 12) & 0xF, ext & 0xF              # 4-bit: 0-7 = Dn, 8-15 = An
+    size_l = (ext >> 11) & 1
+    width = 4                                          # the parallel load is always a longword
+    an = _AREGS[reg]
+    base = uc.reg_read(an) & 0xFFFFFFFF
+    ilen = 4
+    if mode == 2:   ea = base
+    elif mode == 3: ea = base; uc.reg_write(an, (base + width) & 0xFFFFFFFF)
+    elif mode == 4: ea = (base - width) & 0xFFFFFFFF; uc.reg_write(an, ea)
+    elif mode == 5:
+        d16 = int.from_bytes(uc.mem_read(pc + 4, 2), "big", signed=True)
+        ea = (base + d16) & 0xFFFFFFFF; ilen = 6
+    else:
+        return None
+    val = int.from_bytes(uc.mem_read(ea, width), "big")
+    if ext & 0x0020:                                   # '&' form: AND with the MASK register
+        return None                                    # not modelled; surface it
+    uc.reg_write(_DREGS[rw], val)
+    # plain form: msacl/macl Ry,Rx,ACC — same ext bits minus the load-form fields
+    # plain form (from the image: `macl %d5,%d0,%acc0` = a005, `macl %a1,%d0,%acc1`
+    # = a089): Ry in bits 3:0 with bit 3 = A/D, Rx in bits 11:9 with A/D at bit 6,
+    # acc bit 0 at bit 7 (straight, unlike the load form)
+    plain_op = 0xA000 | ((rx & 7) << 9) | (((rx >> 3) & 1) << 6) | ((acc & 1) << 7) | ry
+    plain_ext = (ext & 0x0F00) | (size_l << 11) | ((acc >> 1) << 4)
+    try:
+        uc.mem_map(TRAMP, 0x3000)
+    except UcError:
+        pass
+    nxt = pc + ilen
+    # ONE TRAMPOLINE SLOT PER DISTINCT PLAIN INSTRUCTION (7 Sep 2026). The
+    # first version rewrote a single slot for every shimmed instruction, and
+    # Unicorn did not reliably drop the slot's cached translation on that
+    # write once the emulator had been running for a while: the trampoline
+    # then executed whichever plain form had been translated there LAST --
+    # measured in the sequencer's frame builder, where `msacl ..,%acc1`
+    # ran as the previous `msacl ..,%acc0` and corrupted acc0 by the lane
+    # event (RTOS_FORK section 10.16). Distinct slots are never rewritten,
+    # so no invalidation is needed and nothing is stale. Slots are 16
+    # bytes: plain form (4), jmp park (6), on the SECOND page (the first
+    # page's 0x800 holds emu_rtos's SR trampoline); the park (nop nop) sits
+    # at the end of it and the third page is for diagnostics.
+    park = TRAMP + 0x1ff0
+    slots = getattr(r, "emac_slots", None)
+    if slots is None:
+        slots = r.emac_slots = {}
+        uc.mem_write(park, b"\x4e\x71\x4e\x71")           # nop nop
+    key = (plain_op, plain_ext)
+    tramp = slots.get(key)
+    if tramp is None:
+        if len(slots) >= 0xff:
+            return None                                # slot page full: surface it
+        tramp = TRAMP + 0x1000 + 0x10 * len(slots)
+        uc.mem_write(tramp, plain_op.to_bytes(2, "big") + plain_ext.to_bytes(2, "big")
+                     + b"\x4e\xf9" + park.to_bytes(4, "big"))
+        slots[key] = tramp
+    r.trap = None
+    uc.emu_start(tramp, park, count=3)
+    if r.trap is not None or uc.reg_read(UC_M68K_REG_PC) != park:
+        return None                                    # the plain form failed too
+    r.emac_shims = getattr(r, "emac_shims", 0) + 1
+    dbg = os.environ.get("OCTA_EMAC_DEBUG")
+    if dbg and pc in [int(x, 0) for x in dbg.split(",")]:
+        # read acc0 without clearing it (movel %acc0,%d7 = a187), through a
+        # trampoline on the second page; d7 saved and restored
+        d7 = uc.reg_read(UC_M68K_REG_D7)
+        park2 = TRAMP + 0x2ff0
+        uc.mem_write(TRAMP + 0x2000, b"\xa1\x87" + b"\x4e\xf9" + park2.to_bytes(4, "big"))
+        uc.mem_write(park2, b"\x4e\x71\x4e\x71")
+        uc.emu_start(TRAMP + 0x2000, park2, count=3)
+        acc0 = uc.reg_read(UC_M68K_REG_D7) & 0xffffffff
+        uc.reg_write(UC_M68K_REG_D7, d7)
+        regs = {n: uc.reg_read(_DREGS[n]) & 0xffffffff for n in range(8)}
+        print(f"emac-shim pc={pc:#x} op={op:#06x} ext={ext:#06x} -> plain {plain_op:#06x} {plain_ext:#06x} "
+              f"rx=d{rx} ry=d{ry} acc={acc} d1={regs[1]:#x} d2={regs[2]:#x} d5={regs[5]:#x} ea={ea:#x} "
+              f"loaded={val:#x} acc0(after)={acc0:#x}", flush=True)
+    return nxt
+
+
+def _run_until(uc, pc, until, count=20_000_000):
+    """emu_start(pc -> until) with the ISA_C shim: an illegal-instruction trap
+    on bitrev/byterev/ff1 is emulated and execution resumes after it."""
+    r = getattr(uc, "octa_boot", None)
+    budget = 8_000_000_000        # a bank load is ~1M instructions per sector
+    burst = min(count, 5_000_000)
+    window = collections.deque(maxlen=4)   # (pc, write count) per burst
+    while budget > 0:
+        if r is not None:
+            r.trap = None
+        uc.emu_start(pc, until, count=burst)
+        if r is None:
+            return None
+        npc = _isa_c_shim(uc, r) or _movem_shim(uc, r) or _emac_load_shim(uc, r)
+        if npc is not None:
+            pc = npc               # a shimmed burst is short: don't charge it
+            continue
+        budget -= burst
+        if r.trap is not None:
+            return r.trap          # (vector, pc) — a real exception
+        pc = uc.reg_read(UC_M68K_REG_PC)
+        if pc == until:
+            return None            # clean stop
+        # the burst ran out mid-way. A PC pinned to one small window for four
+        # bursts (20M instructions) is a poll on a peripheral we answer
+        # wrongly, not progress: give up fast with the address.
+        wc = r._wc["wc"] if hasattr(r, "_wc") else 0
+        window.append((pc, wc))
+        if len(window) == 4:
+            pcs = [w[0] for w in window]
+            writes = window[-1][1] - window[0][1]
+            if STALL_DETECT and max(pcs) - min(pcs) <= 64 and writes < 2000:
+                raise DetourStall(pc, until)
+    raise DetourStall(pc, until, exhausted=True)
+
+
+STALL_DETECT = True
+
+
+class DetourStall(Exception):
+    """A cold-run function spun in place (a poll we answer wrongly)."""
+    def __init__(self, pc, until, exhausted=False):
+        self.pc = pc
+        what = "run budget exhausted" if exhausted else "stalled"
+        super().__init__(f"{what} at 0x{pc:08x} (running to 0x{until:08x})")
 
 
 def _prime_menu(r):
@@ -525,7 +828,8 @@ def render_fx2(r, track=4, effect_id=0x07):
 def render_playback(r, track=4, machine=1):
     """Render the PLAYBACK page (page_kind 0) with a sample machine assigned —
     the sample-loaded track view (LEV/PTCH/STRT/LEN/RATE). `machine` indexes
-    the machine-type table: 0/1 = FLEX/STATIC (sample players), higher = THRU/
+    the machine-type table: 0 = STATIC, 1 = FLEX (measured 7 Sep 2026, RTOS_FORK
+    §10.13; earlier text had them swapped), higher = THRU/
     NEIGHBOR (input/routing). Stages the page then redraws the track screen.
     """
     uc = r.uc

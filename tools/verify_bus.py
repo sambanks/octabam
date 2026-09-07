@@ -8,10 +8,11 @@ the three copies of the housekeeping block that must stay identical across
 modules/send/send_client.asm, modules/busverb/reverb_server.asm and modules/busdelay/delay_server.asm.
 
 WHY THIS EXISTS. The bus is the one piece of this project whose defining
-property cannot be measured locally at all: dsp_host is single-core, so it is
-always trivially in lockstep and can never show a cross-core race (CLAUDE.md's
-"a measurement can be structurally blind" entry -- this is the instance that
-cost months). What CAN be checked locally is the other half: that a change to
+property cannot be measured locally at all: dsp_host runs the cores in
+lockstep (or under a guessed -skew interleave since 7 Sep 2026 -- a fuzz, not
+the hardware's timing) and so can never show the cross-core race ABSENT
+(CLAUDE.md's "a measurement can be structurally blind" entry -- this is the
+instance that cost months). tools/verify_twocore.py is the two-core gate. What CAN be checked locally is the other half: that a change to
 the bus layout does not alter what the bus DOES. A single core writes the
 current buffer and reads the previous one whatever the rotation length is, so
 going from two buffers to three is invisible here -- and that invisibility is
@@ -360,8 +361,8 @@ def main():
               "those\n  renders is the reference's, just later.")
     print(f"\n  all {len(CASES)} cases bit-identical to the reference.")
     print("  ⚠️  This proves the bus still DOES the same thing. It does NOT\n"
-          "     prove anything about the cross-core race -- dsp_host is\n"
-          "     single-core and is always trivially in lockstep.")
+          "     prove anything about the cross-core race -- this gate runs\n"
+          "     one core, and even two emulated cores are never the chip's timing.")
     return 0
 
 

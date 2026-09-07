@@ -185,8 +185,10 @@ perfectly on any spur metric.
 
 ### The DEV hatch (`make render-delay`)
 
-The shipping build (`SPEC=1`) puts BusDelay in payload B only — and
-dsp_host cannot boot payload B. Worse, a SPEC dump *aliases* the absent
+The shipping build (`SPEC=1`) puts BusDelay in payload B only — and until
+7 Sep 2026 dsp_host could not boot payload B (it can now: see "Two cores"
+below; the hatch stays because every single-core gate is stamped against
+it). Worse, a SPEC dump *aliases* the absent
 delay's dispatch id to the SEND client (deliberately, so a wrong chooser
 pick becomes a send), which locally renders a plausible dry passthrough: the
 12 Aug 2026 "delay outputs nothing" session measured a SEND all day. So
@@ -212,15 +214,63 @@ Bit-identity is the harness's superpower: because the arithmetic is emulated
 exactly, "same output hashes" means "same machine behaviour", which turns
 refactoring risk into a mechanical check.
 
+## Two cores — the whole rig locally (7 Sep 2026)
+
+`dsp_host -mem A.mem -memB B.mem` boots **both payloads** as two complete
+DSPs in one process, with X/Y `0x30000–0x3FFFF` of core 1 redirected into
+core 0's arrays (a patch to the vendored emulator's `Memory`,
+`tools/dsp56300.patch`) so the shared window really is shared. Each core
+runs its **own** setup routine: the harness finds it by opcode pattern —
+payload B keeps it at `P:0x17a` where A's is at `P:0x372`, the same code
+relocated (✅ measured by matching the instruction sequence; the old
+"cannot boot payload B" was three hardcoded payload-A addresses). `-core`
+assigns each instance to a core, positions counted per core; `-audioidx`
+lets two instances share one audio buffer in order — a track's FX1 then its
+FX2.
+
+**What it proved on the first day** (`tools/verify_twocore.py`, in `make
+check`): SEND and BusDelay on the *real* payload B feeding BusVerb on
+payload A — the send hop, the delay hop and the delay→reverb series hop —
+render **bit-identical** to the same layouts on one core through the DEV
+hatch. That is the harness proven (a window not shared or a context address
+wrong would show) *and* payload B's copy of the delay proven: its `$38000`
+base substitution and SPEC placement had only ever been checked statically.
+
+**Scheduling.** Lock-step by default (core 0's whole block, then core 1's),
+which is what one core always saw and is blind to the race by construction.
+`-skew N` **interleaves** the two instruction by instruction, core 0 N
+ahead. That is a *fuzz* of the hardware's timing, not the timing: identity
+under skew proves nothing (the gate's four skews all match), a mismatch is a
+real defect — and no local test could show one before.
+
+**The meter.** Every run prints, per core, the maximum and mean instructions
+per block for *this layout* (`-meter FILE` for every block). Instructions,
+not cycles — no contention stall is modelled — so it is a floor like
+`tools/cycle_count.py`, but per block with every instance's real work and
+any init that lands inside a block. The wall is `docs/CHIP.md`'s measured
+budget; the emulator never sees the cliff.
+
+**`tools/rig_render.py`** drives it track by track: `--tracks T1=D,T2=S,…`
+(or `T3=L+S` for FILTER on FX1 into a SEND on FX2), or `--project DIR
+--bank N --part N` for the ids **and knob bytes** of a real part; stems per
+track; T1–T4 on core 1, T5–T8 on core 0 in dispatch order; out come
+`T1.wav…T8.wav`, `mix.wav` (unity sum, −6 dB) and `meter.txt`. About real
+time for eight tracks on two cores. `make render-rig`.
+
+What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
+the mixer are a unity sum, samples do not play (stems stand in), and the
+stock DELAY is not on the DSP at all.
+
 ## What the harness cannot see
 
 Every item here has cost a real session at least once. Local-clean does not
 mean hardware-clean; when the two disagree, believe the hardware.
 
-* **Anything between two cores.** dsp_host boots one core and cannot boot
-  payload B at all. No local test will ever reproduce a cross-core race —
-  the XBUS accumulator race shipped for months behind a local "clean"
-  (`docs/XBUS.md`).
+* **The hardware's cross-core timing.** Two emulated cores run lock-step
+  or under a chosen interleave, never under the chip's real skew, and no
+  SRAM contention is modelled. A local "clean" under every `-skew` is still
+  not evidence the race fix holds — the XBUS accumulator race shipped for
+  months behind a local "clean" (`docs/XBUS.md`), and it would again.
 * **The cycle budget.** The emulator happily renders an engine the chip
   cannot afford; 432 cycles/sample over once froze the unit. `make cycles`
   bounds it, hardware proves it.

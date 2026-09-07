@@ -161,6 +161,40 @@ you did not explicitly write is the donor's, and some of them outrank the ones
 you did.** Same family as "a slot can draw a knob and publish nothing" — the
 panel and the DSP are separate mechanisms and neither validates the other.
 
+**STOCK UNICORN HALVES EVERY ColdFire FRACTIONAL-MODE MULTIPLY AND ADDS
+WHERE `msac` SUBTRACTS, and the firmware runs its EMAC in fractional mode
+(`MACSR = 0x20`).** Unicorn 2.1.4 computes `macl`/`macw` under `F/I = 1` as
+an UNSIGNED product `>> 32` where the MCF5445x does a SIGNED product `>> 31`
+(the 2.62 product shifted left one bit, upper 40 bits accumulated), and it
+reads the MAC/MSAC bit from the opcode word where ColdFire keeps it in the
+extension word, so every `msac` accumulated with the wrong sign (the
+sequencer's frame builder is one). One defect, three symptoms that were each
+investigated as firmware behaviour for a day (7 Sep 2026, RTOS_FORK
+§10.16): the recorder length converter wrote 10,336 for Bryan's 20,672
+(explained away as "2-sample units"), the recorder's block walk stalled at
+3,072 samples ("needs a DSP position feed"), and the sequencer's per-frame
+timing byte advanced 8 per 16-sample frame, which dropped half the tempos'
+recorder trigs ("nothing re-locks the step clock", plus a compensation
+lever). The firmware's own reciprocal tables (`0x80003c20`: 2^31 / block
+size) said which side was wrong. **Route A refuses to run on a stock EMAC**
+(`emu_bringup.emac_selftest`); `scripts/build_unicorn.sh` builds the fixed
+library (`tools/unicorn_emac_fractional.patch`). The general rule is the
+same as "disassemble what you assemble": when firmware arithmetic comes out
+exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
+find a site in the firmware whose constants only make sense one way.
+
+**A REWRITTEN TRAMPOLINE IS NOT RETRANSLATED.** The ColdFire emulator's
+EMAC-with-load shim ran every shimmed instruction from one scratch address,
+rewriting its bytes each time; in a long-running Unicorn the address kept
+its first translation, so the trampoline executed whichever instruction had
+been translated there LAST — `msacl ..,%acc1` ran as the previous `msacl
+..,%acc0` and corrupted the sequencer's timing byte (RTOS_FORK §10.16.2,
+7 Sep 2026). Fresh-Uc micro-tests could not show it; a per-instruction
+trace of the real run did. Rule: never rewrite emulated code in place — give
+each distinct instruction its own slot (`r.emac_slots`), and when a
+micro-test disagrees with the running emulator, the difference is state,
+so trace the running emulator.
+
 **A MEASUREMENT CAN BE STRUCTURALLY BLIND TO THE THING YOU ARE USING IT TO
 RULE OUT — and it will report "clean" with total confidence.** Two instances,
 both on 17 Aug 2026, both costing hours:
@@ -174,9 +208,11 @@ both on 17 Aug 2026, both costing hours:
   damage into a multi-second tail. It shipped a cross-core race for months.
 **Before trusting a null result, ask what the instrument physically cannot
 see.** A reverb cannot show you a discontinuity. A harmonic metric cannot show
-you an inharmonic one. A single-core emulator cannot show you a race between
-two cores — and `dsp_host` is single-core, so NO local test will ever
-reproduce a bus timing defect. When local says clean and hardware says
+you an inharmonic one. A lock-step emulator cannot show you a race between
+two cores — `dsp_host` boots both payloads since 7 Sep 2026 and `-skew` can
+interleave them, but that is a fuzz of the hardware's timing, not the
+timing, so a local "clean" is still NOT evidence a bus timing defect is
+gone (a local red IS a defect). When local says clean and hardware says
 broken, believe the hardware and go looking for what the harness omits.
 
 **A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE ELSE'S

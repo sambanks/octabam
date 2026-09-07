@@ -71,3 +71,63 @@ index f9f8180..714776e 100644
  	void JitOps::op_Maci_xxxx(TWord op)
  	{
  		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
+diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
+index 98c2226..c408d00 100644
+--- a/source/dsp56kEmu/memory.cpp
++++ b/source/dsp56kEmu/memory.cpp
+@@ -145,6 +145,12 @@ namespace dsp56k
+ 			}
+ 		}
+ */
++		if (m_sharedX && _area != MemArea_P && _offset >= m_sharedLo && _offset < m_sharedHi)
++		{
++			(_area == MemArea_X ? m_sharedX : m_sharedY)[_offset - m_sharedLo] = _value & 0x00ffffff;
++			return true;
++		}
++
+ 		if (_offset < size(_area))		// Fix the amazing "write to wrong address" bug
+ 			m_mem[_area][_offset] = _value & 0x00ffffff;
+ 
+@@ -178,6 +184,9 @@ namespace dsp56k
+ 			return 0;
+ 		}
+ 
++		if (m_sharedX && _area != MemArea_P && _offset >= m_sharedLo && _offset < m_sharedHi)
++			return (_area == MemArea_X ? m_sharedX : m_sharedY)[_offset - m_sharedLo];
++
+ 		const auto res = m_mem[_area][_offset];
+ 
+ #ifdef _DEBUG
+diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
+index 567d068..a409872 100644
+--- a/source/dsp56kEmu/memory.h
++++ b/source/dsp56kEmu/memory.h
+@@ -63,6 +63,14 @@ namespace dsp56k
+ 		TWord*												p;
+ 
+ 		TWord												m_bridgedMemoryAddress;
++
++		// octabam: a window of X and Y that lives in ANOTHER Memory's arrays,
++		// so two DSP instances can share it the way the DSP56721's two cores
++		// share Y:0x30000-0x3FFFF. P is never shared (each core has its own).
++		TWord												m_sharedLo = 0;
++		TWord												m_sharedHi = 0;
++		TWord*												m_sharedX = nullptr;
++		TWord*												m_sharedY = nullptr;
+ 		
+ 		struct STransaction
+ 		{
+@@ -124,6 +132,13 @@ namespace dsp56k
+ 
+ 		const TWord&		getBridgedMemoryAddress() const { return m_bridgedMemoryAddress; }
+ 
++		// octabam: redirect X/Y [_lo,_hi) to _x/_y (pointers into the owner's
++		// arrays at _lo). Pass nullptr to clear.
++		void				setSharedWindow		(TWord _lo, TWord _hi, TWord* _x, TWord* _y)
++		{
++			m_sharedLo = _lo; m_sharedHi = _hi; m_sharedX = _x; m_sharedY = _y;
++		}
++
+ 		TWord*				getMemAreaPtr		(EMemArea _area)
+ 		{
+ 			switch (_area)

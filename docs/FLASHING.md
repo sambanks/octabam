@@ -238,9 +238,10 @@ from Elektron's zip (card). Your CF card and projects are not affected.
   anyone — Elektron least of all.
 - Everything checkable without hardware is checked — `make check`, the
   verify gates, and whatever local render your modules support (`make render`
-  for the bus, `send_probe --direct` for an insert) — but the emulator is
-  **single-core**, so
-  no local test can reproduce a cross-core bus timing defect, and its mpy
+  for the bus, `send_probe --direct` for an insert, `make render-rig` for
+  all eight tracks on both cores) — but the emulator's two cores run
+  **lock-step or under a guessed interleave**, so
+  no local test can show a cross-core bus timing defect absent, and its mpy
   semantics and truncation are its own. Treat emulator green as necessary,
   not sufficient, and go in with the recovery net ready.
 - The only truly delicate moment is **"UPDATING FLASH"**: don't cut power

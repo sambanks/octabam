@@ -279,8 +279,13 @@ Retracted. There are ~1 200 usable cycles.
 
 These are **static** counts — words in the sample loop, no memory-contention
 stalls modelled — so they are a floor. `tools/dsp_host` **cannot** measure
-cycles: its `instructions/sample` is a constant divided by whatever frame count
-you ask for.
+cycles either: since 7 Sep 2026 its per-core **meter** counts executed
+instructions per block for a whole layout (`-meter`, printed at the end of
+every run; `tools/rig_render.py` writes `meter.txt`), which is a second
+floor — per block, every instance's real work, inits included — and still
+no stall. For scale: the meter reads BusVerb at ~1,130 instructions/sample
+where the static count is 1,652 words (multi-word instructions count once);
+the same 3,120 wall applies to neither directly. Only the burn sweep measures the ceiling.
 
 **For scale:** the entire BusVerb engine was 758 cycles when the spare was
 measured (~1 133 with the 8-line tank), and 1 392 was room for ~1.8 more complete

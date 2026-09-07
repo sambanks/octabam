@@ -20,7 +20,8 @@ What it CANNOT tell you, and still needs a flash (REVERB.md, BUS.md):
     cannot run
   * anything ColdFire-side: menu, descriptors, knob labels, parameter
     ranges. -params pokes r6 directly and bypasses all of it
-  * payload B, which dsp_host cannot boot at all
+  * the ColdFire's timing between the two cores (dsp_host boots both since
+    7 Sep 2026, lock-step; tools/rig_render.py renders the whole rig)
   * multi-instance behaviour under a nonzero split, where there is a known
     unexplained one-vs-two-instance divergence
 
