@@ -1721,3 +1721,49 @@ bit 0 / data `+0x0c`; for `0xF8` it timestamps with the DMA timer counter
 counter at a known rate, an F8 injector every 60/(24·BPM) s, PLAY as
 today. Estimated one to two sessions, most of it the timer rate and the
 estimator's expectations.
+
+
+### 10.15 Bryan's 128 / RLEN 4 in situ: the length the firmware writes is his sheet's 20,672, and the recording never ends in the emulator (7 Sep 2026 — measured)
+
+Fixture `recproj_fxR1_128r4` (FLEX on R1, recorder trig on disk at step 2,
+RLEN raw 3 = display 4, 128 BPM) with `--arm-phase-fix`, 7,000 frames,
+three parallel probes (record fields per frame; call counts + engine
+record; the per-track DSP command slot `0x46c80354`).
+
+**The length.** From the arm on, twice per frame, the per-frame track
+function calls `0x4000432c(track, slot, len)` (`0x40004352`) and writes
+**`0x2860` = 10,336** into R1's control record `+16` (`0x46c938d4`). The
+same run at 120 BPM (§10.13 §6) wrote **11,025**. Both are exactly half of
+the sample counts Bryan's workbook gives for four 16ths — 20,671.875 →
+**20,672** at 128 (round half-up, EXTERNAL.md §8) and 22,050 at 120 — and
+this code's sample unit is two samples (the frame builder's timing byte
+advances 8 per 16-sample frame, §10.13 §5), so the field is the sheet's
+number in 2-sample units. 🟡 The unit is inferred from that rate, not
+from a DSP read; the alternative (a half-length recording) would mean a
+4-step trig records two steps on hardware, which nobody sees. The
+converter is `0x40006dfc` (11,417 calls = 2/frame from the trig to the
+end of the run, 0 at MAX), its `+1 / asr 1` the rounding the sheet
+describes. **Bryan's arithmetic reproduces in the firmware, at his own
+tempo and RLEN.**
+
+**The end does not come.** State stays 2, `+32` stays 0, the position
+counters `+24`/`+28` (written at `0x40007192`/`0x400072be`) grow for ~390
+frames and then sit at `0xc00` = 3,072 for the remaining 5,300; the
+end test at `0x40006e74..0x40006e90` (converter length − `+20` ≤ `+28` +
+(16 − timing) + 15) can therefore never pass, the second `0x40005c7c`
+post that ends a recording (`0x40006edc`) never happens, and the DSP
+command slot `0x46c80354` is never written at all (arm included). The
+counter arithmetic at `0x400070f0..0x40007192` walks a block chain in
+`d6`-sized blocks against a budget in `sp(64)`; what stops it at two
+blocks' worth is not read. 🟡 The likely shape is the §8 rule again: the
+recorder's advance is paced by something the DSP reports (the read-back
+block, the 168-byte per-track record's `+48/+52`), and route A has no
+DSP. The engine side is quiet after the arm: `0x40095a90`/`0x400948cc`
+17 calls each (pool init + the arm), `0x40085bde`/`0x40085c88` once,
+`0x40005e48` never.
+
+**So, for Bryan:** the length is measured; the end and the loop point are
+not reachable until the recorder's position feed is modelled or the DSP
+is. That is a fourth prerequisite beside M6f, and it is the one the
+click question actually needs: the sub-frame end offset is computed at
+`0x40006ea8` (`(d0 & 15) << 12 | 0x11d`) on the frame the end falls in.
