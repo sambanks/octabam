@@ -2066,3 +2066,50 @@ Bryan's "0.1275 samples" is the residue 0.125 of the 128/4 period seen
 once per pass; the firmware does not accumulate it (the events are exact),
 it quantises it, and the quantisation lands a whole sample short or long
 once every 1/ε passes. That is where the click lives.
+
+#### 10.16.5 The pattern SCALE byte, and Bryan's 128 / RLEN 4 at 1×: seven clean seams, then a one-sample overlap on the eighth (7 Sep 2026 — measured)
+
+**The scale.** The RIG's A01 stepped at quarter rate (§10.7) because of a
+per-pattern setting, not the emulator: the PTRN chunk's last eleven bytes
+are `len1 sc1 len2 sc2 flag 0 0 0 0 tempo24` (A01: `10 02 40 05 00 … 0b40`,
+B01: `40 06 40 02 01 … 0b40`, A02: `10 02 10 02 00 … 0b40`), and rewriting
+the SECOND pair from `(0x40, 5)` to `(0x10, 2)` makes A01's step-2 trig fire
+at frame 323 instead of 1292 — 1×, 16 steps. So `sc2` is the running
+scale with **2 = 1X and 5 = 1/4X**; the menu order `2X 3/2X 1X 3/4X 1/2X
+1/4X 1/8X` fits both values and is otherwise inferred 🟡; `len1/sc1` and
+the flag (B01 = 1, plausibly PER TRACK mode) are not understood.
+`ot_project.py pattern-scale <proj> <bank> <pattern> <len> <scale>` writes
+the pair.
+
+**128 / RLEN 4 / 1× — Bryan's case as he plays it** (`recproj_loop1x`:
+trigs at steps 2/6/10/14 of a 16-step 1X A01, RLEN 4 on part 1, 128 BPM;
+`recloop.py`, 12,600 frames, ten trigs) and the 120 BPM control:
+
+| | 128 BPM (period 20,671.875) | 120 BPM (period 22,050) |
+|---|---|---|
+| length written, every pass | **20,672** | **22,050** |
+| trig offsets | 15 ×8, then 14, 14 | 8, 10, 12, 14, 0, 2, 4, 6, 8, 10 |
+| spacings | 20,672 ×7, **20,671**, 20,672 | 22,050 ×9 |
+| seam = arm(k+1) − (arm(k) + L) | 0 ×7, **−1**, 0 | 0 ×9 |
+
+Exactly the rule of §10.16.4: the events are exact (`e_k = e_0 + k ×
+20,671.875`), each trig fires at `⌊e_k⌋`, so the eighth spacing loses the
+accumulated 8 × 0.125 = 1 sample while the recording is always 20,672 —
+**the ninth arm lands on the eighth recording's last sample**. On the
+ColdFire side nothing special happens: the end post for pass 8 goes out at
+frame 10,657 with the full length, the arm for pass 9 at frame 10,658 with
+sample offset 14 (word `0x721e`), the normal path (no bit-7 follow-up),
+state 2 in the other bank. Which of the two the engine gives sample
+170,542 to — the tail of recording 8 or the head of recording 9 — is
+decided in the engine's opcode-0x25 handling and the DSP, which route A
+does not run; the ColdFire has simply ordered a one-sample overlap. At 4
+steps per pass that is **one seam defect every 8 passes = every 2 bars**,
+where Bryan hears his click; at 120 the seams are all zero and the buffer
+is the period.
+
+The residue (0.125, his "0.1275") therefore does its damage by
+accumulating in the sequencer's EXACT event times, which the trig
+quantisation releases as one whole sample every 1/ε passes, while the
+recorder's length never moves. Clean ⇔ the period is an integer (his
+exactness test, with the truncated-reciprocal length of §10.16.4 for the
+x.5 cases).

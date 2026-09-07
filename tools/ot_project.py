@@ -272,6 +272,24 @@ def set_pattern_trig(pdir, banknum, pattern, track, step, mask=0x00, guard=True)
     print(f"bank{banknum:02d} pattern{pattern} T{track+1} mask {mask:#04x} "
           f"step {step} set")
 
+SCALE_NAMES = ["2X", "3/2X", "1X", "3/4X", "1/2X", "1/4X", "1/8X"]   # index order INFERRED from two
+                                                                     # values (2 = 1X, 5 = 1/4X), 7 Sep 2026
+
+def set_pattern_scale(pdir, banknum, pattern, length, scale, guard=True):
+    """Set a pattern's LEN (1-64) and SCALE (index into SCALE_NAMES, or a
+    name) in the SECOND of the two length/scale pairs at the PTRN chunk's
+    tail (bytes -9/-8 of the chunk; the tail is len1 sc1 len2 sc2 flag 0 0
+    0 0 tempo24). Measured 7 Sep 2026 (RTOS_FORK section 10.16.5): the
+    RIG's A01 carried (0x40, 5) there and stepped at quarter rate; (0x10, 2)
+    steps at 1x. The first pair and the flag byte are not understood."""
+    if isinstance(scale, str):
+        scale = SCALE_NAMES.index(scale.upper())
+    def mut(data):
+        tail = PTRN0 + pattern * PTRN_FSTRIDE + PTRN_FSTRIDE - 11
+        data[tail + 2] = length; data[tail + 3] = scale
+    _bank_write(pdir, banknum, mut, guard=guard)
+    print(f"bank{banknum:02d} pattern{pattern} LEN {length} SCALE {SCALE_NAMES[scale]} (index {scale})")
+
 REC_FIELDS = ["INAB", "INCD", "RLEN", "TRIG", "SRC3", "LOOP",
               "FIN", "FOUT", "AB", "QREC", "QPL", "CD"]   # descriptor order, EXTERNAL.md section 6
 REC_SETUP_OFF = 0x60b   # part-relative file offset of track 0's 12 recorder-setup bytes
@@ -662,6 +680,11 @@ if __name__ == "__main__":
         set_pattern_trig(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]),
                          int(sys.argv[6]),
                          int(sys.argv[7], 0) if len(sys.argv) > 7 else 0x00)
+    elif cmd == "pattern-scale":
+        # <project> <bank> <pattern> <len 1-64> <scale index or name: 2X 3/2X 1X 3/4X 1/2X 1/4X 1/8X>
+        sc = sys.argv[6]
+        set_pattern_scale(pdir, int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]),
+                          int(sc) if sc.isdigit() else sc)
     elif cmd == "pattern-diff":
         # <projectA> <projectB> <bank>
         pattern_diff(sys.argv[2], sys.argv[3], int(sys.argv[4]))
