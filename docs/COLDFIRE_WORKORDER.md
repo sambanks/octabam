@@ -194,12 +194,35 @@ Two findings that are worth more than the code:
    golden path. `mapCardMemory` now adds them, and the port's auto-mapped
    count falls from **20,348,051 to 4**. See `COLDFIRE_PORT.md`.
 
-**Where it stops:** the machine parks at main's spin, the request posts, the
-firmware issues **1 IDENTIFY**, its interrupt **is** taken and acknowledged,
-and then card-ready (`0x460d1cb8`) never becomes non-zero, so `LOAD PROJECT`
-is never posted. A profile over the mount window is indistinguishable from a
-boot-only profile, so the machine is **idle, not spinning**: SYS is blocked on
-a wake-up that never arrives. 🟡 The specific event is not identified.
+**THE MOUNT NOW SUCCEEDS** (8 Sep 2026, second session). Four defects, all
+measured:
+
+1. ✅ **INTRQ is not instantaneous, and the firmware depends on that.** The
+   port asserted it on the same instruction as the command write, so the ISR
+   ran, streamed, and SIGNALLED the event before the driver reached the WAIT —
+   which then blocked forever on a signal that had already happened. Route A
+   survives only by accident of granularity (burst-boundary delivery). A real
+   CF card takes tens of microseconds, so `m_ataLatency` (1 sample) is the
+   physical behaviour. **The port's finer granularity EXPOSED a race route A's
+   coarse bursts hide** — the usual lesson inverted.
+2. ✅ **`mvzw %a0,%d0`** at `0x40017c10`: the V4e effective-address reader had
+   no `An` direct. Same family as O4's `ff1`.
+3. The park must test **the PC alone**, as route A does — `!anyPending()` as
+   well never comes true once the card is live.
+4. `callAsMain`'s budget must survive preemption (the step count is dominated
+   by the other tasks running underneath the borrowed call).
+
+**Where it stops now:** card ready = **1**, `LOAD PROJECT` posted, **1,407**
+ATA commands / **10,695** sectors read / **297 written — the written count
+matches route A exactly**, and one ATA interrupt arrives per sector. ⛔ The
+load then STOPS rather than running slowly: 30,000 ms of emulated time gives
+the same 1,407 commands as 6,000. It ends with the **engine task cycling at
+`0x400165dc`** and the in-flight word (`0x46c8c58a`) clear. Route A's targets
+are 6,189 / 30,467 / 297. **That stall is the next thing to chase.**
+
+The instruments that found all of this are in the tree and off by default:
+`--ata-trace`, `--periph-trace`, `--pc-ring N`, `--peek`, and the
+acknowledged-vector log (which vector went to which handler, always on).
 
 **Route A's targets, re-measured today on `OCTABAM/ONEAUX`:** 6,189 commands,
 30,467 sectors read, 297 written, `saved_bank=1`, `final_bank=0`. ⚠️

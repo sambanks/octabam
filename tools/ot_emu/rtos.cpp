@@ -78,6 +78,12 @@ namespace ot
 		{
 			const auto off = _addr - AtaCard::g_base;
 			_out = m_card->read(off, _size);
+			if(m_ataTraceOn && m_ataTrace.size() < 200000)
+			{
+				char line[64];
+				std::snprintf(line, sizeof line, "R %02x %u %04x %08x", off, _size, _out & 0xffff, m_machine.pc());
+				m_ataTrace.emplace_back(line);
+			}
 			// INTRQ is cleared by a read of the STATUS register (not the
 			// alternate status), and raised again when the next sector is
 			// ready: one interrupt per sector.
@@ -85,7 +91,7 @@ namespace ot
 				m_ataIrq = false;
 			else if(off == AtaCard::R_DATA && m_card->dataPos() % AtaCard::g_sector == 0
 				&& m_card->dataPos() < m_card->dataSize())
-				m_ataIrq = true;
+				m_ataIrqDue = m_sample + m_ataLatency;
 			return true;
 		}
 		for(auto* u : {&m_uart64, &m_uart68})
@@ -107,14 +113,25 @@ namespace ot
 		else if(m_card && _addr >= AtaCard::g_base && _addr < AtaCard::g_base + AtaCard::g_window)
 		{
 			const auto off = _addr - AtaCard::g_base;
+			if(m_ataTraceOn && m_ataTrace.size() < 200000)
+			{
+				char line[64];
+				std::snprintf(line, sizeof line, "W %02x %u %04x %08x", off, _size, _val & 0xffff, m_machine.pc());
+				m_ataTrace.emplace_back(line);
+			}
 			const auto before = m_card->sectorsWritten();
 			m_card->write(off, _size, _val);
 			// A command asserts INTRQ at once -- except a WRITE, which
 			// asserts only once the drive has absorbed a sector.
 			if(off == AtaCard::R_CMD)
-				m_ataIrq = (_val & 0xff) != 0x30;
+			{
+				if((_val & 0xff) != 0x30)
+					m_ataIrqDue = m_sample + m_ataLatency;
+				if(!m_pcRing.empty() && !m_pcRingArmed)
+					m_pcRingArmed = true;
+			}
 			else if(off == AtaCard::R_DATA && m_card->sectorsWritten() > before)
-				m_ataIrq = true;
+				m_ataIrqDue = m_sample + m_ataLatency;
 		}
 		else
 		{
@@ -187,10 +204,13 @@ namespace ot
 		// the instruction that made it. This loop steps one instruction at a
 		// time and re-evaluates interrupts after every one, so the hook only
 		// has to count them -- route A needed it to break its burst.
-		m_machine.setAckHook([this](const uint8_t _vec, uint8_t)
+		m_machine.setAckHook([this](const uint8_t _vec, const uint8_t _level)
 		{
 			if(m_card && _vec == m_intc1.vectorBase() + g_ataSource)
 				++m_ataInterrupts;
+			if(m_acks.size() < 100000)
+				m_acks.push_back({m_sample, _vec, _level, curTcb(), m_machine.pc(),
+					m_machine.peek32(g_vbr + 4u * _vec)});
 		});
 
 		m_intc0.setForceHook([this](uint64_t) { ++m_forces; });
@@ -202,6 +222,11 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
+		if(m_ataIrqDue != 0.0 && m_sample >= m_ataIrqDue)
+		{
+			m_ataIrqDue = 0.0;
+			m_ataIrq = true;
+		}
 	}
 
 	bool Rtos::anyPending() const
@@ -212,8 +237,8 @@ namespace ot
 
 	bool Rtos::nextExpiry(double& _out) const
 	{
-		bool any = false;
-		double best = 0;
+		bool any = m_ataIrqDue != 0.0;
+		double best = m_ataIrqDue;
 		for(const auto* p : {&m_pit0, &m_pit1})
 		{
 			double e;
@@ -362,6 +387,10 @@ namespace ot
 	bool Rtos::stepOnce()
 	{
 		const auto pc = m_machine.pc();
+		// The FIRST N after arming, not the last: the question is what the ISR
+		// does, and by the end everything is parked at main's spin.
+		if(m_pcRingArmed && m_pcRingPos < m_pcRing.size())
+			m_pcRing[m_pcRingPos++] = pc;
 		if(pc == g_create)
 			recordCreate();
 
@@ -402,7 +431,11 @@ namespace ot
 		const double end = m_sample + _ms * g_sampleHz / 1000.0;
 		while(m_sample < end)
 		{
-			if(m_machine.pc() == g_mainSpin && !anyPending())
+			// ⚠️ THE PC ALONE, as route A's `until=lambda r: r.pc == MAIN_SPIN`.
+			// Requiring nothing to be pending as well never comes true once
+			// the card is live: the ATA and serial lines assert constantly,
+			// so the park never returned and the load never started.
+			if(m_machine.pc() == g_mainSpin)
 				return Stop::Gate;
 			if(!stepOnce())
 				return Stop::Illegal;
@@ -531,7 +564,12 @@ namespace ot
 			return out;
 		setNames(_set, _project);
 		uint32_t d0 = 0;
-		out.posted = callAsMain(g_postLoad, {g_projectName}, d0);
+		// A generous budget: with the card live the borrowed call is preempted
+		// constantly, so the step count is dominated by the OTHER tasks
+		// running underneath it, not by the call itself.
+		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
+		if(!out.posted)
+			out.postWhy = m_why;
 		run(_runMs, false);
 		out.partPtr = m_machine.peek32(g_partPtr);
 		out.ms = (m_sample - start) / g_sampleHz * 1000.0;

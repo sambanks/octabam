@@ -151,7 +151,8 @@ namespace ot
 		// helper: with no card it short-circuits, but once a card IS present
 		// it does real FAT lookups and BLOCKS -- and borrowing main for a
 		// call that blocks is the crash `callAsMain` warns about.
-		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0; };
+		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0;
+			std::string postWhy; };
 		LoadResult loadProjectLive(const std::string& _set, const std::string& _project,
 			double _runMs = 6000.0, double _mountMs = 3000.0);
 
@@ -168,8 +169,25 @@ namespace ot
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
+		// Every access to the task-file window, in order, for diffing against
+		// route A's: "R|W off size value pc". The first divergence names the
+		// defect; reasoning about it does not.
+		void setAtaTrace(bool _on) { m_ataTraceOn = _on; }
+		const std::vector<std::string>& ataTrace() const { return m_ataTrace; }
+
 		uint64_t idleSkips() const { return m_idleSkips; }
 		uint64_t forces() const { return m_forces; }
+		uint32_t currentTcb() { return curTcb(); }
+		void setAtaLatency(double _samples) { m_ataLatency = _samples; }
+		void armPcRing(size_t _size, uint64_t _budget) { m_pcRing.assign(_size, 0); m_pcRingBudget = _budget; }
+		const std::vector<uint32_t>& pcRing() const { return m_pcRing; }
+		size_t pcRingPos() const { return m_pcRingPos; }
+		bool pcRingArmed() const { return m_pcRingArmed; }
+		// Every vector the CPU acknowledged: (sample, vector, level, tcb, pc it
+		// interrupted, slot contents). Which handler an interrupt actually
+		// went to is a measurement, not a table lookup.
+		struct Ack { double sample; uint8_t vector, level; uint32_t tcb, pc, slot; };
+		const std::vector<Ack>& acks() const { return m_acks; }
 		size_t seeded() const { return m_seeded; }
 		size_t serialSent() const { return m_uart64.tx().size() + m_uart68.tx().size(); }
 		const std::vector<uint8_t>& serialTxA() const { return m_uart64.tx(); }
@@ -206,8 +224,30 @@ namespace ot
 		Uart m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
 		Dspi m_dspi;
 		AtaCard* m_card = nullptr;
+		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
+		// driver writes the command and THEN calls the RTOS event wait; a
+		// drive that asserted INTRQ on the same instruction would run the ISR,
+		// signal the event, and finish before the waiter ever waits -- and the
+		// wait then blocks forever on a signal that already happened.
+		// Measured 8 Sep 2026: that is exactly what this port did (1 IDENTIFY,
+		// card-ready never set). Route A survives it only by accident of
+		// granularity -- it delivers interrupts at burst boundaries, which
+		// gives the caller time to reach the wait. A real CF card takes tens
+		// of microseconds to fetch a sector, so the latency below is the
+		// PHYSICAL behaviour and route A's is the artefact.
 		bool m_ataIrq = false;
+		double m_ataIrqDue = 0.0;			// 0 = nothing pending
+		double m_ataLatency = 1.0;			// samples; ~23 us at 44.1 kHz
 		uint64_t m_ataInterrupts = 0;
+		std::vector<std::string> m_ataTrace;
+		bool m_ataTraceOn = false;
+		std::vector<Ack> m_acks;
+		// A PC ring armed by the first ATA command: what the ISR does and
+		// where the machine goes afterwards, which is the whole question.
+		std::vector<uint32_t> m_pcRing;
+		size_t m_pcRingPos = 0;
+		bool m_pcRingArmed = false;
+		uint64_t m_pcRingBudget = 0;
 
 		std::vector<Created> m_created;
 		std::vector<Dispatch> m_dispatches;

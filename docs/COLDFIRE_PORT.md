@@ -393,7 +393,65 @@ error anywhere. Route A carries it in `EXTRA_OVERRIDES` from the boot.
 retraction in the O5 section above. With them, the auto-mapped access count
 falls from 20,348,051 to **4**.
 
-**⛔ Where it stops, measured.** With the card attached and the host-status
+### ⚠️ THE MOUNT'S REAL DEFECT: INTRQ IS NOT INSTANTANEOUS, AND THE FIRMWARE DEPENDS ON THAT
+
+✅ **Measured 8 Sep 2026, and it is the finding of the milestone.** The port
+asserted INTRQ on the same instruction that wrote the ATA command. A PC ring
+armed at the first command shows what that costs, in order:
+
+```
+0x40015a50   the driver writes the command
+0x40015308   the ISR runs ON THE VERY NEXT INSTRUCTION
+   ...       256 words streamed, byte-for-byte route A's
+0x40000968   the ISR SIGNALS the event
+0x40015a58   only now does the caller execute its next instruction
+0x40000818   ... and call the RTOS event WAIT
+0x40000550   the scheduler: nothing to run but main
+0x4001fc9c   main's spin, forever
+```
+
+The signal arrives **before the waiter waits**, so the wait blocks on an event
+that already happened. ⚠️ **Route A survives this only by accident of
+granularity** — it delivers interrupts at burst boundaries, which happens to
+give the caller time to reach the wait. A real CF card takes tens of
+microseconds to fetch a sector, so a completion LATENCY is the physical
+behaviour and instantaneous assertion is the artefact. `Rtos::m_ataLatency`
+(1 sample, ~23 µs) books the assertion forward; `tickTimers` fires it.
+
+This is the "a lock-step emulator cannot show you a race" lesson inverted: the
+port's finer granularity **exposed** a race route A's coarse bursts hide.
+
+### ✅ `mvz` takes an ADDRESS REGISTER source, and the storage stack needs it
+
+With the latency in, the mount died at `unimplemented opcode 71c8 at
+0x40017c10`. That disassembles under `m68k:cfv4e` as **`mvzw %a0,%d0`** (and
+another at `0x40017c2c`): the V4e layer's effective-address reader handled
+`Dn` but not `An` direct. Same family as O4's `ff1` — the image is the
+evidence, not the toolchain.
+
+### Where it stops NOW
+
+With the latency, the `An` source, route A's own park condition (the PC alone —
+requiring nothing pending as well never comes true once the card is live) and a
+step budget that survives preemption, **the mount succeeds**:
+
+| | port | route A |
+|---|---|---|
+| card ready (`0x460d1cb8`) | **1** | 1 |
+| ATA commands | **1,407** | 6,189 |
+| sectors read | **10,695** | 30,467 |
+| sectors written | **297** | **297** ✅ |
+| `LOAD PROJECT` posted | **yes** | yes |
+
+The written count matches exactly, and one ATA interrupt arrives per sector
+(10,994 for 10,695 sectors). ⛔ The load then **stops** rather than running
+slowly: 30,000 ms of emulated time produces the same 1,407 commands as 6,000.
+It ends with the engine task cycling at **`0x400165dc`**, with `main` and `sys`,
+and the in-flight word (`0x46c8c58a`) clear. That is the next thing to chase.
+
+<details><summary>the earlier stopping point, before the race was found</summary>
+
+**⛔ Where it stopped.** With the card attached and the host-status
 byte modelled, the machine parks at main's spin, the mount request posts, and:
 
 | | |
@@ -405,8 +463,9 @@ byte modelled, the machine parks at main's spin, the mount request posts, and:
 
 So the IDENTIFY completes and its interrupt is delivered and acknowledged, and
 then SYS is **blocked waiting for something that never arrives** — a missing
-wake-up, not a wrong loop. 🟡 That reading is inferred from the profile; the
-specific event has not been identified.
+wake-up, not a wrong loop. (✅ It was the INTRQ race above.)
+
+</details>
 
 **Route A's own numbers for this project, re-measured today:** 6,189 commands,
 30,467 sectors read, 297 written, `saved_bank=1`, `final_bank=0`. ⚠️ Note that

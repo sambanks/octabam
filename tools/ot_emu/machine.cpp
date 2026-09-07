@@ -161,6 +161,8 @@ namespace ot
 			{
 				if(m_periphLog.size() < 4096)
 					m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 				return v;
 			}
 		}
@@ -169,6 +171,8 @@ namespace ot
 			const auto v = it->second();
 			if(m_periphLog.size() < 4096)
 				m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 			return v;
 		}
 		// Byte by byte, big-endian, so an access of any width or alignment sees
@@ -182,6 +186,8 @@ namespace ot
 		}
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'R', pc(), _addr, _size, v});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'R', pc(), _addr, _size, v});
 		return v;
 	}
 
@@ -190,6 +196,8 @@ namespace ot
 		m_periphWrites.push_back({_addr, _size, _val});
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'W', pc(), _addr, _size, _val});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'W', pc(), _addr, _size, _val});
 		if(m_periphWriteFn)
 			m_periphWriteFn(_addr, _size, _val);
 	}

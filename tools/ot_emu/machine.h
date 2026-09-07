@@ -243,6 +243,11 @@ namespace ot
 		struct Access { char kind; uint32_t pc, addr; uint8_t size; uint32_t val; };
 		const std::vector<Access>& peripheralLog() const { return m_periphLog; }
 
+		// EVERY peripheral access in order, not just first touches, while
+		// switched on: for diffing a window of the run against route A's.
+		void setPeriphTrace(bool _on) { m_periphTraceOn = _on; }
+		const std::vector<Access>& periphTrace() const { return m_periphTrace; }
+
 		// Every completion flag the stall detector had to satisfy, as
 		// (loop pc, flag address, value): route A keeps the same list and it
 		// is the honest record of where this emulator is standing in for
@@ -269,6 +274,8 @@ namespace ot
 		PeriphWrite m_periphWriteFn;
 		std::vector<PeriphWriteRec> m_periphWrites;
 		std::vector<Access> m_periphLog;
+		std::vector<Access> m_periphTrace;
+		bool m_periphTraceOn = false;
 		void noteUnmapped(char _kind, uint32_t _addr, uint8_t _size, uint32_t _val);
 		std::vector<Unmapped> m_unmapped;
 		uint64_t m_unmappedCount = 0, m_unmappedReads = 0;
