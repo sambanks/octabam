@@ -356,6 +356,16 @@ namespace ot
 
 	Rtos::Stop Rtos::run(const double _ms, const bool _untilGate)
 	{
+		return runInternal(_ms, _untilGate, nullptr);
+	}
+
+	Rtos::Stop Rtos::runUntil(const double _ms, const std::function<bool()>& _stop)
+	{
+		return runInternal(_ms, false, &_stop);
+	}
+
+	Rtos::Stop Rtos::runInternal(const double _ms, const bool _untilGate, const std::function<bool()>* _stop)
+	{
 		if(!m_installed)
 		{
 			if(m_why.empty())
@@ -380,6 +390,11 @@ namespace ot
 					m_why = "the M6a gate passed";
 					return Stop::Gate;
 				}
+			}
+			if(_stop && (*_stop)())
+			{
+				m_why = "the caller's condition came true";
+				return Stop::Gate;
 			}
 
 			const auto pc = m_machine.pc();
@@ -605,6 +620,20 @@ namespace ot
 		if(runToMainSpin() != Stop::Gate)
 			return out;
 		setNames(_set, _project);
+		// Route A's own watch: the engine's BANK= parse is the write to
+		// PART_PTR made at 0x40087d44, and it is the ONLY thing that tells
+		// the saved bank apart from every other writer of that word (`sys`'s
+		// select-bank case writes it too, from a different PC).
+		if(!m_partPtrWatched)
+		{
+			m_partPtrWatched = true;
+			m_machine.addWriteWatch(g_partPtr, g_partPtr + 3,
+				[this](uint32_t, uint8_t, const uint32_t _val, const uint32_t _pc)
+				{
+					if(_pc == g_engineBankWrite)
+						m_savedBank = static_cast<int>((_val - g_bankBlob) / g_bankStride);
+				});
+		}
 		uint32_t d0 = 0;
 		// A generous budget: with the card live the borrowed call is preempted
 		// constantly, so the step count is dominated by the OTHER tasks
@@ -616,8 +645,123 @@ namespace ot
 		if(out.stop != Stop::Time)
 			out.stopWhy = m_why;
 		out.partPtr = m_machine.peek32(g_partPtr);
+		out.savedBank = m_savedBank;
+		out.finalBank = m_machine.read8(g_curBank);
 		out.ms = (m_sample - start) / g_sampleHz * 1000.0;
 		return out;
+	}
+
+	// -- M6c: the sequencer under the real scheduler -------------------------
+	void Rtos::setFrame(const bool _on)
+	{
+		m_frame = _on;
+		// Route A's `rt.next_frame = rt.sample + FRAME_PERIOD`: the first
+		// boundary is one period from HERE, not from a clock that has been
+		// running since the boot. Route A also switches to its exact
+		// instruction clock at this point; this port has counted executed
+		// instructions all along, so there is nothing to switch.
+		if(_on)
+			m_nextFrame = m_sample + g_framePeriod;
+	}
+
+	uint8_t Rtos::selectBankLive(const uint32_t _bank, const double _ms)
+	{
+		if(runToMainSpin() != Stop::Gate)
+			return m_machine.read8(g_curBank);
+		// msg[0] = the select-bank opcode, msg[1] = the bank.
+		m_machine.poke32(g_sysMsgScratch,
+			(g_selectBankCase << 24) | ((_bank & 0x0f) << 16));
+		uint32_t d0 = 0;
+		if(!postMessage(g_sysQueue, g_sysMsgScratch, d0))
+			return m_machine.read8(g_curBank);
+		const double end = m_sample + _ms * g_sampleHz / 1000.0;
+		while(m_sample < end && m_machine.read8(g_curBank) != (_bank & 0xff))
+			if(!stepOnce())
+				break;
+		return m_machine.read8(g_curBank);
+	}
+
+	std::pair<uint8_t, uint8_t> Rtos::seqSelectLive(const uint32_t _bank, const uint32_t _pattern)
+	{
+		if(runToMainSpin() == Stop::Gate)
+		{
+			uint32_t d0 = 0;
+			callAsMain(g_fwSeqSelect, {_bank, _pattern}, d0);
+		}
+		return {m_machine.read8(g_fwSeqBank), m_machine.read8(g_fwSeqPattern)};
+	}
+
+	uint8_t Rtos::internalClock()
+	{
+		const auto midi = m_machine.read8(g_fwMidiSettings);
+		m_machine.write8(g_fwMidiSettings, static_cast<uint8_t>(midi & ~1u));
+		return midi;
+	}
+
+	bool Rtos::startTransportLive()
+	{
+		if(runToMainSpin() != Stop::Gate)
+			return false;
+		uint32_t d0 = 0;
+		if(!callAsMain(g_fwTransport, {0}, d0))
+			return false;
+		for(uint32_t t = 0; t < 8; ++t)
+		{
+			if(runToMainSpin() != Stop::Gate)
+				return false;
+			if(!callAsMain(g_fwStartTrack, {t}, d0))
+				return false;
+		}
+		return true;
+	}
+
+	uint8_t Rtos::pokeTrig(const uint32_t _step)
+	{
+		const auto blob = m_machine.peek32(g_partPtr);
+		const auto at = blob + 7 - (_step - 1) / 8;
+		const auto v = static_cast<uint8_t>(m_machine.read8(at) | (1u << ((_step - 1) % 8)));
+		m_machine.write8(at, v);
+		return v;
+	}
+
+	void Rtos::watchMem(const uint32_t _addr, const uint32_t _len)
+	{
+		m_machine.addWriteWatch(_addr, _addr + _len - 1,
+			[this](const uint32_t _a, const uint8_t _size, const uint32_t _val, const uint32_t _pc)
+			{
+				if(m_memWrites.size() < 20000)
+					m_memWrites.push_back({m_sample, curTcb(), _pc, _a, _val, _size});
+			});
+	}
+
+	void Rtos::installTrigLog()
+	{
+		if(m_trigLogInstalled)
+			return;
+		m_trigLogInstalled = true;
+		m_machine.addWriteWatch(g_fwLiveNibble, g_fwLiveNibble + 7,
+			[this](const uint32_t _addr, uint8_t, const uint32_t _val, const uint32_t _pc)
+			{
+				const auto v = _val & 0xff;
+				if(v)
+					m_liveNibble.push_back({m_frameCount, _addr - g_fwLiveNibble, v, _pc});
+			});
+		m_machine.addWriteWatch(g_fwTrigWords, g_fwTrigWords + 15,
+			[this](const uint32_t _addr, uint8_t, const uint32_t _val, const uint32_t _pc)
+			{
+				const auto v = _val & 0xffff;
+				if(v)
+					m_trigWords.push_back({m_frameCount, (_addr - g_fwTrigWords) / 2, v, _pc});
+			});
+	}
+
+	uint64_t Rtos::ticks() const
+	{
+		uint64_t n = 0;
+		for(const auto& a : m_acks)
+			if(a.vector == g_tickVector)
+				++n;
+		return n;
 	}
 
 	bool Rtos::requestCardMount()
@@ -699,6 +843,30 @@ namespace ot
 			}
 			return out;
 		}
+	}
+
+	void Rtos::writeM6cJson(const std::string& _path, const M6c& _m) const
+	{
+		std::ofstream f(_path);
+		f << "{\n";
+		const auto log = [&f](const char* _name, const std::vector<TrigWrite>& _v, const uint64_t _frame0)
+		{
+			f << " \"" << _name << "\": [";
+			bool first = true;
+			for(const auto& w : _v)
+			{
+				f << (first ? "" : ", ") << "[" << static_cast<int64_t>(w.frame - _frame0)
+				  << ", " << w.index << ", " << w.value << "]";
+				first = false;
+			}
+			f << "],\n";
+		};
+		log("m6c_trig", m_liveNibble, _m.frame0);
+		log("m6c_trig_words", m_trigWords, _m.frame0);
+		f << " \"m6c_ticks\": " << (_m.ticks - _m.ticks0) << ",\n";
+		f << " \"m6c_frames\": " << _m.frames << ",\n";
+		f << " \"m6c_bank\": [" << _m.savedBank << ", " << _m.finalBank << ", "
+		  << _m.seqBank << ", " << _m.seqPattern << "]\n}\n";
 	}
 
 	void Rtos::writeGoldenJson(const std::string& _path) const

@@ -249,6 +249,14 @@ namespace ot
 
 		uint32_t vectorBase() const { return m_vectorBase; }
 
+		// Diagnostics. "The interrupt never arrived" has three different
+		// causes -- the source is masked, it is installed at level 0, or it is
+		// not asserting at all -- and only reading all three tells them apart.
+		// The frame clock cost a whole measurement to that ambiguity.
+		bool masked(uint32_t _source) const { return (m_imr >> _source) & 1; }
+		uint8_t icr(uint32_t _source) const { return m_icr[_source]; }
+		bool assertedSource(uint32_t _source) const { return (asserted() >> _source) & 1; }
+
 		uint32_t read(uint32_t _off, uint32_t _size) const;
 		void write(uint32_t _off, uint32_t _size, uint32_t _val);
 

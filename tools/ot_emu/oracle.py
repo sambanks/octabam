@@ -49,8 +49,31 @@ What it checks, in the order a port reaches them:
                  because the transmit ring drains in bursts (milestone O5)
   gate_ms        when the gate passed
 
+And, from the M6c goldens (milestone O6 -- a different configuration, so a
+SEPARATE pair of files, written by `emu_rtos.py --sequencer --golden` and
+`ot_emu --sequencer --m6c-golden`):
+
+    .venv/bin/python3 tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+        --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 \
+        --golden out/oracle/m6c.json
+    ./out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/o6_card.img \
+        --set OCTABAM --project RIG --sequencer --internal-clock --poke-trig 2 \
+        --frames 400 --load-ms 20000 --m6c-golden out/oracle/port_m6c.json
+    python3 tools/ot_emu/oracle.py out/oracle/m6c.json out/oracle/port_m6c.json
+
+  m6c_trig       every write into the per-track live nibble (0x46104d15), as
+                 (frames since the transport start, track, byte) -- the trig
+                 itself. Compared STRICTLY: unlike the dispatch PCs and the
+                 serial count, none of the M6c fields tracks the ips knob.
+  m6c_trig_words the per-track trig words (0x46104d26); empty in every run so far
+  m6c_ticks      sequencer ticks (vector 0x60) since the transport start
+  m6c_frames     frames delivered since the transport start
+  m6c_bank       [saved bank, final bank, sequencer bank, sequencer pattern]
+
 A field the port has not produced yet is reported as MISSING, not as a
-failure: the port's JSON grows milestone by milestone.
+failure: the port's JSON grows milestone by milestone. A field the ORACLE
+does not carry is skipped entirely -- the two goldens measure different
+configurations and each carries only its own.
 """
 import json
 import sys
@@ -71,6 +94,13 @@ def main():
     compared = []
 
     def field(name):
+        # ⚠️ A FIELD THE ORACLE DOES NOT CARRY IS NOT THIS RUN'S BUSINESS.
+        # The M6a golden and the M6c golden are different configurations
+        # measuring different things, and each carries only its own fields;
+        # without this the M6c diff would report every M6a field as missing
+        # from the port and take credit for none of what it did compare.
+        if name not in a:
+            return None
         if name not in b:
             missing.append(name)
             return None
@@ -187,6 +217,33 @@ def main():
             if da["pc"] != db["pc"]:
                 notes.append(f"dispatches[{i}]: same task at the same time, resumed at "
                              f"{da['pc']:#x} (oracle) vs {db['pc']:#x} (port)")
+
+    # -- M6c, the sequencer's fidelity (milestone O6) ------------------------
+    # Every one of these is compared STRICTLY. Unlike the dispatch PCs and the
+    # serial count, none of them tracks the instruction-budget knob: a trig
+    # either fires on the frame the other emulator fires it on or it does not,
+    # and the tick count is a property of the tempo and the frame period.
+    if (v := field("m6c_trig")) is not None:
+        ta = [tuple(x) for x in a["m6c_trig"]]
+        tb = [tuple(x) for x in v]
+        if ta != tb:
+            problems.append("m6c_trig: the live-nibble log differs\n"
+                            f"    oracle {[(f, t, hex(x)) for f, t, x in ta]}\n"
+                            f"    port   {[(f, t, hex(x)) for f, t, x in tb]}")
+
+    if (v := field("m6c_trig_words")) is not None:
+        if [tuple(x) for x in a["m6c_trig_words"]] != [tuple(x) for x in v]:
+            problems.append(f"m6c_trig_words: oracle {a['m6c_trig_words']}, port {v}")
+
+    if (v := field("m6c_ticks")) is not None and v != a["m6c_ticks"]:
+        problems.append(f"m6c_ticks: oracle {a['m6c_ticks']}, port {v}")
+
+    if (v := field("m6c_frames")) is not None and v != a["m6c_frames"]:
+        problems.append(f"m6c_frames: oracle {a['m6c_frames']} frames since the transport start, port {v}")
+
+    if (v := field("m6c_bank")) is not None and list(v) != list(a["m6c_bank"]):
+        problems.append(f"m6c_bank: [saved, final, seq bank, seq pattern] "
+                        f"oracle {a['m6c_bank']}, port {list(v)}")
 
     # ⚠️ COUNT ONLY WHAT WAS ACTUALLY COMPARED. The summary used to say
     # "N field(s) agree" where N was every field in the golden, which quietly

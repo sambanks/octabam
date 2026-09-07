@@ -616,6 +616,11 @@ class Rtos:
         self.next_frame = FRAME_PERIOD
         self.frame_pending = False
         self.frame_count = 0
+        # Sequencer ticks: deliveries of vector 0x60 (INTC0 source 32, the
+        # frame handler's own forced interrupt -- §8.2). Counted so the M6c
+        # report can state it instead of leaving it to be inferred from the
+        # trig log; the C++ port counts the same vector's acknowledgements.
+        self.tick_count = 0
         # INTC0 sources: 1 = DSP frame (vector 0x41); 27/28 -> vectors
         # 0x5b/0x5c -> handlers 0x400109bc/0x40010b88 (vector-install scan,
         # 6 Sep 2026); INTC1 source 43 = PIT0.
@@ -983,6 +988,8 @@ class Rtos:
         if name == "INTC0" and src == 1:
             self.frame_pending = False
             self.frame_count += 1
+        if vec == 0x60:
+            self.tick_count += 1
         self._t(f"irq {name} src {src} vec {vec} level {level} -> {self.pc:#x} (was ipl {ipl})")
         return True
 
@@ -1900,6 +1907,7 @@ def _cli():
             # returned, which is what emu_frames.py's cold run calls frame 0:
             # the two reports compare directly (cold: the trig at 344).
             frame0 = rt.frame_count + 1
+            ticks0 = rt.tick_count
             target = frame0 + a.frames
             rt.run(ms=a.frames * FRAME_PERIOD / SAMPLE_HZ * 1000.0 * 5 + 2000,
                    until=lambda x: x.frame_count >= target)
@@ -1918,6 +1926,7 @@ def _cli():
                   f"{_word(rt, REC_ARM):#x}")
         print(f"load       : mounted={mounted} saved_bank={saved_bank} bank={final_bank} "
               f"clock={'internal' if a.internal_clock else 'external (CLOCK RECEIVE as saved)'}")
+        print(f"ticks      : {rt.tick_count - ticks0} sequencer tick(s) (vector 0x60) since transport start")
         print(f"frames run : {rt.frame_count - frame0} since transport start (target {a.frames}; "
               f"{frame0} before it), eDMA transfers {rt.edma.started}")
         if a.tape:
@@ -1947,6 +1956,24 @@ def _cli():
             print(f"arm-phase  : {len(fixes)} trig word(s) had bit 7 cleared (COMPENSATION): "
                   + ", ".join(f"track {t} {w:#x} @ {s_:.0f}" for s_, t, w in fixes[:8]))
         _watch_report()
+        if a.golden:
+            # THE M6c ORACLE, in the shape tools/ot_emu/oracle.py compares:
+            # the trig log with frame numbers relative to the transport start,
+            # the tick count, the frames run, and the four bank/pattern bytes.
+            # Deliberately a SEPARATE file from the M6a golden -- a different
+            # configuration measures a different thing.
+            import json as _json
+            pathlib.Path(a.golden).parent.mkdir(parents=True, exist_ok=True)
+            with open(a.golden, "w") as f:
+                _json.dump({
+                    "m6c_trig": [[fr - frame0, tr, v] for fr, tr, v in rt.live_nibble_log],
+                    "m6c_trig_words": [[fr - frame0, i, v] for fr, i, v in rt.trig_words_log],
+                    "m6c_ticks": rt.tick_count - ticks0,
+                    "m6c_frames": rt.frame_count - frame0,
+                    "m6c_bank": [saved_bank if saved_bank is not None else -1,
+                                 final_bank, seq_bank, seq_pattern],
+                }, f, indent=1)
+            print(f"golden     : {a.golden}")
         label = "M6d run (via-key)" if a.via_key else "M6c run"
         print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")
         return 0 if ok else 1

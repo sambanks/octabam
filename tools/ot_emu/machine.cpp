@@ -59,6 +59,28 @@ namespace ot
 		// Measured by route A (emu_bringup), kept identical here.
 		override32(0xfc0c4000, 0x16000000);
 
+		// ✅ THE DSP HOST PORT AS ROUTE A FAKES IT -- and without it the frame
+		// handler never returns. Route A carries exactly two replies in its
+		// EXTRA_OVERRIDES (`emu_rtos.attach`, "the DSP host port as M5 faked
+		// it"), and both are stand-ins for the DSP that milestone O8 will put
+		// behind this window:
+		//
+		//   0x20000004 reads 0x0000. The frame handler at 0x4000ab1a writes
+		//   140 there and then polls `movew 0x20000004,%d0 / tstb %d0 / blts`
+		//   -- it waits for BIT 7 OF THE LOW BYTE TO CLEAR, the DSP's
+		//   handshake. An unmodelled window answers all-ones, the bit never
+		//   clears, and the handler spins there forever. ✅ Measured 8 Sep
+		//   2026 (O6): the port took exactly ONE frame interrupt, entered
+		//   0x4000aad0, and burned 352 M instructions in that three-
+		//   instruction loop -- 0 eDMA transfers, 0 ticks, 0 trigs. It reads
+		//   as "the frame model is wrong"; it is a missing peripheral reply.
+		//
+		//   0x2000001c is the ping index, read one instruction earlier at
+		//   0x4000aafa; route A toggles it 0/1 on every read.
+		m_overrides[0x20000004] = 0x00;
+		m_overrides[0x20000005] = 0x00;
+		setOverrideFn(0x2000001c, [ping = uint32_t(0)]() mutable { return ping ^= 1; });
+
 		// SR BEFORE A7: writing the status register swaps the supervisor and
 		// user stack banks, so setting A7 first puts the reset stack in the
 		// bank the machine is about to leave. Route A's lesson, and it fails
@@ -118,6 +140,29 @@ namespace ot
 			{
 				if(!_create)
 					return nullptr;
+				if(m_autoPages.size() >= m_autoMapLimit)
+				{
+					// Stop the machine rather than the process. `step()`
+					// reports `m_illegal`, so the run ends with a reason and
+					// the whole report -- counts, PCs, spans -- still prints.
+					if(!m_illegal)
+					{
+						uint32_t worst = 0; uint64_t n = 0;
+						for(const auto& [pcv, cnt] : m_unmappedPcs)
+							if(cnt > n) { n = cnt; worst = pcv; }
+						char msg[192];
+						std::snprintf(msg, sizeof msg,
+							"auto-map limit: %llu pages grown (%llu KB); the address is %#x "
+							"and the busiest unmapped-access pc is %#x x%llu",
+							static_cast<unsigned long long>(m_autoPages.size()),
+							static_cast<unsigned long long>(m_autoPages.size() * 4),
+							_addr, worst, static_cast<unsigned long long>(n));
+						m_why = msg;
+						m_illegal = true;
+					}
+					m_autoScrap.assign(g_autoPageSize, 0);
+					return m_autoScrap.data() + (_addr & (g_autoPageSize - 1));
+				}
 				it = m_autoPages.emplace(page, std::vector<uint8_t>(g_autoPageSize, 0)).first;
 			}
 			m_lastAutoPage = page;
@@ -255,24 +300,54 @@ namespace ot
 		return 0xffff;
 	}
 
+	// A write the region model cannot honour. It cannot happen if `find` is
+	// right -- which is the point: without this the emulator DIES inside
+	// Musashi's opcode handler with a bare SIGSEGV and no report at all, and
+	// three runs were spent on that (O6, 8 Sep 2026). Stopping the machine
+	// keeps the PC, the address and the whole report.
+	void Machine::badWrite(const char* _what, const uint32_t _addr, const uint8_t _size)
+	{
+		if(m_illegal)
+			return;
+		char msg[192];
+		std::snprintf(msg, sizeof msg, "%s: %u-byte write to %#x at pc %#x could not be placed",
+			_what, _size, _addr, currentPc());
+		m_why = msg;
+		m_illegal = true;
+	}
+
 	void Machine::write8(const uint32_t _addr, const uint8_t _val)
 	{
 		++m_writes;
+		if(!m_writeWatches.empty())
+			noteWatchedWrite(_addr, 1, _val);
 		if(isPeripheral(_addr))
 			return peripheralWrite(_addr, 1, _val);
 		if(auto* const r = find(_addr, 1))
-			r->data[_addr - r->base] = _val;
+		{
+			const auto o = _addr - r->base;
+			if(o >= r->data.size())
+				return badWrite("region", _addr, 1);
+			r->data[o] = _val;
+		}
 		else
 		{
 			noteUnmapped('w', _addr, 1, _val);
 			if(m_autoMap)
-				*autoByte(_addr, true) = _val;
+			{
+				if(auto* const b = autoByte(_addr, true))
+					*b = _val;
+				else
+					badWrite("auto-map", _addr, 1);
+			}
 		}
 	}
 
 	void Machine::write16(const uint32_t _addr, const uint16_t _val)
 	{
 		++m_writes;
+		if(!m_writeWatches.empty())
+			noteWatchedWrite(_addr, 2, _val);
 		if(isPeripheral(_addr))
 			return peripheralWrite(_addr, 2, _val);
 		if(auto* const r = find(_addr, 2))
@@ -319,6 +394,8 @@ namespace ot
 	void Machine::write32(const uint32_t _addr, const uint32_t _val)
 	{
 		++m_writes;
+		if(!m_writeWatches.empty())
+			noteWatchedWrite(_addr, 4, _val);
 		if(isPeripheral(_addr))
 			return peripheralWrite(_addr, 4, _val);
 		if(auto* const r = find(_addr, 4))
@@ -374,6 +451,23 @@ namespace ot
 	{
 		write16(_addr, static_cast<uint16_t>(_val >> 16));
 		write16(_addr + 2, static_cast<uint16_t>(_val));
+	}
+
+	void Machine::addWriteWatch(const uint32_t _begin, const uint32_t _end, WriteWatch _cb)
+	{
+		m_writeWatches.push_back({_begin, _end, std::move(_cb)});
+	}
+
+	void Machine::noteWatchedWrite(const uint32_t _addr, const uint8_t _size, const uint32_t _val)
+	{
+		for(const auto& w : m_writeWatches)
+			if(_addr + _size > w.begin && _addr <= w.end)
+				w.cb(_addr, _size, _val, currentPc());
+	}
+
+	uint32_t Machine::currentPc() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_PPC);
 	}
 
 	uint32_t Machine::pc() const
