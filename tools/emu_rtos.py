@@ -491,7 +491,18 @@ class Edma:
         lo, hi = self.HOSTPORT
         return any(lo <= self._u(ch, o, 4) < hi for o in (0, 0x10))
 
+    def tcd_fields(self, ch):
+        """the channel's TCD as a dict (MCF5445x eDMA, chapter 19)"""
+        return dict(saddr=self._u(ch, 0, 4), soff=self._u(ch, 4, 2), attr=self._u(ch, 6, 2),
+                    nbytes=self._u(ch, 8, 4), slast=self._u(ch, 0xc, 4), daddr=self._u(ch, 0x10, 4),
+                    citer=self._u(ch, 0x14, 2), doff=self._u(ch, 0x16, 2),
+                    dlast=self._u(ch, 0x18, 4), biter=self._u(ch, 0x1c, 2), csr=self._csr(ch))
+
+    on_transfer = None          # (ch, paced, fields) -- the TAPE hook (tier 2, 7 Sep 2026)
+
     def _start(self, ch, paced):
+        if self.on_transfer is not None:
+            self.on_transfer(ch, paced, self.tcd_fields(ch))
         self._set_csr(ch, self._csr(ch) & ~self.DONE)
         self.started += 1
         if paced:                            # the DSP delivers its frame on ITS clock
@@ -541,6 +552,9 @@ class Edma:
                 self._set_csr(c, self._csr(c) & ~self.DONE)
         else:
             self.regs[a] = val
+
+
+DSP_SELECT = 0xfc0a400c     # the GPIO that picks which DSP core the host port talks to (DSP.md section 1)
 
 
 class RtosFault(Exception):
@@ -846,6 +860,8 @@ class Rtos:
         elif EDMA <= a < EDMA + 0x2000:
             self.edma.write(a, size, val, replay=replay)
         else:
+            if a == DSP_SELECT and not replay and self._tape is not None:
+                self._tape_rec("gpio", val=val & 0xff)
             for u in (self.uart64, self.uart68):
                 if u.base <= a < u.base + 0x20:
                     u.write(a - u.base, size, val, replay=replay)
@@ -1023,6 +1039,55 @@ class Rtos:
         self.pc = self.trap[1] if self.trap else uc.reg_read(eb.UC_M68K_REG_PC)
         self.pc_samples[(self._cur(), self.pc)] += 1
         self._tick_timers()
+
+    # -- THE TAPE (tier 2 of the emulator uplift, 7 Sep 2026) ----------------
+    # Everything the ColdFire pushes towards the DSPs, in order, with the frame
+    # it happened in: every eDMA transfer whose source or destination is the
+    # host-port window (the TCD's fields and the source bytes, read at the
+    # kick), every CPU write into the host-port window (the 0x81 / 0x8C
+    # commands and whatever else the frame handler pokes), and every write of
+    # the DSP-select GPIO (which core the window is talking to). Replayed into
+    # the two-core dsp_host, this is the sequencer's parameter motion --
+    # scenes, p-locks, LFOs, CC -- driving the DSP without the ColdFire in
+    # the loop. JSON lines; the decoder lives beside the replayer.
+    _tape = None
+
+    def tape(self, path):
+        import json
+        self._tape = open(path, "w")
+        self._tape_n = 0
+        self._tape_json = json
+
+        def on_transfer(ch, paced, f):
+            lo, hi = self.edma.HOSTPORT
+            src_host = lo <= f["saddr"] < hi
+            dst_host = lo <= f["daddr"] < hi
+            if not (src_host or dst_host):
+                return
+            rec = dict(kind="edma", ch=ch, paced=paced, **f)
+            if not src_host:
+                # source in RAM: the bytes the DSP is about to receive. One
+                # major loop is BITER minor loops of NBYTES; the source walks
+                # SOFF per element, so the span is NBYTES x BITER when SOFF
+                # is nonzero (a fixed source would be a peripheral register).
+                n = f["nbytes"] * max(1, f["biter"]) if f["soff"] else f["nbytes"]
+                n = min(n, 0x10000)
+                rec["data"] = bytes(self.uc.mem_read(f["saddr"], n)).hex()
+            self._tape_rec(**rec)
+        self.edma.on_transfer = on_transfer
+
+        def on_hostw(u, acc, addr, size, val, x):
+            self._tape_rec("hostw", addr=addr, size=size, val=val & ((1 << (8 * size)) - 1),
+                           pc=u.reg_read(eb.UC_M68K_REG_PC))
+        lo, hi = self.edma.HOSTPORT
+        self.uc.hook_add(eb.UC_HOOK_MEM_WRITE, on_hostw, begin=lo, end=hi - 1)
+        return self
+
+    def _tape_rec(self, kind=None, **kw):
+        rec = dict(n=self._tape_n, frame=self.frame_count, sample=round(self.sample, 1),
+                   kind=kind or kw.pop("kind"), **kw)
+        self._tape.write(self._tape_json.dumps(rec) + "\n")
+        self._tape_n += 1
 
     def _tick_timers(self):
         if self.pit0.advance(self.sample):
@@ -1635,6 +1700,10 @@ def _cli():
     ap.add_argument("--arm-phase-fix", action="store_true",
                     help="RETIRED (RTOS_FORK 10.16): compensation for the stock-EMAC timing byte; "
                          "with the fixed Unicorn the trig arms on its own. Kept for comparison runs")
+    ap.add_argument("--tape", default="",
+                    help="with --sequencer: record every host-port-bound eDMA transfer (fields + "
+                         "source bytes), every CPU write into the host-port window and every "
+                         "DSP-select GPIO write to this JSON-lines file -- tier 2's parameter tape")
     ap.add_argument("--stock-emac", action="store_true",
                     help="run even though this Unicorn's EMAC fails emu_bringup.emac_selftest "
                          "(fractional products halved; RTOS_FORK section 10.16)")
@@ -1673,6 +1742,14 @@ def _cli():
         rt.watch_pc([int(x, 0) for x in a.watch_pc.split(",")])
     if a.arm_phase_fix:
         rt.arm_phase_fix()
+    if a.tape:
+        # From the handoff on, not from transport start: the FX knob values
+        # were nowhere in 400 frames of steady-state traffic (7 Sep 2026), so
+        # they travel as EVENTS -- at the load, at an effect select, at a
+        # knob move -- and a tape that misses the load misses them all.
+        pathlib.Path(a.tape).parent.mkdir(parents=True, exist_ok=True)
+        rt.tape(a.tape)
+        print(f"tape       : recording host-port traffic to {a.tape} (from the handoff)")
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
@@ -1756,6 +1833,8 @@ def _cli():
             rt.frame = True
             rt.next_frame = rt.sample + FRAME_PERIOD
             rt.exact_clock()
+            if a.tape:
+                rt._tape_rec("mark", what="transport-start")
             if a.watch_pattern:
                 pbase = rt.pattern_base()
                 print(f"pattern    : record at {pbase:#x} "
@@ -1820,6 +1899,10 @@ def _cli():
               f"clock={'internal' if a.internal_clock else 'external (CLOCK RECEIVE as saved)'}")
         print(f"frames run : {rt.frame_count - frame0} since transport start (target {a.frames}; "
               f"{frame0} before it), eDMA transfers {rt.edma.started}")
+        if a.tape:
+            rt._tape.close()
+            print(f"tape       : {rt._tape_n} records -> {a.tape} (frame numbers are absolute; "
+                  f"transport started at frame {frame0})")
         print(f"FW_LIVE_NIBBLE (0x{FW_LIVE_NIBBLE:x}) writes ({len(rt.live_nibble_log)}), frames since transport start:")
         for frame, track, val in rt.live_nibble_log:
             print(f"   frame {frame - frame0:5d} track {track} byte {val:#04x}  nibble {val & 0xf:x}  flags {val & 0xf0:#04x}")
