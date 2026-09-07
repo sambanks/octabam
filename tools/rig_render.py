@@ -245,6 +245,17 @@ def main():
 
     # instances, in dispatch order: core 0 (tracks 5-8) then core 1 (1-4),
     # each track FX1 then FX2 on ONE audio buffer
+    # An EMPTY FX2 slot is not empty on the unit: a fresh or unassigned track
+    # dispatches to the fallback, SEND (id 0 aliases to it), which houskeeps
+    # like any bus participant and costs its cycles. Model it, or a layout
+    # with nothing on core 0's position 0 has no housekeeper at all and the
+    # bus never rotates (found 7 Sep 2026: a delay-only render was silent).
+    send_mod = registry.modules().get("SEND")
+    r_ = registry.remix(a.remix)
+    if send_mod is not None and "SEND" in r_.modules:
+        for t in range(1, NTRACKS + 1):
+            if not any(s.fx == 2 for s in tracks.get(t, [])):
+                tracks.setdefault(t, []).append(Slot(send_mod, 2, defaults_of(send_mod)))
     inst = []            # dicts
     for t in [5, 6, 7, 8, 1, 2, 3, 4]:
         for s in tracks.get(t, []):
@@ -345,7 +356,7 @@ def main():
             p = out if k == 0 else pathlib.Path(f"{out}.i{k}")
             arr = array.array("i"); arr.frombytes(p.read_bytes())
             L, R = list(arr[0::2])[pad:], list(arr[1::2])[pad:]
-        elif t in stems:                       # no effect at all: the stem passes through
+        elif t in stems:                       # no instance at all: the stem passes through
             x = stems[t]
             L = [int(a.amp * (x[j] if j < min(len(x), n_src) else 0.0) * 8388607) for j in range(n - pad)]
             R = list(L)

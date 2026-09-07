@@ -280,6 +280,18 @@ def main():
     st_4 = run(mems, t4, tag="t4")
     check("a SEND on T4 (core 1 pos 3, the mirror) DOES change it", st_4[2] != ret)
 
+    print("\n== the return is pinned to track 8, and only there ==")
+    r4 = [R(), S6(), D(), S2(), Inst("CHARACTER", 1, 3, fx=1, SAT=3, RET=127)]
+    st_r4 = run(mems, r4, tag="ret4")
+    check("a BUS-mode station on T4 (core 1 pos 3) returns nothing",
+          peak(st_r4[4][0] + st_r4[4][1]) == 0, f"peak {peak(st_r4[4][0] + st_r4[4][1])}")
+    check("... and the hosts keep printing (it stamped nothing)",
+          rms_db(st_r4[0][0]) > -45 and rms_db(st_r4[2][0]) > -45)
+    r7 = [R(), S6(), Inst("CHARACTER", 0, 2, fx=1, SAT=3, RET=127), D(), S2()]
+    st_r7 = run(mems, r7, tag="ret7")
+    check("a BUS-mode station on T7 (core 0 pos 2) returns nothing",
+          peak(st_r7[2][0] + st_r7[2][1]) == 0)
+
     print("\n== the stations have no sends ==")
     # a Spectrum station on T6's FX1 with the OLD send bytes stored (slots 4
     # and 5 at 127, what a pre-rig part holds) beside T6's SEND at AUX 100

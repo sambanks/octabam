@@ -2110,13 +2110,15 @@ listened to. What the ear will meet, from the numbers:
   bit. A render of the reverb host's OWN material (`render_reverb`, AUX 64)
   prints 6 dB lower than v8 at the same tank drive; the bench baselines in
   this file predate that.
-- **The return's repeats-vs-reverb balance is the reverb's MIX alone.** The
-  reverb's stage output is `in × (1 − MIX) + wet × MIX` where `in` is the
-  delay's output. Measured in `verify_onebus` with a 438 Hz tone at two
-  senders: the delay-only return sits at −11 dB rms, the reverb-only at
-  −36 dB. At MIX 64 both halve, and the reverb all but vanishes under the
-  repeats. **Open**: whether the reverb stage wants a fixed (unkeyed) wet
-  makeup of the +9.5 dB the IN law used to give at full IN, so MIX behaves
-  like a mixer's wet/dry over its whole travel. Decide by ear on the rig
-  (T2 AUX up, reverb MIX swept), not on the tone.
+- **The return's repeats-vs-reverb balance is the reverb's MIX alone**, and
+  it is ✅ fine on material. ❌ The "reverb 25 dB under the repeats" alarm
+  (a 438 Hz tone in the gate: −11 vs −36 dB) is retracted — a steady sine
+  says nothing about a reverb's level. Measured the same evening on the
+  drum loop and the pad through the rig (`out/rig/oneaux/levels.json`):
+  return at reverb MIX 0 (repeats through) −25.1 / −31.4 dB rms, at MIX 127
+  (wet only) −26.8 / −32.8 — within 2 dB, so no makeup; MIX 64 sits 3 dB
+  under either, a crossfade of two uncorrelated signals. The sweep
+  (MIX 0/32/64/96/127, both sources, plus reverb-only, delay-only, dry) is
+  parked in `out/rig/oneaux/` for the ear: what is left to judge is
+  character, not level.
 - **PTCH moved to page 2** (slot 10), MIX took page-1 slot 5 on the delay.

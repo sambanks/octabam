@@ -246,8 +246,8 @@ ch_mskz:
         move    #>$20000,x0
         cmp     x0,a
         beq     ch_srr4
-        move    #>$30000,x0
-        cmp     x0,a
+        move    #>$030000,x0            ; 3<<16 (zero-padded: not the base
+        cmp     x0,a                    ; literal the build rewrites)
         beq     ch_srr8
         clr     a                       ; OFF, and anything unexpected
         bra     ch_srrz
@@ -342,12 +342,12 @@ ch_cdone:
         move    #>$20000,x0
         cmp     x0,a
         beq     ch_sfuzz
-        move    #>$30000,x0
+        move    #>$030000,x0            ; 3<<16 = BUS (zero-padded, see above)
         cmp     x0,a
         beq     ch_sbus
         bra     ch_sdone                ; TAPE: the curve alone
 ch_stube:
-        move    #>$300000,x0            ; neg = 0.75: the positive half is
+        move    #>$0300000,x0           ; neg = 0.75: the positive half is
         move    x0,x:(r7+$37)           ; driven harder, so even harmonics
         bra     ch_sdone
 ch_sfuzz:
@@ -370,11 +370,24 @@ ch_sbus:
 ; ONE RETURN (the one-aux rig, 7 Sep 2026): RET (the CRSH knob) is the level
 ; of the LAST LIVE STAGE's output -- the reverb's if it is running, else the
 ; delay's, else nothing -- resolved below from the engines' liveness stamps.
-; The RING knob is inert in BUS mode. And the return is PINNED to dispatch
-; position 3 (r7 $6700/$6800: track 8 on core 0; its mirror is track 4 on
-; core 1): a BUS-mode station anywhere else returns nothing.
+; The RING knob is inert in BUS mode. And the return is PINNED to TRACK 8:
+; dispatch position 3 (r7 $6700/$6800) on payload A only -- a BUS-mode
+; station anywhere else, core 1's position 3 (track 4) included, returns
+; nothing.
         move    x:(r6+$2),x0
         move    x0,x:(r7+$3e)           ; RET level (the CRSH knob)
+; ... on PAYLOAD A ONLY: the mirror position on core 1 is track 4. An insert
+; carries no per-payload literal (an FX1 module may own no buffers, so the
+; build refuses it a base), so the core is read off the DISPATCH TABLE: in
+; the specialized image BusVerb (id 0x07) is real on payload A and ALIASED
+; TO SEND (id 0x09) on payload B -- X:$215+7 == X:$215+9 there. Under the
+; DEV hatch everything is payload A and the test allows. Consequence: a
+; remix WITHOUT BusVerb has no return anywhere (its id aliases on both
+; cores); the rig always carries it on T5.
+        move    x:>$21c,a               ; INIT_TABLE[REVERB SERVER]
+        move    x:>$21e,x0              ; INIT_TABLE[SEND]
+        cmp     x0,a
+        beq     ch_nopos                ; the alias: payload B, never the return
         move    r7,a
         and     #>$ff00,a
         move    #>$6700,x0
@@ -383,8 +396,9 @@ ch_sbus:
         move    #>$6800,x0
         cmp     x0,a
         beq     ch_pos3
+ch_nopos:
         clr     a
-        move    a,x:(r7+$3e)            ; not position 3: no return
+        move    a,x:(r7+$3e)            ; not track 8: no return
 ch_pos3:
 ch_sdone:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).

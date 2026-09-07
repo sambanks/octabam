@@ -16,10 +16,13 @@
 > `tools/verify_onebus.py` (in `make check`) measures every property with
 > the senders and delay on payload B and the reverb and return on payload A.
 > ⚠️ Every project must be `stamp-defaults`'d for the re-slot before play
-> (page 1 of both engines shifted right by one). ⚠️ Open ear item: the
-> repeats-vs-reverb balance at the return is the reverb's MIX alone, and the
-> reverb's wet is ~25 dB under a sustained input where the delay's is not.
-> (The spec artifact is gone; the design is in the memory and in BUS.md.)
+> (page 1 of both engines shifted right by one). The return balance is
+> measured fine on material (repeats and wet within 2 dB on drums and pad;
+> the tone-based "25 dB" alarm is retracted, VOICING R63); renders for the
+> ear are parked in `out/rig/oneaux/`. The rig's cycle floor by the meter:
+> core 0 1,570 instructions/sample, core 1 702 (`docs/HARNESS.md`). The
+> card project is prepared at `out/projects/OCTABAM_ONEAUX` (FLASHPLAN
+> Flash 6). (The spec artifact is gone; the design is in BUS.md.)
 > Sections below that describe two buses are history.
 
 # The plan: end state, resource ledger, and work order
