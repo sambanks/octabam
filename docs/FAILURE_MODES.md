@@ -204,3 +204,39 @@ emulator's own menu and count rows; if it shows six there too, the emulator
 can find where the count really comes from. Flash 4 (tag 79, MENU SHORTCUT)
 used the same patch -- whether its rows appeared was never recorded.
 
+## The one-aux return never reaches T8: the hosts keep printing their own wet 🔴
+
+**Symptom.** With the one-aux rig on the unit, sending `AUX` from a track
+produces wet — but it comes out of **T1 and T5, the engines' own host
+tracks**. Muting T1 and T5 removes all wet. Nothing arrives at T8, the
+pinned return. Turning the return knob down does silence the wet.
+
+**Seen.** ✅ Flash 6, tag 20, 7 Sep 2026, reported from the unit. Claim ii of
+the Flash 6 table ("T2 sends AUX: repeats AND reverb arrive on T8 with
+nothing on T1/T5's own outputs"). Claims i (the re-slot) and iv (MIX) passed
+in the same session.
+
+**Cause.** 🟡 **INFERRED, not measured.** The symptom is the third falsifier
+the claim itself names — *"the hosts still printing (RETV/RETD)"* — i.e. the
+return-live stamp is not reaching the engines, so neither host goes quiet and
+the return publishes nothing. The stamp has to cross cores here: the return
+is a BUS-mode Character pinned to **T8 = payload A / core 0**, while the
+delay host sits on **T1 = payload B / core 1**. Nothing has been measured on
+the unit to distinguish a lost stamp from a return that never publishes.
+
+**⚠️ THE LOCAL GATE IS GREEN ON EXACTLY THIS.** `tools/verify_onebus.py`
+asserts "T5 (reverb host) prints nothing while the return is live" and the
+same for T1, and both pass — the property hardware falsifies is the property
+the gate checks. That is the standing rule in force, not a surprise:
+`dsp_host` boots both payloads but runs them in lock-step, so a cross-core
+timing defect cannot appear locally. **Believe the hardware.**
+
+**Fix.** None yet, and per the Flash 6 stop condition the next step is
+measurement, not code: *"any of ii–iv failing on the unit after passing
+`make verify-onebus` locally is a cross-core timing fact — record the exact
+configuration (which core, which position) before touching code."* What is
+worth having before the next flash: which track the send came from, whether
+a send from a **core 0** track (T6/T7) behaves differently from a **core 1**
+one (T2–T4), and whether the return is dead or merely intermittent (the
+free lever from `docs/XBUS.md` is to change what sits on track 5).
+
