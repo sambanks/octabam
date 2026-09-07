@@ -100,6 +100,12 @@ render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks
 verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
 	python3 tools/verify_twocore.py
 
+.PHONY: emu-cf
+emu-cf: ## Build and run the headless ColdFire machine (tools/ot_emu) -- boots to the RTOS handoff
+	cmake -B out/emu -S tools/ot_emu >/dev/null
+	cmake --build out/emu -j8 >/dev/null
+	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)
+
 .PHONY: verify-onebus
 verify-onebus: ## THE ONE AUX BUS on both cores: chain, last-live-stage return, MIX passthrough, T8 refusal, no station sends (~2 min)
 	python3 tools/verify_onebus.py
