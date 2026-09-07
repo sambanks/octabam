@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 
 namespace ot
@@ -46,6 +47,10 @@ namespace ot
 		// Fire every expiry up to `_now`; returns how many fired.
 		uint32_t advance(double _now);
 
+		// When this timer next expires, if it is armed at all: what the run
+		// loop's idle skip jumps to.
+		bool nextExpiry(double& _out) const { _out = m_expiry; return m_armed; }
+
 		// The state the boot left behind the generic peripheral stub
 		// (0x400005a8..0x400005f6), replayed rather than guessed.
 		void seed(uint32_t _pcsr, uint32_t _pmr, double _now);
@@ -59,6 +64,74 @@ namespace ot
 		bool m_armed = false;
 		double m_expiry = 0;
 		uint64_t m_fired = 0;
+	};
+
+	// ---- UART --------------------------------------------------------------
+	// One of the serial blocks at 0xfc064000 / 0xfc068000, modelled from the
+	// firmware's own use of it (route A: handler 0x400109bc, ring writer
+	// 0x40010b1c, polled sender 0x40010a4c):
+	//   +0x04 status: bit 0 = receive ready (must read 0 with nothing queued,
+	//         or the handler's receive loop never ends), bit 2 = transmit ready
+	//   +0x0c data: read = the next received byte, write = one byte sent
+	//   +0x14 mask: 3 = transmit + receive, 2 = receive only
+	// Transmit is always ready, so the line is asserted exactly while the
+	// transmit interrupt is enabled -- the handler drains the ring and drops
+	// the mask to 2 itself.
+	class Uart
+	{
+	public:
+		enum : uint32_t { RXRDY = 1, TXRDY = 4 };
+
+		Uart(const char* _name, uint32_t _base) : m_name(_name), m_base(_base) {}
+
+		uint32_t base() const { return m_base; }
+		bool irq() const { return (m_imr & 1) || ((m_imr & 2) && !m_rx.empty()); }
+		const std::vector<uint8_t>& tx() const { return m_tx; }
+
+		// ⚠️ The boot leaves the transmit interrupt ARMED with the kernel's
+		// trampoline still in the vector slot: on hardware the driver's own
+		// handler drains the ring during the boot, but a cold emulated boot
+		// takes no interrupts at all, so the mask arrives at the handoff armed
+		// and storms. Main re-installs the handler and re-arms transmit on its
+		// first write. Route A clears bit 0 after seeding for exactly this;
+		// 🟡 inferred from the storm, not measured.
+		void clearTransmitInterrupt() { m_imr &= ~1u; }
+
+		uint32_t read(uint32_t _off, uint32_t _size);
+		void write(uint32_t _off, uint32_t _size, uint32_t _val, bool _replay);
+
+	private:
+		const char* m_name;
+		uint32_t m_base;
+		uint32_t m_imr = 0;
+		std::vector<uint8_t> m_tx;
+		std::vector<uint8_t> m_rx;
+		std::unordered_map<uint32_t, uint32_t> m_regs;
+	};
+
+	// ---- DSPI --------------------------------------------------------------
+	// The DSPI at 0xfc05c000 as a LOOPBACK: every frame pushed (PUSHR +0x34)
+	// yields one received frame (POPR +0x38, value 0), and the status register
+	// (+0x2c) reports the receive count in bits 4-7 with TCF (31) and TFFF (25)
+	// set. Route A's sites: 0x4001c398 pushes three and waits for three;
+	// 0x40040b94 waits for two. What sits on the far end is not modelled.
+	//
+	// ✅ This is why it is here and not in a later milestone: without it main
+	// parks in that wait at 0x4001c50e and never reaches its init list, so no
+	// task is ever created and the M6a gate cannot pass (measured 7 Sep 2026,
+	// the first run of the O4 loop -- 401 dispatches, 0 creates, main pinned).
+	class Dspi
+	{
+	public:
+		enum : uint32_t { SR = 0x2c, PUSHR = 0x34, POPR = 0x38 };
+
+		uint32_t read(uint32_t _off, uint32_t _size);
+		void write(uint32_t _off, uint32_t _size, uint32_t _val, bool _replay);
+
+	private:
+		std::vector<uint32_t> m_rx;
+		std::unordered_map<uint32_t, uint32_t> m_regs;
+		uint64_t m_pushed = 0;
 	};
 
 	// ---- INTC --------------------------------------------------------------
@@ -89,6 +162,12 @@ namespace ot
 		// ticks before this rule went in. A source with ICR 0 is still never
 		// delivered.
 		std::vector<std::pair<uint32_t, uint32_t>> pending() const;
+
+		// The highest-priority deliverable source, without allocating: the run
+		// loop asks this after every instruction, so `pending()`'s vector
+		// would dominate the whole emulator (measured: it did -- the first
+		// version of the O4 loop ran so slowly it looked like a hang).
+		bool top(uint32_t& _level, uint32_t& _source) const;
 
 		uint32_t vectorBase() const { return m_vectorBase; }
 

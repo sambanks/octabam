@@ -92,6 +92,25 @@ namespace ot
 
 	uint32_t Machine::peripheralRead(const uint32_t _addr, const uint8_t _size)
 	{
+		// The models first, once installed; anything they do not own falls
+		// through to the boot's override table below.
+		if(m_periphReadFn)
+		{
+			uint32_t v = 0;
+			if(m_periphReadFn(_addr, _size, v))
+			{
+				if(m_periphLog.size() < 4096)
+					m_periphLog.push_back({'R', pc(), _addr, _size, v});
+				return v;
+			}
+		}
+		if(const auto it = m_overrideFns.find(_addr); it != m_overrideFns.end())
+		{
+			const auto v = it->second();
+			if(m_periphLog.size() < 4096)
+				m_periphLog.push_back({'R', pc(), _addr, _size, v});
+			return v;
+		}
 		// Byte by byte, big-endian, so an access of any width or alignment sees
 		// the same bytes. Anything without an override reads ALL-ONES, which is
 		// what satisfies the boot's wait-until-set spins (route A's default).
@@ -108,8 +127,37 @@ namespace ot
 
 	void Machine::peripheralWrite(const uint32_t _addr, const uint8_t _size, const uint32_t _val)
 	{
+		m_periphWrites.push_back({_addr, _size, _val});
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'W', pc(), _addr, _size, _val});
+		if(m_periphWriteFn)
+			m_periphWriteFn(_addr, _size, _val);
+	}
+
+	uint32_t Machine::vbr() const
+	{
+		return m68k_get_reg(const_cast<mc68k::CpuState*>(getCpuState()), M68K_REG_VBR);
+	}
+
+	bool Machine::step()
+	{
+		const auto p = pc();
+		const auto op = read16(p);
+		// The EMAC and mov3q are A-line: Musashi routes 0xAxxx to the A-line
+		// EXCEPTION, not to the illegal-instruction callback the V4e layer
+		// hooks, so they are dispatched here (see run(), same rule).
+		if((op & 0xf000) == 0xa000)
+		{
+			setPC(p + 2);
+			if(v4e::execute(*this, op) == v4e::Result::Handled)
+			{
+				++m_v4e;
+				return true;
+			}
+			setPC(p);
+		}
+		exec();
+		return !m_illegal;
 	}
 
 	uint8_t Machine::read8(const uint32_t _addr)
@@ -160,9 +208,37 @@ namespace ot
 		return read16(_addr);
 	}
 
+	uint32_t Machine::read32(const uint32_t _addr)
+	{
+		if(isPeripheral(_addr))
+			return peripheralRead(_addr, 4);
+		if(auto* const r = find(_addr, 4))
+		{
+			const auto o = _addr - r->base;
+			return (static_cast<uint32_t>(r->data[o]) << 24) | (static_cast<uint32_t>(r->data[o + 1]) << 16)
+				 | (static_cast<uint32_t>(r->data[o + 2]) << 8) | r->data[o + 3];
+		}
+		return 0xffffffff;
+	}
+
+	void Machine::write32(const uint32_t _addr, const uint32_t _val)
+	{
+		++m_writes;
+		if(isPeripheral(_addr))
+			return peripheralWrite(_addr, 4, _val);
+		if(auto* const r = find(_addr, 4))
+		{
+			const auto o = _addr - r->base;
+			r->data[o]     = static_cast<uint8_t>(_val >> 24);
+			r->data[o + 1] = static_cast<uint8_t>(_val >> 16);
+			r->data[o + 2] = static_cast<uint8_t>(_val >> 8);
+			r->data[o + 3] = static_cast<uint8_t>(_val);
+		}
+	}
+
 	uint32_t Machine::peek32(const uint32_t _addr)
 	{
-		return (static_cast<uint32_t>(read16(_addr)) << 16) | read16(_addr + 2);
+		return read32(_addr);
 	}
 
 	void Machine::poke32(const uint32_t _addr, const uint32_t _val)

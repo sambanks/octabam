@@ -62,9 +62,21 @@ route A fact, not the port's problem; the golden command above already does it.
 |---|---|---|---|
 | O1 | boots to the RTOS handoff | reaches `trap #0` | ✅ same PC `0x40000e46`, same two auto-pokes |
 | O2 | the EMAC (fractional, `msac`, A-line dispatch) | `ctest` emac | ✅ hardware's three cases |
-| O3 | PIT + INTC models | `ctest` periph, 14 rules | (not yet wired in) |
+| O3 | PIT + INTC models | `ctest` periph, 14 rules | (wired in by O4) |
+| O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 8/8 fields; 10 created, 11 ran, 204.88 ms vs 204.95 |
 
 ## Queue
+
+### ~~O4 — the run loop~~ ✅ DONE (8 Sep 2026)
+
+See `COLDFIRE_PORT.md`. Three things future milestones should know:
+**32-bit peripheral accesses must arrive whole** (`read32`/`write32`, or
+Musashi splits them and a status register reads as garbage); **a deasserted
+interrupt line must be withdrawn**, not left queued; and **the gate compares
+first-run ORDER, not resumed PCs** — those track the `ips` knob, measured.
+DSPI and the UARTs moved here from O5 because the gate needed them.
+
+<details><summary>the original entry</summary>
 
 ### O4 — the run loop: interrupts delivered, the handoff dispatched *(Opus)*
 
@@ -110,17 +122,19 @@ is unsafe for anything that blocks (main is the only always-ready task).
 **Stop condition:** the oracle diff is zero, or a disagreement is reproduced
 and written into this entry with the two emulators' values side by side.
 
+</details>
+
 ### O5 — the remaining peripherals *(Opus, mechanical)*
 
-**Translates:** `Uart` (0xfc064000 / 0xfc068000; the boot sends 4,831 bytes
-through the first), `Dspi` (loopback: three pushed, three waited), the
-serial-link handling in `install`, the test-mode word at `0x1ffffe`
+⚠️ **`Uart` and `Dspi` are already done** (O4 needed them). What is left:
+the serial-link handling in `install`, the test-mode word at `0x1ffffe`
 (`0x4003232c` expects `0xdcba`; zero = normal), the settings-reset loop past
 the 1 MB SRAM window (`0x4001f298`). Each is a class in `periph.{h,cpp}`
 with its rules tested in `test_periph.cpp` **before** it is wired in.
 
-**Gate:** the O4 oracle diff stays zero, and `ot_emu` reports the same
-serial byte count route A does (`report()`: "serial sent: 4831 B").
+**Gate:** the O4 oracle diff still passes, and `ot_emu` reports the same
+serial byte count route A does (`report()`: "serial sent: 4831 B") --
+`Rtos::serialSent()` already exposes it, and it is NOT yet compared.
 
 ### O6 — the eDMA and the frame clock *(Opus, but read §8.1 first)*
 

@@ -22,7 +22,7 @@ set(OT_VENDOR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor" CACHE PATH "vendored em
 # divide and HI08 tests, and they are the contract this port stands on.
 add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
 
-add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h)
+add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h rtos.cpp rtos.h)
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(ot_machine PUBLIC 68kEmu)
 
@@ -42,3 +42,10 @@ add_test(NAME emac COMMAND ot_emac_test)
 add_executable(ot_periph_test test_periph.cpp)
 target_link_libraries(ot_periph_test PRIVATE ot_machine)
 add_test(NAME periph COMMAND ot_periph_test)
+
+# The run loop: route A's M6a gate, self-contained (the full oracle diff needs
+# route A itself -- see tools/ot_emu/oracle.py). Runs from the repo root so it
+# finds the operator's own stock image; skips cleanly if it is absent.
+add_executable(ot_rtos_test test_rtos.cpp)
+target_link_libraries(ot_rtos_test PRIVATE ot_machine)
+add_test(NAME rtos COMMAND ot_rtos_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)

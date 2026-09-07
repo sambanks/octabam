@@ -92,6 +92,69 @@ namespace ot
 		arm(_now);
 	}
 
+	// ---- UART --------------------------------------------------------------
+	uint32_t Uart::read(const uint32_t _off, const uint32_t _size)
+	{
+		if(_off == 0x04)
+			return TXRDY | (m_rx.empty() ? 0 : RXRDY);
+		if(_off == 0x0c)
+		{
+			if(m_rx.empty())
+				return 0;
+			const auto v = m_rx.front();
+			m_rx.erase(m_rx.begin());
+			return v;
+		}
+		if(_off == 0x14)
+			return m_imr;
+		const auto it = m_regs.find(_off);
+		return it != m_regs.end() ? it->second : (1u << (8 * _size)) - 1;
+	}
+
+	void Uart::write(const uint32_t _off, uint32_t, const uint32_t _val, const bool _replay)
+	{
+		if(_off == 0x0c)
+		{
+			if(!_replay)
+				m_tx.push_back(static_cast<uint8_t>(_val));
+		}
+		else if(_off == 0x14)
+			m_imr = _val & 0xff;
+		else
+			m_regs[_off] = _val;
+	}
+
+	// ---- DSPI --------------------------------------------------------------
+	uint32_t Dspi::read(const uint32_t _off, const uint32_t _size)
+	{
+		if(_off == SR)
+			return 0x82000000u | (static_cast<uint32_t>(std::min<size_t>(m_rx.size(), 15)) << 4);
+		if(_off == POPR)
+		{
+			if(m_rx.empty())
+				return 0;
+			const auto v = m_rx.front();
+			m_rx.erase(m_rx.begin());
+			return v;
+		}
+		const auto it = m_regs.find(_off);
+		return it != m_regs.end() ? it->second : (1u << (8 * _size)) - 1;
+	}
+
+	void Dspi::write(const uint32_t _off, uint32_t, const uint32_t _val, const bool _replay)
+	{
+		if(_off == PUSHR)
+		{
+			if(!_replay)
+			{
+				m_rx.push_back(0);
+				++m_pushed;
+			}
+		}
+		else if(_off != SR)
+			m_regs[_off] = _val;
+	}
+
 	// ---- INTC --------------------------------------------------------------
 	uint64_t Intc::asserted() const
 	{
@@ -116,6 +179,30 @@ namespace ot
 					out.emplace_back(level, s);
 		std::sort(out.begin(), out.end(), std::greater<>());
 		return out;
+	}
+
+	bool Intc::top(uint32_t& _level, uint32_t& _source) const
+	{
+		uint64_t a = asserted() & ~m_imr;
+		if(m_imr & 1)
+			a = 0;
+		a |= m_intfrc;
+		uint32_t bestLevel = 0, bestSource = 0;
+		while(a)
+		{
+			const auto s = static_cast<uint32_t>(__builtin_ctzll(a));
+			a &= a - 1;
+			if(!s)
+				continue;
+			if(const auto level = m_icr[s]; level > bestLevel)
+			{
+				bestLevel = level;
+				bestSource = s;
+			}
+		}
+		_level = bestLevel;
+		_source = bestSource;
+		return bestLevel != 0;
 	}
 
 	uint32_t Intc::read(const uint32_t _off, const uint32_t _size) const

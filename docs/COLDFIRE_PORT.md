@@ -160,16 +160,93 @@ in route A first:
   the 132 MHz bus clock every period is 2× longer). What pins it is the
   sequencer's own tick count, which is M6c's gate.
 
+## Milestone O4 — the run loop: the kernel runs ✅ (8 Sep 2026)
+
+`rtos.{h,cpp}`: the sample clock, the peripheral models installed and seeded,
+interrupt delivery, and the loop. **The firmware's own scheduler runs**: ten
+tasks created with the exact fields route A measured, eleven TCBs dispatched,
+first switch boot → main, the M6a gate reached at **204.88 ms** against route
+A's 204.95. `ctest` is **6 tests, all passing** (the new `rtos` one is route
+A's M6a gate, self-contained).
+
+**The oracle diff passes 8 of 8 fields** (`tools/ot_emu/oracle.py`).
+
+### The one deliberate divergence from route A
+
+Route A hand-rolls exception entry and exit because Unicorn's CFV4E will not
+dispatch them — its VBR is a no-op and its `rte` never arrives. ✅ The vendored
+Musashi does both: `m68ki_stack_frame_0000` carries the ColdFire 2-longword
+frame (format `4 | A7[1:0]`, vector, SR, PC — MCF5206e UM 3.4) and
+`m68ki_jump_vector` reads REG_VBR, which the firmware sets itself with a
+`movec %a0,%vbr` at 0x40000db6 (checked: it reads 0x40000000 after a boot). So
+this port lets the CPU take its own exceptions — the hardware mechanism rather
+than a model of it — and the oracle is what proves the two agree.
+
+### What it cost, each measured
+
+- **32-bit accesses must arrive whole.** Musashi composes a longword from two
+  16-bit halves unless the machine provides `read32`/`write32`, and a
+  peripheral register is not two halves: the DSPI status word came back as
+  `0x0000ffff`, so the firmware's `(SR >> 4) & 15 == 2` wait at 0x4001c504
+  could never match and main parked there forever with **no task ever
+  created**. The same class as the PLL truncation that stalled the boot in O1.
+- **DSPI and the UARTs moved from O5 into O4**, because the gate cannot be
+  reached without them — that wait above is on main's path to its init list.
+  O5 shrinks accordingly.
+- **A queued interrupt is not a level-sensitive line.** The core holds an
+  injected vector until it is acknowledged, so a source that asserts and then
+  deasserts before the CPU can take it — the PIT's PIF, which the scheduler
+  clears at 0x40000588 while running at mask 7 — was still delivered
+  afterwards, firing the handler again for an expiry that no longer existed.
+  It showed as **twice the oracle's dispatches**, every other one resuming at
+  the scheduler's own entry (0x40000550), because the stale interrupt landed
+  in the one-instruction window before `movew #0x2700,%sr` raises the mask.
+  Fixed by withdrawing a line that has gone away (`removePendingInterrupt`).
+- ❌ **O2's retraction is itself retracted: `byterev` and `ff1` ARE used.** The
+  assembler refuses them for `-mcpu=5475` and objdump prints `.short 0x04c2`
+  rather than decoding it — but the firmware contains one at 0x4004098e, in
+  the task-creation path, and the run loop stopped there. *A toolchain that
+  will not assemble an opcode is not evidence the part lacks it; the image
+  is.* Route A had already met this and written `_isa_c_shim`; its semantics
+  (ff1 counts leading zeros and sets N and Z from the **source**) are what the
+  port implements.
+
+### What the gate can and cannot assert — measured, not assumed
+
+The first version of the gate compared the resumed PC of every dispatch and
+the whole dispatch sequence. ✅ **Both are functions of the `ips` knob**, which
+route A itself calls a guess (`RTOS_FORK.md` §6). Swept on the same image:
+
+| | pc[1] | pc[2] | dispatches | tail |
+|---|---|---|---|---|
+| ips 3990 | `0x4001fab6` | `0x400209ac` | 51 | …storage, **sys**, keyrepeat, ui |
+| ips 3995 | `0x4001faae` | `0x400209a8` | 51 | …storage, **sys**, keyrepeat, ui |
+| ips 4100 | `0x4001faae` | `0x4009acf0` | 49 | …storage, keyrepeat, ui |
+| route A | `0x4001fab6` | `0x400209a4` | 50 | …storage, keyrepeat, ui |
+
+Where a *preempted* task resumes, and whether one extra timer preemption slips
+between two switches, both move with the clock. What does **not** move is the
+order in which each task first runs — ✅ identical in the oracle and at both
+clock settings:
+
+```
+main, voice, p2a, p2b, p2c, p1b, engine, sys, storage, keyrepeat, ui
+```
+
+which is route A's own documented cascade (strict priority after the first
+tick). So that is the strict criterion, along with the created fields, the set
+that ran, the first switch and each task's first-run time within one PIT
+period; the resumed PCs and the preemption count are **reported as notes**.
+The gate is still sharp: at ips 4100 it fails on first-run times.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
   (three wrong versions in route A, each with its own reproducible symptom),
-  DSPI, the UARTs, FlexBus/ATA and the card. All are modelled in route A's
+  FlexBus/ATA and the card. (DSPI and the UARTs landed in O4 — the M6a gate
+  could not be reached without them.) All are modelled in route A's
   Python, commented rule by rule with each failure mode recorded — that is the
   specification, and translating it is the bulk of the mechanical work.
-- **The run loop that uses them**: interrupt delivery, the burst scheduler and
-  the handoff dispatch, i.e. route A's `Rtos` class. The models are ready for
-  it; nothing calls them yet.
 - **The DSP side.** `dsp56kEmu` is already vendored, already patched for the
   shared window (`tools/dsp56300.patch`), and `tools/dsp_host` already runs both
   cores. Joining them needs the host-port protocol, which was decoded on
