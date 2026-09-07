@@ -467,8 +467,9 @@ cleared. With no server and no SEND in the image there is no bus, no
 rotation and nothing to clear, so the question does not arise — and that is
 the only case this is allowed in. `registry.remix()` enforces it.
 
-⚠️ And it could not be settled by measurement either way: `dsp_host` is
-single-core, so **no local test can reproduce a bus timing defect**. The
+⚠️ And it could not be settled by measurement either way: `dsp_host` runs
+both cores lock-step (or under a chosen interleave, which is a fuzz of the
+timing), so **no local test is evidence a bus timing defect is absent**. The
 refusal keeps the question off the table rather than answered by inference.
 
 Declare `bus_client=True` in a module's `Harness` if it writes the shared
@@ -736,17 +737,19 @@ full list. All of them assemble clean and do the wrong thing.
 
 ## Two things that will surprise you
 
-**`dsp_host` cannot boot payload B.** Local testability therefore depends on
-which payload a module lands on — and that is a SERVER's problem, because
-specialization is what puts a server on one core. BusDelay ships on payload
-B and can only be rendered locally through the DEV hatch, which places it out
-of region in payload A; a server on core 1 inherits that constraint.
+**`dsp_host` boots BOTH payloads since 7 Sep 2026** (`-memB`, and
+`tools/rig_render.py` for the whole rig), so a server on core 1 renders on
+core 1 with the shared window shared — BusDelay on payload B is gated
+bit-identical to the DEV hatch's copy by `tools/verify_twocore.py`. The
+hatch remains the single-core instrument every existing gate is stamped
+against.
 
-An insert is in BOTH payloads, so it is always reachable in payload A and
-renders with no hatch at all.
+An insert is in BOTH payloads, so it renders anywhere with no hatch at all.
 
-**No local test can reproduce a cross-core timing defect**, because
-`dsp_host` is single-core. When local says clean and hardware says broken,
+**No local test is evidence that a cross-core timing defect is absent.**
+The two cores run lock-step, or interleaved under a chosen `-skew` — a fuzz
+of the hardware's timing, not the timing (a local mismatch IS a defect;
+identity proves nothing). When local says clean and hardware says broken,
 believe the hardware and go looking for what the harness cannot see. A
 measurement can be structurally blind to the thing you are using it to rule
 out — `CLAUDE.md` has two instances that each cost hours.

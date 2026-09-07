@@ -208,9 +208,11 @@ both on 17 Aug 2026, both costing hours:
   damage into a multi-second tail. It shipped a cross-core race for months.
 **Before trusting a null result, ask what the instrument physically cannot
 see.** A reverb cannot show you a discontinuity. A harmonic metric cannot show
-you an inharmonic one. A single-core emulator cannot show you a race between
-two cores — and `dsp_host` is single-core, so NO local test will ever
-reproduce a bus timing defect. When local says clean and hardware says
+you an inharmonic one. A lock-step emulator cannot show you a race between
+two cores — `dsp_host` boots both payloads since 7 Sep 2026 and `-skew` can
+interleave them, but that is a fuzz of the hardware's timing, not the
+timing, so a local "clean" is still NOT evidence a bus timing defect is
+gone (a local red IS a defect). When local says clean and hardware says
 broken, believe the hardware and go looking for what the harness omits.
 
 **A BUS CLIENT THAT REGISTERS BUT CONTRIBUTES NOTHING STEALS EVERYONE ELSE'S

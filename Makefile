@@ -88,6 +88,18 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build_bus.py
 	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
+.PHONY: render-rig
+render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks 1-4 on B, 5-8 on A). TRACKS=T1=D,T2=S,.. STEMS=dir
+	@# tools/rig_render.py --help for --project/--set/--stem/--skew. The
+	@# image is this remix's `make bus`; both payloads are dumped from it.
+	python3 tools/rig_render.py --image out/mainos_bus.bin --remix $(REMIX) \
+	  $(if $(TRACKS),--tracks "$(TRACKS)",--tracks "T1=D,T2=S,T3=S,T4=S,T5=R,T6=S,T7=S,T8=S" --set T2:-VRB=100 --set T3:-DEL=100 --set T6:-VRB=100 --set T7:-DEL=80 --set T1:-VRB=100) \
+	  $(if $(STEMS),--stems $(STEMS),--stems out/test_audio --seconds 4) $(RIGARGS)
+
+.PHONY: verify-twocore
+verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
+	python3 tools/verify_twocore.py
+
 .PHONY: verify-midi
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify_midi.py
@@ -138,6 +150,7 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify_grains.py $(REMIX)
 	REMIX=$(REMIX) python3 tools/verify_menu.py
 	python3 tools/verify_burn.py
+	python3 tools/verify_twocore.py
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/busverb/reverb_lforoll.asm

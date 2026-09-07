@@ -974,8 +974,10 @@ FX2 slots are still spent; two servers still mean two hosts. Two blocks of
 latency on the return (~0.7 ms) on top of the send's. ⚠️ Unmeasured: whether
 an insert on a master-configured T8 sees the summed mix — the rig already
 runs the reverb there as a return, consistent with yes; if no, the return
-lands on an ordinary track and nothing breaks. ⚠️ `dsp_host` is single-core,
-so the delay-wet-across-cores case and the RETD stamp crossing cores are
+lands on an ordinary track and nothing breaks. ⚠️ `dsp_host` was single-core when this was written (both cores since
+7 Sep 2026, lock-step: the delay wet crossing cores now renders locally and
+matches the hatch to the bit — `tools/verify_twocore.py`), but the TIMING of
+that crossing and the RETD stamp's are still
 flash-4 claims, like every bus timing claim before them. ⚠️ `0x360d3-5` (the
 words right after the old layout end) were DEAD on hardware for R36's
 per-block state, mechanism unknown — the new words start at `0x360d8`, and
@@ -1001,15 +1003,16 @@ the first suspect.
   (word-for-word against a standalone reassembly); `tools/dsp_host` itself
   can't run payload B at all yet (next bullet), so this couldn't be
   re-verified the same way task 10's other offsets were.
-- **`tools/dsp_host` cannot run payload B.** Its boot-setup step
-  (`runRange(0x372,0x39e)`, then reading frame context from `x:0x415`) is a
-  fixed address range that only produces sane context for payload A's own
-  boot content — pointed at a payload-B dump it reads all zeros and the
-  harness reports "frame count is 0". Pre-existing (this doc already said
-  "emulator testing so far only exercises payload A" before task 13), hit
-  for the first time in task 13 when payload B needed its own check. Not
-  investigated further — would need its own reverse-engineering of whatever
-  payload B's equivalent setup routine is, which is out of scope here.
+- ~~**`tools/dsp_host` cannot run payload B.**~~ ✅ **FIXED 7 Sep 2026.**
+  The boot-setup step was three hardcoded payload-A addresses
+  (`runRange(0x372,0x39e)`, dispatcher exit `0x53e`); payload B keeps the
+  same routine at `P:0x17a..0x1a3` (exit `0x333`), found by matching the
+  opcode sequence, and the harness now detects it by pattern. Payload B's
+  delay renders bit-identical to the DEV copy (`tools/verify_twocore.py`),
+  which closes the "checked statically" caveat above.
+  *(Historical text: pointed at a payload-B dump it read all zeros and
+  reported "frame count is 0"; hit in task 13 when payload B needed its own
+  check.)*
 - **`DELAY SERVER`'s PING knob is L-only at PING=0 by construction, not
   oversight.** An earlier draft fed input into both delay lines so PING=0
   would be an ordinary independent stereo echo; that version's PING knob
@@ -1222,10 +1225,9 @@ id `0x08` or moving memory it uses would find out the hard way.
 - ~~Placing `dsp/reverb_server.asm` / `delay_server.asm` / `send_client.asm`'s
   assembled code in P memory and repointing `X:0x215`/`X:0x235`~~ **decided
   and built, task 13** — see Menu and slot layout.
-- `tools/dsp_host` cannot run payload B at all (Known limitations) — its
-  boot-setup step assumes payload-A-shaped context. Unmeasured whether this
-  is worth fixing versus just accepting static-only verification for payload
-  B indefinitely.
+- ~~`tools/dsp_host` cannot run payload B at all~~ — fixed 7 Sep 2026
+  (Known limitations); payload B is now rendered and gated, not checked
+  statically.
 
 ## Build order, if this goes ahead
 
