@@ -1689,3 +1689,20 @@ non-negative — and it goes when M6f lands. With it, at 128 BPM: MAX → arms
 0 calls); RLEN 3 (display 4) → arms and `0x40006dfc` runs 1,017 times over
 the 508 frames after the trig (2 per frame). **Bryan's 128 / RLEN 4
 configuration is now reachable in situ**, one flag, every use printed.
+
+
+**M6f scoping notes (7 Sep 2026, read, not built — paused, see PLAN):**
+MIDI IN is UART0 `0xfc060000` (not modelled; the harness has `0xfc064000`/
+`0xfc068000` on INTC sources 27/28, so UART0 is source 26 with the same
+`Uart` class and an RX queue). RX ISR `0x400106ec` drains status `+0x04`
+bit 0 / data `+0x0c`; for `0xF8` it timestamps with the DMA timer counter
+`0xfc07000c` (DTIM0, setup at `0x400a10aa`, unmodelled) into
+`0x46c83466` (the interval) before handing the byte to the framer via
+`0x460ba97c` → realtime `0x40001900` → table `0x400d2d98` → F8 estimator
+`0x40005a48`, which sets `0x46104ca8` itself and needs `0x46c83466` ≤
+1,881,600 counts to count the clock as running. PLAY under CLOCK RECEIVE
+(`0x4000a214..`) also sets `0x46104ca8`, `0x46104cac = 961`, posts
+`0x400d64bf` to sys. So the model is: `Uart` #3 + source 26, a DTIM0
+counter at a known rate, an F8 injector every 60/(24·BPM) s, PLAY as
+today. Estimated one to two sessions, most of it the timer rate and the
+estimator's expectations.
