@@ -1667,6 +1667,10 @@ def _cli():
     ap.add_argument("--step-quantum", type=int, default=32)
     ap.add_argument("--no-tick", action="store_true", help="PIT0 never asserts (step-1 checkpoint)")
     ap.add_argument("--until-gate", action="store_true", help="stop as soon as the M6a gate passes")
+    ap.add_argument("--golden", default="",
+                    help="write the M6a facts (created tasks, which ran, the first switch, the first "
+                         "dispatches, the handoff PC and the boot's auto-pokes) as JSON: THE ORACLE the "
+                         "C++ port (tools/ot_emu) is diffed against, docs/COLDFIRE_PORT.md")
     ap.add_argument("--trace", action="store_true", help="print every dispatch/irq/create")
     ap.add_argument("--starvation", action="store_true", help="print burst-end PCs per task")
     ap.add_argument("--watch-calls", default="", help="comma-separated addresses to log entries to")
@@ -1972,6 +1976,22 @@ def _cli():
     print("M6a gate   :", "PASS" if ok else "FAIL")
     for p in problems:
         print("   -", p)
+    if a.golden:
+        import json
+        gold = dict(
+            handoff_pc=HANDOFF,
+            auto_pokes=[dict(pc=pc, addr=ad, value=v) for pc, ad, v in r.auto_pokes],
+            created=[dict(sample=round(c[0], 1), tcb=c[1], entry=c[2], prio=c[3], stack=c[4],
+                          stack_size=c[5], creator=c[6], name=rt._name(c[1])) for c in rt.created],
+            ran=sorted(rt.ran()),
+            first_switch=rt.first_switch,
+            dispatches=[dict(sample=round(s_, 1), tcb=t, pc=pc) for s_, t, pc in rt.dispatches[:200]],
+            gate_ms=round(rt.sample / SAMPLE_HZ * 1000, 2),
+            pit0_fired=rt.pit0.fired,
+        )
+        pathlib.Path(a.golden).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(a.golden).write_text(json.dumps(gold, indent=1))
+        print(f"golden     : {a.golden} ({len(gold['created'])} tasks, {len(gold['dispatches'])} dispatches)")
     return 0 if ok else 1
 
 

@@ -179,6 +179,19 @@ in route A first:
   64-word block per core, with one 64-word block read back.
 - **Audio out.** The ESAI path is untraced.
 
+## The oracle, made concrete (7 Sep 2026)
+
+`tools/emu_rtos.py --golden FILE` writes route A's M6a facts as JSON —
+handoff PC, auto-pokes, every created task with its fields, which TCBs ran,
+the first switch, the first 200 dispatches with their sample times, the gate
+time. `out/oracle/m6a.json` is that file for the ONEAUX project: **10 tasks
+created, 11 ran, first switch boot → main, gate at 204.95 ms** ✅.
+`tools/ot_emu/oracle.py A B` diffs two such files field by field with no
+tolerance except one PIT period on dispatch times, and reports a field the
+port does not produce yet as MISSING rather than as a failure, so the port's
+report can grow milestone by milestone. `docs/COLDFIRE_WORKORDER.md` is the
+queue that uses it.
+
 ## The order to do it in
 
 1. Port `emac_selftest` as a CTest, then the EMAC handlers. Nothing that
