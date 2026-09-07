@@ -197,6 +197,131 @@ namespace ot::v4e
 		setReg(_m, M68K_REG_SR, sr);
 	}
 
+	namespace
+	{
+		// MACSR bits that matter here (CFPRM 4.1): bit 5 F/I selects fractional
+		// mode, bit 4 S/U selects signed, bit 0 is the product-independent
+		// saturation flag this firmware never sets.
+		constexpr uint32_t g_macsrFractional = 0x20;
+
+		// One accumulator, 32 bits plus its 8-bit extensions. Musashi's
+		// ColdFire state has no EMAC, so the port keeps its own -- four
+		// accumulators and the two extension-byte registers.
+		// Musashi's ColdFire state has no EMAC at all, so the whole unit lives
+		// here: four accumulators, their extension bytes, and MACSR.
+		struct Emac
+		{
+			uint32_t acc[4] = {};
+			uint32_t ext[4] = {};	// the sign-extension byte per accumulator
+			uint32_t macsr = 0;
+		};
+		Emac g_emac;
+
+		uint32_t macsr(Machine&) { return g_emac.macsr; }
+	}
+
+	// The whole EMAC, as the MCF5445x does it and as the firmware's own
+	// reciprocal tables prove (RTOS_FORK section 10.16): in FRACTIONAL mode a
+	// signed product is taken and shifted LEFT ONE (the 2.62 product), and the
+	// upper 40 bits are accumulated -- so `movclrl` of the result yields
+	// (a * b) >> 31, not >> 32. `msac` SUBTRACTS, and which of the two it is
+	// comes from bit 8 of the EXTENSION word, never from the opcode word.
+	Result emac(Machine& _m, const uint32_t _opcode)
+	{
+		// movel %dn,%macsr  -- 1010 1001 0000 0rrr  (a900 = from d0)
+		if((_opcode & 0xfff8) == 0xa900)
+		{
+			g_emac.macsr = reg(_m, dReg(_opcode & 7));
+			return Result::Handled;
+		}
+		// movclrl %accN,%dn -- 1010 0rrr 11 00 00NN, clears the accumulator
+		if((_opcode & 0xf1f0) == 0xa1c0)
+		{
+			const uint32_t dn = (_opcode >> 9) & 7;
+			const uint32_t acc = _opcode & 3;
+			setReg(_m, dReg(dn), g_emac.acc[acc]);
+			g_emac.acc[acc] = 0;
+			g_emac.ext[acc] = 0;
+			return Result::Handled;
+		}
+		// movel %accN,%dn (no clear) -- a383 = acc1 -> d3
+		if((_opcode & 0xf1f0) == 0xa180)
+		{
+			setReg(_m, dReg((_opcode >> 9) & 7), g_emac.acc[_opcode & 3]);
+			return Result::Handled;
+		}
+		// movel %accext01,%dn / %accext23 -- ab84
+		if((_opcode & 0xf1f0) == 0xa980 || (_opcode & 0xf1f0) == 0xab80)
+		{
+			const bool hi = (_opcode & 0x0200) != 0;
+			const uint32_t v = hi
+				? ((g_emac.ext[2] & 0xff) | ((g_emac.ext[3] & 0xff) << 8))
+				: ((g_emac.ext[0] & 0xff) | ((g_emac.ext[1] & 0xff) << 8));
+			setReg(_m, dReg((_opcode >> 9) & 7), v);
+			return Result::Handled;
+		}
+
+		// MAC / MSAC, with or without a load. The opcode word carries the two
+		// source registers and the addressing mode; the EXTENSION word carries
+		// the accumulator, the subtract bit and the operand halves.
+		const uint16_t ext = fetch16(_m);
+		const uint32_t ry = (_opcode >> 9) & 7;
+		const uint32_t rx = _opcode & 7;
+		const bool subtract = (ext & 0x0100) != 0;			// ⚠️ EXTENSION word,
+															// not the opcode word
+		const uint32_t accN = ((ext >> 4) & 1) | ((ext >> 8) & 2);
+		const bool wordOp = (ext & 0x0800) == 0;			// size: 0 = word, 1 = long
+		const bool upperY = (ext & 0x0040) != 0;
+		const bool upperX = (ext & 0x0080) != 0;
+
+		const uint32_t rawY = reg(_m, dReg(ry));
+		const uint32_t rawX = reg(_m, dReg(rx));
+
+		int64_t product;
+		if(wordOp)
+		{
+			const auto y = static_cast<int16_t>(upperY ? (rawY >> 16) : (rawY & 0xffff));
+			const auto x = static_cast<int16_t>(upperX ? (rawX >> 16) : (rawX & 0xffff));
+			product = static_cast<int64_t>(y) * static_cast<int64_t>(x);
+		}
+		else
+		{
+			product = static_cast<int64_t>(static_cast<int32_t>(rawY))
+					* static_cast<int64_t>(static_cast<int32_t>(rawX));
+		}
+
+		// FRACTIONAL: the product is shifted left one into 2.62 and the upper
+		// 40 bits accumulate, which is a signed >> 31 by the time `movclrl`
+		// reads the low longword. INTEGER mode accumulates the product itself.
+		// ⚠️ Getting this wrong by one bit is exactly the Unicorn defect that
+		// halved every recorder length for a week.
+		int64_t addend;
+		if(macsr(_m) & g_macsrFractional)
+			addend = (product << 1) >> 32;
+		else
+			addend = product;
+
+		auto acc = static_cast<int64_t>(static_cast<int32_t>(g_emac.acc[accN]));
+		acc = subtract ? acc - addend : acc + addend;
+		g_emac.acc[accN] = static_cast<uint32_t>(acc);
+		g_emac.ext[accN] = static_cast<uint32_t>((acc >> 32) & 0xff);
+
+		// The load half of a `macl %d0,%d1,%a0@+,%d2,%acc1`: mode 3 in the
+		// opcode word's bits 3-5, destination register in the extension word's
+		// top nibble. Only post-increment appears in this firmware.
+		const uint32_t mode = (_opcode >> 3) & 7;
+		if(mode == 3)
+		{
+			const uint32_t an = rx;
+			const uint32_t dst = (ext >> 12) & 7;
+			const auto a = reg(_m, aReg(an));
+			const uint32_t loaded = (static_cast<uint32_t>(_m.read16(a)) << 16) | _m.read16(a + 2);
+			setReg(_m, aReg(an), a + 4);
+			setReg(_m, dReg(dst), loaded);
+		}
+		return Result::Handled;
+	}
+
 	Result execute(Machine& _m, const uint32_t _opcode)
 	{
 		// ---- MVS / MVZ ---------------------------------------------------
@@ -228,6 +353,41 @@ namespace ot::v4e
 			setNZ(_m, v);
 			return Result::Handled;
 		}
+
+		// ---- MOV3Q ---------------------------------------------------------
+		// 1010 iii 1 01 eeeeee -- a 3-bit immediate (0 encodes -1) to a
+		// longword destination. ✅ `a340` assembles as `mov3ql #1,%d0`.
+		if((_opcode & 0xf1c0) == 0xa140)
+		{
+			const uint32_t imm3 = (_opcode >> 9) & 7;
+			const auto v = static_cast<uint32_t>(imm3 == 0 ? -1 : static_cast<int32_t>(imm3));
+			const uint32_t mode = (_opcode >> 3) & 7;
+			const uint32_t rn   = _opcode & 7;
+			if(mode != 0)					// only Dn is reached by this firmware
+				return Result::Unhandled;
+			setReg(_m, dReg(rn), v);
+			setNZ(_m, v);
+			return Result::Handled;
+		}
+
+		// ---- the EMAC ------------------------------------------------------
+		// The gate this port must pass before anything it computes is
+		// trusted: `tools/ot_emu/test_emac.cpp`, and the hardware semantics it
+		// encodes are docs/RTOS_FORK.md section 10.16 -- a week lost to three
+		// defects in Unicorn's version of exactly this.
+		//
+		// ✅ Encodings from `m68k-elf-as -mcpu=5475`:
+		//     a900            movel %d0,%macsr
+		//     a1c0            movclrl %acc0,%d0
+		//     a383            movel %acc1,%d3
+		//     ab84            movel %accext01,%d4
+		//     a200 0800       macl  %d0,%d1,%acc0
+		//     a200 0900       msacl %d0,%d1,%acc0        (ext bit 8 = subtract)
+		//     a418 1800       macl  %d0,%d1,%a0@+,%d2,%acc1
+		//     a200 0080       macw  %d0l,%d1u,%acc0
+		//     a200 0250       macw  %d0u,%d1l,<<,%acc2
+		if((_opcode & 0xf000) == 0xa000)
+			return emac(_m, _opcode);
 
 		return Result::Unhandled;
 	}

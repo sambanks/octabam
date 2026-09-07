@@ -16,5 +16,9 @@ namespace ot
 		// Decode and run one instruction. On entry the PC is past the opcode
 		// word; a handler advances it over its own extension words.
 		Result execute(Machine& _m, uint32_t _opcode);
+
+		// The EMAC, split out because it carries its own state and its own
+		// gate (tools/ot_emu/test_emac.cpp).
+		Result emac(Machine& _m, uint32_t _opcode);
 	}
 }

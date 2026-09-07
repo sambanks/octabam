@@ -261,7 +261,29 @@ namespace ot
 		for(m_instructions = 0; m_instructions < _maxInstructions; ++m_instructions)
 		{
 			const auto p = pc();
-			if(read16(p) == g_trap0)
+			const auto op = read16(p);
+
+			// THE EMAC IS A-LINE, and Musashi routes 0xAxxx to the A-line
+			// EXCEPTION, not to the illegal-instruction callback the V4e layer
+			// hooks (`m68ki_exception_1010`, no callback of its own). So the
+			// EMAC is dispatched here instead, from the fetch this loop already
+			// does for the handoff check -- which keeps the vendored Musashi
+			// unpatched and costs nothing extra.
+			//
+			// ⚠️ The V4e layer expects the PC PAST the opcode word, the way
+			// Musashi leaves it on the illegal path, so advance it first.
+			if((op & 0xf000) == 0xa000)
+			{
+				setPC(p + 2);
+				if(v4e::execute(*this, op) == v4e::Result::Handled)
+				{
+					++m_v4e;
+					continue;
+				}
+				setPC(p);				// not ours: let Musashi take its exception
+			}
+
+			if(op == g_trap0)
 			{
 				char msg[128];
 				std::snprintf(msg, sizeof msg, "reached the RTOS handoff (trap #0) at pc %06x", p);

@@ -18,7 +18,9 @@ set(OT_VENDOR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor" CACHE PATH "vendored em
 # mc68k: Musashi plus the ColdFire mode, the HI08 host-port register file and
 # the on-chip peripheral scaffolding. Vendored, GPLv3 -- the same posture as
 # vendor/dsp56300: tooling and patches are shared, built binaries never are.
-add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k" EXCLUDE_FROM_ALL)
+# Not EXCLUDE_FROM_ALL: the vendored core registers its own ColdFire timing,
+# divide and HI08 tests, and they are the contract this port stands on.
+add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
 
 add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h)
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -26,3 +28,11 @@ target_link_libraries(ot_machine PUBLIC 68kEmu)
 
 add_executable(ot_emu main.cpp)
 target_link_libraries(ot_emu PRIVATE ot_machine)
+
+# THE GATE. `docs/RTOS_FORK.md` section 10.16: three defects in Unicorn's EMAC
+# cost a week, each producing a confident wrong finding. Nothing this emulator
+# computes is trustworthy until this passes.
+include(CTest)
+add_executable(ot_emac_test test_emac.cpp)
+target_link_libraries(ot_emac_test PRIVATE ot_machine)
+add_test(NAME emac COMMAND ot_emac_test)

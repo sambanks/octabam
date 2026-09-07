@@ -51,6 +51,42 @@ real time needs: **≈4.5× slower than real time today**, before the one obviou
 optimisation below. Real time is genuinely in reach, which was the open
 question when the port was scoped.
 
+## Milestone O2 — the EMAC, and its gate ✅ (7 Sep 2026)
+
+**The gate was written FIRST and watched to fail**, which is the whole
+discipline: `tools/ot_emu/test_emac.cpp` encodes hardware's semantics from
+`emu_bringup.emac_selftest` (fractional `macl 0xc00 x 0x200000` -> 3, the
+negative operand -> -3, `msacl` SUBTRACTS -> -3) and reported all three FAIL
+against an emulator with no EMAC before a line of it existed. It passes now.
+`ctest` in the build dir runs it beside the vendored core's own ColdFire
+timing, divide and HI08 tests: **4 tests, all passing.**
+
+What the implementation had to get right, each of which is a defect Unicorn
+shipped (`RTOS_FORK.md` §10.16):
+
+- **Fractional mode is a signed product shifted LEFT ONE, upper 40 bits
+  accumulated** — so `movclrl` yields `(a*b) >> 31`, not `>> 32`. Off by that
+  one bit is what wrote 10,336 for Bryan's 20,672 and got explained away as
+  "2-sample units" for a day.
+- **MAC vs MSAC comes from bit 8 of the EXTENSION word**, never the opcode
+  word. Reading it from the opcode is what made every `msac` add.
+- The EMAC's whole state (four accumulators, their extension bytes, MACSR)
+  lives in this layer, because Musashi's ColdFire state has none.
+
+✅ **And one structural finding, measured the moment the gate ran:** every EMAC
+opcode is `0xAxxx`, i.e. **A-line**, and Musashi routes A-line to
+`m68ki_exception_1010` — a *different* path from the illegal-instruction
+callback, with no callback of its own. So the V4e layer never saw them: the
+test failed with D0 still holding the value the program's first instruction
+loaded. The EMAC is dispatched from `Machine::run`'s own loop instead, reusing
+the opcode fetch already made for the handoff check, which leaves the vendored
+Musashi unpatched. `mov3q` (`a340`) rides the same path.
+
+⚠️ Encodings for all of it came out of `m68k-elf-as -mcpu=5475`, listed in the
+source beside each handler. ❌ **Retracted from O1's work list:** `byterev` and
+`ff1` are **not** V4e — the assembler refuses them for `-mcpu=5475` and names
+the parts that do have them (ISA_C). Nothing needs them.
+
 ### What had to be built, and what each cost
 
 **1. The V4e instructions, as trap-and-emulate (`v4e.cpp`).** Musashi's opcode
