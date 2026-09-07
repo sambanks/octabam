@@ -455,11 +455,13 @@ every track  ──AUX──▶  [aux accumulator]  ──▶  BusDelay  ──c
   level, `RET` (the CRSH knob; RING is inert in BUS mode). It returns the
   **last live stage's** output — the reverb's if the reverb runs, else the
   delay's, else digital silence — and stamps BOTH hosts quiet while it is
-  up. The return is **pinned to dispatch position 3** (`r7 $6700/$6800`):
-  track 8 on core 0, and the mirror slot, track 4, on core 1 — a BUS-mode
-  station anywhere else returns nothing. (Position, not track number: a
-  DSP instance does not know its track; core 1's position 3 is T4 and it
-  cannot be told apart without a per-payload gate.)
+  up. The return is **pinned to track 8**: dispatch position 3 (`r7
+  $6700/$6800`) on payload A only — a BUS-mode station anywhere else,
+  core 1's mirror position (T4) included, returns nothing (gated, both).
+  The core is read off the dispatch table: BusVerb's entry is real on
+  payload A and the SEND alias on B (`X:$21c` vs `X:$21e`); an insert can
+  carry no per-payload literal, since an FX1 module may own no buffers.
+  Consequence: a remix without BusVerb has no return anywhere.
 - **The send is refused on track 8.** `SEND` at core 0's position 3
   contributes nothing and registers nothing whatever its knob says — the
   master loop that silenced the unit on 6 Sep 2026 (`FAILURE_MODES.md`) is
@@ -514,13 +516,17 @@ Falsifiers: a return that flickers (a stamp lost across cores beyond three
 blocks); T8's SEND audible in the return (the pin is wrong); the delay's
 repeats missing from the reverb (the chain buffer's rotation).
 
-**Voicing item, open.** The return's balance between repeats and reverb is
-now the reverb's MIX alone, and the reverb's wet sits ~25 dB under a
-sustained input where the delay's output sits near it (measured in the gate:
-delay-only return −11 dB rms, reverb-only −36 dB for the same tone at two
-senders). At MIX 64 the repeats are −6 dB and the wet is −6 dB relative:
-the reverb all but disappears. Whether the reverb stage wants a fixed
-makeup on its wet (the old +9.5 dB IN makeup, unkeyed) is an ear question.
+**Voicing, measured on material (7 Sep, `out/rig/oneaux/`).** The first
+reading of the return balance — "the reverb's wet sits ~25 dB under the
+repeats" — came from the gate's 438 Hz tone and is ❌ **retracted**: a
+steady sine is the one input a reverb's level says nothing about. On the
+drum loop the return reads −25.1 dB rms with the reverb at MIX 0 (repeats
+through) and −26.8 at MIX 127 (wet only); on the pad −31.4 vs −32.8. The
+two components sit within 2 dB of each other, so **no makeup is needed**
+and MIX 64 lands 3 dB under either alone, as a crossfade of two
+uncorrelated signals should. The sweep renders (reverb MIX 0/32/64/96/127,
+both sources, plus reverb-only, delay-only and dry) are parked in
+`out/rig/oneaux/` for the ear.
 
 ## Menu and slot layout
 

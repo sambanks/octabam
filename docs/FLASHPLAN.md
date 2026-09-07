@@ -319,6 +319,8 @@ python3 tools/ot_project.py stamp-defaults /Volumes/<card>/<set copy> bamsep27
 30–50 on T2–T4/T6–T7, the hosts' `AUX` on T1/T5, T8 = Character SAT=BUS
 RET 127 and NO FX2 (nothing to refuse). T8's old `-VRB 71` (the master loop)
 cannot exist: the station has no send slot and the SEND is refused there.
+**Prepared 7 Sep 2026: `out/projects/OCTABAM_ONEAUX`** (from the 6 Sep
+cleared backup, 16 banks written and read back) — copy it to the card as is.
 
 **Claims, in this order (each failure has its own shape):**
 
@@ -330,7 +332,7 @@ cannot exist: the station has no send slot and the SEND is refused there.
 | iv | MIX | delay MIX 0: the reverb of the DRY sends, no repeats; reverb MIX 64: repeats under the tail | MIX changing level but not blend |
 | v | the refusal | put SEND on T8's FX2 with AUX 127: nothing changes; the same on T4: it sends | T8 audible in the return (the position pin is wrong) |
 | vi | stations silent | a station on any track with its old send bytes (a tag-17 part, unstamped, on a scratch copy) sends nothing | a station's track in the reverb with its AUX at 0 |
-| vii | the return pin | a BUS-mode Character on T7: returns nothing; on T8: returns | a return from T7 |
+| vii | the return pin | a BUS-mode Character on T7 or T4: returns nothing; on T8: returns | a return from T7 or T4 |
 | viii | cross-core stamps | play for minutes: no flicker of the return, no host print creeping back | the return dropping out and back (a stamp lost > 3 blocks) |
 
 **Stop condition:** any of ii–iv failing on the unit after passing

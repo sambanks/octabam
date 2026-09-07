@@ -108,7 +108,9 @@ MODULE = Module(
         asm="modules/character/character.asm",
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
-        ybase=YBase.NEVER,
+        ybase=YBase.NEVER,                # (an FX1 module may own no buffers;
+                                          # the return's payload test reads the
+                                          # dispatch table instead -- see the source)
         r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
         gate_label=None,              # no housekeeping: a station never elects
     ),

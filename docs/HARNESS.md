@@ -253,9 +253,26 @@ budget; the emulator never sees the cliff.
 **`tools/rig_render.py`** drives it track by track: `--tracks T1=D,T2=S,…`
 (or `T3=L+S` for FILTER on FX1 into a SEND on FX2), or `--project DIR
 --bank N --part N` for the ids **and knob bytes** of a real part; stems per
-track; T1–T4 on core 1, T5–T8 on core 0 in dispatch order; out come
+track; T1–T4 on core 1, T5–T8 on core 0 in dispatch order, and an empty
+FX2 slot modelled as the fallback SEND the unit dispatches there (without
+it a layout with nothing at core 0's position 0 had no housekeeper and the
+bus never rotated — a delay-only render was silent, 7 Sep 2026); out come
 `T1.wav…T8.wav`, `mix.wav` (unity sum, −6 dB) and `meter.txt`. About real
 time for eight tracks on two cores. `make render-rig`.
+
+**The rig's floor, metered (7 Sep 2026, `bamsep27`, the RIG table with
+eight stems):** core 0 (Modulation + BusVerb on T5, Spectrum + SEND on T6/T7,
+Character BUS + the fallback SEND on T8) **1,570 instructions/sample** at
+its worst block; core 1 (Character + BusDelay on T1, Spectrum + SEND on
+T2–T4) **702**. ⚠️ Instructions, not cycles — and the 3,120 wall was
+triangulated in `tools/cycle_count.py`'s units (words in the sample loop),
+so the STATIC sum is the comparable floor: for this layout **core 0 = 3,005**
+(BusVerb 1,408 + Modulation 434 + 2 × Spectrum 341 + Character 436 + 3 × SEND
+15) and **core 1 = 2,812** (BusDelay 1,308 + Character + 3 × Spectrum + 3 ×
+SEND). Core 0 sits 115 under the wall before contention — the same class as
+the tag-91 hang at 3,106. The meter reads about half the static count
+(multi-word instructions count once) and is the per-block, init-inclusive
+shape of the load, not a second calibration.
 
 What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
 the mixer are a unity sum, samples do not play (stems stand in), and the
