@@ -22,6 +22,16 @@ import os
 import re
 import sys
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The patched Unicorn (scripts/build_unicorn.sh): stock 2.1.4's ColdFire EMAC
+# halves every fractional-mode product (docs/RTOS_FORK.md section 10.16).
+# The Python bindings load the library named by LIBUNICORN_PATH, so point
+# them at the built one whenever it exists and the caller has not chosen.
+EMAC_LIB_DIR = os.path.join(REPO, ".venv", "lib", "unicorn-emac")
+if "LIBUNICORN_PATH" not in os.environ and os.path.isdir(EMAC_LIB_DIR):
+    os.environ["LIBUNICORN_PATH"] = EMAC_LIB_DIR
+
 try:
     from unicorn import *
     from unicorn.m68k_const import *
@@ -29,7 +39,32 @@ try:
 except ImportError:
     HAVE_UNICORN = False
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def emac_selftest():
+    """Does this Unicorn's EMAC multiply in fractional mode the way the
+    MCF5445x does? Runs `movel #0x20,%macsr; macl %d0,%d1,%acc0; movclrl
+    %acc0,%d0` on 0xc00 x 0x200000 (the firmware's own block-walk idiom:
+    position x 2^31/blocksize) and on a negative operand. Hardware: 3 and
+    -3 (signed product >> 31). Stock Unicorn 2.1.4: 1 and 0x1ffffe
+    (unsigned product >> 32). Returns (ok, detail)."""
+    if not HAVE_UNICORN:
+        return False, "unicorn not importable"
+    code = (b"\xa9\x3c\x00\x00\x00\x20"   # movel #0x20,%macsr (fractional, signed)
+            b"\xa2\x00\x08\x00"           # macl %d0,%d1,%acc0
+            b"\xa1\xc0"                     # movclrl %acc0,%d0
+            b"\x4e\x71")                    # nop
+    got = []
+    for d0 in (0xc00, (-0xc00) & 0xffffffff):
+        uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+        uc.mem_map(0x1000, 0x1000)
+        uc.mem_write(0x1000, code)
+        uc.reg_write(UC_M68K_REG_D0, d0)
+        uc.reg_write(UC_M68K_REG_D1, 0x200000)
+        uc.emu_start(0x1000, 0x1000 + len(code))
+        got.append(uc.reg_read(UC_M68K_REG_D0) & 0xffffffff)
+    want = [3, 0xfffffffd]
+    lib = os.environ.get("LIBUNICORN_PATH", "<pip wheel>")
+    return got == want, f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x} (want 0x3, 0xfffffffd); lib {lib}"
 STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
 BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000

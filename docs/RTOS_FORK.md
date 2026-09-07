@@ -1767,3 +1767,134 @@ not reachable until the recorder's position feed is modelled or the DSP
 is. That is a fourth prerequisite beside M6f, and it is the one the
 click question actually needs: the sub-frame end offset is computed at
 `0x40006ea8` (`(d0 & 15) << 12 | 0x11d`) on the frame the end falls in.
+
+### 10.16 The recorder never ended, the length was half, and the trig was dropped, because the EMULATOR halves every fractional multiply: stock Unicorn's ColdFire EMAC is wrong, and the fix retires three findings (7 Sep 2026 — measured)
+
+**Where it started.** §10.15's resume line was "scope the recorder position
+feed". Instrumenting the block walk instead of reasoning about it (hooks at
+`0x40007178`, every iteration, `tools/scratch`-style driver) showed the
+counters advancing **16 per 16-sample frame** — the unit is ONE sample, not
+two — and the stall at `0xc00` was not a wait on anything: the walk's block
+index estimate at `0x40007138` (`macl pos, sp(56)` → block) returned **1 at
+position 0xc00** where the ±1 correction that follows can only fix an
+estimate off by one, so "remaining in block" came out 0 and the advance
+`d3` was 0 from then on. `sp(56)` is the recorder's block-table reciprocal:
+
+| `0x80003c20 + 16·type` | reciprocal | block (samples) | bytes/sample |
+|---|---|---|---|
+| 0 | `0x00100000` | `0x800` = 2048 | 3 (mono 24-bit) |
+| 1 (this recording) | `0x00200000` | `0x400` = 1024 | 6 (stereo 24-bit) |
+| 2 | `0x000aaaab` | `0xc00` = 3072 | 2 |
+| 3 | `0x00155556` | `0x600` = 1536 | 4 |
+
+Every reciprocal is **2³¹ / block size**, so the firmware expects `macl` in
+fractional mode (`MACSR = 0x20`, EXTERNAL.md §6) to return
+`pos × recip >> 31` = `pos / block`. `0xc00 × 0x200000 >> 31 = 3`; the
+emulator returned 1 (`>> 32`). The same idiom addresses the PCM pool at
+`0x40095c46`, so a `>> 32` EMAC could not play a sample either — this is
+not a recorder quirk, it is the arithmetic the whole firmware is written
+against.
+
+**Unicorn 2.1.4 measured** (`emu_bringup.emac_selftest`, and two scratch
+micro-programs: `movel #0x20,%macsr; macl %d0,%d1,%acc0; movclrl %acc0,%d0`):
+
+| operands | hardware (2³¹/N idiom, Bryan's counts) | stock Unicorn |
+|---|---|---|
+| `0xc00 × 0x200000` | 3 | **1** |
+| `0x800 × 0x200000` | 2 | **1** |
+| `127,008,000 × 699,050` (the RLEN 4 @128 converter) | 41,343 → `+1 >> 1` = **20,672** | 20,671 → **10,336** |
+| `−0xc00 × 0x200000` | −3 | **0x1ffffe** (unsigned) |
+| `macw 0x4000 × 0x4000` (1.15 fractional) | `0x20000000` | **`0x10000000`** |
+
+The cause is in QEMU's `HELPER(macmulf)` (`qemu/target/m68k/helper.c`):
+`product = (uint64_t)op1 * op2; product >>= 24;` with `get_macf` taking
+`>> 8` — an UNSIGNED product `>> 32`. The MCF5445x's fractional mode is a
+SIGNED 1.31 × 1.31 whose 2.62 product is shifted left one bit (the
+redundant sign bit) before the upper 40 bits are accumulated, so `ACC[39:8]`
+is the product `>> 31` (CFPRM §1.4.2 Figure 1-10 shows the 40-bit extended
+product; the firmware's constants say where its top bit sits). The scale
+factor is ignored in fractional mode on both. **`tools/unicorn_emac_fractional.patch`**
+changes that one function (signed operands, `<< 1`); `scripts/build_unicorn.sh`
+builds the m68k-only library into `.venv/lib/unicorn-emac/`, `emu_bringup`
+exports `LIBUNICORN_PATH` to it, and `emu_rtos.py` refuses to run on a stock
+EMAC unless `--stock-emac`. The build has to be the host's native
+architecture: the x86_64 (Rosetta) build with Xcode 26's clang crashed on
+its first `emu_start` (unpatched too; deployment target 10.15 and a Debug
+build made no difference; the PyPI wheel from SDK 14.2 does not crash), the
+native arm64 build passes every row above. 5,617 EMAC-site instructions
+execute per sequencer frame (505 sites in the image, hooked and counted over
+200 frames), so a Python-side shim was never an option.
+
+**What the fixed EMAC changes, on the same fixtures, with NO `--arm-phase-fix`:**
+
+| fixture | trig word | length written (`0x46c938d4`) | walk | end |
+|---|---|---|---|---|
+| `fxR1_128r4` (FLEX on R1, RLEN 4, 128 BPM) | `0x7210` — bit 7 CLEAR, armed on its own (§10.14 had it dropped) | **`0x50c0` = 20,672 = Bryan's** (was 10,336) | 16/frame, 21 blocks, no stall | record `+28` = `+32` = 20,672, state 0: **ended** |
+| `r3t120` (RLEN 4, 120 BPM) | `0x7210`, armed | **`0x5622` = 22,050** (was 11,025) | same | `+32` = 22,050, ended; the last advance was clamped to 2 samples by the budget — the end lands mid-frame |
+
+**Retractions, all of §10.13–10.15's own:**
+- §10.15 "the field is the sheet's number in 2-sample units" — ❌ the unit
+  is one sample; the field was half because the converter's `macl` was.
+  "Bryan's arithmetic reproduces in the firmware" stands, now without the
+  unit story: the firmware writes his 20,672.
+- §10.15 "the recorder's position feed / the DSP is the prerequisite for
+  the end" — ❌ there is no position feed: the ColdFire paces the recorder
+  from its own frame clock (16 samples per call pair, `sp(148) − sp(144)`),
+  and the read-back block (`0x80003190`, 8 tracks × 16 samples × L/R) is
+  the recorder's AUDIO, not its position. Route A ends the recording with
+  no DSP at all; the audio in it is zeros.
+- §10.13 "the timing byte advances +8/frame (2-sample units)" and §10.14
+  "nothing re-locks the sequencer's step clock to the frame clock, so the
+  byte wanders" — ❌ the byte is a fractional EMAC product
+  (`0x4000aece..af22`) and advanced 8 because the product was halved; at 16
+  per 16-sample frame it is in samples. The tempo sweep under the fixed EMAC
+  is below. `--arm-phase-fix` is compensation for an instrument defect and
+  is retired (the flag stays, does nothing useful, and is logged if used).
+- The M6f framing "model the sequencer clock lock" was built on the wander;
+  see the sweep before keeping it.
+
+**What survives untouched:** the record layout (§10.13), the arm caller and
+its bit-7 gate, the converter identity `0x40006dfc`, the machine-type
+values, the block chain and its allocator (`0x461053a8..e8`, free list
+`0x80006920`/`0x8000691c`), the walk's segment list (up to four `(addr,
+±len)` pairs per call at `sp(84)`, consumed at `0x400072d6..0x40007360` by
+the PICKUP machine's own playback of the buffer — the recording write is
+elsewhere).
+
+**The tempo sweep, fixed EMAC, no lever** (bank A step 2, RLEN MAX, the
+§10.14 fixtures, 2,200 frames each): **100 ✅ 110 ✅ 115 ✅ 120 ✅ 125 ✅
+128 ✅ 135 ✅ 140 ✅** — every trig word `0x7210` (timing byte 16, bit 7
+clear), every record in state 2 and counting. §10.14 scored the same eight
+files 4/8 with the stock EMAC and hardware scored 120 and 128 both yes; the
+emulator now agrees with the unit. **M6f as framed ("model the sequencer
+clock lock") loses its premise**: the step-clock/frame-clock re-lock sites
+(`0x400a1e92`, `0x4000ae7a`) still never run under route A, and that may
+still matter for long-run drift or for the slaved rig, but it is not what
+dropped the trigs. Falsifier for the remaining question: a long run (minutes)
+comparing the trig frame against `bpm × frames` on the fixed EMAC.
+
+**The end, measured** (`fxR1_128r4`, hooks at the end test `0x40006e8e`,
+the sub-frame offset `0x40006ea8`, the end post `0x40006edc`, the arm post
+`0x40006b18`; writes to the record's `+32` and the engine opcode
+`0x46105366`):
+- arm: frame 1291 (sample 913,561.5), engine opcode `0x25` / aux `0x80`,
+  `+32` ← 0;
+- end: frame 2582 (sample 934,216.5) — 1,291 frames later, with `+28` =
+  20,656 = 20,672 − 16 and the frame's 16 still to come: the end test is
+  `length − +20 ≤ +28 + (16 − timing) + 15`, i.e. **the end is decided one
+  frame early, at frame granularity**, and the end post carries the full
+  length (`+32` ← 20,672 through `0x40005c9c`, opcode `0x25` again). R1's
+  control record `+16` reads 20,672 at the end.
+- the sub-frame end offset at `0x40006ea8` (`(d0 & 15) << 12 | 0x11d` into
+  the DSP command slot) **never runs for a FLEX recorder** — it is gated on
+  `sp(128)` = PICKUP. So for Bryan's FLEX/recorder case the recording's
+  length is exact (20,672) and its END is frame-granular: 20,672 = 1,292 × 16
+  happens to be frame-aligned at 128 BPM, 22,050 at 120 is not (= 1,378 × 16
+  + 2; the walk's last advance was clamped to 2 by the budget, §10.16 table).
+  Where the *loop* restarts against the sequencer's 20,671.875-sample period
+  — Bryan's "that 0.1275 samples is the problem" (relayed 7 Sep; our
+  arithmetic makes the residue 0.125, ask which his sheet computes) — is the
+  playback side, not read yet.
+
+**Drivers** (`tools/scratch/recwalk.py`, `tools/scratch/recend.py`; needs the
+fixed EMAC and the `recproj_*` fixtures rebuilt per §10.13's recipe).

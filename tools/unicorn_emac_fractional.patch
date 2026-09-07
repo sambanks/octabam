@@ -1,0 +1,31 @@
+--- a/src/qemu/target/m68k/helper.c	2025-09-10 02:57:23.000000000 +1000
++++ b/src/qemu/target/m68k/helper.c	2026-09-07 11:44:48.665270356 +1000
+@@ -663,10 +663,17 @@
+ 
+ uint64_t HELPER(macmulf)(CPUM68KState *env, uint32_t op1, uint32_t op2)
+ {
+-    uint64_t product;
++    /* octabam: ColdFire fractional mode is SIGNED 1.31 x 1.31. The 2.62
++       product is shifted left one bit (the redundant sign bit) to 1.63 and
++       its upper 40 bits are accumulated, so MOVCLR (ACC[39:8]) returns
++       product >> 31, not >> 32 as the unsigned form below computed. The
++       Octatrack firmware's reciprocal tables (2^31 / N) and its tempo
++       converter only reproduce hardware with this alignment. */
++    int64_t product;
+     uint32_t remainder;
+ 
+-    product = (uint64_t)op1 * op2;
++    product = (int64_t)(int32_t)op1 * (int64_t)(int32_t)op2;
++    product <<= 1;
+     if (env->macsr & MACSR_RT) {
+         remainder = product & 0xffffff;
+         product >>= 24;
+@@ -677,7 +684,7 @@
+     } else {
+         product >>= 24;
+     }
+-    return product;
++    return (uint64_t)product;
+ }
+ 
+ void HELPER(macsats)(CPUM68KState *env, uint32_t acc)

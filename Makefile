@@ -190,6 +190,19 @@ remix: ## The remixer: swap effects in and out, dial + hear them, build the imag
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
 	@echo "remixer ready — 'make remix' (docs/EMU.md for the emulator view)"
+	@echo "route A (emu_rtos) also needs the EMAC-fixed Unicorn: make emu-unicorn"
+
+# Route A needs a Unicorn whose ColdFire EMAC multiplies like the MCF5445x
+# (stock 2.1.4 halves every fractional-mode product -- RTOS_FORK section
+# 10.16). Builds it from the PyPI sdist + tools/unicorn_emac_fractional.patch
+# into .venv/lib/unicorn-emac, where emu_bringup picks it up. The .venv's
+# Python must be the host's native architecture (arm64 on Apple silicon):
+# the script checks, and emu_rtos refuses to run on a stock EMAC.
+.PHONY: emu-unicorn
+emu-unicorn: ## Build the EMAC-fixed Unicorn library for route A (needs cmake)
+	@arch=$$($(PY) -c 'import platform; print(platform.machine())'); host=$$(uname -m); \
+	  if [ "$$arch" != "$$host" ]; then echo "$(PY) is $$arch on a $$host host -- recreate .venv with a native Python first (uv python install; uv sync --extra emu)"; exit 1; fi
+	scripts/build_unicorn.sh
 
 # The card: build a FAT16 image from a project directory, boot, mount it with
 # the firmware's own storage stack and load the project (docs/EMU.md M4).

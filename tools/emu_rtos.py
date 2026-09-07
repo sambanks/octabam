@@ -1050,7 +1050,12 @@ class Rtos:
             self.step(); n += 1
 
     def arm_phase_fix(self):
-        """COMPENSATION, not fidelity (RTOS_FORK section 10.14, 7 Sep 2026):
+        """RETIRED 7 Sep 2026 (RTOS_FORK section 10.16): the negative timing
+        byte this lever cleared was an artefact of stock Unicorn's halved
+        fractional EMAC; with the fixed library (scripts/build_unicorn.sh)
+        the trig arms on its own at every tempo tried. Kept, logged, harmless.
+
+        COMPENSATION, not fidelity (RTOS_FORK section 10.14, 7 Sep 2026):
         at the recorder arm caller's entry (0x40005ff0) clear bit 7 of the
         trig word when the track has NO recorder record yet (state byte +2
         zero in both banks of 0x80004f1c). Bit 7 is the sign of the frame
@@ -1628,16 +1633,26 @@ def _cli():
                          "current pattern record and report them by offset -- finds the "
                          "trig arrays instead of guessing their offsets")
     ap.add_argument("--arm-phase-fix", action="store_true",
-                    help="with --sequencer: COMPENSATION -- clear bit 7 of the trig word at the "
-                         "recorder arm caller when the track has no recorder record yet, so a "
-                         "first recorder trig arms at any tempo (RTOS_FORK section 10.14; under "
-                         "route A the timing byte wanders and ~half the tempos drop the trig)")
+                    help="RETIRED (RTOS_FORK 10.16): compensation for the stock-EMAC timing byte; "
+                         "with the fixed Unicorn the trig arms on its own. Kept for comparison runs")
+    ap.add_argument("--stock-emac", action="store_true",
+                    help="run even though this Unicorn's EMAC fails emu_bringup.emac_selftest "
+                         "(fractional products halved; RTOS_FORK section 10.16)")
     ap.add_argument("--via-rec", action="store_true",
                     help="with --sequencer: start the transport through the real REC key "
                          "handler INSTEAD of PLAY (REC starts it too, §9.4) and report the "
                          "record-arm byte (0x800066a0) either side of the press -- RTOS_FORK "
                          "section 9.4's falsifier. Overrides --via-key")
     a = ap.parse_args()
+
+    ok, detail = eb.emac_selftest()
+    if not ok and not a.stock_emac:
+        sys.exit("refusing to run route A on a stock Unicorn EMAC: " + detail
+                 + "\n  every fractional product would be half of hardware's (recorder length, "
+                 "block walk, sequencer timing byte -- RTOS_FORK section 10.16). "
+                 "Build the fixed library with scripts/build_unicorn.sh, or pass --stock-emac "
+                 "to run anyway.")
+    print(f"EMAC       : {'fixed' if ok else 'STOCK (halved fractional products)'} -- {detail}")
 
     card = None
     staged_name = a.name
