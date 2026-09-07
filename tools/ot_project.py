@@ -151,12 +151,21 @@ def _bank_write(pdir, banknum, mutate, guard=True):
     """
     if guard:
         guard_backup()
-    path = pdir / f"bank{banknum:02d}.work"
-    data = bytearray(path.read_bytes())
-    mutate(data)
-    ck = sum(data[0x10:-2]) & 0xFFFF
-    data[-2:] = ck.to_bytes(2, "big")
-    path.write_bytes(bytes(data))
+    # BOTH copies, 7 Sep 2026: `.work` is the working state and `.strd` the
+    # SAVED state, and PROJECT -> RELOAD on the unit restores `.strd`. An edit
+    # made only in `.work` vanished on the first reload of the SEAMTEST flash
+    # (a stale-part freeze on the first PLAY, reload, no trigs anywhere) and
+    # cost a card round-trip. The same mutation goes into both so the two
+    # states agree; the checksum is fixed up on each.
+    for suffix in ("work", "strd"):
+        path = pdir / f"bank{banknum:02d}.{suffix}"
+        if suffix == "strd" and not path.is_file():
+            continue
+        data = bytearray(path.read_bytes())
+        mutate(data)
+        ck = sum(data[0x10:-2]) & 0xFFFF
+        data[-2:] = ck.to_bytes(2, "big")
+        path.write_bytes(bytes(data))
 
 def set_part_name(pdir, banknum, part, name):
     name = name.upper()[:6]
@@ -181,6 +190,10 @@ def set_part_name(pdir, banknum, part, name):
 # wrote byte +0 only, i.e. the STATIC slot, for every caller.
 SLOT_KIND = {"static": 0, "flex": 1, "pickup": 4}
 
+# Measured on the unit 7 Sep 2026: the STATIC slot byte is 0-based like the
+# FLEX one (byte 1 shows as "static 002"); a STATIC [SAMPLE] entry's PATH is a
+# BARE filename ("PLUCK.wav"), and the ../AUDIO/<dir>/<file> form -- which the
+# FLEX entries of Sam's projects use -- loads as an EMPTY slot for STATIC.
 def set_track_slot(pdir, banknum, part, track, slot_1based, kind="flex"):
     if not (1 <= part <= NPARTS_ALL and 1 <= track <= 8):
         sys.exit(f"track-slot: part {part} / track {track} must be 1-based")
@@ -315,13 +328,16 @@ def tempo24_of(bpm):
 
 def set_tempo(pdir, bpm):
     """Set project.work's TEMPOx24 from a displayed BPM."""
-    path = pdir / "project.work"
-    raw = path.read_bytes().decode("latin1")
     t = tempo24_of(float(bpm))
-    new, k = re.subn(r"(TEMPOx24=)\d+", lambda m: m.group(1) + str(t), raw, count=1)
-    if k != 1:
-        sys.exit("TEMPOx24 not found in project.work")
-    path.write_bytes(new.encode("latin1"))
+    for suffix in ("work", "strd"):            # both states: see _bank_write
+        path = pdir / f"project.{suffix}"
+        if suffix == "strd" and not path.is_file():
+            continue
+        raw = path.read_bytes().decode("latin1")
+        new, k = re.subn(r"(TEMPOx24=)\d+", lambda m: m.group(1) + str(t), raw, count=1)
+        if k != 1:
+            sys.exit(f"TEMPOx24 not found in project.{suffix}")
+        path.write_bytes(new.encode("latin1"))
     print(f"TEMPOx24={t} ({bpm} BPM)")
 
 def pattern_masks(pdir, banknum):
