@@ -161,6 +161,25 @@ you did not explicitly write is the donor's, and some of them outrank the ones
 you did.** Same family as "a slot can draw a knob and publish nothing" — the
 panel and the DSP are separate mechanisms and neither validates the other.
 
+**STOCK UNICORN HALVES EVERY ColdFire FRACTIONAL-MODE MULTIPLY, and the
+firmware runs its EMAC in fractional mode (`MACSR = 0x20`).** Unicorn 2.1.4
+computes `macl`/`macw` under `F/I = 1` as an UNSIGNED product `>> 32`; the
+MCF5445x does a SIGNED product `>> 31` (the 2.62 product shifted left one
+bit, upper 40 bits accumulated). One defect, three symptoms that were each
+investigated as firmware behaviour for a day (7 Sep 2026, RTOS_FORK
+§10.16): the recorder length converter wrote 10,336 for Bryan's 20,672
+(explained away as "2-sample units"), the recorder's block walk stalled at
+3,072 samples ("needs a DSP position feed"), and the sequencer's per-frame
+timing byte advanced 8 per 16-sample frame, which dropped half the tempos'
+recorder trigs ("nothing re-locks the step clock", plus a compensation
+lever). The firmware's own reciprocal tables (`0x80003c20`: 2^31 / block
+size) said which side was wrong. **Route A refuses to run on a stock EMAC**
+(`emu_bringup.emac_selftest`); `scripts/build_unicorn.sh` builds the fixed
+library (`tools/unicorn_emac_fractional.patch`). The general rule is the
+same as "disassemble what you assemble": when firmware arithmetic comes out
+exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
+find a site in the firmware whose constants only make sense one way.
+
 **A MEASUREMENT CAN BE STRUCTURALLY BLIND TO THE THING YOU ARE USING IT TO
 RULE OUT — and it will report "clean" with total confidence.** Two instances,
 both on 17 Aug 2026, both costing hours:

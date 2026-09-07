@@ -415,7 +415,7 @@ reading `a0` is made of — but nobody has read `MACSR`. ✅ **Closed 6 Sep
 `moveq #32 / movel %d0,%macsr` at `0x4000cf60` in the frame builder and
 re-set immediately (`movel #32,%macsr`) at `0x4000d3ae`: fractional, signed,
 no saturation, and the round/truncate bit CLEAR, so the extraction
-*truncates*. objdump mis-syncs the first site (it prints an `andil`), which
+*truncates*. **And the emulator had the shift wrong (7 Sep 2026, RTOS_FORK §10.16): stock Unicorn computes this `macl` as `>> 32`, unsigned — every route-A count before that date was half of hardware's; the fixed library gives `>> 31` and the firmware writes the sheet's 20,672.** objdump mis-syncs the first site (it prints an `andil`), which
 is why it went unfound. **Why a pickup
 machine's arm length comes from the FOUT slot is open**; his display-order =
 raw-order check covered TRIG/RLEN/INAB/INCD, not slot 7.
