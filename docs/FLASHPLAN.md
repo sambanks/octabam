@@ -322,6 +322,21 @@ cannot exist: the station has no send slot and the SEND is refused there.
 **Prepared 7 Sep 2026: `out/projects/OCTABAM_ONEAUX`** (from the 6 Sep
 cleared backup, 16 banks written and read back) — copy it to the card as is.
 
+**STAGED ON THE CARD 7 Sep 2026 (tag 20).** `/Volumes/OCTATRACK` carries
+`OCTATRACK_OCTABAM20.bin` at the root (tag 19 removed; rebuild it with
+`REMIX=seamtest BUILD=19 make image` if the seam cave is wanted back) and the
+project `PRESETS/OCTABAM_ONEAUX`, byte-verified against
+`out/projects/OCTABAM_ONEAUX`, sidecars killed. **Load that project, not the
+old one:** every other project on the card that HOSTS an engine still stores
+the tag-17 slot order, so page 1 arrives shifted by one — BusVerb's TIME
+lands on AUX, the delay's PTCH byte on MIX. Affected: `ChongBongolo 26`,
+`OCTABAM_RIG`, `OCTATRACK`, `PROJECT 260804`, `PROJECT 260810`,
+`Pheasant - 2026 2`. Fix any of them with
+`ot_project.py stamp-defaults <project> bamsep27` on a copy. A SEND track is
+benign (its old `→DEL` byte becomes AUX, which is the same gesture) and a
+station is inert by construction (its send slots are blank and its levels are
+forced to 0 in code — gated).
+
 **Claims, in this order (each failure has its own shape):**
 
 | | claim | how to see it | falsified by |
