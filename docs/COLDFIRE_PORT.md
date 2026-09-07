@@ -134,13 +134,42 @@ low word reads back wrong. Both flags it finds match route A's exactly. These
 are the places the emulator stands in for hardware nobody has modelled yet, and
 the CLI prints them every run rather than hiding them.
 
+## Milestone O3 — the first peripherals, gated ✅ (7 Sep 2026)
+
+`periph.{h,cpp}`: the **PIT** and the **INTC**, translated from route A rule
+for rule, with each rule's measurement or failure carried across rather than
+summarised. `tools/ot_emu/test_periph.cpp` checks fourteen of them; `ctest`
+now runs **5 tests, all passing** (emac, periph, and the vendored core's
+timing, divide and HI08 tests).
+
+The rules worth naming, because none is obvious and each was a silent failure
+in route A first:
+
+- **A FORCED interrupt ignores the mask** (MCF54455RM rev 5 §17.2.3). The
+  sequencer tick is source 32, installed with ICR 3 and never unmasked
+  anywhere in the image; masking it left route A running 400 frames with
+  **zero ticks**. ✅ measured there, gated here.
+- **CIMR clears MASKALL along with its source.** 🟡 inferred, and the reason
+  is carried too: nothing in the image ever writes IMRH/IMRL (a literal scan
+  found no site), the firmware unmasks only through CIMR, and the unit
+  plainly takes interrupts.
+- **A source with ICR 0 is never delivered**, whatever else is true.
+- **PIT PIF is write-1-to-clear.** Treat the write as a set and the ISR
+  re-enters forever.
+- **The PIT prescaler input is a KNOB, not a fact** (264 MHz by default; off
+  the 132 MHz bus clock every period is 2× longer). What pins it is the
+  sequencer's own tick count, which is M6c's gate.
+
 ## What is NOT here yet
 
-- **The MCF5445x peripherals.** INTC0/1, both PITs, the eDMA with its
-  completion-timing rules, DSPI, the UARTs, FlexBus/ATA and the card. All are
-  modelled in route A's Python, commented rule by rule with each failure mode
-  recorded — that is the specification, and translating it is the bulk of the
-  mechanical work.
+- **The rest of the peripherals.** The eDMA with its completion-timing rules
+  (three wrong versions in route A, each with its own reproducible symptom),
+  DSPI, the UARTs, FlexBus/ATA and the card. All are modelled in route A's
+  Python, commented rule by rule with each failure mode recorded — that is the
+  specification, and translating it is the bulk of the mechanical work.
+- **The run loop that uses them**: interrupt delivery, the burst scheduler and
+  the handoff dispatch, i.e. route A's `Rtos` class. The models are ready for
+  it; nothing calls them yet.
 - **The DSP side.** `dsp56kEmu` is already vendored, already patched for the
   shared window (`tools/dsp56300.patch`), and `tools/dsp_host` already runs both
   cores. Joining them needs the host-port protocol, which was decoded on
@@ -149,6 +178,19 @@ the CLI prints them every run rather than hiding them.
   to `0x2000001c`, then DMAs — 336-word per-track records plus a 128-word and a
   64-word block per core, with one 64-word block read back.
 - **Audio out.** The ESAI path is untraced.
+
+## The oracle, made concrete (7 Sep 2026)
+
+`tools/emu_rtos.py --golden FILE` writes route A's M6a facts as JSON —
+handoff PC, auto-pokes, every created task with its fields, which TCBs ran,
+the first switch, the first 200 dispatches with their sample times, the gate
+time. `out/oracle/m6a.json` is that file for the ONEAUX project: **10 tasks
+created, 11 ran, first switch boot → main, gate at 204.95 ms** ✅.
+`tools/ot_emu/oracle.py A B` diffs two such files field by field with no
+tolerance except one PIT period on dispatch times, and reports a field the
+port does not produce yet as MISSING rather than as a failure, so the port's
+report can grow milestone by milestone. `docs/COLDFIRE_WORKORDER.md` is the
+queue that uses it.
 
 ## The order to do it in
 
