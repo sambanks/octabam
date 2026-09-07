@@ -1,7 +1,10 @@
-"""BamSep27 -- the rig with an empty FX2 chooser (design pass 2).
+"""BamSep27 -- the ONE-AUX rig (7 Sep 2026; design pass 2 before that).
 
-Every track is the same shape: a STATION on FX1, carrying that track's two
-bus sends, and NOTHING on FX2. What differs from `bamsep26`:
+Every track is the same shape: a STATION on FX1 (processing only -- the
+stations have no sends since the one-aux rig), and on FX2 either SEND (one
+knob, AUX) or an engine whose slot 0 is that same AUX. The bus is ONE aux:
+AUX -> BusDelay (T1) -> BusVerb (T5) -> the return on T8 (Character, SAT=BUS,
+RET). docs/BUS.md "The one aux bus". What differs from `bamsep26`:
 
   * NOTHING IS ON THE FX2 CHOOSER -- zero rows. The two engines, the SEND
     client and the three stations are all placed, dispatched and cloned, and
@@ -22,15 +25,13 @@ bus sends, and NOTHING on FX2. What differs from `bamsep26`:
     the panel did not. Unexplained, and not worth explaining: the rig does
     not want it.
 
-THE HOSTS CARRY THEIR OWN SEND PAIR (5 Sep 2026, Sam: "the plan was real
-send knobs"). Design pass 2 first found the arithmetic refused -- both
-engines used all twelve slots -- so each gave one up: BusVerb's HP and LP
-became one TONE knob (slot 3) and slot 4 is its -DEL; BusDelay dropped the
-drive and slot 10 is its -DEL. With IN / -VRB already on the pages, each
-host now has its send into its own engine and into the other. Every other
-track's sends are on its station. SEND is kept as the FALLBACK, so a fresh
-or unassigned track still dispatches to real code, and it is the one row
-the FX2 chooser carries.
+THE HOSTS CARRY ONE SEND, AUX, AT SLOT 0 (the one-aux rig, 7 Sep 2026): the
+same knob every track has, so a host page reads like any track's. The slot
+came from IN / -VRB (retired: the chain is hardwired) and MIX took slot 5 as
+each engine's stage crossfade; TONE stays merged and the delay's DRV stays
+dropped (the recovered slot went to MIX). SEND is the FALLBACK, so a fresh or
+unassigned track still dispatches to real code, and it is the one row the
+FX2 chooser carries. The SEND is refused on T8 by construction.
 
 BUS SCREEN IS OUT OF THE RIG (6 Sep 2026, tag 17): on tag 16 the CONTROL
 menu showed its stock six rows although the image carried eight (count and

@@ -98,8 +98,12 @@ CASES = [
      dict(layout="SD", pick="D")),
     (".RS     position 0 is NEITHER -- the self-healing election takes over",
      dict(layout=".RS")),
-    ("..DS    election takeover with the delay as the server",
-     dict(layout="..DS", pick="D")),
+    # ⚠️ NO SENDER AT POSITION 3 in any single-core case: that is track 8
+    # on payload A (the DEV hatch IS payload A), where the SEND is refused
+    # by design (the one-aux rig, 7 Sep 2026) -- a `..DS` layout rendered
+    # digital silence and the gate rightly refused to stamp it.
+    (".DS     election takeover with the delay as the server",
+     dict(layout=".DS", pick="D")),
 
     # --- the per-buffer counts and the 1/N auto-gain ------------------------
     # Sender count is the thing indexed by parity alongside the accumulators,
@@ -109,23 +113,25 @@ CASES = [
      dict(layout="SSR")),
     ("SSSR    three senders",
      dict(layout="SSSR")),
-    ("SSSSSSSR  seven senders -- the top of the reciprocal table",
-     dict(layout="SSSSSSSR")),
+    ("SSS.SSSSR  seven senders -- the top of the reciprocal table (position 3 skipped)",
+     dict(layout="SSS.SSSSR")),
     ("SSD     two senders into the delay bus",
      dict(layout="SSD", pick="D")),
-    ("SSSSSSSD  seven senders into the delay bus",
-     dict(layout="SSSSSSSD", pick="D")),
+    ("SSS.SSSSD  seven senders into the delay bus (position 3 skipped)",
+     dict(layout="SSS.SSSSD", pick="D")),
 
     # --- the cross-sends: the paths that write the OTHER bus ----------------
     # ->VERB (delay writes the REVERB accumulator) and ->DEL (reverb writes the
     # DELAY accumulator) are the two places a client of one bus is a writer on
     # the other, so they are the cases a half-applied layout change survives.
-    ("RDS     both servers, reverb picked -- the delay's ->VERB write lands",
-     dict(layout="RDS", pick="R", dvrbw=127)),
-    ("RDS/D   both servers, delay picked -- the reverb's ->DEL write lands",
-     dict(layout="RDS", pick="D", dvrbw=127)),
+    # (7 Sep 2026, one aux: the delay -> reverb hop is the hardwired CHAIN
+    # buffer and needs no knob; the reverb's AUX is its host's own send.)
+    ("RDS     both servers, reverb picked -- the delay's chain output lands",
+     dict(layout="RDS", pick="R")),
+    ("RDS/D   both servers, delay picked -- the reverb host's AUX write lands",
+     dict(layout="RDS", pick="D", raux=64)),
     ("DRS     both servers, dispatch order reversed",
-     dict(layout="DRS", pick="D", dvrbw=127)),
+     dict(layout="DRS", pick="D", raux=64)),
 
     # --- split blocks: proc() runs twice, the bookkeeping actually executes --
     # split 0 never touches r7+$65/$66/$67, so a bug in the split-aware frame
@@ -135,25 +141,29 @@ CASES = [
      dict(layout="RS", split=7)),
     ("DS s7   split block, delay server",
      dict(layout="DS", pick="D", split=7)),
-    ("RDS s5  split block with both servers and both cross-sends",
-     dict(layout="RDS", pick="D", split=5, dvrbw=127)),
+    ("RDS s5  split block with both servers and the chain",
+     dict(layout="RDS", pick="D", split=5, raux=64)),
 
     # --- the hosts' own sends: paths every DEFAULT render leaves at zero ----
     # ⚠️ Added 18 Aug 2026 after the delay's IN decode was silently DELETED by
     # a splice (6d2690b) and 17/17 still passed -- every case had IN at 0, so
     # "IN multiplies garbage" rendered identically to "IN works". A knob whose
     # default is 0 is INVISIBLE to this gate unless a case drives it.
-    ("DS IN   the delay host's own send, nonzero (inall)",
-     dict(layout="DS", pick="D", dmix=64, inall=True)),
-    ("RS IN   the reverb host's own send, nonzero (inall)",
-     dict(layout="RS", mix=64, inall=True)),
+    ("DS AUX  the delay host's own send, nonzero (inall)",
+     dict(layout="DS", pick="D", din=64, inall=True)),
+    ("RS AUX  the reverb host's own send, nonzero (inall)",
+     dict(layout="RS", raux=64, inall=True)),
+    ("RS MIX  the reverb's stage crossfade half way (the chain passthrough)",
+     dict(layout="RS", mix=64)),
+    ("DS MIX  the delay's stage crossfade half way",
+     dict(layout="DS", pick="D", dmix=64)),
 ]
 
 # Knobs held away from their defaults so the paths under test are actually
 # carrying signal -- a case rendered at FDBK 0 through a silent send proves
 # nothing about the accumulator it never reads.
 BASE = dict(dur=0.12, tail=0.25, amp=0.5, level=100, dlevel=100,
-            mix=127, dtime=20, dfdbk=70, dmix=40)
+            mix=127, dtime=20, dfdbk=70, din=40, dmix=127, raux=0)
 # dmix 127 -> 40 (23 Aug 2026, with the delay's IN-keyed wet makeup): at 127
 # the x3 makeup pinned every D-layout render at the rail, and a clipped
 # fixture is a BLIND fixture -- rail-pinned samples compare equal no matter
@@ -169,21 +179,22 @@ def render(mem, case, bump_level=0, extra_send=""):
     if extra_send:
         kw["layout"] = extra_send + kw["layout"]
 
+    # Slots come from the manifests (the harness-knob-drift rule): the KEYS
+    # keep their historical flag names, the indices follow the knob map.
+    rk = send_probe._slots("REVERB SERVER", send_probe.REV_FLAGS)
+    dk = send_probe._slots("DELAY SERVER", send_probe.DELAY_FLAGS)
     rev = list(send_probe.REV_PARAMS)
-    rev[0] = 40                      # TIME
-    rev[5] = kw["mix"] if "mix" in case else 0   # p5 = IN post-v4; BASE's old
-                                                 # "mix" default must NOT leak
-                                                 # a phantom host client into
-                                                 # every case
+    rev[rk["time"]] = 40
+    rev[rk["mix"]] = kw["mix"]                   # the stage crossfade
+    rev[rk["raux"]] = kw["raux"]                 # 0 unless a case drives it:
+                                                 # a phantom host client must
+                                                 # NOT leak into every case
     snd = list(send_probe.SEND_PARAMS)
-    snd[1] = kw["level"]             # ->REVERB
-    snd[0] = kw["dlevel"]            # ->DELAY
+    snd[0] = kw["level"]             # AUX, the one send (dlevel is its alias)
     dpar = list(send_probe.DELAY_PARAMS)
-    # idx4 = IN, idx... ⚠️ dvrbw is p4 (-VRB) since the 18 Aug swap; dmix (IN)
-    # is p5. The KEYS keep their historical names; the indices follow the map.
-    for idx, key in ((0, "dtime"), (1, "dfdbk"), (5, "dmix"), (4, "dvrbw")):
+    for key in ("dtime", "dfdbk", "din", "dmix"):
         if key in kw:
-            dpar[idx] = kw[key]
+            dpar[dk[key]] = kw[key]
 
     L, R = send_probe.run(str(mem), kw["dur"], kw["tail"], rev, snd,
                           verbose=False, amp=kw["amp"], direct=False,

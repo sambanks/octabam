@@ -694,19 +694,21 @@ RIG = (
     # drawn blank because hidden). The stock DELAY row is gone after flash 4;
     # the sends live on the FX1 stations. T1 hosts the delay engine, T5 the
     # reverb, T8 (master) has no FX2.
-    (1, ("CHARACTER", {"-VRB": 30}),        ("DELAY SERVER", {})),
-    (2, ("SPECTRUM", {"-VRB": 40, "-DEL": 30}), ("SEND", {})),
-    (3, ("SPECTRUM", {"-VRB": 30}),           ("SEND", {})),
-    (4, ("SPECTRUM", {"-DEL": 40}),           ("SEND", {})),
-    (5, ("MODULATION", {"-VRB": 40}),       ("REVERB SERVER", {})),
-    (6, ("SPECTRUM", {"-VRB": 50}),           ("SEND", {})),
-    (7, ("SPECTRUM", {"-VRB": 40, "-DEL": 20}),  ("SEND", {})),    # SPECTRUM, not
+    # ONE AUX (7 Sep 2026): the stations have no sends; every track's one
+    # send is FX2's AUX at slot 0, the hosts' included; T8 returns (RET).
+    (1, ("CHARACTER", {}),                  ("DELAY SERVER", {"AUX": 30})),
+    (2, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),
+    (3, ("SPECTRUM", {}),                   ("SEND", {"AUX": 30})),
+    (4, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),
+    (5, ("MODULATION", {}),                 ("REVERB SERVER", {"AUX": 40})),
+    (6, ("SPECTRUM", {}),                   ("SEND", {"AUX": 50})),
+    (7, ("SPECTRUM", {}),                   ("SEND", {"AUX": 40})),    # SPECTRUM, not
     # Character: T5 Modulation + T8 Character are core 0's two heavy already;
     # a third here (was CHARACTER) priced ~3106 of 3120 as a FLOOR and hung
     # the sequencer on frame 1 (tag 91, step 1 solid). Character on T7 for a
     # vocal set is a manual part swap that drops T5 to Spectrum -- design page.
-    (8, ("CHARACTER", {"SAT": 3, "CRSH": 127, "RING": 127,
-                               "CMOD": 1, "COMP": 40}), (None, {})),
+    (8, ("CHARACTER", {"SAT": 3, "RET": 127,
+                               "CMOD": 1, "COMP": 40}), (None, {})),   # the return; no FX2 (no send from T8)
 )
 
 
@@ -775,9 +777,10 @@ def make_rig_project(src, dest, remix_name):
              f"# copied from {src}", ""]
     for t, f1, f2 in RIG:
         lines.append(f"T{t}  FX1 {f1[0] or '-':20s} {f1[1]}   FX2 {f2[0] or '-':20s} {f2[1]}")
-    lines += ["", "T1 hosts the delay, T5 the reverb: both play their own material DRY",
-              "while T8 returns them (SAT=BUS, RVRB/DLY = CRSH/RING at 127). Turn",
-              "T8's RVRB to 0 and the reverb comes back out of T5 within 3 blocks."]
+    lines += ["", "ONE AUX (7 Sep 2026): every track's AUX feeds the delay (T1), then the",
+              "reverb (T5); T8 returns the last live stage (SAT=BUS, RET = CRSH at 127).",
+              "Turn T8's RET to 0 and the hosts print again within 3 blocks. T8 has no",
+              "FX2: the SEND is refused there anyway, and the stations have no sends."]
     (dest / "OCTABAM_RIG_MAP.txt").write_text("\n".join(lines) + "\n")
     print(f"{len(list(dest.glob('bank*.work')))} banks written and verified -> {dest}")
     print(f"map at {dest / 'OCTABAM_RIG_MAP.txt'}")

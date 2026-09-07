@@ -132,8 +132,14 @@ WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and t
 # TONE (idx 3) and DEL (idx 4) replaced HP/LP on 5 Sep 2026 (v8): TONE 64 is
 # the old HP 0 / LP 127 exactly; DEL is the host's dry send into the DELAY
 # bus, inert in this single-effect renderer (nothing reads the bus).
-PARAMS = [("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64), ("DEL", 0),
-          ("MIX", 64), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
+# ONE AUX (7 Sep 2026): AUX at idx 0 is the host's own send into the aux bus
+# -- 64 drives the tank exactly as IN=64 did (the same headroom and share),
+# two blocks later, since the dry now goes round through the accumulator.
+# MIX at idx 5 is the STAGE crossfade (127 = wet-only, the old print); the
+# IN-keyed wet makeup (x2 at IN=64) is gone with IN, so a default render
+# prints the wet 6 dB lower than v8 did at the same tank drive.
+PARAMS = [("AUX", 64), ("TIME", 64), ("MOD", 40), ("SIZE", 127), ("TONE", 64),
+          ("MIX", 127), ("_C", 0), ("SPEED", 0), ("DIFF", 64), ("SHFT", 0),
           ("GATE", 0), ("RATE", 1)]
 # SHFT (idx 9) was WIDTH until v6 (23 Aug 2026): width is pinned wide and the
 # slot selects the shimmer interval, 0/1/2/3 = +12/+19/+7/-12. Audited the

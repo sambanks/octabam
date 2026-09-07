@@ -31,6 +31,13 @@ MODULE = Module(
     ),
     params=(
         # ---- page 1 -------------------------------------------------------
+        # THE ONE-AUX RE-SLOT (7 Sep 2026): AUX at slot 0 on EVERY track,
+        # hosts included -- it is the host's own dry send into the one aux
+        # bus (the v8 ->DEL machinery). 0 is load-bearing: a non-zero default
+        # would register every idle host as a client and dilute the real
+        # senders (the -6.02 dB phantom-client defect).
+        Param(b"AUX", 0, active=True, formatter=_PLAIN,
+              doc="this track's send into the one aux bus (delay, then reverb, back on T8)"),
         Param(b"TIME", 64, active=True, formatter=_PLAIN,
               doc="decay time -- how long the tail rings"),
         Param(b"MOD", 30, active=True, formatter=_PLAIN,
@@ -43,21 +50,13 @@ MODULE = Module(
         # old defaults (HP 0 / LP 127), bit-identical.
         Param(b"TONE", 64, active=True, formatter=_PLAIN,
               doc="tail tone: below 64 darkens (high cut), above 64 thins (low cut); 64 = flat"),
-        # -DEL: this track's dry into BusDelay over the bus -- the host's own
-        # send pair, now that its FX2 page is where the sends live. 0 for the
-        # same load-bearing reason as IN: a non-zero default would register
-        # every idle host as a delay client and dilute the real senders.
-        Param(b"-DEL", 0, active=True, formatter=_PLAIN,
-              doc="this track's dry send into BusDelay over the bus"),
-        # IN is this track's own send into its own reverb. 0 IS LOAD-BEARING
-        # (v4, the return conversion): a non-zero default registers every idle
-        # host as a bus client, and the 1/sqrt(N) auto-gain then hands it a
-        # share whether or not it has audio to contribute -- measured at
-        # exactly -6.02 dB for one such phantom client. Since v5 the host's
-        # dry rides under the wet at unity, so IN=0 is an exact passthrough
-        # rather than a silent track.
-        Param(b"IN", 0, active=True, formatter=_PLAIN,
-              doc="this track's own send into the reverb; 0 = exact passthrough"),
+        # MIX (one-aux rig, 7 Sep 2026; IN until then): the STAGE's crossfade.
+        # The reverb is chain stage 2: out = in*(1-MIX) + wet*MIX, where `in`
+        # is the delay's output while the delay is live, else the aux. 127
+        # is the old wet-only return; lower lets the delay's repeats (or the
+        # dry aux) survive the tail. The host prints wet*MIX under its dry.
+        Param(b"MIX", 127, active=True, formatter=_PLAIN,
+              doc="stage dry/wet: 0 passes the chain input through, 127 = wet only"),
         # ---- page 2 ---------------------------------------------------------
         # MODE on slot 6 (v7, 4 Sep 2026; was slot 7). An even slot is the
         # proven slot the panel's page-2 knob editor writes, so a main-menu

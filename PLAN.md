@@ -1,19 +1,26 @@
-> ## ⚠️ DIRECTION CHANGED 6 Sep 2026 — READ THIS BEFORE THE BUS SECTIONS
+> ## ⚠️ THE BUS IS ONE AUX — BUILT 7 Sep 2026, GATED ON BOTH CORES, UNFLASHED
 >
 > The two-bus topology described below (a `->DEL` and a `->VRB` send on every
 > track, stations as bus clients, two accumulators, two returns) is
-> **SUPERSEDED**. Sam's call after it went circular: *"Hard wire all the routing
-> that would be hard wired in a live mixer rig."*
+> **SUPERSEDED**. Sam's call after it went circular (6 Sep): *"Hard wire all
+> the routing that would be hard wired in a live mixer rig."*
 >
-> **The rig is now ONE AUX BUS**: a single `AUX` send per track, a chain of
-> delay then reverb, and the wet returning on **track 8**, always. Each stage
-> stamps itself live and takes its input from the last live stage — so any
-> subset (delay only, reverb only, both, neither) works and no project setting
-> can silence the aux. Each engine gets a `MIX` knob.
->
-> **The spec:** https://claude.ai/code/artifact/ec5a3f41-e407-4162-8529-c6dd495f62cc
-> **Build:** branch `spec-rig`, step 1 (the bus collapse) committed at 3504c77.
-> Everything below about two buses is history until it is rewritten.
+> **The rig is ONE AUX BUS**: a single `AUX` send per track (slot 0, hosts
+> included), a chain hardwired delay → reverb through a chain buffer, each
+> stage stamping itself live so the next stage and the return take the LAST
+> LIVE stage's output (delay only, reverb only, both, neither all work), a
+> `MIX` crossfade on each engine (0 passes the chain input through, gated
+> sample-exact), ONE return (`RET`) on a BUS-mode Character station pinned to
+> track 8, the SEND refused on track 8 by construction, and the stations
+> without sends. `docs/BUS.md` "The one aux bus" is the record;
+> `tools/verify_onebus.py` (in `make check`) measures every property with
+> the senders and delay on payload B and the reverb and return on payload A.
+> ⚠️ Every project must be `stamp-defaults`'d for the re-slot before play
+> (page 1 of both engines shifted right by one). ⚠️ Open ear item: the
+> repeats-vs-reverb balance at the return is the reverb's MIX alone, and the
+> reverb's wet is ~25 dB under a sustained input where the delay's is not.
+> (The spec artifact is gone; the design is in the memory and in BUS.md.)
+> Sections below that describe two buses are history.
 
 # The plan: end state, resource ledger, and work order
 

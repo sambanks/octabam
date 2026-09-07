@@ -97,10 +97,13 @@ SR = 44100
 # on 23 Aug and did not reach this line.
 # v5.1: slot 5 is PTCH (IN retired). 0 here so a pre-v5 REFERENCE gets
 # IN=0 and stays comparable; the GRAIN cases set PTCH explicitly.
-BASE = [40, 60, 100, 64, 0, 0, 0, 0, 0, 0, 0, 0]
+# ONE AUX (7 Sep 2026): 0 AUX, 1 TIME, 2 FDBK, 3 TONE, 4 PING, 5 MIX, 6 MODE,
+# 7 MDEP, 8 MRAT, 9 SIZE, 10 PTCH, 11 FRZE. MRAT 0 freezes the wobble on
+# purpose (the bit-compare wants a deterministic line); PTCH 64 = unison.
+BASE = [0, 40, 60, 100, 64, 127, 0, 0, 0, 0, 64, 0]
 
-SLOT = {"TIME": 0, "FDBK": 1, "TONE": 2, "PING": 3, "VRB": 4, "PTCH": 5,
-        "MDEP": 7, "MRAT": 8, "DEL": 10}
+SLOT = {"AUX": 0, "TIME": 1, "FDBK": 2, "TONE": 3, "PING": 4, "MIX": 5,
+        "MDEP": 7, "MRAT": 8, "PTCH": 10}
 # v5.1 (3 Sep 2026): slot 5 is PTCH (IN retired), MDEP = wow depth / GRAIN
 # scatter, MRAT = wow rate / GRAIN density. v7 (5 Sep 2026): slot 10 is the
 # host's -DEL send (was DRV; the drive is pinned to 0 = bypass).

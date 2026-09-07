@@ -235,13 +235,17 @@
 ;                 send's level is read from the knob field and its dry is
 ;                 the loop-top x1, precisely because there was one slot.
 ;
-; Parameters:
-;   p0 TIME -> feedback, 0.875 .. 0.999
+; Parameters (ONE-AUX RE-SLOT, 7 Sep 2026: AUX took slot 0, MIX took IN's):
+;   p0 AUX  -> this host's own dry send into the one aux bus (the v8 ->DEL
+;              machinery: written to the AUX accumulator, flagged at y:$941)
+;   p1 TIME -> feedback, 0.875 .. 0.999
 ;   p1 DAMP -> one-pole coefficient. s += c*(d-s), so a LARGE c keeps highs.
 ;              DAMP up lowers c: 0 = bright, 127 = dark.
-;   p3 TONE -> v8: HP and LP on one knob (see the HI/LO blocks)
-;   p4 ->DEL-> v8: dry send level into the DELAY bus, the knob field itself
-;   p5 MIX  -> wet gain
+;   p2 MOD, p3 SIZE (were p1, p2)
+;   p4 TONE -> v8: HP and LP on one knob (see the HI/LO blocks); was p3
+;   p5 MIX  -> the STAGE crossfade: out = in*(1-MIX) + wet*MIX (7 Sep 2026)
+;   core-private y:$09f1 delay-liveness grace, $09f2 this sample's chain
+;   input, $09f3 1-MIX; $09f0 the AUX level for the loop
 ;   ❌ ->DELAY send level in $e -- RETIRED 18 Aug 2026; $e's low bits are RATE
 ;      now. Kept as history:  $e LOW bits, 4-step
 ;      select since R16. (The original home was $d on a "confirmed dead"
@@ -489,17 +493,38 @@ bus_mine:
 ; BACK, `write + 32 & $30` -- with four buffers that leaves an idle block on
 ; each side of the reader, which is the cross-core race fix (see the layout
 ; note in modules/send/send_client.asm).
+; ---- chain_live: is the delay (chain stage 1) running? -------------------
+; The delay stamps y:$9c3 nonzero every block it processes (after its
+; warm-up); this reads it, clears it (clear-on-read, single writer, single
+; reader -- the station has its own word, $9c5) and keeps 3 blocks of grace
+; in CORE-PRIVATE y:$09f1 (RETV's shape; r7 is full). While live, this
+; block's input is the delay's output buffer at $901 instead of the aux
+; accumulator -- see the two Tccs below and the gain override in the
+; resolve block. So delay-only, reverb-only, both, or neither all work and
+; no project setting can silence the aux (the one-aux rig, 7 Sep 2026).
+        move    y:>$09f1,b              ; blocks of grace left
+        move    #>$9c3,r5               ; the delay's stamp word
+        bsr     stampgr                 ; b = grace after this block's stamp
+        move    b,y:>$09f1
+        clr     a                       ; (BEFORE the tst: clr sets the CCR)
+        move    #>$60,x0                ; the distance from the AUX accumulator
+        tst     b                       ; back to the CHAIN buffer ($901 =
+        tne     x0,a                    ; $961 - $60) while the delay is live,
+        move    a,y1                    ; else 0; the read address subtracts it
+
         move    y:>$900,a
         move    a,x1                    ; x1 = write offset (0/16/32/48)
         add     #>$20,a                    ; two buffers on == two buffers back
         and     #>$30,a                    ; mod 4
         move    a,x0                    ; x0 = the read offset
         move    #>$961,a                ; the AUX accumulator (one bus, 6 Sep
-        add     x0,a                    ; 2026; 0x901-0x940 is free for the
-                                        ; chain buffer)
+        add     x0,a                    ; 2026)
         move    x:(r7+$67),b            ; this call's split-aware frame offset
-        add     b,a
-        move    a,x:(r7+$63)            ; this call's ACC read address
+        add     b,a                     ; a = AUX ACC read address
+        sub     y1,a                    ; ... or the CHAIN buffer's, same
+                                        ; rotation and frame offset, while
+                                        ; the delay is live (y1 from above)
+        move    a,x:(r7+$63)            ; this call's read address
 ; ---- this call's REVERB WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
 ; The wet is READ now -- by a Character station in BUS mode, the return on
 ; the master (docs/BUS.md "The returns") -- so it carries the same cross-core
@@ -515,9 +540,9 @@ bus_mine:
         add     b,a
         add     b,a                     ; + frame offset x2
         add     #>$9da,a
-        move    a,x:(r7+$64)            ; this call's WET write address (L; R at +1)
+        move    a,x:(r7+$64)            ; this call's OUTPUT write address (L; R at +1)
 
-; ---- this call's DELAY ACC write address: the host's ->DEL send (v8) -------
+; ---- this call's AUX ACC write address: the host's own AUX send (v8 ->DEL) -
 ; Back from its 18 Aug 2026 retirement, for a different reason: the rig puts
 ; the host's OWN send pair on its FX2 page (5 Sep 2026, "real send knobs"),
 ; and a BusVerb host has no station to carry ->DEL. Same address recipe as
@@ -539,19 +564,12 @@ bus_mine:
 ; the host and enters at the master. The 3-block grace covers a stamp lost
 ; to the other core's timing; the mask on load covers boot garbage. Every
 ; select is a Tcc off the ONE flag-setting op above it, moves between.
-        move    x:(r7+$68),a            ; blocks of grace left
-        and     #>$3,a
-        move    a1,x0
-        move    x0,b                    ; A2-clean
-        move    #>$1,x0
-        sub     x0,b
-        move    #>$0,x0
-        tmi     x0,b                    ; floored at 0
-        move    y:>$9d8,a               ; the stamp
-        move    x0,y:>$9d8              ; clear-on-read (x0 is still 0)
-        move    #>$3,x0
-        tst     a
-        tne     x0,b                    ; stamped this block: 3 blocks of grace
+; (7 Sep 2026: the grace arithmetic is the `stampgr` subroutine at the end
+; of this file, shared with the chain-liveness read -- the one-aux rig had
+; to find 17 words in payload A's `bus` region.)
+        move    x:(r7+$68),b            ; blocks of grace left
+        move    #>$9d8,r5               ; the stamp word
+        bsr     stampgr                 ; b = grace after this block's stamp
         move    b,x:(r7+$68)
         move    #>$400000,a             ; print gain 1/2 (x2 on use = exactly 1)
         move    #>$0,x0
@@ -650,7 +668,11 @@ bus_mine:
 ; BASE -- re-loaded below rather than trusted (the delay's wild-read lesson).
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$5),a             ; IN, from the knob itself
+        move    y:>$941,a               ; our own AUX flag (last block's: the
+                                        ; write below runs after this) -- the
+                                        ; host's dry is IN THE ACCUMULATOR now,
+                                        ; as a SEND's is, so it counts the same
+                                        ; way (ONE AUX, 7 Sep 2026; IN retired)
         tst     a
         tne     x0,b                    ; sending -> b = 1
         move    y:(r5),a                ; clients that wrote the buffer we read
@@ -665,6 +687,15 @@ bus_mine:
         add     b,a
         move    a,r5
         move    y:(r5),a
+; CHAIN INPUT (the one aux bus, 7 Sep 2026): while the delay -- chain stage 1
+; -- is LIVE, this block's input is its OUTPUT BUFFER at unity, not the aux
+; accumulator; the gain becomes exactly 1/8 so the loop's `asl #3` lands the
+; chain sample untouched (bit-exact: mpy by $100000 then <<3 is the identity
+; on a1). y:$09f1 is the delay-liveness grace counter (chain_live below).
+        move    y:>$09f1,b
+        tst     b                       ; delay live? (grace > 0)
+        move    #>$100000,x0
+        tne     x0,a                    ; live -> gain 1/8
         move    a,x:(r7+$0c)            ; this block's bus gain, used per sample.
                                         ; $0c, NOT $6d: $6d is the DIFFUSION
                                         ; allpass coefficient g. And $0c is
@@ -691,8 +722,11 @@ bus_mine:
 ; reverb host's ->DEL comes up with nothing playing on it -- that is the
 ; flag counted without the contribution, i.e. the knob field carrying bits
 ; the sample loop does not multiply by (it multiplies by exactly this word).
-        move    x:(r6+$4),a             ; ->DEL, the knob itself
-        move    a,y:>$941               ; the delay's client flag (shared window)
+        move    x:(r6),a                ; AUX (slot 0), the knob itself: the
+                                        ; host's own dry into the ONE aux bus
+        move    a,y:>$941               ; the aux client flag (shared window);
+                                        ; the delay's resolve counts it, and so
+                                        ; does ours above
 ; ... and the sample loop's copy of the level. ⚠️ NOT read from r6 in the
 ; loop: r6 walks the per-line state table there (the reason IN is copied to
 ; $70 per block), and the first cut of this send did exactly that -- it
@@ -840,6 +874,12 @@ wshclr:
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
 warmdone:
+; ---- REVERB LIVE (one-aux rig, 7 Sep 2026): stamp y:$9c4 every block this
+; engine really processes, for the return station's "last live stage" pick.
+; Clear-on-read by the station; not written during the warm-up above, so a
+; warming reverb is not live and the return falls through to the delay.
+        move    r7,x0                   ; any nonzero word (r7 is $6200+)
+        move    x0,y:>$9c4
 ; MARKER_WARM
         move    x:(r7+$31),x0           ; the base again: everything below
                                         ; derives buffers from x0
@@ -1377,7 +1417,8 @@ md_done:
     ; because n1/n4 were computed every block and thrown away. The v62 modulo
     ; conversion made them live, and that is kept.
     ; Setup only -- this runs once per block, not per sample.
-            move    x:(r6+$2),x0
+            move    x:(r6+$3),x0            ; SIZE: slot 3 since the one-aux
+                                            ; re-slot (AUX took slot 0)
             move    #>$4c0000,y1            ; v77: SIZE FLOOR RAISED.
             mpy     x0,y1,a
             move    #>$333000,x0            ; f = 0.400 .. 0.989, was
@@ -1539,7 +1580,7 @@ md_done:
 ; compensation comes OFF again -- keeping it would double every decay and
 ; push TIME's usable range off the top of the knob. These are the original
 ; constants: base $380000 = 0.875/2, span $080000 = 0.124/2 over the knob.
-        move    x:(r6),x0
+        move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot)
         move    #>$080000,y1
         mpy     x0,y1,a
         move    #>$380000,x0
@@ -1680,10 +1721,10 @@ md_done:
 ; 0.993 and its -0.12 dB per pass compounds over the tail. TONE 63 vs old
 ; LP 126 (no limiter involved) rendered bit-identical, which is what pins
 ; the arithmetic; TONE 64 vs old HP 0 / LP 127 is the default's own gate.
-        move    x:(r6+$3),b             ; TONE<<16
+        move    x:(r6+$4),b             ; TONE<<16 (slot 4, one-aux re-slot)
         move    #>$400000,x0            ; 64<<16
         sub     x0,b                    ; (TONE-64)<<16, N while TONE < 64
-        move    x:(r6+$3),a             ; TONE<<16 (moves leave the CCR alone)
+        move    x:(r6+$4),a             ; TONE<<16 (moves leave the CCR alone)
         move    #>$3f8000,x0            ; 63.5<<16
         tpl     x0,a                    ; TONE >= 64 -> a = 63.5<<16
         move    #>0,x0
@@ -1758,10 +1799,16 @@ md_done:
 ; IN is stored as the knob field itself: val<<16 IS val/128 in Q1.23 (the
 ; MIX/PING trick), used directly as the per-sample multiplier. Single writer
 ; of $70 (verify_slots).
-        move    x:(r6+$5),a
-        move    a,x:(r7+$70)            ; IN, this block (the ->DEL level is
-                                        ; read from r6 in the loop instead --
-                                        ; there was no slot for a copy)
+; MIX (slot 5, the one-aux rig, 7 Sep 2026; IN until then): the STAGE's
+; dry/wet crossfade. The stage output = chain input * (1 - MIX) + wet * MIX,
+; so MIX 0 passes the aux (or the delay's output) through untouched and the
+; host prints wet * MIX. Stored as the knob field (val<<16 IS val/128, the
+; MIX/PING trick) in $70 and 1 - MIX in core-private y:$09f3 for the loop.
+        move    x:(r6+$5),x0
+        move    x0,x:(r7+$70)           ; MIX, this block
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,y:>$09f3              ; 1 - MIX
 
 ; (The wet gain $20 is PER-MODE since 18 Aug 2026 -- each md_* block stores
 ; its own wgain/2, because hardware capture B measured BIG +8.4 dB over
@@ -1775,7 +1822,7 @@ md_done:
 ; ---- MOD: modulation depth, scales the LFO triangle ---------------------
 ; MOVED from $4 to $1 (labelled SHVG) in v61, swapping with HI above: $4
 ; is labelled LP and now carries the high cut, which is what it says.
-        move    x:(r6+$1),x0
+        move    x:(r6+$2),x0            ; MOD: slot 2 (one-aux re-slot)
         move    x:(r7+$73),y1           ; v95: scaled per MODE, only ever down
         mpy     x0,y1,a                 ; (BIG sits at unity), so the knob keeps
 ; x2 RELAW (18 Aug 2026, Sam: "make the mod less subtle"). Measured at MOD=127
@@ -2526,21 +2573,24 @@ lfrol:
         add     b,a
         move    a,y:(r5)+               ; DELAY ACC[write][i] += contribution
         move    r5,x:(r7+$6a)           ; advanced one sample
-        move    x:(r7+$70),y1           ; IN
-        mpy     x1,y1,a
-        asr     #$3,a,a
-        move    a,x:(r7+$1b)            ; own share, headroomed
-        move    x:(r7+$63),a            ; this sample's ACC read address
+; (the IN "own share" lived here until the one-aux rig, 7 Sep 2026: the
+; host's dry reaches the engine through its AUX send into the accumulator
+; now, exactly a SEND's path, so the bus sample IS the whole input)
+        move    x:(r7+$63),a            ; this sample's read address: the aux
+                                        ; accumulator, or the delay's output
+                                        ; buffer while the delay is live
         move    a,r5                    ; borrow r5: free here, every use
                                         ; below recomputes it from scratch
-        move    y:(r5),b                ; last block's fully-summed sends
-        move    x:(r7+$1b),a
-        add     b,a                     ; bus + own share, still headroomed
-        move    a,x1
-        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N); N counts us
-        mpy     x1,y1,a                 ; while IN > 0 (the resolve block)
+        move    y:(r5),x1               ; last block's fully-summed sends
+        move    x:(r7+$0c),y1           ; auto-gain 1/sqrt(N) -- or exactly 1/8
+        mpy     x1,y1,a                 ; on the chain (unity after the asl)
         asl     #$3,a,a                 ; undo the writers' 3-bit headroom
         move    a,x:(r7+$1b)            ; the averaged input, feeding the tank
+        move    a,y0                    ; ... and its MIX passthrough term,
+        move    y:>$09f3,x0             ; in * (1 - MIX), computed once here
+        mpy     y0,x0,a                 ; (mono: the same for L and R) and
+        move    a,y:>$09f2              ; parked for the output stage ($1b is
+                                        ; scratch below; a/x0/y0 reload there)
 
 ; --- GATE envelope (R16), BRANCHLESS AND FLAG-INDEPENDENT. The sample loop
 ; must stay straight-line (branches in a do-loop can hang the DSP), and rather
@@ -3810,22 +3860,23 @@ fbB:
 ; ear-passed at R29 is preserved to the bit. y0 is free here (GLVL consumed
 ; by the mpy above; the R channel reloads it); the mpy is the audited-signed
 ; y0,x0 form, never x0,y0 (the mpysu trap's discovery site).
-        move    a,x0                    ; gated wet L -- PUBLISHED as-is
-        move    x:(r7+$64),b            ; (pre-IN-makeup: the return's level is
-        move    b,r5                    ; the pure-return level Sam ear-passed)
-        move    x0,y:(r5)               ; -> shared REVERB WET, L
-        move    x:(r7+$70),y0           ; IN
-        mpy     y0,x0,a                 ; IN * wet
-        asl     #$1,a,a                 ; x2: makeup = 1 + 2*IN (v8 -- Sam
-                                        ; heard v7's +6 dB ceiling as still
-                                        ; quiet; +9.5 dB at full IN now, and
-                                        ; IN=0 is STILL exactly x1)
-        add     x0,a                    ; wet * (1 + 2*IN)
+        move    a,x0                    ; gated wet L
+; THE STAGE OUTPUT (one-aux rig, 7 Sep 2026): out = in*(1-MIX) + wet*MIX,
+; where `in` is this sample's chain input (the aux, or the delay's output
+; while it is live) parked at loop top. PUBLISHED to the shared buffer the
+; return station reads; the host prints wet*MIX under its dry. (The IN wet
+; makeup went with IN: a return's level is the return knob's.) Both mpys are
+; the audited-signed y0,x0 form.
+        move    x:(r7+$70),y0           ; MIX
+        mpy     y0,x0,a                 ; wet * MIX
+        move    y:>$09f2,b              ; in * (1 - MIX), parked at loop top
+        add     a,b                     ; b = stage output L
+        move    a,x0                    ; x0 = wet * MIX, what the host prints
+        move    x:(r7+$64),a
+        move    a,r5
+        move    b,y:(r5)                ; -> shared REVERB OUTPUT, L
 ; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
-; while a return station is live on this bus (RETV, per block above). a1 is
-; what the store took before and is what the mpy takes now, so the printed
-; path is bit-identical to v8 with no return in the rig.
-        move    a,x0
+; while a return station is live on this bus (RETV, per block above).
         move    x:(r7+$69),y0           ; print gain
         mpy     y0,x0,a                 ; (audited-signed y0,x0)
         asl     #$1,a,a
@@ -3844,16 +3895,16 @@ fbB:
         move    a,x0                    ; GATE: same gate level on the right
         move    x:(r7+$62),y0           ; GLVL
         mpy     y0,x0,a                 ; wet * gate
-        move    a,x0                    ; gated wet R -- PUBLISHED as-is
-        move    x:(r7+$64),b
-        add     #>$1,b
-        move    b,r5
-        move    x0,y:(r5)               ; -> shared REVERB WET, R
-        move    x:(r7+$70),y0           ; IN
-        mpy     y0,x0,a                 ; (audited-signed y0,x0)
-        asl     #$1,a,a                 ; x2 (v8, as on L)
-        add     x0,a                    ; wet * (1 + 2*IN)
-        move    a,x0
+        move    a,x0                    ; gated wet R
+        move    x:(r7+$70),y0           ; MIX
+        mpy     y0,x0,a                 ; wet * MIX
+        move    y:>$09f2,b              ; in * (1 - MIX)
+        add     a,b                     ; b = stage output R
+        move    a,x0                    ; x0 = wet * MIX
+        move    x:(r7+$64),a
+        add     #>$1,a
+        move    a,r5
+        move    b,y:(r5)                ; -> shared REVERB OUTPUT, R
         move    x:(r7+$69),y0           ; print gain, as on L
         mpy     y0,x0,a
         asl     #$1,a,a
@@ -3918,4 +3969,28 @@ apbody:
         move    b,x:(r7+$1b)
         move    x:(r7+$1c),a
         move    a,y:(r5)                ; write v at base + phase
+        rts
+
+; ---- stampgr: a clear-on-read liveness stamp with 3 blocks of grace -------
+; In: b = the grace counter as stored (masked here: core-private and r7
+; words start as boot garbage), r5 -> the stamp word (m5 is irrelevant for a
+; plain access). Out: b = the new counter -- 3 if the stamp was set this
+; block, else the old one minus 1 floored at 0; the stamp is cleared. Used
+; for RETV (the station's "someone is returning") and for the delay's
+; chain-liveness stamp (7 Sep 2026). Clobbers a and x0. Every select is a
+; Tcc off the ONE flag-setting op above it, moves between.
+stampgr:
+        and     #>$3,b                  ; boot garbage masked ...
+        move    b1,x0
+        move    x0,b                    ; ... and B2 clean again (a logical op
+                                        ; leaves it stale; CLAUDE.md)
+        move    #>$1,x0
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b                    ; floored at 0
+        move    y:(r5),a                ; the stamp
+        move    x0,y:(r5)               ; clear-on-read (x0 is still 0)
+        move    #>$3,x0
+        tst     a
+        tne     x0,b                    ; stamped this block: 3 blocks of grace
         rts

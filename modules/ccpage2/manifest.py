@@ -35,7 +35,7 @@ from remix.schema import CavePatch, Kind, Module
 # count; knobs are 128 (0..127). Must match modules/busverb / modules/busdelay
 # and the busscreen's VERB_SELECTS/DLY_SELECTS ({6,9,11}).
 VERB_COUNTS = bytes((3, 128, 128, 4, 128, 4))   # MODE, SHMR, DIFF, SHFT, GATE, RATE
-DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, MRAT, SIZE(select), DRV, FRZE
+DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, MDEP, MRAT, SIZE(select), PTCH, FRZE
 
 # The CC dispatch vector (status>>4 == 0xB) and its stock target.
 DISPATCH_CC = 0x400d64a0

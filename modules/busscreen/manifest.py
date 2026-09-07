@@ -136,10 +136,12 @@ MARKS = {
 # on the delay -- the hosts' own send pair. The delay's MODE is slot 6 and
 # MDEP slot 7, per its manifest and DLY_SELECTS below; this table had them
 # swapped until the same day.)
-VERB_NAMES = (b"TIME", b"MOD", b"SIZE", b"TONE", b"-DEL", b"IN",
+# (7 Sep 2026, the one-aux rig: AUX at slot 0 on both, MIX at 5, the delay's
+# PTCH on page-2 slot 10.)
+VERB_NAMES = (b"AUX", b"TIME", b"MOD", b"SIZE", b"TONE", b"MIX",
               b"MODE", b"SHMR", b"DIFF", b"SHFT", b"GATE", b"RATE")
-DLY_NAMES = (b"TIME", b"FDBK", b"TONE", b"PING", b"-VRB", b"PTCH",
-             b"MODE", b"MDEP", b"MRAT", b"SIZE", b"-DEL", b"FRZE")
+DLY_NAMES = (b"AUX", b"TIME", b"FDBK", b"TONE", b"PING", b"MIX",
+             b"MODE", b"MDEP", b"MRAT", b"SIZE", b"PTCH", b"FRZE")
 
 # Per-engine SELECT slots and their labels (count < 128 in the manifests),
 # so the screen prints ROOM/PLATE/BIG etc. instead of a raw number. slot ->

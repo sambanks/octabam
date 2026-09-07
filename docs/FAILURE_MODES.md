@@ -13,6 +13,11 @@ Confidence, per `CLAUDE.md`: separate measured from inferred. A fix that only
 
 ## Audio engine wedged, sequencer alive ✅ CAUSE MEASURED 6 Sep 2026: the MASTER LOOP
 
+> **STRUCTURAL FIX BUILT 7 Sep 2026 (one-aux rig, unflashed):** the
+> stations have no sends, and the SEND is REFUSED at track 8's dispatch
+> position on payload A whatever its knob says, so the master cannot send
+> into the bus it returns. `tools/verify_onebus.py` pins both.
+
 **Symptom.** The sequencer runs (steps advance, transport works), but **no
 audio plays** — not the tracks, and a **sample preview triggers but is
 silent** too. The **record meters for B/C/D sit lit permanently**. Distinct

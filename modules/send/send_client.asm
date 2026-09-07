@@ -1,7 +1,8 @@
 ; ---------------------------------------------------------------------------
 ; BUS.md task 7: SEND client stub.
 ;
-; Two knobs, page 1: x:(r6+0) = ->DELAY level, x:(r6+1) = ->REVERB level.
+; ONE knob, page 1: x:(r6+0) = AUX, this track's send into the one aux bus
+; (delay, then reverb, wet back on track 8 -- the one-aux rig, 7 Sep 2026).
 ; Dry, parallel taps -- SEND never touches its own audio buffer at all, so it
 ; is the zero-footprint client both bus servers rely on (see BUS.md's Memory
 ; section and dsp/probe_hardcoded_base.asm, which proved a hardcoded-base
@@ -53,37 +54,45 @@
 ;                       stay identical. Storing the scaled offset is what made
 ;                       going to four buffers a change the housekeeper makes
 ;                       alone.
-;   Y:0x901..0x940      REVERB bus accumulator, FOUR buffers of 16 words (one
-;                       word per sample slot within a block), at +0/+16/+32/+48
-;   Y:0x941             BusVerb host's ->DEL knob field (v8, 5 Sep 2026): the
+;   Y:0x901..0x940      THE CHAIN BUFFER (one-aux rig, 7 Sep 2026): the
+;                       delay's stage output, MONO, at unity, FOUR buffers
+;                       of 16 words at +0/+16/+32/+48 -- written (stored,
+;                       not accumulated, and never cleared) by the delay
+;                       every block it runs, read two back by the reverb
+;                       while the delay is live. Was the REVERB accumulator.
+;   Y:0x941             BusVerb host's AUX knob field (v8's ->DEL word): the
 ;                        reverb writes it every block, the delay's auto-gain
-;                        counts it as one more client while nonzero, the
-;                        delay's warm-up zeroes it. A single-writer word in
-;                        place of a cross-core count RMW.
+;                        AND the reverb's own count it as one more client
+;                        while nonzero, the delay's warm-up zeroes it. A
+;                        single-writer word in place of a cross-core count RMW.
 ;   Y:0x942..0x960      (DEAD since 3 Sep 2026: was the REVERB wet, two deep,
 ;                        mono, never read. Left in place so nothing below moves.)
-;   Y:0x961..0x9a0      DELAY  bus accumulator, FOUR buffers of 16 words
+;   Y:0x961..0x9a0      THE AUX accumulator, FOUR buffers of 16 words: every
+;                       track's one send (SEND's AUX, the hosts' AUX)
 ;   Y:0x9a1..0x9c0      (DEAD: was the DELAY wet, same story)
 ;   Y:0x9c1             DELAY SERVER role owner (lock)
 ;   Y:0x9c2             REVERB SERVER role owner (lock)
-;   Y:0x9c3..0x9c6      REVERB send COUNT, one per accumulator buffer -- how
-;                        many SEND clients wrote that buffer this block.
-;                        Indexed by the same rotation as the accumulators,
-;                        because the server reads LAST block's sum and so needs
-;                        LAST block's count. The server divides by it, so N
-;                        tracks sending at full drive the reverb exactly as hard
-;                        as one track does, and the shared accumulator can no
-;                        longer be summed into its rail.
+;   Y:0x9c3             DELAY LIVE stamp for the REVERB (clear-on-read):
+;                       the delay writes 1 every block it processes; the
+;                       reverb reads it, clears it, keeps 3 blocks of grace
+;                       and takes its input from the CHAIN buffer while live
+;   Y:0x9c4             REVERB LIVE stamp for the return station (same shape)
+;   Y:0x9c5             DELAY LIVE stamp for the return station (same shape)
+;   Y:0x9c6             free
+;   Y:0x9c7..0x9ca      AUX send COUNT, one per accumulator buffer -- how many
+;                        clients wrote that buffer this block. Indexed by the
+;                        same rotation as the accumulators, because a server
+;                        reads LAST block's sum and so needs LAST block's
+;                        count. The delay (and the reverb, with no delay
+;                        live) divides by it, so N tracks sending at full
+;                        drive the chain exactly as hard as one does. SEND
+;                        (this file) and BusDelay's own AUX register here,
+;                        gated on their knobs (17 Aug 2026: an idle client
+;                        that registers dilutes the real ones); BusVerb's
+;                        AUX is counted through Y:0x941 instead, see above.
 ;                        ⚠️ One word per buffer where the accumulators have
 ;                        sixteen, so these are the ONLY sites that scale the
 ;                        offset back down to a bare index (`asr #$4`).
-;   Y:0x9c7..0x9ca      DELAY send COUNT, one per accumulator buffer -- the same
-;                        mechanism for the DELAY bus (landed with BusDelay's
-;                        auto-gain). SEND (this file) and BusDelay's own -DEL
-;                        register here, gated on their knobs (17 Aug 2026: an
-;                        idle client that registers dilutes the real ones).
-;                        BusVerb's ->DEL send is counted through Y:0x941
-;                        instead, see above.
 ;   Y:0x9cb..0x9d2      DELAY SERVER's 1/sqrt(N) reciprocal table, rebuilt by it
 ;                        each block. Lives in the shared scratch because the
 ;                        delay's own half-window is entirely line buffer.
@@ -94,20 +103,20 @@
 ;                       (writes and in-loop reads never met; mechanism
 ;                       unknown -- build_bus.py's build log). Nothing of ours
 ;                       goes there until someone explains it.
-;   Y:0x9d8             RETV -- the REVERB return's liveness stamp. A character
-;                       station in BUS mode writes it nonzero every block its
-;                       RVRB level is up; the reverb reads it, clears it, and
+;   Y:0x9d8             RETV -- "someone is returning": a character station
+;                       in BUS mode writes it nonzero every block its RET
+;                       level is up; the reverb reads it, clears it, and
 ;                       prints its wet on its own host only while no stamp has
 ;                       arrived for 3 blocks (docs/BUS.md "The returns").
-;   Y:0x9d9             RETD -- the same for the DELAY.
-;   Y:0x9da..0xa59      REVERB bus WET, STEREO (L,R interleaved), FOUR buffers
-;                       of 32 words at +0/+32/+64/+96 -- the accumulators'
-;                       rotation, doubled for the stride. Written by the reverb
-;                       from its output stage (post-gate, pre-IN-makeup), read
-;                       two buffers back by a BUS-mode station. Four deep for
-;                       the same reason the accumulators are: it is read across
-;                       cores now.
-;   Y:0xa5a..0xad9      DELAY bus WET, same shape. ⚠️ Its base is spelled
+;   Y:0x9d9             RETD -- the same for the DELAY (stamped together).
+;   Y:0x9da..0xa59      REVERB STAGE OUTPUT, STEREO (L,R interleaved), FOUR
+;                       buffers of 32 words at +0/+32/+64/+96 -- the
+;                       accumulators' rotation, doubled for the stride:
+;                       in*(1-MIX) + wet*MIX, written from the output stage,
+;                       read two buffers back by the BUS-mode station on
+;                       track 8. Four deep for the same reason the
+;                       accumulators are: it is read across cores.
+;   Y:0xa5a..0xad9      DELAY STAGE OUTPUT, same shape. ⚠️ Its base is spelled
 ;                       `$9da + $80` in every source, never `$a5a`: build_bus.py
 ;                       relocates `$9xx` literals only, and a fused `$a5a` would
 ;                       stay core-private and silently miss the bus. Only the
@@ -413,6 +422,26 @@ notfirst:
 ; noise wash on one channel. Tcc takes a REGISTER source, never an
 ; accumulator, so the increment travels through x0. Branchless: no new label,
 ; which also keeps dsp_asm's prefix-resolution trap out of it.
+; ---- THE SEND IS REFUSED ON TRACK 8 (the one-aux rig, 7 Sep 2026) --------
+; Track 8 is where the aux returns (a Character station in BUS mode), so a
+; send from it would feed the return back into the bus it returns -- the
+; master loop that silenced the unit on 6 Sep 2026 (FAILURE_MODES). Refused
+; by construction, not by discipline: on PAYLOAD A, core 0's position 3
+; (r7 == $6800, the FX2 slot of track 8) contributes nothing and registers
+; nothing, whatever its knob says. Payload B's position 3 is track 4 and
+; sends normally. The payload is told apart by its Y base literal, which
+; build_bus.py rewrites to $38000 for payload B and leaves at $30000 for A
+; (the same discriminator the HKB diagnostic used); the literal is never
+; used as an address here.
+        move    #>$30000,a              ; this payload's base ($38000 on B)
+        move    #>$38000,x0
+        cmp     x0,a
+        beq     send_ok                 ; payload B: every position sends
+        move    r7,a
+        move    #>$6800,x0
+        cmp     x0,a
+        beq     send_refused            ; payload A position 3 = track 8
+send_ok:
         move    x:(r7+$67),a
         tst     a
         bne     cnt_done                ; not this block's first call
@@ -467,4 +496,5 @@ cnt_done:
         move    #>$1,n0
 send_end:
         nop
+send_refused:
         rts

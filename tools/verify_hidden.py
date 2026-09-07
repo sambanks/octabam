@@ -268,6 +268,16 @@ def main():
             if not pathlib.Path(mem).exists():
                 return None
             init, proc = send_probe.entry_points(mem, mods[key].menu.fx2_id)
+            # ONE AUX (7 Sep 2026): an engine's only input is the aux bus --
+            # its own AUX goes round through the accumulator, and that
+            # needs a rotation, i.e. a housekeeper. A lone delay under the
+            # DEV hatch is never the housekeeper (it behaves as payload B),
+            # so the engine renders with a SEND at the other slot, fed the
+            # tone at AUX 127: SEND's self-healing election keeps the bus
+            # turning whichever slot the engine is on, and "runs" means the
+            # sent tone comes out of the engine as wet.
+            sinit, sproc = send_probe.entry_points(mem, send_probe.SERVER_ID["S"])
+            other = 4 if r7 == 2 else 2
             out = scratch / f"out_{r7}.raw"
             vals = [(p.default or 0) & 0x7f for p in mods[key].params]
             kmap = {(p.name or b"").decode("latin1"): i
@@ -276,10 +286,14 @@ def main():
                 vals[kmap[n]] = v
             params = ",".join(str(v) for v in vals)
             r = subprocess.run(
-                [HOST, "-mem", mem, "-init", f"{init:x}", "-proc", f"{proc:x}",
-                 "-inst", "1", "-r7", str(r7), "-alloc", "1", "-inmask", "1",
+                [HOST, "-mem", mem, "-init", f"{init:x},{sinit:x}",
+                 "-proc", f"{proc:x},{sproc:x}",
+                 "-inst", "2", "-r7", f"{r7},{other}", "-alloc", "1,3",
+                 "-inmask", "3",         # the engine's own track too: the
+                                         # guard's dry pass is INPUT == OUTPUT
                  "-frames", str(FRAMES), "-blocks", str(N // FRAMES),
-                 "-in", str(src), "-out", str(out), "-params", params],
+                 "-in", str(src), "-out", str(out), "-params", params,
+                 "-params", "127,0,0,0,0,0,0,0,0,0,0,0"],
                 capture_output=True, text=True)
             if r.returncode != 0:
                 return None
@@ -292,8 +306,10 @@ def main():
             # engines are RETURNS whose IN defaults to 0 (v5, 23 Aug 2026),
             # so a control render has to open the input, or "the guard went
             # dry" and "the engine is dry anyway" are the same picture.
-            wet = {"IN": 127} if "IN" in [ (p.name or b"").decode("latin1")
-                                           for p in mods[key].params ] else {}
+            _names = [(p.name or b"").decode("latin1") for p in mods[key].params]
+            # AUX since the one-aux rig (7 Sep 2026): the host's own send
+            # goes round through the accumulator and back into the engine
+            wet = {} if "AUX" in _names else ({"IN": 127} if "IN" in _names else {})
             host = render(key, 2, **wet)
             away = render(key, 4, **wet)
             if host is None or away is None:

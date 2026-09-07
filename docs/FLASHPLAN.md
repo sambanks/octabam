@@ -295,6 +295,50 @@ which.
 
 ---
 
+## Flash 6 — THE ONE AUX RIG (bamsep27, 7 Sep 2026) — NEXT
+
+**The image:** `REMIX=bamsep27 make image` on branch `onebus` (PR pending).
+What it changes against tag 17 on the unit: ONE `AUX` send per track (SEND's
+one knob; the hosts' slot 0), the chain delay → reverb hardwired through a
+chain buffer with liveness stamps, `MIX` on both engines, ONE return (`RET`,
+the CRSH knob of a BUS-mode Character) pinned to track 8, the SEND refused
+on track 8, the stations without sends. `docs/BUS.md` "The one aux bus".
+
+**Before play, no exceptions — the re-slot.** Page 1 of both engines shifted
+right by one (AUX took slot 0): a part saved under tag 17 hands TIME to AUX,
+MOD to TIME, … and the delay's old PTCH byte to MIX. The MODE re-slot stalled
+the sequencer on the first play for exactly this reason.
+
+```bash
+python3 tools/ot_project.py rigproj ~/octa/backups/OCTABAM_RIG_20260906_cleared /Volumes/<card>/OCTABAM_ONEAUX bamsep27
+# or, for a real set on a copy:
+python3 tools/ot_project.py stamp-defaults /Volumes/<card>/<set copy> bamsep27
+```
+
+`rigproj` writes the new RIG table: stations with no sends, SEND `AUX`
+30–50 on T2–T4/T6–T7, the hosts' `AUX` on T1/T5, T8 = Character SAT=BUS
+RET 127 and NO FX2 (nothing to refuse). T8's old `-VRB 71` (the master loop)
+cannot exist: the station has no send slot and the SEND is refused there.
+
+**Claims, in this order (each failure has its own shape):**
+
+| | claim | how to see it | falsified by |
+|---|---|---|---|
+| i | the re-slot | every host page reads AUX TIME MOD SIZE TONE MIX / AUX TIME FDBK TONE PING MIX; the delay's page 2 ends PTCH FRZE | a knob doing its neighbour's job |
+| ii | the chain | T2 sends AUX: repeats AND reverb arrive on T8 with nothing on T1/T5's own outputs | reverb without repeats (chain buffer), repeats without reverb (stamp), or the hosts still printing (RETV/RETD) |
+| iii | last live stage | select NONE on T5 (no reverb): the repeats still return; NONE on T1 too: silence, not garbage | silence with the delay alone (the fall-through), garbage with neither (the level gate) |
+| iv | MIX | delay MIX 0: the reverb of the DRY sends, no repeats; reverb MIX 64: repeats under the tail | MIX changing level but not blend |
+| v | the refusal | put SEND on T8's FX2 with AUX 127: nothing changes; the same on T4: it sends | T8 audible in the return (the position pin is wrong) |
+| vi | stations silent | a station on any track with its old send bytes (a tag-17 part, unstamped, on a scratch copy) sends nothing | a station's track in the reverb with its AUX at 0 |
+| vii | the return pin | a BUS-mode Character on T7: returns nothing; on T8: returns | a return from T7 |
+| viii | cross-core stamps | play for minutes: no flicker of the return, no host print creeping back | the return dropping out and back (a stamp lost > 3 blocks) |
+
+**Stop condition:** any of ii–iv failing on the unit after passing
+`make verify-onebus` locally is a cross-core timing fact — record the exact
+configuration (which core, which position) before touching code.
+
+---
+
 ## Flash 5 — the ColdFire headroom probe (cfprobe)
 
 **The image:** `REMIX=cfprobe make image` — the rig plus HELLO WORLD and

@@ -314,7 +314,7 @@ into both accumulators. What that takes, beyond the insert contract:
   16 samples less bus latency for a station on core 0 (it adds into the
   buffer written last block, which is read next block); nothing is lost.
 - The layout alphabet is exhausted (A–W, Y, Z), so stations take DIGITS as
-  `layout_char`. `send_probe --feed 1 --set 1:-VRB=100` feeds the tone to
+  `layout_char`. `send_probe --feed S --set S:AUX=100` feeds the tone to
   the station's own track and drives its knob; `LETTER:NAME=VAL` drives any
   live slot. The registration gate is: a second instance with its send at
   zero must not move the server's level (the N/(N+1) trap).

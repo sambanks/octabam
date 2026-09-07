@@ -52,6 +52,8 @@ from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
 _PLAIN = Formatter.PLAIN
 _STEP = Formatter.STEPPED
 
+_BLANK = Param(b"", 0)
+
 MODULE = Module(
     name="character",
     key="CHARACTER",
@@ -75,10 +77,8 @@ MODULE = Module(
               doc="bit depth: 0 = 24 bits, 127 = about 3; in SAT=BUS it is RVRB, the reverb return"),
         Param(b"COMP", 0, active=True, formatter=_PLAIN,
               doc="compression amount; 0 = no gain reduction at any level"),
-        Param(b"-DEL", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the DELAY bus; 0 = not a client"),
-        Param(b"-VRB", 0, active=True, formatter=_PLAIN,
-              doc="send the processed signal onto the REVERB bus; 0 = not a client"),
+        _BLANK,   # -DEL: the stations lost their sends in the one-aux rig (7 Sep 2026)
+        _BLANK,   # -VRB: the stations lost their sends in the one-aux rig (7 Sep 2026)
         # ---- page 2: knob / select / knob / select / knob / select ----------
         Param(b"MIX", 127, 128, active=True, formatter=_PLAIN,
               doc="dry/wet across the whole chain; 0 = exact passthrough"),
@@ -101,7 +101,7 @@ MODULE = Module(
     mode_slot=7,
     mode_views=(
         ModeView(mode=3,                        # BUS
-                 names={2: b"RVRB", 8: b"DLY"},
+                 names={2: b"RET", 8: b"----"},      # one return (7 Sep 2026); RING inert
                  defaults={2: 127, 8: 127}),
     ),
     dsp=DspSection(

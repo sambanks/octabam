@@ -46,7 +46,8 @@
 ;   $28 slope     $29 sat mode      $2a cmod           $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff  $2f bypass
 ;   $30 ->DEL level     $31 ->VRB level
-;   $3e RVRB return level  $3f DLY return level   (BUS mode only, else 0)
+;   $3e RET return level   $3f 0 (was DLY; one return since 7 Sep 2026)
+;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
 ;   words before it was found):
@@ -148,7 +149,9 @@ ch_offok:
         move    #>$ffffff,m3
         move    #>$1,x0
         clr     b
-        move    x:(r6+$5),a             ; ->VRB level
+        clr     a                       ; NO STATION SENDS (one-aux rig, 7 Sep
+                                        ; 2026): the level is 0 whatever the
+                                        ; part stores, so nothing registers
         tst     a
         tne     x0,b
         move    y:(r3),a
@@ -157,17 +160,16 @@ ch_offok:
         move    #4,n3
         move    (r3)+n3
         clr     b
-        move    x:(r6+$4),a             ; ->DEL level
+        clr     a                       ; (no sends: never a client)
         tst     a
         tne     x0,b
         move    y:(r3),a
         add     b,a
         move    a,y:(r3)
 ch_cntz:
-        move    x:(r6+$4),x0
-        move    x0,x:(r7+$30)           ; ->DEL
-        move    x:(r6+$5),x0
-        move    x0,x:(r7+$31)           ; ->VRB
+        move    #>$0,x0                 ; the send levels are 0: the stations
+        move    x0,x:(r7+$30)           ; lost their sends in the one-aux
+        move    x0,x:(r7+$31)           ; rig (every track sends from FX2's AUX)
 
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
@@ -365,12 +367,25 @@ ch_sbus:
         move    x0,x:(r7+$23)           ; crush: identity
         clr     a
         move    a,x:(r7+$24)            ; ring: no carrier
+; ONE RETURN (the one-aux rig, 7 Sep 2026): RET (the CRSH knob) is the level
+; of the LAST LIVE STAGE's output -- the reverb's if it is running, else the
+; delay's, else nothing -- resolved below from the engines' liveness stamps.
+; The RING knob is inert in BUS mode. And the return is PINNED to dispatch
+; position 3 (r7 $6700/$6800: track 8 on core 0; its mirror is track 4 on
+; core 1): a BUS-mode station anywhere else returns nothing.
         move    x:(r6+$2),x0
-        move    x0,x:(r7+$3e)           ; RVRB return level (the CRSH knob)
-        move    x:(r6+$d),a
-        and     #>$7f0000,a
-        move    a1,x0
-        move    x0,x:(r7+$3f)           ; DLY return level (the RING knob)
+        move    x0,x:(r7+$3e)           ; RET level (the CRSH knob)
+        move    r7,a
+        and     #>$ff00,a
+        move    #>$6700,x0
+        cmp     x0,a
+        beq     ch_pos3
+        move    #>$6800,x0
+        cmp     x0,a
+        beq     ch_pos3
+        clr     a
+        move    a,x:(r7+$3e)            ; not position 3: no return
+ch_pos3:
 ch_sdone:
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
@@ -399,21 +414,62 @@ ch_sdone:
         add     b,a
         add     b,a                     ; + frame x2
         add     #>$9da,a
-        move    a,r4                    ; REVERB wet [read]
+        move    a,r4                    ; REVERB output [read]
         add     #>$80,a
-        move    a,r5                    ; DELAY wet [read]
+        move    a,r5                    ; DELAY output [read]
         move    #>$ffffff,m4
         move    #>$ffffff,m5
-        move    x:(r7+$3e),a            ; RVRB up: stamp the reverb's word
-        tst     a
-        beq     ch_nrv
+; ---- which stage is live? (one-aux rig, 7 Sep 2026) ---------------------
+; Each engine stamps its own word every block it processes (y:$9c4 reverb,
+; y:$9c5 delay); this reads and clears them (single writer, single reader)
+; and keeps 3 blocks of grace each in r7 $3c/$3d -- RETV's shape, for a
+; stamp the other core's timing loses. Reverb live: read its output (r4).
+; Delay live only: read the delay's (r4 := r5). Neither: the level is 0.
+        move    x:(r7+$3c),a            ; reverb grace
+        and     #>$3,a
+        move    a1,x0
+        move    x0,b
         move    #>$1,x0
-        move    x0,y:>$9d8
-ch_nrv:
-        move    x:(r7+$3f),a            ; DLY up: stamp the delay's word
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b
+        move    y:>$9c4,a
+        move    x0,y:>$9c4              ; clear-on-read
+        move    #>$3,x0
+        tst     a
+        tne     x0,b
+        move    b,x:(r7+$3c)
+        move    x:(r7+$3d),a            ; delay grace
+        and     #>$3,a
+        move    a1,x0
+        move    x0,b
+        move    #>$1,x0
+        sub     x0,b
+        move    #>$0,x0
+        tmi     x0,b
+        move    y:>$9c5,a
+        move    x0,y:>$9c5              ; clear-on-read
+        move    #>$3,x0
+        tst     a
+        tne     x0,b
+        move    b,x:(r7+$3d)
+        move    x:(r7+$3c),a
+        tst     a
+        bne     ch_rvlive               ; reverb live: r4 is right already
+        move    x:(r7+$3d),a
+        tst     a
+        beq     ch_nolive
+        move    r5,r4                   ; delay only: return the delay's output
+        bra     ch_rvlive
+ch_nolive:
+        clr     a
+        move    a,x:(r7+$3e)            ; nothing live: return nothing
+ch_rvlive:
+        move    x:(r7+$3e),a            ; RET up: tell BOTH hosts to go quiet
         tst     a
         beq     ch_ndl
         move    #>$1,x0
+        move    x0,y:>$9d8
         move    x0,y:>$9d9
 ch_ndl:
 ; ---- BYPASS: the defaults are a bit-exact passthrough ---------------------

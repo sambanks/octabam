@@ -220,7 +220,11 @@
 ;   r7+$40..$43         GRAIN v4 window multiplier w0..w3, 2^(23-k) or 0 when
 ;                       the grain was drawn muted (PERSISTENT, latched at the
 ;                       wrap; cleared by the warm-up)
-;   r7+$3e/$3f, $44..$53  free since v4 (the v2 grain table's other fields)
+;   r7+$3e, $48..$53    free since v4 (the v2 grain table's other fields;
+;                       $3f is GRAIN's again)
+;   r7+$44/$45          MIX / 1-MIX (per block; one-aux rig, 7 Sep 2026)
+;   r7+$46              scratch: x_in*(1-MIX), the passthrough term (per sample)
+;   r7+$47              scratch: stage output L, for the chain's mono (per sample)
 ;   r7+$58/$59          this sample's scatter / window-multiplier candidates
 ;   r7+$19..$1f         GRAIN v5 per-sample parks: window, frac, t0, read
 ;                       phase, s, wet L, wet R (the PITCH jitter slots until v5)
@@ -287,11 +291,12 @@
 ;                       convention, reused -- see dsp/reverb89.asm)
 ;   r7+$83              DRIVE amount d (18 Aug 2026; was FREE since v3 --
 ;                       ->VERB DRY send, which is gone with its knob
-;   r7+$84              this call's REVERB ACC write address (BUS.md task 10,
-;                       per-call, advances per sample -- same shape as $63/$64)
-;   r7+$85              -VRB level (per block) -- a knob again since 18 Aug
-;                       2026 (p5, default 0); was a hardwired $7fffff from v3
-;                       stage 1, when the return design was delay-only
+;   r7+$84              this call's CHAIN write address ($901 + rotation +
+;                       frame offset; per-call, advances per sample -- same
+;                       shape as $63/$64). One-aux rig, 7 Sep 2026: was the
+;                       REVERB ACC write address of the -VRB send.
+;   r7+$85              FREE (was -VRB; the chain is hardwired at unity)
+;   r7+$87              FREE (was the -VRB mono stash)
 ;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
 ;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
 ;                       rotation-tracking fix (docs/XBUS.md step 3). Every bus
@@ -670,10 +675,10 @@ bus_mine:
 ; at the delay, and the delay's ->VERB damaged what arrived at the reverb.
 ; The fourth buffer covers this direction too, for the same reason.
         move    x1,x0                   ; the full write offset, 0/16/32/48
-        move    #>$901,a
-        add     x0,a
-        add     b,a
-        move    a,x:(r7+$84)            ; this call's REVERB ACC write address
+        move    #>$901,a                ; the CHAIN buffer (one-aux rig, 7 Sep
+        add     x0,a                    ; 2026): 4 x 16 mono words, the old
+        add     b,a                     ; REVERB accumulator's home
+        move    a,x:(r7+$84)            ; this call's CHAIN write address
 
 ; ---- RETD: is a return live on the delay's wet? (clear-on-read stamp) -----
 ; The reverb's mechanism verbatim (modules/busverb/reverb_server.asm, RETV):
@@ -780,8 +785,8 @@ bus_mine:
 ; to the knob field, clr BEFORE the tst, the increment through x0.
         move    #>$1,x0                 ; the "one more client" increment
         clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$e),a             ; ->DEL, p10 knob field (bits 16-23)
-        and     #>$7f0000,a             ; knob field only ($e's low bits = FRZE)
+        move    x:(r6),a                ; AUX (slot 0): the host's own send
+        and     #>$7f0000,a             ; knob field only
         tst     a
         tne     x0,b                    ; sending -> b = 1: we count ourselves
 ; ->DEL from the REVERB host (v8, 5 Sep 2026): BusVerb writes its ->DEL knob
@@ -806,46 +811,10 @@ bus_mine:
         move    y:(r5),a
         move    a,x:(r7+$7f)            ; this block's bus gain, used per sample
 
-; ---- register as a REVERB bus client, once per block (v3 stage 1) --------
-; The ->VERB send below writes the REVERB accumulator every sample, so this
-; server must appear in the REVERB count exactly as SEND does and as
-; reverb_server does for the DELAY count -- otherwise BusVerb's auto-gain divides
-; by one client too few and our contribution comes out x8/N louder than it
-; should. That was the shipping defect ("->VERB usable only to about VRBW
-; 50"); the 5g /8 fix removed the constant factor and this removes the
-; N-dependence, which together are what make a HARDWIRED amount meaningful.
-;
-; Same once-per-block gate as every other registration: keyed on the split
-; offset, so a split block's two calls count ONCE. Same WRITE-rotation choice
-; as send_client -- count the buffer we are about to add into, not the one
-; being read.
-        move    x:(r7+$67),a
-        tst     a
-        bne     vrcnt_done              ; not this block's first call
-; ---- and ONLY while -VRB is up (18 Aug 2026) -- the phantom-client gate,
-; the same block as BusVerb's ->DEL and SEND's per-bus registrations: knob
-; read from r6 DIRECTLY (the per-block decode runs later), clr BEFORE the tst,
-; increment through x0 (Tcc takes a register), b carrying the flag across the
-; address arithmetic below (which touches a and x0 but not b).
-        move    #>$1,x0                 ; the "one more client" increment
-        clr     b                       ; b = 0 -- BEFORE the tst below
-        move    x:(r6+$4),a             ; the -VRB knob itself (p4 since the
-                                        ;  18 Aug swap -- IN took p5 so both
-                                        ;  effects' IN sits bottom-right)
-        tst     a
-        tne     x0,b                    ; sending -> b = 1
-        move    x:(r7+$86),a            ; write offset -- the RESOLVED one, not
-        asr     #$4,a,a                 ; y:>$900: re-reading the shared word
-        move    a1,x0                   ; here would reintroduce the very
-                                        ; disagreement the resolve block removes
-        move    x0,a                    ; A2-clean before it becomes an address
-        add     #>$9c3,a
-        move    a,r5
-        move    #>$ffffff,m5
-        move    y:(r5),a
-        add     b,a                     ; REVERB count += (sending ? 1 : 0)
-        move    a,y:(r5)
-vrcnt_done:
+; ---- (the REVERB-client registration lived here until the one-aux rig,
+; 7 Sep 2026: the delay is chain stage 1, its output reaches the reverb
+; through the CHAIN buffer at unity, and it is not a client of anything.
+; $9c3 is its liveness stamp now -- see dwarmdone.)
 
 ; ---- hardcoded base (BUS.md task 9: DELAY SERVER) ------------------------
 ; No x:0x213 read, no per-instance stash. The 0x30000 literal below is the
@@ -995,10 +964,18 @@ dwarmz:
         move    a,x:(r7+$82)
         bra     dry                     ; output stays dry until warm
 dwarmdone:
+; ---- DELAY LIVE (one-aux rig, 7 Sep 2026): stamp y:$9c3 (the reverb's
+; chain-live word) and y:$9c5 (the return station's) every block this engine
+; really processes. Each is clear-on-read by its one reader. Not written
+; during the warm-up above, so a warming delay is not live: the reverb reads
+; the aux accumulator and the return falls through to the reverb.
+        move    #>$1,x0
+        move    x0,y:>$9c3
+        move    x0,y:>$9c5
         move    x:(r7+$31),x0           ; LineL base
 
 ; ---- per-block: TIME, FDBK, TONE, PING, -VRB, IN, ... ---------------------
-        move    x:(r6),a
+        move    x:(r6+$1),a             ; TIME: slot 1 (one-aux re-slot, 7 Sep 2026)
         and     #>$7f0000,a             ; knob field only
         asr     #$9,a,a                 ; value*128 (0..16256)
         move    #>64,x0
@@ -1098,7 +1075,7 @@ dwarmdone:
         tlt     y0,b                    ; within tolerance -> candidate
 ; ---- knob moved? then held = candidate, else keep ---------------------------
         move    b,x1                    ; candidate (B2 clean: clr/Tcc only)
-        move    x:(r6),a
+        move    x:(r6+$1),a             ; TIME (slot 1)
         and     #>$7f0000,a
         asr     #$10,a,a                ; knob, 0..127
         move    a,y0
@@ -1147,47 +1124,36 @@ dwarmdone:
         asr     #$8,a,a                 ; back to integer samples
         move    a,x:(r7+$75)            ; TIME, as every consumer below sees it
 
-        move    x:(r6+$1),x0
+        move    x:(r6+$2),x0            ; FDBK: slot 2 (one-aux re-slot)
         move    #>$700000,y1
         mpy     x0,y1,a
         move    a,x:(r7+$73)            ; FDBK, 0 .. ~0.87
 
-        move    x:(r6+$2),x0
+        move    x:(r6+$3),x0            ; TONE: slot 3 (one-aux re-slot)
         move    #>$700000,y1
         mpy     x0,y1,a
         add     #>$100000,a
         move    a,x:(r7+$72)            ; TONE, 0.125 (dark) .. 0.99 (bright)
 
-        move    x:(r6+$3),x0
+        move    x:(r6+$4),x0            ; PING: slot 4 (one-aux re-slot)
         move    x0,a
         move    a,x:(r7+$74)            ; PING, 0 .. ~0.99
         move    #>$7fffff,a
         sub     x0,a
         move    a,x:(r7+$80)            ; 1 - PING
 
-; ---- -VRB: the delay's send into the reverb -- A KNOB AGAIN (18 Aug 2026) --
-; Hardwired at $7fffff from v3 stage 1 until here. The hardwire predated the
-; symmetric RETURN design: now that BOTH effects are returns on a series bus,
-; the delay is just another track sending to the reverb, and every other track
-; has a -VRB knob -- the hard connect was the last asymmetry in the box.
-; -VRB returns at p4 (IN moved to p5 in the same change, so IN sits
-; bottom-right on BOTH effects), SAME NAME as SEND's, default 0.
-;
-; ⚠️ It also fixes a live phantom client: the hardwired send REGISTERED
-; UNCONDITIONALLY, so an idle delay took a reverb share and diluted every real
-; -VRB sender -- the defect class killed twice on 17 Aug, still alive in this
-; one path. Registration now follows the knob (the vrcnt block below).
-;
-; The knob's ceiling is the old ceiling: 127 = one full client's share, the
-; most any single track can drive the reverb -- identical in range, headroom
-; and auto-gain share to every SEND track's -VRB. The 17 Aug rms figures
-; comparing the wash to the delay's own output live in git history with the
-; hardwire; they were valid against each other under the then-current 1/N law.
-; ⚠️ The audible delay-vs-reverb balance is still NOT this knob's job -- the
-; two effects sit on different TRACKS with their own faders. This sets how
-; hard the delay drives the reverb relative to other senders.
-        move    x:(r6+$4),a             ; -VRB, val<<16 == val/128 Q1.23
-        move    a,x:(r7+$85)            ; (the MIX/PING trick, multiplier as-is)
+; ---- MIX: the STAGE crossfade (one-aux rig, 7 Sep 2026; -VRB until then) --
+; The delay is chain stage 1 of the one aux bus: its output goes on to the
+; reverb and to the return, and out = in*(1-MIX) + wet*MIX, so MIX 0 passes
+; the aux through untouched (a clean reverb send with the delay still in
+; the chain) and 127 is the old wet-only behaviour. The knob field itself is
+; the multiplier (val<<16 == val/128 Q1.23, the PING trick); 1-MIX is
+; computed here once. (-VRB is gone: the chain is hardwired and unscaled.)
+        move    x:(r6+$5),x0            ; MIX, slot 5
+        move    x0,x:(r7+$44)           ; MIX
+        move    #>$7fffff,a
+        sub     x0,a
+        move    a,x:(r7+$45)            ; 1 - MIX
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
 ; The exact counterpart of every other track's ->DELAY knob (send_client p0):
@@ -1210,9 +1176,11 @@ dwarmdone:
 ; (bits 16-23; the low bits are FRZE). knob<<16 IS val/128 in Q1.23, the
 ; MIX/PING trick, used directly as the per-sample multiplier. Default 0 is
 ; load-bearing: a nonzero default would register every idle host as a client.
-        move    x:(r6+$e),a             ; p10 knob field
+        move    x:(r6),a                ; AUX, slot 0 (one-aux rig, 7 Sep 2026:
+                                        ; every track's one send, this host's
+                                        ; included; was ->DEL on p10)
         and     #>$7f0000,a
-        move    a,x:(r7+$76)            ; ->DEL, this block
+        move    a,x:(r7+$76)            ; AUX, this block
 
 ; ---- MODE: engine select, page-2 slot 7 ($c bits 8-15) -- v2 spine --------
 ; Same field, same extract, same MSB-aligned convention as BusVerb's MODE
@@ -1647,7 +1615,9 @@ gvn0:
         bra     gvoct
 gvknob:
 ; knob path: e = RATE - 64 (-64..63); oct = e >> 5; f = (e & 31) << 18
-        move    x:(r6+$5),a             ; PTCH: page-1 slot 5 (IN until v5.1),
+        move    x:(r6+$e),a             ; PTCH: page-2 slot 10's KNOB field
+                                        ; (one-aux re-slot, 7 Sep 2026; was
+                                        ; page-1 slot 5, which is MIX now),
         and     #>$7f0000,a             ; a plain knob, val << 16
         move    a1,x0
         move    x0,a
@@ -2698,40 +2668,44 @@ pdone:
 ; bit-identical, drive included (additive term from the PRE-drive wet, so
 ; the drive path's store-clamp behaviour is untouched). y0 is free across
 ; this whole block; the mpy is the audited-signed y0,x0 form.
-        move    x:(r7+$76),y0           ; IN, this block
+; ---- OUTPUT STAGE (one-aux rig, 7 Sep 2026) --------------------------------
+; The stage output is out = in*(1-MIX) + wet*MIX per channel, where `in` is
+; this sample's chain input x_in ($7d: the auto-gained aux, this host's AUX
+; included) and wet is the final (drive, x1.5, ping-shelved) tap. It is
+; PUBLISHED stereo to the shared DELAY OUTPUT buffer (the return station
+; reads it two buffers back) and its MONO average goes to the CHAIN buffer at
+; $901 at unity -- the reverb's input while this stage is live. The host
+; prints wet*MIX under its dry, or nothing while a return is live (RETD).
+; (The IN-keyed wet makeup and the -VRB send went with their knobs.) Every
+; mpy is an audited-signed order: y0,x0 or x0,y1.
+        move    x:(r7+$7d),y0           ; x_in, this sample's chain input
+        move    x:(r7+$45),x0           ; 1 - MIX
+        mpy     y0,x0,b                 ; in * (1 - MIX)
+        move    b,x:(r7+$46)            ; the passthrough term, both channels
         move    x:(r7+$7b),x0           ; wet L = fL
         move    x:(r7+$83),y1           ; d
         mpy     x0,y1,a                 ; d*wet
         asr     #$1,a,a                 ; d*wet/2
         add     x0,a                    ; wet * (1 + d/2)
-; PING BALANCE + RETURN MAKEUP (R58, 24 Aug 2026, ear-approved locally the
-; same evening). Two terms, OUTPUT STAGE ONLY (loop gain and the ->VERB
-; stash r7+$87 untouched): both channels gain wet/2 (x1.5, +3.5 dB -- the
-; delay return measured 5-13 dB under the reverb at equal send), and R
-; additionally gains 0.75*PING*wet, centring the serial ping-pong's
-; aggregate image (measured lean +7.9 dB at PING 127/FDBK 60 -> +4.4 dB;
-; PING 0 was already symmetric and gets no shelf). At FDBK 0 the right
-; line still has no repeat to lift -- inherent, documented in VOICING.md.
-; mpy x0,y1 below is the audited-SIGNED order (wet in x0 goes negative).
         move    x0,b
-        asr     #$1,b,b                 ; wet/2 -> x1.5 both channels
+        asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
-        mpy     y0,x0,b                 ; IN * wet
-        asl     #$1,b,b                 ; 2*IN*wet
-        add     b,a                     ; + the makeup
-        move    a,x0                    ; wet L, final -- PUBLISHED as-is
-        move    x:(r7+$64),b
-        move    b,r5
-        move    x0,y:(r5)               ; -> shared DELAY WET, L
-; THE HOST PRINT GAIN (3 Sep 2026): 1/2 doubled back = exactly the wet, or 0
-; while a return is live on this bus (RETD, per block). a1 is what the store
-; took before and what the mpy takes now: bit-identical with no return.
+        move    a,x0                    ; wet L, final
+        move    x:(r7+$44),y1           ; MIX
+        mpy     x0,y1,a                 ; wet * MIX
+        move    a,x0                    ; x0 = wet*MIX: what the host prints
+        move    x:(r7+$46),b
+        add     x0,b                    ; b = stage output L
+        move    b,x:(r7+$47)            ; parked for the chain's mono average
+        move    x:(r7+$64),a
+        move    a,r5
+        move    b,y:(r5)                ; -> shared DELAY OUTPUT, L
         move    y:>$090c,y1             ; print gain
         mpy     x0,y1,a                 ; (audited-signed x0,y1)
         asl     #$1,a,a
         move    x:(r0),b                ; dry L, still in place
         add     b,a                     ; + dry at unity (v5)
-        move    a,x:(r0)                ; L in place -- dry + wet
+        move    a,x:(r0)                ; L in place -- dry + wet*MIX
         move    x:(r7+$7c),x0           ; wet R = fR
         move    x:(r7+$83),y1           ; d, reloaded (y1 carried the print gain)
         mpy     x0,y1,a
@@ -2746,80 +2720,38 @@ pdone:
         add     b,a                     ; + wet*PING/2
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
-        mpy     y0,x0,b                 ; makeup, R channel
-        asl     #$1,b,b
-        add     b,a
-        move    a,x0                    ; wet R, final -- PUBLISHED as-is
-        move    x:(r7+$64),b
-        add     #>$1,b
-        move    b,r5
-        move    x0,y:(r5)               ; -> shared DELAY WET, R
+        move    a,x0                    ; wet R, final
+        move    x:(r7+$44),y1           ; MIX
+        mpy     x0,y1,a                 ; wet * MIX
+        move    a,x0                    ; x0 = wet*MIX
+        move    x:(r7+$46),b
+        add     x0,b                    ; b = stage output R
+        move    x:(r7+$64),a
+        add     #>$1,a
+        move    a,r5
+        move    b,y:(r5)                ; -> shared DELAY OUTPUT, R
         move    y:>$090c,y1             ; print gain, as on L
         mpy     x0,y1,a
         asl     #$1,a,a
-        move    x:(r0+n0),b             ; dry R
-        add     b,a
-        move    a,x:(r0+n0)             ; R in place -- dry + wet
-
-; ---- ->VERB stash: the mono average of the two lines, as before. (The
-; shared DELAY WET carries L and R now, written from the output stage.) ----
-        move    x:(r7+$7b),a            ; fL
-        move    x:(r7+$7c),x0           ; fR
+        move    x:(r0+n0),x0            ; dry R
         add     x0,a
-        asr     #$1,a,a                 ; mono average
-        move    a,x:(r7+$87)            ; stash for the ->VERB WET send below
-        move    x:(r7+$64),a
-        add     #>$2,a
-        move    a,x:(r7+$64)            ; WET pointer: one stereo frame on
-
-; ---- ->VERB: wet (this delay's own output) + dry (this track's own
-; pre-effect signal), scaled and summed into the shared REVERB ACC bus
-; (BUS.md task 10). One-directional by construction -- see this file's
-; header and modules/busverb/reverb_server.asm's ->DELAY note for why the reverse never
-; carries wet.
-        move    x:(r7+$87),x0           ; delay's own wet, this sample
-        move    x:(r7+$85),y1           ; -VRB (p5; hardwired v3..R29)
-        mpy     x0,y1,a                 ; the whole contribution: the DRY half
-                                        ; is GONE with its knob -- a return
-                                        ; track has no pre-effect signal worth
-                                        ; forwarding, and the designed path is
-                                        ; delay WET -> reverb
-        asr     #$3,a,a                 ; ⚠️ THE 3 BITS OF HEADROOM EVERY OTHER
-                                        ; WRITER APPLIES. modules/send/send_client.asm
-                                        ; scales its contribution by 1/8 before
-                                        ; accumulating, and reverb_server undoes
-                                        ; it with `asl #$3` after the auto-gain
-                                        ; auto-gain -- so a writer that skips
-                                        ; the /8 is amplified EIGHT TIMES on the
-                                        ; way out. Measured 13 Aug: at VRBW 100
-                                        ; the REVERB output pinned at 1.000 FS
-                                        ; and only VRBW <= 50 was usable. An
-                                        ; arithmetic shift, so A2 stays
-                                        ; consistent and the store below cannot
-                                        ; hit the saturation trap.
-                                        ; ✅ AND IT NOW REGISTERS TOO (v3 stage
-                                        ; 1, at the block above) -- the half
-                                        ; that was deferred on 13 Aug. It had
-                                        ; to land WITH the hardwiring: an
-                                        ; unregistered writer's effective level
-                                        ; is x8/N_registered, so a "fixed"
-                                        ; amount would still have drifted by
-                                        ; 18 dB between one sender and eight.
-                                        ; A constant that is not constant is
-                                        ; worse than a knob. ⚠️ It does change
-                                        ; the balance of every OTHER reverb
-                                        ; send by N/(N+1) -- that was the
-                                        ; reason for deferring, and it is now
-                                        ; a deliberate cost, not an oversight.
-        move    x:(r7+$84),b            ; this call's REVERB ACC write address
+        move    a,x:(r0+n0)             ; R in place -- dry + wet*MIX
+; ---- the CHAIN buffer: mono average of the stage output, at unity --------
+        move    x:(r7+$47),a            ; out L
+        add     b,a                     ; + out R (b still holds it)
+        asr     #$1,a,a                 ; mono
+        move    x:(r7+$84),b            ; this call's CHAIN write address
         move    b,r5
-        move    y:(r5),b
-        add     b,a
-        move    a,y:(r5)                ; REVERB ACC[write][i] += contribution
+        move    a,y:(r5)                ; CHAIN[write][i] = the stage output --
+                                        ; a STORE, not an accumulate: one
+                                        ; writer, and nobody clears this buffer
         move    x:(r7+$84),a
         move    #>$1,x0
         add     x0,a
-        move    a,x:(r7+$84)            ; advance REVERB ACC write pointer
+        move    a,x:(r7+$84)            ; advance the CHAIN write pointer
+        move    x:(r7+$64),a
+        add     #>$2,a
+        move    a,x:(r7+$64)            ; OUTPUT pointer: one stereo frame on
 
         move    #>$2,n0
         move    (r0)+n0                  ; advance one stereo frame
