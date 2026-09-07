@@ -1049,6 +1049,41 @@ class Rtos:
                 self.stop_reason = "bursts"; return self.stop_reason
             self.step(); n += 1
 
+    def arm_phase_fix(self):
+        """COMPENSATION, not fidelity (RTOS_FORK section 10.14, 7 Sep 2026):
+        at the recorder arm caller's entry (0x40005ff0) clear bit 7 of the
+        trig word when the track has NO recorder record yet (state byte +2
+        zero in both banks of 0x80004f1c). Bit 7 is the sign of the frame
+        builder's per-lane timing byte (16 + 8/frame toward the event); the
+        arm caller takes a negative one as "a follow-up on an existing
+        recording" and, finding no record, returns -1 -- the trig is dropped.
+        Under route A that byte wanders across the whole tick period because
+        nothing re-locks the sequencer's step clock (0x4610757c) to the frame
+        clock (0x46104cf0): the tick-side resync at 0x400a1e92 is gated on
+        the CLOCK RECEIVE bit (0x80000028 bit 0, which --internal-clock
+        clears) and on 0x46104ca8 (zero here), so about half the tempos drop
+        a first recorder trig (100/120/125/135 arm, 110/115/128/140 do not,
+        bank A step 2; bank B: 100/128/140 arm, 120 does not). Hardware
+        records at all of them. Until the lock is modelled, this lever makes
+        the trig arm as if its offset were non-negative; every use is logged
+        in self.arm_fixes as (sample, track, word)."""
+        self.arm_fixes = []
+
+        def on_entry(u, addr, size, user):
+            sp = u.reg_read(eb.UC_M68K_REG_A7)
+            track, word = struct.unpack(">II", u.mem_read(sp + 4, 8))
+            if not (word & 0x80) or track > 7:
+                return
+            states = [u.mem_read(0x80004f1c + bank * 672 + track * 84 + 2, 1)[0] for bank in (0, 1)]
+            if any(states):
+                return
+            u.mem_write(sp + 8, struct.pack(">I", word & ~0x80))
+            self.arm_fixes.append((self.sample, track, word))
+            self._t(f"arm-phase-fix track {track} word {word:#x} -> {word & ~0x80:#x}")
+        self.uc.hook_add(eb.UC_HOOK_CODE, on_entry, begin=0x40005ff0, end=0x40005ff0)
+        self.uc.ctl_flush_tb()
+        return self
+
     def call_as_main(self, addr, args=(), budget=4_000_000):
         """Borrow main's idle slot to call an OS subroutine the way a UI
         action would call it -- not a cold detour: the normal trap-dispatch
@@ -1592,6 +1627,11 @@ def _cli():
                     help="with --sequencer: log every READ into the first N bytes of the "
                          "current pattern record and report them by offset -- finds the "
                          "trig arrays instead of guessing their offsets")
+    ap.add_argument("--arm-phase-fix", action="store_true",
+                    help="with --sequencer: COMPENSATION -- clear bit 7 of the trig word at the "
+                         "recorder arm caller when the track has no recorder record yet, so a "
+                         "first recorder trig arms at any tempo (RTOS_FORK section 10.14; under "
+                         "route A the timing byte wanders and ~half the tempos drop the trig)")
     ap.add_argument("--via-rec", action="store_true",
                     help="with --sequencer: start the transport through the real REC key "
                          "handler INSTEAD of PLAY (REC starts it too, §9.4) and report the "
@@ -1616,6 +1656,8 @@ def _cli():
         rt.watch_mem(int(wa, 0), int(wl, 0))
     if a.watch_pc:
         rt.watch_pc([int(x, 0) for x in a.watch_pc.split(",")])
+    if a.arm_phase_fix:
+        rt.arm_phase_fix()
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
@@ -1781,6 +1823,10 @@ def _cli():
                 n, size, pcs = by_off[off]
                 print(f"   +{off:#06x} size {size} x{n:<5d} pc "
                       + ", ".join(f"{c:#x}" for c in sorted(pcs)[:3]))
+        fixes = getattr(rt, "arm_fixes", None)
+        if fixes is not None:
+            print(f"arm-phase  : {len(fixes)} trig word(s) had bit 7 cleared (COMPENSATION): "
+                  + ", ".join(f"track {t} {w:#x} @ {s_:.0f}" for s_, t, w in fixes[:8]))
         _watch_report()
         label = "M6d run (via-key)" if a.via_key else "M6c run"
         print(f"{label:11s}:", "PASS (ran to target)" if ok else "FAIL (stopped short)")

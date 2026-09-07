@@ -1614,3 +1614,60 @@ this session (scratchpad, rebuildable): `recproj_fxR1` = RECTRIG + T1 type 1
 + flex slot 129; `_maxR1` = + masks at step 2; `_r3t120` = maxR1 + RLEN 3;
 `_maxt128` = maxR1 + 128 BPM; `_fxR1_128r4` = both; `_B_r3` = the cleared
 RIG (bank B) + RLEN 3, poked at step 2.
+
+
+### 10.14 The dropped trig is the emulator's: nothing re-locks the sequencer's step clock to the frame clock under route A, so the timing byte wanders — a compensation lever, and the tempo sweep that found it (7 Sep 2026 — measured)
+
+Asked by §10.13 §5. Three measurements, then the lever.
+
+**The tempo sweep (bank A, FLEX-on-R1, recorder trig on disk at step 2,
+RLEN MAX; word = the first nonzero write to `0x46104d26`, arm = whether
+`0x40005304` ran):**
+
+| BPM | 100 | 110 | 115 | 120 | 125 | 128 | 135 | 140 |
+|---|---|---|---|---|---|---|---|---|
+| low byte | `1c` | `91` | `d6` | `57` | `15` | `fe` | `35` | `97` |
+| arms | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
+
+The RIG's own bank B (T1 THRU, the trig poked at step 2): 100 → `10` ✅,
+120 → `d3` ❌, 128 → `3e` ✅, 140 → `3d` ✅. Deterministic in tempo and
+pattern, spread over the whole byte, and independent of the timer model:
+128 BPM with the PIT clock at 240/250/280 MHz (tick 242/233/208 samples)
+gives the identical `0x72fe` at the identical frame. So it is not the
+timer's phase; it is the sequencer's own clock arithmetic against the frame
+clock. The one exact `0x10` (bank B, 100 BPM) is what the byte should
+always look like: 16 = "the event is at this frame".
+
+**Where the two clocks meet.** The tick handler advances the step clock
+`0x4610757c` by exactly 2,646,000 (= 44,100 × 60, one 1/96 note in
+sample×tempo24 units) per tick at `0x400a1ea4`, 27 times in 1,400 frames,
+and initialises it from the frame clock once at `0x4009c186`. The frame
+builder derives NOW (`0x46104cf0`) from a base `0x46104cf4` plus the frame
+counter and nudges the base by 16 per frame at `0x4000ad4a` (301 of 301
+frames). The two re-lock sites never ran: the tick-side `0x400a1e92`
+(frame base ← step clock) is gated on `0x80000028` bit 0 — the project's
+CLOCK RECEIVE bit, which the load sets from the RIG file and
+`--internal-clock` then clears — AND on `0x46104ca8` (0 throughout); the
+frame-side `0x4000ae7a` (step clock ← frame base, bounded by fields of
+the pickup track's per-track record) is gated on `0x80006686`, set only at
+`0x400052d4`/`0x4009ba3a`/`0x4009f76c`/`0x400a13c8`, and never fired
+(`--watch-pc 0x4000ae66`: 0 hits). With neither running, an event stamped
+"step clock − 1 tick + n ticks" at `0x400a33e2` sits anywhere within a tick
+of the frame that consumes its flag, and the frame builder's byte
+(`16 + 8 × frames-to-event`, truncated to 8 bits) reads negative for about
+half of all tempos. Which gate hardware satisfies — the CLOCK RECEIVE path
+with a real MIDI clock, `0x46104ca8` from something the DSP or a timer
+does, or the `0x80006686` request — is the fidelity question, and it is a
+milestone (**M6f, sequencer clock lock**), not a knob. 🟡 Falsifier on the
+unit: a recorder trig on the RIG at 120 BPM records (it will); the
+emulator's `d3` says it would not.
+
+**The lever.** `emu_rtos.py --arm-phase-fix` (`Rtos.arm_phase_fix()`): at
+the arm caller's entry clear bit 7 of the word when the track's recorder
+record is zero in both banks, and log it. Compensation in the
+`select_bank_live` sense — it makes the trig arm as if its offset were
+non-negative — and it goes when M6f lands. With it, at 128 BPM: MAX → arms
+(`0x40005304`, `0x22`, `0x25`, the record filled, converter `0x40006dfc`
+0 calls); RLEN 3 (display 4) → arms and `0x40006dfc` runs 1,017 times over
+the 508 frames after the trig (2 per frame). **Bryan's 128 / RLEN 4
+configuration is now reachable in situ**, one flag, every use printed.
