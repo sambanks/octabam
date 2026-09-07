@@ -161,7 +161,11 @@ namespace ot
 		// it does real FAT lookups and BLOCKS -- and borrowing main for a
 		// call that blocks is the crash `callAsMain` warns about.
 		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0;
-			std::string postWhy; };
+			std::string postWhy;
+			// How the load's own run ENDED. Time is the ordinary case (the
+			// budget ran out); Fault/Illegal say the machine stopped, which
+			// the ATA counts alone cannot distinguish from a stall.
+			Stop stop = Stop::Time; std::string stopWhy; };
 		LoadResult loadProjectLive(const std::string& _set, const std::string& _project,
 			double _runMs = 6000.0, double _mountMs = 3000.0);
 

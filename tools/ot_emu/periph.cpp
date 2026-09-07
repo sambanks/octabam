@@ -95,8 +95,17 @@ namespace ot
 	// ---- UART --------------------------------------------------------------
 	uint32_t Uart::read(const uint32_t _off, const uint32_t _size)
 	{
+		// ⚠️ TXEMP (bit 3) as well as TXRDY (bit 2). This model consumes every
+		// byte written to the transmit buffer immediately, so its transmitter
+		// is always simultaneously READY and EMPTY; reporting TXRDY alone
+		// describes a shift register with a byte stuck in it forever, a state
+		// this model cannot be in. Route A carries the same gap and never
+		// pays for it (see the MOV3Q note in v4e.cpp): the only firmware that
+		// polls TXEMP is the EXCEPTION printer, which route A never reaches.
+		// ✅ Measured 8 Sep 2026: with TXRDY alone the port spun forever at
+		// 0x4003afa0 and the panic it was trying to print was invisible.
 		if(_off == 0x04)
-			return TXRDY | (m_rx.empty() ? 0 : RXRDY);
+			return TXRDY | TXEMP | (m_rx.empty() ? 0 : RXRDY);
 		if(_off == 0x0c)
 		{
 			if(m_rx.empty())

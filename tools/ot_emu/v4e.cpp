@@ -105,6 +105,66 @@ namespace ot::v4e
 	// to keep the stack even. Kept here 🟡 INFERRED for ColdFire, which has no
 	// odd-address stack either; nothing in this firmware has exercised it yet,
 	// and the falsifier is a `mvs.b -(%sp)` whose stack pointer comes back odd.
+	// Write a LONGWORD operand through effective address `mode`/`reg`,
+	// advancing the PC over any extension words. The alterable modes only --
+	// PC-relative and immediate are not destinations, and a caller that asks
+	// for one gets false rather than a silent write somewhere.
+	bool writeEaLong(Machine& _m, const uint32_t _mode, const uint32_t _reg, const uint32_t _val)
+	{
+		switch(_mode)
+		{
+		case 0:														// Dn
+			setReg(_m, dReg(_reg), _val);
+			return true;
+		case 1:														// An
+			setReg(_m, aReg(_reg), _val);
+			return true;
+		case 2:														// (An)
+			_m.write32(reg(_m, aReg(_reg)), _val);
+			return true;
+		case 3:														// (An)+
+			{
+				const auto a = reg(_m, aReg(_reg));
+				_m.write32(a, _val);
+				setReg(_m, aReg(_reg), a + 4);
+				return true;
+			}
+		case 4:														// -(An)
+			{
+				const auto a = reg(_m, aReg(_reg)) - 4;
+				setReg(_m, aReg(_reg), a);
+				_m.write32(a, _val);
+				return true;
+			}
+		case 5:														// (d16,An)
+			{
+				const auto disp = static_cast<int32_t>(static_cast<int16_t>(fetch16(_m)));
+				_m.write32(reg(_m, aReg(_reg)) + static_cast<uint32_t>(disp), _val);
+				return true;
+			}
+		case 6:														// (d8,An,Xn)
+			_m.write32(briefIndex(_m, reg(_m, aReg(_reg))), _val);
+			return true;
+		case 7:
+			switch(_reg)
+			{
+			case 0:													// (xxx).W
+				{
+					const auto a = static_cast<int32_t>(static_cast<int16_t>(fetch16(_m)));
+					_m.write32(static_cast<uint32_t>(a), _val);
+					return true;
+				}
+			case 1:													// (xxx).L
+				_m.write32(fetch32(_m), _val);
+				return true;
+			default:
+				return false;
+			}
+		default:
+			return false;
+		}
+	}
+
 	bool readEa(Machine& _m, const uint32_t _mode, const uint32_t _reg, const uint32_t _size,
 		uint32_t& _out)
 	{
@@ -365,16 +425,29 @@ namespace ot::v4e
 		// ---- MOV3Q ---------------------------------------------------------
 		// 1010 iii 1 01 eeeeee -- a 3-bit immediate (0 encodes -1) to a
 		// longword destination. ✅ `a340` assembles as `mov3ql #1,%d0`.
+		//
+		// ❌❌ THIS RETRACTS "only Dn is reached by this firmware". The
+		// project load reaches `mov3q #-1,%a0@+` (`a158`) at 0x4009d8d0, in a
+		// run of eight that clears a structure, and refusing it raised a real
+		// line-A exception: the firmware's own handler printed
+		// `EXCEPTION / VEC:0A / ADDR:4009D8D0` over the panel port and
+		// executed `halt`. Measured 8 Sep 2026. ⚠️ Route A needs no shim for
+		// this -- Unicorn's m68k implements MOV3Q natively -- so the only
+		// machine that can be wrong here is this one, and "route A does not
+		// have it either" is not evidence.
+		//
+		// Semantics are QEMU's `mov3q` (route A's own engine, so the oracle):
+		// the condition codes are set from the 32-bit VALUE for every
+		// destination, An included, and the destination is written LONG.
 		if((_opcode & 0xf1c0) == 0xa140)
 		{
 			const uint32_t imm3 = (_opcode >> 9) & 7;
 			const auto v = static_cast<uint32_t>(imm3 == 0 ? -1 : static_cast<int32_t>(imm3));
 			const uint32_t mode = (_opcode >> 3) & 7;
 			const uint32_t rn   = _opcode & 7;
-			if(mode != 0)					// only Dn is reached by this firmware
-				return Result::Unhandled;
-			setReg(_m, dReg(rn), v);
 			setNZ(_m, v);
+			if(!writeEaLong(_m, mode, rn, v))
+				return Result::Unhandled;
 			return Result::Handled;
 		}
 

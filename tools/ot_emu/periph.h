@@ -80,7 +80,7 @@ namespace ot
 	class Uart
 	{
 	public:
-		enum : uint32_t { RXRDY = 1, TXRDY = 4 };
+		enum : uint32_t { RXRDY = 1, TXRDY = 4, TXEMP = 8 };
 
 		Uart(const char* _name, uint32_t _base) : m_name(_name), m_base(_base) {}
 
