@@ -30,6 +30,19 @@ else
 fi
 
 echo
+echo "== 1b) mc68k (ColdFire core for the headless machine) =="
+# Musashi plus ColdFire mode, an HI08 host-port register file and the on-chip
+# peripheral scaffolding -- the CPU half of tools/ot_emu. Vendored, GPLv3, the
+# same posture as vendor/dsp56300: tooling and patches are shared, built
+# binaries never are. `docs/COLDFIRE_PORT.md`.
+if [ ! -d vendor/mc68k ]; then
+  git clone https://github.com/joelanders/mc68k-md-mm vendor/mc68k
+else
+  echo "   already cloned; git pull ..."
+  git -C vendor/mc68k pull --ff-only || true
+fi
+
+echo
 echo "== 2) elektron-firmware-tool (mischa85) =="
 if [ ! -d vendor/elektron-firmware-tool ]; then
   git clone https://github.com/mischa85/elektron-firmware-tool vendor/elektron-firmware-tool

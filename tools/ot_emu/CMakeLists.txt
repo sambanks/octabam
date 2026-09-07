@@ -1,0 +1,38 @@
+# The headless Octatrack machine: a ColdFire and (later) two DSP56300 cores in
+# one process, driven from a CLI. No JUCE, no plugin, no audio device -- the
+# deliverable is a library and a program you can script and intercept.
+#
+#   cmake -B out/emu -S tools/ot_emu && cmake --build out/emu -j8
+#   out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin
+cmake_minimum_required(VERSION 3.16)
+project(ot_emu CXX C)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(NOT CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(OT_VENDOR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor" CACHE PATH "vendored emulator cores")
+
+# mc68k: Musashi plus the ColdFire mode, the HI08 host-port register file and
+# the on-chip peripheral scaffolding. Vendored, GPLv3 -- the same posture as
+# vendor/dsp56300: tooling and patches are shared, built binaries never are.
+# Not EXCLUDE_FROM_ALL: the vendored core registers its own ColdFire timing,
+# divide and HI08 tests, and they are the contract this port stands on.
+add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
+
+add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h)
+target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(ot_machine PUBLIC 68kEmu)
+
+add_executable(ot_emu main.cpp)
+target_link_libraries(ot_emu PRIVATE ot_machine)
+
+# THE GATE. `docs/RTOS_FORK.md` section 10.16: three defects in Unicorn's EMAC
+# cost a week, each producing a confident wrong finding. Nothing this emulator
+# computes is trustworthy until this passes.
+include(CTest)
+add_executable(ot_emac_test test_emac.cpp)
+target_link_libraries(ot_emac_test PRIVATE ot_machine)
+add_test(NAME emac COMMAND ot_emac_test)
