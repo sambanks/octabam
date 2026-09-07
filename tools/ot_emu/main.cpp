@@ -48,6 +48,7 @@ int main(int _argc, char** _argv)
 	std::string ataTrace;		// write every task-file access here, for diffing against route A
 	std::string periphTrace;	// every peripheral access over the load, for the same diff
 	std::string peeks;			// comma-separated hex addresses to print after the load
+	std::string cmdLog;		// every ATA COMMAND in order, for diffing against route A
 	uint64_t pcRing = 0;		// instructions to record from the first ATA command
 	double loadMs = 6000.0;		// emulated ms to run after LOAD PROJECT is posted
 	std::string setName = "OCTABAM", projectName = "ONEAUX";
@@ -69,6 +70,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--ata-trace" && i + 1 < _argc)	ataTrace = _argv[++i];
 		else if(a == "--periph-trace" && i + 1 < _argc)	periphTrace = _argv[++i];
 		else if(a == "--peek" && i + 1 < _argc)		peeks = _argv[++i];
+		else if(a == "--cmd-log" && i + 1 < _argc)		cmdLog = _argv[++i];
 		else if(a == "--pc-ring" && i + 1 < _argc)	pcRing = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--load-ms" && i + 1 < _argc)	loadMs = std::atof(_argv[++i]);
 		else if(a == "--set" && i + 1 < _argc)		setName = _argv[++i];
@@ -179,6 +181,12 @@ int main(int _argc, char** _argv)
 					"PART_PTR: %#x, %.1f ms emulated%s%s\n",
 					r.ready, r.posted ? "yes" : "no", r.partPtr, r.ms,
 					r.postWhy.empty() ? "" : " | post: ", r.postWhy.c_str());
+				{
+					static const char* const g_loadStop[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
+					std::printf("             load run ended: %s%s%s\n",
+						g_loadStop[static_cast<int>(r.stop)],
+						r.stopWhy.empty() ? "" : " -- ", r.stopWhy.c_str());
+				}
 				std::printf("             forces %llu, dispatches %zu over the load; now in %s at pc %#x\n",
 					static_cast<unsigned long long>(rtos.forces() - forces0),
 					rtos.dispatches().size() - disp0, ot::taskName(rtos.currentTcb()), m.pc());
@@ -206,7 +214,7 @@ int main(int _argc, char** _argv)
 				{
 					const auto& ring = rtos.pcRing();
 					const auto pos = rtos.pcRingPos();
-					std::printf("             pc ring (last %zu of %zu recorded from the first ATA command):\n",
+					std::printf("             pc ring (last %zu of %zu instructions since the first ATA command):\n",
 						std::min(ring.size(), pos), pos);
 					const size_t n = std::min(ring.size(), pos);
 					uint32_t last = 0; uint64_t runlen = 0;
@@ -270,6 +278,16 @@ int main(int _argc, char** _argv)
 				for(const auto& l : rtos.ataTrace())
 					t << l << '\n';
 				std::printf("             ATA trace: %s (%zu accesses)\n", ataTrace.c_str(), rtos.ataTrace().size());
+			}
+			// The whole command sequence, in route A's own log order, so the
+			// two can be diffed: the FIRST divergence names the defect.
+			if(!cmdLog.empty())
+			{
+				std::ofstream t(cmdLog);
+				for(const auto& e : card->log())
+					t << e.what << ' ' << e.lba << ' ' << e.count << '\n';
+				std::printf("             cmd log: %s (%zu commands)\n",
+					cmdLog.c_str(), card->log().size());
 			}
 			for(size_t i = 0; i < card->log().size() && i < 12; ++i)
 				std::printf("             %-16s lba %-8u count %u\n", card->log()[i].what.c_str(),

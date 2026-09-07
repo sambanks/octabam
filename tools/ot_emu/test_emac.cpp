@@ -95,6 +95,40 @@ int main()
 	check("msacl SUBTRACTS (extension word bit 8)",
 		runProgram(msacl, 0, 0, 32), 0xfffffffd);
 
+	// ---- MOV3Q to MEMORY (the V4e layer, same dispatch path) -------------
+	// ❌ Retracts v4e.cpp's "only Dn is reached by this firmware": the project
+	// load runs eight `mov3ql #-1,%a0@+` at 0x4009d8d0 and the refusal was a
+	// real line-A exception -- the firmware printed `EXCEPTION VEC:0A
+	// ADDR:4009D8D0` and halted, and it looked like a stall at 1,407 of
+	// 6,189 ATA commands (measured 8 Sep 2026). Route A never needed a shim
+	// (Unicorn has MOV3Q natively), so this gate is the only one that holds
+	// the port's version to the same semantics.
+	//
+	//   207c 4000 0500  moveal #0x40000500,%a0
+	//   a158            mov3ql #-1,%a0@+
+	//   a358            mov3ql #1,%a0@+
+	//   then one of: 2039 4000 0500 movel 0x40000500,%d0
+	//                2039 4000 0504 movel 0x40000504,%d0
+	//                2008           movel %a0,%d0
+	std::printf("MOV3Q gate (memory destinations, v4e.cpp):\n");
+	const std::vector<uint8_t> mov3qHead = {
+		0x20, 0x7c, 0x40, 0x00, 0x05, 0x00,	// moveal #0x40000500,%a0 (inside the image, past the code)
+		0xa1, 0x58,							// mov3ql #-1,%a0@+
+		0xa3, 0x58,							// mov3ql #1,%a0@+
+	};
+	auto readFirst = mov3qHead, readSecond = mov3qHead, readA0 = mov3qHead;
+	for(const uint8_t b : {0x20, 0x39, 0x40, 0x00, 0x05, 0x00}) readFirst.push_back(b);
+	for(const uint8_t b : {0x20, 0x39, 0x40, 0x00, 0x05, 0x04}) readSecond.push_back(b);
+	for(const uint8_t b : {0x20, 0x08}) readA0.push_back(b);
+	for(auto* prog : {&readFirst, &readSecond, &readA0})
+	{
+		prog->push_back(0x4e); prog->push_back(0x71);	// nop
+		prog->resize(0x200, 0);							// room for the data at +0x100
+	}
+	check("mov3ql #-1,%a0@+ writes 0xffffffff", runProgram(readFirst, 0, 0, 4), 0xffffffff);
+	check("mov3ql #1,%a0@+ writes 1 at the next long", runProgram(readSecond, 0, 0, 4), 1);
+	check("(An)+ advanced a0 by 8 over the pair", runProgram(readA0, 0, 0, 4), 0x40000508);
+
 	std::printf("%s\n", g_failures ? "EMAC GATE FAILED -- nothing this emulator computes can be trusted"
 									: "EMAC gate passed.");
 	return g_failures ? 1 : 0;

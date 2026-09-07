@@ -424,10 +424,15 @@ namespace ot
 	bool Rtos::stepOnce()
 	{
 		const auto pc = m_machine.pc();
-		// The FIRST N after arming, not the last: the question is what the ISR
-		// does, and by the end everything is parked at main's spin.
-		if(m_pcRingArmed && m_pcRingPos < m_pcRing.size())
-			m_pcRing[m_pcRingPos++] = pc;
+		// A TRUE RING: it keeps the LAST N instructions, not the first N.
+		// The first-N version answered "what does the ISR do" (O7's INTRQ
+		// race); a STALL asks the opposite question -- what was running when
+		// the work stopped -- and the printer already reads it as a ring.
+		if(m_pcRingArmed && !m_pcRing.empty())
+		{
+			m_pcRing[m_pcRingPos % m_pcRing.size()] = pc;
+			++m_pcRingPos;
+		}
 		if(pc == g_create)
 			recordCreate();
 
@@ -607,7 +612,9 @@ namespace ot
 		out.posted = callAsMain(g_postLoad, {g_projectName}, d0, 200000000);
 		if(!out.posted)
 			out.postWhy = m_why;
-		run(_runMs, false);
+		out.stop = run(_runMs, false);
+		if(out.stop != Stop::Time)
+			out.stopWhy = m_why;
 		out.partPtr = m_machine.peek32(g_partPtr);
 		out.ms = (m_sample - start) / g_sampleHz * 1000.0;
 		return out;
