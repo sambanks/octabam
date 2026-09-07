@@ -162,6 +162,61 @@ namespace ot
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);
 
+		// Map a span of plain memory after construction. Route A's `install`
+		// adds two of these over the boot map (`Rtos::install`), and an
+		// overlap with something already mapped is IGNORED, not an error --
+		// route A wraps each `mem_map` in a bare `except UcError: pass`.
+		void mapRegion(uint32_t _base, uint32_t _size);
+
+		// ⚠️ THIS MACHINE NEVER FAULTS ON UNMAPPED MEMORY AND ROUTE A ALWAYS
+		// DOES, so the two emulators are least comparable exactly where a
+		// model is missing. Unicorn raises UC_ERR_READ_UNMAPPED, which is why
+		// route A's own note says it "faults reading 0x100fff04 in main's
+		// settings path" without a card attached; here the same read answers
+		// all-ones and the firmware carries on down a path nobody chose. So
+		// every access outside every region and every peripheral window is
+		// COUNTED and the first few thousand are kept, because a silent
+		// all-ones is the port's version of route A's crash and it has to be
+		// visible to be compared at all.
+		// ✅ WHAT ROUTE A ACTUALLY DOES, measured 8 Sep 2026 and NOT what its
+		// source reads like: `_prime_menu` (emu_bringup) installs an
+		// unmapped-access hook that maps a zero page and returns True -- a
+		// workaround for a stale formatter pointer in the menu render -- and
+		// it stays installed for the rest of the run. So in the golden
+		// configuration route A does not fault on unmapped memory at all: it
+		// GROWS. Its region list goes from 11 after `install` to 15 by the
+		// M6a gate, and the four it adds are
+		//     0x10000000-0x100affff  0x100c0000-0x100fffff
+		//     0x42000000-0x45ffffff  0x48100000-0x4fffffff
+		// which are, page for page, the four spans this port was answering
+		// all-ones for (20,348,069 accesses: a 64 MB clear at 0x42000000 from
+		// the bzero at 0x400209a4, a 10.8 MB clear at 0x4f502c10 from the
+		// literal loop at 0x40002fb4, and main's settings window). So the
+		// port grows the same way, at route A's own 4 KB granularity: a first
+		// touch allocates a ZEROED page and the access proceeds.
+		//
+		// ⚠️ Without a project route A DOES fault (measured: "unmapped read
+		// 0x100fff04 at pc 0x4001fa4e"), because nothing primed the menu. The
+		// oracle is the golden configuration, so growing is the faithful
+		// behaviour; `setAutoMap(false)` restores the all-ones stub for
+		// diagnosis, and then this counter is the work list again.
+		void setAutoMap(bool _on) { m_autoMap = _on; }
+		uint64_t autoMappedPages() const { return m_autoPages.size(); }
+
+		struct Unmapped { char kind; uint32_t pc, addr; uint8_t size; uint32_t val; };
+		const std::vector<Unmapped>& unmapped() const { return m_unmapped; }
+		uint64_t unmappedCount() const { return m_unmappedCount; }
+		// A dropped WRITE and an all-ones READ are different problems: the
+		// write is lost only if something reads it back, the read is a value
+		// the firmware acts on. Counted apart for that reason.
+		uint64_t unmappedReads() const { return m_unmappedReads; }
+		uint64_t unmappedWrites() const { return m_unmappedCount - m_unmappedReads; }
+		// The detail log is capped; these two are not. A page is 64 KB.
+		const std::unordered_map<uint32_t, uint64_t>& unmappedPages() const { return m_unmappedPages; }
+		const std::unordered_map<uint32_t, uint64_t>& unmappedPcs() const { return m_unmappedPcs; }
+		// Reads only: the accesses that feed the firmware a value it acts on.
+		const std::unordered_map<uint32_t, uint64_t>& unmappedReadPcs() const { return m_unmappedReadPcs; }
+
 		// Every distinct peripheral address the run touched, in first-touch
 		// order: route A logs the same thing (`BootResult.boot_map`), so the
 		// two boots can be compared without a full instruction trace.
@@ -194,6 +249,19 @@ namespace ot
 		PeriphWrite m_periphWriteFn;
 		std::vector<PeriphWriteRec> m_periphWrites;
 		std::vector<Access> m_periphLog;
+		void noteUnmapped(char _kind, uint32_t _addr, uint8_t _size, uint32_t _val);
+		std::vector<Unmapped> m_unmapped;
+		uint64_t m_unmappedCount = 0, m_unmappedReads = 0;
+		std::unordered_map<uint32_t, uint64_t> m_unmappedPages, m_unmappedPcs, m_unmappedReadPcs;
+
+		// Route A's granularity: `mem_map(addr & ~0xFFF, 0x1000)`.
+		static constexpr uint32_t g_autoPageBits = 12;
+		static constexpr uint32_t g_autoPageSize = 1u << g_autoPageBits;
+		bool m_autoMap = true;
+		std::unordered_map<uint32_t, std::vector<uint8_t>> m_autoPages;
+		uint32_t m_lastAutoPage = ~0u;			// a one-entry cache: these loops are sequential
+		std::vector<uint8_t>* m_lastAutoData = nullptr;
+		uint8_t* autoByte(uint32_t _addr, bool _create);
 		std::function<void(Machine&, uint32_t)> m_step;
 		uint64_t m_instructions = 0;
 		uint64_t m_v4e = 0;			// instructions the V4e layer supplied

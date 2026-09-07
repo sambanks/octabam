@@ -82,6 +82,66 @@ namespace ot
 		return nullptr;
 	}
 
+	void Machine::mapRegion(const uint32_t _base, const uint32_t _size)
+	{
+		// Route A's `except UcError: pass`: a span that is already there is
+		// left alone rather than remapped, so the boot map always wins.
+		for(const auto& r : m_regions)
+			if(_base >= r.base && _base - r.base < r.data.size())
+				return;
+		Region reg;
+		reg.base = _base;
+		reg.data.assign(_size, 0);
+		// A real map WINS over pages this machine grew on its own: carry the
+		// bytes across and drop them, so a later access cannot see stale ones.
+		for(uint32_t a = _base; a < _base + _size; ++a)
+			if(const uint8_t* const b = autoByte(a, false))
+				reg.data[a - _base] = *b;
+		for(uint32_t p = _base >> g_autoPageBits; p <= (_base + _size - 1) >> g_autoPageBits; ++p)
+			m_autoPages.erase(p);
+		m_lastAutoPage = ~0u;
+		m_lastAutoData = nullptr;
+		m_regions.push_back(std::move(reg));
+	}
+
+	// One byte of auto-mapped memory, allocating its page on first touch.
+	// The one-entry cache matters: the loops that need this are `bzero` and
+	// `memcpy` walking tens of megabytes in order, so the page almost never
+	// changes between accesses.
+	uint8_t* Machine::autoByte(const uint32_t _addr, const bool _create)
+	{
+		const uint32_t page = _addr >> g_autoPageBits;
+		if(page != m_lastAutoPage || !m_lastAutoData)
+		{
+			auto it = m_autoPages.find(page);
+			if(it == m_autoPages.end())
+			{
+				if(!_create)
+					return nullptr;
+				it = m_autoPages.emplace(page, std::vector<uint8_t>(g_autoPageSize, 0)).first;
+			}
+			m_lastAutoPage = page;
+			m_lastAutoData = &it->second;
+		}
+		return m_lastAutoData->data() + (_addr & (g_autoPageSize - 1));
+	}
+
+	void Machine::noteUnmapped(const char _kind, const uint32_t _addr, const uint8_t _size,
+		const uint32_t _val)
+	{
+		++m_unmappedCount;
+		const auto p = pc();
+		if(_kind == 'r')
+		{
+			++m_unmappedReads;
+			++m_unmappedReadPcs[p];
+		}
+		++m_unmappedPages[_addr >> 16];
+		++m_unmappedPcs[p];
+		if(m_unmapped.size() < 4096)
+			m_unmapped.push_back({_kind, p, _addr, _size, _val});
+	}
+
 	bool Machine::isPeripheral(const uint32_t _addr) const
 	{
 		for(const auto& p : g_periph)
@@ -166,6 +226,9 @@ namespace ot
 			return static_cast<uint8_t>(peripheralRead(_addr, 1));
 		if(auto* const r = find(_addr, 1))
 			return r->data[_addr - r->base];
+		noteUnmapped('r', _addr, 1, 0xff);
+		if(m_autoMap)
+			return *autoByte(_addr, true);
 		return 0xff;
 	}
 
@@ -178,6 +241,9 @@ namespace ot
 			const auto o = _addr - r->base;
 			return static_cast<uint16_t>((r->data[o] << 8) | r->data[o + 1]);
 		}
+		noteUnmapped('r', _addr, 2, 0xffff);
+		if(m_autoMap)
+			return static_cast<uint16_t>((*autoByte(_addr, true) << 8) | *autoByte(_addr + 1, true));
 		return 0xffff;
 	}
 
@@ -188,6 +254,12 @@ namespace ot
 			return peripheralWrite(_addr, 1, _val);
 		if(auto* const r = find(_addr, 1))
 			r->data[_addr - r->base] = _val;
+		else
+		{
+			noteUnmapped('w', _addr, 1, _val);
+			if(m_autoMap)
+				*autoByte(_addr, true) = _val;
+		}
 	}
 
 	void Machine::write16(const uint32_t _addr, const uint16_t _val)
@@ -200,6 +272,15 @@ namespace ot
 			const auto o = _addr - r->base;
 			r->data[o]     = static_cast<uint8_t>(_val >> 8);
 			r->data[o + 1] = static_cast<uint8_t>(_val);
+		}
+		else
+		{
+			noteUnmapped('w', _addr, 2, _val);
+			if(m_autoMap)
+			{
+				*autoByte(_addr, true)     = static_cast<uint8_t>(_val >> 8);
+				*autoByte(_addr + 1, true) = static_cast<uint8_t>(_val);
+			}
 		}
 	}
 
@@ -218,6 +299,12 @@ namespace ot
 			return (static_cast<uint32_t>(r->data[o]) << 24) | (static_cast<uint32_t>(r->data[o + 1]) << 16)
 				 | (static_cast<uint32_t>(r->data[o + 2]) << 8) | r->data[o + 3];
 		}
+		noteUnmapped('r', _addr, 4, 0xffffffff);
+		if(m_autoMap)
+			return (static_cast<uint32_t>(*autoByte(_addr, true)) << 24)
+				 | (static_cast<uint32_t>(*autoByte(_addr + 1, true)) << 16)
+				 | (static_cast<uint32_t>(*autoByte(_addr + 2, true)) << 8)
+				 | *autoByte(_addr + 3, true);
 		return 0xffffffff;
 	}
 
@@ -233,6 +320,17 @@ namespace ot
 			r->data[o + 1] = static_cast<uint8_t>(_val >> 16);
 			r->data[o + 2] = static_cast<uint8_t>(_val >> 8);
 			r->data[o + 3] = static_cast<uint8_t>(_val);
+		}
+		else
+		{
+			noteUnmapped('w', _addr, 4, _val);
+			if(m_autoMap)
+			{
+				*autoByte(_addr, true)     = static_cast<uint8_t>(_val >> 24);
+				*autoByte(_addr + 1, true) = static_cast<uint8_t>(_val >> 16);
+				*autoByte(_addr + 2, true) = static_cast<uint8_t>(_val >> 8);
+				*autoByte(_addr + 3, true) = static_cast<uint8_t>(_val);
+			}
 		}
 	}
 
