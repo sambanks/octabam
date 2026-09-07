@@ -334,6 +334,29 @@ namespace ot
 		}
 	}
 
+	uint32_t Machine::readIrqUserVector(const uint8_t _level)
+	{
+		const auto vec = Mc68k::readIrqUserVector(_level);
+		if(m_ack && vec != 0xffffffffu)
+			m_ack(static_cast<uint8_t>(vec), _level);
+		return vec;
+	}
+
+	uint32_t Machine::getA7() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_A7);
+	}
+
+	void Machine::setA7(const uint32_t _v)
+	{
+		m68k_set_reg(getCpuState(), M68K_REG_A7, _v);
+	}
+
+	uint32_t Machine::getD0() const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_D0);
+	}
+
 	uint32_t Machine::peek32(const uint32_t _addr)
 	{
 		return read32(_addr);

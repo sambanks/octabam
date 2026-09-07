@@ -12,6 +12,7 @@
 // the work list for the ISA half of the port, one opcode at a time.
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -42,6 +43,9 @@ int main(int _argc, char** _argv)
 	bool showPeripherals = false;
 	bool profile = false;
 	std::string golden;
+	std::string cardImage;		// a FAT16 card image built by emu_rtos.stage_project
+	bool mount = false;			// post the card-mount request to the SYS task
+	std::string setName = "OCTABAM", projectName = "ONEAUX";
 	std::string serialOut;
 	double runMs = 1000.0;
 	double ips = 3990.0;
@@ -54,6 +58,10 @@ int main(int _argc, char** _argv)
 		else if(a == "--periph")				showPeripherals = true;
 		else if(a == "--profile")				profile = true;
 		else if(a == "--golden" && i + 1 < _argc)	golden = _argv[++i];
+		else if(a == "--card" && i + 1 < _argc)		cardImage = _argv[++i];
+		else if(a == "--mount")						mount = true;
+		else if(a == "--set" && i + 1 < _argc)		setName = _argv[++i];
+		else if(a == "--project" && i + 1 < _argc)	projectName = _argv[++i];
 		else if(a == "--serial-out" && i + 1 < _argc)	serialOut = _argv[++i];
 		else if(a == "--ms" && i + 1 < _argc)	runMs = std::atof(_argv[++i]);
 		else if(a == "--ips" && i + 1 < _argc)	ips = std::atof(_argv[++i]);
@@ -104,6 +112,25 @@ int main(int _argc, char** _argv)
 	{
 		std::printf("vbr        : %#x (the firmware's own `movec %%a0,%%vbr` at 0x40000db6)\n", m.vbr());
 		ot::Rtos rtos(m, ips);
+		// The card is attached BEFORE install, as route A attaches it before
+		// `Rtos.install()`: its four memory maps have to be in place before
+		// anything runs, and the boot's replayed writes must not start a
+		// transfer on a window that is about to change owner.
+		std::unique_ptr<ot::AtaCard> card;
+		if(!cardImage.empty())
+		{
+			std::ifstream cf(cardImage, std::ios::binary);
+			if(!cf)
+			{
+				std::printf("card       : %s could not be opened\n", cardImage.c_str());
+				return 1;
+			}
+			std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(cf)),
+				std::istreambuf_iterator<char>());
+			card = std::make_unique<ot::AtaCard>(std::move(bytes));
+			rtos.attachCard(*card);
+			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
+		}
 		rtos.install();
 		const auto rs = rtos.run(runMs);
 		static const char* const g_rtosNames[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
@@ -118,6 +145,42 @@ int main(int _argc, char** _argv)
 		std::printf("M6a gate   : %s\n", ok ? "PASS" : "FAIL");
 		for(const auto& p : problems)
 			std::printf("   - %s\n", p.c_str());
+		// THE MOUNT. Reaching the M6a gate is not enough: the card case runs
+		// in the SYS task, so the machine has to be parked at main's spin
+		// before the request can be posted, and then run on so SYS can do it.
+		if(mount && card)
+		{
+			const auto park = rtos.runToMainSpin(2000.0);
+			std::printf("load       : park at main's spin: %s\n",
+				park == ot::Rtos::Stop::Gate ? "yes" : rtos.why().c_str());
+			if(park == ot::Rtos::Stop::Gate)
+			{
+				const auto r = rtos.loadProjectLive(setName, projectName);
+				std::printf("             card ready: %#x, LOAD PROJECT posted: %s, "
+					"PART_PTR: %#x, %.1f ms emulated\n",
+					r.ready, r.posted ? "yes" : "no", r.partPtr, r.ms);
+			}
+			size_t reads = 0, identifies = 0;
+			for(const auto& e : card->log())
+			{
+				if(e.what == "READ")
+					++reads;
+				else if(e.what == "IDENTIFY")
+					++identifies;
+			}
+			std::printf("             ATA interrupts taken: %llu; line still asserted: %s\n",
+				static_cast<unsigned long long>(rtos.ataInterrupts()),
+				rtos.ataLineAsserted() ? "YES" : "no");
+			std::printf("             %zu ATA command(s): %zu IDENTIFY, %zu READ, "
+				"%llu sector(s) read, %llu written\n",
+				card->log().size(), identifies, reads,
+				static_cast<unsigned long long>(card->sectorsRead()),
+				static_cast<unsigned long long>(card->sectorsWritten()));
+			for(size_t i = 0; i < card->log().size() && i < 12; ++i)
+				std::printf("             %-16s lba %-8u count %u\n", card->log()[i].what.c_str(),
+					card->log()[i].lba, card->log()[i].count);
+		}
+
 		if(!serialOut.empty())
 		{
 			for(const auto& [suffix, tx] : {std::make_pair("a", &rtos.serialTxA()),

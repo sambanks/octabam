@@ -93,6 +93,15 @@ namespace ot
 
 		uint32_t onIllegalInstruction(uint32_t _opcode) override;
 
+		// The interrupt ACKNOWLEDGE: the core calls this when it actually
+		// takes a queued vector. Offering a line and having it taken are
+		// different events here, because Musashi dispatches the exception
+		// itself, so anything that has to happen "when the interrupt is
+		// delivered" hangs off this.
+		uint32_t readIrqUserVector(uint8_t _level) override;
+		using AckHook = std::function<void(uint8_t _vector, uint8_t _level)>;
+		void setAckHook(AckHook _h) { m_ack = std::move(_h); }
+
 		// -- driving it ------------------------------------------------------
 		// Run until `trap #0` (the handoff), an illegal instruction, or the
 		// budget. Returns why it stopped. This is the BOOT: it carries the
@@ -149,6 +158,11 @@ namespace ot
 		// not constants (the DSP host port's ping index toggles 0/1).
 		void setOverrideFn(uint32_t _addr, std::function<uint32_t()> _fn) { m_overrideFns[_addr] = std::move(_fn); }
 
+		// A single peripheral BYTE that must not read all-ones. Route A keeps
+		// these in `EXTRA_OVERRIDES`; the boot needs only the PLL, the card
+		// needs one more (see `Rtos::attachCard`).
+		void setOverride8(uint32_t _addr, uint8_t _val) { m_overrides[_addr] = _val; }
+
 		// Interception, the whole point of a headless build: a callback per
 		// instruction (nullptr = off), and direct memory access for probes.
 		void setStepHook(std::function<void(Machine&, uint32_t _pc)> _h) { m_step = std::move(_h); }
@@ -159,6 +173,12 @@ namespace ot
 		// thing (its stall detector) for the same reason.
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
+		// Registers a borrowed call needs: main's stack pointer to push the
+		// frame onto, and D0 for the return value.
+		uint32_t getA7() const;
+		void     setA7(uint32_t _v);
+		uint32_t getD0() const;
+
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);
 
@@ -263,6 +283,7 @@ namespace ot
 		std::vector<uint8_t>* m_lastAutoData = nullptr;
 		uint8_t* autoByte(uint32_t _addr, bool _create);
 		std::function<void(Machine&, uint32_t)> m_step;
+		AckHook m_ack;
 		uint64_t m_instructions = 0;
 		uint64_t m_v4e = 0;			// instructions the V4e layer supplied
 		uint32_t m_profileEvery = 0;
