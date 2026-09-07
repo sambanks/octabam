@@ -63,7 +63,7 @@ BOOT_TCB = 0x46c7ae30              # the pre-multitasking context the first trap
 HANDOFF = 0x40000e46               # the boot's trap #0
 LOCK_TRAP = 0x40000a78             # the lock primitive's (0x400009f4) block trap
 SR_TRAMP = 0x47ef0800              # `movew %sr,%d0; nop` -- see Rtos._sr (emu_bringup's
-                                   # EMAC trampoline lives at 0x47ef0000..0x47ef01ff)
+                                   # EMAC trampoline slots live at 0x47ef1000..0x47ef1fff)
 KERNEL_POST = 0x40000c3c           # post(queue, msg) -- non-blocking, see Rtos.post_message
 SYS_TCB = 0x46c7bed8
 SYS_QUEUE = 0x460d17ae             # the sys task's own command queue

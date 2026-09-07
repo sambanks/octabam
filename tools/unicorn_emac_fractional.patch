@@ -1,5 +1,5 @@
 --- a/src/qemu/target/m68k/helper.c	2025-09-10 02:57:23.000000000 +1000
-+++ b/src/qemu/target/m68k/helper.c	2026-09-07 11:44:48.665270356 +1000
++++ b/src/qemu/target/m68k/helper.c	2026-09-07 12:08:09.737174524 +1000
 @@ -663,10 +663,17 @@
  
  uint64_t HELPER(macmulf)(CPUM68KState *env, uint32_t op1, uint32_t op2)
@@ -29,3 +29,20 @@
  }
  
  void HELPER(macsats)(CPUM68KState *env, uint32_t acc)
+--- a/src/qemu/target/m68k/translate.c	2025-09-10 02:57:23.000000000 +1000
++++ b/src/qemu/target/m68k/translate.c	2026-09-07 12:46:31.817116603 +1000
+@@ -5794,7 +5794,13 @@
+     }
+ #endif
+ 
+-    if (insn & 0x100)
++    /* octabam: MAC vs MSAC is bit 8 of the EXTENSION word on ColdFire
++       (CFPRM MAC/MSAC encodings; binutils; every msac in the Octatrack
++       image carries ext 0x01xx with opcode bit 8 clear), not bit 8 of the
++       opcode, which the original tested. With the opcode bit the
++       sequencer's frame builder ADDED where it subtracts, so every trig's
++       sub-frame offset came out 0. */
++    if (ext & 0x100)
+         tcg_gen_sub_i64(tcg_ctx, MACREG(acc), MACREG(acc), s->mactmp);
+     else
+         tcg_gen_add_i64(tcg_ctx, MACREG(acc), MACREG(acc), s->mactmp);

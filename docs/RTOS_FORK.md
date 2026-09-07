@@ -1898,3 +1898,171 @@ the sub-frame offset `0x40006ea8`, the end post `0x40006edc`, the arm post
 
 **Drivers** (`tools/scratch/recwalk.py`, `tools/scratch/recend.py`; needs the
 fixed EMAC and the `recproj_*` fixtures rebuilt per §10.13's recipe).
+
+#### 10.16.1 A second EMAC defect: MSAC accumulated with the wrong sign, so every trig's sub-frame offset was 0 (7 Sep 2026, later — measured)
+
+Reading the frame builder's inputs for track 0's lane (`tools/scratch`
+`fbprobe.py`, hooks at `0x4000aef6`/`0x4000af16`) with the `>> 31` fix in
+place gave, in units of sample × tempo24 (tempo24 = 3072):
+
+| frame | frame clock `0x46104cf4` | lookahead `0x46104cf0` | lane event | byte written |
+|---|---|---|---|---|
+| 1290 | 20,608 × t24 | 20,624 × t24 | **20,623.875** × t24 | 0 |
+| 1291 | 20,624 × t24 | 20,640 × t24 | 20,623.875 × t24 | 0x00 (`d2` = 0xaf00) |
+| 1293 | | | 41,295.875 × t24 (next event, +20,672) | 0 |
+
+So the clocks are what §10.14 guessed at, now with units: the frame clock
+advances `16 × tempo24` per frame (`0x4000ad4a`), the step clock
+`0x4610757c` advances 2,646,000 = 44,100 × 60 per **24-PPQN tick**
+(`0x400a1ea4`; one tick = 2,646,000 / tempo24 samples, a 16th = 6 ticks =
+15,876,000 — the sheet's "samples in 360 beats"), and a lane event is a
+step-clock value: exact, fractional in samples (20,623.875 = 4 steps ×
+5,167.96875 + the start phase). The byte is `16 + floor((event −
+lookahead) / tempo24)` computed by `msacl` (`0x4000aefc`: acc −= d1 × d5,
+d5 = −2³¹/tempo24), so an event 0.125 samples before the lookahead gives
+16 + floor(−0.125) = **15** = "fire in this frame at sample 15" — and the
+emulator produced 0 and 0xaf00. Micro-test (`emac_test4.py`): with the
+`>> 31` fix, `msacl` still ADDED its product. Cause: QEMU's `DISAS_INSN(mac)`
+tests **opcode bit 8** for MAC-vs-MSAC; on ColdFire (and in every `msac` in
+this image: `a001 0900`, `ac01 0900`, `a498 5901`) it is **bit 8 of the
+extension word**. `tools/unicorn_emac_fractional.patch` now carries both
+changes (`helper.c` and `translate.c`); `emac_selftest` checks `msacl` too
+(0xc00 × 0x200000 subtracted → −3). The matrix after the fix matches
+hardware's truncation of the guard bits (`floor`) in every row.
+
+**Consequences for what was written above and in §10.13–10.14:** under the
+old EMAC the byte was 0 while an event was ahead (a negative product where
+hardware has a positive one, masked to 0) and became 16 the frame AFTER the
+event passed (a positive product where hardware has −1..−16): every trig
+fired at **offset 0 of the following frame**, so "nibble 0 at every tempo"
+and "word 0x7210" in §10.16's tables are the emulator's, and the "timing
+byte wanders / composed a frame early / negative" reading of §10.13–10.14
+was two EMAC defects compounding. The firmware's own arithmetic, read from
+the code and now executed correctly, is: **trigs fire at `floor(event)`
+samples, events are exact multiples of 15,876,000 / tempo24 samples from
+the start phase, and nothing accumulates** — the sub-sample residue never
+walks. The measured trig words and the seam runs under the corrected EMAC
+follow in §10.16.2.
+
+#### 10.16.2 A third defect, this one the harness's own: the EMAC-with-load shim's trampoline was served STALE, so a shimmed `msacl ..,%acc1` ran as the previous `msacl ..,%acc0` (7 Sep 2026, later still — measured)
+
+With the two Unicorn fixes in, the frame builder's byte was still wrong
+(`0xff, 0xef, 0xdf, 0xcf` across the trig frames instead of `0x2f, 0x1f,
+0x0f`), and the arm caller dropped every trig at 115/125/128/135/140 with
+bit 7 set (`0x72f1`, `0x72bf`, `0x72df`, `0x729f`, `0x72f8`) while 100/110/120
+armed (`0x7277`, `0x721d`, `0x7234`). A per-instruction trace of the lane
+loop (`tools/scratch/fbtrace.py`) put the corruption at the SECOND `msacl`
+of each lane pair: after `msacl %d1,%d5,%a0@+,%d2,%acc0` acc0 read 0x1f
+(right), after `msacl %d2,%d5,%a0@+,%d1,%acc1` acc0 read **0x50ef** — acc0
+had been changed by an instruction that names acc1. The same two
+instructions replayed through the shim in a fresh Uc
+(`tools/scratch/emac_shim_replay.py`) are correct. The difference is
+history: `emu_bringup._emac_load_shim` executed every shimmed load form
+from ONE trampoline address, rewriting its four bytes each time, and in
+the long-running emulator Unicorn kept the address's previously translated
+block — so the trampoline ran whichever plain form had been translated
+there last (here: the acc0 form, with the newly loaded d1 as operand:
+`−(0x3c9be80 × −1/3072)` = +20,623.9, + 31.9, + the guard bits → 0x50ef).
+`uc.ctl_remove_cache(TRAMP, TRAMP+0x10)` before each run made acc0 stay 0x1f
+and the trig word `0x721f` (byte 16 + 15: fires at sample 15, bit 7
+clear, ARMED) — proof by removal. The fix that shipped: one trampoline
+slot per distinct plain instruction (`r.emac_slots`, 16-byte slots on the
+page above emu_rtos's SR trampoline), never rewritten, so nothing can be
+stale. Every shimmed EMAC instruction since M6c (≈1,100 per frame: the
+frame builder, the mixer's `0x400031a0` loop) executed under this defect,
+so every route-A result that passed through a load-form EMAC before this
+fix is suspect in its VALUE while still valid in its CONTROL FLOW: M6c's
+"same byte 0xd3" gate compared the emulator with itself. The
+measurements that follow are the first taken with all three fixes.
+
+#### 10.16.3 With all three fixes: the timing byte is the firmware's arithmetic, sample-exact, no walk (7 Sep 2026 — measured)
+
+`fbprobe.py` on `fxR1_128r4`, track 0's lane, tempo24 = 3072, lane event
+20,623.875 samples (in frame-clock units), lookahead = frame clock + 16:
+
+| frame N (builder) | lookahead (samples) | event − lookahead | byte written | dispatcher word in frame N+1 |
+|---|---|---|---|---|
+| 1289 | 20,592 | +31.875 | `0x2f` (16 + 31) | — |
+| 1290 | 20,608 | +15.875 | `0x1f` (16 + 15) | **`0x721f` — fires at sample 15, bit 7 clear, ARMED** |
+| 1291 | 20,624 | −0.125 | `0x0f` (16 − 1) | `0x000f` |
+| 1293.. | | next event 41,295.875 (+20,672) | `0xaf, 0x9f, 0x8f, 0x7f` = 16 + 175, 159, 143, 127 | — |
+
+So: byte = `16 + floor((event − lookahead) / tempo24)`, consumed one frame
+later, bit 4 = "this frame", low nibble = sample offset, **bit 7 is never
+set by this arithmetic while an event is within 112 samples** — bit 7 in the
+trig word is a flag some other writer sets (the follow-up / one-shot path
+the arm caller tests), not a sign. The trig fires at `floor(event)`: the
+0.875 residue lands the arm on sample 15 of its frame, and the next event is
+exactly 20,672 = 4 × 5,167.96875 later in the lane table (`0x3c9be80 →
+0x792bd00`) — the sequencer keeps the fraction and nothing walks. The
+retractions in §10.16.1 stand, now measured rather than read.
+
+**The tempo sweep, all three fixes, no lever** (bank A step 2 = 4 steps of
+the quarter-rate pattern = 4 × 15,876,000 / tempo24 samples, start phase −48
+samples as measured above; 2,200 frames each). Predicted offset =
+`floor(4 × 15,876,000 / tempo24 − 48) mod 16`:
+
+| BPM | tempo24 | event (samples) | predicted nibble | trig word | armed |
+|---|---|---|---|---|---|
+| 100 | 2400 | 26,412.0 | 12 | `0x721c` | ✅ |
+| 110 | 2640 | 24,006.545 | 6 | `0x7216` | ✅ |
+| 115 | 2760 | 22,960.696 | 0 | `0x7210` | ✅ |
+| 120 | 2880 | 22,002.0 | 2 | `0x7212` | ✅ |
+| 125 | 3000 | 21,120.0 | 0 | `0x7210` | ✅ |
+| 128 | 3072 | 20,623.875 | 15 | `0x721f` | ✅ |
+| 135 | 3240 | 19,552.0 | 0 | `0x7210` | ✅ |
+| 140 | 3360 | 18,852.0 | 4 | `0x7214` | ✅ |
+
+Eight for eight, and every low nibble is the one the firmware's own
+arithmetic predicts. This replaces §10.16's earlier sweep table (all
+`0x7210`, taken with the stale trampoline) and closes §10.14's "dropped
+trig" for good: hardware 120/128 both record, and so does the emulator, at
+the right sample.
+
+#### 10.16.4 The seam, measured: a looping recorder trig at 128 / RLEN 16 leaves a one-sample hole on alternate passes; at 120 / RLEN 16 none (7 Sep 2026 — measured, all three fixes)
+
+Fixture `recproj_loop128_r16`: the §10.15 project with recorder trigs at
+steps 2/6/10/14 of the quarter-rate A01 (one trig every 16 sixteenths =
+4 × 15,876,000 / tempo24 samples) and RLEN 16 on **part 1** (the tool's
+`recorder-setup <proj> 1 1 0 RLEN 15`; part 0 is not the part A01 plays —
+a first attempt on part 0 changed nothing). `tools/scratch/recloop.py`,
+17,500 frames, hooks on the arm caller, the arm post, the end post and the
+record fields.
+
+| | 128 BPM, RLEN 16 (period 82,687.5, Bryan's "first-repeat click") | 120 BPM, RLEN 16 (period 88,200 exact, clean) |
+|---|---|---|
+| length written (`+32`, end post) | **82,687** = `0x142ff` | **88,200** = `0x15888` |
+| trig 1 | frame 1291, offset 15 | frame 1378, offset 2 |
+| trig 2 | +5,168 frames, offset 15 → spacing **82,688** | offset 10 → spacing **88,200** |
+| trig 3 | offset 14 → spacing **82,687** | offset 2 → 88,200 |
+| trig 4 | offset 14 → spacing 82,688 | offset 10 → 88,200 |
+| end of pass k vs arm of pass k+1 | +1 sample (hole), 0, +1 | 0, 0, 0 |
+
+Two firmware facts fall out, both measured:
+
+1. **The length converter is not "round half up"; it is round-half-up of a
+   product taken with a TRUNCATED reciprocal.** `0x80001820` = ⌊2³¹ /
+   tempo24⌋ (699,050 for 3072, exact 699,050.67), so 16 steps at 128 give
+   508,032,000 × 699,050 >> 31 = 165,374.77 → 165,374 → `+1 >> 1` =
+   **82,687**, where the sheet's arithmetic on the exact quotient 82,687.5
+   rounds UP to 82,688. For 4 steps the product is 41,343.69 (exact 41,343.75)
+   and still rounds to 20,672, so §10.15's "Bryan's 20,672" stands; his
+   128/16 row (and any row whose exact quotient is x.5 or an integer)
+   needs the truncated-reciprocal form. Rule: `L = (⌊S × 31,752,000 ×
+   ⌊2³¹/tempo24⌋ / 2³¹⌋ + 1) >> 1`.
+2. **Trigs fire at ⌊event⌋ with exact fractional events, so successive
+   trig spacings are ⌊e_{k+1}⌋ − ⌊e_k⌋ ∈ {⌊P⌋, ⌈P⌉}**, and the seam between
+   pass k's end (arm_k + L) and arm_{k+1} is `spacing − L`: with P =
+   82,687.5 and L = 82,687 that is 0 or +1 — **a one-sample hole on alternate
+   passes**, the first of them at the first repeat; with P integral and L
+   = P it is always 0. For Bryan's 128 / RLEN 4 (P = 20,671.875, L =
+   20,672) the same rule gives 0 for seven passes and **−1 on the eighth**:
+   the next arm arrives one sample BEFORE the running recording's last
+   sample. What the engine does with that one-sample overlap is the next
+   thing to measure (a 1× pattern with trigs every 4 steps, nine passes;
+   the quarter-rate fixture cannot express it).
+
+Bryan's "0.1275 samples" is the residue 0.125 of the 128/4 period seen
+once per pass; the firmware does not accumulate it (the events are exact),
+it quantises it, and the quantisation lands a whole sample short or long
+once every 1/ε passes. That is where the click lives.

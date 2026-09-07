@@ -161,11 +161,14 @@ you did not explicitly write is the donor's, and some of them outrank the ones
 you did.** Same family as "a slot can draw a knob and publish nothing" — the
 panel and the DSP are separate mechanisms and neither validates the other.
 
-**STOCK UNICORN HALVES EVERY ColdFire FRACTIONAL-MODE MULTIPLY, and the
-firmware runs its EMAC in fractional mode (`MACSR = 0x20`).** Unicorn 2.1.4
-computes `macl`/`macw` under `F/I = 1` as an UNSIGNED product `>> 32`; the
-MCF5445x does a SIGNED product `>> 31` (the 2.62 product shifted left one
-bit, upper 40 bits accumulated). One defect, three symptoms that were each
+**STOCK UNICORN HALVES EVERY ColdFire FRACTIONAL-MODE MULTIPLY AND ADDS
+WHERE `msac` SUBTRACTS, and the firmware runs its EMAC in fractional mode
+(`MACSR = 0x20`).** Unicorn 2.1.4 computes `macl`/`macw` under `F/I = 1` as
+an UNSIGNED product `>> 32` where the MCF5445x does a SIGNED product `>> 31`
+(the 2.62 product shifted left one bit, upper 40 bits accumulated), and it
+reads the MAC/MSAC bit from the opcode word where ColdFire keeps it in the
+extension word, so every `msac` accumulated with the wrong sign (the
+sequencer's frame builder is one). One defect, three symptoms that were each
 investigated as firmware behaviour for a day (7 Sep 2026, RTOS_FORK
 §10.16): the recorder length converter wrote 10,336 for Bryan's 20,672
 (explained away as "2-sample units"), the recorder's block walk stalled at
@@ -179,6 +182,18 @@ library (`tools/unicorn_emac_fractional.patch`). The general rule is the
 same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
+
+**A REWRITTEN TRAMPOLINE IS NOT RETRANSLATED.** The ColdFire emulator's
+EMAC-with-load shim ran every shimmed instruction from one scratch address,
+rewriting its bytes each time; in a long-running Unicorn the address kept
+its first translation, so the trampoline executed whichever instruction had
+been translated there LAST — `msacl ..,%acc1` ran as the previous `msacl
+..,%acc0` and corrupted the sequencer's timing byte (RTOS_FORK §10.16.2,
+7 Sep 2026). Fresh-Uc micro-tests could not show it; a per-instruction
+trace of the real run did. Rule: never rewrite emulated code in place — give
+each distinct instruction its own slot (`r.emac_slots`), and when a
+micro-test disagrees with the running emulator, the difference is state,
+so trace the running emulator.
 
 **A MEASUREMENT CAN BE STRUCTURALLY BLIND TO THE THING YOU ARE USING IT TO
 RULE OUT — and it will report "clean" with total confidence.** Two instances,

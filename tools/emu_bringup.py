@@ -46,25 +46,28 @@ def emac_selftest():
     %acc0,%d0` on 0xc00 x 0x200000 (the firmware's own block-walk idiom:
     position x 2^31/blocksize) and on a negative operand. Hardware: 3 and
     -3 (signed product >> 31). Stock Unicorn 2.1.4: 1 and 0x1ffffe
-    (unsigned product >> 32). Returns (ok, detail)."""
+    (unsigned product >> 32). Third case: `msacl` must SUBTRACT (-3); stock
+    tests the wrong bit and adds. Returns (ok, detail)."""
     if not HAVE_UNICORN:
         return False, "unicorn not importable"
     code = (b"\xa9\x3c\x00\x00\x00\x20"   # movel #0x20,%macsr (fractional, signed)
             b"\xa2\x00\x08\x00"           # macl %d0,%d1,%acc0
             b"\xa1\xc0"                     # movclrl %acc0,%d0
             b"\x4e\x71")                    # nop
+    msac = code[:6] + b"\xa2\x00\x09\x00" + code[10:]   # msacl %d0,%d1,%acc0: ext bit 8 = subtract
     got = []
-    for d0 in (0xc00, (-0xc00) & 0xffffffff):
+    for prog, d0 in ((code, 0xc00), (code, (-0xc00) & 0xffffffff), (msac, 0xc00)):
         uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
         uc.mem_map(0x1000, 0x1000)
-        uc.mem_write(0x1000, code)
+        uc.mem_write(0x1000, prog)
         uc.reg_write(UC_M68K_REG_D0, d0)
         uc.reg_write(UC_M68K_REG_D1, 0x200000)
-        uc.emu_start(0x1000, 0x1000 + len(code))
+        uc.emu_start(0x1000, 0x1000 + len(prog))
         got.append(uc.reg_read(UC_M68K_REG_D0) & 0xffffffff)
-    want = [3, 0xfffffffd]
+    want = [3, 0xfffffffd, 0xfffffffd]
     lib = os.environ.get("LIBUNICORN_PATH", "<pip wheel>")
-    return got == want, f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x} (want 0x3, 0xfffffffd); lib {lib}"
+    return got == want, (f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x}, "
+                         f"msacl -> {got[2]:#x} (want 0x3, 0xfffffffd, 0xfffffffd); lib {lib}")
 STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
 BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000
@@ -470,7 +473,7 @@ def _call(uc, addr, args=(), count=20_000_000):
         raise DetourTrap(trap[0], trap[1], f"0x{addr:08x}")
 
 
-TRAMP = 0x47ef0000           # scratch page for the EMAC-with-load trampoline
+TRAMP = 0x47ef0000           # 3 pages: +0x800 emu_rtos SR trampoline, +0x1000 EMAC slots, +0x2000 diagnostics
 _AREGS = None
 
 
@@ -526,22 +529,56 @@ def _emac_load_shim(uc, r):
     plain_op = 0xA000 | ((rx & 7) << 9) | (((rx >> 3) & 1) << 6) | ((acc & 1) << 7) | ry
     plain_ext = (ext & 0x0F00) | (size_l << 11) | ((acc >> 1) << 4)
     try:
-        uc.mem_map(TRAMP, 0x1000)
+        uc.mem_map(TRAMP, 0x3000)
     except UcError:
         pass
     nxt = pc + ilen
-    # plain form, then jump to a nop at TRAMP+0x100 and stop there: stopping
-    # AT `nxt` is unsafe when `nxt` is itself an instruction the core rejects
-    # (a byterev followed one of these) — the exception beats the stop.
-    park = TRAMP + 0x100
-    uc.mem_write(TRAMP, plain_op.to_bytes(2, "big") + plain_ext.to_bytes(2, "big")
-                 + b"\x4e\xf9" + park.to_bytes(4, "big"))
-    uc.mem_write(park, b"\x4e\x71\x4e\x71")           # nop nop
+    # ONE TRAMPOLINE SLOT PER DISTINCT PLAIN INSTRUCTION (7 Sep 2026). The
+    # first version rewrote a single slot for every shimmed instruction, and
+    # Unicorn did not reliably drop the slot's cached translation on that
+    # write once the emulator had been running for a while: the trampoline
+    # then executed whichever plain form had been translated there LAST --
+    # measured in the sequencer's frame builder, where `msacl ..,%acc1`
+    # ran as the previous `msacl ..,%acc0` and corrupted acc0 by the lane
+    # event (RTOS_FORK section 10.16). Distinct slots are never rewritten,
+    # so no invalidation is needed and nothing is stale. Slots are 16
+    # bytes: plain form (4), jmp park (6), on the SECOND page (the first
+    # page's 0x800 holds emu_rtos's SR trampoline); the park (nop nop) sits
+    # at the end of it and the third page is for diagnostics.
+    park = TRAMP + 0x1ff0
+    slots = getattr(r, "emac_slots", None)
+    if slots is None:
+        slots = r.emac_slots = {}
+        uc.mem_write(park, b"\x4e\x71\x4e\x71")           # nop nop
+    key = (plain_op, plain_ext)
+    tramp = slots.get(key)
+    if tramp is None:
+        if len(slots) >= 0xff:
+            return None                                # slot page full: surface it
+        tramp = TRAMP + 0x1000 + 0x10 * len(slots)
+        uc.mem_write(tramp, plain_op.to_bytes(2, "big") + plain_ext.to_bytes(2, "big")
+                     + b"\x4e\xf9" + park.to_bytes(4, "big"))
+        slots[key] = tramp
     r.trap = None
-    uc.emu_start(TRAMP, park, count=3)
+    uc.emu_start(tramp, park, count=3)
     if r.trap is not None or uc.reg_read(UC_M68K_REG_PC) != park:
         return None                                    # the plain form failed too
     r.emac_shims = getattr(r, "emac_shims", 0) + 1
+    dbg = os.environ.get("OCTA_EMAC_DEBUG")
+    if dbg and pc in [int(x, 0) for x in dbg.split(",")]:
+        # read acc0 without clearing it (movel %acc0,%d7 = a187), through a
+        # trampoline on the second page; d7 saved and restored
+        d7 = uc.reg_read(UC_M68K_REG_D7)
+        park2 = TRAMP + 0x2ff0
+        uc.mem_write(TRAMP + 0x2000, b"\xa1\x87" + b"\x4e\xf9" + park2.to_bytes(4, "big"))
+        uc.mem_write(park2, b"\x4e\x71\x4e\x71")
+        uc.emu_start(TRAMP + 0x2000, park2, count=3)
+        acc0 = uc.reg_read(UC_M68K_REG_D7) & 0xffffffff
+        uc.reg_write(UC_M68K_REG_D7, d7)
+        regs = {n: uc.reg_read(_DREGS[n]) & 0xffffffff for n in range(8)}
+        print(f"emac-shim pc={pc:#x} op={op:#06x} ext={ext:#06x} -> plain {plain_op:#06x} {plain_ext:#06x} "
+              f"rx=d{rx} ry=d{ry} acc={acc} d1={regs[1]:#x} d2={regs[2]:#x} d5={regs[5]:#x} ea={ea:#x} "
+              f"loaded={val:#x} acc0(after)={acc0:#x}", flush=True)
     return nxt
 
 
