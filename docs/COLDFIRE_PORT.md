@@ -1859,10 +1859,27 @@ at P:0x2f4 is left 🟡. **TX0 slots 0 and 7 stay silent at DIR 100 too**, so
 the capture block's +0x80 pair (the ColdFire's A/B) still has no source in
 the port; what places audio on those two output slots is the open item.
 
-Next in O9c: that source (a `--dsp-watch 0:X:8087` — nothing writes it at
-all today — after finding a mixer state that should; CUE and the master
-track are the untried ones), then the audio comparison against `dsp_host` on
-a THRU track whose FX2 is the effect under test.
+❌ **"TX0 slots 1–4" was an artefact, and so was "master track on pans it
+right".** With the master track off the same tone came out on slots 0/2
+instead of 1/3, yet a `--dsp-peek` of the ESAI-out ring showed it at **ring
+words 2 and 4 in both runs**: the ESAI's slot counter and DMA2's ring index
+are not in a fixed phase — the rotation between them differed between runs
+and moved within a run (0..7 over 400 frames, as DMA2 is re-armed). The
+ring is the truth; `--audio-out` now keeps each frame by RING WORD, reading
+DSR2 at the frame's end (`(DSR2 − 9) & 7`, minus nine because the DMA has
+already loaded the next frame's first word; checked against the peek), and
+the report says "non-zero per RING WORD (slot + rotation min..max)". ✅ So,
+in ring words per sample: **(2,3) is one stereo pair and (4,5) the other,
+3.7 dB lower; 0, 1, 6, 7 are never written by the mix**, and the capture
+block's +0x80 pair reads ring words 0 and 7 — which is why the ColdFire's
+"A/B" is empty here: nothing in this project's state (DIR at 100, CUE 127
+with main-to-cue, master track on or off — all tried) writes those words.
+🟡 Which pair is main and which cue, and which physical output ring words
+0/1/6/7 reach, is hardware's to say (the codec's slot assignment); the
+WAV's channel order is now stable enough to compare against `dsp_host`.
+
+Next in O9c: the audio comparison against `dsp_host` on a THRU track whose
+FX2 is the effect under test.
 
 ## What is NOT here yet
 
