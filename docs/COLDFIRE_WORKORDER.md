@@ -755,6 +755,23 @@ pool blocks read across the arm: the RECTRIG fixture with `--audio-in tones`
 (`RTOS_FORK.md` §10.16's write path `0x400068e4`). No DSP voice needed to
 RECORD; playing it back does.
 
+## Where the port stands after O10 (8 Sep 2026), and what is left
+
+The port boots the firmware, mounts the card, loads the project, runs the
+sequencer byte-identical to route A, drives both DSP cores through the host
+port, takes ESAI audio in, plays FLEX samples sample-exact, records through
+the recorder, and renders a THRU track's FX chain bit-identical to
+`dsp_host`. The queue above is done. What remains is fidelity debt, each
+with its decider:
+
+| debt | decider | cost |
+|---|---|---|
+| RTOS tick = PIT on the CPU clock (5 ms) where the RM says bus clock (10 ms); every wall-clock number in the records is 2× out if so (`CHIP.md` §1) | a hardware tick measurement (an LED blink / a UI timeout on video), or a firmware constant that only fits one | one capture |
+| DIR names RX0 slot 0 "A", the ColdFire capture names slot 2 "A" (O9c vs O10); stable per run, not a rotation | a tone into the unit's input A with a THRU track and the recorder's INAB | one capture |
+| the track record's segment split and tag word (O10) — what the DSP does with them | read payload B's unpack of the 84-word record | RE, no hardware |
+| Bryan's click: the port shows none in any shape because arm and trig round alike; hypothesis = a 2-sample-unit stage on one side | Bryan's project file run AS-IS under the port (read SRC3/AB/CD/LOOP/QREC/timestretch first), then his one-pass test and the odd/even per-pass-walk tempo test (125 vs 130 BPM) on the unit | his file + two captures |
+| the O9c comparison on the shipping image (bus engines, core 0) | `make bus` + the ONEAUX card through the same fixture/fit (`o9d_compare.py`) | one session, no hardware |
+
 ## Running it overnight
 
 One session per milestone, in a terminal left open:
