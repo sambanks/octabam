@@ -659,7 +659,7 @@ report lines. Three things later milestones must know:
    base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
    gates say whether any shipped effect was rendered on it.
 
-### O9d — the comparison fixture measured the wrong track ✅ DONE (8 Sep 2026, branch `coldfire-o9d`)
+### O9d — the comparison fixture measured the wrong track, then the comparison itself ✅ DONE, O9c GATE PASSED (8 Sep 2026, branch `coldfire-o9d`)
 
 `COLDFIRE_PORT.md` O9d. O9c's three closing claims (a THRU track's TX0 is
 a pre-FX2 monitor; the page-2 select never crosses; the tap must be the
@@ -669,12 +669,12 @@ FX2 was SEND in every run — and T2 has no input in the port anyway (its
 FX1 FILTER is closed, as `rig_render` said). With the effect on T1 in every
 part, page 1 AND page 2 cross and TX0 changes. New instrument
 `--block-dump` (+ `tools/scratch/blockdump.py`); new tool
-`ot_project.py set-fx`. **The gate is now a comparison job, not a locate:**
-`dsp_host` EQUALIZER vs the port's T1 read-back, level-matched — first
-pass run: residual −16.6 dB after a scale, with a stepwise gain inside the
-port's DSP per-track stage that no host-port block carries (the AMP/level
-stage `rig_render` does not model). Next = grow the harness's AMP model or
-bypass the stage, then re-run (all pieces in `out/o9d`, see the port doc).
+`ot_project.py set-fx`. **The O9c gate PASSES on T1 (stock image, EQUALIZER):** the port's T1
+read-back against `rig_render` on the same chain input, flat page
+−125.6 dB residual at a −11.906 dB scale, boosted page −95.7 dB with the
+stem pre-scaled by that k and no fit. The parameter words on the DSP are
+dsp_host's word for word (page 2 included); the pre-FX track gain k is the
+one thing the harness does not model (`tools/scratch/o9d_compare.py`).
 
 **Rule 9, from this:** a fixture for the port goes into EVERY part of EVERY
 bank (`set-fx`, `stamp-slot`), and a DSP-side "identical" between two cards

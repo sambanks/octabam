@@ -2135,40 +2135,51 @@ tone, level-matched to the port's T1 read-back (the per-track chain output,
 before the master mix), and the THRU gain structure (VOL, INAB, the −11 dB)
 divided out.
 
-### 🟡 The comparison itself, first pass — NOT passed, and the gap is now located
+### ✅ The comparison — O8's step 5 / the O9c gate — PASSES (T1, EQUALIZER, stock image)
 
-With the fixture working, the gate was attempted: T1's chain INPUT (the
-672-record audio, −11.2 dBFS) written out as a WAV and fed to `rig_render`
-(`--image out/raw/section_3_MAIN_OS.bin --project out/o9d/proj_t1eqB --bank 2
---part 1 --stem T1=… --amp 1.0`, which takes T1's ids and every knob from the
-part: FX1 = stock 0x1c at `P:0x1918`, FX2 = EQUALIZER `40 127 64 100 0 64`),
-against T1's READ-BACK (its chain output before the master mix), for the flat
-page (A) and the boosted page (B):
+T1's chain INPUT is the audio in its 84-word record (16 L samples per
+frame, −11.2 dBFS) and its OUTPUT is its slot of core 1's read-back (the
+per-track chain output, before the master mix); `tools/scratch/
+o9d_compare.py extract|fit` pulls both out of a `--block-dump` and fits
+lag, scale and residual. The same input goes through `rig_render` on the
+stock image (`--project … --bank 2 --part 1 --stem T1=… --amp K`), which
+takes T1's ids and all twelve knobs from the part. Measured, 300 Hz tone,
+samples 1500..3900 of 4000:
 
-| | lag | scale (port/host) | residual after a single scale | EQ B/A at 300 Hz |
-|---|---|---|---|---|
-| A | −32 samples | −13.0 dB | −16.6 dB | port +6.32 dB |
-| B | −32 samples | −12.0 dB | −16.9 dB | host +5.29 dB |
+| T1 | fit | residual |
+|---|---|---|
+| FX1 = stock 0x1c LO-FI, FX2 = EQ flat / boosted | −13 dB, lag −32 | −16.6 / −16.9 dB, gain stepping ±1.5 dB per period |
+| FX1 = SEND, FX2 = EQ flat (`64 ×6`) | **−11.906 dB** (k = 0.253931 = 2130129/2^23), lag −32 | **−125.6 dB** |
+| FX1 = SEND, FX2 = EQ boosted (`40 127 64 100 0 64`), stem × k | 0.000 dB, lag −32 | **−95.7 dB with NO fit** (the float pre-scale's rounding) |
 
-Per 147-sample period the port/host gain RISES through the run (−17.3 →
-−11.7 dB over 3,600 samples) in steps of up to ±1.5 dB per period, and the
-residual after a per-period gain is still only −21 to −31 dB. ✅ Measured
-that none of this rides on the host port: T1's 84-word record has no
-non-audio word that changes after frame 2, and its per-voice record is
-constant from frame 3 (one frame, 160, drops FX1 slot 5 to 0 for a frame —
-noted, not chased). So the stepwise gain is inside the DSP's per-track stage
-around the FX chain — the AMP page (`ATK 0 HOLD 127 REL 127 VOL 64`), the
-track LEVEL / `x:(r0+0x32)`, whatever the dispatcher does between the unpack
-and the read-back — which `rig_render` does not model ("AMP VOL / pan / the
-mixer are not modelled", its own docstring). 🟡 That is the reading; the
-falsifier is a run with the AMP page neutralised (VOL 127, or the AMP stage
-located in payload B and its input/output peeked with `--dsp-watch`).
+Three things fell out on the way, each measured:
 
-**So the O9c gate now needs the HARNESS to grow, not the port**: model (or
-bypass) the DSP-side AMP/level stage, then re-run this comparison — the
-fixture, the tap, the extraction (`blockdump.py` + the scratch above) and the
-fit are all in place. Files: `out/o9d/t1eq{A,B}_300_T1_{in,rb_L}.wav`,
-`out/o9d/rig_t1eq{A,B}/T1.wav`.
+- **The parameter words the DSP sees are dsp_host's, word for word.** Core 1's
+  per-instance block (`X:0x208` → 32 words per track, T1 at X:0x25d):
+  +0..5 AMP `00 7f 7f 40 40 7f`<<16, +6..b FX1 page 1, +c..11 FX2 page 1
+  `28 7f 40 64 00 40`<<16, +12..14 FX1 page 2 as `knob<<16 | companion<<8`
+  (`7f0000 000000 400000`), +15..17 AMP page 2 (`010100 …`), +18..1a FX2
+  page 2 (`003000 400100 000000` = the part's `0 48 64 1 0 0`), +1b/+1c the
+  ids (`000900 000c00`). That is exactly `dsp_host`'s `setParams`
+  composition (+$c/$d/$e knob|companion) — the DSP's unpack turns the
+  record's low-byte packing into it.
+- **The track gain is applied BEFORE the FX chain, and it is a constant**:
+  k = 2130129/2^23 (−11.906 dB) for this part (AMP VOL 64, LEVEL 108;
+  🟡 not derived from those — measured as the fit). `rig_render` at
+  `--amp 1.0` drove the EQ 12 dB hotter than the unit does, and the stock
+  EQ saturates there: the boost read +4.95 dB in the harness against
+  +6.22 dB in the port until the stem was pre-scaled by k, after which the
+  two agree to the rounding of the pre-scale.
+- **Stock LO-FI (0x1c, the RIG's T1 FX1) is nonlinear**, which is what the
+  "stepwise gain" of the first pass was; with FX1 = SEND it is gone.
+
+So the port, driven by the firmware from the card, renders a THRU track's
+FX chain as `dsp_host` does, to the bit for a linear page and to −96 dB
+with a float pre-scale for a saturating one; the one thing `rig_render`
+does not model is the pre-FX track gain k (its docstring's "AMP VOL … not
+modelled"), and the comparison must feed it the stem at k. Falsifiers:
+another effect (FILTER with page 2 live) or another track/core giving a
+residual above −90 dB with the stem at its own k.
 
 Instrument rule added to the port: **a DSP-side "byte-identical" between
 two cards is not evidence until the host-port dump shows the cards differed
