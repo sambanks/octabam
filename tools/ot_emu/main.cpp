@@ -92,6 +92,7 @@ int main(int _argc, char** _argv)
 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
 	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
+	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 
 	for(int i = 1; i < _argc; ++i)
@@ -147,6 +148,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
+		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
@@ -525,6 +527,20 @@ int main(int _argc, char** _argv)
 				if(pokeTrig)
 					std::printf("poke trig  : track 1 step %d -> mask byte 7 = %#04x\n",
 						pokeTrig, rtos.pokeTrig(static_cast<uint32_t>(pokeTrig)));
+				if(!pokeAfterLoad.empty())
+				{
+					size_t q = 0;
+					while(q < pokeAfterLoad.size())
+					{
+						auto e = pokeAfterLoad.find(';', q); if(e == std::string::npos) e = pokeAfterLoad.size();
+						const auto one = pokeAfterLoad.substr(q, e - q); q = e + 1;
+						const auto eq = one.find('='); if(eq == std::string::npos) continue;
+						const auto addr = static_cast<uint32_t>(std::strtoul(one.c_str(), nullptr, 0));
+						const auto val = static_cast<uint32_t>(std::strtoul(one.c_str() + eq + 1, nullptr, 0));
+						m.write8(addr, static_cast<uint8_t>(val));
+						std::printf("poke       : %#x <- %#x (after the load)\n", addr, val);
+					}
+				}
 				rtos.installTrigLog();
 				if(!coverage.empty())
 					m.setProfile(1);		// every PC from here: the coverage of the frames phase

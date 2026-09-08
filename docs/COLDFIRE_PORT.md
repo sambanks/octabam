@@ -1960,9 +1960,25 @@ structure reconciled. Both are now measured facts, not locates:
   applied when the effect is (re)selected / the part is applied, a path the
   emulated load does not run — the SAME family as the main level (sys command
   4) and the −1 per-track init bytes. So O9c's finish is not a `stamp-slot`
-  feature; it is to drive that apply path after the load (a coverage/`watch`
-  pass over the load with LP=0 vs LP=2 to find the reader, then post it the
-  way `setMainLevelLive` posts the main level).
+  feature; it is to drive that apply path after the load.
+
+  ✅ **And the apply path is already located — it is the CC→page-2 work.**
+  `modules/ccpage2` (PR #98, hardware-confirmed) had to replicate the
+  firmware's page-2 editor `P2EDIT` (`0x4003a474`) exactly, and
+  `docs/midi_re_cc.md` §7 has the whole publish path: a page-2 value reaches
+  the DSP ONLY through the **live lane `0x80000830 + track*72 + 0x20 + slot2`**,
+  which the copier `0x4000cae8` ships every frame — there is no DSP post; the
+  Part store and shadow do not reach the DSP by themselves. ✅ Measured here:
+  the emulated load leaves that lane byte **zero** even with the part carrying
+  LP=2, which is exactly why the select does not cross. ⚠️ A `--poke` of the
+  lane at the ccpage2 offset did NOT move stock FILTER's block (equal-length
+  compare identical) — because ccpage2's `slot2` layout and counts are the BUS
+  ENGINES' (`VERB_COUNTS`/`DLY_COUNTS`), and stock FILTER's page-2 lane offset
+  is its own. So the finish is: drive `P2EDIT`'s stores after the load (or find
+  the load-time refresher that should populate the live lane and does not),
+  using the effect's own page-2 layout — the mechanism is known, only the
+  per-effect offset for a stock effect is not pinned. `--poke` (added this
+  milestone) is the lever once the offset is right.
 - ✅ **The THRU monitor gain is the track's own input level, NOT the main
   level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
   −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
