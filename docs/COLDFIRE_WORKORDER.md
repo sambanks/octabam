@@ -790,7 +790,7 @@ with its decider:
 | DIR names RX0 slot 0 "A", the ColdFire capture names slot 2 "A" (O9c vs O10); stable per run, not a rotation | a tone into the unit's input A with a THRU track and the recorder's INAB | one capture |
 | the track record's segment split and tag word (O10) — what the DSP does with them | read payload B's unpack of the 84-word record | RE, no hardware |
 | Bryan's click: the port shows none in any shape because arm and trig round alike; hypothesis = a 2-sample-unit stage on one side | Bryan's project file run AS-IS under the port (read SRC3/AB/CD/LOOP/QREC/timestretch first), then his one-pass test and the odd/even per-pass-walk tempo test (125 vs 130 BPM) on the unit | his file + two captures |
-| ~~the O9c comparison on the shipping image (bus engines, core 0)~~ ✅ O12: the delay bus bit-identical; the reverb stage level-matched only (its allpass modulation is history) | a reverb fixture with its modulation off, if one exists | small |
+| ~~the O9c comparison on the shipping image (bus engines, core 0)~~ ✅ O12: the delay bus bit-identical; the reverb stage level-matched only — T5's knobs arrive modulated on Sam's RIG project (source not pinned) and the toolkit cannot build a THRU track that starts on a clean project | a project-stamping tool that makes a THRU track start (Sam: "stamp a new project"), then one run | one session |
 
 ## Running it overnight
 

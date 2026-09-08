@@ -2474,6 +2474,83 @@ here either; 🟡 the port's core interleave is still not the chip's timing
 reverb stage was not bit-compared (its allpass modulation is history, like
 MDEP); its level matched within 1 dB in the both-engines run.
 
+### 🟡 The reverb stage: level-matched, not bit-compared, and why (8 Sep 2026, later)
+
+Same fixture with the reverb instead of the delay (T1's FX2 = SEND, one
+client, MOD 0): the port's return is **deterministic** — identical to
+−200 dB across load lengths and across core-interleave quanta of 1, 64,
+1,000 and 100,000 instructions (`--dsp-quantum`, added for this; the delay
+fixture is likewise quantum-independent) — so it is NOT a cross-core race.
+Against `dsp_host` it is −7.5 dB residual with the envelope within ±3 dB
+per window and one extra frame of lag (52 = 36 + 16: the reverb's
+accumulator read crosses cores, one more block back).
+
+The difference is in what T5's engine is GIVEN, not in the engine: the
+DSP's per-instance block for T5 carries FX1 slots 2 and 5 and FX2 slot 2
+as fractional, time-varying values (`0x321a`, `0x3f`, `0x28ad`) where the
+part holds 0, 0, 0 — on Sam's RIG project. Ruled out by measurement:
+the scene crossfader (poked to 0 at `0x460d16c8`: unchanged), the track's
+LFO depths (zeroed in the part: unchanged), the pattern (the PATTERN= key
+did not move the port off pattern 0 — 🟡 the loader's pattern source is
+not that key). The pre-image `0x80000a50` for T5's FX2 slot 2 is written
+0x7f00 by the load, 0 by the refresher and 0x6400 by the slew packer
+(`0x4000d688`) at the transport start, none of them 0x28ad — the modulated
+value enters between the pre-image and the block, i.e. in the frame
+builder's slew/scene stage (`0x4000cc20`/`0x4000ccfc`, O9d), from per-track
+state this project carries and the toolkit cannot yet read or clear.
+
+The alternative fixture — the rig on the RECTRIG backup, which has none
+of that (T5's words come out exact: `28 30 00 00 00 00`, `00 40 00 64 40
+7f`) — cannot hear anything: its T2, set to THRU with the RIG's THRU page
+bytes copied in, never gets the transport-start write (only tracks 0 and
+5 do), so it renders silence. ✅ Sam: T1 and T2 are THRU on his projects
+(drums and synths in), which is why the RIG-based fixture hears and the
+RECTRIG-based one does not. **Toolkit gap (the way through, per Sam):
+stamp a fresh project** — `ot_project` can set a machine type and a PB
+page but not whatever else makes a THRU track start; that is the next
+tool, and with it the reverb comparison is one run.
+
+### ✅ Found: the rotation word flips in the middle of core 1's frame, and the clients read it directly (9 Sep 2026)
+
+With the reverb path still −13 dB off on the clean project (T2 trigged
+at step 1 — a THRU machine on the unit passes nothing until it is trigged,
+which is why the RECTRIG-based rig had been silent; T5's words exact;
+the port deterministic across interleaves), the cross-core read was
+instrumented directly:
+
+- `--dsp-watch 0:Y:36000`: core 0's housekeeping (P:0x8fd, in the reverb
+  host's block) flips the shared rotation word once per frame, 0x30 → 0x00
+  → 0x10 → 0x20, spacing 66,546 / 66,574 instructions.
+- `--dsp-pcwatch 1:623` (the send client's `move y:>$36000,a` + `and #>$30`,
+  every bus client on core 1 runs it per block): **within one core-1 frame
+  the four clients see 0x30, 0x30, 0x00, 0x00** — the flip lands between
+  the second and third client, every frame, at the firmware's own serving
+  order (the port's interleave quantum does not move it: 1, 64, 1,000 and
+  100,000 give bit-identical output).
+
+So half of a frame's senders deposit into buffer N and half into buffer
+N+1. The delay reads the accumulator on the same core with the same phase
+each block and is bit-exact regardless; the reverb, the only cross-core
+reader, gets a frame's deposits split across two of its "two back" reads —
+a persistent residual with a matched envelope, exactly what was measured,
+and the mechanism behind FAILURE_MODES' "cross-core bus glitch — the
+accumulators' race 🟡". `XBUS.md`'s rule ("clients never read the shared
+rotation word directly; each core tracks the rotation privately, advancing
+once per block") is not what the one-aux code does: the send client,
+both engines and the return all read `y:$36000` at their own block time.
+`dsp_host` in lock-step flips the word between whole core frames and can
+never split one.
+
+**The fix is a module change, not a port one:** a rotation each core
+derives from its own frame count (the dispatcher's per-frame counter at
+`x:$41c`/`x:$41e`, if it is one — measured below) or latched once per core
+per frame, so every client on a core writes the same buffer for a given
+frame; the four-deep buffers already absorb a constant one-block offset
+between the cores. The port is the gate: after the fix the reverb path
+must come out bit-identical like the delay path. 🟡 Whether the unit's
+serving order lands the flip mid-frame exactly as the port's does is
+hardware's to say; that it lands mid-frame at all is enough to split.
+
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).

@@ -193,7 +193,7 @@ namespace ot
 
 		// Run both cores up to the due count now (the ticks only book it),
 		// interleaved in quanta of g_quantum instructions (O9b).
-		static constexpr double g_quantum = 64.0;
+		static double g_quantum;		// O12: --dsp-quantum N (default 64); huge = each core runs its whole due span in turn
 		void runDue();
 		bool stepCore(int _i, double _limit);
 		// Run ONE core until `_ready` or `_budget` instructions (the read-back
