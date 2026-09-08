@@ -424,13 +424,45 @@ first (the oracle), and the discrepancy stays documented as route A's.
 
 </details>
 
-### O8 — the DSP cores and the host port *(Fable — judgment)*
+### O8 — the DSP cores and the host port — ⛔ SCOPED, NOT BUILT (8 Sep 2026)
 
-Join `dsp56kEmu` (both cores, the shared-window patch) to the machine
-through the host-port protocol decoded on 7 Sep 2026 (`COLDFIRE_PORT.md`
-"What is NOT here yet"). Gate: `tools/verify_twocore.py`'s layouts render
-identically when driven by the firmware instead of by `dsp_host`'s
-hand-rolled calls. Not to be started unattended.
+**The join is fully decoded and no DSP is wired yet.** `COLDFIRE_PORT.md` has
+the account; the headline is that ✅ **the firmware boots the DSPs ITSELF,
+during the ColdFire boot, and the bytes are captured**: `0x40001e50` (called
+once from the boot at `0x4000050c`, instruction 4,270,944) uploads a 50-word
+bootstrap to `P:0x31000` and a 58-word one to `P:0x32000` through
+`0x20000014/18/1c`, and those 50 words disassemble as an **HDI08 bootstrap
+loader** that echoes each host word back — the far side of the handshake O6 had
+to fake. So the join needs no `.mem` dump: wire the window to a real HDI08 and
+the firmware programs the cores.
+
+**Do these in order** (details and the byte lanes in `COLDFIRE_PORT.md`):
+
+1. Link `dsp56kEmu` into `ot_emu`, two cores, shared-window patch (mechanical —
+   `tools/dsp_host` already does it).
+2. Wire the window: `0x14/18/1c` → `HDI08::writeRX` (bits 23:16, 15:8, 7:0 —
+   low byte of each halfword only), `0x20000008` → HSR, `0x20000004` → the
+   busy/status byte, `0x20000000` `0x81`/`0x8c` = start/swap, chip select at
+   `0xFC0A400C`.
+3. **First real gate, and it is self-checking:** let the firmware's own upload
+   run and compare the DSP's `P:0x31000` against the captured words
+   (`--hostport-log`).
+4. Make the eDMA MOVE data — route A's model deliberately moves none — so the
+   frame exchange carries the 336/64/32-word records `docs/DSP.md` names.
+5. Only then the milestone's own gate: `verify_twocore`'s layouts rendering
+   identically when driven by the firmware.
+
+⚠️ **Step 5 is a bigger jump than it reads.** `verify_twocore` drives the effect
+ABI directly (`r0`/`r6`/`r7`/`n7` + `proc`); the firmware drives whole FRAMES
+through the packer at `0x4000d3fc`. Nothing has yet checked that the firmware's
+per-track records can carry the knob values the harness passes by hand. That is
+the judgment this milestone was reserved for.
+
+⚠️ **And two instruments were lying about all of this before they were fixed**
+(both returned a confident zero for something that runs): the PC watch could not
+see the boot, and `--periph`'s log is capped at 4096 accesses — full long before
+the DSP init. Fixed, and `--hostport-log` added. **A zero from an instrument is
+not a measurement until you know the instrument can see the thing.**
 
 ### O9 — audio out *(Fable)*
 

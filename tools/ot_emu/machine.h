@@ -183,6 +183,39 @@ namespace ot
 		// reach the handoff is almost always spinning on a flag no peripheral
 		// model answers, and the hot address names it -- route A grew the same
 		// thing (its stall detector) for the same reason.
+		// ⚠️ THE PC WATCH LIVES HERE, NOT IN `Rtos`, AND THAT IS THE POINT.
+		// It was in `Rtos::stepOnce` first, which runs only AFTER the handoff
+		// -- so a watch on an address in the BOOT's own range reported "0
+		// hits" whether it ran or not. That is the silent-instrument trap
+		// again (RTOS_FORK §10.3b), and it nearly produced a wrong finding
+		// about the DSP program loader on 8 Sep 2026 (O8): `0x4000050c`, the
+		// only caller of the DSP start, is at a boot address. Consulted from
+		// BOTH `run()` and `step()`, the answer covers the whole run.
+		//
+		// The timestamp is the INSTRUCTION COUNT rather than the sample clock,
+		// because the boot has no sample clock -- `Rtos` prints its own sample
+		// beside it for hits it saw.
+		struct PcHit { uint64_t instruction; uint32_t pc, d0, d1, a0, a1, sp, stack[5]; };
+		void watchPc(std::vector<uint32_t> _addrs) { m_watchPc = std::move(_addrs); }
+
+		// ✅ THE DSP HOST PORT, RECORDED. The firmware programs the DSPs
+		// ITSELF -- `0x40001e50` (called once, from the boot at `0x4000050c`)
+		// uploads through `0x20000014/18/1c`, three halfwords per 24-bit word,
+		// with a ready handshake on `0x20000008` (measured 8 Sep 2026, O8).
+		// So the words it sends ARE the payload, and capturing them is how the
+		// protocol decode gets checked against `out/dsp/mem_*.mem` before a
+		// single line of DSP emulation exists.
+		//
+		// ⚠️ This is a SEPARATE log from `peripheralLog`, which is capped at
+		// 4096 accesses and therefore full long before the DSP init runs at
+		// instruction ~4.27M -- reading "0 host-port touches" out of it was a
+		// false negative that cost a measurement.
+		struct HostPortWrite { uint64_t instruction; uint32_t pc, addr, val; uint8_t size; };
+		void setHostPortLog(bool _on) { m_hostPortLogOn = _on; }
+		const std::vector<HostPortWrite>& hostPortLog() const { return m_hostPortLog; }
+		const std::vector<PcHit>& pcHits() const { return m_pcHits; }
+		void notePcWatch(uint32_t _pc);
+
 		void setProfile(uint32_t _every) { m_profileEvery = _every; }
 		const std::unordered_map<uint32_t, uint64_t>& profile() const { return m_profile; }
 		// Registers a borrowed call needs: main's stack pointer to push the
@@ -339,6 +372,10 @@ namespace ot
 		AckHook m_ack;
 		uint64_t m_instructions = 0;
 		uint64_t m_v4e = 0;			// instructions the V4e layer supplied
+		bool m_hostPortLogOn = false;
+		std::vector<HostPortWrite> m_hostPortLog;
+		std::vector<uint32_t> m_watchPc;
+		std::vector<PcHit> m_pcHits;
 		uint32_t m_profileEvery = 0;
 		std::unordered_map<uint32_t, uint64_t> m_profile;
 		std::string m_why;

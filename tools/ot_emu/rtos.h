@@ -246,9 +246,7 @@ namespace ot
 		// callee names its caller and its arguments. ⚠️ The check runs per
 		// instruction, so it is guarded on the list being empty; with no
 		// address watched it costs one compare.
-		struct PcHit { double sample; uint32_t tcb, pc, d0, d1, a0, a1, sp, stack[5]; };
 		void watchPc(const std::vector<uint32_t>& _addrs);
-		const std::vector<PcHit>& pcHits() const { return m_pcHits; }
 
 		struct MemWrite { double sample; uint32_t tcb, pc, addr, val; uint8_t size; };
 		void watchMem(uint32_t _addr, uint32_t _len);
@@ -431,8 +429,6 @@ namespace ot
 		// `rte` is not the ack.
 		std::vector<TrigWrite> m_liveNibble, m_trigWords;
 		std::vector<MemWrite> m_memWrites;
-		std::vector<uint32_t> m_watchPc;
-		std::vector<PcHit> m_pcHits;
 		bool m_trigLogInstalled = false;
 		bool m_partPtrWatched = false;
 		int m_savedBank = -1;

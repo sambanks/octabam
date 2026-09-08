@@ -840,6 +840,130 @@ ticks, the trig at frame 344 with bytes `0x08`/`0x18`); the M6a oracle diff
 still **8 compared fields agree, 0 disagreements**; `ctest` 6/6; `make check`
 green.
 
+## Milestone O8 — the DSP cores and the host port ⛔ IN PROGRESS (8 Sep 2026)
+
+**The gate is not passed and no DSP is wired yet. What this session did is
+decode the join completely, from the firmware's own code, and fix two
+instruments that were lying about it.** The headline:
+
+✅ **THE FIRMWARE BOOTS THE DSPs ITSELF, DURING THE COLDFIRE BOOT, AND WE HAVE
+CAPTURED THE BYTES.** No `.mem` dump is needed for the join: the payload comes
+out of the OS image, through the host port, under the firmware's own control.
+
+### What runs, and when
+
+`0x4000050c` — a **boot** address — calls `0x40001e50` ("DSP start") exactly
+once, at instruction **4,270,944** of the 10,170,953-instruction boot. It calls
+the uploader `0x40001d4c` twice:
+
+| call | source | length | DSP load address |
+|---|---|---|---|
+| 1 | `0x400e21e0` | `0x96` = 150 bytes | `P:0x31000` |
+| 2 | `0x400e2276` | `0xae` = 174 bytes | `P:0x32000` |
+
+Both destinations are in the **shared window** (`0x30000`–`0x3FFFF`). The caller
+first relocates the big blobs in ColdFire RAM (77,061 words from `0x400f59ef`,
+79,563 from a register) — so the payload proper is staged in RAM and these two
+uploads are a **bootstrap**, not the program.
+
+### The wire protocol, decoded and verified
+
+`--hostport-log FILE` (new) records every write into `0x20000000`–`0x20000fff`
+with its PC and instruction count. The boot makes **350 writes / 114 complete
+24-bit words**, and they frame exactly:
+
+```
+W 20000000 0081     pc 0x40001e5e     <- "start the DSP"
+W 20000004 0000     pc 0x40001d62     <- command/status
+word 000032                           <- COUNT: 50 words  (150 bytes / 3)
+word 031000                           <- LOAD ADDRESS
+word 0003f8 ... 50 words of program
+```
+
+✅ **The byte lanes come from the loader's own code** at `0x40001d74`, not from
+a reading of the manual:
+
+```
+movel %d0,%d1 / swap %d1 / extl %d1 / movew %d1,0x20000014   -> bits 23:16
+movel %d0,%d1 / asrl #8,%d1         / movew %d1,0x20000018   -> bits 15:8
+                                      movew %d0,0x2000001c   -> bits  7:0
+```
+
+only the LOW BYTE of each halfword is meaningful. ⚠️ Getting the lanes
+backwards makes word 2 read `0x001003` instead of `0x031000` — and `0x31000` is
+the load address the loader was *called* with, which is what says the decode is
+right. The loader also divides its byte length by 3 (`remsl #3`), which is why
+the count is 50 and the argument was 150.
+
+### ✅ And the DSP half of the protocol, in the firmware's own words
+
+The 50 captured words, disassembled at their load address with the vendored
+`dsp56kDisassemble`, are an **HDI08 bootstrap loader**:
+
+```
+031000: ori     #$3,mr
+031002: bset    #$12,y:<<$fffff9                  ; HDI08 config
+031003: bset    #$12,y:<<$fffffa
+031004: brclr   #HSR_HRDF,x:<<M_HSR,func_031004   ; wait for a host word
+031006: movep   x:<<M_HORX,a                      ; read it
+031007: brclr   #HSR_HTDE,x:<<M_HSR,func_031007
+031009: movep   a,x:<<M_HOTX                      ; ECHO IT BACK
+03100a: brclr   #HSR_HRDF,x:<<M_HSR,func_03100a
+03100c: movep   x:<<M_HORX,r0
+03100d: cmp     #<$3,a
+03100f: jmp     (r0)                              ; run the loaded code
+```
+
+That echo is the far side of the handshake **O6 had to fake** (`0x20000004`
+reading `0x0000`, `0x2000001c` toggling). With a real HDI08 behind the window
+the firmware programs the DSPs and the fakes come out.
+
+### ⚠️ Two instruments were lying, and both nearly produced a wrong finding
+
+Recorded because each one first returned a confident zero:
+
+1. **The PC watch could not see the boot.** It lived in `Rtos::stepOnce`, which
+   runs only after the handoff, so `--watch-pc 0x4000050c` reported **0 hits**
+   — for an address that runs 4.27 M instructions into the boot. The first
+   draft of this section said "the DSP loader never runs". It now lives in
+   `Machine` (consulted from both `run()` and `step()`), is armed BEFORE the
+   boot, and timestamps in instructions because the boot has no sample clock.
+2. **`--periph`'s log is capped at 4096 accesses** and the boot makes 8,235
+   peripheral writes before the DSP init, so "0 host-port touches in the
+   peripheral log" was a false negative too. `--hostport-log` is a separate,
+   uncapped-in-practice recorder for exactly this reason.
+
+Same family as `RTOS_FORK.md` §10.3b, and the third and fourth instances this
+week. **A zero from an instrument is not a measurement until you know the
+instrument can see the thing.**
+
+### What O8 still needs, in order
+
+1. Link `dsp56kEmu` into `ot_emu` and instantiate two cores (mechanical:
+   `tools/dsp_host` already boots both with the shared-window patch).
+2. Wire `0x20000014/18/1c` → `HDI08::writeRX`, `0x20000008` → HSR (bit 6 =
+   ready), `0x20000004` → the busy/status byte, and `0x20000000`'s `0x81` /
+   `0x8c` to start / swap. The chip select at `0xFC0A400C` picks the core.
+3. Let the firmware's own bootstrap upload run, and check the DSP's `P:0x31000`
+   against the captured words — that is O8's first real gate and it is
+   self-checking.
+4. Make the eDMA MOVE data (route A's model deliberately moves none), so the
+   frame exchange carries the 336/64/32-word records `docs/DSP.md` names.
+5. Only then the milestone's own gate: `verify_twocore`'s layouts rendering
+   identically when driven by the firmware instead of `dsp_host`'s hand-rolled
+   ABI calls.
+
+⚠️ **Step 5 is a bigger jump than it reads.** `verify_twocore` drives the
+EFFECT ABI directly (`r0`/`r6`/`r7`/`n7` and a `proc` call); the firmware drives
+whole FRAMES through the packer at `0x4000d3fc`. Making those render the same
+audio means the firmware's per-track records have to carry the same knob values
+the harness passes by hand, and nothing has yet checked that they can.
+
+### No regression
+
+`ctest` 6/6; the M6a oracle diff **8 compared fields agree, 0 disagreements**;
+the O6 fidelity gate **5 compared fields agree**.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

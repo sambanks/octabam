@@ -238,6 +238,9 @@ namespace ot
 
 	void Machine::peripheralWrite(const uint32_t _addr, const uint8_t _size, const uint32_t _val)
 	{
+		if(m_hostPortLogOn && _addr >= 0x20000000 && _addr < 0x20001000
+			&& m_hostPortLog.size() < 4000000)
+			m_hostPortLog.push_back({m_instructions, currentPc(), _addr, _val, _size});
 		m_periphWrites.push_back({_addr, _size, _val});
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'W', pc(), _addr, _size, _val});
@@ -255,6 +258,8 @@ namespace ot
 	bool Machine::step()
 	{
 		const auto p = pc();
+		if(!m_watchPc.empty())
+			notePcWatch(p);
 		const auto op = read16(p);
 		// The EMAC and mov3q are A-line: Musashi routes 0xAxxx to the A-line
 		// EXCEPTION, not to the illegal-instruction callback the V4e layer
@@ -442,6 +447,21 @@ namespace ot
 		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_D0);
 	}
 
+	void Machine::notePcWatch(const uint32_t _pc)
+	{
+		if(m_pcHits.size() >= 4000)
+			return;
+		for(const auto a : m_watchPc)
+			if(a == _pc)
+			{
+				PcHit h{m_instructions, _pc, getD(0), getD(1), getA(0), getA(1), getA7(), {}};
+				for(int i = 0; i < 5; ++i)
+					h.stack[i] = peek32(h.sp + 4 * static_cast<uint32_t>(i));
+				m_pcHits.push_back(h);
+				return;
+			}
+	}
+
 	uint32_t Machine::getD(const int _n) const
 	{
 		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())),
@@ -603,6 +623,8 @@ namespace ot
 			}
 			if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
 				++m_profile[p];
+			if(!m_watchPc.empty())
+				notePcWatch(p);
 			if(m_step)
 				m_step(*this, p);
 			exec();
