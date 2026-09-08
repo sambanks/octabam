@@ -2375,3 +2375,92 @@ Drivers: `tools/scratch/recaudio.py` (`--reg-probe`, `--read-probe`,
 `recaudio_seams.py`, `recaudio_analyse.py`, `make_seam_fixtures.py`
 (`--self` puts the play trigs on T1, `--ab N` sets the AB level — which
 measured as having no effect on the recorded level at 0, 64 or 127).
+
+### 10.19 Bryan's project, firmware, spreadsheet and primer arrive; his own arithmetic already predicts every hardware result we have (9 Sep 2026)
+
+**Received (`~/Downloads`):** his working project (`PROJECT 260908`) and the
+exact firmware he ran it on (`to_bam.zip`), plus his companion documents
+`octatrack_clickless_loops.xlsx` and `octatrack_sound_on_sound_primer.pdf`
+(revision 5 Sep 2026).
+
+**Firmware:** the `.bin` decodes (`tools/bin_decode.py`, then a small
+standalone depacker against `vendor/elektron-firmware-tool`'s
+`ap_depack`/`ELEK_SECT_OFF` — the tool's own `-d` needs SysEx framing our
+bare container lacks) to a 1,112,560-byte MAIN OS section carrying
+`BusDelay22`/`BusVerb22` — **build tag 22**, confirmed against the filename.
+
+**Project (`ot_project.py`'s own offset tables, read-only):** bank A part 1,
+T1 only is live — FLEX on slot 129 (R1, self-referencing: it plays its own
+recorder buffer), `INAB=2 INCD=0 RLEN=15 TRIG=0 SRC3=1 LOOP=0`, one trig at
+step 1 carrying masks `0x00/0x20/0x28/0x30` together (his "I usually have
+both on 1" from §10.18's answers). Pattern LEN=16, SCALE=1X (one bar),
+saved at 120.0 BPM (confirmed by Bryan directly). This project is a shared
+base for us to work from, not a test case — Bryan confirmed it does not
+click, consistent with prediction (RLEN 16 at 120 BPM is 88,200 samples,
+exact — one of the bar-length-clean tempos in his own Bar Lengths sheet).
+
+**His spreadsheet and primer, read directly.** Three sheets — Clean
+Combinations (5,279 clean BPM/RLEN pairs, 30–300 BPM x RLEN 2–64), Golden
+BPMs (60 tempos clean at every RLEN 2–64), Bar Lengths (86 tempos clean at
+16/32/64 trigs) — all built from the identical condition our own arithmetic
+uses: `RLEN x 15,876,000` must divide evenly by `tempo24`. His Calculator
+sheet checks any BPM/RLEN pair directly and reports CLEAN or `NOT CLEAN -
+will click`. His primer (page 5) states outright that 128 BPM "has no
+clean one-bar loop at all" and that 120/160/200 are clean at bar lengths
+but not at every RLEN.
+
+✅ **Every hardware result in hand is already predicted by this arithmetic
+— nothing here contradicts anything.** note-for-bam-seam-flash.md's five
+tests: 128/RLEN4 (his Calculator: NOT CLEAN) clicks; 128/RLEN16 (no clean
+one-bar length at 128 exists) clicks; 128/RLEN MAX with trigs every 4 steps
+(same as RLEN4 arithmetic, NOT CLEAN) clicks; 120/RLEN MAX and 120/RLEN4
+(both an integer sample count at 120 BPM) are clean. Bryan's own message —
+"I get clicks with combos I predict won't work" — is him confirming his
+calculator's `NOT CLEAN` predictions match hardware, not reporting a
+predicted-clean combo that clicked. There is no falsifier here, of his
+model or of the port's O10 arithmetic (the two share the same underlying
+condition).
+
+**Attempted: run his exact project through the C++ port with his exact
+firmware, to see WHERE in the signal path a known-clicking combo actually
+breaks.** `tools/ot_emu` was rebuilt clean (a peer session held the shared
+checkout on `coldfire-o12b-reverb`, so this work moved to its own worktree)
+and `stage_card.py` staged his project unmodified. Result: silent on every
+track (`o10_recloop.track_audio`, all zero over 48,000 samples) — not
+explained by a missing `--main-level` (O9b's root cause A; added, still
+silent) and not diagnosable from `FW_TRIG_WORDS` (reads 0 in every run
+tried, including ones that plainly did record audio — stale for tag 22,
+the "instrument blind to the thing it's checking" trap again).
+
+**Harness validated against a known-good fixture — and a real gap found in
+the validation itself.** `make_seam_fixtures.py`'s `r4_128` (steps 2/6/10/14,
+same firmware, same command line) DOES record and play audio (T1/T2 both
+~47.6–47.8k/48,000 samples nonzero) — so the command line is right and
+Bryan's silence is not a flag-mistake. But a control built to isolate "does
+a step-1 trig fire" — `r4_128` with its trigs moved to step 1 only, nothing
+else changed — came back with bit-identical nonzero counts to the
+unmodified step-2/6/10/14 fixture (47,561 and 47,795, exactly, both tracks).
+Two different on-disk trig patterns cannot legitimately produce the exact
+same sample-accurate result; the run's own log line — `sequencer : playing
+bank 1 pattern 0 (re-selected through the load's own last step)` — says the
+port does not necessarily start stepping from step 1 at transport start, so
+a short run (3,000 frames, under one loop pass at either tempo) cannot be
+trusted to have exercised the trig at all. Separately, the primer's own
+description of a step-1 REC+PLAY loop — "there's an implicit 16-trig
+delay... the audio always lands on step 1 of the next cycle" — means any
+future run also needs to cover at least two full loop passes before a
+played-back click could show up at all, on top of that starting-step
+question. **Neither is resolved. Stopping here for review rather than
+guessing further.**
+
+**What's actually open, now that the arithmetic side is settled:** the
+port needs to run long enough, and from a known starting step, to show
+WHERE a combo already known to click (e.g. 128/RLEN4) actually breaks —
+the recorder's own write, or the FLEX voice's retrigger reading it. That is
+work on our side; no further data is needed from Bryan for it.
+
+Artifacts (this session's worktree, not yet committed to a branch): staged
+card images and a MAIN-OS depacker (`out/depack_elek.c`, wants folding into
+`tools/` proper if this path gets reused — it duplicates none of
+`elektron-firmware-tool`'s logic, just calls its `ap_depack` on a bare ELUP
+payload the tool's own `-d` refuses without SysEx framing).
