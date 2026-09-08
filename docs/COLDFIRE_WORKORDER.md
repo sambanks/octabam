@@ -726,7 +726,27 @@ write map for the DSP side once the ColdFire sends anything. **Falsifier for
 (it does — it is Sam's rig), so this is a fidelity gap, not firmware
 behaviour; the question is which peripheral or flag the voice start waits on.
 
-### O10 — the recorder with real input *(after O9b or in parallel; Opus)*
+### O10 — FLEX playback + the recorder loop under the port ✅ DONE (8 Sep 2026, branch `coldfire-o10`) — the port does NOT reproduce the click
+
+`COLDFIRE_PORT.md` O10. ❌ "a FLEX voice never renders in either emulator"
+is retracted for the port: the voice's audio is in the 84-word track
+record (a list of `(count,0,0x40000,tag)` segments — parse it, do not
+window it), and a FLEX slot plays sample-exact (`kick.wav<<8`, −100 dB,
+TSMODE 0). The capture pairs are measured (RX0 slot 2 → the ColdFire's A/B
+at +0x80). Bryan's fixtures (route A's `make_seam_fixtures.py`, staged as
+cards, `--audio-in tones`): 128/RLEN 4 for 32 passes, 128/MAX, 120/RLEN 4
+and the `--self` shape are ALL one continuous sine to −104 dB at the voice
+tap — the play trigs and the arms share the fractional step grid, so the
+recording-level −1 seam route A found never reaches the played stream.
+Analysers: `tools/scratch/o10_recloop.py`, `o10_continuity.py`,
+`o10_seam.py`, `o10_phase.py`. **Open:** where the hardware click lives is
+outside what the port models (its trig/arm timing is idealised; the RTOS
+tick is 2× off in both emulators; the DSP/ESAI phase is the port's). The
+one falsifier the port can still run is a fixture whose play grid differs
+from the arm grid (`r4_128_off`, play trigs at 4/8/12/16) — result in the
+port doc.
+
+### ~~O10 — the recorder with real input~~ *(the original entry)*
 
 The inputs reach the ColdFire's capture buffers now. Bryan's click
 (`octabam-seam-patch-falsified`) wants content injected at the source and the
@@ -734,6 +754,23 @@ pool blocks read across the arm: the RECTRIG fixture with `--audio-in tones`
 (or a WAV) and `--block-log`, reading the packed pool blocks
 (`RTOS_FORK.md` §10.16's write path `0x400068e4`). No DSP voice needed to
 RECORD; playing it back does.
+
+## Where the port stands after O10 (8 Sep 2026), and what is left
+
+The port boots the firmware, mounts the card, loads the project, runs the
+sequencer byte-identical to route A, drives both DSP cores through the host
+port, takes ESAI audio in, plays FLEX samples sample-exact, records through
+the recorder, and renders a THRU track's FX chain bit-identical to
+`dsp_host`. The queue above is done. What remains is fidelity debt, each
+with its decider:
+
+| debt | decider | cost |
+|---|---|---|
+| RTOS tick = PIT on the CPU clock (5 ms) where the RM says bus clock (10 ms); every wall-clock number in the records is 2× out if so (`CHIP.md` §1) | a hardware tick measurement (an LED blink / a UI timeout on video), or a firmware constant that only fits one | one capture |
+| DIR names RX0 slot 0 "A", the ColdFire capture names slot 2 "A" (O9c vs O10); stable per run, not a rotation | a tone into the unit's input A with a THRU track and the recorder's INAB | one capture |
+| the track record's segment split and tag word (O10) — what the DSP does with them | read payload B's unpack of the 84-word record | RE, no hardware |
+| Bryan's click: the port shows none in any shape because arm and trig round alike; hypothesis = a 2-sample-unit stage on one side | Bryan's project file run AS-IS under the port (read SRC3/AB/CD/LOOP/QREC/timestretch first), then his one-pass test and the odd/even per-pass-walk tempo test (125 vs 130 BPM) on the unit | his file + two captures |
+| the O9c comparison on the shipping image (bus engines, core 0) | `make bus` + the ONEAUX card through the same fixture/fit (`o9d_compare.py`) | one session, no hardware |
 
 ## Running it overnight
 

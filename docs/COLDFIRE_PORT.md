@@ -1591,7 +1591,7 @@ running and the poked trig firing at frame 344:
 | the RIG as staged (T1 THRU, master track on), tones in | a THRU track passing the inputs, tracks 1–4 → core 1 → ColdFire → core 0 |
 | the same, `MASTER_TRACK=0` | the master track was the gate |
 | T5 THRU with a trig in A01 step 2, tones in, master on and off | a THRU on the ESAI core itself, no inter-core hop |
-| T1 FLEX on slot 1 with `KICK.WAV` staged (`stage_card.py --audio`), `TSMODE=0` | the ColdFire rendering a sample into the 512-word block |
+| T1 FLEX on slot 1 with `KICK.WAV` staged (`stage_card.py --audio`), `TSMODE=0` | the ColdFire rendering a sample into the 512-word block — ❌ the WRONG block (it is the forwarded read-backs); the sample goes into the track's 84-word record and, with the main level posted, it renders sample-exact (O10) |
 
 What the instruments say about where it stops:
 
@@ -2185,6 +2185,164 @@ Instrument rule added to the port: **a DSP-side "byte-identical" between
 two cards is not evidence until the host-port dump shows the cards differed
 on the way in.** Three O9c retractions rode on skipping that check.
 
+## Milestone O10 — FLEX playback renders, sample-exact; the recorder loop under the port (8 Sep 2026, branch `coldfire-o10`)
+
+### ✅ "A FLEX voice never renders in either emulator" is retracted for the port
+
+O9 staged `KICK.WAV` on T1's FLEX slot and watched the 512-word block to
+core 0 and the read-backs; O9b/O9c repeated "the FLEX loader is unlocated".
+Both watched the wrong block, and O9's run had no main level (O9b's root
+cause A). The audio of a voice — THRU or FLEX — travels in the track's
+84-word record (O9d). Fixture: the RIG with T1 = machine type 1 (FLEX) on
+slot 1 in banks 1–2, all parts and mirrors, T1 FX1/FX2 = SEND, the kick
+(`scripts/make_test_audio.py kick`, 16-bit mono) staged at slot 1's own
+card path, `--poke-trig 2 --main-level 64`, no audio in:
+
+- T1's record carries audio from frame 1 (the pattern's own step-1 trig),
+  0 dBFS peak, retriggered at the poked trig (the kick restarts at record
+  sample 5,528 = frame 345.5 for a trig at 344); the read-back and TX0 ring
+  words 2–5 (both channels, a centred voice) carry it.
+- With the slot's `TSMODE=0` the record IS the file: `kick.wav << 8`,
+  residual **−100.2 dB**, k = 1.000, lag −16 samples (one frame). With the
+  RIG's `TSMODE=2` (timestretch) the fit is −3.9 dB — grains, as expected.
+
+So the ColdFire's sample renderer runs under the port from the card, sample
+for sample; the card read (176 sectors) O9 saw was the load doing its job.
+
+### ✅ The capture pairs, measured from the ch 7 blocks (corrects O9c)
+
+Each ch 7 block is one page of the ColdFire's input-capture ring
+(`0x80005460 + page·0x100`, 64 words): **+0 = the C/D pair, +0x80 = the A/B
+pair**, 16 × (L,R) each, exactly RTOS_FORK §10.18's layout. A tone on RX0
+slot 2 lands at **+0x80 (A/B, L)**; on slot 0 at **+0 (C/D, L)**. O9c's
+"+0x80 is fed from TX0 ring words 0/7 and never written" is ❌ retracted —
+it is written, from the ESAI-in ring, and carries what the DSP calls
+RX0 slot 2. 🟡 The DSP's DIR path called slot 0 "A" (O9c); the two names
+disagree by two slots, which is the receive ring's phase against the ESAI
+slot counter (the same rotation O9c found on the transmit side). The
+ColdFire's naming is what the recorder uses: **INAB records the +0x80 pair
+= RX0 slot 2/3 in the port.** ✅ Stable, not a rotation: three runs with
+different load lengths (20.0/20.5/21.0 s) all land the slot-2 tone in the
++0x80 pair — the receive ring's phase is fixed where the transmit side's
+rotates (O9c), so the two-slot offset between the DSP's DIR naming and the
+ColdFire's capture naming is a fixed fact of the port, 🟡 unmeasured on the
+unit. `--audio-in tones` (500·(k+1) Hz on slot k)
+sidesteps the question: the recorded frequency says which slot was taken.
+
+### ✅ The track record's audio is a list of segments (corrects O9d's "words 8..38")
+
+Decoded from the FLEX run (`tools/scratch/o10_recloop.py record_audio`):
+an 84-word track record carries **16 stereo pairs in segments**, each a
+4-word header `(count, 0, 0x40000, tag)` followed by `count` (L,R) pairs. A
+THRU voice ships two empty headers then the 16 pairs at words 8–39 (what
+O9d read); a FLEX voice ships `(15 pairs)(1 pair)`, `(14)(2)`, `(13)(3)`,
+`(12)(4)`, `(11)(5)` — the split walks one sample per frame with the first
+header's count (0x0f, 0x0e, …) and the tag word steps `0x040000 +
+n·0x400000`. 🟡 What the split means (a source-position/interpolation
+boundary the DSP consumes) is not decoded; what is measured is that parsing
+the segments gives the voice's audio sample-exact (the kick fit above, and
+the −104 dB below), and reading a fixed window does not — two "seams" were
+found and retracted inside an hour before the parse (frame-periodic
+residuals against a fitted sine are the tell).
+
+### ✅ Bryan's 128 BPM / RLEN 4 loop under the port: sample-continuous for 32 passes
+
+Fixture = route A's own (`tools/scratch/make_seam_fixtures.py` → `r4_128`:
+16-step 1X A01, T1 = recorder trigs REC1/INAB at steps 2/6/10/14, RLEN 4,
+T2 = FLEX on R1 with play trigs at the same steps, 128 BPM), staged as a
+card, `--audio-in tones` (500·(k+1) Hz on RX0 slot k), `--main-level 64`,
+8 bars = 42,000 frames (≈45 min wall), `--block-dump`.
+
+- The recorder records **input A = the 1500 Hz tone on RX0 slot 2** (the
+  +0x80 capture pair), and T2 plays R1 from the first play trig at step 2
+  (record sample 5,056 = frame 316; the trig write is at frame 322) at
+  −20 dBFS, the input's own level. Play trigs land every 20,672 samples.
+- **One sine, fitted on passes 2–8, fits all 32 passes to −104.4 dB rms
+  (24-bit rounding), maximum deviation 0.0% at every sample** — through
+  every pass boundary and every retrigger, pass 9, 17 and 25 included.
+  `o10_seam.py` (residual phase of the tone) and a per-sample residual at
+  each trig agree. The voice's audio that reaches the DSP has no seam.
+- This is CONSISTENT with route A's recording-level finding (§10.16.5: the
+  ninth arm lands on the eighth recording's last sample), not against it:
+  the play trigs walk the same fractional step grid as the arms
+  (4 steps = 20,671.875 samples → 20,672 ×7 then 20,671), so a recording that
+  starts one input sample early is also played one sample early, and the
+  stream stays continuous. On this grid, at this tempo, with play trigs on
+  the arm steps, there is no click by construction.
+- 🟡 TX0 in this run sits at −75 dBFS (the RECTRIG project's levels) with a
+  −18 dB residual against one sine in every pass alike — an instrument
+  limit at that level (the O9c ring-rotation capture, the output stage), not
+  a seam; the DSP chain's continuity was proven on the THRU comparison at
+  normal levels. The voice tap is the decisive one here.
+
+### ✅ Three more of Bryan's shapes, four bars each, same result
+
+| fixture (`make_seam_fixtures.py`, 4 bars = 21,000 frames) | voice tap, one sine over every pass |
+|---|---|
+| RLEN MAX, 128 BPM, play trigs on the REC steps (his test 3) | −104.4 dB rms, max 0.00 % |
+| RLEN 4, 120 BPM (his clean control) | −104.4 dB, 0.00 % (pass = 22,050) |
+| RLEN 4, 128 BPM, `--self`: play trigs on T1, the recording track | −104.4 dB, 0.00 % (T1 plays and records a 1500 Hz tone; INAB records the inputs, not its own output) |
+| RLEN 4, 128 BPM, play trigs OFF the record steps (4/8/12/16 against REC at 2/6/10/14) | −104.4 dB, 0.00 % from the first trig at step 4 (`r4_128_off`) |
+
+And the read-back tap (the chain OUTPUT, T2's slot of core 1's 256-word
+read-back, `o10_continuity.py --readback`) on the 8-bar run: −69 dBFS (the
+RECTRIG part's own T2 level, 49 dB under the voice), residual −56 dB rms
+and 0.5–0.7 % max **in every pass alike** — the DSP's arithmetic floor at
+that level, nothing localised at any trig or boundary. ✅ Done: with T2's AMP VOL at 127 (the AMP page is the six bytes BEFORE
+the track's FX1 row in `ot_project`'s P1_OFF layout — lane flat 12..17; the
+`+0x1b` "level" byte did nothing to the read-back) the read-back rises to
+−57.1 dBFS and the residual against one sine is −58.9 dB rms, **broadband**
+(every harmonic below −100 dB relative: it is T2's FX1 FILTER's own
+low-level noise, not distortion) and **proportional to the signal**, with a
+single-sample −0.5 % dip (−103 dBFS absolute) at each retrigger and no phase
+step anywhere. The DSP side of a retrigger is clean to that level.
+
+**So the port does not reproduce Bryan's click at 128 / RLEN 4 with play
+trigs on the record steps.** What the port cannot see, and where the click
+can still live: the unit's own trig-to-arm timing (the RTOS tick is 2× off
+in both emulators — `--pit-clock`, recorded in O8; the 0x8c jitter is real
+but the port's frame-lock is idealised), the DSP-side retrigger of a FLEX
+voice on a buffer being written (the port's DSP runs the real code, but its
+ESAI/DMA phase against the ColdFire frame is the port's), and any hardware
+path outside the host port. All four falsifiers the port can run — a play trig NOT on a REC step, RLEN
+MAX, the sound-on-sound shape, the 120 control — came back continuous: with
+both mechanisms on the same sample grid the played stream is the input
+delayed by the arm-to-trig offset, and that offset never changes. Bryan's
+click therefore needs the two to ROUND DIFFERENTLY on the unit (the pass is
+20,671.875 samples at 128 BPM — a fraction; at 120 it is 22,050 exactly,
+which is why 120 is clean), 🟡 inferred from the arithmetic, and the port
+cannot show which side rounds which way because it rounds both the same.
+
+✅ **Measured, the port's own timing of the two:** the play trig's sub-frame
+nibble (`FW_LIVE_NIBBLE`) is `f` for passes 1–8 (frames 322, 1614, …, 9366),
+`e` for passes 9–16 (10658 …), `d` for 17–24 (20994 …) — one sample earlier
+every eight passes, in lockstep with the arm offset route A measured
+(15 ×8 then 14, §10.16.5). Both derive from the frame builder's event
+arithmetic, so in the port they cannot drift apart. 🟡 **What would make the
+unit click on exactly Bryan's pattern:** a stage on one side that works in
+2-sample units (stereo pairs). At 120 BPM a pass is 1,378 frames + 2
+samples, so the nibble walks by two per pass and a 2-sample stage tracks it
+exactly — clean; at 128 it walks by ONE every eight passes, which a 2-sample
+stage cannot follow — one click per eight passes, i.e. every two bars,
+starting at the ninth pass (Bryan: "~6th repeat" onset, clicks at RLEN 4,
+16 and MAX alike, 120 clean). Hardware falsifier that costs one capture: a
+tempo whose pass fraction walks by an ODD number of samples per pass but
+not every eight (e.g. 125 BPM: 21,168 samples/pass exactly = clean
+predicted; 130: 20,353.85 → walks; the prediction is click iff the
+per-pass walk is odd), against a tempo with an even walk.
+
+### Upstream check (8 Sep 2026, after a prior-art note from a parallel session)
+
+joelanders/mc68k-md-mm PR #5 ("Expose shared HI08 command acceptance and
+receive status", open, based on our pin 4a6d0d1) adds optional callbacks so
+CVR HC follows DSP acceptance. The port already does exactly that on its own
+side — `dsp.cpp` clears HC/HCP from the dsp56300 interrupt-taken hook (O8,
+measured) and does not use mc68k's HI08 acceptance path — so the PR neither
+changes what the port relies on nor duplicates code the port would drop.
+Bump the pin when it merges; nothing to port. dsp56300/dsp56300 issue #5 is
+the AGU modulo pre-decrement defect O9b fixed in `agu.h`; still open
+upstream, our patch stands.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
@@ -2202,8 +2360,8 @@ on the way in.** Three O9c retractions rode on skipping that check.
   64-word block per core, with one 64-word block read back.
 - **Audio out.** ~~The ESAI path is untraced.~~ ~~Traced in O9: input proven,
   output silent because no track ever starts.~~ O9b: THRU tracks pass the
-  inputs to TX0 through the whole chain. FLEX playback (the sample loader)
-  is the open half.
+  inputs to TX0 through the whole chain. ~~FLEX playback (the sample loader)
+  is the open half.~~ ✅ O10: FLEX playback renders, sample-exact.
 
 ## The oracle, made concrete (7 Sep 2026)
 

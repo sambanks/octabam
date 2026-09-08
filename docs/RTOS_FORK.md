@@ -2337,6 +2337,39 @@ model is the candidate again — its 128/4 prediction was "seams from pass
 Two questions for him cost nothing: does the click STOP after about a
 minute, and what was trigged on the flex in the MAX test.
 
+**Both answered (Bryan T, 8 Sep 2026, evening, via Sam):** *"REC trigs and
+PLAY trigs on the same steps. I usually have both on 1, but tested
+2/6/10/14. Clicking definitely does not stop. Once it is in the buffer it
+is always in it."* He offers his sound-on-sound project file.
+
+- ✅ **The flex IS retrigged, and on the same step the recorder arms, in
+  every test including MAX.** The "flex not retrigged at all in test 3"
+  escape above is closed: the reader is not free-running, so the play
+  retrig arrives on the same step as the arm and the two heads start the
+  pass together (d ≈ 0, ±the order in which the two trigs are serviced).
+- 🟡 **"Does not stop" cannot separate the two candidates in HIS patch.**
+  Sound-on-sound re-records the buffer's own playback (his wording — "once
+  it is in the buffer" — says the feedback exists; the SRC3/INAB settings
+  that make it so are in the project file, not yet seen). Any play-side
+  discontinuity the first band pass produces is captured into the next
+  layer and plays for as long as the feedback holds it, so the band
+  model's "seams 5–123, then clean" would ALSO sound like it never stops.
+  The discriminator is a recording with **no live writer**: record ONE
+  pass at 128/RLEN 4, remove the REC trig, keep the PLAY trig every 4
+  steps — clicks or not; then remove the PLAY trig too (LOOP on, free
+  loop) — clicks or not. Clean/clicks/clean splits recording content from
+  the retrig from the loop point. **Asked, 8 Sep 2026 (evening, via
+  Sam); answer pending.**
+- **The project file is the fixture.** The port now renders a FLEX voice
+  sample-exactly from the card (COLDFIRE_PORT O10), so his project loads
+  as-is (`ot_emu`, `emu_card`) and the recorder loop under the port can
+  run his exact patch — SRC3, AB/CD, LOOP, QREC and the recorder buffer's
+  timestretch attribute included — with a known tone in and the played
+  output watched at the retrig, which is the half route A could not see.
+  The timestretch attribute is worth reading first: at 120 the buffer
+  length is an exact tempo multiple and at 128 it is not (🟡 a candidate
+  only; nothing measured).
+
 Drivers: `tools/scratch/recaudio.py` (`--reg-probe`, `--read-probe`,
 `--field-probe` are the instruments that found the three defects),
 `recaudio_seams.py`, `recaudio_analyse.py`, `make_seam_fixtures.py`
