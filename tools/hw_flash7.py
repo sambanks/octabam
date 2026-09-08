@@ -188,9 +188,11 @@ def card(image=IMAGE, project=TEST, vol="/Volumes/OCTATRACK", set_name="PRESETS"
     if dst.read_bytes() != image.read_bytes():
         sys.exit("image copy does not compare")
     for p in vol.iterdir():
-        if p.is_file() and p.name != image.name and p.stat().st_size > 300_000 and \
-                (p.suffix.lower() in (".bin", ".bak") or p.name.startswith("OCTATRACK")):
-            print(f"  removing old firmware at the root: {p.name} ({p.stat().st_size} bytes)")
+        # only OUR previous builds go; the stock `OCTATRACK_OS1.40B.bin.bak`
+        # that has sat at the root since 2023 is Sam's and stays
+        if p.is_file() and p.name != image.name and p.name.startswith("OCTATRACK_OCTABAM") \
+                and p.suffix.lower() == ".bin":
+            print(f"  removing our previous build at the root: {p.name} ({p.stat().st_size} bytes)")
             p.unlink()
     # the project
     pdst = setdir / project.name
