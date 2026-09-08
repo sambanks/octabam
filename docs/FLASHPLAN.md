@@ -348,6 +348,7 @@ forced to 0 in code — gated).
 | v | the refusal | put SEND on T8's FX2 with AUX 127: nothing changes; the same on T4: it sends | T8 audible in the return (the position pin is wrong) |
 | vi | stations silent | a station on any track with its old send bytes (a tag-17 part, unstamped, on a scratch copy) sends nothing | a station's track in the reverb with its AUX at 0 |
 | vii | the return pin | a BUS-mode Character on T7 or T4: returns nothing; on T8: returns | a return from T7 or T4 |
+| vii-b | a wrong-track station does not kill the return | a BUS-mode Character on T4 AND the T8 return together: T8 still returns (✅ 9 Sep 2026 under the port after the fix; before it T8 went silent) | T8 silent with a BUS station elsewhere |
 | viii | cross-core stamps | play for minutes: no flicker of the return, no host print creeping back | the return dropping out and back (a stamp lost > 3 blocks) |
 
 **Stop condition:** any of ii–iv failing on the unit after passing
@@ -370,7 +371,11 @@ things, all found by running the shipping image under the ColdFire port
 2. **One rotation tracker per core** (`build_bus.py` ROTLATCH, payload B):
    the fourth core-1 client (T4) landed one buffer late every frame under
    the firmware's timing; all four now resolve the same buffer.
-3. Nothing in the part layout: no re-slot, no stamp needed beyond what
+3. **A BUS-mode station off track 8 no longer silences the return** (it
+   stole the engines' clear-on-read liveness stamps; `character.asm` now
+   touches them only with a RET level up). Found by running flash 6's own
+   claim vii under the port with T8 present.
+4. Nothing in the part layout: no re-slot, no stamp needed beyond what
    flash 6 already required. `OCTABAM_ONEAUX` on the card loads as is.
 
 **Pre-flash evidence, under the port (no unit):** Sam's RIG project as

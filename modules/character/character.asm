@@ -444,6 +444,19 @@ ch_sdone:
         move    a,r5                    ; DELAY output [read]
         move    #>$ffffff,m4
         move    #>$ffffff,m5
+; ---- ONLY THE RETURN READS THE STAMPS (9 Sep 2026, found under the port) --
+; The engines' liveness words are clear-on-read, single reader by design. A
+; BUS-mode station on any OTHER track (T4, T7 -- flash 6's claim vii only
+; asked that it return nothing, and it does) was still running this block,
+; stealing the stamps before T8's return read them: with such a station in
+; the part the REAL return went silent from its first sample (the port,
+; COLDFIRE_PORT.md O12; the local gate never tried both at once). A station
+; whose RET level is 0 -- not track 8, or the knob down -- has no business
+; here: skip the reads AND the RETV/RETD stamps below. (The engines then
+; keep printing, which is what a return at 0 means.)
+        move    x:(r7+$3e),a
+        tst     a
+        beq     ch_ndl                  ; no return level: touch nothing
 ; ---- which stage is live? (one-aux rig, 7 Sep 2026) ---------------------
 ; Each engine stamps its own word every block it processes (y:$9c4 reverb,
 ; y:$9c5 delay); this reads and clears them (single writer, single reader)
