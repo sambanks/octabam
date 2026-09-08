@@ -1943,11 +1943,25 @@ select the tools do not stamp yet), not because the parameter is missing.
 inputs through both DSP cores, with each track's FX1/FX2 running and reading
 its part's parameters — the machine O8's step 5 needs. The bit-exact
 comparison against `dsp_host` is now a bounded job, not an unknown: it needs
-(a) a part setting that makes the effect non-transparent (a page-2 select,
-which wants a `stamp-slot` that writes the count-3 page-2 renderer — see
-`build_bus.py`'s `verify_menu`), and (b) the gain structure between the two
-paths reconciled (the port's chain is main level → track level → the −11.1 dB
-THRU path; `dsp_host` pokes r6 with no mixer). Neither is a locate any more.
+(a) a part setting that makes the effect non-transparent, and (b) the gain
+structure reconciled. Both are now measured facts, not locates:
+
+- ✅ **A page-1 FILTER setting cannot make it filter.** Four (BASE, WDTH)
+  combinations — (0,20), (127,20), (64,10), (40,127) — all give the SAME
+  output at 300 Hz and 8 kHz (−0.2 dB tilt, i.e. flat) even though BASE
+  reaches the coefficient block. FILTER's actual response is gated by its
+  page-2 HP/LP selects (12dB/24dB, off = bypass), so the comparison needs a
+  `stamp-slot` that writes a page-2 select (the count-3 renderer; mind
+  `build_bus.py`'s `verify_menu` and the descriptor-formatter trap). That is
+  the one piece of new tooling O9c's finish needs.
+- ✅ **The THRU monitor gain is the track's own input level, NOT the main
+  level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
+  −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
+  monitor does not care). So the main gain table O9b had to post scales
+  TRIGGED VOICES; a THRU track passes its input at its INAB level (−11.5 dB
+  here for T2's part). `dsp_host` (`rig_render`) applies the effect to the
+  stem at `--amp` with no mixer, so the comparison divides out a KNOWN
+  constant per path — the THRU's INAB gain, not a main-level-dependent one.
 
 `rig_render.py` on the same part (stock image, `--stem T2=`) rendered T2 at
 −138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path where the
