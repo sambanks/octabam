@@ -356,6 +356,46 @@ configuration (which core, which position) before touching code.
 
 ---
 
+## Flash 7 — the one-aux rig with the port's two fixes (bamsep27, 9 Sep 2026) — NEXT
+
+**The image:** `REMIX=bamsep27 make image` on `main` after #160, #163
+(and #164, harness only). Against tag 20 on the unit it changes THREE
+things, all found by running the shipping image under the ColdFire port
+(`docs/COLDFIRE_PORT.md` O11/O12), none by guessing:
+
+1. **The return's pin and the track-8 refusal use the dispatcher's real
+   r7** (`$6a00/$6b00`; three r7 blocks per track, not two). Tag 20's
+   "hosts keep printing, nothing on T8" was this: the station never
+   matched, cleared its RET level, stamped nothing.
+2. **One rotation tracker per core** (`build_bus.py` ROTLATCH, payload B):
+   the fourth core-1 client (T4) landed one buffer late every frame under
+   the firmware's timing; all four now resolve the same buffer.
+3. Nothing in the part layout: no re-slot, no stamp needed beyond what
+   flash 6 already required. `OCTABAM_ONEAUX` on the card loads as is.
+
+**Pre-flash evidence, under the port (no unit):** Sam's RIG project as
+backed up (master on, T1/T2 THRU on the two input pairs), tones on all
+inputs, 1,500 frames on this image: T1 and T2 pass their inputs (−23.8 /
+−23.0 dBFS out), **T5 prints nothing, T1 prints nothing but its dry, T8
+carries the return**, no fault, no stall. With the master off the return
+alone on T8 builds as a reverb should; the delay path through the bus is
+bit-identical to `dsp_host` (−120 to −200 dB); the reverb path matches it
+within its free-running modulation.
+
+**Claims, in flash 6's order — what changes:**
+
+| | claim | expected now |
+|---|---|---|
+| ii | the chain | PASSES on the unit for the first time: repeats and reverb on T8, T1/T5 silent. Falsified by the hosts still printing → the r7 stride on the unit differs from the port's (measure it: `--dsp-pcwatch`'s r7 column against a station's own stamp) |
+| v | the refusal | T8's SEND at AUX 127 changes nothing (pin `$6b00`); T4 sends |
+| viii | cross-core stamps | no flicker; ALSO: T4's send arrives in step with T2/T3's (it was a block late) |
+
+Everything else as flash 6. **Stop condition unchanged**, with one
+addition: if ii fails, the port has a measurement for it in under an hour
+— bring the exact part and pattern back, not a theory.
+
+---
+
 ## Flash 5 — the ColdFire headroom probe (cfprobe)
 
 **The image:** `REMIX=cfprobe make image` — the rig plus HELLO WORLD and

@@ -30,6 +30,13 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/ot_project.py stamp-defaults PROJECT_DIR REMIX  # station ids only
     python3 tools/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
     python3 tools/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
+    python3 tools/ot_project.py thru-track PROJECT_DIR TRACK [--page HEX14]
+        # a THRU machine that STARTS: machine type 2 in every part of every
+        # bank (+ mirrors), the THRU playback page (default 00017f00000000 =
+        # the pair that lands at the ColdFire's +0 capture, RX0 0/1 in the
+        # port; the RIG's other THRU uses 00004000000000), and a trig at
+        # step 1 in pattern 1 of every bank -- a THRU passes nothing until it
+        # is trigged (measured 9 Sep 2026, COLDFIRE_PORT.md O12).
         # the effect id on ONE track in EVERY part of EVERY bank (all eight
         # part records, both .work and .strd), with optional page bytes.
         # ⚠️ Every part, because the emulated load applies bank 1 part 1 and
@@ -566,6 +573,34 @@ def _resolve_slot(mod, slot):
     return s
 
 
+def thru_track(pdir, track, page_hex="00017f00000000", guard=True):
+    """Make `track` (1-based) a THRU machine that starts on play: machine
+    type 2 in all eight part records of every bank, its THRU playback page
+    (seven bytes at Part+0x8edaa + track*30 + 2*7), and a trig at step 1 in
+    pattern 1 of every bank. A THRU machine on the unit passes nothing until
+    it is trigged (the RECTRIG-based rig was silent for exactly that, 9 Sep
+    2026); the RIG's own THRU tracks carry a step-1 trig."""
+    pdir = pathlib.Path(pdir); t = int(track) - 1
+    if not 0 <= t < NTRACKS:
+        sys.exit("track is 1..8")
+    page = bytes.fromhex(page_hex)
+    if len(page) != 7:
+        sys.exit("--page is 7 bytes (14 hex digits)")
+    pb = 0x8edaa - 0x8ed77                      # the PB page, relative to the part record
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                data[off + 0x2b + t] = 2
+                data[off + pb + t * 30 + 2 * 7: off + pb + t * 30 + 2 * 7 + 7] = page
+            base = trac_off(0, t) + 0x00 + 7    # pattern 1 (index 0), mask 0x00, step 1
+            data[base] |= 1
+        _bank_write(pdir, num, mut, guard=guard)
+    print(f"T{t+1}: THRU (type 2) in {NPARTS_ALL} parts of every bank, page {page_hex}, trig at step 1 of pattern 1")
+
+
 def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
     """Put effect `which` (module key/name or fx id) on `track` (1-based) in
     the FX1 or FX2 slot of EVERY part record (all eight, current + saved) of
@@ -880,6 +915,10 @@ if __name__ == "__main__":
         # a REAL set, before its first load on a flashed image: only the ids
         # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs
         stamp_defaults(pdir, sys.argv[3], replaced_only=True)
+    elif cmd == "thru-track":
+        args = sys.argv[4:]
+        page = args[args.index("--page") + 1] if "--page" in args else "00017f00000000"
+        thru_track(pdir, int(sys.argv[3]), page, guard="--no-guard" not in args)
     elif cmd == "set-fx":
         args = sys.argv[3:]
         page = page2 = None
