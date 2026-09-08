@@ -2530,3 +2530,54 @@ going further, since this reframes what O10 actually established.
 
 Drivers: `out/make_burst_wav.py`, `out/check_burst.py` (both in this
 session's worktree, not yet moved into `tools/scratch/`).
+
+### 10.22 `--mem-dump` added to the port; three independent checks converge on no recorded audio anywhere in the pool (9 Sep 2026)
+
+**New tool capability.** `tools/ot_emu/main.cpp` gets `--mem-dump
+"addr,len=path[;...]"` — raw ColdFire memory ranges to files, taken at the
+very end of the run. `--peek` only supports one word and only fires before
+`--sequencer` runs; nothing existing could read the recorder pool's actual
+content after a run. Built, tested, works (confirmed against `r4_128`'s
+pool rows and blocks below). Not yet moved out of this worktree.
+
+**Three checks, same fixture (`r4_128`, known-good per O10, burst probe
+instead of a tone, 2,600 frames / 6+ loop passes), three different
+mechanisms, one answer:**
+
+1. **The track's own output (§10.21):** the burst is heard once and never
+   again at any loop boundary.
+2. **The pool's block-assignment table** (route A's `POOL_ROWS =
+   0x46c2e9c0`, ten rows of 14,602 halfword block numbers, `--watch-mem` on
+   row 2 = track 0's row per `recaudio.py`'s own `track + 2` convention):
+   the only writes in the whole run are a single batch of ALL ZEROS at
+   sample 7,872 — never a real block number. Rows 0, 2, 3, 4 and 5's FINAL
+   content (`--mem-dump`) are plain descending sequences 690 apart
+   (14602→14583 for row 2, 13912→13893 for row 3, …) — a static per-track
+   free-list partition set up once, not something that changes with
+   recording activity. Row 1 is all zero.
+3. **The blocks that list points at** (route A's `POOL_BASE = 0x40A955E0`,
+   block N at `POOL_BASE + N*6144`): dumped blocks 14602, 14601 and 14583
+   — **all 6,144 bytes zero, in all three.** No audio content anywhere in
+   the region row 2 names.
+
+**Converging on: under this configuration, in this port, no evidence of
+captured audio exists anywhere in the recorder's own data structures** —
+not "the wrong observable," but nothing to observe. This is a stronger
+claim than §10.21's, and the honest caveat is the same shape as every
+address-based check in this section: `row = track + 2` is `recaudio.py`'s
+own convention for a DIFFERENT build (route A's Unicorn emulator, not tag
+22's tables in the C++ port), unconfirmed here — if the row/track mapping
+is wrong, blocks 14602/14601/14583 belong to some OTHER track or to
+nothing, and the negative result proves less than it looks like. What
+would close that gap: watch a MUCH wider span of the pool (dozens of
+blocks) for any nonzero write at all, not just the three blocks one
+assumed mapping points to — not yet done, the per-write overhead makes a
+wide watch slow and this stopped here for review.
+
+**If this holds up, it moves the bar for the whole recorder-click
+investigation**: before asking "does a known-clicking BPM/RLEN combo click
+because of the recorder's write side or the FLEX voice's retrigger," the
+port first needs to show the recorder writing ANY audio at all, under ANY
+configuration — which no measurement in this document has yet directly
+shown (every prior "sample-continuous" result used a signal a live
+pass-through would reproduce identically).

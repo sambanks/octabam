@@ -95,6 +95,7 @@ int main(int _argc, char** _argv)
 	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
+	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -150,6 +151,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
+		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--frame-timer")				frameTimer = true;
 		else
@@ -930,5 +932,33 @@ int main(int _argc, char** _argv)
 			std::printf("   %c %#08x size %u = %#x   (pc %#06x)\n", a.kind, a.addr, a.size, a.val, a.pc);
 		}
 	}
+	if(!memDump.empty())
+	{
+		size_t q = 0;
+		while(q < memDump.size())
+		{
+			auto e = memDump.find(';', q);
+			if(e == std::string::npos) e = memDump.size();
+			const auto spec = memDump.substr(q, e - q);
+			q = e + 1;
+			const auto eq = spec.find('=');
+			if(eq == std::string::npos)
+				continue;
+			const auto range = spec.substr(0, eq);
+			const auto path = spec.substr(eq + 1);
+			const auto comma = range.find(',');
+			if(comma == std::string::npos)
+				continue;
+			const auto addr = static_cast<uint32_t>(std::strtoul(range.c_str(), nullptr, 0));
+			const auto len = static_cast<uint32_t>(std::strtoul(range.c_str() + comma + 1, nullptr, 0));
+			std::vector<uint8_t> buf(len);
+			for(uint32_t k = 0; k < len; ++k)
+				buf[k] = m.read8(addr + k);
+			std::ofstream f(path, std::ios::binary);
+			f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+			std::printf("mem dump   : %#x..%#x (%u bytes) -> %s\n", addr, addr + len - 1, len, path.c_str());
+		}
+	}
+
 	return stop == ot::Machine::Stop::Handoff ? 0 : 1;
 }
