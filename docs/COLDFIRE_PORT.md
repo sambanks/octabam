@@ -1822,8 +1822,26 @@ differs is the A/B path. RX0 slots 4–7 not reaching the ring is 🟡 the
 vendored ESAI/DMA (the ring stride is 4 where the payload enables 8 slots);
 it costs nothing today because the unit has four inputs.
 
-Next in O9c: settle A/B, then the audio comparison against `dsp_host` on a
-THRU track whose FX2 is the effect under test.
+✅ **Measured next (a write watch on word 64 of the staging block and a PC
+watch at the copy's entry, `--dsp-pcwatch 0:55e`):** the +0x80 pair IS written
+every frame, with zeros, by the copy at P:0x55a called three times a frame
+from P:0x2df/0x2e2/0x2e6 — and its source for the +0x80 half is **the
+ESAI-OUT ring, `r1 = 0x8080` with `n1 = 7`**: the pair is TX0 slots 0 and 7
+of each output sample, which nothing in the port writes (the mix goes to TX0
+slots 1–4). The other two calls read the ESAI-in ring (`r1 = 0x8280` and
+`0x8282`, `n1 = 3`). So "A/B" in the ColdFire's capture block is not a raw
+input pair at all on this path: it is whatever the DSP puts on output slots 0
+and 7 — 🟡 the direct-monitoring / input-thru placement, which some ColdFire
+state the emulated load never sets would switch on (the project's `DIR_AB`
+is 0), the same family as the main level. The 43 dB-down leak of RX0 slots
+0/1 into the C/D positions is still 🟡. And `RSMA = 0x0f` is the firmware's
+own (payload A `P:0x30032`): four receive slots is the chip's configuration,
+not the vendored ESAI's.
+
+Next in O9c: find what writes TX0 slots 0/7 (a `--dsp-watch 0:X:8080` under
+different mixer states, or the sys-table scan for a DIR/monitor command),
+then the audio comparison against `dsp_host` on a THRU track whose FX2 is the
+effect under test.
 
 ## What is NOT here yet
 
