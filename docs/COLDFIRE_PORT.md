@@ -2532,9 +2532,10 @@ So half of a frame's senders deposit into buffer N and half into buffer
 N+1. The delay reads the accumulator on the same core with the same phase
 each block and is bit-exact regardless; the reverb, the only cross-core
 reader, gets a frame's deposits split across two of its "two back" reads —
-a persistent residual with a matched envelope, exactly what was measured,
-and the mechanism behind FAILURE_MODES' "cross-core bus glitch — the
-accumulators' race 🟡". `XBUS.md`'s rule ("clients never read the shared
+a persistent residual with a matched envelope — ❌ this link is retracted
+below: fixing the split leaves the reverb residual untouched; the split IS
+the mechanism behind FAILURE_MODES' "cross-core bus glitch — the
+accumulators' race 🟡" (T4 + delay MODE 1). `XBUS.md`'s rule ("clients never read the shared
 rotation word directly; each core tracks the rotation privately, advancing
 once per block") is not what the one-aux code does: the send client,
 both engines and the return all read `y:$36000` at their own block time.
@@ -2550,6 +2551,40 @@ between the cores. The port is the gate: after the fix the reverb path
 must come out bit-identical like the delay path. 🟡 Whether the unit's
 serving order lands the flip mid-frame exactly as the port's does is
 hardware's to say; that it lands mid-frame at all is enough to split.
+
+### ✅ The fix: one rotation tracker per core (9 Sep 2026, branch `bus-private-rotation`)
+
+Measured first, with `--dsp-pcwatch` on the RESOLVED write offset
+(`x:(r7+$69)` as each client consumes it): under the old per-instance
+tracking core 1's four clients resolved **3/1 per frame** — three on
+buffer N, the fourth (T4, the last dispatched) on N+1 — every frame. ⚠️
+Correction to the paragraph above: with T2 the only sender in the reverb
+fixture, its deposits landed consistently, so the split did NOT cause the
+reverb residual (which survives the fix, below); the split is the standing
+"T4 + delay MODE 1" hardware residual, T4 being that fourth client.
+
+The fix is in `build_bus.py`'s ROTLATCH body for payload B: the design's
+tracker (advance one step per frame; keep it when the shared word reads
+one step behind, i.e. a pre-flip read; snap otherwise) is kept, but ONE
+per core in a bus-scratch word only core 1 writes (`+0xc6`), advanced by
+position 0's FX2 (r7 == `$6200`, the rig's delay host) and checked by every
+client against the shared word. Measured after: **all four core-1 clients
+resolve the same buffer every frame** (0x30 ×4, 0x00 ×4, 0x10 ×4, 0x20 ×4).
+
+A first version latched the shared word as READ at position 0 and the
+port killed it within the hour: a pre-flip read puts the whole core one
+buffer BEHIND core 0, and its "two back" read is then exactly the buffer
+core 0's housekeeper is clearing (`R+1 ≡ R−3`): the delay path went
+SILENT under the port and `verify_onebus` lost its skew identity. So the
+four-deep scheme tolerates no cross-core offset at all — both cores must
+resolve the post-flip value — which is precisely what the tracker's
+asymmetric keep provides and a latch does not.
+
+Gates: `make verify-onebus` every property on both cores, skew identity
+included; `REMIX=bamsep27 make check` exit 0; the port's delay path
+bit-exact in the steady windows (−120 to −200 dB, lag now −21); the
+reverb path unchanged at −13 dB — still open, and now demonstrably NOT the
+rotation. UNFLASHED, alongside the O11 pins.
 
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches

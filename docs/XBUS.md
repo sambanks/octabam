@@ -110,7 +110,9 @@ defects below burned in:
 
 - **Clients never read the shared rotation word directly.** Each core tracks
   the rotation privately, advancing once per block, so all clients on a core
-  agree — a core-1 client that read the shared word at its own dispatch time
+  agree (✅ 9 Sep 2026: this was per INSTANCE until then, and the ColdFire port
+  showed core 1's fourth client on the wrong buffer every frame; it is now ONE
+  tracker per core, `build_bus.py` ROTLATCH) — a core-1 client that read the shared word at its own dispatch time
   would straddle core 0's flip and land contributions in a dead buffer on
   random blocks.
 - **The tracked rotation is seeded at `init`, and is NOT self-healing.**
