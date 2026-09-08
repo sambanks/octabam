@@ -1838,10 +1838,31 @@ is 0), the same family as the main level. The 43 dB-down leak of RX0 slots
 own (payload A `P:0x30032`): four receive slots is the chip's configuration,
 not the vendored ESAI's.
 
-Next in O9c: find what writes TX0 slots 0/7 (a `--dsp-watch 0:X:8080` under
-different mixer states, or the sys-table scan for a DIR/monitor command),
-then the audio comparison against `dsp_host` on a THRU track whose FX2 is the
-effect under test.
+✅ **The input map, settled by the project's own direct levels.** A scratch
+copy of the RIG with `DIR_AB=100` and `DIR_CD=100` (the mixer's direct
+monitoring, 0 in the project) staged and run with the same single-tone files:
+
+| tone on RX0 slot | TX0 slot 1 at DIR 0 | at DIR 100 |
+|---|---|---|
+| 0 | −77.9 dBFS | **−34.9** |
+| 2 | −35.1 | −30.0 |
+
+DIR AB moves slot 0 by 43 dB and DIR CD moves slot 2 by 5 dB, so **RX0 slots
+0/1 are inputs A/B and 2/3 are C/D**, and the "43 dB down" leak was the direct
+path at level 0 (🟡 a floor, or T1's INAB at a low setting in the part). The
+direct level does NOT travel in the 64-word track record: its `+0x32` field
+is the track LEVEL (the ColdFire writes `0x6c00` = 108 there every frame at
+`0x80005492`), and the DSP's copy of that field at X:0x4632 is overwritten
+with 0 by the staging copy at P:0x568 each frame — the pointer table at
+X:0x202–0x209 is not decoded here and the reading of `x:(r0+0x32)` as a gain
+at P:0x2f4 is left 🟡. **TX0 slots 0 and 7 stay silent at DIR 100 too**, so
+the capture block's +0x80 pair (the ColdFire's A/B) still has no source in
+the port; what places audio on those two output slots is the open item.
+
+Next in O9c: that source (a `--dsp-watch 0:X:8087` — nothing writes it at
+all today — after finding a mixer state that should; CUE and the master
+track are the untried ones), then the audio comparison against `dsp_host` on
+a THRU track whose FX2 is the effect under test.
 
 ## What is NOT here yet
 
