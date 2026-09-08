@@ -267,11 +267,15 @@ namespace ot::v4e
 
 	namespace
 	{
-		// MACSR bits that matter here (CFPRM 4.1): bit 5 F/I selects fractional
-		// mode, bit 4 S/U selects signed, bit 0 is the product-independent
-		// saturation flag this firmware never sets.
+		// MACSR bits (CFPRM Rev. 3, Table 1-5, and QEMU's cpu.h): bit 7 OMC,
+		// bit 6 S/U, bit 5 F/I, bit 4 R/T. ❌ Until 8 Sep 2026 S/U was taken as
+		// bit 4 here ("bit 4 S/U selects signed"), which is R/T: the frame
+		// builder's two level chains run at MACSR 0xb0 (OMC|F/I|R/T) and 0x60
+		// (S/U|F/I), and the swap read the first as "S/U" and the second as
+		// plain -- so a `movclrl` in the second returned ACC[39:8] where the
+		// chip returns the 16-bit-rounded ACC[39:24] in the LOW word (O9b).
 		constexpr uint32_t g_macsrFractional = 0x20;	// F/I
-		constexpr uint32_t g_macsrSigned     = 0x10;	// S/U
+		constexpr uint32_t g_macsrSigned     = 0x40;	// S/U (integer: 1 = unsigned; fractional: 16-bit rounding on the read-out)
 
 		// One accumulator, 32 bits plus its 8-bit extensions. Musashi's
 		// ColdFire state has no EMAC, so the port keeps its own -- four
@@ -300,15 +304,76 @@ namespace ot::v4e
 
 		uint32_t macsr(Machine&) { return g_emac.macsr; }
 
-		// Reading an accumulator OUT: route A's `get_macf` (fractional: >> 8,
-		// no rounding because MACSR's RT bit is clear in this firmware) and
-		// its integer form (the low longword, no saturation because OMC is
-		// clear too).
+		// Reading an accumulator OUT: the CFPRM's MOVCLR / MOVE-from-ACC
+		// pseudocode (Rev. 3, chapter 6), every branch. ❌ Until 8 Sep 2026
+		// this was route A's `get_macf` minus its S/U branch -- "fractional:
+		// >> 8, no rounding because RT is clear in this firmware, no
+		// saturation because OMC is clear too" -- and that comment was wrong
+		// on both counts for the frame builder's level chain at
+		// 0x4000ccae-0x4000ccfc, which runs with MACSR = 0x60. In FRACTIONAL
+		// mode S/U is not signed/unsigned at all: it selects 16-BIT ROUNDING
+		// on the read-out -- ACC[39:24], rounded by ACC[23:0], into Rx[15:0]
+		// with Rx[31:16] zero. The firmware keeps the LOW words of two such
+		// reads as a voice record's mode:level (`movclrl acc0,d3; swap d3;
+		// movclrl acc1,d2; movew d2,d3`); with a plain >> 8 those words are
+		// 0 and every voice renders at level zero (O9b, the silent output).
+		constexpr uint32_t g_macsrOmc = 0x80, g_macsrRt = 0x10;
 		uint32_t accRead(const uint32_t _n)
 		{
-			if(g_emac.macsr & g_macsrFractional)
-				return static_cast<uint32_t>(g_emac.acc[_n] >> 8);
-			return static_cast<uint32_t>(g_emac.acc[_n]);
+			const auto macsr = g_emac.macsr;
+			const auto acc = g_emac.acc[_n];				// ACC[47:0], sign-extended in an int64
+			if(!(macsr & g_macsrFractional))
+			{
+				if(!(macsr & g_macsrSigned))				// signed integer mode
+				{
+					if(!(macsr & g_macsrOmc))
+						return static_cast<uint32_t>(acc);
+					const auto top = (acc >> 31) & 0x1ffff;		// ACC[47:31]
+					if(top == 0 || top == 0x1ffff)
+						return static_cast<uint32_t>(acc);
+					return (acc >> 47) & 1 ? 0x80000000u : 0x7fffffffu;
+				}
+				if(!(macsr & g_macsrOmc))					// unsigned integer mode
+					return static_cast<uint32_t>(acc);
+				return ((acc >> 32) & 0xffff) == 0 ? static_cast<uint32_t>(acc) : 0xffffffffu;
+			}
+			// signed fractional mode
+			auto saturate32 = [](const int64_t _v) -> uint32_t
+			{
+				const auto top = (_v >> 39) & 0x1ff;			// [47:39]
+				if(top == 0 || top == 0x1ff)
+					return static_cast<uint32_t>(_v >> 8);
+				return (_v >> 47) & 1 ? 0x80000000u : 0x7fffffffu;
+			};
+			if(macsr & g_macsrSigned)
+			{
+				// 16-bit rounding: ACC[39:24] rounded by ACC[23:0] -> Rx[15:0]
+				int64_t v = acc >> 24;							// keeps the sign from [47]
+				const auto rem = acc & 0xffffff;
+				if(rem > 0x800000 || (rem == 0x800000 && (v & 1)))
+					++v;
+				if(macsr & g_macsrOmc)
+				{
+					const auto top = (v >> 15) & 0x1ff;		// [47:39] of the rounded value = v[23:15]
+					if(!(top == 0 || top == 0x1ff))
+						return (v >> 23) & 1 ? 0x8000u : 0x7fffu;
+				}
+				return static_cast<uint32_t>(v & 0xffff);
+			}
+			if(macsr & g_macsrRt)
+			{
+				// 32-bit rounding: ACC[47:8] rounded by ACC[7:0]
+				int64_t v = acc >> 8;
+				const auto rem = acc & 0xff;
+				if(rem > 0x80 || (rem == 0x80 && (v & 1)))
+					++v;
+				if(macsr & g_macsrOmc)
+					return saturate32(v << 8);
+				return static_cast<uint32_t>(v);
+			}
+			if(macsr & g_macsrOmc)
+				return saturate32(acc);
+			return static_cast<uint32_t>(acc >> 8);
 		}
 
 		// ... and writing one IN: route A's `move_mac`.

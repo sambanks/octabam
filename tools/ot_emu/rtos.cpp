@@ -365,12 +365,27 @@ namespace ot
 	{
 		m_pit0.advance(m_sample);
 		m_pit1.advance(m_sample);
-		if(m_frame)
+		if(m_frame && !m_frameFromDsp)
 			while(m_sample >= m_nextFrame)
 			{
 				m_framePending = true;			// a latch, not a count: a masked
 				m_nextFrame += g_framePeriod;	// edge source remembers ONE edge
 			}
+		else if(m_frameFromDsp)
+		{
+			// The DSP's first bank id has been waiting since the load (it
+			// blocks at P:0x97 until the host takes it). Deliver it where
+			// route A fires ITS first frame -- one period after the frame
+			// clock came on -- so the transport start keeps the oracle's
+			// phase; from then on the DSP's own writes are the edges.
+			if(m_frame && m_dspEdgeLatched && m_sample >= m_nextFrame)
+			{
+				m_framePending = true;
+				m_dspEdgeLatched = false;
+			}
+			while(m_sample >= m_nextFrame)
+				m_nextFrame += g_framePeriod;	// only the idle skip's horizon; the edge itself is the DSP's
+		}
 		// The eDMA is told the boundary even when the frame clock is off:
 		// its paced completions are the DSP's clock, not the interrupt's, and
 		// the TCD state is real in every run.
@@ -543,7 +558,7 @@ namespace ot
 				// The DSPs keep running through a skipped idle: book them the
 				// samples the clock jumps (O8).
 				if(auto* c = m_machine.coprocessor(); c && ex > m_sample)
-					c->tickSamples(ex - m_sample);
+					ex = m_sample + c->tickSamples(ex - m_sample);	// a DSP frame edge ends the skip there
 				m_sample = std::max(m_sample, ex);
 				++m_idleSkips;
 				tickTimers();
@@ -817,6 +832,25 @@ namespace ot
 			m_nextFrame = m_sample + g_framePeriod;
 	}
 
+	void Rtos::setFrameFromDsp(const bool _on)
+	{
+		m_frameFromDsp = _on;
+		auto* co = m_machine.coprocessor();
+		if(!co)
+			return;
+		co->setHostWordHook(_on ? std::function<bool(int)>([this](int)
+		{
+			if(!m_frame)
+			{
+				m_dspEdgeLatched = true;		// delivered the moment the frame clock comes on
+				return true;
+			}
+			m_framePending = true;
+			m_nextFrame = m_sample + g_framePeriod;	// the eDMA boundary rule and the idle skip still read it
+			return true;
+		}) : std::function<bool(int)>());
+	}
+
 	uint8_t Rtos::selectBankLive(const uint32_t _bank, const double _ms)
 	{
 		if(runToMainSpin() != Stop::Gate)
@@ -889,8 +923,8 @@ namespace ot
 		m_machine.addWriteWatch(_addr, _addr + _len - 1,
 			[this](const uint32_t _a, const uint8_t _size, const uint32_t _val, const uint32_t _pc)
 			{
-				if(m_memWrites.size() < 20000)
-					m_memWrites.push_back({m_sample, curTcb(), _pc, _a, _val, _size});
+				if(m_memWrites.size() < 2000000)	// ⚠️ was 20,000: a boot-time init filled it before the frames phase began (O9b)
+					m_memWrites.push_back({m_sample, curTcb(), _pc, _a, _val, _size, m_machine.instructions()});
 			});
 	}
 
@@ -922,6 +956,22 @@ namespace ot
 			if(a.vector == g_tickVector)
 				++n;
 		return n;
+	}
+
+	uint32_t Rtos::setMainLevelLive(const uint32_t _level, const double _ms)
+	{
+		if(runToMainSpin() != Stop::Gate)
+			return m_machine.peek32(g_mainGainTable);
+		m_machine.poke32(g_sysMsgScratch, (g_setMainLevelCase << 24) | ((_level & 0x7f) << 16));
+		uint32_t d0 = 0;
+		if(!postMessage(g_sysQueue, g_sysMsgScratch, d0))
+			return m_machine.peek32(g_mainGainTable);
+		const double end = m_sample + _ms * g_sampleHz / 1000.0;
+		while(m_sample < end && m_machine.peek32(g_mainGainTable) == 0)
+			if(!stepOnce())
+				break;
+		runToMainSpin();
+		return m_machine.peek32(g_mainGainTable);
 	}
 
 	bool Rtos::requestCardMount()

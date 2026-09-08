@@ -278,8 +278,11 @@ namespace ot
 	bool Machine::step()
 	{
 		const auto p = pc();
+		++m_instructions;		// O9b: the RTOS phase steps through here; without this every PC-watch stamp read the boot's last count
 		if(!m_watchPc.empty())
 			notePcWatch(p);
+		if(m_profileEvery && (m_instructions % m_profileEvery) == 0)
+			++m_profile[p];		// the RTOS phase steps through here, not run() (O9b's coverage)
 		const auto op = read16(p);
 		// The EMAC and mov3q are A-line: Musashi routes 0xAxxx to the A-line
 		// EXCEPTION, not to the illegal-instruction callback the V4e layer
@@ -473,7 +476,7 @@ namespace ot
 
 	void Machine::notePcWatch(const uint32_t _pc)
 	{
-		if(m_pcHits.size() >= 4000)
+		if(m_pcHits.size() >= 2000000)	// ⚠️ was 4,000: ten watched PCs filled it 25 frames into a run, before the trig it was set for (O9b)
 			return;
 		for(const auto a : m_watchPc)
 			if(a == _pc)
@@ -481,6 +484,10 @@ namespace ot
 				PcHit h{m_instructions, _pc, getD(0), getD(1), getA(0), getA(1), getA7(), {}};
 				for(int i = 0; i < 5; ++i)
 					h.stack[i] = peek32(h.sp + 4 * static_cast<uint32_t>(i));
+				for(int i = 0; i < 8; ++i)
+					h.d[i] = getD(i);
+				for(int i = 0; i < 7; ++i)
+					h.a[i] = getA(i);
 				m_pcHits.push_back(h);
 				return;
 			}

@@ -183,6 +183,26 @@ same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
 
+**MACSR S/U IS BIT 6, AND IN FRACTIONAL MODE IT IS NOT SIGNED/UNSIGNED:
+it selects 16-BIT ROUNDING ON THE ACCUMULATOR READ-OUT.** The ColdFire port
+had S/U as bit 4 (that is R/T) and returned every `movclrl` as `ACC[39:8]`;
+the firmware's level chain at `0x4000ccae` runs at MACSR `0x60` and keeps the
+LOW words of two reads as a voice record's mode:level, which the CFPRM's
+pseudocode (`OMC,S/U == 01`: `ACC[39:24]` rounded into `Rx[15:0]`, upper half
+zero) puts there and a plain `>> 8` leaves at zero — every voice rendered
+silent for a whole session (8 Sep 2026, O9b). The self-test never exercised
+S/U. Read the CFPRM's MOVCLR pseudocode before touching `accRead`.
+
+**THE VENDORED DSP AGU LEFT A MODULO BUFFER ON A PRE-DECREMENT FROM ITS
+BASE.** `x:-(r2)` with r2 = 0 and m2 = 0x3f gave `0xffffbf` where the chip
+gives `0x3f`, the next sixteen sample writes walked the peripheral registers,
+a timer interrupt came alive whose vector in payload B is `move x0,y:(r4)+`,
+and the corruption surfaced as a 196,608-iteration voice loop thirteen frames
+after the first trig. Found with a one-word write watch, a DSP PC watch with
+registers and an interrupt-vector histogram (O9b); fixed in `agu.h`. It is
+the eleventh vendored-emulator defect and `dsp_host` renders every effect on
+that AGU — `make check`'s bit-identity gates are the audit.
+
 **A REWRITTEN TRAMPOLINE IS NOT RETRANSLATED.** The ColdFire emulator's
 EMAC-with-load shim ran every shimmed instruction from one scratch address,
 rewriting its bytes each time; in a long-running Unicorn the address kept

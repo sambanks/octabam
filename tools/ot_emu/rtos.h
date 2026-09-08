@@ -81,6 +81,8 @@ namespace ot
 	inline constexpr uint32_t g_curPattern      = 0x80000004;
 	inline constexpr uint32_t g_engineBankWrite = 0x40087d44;	// LOAD PROJECT writes PART_PTR from BANK= here
 	inline constexpr uint32_t g_selectBankCase  = 21;			// sys table[20]: "select bank msg[1]"
+	inline constexpr uint32_t g_setMainLevelCase = 4;			// sys table[3]: "set main level msg[1]" (O9b)
+	inline constexpr uint32_t g_mainGainTable   = 0x80003c60;	// 10 longwords, gain:(-1-gain), read per voice by 0x4000cca4
 
 	inline constexpr uint32_t g_fwTransport   = 0x4009b964;	// (arg) transport start/stop; start posts to the UI queue
 	inline constexpr uint32_t g_fwStartTrack  = 0x4009b5c8;	// (track) promote a track to running
@@ -200,12 +202,28 @@ namespace ot
 		// `Rtos(frame=True)` faults on unmapped memory before anything has
 		// primed its auto-map hook), so the from-boot form has no oracle.
 		void setFrame(bool _on);
+		// O9b: the frame edge comes from the DSP's bank-id word (core 0's
+		// host port going non-empty outside a pull) instead of the 16-sample
+		// timer. On hardware the frame handler reads that word with no ready
+		// check, so the interrupt must be what announces it; a free-running
+		// timer read a read-back data word as the bank id at frame 348 of
+		// the first run that carried audio, and the firmware HALTED on it.
+		void setFrameFromDsp(bool _on);
 
 		// Switch the working bank through sys's own case -- the very message
 		// the engine's reset posts with bank 0 (RTOS_FORK.md §7): PART_PTR :=
 		// the bank's blob, the blob is copied into SRAM, the bank byte
 		// follows. Returns the bank byte.
 		uint8_t selectBankLive(uint32_t _bank, double _ms = 500.0);
+		// O9b: sys command 4 = SET MAIN LEVEL (msg[1] = 0..127). Its handler
+		// (case 0x40061e0a) fills the ten-entry main gain table at
+		// 0x80003c60 from the curve at 0x400bcd90 -- the table every voice's
+		// level is multiplied by in the frame builder (0x4000cca4), and the
+		// one thing NEITHER emulator ever wrote: the load does not post it,
+		// so every voice rendered at gain zero. Returns the table's first
+		// entry afterwards (0 = the handler did not fill it; it skips the
+		// fill when bit 0 of 0x8000004a is clear).
+		uint32_t setMainLevelLive(uint32_t _level, double _ms = 200.0);
 
 		// The sequencer's own bank/pattern select, the LOAD PROJECT handler's
 		// LAST step. It writes the sequencer's playing bank/pattern -- the
@@ -250,7 +268,7 @@ namespace ot
 		// address watched it costs one compare.
 		void watchPc(const std::vector<uint32_t>& _addrs);
 
-		struct MemWrite { double sample; uint32_t tcb, pc, addr, val; uint8_t size; };
+		struct MemWrite { double sample; uint32_t tcb, pc, addr, val; uint8_t size; uint64_t instr; };	// instr: the machine's instruction count, the PC watch's clock (O9b)
 		void watchMem(uint32_t _addr, uint32_t _len);
 		const std::vector<MemWrite>& memWrites() const { return m_memWrites; }
 
@@ -463,6 +481,8 @@ namespace ot
 		int m_savedBank = -1;
 		bool m_frame = false;
 		bool m_framePending = false;
+		bool m_frameFromDsp = false;
+		bool m_dspEdgeLatched = false;	// the DSP wrote its bank id while the frame clock was off (it waits at P:0x97 for the host to take it)
 		double m_nextFrame = g_framePeriod;
 		uint64_t m_frameCount = 0;
 		size_t m_seeded = 0;
