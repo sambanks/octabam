@@ -508,6 +508,8 @@ with IN; SEND-fed returns never had it, so the return level is unchanged —
 but a render of the host's own material (`render_reverb` with AUX 64)
 prints 6 dB lower than v8 did.
 
+**✅ 8 Sep 2026, under the ColdFire port (`COLDFIRE_PORT.md` O12):** with the firmware driving both cores from the card, the send → delay → return path is bit-identical to `dsp_host` (−120 to −200 dB per window) at a 36-sample offset; no flicker, no missing repeats. The port's core interleave is still not the chip's timing, so hardware keeps the last word — but the mechanism survives a real two-core ordering.
+
 **What only hardware can show.** The stamps and the chain buffer cross
 cores under the chip's timing, not the emulator's; the position-3 pin and
 the refusal are measured in the emulator's instance model (r7 = $6200 +
