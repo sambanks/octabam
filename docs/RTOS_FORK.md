@@ -2684,3 +2684,55 @@ either a full disassembly pass over the image or a route-A trace of the
 same call chain to compare against. Stopping here for review: this is a
 firmly localized "the door is never opened" finding, one level short of
 "and here is why."
+
+### 10.25 The right arm-caller address, confirmed by measurement to be reached under route A for FLEX — never fires under the port, at any tempo tested (9 Sep 2026)
+
+**First pass found the wrong function.** `0x4000672c`/`0x40006a2c`
+(disassembled, real code, gated on machine type == 4/PICKUP) looked like
+the arm caller, but §10.13 (7 Sep, already in this document) had already
+identified and measured the real one: **`0x40006238`**, entered via
+`tstb %d7 / bgew 0x40006238` at `0x4000607c`, which branches to the
+non-PICKUP path (`0x40006714`) for FLEX and PICKUP alike. `0x4000672c` is
+a different, later mechanism — §10.13's own text names it: "the bit-7 path
+is a follow-up on an EXISTING recording... Bryan's pickup arm reads the
+FOUT slot", PICKUP-only by design, not the one Bryan's FLEX fixtures use.
+Disassembled `0x40006238` directly out of Bryan's tag-22 image: matches
+§10.13's description byte for byte (`btst #4,%d7`, the `0x00000101`
+header write at `0x40006274`, all present).
+
+**§10.14 (also already in this document, 7 Sep) raised the obvious
+alternative explanation, and it's now ruled out.** That section documents
+a real, understood emulator artifact: under `--internal-clock`, the
+sequencer's step clock and frame clock never re-lock, so a composed
+timing byte reads negative at roughly half of all tempos, and the arm
+caller gets skipped — 128 BPM is explicitly one of the affected tempos in
+its own sweep, while 120 BPM is not, and hardware records fine at both
+(confirmed on real Rytm audio, 7 Sep). Every fixture run tonight was
+128 BPM. So the obvious question was: is tonight's whole "never arms"
+result just this same known, already-fixed (route A has
+`--arm-phase-fix`) artifact, applied to a new emulator that doesn't have
+the lever yet?
+
+**No.** Re-ran the burst probe and the `--watch-pc 0x40006238` check on
+`r4_120` (RLEN 4, 120 BPM, the tempo §10.14's own sweep confirms arms) —
+**zero hits, and the burst still plays once and never loops back**,
+identical to 128 BPM. The tempo-dependent artifact is not the explanation;
+if it were, 120 BPM would have armed like it does under route A.
+
+**Narrowed further, and this part is a real, working result.** Watched
+`0x400068e4`, the per-frame per-track function §10.13 measured at 25,600
+calls over 1,600 frames under route A (8 tracks × 2/frame): **41,600 hits
+over 2,600 frames — exactly 16 per frame, the same rate.** The general
+per-frame track dispatcher runs correctly under this port. The gap is not
+"frames don't process tracks"; it is specifically that whatever composes
+the per-track trig word's bit 4 (recorder-trig flag) and sign (the byte
+`bgew 0x40006238` tests) never produces a value that lets the arm caller
+through, for this project's on-disk REC1 trig, at any tempo tried.
+
+**Where this leaves it.** The lane/trig-word composition code
+(`0x4000aece..0x4000af22` per §10.13 §5, filling `0x800017d6[...]` from
+each of 62 "lanes") is the next thing to watch — not yet done. Everything
+upstream of it (frame delivery, the per-frame track loop, the arm caller's
+own code) is confirmed present and running; everything at or after it
+(the arm caller onward) is confirmed never reached. The trig-word
+composition is the remaining unmeasured link between the two.
