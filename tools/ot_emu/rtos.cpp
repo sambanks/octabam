@@ -275,7 +275,7 @@ namespace ot
 				++m_hostBlocksOut;
 				m_hostWordsOut += hw.size();
 				m_hostNonZeroOut += nz;
-				m_pendingOut[_ch & 15] = {saddr, hw, nz};
+				m_pendingOut[_ch & 15] = {saddr, hw, nz, m_sample};
 			},
 			[this, co](const uint32_t _ch)
 			{
@@ -297,7 +297,12 @@ namespace ot
 						// the port sent reached DSP memory.
 						const auto ddr = co->peekWord(core, 'R', 0);	// 'R' = DMA0's DDR, see DspPair
 						char t[160];
-						std::string tail = " landed@";
+						std::string tail;
+						// The burst's own timeline in SAMPLES: kicked, and the
+						// completion the drain gate released -- the frame
+						// period is read off consecutive frames' stamps.
+						std::snprintf(t, sizeof t, " kicked@%.1f done@%.1f landed@", p.kicked, m_sample);
+						tail += t;
 						std::snprintf(t, sizeof t, "%04x:", ddr >= 8 ? ddr - 8 : 0);
 						tail += t;
 						for(uint32_t k = 0; k < 8 && ddr >= 8; ++k)
@@ -323,7 +328,9 @@ namespace ot
 				++m_hostBlocksIn;
 				m_hostWordsIn += hw.size();
 				m_hostNonZeroIn += nz;
-				noteBlock('<', _ch, daddr, hw, nz, co->blockNote(m_kickSel[_ch & 15]));
+				char at[48];
+				std::snprintf(at, sizeof at, " at@%.1f", m_sample);
+				noteBlock('<', _ch, daddr, hw, nz, co->blockNote(m_kickSel[_ch & 15]) + at);
 			});
 		m_edma.setCompletionGate([this, co](const uint32_t _ch)
 		{

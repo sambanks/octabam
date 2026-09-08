@@ -411,7 +411,7 @@ namespace ot
 		std::array<int, 16> m_kickSel = {};		// which core each channel was kicked against
 		uint64_t m_hostBlocksOut = 0, m_hostBlocksIn = 0, m_hostWordsOut = 0, m_hostWordsIn = 0, m_hostWordsShort = 0;
 		uint64_t m_hostNonZeroOut = 0, m_hostNonZeroIn = 0;
-		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; };
+		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; double kicked = 0.0; };
 		std::array<PendingOut, 16> m_pendingOut;
 		bool m_blockLogOn = false;
 		std::vector<std::string> m_blockLog;

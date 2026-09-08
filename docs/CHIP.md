@@ -114,7 +114,7 @@ FX1 = FILTER. Every FX1 filter you turn on eats into that figure.
 |---|---|---|
 | CPU | Freescale ColdFire **MCF54454VR266**, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A` — same family, likely a misread digit) |
 | Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) | ✅ board photo |
-| DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet |
+| DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet — the part's MAXIMUM. 🟡 This board runs the PLL at its reset default from a crystal the payload makes the audio clock: **183.456 MHz = 4 160 cycles/sample** (§2, `COLDFIRE_PORT.md` O8 "the ESAI rate") |
 | External memory controller | **None.** No EMC on this part — all memory is on-chip | ✅ datasheet block diagram |
 | Shared memory | **8 blocks × 8 K words = 64 K words at `$030000`**, reachable by *both* cores; P/X/Y alias there | ✅ reference manual + hardware |
 | Storage | CompactFlash (FAT16/32) | ✅ official |
@@ -131,7 +131,8 @@ no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 
 | | | |
 |---|---|---|
-| Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic |
+| Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic — on the DATASHEET clock. ❌ Not this board's; the row below is |
+| Per core, per sample, from the firmware's own clock setup (8 Sep 2026) | PLL never written → reset `0x2B60C2` = EXTAL × 195/24; ESAI clocked from EXTAL (Port H `0xaa0000`), TPSR=1/TPM=0/TFP=0, 8 × 32-bit slots → fs = EXTAL/512; ratio **4 160 cycles/sample exactly** (Fsys 183.456 MHz if EXTAL = 22.5792 MHz) | 🟡 inferred from the payload's register writes + DSP56720RM; falsified by a PCTL write nobody has found, PINIT = 0, or a DSP crystal that is not 22.5792 MHz. `COLDFIRE_PORT.md` O8 |
 | **Measured ceiling for FX work** | **~2 350** (with 4× FX1 FILTER as environment) — RE-CONFIRMED 23 Aug 2026, second independent sweep | ✅ hardware, burn probe ×2 |
 | Spare with the R46 reverb + 4× FILTER + running sequencer | **704 cycles/sample** (breakup at p3=22 × 32; p3=23 = high-pitch squeal, the deep-overrun signature) | ✅ hardware, 23 Aug 2026 |
 | **The R46 reverb's true cost** | **≈1 650/sample** (2 356 − 704) — `cycle_count.py` prices it 1 384, so the pricer reads **~270 low** on the reverb (and ~264 high on the delay since the phead roll) | ✅ by two consistent sweeps |
@@ -139,7 +140,7 @@ no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 | **One FX1 FILTER's true cost** | **192 cycles/sample** ((1 088 − 704)/2, measured differentially) — retires the old ~260 inference | ✅ hardware, 23 Aug 2026 |
 | **Total DSP-usable budget** | **≈3 120 cycles/sample** (all three sweeps agree: reverb 1 652 + 4×192 + 704 = 3 124; 7 Aug's 964 + 768 + 1 392 = same) | ✅ triangulated from 3 sweeps |
 | Safe planning number | **~500** on top of the current reverb in a 4-FILTER bank; **~900** with 2 | 🟡 sweep minus contention margin |
-| Stock's own share | **≈1 410** (4 535 − 3 120) — revised DOWN from "~2 400, half the core" | ✅ by subtraction from measured budget |
+| Stock's own share | **≈1 410** (4 535 − 3 120) — revised DOWN from "~2 400, half the core"; **≈1 040** on the 🟡 4 160 clock | ✅ by subtraction from measured budget (the minuend is the open question, not the measurement) |
 | ⚠️ Historic spare "1 392, exactly" | superseded as a headline (it was the 7 Aug bank's spare, ceiling 964+1392=2356 — consistent with today) | ✅ then, 🟡 as guidance now |
 
 **How the ceiling was measured.** `dsp/burn_probe.asm` (in git history) adds `16 × p3`

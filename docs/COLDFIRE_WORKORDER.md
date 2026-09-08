@@ -449,13 +449,16 @@ What later milestones must know:
 2. **The shared window is ONE memory for P, X and Y of both cores**, and the
    firmware needs it (core B's entry is written by core A's upload). `dsp_host`
    keeps its two-way window and is a different machine on that point.
-3. **Eight things the vendored DSP emulator does that the firmware cannot live
+3. **Nine things the vendored DSP emulator does that the firmware cannot live
    with** are in `tools/dsp56300.patch` (DO loops nested in one call, JIT-only
    interrupt dispatch, a masked interrupt starving the peripherals, the ESAI
    blocking on an empty ring, a PC past P memory as a garbage pointer, a fast
    interrupt never reaching its vector's PC, the ring-buffer DMA modes and a
    12-bit DCOL, the host DMA's disabled initial trigger and 200-instruction
-   receive throttle). Every one was found by an instrument — stack sample, `lldb
+   receive throttle, and — found 8 Sep by the ESAI-rate falsifier — a
+   dual-counter DMA that never reloaded its counters at the block end, so
+   the ESAI-in ring walked its destination through all of memory and into
+   the ESAI's own TCR). Every one was found by an instrument — stack sample, `lldb
    -k`, `--dsp-trace` — after presenting as a silent hang or a bare crash.
    Regenerate the patch with `git -C vendor/dsp56300 diff`; `make check` only
    sees it after `cmake --build vendor/dsp56300/build`.
@@ -519,23 +522,51 @@ not a measurement until you know the instrument can see the thing.**
 
 </details>
 
-### ⚠️ Read this before step 5 or O9: the ESAI rate is an unmeasured knob
+### ~~⚠️ Read this before step 5 or O9: the ESAI rate is an unmeasured knob~~ ✅ SETTLED (8 Sep 2026, branch `coldfire-esai-rate`)
 
-The DSP picks its working bank by waiting on the audio-out DMA's play pointer
-(`DSR2 == 0x8070` or `0x80f0`, P:0x4a), which makes the bank the audio ring's
-phase — a double buffer, the DSP working into whichever half is not playing.
-✅ **In 400 frames the port took bank A every time**: the only landing
-addresses in the whole run are 0x4078/0x4318/0x45f8/0x4838, the 0x80f0 half is
-never reached, and the ring sits in a fixed phase against the frame clock.
+Two findings, both in `COLDFIRE_PORT.md` O8 "the ESAI rate":
 
-The rate that produces that phase is a knob nobody has measured — the pair
-drives the ESAI at one frame per sample at the cores' own
-instructions-per-sample, taken from `docs/CHIP.md`'s clocks. The parameter
-path passed every gate regardless and does not care. An audio comparison
-would not: it would be measuring a machine whose output alternation never
-happens. **Settle the ESAI rate first**, and treat "bank B is never taken" as
-the falsifier for having got it right. `docs/COLDFIRE_PORT.md` (O8) has the
-dispatcher listing.
+1. ❌ **The port's ESAI ran EIGHT TIMES SLOW.** The vendored clock's "cycles
+   per sample" is per SLOT (`Esai::execTX` advances one slot per call), and
+   `DspPair` passed the per-sample count straight through against the
+   payload's eight slots. That, not any rate knob, is why the 0x80f0 bank
+   never came. Fixed: one slot per `ips / 8`; the report now prints ESAI
+   frames per host frame (0x8c to 0x8c), which the ring needs to be 16.
+2. 🟡 **The rate is the firmware's own arithmetic, 4160 instructions per
+   sample, not 4535.** The payload routes EXTAL into the ESAI chains (Port H
+   `0xaa0000`) at ÷512, never writes PCTL, so the core runs the reset PLL
+   (EXTAL × 8.125): 512 × 8.125 = 4160 whatever the crystal (22.5792 MHz
+   and 183.456 MHz if fs = 44.1 kHz and the manual's block diagram is
+   right). `CHIP.md` and `PLAN.md` carry it beside the datasheet's 4535.
+   Falsifiers: a PCTL write, PINIT = 0, a crystal that is not 22.5792 MHz.
+
+**Gate (8 Sep):** ✅ **Passed, and the falsifier turned up the next thing.** Same O6 run,
+`--block-log`, cores live: **400 frames, 28 ticks, trig at 344 — 5 compared
+fields agree**, M6a 8 compared fields agree, `ctest` 7/7, `make check` green,
+and the landing addresses now split **bank A 1,193 / bank B 1,207** of 2,400
+outbound blocks (`landed@2078/2318/25f8/2838` beside `4078/4318/45f8/4838`),
+where every one of the 2,400 before was bank A. ESAI frames in = out
+(1,870,163 / 1,870,161; before the DMA fix out fell behind in and the
+transmitter died), and the read-back carries **196 non-zero words** where it
+carried none.
+
+❌ **But the new report line reads `ESAI frames per host frame (0x8c to
+0x8c): min 160 max 194, exactly 16 on 0 of 399`** — not 16. The ring makes
+5.5 passes between host frames, so the bank alternation is a *random* phase
+against the frame clock, not the locked double buffer the dispatcher
+expects. The DSP's clock is the firmware's; what is stretched is the PORT's
+host frame period: the frame interrupt is a latch (`Rtos::tickTimers`,
+"remembers ONE edge"), so a handler that outlives its 16 samples coalesces
+the missed frames, and the handler spends its time inside the eDMA drain
+gate (`65,327` gated waits over 400 frames; the same order before the
+pacing fix, when it read 22 ESAI frames per host frame — the stretch was
+there all along and no parameter gate can see it). Where the samples go —
+the DSP's own per-frame work, the vendored HDI08's one-word-per-exec drain,
+or the port's idle stepping — is the next measurement (stamped block log:
+`kicked@`/`done@`/`at@` in samples). 🟡 Until it reads 16, no audio the port
+produces has the chip's timing.
+
+**NEXT (open): the host frame period.** The instrument to satisfy is `exactly 16 on 399 of 399`; the block log's `kicked@`/`done@`/`at@` stamps and the DSP log's `cvr 8c` spacing say where the samples go. Not a rate question any more — an exchange-timing one, on the port's side of the host port.
 
 ### O9 — audio out *(Fable)*
 

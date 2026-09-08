@@ -39,6 +39,9 @@ namespace ot
 
 		uint64_t executed = 0, wordsIn = 0, wordsOut = 0, commands = 0, dropped = 0;
 		uint64_t rxFrames = 0, txFrames = 0;	// ESAI frames taken in (silence) / put out
+		uint64_t txAtCommand = 0;				// txFrames at the previous host command
+		uint64_t fpcMin = ~0ull, fpcMax = 0, fpcSixteen = 0, fpcSamples = 0;	// frames per command
+		uint32_t esaiCyclesPerSlot = 0;
 		uint64_t idleSkipped = 0;
 		uint64_t pulled = 0, pullShort = 0;	// read-back words taken / not produced in time
 		uint32_t lastSent[2] = {0, 0};		// a rolling pair of the last two words sent
@@ -150,6 +153,15 @@ namespace ot
 			// the output is counted -- and the clock is ONE FRAME PER SAMPLE at
 			// the pair's own instructions-per-sample, so the DSP's audio clock
 			// and the ColdFire's sample clock cannot drift apart.
+			// ❌ Until 8 Sep 2026 this passed `_ips` straight through, and the
+			// vendored clock fires ONE SLOT per "cycles per sample" (Esai::execTX
+			// advances m_txSlotCounter once per call; EsxiClock's own
+			// derivation halves it "2 samples = 1 frame (stereo)"). With the
+			// payload's 8 slots that was an audio clock 8x slow: the 256-word
+			// ring at X:0x8000 advanced 16 words per 16-sample frame instead of
+			// 128, the dispatcher's DSR2 == 0x80f0 bank never came, and every
+			// block landed in bank A (COLDFIRE_PORT.md O8, "the bank is the
+			// audio ring's phase"). One slot per `_ips / 8`: 520 at 4160.
 			auto silence = [&c](uint64_t&, dsp56k::Audio::RxFrame& _f)
 			{
 				for(uint32_t i = 0; i < dsp56k::Audio::MaxSlotsPerFrame; ++i)
@@ -172,7 +184,8 @@ namespace ot
 				e->setReadRxCallback(silence);
 				e->setWriteTxCallback(sink);
 			}
-			c.px->getEsaiClock().setCyclesPerSample(static_cast<uint32_t>(_ips));
+			c.esaiCyclesPerSlot = static_cast<uint32_t>(_ips / g_esaiSlots);
+			c.px->getEsaiClock().setCyclesPerSample(c.esaiCyclesPerSlot);
 
 			// The inter-core mailbox (see dsp.h), on the Y-side peripherals.
 			c.py->setUnmappedHooks(
@@ -265,6 +278,20 @@ namespace ot
 		c.cmdArgs[1] = c.lastSent[1];
 		c.hcPending = true;
 		++c.commands;
+		if(c.hcVector == 0x18 && c.txFrames)
+		{
+			// Frames per frame: count from the second 0x8c on, once the ESAI
+			// is running, so the boot-time gap is not the minimum.
+			if(c.txAtCommand)
+			{
+				const auto d = c.txFrames - c.txAtCommand;
+				c.fpcMin = std::min(c.fpcMin, d);
+				c.fpcMax = std::max(c.fpcMax, d);
+				if(d == 16) ++c.fpcSixteen;
+				++c.fpcSamples;
+			}
+			c.txAtCommand = c.txFrames;
+		}
 		auto& h = c.hdi();
 		h.writeStatusRegister(h.readStatusRegister() | (1u << dsp56k::HDI08::HSR_HCP));
 		c.dsp->injectInterrupt(c.hcVector);
@@ -549,7 +576,7 @@ namespace ot
 				{
 					char line[256];
 					std::snprintf(line, sizeof line,
-						"core %d exec %llu dspctr %llu pc %06x sr %06x mode %d pending %d periph-target %llu esai in %llu out %llu SAISR %06x RCR %06x TCR %06x HSR %06x HCR %06x DCR2 %06x DCO2 %06x DSR2 %06x DSR3 %06x",
+						"core %d exec %llu dspctr %llu pc %06x sr %06x mode %d pending %d periph-target %llu esai in %llu out %llu SAISR %06x RCR %06x TCR %06x HSR %06x HCR %06x DCR2 %06x DCO2 %06x DSR2 %06x DSR3 %06x DDR3 %06x DCO3 %06x DCR3 %06x DDR0 %06x DCO0 %06x DCR0 %06x DSR1 %06x DCO1 %06x DCR1 %06x",
 						i, static_cast<unsigned long long>(c.executed),
 						static_cast<unsigned long long>(c.dsp->getInstructionCounter()), pc,
 						c.dsp->regs().sr.var & 0xffffff,
@@ -559,7 +586,10 @@ namespace ot
 						c.px->read(0xffffb3, dsp56k::Nop), c.px->read(0xffffb7, dsp56k::Nop), c.px->read(0xffffb5, dsp56k::Nop),
 						c.hdi().readStatusRegister(), c.hdi().readControlRegister(),
 						c.px->read(0xffffe4, dsp56k::Nop), c.px->read(0xffffe5, dsp56k::Nop),
-						c.px->read(0xffffe7, dsp56k::Nop), c.px->read(0xffffe3, dsp56k::Nop));
+						c.px->read(0xffffe7, dsp56k::Nop), c.px->read(0xffffe3, dsp56k::Nop),
+						c.px->read(0xffffe2, dsp56k::Nop), c.px->read(0xffffe1, dsp56k::Nop), c.px->read(0xffffe0, dsp56k::Nop),
+						c.px->read(0xffffee, dsp56k::Nop), c.px->read(0xffffed, dsp56k::Nop), c.px->read(0xffffec, dsp56k::Nop),
+						c.px->read(0xffffeb, dsp56k::Nop), c.px->read(0xffffe9, dsp56k::Nop), c.px->read(0xffffe8, dsp56k::Nop));
 					m_trace.emplace_back(line);
 					c.nextTrace = (c.executed / m_traceEvery + 1) * m_traceEvery;
 				}
@@ -626,6 +656,9 @@ namespace ot
 	uint64_t DspPair::hostWordsIn(const int _core) const { return m_cores[_core & 1]->wordsIn; }
 	uint64_t DspPair::hostWordsOut(const int _core) const { return m_cores[_core & 1]->wordsOut; }
 	uint64_t DspPair::hostCommands(const int _core) const { return m_cores[_core & 1]->commands; }
+	uint64_t DspPair::framesPerCommandMin(const int _core) const { const Core& c = *m_cores[_core & 1]; return c.fpcSamples ? c.fpcMin : 0; }
+	uint64_t DspPair::framesPerCommandMax(const int _core) const { return m_cores[_core & 1]->fpcMax; }
+	uint64_t DspPair::framesPerCommandSixteen(const int _core) const { return m_cores[_core & 1]->fpcSixteen; }
 	uint32_t DspPair::bootLength(const int _core) const { return m_cores[_core & 1]->boot->getLength(); }
 	uint32_t DspPair::bootAddress(const int _core) const { return m_cores[_core & 1]->boot->getInitialPC(); }
 
@@ -639,7 +672,8 @@ namespace ot
 			std::snprintf(line, sizeof line,
 				"             core %d: boot ROM %s (%u words -> P:%#07x), pc %#07x, %llu instructions, "
 				"host words in %llu / out %llu, host commands %llu%s\n"
-				"                     ESAI frames in %llu / out %llu, last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n",
+				"                     ESAI frames in %llu / out %llu, last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n"
+				"                     ESAI frames per host frame (0x8c to 0x8c): min %llu max %llu, exactly 16 on %llu of %llu; TCCR %06x (%u slots), %u instructions per slot\n",
 				i, c.boot->finished() ? "done" : "WAITING", c.boot->getLength(), c.boot->getInitialPC(),
 				c.dsp->getPC().toWord(), static_cast<unsigned long long>(c.executed),
 				static_cast<unsigned long long>(c.wordsIn), static_cast<unsigned long long>(c.wordsOut),
@@ -648,7 +682,11 @@ namespace ot
 				static_cast<unsigned long long>(c.rxFrames), static_cast<unsigned long long>(c.txFrames),
 				c.lastTx[0], c.lastTx[1], static_cast<unsigned long long>(c.idleSkipped),
 				static_cast<unsigned long long>(m_mail[i].words),
-				static_cast<unsigned long long>(c.pulled), static_cast<unsigned long long>(c.pullShort));
+				static_cast<unsigned long long>(c.pulled), static_cast<unsigned long long>(c.pullShort),
+				static_cast<unsigned long long>(c.fpcSamples ? c.fpcMin : 0), static_cast<unsigned long long>(c.fpcMax),
+				static_cast<unsigned long long>(c.fpcSixteen), static_cast<unsigned long long>(c.fpcSamples),
+				c.px->read(0xffffb6, dsp56k::Nop), ((c.px->read(0xffffb6, dsp56k::Nop) >> 9) & 0x1f) + 1,
+				c.esaiCyclesPerSlot);
 			s += line;
 			if(c.faulted)
 			{

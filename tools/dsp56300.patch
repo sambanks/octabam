@@ -9,7 +9,7 @@ index ffbf791..350a71a 100644
 +
 +add_subdirectory(dsp_host)
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index bd3e603..8176a6e 100644
+index bd3e603..fea36b4 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
 @@ -59,7 +59,12 @@ namespace dsp56k
@@ -39,7 +39,27 @@ index bd3e603..8176a6e 100644
  
  			m_dcoh = m_dcohInit;
  			m_dcol = m_dcolInit;
-@@ -716,6 +725,25 @@ namespace dsp56k
+@@ -469,6 +478,19 @@ namespace dsp56k
+ 		{
+ 			_dst += _dor;
+ 			_dst &= 0xffffff;
++			// octabam: THE COUNTERS RELOAD AT THE END OF THE BLOCK. Without this
++			// a continuous (DE-not-cleared) dual-counter channel added DOR on
++			// EVERY word after its first pass: the Octatrack's ESAI-in ring
++			// (DMA3, DCO3 = 0x23f, DOR3 = -575) walked its destination DOWN
++			// 575 words per received sample, wrapped below zero into the
++			// peripheral space and, 1,215,032 words later, wrote a silent
++			// sample into X:$FFFFB5 -- the ESAI's own TCR -- which killed the
++			// transmitter (measured 8 Sep 2026: `Write ESAI TCR 000000 at pc
++			// 000097`, the idle loop; nothing in either payload writes TCR
++			// after setup). The firmware's DOR3 = -DCO3 only makes sense as a
++			// ring, i.e. with the reload.
++			m_dcol = m_dcolInit;
++			m_dcoh = m_dcohInit;
+ 			return true;
+ 		}
+ 
+@@ -716,6 +738,25 @@ namespace dsp56k
  			return false;
  		}
  
@@ -244,6 +264,28 @@ index 386e30f..996c82a 100644
  	}
  	inline void DSP::op_Neg(const TWord op)
  	{
+diff --git a/source/dsp56kEmu/esai.cpp b/source/dsp56kEmu/esai.cpp
+index 5bf0bd7..52c458e 100644
+--- a/source/dsp56kEmu/esai.cpp
++++ b/source/dsp56kEmu/esai.cpp
+@@ -17,6 +17,8 @@ namespace dsp56k
+ 
+ 	void Esai::reset()
+ 	{
++		// octabam diagnostic: who resets the ESAI after boot?
++		LOG("ESAI reset (tcr was " << HEX(m_tcr) << ")");
+ 		// Reset control registers to power-on defaults
+ 		m_cr = 0;
+ 		m_tcr = 0;
+@@ -190,7 +192,7 @@ namespace dsp56k
+ 	void Esai::writeTransmitControlRegister(TWord _val)
+ 	{
+ 		m_sr.clear(M_TUE);
+-		LOG("Write ESAI TCR " << HEX(_val));
++		LOG("Write ESAI TCR " << HEX(_val) << " at pc " << HEX(m_periph.getDSP().getPC().toWord()));
+ 		const auto tem = getEnabledTransmitters();
+ 		m_tcr = _val;
+ 		if(tem != getEnabledTransmitters())
 diff --git a/source/dsp56kEmu/jitops.h b/source/dsp56kEmu/jitops.h
 index 0be2c03..5d51f90 100644
 --- a/source/dsp56kEmu/jitops.h

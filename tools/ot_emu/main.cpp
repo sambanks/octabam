@@ -73,7 +73,7 @@ int main(int _argc, char** _argv)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
 	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
 	bool dsp = false;			// O8: put the two real DSP cores behind the host port
-	double dspRatio = 1.14, dspIps = 4535.0;	// their clock, in DSP instructions per ColdFire instruction / per sample
+	double dspRatio = ot::DspPair::g_dspIps / ot::DspPair::g_cfIps, dspIps = ot::DspPair::g_dspIps;	// their clock, in DSP instructions per ColdFire instruction / per sample (dsp.h says where 4160 comes from)
 	std::string dspLog;			// every host-side event on the DSP pair -> FILE
 	uint64_t dspTrace = 0;		// a status line per core every N DSP instructions
 	bool dspNoIdle = false;		// execute every poll of an idle core (fidelity check; slow)
