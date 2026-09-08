@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <fstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -356,6 +357,10 @@ namespace ot
 		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
 		void setDspDrainPacing(bool _on) { m_edma.setDrainPaced(_on); m_edma.setBusPaced(!_on); }
 		void setBlockLog(bool _on) { m_blockLogOn = _on; }
+		// O9d: every host-port block's CONTENT, binary, taken at the move
+		// (a later peek cannot tell "nothing sent" from "consumed"). Record:
+		// u8 dir('>'/'<'), u32 frame, u16 ch, u8 core, u32 ram, u32 nwords, u16[nwords].
+		void setBlockDump(const std::string& _path) { m_blockDump.open(_path, std::ios::binary); }
 		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
@@ -434,6 +439,7 @@ namespace ot
 		std::array<PendingOut, 16> m_pendingOut;
 		bool m_blockLogOn = false;
 		std::vector<std::string> m_blockLog;
+		std::ofstream m_blockDump;
 		void noteBlock(char _dir, uint32_t _ch, uint32_t _ramAddr, const std::vector<uint16_t>& _hw,
 			uint64_t _nonZero, const std::string& _note);
 		void installHostPortMover();

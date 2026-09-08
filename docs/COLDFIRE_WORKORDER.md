@@ -40,6 +40,12 @@ start the next one, and it does not loosen the gate.
 8. **Ask nothing of the user mid-milestone.** Everything a milestone needs is
    in this file, `COLDFIRE_PORT.md`, `RTOS_FORK.md` and the route A source.
    If it is genuinely not, that is a BLOCKED PR, not a question.
+9. **A fixture edit goes into EVERY part of EVERY bank, and two cards must
+   differ on the host port before a DSP-side "identical" counts.** The load
+   applies bank 1 part 1; the transport start applies the saved bank's
+   pattern part (O9d). `ot_project.py set-fx` / `stamp-slot` write all
+   eight parts; `--block-dump` + `tools/scratch/blockdump.py diff` is the
+   check. Three O9c retractions came from skipping both.
 
 ## How to run the oracle
 
@@ -653,7 +659,28 @@ report lines. Three things later milestones must know:
    base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
    gates say whether any shipped effect was rendered on it.
 
-### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 MOSTLY DONE (8 Sep 2026, branch `coldfire-o9c`, draft PR)
+### O9d — the comparison fixture measured the wrong track, then the comparison itself ✅ DONE, O9c GATE PASSED (8 Sep 2026, branch `coldfire-o9d`)
+
+`COLDFIRE_PORT.md` O9d. O9c's three closing claims (a THRU track's TX0 is
+a pre-FX2 monitor; the page-2 select never crosses; the tap must be the
+recorder) are ❌ RETRACTED: every O9c FX2 fixture edited bank 1 part 1
+while the transport start applies the SAVED bank's pattern part, so T2's
+FX2 was SEND in every run — and T2 has no input in the port anyway (its
+FX1 FILTER is closed, as `rig_render` said). With the effect on T1 in every
+part, page 1 AND page 2 cross and TX0 changes. New instrument
+`--block-dump` (+ `tools/scratch/blockdump.py`); new tool
+`ot_project.py set-fx`. **The O9c gate PASSES on T1 (stock image, EQUALIZER):** the port's T1
+read-back against `rig_render` on the same chain input, flat page
+−125.6 dB residual at a −11.906 dB scale, boosted page −95.7 dB with the
+stem pre-scaled by that k and no fit. The parameter words on the DSP are
+dsp_host's word for word (page 2 included); the pre-FX track gain k is the
+one thing the harness does not model (`tools/scratch/o9d_compare.py`).
+
+**Rule 9, from this:** a fixture for the port goes into EVERY part of EVERY
+bank (`set-fx`, `stamp-slot`), and a DSP-side "identical" between two cards
+is void until `--block-dump` shows the cards differed on the host port.
+
+### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 MOSTLY DONE (8 Sep 2026, branch `coldfire-o9c`) — ⚠️ its closing claims are retracted in O9d
 
 `COLDFIRE_PORT.md` O9c has the account. Done and measured: the input map
 (RX0 0/1 = A/B, 2/3 = C/D, moved by the project's `DIR_AB`/`DIR_CD`; 4–7 not

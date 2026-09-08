@@ -329,6 +329,19 @@ stamp-defaults <project> <remix>` on the card BEFORE play, and say so in the
 flash notes. (Cause inferred from the symptom and a refreshed project
 running clean; not measured.)
 
+**THE PART THE EMULATED LOAD APPLIES IS NOT THE PART THAT PLAYS.** `ot_emu`'s
+load applies bank 1 part 1; its transport start re-applies the SAVED bank's
+pattern part and the refresher at `0x4000c19c` rewrites the live lane from
+it. A fixture that edited "part 1 and its saved copy" measured a track whose
+FX2 was still SEND — for a whole O9c session (8 Sep 2026): "the THRU monitor
+is pre-FX2", "the page-2 select never crosses" and "X:0x2c0 is the FX2
+instance" were all this one fixture, and the last was `stamp-slot` landing in
+the track's FX1 (it stamps both slots). Write fixtures into EVERY part of
+EVERY bank (`ot_project.py set-fx`, `stamp-slot`), and before believing a
+DSP-side "byte-identical" between two cards, run both with `--block-dump`
+and `tools/scratch/blockdump.py diff`: if no host-port block differs, the
+cards did not differ where it matters.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.
