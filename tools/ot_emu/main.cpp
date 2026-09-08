@@ -77,6 +77,7 @@ int main(int _argc, char** _argv)
 	double dspRatio = ot::DspPair::g_dspIps / ot::DspPair::g_cfIps, dspIps = ot::DspPair::g_dspIps;	// their clock, in DSP instructions per ColdFire instruction / per sample (dsp.h says where 4160 comes from)
 	std::string dspLog;			// every host-side event on the DSP pair -> FILE
 	uint64_t dspTrace = 0;		// a status line per core every N DSP instructions
+	uint64_t dspTraceFrom = 0;	// ... only once a core has executed this many (a window at the end of a run)
 	bool dspNoIdle = false;
 	bool dspDrainPaced = false;	// EXPERIMENT: a host-port burst completes when the DSP drained it (measured 8 Sep: one frame of exactly 16 ESAI frames, then the completion ISR loses an edge and stalls)		// execute every poll of an idle core (fidelity check; slow)
 	bool dspVerbose = false;	// the vendored DSP library's own log lines
@@ -85,8 +86,13 @@ int main(int _argc, char** _argv)
 	std::string blockLog;		// every host-port BLOCK with its non-zero count -> FILE
 	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
+	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
+	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
 	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
+	std::string coverage;		// O9b: every ColdFire PC executed from the transport start on, with its count -> FILE (diff two runs)
+	bool frameTimer = false;	// O9b: keep the free-running 16-sample frame timer with --dsp (default: the DSP's bank word is the frame edge)
+	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -126,6 +132,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-ips" && i + 1 < _argc)	dspIps = std::atof(_argv[++i]);
 		else if(a == "--dsp-log" && i + 1 < _argc)	dspLog = _argv[++i];
 		else if(a == "--dsp-trace" && i + 1 < _argc)	dspTrace = std::strtoull(_argv[++i], nullptr, 0);
+		else if(a == "--dsp-trace-from" && i + 1 < _argc)	dspTraceFrom = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--dsp-no-idle")			dspNoIdle = true;
 		else if(a == "--dsp-drain-paced")		dspDrainPaced = true;
 		else if(a == "--dsp-verbose")			dspVerbose = true;
@@ -135,7 +142,12 @@ int main(int _argc, char** _argv)
 		else if(a == "--audio-out" && i + 1 < _argc)	audioOut = _argv[++i];
 		else if(a == "--audio-in" && i + 1 < _argc)	audioIn = _argv[++i];
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
+		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
+		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
+		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
+		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
+		else if(a == "--frame-timer")				frameTimer = true;
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -187,11 +199,24 @@ int main(int _argc, char** _argv)
 		dspPair = std::make_unique<ot::DspPair>(dspRatio, dspIps);
 		dspPair->setLog(!dspLog.empty());
 		dspPair->setTrace(dspTrace);
+		dspPair->setTraceFrom(dspTraceFrom);
 		dspPair->setIdleSkip(!dspNoIdle);
 		ot::DspPair::setVerbose(dspVerbose);
 		dspPair->setAudioCapture(!audioOut.empty());
 		dspPair->setActivityMap(!dspMap.empty());
 		dspPair->setWriteMap(!dspWrites.empty());
+		if(!dspPcWatch.empty())
+		{
+			int core = 0; unsigned pc = 0; unsigned long long from = 0;
+			if(std::sscanf(dspPcWatch.c_str(), "%d:%x:%llu", &core, &pc, &from) >= 2)
+				dspPair->setPcWatch(core, pc, from);
+		}
+		if(!dspWatch.empty())
+		{
+			int core = 0; char space = 'X'; unsigned addr = 0;
+			if(std::sscanf(dspWatch.c_str(), "%d:%c:%x", &core, &space, &addr) == 3)
+				dspPair->setWriteWatch(core, space, addr);
+		}
 		if(audioIn == "tones")
 			dspPair->setAudioTones(true);
 		else if(!audioIn.empty())
@@ -264,6 +289,11 @@ int main(int _argc, char** _argv)
 		rtos.setBlockLog(!blockLog.empty());
 		if(dspDrainPaced)
 			rtos.setDspDrainPacing(true);
+		if(dspPair && !frameTimer)
+		{
+			rtos.setFrameFromDsp(true);
+			std::printf("frame edge : the DSP's bank word (core 0's host port outside a pull); --frame-timer restores the 16-sample timer\n");
+		}
 		std::ofstream edmaOut;
 		if(!edmaLog.empty())
 		{
@@ -475,6 +505,12 @@ int main(int _argc, char** _argv)
 				uint32_t finalBank = load.finalBank;
 				if(bank >= 0 && finalBank != static_cast<uint32_t>(bank))
 					finalBank = rtos.selectBankLive(static_cast<uint32_t>(bank));
+				if(mainLevel >= 0)
+				{
+					const auto g = rtos.setMainLevelLive(static_cast<uint32_t>(mainLevel));
+					std::printf("main level : sys command %u posted with %d -> gain table[0] = %#x%s (bit 0 of 0x8000004a = %u)\n",
+						ot::g_setMainLevelCase, mainLevel, g, g ? "" : " -- NOT FILLED", m.read8(0x8000004a) & 1);
+				}
 				const auto pattern = m.peek32(ot::g_curPattern) >> 24;
 				const auto seq = rtos.seqSelectLive(finalBank, pattern);
 				if(internalClock)
@@ -490,6 +526,8 @@ int main(int _argc, char** _argv)
 					std::printf("poke trig  : track 1 step %d -> mask byte 7 = %#04x\n",
 						pokeTrig, rtos.pokeTrig(static_cast<uint32_t>(pokeTrig)));
 				rtos.installTrigLog();
+				if(!coverage.empty())
+					m.setProfile(1);		// every PC from here: the coverage of the frames phase
 				// Frame 0 = the first frame delivered after the transport
 				// start returned, which is what the cold tool calls frame 0:
 				// the two reports compare directly.
@@ -599,9 +637,10 @@ int main(int _argc, char** _argv)
 				"reported 0 for a boot address whether it ran or not)\n", m.pcHits().size());
 			for(const auto& h : m.pcHits())
 				std::printf("   [%12llu] at %#x d0=%#x d1=%#x a0=%#x a1=%#x "
-					"[sp %#x: %#x %#x %#x %#x %#x]\n",
+					"[sp %#x: %#x %#x %#x %#x %#x] d2-7 %#x %#x %#x %#x %#x %#x a2-6 %#x %#x %#x %#x %#x\n",
 					static_cast<unsigned long long>(h.instruction), h.pc, h.d0, h.d1, h.a0, h.a1,
-					h.sp, h.stack[0], h.stack[1], h.stack[2], h.stack[3], h.stack[4]);
+					h.sp, h.stack[0], h.stack[1], h.stack[2], h.stack[3], h.stack[4],
+					h.d[2], h.d[3], h.d[4], h.d[5], h.d[6], h.d[7], h.a[2], h.a[3], h.a[4], h.a[5], h.a[6]);
 		}
 		if(!watchMem.empty())
 		{
@@ -611,8 +650,8 @@ int main(int _argc, char** _argv)
 			// frame have to look different.
 			std::printf("watch-mem  : %zu write(s)\n", rtos.memWrites().size());
 			for(const auto& w : rtos.memWrites())
-				std::printf("   [%10.1f] [%#x] <- %#x (%u) at pc %#x in %s\n",
-					w.sample, w.addr, w.val, w.size, w.pc, ot::taskName(w.tcb));
+				std::printf("   [%10.1f] [%#x] <- %#x (%u) at pc %#x in %s  i=%llu\n",
+					w.sample, w.addr, w.val, w.size, w.pc, ot::taskName(w.tcb), static_cast<unsigned long long>(w.instr));
 		}
 
 		if(!serialOut.empty())
@@ -633,9 +672,32 @@ int main(int _argc, char** _argv)
 		}
 	}
 
+	if(!coverage.empty())
+	{
+		std::ofstream t(coverage);
+		std::vector<std::pair<uint32_t, uint64_t>> pcs(m.profile().begin(), m.profile().end());
+		std::sort(pcs.begin(), pcs.end());
+		for(const auto& e : pcs)
+			t << std::hex << e.first << ' ' << std::dec << e.second << '\n';
+		std::printf("coverage   : %s (%zu distinct PCs from the transport start)\n", coverage.c_str(), pcs.size());
+	}
 	if(dspPair)
 	{
 		std::printf("dsp        : at the end\n%s", dspPair->report().c_str());
+		if(!dspPcWatch.empty())
+		{
+			std::printf("dsp pcwatch: %s, last %zu arrival(s): executed a1:a0 b1:b0 x0 x1 y0 y1 r0 r4 r6 n4 sp r2 m2\n", dspPcWatch.c_str(), dspPair->pcWatchHits().size());
+			for(const auto& h : dspPair->pcWatchHits())
+				std::printf("             %llu %06x:%06x %06x:%06x %06x %06x %06x %06x %06x %06x %06x %06x %02x %06x %06x\n", static_cast<unsigned long long>(h.executed),
+					h.a1, h.a0, h.b1, h.b0, h.x0, h.x1, h.y0, h.y1, h.r0, h.r4, h.r6, h.n4, h.sp, h.r2, h.m2);
+		}
+		if(!dspWatch.empty())
+		{
+			std::printf("dsp watch  : %s, last %zu writer(s):\n", dspWatch.c_str(), dspPair->writeWatchHits().size());
+			for(const auto& h : dspPair->writeWatchHits())
+				std::printf("             pc %#07x <- %06x at executed %llu; last pcs %06x %06x %06x %06x; r0 %06x r4 %06x r6 %06x area %u\n", h.pc, h.val, static_cast<unsigned long long>(h.executed),
+					h.last[0], h.last[1], h.last[2], h.last[3], h.r0, h.r4, h.r6, h.area);
+		}
 		if(!dspWrites.empty())
 		{
 			std::ofstream t(dspWrites);

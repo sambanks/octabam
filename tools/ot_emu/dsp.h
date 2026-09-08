@@ -90,7 +90,8 @@ namespace ot
 		bool read(uint32_t _addr, uint8_t _size, uint32_t& _out) override;
 		bool write(uint32_t _addr, uint8_t _size, uint32_t _val) override;
 		void tickInstructions(uint64_t _n) override;
-		void tickSamples(double _n) override;
+		double tickSamples(double _n) override;
+		void setHostWordHook(std::function<bool(int)> _f) override { m_hostWordHook = std::move(_f); }
 		int selected() const override { return m_sel; }
 		bool hostRingEmpty(int _core) const override;
 		void pushHalfwords(uint32_t _addr, const std::vector<uint16_t>& _hw) override;
@@ -129,6 +130,7 @@ namespace ot
 		// HDI08 status registers -- what to read when a core stops making
 		// progress and the question is when it stopped.
 		void setTrace(uint64_t _every) { m_traceEvery = _every; }
+		void setTraceFrom(uint64_t _executed) { m_traceFrom = _executed; }	// O9b: a window, so the cap holds the END of a run
 		// The idle fast-forward: a core found in a poll loop (the last PCs in
 		// a window of three words, outside any hardware DO loop) is advanced
 		// to its next peripheral event instead of executing the polls. What it
@@ -179,10 +181,21 @@ namespace ot
 		// command. A region written with content is where audio (or state)
 		// passes through, whatever the buffer is called.
 		void setWriteMap(const bool _on) { m_writesOn = _on; }
+		// A write watch on one DSP word: the last 16 (pc, value, executed) that wrote it (O9b).
+		void setWriteWatch(const int _core, const char _space, const uint32_t _addr) { m_watchCore = _core; m_watchSpace = _space; m_watchAddr = _addr; m_watchOn = true; }
+		struct WatchHit { uint32_t pc, val; uint64_t executed; uint32_t last[4]; uint32_t ddr0, dco0, dsr1, dco1, r4, r6, area, r0; };
+		const std::vector<WatchHit>& writeWatchHits() const { return m_watchHits; }
+		// A PC watch on one core: registers at every arrival (last 24), the DSP side of route A's --watch-pc (O9b).
+		struct PcWatchHit { uint64_t executed; uint32_t a1, a0, b1, b0, x0, x1, y0, y1, r0, r4, r6, n4, sp, r2, m2; };
+		void setPcWatch(const int _core, const uint32_t _pc, const uint64_t _from = 0) { m_pcWatchCore = _core; m_pcWatchPc = _pc; m_pcWatchFrom = _from; m_pcWatchOn = true; }
+		const std::vector<PcWatchHit>& pcWatchHits() const { return m_pcWatchHits; }
 		const std::vector<std::string>& writeMap() const { return m_writeMap; }
 
-		// Run both cores up to the due count now (the ticks only book it).
+		// Run both cores up to the due count now (the ticks only book it),
+		// interleaved in quanta of g_quantum instructions (O9b).
+		static constexpr double g_quantum = 64.0;
 		void runDue();
+		bool stepCore(int _i, double _limit);
 		// Run ONE core until `_ready` or `_budget` instructions (the read-back
 		// needs the DSP to produce each word). Returns whether it became ready.
 		bool runCoreUntil(int _core, const std::function<bool()>& _ready, uint64_t _budget);
@@ -207,9 +220,16 @@ namespace ot
 		double m_ratio, m_ips;
 		double m_due = 0.0;
 		bool m_logOn = false;
-		uint64_t m_traceEvery = 0;
+		uint64_t m_traceEvery = 0, m_traceFrom = 0;
 		bool m_idleSkip = true;
 		bool m_capture = false, m_tones = false, m_mapOn = false, m_writesOn = false;
+		bool m_pulling = false;
+		bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
+		std::vector<PcWatchHit> m_pcWatchHits;
+		bool m_watchOn = false; int m_watchCore = 0; char m_watchSpace = 'X'; uint32_t m_watchAddr = 0;
+		std::vector<WatchHit> m_watchHits;			// inside pullHalfwords: host-port words are the read-back, not the bank id
+		bool m_hostWordFired = false;	// set by runDue when the hook fired; tickSamples stops its slice on it
+		std::function<bool(int)> m_hostWordHook;
 		std::vector<std::string> m_map, m_writeMap;
 		std::vector<int32_t> m_input;
 		uint32_t m_inputChannels = 0;

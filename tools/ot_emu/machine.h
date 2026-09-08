@@ -82,7 +82,14 @@ namespace ot
 		virtual bool read(uint32_t _addr, uint8_t _size, uint32_t& _out) = 0;
 		virtual bool write(uint32_t _addr, uint8_t _size, uint32_t _val) = 0;
 		virtual void tickInstructions(uint64_t _n) = 0;
-		virtual void tickSamples(double _n) = 0;
+		// Returns the samples actually advanced: fewer than `_n` when the
+		// co-processor raised a host word the machine should take NOW (O9b).
+		virtual double tickSamples(double _n) = 0;
+		// O9b: called when core `_core` puts a word in its host port OUTSIDE a
+		// read-back pull -- the DSP's bank id, which on hardware is what the
+		// frame interrupt announces (the frame handler reads it with no ready
+		// check). Default: nobody listens.
+		virtual void setHostWordHook(std::function<bool(int)>) {}		// returns whether the edge was taken; if not, it is offered again
 		// The eDMA's side of the host port (O8 step 4). A block going TO the
 		// co-processor is pushed whole at the kick, halfword by halfword, as
 		// the bus cycles the eDMA would make; a block coming FROM it is pulled
@@ -228,7 +235,7 @@ namespace ot
 		// The timestamp is the INSTRUCTION COUNT rather than the sample clock,
 		// because the boot has no sample clock -- `Rtos` prints its own sample
 		// beside it for hits it saw.
-		struct PcHit { uint64_t instruction; uint32_t pc, d0, d1, a0, a1, sp, stack[5]; };
+		struct PcHit { uint64_t instruction; uint32_t pc, d0, d1, a0, a1, sp, stack[5]; uint32_t d[8], a[7]; };	// d/a: every register (O9b: a watch that showed four of them could not say which record a routine read)
 		void watchPc(std::vector<uint32_t> _addrs) { m_watchPc = std::move(_addrs); }
 
 		// ✅ THE DSP HOST PORT, RECORDED. The firmware programs the DSPs

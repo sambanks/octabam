@@ -20,5 +20,6 @@ namespace ot
 		// The EMAC, split out because it carries its own state and its own
 		// gate (tools/ot_emu/test_emac.cpp).
 		Result emac(Machine& _m, uint32_t _opcode);
+
 	}
 }

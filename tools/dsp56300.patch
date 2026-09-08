@@ -8,6 +8,49 @@ index ffbf791..350a71a 100644
  endif()
 +
 +add_subdirectory(dsp_host)
+diff --git a/source/dsp56kEmu/agu.h b/source/dsp56kEmu/agu.h
+index ac3853c..5acf878 100644
+--- a/source/dsp56kEmu/agu.h
++++ b/source/dsp56kEmu/agu.h
+@@ -45,20 +45,27 @@ namespace dsp56k
+ 
+ 				n = signextend<int, 24>(n);
+ 
++				// octabam (O9b, 8 Sep 2026): work RELATIVE to the buffer base in
++				// signed arithmetic. `r` is unsigned: a pre-decrement from r = 0
++				// underflowed to 0xffffffff, the lower-bound test could not see
++				// it, and the upper-bound test then subtracted the modulo and
++				// left 0xffffbf -- so `x:-(r2)` with m2 = 0x3f at r2 = 0 gave
++				// 0xffffbf where the chip gives 0x3f, and the next sixteen
++				// writes walked the DSP's peripheral registers (TCSR0 among
++				// them: a timer interrupt whose vector in payload B corrupts the
++				// voice records).
+ 				const auto lowerBound = r & ~moduloMask;
+-				const auto upperBound = lowerBound + m;
+-
++				const auto wrap = (n & moduloMask) ? modulo : 0;
++				int32_t rel = static_cast<int32_t>(r - lowerBound);
+ 				if constexpr(add)
+-					r += n;
++					rel += static_cast<int32_t>(n);
+ 				else
+-					r -= n;
+-
+-				modulo = n & moduloMask ? modulo : 0;
+-
+-				if(r < lowerBound)
+-					r += modulo;
+-				if(r > upperBound)
+-					r -= modulo;
++					rel -= static_cast<int32_t>(n);
++				if(rel < 0)
++					rel += wrap;
++				else if(rel > static_cast<int32_t>(m))
++					rel -= wrap;
++				r = (lowerBound + static_cast<TWord>(rel)) & 0xffffff;
+ 				/*
+ 				if constexpr(add)
+ 				{
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
 index bd3e603..fea36b4 100644
 --- a/source/dsp56kEmu/dma.cpp

@@ -1648,6 +1648,147 @@ O8 notes is stale.
 `ctest` 7/7; O6 with the cores 5/5 against the stored oracle; M6a with the
 cores; `make check` — see the PR.
 
+## Milestone O9b — the trig → voice path: audio out of the DSP (8 Sep 2026, branch `coldfire-o9b`)
+
+O9 ended with "no track ever starts under either emulator". It did start; four
+things between the trig and the ESAI were wrong, none of them the trig path,
+and each was found by an instrument added for it. **Gate: a THRU track trigged
+with `--audio-in tones` puts audio on TX0 — passes.** 400 frames, 28 ticks,
+the O6 oracle's 5 fields agree, TX0 slots 1–4 carry the mix on 6,213 of 6,399
+frames after the transport start (two stereo pairs, the second 3.7 dB lower),
+no fault, no stall.
+
+### 1. Coverage said the trig starts a voice; the voice rendered at gain zero
+
+`--coverage FILE` (every ColdFire PC from the transport start, with counts;
+`Machine::step` now counts instructions, which the PC watch's timestamps
+needed too) and a diff of a trig run against a no-trig run: the trig's own
+footprint is 124 PCs (the p-lock applier `0x4000c42c–0x4000c5a0`, an
+armed-bitmask check at `0x4000bd14`, a compare, a counter), and one more
+activity per frame from then on — a per-voice EMAC mixer at `0x40004444` that
+sums four input-capture streams into stereo, 16 samples a call, with gains
+from a voice record at `0x80000510 + 384·ping + 48·track` (byte 0 = routing
+mode, word +2 = level). Its jump table took case 0 — all gains cleared — for
+every voice because the record's level read 0.
+
+The level is written mode:level by the frame builder (`0x4000cb2e`),
+smoothed by an EMAC chain at MACSR `0xb0` (`0x4000cbfc`), then scaled by a
+**main gain table at `0x80003c60`** in a second chain at MACSR `0x60`
+(`0x4000ccae–0x4000ccfc`). ✅ That table is written by exactly two sys
+commands — **command 4 = SET MAIN LEVEL** (`msg[1]` = 0..127, handler case
+`0x40061e0a`, ten longwords of gain:(0x8000−gain) from the curve at
+`0x400bcd90`) and command 68 (`127 − msg[3]`) — and NEITHER emulator's load
+posts either: 0 writes to the table in the port and in route A. Every voice
+was multiplied by zero. `--main-level N` posts command 4 after the load
+(`Rtos::setMainLevelLive`, the same scratch-message path as select-bank); the
+report prints the table's first entry (`0xbf7fc081` at 64). Route A got the
+same post the same day (the parallel session's `set_main_level_live`).
+
+### 2. MACSR S/U is bit 6, and in fractional mode it is not signed/unsigned at all
+
+With the table filled the second chain still stored 0. Its inputs were right
+(record `0x0100:0x7f00`, gain `0xbf7f:0xc081`); the port's `movclrl` returned
+the products left-aligned and the firmware keeps the LOW words (`movclrl
+acc0,d3; swap d3; movclrl acc1,d2; movew d2,d3`). ❌ The port had S/U as bit 4
+(that is R/T) and read every accumulator out as `ACC[39:8]`. ✅ The CFPRM
+(Rev. 3, ch. 6, MOVCLR pseudocode; `MOVE from ACC` says the same) for
+`F/I = 1`:
+
+    OMC,S/U,R/T == 000  → ACC[39:8] → Rx
+    OMC,S/U,R/T == 001  → ACC[39:8] rounded by [7:0] → Rx
+    OMC,S/U     == 01   → 0 → Rx[31:16]; ACC[39:24] rounded by [23:0] → Rx[15:0]
+
+So at `0x60` the chip hands the 16-bit-rounded top of the accumulator back in
+the LOW word, which is precisely what the chain keeps. `v4e.cpp`'s `accRead`
+is now the pseudocode, every branch (integer signed/unsigned with OMC
+saturation; fractional with OMC, S/U and R/T), and `g_macsrSigned = 0x40`.
+QEMU (route A) has the S/U branch and `MACSR_SU = 0x40` already. `ctest`
+7/7 before and after — the O2 self-test never exercised S/U. **The number
+that only makes sense one way:** the record's mode byte survives the scaling
+(`0x0100 × 1.0 → 0x0100` in the low word) only under this read-out; under
+`ACC[39:8]` it is destroyed, which is why both chains cannot be satisfied by
+any operand alignment (an experiment that was tried and reverted).
+
+With that: `0x80000510` reads `0x01007f00` after the chain, outbound non-zero
+words 43,222 → 177,690 per 400 frames, inbound 50,298 → 129,619, **the
+ESAI-out ring gets non-zero writes and TX0 slots 1–4 carry the THRU tracks'
+tones** — for 348 frames, then the firmware executed `halt`.
+
+### 3. The frame interrupt is the DSP's bank word, not a timer
+
+`0x4000ab40: halt` sits under `cmpl 0x800000e0,%d0; bcc`: the frame handler
+reads the DSP's bank id from `0x2000001c` **with no ready check**
+(`0x4000aafa`) and halts unless it is 0 or 1. Under silence the read-back
+data words were 0 and a mistimed read passed by luck; with audio a data word
+landed there (`0xffffd500`). So on hardware the interrupt that runs the
+handler must be what announces the bank word. The port now raises the frame
+edge when core 0 executes its bank write — payload A's `000073: movep
+r3,x:<<M_HOTX`, once per ring half, `g_bankIdPc` — instead of the
+free-running 16-sample timer (`--frame-timer` restores it). The DSP's first
+bank id, written during the load and waiting at P:0x97 for the host, is
+delivered where route A fires its first frame (one period after the frame
+clock comes on) so the transport start keeps the oracle's phase; a ColdFire
+idle skip ends at the edge (`tickSamples` returns the samples it advanced).
+Measured: bank write → host take 0.002 samples, bank write → `0x8c` 0.004
+samples, DSP frame-to-frame 16.00 (min 15.27, max 16.95). "ESAI frames per
+host frame" now reads 16 on 395 of 399 with min 14 / max 17 — that is the
+ColdFire's own latency jitter on the command, visible now that the edge is
+the DSP's; the DSP's frames themselves are exact.
+
+### 4. A modulo pre-decrement that left the buffer — the eleventh vendored defect
+
+Then the DSP stalled 13–38 frames after the trig: core 0 at P:0xa3 waiting on
+core 1's mailbox for a whole ring half, DMA2 finished un-re-armed (the
+dispatcher only re-arms after catching `DSR2 == 0x8070/0x80f0`, a one-word
+window), core 1 in a 196,608-iteration voice loop (`do y1,>$20b` at P:0x205
+with `y1 = 0x030000` from the record's count field at Y:0x42). Instruments on
+the way: `--dsp-writes`' per-word watch (`--dsp-watch core:space:addr`: the
+last 16 writers with PC, the executed-PC ring, r0/r4/r6 and the area), a DSP
+PC watch with a register dump (`--dsp-pcwatch core:pc[:fromExecuted]`), a
+trace window (`--dsp-trace-from`), the interrupt-vector histogram in the
+report, and a trap for the first `TCSR0.TE` with the PCs and address registers
+before it. The chain, all measured:
+
+- core 1 took **vector 0x54 = TIMER0 Compare 230,027 times**; neither payload
+  writes a timer register. Payload B's word at P:0x54 is `move x0,y:(r4)+` and
+  a fast interrupt runs the two words at its vector inline — with whatever r4
+  the voice builder had, so the count field got a raw host word;
+- TCSR0 was written with `0x0c2687` (an audio sample) by the interpolator's
+  `move b,x:(r2)+` at P:0x1a78 with `r2 = 0xffff8f`;
+- r2 came from `x:-(r2)` at P:0x1a66 with **r2 = 0 and m2 = 0x3f**: the
+  vendored AGU (`agu.h updateAddressRegister`) holds r unsigned, the
+  decrement underflowed to `0xffffffff`, the lower-bound test could not see
+  it and the upper-bound test subtracted the modulo: **`0xffffbf` where the
+  chip gives `0x3f`**. The next sixteen writes walked `0xffffc0–0xffffff` and
+  the timer block.
+
+Fixed in `agu.h` (the update is done relative to the buffer base in signed
+arithmetic), `tools/dsp56300.patch` regenerated. ⚠️ `dsp_host` renders every
+effect on this AGU and a `x:-(rN)` at the base of a modulo delay line is an
+ordinary idiom, so the shipped effects were audited directly: `make check`'s
+bit-identity gates cannot see a change common to both sides of a comparison,
+but `send_probe --layout RS --wav` rendered with and without the fix is
+**byte-identical** (529,244 bytes, `cmp`), and its peak/THD/spur lines match.
+✅ No shipped effect was rendered on the underflow path.
+
+Also in this milestone: the two cores are interleaved in 64-instruction
+quanta (`stepCore`; `runCoreUntil` steps core 1 alongside core 0 inside a
+pull) — hardware runs them in parallel, and a whole budget slice each in turn
+could hold core 0's mailbox wait past the ring window. The stall's root cause
+was the AGU, not this, but the interleaving stays as the nearer model.
+
+### What the port can do now
+
+`--dsp --main-level 64 --audio-in FILE|tones --audio-out PREFIX` renders the
+firmware's own mix of the inputs through the DSP to a WAV. Step 5 of O8 (the
+firmware driving `verify_twocore`'s layouts) is reachable: audio in, the
+sequencer, the per-track records and the ESAI out all carry content. Open:
+which input slot is which physical input and which output slot is main/cue
+(a per-slot spectral pass or eight single-tone runs); the FLEX sample path
+(a staged `KICK.WAV` is read from the card but the 512-word block stays zero
+— the sample loader / voice start for FLEX is the next locate, with
+`--coverage` and the block log as the instruments); the `0x8c` jitter.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
@@ -1663,9 +1804,10 @@ cores; `make check` — see the PR.
   ColdFire alternates the cores, writes `0x81`, sends a destination/count pair
   to `0x2000001c`, then DMAs — 336-word per-track records plus a 128-word and a
   64-word block per core, with one 64-word block read back.
-- **Audio out.** ~~The ESAI path is untraced.~~ Traced in O9: input proven to
-  the ColdFire's capture buffers, output silent because no track ever starts
-  under either emulator (the trig → voice path, oracle-side).
+- **Audio out.** ~~The ESAI path is untraced.~~ ~~Traced in O9: input proven,
+  output silent because no track ever starts.~~ O9b: THRU tracks pass the
+  inputs to TX0 through the whole chain. FLEX playback (the sample loader)
+  is the open half.
 
 ## The oracle, made concrete (7 Sep 2026)
 

@@ -77,6 +77,7 @@ route A fact, not the port's problem; the golden command above already does it.
 | O8 (1-4) | the DSP cores behind the host port | ctest `dsp` (the firmware's upload lands the image's bytes) + M6a and O6 with `--dsp` | ✅ 50/50 + 58/58 bootstrap words, 26,221 + 25,408 payload words at upload time; M6a 8 compared fields; O6 5 compared fields (400 frames, 28 ticks, trig at 344) with the cores live. Step 5 open |
 | O8a | the ESAI rate | the falsifier: bank B gets taken | ✅ the port's ESAI ran 8× slow (a per-SLOT clock fed a per-sample count); the rate is the firmware's own 4160 instructions/sample; a ninth vendored DMA defect found on the way. Bank B 850 of 2,400 blocks (was 0) |
 | O8b | the host-port burst time | `ESAI frames per host frame` reads 16, O6 still 5/5 | ✅ FlexBus 66 MHz × 4 clocks/word from `PCR` and `CSCR2` in the image: 16 on 382 of 399 (was 0 of 399), O6 5/5, M6a 8/8 |
+| O9b | the trig → voice path | a THRU track trigged with `--audio-in tones` puts audio on TX0; O6 5/5 | ✅ four findings, none the trig path: the main gain table is filled only by sys command 4 (`--main-level`); MACSR S/U is bit 6 and means 16-bit rounding on the read-out in fractional mode (CFPRM); the frame interrupt is the DSP's bank word (the firmware halts on a mistimed read); the vendored AGU's modulo pre-decrement underflowed out of the buffer (eleventh vendored defect). TX0 slots 1-4 carry the mix on 6,213 of 6,399 frames; 400 frames, 28 ticks, O6 5/5 |
 | O9 (half) | the ESAI path | audio in: the read-back carries what the ESAI receives; the clock walk: 16 on 399/399 | ✅ tones on RX0 come back in eDMA ch 7's 128-word blocks (50,298 non-zero words / 400 frames, 9 without); ✅ O8b's 0.27 % walk was `rep` iterations counted once per call — 399/399 and 1599/1599 now. ❌ Audio OUT silent: the ring never gets a non-zero write; the trig never becomes a voice, and route A agrees — see O9b below |
 
 ## Queue
@@ -634,7 +635,36 @@ report lines. Three things later milestones must know:
    DSP: the ring's write count is the instrument, and it reads zero because
    its input is zero.
 
-### O9b — the trig → voice path *(oracle-side first; Fable for the scoping)*
+### ~~O9b — the trig → voice path~~ ✅ DONE (8 Sep 2026, branch `coldfire-o9b`)
+
+`COLDFIRE_PORT.md` O9b has the account. Four things later milestones must know:
+
+1. **Post sys command 4 (SET MAIN LEVEL) after every emulated load** —
+   `--main-level 64` on the port, `set_main_level_live` on route A. Without it
+   the main gain table `0x80003c60` is zero and every voice renders silent.
+2. **MACSR S/U = 0x40, and in fractional mode it selects 16-bit rounding on
+   the accumulator read-out** (CFPRM ch. 6). `v4e.cpp accRead` is the manual's
+   pseudocode now. Any EMAC claim made before 8 Sep at MACSR `0x60`/`0x70`
+   sites is suspect on the port side; route A (QEMU) had it right.
+3. **With the cores, the frame interrupt is the DSP's bank write** (payload A
+   P:0x73), not the 16-sample timer; the firmware reads the bank id with no
+   ready check and halts on a data word. `--frame-timer` keeps the old model.
+4. **The vendored AGU could leave a modulo buffer on a pre-decrement from the
+   base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
+   gates say whether any shipped effect was rendered on it.
+
+### O9c — the audio comparison (O8's step 5) *(Opus)*
+
+**Gate:** the port, driven by the firmware, renders `verify_twocore`'s
+layouts and the WAV matches `dsp_host`'s render of the same layout to the
+bit for the THRU path (the FX chain is the same code). **Needs first:** the
+slot map (which RX0 slot is input A/B/C/D, which TX0 slot is main/cue L/R —
+eight single-tone runs with `--audio-in FILE.wav`, or a spectral pass on
+`out/o9/o9b_frames.wav`), and a project where the track's FX2 is the effect
+under test. The FLEX sample path (a staged `KICK.WAV` is read from the card,
+the 512-word block stays zero) is a separate locate with `--coverage`.
+
+### O9b — the trig → voice path *(the original entry)*
 
 **Gate:** with `--audio-in tones` and a THRU track trigged, TX0 carries the
 tones (`--audio-out` WAV non-zero on some slot; `non-zero writes into the
