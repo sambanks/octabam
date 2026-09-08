@@ -280,7 +280,11 @@ so the STATIC sum is the comparable floor: for this layout **core 0 = 3,005**
 SEND). Core 0 sits 115 under the wall before contention — the same class as
 the tag-91 hang at 3,106. The meter reads about half the static count
 (multi-word instructions count once) and is the per-block, init-inclusive
-shape of the load, not a second calibration.
+shape of the load, not a second calibration. The ColdFire port measured the
+same rig under the firmware's own dispatch (`--dsp-stopwatch` on the four
+call sites, `docs/COLDFIRE_PORT.md` O13, 9 Sep 2026): core 0 24,654 a frame
+against the meter's 24,971, core 1 15,177 against 14,880 once T1's
+CHARACTER is live on both — the meter reads the real load within 2 %.
 
 What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
 the mixer are a unity sum, samples do not play (stems stand in), and the
