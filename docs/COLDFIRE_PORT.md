@@ -2623,6 +2623,37 @@ one-pole states). Everything static about the reverb — input, parameters,
 bus timing, block length, channels — is now proven equal; what is left is
 its own history.
 
+### ✅ Flash 6's remaining claims, run under the port (9 Sep 2026, branch `bus-claims-under-port`)
+
+The master-off rig, T2 sending, the flash-7 image, one project variant per
+claim (`set-fx`/`stamp-slot`), 1,200 frames each, T8's read-back as the
+return:
+
+| claim | fixture | result |
+|---|---|---|
+| iii, neither engine | T1 and T5 FX2 = NONE | T8 peak 0: digital silence, not garbage ✅ |
+| iv, delay MIX 0 | | the reverb of the DRY sends: same onset, −44 dBFS against the repeats-only −58 ✅ |
+| iv, reverb MIX 64 | | repeats under the tail: a different, non-silent return ✅ |
+| v, the refusal | SEND on T8's FX2, AUX 127 | T8's return **bit-identical** to the baseline ✅ |
+| vii, a BUS-mode station on T4 | | T4 returns nothing ✅ — **and T8's return went SILENT from its first sample** ❌ |
+| vii, the same on T7 | | T7 returns nothing ✅ — **T8 silent** ❌ |
+| viii, 6,000 frames | | no block under −90 dBFS after frame 1,000; the return's slow ±5 dB wander is the modulated tank on a pure tone ✅ |
+
+**The vii defect:** the engines' liveness stamps are clear-on-read with a
+single reader by design, and a BUS-mode station on ANY track ran the
+reads — a station that failed the pin returned nothing, exactly as flash
+6's claim asked, while stealing the stamps from the real return on T8,
+which then saw nothing live. `verify_onebus` checks "returns nothing from
+T4/T7" and "T8 returns" as separate cases and never both at once. Fixed in
+`character.asm`: a station whose RET level is 0 (not track 8, or the knob
+down) skips the stamp reads and the RETV/RETD stamps. Re-run: T8's return
+bit-identical to the baseline with the station on T4; with it on T7
+identical until frame 641 then −34 dB different — 🟡 that frame is one of
+the port's jittered host frames (a 15-sample frame among 16s; the frame
+edge is the DSP's own bank write, so a heavier core-0 load moves the
+jitter), the port's timing model rather than the bus. `verify_onebus` and
+`make check` green.
+
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).
