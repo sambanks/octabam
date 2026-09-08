@@ -2277,6 +2277,7 @@ card, `--audio-in tones` (500·(k+1) Hz on RX0 slot k), `--main-level 64`,
 | RLEN MAX, 128 BPM, play trigs on the REC steps (his test 3) | −104.4 dB rms, max 0.00 % |
 | RLEN 4, 120 BPM (his clean control) | −104.4 dB, 0.00 % (pass = 22,050) |
 | RLEN 4, 128 BPM, `--self`: play trigs on T1, the recording track | −104.4 dB, 0.00 % (T1 plays and records a 1500 Hz tone; INAB records the inputs, not its own output) |
+| RLEN 4, 128 BPM, play trigs OFF the record steps (4/8/12/16 against REC at 2/6/10/14) | −104.4 dB, 0.00 % from the first trig at step 4 (`r4_128_off`) |
 
 And the read-back tap (the chain OUTPUT, T2's slot of core 1's 256-word
 read-back, `o10_continuity.py --readback`) on the 8-bar run: −69 dBFS (the
@@ -2292,11 +2293,32 @@ in both emulators — `--pit-clock`, recorded in O8; the 0x8c jitter is real
 but the port's frame-lock is idealised), the DSP-side retrigger of a FLEX
 voice on a buffer being written (the port's DSP runs the real code, but its
 ESAI/DMA phase against the ColdFire frame is the port's), and any hardware
-path outside the host port. The falsifier for "seam-free by construction"
-is a fixture where the play grid and the arm grid differ — a play trig NOT
-on a REC step, or RLEN MAX (the next arm is the end), or the sound-on-sound
-shape (`--self`: T1 records what it plays) — three of which are queued in
-this milestone.
+path outside the host port. All four falsifiers the port can run — a play trig NOT on a REC step, RLEN
+MAX, the sound-on-sound shape, the 120 control — came back continuous: with
+both mechanisms on the same sample grid the played stream is the input
+delayed by the arm-to-trig offset, and that offset never changes. Bryan's
+click therefore needs the two to ROUND DIFFERENTLY on the unit (the pass is
+20,671.875 samples at 128 BPM — a fraction; at 120 it is 22,050 exactly,
+which is why 120 is clean), 🟡 inferred from the arithmetic, and the port
+cannot show which side rounds which way because it rounds both the same.
+
+✅ **Measured, the port's own timing of the two:** the play trig's sub-frame
+nibble (`FW_LIVE_NIBBLE`) is `f` for passes 1–8 (frames 322, 1614, …, 9366),
+`e` for passes 9–16 (10658 …), `d` for 17–24 (20994 …) — one sample earlier
+every eight passes, in lockstep with the arm offset route A measured
+(15 ×8 then 14, §10.16.5). Both derive from the frame builder's event
+arithmetic, so in the port they cannot drift apart. 🟡 **What would make the
+unit click on exactly Bryan's pattern:** a stage on one side that works in
+2-sample units (stereo pairs). At 120 BPM a pass is 1,378 frames + 2
+samples, so the nibble walks by two per pass and a 2-sample stage tracks it
+exactly — clean; at 128 it walks by ONE every eight passes, which a 2-sample
+stage cannot follow — one click per eight passes, i.e. every two bars,
+starting at the ninth pass (Bryan: "~6th repeat" onset, clicks at RLEN 4,
+16 and MAX alike, 120 clean). Hardware falsifier that costs one capture: a
+tempo whose pass fraction walks by an ODD number of samples per pass but
+not every eight (e.g. 125 BPM: 21,168 samples/pass exactly = clean
+predicted; 130: 20,353.85 → walks; the prediction is click iff the
+per-pass walk is odd), against a tempo with an even walk.
 
 ## What is NOT here yet
 
