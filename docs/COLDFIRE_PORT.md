@@ -1928,11 +1928,17 @@ FILTER's proc reads its coefficients from X:0x2c0/0x3a0, which did not change
 — i.e. whether a *companion* field is unpacked to the proc's block, not
 whether the page crosses.
 
-✅ **Re-measured with BASE (page-1 slot 0, the cutoff): the parameter path
+❌ **RETRACTED 8 Sep 2026 (O9d): this was T2's FX1 path, not FX2's.**
+`stamp-slot` stamps every part/track naming the module in FX1 OR FX2, T2's
+FX1 is FILTER in every part, and the part that PLAYS had T2's FX2 = SEND
+(the fixture had put FILTER only in part 1 — see O9d). X:0x4000 word 39 is
+T2's FX1 WDTH (record = 32 words per track, FX1 page at +6, FX2 at +12), so
+X:0x2c0 is the FX1 instance. The FX2 page path is proven in O9d, on T1.
+~~✅ **Re-measured with BASE (page-1 slot 0, the cutoff): the parameter path
 is proven end to end.** Stamping FILTER BASE to 40 on T2's FX2 lands
 **0x28 in FILTER's own coefficient block at X:0x2c0 word 7** (the FX2
 instance; X:0x3a0 is the FX1 instance, unchanged), which the WDTH-only card
-does not have. So a part's page byte travels: part data → the ColdFire's
+does not have.~~ So a part's page byte travels: part data → the ColdFire's
 `0x80000ecc` publish → the per-voice block at X:0x4000 → unpacked into the
 effect's parameter block where its proc reads it. The 300 Hz…12 kHz response
 is still flat at −34 dB because BASE 40 / WDTH 64 is a transparent band for
@@ -1946,8 +1952,13 @@ comparison against `dsp_host` is now a bounded job, not an unknown: it needs
 (a) a part setting that makes the effect non-transparent, and (b) the gain
 structure reconciled. Both are now measured facts, not locates:
 
-- ✅ **A page-1 FILTER setting cannot make it filter, and the page-2 select
-  that would does not reach the DSP under the load.** Four page-1 (BASE, WDTH)
+- ❌ **RETRACTED 8 Sep 2026 (O9d)** — every measurement in this bullet was
+  taken on T2, which in the port has NO INPUT (its FX1 FILTER at BASE 127 /
+  WDTH 0 closes the path, exactly as `rig_render` said) and whose FX2 in the
+  playing part was SEND, so "identical" was inevitable. Page-2 selects DO
+  cross under the load (O9d: FILTER HP/LP on T1, record low byte 0→1, TX0
+  changes). ~~**A page-1 FILTER setting cannot make it filter, and the page-2
+  select that would does not reach the DSP under the load.**~~ Four page-1 (BASE, WDTH)
   combinations all give the same flat output; FILTER's response is gated by
   its page-2 HP/LP selects. `stamp-slot` DOES write page 2 (my earlier "page 1
   only" was wrong — it computes `P2_OFF + track·30 + 6 + slot−6` and the LP=2
@@ -1979,8 +1990,13 @@ structure reconciled. Both are now measured facts, not locates:
   of the copier window 0x80000898–0x800008af left FILTER's block unchanged),
   and `--poke` (added this milestone) is the lever once it is.
 
-⚠️ **But a bigger reframing, strongly supported: a THRU track's TX0 output
-is a PRE-FX2 monitor, so the comparison cannot read the effect there.** Every
+❌ **RETRACTED 8 Sep 2026 (O9d): a THRU track's TX0 output DOES carry its
+FX2.** EQUALIZER on T1's FX2 (the track that actually has input in the port)
+changes T1's read-back, the forwarded block and TX0 alike; on T2 nothing
+could change because T2 renders nothing. The "reframing" below is the
+fixture, not the firmware. ~~**But a bigger reframing, strongly supported: a
+THRU track's TX0 output is a PRE-FX2 monitor, so the comparison cannot read
+the effect there.**~~ Every
 FX2 setting tried — page-1 BASE/WDTH across four combinations, a page-2 LP
 select in the part, a live-lane poke — leaves the TX0 ring word 2 output
 **flat/identical**, even though FILTER's proc runs every frame (`P:0x59d`)
@@ -2014,9 +2030,12 @@ a guard before the next fixture round.
   constant per path — the THRU's INAB gain, not a main-level-dependent one.
 
 `rig_render.py` on the same part (stock image, `--stem T2=`) rendered T2 at
-−138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path where the
+−138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path ~~where the
 port's does not — a second disagreement, harness versus firmware-driven,
-recorded here and not chased (the port is the one running the ColdFire).
+recorded here and not chased (the port is the one running the ColdFire)~~.
+✅ **O9d: the port's does too** — T2's chain output in core 1's read-back is
+316 rms against 3.0 M in its input record (−80 dB). The tone O9c heard at
+TX0 was T1's. No disagreement.
 
 **So the comparison's precondition is the parameter path, not a fixture.**
 Next: watch the ColdFire's page publish for T2's FX2 slots (`--watch-mem`
@@ -2024,6 +2043,101 @@ on `0x80000ec4`/`0x80000ecc`, `--coverage` diff of a stamped against an
 unstamped load), find what posts it, post it after the load the way the
 main level is posted, then re-run the five sines — the FILTER response
 against `dsp_host`'s is the gate.
+
+## Milestone O9d — the comparison fixture was measuring the wrong track (8 Sep 2026, branch `coldfire-o9d`)
+
+O9c ended on "a THRU track's TX0 is a pre-FX2 monitor; the FX2 page-2
+select never crosses; the comparison tap must be the recorder". All three
+were one fixture defect. What settled it was a new instrument — every
+host-port block's CONTENT at the move (`--block-dump FILE`, binary;
+`tools/scratch/blockdump.py summary|diff|wav`) — and the rule it enforces:
+two runs that differ only in a part byte must differ somewhere on the host
+port before any DSP-side "identical" means anything.
+
+### ✅ The O9c EQ pair was byte-identical on the host port
+
+Re-running O9c's EQUALIZER cards (page 1 extreme vs zero on T2's FX2) with
+the dump: **every block of every class identical in all 250 frames** —
+including the per-voice records that carry the pages. The EQ bytes were in
+the card (bank 1 part 1 and its saved copy 5, slots 1/3/4/5) and in the
+ColdFire's live lane after the load (`0x80000870` = `00 7f 00 7f 40 7f`,
+`0x80000ecc[1] = 0x0c`) and never reached the DSP. Cause, measured with
+`--watch-mem` on the id arrays and the lane:
+
+- the LOAD applies **bank 1 part 1** (`0x40009384/0x4000938e` in `engine`
+  at 43,401 samples: T1 FX1 = 0x12, T2 FX2 = 0x0c);
+- the TRANSPORT START re-applies the **saved bank's pattern part**
+  (`0x4000c40e/0x4000c41e` in `main` at 896,464: T1 FX1 = 0x1c, T2 FX2 =
+  **0x09 = SEND**), and the load-time refresher `0x4000c19c`
+  (`0x4017107a + bank·635712 + part·6322 + track·24` → lane
+  `0x80000816 + track·72`, pre-image `0x80000a5c + track·64`) overwrites the
+  lane and the pre-image from THAT part.
+
+So every O9c FX2 fixture — FILTER on T2 in "part 1 and its saved copy", the
+EQ pair, the page-2 LP card, the lane pokes — ran with T2's FX2 = SEND.
+`stamp-slot` writes all eight parts of every bank, which is why its FILTER
+BASE/WDTH bytes DID land — in T2's **FX1** (FILTER in every part), i.e.
+X:0x4000 word 39 = T2's FX1 WDTH and X:0x2c0 = the FX1 instance.
+`ot_project.py set-fx` now writes an id (+ pages) into all eight parts of
+every bank for exactly this reason.
+
+### ✅ The frame builder's record, decoded from the dump
+
+Per-voice DSP record (`0x80000110`/`0x80000310` → core 1, `0x80000210`/
+`0x80000410` → core 0; 128 halfwords = **32 per track**, one DSP word per
+halfword): +0..5 AMP, +6..11 FX1 page 1, +12..17 FX2 page 1 (`value<<8`,
+page-2 selects in the LOW byte of the same halfword — the "flag word" of
+`DSP.md` §9), +27 = FX1 id, +28 = FX2 id. Assembled by the copier
+`0x4000cae8` from the pre-image `0x80000a50 + track·64` (halfwords 12..29)
+and the page-2 lane `0x80000830 + track·72`, then slewed (`0x4000cc20`,
+MACSR 0xb0) and scene-modulated (`0x4000ccfc`, gain table `0x80003c60`,
+scene buffer `0x80000ed4 + track·0x40`). The 672-halfword track records
+(`0x80001c90` → core 1, `0x800021d0` → core 0; 4 × 84 words) carry the
+**THRU audio**: words 8..38 even = 16 L samples (R zero for a mono input).
+
+### ✅ With the EQ on the track that has input, everything moves
+
+T1 FX2 = EQUALIZER in every part, page 1 `40 127 64 100 0 64` (B) against
+`64 ×6` (A), tone on RX0 slot 2 at −20 dBFS:
+
+| block class | A vs B |
+|---|---|
+| per-voice records → core 1 | differ from frame 2 (the page) |
+| core 1 read-back `0x80003190/0x80003590` | differ from frame 9 |
+| forwarded 512-word block → core 0 | differ |
+| core 0 read-back, ch 6 block | differ |
+| TX0 (`--audio-out`) | differs |
+
+Same with FILTER on T1's FX2, page 1 BASE 100 / WDTH 0, **page-2 slots 6/7
+= 1 (HP/LP 24 dB) against 0**: the record halfwords differ by exactly 0x0101
+(the low byte), read-backs and TX0 differ. **Page 1 and page 2 both cross
+under the emulated load; the THRU monitor carries FX2; the comparison tap is
+TX0 (or the read-back, per track).** EQ's proc (payload B `P:0x972`, from
+the X:0x235 table; init `P:0x96d`) runs every frame on core 1.
+
+### ✅ Why T2 renders nothing, and where each tone lands
+
+Tone on RX0 slot 2 → **T1's** 672-record (rms 3.0 M) → T1's read-back slot
+(610 k) → TX0 −38 dBFS. Tone on RX0 slot 0 → **T2's** record (3.0 M) →
+T2's read-back **316** → TX0 −102 dBFS: T2's FX1 FILTER (BASE 127 / WDTH 0,
+in the part) closes the path, as `rig_render` said. 🟡 Which physical input
+each THRU listens to is the part's INAB/INCD selects (`-, A B, A, B, A+B`;
+T1's PB page `00 00 40 …`, T2's `00 01 7f …`) and is not decoded here; the
+measured fact is slot 2 → T1's chain, slot 0 → T2's chain. The O9c DIR
+measurement (RX0 0/1 = A/B on the DSP's direct path) is unaffected.
+
+### What this leaves
+
+The O9c gate (a THRU track's FX rendering bit-identical to `dsp_host`) now
+has a working fixture on T1 and a decided tap; the remaining work is the
+comparison itself: `dsp_host` with EQUALIZER at the same page on the same
+tone, level-matched to the port's T1 read-back (the per-track chain output,
+before the master mix), and the THRU gain structure (VOL, INAB, the −11 dB)
+divided out.
+
+Instrument rule added to the port: **a DSP-side "byte-identical" between
+two cards is not evidence until the host-port dump shows the cards differed
+on the way in.** Three O9c retractions rode on skipping that check.
 
 ## What is NOT here yet
 

@@ -346,6 +346,23 @@ namespace ot
 	void Rtos::noteBlock(const char _dir, const uint32_t _ch, const uint32_t _ramAddr,
 		const std::vector<uint16_t>& _hw, const uint64_t _nonZero, const std::string& _note)
 	{
+		if(m_blockDump.is_open())
+		{
+			const uint8_t dir = static_cast<uint8_t>(_dir);
+			const uint32_t frame = static_cast<uint32_t>(m_frameCount);
+			const uint16_t ch = static_cast<uint16_t>(_ch);
+			const uint8_t core = static_cast<uint8_t>(m_kickSel[_ch & 15]);
+			const uint32_t ram = _ramAddr;
+			const uint32_t n = static_cast<uint32_t>(_hw.size());
+			m_blockDump.write(reinterpret_cast<const char*>(&dir), 1);
+			m_blockDump.write(reinterpret_cast<const char*>(&frame), 4);
+			m_blockDump.write(reinterpret_cast<const char*>(&ch), 2);
+			m_blockDump.write(reinterpret_cast<const char*>(&core), 1);
+			m_blockDump.write(reinterpret_cast<const char*>(&ram), 4);
+			m_blockDump.write(reinterpret_cast<const char*>(&n), 4);
+			if(n)
+				m_blockDump.write(reinterpret_cast<const char*>(_hw.data()), n * 2);
+		}
 		if(!m_blockLogOn || m_blockLog.size() >= 200000)
 			return;
 		char line[512];

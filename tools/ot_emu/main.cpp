@@ -84,6 +84,7 @@ int main(int _argc, char** _argv)
 	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
 	std::string dspPeek;		// core:space:addr,len[;...] -- DSP memory to print at the end
 	std::string blockLog;		// every host-port BLOCK with its non-zero count -> FILE
+	std::string blockDump;		// O9d: every host-port block's CONTENT (binary) -> FILE
 	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
@@ -140,6 +141,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
 		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
 		else if(a == "--block-log" && i + 1 < _argc)	blockLog = _argv[++i];
+		else if(a == "--block-dump" && i + 1 < _argc)	blockDump = _argv[++i];
 		else if(a == "--audio-out" && i + 1 < _argc)	audioOut = _argv[++i];
 		else if(a == "--audio-in" && i + 1 < _argc)	audioIn = _argv[++i];
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
@@ -289,6 +291,8 @@ int main(int _argc, char** _argv)
 		}
 		rtos.install();
 		rtos.setBlockLog(!blockLog.empty());
+		if(!blockDump.empty())
+			rtos.setBlockDump(blockDump);
 		if(dspDrainPaced)
 			rtos.setDspDrainPacing(true);
 		if(dspPair && !frameTimer)

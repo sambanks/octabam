@@ -29,6 +29,12 @@ image R58; anchors verified against values we wrote over MIDI and Sam's own
     python3 tools/ot_project.py apply PROJECT_DIR PLAN.json       # {"12": -3.5, ...}
     python3 tools/ot_project.py stamp-defaults PROJECT_DIR REMIX  # station ids only
     python3 tools/ot_project.py stamp-slot PROJECT_DIR MODULE SLOT [VALUE] [--track N[,N]]
+    python3 tools/ot_project.py set-fx PROJECT_DIR fx1|fx2 TRACK MODULE [--page V,V,V,V,V,V] [--page2 V,...]
+        # the effect id on ONE track in EVERY part of EVERY bank (all eight
+        # part records, both .work and .strd), with optional page bytes.
+        # ⚠️ Every part, because the emulated load applies bank 1 part 1 and
+        # the transport start then applies the SAVED bank's pattern part --
+        # a fixture edited in one part measures another (O9c, 8 Sep 2026).
         # one knob byte on every part/track naming MODULE (key, name or id);
         # SLOT by manifest name or index; VALUE defaults to the manifest's
 
@@ -560,6 +566,45 @@ def _resolve_slot(mod, slot):
     return s
 
 
+def set_fx(pdir, which_slot, track, which, page=None, page2=None, guard=True):
+    """Put effect `which` (module key/name or fx id) on `track` (1-based) in
+    the FX1 or FX2 slot of EVERY part record (all eight, current + saved) of
+    EVERY bank, optionally with its page-1 / page-2 bytes. Every part because
+    the part that PLAYS is not the part the load applies: `ot_emu`'s load
+    applies bank 1 part 1 and its transport start re-applies the saved bank's
+    pattern part (measured 8 Sep 2026, COLDFIRE_PORT.md O9d) -- O9c's whole
+    fixture round edited part 1 and measured a track whose FX2 was still SEND."""
+    pdir = pathlib.Path(pdir)
+    fx_id, mod = _resolve_module(which)
+    idoff = {"fx1": FX1_OFF, "fx2": FX2_OFF}[which_slot.lower()]
+    sub = 0 if which_slot.lower() == "fx1" else 6
+    t = int(track) - 1
+    if not 0 <= t < NTRACKS:
+        sys.exit("track is 1..8")
+    if page is not None and len(page) != 6 or page2 is not None and len(page2) != 6:
+        sys.exit("--page/--page2 take exactly six values")
+    banks = 0
+    for bank in sorted(pdir.glob("bank*.work")):
+        num = int(bank.name[4:6])
+
+        def mut(data):
+            for p in range(NPARTS_ALL):
+                off = PART_BASE + p * PART_STRIDE
+                data[off + idoff + t] = fx_id
+                for s, v in enumerate(page or ()):
+                    data[off + P1_OFF + t * TRACK_STRIDE + sub + s] = int(v) & 0x7f
+                for s, v in enumerate(page2 or ()):
+                    data[off + P2_OFF + t * P2_STRIDE + sub + s] = int(v) & 0x7f
+        _bank_write(pdir, num, mut, guard=guard)
+        data = bank.read_bytes()
+        if int.from_bytes(data[-2:], "big") != (sum(data[0x10:-2]) & 0xFFFF):
+            sys.exit(f"{bank.name}: checksum did not take -- do NOT use this")
+        banks += 1
+    label = mod.key if mod is not None else f"id 0x{fx_id:02x}"
+    print(f"T{t+1} {which_slot.upper()} = {label} (0x{fx_id:02x}) in {NPARTS_ALL} parts x {banks} bank(s)"
+          + (f", page 1 {list(page)}" if page else "") + (f", page 2 {list(page2)}" if page2 else ""))
+
+
 def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     """Write ONE knob byte for every part/track that names the module (FX2
     or FX1), leaving the other eleven alone. `which` is a module key, name
@@ -574,13 +619,17 @@ def stamp_slot(pdir, which, slot, value=None, guard=True, tracks=None):
     pdir = pathlib.Path(pdir)
     fx_id, mod = _resolve_module(which)
     slot = _resolve_slot(mod, slot)
+    # A stock entry resolves to a Module whose params carry no names (and a
+    # bare id to none at all): neither has a manifest default or a knob name.
+    named = (mod is not None and slot < len(mod.params)
+             and isinstance(getattr(mod.params[slot], "name", None), (bytes, bytearray)))
     if value is None:
-        if mod is None:
-            sys.exit("a bare id has no manifest default -- give the value")
+        if not named:
+            sys.exit("a bare id / stock entry has no manifest default -- give the value")
         value = mod.params[slot].default or 0
     value = int(value) & 0x7f
-    label = (f"{mod.key} {mod.params[slot].name.decode('latin1')}"
-             if mod is not None else f"id 0x{fx_id:02x}")
+    label = (f"{mod.key} {mod.params[slot].name.decode('latin1')}" if named
+             else f"{mod.key if mod is not None else 'id'} 0x{fx_id:02x} slot {slot}")
     total = 0
     for bank in sorted(pdir.glob("bank*.work")):
         num = int(bank.name[4:6])
@@ -831,6 +880,15 @@ if __name__ == "__main__":
         # a REAL set, before its first load on a flashed image: only the ids
         # a station replaced are touched; BusVerb/BusDelay keep Sam's knobs
         stamp_defaults(pdir, sys.argv[3], replaced_only=True)
+    elif cmd == "set-fx":
+        args = sys.argv[3:]
+        page = page2 = None
+        if "--page" in args:
+            page = [int(x) for x in args[args.index("--page") + 1].split(",")]
+        if "--page2" in args:
+            page2 = [int(x) for x in args[args.index("--page2") + 1].split(",")]
+        pos = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or not args[i - 1].startswith("--"))]
+        set_fx(pdir, pos[0], pos[1], pos[2], page=page, page2=page2, guard="--no-guard" not in args)
     elif cmd == "stamp-slot":
         # one knob byte, every part/track naming that module: for a slot
         # whose meaning changed. Module by key/name/id, slot by name/index,
