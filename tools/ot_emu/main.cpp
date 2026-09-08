@@ -76,7 +76,8 @@ int main(int _argc, char** _argv)
 	double dspRatio = ot::DspPair::g_dspIps / ot::DspPair::g_cfIps, dspIps = ot::DspPair::g_dspIps;	// their clock, in DSP instructions per ColdFire instruction / per sample (dsp.h says where 4160 comes from)
 	std::string dspLog;			// every host-side event on the DSP pair -> FILE
 	uint64_t dspTrace = 0;		// a status line per core every N DSP instructions
-	bool dspNoIdle = false;		// execute every poll of an idle core (fidelity check; slow)
+	bool dspNoIdle = false;
+	bool dspDrainPaced = false;	// EXPERIMENT: a host-port burst completes when the DSP drained it (measured 8 Sep: one frame of exactly 16 ESAI frames, then the completion ISR loses an edge and stalls)		// execute every poll of an idle core (fidelity check; slow)
 	bool dspVerbose = false;	// the vendored DSP library's own log lines
 	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
 	std::string dspPeek;		// core:space:addr,len[;...] -- DSP memory to print at the end
@@ -121,6 +122,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-log" && i + 1 < _argc)	dspLog = _argv[++i];
 		else if(a == "--dsp-trace" && i + 1 < _argc)	dspTrace = std::strtoull(_argv[++i], nullptr, 0);
 		else if(a == "--dsp-no-idle")			dspNoIdle = true;
+		else if(a == "--dsp-drain-paced")		dspDrainPaced = true;
 		else if(a == "--dsp-verbose")			dspVerbose = true;
 		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
 		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
@@ -233,6 +235,8 @@ int main(int _argc, char** _argv)
 		}
 		rtos.install();
 		rtos.setBlockLog(!blockLog.empty());
+		if(dspDrainPaced)
+			rtos.setDspDrainPacing(true);
 		std::ofstream edmaOut;
 		if(!edmaLog.empty())
 		{

@@ -210,6 +210,18 @@ namespace ot
 		// now"; unset, every rule is route A's.
 		void setCompletionGate(std::function<bool(uint32_t)> _fn) { m_canComplete = std::move(_fn); }
 		uint64_t gatedWaits() const { return m_gatedWaits; }
+		// EXPERIMENT (`--dsp-drain-paced`): a host-port burst completes when
+		// the DSP has DRAINED it (the gate), not at the next 16-sample
+		// boundary. ✅ Measured 8 Sep 2026, cores live. Boundary rule: the
+		// frame handler's six serial bursts each waited for a boundary, so a
+		// frame cost 80-96 samples instead of 16 and the ESAI ring made 5-6
+		// passes per frame -- invisible to every frame-counting gate. Drain
+		// rule: the one frame it ran was EXACTLY 16 ESAI frames, and then the
+		// completion ISR lost an edge and the port stalled at frame 2 (route
+		// A's "at once" symptom, now with the cores). Neither is the chip:
+		// a burst takes the FlexBus's time per 16-bit cycle x its words, and
+		// that constant is the next thing to derive (the CS wait states).
+		void setDrainPaced(bool _on) { m_drainPaced = _on; }
 		// CITER/BITER carry a minor-loop link in bit 15 with the channel in
 		// bits 14-9 and the count in bits 8-0; without it the count is 15 bits.
 		uint32_t minorLoops(uint32_t _ch) const
@@ -233,6 +245,7 @@ namespace ot
 		std::array<bool, 16> m_irq = {};
 		std::unordered_map<uint32_t, double> m_due;		// channel -> sample it completes at
 		double m_boundary = g_framePeriod;
+		bool m_drainPaced = false;
 		uint64_t m_started = 0;
 		std::function<void(uint32_t, bool)> m_onTransfer;
 		std::function<void(uint32_t)> m_onKick, m_onDone;

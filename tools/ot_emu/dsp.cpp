@@ -38,7 +38,8 @@ namespace ot
 		std::unique_ptr<dsp56k::DspBoot> boot;
 
 		uint64_t executed = 0, wordsIn = 0, wordsOut = 0, commands = 0, dropped = 0;
-		uint64_t rxFrames = 0, txFrames = 0;	// ESAI frames taken in (silence) / put out
+		uint64_t rxFrames = 0, txFrames = 0;	// ESAI frames taken in (silence) / put out -- the X-side port
+		uint64_t rxFrames1 = 0, txFrames1 = 0;	// the same for ESAI_1 on the Y side (❌ the two were summed until 8 Sep, and "frames per host frame" read double)
 		uint64_t txAtCommand = 0;				// txFrames at the previous host command
 		uint64_t fpcMin = ~0ull, fpcMax = 0, fpcSixteen = 0, fpcSamples = 0;	// frames per command
 		uint32_t esaiCyclesPerSlot = 0;
@@ -179,11 +180,19 @@ namespace ot
 					c.lastTx[1] = _f[0][1];
 				}
 			};
-			for(dsp56k::Esai* e : {&c.px->getEsai(), &c.py->getEsai()})
+			auto silence1 = [&c](uint64_t&, dsp56k::Audio::RxFrame& _f)
 			{
-				e->setReadRxCallback(silence);
-				e->setWriteTxCallback(sink);
-			}
+				for(uint32_t i = 0; i < dsp56k::Audio::MaxSlotsPerFrame; ++i)
+					for(auto& w : _f[i])
+						w = 0;
+				_f.resize(dsp56k::Audio::MaxSlotsPerFrame);
+				++c.rxFrames1;
+			};
+			auto sink1 = [&c](uint64_t&, const dsp56k::Audio::TxFrame&) { ++c.txFrames1; };
+			c.px->getEsai().setReadRxCallback(silence);
+			c.px->getEsai().setWriteTxCallback(sink);
+			c.py->getEsai().setReadRxCallback(silence1);
+			c.py->getEsai().setWriteTxCallback(sink1);
 			c.esaiCyclesPerSlot = static_cast<uint32_t>(_ips / g_esaiSlots);
 			c.px->getEsaiClock().setCyclesPerSample(c.esaiCyclesPerSlot);
 
@@ -672,7 +681,7 @@ namespace ot
 			std::snprintf(line, sizeof line,
 				"             core %d: boot ROM %s (%u words -> P:%#07x), pc %#07x, %llu instructions, "
 				"host words in %llu / out %llu, host commands %llu%s\n"
-				"                     ESAI frames in %llu / out %llu, last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n"
+				"                     ESAI frames in %llu / out %llu (ESAI_1 %llu / %llu), last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n"
 				"                     ESAI frames per host frame (0x8c to 0x8c): min %llu max %llu, exactly 16 on %llu of %llu; TCCR %06x (%u slots), %u instructions per slot\n",
 				i, c.boot->finished() ? "done" : "WAITING", c.boot->getLength(), c.boot->getInitialPC(),
 				c.dsp->getPC().toWord(), static_cast<unsigned long long>(c.executed),
@@ -680,6 +689,7 @@ namespace ot
 				static_cast<unsigned long long>(c.commands),
 				c.dropped ? " (words DROPPED on a full ring)" : "",
 				static_cast<unsigned long long>(c.rxFrames), static_cast<unsigned long long>(c.txFrames),
+				static_cast<unsigned long long>(c.rxFrames1), static_cast<unsigned long long>(c.txFrames1),
 				c.lastTx[0], c.lastTx[1], static_cast<unsigned long long>(c.idleSkipped),
 				static_cast<unsigned long long>(m_mail[i].words),
 				static_cast<unsigned long long>(c.pulled), static_cast<unsigned long long>(c.pullShort),

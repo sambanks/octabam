@@ -336,6 +336,7 @@ namespace ot
 		// it" -- these are counted at the moment of the move.
 		uint64_t hostNonZeroOut() const { return m_hostNonZeroOut; }
 		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
+		void setDspDrainPacing(bool _on) { m_edma.setDrainPaced(_on); }
 		void setBlockLog(bool _on) { m_blockLogOn = _on; }
 		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }

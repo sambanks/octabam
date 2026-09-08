@@ -920,7 +920,7 @@ opcode for any word written there. `dsp_host` keeps its two-way window — it
 renders bit-identically with it and, as DSP.md says, cannot answer aliasing
 questions; that is now a documented difference between the two machines.
 
-### ✅ Six things the vendored emulator does that the firmware cannot live with
+### ✅ Six things the vendored emulator does that the firmware cannot live with (nine by 8 Sep — the ninth, the DMA ring that never reloaded, is under "the ESAI rate" below)
 
 Each one first presented as a hang or a crash with no diagnostic, and each was
 found by an instrument, not by reading — recorded with the instrument:
@@ -1324,6 +1324,25 @@ the DSP's own per-frame work, the vendored HDI08's one-word-per-exec drain,
 or the port's idle stepping — is the next measurement (stamped block log:
 `kicked@`/`done@`/`at@` in samples). 🟡 Until it reads 16, no audio the port
 produces has the chip's timing.
+
+✅ **Measured, same day (stamped block log, `kicked@`/`done@` in samples):**
+each of the frame handler's SIX serial host-port bursts is held to the *next
+16-sample boundary* by route A's completion rule, so a frame costs **80–96
+samples** (frame 200: pulls at 914840.6, bursts done at 914856.6, 914872.6,
+914888.6, 914904.6, 914904.6, 914920.6, next frame at 914936.6). The 160–194
+was that period counted on BOTH ESAI ports; the instrument now counts the
+X-side port only. Not the DSP's clock, and not the drain — the drain finishes
+inside a sample; the boundary rule holds it. `--dsp-drain-paced` (complete
+when the DSP has drained the burst) ran ONE frame at **exactly 16** ESAI
+frames per host frame and then the firmware's completion ISR lost an edge and
+the port stalled at frame 2 with source 1 asserting untaken — route A's
+"at once" symptom, reproduced with the cores. So the boundary rule stays the
+default (the O6 gate passes with it, 5/5, and without the cores 5/5) and the
+chip's own number is the open item: **a burst takes the FlexBus's cycle time
+× its words** — `CSCR2 = 0x180` for the DSP window (`ARCHITECTURE.md` §6) and
+the FlexBus clock give it, and 2,176 words per frame against 16 samples says
+it is not small. Derive that, book each burst's completion at kick + words ×
+t_cycle behind the gate, and the instrument should read 16 on 399 of 399.
 
 ### ✅ A ninth vendored-emulator defect, found by the falsifier: the receive DMA's ring never reloaded (8 Sep 2026)
 

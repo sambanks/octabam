@@ -566,7 +566,17 @@ or the port's idle stepping — is the next measurement (stamped block log:
 `kicked@`/`done@`/`at@` in samples). 🟡 Until it reads 16, no audio the port
 produces has the chip's timing.
 
-**NEXT (open): the host frame period.** The instrument to satisfy is `exactly 16 on 399 of 399`; the block log's `kicked@`/`done@`/`at@` stamps and the DSP log's `cvr 8c` spacing say where the samples go. Not a rate question any more — an exchange-timing one, on the port's side of the host port.
+**NEXT (open): the host-port burst time — O8b.** ✅ Measured 8 Sep: with
+route A's completion rule each of the six serial bursts per frame waits for
+the next 16-sample boundary, so the port's frame is **80–96 samples, not
+16**; `--dsp-drain-paced` (complete when drained) gives exactly 16 for one
+frame and then the completion ISR loses an edge and stalls (the "at once"
+symptom). The chip's number is the FlexBus cycle time × the burst's words:
+`CSCR2 = 0x180` (ARCHITECTURE.md §6) and the FlexBus clock. Translate that
+into `Edma::start` (kick + words × t_cycle, behind the drain gate), and the
+gate is the report line `ESAI frames per host frame ... exactly 16 on 399 of
+399` with the O6 diff still 5/5. *(Opus: a constant to derive and a rule to
+book; the falsifier exists.)*
 
 ### O9 — audio out *(Fable)*
 
