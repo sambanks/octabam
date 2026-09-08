@@ -1878,8 +1878,33 @@ with main-to-cue, master track on or off — all tried) writes those words.
 0/1/6/7 reach, is hardware's to say (the codec's slot assignment); the
 WAV's channel order is now stable enough to compare against `dsp_host`.
 
-Next in O9c: the audio comparison against `dsp_host` on a THRU track whose
-FX2 is the effect under test.
+### The THRU path's baseline, measured (the comparison's precondition)
+
+T2 (THRU on C/D, FX2 = SEND, so no effect in the path), the RIG as staged,
+main level 64, no trig needed (THRU tracks start at frame 0):
+
+| probe on input C | ring word 2 | ring word 4 |
+|---|---|---|
+| sines at 60 / 300 / 4,000 / 12,000 Hz, −20 dBFS | −34.1 / −34.1 / −34.3 / −34.2 dBFS: **gain −11.1 dB, flat** | −37.4 (−3.3 dB below) |
+| a full-scale kick (`out/test_audio/kick.wav`) | first output sample **155 samples** after the first input sample; peak −17.5 dB below the input; a least-squares scaled-copy fit leaves a residual only 2.3 dB under the output | −3.2 dB below |
+
+So the THRU path is flat and linear at −20 dBFS and a **full-scale input is
+limited** (the output stage at P:0x1cb–0x203 is a limiter; the kick loses
+6 dB more than the tones and stops fitting a scaled copy) — any comparison
+must keep the probe well under full scale. The 155-sample latency is 🟡
+unexplained in parts: 128 of it is the input-capture lag the ColdFire side
+also sees (`RTOS_FORK.md` §10.18), the rest the DSP's frame pipeline.
+T1 (THRU on A/B, FX2 = BusDelay) passes the same kick at **−52 dB** — its
+input level in the part is what the "43 dB down" leak was — so the RIG's T1
+is not usable as the effect fixture without editing its machine page, which
+the project tools do not do yet.
+
+**What the comparison needs, and does not have:** a project saved from the
+unit with a THRU track at unity input level, no bus in its path and the
+effect under test on its FX2 — then `--audio-in` a −20 dBFS probe, read ring
+word 2/3 from the transport start, and hand `dsp_host` the same probe with
+the part's knob values. The FX code is the same on both sides; the gain
+structure (main 64 → −11.1 dB here) is the number to divide out.
 
 ## What is NOT here yet
 
