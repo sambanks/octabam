@@ -1789,6 +1789,242 @@ which input slot is which physical input and which output slot is main/cue
 — the sample loader / voice start for FLEX is the next locate, with
 `--coverage` and the block log as the instruments); the `0x8c` jitter.
 
+## Milestone O9c — the slot map (started 8 Sep 2026, branch `coldfire-o9c`)
+
+Eight runs, each with a 1 kHz tone at −20 dBFS on ONE of the eight RX0 slots
+(`--audio-in out/o9c/tone_slotN.wav`, the RIG project, `--main-level 64`,
+poked trig at step 2), reading TX0 per slot and the DSP's capture staging
+block (`--dsp-peek 0:X:4700,128;0:X:2700,128`, the 128 words eDMA ch 7 takes
+back each frame) at the end. ✅ Measured:
+
+| tone on RX0 slot | lands in the capture block at | TX0 slot 1 / 2 / 3 / 4 |
+|---|---|---|
+| 0 | words 0,1 (+8k): pair at +0, L | −78 / — / −82 / — dBFS |
+| 1 | words 2,3 (+8k): pair at +0, R | — / −78 / — / −82 |
+| 2 | words 0,1 (+8k): pair at +0, L | **−35** / — / −39 / — |
+| 3 | words 2,3 (+8k): pair at +0, R | — / **−35** / — / −39 |
+| 4–7 | nowhere: the ESAI-in ring holds four words per sample (slots 0–3) | silence |
+
+So: **TX0 slots 1/2 are one stereo pair and 3/4 a second, 3.7 dB lower**
+(main and cue is the natural reading, 🟡 unmeasured which is which); the
+capture block's pair at +0 — C/D in the ColdFire's own reading
+(`RTOS_FORK.md` §10.18, "A/B at +0x80, C/D at +0") — is fed by RX0 slots 2
+and 3 at full level, and **the +0x80 pair (A/B) is never written by the port's
+DSP**; RX0 slots 0 and 1 reach the same +0 positions and the same outputs
+**43 dB down**, which is not a THRU gain anyone would set. 🟡 Two readings,
+neither measured: the A/B copy uses a gain that another never-posted sys
+command sets (the family the main level belongs to — the project's `DIR_AB`
+is 0, and the input-gain/direct paths are all ColdFire state), or the port's
+ESAI delivers the pairs to the wrong half of the DSP's input stage. The
+falsifier is a write watch on the +0x80 words of the staging block and a
+`--coverage` diff between a slot-0 run and a slot-2 run: the code that
+differs is the A/B path. RX0 slots 4–7 not reaching the ring is 🟡 the
+vendored ESAI/DMA (the ring stride is 4 where the payload enables 8 slots);
+it costs nothing today because the unit has four inputs.
+
+✅ **Measured next (a write watch on word 64 of the staging block and a PC
+watch at the copy's entry, `--dsp-pcwatch 0:55e`):** the +0x80 pair IS written
+every frame, with zeros, by the copy at P:0x55a called three times a frame
+from P:0x2df/0x2e2/0x2e6 — and its source for the +0x80 half is **the
+ESAI-OUT ring, `r1 = 0x8080` with `n1 = 7`**: the pair is TX0 slots 0 and 7
+of each output sample, which nothing in the port writes (the mix goes to TX0
+slots 1–4). The other two calls read the ESAI-in ring (`r1 = 0x8280` and
+`0x8282`, `n1 = 3`). So "A/B" in the ColdFire's capture block is not a raw
+input pair at all on this path: it is whatever the DSP puts on output slots 0
+and 7 — 🟡 the direct-monitoring / input-thru placement, which some ColdFire
+state the emulated load never sets would switch on (the project's `DIR_AB`
+is 0), the same family as the main level. The 43 dB-down leak of RX0 slots
+0/1 into the C/D positions is still 🟡. And `RSMA = 0x0f` is the firmware's
+own (payload A `P:0x30032`): four receive slots is the chip's configuration,
+not the vendored ESAI's.
+
+✅ **The input map, settled by the project's own direct levels.** A scratch
+copy of the RIG with `DIR_AB=100` and `DIR_CD=100` (the mixer's direct
+monitoring, 0 in the project) staged and run with the same single-tone files:
+
+| tone on RX0 slot | TX0 slot 1 at DIR 0 | at DIR 100 |
+|---|---|---|
+| 0 | −77.9 dBFS | **−34.9** |
+| 2 | −35.1 | −30.0 |
+
+DIR AB moves slot 0 by 43 dB and DIR CD moves slot 2 by 5 dB, so **RX0 slots
+0/1 are inputs A/B and 2/3 are C/D**, and the "43 dB down" leak was the direct
+path at level 0 (🟡 a floor, or T1's INAB at a low setting in the part). The
+direct level does NOT travel in the 64-word track record: its `+0x32` field
+is the track LEVEL (the ColdFire writes `0x6c00` = 108 there every frame at
+`0x80005492`), and the DSP's copy of that field at X:0x4632 is overwritten
+with 0 by the staging copy at P:0x568 each frame — the pointer table at
+X:0x202–0x209 is not decoded here and the reading of `x:(r0+0x32)` as a gain
+at P:0x2f4 is left 🟡. **TX0 slots 0 and 7 stay silent at DIR 100 too**, so
+the capture block's +0x80 pair (the ColdFire's A/B) still has no source in
+the port; what places audio on those two output slots is the open item.
+
+❌ **"TX0 slots 1–4" was an artefact, and so was "master track on pans it
+right".** With the master track off the same tone came out on slots 0/2
+instead of 1/3, yet a `--dsp-peek` of the ESAI-out ring showed it at **ring
+words 2 and 4 in both runs**: the ESAI's slot counter and DMA2's ring index
+are not in a fixed phase — the rotation between them differed between runs
+and moved within a run (0..7 over 400 frames, as DMA2 is re-armed). The
+ring is the truth; `--audio-out` now keeps each frame by RING WORD, reading
+DSR2 at the frame's end (`(DSR2 − 9) & 7`, minus nine because the DMA has
+already loaded the next frame's first word; checked against the peek), and
+the report says "non-zero per RING WORD (slot + rotation min..max)". ✅ So,
+in ring words per sample: **(2,3) is one stereo pair and (4,5) the other,
+3.7 dB lower; 0, 1, 6, 7 are never written by the mix**, and the capture
+block's +0x80 pair reads ring words 0 and 7 — which is why the ColdFire's
+"A/B" is empty here: nothing in this project's state (DIR at 100, CUE 127
+with main-to-cue, master track on or off — all tried) writes those words.
+🟡 Which pair is main and which cue, and which physical output ring words
+0/1/6/7 reach, is hardware's to say (the codec's slot assignment); the
+WAV's channel order is now stable enough to compare against `dsp_host`.
+
+### The THRU path's baseline, measured (the comparison's precondition)
+
+T2 (THRU on C/D, FX2 = SEND, so no effect in the path), the RIG as staged,
+main level 64, no trig needed (THRU tracks start at frame 0):
+
+| probe on input C | ring word 2 | ring word 4 |
+|---|---|---|
+| sines at 60 / 300 / 4,000 / 12,000 Hz, −20 dBFS | −34.1 / −34.1 / −34.3 / −34.2 dBFS: **gain −11.1 dB, flat** | −37.4 (−3.3 dB below) |
+| a full-scale kick (`out/test_audio/kick.wav`) | first output sample **155 samples** after the first input sample; peak −17.5 dB below the input; a least-squares scaled-copy fit leaves a residual only 2.3 dB under the output | −3.2 dB below |
+
+So the THRU path is flat and linear at −20 dBFS and a **full-scale input is
+limited** (the output stage at P:0x1cb–0x203 is a limiter; the kick loses
+6 dB more than the tones and stops fitting a scaled copy) — any comparison
+must keep the probe well under full scale. The 155-sample latency is 🟡
+unexplained in parts: 128 of it is the input-capture lag the ColdFire side
+also sees (`RTOS_FORK.md` §10.18), the rest the DSP's frame pipeline.
+T1 (THRU on A/B, FX2 = BusDelay) passes the same kick at **−52 dB** — its
+input level in the part is what the "43 dB down" leak was — so the RIG's T1
+is not usable as the effect fixture without editing its machine page, which
+the project tools do not do yet.
+
+### The comparison, attempted: the effect runs, the knobs do not arrive
+
+A fixture built from the tools: the RIG with **T2's FX2 = FILTER (stock id
+0x04)** written into part 1 and its saved copy (`ot_project` internals,
+checksum re-read), FILTER's WDTH stamped to 64 on T2 (`stamp-slot ... filter
+WDTH 64 --track 2`; ⚠️ called from a shell loop it reported "no knob 'WDTH
+64'" — call it plainly), staged and run with the five sines. Measured:
+
+| | 60 / 300 / 1k / 4k / 12k Hz, ring word 2, relative to the FX2 = SEND baseline |
+|---|---|
+| FX2 FILTER, page all zero | +0.0 / −0.0 / −0.0 / −0.2 / −0.1 dB |
+| FX2 FILTER, WDTH stamped 64 | +0.0 / −0.0 / −0.0 / −0.2 / −0.1 dB |
+
+Flat both times. Not because the effect is skipped: a DSP PC watch on core 1
+shows FILTER's init (payload B `P:0x591`) entered 3× at the load and its proc
+(`P:0x59d`) every frame. ❌ **First reading, retracted: "the page byte never
+reaches the DSP".** It does — the WDTH byte I stamped (64) lands in the
+per-voice block at **X:0x4000 word 39 = 0x034000** (`0x40 << 8`), the one
+word that differs between the WIDTH-0 and WIDTH-64 cards across every landed
+block. The response was flat because **the page I stamped was an open filter**
+(BASE 0), and WDTH does nothing to a steady sine through an open filter — a
+test that could not see the thing (`send_probe` THD, again). ✅ The stamped
+byte DOES cross via the ColdFire's page publish (`0x80000ec4/0x80000ecc`,
+`DSP.md`; the RAM part page at `0x4017109e` reads `0x7f40007f` = BASE 127,
+WDTH 64…). The remaining question is narrower: WDTH landed in the block but
+FILTER's proc reads its coefficients from X:0x2c0/0x3a0, which did not change
+— i.e. whether a *companion* field is unpacked to the proc's block, not
+whether the page crosses.
+
+✅ **Re-measured with BASE (page-1 slot 0, the cutoff): the parameter path
+is proven end to end.** Stamping FILTER BASE to 40 on T2's FX2 lands
+**0x28 in FILTER's own coefficient block at X:0x2c0 word 7** (the FX2
+instance; X:0x3a0 is the FX1 instance, unchanged), which the WDTH-only card
+does not have. So a part's page byte travels: part data → the ColdFire's
+`0x80000ecc` publish → the per-voice block at X:0x4000 → unpacked into the
+effect's parameter block where its proc reads it. The 300 Hz…12 kHz response
+is still flat at −34 dB because BASE 40 / WDTH 64 is a transparent band for
+these tones (the mode/HP/LP that would attenuate live on page 2, a count-3
+select the tools do not stamp yet), not because the parameter is missing.
+
+**Where O9c stands:** the port renders the firmware's mix of real ESAI
+inputs through both DSP cores, with each track's FX1/FX2 running and reading
+its part's parameters — the machine O8's step 5 needs. The bit-exact
+comparison against `dsp_host` is now a bounded job, not an unknown: it needs
+(a) a part setting that makes the effect non-transparent, and (b) the gain
+structure reconciled. Both are now measured facts, not locates:
+
+- ✅ **A page-1 FILTER setting cannot make it filter, and the page-2 select
+  that would does not reach the DSP under the load.** Four page-1 (BASE, WDTH)
+  combinations all give the same flat output; FILTER's response is gated by
+  its page-2 HP/LP selects. `stamp-slot` DOES write page 2 (my earlier "page 1
+  only" was wrong — it computes `P2_OFF + track·30 + 6 + slot−6` and the LP=2
+  byte lands in the part), but a card with LP = 24 dB renders **identically**
+  to LP = 0, and FILTER's coefficient block at X:0x2c0 is **byte-identical**
+  between the two — so **the page-2 select never crosses to the DSP**, where
+  a page-1 knob (BASE → X:0x2c0 word 7) does. ✅ **The locate, sharp now:**
+  the per-frame packer forwards page-1 knobs positionally (`x:(r6+i)`,
+  `DSP.md` §) but not the page-2 selects; on the real unit a page-2 select is
+  applied when the effect is (re)selected / the part is applied, a path the
+  emulated load does not run — the SAME family as the main level (sys command
+  4) and the −1 per-track init bytes. So O9c's finish is not a `stamp-slot`
+  feature; it is to drive that apply path after the load.
+
+  ✅ **And the apply path is already located — it is the CC→page-2 work.**
+  `modules/ccpage2` (PR #98, hardware-confirmed) had to replicate the
+  firmware's page-2 editor `P2EDIT` (`0x4003a474`) exactly, and
+  `docs/midi_re_cc.md` §7 has the whole publish path: a page-2 value reaches
+  the DSP ONLY through the **live lane `0x80000830 + track*72 + 0x20 + slot2`**,
+  which the copier `0x4000cae8` ships every frame — there is no DSP post; the
+  Part store and shadow do not reach the DSP by themselves. ✅ Measured here:
+  the emulated load leaves that lane byte **zero** even with the part carrying
+  LP=2, which is exactly why the select does not cross. ⚠️ A `--poke` of the
+  lane at the ccpage2 offset did NOT move stock FILTER's block (equal-length
+  compare identical) — because ccpage2's `slot2` layout and counts are the BUS
+  ENGINES' (`VERB_COUNTS`/`DLY_COUNTS`), and stock FILTER's page-2 lane offset
+  is its own. The mechanism is known for the bus engines; the
+  per-effect lane offset for a STOCK effect is not pinned (poking every byte
+  of the copier window 0x80000898–0x800008af left FILTER's block unchanged),
+  and `--poke` (added this milestone) is the lever once it is.
+
+⚠️ **But a bigger reframing, strongly supported: a THRU track's TX0 output
+is a PRE-FX2 monitor, so the comparison cannot read the effect there.** Every
+FX2 setting tried — page-1 BASE/WDTH across four combinations, a page-2 LP
+select in the part, a live-lane poke — leaves the TX0 ring word 2 output
+**flat/identical**, even though FILTER's proc runs every frame (`P:0x59d`)
+and page-1 BASE provably reaches its coefficient block (X:0x2c0 word 7 =
+0x28 for BASE 40). An effect whose input reaches it and whose output changes
+nothing downstream is not in the measured path. So O9c's comparison tap is
+wrong, not its parameters: a THRU track monitors its raw input, and FX2's
+output goes to the bus / the recording, i.e. the **read-back block
+`0x80003190`** (DSP→CPU, `DSP.md` §), not the ESAI monitor. ✅ **Confirmed with a second effect:** EQUALIZER (id 0x0c) on T2's FX2 with
+extreme page-1 gains (0,127,0,127,64,127) renders **byte-for-byte the same
+TX0 output as EQ with page 1 all zero** — 0.0 dB delta at 300 Hz and 8 kHz.
+Two different inserts, extreme settings, no change at TX0: a THRU track's TX0
+monitor does not carry FX2 output. The parameter path (page 1 proven, page 2
+= the ccpage2 lane) stands; what O9c had wrong was where to listen. 🟡 Next:
+the FX2 output goes to the recording / bus path — read the DSP-side read-back
+source (`X:0x400` → `0x80003190`) with a recorder armed, or use a machine
+that plays into FX2 (the FLEX loader). Both tie O9c's comparison to the
+recorder path, i.e. to the same DSP-in-the-loop work Bryan's click needs.
+
+⚠️ **Tool note:** `ot_project.py stamp-slot` crashes on a bare id
+(`mod.params[slot]` index error when `mod` resolves but the slot is out of
+its manifest range) — the EQ page-1 bytes here were written directly. Worth
+a guard before the next fixture round.
+- ✅ **The THRU monitor gain is the track's own input level, NOT the main
+  level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
+  −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
+  monitor does not care). So the main gain table O9b had to post scales
+  TRIGGED VOICES; a THRU track passes its input at its INAB level (−11.5 dB
+  here for T2's part). `dsp_host` (`rig_render`) applies the effect to the
+  stem at `--amp` with no mixer, so the comparison divides out a KNOWN
+  constant per path — the THRU's INAB gain, not a main-level-dependent one.
+
+`rig_render.py` on the same part (stock image, `--stem T2=`) rendered T2 at
+−138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path where the
+port's does not — a second disagreement, harness versus firmware-driven,
+recorded here and not chased (the port is the one running the ColdFire).
+
+**So the comparison's precondition is the parameter path, not a fixture.**
+Next: watch the ColdFire's page publish for T2's FX2 slots (`--watch-mem`
+on `0x80000ec4`/`0x80000ecc`, `--coverage` diff of a stamped against an
+unstamped load), find what posts it, post it after the load the way the
+main level is posted, then re-run the five sines — the FILTER response
+against `dsp_host`'s is the gate.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

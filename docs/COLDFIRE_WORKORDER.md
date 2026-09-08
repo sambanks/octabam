@@ -653,7 +653,26 @@ report lines. Three things later milestones must know:
    base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
    gates say whether any shipped effect was rendered on it.
 
-### O9c — the audio comparison (O8's step 5) *(Opus)*
+### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 MOSTLY DONE (8 Sep 2026, branch `coldfire-o9c`, draft PR)
+
+`COLDFIRE_PORT.md` O9c has the account. Done and measured: the input map
+(RX0 0/1 = A/B, 2/3 = C/D, moved by the project's `DIR_AB`/`DIR_CD`; 4–7 not
+received, the firmware's own `RSMA = 0x0f`); the output map (the mix on ring
+words (2,3) and (4,5), read ring-aligned off DSR2 because the ESAI slot
+counter rotates against DMA2's index per run — an instrument artefact caught
+and fixed); the THRU baseline (flat −11.1 dB, 155-sample latency, full-scale
+limited); and **the parameter path end to end** — a part's FX2 page byte
+reaches the effect's coefficient block on the DSP (FILTER BASE 40 → X:0x2c0
+word 7). ⚠️ Two "never reaches the DSP" readings on the way, both retracted;
+the corrected finding is that it does.
+
+**The gate — a THRU track's FX rendering bit-identical to `dsp_host` — is
+not passed**, but it is no longer a locate: it needs a non-transparent part
+setting (a page-2 select; `stamp-slot` writes page 1 only today) and the
+gain structure between the two paths reconciled (port: main → track →
+−11.1 dB THRU; `dsp_host`: r6 poke, no mixer). Draft PR carries the
+measurements; the gate work is the finish.
+
 
 **Gate:** the port, driven by the firmware, renders `verify_twocore`'s
 layouts and the WAV matches `dsp_host`'s render of the same layout to the

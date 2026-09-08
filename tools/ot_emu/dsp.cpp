@@ -64,6 +64,7 @@ namespace ot
 		std::vector<int32_t> capture;
 		bool firstCmdSeen = false;
 		uint64_t txAtFirstCmd = 0, rxAtFirstCmd = 0;
+		bool rotSeen = false; uint32_t rotMin = 0, rotMax = 0;	// ring-word rotation of the ESAI slot counter (O9c)
 		std::array<uint64_t, DspPair::g_audioSlots> txNZ = {}, rxNZ = {};
 		uint64_t surplus = 0, zeroDelta = 0;	// instruction-counter delta beyond one per interpreter call / calls that moved it not at all
 		// O9b: bank id -> host take latency, in this core's instructions (4160 = one sample)
@@ -252,11 +253,25 @@ namespace ot
 					c.lastTx[0] = _f[0][0];
 					c.lastTx[1] = _f[0][1];
 				}
-				for(uint32_t s = 0; s < g_audioSlots; ++s)
+				// O9c: the ESAI's slot counter and the output DMA's ring index
+				// are NOT in a fixed phase across runs (the tone on ring words
+				// 2/4 came out on TX slots 1/3 in one run and 0/2 in another),
+				// so count and keep the frame by RING WORD: DSR2 has just
+				// delivered this frame's eight words, so slot s carried ring
+				// word (DSR2 - 9 + s) mod 8 -- minus nine, not eight: the DMA has
+				// already loaded the next frame's first word when this frame
+				// completes (checked against a --dsp-peek of the ring: the
+				// tone on ring words 2/4 reports as 2/4).
+				const uint32_t dsr2 = c.px->read(0xffffe7, dsp56k::Nop);
+				const uint32_t rot = (dsr2 - 9) & 7;
+				if(!c.rotSeen) { c.rotMin = c.rotMax = rot; c.rotSeen = true; }
+				c.rotMin = std::min(c.rotMin, rot); c.rotMax = std::max(c.rotMax, rot);
+				for(uint32_t ch = 0; ch < g_audioSlots; ++ch)
 				{
+					const uint32_t s = (ch - rot) & 7;
 					const uint32_t w = s < _f.size() ? (_f[s][0] & 0xffffff) : 0;
 					if(w)
-						++c.txNZ[s];
+						++c.txNZ[ch];
 					if(m_capture)
 						c.capture.push_back(static_cast<int32_t>(w << 8) >> 8);
 				}
@@ -784,7 +799,8 @@ namespace ot
 					static_cast<uint32_t>(r.y.var & 0xffffff), static_cast<uint32_t>((r.y.var >> 24) & 0xffffff),
 					static_cast<uint32_t>(r.r[0].var & 0xffffff), static_cast<uint32_t>(r.r[4].var & 0xffffff),
 					static_cast<uint32_t>(r.r[6].var & 0xffffff), static_cast<uint32_t>(r.n[4].var & 0xffffff),
-					static_cast<uint32_t>(r.sp.var & 0xff), static_cast<uint32_t>(r.r[2].var & 0xffffff), static_cast<uint32_t>(r.m[2].var & 0xffffff)});
+					static_cast<uint32_t>(r.sp.var & 0xff), static_cast<uint32_t>(r.r[2].var & 0xffffff), static_cast<uint32_t>(r.m[2].var & 0xffffff),
+					static_cast<uint32_t>(r.r[1].var & 0xffffff), static_cast<uint32_t>(r.n[1].var & 0xffffff)});
 			}
 			c.dsp->execInterpreter();
 			c.dsp->doLoopEnd();
@@ -932,7 +948,7 @@ namespace ot
 				"host words in %llu / out %llu, host commands %llu%s\n"
 				"                     ESAI frames in %llu / out %llu (ESAI_1 %llu / %llu), last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n"
 				"                     ESAI frames per host frame (0x8c to 0x8c): min %llu max %llu, exactly 16 on %llu of %llu; TCCR %06x (%u slots), %u instructions per slot\n"
-				"                     audio (O9): transport start at ESAI frame %llu out / %llu in; TX0 non-zero per slot %llu %llu %llu %llu %llu %llu %llu %llu; RX0 non-zero per slot %llu %llu %llu %llu %llu %llu %llu %llu; DSP counter %llu, surplus over interpreter calls %llu (%.3f%%), zero-delta calls %llu\n"
+				"                     audio (O9): transport start at ESAI frame %llu out / %llu in; TX0 non-zero per RING WORD (slot + rotation %u..%u) %llu %llu %llu %llu %llu %llu %llu %llu; RX0 non-zero per slot %llu %llu %llu %llu %llu %llu %llu %llu; DSP counter %llu, surplus over interpreter calls %llu (%.3f%%), zero-delta calls %llu\n"
 				"                     bank id -> host take: %llu takes, mean %.2f samples, max %.2f at take %llu (a ring half is 16; DMA2 dies past it); bank writes inside a pull %llu\n",
 				i, c.boot->finished() ? "done" : "WAITING", c.boot->getLength(), c.boot->getInitialPC(),
 				c.dsp->getPC().toWord(), static_cast<unsigned long long>(c.executed),
@@ -948,7 +964,7 @@ namespace ot
 				static_cast<unsigned long long>(c.fpcSixteen), static_cast<unsigned long long>(c.fpcSamples),
 				c.px->read(0xffffb6, dsp56k::Nop), ((c.px->read(0xffffb6, dsp56k::Nop) >> 9) & 0x1f) + 1,
 				c.esaiCyclesPerSlot,
-				static_cast<unsigned long long>(c.txAtFirstCmd), static_cast<unsigned long long>(c.rxAtFirstCmd),
+				static_cast<unsigned long long>(c.txAtFirstCmd), static_cast<unsigned long long>(c.rxAtFirstCmd), c.rotMin, c.rotMax,
 				static_cast<unsigned long long>(c.txNZ[0]), static_cast<unsigned long long>(c.txNZ[1]), static_cast<unsigned long long>(c.txNZ[2]), static_cast<unsigned long long>(c.txNZ[3]),
 				static_cast<unsigned long long>(c.txNZ[4]), static_cast<unsigned long long>(c.txNZ[5]), static_cast<unsigned long long>(c.txNZ[6]), static_cast<unsigned long long>(c.txNZ[7]),
 				static_cast<unsigned long long>(c.rxNZ[0]), static_cast<unsigned long long>(c.rxNZ[1]), static_cast<unsigned long long>(c.rxNZ[2]), static_cast<unsigned long long>(c.rxNZ[3]),
