@@ -332,6 +332,8 @@ namespace ot
 				std::snprintf(at, sizeof at, " at@%.1f", m_sample);
 				noteBlock('<', _ch, daddr, hw, nz, co->blockNote(m_kickSel[_ch & 15]) + at);
 			});
+		// With the cores attached the bus's own time paces a burst (periph.h).
+		m_edma.setBusPaced(true);
 		m_edma.setCompletionGate([this, co](const uint32_t _ch)
 		{
 			const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
@@ -373,6 +375,7 @@ namespace ot
 		// its paced completions are the DSP's clock, not the interrupt's, and
 		// the TCD state is real in every run.
 		m_edma.setBoundary(m_nextFrame);
+		m_edma.setNow(m_sample);
 		m_edma.advance(m_sample);
 		if(m_ataIrqDue != 0.0 && m_sample >= m_ataIrqDue)
 		{

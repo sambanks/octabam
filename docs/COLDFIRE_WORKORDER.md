@@ -75,6 +75,8 @@ route A fact, not the port's problem; the golden command above already does it.
 | O7 | the card, the mount, the project load | route A's ATA command log EQUALS the port's | ✅ all 6,189 commands identical line for line, 30,467 sectors read, 297 written (was "a prefix"; O7b closed the gap) |
 | O7b | why the port loaded twice | name the task and PC, and make the oracle reproduce it | ✅ `sys`'s media case reloads a NAMED project; the split is `strlen(name)` = 0 vs 3, a harness ordering race. Route A reproduces the port's 12,373 with `--names-early` |
 | O8 (1-4) | the DSP cores behind the host port | ctest `dsp` (the firmware's upload lands the image's bytes) + M6a and O6 with `--dsp` | ✅ 50/50 + 58/58 bootstrap words, 26,221 + 25,408 payload words at upload time; M6a 8 compared fields; O6 5 compared fields (400 frames, 28 ticks, trig at 344) with the cores live. Step 5 open |
+| O8a | the ESAI rate | the falsifier: bank B gets taken | ✅ the port's ESAI ran 8× slow (a per-SLOT clock fed a per-sample count); the rate is the firmware's own 4160 instructions/sample; a ninth vendored DMA defect found on the way. Bank B 850 of 2,400 blocks (was 0) |
+| O8b | the host-port burst time | `ESAI frames per host frame` reads 16, O6 still 5/5 | ✅ FlexBus 66 MHz × 4 clocks/word from `PCR` and `CSCR2` in the image: 16 on 382 of 399 (was 0 of 399), O6 5/5, M6a 8/8 |
 
 ## Queue
 
@@ -566,17 +568,46 @@ or the port's idle stepping — is the next measurement (stamped block log:
 `kicked@`/`done@`/`at@` in samples). 🟡 Until it reads 16, no audio the port
 produces has the chip's timing.
 
-**NEXT (open): the host-port burst time — O8b.** ✅ Measured 8 Sep: with
-route A's completion rule each of the six serial bursts per frame waits for
-the next 16-sample boundary, so the port's frame is **80–96 samples, not
-16**; `--dsp-drain-paced` (complete when drained) gives exactly 16 for one
-frame and then the completion ISR loses an edge and stalls (the "at once"
-symptom). The chip's number is the FlexBus cycle time × the burst's words:
-`CSCR2 = 0x180` (ARCHITECTURE.md §6) and the FlexBus clock. Translate that
-into `Edma::start` (kick + words × t_cycle, behind the drain gate), and the
-gate is the report line `ESAI frames per host frame ... exactly 16 on 399 of
-399` with the O6 diff still 5/5. *(Opus: a constant to derive and a rule to
-book; the falsifier exists.)*
+### ~~O8b — the host-port burst time~~ ✅ DONE (8 Sep 2026, branch `coldfire-esai-rate`)
+
+`COLDFIRE_PORT.md` O8b has the account. The port's host frame was 80–96
+samples because route A's completion rule rounded each of six serial bursts up
+to the next 16-sample boundary. A burst now completes at **kick + words ×
+2.673e-3 samples**, still behind the drain gate, and the frame is 16 samples
+again: **ESAI frames per host frame 16 on 382 of 399** (was 0 of 399), O6 with
+the cores 5/5, M6a 8/8, `ctest` 7/7, no-cores O6 unchanged.
+
+Three things later milestones must know:
+
+1. **The burst time is the chip's, derived from two register words in the
+   image, not a knob**: `CSCR2 = 0x180` (WS = 0, 16-bit port) written by the
+   DSP loader over the boot's `0x1180` (WS = 4), and `PCR = 0x16777731` giving
+   **FB_CLK = 66 MHz**; a no-wait-state transfer is four FB_CLK cycles (RM
+   Figs 20-16/20-18). One DSP word = 60.6 ns. The corroboration is that the
+   exchange then fills **49%** of the frame period and would fill **98%** at
+   the boot's wait states, which is why the loader reprograms it.
+2. **`CHIP.md` §1 now carries the whole ColdFire clock tree** (crystal 24 MHz,
+   VCO 528, CPU 264, bus 132, FlexBus 66), measured from the image. The step
+   that settles it is the UART baud setup shifting the stored clock right one
+   before dividing — read the stored 264 MHz as the VCO instead and every
+   figure halves.
+3. ⚠️ **A consequence recorded but NOT acted on: route A's PIT clock is the
+   CPU clock where the hardware uses the bus clock, so the modelled RTOS tick
+   is 5 ms where the unit's is ~10 ms.** Both emulators share the knob and the
+   gates compare order, so no diff can see it; every wall-clock figure in
+   these records (`gate at 204.95 ms`, `28 ticks in 400 frames`) is a factor
+   of two out if it holds. `CHIP.md` §1 has the evidence and the falsifier.
+   **It is a claim about what the firmware means and it moves every recorded
+   timing number — it wants a deliberate pass of its own, not a quiet edit.**
+
+🟡 Residual: 17 host frames of 399 take 17 ESAI frames rather than 16, a 0.27%
+drift in the DSP's clock (never 15, so drift not jitter). ✅ Ruled out: the DSP idle fast-forward (`--dsp-no-idle` is
+identical), the frame clock (the interval is exactly 16.000 samples on all
+399) and the ESAI rate (a transmit frame is 4160.3 instructions, one sample).
+It is the PHASE between the two that walks, one sample per 23.5 frames, always
+one way. 🟡 Candidate: the read-back pull runs a core outside the sample
+budget (`runCoreUntil`). **Hand it to O9** — an audio path resamples by
+exactly this error.
 
 ### O9 — audio out *(Fable)*
 

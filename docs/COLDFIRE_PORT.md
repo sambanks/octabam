@@ -1385,6 +1385,92 @@ pacing the walk was eight times slower and the transmitter happened to
 survive to frame 400; at the right pacing it died during the project load.
 Same family as the seven before it: found by an instrument, not by reading.
 
+### ✅ O8b — the host-port burst time is the FlexBus's own, and the frame is 16 samples again (8 Sep 2026)
+
+The open item above ("the port's host frame is 80–96 samples") is closed, and
+the number came out of the firmware's own constants rather than a knob.
+
+**What the chip is programmed to do.** Two register words decide it, both read
+off the image with `scripts/disasm.sh`:
+
+| where | what | reading |
+|---|---|---|
+| `0x400e165c` (and three identical sites) | `PCR = 0x16777731` | PFDR 22, OUTDIV1 1, OUTDIV2 3, OUTDIV3 7 |
+| `0x40001eee`, between a CSMR2 disable and re-enable, immediately before the ICR reset that starts an upload | `CSCR2 = 0x180` | **WS = 0**, AA = 1, PS = 1x (16-bit) |
+| `0x400e0e0a`, the boot's own chip-select init | `CSCR2 = 0x1180` | **WS = 4** — the value the loader overwrites |
+
+`CSAR2 = 0x20000000` at `0x400e0dfe` is what makes CS2 the DSP window, so
+these are the DSP's own bus terms and nothing else's.
+
+The clock tree they sit in is in `CHIP.md` §1 — crystal 24 MHz, VCO 528, CPU
+264, internal bus 132, **FlexBus 66 MHz** — and the load-bearing step is that
+the firmware's stored 264,000,000 is the CPU clock, which the UART's baud
+setup proves by shifting it right one before dividing (a ColdFire UART divides
+the internal bus clock). Read as the VCO instead, every figure below halves.
+
+**The burst time.** RM Figures 20-16 and 20-18: a no-wait-state FlexBus
+transfer is S0–S1–S2–S3, **four FB_CLK cycles**, and each wait state repeats
+S1 once more. One DSP word is one 16-bit bus cycle (O8, above), so
+
+    one word = 4 / 66 MHz = 60.6 ns = 2.673e-3 samples
+
+✅ **And the constants only make sense one way** — the test this project keeps
+coming back to. The frame exchange moves **2,944 words** (2,176 out, 768 back,
+measured), which is **178 µs against the 363 µs frame period: 49% bus
+occupancy**, half the frame for audio and half for everything else. At the
+BOOT's `WS = 4` the same exchange is 357 µs — **98% of the frame**, which
+cannot work. That is why the firmware reprograms the chip select before it
+ever speaks to a DSP, and it is why the wait states go to zero on a port that
+had four.
+
+**What changed in the model.** `Edma::start` books a host-port burst at
+`kick + words × 2.673e-3 samples` instead of at the next 16-sample boundary,
+still behind the drain gate, so a burst takes **max(bus, DSP)**.
+`--dsp-drain-paced` keeps the pure-drain rule for A/B, and without the cores
+route A's boundary rule is untouched (its own gate still passes 5/5).
+
+⚠️ **The honest reading of why that fixed it**: what was wrong was the
+QUANTISATION, not the magnitude. The drain gate binds more often than the bus
+does (1,014,303 gated waits against 65,327 under the boundary rule), so the
+period is usually the DSP's drain — but the drain resolves to a fraction of a
+sample where the boundary rounded every one of six serial bursts up to a whole
+frame.
+
+**The gate.**
+
+| | boundary rule | bus time |
+|---|---|---|
+| ESAI frames per host frame | 160–194, **16 on 0 of 399** | **16–17, 16 on 382 of 399** |
+| frames run / ticks / trig | 400 / 28 / 344 | 400 / 28 / 344 |
+| oracle diff (O6, cores live) | 5/5 agree | **5/5 agree** |
+| blocks landing in bank A / B | 1,193 / 1,207 | 1,550 / 850 |
+| outbound non-zero words | 40,949 | 54,087 |
+
+M6a with the cores 8/8, `ctest` 7/7, and the O6 gate without the cores
+unchanged at 5/5.
+
+🟡 **The residual: 17 host frames of 399 take 17 ESAI frames, a 0.27% drift**
+(one every 23.5 frames, never 15, so the DSP's clock runs slightly fast rather
+than jittering). ✅ **What it is not**: `--dsp-no-idle` reproduces the figure
+EXACTLY (16 on 382 of 399, min 16 max 17), so the DSP's idle fast-forward is
+ruled out; the host frame interval is **exactly 16.000 samples on all 399**
+(measured off the block log's `kicked@` stamps), so the frame clock is not
+drifting; and an X-side ESAI transmit frame measures **4160.3 DSP
+instructions**, one sample, over the load. So both clocks are right and it is
+their PHASE that walks, one sample every 23.5 frames, always in the same
+direction. 🟡 The candidate — not yet tested — is that the read-back pull runs
+a core OUTSIDE the sample budget (`runCoreUntil`, up to 200,000 instructions
+until the DSP puts a word in HOTX), which advances the DSP's audio clock
+during a pull; the falsifier is to bound the pull to the budget, or to count
+ESAI frames inside pulls and see whether they account for the 17. **O9 is
+where this has to be settled** — an audio path resamples by exactly this
+error, and 0.27% is about five cents of pitch.
+
+⚠️ **Not fixed by any of this, and not a regression: the read-back is still
+silence.** Inbound non-zero words moved 196 → 9 with the new pacing, which is
+a different phase of the same nothing — the DSP has no audio in. That is O9's
+ground, unchanged.
+
 ### What step 5 needs
 
 `verify_twocore` drives the effect ABI directly (`r0`/`r6`/`r7`/`n7` and a
