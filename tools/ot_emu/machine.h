@@ -190,6 +190,8 @@ namespace ot
 		uint32_t getA7() const;
 		void     setA7(uint32_t _v);
 		uint32_t getD0() const;
+		uint32_t getD(int _n) const;
+		uint32_t getA(int _n) const;
 
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);

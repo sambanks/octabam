@@ -134,6 +134,10 @@ namespace ot
 			// asserts only once the drive has absorbed a sector.
 			if(off == AtaCard::R_CMD)
 			{
+				// Who issued it. The command register write is the moment the
+				// command exists, and `currentPc()` is the instruction making
+				// it (not the fetch pointer) -- see Machine::currentPc.
+				m_card->stampLastCommand(m_machine.currentPc(), curTcb());
 				if((_val & 0xff) != 0x30)
 					m_ataIrqDue = m_sample + m_ataLatency;
 				if(!m_pcRing.empty() && !m_pcRingArmed)
@@ -448,6 +452,17 @@ namespace ot
 			m_pcRing[m_pcRingPos % m_pcRing.size()] = pc;
 			++m_pcRingPos;
 		}
+		if(!m_watchPc.empty() && m_pcHits.size() < 4000)
+			for(const auto a : m_watchPc)
+				if(a == pc)
+				{
+					PcHit h{m_sample, curTcb(), pc, m_machine.getD(0), m_machine.getD(1),
+						m_machine.getA(0), m_machine.getA(1), m_machine.getA7(), {}};
+					for(int i = 0; i < 5; ++i)
+						h.stack[i] = m_machine.peek32(h.sp + 4 * i);
+					m_pcHits.push_back(h);
+					break;
+				}
 		if(pc == g_create)
 			recordCreate();
 
@@ -597,14 +612,21 @@ namespace ot
 		write(g_projectName, _project);
 	}
 
+	Rtos::Stop Rtos::runToPc(const uint32_t _pc, const double _ms)
+	{
+		return runUntil(_ms, [this, _pc] { return m_machine.pc() == _pc; });
+	}
+
 	Rtos::LoadResult Rtos::loadProjectLive(const std::string& _set, const std::string& _project,
-		const double _runMs, const double _mountMs)
+		const double _runMs, const double _mountMs, const bool _namesEarly)
 	{
 		LoadResult out;
 		const double start = m_sample;
 
 		if(runToMainSpin() != Stop::Gate)
 			return out;
+		if(_namesEarly)
+			setNames(_set, _project);
 		if(!requestCardMount())
 			return out;
 
@@ -617,9 +639,23 @@ namespace ot
 				return out;
 		out.ready = m_machine.peek32(g_cardReady);
 
+		// ⚠️ WAIT FOR `sys`'S MEDIA CASE TO PASS BEFORE NAMING THE PROJECT,
+		// or the name is a RACE. ✅ Measured 8 Sep 2026 (O7b): the case at
+		// `0x4006203a` reloads whatever project is named, and the two
+		// emulators disagreed by 6,184 ATA commands for no other reason than
+		// that route A's mount tail runs ~200 samples longer, so its case
+		// fired BEFORE its harness wrote the name and this port's fired after.
+		// Route A reproduces the port's 12,373 exactly when told to write the
+		// name first (`--names-early`), which is what turns this from a story
+		// into a measurement. Waiting for the join point makes the order a
+		// choice; `_namesEarly` takes the other one deliberately.
+		if(!_namesEarly)
+			out.mediaCaseSeen = runToPc(g_mediaCaseJoin, 2000.0) == Stop::Gate;
+
 		if(runToMainSpin() != Stop::Gate)
 			return out;
-		setNames(_set, _project);
+		if(!_namesEarly)
+			setNames(_set, _project);
 		// Route A's own watch: the engine's BANK= parse is the write to
 		// PART_PTR made at 0x40087d44, and it is the ONLY thing that tells
 		// the saved bank apart from every other writer of that word (`sys`'s
@@ -722,6 +758,11 @@ namespace ot
 		const auto v = static_cast<uint8_t>(m_machine.read8(at) | (1u << ((_step - 1) % 8)));
 		m_machine.write8(at, v);
 		return v;
+	}
+
+	void Rtos::watchPc(const std::vector<uint32_t>& _addrs)
+	{
+		m_watchPc = _addrs;
 	}
 
 	void Rtos::watchMem(const uint32_t _addr, const uint32_t _len)

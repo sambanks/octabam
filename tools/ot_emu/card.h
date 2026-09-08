@@ -40,8 +40,20 @@ namespace ot
 
 		// What the run did, in the shape route A's log has it: the gate for
 		// the project load is a COUNT of commands and sectors.
-		struct Entry { std::string what; uint32_t lba = 0, count = 0; };
+		// ⚠️ `pc` and `tcb` are stamped by `Rtos` AFTER the command register
+		// write returns -- the card model has no view of the CPU. They are
+		// what O7b needs: "which task and PC issue command 6,190" is not
+		// answerable from a count.
+		struct Entry { std::string what; uint32_t lba = 0, count = 0, pc = 0, tcb = 0; };
 		const std::vector<Entry>& log() const { return m_log; }
+		void stampLastCommand(const uint32_t _pc, const uint32_t _tcb)
+		{
+			if(!m_log.empty() && !m_log.back().pc)
+			{
+				m_log.back().pc = _pc;
+				m_log.back().tcb = _tcb;
+			}
+		}
 		uint64_t sectorsRead() const { return m_reads; }
 		uint64_t sectorsWritten() const { return m_writes; }
 

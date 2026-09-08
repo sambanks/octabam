@@ -72,7 +72,8 @@ route A fact, not the port's problem; the golden command above already does it.
 | O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 6 compared fields (❌ was written "8/8": the diff counted 2 it never compared); 10 created, 11 ran, 204.88 ms vs 204.95 |
 | O5 | the rest of the memory; the serial stream | `ctest` rtos + the oracle diff | ✅ 8 compared fields; route A's 4831 serial bytes matched byte for byte (❌ its account of *why* route A has the extra memory was wrong — corrected in O7) |
 | O6 | the eDMA and the frame clock; the sequencer | the M6c fidelity gate (`scripts/o6_gate.sh`) | ✅ 5 compared fields: 400 frames, 28 ticks, the trig at frame 344 track 0 bytes `0x08`/`0x18`, and the bank/pattern four -- byte-identical to route A |
-| O7 | the card, the mount, the project load | route A's ATA command log is a prefix of the port's | ✅ all 6,189 commands identical, 297 written; ⚠️ OPEN: the port runs on to 12,373 and route A stops at 6,189 at ANY budget (`COLDFIRE_PORT.md` O7) |
+| O7 | the card, the mount, the project load | route A's ATA command log EQUALS the port's | ✅ all 6,189 commands identical line for line, 30,467 sectors read, 297 written (was "a prefix"; O7b closed the gap) |
+| O7b | why the port loaded twice | name the task and PC, and make the oracle reproduce it | ✅ `sys`'s media case reloads a NAMED project; the split is `strlen(name)` = 0 vs 3, a harness ordering race. Route A reproduces the port's 12,373 with `--names-early` |
 
 ## Queue
 
@@ -210,7 +211,44 @@ ended:` line — O7's "stall" was an ILLEGAL that looked like one.
 
 </details>
 
-### O7b — why the port loads twice — *(Opus, measurement first)*
+### ~~O7b — why the port loads twice~~ ✅ DONE (8 Sep 2026)
+
+**It was the harness, not the firmware.** `sys`'s media case (`0x4006203a`)
+answers a mount with "if a project is NAMED, load it" — `0x4002574c` is
+`if(strlen(0x100f8378)) post LOAD PROJECT`, and `0x40013db0` is `strlen`. Both
+emulators run that path identically and split on one value: the name is
+written by the time this port's case runs (`strlen` = 3) and not by the time
+route A's does (`strlen` = 0), because route A's mount tail runs ~200 samples
+longer. ✅ Told to write the name first (`--names-early`), **route A
+reproduces the port's 12,373 commands exactly**.
+
+❌ The 🟡 hypothesis in the entry below — SYS's reset-time "select bank 0"
+going to the card — is **retracted**. The select-bank case is not on this path.
+
+The port now waits for that case's join point before naming the project, so
+the order is a choice rather than a race, and its load is **byte-identical to
+route A's, command for command** (6,189 / 30,467 / 297). `--names-early` takes
+the other order deliberately: ⚠️ two loads, and arguably what HARDWARE does,
+since the unit has a project named long before a card goes in. Nothing on
+hardware has been measured either way — that is the open question this leaves.
+
+Three things worth carrying:
+
+1. **`--watch-pc` now exists on BOTH emulators** and answered this in two
+   runs: registers plus the top of the stack at each hit, so a hit on a callee
+   names its caller and its arguments.
+2. **`--cmd-log` now exists on route A too**, in the port's own first-field
+   format, so the two logs diff line for line.
+3. ⚠️ **The silent-instrument trap, third instance.** `_watch_report()` was
+   missing from route A's `--load-project` branch, so `--watch-pc` on a load
+   run printed nothing whether the address fired twice or never — the exact
+   question O7b asks. Fixed. Check the OTHER branches before trusting a
+   silent watch.
+
+<details><summary>the entry it replaces</summary>
+
+### O7b — why the port loads twice — (the original)
+
 
 Route A's load ends at 6,189 ATA commands at any budget; the port's runs to
 12,373 with route A's log as an exact prefix. Find which task and PC issue
@@ -220,6 +258,8 @@ other does not. 🟡 The hypothesis is SYS's reset-time "select bank 0"
 (RTOS_FORK.md §7) going to the card in the port and not in route A. Not a
 blocker for O6 (the load's first half is identical and the part pointer
 agrees), but it decides which emulator is telling the truth about the load.
+
+</details>
 
 <details><summary>the BLOCKED entry it replaces</summary>
 
@@ -346,9 +386,11 @@ and then polled TXEMP forever, which the UART model never set. Fix =
 MOV3Q to every alterable destination (`writeEaLong`); TXEMP is reported
 too, which is what made the fault legible. **Now: 12,373 commands / 60,677
 sectors / 562 written, and route A's whole 6,189-command log is an exact
-prefix.** ⚠️ Route A stops at 6,189 at a 12 s budget too, so the port's
-extra 6,184 commands are an OPEN divergence (a second bank parse, 🟡
-inferred), carried as O7b below. `COLDFIRE_PORT.md` has the instrument-by-instrument account and
+prefix.** ✅ **CLOSED by O7b:** the extra
+6,184 commands were a SECOND project load, triggered by `sys`'s media case
+because the harness had already written the project name; the port now waits
+for that case and issues route A's 6,189 line for line. The 🟡 "second bank
+parse" reading was wrong. `COLDFIRE_PORT.md` has the instrument-by-instrument account and
 the attribution. Instruments added: `--cmd-log FILE`, a true PC ring, and
 the load report's `load run ended: TIME|FAULT|ILLEGAL` line — **read that
 line before calling anything a stall.**
