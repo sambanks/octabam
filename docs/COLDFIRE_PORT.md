@@ -1899,12 +1899,45 @@ input level in the part is what the "43 dB down" leak was — so the RIG's T1
 is not usable as the effect fixture without editing its machine page, which
 the project tools do not do yet.
 
-**What the comparison needs, and does not have:** a project saved from the
-unit with a THRU track at unity input level, no bus in its path and the
-effect under test on its FX2 — then `--audio-in` a −20 dBFS probe, read ring
-word 2/3 from the transport start, and hand `dsp_host` the same probe with
-the part's knob values. The FX code is the same on both sides; the gain
-structure (main 64 → −11.1 dB here) is the number to divide out.
+### The comparison, attempted: the effect runs, the knobs do not arrive
+
+A fixture built from the tools: the RIG with **T2's FX2 = FILTER (stock id
+0x04)** written into part 1 and its saved copy (`ot_project` internals,
+checksum re-read), FILTER's WDTH stamped to 64 on T2 (`stamp-slot ... filter
+WDTH 64 --track 2`; ⚠️ called from a shell loop it reported "no knob 'WDTH
+64'" — call it plainly), staged and run with the five sines. Measured:
+
+| | 60 / 300 / 1k / 4k / 12k Hz, ring word 2, relative to the FX2 = SEND baseline |
+|---|---|
+| FX2 FILTER, page all zero | +0.0 / −0.0 / −0.0 / −0.2 / −0.1 dB |
+| FX2 FILTER, WDTH stamped 64 | +0.0 / −0.0 / −0.0 / −0.2 / −0.1 dB |
+
+Flat both times. Not because the effect is skipped: a DSP PC watch on core 1
+shows FILTER's init (payload B `P:0x591`) entered 3× at the load and its proc
+(`P:0x59d`) every frame, reading a parameter block through **r6 = X:0x2c3
+and X:0x3a3** on alternate calls (T2 has FILTER on FX1 too — the part's FX1
+ids are `[18, 4, 4, 4, 18, 4, 4, 28]`). ✅ Those two blocks, peeked at the
+end of both runs, are **byte-identical** between the WIDTH-0 and WIDTH-64
+cards: the part's FX2 page byte never reaches the DSP. (An all-zero FILTER
+page passes at unity — `PARAM_PAGES.md`, 2 Sep — so flat is what the DSP
+computes from what it has.) The blocks do carry page-shaped words
+(`7f 7f 00 00 7f 00 1e ...`), so SOME page reaches them; which page, and
+through which ColdFire publish path (`0x80000ec4/0x80000ecc` per `DSP.md`
+§, the part-load apply, or a knob-turn path the emulated load never runs),
+is the locate — it is O8's step 5(c) exactly, and until it is done every
+insert the port renders runs at the values it happens to hold.
+
+`rig_render.py` on the same part (stock image, `--stem T2=`) rendered T2 at
+−138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path where the
+port's does not — a second disagreement, harness versus firmware-driven,
+recorded here and not chased (the port is the one running the ColdFire).
+
+**So the comparison's precondition is the parameter path, not a fixture.**
+Next: watch the ColdFire's page publish for T2's FX2 slots (`--watch-mem`
+on `0x80000ec4`/`0x80000ecc`, `--coverage` diff of a stamped against an
+unstamped load), find what posts it, post it after the load the way the
+main level is posted, then re-run the five sines — the FILTER response
+against `dsp_host`'s is the gate.
 
 ## What is NOT here yet
 
