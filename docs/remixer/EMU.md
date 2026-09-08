@@ -400,6 +400,13 @@ them with a made-up effective address, two of them the recorder's mix loop.
 `native_macload_sites` now classifies every pair on the loaded library and
 hooks the accepted ones so they stop before executing and go through the
 shim as if they had trapped. A recorded buffer at unity gain is the test.
+The first version of that scan classified only `.l` load forms; the `.w`
+ones (222 words, 87 accepted natively) were found the same evening when
+the port and route A disagreed on a voice's level word — the level chain's
+last instruction `msacw %d4l,%d0l,%a1@(4),%d4,%acc1` (a829 0104) ran
+natively, d4 never loaded, and T1's level read 0x4001 for the port's
+0x7f00. The scan covers both sizes now and the shim's rebuilt plain form
+keeps the U/L half-select bits; both sides store `0x01007f00`.
 
 **A third route-A defect, same day, found by posting SET MAIN LEVEL:** the
 run loop ended a burst from inside the INTFRC write hook, and an

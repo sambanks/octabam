@@ -2247,7 +2247,12 @@ after processing). The write path reads the **input-capture ring**
 `0x80005760 + slot·0x100`, 8 slots of 256 bytes, filled by eDMA ch 7 one
 slot per frame (Bryan's §13.3 "channels 1 and 6 as input-capture staging"
 was the neighbouring buffers); slot layout = 16 samples × (L, R) 32-bit
-left-justified with **A/B at +0x80 and C/D at +0**, and the track reads
+left-justified with **A/B at +0x80 and C/D at +0** (the ColdFire's reading:
+the INAB source is the +0x80 pair; the port's O9c found the DSP fills +0
+from the ESAI-in ring's slots and +0x80 from its OUTPUT ring's slots 0/7 —
+a monitor placement some never-posted state enables — so under the port
+only C/D carry the physical inputs today; this driver injects at +0x80
+directly and is unaffected), and the track reads
 slot `(frameclock − (record+20 >> 4)) & 7` (`0x40007578`), eight frames
 behind delivery — the recording lags the live input by **128 samples**
 (buffer[0] = input time 16·(arm frame − 8) + offset, every pass). The
@@ -2381,8 +2386,10 @@ the handler returned; fixed by resuming after the instruction, EMU.md).
 With the level posted, the ten-pass 128 / RLEN 4 run was repeated:
 **T2's FLEX-on-R1 voice never appears in the outbound block at any of the
 ten retrigs** — every slot stays the input thru in all 12,600 frames (the
-same fixture's THRU cross-check gives T1 a live voice record `0x01004001`,
-mode 1 with a non-zero level word, so the level path works). That matches
+same fixture's THRU cross-check gives T1 a live voice record — first read
+`0x01004001`, the port's `0x01007f00` once a `.w` MAC-with-load word the
+native-site scan had skipped was routed through the shim, EMU.md — so the
+level path works and the two emulators agree on it). That matches
 the port's own finding that a staged FLEX sample is read from the card and
 never rendered: the FLEX sample/recorder-buffer playback path is unlocated
 in both emulators (COLDFIRE_PORT O9b/O9c). Until it is found, the played
