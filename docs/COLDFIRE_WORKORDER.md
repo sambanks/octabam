@@ -653,14 +653,25 @@ report lines. Three things later milestones must know:
    base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
    gates say whether any shipped effect was rendered on it.
 
-### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 STARTED (8 Sep 2026, branch `coldfire-o9c`)
+### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 MOSTLY DONE (8 Sep 2026, branch `coldfire-o9c`, draft PR)
 
-The slot map's first pass is in `COLDFIRE_PORT.md` O9c: TX0 1/2 and 3/4 are
-the two stereo pairs (3.7 dB apart); RX0 slots 2/3 feed the capture block's
-C/D pair at full level; RX0 slots 0/1 reach the same pair 43 dB down and the
-A/B pair at +0x80 is never written — the A/B path is the open item (a
-never-posted sys command, or the port's input stage); RX0 slots 4–7 do not
-reach the ring. Then the comparison.
+`COLDFIRE_PORT.md` O9c has the account. Done and measured: the input map
+(RX0 0/1 = A/B, 2/3 = C/D, moved by the project's `DIR_AB`/`DIR_CD`; 4–7 not
+received, the firmware's own `RSMA = 0x0f`); the output map (the mix on ring
+words (2,3) and (4,5), read ring-aligned off DSR2 because the ESAI slot
+counter rotates against DMA2's index per run — an instrument artefact caught
+and fixed); the THRU baseline (flat −11.1 dB, 155-sample latency, full-scale
+limited); and **the parameter path end to end** — a part's FX2 page byte
+reaches the effect's coefficient block on the DSP (FILTER BASE 40 → X:0x2c0
+word 7). ⚠️ Two "never reaches the DSP" readings on the way, both retracted;
+the corrected finding is that it does.
+
+**The gate — a THRU track's FX rendering bit-identical to `dsp_host` — is
+not passed**, but it is no longer a locate: it needs a non-transparent part
+setting (a page-2 select; `stamp-slot` writes page 1 only today) and the
+gain structure between the two paths reconciled (port: main → track →
+−11.1 dB THRU; `dsp_host`: r6 poke, no mixer). Draft PR carries the
+measurements; the gate work is the finish.
 
 
 **Gate:** the port, driven by the firmware, renders `verify_twocore`'s
