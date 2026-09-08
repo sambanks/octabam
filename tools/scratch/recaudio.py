@@ -51,6 +51,7 @@ ap.add_argument("--rec-write-probe", action="store_true", help="watch every writ
 ap.add_argument("--rec-write-window", type=int, nargs=2, default=(0, 10 ** 9), help="frame0 frame1: only log rec-write-probe hits in this frame range (default: all)")
 ap.add_argument("--render-gate-probe", action="store_true", help="watch 0x40007960's silence-vs-render gate (a3@8/a3@16 early exits, a2@0 the zero-fill-vs-fetch flag) -- RTOS_FORK 10.34's 3rd probe")
 ap.add_argument("--blocks", type=int, default=40, help="pool blocks to dump from the row")
+ap.add_argument("--main-level", type=int, default=64, help="SET MAIN LEVEL to post after the load (0 = do not post; without it no voice renders, O9b)")
 ap.add_argument("--field-probe", action="store_true", help="log every write to the track's recorder state record (+36..+83, both banks) with its PC")
 ap.add_argument("--reg-probe", action="store_true", help="log the mix loops' source pointers and gains at loop entry (frames 323..326)")
 ap.add_argument("--read-probe", action="store_true", help="log the write path's source reads (0x40007680..0x40007748) for the first recording frames")
@@ -432,6 +433,8 @@ if not rt.gate_m6a()[0]:
     rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
 mounted, posted, saved_bank, final_bank, _ = rt.load_project_live("OCTABAM", name, run_ms=20000)
 if final_bank != saved_bank: final_bank = rt.select_bank_live(saved_bank)
+if a.main_level:
+    print(f"main level {a.main_level}: gain table[0] = {rt.set_main_level_live(a.main_level):#x}", flush=True)
 pattern = uc.mem_read(er.CUR_PATTERN, 1)[0]
 rt.seq_select_live(final_bank, pattern); rt.internal_clock()
 rt.frame = True; rt.next_frame = rt.sample + er.FRAME_PERIOD; rt.exact_clock()
@@ -577,4 +580,5 @@ with open(a.out, "wb") as fh:
         rw_ev=rw_ev if a.rec_write_probe else None,
         gate_ev=gate_ev if a.render_gate_probe else None,
         fetch_ev=fetch_ev if a.render_gate_probe else None), fh)
+print(f"voice record 0x80000510 + 48*t, ping 0, after the run: " + " ".join(f"T{t+1}={int.from_bytes(uc.mem_read(0x80000510 + 48 * t, 4), 'big'):#010x}" for t in range(8)))
 print(f"saved {a.out}: {len(audio_out)} audio blocks, {len(blocks)} pool blocks, {len(ev)} events, {len(voice_rec)} voice_rec frames")

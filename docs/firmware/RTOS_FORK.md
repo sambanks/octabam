@@ -2370,6 +2370,28 @@ is always in it."* He offers his sound-on-sound project file.
   length is an exact tempo multiple and at 128 it is not (🟡 a candidate
   only; nothing measured).
 
+**Later the same day — the play side opens a crack.** The ColdFire port
+found why nothing plays under either emulator (COLDFIRE_PORT O9b): every
+voice's level is multiplied by the main gain table at `0x80003c60`, written
+only by sys command 4 (SET MAIN LEVEL), which no load ever posts. Route A
+now posts it after the load (`set_main_level_live`), which exposed a
+fourth harness defect: a forced interrupt taken at IPL 0 livelocked the run
+loop (the INTFRC write was aborted by the burst stop and re-executed after
+the handler returned; fixed by resuming after the instruction, EMU.md).
+With the level posted, the ten-pass 128 / RLEN 4 run was repeated:
+**T2's FLEX-on-R1 voice never appears in the outbound block at any of the
+ten retrigs** — every slot stays the input thru in all 12,600 frames (the
+same fixture's THRU cross-check gives T1 a live voice record `0x01004001`,
+mode 1 with a non-zero level word, so the level path works). That matches
+the port's own finding that a staged FLEX sample is read from the card and
+never rendered: the FLEX sample/recorder-buffer playback path is unlocated
+in both emulators (COLDFIRE_PORT O9b/O9c). Until it is found, the played
+stream across a 128 BPM retrig — the click's remaining half — cannot be
+observed under emulation; the hardware capture is the instrument that can.
+(Rebased onto the regrouped tree 10 Sep 2026: §§10.36–10.46 above were
+written after this paragraph and supersede its "unlocated" — the port
+renders FLEX-from-recorder playback since 10.36.)
+
 Drivers: `tools/scratch/recaudio.py` (`--reg-probe`, `--read-probe`,
 `--field-probe` are the instruments that found the three defects),
 `recaudio_seams.py`, `recaudio_analyse.py`, `make_seam_fixtures.py`

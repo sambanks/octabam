@@ -399,7 +399,23 @@ took the NEXT word; (2) the core does not trap on every load form: of the
 them with a made-up effective address, two of them the recorder's mix loop.
 `native_macload_sites` now classifies every pair on the loaded library and
 hooks the accepted ones so they stop before executing and go through the
-shim as if they had trapped. A recorded buffer at unity gain is the test. And Unicorn's `until` address is not
+shim as if they had trapped. A recorded buffer at unity gain is the test.
+
+**A third route-A defect, same day, found by posting SET MAIN LEVEL:** the
+run loop ended a burst from inside the INTFRC write hook, and an
+`emu_stop` there ABORTS the instruction — the write lands but PC stays on
+it. Under IPL 7 that only re-executed an idempotent store; at IPL 0 the
+forced interrupt is delivered at once, its handler clears the bit and
+returns to the same `orl`, which forces again: a livelock in which main
+never ran (SET MAIN LEVEL's handler forces INTC0 source 34, vector 0x62).
+The chip completes the instruction first. All 18 INTFRC writers in the
+image are 6-byte `orl/andl/movel Dn,abs.l`, so `_on_force` now resumes
+after the instruction. And the reason nothing ever played under either
+emulator (COLDFIRE_PORT O9b, found on the port): the per-voice mixer
+multiplies every level by the main gain table at `0x80003c60`, which is
+written only by sys command 4 (SET MAIN LEVEL), which no load posts.
+`Rtos.set_main_level_live(level)` posts it the way select-bank is posted;
+`recaudio.py --main-level` uses it. And Unicorn's `until` address is not
 honoured when the instruction there raises: the trampoline parks on a
 `nop` instead.
 

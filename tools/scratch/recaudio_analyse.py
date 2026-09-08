@@ -79,17 +79,26 @@ def main(path, show_all=False):
     byf = {}
     for f, s, g, sa, data in ao:
         byf.setdefault(f, []).append((g, sa, struct.unpack(">256I", data)))
-    for e in arms[:3]:
+    # which slots ever deviate from the input thru (a rendering voice shows as content that
+    # is not the counter), and the played values around every arm
+    playing = collections.Counter()
+    for f, s, g, sa, data in ao:
+        w = struct.unpack(">256I", data)
+        for slot in range(8):
+            ls = [s32(w[slot*32 + 2*i]) >> 16 for i in range(16)]
+            if any(abs(ls[i] - ((16*f + i) & 0x7fff)) > 1 for i in range(16)):
+                playing[slot] += 1
+    print(f"outbound block: frames in which a slot is NOT the input thru: {dict(playing)} (of {len(ao)})")
+    for e in arms[:12]:
         f = e["frame"]
-        print(f"-- outbound block, frames {f-1}..{f+3} (values >> 16, minus the input counter 16*frame+i):")
-        for ff in range(f - 1, f + 4):
+        print(f"-- outbound block, frames {f-1}..{f+2} (L >> 16 per slot; input counter would be 16*frame+i):")
+        for ff in range(f - 1, f + 3):
             for g, sa, w in byf.get(ff, []):
                 devs = {}
                 for slot in range(8):
                     ls = [s32(w[slot*32 + 2*i]) >> 16 for i in range(16)]
-                    dev = [ls[i] - ((16*ff + i) & 0xffff) for i in range(16)]
-                    if any(abs(x) > 1 for x in dev): devs[slot] = dev
-                print(f"   f{ff} gpio{g} src {sa:#x}: slot0 L>>16 = {[s32(w[2*i]) >> 16 for i in range(16)]}  deviating slots: {devs}")
+                    if any(abs(ls[i] - ((16*ff + i) & 0x7fff)) > 1 for i in range(16)): devs[slot] = ls
+                print(f"   f{ff}: {devs if devs else 'all slots = input thru'}")
 
 if __name__ == "__main__":
     main(sys.argv[1], "--all" in sys.argv)
