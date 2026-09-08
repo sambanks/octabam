@@ -1974,11 +1974,26 @@ structure reconciled. Both are now measured facts, not locates:
   lane at the ccpage2 offset did NOT move stock FILTER's block (equal-length
   compare identical) — because ccpage2's `slot2` layout and counts are the BUS
   ENGINES' (`VERB_COUNTS`/`DLY_COUNTS`), and stock FILTER's page-2 lane offset
-  is its own. So the finish is: drive `P2EDIT`'s stores after the load (or find
-  the load-time refresher that should populate the live lane and does not),
-  using the effect's own page-2 layout — the mechanism is known, only the
-  per-effect offset for a stock effect is not pinned. `--poke` (added this
-  milestone) is the lever once the offset is right.
+  is its own. The mechanism is known for the bus engines; the
+  per-effect lane offset for a STOCK effect is not pinned (poking every byte
+  of the copier window 0x80000898–0x800008af left FILTER's block unchanged),
+  and `--poke` (added this milestone) is the lever once it is.
+
+⚠️ **But a bigger reframing, strongly supported: a THRU track's TX0 output
+is a PRE-FX2 monitor, so the comparison cannot read the effect there.** Every
+FX2 setting tried — page-1 BASE/WDTH across four combinations, a page-2 LP
+select in the part, a live-lane poke — leaves the TX0 ring word 2 output
+**flat/identical**, even though FILTER's proc runs every frame (`P:0x59d`)
+and page-1 BASE provably reaches its coefficient block (X:0x2c0 word 7 =
+0x28 for BASE 40). An effect whose input reaches it and whose output changes
+nothing downstream is not in the measured path. So O9c's comparison tap is
+wrong, not its parameters: a THRU track monitors its raw input, and FX2's
+output goes to the bus / the recording, i.e. the **read-back block
+`0x80003190`** (DSP→CPU, `DSP.md` §), not the ESAI monitor. 🟡 Falsifier /
+next step: inject a probe and read `0x80003190` (or use a machine that plays
+into FX2 — which needs the FLEX loader, the other open locate) rather than
+TX0. The parameter path (page 1 proven, page 2 = the ccpage2 lane) stands;
+what O9c had wrong was where to listen.
 - ✅ **The THRU monitor gain is the track's own input level, NOT the main
   level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
   −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
