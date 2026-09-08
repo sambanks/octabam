@@ -789,7 +789,8 @@ destination (`0x6000 | X address`) and the count in halfwords (two per
 | `0x800021d0` (A) / `0x80001c90` (B) + ping·`0xa80` | 336 | `X:0x080` | **four 84-word per-track records** (`0x150` bytes each) |
 | `0x80000110` / `0x80000210` + ping·`0x200` | 64 | `X:0x000` | four 16-word per-voice records |
 | `0x80005460` + slot·`0x80` | 32 | `X:0x800` | a sample-slot record, on demand |
-| `0x80003190` + ping·`0x400` | 256 | ← `X:0x400` | read-back (DSP → CPU) |
+| `0x80003190` + ping·`0x400` | 256 | ← `X:0x400` | read-back (DSP → CPU) — ❌ half the story: ✅ measured 8 Sep 2026 (`COLDFIRE_PORT.md` O9), core 1's read-back lands here and core 0's at `+0x200`, and the ColdFire then sends the 512 words FROM `0x80003190` TO core 0 every frame (eDMA ch 0); 🟡 the two cores' track mixes, forwarded to the core that owns the ESAI |
+| `0x80005460..0x80005e60`, page-stepped | 128 | ← | ✅ the eight ESAI input slots × 16 samples (eDMA ch 7; proven by content, O9) |
 
 The 336-word block is assembled by the packer at `0x4000d3fc`–`0x4000d55e`:
 for each of 8 tracks it calls the machine-type handler from the table at

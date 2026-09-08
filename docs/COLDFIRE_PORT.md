@@ -1491,6 +1491,163 @@ the M6a oracle diff without `--dsp` 8 compared fields agree. The models are
 seeded from the same 8,235 boot writes as before — a write the co-processor
 owns is not replayed into them.
 
+## Milestone O9 — the audio path: input proven, output silent, the clock walk closed (8 Sep 2026, branch `coldfire-o9`)
+
+O9 was "the ESAI path, untraced". It is traced now, in both directions, with
+instruments that stay in the tree; half of it works and the other half stops
+at a place that is not the port's.
+
+### The instruments
+
+| flag | what |
+|---|---|
+| `--audio-out PREFIX` | every X-side ESAI TX0 frame a core puts out, eight slots, to `PREFIX_core<k>.wav` (24-bit, 44.1 kHz), with the transport start's frame index in the report |
+| `--audio-in FILE.wav` / `--audio-in tones` | RX0's slots from the transport start on: the file's channels onto slots 0..n−1, or slot k = a sine at 500·(k+1) Hz, −20 dBFS |
+| `--dsp-map FILE` | at every frame command, the count of non-zero words per 4K chunk of both cores' X and Y — where anything LIVES |
+| `--dsp-writes FILE` | at every frame command, the count of NON-ZERO WRITES per 256-word region of both cores' X and Y since the last one — where anything PASSES THROUGH. Needs the tenth vendored patch: a write hook in `Memory::dspWrite` (one branch per write, unset by default) |
+| report lines | `audio (O9)`: transport start frame, TX0/RX0 non-zero per slot, the DSP's own instruction counter and its surplus over interpreter calls; `shared window ... non-zero words now`; `non-zero writes into the ESAI-out ring` with the first one's address and value |
+| `stage_card.py --audio SRC:CARDPATH` | a sample on the card (route A's own `--stage-audio`, exposed) |
+
+⚠️ Two instrument corrections found on the way: `--dsp-peek` (and the map)
+read the shared window through `Memory::get`, which answers 0 for any offset
+past the core's own size BEFORE it looks at the window — so a peek at 0x30000+
+was blind and read as "empty"; it reads the pair's array now. And the first
+activity maps were taken at the frame command, where the window is always
+zero (below) — a snapshot instrument cannot see a buffer that is consumed
+inside the frame; the write map can.
+
+### ✅ The clock walk of O8b is closed: `rep` iterations
+
+O8b left 17 host frames of 399 taking 17 ESAI frames, a 0.27 % drift "always
+one way". The cause was the budget's unit: `runDue` counted ONE per
+interpreter call, while the ESAI clock reads the DSP's own instruction
+counter, which a `rep` advances once per ITERATION (`DSP::rep_exec`). The
+payload's `rep`s put the DSP's audio clock ahead of the ColdFire's sample
+clock by the iteration surplus. The budget now spends the DSP's own counter
+delta per call (idle steps included), and the report prints the surplus:
+
+| | before | after |
+|---|---|---|
+| ESAI frames per host frame, exactly 16 | 382 of 399 | **399 of 399**, and **1599 of 1599** |
+| surplus over interpreter calls, 400 frames | — | 83,398 = 208 per frame = 0.31 % of 66,560 |
+
+The candidate O8b named (the read-back pull running outside the budget) was
+wrong: the pull's instructions were already counted. ✅ Measured; the number
+that only makes sense one way is the surplus per frame matching the drift.
+
+### ✅ Audio IN works, end to end
+
+With `--audio-in tones`, over 400 frames (the RIG fixture, T1 THRU trigged at
+frame 344 by the poke):
+
+- the ESAI-in ring X:0x8100–0x833f holds the sines (`--dsp-peek 0:X:8100`),
+  DMA3 writing ~128 non-zero words per frame (the write map's `0X08200/0X08300`);
+- core 0 copies 64 input words into the shared window each frame (`0X30000`
+  non-zero writes 72 with tones, 8 without) and core 1 takes them (its
+  `1Y00200` 66 vs 1); the frame command sees the window at zero every time,
+  so the traffic is transient — written and consumed inside the frame;
+- **the ColdFire gets the inputs back**: eDMA channel 7's 128-word block per
+  frame (a ring of buffers `0x80005460..0x80005e60`, page-stepped) reads
+  126–128 non-zero words = 8 slots × 16 samples, **50,298 words over 400
+  frames against 9 without tones**. That is the input-capture staging Bryan
+  inferred from count and shape (`EXTERNAL.md` §8) — measured by content now
+  for channel 7; channel 6's fixed block at `0x80005e60` stayed zero and is
+  still 🟡.
+
+So O8's "the DSP computes silence" on the inbound direction was the absence of
+input, not a defect: feed the ESAI and the read-back carries it.
+
+### The frame's audio topology, measured from the block log
+
+Per host frame, from the log's directions, sizes and addresses (✅), with
+what each block carries (🟡 unless said):
+
+| direction | eDMA ch | words | ColdFire side | carries |
+|---|---|---|---|---|
+| → DSP | 0 | 672 | `0x800021d0`/`0x80002c50` (A), `0x80001c90`/`0x80002710` (B), ping | 8 × 84-word track records (`DSP.md`); ~14 non-zero |
+| → DSP | 0 | 64 | `0x80005460 + n·0x80`, rotating | a slot record (`DSP.md`); ~11 non-zero |
+| → DSP | 0 | 128 | `0x80000110`/`0x80000310` (B), `0x80000210`/`0x80000410` (A) | per-voice records; ~30 non-zero |
+| → DSP, **core 0 only** | 0 | 512 | `0x80003190`/`0x80003590`, ping | ✅ the two cores' 256-word read-backs of the previous ping, forwarded; **zero in every run** |
+| ← DSP, each core | 1 | 256 | core 1 → `0x80003190`/`0x80003590`, core 0 → `0x80003390`/`0x80003790` | 🟡 the core's track output mix; **zero in every run** |
+| ← DSP, core 0 | 6 | 128 | `0x80005e60`, fixed | unknown; zero |
+| ← DSP, core 0 | 7 | 128 | `0x80005460..0x80005e60` ring | ✅ the eight input slots × 16 samples |
+
+❌ `DSP.md`'s table has `0x80003190` as "read-back (DSP → CPU), 256 words":
+the address is right, the direction is half the story — core 1's read-back
+lands there and the ColdFire then sends 512 words FROM it to core 0. The
+reading that fits (🟡): core 0 owns the ESAI, so tracks 1–4's mix goes core 1
+→ ColdFire → core 0 to be summed into the output ring.
+
+### ❌ Audio OUT is silent, and the place it stops is not the port's
+
+TX0 is zero on all eight slots in every run, and the write hook says why in
+the narrowest possible terms: **core 0 never writes a non-zero word into the
+ESAI-out ring X:0x8000–0x80ff** during the run (186 writes at boot, the
+payload's init; none after). Tried, all silent, all with the sequencer
+running and the poked trig firing at frame 344:
+
+| fixture | what it would have shown |
+|---|---|
+| the RIG as staged (T1 THRU, master track on), tones in | a THRU track passing the inputs, tracks 1–4 → core 1 → ColdFire → core 0 |
+| the same, `MASTER_TRACK=0` | the master track was the gate |
+| T5 THRU with a trig in A01 step 2, tones in, master on and off | a THRU on the ESAI core itself, no inter-core hop |
+| T1 FLEX on slot 1 with `KICK.WAV` staged (`stage_card.py --audio`), `TSMODE=0` | the ColdFire rendering a sample into the 512-word block |
+
+What the instruments say about where it stops:
+
+- the sample IS loaded: the card log shows 47 READ commands covering all 176
+  sectors of `KICK.WAV` during the load, and the load does more work (forces
+  6,488 vs 6,424) — but the 512-word outbound block and both 256-word
+  read-backs stay zero before and after the trig;
+- the trig reaches the DSP as ONE changed word in core 1's 128-word voice
+  block (30 → 31 non-zero) and nothing follows on core 1 — no region of
+  track size is written after frame 344 (`--dsp-writes`, frames 343/346/351/399
+  compared) and core 1 never writes the shared window;
+- the T5 file trig (A01, TRAC mask 0, step 2 — set after finding `pattern-trig`'s
+  pattern index is 0-based, so the first attempt landed in A02) does not fire
+  at all: the live-nibble log shows only the poked T1 trig. Whether file trigs
+  fire under the emulators is untested beyond this (🟡);
+- **route A does the same on the same card** (the O6 oracle on the KICK card:
+  the same seven live-nibble writes, nothing at `0x80004f1c`), so this is not a
+  port/oracle disagreement — it is a path neither emulator drives: the
+  sequencer's trig never becomes a DSP voice. `FW_TRIG_WORDS` (`0x46104d26`)
+  is zero in every plain-trig run, as it has been since M5 (`RTOS_FORK.md`
+  §10.14's control shows the recorder masks reaching it).
+
+Reading the dispatcher's output stage (P:0x1cb–0x203: per output channel,
+16 squared samples, a peak, a one-pole envelope and a gain that ramps toward
+0 or 0x80 on a threshold compare) says the ring is written by a
+limiter-shaped stage — but that is reading, and the write hook says the
+stage's input is zero, so nothing about it has been measured. Do not start
+there.
+
+**Gate for the remaining half (O9b), not passing:** a THRU track trigged
+with `--audio-in tones` puts the tones on TX0 (the WAV carries them, the
+ring's non-zero write count is non-zero). It waits on the trig → voice path
+on the ColdFire, which is oracle-side work (route A first, `RTOS_FORK.md`
+§10), not the port's.
+
+### What the port can do NOW that it could not before
+
+The recorder records the INPUTS, and the inputs now carry content all the way
+into the ColdFire's capture buffers. Bryan's click question (the seam-patch
+falsification, 8 Sep) asked for exactly "content injected at the source, the
+packed pool blocks and the outbound flex stream read across the arm" — the
+port can inject it at the ESAI, which is the true source, with the recorder
+fixture (`~/octa/backups/RECTRIG_20260906_step9`). Playing the recording back
+still needs the voice path above.
+
+### Cost
+
+A 400-frame sequencer run with the cores is **~1 minute wall** (51–61 s
+measured, 1,600 frames in 56 s; the load dominates). The "~25 minutes" in the
+O8 notes is stale.
+
+### No regression
+
+`ctest` 7/7; O6 with the cores 5/5 against the stored oracle; M6a with the
+cores; `make check` — see the PR.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
@@ -1506,7 +1663,9 @@ owns is not replayed into them.
   ColdFire alternates the cores, writes `0x81`, sends a destination/count pair
   to `0x2000001c`, then DMAs — 336-word per-track records plus a 128-word and a
   64-word block per core, with one 64-word block read back.
-- **Audio out.** The ESAI path is untraced.
+- **Audio out.** ~~The ESAI path is untraced.~~ Traced in O9: input proven to
+  the ColdFire's capture buffers, output silent because no track ever starts
+  under either emulator (the trig → voice path, oracle-side).
 
 ## The oracle, made concrete (7 Sep 2026)
 

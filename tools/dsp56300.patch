@@ -328,13 +328,16 @@ index f9f8180..714776e 100644
  	{
  		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
 diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
-index 98c2226..a2b1357 100644
+index 98c2226..18b660c 100644
 --- a/source/dsp56kEmu/memory.cpp
 +++ b/source/dsp56kEmu/memory.cpp
-@@ -145,6 +145,14 @@ namespace dsp56k
+@@ -145,6 +145,17 @@ namespace dsp56k
  			}
  		}
  */
++		if(m_writeHook)
++			m_writeHook(_area, _offset, _value);
++
 +		if (m_sharedX && (_area != MemArea_P || m_sharedP) && _offset >= m_sharedLo && _offset < m_sharedHi)
 +		{
 +			(_area == MemArea_X ? m_sharedX : _area == MemArea_Y ? m_sharedY : m_sharedP)[_offset - m_sharedLo] = _value & 0x00ffffff;
@@ -346,7 +349,7 @@ index 98c2226..a2b1357 100644
  		if (_offset < size(_area))		// Fix the amazing "write to wrong address" bug
  			m_mem[_area][_offset] = _value & 0x00ffffff;
  
-@@ -178,6 +186,9 @@ namespace dsp56k
+@@ -178,6 +189,9 @@ namespace dsp56k
  			return 0;
  		}
  
@@ -356,7 +359,7 @@ index 98c2226..a2b1357 100644
  		const auto res = m_mem[_area][_offset];
  
  #ifdef _DEBUG
-@@ -211,6 +222,14 @@ namespace dsp56k
+@@ -211,6 +225,14 @@ namespace dsp56k
  		}
  #endif
  
@@ -372,7 +375,7 @@ index 98c2226..a2b1357 100644
  		_wordB = p[_offset+1];
  
 diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
-index 567d068..3a18046 100644
+index 567d068..8ea2123 100644
 --- a/source/dsp56kEmu/memory.h
 +++ b/source/dsp56kEmu/memory.h
 @@ -1,5 +1,7 @@
@@ -383,7 +386,7 @@ index 567d068..3a18046 100644
  #include <map>
  #include <set>
  #include <vector>
-@@ -63,6 +65,23 @@ namespace dsp56k
+@@ -63,6 +65,26 @@ namespace dsp56k
  		TWord*												p;
  
  		TWord												m_bridgedMemoryAddress;
@@ -404,10 +407,13 @@ index 567d068..3a18046 100644
 +		// opcode both cores hold for it.
 +		TWord*												m_sharedP = nullptr;
 +		std::function<void(TWord)>							m_sharedWriteHook;
++		// octabam: every data write (P, X, Y), after address translation, for
++		// an activity instrument -- one branch per write when unset.
++		std::function<void(EMemArea, TWord, TWord)>			m_writeHook;
  		
  		struct STransaction
  		{
-@@ -124,6 +143,19 @@ namespace dsp56k
+@@ -124,6 +146,20 @@ namespace dsp56k
  
  		const TWord&		getBridgedMemoryAddress() const { return m_bridgedMemoryAddress; }
  
@@ -417,6 +423,7 @@ index 567d068..3a18046 100644
 +		{
 +			m_sharedLo = _lo; m_sharedHi = _hi; m_sharedX = _x; m_sharedY = _y; m_sharedP = nullptr;
 +		}
++		void				setWriteHook		(std::function<void(EMemArea, TWord, TWord)> _hook) { m_writeHook = std::move(_hook); }
 +		// octabam: P, X and Y of [_lo,_hi) all alias _all (see m_sharedP).
 +		void				setSharedWindow		(TWord _lo, TWord _hi, TWord* _all, std::function<void(TWord)> _onWrite)
 +		{

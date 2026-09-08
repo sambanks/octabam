@@ -32,9 +32,13 @@ def main():
                          "run concurrent with route A's needs its own")
     ap.add_argument("--image-mb", type=int, default=64)
     ap.add_argument("--out", default="out/o6_card.img")
+    ap.add_argument("--audio", action="append", default=[],
+                    help="'<src wav>:<card path relative to the SET folder>' -- a sample to put on "
+                         "the card as well (route A stages none by default, which is why every "
+                         "sample slot is empty and the DSP has nothing to play: O9); repeatable")
     a = ap.parse_args()
     img, staged = emu_rtos.stage_project(a.project, a.set_name, a.name,
-                                         tree=a.tree, image_mb=a.image_mb)
+                                         tree=a.tree, image_mb=a.image_mb, audio=a.audio)
     pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     with open(a.out, "wb") as f:
         f.write(img)
