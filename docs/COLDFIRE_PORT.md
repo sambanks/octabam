@@ -1946,14 +1946,23 @@ comparison against `dsp_host` is now a bounded job, not an unknown: it needs
 (a) a part setting that makes the effect non-transparent, and (b) the gain
 structure reconciled. Both are now measured facts, not locates:
 
-- ✅ **A page-1 FILTER setting cannot make it filter.** Four (BASE, WDTH)
-  combinations — (0,20), (127,20), (64,10), (40,127) — all give the SAME
-  output at 300 Hz and 8 kHz (−0.2 dB tilt, i.e. flat) even though BASE
-  reaches the coefficient block. FILTER's actual response is gated by its
-  page-2 HP/LP selects (12dB/24dB, off = bypass), so the comparison needs a
-  `stamp-slot` that writes a page-2 select (the count-3 renderer; mind
-  `build_bus.py`'s `verify_menu` and the descriptor-formatter trap). That is
-  the one piece of new tooling O9c's finish needs.
+- ✅ **A page-1 FILTER setting cannot make it filter, and the page-2 select
+  that would does not reach the DSP under the load.** Four page-1 (BASE, WDTH)
+  combinations all give the same flat output; FILTER's response is gated by
+  its page-2 HP/LP selects. `stamp-slot` DOES write page 2 (my earlier "page 1
+  only" was wrong — it computes `P2_OFF + track·30 + 6 + slot−6` and the LP=2
+  byte lands in the part), but a card with LP = 24 dB renders **identically**
+  to LP = 0, and FILTER's coefficient block at X:0x2c0 is **byte-identical**
+  between the two — so **the page-2 select never crosses to the DSP**, where
+  a page-1 knob (BASE → X:0x2c0 word 7) does. ✅ **The locate, sharp now:**
+  the per-frame packer forwards page-1 knobs positionally (`x:(r6+i)`,
+  `DSP.md` §) but not the page-2 selects; on the real unit a page-2 select is
+  applied when the effect is (re)selected / the part is applied, a path the
+  emulated load does not run — the SAME family as the main level (sys command
+  4) and the −1 per-track init bytes. So O9c's finish is not a `stamp-slot`
+  feature; it is to drive that apply path after the load (a coverage/`watch`
+  pass over the load with LP=0 vs LP=2 to find the reader, then post it the
+  way `setMainLevelLive` posts the main level).
 - ✅ **The THRU monitor gain is the track's own input level, NOT the main
   level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
   −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
