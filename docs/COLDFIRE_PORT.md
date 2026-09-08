@@ -701,8 +701,13 @@ opcode is not evidence the part lacks it; the image is).
 `ctest` 6/6; oracle diff 8 compared fields, zero disagreements; the serial
 stream 5,731 bytes identical.
 
-**⚠️ OPEN — the port runs PAST route A's end, and that is a divergence, not
-a budget.** Route A stops at 6,189 commands with `M6b load: PASS` at a
+> ✅ **CLOSED 8 Sep 2026 by O7b (below): it was the harness's project-name
+> ordering, not a firmware divergence, and the two now issue the same 6,189
+> commands line for line. The 🟡 "select bank 0" hypothesis below is
+> RETRACTED.**
+
+**⚠️ OPEN (superseded) — the port runs PAST route A's end, and that is a
+divergence, not a budget.** Route A stops at 6,189 commands with `M6b load: PASS` at a
 6,000 ms budget **and at a 12,000 ms budget** (re-measured 8 Sep 2026: same
 6,189 / 30,467 / 297). The port's load runs on to **12,373 commands /
 60,677 sectors / 562 written** and parks in main, the same total at 6,000
@@ -716,6 +721,124 @@ which is right. **The next measurement is which task and PC issue command
 6,190 in the port** (`--ata-trace` carries the PC; its 200,000-access cap
 will need raising or arming at a command index), then the same site in
 route A to see why it does not.
+
+## Milestone O7b — why the port loaded twice ✅ (8 Sep 2026)
+
+**It was a race in the HARNESS, not a difference in the firmware, and the two
+emulators now issue the same 6,189 ATA commands line for line.**
+
+```
+diff <(cut -d'|' -f1 out/oracle/o7b_port_cmds2.txt) out/oracle/o7b_routeA_cmds.txt
+# (no output)
+6189 ATA command(s): 1 IDENTIFY, 5921 READ, 30467 sector(s) read, 297 written
+```
+
+### The mechanism, measured
+
+The port's extra 6,184 commands were a **second, complete project load** — its
+tail is its own head again, differing only in the writes the first pass had
+already made. Both loads are issued by the `engine`, and both arrive the same
+way: something posts LOAD PROJECT. So the question was who posts it twice.
+
+✅ **`--watch-pc` on `0x40023c7c` (the post) and `0x40085336` (the engine's
+LOAD PROJECT case) answers it directly.** The port hits each **twice**, route A
+**once**. The port's second post comes from **`sys`**, with the return address
+`0x4002576a` — a call site the image contains exactly once:
+
+```
+4006203a: jsr 0x40056600
+40062040: jsr 0x40056744
+40062046: tstl %d0
+40062048: bnes 0x40062050      ; non-zero: do nothing
+4006204a: jsr 0x4002574c       ; zero: "reload the current project"
+40062050: ...                  ; the join point
+
+4002574c: pea 0x100f8378       ; <- the PROJECT NAME
+40025752: jsr 0x40013db0
+40025758: addql #4,%sp
+4002575a: tstl %d0
+4002575c: bles 0x4002576c      ; nothing named: return
+4002575e: pea 0x100f8378
+40025764: jsr 0x40023c7c       ; post LOAD PROJECT
+```
+
+`0x40013db0` is **`strlen`** (`clrl %d0 / addql #1,%d0 / tstb %a0@(0,%d0:l) /
+bnes / rts`). So `sys`'s media case says, in as many instructions: **a card
+appeared — if a project is named, load it.**
+
+✅ **Both emulators run that path identically, instruction for instruction,
+and split on one value.** `--watch-pc` on `0x40062000`, `0x4006200c`,
+`0x40062046`, `0x4006204a`, `0x40025752`, `0x4002575e` gives the same registers
+at the same five sites in both (`d0 = 0`, then `2`, then `0`) — and then:
+
+| | route A | `ot_emu` (before the fix) |
+|---|---|---|
+| reaches `0x40025752` (the `strlen`) | ✅ at sample 10,361 | ✅ at sample 10,210 |
+| `strlen(0x100f8378)` returns | **0** — nothing named yet | **3** — `"RIG"` |
+| reaches `0x4002575e` (the post) | ❌ never | ✅ |
+| ATA commands | 6,189 | 12,373 |
+
+The whole divergence is **whether the harness has written the project name by
+the time `sys` next gets the CPU**. Route A's mount tail runs about 200 samples
+longer, so its media case fires *before* `set_names`; this port's fired after.
+
+✅ **The falsifier, run:** told to write the name first (`emu_rtos.py
+--load-project --names-early`, a flag added for exactly this and off by
+default), **route A reproduces the port's numbers exactly** — 12,373 commands,
+60,677 sectors, 562 written — and its `--watch-pc` shows the same
+`0x4002575e` → `0x40023c7c` from `sys` with `d0 = 3`. That is what turns this
+account from a story into a measurement.
+
+❌ **RETRACTED: the work order's 🟡 hypothesis that this was SYS's reset-time
+"select bank 0" going to the card.** The select-bank case is not on this path
+at all; the second load is a media-mount response, and the deciding value is a
+string length.
+
+### What the port does about it
+
+Neither order is the firmware's — the firmware's rule is unambiguous and both
+emulators agree on it. What differed was the harness, so the harness now
+*chooses*:
+
+- **Default (route A's order, and what the O7 gate measures):**
+  `loadProjectLive` waits for `sys`'s media case to reach its join point
+  (`g_mediaCaseJoin`, `0x40062050`) before writing the names, so the name is
+  provably not yet set when the case runs. One load, 6,189 commands,
+  byte-identical to route A's log.
+- **`--names-early`:** write the names before requesting the mount. Two loads,
+  12,373 commands. ⚠️ **This is arguably what HARDWARE does** — on the unit the
+  project name is set long before a card goes in — so the flag is not a
+  mistake to be avoided, it is the other real configuration. Nothing on
+  hardware has been measured either way.
+
+The load report now says which order ran and whether the media case was seen:
+
+```
+names after the mount; sys's media case ran before the name
+```
+
+### Instruments added
+
+`--watch-pc ADDR[,ADDR…]` on the C++ port (route A's own flag: registers and
+the top of the stack at each hit, so a hit on a callee names its caller and its
+arguments), `--cmd-log` on **route A** (the counterpart of the port's, so the
+two logs diff line for line), and the port's `--cmd-log` now carries the PC and
+the task per command after a `|` — `cut -d'|' -f1` still reproduces the old
+form exactly, so O7's diff method is unchanged.
+
+⚠️ **And a third instance of the silent-instrument trap.** `_watch_report()` was
+called from route A's M6c branch and (since 8 Sep) its plain branch, but **not
+from `--load-project`** — so `--watch-pc` on a load run printed nothing whether
+the address fired twice or never, which is precisely the question O7b exists to
+ask. Fixed. `RTOS_FORK.md` §10.3b records this trap; this is its third
+appearance, in the third branch.
+
+### No regression
+
+The O6 fidelity gate still reports **5 compared fields agree** (400 frames, 28
+ticks, the trig at frame 344 with bytes `0x08`/`0x18`); the M6a oracle diff
+still **8 compared fields agree, 0 disagreements**; `ctest` 6/6; `make check`
+green.
 
 ## What is NOT here yet
 

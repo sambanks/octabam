@@ -1255,7 +1255,8 @@ class Rtos:
         self.uc.mem_write(FW_MIDI_SETTINGS, bytes([midi & ~1]))
         return midi
 
-    def load_project_live(self, set_name, project_name, run_ms=6000, mount_ms=3000):
+    def load_project_live(self, set_name, project_name, run_ms=6000, mount_ms=3000,
+                          names_early=False):
         """M6b: drive a project load the way hardware would, then let the
         REAL sys, engine and storage tasks do the rest -- no engine_run_once
         stand-in, no hand-run init list. Two real actions, neither of which
@@ -1298,6 +1299,17 @@ class Rtos:
         nothing here."""
         start = self.sample
         self.run(until=lambda r: r.pc == MAIN_SPIN)
+        if names_early:
+            # ⚠️ AN EXPERIMENT, NOT A FIX, and it is off by default. `sys`'s
+            # media case (0x4006203a) reloads the current project when
+            # `strlen(0x100f8378)` is non-zero -- so whether the mount
+            # triggers a SECOND load depends only on whether the name has
+            # been written by the time `sys` gets the CPU. Route A writes it
+            # after; the C++ port writes it before, and loads twice
+            # (COLDFIRE_PORT.md O7b). Setting it early here makes route A do
+            # the same, which is what turns that account from a story into a
+            # measurement.
+            ec.set_names(self, set_name, project_name)
         self.request_card_mount()
         self.run(ms=mount_ms, until=lambda r: int.from_bytes(
             r.uc.mem_read(0x460d1cb8, 4), "big") != 0)
@@ -1732,6 +1744,15 @@ def _cli():
                     help="with --sequencer: record every host-port-bound eDMA transfer (fields + "
                          "source bytes), every CPU write into the host-port window and every "
                          "DSP-select GPIO write to this JSON-lines file -- tier 2's parameter tape")
+    ap.add_argument("--names-early", action="store_true",
+                    help="with --load-project: write the SET/PROJECT names BEFORE requesting the "
+                         "mount instead of after. An EXPERIMENT (COLDFIRE_PORT.md O7b): sys's media "
+                         "case reloads the current project when its name is non-empty, so this makes "
+                         "route A load twice the way the C++ port does")
+    ap.add_argument("--cmd-log", default="",
+                    help="write every ATA command in order (`WHAT LBA COUNT`, one per line) "
+                         "to FILE -- the counterpart of the C++ port's --cmd-log, so the two "
+                         "logs can be diffed line for line instead of compared by count")
     ap.add_argument("--stock-emac", action="store_true",
                     help="run even though this Unicorn's EMAC fails emu_bringup.emac_selftest "
                          "(fractional products halved; RTOS_FORK section 10.16)")
@@ -1823,6 +1844,24 @@ def _cli():
                       f"at pc {pc:#x} in {rt._name(task)}")
             if len(writes) > cap:
                 print(f"   ... {len(writes) - cap} more (raise cap in emu_rtos.py)")
+
+    def _cmd_log(path, rt):
+        """Every ATA command in order, the shape the C++ port's --cmd-log
+        writes its first field group in, so `diff` names the first divergence
+        instead of a count difference naming none (O7's method, made a flag)."""
+        if not path or not rt.card:
+            return
+        pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            for e in rt.card.log:
+                # ⚠️ The entries are VARIABLE length: ("IDENTIFY",),
+                # ("READ", lba, n), ("CFA-TRANSLATE", lba). Pad to three so a
+                # short one lines up with the port's, which always writes all
+                # three fields.
+                lba = e[1] if len(e) > 1 else 0
+                n = e[2] if len(e) > 2 else 0
+                f.write(f"{e[0]} {lba} {n}\n")
+        print(f"cmd log    : {path} ({len(rt.card.log)} commands)")
 
     def _fault(e):
         why = f"FAULT {e} pc={rt.pc:#x} task={rt._name(rt._cur())}"
@@ -1956,6 +1995,7 @@ def _cli():
             print(f"arm-phase  : {len(fixes)} trig word(s) had bit 7 cleared (COMPENSATION): "
                   + ", ".join(f"track {t} {w:#x} @ {s_:.0f}" for s_, t, w in fixes[:8]))
         _watch_report()
+        _cmd_log(a.cmd_log, rt)
         if a.golden:
             # THE M6c ORACLE, in the shape tools/ot_emu/oracle.py compares:
             # the trig log with frame numbers relative to the transport start,
@@ -1985,7 +2025,7 @@ def _cli():
             if not rt.gate_m6a()[0]:
                 rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
             mounted, posted, saved_bank, final_bank, elapsed = rt.load_project_live(
-                a.set, staged_name, run_ms=a.ms)
+                a.set, staged_name, run_ms=a.ms, names_early=a.names_early)
         except (RtosFault, eb.UcError) as e:
             print(f"stopped    : {_fault(e)}")
             print(rt.report())
@@ -2001,6 +2041,14 @@ def _cli():
         if rt.card:
             print(f"card       : {len(rt.card.log)} commands, {rt.card.reads} sectors read, "
                   f"{rt.card.writes} written; last: {rt.card.log[-8:]}")
+        _cmd_log(a.cmd_log, rt)
+        # ⚠️ THE SILENT-INSTRUMENT TRAP, IN A THIRD BRANCH. `_watch_report`
+        # was called from the M6c path and (since 8 Sep) from the plain one,
+        # and NOT from here -- so `--watch-pc` on a `--load-project` run
+        # printed nothing whether the address fired twice or never. Found
+        # 8 Sep 2026 by O7b, whose whole question is "how many times".
+        # Section 10.3b records this trap; this is its third instance.
+        _watch_report()
         ok = bool(mounted) and saved_bank is not None
         if not ok:
             print(rt.starvation())
