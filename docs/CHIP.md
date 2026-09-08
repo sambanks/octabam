@@ -113,8 +113,9 @@ FX1 = FILTER. Every FX1 filter you turn on eats into that figure.
 | | | |
 |---|---|---|
 | CPU | Freescale ColdFire **MCF54454VR266**, 32-bit big-endian, 266 MHz | ✅ board photo (an MKI board reads `MCF54454`; an earlier note said `MCF5445A` — same family, likely a misread digit) |
+| CPU **clock tree**, as the firmware programs it | crystal **24 MHz** → VCO **528** → **CPU 264 MHz**, internal bus **132**, **FlexBus 66** | ✅ from the image + MCF54455RM — see below |
 | Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`) | ✅ board photo |
-| DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet |
+| DSP cores | **Two** DSP5636x cores, **200 MHz / 200 MIPS each** | ✅ datasheet — the part's MAXIMUM. 🟡 This board runs the PLL at its reset default from a crystal the payload makes the audio clock: **183.456 MHz = 4 160 cycles/sample** (§2, `COLDFIRE_PORT.md` O8 "the ESAI rate") |
 | External memory controller | **None.** No EMC on this part — all memory is on-chip | ✅ datasheet block diagram |
 | Shared memory | **8 blocks × 8 K words = 64 K words at `$030000`**, reachable by *both* cores; P/X/Y alias there | ✅ reference manual + hardware |
 | Storage | CompactFlash (FAT16/32) | ✅ official |
@@ -125,13 +126,57 @@ is corrected; `BUS.md` still carries the old framing in places.
 ❌ **"Y:0x30000–0x3FFFF is EXTERNAL memory, and external is slower."** There is
 no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 
+
+### The ColdFire's clock tree — measured 8 Sep 2026, from the firmware's own words
+
+`PCR` (`0xFC0C4000`) is written with **`0x16777731`** at all four sites that
+touch it (`0x400e165c`, `0x16d0`, `0x173c`, `0x17a8`) and never again:
+PFDR = 22, OUTDIV1 = 1, OUTDIV2 = 3, OUTDIV3 = 7. The boot at `0x40000418`
+reads PCR back, multiplies its top byte by 12,000,000, checks the answer is
+264,000,000, and keeps it at `0x400b9654`.
+
+✅ **That stored number is the CPU clock, not the VCO**, and the UART settles
+it: the baud setup at `0x40010f76` loads it, **shifts it right one**, and
+divides by 32 × baud — and the manual says the internal bus clock is what
+clocks the UARTs (RM §32, "The internal bus clock can clock each of the three
+independent UARTs"). So the bus is half the stored value. The MIDI rate falls
+out exactly: 132 MHz / (32 × 31250) = **132**, an integer divisor.
+
+| | | |
+|---|---|---|
+| crystal (f_REF) | **24 MHz** | 🟡 inferred: f_VCO ÷ PFDR |
+| f_VCO | **528 MHz** | 🟡 CPU × (OUTDIV1+1) |
+| **CPU (f_SYS)** | **264 MHz** | ✅ the firmware's own stored constant, and the VR266 part's rating |
+| **internal bus** (f_SYS/2) — UARTs, PIT, DSPI | **132 MHz** | ✅ the UART's own shift, + RM |
+| **FlexBus (FB_CLK)** | **66 MHz** | ✅ f_VCO ÷ (OUTDIV3+1), RM Eqn. 8-4 — and exactly the RM's own ceiling, "FB_CLK must also not exceed 66 MHz" |
+
+Every divider constraint the manual imposes holds for this word (OUTDIV2's
+divider twice OUTDIV1's, OUTDIV3's four times it), which is the check that
+the reading is the right one.
+
+⚠️ **A consequence nobody has acted on: route A's PIT clock is the CPU clock
+where the hardware uses the BUS clock, so the modelled RTOS tick is TWICE as
+fast as the unit's.** The firmware sets `PCSR = 0x0b36` (prescaler 2048) and
+`PMR = stored/409600 − 1 = 643` at `0x400005a8`, and 409,600 = 2048 × 200.
+Fed the CPU clock that is a 5 ms tick, which is what `--pit-clock 264e6`
+models (route A's own flag calls it "a knob"); fed the bus clock the chip
+actually uses, the period is **2048 × 644 / 132 MHz = 9.99 ms**, a 100 Hz
+tick. Both emulators share the knob, so no oracle diff can see it, and event
+ORDER — which is what the gates compare — is unaffected; every wall-clock
+figure in the port's records (`gate at 204.95 ms`, `28 ticks in 400 frames`)
+is a factor of two out if this is right. 🟡 **Not acted on and not yet
+reviewed**: it is a claim about what the firmware means, it would move every
+recorded timing number, and the falsifier is a hardware measurement of the
+unit's tick rate (or a PIT clock source on this part that is not the bus).
+
 ---
 
 ## 2. Cycles
 
 | | | |
 |---|---|---|
-| Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic |
+| Per core, per sample @ 44.1 kHz | 200 MIPS ÷ 44 100 = **4 535 cycles** | ✅ arithmetic — on the DATASHEET clock. ❌ Not this board's; the row below is |
+| Per core, per sample, from the firmware's own clock setup (8 Sep 2026) | PLL never written → reset `0x2B60C2` = EXTAL × 195/24; ESAI clocked from EXTAL (Port H `0xaa0000`), TPSR=1/TPM=0/TFP=0, 8 × 32-bit slots → fs = EXTAL/512; ratio **4 160 cycles/sample exactly** (Fsys 183.456 MHz if EXTAL = 22.5792 MHz) | 🟡 inferred from the payload's register writes + DSP56720RM; falsified by a PCTL write nobody has found, PINIT = 0, or a DSP crystal that is not 22.5792 MHz. `COLDFIRE_PORT.md` O8 |
 | **Measured ceiling for FX work** | **~2 350** (with 4× FX1 FILTER as environment) — RE-CONFIRMED 23 Aug 2026, second independent sweep | ✅ hardware, burn probe ×2 |
 | Spare with the R46 reverb + 4× FILTER + running sequencer | **704 cycles/sample** (breakup at p3=22 × 32; p3=23 = high-pitch squeal, the deep-overrun signature) | ✅ hardware, 23 Aug 2026 |
 | **The R46 reverb's true cost** | **≈1 650/sample** (2 356 − 704) — `cycle_count.py` prices it 1 384, so the pricer reads **~270 low** on the reverb (and ~264 high on the delay since the phead roll) | ✅ by two consistent sweeps |
@@ -139,7 +184,7 @@ no external memory. `DSP.md:449` / `DSP.md:744` still say otherwise.
 | **One FX1 FILTER's true cost** | **192 cycles/sample** ((1 088 − 704)/2, measured differentially) — retires the old ~260 inference | ✅ hardware, 23 Aug 2026 |
 | **Total DSP-usable budget** | **≈3 120 cycles/sample** (all three sweeps agree: reverb 1 652 + 4×192 + 704 = 3 124; 7 Aug's 964 + 768 + 1 392 = same) | ✅ triangulated from 3 sweeps |
 | Safe planning number | **~500** on top of the current reverb in a 4-FILTER bank; **~900** with 2 | 🟡 sweep minus contention margin |
-| Stock's own share | **≈1 410** (4 535 − 3 120) — revised DOWN from "~2 400, half the core" | ✅ by subtraction from measured budget |
+| Stock's own share | **≈1 410** (4 535 − 3 120) — revised DOWN from "~2 400, half the core"; **≈1 040** on the 🟡 4 160 clock | ✅ by subtraction from measured budget (the minuend is the open question, not the measurement) |
 | ⚠️ Historic spare "1 392, exactly" | superseded as a headline (it was the 7 Aug bank's spare, ceiling 964+1392=2356 — consistent with today) | ✅ then, 🟡 as guidance now |
 
 **How the ceiling was measured.** `dsp/burn_probe.asm` (in git history) adds `16 × p3`

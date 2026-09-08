@@ -336,6 +336,7 @@ namespace ot
 		// it" -- these are counted at the moment of the move.
 		uint64_t hostNonZeroOut() const { return m_hostNonZeroOut; }
 		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
+		void setDspDrainPacing(bool _on) { m_edma.setDrainPaced(_on); m_edma.setBusPaced(!_on); }
 		void setBlockLog(bool _on) { m_blockLogOn = _on; }
 		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
@@ -411,7 +412,7 @@ namespace ot
 		std::array<int, 16> m_kickSel = {};		// which core each channel was kicked against
 		uint64_t m_hostBlocksOut = 0, m_hostBlocksIn = 0, m_hostWordsOut = 0, m_hostWordsIn = 0, m_hostWordsShort = 0;
 		uint64_t m_hostNonZeroOut = 0, m_hostNonZeroIn = 0;
-		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; };
+		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; double kicked = 0.0; };
 		std::array<PendingOut, 16> m_pendingOut;
 		bool m_blockLogOn = false;
 		std::vector<std::string> m_blockLog;

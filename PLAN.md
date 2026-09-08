@@ -296,6 +296,13 @@ a lever first.
 
 ### Cycles — per core, 4,535/sample ✅ arithmetic (200 MIPS ÷ 44.1 kHz)
 
+🟡 **8 Sep 2026: probably 4,160, not 4,535.** The payload never writes the
+DSP's PLL (reset default = EXTAL × 8.125) and clocks the ESAI from EXTAL at
+÷512, so instructions per sample = 512 × 8.125 = 4,160 whatever the crystal.
+Inferred from the firmware's register writes + the DSP56720 manual, not
+measured; every hardware-measured budget below is an instruction count and
+stands. `docs/CHIP.md` §2, `docs/COLDFIRE_PORT.md` O8 "the ESAI rate".
+
 Cycles are not the current constraint. `make cycles` is **remix-aware since
 29 Aug 2026** and prints a **WORST ONE CORE** figure derived from the
 selection: four FX2 slots, at most one server (the design rule, and what

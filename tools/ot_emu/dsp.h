@@ -31,8 +31,15 @@
 //
 // TIMING. The cores are stepped in lockstep with the ColdFire: `ratio` DSP
 // instructions per ColdFire instruction during the boot (which has no sample
-// clock), `ips` instructions per sample once the RTOS runs. Both are knobs;
-// neither is measured. ⚠️ A core whose bootstrap ROM has not finished is HELD
+// clock), `ips` instructions per sample once the RTOS runs. Both are knobs.
+// `ips` defaults to 4160 = 512 x 8.125: the payload never writes PCTL, so the
+// core runs at the DSP56720's reset PLL (0x2B60C2: NF/(NR*NO) = 195/24) from
+// an EXTAL the payload itself makes the audio clock (P:0x30024 routes EXTAL
+// into both ESAI chains, TPSR=1/TPM=0/TFP=0, 8 slots x 32 bits), so
+// Fsys/fs = 512 x 8.125 whatever the crystal is (COLDFIRE_PORT.md, O8:
+// "the ESAI rate"). The ESAI fires ONE SLOT per `ips / 8` instructions -- the
+// vendored clock's "cycles per sample" is per slot (its "2 samples = 1
+// frame" comment). ⚠️ A core whose bootstrap ROM has not finished is HELD
 // (the ROM jumps only after the last word), and a core is never run past the
 // due count, so the ColdFire's polls see the DSP make progress between them
 // and not before.
@@ -69,11 +76,15 @@ namespace ot
 		bool faulted(int _core) const;
 
 		// `_ratio`: DSP instructions per ColdFire instruction (boot clock);
-		// `_ips`: DSP instructions per sample (RTOS clock). 200 MIPS against
-		// the port's 3990 ColdFire instructions per sample at 44.1 kHz gives
-		// 4535 and 1.14 -- docs/CHIP.md's clocks, not a measurement of either
-		// emulator's cadence.
-		DspPair(double _ratio = 1.14, double _ips = 4535.0);
+		// `_ips`: DSP instructions per sample (RTOS clock). 4160 is the
+		// firmware's own arithmetic (see the file comment; ❌ 4535 was the
+		// datasheet's 200 MIPS ceiling, not this board's clock); the ratio is
+		// that against the port's 3990 ColdFire instructions per sample.
+		// Neither is a measurement of either emulator's cadence.
+		static constexpr double g_dspIps = 4160.0;
+		static constexpr double g_cfIps = 3990.0;
+		static constexpr uint32_t g_esaiSlots = 8;		// TDC = 7 in both payload TCCRs
+		DspPair(double _ratio = g_dspIps / g_cfIps, double _ips = g_dspIps);
 		~DspPair() override;
 
 		bool read(uint32_t _addr, uint8_t _size, uint32_t& _out) override;
@@ -99,6 +110,12 @@ namespace ot
 		uint64_t hostWordsIn(int _core) const;		// words the host sent (ROM + HDI08)
 		uint64_t hostWordsOut(int _core) const;		// words the host took back
 		uint64_t hostCommands(int _core) const;
+		// ESAI frames put out between consecutive host commands (0x8c): the
+		// falsifier for the pacing. Sixteen per frame is what the ring's
+		// double buffer needs; anything else and one bank is never taken.
+		uint64_t framesPerCommandMin(int _core) const;
+		uint64_t framesPerCommandMax(int _core) const;
+		uint64_t framesPerCommandSixteen(int _core) const;
 		uint32_t bootLength(int _core) const;		// what the ROM was told
 		uint32_t bootAddress(int _core) const;
 		// Every host-side event, in order, when enabled: "sel", "icr", "cvr",

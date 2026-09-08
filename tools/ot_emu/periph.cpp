@@ -169,13 +169,24 @@ namespace ot
 			m_onKick(_ch);
 		setCsr(_ch, static_cast<uint16_t>(csr(_ch) & ~DONE));
 		++m_started;
-		if(_paced)
+		if(_paced && m_busPaced && m_canComplete)
+		{
+			// The chip's own number (periph.h): the burst occupies the
+			// FlexBus for four clocks per 16-bit cycle, one cycle per DSP
+			// word, and the drain gate holds the completion beyond that if
+			// the DSP has not taken the words yet.
+			const auto words = static_cast<double>(tcdField(_ch, 8, 4) * minorLoops(_ch)) / 2.0;
+			m_due.emplace(_ch & 15, m_now + words * g_fbSamplesPerWord);
+		}
+		else if(_paced && !(m_drainPaced && m_canComplete))
 			// The DSP delivers its frame on ITS clock, so the completion is
 			// booked for the next 16-sample boundary -- NOT kick + 16, which
 			// gave an 18.5-sample period and dropped every sixth frame, and
 			// NOT at once, which re-raised source 15 before state 0 could ack
 			// it and left the ISR spinning in state 6. `setdefault`: a channel
-			// already booked keeps its EARLIER completion.
+			// already booked keeps its EARLIER completion. (Without the
+			// cores, that is: with them the DSP's drain IS the clock, and
+			// the boundary held every burst a whole frame -- periph.h.)
 			m_due.emplace(_ch & 15, m_boundary);
 		else if(m_canComplete && !m_canComplete(_ch))
 			m_due.emplace(_ch & 15, 0.0);		// due now, held by the gate

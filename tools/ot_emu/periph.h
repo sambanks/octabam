@@ -183,8 +183,57 @@ namespace ot
 		uint64_t started() const { return m_started; }
 		size_t outstanding() const { return m_due.size(); }
 
-		// The DSP's next frame boundary; `Rtos::tickTimers` keeps it current.
+		// The DSP's next frame boundary, and the sample clock itself;
+		// `Rtos::tickTimers` keeps both current.
 		void setBoundary(double _b) { m_boundary = _b; }
+		void setNow(double _n) { m_now = _n; }
+
+		// ✅ THE HOST-PORT BURST TIME, from the firmware's own constants and
+		// the MCF54455 reference manual -- the chip's number, not a knob:
+		//
+		//   PCR = 0x16777731, written identically at all four sites
+		//   (0x400e165c/16d0/173c/17a8): PFDR = 0x16 = 22, OUTDIV1 = 1,
+		//   OUTDIV2 = 3, OUTDIV3 = 7. The boot at 0x40000418 multiplies PFDR
+		//   by 12,000,000 and checks 264,000,000, and it keeps that at
+		//   0x400b9654. ✅ WHICH CLOCK that is, is settled by the UART: the
+		//   baud setup at 0x40010f76 loads it, SHIFTS IT RIGHT ONE, and
+		//   divides by 32 x baud -- and a ColdFire UART divides the INTERNAL
+		//   BUS clock, so the stored value is the CPU clock and the bus is
+		//   half it. (❌ Read as f_VCO instead, the whole tree halves and
+		//   FB_CLK comes out 33 MHz. The shift is the discriminator.)
+		//   So f_SYS = 264 MHz (the VR266 part's rating), bus = 132 MHz,
+		//   f_VCO = f_SYS x (OUTDIV1+1) = 528 MHz, f_REF = 528/22 = 24 MHz,
+		//   and the firmware's 12,000,000 is f_REF/(OUTDIV1+1) folded flat.
+		//   (RM Eqn. 8-4) f_FB_CLK = f_VCO / (OUTDIV3+1) = 528/8 = 66 MHz --
+		//   exactly the manual's own ceiling, "FB_CLK must also not exceed
+		//   66 MHz", which is where a designer would put it.
+		//
+		//   CSCR2 = 0x180, written at 0x40001eee between a CSMR2 disable and
+		//   re-enable, immediately before the ICR reset that starts a DSP
+		//   upload: WS = 0, AA = 1, PS = 1x = 16-bit port. A no-wait-state
+		//   FlexBus transfer is S0-S1-S2-S3 = FOUR FB_CLK cycles, and each
+		//   wait state repeats S1 once more (RM Figs 20-16 and 20-18).
+		//
+		// So one DSP word -- one 16-bit bus cycle (O8) -- costs 4 / 66 MHz =
+		// 60.6 ns = 2.673e-3 samples.
+		//
+		// ✅ THE CORROBORATION, and it is the "constants that only make sense
+		// one way" test: the frame exchange moves 2,944 words per frame
+		// (2,176 out + 768 back, measured), which at this rate is 178.4 us
+		// against the 362.8 us frame period -- **49% bus occupancy**, half a
+		// frame for the audio exchange and half for everything else. The BOOT
+		// programs CSCR2 = 0x1180 (WS = 4, EIGHT clocks a word); at that rate
+		// the same exchange is 356.8 us = 98% of the frame and cannot work.
+		// That is why the firmware reprograms the chip select before it ever
+		// talks to a DSP, and it is why the wait states are zero on a port
+		// that had four.
+		//
+		// 🟡 What would falsify it: a PCR written elsewhere (all four sites
+		// carry this value), a CSCR2 written after the loader's (none), a
+		// crystal that is not 24 MHz, or a UART whose clock is not the bus.
+		static constexpr double g_fbClockHz = 66.0e6;
+		static constexpr double g_fbClocksPerWord = 4.0;		// S0-S1-S2-S3, WS = 0
+		static constexpr double g_fbSamplesPerWord = g_fbClocksPerWord / g_fbClockHz * g_sampleHz;
 		void advance(double _now);
 
 		uint32_t read(uint32_t _addr, uint32_t _size) const;
@@ -210,6 +259,24 @@ namespace ot
 		// now"; unset, every rule is route A's.
 		void setCompletionGate(std::function<bool(uint32_t)> _fn) { m_canComplete = std::move(_fn); }
 		uint64_t gatedWaits() const { return m_gatedWaits; }
+		// ⚠️ THREE RULES WERE TRIED FOR A HOST-PORT BURST'S COMPLETION, and
+		// only the third is the chip's (all measured 8 Sep 2026, cores live):
+		//   * route A's NEXT 16-SAMPLE BOUNDARY. The frame handler issues six
+		//     bursts in series, so each waited a boundary and a frame cost
+		//     80-96 samples instead of 16 -- the ESAI ring made 5-6 passes per
+		//     host frame, and no frame-COUNTING gate could see it (ticks are
+		//     derived from frames). Right without the cores, where nothing
+		//     else can pace the pipeline; wrong with them.
+		//   * DRAINED (`--dsp-drain-paced`, kept for A/B). The one frame it
+		//     ran was exactly 16 ESAI frames, and then the completion ISR lost
+		//     an edge and the port stalled at frame 2 -- route A's own "at
+		//     once" symptom, reproduced with the cores.
+		//   * THE BUS'S OWN TIME: kick + words x g_fbSamplesPerWord, still
+		//     held behind the drain gate, so a burst takes max(bus, DSP).
+		//     That is what `installHostPortMover` selects, and it is the
+		//     default whenever the cores are attached.
+		void setDrainPaced(bool _on) { m_drainPaced = _on; }
+		void setBusPaced(bool _on) { m_busPaced = _on; }
 		// CITER/BITER carry a minor-loop link in bit 15 with the channel in
 		// bits 14-9 and the count in bits 8-0; without it the count is 15 bits.
 		uint32_t minorLoops(uint32_t _ch) const
@@ -233,6 +300,8 @@ namespace ot
 		std::array<bool, 16> m_irq = {};
 		std::unordered_map<uint32_t, double> m_due;		// channel -> sample it completes at
 		double m_boundary = g_framePeriod;
+		double m_now = 0.0;
+		bool m_drainPaced = false, m_busPaced = false;
 		uint64_t m_started = 0;
 		std::function<void(uint32_t, bool)> m_onTransfer;
 		std::function<void(uint32_t)> m_onKick, m_onDone;

@@ -920,7 +920,7 @@ opcode for any word written there. `dsp_host` keeps its two-way window — it
 renders bit-identically with it and, as DSP.md says, cannot answer aliasing
 questions; that is now a documented difference between the two machines.
 
-### ✅ Six things the vendored emulator does that the firmware cannot live with
+### ✅ Six things the vendored emulator does that the firmware cannot live with (nine by 8 Sep — the ninth, the DMA ring that never reloaded, is under "the ESAI rate" below)
 
 Each one first presented as a hang or a crash with no diagnostic, and each was
 found by an instrument, not by reading — recorded with the instrument:
@@ -1218,6 +1218,258 @@ kick, DCO0 still held the PREVIOUS block's count and it read as if the
 firmware's destination were being ignored entirely. The note is taken at the
 completion the drain gate holds, which is when the DSP-side state means
 something.
+
+### ✅ The ESAI rate, settled from the firmware's own constants (8 Sep 2026)
+
+The "unmeasured knob" above had two halves, and the payload pins both.
+
+**1. The port's ESAI ran eight times slow, and that is why bank B never
+came.** The vendored clock's `setCyclesPerSample` is per SLOT, not per frame:
+`Esai::execTX` advances `m_txSlotCounter` once per call and the frame
+callback fires when it wraps, and `EsxiClock::updateCyclesPerSample`'s own
+derivation halves the per-sample count with the comment "2 samples = 1 frame
+(stereo)". `DspPair` passed `ips` (4535) straight through, so with the
+payload's `TDC = 7` (eight slots) one audio frame cost 8 × 4535 instructions
+— the 256-word ring at X:0x8000 advanced 16 words per 16-sample host frame
+instead of 128, and the dispatcher's `DSR2 == 0x80f0` never arrived before
+the next `0x8070`. ✅ Read from the vendored source, not inferred from the
+symptom. The fix is one division: one slot per `ips / 8`, and a report line
+that counts ESAI frames between consecutive `0x8c` host commands, whose
+value the ring needs to be exactly **16**.
+
+**2. The rate itself.** Payload A's setup (`out/dsp/payload_A.asm`,
+`P:0x30024..0x3007f`, `tools/dsp_disasm_all.py`):
+
+```
+030024: movep #>$aa0000,x:<<$ffff98      ; PDRH: ETI1 ERI1 ETI0 ERI0 = 1
+030026: movep #>$40,x:<<M_SAICR          ; SYN = 1
+03002a: movep #>$f40f00,x:<<M_TCCR       ; THCKD TFSD TCKD; TPSR=1 TPM=0 TFP=0 TDC=7
+03002c: movep #>$37d01,x:<<M_TCR         ; network, TSWS=$1f (32-bit slot), TE0
+03002e: movep #>$f40f00,x:<<M_RCCR
+03006d: movep #>$f00f00,y:<<M_TCCR_1     ; the second port: the same dividers, TSWS=$1e
+```
+
+`X:$FFFF98` on the DSP56720 is the Port H data register, whose top byte is
+the **ESAI/EXTAL clock control** (DSP56720RM §8.2.2.4, Table 8-4): with
+`ETI0`/`ERI0`/`ETI1`/`ERI1` set, *"the EXTAL clock can be used to generate
+the ESAI transmitter/receiver clocks"* — the audio clock is derived from the
+crystal, not from the core clock. The chain (RM Figure 9-3) is EXTAL → ÷2 →
+prescale ÷1 (`TPSR = 1`) → ÷(TPM+1) = 1 → ÷(TFP+1) = 1 → bit clock; the frame
+is 8 slots × 32 bits = 256 bit clocks. So
+
+    fs = EXTAL / (2 × 256) = EXTAL / 512       (bit clock = EXTAL / 2)
+
+🟡 The manual's prose says the *maximum* internally generated bit clock is
+"Fsys/4", one ÷2 more than its own block diagram shows, and it is not
+self-consistent (its stated minimum, Fsys/(2 × 8 × 256), counts only one). The
+÷2 reading is the one the rest of the chip allows — see the PLL below; the
+÷4 reading needs a 45.16 MHz crystal and a 367 MHz core, above the part's
+200 MHz. **And the frame arithmetic does not depend on which**: the DSP's
+instruction count per sample is fixed by the PLL alone.
+
+**3. The core clock.** ✅ Neither payload, nor the 50-word bootstrap, writes
+`PCTL` (`X:$FFFF7D` on this part — on the shared peripheral bus, not a
+`<<` short address; grep `ffff7d` over both listings and `o8_blob0.dis`: no
+hit). So the PLL keeps its reset value, RM §7.3.3.2: **`0x2B60C2` when
+PINIT = 1** — `R = 11` (NR = 12), `OD = 1` (NO = 2), `F = 0xC2` (NF = 195),
+`DF = 0`, PEN = 1:
+
+    Fsys = EXTAL × NF / (NR × NO) = EXTAL × 195 / 24 = EXTAL × 8.125
+
+(PINIT = 0 would be bypass, Fsys = EXTAL: ~512 instructions per sample, and
+the burn probe has measured over 3,000 — so PINIT = 1.) Divide the two:
+
+    Fsys / fs = 512 × 8.125 = **4160 instructions per sample, exactly**,
+    520 per ESAI slot — whatever the crystal is.
+
+With the ÷2 reading and fs = 44.1 kHz the crystal is **22.5792 MHz = 512 fs**
+(the common audio crystal; `Fref` = 1.88 MHz sits just under the RM's 2 MHz
+floor, and `Fvco` = 367 MHz inside 200–400) and **Fsys = 183.456 MHz**. 🟡
+Inferred — no one has photographed the crystal or measured the SCKT pin;
+either would settle it. What it would take to falsify 4160 itself: a
+`PCTL` write we have not found (none exists in the uploaded code; a host
+command could not reach it, the payloads have no such handler), or PINIT = 0.
+
+❌ **4535 (200 MIPS ÷ 44.1 kHz) was the datasheet's ceiling, not this
+board's clock.** `CHIP.md` and `PLAN.md` carry the 🟡 4160 beside it;
+`DspPair` now defaults to 4160 per sample (ratio 4160/3990 in the boot) and
+520 instructions per ESAI slot. Nothing measured on hardware changes — the
+burn-probe ceilings were counted in instructions, and 4160 sits above every
+one of them (`CHIP.md` §2: 3,120 static floor) with 1,040 for the stock
+dispatcher instead of 1,415.
+
+**The gate** — the same O6 run (`DSP=1 scripts/o6_gate.sh`, 400 frames) with
+`--block-log`, and the falsifier is "bank B is taken": ✅ **Passed, and the falsifier turned up the next thing.** Same O6 run,
+`--block-log`, cores live: **400 frames, 28 ticks, trig at 344 — 5 compared
+fields agree**, M6a 8 compared fields agree, `ctest` 7/7, `make check` green,
+and the landing addresses now split **bank A 1,193 / bank B 1,207** of 2,400
+outbound blocks (`landed@2078/2318/25f8/2838` beside `4078/4318/45f8/4838`),
+where every one of the 2,400 before was bank A. ESAI frames in = out
+(1,870,163 / 1,870,161; before the DMA fix out fell behind in and the
+transmitter died), and the read-back carries **196 non-zero words** where it
+carried none.
+
+❌ **But the new report line reads `ESAI frames per host frame (0x8c to
+0x8c): min 160 max 194, exactly 16 on 0 of 399`** — not 16. The ring makes
+5.5 passes between host frames, so the bank alternation is a *random* phase
+against the frame clock, not the locked double buffer the dispatcher
+expects. The DSP's clock is the firmware's; what is stretched is the PORT's
+host frame period: the frame interrupt is a latch (`Rtos::tickTimers`,
+"remembers ONE edge"), so a handler that outlives its 16 samples coalesces
+the missed frames, and the handler spends its time inside the eDMA drain
+gate (`65,327` gated waits over 400 frames; the same order before the
+pacing fix, when it read 22 ESAI frames per host frame — the stretch was
+there all along and no parameter gate can see it). Where the samples go —
+the DSP's own per-frame work, the vendored HDI08's one-word-per-exec drain,
+or the port's idle stepping — is the next measurement (stamped block log:
+`kicked@`/`done@`/`at@` in samples). 🟡 Until it reads 16, no audio the port
+produces has the chip's timing.
+
+✅ **Measured, same day (stamped block log, `kicked@`/`done@` in samples):**
+each of the frame handler's SIX serial host-port bursts is held to the *next
+16-sample boundary* by route A's completion rule, so a frame costs **80–96
+samples** (frame 200: pulls at 914840.6, bursts done at 914856.6, 914872.6,
+914888.6, 914904.6, 914904.6, 914920.6, next frame at 914936.6). The 160–194
+was that period counted on BOTH ESAI ports; the instrument now counts the
+X-side port only. Not the DSP's clock, and not the drain — the drain finishes
+inside a sample; the boundary rule holds it. `--dsp-drain-paced` (complete
+when the DSP has drained the burst) ran ONE frame at **exactly 16** ESAI
+frames per host frame and then the firmware's completion ISR lost an edge and
+the port stalled at frame 2 with source 1 asserting untaken — route A's
+"at once" symptom, reproduced with the cores. So the boundary rule stays the
+default (the O6 gate passes with it, 5/5, and without the cores 5/5) and the
+chip's own number is the open item: **a burst takes the FlexBus's cycle time
+× its words** — `CSCR2 = 0x180` for the DSP window (`ARCHITECTURE.md` §6) and
+the FlexBus clock give it, and 2,176 words per frame against 16 samples says
+it is not small. Derive that, book each burst's completion at kick + words ×
+t_cycle behind the gate, and the instrument should read 16 on 399 of 399.
+
+### ✅ A ninth vendored-emulator defect, found by the falsifier: the receive DMA's ring never reloaded (8 Sep 2026)
+
+The first run at the corrected pacing did not alternate banks — it took **zero
+frames**: the frame handler's first 672-word push was never drained, the
+read-back pulls came back "not in time", and core 0 sat at `P:0x97` (the
+`HTDE` wait) with **`TCR = 000000` and DMA2 finished** (`DCR2 4c6220`,
+`DSR2 8000`) long before the first `0x8c`. The transmitter was dead, so the
+audio ring never moved and the dispatcher's bank wait could not end.
+
+Nothing in either payload writes `TCR` after setup (grep `M_TCR` over both
+listings: the two setup `movep`s only), and the vendored `Esai::reset` runs
+only from the constructor. A `LOG` with the PC in
+`writeTransmitControlRegister` said: **`Write ESAI TCR 000000 at pc 000097`**
+— the idle loop, so not an instruction; a DMA. The widened `--dsp-trace`
+(every channel's DSR/DDR/DCO/DCR) showed **`DDR3` wandering over the whole
+24-bit space with `DCO3 = 0`**: `4f186a, ac3264, 0947e0, 665d5c, …` — the
+ESAI-in ring's destination, which should cycle X:0x8100–0x833f.
+
+The cause is in `DmaChannel::dualModeIncrement`: on the word that ends the
+block it adds `DOR` and returns "finished" **without reloading `DCOL`/`DCOH`**.
+For a channel the DSP re-arms itself (DMA2, mode 001, DE cleared) the arming
+reloads them; for the firmware's ESAI-in channel — DMA3, `DCR3 = ac59c0`
+(mode 101: line, DE **not** cleared), `DCO3 = 0x23f`, `DOR3 = −575` — nothing
+re-arms, so after its first pass every received word added −575: the pointer
+wrapped below zero into the peripheral space, sprayed silent samples across X
+memory at a 575-word stride, and after **1,215,032 words** landed on
+`X:$FFFFB5` = `TCR`. ✅ The arithmetic reproduces the observation: DMA3 moves
+two words per RX frame here (trace: ΔDDR3 = −575 × 2 × Δframes mod 2²⁴), so
+the hit falls at ~160,800 RX frames; the trace has it between 160,000 and
+160,966. The firmware's own `DOR3 = −DCO3` is the constant that only makes
+sense one way: a ring, i.e. **the counters reload at the end of the block**,
+which is what `tools/dsp56300.patch` now does.
+
+⚠️ **This was live in every O8 run**, spraying zeros through X memory at −575
+per received sample — including the shared window and the parameter banks —
+and the parameter gates could not see it (they compare the ColdFire's
+sequencer, and the DSP never returned anything but silence). At the old
+pacing the walk was eight times slower and the transmitter happened to
+survive to frame 400; at the right pacing it died during the project load.
+Same family as the seven before it: found by an instrument, not by reading.
+
+### ✅ O8b — the host-port burst time is the FlexBus's own, and the frame is 16 samples again (8 Sep 2026)
+
+The open item above ("the port's host frame is 80–96 samples") is closed, and
+the number came out of the firmware's own constants rather than a knob.
+
+**What the chip is programmed to do.** Two register words decide it, both read
+off the image with `scripts/disasm.sh`:
+
+| where | what | reading |
+|---|---|---|
+| `0x400e165c` (and three identical sites) | `PCR = 0x16777731` | PFDR 22, OUTDIV1 1, OUTDIV2 3, OUTDIV3 7 |
+| `0x40001eee`, between a CSMR2 disable and re-enable, immediately before the ICR reset that starts an upload | `CSCR2 = 0x180` | **WS = 0**, AA = 1, PS = 1x (16-bit) |
+| `0x400e0e0a`, the boot's own chip-select init | `CSCR2 = 0x1180` | **WS = 4** — the value the loader overwrites |
+
+`CSAR2 = 0x20000000` at `0x400e0dfe` is what makes CS2 the DSP window, so
+these are the DSP's own bus terms and nothing else's.
+
+The clock tree they sit in is in `CHIP.md` §1 — crystal 24 MHz, VCO 528, CPU
+264, internal bus 132, **FlexBus 66 MHz** — and the load-bearing step is that
+the firmware's stored 264,000,000 is the CPU clock, which the UART's baud
+setup proves by shifting it right one before dividing (a ColdFire UART divides
+the internal bus clock). Read as the VCO instead, every figure below halves.
+
+**The burst time.** RM Figures 20-16 and 20-18: a no-wait-state FlexBus
+transfer is S0–S1–S2–S3, **four FB_CLK cycles**, and each wait state repeats
+S1 once more. One DSP word is one 16-bit bus cycle (O8, above), so
+
+    one word = 4 / 66 MHz = 60.6 ns = 2.673e-3 samples
+
+✅ **And the constants only make sense one way** — the test this project keeps
+coming back to. The frame exchange moves **2,944 words** (2,176 out, 768 back,
+measured), which is **178 µs against the 363 µs frame period: 49% bus
+occupancy**, half the frame for audio and half for everything else. At the
+BOOT's `WS = 4` the same exchange is 357 µs — **98% of the frame**, which
+cannot work. That is why the firmware reprograms the chip select before it
+ever speaks to a DSP, and it is why the wait states go to zero on a port that
+had four.
+
+**What changed in the model.** `Edma::start` books a host-port burst at
+`kick + words × 2.673e-3 samples` instead of at the next 16-sample boundary,
+still behind the drain gate, so a burst takes **max(bus, DSP)**.
+`--dsp-drain-paced` keeps the pure-drain rule for A/B, and without the cores
+route A's boundary rule is untouched (its own gate still passes 5/5).
+
+⚠️ **The honest reading of why that fixed it**: what was wrong was the
+QUANTISATION, not the magnitude. The drain gate binds more often than the bus
+does (1,014,303 gated waits against 65,327 under the boundary rule), so the
+period is usually the DSP's drain — but the drain resolves to a fraction of a
+sample where the boundary rounded every one of six serial bursts up to a whole
+frame.
+
+**The gate.**
+
+| | boundary rule | bus time |
+|---|---|---|
+| ESAI frames per host frame | 160–194, **16 on 0 of 399** | **16–17, 16 on 382 of 399** |
+| frames run / ticks / trig | 400 / 28 / 344 | 400 / 28 / 344 |
+| oracle diff (O6, cores live) | 5/5 agree | **5/5 agree** |
+| blocks landing in bank A / B | 1,193 / 1,207 | 1,550 / 850 |
+| outbound non-zero words | 40,949 | 54,087 |
+
+M6a with the cores 8/8, `ctest` 7/7, and the O6 gate without the cores
+unchanged at 5/5.
+
+🟡 **The residual: 17 host frames of 399 take 17 ESAI frames, a 0.27% drift**
+(one every 23.5 frames, never 15, so the DSP's clock runs slightly fast rather
+than jittering). ✅ **What it is not**: `--dsp-no-idle` reproduces the figure
+EXACTLY (16 on 382 of 399, min 16 max 17), so the DSP's idle fast-forward is
+ruled out; the host frame interval is **exactly 16.000 samples on all 399**
+(measured off the block log's `kicked@` stamps), so the frame clock is not
+drifting; and an X-side ESAI transmit frame measures **4160.3 DSP
+instructions**, one sample, over the load. So both clocks are right and it is
+their PHASE that walks, one sample every 23.5 frames, always in the same
+direction. 🟡 The candidate — not yet tested — is that the read-back pull runs
+a core OUTSIDE the sample budget (`runCoreUntil`, up to 200,000 instructions
+until the DSP puts a word in HOTX), which advances the DSP's audio clock
+during a pull; the falsifier is to bound the pull to the budget, or to count
+ESAI frames inside pulls and see whether they account for the 17. **O9 is
+where this has to be settled** — an audio path resamples by exactly this
+error, and 0.27% is about five cents of pitch.
+
+⚠️ **Not fixed by any of this, and not a regression: the read-back is still
+silence.** Inbound non-zero words moved 196 → 9 with the new pacing, which is
+a different phase of the same nothing — the DSP has no audio in. That is O9's
+ground, unchanged.
 
 ### What step 5 needs
 
