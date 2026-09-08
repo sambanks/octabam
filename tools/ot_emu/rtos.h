@@ -57,6 +57,17 @@ namespace ot
 	inline constexpr uint32_t g_postLoad    = 0x40023c7c;	// (name*) -> posts engine command 4
 	inline constexpr uint32_t g_partPtr     = 0x46c82456;	// null until a project loads
 
+	// ✅ O7b, 8 Sep 2026. `sys`'s media case reloads the current project when
+	// one is named: `0x4006203a` calls `0x40056744` and, if it answers ZERO,
+	// calls `0x4002574c` -- which is `if(strlen(0x100f8378)) post LOAD
+	// PROJECT`. So whether a mount triggers a SECOND full load depends on
+	// nothing but whether the project NAME has been written by the time `sys`
+	// next gets the CPU. `g_mediaCaseJoin` is where that decision rejoins the
+	// case, and waiting for it is how the harness makes the order a CHOICE
+	// instead of a race (see `Rtos::loadProjectLive`).
+	inline constexpr uint32_t g_mediaCaseJoin = 0x40062050;
+	inline constexpr uint32_t g_projectExists = 0x4002574c;	// if(strlen(name)) post LOAD PROJECT
+
 	// -- M6c: the sequencer, from route A's own constants ------------------
 	// The bank blobs in RAM: PART_PTR = g_bankBlob + bank * g_bankStride,
 	// i.e. the CURRENT bank's data. 0x400e21e0 is bank A, 0x4017d520 bank B.
@@ -230,6 +241,15 @@ namespace ot
 		// sample, the task, the PC and the value. The counterpart instrument
 		// to route A's, so a divergence can be diffed line for line instead of
 		// reasoned about.
+		// Route A's `--watch-pc`: the registers and the top of the stack each
+		// time one of these addresses is ABOUT to execute -- so a hit on a
+		// callee names its caller and its arguments. ⚠️ The check runs per
+		// instruction, so it is guarded on the list being empty; with no
+		// address watched it costs one compare.
+		struct PcHit { double sample; uint32_t tcb, pc, d0, d1, a0, a1, sp, stack[5]; };
+		void watchPc(const std::vector<uint32_t>& _addrs);
+		const std::vector<PcHit>& pcHits() const { return m_pcHits; }
+
 		struct MemWrite { double sample; uint32_t tcb, pc, addr, val; uint8_t size; };
 		void watchMem(uint32_t _addr, uint32_t _len);
 		const std::vector<MemWrite>& memWrites() const { return m_memWrites; }
@@ -263,13 +283,27 @@ namespace ot
 		// the working bank back to A (RTOS_FORK.md §7).
 		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0;
 			int savedBank = -1; uint32_t finalBank = 0;
+			// Did `sys`'s media case run before the name was written? If it
+			// did not, the mount may have triggered a second load.
+			bool mediaCaseSeen = false;
 			std::string postWhy;
 			// How the load's own run ENDED. Time is the ordinary case (the
 			// budget ran out); Fault/Illegal say the machine stopped, which
 			// the ATA counts alone cannot distinguish from a stall.
 			Stop stop = Stop::Time; std::string stopWhy; };
+		// ⚠️ `_namesEarly` DECIDES WHETHER THE PROJECT LOADS ONCE OR TWICE, and
+		// it is a property of the HARNESS, not of the firmware. See
+		// `g_mediaCaseJoin`: with the name already written when `sys` runs its
+		// media case, the firmware reloads the project and the run issues
+		// 12,373 ATA commands instead of 6,189. Both orders are real -- on the
+		// unit the name is set long before a card goes in, so the reload IS
+		// what hardware does -- but only one of them is comparable with route
+		// A's own numbers, so `false` (the name written after the media case)
+		// is the default and is what the O7 gate measures.
 		LoadResult loadProjectLive(const std::string& _set, const std::string& _project,
-			double _runMs = 6000.0, double _mountMs = 3000.0);
+			double _runMs = 6000.0, double _mountMs = 3000.0, bool _namesEarly = false);
+		// Run until the PC reaches an address, or the budget runs out.
+		Stop runToPc(uint32_t _pc, double _ms);
 
 		// -- what the oracle compares ---------------------------------------
 		struct Created { double sample; uint32_t tcb, entry, prio, stack, size, creator; };
@@ -397,6 +431,8 @@ namespace ot
 		// `rte` is not the ack.
 		std::vector<TrigWrite> m_liveNibble, m_trigWords;
 		std::vector<MemWrite> m_memWrites;
+		std::vector<uint32_t> m_watchPc;
+		std::vector<PcHit> m_pcHits;
 		bool m_trigLogInstalled = false;
 		bool m_partPtrWatched = false;
 		int m_savedBank = -1;

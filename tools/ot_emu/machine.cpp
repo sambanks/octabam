@@ -442,6 +442,18 @@ namespace ot
 		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())), M68K_REG_D0);
 	}
 
+	uint32_t Machine::getD(const int _n) const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())),
+			static_cast<m68k_register_t>(M68K_REG_D0 + _n));
+	}
+
+	uint32_t Machine::getA(const int _n) const
+	{
+		return m68k_get_reg(const_cast<void*>(static_cast<const void*>(getCpuState())),
+			static_cast<m68k_register_t>(M68K_REG_A0 + _n));
+	}
+
 	uint32_t Machine::peek32(const uint32_t _addr)
 	{
 		return read32(_addr);

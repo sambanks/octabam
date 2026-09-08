@@ -68,6 +68,8 @@ int main(int _argc, char** _argv)
 	int bankOverride = -1;		// with --sequencer: switch to this bank (default: the file's saved bank)
 	std::string m6cGolden;		// the M6c facts as JSON, for tools/ot_emu/oracle.py
 	std::string watchMem;		// ADDR,LEN -- log every write into that range (route A's own flag)
+	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
+	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -99,6 +101,8 @@ int main(int _argc, char** _argv)
 		else if(a == "--bank" && i + 1 < _argc)		bankOverride = std::atoi(_argv[++i]);
 		else if(a == "--m6c-golden" && i + 1 < _argc)	m6cGolden = _argv[++i];
 		else if(a == "--watch-mem" && i + 1 < _argc)	watchMem = _argv[++i];
+		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
+		else if(a == "--names-early")			namesEarly = true;
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -170,6 +174,20 @@ int main(int _argc, char** _argv)
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
 		}
 		rtos.install();
+		if(!watchPc.empty())
+		{
+			std::vector<uint32_t> addrs;
+			size_t q = 0;
+			while(q < watchPc.size())
+			{
+				auto e = watchPc.find(',', q);
+				if(e == std::string::npos) e = watchPc.size();
+				addrs.push_back(static_cast<uint32_t>(std::strtoul(watchPc.substr(q, e - q).c_str(), nullptr, 0)));
+				q = e + 1;
+			}
+			rtos.watchPc(addrs);
+			std::printf("watch-pc   : %zu address(es)\n", addrs.size());
+		}
 		if(!watchMem.empty())
 		{
 			const auto comma = watchMem.find(',');
@@ -208,7 +226,7 @@ int main(int _argc, char** _argv)
 				const auto forces0 = rtos.forces();
 				const auto disp0 = rtos.dispatches().size();
 				m.setPeriphTrace(!periphTrace.empty());
-				load = rtos.loadProjectLive(setName, projectName, loadMs);
+				load = rtos.loadProjectLive(setName, projectName, loadMs, 3000.0, namesEarly);
 				const auto& r = load;
 				m.setPeriphTrace(false);
 				std::printf("             card ready: %#x, LOAD PROJECT posted: %s, "
@@ -219,6 +237,9 @@ int main(int _argc, char** _argv)
 				// is not on its own evidence that a project loaded (O7). The
 				// bank the engine PARSED is: it comes from the write the
 				// BANK= parse makes, and it is the number route A reports.
+				std::printf("             names %s the mount; sys's media case %s before the name\n",
+					namesEarly ? "BEFORE (--names-early: expect a second load)" : "after",
+					r.mediaCaseSeen ? "ran" : "did NOT run");
 				std::printf("             saved_bank: %d, final bank: %u%s\n",
 					r.savedBank, r.finalBank,
 					r.savedBank >= 0 && r.finalBank != static_cast<uint32_t>(r.savedBank)
@@ -327,8 +348,19 @@ int main(int _argc, char** _argv)
 			if(!cmdLog.empty())
 			{
 				std::ofstream t(cmdLog);
+				size_t n = 0;
 				for(const auto& e : card->log())
-					t << e.what << ' ' << e.lba << ' ' << e.count << '\n';
+				{
+					char line[160];
+					// ⚠️ THE FIRST FIELD GROUP MUST STAY BYTE-COMPATIBLE with route
+					// A's dump, because diffing the two logs is what proved
+					// the port's first 1,407 commands were route A's (O7).
+					// Everything O7b needs goes after a `|`, so
+					// `cut -d'|' -f1` still reproduces the old form exactly.
+					std::snprintf(line, sizeof line, "%s %u %u | #%zu pc %#010x %s",
+						e.what.c_str(), e.lba, e.count, n++, e.pc, ot::taskName(e.tcb));
+					t << line << '\n';
+				}
 				std::printf("             cmd log: %s (%zu commands)\n",
 					cmdLog.c_str(), card->log().size());
 			}
@@ -452,6 +484,15 @@ int main(int _argc, char** _argv)
 			}
 		}
 
+		if(!watchPc.empty())
+		{
+			std::printf("watch-pc   : %zu hit(s)\n", rtos.pcHits().size());
+			for(const auto& h : rtos.pcHits())
+				std::printf("   [%10.1f] at %#x d0=%#x d1=%#x a0=%#x a1=%#x in %s "
+					"[sp %#x: %#x %#x %#x %#x %#x]\n",
+					h.sample, h.pc, h.d0, h.d1, h.a0, h.a1, ot::taskName(h.tcb), h.sp,
+					h.stack[0], h.stack[1], h.stack[2], h.stack[3], h.stack[4]);
+		}
 		if(!watchMem.empty())
 		{
 			// ⚠️ PRINT THEM ALL (capped only against a flood). A watch that
