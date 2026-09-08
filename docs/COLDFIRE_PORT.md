@@ -2422,6 +2422,62 @@ The rule it leaves: **any module logic keyed on a dispatcher fact (r7, r6,
 X:0x213, block addresses) is measured under the port, not modelled in
 `dsp_host`.**
 
+## Milestone O12 — the bus itself under the firmware: bit-identical to `dsp_host` (8 Sep 2026, branch `coldfire-o12-bus`)
+
+O9c's gate, on the shipping rig's AUX bus instead of a THRU insert: T2 sends
+AUX into the delay host on core 1, the return station on core 0 reads the
+last live stage. Fixture: the one-aux rig (`rigproj`, image
+`bamsep27` with the O11 pins), `MASTER_TRACK=0` so T8's read-back is the
+return alone, `rig_render` fed T2's own chain input (the 84-word record's
+audio) at the port's pre-FX gain k = 0.253931 (O9d). Three fixture facts
+had to be learned first, each measured:
+
+- **The send client mono-sums the block** (`x:(r0)` + `x:(r0+1)`, `asr #1`)
+  before scaling by AUX. `dsp_host` writes a mono stem into BOTH channels;
+  the port's THRU with a tone on one input is left-only, so every send
+  deposited 6 dB less. With the tone on both inputs of T2's pair the
+  steady-state return matched to 0.0 dB (−29.7 / −29.7 dBFS).
+- **The ColdFire slews the knobs** (the 160-frame marker slew), so a send's
+  AUX ramps from 0 after the transport start; `dsp_host` has the value from
+  block 0. Under a steady tone the port's return simply runs ~4,000 samples
+  behind the harness's envelope. A probe that starts after the slew (the
+  kick from sample 4,000) removes it.
+- **The delay's modulation LFO is history.** With MDEP 48 the repeats
+  wander ±30 samples window to window between the two (the LFO's phase
+  after thousands of frames of load versus block 0). MDEP 0 for the gate.
+
+Not the cause, each checked on the way: the tempo (`--tempo 120` changed
+nothing), the auto-gain (the delay reads count 1 and reciprocal 1.0 under
+the port, PC-watched at `P:0x79e/0x7a8`; with one client both sides have
+counts 1,1,1,0), the parameters (T1's DELAY SERVER page 1 and 2 words on
+the DSP equal `rig_render`'s), the bus scratch (rotation, reciprocal table,
+counts identical; the buffers 8 dB lower = the mono-sum above).
+
+**Result, kick on both inputs after the slew, one client, MDEP 0:**
+
+| | lag | scale | residual |
+|---|---|---|---|
+| T2's chain (SPECTRUM + SEND) | −32 | 0.000 dB | **−131 dB** |
+| the return, samples 7,000–17,500 (the repeats) | −36 | 0.000 dB | **−120 to −200 dB** per window |
+| the return, whole run | −36 | −0.04 dB | −23 dB (the onset window and the render's end edge) |
+
+The 36 = the 32-sample record pipeline (O9d) + 4: four block-latency stages
+on the bus (send→accumulator, accumulator→delay, delay→chain, chain→return,
+each "two buffers back") at the firmware's 16-sample frame against
+`dsp_host`'s 15-sample block. The bus's cross-core mechanism — the rotation
+each core tracks privately, the four-deep buffers, the liveness stamps, the
+chain buffer — produces the same words under the firmware's real ordering
+of the two cores as under lock-step. BUS.md's "what only hardware can show"
+(a return that flickers, repeats missing from the reverb) does not show
+here either; 🟡 the port's core interleave is still not the chip's timing
+(O8), so this is the strongest local statement, not a hardware one. The
+reverb stage was not bit-compared (its allpass modulation is history, like
+MDEP); its level matched within 1 dB in the both-engines run.
+
+Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
+to dump the bus scratch after a render, which is how the two scratches
+were diffed word for word).
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

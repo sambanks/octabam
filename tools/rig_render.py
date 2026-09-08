@@ -225,6 +225,7 @@ def main():
     ap.add_argument("--out", default="out/rig")
     ap.add_argument("--keep", action="store_true", help="keep the raw files")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--extra", default="", help="extra dsp_host arguments, e.g. '-dumpy 36000,360d3,file' (the bus scratch after the render)")
     a = ap.parse_args()
 
     image = pathlib.Path(a.image)
@@ -333,6 +334,8 @@ def main():
         cmd += ["-tempo", str(a.tempo)]
     if a.skew is not None:
         cmd += ["-skew", str(a.skew)]
+    if a.extra:
+        cmd += a.extra.split()
     print("tracks:")
     for i in inst:
         print(f"  T{i['track']} FX{i['fx']} {i['key']:14s} core {i['core']} "

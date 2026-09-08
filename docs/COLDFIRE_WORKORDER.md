@@ -765,7 +765,17 @@ FX1 is $6a00, not the $6700 the return pinned on and the harness modelled.
 Pins and the harness r7 model fixed; port and `make verify-onebus` both
 green. UNFLASHED. Rule: dispatcher facts are measured under the port.
 
-## Where the port stands after O11 (8 Sep 2026), and what is left
+### O12 — the AUX bus under the firmware ✅ DONE (8 Sep 2026, branch `coldfire-o12-bus`)
+
+`COLDFIRE_PORT.md` O12. The one-aux rig's bus (T2 send → delay on core 1 →
+return on core 0) renders bit-identical to `dsp_host` (−120 to −200 dB per
+window, lag 36 = the record pipeline + four bus stages at 16 vs 15 samples)
+once the fixture matches: stereo input (the send client mono-sums L+R;
+`dsp_host` dual-monos a stem), the probe after the ColdFire's 160-frame knob
+slew, delay MDEP 0 (the LFO's phase is history). The bus's cross-core
+mechanism holds under the firmware's ordering of the two cores.
+
+## Where the port stands after O12 (8 Sep 2026), and what is left
 
 The port boots the firmware, mounts the card, loads the project, runs the
 sequencer byte-identical to route A, drives both DSP cores through the host
@@ -780,7 +790,7 @@ with its decider:
 | DIR names RX0 slot 0 "A", the ColdFire capture names slot 2 "A" (O9c vs O10); stable per run, not a rotation | a tone into the unit's input A with a THRU track and the recorder's INAB | one capture |
 | the track record's segment split and tag word (O10) — what the DSP does with them | read payload B's unpack of the 84-word record | RE, no hardware |
 | Bryan's click: the port shows none in any shape because arm and trig round alike; hypothesis = a 2-sample-unit stage on one side | Bryan's project file run AS-IS under the port (read SRC3/AB/CD/LOOP/QREC/timestretch first), then his one-pass test and the odd/even per-pass-walk tempo test (125 vs 130 BPM) on the unit | his file + two captures |
-| the O9c comparison on the shipping image (bus engines, core 0) | `make bus` + the ONEAUX card through the same fixture/fit (`o9d_compare.py`) — the rig runs under the port now (O11); the bit comparison of an engine is the remaining step | one session, no hardware |
+| ~~the O9c comparison on the shipping image (bus engines, core 0)~~ ✅ O12: the delay bus bit-identical; the reverb stage level-matched only (its allpass modulation is history) | a reverb fixture with its modulation off, if one exists | small |
 
 ## Running it overnight
 
