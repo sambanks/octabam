@@ -42,6 +42,7 @@ namespace ot
 		uint64_t idleSkipped = 0;
 		uint64_t pulled = 0, pullShort = 0;	// read-back words taken / not produced in time
 		uint32_t lastSent[2] = {0, 0};		// a rolling pair of the last two words sent
+		uint32_t ddrAtArm = 0, dcoAtArm = 0;	// DMA0 as the DSP's handler left it, before any word drains
 		uint32_t cmdArgs[2] = {0, 0};		// ⚠️ SNAPSHOT AT THE COMMAND. Taken at drain time
 											// instead, this held the block's last two DATA words
 											// and read as if the firmware sent a dest of 0x030000.
@@ -409,6 +410,20 @@ namespace ot
 
 	void DspPair::pushHalfwords(const uint32_t _addr, const std::vector<uint16_t>& _hw)
 	{
+		// ⚠️ DMA0 AS OF THE KICK IS THE **PREVIOUS** BLOCK'S ARMING, and that is
+		// not a defect. The command's two argument words and the CVR write all
+		// precede the kick, but the CVR only INJECTS the interrupt: the DSP has
+		// not taken it yet, so its handler has not read the arguments. The FIFO
+		// is what makes this correct -- the arguments sit ahead of the data in
+		// the ring, so when the DSP does take the interrupt it reads them first,
+		// arms DMA0, and only then drains the block. ✅ Measured 8 Sep 2026:
+		// read here, DCO0 always holds the count of the block BEFORE this one.
+		// The third instance this session of a note taken at the wrong moment.
+		{
+			Core& c = cur();
+			c.ddrAtArm = c.px->read(0xffffee, dsp56k::Nop);
+			c.dcoAtArm = c.px->read(0xffffed, dsp56k::Nop);
+		}
 		// The cycles the eDMA would make: a 32-bit write at _addr is two
 		// halfwords at +0 and +2, and both land on the same two registers.
 		for(size_t i = 0; i < _hw.size(); ++i)
@@ -579,8 +594,8 @@ namespace ot
 		Core& c = *m_cores[_core & 1];
 		char b[192];
 		std::snprintf(b, sizeof b,
-			"dsp: cmd args %06x %06x | DMA0 ddr %06x dco %06x | X@%04x %06x %06x | X@%04x %06x %06x | rx ring %zu",
-			c.cmdArgs[0], c.cmdArgs[1],
+			"dsp: cmd args %06x %06x | DMA0 at kick (previous block) ddr %06x dco %06x -> ended ddr %06x dco %06x | X@%04x %06x %06x | X@%04x %06x %06x | rx ring %zu",
+			c.cmdArgs[0], c.cmdArgs[1], c.ddrAtArm, c.dcoAtArm,
 			c.px->read(0xffffee, dsp56k::Nop), c.px->read(0xffffed, dsp56k::Nop),
 			c.cmdArgs[0] & 0xffff,
 			c.mem->get(dsp56k::MemArea_X, c.cmdArgs[0] & 0xffff),
