@@ -1914,18 +1914,40 @@ WDTH 64 --track 2`; ⚠️ called from a shell loop it reported "no knob 'WDTH
 
 Flat both times. Not because the effect is skipped: a DSP PC watch on core 1
 shows FILTER's init (payload B `P:0x591`) entered 3× at the load and its proc
-(`P:0x59d`) every frame, reading a parameter block through **r6 = X:0x2c3
-and X:0x3a3** on alternate calls (T2 has FILTER on FX1 too — the part's FX1
-ids are `[18, 4, 4, 4, 18, 4, 4, 28]`). ✅ Those two blocks, peeked at the
-end of both runs, are **byte-identical** between the WIDTH-0 and WIDTH-64
-cards: the part's FX2 page byte never reaches the DSP. (An all-zero FILTER
-page passes at unity — `PARAM_PAGES.md`, 2 Sep — so flat is what the DSP
-computes from what it has.) The blocks do carry page-shaped words
-(`7f 7f 00 00 7f 00 1e ...`), so SOME page reaches them; which page, and
-through which ColdFire publish path (`0x80000ec4/0x80000ecc` per `DSP.md`
-§, the part-load apply, or a knob-turn path the emulated load never runs),
-is the locate — it is O8's step 5(c) exactly, and until it is done every
-insert the port renders runs at the values it happens to hold.
+(`P:0x59d`) every frame. ❌ **First reading, retracted: "the page byte never
+reaches the DSP".** It does — the WDTH byte I stamped (64) lands in the
+per-voice block at **X:0x4000 word 39 = 0x034000** (`0x40 << 8`), the one
+word that differs between the WIDTH-0 and WIDTH-64 cards across every landed
+block. The response was flat because **the page I stamped was an open filter**
+(BASE 0), and WDTH does nothing to a steady sine through an open filter — a
+test that could not see the thing (`send_probe` THD, again). ✅ The stamped
+byte DOES cross via the ColdFire's page publish (`0x80000ec4/0x80000ecc`,
+`DSP.md`; the RAM part page at `0x4017109e` reads `0x7f40007f` = BASE 127,
+WDTH 64…). The remaining question is narrower: WDTH landed in the block but
+FILTER's proc reads its coefficients from X:0x2c0/0x3a0, which did not change
+— i.e. whether a *companion* field is unpacked to the proc's block, not
+whether the page crosses.
+
+✅ **Re-measured with BASE (page-1 slot 0, the cutoff): the parameter path
+is proven end to end.** Stamping FILTER BASE to 40 on T2's FX2 lands
+**0x28 in FILTER's own coefficient block at X:0x2c0 word 7** (the FX2
+instance; X:0x3a0 is the FX1 instance, unchanged), which the WDTH-only card
+does not have. So a part's page byte travels: part data → the ColdFire's
+`0x80000ecc` publish → the per-voice block at X:0x4000 → unpacked into the
+effect's parameter block where its proc reads it. The 300 Hz…12 kHz response
+is still flat at −34 dB because BASE 40 / WDTH 64 is a transparent band for
+these tones (the mode/HP/LP that would attenuate live on page 2, a count-3
+select the tools do not stamp yet), not because the parameter is missing.
+
+**Where O9c stands:** the port renders the firmware's mix of real ESAI
+inputs through both DSP cores, with each track's FX1/FX2 running and reading
+its part's parameters — the machine O8's step 5 needs. The bit-exact
+comparison against `dsp_host` is now a bounded job, not an unknown: it needs
+(a) a part setting that makes the effect non-transparent (a page-2 select,
+which wants a `stamp-slot` that writes the count-3 page-2 renderer — see
+`build_bus.py`'s `verify_menu`), and (b) the gain structure between the two
+paths reconciled (the port's chain is main level → track level → the −11.1 dB
+THRU path; `dsp_host` pokes r6 with no mixer). Neither is a locate any more.
 
 `rig_render.py` on the same part (stock image, `--stem T2=`) rendered T2 at
 −138 dBFS: its FX1 FILTER at BASE 127 / WIDTH 0 closes the path where the
