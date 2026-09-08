@@ -2320,6 +2320,18 @@ not every eight (e.g. 125 BPM: 21,168 samples/pass exactly = clean
 predicted; 130: 20,353.85 → walks; the prediction is click iff the
 per-pass walk is odd), against a tempo with an even walk.
 
+### Upstream check (8 Sep 2026, after a prior-art note from a parallel session)
+
+joelanders/mc68k-md-mm PR #5 ("Expose shared HI08 command acceptance and
+receive status", open, based on our pin 4a6d0d1) adds optional callbacks so
+CVR HC follows DSP acceptance. The port already does exactly that on its own
+side — `dsp.cpp` clears HC/HCP from the dsp56300 interrupt-taken hook (O8,
+measured) and does not use mc68k's HI08 acceptance path — so the PR neither
+changes what the port relies on nor duplicates code the port would drop.
+Bump the pin when it merges; nothing to port. dsp56300/dsp56300 issue #5 is
+the AGU modulo pre-decrement defect O9b fixed in `agu.h`; still open
+upstream, our patch stands.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
