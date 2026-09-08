@@ -1989,11 +1989,21 @@ and page-1 BASE provably reaches its coefficient block (X:0x2c0 word 7 =
 nothing downstream is not in the measured path. So O9c's comparison tap is
 wrong, not its parameters: a THRU track monitors its raw input, and FX2's
 output goes to the bus / the recording, i.e. the **read-back block
-`0x80003190`** (DSP→CPU, `DSP.md` §), not the ESAI monitor. 🟡 Falsifier /
-next step: inject a probe and read `0x80003190` (or use a machine that plays
-into FX2 — which needs the FLEX loader, the other open locate) rather than
-TX0. The parameter path (page 1 proven, page 2 = the ccpage2 lane) stands;
-what O9c had wrong was where to listen.
+`0x80003190`** (DSP→CPU, `DSP.md` §), not the ESAI monitor. ✅ **Confirmed with a second effect:** EQUALIZER (id 0x0c) on T2's FX2 with
+extreme page-1 gains (0,127,0,127,64,127) renders **byte-for-byte the same
+TX0 output as EQ with page 1 all zero** — 0.0 dB delta at 300 Hz and 8 kHz.
+Two different inserts, extreme settings, no change at TX0: a THRU track's TX0
+monitor does not carry FX2 output. The parameter path (page 1 proven, page 2
+= the ccpage2 lane) stands; what O9c had wrong was where to listen. 🟡 Next:
+the FX2 output goes to the recording / bus path — read the DSP-side read-back
+source (`X:0x400` → `0x80003190`) with a recorder armed, or use a machine
+that plays into FX2 (the FLEX loader). Both tie O9c's comparison to the
+recorder path, i.e. to the same DSP-in-the-loop work Bryan's click needs.
+
+⚠️ **Tool note:** `ot_project.py stamp-slot` crashes on a bare id
+(`mod.params[slot]` index error when `mod` resolves but the slot is out of
+its manifest range) — the EQ page-1 bytes here were written directly. Worth
+a guard before the next fixture round.
 - ✅ **The THRU monitor gain is the track's own input level, NOT the main
   level.** Sweeping `--main-level` 0/32/64/100/127 leaves the THRU output at
   −34.5 dB throughout (the gain table[0] goes `0x8000`→`0x80000000` and the
