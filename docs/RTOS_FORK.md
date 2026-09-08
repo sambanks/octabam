@@ -2639,3 +2639,48 @@ show where a click comes from.
 
 Drivers: `out/make_scan_spec.py`, `out/run_widescan.sh`, `out/scan_results.py`
 (session worktree, not yet moved into `tools/scratch/`).
+
+### 10.24 Localized: the frame builder's own recorder-check pass never runs, not just one track's arm (9 Sep 2026)
+
+**Why: same section, why not.** §10.23 left it open whether §10.22's
+`--watch-pc` result (armcall/armpost/endpost at `0x40005ff0`/`0x40006b18`/
+`0x40006edc`, zero hits) meant anything, since those addresses came from
+route A's `recaudio.py` (a different build). Settled by disassembling them
+directly out of Bryan's own tag-22 image (`scripts/disasm.sh emac`, which
+uses `objdump -m m68k:cfv4e` — plain `r2` cannot decode this ISA, see the
+script's own warning): all three are genuine, coherent, semantically
+correct code. `0x40005ff0` reads a track's machine-type byte at file
+offset `0x8eda2` (`ot_project.py`'s own formula) and compares it to `4`
+(PICKUP). `0x40006edc` loads the reciprocal table at `0x80003c20` and
+clamps against **14602** — the pool size itself, in the instruction
+stream. These are not stale addresses.
+
+**Traced one level further, into §10.10's already-documented mechanism**
+(RTOS_FORK §10.10, measured under route A, 6 Sep 2026): opcode `0x22`
+("take the buffer") is posted from `0x40005304` — disassembled here, it
+writes the literal byte `0x22` to `0x46104d52`, exactly the message
+address that section names. Opcode `0x25` ("arm it") is posted via a `jsr`
+at `0x40006b18` inside a function starting at `0x40006a2c`, described
+there as running "from the frame builder's own pass" every frame, for
+every track. Watched all of `0x40005304`, `0x40006a2c`, `0x40005c7c` (the
+shared poster both call into) and `0x400a1030` (the bank/pattern selector,
+as a sanity check that watch-pc itself works) across the same 2,600-frame
+burst-probe run.
+
+**Only `0x400a1030` ever fires — six times, all bank/pattern-select
+housekeeping. Zero hits on the other three, across the entire run.** Not
+"this track's arm never happens" — **the frame builder's own per-frame
+recorder-check pass, the function every track's arm or non-arm decision
+runs through, is never entered at all**, despite a live REC1 trig at step
+2 and 2,600 frames (many multiples of however often this pass is meant to
+run). This is upstream of anything track-specific: whatever decides
+whether to even look at a track's recorder state each frame is not
+running under `--sequencer --dsp` for this fixture.
+
+**Not yet found: what calls `0x40006a2c`, and what gates it.** It is not
+a `jsr`/`bsr` target anywhere in the immediately surrounding disassembly
+(`scripts/disasm.sh emac 0x40006800 800`) — finding the caller means
+either a full disassembly pass over the image or a route-A trace of the
+same call chain to compare against. Stopping here for review: this is a
+firmly localized "the door is never opened" finding, one level short of
+"and here is why."
