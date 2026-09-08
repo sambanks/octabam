@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 #include <array>
+#include <cmath>
 
 #include "dsp56kEmu/dsp.h"
 #include "dsp56kEmu/dspBootCode.h"
@@ -54,6 +55,16 @@ namespace ot
 		uint32_t lastPcLo = 0, lastPcHi = 0;	// the PC window of the last few instructions
 		int windowRun = 0;
 		uint32_t lastTx[2] = {0, 0};		// slot 0 of the last output frame, TX0/TX1
+		// O9: the audio. Frames counted from the ESAI's first, the transport
+		// start latched at the first 0x8c so a WAV can be trimmed to it.
+		std::vector<int32_t> capture;
+		bool firstCmdSeen = false;
+		uint64_t txAtFirstCmd = 0, rxAtFirstCmd = 0;
+		std::array<uint64_t, DspPair::g_audioSlots> txNZ = {}, rxNZ = {};
+		uint64_t surplus = 0, zeroDelta = 0;	// instruction-counter delta beyond one per interpreter call / calls that moved it not at all
+		std::array<std::array<uint32_t, 1024>, 2> nzWrites = {};	// [X/Y][region of 256 words]: non-zero writes since the last flush
+		uint64_t ringNzWrites = 0, ringFirstAt = 0;	// non-zero writes into the ESAI-out ring X:0x8000-0x80ff
+		uint32_t ringFirstAddr = 0, ringFirstVal = 0;
 		// The host-side registers this model keeps itself; the rest are
 		// derived from the vendored HDI08 on every read.
 		uint8_t icr = 0, cvr = 0x32, ivr = 0x0f, txh = 0, txm = 0;
@@ -105,6 +116,21 @@ namespace ot
 			{
 				for(auto& k : m_cores)
 					k->dsp->clearOpcodeCache(_a);
+			});
+			c.mem->setWriteHook([this, &c](const dsp56k::EMemArea _area, const dsp56k::TWord _off, const dsp56k::TWord _val)
+			{
+				if(!m_writesOn || _area == dsp56k::MemArea_P || !(_val & 0xffffff) || _off >= 0x40000)
+					return;
+				++c.nzWrites[_area == dsp56k::MemArea_Y ? 1 : 0][_off >> 8];
+				if(_area == dsp56k::MemArea_X && _off >= 0x8000 && _off < 0x8100)
+				{
+					if(!c.ringNzWrites++)
+					{
+						c.ringFirstAt = c.executed;
+						c.ringFirstAddr = _off;
+						c.ringFirstVal = _val & 0xffffff;
+					}
+				}
 			});
 			// AFTER the DSP: its constructor resets the peripherals, and the
 			// boot ROM's first act is to enable the host port (HPCR.HEN).
@@ -163,21 +189,47 @@ namespace ot
 			// 128, the dispatcher's DSR2 == 0x80f0 bank never came, and every
 			// block landed in bank A (COLDFIRE_PORT.md O8, "the bank is the
 			// audio ring's phase"). One slot per `_ips / 8`: 520 at 4160.
-			auto silence = [&c](uint64_t&, dsp56k::Audio::RxFrame& _f)
+			// O9: RX0 carries the input (a file or the tones) from the
+			// transport start on, silence before it and on every other slot
+			// register; TX0's eight slots are counted per slot and kept.
+			auto silence = [this, &c](uint64_t&, dsp56k::Audio::RxFrame& _f)
 			{
 				for(uint32_t i = 0; i < dsp56k::Audio::MaxSlotsPerFrame; ++i)
 					for(auto& w : _f[i])
 						w = 0;
 				_f.resize(dsp56k::Audio::MaxSlotsPerFrame);
+				if(c.firstCmdSeen && (m_tones || m_inputChannels))
+				{
+					const uint64_t n = c.rxFrames - c.rxAtFirstCmd;
+					for(uint32_t s = 0; s < g_audioSlots; ++s)
+					{
+						int32_t v = 0;
+						if(m_tones)
+							v = static_cast<int32_t>(std::lrint(0.1 * 8388607.0 * std::sin(2.0 * M_PI * 500.0 * (s + 1) * static_cast<double>(n) / 44100.0)));
+						else if(s < m_inputChannels && (n + 1) * m_inputChannels <= m_input.size())
+							v = m_input[n * m_inputChannels + s];
+						if(v)
+							++c.rxNZ[s];
+						_f[s][0] = static_cast<uint32_t>(v) & 0xffffff;
+					}
+				}
 				++c.rxFrames;
 			};
-			auto sink = [&c](uint64_t&, const dsp56k::Audio::TxFrame& _f)
+			auto sink = [this, &c](uint64_t&, const dsp56k::Audio::TxFrame& _f)
 			{
 				++c.txFrames;
 				if(_f.size())
 				{
 					c.lastTx[0] = _f[0][0];
 					c.lastTx[1] = _f[0][1];
+				}
+				for(uint32_t s = 0; s < g_audioSlots; ++s)
+				{
+					const uint32_t w = s < _f.size() ? (_f[s][0] & 0xffffff) : 0;
+					if(w)
+						++c.txNZ[s];
+					if(m_capture)
+						c.capture.push_back(static_cast<int32_t>(w << 8) >> 8);
 				}
 			};
 			auto silence1 = [&c](uint64_t&, dsp56k::Audio::RxFrame& _f)
@@ -287,6 +339,50 @@ namespace ot
 		c.cmdArgs[1] = c.lastSent[1];
 		c.hcPending = true;
 		++c.commands;
+		if(c.hcVector == 0x18 && m_writesOn && m_sel == 0 && m_writeMap.size() < 20000)
+		{
+			std::string line = "cmd " + std::to_string(c.commands) + " tx " + std::to_string(c.txFrames);
+			for(int k = 0; k < 2; ++k)
+				for(int space = 0; space < 2; ++space)
+					for(uint32_t r = 0; r < 1024; ++r)
+					{
+						auto& n = m_cores[k]->nzWrites[space][r];
+						if(n)
+						{
+							char f[40];
+							std::snprintf(f, sizeof f, " %d%c%05x:%u", k, space ? 'Y' : 'X', r << 8, n);
+							line += f;
+							n = 0;
+						}
+					}
+			m_writeMap.push_back(line);
+		}
+		if(c.hcVector == 0x18 && m_mapOn && m_sel == 0 && m_map.size() < 20000)
+		{
+			std::string line = "cmd " + std::to_string(c.commands) + " tx " + std::to_string(c.txFrames);
+			for(int k = 0; k < 2; ++k)
+				for(int space = 0; space < 2; ++space)
+					for(uint32_t base = 0; base < 0x40000; base += 0x1000)
+					{
+						uint32_t n = 0;
+						for(uint32_t a = base; a < base + 0x1000; ++a)
+							if((space ? peekY(k, a) : peekX(k, a)) & 0xffffff)
+								++n;
+						if(n)
+						{
+							char f[40];
+							std::snprintf(f, sizeof f, " %d%c%05x:%u", k, space ? 'Y' : 'X', base, n);
+							line += f;
+						}
+					}
+			m_map.push_back(line);
+		}
+		if(c.hcVector == 0x18 && !c.firstCmdSeen)
+		{
+			c.firstCmdSeen = true;
+			c.txAtFirstCmd = c.txFrames;
+			c.rxAtFirstCmd = c.rxFrames;
+		}
 		if(c.hcVector == 0x18 && c.txFrames)
 		{
 			// Frames per frame: count from the second 0x8c on, once the ESAI
@@ -505,9 +601,13 @@ namespace ot
 				c.why = "PC outside P memory during a read-back";
 				return false;
 			}
+			const auto before = c.dsp->getInstructionCounter();
 			c.dsp->execInterpreter();
 			c.dsp->doLoopEnd();
-			++c.executed;
+			const auto d = c.dsp->getInstructionCounter() - before;
+			c.executed += d ? d : 1;
+			if(d > 1) c.surplus += d - 1;
+			if(!d) ++c.zeroDelta;
 		}
 		return _ready();
 	}
@@ -559,6 +659,14 @@ namespace ot
 				}
 				// The idle fast-forward (dsp.h): eight instructions in a row
 				// inside a three-word window, no hardware loop open.
+				// O9: the budget counts the DSP's OWN instruction counter, the
+				// one its ESAI clock reads -- a `rep` advances it once per
+				// iteration where this loop makes ONE interpreter call, so
+				// counting calls ran the ESAI 0.27% fast against the frame
+				// clock (17 ESAI frames in a host frame, 17 of 399 -- O8b's
+				// residual). The delta is taken across the idle step too.
+				const auto before = c.dsp->getInstructionCounter();
+				uint64_t skipped = 0;
 				if(pc < c.lastPcLo || pc > c.lastPcHi)
 				{
 					c.lastPcLo = pc;
@@ -574,13 +682,15 @@ namespace ot
 					// and the uploader waiting for an echo forever (measured
 					// 8 Sep 2026: "unrecognised spin at 40001b82").
 					const auto room = static_cast<uint64_t>(m_due - static_cast<double>(c.executed));
-					const auto skipped = c.dsp->idleStep(room ? room : 1);
-					c.executed += skipped;
+					skipped = c.dsp->idleStep(room ? room : 1);
 					c.idleSkipped += skipped;
 				}
 				c.dsp->execInterpreter();
 				c.dsp->doLoopEnd();
-				++c.executed;
+				const auto d = c.dsp->getInstructionCounter() - before;
+				c.executed += d ? d : 1;
+				if(d > skipped + 1) c.surplus += d - skipped - 1;
+				if(!d) ++c.zeroDelta;
 				if(m_traceEvery && c.executed >= c.nextTrace && m_trace.size() < 100000)
 				{
 					char line[256];
@@ -612,12 +722,19 @@ namespace ot
 	{
 		return m_cores[_core & 1]->mem->get(dsp56k::MemArea_P, _addr);
 	}
+	// The shared window is read from the pair's own array: Memory::get
+	// answers 0 for any offset past the core's own size before it looks at
+	// the window, so a peek at 0x30000+ through it was blind (O9, 8 Sep).
 	uint32_t DspPair::peekX(const int _core, const uint32_t _addr) const
 	{
+		if(_addr >= g_shareLo && _addr < g_shareHi)
+			return m_shared[_addr - g_shareLo];
 		return m_cores[_core & 1]->mem->get(dsp56k::MemArea_X, _addr);
 	}
 	uint32_t DspPair::peekY(const int _core, const uint32_t _addr) const
 	{
+		if(_addr >= g_shareLo && _addr < g_shareHi)
+			return m_shared[_addr - g_shareLo];
 		return m_cores[_core & 1]->mem->get(dsp56k::MemArea_Y, _addr);
 	}
 	uint32_t DspPair::pc(const int _core) const { return m_cores[_core & 1]->dsp->getPC().toWord(); }
@@ -670,6 +787,14 @@ namespace ot
 	uint64_t DspPair::framesPerCommandSixteen(const int _core) const { return m_cores[_core & 1]->fpcSixteen; }
 	uint32_t DspPair::bootLength(const int _core) const { return m_cores[_core & 1]->boot->getLength(); }
 	uint32_t DspPair::bootAddress(const int _core) const { return m_cores[_core & 1]->boot->getInitialPC(); }
+	const std::vector<int32_t>& DspPair::audioOut(const int _core) const { return m_cores[_core & 1]->capture; }
+	void DspPair::setAudioInput(std::vector<int32_t> _interleaved, const uint32_t _channels) { m_input = std::move(_interleaved); m_inputChannels = _channels; }
+	uint64_t DspPair::txAtFirstCommand(const int _core) const { return m_cores[_core & 1]->txAtFirstCmd; }
+	uint64_t DspPair::rxAtFirstCommand(const int _core) const { return m_cores[_core & 1]->rxAtFirstCmd; }
+	uint64_t DspPair::txSlotNonZero(const int _core, const uint32_t _slot) const { return m_cores[_core & 1]->txNZ[_slot & 7]; }
+	uint64_t DspPair::rxSlotNonZero(const int _core, const uint32_t _slot) const { return m_cores[_core & 1]->rxNZ[_slot & 7]; }
+	uint64_t DspPair::counterSurplus(const int _core) const { return m_cores[_core & 1]->surplus; }
+	uint64_t DspPair::zeroDeltaCalls(const int _core) const { return m_cores[_core & 1]->zeroDelta; }
 
 	std::string DspPair::report() const
 	{
@@ -677,12 +802,13 @@ namespace ot
 		for(int i = 0; i < 2; ++i)
 		{
 			const Core& c = *m_cores[i];
-			char line[512];
+			char line[1024];
 			std::snprintf(line, sizeof line,
 				"             core %d: boot ROM %s (%u words -> P:%#07x), pc %#07x, %llu instructions, "
 				"host words in %llu / out %llu, host commands %llu%s\n"
 				"                     ESAI frames in %llu / out %llu (ESAI_1 %llu / %llu), last out slot 0 = %06x %06x; idle-skipped %llu; mailbox sent %llu; read-back words %llu (%llu not in time)\n"
-				"                     ESAI frames per host frame (0x8c to 0x8c): min %llu max %llu, exactly 16 on %llu of %llu; TCCR %06x (%u slots), %u instructions per slot\n",
+				"                     ESAI frames per host frame (0x8c to 0x8c): min %llu max %llu, exactly 16 on %llu of %llu; TCCR %06x (%u slots), %u instructions per slot\n"
+				"                     audio (O9): transport start at ESAI frame %llu out / %llu in; TX0 non-zero per slot %llu %llu %llu %llu %llu %llu %llu %llu; RX0 non-zero per slot %llu %llu %llu %llu %llu %llu %llu %llu; DSP counter %llu, surplus over interpreter calls %llu (%.3f%%), zero-delta calls %llu\n",
 				i, c.boot->finished() ? "done" : "WAITING", c.boot->getLength(), c.boot->getInitialPC(),
 				c.dsp->getPC().toWord(), static_cast<unsigned long long>(c.executed),
 				static_cast<unsigned long long>(c.wordsIn), static_cast<unsigned long long>(c.wordsOut),
@@ -696,8 +822,35 @@ namespace ot
 				static_cast<unsigned long long>(c.fpcSamples ? c.fpcMin : 0), static_cast<unsigned long long>(c.fpcMax),
 				static_cast<unsigned long long>(c.fpcSixteen), static_cast<unsigned long long>(c.fpcSamples),
 				c.px->read(0xffffb6, dsp56k::Nop), ((c.px->read(0xffffb6, dsp56k::Nop) >> 9) & 0x1f) + 1,
-				c.esaiCyclesPerSlot);
+				c.esaiCyclesPerSlot,
+				static_cast<unsigned long long>(c.txAtFirstCmd), static_cast<unsigned long long>(c.rxAtFirstCmd),
+				static_cast<unsigned long long>(c.txNZ[0]), static_cast<unsigned long long>(c.txNZ[1]), static_cast<unsigned long long>(c.txNZ[2]), static_cast<unsigned long long>(c.txNZ[3]),
+				static_cast<unsigned long long>(c.txNZ[4]), static_cast<unsigned long long>(c.txNZ[5]), static_cast<unsigned long long>(c.txNZ[6]), static_cast<unsigned long long>(c.txNZ[7]),
+				static_cast<unsigned long long>(c.rxNZ[0]), static_cast<unsigned long long>(c.rxNZ[1]), static_cast<unsigned long long>(c.rxNZ[2]), static_cast<unsigned long long>(c.rxNZ[3]),
+				static_cast<unsigned long long>(c.rxNZ[4]), static_cast<unsigned long long>(c.rxNZ[5]), static_cast<unsigned long long>(c.rxNZ[6]), static_cast<unsigned long long>(c.rxNZ[7]),
+				static_cast<unsigned long long>(c.dsp->getInstructionCounter()), static_cast<unsigned long long>(c.surplus),
+				c.executed ? 100.0 * static_cast<double>(c.surplus) / static_cast<double>(c.executed) : 0.0,
+				static_cast<unsigned long long>(c.zeroDelta));
 			s += line;
+			if(i == 0)
+			{
+				uint64_t nz = 0;
+				for(const auto w : m_shared) if(w & 0xffffff) ++nz;
+				s += "                     shared window (P/X/Y 0x30000-0x3ffff, one memory): " + std::to_string(nz) + " non-zero words now\n";
+			}
+			if(m_writesOn)
+			{
+				char w[200];
+				std::snprintf(w, sizeof w, "                     non-zero writes into the ESAI-out ring X:0x8000-0x80ff: %llu%s\n",
+					static_cast<unsigned long long>(c.ringNzWrites), c.ringNzWrites ? "" : " (NEVER)");
+				s += w;
+				if(c.ringNzWrites)
+				{
+					std::snprintf(w, sizeof w, "                     first at executed %llu: X:%#06x <- %06x\n",
+						static_cast<unsigned long long>(c.ringFirstAt), c.ringFirstAddr, c.ringFirstVal);
+					s += w;
+				}
+			}
 			if(c.faulted)
 			{
 				s += "                     FAULT: " + c.why + "; last PCs:";

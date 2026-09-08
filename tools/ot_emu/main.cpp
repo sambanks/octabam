@@ -25,6 +25,7 @@
 #include "machine.h"
 #include "rtos.h"
 #include "dsp.h"
+#include "wav.h"
 
 namespace
 {
@@ -82,6 +83,10 @@ int main(int _argc, char** _argv)
 	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
 	std::string dspPeek;		// core:space:addr,len[;...] -- DSP memory to print at the end
 	std::string blockLog;		// every host-port BLOCK with its non-zero count -> FILE
+	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
+	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
+	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
+	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -127,6 +132,10 @@ int main(int _argc, char** _argv)
 		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
 		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
 		else if(a == "--block-log" && i + 1 < _argc)	blockLog = _argv[++i];
+		else if(a == "--audio-out" && i + 1 < _argc)	audioOut = _argv[++i];
+		else if(a == "--audio-in" && i + 1 < _argc)	audioIn = _argv[++i];
+		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
+		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -180,6 +189,24 @@ int main(int _argc, char** _argv)
 		dspPair->setTrace(dspTrace);
 		dspPair->setIdleSkip(!dspNoIdle);
 		ot::DspPair::setVerbose(dspVerbose);
+		dspPair->setAudioCapture(!audioOut.empty());
+		dspPair->setActivityMap(!dspMap.empty());
+		dspPair->setWriteMap(!dspWrites.empty());
+		if(audioIn == "tones")
+			dspPair->setAudioTones(true);
+		else if(!audioIn.empty())
+		{
+			std::vector<int32_t> pcm;
+			uint32_t ch = 0, rate = 0;
+			if(!ot::readWavPcm(audioIn, pcm, ch, rate))
+			{
+				std::printf("audio in   : %s is not a 16/24-bit PCM WAV\n", audioIn.c_str());
+				return 1;
+			}
+			std::printf("audio in   : %s, %u channel(s) onto RX0 slots 0..%u, %zu frames at %u Hz (fed at 44100)\n",
+				audioIn.c_str(), ch, ch - 1, pcm.size() / ch, rate);
+			dspPair->setAudioInput(std::move(pcm), ch);
+		}
 		m.setCoprocessor(dspPair.get());
 		std::printf("dsp        : two cores behind the host port, %.2f instructions per ColdFire instruction, %.0f per sample\n",
 			dspRatio, dspIps);
@@ -609,6 +636,34 @@ int main(int _argc, char** _argv)
 	if(dspPair)
 	{
 		std::printf("dsp        : at the end\n%s", dspPair->report().c_str());
+		if(!dspWrites.empty())
+		{
+			std::ofstream t(dspWrites);
+			for(const auto& l : dspPair->writeMap())
+				t << l << '\n';
+			std::printf("dsp writes : %s (%zu frame commands)\n", dspWrites.c_str(), dspPair->writeMap().size());
+		}
+		if(!dspMap.empty())
+		{
+			std::ofstream t(dspMap);
+			for(const auto& l : dspPair->activityMap())
+				t << l << '\n';
+			std::printf("dsp map    : %s (%zu frame commands)\n", dspMap.c_str(), dspPair->activityMap().size());
+		}
+		if(!audioOut.empty())
+		{
+			for(int core = 0; core < 2; ++core)
+			{
+				const auto& pcm = dspPair->audioOut(core);
+				if(pcm.empty())
+					continue;
+				const auto path = audioOut + "_core" + std::to_string(core) + ".wav";
+				const bool ok = ot::writeWav24(path, pcm, ot::DspPair::g_audioSlots);
+				std::printf("audio out  : %s%s, %zu frames x 8 slots (24-bit, 44100 Hz), transport start at frame %llu\n",
+					path.c_str(), ok ? "" : " COULD NOT BE WRITTEN", pcm.size() / ot::DspPair::g_audioSlots,
+					static_cast<unsigned long long>(dspPair->txAtFirstCommand(core)));
+			}
+		}
 		size_t q = 0;
 		while(q < dspPeek.size())
 		{

@@ -77,6 +77,7 @@ route A fact, not the port's problem; the golden command above already does it.
 | O8 (1-4) | the DSP cores behind the host port | ctest `dsp` (the firmware's upload lands the image's bytes) + M6a and O6 with `--dsp` | ✅ 50/50 + 58/58 bootstrap words, 26,221 + 25,408 payload words at upload time; M6a 8 compared fields; O6 5 compared fields (400 frames, 28 ticks, trig at 344) with the cores live. Step 5 open |
 | O8a | the ESAI rate | the falsifier: bank B gets taken | ✅ the port's ESAI ran 8× slow (a per-SLOT clock fed a per-sample count); the rate is the firmware's own 4160 instructions/sample; a ninth vendored DMA defect found on the way. Bank B 850 of 2,400 blocks (was 0) |
 | O8b | the host-port burst time | `ESAI frames per host frame` reads 16, O6 still 5/5 | ✅ FlexBus 66 MHz × 4 clocks/word from `PCR` and `CSCR2` in the image: 16 on 382 of 399 (was 0 of 399), O6 5/5, M6a 8/8 |
+| O9 (half) | the ESAI path | audio in: the read-back carries what the ESAI receives; the clock walk: 16 on 399/399 | ✅ tones on RX0 come back in eDMA ch 7's 128-word blocks (50,298 non-zero words / 400 frames, 9 without); ✅ O8b's 0.27 % walk was `rep` iterations counted once per call — 399/399 and 1599/1599 now. ❌ Audio OUT silent: the ring never gets a non-zero write; the trig never becomes a voice, and route A agrees — see O9b below |
 
 ## Queue
 
@@ -609,9 +610,54 @@ one way. 🟡 Candidate: the read-back pull runs a core outside the sample
 budget (`runCoreUntil`). **Hand it to O9** — an audio path resamples by
 exactly this error.
 
-### O9 — audio out *(Fable)*
+### ~~O9 — audio out~~ 🟡 HALF DONE (8 Sep 2026, branch `coldfire-o9`)
 
-The ESAI path, untraced. Not to be started unattended.
+`COLDFIRE_PORT.md` O9 has the account. Instruments: `--audio-out`,
+`--audio-in FILE|tones`, `--dsp-map`, `--dsp-writes` (a tenth vendored patch:
+a write hook), `stage_card.py --audio`, and the `audio (O9)` / ring-write
+report lines. Three things later milestones must know:
+
+1. **The DSP's budget is spent in the DSP's own instruction counter**, not
+   in interpreter calls: a `rep` advances the counter once per iteration and
+   the ESAI clock reads that counter. That was O8b's residual (0.27 % ≈ 208
+   surplus instructions per 66,560-instruction frame).
+2. **The frame's audio topology is measured** (the table in `COLDFIRE_PORT.md`
+   O9): eDMA ch 7 back = the eight input slots × 16 samples (proven by
+   content); ch 1 back = 256 words per core, 🟡 the core's track mix; the
+   512-word block the ColdFire sends core 0 each frame is the two read-backs
+   forwarded. ❌ `DSP.md`'s "0x80003190 = read-back, 256 words" is half the
+   story and is corrected there.
+3. **Nothing starts a track under either emulator.** A poked trig changes
+   one word of a voice record and nothing follows; a staged FLEX sample is
+   read in full from the card and never rendered; a file trig in A01 does not
+   fire. Route A on the same card does the same. Do not look for this in the
+   DSP: the ring's write count is the instrument, and it reads zero because
+   its input is zero.
+
+### O9b — the trig → voice path *(oracle-side first; Fable for the scoping)*
+
+**Gate:** with `--audio-in tones` and a THRU track trigged, TX0 carries the
+tones (`--audio-out` WAV non-zero on some slot; `non-zero writes into the
+ESAI-out ring` > 0). **Where to start:** route A, not the port — a note trig
+that the sequencer fires (`FW_LIVE_NIBBLE` byte `0x08`/`0x18` at frame 344)
+must reach a voice: `RTOS_FORK.md` §10.14's control reached `0x46104d26`
+through the recorder masks and the arm caller `0x40005ff0`; the note trig's
+equivalent is unlocated. Instruments that exist: `--watch-calls`,
+`--watch-mem`, the block log's per-block non-zero counts (a rendering voice
+shows as ≥ 16 non-zero words per frame in the 512-word block), and the port's
+write map for the DSP side once the ColdFire sends anything. **Falsifier for
+"the emulators cannot start a voice":** the same project on the unit plays
+(it does — it is Sam's rig), so this is a fidelity gap, not firmware
+behaviour; the question is which peripheral or flag the voice start waits on.
+
+### O10 — the recorder with real input *(after O9b or in parallel; Opus)*
+
+The inputs reach the ColdFire's capture buffers now. Bryan's click
+(`octabam-seam-patch-falsified`) wants content injected at the source and the
+pool blocks read across the arm: the RECTRIG fixture with `--audio-in tones`
+(or a WAV) and `--block-log`, reading the packed pool blocks
+(`RTOS_FORK.md` §10.16's write path `0x400068e4`). No DSP voice needed to
+RECORD; playing it back does.
 
 ## Running it overnight
 

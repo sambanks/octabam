@@ -143,6 +143,44 @@ namespace ot
 		uint64_t mailboxWords(int _from) const;
 		const std::vector<std::string>& trace() const { return m_trace; }
 
+		// -- audio (O9) -------------------------------------------------------
+		// The X-side ESAI's eight slots, TX0 out and RX0 in: the only audio
+		// port either payload sets up (payload A, P:0x30024, DMA2 out of the
+		// X:0x8000 ring and DMA3 into X:0x8100; payload B configures none, and
+		// core 1 reports 0 ESAI frames). ESAI_1 is configured alongside but
+		// no DMA feeds it. Which physical input or output each slot is has
+		// NOT been measured -- see docs/COLDFIRE_PORT.md O9.
+		static constexpr uint32_t g_audioSlots = 8;
+		// Keep every transmitted frame (8 words, slot order) for a WAV.
+		void setAudioCapture(const bool _on) { m_capture = _on; }
+		const std::vector<int32_t>& audioOut(int _core) const;
+		// Feed RX0 from the transport start (the first 0x8c) on: `_channels`
+		// interleaved channels onto slots 0..channels-1, silence past the end
+		// -- or the built-in tones (slot k = a sine at 500 x (k+1) Hz, -20 dBFS).
+		void setAudioInput(std::vector<int32_t> _interleaved, uint32_t _channels);
+		void setAudioTones(const bool _on) { m_tones = _on; }
+		uint64_t txAtFirstCommand(int _core) const;
+		uint64_t rxAtFirstCommand(int _core) const;
+		uint64_t txSlotNonZero(int _core, uint32_t _slot) const;
+		uint64_t rxSlotNonZero(int _core, uint32_t _slot) const;
+		// The DSP's own instruction counter (which clocks its ESAI) minus the
+		// interpreter calls the budget used to count -- `rep` iterations, mostly.
+		uint64_t counterSurplus(int _core) const;
+		uint64_t zeroDeltaCalls(int _core) const;
+		// The activity map: at every frame command (0x8c) on core 0, the count
+		// of non-zero words in each 4K chunk of X and Y of BOTH cores (the
+		// shared window included) -- one line per command. Where audio (or
+		// anything) lives on the DSP, frame by frame, without knowing where
+		// to look first.
+		void setActivityMap(const bool _on) { m_mapOn = _on; }
+		const std::vector<std::string>& activityMap() const { return m_map; }
+		// The write map: every NON-ZERO data write either core makes, binned
+		// by 256-word region of X and Y, flushed as one line per frame
+		// command. A region written with content is where audio (or state)
+		// passes through, whatever the buffer is called.
+		void setWriteMap(const bool _on) { m_writesOn = _on; }
+		const std::vector<std::string>& writeMap() const { return m_writeMap; }
+
 		// Run both cores up to the due count now (the ticks only book it).
 		void runDue();
 		// Run ONE core until `_ready` or `_budget` instructions (the read-back
@@ -171,6 +209,10 @@ namespace ot
 		bool m_logOn = false;
 		uint64_t m_traceEvery = 0;
 		bool m_idleSkip = true;
+		bool m_capture = false, m_tones = false, m_mapOn = false, m_writesOn = false;
+		std::vector<std::string> m_map, m_writeMap;
+		std::vector<int32_t> m_input;
+		uint32_t m_inputChannels = 0;
 		// THE INTER-CORE MAILBOX, one register each way. 🟡 Inferred from the
 		// firmware's use, not from a datasheet: core A writes Y:$FFFFD7 and
 		// waits while bit 1 of Y:$FFFFD6 is set; core B waits for bit 1 of
