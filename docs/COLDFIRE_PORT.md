@@ -1166,6 +1166,40 @@ at P:0x588 is the only write to DMA0's destination register in the payload and
 it masks to 16 bits only, which would leave 0x6080. Falsifier: a run in which
 the DSP takes bank B should land the same words at 0x2xxx.
 
+### ✅ The bank is the audio ring's phase — and one half is never used
+
+The dispatcher's bank choice is not a flag, it is a wait on the audio-out
+DMA's own source pointer (P:0x4a, read from the payload):
+
+```
+P:0004a  clr   b
+P:0004b  movep x:<<M_DSR2,a          ; where the audio-out DMA is playing from
+P:0004c  cmp   #>$80f0,a
+P:0004e  beq   ...                   ; -> bank B: r0 = $8000, r2/r5/r6/r7 = $2400/$2600/$2000/$2080
+P:0004f  cmp   #>$8070,a
+P:00051  beq   ...                   ; -> bank A: r0 = $8080, r2/r5/r6/r7 = $4400/$4600/$4000/$4080
+P:00052  add   #<$1,b                ; else spin, counting the wait
+P:00053  bra   P:0004b
+```
+
+That is a textbook double buffer: the audio ring is X:0x8000-0x80ff (DMA2,
+`DOR2 = -255`, `DCO2 = 0xff`), and the DSP waits until the play pointer is
+about to leave one half, then works into the other — `r0 = 0x8080` when the
+pointer is at 0x8070, `r0 = 0x8000` when it is at 0x80f0.
+
+⚠️ **In 400 frames it took bank A every time.** The only landing addresses in
+the whole run are 0x4078, 0x4318, 0x45f8 and 0x4838 — the DSP never once saw
+`DSR2 == 0x80f0`, so half of its double buffer is dead and the audio ring sits
+in a fixed phase against the frame clock. That is a **timing knob nobody has
+measured**: the pair drives the ESAI at one frame per sample at the same
+instructions-per-sample the cores run at (`DspPair`'s `_ips`, defaulted from
+`docs/CHIP.md`'s clocks), and neither that ratio nor the resulting ring rate
+has been checked against anything. The parameter path does not care — it
+passed every gate — but an audio comparison would be measuring a machine whose
+output buffer alternation never happens. **Settle the ESAI rate before
+believing any audio the port produces**, and treat "bank B is never taken" as
+the falsifier for having got it right.
+
 ⚠️ **And DMA0 cannot be read at the eDMA kick to settle it** — a third
 instance of the same lesson, and it nearly went into this document as a
 finding. The command's two argument words and the CVR write all precede the

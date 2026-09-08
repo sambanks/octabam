@@ -519,6 +519,24 @@ not a measurement until you know the instrument can see the thing.**
 
 </details>
 
+### ⚠️ Read this before step 5 or O9: the ESAI rate is an unmeasured knob
+
+The DSP picks its working bank by waiting on the audio-out DMA's play pointer
+(`DSR2 == 0x8070` or `0x80f0`, P:0x4a), which makes the bank the audio ring's
+phase — a double buffer, the DSP working into whichever half is not playing.
+✅ **In 400 frames the port took bank A every time**: the only landing
+addresses in the whole run are 0x4078/0x4318/0x45f8/0x4838, the 0x80f0 half is
+never reached, and the ring sits in a fixed phase against the frame clock.
+
+The rate that produces that phase is a knob nobody has measured — the pair
+drives the ESAI at one frame per sample at the cores' own
+instructions-per-sample, taken from `docs/CHIP.md`'s clocks. The parameter
+path passed every gate regardless and does not care. An audio comparison
+would not: it would be measuring a machine whose output alternation never
+happens. **Settle the ESAI rate first**, and treat "bank B is never taken" as
+the falsifier for having got it right. `docs/COLDFIRE_PORT.md` (O8) has the
+dispatcher listing.
+
 ### O9 — audio out *(Fable)*
 
 The ESAI path, untraced. Not to be started unattended.
