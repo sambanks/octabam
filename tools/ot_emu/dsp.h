@@ -186,7 +186,7 @@ namespace ot
 		struct WatchHit { uint32_t pc, val; uint64_t executed; uint32_t last[4]; uint32_t ddr0, dco0, dsr1, dco1, r4, r6, area, r0; };
 		const std::vector<WatchHit>& writeWatchHits() const { return m_watchHits; }
 		// A PC watch on one core: registers at every arrival (last 24), the DSP side of route A's --watch-pc (O9b).
-		struct PcWatchHit { uint64_t executed; uint32_t a1, a0, b1, b0, x0, x1, y0, y1, r0, r4, r6, n4, sp, r2, m2, r1, n1; };
+		struct PcWatchHit { uint64_t executed; uint32_t a1, a0, b1, b0, x0, x1, y0, y1, r0, r4, r6, n4, sp, r2, m2, r1, n1, r7; };
 		void setPcWatch(const int _core, const uint32_t _pc, const uint64_t _from = 0) { m_pcWatchCore = _core; m_pcWatchPc = _pc; m_pcWatchFrom = _from; m_pcWatchOn = true; }
 		const std::vector<PcWatchHit>& pcWatchHits() const { return m_pcWatchHits; }
 		const std::vector<std::string>& writeMap() const { return m_writeMap; }

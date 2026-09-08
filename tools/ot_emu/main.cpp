@@ -706,10 +706,10 @@ int main(int _argc, char** _argv)
 		std::printf("dsp        : at the end\n%s", dspPair->report().c_str());
 		if(!dspPcWatch.empty())
 		{
-			std::printf("dsp pcwatch: %s, last %zu arrival(s): executed a1:a0 b1:b0 x0 x1 y0 y1 r0 r4 r6 n4 sp r2 m2 r1 n1\n", dspPcWatch.c_str(), dspPair->pcWatchHits().size());
+			std::printf("dsp pcwatch: %s, last %zu arrival(s): executed a1:a0 b1:b0 x0 x1 y0 y1 r0 r4 r6 n4 sp r2 m2 r1 n1 r7\n", dspPcWatch.c_str(), dspPair->pcWatchHits().size());
 			for(const auto& h : dspPair->pcWatchHits())
-				std::printf("             %llu %06x:%06x %06x:%06x %06x %06x %06x %06x %06x %06x %06x %06x %02x %06x %06x %06x %06x\n", static_cast<unsigned long long>(h.executed),
-					h.a1, h.a0, h.b1, h.b0, h.x0, h.x1, h.y0, h.y1, h.r0, h.r4, h.r6, h.n4, h.sp, h.r2, h.m2, h.r1, h.n1);
+				std::printf("             %llu %06x:%06x %06x:%06x %06x %06x %06x %06x %06x %06x %06x %06x %02x %06x %06x %06x %06x %06x\n", static_cast<unsigned long long>(h.executed),
+					h.a1, h.a0, h.b1, h.b0, h.x0, h.x1, h.y0, h.y1, h.r0, h.r4, h.r6, h.n4, h.sp, h.r2, h.m2, h.r1, h.n1, h.r7);
 		}
 		if(!dspWatch.empty())
 		{

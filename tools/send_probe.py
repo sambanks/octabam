@@ -359,7 +359,7 @@ def run(mem, dur, tail, rev_params, send_params, verbose=False, amp=0.5,
                 f"feed a bus (SEND) or are inserts that process their own "
                 f"track's frames, so there is no accumulator to analyse; "
                 f"render an insert with --direct instead")
-        r7s = ",".join(str(2 + 2 * k) for k, _ in live)
+        r7s = ",".join(str(2 + 3 * k) for k, _ in live)   # FX2 at position k: 0x6200 + 0x300*k (three r7 bumps per track, COLDFIRE_PORT.md O11)
         als = ",".join(str(1 + 2 * k) for k, _ in live)
         # The tone normally reaches the SENDs only, so a SERVER's own track
         # is SILENT and its dry path is never exercised -- MIX=0 renders

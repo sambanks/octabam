@@ -371,7 +371,7 @@ ch_sbus:
 ; of the LAST LIVE STAGE's output -- the reverb's if it is running, else the
 ; delay's, else nothing -- resolved below from the engines' liveness stamps.
 ; The RING knob is inert in BUS mode. And the return is PINNED to TRACK 8:
-; dispatch position 3 (r7 $6700/$6800) on payload A only -- a BUS-mode
+; dispatch position 3 on payload A only -- a BUS-mode
 ; station anywhere else, core 1's position 3 (track 4) included, returns
 ; nothing.
         move    x:(r6+$2),x0
@@ -390,10 +390,21 @@ ch_sbus:
         beq     ch_nopos                ; the alias: payload B, never the return
         move    r7,a
         and     #>$ff00,a
-        move    #>$6700,x0
+; ⚠️ r7 is NOT 0x6100 + 0x100 * (2*pos + fx-1). The stock dispatcher bumps
+; its r7 counter THREE times per track (FX1 at P:0x4ae, FX2 at P:0x4e4 and
+; an unconditional third at P:0x51e after FX2), so a track's FX1 is at
+; 0x6100 + 0x300*pos and its FX2 at 0x6200 + 0x300*pos -- measured 8 Sep
+; 2026 on BOTH payloads with the firmware driving the DSP (the ColdFire port,
+; COLDFIRE_PORT.md O11): position 3 is $6a00/$6b00. The old $6700/$6800 was
+; the harness's two-per-track model (dsp_host's r7probe comment), matched
+; ONLY in dsp_host -- which is why verify_onebus was green while the unit
+; never returned (FAILURE_MODES "the one-aux return never reaches T8":
+; the station ran with r7 = $6a00, took ch_nopos, cleared RET, stamped
+; nothing, and both hosts kept printing -- reproduced under the port).
+        move    #>$6a00,x0
         cmp     x0,a
         beq     ch_pos3
-        move    #>$6800,x0
+        move    #>$6b00,x0
         cmp     x0,a
         beq     ch_pos3
 ch_nopos:

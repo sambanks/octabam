@@ -52,6 +52,12 @@ NTRACKS = 8
 # Track -> core. Measured 10 Aug 2026 (marker flash): payload A serves 5-8.
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, NTRACKS + 1)}
 POS_OF = {t: (t - 1) % 4 for t in range(1, NTRACKS + 1)}    # dispatch position on its core
+# r7 (the state block) is 0x6100 + 0x300*pos + 0x100*(fx-1): the stock
+# dispatcher bumps its counter THREE times per track (an unconditional third
+# bump at P:0x51e after FX2). Measured 8 Sep 2026 on both payloads under the
+# firmware (COLDFIRE_PORT.md O11); the old 1 + 2*pos + (fx-1) put every
+# position >= 1 one or more blocks low, and the one-aux return's pin on
+# position 3 matched only here -- never on the unit.
 # Where the per-track audio buffers go in the harness. Hardware runs every
 # track's block at X:0 (the dispatcher copies it in and out); the harness
 # gives each track its own buffer, and puts them ABOVE the loaded modules so
@@ -268,7 +274,7 @@ def main():
                       f"this core dispatches it to SEND (the alias), as the unit does")
             pos = POS_OF[t]
             inst.append(dict(track=t, fx=s.fx, key=s.module.key, core=core,
-                             alloc=2 * pos + (s.fx - 1), r7=1 + 2 * pos + (s.fx - 1),
+                             alloc=2 * pos + (s.fx - 1), r7=1 + 3 * pos + (s.fx - 1),
                              init=ep[0], proc=ep[1], values=s.values,
                              aliased=aliased, stock=s.module.is_stock))
     if not inst:

@@ -224,6 +224,20 @@ is a BUS-mode Character pinned to **T8 = payload A / core 0**, while the
 delay host sits on **T1 = payload B / core 1**. Nothing has been measured on
 the unit to distinguish a lost stamp from a return that never publishes.
 
+✅ **CAUSE MEASURED 8 Sep 2026, under the ColdFire port (`COLDFIRE_PORT.md`
+O11), and it is not a cross-core race:** the station pins the return to
+track 8 by testing `r7 & 0xff00` against `$6700/$6800`, the harness's
+two-per-track model of the dispatcher's state block. The stock dispatcher
+bumps its r7 counter THREE times per track (FX1, FX2, and an unconditional
+third at P:0x51e), so on the unit track 8's FX1 runs with **r7 = $6a00**,
+the pin never matches, `ch_nopos` clears the RET level, the station stamps
+nothing, and both hosts keep printing — exactly the symptom, reproduced
+with the firmware driving both cores. Fixed: pin `$6a00/$6b00`; the
+harness's r7 model corrected (rig_render, verify_onebus, send_probe,
+dsp_host's comment); under the port the fixed image returns on T8 with both
+hosts silent for 2,000 frames. UNFLASHED. The reading below stands as the
+history of the wrong guess.
+
 **⚠️ THE LOCAL GATE IS GREEN ON EXACTLY THIS.** `tools/verify_onebus.py`
 asserts "T5 (reverb host) prints nothing while the return is live" and the
 same for T1, and both pass — the property hardware falsifies is the property
