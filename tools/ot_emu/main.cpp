@@ -70,6 +70,7 @@ int main(int _argc, char** _argv)
 	std::string watchMem;		// ADDR,LEN -- log every write into that range (route A's own flag)
 	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
+	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -103,6 +104,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--watch-mem" && i + 1 < _argc)	watchMem = _argv[++i];
 		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
 		else if(a == "--names-early")			namesEarly = true;
+		else if(a == "--hostport-log" && i + 1 < _argc)	hostPortLog = _argv[++i];
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -126,6 +128,26 @@ int main(int _argc, char** _argv)
 	ot::Machine m(img);
 	if(profile)
 		m.setProfile(64);
+	// ⚠️ BEFORE THE BOOT RUNS. Installed after it (where it used to be, behind
+	// `rtos.install()`), a watch on a BOOT address reported zero hits whether
+	// the address ran or not -- and the only caller of the DSP program loader
+	// is at 0x4000050c, which is a boot address (O8, 8 Sep 2026).
+	if(!watchPc.empty())
+	{
+		std::vector<uint32_t> addrs;
+		size_t q = 0;
+		while(q < watchPc.size())
+		{
+			auto e = watchPc.find(',', q);
+			if(e == std::string::npos) e = watchPc.size();
+			addrs.push_back(static_cast<uint32_t>(std::strtoul(watchPc.substr(q, e - q).c_str(), nullptr, 0)));
+			q = e + 1;
+		}
+		m.watchPc(addrs);
+		std::printf("watch-pc   : %zu address(es), armed before the boot\n", addrs.size());
+	}
+	if(!hostPortLog.empty())
+		m.setHostPortLog(true);		// before the boot: the DSP upload happens IN it
 	const auto stop = m.run(maxInstructions);
 
 	static const char* const g_names[] = {"HANDOFF", "ILLEGAL", "BUDGET", "FAULT"};
@@ -174,20 +196,6 @@ int main(int _argc, char** _argv)
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
 		}
 		rtos.install();
-		if(!watchPc.empty())
-		{
-			std::vector<uint32_t> addrs;
-			size_t q = 0;
-			while(q < watchPc.size())
-			{
-				auto e = watchPc.find(',', q);
-				if(e == std::string::npos) e = watchPc.size();
-				addrs.push_back(static_cast<uint32_t>(std::strtoul(watchPc.substr(q, e - q).c_str(), nullptr, 0)));
-				q = e + 1;
-			}
-			rtos.watchPc(addrs);
-			std::printf("watch-pc   : %zu address(es)\n", addrs.size());
-		}
 		if(!watchMem.empty())
 		{
 			const auto comma = watchMem.find(',');
@@ -486,12 +494,14 @@ int main(int _argc, char** _argv)
 
 		if(!watchPc.empty())
 		{
-			std::printf("watch-pc   : %zu hit(s)\n", rtos.pcHits().size());
-			for(const auto& h : rtos.pcHits())
-				std::printf("   [%10.1f] at %#x d0=%#x d1=%#x a0=%#x a1=%#x in %s "
+			std::printf("watch-pc   : %zu hit(s) (the timestamp is the instruction count: "
+				"the BOOT has no sample clock, and a watch that could not see the boot "
+				"reported 0 for a boot address whether it ran or not)\n", m.pcHits().size());
+			for(const auto& h : m.pcHits())
+				std::printf("   [%12llu] at %#x d0=%#x d1=%#x a0=%#x a1=%#x "
 					"[sp %#x: %#x %#x %#x %#x %#x]\n",
-					h.sample, h.pc, h.d0, h.d1, h.a0, h.a1, ot::taskName(h.tcb), h.sp,
-					h.stack[0], h.stack[1], h.stack[2], h.stack[3], h.stack[4]);
+					static_cast<unsigned long long>(h.instruction), h.pc, h.d0, h.d1, h.a0, h.a1,
+					h.sp, h.stack[0], h.stack[1], h.stack[2], h.stack[3], h.stack[4]);
 		}
 		if(!watchMem.empty())
 		{
@@ -521,6 +531,50 @@ int main(int _argc, char** _argv)
 			rtos.writeGoldenJson(golden);
 			std::printf("golden     : %s\n", golden.c_str());
 		}
+	}
+
+	if(!hostPortLog.empty())
+	{
+		// The raw writes, and the 24-bit words reassembled from the
+		// 0x14/0x18/0x1c triples the loader sends (low, mid, high -- the order
+		// `0x40001d82`.. writes them). A `0x20000000` write of 0x81 is "start
+		// the DSP" and 0x8c is "swap frame" (docs/ARCHITECTURE.md §6).
+		std::ofstream t(hostPortLog);
+		uint32_t w = 0; int have = 0; uint64_t words = 0;
+		for(const auto& e : m.hostPortLog())
+		{
+			char line[128];
+			std::snprintf(line, sizeof line, "W %08x %u %04x  pc %#010x  #%llu",
+				e.addr, e.size, e.val & 0xffff, e.pc,
+				static_cast<unsigned long long>(e.instruction));
+			t << line;
+			// ✅ THE BYTE LANES, from the loader's own code at 0x40001d74..:
+			//   movel %d0,%d1 / swap %d1 / extl %d1 / movew %d1,0x20000014
+			//   movel %d0,%d1 / asrl #8,%d1        / movew %d1,0x20000018
+			//   movew %d0,0x2000001c
+			// so only the LOW BYTE of each halfword matters, and it is bits
+			// 23:16, 15:8 and 7:0 in that order. ⚠️ Getting the lanes backwards
+			// made word 2 read 0x001003 instead of 0x031000 -- which is the
+			// LOAD ADDRESS the loader was called with, and the thing that says
+			// the decode is right.
+			if(e.addr == 0x20000014)      { w = (w & 0x00ffff) | ((e.val & 0xff) << 16); have = 1; }
+			else if(e.addr == 0x20000018) { w = (w & 0xff00ff) | ((e.val & 0xff) << 8); have |= 2; }
+			else if(e.addr == 0x2000001c)
+			{
+				w = (w & 0xffff00) | (e.val & 0xff);
+				if((have | 4) == 7)
+				{
+					char word[32];
+					std::snprintf(word, sizeof word, "   word %06x", w);
+					t << word;
+					++words;
+				}
+				have = 0; w = 0;
+			}
+			t << '\n';
+		}
+		std::printf("hostport   : %s (%zu writes, %llu complete 24-bit words)\n",
+			hostPortLog.c_str(), m.hostPortLog().size(), static_cast<unsigned long long>(words));
 	}
 
 	// ⚠️ Unmapped memory: route A FAULTS here and this machine answers

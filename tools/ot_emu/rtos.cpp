@@ -452,17 +452,6 @@ namespace ot
 			m_pcRing[m_pcRingPos % m_pcRing.size()] = pc;
 			++m_pcRingPos;
 		}
-		if(!m_watchPc.empty() && m_pcHits.size() < 4000)
-			for(const auto a : m_watchPc)
-				if(a == pc)
-				{
-					PcHit h{m_sample, curTcb(), pc, m_machine.getD(0), m_machine.getD(1),
-						m_machine.getA(0), m_machine.getA(1), m_machine.getA7(), {}};
-					for(int i = 0; i < 5; ++i)
-						h.stack[i] = m_machine.peek32(h.sp + 4 * i);
-					m_pcHits.push_back(h);
-					break;
-				}
 		if(pc == g_create)
 			recordCreate();
 
@@ -762,7 +751,9 @@ namespace ot
 
 	void Rtos::watchPc(const std::vector<uint32_t>& _addrs)
 	{
-		m_watchPc = _addrs;
+		// Delegated to the machine, which sees the boot as well -- see
+		// Machine::notePcWatch for why that matters.
+		m_machine.watchPc(_addrs);
 	}
 
 	void Rtos::watchMem(const uint32_t _addr, const uint32_t _len)
