@@ -407,6 +407,58 @@ Everything else as flash 6. **Stop condition unchanged**, with one
 addition: if ii fails, the port has a measurement for it in under an hour
 — bring the exact part and pattern back, not a theory.
 
+### The automated run (`tools/hw_flash7.py`, 9 Sep 2026)
+
+The claims above are driven over MIDI and read off the interface, so the
+human does the flash, the cables and the project load and nothing else. The
+manual (OT MKII 1.40C Appendix C) puts every MAIN-page knob, mute, solo and
+level on the track's trig channel and the pattern on program change; it puts
+NO effect type, part or page-2 knob anywhere. So the claims that need a
+different effect on a track live in **parts 2–4 of the test project's bank
+A**, reached by program change, and each part carries a signature (T1's
+LEVEL 108/64/84/48) the run measures before trusting the claim.
+
+**The image: `out/OCTATRACK_OCTABAM21.bin`** (`REMIX=bamsep27 BUILD=21 make
+image`). Its DSP and ColdFire bytes are the tested `mainos_flash7b.bin`
+except the ten bytes of the five effect-name tags (`cmp -l`: exactly 10,
+all `79` → `21`).
+
+**The project: `OCTABAM_F7TEST`** (`hw_flash7.py stage`, from the one-aux
+rig): bank A patterns 1–4 → parts 1–4; pattern 1 is the rig; part 2 = SEND
+on T8's FX2 at AUX 127 (claim v); part 3 = a BUS-mode Character on T4 with
+RET 127 (vii, vii-b); part 4 = NONE on T5 (iii). Patterns 2–4 carry pattern
+1's T1 trig so the THRU passes the drums. `hw_flash7.py card` copies image
+and project to the mounted card, verifies both, removes the old firmware
+and the sidecars, ejects.
+
+**Human steps, in order:** flash OCTABAM21 from the card; power-cycle;
+PROJECT → LOAD `OCTABAM_F7TEST`; PROJECT → MIDI: CONTROL → AUDIO CC IN on,
+SYNC → PROG CH RECEIVE on (both were on for the 24 Aug session); Rytm into
+inputs A/B, main outs into the MicroBook; Midihub on port A; then
+`hw_flash7.py check` (ports, interface, a level) and `hw_flash7.py run`.
+
+**What the run does (about six minutes), each with its falsifier:**
+
+| step | drive | reads | falsified by |
+|---|---|---|---|
+| S0 | T8 soloed, T1 AUX 127, RET 127 | T8 > −55 dBFS | silence = flash 6's shape |
+| ii-a | T8 soloed; RET 127↔0 (control), T1 AUX 127↔0 (test) | both \|t\| ≥ 3 | the AUX not moving T8 |
+| ii-b | T1 soloed; LEVEL 108↔64 (control), T1 AUX 127↔0 (test) | control moves, test < 0.5 dB | the host printing its wet (flash 6) → the r7 stride differs on the unit |
+| ii-c | T5 soloed | < −60 dBFS | T5 printing |
+| iv | T8 soloed; delay MIX 127↔0, reverb MIX 127↔0 | both \|t\| ≥ 3 | an engine missing from the chain |
+| PC 1 | pattern 2 | T1 −8.3 dB | signature absent = PROG CH RECEIVE off / wrong project |
+| v | T8 soloed; RET (control), T8 AUX 0↔127 (test) | test \|t\| < 3 | T8 audible in its own return = the pin is wrong |
+| PC 2 | pattern 3 | T1 −3.6 dB | |
+| vii / vii-b | T4 soloed; T8 soloed | T4 < −60; T8 within 4 dB of S0 | a T4 return; T8 silent = the stolen stamps |
+| PC 3 | pattern 4 | T1 −13.3 dB | |
+| iii | T8 soloed; delay MIX and reverb MIX toggles | T8 > −55, delay moves, reverb does not | silence = the fall-through |
+| viii | pattern 1, 90 s | no 2 s window 12 dB under the median | a dropout = a lost stamp |
+
+The run restores nothing soloed, T1 AUX 30, MIX 127/127, RET 127, pattern
+A01, and writes `out/hw/flash7/run_<stamp>.log` beside every recording. Every
+"no change" verdict stands beside a control that did change, so a dead
+cable reads INCONCLUSIVE, not PASS.
+
 ---
 
 ## Flash 5 — the ColdFire headroom probe (cfprobe)
