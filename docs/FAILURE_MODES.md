@@ -168,7 +168,7 @@ SysEx app). Factory rescue: `downloads/extracted/OCTATRACK_OS1.40C.syx`.
 
 ---
 
-## Cross-core bus glitch — the accumulators' race 🟡 → ✅ MECHANISM MEASURED under the port, 9 Sep 2026: core 0's housekeeping flips the rotation word in the middle of core 1's frame and every client reads the word directly, so a frame's sends split across two buffers; the reverb (the cross-core reader) gets them a block late/split. `COLDFIRE_PORT.md` O12. Fix = a per-core rotation (module change), unbuilt.
+## Cross-core bus glitch — the accumulators' race 🟡 → ✅ MECHANISM MEASURED under the port, 9 Sep 2026: core 0's housekeeping flips the rotation word in the middle of core 1's frame and every client reads the word directly, so a frame's sends split across two buffers; the reverb (the cross-core reader) gets them a block late/split. `COLDFIRE_PORT.md` O12. ✅ FIXED 9 Sep 2026 (branch `bus-private-rotation`, UNFLASHED): one rotation tracker per core (`build_bus.py` ROTLATCH, payload B), every core-1 client resolves the same buffer per frame under the port; verify-onebus and make check green.
 
 **Symptom.** A tear, stutter or hash on wet audio that crosses cores; often
 smeared into a reverb tail so it is hard to localise.

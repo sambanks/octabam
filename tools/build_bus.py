@@ -2347,22 +2347,61 @@ mkgo:""",
             # housekeeps) -- so it takes payload B's body wherever it sits.
             as_b = (tag == "B") or (DEV and name == "DELAY SERVER")
             if as_b:
+                # 9 Sep 2026 (COLDFIRE_PORT.md O12): the per-INSTANCE tracking
+                # above this comment's history still left core 1's four clients
+                # resolving a 3/1 split every frame under the firmware's real
+                # timing (three on buffer N, the fourth -- T4 -- on N+1; the
+                # port's --dsp-pcwatch on the resolved offset), which is the
+                # standing "T4 + delay MODE 1" residual. A core needs ONE
+                # rotation per frame, so: the frame's position-0 calls (the
+                # dispatcher's track counter X:0x418 is 0 for them, bumped by
+                # 0x20 after each track's FX2 -- measured on both payloads)
+                # ... a first version latched the shared word as READ at position 0
+                # and the port killed it inside an hour: a pre-flip read puts the
+                # whole core one buffer BEHIND core 0, and its 'two back' read is
+                # then the very buffer core 0 is clearing (silence, and the gate's
+                # skew identity gone). So the design's tracker stays -- advance
+                # one step per frame, keep it on a pre-flip read (T == R+1), snap
+                # otherwise -- but ONE per core, in a bus-scratch word only core
+                # 1 writes (+0xc6, free): position 0's FX2 (the rig's delay host,
+                # r7 == $6200) advances it once a frame, every client checks it
+                # against the shared word and uses it. Every core-1 client then
+                # resolves the same buffer for a frame, whatever its dispatch
+                # slot's phase against the flip.
+                _latch = _rot + 0xc6
                 body = "\n".join([
-                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B",
+                    "        move    x:(r7+$67),a        ; ROTLATCH: payload B, ONE tracker per core",
                     "        tst     a",
                     "        bne     rotdone             ; not the block's first call",
-                    f"        move    x:(r7+${slot:02x}),a",
-                    "        add     #>$10,a             ; advance exactly one step",
-                    "        and     #>$30,a             ; per block, mod 4",
-                    "        move    a,x1                ; x1 = S'",
-                    f"        move    y:>${_rot:x},a         ; the shared rotation, ONCE",
-                    "        move    a,x0                ; x0 = R, the snap target",
+                    "        move    r7,a",
+                    "        move    #>$6200,x0",
+                    "        cmp     x0,a                ; position 0's FX2 (the rig's delay host)",
+                    "        bne     rotchk              ; advances the core's tracker once a frame",
+                    f"        move    y:>${_latch:x},a",
+                    "        add     #>$10,a             ; T' = T + one step",
+                    "        and     #>$30,a",
+                    "        move    a1,x0",
+                    "        move    x0,a                ; A2-clean",
+                    f"        move    a,y:>${_latch:x}",
+                    "rotchk:",
+                    f"        move    y:>${_latch:x},a",
+                    "        move    a,x1                ; x1 = T, the core's tracked rotation",
+                    f"        move    y:>${_rot:x},a         ; R, the shared word (pre- or post-flip)",
+                    "        and     #>$30,a",
+                    "        move    a1,x0",
+                    "        move    x0,a                ; x0 = R",
+                    "        cmp     x1,a",
+                    "        beq     rotuse              ; T == R: aligned, use T",
                     "        add     #>$10,a",
-                    "        and     #>$30,a             ; a = R + one step",
-                    "        move    a,y0",
-                    "        move    x1,a                ; a = S'",
-                    "        cmp     y0,a                ; S' == R+step: a pre-flip",
-                    "        tne     x0,a                ; read, so KEEP S'. else snap",
+                    "        and     #>$30,a",
+                    "        move    a1,y0               ; y0 = R + one step",
+                    "        move    x1,a",
+                    "        cmp     y0,a",
+                    "        beq     rotuse              ; T == R+1: a pre-flip read, keep T",
+                    "        move    x0,a                ; anything else: T is stale, snap to R",
+                    f"        move    a,y:>${_latch:x}",
+                    "rotuse:",
+                    f"        move    y:>${_latch:x},a",
                     f"        move    a,x:(r7+${slot:02x})",
                     "rotdone:",
                     f"        move    x:(r7+${slot:02x}),a"])
