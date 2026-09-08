@@ -1148,15 +1148,34 @@ cmd args 036080 03029f | DMA0 ddr 004320 dco 00029f | X@6080 000000 000000 | X@4
 
 The firmware sends dest `0x6080`, count `0x29f`; the DSP arms its DMA0 at
 `0x4080` and the block lands there. Every block is the same 0x2000 apart:
-0x6080 → 0x4080, 0x6000 → 0x4000, 0x6400 → 0x4400, 0x6800 → 0x4800. 🟡
-**Inferred, not located:** the payload's own dispatcher at P:0x40 sets up two
-banks of buffers — 0x4000/0x4080/0x4400/0x4600/0x4800 and
-0x2000/0x2080/0x2400/0x2600/0x2800 — and each host word is exactly the two
-banks' addresses OR'd together, so bits 14 and 13 read as a bank select the
-DSP masks down to the bank it is using (bank A throughout this run). The
-masking instruction has not been found; the handler at P:0x588 masks only to
-16 bits. Falsifier: a run where the DSP switches to bank B should land the
-same words at 0x2xxx.
+0x6080 → 0x4080, 0x6000 → 0x4000, 0x6400 → 0x4400, 0x6800 → 0x4800.
+
+✅ **The landing addresses are the payload's own bank pointers, exactly.** The
+dispatcher at P:0x40 loads two banks and takes one per frame:
+
+```
+bank A:  r6 = $4000   r7 = $4080   r2 = $4400   r5 = $4600   r4 = $4800
+bank B:  r6 = $2000   r7 = $2080   r2 = $2400   r5 = $2600   r4 = $2800
+```
+
+Every block landed on a bank-A pointer, and each host word is exactly the two
+banks' addresses OR'd together (`0x4080 | 0x2080 = 0x6080`). 🟡 **Inferred,
+not located:** that bits 14 and 13 are a bank select the DSP masks down to the
+bank it is running. The masking instruction has not been found — the handler
+at P:0x588 is the only write to DMA0's destination register in the payload and
+it masks to 16 bits only, which would leave 0x6080. Falsifier: a run in which
+the DSP takes bank B should land the same words at 0x2xxx.
+
+⚠️ **And DMA0 cannot be read at the eDMA kick to settle it** — a third
+instance of the same lesson, and it nearly went into this document as a
+finding. The command's two argument words and the CVR write all precede the
+kick, but the CVR only *injects* the interrupt: at the kick the DSP has not
+taken it, so its handler has not read the arguments, and DMA0 still holds the
+PREVIOUS block's arming (measured: DCO0 always one block behind). That is not
+a defect — the ring is a FIFO, so the arguments sit ahead of the data and the
+DSP reads them first, arms, then drains. It does mean the armed value has no
+readable moment in this model, and the destination has to be read from where
+the pointer ends up.
 
 ⚠️ Two instrument lessons, both the project's usual family. **A peek after the
 run cannot tell "nothing was sent" from "the DSP consumed it"** — count at the
