@@ -1,5 +1,5 @@
---- a/src/qemu/target/m68k/helper.c	2025-09-10 02:57:23.000000000 +1000
-+++ b/src/qemu/target/m68k/helper.c	2026-09-07 12:08:09.737174524 +1000
+--- a/src/qemu/target/m68k/helper.c	2026-09-08 16:33:21.796598024 +1000
++++ b/src/qemu/target/m68k/helper.c	2026-09-08 16:33:22.130278381 +1000
 @@ -663,10 +663,17 @@
  
  uint64_t HELPER(macmulf)(CPUM68KState *env, uint32_t op1, uint32_t op2)
@@ -29,8 +29,42 @@
  }
  
  void HELPER(macsats)(CPUM68KState *env, uint32_t acc)
---- a/src/qemu/target/m68k/translate.c	2025-09-10 02:57:23.000000000 +1000
-+++ b/src/qemu/target/m68k/translate.c	2026-09-07 12:46:31.817116603 +1000
+@@ -883,14 +890,14 @@
+     } else if (env->macsr & MACSR_RT) {
+         /* 32-bit rounding.  */
+         rem = val & 0xff;
+-        val >>= 8;
++        val = (uint64_t)((int64_t)val >> 8);    /* octabam: the accumulator is SIGNED */
+         if (rem > 0x80)
+             val++;
+         else if (rem == 0x80)
+             val += (val & 1);
+     } else {
+         /* No rounding.  */
+-        val >>= 8;
++        val = (uint64_t)((int64_t)val >> 8);    /* octabam: arithmetic, not logical */
+     }
+     if (env->macsr & MACSR_OMC) {
+         /* Saturate.  */
+@@ -901,8 +908,14 @@
+                 result = val & 0xffff;
+             }
+         } else {
+-            if (val != (uint32_t)val) {
+-                result = ((uint32_t)(val >> 63) & 0x7fffffff);
++            /* octabam: with a signed product (macmulf above) a negative
++               accumulator reaches here sign-extended; the original logical
++               shift made every negative value look like an overflow and the
++               original saturation value for that case was 0, so a saturating
++               MAC (MACSR 0xa0, the recorder's fade stage) zeroed every
++               negative sample. Compare as signed, saturate to the sign. */
++            if ((int64_t)val != (int64_t)(int32_t)val) {
++                result = ((int64_t)val < 0) ? 0x80000000u : 0x7fffffffu;
+             } else {
+                 result = (uint32_t)val;
+             }
+--- a/src/qemu/target/m68k/translate.c	2026-09-08 16:33:21.798327962 +1000
++++ b/src/qemu/target/m68k/translate.c	2026-09-08 16:33:22.073642489 +1000
 @@ -5794,7 +5794,13 @@
      }
  #endif

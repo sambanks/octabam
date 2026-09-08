@@ -47,7 +47,8 @@ def emac_selftest():
     position x 2^31/blocksize) and on a negative operand. Hardware: 3 and
     -3 (signed product >> 31). Stock Unicorn 2.1.4: 1 and 0x1ffffe
     (unsigned product >> 32). Third case: `msacl` must SUBTRACT (-3); stock
-    tests the wrong bit and adds. Returns (ok, detail)."""
+    tests the wrong bit and adds. Fourth: a negative result under the
+    saturating mode must not be zeroed. Returns (ok, detail)."""
     if not HAVE_UNICORN:
         return False, "unicorn not importable"
     code = (b"\xa9\x3c\x00\x00\x00\x20"   # movel #0x20,%macsr (fractional, signed)
@@ -55,19 +56,28 @@ def emac_selftest():
             b"\xa1\xc0"                     # movclrl %acc0,%d0
             b"\x4e\x71")                    # nop
     msac = code[:6] + b"\xa2\x00\x09\x00" + code[10:]   # msacl %d0,%d1,%acc0: ext bit 8 = subtract
+    # Fourth case (8 Sep 2026): MACSR 0xa0 = fractional + OMC (saturate on
+    # overflow), the mode the recorder's fade stage runs in. A NEGATIVE
+    # result must survive: msacl -1.0 x -0.1685 = -0.1685 (0xea700000).
+    # The first fractional patch left the extraction's saturation path
+    # unsigned, so every negative value "overflowed" to 0 and a recorded
+    # buffer lost its negative half-waves (RTOS_FORK section 10.18).
+    sat = b"\xa9\x3c\x00\x00\x00\xa0" + b"\xa2\x00\x09\x00" + code[10:]
     got = []
-    for prog, d0 in ((code, 0xc00), (code, (-0xc00) & 0xffffffff), (msac, 0xc00)):
+    for prog, d0, d1 in ((code, 0xc00, 0x200000), (code, (-0xc00) & 0xffffffff, 0x200000),
+                         (msac, 0xc00, 0x200000), (sat, 0x80000000, 0xea700000)):
         uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
         uc.mem_map(0x1000, 0x1000)
         uc.mem_write(0x1000, prog)
         uc.reg_write(UC_M68K_REG_D0, d0)
-        uc.reg_write(UC_M68K_REG_D1, 0x200000)
+        uc.reg_write(UC_M68K_REG_D1, d1)
         uc.emu_start(0x1000, 0x1000 + len(prog))
         got.append(uc.reg_read(UC_M68K_REG_D0) & 0xffffffff)
-    want = [3, 0xfffffffd, 0xfffffffd]
+    want = [3, 0xfffffffd, 0xfffffffd, 0xea700000]
     lib = os.environ.get("LIBUNICORN_PATH", "<pip wheel>")
     return got == want, (f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x}, "
-                         f"msacl -> {got[2]:#x} (want 0x3, 0xfffffffd, 0xfffffffd); lib {lib}")
+                         f"msacl -> {got[2]:#x}, saturating msacl -1.0 x 0xea700000 -> {got[3]:#x} "
+                         f"(want 0x3, 0xfffffffd, 0xfffffffd, 0xea700000); lib {lib}")
 STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
 BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000
@@ -474,6 +484,58 @@ def _call(uc, addr, args=(), count=20_000_000):
 
 
 TRAMP = 0x47ef0000           # 3 pages: +0x800 emu_rtos SR trampoline, +0x1000 EMAC slots, +0x2000 diagnostics
+
+# -- MAC-with-load words Unicorn executes NATIVELY, and wrongly (8 Sep 2026) --
+# The shim below exists because the CFV4E core raises illegal-instruction on
+# the MAC-with-parallel-load form. It does -- for 95 of the 122 distinct
+# (opcode, extension) pairs in this image. The other 27 it DECODES and runs,
+# with a made-up effective address (a bare core with every An pointing at
+# mapped memory still reads UNMAPPED), so the parallel load fetches from
+# the wrong place and the multiply goes on with a stale register. Two of
+# them are the recorder's mix loop at 0x400076f8/0x400076fc (`msacl
+# %a0,%d0,%a2@+,%d0,%acc0` = a09a 0908), which is why an INAB source at
+# unity vanished from a recorded buffer (RTOS_FORK 10.18). Rule: a word is
+# trusted natively only if a bare core REFUSES it; anything it accepts is
+# hooked and routed through the shim before it executes. The classification
+# is measured here, per pair, on the library actually loaded.
+_NATIVE_CACHE = {}
+
+def _macload_native(op, ext):
+    key = (op, ext)
+    if key not in _NATIVE_CACHE:
+        prog = (b"\xa9\x3c\x00\x00\x00\x20" + op.to_bytes(2, "big") + ext.to_bytes(2, "big")
+                + b"\x4e\x71\x4e\x71\x4e\x71")
+        mu = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+        mu.mem_map(0x1000, 0x1000); mu.mem_map(0x2000, 0x1000); mu.mem_write(0x1000, prog)
+        for reg in (UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2, UC_M68K_REG_A3,
+                    UC_M68K_REG_A4, UC_M68K_REG_A5, UC_M68K_REG_A6):
+            mu.reg_write(reg, 0x2800)
+        try:
+            mu.emu_start(0x1000, 0x1000 + len(prog))
+            native = True                      # ran through: accepted natively
+        except UcError as e:
+            native = "UNMAPPED" in str(e)      # accepted but read a made-up address
+        _NATIVE_CACHE[key] = native
+    return _NATIVE_CACHE[key]
+
+def native_macload_sites(uc, lo=BASE, hi=0x40098000):
+    """Addresses of every MAC-with-load word in [lo, hi) that this Unicorn
+    would execute natively (see above). Data that happens to look like one
+    is harmless to hook: a hook fires only when the address is executed,
+    and an executed 0xAxxx word on ColdFire IS a MAC."""
+    img = bytes(uc.mem_read(lo, hi - lo))
+    out = []
+    for off in range(0, len(img) - 4, 2):
+        op = int.from_bytes(img[off:off + 2], "big")
+        if (op & 0xF100) != 0xA000 or (op & 0x0030) == 0 or ((op >> 3) & 7) not in (2, 3, 4, 5):
+            continue
+        ext = int.from_bytes(img[off + 2:off + 4], "big")
+        if not ext & 0x0800:
+            continue
+        if _macload_native(op, ext):
+            out.append(lo + off)
+    return out
+
 _AREGS = None
 
 
@@ -521,7 +583,14 @@ def _emac_load_shim(uc, r):
     val = int.from_bytes(uc.mem_read(ea, width), "big")
     if ext & 0x0020:                                   # '&' form: AND with the MASK register
         return None                                    # not modelled; surface it
-    uc.reg_write(_DREGS[rw], val)
+    # THE LOAD LANDS AFTER THE MULTIPLY (8 Sep 2026). The chip multiplies
+    # with the register values from BEFORE the parallel load, which is the
+    # whole point of the pipelined idiom `msacl %a0,%d0,%a2@+,%d0,%acc0`
+    # (multiply the sample already in d0, fetch the next one into d0). The
+    # first version wrote Rw first, so every product in the recorder's mix
+    # loop (0x400076f6) took the NEXT word -- the R channel, or the next
+    # sample -- and a unity-gain source vanished from the recorded buffer
+    # (RTOS_FORK section 10.18). Rw is written below, after the trampoline.
     # plain form: msacl/macl Ry,Rx,ACC — same ext bits minus the load-form fields
     # plain form (from the image: `macl %d5,%d0,%acc0` = a005, `macl %a1,%d0,%acc1`
     # = a089): Ry in bits 3:0 with bit 3 = A/D, Rx in bits 11:9 with A/D at bit 6,
@@ -563,6 +632,7 @@ def _emac_load_shim(uc, r):
     uc.emu_start(tramp, park, count=3)
     if r.trap is not None or uc.reg_read(UC_M68K_REG_PC) != park:
         return None                                    # the plain form failed too
+    uc.reg_write(_DREGS[rw], val)                      # the parallel load, after the multiply
     r.emac_shims = getattr(r, "emac_shims", 0) + 1
     dbg = os.environ.get("OCTA_EMAC_DEBUG")
     if dbg and pc in [int(x, 0) for x in dbg.split(",")]:

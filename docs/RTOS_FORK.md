@@ -2201,3 +2201,144 @@ fixtures); a recorder trig that is not on the next step (the guard must
 keep RLEN, and it does by arithmetic but is unmeasured); the first pass
 after a pattern change. Drivers: `tools/scratch/recloop.py --image`,
 `predprobe.py`, `seamsum.py`.
+
+❌ **Falsified by the first of those, 8 Sep 2026: the unit still clicks
+with the cave, and at MAX without it — §10.18.**
+
+### 10.18 The seam cave on Bryan's unit: it still clicks, at MAX too — and route A at AUDIO level says the recorder is sample-exact, so the click is not in the recording (8 Sep 2026 — hardware, then measured)
+
+**Hardware, Bryan T, 7–8 Sep 2026** (`~/Downloads/note-for-bam-seam-flash.md`;
+tag 21 = `seamtest`, the cave's 102 bytes verified in the image and the
+hook `4eb9 400d 7200` in place; his Moog on the inputs, sound-on-sound;
+internal clock, 1×; projects rebuilt from FLASHPLAN's description, not
+copied from the card; AUX at 0):
+
+| his test | result | what §10.16–10.17 had said |
+|---|---|---|
+| 128 / RLEN 4, rec + play trigs every 4 steps (the cave's own fixture) | **clicks**, onset varies run to run, one run around the sixth repeat | seams 0 ×9 with the cave |
+| 128 / RLEN 16, one rec + play trig on step 1 | clicks on the first repeat | (a 16-step gap; the ¼× fixture was 4 steps) |
+| 128 / RLEN MAX, rec trigs every 4 steps | **clicks** | §10.16.6: "seam-free by construction on the ColdFire side, at any tempo" — no end post, the cave never runs |
+| 120 / MAX, same trigs | clean | clean |
+| 120 / RLEN 4, same trigs | clean | clean |
+
+❌ **The cave is not the fix, and the length seam is not the click.** The
+third row decides it: at MAX there is no converter, no end post and no cave,
+and it clicks at 128 and not at 120. Whatever is heard follows the tempo's
+non-integer period into a part of the machine the ColdFire's length
+arithmetic does not touch. §10.16.4–5 stand as measurements of the
+ColdFire's own seam (they are reproduced below, in audio this time); the
+claim that removing it removes the click is retracted, and with it the
+"handed to Bryan" line of FLASHPLAN tag 19. Whether the cave even took
+effect on his track is unknown (the lane index = track assumption is still
+unmeasured on hardware) and no longer matters.
+
+**Why every number before this was blind.** `recloop.py` measured
+POSITIONS — arm sample, length written, end post. The read-back block the
+recorder writes from was zeros in every run ("the audio in it is zeros",
+§10.16), so no run had shown what a recording contains or where its first
+and last samples come from. `tools/scratch/recaudio.py` fixes that: it
+injects a known signal at the point the DSP delivers its frame and reads
+the recorder's pool blocks back.
+
+**Where the recorder's input actually is (measured, read hooks on the
+mix loop).** Not the 0x80003190 read-back block (that carries the per-track
+audio bus both ways: the DSP fills it, the host sends it back to X:0x6400
+after processing). The write path reads the **input-capture ring**
+`0x80005760 + slot·0x100`, 8 slots of 256 bytes, filled by eDMA ch 7 one
+slot per frame (Bryan's §13.3 "channels 1 and 6 as input-capture staging"
+was the neighbouring buffers); slot layout = 16 samples × (L, R) 32-bit
+left-justified with **A/B at +0x80 and C/D at +0**, and the track reads
+slot `(frameclock − (record+20 >> 4)) & 7` (`0x40007578`), eight frames
+behind delivery — the recording lags the live input by **128 samples**
+(buffer[0] = input time 16·(arm frame − 8) + offset, every pass). The
+mix is two EMAC stages: per-source 16-sample gain ramps from the record's
++52/+56/+60 state toward the FIN/FOUT targets (`0x400073b4`–`0x40007438`,
+inactive sources ramp 0→0x8000/2³¹ every frame, ≈ −98 dB) into staging
+`0x800062cc`, then the fade mix under `MACSR 0xa0` (saturating) and the
+6-byte pack. Block address = number × 6144 + 0x40A955E0, 0-based (row entry
+14602 is the pool's last block), as Bryan wrote.
+
+**Three defects of the instrument, found because a unity-gain source
+vanished from the buffer, all fixed and gated:**
+
+1. `_emac_load_shim` did the parallel load BEFORE the multiply. The chip
+   multiplies with the pre-load registers — the pipelined idiom `msacl
+   %a0,%d0,%a2@+,%d0,%acc0` depends on it — so every product in the mix
+   loop took the next word (the R channel, or the next sample). Fixed:
+   the load lands after the trampoline.
+2. Unicorn does NOT trap on every MAC-with-load word. Of 122 distinct
+   (opcode, extension) pairs in the image it accepts 27 and executes them
+   with a made-up effective address (a bare core with every An mapped
+   still reads UNMAPPED); two are the mix loop's `a09a 0908`/`a01b 0908`.
+   `emu_bringup.native_macload_sites` now classifies every pair on the
+   loaded library and `Rtos.install` hooks the accepted ones so they stop
+   before executing and go through the shim as if they had trapped.
+3. The fractional patch's extraction (`get_macf`) shifted the accumulator
+   logically and, under OMC, compared it unsigned: every NEGATIVE result
+   under `MACSR 0xa0` "overflowed" and saturated to 0 — a recorded buffer
+   lost its negative half-waves. Fixed in
+   `tools/unicorn_emac_fractional.patch` (arithmetic shift, signed compare,
+   saturate to the sign), a fourth case in `emac_selftest`, and the library
+   must be rebuilt (`make emu-unicorn`). The runs below sidestep it with a
+   non-negative counter; the shared library on this machine is still the
+   old one and now FAILS the selftest, deliberately.
+
+Gates after 1 and 2: the M6a oracle (8 compared fields agree; the 34
+resume-PC notes are the same ones an unpatched control run shows against
+the golden — burst-boundary jitter in the pool-clear loop), the M6c
+frame-mode oracle (5 fields agree), and the recorder numbers themselves
+(length 0x50c0 = 20,672; the arm spacings of §10.16.5).
+
+**The measurement** (`make_seam_fixtures.py` from the RECTRIG backup with
+its own step-9 REC trig cleared — it had put an arm every 3 and 1 steps
+into the first ten-pass run; SEAMTEST geometry: T1 REC1 at 2/6/10/14,
+T2 FLEX-on-R1 with play trigs at the same steps; stock image; 12,600
+frames = ten passes; `recaudio.py` snapshots the buffer at every arm,
+`recaudio_seams.py` decodes the counter):
+
+| fixture | input time at buffer[0], pass to pass | sub-frame slot of buffer[0] | vs §10.16.5's sequencer spacings |
+|---|---|---|---|
+| 128 / RLEN 4 | **20,672 ×7, then 20,671** | 15 ×8, then 14 | identical |
+| 128 / RLEN MAX | **20,672 ×7, then 20,671** | 15 ×8, then 14 | identical (the same starts; no length to be wrong) |
+| 120 / RLEN 4 | **22,050 ×9** | 8, 10, 12, 14, 0, 2, 4, 6, 8 | identical |
+
+Within a pass the buffer is a sample-continuous copy of the input (steps
+of +1 in the counter at every one of 20,672 positions, both tempos). At a
+seam-0 pass boundary the last sample of pass k and the first of pass k+1
+are consecutive input samples (13,630 → 13,631). At the −1 boundary (pass
+8 → 9 at 128) **input sample 6,590 is recorded twice**: as pass 8's
+position 20,671 and as pass 9's position 0 — the §10.16.5 overlap, now
+seen in audio. That is the whole of the recording-side seam: one input
+sample captured twice every 8 passes at a fixed RLEN, nothing at MAX
+(the recording ends at the arm), nothing at 120.
+
+**So the click is not in what the recorder writes.** A one-sample
+duplicate every two bars is not what Bryan describes, MAX has none and
+clicks, and 120 has none and is clean — consistent so far; but the
+recording is the only half route A can see. The play side — what the
+FLEX reads when its retrig arrives ⌊P⌋ or ⌈P⌉ samples after the last one
+against a buffer of a fixed or just-ended length, and whether the hard cut
+lands on one sample or on a frame — is where the tempo dependence has to
+be, and **no voice ever starts under route A or the C++ port** (the trig →
+voice path is unlocated; COLDFIRE_PORT O9b), so the outbound audio block
+shows the input thru and nothing played. This driver is the recorder half
+of O10; the play half needs either that path or a hardware capture of
+the played output across a 128 BPM retrig.
+
+**What would falsify this section:** a hardware recording (record, STOP,
+play the buffer looped, no live writer) that clicks at 128 — then the
+recording itself is wrong in a way this injection cannot show (the DSP's
+input path, or the sub-frame split at 15/16 that route A runs but hardware
+might not); a route A run with the rebuilt library and a signed signal
+whose buffer differs from these; or Bryan's flex not being retrigged at
+all in test 3 (then the reader is free-running and §6's frame-phase band
+model is the candidate again — its 128/4 prediction was "seams from pass
+5 to ~123, then clean", and his onset "around the sixth repeat" fits it).
+Two questions for him cost nothing: does the click STOP after about a
+minute, and what was trigged on the flex in the MAX test.
+
+Drivers: `tools/scratch/recaudio.py` (`--reg-probe`, `--read-probe`,
+`--field-probe` are the instruments that found the three defects),
+`recaudio_seams.py`, `recaudio_analyse.py`, `make_seam_fixtures.py`
+(`--self` puts the play trigs on T1, `--ab N` sets the AB level — which
+measured as having no effect on the recorded level at 0, 64 or 127).
