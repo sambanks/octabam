@@ -367,52 +367,172 @@ comparison would be decoration.
 **Gate:** `ctest` 6/6; the oracle diff reports **8 compared fields agree, 0
 disagreements**; `make check` green.
 
-## Milestone O6 — the eDMA and the frame clock ⛔ BLOCKED on O7 (8 Sep 2026)
+## Milestone O6 — the eDMA and the frame clock ✅ (8 Sep 2026)
 
-The model is written and unit-gated; its **fidelity** gate is M6c, which needs
-a loaded project and a started transport — O7. `COLDFIRE_WORKORDER.md` carries
-the full entry; the two things worth keeping here:
+**The sequencer runs, and its trig is byte-identical to route A's.** With the
+project loaded, the transport started through the real tasks and a trig poked
+on track 1 step 2, 400 frames of the port produce exactly route A's log:
 
-**The three completion rules, and watching the gate fail.** `Edma` was
-implemented first with route A's own *wrong* rule — everything completes at
-once — and the gate failed on exactly the four paced assertions and nothing
-else, which is the symptom route A recorded ("re-raised source 15 before state
-0 could ack it; the ISR spun in state 6"). Fixing `start` to book a paced
-channel at the DSP's next 16-sample boundary turned all 19 green. The other
-two rules (an `SSRT` is bus speed; a memory-to-memory `START` is a copy the
-caller busy-waits for) complete at once, and a linked channel is a burst that
-completes **with** its parent, so ch1 → ch6 → ch7 is one boundary event.
+| | route A (the oracle) | `ot_emu` |
+|---|---|---|
+| frames since the transport start | 400 | 400 ✅ |
+| sequencer ticks (vector `0x60`) | 28 | 28 ✅ |
+| transport-start writes at frame 0 | `0x10` on tracks 0, 1, 2, 4, 7 | the same five, same order ✅ |
+| the trig | frame **344**, track 0, bytes `0x08` then `0x18` | identical ✅ |
+| saved / final / sequencer bank / pattern | 1 / 1 / 1 / 0 | identical ✅ |
+| eDMA transfers started | 16,801 | 16,800 (reported, not compared) |
 
-✅ A detail that fell out of writing the test: **ch1's CSR `0x621` has no
-INTMAJOR.** Only ch7 raises a line, and channel 7 is INTC0 source 8 + 7 = 15
-— exactly the source route A names for the end of that chain. The first
-version of the test asserted a line for ch1 and was wrong; the model was
-right.
+```sh
+scripts/o6_gate.sh                     # stages ONE card image, runs both, diffs
+python3 tools/ot_emu/oracle.py out/oracle/m6c.json out/oracle/port_m6c.json
+# oracle: 5 compared field(s) agree
+```
 
-**The frame latch is cleared on the interrupt ACKNOWLEDGE.** Route A clears
-`frame_pending` as it pushes the frame, because it hand-rolls the push. This
-port lets Musashi dispatch the exception, so offering a line and having it
-taken are different events — the latch is cleared from
-`Machine::readIrqUserVector`, the core's own acknowledge, which is the same
-moment. It is a **latch, not a count**: a masked edge source remembers one
-edge, and counting them delivered ~540 phantom frames back to back in route A.
+❌ **RETRACTED: `RTOS_FORK.md` §8.4's "byte `0xd3`" and its six
+transport-start writes on tracks 0, 1, 1, 2, 4, 7.** Re-measured today, route
+A **and** the cold tool (`emu_frames.py`, the same command §8.4 quotes) both
+give **five** writes of `0x10` at frame 0 (tracks 0, 1, 2, 4, 7) and `0x08`
+then `0x18` at frame 344. Two independent instruments agree, so the current
+numbers are the reference. 🟡 The likely cause is the EMAC fix of 7 Sep
+(§10.16): §8.4 was measured on 6 Sep, before it, and the byte the trig writes
+is computed by an EMAC chain (below). Inferred, not measured — nobody has
+re-run §8.4's exact tree on the stock library to confirm.
 
-### What was measured about the block, rather than assumed
+### The gate, and the shape of it
 
-- ✅ Route A **cannot run with the frame clock on from boot**: a bare
-  `Rtos(frame=True)` faults on unmapped memory, and priming the auto-map hook
-  leaves its own state unusable. So there is no intermediate oracle
-  comparison for the frame clock — it is M6c or nothing.
-- ✅ The port with `--frame` is identical to frame-off through 100 ms, then
-  wedges: dispatches frozen at 40 from 205 ms through 400 ms while PIT0 keeps
-  firing, **1 frame interrupt taken, 0 eDMA transfers started**. No frame is
-  delivered before main's unmask, so the mask is respected.
-- 🟡 The wedge is *inferred* to be the ISR waiting for a DSP exchange nothing
-  starts (the host port is O8, the chain is kicked from the sequencer path in
-  O7). **Whether the frame model is right in the configuration that matters
-  is not established, and only M6c establishes it.**
-- ✅ No regression with the clock off: the oracle diff is still 8 compared
-  fields, zero disagreements; `ctest` 6/6; `make check` green.
+`--sequencer` on both tools walks the same steps, and every one of them is
+route A's, including the two compensations it documents as compensations (the
+bank switch and the sequencer re-select, which stand in for a load-ordering
+defect the unit does not have — RTOS_FORK.md §7/§8.3): park at main's spin,
+mount, load, switch to the file's bank through `sys`, re-issue the load's own
+last step, clear CLOCK RECEIVE, **then** turn the frame clock on, start the
+transport, poke the trig, and run 400 frames. `tools/ot_emu/stage_card.py`
+builds the card image with route A's own `stage_project`, so both emulators
+read byte-identical media — the FAT16 builder is still deliberately not
+ported (O7).
+
+`oracle.py` compares `m6c_trig`, `m6c_trig_words`, `m6c_ticks`, `m6c_frames`
+and `m6c_bank` **strictly**. None of them tracks the `ips` knob the way the
+dispatch PCs and the serial count do: a trig either fires on the frame the
+other emulator fires it on or it does not.
+
+### Five defects, and none of them was in the frame model
+
+The eDMA and the frame latch were written in the previous session and gated
+by `test_periph`'s 19 assertions; that model needed no change. What stood
+between it and the gate was five other things, each measured:
+
+**1. ✅ The DSP host port needs route A's two stand-in replies, and without
+them the frame handler never returns.** `0x20000004` must read `0x0000`: the
+handler writes 140 there at `0x4000ab1e` and then polls
+`movew 0x20000004,%d0 / tstb %d0 / blts` — it waits for bit 7 of the low byte
+to clear, which is the DSP's handshake. An unmodelled window answers all-ones
+and the bit never clears. The port took **exactly one** frame interrupt,
+entered `0x4000aad0`, and burned **352 M instructions** in that
+three-instruction loop: 0 eDMA transfers, 0 ticks, 0 trigs. It reads as "the
+frame model is wrong" and it is a missing peripheral reply. `0x2000001c` (the
+ping index, read one instruction earlier) toggles 0/1. Both are route A's
+`EXTRA_OVERRIDES`, "the DSP host port as M5 faked it", and both are stand-ins
+for the DSP that O8 will put behind the window.
+
+**2. ✅ `Region::contains` overflowed, and a legitimate unmapped write became
+a 4 GB memory smash.** `(_a - base) + _size <= data.size()` in 32-bit
+arithmetic: with the region at `0x00000000`, an access at `0xffffffff` gives
+offset `0xffffffff`, and `0xffffffff + 1 == 0`, so the region claimed the
+address. The frame handler reaches a `moveb %d0,%a0@-` with `a0 = 0` and the
+emulator died inside Musashi with a bare SIGSEGV — **and printed nothing**,
+because stdout redirected to a file is block-buffered. Three runs went into
+that. Fixed, and with it three instruments that make the next one legible:
+
+- `Machine::badWrite` stops the MACHINE, not the process, on a write the
+  region model cannot honour, naming the address and the PC;
+- `setAutoMapLimit` (default 65,536 pages = 256 MB) does the same for a
+  runaway auto-map, naming the busiest unmapped-access PC — route A's own
+  growth on the golden path is ~200 MB, so the ceiling is well clear of
+  anything faithful;
+- `main` sets **line-buffered stdout**. Same family as the panic printer O7
+  could not finish.
+
+**3. ✅ `SATS` (`0x4c80 | Dn`) was unimplemented**, and it is on the M6c path
+only — the per-frame EMAC routine at `0x4000346a`, which the eDMA completion
+handler's state 5 calls. The boot and the whole project load never meet it.
+Semantics measured in route A's engine (six cases in `test_emac`): with V set,
+a result whose sign bit is clear saturates to `0x80000000` and one whose sign
+bit is set to `0x7fffffff`; with V clear the value is untouched.
+⚠️ **Its flags disagree with the CFPRM and the port follows route A**: the
+manual says N and Z are set from the result and V and C cleared, and route A's
+engine updates **N only**. Nothing between the `sats` and the next
+flag-setting instruction reads the CCR at the only site the firmware reaches.
+What would falsify it: a firmware site that branches on Z or V after a SATS.
+
+**4. ✅ `movel #imm,%macsr` (`a93c`) was unimplemented** — the frame handler's
+own, at `0x4000aeda`. It fell into the MAC path, which consumed one extension
+word instead of the immediate's two, and the instruction stream desynchronised
+inside the handler. (That is what produced defect 2's write to `0xffffffff`.)
+
+**5. ✅ THE EMAC HAD FIVE FIELDS WRONG, AND THE OLD GATE COVERED NONE OF THEM.**
+Every case the O2 gate tested used acc0, two data registers, the long form and
+no parallel load — the one combination in which all five are invisible.
+
+- The **accumulator number** was read as ext bit 4 | ext bit 9. It is opcode
+  **bit 7** (low) and ext **bit 4** (high) — and in the load form the low bit
+  is **inverted** (`a498` is acc0, `a418` is acc1; route A's
+  `_emac_load_shim` carries the same `((~op >> 7) & 1)`). The frame builder
+  uses all four accumulators.
+- An **address-register source** was read as the data register of the same
+  number: `macl %a2,%d0` (`a08a`) multiplied d2.
+- The two **operand-half bits** were applied to the wrong operands
+  (`macw %d0u,%d1l` is ext `0x0040`: bit 6 is the FIRST operand's).
+- The **parallel load** handled only `(An)+`. The frame routine at
+  `0x40003738` uses `(An)` and `(d16,An)` as well, and the `(d16,An)` form is
+  **six bytes** — skipping its displacement word desynchronised the stream
+  and invented an opcode two instructions later.
+- ⚠️ **And the one that survived all of those: the accumulator is 48 bits and
+  holds the product at `>>24`, not `>>32`.** The port shifted each product
+  all the way down before accumulating, which is right for one product and
+  off by one LSB for a subtract whose discarded low bits are non-zero:
+  `floor(-floor(q/2^24)/2^8)` is one less than `-floor(q/2^32)`. Route A's
+  model (QEMU's EMAC plus `tools/unicorn_emac_fractional.patch`) accumulates
+  at `>>24` and shifts down by 8 only when the accumulator is READ
+  (`get_macf`). **That single bit was the whole remaining difference in the
+  M6c gate**: the frame handler's `msacl` came out −15 where route A had −16,
+  an `spl` floor two instructions later turned it into 1 instead of 0, and
+  the sequencer's live nibble read `0x09` where route A reads `0x08` — on
+  every write, on every frame. `movclrl` now returns `acc >> 8`, `movel
+  Rn,%accN` writes `(int32)v << 8`, and the accumulate sign-extends from 48
+  bits (`macsatf`), all as route A does.
+
+`test_emac` now carries **23** assertions covering all of it, every one
+watched failing first. ✅ Encodings from `m68k-elf-as -mcpu=5475`, listed
+beside each rule; the accumulator alignment has a paired control (`macl` with
+the same operands, which agrees under either model, so only the `msacl` case
+is evidence).
+
+### How the last bit was found, in order
+
+Worth keeping, because none of it was reasoning:
+
+1. `--watch-mem` on the port (route A's own flag, ported) said the live
+   nibble is written at `0x4000b910` and `0x4000b9bc` in both.
+2. objdump on the image: `0x4000b910` is `moveb %a2@,%a1@(0,%a3:l)` with
+   `a2 = a0 + 62`, and route A's `--watch-pc` said `a0 = 0x80001798 + track`.
+3. So the byte comes from `0x800017d6 + track`, and the only writer of that
+   table is the frame handler's own loop at `0x4000aef6`:
+   `msacl / movclrl %acc0,%d2 / addl #16,%d2 / spl %d3 / andl %d3,%d2 /
+   moveb %d2,%a2@+`.
+4. `--watch-mem` on both emulators for the two inputs: the frame timebase
+   (`0x46104cf0`) is **identical** (`0x16800`, `0x21c00`, `0x2d000` written at
+   `0x4000aec4`) and so are the per-track words at `0x80001904`. Two inputs
+   the same and the output different leaves the arithmetic.
+5. Reading route A's actual model — the patch and QEMU's `macmulf` /
+   `get_macf` — gave the alignment, and the arithmetic predicts the sign of
+   the error before the fix was written.
+
+### No regression
+
+`ctest` 6/6; the M6a oracle diff still reports **8 compared fields agree, 0
+disagreements**; `make check` green.
+
 ## Milestone O7 — the card and the project load ✅ (8 Sep 2026; the stall was a fault)
 
 The card model, its memory map and the live-call machinery are in and gated;

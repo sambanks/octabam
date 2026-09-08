@@ -270,22 +270,86 @@ namespace ot::v4e
 		// MACSR bits that matter here (CFPRM 4.1): bit 5 F/I selects fractional
 		// mode, bit 4 S/U selects signed, bit 0 is the product-independent
 		// saturation flag this firmware never sets.
-		constexpr uint32_t g_macsrFractional = 0x20;
+		constexpr uint32_t g_macsrFractional = 0x20;	// F/I
+		constexpr uint32_t g_macsrSigned     = 0x10;	// S/U
 
 		// One accumulator, 32 bits plus its 8-bit extensions. Musashi's
 		// ColdFire state has no EMAC, so the port keeps its own -- four
 		// accumulators and the two extension-byte registers.
 		// Musashi's ColdFire state has no EMAC at all, so the whole unit lives
 		// here: four accumulators, their extension bytes, and MACSR.
+		// ⚠️ THE ACCUMULATOR IS 48 BITS AND HOLDS THE PRODUCT AT >>24, NOT >>32.
+		// The first version kept a 32-bit accumulator and shifted each product
+		// all the way down before adding it, which is right for ONE positive
+		// product and off by one LSB for a SUBTRACT whose discarded low bits
+		// are non-zero: floor(-floor(q/2^24)/2^8) is one less than
+		// -floor(q/2^32). ✅ That is exactly the bit the M6c gate caught
+		// (8 Sep 2026): the frame handler's `msacl` came out -15 where route
+		// A had -16, the `spl` floor two instructions later turned it into
+		// 1 instead of 0, and the sequencer's live nibble read 0x09 instead of
+		// 0x08 on every write. Route A's model (QEMU's m68k EMAC plus
+		// `tools/unicorn_emac_fractional.patch`) accumulates at >>24 and
+		// shifts down by 8 only when the accumulator is READ.
 		struct Emac
 		{
-			uint32_t acc[4] = {};
-			uint32_t ext[4] = {};	// the sign-extension byte per accumulator
+			int64_t acc[4] = {};
 			uint32_t macsr = 0;
+			uint32_t mask = 0;		// the '&' form's address mask register
 		};
 		Emac g_emac;
 
 		uint32_t macsr(Machine&) { return g_emac.macsr; }
+
+		// Reading an accumulator OUT: route A's `get_macf` (fractional: >> 8,
+		// no rounding because MACSR's RT bit is clear in this firmware) and
+		// its integer form (the low longword, no saturation because OMC is
+		// clear too).
+		uint32_t accRead(const uint32_t _n)
+		{
+			if(g_emac.macsr & g_macsrFractional)
+				return static_cast<uint32_t>(g_emac.acc[_n] >> 8);
+			return static_cast<uint32_t>(g_emac.acc[_n]);
+		}
+
+		// ... and writing one IN: route A's `move_mac`.
+		void accWrite(const uint32_t _n, const uint32_t _v)
+		{
+			if(g_emac.macsr & g_macsrFractional)
+				g_emac.acc[_n] = static_cast<int64_t>(static_cast<int32_t>(_v)) << 8;
+			else if(g_emac.macsr & g_macsrSigned)
+				g_emac.acc[_n] = static_cast<int64_t>(static_cast<int32_t>(_v));
+			else
+				g_emac.acc[_n] = static_cast<int64_t>(_v);
+		}
+
+		// The extension registers, exactly as route A's `get_mac_extf` /
+		// `get_mac_exti` / `set_mac_extf` read and write them. Nothing this
+		// firmware does reaches them on the M6c path; they are here so that a
+		// path that DOES cannot quietly get a different answer.
+		uint32_t accExtRead(const uint32_t _lo)
+		{
+			const auto a0 = static_cast<uint64_t>(g_emac.acc[_lo]);
+			const auto a1 = static_cast<uint64_t>(g_emac.acc[_lo + 1]);
+			if(!(g_emac.macsr & g_macsrFractional))
+				return static_cast<uint32_t>(((a0 >> 32) & 0xffff) | ((a1 >> 16) & 0xffff0000));
+			uint32_t v = static_cast<uint32_t>(a0 & 0x00ff);
+			v |= static_cast<uint32_t>((a0 >> 32) & 0xff00);
+			v |= static_cast<uint32_t>((a1 << 16) & 0x00ff0000);
+			v |= static_cast<uint32_t>((a1 >> 16) & 0xff000000);
+			return v;
+		}
+
+		void accExtWrite(const uint32_t _lo, const uint32_t _v)
+		{
+			int64_t res = g_emac.acc[_lo] & 0xffffffff00ll;
+			res |= static_cast<int64_t>(static_cast<int16_t>(_v & 0xff00)) << 32;
+			res |= _v & 0xff;
+			g_emac.acc[_lo] = res;
+			res = g_emac.acc[_lo + 1] & 0xffffffff00ll;
+			res |= static_cast<int64_t>(static_cast<int32_t>(_v & 0xff000000)) << 16;
+			res |= (_v >> 16) & 0xff;
+			g_emac.acc[_lo + 1] = res;
+		}
 	}
 
 	// The whole EMAC, as the MCF5445x does it and as the firmware's own
@@ -294,98 +358,248 @@ namespace ot::v4e
 	// upper 40 bits are accumulated -- so `movclrl` of the result yields
 	// (a * b) >> 31, not >> 32. `msac` SUBTRACTS, and which of the two it is
 	// comes from bit 8 of the EXTENSION word, never from the opcode word.
+	// THE WHOLE EMAC, and every field below came out of `m68k-elf-as
+	// -mcpu=5475` / `objdump -m m68k:cfv4e`, never out of a reading of the
+	// manual (standing rule 3). The listings are quoted beside each rule.
+	//
+	// ⚠️ THE FIRST VERSION OF THIS FUNCTION GOT FOUR FIELDS WRONG AND STILL
+	// PASSED THE EMAC GATE, because every case the gate covered used acc0,
+	// two data registers and no parallel load -- the one combination in which
+	// all four defects are invisible (measured 8 Sep 2026, O6):
+	//   1. the ACCUMULATOR NUMBER was read as ext bit 4 | ext bit 9; it is
+	//      opcode bit 7 (LOW) and ext bit 4 (HIGH) -- and in the LOAD form
+	//      the low bit is INVERTED (route A's `_emac_load_shim` carries the
+	//      same `((~op >> 7) & 1)`, and objdump agrees: acc0 is `a498`,
+	//      acc1 `a418`). The frame builder uses all four accumulators.
+	//   2. an ADDRESS REGISTER source was read as the data register of the
+	//      same number: `macl %a2,%d0` (`a08a`) multiplied d2, not a2.
+	//   3. the two operand-half bits were applied to the wrong operands
+	//      (`macw %d0u,%d1l` is ext 0x0040: bit 6 is the FIRST operand's).
+	//   4. the parallel load handled ONLY (An)+, and the firmware's frame
+	//      routine at 0x40003738 uses (An) and (d16,An) as well -- the
+	//      (d16,An) form is SIX bytes and skipping its displacement word
+	//      desynchronised the instruction stream, which is what actually
+	//      stopped the port (an invented opcode two instructions later).
+	// The gate now covers all four.
 	Result emac(Machine& _m, const uint32_t _opcode)
 	{
-		// movel %dn,%macsr  -- 1010 1001 0000 0rrr  (a900 = from d0)
-		if((_opcode & 0xfff8) == 0xa900)
+		// ---- the register moves: `1010 sss 1 d c eeeeee` -------------------
+		// sss (bits 11-9) names the EMAC register: 0..3 = ACC0..3, 4 = MACSR,
+		// 5 = ACCext01, 6 = MASK, 7 = ACCext23. Bit 8 is 1 for this family and
+		// 0 for every MAC, which is what tells them apart. Bit 7 is the
+		// direction (0 = <ea> into the EMAC register, 1 = out of it), bit 6
+		// clears the accumulator on the way out (`movclr`), and bits 5-0 are
+		// an <ea>: mode 0 = Dn, mode 1 = An, mode 7 reg 4 = #imm.
+		//
+		// ✅ m68k-elf-as -mcpu=5475:
+		//     a900  movel %d0,%macsr        a90c  movel %a4,%macsr
+		//     a93c 0000 0020  movel #32,%macsr     <- the frame handler's own,
+		//                                             at 0x4000aeda
+		//     a980  movel %macsr,%d0        ad81  movel %mask,%d1
+		//     ab84  movel %accext01,%d4     af85  movel %accext23,%d5
+		//     a100  movel %d0,%acc0         a180  movel %acc0,%d0
+		//     a1c0  movclrl %acc0,%d0       a7c7  movclrl %acc3,%d7
+		if(_opcode & 0x0100)
 		{
-			g_emac.macsr = reg(_m, dReg(_opcode & 7));
-			return Result::Handled;
-		}
-		// movclrl %accN,%dn -- 1010 0rrr 11 00 00NN, clears the accumulator
-		if((_opcode & 0xf1f0) == 0xa1c0)
-		{
-			const uint32_t dn = (_opcode >> 9) & 7;
-			const uint32_t acc = _opcode & 3;
-			setReg(_m, dReg(dn), g_emac.acc[acc]);
-			g_emac.acc[acc] = 0;
-			g_emac.ext[acc] = 0;
-			return Result::Handled;
-		}
-		// movel %accN,%dn (no clear) -- a383 = acc1 -> d3
-		if((_opcode & 0xf1f0) == 0xa180)
-		{
-			setReg(_m, dReg((_opcode >> 9) & 7), g_emac.acc[_opcode & 3]);
-			return Result::Handled;
-		}
-		// movel %accext01,%dn / %accext23 -- ab84
-		if((_opcode & 0xf1f0) == 0xa980 || (_opcode & 0xf1f0) == 0xab80)
-		{
-			const bool hi = (_opcode & 0x0200) != 0;
-			const uint32_t v = hi
-				? ((g_emac.ext[2] & 0xff) | ((g_emac.ext[3] & 0xff) << 8))
-				: ((g_emac.ext[0] & 0xff) | ((g_emac.ext[1] & 0xff) << 8));
-			setReg(_m, dReg((_opcode >> 9) & 7), v);
+			const uint32_t which = (_opcode >> 9) & 7;
+			const bool out = (_opcode & 0x0080) != 0;
+			const bool clear = (_opcode & 0x0040) != 0;
+			const uint32_t mode = (_opcode >> 3) & 7;
+			const uint32_t rn = _opcode & 7;
+
+			const auto readEa = [&]() -> uint32_t
+			{
+				if(mode == 0)	return reg(_m, dReg(rn));
+				if(mode == 1)	return reg(_m, aReg(rn));
+				if(mode == 7 && rn == 4)
+				{
+					const uint32_t hi = fetch16(_m);
+					return (hi << 16) | fetch16(_m);
+				}
+				return 0;
+			};
+			if(mode > 1 && !(mode == 7 && rn == 4))
+				return Result::Unhandled;			// no other <ea> is reached; be loud
+
+			if(!out)
+			{
+				const auto v = readEa();
+				switch(which)
+				{
+				case 4: g_emac.macsr = v; break;
+				case 5: accExtWrite(0, v); break;
+				case 6: g_emac.mask = v; break;
+				case 7: accExtWrite(2, v); break;
+				default: accWrite(which, v); break;
+				}
+				return Result::Handled;
+			}
+			uint32_t v = 0;
+			switch(which)
+			{
+			case 4: v = g_emac.macsr; break;
+			case 5: v = accExtRead(0); break;
+			case 6: v = g_emac.mask; break;
+			case 7: v = accExtRead(2); break;
+			default:
+				v = accRead(which);
+				if(clear)
+					g_emac.acc[which] = 0;
+				break;
+			}
+			setReg(_m, mode == 1 ? aReg(rn) : dReg(rn), v);
 			return Result::Handled;
 		}
 
-		// MAC / MSAC, with or without a load. The opcode word carries the two
-		// source registers and the addressing mode; the EXTENSION word carries
-		// the accumulator, the subtract bit and the operand halves.
+		// ---- MAC / MSAC ----------------------------------------------------
+		// The extension word is common to both forms:
+		//     bit 11 size (1 = long), bits 10-9 scale, bit 8 SUBTRACT,
+		//     bit 7 upper half of Rx, bit 6 upper half of Ry, bit 5 the '&'
+		//     mask form, bit 4 the accumulator's HIGH bit.
+		// ✅ `macw %d0u,%d1l,%acc0` is `a200 0040` and `macw %d0l,%d1u,%acc0`
+		// is `a200 0080`, which is what pins bit 6 to the FIRST operand;
+		// `macl %d0,%d1,<<,%acc2` is `a200 0a10`, which pins the scale.
 		const uint16_t ext = fetch16(_m);
-		const uint32_t ry = (_opcode >> 9) & 7;
-		const uint32_t rx = _opcode & 7;
-		const bool subtract = (ext & 0x0100) != 0;			// ⚠️ EXTENSION word,
-															// not the opcode word
-		const uint32_t accN = ((ext >> 4) & 1) | ((ext >> 8) & 2);
-		const bool wordOp = (ext & 0x0800) == 0;			// size: 0 = word, 1 = long
-		const bool upperY = (ext & 0x0040) != 0;
-		const bool upperX = (ext & 0x0080) != 0;
-
-		const uint32_t rawY = reg(_m, dReg(ry));
-		const uint32_t rawX = reg(_m, dReg(rx));
-
-		int64_t product;
-		if(wordOp)
-		{
-			const auto y = static_cast<int16_t>(upperY ? (rawY >> 16) : (rawY & 0xffff));
-			const auto x = static_cast<int16_t>(upperX ? (rawX >> 16) : (rawX & 0xffff));
-			product = static_cast<int64_t>(y) * static_cast<int64_t>(x);
-		}
-		else
-		{
-			product = static_cast<int64_t>(static_cast<int32_t>(rawY))
-					* static_cast<int64_t>(static_cast<int32_t>(rawX));
-		}
-
-		// FRACTIONAL: the product is shifted left one into 2.62 and the upper
-		// 40 bits accumulate, which is a signed >> 31 by the time `movclrl`
-		// reads the low longword. INTEGER mode accumulates the product itself.
-		// ⚠️ Getting this wrong by one bit is exactly the Unicorn defect that
-		// halved every recorder length for a week.
-		int64_t addend;
-		if(macsr(_m) & g_macsrFractional)
-			addend = (product << 1) >> 32;
-		else
-			addend = product;
-
-		auto acc = static_cast<int64_t>(static_cast<int32_t>(g_emac.acc[accN]));
-		acc = subtract ? acc - addend : acc + addend;
-		g_emac.acc[accN] = static_cast<uint32_t>(acc);
-		g_emac.ext[accN] = static_cast<uint32_t>((acc >> 32) & 0xff);
-
-		// The load half of a `macl %d0,%d1,%a0@+,%d2,%acc1`: mode 3 in the
-		// opcode word's bits 3-5, destination register in the extension word's
-		// top nibble. Only post-increment appears in this firmware.
 		const uint32_t mode = (_opcode >> 3) & 7;
-		if(mode == 3)
+		const bool subtract = (ext & 0x0100) != 0;			// ⚠️ EXTENSION word,
+															// never the opcode word
+		const bool wordOp = (ext & 0x0800) == 0;
+		const bool upperRx = (ext & 0x0080) != 0;
+		const bool upperRy = (ext & 0x0040) != 0;
+		if(ext & 0x0020)		// the '&' form ANDs the loaded value with MASK
+			return Result::Unhandled;			// not reached by this firmware; be loud
+		if((ext >> 9) & 3)		// a scale factor (<< or >>) -- likewise
+			return Result::Unhandled;
+
+		uint32_t rx4 = 0, ry4 = 0, accN = 0;
+		bool load = false, rwIsA = false;
+		uint32_t rw = 0, an = 0, ea = 0;
+		if(mode <= 1)
 		{
-			const uint32_t an = rx;
-			const uint32_t dst = (ext >> 12) & 7;
-			const auto a = reg(_m, aReg(an));
-			const uint32_t loaded = (static_cast<uint32_t>(_m.read16(a)) << 16) | _m.read16(a + 2);
-			setReg(_m, aReg(an), a + 4);
-			setReg(_m, dReg(dst), loaded);
+			// ✅ Plain: `a003 0810 macl %d3,%d0,%acc2`, `a08a 0800 macl
+			// %a2,%d0,%acc1`, `a040 0800 macl %d0,%a0,%acc0`. Rx is opcode
+			// bits 11-9 with bit 6 as its A/D flag; Ry is bits 3-0, so the
+			// <ea> mode field being 1 IS Ry's A/D flag.
+			rx4 = ((_opcode >> 9) & 7) | (((_opcode >> 6) & 1) << 3);
+			ry4 = _opcode & 0x0f;
+			accN = ((_opcode >> 7) & 1) | (((ext >> 4) & 1) << 1);
+		}
+		else if(mode >= 2 && mode <= 5)
+		{
+			// ✅ With a parallel load: `a498 1800 macl %d0,%d1,%a0@+,%d2,%acc0`.
+			// Opcode bits 11-9 are Rw (the load's destination) with bit 6 its
+			// A/D flag, bits 5-3/2-0 are the load's <ea>, and BOTH multiply
+			// sources move into the extension word: bits 15-12 = Rx, bits 3-0
+			// = Ry, each 4-bit with 8..15 meaning An.
+			//
+			// ⚠️ THE ACCUMULATOR'S LOW BIT IS INVERTED HERE and this is not a
+			// guess: objdump reads `a498 1800` as acc0 and `a418 1800` as
+			// acc1, and route A's `_emac_load_shim` carries the same
+			// `((~op >> 7) & 1)`. Both readings are binutils', so a chip that
+			// disagreed would put every frame's arithmetic in the wrong
+			// accumulator in BOTH emulators -- what would falsify it is a
+			// hardware capture, which nobody has.
+			load = true;
+			rw = (_opcode >> 9) & 7;
+			rwIsA = (_opcode & 0x0040) != 0;
+			an = _opcode & 7;
+			rx4 = (ext >> 12) & 0x0f;
+			ry4 = ext & 0x0f;
+			accN = ((~_opcode >> 7) & 1) | (((ext >> 4) & 1) << 1);
+
+			// The parallel load is ALWAYS a longword (route A's shim says so
+			// in as many words), and only these four modes exist.
+			const auto base = reg(_m, aReg(an));
+			switch(mode)
+			{
+			case 2: ea = base; break;
+			case 3: ea = base; setReg(_m, aReg(an), base + 4); break;
+			case 4: ea = base - 4; setReg(_m, aReg(an), ea); break;
+			default:
+				{
+					const auto d16 = static_cast<int16_t>(fetch16(_m));
+					ea = base + static_cast<uint32_t>(static_cast<int32_t>(d16));
+				}
+				break;
+			}
+		}
+		else
+		{
+			return Result::Unhandled;
+		}
+
+		const auto readOperand = [&_m](const uint32_t _r4)
+		{
+			return (_r4 & 8) ? reg(_m, aReg(_r4 & 7)) : reg(_m, dReg(_r4 & 7));
+		};
+		const uint32_t rawX = readOperand(rx4);
+		const uint32_t rawY = readOperand(ry4);
+
+		// The operands. ✅ Route A's `gen_mac_extract_word`: in FRACTIONAL mode
+		// a 16-bit half is placed in the HIGH half of a 32-bit value (so it is
+		// multiplied as a 1.31 fraction); in signed integer mode it is
+		// sign-extended, and in unsigned integer mode zero-extended.
+		const bool fi = (macsr(_m) & g_macsrFractional) != 0;
+		const bool su = (macsr(_m) & g_macsrSigned) != 0;
+		const auto half = [fi, su](const uint32_t _v, const bool _upper) -> uint32_t
+		{
+			if(fi)
+				return _upper ? (_v & 0xffff0000u) : (_v << 16);
+			if(su)
+				return _upper ? static_cast<uint32_t>(static_cast<int32_t>(_v) >> 16)
+							  : static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(_v)));
+			return _upper ? (_v >> 16) : (_v & 0xffffu);
+		};
+		const uint32_t opX = wordOp ? half(rawX, upperRx) : rawX;
+		const uint32_t opY = wordOp ? half(rawY, upperRy) : rawY;
+
+		// ✅ Route A's three multiply helpers, verbatim in shape:
+		//   fractional (`macmulf`, as patched by
+		//   tools/unicorn_emac_fractional.patch): a SIGNED product shifted
+		//   LEFT one into 1.63 and then >> 24 -- the accumulator's own
+		//   alignment, EIGHT BITS FINER than what `movclrl` returns. ⚠️ It is
+		//   the >>24 that matters: shifting each product all the way to >>32
+		//   before accumulating loses a bit of the subtraction (see the Emac
+		//   comment above, and the M6c gate that caught it).
+		//   signed integer (`macmuls`): the product truncated to 48 bits.
+		//   unsigned integer (`macmulu`): the product masked to 40 bits.
+		int64_t addend;
+		if(fi)
+		{
+			int64_t product = static_cast<int64_t>(static_cast<int32_t>(opX))
+							* static_cast<int64_t>(static_cast<int32_t>(opY));
+			product <<= 1;
+			addend = product >> 24;			// MACSR's RT (round) bit is clear here
+		}
+		else if(su)
+		{
+			const auto product = static_cast<int64_t>(
+				static_cast<uint64_t>(opX) * static_cast<uint64_t>(opY));
+			addend = (product << 24) >> 24;
+		}
+		else
+		{
+			addend = static_cast<int64_t>(
+				(static_cast<uint64_t>(opX) * static_cast<uint64_t>(opY)) & ((1ull << 40) - 1));
+		}
+
+		int64_t acc = g_emac.acc[accN];
+		acc = subtract ? acc - addend : acc + addend;
+		// `macsatf` with OMC clear: sign-extend from 48 bits (it also sets V
+		// and the per-accumulator PAV bit, which nothing here reads).
+		if(fi)
+			acc = (acc << 16) >> 16;
+		g_emac.acc[accN] = acc;
+
+		// The load half. ⚠️ Route A writes Rw as a DATA register whatever the
+		// A/D bit says; the bit is 0 at every site this firmware reaches
+		// (`a090`, `a2a8`, `a099`, `a019` all have it clear), so the two
+		// emulators agree today and would diverge only on a form neither has
+		// met. The bit is honoured here because the encoding says so.
+		if(load)
+		{
+			const uint32_t loaded = (static_cast<uint32_t>(_m.read16(ea)) << 16) | _m.read16(ea + 2);
+			setReg(_m, rwIsA ? aReg(rw) : dReg(rw), loaded);
 		}
 		return Result::Handled;
 	}
@@ -448,6 +662,46 @@ namespace ot::v4e
 			setNZ(_m, v);
 			if(!writeEaLong(_m, mode, rn, v))
 				return Result::Unhandled;
+			return Result::Handled;
+		}
+
+		// ---- SATS ----------------------------------------------------------
+		// `0100 1100 1000 0rrr` -- ✅ `m68k-elf-as -mcpu=5475` gives 4c80 /
+		// 4c81 / 4c87 for %d0 / %d1 / %d7, and objdump reads the firmware's
+		// own 4c80 at 0x4000346a as `satsl %d0`.
+		//
+		// The site is the per-frame EMAC routine (0x400031a0) that the frame
+		// handler's completion state 5 calls, so it is on the M6c path and
+		// nowhere near the boot: the port ran O1..O5 and the whole project
+		// load without ever meeting it, then stopped dead there the moment
+		// the frame clock had something to do (measured 8 Sep 2026, O6 --
+		// "unimplemented opcode 4c80", 0 frames delivered).
+		//
+		// ✅ Semantics measured in ROUTE A'S ENGINE (six cases,
+		// `tools/ot_emu/test_emac.cpp` carries them): with V set, a result
+		// whose sign bit is CLEAR saturates to 0x80000000 and one whose sign
+		// bit is SET saturates to 0x7fffffff -- the end of the range the
+		// arithmetic wrapped away from; with V clear the value is untouched.
+		//
+		// ⚠️ THE FLAGS DISAGREE WITH THE MANUAL AND THIS FOLLOWS ROUTE A.
+		// The CFPRM says N and Z are set from the result and V and C cleared.
+		// Route A's engine updates **N only** -- a pre-set Z survives a
+		// non-zero result and V/C are left as they were. Route A is the
+		// oracle, and at the only site the firmware reaches, nothing between
+		// the `sats` and the next flag-setting instruction reads the CCR
+		// (three `movclrl`s and a `movel`). What would falsify it: a firmware
+		// site that branches on Z or V after a SATS; then the manual wins and
+		// both emulators are wrong.
+		if((_opcode & 0xfff8) == 0x4c80)
+		{
+			const uint32_t rn = _opcode & 7;
+			uint32_t v = reg(_m, dReg(rn));
+			auto sr = reg(_m, M68K_REG_SR);
+			if(sr & g_ccrV)
+				v = (v & 0x80000000u) ? 0x7fffffffu : 0x80000000u;
+			sr = (sr & ~g_ccrN) | ((v & 0x80000000u) ? g_ccrN : 0u);
+			setReg(_m, M68K_REG_SR, sr);
+			setReg(_m, dReg(rn), v);
 			return Result::Handled;
 		}
 

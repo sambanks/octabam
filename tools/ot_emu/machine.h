@@ -54,7 +54,17 @@ namespace ot
 
 		bool contains(const uint32_t _a, const uint32_t _size) const
 		{
-			return _a >= base && (_a - base) + _size <= data.size();
+			// ⚠️ `(_a - base) + _size <= data.size()` OVERFLOWS. With the
+			// region at 0x00000000, an access at 0xffffffff gives offset
+			// 0xffffffff and 0xffffffff + 1 == 0, so the region claimed the
+			// address and the write went 4 GB past its buffer. ✅ Measured
+			// 8 Sep 2026 (O6): the frame handler's `moveb %d0,%a0@-` with a0
+			// = 0 writes 0xffffffff, and the emulator died there with a bare
+			// SIGSEGV inside Musashi. Subtract instead of add.
+			if(_a < base)
+				return false;
+			const auto off = _a - base;
+			return off < data.size() && data.size() - off >= _size;
 		}
 	};
 
@@ -184,6 +194,21 @@ namespace ot
 		uint32_t peek32(uint32_t _addr);
 		void     poke32(uint32_t _addr, uint32_t _val);
 
+		// Route A's `watch_mem`: every write into a small range, with the PC
+		// of the instruction making it. Used by the M6c trig log (the
+		// per-track live nibble at 0x46104d15) and by the load's own watch on
+		// PART_PTR, which is how the engine's BANK= parse is told apart from
+		// every other writer of that word.
+		//
+		// ⚠️ THE PC IS `M68K_REG_PPC`, NOT `pc()`. Musashi's PC is the fetch
+		// pointer -- already past the instruction and its extension words by
+		// the time the write executes -- so a watch that reported `pc()` would
+		// name the NEXT instruction, and route A's site addresses would never
+		// match. PPC is the address of the instruction being executed.
+		using WriteWatch = std::function<void(uint32_t _addr, uint8_t _size, uint32_t _val, uint32_t _pc)>;
+		void addWriteWatch(uint32_t _begin, uint32_t _end, WriteWatch _cb);
+		uint32_t currentPc() const;
+
 		// Map a span of plain memory after construction. Route A's `install`
 		// adds two of these over the boot map (`Rtos::install`), and an
 		// overlap with something already mapped is IGNORED, not an error --
@@ -223,6 +248,17 @@ namespace ot
 		// behaviour; `setAutoMap(false)` restores the all-ones stub for
 		// diagnosis, and then this counter is the work list again.
 		void setAutoMap(bool _on) { m_autoMap = _on; }
+		// ⚠️ A RUNAWAY AUTO-MAP IS A BUG, AND WITHOUT A CEILING IT PRESENTS AS
+		// A CRASH IN THE EMULATOR RATHER THAN AS A FINDING ABOUT THE FIRMWARE.
+		// Measured 8 Sep 2026 (O6): a `moveb %d0,%a0@-` loop walking down
+		// through unmapped memory grew a 4 KB page per 4 KB of address space
+		// until the process died -- SIGSEGV bare, SIGBUS under ASan, no report
+		// printed either way, because the port's own stdout never flushed. The
+		// limit turns that into "stopped: auto-map limit, N pages, top pc X",
+		// which names the loop. Route A's own growth on the golden path is 4
+		// spans / ~200 MB before the card maps them explicitly, so the default
+		// is well clear of anything faithful.
+		void setAutoMapLimit(uint64_t _pages) { m_autoMapLimit = _pages; }
 		uint64_t autoMappedPages() const { return m_autoPages.size(); }
 
 		struct Unmapped { char kind; uint32_t pc, addr; uint8_t size; uint32_t val; };
@@ -279,6 +315,9 @@ namespace ot
 		std::vector<Access> m_periphTrace;
 		bool m_periphTraceOn = false;
 		void noteUnmapped(char _kind, uint32_t _addr, uint8_t _size, uint32_t _val);
+		struct Watch { uint32_t begin, end; WriteWatch cb; };
+		std::vector<Watch> m_writeWatches;
+		void noteWatchedWrite(uint32_t _addr, uint8_t _size, uint32_t _val);
 		std::vector<Unmapped> m_unmapped;
 		uint64_t m_unmappedCount = 0, m_unmappedReads = 0;
 		std::unordered_map<uint32_t, uint64_t> m_unmappedPages, m_unmappedPcs, m_unmappedReadPcs;
@@ -291,6 +330,9 @@ namespace ot
 		uint32_t m_lastAutoPage = ~0u;			// a one-entry cache: these loops are sequential
 		std::vector<uint8_t>* m_lastAutoData = nullptr;
 		uint8_t* autoByte(uint32_t _addr, bool _create);
+		void badWrite(const char* _what, uint32_t _addr, uint8_t _size);
+		uint64_t m_autoMapLimit = 65536;		// 4 KB pages: 256 MB
+		std::vector<uint8_t> m_autoScrap;		// where a write goes once the limit is hit
 		std::function<void(Machine&, uint32_t)> m_step;
 		AckHook m_ack;
 		uint64_t m_instructions = 0;

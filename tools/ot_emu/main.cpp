@@ -38,6 +38,11 @@ namespace
 
 int main(int _argc, char** _argv)
 {
+	// ⚠️ LINE-BUFFERED, ALWAYS. Redirected to a file, printf is block-buffered,
+	// so a run that dies mid-way writes NOTHING -- the O6 auto-map runaway
+	// crashed three times before anyone saw a line of the report that would
+	// have named it. Same family as the panic printer O7 could not finish.
+	std::setvbuf(stdout, nullptr, _IOLBF, 0);
 	std::string image = "out/raw/section_3_MAIN_OS.bin";
 	uint64_t maxInstructions = 50'000'000;	// route A's own budget
 	bool showPeripherals = false;
@@ -56,6 +61,13 @@ int main(int _argc, char** _argv)
 	double runMs = 1000.0;
 	double ips = 3990.0;
 	bool frame = false;			// the DSP frame clock; off by default, as in route A
+	bool sequencer = false;		// M6c: load, start the transport, run the sequencer for real
+	int frames = 400;			// with --sequencer: DSP frames to run after the transport start
+	int pokeTrig = 0;			// with --sequencer: set a trig on track 1 at this step (1-64)
+	bool internalClock = false;	// with --sequencer: clear CLOCK RECEIVE
+	int bankOverride = -1;		// with --sequencer: switch to this bank (default: the file's saved bank)
+	std::string m6cGolden;		// the M6c facts as JSON, for tools/ot_emu/oracle.py
+	std::string watchMem;		// ADDR,LEN -- log every write into that range (route A's own flag)
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -79,6 +91,14 @@ int main(int _argc, char** _argv)
 		else if(a == "--ms" && i + 1 < _argc)	runMs = std::atof(_argv[++i]);
 		else if(a == "--ips" && i + 1 < _argc)	ips = std::atof(_argv[++i]);
 		else if(a == "--frame")					frame = true;
+		else if(a == "--sequencer")				sequencer = true;
+		// --sequencer needs a mounted card and a loaded project: it implies both.
+		else if(a == "--frames" && i + 1 < _argc)	frames = std::atoi(_argv[++i]);
+		else if(a == "--poke-trig" && i + 1 < _argc)	pokeTrig = std::atoi(_argv[++i]);
+		else if(a == "--internal-clock")			internalClock = true;
+		else if(a == "--bank" && i + 1 < _argc)		bankOverride = std::atoi(_argv[++i]);
+		else if(a == "--m6c-golden" && i + 1 < _argc)	m6cGolden = _argv[++i];
+		else if(a == "--watch-mem" && i + 1 < _argc)	watchMem = _argv[++i];
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -86,6 +106,9 @@ int main(int _argc, char** _argv)
 			return 2;
 		}
 	}
+
+	if(sequencer)
+		mount = true;			// M6c needs the card mounted and the project loaded
 
 	const auto img = readFile(image);
 	if(img.empty())
@@ -147,6 +170,15 @@ int main(int _argc, char** _argv)
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
 		}
 		rtos.install();
+		if(!watchMem.empty())
+		{
+			const auto comma = watchMem.find(',');
+			const auto wa = static_cast<uint32_t>(std::strtoul(watchMem.c_str(), nullptr, 0));
+			const auto wl = comma == std::string::npos ? 4u
+				: static_cast<uint32_t>(std::strtoul(watchMem.c_str() + comma + 1, nullptr, 0));
+			rtos.watchMem(wa, wl);
+			std::printf("watch-mem  : %#x..%#x\n", wa, wa + wl - 1);
+		}
 		const auto rs = rtos.run(runMs);
 		static const char* const g_rtosNames[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
 		std::printf("rtos       : %s -- %s\n", g_rtosNames[static_cast<int>(rs)], rtos.why().c_str());
@@ -169,18 +201,29 @@ int main(int _argc, char** _argv)
 		// before the request can be posted, and then run on so SYS can do it.
 		if(mount && card)
 		{
+			ot::Rtos::LoadResult load;
 			{
 				if(pcRing)
 					rtos.armPcRing(4096, pcRing);
 				const auto forces0 = rtos.forces();
 				const auto disp0 = rtos.dispatches().size();
 				m.setPeriphTrace(!periphTrace.empty());
-				const auto r = rtos.loadProjectLive(setName, projectName, loadMs);
+				load = rtos.loadProjectLive(setName, projectName, loadMs);
+				const auto& r = load;
 				m.setPeriphTrace(false);
 				std::printf("             card ready: %#x, LOAD PROJECT posted: %s, "
 					"PART_PTR: %#x, %.1f ms emulated%s%s\n",
 					r.ready, r.posted ? "yes" : "no", r.partPtr, r.ms,
 					r.postWhy.empty() ? "" : " | post: ", r.postWhy.c_str());
+				// ⚠️ PART_PTR reads bank A's blob base BEFORE any load, so it
+				// is not on its own evidence that a project loaded (O7). The
+				// bank the engine PARSED is: it comes from the write the
+				// BANK= parse makes, and it is the number route A reports.
+				std::printf("             saved_bank: %d, final bank: %u%s\n",
+					r.savedBank, r.finalBank,
+					r.savedBank >= 0 && r.finalBank != static_cast<uint32_t>(r.savedBank)
+						? "  (sys applied the engine's own reset-time 'select bank 0' "
+						  "after the BANK= parse -- RTOS_FORK.md section 7)" : "");
 				{
 					static const char* const g_loadStop[] = {"GATE", "TIME", "FAULT", "ILLEGAL"};
 					std::printf("             load run ended: %s%s%s\n",
@@ -292,6 +335,133 @@ int main(int _argc, char** _argv)
 			for(size_t i = 0; i < card->log().size() && i < 12; ++i)
 				std::printf("             %-16s lba %-8u count %u\n", card->log()[i].what.c_str(),
 					card->log()[i].lba, card->log()[i].count);
+
+			// -- M6c: the sequencer, for real (milestone O6) -----------------
+			// Route A's `--sequencer` branch, step for step. The order is
+			// load-bearing and every step of it is compensation or detour that
+			// route A documents: the bank switch and the sequencer re-select
+			// compensate for an emulator ordering defect (the unit comes up on
+			// the saved bank and plays it), and the transport start is the
+			// "M5 detour" RTOS_FORK.md §5 allows for M6c.
+			if(sequencer)
+			{
+				const int bank = bankOverride >= 0 ? bankOverride : load.savedBank;
+				uint32_t finalBank = load.finalBank;
+				if(bank >= 0 && finalBank != static_cast<uint32_t>(bank))
+					finalBank = rtos.selectBankLive(static_cast<uint32_t>(bank));
+				const auto pattern = m.peek32(ot::g_curPattern) >> 24;
+				const auto seq = rtos.seqSelectLive(finalBank, pattern);
+				if(internalClock)
+					std::printf("midi byte  : %#04x -> clock receive cleared\n", rtos.internalClock());
+				// The frame clock and the exact instruction clock come on
+				// HERE, after the boot and the load, exactly as route A turns
+				// them on: on hardware the frame exchange runs from boot, and
+				// nothing the trig test reads depends on it having done so.
+				rtos.setFrame(true);
+				if(!rtos.startTransportLive())
+					std::printf("transport  : FAILED -- %s\n", rtos.why().c_str());
+				if(pokeTrig)
+					std::printf("poke trig  : track 1 step %d -> mask byte 7 = %#04x\n",
+						pokeTrig, rtos.pokeTrig(static_cast<uint32_t>(pokeTrig)));
+				rtos.installTrigLog();
+				// Frame 0 = the first frame delivered after the transport
+				// start returned, which is what the cold tool calls frame 0:
+				// the two reports compare directly.
+				const auto frame0 = rtos.frameCount() + 1;
+				const auto ticks0 = rtos.ticks();
+				const auto ackTail = rtos.acks().size();
+				if(pcRing)
+					rtos.armPcRingNow(pcRing);
+				const auto target = frame0 + static_cast<uint64_t>(frames);
+				const auto rs2 = rtos.runUntil(frames * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0,
+					[&] { return rtos.frameCount() >= target; });
+				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
+				std::printf("sequencer  : playing bank %u pattern %u "
+					"(re-selected through the load's own last step)\n", seq.first, seq.second);
+				std::printf("frames run : %llu since transport start (target %d), run ended %s%s%s\n",
+					static_cast<unsigned long long>(rtos.frameCount() - frame0), frames,
+					g_seqStop[static_cast<int>(rs2)],
+					rs2 == ot::Rtos::Stop::Gate ? "" : " -- ", rs2 == ot::Rtos::Stop::Gate ? "" : rtos.why().c_str());
+				// ⚠️ THREE CAUSES, ONE SYMPTOM. A frame that never arrives is a
+				// masked source, a source installed at level 0, or a line that
+				// is not asserting -- and the eDMA count says whether the
+				// handler that did run got as far as kicking its chain.
+				std::printf("             INTC0 src 1 (frame): masked %d, icr %u, asserting %d, latch %d; "
+					"src 32 (tick): icr %u\n",
+					rtos.intc0().masked(1), rtos.intc0().icr(1), rtos.intc0().assertedSource(1),
+					rtos.framePending(), rtos.intc0().icr(32));
+				{
+					std::map<std::pair<uint32_t, uint32_t>, uint64_t> byVec;
+					const auto& ks = rtos.acks();
+					for(size_t i = ackTail; i < ks.size(); ++i)
+						++byVec[{ks[i].vector, ks[i].slot}];
+					std::printf("             vectors acknowledged since the transport start (%zu):",
+						ks.size() - ackTail);
+					for(const auto& [key, cnt] : byVec)
+						std::printf(" v%#x->%#x x%llu", key.first, key.second, static_cast<unsigned long long>(cnt));
+					std::printf("\n");
+					for(size_t i = ks.size() > 8 ? ks.size() - 8 : 0; i < ks.size(); ++i)
+						std::printf("               [%9.1f] v%#04x lvl %u in %-10s at pc %#x -> slot %#x\n",
+							ks[i].sample, ks[i].vector, ks[i].level, ot::taskName(ks[i].tcb), ks[i].pc, ks[i].slot);
+				}
+				std::printf("             ticks %llu, eDMA transfers %llu\n",
+					static_cast<unsigned long long>(rtos.ticks() - ticks0),
+					static_cast<unsigned long long>(rtos.edmaStarted()));
+				if(pcRing && rtos.pcRingArmed())
+				{
+					const auto& ring = rtos.pcRing();
+					const auto pos = rtos.pcRingPos();
+					const size_t n = std::min(ring.size(), pos);
+					std::printf("             pc ring (last %zu of %zu instructions since the transport start):\n",
+						n, pos);
+					uint32_t last = 0; uint64_t runlen = 0;
+					for(size_t i = 0; i < n; ++i)
+					{
+						const auto v = ring[(pos - n + i) % ring.size()];
+						if(v == last) { ++runlen; continue; }
+						if(runlen > 1) std::printf(" (x%llu)", static_cast<unsigned long long>(runlen));
+						if(i) std::printf("\n");
+						std::printf("               %#010x", v);
+						last = v; runlen = 1;
+					}
+					if(runlen > 1) std::printf(" (x%llu)", static_cast<unsigned long long>(runlen));
+					std::printf("\n");
+				}
+				std::printf("FW_LIVE_NIBBLE (%#x) writes (%zu), frames since transport start:\n",
+					ot::g_fwLiveNibble, rtos.liveNibbleLog().size());
+				for(const auto& w : rtos.liveNibbleLog())
+					std::printf("   frame %5lld track %u byte %#04x  nibble %x  flags %#04x  at pc %#x\n",
+						static_cast<long long>(w.frame - frame0), w.index, w.value,
+						w.value & 0xf, w.value & 0xf0, w.pc);
+				std::printf("FW_TRIG_WORDS (%#x) nonzero writes (%zu)\n",
+					ot::g_fwTrigWords, rtos.trigWordsLog().size());
+				if(!m6cGolden.empty())
+				{
+					ot::Rtos::M6c f;
+					f.frame0 = frame0;
+					f.ticks0 = ticks0;
+					f.ticks = rtos.ticks();
+					f.frames = rtos.frameCount() - frame0;
+					f.savedBank = load.savedBank;
+					f.finalBank = finalBank;
+					f.seqBank = seq.first;
+					f.seqPattern = seq.second;
+					rtos.writeM6cJson(m6cGolden, f);
+					std::printf("m6c golden : %s\n", m6cGolden.c_str());
+				}
+			}
+		}
+
+		if(!watchMem.empty())
+		{
+			// ⚠️ PRINT THEM ALL (capped only against a flood). A watch that
+			// hides its hits is the silent-instrument trap route A records
+			// twice over: an address that never fired and one that fired every
+			// frame have to look different.
+			std::printf("watch-mem  : %zu write(s)\n", rtos.memWrites().size());
+			for(const auto& w : rtos.memWrites())
+				std::printf("   [%10.1f] [%#x] <- %#x (%u) at pc %#x in %s\n",
+					w.sample, w.addr, w.val, w.size, w.pc, ot::taskName(w.tcb));
 		}
 
 		if(!serialOut.empty())

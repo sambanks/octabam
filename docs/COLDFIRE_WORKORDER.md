@@ -71,6 +71,7 @@ route A fact, not the port's problem; the golden command above already does it.
 | O3 | PIT + INTC models | `ctest` periph, 14 rules | (wired in by O4) |
 | O4 | the run loop: the kernel runs | `ctest` rtos + the oracle diff | ✅ 6 compared fields (❌ was written "8/8": the diff counted 2 it never compared); 10 created, 11 ran, 204.88 ms vs 204.95 |
 | O5 | the rest of the memory; the serial stream | `ctest` rtos + the oracle diff | ✅ 8 compared fields; route A's 4831 serial bytes matched byte for byte (❌ its account of *why* route A has the extra memory was wrong — corrected in O7) |
+| O6 | the eDMA and the frame clock; the sequencer | the M6c fidelity gate (`scripts/o6_gate.sh`) | ✅ 5 compared fields: 400 frames, 28 ticks, the trig at frame 344 track 0 bytes `0x08`/`0x18`, and the bank/pattern four -- byte-identical to route A |
 | O7 | the card, the mount, the project load | route A's ATA command log is a prefix of the port's | ✅ all 6,189 commands identical, 297 written; ⚠️ OPEN: the port runs on to 12,373 and route A stops at 6,189 at ANY budget (`COLDFIRE_PORT.md` O7) |
 
 ## Queue
@@ -156,7 +157,42 @@ That is not a defect — route A covers the same spans — but O7's card is what
 would make the two machines allocate from the same place, and it is worth
 re-checking the span list once the project loads.
 
-### O6 — the eDMA and the frame clock — **UNBLOCKED, NEXT** (O7 landed 8 Sep 2026)
+### ~~O6 — the eDMA and the frame clock~~ ✅ DONE (8 Sep 2026)
+
+See `COLDFIRE_PORT.md`. The gate is `scripts/o6_gate.sh` (stage one card image
+with route A's own staging, run both, diff strictly), and it passes: 400
+frames, **28 ticks**, the trig at **frame 344 on track 0**, bytes `0x08` then
+`0x18`, bank/pattern identical.
+
+❌ **This entry's own gate value was stale, and so was `RTOS_FORK.md` §8.4's.**
+The byte is `0x08`/`0x18`, not `0xd3`, and there are FIVE transport-start
+writes (tracks 0, 1, 2, 4, 7), not six. Route A and the cold tool agree on
+today's numbers; 🟡 the EMAC fix of 7 Sep is the likely cause and is inferred,
+not measured.
+
+Four things later milestones should know:
+
+1. **The DSP host port needs route A's two stand-in replies** (`0x20000004`
+   reads `0x0000`, `0x2000001c` toggles). Without them the frame handler
+   spins forever on the DSP's handshake — 352 M instructions, one frame
+   taken, no eDMA, and it reads as a broken frame model.
+2. **A defect in the port's own memory model can present as a crash with no
+   output at all.** `Region::contains` overflowed at `0xffffffff`; the fix
+   came with a bounds guard that stops the MACHINE, an auto-map ceiling, and
+   line-buffered stdout. Read `run ended:` — and now, if it says nothing at
+   all, suspect the buffering before the firmware.
+3. **`SATS` and `movel #imm,%macsr` are on the M6c path and nowhere else**, so
+   O1..O5 and the whole project load ran without ever meeting them.
+4. **The EMAC gate that passed since O2 covered one corner of the unit.** Five
+   fields were wrong — the accumulator number (inverted in the load form), An
+   sources, the operand-half bits, the parallel load's addressing modes, and
+   the accumulator's **48-bit `>>24` alignment**, which is the one that
+   survived everything else and was worth exactly one LSB per subtract. If a
+   port result is off by one, suspect where the truncation happens.
+
+<details><summary>the entry it replaces</summary>
+
+### O6 — the eDMA and the frame clock — UNBLOCKED, NEXT (the original)
 
 **The code is written and unit-gated; its FIDELITY gate can now run.** Do
 not re-do the model. What O6 still needs is the rest of the live-call
@@ -171,6 +207,8 @@ ticks. The oracle is `tools/emu_frames.py --project out/_testproj --frames
 400 --start --internal-clock --poke-trig 2` (RTOS_FORK.md §8). ⚠️ The
 first thing to read on any early stop is the load report's `load run
 ended:` line — O7's "stall" was an ILLEGAL that looked like one.
+
+</details>
 
 ### O7b — why the port loads twice — *(Opus, measurement first)*
 

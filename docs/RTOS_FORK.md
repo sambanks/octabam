@@ -578,11 +578,22 @@ flag.
 
 ## 8. M6c — the fidelity gate, and the three things that stood between it and route A (Fable review, 6 Sep 2026)
 
+> ❌ **RETRACTED 8 Sep 2026 (milestone O6): the BYTE below is `0x08` then
+> `0x18`, not `0xd3`, and there are FIVE transport-start writes, not six.**
+> Re-measured on the same project with the same commands: route A
+> (`--sequencer`) and the cold tool (`emu_frames.py`) both give five writes of
+> `0x10` at frame 0 (tracks 0, 1, 2, 4, 7) and `0x08` then `0x18` at frame 344
+> on track 0. The FRAME (344), the track and the tick count (28) are unchanged.
+> 🟡 The likely cause is the EMAC fix of 7 Sep (§10.16) — the byte is computed
+> by an EMAC chain in the frame handler — but nobody has re-run this section's
+> exact tree on the stock library, so that attribution is inferred. The C++
+> port reproduces the current numbers exactly (`COLDFIRE_PORT.md`, O6).
+
 `out/_testproj` is a symlink to a project **freshly saved on the unit
 6 Sep 2026** (`OCTABAM_RIG_20260906_cleared`, `~/octa/backups/`): a cold
 run against it (`tools/emu_frames.py --project out/_testproj --frames 400
 --start --internal-clock --poke-trig 2`) lands track 1's live nibble at
-**frame 344, byte `0xd3`** — the frame this document's M5 claim named; the
+**frame 344, byte `0xd3`** (❌ the byte is retracted above) — the frame this document's M5 claim named; the
 byte differs from the `0xb6` written down at the time and the cold number
 measured today is the reference, not the historical one.
 
@@ -727,8 +738,14 @@ own last step, internal clock, transport by the M5 detour, `--poke-trig
 | | cold (M5) | route A (M6c) |
 |---|---|---|
 | ticks in 400 frames | 28 | 28 (frames 1, 16, 30, 45, 59, 73, …) |
-| transport-start writes | `0x10` on tracks 0, 1, 1, 2, 4, 7 | the same six, same order |
-| the trig | track 0, byte **`0xd3`**, 344 frames after the start frame | track 0, byte **`0xd3`**, 344 frames after the start frame |
+| transport-start writes | ❌ `0x10` on tracks 0, 1, 1, 2, 4, 7 | ❌ the same six, same order |
+| the trig | ❌ track 0, byte **`0xd3`**, 344 frames after the start frame | ❌ track 0, byte **`0xd3`**, 344 frames after the start frame |
+
+❌ **The last two rows are RETRACTED (8 Sep 2026) — see the note at the head of
+§8.** Re-measured: FIVE transport-start writes of `0x10` (tracks 0, 1, 2, 4, 7)
+and the trig is bytes **`0x08` then `0x18`** on track 0, still 344 frames after
+the start frame, still 28 ticks. The two tools still agree with each other, and
+the C++ port now agrees with both.
 
 Frame numbering differs by one between the two tools (cold counts the
 first frame after the start as 0, the route-A script counted it as 1; the

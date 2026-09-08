@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -55,6 +56,33 @@ namespace ot
 	inline constexpr uint32_t g_projectName = 0x100f8378;	// current PROJECT folder
 	inline constexpr uint32_t g_postLoad    = 0x40023c7c;	// (name*) -> posts engine command 4
 	inline constexpr uint32_t g_partPtr     = 0x46c82456;	// null until a project loads
+
+	// -- M6c: the sequencer, from route A's own constants ------------------
+	// The bank blobs in RAM: PART_PTR = g_bankBlob + bank * g_bankStride,
+	// i.e. the CURRENT bank's data. 0x400e21e0 is bank A, 0x4017d520 bank B.
+	// ⚠️ PART_PTR reads the bank-A base BEFORE any load, so a non-null
+	// PART_PTR is not on its own evidence that a project loaded (O7).
+	inline constexpr uint32_t g_bankBlob        = 0x400e21e0;
+	inline constexpr uint32_t g_bankStride      = 635712;
+	inline constexpr uint32_t g_curBank         = 0x80000002;
+	inline constexpr uint32_t g_curPattern      = 0x80000004;
+	inline constexpr uint32_t g_engineBankWrite = 0x40087d44;	// LOAD PROJECT writes PART_PTR from BANK= here
+	inline constexpr uint32_t g_selectBankCase  = 21;			// sys table[20]: "select bank msg[1]"
+
+	inline constexpr uint32_t g_fwTransport   = 0x4009b964;	// (arg) transport start/stop; start posts to the UI queue
+	inline constexpr uint32_t g_fwStartTrack  = 0x4009b5c8;	// (track) promote a track to running
+	inline constexpr uint32_t g_fwSeqSelect   = 0x400a1030;	// sequencer select(bank, pattern): LOAD PROJECT's last step
+	inline constexpr uint32_t g_fwSeqBank     = 0x800065bd;	// the sequencer's own playing bank byte
+	inline constexpr uint32_t g_fwSeqPattern  = 0x800065be;	// ... and playing pattern
+	inline constexpr uint32_t g_fwMidiSettings= 0x80000028;	// project MIDI byte: bit 0 = CLOCK RECEIVE
+	inline constexpr uint32_t g_fwLiveNibble  = 0x46104d15;	// per-track byte a fired trig actually changes
+	inline constexpr uint32_t g_fwTrigWords   = 0x46104d26;	// per-track word Bryan named; zero in every run so far
+	// The sequencer tick: the frame handler's countdown expires and FORCES
+	// INTC0 source 32, whose vector is 0x60 -- and the source is never
+	// unmasked, because a forced request is not affected by the mask
+	// (MCF54455RM rev 5 §17.2.3, and RTOS_FORK.md §8.2). Counting the
+	// acknowledgements of that vector is counting ticks.
+	inline constexpr uint8_t  g_tickVector    = 0x60;
 
 	inline constexpr uint32_t g_intc0 = 0xfc048000, g_intc1 = 0xfc04c000;
 	inline constexpr uint32_t g_pit0  = 0xfc080000, g_pit1  = 0xfc084000;
@@ -103,6 +131,10 @@ namespace ot
 
 		enum class Stop { Gate, Time, Fault, Illegal };
 		Stop run(double _ms, bool _untilGate = true);
+		// The same loop -- idle skip included, which is what makes a frame
+		// run cheap -- stopping on a caller's condition instead of the gate.
+		// Returns Stop::Gate when the condition came true.
+		Stop runUntil(double _ms, const std::function<bool()>& _stop);
 
 		// Run until the PC is parked at main's spin -- what `callAsMain`
 		// needs before it can borrow the slot.
@@ -148,6 +180,67 @@ namespace ot
 		// nothing).
 		bool requestCardMount();
 
+		// -- M6c: the sequencer under the real scheduler ---------------------
+		// Turn the DSP frame clock on HERE, after the boot and the load, which
+		// is where route A's `--sequencer` turns it on -- not from boot.
+		// ✅ Route A cannot be run with it on from boot at all (a bare
+		// `Rtos(frame=True)` faults on unmapped memory before anything has
+		// primed its auto-map hook), so the from-boot form has no oracle.
+		void setFrame(bool _on);
+
+		// Switch the working bank through sys's own case -- the very message
+		// the engine's reset posts with bank 0 (RTOS_FORK.md §7): PART_PTR :=
+		// the bank's blob, the blob is copied into SRAM, the bank byte
+		// follows. Returns the bank byte.
+		uint8_t selectBankLive(uint32_t _bank, double _ms = 500.0);
+
+		// The sequencer's own bank/pattern select, the LOAD PROJECT handler's
+		// LAST step. It writes the sequencer's playing bank/pattern -- the
+		// bytes FW_START_TRACK and the step handler index the bank blob by.
+		// ⚠️ Route A needs this re-issued after the load: by the time the
+		// handler reaches its last step, `sys` has applied the engine's own
+		// reset-time "select bank 0" in the handler's real card waits, so the
+		// sequencer is left on bank A with an empty bank's pattern record.
+		// It is COMPENSATION for an emulator ordering defect, not firmware
+		// behaviour -- the unit comes up on the saved bank and plays it -- and
+		// it goes when the load's timing is made faithful.
+		std::pair<uint8_t, uint8_t> seqSelectLive(uint32_t _bank, uint32_t _pattern);
+
+		// Clear the project's CLOCK RECEIVE bit so the sequencer runs on its
+		// own clock. With it set -- as Sam's projects save it, the Rytm is
+		// master -- the frame handler takes the external-clock path and the
+		// countdown never moves: 400 frames, zero ticks, no trig.
+		uint8_t internalClock();
+
+		// Start the sequencer through the real tasks, the "M5 detour" §5
+		// allows for M6c: FW_TRANSPORT(0)'s start case only sets state and
+		// posts to the UI queue, and FW_START_TRACK(t) writes a per-track
+		// state byte directly. Neither has a wait primitive on its path, so
+		// both are safe under callAsMain.
+		bool startTransportLive();
+
+		// Set a trig on track 1 at `step` (1-64) in whichever bank PART_PTR
+		// currently names: byte 7 - (step-1)/8, bit (step-1)%8 -- the layout
+		// `ot_project.set_pattern_trig` writes on disk.
+		uint8_t pokeTrig(uint32_t _step);
+
+		// Watch the per-track live nibble and the trig words, keyed by this
+		// machine's own frame count -- route A's `install_trig_log`.
+		// Route A's `--watch-mem ADDR,LEN`: every write into a range, with the
+		// sample, the task, the PC and the value. The counterpart instrument
+		// to route A's, so a divergence can be diffed line for line instead of
+		// reasoned about.
+		struct MemWrite { double sample; uint32_t tcb, pc, addr, val; uint8_t size; };
+		void watchMem(uint32_t _addr, uint32_t _len);
+		const std::vector<MemWrite>& memWrites() const { return m_memWrites; }
+
+		void installTrigLog();
+		struct TrigWrite { uint64_t frame; uint32_t index, value, pc; };
+		const std::vector<TrigWrite>& liveNibbleLog() const { return m_liveNibble; }
+		const std::vector<TrigWrite>& trigWordsLog() const { return m_trigWords; }
+		// Sequencer ticks: acknowledgements of vector 0x60.
+		uint64_t ticks() const;
+
 		// ⚠️ The SET name is an ABSOLUTE path on the card -- the firmware's
 		// own default is "/PRESETS". Without the leading slash the project
 		// loads (relative to the root) and then every bank is "missing",
@@ -160,7 +253,16 @@ namespace ot
 		// helper: with no card it short-circuits, but once a card IS present
 		// it does real FAT lookups and BLOCKS -- and borrowing main for a
 		// call that blocks is the crash `callAsMain` warns about.
+		// `savedBank` is the bank the engine parsed from the project file's
+		// BANK= key and wrote to PART_PTR (-1 if that write never happened --
+		// the load did not get that far); `finalBank` is the current bank at
+		// the end of the run. ⚠️ THE TWO CAN DIFFER, and that is a real
+		// cross-task ordering rather than a load failure: SYS consumes the
+		// engine reset's queued "select bank 0" whenever the scheduler next
+		// gives it the CPU, and if that is AFTER the BANK= parse it switches
+		// the working bank back to A (RTOS_FORK.md §7).
 		struct LoadResult { uint32_t ready = 0, partPtr = 0; bool posted = false; double ms = 0;
+			int savedBank = -1; uint32_t finalBank = 0;
 			std::string postWhy;
 			// How the load's own run ENDED. Time is the ordinary case (the
 			// budget ran out); Fault/Illegal say the machine stopped, which
@@ -181,6 +283,9 @@ namespace ot
 		double ms() const { return m_sample / g_sampleHz * 1000.0; }
 		uint64_t pit0Fired() const { return m_pit0.fired(); }
 		uint64_t frameCount() const { return m_frameCount; }
+		bool framePending() const { return m_framePending; }
+		const Intc& intc0() const { return m_intc0; }
+		const Intc& intc1() const { return m_intc1; }
 		uint64_t edmaStarted() const { return m_edma.started(); }
 		Edma& edma() { return m_edma; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
@@ -196,6 +301,10 @@ namespace ot
 		uint32_t currentTcb() { return curTcb(); }
 		void setAtaLatency(double _samples) { m_ataLatency = _samples; }
 		void armPcRing(size_t _size, uint64_t _budget) { m_pcRing.assign(_size, 0); m_pcRingBudget = _budget; }
+		// Arm the ring HERE rather than at the first ATA command: the frame
+		// handler runs long after the load, and "what did the one frame we
+		// took actually do" is a different question from "what did the ISR do".
+		void armPcRingNow(size_t _size) { m_pcRing.assign(_size, 0); m_pcRingPos = 0; m_pcRingArmed = true; }
 		const std::vector<uint32_t>& pcRing() const { return m_pcRing; }
 		size_t pcRingPos() const { return m_pcRingPos; }
 		bool pcRingArmed() const { return m_pcRingArmed; }
@@ -218,10 +327,19 @@ namespace ot
 
 		void writeGoldenJson(const std::string& _path) const;
 
+		// The M6c facts, in the same shape route A's `--sequencer --golden`
+		// writes them, for `tools/ot_emu/oracle.py`: the trig log with frame
+		// numbers relative to the transport start, the tick count, the frames
+		// run, and the four bank/pattern bytes.
+		struct M6c { uint64_t frame0 = 0, ticks0 = 0, frames = 0, ticks = 0;
+			int savedBank = -1; uint32_t finalBank = 0, seqBank = 0, seqPattern = 0; };
+		void writeM6cJson(const std::string& _path, const M6c& _m) const;
+
 	private:
 		uint32_t curTcb();
 		bool peripheralRead(uint32_t _addr, uint8_t _size, uint32_t& _out);
 		void peripheralWrite(uint32_t _addr, uint8_t _size, uint32_t _val, bool _replay);
+		Stop runInternal(double _ms, bool _untilGate, const std::function<bool()>* _stop);
 		void tickTimers();
 		// One instruction plus everything the run loop does around it, so a
 		// borrowed call runs against the same live machine the loop does.
@@ -277,6 +395,11 @@ namespace ot
 		// back to back the moment main unmasked (measured 6 Sep 2026). The
 		// handler re-arms itself only through the eDMA exchange; the ISR's
 		// `rte` is not the ack.
+		std::vector<TrigWrite> m_liveNibble, m_trigWords;
+		std::vector<MemWrite> m_memWrites;
+		bool m_trigLogInstalled = false;
+		bool m_partPtrWatched = false;
+		int m_savedBank = -1;
 		bool m_frame = false;
 		bool m_framePending = false;
 		double m_nextFrame = g_framePeriod;
