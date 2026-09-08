@@ -2464,3 +2464,69 @@ card images and a MAIN-OS depacker (`out/depack_elek.c`, wants folding into
 `tools/` proper if this path gets reused — it duplicates none of
 `elektron-firmware-tool`'s logic, just calls its `ap_depack` on a bare ELUP
 payload the tool's own `-d` refuses without SysEx framing).
+
+### 10.21 The "wrong starting step" theory is wrong, and what it was covering for is bigger: `o10_recloop.track_audio` cannot tell a recorder loop from live pass-through (9 Sep 2026)
+
+**§10.19's control test, redone with the right label.** `--sequencer`'s
+"re-selected through the load's own last step" message is about which BANK
+and PATTERN the firmware selects on load (§8.3, unrelated to which step the
+sequencer starts stepping from) — not about trig position. That theory is
+dropped. The actual anomaly (moving `r4_128`'s trigs from steps 2/6/10/14
+to step 1 produced identical output) needed a different explanation, so it
+got one: a byte-for-byte diff of the two runs' `track_audio` output shows
+**48,000/48,000 samples identical, both tracks, no exceptions.** Two
+genuinely different on-disk trig patterns, staged into genuinely different
+card images (confirmed with `cmp`), produced the exact same output. The
+trig step is not the variable that matters here; something about what
+`track_audio` measures is.
+
+**Decisive test: a burst-then-silence probe instead of a continuous tone.**
+A continuous test tone (route A's `--audio-in tones`, and O10's own 1500 Hz
+fixture) cannot distinguish "the recorder captured this and is looping it
+back" from "the track is just passing its live input straight through" —
+both look identical on a periodic signal. Built a 4-channel WAV
+(`out/make_burst_wav.py`): each RX0 slot gets its own tone for the first
+2,000 samples, then silence for the next 128,000. Ran `make_seam_fixtures.py`'s
+known-good `r4_128` (REC/PLAY trigs on 2/6/10/14, 128 BPM, RLEN 4 — the
+same fixture COLDFIRE_PORT O10 used to claim "sample-continuous for 32
+passes") for 8,200 frames (>6 loop passes) with this probe instead of tones.
+
+**T1 and T2 both receive the burst once, at the start, and are silent at
+every subsequent loop boundary through 6 full passes** (`out/check_burst.py`):
+nonzero content in the first 2,200 samples of pass 1 only; zero nonzero
+samples in the equivalent window of passes 2 through 7, and zero everywhere
+else. If the FLEX voice on either track were actually reading back a
+recorded loop, the burst would reappear once per pass (RLEN 4 = 20,672
+samples here) for as long as the recording holds it — sound-on-sound is the
+whole point of the fixture. It does not. What `track_audio` shows is
+consistent with **live input monitoring passed straight to the track's
+output, not a played-back recording** — and a continuous tone cannot tell
+the two apart, which is what let O10's "sample-continuous" result stand
+unquestioned.
+
+**This does not yet mean the recorder doesn't work under the port** — it
+means the specific observable used to claim it does (`o10_recloop.
+track_audio`, a per-track host-port audio record) cannot distinguish the
+two, and every prior "continuity" measurement built on it (O10's kick fit,
+the 128/RLEN4/RLEN16/RLEN MAX/120 sample-exact claims, §10.19's silence on
+Bryan's own project) needs re-reading in that light. `FW_TRIG_WORDS`
+(`0x46104d26`) and the recorder state record (`0x80004f1c`, per route A)
+both read zero writes even during this run's live first pass, on a
+`--watch-mem` check spanning the full 16-record table — consistent with
+those being stale addresses for build tag 22 (the same address-drift this
+project has hit repeatedly), not with anything meaningful about the
+recorder's state.
+
+**What would settle it:** find the ACTUAL recorder pool buffer content in
+ColdFire address space (route A's `POOL_ROWS`/`POOL_BASE`,
+`0x46c2e9c0`/`0x40A955E0`, `docs/RTOS_FORK.md` §10.18) for tag 22's build,
+and read it directly with a range dump after the run — not a single-word
+`--peek`, which the tool only supports pre-`--sequencer`. If the burst
+shows up THERE, the recorder captured it and the gap is purely in reading
+the FLEX voice's output; if it doesn't, the recorder itself isn't writing
+under this configuration, which would be a materially different finding
+than any click investigation to date. Not yet attempted — flagging before
+going further, since this reframes what O10 actually established.
+
+Drivers: `out/make_burst_wav.py`, `out/check_burst.py` (both in this
+session's worktree, not yet moved into `tools/scratch/`).
