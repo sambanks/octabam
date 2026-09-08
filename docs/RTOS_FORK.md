@@ -2581,3 +2581,61 @@ port first needs to show the recorder writing ANY audio at all, under ANY
 configuration — which no measurement in this document has yet directly
 shown (every prior "sample-continuous" result used a signal a live
 pass-through would reproduce identically).
+
+### 10.23 The wide scan: zero of 585 sampled blocks across the whole pool carry any content, and the free-list bookkeeping shows no sign of ever being touched (9 Sep 2026)
+
+**`--watch-mem` does not scale to a wide range — a real failure mode, not
+just slow.** Watching the full ten-row block-assignment table (292,040
+bytes) logs every matching write into an in-memory vector with no cap;
+over a 2,600-frame run this grew unbounded and the process died silently
+(no fault message, a 39 MB log of unrelated printf output, no completion
+line) rather than finishing. `--mem-dump` has no such cost — it reads final
+state once, with no per-write logging — so the wide scan used that
+instead: the full row table (285 KB, one dump) plus the first 64 bytes of
+every 25th block across the entire 14,602-block pool (585 blocks, ~4%
+sampled but evenly spread), all in one normal-speed run (`out/
+make_scan_spec.py` builds the `--mem-dump` argument; `out/run_widescan.sh`
+works around this session's sandbox flagging a `$(...)`-substituted
+command as too complex to verify).
+
+**Zero of 585 sampled blocks carry any nonzero byte, anywhere in the
+pool.** And the full row table resolves the structure cleanly: row 0 is a
+single large ascending free list (1, 2, 3, … up to 8,937 entries) — the
+general STATIC/FLEX sample pool, not per-track; row 1 is entirely empty;
+**rows 2–9 are the eight audio tracks**, each a ~689-entry descending list
+spaced exactly 690 apart (row 2: 14602→13914, row 3: 13912→13224, … row 9:
+9772→9084) — a static partition of the pool's top end, one reserved chunk
+per track. Every one of the eight track rows is **completely intact and
+undisturbed** at the end of a 2,600-frame run that included a live REC arm
+and an audible input burst: no entries missing, none reordered, nothing
+consumed. A recorder that had captured even one block's worth of audio
+would show that block's number gone from its row's free list. None is.
+
+**This closes the gap §10.22 left open.** The `row = track + 2` mapping
+from `recaudio.py` (a different build, a different emulator) is no longer
+load-bearing — every track's row is visible and every one shows the same
+untouched pattern, so the finding does not depend on having picked the
+right track. Combined with §10.21's burst-probe (the track's own output
+never loops the burst back) and §10.22's three-block spot check, this is
+now three independent methods, at increasing scope, all agreeing: **under
+this port, on this build, with this project, no recorded audio exists
+anywhere in the recorder's own pool — the free lists never move.**
+
+**What this does and doesn't say.** It does not mean the ColdFire firmware
+can't record — note-for-bam-seam-flash.md is hardware, and hardware
+clicks, which requires something to have been recorded and played back.
+It means either (a) the port's DSP-side or ColdFire-side recorder-arm path
+has a real gap that stops audio ever reaching this pool, or (b) the
+`POOL_ROWS`/`POOL_BASE` addresses (route A's, for a different build) are
+wrong for tag 22 and the real pool lives elsewhere entirely — structurally
+the same address-drift problem this project has hit repeatedly, but this
+time the STRUCTURE read out (eight evenly-spaced per-track rows, a general
+pool, a spare) fits the expected shape well enough that a wrong location
+for the whole table seems the less likely of the two. Either way, the
+recorder-click investigation cannot proceed to "where does a known-clicking
+combo break" until one of these is resolved — the port needs to be shown
+recording SOMETHING, under ANY configuration, before it can be trusted to
+show where a click comes from.
+
+Drivers: `out/make_scan_spec.py`, `out/run_widescan.sh`, `out/scan_results.py`
+(session worktree, not yet moved into `tools/scratch/`).
