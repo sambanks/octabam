@@ -49,6 +49,17 @@ def track_audio(c, track, right=False):
         ws = words(w); out += record_audio(ws[pos * 84:(pos + 1) * 84], right)
     return out
 
+def readback_audio(c, track, right=False):
+    """The track's slot of its core's 256-halfword read-back: the per-track
+    chain OUTPUT before the master mix (32 words per track, (L,R) pairs)."""
+    core = 0 if track >= 5 else 1; pos = (track - 1) % 4; o = 1 if right else 0
+    addrs = {1: (0x80003190, 0x80003590), 0: (0x80003390, 0x80003790)}[core]
+    rb = sorted(sum((c.get(('<', 1, core, a), []) for a in addrs), []))
+    out = []
+    for _, w in rb:
+        ws = words(w); out += ws[pos * 32 + o: pos * 32 + 32: 2]
+    return out
+
 def db(x): return 20 * math.log10(x / 8388608) if x > 0 else -200
 
 def main():

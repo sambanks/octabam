@@ -2270,6 +2270,21 @@ card, `--audio-in tones` (500·(k+1) Hz on RX0 slot k), `--main-level 64`,
   a seam; the DSP chain's continuity was proven on the THRU comparison at
   normal levels. The voice tap is the decisive one here.
 
+### ✅ Three more of Bryan's shapes, four bars each, same result
+
+| fixture (`make_seam_fixtures.py`, 4 bars = 21,000 frames) | voice tap, one sine over every pass |
+|---|---|
+| RLEN MAX, 128 BPM, play trigs on the REC steps (his test 3) | −104.4 dB rms, max 0.00 % |
+| RLEN 4, 120 BPM (his clean control) | −104.4 dB, 0.00 % (pass = 22,050) |
+| RLEN 4, 128 BPM, `--self`: play trigs on T1, the recording track | −104.4 dB, 0.00 % (T1 plays and records a 1500 Hz tone; INAB records the inputs, not its own output) |
+
+And the read-back tap (the chain OUTPUT, T2's slot of core 1's 256-word
+read-back, `o10_continuity.py --readback`) on the 8-bar run: −69 dBFS (the
+RECTRIG part's own T2 level, 49 dB under the voice), residual −56 dB rms
+and 0.5–0.7 % max **in every pass alike** — the DSP's arithmetic floor at
+that level, nothing localised at any trig or boundary. 🟡 A fixture with
+T2's level raised would put that floor at −100 dB; not done here.
+
 **So the port does not reproduce Bryan's click at 128 / RLEN 4 with play
 trigs on the record steps.** What the port cannot see, and where the click
 can still live: the unit's own trig-to-arm timing (the RTOS tick is 2× off
