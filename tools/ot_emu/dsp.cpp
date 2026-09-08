@@ -708,6 +708,8 @@ namespace ot
 	// the output DMA ran out un-re-armed, and the audio died 38 frames after
 	// the first trig. Hardware runs the cores in parallel; a small quantum
 	// is the nearest thing.
+	double DspPair::g_quantum = 64.0;
+
 	bool DspPair::stepCore(const int _i, const double _limit)
 	{
 		Core& c = *m_cores[_i];

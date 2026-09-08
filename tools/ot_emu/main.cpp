@@ -138,6 +138,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-no-idle")			dspNoIdle = true;
 		else if(a == "--dsp-drain-paced")		dspDrainPaced = true;
 		else if(a == "--dsp-verbose")			dspVerbose = true;
+		else if(a == "--dsp-quantum" && i + 1 < _argc)	ot::DspPair::g_quantum = std::atof(_argv[++i]);	// O12: the core interleave quantum (instructions)
 		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
 		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
 		else if(a == "--block-log" && i + 1 < _argc)	blockLog = _argv[++i];
