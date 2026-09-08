@@ -44,6 +44,7 @@ ap.add_argument("--image", default=None); ap.add_argument("--track", type=int, d
 ap.add_argument("--out", required=True)
 ap.add_argument("--inject", default="counter", choices=("counter", "none"))
 ap.add_argument("--blocks", type=int, default=40, help="pool blocks to dump from the row")
+ap.add_argument("--main-level", type=int, default=64, help="SET MAIN LEVEL to post after the load (0 = do not post; without it no voice renders, O9b)")
 ap.add_argument("--field-probe", action="store_true", help="log every write to the track's recorder state record (+36..+83, both banks) with its PC")
 ap.add_argument("--reg-probe", action="store_true", help="log the mix loops' source pointers and gains at loop entry (frames 323..326)")
 ap.add_argument("--read-probe", action="store_true", help="log the write path's source reads (0x40007680..0x40007748) for the first recording frames")
@@ -222,6 +223,8 @@ if not rt.gate_m6a()[0]:
     rt.run(ms=1000, until=lambda x: x.gate_m6a()[0])
 mounted, posted, saved_bank, final_bank, _ = rt.load_project_live("OCTABAM", name, run_ms=20000)
 if final_bank != saved_bank: final_bank = rt.select_bank_live(saved_bank)
+if a.main_level:
+    print(f"main level {a.main_level}: gain table[0] = {rt.set_main_level_live(a.main_level):#x}", flush=True)
 pattern = uc.mem_read(er.CUR_PATTERN, 1)[0]
 rt.seq_select_live(final_bank, pattern); rt.internal_clock()
 rt.frame = True; rt.next_frame = rt.sample + er.FRAME_PERIOD; rt.exact_clock()
@@ -285,4 +288,5 @@ with open(a.out, "wb") as fh:
         audio_out=[(f, s, g, sa, d) for f, s, g, sa, d in audio_out],
         rec_fields=[(f, s, r0, r1) for f, s, r0, r1 in rec_fields],
         pool_row=list(row), pool_blocks=blocks, pool_first=pool_w['first'], pool_per_frame=pool_w['per_frame'], rec_setup=rec_setup, snaps=snaps), fh)
+print(f"voice record 0x80000510 + 48*t, ping 0, after the run: " + " ".join(f"T{t+1}={int.from_bytes(uc.mem_read(0x80000510 + 48 * t, 4), 'big'):#010x}" for t in range(8)))
 print(f"saved {a.out}: {len(audio_out)} audio blocks, {len(blocks)} pool blocks, {len(ev)} events")

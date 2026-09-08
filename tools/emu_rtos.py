@@ -878,10 +878,30 @@ class Rtos:
                 if u.base <= a < u.base + 0x20:
                     u.write(a - u.base, size, val, replay=replay)
 
+    INTFRC_REGS = (0xfc048010, 0xfc048014, 0xfc04c010, 0xfc04c014)
+
     def _on_force(self, intc, bits):
         # a reschedule request: end the burst so it is seen within the instruction
         self.forces += 1
         self._force_stop = "force"
+        # emu_stop from inside a memory-write hook ABORTS the instruction: the
+        # write lands but PC stays on it, so it re-executes next burst. For a
+        # force taken under IPL 7 that was harmless (the bit was already set,
+        # nothing re-fired). For a force taken at IPL 0 it is a LIVELOCK: the
+        # interrupt is delivered at once, its handler clears the bit and
+        # returns to the same `orl`, which forces again -- measured 8 Sep 2026
+        # on SET MAIN LEVEL (0x40033ece -> vector 0x62 -> 0x40033ece, for
+        # ever, main never ran). The chip completes the instruction first.
+        # Every INTFRC writer in the image is a 6-byte `orl/andl Dn,abs.l` or
+        # `movel Dn,abs.l` (18 sites, scanned), so resume after it.
+        pc = self.uc.reg_read(eb.UC_M68K_REG_PC) & 0xffffffff
+        op = bytes(self.uc.mem_read(pc, 2))
+        ea = int.from_bytes(self.uc.mem_read(pc + 2, 4), "big")
+        if op in (b"\x81\xb9", b"\xc1\xb9", b"\x23\xc0") and ea in self.INTFRC_REGS:
+            self._force_resume = pc + 6
+        else:
+            self._force_resume = None
+            self._t(f"force from an unrecognised instruction at {pc:#x} ({op.hex()}): re-executing it")
         self.uc.emu_stop()
 
     # -- exception plumbing --------------------------------------------------
@@ -1055,6 +1075,9 @@ class Rtos:
         self.sample += n / self.ips
         self.trap = self.r.trap
         self.pc = self.trap[1] if self.trap else uc.reg_read(eb.UC_M68K_REG_PC)
+        if self._force_stop == "force" and getattr(self, "_force_resume", None):
+            self.pc = self._force_resume            # the INTFRC write completed; do not re-execute it
+            self._force_resume = None
         self.pc_samples[(self._cur(), self.pc)] += 1
         self._tick_timers()
 
@@ -1235,6 +1258,24 @@ class Rtos:
         self.post_message(SYS_QUEUE, SYS_MSG_SCRATCH)
         self.run(ms=ms, until=lambda r: r.uc.mem_read(CUR_BANK, 1)[0] == bank)
         return self.uc.mem_read(CUR_BANK, 1)[0]
+
+    MAIN_GAIN_TABLE = 0x80003c60       # 10 longwords, gain:(0x8000-gain), written ONLY by sys command 4
+
+    def set_main_level_live(self, level=64, ms=500):
+        """SET MAIN LEVEL through sys's own case (command 4, handler
+        0x40061e0a): msg[0] = 4, msg[1] = level 0..127. It fills the main
+        gain table at 0x80003c60 from the curve at 0x400bcd90, and EVERY
+        voice's level is multiplied by that table in the per-frame mixer
+        (0x40004444). Neither emulator's load ever posts it, so until now
+        every voice rendered at gain 0 and no track ever "started" (the
+        ColdFire port's O9b, 8 Sep 2026; route A showed 0 writes to the
+        table too). Post it after the load, as select-bank is. Returns the
+        table's first longword."""
+        self.run(until=lambda r: r.pc == MAIN_SPIN)
+        self.uc.mem_write(SYS_MSG_SCRATCH, bytes([4, level & 0x7f, 0, 0]))
+        self.post_message(SYS_QUEUE, SYS_MSG_SCRATCH)
+        self.run(ms=ms, until=lambda r: r.uc.mem_read(self.MAIN_GAIN_TABLE, 4) != b"\0\0\0\0")
+        return int.from_bytes(self.uc.mem_read(self.MAIN_GAIN_TABLE, 4), "big")
 
     def seq_select_live(self, bank, pattern):
         """The sequencer's own bank/pattern select, `0x400a1030(bank,
