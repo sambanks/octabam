@@ -2221,7 +2221,12 @@ RX0 slot 2. 🟡 The DSP's DIR path called slot 0 "A" (O9c); the two names
 disagree by two slots, which is the receive ring's phase against the ESAI
 slot counter (the same rotation O9c found on the transmit side). The
 ColdFire's naming is what the recorder uses: **INAB records the +0x80 pair
-= RX0 slot 2/3 in the port.** `--audio-in tones` (500·(k+1) Hz on slot k)
+= RX0 slot 2/3 in the port.** ✅ Stable, not a rotation: three runs with
+different load lengths (20.0/20.5/21.0 s) all land the slot-2 tone in the
++0x80 pair — the receive ring's phase is fixed where the transmit side's
+rotates (O9c), so the two-slot offset between the DSP's DIR naming and the
+ColdFire's capture naming is a fixed fact of the port, 🟡 unmeasured on the
+unit. `--audio-in tones` (500·(k+1) Hz on slot k)
 sidesteps the question: the recorded frequency says which slot was taken.
 
 ### ✅ The track record's audio is a list of segments (corrects O9d's "words 8..38")
