@@ -765,6 +765,13 @@ class Rtos:
             except eb.UcError:
                 pass
         uc.mem_write(SR_TRAMP, bytes.fromhex("40c0" "4e71"))     # movew %sr,%d0 ; nop
+        # MAC-with-load words the core would run natively and wrongly: stop
+        # BEFORE them (a code hook's emu_stop lands before the instruction,
+        # measured 8 Sep 2026) and hand them to the shim as if they had
+        # trapped. See emu_bringup.native_macload_sites.
+        self.native_macload = eb.native_macload_sites(uc)
+        for site in self.native_macload:
+            uc.hook_add(eb.UC_HOOK_CODE, self._on_native_macload, begin=site, end=site)
         if self.frame:
             self.exact_clock()               # frame mode is timing-load-bearing throughout
         # the whole window, not a sub-range: Unicorn's MMIO split is unproven here
@@ -928,6 +935,10 @@ class Rtos:
 
     def _name(self, tcb):
         return TASK_NAMES.get(tcb, f"{tcb:#x}")
+
+    def _on_native_macload(self, u, addr, size, x):
+        self.r.trap = (4, addr)
+        u.emu_stop()
 
     def _handle_trap(self):
         intno, pc = self.trap

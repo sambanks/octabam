@@ -18,10 +18,15 @@ Reads: `0x80001904[track]` (lane table), `0x46104cf0` (lookahead),
 `0x46104cf8` (dispatcher sample clock), `0x80001820` (−2³¹/tempo24),
 `0x46c7fa84[track]` (arm sample). Writes: nothing but `d4`, the length.
 
-Status: measured in route A (emulator) only. Not flashed. Falsifiers: a
-PER TRACK scale pattern (is the lane index really the track?), a recorder
-trig whose next step is not its re-trig (the ±1 guard must keep RLEN), and
-the unit itself.
+Status: measured in route A (emulator); **flashed on Bryan's unit 7–8 Sep
+2026 (tag 21) and FALSIFIED as the click fix** — 128 BPM still clicks at
+RLEN 4, RLEN 16 and RLEN MAX (where this cave never runs), 120 is clean
+(`docs/RTOS_FORK.md` §10.18, `docs/FLASHPLAN.md` tag 19). The length
+seam it removes is real (§10.16.4–5) but is not what is heard. Kept as a
+module because it is correct for what it does; not part of any remix by
+default. Remaining falsifiers of the cave itself: a PER TRACK scale
+pattern (is the lane index really the track?) and a recorder trig whose
+next step is not its re-trig (the ±1 guard must keep RLEN).
 
 Assemble: `m68k-elf-as -mcpu=5475 -o seam.o seam_cave.s` and pin the
 `.text` bytes in `manifest.py`; the build re-assembles and compares.

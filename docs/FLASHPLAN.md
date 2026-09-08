@@ -624,3 +624,15 @@ in RTOS_FORK §10.16.4–§10.17. **Claim:** the click at 128 / RLEN 4, once
 every 2 bars, is gone. **Falsifier:** it persists → the seam is not the
 recorder length; or a per-track-scale pattern faults → the lane-index
 assumption is wrong. **Control:** 120 BPM unchanged.
+
+**❌ FALSIFIED on Bryan's unit, 7–8 Sep 2026 (tag 21, same module bytes,
+cave verified in the image; his Moog on the inputs, sound-on-sound).** 128 /
+RLEN 4 with rec + play trigs every 4 steps: **clicks** (onset varies run to
+run, one run around the sixth repeat). 128 / RLEN 16, one rec + play trig
+on step 1: clicks on the first repeat. 128 / RLEN MAX, rec trigs every 4
+steps: **clicks** — no end post, the cave never runs, §10.16.6 had called
+it seam-free by construction. 120 / MAX and 120 / RLEN 4, same trigs: no
+clicks. The click follows the tempo, not the length converter; the cave is
+not the fix and the seam model is not the click. His projects were rebuilt
+from this description, not copied from the card; AUX at 0 throughout.
+Hardware facts and what route A found next: RTOS_FORK §10.18.

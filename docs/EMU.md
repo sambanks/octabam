@@ -389,7 +389,17 @@ trig-time loop, the packer and the delay routine) — the shim does the load
 and address update in Python and executes the plain form natively from a
 trampoline so the accumulator state stays in the core; address-register
 operands and the inverted acc bit of the load form are handled per
-binutils' reading of this image. And Unicorn's `until` address is not
+binutils' reading of this image. **Two defects of that shim, found 8 Sep
+2026 by injecting audio into the recorder (RTOS_FORK §10.18):** (1) it
+performed the parallel load BEFORE the multiply, where the chip multiplies
+with the pre-load registers — every product in a pipelined loop
+(`msacl %a0,%d0,%a2@+,%d0,%acc0`: d0 is both multiplicand and load target)
+took the NEXT word; (2) the core does not trap on every load form: of the
+122 distinct (opcode, extension) pairs in the image it accepts 27 and runs
+them with a made-up effective address, two of them the recorder's mix loop.
+`native_macload_sites` now classifies every pair on the loaded library and
+hooks the accepted ones so they stop before executing and go through the
+shim as if they had trapped. A recorded buffer at unity gain is the test. And Unicorn's `until` address is not
 honoured when the instruction there raises: the trampoline parks on a
 `nop` instead.
 
