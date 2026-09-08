@@ -2283,8 +2283,14 @@ And the read-back tap (the chain OUTPUT, T2's slot of core 1's 256-word
 read-back, `o10_continuity.py --readback`) on the 8-bar run: −69 dBFS (the
 RECTRIG part's own T2 level, 49 dB under the voice), residual −56 dB rms
 and 0.5–0.7 % max **in every pass alike** — the DSP's arithmetic floor at
-that level, nothing localised at any trig or boundary. 🟡 A fixture with
-T2's level raised would put that floor at −100 dB; not done here.
+that level, nothing localised at any trig or boundary. ✅ Done: with T2's AMP VOL at 127 (the AMP page is the six bytes BEFORE
+the track's FX1 row in `ot_project`'s P1_OFF layout — lane flat 12..17; the
+`+0x1b` "level" byte did nothing to the read-back) the read-back rises to
+−57.1 dBFS and the residual against one sine is −58.9 dB rms, **broadband**
+(every harmonic below −100 dB relative: it is T2's FX1 FILTER's own
+low-level noise, not distortion) and **proportional to the signal**, with a
+single-sample −0.5 % dip (−103 dBFS absolute) at each retrigger and no phase
+step anywhere. The DSP side of a retrigger is clean to that level.
 
 **So the port does not reproduce Bryan's click at 128 / RLEN 4 with play
 trigs on the record steps.** What the port cannot see, and where the click
