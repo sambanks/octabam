@@ -775,6 +775,17 @@ once the fixture matches: stereo input (the send client mono-sums L+R;
 slew, delay MDEP 0 (the LFO's phase is history). The bus's cross-core
 mechanism holds under the firmware's ordering of the two cores.
 
+### O13 — the cycle count under the firmware ✅ DONE (9 Sep 2026, branch `port-cycle-meter`)
+
+`COLDFIRE_PORT.md` O13. `--dsp-stopwatch core:start:stop` on the
+dispatcher's four call sites gives every effect's cost per frame under the
+firmware's own dispatch: the RIG costs core 0 24,654 instructions a frame
+(1,541/sample; BusVerb 1,109), core 1 15,177 (949/sample; BusDelay 499).
+`dsp_host`'s meter for the same rig reads 24,971 and 14,880 — within 2 %
+once T1's CHARACTER is in the same (live) state — so the meter is validated
+as the rig's load instrument. Same unit as the meter (instructions, no
+stall), so still a floor against the 3,120 wall, not a ceiling.
+
 ## Where the port stands after O12 (8 Sep 2026), and what is left
 
 The port boots the firmware, mounts the card, loads the project, runs the

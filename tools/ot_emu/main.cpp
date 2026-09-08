@@ -88,6 +88,7 @@ int main(int _argc, char** _argv)
 	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
+	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
 	std::string dspMap;		// O9: per-frame non-zero counts per 4K chunk of both cores' X and Y -> FILE
 	std::string dspWrites;		// O9: per-frame NON-ZERO WRITE counts per 256-word region of both cores' X and Y -> FILE
@@ -148,6 +149,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
+		else if(a == "--dsp-stopwatch" && i + 1 < _argc)	dspStopwatch = _argv[++i];
 		else if(a == "--dsp-writes" && i + 1 < _argc)	dspWrites = _argv[++i];
 		else if(a == "--coverage" && i + 1 < _argc)	coverage = _argv[++i];
 		else if(a == "--main-level" && i + 1 < _argc)	mainLevel = std::atoi(_argv[++i]);
@@ -210,6 +212,12 @@ int main(int _argc, char** _argv)
 		dspPair->setAudioCapture(!audioOut.empty());
 		dspPair->setActivityMap(!dspMap.empty());
 		dspPair->setWriteMap(!dspWrites.empty());
+		if(!dspStopwatch.empty())
+		{
+			int core = 0; unsigned a0 = 0, a1 = 0;
+			if(std::sscanf(dspStopwatch.c_str(), "%d:%x:%x", &core, &a0, &a1) == 3)
+				dspPair->setStopwatch(core, a0, a1);
+		}
 		if(!dspPcWatch.empty())
 		{
 			int core = 0; unsigned pc = 0; unsigned long long from = 0;
@@ -705,6 +713,16 @@ int main(int _argc, char** _argv)
 	if(dspPair)
 	{
 		std::printf("dsp        : at the end\n%s", dspPair->report().c_str());
+		if(!dspStopwatch.empty())
+		{
+			const auto& w = dspPair->stopwatch();
+			std::printf("dsp stopwatch: %s -- %llu pair(s), instructions per pair mean %.0f min %llu max %llu\n", dspStopwatch.c_str(),
+				static_cast<unsigned long long>(w.n), w.n ? static_cast<double>(w.sum) / static_cast<double>(w.n) : 0.0,
+				static_cast<unsigned long long>(w.n ? w.min : 0), static_cast<unsigned long long>(w.max));
+			std::printf("             last 24:");
+			for(size_t k = w.last.size() > 24 ? w.last.size() - 24 : 0; k < w.last.size(); ++k) std::printf(" %u", w.last[k]);
+			std::printf("\n");
+		}
 		if(!dspPcWatch.empty())
 		{
 			std::printf("dsp pcwatch: %s, last %zu arrival(s): executed a1:a0 b1:b0 x0 x1 y0 y1 r0 r4 r6 n4 sp r2 m2 r1 n1 r7\n", dspPcWatch.c_str(), dspPair->pcWatchHits().size());

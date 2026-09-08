@@ -188,6 +188,13 @@ namespace ot
 		// A PC watch on one core: registers at every arrival (last 24), the DSP side of route A's --watch-pc (O9b).
 		struct PcWatchHit { uint64_t executed; uint32_t a1, a0, b1, b0, x0, x1, y0, y1, r0, r4, r6, n4, sp, r2, m2, r1, n1, r7; };
 		void setPcWatch(const int _core, const uint32_t _pc, const uint64_t _from = 0) { m_pcWatchCore = _core; m_pcWatchPc = _pc; m_pcWatchFrom = _from; m_pcWatchOn = true; }
+		// O12 cycle meter: instructions executed between two PCs on one core, per
+		// arrival pair (the dispatcher's head to its exit = one frame's DSP work,
+		// in the same unit as dsp_host's meter). Spins outside the pair (the host
+		// wait, the bank wait) are not counted, which is what "busy" failed to do.
+		struct Stopwatch { int core = -1; uint32_t start = 0, stop = 0; uint64_t t0 = 0; bool armed = false; uint64_t n = 0, sum = 0, max = 0, min = ~0ull; std::vector<uint32_t> last; };
+		void setStopwatch(const int _core, const uint32_t _start, const uint32_t _stop) { m_sw.core = _core; m_sw.start = _start; m_sw.stop = _stop; }
+		const Stopwatch& stopwatch() const { return m_sw; }
 		const std::vector<PcWatchHit>& pcWatchHits() const { return m_pcWatchHits; }
 		const std::vector<std::string>& writeMap() const { return m_writeMap; }
 
@@ -226,6 +233,7 @@ namespace ot
 		bool m_pulling = false;
 		bool m_pcWatchOn = false; int m_pcWatchCore = 0; uint32_t m_pcWatchPc = 0; uint64_t m_pcWatchFrom = 0;	// with a `from`, the FIRST 24 arrivals after it are kept
 		std::vector<PcWatchHit> m_pcWatchHits;
+		Stopwatch m_sw;
 		bool m_watchOn = false; int m_watchCore = 0; char m_watchSpace = 'X'; uint32_t m_watchAddr = 0;
 		std::vector<WatchHit> m_watchHits;			// inside pullHalfwords: host-port words are the read-back, not the bank id
 		bool m_hostWordFired = false;	// set by runDue when the hook fired; tickSamples stops its slice on it

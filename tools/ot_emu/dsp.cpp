@@ -789,6 +789,16 @@ namespace ot
 					c.timerM[k] = c.dsp->regs().m[k].var & 0xffffff;
 				}
 			}
+			if(m_sw.core == i)
+			{
+				if(pc == m_sw.start) { m_sw.t0 = c.executed; m_sw.armed = true; }
+				else if(pc == m_sw.stop && m_sw.armed)
+				{
+					const uint64_t d = c.executed - m_sw.t0;
+					m_sw.armed = false; ++m_sw.n; m_sw.sum += d; if(d > m_sw.max) m_sw.max = d; if(d < m_sw.min) m_sw.min = d;
+					if(m_sw.last.size() < 4096) m_sw.last.push_back(static_cast<uint32_t>(d));
+				}
+			}
 			if(m_pcWatchOn && i == m_pcWatchCore && pc == m_pcWatchPc && c.executed >= m_pcWatchFrom && !(m_pcWatchFrom && m_pcWatchHits.size() >= 24))
 			{
 				const auto& r = c.dsp->regs();

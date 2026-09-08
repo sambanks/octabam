@@ -330,7 +330,10 @@ every run; `tools/rig_render.py` writes `meter.txt`), which is a second
 floor — per block, every instance's real work, inits included — and still
 no stall. For scale: the meter reads BusVerb at ~1,130 instructions/sample
 where the static count is 1,652 words (multi-word instructions count once);
-the same 3,120 wall applies to neither directly. Only the burn sweep measures the ceiling.
+the same 3,120 wall applies to neither directly. The ColdFire port's stopwatch
+(`--dsp-stopwatch`, `COLDFIRE_PORT.md` O13, 9 Sep 2026) reads the firmware's own
+dispatch in the meter's unit and agrees with the meter within 2 % (BusVerb
+1,109/sample under the firmware, 1,130 on the meter). Only the burn sweep measures the ceiling.
 
 **For scale:** the entire BusVerb engine was 758 cycles when the spare was
 measured (~1 133 with the 8-line tank), and 1 392 was room for ~1.8 more complete

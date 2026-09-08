@@ -2658,6 +2658,93 @@ Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).
 
+## Milestone O13 — the cycle count under the firmware: the port's stopwatch and `dsp_host`'s meter agree within 2 % (9 Sep 2026, branch `port-cycle-meter`)
+
+The question the port could answer that nothing else could: what does the
+firmware's OWN dispatch cost per frame on each core — every effect it
+actually calls, with the knob state the part actually publishes, plus
+whatever it dispatches into an empty slot — in the same unit `dsp_host`'s
+meter reads (`docs/HARNESS.md` "The meter": executed instructions, no
+stall modelled). Two instruments that agree validate the meter as the
+load instrument for the rig; two that disagree mean one is blind.
+
+**The instrument.** `--dsp-stopwatch core:start:stop` — arm at the first
+PC, count instructions executed by that core until the second, one pair
+per arm/stop; prints the count, mean, min, max and the last 24. Semantics
+that matter: a second arrival at `start` before `stop` RE-ARMS (the window
+becomes the last start→stop), and `start == stop` never pairs. So the
+right window for "what does this call cost" is the dispatcher's `jsr` and
+the instruction after it — the callee is everything in between — not a
+guessed whole-dispatcher span: core 0's head at P:0x41e is entered THREE
+times a frame (906 arms per 300 frames against one exit at 0x559), so a
+0x41e→0x559 window read 7,050 per frame for a frame whose calls sum to
+24,654, and core 1's 0x221→0x34e window (1,880 per frame) does not
+contain its effect calls at all. Call sites, from the dispatcher listing in
+O9c: core 0 FX1 `jsr` at P:0x4d7, FX2 at P:0x50d; core 1 FX1 at P:0x2cc,
+FX2 at P:0x302 — four arrivals per frame each, tracks in dispatch order.
+
+**The measurement** (Sam's RIG, `card_oneaux.img`, `mainos_flash7b.bin`,
+300 frames, `--audio-in tones`, the played part's knobs; instructions per
+16-sample frame, every frame identical once the chain is warm):
+
+| core | call | per frame | per sample |
+|---|---|---|---|
+| 0 (T5–T8) | T5 FX1 MODULATION | 480 | 30 |
+| | T5 FX2 **BusVerb** | **17,746** | **1,109** |
+| | T6, T7 FX1 SPECTRUM | 549 each | 34 |
+| | T6, T7 FX2 SEND | 284 each | 18 |
+| | T8 FX1 CHARACTER (BUS station, RET 127) | 4,710 | 294 |
+| | T8 FX2, the empty slot's fallback SEND | 52 | 3 |
+| | **core 0 total** | **24,654** | **1,541** |
+| 1 (T1–T4) | T1 FX1 CHARACTER (live, see below) | 4,665 | 292 |
+| | T1 FX2 **BusDelay** | **7,989** | **499** |
+| | T2–T4 FX1 SPECTRUM | 564 each | 35 |
+| | T2–T4 FX2 SEND | 277 each | 17 |
+| | **core 1 total** | **15,177** | **949** |
+
+✅ measured (`out/o9d/r_swc_*.txt`). The dispatcher's own work between the
+calls is not in the sums; it is bounded by the 1,880 of core 1's
+0x221→0x34e segment and is the same on hardware.
+
+**Against `dsp_host`'s meter for the same rig** (`rig_render --frames 16
+--project proj_oneaux --bank 2 --part 1`, `out/o9d/rig_meter16*.log`):
+
+| core | port, calls summed | `dsp_host` meter, max block | agreement |
+|---|---|---|---|
+| 0 | 24,654 | 24,971 (mean 22,690) | 1.3 % |
+| 1 | 15,177 | 11,126 as rendered; **14,880** with T1's RET forced to 127 | 2 % once the knob state matches |
+
+The core-1 gap was a knob, not a defect in either instrument: CHARACTER
+takes its bypass loop (about 600 a frame) when every knob is neutral,
+including the page-2 side gain at exactly 64, and `dsp_host` drives the
+part's page-2 values into the companion bytes while the port's emulated
+load leaves page 2 unpublished (O9c: the page-2 publish path is the
+`ccpage2` copier) — the peek of T1's FX1 block (`x:0x363`) under the port
+shows six page-1 words of `000000`, low bytes included ✅. So the port
+runs T1's CHARACTER live, which is the worst case and the one the wall
+cares about. (🟡 whether the hardware's load publishes page 2 before the
+first knob touch is the O9c question, unchanged.)
+
+**What this settles.** `dsp_host`'s meter reads the firmware's real load
+to within 2 % when its knob state matches the part's — the effects the
+firmware dispatches, in its order, with the fallback SEND in the empty
+slot, cost what the harness says they cost. The rig's load in meter
+units is core 0 ≈ 1,540 instructions/sample, core 1 ≈ 950. What it does
+NOT settle: the unit is instructions, and the 3,120 wall
+(`docs/CHIP.md` §2) is in `tools/cycle_count.py`'s static words with
+the hardware's stalls on top; the port models no stall either. BusVerb
+reads 1,109 here, 1,130 on the meter, 1,652 static — the same ~0.68
+ratio `HARNESS.md` records — so the port is a third floor in the meter's
+unit, not a ceiling. Only the burn sweep measures the ceiling.
+
+**Reproduce:**
+
+```
+./out/emu/ot_emu --image out/o9d/mainos_flash7b.bin --card out/o9d/card_oneaux.img \
+  --set OCTABAM --project RIG --sequencer --internal-clock --frames 300 --load-ms 20000 \
+  --dsp --main-level 64 --audio-in tones --dsp-stopwatch 0:50d:50e     # core 0 FX2 calls
+```
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
