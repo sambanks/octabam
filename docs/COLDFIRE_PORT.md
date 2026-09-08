@@ -2510,6 +2510,47 @@ stamp a fresh project** — `ot_project` can set a machine type and a PB
 page but not whatever else makes a THRU track start; that is the next
 tool, and with it the reverb comparison is one run.
 
+### ✅ Found: the rotation word flips in the middle of core 1's frame, and the clients read it directly (9 Sep 2026)
+
+With the reverb path still −13 dB off on the clean project (T2 trigged
+at step 1 — a THRU machine on the unit passes nothing until it is trigged,
+which is why the RECTRIG-based rig had been silent; T5's words exact;
+the port deterministic across interleaves), the cross-core read was
+instrumented directly:
+
+- `--dsp-watch 0:Y:36000`: core 0's housekeeping (P:0x8fd, in the reverb
+  host's block) flips the shared rotation word once per frame, 0x30 → 0x00
+  → 0x10 → 0x20, spacing 66,546 / 66,574 instructions.
+- `--dsp-pcwatch 1:623` (the send client's `move y:>$36000,a` + `and #>$30`,
+  every bus client on core 1 runs it per block): **within one core-1 frame
+  the four clients see 0x30, 0x30, 0x00, 0x00** — the flip lands between
+  the second and third client, every frame, at the firmware's own serving
+  order (the port's interleave quantum does not move it: 1, 64, 1,000 and
+  100,000 give bit-identical output).
+
+So half of a frame's senders deposit into buffer N and half into buffer
+N+1. The delay reads the accumulator on the same core with the same phase
+each block and is bit-exact regardless; the reverb, the only cross-core
+reader, gets a frame's deposits split across two of its "two back" reads —
+a persistent residual with a matched envelope, exactly what was measured,
+and the mechanism behind FAILURE_MODES' "cross-core bus glitch — the
+accumulators' race 🟡". `XBUS.md`'s rule ("clients never read the shared
+rotation word directly; each core tracks the rotation privately, advancing
+once per block") is not what the one-aux code does: the send client,
+both engines and the return all read `y:$36000` at their own block time.
+`dsp_host` in lock-step flips the word between whole core frames and can
+never split one.
+
+**The fix is a module change, not a port one:** a rotation each core
+derives from its own frame count (the dispatcher's per-frame counter at
+`x:$41c`/`x:$41e`, if it is one — measured below) or latched once per core
+per frame, so every client on a core writes the same buffer for a given
+frame; the four-deep buffers already absorb a constant one-block offset
+between the cores. The port is the gate: after the fix the reverb path
+must come out bit-identical like the delay path. 🟡 Whether the unit's
+serving order lands the flip mid-frame exactly as the port's does is
+hardware's to say; that it lands mid-frame at all is enough to split.
+
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).
