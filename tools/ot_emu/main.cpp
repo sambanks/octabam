@@ -24,6 +24,7 @@
 
 #include "machine.h"
 #include "rtos.h"
+#include "dsp.h"
 
 namespace
 {
@@ -71,6 +72,14 @@ int main(int _argc, char** _argv)
 	std::string watchPc;		// comma-separated addresses -- log registers there (route A's own flag)
 	bool namesEarly = false;	// write the SET/PROJECT names BEFORE the mount -- see O7b
 	std::string hostPortLog;	// every write into the DSP host-port window -> FILE (O8)
+	bool dsp = false;			// O8: put the two real DSP cores behind the host port
+	double dspRatio = 1.14, dspIps = 4535.0;	// their clock, in DSP instructions per ColdFire instruction / per sample
+	std::string dspLog;			// every host-side event on the DSP pair -> FILE
+	uint64_t dspTrace = 0;		// a status line per core every N DSP instructions
+	bool dspNoIdle = false;		// execute every poll of an idle core (fidelity check; slow)
+	bool dspVerbose = false;	// the vendored DSP library's own log lines
+	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
+	std::string dspPeek;		// core:space:addr,len[;...] -- DSP memory to print at the end
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -105,6 +114,15 @@ int main(int _argc, char** _argv)
 		else if(a == "--watch-pc" && i + 1 < _argc)	watchPc = _argv[++i];
 		else if(a == "--names-early")			namesEarly = true;
 		else if(a == "--hostport-log" && i + 1 < _argc)	hostPortLog = _argv[++i];
+		else if(a == "--dsp")					dsp = true;
+		else if(a == "--dsp-ratio" && i + 1 < _argc)	dspRatio = std::atof(_argv[++i]);
+		else if(a == "--dsp-ips" && i + 1 < _argc)	dspIps = std::atof(_argv[++i]);
+		else if(a == "--dsp-log" && i + 1 < _argc)	dspLog = _argv[++i];
+		else if(a == "--dsp-trace" && i + 1 < _argc)	dspTrace = std::strtoull(_argv[++i], nullptr, 0);
+		else if(a == "--dsp-no-idle")			dspNoIdle = true;
+		else if(a == "--dsp-verbose")			dspVerbose = true;
+		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
+		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -148,6 +166,20 @@ int main(int _argc, char** _argv)
 	}
 	if(!hostPortLog.empty())
 		m.setHostPortLog(true);		// before the boot: the DSP upload happens IN it
+	// The DSP pair, BEFORE the boot for the same reason: the firmware programs
+	// both cores through the host port at instruction ~4.27M of the boot.
+	std::unique_ptr<ot::DspPair> dspPair;
+	if(dsp)
+	{
+		dspPair = std::make_unique<ot::DspPair>(dspRatio, dspIps);
+		dspPair->setLog(!dspLog.empty());
+		dspPair->setTrace(dspTrace);
+		dspPair->setIdleSkip(!dspNoIdle);
+		ot::DspPair::setVerbose(dspVerbose);
+		m.setCoprocessor(dspPair.get());
+		std::printf("dsp        : two cores behind the host port, %.2f instructions per ColdFire instruction, %.0f per sample\n",
+			dspRatio, dspIps);
+	}
 	const auto stop = m.run(maxInstructions);
 
 	static const char* const g_names[] = {"HANDOFF", "ILLEGAL", "BUDGET", "FAULT"};
@@ -155,6 +187,8 @@ int main(int _argc, char** _argv)
 	std::printf("instructions: %llu (%llu supplied by the V4e layer)\n",
 		static_cast<unsigned long long>(m.instructions()),
 		static_cast<unsigned long long>(m.v4eExecuted()));
+	if(dspPair)
+		std::printf("dsp        : after the boot\n%s", dspPair->report().c_str());
 
 	if(profile)
 	{
@@ -196,6 +230,24 @@ int main(int _argc, char** _argv)
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
 		}
 		rtos.install();
+		std::ofstream edmaOut;
+		if(!edmaLog.empty())
+		{
+			edmaOut.open(edmaLog);
+			rtos.edma().setTransferHook([&](const uint32_t _ch, const bool _paced)
+			{
+				const auto& e = rtos.edma();
+				char line[256];
+				std::snprintf(line, sizeof line,
+					"kick ch %2u %s sample %.1f saddr %08x soff %d attr %04x nbytes %08x slast %d daddr %08x doff %d citer %04x dlast %d biter %04x csr %04x\n",
+					_ch, _paced ? "paced" : "burst", rtos.sample(),
+					e.tcdField(_ch, 0, 4), static_cast<int16_t>(e.tcdField(_ch, 4, 2)), e.tcdField(_ch, 6, 2),
+					e.tcdField(_ch, 8, 4), static_cast<int32_t>(e.tcdField(_ch, 0xc, 4)), e.tcdField(_ch, 0x10, 4),
+					static_cast<int16_t>(e.tcdField(_ch, 0x16, 2)), e.tcdField(_ch, 0x14, 2),
+					static_cast<int32_t>(e.tcdField(_ch, 0x18, 4)), e.tcdField(_ch, 0x1c, 2), e.tcdField(_ch, 0x1e, 2));
+				edmaOut << line;
+			});
+		}
 		if(!watchMem.empty())
 		{
 			const auto comma = watchMem.find(',');
@@ -444,7 +496,12 @@ int main(int _argc, char** _argv)
 						std::printf("               [%9.1f] v%#04x lvl %u in %-10s at pc %#x -> slot %#x\n",
 							ks[i].sample, ks[i].vector, ks[i].level, ot::taskName(ks[i].tcb), ks[i].pc, ks[i].slot);
 				}
-				std::printf("             ticks %llu, eDMA transfers %llu\n",
+				if(dspPair)
+			std::printf("             host port: %llu blocks / %llu words to the DSPs, %llu blocks / %llu words back (%llu not in time); %llu ticks a burst waited for the DSP to drain\n",
+				static_cast<unsigned long long>(rtos.hostBlocksOut()), static_cast<unsigned long long>(rtos.hostWordsOut()),
+				static_cast<unsigned long long>(rtos.hostBlocksIn()), static_cast<unsigned long long>(rtos.hostWordsIn()),
+				static_cast<unsigned long long>(rtos.hostWordsShort()), static_cast<unsigned long long>(rtos.edma().gatedWaits()));
+		std::printf("             ticks %llu, eDMA transfers %llu\n",
 					static_cast<unsigned long long>(rtos.ticks() - ticks0),
 					static_cast<unsigned long long>(rtos.edmaStarted()));
 				if(pcRing && rtos.pcRingArmed())
@@ -533,12 +590,52 @@ int main(int _argc, char** _argv)
 		}
 	}
 
+	if(dspPair)
+	{
+		std::printf("dsp        : at the end\n%s", dspPair->report().c_str());
+		size_t q = 0;
+		while(q < dspPeek.size())
+		{
+			auto e = dspPeek.find(';', q);
+			if(e == std::string::npos) e = dspPeek.size();
+			const auto spec = dspPeek.substr(q, e - q);
+			q = e + 1;
+			int core = 0; char space = 'X'; unsigned addr = 0, len = 8;
+			if(std::sscanf(spec.c_str(), "%d:%c:%x,%u", &core, &space, &addr, &len) < 3)
+				continue;
+			std::printf("             core %d %c:%#07x:", core, space, addr);
+			for(unsigned k = 0; k < len; ++k)
+			{
+				const auto w = space == 'P' ? dspPair->peekP(core, addr + k)
+					: space == 'Y' ? dspPair->peekY(core, addr + k) : dspPair->peekX(core, addr + k);
+				std::printf(" %06x", w);
+			}
+			std::printf("\n");
+		}
+		for(const auto& t : dspPair->trace())
+			std::printf("             %s\n", t.c_str());
+		if(!dspLog.empty())
+		{
+			std::ofstream t(dspLog);
+			for(const auto& e : dspPair->log())
+			{
+				char line[96];
+				std::snprintf(line, sizeof line, "%-8s core %d %06x  due %llu\n", e.kind, e.core, e.val,
+					static_cast<unsigned long long>(e.due));
+				t << line;
+			}
+			std::printf("dsp log    : %s (%zu events)\n", dspLog.c_str(), dspPair->log().size());
+		}
+	}
+
 	if(!hostPortLog.empty())
 	{
 		// The raw writes, and the 24-bit words reassembled from the
-		// 0x14/0x18/0x1c triples the loader sends (low, mid, high -- the order
-		// `0x40001d82`.. writes them). A `0x20000000` write of 0x81 is "start
-		// the DSP" and 0x8c is "swap frame" (docs/ARCHITECTURE.md §6).
+		// 0x14/0x18/0x1c triples the loader sends (high, mid, low -- the order
+		// `0x40001d82`.. writes them). ❌ "0x81 to 0x20000000 is start the DSP"
+		// (ARCHITECTURE.md §6) is retracted: the window is the HI08 host-side
+		// register file, 0x81 is ICR INIT|RREQ, and 0x8c to 0x20000004 is a
+		// host command (HC | vector 0x0c) -- see dsp.h (O8, 8 Sep 2026).
 		std::ofstream t(hostPortLog);
 		uint32_t w = 0; int have = 0; uint64_t words = 0;
 		for(const auto& e : m.hostPortLog())

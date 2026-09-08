@@ -68,6 +68,32 @@ namespace ot
 		}
 	};
 
+	// A co-processor behind a peripheral window: the two DSP cores (O8). It is
+	// asked FIRST, before the models and the boot's override table, so the
+	// stand-in replies for the host port (below) are bypassed the moment a
+	// real one is attached -- and stay in force when none is, which keeps
+	// every gate that was measured against them bit-identical. It is also
+	// clocked from both run loops: per ColdFire instruction during the boot
+	// (no sample clock exists yet) and per sample once the RTOS runs.
+	class Coprocessor
+	{
+	public:
+		virtual ~Coprocessor() = default;
+		virtual bool read(uint32_t _addr, uint8_t _size, uint32_t& _out) = 0;
+		virtual bool write(uint32_t _addr, uint8_t _size, uint32_t _val) = 0;
+		virtual void tickInstructions(uint64_t _n) = 0;
+		virtual void tickSamples(double _n) = 0;
+		// The eDMA's side of the host port (O8 step 4). A block going TO the
+		// co-processor is pushed whole at the kick, halfword by halfword, as
+		// the bus cycles the eDMA would make; a block coming FROM it is pulled
+		// at completion from the core the kick was made against, running that
+		// core until each word is there. Returns the words it could not get.
+		virtual int selected() const = 0;
+		virtual bool hostRingEmpty(int _core) const = 0;	// the DSP has taken every word pushed so far
+		virtual void pushHalfwords(uint32_t _addr, const std::vector<uint16_t>& _hw) = 0;
+		virtual size_t pullHalfwords(uint32_t _addr, int _core, std::vector<uint16_t>& _out, size_t _n) = 0;
+	};
+
 	// A peripheral window: reads answer from `overrides` if the address has
 	// one, else all-ones; writes are logged. This is route A's model, and the
 	// boot never needs more than it (`emu_bringup.boot`).
@@ -174,6 +200,9 @@ namespace ot
 		// these in `EXTRA_OVERRIDES`; the boot needs only the PLL, the card
 		// needs one more (see `Rtos::attachCard`).
 		void setOverride8(uint32_t _addr, uint8_t _val) { m_overrides[_addr] = _val; }
+
+		void setCoprocessor(Coprocessor* _c) { m_coproc = _c; }
+		Coprocessor* coprocessor() const { return m_coproc; }
 
 		// Interception, the whole point of a headless build: a callback per
 		// instruction (nullptr = off), and direct memory access for probes.
@@ -343,6 +372,7 @@ namespace ot
 		std::unordered_map<uint32_t, uint8_t> m_overrides;
 		std::unordered_map<uint32_t, std::function<uint32_t()>> m_overrideFns;
 		void override32(uint32_t _addr, uint32_t _val);
+		Coprocessor* m_coproc = nullptr;
 		PeriphRead m_periphReadFn;
 		PeriphWrite m_periphWriteFn;
 		std::vector<PeriphWriteRec> m_periphWrites;

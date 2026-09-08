@@ -165,6 +165,8 @@ namespace ot
 	{
 		if(m_onTransfer)
 			m_onTransfer(_ch, _paced);
+		if(m_onKick)
+			m_onKick(_ch);
 		setCsr(_ch, static_cast<uint16_t>(csr(_ch) & ~DONE));
 		++m_started;
 		if(_paced)
@@ -175,12 +177,16 @@ namespace ot
 			// it and left the ISR spinning in state 6. `setdefault`: a channel
 			// already booked keeps its EARLIER completion.
 			m_due.emplace(_ch & 15, m_boundary);
+		else if(m_canComplete && !m_canComplete(_ch))
+			m_due.emplace(_ch & 15, 0.0);		// due now, held by the gate
 		else
 			complete(_ch);
 	}
 
 	void Edma::complete(const uint32_t _ch)
 	{
+		if(m_onDone)
+			m_onDone(_ch);
 		const auto c = csr(_ch);
 		setCsr(_ch, static_cast<uint16_t>((c & ~START) | DONE));
 		if(c & INTMAJOR)
@@ -193,6 +199,12 @@ namespace ot
 	{
 		for(auto it = m_due.begin(); it != m_due.end();)
 		{
+			if(_now >= it->second && m_canComplete && !m_canComplete(it->first))
+			{
+				++m_gatedWaits;
+				++it;
+				continue;
+			}
 			if(_now >= it->second)
 			{
 				const auto ch = it->first;

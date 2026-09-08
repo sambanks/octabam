@@ -192,6 +192,31 @@ namespace ot
 
 		// The TAPE hook: (channel, paced). Route A's `on_transfer`.
 		void setTransferHook(std::function<void(uint32_t, bool)> _fn) { m_onTransfer = std::move(_fn); }
+		// THE DATA (O8 step 4): route A's model moves none; with the DSP cores
+		// attached the bytes have to go. `_kick` runs at every start, `_done`
+		// at every completion (a linked channel's before its own link starts).
+		void setDataHooks(std::function<void(uint32_t)> _kick, std::function<void(uint32_t)> _done)
+		{
+			m_onKick = std::move(_kick);
+			m_onDone = std::move(_done);
+		}
+		// With the DSP cores attached a burst INTO the host port completes
+		// when the DSP has taken every word, not at once: on the chip the
+		// completion interrupt is what lets the frame handler issue the next
+		// block's destination and count, and a DSP still draining the previous
+		// block would read those as data. ✅ Measured 8 Sep 2026 without this
+		// gate: 7 frames in the window, the receive ring overflowing, 36 of 64
+		// host commands never taken. The hook answers "may channel _ch complete
+		// now"; unset, every rule is route A's.
+		void setCompletionGate(std::function<bool(uint32_t)> _fn) { m_canComplete = std::move(_fn); }
+		uint64_t gatedWaits() const { return m_gatedWaits; }
+		// CITER/BITER carry a minor-loop link in bit 15 with the channel in
+		// bits 14-9 and the count in bits 8-0; without it the count is 15 bits.
+		uint32_t minorLoops(uint32_t _ch) const
+		{
+			const auto c = field(_ch, 0x14, 2);
+			return (c & 0x8000) ? (c & 0x1ff) : (c & 0x7fff);
+		}
 
 		uint32_t tcdField(uint32_t _ch, uint32_t _off, uint32_t _n) const { return field(_ch, _off, _n); }
 
@@ -210,6 +235,9 @@ namespace ot
 		double m_boundary = g_framePeriod;
 		uint64_t m_started = 0;
 		std::function<void(uint32_t, bool)> m_onTransfer;
+		std::function<void(uint32_t)> m_onKick, m_onDone;
+		std::function<bool(uint32_t)> m_canComplete;
+		uint64_t m_gatedWaits = 0;
 	};
 
 	// ---- INTC --------------------------------------------------------------

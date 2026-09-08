@@ -209,6 +209,8 @@ namespace ot
 			for(auto* u : {&m_uart64, &m_uart68})
 				u->clearTransmitInterrupt();
 
+		installHostPortMover();
+
 		m_machine.setPeripheralHandlers(
 			[this](uint32_t a, uint8_t s, uint32_t& o) { return peripheralRead(a, s, o); },
 			[this](uint32_t a, uint8_t s, uint32_t v) { peripheralWrite(a, s, v, false); });
@@ -236,6 +238,60 @@ namespace ot
 		m_intc0.setForceHook([this](uint64_t) { ++m_forces; });
 		m_intc1.setForceHook([this](uint64_t) { ++m_forces; });
 		m_installed = true;
+	}
+
+	// O8 step 4 -- THE DATA. Decoded from route A's tape (8 Sep 2026): every
+	// block is a 32-bit eDMA stream at 0x2000001c, and the DSP's count word for
+	// each is exactly half its byte count -- 672 words for 4 x 336 bytes, 64
+	// for 128, 128 for 256, 512 for 1024, and the read-back chain ch1+ch6+ch7
+	// of 512+256+256 bytes is the DSP's 512-word block. So one DSP word rides
+	// each 16-BIT BUS CYCLE (a longword is two, high halfword first), which is
+	// what the DspPair's lane model does with a halfword at +0x1c. The RAM
+	// side is contiguous (SOFF/DOFF equal the burst size), the port side is a
+	// fixed address, and a block is NBYTES x the minor-loop count.
+	void Rtos::installHostPortMover()
+	{
+		auto* co = m_machine.coprocessor();
+		if(!co)
+			return;
+		m_edma.setDataHooks(
+			[this, co](const uint32_t _ch)
+			{
+				const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
+				const auto saddr = m_edma.tcdField(_ch, 0, 4);
+				m_kickSel[_ch & 15] = co->selected();
+				if(daddr < Edma::g_hostPortLo || daddr >= Edma::g_hostPortHi)
+					return;
+				const auto bytes = m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch);
+				std::vector<uint16_t> hw;
+				hw.reserve(bytes / 2);
+				for(uint32_t i = 0; i + 1 < bytes; i += 2)
+					hw.push_back(m_machine.read16(saddr + i));
+				co->pushHalfwords(daddr, hw);
+				++m_hostBlocksOut;
+				m_hostWordsOut += hw.size();
+			},
+			[this, co](const uint32_t _ch)
+			{
+				const auto saddr = m_edma.tcdField(_ch, 0, 4);
+				const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
+				if(saddr < Edma::g_hostPortLo || saddr >= Edma::g_hostPortHi)
+					return;
+				const auto bytes = m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch);
+				std::vector<uint16_t> hw;
+				m_hostWordsShort += co->pullHalfwords(saddr, m_kickSel[_ch & 15], hw, bytes / 2);
+				for(size_t i = 0; i < hw.size(); ++i)
+					m_machine.write16(daddr + 2 * static_cast<uint32_t>(i), hw[i]);
+				++m_hostBlocksIn;
+				m_hostWordsIn += hw.size();
+			});
+		m_edma.setCompletionGate([this, co](const uint32_t _ch)
+		{
+			const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
+			if(daddr < Edma::g_hostPortLo || daddr >= Edma::g_hostPortHi)
+				return true;
+			return co->hostRingEmpty(m_kickSel[_ch & 15]);
+		});
 	}
 
 	void Rtos::tickTimers()
@@ -416,6 +472,10 @@ namespace ot
 					m_why = "idle at main's spin with no timer armed: deadlock";
 					return Stop::Fault;
 				}
+				// The DSPs keep running through a skipped idle: book them the
+				// samples the clock jumps (O8).
+				if(auto* c = m_machine.coprocessor(); c && ex > m_sample)
+					c->tickSamples(ex - m_sample);
 				m_sample = std::max(m_sample, ex);
 				++m_idleSkips;
 				tickTimers();

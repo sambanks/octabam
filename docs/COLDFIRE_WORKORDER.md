@@ -74,6 +74,7 @@ route A fact, not the port's problem; the golden command above already does it.
 | O6 | the eDMA and the frame clock; the sequencer | the M6c fidelity gate (`scripts/o6_gate.sh`) | ✅ 5 compared fields: 400 frames, 28 ticks, the trig at frame 344 track 0 bytes `0x08`/`0x18`, and the bank/pattern four -- byte-identical to route A |
 | O7 | the card, the mount, the project load | route A's ATA command log EQUALS the port's | ✅ all 6,189 commands identical line for line, 30,467 sectors read, 297 written (was "a prefix"; O7b closed the gap) |
 | O7b | why the port loaded twice | name the task and PC, and make the oracle reproduce it | ✅ `sys`'s media case reloads a NAMED project; the split is `strlen(name)` = 0 vs 3, a harness ordering race. Route A reproduces the port's 12,373 with `--names-early` |
+| O8 (1-4) | the DSP cores behind the host port | ctest `dsp` (the firmware's upload lands the image's bytes) + M6a and O6 with `--dsp` | ✅ 50/50 + 58/58 bootstrap words, 26,221 + 25,408 payload words at upload time; M6a 8 compared fields; O6 5 compared fields (400 frames, 28 ticks, trig at 344) with the cores live. Step 5 open |
 
 ## Queue
 
@@ -424,7 +425,51 @@ first (the oracle), and the discrepancy stays documented as route A's.
 
 </details>
 
-### O8 — the DSP cores and the host port — ⛔ SCOPED, NOT BUILT (8 Sep 2026)
+### O8 — the DSP cores and the host port — 🟡 BUILT THROUGH STEP 4 (8 Sep 2026, branch `coldfire-o8-dsp`)
+
+**The two real cores sit behind the host port (`--dsp`), the firmware boots
+them itself, a ctest verifies the upload byte for byte, the M6a and O6 gates
+both pass with the cores live (`DSP=1 scripts/o6_gate.sh`), and the eDMA moves
+the frame blocks (870,400 words in, 307,200 back over 400 frames, none late;
+⚠️ whether they carry non-zero content is unmeasured — DSP record memory reads
+zero at the end of the run).** Step 5 — `verify_twocore`'s layouts rendering identically
+when driven by the firmware — is not started; `COLDFIRE_PORT.md` says what it
+needs. Do not re-do any of the join.
+
+What later milestones must know:
+
+1. ❌ **The host-port readings in ARCHITECTURE.md §6 were wrong** and are
+   corrected there: the window is the HI08 host-side register file at a 4-byte
+   stride on a 16-bit port, `0x81` is ICR INIT|RREQ, `0x8c` a host command,
+   the ready bit is TXDE|TRDY. And one DSP word rides each 16-bit bus cycle
+   (the tape's block counts are half their byte counts) — a longword eDMA
+   access is two words.
+2. **The shared window is ONE memory for P, X and Y of both cores**, and the
+   firmware needs it (core B's entry is written by core A's upload). `dsp_host`
+   keeps its two-way window and is a different machine on that point.
+3. **Eight things the vendored DSP emulator does that the firmware cannot live
+   with** are in `tools/dsp56300.patch` (DO loops nested in one call, JIT-only
+   interrupt dispatch, a masked interrupt starving the peripherals, the ESAI
+   blocking on an empty ring, a PC past P memory as a garbage pointer, a fast
+   interrupt never reaching its vector's PC, the ring-buffer DMA modes and a
+   12-bit DCOL, the host DMA's disabled initial trigger and 200-instruction
+   receive throttle). Every one was found by an instrument — stack sample, `lldb
+   -k`, `--dsp-trace` — after presenting as a silent hang or a bare crash.
+   Regenerate the patch with `git -C vendor/dsp56300 diff`; `make check` only
+   sees it after `cmake --build vendor/dsp56300/build`.
+4. **With the cores attached, a burst into the host port completes when the
+   DSP has drained it**, not at once (route A's rule stands without them): the
+   completion interrupt is what lets the frame handler issue the next block.
+5. 🟡 The inter-core mailbox at Y:$FFFFD3/D4 and $FFFFD6/D7 is inferred from
+   the two payloads' wait loops and modelled symmetrically.
+6. The idle fast-forward is on by default and validated by A/B (`--dsp-no-idle`);
+   a sequencer run with the cores costs ~25 minutes either way.
+7. The build is native now (`/opt/homebrew/bin/cmake`); the x86 cmake had been
+   building `out/emu` under Rosetta.
+
+<details><summary>the scoping entry it replaces</summary>
+
+### O8 — the DSP cores and the host port — ⛔ SCOPED, NOT BUILT (8 Sep 2026, the original)
 
 **The join is fully decoded and no DSP is wired yet.** `COLDFIRE_PORT.md` has
 the account; the headline is that ✅ **the firmware boots the DSPs ITSELF,
@@ -463,6 +508,8 @@ the judgment this milestone was reserved for.
 see the boot, and `--periph`'s log is capped at 4096 accesses — full long before
 the DSP init. Fixed, and `--hostport-log` added. **A zero from an instrument is
 not a measurement until you know the instrument can see the thing.**
+
+</details>
 
 ### O9 — audio out *(Fable)*
 

@@ -145,17 +145,31 @@ sequencer trig
        → DSP56xxx reads the frame and synthesizes (playback, time-stretch, filters, FX)
 ```
 
-**DSP interface: MMIO at `0x20000000`** (revealed by radare2):
-- `0x2000_0000` control command (`0x81` = start DSP, `0x8C` = swap frame)
-- `0x2000_0004` command/status (write, poll bit7 busy)
-- `0x2000_0008` status/ready (bit `6`: DSP ready — polled at boot and on every transfer)
-- `0x2000_0014`/`0x18`/`0x1c` data port (the 3 bytes of each 24-bit word)
+**DSP interface: MMIO at `0x20000000`** — ❌ the first reading (radare2, "control
+command 0x81 = start DSP / 0x8C = swap frame; 0x08 bit 6 = DSP ready") is
+retracted. ✅ 8 Sep 2026 (`docs/COLDFIRE_PORT.md` O8, the emulated join runs the
+firmware's own upload and frame exchange against it): the window is the **HI08
+host-side register file** of the core the GPIO byte at `0xfc0a400c` selects,
+one byte register per 4-byte stride on a 16-bit FlexBus port (CS2, `CSCR2 =
+0x180`), and a 16-bit bus cycle delivers its two bytes to two adjacent
+registers:
+- `0x2000_0000` ICR — `0x81` = INIT|RREQ, an interface reset before each upload
+- `0x2000_0004` CVR — `0x8c` = host command HC | vector 0x0c (P:0x18) once per
+  frame; `0x88` / `0x89` = vectors 0x10 / 0x12, "DSP, DMA a block in / out";
+  bit 7 (HC) polled until the DSP takes it
+- `0x2000_0008` ISR — bits 1|2 (TXDE|TRDY) polled before every word, bit 0
+  (RXDF) for a reply
+- `0x2000_0014`/`0x18`/`0x1c` TXH/TXM/TXL (RXH/RXM/RXL on read): a halfword
+  write to `+0x1c` sends TXH:D15:8:D7:0 as one 24-bit word, a longword write
+  sends two; the per-frame blocks are 16-bit values, two per longword
 
 **DSP boot** ✓ (`FUN_40001d4c` = DSP program loader): uploads the program to the DSP
-**3 bytes at a time = 24-bit words** through the `0x20000014/18/1c` port, with a handshake on the
-ready bit of `0x20000008`, and starts the DSP by writing `0x81` to `0x20000000`. The **24-bit**
+**3 bytes at a time = 24-bit words** through the `0x20000014/18/1c` port, with a handshake on
+TXDE|TRDY of `0x20000008`, after an interface reset (`0x81` to ICR). The **24-bit**
 word size confirms that the DSP is a Freescale DSP56xxx (hardware fact deduced from the firmware
-itself). Args: `param_1`=program, `param_2`=length, `param_3`=load address in the DSP.
+itself). Args: `param_1`=program, `param_2`=length, `param_3`=load address in the DSP. The
+first 50/58 words go to the chip's own HI08 bootstrap ROM (count, address, words, jump); the
+payload then goes through that bootstrap's loader, which echoes each record's space word.
 
 **Trig → voice** ✓ (`FUN_400977cc`, dispatched by machine type): given a trig on a track, it reads its
 machine state (`FUN_40097168` → 0–4) and, depending on the event type, emits the voice command via
