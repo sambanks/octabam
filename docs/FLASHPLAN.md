@@ -378,6 +378,14 @@ things, all found by running the shipping image under the ColdFire port
 4. Nothing in the part layout: no re-slot, no stamp needed beyond what
    flash 6 already required. `OCTABAM_ONEAUX` on the card loads as is.
 
+✅ **The image is the tested image (9 Sep 2026):** `REMIX=bamsep27 make
+bus` on `main` (after #166) produces `out/mainos_bus.bin` **byte-identical**
+to `out/o9d/mainos_flash7b.bin`, the file every O12/O13 port measurement
+and the claims sweep ran on (`cmp`, 1,112,560 bytes). ⚠️ `make image`
+itself was broken on the default `BUILD` line (a trailing comment put
+spaces into the version and the recipe split on `.bin`); fixed on the
+O13 branch — bump `BUILD` by editing the number only.
+
 **Pre-flash evidence, under the port (no unit):** Sam's RIG project as
 backed up (master on, T1/T2 THRU on the two input pairs), tones on all
 inputs, 1,500 frames on this image: T1 and T2 pass their inputs (−23.8 /

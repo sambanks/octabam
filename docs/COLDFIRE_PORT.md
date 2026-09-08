@@ -2652,7 +2652,16 @@ identical until frame 641 then −34 dB different — 🟡 that frame is one of
 the port's jittered host frames (a 15-sample frame among 16s; the frame
 edge is the DSP's own bank write, so a heavier core-0 load moves the
 jitter), the port's timing model rather than the bus. `verify_onebus` and
-`make check` green.
+`make check` green. ✅ **Falsifier run (9 Sep 2026):** the baseline and
+the T7-station case re-run at core-interleave quanta 2,000 and 50,000
+(default 64). At BOTH quanta T8's return first differs at sample 10,262 =
+frame 641 — and the BASELINE differs from its own default-quantum run at
+exactly that sample too, with nothing on T7 changed. The difference is
+−144 dBFS rms against a −74 dBFS return, i.e. a few samples one LSB apart.
+So frame 641 is where this run's host-frame phase is decided by the
+interleave, not where a station does anything: any two runs that differ
+in anything diverge there, at the LSB. The bus reading stands; the
+mechanism (the jittered frame) is still the inference.
 
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
