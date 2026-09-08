@@ -670,7 +670,11 @@ FX1 FILTER is closed, as `rig_render` said). With the effect on T1 in every
 part, page 1 AND page 2 cross and TX0 changes. New instrument
 `--block-dump` (+ `tools/scratch/blockdump.py`); new tool
 `ot_project.py set-fx`. **The gate is now a comparison job, not a locate:**
-`dsp_host` EQUALIZER vs the port's T1 read-back, level-matched.
+`dsp_host` EQUALIZER vs the port's T1 read-back, level-matched — first
+pass run: residual −16.6 dB after a scale, with a stepwise gain inside the
+port's DSP per-track stage that no host-port block carries (the AMP/level
+stage `rig_render` does not model). Next = grow the harness's AMP model or
+bypass the stage, then re-run (all pieces in `out/o9d`, see the port doc).
 
 **Rule 9, from this:** a fixture for the port goes into EVERY part of EVERY
 bank (`set-fx`, `stamp-slot`), and a DSP-side "identical" between two cards

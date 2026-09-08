@@ -2135,6 +2135,41 @@ tone, level-matched to the port's T1 read-back (the per-track chain output,
 before the master mix), and the THRU gain structure (VOL, INAB, the −11 dB)
 divided out.
 
+### 🟡 The comparison itself, first pass — NOT passed, and the gap is now located
+
+With the fixture working, the gate was attempted: T1's chain INPUT (the
+672-record audio, −11.2 dBFS) written out as a WAV and fed to `rig_render`
+(`--image out/raw/section_3_MAIN_OS.bin --project out/o9d/proj_t1eqB --bank 2
+--part 1 --stem T1=… --amp 1.0`, which takes T1's ids and every knob from the
+part: FX1 = stock 0x1c at `P:0x1918`, FX2 = EQUALIZER `40 127 64 100 0 64`),
+against T1's READ-BACK (its chain output before the master mix), for the flat
+page (A) and the boosted page (B):
+
+| | lag | scale (port/host) | residual after a single scale | EQ B/A at 300 Hz |
+|---|---|---|---|---|
+| A | −32 samples | −13.0 dB | −16.6 dB | port +6.32 dB |
+| B | −32 samples | −12.0 dB | −16.9 dB | host +5.29 dB |
+
+Per 147-sample period the port/host gain RISES through the run (−17.3 →
+−11.7 dB over 3,600 samples) in steps of up to ±1.5 dB per period, and the
+residual after a per-period gain is still only −21 to −31 dB. ✅ Measured
+that none of this rides on the host port: T1's 84-word record has no
+non-audio word that changes after frame 2, and its per-voice record is
+constant from frame 3 (one frame, 160, drops FX1 slot 5 to 0 for a frame —
+noted, not chased). So the stepwise gain is inside the DSP's per-track stage
+around the FX chain — the AMP page (`ATK 0 HOLD 127 REL 127 VOL 64`), the
+track LEVEL / `x:(r0+0x32)`, whatever the dispatcher does between the unpack
+and the read-back — which `rig_render` does not model ("AMP VOL / pan / the
+mixer are not modelled", its own docstring). 🟡 That is the reading; the
+falsifier is a run with the AMP page neutralised (VOL 127, or the AMP stage
+located in payload B and its input/output peeked with `--dsp-watch`).
+
+**So the O9c gate now needs the HARNESS to grow, not the port**: model (or
+bypass) the DSP-side AMP/level stage, then re-run this comparison — the
+fixture, the tap, the extraction (`blockdump.py` + the scratch above) and the
+fit are all in place. Files: `out/o9d/t1eq{A,B}_300_T1_{in,rb_L}.wav`,
+`out/o9d/rig_t1eq{A,B}/T1.wav`.
+
 Instrument rule added to the port: **a DSP-side "byte-identical" between
 two cards is not evidence until the host-port dump shows the cards differed
 on the way in.** Three O9c retractions rode on skipping that check.
