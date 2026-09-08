@@ -607,9 +607,16 @@ int main(int argc, char** argv) {
                     c, C.ctx.setupLo, C.ctx.setupHi, C.ctx.loop, C.ctx.exit);
         // It reads the frame count out of x:(x:0x415 + 0x1e) as (w >> 8) & 0xf, so
         // seed that first. The count is capped at 15 frames by the & 0xf.
-        if (a.frames > 15) { std::printf("frames capped to 15 (the & 0xf in setup)\n"); a.frames = 15; }
+        // 9 Sep 2026 (COLDFIRE_PORT.md O12): under the firmware that nibble is
+        // the track's SPLIT, and 0 means a whole 16-sample block (x:$20c = 0,
+        // x:$20d = 16 at every unsplit dispatch, measured with the ColdFire
+        // port); the cap at 15 had every harness render processing 15 samples
+        // per block where the unit does 16, which is 16/15 on every per-block
+        // rate (BusVerb's allpass modulator, any per-block LFO). -frames 16
+        // seeds the field as 0 and moves 16 samples per block.
+        if (a.frames > 16) { std::printf("frames capped to 16 (a whole block)\n"); a.frames = 16; }
         const TWord blkA = C.mem->get(MemArea_X, 0x415);
-        C.mem->set(MemArea_X, blkA + 0x1e, (static_cast<TWord>(a.frames) << 8) | a.flags);
+        C.mem->set(MemArea_X, blkA + 0x1e, (static_cast<TWord>(a.frames & 0xf) << 8) | a.flags);
         std::printf("core %d: seeded x:0x%05x+0x1e = frames %d\n", c, blkA, a.frames);
 
         runRange(*C.dsp, C.ctx.setupLo, C.ctx.setupHi);
@@ -618,7 +625,13 @@ int main(int argc, char** argv) {
 
         C.ctlA = C.mem->get(MemArea_X, 0x419);
         C.ctlB = C.mem->get(MemArea_X, 0x208);
-        C.cnt  = C.mem->get(MemArea_X, 0x20c);
+        // The per-block sample count is the a=0 sub-block's (x:$20c) when the
+        // frame is split, else the a=1 call's (x:$20d): the stock dispatcher
+        // skips the a=0 call at x:$20c == 0 and makes the a=1 call with n7 =
+        // x:$20d = 16 (COLDFIRE_PORT.md O12, measured under the firmware).
+        // At the legacy -frames 15 this still reads 15, so every existing
+        // bit-identity gate is untouched; at -frames 16 it reads 16.
+        C.cnt  = C.mem->get(MemArea_X, 0x20c) ? C.mem->get(MemArea_X, 0x20c) : C.mem->get(MemArea_X, 0x20d);
         std::printf("core %d: context: x:0x419=0x%05x  x:0x208=0x%05x  x:0x20c=%u (frames)  "
                     "x:0x20d=%u  x:0x20e=%u\n", c, C.ctlA, C.ctlB, C.cnt,
                     C.mem->get(MemArea_X, 0x20d), C.mem->get(MemArea_X, 0x20e));

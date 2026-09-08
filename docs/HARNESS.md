@@ -1,3 +1,5 @@
+> ⚠️ **9 Sep 2026: `dsp_host`'s default block is 15 samples; the unit's is 16.** The frame-context nibble the harness seeds is the dispatcher's SPLIT, not a length (0 = a whole 16-sample block, measured under the ColdFire port). Renders at the default are self-consistent and every bit-identity gate is pinned to them, but every per-block rate is 16/15 of the unit's and every bus latency carries a sub-frame offset. `dsp_host -frames 16` / `rig_render --frames 16` run whole blocks exactly as the firmware does (the delay bus then lands at exactly one frame of lag against the port). `docs/COLDFIRE_PORT.md` O12.
+
 # The harness — hearing and measuring the effects without hardware
 
 Flash cycles are expensive: every hardware test is a manual firmware write.

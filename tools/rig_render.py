@@ -225,6 +225,7 @@ def main():
     ap.add_argument("--out", default="out/rig")
     ap.add_argument("--keep", action="store_true", help="keep the raw files")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (15 = the harness default; 16 = the firmware's frame)")
     ap.add_argument("--extra", default="", help="extra dsp_host arguments, e.g. '-dumpy 36000,360d3,file' (the bus scratch after the render)")
     a = ap.parse_args()
 
@@ -298,9 +299,10 @@ def main():
     if n_src == 0:
         die("no stems and no --seconds: nothing to render")
     pad = send_probe.WARMUP_BLOCKS * FRAMES        # the engines stay dry for 256 calls
+    FR = a.frames
     total = pad + n_src + int(a.tail * SR)
-    blocks = -(-total // FRAMES)
-    n = blocks * FRAMES
+    blocks = -(-total // FR)
+    n = blocks * FR
 
     tag = os.getpid()
     raws = {}
@@ -326,7 +328,7 @@ def main():
            "-audioidx", ",".join(str(i["track"] - 1) for i in inst),
            "-audio", f"{AUDIO_BASE:x}",
            "-in", ",".join(str(raws.get(i["track"], silent)) for i in inst),
-           "-frames", str(FRAMES), "-blocks", str(blocks),
+           "-frames", str(FR), "-blocks", str(blocks),
            "-out", str(out), "-meter", str(outdir / "meter.txt")]
     for i in inst:
         cmd += ["-params", ",".join(map(str, i["values"]))]
@@ -342,7 +344,7 @@ def main():
               f"alloc {i['alloc']} r7 {i['r7']} init P:0x{i['init']:05x} "
               f"params {' '.join(map(str, i['values']))}"
               f"{'   <- SEND alias' if i['aliased'] else ''}")
-    print(f"{blocks} blocks x {FRAMES} frames ({n / SR:.1f} s incl. {pad / SR:.1f} s warm-up), "
+    print(f"{blocks} blocks x {FR} frames ({n / SR:.1f} s incl. {pad / SR:.1f} s warm-up), "
           f"stems on {sorted(stems) or 'none'}")
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if a.verbose:

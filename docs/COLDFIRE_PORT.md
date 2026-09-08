@@ -2551,6 +2551,44 @@ must come out bit-identical like the delay path. 🟡 Whether the unit's
 serving order lands the flip mid-frame exactly as the port's does is
 hardware's to say; that it lands mid-frame at all is enough to split.
 
+### ✅ The harness ran 15-sample blocks; the unit runs 16 (9 Sep 2026, branch `harness-whole-block`)
+
+Chasing the reverb residual through the dispatcher: `dsp_host` seeds the
+frame-context word `x:(x:0x415+0x1e)` with a "frames" nibble and capped it
+at 15 ("the & 0xf in setup"). Under the firmware that nibble is the
+track's SPLIT: at every unsplit dispatch `x:$20c = 0` and `x:$20d = 16`
+(peeked), the a=0 sub-block call is skipped and the a=1 call runs 16
+samples. `dsp_host` seeded 15, took `x:$20c` (=15) as the count, and so
+every harness render since the harness existed processed **15 samples per
+block** — self-consistent, but 16/15 on every per-block rate (an LFO
+advanced once per block, a per-block ramp) and a sub-frame offset on every
+bus latency (the −36 / −34 / −21 lags above: four bus stages at one sample
+each). `dsp_host -frames 16` now seeds the nibble as 0 and takes the a=1
+call's count (`x:$20d`) when `x:$20c` is 0; at the legacy 15 nothing
+changes (the bit-identity gates stand). `rig_render --frames 16`.
+
+| at 16-sample blocks (`--frames 16`) | lag | residual |
+|---|---|---|
+| the delay path (kick, one client, MDEP 0) | **−16 = exactly one frame** | −120 to −200 dB per steady window |
+| the reverb path, modulators live | −14 | −14 dB |
+| the reverb path, allpass modulator frozen (test build) | −16 | −16 dB early → −31 dB late |
+
+**The reverb residual is not a defect the port can name.** Its output is
+statistically the harness's (levels within 0.1 dB, L/R correlation 0.545
+vs 0.541; L↔L −14 dB, cross-channel −2 dB, so no swap) and it is
+FREE-RUNNING: the same kick 1,000 samples later gives a tail −22 dB
+different from the earlier tail time-shifted — the fixed-depth allpass
+modulator (`$200000`, "never zero" by design) runs on its own phase, and
+`dsp_host` meets the input at a different phase than the port. Freezing it
+in a test build halves the residual and leaves a component that DECAYS
+with the tail (−16 dB at 0.1 s, −31 dB at 0.5 s): an initial-state
+difference at the kick's arrival, 🟡 unlocated (candidates: a per-block
+counter or warm-up artefact the port's thousands of load frames leave
+differently from the harness's 256-block warm-up; the tank's persistent
+one-pole states). Everything static about the reverb — input, parameters,
+bus timing, block length, channels — is now proven equal; what is left is
+its own history.
+
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).
