@@ -427,7 +427,7 @@ notfirst:
 ; send from it would feed the return back into the bus it returns -- the
 ; master loop that silenced the unit on 6 Sep 2026 (FAILURE_MODES). Refused
 ; by construction, not by discipline: on PAYLOAD A, core 0's position 3
-; (r7 == $6800, the FX2 slot of track 8) contributes nothing and registers
+; (r7 == $6b00, the FX2 slot of track 8) contributes nothing and registers
 ; nothing, whatever its knob says. Payload B's position 3 is track 4 and
 ; sends normally. The payload is told apart by its Y base literal, which
 ; build_bus.py rewrites to $38000 for payload B and leaves at $30000 for A
@@ -437,8 +437,14 @@ notfirst:
         move    #>$38000,x0
         cmp     x0,a
         beq     send_ok                 ; payload B: every position sends
+; ⚠️ r7 = $6200 + $300 * position for an FX2 (three r7 bumps per track in the
+; stock dispatcher, COLDFIRE_PORT.md O11, measured 8 Sep 2026 on both
+; payloads under the firmware). Position 3 is $6b00; the $6800 that stood
+; here was the harness's two-per-track model -- it never matched on the unit,
+; so track 8 was never refused there (unflashed fix, same family as the
+; return's pin).
         move    r7,a
-        move    #>$6800,x0
+        move    #>$6b00,x0
         cmp     x0,a
         beq     send_refused            ; payload A position 3 = track 8
 send_ok:

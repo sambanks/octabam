@@ -2343,6 +2343,85 @@ Bump the pin when it merges; nothing to port. dsp56300/dsp56300 issue #5 is
 the AGU modulo pre-decrement defect O9b fixed in `agu.h`; still open
 upstream, our patch stands.
 
+## Milestone O11 — the first hardware failure diagnosed under the port: the one-aux return (8 Sep 2026, branch `coldfire-o11-return`)
+
+`FAILURE_MODES.md` "the one-aux return never reaches T8" (flash 6, tag 20):
+sending AUX produced wet on T1 and T5, the engines' own hosts, and nothing
+on T8; the local gate was green on exactly the property the unit falsified,
+and the cause was guessed as a liveness stamp lost across cores. The port
+runs the shipping remix (`make bus REMIX=bamsep27`) from a card with the
+firmware driving both cores, so it can reproduce the unit.
+
+### ✅ Reproduced, in the read-backs
+
+Fixture: `ot_project.py rigproj` on the cleared RIG backup (every part of
+every bank gets the rig: T1 CHARACTER + DELAY SERVER, T5 MODULATION + REVERB
+SERVER, T8 CHARACTER in BUS mode as the return, SENDs with AUX 30–50), staged
+as a card, a 300 Hz tone on RX0 slot 0 (T2's THRU input, AUX 40), 2,000
+frames. Per-track read-backs (the chain outputs):
+
+| | T1 (delay host) | T5 (reverb host) | T8 (return) |
+|---|---|---|---|
+| port, shipping image | prints wet from frame 500 (−43 dBFS L, −48 R) | prints the reverb from frame 200, rising to −53 | L −26 (the master mix's dry; T8 is the master), R only the reverb rising to −48 |
+| `rig_render` (dsp_host), same part and stem | silent | silent | −58 L/R, the reverb, a tail |
+
+The hosts printing their own wet IS the hardware symptom. A DSP write watch
+on the return's stamp word (`Y:0x360d8`) showed only the clear-on-read
+writes; a PC watch on the station's stamp instruction (`P:0x183b`) never
+fired: the station never stamped.
+
+### ✅ The cause, measured on the dispatcher: r7 has THREE blocks per track
+
+The station pins itself to track 8 by `r7 & 0xff00 == $6700/$6800`. A PC
+watch after its `move r7,a` read **r7 = 0x6a00** for track 8's FX1, every
+frame, init and proc. A PC watch on both `jsr (r2)` sites of the stock
+dispatcher (P:0x4d7 FX1, P:0x50d FX2 on payload A; P:0x2cc/0x302 on B) gave
+the whole map on both cores:
+
+| position | FX1 r7 | FX2 r7 |
+|---|---|---|
+| 0 (T5 / T1) | 0x6100 | 0x6200 |
+| 1 (T6 / T2) | 0x6400 | 0x6500 |
+| 2 (T7 / T3) | 0x6700 | 0x6800 |
+| 3 (T8 / T4) | **0x6a00** | **0x6b00** |
+
+A write watch on the counter `X:0x20a` names the three bumps per track:
+P:0x4b4 (FX1), P:0x4ea (FX2) and **P:0x524, unconditional, after FX2**
+(`move x:>$20a,b / add #>$100,b / move b,x:>$20a` at 0x518–0x524, identical
+in the stock image), reset to 0x6000 at the frame start (P:0x379). So
+**r7 = 0x6100 + 0x300·pos + 0x100·(fx−1)**. The harness had
+`1 + 2·pos + (fx−1)` (dsp_host's r7probe comment; its "track 2 FX2 = 0x6400"
+🟡 reads as position 1's FX1 under the real stride), which is right for
+position 0 only. The return's pin and the send client's track-8 refusal
+(`$6800`) were both derived from that model: they matched in `dsp_host`,
+never on the unit — the gate was green and the unit was wrong for the same
+reason. Not a cross-core race: the reverb host and the return share core 0.
+
+Also seen on the way: the DSP holds THREE copies of the four per-instance
+parameter blocks (X:0x25d, +0x80, +0x100; r6 cycles 0x2c3/0x343/0x3c3 for
+the same instance across frames) — one instance, triple-buffered
+parameters, not three instances.
+
+### ✅ The fix, proven both ways
+
+`character.asm` pins `$6a00/$6b00`; `send_client.asm` refuses `$6b00`;
+`rig_render`, `verify_onebus` and `send_probe` pass `-r7 1 + 3·pos + (fx−1)`;
+dsp_host's comment corrected (patch regenerated). Under the port with the
+rebuilt image: the stamp instruction fires every frame, **T1 and T5 print
+nothing for 2,000 frames, T8 returns** (R = the reverb building; L = the
+master mix's dry plus the reverb, since T8 is the master and `rig_render`
+does not model that routing). `make verify-onebus`: every property holds on
+both cores — and with the r7 model fixed but the old pin it failed 10 of
+25, which is the gate finally seeing what the unit saw. UNFLASHED; it is
+the flash-7 candidate (stamp-defaults before play, as ever).
+
+**What this milestone establishes:** a hardware failure the lock-step
+harness could not show was reproduced and located in one session with no
+flash, from the card, with the firmware's own dispatcher as the instrument.
+The rule it leaves: **any module logic keyed on a dispatcher fact (r7, r6,
+X:0x213, block addresses) is measured under the port, not modelled in
+`dsp_host`.**
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

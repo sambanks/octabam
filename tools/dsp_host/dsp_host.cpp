@@ -30,8 +30,17 @@
 //
 //     track 1 FX1 -> alloc 0 (Y:0x1000, 3072 words)  r7 = 0x6100
 //     track 1 FX2 -> alloc 1 (Y:0x4000, 16384 words) r7 = 0x6200   <- measured
-//     track 2 FX1 -> alloc 2 (Y:0x1c00)              r7 = 0x6300
-//     track 2 FX2 -> alloc 3 (Y:0x8000)              r7 = 0x6400   <- measured
+//     track 2 FX1 -> alloc 2 (Y:0x1c00)              r7 = 0x6400   <- 8 Sep 2026: 0x6400, NOT 0x6300
+//     track 2 FX2 -> alloc 3 (Y:0x8000)              r7 = 0x6500   <- 8 Sep 2026: 0x6500, NOT 0x6400
+// ⚠️ r7 is 0x6100 + 0x300*pos + 0x100*(fx-1), THREE blocks per track: the
+// stock dispatcher bumps its r7 counter after FX1 (P:0x4ae), after FX2
+// (P:0x4e4) and a third time, unconditionally, after FX2 (P:0x51e). Measured
+// 8 Sep 2026 on BOTH payloads with the firmware driving the DSP through the
+// ColdFire port (COLDFIRE_PORT.md O11). The two-per-track table this comment
+// carried (r7probe's "track 2 FX2 = 0x6400" reads as position 1's FX1 under
+// the real stride) put every position >= 1 low, and the one-aux return's pin
+// on position 3 matched only in this harness -- never on the unit. Callers
+// (rig_render, verify_onebus, send_probe) pass -r7 1 + 3*pos + (fx-1).
 //
 // so FX2 instance k defaults to alloc index 1+2k and state block 0x6000+(2+2k).
 //

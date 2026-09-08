@@ -342,6 +342,20 @@ DSP-side "byte-identical" between two cards, run both with `--block-dump`
 and `tools/scratch/blockdump.py diff`: if no host-port block differs, the
 cards did not differ where it matters.
 
+**THE HARNESS'S MODEL OF THE DISPATCHER IS NOT THE DISPATCHER.** `dsp_host`
+handed every effect r7 = 0x6100 + 0x100·(2·pos + fx−1); the stock
+dispatcher bumps r7 THREE times per track (the third unconditional, after
+FX2), so from position 1 on every r7 the harness used was wrong, and two
+modules that pinned a track by its r7 (the one-aux return on T8, the
+track-8 send refusal) matched in the harness and never on the unit — flash
+6's "the return never reaches T8", with `make verify-onebus` green on
+exactly that property. Found 8 Sep 2026 by running the shipping image from
+the card under the ColdFire port (`docs/COLDFIRE_PORT.md` O11). Any module
+logic keyed on a dispatcher fact (r7, r6, X:0x213, instance blocks) is
+measured under the port (`ot_emu --dsp-pcwatch`), never modelled in
+`dsp_host`; and a hardware failure the lock-step harness cannot show goes to
+the port before it goes to a guess.
+
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.

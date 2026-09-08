@@ -117,7 +117,7 @@ def run(mems, insts, skew=None, tag="r", tone="tone.raw"):
            "-inst", str(len(insts)),
            "-core", ",".join(str(i.core) for i in insts),
            "-alloc", ",".join(str(2 * i.pos + (i.fx - 1)) for i in insts),
-           "-r7", ",".join(str(1 + 2 * i.pos + (i.fx - 1)) for i in insts),
+           "-r7", ",".join(str(1 + 3 * i.pos + (i.fx - 1)) for i in insts),   # three r7 bumps per track (COLDFIRE_PORT.md O11)
            "-audioidx", ",".join(str(k) for k, _ in enumerate(insts)),
            "-audio", "9000",
            "-inmask", str(sum(1 << k for k, i in enumerate(insts) if i.fed)),
