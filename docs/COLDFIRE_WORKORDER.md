@@ -430,9 +430,11 @@ first (the oracle), and the discrepancy stays documented as route A's.
 **The two real cores sit behind the host port (`--dsp`), the firmware boots
 them itself, a ctest verifies the upload byte for byte, the M6a and O6 gates
 both pass with the cores live (`DSP=1 scripts/o6_gate.sh`), and the eDMA moves
-the frame blocks (870,400 words in, 307,200 back over 400 frames, none late;
-⚠️ whether they carry non-zero content is unmeasured — DSP record memory reads
-zero at the end of the run).** Step 5 — `verify_twocore`'s layouts rendering identically
+the frame blocks (870,400 words in, 307,200 back over 400 frames, none late).
+✅ **The outbound frames carry content and track the sequencer** — 40,853
+non-zero words, rising across the trig at frame 344 — and they reach DSP
+memory. ❌ **The inbound direction is zeros in every frame band**: the DSP
+computes silence, and why is open on the audio-in path (O9's ground).** Step 5 — `verify_twocore`'s layouts rendering identically
 when driven by the firmware — is not started; `COLDFIRE_PORT.md` says what it
 needs. Do not re-do any of the join.
 
@@ -462,9 +464,15 @@ What later milestones must know:
    completion interrupt is what lets the frame handler issue the next block.
 5. 🟡 The inter-core mailbox at Y:$FFFFD3/D4 and $FFFFD6/D7 is inferred from
    the two payloads' wait loops and modelled symmetrically.
-6. The idle fast-forward is on by default and validated by A/B (`--dsp-no-idle`);
+6. **The DSP lands a block at its own address, not the one the host names**
+   (dest `0x6080` → X:0x4080, consistently 0x2000 apart; 🟡 a bank select).
+   A `--dsp-peek` of the host's address reads zeros and looks like an empty
+   frame — count non-zero words at the move (`--block-log`) instead, and take
+   any DSP-side note at the drain's completion, never at the eDMA kick, where
+   it lags a whole block.
+7. The idle fast-forward is on by default and validated by A/B (`--dsp-no-idle`);
    a sequencer run with the cores costs ~25 minutes either way.
-7. The build is native now (`/opt/homebrew/bin/cmake`); the x86 cmake had been
+8. The build is native now (`/opt/homebrew/bin/cmake`); the x86 cmake had been
    building `out/emu` under Rosetta.
 
 <details><summary>the scoping entry it replaces</summary>

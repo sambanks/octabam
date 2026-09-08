@@ -84,6 +84,8 @@ namespace ot
 		bool hostRingEmpty(int _core) const override;
 		void pushHalfwords(uint32_t _addr, const std::vector<uint16_t>& _hw) override;
 		size_t pullHalfwords(uint32_t _addr, int _core, std::vector<uint16_t>& _out, size_t _n) override;
+		std::string blockNote(int _core) override;
+		uint32_t peekWord(int _core, char _space, uint32_t _addr) const override;
 		uint64_t pulled(int _core) const;
 		uint64_t pullShort(int _core) const;
 

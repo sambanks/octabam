@@ -1105,13 +1105,66 @@ route A's (the non-DSP O6 report is byte-identical before and after).
 **2,400 blocks / 870,400 words to the DSPs, 1,600 blocks / 307,200 words
 back, 0 not in time**, 60,820 ticks spent holding a burst for the DSP to
 drain; per core 2,400 / 1,200 host commands taken, 204,800 / 102,400 read-back
-words produced by the DSPs' own transmit DMA. ⚠️ What is NOT measured: whether
-those words carried non-zero content. `--dsp-peek` of X:0x6080, 0x6000,
-0x6400, 0x6600, 0x6800 on both cores reads all zeros at the END of the run,
-and the pair does not yet count non-zero words pushed or pulled — the DSP may
-consume and clear its record buffers, or the port's frames may be empty, and
-the run cannot tell those apart. That counter is the next session's first
-instrument, before anything is inferred from it.
+words produced by the DSPs' own transmit DMA. 
+
+### ✅ And the frames carry content — outbound. The DSP returns silence.
+
+The counter that decides whether any of the above means anything
+(`--block-log`, non-zero words counted at the moment of the move, not peeked
+afterwards). Over the 400-frame run:
+
+| direction | blocks | words | non-zero |
+|---|---|---|---|
+| ColdFire → DSPs | 2,400 | 870,400 | **40,853** |
+| DSPs → ColdFire | 1,600 | 307,200 | **0** |
+
+✅ **The outbound path is live and it tracks the sequencer.** Non-zero words
+per 50 frames sit at 5,088 and rise to 5,100 across the trig at frame 344,
+then 5,238 — the parameter frames change when the sequencer fires. The 672-,
+128- and 64-word records carry 14, 30-33 and 11 non-zero words each: sparse,
+which is what a parameter frame with most slots idle looks like. And the words
+reach DSP memory: the landing peek reads `030004 030009 030800 … 030b40`
+where the block ended.
+
+❌ **The inbound path is zeros in every frame band, including after the trig**
+— 0 of 307,200 words, with the pull never timing out, so the DSP genuinely put
+zeros in HOTX rather than the port failing to collect them. Its own DMA1 is
+sourcing from X:0x4700/0x4780/0x4800 and those hold zeros. The DSP is
+computing silence, which is what a machine with no sample audio and a silent
+ESAI input should compute. **What has NOT been established is why** — no
+sample data reaching the DSP, or a voice that never starts, are both open and
+both sit on the audio-in path that is O9's ground.
+
+### ⚠️ The destination word is the host's, the address is the DSP's
+
+`--dsp-peek` of X:0x6080 read zeros and briefly looked like "the frames are
+empty". It was the instrument: **0x6080 is the address the HOST names, not the
+one the DSP uses.** Measured, with the command's arguments snapshotted at the
+command and both candidates peeked at the same instant:
+
+```
+cmd args 036080 03029f | DMA0 ddr 004320 dco 00029f | X@6080 000000 000000 | X@4080 030000 030000
+```
+
+The firmware sends dest `0x6080`, count `0x29f`; the DSP arms its DMA0 at
+`0x4080` and the block lands there. Every block is the same 0x2000 apart:
+0x6080 → 0x4080, 0x6000 → 0x4000, 0x6400 → 0x4400, 0x6800 → 0x4800. 🟡
+**Inferred, not located:** the payload's own dispatcher at P:0x40 sets up two
+banks of buffers — 0x4000/0x4080/0x4400/0x4600/0x4800 and
+0x2000/0x2080/0x2400/0x2600/0x2800 — and each host word is exactly the two
+banks' addresses OR'd together, so bits 14 and 13 read as a bank select the
+DSP masks down to the bank it is using (bank A throughout this run). The
+masking instruction has not been found; the handler at P:0x588 masks only to
+16 bits. Falsifier: a run where the DSP switches to bank B should land the
+same words at 0x2xxx.
+
+⚠️ Two instrument lessons, both the project's usual family. **A peek after the
+run cannot tell "nothing was sent" from "the DSP consumed it"** — count at the
+move. And **a note taken at the eDMA kick lags a whole block**: read at the
+kick, DCO0 still held the PREVIOUS block's count and it read as if the
+firmware's destination were being ignored entirely. The note is taken at the
+completion the drain gate holds, which is when the DSP-side state means
+something.
 
 ### What step 5 needs
 

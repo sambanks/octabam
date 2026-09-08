@@ -329,6 +329,15 @@ namespace ot
 		uint64_t hostWordsOut() const { return m_hostWordsOut; }
 		uint64_t hostWordsIn() const { return m_hostWordsIn; }
 		uint64_t hostWordsShort() const { return m_hostWordsShort; }
+		// ⚠️ THE COUNT THAT DECIDES WHETHER ANY OF IT MEANS ANYTHING. Blocks and
+		// words moved say the plumbing runs; only a non-zero count says the
+		// frames carry content. An end-of-run peek of the DSP's record buffer
+		// cannot tell "the port sent zeros" from "the DSP consumed and cleared
+		// it" -- these are counted at the moment of the move.
+		uint64_t hostNonZeroOut() const { return m_hostNonZeroOut; }
+		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
+		void setBlockLog(bool _on) { m_blockLogOn = _on; }
+		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
 		// Every access to the task-file window, in order, for diffing against
@@ -401,6 +410,13 @@ namespace ot
 		Dspi m_dspi;
 		std::array<int, 16> m_kickSel = {};		// which core each channel was kicked against
 		uint64_t m_hostBlocksOut = 0, m_hostBlocksIn = 0, m_hostWordsOut = 0, m_hostWordsIn = 0, m_hostWordsShort = 0;
+		uint64_t m_hostNonZeroOut = 0, m_hostNonZeroIn = 0;
+		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; };
+		std::array<PendingOut, 16> m_pendingOut;
+		bool m_blockLogOn = false;
+		std::vector<std::string> m_blockLog;
+		void noteBlock(char _dir, uint32_t _ch, uint32_t _ramAddr, const std::vector<uint16_t>& _hw,
+			uint64_t _nonZero, const std::string& _note);
 		void installHostPortMover();
 		AtaCard* m_card = nullptr;
 		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The

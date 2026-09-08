@@ -80,6 +80,7 @@ int main(int _argc, char** _argv)
 	bool dspVerbose = false;	// the vendored DSP library's own log lines
 	std::string edmaLog;		// every eDMA kick with its TCD fields -> FILE (O8 step 4)
 	std::string dspPeek;		// core:space:addr,len[;...] -- DSP memory to print at the end
+	std::string blockLog;		// every host-port BLOCK with its non-zero count -> FILE
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -123,6 +124,7 @@ int main(int _argc, char** _argv)
 		else if(a == "--dsp-verbose")			dspVerbose = true;
 		else if(a == "--edma-log" && i + 1 < _argc)	edmaLog = _argv[++i];
 		else if(a == "--dsp-peek" && i + 1 < _argc)	dspPeek = _argv[++i];
+		else if(a == "--block-log" && i + 1 < _argc)	blockLog = _argv[++i];
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -230,6 +232,7 @@ int main(int _argc, char** _argv)
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
 		}
 		rtos.install();
+		rtos.setBlockLog(!blockLog.empty());
 		std::ofstream edmaOut;
 		if(!edmaLog.empty())
 		{
@@ -497,10 +500,19 @@ int main(int _argc, char** _argv)
 							ks[i].sample, ks[i].vector, ks[i].level, ot::taskName(ks[i].tcb), ks[i].pc, ks[i].slot);
 				}
 				if(dspPair)
-			std::printf("             host port: %llu blocks / %llu words to the DSPs, %llu blocks / %llu words back (%llu not in time); %llu ticks a burst waited for the DSP to drain\n",
+			std::printf("             host port: %llu blocks / %llu words to the DSPs (%llu NON-ZERO), %llu blocks / %llu words back (%llu NON-ZERO, %llu not in time); %llu ticks a burst waited for the DSP to drain\n",
 				static_cast<unsigned long long>(rtos.hostBlocksOut()), static_cast<unsigned long long>(rtos.hostWordsOut()),
+				static_cast<unsigned long long>(rtos.hostNonZeroOut()),
 				static_cast<unsigned long long>(rtos.hostBlocksIn()), static_cast<unsigned long long>(rtos.hostWordsIn()),
+				static_cast<unsigned long long>(rtos.hostNonZeroIn()),
 				static_cast<unsigned long long>(rtos.hostWordsShort()), static_cast<unsigned long long>(rtos.edma().gatedWaits()));
+		if(!blockLog.empty())
+		{
+			std::ofstream b(blockLog);
+			for(const auto& l : rtos.blockLog())
+				b << l << '\n';
+			std::printf("block log  : %s (%zu blocks)\n", blockLog.c_str(), rtos.blockLog().size());
+		}
 		std::printf("             ticks %llu, eDMA transfers %llu\n",
 					static_cast<unsigned long long>(rtos.ticks() - ticks0),
 					static_cast<unsigned long long>(rtos.edmaStarted()));

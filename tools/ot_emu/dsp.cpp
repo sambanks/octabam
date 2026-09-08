@@ -41,6 +41,10 @@ namespace ot
 		uint64_t rxFrames = 0, txFrames = 0;	// ESAI frames taken in (silence) / put out
 		uint64_t idleSkipped = 0;
 		uint64_t pulled = 0, pullShort = 0;	// read-back words taken / not produced in time
+		uint32_t lastSent[2] = {0, 0};		// a rolling pair of the last two words sent
+		uint32_t cmdArgs[2] = {0, 0};		// ⚠️ SNAPSHOT AT THE COMMAND. Taken at drain time
+											// instead, this held the block's last two DATA words
+											// and read as if the firmware sent a dest of 0x030000.
 		uint64_t nextTrace = 0;			// the fast-forward skips past exact multiples
 		uint32_t lastPcLo = 0, lastPcHi = 0;	// the PC window of the last few instructions
 		int windowRun = 0;
@@ -256,6 +260,8 @@ namespace ot
 		// 0x8c is vector 0x18. HC (and the DSP's HCP) stay set until the DSP
 		// takes it -- `runDue` clears both when the PC lands on the vector.
 		c.hcVector = (_v & 0x7f) << 1;
+		c.cmdArgs[0] = c.lastSent[0];
+		c.cmdArgs[1] = c.lastSent[1];
 		c.hcPending = true;
 		++c.commands;
 		auto& h = c.hdi();
@@ -299,6 +305,8 @@ namespace ot
 			++c.dropped;
 			return;
 		}
+		c.lastSent[0] = c.lastSent[1];
+		c.lastSent[1] = _word;
 		const dsp56k::TWord w = _word;
 		h.writeRX(&w, 1);
 	}
@@ -561,6 +569,39 @@ namespace ot
 	uint32_t DspPair::pc(const int _core) const { return m_cores[_core & 1]->dsp->getPC().toWord(); }
 	bool DspPair::faulted(const int _core) const { return m_cores[_core & 1]->faulted; }
 	uint64_t DspPair::idleSkipped(const int _core) const { return m_cores[_core & 1]->idleSkipped; }
+	// The DSP's own host DMA, as its frame handlers arm it (P:0x588 reads two
+	// host words into DDR0/DCO0 and starts DMA0 = HORX -> X memory; P:0x597
+	// does the same for DMA1 = X memory -> HOTX). Reading them says where the
+	// block being moved is actually landing, at the moment it lands, which is
+	// what an end-of-run peek of a buffer the DSP has already consumed cannot.
+	std::string DspPair::blockNote(const int _core)
+	{
+		Core& c = *m_cores[_core & 1];
+		char b[192];
+		std::snprintf(b, sizeof b,
+			"dsp: cmd args %06x %06x | DMA0 ddr %06x dco %06x | X@%04x %06x %06x | X@%04x %06x %06x | rx ring %zu",
+			c.cmdArgs[0], c.cmdArgs[1],
+			c.px->read(0xffffee, dsp56k::Nop), c.px->read(0xffffed, dsp56k::Nop),
+			c.cmdArgs[0] & 0xffff,
+			c.mem->get(dsp56k::MemArea_X, c.cmdArgs[0] & 0xffff),
+			c.mem->get(dsp56k::MemArea_X, (c.cmdArgs[0] & 0xffff) + 1),
+			(c.cmdArgs[0] & 0xffff) - 0x2000,
+			c.mem->get(dsp56k::MemArea_X, ((c.cmdArgs[0] & 0xffff) - 0x2000) & 0xffffff),
+			c.mem->get(dsp56k::MemArea_X, (((c.cmdArgs[0] & 0xffff) - 0x2000) & 0xffffff) + 1),
+			c.hdi().rxData().size());
+		return b;
+	}
+
+	uint32_t DspPair::peekWord(const int _core, const char _space, const uint32_t _addr) const
+	{
+		// 'R' is not a memory space: it reads the DSP's own DMA0 destination
+		// pointer, which post-increments as the block drains, so the caller can
+		// find where the words it just sent actually landed.
+		if(_space == 'R')
+			return const_cast<dsp56k::Peripherals56362*>(m_cores[_core & 1]->px.get())->read(0xffffee, dsp56k::Nop);
+		return _space == 'P' ? peekP(_core, _addr) : _space == 'Y' ? peekY(_core, _addr) : peekX(_core, _addr);
+	}
+
 	bool DspPair::hostRingEmpty(const int _core) const { return !m_cores[_core & 1]->hdi().hasRXData(); }
 	uint64_t DspPair::pulled(const int _core) const { return m_cores[_core & 1]->pulled; }
 	uint64_t DspPair::pullShort(const int _core) const { return m_cores[_core & 1]->pullShort; }

@@ -92,6 +92,10 @@ namespace ot
 		virtual bool hostRingEmpty(int _core) const = 0;	// the DSP has taken every word pushed so far
 		virtual void pushHalfwords(uint32_t _addr, const std::vector<uint16_t>& _hw) = 0;
 		virtual size_t pullHalfwords(uint32_t _addr, int _core, std::vector<uint16_t>& _out, size_t _n) = 0;
+		// What the co-processor was told about the block just moved, for the
+		// block log: where its own DMA is putting it and how much is left.
+		virtual std::string blockNote(int _core) = 0;
+		virtual uint32_t peekWord(int _core, char _space, uint32_t _addr) const = 0;
 	};
 
 	// A peripheral window: reads answer from `overrides` if the address has

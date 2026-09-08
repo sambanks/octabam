@@ -268,13 +268,47 @@ namespace ot
 				for(uint32_t i = 0; i + 1 < bytes; i += 2)
 					hw.push_back(m_machine.read16(saddr + i));
 				co->pushHalfwords(daddr, hw);
+				uint64_t nz = 0;
+				for(const auto w : hw)
+					if(w)
+						++nz;
 				++m_hostBlocksOut;
 				m_hostWordsOut += hw.size();
+				m_hostNonZeroOut += nz;
+				m_pendingOut[_ch & 15] = {saddr, hw, nz};
 			},
 			[this, co](const uint32_t _ch)
 			{
 				const auto saddr = m_edma.tcdField(_ch, 0, 4);
 				const auto daddr = m_edma.tcdField(_ch, 0x10, 4);
+				// ⚠️ An OUTBOUND block's DSP-side state is only meaningful HERE,
+				// at the completion the drain gate holds until the ring is
+				// empty. Noted at the kick it lagged by a whole block (DCO0
+				// still held the PREVIOUS block's count) and read as if the
+				// host's destination word were being ignored.
+				if(daddr >= Edma::g_hostPortLo && daddr < Edma::g_hostPortHi)
+				{
+					const auto& p = m_pendingOut[_ch & 15];
+					if(!p.hw.empty())
+					{
+						const int core = m_kickSel[_ch & 15];
+						// Where DMA0 has just left off, and the tail of what
+						// landed there: the direct test of whether the words
+						// the port sent reached DSP memory.
+						const auto ddr = co->peekWord(core, 'R', 0);	// 'R' = DMA0's DDR, see DspPair
+						char t[160];
+						std::string tail = " landed@";
+						std::snprintf(t, sizeof t, "%04x:", ddr >= 8 ? ddr - 8 : 0);
+						tail += t;
+						for(uint32_t k = 0; k < 8 && ddr >= 8; ++k)
+						{
+							std::snprintf(t, sizeof t, " %06x", co->peekWord(core, 'X', ddr - 8 + k));
+							tail += t;
+						}
+						noteBlock('>', _ch, p.saddr, p.hw, p.nonZero, co->blockNote(core) + tail);
+						m_pendingOut[_ch & 15] = {};
+					}
+				}
 				if(saddr < Edma::g_hostPortLo || saddr >= Edma::g_hostPortHi)
 					return;
 				const auto bytes = m_edma.tcdField(_ch, 8, 4) * m_edma.minorLoops(_ch);
@@ -282,8 +316,14 @@ namespace ot
 				m_hostWordsShort += co->pullHalfwords(saddr, m_kickSel[_ch & 15], hw, bytes / 2);
 				for(size_t i = 0; i < hw.size(); ++i)
 					m_machine.write16(daddr + 2 * static_cast<uint32_t>(i), hw[i]);
+				uint64_t nz = 0;
+				for(const auto w : hw)
+					if(w)
+						++nz;
 				++m_hostBlocksIn;
 				m_hostWordsIn += hw.size();
+				m_hostNonZeroIn += nz;
+				noteBlock('<', _ch, daddr, hw, nz, co->blockNote(m_kickSel[_ch & 15]));
 			});
 		m_edma.setCompletionGate([this, co](const uint32_t _ch)
 		{
@@ -292,6 +332,24 @@ namespace ot
 				return true;
 			return co->hostRingEmpty(m_kickSel[_ch & 15]);
 		});
+	}
+
+	void Rtos::noteBlock(const char _dir, const uint32_t _ch, const uint32_t _ramAddr,
+		const std::vector<uint16_t>& _hw, const uint64_t _nonZero, const std::string& _note)
+	{
+		if(!m_blockLogOn || m_blockLog.size() >= 200000)
+			return;
+		char line[512];
+		std::snprintf(line, sizeof line, "%c frame %6llu ch %2u core %d ram %08x %5zu words, %5llu non-zero  first",
+			_dir, static_cast<unsigned long long>(m_frameCount), _ch, m_kickSel[_ch & 15], _ramAddr,
+			_hw.size(), static_cast<unsigned long long>(_nonZero));
+		std::string s = line;
+		for(size_t i = 0; i < _hw.size() && i < 8; ++i)
+		{
+			std::snprintf(line, sizeof line, " %04x", _hw[i]);
+			s += line;
+		}
+		m_blockLog.push_back(s + "  " + _note);
 	}
 
 	void Rtos::tickTimers()
