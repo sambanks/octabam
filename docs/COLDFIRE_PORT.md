@@ -1789,6 +1789,42 @@ which input slot is which physical input and which output slot is main/cue
 — the sample loader / voice start for FLEX is the next locate, with
 `--coverage` and the block log as the instruments); the `0x8c` jitter.
 
+## Milestone O9c — the slot map (started 8 Sep 2026, branch `coldfire-o9c`)
+
+Eight runs, each with a 1 kHz tone at −20 dBFS on ONE of the eight RX0 slots
+(`--audio-in out/o9c/tone_slotN.wav`, the RIG project, `--main-level 64`,
+poked trig at step 2), reading TX0 per slot and the DSP's capture staging
+block (`--dsp-peek 0:X:4700,128;0:X:2700,128`, the 128 words eDMA ch 7 takes
+back each frame) at the end. ✅ Measured:
+
+| tone on RX0 slot | lands in the capture block at | TX0 slot 1 / 2 / 3 / 4 |
+|---|---|---|
+| 0 | words 0,1 (+8k): pair at +0, L | −78 / — / −82 / — dBFS |
+| 1 | words 2,3 (+8k): pair at +0, R | — / −78 / — / −82 |
+| 2 | words 0,1 (+8k): pair at +0, L | **−35** / — / −39 / — |
+| 3 | words 2,3 (+8k): pair at +0, R | — / **−35** / — / −39 |
+| 4–7 | nowhere: the ESAI-in ring holds four words per sample (slots 0–3) | silence |
+
+So: **TX0 slots 1/2 are one stereo pair and 3/4 a second, 3.7 dB lower**
+(main and cue is the natural reading, 🟡 unmeasured which is which); the
+capture block's pair at +0 — C/D in the ColdFire's own reading
+(`RTOS_FORK.md` §10.18, "A/B at +0x80, C/D at +0") — is fed by RX0 slots 2
+and 3 at full level, and **the +0x80 pair (A/B) is never written by the port's
+DSP**; RX0 slots 0 and 1 reach the same +0 positions and the same outputs
+**43 dB down**, which is not a THRU gain anyone would set. 🟡 Two readings,
+neither measured: the A/B copy uses a gain that another never-posted sys
+command sets (the family the main level belongs to — the project's `DIR_AB`
+is 0, and the input-gain/direct paths are all ColdFire state), or the port's
+ESAI delivers the pairs to the wrong half of the DSP's input stage. The
+falsifier is a write watch on the +0x80 words of the staging block and a
+`--coverage` diff between a slot-0 run and a slot-2 run: the code that
+differs is the A/B path. RX0 slots 4–7 not reaching the ring is 🟡 the
+vendored ESAI/DMA (the ring stride is 4 where the payload enables 8 slots);
+it costs nothing today because the unit has four inputs.
+
+Next in O9c: settle A/B, then the audio comparison against `dsp_host` on a
+THRU track whose FX2 is the effect under test.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules

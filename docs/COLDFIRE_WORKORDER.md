@@ -653,7 +653,15 @@ report lines. Three things later milestones must know:
    base** (`agu.h`, fixed, patch regenerated). `make check`'s bit-identity
    gates say whether any shipped effect was rendered on it.
 
-### O9c — the audio comparison (O8's step 5) *(Opus)*
+### O9c — the audio comparison (O8's step 5) *(Opus)* — 🟡 STARTED (8 Sep 2026, branch `coldfire-o9c`)
+
+The slot map's first pass is in `COLDFIRE_PORT.md` O9c: TX0 1/2 and 3/4 are
+the two stereo pairs (3.7 dB apart); RX0 slots 2/3 feed the capture block's
+C/D pair at full level; RX0 slots 0/1 reach the same pair 43 dB down and the
+A/B pair at +0x80 is never written — the A/B path is the open item (a
+never-posted sys command, or the port's input stage); RX0 slots 4–7 do not
+reach the ring. Then the comparison.
+
 
 **Gate:** the port, driven by the firmware, renders `verify_twocore`'s
 layouts and the WAV matches `dsp_host`'s render of the same layout to the
