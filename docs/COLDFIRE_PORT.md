@@ -840,129 +840,351 @@ ticks, the trig at frame 344 with bytes `0x08`/`0x18`); the M6a oracle diff
 still **8 compared fields agree, 0 disagreements**; `ctest` 6/6; `make check`
 green.
 
-## Milestone O8 — the DSP cores and the host port ⛔ IN PROGRESS (8 Sep 2026)
+## Milestone O8 — the DSP cores and the host port 🟡 BUILT THROUGH STEP 3 (8 Sep 2026)
 
-**The gate is not passed and no DSP is wired yet. What this session did is
-decode the join completely, from the firmware's own code, and fix two
-instruments that were lying about it.** The headline:
+**The two real DSP cores sit behind the host port (`--dsp`), the firmware boots
+them itself, the boot's upload is verified byte for byte by a ctest, and the
+M6a gate passes with the cores live. Steps 4 and 5 of the work order are open**
+(what they stopped on is at the end of this section). The session before this
+one decoded the join from the firmware's code (kept below, under "What runs, and
+when"); this one wired it and measured what the wiring exposed — six things in
+the vendored DSP emulator, one in the model of the shared window, and one in
+this port's own first guess at the handshake.
 
-✅ **THE FIRMWARE BOOTS THE DSPs ITSELF, DURING THE COLDFIRE BOOT, AND WE HAVE
-CAPTURED THE BYTES.** No `.mem` dump is needed for the join: the payload comes
-out of the OS image, through the host port, under the firmware's own control.
+### ❌ The host-port readings that had stood since ARCHITECTURE.md §6 — retracted
 
-### What runs, and when
+The window `0x20000000`–`0x20000fff` is the **HI08 host-side register file** of
+whichever core the GPIO byte at `0xfc0a400c` selects: one byte register per
+4-byte stride, in the LOW byte of the 16-bit access.
 
-`0x4000050c` — a **boot** address — calls `0x40001e50` ("DSP start") exactly
-once, at instruction **4,270,944** of the 10,170,953-instruction boot. It calls
-the uploader `0x40001d4c` twice:
+| offset | register | what the firmware does with it |
+|---|---|---|
+| +0x00 | ICR (RREQ 0, TREQ 1, HF0 3, HF1 4, INIT 7) | writes `0x81` = **INIT\|RREQ, an interface reset** — ❌ not "start the DSP" |
+| +0x04 | CVR (HV 6:0, HC 7) | the loader clears it; the frame handler writes `0x8c` = **HC \| vector 0x0c → P:0x18, a host command**, and polls bit 7 until the DSP takes it — ❌ not "swap frame" |
+| +0x08 | ISR (RXDF 0, TXDE 1, TRDY 2, HF2 3, HF3 4, HREQ 7) | the loaders spin on `& 6` = TXDE\|TRDY before every word and `btst #0` = RXDF for the echo — ❌ not "bit 6 = DSP ready" |
+| +0x14/18/1c | TXH/TXM/TXL, RXH/RXM/RXL | bits 23:16, 15:8, 7:0; the write of TXL sends, the read of RXL takes |
 
-| call | source | length | DSP load address |
+✅ All from the firmware's own code (`0x40001d4c`, `0x40001b18`, `0x4000aad0`),
+and confirmed by the join working: the vendored HDI08 answers those registers
+and the firmware's upload runs to completion against it. ARCHITECTURE.md §6 and
+DSP.md §1 are corrected in place.
+
+### ✅ The gate, and it is self-checking: `ot_dsp_test` (ctest `dsp`, under a second)
+
+The firmware boots with the pair attached; a step hook fires at the instruction
+after each upload returns (`0x40001e96` for core 0, `0x40001edc` for core 1) and
+compares DSP memory with the image's bytes, parsed independently (DSP.md §2: the
+uploader's own walk, mirrored):
+
+```
+[PASS] core 0: the boot ROM took 50 words for P:0x31000 and jumped
+[PASS] core 0: P:0x31000 holds the bootstrap the image carries  50/50 words
+[PASS] core 1: the boot ROM took 58 words for P:0x32000 and jumped
+[PASS] core 1: P:0x32000 holds the bootstrap the image carries  58/58 words
+[PASS] core 0: the payload parses to its last byte  98 records, 79563 of 79563 bytes, jump 0x30000
+[PASS] core 0: every payload record had landed where it names  26221/26221 words
+[PASS] core 0: the host sent and took back exactly what the walk predicts  26569 sent (26569 predicted), 99 echoed (99 predicted)
+[PASS] core 1: the payload parses to its last byte  91 records, 77061 of 77061 bytes, jump 0x38000
+[PASS] core 1: every payload record had landed where it names  25408/25408 words
+[PASS] core 1: the host sent and took back exactly what the walk predicts  25743 sent (25743 predicted), 92 echoed (92 predicted)
+[PASS] core 0: left the bootstrap and is running the payload  pc 0x30010, no fault
+[PASS] core 1: left the bootstrap and is running the payload  pc 0x57, no fault
+```
+
+Two mechanisms that cannot fake each other agree: the firmware's ColdFire-side
+loader with its TXDE/RXDF polls and echo check, and the vendored DSP running
+first the chip's bootstrap ROM (`DspBoot`: count, address, words, jump) and then
+the firmware's own 50-word HDI08 loader, which reads a space word, echoes it,
+reads an address into r0 and a count into b1, and `dor`-loops
+`movep x:<<M_HORX,p/x/y:(r0)+` — disassembled with the vendored
+`dsp56kDisassemble`, `out/oracle/o8_blob0.dis`.
+
+⚠️ **Why the check runs at upload time and not at the handoff:** the first
+version compared at the handoff and found 19 words of payload A at P:0x38000
+reading zero. That range is core 1's entry stub, and core 1 had run it and then
+cleared Y:0x38000.. as its delay buffer — the window is one memory (next
+section). "Harmless once booted", as CHIP.md predicted; a gate has to look
+before that.
+
+### ✅ THE SHARED WINDOW IS ONE MEMORY, and the firmware depends on it
+
+With P private per core (the vendored patch's dsp_host form: X with X, Y with
+Y), core 1 jumped to its entry P:0x38000 — an address only core 0's upload had
+written — found zeros, and ran off the end of P memory: the PC ring read
+`7ffc1 7ffc2 … 7ffff`, then a fault at 0x80000. CHIP.md had this measured on
+hardware already (`dsp/alias_probe.asm`: P, X and Y are the same words in
+`0x30000`–`0x3FFFF`, reachable by both cores); the port now models it that way,
+`Memory::setSharedWindow(lo, hi, all, hook)` in `tools/dsp56300.patch`, one
+64K array behind both cores' P, X and Y, the hook dropping both cores' decoded
+opcode for any word written there. `dsp_host` keeps its two-way window — it
+renders bit-identically with it and, as DSP.md says, cannot answer aliasing
+questions; that is now a documented difference between the two machines.
+
+### ✅ Six things the vendored emulator does that the firmware cannot live with
+
+Each one first presented as a hang or a crash with no diagnostic, and each was
+found by an instrument, not by reading — recorded with the instrument:
+
+1. **A hardware DO loop runs to completion inside one `execInterpreter()`
+   call** (`do_exec` nests the loop). The 50-word loader polls the host port
+   INSIDE a `dor`, so the call could never return to the ColdFire that had to
+   feed it. *Stack sample:* `op_Dor_S → do_exec → op_Brclr_pp`, forever.
+   Patch: with `setHostStepped(true)`, `do_exec` pushes the loop state and
+   returns; the host applies `doLoopEnd()` after every instruction (the same
+   test, on the same registers).
+2. **Interrupts always dispatch through the JIT** when it is compiled in, even
+   with the interpreter driving — `execInterrupt` reads `g_useJIT`, which is
+   compile-time. `dsp_host` never takes a DSP interrupt, so it never met this.
+   *lldb:* `EXC_BAD_ACCESS` in `funcCreate`, called from `execOp` with a
+   garbage `this`. Patch: a host-stepped core interprets its interrupts, and
+   `exec()` too.
+3. **A masked pending interrupt starves the peripheral clock.**
+   `execInterrupts()` returns early on a masked head and never re-hooks the
+   peripheral exec, so a core that masks interrupts for a while — core A boots
+   with `ori #3,mr` — freezes its own ESAI. *`--dsp-trace`:* the peripheral
+   target clock stuck at 845,824 while the instruction counter ran to 4 M;
+   SAISR at RDF\|ROE; 3 frames ever. Patch: service the peripherals under a
+   masked head (a masked interrupt waits; the peripherals do not).
+4. **The ESAI blocks on an empty input ring** (a condition-variable wait, meant
+   for an audio thread). *Stack sample:* `EsxiClock::exec → Esai::execRX →
+   RingBuffer::pop_front → ConditionVariable::wait`. No patch: the pair
+   installs non-blocking callbacks — silence in, output frames counted — and a
+   clock of ONE ESAI FRAME PER SAMPLE at the pair's own instructions-per-sample,
+   so the DSP's audio clock and the ColdFire's sample clock cannot drift apart.
+5. **A PC past P memory is a garbage member-function pointer** (the opcode
+   cache is indexed by the PC into a table sized to P). *lldb:* the same
+   `funcCreate` frame, from `execOp`, `this` = a DSP data word. The pair stops
+   the core, records it as a fault, and prints the last 64 PCs — which is what
+   found the window finding above.
+6. **A fast interrupt never sets the PC to its vector** (the vector's two words
+   run inline), so "HC clears when the PC lands on P:0x18" never fired and the
+   frame handler polled HC forever: 0 frames, 0 ticks, `host commands 1`.
+   Patch: an interrupt-taken hook (`setInterruptTakenHook`); HC and HCP clear
+   from it.
+7. **The DSP's own audio DMA silently moved nothing.** Core A's main loop
+   (P:0x4b..0x53) polls DMA channel 2's source pointer for 0x8070 / 0x80f0 —
+   the halves of a 256-word ring, X:0x8000.. → ESAI TX0, one word per TDE
+   request (DCR2 `0xcc6220`: source mode DualCounterDOR2, destination fixed);
+   channel 3 is the mirror for audio in (ESAI RX0 → X:0x8100.., DualCounterDOR3,
+   DCO3 `0x23f` with DOR3 = −575). *`--dsp-trace`:* DSR2 stuck at `0x8000`
+   while the ESAI put out 2,334 frames. The vendored `execTransfer` handles
+   neither address-mode pair and, in a release build, reaches an
+   `assert(false)` that is compiled out and returns "finished". Patch: the two
+   pairs, one word per request over the dual-counter ring — and **DCOL is the
+   low TWELVE bits of DCO, not eight**: `0x23f` with an offset of −0x23f only
+   returns the pointer to its base if DCOL counts 0x23f words (the firmware's
+   constants decide it, the way the reciprocal tables decided the EMAC). With
+   it DSR2 sweeps the ring, core A sends the host its first word after the
+   boot and core B its first three mailbox words, and both cores advance to
+   their next waits (P:0x97, P:0x8d).
+8. **The host DMA on the DSP side had two more.** Its receive requests are
+   rate-limited to one word per 200 instructions (a throttle for a threaded
+   host; a 672-word block at that pace is 30 samples, twice a frame), and a
+   channel armed while its request condition already holds never fires —
+   `checkTrigger` returns false unconditionally upstream — so core B's
+   transmit DMA, armed with HTDE already set, never started and its 256-word
+   read-back timed out word by word (`read-back words 256 (256 not in time)`,
+   51 M instructions spent in the pull). The pair sets the rate limit to zero;
+   the patch re-enables the initial trigger for a host-stepped core.
+
+The patch file is regenerated with `git -C vendor/dsp56300 diff >
+tools/dsp56300.patch`; `scripts/setup.sh` applies it; `dsp_host` is unchanged
+by every part of it (its window form and its non-host-stepped mode are the
+defaults).
+
+### 🟡 The inter-core mailbox — inferred from both payloads' code
+
+Core 1 parks at P:0x57 on `brclr #1,y:<<$ffffd3` and reads `y:<<$ffffd4`;
+core 0 writes `movep r3,y:<<$ffffd7` and waits on `brset #1,y:<<$ffffd6`, then
+sends `#2`. No vendored peripheral maps those, so the pair models a symmetric
+one-register channel (transmit data at $D7, "still unread" at $D6 bit 1;
+receive data at $D4, "one waiting" at $D3 bit 1) through a hook on unmapped
+Y-side registers. The addresses are the firmware's; the bit semantics are
+inferred from the two wait loops and nothing else. Core 0 has not sent a word
+on it yet in any run — that happens on the frame-exchange path.
+
+### ✅ M6a with the cores live, and the idle fast-forward validated
+
+`ot_emu --dsp --ms 1000 --golden`: **the M6a gate passes** (10 created, 11 ran,
+gate at 205.97 ms against 205.39 without the cores) and `oracle.py` reports
+**8 compared fields agree** against route A. The boot sends the cores one word
+after the handoff (`0x030000`); core 0 takes it and goes on running with its
+ESAI ticking.
+
+The cores are stepped in lockstep (1.14 instructions per ColdFire instruction
+in the boot, 4535 per sample under the RTOS; both knobs, neither measured), and
+a 20-second project load is 4 G instructions per core in an interpreter. So a
+core found polling — eight instructions inside a three-word window, no hardware
+loop open, no interrupt pending — is advanced to its next peripheral event the
+way the chip's own `wait` is emulated (`idleStep`, the arithmetic is
+`op_Wait`'s), then executes the poll once so it can see what changed. ⚠️ The
+first version `continue`d without that execution, and the uploader waited for
+an echo that a never-executed poll could not produce. ✅ **Validated by A/B**,
+`--dsp` against `--dsp --dsp-no-idle` over the M6a run: ESAI frames 2688 / 2686
+both, host words 26570 / 99 both, all 8 oracle fields agree between the two.
+
+### Instruments added
+
+`--dsp`, `--dsp-log FILE` (every host-side event: sel/icr/cvr/tx/rx/mail/
+hc-taken, with the DSP due count), `--dsp-trace N` (a status line per core:
+PC, SR, mode, pending, peripheral target, ESAI counts, SAISR/RCR/TCR/HSR/HCR),
+`--dsp-no-idle`, `--dsp-verbose` (the vendored log lines, off by default: 3,260
+per boot), `--edma-log FILE` (every kick with its whole TCD), the per-core PC
+ring and fault in the report, `DSP=1 scripts/o6_gate.sh`. And the build is now
+native: `/opt/homebrew/bin/cmake` — the x86 cmake at `/usr/local/bin` had been
+building `out/emu` for Rosetta.
+
+### ✅ The sequencer gate passes with the cores live
+
+`DSP=1 scripts/o6_gate.sh` (the port with `--dsp`, the same staged card, the
+same route A oracle): **400 frames, 28 ticks, the trig at frame 344 on track 0,
+bytes `0x08` then `0x18` — 5 compared fields agree.** Over those frames core A
+took 2,400 host commands and core B 1,200; the host wrote 6,400 words and took
+back 500; the pair's event log shows the frame protocol the tape had recorded
+(sel/icr/cvr/tx/rx/hc-taken), and the ColdFire's 16,800 eDMA kicks are in
+`--edma-log` with their TCDs. Before the DMA fix (item 7 above) this run
+stopped at frame 0 with 0 ticks; before the HC fix (item 6) at the first host
+command.
+
+### ✅ Step 4 — the blocks, decoded from the tape, and the lanes corrected
+
+Route A's tape (`emu_rtos.py --tape`, the `hostw` and `edma` records) gives
+the frame protocol per core, in order, and it decides the word width:
+
+| host command | words to +0x1c before it | eDMA that follows | bytes | DSP count |
+|---|---|---|---|---|
+| `0x8c` (vector 0x18, "frame") | — | — | — | — |
+| `0x89` (0x12, "DMA a block OUT") | `0x6600`, `0x1ff` | ch1 paced → ch6 → ch7 | 512+256+256 | 512 |
+| `0x89` | `0x6600`, `0x0ff` | ch1 burst | 512 | 256 |
+| `0x88` (0x10, "DMA a block IN") | `0x6080`, `0x29f` | ch0, NBYTES 0x150 × 4 | 1344 | 672 |
+| `0x88` | `0x6800`, `0x03f` | ch0, 0x20 × 4 | 128 | 64 |
+| `0x88` | `0x6000`, `0x07f` | ch0, 0x40 × 4 | 256 | 128 |
+| `0x88` | `0x6400`, `0x1ff` | ch0, 0x100 × 4 | 1024 | 512 |
+
+(two of the IN blocks repeat per frame, one per core, the GPIO byte toggling
+between them; the DSP's handlers at P:0x588 / P:0x597 read the two words,
+mask them to 16 bits, and arm DMA0 from HORX / DMA1 into HOTX for `count+1`
+words.) **Every count is exactly half the byte count.** So one DSP word rides
+each 16-bit bus cycle, a 32-bit eDMA access at +0x1c is two words (high
+halfword first), and ❌ the pair's first lane model — the odd byte of each
+halfword is the register, the even byte nothing — made every frame word 8
+bits wide. The corrected rule: on this 16-bit port the odd byte is the
+register the stride names and the even byte the register before it, so a
+halfword at +0x1c lands TXM:TXL and sends, at +0x18 TXH:TXM, at +0x14 TXH.
+The loader's byte-at-a-time upload is consistent with it (its `movew` at
++0x1c carries mm:ll, and TXM was already mm), and so is the DSP masking a
+count sent by a single `movew` to 16 bits. The DSP words carry TXH stale
+(0x03, the last upload byte) above the 16 payload bits. DSP.md's "336-word
+records" were bytes: the record is 672 words.
+
+`Rtos::installHostPortMover` then moves the data the eDMA carries: a block
+whose DADDR is the window is pushed whole at the kick, halfword by halfword,
+as the bus cycles the eDMA would make (the vendored HDI08's receive ring
+holds it until the DSP's DMA0 drains it, a word per peripheral tick); a block
+whose SADDR is the window is pulled at completion from the core the kick was
+made against, running that core until each word is in HOTX (its DMA1 puts
+them there one at a time, since HOTX is a single register). The block size
+is NBYTES × the minor-loop count (CITER bit 15 = a minor link, count in bits
+8-0), the RAM side contiguous. `--dsp-peek core:space:addr,len` reads DSP
+memory after the run.
+
+⚠️ **And one of route A's completion rules changes when the cores are
+attached.** "A host-port burst completes at once" was right for a model that
+moved nothing; with the DSP draining a real ring it let the frame handler issue
+the next block's destination and count while the DSP was still taking the
+previous block, and the DSP's handler read data words as its arguments: 7
+frames in the window, the receive ring overflowing, 36 of 64 host commands
+never taken. On the chip the completion interrupt fires when the DSP has taken
+the last word, and that is what lets the handler continue — so with the pair
+attached a burst INTO the port completes at the first tick the selected core's
+receive ring is empty (`Edma::setCompletionGate`), and without it every rule is
+route A's (the non-DSP O6 report is byte-identical before and after).
+
+✅ **With the mover, the gate still passes and the blocks flow**: 400 frames,
+28 ticks, the trig at frame 344 (`0x08`/`0x18`), 5 compared fields agree;
+**2,400 blocks / 870,400 words to the DSPs, 1,600 blocks / 307,200 words
+back, 0 not in time**, 60,820 ticks spent holding a burst for the DSP to
+drain; per core 2,400 / 1,200 host commands taken, 204,800 / 102,400 read-back
+words produced by the DSPs' own transmit DMA. 
+
+### ✅ And the frames carry content — outbound. The DSP returns silence.
+
+The counter that decides whether any of the above means anything
+(`--block-log`, non-zero words counted at the moment of the move, not peeked
+afterwards). Over the 400-frame run:
+
+| direction | blocks | words | non-zero |
 |---|---|---|---|
-| 1 | `0x400e21e0` | `0x96` = 150 bytes | `P:0x31000` |
-| 2 | `0x400e2276` | `0xae` = 174 bytes | `P:0x32000` |
+| ColdFire → DSPs | 2,400 | 870,400 | **40,853** |
+| DSPs → ColdFire | 1,600 | 307,200 | **0** |
 
-Both destinations are in the **shared window** (`0x30000`–`0x3FFFF`). The caller
-first relocates the big blobs in ColdFire RAM (77,061 words from `0x400f59ef`,
-79,563 from a register) — so the payload proper is staged in RAM and these two
-uploads are a **bootstrap**, not the program.
+✅ **The outbound path is live and it tracks the sequencer.** Non-zero words
+per 50 frames sit at 5,088 and rise to 5,100 across the trig at frame 344,
+then 5,238 — the parameter frames change when the sequencer fires. The 672-,
+128- and 64-word records carry 14, 30-33 and 11 non-zero words each: sparse,
+which is what a parameter frame with most slots idle looks like. And the words
+reach DSP memory: the landing peek reads `030004 030009 030800 … 030b40`
+where the block ended.
 
-### The wire protocol, decoded and verified
+❌ **The inbound path is zeros in every frame band, including after the trig**
+— 0 of 307,200 words, with the pull never timing out, so the DSP genuinely put
+zeros in HOTX rather than the port failing to collect them. Its own DMA1 is
+sourcing from X:0x4700/0x4780/0x4800 and those hold zeros. The DSP is
+computing silence, which is what a machine with no sample audio and a silent
+ESAI input should compute. **What has NOT been established is why** — no
+sample data reaching the DSP, or a voice that never starts, are both open and
+both sit on the audio-in path that is O9's ground.
 
-`--hostport-log FILE` (new) records every write into `0x20000000`–`0x20000fff`
-with its PC and instruction count. The boot makes **350 writes / 114 complete
-24-bit words**, and they frame exactly:
+### ⚠️ The destination word is the host's, the address is the DSP's
 
-```
-W 20000000 0081     pc 0x40001e5e     <- "start the DSP"
-W 20000004 0000     pc 0x40001d62     <- command/status
-word 000032                           <- COUNT: 50 words  (150 bytes / 3)
-word 031000                           <- LOAD ADDRESS
-word 0003f8 ... 50 words of program
-```
-
-✅ **The byte lanes come from the loader's own code** at `0x40001d74`, not from
-a reading of the manual:
-
-```
-movel %d0,%d1 / swap %d1 / extl %d1 / movew %d1,0x20000014   -> bits 23:16
-movel %d0,%d1 / asrl #8,%d1         / movew %d1,0x20000018   -> bits 15:8
-                                      movew %d0,0x2000001c   -> bits  7:0
-```
-
-only the LOW BYTE of each halfword is meaningful. ⚠️ Getting the lanes
-backwards makes word 2 read `0x001003` instead of `0x031000` — and `0x31000` is
-the load address the loader was *called* with, which is what says the decode is
-right. The loader also divides its byte length by 3 (`remsl #3`), which is why
-the count is 50 and the argument was 150.
-
-### ✅ And the DSP half of the protocol, in the firmware's own words
-
-The 50 captured words, disassembled at their load address with the vendored
-`dsp56kDisassemble`, are an **HDI08 bootstrap loader**:
+`--dsp-peek` of X:0x6080 read zeros and briefly looked like "the frames are
+empty". It was the instrument: **0x6080 is the address the HOST names, not the
+one the DSP uses.** Measured, with the command's arguments snapshotted at the
+command and both candidates peeked at the same instant:
 
 ```
-031000: ori     #$3,mr
-031002: bset    #$12,y:<<$fffff9                  ; HDI08 config
-031003: bset    #$12,y:<<$fffffa
-031004: brclr   #HSR_HRDF,x:<<M_HSR,func_031004   ; wait for a host word
-031006: movep   x:<<M_HORX,a                      ; read it
-031007: brclr   #HSR_HTDE,x:<<M_HSR,func_031007
-031009: movep   a,x:<<M_HOTX                      ; ECHO IT BACK
-03100a: brclr   #HSR_HRDF,x:<<M_HSR,func_03100a
-03100c: movep   x:<<M_HORX,r0
-03100d: cmp     #<$3,a
-03100f: jmp     (r0)                              ; run the loaded code
+cmd args 036080 03029f | DMA0 ddr 004320 dco 00029f | X@6080 000000 000000 | X@4080 030000 030000
 ```
 
-That echo is the far side of the handshake **O6 had to fake** (`0x20000004`
-reading `0x0000`, `0x2000001c` toggling). With a real HDI08 behind the window
-the firmware programs the DSPs and the fakes come out.
+The firmware sends dest `0x6080`, count `0x29f`; the DSP arms its DMA0 at
+`0x4080` and the block lands there. Every block is the same 0x2000 apart:
+0x6080 → 0x4080, 0x6000 → 0x4000, 0x6400 → 0x4400, 0x6800 → 0x4800. 🟡
+**Inferred, not located:** the payload's own dispatcher at P:0x40 sets up two
+banks of buffers — 0x4000/0x4080/0x4400/0x4600/0x4800 and
+0x2000/0x2080/0x2400/0x2600/0x2800 — and each host word is exactly the two
+banks' addresses OR'd together, so bits 14 and 13 read as a bank select the
+DSP masks down to the bank it is using (bank A throughout this run). The
+masking instruction has not been found; the handler at P:0x588 masks only to
+16 bits. Falsifier: a run where the DSP switches to bank B should land the
+same words at 0x2xxx.
 
-### ⚠️ Two instruments were lying, and both nearly produced a wrong finding
+⚠️ Two instrument lessons, both the project's usual family. **A peek after the
+run cannot tell "nothing was sent" from "the DSP consumed it"** — count at the
+move. And **a note taken at the eDMA kick lags a whole block**: read at the
+kick, DCO0 still held the PREVIOUS block's count and it read as if the
+firmware's destination were being ignored entirely. The note is taken at the
+completion the drain gate holds, which is when the DSP-side state means
+something.
 
-Recorded because each one first returned a confident zero:
+### What step 5 needs
 
-1. **The PC watch could not see the boot.** It lived in `Rtos::stepOnce`, which
-   runs only after the handoff, so `--watch-pc 0x4000050c` reported **0 hits**
-   — for an address that runs 4.27 M instructions into the boot. The first
-   draft of this section said "the DSP loader never runs". It now lives in
-   `Machine` (consulted from both `run()` and `step()`), is armed BEFORE the
-   boot, and timestamps in instructions because the boot has no sample clock.
-2. **`--periph`'s log is capped at 4096 accesses** and the boot makes 8,235
-   peripheral writes before the DSP init, so "0 host-port touches in the
-   peripheral log" was a false negative too. `--hostport-log` is a separate,
-   uncapped-in-practice recorder for exactly this reason.
-
-Same family as `RTOS_FORK.md` §10.3b, and the third and fourth instances this
-week. **A zero from an instrument is not a measurement until you know the
-instrument can see the thing.**
-
-### What O8 still needs, in order
-
-1. Link `dsp56kEmu` into `ot_emu` and instantiate two cores (mechanical:
-   `tools/dsp_host` already boots both with the shared-window patch).
-2. Wire `0x20000014/18/1c` → `HDI08::writeRX`, `0x20000008` → HSR (bit 6 =
-   ready), `0x20000004` → the busy/status byte, and `0x20000000`'s `0x81` /
-   `0x8c` to start / swap. The chip select at `0xFC0A400C` picks the core.
-3. Let the firmware's own bootstrap upload run, and check the DSP's `P:0x31000`
-   against the captured words — that is O8's first real gate and it is
-   self-checking.
-4. Make the eDMA MOVE data (route A's model deliberately moves none), so the
-   frame exchange carries the 336/64/32-word records `docs/DSP.md` names.
-5. Only then the milestone's own gate: `verify_twocore`'s layouts rendering
-   identically when driven by the firmware instead of `dsp_host`'s hand-rolled
-   ABI calls.
-
-⚠️ **Step 5 is a bigger jump than it reads.** `verify_twocore` drives the
-EFFECT ABI directly (`r0`/`r6`/`r7`/`n7` and a `proc` call); the firmware drives
-whole FRAMES through the packer at `0x4000d3fc`. Making those render the same
-audio means the firmware's per-track records have to carry the same knob values
-the harness passes by hand, and nothing has yet checked that they can.
+`verify_twocore` drives the effect ABI directly (`r0`/`r6`/`r7`/`n7` and a
+`proc` call); the firmware drives whole frames through the packer at
+`0x4000d3fc`, and with the mover those frames now reach the DSP's X:0x6080
+records. Making the two render the same audio means (a) audio IN: the ESAI
+receives silence here — the ColdFire's own audio path (the sample pool → the
+DSP) is the eDMA/ESAI-in side, untraced; (b) audio OUT: the ESAI transmit
+frames are counted, not kept; (c) a comparison of the firmware's per-track
+records against the knob values the harness passes by hand. That is O9's
+ground as much as O8's, and it was not started.
 
 ### No regression
 
-`ctest` 6/6; the M6a oracle diff **8 compared fields agree, 0 disagreements**;
-the O6 fidelity gate **5 compared fields agree**.
+`ctest` 7/7 (the new `dsp` gate included); `make check` green; the O6 gate
+without `--dsp` unchanged (5 compared fields agree, the trig at frame 344);
+the M6a oracle diff without `--dsp` 8 compared fields agree. The models are
+seeded from the same 8,235 boot writes as before — a write the co-processor
+owns is not replayed into them.
 
 ## What is NOT here yet
 

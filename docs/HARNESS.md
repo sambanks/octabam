@@ -219,7 +219,13 @@ refactoring risk into a mechanical check.
 `dsp_host -mem A.mem -memB B.mem` boots **both payloads** as two complete
 DSPs in one process, with X/Y `0x30000–0x3FFFF` of core 1 redirected into
 core 0's arrays (a patch to the vendored emulator's `Memory`,
-`tools/dsp56300.patch`) so the shared window really is shared. Each core
+`tools/dsp56300.patch`) so the shared window really is shared. ⚠️ That is
+X with X and Y with Y, P private -- which renders bit-identically and
+cannot answer aliasing questions. The ColdFire port's DSP pair
+(`tools/ot_emu/dsp.h`, O8) uses the same patch's THREE-WAY form, P/X/Y one
+memory, because the firmware's own boot needs it (`docs/COLDFIRE_PORT.md`).
+The patch also carries the host-stepped mode that port drives the cores in;
+`dsp_host` is untouched by it. Each core
 runs its **own** setup routine: the harness finds it by opcode pattern —
 payload B keeps it at `P:0x17a` where A's is at `P:0x372`, the same code
 relocated (✅ measured by matching the instruction sequence; the old

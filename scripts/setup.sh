@@ -104,12 +104,16 @@ if [ ! -x "$DIS" ]; then
     [ -d vendor/dsp56300 ] || git clone --depth 1 \
       https://github.com/dsp56300/dsp56300.git vendor/dsp56300
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
-    # MPYRI (immediate multiply, rounded) is unimplemented upstream in both
-    # the interpreter and the JIT; Elektron's stock LO-FI uses it, so a
-    # render of LO-FI aborted with "Not Implemented: MPYRI" (2 Sep 2026).
+    # The patch carries: MPYRI (unimplemented upstream in interpreter and
+    # JIT; stock LO-FI uses it, 2 Sep 2026); the shared window, two-way for
+    # dsp_host (X with X, Y with Y) and three-way for the ColdFire port's DSP
+    # pair (P, X and Y one memory, as the chip has it); and the host-stepped
+    # mode the port drives the cores in (DO loops stepped, interrupts
+    # interpreted, peripherals serviced under a masked interrupt, an idle
+    # step) plus hooks for Y-side registers it does not map (8 Sep 2026, O8).
     EMUPATCH=$(pwd)/tools/dsp56300.patch
     if git -C vendor/dsp56300 apply --check "$EMUPATCH" 2>/dev/null; then
-      git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI)"
+      git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI, shared window, host-stepped cores)"
     else
       echo "   emulator patch already applied (or upstream changed: check $EMUPATCH)"
     fi

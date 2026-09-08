@@ -22,9 +22,16 @@ set(OT_VENDOR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor" CACHE PATH "vendored em
 # divide and HI08 tests, and they are the contract this port stands on.
 add_subdirectory("${OT_VENDOR}/mc68k" "${CMAKE_CURRENT_BINARY_DIR}/mc68k")
 
-add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h card.cpp card.h rtos.cpp rtos.h)
+# dsp56300: the vendored DSP56300 emulator `tools/dsp_host` is built on, with
+# the shared-window patch (tools/dsp56300.patch). Its own tree adds a test
+# runner, a disassembler and dsp_host; EXCLUDE_FROM_ALL keeps them out of this
+# build and links only the library (O8, 8 Sep 2026).
+add_subdirectory("${OT_VENDOR}/dsp56300/source" "${CMAKE_CURRENT_BINARY_DIR}/dsp56300" EXCLUDE_FROM_ALL)
+
+add_library(ot_machine STATIC machine.cpp machine.h v4e.cpp v4e.h periph.cpp periph.h card.cpp card.h rtos.cpp rtos.h dsp.cpp dsp.h)
 target_include_directories(ot_machine PUBLIC "${OT_VENDOR}" "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(ot_machine PUBLIC 68kEmu)
+target_include_directories(ot_machine PUBLIC "${OT_VENDOR}/dsp56300/source")
+target_link_libraries(ot_machine PUBLIC 68kEmu dsp56kEmu)
 
 add_executable(ot_emu main.cpp)
 target_link_libraries(ot_emu PRIVATE ot_machine)
@@ -49,3 +56,10 @@ add_test(NAME periph COMMAND ot_periph_test)
 add_executable(ot_rtos_test test_rtos.cpp)
 target_link_libraries(ot_rtos_test PRIVATE ot_machine)
 add_test(NAME rtos COMMAND ot_rtos_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
+# O8: the firmware's own DSP upload, through the emulated host port, lands the
+# bytes the image carries -- both bootstrap ROMs and both payloads, record for
+# record, parsed independently from the image (docs/DSP.md section 2).
+add_executable(ot_dsp_test test_dsp.cpp)
+target_link_libraries(ot_dsp_test PRIVATE ot_machine)
+add_test(NAME dsp COMMAND ot_dsp_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)

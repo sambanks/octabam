@@ -21,6 +21,8 @@
 // sample (`ips`) is a knob with a default, not a truth.
 #pragma once
 
+#include <array>
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -320,6 +322,22 @@ namespace ot
 		const Intc& intc1() const { return m_intc1; }
 		uint64_t edmaStarted() const { return m_edma.started(); }
 		Edma& edma() { return m_edma; }
+		// O8 step 4: blocks the eDMA carried over the host port, and words a
+		// read-back could not get from the DSP in time.
+		uint64_t hostBlocksOut() const { return m_hostBlocksOut; }
+		uint64_t hostBlocksIn() const { return m_hostBlocksIn; }
+		uint64_t hostWordsOut() const { return m_hostWordsOut; }
+		uint64_t hostWordsIn() const { return m_hostWordsIn; }
+		uint64_t hostWordsShort() const { return m_hostWordsShort; }
+		// ⚠️ THE COUNT THAT DECIDES WHETHER ANY OF IT MEANS ANYTHING. Blocks and
+		// words moved say the plumbing runs; only a non-zero count says the
+		// frames carry content. An end-of-run peek of the DSP's record buffer
+		// cannot tell "the port sent zeros" from "the DSP consumed and cleared
+		// it" -- these are counted at the moment of the move.
+		uint64_t hostNonZeroOut() const { return m_hostNonZeroOut; }
+		uint64_t hostNonZeroIn() const { return m_hostNonZeroIn; }
+		void setBlockLog(bool _on) { m_blockLogOn = _on; }
+		const std::vector<std::string>& blockLog() const { return m_blockLog; }
 		uint64_t ataInterrupts() const { return m_ataInterrupts; }
 		bool ataLineAsserted() const { return m_ataIrq; }
 		// Every access to the task-file window, in order, for diffing against
@@ -390,6 +408,16 @@ namespace ot
 		Intc m_intc0, m_intc1;
 		Uart m_uart64{"UART@fc064000", g_uartA}, m_uart68{"UART@fc068000", g_uartB};
 		Dspi m_dspi;
+		std::array<int, 16> m_kickSel = {};		// which core each channel was kicked against
+		uint64_t m_hostBlocksOut = 0, m_hostBlocksIn = 0, m_hostWordsOut = 0, m_hostWordsIn = 0, m_hostWordsShort = 0;
+		uint64_t m_hostNonZeroOut = 0, m_hostNonZeroIn = 0;
+		struct PendingOut { uint32_t saddr = 0; std::vector<uint16_t> hw; uint64_t nonZero = 0; };
+		std::array<PendingOut, 16> m_pendingOut;
+		bool m_blockLogOn = false;
+		std::vector<std::string> m_blockLog;
+		void noteBlock(char _dir, uint32_t _ch, uint32_t _ramAddr, const std::vector<uint16_t>& _hw,
+			uint64_t _nonZero, const std::string& _note);
+		void installHostPortMover();
 		AtaCard* m_card = nullptr;
 		// ⚠️ INTRQ IS NOT INSTANTANEOUS, and the firmware depends on it. The
 		// driver writes the command and THEN calls the RTOS event wait; a

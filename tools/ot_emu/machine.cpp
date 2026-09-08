@@ -62,8 +62,13 @@ namespace ot
 		// ✅ THE DSP HOST PORT AS ROUTE A FAKES IT -- and without it the frame
 		// handler never returns. Route A carries exactly two replies in its
 		// EXTRA_OVERRIDES (`emu_rtos.attach`, "the DSP host port as M5 faked
-		// it"), and both are stand-ins for the DSP that milestone O8 will put
-		// behind this window:
+		// it"), and both are stand-ins for the DSP. Since O8 (8 Sep 2026) the
+		// real cores can sit behind this window (`--dsp`, dsp.h); a
+		// co-processor is consulted BEFORE these, so with it attached both
+		// stand-ins are bypassed and without it every gate stays as measured.
+		// In HI08 terms 0x20000004 is the CVR (bit 7 = HC, cleared when the
+		// DSP takes the host command) and 0x2000001c is RXL, the low byte of
+		// the word the DSP sent back.
 		//
 		//   0x20000004 reads 0x0000. The frame handler at 0x4000ab1a writes
 		//   140 there and then polls `movew 0x20000004,%d0 / tstb %d0 / blts`
@@ -197,6 +202,16 @@ namespace ot
 
 	uint32_t Machine::peripheralRead(const uint32_t _addr, const uint8_t _size)
 	{
+		if(m_coproc)
+		{
+			uint32_t v = 0;
+			if(m_coproc->read(_addr, _size, v))
+			{
+				if(m_periphTraceOn && m_periphTrace.size() < 300000)
+					m_periphTrace.push_back({'R', pc(), _addr, _size, v});
+				return v;
+			}
+		}
 		// The models first, once installed; anything they do not own falls
 		// through to the boot's override table below.
 		if(m_periphReadFn)
@@ -241,11 +256,16 @@ namespace ot
 		if(m_hostPortLogOn && _addr >= 0x20000000 && _addr < 0x20001000
 			&& m_hostPortLog.size() < 4000000)
 			m_hostPortLog.push_back({m_instructions, currentPc(), _addr, _val, _size});
+		if(m_periphTraceOn && m_periphTrace.size() < 300000)
+			m_periphTrace.push_back({'W', pc(), _addr, _size, _val});
+		// A write the co-processor owns is not a boot write for the models to
+		// replay (with the DSPs attached the boot makes 164,829 host-port
+		// writes; the models' seed stays the 8,235 route A counts).
+		if(m_coproc && m_coproc->write(_addr, _size, _val))
+			return;
 		m_periphWrites.push_back({_addr, _size, _val});
 		if(m_periphLog.size() < 4096)
 			m_periphLog.push_back({'W', pc(), _addr, _size, _val});
-		if(m_periphTraceOn && m_periphTrace.size() < 300000)
-			m_periphTrace.push_back({'W', pc(), _addr, _size, _val});
 		if(m_periphWriteFn)
 			m_periphWriteFn(_addr, _size, _val);
 	}
@@ -270,11 +290,15 @@ namespace ot
 			if(v4e::execute(*this, op) == v4e::Result::Handled)
 			{
 				++m_v4e;
+				if(m_coproc)
+					m_coproc->tickInstructions(1);
 				return true;
 			}
 			setPC(p);
 		}
 		exec();
+		if(m_coproc)
+			m_coproc->tickInstructions(1);
 		return !m_illegal;
 	}
 
@@ -609,6 +633,8 @@ namespace ot
 				if(v4e::execute(*this, op) == v4e::Result::Handled)
 				{
 					++m_v4e;
+					if(m_coproc)
+						m_coproc->tickInstructions(1);
 					continue;
 				}
 				setPC(p);				// not ours: let Musashi take its exception
@@ -628,6 +654,8 @@ namespace ot
 			if(m_step)
 				m_step(*this, p);
 			exec();
+			if(m_coproc)
+				m_coproc->tickInstructions(1);
 			if(m_illegal)
 				return Stop::Illegal;
 

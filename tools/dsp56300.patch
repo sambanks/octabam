@@ -8,6 +8,220 @@ index ffbf791..350a71a 100644
  endif()
 +
 +add_subdirectory(dsp_host)
+diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
+index bd3e603..8176a6e 100644
+--- a/source/dsp56kEmu/dma.cpp
++++ b/source/dsp56kEmu/dma.cpp
+@@ -59,7 +59,12 @@ namespace dsp56k
+ 
+ 		bool checkTrigger(Peripherals56362& _p, const RequestSource _src)
+ 		{
+-			return false;
++			// octabam: a channel armed while its request condition already
++			// holds must fire once, or a transmit DMA whose HTDE is already set
++			// never starts. Only for a host-stepped core: upstream disabled
++			// this for its own (threaded, JIT) timing.
++			if(!_p.getDSP().isHostStepped())
++				return false;
+ 			switch (_src)
+ 			{
+ 			case RequestSource::EsaiReceiveData:			return _p.getEsai().getSR().test(Esai::M_RDF);
+@@ -156,7 +161,11 @@ namespace dsp56k
+ 		else
+ 		{
+ 			m_dcohInit = m_dco >> 12;
+-			m_dcolInit = m_dco & 0xff;
++			// octabam: DCOL is the LOW TWELVE bits (DCOH the high twelve). The
++			// Octatrack's ESAI-in ring is DCO3 = 0x23f with DOR3 = -575 = -0x23f:
++			// the pointer returns to its base only if DCOL counts 0x23f words,
++			// so the firmware's own constants say 12, not 8.
++			m_dcolInit = m_dco & 0xfff;
+ 
+ 			m_dcoh = m_dcohInit;
+ 			m_dcol = m_dcolInit;
+@@ -716,6 +725,25 @@ namespace dsp56k
+ 			return false;
+ 		}
+ 
++		// octabam: a dual-counter RING on the memory side and a fixed
++		// peripheral register on the other -- the Octatrack DSP's audio out
++		// (DMA2: X:0x8000.. DualCounterDOR2 -> ESAI TX0) and audio in (DMA3:
++		// ESAI RX0 -> X:0x8100.. DualCounterDOR3), one word per request. The
++		// release build reached the assert below for both, returned "finished"
++		// without moving a word, and the DSP polled DSR2 for 0x8070/0x80f0
++		// forever (measured 8 Sep 2026, `ot_emu --dsp --dsp-trace`).
++		const auto isDual = [](const AddressGenMode _m) { return static_cast<uint32_t>(_m) <= 3; };
++		if (isDual(agmS) && agmD == AddressGenMode::SingleCounterAnoUpdate)
++		{
++			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));
++			return dualModeIncrement(m_dsr, m_dma.getDOR(static_cast<uint32_t>(agmS)));
++		}
++		if (agmS == AddressGenMode::SingleCounterAnoUpdate && isDual(agmD))
++		{
++			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));
++			return dualModeIncrement(m_ddr, m_dma.getDOR(static_cast<uint32_t>(agmD)));
++		}
++
+ 		assert(false && "DMA transfer mode not supported yet");
+ 		return true;
+ 	}
+diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
+index db792a8..b1af305 100644
+--- a/source/dsp56kEmu/dsp.cpp
++++ b/source/dsp56kEmu/dsp.cpp
+@@ -178,7 +178,18 @@ namespace dsp56k
+ 		const auto vba = interrupt;
+ 
+ 		if(isInterruptMasked(vba))
++		{
++			// octabam: a masked interrupt WAITS; the peripherals do not. Without
++			// this the peripheral clock is never serviced again until the DSP
++			// lowers its mask -- the Octatrack's core A boots with `ori #3,mr`,
++			// takes a peripheral interrupt into the queue, and its ESAI stopped
++			// after three frames (measured 8 Sep 2026: SAISR stuck at RDF|ROE,
++			// the peripheral target clock frozen at 845,824 while the
++			// instruction counter ran on).
++			if(m_hostStepped)
++				m_execPeripheralsFunc(this);
+ 			return;
++		}
+ 
+ 		// it is important that the processing mode is switched first before popping the vector to prevent a possible race condition in hasPendingInterrupt()
+ 		{
+@@ -194,12 +205,15 @@ namespace dsp56k
+ 		pcCurrentInstruction = vba;
+ 		m_processingMode = FastInterrupt;
+ 
++		if(m_onInterruptTaken)	// octabam
++			m_onInterruptTaken(vba);
++
+ #if DSP56300_DEBUGGER
+ 		if(m_debugger)
+ 			m_debugger->onExec(vba);
+ #endif
+ 
+-		if(g_useJIT)
++		if(g_useJIT && !m_hostStepped)	// octabam: a host-stepped core interprets its interrupts too
+ 		{
+ 			LOGJITPC(vba);
+ 			const auto pc = getPC();
+@@ -496,6 +510,10 @@ namespace dsp56k
+ 
+ 		traceOp();
+ 
++		// octabam: the stepping host applies the loop-end test itself
++		if(m_hostStepped)
++			return true;
++
+ 		// __________________
+ 		//
+ 
+@@ -524,6 +542,48 @@ namespace dsp56k
+ 		return true;
+ 	}
+ 
++	// octabam: see dsp.h. The arithmetic is op_Wait's.
++	uint64_t DSP::idleStep(const uint64_t _maxDelay)
++	{
++		auto delay = perif[0]->getTargetClock();
++
++		if (delay > m_instructions)
++			delay = std::max(delay - m_instructions, static_cast<uint64_t>(PeripheralsProcessingStepSize));
++		else
++			delay = PeripheralsProcessingStepSize;
++
++		if(delay > _maxDelay)
++			delay = std::max<uint64_t>(_maxDelay, 1);
++
++		m_instructions += delay;
++		m_cycles += delay;
++
++		if(perif[0]->getTargetClock() <= m_instructions)
++			m_execPeripheralsFunc(this);
++
++		return delay;
++	}
++
++	// octabam: the body of the nested loop above, applied once per stepped
++	// instruction. Nested DO loops work because do_end restores the outer
++	// LA/LC, so the next test is the outer loop's.
++	bool DSP::doLoopEnd()
++	{
++		if(!sr_test_noCache(SR_LF))
++			return false;
++		if(reg.pc.var != (reg.la.var+1))
++			return false;
++		if( reg.lc.var <= 1 )
++		{
++			setPC(reg.la.var+1);
++			do_end();
++			return true;
++		}
++		--reg.lc.var;
++		setPC(hiword(reg.ss[ssIndex()]));
++		return true;
++	}
++
+ 	// _____________________________________________________________________________
+ 	// exec_do_end
+ 	//
+diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
+index 423b699..a2851ae 100644
+--- a/source/dsp56kEmu/dsp.h
++++ b/source/dsp56kEmu/dsp.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <functional>
++
+ #include "disasm.h"
+ #include "dspconfig.h"
+ #include "dspregs.h"
+@@ -171,7 +173,7 @@ namespace dsp56k
+ 
+ 		ASMJIT_FORCE_INLINE void exec() noexcept
+ 		{
+-			if(g_useJIT)
++			if(g_useJIT && !m_hostStepped)	// octabam: see setHostStepped
+ 				execJit();
+ 			else
+ 				execInterpreter();
+@@ -375,6 +377,35 @@ namespace dsp56k
+ 		bool	do_exec							( TWord _loopcount, TWord _addr );
+ 		bool	do_end							();
+ 
++	public:
++		// octabam: a host that steps this core ONE INSTRUCTION AT A TIME
++		// through execInterpreter(), alongside another processor. Two things
++		// change: (1) `do_exec` cannot run a hardware DO loop to completion
++		// inside one call -- a loop body that polls the host port then never
++		// returns to the host that has to feed it -- so it pushes the loop
++		// state and returns, and the host applies `doLoopEnd()` after every
++		// instruction (the same end-of-loop test, on the same registers);
++		// (2) `execInterrupt` takes its interpreter branch, because the JIT
++		// branch it takes by default (g_useJIT is compile-time) faults when
++		// nothing else has been running the JIT.
++		void	setHostStepped					( bool _on )						{ m_hostStepped = _on; }
++		bool	isHostStepped					() const							{ return m_hostStepped; }
++		bool	doLoopEnd						();
++		// octabam: one step of what `wait` does -- advance the instruction
++		// clock to the next peripheral service point (at most _maxDelay) and
++		// service the peripherals -- for a host that has found the core in a
++		// poll loop and wants the peripherals, not the polls. Returns the
++		// instructions skipped.
++		uint64_t idleStep						( uint64_t _maxDelay );
++		// octabam: told when an interrupt is TAKEN (its vector executed), so a
++		// host-side status bit that the chip clears on acknowledge -- the
++		// HI08's HC/HCP -- can be cleared at the right moment. A fast
++		// interrupt never sets the PC to the vector, so the PC cannot tell.
++		void	setInterruptTakenHook			( std::function<void(TWord)> _f )	{ m_onInterruptTaken = std::move(_f); }
++	private:
++		bool	m_hostStepped = false;
++		std::function<void(TWord)> m_onInterruptTaken;
++
+ 		bool	rep_exec						(TWord _loopCount);
+ 
+ 		void	traceOp							();
 diff --git a/source/dsp56kEmu/dsp_ops_alu.inl b/source/dsp56kEmu/dsp_ops_alu.inl
 index 386e30f..996c82a 100644
 --- a/source/dsp56kEmu/dsp_ops_alu.inl
@@ -72,37 +286,62 @@ index f9f8180..714776e 100644
  	{
  		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
 diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
-index 98c2226..c408d00 100644
+index 98c2226..a2b1357 100644
 --- a/source/dsp56kEmu/memory.cpp
 +++ b/source/dsp56kEmu/memory.cpp
-@@ -145,6 +145,12 @@ namespace dsp56k
+@@ -145,6 +145,14 @@ namespace dsp56k
  			}
  		}
  */
-+		if (m_sharedX && _area != MemArea_P && _offset >= m_sharedLo && _offset < m_sharedHi)
++		if (m_sharedX && (_area != MemArea_P || m_sharedP) && _offset >= m_sharedLo && _offset < m_sharedHi)
 +		{
-+			(_area == MemArea_X ? m_sharedX : m_sharedY)[_offset - m_sharedLo] = _value & 0x00ffffff;
++			(_area == MemArea_X ? m_sharedX : _area == MemArea_Y ? m_sharedY : m_sharedP)[_offset - m_sharedLo] = _value & 0x00ffffff;
++			if(m_sharedWriteHook)
++				m_sharedWriteHook(_offset);
 +			return true;
 +		}
 +
  		if (_offset < size(_area))		// Fix the amazing "write to wrong address" bug
  			m_mem[_area][_offset] = _value & 0x00ffffff;
  
-@@ -178,6 +184,9 @@ namespace dsp56k
+@@ -178,6 +186,9 @@ namespace dsp56k
  			return 0;
  		}
  
-+		if (m_sharedX && _area != MemArea_P && _offset >= m_sharedLo && _offset < m_sharedHi)
-+			return (_area == MemArea_X ? m_sharedX : m_sharedY)[_offset - m_sharedLo];
++		if (m_sharedX && (_area != MemArea_P || m_sharedP) && _offset >= m_sharedLo && _offset < m_sharedHi)
++			return (_area == MemArea_X ? m_sharedX : _area == MemArea_Y ? m_sharedY : m_sharedP)[_offset - m_sharedLo];
 +
  		const auto res = m_mem[_area][_offset];
  
  #ifdef _DEBUG
+@@ -211,6 +222,14 @@ namespace dsp56k
+ 		}
+ #endif
+ 
++		// octabam: an opcode fetched from the three-way shared window
++		if (m_sharedP && _offset >= m_sharedLo && _offset < m_sharedHi)
++		{
++			_wordA = m_sharedP[_offset - m_sharedLo];
++			_wordB = _offset + 1 < m_sharedHi ? m_sharedP[_offset + 1 - m_sharedLo] : p[_offset+1];
++			return;
++		}
++
+ 		_wordA = p[_offset];
+ 		_wordB = p[_offset+1];
+ 
 diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
-index 567d068..a409872 100644
+index 567d068..3a18046 100644
 --- a/source/dsp56kEmu/memory.h
 +++ b/source/dsp56kEmu/memory.h
-@@ -63,6 +63,14 @@ namespace dsp56k
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <functional>
++
+ #include <map>
+ #include <set>
+ #include <vector>
+@@ -63,6 +65,23 @@ namespace dsp56k
  		TWord*												p;
  
  		TWord												m_bridgedMemoryAddress;
@@ -114,10 +353,19 @@ index 567d068..a409872 100644
 +		TWord												m_sharedHi = 0;
 +		TWord*												m_sharedX = nullptr;
 +		TWord*												m_sharedY = nullptr;
++		// octabam: the THREE-WAY alias. The DSP56721's shared window is one
++		// physical memory that P, X and Y all address (CHIP.md, measured on
++		// hardware with dsp/alias_probe.asm), and the firmware relies on it:
++		// core B's entry point P:0x38000 is written by core A's upload. When
++		// set, all three areas of [lo,hi) read and write this one array, and
++		// every write reports its address so the owner can drop any decoded
++		// opcode both cores hold for it.
++		TWord*												m_sharedP = nullptr;
++		std::function<void(TWord)>							m_sharedWriteHook;
  		
  		struct STransaction
  		{
-@@ -124,6 +132,13 @@ namespace dsp56k
+@@ -124,6 +143,19 @@ namespace dsp56k
  
  		const TWord&		getBridgedMemoryAddress() const { return m_bridgedMemoryAddress; }
  
@@ -125,9 +373,76 @@ index 567d068..a409872 100644
 +		// arrays at _lo). Pass nullptr to clear.
 +		void				setSharedWindow		(TWord _lo, TWord _hi, TWord* _x, TWord* _y)
 +		{
-+			m_sharedLo = _lo; m_sharedHi = _hi; m_sharedX = _x; m_sharedY = _y;
++			m_sharedLo = _lo; m_sharedHi = _hi; m_sharedX = _x; m_sharedY = _y; m_sharedP = nullptr;
++		}
++		// octabam: P, X and Y of [_lo,_hi) all alias _all (see m_sharedP).
++		void				setSharedWindow		(TWord _lo, TWord _hi, TWord* _all, std::function<void(TWord)> _onWrite)
++		{
++			m_sharedLo = _lo; m_sharedHi = _hi; m_sharedX = m_sharedY = m_sharedP = _all;
++			m_sharedWriteHook = std::move(_onWrite);
 +		}
 +
  		TWord*				getMemAreaPtr		(EMemArea _area)
  		{
  			switch (_area)
+diff --git a/source/dsp56kEmu/peripherals.cpp b/source/dsp56kEmu/peripherals.cpp
+index 67c3dfd..a97e2fb 100644
+--- a/source/dsp56kEmu/peripherals.cpp
++++ b/source/dsp56kEmu/peripherals.cpp
+@@ -767,6 +767,12 @@ namespace dsp56k
+ 		case Esai::M_RSMA_1:		return m_esai.readRSMA();
+ 		case Esai::M_RSMB_1:		return m_esai.readRSMB();
+ 		default:
++			if(m_readHook)	// octabam
++			{
++				TWord v;
++				if(m_readHook(_addr, v))
++					return v;
++			}
+ 			return m_mem[_addr - XIO_Reserved_High_First];
+ 		}
+ 	}
+@@ -792,6 +798,8 @@ namespace dsp56k
+ 		case Esai::M_RSMA_1:	m_esai.writeRSMA(_val);								return;
+ 		case Esai::M_RSMB_1:	m_esai.writeRSMB(_val);								return;
+ 		default:
++			if(m_writeHook && m_writeHook(_addr, _val))	// octabam
++				return;
+ 			break;
+ 		}
+ 		if (_addr != 0xffffd5)
+diff --git a/source/dsp56kEmu/peripherals.h b/source/dsp56kEmu/peripherals.h
+index adbac77..4257ef4 100644
+--- a/source/dsp56kEmu/peripherals.h
++++ b/source/dsp56kEmu/peripherals.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <functional>
++
+ #include "dma.h"
+ #include "esai.h"
+ #include "esaiclock.h"
+@@ -255,6 +257,14 @@ namespace dsp56k
+ 		const TWord* readAsPtr(TWord _addr, Instruction _inst) override { return nullptr; }
+ 		void write(TWord _addr, TWord _val) override;
+ 
++		// octabam: a host-supplied model for Y-space peripheral registers this
++		// class does not map (the DSP56721's inter-core mailbox at
++		// Y:$FFFFD3..$FFFFD7, as the Octatrack firmware uses it). Return true
++		// to claim the access; unclaimed ones fall through as before.
++		using ReadHook = std::function<bool(TWord _addr, TWord& _val)>;
++		using WriteHook = std::function<bool(TWord _addr, TWord _val)>;
++		void setUnmappedHooks(ReadHook _r, WriteHook _w) { m_readHook = std::move(_r); m_writeHook = std::move(_w); }
++
+ 		uint32_t exec() noexcept { return MaxDelayCycles; }
+ 
+ 		void reset() override;
+@@ -274,5 +284,7 @@ namespace dsp56k
+ 	private:
+ 		std::array<TWord, XIO_Reserved_High_Last - XIO_Reserved_High_First + 1> m_mem;
+ 		Esai m_esai;
++		ReadHook m_readHook;
++		WriteHook m_writeHook;
+ 	};
+ }

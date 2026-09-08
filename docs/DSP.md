@@ -15,18 +15,24 @@ unless prefixed `P:` / `X:` / `Y:`, which are DSP word addresses.
 `FUN_40001e50`, called from the boot path at `0x4000050c`:
 
 ```asm
-move.b #0,(0xfc0a400c)                       ; GPIO select
-move.w #0x81,(0x20000000)                    ; DSP control: start
-FUN_40001d4c(0x400e21e0, 0x96,  0x31000)     ; bootstrap A -> P:0x31000  (50 words)
+move.b #0,(0xfc0a400c)                       ; GPIO select (core A)
+move.w #0x81,(0x20000000)                    ; HI08 ICR: INIT|RREQ (an interface reset -- NOT "start")
+FUN_40001d4c(0x400e21e0, 0x96,  0x31000)     ; bootstrap A -> P:0x31000  (50 words, via the chip's boot ROM)
                                              ; ~10,000-iteration delay loop
-FUN_40001b18(0x400e2324)                     ; payload A  (79,563 B)
-move.b #1,(0xfc0a400c)                       ; GPIO select -- FLIPPED
-move.w #0x81,(0x20000000)                    ; DSP control: start
+FUN_40001b18(0x400e2324)                     ; payload A  (79,563 B), via that bootstrap's loader
+move.b #1,(0xfc0a400c)                       ; GPIO select -- FLIPPED (core B)
+move.w #0x81,(0x20000000)                    ; HI08 ICR: INIT|RREQ
 FUN_40001d4c(0x400e2276, 0xae,  0x32000)     ; bootstrap B -> P:0x32000  (58 words)
                                              ; delay loop
 FUN_40001b18(0x400f59ef)                     ; payload B  (77,061 B)
 move.l #0xfff0000,(0xfc00801c)               ; FlexBus / chip-select config
 ```
+
+❌ "0x81 = DSP control: start" is retracted (8 Sep 2026): the window is the
+HI08 host-side register file and `0x81` is ICR INIT|RREQ. ✅ The whole sequence
+now runs in the ColdFire port against the two emulated cores and lands every
+byte (`docs/COLDFIRE_PORT.md`, O8). Payload B's entry P:0x38000 is written by
+payload A's upload -- the shared window is one memory, both cores, P/X/Y.
 
 **Two DSPs (or two banks), not one.** The sequence runs twice, identically, with
 the GPIO at `0xfc0a400c` toggled between passes, and each pass has its own

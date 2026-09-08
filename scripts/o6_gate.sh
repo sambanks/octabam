@@ -41,11 +41,14 @@ else
         | grep -v '^   ' | tail -20
 fi
 
-echo "== the port"
+echo "== the port${DSP:+ (with the two DSP cores behind the host port, O8)}"
 cmake --build out/emu -j8 >/dev/null
+# DSP=1 puts the real DSP cores behind the host port (O8): the firmware boots
+# them itself, and the frame handshake runs against them instead of the two
+# stand-in replies. Both forms are gated against the same route A oracle.
 ./out/emu/ot_emu --image "$IMAGE" --card out/o6_card.img --set "$SET" --project "$NAME" \
     --sequencer --internal-clock --poke-trig "$STEP" --frames "$FRAMES" --load-ms "$MS" \
-    --m6c-golden out/oracle/port_m6c.json | tail -30
+    ${DSP:+--dsp} --m6c-golden out/oracle/port_m6c.json | tail -30
 
 echo "== the diff"
 python3 tools/ot_emu/oracle.py out/oracle/m6c.json out/oracle/port_m6c.json
