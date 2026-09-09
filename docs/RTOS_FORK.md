@@ -2852,3 +2852,40 @@ hardware now shows the PLAYBACK loop is clean and the port's arm gap is the
 port's, not the firmware's. The open port work (§10.26: model the
 clock-lock / arm path) is a fidelity task, not a prerequisite for a click
 that hardware does not exhibit.
+
+### 10.28 ❌ §10.27 RETRACTED: the capture was live passthrough, not a recorded loop — recording is NOT confirmed on hardware (9 Sep 2026)
+
+§10.27's "clean 20,672 loop" was measured with the tone playing the WHOLE
+time, and §10.21's own warning applies to a hardware capture exactly as it
+does to the port: a continuous tone monitored live through the track is
+indistinguishable from a recorded buffer looped back. The decisive test
+settles it — **record with the tone on, then CUT the input and keep
+capturing:**
+
+```
+during tone:      output -30 dBFS
+input cut off:    output -100 dBFS   (a 70 dB drop, flat silence, 8 s)
+```
+
+The output followed the input to silence. Nothing recorded is playing
+back: T1 was MONITORING the live input (the armed recorder's input
+monitor), not looping a captured buffer, and the seamless tone's period
+(1000.53 Hz = exactly 469 cycles in 20,672 samples) is why the
+cross-correlation "found" 20,672 — it was the tone's own period landing on
+the search guess, not a buffer length. So **§10.27's three ✅ claims are
+void**: the loop was not clean-because-recorded, it was the input; nothing
+is settled about a playback seam because there was no playback; and it does
+NOT confirm the recorder records on hardware.
+
+**What is now actually known:** on Sam's unit, on this `r4_128` fixture
+(saved under OCTABAM17, loaded past an "errors" dialog on the OCTABAM21
+build), a live REC-armed track MONITORS its input but no recorded buffer
+plays back when the input stops — the same "no recorded audio" the port
+showed (§10.23), now seen on hardware too, so it is NOT simply a port gap.
+Open question, unmeasured: whether the recorder trig arms and captures at
+all here (the fixture's recorder SRC / the OCTABAM17-vs-21 load), or
+whether it captures but T2's FLEX slot is not playing R1. The next step is
+to reconfigure/verify the recorder ON THE UNIT (a real recorder trig, SRC =
+the live input, T2's slot = R1) rather than trust a passthrough-blind
+capture. The instrument rule from §10.21 stands and just cost another
+reading: **prove the input is OFF before believing a recorder playback.**
