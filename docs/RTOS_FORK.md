@@ -3043,7 +3043,7 @@ to audio (the flex-from-recorder-buffer loader is unlocated in both emulators)
 — that is the next task, to let the loop be heard in the emulator, not only
 measured.
 
-### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026)
+### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026) — RESOLVED, see §10.36
 
 Getting the recorder-buffer FLEX voice to render (so the loop can be HEARD in
 the emulator, not only measured) — Sam's next ask after §10.32. `recaudio.py`
@@ -3073,7 +3073,7 @@ voice render for a recorder buffer is the real gap). The pieces upstream of it
 — recorder writes, control record, bind — are now all confirmed present in
 route A.
 
-### 10.34 The 84-word record stays an empty-voice skeleton through pass 2, both ping sides, all four track slots — and route A's own `Edma` class explains why it might have to (9 Sep 2026)
+### 10.34 The 84-word record stays an empty-voice skeleton through pass 2, both ping sides, all four track slots — and route A's own `Edma` class explains why it might have to (9 Sep 2026) — RESOLVED, see §10.36
 
 Followed §10.33's own next step: `recaudio.py` gained `--voice-probe`, reading
 the track's 84-word record directly from ColdFire host memory (`0x800021d0`/
@@ -3152,7 +3152,7 @@ would confirm route A is instrument-blind here (this project's own pattern:
 `[[octabam-instrument-blindness]]`), not that the firmware fails to play
 the loop.
 
-### 10.35 The trace resolves further than expected: the fetch that would read real samples is never even called, on either trig frame (9 Sep 2026)
+### 10.35 The trace resolves further than expected: the fetch that would read real samples is never even called, on either trig frame (9 Sep 2026) — RESOLVED, see §10.36
 
 Took §10.34's own recommended first step (instruction trace, before the C++
 port) on `g65` (RLEN 16, 65.6 BPM golden self-loop). Three probes,
@@ -3223,3 +3223,76 @@ C++ port (§10.34's original fallback), which sidesteps the question of
 whether route A's own state is at fault by running the real DSP and a
 faithful boot. Given how far (a) got on route A alone, (a) is probably one
 more session, not several.
+
+### 10.36 ✅ RESOLVED under the C++ port: a recorder-buffer FLEX self-loop renders clean, sample-exact, at golden tempo — the whole 10.33–10.35 chase was two stacked instrument gaps, not a firmware defect (9 Sep 2026)
+
+Moved to the C++ port (`tools/ot_emu`) per §10.34/10.35's own fallback, at
+Sam's direction. `tools/ot_emu/main.cpp` had drifted ahead of the built
+binary (`--mem-dump` etc were unrecognised) — rebuilt (`cmake --build
+out/emu`) before anything else would run.
+
+**First: chased the same trail as route A, on the port, and hit the same
+wall — for a completely different, much more mundane reason.** `--watch-pc`/
+`--watch-mem` on `g65` (staged via `tools/ot_emu/stage_card.py`, route A's
+own staging) found the render call reaches a FAR larger routine than
+§10.35's trace ever saw on route A — a real grain/timestretch
+position-resolution engine (`0x40007a86`–`0x40007d5a`+, EMAC arithmetic,
+a 1092-byte-stride per-source array) that never appears in route A's own
+trace at all. Watching for writes into T1's record payload found **zero**,
+across `g65` AND, as a control, O10's own already-validated self-loop
+fixture (`make_seam_fixtures.py --self`, RLEN 4/128 BPM) — which should be
+impossible, since O10 (`COLDFIRE_PORT.md`) already measured that exact
+fixture rendering clean audio. **The reason: those runs never passed `--dsp`
+or `--audio-in`.** Without `--dsp` there is no ESAI/DSP audio pipeline
+running at all — `--frame-timer` keeps the ColdFire's frame clock ticking
+without it, which is enough to drive the sequencer and the recorder's
+ColdFire-side bookkeeping, but there is no DSP to feed an input signal or
+render anything, so of course nothing appeared. This is the same
+"instrument can't see the thing it's being used to measure" pattern as
+route A's own Edma stub (§10.34) — except this time it was self-inflicted,
+by the choice of flags on a brand-new probe, not a limitation of the tool.
+
+**The control, run properly, reproduces O10 exactly.** `--dsp --audio-in
+tones --main-level 64 --block-dump`, decoded with `o10_recloop.py` (O10's
+own validated tool), on the `r4_128` self-loop fixture: **T1 plays −23 dBFS
+at ~1500 Hz from step 2**, matching O10's documented −104.4 dB fit for the
+same shape. Pipeline confirmed correct before trusting it on the fixture
+that actually matters.
+
+**`g65` (RLEN 16, 65.6 BPM golden, single REC1+play trig at step 1), same
+recipe:** ✅ **T1 plays a clean −23 dBFS tone at ~1500 Hz across all 16
+steps of the pass, INCLUDING step 1** (the record hasn't even started
+filling from empty at that point — a self-loop plays what it has,
+essentially real-time, with only a small lag). The per-pass seam check
+(largest sample-to-sample jump relative to the pass's own median slope)
+found nothing anomalous: 1.4× the median, nowhere near the kind of jump a
+click would produce. **FLEX-from-recorder-buffer playback works, for this
+exact geometry, at golden tempo, rendered sample-clean by a real DSP.**
+
+**What this settles, and what it doesn't.** It answers §10.33's original
+question outright: the recorder-buffer FLEX voice DOES render (not "the
+loader is unlocated", not "the render silently drops"), for a self-loop at
+golden tempo. It is a THIRD independent confirmation that golden tempo is
+clean — after route A's arithmetic (§10.32: the recorded length lands
+exactly on the grid, zero residue) and the hardware ear test (§10.31:
+"perfect loop, occasional blip") — this one at the audio-render level,
+under a real DSP, which neither of the other two could show. It does
+**not** yet check `n128` (128 BPM, non-golden) the same way — the natural
+next step is this exact recipe on `n128`, to see whether the port's real
+DSP render also shows the −0.5-sample-per-pass seam route A computed and
+the ear heard, closing the loop between "the position arithmetic has a
+seam" and "the seam is audible in a real render," not just inferred from
+one or the other.
+
+**The process lesson, twice compounded.** §10.34/10.35's entire chase on
+route A was real and correctly diagnosed (the Edma stub genuinely never
+moves data, and the deep control-flow trace was accurate for the code paths
+route A actually executes) — but it was answering a question route A was
+never equipped to answer, and the correct move, once that became clear, was
+the C++ port, not another route-A probe. Then the SAME lesson repeated
+inside the port itself: a null result from a brand-new probe is not
+evidence of anything until the probe is checked against a case with a known
+answer. Two stacked instrument gaps, both real, both cost real time, both
+resolved by the same rule this project keeps re-learning: **before trusting
+a null result, run the same instrument on a case you already know the
+answer to.**
