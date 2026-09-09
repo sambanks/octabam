@@ -898,3 +898,35 @@ unit from this pipeline.
 After all four: `docs/remixer/FAILURE_MODES.md` for anything that went
 wrong, the MEMORY figures noted exactly, and `PLAN.md`'s "nothing from the
 new pipeline has been flashed" retired.
+
+## Flash 12 — `mods`, tag 26: every community mod in one image (staged 10 Sep 2026)
+
+MIDI SCENES + Octakit + the LO-FI AMF fix + CC→page 2, bridged by
+`modules/scenes-kits` (PR #182). `make image REMIX=mods BUILD=26` →
+`out/OCTATRACK_OCTABAM26.bin` (529,008 B, sha256 `85ee8628add94cf6…`) /
+`.syx`. 5,461 bytes changed inside the OS (her 644 writes, the arena
+words, the bridge's detour, his detours and pokes, CC→page 2) plus a
+75,311-byte append (loader, her packed runtime, ours with the bridge).
+Boot-verified under the port: loader once, hang never, both DRAM windows
+read back exact; the chain measured across a project load
+(`docs/remixer/PLACEMENT.md`, "Shared sites: the bridge"). **Back up the
+card's projects first** — Octakit migrates Parts into Kits.
+
+Order: after 22–25 have passed. This image is 23 + 24 + 25 at once, so
+every claim of theirs applies, plus the ones only the combination can
+answer:
+
+1. Boots, version `OCTABAM26`; PROJECT › MEMORY **~72 MB** (both
+   reservations: 1,707 + 528 pages).
+2. **Project load and play with static and flex samples** — the chained
+   `apply_part` on silicon: his pack/after around her Kit load. Falsified
+   by a hang at load (her fatal: the bridge swapped the return address
+   while she was still in a boot-time path — the port says it does not)
+   or by scene locks not surviving a part/kit change.
+3. **PART → LOAD KIT, then a scene-lock edit over MIDI, then a second
+   LOAD PROJECT**: both mods' state coherent after a reload.
+4. **CC 62–67 reach page 2, AND her CCs still do their thing**: the
+   chained CC dispatch (ours → hers → stock). The port has no MIDI in,
+   so this is the first measurement of that chain anywhere.
+5. His Part save/reload menu actions (Part Save, Part Reload) under her
+   Kit menus — the unmeasured half. Whatever happens is the finding.
