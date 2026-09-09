@@ -2012,7 +2012,9 @@ Two different inserts, extreme settings, no change at TX0: a THRU track's TX0
 monitor does not carry FX2 output. The parameter path (page 1 proven, page 2
 = the ccpage2 lane) stands; what O9c had wrong was where to listen. 🟡 Next:
 the FX2 output goes to the recording / bus path — read the DSP-side read-back
-source (`X:0x400` → `0x80003190`) with a recorder armed, or use a machine
+source (`X:0x4600`/`X:0x2600` → `0x80003190`; ❌ was "`X:0x400`", retracted
+10 Sep 2026 in `DSP.md`, "The read-back block is four per-track post-FX2
+blocks") with a recorder armed, or use a machine
 that plays into FX2 (the FLEX loader). Both tie O9c's comparison to the
 recorder path, i.e. to the same DSP-in-the-loop work Bryan's click needs.
 
