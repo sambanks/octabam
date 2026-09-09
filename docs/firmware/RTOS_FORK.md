@@ -4006,3 +4006,32 @@ golden is untouched. 🟡 Not yet heard on hardware, and the sound-on-sound
 smear (playback up to 64 samples ahead of a bar-aligned re-record) is
 inferred, not rendered: a SoS fixture (SRC3 self-feedback) under the port is
 the next render, then Bryan's ear on a flash.
+
+### 10.48 ❌ Lever 1 FALSIFIED ON HARDWARE: the soft-retrigger cave does not remove the click on Sam's self-loop (10 Sep 2026, OCTABAM80 — measured)
+
+Flashed `softretrig` as OCTABAM80 (bus + the cave; hook and cave bytes
+verified in the packed OS) and repeated §10.39's capture on Sam's unit: the
+same self-loop project (REC+PLAY on ONE track every bar, RLEN 16), internal
+clock, 1 kHz into A/B from `tools/tone`, `tools/rec` 60 s, MicroBook ch 3.
+Two instruments, both calibrated on the 9 Sep captures first (128 BPM: 28
+bursts at 1.875 s; 65.6: none):
+
+| | 65.6 BPM with the cave | 128 BPM with the cave | 128 BPM 9 Sep baseline |
+|---|---|---|---|
+| burst clusters (2nd-difference outliers, 57 s) | **0** | **27, spaced 1.875 s** | 28, spaced 1.875 s |
+| per-loop period (`hw_seam_xcorr.py`) | constant | **82687 / 82688 alternating** | 82687 / 82688 alternating |
+
+Sam heard it unchanged. **The port's "stationary" (§10.47) was measured on
+the wrong fixture.** `n128fix` records ONCE and replays a fixed buffer from a
+second track; Sam's and Bryan's loop re-records the same track every bar.
+Under a re-record the bind sees a NEW generation each bar, so the firmware's
+own same-sample verdict (`sp@55`) is false and the cave replays the reset by
+design — or the click is on the record side of the self-loop, where
+§10.16–§10.19's seam cave was falsified the same way on 8 Sep. Which of the
+two is the next port measurement (the self-loop fixture with the cave, a PC
+watch on the cave's skip vs replay exits). Note also: `hw_seam_xcorr.py`
+locks onto the 1 kHz tone when there is no seam (it reported a constant
+82687 AND a constant 161318 on the same golden capture), so "constant" from
+it means "no seam feature", not a loop length; the burst count is the judge.
+Unflashed status of `modules/flex-softretrig` stands; it is not a fix for the
+self-loop as it is.
