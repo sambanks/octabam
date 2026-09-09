@@ -789,7 +789,7 @@ destination (`0x6000 | X address`) and the count in halfwords (two per
 | `0x800021d0` (A) / `0x80001c90` (B) + ping·`0xa80` | 336 | `X:0x080` | **four 84-word per-track records** (`0x150` bytes each) |
 | `0x80000110` / `0x80000210` + ping·`0x200` | 64 | `X:0x000` | four 16-word per-voice records |
 | `0x80005460` + slot·`0x80` | 32 | `X:0x800` | a sample-slot record, on demand |
-| `0x80003190` + ping·`0x400` | 256 | ← `X:0x400` | read-back (DSP → CPU) — ❌ half the story: ✅ measured 8 Sep 2026 (`COLDFIRE_PORT.md` O9), core 1's read-back lands here and core 0's at `+0x200`, and the ColdFire then sends the 512 words FROM `0x80003190` TO core 0 every frame (eDMA ch 0); 🟡 the two cores' track mixes, forwarded to the core that owns the ESAI |
+| `0x80003190` + ping·`0x400` | 256 | ← `X:0x4600` / `X:0x2600` (❌ was "`X:0x400`", see below) | read-back (DSP → CPU) — ❌ half the story: ✅ measured 8 Sep 2026 (`COLDFIRE_PORT.md` O9), core 1's read-back lands here and core 0's at `+0x200`, and the ColdFire then sends the 512 words FROM `0x80003190` TO core 0 every frame (eDMA ch 0); ✅ **four per-track post-FX2 blocks of 64 words**, not a mix (read 10 Sep 2026, below) |
 | `0x80005460..0x80005e60`, page-stepped | 128 | ← | ✅ the eight ESAI input slots × 16 samples (eDMA ch 7; proven by content, O9) |
 
 The 336-word block is assembled by the packer at `0x4000d3fc`–`0x4000d55e`:
@@ -798,6 +798,51 @@ for each of 8 tracks it calls the machine-type handler from the table at
 `0x80001c80`. The 72-word staging block the DSP copies out of `X:0x30000`
 (§5) is the 84-word record after the DSP's unpack; the packer also steps a
 second per-track cursor by `0x48` = 72.
+
+### The read-back block is four per-track post-FX2 blocks, not a mix
+
+✅ Read 10 Sep 2026 from `out/dsp/payload_A.asm` and `payload_B.asm`
+(`tools/dsp_disasm_all.py`, the vendored dsp56300 disassembler, 0 undecodable
+instructions). Every address below is in payload A; payload B has the same
+code 0x20b words lower.
+
+The dispatcher at `P:0x54`/`P:0x64` loads `r5 = X:0x4600` (bank A) or
+`X:0x2600` (bank B) and saves it at `X:0x206` (`P:0x8c`). That is the
+address the ColdFire's "DMA a block OUT" command names as `0x6600`
+(`COLDFIRE_PORT.md`, the host command table: `0x6600 | 0x2000` bank bits
+masked). ❌ The "`X:0x400`" this table carried was never located and is
+retracted; `X:0x415`–`0x41f` are the dispatcher's own variables and sit
+inside that range.
+
+The per-track loop fills it. Right after the FX2 call (`jsr (r2)` at
+`P:0x50d`, handler from the table at `X:0x235 + id`), `P:0x50e`–`0x514`
+loads `r0 = X:0x206`, `r1 = 0`, `n1 = 1`, `r3 = X:0x419` (the track record)
+and calls the copy at **`P:0x55a`**. Its source `X:0x000` is the track's
+audio block, the same `r0 = 0` the dispatcher hands every effect
+(`CLAUDE.md`, the harness trap). It reads 16 interleaved L/R samples and
+writes each 24-bit sample as **two words** (`mpy` by `0x8000` and by `0x80`,
+then `a` and `b0` stored), so one track is 16 × 2 × 2 = **64 words** per
+frame, which is exactly the `add #>$40` the loop applies to `X:0x206` at
+`P:0x52b` before the next track. Four tracks per core × 64 = the 256 words
+the ColdFire reads. The 16-bit host port carries one DSP word per cycle, so
+the split is how a 24-bit sample survives the crossing.
+
+So the block the ColdFire holds at `0x80003190` (core 1, tracks 1–4) and
+`0x80003390` (core 0, tracks 5–8) is **every track's post-FX2 audio, 16
+samples per frame, 24-bit, per track** — the full 8-track stem set, every
+frame. 🟡 Whether the track LEVEL and the ColdFire-side delay are applied
+before or after this point is not read here; the delay's frame routine
+`0x400031a0` consumes this block and the ColdFire sends the processed 512
+words back to core 0 at `X:0x4400` (`RTOS_FORK.md` §10.16.2). Falsifier for
+the reading: run the port with the DSP frame engine on from boot, a known
+signal on one track and an audible FX2, and dump the 64 words; they must be
+that signal after FX2 and nothing else.
+
+The port's "P:0x55a called three times a frame" (`COLDFIRE_PORT.md`, the
+ESAI section) counts the three calls at `P:0x2df`/`0x2e2`/`0x2e6`, which
+copy the ESAI rings into the block's upper 256 words. The per-track call at
+`P:0x514` is a fourth site, inside the loop, once per track; 🟡 it was not
+reached in that run because no track was playing through FX2.
 
 **What consumes the tempo inside the packer's handlers** — three sites, all
 turning tempo into a *rate*, none copying it:
