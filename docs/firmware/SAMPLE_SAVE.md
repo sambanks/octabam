@@ -288,9 +288,12 @@ builder simply does not ask.
   as black boxes here, exactly as `COVERAGE.md` says. File creation, directory
   entries and cluster allocation are all behind them.
 - **`0x46105408`, the guard word, is unidentified.** It gates the whole writer.
-- **The reader is a separate routine at `0x400210fc`**, called from the static
-  and flex loaders `0x40093b14` and `0x40096710`. It parses `RIFF`, `WAVE`,
-  `fmt `, `data`, `cue ` and `smpl` at `0x400213ec` onward. Not covered here.
+- **The reader is a separate routine at `0x400210fc`**, with two call sites,
+  `jsr` at `0x40093b12` and at `0x4009670e`. ✅ Both verified. 🟡 Those sit
+  inside what octamax names the static loader `0x40093980` and the flex loader
+  `0x40096548`, but the function boundaries were not checked here. The reader
+  parses `RIFF`, `WAVE`, `fmt `, `data`, `cue ` and `smpl` from `0x400213ec`
+  onward. Not covered here.
 - **Card write throughput has never been measured**, in this project or in
   any of the three others surveyed. Every figure that exists is a sector count
   from an emulator. Nothing on this page should be read as a statement about
