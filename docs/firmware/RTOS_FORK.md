@@ -4116,3 +4116,8 @@ recorder case does, and whatever burst remains beyond a half-sample step
 is the recorder-specific part. A WAV to make, no flash. The MicroBook
 dropped off USB during the card swaps (no CoreAudio devices listed), so
 no capture of this run exists.
+(Later, MicroBook re-plugged: `gap128_static.wav` captured. Its bursts are
+not bar-periodic — spacings 0.09–1.2 s, clusters up to 2,400 samples —
+because GAPTEST.WAV is not a pure sine, so the tone-calibrated detector does
+not apply. The control has to be a pure 1 kHz loop of 82,687 samples; only
+then is the burst count comparable to `cond_b_128`.)
