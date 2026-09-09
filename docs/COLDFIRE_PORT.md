@@ -2420,7 +2420,9 @@ harness could not show was reproduced and located in one session with no
 flash, from the card, with the firmware's own dispatcher as the instrument.
 The rule it leaves: **any module logic keyed on a dispatcher fact (r7, r6,
 X:0x213, block addresses) is measured under the port, not modelled in
-`dsp_host`.**
+`dsp_host`.** ✅ **The fix built against this r7 reading is hardware-confirmed
+(9 Sep 2026, flash 7, tag OCTABAM21): the hosts stay quiet and the return
+reaches T8 on the unit — see the O12 hardware subsection below.**
 
 ## Milestone O12 — the bus itself under the firmware: bit-identical to `dsp_host` (8 Sep 2026, branch `coldfire-o12-bus`)
 
@@ -2666,6 +2668,42 @@ mechanism (the jittered frame) is still the inference.
 Tools: `rig_render --extra '<dsp_host args>'` (e.g. `-dumpy 36000,360d3,f`
 to dump the bus scratch after a render, which is how the two scratches
 were diffed word for word).
+
+### ✅ The port's diagnoses confirmed ON HARDWARE (9 Sep 2026, tag `OCTABAM21`, flash 7)
+
+The whole point of O11/O12 was to fix on the unit what the lock-step
+harness could not see. Flash 7 is that image (`REMIX=bamsep27 make bus`,
+byte-identical to the O12/O13 test image bar the build tag), flashed and
+measured on Sam's Octatrack over MIDI (`docs/FLASHPLAN.md` "Flash 7"; a
+Mac-generated 1 kHz burst into inputs A/B, the main outs captured, the Mac
+the clock master, `tools/hw_flash7.py` + `hw_flash7_liveclaim.py`). **Every
+one-aux bus claim passed**, and the two things the port found are now
+hardware-proven:
+
+- **The r7-stride fix (O11).** Flash 6's failure was "the hosts keep
+  printing their wet, nothing on T8", because the harness modelled two r7
+  blocks per track where the dispatcher bumps r7 three times, so the return
+  and the track-8 refusal matched in `dsp_host` and never on the unit. On
+  hardware now: muting the reverb host T5 does nothing to the return while
+  it is live (+0.3 dB), and −14 dB only with the return's level at 0 — the
+  hosts are quiet, the wet is on T8. The r7 the port read (`$6a00`/`$6b00`,
+  three blocks per track) is the unit's.
+- **The station stolen-stamp fix.** A BUS-mode Character on T4 returns
+  nothing (muting it moves the return 0 dB) AND T8 returns a full −34.6
+  dBFS beside it — before the `character.asm` guard (a station with RET 0
+  touches no clear-on-read stamp) T8 would have gone silent, which is the
+  defect O12's claim-vii run found under the port with T8 present.
+- **The send refused on the master T8.** Toggling T8's own AUX does nothing
+  to the return (the position pin `$6b00`), while T8's RET moves it.
+- **The chain and the fall-through.** Both engines shape the return, and
+  with the reverb removed the delay's repeats still return (the last live
+  stage), no dropout over 90 s.
+
+So the port earned its keep: it named a hardware failure the lock-step
+harness reported clean, the fix built against the port's r7 reading holds
+on silicon, and O12's own claim-vii defect and its fix are both confirmed.
+What the harness still cannot see (the cross-core skew, the cycle cliff)
+is unchanged; what the port measured about the dispatcher was right.
 
 ## Milestone O13 — the cycle count under the firmware: the port's stopwatch and `dsp_host`'s meter agree within 2 % (9 Sep 2026, branch `port-cycle-meter`)
 
