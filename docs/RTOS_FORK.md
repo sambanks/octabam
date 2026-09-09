@@ -3042,3 +3042,33 @@ What route A still cannot do is render the FLEX voice that plays the buffer back
 to audio (the flex-from-recorder-buffer loader is unlocated in both emulators)
 — that is the next task, to let the loop be heard in the emulator, not only
 measured.
+
+### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026)
+
+Getting the recorder-buffer FLEX voice to render (so the loop can be HEARD in
+the emulator, not only measured) — Sam's next ask after §10.32. `recaudio.py`
+gained a `--flex-probe` (watch the FLEX bind `0x4000f450` and its caller
+`0x4000d49e`, §10.13). Run on `g65`/`n128` (RLEN 16 self-loop), route A:
+
+- **The recorder captures.** The pool holds 82 non-zero 6,144-byte blocks —
+  route A DID record the injected input (correcting the §10.22–23 "pool all
+  zero," which was the C++ port, not route A).
+- **The bind fires, and re-fires every pass.** `0x4000f450` runs at the
+  step-1 play trig on pass 1 (frame 1) AND pass 2 (frame 5167, right at the
+  first end-post) with **D0 = 0x80 = recorder buffer R1** (buffers are ids
+  128–135) and A1 = 0x8000082f. So the FLEX-from-recorder-buffer loader is
+  **reached and binds R1**, not "unlocated" — §10.13's `0x4000f450` "fails on
+  an empty buffer" was the frame-1 case only; by pass 2 R1 is full and the
+  same bind runs.
+
+**So the remaining gap is the RENDER, not the bind.** `recaudio.py`'s
+`audio_out` capture is the recorder INPUT block (`saddr 0x80003190`, where the
+driver injects) — its L channel is the live input counter `16×frame` at every
+pass, which is why it looked like "thru." That block is NOT the FLEX voice's
+output; O10 established the voice's audio lands in the track's **84-word
+record**. The open question, and the next probe: capture the 84-word record
+(the voice output) at a pass-2 play trig and check whether it carries R1's
+recorded samples (playback works) or is silent/passthrough (the DSP-side
+voice render for a recorder buffer is the real gap). The pieces upstream of it
+— recorder writes, control record, bind — are now all confirmed present in
+route A.
