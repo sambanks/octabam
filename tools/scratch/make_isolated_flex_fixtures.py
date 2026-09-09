@@ -11,7 +11,7 @@ steps) but split across two tracks, at both the golden and non-golden tempo.
     .venv/bin/python tools/scratch/make_isolated_flex_fixtures.py out/_iso
 """
 import argparse, pathlib, shutil, sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import ot_project as o
 
 SRC = pathlib.Path.home() / "octa/backups/RECTRIG_20260906_step9"
