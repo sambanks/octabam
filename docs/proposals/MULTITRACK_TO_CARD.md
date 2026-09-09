@@ -145,8 +145,12 @@ and let a background task drain the ring to eight files.
 - Leaves the eight recorders free for the user.
 - Needs a DRAM placement for the ring. `PLAN.md` item 6, measuring
   `0x46000000` to `0x47502c10` with samples loaded and the recorder running,
-  is the prerequisite. A ring of 4 MiB holds 1.5 seconds of card stall at
-  24-bit, which is the budget a slow card gets before samples drop.
+  is the prerequisite. The ring holds the raw 1,024-byte frames, so the
+  per-frame hook stays a memcpy and the packing to 24-bit happens in the
+  drainer. At 2.82 MB/s a ring of 4 MiB holds 1.5 seconds of card stall,
+  which is the budget a slow card gets before samples drop. Packing before
+  the ring instead would stretch the same 4 MiB to 2.0 seconds at the cost
+  of work inside the frame.
 
 Why C over B: the audio is already sitting in DRAM in the shape we want, so
 the capture is a memcpy, and nothing we add touches the pool's bookkeeping.
