@@ -61,14 +61,17 @@ if (init, proc) == send_probe.entry_points(MEM, SEND.menu.fx2_id):
 # full-scale bipolar ramp, exact endpoints
 ramp = [int(round(-8388607 + (2 * 8388607) * i / (N - 1))) for i in range(N)]
 assert min(ramp) == -8388607 and max(ramp) == 8388607
-pathlib.Path("/tmp/ramp.raw").write_bytes(b"".join(struct.pack("<i", s) for s in ramp))
+import tempfile
+SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="verify_hello."))   # per process: two runs must not share /tmp names
+RAMP = SCRATCH / "ramp.raw"
+RAMP.write_bytes(b"".join(struct.pack("<i", s) for s in ramp))
 
 def render(gain):
-    out = f"/tmp/hello_g{gain}.raw"
+    out = str(SCRATCH / f"hello_g{gain}.raw")
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
            "-inst", "1", "-r7", "2", "-alloc", "1", "-inmask", "1",
            "-frames", str(FRAMES), "-blocks", str(N // FRAMES),
-           "-in", "/tmp/ramp.raw", "-out", out,
+           "-in", str(RAMP), "-out", out,
            "-params", ",".join(str(gain if i == GAIN_SLOT else 0)
                                 for i in range(NSLOTS))]
     r = subprocess.run(cmd, capture_output=True, text=True)

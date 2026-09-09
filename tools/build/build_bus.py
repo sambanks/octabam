@@ -88,7 +88,7 @@ code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
 times. The old docstring here claimed "exactly one occurrence", which was
 never true for the XBUS path.
 """
-import dataclasses, hashlib, os, pathlib, re, subprocess, sys
+import dataclasses, hashlib, json, os, pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
@@ -838,18 +838,30 @@ def _dev_hooks(key, src):
     return src
 
 
+# ⚠️ PER-PROCESS SCRATCH. Until 10 Sep 2026 this wrote /tmp/build_bus_src.asm,
+# .bin and .sym by fixed name, so two builds on one machine -- two sessions'
+# `make check`, or the selftest's per-remix builds beside another -- read
+# each other's output: one side saw "seamtest overrun 2783 > 2724", the other
+# "selprobe dsp_asm exit 1", each on a different remix each time, and a
+# clean checkout showed the same moving failures (found by a peer session).
+_SCRATCH = None
+
+
 def assemble(src_text, org):
-    tmp = pathlib.Path("/tmp/build_bus_src.asm")
+    global _SCRATCH
+    if _SCRATCH is None:
+        import tempfile
+        _SCRATCH = pathlib.Path(tempfile.mkdtemp(prefix="build_bus."))
+    tmp, binf, symf = (_SCRATCH / n for n in ("src.asm", "out.bin", "out.sym"))
     tmp.write_text(src_text)
     subprocess.run([str(DIS), "-in", str(tmp), "-org", f"{org:x}",
-                    "-out", "/tmp/build_bus.bin", "-sym", "/tmp/build_bus.sym"],
+                    "-out", str(binf), "-sym", str(symf)],
                    check=True, capture_output=True)
-    blob = pathlib.Path("/tmp/build_bus.bin").read_bytes()
+    blob = binf.read_bytes()
     words = [blob[i] | (blob[i + 1] << 8) | (blob[i + 2] << 16)
              for i in range(0, len(blob), 3)]
     syms = dict((k, int(v, 16)) for k, v in
-                (l.split() for l in
-                 pathlib.Path("/tmp/build_bus.sym").read_text().split("\n") if l))
+                (l.split() for l in symf.read_text().split("\n") if l))
     return words, syms["init"], syms["proc"]
 
 
@@ -1218,6 +1230,48 @@ def main():
     # instructions -- isolates the hook mechanism from the stores (R48/R49
     # killed the voices on the unit; docs/firmware/DSP.md 6c-i).
     _plan = []
+    # ---- overrides (schema.Override): a bridge stands in at a shared site --
+    # Collected before anything is written: which detours to skip, which
+    # recipe writes to skip, and the continuation symbols the bridge's stub
+    # and any overridden cave link against -- the TARGET the skipped write
+    # carried (a `jmp abs.l`'s address, or a 4-byte pointer entry).
+    _ovr_detours: set[tuple[int, str]] = set()          # (site, module key)
+    _ovr_writes: dict[str, set[str]] = {}               # module key -> write names
+    _defsym_ovr: dict[str, int] = {}                    # symbol -> target
+    for _k in REMIX.modules:
+        for _o in getattr(remix_modules()[_k], "overrides", ()):
+            if _o.module not in REMIX.modules:
+                sys.exit(f"{_k} overrides {_o.module} at 0x{_o.site:08x}, which this "
+                         f"remix does not carry -- nothing to bridge; drop {_k}")
+            if _o.write is None:
+                _ovr_detours.add((_o.site, _o.module))
+                continue
+            _ovr_writes.setdefault(_o.module, set()).add(_o.write)
+            if _o.defsym:
+                _rt = getattr(remix_modules()[_o.module], "runtime", None)
+                if _rt is None:
+                    sys.exit(f"{_k}: override names write {_o.write!r} of {_o.module}, "
+                             f"which has no runtime recipe")
+                _spec = json.loads(pathlib.Path(_rt.recipe).read_text())
+                _data = None
+                for _p in _spec["patches"]:
+                    if _p["name"] == _o.write:
+                        _wl = [w for w in _p["writes"]
+                               if _spec["format"]["os_load_address"] + w["offset"] == _o.site]
+                        if _wl:
+                            _data = bytes.fromhex(_wl[0]["data"])
+                if _data is None:
+                    sys.exit(f"{_k}: {_o.module} has no write {_o.write!r} at 0x{_o.site:08x}")
+                if _data[:2] == b"\x4e\xf9" and len(_data) >= 6:
+                    _defsym_ovr[_o.defsym] = int.from_bytes(_data[2:6], "big")   # jmp abs.l
+                elif len(_data) == 4:
+                    _defsym_ovr[_o.defsym] = int.from_bytes(_data, "big")       # a pointer
+                else:
+                    sys.exit(f"{_k}: cannot read a target out of {_o.module}'s write "
+                             f"{_o.write!r} ({_data.hex()}) -- not a jmp abs.l or a pointer")
+                print(f"  {_k}: {_o.defsym} = 0x{_defsym_ovr[_o.defsym]:08x} "
+                      f"({_o.module}'s {_o.write} at 0x{_o.site:08x}, bridged)")
+
     for _c in _caves:
         _b = _c.pinned
         if _replay and _c.hook_addr is not None:
@@ -1295,13 +1349,22 @@ def main():
         # is written, as it always was.
         _legacy_emit = _c.emit is not None and len(_b) > 0
         if _c.source and not _replay and _toolchain and not _legacy_emit:
+            # A bridge may redefine one of this cave's defsyms (CC_NEXT):
+            # the linked bytes then differ from the ratified form by exactly
+            # that address, so the oracle is set aside for it and said so.
+            _bridged = [n for n, _v in _c.defsyms if n in _defsym_ovr]
+            _cdefs = tuple((n, _defsym_ovr.get(n, v)) for n, v in _c.defsyms)
             _lb, _lsyms, _lglob = _link(
                 _c.source, _c.cave_addr, _c.cpu,
                 pathlib.Path("out/linked/caves") / re.sub(r"\W+", "_", _c.label),
-                sections=(".text",), defsyms=tuple(_c.defsyms) + tuple(_exports.items()))
+                sections=(".text",), defsyms=_cdefs + tuple(_exports.items()))
             _exports.update(_lglob)
             _ref = (_c.reference(_c.cave_addr) if _c.reference is not None
                     else _c.pinned if _c.emit is None else _b)
+            if _bridged:
+                print(f"  {_c.label}: {', '.join(f'{n} -> 0x{_defsym_ovr[n]:08x}' for n in _bridged)}"
+                      f" (bridged; the ratified-bytes oracle is set aside for this cave)")
+                _ref = b""
             if _ref and _lb != _ref:
                 sys.exit(f"{_c.source} linked at 0x{_c.cave_addr:08x} no longer "
                          f"matches the bytes the manifest ratifies ({len(_lb)} vs "
@@ -1383,7 +1446,8 @@ def main():
         # A runtime whose recipe writes the arena geometry (Octakit's four)
         # declares them in its ArenaReserve; the build computes those
         # literals from EVERY reservation in the remix (1e) instead.
-        _skip = tuple(getattr(getattr(_m, "arena", None), "recipe_writes", ()))
+        _skip = tuple(getattr(getattr(_m, "arena", None), "recipe_writes", ())) + \
+            tuple(_ovr_writes.get(_m.key, ()))                 # bridged (schema.Override)
         _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work, _exts,
                                                       skip=_skip)
         _sym[_m.key] = _info["symbols"]
@@ -1503,7 +1567,7 @@ def main():
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
-            reserve=_reserve)
+            reserve=_reserve, defsyms=_defsym_ovr)
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
         _exports.update(_psyms)
@@ -1549,6 +1613,10 @@ def main():
 
     for _m, _d in [(remix_modules()[_k], _d) for _k in REMIX.modules
                    for _d in getattr(remix_modules()[_k], "detours", ())]:
+        if (_d.site, _m.key) in _ovr_detours:
+            print(f"  {_m.key}: detour at 0x{_d.site:08x} bridged -- another module's stub "
+                  f"stands in for it")
+            continue
         _got = bytes(img[_d.site - BASE:_d.site - BASE + len(_d.expect)])
         if _got != _d.expect:
             sys.exit(f"{_m.key} detour {_d.note or _d.symbol} at 0x{_d.site:08x} finds "

@@ -107,6 +107,11 @@ MODULE = Module(
         reference=legacy_bytes,         # the build holds the linked source
                                         # against the hand-patched form, at
                                         # whatever address it floats to
+        # Where CCs other than 62-67 go. Stock's handler -- unless a bridge
+        # (modules/scenes-kits) overrides it to Octakit's, in which case the
+        # build defines CC_NEXT as hers and skips the oracle above (the
+        # bytes then legitimately differ by that one address).
+        defsyms=(("CC_NEXT", STOCK_CC),),
         emit=emit,
         report_note=" (CC 62-67 reach FX2 page 2)",
     ),),

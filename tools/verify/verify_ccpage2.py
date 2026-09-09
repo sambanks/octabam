@@ -64,7 +64,13 @@ def check_source_matches(m):
             o, e, b = (pathlib.Path(d) / n for n in ("cc.o", "cc.elf", "cc.bin"))
             subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", str(o),
                             str(ROOT / "modules/ccpage2/cc_page2.s")], check=True)
-            subprocess.run(["m68k-elf-ld", f"-Ttext=0x{addr:x}", "-o", str(e), str(o)], check=True)
+            # The cave's fall-through is a link-time symbol (CC_NEXT) so a
+            # bridge can chain it in front of Octakit's CC handler; the
+            # manifest's default is stock's handler, and that is what the
+            # ratified bytes carry.
+            subprocess.run(["m68k-elf-ld", f"-Ttext=0x{addr:x}",
+                            *[f"--defsym={n}=0x{v:x}" for n, v in m.MODULE.cf_patches[0].defsyms],
+                            "-o", str(e), str(o)], check=True)
             subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
                             str(e), str(b)], check=True)
             linked = b.read_bytes()

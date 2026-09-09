@@ -64,7 +64,11 @@ the local ColdFire emulator. `docs/remixer/REMIXER.md` is its manual.
 
 | remix | contains | why |
 |---|---|---|
-| **`ported`** | MIDI SCENES + LOFI AMF FIX | every community mod known to coexist, together — the pick-and-choose proof |
+| **`mods`** | **every community firmware mod in one image**: MIDI SCENES + Octakit + the LO-FI AMF fix + CC→page 2, bridged by `scenes-kits` | the "all the mods" image; no effects of ours |
+| **`rig-mods`** / **`mutables-mods`** | the rig, or the insert card, plus every mod | effects plus the mods (the rig omits the LO-FI fix: its CHARACTER station replaces LO-FI) |
+| **`scenes`** / **`kits`** | one family of mods, no effects: MIDI SCENES + LO-FI fix + CC→page 2, or Octakit + LO-FI fix | for someone who wants scenes but not Kits, or Kits but not scenes |
+| **`rig-scenes`** / **`rig-kits`**, **`mutables-scenes`** / **`mutables-kits`** | the rig or the insert card with one family | same, with effects |
+| **`ported`** | MIDI SCENES + LOFI AMF FIX | the pick-and-choose proof: two authors' ports in one image |
 | **`octakit`** / **`octakit-fix`** | Em's Octakit, alone / with the LO-FI fix | her mod through this pipeline; must reproduce her identities |
 | **`midi-scenes`** | MIDI SCENES alone | his mod through this pipeline |
 | **`bamsep26`** (default) | the bus rig: both engines, send, stations, tempo sync, menu shortcut | what goes on Sam's unit |
@@ -72,11 +76,13 @@ the local ColdFire emulator. `docs/remixer/REMIXER.md` is its manual.
 | **`mutables`** | five inserts | a card of stacking effects, no servers |
 | **`hello`** / **`hello-dram`** | one module each | the reference minimal builds |
 
-⚠️ **OCTAKIT and MIDI SCENES cannot share an image yet** — both hook the
-same stock routine (`apply_part`, `0x40009094`), and beyond the hook his
-code addresses the Part window that hers replaces. The build refuses the
-pair by name; detour chaining and a Kits-aware scenes port are the two
-halves of the fix (`PLAN.md`).
+**OCTAKIT and MIDI SCENES share an image through a bridge.** Both hook the
+same stock routine (`apply_part`, `0x40009094`) and both want the MIDI CC
+dispatch; `modules/scenes-kits` chains them — his pre-work, then her
+engine load; our CC cave, then her handler, then stock — and the build
+refuses the pair *without* it. What the bridge does not settle is his Part
+save/reload menu hooks against her Kit menus: unmeasured, and the next
+thing to look at with both authors (`modules/scenes-kits/README.md`).
 
 ## How it works, in one screen
 

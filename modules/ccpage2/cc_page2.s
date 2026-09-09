@@ -26,7 +26,10 @@
 | slot2 order) patched by the build; a select's over-count value would be the
 | stored index that stalls the sequencer, so the clamp is mandatory.
 
-        .set    STOCK,    0x4000e79c   | stock CC handler (tail-called)
+| CC_NEXT is where anything but 62-67 goes: the stock CC handler
+| (0x4000e79c), or -- when Octakit is in the image and the scenes-kits
+| bridge chains this cave in front of her CC dispatch -- her handler. The
+| build defines it (CavePatch.defsyms; schema.Override); it is not set here.
         .set    P1WRITE,  0x40054cd8   | stock page-1 writer (canary, CC 67 only)
         .set    MAPBUILD, 0x40001854   | fills the channel->track map
         .set    MAPGLOB,  0x46104cf4   | long stock loads to d3 before MAPBUILD
@@ -67,7 +70,7 @@ CAVE:   movel   %sp@(4),%a0            | a0 = msg {status, cc, value}
         cmpl    %d0,%d1                | 5 - (cc-62); carry if 5 < (cc-62)
         bcs.s   tostk                  | not 62..67 (also catches cc < 62)
         bra.s   mine
-tostk:  jmp     STOCK                  | tail-call stock, argument intact
+tostk:  jmp     (CC_NEXT).l            | tail-call the next handler, argument intact
 
 mine:   lea     %sp@(-28),%sp
         movem.l %d2-%d7/%a2,%sp@

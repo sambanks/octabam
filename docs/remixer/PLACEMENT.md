@@ -273,6 +273,27 @@ and that every window reads back equal to its linked image — except the
 bytes a runtime writes about itself once its hooks run, which are counted
 and printed.
 
+## Shared sites: the bridge (10 Sep 2026)
+
+Two stock sites are claimed by more than one mod, and until today the
+ledger's only answer was to refuse the pair. `modules/scenes-kits` is the
+first **bridge**: a stub that does what both hooks did, in an order that
+respects each one's protocol, declared through `schema.Override` so the
+build skips the overridden detour or recipe write and hands the stub the
+skipped claim's target as a link-time symbol (`CHAIN_APPLY_NEXT`,
+`CC_NEXT`). Sites, protocols and the guard her boot-time path forces are
+in `modules/scenes-kits/README.md`.
+
+✅ **Measured under the port** (`mods` image — MIDI SCENES + Octakit + the
+LO-FI fix + CC→page 2 — on the static-sample card, boot → LOAD PROJECT →
+400 frames): six `apply_part` calls, and every one went site → bridge stub
+→ her entry → her trampoline (stock's body); her fatal 0×, the loader's
+fatal 0×; once her lifecycle was active his `pack` ran (2×, one from his
+`bank_sw` path) and his `after` 1×; her window and ours read back as
+their own state words only. Not measured: MIDI CCs through the chained
+dispatch (the port has no MIDI in), his Part save/reload menu hooks
+against her Kit menus, hardware.
+
 ## What is still open
 
 - **More than 10 MB** is the same mechanism with a bigger

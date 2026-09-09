@@ -679,6 +679,30 @@ class ArenaReserve:
 
 
 @dataclass(frozen=True)
+class Override:
+    """This module's own claim at `site` stands in for another module's --
+    the way two mods that hook one stock instruction get to share it.
+
+    A BRIDGE module (modules/scenes-kits is the first) carries a stub that
+    does what both hooks did, in an order that respects each one's
+    protocol, and declares an Override per claim it replaces: `module` is
+    the other module's key, `write` the name of its Runtime recipe write
+    at that site (None for a Detour). The build then skips the overridden
+    detour or write and, when `defsym` is given, defines that symbol for
+    every unit and cave it links as the overridden claim's TARGET -- the
+    address a `jmp abs.l` write jumped to, or the pointer a 4-byte table
+    write installed -- so the stub knows where to continue. The ledger
+    treats the site as the bridge's; the overridden module must be in the
+    remix, or the override is refused.
+    """
+
+    site: int
+    module: str
+    write: str | None = None
+    defsym: str | None = None
+
+
+@dataclass(frozen=True)
 class RuntimeExt:
     """Sources linked INTO another module's loader-appended runtime.
 
@@ -743,6 +767,9 @@ class Module:
     # (schema.ArenaReserve). DRAM units need none: the platform reserves
     # its own (arena.PLATFORM_PAGES) whenever a remix carries any.
     arena: ArenaReserve | None = None
+    # Claims of OTHER modules this module's own stand in for
+    # (schema.Override) -- a bridge chaining two mods' hooks at one site.
+    overrides: tuple[Override, ...] = ()
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None

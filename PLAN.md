@@ -107,12 +107,17 @@ port on 9 Sep 2026 unless marked.
    he can compare against his own build on his own unit), then `octakit`
    (her runtime through our loader; she has the project-migration test
    set). Bump `BUILD`, stamp projects, `docs/remixer/FLASHING.md`.
-2. **Detour chaining** for the two stock routines three authors hook:
-   `apply_part` entry `0x40009094` (midi-scenes, octakit, octamax) and the
-   scene-parameter writer `0x40052ae8` (octakit, octamax). Until then
-   Octakit and midi-scenes are mutually exclusive — and note the second
-   reason: Parts versus Kits. His code addresses the Part window; hers
-   replaces it. A Kits-aware midi-scenes is his and Sam's to write.
+2. **Shared sites — BRIDGED (10 Sep 2026), unflashed.** `modules/scenes-kits`
+   chains MIDI SCENES and Octakit at `apply_part` (`0x40009094`) and CC→page
+   2 in front of her MIDI CC dispatch (`0x400d64a0`), through
+   `schema.Override`; the `mods` / `rig-mods` / `mutables-mods` remixes
+   carry everything. Measured under the port: every `apply_part` in a
+   project load runs the whole chain, nobody's fatal. His hooks keep their
+   meaning under Kits because her active path applies the stock Part
+   window (she wraps stock's body, she does not replace it). **Open:** his
+   Part save/reload menu hooks against her LOAD/SAVE KIT menus — the
+   Kits-aware half that is his and hers; the scene-parameter writer
+   `0x40052ae8` (octakit, octamax) when octamax returns.
 3. **octabam's DRAM home is the arena reserve — DONE locally (10 Sep
    2026), unflashed.** The top window had a measured neighbour (the
    engine task's sector bounce buffer lands there at project load, inside

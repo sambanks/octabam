@@ -478,6 +478,20 @@ def main():
              "stations": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
                           "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
                           "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                          "COMB FILTER"),
+             # the rig plus a community family (10 Sep 2026): the same
+             # stations, so the same thirteen; the mods place no DSP words.
+             "rig-scenes": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                            "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                            "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                            "COMB FILTER"),
+             "rig-kits": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
+                          "COMB FILTER"),
+             "rig-mods": ("FILTER", "SPATIALIZER", "EQUALIZER", "PHASER",
+                          "FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
+                          "DARK REV", "COMPRESSOR", "LO-FI", "DJ EQ",
                           "COMB FILTER")}
     for _n in registry.remix_names():
         _r = registry.remix(_n)
