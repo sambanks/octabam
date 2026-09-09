@@ -103,10 +103,17 @@ length was computed, or the negative value the write primitive returned.
 
 ✅ Built in a scratch buffer at `0x46c2d980`, then written in one call. The
 CPU is big endian and RIFF is little endian, so every numeric field goes
-through `byterev.l` first. `byterev` is ColdFire ISA_C, opcode `0x02C0 | reg`.
-Neither r2 nor binutils `m68k:cfv4e` decodes it; objdump prints `.short 0x02c0`.
-It is decoded here by hand, and the little endian requirement makes the
-reading certain.
+through `byterev.l` first. `byterev` is ColdFire ISA_A+ (the assembler
+accepts it from `-march=isaaplus` on; ❌ an earlier version of this page said
+ISA_C), opcode `0x02C0 | reg`. Under the `m68k:cfv4e` profile that
+`scripts/disasm.sh emac` uses, objdump prints it as `.short 0x02c0`, and r2
+does not decode it at all. The `m68k:isa-aplus` and `m68k:isa-c` profiles do
+print `byterev %d0`, but they drop the EMAC instructions: under either, the
+`msacl` gate at `0x40003664` comes out as `btst` and `.short` (checked
+10 Sep 2026). No single profile decodes both, so this page reads the header
+builder under `cfv4e` and decodes the `.short 0x02c0` words by hand; the
+little endian requirement makes the reading certain. To see `byterev` spelled
+out, re-run the span under `-m m68k:isa-aplus` and ignore its EMAC output.
 
 Let `A` be the block align, that is bytes per sample times channels. Let `D`
 be `sampleCount * A`, the audio byte count. Let `P` be `D & 1`, the RIFF pad.
