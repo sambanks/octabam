@@ -2736,3 +2736,57 @@ upstream of it (frame delivery, the per-frame track loop, the arm caller's
 own code) is confirmed present and running; everything at or after it
 (the arm caller onward) is confirmed never reached. The trig-word
 composition is the remaining unmeasured link between the two.
+
+### 10.26 §10.25's ruling-out may be premature: `tools/ot_emu` has no clock-lock modeling of any kind — not even the compensation §10.14 gave route A (9 Sep 2026 — read, not measured)
+
+Checked before spending more session time on the lane-table trace §10.25
+left open. `grep` across `tools/ot_emu/*.cpp`/`*.h` for `arm_phase`,
+`internal_clock`, `clock_receive`, and the three literal addresses §10.14
+names for the tick/frame-clock relock (`0x400a1ea4`, `0x4009c186`,
+`0x4000ad4a`): **zero matches.** `--arm-phase-fix` exists only in
+`tools/emu_rtos.py` (route A); the C++ port §10.21–§10.25 have been
+running against (`tools/ot_emu`) has neither the bug's compensation nor,
+so far as grep can show, a name-recognisable model of the MIDI-clock lock
+M6f scoped. It has its own low-level `tickTimers`/PIT model (`rtos.cpp`),
+which is a different layer — that runs the kernel's 5 ms tick correctly
+(M6c's own gate), but is not the same thing as the sequencer-level
+step-clock/frame-clock relock §10.14 traced.
+
+**Why this matters for §10.25's "No."** That section ruled out the
+§10.14 artifact by testing 120 BPM *under this same port* and getting the
+identical zero-hit result to 128 BPM — correct as a statement about this
+port (tempo doesn't distinguish the two here), but it does not rule out
+the *same category* of bug: a port with no clock-lock modeling at all
+would produce a composed timing byte that is wrong at every tempo, not
+just the ~half that route A's specific tick/frame arithmetic happens to
+land negative. §10.14's route A result (120 arms, 128 doesn't) is a
+property of route A's particular uncompensated phase relationship, not a
+universal signature — a differently-timed port missing the lock
+entirely could easily be negative always, which is exactly what §10.25
+measured. **This is 🟡 inferred from the absence of matching code, not
+from a traced clock value under this port** — it has not been confirmed
+that the timing byte is negative for the *same reason* (no relock) rather
+than some other cause, only that the mechanism that would prevent it is
+absent.
+
+**What this changes.** Before extending §10.23's pool-address hypothesis
+further, or continuing §10.25's plan to watch `0x4000aece..0x4000af22`,
+the cheaper next step is checking what NOW (`0x46104cf0`/`0x46104cf4`) and
+the step clock (`0x4610757c`) actually read under this port at the frame
+the trig word is composed — if they show the same unbounded-negative
+pattern §10.14 describes, this whole thread is the already-diagnosed M6f
+gap wearing a new emulator's clothes, and the fix is porting
+`--arm-phase-fix` (or a real MIDI-clock model) to `tools/ot_emu`, not a
+new pool-address theory. Not yet done this session.
+
+**Independent of which explanation is right:** hardware is the fastest
+way to cut through it. §10.14's own hardware falsifier (Sam's unit, 7 Sep)
+already settled the general "does recording arm at 120/128" question for
+route A's finding. What has not been hardware-checked since is whether
+*this exact build tag, this exact 128 BPM / RLEN 4 configuration* records
+and plays back without the click Bryan reports — on hardware Sam controls
+directly, not remotely through Bryan. Flash 7 (`tools/hw_flash7.py`) is
+about to put hands on Sam's unit for an unrelated bus-claims run; folding
+a short recorder-arm check into that same session is far cheaper than a
+dedicated flash cycle later (see CLAUDE.md: "Flash cycles are
+expensive").
