@@ -162,6 +162,25 @@ That is 512 frames at 24 bit stereo, 768 at 16 bit stereo, 1,024 at 24 bit
 mono. ❌ An earlier note here said "3,072 sample chunks". That was the r2
 misreading, and it is wrong: 3,072 is bytes.
 
+⚠️ **objdump prints that instruction as `remul`, which reads as a remainder.
+It is a divide, and the value is the quotient.** The encoding `4c44 6006` is
+ambiguous: `m68k-linux-gnu-as -mcpu=5407` assembles both `divu.l %d4,%d6` and
+`remul %d4,%d6,%d6` to exactly those bytes, because the destination and
+remainder registers are the same register, and binutils simply prefers the
+`remul` spelling when disassembling. Two independent reasons the quotient is
+the correct reading:
+
+- `A` is always 2, 3, 4 or 6, and 3,072 is divisible by all four. A remainder
+  would be 0 in every configuration, the frame count would be 0, and the loop
+  would abort with `-51` before writing a single sample. The unit saves
+  samples, so it is not the remainder.
+- The quotient is the only value that makes the surrounding code meaningful:
+  it is compared against the contiguous run and the remaining count to pick a
+  chunk size.
+
+Same family as the traps in `CLAUDE.md`: legal encoding, plausible-looking
+output, wrong meaning. Assemble the candidates when a mnemonic surprises you.
+
 Each pass:
 
 1. `0x4009499c(slotId, position, 1)` returns a pointer in `d0` and the
