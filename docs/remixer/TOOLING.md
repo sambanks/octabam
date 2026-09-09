@@ -1,0 +1,187 @@
+# The tooling, end to end
+
+Nothing in this project uses a normal embedded toolchain, so this page walks
+all of it — what each tool is, why it exists, and where it sits in the
+pipeline. If you have never touched a DSP56300 or unpacked a firmware image,
+start here; the deep dive on the audition/measurement rig specifically is
+`docs/remixer/HARNESS.md`.
+
+The pipeline, left to right:
+
+```
+acquire ──► unpack ──► understand ──► build ──► hear/measure ──► verify ──► flash ──► capture
+scripts/     scripts/    tools/build    tools/build tools/harness   tools/      docs/       tools/hw
+fetch-os     analyze     dsp_modmap     build_bus   dsp_host +      verify/*    remixer/    capture_hw
+                         disasm         make image  tools/emu       cycles      FLASHING    ot_midi …
+```
+
+`make help` lists the entry points; almost everything below is behind a make
+target.
+
+## Where the tools live
+
+`tools/` is grouped by what a tool is for. Every group directory is on
+`sys.path` for every tool (`tools/toolpath.py`), so tools import one
+another by bare name wherever they sit; a new script opens with the one
+line `hello-dram`'s verifier does.
+
+| directory | what is in it |
+|---|---|
+| `tools/remix/` | **the toolkit**: the module schema, the registry, the ledger, the stock-effect list, the loader (`loader.S`), the DRAM platform (`platform_build.py`), the recipe runtime builder (`runtime_build.py`), the TUI (`app.py`), auditioning, the index and the selftest |
+| `tools/build/` | **the build** (`build_bus.py`) and the tools that understand the OS layout: the DSP load map, disassembly, reachability, the ELUP/`.bin` codecs, label and formatter emitters, cycle pricing |
+| `tools/verify/` | **the gates**: one `verify_*.py` per property, run by `make verify` |
+| `tools/harness/` | **hearing and measuring the DSP side** locally: the emulator harness (`dsp_host/`), `send_probe`, `render_reverb`, `rig_render` |
+| `tools/emu/` | **the ColdFire emulators**: the headless machine port (`ot_emu/`, C++) and the Unicorn bring-up (`emu_bringup`, `emu_card`, `emu_rtos`) |
+| `tools/hw/` | **the unit and its card**: MIDI control, capture, sweeps, project files, MIDI flashing |
+| `tools/patches/` | local patches to the vendored toolchains (dsp56300, elektron-firmware-tool, unicorn) |
+| `tools/scratch/` | one-off probes kept for provenance; not entry points |
+
+## The chip, in one paragraph
+
+The Octatrack's audio runs on a Freescale **DSP56721**: two DSP56300-family
+cores, 24-bit fixed-point, with three separate memory spaces per core — P
+(program), X and Y (data) — and hardware loops and modulo addressing that
+the effects lean on heavily. There is no C compiler in this pipeline;
+effects are written directly in DSP56300 assembly, one module per
+directory (`modules/<name>/*.asm`; `dsp/` keeps the shared probes and the
+null stub). The
+ColdFire (a 68k-family CPU) runs the OS, UI and sequencer and is a
+completely separate instruction set and toolchain.
+
+## 1. Toolchain (`make setup`, `scripts/setup.sh`)
+
+Idempotent; assumes macOS + Homebrew (Linux substitutions are the obvious
+ones — the DSP toolchain itself is plain CMake). It builds:
+
+| tool | from | what it is |
+|---|---|---|
+| `dsp_asm` | `vendor/dsp56300` | the DSP56300 assembler. ⚠️ It **mis-encodes some instructions silently** — `CLAUDE.md`'s trap list is required reading before trusting it |
+| `dsp_host` | `tools/harness/dsp_host/` (staged into `vendor/dsp56300` and built there) | this project's emulator harness: runs assembled effects on the dsp56300 emulator core. `docs/remixer/HARNESS.md` |
+| `emu_bringup.py` | `tools/` | Tier-0 ColdFire bring-up: boots the real MAIN OS image on Unicorn's CFV4E core to the RTOS handoff (the remixer emu, `PLAN.md` §5). Needs `unicorn` — `make emu-setup` (uv, the `emu` extra). `docs/remixer/EMU.md` |
+| `elektron-firmware-tool` | `vendor/elektron-firmware-tool` (patched) | packs/unpacks Elektron's OS container formats |
+
+The disassembler from the same dsp56300 project is the other half of the
+deal: **disassemble what you assemble** is a project rule, not advice,
+because the assembler's failure mode is clean assembly of wrong machine
+code.
+
+## 2. Acquiring and unpacking an OS
+
+No Elektron binary lives in this repository — you fetch your own copy and
+every build derives from it reproducibly.
+
+| tool | what it does |
+|---|---|
+| `scripts/fetch-os.sh` (`make os`) | downloads the official OS from Elektron's site and prints its SHA256 — the hash is what makes any build claim checkable by someone else |
+| `scripts/analyze.sh` (`make recon`) | static recon: entropy, binwalk, strings, container unpack → **`out/raw/section_3_MAIN_OS.bin`**, the decompressed 1.1 MB ColdFire image every build script reads as its base |
+| `tools/build/bin_decode.py` | offline decoder for the `.bin` (ELUP) transport: strips the header, undoes the XOR-with-feedback obfuscation, verifies the additive checksum — a reimplementation of the firmware's own update validator, so a passing checksum proves the decode is right |
+| `tools/build/make_bin.py` | the reverse: wraps a patched container back into an ELUP `.bin` for the fast CF-card OS UPGRADE path (SysEx flashing takes minutes; the card path doesn't) |
+| `tools/build/entropy.py` | sliding-window Shannon entropy scanner — how the compressed region was located in the first place |
+| `tools/build/find_base.py` | recovers a raw image's load address by pointer→string correlation (how `0x40000400` was established) |
+
+The container formats themselves (ELUP/ELEK/aPLib) are documented in
+`docs/firmware/ARCHITECTURE.md` §3.
+
+## 3. Understanding the firmware
+
+Two instruction sets, two toolchains:
+
+| tool | side | what it does |
+|---|---|---|
+| `tools/build/dsp_modmap.py` (`make modmap`) | DSP | recovers the **module load map** — which bytes of the image load to which DSP address in which memory space. Everything DSP-side depends on it; a disassembly at the wrong PC is worthless. Also produces the `.mem` memory dumps `dsp_host` boots |
+| `tools/build/dsp_disasm_all.py` | DSP | disassembles every P module of both payloads at its true load address — one `.asm` per payload plus per-module binaries |
+| `tools/build/dsp_reach.py` | DSP | control-flow reachability sweep from the real entry points (dispatch tables, vectors, bootstraps) — separates live code from dead space |
+| `scripts/disasm.sh` (`make disasm`) | ColdFire | opens radare2 on the decompressed MAIN OS with the right arch and base (m68k BE @ `0x40000400`) |
+
+## 4. Building firmware
+
+**`tools/build/build_bus.py` is THE builder** (`make bus` = `XBUS=1 SPEC=1`). What
+it builds is a **remix**: a named selection of modules (`make bus
+REMIX=<name>`, default `bamsep26`, the rig; `make modules` lists the modules and the
+remixes, `make remix` composes one interactively). Each
+`modules/<name>/manifest.py` declares one contribution — menu entry,
+parameters, DSP source, ColdFire caves — against the schema in
+`tools/remix/schema.py`, and `tools/remix/ledger.py` refuses a selection
+whose modules collide on an FX2 id, cave, hook site or core-private Y word.
+`docs/remixer/MODULES.md` is the contributor guide. The builder then assembles the
+selected effects, places them into each payload's donor region in declared
+priority order, wires the dispatch tables, patches the ColdFire-side menu
+descriptors, and census-checks itself (it will refuse a build whose source trips one of its
+guards — that is the guard working). It is driven entirely by env flags —
+`DEV`, `NOSHIM`, `MODE`, `DFRZAT`, `TPROBE` and more; grep `environ` in the
+file for the full set, and note the render cache fingerprints every one of
+them (`docs/remixer/HARNESS.md`). `make image` then repacks the result into a
+card-flashable `.bin` with the build number stamped into the OS version
+string — a unit whose version you cannot map to a commit is a unit you are
+guessing about. `docs/remixer/FLASHING.md` before writing anything to hardware.
+
+Earlier and special-purpose builders are kept as records, not entry points:
+`build_menu.py` (superseded by build_bus; the ColdFire menu-integration
+record), `build_reverb.py` (the pre-bus single-effect build),
+`build_fx1.py` (an FX1-slot experiment), `build_dspprobe.py` +
+`gen_probe.py` (hardware memory probes), `gen_reverb.py` (the legacy
+four-line engine generator; its probe-derived constraints remain the
+provenance record).
+
+## 5. Hearing and measuring locally
+
+The core of the project's method: render on the desktop at ~6× real time
+instead of flashing. Covered in depth by `docs/remixer/HARNESS.md`; the short
+version:
+
+| tool | what it does |
+|---|---|
+| `tools/harness/dsp_host` | the emulator harness itself — boots a payload dump (both payloads since 7 Sep 2026, `-memB`, shared window shared), calls effects through the recovered ABI, captures audio, polices memory, meters instructions per block |
+| `tools/harness/rig_render.py` (`make render-rig`) | the whole rig locally: eight tracks on both cores, FX1→FX2 chained per track, ids and knobs from a project part or by name, stems in, per-track + mix wavs and `meter.txt` out |
+| `tools/verify/verify_twocore.py` (`make verify-twocore`, in `make check`) | the two-core gate: the servers on their real cores render bit-identical to the DEV hatch, and under four interleave skews |
+| `tools/verify/verify_onebus.py` (`make verify-onebus`, in `make check`) | THE ONE AUX BUS on both cores: the chain, the last-live-stage return, MIX passthrough (sample-exact), hosts quiet under a return, the track-8 send refusal, stations without sends, four skews. Replaced `verify_returns.py` (7 Sep 2026) |
+| `tools/harness/render_reverb.py` (`make reverb IN=..`) | wav → BusVerb → wav, knobs by name, sweeps, wet-only — the voicing instrument **for the reverb specifically** |
+| `tools/harness/send_probe.py` (`make render`, `make render-delay`) | renders a real SEND→bus→server path and measures it numerically. `--direct` puts audio through one module on its own track instead — **the way an insert is rendered**, since an insert has no bus accumulator to analyse |
+| `scripts/make_test_audio.py` | synthesises the standard audition material into `out/test_audio/` |
+
+## 6. Verifying
+
+`make check` is the floor for any change. The family, and what each proves:
+
+| tool | proves |
+|---|---|
+| `tools/build/cycle_count.py` (`make cycles`) | static per-sample cycle count of **every module in the selected remix**, plus the worst load one core can be asked for — static because the emulator's instruction counter cannot measure this |
+| `tools/verify/verify_roll.py` / `verify_delay.py` | an alternate reverb / delay engine is **bit-identical** to the shipping one — the gate every refactor passes before landing |
+| `tools/verify/verify_bus.py` (`make verify-bus`) | a bus-layout change is behaviour-preserving: 17 layouts, stamp-edit-compare (`docs/effects/XBUS.md`) |
+| `tools/verify/verify_menu.py` | the ColdFire menu edits against the real chooser mechanism, decompiled from the firmware — including the descriptor traps (formatter vs count) |
+| `tools/verify/verify_slots.py` | static dead-store/aliasing check on the r7 state block — the family of bugs where one slot means two things |
+| `tools/verify/verify_midi.py` | the note→PITCH interval path, locally, via a build override |
+| `tools/verify/verify_burn.py` | the cycle-burn probe is the shipping engine plus an inert knob (its alias-probe diagnostic SKIPs — the plain layout overruns; the flashable probe itself places fine via `make burn`) |
+| `tools/remix/selftest.py` | the resource ledger still catches every collision it claims to (part of `make check`) |
+| `scripts/refhash.sh` | a change to the BUILD (not a module) changed nothing: 26 configurations, artifacts *and* build reports, bit-identical — save a baseline on a tree you trust first |
+
+## 7. Hardware measurement and control
+
+For the claims the emulator structurally cannot make (`docs/remixer/HARNESS.md`,
+last section), the hardware rig — protocol in `docs/effects/CAPTURE.md`:
+
+| tool | what it does |
+|---|---|
+| `tools/hw/capture_hw.py` | records the unit through an audio interface and analyses the capture numerically |
+| `tools/hw/rec.swift` | drop-free CoreAudio recorder (compiled on demand). Exists because the ffmpeg/avfoundation path **drops samples** — measured, do not go back to it |
+| `tools/hw/ot_midi.py` | drives the Octatrack over CoreMIDI from the CLI: CC, notes, raw bytes — what makes hardware sweeps scriptable |
+| `tools/hw/hw_sweep.py` | scripted sweeps: MIDI steps + capture + per-step metrics in one process |
+| `tools/hw/level_cap.py` | quick capture with peak/RMS/crest/clip-run reporting per channel |
+| `tools/hw/gain_pass.py` | gain-matches a whole project bank-by-bank over MIDI |
+| `tools/hw/ot_project.py` | reads (and carefully writes) Octatrack project/bank files on the CF card — reverse-engineered format |
+| `tools/hw/decode_tempo_probe.py` | decodes captures from the tempo probe build, which streams the DSP's parameter staging block out through the audio |
+
+## Conventions the tooling enforces
+
+- **Measured beats inferred**, and the tools say which they are producing.
+  Confidence markers (✅/🟡/⚠️) follow `docs/firmware/CHIP.md`'s scheme.
+- **Silence is a failure, not a pass** — the measurement tools check for it
+  first, because a silent render scores perfectly on most metrics.
+- **Entry points come from the dispatch tables, never hardcoded** — code
+  moves; a stale address silently measures the wrong routine.
+- **Builds are reproducible and fingerprinted** — same tree, same flags,
+  same bytes; the render cache refuses to serve stale audio.
+- Several tools cite probes (`dsp/baseprobe.asm`, `dsp/r7probe.asm`, …)
+  that were pruned from the tree; they live in git history and the
+  citations are the provenance of measured numbers — recover with
+  `git show <sha>:dsp/<name>.asm` (see `CLAUDE.md` §History).

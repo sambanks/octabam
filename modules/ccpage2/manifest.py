@@ -1,7 +1,7 @@
 """CC -> FX2 PAGE-2 (shipped ... UNFLASHED).
 
 Stock incoming CC reaches only FX2 page 1 (CC 40-45; the handler admits
-cc-16 < 30, so slots 6-11 are unrepresentable -- docs/midi_re_cc.md 2). This
+cc-16 < 30, so slots 6-11 are unrepresentable -- docs/firmware/midi_re_cc.md 2). This
 module adds CC 62-67 -> the host bus engine's page-2 slots 6-11, so the
 voicing round can drive every control of BusVerb / BusDelay over MIDI, not
 just page 1.
@@ -15,14 +15,14 @@ every audio track whose trig channel matches -- Part, live byte and mirror,
 count-clamped, generalised over track. It does NOT call the page-2 editor
 0x4003a474 and does NOT touch TRACKB: that editor writes the same live byte +
 mirror directly and nothing in 0x40171xxx (traced 5 Sep 2026,
-docs/midi_re_cc.md), so a direct write reproduces its stores without the
+docs/firmware/midi_re_cc.md), so a direct write reproduces its stores without the
 cross-task TRACKB race.
 
 The clamp is mandatory: a select's over-count value becomes the stored index
 that stalls the sequencer (CLAUDE.md). Counts come from the same per-engine
 select layout the busscreen uses (VERB/DLY page-2 selects at slots 6/9/11).
 
-tools/verify_ccpage2.py (in make check) re-assembles cc_page2.s, compares it
+tools/verify/verify_ccpage2.py (in make check) re-assembles cc_page2.s, compares it
 to the pinned code, and proves the write for all eight tracks in the
 emulator against the firmware editor 0x4003a474.
 """
@@ -47,7 +47,7 @@ STOCK_CC = 0x4000e79c
 # the hand-assembled form it replaced, with 0x40bad000/4 placeholders for
 # the tables; legacy_bytes(addr) patches them exactly as the old emit() did
 # and is the ORACLE -- the build compares the linked source to it on every
-# build (CavePatch.reference), as does tools/verify_ccpage2.py.
+# build (CavePatch.reference), as does tools/verify/verify_ccpage2.py.
 CODE = bytes.fromhex(
     "206f000470001028000104800000003e7205b280650260064ef94000e79c4fefffe448d7"
     "04fc28002448263946104cf44eb9400018547a001a2a000202850000007f4a3980000049"
@@ -68,7 +68,7 @@ DCOUNT_MARK = bytes.fromhex("40bad004")
 def legacy_bytes(addr):
     """What the hand-patched cave looked like at `addr`, until 9 Sep 2026:
     CODE with its two placeholders patched to the appended tables. Kept as
-    the ORACLE tools/verify_ccpage2.py holds the linked source against --
+    the ORACLE tools/verify/verify_ccpage2.py holds the linked source against --
     the build itself no longer writes these bytes."""
     code = bytearray(CODE)
     vcount_at = addr + len(code)

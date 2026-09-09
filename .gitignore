@@ -20,5 +20,5 @@ vendor/
 __pycache__/
 .venv/
 *.pyc
-tools/rec
-tools/tone
+tools/hw/rec
+tools/hw/tone

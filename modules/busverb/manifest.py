@@ -62,7 +62,7 @@ MODULE = Module(
         # proven slot the panel's page-2 knob editor writes, so a main-menu
         # screen can set
         # MODE through the firmware's own routine; slot 7's select path needs
-        # UI state nobody has mapped (docs/MAINMENU.md 9c-ii). The DSP reads
+        # UI state nobody has mapped (docs/firmware/MAINMENU.md 9c-ii). The DSP reads
         # it from $c's KNOB field now (bits 16-23). A part saved before the
         # swap loads its old SHMR byte as MODE and its old MODE as SHMR --
         # ROOM and a whisper of shimmer at worst; re-select the effect.

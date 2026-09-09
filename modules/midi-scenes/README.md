@@ -44,12 +44,12 @@ footprint inside the OS: **207 bytes** (the pinned snapshot changed
 ## Measured vs inferred
 
 **Measured:**
-- `tools/verify_midiscenes.py` (in `make verify`): every region assembles
+- `tools/verify/verify_midiscenes.py` (in `make verify`): every region assembles
   and links to his encoder's bytes at his addresses, and the committed
   `gas/*.s` are what `gas_port.py` regenerates.
 - `make check REMIX=midi-scenes` passes; every detour's expect bytes match
   stock. `ported` (+ the LO-FI AMF fix) composes.
-- **Booted under the ColdFire port** (`tools/verify_dram_boot.py`, in
+- **Booted under the ColdFire port** (`tools/verify/verify_dram_boot.py`, in
   `make verify`): the boot detour reaches octabam's loader, the loader
   calls the stock depacker with our stage and window, the boot reaches
   the RTOS handoff with the loader's hash gates all passing, and the
@@ -67,10 +67,10 @@ separate measurement.
 
 ## Open
 
-- **MSC in DRAM.** The 4 KB table is what fills the last free run. His
-  DRAM state already carries a validity magic; MSC could live in the
-  `Runtime` window the same way and free the run entirely. His call.
 - Detour chaining for `0x40009094`, so this can share an image with
-  Octakit.
+  Octakit — and, beyond the hook, a Kits-aware form: his code addresses
+  the Part window that hers replaces.
+- Nothing from this pipeline has been flashed; the first flash is
+  `hello-dram`, then this (`PLAN.md`, work order).
 - The PR upstream, once he's done: `tools/gas_port.py` + `gas/`, and
   optionally `build.py` consuming the `.s` form.

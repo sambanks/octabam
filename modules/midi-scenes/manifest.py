@@ -16,7 +16,7 @@ changes; then it rebases). His caves are written in a small Python encoder
 his own build_* functions with an encoder subclass that also records one
 GNU-as line per instruction, writes `gas/*.s`, and then assembles and
 links every region at HIS address and compares -- all five regions
-reproduce his bytes exactly (`tools/verify_midiscenes.py` re-runs that
+reproduce his bytes exactly (`tools/verify/verify_midiscenes.py` re-runs that
 proof in `make verify`). Cross-cave references are linker symbols in the
 `.s` form, so this build can place each region where there is room. His
 build.py is untouched; the .s files are generated from it.

@@ -72,7 +72,7 @@ MODULE = Module(
     # Nimbus pins Y:0x4000-0xBFFF -- both core-private FX2 slots, every
     # buffer the allocator has to hand out -- so the ledger refuses it beside
     # the seven stock effects that need one. This ASKS the allocator for one
-    # 16,384-word slot at init (docs/DSP.md section 10) exactly as those
+    # 16,384-word slot at init (docs/firmware/DSP.md section 10) exactly as those
     # stock effects do, so they coexist and two instances get two slots.
     #
     # It still cannot sit beside a module with FIXED buffers there (BusVerb,

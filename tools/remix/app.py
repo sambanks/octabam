@@ -32,7 +32,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 try:
     from textual import work
@@ -1148,7 +1148,7 @@ class RemixerScreen(Screen):
         # region is one run and the single figure IS that run's.
         # ⚠️ BY RUN INDEX, NOT BY ADDRESS. The bar is drawn once from payload
         # A's spans because the LAYOUT is identical in both, but the two
-        # payloads put those effects at different addresses (docs/DSP.md
+        # payloads put those effects at different addresses (docs/firmware/DSP.md
         # s11) -- so keying B's usage on A's bases found nothing and drew
         # payload B as untouched however much had been placed in it.
         by_run = {}
@@ -1439,7 +1439,7 @@ class RemixerScreen(Screen):
 
         # FX2 buffer slots. ONE PER TRACK, not a pool: each track allocates
         # FX1 then FX2, so track k's FX2 effect always gets table entry 1+2k
-        # -- 0x4000, 0x8000, then the shared-window pair (docs/DSP.md, "the
+        # -- 0x4000, 0x8000, then the shared-window pair (docs/firmware/DSP.md, "the
         # allocator's instance model").
         #
         # So there are FOUR, they are FOUR TRACKS, and the useful sentence is
@@ -1516,7 +1516,7 @@ class RemixerScreen(Screen):
             # ⚠️ STOCK ROWS ARE NOT IN THIS FIGURE, and on a card that mixes
             # stock and ours freely that is a real hole -- a stock effect
             # costs cycles when it is selected like any other. Only FILTER's
-            # figure has ever been measured (192/instance, docs/CHIP.md), so
+            # figure has ever been measured (192/instance, docs/firmware/CHIP.md), so
             # the row says what is missing rather than inventing the rest.
             # Not the ones this selection HARVESTED past: their code is
             # gone, so nothing can select them and they cost no cycles.
@@ -1670,7 +1670,7 @@ class RemixerScreen(Screen):
         # what I already have" is what the library pane is really asked, and
         # every answer used to arrive only as a refusal after adding it.
         # ⚠️ ONE LINE EACH, which is how resources() has always returned
-        # them and what docs/REMIXER.md's "one line per menu" describes.
+        # them and what docs/remixer/REMIXER.md's "one line per menu" describes.
         # Joining them with ` · ` made one long sentence that Textual then
         # flowed, so the FX1 and FX2 answers broke across lines mid-phrase
         # and a simple fact read as a caveat -- which is the exact mistake
@@ -1767,7 +1767,7 @@ class RemixerScreen(Screen):
         which is why it read as "slow when holding" rather than as latency.
 
         Nothing a keystroke does can change this picture: knob VALUES draw as
-        dial graphics the string-capture hook cannot read (docs/EMU.md), so
+        dial graphics the string-capture hook cannot read (docs/remixer/EMU.md), so
         the page depends only on WHICH page, WHICH effect, and which boot.
         """
         key = (mode, effect_id, self.synced)

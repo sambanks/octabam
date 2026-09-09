@@ -25,6 +25,6 @@ clean-looking README.
 ## Gates
 
 How a reader reproduces your measurements, in the order they must run.
-`tools/verify_hello.py` is the pattern: predict the arithmetic exactly, drive
+`tools/verify/verify_hello.py` is the pattern: predict the arithmetic exactly, drive
 both signs, and make the tool refuse to run if the id it resolves is the
 fallback rather than your effect.

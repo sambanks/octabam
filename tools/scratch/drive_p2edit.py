@@ -1,4 +1,4 @@
-import sys; sys.path.insert(0, "tools")
+import sys; sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_bringup as emu
 from unicorn import UC_HOOK_MEM_WRITE, UC_HOOK_CODE
 from unicorn.m68k_const import UC_M68K_REG_PC, UC_M68K_REG_A7, UC_M68K_REG_D0

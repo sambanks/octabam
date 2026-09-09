@@ -25,7 +25,7 @@ is offline: recaudio_analyse.py.
         --tree out/_ra_r4_128 --frames 12600 --out out/_ra_r4_128.pkl
 """
 import argparse, sys, os, struct, json, time
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_card as ec, emu_bringup as eb
 from unicorn.m68k_const import *
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE

@@ -2,7 +2,7 @@
 |
 | Registered as TIME's P+0x0ca ("A") formatter with B = 0: stock DELAY
 | TIME's own configuration (a plain dial that prints whatever A writes).
-| Signature, shared by every stock formatter (docs/PARAM_PAGES.md section 7):
+| Signature, shared by every stock formatter (docs/firmware/PARAM_PAGES.md section 7):
 |     void fmt(char *buf, int value)      4(sp) = buf, 8(sp) = value
 | Prints the division name ("1/8", "1/16T") while the DSP holds one, else
 | the free time in ms. It replicates the DSP's STICKY SNAP rule with the

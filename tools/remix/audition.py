@@ -1,8 +1,8 @@
 """Render ANY effect on a source wav, knobs addressed by their MANIFEST names.
 
 The one audition entry point for the remixer: busverb goes through
-tools/render_reverb.py (wet extraction, per-mode image cache, ring-out tail),
-everything else through tools/send_probe.py --wav. The caller never learns
+tools/harness/render_reverb.py (wet extraction, per-mode image cache, ring-out tail),
+everything else through tools/harness/send_probe.py --wav. The caller never learns
 which -- it says "render warpfold with MIX=127 on this wav" and gets a path.
 
 WHICH IMAGE A RENDER RUNS AGAINST is the part that has burned sessions
@@ -36,7 +36,7 @@ import pathlib
 import subprocess
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from remix import registry, rig, stock  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -53,7 +53,7 @@ def _newest_input_mtime():
     """Newest mtime among everything a build reads that we could go stale
     against. Coarse on purpose: a false 'stale' costs one build (~seconds),
     a false 'fresh' costs a wrong render."""
-    newest = (ROOT / "tools/build_bus.py").stat().st_mtime
+    newest = (ROOT / "tools/build/build_bus.py").stat().st_mtime
     for p in (ROOT / "modules").rglob("*"):
         if p.is_file() and "__pycache__" not in p.parts:
             newest = max(newest, p.stat().st_mtime)
@@ -61,7 +61,7 @@ def _newest_input_mtime():
 
 
 def _build(env):
-    r = subprocess.run([sys.executable, "tools/build_bus.py"], cwd=ROOT,
+    r = subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT,
                        env={**os.environ, **env}, capture_output=True,
                        text=True)
     if r.returncode != 0:
@@ -70,7 +70,7 @@ def _build(env):
 
 
 def _dump(mem):
-    sys.path.insert(0, str(ROOT / "tools"))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     import dsp_modmap
     mem.parent.mkdir(parents=True, exist_ok=True)
     dsp_modmap.dumpmem(IMAGE.read_bytes(), ["A", str(mem)])
@@ -128,7 +128,7 @@ def _ensure_stock_mem(log=print):
     if mem.exists() and mem.stat().st_mtime > stock.STOCK_IMAGE.stat().st_mtime:
         return mem
     log("dumping the stock image's payload A ...")
-    sys.path.insert(0, str(ROOT / "tools"))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     import dsp_modmap
     mem.parent.mkdir(parents=True, exist_ok=True)
     dsp_modmap.dumpmem(stock.STOCK_IMAGE.read_bytes(), ["A", str(mem)])
@@ -168,11 +168,11 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
     stem = f"{label + '_' if label else ''}{source.stem}_{mod.name}"
 
     if mod.name == "busverb":
-        sys.path.insert(0, str(ROOT / "tools"))
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
         import render_reverb
         mode = values.get("MODE", 2)
         base = OUT / stem
-        argv = [sys.executable, "tools/render_reverb.py", str(source),
+        argv = [sys.executable, "tools/harness/render_reverb.py", str(source),
                 "--normalize", "--mode", str(mode), "-o", str(base)]
         if wet:
             argv.append("--wet")
@@ -208,7 +208,7 @@ def render(key, values, source, wet=False, tail=None, label="", log=print):
         route = ["--direct", "--pick", mod.harness.layout_char]
         tail = 1.0 if tail is None else tail
     out = OUT / f"{stem}.wav"
-    argv = [sys.executable, "tools/send_probe.py", "--mem", str(mem),
+    argv = [sys.executable, "tools/harness/send_probe.py", "--mem", str(mem),
             "--in", str(source), "--wav",
             str(out.relative_to(ROOT)), "--tail", str(tail),
             "--label", f"audition {mod.name}"] + route

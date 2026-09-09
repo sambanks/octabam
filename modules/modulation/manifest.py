@@ -17,7 +17,7 @@ box never had -- tremolo, vibrato and auto-pan:
 and beside the servers the only free per-track buffer is the FX1 slot: every
 FX2 instance buffer is BusVerb's tank on core 0 or BusDelay's line on
 tracks 3-4. It reads its base from the host's bump allocator at INIT (never
-in proc -- docs/DSP.md section 10), and if that base is an FX2 slot
+in proc -- docs/firmware/DSP.md section 10), and if that base is an FX2 slot
 (>= 0x4000) it runs as a dry pass and writes NOTHING. That promise is what
 `Claims(fx1_only=True)` declares and what its render gate proves.
 
@@ -122,7 +122,7 @@ MODULE = Module(
     # The FX1-only allocator buffer: two 1,024-word lines out of the 3,072 an
     # FX1 slot gives. `fx1_only` is the promise that an FX2 instance writes
     # nothing -- the ledger admits it beside a server on that basis, and
-    # tools/verify_modulation.py is what proves it.
+    # tools/verify/verify_modulation.py is what proves it.
     claims=Claims(stock_instance_buffer=True, buffer_words=2048, fx1_only=True),
     harness=Harness(layout_char="3", is_server=False, bus_client=True),
 )

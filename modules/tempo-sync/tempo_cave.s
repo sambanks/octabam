@@ -19,7 +19,7 @@
 |
 | v2 (24 Aug 2026, branch midi) adds two more halfwords, same terms as the
 | tempo pair (never READ by stock; REWRITTEN by the frame builder every
-| frame, so the cave re-stores every pass -- docs/midi_re_note.md):
+| frame, so the cave re-stores every pass -- docs/firmware/midi_re_note.md):
 |     +0x28  r6+$8   crossfader + 1     0x460d16c8 (long, 0..127; the panel
 |                                      and MIDI CC 48 both write it) -> 1..128,
 |                                      so 0 means "no cave" and can never

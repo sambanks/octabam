@@ -43,7 +43,7 @@ octabam's own stock firmware copy —
 001bef: mpyuu   x0,y0,a   ; 0127cd   (the fix)
 ```
 
-— and both resolved addresses (via this project's own `tools/dsp_modmap.py`,
+— and both resolved addresses (via this project's own `tools/build/dsp_modmap.py`,
 which upstream vendors an identical copy of) hold exactly those stock
 bytes in the shared firmware. `make check REMIX=lofi-amf-fix` and
 `REMIX=ported` (combined with `midi-scenes`) both pass.

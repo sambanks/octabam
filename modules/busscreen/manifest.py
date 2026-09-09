@@ -6,7 +6,7 @@ selects that track, and opens a 17th menu state that draws all twelve
 controls at once in two columns of six (stock 7px pitch, stock inverted-bar
 cursor via the firmware's rect-invert), selects as their words, knobs as
 numbers. The level knob edits the cursor row; up (0x34) / down (0x33) move
-it, wrapping. docs/MAINMENU.md 9e is the record, 9c-ii the RE behind it.
+it, wrapping. docs/firmware/MAINMENU.md 9e is the record, 9c-ii the RE behind it.
 
 HOW: the menu-state table at 0x400cbdac (16 x 0x14) is relocated to a cave
 with a 17th entry appended and its SIX references repointed (three `lea` for
@@ -15,7 +15,7 @@ through the self-contained writer 0x40054cd8(track, 24+slot, value). Page-2
 edits call the editor 0x4003a474 for its stores/flags and then SET THE VALUE
 THEMSELVES, count-clamped -- that editor clamps against a stale descriptor
 from outside a staged page (9c-ii). The page-2 store is +0+slot2 under
-staged index 0 (measured 5 Sep 2026, docs/midi_re_cc.md 7; MAINMENU 9e-i).
+staged index 0 (measured 5 Sep 2026, docs/firmware/midi_re_cc.md 7; MAINMENU 9e-i).
 
 THREE CAVES, NOT ONE (5 Sep 2026). As a single 2.3 KB float the screen never
 fitted the rig: the clone window rounds floats up to 0x80 and had 16 B to
@@ -23,7 +23,7 @@ spare. So:
   1. the 17-entry menu-state table (340 B) FLOATS in the clone window -- list
      BUS SCREEN before TEMPO SYNC in a remix so it is placed first;
   2. the draw/key/enc handler is PINNED at HANDLER_AT, the start of the
-     second zero run (docs/MAINMENU.md 5), where MENU SHORTCUT used to sit
+     second zero run (docs/firmware/MAINMENU.md 5), where MENU SHORTCUT used to sit
      (this screen supersedes it; the two cannot coexist);
   3. its data -- names, select words, scratch, the relocated CONTROL rows --
      is PINNED right after the handler at DATA_AT.
@@ -31,7 +31,7 @@ Every cross-reference between the pieces is a constant once 2 and 3 are
 pinned, so each emit() needs only its own address. The 13th "return row"
 (T8 Character's RVRB/DLY) was stripped for room; NSLOT is 12.
 
-tools/verify_busscreen.py (in make check) proves it all in the emulator:
+tools/verify/verify_busscreen.py (in make check) proves it all in the emulator:
 relocation, boot, the two rows, all 24 slot/engine draws and edits,
 navigation, the label switch.
 """
@@ -50,7 +50,7 @@ ENTER_REV_OFF = 0x274                  # REVERB row action
 ENTER_DLY_OFF = 0x278                  # DELAY row action
 ENC_OFF = 0x2c0                        # encoder (0x2f4 before the return-row strip)
 
-# The CONTROL submenu (docs/MAINMENU.md 2, same as modules/menushortcut): its
+# The CONTROL submenu (docs/firmware/MAINMENU.md 2, same as modules/menushortcut): its
 # count is at CONTROL_DESC+0 and its row-array pointer at +0x18. We relocate
 # the six rows into the data cave, append REVERB and DELAY rows whose actions
 # enter the screen, repoint the pointer and bump the count to 8. An action
@@ -62,7 +62,7 @@ REV_LABEL = b"REVERB\0"
 DLY_LABEL = b"DELAY\0"
 
 # EVERY reference to the state table, as (operand_addr, stock_operand,
-# member_offset). docs/MAINMENU.md 9a listed only the three `lea` sites for the
+# member_offset). docs/firmware/MAINMENU.md 9a listed only the three `lea` sites for the
 # ENTER member (member 0); the dispatchers for DRAW, KEY and ENCODER each name
 # the table too, as `addal #(base+member_off),%a0` immediates -- found 4 Sep
 # 2026 when a grown table drew nothing because MENU_DRAW still read the stock
@@ -86,7 +86,7 @@ HANDLER_AT = 0x400d24d0
 # symbols (HANDLER_DEFSYMS). HANDLER below is the hand-assembled form it
 # replaced, with 0x40bad000..24 placeholders (MARKS); HANDLER_PINNED is that
 # form patched exactly as the old emit() did, and is what the linked source
-# must reproduce -- checked on every build, and by tools/verify_busscreen.py.
+# must reproduce -- checked on every build, and by tools/verify/verify_busscreen.py.
 HANDLER = bytes.fromhex(
     "4fefffd448d77cfc286f00304a8c67000208203946c82456670001fe7200123980000003"
     "243c000018b24c021000d08172001239800000002040d1fc0008ed88d1c1740014104bf9"

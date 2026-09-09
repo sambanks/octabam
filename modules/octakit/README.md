@@ -39,7 +39,7 @@ already accepts the grown section — tested.
 - Homebrew's `m68k-elf-gcc` 16.2.0 rebuilds the runtime **byte-identical**
   to her pinned 16.1.0 build (`sha256 dda11aca…`, 149,653 B; all 411 stock
   slices reproduce), and so do the packed runtime and the append.
-- `tools/verify_octakit.py` (in `make verify`): stock + her 650 writes +
+- `tools/verify/verify_octakit.py` (in `make verify`): stock + her 650 writes +
   her append, and nothing else, reproduces her whole combined OS image
   exactly (`output.os` identity), from this repo's own copy of stock
   1.40C. An octabam *image* is never identical to hers — even the solo
@@ -52,7 +52,7 @@ already accepts the grown section — tested.
   loader (`tools/remix/loader.S`, derived from hers) with her packed
   runtime staged at *her* stage address so her post-clear relocation
   still finds it; her 650 writes are untouched. Under the ColdFire port
-  (`tools/verify_dram_boot.py`): her wrapper calls our loader, the stock
+  (`tools/verify/verify_dram_boot.py`): her wrapper calls our loader, the stock
   depacker runs with her stage and window, her authentication gate and
   post-load entry run with her hash `0xb5b173b1`, the boot reaches the
   RTOS handoff, and her window reads back **byte-identical** to her

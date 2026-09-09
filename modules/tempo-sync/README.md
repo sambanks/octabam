@@ -25,5 +25,5 @@ into the pinned machine code.** A module that changes its id does not change
 this cave, and the two then disagree silently — the DSP simply never sees a
 tempo. Patching values into a cave at build time is what would fix it.
 
-Background: [`docs/DSP.md`](../../docs/DSP.md) §6c,
-[`docs/PARAM_PAGES.md`](../../docs/PARAM_PAGES.md) §7.
+Background: [`docs/firmware/DSP.md`](../../docs/firmware/DSP.md) §6c,
+[`docs/firmware/PARAM_PAGES.md`](../../docs/firmware/PARAM_PAGES.md) §7.

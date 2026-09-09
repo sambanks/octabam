@@ -33,7 +33,7 @@ The compressor's detector reads a KEY that is the station's own input today;
 the ->KEY bus send on the backlog swaps in another track's, which is the
 only change needed for sidechain ducking.
 
-BUS MODE IS ALSO THE RETURN (3 Sep 2026, docs/BUS.md "The returns"). With
+BUS MODE IS ALSO THE RETURN (3 Sep 2026, docs/effects/BUS.md "The returns"). With
 SAT = BUS the station is the master's glue chain, and on a master chain
 CRSH and RING are knobs nobody turns -- so BUS repurposes them as the RVRB
 and DLY RETURN LEVELS: the panel prints those names (the ModeView below),

@@ -2,7 +2,7 @@
 ; BusDelay v2, STAGE 1: CLEAN (PLAN.md 3.1, 12 Aug 2026).
 ;
 ; This file is v1's engine carried bit-identically through the v2 spine --
-; the refactor-first gate (tools/verify_delay.py, the verify_roll pattern):
+; the refactor-first gate (tools/verify/verify_delay.py, the verify_roll pattern):
 ; prove equivalence, THEN add modes. Two spine changes, no behavior change:
 ;
 ;   * MODE select read (page-2 slot 6, r6+$c bits 16-23 since v6 4 Sep 2026;
@@ -41,9 +41,9 @@
 ;    convention, not something this file checks (BUS.md Known limitations).
 ;
 ;    ✅ SOLVED, and this comment was stale for longer than the bug existed.
-;    tools/build_bus.py substitutes the base literal per payload (`_sub`,
+;    tools/build/build_bus.py substitutes the base literal per payload (`_sub`,
 ;    PP[tag]["ybase"] = 0x30000 for A / 0x38000 for B). The old text here
-;    named tools/build_reverb.py, which does not build this file at all.
+;    named tools/build/build_reverb.py, which does not build this file at all.
 ;
 ;    ✅ VERIFIED IN THE EMITTED IMAGE, 9 Aug 2026, not in the source: walking
 ;    out/mainos_bus.bin's payload records and scanning the placed P words,
@@ -159,7 +159,7 @@
 ;    post-write pointer is folded back the same way. The AND is exact
 ;    because both line bases are 0x4000-aligned, so the base falls out of
 ;    the mask. v1 used AGU modulo (m1/m2 = $3fff) for the same addresses --
-;    proven bit-identical at the swap (tools/verify_delay.py, 12 Aug 2026).
+;    proven bit-identical at the swap (tools/verify/verify_delay.py, 12 Aug 2026).
 ;
 ; Memory (base = Y:0x30000, aligned to 0x4000 as modulo addressing requires):
 ;   LineL   base+0x0000 .. base+0x3fff   16384 words (max ~371 ms @ 44.1kHz)
@@ -299,7 +299,7 @@
 ;   r7+$87              FREE (was the -VRB mono stash)
 ;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
 ;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
-;                       rotation-tracking fix (docs/XBUS.md step 3). Every bus
+;                       rotation-tracking fix (docs/effects/XBUS.md step 3). Every bus
 ;                       address in this file derives from here rather than
 ;                       from a fresh read of the shared rotation word.
 ;                       Previously: FREE (v3 stage 1). Held the ->VERB DRY level
@@ -383,12 +383,12 @@
 ;              same REVERB ACC bus, same shape as modules/send/send_client.asm's knobs.
 ;              Reads x:(r6+$d) -- BUS.md task 11 gave DELAY SERVER its own
 ;              descriptor (cloned from SPRING REV's bytes, not SPRING's own
-;              id/slot -- tools/build_menu.py), and $d is the page-2 slot
+;              id/slot -- tools/build/build_menu.py), and $d is the page-2 slot
 ;              that class's real hardware wiring puts at the same "MONO"-
 ;              equivalent position. (The reverb's ->DELAY send moved to its
 ;              $e low bits in R16; the old "same $d" note is history. No
 ;              conflict either way -- r6 is per-instance.) See DSP.md section 9 / REVERB.md
-;              for how $b/$c/$d/$e were measured, and tools/build_menu.py's
+;              for how $b/$c/$d/$e were measured, and tools/build/build_menu.py's
 ;              docstring for why SPRING (not stock DELAY) was the donor.
 ; ---------------------------------------------------------------------------
 
@@ -427,7 +427,7 @@ proc:
 ; host track and nowhere else: dispatch is per id and shared by every track,
 ; so an old part naming this id on another track would otherwise get a
 ; SECOND instance sharing this one's hardcoded Y base. The gate is r7 ==
-; 0x6200, the bank's first FX2 state block (measured, docs/DSP.md "The
+; 0x6200, the bank's first FX2 state block (measured, docs/firmware/DSP.md "The
 ; allocator's instance model"), which is the same condition the position-0
 ; housekeeping election below already uses -- so a guarded instance is never
 ; a housekeeper that has gone dry, nor a wet engine that skips the
@@ -630,7 +630,7 @@ bus_mine:
 ; it asynchronously, so a core-1 client whose window straddles the flip sees a
 ; different value on different blocks. The resolve block at bus_notfirst
 ; tracks a stable rotation for this core; see the long note there and
-; docs/XBUS.md step 3.
+; docs/effects/XBUS.md step 3.
 ; The offset is already scaled by the 16-word buffer stride, so the write
 ; addresses need no shift at all. THE READ TARGET IS TWO BUFFERS
 ; BACK, `write + 32 & $30`. THIS IS THE LINE THE WHOLE RACE FIX IS FOR: with
@@ -652,7 +652,7 @@ bus_mine:
         move    a,x:(r7+$63)            ; this call's DELAY ACC read address
 ; ---- this call's DELAY WET write address: STEREO, FOUR DEEP (3 Sep 2026) --
 ; Read now, by a Character station in BUS mode -- the return on the master
-; (docs/BUS.md "The returns"), which is on the OTHER core -- so it takes the
+; (docs/effects/BUS.md "The returns"), which is on the OTHER core -- so it takes the
 ; accumulators' four-buffer rotation and carries L and R (32 words a buffer,
 ; interleaved: the ping-pong image is the point of the delay). The base is
 ; the reverb's wet page plus $80 -- spelled as base + offset, NOT one literal,
@@ -671,7 +671,7 @@ bus_mine:
 ; address above touched neither).
 ; ⚠️ THIS IS A CROSS-CORE WRITE. BusDelay runs on payload B and this line
 ; writes payload A's reverb accumulator, so the race documented in
-; docs/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
+; docs/effects/XBUS.md step 3 ran in BOTH directions -- the bus damaged what arrived
 ; at the delay, and the delay's ->VERB damaged what arrived at the reverb.
 ; The fourth buffer covers this direction too, for the same reason.
         move    x1,x0                   ; the full write offset, 0/16/32/48
@@ -987,7 +987,7 @@ dwarmdone:
 ; and then HOLDS that division through tempo changes until the knob moves --
 ; Sam's "sticky snap" (a free-with-labels dial in the style of newer boxes,
 ; plus tempo-following once snapped). The ColdFire never told the DSP the
-; tempo (docs/DSP.md 6c), so the tempo cave (modules/tempo-sync/tempo_cave.s) publishes two
+; tempo (docs/firmware/DSP.md 6c), so the tempo cave (modules/tempo-sync/tempo_cave.s) publishes two
 ; dead halfwords of this track's record:  r6+$6 = tempo24 (BPM*24) and
 ; r6+$7 = samples per MIDI clock (1/24 beat) in Q12.4 -- both <<8 like every
 ; published word. One signed mpy per candidate: x0 = ticks*16 << 8,
@@ -1002,7 +1002,7 @@ dwarmdone:
 ; barely touch; last-match-wins on both sides keeps them consistent.
 ; State: Y 0908h (last knob) and 0909h (held M<<11), core-private, ABSOLUTE
 ; addressing beside the proven 0901h-0907h words -- NEVER (r)+ (R48-R50,
-; docs/DSP.md 6c-i). Per CORE, not per instance: two delays on one core
+; docs/firmware/DSP.md 6c-i). Per CORE, not per instance: two delays on one core
 ; would re-evaluate every block (correct, just not sticky); one server per
 ; core is the design. Branch-free; unpublished ticks read 0, every product
 ; is 0, nothing is within tolerance, the teq falls back to free -- the
@@ -1108,7 +1108,7 @@ dwarmdone:
 ; Truncation (asr) parks the glide up to 4 samples short from below and lands
 ; exactly from above -- inaudible. State at Y 0907h, core-private, ABSOLUTE
 ; addressing beside the proven 0901h-0904h words (R48-R50 died to an
-; init-built table written through (r1)+ -- docs/DSP.md 6c-i). Zero at boot
+; init-built table written through (r1)+ -- docs/firmware/DSP.md 6c-i). Zero at boot
 ; seeds from the target, so an instantiate does not swoop up from 0.
         move    x:(r7+$75),a            ; target, integer samples
         asl     #$8,a,a                 ; Q8

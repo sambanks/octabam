@@ -111,7 +111,7 @@ run_matrix() {
           out/mainos_bus_delayprobe_*.bin out/dsp/mem_dev_A.mem
     local log="$outdir/$name.log" rc=0
     # shellcheck disable=SC2086 -- word splitting of $envs is the point
-    env $envs python3 tools/build_bus.py > "$log" 2>&1 || rc=$?
+    env $envs python3 tools/build/build_bus.py > "$log" 2>&1 || rc=$?
     normalise "$log"
     {
       echo "case $name rc=$rc"
@@ -127,7 +127,7 @@ run_matrix() {
 
 restore() {
   # Leave the shipping artifact on disk, the way `make check` does.
-  XBUS=1 SPEC=1 python3 tools/build_bus.py > /dev/null 2>&1 || true
+  XBUS=1 SPEC=1 python3 tools/build/build_bus.py > /dev/null 2>&1 || true
 }
 
 case "${1:-}" in

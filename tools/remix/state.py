@@ -19,7 +19,7 @@ import re
 import subprocess
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from remix import ledger, registry  # noqa: E402
 from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 
@@ -38,7 +38,7 @@ DONOR_WORDS = 2724
 # down by exactly the 128 B the list then occupies.
 CAVE_BYTES = 0x400d7c3c - 0x400d6b00
 BUILT_IMAGE = ROOT / "out/mainos_bus.bin"
-# Stock top-level menu, to highlight what a patch adds (docs/MAINMENU.md).
+# Stock top-level menu, to highlight what a patch adds (docs/firmware/MAINMENU.md).
 STOCK_ROOTS = {"PROJECT", "SYSTEM", "CONTROL", "MIDI"}
 
 
@@ -59,7 +59,7 @@ def fx1_hazard(mod) -> str | None:
     comes to offer something the build refuses.
 
     ⚠️ An FX1 slot is 3,072 words and an FX2 slot is 16,384, and the trap is
-    not theoretical: docs/DSP.md's "wrong claim 1" is this exact failure,
+    not theoretical: docs/firmware/DSP.md's "wrong claim 1" is this exact failure,
     bisected on hardware -- a 16K layout placed at an FX1 base "runs through
     the other FX1 buffers and into FX2 slot 0".
     """
@@ -116,7 +116,7 @@ class State:
         self.cave_free: int | None = None
         self.chooser_rows: int | None = None
         # (worst per-core cycles, what our code may spend, the mix that
-        # produced it) -- tools/cycle_count.py against this selection.
+        # produced it) -- tools/build/cycle_count.py against this selection.
         self.cycles: tuple[int, int, dict] | None = None
         # ⚠️ `enter` stopped swapping on 2 Sep 2026; this line did not.
         self.msg = "enter adds · r hears it · ? for keys"
@@ -425,7 +425,7 @@ class State:
         try:
             env = {**os.environ, "REMIX": "_tui_scratch",
                    "XBUS": "1", "SPEC": "1"}
-            r = subprocess.run([sys.executable, "tools/build_bus.py"],
+            r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                                cwd=ROOT, env=env, capture_output=True,
                                text=True)
             # ⚠️ PARSE THE REPORT EVEN WHEN THE BUILD FAILED. Returning
@@ -505,7 +505,7 @@ class State:
             # waiting for `make check` -- which is where this answer lived,
             # behind a key, after the fact.
             self.cycles = None
-            c = subprocess.run([sys.executable, "tools/cycle_count.py",
+            c = subprocess.run([sys.executable, "tools/build/cycle_count.py",
                                 "--json"], cwd=ROOT, env=env,
                                capture_output=True, text=True)
             if c.returncode == 0:
@@ -565,7 +565,7 @@ class State:
                 f'modules={mods!r}, fallback="SEND")\n')
             try:
                 r = subprocess.run(
-                    [sys.executable, "tools/build_bus.py"], cwd=ROOT,
+                    [sys.executable, "tools/build/build_bus.py"], cwd=ROOT,
                     env={**os.environ, "REMIX": "_words", "XBUS": "1",
                          "SPEC": "1"}, capture_output=True, text=True)
                 for line in r.stdout.splitlines():

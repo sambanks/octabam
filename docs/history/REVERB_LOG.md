@@ -855,7 +855,7 @@ to what the known-good stageprobe produces.
 
 ## Harness
 
-`tools/dsp_host/dsp_host.cpp`:
+`tools/harness/dsp_host/dsp_host.cpp`:
 
 * `-inst N` — N instances with correct per-instance r7, base and audio
 * `-dispatch N` — **runs the host's own dispatcher** rather than imitating it.
@@ -881,7 +881,7 @@ to what the known-good stageprobe produces.
 
 Four things about it that cost sessions to rediscover:
 
-* **the harness SOURCE is `tools/dsp_host/dsp_host.cpp`, but the build
+* **the harness SOURCE is `tools/harness/dsp_host/dsp_host.cpp`, but the build
   compiles `vendor/dsp56300/source/dsp_host/dsp_host.cpp`.** Copy
   tools→vendor before `make dsp_host` or you will run the old binary
   while reading the new source. (Cost half a session: a "-split" run
@@ -901,7 +901,7 @@ Four things about it that cost sessions to rediscover:
   one silently runs whatever bytes are at the old offset and reports a plausible
   number. Copy it from the build output every time.
 
-Feeding it: `python3 tools/dsp_modmap.py --dumpmem A <out.mem>` reads the
+Feeding it: `python3 tools/build/dsp_modmap.py --dumpmem A <out.mem>` reads the
 hardcoded stock image, so for a patched build call `dsp_modmap.dumpmem()`
 directly against `out/mainos_reverb.bin`.
 
@@ -1135,7 +1135,7 @@ about.
 
 ## SPRING TAKEN: 974 -> 2037 words. ON THE CARD as `OCTATRACK_V60.bin`
 
-Decided and done. `tools/build_reverb.py` now assembles the blob at
+Decided and done. `tools/build/build_reverb.py` now assembles the blob at
 **SPRING's** address and lets it run straight through into DARK's, since
 the three reverb modules are contiguous:
 

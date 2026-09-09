@@ -11,7 +11,7 @@ Produces <dir>/r4_128 (RLEN 4, 128 BPM: Bryan's test 1), <dir>/max_128
 (RLEN MAX, 128: his test 3, with the play trigs), <dir>/r4_120 (control).
 """
 import argparse, pathlib, shutil, sys
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import ot_project as o
 
 SRC = pathlib.Path.home() / "octa/backups/RECTRIG_20260906_step9"

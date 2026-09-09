@@ -1,7 +1,7 @@
 # WarpFold
 
 A Mutable-Instruments-Warps-flavoured **ring modulator / wavefolder**, and the
-first module built entirely against the manifest contract (`docs/MODULES.md`)
+first module built entirely against the manifest contract (`docs/remixer/MODULES.md`)
 with no build knowledge of its own.
 
 Unlike BusVerb and BusDelay it is a plain **per-track insert**: no bus role,
@@ -28,7 +28,7 @@ state lives in the instance's own r7 block.
   in the repo history for the measurements.
 - **Not yet flashed.** Descriptor behaviour (MODE select drawing as a 3-way,
   knob publishes) needs the standing on-unit reconfirm any new parameter
-  rides (`docs/PARAM_PAGES.md`).
+  rides (`docs/firmware/PARAM_PAGES.md`).
 
 ## Open
 

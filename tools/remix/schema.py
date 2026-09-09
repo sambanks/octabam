@@ -41,7 +41,7 @@ class Kind(Enum):
                                 # (tools/remix/stock.py is the whole list)
 
 
-# The fifteen FX2 ids stock assigns (docs/PARAM_PAGES.md section 2). Both
+# The fifteen FX2 ids stock assigns (docs/firmware/PARAM_PAGES.md section 2). Both
 # dispatch tables (X:0x215 init / X:0x235 process) are indexed by the RAW id
 # and are SHARED BETWEEN FX1 AND FX2, so a module that answers to one of
 # these hijacks the stock effect on both menus: its descriptor replaces the
@@ -62,7 +62,7 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
 # says otherwise. An even slot is the PROVEN place for a MODE: the panel's
 # page-2 knob editor (0x4003a474) was first read as even-only; slot 6 is
 # hardware-confirmed. A later emulator run showed it writing all six slots
-# (docs/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
+# (docs/firmware/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
 STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
@@ -127,7 +127,7 @@ class Param:
     and a MODE goes on an EVEN slot -- the proven place for the panel's own
     page-2 knob editor to reach it (4 Sep 2026; it used to be forced onto
     7/9/11). Whether that editor also reaches the odd slots is unresolved
-    (docs/MAINMENU.md 9e); an even slot does not depend on the answer.
+    (docs/firmware/MAINMENU.md 9e); an even slot does not depend on the answer.
     """
 
     name: bytes | None = None          # 6-byte panel label; b"" blanks it
@@ -175,7 +175,7 @@ class MenuEntry:
     donor_desc: int                    # E address of the stock donor
     # BOTH NAME FIELDS ARE NUL-TERMINATED, so their usable length is one less
     # than the field: abbr is 5 bytes = FOUR characters, fullname 13 bytes =
-    # TWELVE (docs/PARAM_PAGES.md section 2). Filling a field exactly leaves
+    # TWELVE (docs/firmware/PARAM_PAGES.md section 2). Filling a field exactly leaves
     # no terminator and the firmware's string read runs off the end of it --
     # see __post_init__.
     abbr: bytes                        # <=4 chars, in a 5-byte field
@@ -413,7 +413,7 @@ class Claims:
     # DECLARED, where private-Y is derived, and the difference is not
     # laziness. A source scan cannot tell an address from a mask or a
     # constant: scanning for this range flags `and #>$7fff` and every
-    # coefficient that happens to land in it, and docs/DSP.md 7c records
+    # coefficient that happens to land in it, and docs/firmware/DSP.md 7c records
     # that static scanning could not find even the STOCK reverbs' buffers,
     # because they compute their bases at runtime. A checker that fires on
     # six modules out of eight teaches people to ignore it.
@@ -425,7 +425,7 @@ class Claims:
     # there would read as a guarantee.
     owns_fx2_buffers: bool = False
     # A STOCK effect that allocates an FX2 instance buffer through the host's
-    # bump allocator (it reads X:0x213 at init -- docs/DSP.md section 10).
+    # bump allocator (it reads X:0x213 at init -- docs/firmware/DSP.md section 10).
     # The allocator hands the buffer out PER TRACK SLOT: on core 0 the four
     # slots are Y:0x4000, 0x8000, 0x30000 and 0x34000, on core 1 0x4000,
     # 0x8000, 0x38000 and 0x3c000 -- and those are exactly the addresses
@@ -464,7 +464,7 @@ class Claims:
                                  "buffer-free module runs on both menus")
             if self.buffer_words is None or self.buffer_words > 3072:
                 raise ValueError("fx1_only needs buffer_words <= 3072: an "
-                                 "FX1 slot is 3,072 words (docs/DSP.md 10)")
+                                 "FX1 slot is 3,072 words (docs/firmware/DSP.md 10)")
 
 
 @dataclass(frozen=True)
@@ -773,7 +773,7 @@ class Module:
         # DIST). The field a slot is DELIVERED in is fixed by the slot (even ->
         # bits 16-23, odd -> bits 8-15); its count and renderer are free. The
         # reason to prefer an even slot for a MODE: the panel's page-2 knob
-        # editor (0x4003a474, docs/MAINMENU.md 9c-ii/9e) is PROVEN to reach
+        # editor (0x4003a474, docs/firmware/MAINMENU.md 9c-ii/9e) is PROVEN to reach
         # even slots (MODE on slot 6, hardware tag 84); whether it reaches the
         # odd slots too is unresolved. Either way any page-2 slot is allowed.
         # Page 1 is untested for the tick widget and stays refused.
@@ -947,7 +947,7 @@ class Remix:
     #
     # IT COSTS NO WORDS. Four bytes of cave per row, plus FX1's chooser list
     # relocated into the cave (it ends at 0x400d608c with FX2's beginning at
-    # 0x400d6090, so it cannot grow in place -- tools/build_fx1.py proved the
+    # 0x400d6090, so it cannot grow in place -- tools/build/build_fx1.py proved the
     # move standalone against the stock image). What it does cost is CYCLES:
     # an FX1 effect runs on a track that is already running an FX2 one, so
     # the worst per-core load can gain four more copies of it. cycle_count.py
@@ -964,7 +964,7 @@ class Remix:
     #   * A module that reads the host's allocator (`x:>$213`). FX1 and FX2
     #     keep SEPARATE allocator tables at different sizes (measured, X:0x255
     #     in both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072.
-    #     ⚠️ This is not theoretical and it is not new -- docs/DSP.md's "wrong
+    #     ⚠️ This is not theoretical and it is not new -- docs/firmware/DSP.md's "wrong
     #     claim 1" is this exact failure, bisected on hardware: a 16K layout
     #     at an FX1 base "runs to 0x53ff, through the other FX1 buffers and
     #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
@@ -990,7 +990,7 @@ class Remix:
     # This is how an effect stops being a per-track choice and becomes part
     # of the instrument: the two bus engines are hosted by the project stamp,
     # not by turning a chooser, and their controls live on a main-menu screen
-    # instead of a track page (docs/MAINMENU.md section 6). Blanking the
+    # instead of a track page (docs/firmware/MAINMENU.md section 6). Blanking the
     # NAMES is what empties the page: the parameter COUNTS and enable bits
     # stay, so the stock parameter writer still clamps and commits every slot
     # and the frame builder still carries it to the DSP -- measured in the

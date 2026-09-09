@@ -4,7 +4,7 @@ delay routine, a fader-driven burn inside it, and a readout on HELLO WORLD.
 THE QUESTION IT ANSWERS. A ColdFire-side machine (a Braids port, a Pickup
 donor) would live in the audio interrupt's per-frame routine, where the
 stock Echo Freeze delay already does per-sample EMAC work
-(docs/EXTERNAL.md section 1). Nothing in the project measures how much of
+(docs/firmware/EXTERNAL.md section 1). Nothing in the project measures how much of
 each 16-sample frame that routine already takes, or how much more the rest
 of the firmware -- sequencer, UI, card streaming, MIDI -- can lose to it
 before it starves. The emulator cannot answer either: Unicorn runs the EMAC
@@ -45,7 +45,7 @@ from remix.schema import CavePatch, FormatterReg, Kind, Module
 # 0x40004b12: `jsr %pc@(0x400031a0)` then `move.w #0x2700,%sr`. Both are
 # displaced; the cave performs both. Execution resumes at 0x40004b1a,
 # `move.l 0x46104d3e,%d0`, which reloads d0 -- nothing the cave clobbers is
-# live there (docs/EXTERNAL.md section 1 for the routine, the disassembly
+# live there (docs/firmware/EXTERNAL.md section 1 for the routine, the disassembly
 # at 0x40004b00 for the site).
 PROBE_HOOK = 0x40004b12
 PROBE_HOOK_STOCK = bytes.fromhex("4ebae68c" "46fc2700")

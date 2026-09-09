@@ -16,7 +16,7 @@ import re
 import subprocess
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 from remix import ledger, registry, schema, state, stock  # noqa: E402
@@ -188,7 +188,7 @@ def main():
     # the two tables stay slot-for-slot aligned; a slot that moves in one and
     # not the other is exactly the wrapper drift that has burned renders
     # before (the harness-knob-drift rule).
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
     import render_reverb
     cv = registry.by_key("REVERB SERVER")
     for name, slot in sorted(cv.knob_map().items(), key=lambda kv: kv[1]):
@@ -246,7 +246,7 @@ def main():
     else:
         print("  [SKIP] stock knobs: out/raw/section_3_MAIN_OS.bin not on disk")
     # ---- stock selects carry the firmware's own labels ---------------------
-    # tools/stock_labels.py asked each select's display formatter what it
+    # tools/build/stock_labels.py asked each select's display formatter what it
     # prints; the JSON it wrote must cover every select at the right length,
     # and -- when the emulator is on hand -- still match the firmware.
     if stock.STOCK_IMAGE.exists():
@@ -262,7 +262,7 @@ def main():
             print(f"  [PASS] all {n} stock selects carry the firmware's labels")
         _venv = ROOT / ".venv/bin/python3"
         if _venv.exists():
-            r = subprocess.run([str(_venv), "tools/stock_labels.py", "--check"],
+            r = subprocess.run([str(_venv), "tools/build/stock_labels.py", "--check"],
                                cwd=ROOT, capture_output=True, text=True)
             if r.returncode == 0:
                 print("  [PASS] stock_labels.json matches what the emulated "
@@ -300,7 +300,7 @@ def main():
             import dsp_modmap
             _dump.parent.mkdir(parents=True, exist_ok=True)
             dsp_modmap.dumpmem(stock.STOCK_IMAGE.read_bytes(), ["A", str(_dump)])
-        r = subprocess.run([sys.executable, "tools/send_probe.py", "--mem",
+        r = subprocess.run([sys.executable, "tools/harness/send_probe.py", "--mem",
                             str(_dump), "--direct", "--pick", "flanger",
                             "--dur", "0.45", "--tail", "0.05", "--set=MIX=0"],
                            cwd=ROOT, capture_output=True, text=True)
@@ -331,7 +331,7 @@ def main():
     # build_bus's own constants by reading them out of the source: a total
     # that is quietly wrong is exactly the kind of confident stale number
     # this project keeps getting burned by.
-    _bb = (ROOT / "tools/build_bus.py").read_text()
+    _bb = (ROOT / "tools/build/build_bus.py").read_text()
     _bounds = {}
     for _name in ("NEW_LIST", "ZERO_RUN_END"):
         _m = re.search(rf"^{_name} = (0x[0-9a-f]+)", _bb, re.M)
@@ -440,7 +440,7 @@ def main():
     _want = {"restock": (),                       # lists all fourteen
              "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
              # deliberately gives up two more, to put a non-reverb donor on
-             # the unit for the first time (docs/FLASHPLAN.md)
+             # the unit for the first time (docs/effects/FLASHPLAN.md)
              "fieldtest": ("FLANGER", "CHORUS", "PLATE REV", "SPRING REV",
                            "DARK REV"),
              # THREE runs on purpose -- the multi-run worked example. Its
@@ -513,7 +513,7 @@ def main():
     # this replaced (3 Sep 2026, "when I remove some reverb it only shows
     # the free reverb space"). So: build it, and require that two modules
     # landed in two DIFFERENT runs.
-    r = subprocess.run([sys.executable, "tools/build_bus.py"],
+    r = subprocess.run([sys.executable, "tools/build/build_bus.py"],
                        cwd=ROOT, capture_output=True, text=True,
                        env={**os.environ, "REMIX": "scattered",
                             "XBUS": "1", "SPEC": "1"})
@@ -525,7 +525,7 @@ def main():
         # ⚠️ PER PAYLOAD. The two payloads put the same effects at
         # DIFFERENT addresses, so merging their run lines checks neither --
         # and "one instance is one payload" is exactly how this codebase
-        # has been bitten before (docs/DSP.md s11).
+        # has been bitten before (docs/firmware/DSP.md s11).
         _by_pay, _pay = {}, None
         for line in r.stdout.splitlines():
             m = re.match(r"-- payload (\w+) --", line.strip())
@@ -585,7 +585,7 @@ def main():
     # ---- FX1 rows (Remix.fx1) -------------------------------------------
     # The schema half. The BUILD half -- the relocated list, FX1's own id and
     # cursor tables, and stock's eleven rows unchanged and still first -- is
-    # tools/verify_menu.py, which needs a built image and so runs there.
+    # tools/verify/verify_menu.py, which needs a built image and so runs there.
     try:
         schema.Remix(name="_x", doc="_", modules=("WARPFOLD",),
                      fallback=schema.NO_FALLBACK, fx1=("WARPFOLD", "WARPFOLD"))
@@ -617,7 +617,7 @@ def main():
     else:
         print("  [PASS] an fx1 row moves a module from FX2 to FX1+FX2")
     # ⚠️ ONLY A BUFFER-FREE INSERT MAY TAKE AN FX1 ROW. The measured reason
-    # is docs/DSP.md's "wrong claim 1": a 16K layout at an FX1 base runs
+    # is docs/firmware/DSP.md's "wrong claim 1": a 16K layout at an FX1 base runs
     # through the other FX1 buffers and into FX2 slot 0. Pinned per module so
     # a manifest that starts reading the allocator cannot quietly become
     # eligible.

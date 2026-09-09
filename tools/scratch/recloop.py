@@ -1,7 +1,7 @@
 """Route A: a LOOPING recorder (trigs every 4 steps, RLEN 4) -- log every arm-caller entry,
 every engine post, every state-byte write, with the sample clock, to measure the seam."""
 import argparse, sys, os, struct
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_card as ec, emu_bringup as eb
 from unicorn.m68k_const import *
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE

@@ -14,13 +14,13 @@
 |   page 1: DB + part*6322 + 0x8ee9a + track*24 + 18 + slot
 |   page 2: DB + part*6322 + 0x8ef5a + track*30 + (slot-6)   [staged index 0;
 |           was +18+slot = +24+slot2 until 5 Sep 2026 -- wrong slot, see
-|           docs/midi_re_cc.md 7; edits still sounded right via P2EDIT's lane]
+|           docs/firmware/midi_re_cc.md 7; edits still sounded right via P2EDIT's lane]
 |   RVRB:   DB + part*6322 + 0x8ef50   (T8 FX1 p1 slot 2 = flat 20)
 |   DLY:    DB + part*6322 + 0x8f040   (T8 FX1 p2 idx 2; live 0x80000a2a,
 |                                        mirror 0x100a518e -- traced 4 Sep)
 | Edits: page 1 via 0x40054cd8(track, flat, value); page 2 via 0x4003a474
 | then the value set here, count-clamped (its clamp is stale outside a staged
-| page, docs/MAINMENU.md 9c-ii). Keys: 0x34 up, 0x33 down (the key that goes
+| page, docs/firmware/MAINMENU.md 9c-ii). Keys: 0x34 up, 0x33 down (the key that goes
 | down on this unit), 0x32/35/36 also down; wraps.
 | Self-refs patched by the build (0x40bad000..24): VERBTAB DLYTAB FMT SCRATCH
 | CURSOR VERBSEL DLYSEL RVRBSTR DLYSTR NSLOT.
@@ -96,7 +96,7 @@ draw:   lea     %sp@(-44),%sp
         addal   %d2,%a2
         addal   #-6,%a2                 | a2 + (slot-6): the staged FX2 page-2
                                         | store is +0+slot2 (measured 5 Sep, tags
-                                        | 12/13; docs/midi_re_cc.md 7). +18+slot
+                                        | 12/13; docs/firmware/midi_re_cc.md 7). +18+slot
                                         | (= +24+slot2) was a self-consistent guess.
         moveq   #0,%d3
 dloop:  moveq   #12,%d0

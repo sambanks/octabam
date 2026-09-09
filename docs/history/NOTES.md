@@ -43,7 +43,7 @@ Checklist:
 
 ### BASE ADDRESS DETERMINED ✓  =  `0x40000400`
 
-Empirical method (`tools/find_base.py`, not an assumption): correlate the offsets of
+Empirical method (`tools/build/find_base.py`, not an assumption): correlate the offsets of
 the 2607 strings in the file against the absolute 32-bit pointers (high byte 0x40).
 The sweep of candidate bases gave an unambiguous peak:
 
@@ -134,7 +134,7 @@ OS UPGRADE menu
 - `mode=1` → only returns the version (for the pre-scan). `mode=0` → deobfuscate+verify (commit).
 - On successful completion: `FUN_4007fe80(0xffffffff,...)` finalizes/reboots into the new OS.
 
-### Offline `.bin` decoder ✓✓✓  (`tools/bin_decode.py` + `tools/decode_elek.c`)
+### Offline `.bin` decoder ✓✓✓  (`tools/build/bin_decode.py` + `tools/decode_elek.c`)
 
 Reimplementation of `FUN_4007f748`. Constants extracted from the OS image:
 `magic=0x454C5550 ("ELUP")`, `C3=0x360FA955`, `C7=0xEF4A9AB6`, XOR `0x9E3B16A2`/`0x764E28CA`.
@@ -893,7 +893,7 @@ After instability on hardware, the spec was rewritten and the build restarted fr
 detour from the linker symbol tables, and aborts if any assumption about the stock bytes
 fails.
 
-## CF-card flashing — `tools/make_bin.py`
+## CF-card flashing — `tools/build/make_bin.py`
 
 MIDI SysEx takes minutes at 31250 baud. The manual's §8.5.2 OS UPGRADE path reads a `.bin`
 from the root of the CF card instead. Decoding the official `.bin` showed the ELUP payload
@@ -902,7 +902,7 @@ is simply:
     [4-byte BE length][ELEK container]
 
 — exactly the container `elektron-firmware-tool` already builds, so no new format work was
-needed, only the forward direction of the obfuscation `tools/bin_decode.py` already
+needed, only the forward direction of the obfuscation `tools/build/bin_decode.py` already
 reverses. `rot16` and `bswap` are involutions, so inverting is direct:
 
     encode: x = k ^ mixer ^ p ;  c = rot16(x) ^ XOR_A   (variant 0, k & 0x800000 == 0)

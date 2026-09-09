@@ -34,12 +34,12 @@ placement class (schema.Runtime) -- the only one with tens of KB to give.
 MEASURED (9 Sep 2026): with Homebrew's m68k-elf-gcc 16.2.0 the runtime,
 the packed runtime and the append all rebuild BYTE-IDENTICAL to the
 identities her recipe pins for gcc 16.1.0 (sha256 dda11aca...), and
-`tools/verify_octakit.py` shows stock + her writes + her append == her
+`tools/verify/verify_octakit.py` shows stock + her writes + her append == her
 own combined OS (`output.os`). In an octabam IMAGE her runtime is a
 PAYLOAD of octabam's loader (tools/remix/loader.S, derived from hers):
 her append is replaced, her 650 writes kept, her packed runtime staged at
 her own stage address so her post-clear relocation finds it. Booted under
-the ColdFire port (`tools/verify_dram_boot.py`): her wrapper calls our
+the ColdFire port (`tools/verify/verify_dram_boot.py`): her wrapper calls our
 loader, her gate and post-load entry run with her hash, the boot reaches
 the handoff, and her window reads back byte-identical (149,653 B). The
 image is never identical to hers -- the build adds its own FX2 chooser and

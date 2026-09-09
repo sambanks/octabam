@@ -2,8 +2,8 @@
 # Disassembly helper for the decompressed MAIN OS (ColdFire, m68k big-endian).
 #
 # This is the ColdFire side -- the OS itself. The audio effects run on the
-# DSP56300 and are a different toolchain entirely: see tools/dsp_disasm_all.py
-# and docs/DSP.md.
+# DSP56300 and are a different toolchain entirely: see tools/build/dsp_disasm_all.py
+# and docs/firmware/DSP.md.
 #
 # ⚠️ r2's m68k CANNOT DECODE THIS CPU'S EMAC INSTRUCTIONS, and it fails in the
 # worst possible way. Verified 30 Aug 2026 against the delay's EMAC loop at
@@ -25,7 +25,7 @@
 # reading of THIS firmware is unreliable almost anywhere, not just in audio
 # code.
 #
-# docs/midi_re_note.md and docs/MIDI.md already recorded this in August; the
+# docs/firmware/midi_re_note.md and docs/firmware/MIDI.md already recorded this in August; the
 # warning simply never reached this script. Use the `emac` subcommand (or
 # objdump -m m68k:cfv4e directly) whenever the answer matters.
 #
@@ -42,7 +42,7 @@ RAW="${RAW:-out/raw/section_3_MAIN_OS.bin}"
 
 # m68k big-endian covers most of the ColdFire ISA -- but NOT the EMAC; see the
 # warning above, and use the `emac` subcommand for those regions.
-# Load base determined empirically (tools/find_base.py): 0x40000400
+# Load base determined empirically (tools/build/find_base.py): 0x40000400
 # (image in SDRAM at 0x40000000 + 0x400 of header/vectors). Data/BSS ~0x400bxxxx.
 BASE="${BASE:-0x40000400}"
 # -m maps the raw at the base (-B does not remap raw files in r2).

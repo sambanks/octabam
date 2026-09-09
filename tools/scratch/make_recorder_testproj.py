@@ -40,7 +40,7 @@ Still open: the arm/record path. See RTOS_FORK.md section 10.
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from ot_project import set_machine_type            # noqa: E402
 
 

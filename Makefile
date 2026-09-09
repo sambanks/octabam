@@ -1,4 +1,5 @@
-# octabam — custom DSP effects for the Elektron Octatrack MKII
+# octabam — a remixer for the Elektron Octatrack's OS: modules (the
+# community's and our own) composed into one image from your own 1.40C.
 #
 # Every target here is a command that was previously an incantation to
 # remember. The env-var flags are real and load-bearing; see `make help`.
@@ -12,7 +13,7 @@ DSP_ASM := vendor/dsp56300/build/source/dsp_host/dsp_asm
 # build it is running. Bump BUILD every time you flash: a unit whose version
 # string you cannot map back to a commit is a unit you are guessing about.
 # BUILD is the image's version AND the build tag the panel shows in every
-# effect name (tools/build_bus.py). No trailing comment on the line: make
+# effect name (tools/build/build_bus.py). No trailing comment on the line: make
 # keeps the spaces before a `#`, and `make image` then splits its recipe
 # (found 9 Sep 2026: the default BUILD produced ".bin: command not found").
 BUILD   ?= 79
@@ -25,7 +26,7 @@ VERSION ?= OCTABAM$(BUILD)
 REMIX   ?= bamsep26
 
 # The tools run on bare python3 (stdlib only). The ONE exception is the local
-# ColdFire emulator (docs/EMU.md), which needs `unicorn` from the uv-managed
+# ColdFire emulator (docs/remixer/EMU.md), which needs `unicorn` from the uv-managed
 # `.venv` (the `emu` extra). Prefer that venv when present, else bare python3 —
 # where the emulator view degrades to "unavailable" and everything else works.
 PY := $(shell [ -x .venv/bin/python3 ] && echo .venv/bin/python3 || echo python3)
@@ -50,32 +51,32 @@ recon: ## Unpack + static recon -> out/raw/section_3_MAIN_OS.bin
 
 .PHONY: bus
 bus: ## THE build: one server per core, cross-core bus -> out/mainos_bus.bin
-	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 python3 tools/build_bus.py
+	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 python3 tools/build/build_bus.py
 
 .PHONY: bus-plain
 bus-plain: ## Build without specialization (both servers on both cores)
-	REMIX=$(REMIX) python3 tools/build_bus.py
+	REMIX=$(REMIX) python3 tools/build/build_bus.py
 
 .PHONY: image
-image: bus ## Repack the build into a card-flashable .bin (see docs/FLASHING.md)
+image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLASHING.md)
 	@test -f $(SYX) || { echo "missing $(SYX) — run 'make os'"; exit 1; }
 	@test -x $(EFT) || { echo "missing $(EFT) — run 'make setup'"; exit 1; }
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD).bin $(EFT) \
 	  -i $(SYX) -c 3 out/mainos_bus.bin \
 	  -V $(VERSION) -o out/OCTATRACK_OS1.40C_$(VERSION).syx
-	python3 tools/make_bin.py out/elek_$(BUILD).bin \
+	python3 tools/build/make_bin.py out/elek_$(BUILD).bin \
 	  -o out/OCTATRACK_$(VERSION).bin
 	@echo
 	@echo "  card image: out/OCTATRACK_$(VERSION).bin"
 	@echo "  MIDI image: out/OCTATRACK_OS1.40C_$(VERSION).syx"
-	@echo "  -> docs/FLASHING.md before you write either to hardware."
+	@echo "  -> docs/remixer/FLASHING.md before you write either to hardware."
 
 # ------------------------------------------------- audition without flashing --
 
 .PHONY: render
 render: ## Build the DEV image and render the bus locally (no hardware)
-	REMIX=$(REMIX) DEV=1 XBUS=1 SPEC=1 python3 tools/build_bus.py
-	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
+	REMIX=$(REMIX) DEV=1 XBUS=1 SPEC=1 python3 tools/build/build_bus.py
+	python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout RS
 
 .PHONY: render-delay
 render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay locally
@@ -88,98 +89,100 @@ render-delay: ## Build the DELAY hatch (all 3 servers real) and render BusDelay 
 	@# (appended to the .mem dump; dsp_host has no 8K wall), so the full
 	@# shimmer reverb fits as the downstream sink and the delay's growth
 	@# budget is payload B's, not the hatch's.
-	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build_bus.py
-	python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+	REMIX=$(REMIX) DEV=1 XBUS=1 python3 tools/build/build_bus.py
+	python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
 
 .PHONY: render-rig
 render-rig: bus ## Render ALL EIGHT TRACKS on both cores (the real image, tracks 1-4 on B, 5-8 on A). TRACKS=T1=D,T2=S,.. STEMS=dir
-	@# tools/rig_render.py --help for --project/--set/--stem/--skew. The
+	@# tools/harness/rig_render.py --help for --project/--set/--stem/--skew. The
 	@# image is this remix's `make bus`; both payloads are dumped from it.
-	python3 tools/rig_render.py --image out/mainos_bus.bin --remix $(REMIX) \
+	python3 tools/harness/rig_render.py --image out/mainos_bus.bin --remix $(REMIX) \
 	  $(if $(TRACKS),--tracks "$(TRACKS)",--tracks "T1=D,T2=S,T3=S,T4=S,T5=R,T6=S,T7=S,T8=S" --set T2:-VRB=100 --set T3:-DEL=100 --set T6:-VRB=100 --set T7:-DEL=80 --set T1:-VRB=100) \
 	  $(if $(STEMS),--stems $(STEMS),--stems out/test_audio --seconds 4) $(RIGARGS)
 
 .PHONY: verify-twocore
 verify-twocore: ## Two-core gate: servers on their REAL cores == the DEV hatch, bit for bit, and under 4 skews (~1 min)
-	python3 tools/verify_twocore.py
+	python3 tools/verify/verify_twocore.py
 
 .PHONY: emu-cf
-emu-cf: ## Build and run the headless ColdFire machine (tools/ot_emu) -- boots to the RTOS handoff
-	cmake -B out/emu -S tools/ot_emu >/dev/null
+emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boots to the RTOS handoff
+	@# --fresh: a cache configured from another source path (the port moved
+	@# to tools/emu/ on 10 Sep 2026) makes cmake refuse rather than rebuild.
+	cmake --fresh -B out/emu -S tools/emu/ot_emu >/dev/null
 	cmake --build out/emu -j8 >/dev/null
 	./out/emu/ot_emu --image $(if $(IMAGE),$(IMAGE),out/raw/section_3_MAIN_OS.bin)
 
 .PHONY: verify-onebus
 verify-onebus: ## THE ONE AUX BUS on both cores: chain, last-live-stage return, MIX passthrough, T8 refusal, no station sends (~2 min)
-	python3 tools/verify_onebus.py
+	python3 tools/verify/verify_onebus.py
 
 .PHONY: verify-midi
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
-	python3 tools/verify_midi.py
+	python3 tools/verify/verify_midi.py
 
 .PHONY: midi-flash
 midi-flash: ## RECOVERY: flash a .syx over MIDI (Startup Menu). make midi-flash PORT=A SYX=downloads/extracted/OCTATRACK_OS1.40C.syx
 	@test -n "$(SYX)" || { echo "usage: make midi-flash PORT=A SYX=<file.syx>  (OT: Startup Menu -> TRIG 3 -> READY TO RECEIVE)"; exit 1; }
-	$(PY) tools/midi_flash.py $(PORT) $(SYX)
+	$(PY) tools/hw/midi_flash.py $(PORT) $(SYX)
 PORT ?= A
 
 .PHONY: reverb
 reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }
-	python3 tools/render_reverb.py $(IN) $(ARGS)
+	python3 tools/harness/render_reverb.py $(IN) $(ARGS)
 
 # ------------------------------------------------------ measure and verify --
 
 .PHONY: cycles
 cycles: ## Cycle cost per effect against the measured per-core budget
-	python3 tools/cycle_count.py
+	python3 tools/build/cycle_count.py
 
 .PHONY: stock-labels
 stock-labels: ## Re-ask the emulated firmware what every stock select prints -> tools/remix/stock_labels.json
-	$(PY) tools/stock_labels.py
+	$(PY) tools/build/stock_labels.py
 
 .PHONY: modmap
 modmap: ## DSP module load map — which bytes land at which P address
-	python3 tools/dsp_modmap.py
+	python3 tools/build/dsp_modmap.py
 
 .PHONY: verify
 verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it fits; it currently SKIPS)
 	python3 tools/remix/selftest.py
-	python3 tools/verify_slots.py
-	python3 tools/verify_replaces.py
-	python3 tools/label_fmt.py
-	python3 tools/verify_octakit.py
-	python3 tools/verify_midiscenes.py
-	REMIX=$(REMIX) python3 tools/verify_dram_boot.py
-	@$(PY) tools/verify_labels.py $(REMIX) 2>/dev/null || \
+	python3 tools/verify/verify_slots.py
+	python3 tools/verify/verify_replaces.py
+	python3 tools/build/label_fmt.py
+	python3 tools/verify/verify_octakit.py
+	python3 tools/verify/verify_midiscenes.py
+	REMIX=$(REMIX) python3 tools/verify/verify_dram_boot.py
+	@$(PY) tools/verify/verify_labels.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
-	@$(PY) tools/verify_modenames.py $(REMIX) 2>/dev/null || \
+	@$(PY) tools/verify/verify_modenames.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] per-mode knob names: no .venv, or this remix has none"
-	@$(PY) tools/verify_menushortcut.py $(REMIX) 2>/dev/null || \
+	@$(PY) tools/verify/verify_menushortcut.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] menu shortcut: no .venv, or this remix has none"
-	@$(PY) tools/verify_cfprobe.py $(REMIX) 2>/dev/null || \
+	@$(PY) tools/verify/verify_cfprobe.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] cf probe: no .venv, or this remix has none"
-	@$(PY) tools/verify_busscreen.py 2>/dev/null || \
+	@$(PY) tools/verify/verify_busscreen.py 2>/dev/null || \
 	  echo "  [SKIP] bus screen table relocation: no .venv"
-	@$(PY) tools/verify_ccpage2.py 2>/dev/null || \
+	@$(PY) tools/verify/verify_ccpage2.py 2>/dev/null || \
 	  echo "  [SKIP] cc page-2 cave: no .venv"
-	@$(PY) tools/verify_hidden.py $(REMIX) 2>/dev/null || \
+	@$(PY) tools/verify/verify_hidden.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] hidden engines: no .venv, or this remix hides nothing"
-	python3 tools/verify_grains.py $(REMIX)
-	REMIX=$(REMIX) python3 tools/verify_menu.py
-	python3 tools/verify_burn.py
-	python3 tools/verify_twocore.py
-	python3 tools/verify_onebus.py
+	python3 tools/verify/verify_grains.py $(REMIX)
+	REMIX=$(REMIX) python3 tools/verify/verify_menu.py
+	python3 tools/verify/verify_burn.py
+	python3 tools/verify/verify_twocore.py
+	python3 tools/verify/verify_onebus.py
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate engine is bit-identical: make verify-roll CAND=modules/busverb/reverb_lforoll.asm
 	@test -n "$(CAND)" || { echo "usage: make verify-roll CAND=modules/busverb/reverb_lforoll.asm"; exit 1; }
-	python3 tools/verify_roll.py $(CAND)
+	python3 tools/verify/verify_roll.py $(CAND)
 
 .PHONY: verify-delay
 verify-delay: ## Prove an alternate DELAY engine is bit-identical: make verify-delay CAND=modules/busdelay/delay_new.asm
 	@test -n "$(CAND)" || { echo "usage: make verify-delay CAND=modules/busdelay/delay_new.asm [REF=modules/busdelay/delay_server.asm]"; exit 1; }
-	python3 tools/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
+	python3 tools/verify/verify_delay.py $(CAND) $(if $(REF),--ref $(REF))
 
 .PHONY: verify-bus
 verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: make verify-bus SAVE=1
@@ -192,12 +195,12 @@ verify-bus: ## Prove a bus-layout change is behaviour-preserving. STAMP FIRST: m
 	@#   make verify-bus            <- every case bit-identical (the tool prints the count)
 	@# Needs the DEV hatch: the gate's whole point is exercising layouts that
 	@# carry BOTH servers, and only the hatch has a real delay in payload A.
-	DEV=1 XBUS=1 python3 tools/build_bus.py >/dev/null
-	python3 tools/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
+	DEV=1 XBUS=1 python3 tools/build/build_bus.py >/dev/null
+	python3 tools/verify/verify_bus.py $(if $(SAVE),--save) $(if $(SELFTEST),--selftest)
 
 .PHONY: burn
 burn: ## Build the flashable cycle-burn probe (p3 = the burn knob, 32 cycles/step)
-	XBUS=1 BURN=1 python3 tools/build_bus.py
+	XBUS=1 BURN=1 python3 tools/build/build_bus.py
 
 .PHONY: check
 check: bus cycles verify ## Everything that can be checked without hardware
@@ -221,12 +224,12 @@ remix: ## The remixer: swap effects in and out, dial + hear them, build the imag
 .PHONY: emu-setup
 emu-setup: ## Provision the remixer deps (unicorn + textual) into .venv via uv
 	uv sync --extra emu
-	@echo "remixer ready — 'make remix' (docs/EMU.md for the emulator view)"
+	@echo "remixer ready — 'make remix' (docs/remixer/EMU.md for the emulator view)"
 	@echo "route A (emu_rtos) also needs the EMAC-fixed Unicorn: make emu-unicorn"
 
 # Route A needs a Unicorn whose ColdFire EMAC multiplies like the MCF5445x
 # (stock 2.1.4 halves every fractional-mode product -- RTOS_FORK section
-# 10.16). Builds it from the PyPI sdist + tools/unicorn_emac_fractional.patch
+# 10.16). Builds it from the PyPI sdist + tools/patches/unicorn_emac_fractional.patch
 # into .venv/lib/unicorn-emac, where emu_bringup picks it up. The .venv's
 # Python must be the host's native architecture (arm64 on Apple silicon):
 # the script checks, and emu_rtos refuses to run on a stock EMAC.
@@ -237,7 +240,7 @@ emu-unicorn: ## Build the EMAC-fixed Unicorn library for route A (needs cmake)
 	scripts/build_unicorn.sh
 
 # The card: build a FAT16 image from a project directory, boot, mount it with
-# the firmware's own storage stack and load the project (docs/EMU.md M4).
+# the firmware's own storage stack and load the project (docs/remixer/EMU.md M4).
 #   make emu-card PROJECT=~/octa/backups/<snapshot>/<project> [SET=OCTABAM NAME=RIG]
 PROJECT ?=
 SET ?= OCTABAM
@@ -245,14 +248,14 @@ NAME ?=
 .PHONY: emu-card
 emu-card: ## Boot with an emulated CF card holding PROJECT and load it
 	@test -n "$(PROJECT)" || { echo "usage: make emu-card PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
-	$(PY) tools/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
+	$(PY) tools/emu/emu_card.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",)
 
-# Route A: the firmware's own scheduler running (docs/RTOS_FORK.md). Exits 0
+# Route A: the firmware's own scheduler running (docs/firmware/RTOS_FORK.md). Exits 0
 # when the M6a gate passes: every task created and run once.
 .PHONY: emu-rtos
 emu-rtos: ## Boot with the card and run the real scheduler to the M6a gate
 	@test -n "$(PROJECT)" || { echo "usage: make emu-rtos PROJECT=<project dir> [SET=..] [NAME=..]"; exit 1; }
-	$(PY) tools/emu_rtos.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",) --ms 400 --until-gate
+	$(PY) tools/emu/emu_rtos.py --project "$(PROJECT)" --set "$(SET)" $(if $(NAME),--name "$(NAME)",) --ms 400 --until-gate
 
 # -------------------------------------------------------------------- misc --
 
@@ -266,11 +269,12 @@ clean: ## Remove build products (keeps downloads/ and vendor/)
 
 .PHONY: help
 help: ## Show this help
-	@echo "octabam — custom DSP effects for the Octatrack MKII"
+	@echo "octabam — a remixer for the Octatrack's OS"
 	@echo
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / \
 	  {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo
-	@echo "Cold start:  read PLAN.md, then  make setup && make os && make recon && make bus"
-	@echo "Modules:     make modules      (then: make bus REMIX=<name>)"
+	@echo "Cold start:  read PLAN.md, then  make setup && make os && make recon && make modules"
+	@echo "Modules:     make modules      the index, the compatibility matrix, the remixes"
+	@echo "             make check REMIX=<name>   build + every gate for one selection"
 	@echo "             make remix        compose a selection interactively"

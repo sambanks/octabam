@@ -7,7 +7,7 @@ hers even here, and the build says so too: octabam always writes its own
 FX2 chooser (NONE row + terminator, row count, list refs, id aliases) and
 the DSP null stubs, none of which her build has. The pure statement --
 stock + her writes + her append == her `output.os`, with nothing of ours
-in the way -- is `tools/verify_octakit.py`, in `make verify`.
+in the way -- is `tools/verify/verify_octakit.py`, in `make verify`.
 """
 
 from remix.schema import Remix

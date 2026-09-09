@@ -1,0 +1,32 @@
+diff --git a/main.c b/main.c
+index 89c0b80..4226246 100644
+--- a/main.c
++++ b/main.c
+@@ -584,7 +584,12 @@ static int set_version(uint8_t *c, container_type ct, const char *ver){
+         if(voff<0) return -1;
+         for(fend=voff; fend<ELE3_COUNT_OFF && (is_alnum(c[fend])||c[fend]=='.'||c[fend]==' '); fend++);
+     } else if(ct==CT_ELEK){
+-        voff=ELEK_VERSION_OFF;
++        /* Octatrack: the running OS/bootloader draw the version from container
++         * offset 0x08 (space-padded, right-justified 10-char field, NUL-terminated
++         * by the section-length high byte at ELEK_SECT_OFF). ELEK_VERSION_OFF (0x0D)
++         * is only where the alnum version begins; write the full field from 0x08 so
++         * the whole 10-char display area is editable. */
++        voff=0x08;
+         for(fend=voff; fend<ELEK_SECT_OFF && (is_alnum(c[fend])||c[fend]=='.'||c[fend]==' '); fend++);
+     } else return -2;                                   /* pre-ELE version is in section-gap metadata */
+     int cap=fend-voff, nl=(int)strlen(ver);
+@@ -694,6 +699,13 @@ static int cmd_build(const char *in_syx, const char *out_syx, override *ovs, int
+     }
+     printf("  container             : %zu -> %zu bytes\n", fw.bin.declared_size, nclen);
+ 
++    /* Octatrack CF-card path: the OS UPGRADE menu reads an ELUP .bin whose payload is
++     * just [4-byte BE length][this container]. Emitting the rebuilt container lets
++     * tools/build/make_bin.py wrap it without re-deriving the SysEx transport framing. */
++    { const char *elek_out=getenv("EFT_EMIT_CONTAINER");
++      if(elek_out && !write_file(elek_out, nc, nclen))
++          printf("  container emitted     : %s (%zu bytes)\n", elek_out, nclen); }
++
+     size_t olen; uint8_t *osyx;
+     if(fw.bin.type==CT_PREELE){
+         osyx=preele_encode(nc, nclen, fw.sysex.device, &olen, opt_verbose);

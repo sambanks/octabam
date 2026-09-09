@@ -23,4 +23,4 @@ them 10–15 dB quieter, measured 4.8 dB below the loud sender alone.
 A client that registers and then contributes nothing steals everyone else's
 level, which is why every level knob gates its own registration.
 
-See [`docs/XBUS.md`](../../docs/XBUS.md).
+See [`docs/effects/XBUS.md`](../../docs/effects/XBUS.md).

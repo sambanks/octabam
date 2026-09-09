@@ -8,7 +8,7 @@ above `thresh` degrees (after removing the expected advance).
   o10_phase.py --wav FILE.wav CHANNEL FREQ_HZ [win=64] [thresh=4]   (e.g. --audio-out's ring word 2)
 """
 import sys, math, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import blockdump as bd, o10_recloop as rl
 
 def read_wav_channel(path, ch):

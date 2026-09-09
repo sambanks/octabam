@@ -241,7 +241,7 @@ def check(selected) -> list[str]:
     #
     # ⚠️ AND THE SLOTS ARE ONE PER TRACK, not a pool: each track allocates
     # FX1 then FX2, so track k's FX2 effect always gets entry 1+2k
-    # (docs/DSP.md, "the allocator's instance model"). Nothing is first-come.
+    # (docs/firmware/DSP.md, "the allocator's instance model"). Nothing is first-come.
     #
     #   BusVerb   all four of its core's -- tank in tracks 1-2's slots,
     #              relocated buffers in tracks 3-4's. No track on that core

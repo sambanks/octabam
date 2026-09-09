@@ -34,7 +34,7 @@ for f in "${ARTIFACTS[@]}"; do
   echo
 
   echo "--- [1] Entropy (compressed/encrypted vs. plain code) ---"
-  python3 tools/entropy.py "$f" --csv "$OUT/${base}.entropy.csv" --png "$OUT/${base}.entropy.png" || true
+  python3 tools/build/entropy.py "$f" --csv "$OUT/${base}.entropy.csv" --png "$OUT/${base}.entropy.png" || true
   echo
 
   echo "--- [2] binwalk (signatures, filesystems, magic) ---"

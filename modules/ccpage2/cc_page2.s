@@ -13,7 +13,7 @@
 | track -- Part, live byte and mirror, count-clamped. It does NOT call the
 | page-2 editor 0x4003a474 and does NOT touch the TRACKB global: that editor
 | writes the same live byte + mirror directly and nothing in 0x40171xxx
-| (traced 5 Sep 2026, docs/midi_re_cc.md), so a direct write reproduces its
+| (traced 5 Sep 2026, docs/firmware/midi_re_cc.md), so a direct write reproduces its
 | stores without the cross-task TRACKB race. Off-page there is no knob to
 | redraw, so the redraw marker is skipped too.
 |
@@ -228,6 +228,6 @@ wpos:   | d2 = clamped value (>=0 by construction)
 
 | ---- per-engine page-2 value counts, slot2 order (slots 6..11) -----------
 | Must match the engines' manifests (busverb / busdelay page-2 counts);
-| tools/verify_ccpage2.py checks them against VERB_COUNTS / DLY_COUNTS.
+| tools/verify/verify_ccpage2.py checks them against VERB_COUNTS / DLY_COUNTS.
 VCOUNT: .byte   3, 128, 128, 4, 128, 4    | MODE SHMR DIFF SHFT GATE RATE
 DCOUNT: .byte   3, 128, 128, 4, 128, 2    | MODE MDEP MRAT SIZE PTCH FRZE

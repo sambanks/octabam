@@ -31,7 +31,7 @@ rather than a fader for the dirt.
   GLUE + WDTH this is the master chain on T8's FX1.
 - **→DEL / →VRB** make it a bus client on the Spectrum station's terms:
   knob-gated registration, and it never housekeeps.
-- **SAT = BUS is also the RETURN** (3 Sep 2026, `docs/BUS.md` "The
+- **SAT = BUS is also the RETURN** (3 Sep 2026, `docs/effects/BUS.md` "The
   returns"). On a master chain CRSH and RING are knobs nobody turns, so BUS
   repurposes them as **RVRB** and **DLY**, the two return levels — the panel
   and the remixer print those names (`mode_views`), the crush and ring
@@ -54,7 +54,7 @@ and nothing else changes — that is the whole sidechain-ducking path.
   the 3,120 + 768 FILTER credit. Sam's layout runs one or two. Trims if it
   must come down: drop RING (~12), a single `chsatur` call by rolling the two
   channels (~13), the TUBE asymmetry (~10 per channel).
-- `tools/verify_character.py`, **22 gates, all PASS**: defaults bit-exact;
+- `tools/verify/verify_character.py`, **22 gates, all PASS**: defaults bit-exact;
   MIX=0 bit-exact with every stage driven; CRSH=110 collapses a ramp to 144
   wet levels against 4,500; SRR holds the wet exactly 2/4/8 samples; all four
   SAT characters unity small-signal at DRV=0 and bounded at DRV=127; FOLD

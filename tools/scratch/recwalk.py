@@ -1,7 +1,7 @@
 """Route A: log the recorder's block walk (0x40006fdc..0x400072d2) per iteration
 while fp(3) (recording) is set. Derived from seqprobe.py."""
 import argparse, sys
-import os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import os; sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_card as ec, emu_bringup as eb
 from unicorn.m68k_const import *
 from unicorn import UC_HOOK_CODE

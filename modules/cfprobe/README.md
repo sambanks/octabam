@@ -56,10 +56,10 @@ GAIN is also HELLO WORLD's gain: bands below 96 attenuate that track (at
 
 ```bash
 REMIX=cfprobe make image          # the rig + HELLO WORLD + CF PROBE
-.venv/bin/python3 tools/verify_cfprobe.py   # 22 checks, emulator-driven
+.venv/bin/python3 tools/verify/verify_cfprobe.py   # 22 checks, emulator-driven
 ```
 
-Flash per `docs/FLASHING.md`. Load the rig project (`ot_project.py rigproj`)
+Flash per `docs/remixer/FLASHING.md`. Load the rig project (`ot_project.py rigproj`)
 or a real set. Put **HELLO WORLD** on any track's FX2 and leave GAIN at 127.
 
 **1. At rest, fader 0.** Read all four bands and write them down.

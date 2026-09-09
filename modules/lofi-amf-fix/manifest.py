@@ -38,7 +38,7 @@ TWO ADDRESSES, ONE PER PAYLOAD. LO-FI is stock and un-replaced in every
 octabam remix so far, so its code sits at the same DSP P address in every
 image today -- P:0x01bef (payload A, tracks 1-4), P:0x019af (payload B,
 tracks 5-8) -- resolved to their ColdFire-vaddr-equivalent file offsets
-with this project's own `tools/dsp_modmap.py` (upstream vendors an
+with this project's own `tools/build/dsp_modmap.py` (upstream vendors an
 identical copy of that same file; not a coincidence -- same starting
 point as midisc). Both resolved offsets hold the expected stock bytes.
 

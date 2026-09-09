@@ -1,7 +1,7 @@
 """Route A: where do the FX knob bytes stand after a project load? Read the bank blob's Part
 knob storage, the live block 0x80000810+track*72 and the frame builder's source registers."""
 import sys, os, struct
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_bringup as eb
 from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn.m68k_const import *

@@ -3,12 +3,12 @@
 **CLOSED 4 Sep 2026, unresolved.** Build 83 flashed and the readout never
 moved on a MODE step either — four builds, no signal. Nothing depends on
 this formula now: both bus engines moved MODE to an even page-2 slot, which
-the panel's own knob editor writes (`docs/MAINMENU.md` §9c-ii). The
+the panel's own knob editor writes (`docs/firmware/MAINMENU.md` §9c-ii). The
 ambiguity is recorded there rather than chased (a select turn may commit to
 the Part array later than the turn; or the probe's UI track/part globals are
 not the writer's). The module stays as the record of what was tried.
 
-`docs/MAINMENU.md` §9c-ii decoded where a page-2 SELECT's value lives:
+`docs/firmware/MAINMENU.md` §9c-ii decoded where a page-2 SELECT's value lives:
 
 ```
 DB + part*6322 + 0x8f04a + track*30 + page*6 + slot

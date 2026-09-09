@@ -12,7 +12,7 @@
 ; dsp/burn_probe.asm (the fork this replaced) worked by REPLACING that write;
 ; an injection that lands before it is silently undone by the real coefficient
 ; on the very next line, and the burn knob goes on filtering. That is exactly
-; what happened on the first cut of this splice, and tools/verify_burn.py's
+; what happened on the first cut of this splice, and tools/verify/verify_burn.py's
 ; "inert at BURN=127" check is what caught it.
         clr     a
         move    a,x:(r7+$40)            ; LO coefficient forced to 0 (bypass)
