@@ -6,13 +6,13 @@
 # assembled and auditioned locally instead of by flashing hardware.
 set -euo pipefail
 
-# Copy our sources into the vendor tree. Always overwrite: tools/dsp_host/ is
+# Copy our sources into the vendor tree. Always overwrite: tools/harness/dsp_host/ is
 # the source of truth. Two diverging copies means an edit that never reaches
 # the binary, which produces confidently wrong measurements.
 stage_dsp_host() {
   mkdir -p vendor/dsp56300/source/dsp_host
-  cp tools/dsp_host/dsp_asm.cpp tools/dsp_host/dsp_host.cpp \
-     tools/dsp_host/CMakeLists.txt vendor/dsp56300/source/dsp_host/ 2>/dev/null || true
+  cp tools/harness/dsp_host/dsp_asm.cpp tools/harness/dsp_host/dsp_host.cpp \
+     tools/harness/dsp_host/CMakeLists.txt vendor/dsp56300/source/dsp_host/ 2>/dev/null || true
   grep -q dsp_host vendor/dsp56300/source/CMakeLists.txt 2>/dev/null \
     || echo 'add_subdirectory(dsp_host)' >> vendor/dsp56300/source/CMakeLists.txt
 }
@@ -22,6 +22,13 @@ echo "== 1) System tools (via Homebrew) =="
 need_brew=()
 command -v binwalk  >/dev/null 2>&1 || need_brew+=(binwalk)
 command -v radare2  >/dev/null 2>&1 || need_brew+=(radare2)
+# The m68k/ColdFire cross-toolchain (bottled, minutes to install). Since
+# 9 Sep 2026 a first-class dependency: loader-appended runtimes
+# (schema.Runtime -- modules/octakit) are COMPILED from source at build
+# time, and every pinned ColdFire cave with a `.s` source is re-assembled
+# and compared against its bytes when this is present. The build refuses
+# with a clear message, not a traceback, when it is missing.
+command -v m68k-elf-gcc >/dev/null 2>&1 || need_brew+=(m68k-elf-gcc)
 if [ "${#need_brew[@]}" -gt 0 ]; then
   echo "   installing: ${need_brew[*]}"
   brew install "${need_brew[@]}"
@@ -32,9 +39,9 @@ fi
 echo
 echo "== 1b) mc68k (ColdFire core for the headless machine) =="
 # Musashi plus ColdFire mode, an HI08 host-port register file and the on-chip
-# peripheral scaffolding -- the CPU half of tools/ot_emu. Vendored, GPLv3, the
+# peripheral scaffolding -- the CPU half of tools/emu/ot_emu. Vendored, GPLv3, the
 # same posture as vendor/dsp56300: tooling and patches are shared, built
-# binaries never are. `docs/COLDFIRE_PORT.md`.
+# binaries never are. `docs/firmware/COLDFIRE_PORT.md`.
 if [ ! -d vendor/mc68k ]; then
   git clone https://github.com/joelanders/mc68k-md-mm vendor/mc68k
 else
@@ -54,9 +61,9 @@ fi
 # Two local changes are needed to reproduce this build:
 #   - set_version() writes the full 10-char ELEK version field from 0x08;
 #     upstream only writes from 0x0D, where 5 fit.
-#   - EFT_EMIT_CONTAINER dumps the rebuilt container, which tools/make_bin.py
+#   - EFT_EMIT_CONTAINER dumps the rebuilt container, which tools/build/make_bin.py
 #     wraps to produce the CF card .bin.
-PATCH=$(pwd)/tools/elektron-firmware-tool.patch
+PATCH=$(pwd)/tools/patches/elektron-firmware-tool.patch
 if [ -f "$PATCH" ]; then
   if git -C vendor/elektron-firmware-tool apply --check "$PATCH" 2>/dev/null; then
     git -C vendor/elektron-firmware-tool apply "$PATCH" && echo "   local patch applied"
@@ -95,7 +102,7 @@ echo
 echo "== 4) dsp56300 -- assembler, disassembler and emulator for the audio DSP =="
 # The effects and timestretch run on a DSP56300, not the ColdFire. Neither
 # Ghidra nor radare2 targets it; we use the Access Virus emulator's toolchain.
-# See docs/DSP.md and tools/dsp_modmap.py.
+# See docs/firmware/DSP.md and tools/build/dsp_modmap.py.
 DIS=vendor/dsp56300/build/source/disassemble/dsp56kDisassemble
 if [ ! -x "$DIS" ]; then
   if ! command -v cmake >/dev/null 2>&1; then
@@ -111,7 +118,7 @@ if [ ! -x "$DIS" ]; then
     # mode the port drives the cores in (DO loops stepped, interrupts
     # interpreted, peripherals serviced under a masked interrupt, an idle
     # step) plus hooks for Y-side registers it does not map (8 Sep 2026, O8).
-    EMUPATCH=$(pwd)/tools/dsp56300.patch
+    EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     if git -C vendor/dsp56300 apply --check "$EMUPATCH" 2>/dev/null; then
       git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI, shared window, host-stepped cores)"
     else

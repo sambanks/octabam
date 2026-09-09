@@ -13,7 +13,7 @@ and what is replaced instead of leaving the operator to guess.
 A stock entry costs NOTHING: no clone (its descriptor is where stock put
 it), no placement (its code is where stock put it), no words, no cycles
 charged by `make cycles` (which cannot see it -- the FILTER figure of 192
-cycles is the only one measured, docs/CHIP.md). What the build writes for
+cycles is the only one measured, docs/firmware/CHIP.md). What the build writes for
 it is its list row and its cursor position, and nothing else.
 
 ITS KNOBS ARE READ FROM THE STOCK DESCRIPTOR, not declared: names, defaults,
@@ -27,7 +27,7 @@ a fresh clone before `make setup` -- the entry simply carries no params.
 A SELECT'S LABELS COME FROM THE FIRMWARE ITSELF: the words a stock select
 draws ("12dB|24dB", "NONE|HP|LP|BOTH", "A#0".."A 9") are not data in the
 image, they are printed by the slot's display-formatter FUNCTION, so
-tools/stock_labels.py runs each formatter on the emulated ColdFire for every
+tools/build/stock_labels.py runs each formatter on the emulated ColdFire for every
 value and checks the result in as stock_labels.json (2 Sep 2026). The
 registry reads that file; the selftest proves it still matches the firmware
 whenever the emulator is available.
@@ -40,7 +40,7 @@ instance buffer gets Y:0x4000 as the hardware would give track 1. Measured
 CHORUS at MIX=127 modulates, COMPRESSOR passes at defaults. The one that
 cannot render is DELAY: its DSP dispatch is stock's null stub because the
 Echo Freeze delay runs on the ColdFire (DMA over SDRAM rings,
-docs/EXTERNAL.md), so there is no DSP code to run.
+docs/firmware/EXTERNAL.md), so there is no DSP code to run.
 
 Two of them are special:
 
@@ -48,15 +48,15 @@ Two of them are special:
                  DSP nothing, and has no local render (above).
   the four with  SPATIALIZER, FLANGER, CHORUS, COMB allocate an FX2
   a buffer       instance buffer through the host's bump allocator (they
-                 read X:0x213 at init; docs/DSP.md section 10), and the
+                 read X:0x213 at init; docs/firmware/DSP.md section 10), and the
                  allocator hands out per-TRACK bases that are exactly the
                  addresses BusVerb, Nimbus and BusDelay hardcode. The
                  ledger refuses them beside any module with fixed Y
                  buffers; see Claims.stock_instance_buffer.
 
-Addresses are the descriptors' E addresses from docs/PARAM_PAGES.md
+Addresses are the descriptors' E addresses from docs/firmware/PARAM_PAGES.md
 section 2 (P = E + 0x38 is what the chooser list holds). Words are the
-module spans from docs/DSP.md section 7c, for the index only.
+module spans from docs/firmware/DSP.md section 7c, for the index only.
 """
 
 from __future__ import annotations
@@ -69,8 +69,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 STOCK_IMAGE = ROOT / "out/raw/section_3_MAIN_OS.bin"
 BASE = 0x40000400                      # dsp_modmap.BASE, without the cwd-relative path
 
-# P-relative descriptor offsets (docs/PARAM_PAGES.md section 5b; the same
-# constants tools/build_bus.py writes through).
+# P-relative descriptor offsets (docs/firmware/PARAM_PAGES.md section 5b; the same
+# constants tools/build/build_bus.py writes through).
 _P_NAMES, _P_DEFAULTS, _P_COUNTS = 0x16, 0x5e, 0x9a
 _P_PENABLE_LO, _P_PENABLE_HI = 0x18e, 0x18a
 
@@ -230,7 +230,7 @@ def _stock(key, name, fx2_id, desc, abbr, fullname, words, doc, char,
     )
 
 
-# Chooser order here is stock's own (docs/PARAM_PAGES.md: FLTR->1 ... DARK->14).
+# Chooser order here is stock's own (docs/firmware/PARAM_PAGES.md: FLTR->1 ... DARK->14).
 MODULES = (
     _stock("FILTER", "filter", 0x04, 0x400d4772, b"FLTR", b"FILTER", 727,
            "Stock multimode filter, the default FX1 effect. 727 words, "
@@ -295,7 +295,7 @@ MODULES = (
 # ---- where each effect's CODE lives, per payload ---------------------------
 # The thirteen DSP effects are laid out CONTIGUOUSLY and every one of them is
 # self-contained: no control flow leaves its own span and nothing enters it
-# but its own dispatch entry (measured 3 Sep 2026, tools/dsp_reach.py over
+# but its own dispatch entry (measured 3 Sep 2026, tools/build/dsp_reach.py over
 # both payloads; the one apparent exception is PLATE's `do #<$6,>$1267`,
 # whose operand is a loop END and therefore exclusive). That is what makes
 # any of them harvestable for its words, not just the three reverbs.
@@ -305,7 +305,7 @@ MODULES = (
 #
 # ⚠️ DERIVED FROM THE MODULE MAP, not written down. The record SIZES in P
 # order are the fingerprint, and PHASER is four records past its own -- its
-# true extent runs 41 words past what its record claims (docs/DSP.md s8), so
+# true extent runs 41 words past what its record claims (docs/firmware/DSP.md s8), so
 # it is matched as a group. A firmware whose layout differs fails to match
 # and raises rather than handing back plausible addresses.
 _P_ORDER = (("FILTER", (727,)), ("SPATIALIZER", (261,)), ("EQUALIZER", (282,)),
@@ -327,6 +327,7 @@ def p_spans(payload: str) -> dict[str, tuple[int, int]]:
         return _spans[payload]
     import sys as _sys, pathlib as _pl
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[1]))
+    import toolpath  # noqa: F401  (every tools/ dir on sys.path)
     import dsp_modmap as dm
     img = dm.IMG.read_bytes()
     va, ln = [(v, l) for t, v, l in dm.PAYLOADS if t == payload][0]

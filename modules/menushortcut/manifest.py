@@ -9,9 +9,9 @@ NOTHING ABOUT THE DATA MODEL MOVES. The parameters still live on the host
 track's FX2 page, in the Part, scene-lockable, reachable by CC exactly as
 before -- this is navigation only, which is what makes it cheap. A control
 surface of its own would need a parameter store of its own, and that is the
-swamp `docs/MAINMENU.md` section 6 declines.
+swamp `docs/firmware/MAINMENU.md` section 6 declines.
 
-HOW (docs/MAINMENU.md sections 2-5, 7, all traced there):
+HOW (docs/firmware/MAINMENU.md sections 2-5, 7, all traced there):
 
   * the CONTROL list descriptor at 0x400cbd54 holds its count at +0x00 and
     its row array pointer at +0x18. The array cannot grow in place, so the
@@ -43,7 +43,7 @@ import pathlib
 
 from remix.schema import CavePatch, Kind, Module
 
-# The CONTROL submenu, from docs/MAINMENU.md section 2.
+# The CONTROL submenu, from docs/firmware/MAINMENU.md section 2.
 CONTROL_DESC = 0x400cbd54          # count at +0x00, rows pointer at +0x18
 CONTROL_ROWS = 0x400cc5a8
 ROW_LEN, ROW_N = 24, 6
@@ -116,7 +116,7 @@ MODULE = Module(
     cf_patches=(CavePatch(
         label="menu shortcut cave",
         # ⚠️ PINNED OUTSIDE THE CLONE WINDOW, at the unclaimed 2,064-byte zero
-        # run docs/MAINMENU.md section 5 names. The floating region is where
+        # run docs/firmware/MAINMENU.md section 5 names. The floating region is where
         # descriptor clones and label formatters live, and the BamSep26 rig
         # leaves 84 bytes there -- this cave is 300. Nothing else claims this
         # run; the build refuses if it is not still zero.

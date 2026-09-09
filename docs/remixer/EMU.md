@@ -1,0 +1,655 @@
+# Local ColdFire emulator — Tier-0 bring-up
+
+The remixer emu of `PLAN.md` §5. Goal: an iterate-with-a-cycle loop for
+ColdFire/UI work (a menu patch, a cave) without a flash. This page is the
+Tier-0 record — how far the real firmware boots under emulation and what it
+needs on the way. `tools/emu/emu_bringup.py` is the harness; re-run it to
+reproduce every number here.
+
+Markers as in `CHIP.md`: ✅ measured (here: observed in the emulator and
+cross-checked against `objdump cfv4e` disassembly), 🟡 inferred + falsifier.
+
+## The core is not the problem ✅
+
+**Unicorn 2.1.4 with `ctl_set_cpu_model(UC_CPU_M68K_CFV4E)` executes this CPU
+correctly.** Point-checked before trusting it: `mvz`/`mvs` extend right, and
+EMAC `macl`+`movclrl` gives the exact product (32769 × −32767 = `0xC0000001`)
+— the instructions r2 and the default plain-68k core both mangle
+(`docs/firmware/EXTERNAL.md`). The pruned archaeology `emu_*.py` harnesses ran the
+default core; the model flag is the fix, and the reason a boot is now
+possible at all.
+
+**With SP and SR seeded, the image runs ~7,000,000 instructions with zero
+illegal-instruction faults**, through the whole early hardware init, and
+stops exactly at the RTOS multitasking handoff. No decode wall anywhere in
+between.
+
+## What the boot needs, in order ✅
+
+Seed the reset state the (absent) vector preamble would set — **SR before A7**,
+or the supervisor/user stack banks swap and A7 lands in the wrong one:
+
+```
+SR = 0x2700   (supervisor, IRQs masked)   A7 = 0x48000000
+```
+
+RAM windows are `docs/firmware/ARCHITECTURE.md` §7; the stack grows down from
+`0x48000000` into the `0x46000000` region.
+
+**Peripheral MMIO** is modelled by callback, not backed by RAM, so every
+access is logged — the log is the register map. Default read = all-ones,
+which satisfies every "wait until bit SET" poll the boot uses. The boot map
+(first touch of each register, from the harness):
+
+| region | what it is (🟡 unless noted) | notes |
+|---|---|---|
+| `0xfc0c4000` | clock/PLL config | **load-bearing** ✅ — see below |
+| `0xfc0a4066/69` | serial/UART-ish | writes `0x43`,`0x33` |
+| `0xfc064000..01c` | a serial/timer module | heavy init, status polled at `+4` |
+| `0xfc048018..05b` | another module | writes `0x1b`,`0x06` |
+| `0xfc088000/02` | serial shift-out (LCD? ✅ shift-done in bit 2) | write datum, poll bit 2, 8×; ran 896× clean |
+
+**One register's value is load-bearing, not just its presence:** the firmware
+reads `0xfc0c4000`, takes the top byte as the PLL multiplier, computes
+`sysclk = (reg>>24) × 12 MHz`, and **halts (`bra *` at `0x4000fa8c`) unless it
+equals 264 MHz**. So the top byte must be 22 (`0x16`) — the harness returns
+`0x16000000`. (entry read `0x40000418`; gate `0x4000fa78`.) This is the
+pattern to expect: most peripherals only need to be "present", a few gate the
+boot on a specific reply, and each announces itself as a halt you then decode.
+
+## Async completion flags ✅
+
+The boot polls flags that an interrupt handler — or the second DSP core —
+would set, shaped `move.w (abs),d0 ; [mvz] ; cmpi.[wl] #imm,d0 ; bne self`.
+Observed: word@`0x0` and word@`0x2000`, each awaited `== 0xffff`, each after a
+kick subroutine (🟡 plausibly the two DSP cores' boot handshake, or a
+memory-region test). The harness auto-satisfies them: a watchdog spots the
+spin, decodes the read address and compared immediate, and writes it —
+**at the LOAD width (`move.w`, 2 bytes), not the `cmpi.l` width**, or the low
+word reads back wrong. A memset is told apart from a poll by a climbing write
+counter (a bounded loop makes progress; a poll does not), so long BSS clears
+(e.g. the ~90k-iteration one at `0x40000530`) are not mistaken for spins.
+
+## The boundary: `trap #0`, the RTOS handoff ✅
+
+Execution stops at `trap #0` (`0x40000e46`). It is preceded by
+`movew #0x2000,%sr` (drop the interrupt mask) and followed by `bra *` (the
+safety net if the scheduler ever returns) — the textbook "start multitasking:
+enable interrupts, trap into the scheduler." This is the Tier-0/Tier-1
+boundary named in `PLAN.md` §5.
+
+Two facts for whoever crosses it:
+- **Unicorn's CFV4E treats VBR as a no-op register** (`UC_M68K_REG_CR_VBR`
+  reads back 0 with a deprecation warning) and does **not** auto-dispatch the
+  trap — the `UC_HOOK_INTR` hook fires with `intno = 32` and the CPU
+  otherwise faults. Crossing the boundary means dispatching the exception by
+  hand: push the frame, fetch the vector, set PC.
+- **VBR is loaded from the runtime variable `[0x400b9668]`** at `0x40000db6`
+  (`movec %a0,%vbr`), and the table is built right after (default handler
+  `0x40000d74` written to every slot). So the vector base is known at run
+  time from that variable, which sidesteps the no-op register read.
+
+## Milestone 1 — boot-and-inspect, wired into the remixer ✅
+
+`emu_bringup.boot(image)` returns a warm machine; `read_menu_tree(uc)` walks
+the MAIN MENU tables (`docs/firmware/MAINMENU.md`) out of its RAM. `make remix`
+(the remixer, `tools/remix/app.py` — manual in `docs/remixer/REMIXER.md`; the
+curses `tui.py` is retired, in history) has an **`e`** view: it boots the *built* image
+(`out/mainos_bus.bin` — byte-compatible with the raw section), confirms it
+reaches the RTOS handoff with no fault, and shows the firmware's own screens
+with any patched-in entry highlighted. This is the crow-flies form of the
+no-flash gate: a cave that breaks early init **faults here instead of on the
+unit**, and a menu-table patch is visible before a flash. It needs `unicorn`
+in the interpreter that runs the remixer; without it the view degrades to
+an "unavailable" message and the rest of the remixer is unaffected. The
+remixer caches one `BootResult` and re-boots only when the image's mtime
+changes, so re-entering the view is instant; the FX2 page follows the rig's
+selected track (1-8) rather than a hardcoded track 5.
+
+Boot is ~4 s: execution runs in native bursts (`emu_start` with a count),
+with a per-instruction hook turned on only to pin a loop's bounds when a
+stall is suspected. A stall is a PC confined to a small window across several
+bursts; a bounded loop (memset) is told from a flag-poll by an event-driven
+write counter that only a store advances.
+
+## Milestone 2 — the live screen, via the detour harness ✅
+
+The firmware's *actual* menu now renders as text, navigable, out of the warm
+machine — `render_menu(r, cursor)` returns the real renderer's output as
+`(x, y, string)` tuples, and `make remix` → `e` shows it in a framed LCD with
+up/down moving the cursor and the submenu preview following, as on the unit.
+
+**The capture primitive** is `FUN_40012bd8` — the "draw string at (x,y)" call
+every renderer funnels through (189 call sites; the list drawer `FUN_40037590`
+and the PERSONALIZE renderer `FUN_40068e00` both reach it). ColdFire cdecl,
+args on the stack at callee entry; **passive capture needs only `x`, `y`,
+`str`**, all on the stack / in RAM, so the hook is self-contained:
+
+```
+FUN_40012bd8(font, canvas, x, y, count, char *str)
+  sp@(12)=x  sp@(16)=y  sp@(24)=str        (font 0x400ba876, canvas=window+36)
+```
+
+**The detour recipe** (the draw code runs in a task the boot never reaches, so
+we call it directly against the warm machine):
+
+1. Boot to the handoff (heap + window system are up).
+2. Install the string-capture hook at `FUN_40012bd8`, plus a map-on-fault
+   hook: a cold detour skips some setup, so a formatter can hold one stale
+   pointer — map a zero page under it so its `strlen` reads `""` and the real
+   row labels still render instead of faulting the whole draw.
+3. **`ctl_flush_tb()`** — the draw fns were JIT-cached during the boot splash
+   *without* the hooks, so a hook added afterward never fires on the cached
+   block until the translation cache is flushed. (This cost a real debugging
+   session: the loop ran but the string primitive "wasn't called" — it was,
+   the cached block just wasn't instrumented.)
+4. Call `FUN_40064c18` (menu open) — allocates the window from the heap.
+5. Set `[0x400cbf40]=1` (tree state) and **`[0x400cbd9c]=6`** (the visible-row
+   clamp; a cold detour leaves it 0, and the row loop bound is
+   `min(clamp, count)`, so 0 draws nothing).
+6. Poke `[0x400cbd98]` = cursor row, then call `FUN_40064d7c` (draw). The
+   selected row and the right-pane submenu preview follow the cursor.
+
+The line pitch is 7 px and the origin is bottom-left-ish (the list drawer
+steps y DOWN per row), so `layout_screen` maps larger-y to higher rows.
+Selection highlight is a separate XOR-rect op `FUN_40012254` (`mode<0`) — not
+captured as text yet.
+
+**The FX2 dials page renders too** — `render_fx2(r)` detours to the EFFECT 2
+SETUP window (`FUN_4005996c`) for track 5 and captures the chooser + param
+row; it lists the *built remix's own effects* (`BusVerb77`, `BusDelay77`,
+`Send`). `make remix` → `e` → `f` shows it. (The effect's specific dial
+*values* — the reverb's SIZE/MODE — need the effect assigned to the track,
+i.e. a loaded project or a poked part-record; the chooser + param labels
+render without one.)
+
+**What is still not live: item-level descent inside the menu.** The MAIN MENU
+is a fixed two-pane widget (categories left, the selected category's submenu
+right), so moving the cursor already *previews* every submenu — but selecting
+a submenu ITEM (to reach a param page, or PROJECT▸SAVE) needs the real key
+handler `FUN_40064e64`, whose keycodes are position-dependent, and the
+selection highlight is an XOR rect (`FUN_40012254`), not text. Repointing the
+display at a submenu descriptor directly does NOT work: the firmware computes
+the row x from 2-pane state that a cold repoint leaves unset, so the labels
+land at a bogus x (`0x80003003`). Driving the key handler + capturing the XOR
+highlight is the next increment.
+
+## Both FX param pages, with the effect assigned ✅ (31 Aug 2026)
+
+`render_fx2(r, track, effect_id)` and `render_fx1(r, track, effect_id)` render
+the real FX2 / FX1 parameter pages — the effect's actual knob rows, not a
+default. In the remixer's emu view: `f` (FX2 — follows the rig's selected
+track and its assigned effect) / `o` (FX1; left/right cycle the effect). FX2 with `0x07` shows BusVerb's knobs (SHMR/MODE/DIFF/SHFT/GATE/RATE/
+HP/LP/IN); FX1 shows the stock effects (FILTER's BASE/WDTH/ENV/ATK/DEC/…, EQ's
+FRQ/GN/…) — our inserts are all FX2, so the FX1 tables are stock.
+
+**How the effect resolves.** The page draws the descriptor `table[id]` where
+`id` is a per-track byte in the project Part: FX2 at `PART + PAT*0x18b2 +
+track + 0x8ed88`, FX1 at `+0x8ed80` (`PART = *(u32*)0x46c82456`, `PAT =
+*(u8*)0x100b14cf` — misnamed: that byte is the current **part**, not the
+pattern; the `0x18b2`-stride records are parts, `EXTERNAL.md` §6). Our boot loads no project, so `PART` is null — `_prime_part`
+maps a zeroed scratch Part and points the DB pointer at it, then `assign_fx2`/
+the FX1 path write the id byte. In the BUILT image the id→descriptor tables
+are patched (`build_bus.py`), so `0x07` is BusVerb; in the raw image those
+slots are NONE. (`0x06`/BusDelay aliases to SEND in the payload-A SPEC image
+and renders empty — it lives on payload B.)
+
+**Both SETUP windows** wrap the stage+draw: FX2 `FUN_4005996c` (drawer
+`FUN_40037590`), FX1 `FUN_40059afc` (drawer `FUN_4003792c`). Calling one after
+assigning the id is the whole recipe.
+
+**The PLAYBACK page** (`render_playback`, `e` → `p`) is the same idea for
+page_kind 0: set the machine-type byte at `PART + PAT*0x18b2 + track + 0x8eda2`
+(0 = STATIC, 1 = FLEX — measured 7 Sep 2026, RTOS_FORK §10.13; this note used to say the reverse), stage the page (`FUN_400554e0(0)`), then
+redraw the track screen (`FUN_4004d948`) — the sample row LEV/PTCH/STRT/LEN/
+RATE draws. That is "a sample loaded on the track", on the UI side; the audio
+side (loading a WAV and hearing it) is the `v` audition view.
+
+**Values.** A knob's displayed value is a byte at `PART + PAT*0x18b2 +
+track*30 + slot + 0x8f084` (`set_fx2_value`), and the canonical writer is
+`FUN_40054cd8(track, flat, value)` with `flat = 24 + slot` for FX2 page-1.
+The value itself draws as a dial GRAPHIC, not text, so it is not captured by
+the string hook — the audio side (`render_reverb`, the `v` audition view) is
+where knob values are heard. Editing a value in the page + reading it back as
+text is the remaining nicety.
+
+## Milestone 4 — the card, and a project loaded from it ✅ (5 Sep 2026)
+
+`tools/emu/emu_card.py`. The trigger PLAN.md §5 set for this — "the SECOND
+project-dependent path" — arrived with the recorder work (the write path can
+only be armed from a part on a loaded project), and the parts work had been
+waiting on it since the probe flashes of 4 Sep. Run:
+
+```sh
+.venv/bin/python3 tools/emu/emu_card.py --project <dir> --set OCTABAM --name RIG
+make emu-card PROJECT=<dir>            # same, defaults
+```
+
+builds `out/emu_card.img`, boots the raw image, attaches the card, runs the
+firmware's own storage bring-up and loads `/OCTABAM/RIG` through the engine
+task. Everything below is measured in the emulator against the canonical
+image unless marked.
+
+**The card is a FAT16 image the firmware mounts itself.** A pure-Python
+builder (`build_image`) writes MBR + one partition + BPB + FATs + a
+directory tree with VFAT long names. The firmware's mount is picky in
+exactly the ways the code says (`0x400168e8`: `0x55AA`, partition type 4 /
+6 / 0x0e or a bare FAT32 BPB; `0x40017ad4`: 512-byte sectors, ≤ 16384
+sectors per FAT), and macOS mounts the same image and reads the files back
+byte-identical, which is the independent check on the builder.
+
+**The ATA model is small because the driver is.** Task-file registers in
+the FlexBus window `0x90000000` (`ARCHITECTURE.md` §5), IDENTIFY answering
+"PIO only" so the variant detection at `0x40015e28` never touches the
+on-chip DMA channel, READ/WRITE SECTORS, and the handful of no-data
+commands the driver issues (SET FEATURES, STANDBY, CFA). The ATA host
+status byte `0xfc0a4039` must read with bit 3 clear (the code moves it into
+CCR and tests N), which the all-ones default violates — `EXTRA_OVERRIDES`
+in `emu_bringup.boot` exists for that.
+
+**The RTOS boundary was one hook, not a scheduler.** The PIO handlers
+(`0x40014b94` READ, `0x40014c48` WRITE, `0x400159bc` IDENTIFY) only program
+the registers; the data phase is the ATA interrupt handler at `0x40015304`,
+which streams 256 words per sector and signals the RTOS event the queue
+primitive `0x4001568c` blocks on (`0x40000818`). We never take the
+interrupt. A hook on `0x40000818` performs the transfer the handler would
+have — same bookkeeping words (`0x46c8c592` count, `0x46c8c594` buffer,
+`0x46c8c593` command, `0x460bac18` IDENTIFY buffer, `0x460bae18` lock) —
+and returns as if the event had fired; a second hook at the primitive's
+no-wait return (`0x40015786`) completes asynchronous commands the same way.
+Timer waits (the delay helper `0x40020c7c`) pass instantly. Every other wait
+is logged, so a silently satisfied wait for something that never happened
+is visible in the record.
+
+**Cold init is the main task's own list.** After the ATA subsystem init
+(`0x400160f8`: interrupt vector 0xb6, the two 64/32-entry command queues,
+16 event objects) the main init task (`0x4001fc00`) runs eight subsystem
+inits before parking; `card_init` runs the same list, plus the engine-side
+queue creator `0x40040b14` (queues `0x460d17ce/ee/ae`, 1024-entry rings)
+which the list does not reach. Then card detect/mount `0x40061648(1)`
+returns 0 with `0x460d1cb8 = 1`: IDENTIFY, SET FEATURES, LBA 0 (MBR), the
+BPB and the first 256 FAT sectors, in that order.
+
+**Loading a project is engine command 4, run by the real engine task.**
+The UI's `0x40023c7c(name)` posts a slot (opcode 4, the name, three
+callbacks) to `0x460d17ce`; the engine task (`0x4008445c`, Bryan T's
+46-opcode dispatcher, `EXTERNAL.md` §6) does the work. Its handlers address
+locals through the task's frame pointer, so they only run inside the task:
+`engine_start` runs it from its entry to the first receive call, and
+`engine_run_once` resumes at that call with a message queued and stops when
+the loop comes back round to it, keeping the task's registers between calls.
+Opcode 4 reads `project.work`, `markers.work`, the eight arrangements and
+**all sixteen bank files**, probes every sample slot (the firmware's own
+log on the card records each missing sample, which is how the load was
+first proven real), and sets the project database pointer
+(`0x46c82456 = 0x400e21e0`, the bank-blob base Bryan's doc predicts). The
+RIG project loads in ~35 s: 30,955 sectors read, 300 written (the log).
+RELOAD BANK, opcode 20 (`0x40022778(mask)`, message "RELOADING BANK"), is
+the same loader for a **bitmask** of banks — bank A is mask 1, not index 0.
+
+**The proof.** Part 1 of bank A in RAM (`PART + 0x8ed80/+0x8ed88 + track`)
+reads FX1 `[28,4,4,4,18,4,28,28]` and FX2 `[6,8,27,8,7,9,8,0]`; the same
+bytes in `bank01.work` on disk (`ot_project.py`'s `0x8eed6 + 9/+0x11`) are
+identical, and `render_fx2(r, track, effect_id=None)` draws the bank's own
+part name, `Pt:1 VERSE`. (The knob rows draw blank against the RAW image,
+which has no descriptors for the octabam effect ids; use the built image.)
+
+**The set name is an absolute path.** The firmware's default is
+`"/PRESETS"` (`0x400b46ef`) and its log names bank files
+`/PRESETS/<project>/bank01.work`. Named `"OCTABAM"` without the slash, the
+project itself loaded (relative to the root) and every bank was then
+"missing. Initializing to empty bank" — the loader had changed into the
+project directory. `set_names` prefixes the slash. On Sam's card the set
+folder IS `PRESETS`, holding `OCTABAM_RIG`, `ChongBongolo 26`, and the rest.
+
+**Three things Unicorn's CFV4E core cannot do, now shimmed in `_run_until`:**
+
+- `bitrev`, `byterev`, `ff1` (ColdFire ISA_C) raise the illegal-instruction
+  exception. 437 sites in the image — 219 `byterev`, most of them in the
+  FAT code swapping little-endian fields, and the RTOS event-bit allocator
+  is `bitrev`+`ff1`. objdump cannot decode them either (`.short 0x02c0`).
+- A misaligned `movem.l` may raise an address error (the firmware's memset
+  clears 16 bytes at a time and was seen with an odd destination). A shim
+  emulates the long form, modes (An), (An)+, −(An), (d16,An) — but it has
+  **not fired** in any successful run (the stop that prompted it was the
+  budget, below), so it is an untested guard, marked as such.
+- Long detours: a project load runs for hundreds of millions of
+  instructions, so the old 20M-instruction call budget silently cut the
+  loader short with no trap. `_run_until` now runs to its stop address in
+  bursts and tells a poll (PC pinned, no writes) from slow progress. (The
+  reads themselves are quick: ~2,000 sectors in 23 s.)
+
+**Two traps for whoever extends this.**
+
+- The first project load "succeeded" with default effect ids in every part:
+  it had stopped at the instruction budget, not at the end. A cold detour
+  that returns quietly is not evidence it finished — `_run_until` now runs
+  to its stop address and raises `DetourTrap` / `DetourStall` otherwise.
+- The WRITE SECTORS handler streams the first sector through the data
+  register itself and decrements the count byte before returning, so at
+  completion the count byte is SECTORS REMAINING and reads 0 for a
+  one-sector write. Treating 0 as 256 (the READ convention) turned the
+  log-file appends into 256-sector writes and wiped the card image; the
+  next load then found an empty root. The model commits per sector as data
+  arrives and only writes the remainder at completion.
+
+## Milestone 5 — frames and ticks, cold (IN PROGRESS, 6 Sep 2026)
+
+`tools/emu/emu_frames.py`. The aim is Bryan T's session-5 ask (`EXTERNAL.md`
+§6): with a project loaded and the sequencer running, log the per-track
+trigger word the per-frame dispatcher reads (`0x4000d32e`), whose low
+nibble is a trig's sample offset within the 16-sample frame, and see whether
+it walks from pass to pass. What runs, all measured in the emulator:
+
+**The frame builder is an interrupt handler.** `0x4000aad0` (installed on
+vector 0x41 at `0x4001fbf8`): `lea sp@(-252) / moveml d0-fp`, re-entry
+guard `0x46104d4e`, ping index read from the DSP host port `0x2000001c`
+(must be 0 or 1 or it `halt`s at `0x4000ab40`), a poll of `0x20000004`
+until bit 7 clears, ..., the per-track dispatcher `0x4000d2a0`, the packer,
+`rte` at `0x4000d9ae`. `run_frame` pushes a ColdFire exception frame with
+the detour sentinel as return PC and runs to the `rte`, which Unicorn
+reports as exception 256 rather than executing. 12,000 frames run clean.
+
+**The sequencer tick is a forced interrupt, not a timer.** `0x400a1e10`
+(saves all registers, acks INTC `0xfc048010`, sends MIDI clock `0xF8`) is
+raised by the frame handler itself: a countdown `0x46107570`, decremented
+by `tempo24 << 4` per frame, expires and the frame handler ORs bit 0 into
+`0xfc048010` (`0x4000ae00`; a re-sync variant at `0x4000aea0`). The tick
+handler runs four times per MIDI clock (96 PPQN): its tail reloads
+`0x46107568 := 2,646,000` (one 16th step / 6, in units where one sample is
+`tempo24`) and only every fourth call advances the tick clock `0x4610757c`
+and re-syncs the frame clock `0x46104cf4` to it. `emu_frames` hooks both
+force sites and runs the tick after the frame that raised it; interrupt
+priority (whether the tick pre-empts the frame handler mid-way on hardware)
+is the one thing not modelled.
+
+**The trig-time loop — the producer of the nibble Bryan could not trace.**
+`0x4000aef6`: for each of 31 entries in the event table `0x80001904`,
+`dt = event − now` (`now = 0x46104cf0 = 0x46104cf4 + tempo24 << 4`),
+`smi` flags the past, `msacl dt × Q` with `Q = −2³¹/tempo24` (MACSR 0x20,
+fractional, truncating) gives the offset in samples, `+16`, `spl`-clamped
+to ≥ 0, stored as a byte in `0x800017d6[]` (flags to `0x80001798[]`). The
+dispatcher's word is assembled at `0x4000c98c`: `byte | 0x0210 |
+(0x46c7faa4[track] & 0xF000)` — only for a track whose immediate-action
+slot `0x46c7e9fa[track]` (written by the QREC scheduler `0x40005178` when
+a step trig fires) is non-zero. So the nibble is the truncated fractional
+sample position of the event, and a walk is arithmetically expected
+whenever the pattern period in samples is not an integer.
+
+**Transport.** `0x4009b964(arg)` with the sequencer stopped runs the start
+case: state `0x800065b8 := 1`, phase increment `0x46107570 := tempo24 << 4`,
+a post to the UI queue `0x460d1664`. The project's MIDI byte `0x80000028`
+bit 0 is CLOCK RECEIVE; Sam's projects have it set (the Rytm is master), and
+with it set the engine waits for an external clock that never comes —
+`--internal-clock` clears it.
+
+**Two more things Unicorn's core lacks, shimmed in `_run_until`:** the EMAC
+**MAC-with-parallel-load** forms (`msacl Ry,Rx,<ea>,Rw,ACC`, used by the
+trig-time loop, the packer and the delay routine) — the shim does the load
+and address update in Python and executes the plain form natively from a
+trampoline so the accumulator state stays in the core; address-register
+operands and the inverted acc bit of the load form are handled per
+binutils' reading of this image. **Two defects of that shim, found 8 Sep
+2026 by injecting audio into the recorder (RTOS_FORK §10.18):** (1) it
+performed the parallel load BEFORE the multiply, where the chip multiplies
+with the pre-load registers — every product in a pipelined loop
+(`msacl %a0,%d0,%a2@+,%d0,%acc0`: d0 is both multiplicand and load target)
+took the NEXT word; (2) the core does not trap on every load form: of the
+122 distinct (opcode, extension) pairs in the image it accepts 27 and runs
+them with a made-up effective address, two of them the recorder's mix loop.
+`native_macload_sites` now classifies every pair on the loaded library and
+hooks the accepted ones so they stop before executing and go through the
+shim as if they had trapped. A recorded buffer at unity gain is the test. And Unicorn's `until` address is not
+honoured when the instruction there raises: the trampoline parks on a
+`nop` instead.
+
+**Retracted: "no step trig ever fires."** That was true only for a
+project whose per-track running states start at 0 (the transport's start
+case promotes a track from state 2, and the RIG/ChongBongolo projects never
+reach state 2 cold). With a card **freshly saved on the unit** carrying one
+trig (track 1, step 1, `out/_testproj`, 6 Sep) and `--poke-trig` setting a
+second step directly in the loaded pattern record, the whole path now runs
+end to end: `--start` (transport `0x4009b964(0)` then `0x4009b5c8(t)` for
+every track) promotes all eight tracks to state 1 (`0x80006500` reads
+`01` × 8), the step handler `0x4009d1e8` is called at every boundary for
+every track, and on the boundary carrying the set mask bit it takes the
+trig path (`0x4009d422`) and schedules an absolute fire time into the event
+table `0x80001904[track]`.
+
+**Where the trig actually lands is not `0x4000d32e` / `0x46104d26`.** That
+was Bryan's anchor and the header comment's original claim; both are real
+code, but in this run neither ever carries the fired trig. The live path is
+a *different* per-frame gate at `0x4000b800` (called once per track from
+the frame handler, before the `0x4000d2a0` dispatcher): it tests the
+scheduled time against the frame clock, and — when due and the track isn't
+muted for that event — copies the trig-time loop's clamped sample-offset
+byte (`0x800017d6[track]`) into `0x46104d15[track]` and ORs in flag bits
+above it (`0x4000b9bc`/`0x4000b9f2`; bit 4 = hold, confirmed here: byte
+`0xa6` OR `0x10` → `0xb6`). `0x46104d26` (`FW_TRIG_WORDS`) stayed all-zero
+through the whole 400-frame run that produced this trig; its only writer
+found so far (`0x4000d378`) writes zero every frame regardless of whether
+anything is due.
+
+**⚠️ `0x4000b800`'s own claim is now in question (M6e, 6 Sep 2026, route A).**
+`watch_calls([0x4000b800])` logged **zero** hits across a 400-frame run
+under the real scheduler, including on the same project/trig this section
+describes (which still lands `0xd3` at frame 344 exactly as here) — so PC
+never equalled that literal address in that run, while `0x4000d2a0`
+(watched the same way, same run) fired 400/400 as expected, ruling out a
+hooking-mechanism problem. Note what the instrument is: `watch_calls`
+installs a `UC_HOOK_CODE` at the address itself, so a zero count means
+that instruction **never executed, by any route** — not merely that no
+`jsr` reached it. (The first write-up of this said "not reached via
+`jsr`", which understates it.) Not retracted outright — the write into
+`0x46104d15[track]` still happens on schedule, so SOME code does this; only
+the specific entry address is now unconfirmed under route A. Left as an
+open flag rather than corrected in place, since this reading long predates
+route A and nothing here re-derived where the write's PC actually is.
+
+**Open, and this is the actual gap against Bryan's ask**: `RLEN` (the value
+he asked to vary, 4 vs 32) is a **recorder** parameter — its converter
+(`0x4006e3b2`) reads a per-track byte at `0x80000cf4`, which only means
+anything for a track with a recorder machine armed. The test project used
+here has an ordinary trig on an unconfigured track (`machine types part 1`
+all zero) — that is almost certainly why `0x46104d26` never lit up: the
+array may genuinely be recorder-specific, reached only along the arm/RLEN
+path this project never exercises. Confirming that needs a project with a
+track's machine set to a recorder and RSRC armed, which has not been built
+yet — this run establishes the mechanics (frames, ticks, transport, an
+ordinary trig landing in RAM) but does not answer Bryan's literal question.
+`tools/emu/emu_frames.py` now logs both arrays every run (`FW_LIVE_NIBBLE` and
+`FW_TRIG_WORDS`) so the next attempt, once a recorder-armed project exists,
+needs no new instrumentation — just `--bpm 128` and a pattern length of 4
+vs 32 steps.
+
+## The RTOS fork — M6a/M6b/M6c/M6d done 6 Sep 2026 (`tools/emu/emu_rtos.py`)
+
+Milestones 2 and 4 took route **B** (detour) and it carries the remixer and
+the card: a menu- or cave-patch is visible and walkable without a flash, and
+a project loads through the firmware's own storage stack. Route **A** —
+run the firmware's own scheduler — is the fidelity upgrade that shows
+behaviour emerging from real task interleaving, and M5's recorder-arm path
+("path B" above) is the first thing that needs it. **`docs/firmware/RTOS_FORK.md`
+is the scope and the record.**
+
+M6a runs the kernel for real: `emu_rtos.attach()` boots to the handoff as
+before, attaches the card without its cold-detour hooks
+(`emu_card.attach(..., cold_hooks=False)`), swaps the peripheral window for
+register models (two interrupt controllers, both PITs, the two serial
+blocks, the DSPI) seeded by replaying the 7,886 writes the boot made into
+the generic stub, and then loops: bursts of `emu_start(count=…)` sized to
+the next timer event, the boot's own INTR hook stopping each burst on
+`trap #0` (dispatched by hand into the scheduler) or `rte` (popped by
+hand), interrupts injected between bursts when their level beats the SR
+mask. Time is counted in samples. The M6a gate — every task created and run
+once — passes at 205 ms emulated: **eleven** tasks, not the eight the scope
+read from the image (five create sites call through a register and were
+missed), the first switch at the first 5 ms tick after main's creates, the
+cascade in strict priority order, then tasks posting to each other. The
+scope's §2 is corrected in place; §3 records two Unicorn facts that cost the
+session (reading SR through the API at a burst boundary corrupts the
+condition codes — a trampoline `movew %sr,%d0` does not; memory-write hooks
+do fire on MMIO).
+
+**M6b (same day): the mount and the load, both real.** The engine's own
+LOAD PROJECT handler doesn't mount the card; that's a *different* task's
+job — `sys` (`0x46c7bed8`), which has its own 78-entry dispatch table
+nothing had decoded before. `Rtos.request_card_mount()` sends it the
+message that reaches `FW_CARD_INIT`; `Rtos.load_project_live()` then posts
+LOAD PROJECT exactly as route B builds it. Real ATA IDENTIFY and READ
+commands follow (6,189 commands / 30,467 sectors in one run, matching M4's
+cold proof — ~30,955 sectors — to within 1.5%), and the engine parses the
+project file's `BANK=1` and switches to bank B, the saved bank. **Then a
+retraction** (`RTOS_FORK.md` §7): two readings shipped the same day called
+that pointer "empty" vs "correct" and blamed a "track-select watcher"; the
+bytes are the current *bank* and the two values are bank A and bank B. The
+run ends on bank A because the LOAD PROJECT handler's own first step is a
+reset that posts "select bank 0" to `sys`, and `sys` — busy with p2c
+traffic ahead of it in its FIFO — applies it ~870 samples later, after the
+engine has parsed `BANK=1`. A real cross-task ordering, measured, with a
+one-press hardware falsifier (does the unit come up on the saved bank?) —
+**answered on the unit 6 Sep evening: it comes up on B and plays**, so
+the ordering is the emulator's defect (`RTOS_FORK.md` §7), still to fix.
+`load_project_live` reports the bank the engine parsed beside the bank
+the run ended on.
+Also found: `call_as_main` (borrow main's idle slot to call a plain OS
+subroutine) is unsafe for anything that can genuinely block — main is the
+kernel's only always-ready task, so blocking it starves the scheduler.
+`FW_CARD_INIT` proved this by crashing it; the fix routes blocking calls
+through a real task's own context instead (post it a message).
+
+**M6c (same day): the sequencer under the real scheduler — the fidelity
+gate passed.** `out/_testproj` is a project freshly saved on the unit;
+cold, it lands track 1's trig at frame 344, byte `0xd3`. Under route A
+(real mount and load, real interrupts, the tick pre-empting the frame
+handler for real) the same trig lands with the same byte, on the same
+track, 344 frames after the transport-start frame, with the same 28 ticks
+and the same six start-frame writes. Three things stood between the
+mechanism and that result, each measured (`RTOS_FORK.md` §8): the frame
+handler masks its own source and the re-arm is state 7 of the **eDMA
+completion interrupt** — the DMA chain the handler kicks (ch1 → 6 → 7 →
+source 15, then the ISR's own SSRTs and the ColdFire's per-frame EMAC
+routine) is now modelled, completing at the DSP's next frame boundary,
+which gives a 16.0-sample period exactly; the sequencer tick is a
+**forced** interrupt the firmware never unmasks, and the reference manual
+says a forced request is not affected by the mask (§17.2.3) — the INTC
+model now agrees; and the load's last step copies the bank byte into the
+sequencer's own playing-bank byte at a moment when `sys` has already
+applied the engine's reset-time "select bank 0" in the handler's real card
+waits, so the sequencer walked bank A's empty pattern — the tool re-issues
+that last step with the file's bytes (`seq_select_live`), and §7's
+one-press hardware falsifier gained a second observable (does PLAY run the
+saved pattern? — it does, unit 6 Sep evening; the re-issue is compensation
+for the emulator's own ordering and goes when the load's timing is fixed). Frame mode counts instructions exactly (`exact_clock`)
+rather than by quantum, which over-charged 2.1×. The previous paragraph
+here, and §8's two hypotheses, were wrong and are retracted in place.
+
+**M6d (same day): real key injection — and the milestone's own premise was
+wrong.** The scope assumed PLAY/REC reach the firmware by posting into the
+queue the task named "UI" blocks on. Disassembling that task
+(`0x4005593c`) shows it waits on an unrelated counting semaphore and spends
+its life decrementing a 136-slot key-repeat timer array — it isn't a queue
+consumer at all, and the label came from being next to the queue's ring
+buffer in memory (`0x460d4fd4`, `0x54` bytes past the TCB), not from
+reading it. The real consumer of `UI_QUEUE` (`0x460d1664`) is a different,
+previously-unidentified task (`0x40056c40`, TCB `0x460d59d4`, `RTOS_FORK.md`
+§2's "❓ (new)" row) — and that queue only carries state-change notices
+(FW_TRANSPORT's own start-case post among them), not raw key events at all.
+Physical keys — a literal-address scan found PLAY (`0x4000a200`), REC
+(`0x4000a274`) and STOP (`0x4000a1e0`) as three consecutive entries in a
+per-key jump table at `0x400d2d54` — dispatch through direct calls, the
+same shape as `MAINMENU.md`'s FX2 shortcut. Both PLAY and REC's full call
+chains were disassembled and hold no blocking kernel primitive, so both are
+safe under `call_as_main`; `press_play_live()` calls PLAY's own handler and
+**reproduces M6c's fidelity gate exactly** (frame 344, byte `0xd3`) — a
+stronger result than M6c's direct `FW_TRANSPORT` call, since it goes
+through the firmware's real clock-sync bookkeeping first. `press_rec_live()`
+starts the transport the same way on a project with no recorder-configured
+track and leaves the record-arm byte (`0x800066a0`) untouched — arming a
+track's recorder for real still needs a project with a track's machine set
+to a recorder, which does not exist yet; that, and Bryan's actual recorder
+question, are M6e's job. `RTOS_FORK.md` §9 has the full measurements and
+the task-table correction.
+
+**M6e, first pass (same day): the recorder project now exists — the arm
+path still doesn't, and the pass's own headline claim is retracted.**
+`ot_project.py machine-type` (and the `tools/scratch/` wrapper) patches
+track 1's machine-type byte to 4 in a copy of the real project, verified
+by RAM readback after a real load (`[4, 2, 0, 0, 0, 0, 0, 1]` where the
+source reads `[2, 2, 0, 0, 0, 0, 0, 1]`). With it, track 1 stops writing
+`FW_LIVE_NIBBLE` entirely: 8 writes -> 5.
+
+❌ **That was written up as evidence that trig dispatch branches for
+PICKUP. It is not** (controls, same command, same day): machine type **7**
+— out of range for the 0..4 dispatch `PARAM_PAGES.md` names — gives the
+IDENTICAL 5-write signature, and machine type **3** (NEIGHBOR, in range)
+gives the baseline 8 with `0xd3` at frame 344. And the writes that vanish
+include track 1's **frame-0 transport-start** `0x10`, one of the six in
+M6c's fidelity table — so the track never starts, and nothing being
+measured here happens at the trig at all. The signature reads "type >= 4 /
+this track is not started".
+
+§9.4's own falsifier finally ran too, and **it was aimed at the wrong
+mechanism**: REC through its own handler over a running transport leaves
+`0x800066a0` at 0 on the recorder-configured project exactly as on the
+plain one — and per the Octatrack manual it would, because `[REC]`
+activates GRID RECORDING mode and it is a **recorder trig**, trigged by
+the sequencer, that starts a track recorder sampling. The lever is that
+trig — a per-step bit in the PATTERN record, not `+0x8f385`, which is the
+recorder SETUP page's TRIG *mode* byte in the part.
+
+The arm/record path itself is still unlocated: every named candidate
+function logged zero calls across 400 frames, including `0x4000b800` on
+the ORIGINAL project's own successful trig — re-derived 6 Sep with a
+working readout, after the discovery that `--watch-calls`/`--watch-mem`
+printed nothing unless `--trace` was on — so that address isn't reached
+the way this document previously assumed, independent of the recorder
+question. ⚠️ Also `0x800065b8`/`0x800066a0` are **longwords**: read a byte
+at a time they report "never changed" whatever the firmware does.
+`RTOS_FORK.md` §10 has the full measurements.
+
+## Reproduce
+
+```sh
+make emu-setup                       # uv sync --extra emu -> .venv with unicorn
+make remix                           # then press e to boot the built image
+.venv/bin/python3 tools/emu/emu_bringup.py [image]   # or the CLI directly
+make emu-rtos PROJECT=<project dir>  # route A: the scheduler running, M6a gate (RTOS_FORK.md §5)
+.venv/bin/python3 tools/emu/emu_rtos.py --project <dir> --set OCTABAM --name RIG --load-project --ms 6000
+.venv/bin/python3 tools/emu/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000   # M6c: the trig under real tasks
+.venv/bin/python3 tools/emu/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG \
+  --sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000 --via-key   # M6d: same trig, via the real PLAY key
+.venv/bin/python3 tools/emu/emu_rtos.py --selftest   # the SR-read trap, pinned
+```
+
+The emulator's one dependency (`unicorn`, with QEMU's CFV4E core — the DEFAULT
+m68k core is plain-68k and cannot decode this CPU) lives in the uv-managed
+`.venv` as the optional `emu` extra (`pyproject.toml`). `make remix` prefers
+`.venv/bin/python3` and falls back to bare `python3`, where the emulator view
+reports itself unavailable and the rest of the remixer is unaffected.
+
+**Route A additionally needs the EMAC-fixed Unicorn** (`make emu-unicorn`,
+7 Sep 2026): stock Unicorn 2.1.4 computes the ColdFire's fractional-mode
+`macl`/`macw` as an unsigned product `>> 32` where the chip does a signed
+product `>> 31`, and decodes MAC-vs-MSAC from the wrong word so `msac`
+adds, so every EMAC result under emulation was half of hardware's and
+every subtract-accumulate had the wrong sign — the recorder length, the
+recorder's block walk, the sequencer's timing byte (RTOS_FORK §10.16). `scripts/build_unicorn.sh`
+downloads the 2.1.4 sdist, applies `tools/patches/unicorn_emac_fractional.patch`
+(`HELPER(macmulf)` in `helper.c`, the MSAC bit in `translate.c`), builds the m68k-only library into
+`.venv/lib/unicorn-emac/`, and `emu_bringup` points the stock Python
+bindings at it through `LIBUNICORN_PATH`. `emu_bringup.emac_selftest()`
+pins the semantics (`0xc00 × 0x200000` must give 3, `−0xc00` must give −3,
+and `msacl` must give −3); `emu_rtos.py` refuses to run on a stock EMAC unless `--stock-emac`.
+A third defect was the harness's own: the EMAC-with-load shim rewrote one
+trampoline address per shimmed instruction and Unicorn served it stale
+(§10.16.2); the shim now keeps one slot per distinct instruction.
+The `.venv` must be the host's native architecture: an x86_64 (Rosetta)
+build with Xcode 26's clang crashed on its first `emu_start` here while
+the PyPI wheel did not, and the native arm64 build is what was measured.
+
+The CLI prints the boot outcome (the `trap #0` boundary), the auto-pokes, the
+MAIN MENU walked from booted RAM, and the peripheral boot map. In the
+remixer, `e` does the same against `out/mainos_bus.bin` and highlights what
+the selection's patches added.

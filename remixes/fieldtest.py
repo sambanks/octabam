@@ -4,7 +4,7 @@ Built to be FLASHED, and shaped so that a failure says which claim broke:
 
 1. **The insert card.** Five inserts of ours on the FX2 chooser, so four
    copies of the dearest can be put on one core's four tracks -- the cycle
-   test `tools/cycle_count.py` can only bound. A wedge there is the cliff
+   test `tools/build/cycle_count.py` can only bound. A wedge there is the cliff
    PLAN.md section 2 describes; a wrong SOUND is a module's own bug.
 2. **A module on FX1.** WarpFold takes an FX1 row, which needs FX1's chooser
    list relocated into the cave, its three `lea` references repointed, and
@@ -15,7 +15,7 @@ Built to be FLASHED, and shaped so that a failure says which claim broke:
    neither chooser, so their words join the region: 3,342 rather than 2,724,
    and our code is placed at FLANGER's address. Nothing has EVER overwritten
    a non-reverb stock effect on hardware. The measurement says every effect
-   is self-contained (tools/dsp_reach.py, both payloads); what it cannot say
+   is self-contained (tools/build/dsp_reach.py, both payloads); what it cannot say
    is whether anything outside the DSP cares. A failure here is anything
    ELSE misbehaving -- an unrelated stock effect, a crash on part load --
    and is the reason CHORUS and FLANGER are dropped rather than, say, FILTER

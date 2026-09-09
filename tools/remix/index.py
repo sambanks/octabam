@@ -10,10 +10,59 @@ copies go stale -- so when the two disagree, this is right.
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 from remix import registry  # noqa: E402
 from remix.schema import Kind  # noqa: E402
+
+
+def touches_coldfire(m) -> bool:
+    """Does this module change the OS image outside its own chooser row --
+    caves, linked units, detours, pokes, grown tables or a runtime?"""
+    return bool(m.cf_patches or m.linked or m.detours or m.pokes
+                or m.tables or m.runtime is not None
+                or m.runtime_ext is not None)
+
+
+def matrix(mods):
+    """The compatibility matrix: every pair of ColdFire-side modules through
+    the ledger -- the same call the build makes, so a cell here IS what
+    `make bus` would say. Printed rather than written down because a table
+    in a README is a copy, and this one changes every time a module lands.
+    """
+    from remix import ledger
+    cf = sorted((m for m in mods.values() if not m.is_stock and touches_coldfire(m)),
+                key=lambda m: m.name)
+    if len(cf) < 2:
+        return
+    print("COMPATIBILITY  (the ledger, pairwise: which ColdFire-side modules "
+          "can share an image)\n")
+    short = [m.name[:9] for m in cf]
+    w = max(len(s) for s in short)
+    print("  " + " " * (w + 2) + " ".join(f"{s[:3]:>3}" for s in short))
+    reasons = {}
+    for a in cf:
+        row = []
+        for b in cf:
+            if a is b:
+                row.append("  ·")
+                continue
+            probs = ledger.check([a, b])
+            if probs:
+                row.append("  x")
+                key = tuple(sorted((a.name, b.name)))
+                reasons.setdefault(key, probs[0])
+            else:
+                row.append("  ✓")
+        print(f"  {a.name[:9]:<{w + 2}}" + " ".join(row))
+    print()
+    for (a, b), why in sorted(reasons.items()):
+        print(f"  x {a} + {b}: {why}")
+    if reasons:
+        print()
+    print("  (a x is refused at build time, by name; anything not listed here "
+          "is a DSP effect,\n   which the ledger checks by FX2 id, buffer "
+          "region and private Y instead)\n")
 
 
 def main():
@@ -57,6 +106,8 @@ def main():
     # each remix's is printed with it below when it differs from these.
     print(f"\n  given up by most remixes (on neither chooser): "
           f"{', '.join(stock.CONSUMED)}\n")
+
+    matrix(mods)
 
     print("REMIXES  (remixes/<name>.py)\n")
     for name in registry.remix_names():

@@ -12,7 +12,7 @@ Select HELLO WORLD on any track to read the probe; the DSP side of HELLO
 WORLD is a gain, so keep that track's GAIN at 96..127 (the total-busy band,
 and within 2 dB of unity) unless you are reading another band.
 
-A diagnostic image, not a performance one. docs/FLASHPLAN.md prices the
+A diagnostic image, not a performance one. docs/effects/FLASHPLAN.md prices the
 flash and modules/cfprobe/README.md is the procedure.
 """
 

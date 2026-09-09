@@ -63,7 +63,7 @@ MODULE = Module(
         # MODE on slot 6 (v6, 4 Sep 2026; was slot 7): an even slot is the
         # proven slot the panel's page-2 knob editor writes, so a main-menu
         # screen can set it
-        # through the firmware's own routine (docs/MAINMENU.md 9c-ii). The DSP
+        # through the firmware's own routine (docs/firmware/MAINMENU.md 9c-ii). The DSP
         # reads $c's KNOB field for it now. A part saved before the swap loads
         # its old MDEP byte as MODE (48 clamps to REVRS) and 0/1/2 as MDEP;
         # re-select the effect or stamp defaults.

@@ -36,7 +36,7 @@ from __future__ import annotations
 import pathlib
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 from remix import registry  # noqa: E402
 from remix.schema import Kind  # noqa: E402
 
@@ -49,7 +49,7 @@ TRACKS = range(1, 9)
 PAYLOAD_TRACKS = {"A": range(5, 9), "B": range(1, 5)}
 
 # BUS, not "server". It is the natural opposite of INSERT and the word this
-# project already uses for the thing itself (docs/XBUS.md, `make bus`, the
+# project already uses for the thing itself (docs/effects/XBUS.md, `make bus`, the
 # bus accumulators): an effect either sits IN a track or is fed BY tracks
 # over the bus. The module KEYS stay "REVERB SERVER"/"DELAY SERVER" -- they
 # are written into saved remixes and the build report -- and `is_server` is
@@ -111,7 +111,7 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
 
     Our own modules are FX2-only UNLESS THEY REPLACE A STOCK EFFECT, in
     which case they take that effect's FX1 row as well -- the build repoints
-    both FX1 tables (build_bus.py, docs/MODULES.md), confirmed by asking the
+    both FX1 tables (build_bus.py, docs/remixer/MODULES.md), confirmed by asking the
     emulated firmware to draw the page. Everything below is about a module
     wanting a NEW row rather than an existing one.
 
@@ -157,14 +157,14 @@ def menus(mod, fx1_rows=()) -> tuple[str, ...]:
 
 
 # The MAIN MENU's tables: the five list descriptors and the row arrays they
-# point at (docs/MAINMENU.md section 2). A remix changes the top-level menu
+# point at (docs/firmware/MAINMENU.md section 2). A remix changes the top-level menu
 # only by writing here, so comparing this span against the pristine image
 # answers "does this selection change the main menu" exactly, instantly, and
 # without booting anything.
 MENU_TABLES = (0x400cbc00, 0x400cc700)
 
 # The id-indexed tables each menu resolves, and the two name fields inside a
-# page descriptor (docs/PARAM_PAGES.md section 2). Read from the BUILT image
+# page descriptor (docs/firmware/PARAM_PAGES.md section 2). Read from the BUILT image
 # rather than from the manifest: the manifest is what was ASKED for, and the
 # whole point of looking is that a cloned descriptor can carry something else.
 _FX1_IDS, _FX2_IDS = 0x400d5f58, 0x400d5fdc
@@ -244,8 +244,8 @@ def menu_patched() -> int:
 # view boots the FILE. Read from the image so the answer is the image's, not
 # a re-derivation of what we think we built.
 #
-# ⚠️ The two constants are copies. `tools/build_bus.py` writes the list and
-# `tools/verify_menu.py` checks it, and both spell them out with the same
+# ⚠️ The two constants are copies. `tools/build/build_bus.py` writes the list and
+# `tools/verify/verify_menu.py` checks it, and both spell them out with the same
 # provenance note; a third copy is the price of not importing a verify script
 # for its globals (verify_menu binds REMIX from the environment at import,
 # which is exactly the wrong source of truth here). If the caves ever move,

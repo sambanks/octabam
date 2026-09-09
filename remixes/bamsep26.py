@@ -31,7 +31,7 @@ replace keep their ids and get OUR code instead.
 
 ⚠️ The stations are BUS CLIENTS: ->DEL and ->VRB on page 1, scene-lockable,
 registered only when the knob is up, and none of them housekeeps. An FX1
-participant on the bus has never run on hardware -- docs/FLASHPLAN.md's
+participant on the bus has never run on hardware -- docs/effects/FLASHPLAN.md's
 flash 4 is where that claim is tested.
 """
 

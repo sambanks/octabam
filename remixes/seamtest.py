@@ -2,7 +2,7 @@
 
 Not for the unit yet: the cave is measured in the emulator only
 (RTOS_FORK 10.17). Build with `REMIX=seamtest make bus` and run
-`tools/emu_rtos.py --image out/mainos_seamtest.bin ...` against the
+`tools/emu/emu_rtos.py --image out/mainos_seamtest.bin ...` against the
 looping-recorder fixtures.
 """
 

@@ -4,7 +4,7 @@ Every track is the same shape: a STATION on FX1 (processing only -- the
 stations have no sends since the one-aux rig), and on FX2 either SEND (one
 knob, AUX) or an engine whose slot 0 is that same AUX. The bus is ONE aux:
 AUX -> BusDelay (T1) -> BusVerb (T5) -> the return on T8 (Character, SAT=BUS,
-RET). docs/BUS.md "The one aux bus". What differs from `bamsep26`:
+RET). docs/effects/BUS.md "The one aux bus". What differs from `bamsep26`:
 
   * NOTHING IS ON THE FX2 CHOOSER -- zero rows. The two engines, the SEND
     client and the three stations are all placed, dispatched and cloned, and

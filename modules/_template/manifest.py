@@ -7,12 +7,15 @@ Say here what the module IS, what it sounds like or changes, and what is
 still open about it. Then delete every comment below that you have answered
 -- a template's leftovers read as fact to the next person.
 
-Read docs/MODULES.md first, and tools/remix/schema.py for the full field
+Read docs/remixer/MODULES.md first, and tools/remix/schema.py for the full field
 list; both carry the reasoning that these comments only summarise.
 
-This file is the SKELETON -- every field, commented, and no engine. For a
-finished module small enough to read in one sitting, see modules/hello/:
-one knob, 27 words of DSP, its own remix and its own render gates.
+This file is the SKELETON OF A DSP EFFECT -- every field, commented, and
+no engine. For a finished module small enough to read in one sitting, see
+modules/hello/: one knob, 27 words of DSP, its own remix and its own
+render gates. A module that changes what the FIRMWARE does (parts, kits,
+menus, MIDI) rather than adding an effect starts from modules/_template_cf/
+instead, and reads modules/hello-dram/ then modules/midi-scenes/.
 """
 
 from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,

@@ -11,7 +11,7 @@ click shows as a jump far above the slope (Bryan's 128/RLEN4 case: PR #157's
 follow-on, RTOS_FORK 10.18).
 """
 import sys, math, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import blockdump as bd
 
 def words(w):

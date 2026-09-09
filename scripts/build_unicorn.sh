@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build a Unicorn whose ColdFire EMAC does fractional-mode multiplies the
-# way the MCF5445x does (tools/unicorn_emac_fractional.patch), and park the
-# library where tools/emu_bringup.py picks it up automatically.
+# way the MCF5445x does (tools/patches/unicorn_emac_fractional.patch), and park the
+# library where tools/emu/emu_bringup.py picks it up automatically.
 #
-# Why (docs/RTOS_FORK.md section 10.16, 7 Sep 2026): stock Unicorn 2.1.4
+# Why (docs/firmware/RTOS_FORK.md section 10.16, 7 Sep 2026): stock Unicorn 2.1.4
 # computes a fractional `macl`/`macw` as an UNSIGNED product shifted right
 # by 32; the hardware's is a signed product shifted right by 31 (the 2.62
 # product left-shifted one bit, upper 40 bits accumulated). Every EMAC
@@ -44,7 +44,7 @@ fi
 echo "$SHA  $WORK/unicorn-$VER.tar.gz" | shasum -a 256 -c - >/dev/null
 rm -rf "$WORK/unicorn-$VER"
 tar xzf "$WORK/unicorn-$VER.tar.gz" -C "$WORK"
-( cd "$WORK/unicorn-$VER" && patch -p1 < ../../../tools/unicorn_emac_fractional.patch )
+( cd "$WORK/unicorn-$VER" && patch -p1 < ../../../tools/patches/unicorn_emac_fractional.patch )
 
 EXTRA=()
 if [ "$(uname -s)" = Darwin ]; then
@@ -58,7 +58,7 @@ cp "$WORK"/build/libunicorn.2.* "$OUT"/ 2>/dev/null || cp "$WORK"/build/libunico
 ls "$OUT"
 
 LIBUNICORN_PATH="$OUT" "$PY" -c '
-import sys; sys.path.insert(0, "tools")
+import sys; sys.path.insert(0, "tools"); import toolpath
 import emu_bringup as eb
 ok, detail = eb.emac_selftest()
 print("EMAC self-test:", "OK" if ok else "FAILED", detail)

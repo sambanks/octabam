@@ -9,7 +9,7 @@ is a permanent phase step, a retrigger glitch a local spike; -100 dB is
 24-bit rounding, i.e. sample-continuous.
 """
 import sys, math, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import blockdump as bd, o10_recloop as rl
 
 def main():

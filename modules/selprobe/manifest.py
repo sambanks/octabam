@@ -1,6 +1,6 @@
 """SELECT PROBE -- read back the byte our select-array formula addresses.
 
-WHAT IT SETTLES. `docs/MAINMENU.md` 9c-ii decoded where a page-2 SELECT's
+WHAT IT SETTLES. `docs/firmware/MAINMENU.md` 9c-ii decoded where a page-2 SELECT's
 value lives -- `DB + part*6322 + 0x8f04a + track*30 + page*6 + slot` -- and
 drove the firmware's own two-phase editor into writing that array. But on a
 machine with no project loaded the write landed at offset ZERO, so the

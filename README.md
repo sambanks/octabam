@@ -1,435 +1,234 @@
 # octabam
 
-**Custom DSP effects and firmware patches for the Elektron Octatrack MKII.**
+**A remixer for the Elektron Octatrack's operating system.** Pick the
+modifications you want — the community's and this project's own — and build
+them into one firmware image from your own copy of the stock OS.
 
-The Octatrack has two effect slots per track and a fixed menu of algorithms to
-put in them. This project writes new ones — original DSP56300 assembly — and
-delivers them by patching the stock OS image. It also patches the ColdFire
-side, where the sequencer, the menus and the parts live.
+The Octatrack runs OS 1.40C on a ColdFire CPU and a two-core DSP. Several
+people modify it: new effects, MIDI scene locks, 256 Kits per project, bug
+fixes. Each started from the same reverse-engineering and each built their
+own way, so no two of them could share a unit. octabam is the common
+toolkit: **a modification is a module, a selection of modules is a remix,
+and the build composes a remix into an image** — placing code, wiring hooks
+by symbol, refusing collisions by name, and proving every port against its
+author's own build byte for byte.
 
----
-
-## Modules and remixes
-
-**A module is one contribution. A remix is a named selection of them, composed
-into one firmware image.** That is the whole model, and everything else here
-follows from it.
-
-A remix is a file. This one is the granular-texture card:
-
-```python
-# remixes/nimbus.py
-REMIX = Remix(
-    name="nimbus",
-    doc="Nimbus granular texture + send bus. One instance per core.",
-    modules=("NIMBUS", "SEND"),
-    fallback="SEND",
-)
-```
-
-```bash
-make bus REMIX=nimbus       # -> a flashable image containing exactly that
-```
-
-Modules left out are **not built, not placed and not listed**, and their FX2
-ids fall back to the module you nominate — so a saved project that still
-selects a missing effect makes that track a send, rather than dispatching into
-whatever code now occupies the address. There is no central list to edit:
-`modules/*/manifest.py` *is* the registry, so **adding a module is adding a
-directory**.
-
-The build refuses to start if two selected modules collide — same FX2 id,
-ColdFire cave, hook site, core-private word or buffer region — and names both.
-Program space is finite and shared — you get the code of whatever stock
-effects the remix gives up, from 0 to all 6,158 words per payload — so a
-remix is a real budget decision, not a label.
-
-### What ships
-
-| remix | contains | why you would build it |
-|---|---|---|
-| **`bamsep26`** | BusVerb + BusDelay + send + stock DELAY + three stations + tempo sync + menu shortcut | the rig: what goes on the unit, and the default |
-| **`bus`** | BusVerb + BusDelay + send bus + tempo sync | the plain two-server image — the shape of tag 77 on the unit, and the bit-identity gate's subject |
-| **`mutables`** | five inserts + send | a card of stacking effects, no servers |
-| **`nimbus`** | Nimbus + send | the granular texture, which needs a buffer region to itself |
-| **`warped`** | WarpFold + send | the smallest real selection |
-| **`verbonly`** | BusVerb + send | the reverb alone; proves selection works |
-| **`hello`** | HELLO WORLD + send | the reference minimal build, and the worked example to read first |
-
-```bash
-make remix                  # the remixer: swap effects, hear them, compose
-make modules                # the index of what exists
-make bus REMIX=<name>       # build a selection
-```
-
-`make remix` is the remixer: one page holding the library of everything that
-could be in an image, the image you are composing, and the selected effect —
-its real knobs to dial, render and hear (every effect renders locally), and
-the firmware's own draw of its page. It shows what would collide, what the
-chooser ends up looking like on the panel — including which **stock**
-effects the image keeps, hides or consumes (only the three reverbs are
-consumed; the rest can be kept for free) — and what the selection costs
-against the five scarce things: the two donor regions, the FX2 buffer slots,
-the per-core cycles, the chooser rows and the ColdFire cave. Then it builds
-or saves it.
-**[docs/REMIXER.md](docs/REMIXER.md)** is the manual.
-
-See **[docs/MODULES.md](docs/MODULES.md)** to write a module.
+No firmware is distributed here, and none may be. You supply your own
+1.40C; every image is derived from it, reproducibly, on your machine.
 
 ---
 
-## The modules
+## What it carries
 
-**Eleven ship today.** Two are bus *servers*, seven are per-track *inserts*,
-one is the bus client they all lean on, and one patches the ColdFire rather
-than the audio at all.
+**From the community**, built from the authors' own repositories:
 
-### Effects that serve a bus
+| module | author | what it does | how it is built |
+|---|---|---|---|
+| **MIDI SCENES** | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | per-scene parameter locks driven over MIDI — a second lock table the panel never had | his sources (a git submodule, GNU-as form), seven units linked into DRAM, 35 hooks; every region proven equal to his own encoder's bytes |
+| **OCTAKIT** | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) | 256 Kits per Project in place of 64 bank-tied Parts, with names, copy/paste, undo, and migration of old projects | her recipe (a submodule) compiled, packed and appended by the build; stock + her writes + her append reproduces her own OS image exactly |
+| **LOFI AMF FIX** | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | the stock LO-FI's AMF knob computes with a signed×unsigned multiply; two DSP words make it unsigned×unsigned | two asserted pokes, disassembled against stock |
+
+**From this project** — the DSP effects it began as, and the ColdFire
+patches that grew around them:
 
 | | |
 |---|---|
-| **BusVerb** | An eight-line FDN reverb with ROOM/PLATE/BIG modes, modulated taps, shimmer, a gate, and mid/side width. Voiced by ear. |
-| **BusDelay** | A multi-mode delay — CLEAN, PITCH (a once-per-repeat harmoniser), GRAIN (a granular cloud) and REVERSE — with tape-style wow/flutter, drive, and a FREEZE hold available in **every** mode. Its wet can be sent on into the reverb, across cores. |
-| **Send** | The bus client: any track can select it and feed `-DEL` / `-VRB`. It is also the fallback an unimplemented id degrades to. |
+| **BusVerb / BusDelay / Send** | a cross-core send bus: one reverb and one multi-mode delay serve all eight tracks, delay → reverb in series — a route the stock firmware has no path for. Hardware-confirmed. |
+| **Six inserts** | WarpFold, Ripple, Rungs, Streamz, BodeShift, Nimbus — Mutable-Instruments-flavoured per-track effects that stack. Verified by local render; never flashed. |
+| **Tempo sync, CC→page 2, the bus screen, menu shortcut** | ColdFire patches: a tempo-division TIME dial, MIDI CC reaching page-2 knobs, a MAIN MENU editor for both engines. On the unit. |
+| **Hello World / Hello DRAM** | the two reference modules — one DSP knob, one DRAM unit — small enough to read in one sitting, kept building as canaries. |
 
-### Effects that run on one track
-
-Seven inserts. They need no bus, sit in both payloads, run on any track, and
-**stack** — `make bus REMIX=mutables` puts five of them on one card. Six are
-Mutable-Instruments-flavoured; the seventh is a volume knob that exists to be
-read.
-
-| | |
-|---|---|
-| **WarpFold** | A wavefolder into a ring modulator. FOLD / RING / BOTH. |
-| **Ripple** | A driven state-variable filter, LP / BP / HP, resonance to Q≈30. The drive clip is the character. |
-| **Rungs** | Eight tuned resonators struck by the audio itself. STRING / BELL / GLASS, plus a stretch control. |
-| **Streamz** | A vactrol lowpass gate: the envelope opens a filter and an amplifier *together*, so quiet is dark as well as quiet. LPG / VCF / VCA. |
-| **BodeShift** | A Bode frequency shifter — every partial moves by the same number of *hertz*, so it is not a pitch shifter. UP / DOWN / WIDE, plus a feedback spiral. |
-| **Nimbus** | Four grains reading back out of a continuously-recorded 743 ms buffer, with a freeze. |
-| **Hello World** | A linear volume knob — 27 words, one knob, no state. The reference minimal insert and the worked example a new module is copied from. Contributed by Bryan T. |
-
-### Firmware behaviour, not audio
-
-| | |
-|---|---|
-| **Tempo sync** | Two ColdFire code caves: one publishes the project tempo, crossfader and held MIDI note where the DSP can read them; the other draws a TIME knob as a tempo division. The worked example of patching what the firmware *does*. |
-
-⚠️ **BusVerb, BusDelay, Send and Tempo sync are confirmed on hardware. The
-six Mutable-flavoured inserts are not** — they are verified by local render
-and measurement and have never been flashed. Whoever flashes them is the
-first to run them on a real machine. Hello World was flashed and measured by
-its author on his own unit, not on this project's.
-
-The reverse-engineering in `docs/` is infrastructure, not the product. It
-exists because you cannot write an effect for a machine whose memory map,
-cycle budget and parameter plumbing you do not know.
-
----
-
-## Two kinds of effect
-
-This is the distinction to understand before writing anything, because it
-decides how hard your module is to build.
-
-An **insert** processes its own track's frames in place. It has no bus role,
-claims no shared memory, is placed in *both* payloads, and therefore runs on
-any of the eight tracks — several at once, all different, or four copies of
-the same one. Nothing negotiates with anything, so inserts **stack**: one
-image can carry a whole set of them. This is far the easier thing to
-contribute, and the seven above are all of this kind.
-
-A **server** owns a bus accumulator and is *bank-bound*. BusVerb exists only
-on core 0 and BusDelay only on core 1, one per core by design rule. That
-asymmetry is what bought each of them a whole donor region's worth of program
-space, and it is why they can be big.
-
-## What a server buys: the send bus
-
-Stock, every effect is an insert — it lives on one track and hears only that
-track. A reverb used that way is one reverb per track, each with its own
-memory and cycles, and you cannot feed several tracks into a single space.
-
-octabam turns the FX2 slot into a **bus server**. One track hosts the reverb;
-the others select SEND and contribute to it. Because the two payloads run on
-separate cores and each carries a different server, the delay's output can
-cross into the reverb — a route the stock firmware has no path for at all.
-
-Both servers are **returns**: a track hosting one outputs its own dry at
-unity plus the wet, fed by the other tracks' sends.
-
----
-
-## The machine, and what there is to spend
-
-Every module in a remix competes for the same three budgets, and they are
-measured rather than estimated:
-
-| resource | per core | state |
-|---|---|---|
-| Cycles | 4,535/sample | derived (200 MIPS ÷ 44.1 kHz). `make cycles` prints the worst load the selected remix can be asked for; the real ceiling is a cliff and only a hardware burn sweep measures it |
-| Program space | 8,192 words | whatever the remix **gives up**: the 13 stock DSP effects are 6,158 words per payload, and taking one off both choosers hands you its span. The default (the three reverbs) is 2,724. A module must fit one contiguous run of what you gave up. `make bus` prints the live ledger |
-| Y memory | 65,536 words | 1.49 s, pooled from the private FX2 slots + the shared window. A module that wants a big buffer claims it, and only one per core may |
-
-`docs/CHIP.md` carries every one of these numbers with a confidence marker —
-measured or inferred, and what would falsify it.
-
-### The memory map, on one page
-
-The Octatrack's audio DSP is one **DSP56721**: two DSP5636x cores, each
-serving four tracks. Each core boots its own payload, and each payload gives
-its effects the same 8,192 words of program memory (an OMR setting — the
-chip has more, stock runs the map that grants the least):
-
-```
-              DSP56721 — two cores @ 200 MHz, 44.1 kHz audio
-              4,535 cycles per sample per core (200 MIPS ÷ 44.1 kHz)
-
-   CORE 0 / payload A · tracks 5–8      CORE 1 / payload B · tracks 1–4
-   ─────────────────────────────────    ─────────────────────────────────
-P  8,192 words                          8,192 words
-   ├─ stock: dispatch, FX1, mixing…     ├─ stock: dispatch, FX1, mixing…
-   └─ the 13 stock DSP effects,         └─ the same 13, at this core's
-      6,158 words                             own addresses
-      whichever ones the remix gives         same, for this core's half of
-      up become placeable ground             the selection
-      (default: the 3 reverbs, 2,724)
-      -- `make bus` prints who got
-      what and how much is left
-
-Y  private 0x4000–0xBFFF (32 K)         private 0x4000–0xBFFF (32 K)
-   └─ two FX2 instance slots -- where a └─ same. At most ONE module per
-      module that needs a big buffer       core may claim this, and the
-      puts it. Only one per core.         build refuses a remix where two do
-
-   shared half 0x30000–0x37FFF (32 K)   shared half 0x38000–0x3FFFF (32 K)
-   └─ this payload's half of the 64 K   └─ the other half, likewise
-      window, plus the BUS SCRATCH at
-      0x36000 -- the one region BOTH
-      cores touch
-```
-
-Below, what the *shipping* remix does with that space — one arrangement of
-many, not a property of the machine:
-
-```
-   payload A (BusVerb)                 payload B (BusDelay)
-   ├─ the tank: 8 lines x 4,096         └─ LineL + LineR, 16,384 each
-   ├─ 4 input + 2 in-loop allpasses        (ping-pong, ~371 ms per line)
-   ├─ shimmer pitch-shift line (2 K)
-   ├─ dead pre-delay buffer (4 K --
-   │  PRE became GATE; still mapped)
-   └─ tank state tables
-```
-
-The shared window `0x30000–0x3FFFF` is 64 K that both cores address (P, X
-and Y all alias there); stock's own allocator already hands its low half to
-core 0 and its high half to core 1, so the split above agrees with the
-machine rather than fighting it.
-
-The bus itself lives in that scratch block — and it is the whole trick:
-
-```
- any track
-   SEND ──→DELAY ─────────►┌────────────────┐
-   SEND ──→REVERB ────┐    │ DELAY bus acc  │──► BUSDELAY ─► wet out on its
-                      │    └────────────────┘        │         track (1–4)
-                      ▼                              │ -VRB send — this
-              ┌────────────────┐                     ▼ write CROSSES CORES
-              │ REVERB bus acc │◄────────────────────┘
-              └────────────────┘──► BUSVERB ─► wet out on its track (5–8)
-```
-
-Every writer accumulates per block; each bus keeps **four rotating
-accumulator buffers** (the cross-core race fix — see `docs/XBUS.md`)
-plus client counts for the ÷N auto-gain, so eight senders drive a server
-exactly as hard as one. Cycles follow the same split: a core pays its one
-server (role-locked, charged once per bank however many tracks select it)
-plus its tracks' send taps; the delay's worst mode (GRAIN, 2,338 cycles by
-`make cycles`) is the deepest path in the shipping image. Note that FX2
-effects are charged once per track that selects them, while **FX1 inserts pay
-×4 per core** — which is the real ceiling on FX1 ambition, and the reason
-nothing here is an FX1 effect yet.
-
----
-
-## ⚠️ Before you flash anything
-
-**Writing a non-official OS to an Octatrack can leave it unusable, and it puts
-your warranty in question.** Nothing here is endorsed by, supported by, or
-affiliated with Elektron. If you flash a modified image you do so entirely at
-your own risk.
-
-Reading and disassembling firmware is harmless. Writing it to hardware is not.
-`docs/FLASHING.md` has the recovery path — read it *before* you need it.
-
-**No Elektron binary is redistributed here — and none may be.** You download
-your own copy of the official OS with `make os`; every build is derived from
-that copy, reproducibly, and the tooling regenerates Elektron's own image
-byte-for-byte before it will produce a modified one. The same rule binds you
-onward: **a built `.bin` or `.syx` contains Elektron's copyrighted OS — do not
-share built images.** Share the repo; everyone builds their own.
-
-*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV AB,
-used here only to identify the hardware this project targets.
-
----
+`make modules` prints the authoritative index, the compatibility matrix
+(which ColdFire-side modules can share an image, from the same check the
+build makes) and every remix. A README is a copy of that; when they
+disagree, the tool is right.
 
 ## Quick start
 
 ```bash
-make setup     # toolchain: DSP56300 assembler, emulator, firmware tool
-make os        # download the official Elektron OS (your own copy)
-make recon     # unpack it -> out/raw/section_3_MAIN_OS.bin
-make bus       # build the effects into it
-make image     # repack as a card-flashable .bin
+make setup          # toolchain: DSP56300 assembler + emulator, m68k-elf, firmware tool (macOS + Homebrew)
+make os             # download the official 1.40C — your own copy
+make recon          # unpack it -> out/raw/section_3_MAIN_OS.bin
+make modules        # what exists, what composes with what, the remixes
+make check REMIX=ported      # MIDI SCENES + LOFI AMF FIX: build, gate, boot under the emulator
+make image REMIX=ported BUILD=101   # repack as a card-flashable .bin, version-stamped
 ```
 
-`make remix` opens the remixer (`make emu-setup` provisions it): every
-effect auditionable by ear, a composer showing collisions, the panel your
-choice produces and what it costs against each scarce resource, and the
-built image booted in the local ColdFire emulator — the manual is
-**[docs/REMIXER.md](docs/REMIXER.md)**.
+`git submodule update --init` fetches the community sources the first time.
+`make remix` opens the TUI remixer (`make emu-setup` provisions it): the
+library of everything that could be in an image, the choosers the unit
+will show, every effect auditionable by ear, and the built image booted in
+the local ColdFire emulator. `docs/remixer/REMIXER.md` is its manual.
 
-`make help` lists everything. The setup script assumes **macOS + Homebrew**;
-on Linux the substitutions are the obvious ones (the DSP toolchain itself is
-plain CMake — see `scripts/setup.sh`).
+### What ships as a remix
 
-### Hearing it without a hardware flash
+| remix | contains | why |
+|---|---|---|
+| **`ported`** | MIDI SCENES + LOFI AMF FIX | every community mod known to coexist, together — the pick-and-choose proof |
+| **`octakit`** / **`octakit-fix`** | Em's Octakit, alone / with the LO-FI fix | her mod through this pipeline; must reproduce her identities |
+| **`midi-scenes`** | MIDI SCENES alone | his mod through this pipeline |
+| **`bamsep26`** (default) | the bus rig: both engines, send, stations, tempo sync, menu shortcut | what goes on Sam's unit |
+| **`bus`** | BusVerb + BusDelay + Send + tempo sync | the plain two-server image; the bit-identity gate's subject |
+| **`mutables`** | five inserts | a card of stacking effects, no servers |
+| **`hello`** / **`hello-dram`** | one module each | the reference minimal builds |
 
-This matters more than it sounds. A flash cycle is slow and manual, so the
-project is built around **not needing one** to make a judgement:
+⚠️ **OCTAKIT and MIDI SCENES cannot share an image yet** — both hook the
+same stock routine (`apply_part`, `0x40009094`), and beyond the hook his
+code addresses the Part window that hers replaces. The build refuses the
+pair by name; detour chaining and a Kits-aware scenes port are the two
+halves of the fix (`PLAN.md`).
 
-```bash
-make render                      # the send bus: SEND -> BusVerb
-make render-delay                # the delay hatch, all servers real
-make reverb IN=loop.wav          # push audio through BusVerb
-make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
+## How it works, in one screen
+
+```
+modules/<name>/manifest.py   what a module IS and what it claims   (yours, or a pointer into an author's repo)
+remixes/<name>.py            which modules, in which chooser order
+tools/remix/ledger.py        refuses two modules that claim one address, hook, id or buffer — by name
+tools/build/build_bus.py     THE build: assembles, links, places, wires, verifies -> out/mainos_bus.bin
+tools/verify/*               the gates: oracles, the boot under the ColdFire port, menu, cycles, identity
 ```
 
-Those wrappers drive the two servers. **An insert has no bus accumulator to
-measure**, so it is rendered on its own track instead — `send_probe.py
---direct` with the module's layout letter, or `dsp_host` directly. The layout
-alphabet comes from the manifests, so your module joins it by declaring a
-`harness.layout_char`; ask for a layout the tool cannot analyse and it says
-so, with the alternative. `docs/HARNESS.md` has the recipes.
+A module's code lands in one of three places, and the build decides which
+bytes go where — a module declares what it is, not an address:
 
-All of it runs the *real assembled instruction stream* on a DSP56300
-emulator, at roughly 6× real time. What you hear is what the chip will do, which is why
-voicing decisions in `docs/VOICING.md` are recorded as listening results
-rather than as guesses about coefficients.
+| class | declared as | where |
+|---|---|---|
+| ROM cave | `CavePatch` — a `.s` source, or ratified hex | one of the OS image's free zero runs, ~8 KB total shared by everyone |
+| **DRAM unit** | `Linked(..., dram=True)` — a GNU-as unit | linked with every other DRAM unit in the remix into one runtime, packed, appended behind octabam's loader, depacked at boot into a **10 MB reserve carved off stock's 85.5 MB sample/recorder pool** — the placement two community authors have proven on hardware |
+| appended runtime | `Runtime` — a recipe (Octakit's `firmware.json`) | its own reserve of the same pool (`ArenaReserve`), as a second payload of the same loader |
 
-`scripts/make_test_audio.py` generates synthetic source material to audition
-with — or feed it your own.
+The OS-image edits every class needs — a detour at a stock instruction, a
+poke, a grown table — are `Detour`, `Poke`, `TableGrow`, wired by symbol
+and asserted against stock before a byte is written. `docs/remixer/PLACEMENT.md`
+is the map: what is free, what was measured, and the one retraction.
 
-### Checking it without a hardware flash
+**A port is a proof.** The build re-links every unit at the author's own
+address and compares, rebuilds Em's runtime to the identities her recipe
+pins, and refuses on any drift. What the community gets is not a copy of
+their work but their work, placed by a build that can see everyone
+else's. What the DSP side has always had — `make check`, the local render
+at ~6× real time, the 26-configuration bit-identity gate for changes to
+the build itself — the ColdFire side now has too: every DRAM remix boots
+under the ColdFire port and its window is read back against the linked
+image before the image is called built.
 
-```bash
-make check     # build + cycle budget + ledger selftest + menu verification
-```
+## Bringing your mod in
 
-### Building a different selection
+Two shapes, both worked examples in the tree:
 
-See **[Modules and remixes](#modules-and-remixes)** above — `make remix` to
-compose one, `make bus REMIX=<name>` to build it.
+- **Build from your repository.** Your repo becomes a submodule under
+  `modules/<name>/upstream`; the manifest points `Linked` units at your
+  `.s` files (or a `Runtime` at your recipe). You keep developing where
+  you are; an update here is a submodule bump plus your oracle still
+  holding. `modules/midi-scenes` and `modules/octakit` are this.
+- **Write the module here.** Copy `modules/_template_cf/` (ColdFire) or
+  `modules/_template/` (a DSP effect), read `modules/hello-dram/` or
+  `modules/hello/`, follow `docs/remixer/MODULES.md`.
 
----
+What makes either painless: code in GNU-as with symbols rather than
+absolute addresses, an artifact of your own build to prove against, and
+never an Elektron byte in your repo — `.incbin` what you need from the
+user's stock image at build time, as Octakit does. **[CONTRIBUTING.md](CONTRIBUTING.md)**
+has the whole contract, the gates and the etiquette.
+
+## Hearing and checking without a flash
+
+A flash is manual and slow, so the project is built around not needing one
+to make a judgement. The DSP side renders locally on the real assembled
+instruction stream (`make render`, `make render-rig`, `make reverb
+IN=loop.wav`; `docs/remixer/HARNESS.md`); the ColdFire side boots the built
+image under a headless port of the machine (`make emu-cf`;
+`docs/firmware/COLDFIRE_PORT.md`) and, for the firmware's own screens, under
+Unicorn (`docs/remixer/EMU.md`). `make check` runs everything that can be
+checked without hardware. It is the floor, not the ceiling: what the
+emulators structurally cannot see — caches, the recorder, cross-core
+timing — is listed beside every gate that is blind to it.
+
+## ⚠️ Before you flash anything
+
+**Writing a non-official OS to an Octatrack can leave it unusable, and it
+puts your warranty in question.** Nothing here is endorsed by, supported by,
+or affiliated with Elektron. If you flash a modified image you do so
+entirely at your own risk. `docs/remixer/FLASHING.md` has the recovery
+path — read it *before* you need it — and `docs/remixer/FAILURE_MODES.md`
+the register of what has gone wrong on a unit and why.
+
+**Nothing built by the new ColdFire pipeline has been flashed yet** (10 Sep
+2026). The community authors' own builds are what has run on hardware;
+this project's bus engines and ColdFire patches are on Sam's unit. Back up
+projects before flashing anything that changes them (Octakit migrates
+Parts to Kits on load; downgrading may lose Kit data — her warning, and it
+applies).
+
+**MKI and MKII run the same 1.40C image** (hash-verified), so an image
+should run on either; everything here has only ever been *tested* on an
+MKII.
+
+**No Elektron binary is redistributed here — and none may be.** `make os`
+downloads your own copy; the tooling regenerates Elektron's image
+byte-for-byte before it will produce a modified one. The same rule binds
+you onward: **a built `.bin` or `.syx` contains Elektron's OS — do not
+share built images.** Share the repo; everyone builds their own.
+
+*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV
+AB, used here only to identify the hardware this project targets.
 
 ## Repository layout
 
 ```
-PLAN.md          Read this first. End state, resource ledger, work order.
-modules/         The contributions. One directory each — this is the product.
-remixes/         Named selections of modules. bamsep26 is the rig and the default.
-dsp/             Shared DSP infrastructure: the null stub and the probes.
-tools/           Build, render, measure, verify.
-tools/remix/     The module schema, registry, ledger and build engine.
-scripts/         Toolchain setup and firmware recon.
-docs/            Architecture and reference (see below).
-docs/history/    Closed records. Kept for provenance, not for guidance.
+PLAN.md            Read this first: the programme, where it stands, the ground, the work order.
+CONTRIBUTING.md    The module contract, the oracle rule, the gates, submodule etiquette.
+modules/           The contributions -- one directory each. This is the product.
+remixes/           Named selections of modules, in chooser order.
+tools/remix/       The toolkit: schema, registry, ledger, the loader, the DRAM platform, the TUI.
+tools/build/       The image build (build_bus.py) and the tools that understand the OS layout.
+tools/verify/      The gates.
+tools/harness/     Hear and measure the DSP side locally (dsp_host, send_probe, rig_render).
+tools/emu/         The ColdFire emulators: the headless port (ot_emu) and the Unicorn bring-up.
+tools/hw/          The unit and its card: MIDI control, capture, project files, MIDI flashing.
+tools/patches/     Local patches to the vendored toolchains.
+scripts/           Toolchain setup, OS fetch and recon, the bit-identity gate.
+dsp/               Shared DSP infrastructure: the null stub and the probes.
+docs/remixer/      Using and extending the remixer: MODULES, PLACEMENT, REMIXER, TOOLING, FLASHING.
+docs/firmware/     The firmware, reverse-engineered: ARCHITECTURE, DSP, CHIP, PARAM_PAGES, MAINMENU, the port.
+docs/effects/      The effects programme: REVERB, BUS, XBUS, VOICING, CAPTURE, FLASHPLAN.
+docs/history/      Closed records, kept for provenance -- including the effects-era PLAN.
 ```
-
-The documents that stay current:
-
-| | |
-|---|---|
-| `PLAN.md` | The cold-start document — what is being built and in what order |
-| `docs/MODULES.md` | **Writing a module** — the schema, the traps, the gates |
-| `docs/HARNESS.md` | Rendering and measuring a module without hardware |
-| `docs/XBUS.md` | How the cross-core bus works, and why |
-| `docs/CHIP.md` | Cycles and memory, every number with a confidence marker |
-| `docs/REVERB.md` | BusVerb: structure, parameters, memory layout |
-| `modules/*/README.md` | Each module's own notes: what it is, what was measured, what is open |
-| `docs/VOICING.md` | What was decided by listening, and why |
-| `docs/FLASHING.md` | Getting an image onto hardware, and back off it |
-| `docs/CAPTURE.md` | Hardware capture protocol — predictions committed before measuring |
-| `docs/TESTPASS.md` | The functional test matrix and what the emulator can prove |
-| `docs/DSP.md` | The DSP56300 module load map — which bytes land where |
-| `docs/PARAM_PAGES.md` | Parameter-page descriptors: how a knob reaches the DSP |
-| `docs/ARCHITECTURE.md` | The firmware as a whole |
-| `docs/EXTERNAL.md` | Findings from outside this project, and what they retract |
-| `docs/TABLES.md` | The DSP data tables the ColdFire uploads at boot — free lookup curves |
-| `docs/BUS.md` | The FX2 menu and descriptor work behind the bus |
-
----
 
 ## Credit
 
-This began as a fork of **[mxldyn/octamax](https://github.com/mxldyn/octamax)**
-by Maxolydian, whose reverse engineering of the Octatrack's OS format, memory
-map and parameter tables is what made any of the DSP work reachable. The
-ColdFire archaeology in `docs/ARCHITECTURE.md` and `docs/PARAM_PAGES.md`
-started there.
+**Em** ([emuyia](https://github.com/emuyia)) designed Octakit, and with it
+the loader-appended DRAM runtime that octabam adopted whole as its
+large-payload placement: her early loader, stage, hash gate and
+post-clear relocation are the measured reverse-engineering this platform
+stands on; `tools/remix/loader.S` is derived from hers with attribution.
+Her repository explicitly invites being used as a submodule to combine
+with other efforts; that is what this is.
 
-That project studies the firmware. This one uses that understanding to write
-effects, so the two diverged rather than merged — by agreement, findings flow
-back as notes rather than pull requests. The upstream history is preserved in
-this repository's commit log.
+**bkkbrls-del** wrote midisc and was game for its rebuild in GNU-as form;
+the `octabam-gas` branch waits on his own finishing touches before it goes
+back to him as a PR.
 
 **Bryan T** answered the project's oldest open question — where the stock
-Echo Freeze Delay actually lives — along with the timestretch architecture,
-a shape-level atlas of the boot-uploaded DSP data tables, and the track
-recorders' control path from parameter page to engine. That work also
-retracted claims of ours, several of which we then confirmed against our own
-disassembly. It is recorded, with its own confidence markers and ours, in
-`docs/EXTERNAL.md`.
+Echo Freeze Delay lives (in ColdFire SDRAM, eight 1.4 MB rings, the very
+region the DRAM measurement then found being cleared at boot) — along with
+the timestretch architecture, the DSP data-table atlas and the recorders'
+control path, recorded with its own confidence markers in
+`docs/firmware/EXTERNAL.md`. He also contributed `modules/hello`, and the AMF
+fix is his.
 
-`vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300) (the
-emulator and disassembler this project assembles and auditions against) and
+This began as a fork of [mxldyn/octamax](https://github.com/mxldyn/octamax)
+by Maxolydian, whose reverse engineering of the OS format, memory map and
+parameter tables made any of this reachable; the upstream history is in
+this repository's log.
+
+`vendor/` pulls in [dsp56300](https://github.com/dsp56300/dsp56300),
+[mc68k](https://github.com/joelanders/mc68k-md-mm) and
 [elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool).
-
----
-
-## Contributing
-
-Issues, listening reports and findings are welcome, and so are modules.
-
-**To add one**, read `modules/hello/` — a complete module small enough to
-read in one sitting: one knob, 27 words of DSP, its own remix and its own
-render gates — then copy `modules/_template/` and follow
-**[docs/MODULES.md](docs/MODULES.md)**. Your module declares what it is and
-what it claims; the build refuses to start if two selected modules claim the
-same FX2 id, cave, hook site, core-private word, or the per-core FX2 buffer
-region, and names both.
-
-**An insert is the easiest first module** — no bus role, no shared window, no
-payload asymmetry to reason about. The seven above were each built against
-`docs/MODULES.md` alone, and the most recent of them, Hello World, came from
-outside the project.
-
-If you open a PR: `make check` is the floor, and read the traps in
-`CLAUDE.md` first — several are the kind that assemble clean and do the wrong
-thing. If you changed the *build* rather than adding a module, prove it
-changed nothing with `scripts/refhash.sh` (26 configurations, artifacts and
-build reports, bit-identical).
-
-**Never attach a built image, an OS file, or any Elektron-derived binary to
-an issue or PR** — describe it, hash it, or reference the commit that built
-it instead.
-
----
 
 ## License
 
-[MIT](LICENSE), covering this repository's own code and documentation. It does
-not extend to Elektron's firmware, which is not distributed here.
+[MIT](LICENSE) for this repository's own code and documentation. It does
+not extend to Elektron's firmware, which is not distributed here, nor to
+the community repositories referenced as submodules, which remain their
+authors' under their own terms.

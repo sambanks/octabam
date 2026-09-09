@@ -80,7 +80,7 @@
 ;
 ; ; CYCLES_FORWARD_BRANCHES -- the five conditional branches in the sample
 ; loop (the freeze gate and the four per-grain scatter latches) are all
-; FORWARD skips, so tools/cycle_count.py may price the fall-through path and
+; FORWARD skips, so tools/build/cycle_count.py may price the fall-through path and
 ; call the result a ceiling. It enforces the forward part rather than taking
 ; this word for it.
 ; ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ init:
 ; every stock effect that needs a buffer -- so it coexists with them, and two
 ; instances get two slots instead of writing over each other.
 ;
-; ⚠️ READ IT IN INIT AND CARRY IT (docs/DSP.md section 10). The dispatcher
+; ⚠️ READ IT IN INIT AND CARRY IT (docs/firmware/DSP.md section 10). The dispatcher
 ; advances the pointer once per effect, so reading it in `proc` gives two
 ; loaded effects the SAME entry and one of them writes through memory it does
 ; not own -- and with one effect loaded it works BY LUCK, which is the worst

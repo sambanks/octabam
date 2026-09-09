@@ -41,7 +41,7 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   sends. Stock FILTER is 192 for one filter. Seven of these on one core is
   at the cliff by the pricer; four on FX1 plus three SENDs beside the reverb
   is 1,384 + 1,356 + 60.
-- `tools/verify_spectrum.py` (needs the audition dump): defaults
+- `tools/verify/verify_spectrum.py` (needs the audition dump): defaults
   bit-exact on a full-scale ramp; LP 12.9 dB/oct between 2 and 4 kHz at
   FREQ 30; HP and BP at DC → 0 (−2 / −1 LSB); NOTCH and LP at DC → DC (5
   LSB low); BASE 100 kills DC through the pair (4 LSB); WDTH 30 takes 55 dB
@@ -90,12 +90,12 @@ register-indirect (`(rn)+`, `(rn+nn)`), and this loop addresses everything as
 needs the classic filter relayout — coefficients contiguous in X, state
 contiguous in Y, each walked by a dedicated address register (r3/r4/n3/n4 are
 free in the loop; r0/r1/r2/r7 are taken) — which is ~150 lines rewritten with
-the silent-mis-encode trap (`docs/DSP.md`) live on every new parallel move.
+the silent-mis-encode trap (`docs/firmware/DSP.md`) live on every new parallel move.
 `dsp_asm` DOES encode the legal parallel forms correctly (probed 4 Sep 2026;
 `mpy x0,y1,a x:(r3)+,x0 y:(r4)+,y1` round-trips), so the trap is only the
 illegal ones — but disassemble every one.
 
-**The gate is ready:** `tools/verify_spectrum_ident.py ref` captured 26 hashes
+**The gate is ready:** `tools/verify/verify_spectrum_ident.py ref` captured 26 hashes
 across every MODE × ROUT, every SRC, defaults, zeros and maxima; a rewrite
 must `check` bit-identical. Do the relayout only when four grains (or a
 tighter card) actually needs the cycles — today both cores have margin at two

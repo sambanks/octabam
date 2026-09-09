@@ -31,7 +31,7 @@
 ;   dry silent, delay remains-> cleanest answer: the delay is a parallel/send
 ;                               path and the insert only ever carried dry.
 ;
-; Build:  DELAYPROBE=1 python3 tools/build_bus.py   -> out/mainos_bus_delayprobe.bin
+; Build:  DELAYPROBE=1 python3 tools/build/build_bus.py   -> out/mainos_bus_delayprobe.bin
 
 init:
         rts

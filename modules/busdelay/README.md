@@ -41,7 +41,7 @@ and the two tape-modulation knobs are named for what they are.
 
 **v6 (4 Sep 2026): MODE is page-2 slot 6 and MDEP slot 7** — swapped so
 MODE sits on a slot the panel's page-2 knob editor writes, which a main-menu
-bus screen needs (`docs/MAINMENU.md` §9c-ii). Locally bit-identical in every
+bus screen needs (`docs/firmware/MAINMENU.md` §9c-ii). Locally bit-identical in every
 mode. A part saved before v6 loads its old MDEP byte as MODE (48 clamps to
 REVRS): re-select the effect or stamp defaults.
 | FRZE | freeze | freeze | freeze |

@@ -25,7 +25,7 @@ Suspected bad flash; unproven. If it recurs, note that this is the first
 remix ever flashed with NO bus server (SEND housekeeps alone), and check
 that layout before blaming the 27 words.
 
-**Measured here** (`tools/verify_hello.py`, dsp_host, payload A, entries
+**Measured here** (`tools/verify/verify_hello.py`, dsp_host, payload A, entries
 resolved from the dispatch tables of the built image; input a full-scale
 bipolar ramp), reproducing the author's numbers exactly:
 
@@ -69,7 +69,7 @@ The 126→127 step is 0.984→1.0 (~0.14 dB): the price of a bit-exact top.
 ```bash
 make check REMIX=hello
 python3 tools/remix/audition.py hello out/dry/drums_110.wav GAIN=64
-python3 tools/verify_hello.py            # expects ALL GATES PASSED, 0 LSB
+python3 tools/verify/verify_hello.py            # expects ALL GATES PASSED, 0 LSB
 ```
 
 The audition builds the scratch image the gates measure, so it comes first.
@@ -87,7 +87,7 @@ aliases to the fallback and renders plausible, wrong audio.
 ## The 5-char abbr crash (found on hardware by Bryan T, 2 Sep 2026)
 
 The first cut used `abbr=b"HELLO"` — 5 characters. The descriptor's abbr field
-is **5 bytes, NUL-terminated** (`docs/PARAM_PAGES.md` §2), i.e. 4 characters
+is **5 bytes, NUL-terminated** (`docs/firmware/PARAM_PAGES.md` §2), i.e. 4 characters
 plus a terminator. "HELLO" filled all 5 bytes with no NUL. Manual knob use
 never showed anything wrong, but **LFO-modulating a parameter** threw a
 line-F exception (VEC:0B) whose faulting address was `0x48454C4C` — "HELL".
@@ -118,7 +118,7 @@ actually writes, tag included.
 
 - **Taper select** (page-2 slot 7, LIN/LOG/…): planned, not started. The
   stepped-control budget puts it on 7, 9 or 11 only.
-- **FX1 availability**: the module contract is FX2-only. `tools/build_fx1.py`
+- **FX1 availability**: the module contract is FX2-only. `tools/build/build_fx1.py`
   proved the FX1 chooser can be extended (relocated to a cave — it cannot
   grow in place), but that machinery is not in the manifest schema. A
   bufferless insert has neither of the reasons DELAY/reverbs can't be FX1,

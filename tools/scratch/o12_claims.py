@@ -2,7 +2,7 @@
 """Flash 6's remaining claims, read off the port's block dumps (COLDFIRE_PORT.md O12).
   o12_claims.py            (expects out/o9d/cl_{nm,none,dmix0,rmix64,t8send,t4ret,t7ret,long}.dump)"""
 import sys, math, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import blockdump as bd, o10_recloop as rl
 def db(v): return 20*math.log10(v/8388608) if v>0 else -200
 def rms(x): return math.sqrt(sum(v*v for v in x)/len(x)) if x else 0

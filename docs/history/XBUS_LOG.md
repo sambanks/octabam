@@ -1,7 +1,7 @@
 > **Closed development record, moved here 28 Aug 2026.** This is the
 > cross-core bus work as it unfolded — findings, retractions, pricing and
 > work order, kept verbatim for provenance. The current architecture
-> record (how the bus works today) is `docs/XBUS.md`; the numbers below
+> record (how the bus works today) is `docs/effects/XBUS.md`; the numbers below
 > are snapshots of their day and several are superseded there.
 
 > ⚠️ **READ `PLAN.md` FIRST.** This file is the *architecture* record — how the
@@ -93,7 +93,7 @@ free**. Under one-server-per-core:
 into the room since. The build report is the live ledger — the current build
 prints A 2,669 used / **FREE 55**, B 2,723 used / **FREE 1**.)
 
-✅ Measured, not estimated: `XBUS=1 python3 tools/build_bus.py` already prints
+✅ Measured, not estimated: `XBUS=1 python3 tools/build/build_bus.py` already prints
 `FREE 484` per payload, because the XBUS path drops the delay to a 10-word stub.
 That build already is the specialization, in crude form.
 
@@ -221,11 +221,11 @@ by the artifact.
 (a different effect per instance, so a true SEND→SERVER run is possible),
 **`-inmask`**, **per-instance `-split`**, and **`-track`** (r7-relative words
 dumped every block, so a *rate* can be differenced; `-peekx` only snapshots
-once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
+once). `tools/harness/send_probe.py` and `tools/hw/capture_hw.py` drive and analyse it.
 
 ⚠️ **Traps, each capable of producing a wrong conclusion:**
 - **Zeroing a parameter to clean up a metric hides the bug it causes** (above).
-- **`tools/dsp_host/` is COPIED into `vendor/` by `setup.sh`'s
+- **`tools/harness/dsp_host/` is COPIED into `vendor/` by `setup.sh`'s
   `stage_dsp_host`.** Building without re-copying silently runs the OLD binary
   — the giveaway is two different renders coming out byte-identical.
 - **`MODE=n` writes `out/mainos_bus_mode<n>.bin`, NOT `out/mainos_bus.bin`.**
@@ -322,7 +322,7 @@ once). `tools/send_probe.py` and `tools/capture_hw.py` drive and analyse it.
      ways; the delay→reverb wash was carrying it as well. That is not a
      separate fix — the same rotation covers it.
 
-   **Gated by `tools/verify_bus.py`**: 17 layouts covering all three
+   **Gated by `tools/verify/verify_bus.py`**: 17 layouts covering all three
    copies of the housekeeping block, the self-healing election, 1–7 senders on
    each bus, both cross-sends and split blocks. The restructure is proven exact
    by pointing the candidate's read at the same buffer generation as the
@@ -851,8 +851,8 @@ exactly, except for the scratch, which both cores must touch by definition:
    `→REVERB` (`x:(r6+1)`); driving the wrong one renders silence.
 
    ```sh
-   DEV=1 XBUS=1 python3 tools/build_bus.py
-   python3 tools/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
+   DEV=1 XBUS=1 python3 tools/build/build_bus.py
+   python3 tools/harness/send_probe.py --mem out/dsp/mem_dev_A.mem --layout DS
    ```
 
    **The DEV delay no longer sits in
@@ -878,7 +878,7 @@ exactly, except for the scratch, which both cores must touch by definition:
    The mechanism to prevent it already exists and is proven — the null stub
    (`nul_i`/`nul_p`) and the id-0 → SEND aliasing. Wire ChonVerb → SEND on
    payload B and BongDelay → SEND on payload A, deliberately.
-4. ~~**`tools/cycle_count.py` prints `budget/DSP 1080`**, a number that was
+4. ~~**`tools/build/cycle_count.py` prints `budget/DSP 1080`**, a number that was
    never a real ceiling. It would report a design that fits as over budget.~~
    **FIXED** — the tool now subtracts bank growth and prints the live number.
 
@@ -893,7 +893,7 @@ exactly, except for the scratch, which both cores must touch by definition:
    front-panel instrument: one flash, then every further configuration is a
    knob sweep.
 3. ~~**Specialize the payloads.**~~ ✅ **DONE (`SPEC=1`).**
-   `XBUS=1 SPEC=1 python3 tools/build_bus.py`: payload A carries SEND +
+   `XBUS=1 SPEC=1 python3 tools/build/build_bus.py`: payload A carries SEND +
    ChonVerb (**FREE 494**), payload B SEND + BongDelay (**FREE 1998**). The
    absent server's id is aliased to SEND on each core, which is risk 3's fix
    applied rather than deferred. Predicted 494 / 2,005; the 7-word gap on B is

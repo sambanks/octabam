@@ -1,5 +1,5 @@
 import argparse, sys, collections
-import os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import os; sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_card as ec, emu_bringup as eb
 from unicorn import UC_HOOK_CODE
 ap = argparse.ArgumentParser()

@@ -2,7 +2,7 @@
 |
 | Two rows in the CONTROL submenu, REVERB and DELAY, whose action selects the
 | track HOSTING that server and opens its EFFECT 2 SETUP window. The path is
-| docs/MAINMENU.md section 7, traced end to end there:
+| docs/firmware/MAINMENU.md section 7, traced end to end there:
 |
 |   0x80000012      non-zero = MIDI mode, where page kind 4 resolves track+8
 |   0x460d1684      current page kind (long), byte mirror at 0x46c7d8d8

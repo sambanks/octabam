@@ -30,7 +30,7 @@ zipper), with two shaped copies — L and its WID-offset partner.
 It needs a per-track line, and beside the servers the only free per-track
 buffer is the FX1 slot: every FX2 instance buffer is BusVerb's tank on core
 0 or BusDelay's line on tracks 3–4. It reads its base from the host's bump
-allocator **at init and only there** (`docs/DSP.md` §10), and a base ≥ 0x4000
+allocator **at init and only there** (`docs/firmware/DSP.md` §10), and a base ≥ 0x4000
 sets a flag that sends proc down the dry path, which writes nothing to Y.
 `Claims(fx1_only=True, buffer_words=2048)` is that promise to the ledger, and
 the first three gates below are what it rests on.
@@ -43,7 +43,7 @@ allocator put us.
 
 - **1,133 words** (payload A, 1,166 on B), **402 cycles/sample** (the LINE
   loop is the worst of the four; PHSR is 354, AMP 193, dry 20).
-- `tools/verify_modulation.py`, **9 gates, all PASS**:
+- `tools/verify/verify_modulation.py`, **9 gates, all PASS**:
   - MIX=0 is a bit-exact passthrough in all seven modes;
   - **an FX2 instance is a bit-exact dry pass in all seven modes at any
     setting**, and `dsp_host -guard` reports "nothing written over a loaded

@@ -41,7 +41,7 @@ class Kind(Enum):
                                 # (tools/remix/stock.py is the whole list)
 
 
-# The fifteen FX2 ids stock assigns (docs/PARAM_PAGES.md section 2). Both
+# The fifteen FX2 ids stock assigns (docs/firmware/PARAM_PAGES.md section 2). Both
 # dispatch tables (X:0x215 init / X:0x235 process) are indexed by the RAW id
 # and are SHARED BETWEEN FX1 AND FX2, so a module that answers to one of
 # these hijacks the stock effect on both menus: its descriptor replaces the
@@ -62,7 +62,7 @@ STOCK_FX2_IDS = frozenset({0x04, 0x05, 0x08, 0x0c, 0x0d, 0x10, 0x11, 0x12,
 # says otherwise. An even slot is the PROVEN place for a MODE: the panel's
 # page-2 knob editor (0x4003a474) was first read as even-only; slot 6 is
 # hardware-confirmed. A later emulator run showed it writing all six slots
-# (docs/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
+# (docs/firmware/MAINMENU.md 9c-ii/9e), so any page-2 slot is allowed here.
 STEPPED_ONLY = (6, 7, 8, 9, 10, 11)
 
 
@@ -127,7 +127,7 @@ class Param:
     and a MODE goes on an EVEN slot -- the proven place for the panel's own
     page-2 knob editor to reach it (4 Sep 2026; it used to be forced onto
     7/9/11). Whether that editor also reaches the odd slots is unresolved
-    (docs/MAINMENU.md 9e); an even slot does not depend on the answer.
+    (docs/firmware/MAINMENU.md 9e); an even slot does not depend on the answer.
     """
 
     name: bytes | None = None          # 6-byte panel label; b"" blanks it
@@ -175,7 +175,7 @@ class MenuEntry:
     donor_desc: int                    # E address of the stock donor
     # BOTH NAME FIELDS ARE NUL-TERMINATED, so their usable length is one less
     # than the field: abbr is 5 bytes = FOUR characters, fullname 13 bytes =
-    # TWELVE (docs/PARAM_PAGES.md section 2). Filling a field exactly leaves
+    # TWELVE (docs/firmware/PARAM_PAGES.md section 2). Filling a field exactly leaves
     # no terminator and the firmware's string read runs off the end of it --
     # see __post_init__.
     abbr: bytes                        # <=4 chars, in a 5-byte field
@@ -369,6 +369,28 @@ class CavePatch:
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
     report_note: str = ""
+    # ---- SOURCE IS THE TRUTH (9 Sep 2026) ---------------------------------
+    # With the m68k-elf toolchain now a standard dependency (`make setup`),
+    # a cave with a `source` is assembled and LINKED by the build at the
+    # address it lands on, and THOSE bytes are what is written; `pinned` is
+    # the ratified reference and must match, or the build refuses. A source
+    # may therefore hold absolute references to itself, and symbols it needs
+    # from the build (the address of a data field, a clone's slot) arrive as
+    # `defsyms` -- `ld --defsym NAME=value` -- instead of placeholder words
+    # patched into hand-assembled hex (busscreen's MARKS, ccpage2's VCOUNT).
+    # An emit() that returns b"" for its bytes says "the source is the only
+    # truth"; an emit() that still returns bytes takes the legacy path,
+    # unlinked and unchecked, exactly as before. Without a toolchain the
+    # reference bytes are written, as before.
+    defsyms: tuple[tuple[str, int], ...] = ()
+    cpu: str = "5475"                   # m68k-elf-as -mcpu=; 5407 and 5475
+                                        # encode this ISA subset identically
+    # A FLOATING source-linked cave has no fixed `pinned` to be held against
+    # (its bytes depend on where it lands), so it may supply the oracle as a
+    # callable instead: reference(addr) -> the ratified bytes AT that
+    # address -- ccpage2 keeps its hand-patched legacy form for exactly this.
+    # Checked on every build; a drift refuses.
+    reference: object | None = None
 
 
 @dataclass(frozen=True)
@@ -391,7 +413,7 @@ class Claims:
     # DECLARED, where private-Y is derived, and the difference is not
     # laziness. A source scan cannot tell an address from a mask or a
     # constant: scanning for this range flags `and #>$7fff` and every
-    # coefficient that happens to land in it, and docs/DSP.md 7c records
+    # coefficient that happens to land in it, and docs/firmware/DSP.md 7c records
     # that static scanning could not find even the STOCK reverbs' buffers,
     # because they compute their bases at runtime. A checker that fires on
     # six modules out of eight teaches people to ignore it.
@@ -403,7 +425,7 @@ class Claims:
     # there would read as a guarantee.
     owns_fx2_buffers: bool = False
     # A STOCK effect that allocates an FX2 instance buffer through the host's
-    # bump allocator (it reads X:0x213 at init -- docs/DSP.md section 10).
+    # bump allocator (it reads X:0x213 at init -- docs/firmware/DSP.md section 10).
     # The allocator hands the buffer out PER TRACK SLOT: on core 0 the four
     # slots are Y:0x4000, 0x8000, 0x30000 and 0x34000, on core 1 0x4000,
     # 0x8000, 0x38000 and 0x3c000 -- and those are exactly the addresses
@@ -442,7 +464,7 @@ class Claims:
                                  "buffer-free module runs on both menus")
             if self.buffer_words is None or self.buffer_words > 3072:
                 raise ValueError("fx1_only needs buffer_words <= 3072: an "
-                                 "FX1 slot is 3,072 words (docs/DSP.md 10)")
+                                 "FX1 slot is 3,072 words (docs/firmware/DSP.md 10)")
 
 
 @dataclass(frozen=True)
@@ -510,6 +532,183 @@ class ModeView:
 
 
 @dataclass(frozen=True)
+class Linked:
+    """One GNU-as source unit, assembled and LINKED BY THE BUILD at whatever
+    address it lands -- placement by the build, not by the author's memory
+    map, so two authors who picked the same free run stop colliding.
+
+    `cave_addr=None` floats it exactly like a floating CavePatch (first free
+    address after what precedes it, rounded to 0x80); a unit that other
+    code names by ABSOLUTE address (mxldyn/octamax's `patch.s`, which
+    `patch_scene2.s` reaches through `.equ SAVE_STUB, 0x400d64e0`) is
+    pinned instead, and stays pinned until that upstream constant becomes
+    a linker symbol. Detours, table entries and pokes name the unit's
+    symbols (`m68k-elf-nm` after the link), never its addresses.
+
+    `reference` = (address, sha256) of the unit as the AUTHOR'S OWN build
+    linked it: the build links a second copy at that address every time
+    and compares, so a source or toolchain drift from the bytes the author
+    ratified fails loudly, even though the unit the image carries is
+    linked somewhere else.
+    """
+
+    label: str
+    source: str                          # .s, repo-relative
+    cave_addr: int | None = None         # None = floating
+    cpu: str = "5407"                    # m68k-elf-as -mcpu=
+    reference: tuple[int, str] | None = None
+    # DRAM: the unit is linked into octabam's PLATFORM RUNTIME -- one image
+    # of every such unit in the remix, linked together (cross-unit symbols
+    # resolve in the one link), packed, appended after the OS with the
+    # loader (tools/remix/loader.S) and depacked at boot into the
+    # platform's reserve at the bottom of the audio page arena (10 MiB,
+    # tools/remix/arena.py; docs/remixer/PLACEMENT). `cave_addr` is
+    # ignored. This is where anything bigger than a few hundred bytes
+    # belongs; the ~8 KB of zero runs inside the OS image are for what
+    # must be ROM.
+    dram: bool = False
+
+
+@dataclass(frozen=True)
+class Detour:
+    """A stock instruction rewritten to reach a linked unit's symbol.
+
+    `kind`: "jmp" (the stub replays what it displaced and jumps back or on;
+    the common case), "jsr" (the stub returns), or "lea" (the six-byte
+    `lea abs.l,An` at `site` keeps its opcode and gets the symbol as its
+    operand -- midisc's SAVE_ALL). `expect` is stock bytes at `site`, whole
+    instructions. `pad_to` = total bytes to overwrite: the six-byte
+    instruction then `nop`s, so a displaced span longer than six is not
+    left half-rewritten (midisc's 8/10-byte sites); None writes six.
+    `target` names a STOCK address instead of a symbol (midisc's
+    TRACK_GATE/PAGE_GATE jump straight to stock code)."""
+
+    site: int
+    expect: bytes
+    unit: str = ""                       # Linked.label ("" with `target`)
+    symbol: str = ""
+    note: str = ""
+    kind: str = "jmp"
+    target: int | None = None
+    pad_to: int | None = None
+
+
+@dataclass(frozen=True)
+class TableGrow:
+    """A stock pointer array relocated into free space with entries
+    appended, and every reference to the old array repointed --
+    busscreen's menu-state-table move, generalised. `old` is the stock
+    array (`count` u32 entries), `symbols` the (unit, symbol) pairs to
+    append, `refs` the (address, expected old-array u32) sites rewritten
+    to the new address. The new array floats."""
+
+    label: str
+    old: int
+    count: int
+    symbols: tuple[tuple[str, str], ...]
+    refs: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class Poke:
+    """A fixed-address rewrite of existing bytes, asserted first."""
+
+    addr: int
+    expect: bytes
+    write: bytes
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Runtime:
+    """A loader-appended runtime: code and state that live in DRAM, not in
+    the OS image's free zero runs.
+
+    The third placement class, after ColdFire caves and DSP payload words,
+    and the only one that scales past a few kilobytes. The OS image grows
+    by an APPEND (a small early loader, a stage anchor and the runtime,
+    packed with the firmware's own aPLib variant); one of the recipe's
+    sparse writes detours the boot path into the loader, which depacks the
+    runtime into a reserved DRAM window and installs its hooks from there.
+    Everything the runtime needs from Elektron's own code is `.incbin`'d
+    out of the USER'S stock image at build time (copied or PC-relative-
+    relocated per the recipe), so the repo carries none of it.
+
+    This is Em's design (emuyia/ems-octakit) adopted whole, 9 Sep 2026:
+    `recipe` is her `firmware.json` (interface_version 1) and `sources` her
+    `runtime/` -- both live in a git SUBMODULE so she keeps developing in
+    her own repo and octabam builds from it. The build re-derives every
+    identity the recipe pins (rebuilt runtime, packed runtime, append, the
+    combined OS) and refuses on any mismatch; that identity check, not a
+    compiler-version string, is what proves the toolchain reproduced her
+    bytes (gcc 16.2.0 does, measured against her 16.1.0 pin).
+    """
+
+    recipe: str        # firmware.json, repo-relative
+    sources: str       # directory holding the .S/.c sources it names
+    report_note: str = ""
+
+
+@dataclass(frozen=True)
+class ArenaReserve:
+    """Pages of stock's audio page arena taken for this module's DRAM.
+
+    The arena (tools/remix/arena.py) is the 85.5 MB stock shares between
+    Flex samples and the track recorders, and shrinking it is the one DRAM
+    placement with a hardware record: Octakit takes its top 528 pages,
+    octamax 2.0 its bottom 64. The build stacks every reservation in the
+    remix -- `where="bottom"` from the stock base upward (the base literal
+    moves), `where="top"` from the end downward (the count shrinks) -- and
+    computes the four geometry literals from the total, so two modules
+    that each take pages compose instead of both rewriting the same words.
+
+    `recipe_writes` names the writes in a Runtime recipe that ARE those
+    geometry literals (Octakit's four): the build skips them and computes
+    the combined values, which for her alone are byte-identical to hers.
+    """
+
+    pages: int
+    where: str = "top"                   # "top" | "bottom"
+    recipe_writes: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if self.where not in ("top", "bottom"):
+            raise ValueError(f"ArenaReserve.where must be 'top' or 'bottom', not {self.where!r}")
+        if self.pages <= 0:
+            raise ValueError("ArenaReserve.pages must be positive")
+
+
+@dataclass(frozen=True)
+class RuntimeExt:
+    """Sources linked INTO another module's loader-appended runtime.
+
+    The DRAM host is Em's Octakit runtime (schema.Runtime): its loader,
+    post-clear relocation, instruction-cache sync and hash gate are eight
+    OS-resident pieces of measured reverse-engineering, and re-deriving
+    them for a second loader would repeat her work. So a module that wants
+    DRAM extends the host: its GNU-as sources are compiled with the host's
+    own flags and linked with the host's own linker script, its symbols
+    join the host's symbol table (detours resolve against both), and it
+    rides the host's loader, relocation and hash gate for free.
+
+    Consequences, all deliberate: the host must be in the remix (the
+    ledger refuses otherwise); the host's pinned identities cannot hold
+    for the composite runtime, so the build regenerates the five derived
+    constants the host's OS-resident helpers bake in (runtime size and
+    hash, packed size and hash, backup address -- located and verified
+    against her own recipe) and records its own identities instead; and
+    the host's code budget is the author's (`RUNTIME_CODE_BUDGET` in
+    link.ld, 128 KiB with ~1.9 KB spare) -- `code_budget` asks the build
+    for more, which it can only honour by rewriting that one line of her
+    script in a scratch copy until she makes it overridable upstream.
+    """
+
+    host: str                            # the host module's KEY, e.g. "OCTAKIT"
+    sources: tuple[str, ...]             # .S/.c/.s, repo-relative, link order
+    code_budget: int | None = None       # bytes; None = the host's own
+
+
+@dataclass(frozen=True)
 class Module:
     """One contribution, as declared by modules/<name>/manifest.py."""
 
@@ -526,6 +725,24 @@ class Module:
     cf_patches: tuple[CavePatch, ...] = ()
     claims: Claims | None = None
     harness: Harness | None = None
+    # A loader-appended DRAM runtime (schema.Runtime). At most one per image
+    # today: the append sits at the end of the OS and the loader owns one
+    # DRAM window; the ledger refuses a second.
+    runtime: Runtime | None = None
+    # Sources linked into ANOTHER module's runtime (schema.RuntimeExt): the
+    # way a module gets DRAM without a loader of its own.
+    runtime_ext: RuntimeExt | None = None
+    # Linker-backed ColdFire code (schema.Linked): units the build assembles
+    # and links where it places them, wired in by symbol (Detour), plus
+    # relocated-and-grown stock tables and plain asserted pokes.
+    linked: tuple[Linked, ...] = ()
+    detours: tuple[Detour, ...] = ()
+    tables: tuple[TableGrow, ...] = ()
+    pokes: tuple[Poke, ...] = ()
+    # Pages of the audio page arena this module's DRAM lives in
+    # (schema.ArenaReserve). DRAM units need none: the platform reserves
+    # its own (arena.PLATFORM_PAGES) whenever a remix carries any.
+    arena: ArenaReserve | None = None
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None
@@ -591,7 +808,7 @@ class Module:
         # DIST). The field a slot is DELIVERED in is fixed by the slot (even ->
         # bits 16-23, odd -> bits 8-15); its count and renderer are free. The
         # reason to prefer an even slot for a MODE: the panel's page-2 knob
-        # editor (0x4003a474, docs/MAINMENU.md 9c-ii/9e) is PROVEN to reach
+        # editor (0x4003a474, docs/firmware/MAINMENU.md 9c-ii/9e) is PROVEN to reach
         # even slots (MODE on slot 6, hardware tag 84); whether it reaches the
         # odd slots too is unresolved. Either way any page-2 slot is allowed.
         # Page 1 is untested for the tick widget and stays refused.
@@ -765,7 +982,7 @@ class Remix:
     #
     # IT COSTS NO WORDS. Four bytes of cave per row, plus FX1's chooser list
     # relocated into the cave (it ends at 0x400d608c with FX2's beginning at
-    # 0x400d6090, so it cannot grow in place -- tools/build_fx1.py proved the
+    # 0x400d6090, so it cannot grow in place -- tools/build/build_fx1.py proved the
     # move standalone against the stock image). What it does cost is CYCLES:
     # an FX1 effect runs on a track that is already running an FX2 one, so
     # the worst per-core load can gain four more copies of it. cycle_count.py
@@ -782,7 +999,7 @@ class Remix:
     #   * A module that reads the host's allocator (`x:>$213`). FX1 and FX2
     #     keep SEPARATE allocator tables at different sizes (measured, X:0x255
     #     in both payloads): an FX2 slot is 16,384 words, an FX1 slot 3,072.
-    #     ⚠️ This is not theoretical and it is not new -- docs/DSP.md's "wrong
+    #     ⚠️ This is not theoretical and it is not new -- docs/firmware/DSP.md's "wrong
     #     claim 1" is this exact failure, bisected on hardware: a 16K layout
     #     at an FX1 base "runs to 0x53ff, through the other FX1 buffers and
     #     into FX2 slot 0". NIMBUS LITE reads the allocator and IS exposed;
@@ -808,7 +1025,7 @@ class Remix:
     # This is how an effect stops being a per-track choice and becomes part
     # of the instrument: the two bus engines are hosted by the project stamp,
     # not by turning a chooser, and their controls live on a main-menu screen
-    # instead of a track page (docs/MAINMENU.md section 6). Blanking the
+    # instead of a track page (docs/firmware/MAINMENU.md section 6). Blanking the
     # NAMES is what empties the page: the parameter COUNTS and enable bits
     # stay, so the stock parameter writer still clamps and commits every slot
     # and the frame builder still carries it to the DSP -- measured in the

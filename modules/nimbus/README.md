@@ -61,7 +61,7 @@ on-unit reconfirm.
 
 ## Closed 3 Sep 2026 (evening): the read geometry now carries `+ phase`; what the measurement actually showed
 
-`tools/verify_nimbus.py` renders this module (its own audition dump, rebuilt
+`tools/verify/verify_nimbus.py` renders this module (its own audition dump, rebuilt
 every run) and measures the two things the note below names. **Measured,
 both geometries:**
 

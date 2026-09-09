@@ -9,7 +9,7 @@
 ;
 ; ---- FX1 ONLY, ENFORCED HERE ---------------------------------------------
 ; The base comes from the host's bump allocator, read in INIT and only there
-; (docs/DSP.md section 10: X:0x213 is per-instance during init and garbage in
+; (docs/firmware/DSP.md section 10: X:0x213 is per-instance during init and garbage in
 ; proc). FX1 slots are 0x1000 0x1c00 0x2800 0x3400; FX2 slots are 0x4000 and
 ; up, and every one of those is a server's ground -- BusVerb's tank on core
 ; 0, BusDelay's line on tracks 3-4. So a base >= 0x4000 sets a flag that

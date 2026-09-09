@@ -64,7 +64,7 @@
 ; chain CRSH and RING are knobs nobody turns -- so BUS repurposes them as
 ; the RVRB and DLY RETURN levels (the panel prints those names: ModeView in
 ; the manifest). Each sample, AFTER the send taps, the two shared wet buffers
-; (stereo, four deep, docs/BUS.md "The returns") are read two buffers back
+; (stereo, four deep, docs/effects/BUS.md "The returns") are read two buffers back
 ; and added at those levels; and each block the station STAMPS the bus's
 ; liveness word (y:$9d8 / y:$9d9) while a return level is up, which is what
 ; tells that engine to stop printing its wet on its own host. Added after
@@ -73,7 +73,7 @@
 ;
 ; CYCLES_FORWARD_BRANCHES -- the SRR hold and the RING gate are the only
 ; branches left in the sample loop, both forward and both skipping work, so
-; the word span is the worst-case cycle count (tools/cycle_count.py). The
+; the word span is the worst-case cycle count (tools/build/cycle_count.py). The
 ; saturation character and the compressor mode are per-block COEFFICIENTS
 ; for exactly this reason: a dispatch inside the loop cannot be priced.
 ;

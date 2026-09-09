@@ -19,16 +19,16 @@
 ; faster than any tempo change.
 ;
 ; PROCEDURE (one flash, needs the unit):
-;   1. TPROBE=1 python3 tools/build_bus.py     (PLAIN build -- no XBUS: the
+;   1. TPROBE=1 python3 tools/build/build_bus.py     (PLAIN build -- no XBUS: the
 ;      probe has no bus scratch and the XBUS relocation refuses a source
 ;      without any, and a probe needs no bus anyway)
 ;      make -o bus image BUILD=T1        (-o skips the bus rebuild: `make
 ;      bus` forces SPEC=1, which refuses probe builds)
-;      The probe replaces BusVerb; flash as usual (docs/FLASHING.md).
+;      The probe replaces BusVerb; flash as usual (docs/remixer/FLASHING.md).
 ;   2. Assign the probe to an FX2 slot on a track 5-8, capture its outputs
-;      (MicroBook ch3/4 direct, docs/CAPTURE.md) for ~5 s at BPM 60.000.
+;      (MicroBook ch3/4 direct, docs/effects/CAPTURE.md) for ~5 s at BPM 60.000.
 ;   3. Change ONLY the project tempo to 180.000, capture ~5 s again.
-;   4. tools/decode_tempo_probe.py <60.wav> <180.wav>: aligns both on the
+;   4. tools/hw/decode_tempo_probe.py <60.wav> <180.wav>: aligns both on the
 ;      staircase, averages each of the 72 words, prints the ones that
 ;      CHANGED, with 60/180 values and the 180/60 ratio. A word whose ratio
 ;      is ~3.0 (or ~1/3) is a rate or period; decode from there.

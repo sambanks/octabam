@@ -1,1168 +1,171 @@
-> ## ⚠️ THE BUS IS ONE AUX — BUILT 7 Sep 2026, GATED ON BOTH CORES, UNFLASHED
->
-> The two-bus topology described below (a `->DEL` and a `->VRB` send on every
-> track, stations as bus clients, two accumulators, two returns) is
-> **SUPERSEDED**. Sam's call after it went circular (6 Sep): *"Hard wire all
-> the routing that would be hard wired in a live mixer rig."*
->
-> **The rig is ONE AUX BUS**: a single `AUX` send per track (slot 0, hosts
-> included), a chain hardwired delay → reverb through a chain buffer, each
-> stage stamping itself live so the next stage and the return take the LAST
-> LIVE stage's output (delay only, reverb only, both, neither all work), a
-> `MIX` crossfade on each engine (0 passes the chain input through, gated
-> sample-exact), ONE return (`RET`) on a BUS-mode Character station pinned to
-> track 8, the SEND refused on track 8 by construction, and the stations
-> without sends. `docs/BUS.md` "The one aux bus" is the record;
-> `tools/verify_onebus.py` (in `make check`) measures every property with
-> the senders and delay on payload B and the reverb and return on payload A.
-> ⚠️ Every project must be `stamp-defaults`'d for the re-slot before play
-> (page 1 of both engines shifted right by one). The return balance is
-> measured fine on material (repeats and wet within 2 dB on drums and pad;
-> the tone-based "25 dB" alarm is retracted, VOICING R63); renders for the
-> ear are parked in `out/rig/oneaux/`. The rig's cycle floor by the meter:
-> core 0 1,570 instructions/sample, core 1 702 (`docs/HARNESS.md`). The
-> card project is prepared at `out/projects/OCTABAM_ONEAUX` (FLASHPLAN
-> Flash 6). (The spec artifact is gone; the design is in BUS.md.)
-> Sections below that describe two buses are history.
+# The plan: one toolkit for the Octatrack's OS mods
 
-# The plan: end state, resource ledger, and work order
-
-**This is the cold-start document — read it before `docs/XBUS.md`**, which is
-the *architecture* record rather than the plan. The full development log —
-every dated decision, retraction and ear-pass this file used to carry — lives
-in git history (`git log --follow -- PLAN.md`); this file states where the
-project stands and what is genuinely open.
+**This is the cold-start document.** It says what octabam is for now, where
+that stands, what is measured about the ground the work happens on, and
+what is next, in order. `docs/remixer/PLACEMENT.md` is the architecture
+record for *where code goes*; `docs/history/PLAN_EFFECTS.md` is the plan
+this file replaced — the DSP-effects programme, feature-complete and
+hardware-confirmed, whose open items are still open and still listed there.
 
 ---
 
-## Where the project stands
+## The programme
 
-**Feature-complete and hardware-confirmed.** Both effects, the cross-core
-bus, and every parameter on both pages of both effects are live, lawful and
-audible on the unit.
+Several people modify the Octatrack's 1.40C firmware, and they all started
+from the same reverse-engineering — this repository's. Each went their own
+way with their own build: a Python encoder writing fixed addresses
+(midisc), a Rust patcher with a compiled runtime in DRAM (Octakit), GNU
+`as` plus hand-placed caves (octamax), a preference generator (octa-bt-pt).
+Each picked the same few kilobytes of free ROM independently, so no two of
+them can go on one unit, and none of them can be *composed*.
 
-What ships:
+octabam becomes the thing they compose in. **A mod is a module; a remix is
+a selection of modules; the build turns a remix and the user's own copy of
+the stock OS into one image.** The build places code, wires hooks by
+symbol, refuses collisions by name, and re-derives every identity an
+author has ratified, so a port is a *proof* — the author's own build and
+ours agree byte for byte — not a copy. Nothing compiled is ever
+distributed: everyone builds from their own 1.40C, and the repo carries
+none of Elektron's bytes.
 
-- **BusVerb** — an eight-line FDN reverb (ROOM/PLATE/BIG), shimmer, a gated
-  mode, mid/side width, and a MOD speed select. Hosted on a track **5–8**
-  (payload A / core 0); any track can send into it. `docs/REVERB.md`.
-- **BusDelay** — a multi-mode delay: CLEAN, GRAIN (a pitched granular
-  cloud, v5: Nimbus's readers, four per line, ±2 octaves on RATE; the
-  harmoniser since PITCH mode was retired 3 Sep 2026), REVERSE — with tape-style
-  wow/flutter modulation (DPTH/RATE), the host's own `-DEL` send (slot 10;
-  it was the drive until 5 Sep 2026, given up for the send knob) and a
-  FREEZE hold available in **every** mode. (MODE still
-  counts five positions; the former TAPE slot aliases CLEAN now that the
-  tape character is global.) Hosted on a track **1–4** (payload B / core 1);
-  any track can send into it. Its wet can be sent on into the reverb over
-  the bus (`-VRB`, p4, default 0) — the delay→reverb series topology the
-  stock hardware has no path for.
-- **The send bus** — any track can select SEND and drive `→DELAY` /
-  `→REVERB` (two separate knobs — driving the wrong one renders silence).
-  Auto-gain divides by registered client count, so eight senders drive a
-  server as hard as one.
-- **Both effects are RETURNS with a unity dry passthrough** (v5, 23 Aug
-  2026): a server track outputs its own dry untouched plus the wet, fed by
-  the other tracks' sends; its audio reaches the *engine* only through `IN`
-  (default 0 — an exact passthrough). v4's wet-only output, which muted any
-  audio on the host track, is retired: Sam hit it in the field and called it.
+Sam's constraints, kept: the module format is octabam's (nobody's private
+build convention is pulled in "unless there is no other way"); the TUI
+remixer stays; where someone else's mechanism is better it is adopted —
+Em's loader-appended DRAM runtime is now octabam's own large-payload
+placement, and the m68k-elf toolchain is a standard dependency.
 
-- **Tempo sync (R56, 24 Aug 2026, ON THE UNIT, confirmed)** — two ColdFire *code*
-  caves (the project's first): one publishes the project tempo into two
-  dead parameter words of any track hosting one of our servers; the other
-  is BusDelay TIME's display formatter. **TIME is a free dial with a
-  sticky snap**: near a division (1/32T … 1/4) it snaps, holds that
-  division through tempo changes, lets go when the knob moves; the panel
-  prints "1/8" while held, ms otherwise. Plus a per-block TIME slew for the
-  crackle. R53 proved cave + DSP on hardware; R54 the divisions; R55/R56
-  slew, snap and labels confirmed on the unit the same evening; levels may want tuning. Lessons in `docs/DSP.md` §6c
-  (never init-build tables in Y through `(r1)+` — R48–R50 killed every
-  voice). `docs/PARAM_PAGES.md` §7 decodes the formatter ABI.
+## Where it stands (10 Sep 2026)
 
-- **The whole rig renders locally, on BOTH cores (7 Sep 2026, tier 1 of
-  the emulator uplift).** `tools/dsp_host` boots payload A *and* payload B
-  as two DSPs in one process with the shared window `0x30000–0x3FFFF`
-  really shared (a patch to the vendored emulator's `Memory`), each core
-  running its own setup routine (payload B's found by opcode pattern at
-  `P:0x17a`; the year-old "cannot boot payload B" was three hardcoded
-  payload-A addresses). `tools/rig_render.py` / `make render-rig` drives
-  all eight tracks — T1–T4 on core 1, T5–T8 on core 0, FX1→FX2 chained per
-  track, ids and knob bytes from a real project part or by name, stems in,
-  per-track + mix wavs and a per-block instruction meter out — at about
-  real time. ✅ **Measured**: SEND and BusDelay on the *real* payload B
-  feeding BusVerb on payload A (send hop, delay hop, delay→reverb series
-  hop, two senders per core) render bit-identical to the DEV hatch, and
-  stay identical under four instruction-level interleave skews
-  (`tools/verify_twocore.py`, in `make check`) — payload B's `$38000`
-  placement had only ever been checked statically. ⚠️ What this is NOT:
-  the chip's timing (lock-step, or a guessed `-skew`: a local mismatch is
-  a defect, identity is not evidence), the cycle cliff (instructions per
-  block, no contention stall), or the ColdFire (knobs poked into `r6`, a
-  unity mixer, stems instead of sample playback). `docs/HARNESS.md` "Two
-  cores". Tiers 2 (the ColdFire's per-frame parameter records replayed
-  into this harness) and 3 (audio through the host port, ~100× slower than
-  real time) are scoped in the 7 Sep session notes and not started.
+**Built, gated, unflashed.** Every gate below is local: the ColdFire port
+(`tools/emu/ot_emu`) boots the built image, the bit-identity gate proves
+the build changed nothing for the twenty-six existing configurations, and
+each port's own oracle holds. **Nothing from the new pipeline has been
+written to a unit yet.** The authors' own builds are what has run on
+hardware.
 
-**Hosting is bank-bound; serving is not.** Either effect serves all eight
-tracks over the bus, but each can only be *hosted* on its own core's bank —
-and picking one on the wrong bank runs a SEND instead (the absent server's
-id is deliberately aliased to SEND on that payload). The track↔core mapping
-is **measured, and inverted from what you'd guess**: payload A runs the high
-tracks. Host the reverb on track 5, the delay on tracks 1–4.
+| module | from | what it is | proof |
+|---|---|---|---|
+| `midi-scenes` | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc), via Sam's fork branch `octabam-gas` (submodule) | MIDI-driven scene locks: seven GNU-as units in DRAM, 35 detours, 2 pokes; 207 B changed inside the OS | every region assembles to his encoder's bytes at his addresses; boots under the port, his hooks run from DRAM |
+| `octakit` | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) (submodule) | Em's Octakit: 256 Kits per Project, a 150 KB runtime in DRAM | stock + her writes + her append == her own `output.os`; her runtime rides octabam's loader and reads back byte-identical at boot |
+| `lofi-amf-fix` | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | the one objective bug fix in his tool: LO-FI's AMF `mpysu` → `mpyuu`, two DSP words | both words disassembled against stock; composes with everything |
+| `hello-dram` | here | one DRAM unit, no hooks — the loader's canary | boots; window equals the linked image |
+| octamax | [mxldyn/octamax](https://github.com/mxldyn/octamax) | **deferred** on branch `octamax-deferred` (commit `d952976`): ported (six units, all reproduce his build), then parked pending a conversation Sam is having with the author. Not on the main line; do not contact him. | — |
 
----
+octabam's own modules — the bus engines, the inserts, the ColdFire patches
+(tempo sync, the bus screen, CC→page 2) — are unchanged and still listed by
+`make modules`; the effects programme's state is in `docs/history/PLAN_EFFECTS.md`.
 
-## How the repo is organised: modules and remixes
+What the platform now has, all in `tools/remix/`:
 
-**A module is one contribution; a remix is a named selection of them.**
-`modules/<name>/manifest.py` declares what a module is — its menu entry, its
-twelve parameter slots, its DSP source, its ColdFire caves — and
-`remixes/<name>.py` selects a set. `remixes/bamsep26.py` is the rig — what
-goes on the unit, and `make`'s default; `remixes/bus.py` is the plain
-two-server image (BusVerb + BusDelay + send + tempo sync), the shape of tag
-77 on the unit today and the reference every build refactor proves itself
-against byte for byte.
+- **`schema.Linked`** — a GNU-as unit the build assembles and links where
+  *it* places it; **`Detour`** (jmp / jsr / lea, asserted against stock,
+  padded), **`Poke`**, **`TableGrow`** — the OS-image edits, wired by symbol.
+  `Linked(dram=True)` puts the unit in the platform runtime.
+- **`schema.Runtime`** — a recipe-built DRAM runtime (Em's `firmware.json`),
+  compiled, packed and identity-checked by `runtime_build.py`.
+- **The loader** (`loader.S`, derived from Em's with attribution) at
+  `0x4010fdf0`, carrying an N-payload table: octabam's runtime and Octakit's
+  each staged, hash-gated, depacked with the firmware's own aPLib routine,
+  and verified after the depack; a mismatch hangs the boot rather than
+  running half a runtime. `platform_build.py` links every DRAM unit in the
+  remix as one image at the base of the **platform's arena reserve**:
+  1,707 pages (10 MiB) off the bottom of stock's 85.5 MB sample/recorder
+  pool (`tools/remix/arena.py`; Sam's call, 10 Sep 2026), the placement
+  Octakit and octamax have both proven on hardware. Every reservation in
+  a remix is stacked and the arena's four geometry words computed once —
+  Octakit's 528 pages included, and for her alone the result is her own
+  bytes.
+- **CavePatch "source is the truth"** — every ROM cave with a `.s` is
+  assembled and linked at its resolved address and *those* bytes are
+  written; `pinned` / `reference(addr)` is the ratified oracle.
+- The **ledger** sees all of it (detour sites, pokes, runtime writes, one
+  runtime per image), and `make modules` prints the pairwise
+  **compatibility matrix** from the same call the build makes.
+- The **ColdFire port** models the uncached SDRAM alias, which is what made
+  the DRAM measurement below possible; `tools/verify/verify_dram_boot.py`
+  (in `make verify`) boots every DRAM remix and checks each window.
 
-```sh
-make remix                # the remixer: compose a selection interactively
-make modules              # the module index and the available remixes
-make bus REMIX=<name>     # build a selection (default: bamsep26)
-```
+## The ground: what is actually free
 
-The plain image is four modules: `busverb`, `busdelay`, `send`, and
-`tempo-sync` — the last being a ColdFire patch rather than an effect, and the
-worked example of changing what the firmware *does*. The rig adds the three
-stations, the stock DELAY row and the menu shortcut (`remixes/bamsep26.py`).
+Every number here is from `docs/remixer/PLACEMENT.md`, measured under the
+port on 9 Sep 2026 unless marked.
 
-**What a remix does to the STOCK effects (made explicit 2 Sep 2026).** Every
-image replaces the FX2 chooser wholesale, but only three stock effects are
-*consumed* — PLATE, SPRING and DARK REV, whose code is the donor region.
-The other eleven (FILTER, EQ, DJ EQ, PHASER, FLANGER, CHORUS, SPATIALIZER,
-COMB, COMPRESSOR, LO-FI, the Echo Freeze DELAY) keep their code, descriptor
-and dispatch in every image and had merely lost their chooser row. A remix
-now keeps any of them by listing it by key (`tools/remix/stock.py`), in
-chooser order, at zero cost — the build writes the row and the cursor
-position and nothing else — and the composer shows a STOCK FX2 group, the
-consumed three, and the hidden count. `remixes/restored.py` is `bus`
-plus the seven that can sit beside the servers; the other four allocate a
-per-track instance buffer on the addresses the servers hardcode and the
-ledger refuses them beside one. Past seven rows the list relocates and the
-panel scrolls — ⚠️ inferred from stock's fifteen-row list, unflashed.
-`docs/MODULES.md` "Keeping STOCK effects in the chooser". Later the same
-day the rig learned to **render them**: knobs read from the stock
-descriptors, audio from a dump of the pristine image through `dsp_host`.
-Ten of eleven render, each a bit-exact dry pass at neutral settings;
-DELAY cannot (ColdFire-side). FLANGER looked broken until eight
-instruction probes cleared the emulator and the cause turned out to be the
-harness: hardware puts the audio block at X:0 and stock effects scratch
-right above it, while `dsp_host` defaulted to X:0x80 — fixing that also
-cleaned five other stock renders that had passed as "credible". LO-FI
-needed the project's first patch to the vendored emulator
-(`tools/dsp56300.patch`, MPYRI) and still passes at +6 dB at zero settings
-(open, needs a hardware A/B). Worth knowing: stock code exercises both
-instructions and conventions our own modules never did.
-
-Making them first-class exposed a latent id collision: the DSP dispatch
-tables are shared between FX1 and FX2, and Rungs (`0x0c`) and Nimbus
-(`0x0d`) sat on EQUALIZER's and DJ EQ's ids from 29 Aug, so every local
-image since ran Rungs where FX1 selected EQUALIZER, and the `bus` image aliased
-FX1's EQ and DJ EQ to SEND. Never flashed (tag 77 predates it). Both moved
-(`0x17`, `0x1a`); the schema refuses stock ids; the shipping image differs
-from before in exactly those four ids' entries, byte-diffed.
-
-The first **outsider modules** landed 29 Aug 2026 — three Mutable-
-Instruments-flavoured per-track **inserts** (no bus role, placed in BOTH
-payloads, run on any track, several at once — the class the servers cannot
-be):
-
-- `warpfold` — Warps-ish ring mod / wavefolder (322 words). MIX=0 bit-exact
-  null, DRV=0 fold identity at −96 dB, ring sidebands on the predicted
-  carrier to 0.3%.
-- `ripple` — Ripples-ish driven SVF, LP/BP/HP, Q≈30 (347 words). LP slope
-  −13.8 dB measured where 2-pole theory says −14.4; the all-knobs-at-127
-  bomb decays clean.
-- `rungs` — Rings-ish 8-mode modal resonator, STRING/BELL/GLASS partial
-  tables + STRUCT stretch (880 words). Partials land within 0.15% of the
-  series; DAMP spans T60 ~0.1–9 s (hyperbolic in the knob — a voicing item).
-
-A fourth followed the same day — `nimbus`, a Clouds-ish granular texture
-(500 words): four grains over a continuously-recorded 743 ms line, POS/SIZE/
-DENS/MIX and a freeze. It gets its **own** remix because it owns the
-per-core FX2 buffer region `Y:0x4000–0xBFFF`, so it cannot share a core with
-BusVerb's tank — a pair the ledger now refuses by name. Its window found a
-new trap, now in `CLAUDE.md`: **reading `a0` exposes the fractional left
-shift that reading `a1` hides**, so an `a0`-based integer scale is 2× the
-multiplier; the wrong one assembled and made plausible granular noise while
-running the window at double rate, and only a DC gate caught it. The musical
-freeze renders locally via `NFRZAT=n`, the `DFRZAT`-shaped lever.
-
-Two more followed, both zero-buffer inserts:
-
-- `streamz` — Streams-ish **vactrol lowpass gate** (255 words): the envelope
-  opens a filter and an amplifier together, so quiet is dark *and* quiet.
-  LPG/VCF/VCA. Release measured 26–731 ms against a 20–700 ms design; the
-  coupling itself measured as a spectral centroid of 9,880 Hz on loud
-  material against 2,620 Hz on the same material quiet.
-- `bodeshift` — Warps-ish **Bode frequency shifter** (391 words), UP/DOWN/
-  WIDE plus feedback. Built against a float model *first*, which caught the
-  sideband sign convention before a line of assembly was written. Measured on
-  the DSP: wanted sideband at unity, suppression 41.5/29.6/18.7 dB at
-  440 Hz/1 kHz/5 kHz (the model says 40.8/29.2/18.6), shift frequency exact
-  to 0.00 Hz across the knob, and feedback stable at maximum with 0.95 FS in.
-
-All five ship together in the `mutables` remix (2,410/2,724 words with SEND;
-`warped` carries WarpFold alone). Built entirely against the manifest
-contract; the build's three-source special-casing was generalized the same
-day under the refhash gate (bit-identical before any module existed), and
-`verify_menu` now derives its expectations from the selected remix instead of
-a hand table. **None of the six is flashed** — every MODE select and knob
-publish rides the standing on-unit reconfirm, and that is the only gate left.
-
-Both tool gaps this paragraph used to list are now CLOSED: `make cycles` is
-remix-aware (measured costs in the ledger below, and they were dearer than
-the inspection estimates this paragraph once carried — Rungs 238 against a
-guessed ~190), and `send_probe`'s layout alphabet is derived from the
-manifests, so an insert renders with `--direct` rather than by hand.
-
-Three things follow that are worth knowing before editing anything:
-
-- **The build refuses to start when two selected modules collide** on an FX2
-  id, a ColdFire cave, a hook site or a core-private Y word, and names both.
-  `tools/remix/ledger.py`; the negative tests are in `make check`. As of
-  29 Aug it also refuses two modules that both own the **per-core FX2
-  instance buffer region** `Y:0x4000–0xBFFF` (BusVerb's tank, Nimbus's
-  line) — declared, not scanned, because a scan cannot tell an address from
-  a mask. The shared 64K window is still **not** covered — its extents are
-  not established well enough to write down, so `CLAUDE.md`'s ownership
-  notes remain the map.
-- **A module's `priority` is byte-load-bearing.** The donor region is packed
-  in that order.
-- **Refactors of the build prove themselves with `scripts/refhash.sh`** — 23
-  configurations, artifacts *and* build reports, bit-identical. Save a
-  baseline on a tree you trust before starting. Every commit of the remix
-  work passed it, and it caught things reading the diff did not.
-
-`docs/MODULES.md` is the contributor guide.
-
----
-
-## The principle that decides everything: SYMMETRY
-
-**FX2 bus servers are asymmetric. FX1 inserts cannot be.**
-
-BusVerb exists only on core 0; BusDelay only on core 1. That is what
-specialization (`SPEC=1`) bought. But an FX1 insert must run on *any* of the
-8 tracks, so it must exist in **both** payloads — and program space is per
-core. Two consequences:
-
-1. **Payload B's free words can only ever be spent on the delay.** No FX1
-   redesign can reach them.
-2. **FX1 work and delay work never touch the same pool**, so there is no
-   resource reason to sequence one before the other.
-
----
-
-## The resource ledger
-
-### Program space — per core, 8,192 words; donor region 2,724 words/payload
-
-The build report is the live ledger — `make bus` prints it. Current build
-(29 Aug 2026): **payload A used 2,650, FREE 74; payload B used 2,694,
-FREE 30 — and since BusDelay v5 (3 Sep 2026, PITCH mode retired, GRAIN pitched) B used 2,404, FREE 320 (v5.1: 2,154 words).** The older "A 55 / B 1" figures in this file predated the freeze
-and roll work; both payloads are still effectively full, and new work needs
-a lever first.
-
-**Space levers, in order of preference:**
-
-- **The reverb LFO-block roll is built and PARKED, not available.**
-  `modules/busverb/reverb_lforoll.asm` frees 51 words ✅ measured, but fails
-  `verify_roll` on the TIME=127 SIZE=127 DIFF=127 wet case — the only one
-  that drives the allpass hard. Bisected: the shared triangle stash is
-  innocent, loop order is irrelevant, the table is right; the remaining
-  suspect is the AP section's indexed writes, and it needs a state probe,
-  not more reading.
-- **OMR memory map** (`docs/CHIP.md` §3): Fig 3-3 doubles P, 8K → 16K,
-  **+8,192 words**, costing `Y:0xA000–0xBFFF`. On core 0 it **evicts tank
-  lines 6–7** (BusVerb's eight lines are `Y:0x4000–0xBFFF` at 4K each), so
-  core-0 OMR is reverb re-layout work, not a build flag. 🟡 OMR is per-core:
-  core 1 alone can take Fig 3-3 with no tank cost — contingent on nothing
-  else on that core using `Y:0xA000–0xBFFF`. ⚠️ No OMR risk can be de-risked
-  locally: `dsp_host` has no 8K wall and no OMR model; each unknown is a
-  flash.
-- **Code in the shared window**: P/X/Y alias at `0x30000–0x3FFFF` ✅ and
-  stock already runs code there ✅, so up to 64K is program-addressable. 🟡
-- **FX1 consolidation** (work order §2) frees ~550–650 per payload as a side
-  effect, but is its own project.
-
-### Cycles — per core, 4,535/sample ✅ arithmetic (200 MIPS ÷ 44.1 kHz)
-
-🟡 **8 Sep 2026: probably 4,160, not 4,535.** The payload never writes the
-DSP's PLL (reset default = EXTAL × 8.125) and clocks the ESAI from EXTAL at
-÷512, so instructions per sample = 512 × 8.125 = 4,160 whatever the crystal.
-Inferred from the firmware's register writes + the DSP56720 manual, not
-measured; every hardware-measured budget below is an instruction count and
-stands. `docs/CHIP.md` §2, `docs/COLDFIRE_PORT.md` O8 "the ESAI rate".
-
-Cycles are not the current constraint. `make cycles` is **remix-aware since
-29 Aug 2026** and prints a **WORST ONE CORE** figure derived from the
-selection: four FX2 slots, at most one server (the design rule, and what
-SPEC enforces), inserts unlimited because nothing stops all four tracks
-choosing the same one. Measured this way:
-
-| remix | worst core | what fills it |
+| where | how much | status |
 |---|---|---|
-| bus | **1,817** | 1× delay (v5, pitched GRAIN) + 3× send (was 2,432 with the v2 GRAIN delay) |
-| mutables | **1,376** | 4× BodeShift (the dearest insert) |
-| nimbus | **1,308** | 4× Nimbus |
-| verbonly | **1,444** | 1× reverb + 3× send |
-
-against ~3,125 usable after stock's own ~1,410. Per-module: reverb 1,384,
-delay 1,757 (GRAIN v5, pitched, four per line, 3 Sep 2026; was 2,372 with the v2 GRAIN), Nimbus 327, BodeShift 344, Rungs 238,
-Streamz 154, WarpFold 101, Ripple 93, send 20.
-
-The old headline summed reverb + delay + sends onto one core — a load no
-core ever pays. That composition is still printed, labelled as the legacy
-basis, because the 7 Aug hardware spare was measured against it and
-re-baselining the comparison would break the only hardware anchor there is.
-⚠️ Every figure here is a static count: exact for the code, blind to
-memory-contention stalls, and the wall is a **cliff**. Only the burn sweep
-measures the real ceiling.
-
-- ⚠️ **FX1 cycles are paid ×4 per core** — a 300-cycle FX1 effect costs
-  1,200 cycles/core. *This*, not program space, is the ceiling on FX1
-  ambition.
-- ✅ **The flashable burn probe BUILDS — `make burn` places it** (payload A
-  FREE 46, B FREE 9) with `p3` as the burn knob at 32 cycles/step. This
-  paragraph claimed the opposite until 30 Aug 2026 and an entire work-order
-  item was priced on it. What is blocked is only `verify_burn`'s **alias-probe
-  diagnostic**, which needs the non-XBUS *plain* layout where the delay
-  overruns — and that figure has rotted twice (2,794 → 2,734 → **2,766 today**,
-  42 words over), so read it from `verify_burn`'s own NOTE rather than from
-  any document.
-- **Priced cycle lever**: GRAIN 4 grains → 2 returns ~300 cycles for ~100
-  words, at the voicing cost of half the simultaneous voices.
-
-### Y memory
-
-| | |
-|---|---|
-| FX2 per server, pooled | **65,536 words = 1.49 s** (2 private slots + half the shared window) |
-| FX1 slots | 3,072 each × 4 = **12,288 per core, allocated used or not** |
-
-**FX1's 12,288 words are currently stranded** — only an FX1 effect can reach
-them, and stock's inserts use a fraction. Owning FX1 turns that into real
-capability: 70 ms lines per track — doublers, short slaps, wide chorus.
-
----
+| **ROM**: the OS image's free zero runs (`0x400c45b0`, `0x400d24d0`, `0x400d2ee6`, `0x400d64da`) | ~8.4 KB total, shared by every ROM-resident cave and the chooser clones | ✅ measured; the scarce thing every author fought over |
+| **The RAM** | 128 MB physical at `0x40000000` (ACR0's cacheable window is exactly that; reset stack at `0x48000000`), decoded over a 256 MB chip select (`SDCS0 = 0x4000001b`, NXP's own example uses `0x1a` for 128 MB), so `0x48000000..0x4fffffff` is the same memory **uncached** (CACR default `DDCM_P`, decoded with the kernel's header) | ✅ boot code + ✅ hardware (Octakit writes through the alias and executes cached; mxldyn's canary died inside the rings) |
+| **The audio page arena** `0x40a955e0..0x46025de0` | 14,602 × 6,144 B = 85.56 MiB, Elektron's "85.5 MB": Flex samples + track recorders. **Octakit takes its top 528 pages (3.09 MiB) for her runtime; octamax 2.0 its bottom 64 (384 KB)** — both hardware-proven, the one DRAM placement with a track record | ✅ measured (her recipe against stock's bytes; his hw) |
+| **The top window** `0x47fc7410..0x47fe0000` | 101,360 B: Octakit's stage (72,959 B) at the bottom; octabam's stage and runtime were at the top until 10 Sep 2026 and are now in the arena reserve. ❌ **Not clean**: stock's engine task keeps its sector bounce buffers and stream descriptors here (`0x4ffc7610`, `0x4ffc9010`, `0x4ffcb220`, `0x4ffce230`); with static samples in the project the port fills `0x47fc8fe4..0x47fcd9e4` (18,944 B) **at project load** — inside her stage, 47 KB below ours | ✅ measured on the port (PIO path); ⚠️ DMA-card path and play-time streaming unexercised; nothing seen above `0x47fcd9e4`, no owner named above `0x47fd1240` |
+| **The delay rings** `0x47502c10..0x47fc7410` | 10.8 MB — eight rings, stride 1,411,328 B (wrap 1,411,200 + one 16-sample frame of pad; read at `0x40003386`), the boot memset `705,664 × 16` at `0x40002fb4`, all addressed through the alias | ✅ static + ✅ port + ✅ Bryan + ✅ mxldyn's hardware; **not free** — "8.8 MB at 0x47700000" retracted |
+| `0x46025de0..0x4763d580` | stock's globals and object pool, zero-filled at boot by the loop right after the boot detour | ✅ static; not free |
 
 ## Work order
 
-### 1. Voicing polish — ear items, none blocking
-
-- **"Clipping on both effects" (24 Aug 2026) — RESOLVED UPSTREAM, measured
-  on the unit the same evening** via the EVO4 + MIDI CC rig
-  (`tools/level_cap.py`, `tools/ot_midi.py`): the dry mix was flat-topping
-  with every send at zero. Causes, in order: AMP VOL ≈ +12 dB on two
-  source tracks + hot sample GAINs (pre-FX clip), then a master compressor
-  flattening the sum at full scale. With gains at 0 dB / VOL 64 and the
-  mix rebalanced (peak −17.6 dBFS), sends swept 0→127 on both effects and
-  both at once: **no clipping at any step** (reverb +5.4 dB RMS at full
-  send, delay +1.5, both −14.4 dBFS peak). BIG swept separately: clean at full send (−14.9 dBFS peak). The BIG knee (0.25–0.5 FS in)
-  is unreachable from a sane mix (senders ≈ 0.13 FS); the old drums hit
-  0.41 FS. Open ear item only: the delay return is ~4 dB quieter than the
-  reverb at equal send. **Capture E closed the same evening**: three senders
-  (two of them 10–15 dB quieter) at full send dropped the wet by 4.8 dB vs
-  the loud sender alone — the 1/√N law to the dB (1/N predicts −9.5). Design
-  property to know: a quiet sender turns the loud sender's reverb down.
-- **R58 (tag 77, ON THE UNIT 24 Aug — hardware-ratified: lean 8.0 -> ~4.4 dB, wet +3.8 dB, no clipping): PING
-  balance + delay return makeup** — wet x1.5 both channels, +0.75*PING*wet
-  on R; lean 7.9 -> 4.4 dB at defaults, PING 0 untouched, no bus-level side
-  effects. `docs/VOICING.md` R58. Hardware ear-ratify on next flash.
-- **Full MIDI-driven hardware voice pass DONE (24 Aug 2026 evening,
-  Sam's set, R57)** — see `docs/VOICING.md`. No clipping at any page-1
-  setting or stacked extreme on either effect; modes span ~3.6 dB; pitch
-  exact on real material; GRAIN scatter / wow / REVERSE / FREEZE all
-  hardware-verified (freeze seamless by Sam's ear). Open: the **TONE CC-42
-  publish quirk** (lands in the Part but reaches the DSP only while T3's
-  FX2 page is on screen — docs/MIDI.md).
-- **Per-mode gain structure.** The modes are 7–9 dB apart at the output
-  (`docs/TESTPASS.md`: ROOM −23.0 / PLATE −24.9 / BIG −16.1 dBFS at
-  defaults), and an input sweep (in this file's git history) put BIG across
-  the clip knee at a 0.25–0.5 FS input while PLATE never reached it. The
-  honest fix is per-mode headroom, set from measurement. Interim practice:
-  back BIG off by hand.
-- Reopeners from the reverb's "done for now" call, live only if a listening
-  round asks: the pad's last forwardness, the 6–9 k crest, the TIME refit,
-  a PLATE ear pass.
-- GRAIN texture: the density gate only subtracts energy, so sparse always
-  costs level (the reference manages loud AND sparse). Needs makeup gain on
-  the surviving grains, which does not exist yet.
-
-### 1b. DYNAMIC DONOR REGIONS — measured feasible, 3 Sep 2026
-
-**Sam's framing, and it is the right one: if the goal is to mix and match all
-effects freely, dropping any stock effect should give you its words.** Today
-only three can be harvested — the donor region is exactly PLATE + SPRING +
-DARK REV — and every other stock effect answers "what does this cost?" with a
-number you cannot spend. That is a property of THIS BUILD, not of the
-machine, and the difference had been showing up as UI copy nobody could make
-read straight ("dropping it frees none").
-
-**The two facts that make it possible are measured** (`tools/dsp_reach.py`
-disassembly of payload A, against the module records and the spans in
-`docs/DSP.md` §8):
-
-- **The thirteen DSP effects are CONTIGUOUS**, `P:0x007d1..0x01fdf`, **6,158
-  words**, with no other module between them:
-
-  | | | | | |
-  |---|---|---|---|---|
-  | `007d1` FILTER 727 | `00aa8` SPATIALIZER 261 | `00bad` EQUALIZER 282 | `00cc7` PHASER 157+41 | `00d96` FLANGER 289 |
-  | `00eb7` CHORUS 329 | `01000` PLATE 594 | `01252` SPRING 1063 | `01679` DARK 1067 | `01aa4` COMPRESSOR 180 |
-  | `01b58` LO-FI 537 | `01d71` DJ EQ 345 | `01eca` COMB 277 | | |
-
-  The current 2,724-word donor region is the middle third of that run.
-- **Every one is SELF-CONTAINED.** No control flow leaves an effect's own
-  span, and nothing enters one but its own dispatch entry. The single
-  apparent exception is PLATE's `do #<$6,>$1267` — a loop END address, which
-  is exclusive, so it is its own boundary rather than a jump into SPRING.
-  (⚠️ PHASER is the known irregular one: its true extent runs 41 words past
-  its record into four small blocks, `docs/DSP.md` §8. Its span is the true
-  one above.)
-
-**So the ceiling is 6,158 words against today's 2,724 — 2.26×** — and
-anything between: drop CHORUS and the region grows *downward* from PLATE
-because CHORUS is its neighbour.
-
-**What it costs, and this is the new decision it forces.** Today an unlisted
-stock effect keeps working — its code, descriptor and dispatch stay stock, so
-an old project that selects it still runs it, and leaving it out costs only a
-chooser row. A stock effect *harvested for its words* is gone: its dispatch
-must go to the null stub, exactly as the donors' do. So a stock effect stops
-having two states and gains three — **listed** / **unlisted but intact** /
-**harvested** — and the remixer has to make that choice legible, because it
-is the first one in this tool that actually takes something away.
-
-**The work, in order:** ✅ containment sweep on payload B — **all twelve
-self-contained there too**, and B carries the same thirteen effects at
-different bases (`P:0x00591..0x01d9f`, the same 6,158 words); ✅ per-effect
-spans in `stock.p_spans()`, *derived* from the module map by record-size
-fingerprint rather than written down, so a firmware whose layout differs
-raises instead of being written over; ✅ `Remix.harvest`, defaulting to the
-three reverbs; ✅ `build_bus.py` places into the harvested run; ✅ every
-harvested effect the placer reached is nulled and the survivors keep their
-algorithm, by SPAN rather than by a hand-written donor list; ✅ selftest
-asserts contiguity in both payloads and that every shipped remix harvests a
-run; ✅ **refhash 26/26 bit-identical**.
-
-✅ **EVERY RUN IS PLACEABLE, not just the largest** (3 Sep 2026). The build
-refused a non-contiguous harvest, so `stock.region_of` handed it the biggest
-run alone and every other run was given up and then left empty — Sam, from
-the budget map: *"when I remove the modulation it shows free space. But when
-I remove some reverb it only shows the free reverb space."* Two adjacent
-effects (EQ+PHASER, 489 words) simply vanished behind the reverbs' 2,724.
-Now `stock.regions_of()` groups the harvest into runs and the placer
-first-fits each module into a run it fits — assembling once per candidate,
-since a module's origin is an argument. Proven: STREAMZ placed into
-SPATIALIZER's isolated 261-word opening renders **bit-identical** to the
-same module in a single 2,724-word run. `bothslots` goes 3,342 → 3,880
-usable words. ⚠️ The residual cost of a gap is **fragmentation** — a module
-is one code stream and must fit ONE run — so the budget names the largest
-opening beside the total, the map draws a bracket per run instead of one
-across the wall, and `consumed_at`'s single-stream arithmetic is gated to
-the one-run case rather than left to be quietly wrong. ✅ refhash 26/26
-bit-identical (the single-run report wording, failure text included, is
-frozen for exactly this reason).
-
-✅ **And the remixer composes it.** `h` harvests the highlighted stock
-effect, `⌁` marks it, `consumed_at`/`region_words`/`placeable` all take the
-selection's own harvest, and the Budget's `held by` row follows
-(`Chorus, Plate, Spring, Dark — 3,053 words; drop Chorus for 329 more`). The
-run is kept contiguous at the KEYSTROKE, naming what is in the way, and the
-resource line offers `h harvests them` only on the two effects that could
-legally join.
-
-⬜ **Left, and it is the interesting half now:** nothing has been *flashed*,
-and harvesting a non-reverb has never run on hardware. The measurement says
-each effect is self-contained; what it cannot say is whether anything
-outside the DSP — a ColdFire path, a descriptor, the allocator table — cares
-that CHORUS's algorithm is gone. The cheapest real test is a card with
-`harvest=("CHORUS", ...)` and CHORUS left off both choosers, listening for
-anything but silence on its id.
-
-⚠️ **One constraint found the hard way: the build report's donor names must
-be ONE WORD.** `state.measure()` reads `KEPT STOCK: (\S+)` and splits on
-`/`, so `PLATE REV/SPRING REV/DARK REV` truncates the whole list at the
-first space. The report is API — refhash hashes it and three verifiers parse
-it — so the first word is emitted, exactly as the old lowercase donor keys
-produced.
-
-### 2. FX1 consolidation — turning the stranded pool into capability
-
-The trick BusVerb already ran: replace near-duplicates with one engine plus
-a MODE select.
-
-| cluster | stock words | one engine | freed **per payload** |
-|---|---|---|---|
-| PHASER + FLANGER + CHORUS + COMB | **1,102** (PHASER's true extent is 207, past its 157-word record — `DSP.md`) | ~400–500 🟡 | **~550–650** |
-| EQUALIZER + DJ EQ | **627** | ~300 🟡 | **~325** |
-
-All four in row 1 are the same structure — a short modulated delay with
-feedback. **FILTER is the outlier**: 727 words, the default FX1 effect, ~260
-cycles. Highest value, highest risk. ✅ Taking the three reverbs cost FX1
-nothing — they were never on its menu; FX1's ten effects are the whole pool.
-
-✅ **FX1's chooser is COMPOSED since 3 Sep 2026** — `Remix.fx1` is FX1's row
-list exactly as `modules` is FX2's: list, unlist, reorder, stock effects and
-ours alike. The list is rebuilt in the cave with its three `lea` refs
-repointed, the viewport literal at `0x40059be6` sized to it, and FX1's own
-id and cursor tables written (`docs/MODULES.md`). It costs no words; the
-bill is cycles, and `make cycles` prices FX1's four slots, so the trade is
-visible before it is made. Emulator-verified, **unflashed**;
-`remixes/bothslots.py` is the worked example. That is orthogonal to the
-consolidation below, which is about freeing FX1's own words.
-
-⚠️ Sequence FX1 ambition after the burn sweep (§3) — its real ceiling is
-cycles ×4. Note the spare HAS been measured per core since 23 Aug 2026
-(704 with the reverb + 4× FILTER, 1,088 with 2×, one FILTER = 192 —
-`docs/CHIP.md` §2); the sweep is to re-measure it against whatever bank FX1
-work would actually run in.
-
-### 3. Flash the burn probe and sweep the ceiling
-
-**Not blocked — `make burn` builds a flashable image today.** Flash it once
-and sweep the real per-core cycle ceiling from the front panel with `p3`
-(32 cycles/step). Everything in §2 prices off that number, so this is one
-flash away rather than a hunt for words.
-
-(The *only* thing needing words is `verify_burn`'s alias-probe diagnostic in
-the plain layout, which is a local check, not the measurement.)
-
-### 4. Piggyback on that flash: can the STOCK delay run downstream of our reverb?
-
-Cheap experiment, no new engine, and it would buy a routing the hardware has
-no path for. **Everything about it is hardware-only** — the mechanism is
-entirely CPU-side, so no local test can say anything.
-
-**What is settled.** The stock Echo Freeze Delay is applied *downstream of the
-FX2 insert* (measured here by listening test) and lives on the ColdFire as DMA
-over SDRAM rings at `0x4F502C10` (`docs/EXTERNAL.md`, Bryan T). So the signal
-order for "our reverb into the stock delay" is already the right way round.
-The reverse — stock delay into our bus — is **impossible and now known to be
-so physically**: those rings are outside the DSP's 18-bit external address
-range, so no DSP code can ever read them. Delay→reverb stays BusDelay's
-`→VERB`.
-
-**The crack — now ✅ MEASURED, 31 Aug 2026, by disassembling it here.** The
-audio path does not read the FX2 id field at all (all 18 references to it are
-UI/menu code). What the delay actually gates on, at `0x40003230`:
-
-```
-a2 = 0x80001b87 + 64*track                  ; 0x400031e0..e6
-mvzb (a2),d0 ; moveq #8,d1 ; cmp ; bne      ; the gate
-mvsb (fp),d0 ; moveq #7,d2 ; cmp ; bne      ; a SECOND condition, fp =
-                                            ; 0x80000eb4 + 8*[0x800000e0]
-```
-
-So the gate byte is **offset +7 of a 64-byte per-track record based at
-`0x80001b80`**, and that record is filled by the frame builder at
-`0x4000d13c..46` in an eight-iteration per-track loop (`a3 += 64`), with
-offsets 6–7 coming from a staging word at `0x80000128 + 512*bank +
-64*track + 32`.
-
-**The consequence, and it is what makes the experiment worth a flash: the gate
-byte is a PER-FRAME COPY in shared RAM, not the FX2 id itself.** The DSP
-dispatch reads the id from the instance table (`r6+$1c`); the CPU delay reads
-this staged copy. They are different storage fed from the same source — so a
-cave running between the builder's write and the delay's read can set one
-without touching the other. That is precisely the decoupling step 2 was meant
-to test, and it is now established statically rather than on the unit.
-
-⚠️ The **second condition** (`0x80000eb4 + 8*bank == 7`) is unexplained;
-`0x80000eb4` is machine-type storage in the timestretch work. It may gate
-which TIME path runs rather than whether the delay runs at all — the two
-branches lead to two different time derivations, not to a bypass. Read it
-before assuming.
-
-✅ **Closed one of Bryan's open threads while in there:** the writer of the
-staged TIME word at `0x80005fa0` is this same routine, at `0x40003284..88`,
-copying a word from the *other* per-track record at `0x80001a00 + 96*track`.
-
-**The experiment.** If that byte is decoupled from the dispatch id, a ColdFire
-cave — infrastructure we already fly — can set it for a track whose FX2 slot
-is running BusVerb, giving **reverb → stock delay in series on one track**.
-Steps, cheapest first:
-
-1. ✅ **DONE** — the gate, its record and its filler are decoded above.
-2. Pick the hook window. It must be **after** the frame builder fills the
-   record (`0x4000d146`) and **before** the delay routine reads it
-   (`0x40003230`), on the same frame. Find a site in that window whose stock
-   bytes can be replayed.
-3. Write the cave: force record+7 to 8 for the chosen track. Flash, select
-   BusVerb on that track, and listen for repeats. The standing rule applies
-   — assert the stock bytes, replay what you displace.
-
-⚠️ **Before spending the flash, settle the second condition** (the `==7`
-above) statically; if it turns out to gate the delay's existence rather than
-its time source, step 3's cave needs to satisfy both.
-
-**Known unknowns before spending a flash on step 3.** The delay's TIME comes
-from a staged word at `0x80005fa0` whose writer is unmapped, so the delay may
-run with no controllable time; and a track hosting BusVerb has no free
-parameter slot to put a delay control on. Treat a first result of "it makes
-delayed sound at some arbitrary time" as success for the experiment and a
-separate problem for the design.
-
-### 5. The remixer and a local ColdFire emulator (decided 31 Aug 2026; STATUS BOARD at the end of this section, 6 Sep 2026)
-
-**The aim is an iterate-with-a-cycle loop for ColdFire/UI work** — the class
-of change that today costs a flash per attempt. Two backlog items merge into
-one tool, under one architectural rule: **the emulator is a headless library;
-the TUI is a shell around it.**
-
-```
-┌─ remix ─────────────┐ ┌─ emulated OT ──────────┐
-│ [x] busverb        │ │  MAIN MENU             │
-│ [x] busdelay       │ │  > PROJECT             │
-│ [x] tempo-sync      │ │    REVERB    ← new row │
-│  build ▸ check ▸    │ │  (arrows/enter = keys) │
-└─────────────────────┘ └────────────────────────┘
-```
-
-**Why it is tractable now** (all measured, 31 Aug 2026):
-
-- Unicorn 2.1.4 exposes QEMU's `UC_CPU_M68K_CFV4E` model and **executes this
-  CPU correctly** — `mvz`/`mvs` extended right, EMAC `macl`/`movclrl`
-  produced the exact predicted product (32769 × −32767 = `0xC0000001`).
-  The archaeology-era `emu_*.py` harnesses (recoverable,
-  `git show 9e1c028^:tools/emu_image.py`) ran the default plain-68k core;
-  the model flag removes their one real limitation.
-- The memory map is already decoded (`docs/ARCHITECTURE.md` §7), the DSP
-  MMIO handshake at `0x20000000` down to the ready bit and frame swap, and
-  the unit officially boots to DEMO with no CF card — so the DSP and ATA
-  can be stubbed on day one.
-- The MAIN MENU table system is decoded (`docs/MAINMENU.md`), so the first
-  customer — a dedicated REVERB/DELAY menu entry, the two-write patch of
-  MAINMENU.md §5 — has a concrete test to run.
-
-**Tiers, with the risk stated:**
-
-1. **Tier 0 — headless boot to the main loop.** Map SDRAM/RAM windows, load
-   the image, hook every unmapped access and log it; the stub list builds
-   itself. ⚠️ The open risk is the RTOS tick: the vector table (`0x400`
-   preamble) is an un-extracted open front and interrupt injection in
-   Unicorn m68k is manual. Days if it cooperates, a swamp if not — and the
-   fallback is the detour-style harness (emu_image.py shape, CFV4E model),
-   which covers the menu patch without booting anything.
-2. **Tier 1 — the text UI.** Do NOT emulate the LCD or key matrix. Read the
-   screen by hooking the decoded draw path (window ctor `FUN_4005829c`,
-   list drawer `FUN_40037590`, sprintf `0x40013a08`) into a windows+strings
-   model; inject keys at the software layer (the `[PAGE]` keycode-`0x1b`
-   precedent). Not pixel-faithful — menu-walking faithful.
-3. **TUI shell** (upgrades the `make remix` composer): remix pane + build
-   pane land first and are useful with no emulator; the emu pane plugs in
-   when Tier 1 does. Schedules deliberately uncoupled.
-4. **Audio stays out.** The voicing loop (render → afplay → ear) is already
-   right and does not move into a pane. A dual-core `dsp_host` (two vendored
-   56300 cores + the shared window — the only tool that could ever show a
-   bus race locally) is acknowledged as the next bet after this, not part
-   of it.
-
-**The prize is not the interactive toy:** a headless
-`boot / inject_key / read_screen` API means `verify_menu`-style checks can
-*walk the patched firmware* under `make check` — an automated no-flash gate
-for every ColdFire cave, present and future.
-
-**Tier-0 bring-up is underway and de-risked** (`docs/EMU.md`,
-`tools/emu_bringup.py`, 31 Aug 2026): with SP+SR seeded and MMIO modelled,
-the real image executes **~7,000,000 instructions with zero decode faults**,
-through all early hardware init, and stops exactly at the RTOS handoff
-(`trap #0`, `0x40000e46`). The one load-bearing peripheral value is decoded
-(the clock register must report a 264 MHz sysclk or the boot halts); async
-completion-flag spins are auto-satisfied.
-
-**Milestone 1 is shipped**: the emulator is a library (`boot()` +
-`read_menu_tree()`), wired into the remixer — `make remix`, press
-**`e`** to boot the *built* image, confirm it reaches the handoff with no
-fault, and see the MAIN MENU walked from RAM with any patched-in entry
-highlighted. That is the crow-flies no-flash gate: a cave that breaks early
-init faults in the emulator, not on the unit. ~4 s per boot (native bursts).
-
-**Milestone 2 is shipped too**: the **live screen**. `render_menu(r, cursor)`
-calls the firmware's own menu draw against the warm machine and captures it as
-`(x,y,text)` (the detour route — `ctl_flush_tb` + open + state/viewport pokes +
-draw); `make remix` → `e` shows a framed LCD with up/down navigating the main
-menu and the submenu preview following, as on the unit — on the *built* image,
-so a patched-in entry renders as the firmware would draw it. Recipe and the
-JIT-cache gotcha are in `docs/EMU.md`.
-
-The **FX2 dials page** renders too (`e` → `f`): the EFFECT 2 SETUP window,
-listing the built remix's own effects (`BusVerb77`, `BusDelay77`, `Send`)
-and the param row.
-
-**Milestone 3 is shipped (31 Aug 2026): the track-centric remixer.** The
-curses TUI is retired; `make remix` now runs `tools/remix/app.py` (Textual,
-in the same `.venv` extra as unicorn), organized the way an Octatrack user
-thinks. Home is a RIG of eight tracks: assign any effect the track can host
-(servers by payload — A serves T5-8, B serves T1-4, now DECLARED in the two
-server manifests; inserts anywhere), dial its manifest-named knobs on the
-real page-1/page-2 layout, render and hear it, A/B renders. EVERY effect
-renders locally (`tools/remix/audition.py`): BusVerb via `render_reverb`,
-BusDelay via a staleness-checked DEV hatch build, inserts via a per-insert
-scratch image — and `send_probe --set NAME=VAL` now drives any knob of any
-module through its own `knob_map()`. The 12 Aug SEND-alias trap is guarded
-for every module (a `--pick` of an absent insert dies instead of rendering a
-plausible dry passthrough). The composer groups modules by category with
-track ranges, phrases its panel as the FX2 menu the unit will show, and
-builds/checks the LIVE selection; the emu view caches its boot until the
-image changes and follows the rig's selected track. Follow-ups landed the
-same day: esc stops audio, Rich-markup escaping, per-knob docs + select
-labels in the manifests with `?` help overlays, the audition journal
-(`out/_audition/log.jsonl`), and the terminal-ANSI theme. The manual is
-`docs/REMIXER.md`.
-
-Remaining toward full fidelity: item-level menu descent and live dial *values*
-(same detour shape — drive the real key handler `FUN_40064e64`, capture the
-XOR-highlight `FUN_40012254`, and assign the effect to the track) and, only if
-something needs task-interleaving behaviour, route **A** (emulate the RTOS:
-dispatch the trap via VBR `[0x400b9668]`, drive a timer tick). **Scoped 6 Sep
-2026 — `docs/RTOS_FORK.md`**: kernel decoded, feasibility spike passed, five
-milestones (M6a–e) with the fidelity gate that M5's one-trig test must land
-identically under the real scheduler. The recorder-arm path (M5 "path B") is
-the first consumer; Sam chose it as the next emulator lift.
-
-**Emulator milestone 4, BUILT 5 Sep 2026: a LOADED PROJECT (card
-emulation) — `tools/emu_card.py`, `make emu-card PROJECT=<dir>`, `docs/EMU.md`
-M4.** The trigger below arrived with the recorder work; the paragraph is kept
-as the design record. The async-completion risk turned out to be one hook on
-the RTOS event wait. The emulator booted with no project, so `PART` was null and every
-panel path that keys off the project — the select committer, part save and
-load, stamp defaults, the recorder write path — cannot be driven to
-the right address; that gap is what turned the select-array question into
-four hardware probe flashes (80–83) with no signal. The firmware does its own
-FAT parsing, so the emulator only has to answer ATA sector reads from an
-image file (`docs/ARCHITECTURE.md` §5 has the opcodes and task-file
-registers); the image is a FAT16 volume with a project from
-`tools/ot_project.py`. The open risk is the async completion path through
-the RTOS queues, the same interrupt-injection question as the tick. Start it
-when the SECOND project-dependent path shows up; the first (the bus screen's
-MODE) was solved by moving MODE to a slot the emulator could already drive.
-
-**EMULATOR STATUS BOARD — the pick-up point (6 Sep 2026).** Two routes
-exist and both are in main. Route B (detours) is what everything above
-uses: boot to the handoff, then call firmware functions by hand. Route A
-(`tools/emu_rtos.py`, `docs/RTOS_FORK.md`) runs the firmware's own
-scheduler.
-
-| milestone | state | what it gives you today |
-|---|---|---|
-| M1 boot to the handoff | ✅ shipped | `make remix` → `e`: a cave that breaks early init faults here, not on the unit |
-| M2 live screen | ✅ shipped | the main menu drawn by the firmware's own code, walkable |
-| M3 track-centric remixer | ✅ shipped | every effect auditionable; FX2 page renders |
-| M4 card + loaded project | ✅ shipped (route B) | `make emu-card PROJECT=<abs dir>`: the RIG project loads through the real storage stack, one wait hook |
-| M5 frames + ticks, cold | ✅ done, one gap | a step trig fires end to end; the recorder-arm path ("path B") needs real task interleaving |
-| **M6a scheduler runs** | ✅ **done 6 Sep, PR #100** | `make emu-rtos PROJECT=<abs dir>`: eleven tasks start in the real order, the 5 ms tick and every interrupt fire, tasks post to each other; gate passes at 205 ms emulated |
-| M6b real waits + mount | ✅ **done 6 Sep** (one retraction) | `sys` (not engine) mounts the card; a real mount + LOAD PROJECT reach 30,467 real sectors (M4: ~30,955) and the file's saved bank. PR #103's "track-select watcher" reading is WITHDRAWN: the bytes are the current bank; the run ends on bank A because the engine's own reset-time "select bank 0" reaches `sys` after the `BANK=1` parse — a real cross-task ordering with a one-press hardware falsifier (RTOS_FORK §7). ✅ **Falsifier run on the unit 6 Sep evening: B01, and PLAY runs the pattern** — the EMULATOR's ordering is the unfaithful one; `select_bank_live`/`seq_select_live` are compensation for an emulator defect and go once the load's timing is fixed (open) |
-| M6c sequencer under the scheduler | ✅ **done 6 Sep — gate passed** | the one-trig test lands the same byte (`0xd3`), same track, 344 frames after the start frame, 28 ticks, under real tasks and real interrupts as it does cold. Three findings on the way (RTOS_FORK §8): the frame source is re-armed by the **eDMA completion ISR** (eDMA now modelled, 16.0-sample period); a **forced interrupt bypasses the mask** (MCF54455RM §17.2.3 — the tick is never unmasked and never needed to be); the load leaves the **sequencer's** playing bank on A by §7's ordering (re-selected through the load's own last step; the hardware falsifier gained a second observable — and the unit answered it: the saved pattern runs, so the re-select is compensating for the emulator, RTOS_FORK §8.3). Sonnet's two §8 hypotheses retracted |
-| M6d key injection | ✅ **done 6 Sep — and the premise was wrong** | PLAY/REC do NOT arrive via a post to `0x4005593c`'s queue — that task isn't a queue consumer at all (a key-repeat timer, mislabeled "UI" by neighbourhood to the real queue's ring buffer). The real `UI_QUEUE` (`0x460d1664`) consumer is a different, previously-unidentified task (`0x40056c40`); physical keys dispatch through a separate per-key jump table (`0x400d2d54`) instead, the same shape as the FX2 shortcut. `press_play_live()`/`press_rec_live()` call PLAY/REC through their own firmware handlers (`call_as_main`, confirmed non-blocking by disassembly); PLAY reproduces M6c's fidelity gate exactly (RTOS_FORK §9) |
-| M6e use it | 🟡 in progress (6 Sep) | the recorder-project fixture exists (`ot_project.py machine-type` + the `tools/scratch/` wrapper: track 1 -> machine type 4, verified by RAM readback) and with it track 1 stops writing `FW_LIVE_NIBBLE` at all, 8 writes -> 5. ❌ **The first pass's reading of that — "confirms machine-type-branched trig dispatch" — is RETRACTED**: type 7, out of range for the 0..4 dispatch, gives the IDENTICAL signature and type 3 (NEIGHBOR) gives the baseline, so it reads "type >= 4 / not started"; and the vanished writes include the **frame-0 transport-start** one, so the track never starts and nothing measured happens at the trig. §9.4's own falsifier finally ran (`--via-rec`, PLAY-then-REC) and was **aimed at the wrong mechanism**: REC leaves `0x800066a0` at 0 on the recorder-configured project as on the plain one, and per the manual it would — `[REC]` activates GRID RECORDING mode, and a **recorder trig** is what starts a track recorder sampling. Two instrument defects found on the way, both silent: `--watch-calls`/`--watch-mem` printed nothing without `--trace` (fixed; the zero-call flag re-derived and it holds), and `0x800065b8`/`0x800066a0` are longwords that read as a flat 0 byte-wise. The arm/record path is still unlocated; `0x4000b800` gets zero calls even on a successful trig, and `watch_calls` is a code hook, so that means never executed by any route. RTOS_FORK §10. ✅ **7 Sep: the "sample loader" prerequisite of §10.12 is VOID** — `0x80004f1c` is the track's RECORDER state record (written by the arm caller, committed per frame, double-buffered: every earlier watch covered the wrong bank), machine types are 0 = STATIC / 1 = FLEX / 4 = PICKUP by code and data, the per-track slot record is 5 bytes indexed by type (`track-slot` now takes the kind), and "fixed RLEN sets bit 7" was the fixture's tempo change: bit 7 is the sign of the frame builder's timing byte; RLEN 3 at 120 BPM arms and records with the per-frame converter `0x40006dfc` (0 calls at MAX). OPEN: at 128 BPM (and on the RIG's own bank B) the word is composed a frame early with a negative offset and the arm caller drops the trig — emulator phase or hardware behaviour, one measurement each side decides (RTOS_FORK §10.13). ✅ **Same day, decided on the emulator side (§10.14)**: an 8-tempo sweep drops half of them, the PIT clock changes nothing, and neither of the firmware's two step-clock/frame-clock re-lock sites runs under route A (one gated on the CLOCK RECEIVE bit `--internal-clock` clears, one on a request flag nothing sets) — so the timing byte wanders and that is the emulator's. `--arm-phase-fix` is the logged compensation; with it Bryan's 128 / RLEN 4 case arms and runs the per-frame converter. **M6f (sequencer clock lock) is the next fidelity milestone** — and Sam's correction sharpens it: the rig is SLAVED to the Rytm (bank B at 121 BPM), CLOCK RECEIVE saved set is the very bit `--internal-clock` clears and the gate of the firmware's tick-side lock, so route A has never run the sequencer in the rig's real mode; M6f = model external MIDI clock first, hardware baseline = the rig slaved at 121. **Paused 7 Sep on Sam's question (side quest or not?)**: the arm-phase lever already reaches Bryan's mechanism (converter, buffer, length, end); the clock lock only becomes load-bearing when the question is sample-accurate start/end phase (the clicks) — and which lock to model depends on whether Bryan runs internal or slaved. Order: finish the mechanism with the lever, ask Bryan, then M6f in his mode (scoping notes at RTOS_FORK §10.14 end). ✅ **Hardware, same day, internal clock: 120 records AND 128 records** on the exact files the emulator scored 120 yes / 128 dropped — the drop is the emulator's; M6f's first half is the INTERNAL clock lock. ✅ **128 / RLEN 4 in situ (§10.15)**: the firmware writes 10,336 (2-sample units) = Bryan's 20,672 into R1's control record — his arithmetic reproduces; ❌ the recording never ENDS in route A (position counters saturate at 0xc00; the end test cannot pass; the DSP command slot is never written) — the recorder's position feed / the DSP is the prerequisite for the end, the loop point and the click. ~~RESUME (7 Sep checkpoint): scope the recorder position feed~~ — **there is no position feed. ✅ 7 Sep, later (§10.16, PR pending): instrumenting the block walk instead of scoping it found the stall was the EMULATOR's — stock Unicorn 2.1.4 halves every ColdFire fractional-mode EMAC product (unsigned `>> 32`; the chip is signed `>> 31`, and the firmware's own `2^31 / blocksize` reciprocals prove which). One defect, three retracted findings: the '2-sample units' (unit is one sample), the 'DSP position feed' (the ColdFire paces the recorder itself; the read-back block is its audio), and the 'dropped trig / clock lock / --arm-phase-fix' (the timing byte was halved). With the fixed library (`tools/unicorn_emac_fractional.patch`, `make emu-unicorn`; route A refuses a stock EMAC): the 128 / RLEN 4 trig arms with no lever, the firmware writes Bryan's 20,672, the recording ENDS (end decided one frame early at frame granularity, end post carries the full length; the sub-frame offset path is PICKUP-only), and all eight sweep tempos arm. Bryan (relayed): the 128/4 click is hardware and he attributes it to the fractional residue. ✅ **Same day, later (§10.16.1–10.16.4):** two MORE emulator defects under the first — Unicorn decodes MAC/MSAC from the wrong word (`msac` added), and the harness's own EMAC-with-load shim rewrote one trampoline that Unicorn served stale — both fixed (patch + one slot per instruction); the `.venv` is native arm64 and `make emu-unicorn` built the library through the shipped script. With all three: the frame builder's timing byte is the firmware's arithmetic (byte = 16 + ⌊(event − lookahead)/tempo24⌋, trig at ⌊event⌋), the 8-tempo sweep arms 8/8 with every sub-frame nibble predicted, and **the seam is measured**: 128/RLEN 16 writes 82,687 (truncated-reciprocal rounding, not the sheet's 82,688) with trigs 82,688/82,687/82,688 apart → a one-sample hole on alternate passes, first at the first repeat (Bryan's row); 120/RLEN 16 writes 88,200 with zero gap. ✅ **§10.16.5:** the pattern SCALE byte found (PTRN tail, second pair; 2 = 1X, 5 = 1/4X; `ot_project.py pattern-scale`), and **Bryan's 128 / RLEN 4 at 1× measured over ten trigs: length 20,672 every pass, spacings 20,672 ×7 then 20,671, seam 0 ×7 then −1** — the ninth arm lands on the eighth recording's last sample, once every 8 passes = every 2 bars; 120 BPM control: 22,050 everywhere, seam 0 ×9. ✅ **§10.16.6: RLEN MAX + trig every 4 steps = no end post, the next arm IS the end — seam-free on the ColdFire side at any tempo (hardware test for Bryan).** Patch candidates if fixed RLEN must stay: end-at-next-arm, or length from the lane's next event. ✅ **§10.17 THE PATCH (PR pending, UNFLASHED): `modules/recorder-seam`, a ColdFire cave at the converter's tail that sizes a fixed-RLEN recording from the sequencer's next step event (frame-builder arithmetic, ±1-sample guard); remix `seamtest`. Route A: 128/RLEN 4 seams 0 ×9 (eighth length 20,671), 128/RLEN 16 seams 0 ×3 (82,688/82,687/82,688), 120 unchanged. Build: cave verifier now `-mcpu=5475` (refhash 26/26).** ✅ **Flashed tag 19 (`seamtest`) on Sam's unit 7 Sep: boots, loads, plays, RECORDS with the cave live — no fault/stall, so the `160(%sp)` offset + lane assumption hold on hardware.** The A/B click test was NOT isolable on Sam's rig (drums-only input, resample entangled source and recording) and is handed to Bryan (shared tree: `modules/recorder-seam/`, remix `seamtest`, RTOS_FORK §10.16.4–§10.17). Byproduct fixes: `ot_project` now writes `.work`+`.strd` (PR #130; a RELOAD had reverted every edit), STATIC slot byte 0-based + bare-filename PATH (measured). **RESUME HERE (recorder work): (1) await Bryan's ear verdict; if the click clears, fold `recorder-seam` into the rig remix; (2) the DSP side of a one-sample overlap (who gets the shared sample) remains the one open question, and it — plus local bus/effect tuning — is what a DSP-in-the-loop route A would unlock (the next fork milestone, scoped but not started); (3) M6f 'clock lock' is closed. The EMAC-fixed Unicorn (`make emu-unicorn`, native-arm64 `.venv`) is a prerequisite for any further route-A work.** |
-
-Where to resume: **M6e, use it** — the fixture exists and its first
-reading has been retracted (RTOS_FORK §10). The on-disk **trig fixture is built and
-proven** (`ot_project.py pattern-trig`: step 2 written to the file, no RAM
-poke, lands `0xd3` on track 0 at frame 344 — M6c's own gate), along with
-the pattern format it needed (RTOS_FORK §10.6). ⚠️ Not `+0x8f385`: that is
-the recorder SETUP page's TRIG *mode* byte, in the part. ✅ **The recorder
-trig's masks are SETTLED on the unit (6 Sep evening): `0x20`+`0x28`+`0x30`,
-all three for one trig** (one per REC source, inferred) — `pattern-diff`
-against the `RECTRIG` project Sam saved with one trig on T1 step 9
-(RTOS_FORK §10.6; fixture `out/_recproj`). ✅ **And the trig FIRES under
-route A, from the file, with nothing poked** (§10.7: bank A's A01 steps at
-1/4 rate, step 9 = frame 11026; flag word, arm caller, Bryan's trig word
-`0x46104d26` nonzero for the first time), and the chain past the arm
-caller is measured (§10.8): engine opcode `0x22` → handler `0x40085bde` →
-recorder buffer released + re-allocated from the PCM pool (`track+128`).
-Then (6 Sep, late, §10.9–10.12): at RLEN=MAX no converter runs; `0x25` is
-posted one sample after `0x22` and carries the buffer id (128+track); with
-a FIXED RLEN the trig word's bit 7 routes through the sample-slot gate,
-which no-ops in route A because `stage_project` stages no `.wav`/`.ot` —
-so no slot record is ever populated. **Resume: stage the slot-1 sample on
-the emulated card, watch `0x80004f1c` fill during the load, then re-run
-the 128/RLEN 4 FLEX fixture (`scratchpad`-built via `ot_project.py
-recorder-setup` / `set-tempo` / `machine-type`) for the converter.** Then
-how the DSP is told to sample, then the playback block chain (the click).
-M6c's gate is the regression to keep green while doing it:
-`tools/emu_rtos.py --project out/_testproj --set OCTABAM --name RIG
---sequencer --internal-clock --poke-trig 2 --frames 400 --ms 20000
-[--via-key]` must keep landing `0xd3` on track 0, 344 frames after the
-start frame, with 28 ticks (both with and without `--via-key`). Two
-of M6c's helpers are M5-detour compensation for §7's ordering
-(`select_bank_live`, `seq_select_live`); the hardware falsifier below
-HAS said the unit ends on the saved bank (6 Sep evening), so the faithful
-fix is in the load's timing, and both helpers are to be removed once it
-is made. Open.
-
-✅ ANSWERED 6 Sep evening (B01, plays — emulator unfaithful; kept for the
-reasoning): one hardware question for whenever the
-unit is next on — **load the RIG project, read the bank indicator, then
-press PLAY** — the emulator comes up on bank A because the engine's own
-reset-time "select bank 0" reaches `sys` after the file's `BANK=1` is
-parsed, and M6c found the same ordering leaves the *sequencer* on bank A
-too (the saved pattern would not run). If the unit comes up on B and
-plays the saved pattern, the emulator's ordering is unfaithful there
-(RTOS_FORK §7, §8.3). Reproduce with `tools/emu_rtos.py --project <abs dir> --set OCTABAM
---name RIG --load-project --ms 6000` (absolute path; a tilde inside the
-quoted make variable is not expanded), or `tools/emu_rtos.py --selftest`
-for the SR trap alone. Keep in view: reading SR through the API at a burst
-boundary corrupts the condition codes (the tool uses a `movew %sr,%d0`
-trampoline) and never run the trampoline from inside a hook; memory-write
-hooks fire on MMIO; `call_as_main` (borrow main's idle slot) is unsafe for
-any call that can genuinely block — route it through a real task's own
-context instead (`request_card_mount`'s pattern). What route A corrected:
-eleven tasks, not eight; `0x400009f4` is a lock, not a semaphore; a
-reschedule is a forced PIT0 interrupt; the mount is `sys`'s job, not the
-engine's; `0x80000002` is the current bank and `PART_PTR` its blob.
-
-**Bryan's stake.** His click sits on the recorder's loop point, reached by
-one task staging the REC-arm and the tick promoting it — the interleaving
-route A now does for real. M6b's mount+load work for real, matching M4's
-proof, and M6d's `press_play_live()`/`press_rec_live()` inject PLAY/REC as
-real keys — but REC-arm itself is still unobserved: it needs a project
-with a track's machine set to a recorder, which is M6e's first job.
-Already useful to him today: the
-measured task and vector tables in RTOS_FORK §2, `sys`'s own dispatch table
-(§7), the bank/pattern state bytes and the bank blob layout, and the panel
-serial link captured byte by byte.
-
-Not pursued: a gearmulator-style full-machine port with plugin packaging.
-`dsp_host` already runs on that project's DSP core; the ColdFire half above
-is the slice of that road worth having.
-
----
-
-### 6b. Per-mode knob NAMES — DONE 3 Sep 2026, emulator-proven
-
-**A MODE select now renames the knobs around it.** BusDelay's MDEP/MRAT read
-SCAT/DENS in GRAIN, and the Modulation station's FDBK/DLY read RES and
-RING/PTCH in PHSR and COMB. `ModeView` in the manifest is the single
-declaration; the remixer's UNIT pane follows it, `send_probe --set` accepts
-the aliases, and `tools/mode_names.py` emits a MODE formatter that rewrites
-the descriptor's 6-byte name fields (`E+0x4e`) before printing its own word.
-
-No new hook: PLAN §6's formatter cave is already called with the value when
-the page draws that slot. `tools/verify_modenames.py` (in `make check`) calls
-each formatter on the emulated ColdFire and reads the names back — 12 checks
-on the rig, including that a mode which does not rename a slot RESTORES its
-own name, and that an out-of-range value clamps to mode 0.
-
-⚠️ Inferred, not measured: the rename lands on the next redraw if the panel
-draws names before formatting MODE, and the descriptor is shared by every
-track running that effect. (The rig's clone window is FULL since the
-returns' BUS-mode renames, 3 Sep 2026: label formatters and the FX1 list
-overflow into the second zero run at `0x400d24d0`, ~1.6 KB spare there.)
-
-⬜ **Per-mode DEFAULTS are the other half and are NOT on the unit.** The
-remixer applies them the moment MODE changes; doing it on the box means
-writing the part's parameter bytes when the encoder moves, which nothing here
-does live (`ot_project.py` writes parts offline, on a card). That is the next
-ColdFire job, and it wants the part-write path PLAN §4 started decoding.
-
-### 6. On-device labels for the mode selects — DONE 2 Sep 2026
-
-**Every stepped select now prints its words on the unit.** WarpFold's MODE
-draws `FOLD RING BOTH` where it drew `1 2 3`; the twelve labelled selects the
-manifests had authored all along are load-bearing at last.
-
-`Param.labels` was written, schema-checked against `count`, and then never
-read by the build — the refhash gate *proved* it was never read. This is the
-pass that changed that (`tools/build_bus.py`, the section after the cave
-patches).
-
-**How.** Every per-slot "A" formatter (`P+0x0ca`) has one signature —
-`void fmt(char *buf, int value)` — and `0x4003c14c` (ON/OFF) proves the shape
-that matters: **the label IS the format string**. So a labelled select is a
-small cave: bounds-check the value, index a `.word` offset table, overwrite
-the value slot with the pointer, and tail-`jmp` into `sprintf`. 40 bytes of
-code plus 2 bytes and a string per label — 54 to 82 bytes each, **386 bytes
-for the shipping remix's six**, with 2,330 bytes of cave left.
-
-**Only "A" moves.** B stays `0x40047254`, the CHORUS.TAPS tick widget the
-clone pass already chose, so this changes *what is printed*, not *how it is
-drawn*. `verify_menu` used to pin A to stock's `0x4003c718`; it now requires
-B and `0x12a` (the invariant it was actually written for, 17 Aug 2026) and
-allows A to be stock's or a cave address.
-
-**The bytes are emitted, not assembled** (`tools/label_fmt.py`). A CavePatch
-carries *pinned* bytes so the build needs no m68k toolchain, and twelve caves
-whose contents vary with the labels cannot be hand-pinned — so `emit()`
-produces them and `verify()` re-derives them through `m68k-elf-as -mcpu=5407`
-whenever one is on PATH. All twelve match byte-for-byte.
-
-**Verified without a flash.** `tools/verify_labels.py` (in `make check`)
-*calls* each formatter on the emulated ColdFire and compares what it printed
-with the manifest — the same method `stock_labels.py` uses, and the only
-honest one, because the words are printed rather than stored. It also feeds
-each select an **out-of-range** value: a part stores the raw byte, so a saved
-project can hand a select a value past its count, and the formatter clamps to
-label 0 rather than indexing off the end of its table (value 200 → `ROOM`).
-
-⚠️ **The page render cannot show this** — knob *values* draw as dial graphics
-the string-capture hook cannot read (`docs/EMU.md`), so the emulator proves
-it by calling the formatter, not by photographing the screen. Still
-**UNFLASHED**: what is unverified on hardware is the buffer length behind
-`buf` (our longest label is 5 chars, `1/16T`; stock's longest is 4) and
-whether anything else consults A where the B widget's count matters.
-
-Confinement, measured on the shipping build: **296 bytes differ from the
-pre-§6 image, all of them inside the cave region — zero anywhere else.**
-
-### 7. Putting the unit back — CLOSED 2 Sep 2026
-
-**Item 2 is done and item 1 is moot.** `restock` is the remix: thirteen of
-the fourteen stock effects, **including SPRING REV and DARK REV**, plus SEND.
-
-What was wrong: `build_bus.py` repointed all three donor ids to the null stub
-**unconditionally**, so a build that placed 250 words silenced 2,724 words'
-worth of reverb, and the answer to *"why can I never get the stock verbs
-back?"* was "you cannot, ever". The code stream is contiguous from PLATE
-upward, so the written span is `[base_a, cursor)` and a donor whose record
-starts at or after the cursor **still holds its own code**. It now keeps
-those, and reports which: `donor ids taken (PLATE) ... KEPT STOCK:
-SPRING/DARK`.
-
-The three reverbs are now ordinary listable stock rows (`tools/remix/
-stock.py`), so the remixer offers them like any other effect. Two guards
-make that safe:
-
-- the **build** refuses a donor row whose words this selection took, by name
-  — only the placement knows where the cursor stopped, so nothing predicts
-  it; and
-- the **ledger** refuses a reverb beside a module with fixed Y buffers.
-  `buffer=True` on all three is **measured, not assumed**: each reads
-  `x:>$213` — the host's bump allocator — within ~25 words of its entry
-  (PLATE `0x01018`, SPRING `0x01267`, DARK `0x01692`; payload A
-  disassembly), exactly like the four stock effects already flagged.
-
-Item 1 (the fallback requirement) was never the real blocker: SEND costs one
-row and 215 words, which only ever takes PLATE — the *smallest* reverb,
-because the region packs from PLATE upward. So the minimum image costs one
-reverb, not three, and no schema change was needed.
-
-Bit-identity: the two shipping layouts (`bus`, `plain`) are **unchanged**.
-Four of the 26 refhash cases moved — `render` and the three `xbus-*probe`
-diagnostics — and every diff is the intended one: a build that placed few
-words no longer silences reverbs it never touched.
-
-⚠️ **UNFLASHED**, and it is NOT "flash the stock OS back" — that is what the
-official installer does, and it is simpler. This is the same image with our
-chooser edits reverted, which is only interesting if some ColdFire cave is
-worth keeping.
-
-### 8. ColdFire machines — the headroom probe first, then Braids / the Pickup donor
-
-Asked 3 Sep 2026: is there room for more machines, and could something
-like Mutable's **Braids** come in? On the DSP the rig has **334 / 474
-words** free and only two FX2 ids, so a Braids subset (the table-free
-analogue models, ~1,000–1,500 words, hand-written) needs a lever first —
-the core-1 OMR flip or a dropped station. The wavetable families have
-nowhere to live on the DSP at all.
-
-**The ColdFire is the more interesting host, and it does not need the
-DSP.** The stock Echo Freeze already does per-sample EMAC work in 16-sample
-frames inside the audio interrupt (`docs/EXTERNAL.md` §1), so a cave in
-that routine can render into a track's ring. In its favour: Braids is
-integer C++ for a 72 MHz Cortex-M3 with no FPU and could be **compiled**
-(`m68k-elf-gcc`, not installed; the binutils are) rather than rewritten;
-the ColdFire owns the sequencer, so a trig and a note per track are native;
-and the local ColdFire emulator runs the EMAC exactly. Two unknowns block
-it, and both are cheap:
-
-- **ColdFire headroom is unmeasured.** ✅ **BUILT 4 Sep 2026:
-  `modules/cfprobe`** — a cave around the frame routine's only call site
-  (`0x40004b12`, IPL 5) reading DMA timer 3, a fader-driven burn inside the
-  measurement, and a readout on HELLO WORLD's GAIN. Emulator-proven
-  (`tools/verify_cfprobe.py`, 22 checks); the numbers are
-  `docs/FLASHPLAN.md` flash 5's to find. The interrupt level matters: the
-  routine runs ABOVE the RTOS time slice and the level-4 MIDI framer, so
-  UI or card streaming should give before audio; if audio gives first, the
-  audio DMA sits at or below level 5 and every added cycle is paid by audio.
-- **A code home.** The known free flash is 1 KB at `0x400c4702` and the
-  2 KB zero run; a Braids build is far larger. Unpriced.
-
-**The Pickup machine as a donor** (Sam, 4 Sep 2026: "a rich donor for new
-things"). What is known: its recorder arm length comes off the FIN/FOUT
-ladder ÷ tempo24 at `0x40005ff0` (`EXTERNAL.md` §6c), the arm site is
-`0x400060c4`, and it records into CPU-side SDRAM like the delay's rings.
-Unknown, and the next reading job: where its playback loop lives, whether
-it runs in the same per-frame routine as the delay, and what its per-track
-record looks like — because a machine that already owns a recorder ring, a
-trig path and a pitch/rate parameter page is most of what a ColdFire
-synth voice needs. Read it after the probe's numbers are in.
-
-## The flash backlog
-
-**What is on the unit is tag 84 (4 Sep 2026): remix `bus` at PR #95, the
-MODE re-slot** — the first non-probe image since tag 77 / R58 (24 Aug), and
-it carries everything below that the `bus` remix contains. Still unflashed
-on the unit as of that flash: the delay's R59–R62 quality pass, the
-stepped-select labels, stock effects listable beside ours, the insert card,
-a module on FX1, a donor region beyond the three reverbs, the BamSep26 rig
-(three stations, BusDelay v5) — and, since 3 Sep 2026, **the returns**:
-the engines' wet published stereo and four deep, returned at the master by
-the Character station in BUS mode (RVRB/DLY on the CRSH/RING knobs), the
-hosts going quiet only while a return is live. `docs/BUS.md` "The returns";
-`tools/verify_returns.py` is its gate, and `make verify-bus` came back 19/19
-across the edit — with no return in the rig nothing changed, to the bit.
-
-**`docs/FLASHPLAN.md` is the schedule** — three images plus the rig, and
-since 4 Sep 2026 a fifth, the ColdFire headroom probe (§8), ordered so the
-cheapest and safest goes first, each shaped to stack independent claims whose
-failures stay distinguishable, and each with what would falsify it. The
-platform work needs no flash at all: refhash proves a default selection is
-bit-identical, which is what that gate is for.
-
-## Open items and standing caveats
-
-- **THE TWELVE-ROW BUS SCREEN SHIPPED (4 Sep 2026, `modules/busscreen`,
-  tags 85–90, PR #96 open).** A MAIN MENU editor for every control of both
-  engines off the track: CONTROL > REVERB / DELAY each jump to the host
-  track and open a double-wide screen (all twelve at once, stock inverted-bar
-  cursor, selects as words), level knob edits, cursor wraps. Every slot
-  confirmed on the unit. The one RE finding it produced: the page-2 editor
-  `0x4003a474` clamps against a STALE descriptor from outside a staged page
-  (MAINMENU §9c-ii) — the screen sets values itself. The plain `busscreen`
-  remix carries the full screen (float cave, safe band), validated on tags
-  85–90.
-  ❌ **Screen-in-rig ATTEMPTED and RETRACTED (tag 91).** Putting BUS SCREEN in
-  `bamsep27` needed the cave pinned at `0x40108800` (the safe band was full);
-  that address is OS `.bss` and the unit crashed the instant [PROJ] was
-  pressed. The build now guards it (`SAFE_CAVE_CEIL`), `bamsep27` is back to
-  MENU SHORTCUT, and screen-in-rig waits on a split/trimmed cave and a
-  PROJECT-exercising gate. tag-91/92 images quarantined. The 13th return row
-  is built but dormant. Docs: MAINMENU §9e, FLASHPLAN Flash 5.
-- **MODE is on page-2 slot 6 in both bus engines (4 Sep 2026, unflashed;
-  BusVerb v7, BusDelay v6).** It swapped places with SHMR / MDEP so that it
-  sits on a slot the panel's own page-2 knob editor writes, which is what a
-  main-menu bus screen needs (`docs/MAINMENU.md` §9c-ii: nine rows WITH
-  MODE, on two firmware routines already driven). Proven locally to the bit
-  in every mode of both engines, then ✅ **CONFIRMED ON HARDWARE the same
-  day (tag 84, remix `bus`)**: MODE draws and steps as a select on slot 6,
-  and SHMR / MDEP sweep smoothly from slot 7 — the count-128 companion knob
-  works, retiring the 10 Aug "near-boolean" reading. ⚠️ The first play
-  stalled the sequencer (1, 2, 1, solid) until the project was refreshed:
-  parts saved under the old layout hand the count-3 slot their old SHMR /
-  MDEP byte. 🟡 Inferred from the symptom matching the recorded index trap
-  and the refreshed project running clean. **Stamp a pre-84 project before
-  pressing play** (`ot_project.py stamp-defaults <project> bus`). The SELECT
-  PROBE line (builds 80–83) is closed; nothing depends on that formula now.
-
-- **Cross-core bus: three defects found and fixed, all hardware-confirmed**
-  (clear-vs-read → four buffers; rotation-read jitter → per-core tracking,
-  seeded at init; clear-vs-write → clear the next-block buffer). Standing
-  caveats, from `docs/XBUS.md`: the fix assumes the cores are **rate-locked**
-  🟡 (unverified; the symptom of drift would be a slow return of the artifact
-  over minutes); **a single clean configuration proves nothing** — these
-  artifacts relocate, so any "fixed" claim needs a track × mode sweep; **no
-  local test is evidence** — `dsp_host` is single-core. The free diagnostic
-  lever: **change what is on track 5** (core 0's position-0 housekeeper).
-- **FREEZE renders locally since 23 Aug 2026**: `DFRZAT=n` (DEV-only,
-  build_bus.py) engages the freeze after n post-warm blocks, so a render
-  can capture real material mid-flight — the repro lever that found and
-  then verified the v6 seam-click fix. (The old blocker stands for a
-  freeze toggled MID-render more than once; one engage per render is what
-  the hook does.)
-- ✅ **"the workbench" was a name nobody reviewed, and it is now "the
-  remixer"** (Sam raised it 3 Sep 2026; done the same day). It had arrived
-  with the 31 Aug redesign and spread to the doc, the pane copy, the `?`
-  overlay and about eighty comments — a second vocabulary for a tool the
-  project already calls a remix everywhere else (`make remix`, `remixes/`,
-  `tools/remix/`, the `Remix` dataclass). `docs/REMIXER.md` is the manual.
-  `WORKBENCH_SOURCES`, `WORKBENCH_THEME` and `out/_audition/workbench.json`
-  are still read, so nobody's shell profile or sample folder silently stops
-  working. ⚠️ The blanket substitution rewrote *this entry* into "'remixer'
-  is a name nobody reviewed ... the thing is a remixer" — a rename cannot be
-  applied to the text discussing the rename, and that is the one place to
-  check by hand afterwards.
-- **BACKLOG (Sam, 3 Sep 2026): the docs over-name the MKII and it reads as a
-  restriction.** Sam: it works on MK1 and MK2 — they are the same machine
-  apart from a few buttons, and `docs/` already records that both run the
-  **same 1.40C image, hash-verified**. So every "MKII" that is really just
-  "the Octatrack" should say so. ⚠️ Keep the one distinction that is honest:
-  everything here has only ever been *tested* on an MKII, so the claim is
-  "the OS is the same, so it should run" (inferred) rather than "verified on
-  MK1" (not measured). Sweep `README.md` and `docs/` and say it once, in the
-  right place, instead of hedging in a dozen.
-- ✅ **A freshly flashed unit keeps drawing the PREVIOUS effect's controls —
-  CAUSE FOUND, 3 Sep 2026, and it is not a defect.** The per-part FX1/FX2 ids
-  live in the PROJECT (`bank##.work`, `PART+0x009` and `PART+0x011`, eight
-  bytes each — one per track), not in the OS, so they survive a flash and
-  resolve against the new image's tables. The unit is faithfully drawing the
-  effect the project still asks for; what changed underneath it is which
-  effect that id names. ⚠️ **Which also means a flash test that starts from
-  an old project is not a test of anything** — half the tracks are running
-  whatever the last image left there.
-  `tools/ot_project.py testproj SRC DEST REMIX` copies a project and stamps
-  every bank, part and track with an id the image implements, current parts
-  **and** their saved copies, checksums recomputed and read back.
-  `docs/FLASHPLAN.md` step 0b.
-  ⬜ Still open, and a smaller question than it looked: whether the panel
-  should RE-STAGE a page when the image under it changed, or whether "the
-  project asked for id 0x12 and got what 0x12 now is" is the right answer.
-- **Duplicate instances of one effect corrupt audio after ~5.45 s**, any
-  address, mechanism unestablished. One server per bank is the design rule;
-  no product configuration has this.
-- **Payload B's "609 free above code" has never been loaded** 🟡 — verify
-  before spending it.
-- **Legacy-project FX2 ids**: every big-buffer stock FX2 effect is handled
-  (reverbs null-stubbed, Echo Freeze dispatch is a stock no-op); the
-  survivors are dual FX1/FX2 shallow effects, 🟡 *inferred* to make no
-  FX2-slot buffer writes. Falsifier: a legacy project with COMPRESSOR stored
-  on an FX2 slot of tracks 5–8 — listen for tank corruption while BusVerb
-  plays.
-- ✅ **The hardware-mpy caveat is CLOSED**: silicon decay-vs-TIME matches the
-  emulator within 13% at three points (`docs/CAPTURE.md`), so the emulator's
-  plain-product mpy semantics hold on the unit.
-
----
+1. **Flash the DRAM platform, cheapest claim first.** `hello-dram` (one
+   unit, one boot-site poke: does the loader run on silicon and does the
+   unit boot on?), then `midi-scenes` (his features through our loader —
+   he can compare against his own build on his own unit), then `octakit`
+   (her runtime through our loader; she has the project-migration test
+   set). Bump `BUILD`, stamp projects, `docs/remixer/FLASHING.md`.
+2. **Detour chaining** for the two stock routines three authors hook:
+   `apply_part` entry `0x40009094` (midi-scenes, octakit, octamax) and the
+   scene-parameter writer `0x40052ae8` (octakit, octamax). Until then
+   Octakit and midi-scenes are mutually exclusive — and note the second
+   reason: Parts versus Kits. His code addresses the Part window; hers
+   replaces it. A Kits-aware midi-scenes is his and Sam's to write.
+3. **octabam's DRAM home is the arena reserve — DONE locally (10 Sep
+   2026), unflashed.** The top window had a measured neighbour (the
+   engine task's sector bounce buffer lands there at project load, inside
+   Octakit's stage); the reserve is the placement two authors have proven
+   on hardware. Still to do: tell Em what the port saw at `0x47fc8fe4`
+   (the one-flash test: LOAD PROJECT twice with static slots; or mxldyn's
+   firmware-armed hardware watchpoint on `0x47fc7410..`) — her stage is
+   the one thing still up there. More than 10 MB is a bigger
+   `PLATFORM_PAGES`; the delay-ring lever (`0x400031a0`) stays as the
+   route that costs no sample memory, unmeasured.
+4. **Upstream.** The PR to bkkbrls-del once he has finished his own
+   changes (rebase `octabam-gas`, then `tools/gas_port.py` + `gas/` to him).
+   An optional tidy PR to Em splitting her loader infrastructure so the
+   shared loader is one file in one place. Neither blocks anything here.
+5. **The remixer TUI** shows ColdFire modules as first-class rows with
+   the matrix's verdicts at the keystroke (it already runs the ledger; the
+   view is what lags).
+6. **Measure `0x46000000..0x47502c10`** with samples loaded and the
+   recorder running, under the port, before anyone places there.
+7. **octamax**, if and when Sam confirms with the author: the branch is
+   ported and gated; it rebases.
 
 ## Gates and rules
 
-- `make check` is the floor — never claim an effect works because it
-  assembled. The traps that bite silently are in `CLAUDE.md`; disassemble
-  what you assemble.
-- Refactors prove themselves bit-identical before they land:
-  `make verify-roll CAND=…` (reverb), `make verify-delay CAND=…` (delay),
-  `make verify-bus` (bus layouts, stamp-first).
-- **A slot can draw a knob and publish nothing** — `dsp_host` pokes `r6`
-  directly, so publish gaps are invisible locally. Every new or moved
-  parameter rides an on-unit reconfirm before it is trusted
-  (`docs/PARAM_PAGES.md`).
-- Flash discipline: bump `BUILD` every flash, power-cycle before judging
-  anything, recovery path read first — `docs/FLASHING.md`.
-- Voicing is judged by ear, level-matched, A/B/A/B, wet-only, logged in
-  `docs/VOICING.md`. A reverb is finished when a long tail decays without a
-  metallic signature, a dense source does not turn to granular hash, and the
-  modes are genuinely different spaces — not when the word count runs out.
-
----
+- `make check` is the floor, for every remix you touched: `make check
+  REMIX=<name>`. It builds, prices cycles, runs the ledger selftest, the
+  menu verification, each port's oracle and the boot verifier.
+- **A change to the BUILD proves it changed nothing**: `scripts/refhash.sh
+  save` on a tree you trust, then `check` — 26 configurations, artifacts
+  and build reports, bit-identical. Every step of the platform work landed
+  under it.
+- **The author's build is the oracle.** A port is done when their output
+  and ours agree byte for byte (or, where the build places code elsewhere,
+  when each unit re-linked at their address matches). `pinned`,
+  `reference(addr)`, `Linked.reference` and Em's recipe identities are the
+  four forms of the same rule.
+- **Measured beats inferred, and says which it is.** Confidence markers as
+  in `docs/firmware/CHIP.md`; retractions propagate to every document that
+  repeated the number.
+- **Never an Elektron byte in the repo** — not an image, not a slice, not
+  a `.syx`. `.incbin` from the user's own stock image at build time is the
+  pattern (Octakit's 411 routines).
+- The DSP-side gates and rules (`verify-roll`, `verify-delay`,
+  `verify-bus`, stamping projects after a slot change) are unchanged:
+  `docs/history/PLAN_EFFECTS.md` "Gates and rules".
 
 ## Build commands
 
 ```sh
-make bus                    # specialized, cross-core -- THE image
-make modules                # the module index and the available remixes
-make bus REMIX=verbonly     # a reduced selection (no delay, no caves)
-make render                 # build DEV + render the bus locally, no flash
-make render-delay           # the delay hatch -- all 3 servers real, renders BusDelay
-make image BUILD=002        # repack as a flashable .bin, version-stamped
-
-make check                  # bus + cycles + verify, everything without hardware
-make cycles                 # per-effect cycles against the measured budget
-make verify                 # ColdFire menu tables (burn probe SKIPs -- see above)
-make reverb IN=loop.wav ARGS='--sweep SIZE=0,64,127 --wet'
-make verify-delay CAND=modules/busdelay/delay_new.asm   # bit-identity gate for delay refactors
+make modules                  # the index, the compatibility matrix, the remixes
+make bus REMIX=ported         # build a selection (default: bamsep26, the rig)
+make check REMIX=midi-scenes  # everything that can be checked without hardware
+make image REMIX=octakit BUILD=101   # repack as a flashable .bin, version-stamped
+make remix                    # the TUI remixer
+scripts/refhash.sh check      # after a change to the build itself
 ```
-
-`make bus-plain` (both servers on both cores) does not build — that layout
-overruns the donor region. `make burn` **does** build and is flashable; only
-`verify_burn`'s plain-layout alias probe is blocked.

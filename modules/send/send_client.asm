@@ -22,7 +22,7 @@
 ;                       the sanitising too, for free.
 ;
 ;                       ⚠️ FOUR ACCUMULATOR BUFFERS, NOT TWO, AND THAT IS THE
-;                       WHOLE CROSS-CORE RACE FIX (docs/XBUS.md step 3;
+;                       WHOLE CROSS-CORE RACE FIX (docs/effects/XBUS.md step 3;
 ;                       hardware-confirmed 17 Aug 2026 by moving BusDelay
 ;                       between tracks 1 and 4, which killed the stutter --
 ;                       a dispatch-position dependency no algorithmic cause
@@ -107,7 +107,7 @@
 ;                       in BUS mode writes it nonzero every block its RET
 ;                       level is up; the reverb reads it, clears it, and
 ;                       prints its wet on its own host only while no stamp has
-;                       arrived for 3 blocks (docs/BUS.md "The returns").
+;                       arrived for 3 blocks (docs/effects/BUS.md "The returns").
 ;   Y:0x9d9             RETD -- the same for the DELAY (stamped together).
 ;   Y:0x9da..0xa59      REVERB STAGE OUTPUT, STEREO (L,R interleaved), FOUR
 ;                       buffers of 32 words at +0/+32/+64/+96 -- the
@@ -358,7 +358,7 @@ notfirst:
 ; CONFIRMED ON HARDWARE 17 Aug 2026: changing track 5 -- core 0's POSITION 0,
 ; the housekeeper -- from BusVerb to Send cured static on a core-1 signal
 ; path, with nothing on core 1 touched. Only the flip's timing changed.
-; Full evidence table in docs/XBUS.md step 3.
+; Full evidence table in docs/effects/XBUS.md step 3.
 ;
 ; ⚠️ IT RELOCATES: exactly one (core-1 track, delay mode) combination is bad at
 ; a time, and it moves when the mode or core 0's load changes. A single clean

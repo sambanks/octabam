@@ -6,7 +6,7 @@ selects that track, and opens a 17th menu state that draws all twelve
 controls at once in two columns of six (stock 7px pitch, stock inverted-bar
 cursor via the firmware's rect-invert), selects as their words, knobs as
 numbers. The level knob edits the cursor row; up (0x34) / down (0x33) move
-it, wrapping. docs/MAINMENU.md 9e is the record, 9c-ii the RE behind it.
+it, wrapping. docs/firmware/MAINMENU.md 9e is the record, 9c-ii the RE behind it.
 
 HOW: the menu-state table at 0x400cbdac (16 x 0x14) is relocated to a cave
 with a 17th entry appended and its SIX references repointed (three `lea` for
@@ -15,7 +15,7 @@ through the self-contained writer 0x40054cd8(track, 24+slot, value). Page-2
 edits call the editor 0x4003a474 for its stores/flags and then SET THE VALUE
 THEMSELVES, count-clamped -- that editor clamps against a stale descriptor
 from outside a staged page (9c-ii). The page-2 store is +0+slot2 under
-staged index 0 (measured 5 Sep 2026, docs/midi_re_cc.md 7; MAINMENU 9e-i).
+staged index 0 (measured 5 Sep 2026, docs/firmware/midi_re_cc.md 7; MAINMENU 9e-i).
 
 THREE CAVES, NOT ONE (5 Sep 2026). As a single 2.3 KB float the screen never
 fitted the rig: the clone window rounds floats up to 0x80 and had 16 B to
@@ -23,7 +23,7 @@ spare. So:
   1. the 17-entry menu-state table (340 B) FLOATS in the clone window -- list
      BUS SCREEN before TEMPO SYNC in a remix so it is placed first;
   2. the draw/key/enc handler is PINNED at HANDLER_AT, the start of the
-     second zero run (docs/MAINMENU.md 5), where MENU SHORTCUT used to sit
+     second zero run (docs/firmware/MAINMENU.md 5), where MENU SHORTCUT used to sit
      (this screen supersedes it; the two cannot coexist);
   3. its data -- names, select words, scratch, the relocated CONTROL rows --
      is PINNED right after the handler at DATA_AT.
@@ -31,7 +31,7 @@ Every cross-reference between the pieces is a constant once 2 and 3 are
 pinned, so each emit() needs only its own address. The 13th "return row"
 (T8 Character's RVRB/DLY) was stripped for room; NSLOT is 12.
 
-tools/verify_busscreen.py (in make check) proves it all in the emulator:
+tools/verify/verify_busscreen.py (in make check) proves it all in the emulator:
 relocation, boot, the two rows, all 24 slot/engine draws and edits,
 navigation, the label switch.
 """
@@ -50,7 +50,7 @@ ENTER_REV_OFF = 0x274                  # REVERB row action
 ENTER_DLY_OFF = 0x278                  # DELAY row action
 ENC_OFF = 0x2c0                        # encoder (0x2f4 before the return-row strip)
 
-# The CONTROL submenu (docs/MAINMENU.md 2, same as modules/menushortcut): its
+# The CONTROL submenu (docs/firmware/MAINMENU.md 2, same as modules/menushortcut): its
 # count is at CONTROL_DESC+0 and its row-array pointer at +0x18. We relocate
 # the six rows into the data cave, append REVERB and DELAY rows whose actions
 # enter the screen, repoint the pointer and bump the count to 8. An action
@@ -62,7 +62,7 @@ REV_LABEL = b"REVERB\0"
 DLY_LABEL = b"DELAY\0"
 
 # EVERY reference to the state table, as (operand_addr, stock_operand,
-# member_offset). docs/MAINMENU.md 9a listed only the three `lea` sites for the
+# member_offset). docs/firmware/MAINMENU.md 9a listed only the three `lea` sites for the
 # ENTER member (member 0); the dispatchers for DRAW, KEY and ENCODER each name
 # the table too, as `addal #(base+member_off),%a0` immediates -- found 4 Sep
 # 2026 when a grown table drew nothing because MENU_DRAW still read the stock
@@ -81,10 +81,12 @@ TABLE_REFS = (
 # The pinned pieces: the second zero run, 0x400d24d0..0x400d2ce0 (2064 B).
 HANDLER_AT = 0x400d24d0
 
-# screen_draw.s, assembled with m68k-elf-as -mcpu=5407. Self-references the
-# build patches to data-cave addresses (placeholders 0x40bad000..24, MARKS).
-# verify_busscreen re-assembles the source and compares, so a drifted source
-# cannot pass unnoticed.
+# SOURCE IS THE TRUTH (9 Sep 2026): the build assembles and links
+# screen_draw.s at HANDLER_AT with the ten data-cave fields as linker
+# symbols (HANDLER_DEFSYMS). HANDLER below is the hand-assembled form it
+# replaced, with 0x40bad000..24 placeholders (MARKS); HANDLER_PINNED is that
+# form patched exactly as the old emit() did, and is what the linked source
+# must reproduce -- checked on every build, and by tools/verify/verify_busscreen.py.
 HANDLER = bytes.fromhex(
     "4fefffd448d77cfc286f00304a8c67000208203946c82456670001fe7200123980000003"
     "243c000018b24c021000d08172001239800000002040d1fc0008ed88d1c1740014104bf9"
@@ -282,9 +284,11 @@ def emit_table(addr):
     return bytes(table) + bytes(entry), pokes
 
 
-def emit_handler(addr):
-    """The handler with its data placeholders patched to DATA_AT fields."""
-    assert addr == HANDLER_AT, "the handler is pinned"
+def _patched_handler():
+    """HANDLER with its data placeholders patched to DATA_AT's fields --
+    what the build wrote until 9 Sep 2026, and the REFERENCE it must still
+    reproduce now that screen_draw.s is linked with those fields as symbols
+    (CavePatch.pinned + defsyms; verify_busscreen holds the two together)."""
     _, targets, _ = _data()
     handler = bytearray(HANDLER)
     for mark, field in MARKS.items():
@@ -295,7 +299,19 @@ def emit_handler(addr):
         while i >= 0:
             handler[i:i + 4] = want
             i = handler.find(mb, i + 4)
-    return bytes(handler), ()
+    return bytes(handler)
+
+
+HANDLER_PINNED = _patched_handler()
+# The same ten fields, as the linker symbols screen_draw.s now names them.
+HANDLER_DEFSYMS = tuple((field.upper(), _data()[1][field]) for field in MARKS.values())
+
+
+def emit_handler(addr):
+    """Source is the truth: the build links screen_draw.s at HANDLER_AT with
+    HANDLER_DEFSYMS and checks it against HANDLER_PINNED; nothing to emit."""
+    assert addr == HANDLER_AT, "the handler is pinned"
+    return b"", ()
 
 
 def emit_data(addr):
@@ -327,8 +343,11 @@ MODULE = Module(
         CavePatch(
             label="bus screen: draw/key/enc handler",
             cave_addr=HANDLER_AT,           # second zero run, where MENU
-            pinned=b"",                     # SHORTCUT used to live
+            pinned=HANDLER_PINNED,          # SHORTCUT used to live; the
+                                            # linked source must match this
             source="modules/busscreen/screen_draw.s",
+            defsyms=HANDLER_DEFSYMS,
+            cpu="5407",
             emit=emit_handler,
             report_note=" (12-row draw handler, pinned)",
         ),

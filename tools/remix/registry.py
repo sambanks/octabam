@@ -22,7 +22,7 @@ import sys
 import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 
 from remix.schema import NO_FALLBACK, on_the_bus  # noqa: E402
 MODULES_DIR = ROOT / "modules"

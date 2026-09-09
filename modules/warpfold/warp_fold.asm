@@ -51,7 +51,7 @@
 ; * 2|s|-1 is computed as (|s| - 0.5) << 1 so no intermediate needs +1.0,
 ;   which Q23 cannot represent.
 ; * mpy here is the emulator's PLAIN product (no <<1), confirmed on silicon
-;   within 13% by the decay-vs-TIME capture (docs/CAPTURE.md).
+;   within 13% by the decay-vs-TIME capture (docs/effects/CAPTURE.md).
 ; ---------------------------------------------------------------------------
 
 init:

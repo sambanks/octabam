@@ -1,41 +1,61 @@
 # Working in this repository
 
-**Read `PLAN.md` first.** It carries the end state, the resource ledger and the
-work order. `docs/XBUS.md` is the architecture record, not the plan.
+**Read `PLAN.md` first.** It says what octabam is now — a remixer for the
+Octatrack's OS that composes the community's modifications and this
+project's own into one image built from the user's own 1.40C — where that
+stands, what is measured about the ground, and the work order.
+`docs/remixer/PLACEMENT.md` is the architecture record for where code goes;
+`docs/history/PLAN_EFFECTS.md` is the DSP-effects programme this grew out of,
+still open where it says it is.
 
 The repo is organised as **modules** (`modules/<name>/manifest.py` declares one
 contribution) composed into **remixes** (`remixes/<name>.py` selects a set).
-`make modules` lists them, `make remix` composes one. `docs/MODULES.md` is the
-contributor guide. Two consequences for working here: a module's declared
-`priority` is byte-load-bearing, and the build refuses to start when two
-selected modules claim the same FX2 id, cave, hook site, core-private Y word,
-or the per-core FX2 buffer region.
+`make modules` lists them, with the compatibility matrix; `make remix`
+composes one. `docs/remixer/MODULES.md` is the contributor guide and
+`CONTRIBUTING.md` the contract. The build refuses to start when two selected
+modules claim the same FX2 id, cave, hook site, detour site, poke, runtime
+write, core-private Y word, or the per-core FX2 buffer region — by name.
 
-**Modules come in kinds, and most of the traps below are a SERVER's.** An
-insert (six of the ten) has no bus role, no shared-window claim, sits in both
-payloads and runs on any track; it never touches the rotation, the
-housekeeping election, the auto-gain, or the payload asymmetry. A server pays
-all of that. Read a warning below asking which kind it applies to.
+**Modules come in kinds, and the traps below say which they belong to.** A
+**ColdFire module** (the community's mods: linked GNU-as units, detours by
+symbol, a runtime in DRAM) never touches the DSP and none of the DSP traps
+apply to it; its own traps are in the last section. On the DSP side an
+insert has no bus role, no shared-window claim, sits in both payloads and
+runs on any track; a **server** pays for the rotation, the housekeeping
+election, the auto-gain and the payload asymmetry, and most of the DSP
+traps are a server's.
+
+**A port is a proof.** The author's own build is the oracle: `pinned`,
+`reference(addr)`, `Linked.reference` and a `Runtime` recipe's identities
+are four forms of one rule, and the build refuses on drift. Never "port" by
+rewriting; run their build against the shared stock image first.
 
 **If you change the BUILD rather than a module, prove it changed nothing:**
 `scripts/refhash.sh save` on a tree you trust, then `scripts/refhash.sh check`
-— 26 configurations, artifacts and build reports, bit-identical. The whole
-remix refactor was done under that gate, and every module added since has
-been proven not to change it.
+— 26 configurations, artifacts and build reports, bit-identical. Every step
+of the DRAM platform landed under that gate. (Since 10 Sep 2026 the report
+prints tool paths; a path change is a report change and needs a re-save
+after the artifacts are shown identical.)
 
-This is a DSP effects project. The firmware reverse engineering in `docs/` is
-infrastructure that makes the effects possible — it is not the deliverable.
+**Never an Elektron byte in the repo** — no image, no slice, no `.syx`, in a
+commit or on an issue. `.incbin` from the user's stock image at build time
+is the pattern.
 
 ## Build and check
 
 ```bash
-make bus        # THE build (XBUS=1 SPEC=1) -> out/mainos_bus.bin
-make check      # build + cycle budget + verification, no hardware needed
-make render     # hear the bus locally, ~6x real time
+make modules                    # the index, the compatibility matrix, the remixes
+make check REMIX=<name>         # build + cycles + every gate + boot under the port, no hardware
+make bus REMIX=<name>           # THE build (XBUS=1 SPEC=1) -> out/mainos_bus.bin
+make render                     # hear the bus locally, ~6x real time
 make reverb IN=loop.wav ARGS='--wet --mode all'
 ```
 
-Never claim an effect works because it assembled. `make check` is the floor.
+Never claim something works because it assembled or linked. `make check` is
+the floor. Working in a git worktree: `vendor/` and `.venv/` are symlinks to
+the main checkout's (gitignored, and excluded in `.git/info/exclude`); without
+them the selftest reports "remix X does not build" and every gate fails
+before it starts.
 
 ## Traps that have already cost real work
 
@@ -178,7 +198,7 @@ recorder trigs ("nothing re-locks the step clock", plus a compensation
 lever). The firmware's own reciprocal tables (`0x80003c20`: 2^31 / block
 size) said which side was wrong. **Route A refuses to run on a stock EMAC**
 (`emu_bringup.emac_selftest`); `scripts/build_unicorn.sh` builds the fixed
-library (`tools/unicorn_emac_fractional.patch`). The general rule is the
+library (`tools/patches/unicorn_emac_fractional.patch`). The general rule is the
 same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
@@ -324,7 +344,7 @@ still held a 0–127 SHMR/MDEP byte in what was now a count-3 select, the
 "value outside its count is used as an index" trap in stored form. The
 schema cannot see stored data. Re-selecting the effect on the track you are
 looking at is NOT enough; the sequencer runs every track of the part. After
-any change to a slot's count, position or meaning: `tools/ot_project.py
+any change to a slot's count, position or meaning: `tools/hw/ot_project.py
 stamp-defaults <project> <remix>` on the card BEFORE play, and say so in the
 flash notes. (Cause inferred from the symptom and a refreshed project
 running clean; not measured.)
@@ -350,7 +370,7 @@ modules that pinned a track by its r7 (the one-aux return on T8, the
 track-8 send refusal) matched in the harness and never on the unit — flash
 6's "the return never reaches T8", with `make verify-onebus` green on
 exactly that property. Found 8 Sep 2026 by running the shipping image from
-the card under the ColdFire port (`docs/COLDFIRE_PORT.md` O11). Any module
+the card under the ColdFire port (`docs/firmware/COLDFIRE_PORT.md` O11). Any module
 logic keyed on a dispatcher fact (r7, r6, X:0x213, instance blocks) is
 measured under the port (`ot_emu --dsp-pcwatch`), never modelled in
 `dsp_host`; and a hardware failure the lock-step harness cannot show goes to
@@ -359,14 +379,50 @@ the port before it goes to a guess.
 **A parameter slot can draw a knob and publish nothing.** The page descriptor
 and the DSP-side read are separate mechanisms; `dsp_host` pokes r6 directly, so
 everything looks live locally even when the real unit would publish nothing.
-See `docs/PARAM_PAGES.md`.
+See `docs/firmware/PARAM_PAGES.md`.
 
 **Flash cycles are expensive** — each one is a manual firmware write. Render
 locally and measure instead of guessing. This is why the emulator path exists.
 
-**When the unit misbehaves, check `docs/FAILURE_MODES.md` first** — the
+**When the unit misbehaves, check `docs/remixer/FAILURE_MODES.md` first** — the
 register of hardware failure modes (symptom -> cause -> fix). Add any new one
 the moment it is seen; do not let it live only in a commit message.
+
+## Traps on the ColdFire / DRAM side (the platform work, 9–10 Sep 2026)
+
+**A WRITE-WATCH ON CACHED ADDRESSES IS BLIND TO A CLEAR THROUGH THE UNCACHED
+ALIAS.** The port mapped `0x4F...` as separate memory, so a watch on
+`0x477...` reported "8.8 MB free at 0x47700000" — the region is the stock
+delay's eight rings, cleared via the alias ~38 M instructions after the boot
+detour returns (Bryan's write-up had the ring base as `0x4F502C10` all
+along). Retracted; `machine.h` now folds the alias. The general rule is the
+instrument-blindness one: before trusting a null result, ask what the
+instrument physically cannot see, and check whether a second reading
+(here, EXTERNAL.md) already contradicts it.
+
+**THE BOOT VERIFIER BOOTED THE WRONG IMAGE.** `make verify` runs after the
+selftest, which builds every remix in turn and leaves the LAST one at
+`out/mainos_bus.bin`; the first in-pipeline run booted `warped` looking for
+midi-scenes' loader and reported "loader ran 0x". `verify_dram_boot` now
+rebuilds its remix first. Any verifier that reads `out/` must know who wrote
+it last.
+
+**`make … | grep | tail` reports tail's exit code, not make's.** Capture
+with `> log; echo $?`.
+
+**Matching an author's bytes with GNU as:** a same-unit label makes `lea`
+assemble PC-relative (write `lea SYM:l`); small `move.l #imm` becomes
+`moveq`; a `-Ttext` that is 2 mod 4 gets a leading `nop`. All correct code,
+all oracle failures.
+
+**A loader draft clobbered d0 across its copy loop and reused a0 after the
+hash.** Register discipline in a boot stub is not checkable by anything but
+the port: `verify_dram_boot` watches the loader's entry and its `fatal` hang.
+
+**The report is API, and it prints paths.** Moving a tool changed the build
+report (the hints name `tools/harness/send_probe.py`), which refhash
+correctly flagged with every artifact identical. Re-save only after proving
+the artifact lines match.
 
 ## How claims are written here
 
@@ -374,7 +430,7 @@ The project has been burned by stale confident numbers more than once — a
 cycle budget of 1080 that was never a ceiling, a burn probe that measured an
 engine we do not ship, a blocker our own bisect had already falsified.
 
-So: **separate measured from inferred.** `docs/CHIP.md` marks every number with
+So: **separate measured from inferred.** `docs/firmware/CHIP.md` marks every number with
 a confidence marker and keeps retracted values beside current ones. Do the
 same. Say what would falsify a claim. Do not write "found it" for something
 you have inferred, and when a retraction lands, propagate it to every document
@@ -398,3 +454,9 @@ git show <sha>:dsp/baseprobe.asm
 
 Leave those citations alone. Rewriting them to remove a filename would erase
 how the number was obtained, which is the opposite of the point.
+
+On 10 Sep 2026 the tree was regrouped for the remixer: `tools/` into
+`build/ verify/ harness/ emu/ hw/ patches/` (plus `remix/` and `scratch/`),
+`docs/` into `remixer/ firmware/ effects/ history/`, and the effects-era
+`PLAN.md` moved to `docs/history/PLAN_EFFECTS.md`. `git log --follow` crosses
+the moves; older commit messages and memory notes name the flat paths.

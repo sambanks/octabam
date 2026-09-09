@@ -16,7 +16,7 @@ and NO fit -- the port applies the track gain BEFORE the FX chain, and driving
 the EQ 12 dB hotter saturates it (the "+4.95 vs +6.22 dB" confound).
 """
 import sys, wave, math, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import blockdump as bd
 
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, 9)}

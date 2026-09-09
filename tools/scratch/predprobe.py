@@ -1,7 +1,7 @@
 """Inside the converter (0x40006e0c, fixed-RLEN path, 2/frame while recording): predict the next
 arm's dispatcher sample as cf8 + 16 + floor((lane[t] - look) * r) and compare with the real arm."""
 import argparse, sys
-import os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import os; sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import emu_rtos as er, emu_card as ec, emu_bringup as eb
 from unicorn.m68k_const import *
 from unicorn import UC_HOOK_CODE

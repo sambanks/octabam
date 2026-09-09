@@ -1,5 +1,5 @@
 """busscreen -- the bus image plus the menu-state-table growth (step 1 of the
-twelve-row MAIN MENU editor, docs/MAINMENU.md 9e). Same servers as `bus`;
+twelve-row MAIN MENU editor, docs/firmware/MAINMENU.md 9e). Same servers as `bus`;
 adds BUS SCREEN, which grows the menu-state table from 16 entries to 17."""
 
 from remix.schema import Remix

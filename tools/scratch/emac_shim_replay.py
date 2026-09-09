@@ -1,5 +1,5 @@
 from unicorn import *; from unicorn.m68k_const import *
-import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")); import emu_bringup as eb
+import sys, os; sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path); import emu_bringup as eb
 MACSR = b"\xa9\x3c\x00\x00\x00\x20"
 uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN); uc.mem_map(0x1000, 0x2000); uc.mem_map(0, 0x1000)
 class R: trap = None; emac_shims = 0
