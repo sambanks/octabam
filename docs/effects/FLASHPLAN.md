@@ -814,3 +814,87 @@ with his own build on his unit as the comparison — then `octakit`.
 Before: back up the card's projects (this image changes no project, but
 the next two do). After: power-cycle before judging anything; note the
 MEMORY figure exactly.
+
+## Flashes 9–11 — `midi-scenes` (23), `octakit` (24), `ported` (25): staged 10 Sep 2026, all four images built together
+
+Sam: "lets optimistically do it all now and I'll do flash tests before
+sharing tomorrow." Each image is built from the same merged tree
+(`main` at #178), tagged, and boot-verified under the ColdFire port with
+its tag (loader once, hang never, every DRAM window equal to its linked
+image). Nothing has run on a unit. Order matters: 22 proves the platform,
+23 and 24 prove the two ports on it, 25 proves two ports compose.
+
+| tag | remix | `.bin` | sha256 (first 16) | inside the OS | append |
+|---|---|---|---|---|---|
+| 22 | `hello-dram` | 445,868 B | `48ccc2437450f9e5` | 95 B | 278 B |
+| 23 | `midi-scenes` | 448,152 B | `18e81b3b9c0101a2` | 277 B | 2,301 B |
+| 24 | `octakit` | 526,368 B | `9f0ccc62f891af90` | 4,861 B (her 646 writes + the arena words) | 73,183 B |
+| 25 | `ported` (midi-scenes + LO-FI AMF fix) | 448,152 B | `a5963a3e0f102931` | 279 B | 2,301 B |
+
+`make image REMIX=<remix> BUILD=<tag>`; the `.syx` twins sit beside them
+in `out/`. **Back up the card's projects before 24** — Octakit migrates
+Parts into Kits on load and downgrading may lose Kit data (her warning).
+
+### Flash 9 — `midi-scenes`, tag 23
+
+His features through our loader, from DRAM: the seven units linked into
+the arena reserve, 35 detours and 2 pokes inside the OS.
+
+1. Boots, version `OCTABAM23`; PROJECT › MEMORY ~75 MB (as 22).
+2. **The unit behaves as stock without MIDI driving a scene** — load a
+   project, play, turn knobs, save a part, reload it. Falsified by
+   anything a stock unit would not do. ⚠️ Under the port this image
+   armed neither of two static-machine tracks at frame 0 and read ~8,600
+   fewer sectors at project load than `hello-dram` on the same card — his
+   `apply_part` wrapper / reload hooks changing part application. If
+   static tracks do not play on the unit either, that is the finding to
+   send him (it is in `modules/midi-scenes/README.md`); if they do, it
+   was the emulator.
+3. **Scene locks over MIDI** — his README's operations: hold a scene
+   from MIDI and edit, XF morph from MIDI, part save/reload keeping the
+   MIDI scene table, scene clear/copy/paste. The comparison is his own
+   `midisc 4.0.bin` on his unit; the claim here is only "the same
+   behaviour from DRAM".
+4. LOAD PROJECT a second time after playing: the reserve is never
+   touched by stock, so his MSC table and state survive — falsified by
+   scenes forgotten after a reload.
+
+### Flash 10 — `octakit`, tag 24
+
+Her runtime as a payload of our loader, staged at her own address; her
+646 writes untouched; the arena's four geometry words computed by the
+build and byte-identical to hers. This image is the closest to something
+already proven on hardware — her users run the same runtime — and the
+one with the most to lose (projects).
+
+1. Boots, version `OCTABAM24`; PROJECT › MEMORY ~82 MB (her 528 pages;
+   octabam takes none here — no DRAM units in this remix).
+2. **PART opens LOAD KIT, FUNC+PART opens SAVE KIT** (MKII), FUNC+CUE
+   reloads the assigned Kit; an old project's Parts appear as the first
+   64 Kits. Falsified by PART opening the stock part menu (her hooks did
+   not take) or a hang at project load (her hash gate at the post-clear
+   relocation).
+3. **LOAD PROJECT twice, with static samples in the slots.** This is the
+   finding for Em: on the port, stock's sector bounce buffer fills
+   `0x47fc8fe4..` at project load, inside her stage at `0x47fc7410`, and
+   her wrapper re-hashes the stage on every load. A hang on the second
+   load confirms it on hardware; a clean second load means a DMA-capable
+   card takes another path (`docs/remixer/PLACEMENT.md`). Either answer
+   is worth having before she is told.
+4. Save a Kit with a name, copy/paste/clear/undo in the Kit menus.
+
+### Flash 11 — `ported`, tag 25
+
+`midi-scenes` plus the LO-FI AMF fix: the pick-and-choose proof, two
+ports from two authors in one image, and the first DSP-word poke on the
+unit from this pipeline.
+
+1. Everything Flash 9 claims, unchanged (the fix shares nothing with it).
+2. **LO-FI's AMF knob no longer jumps the pitch backward** at the values
+   Bryan T reported; a sweep of AMF with FINE fixed is monotonic. The
+   falsifier is the stock behaviour; the fix is two words
+   (`mpysu → mpyuu`) and cannot half-apply.
+
+After all four: `docs/remixer/FAILURE_MODES.md` for anything that went
+wrong, the MEMORY figures noted exactly, and `PLAN.md`'s "nothing from the
+new pipeline has been flashed" retired.
