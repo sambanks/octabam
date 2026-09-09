@@ -2964,3 +2964,49 @@ conclusion stands, now with the control that proves it: recording works on
 Bryan's setup, but this analog rig cannot isolate the sample-level seam,
 and the golden control is what catches the false positive. The sample-exact
 number is route A's.
+
+### 10.31 ✅ REPRODUCED ON HARDWARE, by ear: the golden rule holds (9 Sep 2026, tag OCTABAM22, Sam's unit + Bryan's project)
+
+§10.29/§10.30 concluded the seam was "not measurable on this rig." That was
+true for the NUMERICAL loop-period measurement (the analog drift floor of
+±30–40 samples swamps the seam), and it was measured under two confounds
+that also fooled the EAR test. Removing both reproduced Bryan's click
+cleanly, and Sam — who had been trying to reproduce it for days —
+confirmed it twice.
+
+**The two confounds, both mine:**
+1. **The Mac's MIDI clock.** Driving the OT's transport from Python's
+   software clock (±~1 ms jitter) wobbles the recorder's timing at EVERY
+   tempo, manufacturing click variation that is the clock's, not the
+   recorder's. Bryan runs the unit standalone on its internal crystal.
+2. **The recorder loop crossfade (FIN/FOUT).** With a crossfade set, the
+   loop boundary carries the crossfade's own per-loop artifact at BOTH
+   tempos, which masks the golden-vs-non-golden difference. (This is also
+   the hardware proof of Bryan's hypothesis that the crossfade alone does
+   not fix the click — the golden-tempo behaviour survives it.)
+
+**The clean test (internal clock, crossfade OFF):** a continuous 1 kHz tone
+into inputs A/B (the right stimulus — Bryan's source is a continuous Moog
+synth, a drone, so a tone matches it; rhythmic content was a wrong turn),
+T1 self-looping on R1 at RLEN 16, the Mac feeding only the tone and NO
+clock, Sam running the transport on the unit's internal clock. By ear,
+confirmed on two runs:
+
+| tempo | | result |
+|---|---|---|
+| 65.6 (GOLDEN, 16×10,080 = 161,280 exact) | | **perfect loop, occasional blip** |
+| 128 (non-golden, 16×5167.96875 = 82,687.5) | | **gaps at the loop** |
+
+**What this establishes.** Bryan's golden rule is real on hardware: at a
+golden tempo the loop is clean, at a non-golden one it clicks/gaps — with a
+continuous source, the crossfade off, on the unit's own clock. It confirms
+his spreadsheet's premise and his point that the crossfade is not the fix.
+The sample-exact SIZE of the seam stays route A's number (the analog rig
+cannot resolve one sample), but the AUDIBLE golden-vs-non-golden click is
+now hardware-confirmed. Method note for next time: **the human ear on the
+internal clock is the instrument here** — my cross-correlation of the
+analog capture could not resolve the seam under the drift floor, but the
+ear cleanly tells a perfect loop from a gappy one. And the process lesson
+Sam enforced: reproduce and confirm before calling it — the first "clean"
+reading of nearly every approach in this section did NOT survive
+repetition; this one did, twice.
