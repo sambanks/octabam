@@ -2790,3 +2790,65 @@ about to put hands on Sam's unit for an unrelated bus-claims run; folding
 a short recorder-arm check into that same session is far cheaper than a
 dedicated flash cycle later (see CLAUDE.md: "Flash cycles are
 expensive").
+
+### 10.27 ✅ THE FIRST HARDWARE MEASUREMENT: the recorder loop is clean on Sam's unit — exactly 20,672 samples, no ±1 seam (9 Sep 2026, tag OCTABAM21)
+
+§10.21–§10.26 chased the recorder under the C++ port and found it never
+arms (no audio anywhere in the pool, the frame builder's recorder-check
+pass never runs, and §10.26: the port has no clock-lock model at all). So
+the port could not show where a click comes from. The hardware can, and it
+was cabled for flash 7, so the seam capture ran on Sam's own Octatrack.
+
+**Fixture and rig.** Bryan's `r4_128` (128 BPM, T1 records inputs A/B with
+recorder trigs at steps 2/6/10/14, T2 = FLEX on R1 with play trigs at the
+same steps, RLEN 4), loaded on the flashed **OCTABAM21** image (the
+UNPATCHED recorder — `bamsep27` carries no `recorder-seam` cave). A
+Mac-generated tone into inputs A/B through the MicroBook, the OT's main
+outs captured back, the Mac the clock master at 128 BPM
+(`tools/hw_flash7.py`'s clock + source; capture analysed off-line). ⚠
+`r4_128` was saved under OCTABAM17; it loaded and ran (an "errors" dialog
+on the older build is dismissable).
+
+**The decisive measurement — drift-immune.** The Mac and the OT are not
+sample-locked, so the analog round trip drifts ~50 ppm (~1 sample per
+20,672-sample loop), which is the SAME size as the ±1-sample seam route A
+predicted — an ordinary phase or click metric cannot separate them
+(instrument blindness, `CLAUDE.md`). The one view that survives the drift
+is **cross-correlating T2's consecutive playback loops against each other**
+(OT output vs OT output; the Mac's capture-clock drift cancels in the
+alignment). Result, 40 consecutive loops:
+
+```
+per-loop period (samples): 20672 x40, spread 0, histogram {20672: 40}
+```
+
+**The loop period is exactly 20,672 samples, every pass, zero variation.**
+The "−1 every 8 passes" seam route A measured for 128/RLEN 4 does NOT
+appear as a period drop on hardware. The boundary discontinuity measured
+directly is ~1 sample (median 0.1, max 2.7 × the tone's normal per-sample
+slew; a full 1-sample drop would be a comparable ~1× step), i.e. at the
+clock-drift floor, with no gross multi-sample click.
+
+**What this settles, and what it does not.**
+- ✅ The recorder records and loops on Sam's unit, and the PLAYBACK loop is
+  exactly periodic — the fixed-RLEN playback is not the source of a hard,
+  universal click. Bryan's audible click does not reproduce as a gross
+  artifact here with a tone.
+- ✅ It confirms §10.23's reading that the port's "no recorded audio" is a
+  PORT GAP, not the firmware: the same fixture records fine on hardware.
+- 🟡 It cannot, in an unsynced analog capture, confirm or deny a true
+  ±1-sample seam at the drift floor — only that the loop period does not
+  drop by a resolvable sample. A sample-locked capture (word clock) or the
+  RLEN-MAX control (`max_128`, route A shows it seam-free) would separate a
+  real ±1 seam from drift; neither was run.
+- The stimulus caveat stands: a tone is a weak probe for a click, and
+  Bryan records musical content whose phrase length rarely matches a fixed
+  RLEN, so his click is most consistent with the content's own loop-point
+  mismatch (or his unit) rather than a firmware playback seam.
+
+**Where this leaves the recorder stream:** the sample-exact route-A
+emulator remains the instrument for the RECORD-side seam arithmetic; the
+hardware now shows the PLAYBACK loop is clean and the port's arm gap is the
+port's, not the firmware's. The open port work (§10.26: model the
+clock-lock / arm path) is a fidelity task, not a prerequisite for a click
+that hardware does not exhibit.
