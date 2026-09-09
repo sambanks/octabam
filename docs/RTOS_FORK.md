@@ -3072,3 +3072,82 @@ recorded samples (playback works) or is silent/passthrough (the DSP-side
 voice render for a recorder buffer is the real gap). The pieces upstream of it
 — recorder writes, control record, bind — are now all confirmed present in
 route A.
+
+### 10.34 The 84-word record stays an empty-voice skeleton through pass 2, both ping sides, all four track slots — and route A's own `Edma` class explains why it might have to (9 Sep 2026)
+
+Followed §10.33's own next step: `recaudio.py` gained `--voice-probe`, reading
+the track's 84-word record directly from ColdFire host memory (`0x800021d0`/
+`0x80002c50` payload A, `0x80001c90`/`0x80002710` payload B — `DSP.md`'s
+"four 84-word per-track records" table row) instead of trying to catch it in
+flight over the eDMA hook.
+
+**Addressing confirmed, twice over, before trusting the content.** (1) The
+actual TCD fields captured on this transfer (`out_log`, `ch 0`, `saddr
+0x800021d0`/`0x80001c90`/`0x80002c50`/`0x80002710`) read `nbytes=0x150`
+(336 bytes), `biter&0x1ff=4` — 4 × 336 = 1,344 bytes, exactly "four 84-word
+(0x150-byte) records" back to back, confirming the per-track stride is 336
+bytes = 84 words × 4 bytes, not the wire's 2-halfwords-per-24-bit-word
+count. (2) Reading each word as the top 3 bytes of its 4-byte big-endian
+slot reproduces the documented header magic `0x40000` exactly at word index
+2 of every track slot, on every frame checked — the same value O10 decoded
+from the C++ port's block-dump via the halfword-pair method (`(hi<<8) |
+(lo>>8)`), which is algebraically identical to "top 3 of 4 bytes" for a
+sequential big-endian layout. Both routes agree; the address and byte
+layout are not the open question.
+
+**The content itself never moves.** Captured all four track-slot positions
+on both ping sides, on `g65` (RLEN 16, 65.6 BPM golden, arms at frames
+1/10081) — at frames 1–4 (pass 1 start), 10079–10084 (the pass-2 play trig
+and its immediate neighbourhood), and a periodic sample every 20 frames out
+to 10140: **every position, every frame, decodes to the same near-static
+skeleton** — an empty first header (`count=0, 0, 0x40000, tag=0`), then a
+constant `16, 0, 131064` triple that never forms a valid second header
+(`0x40000` doesn't reland at the expected offset) and never carries a
+16-pair audio payload, with only one word (a tag-like value at index 7)
+drifting slowly and periodically with the pass length. Nothing distinguishes
+pass 1 (buffer empty, expected silence) from pass 2 (buffer full, §10.33's
+bind fires) — the record is byte-for-byte the same shape at both.
+
+**Along the way, a real bug, fixed:** `on_frame_edge` (feeding `rec_fields`
+and now `voice_rec`) is called once per completion of eDMA ch 1, which
+fires **twice per `rt.frame_count` tick** (once per ping/core side) — so
+the existing `a.frames + 64` cap on `rec_fields` was counting *calls*, not
+frames, and silently stopped recording at half the requested frame range. A
+10,150-frame run's capture died at real frame 5,107 with no error printed.
+Fixed by deduping on `frame_count` before appending. This was a pre-existing
+gap in `--field-probe` too, not something the voice-probe introduced — any
+earlier `--field-probe` run past ~half its requested `--frames` should be
+treated as unverified for its back half.
+
+**Why the record may be structurally invisible to route A, not actually
+silent (🟡 inferred, not measured):** `tools/emu_rtos.py`'s `Edma` class
+says so itself — "No data moves (audio is out of route A's scope... M5 ran
+12,000 frames with no DSP at all)". Every completion this class produces is
+a timing event; no bytes cross an eDMA channel. `recaudio.py`'s own counter
+injection exists precisely to patch around this, by hand-writing synthetic
+content into the recorder's *input* read-back ring at 0x80003190 the moment
+the paced chain "completes" — but that patch covers the recorder's input
+side only. If the machine-type-1 (FLEX) handler that assembles the 84-word
+record for a *recorder-buffer* voice reads any DSP-fed state before writing
+its segments (a level, a position, anything that would normally arrive over
+one of the *other* host↔DSP channels this class also never actually moves),
+that input sits at zero forever under route A, and a branch on it could
+make the handler write nothing beyond the header skeleton — indistinguishable,
+from a host-memory read, from the real firmware genuinely not rendering.
+**What would falsify this:** an instruction trace of the 84-word packer's
+FLEX handler (table at `0x400d61d0`, DSP.md §6) on this exact fixture,
+checking whether it reads from any of the read-back addresses (`0x80003190`
+region) `recaudio.py` does NOT inject into, or writes real segment data
+that a mis-parse (not a mis-render) is hiding. That is cheaper than the next
+option and should come first.
+
+**Recommended next step, if the trace doesn't resolve it:** repeat this
+exact check under the C++ port (`tools/ot_emu`), which runs a real DSP and
+already decoded a genuine FLEX voice's audio in the 84-word record for a
+*card-sourced* voice (O10, `COLDFIRE_PORT.md`, validated to −100.2 dB
+against the source WAV) — the same record, the same address family, a
+harness that does not have route A's "no data moves" gap. If a
+recorder-buffer-sourced FLEX voice renders there and not in route A, that
+would confirm route A is instrument-blind here (this project's own pattern:
+`[[octabam-instrument-blindness]]`), not that the firmware fails to play
+the loop.

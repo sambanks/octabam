@@ -45,6 +45,7 @@ ap.add_argument("--out", required=True)
 ap.add_argument("--inject", default="counter", choices=("counter", "none", "burst"))
 ap.add_argument("--burst-frames", type=int, default=5200, help="burst mode: inject the ramp for this many frames from the start, then silence")
 ap.add_argument("--flex-probe", action="store_true", help="watch the FLEX voice bind 0x4000f450 / caller 0x4000d49e")
+ap.add_argument("--voice-probe", action="store_true", help="capture the track's 84-word record (DSP.md: the voice's audio, both ping sides) every frame")
 ap.add_argument("--blocks", type=int, default=40, help="pool blocks to dump from the row")
 ap.add_argument("--field-probe", action="store_true", help="log every write to the track's recorder state record (+36..+83, both banks) with its PC")
 ap.add_argument("--reg-probe", action="store_true", help="log the mix loops' source pointers and gains at loop entry (frames 323..326)")
@@ -135,14 +136,64 @@ def on_transfer(ch, paced, f):
 rt.edma.on_transfer = on_transfer
 
 # -- per-frame recorder record fields, both banks, the track ------------------
+# ch1 (SPAN_TAG[1]) completes TWICE per rt.frame_count tick (once per ping/core
+# side) -- found 9 Sep 2026 chasing a voice-probe dump that silently stopped at
+# frame 5107 of a 10150-frame run: the a.frames+64 cap was counting CALLS, so it
+# exhausted at half the real frame count. Dedupe by frame_count so the cap is on
+# frames reached, not on_frame_edge invocations.
 rec_fields = []
 def on_frame_edge():
+    if rec_fields and rec_fields[-1][0] == rt.frame_count: return
     if len(rec_fields) >= a.frames + 64: return
     rows = []
     for bank in (0, 1):
         b = REC_STATE + bank * 672 + a.track * 84
         rows.append(bytes(uc.mem_read(b, 84)))
     rec_fields.append((rt.frame_count, rt.sample, rows[0], rows[1]))
+    if a.voice_probe and len(voice_rec) < a.frames + 64:
+        track = a.track + 1
+        core = 0 if track >= 5 else 1
+        base0, base1 = TRACKREC[core]
+        # capture the WHOLE 4-track (1344-byte) block on both ping sides --
+        # not just the assumed pos=(track-1)%4 slot -- the pos->track mapping
+        # is unverified here (this project's r7/track-core mappings have been
+        # backwards before) and is worth checking directly rather than assumed.
+        recs = tuple(bytes(uc.mem_read(base, 84 * 4 * 4)) for base in (base0, base1))
+        voice_rec.append((rt.frame_count, rt.sample) + recs)
+
+# -- the track's 84-word record (DSP.md: "four 84-word per-track records",
+# 0x150 bytes each, ping/pong): the voice's OWN audio -- what O10 (under the
+# port) found the FLEX-render's output actually travels in, as opposed to
+# audio_out (the recorder INPUT block). Read directly from ColdFire host
+# memory: each of the 84 words is a 24-bit value left-justified in a 4-byte
+# big-endian long (top 3 bytes; DSP.md 6/O10's wire-halfword-pair decode of
+# the same bytes gives the identical value, verified by construction).
+TRACKREC = {1: (0x80001c90, 0x80002710), 0: (0x800021d0, 0x80002c50)}
+voice_rec = []          # (frame, sample, ping0_bytes[336], ping1_bytes[336])
+
+def voice_words(raw336):
+    out = []
+    for i in range(0, len(raw336), 4):
+        v = int.from_bytes(raw336[i:i + 3], "big")
+        out.append(v - (1 << 24) if v >= 1 << 23 else v)
+    return out
+
+def voice_segments(rec84):
+    """16 (L,R) pairs from the segmented record (O10: 4-word header (count,0,
+    0x40000,tag) + count pairs; a THRU voice ships two empty headers then the
+    16 pairs, a FLEX voice splits them across several headers)."""
+    pairs = []; i = 0
+    while len(pairs) < 16 and i + 4 <= len(rec84):
+        if rec84[i + 1] == 0 and rec84[i + 2] == 0x40000 and 0 <= rec84[i] <= 16:
+            cnt = rec84[i]; i += 4
+            if cnt:
+                pairs += [(rec84[i + 2 * k], rec84[i + 2 * k + 1]) for k in range(cnt)]
+                i += 2 * cnt
+            continue
+        take = 16 - len(pairs)
+        pairs += [(rec84[i + 2 * k], rec84[i + 2 * k + 1]) for k in range(take)]
+        i += 2 * take
+    return pairs[:16]
 
 # -- inbound (DSP -> host): fill the read-back at the paced chain's completion --
 inj = {"seq": 0, "log": []}
@@ -302,6 +353,30 @@ print(f"trig words: {rt.trig_words_log[:16]}")
 if getattr(a,"flex_probe",False):
     print(f"FLEX bind events: {len(flex_ev)}")
     for e in flex_ev[:30]: print("  ", e[0], "frame", e[1], "regs D0-2,A0-2", e[2], "stack", e[3])
+if a.voice_probe:
+    print(f"voice_rec: {len(voice_rec)} frames captured (track {a.track+1}, ping bases {TRACKREC[0 if a.track+1>=5 else 1]})")
+    # find every play trig (armpost/endpost aren't it -- trig_words_log carries the raw pattern trigs)
+    # and print the record around the frames near each of the arm/end events, both ping sides
+    of_interest = set()
+    for e in ev:                                    # armcall/armpost/endpost
+        for d in range(-1, 4): of_interest.add(e["frame"] + d)
+    for lbl, fr, regs, stk in flex_ev:               # the play-trig FLEX bind (10.33)
+        for d in range(-1, 4): of_interest.add(fr + d)
+    if not of_interest:                              # nothing hooked -- dump the tail
+        of_interest = {fr for fr, *_ in voice_rec[-8:]}
+    of_interest |= {fr for fr, *_ in voice_rec if fr % 20 == 0}   # a periodic sample too
+    for fr, sm, p0, p1 in voice_rec:
+        if fr not in of_interest:
+            continue
+        for tag, raw in (("ping0", p0), ("ping1", p1)):
+            for pos in range(4):
+                slot = raw[pos * 84 * 4: (pos + 1) * 84 * 4]
+                words84 = voice_words(slot)
+                nz = sum(1 for w in words84 if w)
+                if nz <= 4:      # skeleton-only (skip the near-static header noise)
+                    continue
+                segs = voice_segments(words84)
+                print(f"  frame {fr} {tag} pos{pos}: nonzero {nz}/84  segs(L)={[l for l,r in segs]}")
 
 import pickle
 with open(a.out, "wb") as fh:
@@ -310,5 +385,6 @@ with open(a.out, "wb") as fh:
         events=ev, out_log=out_log, inj_log=inj["log"], trig_words=rt.trig_words_log[:200],
         audio_out=[(f, s, g, sa, d) for f, s, g, sa, d in audio_out],
         rec_fields=[(f, s, r0, r1) for f, s, r0, r1 in rec_fields],
-        pool_row=list(row), pool_blocks=blocks, pool_first=pool_w['first'], pool_per_frame=pool_w['per_frame'], rec_setup=rec_setup, snaps=snaps), fh)
-print(f"saved {a.out}: {len(audio_out)} audio blocks, {len(blocks)} pool blocks, {len(ev)} events")
+        pool_row=list(row), pool_blocks=blocks, pool_first=pool_w['first'], pool_per_frame=pool_w['per_frame'], rec_setup=rec_setup, snaps=snaps,
+        voice_rec=voice_rec, flex_ev=flex_ev if getattr(a, "flex_probe", False) else None), fh)
+print(f"saved {a.out}: {len(audio_out)} audio blocks, {len(blocks)} pool blocks, {len(ev)} events, {len(voice_rec)} voice_rec frames")
