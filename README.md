@@ -26,7 +26,7 @@ No firmware is distributed here, and none may be. You supply your own
 |---|---|---|---|
 | **MIDI SCENES** | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) | per-scene parameter locks driven over MIDI — a second lock table the panel never had | his sources (a git submodule, GNU-as form), seven units linked into DRAM, 35 hooks; every region proven equal to his own encoder's bytes |
 | **OCTAKIT** | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) | 256 Kits per Project in place of 64 bank-tied Parts, with names, copy/paste, undo, and migration of old projects | her recipe (a submodule) compiled, packed and appended by the build; stock + her writes + her append reproduces her own OS image exactly |
-| **LOFI AMF FIX** | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | the stock LO-FI's AMF knob computes with a signed×unsigned multiply; two DSP words make it unsigned×unsigned | two asserted pokes, disassembled against stock |
+| **LOFI AMF FIX** | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | the stock LO-FI's AMF knob jumps the pitch backwards at certain settings; with the fix it sweeps the way the knob says it should | two asserted pokes on the stock effect's own code, disassembled against stock (the technical story is in `modules/lofi-amf-fix/README.md`) |
 
 **From this project** — the DSP effects it began as, and the ColdFire
 patches that grew around them:
