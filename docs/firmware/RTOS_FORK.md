@@ -4101,3 +4101,18 @@ at the second bar, which names the branch the unit takes and the port does
 not. If the restart is the DSP's own doing regardless of the message, the
 remaining lever is a short fade at voice restart inside the DSP payload —
 stock voice code, but ours to patch, with payload B the only one with room.
+
+**Static-sample control, first attempt (same night — by ear, no capture).**
+`GAP128` on the unit (FLEX, static 1.0 s looped tone, PLAY trig every bar at
+128 BPM): Sam hears "no chirp, just click". The chirp is therefore
+recorder-buffer-specific — the one component now pinned to the recorder
+path (the DSP re-priming a streamed buffer at each re-bind is the
+candidate). The click part is NOT evidence: a 1.0 s loop re-trigged every
+1.875 s restarts mid-phase and clicks at ANY tempo, so this control was
+mis-built (mine). The fair control is a looped tone of exactly 82,687
+samples — the recorder's own length — re-trigged every bar at 128: the
+re-trig then lands within half a sample of its wrap exactly as the
+recorder case does, and whatever burst remains beyond a half-sample step
+is the recorder-specific part. A WAV to make, no flash. The MicroBook
+dropped off USB during the card swaps (no CoreAudio devices listed), so
+no capture of this run exists.
