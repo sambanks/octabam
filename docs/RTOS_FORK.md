@@ -3417,3 +3417,54 @@ alternative explanation that mattered. Sam's ear caught what no check in
 §10.36/§10.37 was built to catch. **A positive result needs the same
 skepticism as a null one, especially when it's the answer you were hoping
 for.**
+
+### 10.39 The click, on hardware, in the audio domain: clean at golden, a real burst at every non-golden wrap, exactly 1.875 s apart (9 Sep 2026)
+
+§10.38 left the play side genuinely open and asked for a hardware
+recording with documented conditions — the existing `out/hw/flash7/loop_*`
+captures had no test-condition metadata to trust. Sam ran it live: unit on
+internal clock, self-loop armed (REC+PLAY on the same track, RLEN 16, same
+geometry as `g65`/`n128`), tempo switched by hand on the device between
+takes; `tools/tone` fed a continuous 1 kHz sine into inputs A/B through the
+MicroBook while `tools/rec` captured 60 s at a time (both already compiled
+from earlier sessions — no new tooling needed).
+
+**128 BPM (non-golden), 57 s analysed (t=3–60 s, skipping the tone's own
+ramp-in):** the same sample-to-sample jump metric used on the emulator
+renders finds **115 outlier samples, clustered into distinct bursts of
+several large jumps within a few samples of each other** (a real short
+transient, not one glitched sample) — **recurring at 4.180 s, 6.055 s,
+7.930 s, 9.805 s, 11.681 s, 13.556 s, 15.431 s, 17.306 s, … every 1.875 s**,
+which is 82,687.5 samples at 44.1 kHz — **exactly** the ideal non-golden
+pass length at 128 BPM / RLEN 16 that route A (§10.32) and this session's
+port work both derived. One cluster at every single pass boundary, not
+every other. A 0.6 s clip cut around the burst at 6.055 s
+(`out/hw_click_clip.wav`) — Sam confirmed by ear: **"yes"**, this is the
+click.
+
+**65.6 BPM (golden), same method, same 57 s window (~15+ passes):** **zero**
+outliers. Confirmed by ear as clean too.
+
+**What this is:** the first time in this project that Bryan's click has
+been captured, in the audio domain, on hardware, with fully documented
+test conditions, AND with its recurrence period matching a specific
+arithmetic prediction to the millisecond — not inferred from recorded
+sample positions (§10.16–10.32) and not a description relayed secondhand
+(§10.18, §10.29–10.31). Golden-clean / non-golden-clicks is no longer
+resting on any one leg (route A's arithmetic, one earlier ear test under
+confounds, or this) — it now has three independent legs, and this is the
+cleanest of them.
+
+**What doesn't yet match the emulator.** §10.38's isolated fixture (T2
+plays R1, never armed — the fixture built to rule out the monitor-passthrough
+confound) found its own periodic anomaly on `n128_iso`, but at HALF this
+rate — every OTHER wrap (165,375 samples), not every wrap — and Sam's ear
+called its character "a second tone comes in", not a click, and flagged it
+as "not even close" to the real hardware sound. Two mismatches to close,
+not one: the PERIOD (every wrap vs every other) and the CHARACTER (a burst
+transient vs a sustained second tone). Next: reproduce this exact hardware
+result — clean golden, a burst at every non-golden wrap — in the emulator,
+using this recording as the ground truth to match against rather than
+`o10_recloop.py`'s per-pass jump metric alone (which is tuned for a smooth
+sine and may itself be why the emulator's every-wrap bursts, if present,
+weren't being counted the same way hardware's are).
