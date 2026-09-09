@@ -3659,3 +3659,49 @@ golden — no flash cycle.
 
 Instruments: the successive-loop comparison and phase-step probe above
 (inline in `tools/scratch`), `counter_wrap.py`.
+
+### 10.43 The remaining tooling gap, pinned: the port's per-bar FLEX RETRIGGER inserts a ~50–80-sample loop-point gap that hardware does not — so the mechanism is faithful but a clean audible render is not, yet (9 Sep 2026 — measured)
+
+Chasing a gap-free audible render of §10.42's fixture. Three taps, three
+different loop-point pictures, which is itself the finding:
+
+- **84-word voice record** (`track_audio`, full level, −10 dB): goes to an EMPTY
+  voice skeleton for ~5 frames at each retrigger (rec#5169–5173 carry 6 of 84
+  non-zero words), i.e. the per-voice RECORD empties during the re-bind.
+- **read-back / per-track chain output** (`readback_audio`, −69 dB): far more
+  continuous, and it carries the SAME mechanism — successive-loop compare gives
+  golden shift +0 (−57.8 dB residual, stationary), non-golden shift −1/+1
+  alternating — but it still has a silence run at **each wrap, at BOTH tempos**
+  (7 gaps, every one within ~90 samples of a wrap).
+- **ESAI TX0 master mix** (`--audio-out`, −81 dB, attenuated): only 2 gaps, ~24
+  samples, every OTHER wrap.
+
+**What is solid: the mechanism, on two independent taps.** Record and read-back
+both give golden = stationary loops, non-golden = ±1 alternating — §10.42 stands,
+not tap-dependent.
+
+**What blocks a clean audible render: the retrigger gap.** The fixture PLAY-trigs
+the FLEX voice every bar, and in the port each retrigger costs a
+~50–80-sample dead zone at the loop point — present at golden too. Hardware's
+golden loop is clean (§10.31/§10.39: "perfect loop", zero outliers) AND
+hardware retriggers (Bryan: REC+PLAY on the same step), so **hardware's FLEX
+retrigger is gapless and the port's is not** — a port fidelity gap in the
+retrigger→DSP-voice path (the ColdFire stops feeding the voice for several
+frames at the re-bind, or the bind message is quantised late), NOT the click
+mechanism. It cannot be dodged by "just don't retrigger": a free-running
+looped FLEX (LOOP on, never retriggered) loops the buffer at its INTEGER
+recorded length and is clean at every tempo (EXTERNAL.md §6, "flex loops at L,
+never retriggered → clean"), so it would show no click at all. The click needs
+the retrigger; the faithful render needs the retrigger to be gapless.
+
+**So the tooling stands here:** the objective platform is complete and
+decisive — successive-loop compare + wrap-spacing + phase-step distinguish
+golden-clean from non-golden-click on the real DSP, and would objectively score
+any candidate fix (does non-golden become stationary without disturbing
+golden). A gap-free AUDIBLE render — hearing it, and hearing golden stay clean —
+needs the port's FLEX retrigger startup made gapless first: locate why the
+re-bind stalls the voice for ~5 frames (ColdFire bind path `0x4000f450` timing,
+or the DSP voice re-init), and close it. That is the next tooling task, and it
+is well-scoped. Demo WAVs under `out/click_demo/` carry the retrigger gap at
+both tempos and so do NOT yet demonstrate golden-clean — do not use them for an
+ear A/B until the retrigger gap is fixed.
