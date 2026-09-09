@@ -2375,3 +2375,700 @@ Drivers: `tools/scratch/recaudio.py` (`--reg-probe`, `--read-probe`,
 `recaudio_seams.py`, `recaudio_analyse.py`, `make_seam_fixtures.py`
 (`--self` puts the play trigs on T1, `--ab N` sets the AB level — which
 measured as having no effect on the recorded level at 0, 64 or 127).
+
+### 10.19 Bryan's project, firmware, spreadsheet and primer arrive; his own arithmetic already predicts every hardware result we have (9 Sep 2026)
+
+**Received (`~/Downloads`):** his working project (`PROJECT 260908`) and the
+exact firmware he ran it on (`to_bam.zip`), plus his companion documents
+`octatrack_clickless_loops.xlsx` and `octatrack_sound_on_sound_primer.pdf`
+(revision 5 Sep 2026).
+
+**Firmware:** the `.bin` decodes (`tools/bin_decode.py`, then a small
+standalone depacker against `vendor/elektron-firmware-tool`'s
+`ap_depack`/`ELEK_SECT_OFF` — the tool's own `-d` needs SysEx framing our
+bare container lacks) to a 1,112,560-byte MAIN OS section carrying
+`BusDelay22`/`BusVerb22` — **build tag 22**, confirmed against the filename.
+
+**Project (`ot_project.py`'s own offset tables, read-only):** bank A part 1,
+T1 only is live — FLEX on slot 129 (R1, self-referencing: it plays its own
+recorder buffer), `INAB=2 INCD=0 RLEN=15 TRIG=0 SRC3=1 LOOP=0`, one trig at
+step 1 carrying masks `0x00/0x20/0x28/0x30` together (his "I usually have
+both on 1" from §10.18's answers). Pattern LEN=16, SCALE=1X (one bar),
+saved at 120.0 BPM (confirmed by Bryan directly). This project is a shared
+base for us to work from, not a test case — Bryan confirmed it does not
+click, consistent with prediction (RLEN 16 at 120 BPM is 88,200 samples,
+exact — one of the bar-length-clean tempos in his own Bar Lengths sheet).
+
+**His spreadsheet and primer, read directly.** Three sheets — Clean
+Combinations (5,279 clean BPM/RLEN pairs, 30–300 BPM x RLEN 2–64), Golden
+BPMs (60 tempos clean at every RLEN 2–64), Bar Lengths (86 tempos clean at
+16/32/64 trigs) — all built from the identical condition our own arithmetic
+uses: `RLEN x 15,876,000` must divide evenly by `tempo24`. His Calculator
+sheet checks any BPM/RLEN pair directly and reports CLEAN or `NOT CLEAN -
+will click`. His primer (page 5) states outright that 128 BPM "has no
+clean one-bar loop at all" and that 120/160/200 are clean at bar lengths
+but not at every RLEN.
+
+✅ **Every hardware result in hand is already predicted by this arithmetic
+— nothing here contradicts anything.** note-for-bam-seam-flash.md's five
+tests: 128/RLEN4 (his Calculator: NOT CLEAN) clicks; 128/RLEN16 (no clean
+one-bar length at 128 exists) clicks; 128/RLEN MAX with trigs every 4 steps
+(same as RLEN4 arithmetic, NOT CLEAN) clicks; 120/RLEN MAX and 120/RLEN4
+(both an integer sample count at 120 BPM) are clean. Bryan's own message —
+"I get clicks with combos I predict won't work" — is him confirming his
+calculator's `NOT CLEAN` predictions match hardware, not reporting a
+predicted-clean combo that clicked. There is no falsifier here, of his
+model or of the port's O10 arithmetic (the two share the same underlying
+condition).
+
+**Attempted: run his exact project through the C++ port with his exact
+firmware, to see WHERE in the signal path a known-clicking combo actually
+breaks.** `tools/ot_emu` was rebuilt clean (a peer session held the shared
+checkout on `coldfire-o12b-reverb`, so this work moved to its own worktree)
+and `stage_card.py` staged his project unmodified. Result: silent on every
+track (`o10_recloop.track_audio`, all zero over 48,000 samples) — not
+explained by a missing `--main-level` (O9b's root cause A; added, still
+silent) and not diagnosable from `FW_TRIG_WORDS` (reads 0 in every run
+tried, including ones that plainly did record audio — stale for tag 22,
+the "instrument blind to the thing it's checking" trap again).
+
+**Harness validated against a known-good fixture — and a real gap found in
+the validation itself.** `make_seam_fixtures.py`'s `r4_128` (steps 2/6/10/14,
+same firmware, same command line) DOES record and play audio (T1/T2 both
+~47.6–47.8k/48,000 samples nonzero) — so the command line is right and
+Bryan's silence is not a flag-mistake. But a control built to isolate "does
+a step-1 trig fire" — `r4_128` with its trigs moved to step 1 only, nothing
+else changed — came back with bit-identical nonzero counts to the
+unmodified step-2/6/10/14 fixture (47,561 and 47,795, exactly, both tracks).
+Two different on-disk trig patterns cannot legitimately produce the exact
+same sample-accurate result; the run's own log line — `sequencer : playing
+bank 1 pattern 0 (re-selected through the load's own last step)` — says the
+port does not necessarily start stepping from step 1 at transport start, so
+a short run (3,000 frames, under one loop pass at either tempo) cannot be
+trusted to have exercised the trig at all. Separately, the primer's own
+description of a step-1 REC+PLAY loop — "there's an implicit 16-trig
+delay... the audio always lands on step 1 of the next cycle" — means any
+future run also needs to cover at least two full loop passes before a
+played-back click could show up at all, on top of that starting-step
+question. **Neither is resolved. Stopping here for review rather than
+guessing further.**
+
+**What's actually open, now that the arithmetic side is settled:** the
+port needs to run long enough, and from a known starting step, to show
+WHERE a combo already known to click (e.g. 128/RLEN4) actually breaks —
+the recorder's own write, or the FLEX voice's retrigger reading it. That is
+work on our side; no further data is needed from Bryan for it.
+
+Artifacts (this session's worktree, not yet committed to a branch): staged
+card images and a MAIN-OS depacker (`out/depack_elek.c`, wants folding into
+`tools/` proper if this path gets reused — it duplicates none of
+`elektron-firmware-tool`'s logic, just calls its `ap_depack` on a bare ELUP
+payload the tool's own `-d` refuses without SysEx framing).
+
+### 10.21 The "wrong starting step" theory is wrong, and what it was covering for is bigger: `o10_recloop.track_audio` cannot tell a recorder loop from live pass-through (9 Sep 2026)
+
+**§10.19's control test, redone with the right label.** `--sequencer`'s
+"re-selected through the load's own last step" message is about which BANK
+and PATTERN the firmware selects on load (§8.3, unrelated to which step the
+sequencer starts stepping from) — not about trig position. That theory is
+dropped. The actual anomaly (moving `r4_128`'s trigs from steps 2/6/10/14
+to step 1 produced identical output) needed a different explanation, so it
+got one: a byte-for-byte diff of the two runs' `track_audio` output shows
+**48,000/48,000 samples identical, both tracks, no exceptions.** Two
+genuinely different on-disk trig patterns, staged into genuinely different
+card images (confirmed with `cmp`), produced the exact same output. The
+trig step is not the variable that matters here; something about what
+`track_audio` measures is.
+
+**Decisive test: a burst-then-silence probe instead of a continuous tone.**
+A continuous test tone (route A's `--audio-in tones`, and O10's own 1500 Hz
+fixture) cannot distinguish "the recorder captured this and is looping it
+back" from "the track is just passing its live input straight through" —
+both look identical on a periodic signal. Built a 4-channel WAV
+(`out/make_burst_wav.py`): each RX0 slot gets its own tone for the first
+2,000 samples, then silence for the next 128,000. Ran `make_seam_fixtures.py`'s
+known-good `r4_128` (REC/PLAY trigs on 2/6/10/14, 128 BPM, RLEN 4 — the
+same fixture COLDFIRE_PORT O10 used to claim "sample-continuous for 32
+passes") for 8,200 frames (>6 loop passes) with this probe instead of tones.
+
+**T1 and T2 both receive the burst once, at the start, and are silent at
+every subsequent loop boundary through 6 full passes** (`out/check_burst.py`):
+nonzero content in the first 2,200 samples of pass 1 only; zero nonzero
+samples in the equivalent window of passes 2 through 7, and zero everywhere
+else. If the FLEX voice on either track were actually reading back a
+recorded loop, the burst would reappear once per pass (RLEN 4 = 20,672
+samples here) for as long as the recording holds it — sound-on-sound is the
+whole point of the fixture. It does not. What `track_audio` shows is
+consistent with **live input monitoring passed straight to the track's
+output, not a played-back recording** — and a continuous tone cannot tell
+the two apart, which is what let O10's "sample-continuous" result stand
+unquestioned.
+
+**This does not yet mean the recorder doesn't work under the port** — it
+means the specific observable used to claim it does (`o10_recloop.
+track_audio`, a per-track host-port audio record) cannot distinguish the
+two, and every prior "continuity" measurement built on it (O10's kick fit,
+the 128/RLEN4/RLEN16/RLEN MAX/120 sample-exact claims, §10.19's silence on
+Bryan's own project) needs re-reading in that light. `FW_TRIG_WORDS`
+(`0x46104d26`) and the recorder state record (`0x80004f1c`, per route A)
+both read zero writes even during this run's live first pass, on a
+`--watch-mem` check spanning the full 16-record table — consistent with
+those being stale addresses for build tag 22 (the same address-drift this
+project has hit repeatedly), not with anything meaningful about the
+recorder's state.
+
+**What would settle it:** find the ACTUAL recorder pool buffer content in
+ColdFire address space (route A's `POOL_ROWS`/`POOL_BASE`,
+`0x46c2e9c0`/`0x40A955E0`, `docs/RTOS_FORK.md` §10.18) for tag 22's build,
+and read it directly with a range dump after the run — not a single-word
+`--peek`, which the tool only supports pre-`--sequencer`. If the burst
+shows up THERE, the recorder captured it and the gap is purely in reading
+the FLEX voice's output; if it doesn't, the recorder itself isn't writing
+under this configuration, which would be a materially different finding
+than any click investigation to date. Not yet attempted — flagging before
+going further, since this reframes what O10 actually established.
+
+Drivers: `out/make_burst_wav.py`, `out/check_burst.py` (both in this
+session's worktree, not yet moved into `tools/scratch/`).
+
+### 10.22 `--mem-dump` added to the port; three independent checks converge on no recorded audio anywhere in the pool (9 Sep 2026)
+
+**New tool capability.** `tools/ot_emu/main.cpp` gets `--mem-dump
+"addr,len=path[;...]"` — raw ColdFire memory ranges to files, taken at the
+very end of the run. `--peek` only supports one word and only fires before
+`--sequencer` runs; nothing existing could read the recorder pool's actual
+content after a run. Built, tested, works (confirmed against `r4_128`'s
+pool rows and blocks below). Not yet moved out of this worktree.
+
+**Three checks, same fixture (`r4_128`, known-good per O10, burst probe
+instead of a tone, 2,600 frames / 6+ loop passes), three different
+mechanisms, one answer:**
+
+1. **The track's own output (§10.21):** the burst is heard once and never
+   again at any loop boundary.
+2. **The pool's block-assignment table** (route A's `POOL_ROWS =
+   0x46c2e9c0`, ten rows of 14,602 halfword block numbers, `--watch-mem` on
+   row 2 = track 0's row per `recaudio.py`'s own `track + 2` convention):
+   the only writes in the whole run are a single batch of ALL ZEROS at
+   sample 7,872 — never a real block number. Rows 0, 2, 3, 4 and 5's FINAL
+   content (`--mem-dump`) are plain descending sequences 690 apart
+   (14602→14583 for row 2, 13912→13893 for row 3, …) — a static per-track
+   free-list partition set up once, not something that changes with
+   recording activity. Row 1 is all zero.
+3. **The blocks that list points at** (route A's `POOL_BASE = 0x40A955E0`,
+   block N at `POOL_BASE + N*6144`): dumped blocks 14602, 14601 and 14583
+   — **all 6,144 bytes zero, in all three.** No audio content anywhere in
+   the region row 2 names.
+
+**Converging on: under this configuration, in this port, no evidence of
+captured audio exists anywhere in the recorder's own data structures** —
+not "the wrong observable," but nothing to observe. This is a stronger
+claim than §10.21's, and the honest caveat is the same shape as every
+address-based check in this section: `row = track + 2` is `recaudio.py`'s
+own convention for a DIFFERENT build (route A's Unicorn emulator, not tag
+22's tables in the C++ port), unconfirmed here — if the row/track mapping
+is wrong, blocks 14602/14601/14583 belong to some OTHER track or to
+nothing, and the negative result proves less than it looks like. What
+would close that gap: watch a MUCH wider span of the pool (dozens of
+blocks) for any nonzero write at all, not just the three blocks one
+assumed mapping points to — not yet done, the per-write overhead makes a
+wide watch slow and this stopped here for review.
+
+**If this holds up, it moves the bar for the whole recorder-click
+investigation**: before asking "does a known-clicking BPM/RLEN combo click
+because of the recorder's write side or the FLEX voice's retrigger," the
+port first needs to show the recorder writing ANY audio at all, under ANY
+configuration — which no measurement in this document has yet directly
+shown (every prior "sample-continuous" result used a signal a live
+pass-through would reproduce identically).
+
+### 10.23 The wide scan: zero of 585 sampled blocks across the whole pool carry any content, and the free-list bookkeeping shows no sign of ever being touched (9 Sep 2026)
+
+**`--watch-mem` does not scale to a wide range — a real failure mode, not
+just slow.** Watching the full ten-row block-assignment table (292,040
+bytes) logs every matching write into an in-memory vector with no cap;
+over a 2,600-frame run this grew unbounded and the process died silently
+(no fault message, a 39 MB log of unrelated printf output, no completion
+line) rather than finishing. `--mem-dump` has no such cost — it reads final
+state once, with no per-write logging — so the wide scan used that
+instead: the full row table (285 KB, one dump) plus the first 64 bytes of
+every 25th block across the entire 14,602-block pool (585 blocks, ~4%
+sampled but evenly spread), all in one normal-speed run (`out/
+make_scan_spec.py` builds the `--mem-dump` argument; `out/run_widescan.sh`
+works around this session's sandbox flagging a `$(...)`-substituted
+command as too complex to verify).
+
+**Zero of 585 sampled blocks carry any nonzero byte, anywhere in the
+pool.** And the full row table resolves the structure cleanly: row 0 is a
+single large ascending free list (1, 2, 3, … up to 8,937 entries) — the
+general STATIC/FLEX sample pool, not per-track; row 1 is entirely empty;
+**rows 2–9 are the eight audio tracks**, each a ~689-entry descending list
+spaced exactly 690 apart (row 2: 14602→13914, row 3: 13912→13224, … row 9:
+9772→9084) — a static partition of the pool's top end, one reserved chunk
+per track. Every one of the eight track rows is **completely intact and
+undisturbed** at the end of a 2,600-frame run that included a live REC arm
+and an audible input burst: no entries missing, none reordered, nothing
+consumed. A recorder that had captured even one block's worth of audio
+would show that block's number gone from its row's free list. None is.
+
+**This closes the gap §10.22 left open.** The `row = track + 2` mapping
+from `recaudio.py` (a different build, a different emulator) is no longer
+load-bearing — every track's row is visible and every one shows the same
+untouched pattern, so the finding does not depend on having picked the
+right track. Combined with §10.21's burst-probe (the track's own output
+never loops the burst back) and §10.22's three-block spot check, this is
+now three independent methods, at increasing scope, all agreeing: **under
+this port, on this build, with this project, no recorded audio exists
+anywhere in the recorder's own pool — the free lists never move.**
+
+**What this does and doesn't say.** It does not mean the ColdFire firmware
+can't record — note-for-bam-seam-flash.md is hardware, and hardware
+clicks, which requires something to have been recorded and played back.
+It means either (a) the port's DSP-side or ColdFire-side recorder-arm path
+has a real gap that stops audio ever reaching this pool, or (b) the
+`POOL_ROWS`/`POOL_BASE` addresses (route A's, for a different build) are
+wrong for tag 22 and the real pool lives elsewhere entirely — structurally
+the same address-drift problem this project has hit repeatedly, but this
+time the STRUCTURE read out (eight evenly-spaced per-track rows, a general
+pool, a spare) fits the expected shape well enough that a wrong location
+for the whole table seems the less likely of the two. Either way, the
+recorder-click investigation cannot proceed to "where does a known-clicking
+combo break" until one of these is resolved — the port needs to be shown
+recording SOMETHING, under ANY configuration, before it can be trusted to
+show where a click comes from.
+
+Drivers: `out/make_scan_spec.py`, `out/run_widescan.sh`, `out/scan_results.py`
+(session worktree, not yet moved into `tools/scratch/`).
+
+### 10.24 Localized: the frame builder's own recorder-check pass never runs, not just one track's arm (9 Sep 2026)
+
+**Why: same section, why not.** §10.23 left it open whether §10.22's
+`--watch-pc` result (armcall/armpost/endpost at `0x40005ff0`/`0x40006b18`/
+`0x40006edc`, zero hits) meant anything, since those addresses came from
+route A's `recaudio.py` (a different build). Settled by disassembling them
+directly out of Bryan's own tag-22 image (`scripts/disasm.sh emac`, which
+uses `objdump -m m68k:cfv4e` — plain `r2` cannot decode this ISA, see the
+script's own warning): all three are genuine, coherent, semantically
+correct code. `0x40005ff0` reads a track's machine-type byte at file
+offset `0x8eda2` (`ot_project.py`'s own formula) and compares it to `4`
+(PICKUP). `0x40006edc` loads the reciprocal table at `0x80003c20` and
+clamps against **14602** — the pool size itself, in the instruction
+stream. These are not stale addresses.
+
+**Traced one level further, into §10.10's already-documented mechanism**
+(RTOS_FORK §10.10, measured under route A, 6 Sep 2026): opcode `0x22`
+("take the buffer") is posted from `0x40005304` — disassembled here, it
+writes the literal byte `0x22` to `0x46104d52`, exactly the message
+address that section names. Opcode `0x25` ("arm it") is posted via a `jsr`
+at `0x40006b18` inside a function starting at `0x40006a2c`, described
+there as running "from the frame builder's own pass" every frame, for
+every track. Watched all of `0x40005304`, `0x40006a2c`, `0x40005c7c` (the
+shared poster both call into) and `0x400a1030` (the bank/pattern selector,
+as a sanity check that watch-pc itself works) across the same 2,600-frame
+burst-probe run.
+
+**Only `0x400a1030` ever fires — six times, all bank/pattern-select
+housekeeping. Zero hits on the other three, across the entire run.** Not
+"this track's arm never happens" — **the frame builder's own per-frame
+recorder-check pass, the function every track's arm or non-arm decision
+runs through, is never entered at all**, despite a live REC1 trig at step
+2 and 2,600 frames (many multiples of however often this pass is meant to
+run). This is upstream of anything track-specific: whatever decides
+whether to even look at a track's recorder state each frame is not
+running under `--sequencer --dsp` for this fixture.
+
+**Not yet found: what calls `0x40006a2c`, and what gates it.** It is not
+a `jsr`/`bsr` target anywhere in the immediately surrounding disassembly
+(`scripts/disasm.sh emac 0x40006800 800`) — finding the caller means
+either a full disassembly pass over the image or a route-A trace of the
+same call chain to compare against. Stopping here for review: this is a
+firmly localized "the door is never opened" finding, one level short of
+"and here is why."
+
+### 10.25 The right arm-caller address, confirmed by measurement to be reached under route A for FLEX — never fires under the port, at any tempo tested (9 Sep 2026)
+
+**First pass found the wrong function.** `0x4000672c`/`0x40006a2c`
+(disassembled, real code, gated on machine type == 4/PICKUP) looked like
+the arm caller, but §10.13 (7 Sep, already in this document) had already
+identified and measured the real one: **`0x40006238`**, entered via
+`tstb %d7 / bgew 0x40006238` at `0x4000607c`, which branches to the
+non-PICKUP path (`0x40006714`) for FLEX and PICKUP alike. `0x4000672c` is
+a different, later mechanism — §10.13's own text names it: "the bit-7 path
+is a follow-up on an EXISTING recording... Bryan's pickup arm reads the
+FOUT slot", PICKUP-only by design, not the one Bryan's FLEX fixtures use.
+Disassembled `0x40006238` directly out of Bryan's tag-22 image: matches
+§10.13's description byte for byte (`btst #4,%d7`, the `0x00000101`
+header write at `0x40006274`, all present).
+
+**§10.14 (also already in this document, 7 Sep) raised the obvious
+alternative explanation, and it's now ruled out.** That section documents
+a real, understood emulator artifact: under `--internal-clock`, the
+sequencer's step clock and frame clock never re-lock, so a composed
+timing byte reads negative at roughly half of all tempos, and the arm
+caller gets skipped — 128 BPM is explicitly one of the affected tempos in
+its own sweep, while 120 BPM is not, and hardware records fine at both
+(confirmed on real Rytm audio, 7 Sep). Every fixture run tonight was
+128 BPM. So the obvious question was: is tonight's whole "never arms"
+result just this same known, already-fixed (route A has
+`--arm-phase-fix`) artifact, applied to a new emulator that doesn't have
+the lever yet?
+
+**No.** Re-ran the burst probe and the `--watch-pc 0x40006238` check on
+`r4_120` (RLEN 4, 120 BPM, the tempo §10.14's own sweep confirms arms) —
+**zero hits, and the burst still plays once and never loops back**,
+identical to 128 BPM. The tempo-dependent artifact is not the explanation;
+if it were, 120 BPM would have armed like it does under route A.
+
+**Narrowed further, and this part is a real, working result.** Watched
+`0x400068e4`, the per-frame per-track function §10.13 measured at 25,600
+calls over 1,600 frames under route A (8 tracks × 2/frame): **41,600 hits
+over 2,600 frames — exactly 16 per frame, the same rate.** The general
+per-frame track dispatcher runs correctly under this port. The gap is not
+"frames don't process tracks"; it is specifically that whatever composes
+the per-track trig word's bit 4 (recorder-trig flag) and sign (the byte
+`bgew 0x40006238` tests) never produces a value that lets the arm caller
+through, for this project's on-disk REC1 trig, at any tempo tried.
+
+**Where this leaves it.** The lane/trig-word composition code
+(`0x4000aece..0x4000af22` per §10.13 §5, filling `0x800017d6[...]` from
+each of 62 "lanes") is the next thing to watch — not yet done. Everything
+upstream of it (frame delivery, the per-frame track loop, the arm caller's
+own code) is confirmed present and running; everything at or after it
+(the arm caller onward) is confirmed never reached. The trig-word
+composition is the remaining unmeasured link between the two.
+
+### 10.26 §10.25's ruling-out may be premature: `tools/ot_emu` has no clock-lock modeling of any kind — not even the compensation §10.14 gave route A (9 Sep 2026 — read, not measured)
+
+Checked before spending more session time on the lane-table trace §10.25
+left open. `grep` across `tools/ot_emu/*.cpp`/`*.h` for `arm_phase`,
+`internal_clock`, `clock_receive`, and the three literal addresses §10.14
+names for the tick/frame-clock relock (`0x400a1ea4`, `0x4009c186`,
+`0x4000ad4a`): **zero matches.** `--arm-phase-fix` exists only in
+`tools/emu_rtos.py` (route A); the C++ port §10.21–§10.25 have been
+running against (`tools/ot_emu`) has neither the bug's compensation nor,
+so far as grep can show, a name-recognisable model of the MIDI-clock lock
+M6f scoped. It has its own low-level `tickTimers`/PIT model (`rtos.cpp`),
+which is a different layer — that runs the kernel's 5 ms tick correctly
+(M6c's own gate), but is not the same thing as the sequencer-level
+step-clock/frame-clock relock §10.14 traced.
+
+**Why this matters for §10.25's "No."** That section ruled out the
+§10.14 artifact by testing 120 BPM *under this same port* and getting the
+identical zero-hit result to 128 BPM — correct as a statement about this
+port (tempo doesn't distinguish the two here), but it does not rule out
+the *same category* of bug: a port with no clock-lock modeling at all
+would produce a composed timing byte that is wrong at every tempo, not
+just the ~half that route A's specific tick/frame arithmetic happens to
+land negative. §10.14's route A result (120 arms, 128 doesn't) is a
+property of route A's particular uncompensated phase relationship, not a
+universal signature — a differently-timed port missing the lock
+entirely could easily be negative always, which is exactly what §10.25
+measured. **This is 🟡 inferred from the absence of matching code, not
+from a traced clock value under this port** — it has not been confirmed
+that the timing byte is negative for the *same reason* (no relock) rather
+than some other cause, only that the mechanism that would prevent it is
+absent.
+
+**What this changes.** Before extending §10.23's pool-address hypothesis
+further, or continuing §10.25's plan to watch `0x4000aece..0x4000af22`,
+the cheaper next step is checking what NOW (`0x46104cf0`/`0x46104cf4`) and
+the step clock (`0x4610757c`) actually read under this port at the frame
+the trig word is composed — if they show the same unbounded-negative
+pattern §10.14 describes, this whole thread is the already-diagnosed M6f
+gap wearing a new emulator's clothes, and the fix is porting
+`--arm-phase-fix` (or a real MIDI-clock model) to `tools/ot_emu`, not a
+new pool-address theory. Not yet done this session.
+
+**Independent of which explanation is right:** hardware is the fastest
+way to cut through it. §10.14's own hardware falsifier (Sam's unit, 7 Sep)
+already settled the general "does recording arm at 120/128" question for
+route A's finding. What has not been hardware-checked since is whether
+*this exact build tag, this exact 128 BPM / RLEN 4 configuration* records
+and plays back without the click Bryan reports — on hardware Sam controls
+directly, not remotely through Bryan. Flash 7 (`tools/hw_flash7.py`) is
+about to put hands on Sam's unit for an unrelated bus-claims run; folding
+a short recorder-arm check into that same session is far cheaper than a
+dedicated flash cycle later (see CLAUDE.md: "Flash cycles are
+expensive").
+
+### 10.27 ✅ THE FIRST HARDWARE MEASUREMENT: the recorder loop is clean on Sam's unit — exactly 20,672 samples, no ±1 seam (9 Sep 2026, tag OCTABAM21)
+
+§10.21–§10.26 chased the recorder under the C++ port and found it never
+arms (no audio anywhere in the pool, the frame builder's recorder-check
+pass never runs, and §10.26: the port has no clock-lock model at all). So
+the port could not show where a click comes from. The hardware can, and it
+was cabled for flash 7, so the seam capture ran on Sam's own Octatrack.
+
+**Fixture and rig.** Bryan's `r4_128` (128 BPM, T1 records inputs A/B with
+recorder trigs at steps 2/6/10/14, T2 = FLEX on R1 with play trigs at the
+same steps, RLEN 4), loaded on the flashed **OCTABAM21** image (the
+UNPATCHED recorder — `bamsep27` carries no `recorder-seam` cave). A
+Mac-generated tone into inputs A/B through the MicroBook, the OT's main
+outs captured back, the Mac the clock master at 128 BPM
+(`tools/hw_flash7.py`'s clock + source; capture analysed off-line). ⚠
+`r4_128` was saved under OCTABAM17; it loaded and ran (an "errors" dialog
+on the older build is dismissable).
+
+**The decisive measurement — drift-immune.** The Mac and the OT are not
+sample-locked, so the analog round trip drifts ~50 ppm (~1 sample per
+20,672-sample loop), which is the SAME size as the ±1-sample seam route A
+predicted — an ordinary phase or click metric cannot separate them
+(instrument blindness, `CLAUDE.md`). The one view that survives the drift
+is **cross-correlating T2's consecutive playback loops against each other**
+(OT output vs OT output; the Mac's capture-clock drift cancels in the
+alignment). Result, 40 consecutive loops:
+
+```
+per-loop period (samples): 20672 x40, spread 0, histogram {20672: 40}
+```
+
+**The loop period is exactly 20,672 samples, every pass, zero variation.**
+The "−1 every 8 passes" seam route A measured for 128/RLEN 4 does NOT
+appear as a period drop on hardware. The boundary discontinuity measured
+directly is ~1 sample (median 0.1, max 2.7 × the tone's normal per-sample
+slew; a full 1-sample drop would be a comparable ~1× step), i.e. at the
+clock-drift floor, with no gross multi-sample click.
+
+**What this settles, and what it does not.**
+- ✅ The recorder records and loops on Sam's unit, and the PLAYBACK loop is
+  exactly periodic — the fixed-RLEN playback is not the source of a hard,
+  universal click. Bryan's audible click does not reproduce as a gross
+  artifact here with a tone.
+- ✅ It confirms §10.23's reading that the port's "no recorded audio" is a
+  PORT GAP, not the firmware: the same fixture records fine on hardware.
+- 🟡 It cannot, in an unsynced analog capture, confirm or deny a true
+  ±1-sample seam at the drift floor — only that the loop period does not
+  drop by a resolvable sample. A sample-locked capture (word clock) or the
+  RLEN-MAX control (`max_128`, route A shows it seam-free) would separate a
+  real ±1 seam from drift; neither was run.
+- The stimulus caveat stands: a tone is a weak probe for a click, and
+  Bryan records musical content whose phrase length rarely matches a fixed
+  RLEN, so his click is most consistent with the content's own loop-point
+  mismatch (or his unit) rather than a firmware playback seam.
+
+**Where this leaves the recorder stream:** the sample-exact route-A
+emulator remains the instrument for the RECORD-side seam arithmetic; the
+hardware now shows the PLAYBACK loop is clean and the port's arm gap is the
+port's, not the firmware's. The open port work (§10.26: model the
+clock-lock / arm path) is a fidelity task, not a prerequisite for a click
+that hardware does not exhibit.
+
+### 10.28 ❌ §10.27 RETRACTED: the capture was live passthrough, not a recorded loop — recording is NOT confirmed on hardware (9 Sep 2026)
+
+§10.27's "clean 20,672 loop" was measured with the tone playing the WHOLE
+time, and §10.21's own warning applies to a hardware capture exactly as it
+does to the port: a continuous tone monitored live through the track is
+indistinguishable from a recorded buffer looped back. The decisive test
+settles it — **record with the tone on, then CUT the input and keep
+capturing:**
+
+```
+during tone:      output -30 dBFS
+input cut off:    output -100 dBFS   (a 70 dB drop, flat silence, 8 s)
+```
+
+The output followed the input to silence. Nothing recorded is playing
+back: T1 was MONITORING the live input (the armed recorder's input
+monitor), not looping a captured buffer, and the seamless tone's period
+(1000.53 Hz = exactly 469 cycles in 20,672 samples) is why the
+cross-correlation "found" 20,672 — it was the tone's own period landing on
+the search guess, not a buffer length. So **§10.27's three ✅ claims are
+void**: the loop was not clean-because-recorded, it was the input; nothing
+is settled about a playback seam because there was no playback; and it does
+NOT confirm the recorder records on hardware.
+
+**What is now actually known:** on Sam's unit, on this `r4_128` fixture
+(saved under OCTABAM17, loaded past an "errors" dialog on the OCTABAM21
+build), a live REC-armed track MONITORS its input but no recorded buffer
+plays back when the input stops — the same "no recorded audio" the port
+showed (§10.23), now seen on hardware too, so it is NOT simply a port gap.
+Open question, unmeasured: whether the recorder trig arms and captures at
+all here (the fixture's recorder SRC / the OCTABAM17-vs-21 load), or
+whether it captures but T2's FLEX slot is not playing R1. The next step is
+to reconfigure/verify the recorder ON THE UNIT (a real recorder trig, SRC =
+the live input, T2's slot = R1) rather than trust a passthrough-blind
+capture. The instrument rule from §10.21 stands and just cost another
+reading: **prove the input is OFF before believing a recorder playback.**
+
+### 10.29 Bryan's own image+project on hardware: recording WORKS; the seam is not cleanly measurable on this analog rig (9 Sep 2026)
+
+Bryan's `to_bam` arrived (his image `OCTATRACK_OCTABAM22.bin`, his
+`PROJECT 260908`, his clickless spreadsheet). Flashed OCTABAM22 on Sam's
+unit and loaded his project.
+
+**Recording works on his exact setup.** ✅ Unlike the rebuilt `r4_128`
+fixture (§10.28, which only monitored the input), his image + project
+capture and loop audio: with the transport running there is a sustained
+looped signal on his self-looping track. So the recorder FUNCTIONS on
+hardware; the earlier fixture's silence was a project-config problem (its
+recorder trig lane / SRC / buffer assignment), not firmware, and it also
+resolves §10.23's port "no recorded audio" as the port's gap, not the
+firmware's.
+
+**Driving it needed his sync flags flipped.** His project ships with MIDI
+CLOCK RECEIVE and TRANSPORT RECEIVE OFF — he runs the unit standalone as the
+master (CLOCK/TRANSPORT SEND on). With both RECEIVE flags turned on, the Mac
+clocks the transport and can set the tempo for an A/B.
+
+**The A/B against his spreadsheet did not hold up.** His formula: a loop is
+clean when `RLEN × 15,876,000 / tempo24` is a whole number; 65.6 BPM
+(tempo24 1575) gives 10,080 samples/trig exactly — a GOLDEN tempo, clean at
+any RLEN — while 128 (tempo24 3072) gives 5167.96875, a 0.125-sample residue
+per trig. A first pass looked like a clean reproduction (65.6: 2
+click-candidates and a steady loop period; 128: 16 and a wandering period).
+It did **not** survive repetition. Three confounds stack and dominate:
+
+1. **His setup is sound-on-sound overdub.** The looped level builds up and
+   CLIPS (7–8 % of samples) even at a 0.01 input — the output level is set
+   by the accumulation ceiling, not the input — and clipping manufactures
+   its own discontinuities (a ~100 Hz buzz at one point) that swamp the
+   seam.
+2. **The recorder never holds still.** It re-records every pass, so there is
+   no static buffer to loop-analyse; the measured loop length jumped run to
+   run (20,727 / 23,197 / 88,400 / 73,145 at 65.6) and at 0.01 read ~73,000
+   at BOTH tempos — i.e. not tracking the tempo at all, so the "wander"
+   cannot be attributed to the seam.
+3. **No word clock.** The Mac and OT drift ~1 sample/loop, the same size as
+   the seam; only a cross-correlation of a STATIC recorded buffer would
+   cancel it, and there is no static buffer (see 2).
+
+**Conclusion.** Recording is confirmed on hardware, but a clean, sample-level
+hardware measurement of the golden-vs-clicking seam is not achievable on
+this rig (analog round trip, unsynced clocks, live overdub). It would need a
+single non-overdubbing recording, headroom below clipping, and a
+word-clock-locked capture. **The sample-exact seam therefore remains route
+A's result** (`octabam-emac-unicorn-bug`: −1 every 8 passes at 128/RLEN 4),
+which the fixed-EMAC emulator measures without any of these confounds. The
+hardware's contribution is narrower and real: the recorder works, and
+Bryan's click is a loop-boundary phenomenon consistent with his fixed-RLEN
+theory — but the number is the emulator's, not this capture's.
+
+### 10.30 The golden CONTROL falsifies the A/B: the "wander" tracks loop length, not the seam (9 Sep 2026)
+
+After §10.29, the clipping was traced to the OT's playback gain (not the
+Mac input) and fixed over MIDI (track LEVEL/AMP VOL to unity, input at
+~−60 dBFS, 0 % clipped). Clean captures then looked like a reproduction
+again: 65.6 golden showed a stable modal loop period (11–14 of 16 loops
+identical), 128 non-golden showed none (every loop distinct). **A golden
+CONTROL settled it against us.** 125 BPM (tempo24 3000, 5292 samples/trig
+exact) is ALSO golden — it must be clean if the metric measures the seam.
+It wandered exactly as much as 128 (5/5 distinct, spread 55), because at
+125 and 128 the recorded loop is long (85k–149k samples, only 5–10 passes
+in the capture) while 65.6's is short (17,640, 16 passes). The
+cross-correlation's per-loop period spread is set by the analog drift
+ACCUMULATED over a loop and the number of passes available to average — a
+loop-length artifact — not by the golden-vs-clicking residue. So the
+apparent 65.6-clean / 128-wander difference is confounded by loop length,
+and **the A/B does not reproduce the seam on hardware.** The §10.29
+conclusion stands, now with the control that proves it: recording works on
+Bryan's setup, but this analog rig cannot isolate the sample-level seam,
+and the golden control is what catches the false positive. The sample-exact
+number is route A's.
+
+### 10.31 ✅ REPRODUCED ON HARDWARE, by ear: the golden rule holds (9 Sep 2026, tag OCTABAM22, Sam's unit + Bryan's project)
+
+§10.29/§10.30 concluded the seam was "not measurable on this rig." That was
+true for the NUMERICAL loop-period measurement (the analog drift floor of
+±30–40 samples swamps the seam), and it was measured under two confounds
+that also fooled the EAR test. Removing both reproduced Bryan's click
+cleanly, and Sam — who had been trying to reproduce it for days —
+confirmed it twice.
+
+**The two confounds, both mine:**
+1. **The Mac's MIDI clock.** Driving the OT's transport from Python's
+   software clock (±~1 ms jitter) wobbles the recorder's timing at EVERY
+   tempo, manufacturing click variation that is the clock's, not the
+   recorder's. Bryan runs the unit standalone on its internal crystal.
+2. **The recorder loop crossfade (FIN/FOUT).** With a crossfade set, the
+   loop boundary carries the crossfade's own per-loop artifact at BOTH
+   tempos, which masks the golden-vs-non-golden difference. (This is also
+   the hardware proof of Bryan's hypothesis that the crossfade alone does
+   not fix the click — the golden-tempo behaviour survives it.)
+
+**The clean test (internal clock, crossfade OFF):** a continuous 1 kHz tone
+into inputs A/B (the right stimulus — Bryan's source is a continuous Moog
+synth, a drone, so a tone matches it; rhythmic content was a wrong turn),
+T1 self-looping on R1 at RLEN 16, the Mac feeding only the tone and NO
+clock, Sam running the transport on the unit's internal clock. By ear,
+confirmed on two runs:
+
+| tempo | | result |
+|---|---|---|
+| 65.6 (GOLDEN, 16×10,080 = 161,280 exact) | | **perfect loop, occasional blip** |
+| 128 (non-golden, 16×5167.96875 = 82,687.5) | | **gaps at the loop** |
+
+**What this establishes.** Bryan's golden rule is real on hardware: at a
+golden tempo the loop is clean, at a non-golden one it clicks/gaps — with a
+continuous source, the crossfade off, on the unit's own clock. It confirms
+his spreadsheet's premise and his point that the crossfade is not the fix.
+The sample-exact SIZE of the seam stays route A's number (the analog rig
+cannot resolve one sample), but the AUDIBLE golden-vs-non-golden click is
+now hardware-confirmed. Method note for next time: **the human ear on the
+internal clock is the instrument here** — my cross-correlation of the
+analog capture could not resolve the seam under the drift floor, but the
+ear cleanly tells a perfect loop from a gappy one. And the process lesson
+Sam enforced: reproduce and confirm before calling it — the first "clean"
+reading of nearly every approach in this section did NOT survive
+repetition; this one did, twice.
+
+### 10.32 ✅ The seam reproduced in the EMULATOR (route A), sample-exact, matching §10.31's hardware ears (9 Sep 2026)
+
+After the hardware reproduction (§10.31), the same golden-vs-non-golden pair
+was run in route A (the EMAC-fixed Python emulator, `recaudio.py` injecting a
+counter at the recorder input ring and reading the buffer + the firmware's own
+arm/end records). Fixtures: T1 self-looping on R1, RLEN 16, single REC1+play
+trig on step 1 (Bryan's geometry), at 65.6 and 128, via `ot_project`.
+
+**The firmware's own recorded loop length (from the end record):**
+
+| tempo | recorded length | ideal (16 × samples/trig) | residue |
+|---|---|---|---|
+| 65.6 GOLDEN | **161,280** (0x27600) | 16 × 10,080 = 161,280 | **0 — exact, clean** |
+| 128 non-golden | **82,687** (0x142ff) | 16 × 5167.96875 = 82,687.5 | **−0.5 — truncated, seam** |
+
+The golden tempo's length equals the grid interval exactly (arm spacing
+161,280.0), so every pass aligns and the loop is clean — the hardware
+"perfect." The non-golden length truncates the true 82,687.5 to 82,687 (the
+truncated-reciprocal rounding of §10.16.4), leaving a −0.5-sample per-pass
+residue — the seam, the hardware "gaps." Route A computes it with no analog
+drift or clock jitter, the instrument the hardware A/B could not be, and it
+agrees with the ear.
+
+**This is the fix platform.** A recorder-side fix that makes a non-golden loop
+seamless (size successive passes to alternate so they sum to the exact grid, or
+a sample-accurate seam repair) is developed and verified HERE against the exact
+length/buffer, then flashed and ear-confirmed on the unit the way §10.31 was.
+What route A still cannot do is render the FLEX voice that plays the buffer back
+to audio (the flex-from-recorder-buffer loader is unlocated in both emulators)
+— that is the next task, to let the loop be heard in the emulator, not only
+measured.
+
+### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026)
+
+Getting the recorder-buffer FLEX voice to render (so the loop can be HEARD in
+the emulator, not only measured) — Sam's next ask after §10.32. `recaudio.py`
+gained a `--flex-probe` (watch the FLEX bind `0x4000f450` and its caller
+`0x4000d49e`, §10.13). Run on `g65`/`n128` (RLEN 16 self-loop), route A:
+
+- **The recorder captures.** The pool holds 82 non-zero 6,144-byte blocks —
+  route A DID record the injected input (correcting the §10.22–23 "pool all
+  zero," which was the C++ port, not route A).
+- **The bind fires, and re-fires every pass.** `0x4000f450` runs at the
+  step-1 play trig on pass 1 (frame 1) AND pass 2 (frame 5167, right at the
+  first end-post) with **D0 = 0x80 = recorder buffer R1** (buffers are ids
+  128–135) and A1 = 0x8000082f. So the FLEX-from-recorder-buffer loader is
+  **reached and binds R1**, not "unlocated" — §10.13's `0x4000f450` "fails on
+  an empty buffer" was the frame-1 case only; by pass 2 R1 is full and the
+  same bind runs.
+
+**So the remaining gap is the RENDER, not the bind.** `recaudio.py`'s
+`audio_out` capture is the recorder INPUT block (`saddr 0x80003190`, where the
+driver injects) — its L channel is the live input counter `16×frame` at every
+pass, which is why it looked like "thru." That block is NOT the FLEX voice's
+output; O10 established the voice's audio lands in the track's **84-word
+record**. The open question, and the next probe: capture the 84-word record
+(the voice output) at a pass-2 play trig and check whether it carries R1's
+recorded samples (playback works) or is silent/passthrough (the DSP-side
+voice render for a recorder buffer is the real gap). The pieces upstream of it
+— recorder writes, control record, bind — are now all confirmed present in
+route A.
