@@ -41,6 +41,7 @@ import array
 import math
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -55,7 +56,6 @@ from hw_bus_test import metric, paired, stats   # noqa: E402
 
 OUT = ROOT / "out/hw/flash7"
 REC = ROOT / "tools/rec"
-BASE = ROOT / "out/projects/OCTABAM_ONEAUX"
 TEST = ROOT / "out/projects/OCTABAM_F7TEST"
 IMAGE = ROOT / "out/OCTATRACK_OCTABAM21.bin"
 
@@ -95,74 +95,107 @@ def db(x):
 # =========================================================================
 # stage: the test project
 # =========================================================================
+BASE = ROOT / "out/projects/F7CLEAN_BASE"   # a project the UNIT created on THIS build
+
+
 def stage(src=BASE, dest=TEST):
-    """OCTABAM_F7TEST = the one-aux rig with bank A's patterns 2-4 pointing at
-    parts 2-4, each a copy of part 1 plus ONE variant and its LEVEL signature:
+    """Build the bus test onto a UNIT-CREATED project (F7CLEAN), not a
+    synthesized one. The synthesized project would not take a program change
+    on the unit (9 Sep 2026): it was saved under an earlier build
+    (OS_VERSION OCTABAM18) and carried the RIG backup's arrangement, MIDI
+    mute mask and MIDI_MODE; a project the unit wrote on THIS build takes PC
+    at once. So: copy F7CLEAN, stamp the RIG bus layout into every part
+    (rigproj), make T1 a THRU, point bank A patterns 2-4 at parts 2-4, and
+    give each variant part its ONE change and its T1 LEVEL signature:
       part 2: SEND on T8's FX2, AUX 127          (claim v, the refusal)
       part 3: a BUS-mode Character on T4, RET 127 (claims vii / vii-b)
       part 4: NONE on T5 (no reverb)             (claim iii, the last live stage)
-    Patterns 2-4 get pattern 1's trigs (T1's THRU trig), so the drums pass."""
-    if not (src / "bank01.work").is_file():
-        sys.exit(f"{src} missing -- build it: python3 tools/ot_project.py rigproj "
-                 f"~/octa/backups/OCTABAM_RIG_20260906_cleared {src} bamsep27")
+    F7CLEAN's own pattern tails (16 steps, 1X), MIDI settings and structure
+    are left as the unit wrote them."""
+    if not (src / "project.work").is_file():
+        sys.exit(f"{src} missing -- copy the unit's clean project there first:\n"
+                 f"  cp -R /Volumes/OCTATRACK/PRESETS/F7CLEAN {src}")
+    if "OCTABAM21" not in (src / "project.work").read_text(encoding="latin1"):
+        sys.exit(f"{src} was not saved under this build (OCTABAM21) -- re-save F7CLEAN on the unit")
     if dest.exists():
         shutil.rmtree(dest)
-    shutil.copytree(src, dest)
+    op.make_rig_project(str(src), str(dest), "bamsep27")     # RIG FX layout in every part, verified
 
-    def mut(data):
-        # patterns 2-4 := pattern 1, then their part byte
-        p0 = op.PTRN0
-        chunk = bytes(data[p0:p0 + op.PTRN_FSTRIDE])
-        for k in (1, 2, 3):
-            a = p0 + k * op.PTRN_FSTRIDE
-            data[a:a + op.PTRN_FSTRIDE] = chunk
-            data[a + op.PTRN_FSTRIDE - 5] = k
-        # parts 2-4 (and their saved mirrors 6-8) := part 1 (mirror 5)
-        for base in (0, 4):
-            src_off = op.PART_BASE + base * op.PART_STRIDE
+    op.thru_track(dest, 1, guard=False)                      # T1 = THRU (type 2) + page + trig in pattern 1
+
+    def variants(data):
+        for k in (1, 2, 3):                                  # bank A patterns 2-4 -> parts 2-4
+            data[op.PTRN0 + k * op.PTRN_FSTRIDE + op.PTRN_FSTRIDE - 5] = k
+            base = op.trac_off(k, 0) + 7                      # T1 trig at step 1 of patterns 2-4
+            data[base] |= 1
+        for pbase in (0, 4):                                 # parts 2-4 and their saved mirrors := part 1
+            src_off = op.PART_BASE + pbase * op.PART_STRIDE
             rec = bytes(data[src_off:src_off + op.PART_STRIDE])
             for k in (1, 2, 3):
-                off = op.PART_BASE + (base + k) * op.PART_STRIDE
+                off = op.PART_BASE + (pbase + k) * op.PART_STRIDE
                 data[off:off + op.PART_STRIDE] = rec
-                data[off + 0x1b + 2 * 0] = SIGNATURE[k]            # T1 LEVEL
-                if k == 1:                                          # v: SEND on T8, AUX 127
+                data[off + 0x1b + 2 * 0] = SIGNATURE[k]                  # T1 LEVEL
+                if k == 1:
                     data[off + op.FX2_OFF + 7] = ID_SEND
                     data[off + op.P1_OFF + 7 * op.TRACK_STRIDE + 6 + 0] = 127
-                elif k == 2:                                        # vii: station on T4
+                elif k == 2:
                     data[off + op.FX1_OFF + 3] = ID_CHARACTER
-                    for s, v in enumerate(STATION_P1):
-                        data[off + op.P1_OFF + 3 * op.TRACK_STRIDE + s] = v
-                    for s, v in enumerate(STATION_P2):
-                        data[off + op.P2_OFF + 3 * op.P2_STRIDE + s] = v
-                elif k == 3:                                        # iii: no reverb
+                    for si, v in enumerate(STATION_P1):
+                        data[off + op.P1_OFF + 3 * op.TRACK_STRIDE + si] = v
+                    for si, v in enumerate(STATION_P2):
+                        data[off + op.P2_OFF + 3 * op.P2_STRIDE + si] = v
+                elif k == 3:
                     data[off + op.FX2_OFF + 4] = ID_NONE
 
-    op._bank_write(dest, 1, mut, guard=False)
+    op._bank_write(dest, 1, variants, guard=False)
+
+    # project.work / .strd: play from A01 part 1, T8 the master track (the rig).
+    # BYTES, not text: the file is CRLF and text mode strips every \r, which
+    # the unit rejects with "SOME ERRORS OCCURED / PARSE ERROR" (9 Sep 2026).
+    for suffix in ("work", "strd"):
+        f = dest / f"project.{suffix}"
+        if not f.is_file():
+            continue
+        data = f.read_bytes()
+        for key, val in ((b"BANK", b"0"), (b"PATTERN", b"0"), (b"PART", b"0"), (b"MASTER_TRACK", b"1")):
+            data = re.sub(rb"(?m)^" + key + rb"=[^\r\n]*", key + b"=" + val, data)
+        if b"\n" in data and b"\r\n" not in data:
+            sys.exit("project." + suffix + ": lost CRLF")
+        f.write_bytes(data)
+    if not (dest / "project.strd").is_file():
+        shutil.copyfile(dest / "project.work", dest / "project.strd")
+
     # read back
     pat_part, parts = op.bank_info(dest, 1)
-    want = [0, 1, 2, 3] + [0] * 12
-    if pat_part != want:
-        sys.exit(f"pattern->part read-back {pat_part} != {want}")
+    if pat_part[:4] != [0, 1, 2, 3]:
+        sys.exit(f"pattern->part {pat_part[:4]} != [0,1,2,3]")
     checks = [
         parts[1]["fx2"][7] == ID_SEND and parts[1]["levels"][0] == 64,
         parts[2]["fx1"][3] == ID_CHARACTER and parts[2]["levels"][0] == 84,
         parts[3]["fx2"][4] == ID_NONE and parts[3]["levels"][0] == 48,
         parts[0]["levels"][0] == 108,
+        parts[0]["fx1"][0] == ID_CHARACTER and parts[0]["fx2"][0] == 0x06,   # T1 CHARACTER + BusDelay
+        parts[0]["fx2"][4] == 0x07,                                          # T5 BusVerb
     ]
     if not all(checks):
-        sys.exit(f"part read-back failed: {checks} {parts}")
-    masks = op.pattern_masks(dest, 1)
+        sys.exit(f"part read-back failed: {checks}")
+    m = op.pattern_masks(dest, 1)
     for k in range(4):
-        if (k, 0, 0) not in masks:
-            sys.exit(f"pattern {k+1} has no T1 trig -- the THRU would pass nothing")
-    for suffix in ("work", "strd"):          # .strd only if the source had one
-        f = dest / f"bank01.{suffix}"
-        if f.is_file():
-            d = f.read_bytes()
-            if int.from_bytes(d[-2:], "big") != (sum(d[0x10:-2]) & 0xFFFF):
-                sys.exit(f"bank01.{suffix}: checksum wrong")
-    print(f"staged {dest}: bank A patterns 1-4 -> parts 1-4; T1 LEVEL signatures "
-          f"{[SIGNATURE[k] for k in range(4)]}; T1 trig on every pattern")
+        if (k, 0, 0) not in m:
+            sys.exit(f"pattern {k+1} has no T1 trig")
+        if any(key[1] != 0 for key in m if key[0] == k):
+            sys.exit(f"pattern {k+1} has trigs off T1")
+    d = (dest / "bank01.work").read_bytes()
+    if d[op.PART_BASE + 0x2b] != 2:
+        sys.exit("T1 is not a THRU")
+    tb = (dest / "project.work").read_bytes()
+    if b"OCTABAM21" not in tb or b"\r\nBANK=0\r\n" not in tb:
+        sys.exit("project.work not the clean build / wrong saved position")
+    if b"\n" in tb and b"\r\n" not in tb:
+        sys.exit("project.work lost CRLF")
+    print(f"staged {dest} from the unit's F7CLEAN: RIG layout in every part, T1 = THRU, "
+          f"bank A patterns 1-4 -> parts 1-4, T1 LEVEL signatures {[SIGNATURE[k] for k in range(4)]}, "
+          f"T8 master, play from A01")
     for k, what in ((1, "T8 FX2 = SEND, AUX 127"), (2, "T4 FX1 = Character BUS, RET 127"),
                     (3, "T5 FX2 = NONE")):
         print(f"  pattern {k+1} / part {k+1}: {what}")
@@ -283,7 +316,10 @@ class Rig:
         return chans[self.chan], sr, self.chan
 
     # -- the paired A/B toggle ------------------------------------------
-    def toggle(self, ch, cc, va, vb, tag):
+    def toggle(self, ch, cc, va, vb, tag, home=None):
+        """A/B/A/B on `cc`; afterwards the knob goes back to `home` (default
+        the A value) -- a toggle that left its last value ran the next test
+        with the return at 0 (9 Sep 2026)."""
         total = PERIOD * CYCLES * 2 + 1.0
         schedule = []
 
@@ -297,6 +333,7 @@ class Rig:
                 schedule.append((rel, val))
 
         samples, sr, _ = self.record(total, tag, drive)
+        self.out.send([0xB0 | (ch - 1), cc, va if home is None else home]); time.sleep(0.3)
         segs = []
         for rel, val in schedule:
             s0, s1 = int((rel + GUARD) * sr), int((rel + PERIOD) * sr)
@@ -313,13 +350,19 @@ class Rig:
         return dict(t=tmax, rms=mr, gap=mg, tilt=mt, level=lvl_a, n=len(dg))
 
     def level(self, secs, tag):
+        """Returns (median 40 ms window level, peak) in dBFS. The median, not
+        the rms: a full-scale click in the capture (see the run log) would
+        drag an rms by 10 dB and it moves a median by nothing."""
         samples, sr, _ = self.record(secs, tag)
         skip = int(0.5 * sr)
         seg = samples[skip:]
+        win = max(1, int(0.04 * sr))
+        w = sorted(math.sqrt(sum(v * v for v in seg[i:i + win]) / win) for i in range(0, len(seg) - win, win))
+        med = w[len(w) // 2] if w else 0.0
         r = math.sqrt(sum(v * v for v in seg) / max(1, len(seg)))
         pk = max((abs(v) for v in seg), default=0)
-        log(f"    {tag:22s} rms {db(r):.1f} dBFS peak {db(pk):.1f}")
-        return db(r), db(pk)
+        log(f"    {tag:22s} median {db(med):.1f} dBFS (rms {db(r):.1f}, peak {db(pk):.1f})")
+        return db(med), db(pk)
 
 
 # =========================================================================
@@ -330,128 +373,212 @@ def verdict(name, ok, why):
     return ok
 
 
+TONE = ROOT / "tools/tone"
+
+
+class Clock:
+    """The Mac as clock master: MIDI clock (24 per beat) on a thread, Start
+    on begin, Stop on close. With no Rytm in the room the OT keeps CLOCK
+    RECEIVE on and follows this, exactly as it follows the Rytm."""
+    def __init__(self, out, bpm):
+        import threading
+        self.out, self.bpm, self.stop_flag = out, bpm, False
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+
+    def _loop(self):
+        period = 60.0 / (self.bpm * 24.0)
+        nxt = time.perf_counter()
+        while not self.stop_flag:
+            self.out.send([0xF8])
+            nxt += period
+            d = nxt - time.perf_counter()
+            if d > 0:
+                time.sleep(d)
+            else:
+                nxt = time.perf_counter()
+
+    def start(self):
+        self.thread.start()
+        time.sleep(0.2)
+        self.out.send([0xFA])          # Start
+
+    def close(self):
+        self.out.send([0xFC])          # Stop
+        self.stop_flag = True
+
+
+def start_source(args, secs):
+    """The Mac as the drum machine: a gated 1 kHz burst train out of the
+    interface (patched into inputs A/B) for the whole run. Returns the
+    process, or None when --source is off."""
+    if not args.source:
+        return None
+    if not TONE.is_file():
+        sys.exit(f"compile the tone player: swiftc -O tools/tone.swift -o {TONE}")
+    cmd = [str(TONE), str(args.source_freq), f"{secs:.0f}", args.rec_device, str(args.source_amp)]
+    if args.source == "burst":
+        cmd += ["80", "610"]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    line = p.stdout.readline().strip()
+    log(f"  source: {line or 'tone player gave no banner'}")
+    time.sleep(0.5)
+    return p
+
+
 def run(args):
     rig = Rig(args.port, None if args.no_rytm else args.rytm, args.rec_device, args.chan)
+    source = start_source(args, 900)
+    clock = None
+    if args.clock:
+        clock = Clock(rig.out, args.clock)
+        clock.start()
+        log(f"  MIDI clock at {args.clock} BPM + Start sent to the OT (the Mac is clock master)")
+    try:
+        return run_claims(args, rig)
+    finally:
+        if clock:
+            clock.close()
+        if source:
+            source.terminate()
+
+
+def run_claims(args, rig):
+    """T8 is the MASTER track in the rig (measured 9 Sep 2026): soloing it
+    mutes nothing, and every other solo still leaves through it -- so the
+    return is in every capture and no track can be isolated by solo. Each
+    claim is therefore a DIFFERENCE under MUTE and knob toggles in the full
+    mix, with a control beside it, and the sends are pre-mute (muting T1
+    leaves the return running), which is what makes the mute tests work."""
     only = set(args.only.split(",")) if args.only else None
     want = lambda k: only is None or k in only
     results = {}
     log(f"flash 7 run {time.strftime('%Y-%m-%d %H:%M')} port {args.port} rec {args.rec_device}")
 
-    # ---- setup: pattern 1, transport, T8 soloed, knobs at the test values
+    def home():
+        rig.unsolo()
+        for t in range(1, 9):
+            rig.cc(t, CC_MUTE, 0, 0.02)
+        rig.cc(1, 16, 1); rig.cc(1, 17, 127)             # T1 THRU input: INAB = A+B, VOL 127 (reverts on a part change)
+        rig.cc(1, 22, 0); rig.cc(1, 23, 127); rig.cc(1, 24, 127)   # AMP ATK 0, HOLD INF, REL max: the dry stays open
+        rig.cc(1, 25, 100)                                # AMP VOL: the dry audible beside the return (Sam runs +12)
+        rig.cc(1, CC_LEVEL, LEVEL_HOME); rig.cc(1, AUX, 127); rig.cc(1, MIX, 127)
+        rig.cc(5, MIX, 127); rig.cc(8, RET, 127); rig.cc(8, AUX, 0)
+        time.sleep(1.0)
+
     rig.pc(0)
     if rig.rytm:
         rig.rytm.send([0xFA]); log("  Rytm START sent")
-    rig.cc(1, CC_LEVEL, LEVEL_HOME); rig.cc(1, AUX, 127); rig.cc(1, MIX, 127)
-    rig.cc(5, MIX, 127); rig.cc(8, RET, 127)
-    log(f"  pattern A01 requested, T1 AUX 127, both MIX 127, T8 RET 127; waiting {PATTERN_WAIT:.0f} s")
+    home()
+    log(f"  pattern A01 requested, nothing muted, T1 AUX 127, both MIX 127, T8 RET 127; waiting {PATTERN_WAIT:.0f} s")
     time.sleep(PATTERN_WAIT)
 
-    # ---- S0: is anything there at all
-    rig.solo_only(8)
-    ret0, _ = rig.level(4, "s0_t8_return")
-    rig.solo_only(1)
-    dry0, _ = rig.level(4, "s0_t1_dry")
-    if dry0 < -55:
-        log("  STOP: T1 (the drums, soloed) is silent -- no source, wrong input pair, "
-            "or the interface is not on the OT's outs. Nothing below can be read.")
+    mix0, _ = rig.level(4, "s0_mix")
+    if mix0 < -55:
+        log("  STOP: the mix is silent -- no source into A/B, the transport is not running, "
+            "or the interface is not on the OT's outs.")
         return finish(results)
-    results["s0"] = verdict("S0 return alive", ret0 > -55,
-                            f"T8 soloed reads {ret0:.1f} dBFS with T1 dry at {dry0:.1f} "
-                            f"(flash 6's shape was silence on T8)")
+    results["s0"] = verdict("S0 the mix is alive", True, f"{mix0:.1f} dBFS rms")
 
-    # ---- ii: the chain -- the return follows T1's send, the hosts print nothing
     if want("ii"):
-        log("claim ii -- the chain")
-        rig.solo_only(8)
-        c = rig.toggle(8, RET, 127, 0, "ii_ctrl_t8_ret")
-        t = rig.toggle(1, AUX, 127, 0, "ii_test_t1_aux")
-        results["ii-a"] = verdict("ii-a the return follows the send", c["t"] >= 3 and t["t"] >= 3,
-                                  f"RET |t|={c['t']:.1f}, T1 AUX |t|={t['t']:.1f} (both must move T8)")
-        rig.solo_only(1)
-        c = rig.toggle(1, CC_LEVEL, LEVEL_HOME, 64, "ii_ctrl_t1_level")
-        rig.cc(1, CC_LEVEL, LEVEL_HOME)
-        t = rig.toggle(1, AUX, 127, 0, "ii_test_t1_aux_on_t1")
-        results["ii-b"] = verdict("ii-b host T1 prints only its dry", c["t"] >= 3 and t["t"] < 3 and abs(t["rms"]) < 0.5,
-                                  f"LEVEL |t|={c['t']:.1f} (the control), AUX |t|={t['t']:.1f} rms d={t['rms']:+.2f} dB "
-                                  f"(a host printing its wet would move here -- flash 6's failure)")
-        rig.solo_only(5)
-        l5, _ = rig.level(4, "ii_t5_solo")
-        results["ii-c"] = verdict("ii-c host T5 prints nothing", l5 < -60,
-                                  f"T5 soloed reads {l5:.1f} dBFS (nothing plays on T5; a print would show)")
+        log("claim ii -- the chain: the return on T8, the hosts quiet while it is live")
+        c = rig.toggle(8, RET, 127, 0, "ii_ret")
+        t = rig.toggle(1, AUX, 127, 0, "ii_t1_aux")
         rig.cc(1, AUX, 127)
+        results["ii-a"] = verdict("ii-a the return follows T1's send", c["t"] >= 3 and t["t"] >= 3,
+                                  f"RET |t|={c['t']:.1f}, T1 AUX |t|={t['t']:.1f} (both must move the gaps)")
+        m1 = rig.toggle(5, CC_MUTE, 0, 127, "ii_t5mute_ret127")
+        rig.cc(8, RET, 0); time.sleep(1.0)
+        m0 = rig.toggle(5, CC_MUTE, 0, 127, "ii_t5mute_ret0")
+        rig.cc(5, CC_MUTE, 0); rig.cc(8, RET, 127); time.sleep(1.0)
+        results["ii-b"] = verdict("ii-b the wet sits on T8, not on the reverb host", abs(m1["gap"]) < 2 and m0["t"] >= 3,
+                                  f"RET 127: muting T5 moves the gaps {m1['gap']:+.1f} dB (t {m1['t']:.1f}); "
+                                  f"RET 0: {m0['gap']:+.1f} dB (t {m0['t']:.1f}) = T5 prints only when no return is live "
+                                  f"(flash 6: the hosts printed with the return up)")
+        m = rig.toggle(1, CC_MUTE, 0, 127, "ii_t1mute")
+        rig.cc(1, CC_MUTE, 0)
+        results["ii-c"] = verdict("ii-c the send is pre-mute (muting T1 leaves the return)", abs(m["gap"]) < 3,
+                                  f"gaps {m['gap']:+.1f} dB with T1 muted (t {m['t']:.1f})")
 
-    # ---- iv: both engines are in the chain
     if want("iv"):
         log("claim iv -- MIX on each engine")
-        rig.solo_only(8)
-        d = rig.toggle(1, MIX, 127, 0, "iv_delay_mix")
-        rig.cc(1, MIX, 127)
-        r = rig.toggle(5, MIX, 127, 0, "iv_reverb_mix")
-        rig.cc(5, MIX, 127)
-        results["iv"] = verdict("iv delay MIX and reverb MIX both shape the return", d["t"] >= 3 and r["t"] >= 3,
-                                f"delay MIX |t|={d['t']:.1f}, reverb MIX |t|={r['t']:.1f}")
+        rig.cc(1, MIX, 0); time.sleep(0.5)                    # no repeats: the reverb of the dry sends
+        r = rig.toggle(5, MIX, 127, 0, "iv_reverb_mix_nodelay")
+        rig.cc(1, MIX, 127); rig.cc(5, MIX, 0); time.sleep(0.5)   # no reverb: the repeats alone
+        d = rig.toggle(1, MIX, 127, 0, "iv_delay_mix_noverb")
+        rig.cc(1, MIX, 127); rig.cc(5, MIX, 127)
+        results["iv"] = verdict("iv reverb MIX and delay MIX both shape the return", r["t"] >= 3 and d["t"] >= 3,
+                                f"reverb MIX with the delay at 0 |t|={r['t']:.1f}; delay MIX with the reverb at 0 |t|={d['t']:.1f}")
 
-    # ---- the pattern-change signature, then the part-borne claims
+    def arm_t1():
+        # a part change reverts T1's THRU input and AMP envelope to the part's
+        # stored (silent) values, so re-arm them over CC after every PC
+        rig.cc(1, 16, 1); rig.cc(1, 17, 127)            # INAB = A+B, VOL 127
+        rig.cc(1, 22, 0); rig.cc(1, 23, 127); rig.cc(1, 24, 127)   # AMP ATK 0, HOLD inf, REL max
+        rig.cc(1, 25, 100)                               # AMP VOL
+
     def goto(pattern):
+        # the signature is T1's LEVEL, which the return (post-FX, pre-LEVEL)
+        # cannot show: read it with the return off and T5 muted, T1's dry alone
+        arm_t1(); rig.cc(1, CC_LEVEL, LEVEL_HOME)
+        rig.cc(1, CC_MUTE, 0); rig.cc(5, CC_MUTE, 127); rig.cc(8, RET, 0); time.sleep(1.0)
+        ref, _ = rig.level(3, f"sig_p{pattern+1}_before")
         rig.pc(pattern)
         log(f"  program change {pattern} -> pattern A0{pattern+1}; waiting {PATTERN_WAIT:.0f} s")
         time.sleep(PATTERN_WAIT)
-        rig.solo_only(1)
-        lv, _ = rig.level(3, f"sig_p{pattern+1}_t1")
-        got = lv - dry0
-        ok = abs(got - SIG_DB[pattern]) < 2.5
+        arm_t1(); time.sleep(0.5)   # re-arm the INPUT after the part change, but NOT the level:
+        lv, _ = rig.level(3, f"sig_p{pattern+1}_after")   # the part's stored T1 LEVEL is the signature
+        rig.cc(5, CC_MUTE, 0); rig.cc(8, RET, 127)
+        got = lv - ref
+        ok = abs(got - SIG_DB[pattern]) < 3.0
         verdict(f"pattern A0{pattern+1} reached (T1 LEVEL {SIGNATURE[pattern]})", ok,
-                f"T1 dry {got:+.1f} dB against pattern 1, expected {SIG_DB[pattern]:+.1f}"
-                + ("" if ok else " -- PROG CH RECEIVE off, or the project is not OCTABAM_F7TEST"))
+                f"T1 {got:+.1f} dB across the change, expected {SIG_DB[pattern]:+.1f}"
+                + ("" if ok else " -- PROG CH RECEIVE off / wrong channel, or the project is not OCTABAM_F7TEST"))
         return ok
 
     if want("v"):
         log("claim v -- the send refused on T8 (pattern 2: SEND on T8's FX2)")
         if goto(1):
-            rig.solo_only(8)
-            c = rig.toggle(8, RET, 127, 0, "v_ctrl_t8_ret")
-            t = rig.toggle(8, AUX, 0, 127, "v_test_t8_aux")
+            home()
+            c = rig.toggle(8, RET, 127, 0, "v_ret")
+            t = rig.toggle(8, AUX, 0, 127, "v_t8_aux")
             rig.cc(8, AUX, 0)
             results["v"] = verdict("v T8's AUX changes nothing", c["t"] >= 3 and t["t"] < 3,
                                    f"RET |t|={c['t']:.1f}, T8 AUX |t|={t['t']:.1f} "
-                                   f"(T8 audible in its own return = the pin is wrong)")
+                                   f"(T8 feeding its own return = the pin is wrong)")
         else:
             results["v"] = verdict("v", False, "pattern 2 not reached")
 
     if want("vii"):
         log("claim vii / vii-b -- a BUS station on T4 (pattern 3)")
         if goto(2):
-            rig.solo_only(8)
-            ret3, _ = rig.level(4, "vii_t8_return")
-            rig.solo_only(4)
-            l4, _ = rig.level(4, "vii_t4_solo")
-            results["vii"] = verdict("vii T4 returns nothing", l4 < -60, f"T4 soloed reads {l4:.1f} dBFS")
-            results["vii-b"] = verdict("vii-b T8 still returns beside it", ret3 > -55 and abs(ret3 - ret0) < 4,
-                                       f"T8 reads {ret3:.1f} dBFS against {ret0:.1f} on pattern 1 "
-                                       f"(silence = the stolen-stamp defect, fixed 9 Sep)")
+            home()
+            rig.cc(4, RET, 127)
+            m = rig.toggle(4, CC_MUTE, 0, 127, "vii_t4mute")
+            rig.cc(4, CC_MUTE, 0)
+            c = rig.toggle(8, RET, 127, 0, "vii_t8_ret")
+            results["vii"] = verdict("vii T4 returns nothing (muting it changes nothing)", abs(m["gap"]) < 2,
+                                     f"gaps {m['gap']:+.1f} dB with T4 muted (t {m['t']:.1f})")
+            results["vii-b"] = verdict("vii-b T8 still returns beside the T4 station", c["t"] >= 3,
+                                       f"RET |t|={c['t']:.1f}, {c['gap']:+.1f} dB (silence = the stolen stamps, fixed 9 Sep)")
         else:
             results["vii"] = verdict("vii", False, "pattern 3 not reached")
 
     if want("iii"):
         log("claim iii -- the last live stage (pattern 4: NONE on T5)")
         if goto(3):
-            rig.solo_only(8)
-            ret4, _ = rig.level(4, "iii_t8_return")
-            d = rig.toggle(1, MIX, 127, 0, "iii_delay_mix")
-            rig.cc(1, MIX, 127)
+            home()
             r = rig.toggle(5, MIX, 127, 0, "iii_reverb_mix")
-            rig.cc(5, MIX, 127)
-            results["iii"] = verdict("iii repeats return without a reverb", ret4 > -55 and d["t"] >= 3 and r["t"] < 3,
-                                     f"T8 {ret4:.1f} dBFS, delay MIX |t|={d['t']:.1f}, reverb MIX |t|={r['t']:.1f} "
-                                     f"(silence = the fall-through; a live reverb MIX = the part did not change)")
+            d = rig.toggle(1, MIX, 127, 0, "iii_delay_mix")
+            rig.cc(1, MIX, 127); rig.cc(5, MIX, 127)
+            results["iii"] = verdict("iii the repeats return without a reverb", d["t"] >= 3 and r["t"] < 3,
+                                     f"delay MIX |t|={d['t']:.1f}, reverb MIX |t|={r['t']:.1f} "
+                                     f"(a live reverb MIX = the part did not change; no repeats = the fall-through)")
         else:
             results["iii"] = verdict("iii", False, "pattern 4 not reached")
 
-    # ---- viii: the return over minutes
     if want("viii"):
         log(f"claim viii -- {args.long:.0f} s of return, pattern 1")
-        rig.pc(0); time.sleep(PATTERN_WAIT)
-        rig.solo_only(8)
+        rig.pc(0); time.sleep(PATTERN_WAIT); home()
         samples, sr, _ = rig.record(args.long, "viii_long")
         win = int(2.0 * sr)
         lv = [db(math.sqrt(sum(v * v for v in samples[i:i + win]) / win)) for i in range(sr, len(samples) - win, win)]
@@ -461,11 +588,8 @@ def run(args):
                                   f"{len(lv)} windows of 2 s: median {med:.1f} dBFS, min {min(lv):.1f}, max {max(lv):.1f}"
                                   + (f"; windows 12 dB under the median at {[2*i+1 for i in drops]} s" if drops else ""))
 
-    # ---- restore
-    rig.unsolo()
-    rig.cc(1, CC_LEVEL, LEVEL_HOME); rig.cc(1, AUX, 30); rig.cc(1, MIX, 127); rig.cc(5, MIX, 127); rig.cc(8, RET, 127)
-    rig.pc(0)
-    log("  restored: nothing soloed, T1 AUX 30, MIX 127/127, RET 127, pattern A01")
+    home(); rig.cc(1, AUX, 30); rig.pc(0)
+    log("  restored: nothing muted or soloed, T1 AUX 30, MIX 127/127, RET 127, pattern A01")
     return finish(results)
 
 
@@ -516,6 +640,12 @@ def main():
     ap.add_argument("--chan", type=int, default=None, help="interface channel (1-based); default = loudest")
     ap.add_argument("--only", help="claims to run: ii,iv,v,vii,iii,viii")
     ap.add_argument("--long", type=float, default=90.0, help="claim viii capture length, s")
+    ap.add_argument("--clock", type=float, default=121.0,
+                    help="send MIDI clock at this BPM and Start/Stop to the OT (0 = the Rytm or a hand)")
+    ap.add_argument("--source", choices=["burst", "tone"], default=None,
+                    help="play the source from the Mac through the interface's outputs (patched into A/B)")
+    ap.add_argument("--source-freq", type=float, default=1000.0)
+    ap.add_argument("--source-amp", type=float, default=0.1)
     ap.add_argument("--image", default=str(IMAGE))
     ap.add_argument("--set", default="PRESETS", help="the set folder on the card that holds the project")
     ap.add_argument("--vol", default="/Volumes/OCTATRACK")

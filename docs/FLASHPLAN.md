@@ -459,6 +459,39 @@ A01, and writes `out/hw/flash7/run_<stamp>.log` beside every recording. Every
 "no change" verdict stands beside a control that did change, so a dead
 cable reads INCONCLUSIVE, not PASS.
 
+### ✅ FLASHED AND CONFIRMED ON HARDWARE (9 Sep 2026, tag `OCTABAM21`)
+
+Sam flashed OCTABAM21 and ran the automated harness on his unit (Roland
+UM-ONE USB-MIDI, MOTU MicroBook: a Mac-generated 1 kHz burst into inputs
+A/B, the OT's main outs captured back, the Mac as clock master over MIDI).
+**Every claim passed.** The bus works on hardware and flash 6's failure is
+gone.
+
+| claim | result | evidence |
+|---|---|---|
+| ii-a the return follows T1's send | ✅ | RET and T1 AUX both move the return (t 3-8 across runs) |
+| **ii-b the hosts stay quiet while the return is live** | ✅ | muting T5 does nothing with the return up (+0.3 dB), −14 dB with RET at 0 — **flash 6's exact failure ("hosts print, nothing on T8") is fixed** |
+| ii-c the send is pre-mute | ✅ | muting T1 leaves the return (t 15) |
+| iv both engines shape the return | ✅ | reverb MIX (delay bypassed) t 56-104, delay MIX (reverb bypassed) t 41-120 |
+| **v the send is refused on T8 (master)** | ✅ | T8's RET moves the return (t 5.9), toggling T8's own AUX does not (t 2.6) — the 6 Sep master-loop silence is impossible |
+| vii a BUS station on T4 returns nothing | ✅ | muting T4 does nothing to the return (t 1.8) |
+| **vii-b T8 still returns beside the T4 station** | ✅ | the return is a full −34.6 dBFS with the T4 station live — **the 9 Sep stolen-stamp fix; before it T8 read silence** |
+| iii the last live stage (reverb absent) | ✅ | with T5's reverb removed the delay's repeats still return (t 80), the reverb MIX is inert (t 2) — the fall-through to the delay |
+| viii no dropout | ✅ | 90 s, return flat within 1.5 dB |
+
+**What the run taught about driving the OT (folded into the tooling):**
+the project must be saved by the unit under THIS build (a project from an
+earlier build or with a synthesized `project.work` fails to take a program
+change, and a text-mode edit that strips the file's CRLF throws "SOME ERRORS
+OCCURED / PARSE ERROR"); the FX2 chooser hides the host engines, so NONE and
+the hosts are not selectable there; and a THRU source drops ~5 s after any
+pattern/part change (the amp gate closes and the sequencer trig does not
+reopen it), so the four part-borne claims (v, vii, vii-b, iii) were measured
+by setting each variant BY HAND on the stable A01 source
+(`tools/hw_flash7_liveclaim.py`) rather than by program change. `COLDFIRE_PORT.md`
+O11's r7-stride fix and the `character.asm` stolen-stamp fix are both now
+hardware-confirmed.
+
 ---
 
 ## Flash 5 — the ColdFire headroom probe (cfprobe)
