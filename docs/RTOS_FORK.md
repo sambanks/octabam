@@ -3010,3 +3010,35 @@ ear cleanly tells a perfect loop from a gappy one. And the process lesson
 Sam enforced: reproduce and confirm before calling it — the first "clean"
 reading of nearly every approach in this section did NOT survive
 repetition; this one did, twice.
+
+### 10.32 ✅ The seam reproduced in the EMULATOR (route A), sample-exact, matching §10.31's hardware ears (9 Sep 2026)
+
+After the hardware reproduction (§10.31), the same golden-vs-non-golden pair
+was run in route A (the EMAC-fixed Python emulator, `recaudio.py` injecting a
+counter at the recorder input ring and reading the buffer + the firmware's own
+arm/end records). Fixtures: T1 self-looping on R1, RLEN 16, single REC1+play
+trig on step 1 (Bryan's geometry), at 65.6 and 128, via `ot_project`.
+
+**The firmware's own recorded loop length (from the end record):**
+
+| tempo | recorded length | ideal (16 × samples/trig) | residue |
+|---|---|---|---|
+| 65.6 GOLDEN | **161,280** (0x27600) | 16 × 10,080 = 161,280 | **0 — exact, clean** |
+| 128 non-golden | **82,687** (0x142ff) | 16 × 5167.96875 = 82,687.5 | **−0.5 — truncated, seam** |
+
+The golden tempo's length equals the grid interval exactly (arm spacing
+161,280.0), so every pass aligns and the loop is clean — the hardware
+"perfect." The non-golden length truncates the true 82,687.5 to 82,687 (the
+truncated-reciprocal rounding of §10.16.4), leaving a −0.5-sample per-pass
+residue — the seam, the hardware "gaps." Route A computes it with no analog
+drift or clock jitter, the instrument the hardware A/B could not be, and it
+agrees with the ear.
+
+**This is the fix platform.** A recorder-side fix that makes a non-golden loop
+seamless (size successive passes to alternate so they sum to the exact grid, or
+a sample-accurate seam repair) is developed and verified HERE against the exact
+length/buffer, then flashed and ear-confirmed on the unit the way §10.31 was.
+What route A still cannot do is render the FLEX voice that plays the buffer back
+to audio (the flex-from-recorder-buffer loader is unlocated in both emulators)
+— that is the next task, to let the loop be heard in the emulator, not only
+measured.
