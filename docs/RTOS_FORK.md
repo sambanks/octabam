@@ -2942,3 +2942,25 @@ which the fixed-EMAC emulator measures without any of these confounds. The
 hardware's contribution is narrower and real: the recorder works, and
 Bryan's click is a loop-boundary phenomenon consistent with his fixed-RLEN
 theory — but the number is the emulator's, not this capture's.
+
+### 10.30 The golden CONTROL falsifies the A/B: the "wander" tracks loop length, not the seam (9 Sep 2026)
+
+After §10.29, the clipping was traced to the OT's playback gain (not the
+Mac input) and fixed over MIDI (track LEVEL/AMP VOL to unity, input at
+~−60 dBFS, 0 % clipped). Clean captures then looked like a reproduction
+again: 65.6 golden showed a stable modal loop period (11–14 of 16 loops
+identical), 128 non-golden showed none (every loop distinct). **A golden
+CONTROL settled it against us.** 125 BPM (tempo24 3000, 5292 samples/trig
+exact) is ALSO golden — it must be clean if the metric measures the seam.
+It wandered exactly as much as 128 (5/5 distinct, spread 55), because at
+125 and 128 the recorded loop is long (85k–149k samples, only 5–10 passes
+in the capture) while 65.6's is short (17,640, 16 passes). The
+cross-correlation's per-loop period spread is set by the analog drift
+ACCUMULATED over a loop and the number of passes available to average — a
+loop-length artifact — not by the golden-vs-clicking residue. So the
+apparent 65.6-clean / 128-wander difference is confounded by loop length,
+and **the A/B does not reproduce the seam on hardware.** The §10.29
+conclusion stands, now with the control that proves it: recording works on
+Bryan's setup, but this analog rig cannot isolate the sample-level seam,
+and the golden control is what catches the false positive. The sample-exact
+number is route A's.
