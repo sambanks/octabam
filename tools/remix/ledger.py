@@ -197,8 +197,26 @@ def check(selected) -> list[str]:
             clash("appended runtime", a.name, b.name,
                   "the end of the OS image and the loader's DRAM window -- "
                   "one runtime per image")
+    # ---- the audio page arena (schema.ArenaReserve) -----------------------
+    # Every reservation is stacked by the build; the one thing to refuse
+    # here is a total that leaves the unit too little for samples and
+    # recorders. The platform's own pages count whenever DRAM units exist.
+    from remix import arena
+    reservations = [(m.name, m.arena.where, m.arena.pages)
+                    for m in selected if getattr(m, "arena", None) is not None]
+    if any(u.dram for m in selected for u in getattr(m, "linked", ())):
+        reservations.append(("octabam platform", "bottom", arena.PLATFORM_PAGES))
+    if reservations:
+        try:
+            arena.layout(reservations)
+        except SystemExit as e:
+            problems.append(str(e))
+
     for m in runtimes:
+        skip = set(getattr(getattr(m, "arena", None), "recipe_writes", ()))
         for start, length, label in runtime_write_spans(m):
+            if label in skip:
+                continue                 # computed by the build (arena geometry)
             for cstart, clength, owner, clabel in caves:
                 if _overlap(cstart, clength, start, length):
                     clash("ColdFire cave", f"{owner}'s {clabel}",

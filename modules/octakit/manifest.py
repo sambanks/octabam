@@ -55,7 +55,8 @@ combinations until detour chaining exists; nothing else of hers overlaps
 anything. `lofi-amf-fix` composes with it freely (`remixes/octakit-fix.py`).
 """
 
-from remix.schema import Kind, Module, Runtime
+from remix import arena
+from remix.schema import ArenaReserve, Kind, Module, Runtime
 
 MODULE = Module(
     name="octakit",
@@ -69,4 +70,13 @@ MODULE = Module(
         report_note=" -- Em's Octakit (emuyia/ems-octakit), submodule "
                     "modules/octakit/upstream",
     ),
+    # Her runtime, Kit store and backup are the TOP 528 pages of stock's
+    # audio page arena (0x45d0dde0..0x46025de0 = her RUNTIME_START..END):
+    # her four recipe writes shrink the arena by exactly that. Declared
+    # here so the build stacks her pages with everyone else's (the
+    # platform's own reserve at the arena's bottom) and computes the four
+    # geometry literals from the total -- for her alone, her own bytes.
+    # Costs the unit 3,244,032 B of sample/recorder memory; her design.
+    arena=ArenaReserve(pages=528, where="top",
+                       recipe_writes=arena.OCTAKIT_RECIPE_WRITES),
 )

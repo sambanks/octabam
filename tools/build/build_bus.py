@@ -1380,7 +1380,12 @@ def main():
                  for _e in REMIX.modules
                  if getattr(remix_modules()[_e], "runtime_ext", None) is not None
                  and remix_modules()[_e].runtime_ext.host == _m.key]
-        _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work, _exts)
+        # A runtime whose recipe writes the arena geometry (Octakit's four)
+        # declares them in its ArenaReserve; the build computes those
+        # literals from EVERY reservation in the remix (1e) instead.
+        _skip = tuple(getattr(getattr(_m, "arena", None), "recipe_writes", ()))
+        _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work, _exts,
+                                                      skip=_skip)
         _sym[_m.key] = _info["symbols"]
         _exports.update({k: v for k, v in _info["symbols"].items()
                          if not k.startswith("_") or k.startswith("__gk_")})
@@ -1460,15 +1465,45 @@ def main():
             _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
 
     # ==== 1e. the platform runtime: DRAM units + other payloads, one loader ==
-    # Every `dram=True` unit in the remix is linked as ONE image at
-    # tools/remix/platform_build.RUNTIME_BASE, packed and carried behind
+    # Every `dram=True` unit in the remix is linked as ONE image at the
+    # base of the platform's arena reserve, packed and carried behind
     # octabam's loader together with any runtime built in 1c (Octakit) --
     # equal payloads, one boot detour. The loader itself is the append;
     # nothing here touches the OS zero runs.
+    # ---- the audio page arena: every reservation, one geometry -----------
+    # Modules that live in the arena declare their pages (Octakit: the top
+    # 528); the platform reserves its own at the bottom whenever the remix
+    # carries DRAM units. tools/remix/arena.py stacks them and yields the
+    # writes: the base literal at its 24 sites and the four geometry words.
+    from remix import arena
+    _reservations = [(_m.name, _m.arena.where, _m.arena.pages)
+                     for _k in REMIX.modules for _m in (remix_modules()[_k],)
+                     if getattr(_m, "arena", None) is not None]
+    if _dram:
+        _reservations.append(("octabam platform", "bottom", arena.PLATFORM_PAGES))
+    _reserve = None
+    if _reservations:
+        _placed, _abase, _acount = arena.layout(_reservations)
+        for _pa, _pexp, _pw, _pnote in arena.pokes(_reservations):
+            _got = bytes(img[_pa - BASE:_pa - BASE + len(_pexp)])
+            if _got != _pexp:
+                sys.exit(f"arena: 0x{_pa:08x} ({_pnote}) holds {_got.hex()}, not stock "
+                         f"{_pexp.hex()} -- another module got there first; refusing")
+            img[_pa - BASE:_pa - BASE + len(_pw)] = _pw
+        for _p in _placed:
+            print(f"  arena: {_p.owner} takes {_p.pages} pages at the {_p.where}, "
+                  f"0x{_p.start:08x}..0x{_p.end:08x} ({_p.pages * arena.PAGE:,} B)")
+            if _p.owner == "octabam platform":
+                _reserve = (_p.start, _p.end - _p.start)
+        print(f"  arena: base 0x{_abase:08x}, {_acount:,} pages "
+              f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
+              f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
+
     if _dram or _payloads:
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
-            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"))
+            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
+            reserve=_reserve)
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
         _exports.update(_psyms)
@@ -1488,7 +1523,10 @@ def main():
             print(f"    poke 0x{_ba:08x}: {_bexp.hex()} -> {_bw.hex()}  {_bnote}")
         _dsize = sum(1 for _ in _dram)
         print(f"  platform runtime: {_dsize} DRAM unit(s) linked at "
-              f"0x{platform_build.RUNTIME_BASE:08x}, payloads {', '.join(_pnames)}, "
+              f"0x{_reserve[0]:08x}, payloads {', '.join(_pnames)}, "
+              f"append {len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}"
+              if _reserve else
+              f"  platform loader: payloads {', '.join(_pnames)}, "
               f"append {len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
 
     for _m, _t in [(remix_modules()[_k], _t) for _k in REMIX.modules

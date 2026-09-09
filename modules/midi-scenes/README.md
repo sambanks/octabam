@@ -29,10 +29,11 @@ bytes), so octabam can place each region where there is room. His
 him waits until he has finished his own changes; the branch then rebases.
 
 octabam's manifest lists the seven units as `dram=True`: the build links
-them together as its **platform runtime**, packs it (~4 KB), appends it
-behind octabam's loader and depacks it at boot into the never-cleared
-DRAM window above stock's delay-ring clear (`0x47fdb000`, ~13 KB with its
-stage copy — `docs/remixer/PLACEMENT.md`). MSC's 0xff fill is just part
+them together as its **platform runtime**, packs it (~2 KB), appends it
+behind octabam's loader and depacks it at boot into the platform's 10 MB
+reserve at the bottom of stock's audio page arena (`0x40a955e0` — the
+placement Octakit and octamax have both proven on hardware;
+`docs/remixer/PLACEMENT.md`). MSC's 0xff fill is just part
 of the image, so nothing needs initialising at boot. The 35 hook sites
 are wired by symbol with the right instruction for each — `jmp` for stubs
 that replay what they displaced, `jsr` for callable ones, one `lea`

@@ -229,10 +229,12 @@ def extract_stock(stock: bytes, op: dict, load: int, runtime_load: int) -> bytes
     return out
 
 
-def writes(spec: dict, stock: bytes) -> list[tuple[int, bytes, bytes, str]]:
+def writes(spec: dict, stock: bytes, skip=()) -> list[tuple[int, bytes, bytes, str]]:
     """(vaddr, expect, write, name): every sparse write, with its guard's
     sha256 checked against STOCK and expect taken from stock -- the same
-    assert-before-write discipline as a CavePatch poke."""
+    assert-before-write discipline as a CavePatch poke. `skip` names
+    patches the build computes itself (the arena geometry a module's
+    ArenaReserve declares); their guards are still checked."""
     base = spec["format"]["os_load_address"]
     out = []
     prev_end = 0
@@ -242,6 +244,9 @@ def writes(spec: dict, stock: bytes) -> list[tuple[int, bytes, bytes, str]]:
             sys.exit(f"runtime build: guard {p['name']} overlaps or exceeds the image")
         if _sha(stock[s:e]) != p["sha256"]:
             sys.exit(f"runtime build: guard {p['name']} at 0x{base + s:08x} is not stock")
+        prev_end = e
+        if p["name"] in skip:
+            continue
         wend = s
         for w in p["writes"]:
             data = bytes.fromhex(w["data"])
@@ -253,7 +258,6 @@ def writes(spec: dict, stock: bytes) -> list[tuple[int, bytes, bytes, str]]:
                 sys.exit(f"runtime build: write in {p['name']} keeps an unchanged stock byte")
             out.append((base + pos, expect, data, p["name"]))
             wend = pos + len(data)
-        prev_end = e
     return out
 
 
@@ -288,7 +292,7 @@ def _regenerate(ws, old: dict, new: dict):
     return out
 
 
-def build(rt, stock: bytes, work: pathlib.Path, extensions=()) -> tuple[list, bytes, dict]:
+def build(rt, stock: bytes, work: pathlib.Path, extensions=(), skip=()) -> tuple[list, bytes, dict]:
     """Returns (writes, append, info). `info` carries the identities and
     the gcc version actually used, for the build report. `extensions` =
     (module key, schema.RuntimeExt) pairs linked into this runtime."""
@@ -398,7 +402,7 @@ def build(rt, stock: bytes, work: pathlib.Path, extensions=()) -> tuple[list, by
         f = line.split()
         if len(f) == 3 and not f[2].startswith(".L"):
             symbols[f[2]] = int(f[0], 16)
-    ws = writes(spec, stock)
+    ws = writes(spec, stock, skip)
     if extended:
         # The host's OS-resident helpers bake five constants derived from HER
         # runtime; the composite has its own. Measured against her recipe:

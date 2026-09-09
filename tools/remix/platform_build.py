@@ -2,17 +2,20 @@
 image, packed, and appended after the OS behind the loader (loader.S)
 together with any other payload -- Em's Kit runtime -- as equals.
 
-Placement (measured 9 Sep 2026 with the ColdFire port; docs/remixer/
-PLACEMENT.md): the DRAM stock never writes is the ~101 KB between the end
-of its boot-time delay-ring clear (0x47fc7410) and the 128 KiB it keeps
-below the reset stack pointer (0x47fe0000) -- the constants below. An
-earlier "8.8 MB free at 0x47700000" was a measurement blind to writes
-made through the uncached alias and is RETRACTED; that run is the delay
-ring, cleared ~38 M instructions after the boot detour returns. Octakit's
-stage stays at HER address (0x47fc7410, signature + stream) because her
-post-clear relocation re-depacks from exactly there; ours sits above it.
-The uncached alias (+0x08000000) is what the loader writes through, as
-hers does.
+Placement (docs/remixer/PLACEMENT.md): the runtime and its stage live in
+a RESERVE carved off the bottom of stock's audio page arena
+(tools/remix/arena.py) -- the one DRAM placement with a hardware record
+(Octakit's top 528 pages, octamax's bottom 64), 1,707 pages = 10 MiB by
+default. The build hands `build()` the reserve; the runtime is linked at
+its base and the stage (signature + packed stream) sits after the
+runtime image, page-aligned. Two earlier homes are RETRACTED: "8.8 MB
+free at 0x47700000" (the delay rings, cleared through the uncached alias
+~38 M instructions after the boot detour returns) and the ~101 KB above
+the rings (stock's engine task keeps its sector bounce buffers there and
+fills 0x47fc8fe4.. at project load when static samples are present).
+Octakit's stage stays at HER address (0x47fc7410) because her post-clear
+relocation re-depacks from exactly there -- her call. The uncached alias
+(+0x08000000) is what the loader writes through, as hers does.
 
 One link for all DRAM units means cross-unit symbols resolve without any
 --defsym; other payloads' symbols (her gk_*) are offered as defsyms so a
@@ -31,20 +34,9 @@ from remix import runtime_build
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LOADER_AT = 0x4010FDF0          # the byte after the stock OS image
-# THE WINDOW, measured 9 Sep 2026 under the ColdFire port: stock clears
-# 0x47502c10..0x47fc7410 (its delay ring, 10.8 MB, through the uncached
-# alias) at instruction ~42 M of boot -- some 38 M instructions AFTER the
-# boot detour has returned -- and zero-fills 0x42000000..0x45ffffff (64 MB)
-# at boot and again at project load. Anything depacked into either at boot
-# is gone by the time the OS is up. The DRAM that is never written is the
-# run between the end of that clear and the 128 KiB Em keeps below the
-# reset stack pointer: 0x47fc7410..0x47fe0000, ~101 KB, of which her stage
-# takes the first 72,959 bytes when Octakit is in the image. octabam's
-# stage and runtime sit above hers, at fixed addresses whatever the remix:
-STAGE_BASE = 0x47FD9200         # our persistent stage (signature + GKA3 stream)
-RUNTIME_BASE = 0x47FDB000       # our window; ceiling 0x47fe0000 (~20 KB)
-CEILING = 0x47FE0000
 UNCACHED = 0x08000000
+STAGE_ALIGN = 0x1000            # the stage follows the runtime image, page-aligned
+LAYOUT = "layout.json"          # written beside the append: base, runtime, stage, ceiling
 SIGNATURE = b"OCTA"
 MAX_CANDIDATES = 4096
 
@@ -68,9 +60,9 @@ def _nm(elf, cwd):
     return {f[2]: int(f[0], 16) for f in rows if len(f) == 3 and not f[2].startswith(".L")}
 
 
-def link_runtime(units, work: pathlib.Path, defsyms: dict) -> tuple[bytes, dict]:
+def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int) -> tuple[bytes, dict]:
     """Assemble every (module key, Linked) unit and link them together at
-    RUNTIME_BASE. Returns (raw image, symbols)."""
+    `base`. Returns (raw image, symbols)."""
     work.mkdir(parents=True, exist_ok=True)
     objs = []
     for i, (key, u) in enumerate(units):
@@ -78,40 +70,50 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict) -> tuple[bytes, dict]
         _run(["m68k-elf-as", f"-mcpu={u.cpu}", "-o", obj, ROOT / u.source], work)
         objs.append(obj)
     elf, raw = work / "runtime.elf", work / "runtime.bin"
-    _run(["m68k-elf-ld", f"-Ttext=0x{RUNTIME_BASE:x}",
+    _run(["m68k-elf-ld", f"-Ttext=0x{base:x}",
           *[f"--defsym={n}=0x{v:x}" for n, v in defsyms.items()], "-o", elf, *objs], work)
     _run(["m68k-elf-objcopy", "-O", "binary", elf, raw], work)
     return raw.read_bytes(), _nm(elf, work)
 
 
-def build(units, payloads, work: pathlib.Path):
+def build(units, payloads, work: pathlib.Path, reserve=None):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
-    Returns (append bytes, symbols of the octabam runtime, boot poke)."""
+    reserve: (base, size) of the arena reserve the runtime lives in;
+    required when there are units. Returns (append bytes, symbols of the
+    octabam runtime, boot poke, payload names) and writes LAYOUT."""
+    import json
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=True)
     entries = list(payloads)
     symbols = {}
+    layout = {"loader": LOADER_AT}
     if units:
+        if reserve is None:
+            sys.exit("platform build: DRAM units need an arena reserve (tools/remix/arena.py)")
+        base, size = reserve
+        ceiling = base + size
         defs = {}
         for p in payloads:
             defs.update(p.get("symbols", {}))
-        raw, symbols = link_runtime(units, work / "runtime", defs)
+        raw, symbols = link_runtime(units, work / "runtime", defs, base)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             runtime_build.pack(raw, MAX_CANDIDATES)
-        stage_end = STAGE_BASE + 4 + len(packed)
-        if stage_end > RUNTIME_BASE or RUNTIME_BASE + len(raw) > CEILING:
-            sys.exit(f"platform build: the runtime does not fit the never-cleared window -- "
-                     f"packed {len(packed):,} B (stage 0x{STAGE_BASE:08x}..0x{stage_end:08x}, "
-                     f"must end by 0x{RUNTIME_BASE:08x}), raw {len(raw):,} B at "
-                     f"0x{RUNTIME_BASE:08x} (ceiling 0x{CEILING:08x}). Bigger payloads need "
-                     f"a cleared window plus a post-clear reload hook, as Octakit does "
-                     f"(docs/remixer/PLACEMENT.md)")
+        stage = (base + len(raw) + STAGE_ALIGN - 1) & ~(STAGE_ALIGN - 1)
+        stage_end = stage + 4 + len(packed)
+        if stage_end > ceiling:
+            sys.exit(f"platform build: the runtime does not fit its arena reserve -- raw "
+                     f"{len(raw):,} B at 0x{base:08x}, stage 0x{stage:08x}..0x{stage_end:08x}, "
+                     f"ceiling 0x{ceiling:08x} ({size:,} B). Reserve more pages "
+                     f"(tools/remix/arena.py PLATFORM_PAGES).")
         entries.append(dict(name="octabam", blob=SIGNATURE + packed,
-                            stage=STAGE_BASE + UNCACHED, dst=RUNTIME_BASE + UNCACHED,
+                            stage=stage + UNCACHED, dst=base + UNCACHED,
                             rawlen=len(raw), rhash=roll(raw), backup=0))
         (work / "runtime.raw").write_bytes(raw)
+        layout.update(base=base, runtime_end=base + len(raw), stage=stage,
+                      stage_end=stage_end, ceiling=ceiling, size=size)
+    (work / LAYOUT).write_text(json.dumps(layout, indent=2) + "\n")
     # the table and the blobs, as assembler input
     inc = [f"        .long {len(entries)}"]
     for i, e in enumerate(entries):

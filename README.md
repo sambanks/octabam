@@ -94,8 +94,8 @@ bytes go where — a module declares what it is, not an address:
 | class | declared as | where |
 |---|---|---|
 | ROM cave | `CavePatch` — a `.s` source, or ratified hex | one of the OS image's free zero runs, ~8 KB total shared by everyone |
-| **DRAM unit** | `Linked(..., dram=True)` — a GNU-as unit | linked with every other DRAM unit in the remix into one runtime, packed, appended behind octabam's loader, depacked at boot into a window stock never writes (~99 KB) |
-| appended runtime | `Runtime` — a recipe (Octakit's `firmware.json`) | its own DRAM window, as a second payload of the same loader |
+| **DRAM unit** | `Linked(..., dram=True)` — a GNU-as unit | linked with every other DRAM unit in the remix into one runtime, packed, appended behind octabam's loader, depacked at boot into a **10 MB reserve carved off stock's 85.5 MB sample/recorder pool** — the placement two community authors have proven on hardware |
+| appended runtime | `Runtime` — a recipe (Octakit's `firmware.json`) | its own reserve of the same pool (`ArenaReserve`), as a second payload of the same loader |
 
 The OS-image edits every class needs — a detour at a stock instruction, a
 poke, a grown table — are `Detour`, `Poke`, `TableGrow`, wired by symbol

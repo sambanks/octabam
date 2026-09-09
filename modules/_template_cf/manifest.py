@@ -31,8 +31,9 @@ MODULE = Module(
     # ORDER IS LINK ORDER: a unit may reference symbols of units before it.
     # `dram=True` puts the unit in the platform runtime (linked with every
     # other DRAM unit in the remix, appended behind the loader, depacked at
-    # boot into the never-cleared window -- tens of KB available; where
-    # anything bigger than a few hundred bytes belongs). `dram=False` places
+    # boot into the platform's 10 MB reserve at the bottom of the audio
+    # page arena -- where anything bigger than a few hundred bytes
+    # belongs; the unit gives up 10 MB of sample memory). `dram=False` places
     # it in one of the OS image's free zero runs (~8 KB, shared by everyone)
     # for code that must be ROM-resident. Sources are `.s` for m68k-elf-as;
     # `cpu="5407"` and "5475" encode this ISA subset identically.

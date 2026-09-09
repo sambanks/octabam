@@ -57,9 +57,11 @@ entry, fatal = syms["octabam_bootstrap"], syms["fatal"]
 
 dumps, expects = [], []
 if dram:
+    import json
+    layout = json.loads((ROOT / "out/platform" / platform_build.LAYOUT).read_text())
     raw = (ROOT / "out/platform/runtime/runtime.bin").read_bytes()
-    dumps.append((platform_build.RUNTIME_BASE, len(raw), ROOT / "out/_dump_octabam.bin"))
-    expects.append(("octabam window", raw))
+    dumps.append((layout["base"], len(raw), ROOT / "out/_dump_octabam.bin"))
+    expects.append(("octabam reserve", raw))
 if octakit:
     raw = (ROOT / "out/runtime/octakit/runtime.bin").read_bytes()
     dumps.append((0x45D0DDE0, len(raw), ROOT / "out/_dump_octakit.bin"))

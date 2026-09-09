@@ -23,10 +23,11 @@ build.py is untouched; the .s files are generated from it.
 
 PLACEMENT: DRAM, all of it. Every unit is `dram=True`, so the build links
 the seven together as octabam's platform runtime (tools/remix/
-platform_build.py), packs it (~4 KB), appends it behind the loader and
-depacks it at boot into the never-cleared window above stock's delay-ring
-clear (0x47fdb000, ~13 KB with its stage copy; docs/remixer/PLACEMENT.md)
--- MSC's 0xff fill included, so no boot-time initialisation is needed. The 8 KB of
+platform_build.py), packs it (~2 KB), appends it behind the loader and
+depacks it at boot into the platform's reserve at the bottom of the audio
+page arena (0x40a955e0, 10 MiB taken off the sample/recorder pool the
+way Octakit and octamax take theirs; docs/remixer/PLACEMENT.md) -- MSC's
+0xff fill included, so no boot-time initialisation is needed. The 8 KB of
 OS zero runs the pinned snapshot filled to within 52 bytes are untouched
 now; the only bytes this module changes inside the OS are the 35 detour
 sites, the two pokes, and (when Octakit is not in the image) the boot

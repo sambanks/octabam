@@ -560,10 +560,12 @@ class Linked:
     # DRAM: the unit is linked into octabam's PLATFORM RUNTIME -- one image
     # of every such unit in the remix, linked together (cross-unit symbols
     # resolve in the one link), packed, appended after the OS with the
-    # loader (tools/remix/loader.S) and depacked into the measured-free
-    # window at boot (docs/remixer/PLACEMENT). `cave_addr` is ignored.
-    # This is where anything bigger than a few hundred bytes belongs; the
-    # ~8 KB of zero runs inside the OS image are for what must be ROM.
+    # loader (tools/remix/loader.S) and depacked at boot into the
+    # platform's reserve at the bottom of the audio page arena (10 MiB,
+    # tools/remix/arena.py; docs/remixer/PLACEMENT). `cave_addr` is
+    # ignored. This is where anything bigger than a few hundred bytes
+    # belongs; the ~8 KB of zero runs inside the OS image are for what
+    # must be ROM.
     dram: bool = False
 
 
@@ -648,6 +650,35 @@ class Runtime:
 
 
 @dataclass(frozen=True)
+class ArenaReserve:
+    """Pages of stock's audio page arena taken for this module's DRAM.
+
+    The arena (tools/remix/arena.py) is the 85.5 MB stock shares between
+    Flex samples and the track recorders, and shrinking it is the one DRAM
+    placement with a hardware record: Octakit takes its top 528 pages,
+    octamax 2.0 its bottom 64. The build stacks every reservation in the
+    remix -- `where="bottom"` from the stock base upward (the base literal
+    moves), `where="top"` from the end downward (the count shrinks) -- and
+    computes the four geometry literals from the total, so two modules
+    that each take pages compose instead of both rewriting the same words.
+
+    `recipe_writes` names the writes in a Runtime recipe that ARE those
+    geometry literals (Octakit's four): the build skips them and computes
+    the combined values, which for her alone are byte-identical to hers.
+    """
+
+    pages: int
+    where: str = "top"                   # "top" | "bottom"
+    recipe_writes: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if self.where not in ("top", "bottom"):
+            raise ValueError(f"ArenaReserve.where must be 'top' or 'bottom', not {self.where!r}")
+        if self.pages <= 0:
+            raise ValueError("ArenaReserve.pages must be positive")
+
+
+@dataclass(frozen=True)
 class RuntimeExt:
     """Sources linked INTO another module's loader-appended runtime.
 
@@ -708,6 +739,10 @@ class Module:
     detours: tuple[Detour, ...] = ()
     tables: tuple[TableGrow, ...] = ()
     pokes: tuple[Poke, ...] = ()
+    # Pages of the audio page arena this module's DRAM lives in
+    # (schema.ArenaReserve). DRAM units need none: the platform reserves
+    # its own (arena.PLATFORM_PAGES) whenever a remix carries any.
+    arena: ArenaReserve | None = None
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None

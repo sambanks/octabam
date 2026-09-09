@@ -43,9 +43,12 @@ where the bytes land and how much room there is.
 units (GNU-as, symbols, no absolute addresses of its own) reached by
 `Detour`s that name those symbols, plus `Poke`s and `TableGrow`s for the
 OS-image edits — each asserted against stock before anything is written.
-`dram=True` is the default place for code: tens of KB, placed by the
-build. The ~8 KB of free ROM inside the OS image is for what must be
-ROM-resident, and it is shared with everyone.
+`dram=True` is the default place for code: a 10 MB reserve carved off the
+unit's sample/recorder pool, placed by the build, the way the community's
+own DRAM mods live (`docs/remixer/PLACEMENT.md`). The ~8 KB of free ROM
+inside the OS image is for what must be ROM-resident, and it is shared
+with everyone. A module that keeps its own DRAM (a `Runtime`) declares
+the pages it takes with `ArenaReserve`, and the build composes everyone's.
 
 **`key` is API.** It appears in the build report, and tools parse the
 report. Renaming a key, or rewording a report line, is a breaking change.

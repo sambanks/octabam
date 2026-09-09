@@ -10,8 +10,8 @@ declares what it is, not an address.
 | class | declared as | where it lands | budget |
 |---|---|---|---|
 | **ROM cave** | `CavePatch` (pinned hex, or a `.s` source that is the truth) | one of the OS image's free zero runs; floats after what precedes it unless pinned | ~8.4 KB, total, shared by everyone |
-| **DRAM unit** | `Linked(..., dram=True)` | linked with every other DRAM unit in the remix as ONE image, packed, appended after the OS behind octabam's loader, depacked at boot into the never-cleared window | ~99 KB, ~28 KB beside Octakit |
-| **Appended runtime** | `Runtime` (a recipe: Octakit's `firmware.json`) | its own DRAM window, as a payload of the same loader | the author's |
+| **DRAM unit** | `Linked(..., dram=True)` | linked with every other DRAM unit in the remix as ONE image, packed, appended after the OS behind octabam's loader, depacked at boot into the **platform's arena reserve** (below) | 10 MiB, off the unit's sample/recorder pool |
+| **Appended runtime** | `Runtime` (a recipe: Octakit's `firmware.json`) + `ArenaReserve` | its own pages of the same arena, as a payload of the same loader | the author's (Octakit: 528 pages) |
 
 The OS-image edits every class needs — a detour at a stock instruction,
 a poke, a grown table — are `Detour`, `Poke`, `TableGrow`, wired by
@@ -208,6 +208,36 @@ So she claims 3,316,991 B (3.16 MB) and uses 2,996,982 of it; the
 bytes her loader actually writes at boot are 372,265 (runtime, backup,
 stage).
 
+## The platform reserve (10 Sep 2026, Sam: "10 MB of the arena")
+
+octabam's runtime and stage live in **1,707 pages (10,487,808 B) taken off
+the BOTTOM of the audio page arena**, `0x40a955e0..0x41495de0`
+(`tools/remix/arena.py`, `PLATFORM_PAGES`), the way octamax 2.0 takes its
+64. The base literal moves up by that much at its 24 sites (23 direct
+plus `lea base+6144` at `0x40094a62`, which a "23 operands" port misses),
+and the four geometry words — page count, free-list fill limit, arena
+clear length, recorder page cap — are computed from **every** reservation
+in the remix: Octakit's 528 at the top are declared by her module
+(`ArenaReserve(528, "top", recipe_writes=…)`), her four recipe writes
+are skipped, and the build writes the combined values. Proof of the
+composition: the `octakit` remix alone yields exactly her four words
+(`36fa / 36fb / 05278800 / 36fa`); `midi-scenes` yields base `0x41495de0`
+and 12,895 pages (75 MB) left. The runtime is linked at the reserve's
+base; the stage follows it page-aligned; the ceiling is the reserve's end.
+
+Why this and not the top window: it is the one DRAM placement with a
+hardware record (two authors, two units), the OS never touches a
+reservation again (the clear starts at the new base, the boot-time copies
+follow the literal, the allocator cannot hand out an index above the new
+count), and the cost is honest — 10 MB of an 85.5 MB pool, off the
+recorder share by default. The old top-window constants are gone from
+`platform_build.py`. Octakit's stage stays at `0x47fc7410` because her
+own relocation re-depacks from there; that is hers to move.
+
+Fixed addresses whatever the remix, as before: the reserve is always
+the first 1,707 pages, so a remix without Octakit boots the same bytes to
+the same places.
+
 ## The loader
 
 `tools/remix/loader.S`, derived from Em's Octakit loader with attribution:
@@ -232,19 +262,16 @@ and printed.
 
 ## What is still open
 
-- **MB-scale placement.** Two candidate mechanisms, neither measured:
-  - *Give up the stock DELAY and take its rings.* A remix with the Echo
-    Freeze DELAY off both choosers has no use for the eight 1.4 MB rings;
-    a detour at its frame routine (`0x400031a0`, Bryan T) that skips the
-    ring work would leave 10.8 MB never written — one detour and one
-    boot-to-play measurement under the port. 🟡 Inferred from his
-    description of the routine; whether it has duties beyond the delay
-    (the clear itself, DMA bookkeeping another consumer relies on) is the
-    question the measurement answers.
-  - *Wipe-and-reload, generalised.* Octakit survives its project-load
-    wipe with a hook that re-depacks from the stage. Anything placed in a
-    region stock clears needs the same hook; that mechanism is hers, and
-    the one worth building together if the first route is closed.
+- **More than 10 MB** is the same mechanism with a bigger
+  `PLATFORM_PAGES` (the ledger refuses below 2,048 pages left). The
+  route that costs no sample memory — a remix with the stock DELAY off
+  both choosers detouring its frame routine (`0x400031a0`) so the eight
+  rings are never written, 10.8 MB — stays unmeasured; whether the
+  routine has duties beyond the delay is the question one detour and one
+  port run would answer.
+- **Octakit's stage at `0x47fc7410`** sits under stock's sector bounce
+  buffer (above). Hers to move — the arena is where the rest of her
+  already lives.
 - **Detour chaining** for the two stock routines three authors hook
   (`apply_part` entry `0x40009094`, the scene-parameter writer
   `0x40052ae8`).
