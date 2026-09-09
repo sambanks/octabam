@@ -3468,3 +3468,366 @@ using this recording as the ground truth to match against rather than
 `o10_recloop.py`'s per-pass jump metric alone (which is tuned for a smooth
 sine and may itself be why the emulator's every-wrap bursts, if present,
 weren't being counted the same way hardware's are).
+
+### 10.40 The isolated fixture reproduces neither the click nor the golden/clean split, because its FLEX voice chases the record write-head instead of looping a fixed buffer — and §10.39's "two open mismatches" are that fixture, not the emulator (9 Sep 2026 — measured)
+
+§10.39 closed the hardware side (clean at golden, a burst at every non-golden
+wrap) and left two mismatches against the emulator's own isolated fixture
+(§10.38's `make_isolated_flex_fixtures`, T1 records R1, T2 plays R1 and is
+never armed): the emulator's anomaly recurred at **half** the rate (every
+other wrap) with a **different character** (a sustained second tone, not a
+burst). Both are now explained, and neither is a real emulator behaviour to
+reconcile — they are artifacts of the fixture and of the decode.
+
+**A hardware re-measurement first, sharper than §10.39's jump count.** Fitting
+the 1 kHz carrier's phase across each non-golden wrap (441-sample windows,
+the ~0 ppm analog drift removed by a linear detrend over t = 3–60 s;
+`out/hw_capture_128_210032.wav` channel 2): the carrier's own delay wobbles
+**±0.4–0.5 samples and returns, with a per-wrap step of ≈ 0.00 samples** — it
+does NOT slip. So the click is an **additive transient injected at each loop
+boundary**, riding on top of a continuous carrier, not a pitch/phase
+discontinuity of the loop. The golden capture has no such transient at any
+wrap. (Measured; the ±0.5 wobble is at the drift-residual floor and is not
+itself audible — the burst is.)
+
+**The decisive emulator run: a sample-counter in, not a tone.** A 30 s WAV
+whose every sample's value equals its own input index (`counter.wav`, on the
+C/D pair) fed as `--audio-in`, so each *played* sample's value names the input
+sample it came from — a wrap in the FLEX read shows as an exact, unambiguous
+jump in the value stream, with none of the phase or `record_audio`
+segment-order ambiguity a tone carries. Run on both isolated cards for 22,000
+frames (≈ 4.3 passes at 128, ≈ 2.1 at golden), `--dsp --main-level 64`,
+watching the FLEX bind `0x4000f450` (`tools/scratch/counter_wrap.py`):
+
+| | non-golden `n128` | golden `g65` |
+|---|---|---|
+| T2 played value vs input | **`input − 62`, continuous** | **`input − 62`, continuous** |
+| largest step in the value stream, whole run | **5** (the counter's own per-sample slope) | **5** |
+| value resets (buffer wraps) across 4/2 passes | **0** | **0** |
+| FLEX bind `0x4000f450` retriggers | ~5 (≈ once per pass) | ~6 |
+
+**The two tempos render identically, and neither loop-wraps.** T2 plays the
+recorder buffer as a **fixed-lag delay tap ~62 samples behind the record
+write-head**, and it tracks the writer for the whole run — 352,000 samples,
+four buffer-lengths at 128 — with no read-pointer reset. The FLEX voice IS
+retriggered each pass (the bind fires with `D0 = 0x80` = R1, in a pair with a
+second bind `D0 = 0x5`, ~once per pass), **but the retrigger does not reset the
+read position** to the loop's start; the read stays locked to the writer. A
+fixed-length loop player would reset the read to buffer-start each pass and, at
+a fractional length, splice mid-sample — that is the hardware click, and it is
+exactly what this fixture never does, at either tempo.
+
+**So the isolated fixture is the wrong instrument for the click.** It was built
+(§10.38) to remove the self-loop monitor-passthrough confound, and it does —
+but T2 reading R1 *while T1 is still recording R1* legitimately chases the live
+write-head, so there is no settled buffer to loop and no boundary to splice,
+regardless of tempo. §10.39's "every other wrap" was `record_audio`
+mis-ordering the segmented `(15 pairs)(1 pair)` FLEX frame (the split that
+appears from the first wrap on — confirmed: pass 0 renders as one contiguous
+16-sample block, i.e. the tap; pass 1+ as the segmented wrapping read), and the
+"second tone" was that same scramble heard. **Both §10.39 mismatches are
+retracted as fixture/decode artifacts; there is no residual emulator-vs-hardware
+disagreement to reconcile from that fixture, because that fixture never
+exhibited the mechanism.**
+
+**Bryan's own project cannot stand in for it yet.** `PROJECT 260908` staged and
+run under the port (`--audio-in counter.wav`, 3,000 frames) renders **silent on
+every track** — the same result as §10.19, and for the reason §10.24/§10.25
+localized and left open: the frame-builder's recorder-arm pass never crosses to
+start a recording under `--sequencer --dsp`, so his self-loop records nothing
+and plays nothing. The faithful self-loop fixture is blocked on that gap.
+
+**What actually reproduces the click, and is the next step.** A **fixed-buffer
+loop**: record one pass into R1, *stop the recorder* (remove the REC trig), and
+loop the settled buffer with a per-pass PLAY retrigger — then the FLEX read must
+wrap at the buffer's fixed (fractional, at non-golden) length, and the counter
+stream will show whether the wrap is an integer return (golden) or a
+fractional/duplicated splice (the click). That isolates the loop-wrap without
+the chase-the-writer confound and without needing the arm path Bryan's project
+is blocked on. The alternative — closing the §10.24 arm-crossing gap so his
+project records — is the more faithful but larger task. Either way the mechanism
+to render is now named precisely: **a retriggered fixed-length loop read whose
+start does not sample-align at a non-golden length**, which the current isolated
+fixture structurally cannot show.
+
+Instruments: `tools/scratch/counter_wrap.py` (value-stream wrap detector),
+the counter WAV recipe above; both counter dumps under `out/` are gitignored.
+
+### 10.41 The fixed-buffer fixture reproduces the click's TIMING and the ±0.5-sample phase signature in the port — but not yet a clean audible golden/non-golden split, because the recorded buffer does not seamlessly fill the loop (9 Sep 2026 — measured)
+
+§10.40's recommended fixture, built and run (`make`-style via `ot_project`:
+T1 FLEX-on-R1 records ONE bar with a single REC1 trig at step 1, T2 FLEX-on-R1
+plays with PLAY trigs at steps 1/17/33/49, pattern LEN 64 = four bars at 1X, so
+the recorder arms once and the buffer is settled while T2 loops it three more
+times). Counter input (`counter.wav`, value = input index), 21,000 frames at
+128 and 42,000 at 65.6, `--dsp --main-level 64`; `tools/scratch/counter_wrap.py`.
+
+**The buffer now loop-wraps — the chase-the-writer confound is gone.** Unlike
+§10.40's isolated fixture, T2's played value resets to the buffer start at each
+bar boundary (the record-walk `0x40007178` fires through bar 1 then goes quiet;
+T1 records nothing after). The wrap SPACINGS are the whole result:
+
+| | non-golden `n128fix` | golden `g65fix` |
+|---|---|---|
+| wrap spacings (counter, samples) | **82,687 / 82,688 / …** (alternating) | **161,280 / 161,280 / …** (constant) |
+| = pass length | 82,687.5 (fractional) | 161,280 (exact integer) |
+| carrier phase step at the wrap (tone, fit over ±2,200 samples) | **+0.48, −0.52 … (±0.5 alternating)** | integer, no ±0.5 term |
+
+**This is the golden-vs-non-golden distinction, reproduced in the port for the
+first time**, and the non-golden ±0.5-alternating carrier phase step is the SAME
+signature §10.40 measured on the hardware capture (drift-removed: the carrier
+wobbles ±0.5 and returns, no net slip). The truncated-reciprocal seam
+(`octabam-emac-unicorn-bug`, −0.5/pass at RLEN 4) and this RLEN-16 retrigger
+jitter are the same fractional residue seen two ways.
+
+**What it does NOT yet do: a clean audible click only at non-golden.** The tone
+render (`tone1k.wav`, 1 kHz on the recorded pair) shows a hard discontinuity at
+EVERY wrap **at both tempos** — the buffer's played content ends and the stream
+drops to a run of exact zeros for a stretch before the next retrigger's content
+resumes (verified in both the counter and tone streams; ~340 zero samples per
+wrap in the counter run at 128). That silence gap is a **fixture artifact, not
+the click**: the recorded buffer carries leading zeros (record fade-in/lag) and
+its content is shorter than the loop period, so there is dead space at the loop
+point regardless of tempo, and it swamps a direct golden-vs-non-golden
+burst-count comparison. (The `o10_recloop` record parser also renders the
+segmented `(15)(1)` wrap frame as zeros — a second reason not to trust the
+tone render's per-sample values AT the wrap frame; the counter's value stream
+and the phase fit over windows away from the wrap are the robust instruments,
+and they are what the table above rests on.)
+
+**So: the mechanism and its timing signature are reproduced; a faithful audible
+render is one fixture-fidelity step away.** What is needed is a buffer whose
+recorded content SEAMLESSLY fills the loop period (no leading silence, content
+length = loop length), so the only discontinuity at the loop point is the
+fractional splice itself — which is exactly what Bryan's SRC3 sound-on-sound
+self-loop produces on hardware, and why his clicks and a golden loop does not.
+Two ways to get there, neither done: (a) tune the fixture so the recording is a
+gapless loop (drive a continuous tone from before the arm, size RLEN and the
+FLEX loop points to the recorded length); (b) close the §10.24/§10.25 arm-crossing
+gap so Bryan's own `PROJECT 260908` records under the port (it still renders
+silent — retried this session, 3,000 frames, all tracks zero). Fixture (a) is
+the smaller step and directly isolates the splice.
+
+Instruments: `tools/scratch/counter_wrap.py`; the counter/tone WAV recipes above
+(both under `out/`, gitignored). This supersedes §10.40's "next step" paragraph.
+
+### 10.42 Decisive: successive loops are bit-identical and stationary at golden, and jitter by an alternating ±1 sample at non-golden — the click mechanism reproduced in the C++ port, by the same instrument the hardware was judged with (9 Sep 2026 — measured)
+
+§10.41 worried the 81-sample loop-point gap (a constant recorder fade/arm-latency
+artifact, present identically at both tempos) blocked a clean golden/non-golden
+comparison. It does not — because the discriminator is not "is there a gap" but
+"are successive loops the SAME." Comparing consecutive loops of the fixed-buffer
+tone render (skip the 120-sample loop-point region, find the best integer
+alignment shift, measure the residual; `g65fix_tone`/`n128fix_tone`, the C++
+port `out/emu/ot_emu --dsp`):
+
+| | golden `g65` | non-golden `n128` |
+|---|---|---|
+| loop 0 vs 1 | shift **+0**, residual **−240 dB** (bit-identical) | shift **−1**, residual −240 dB |
+| loop 1 vs 2 | shift **+0**, residual −240 dB | shift **+1**, residual −240 dB |
+| wrap spacing | constant **161,280** | **82,687 / 82,688** alternating |
+| carrier phase step at the wrap | **constant** −6.32 samples every loop | **±0.5 alternating** (+0.51, −0.50, +0.51) |
+
+**Golden loops are stationary: each pass is the SAME 161,280 samples, byte for
+byte, so the played signal is exactly periodic and there is no transient — clean,
+even though a single loop carries a fixed 6.3-sample carrier-phase kink at its
+boundary (the recording is not a whole number of tone cycles; the kink is
+identical every loop, hence part of a stable periodic waveform, hence
+inaudible).** Non-golden loops are NOT stationary: the boundary walks by an
+alternating ∓1 sample (the truncated fractional pass, 82,687.5), so consecutive
+loops differ, the signal is aperiodic, and the boundary transient changes every
+pass — the click. This is exactly Bryan's golden-vs-non-golden rule, and the
+"compare successive loops" test is the same drift-immune instrument the hardware
+capture was judged with (§10.27's cross-correlation, §10.31's ear). The
+±0.5-alternating carrier phase step is the same number measured on the hardware
+capture (§10.40).
+
+**So the C++ port reproduces the click's mechanism**, on the real DSP, for a
+fixed-buffer retriggered loop: golden = bit-identical periodic loops (clean),
+non-golden = ±1-alternating aperiodic loops (click). 🟡 Inferred, not heard in
+the port: that this ±1 boundary jitter is audibly the same click — the port's
+render also carries the constant 81-sample loop-point gap (a recorder
+fade/arm-latency the fixture does not null and Bryan's SoS feedback would
+re-record away), so an `afplay` of `n128fix_tone` would foreground that gap, not
+the jitter. What the measurement establishes is the mechanism and its exact
+timing/phase signature; a gap-free audible render still wants either a recording
+that seamlessly fills the loop or Bryan's own project (blocked on the §10.24 arm
+gap). **This is the platform to develop and verify a fix on**: any candidate
+recorder/retrigger change can be rendered here and checked for whether the
+non-golden loops become stationary (the golden signature) without disturbing
+golden — no flash cycle.
+
+Instruments: the successive-loop comparison and phase-step probe above
+(inline in `tools/scratch`), `counter_wrap.py`.
+
+### 10.43 The remaining tooling gap, pinned: the port's per-bar FLEX RETRIGGER inserts a ~50–80-sample loop-point gap that hardware does not — so the mechanism is faithful but a clean audible render is not, yet (9 Sep 2026 — measured)
+
+Chasing a gap-free audible render of §10.42's fixture. Three taps, three
+different loop-point pictures, which is itself the finding:
+
+- **84-word voice record** (`track_audio`, full level, −10 dB): goes to an EMPTY
+  voice skeleton for ~5 frames at each retrigger (rec#5169–5173 carry 6 of 84
+  non-zero words), i.e. the per-voice RECORD empties during the re-bind.
+- **read-back / per-track chain output** (`readback_audio`, −69 dB): far more
+  continuous, and it carries the SAME mechanism — successive-loop compare gives
+  golden shift +0 (−57.8 dB residual, stationary), non-golden shift −1/+1
+  alternating — but it still has a silence run at **each wrap, at BOTH tempos**
+  (7 gaps, every one within ~90 samples of a wrap).
+- **ESAI TX0 master mix** (`--audio-out`, −81 dB, attenuated): only 2 gaps, ~24
+  samples, every OTHER wrap.
+
+**What is solid: the mechanism, on two independent taps.** Record and read-back
+both give golden = stationary loops, non-golden = ±1 alternating — §10.42 stands,
+not tap-dependent.
+
+**What blocks a clean audible render: the retrigger gap.** The fixture PLAY-trigs
+the FLEX voice every bar, and in the port each retrigger costs a
+~50–80-sample dead zone at the loop point — present at golden too. Hardware's
+golden loop is clean (§10.31/§10.39: "perfect loop", zero outliers) AND
+hardware retriggers (Bryan: REC+PLAY on the same step), so **hardware's FLEX
+retrigger is gapless and the port's is not** — a port fidelity gap in the
+retrigger→DSP-voice path (the ColdFire stops feeding the voice for several
+frames at the re-bind, or the bind message is quantised late), NOT the click
+mechanism. It cannot be dodged by "just don't retrigger": a free-running
+looped FLEX (LOOP on, never retriggered) loops the buffer at its INTEGER
+recorded length and is clean at every tempo (EXTERNAL.md §6, "flex loops at L,
+never retriggered → clean"), so it would show no click at all. The click needs
+the retrigger; the faithful render needs the retrigger to be gapless.
+
+**So the tooling stands here:** the objective platform is complete and
+decisive — successive-loop compare + wrap-spacing + phase-step distinguish
+golden-clean from non-golden-click on the real DSP, and would objectively score
+any candidate fix (does non-golden become stationary without disturbing
+golden). A gap-free AUDIBLE render — hearing it, and hearing golden stay clean —
+needs the port's FLEX retrigger startup made gapless first: locate why the
+re-bind stalls the voice for ~5 frames (ColdFire bind path `0x4000f450` timing,
+or the DSP voice re-init), and close it. That is the next tooling task, and it
+is well-scoped. Demo WAVs under `out/click_demo/` carry the retrigger gap at
+both tempos and so do NOT yet demonstrate golden-clean — do not use them for an
+ear A/B until the retrigger gap is fixed.
+
+### 10.44 The retrigger gap localized: the port treats a FLEX PLAY-trig as a full VOICE RESTART (the ColdFire's sample-feed re-seeks and stalls ~5 frames) where hardware resets the read pointer seamlessly (9 Sep 2026 — measured)
+
+Traced §10.43's ~5-frame loop-point gap to its source. Instrumented the
+fixed-buffer run across one mid-run retrigger (`--watch-pc 0x4000f450` the FLEX
+bind, block dump), and read the block classes: the 672-word blocks at
+`0x80001c90`/`0x80002710` that `track_audio` parses are **dir `>` — HOST→DSP**,
+i.e. the ColdFire streaming T2's FLEX audio (the recorder buffer R1) TO the DSP,
+not the DSP's output. So "the voice record empties" means **the ColdFire stops
+feeding T2's samples to the DSP.**
+
+**Measured, one retrigger:** the host→DSP audio for T2 goes empty at frame 5170
+and resumes at frame 5175 — **5 frames, ~80 samples** — with the FLEX bind
+`0x4000f450` firing in that window. Decisively: the INITIAL voice start (transport
+frame 1) is empty frames 1–6 and fills at frame 7 — **the same ~5–6-frame
+latency.** So the port handles a PLAY-trig retrigger by running the voice through
+the SAME fresh-start path as the very first note: the ColdFire's FLEX sample-feed
+re-seeks the buffer and takes the full ColdFire→DSP pipeline depth (~5 frames,
+consistent with O9c's 155-sample THRU latency) to produce output again.
+
+**Why this is the port's bug, not the click and not the firmware's intent.**
+Hardware's golden loop is clean (§10.31/§10.39) AND retriggers every bar
+(Bryan: REC+PLAY on the same step). If a retrigger cost a 5-frame feed gap on
+hardware, golden would tick every bar too — it does not. And the tempo
+dependence forces the retrigger to be a read-pointer RESET (a free-running
+looped FLEX loops the buffer at its integer recorded length and is clean at
+every tempo, EXTERNAL.md §6 — no click), landing at the fractional pass
+boundary. So on hardware the PLAY-trig resets the FLEX read pointer to
+buffer-start **seamlessly, within the running voice**; the port instead tears
+the voice down and re-feeds it from scratch, inserting the pipeline-depth gap.
+
+**The fix, scoped.** Find why a PLAY-trig retrigger in the port takes the
+full voice-start path (ColdFire sample-feed re-seek + pipeline refill) instead
+of a seamless read-pointer reset of the already-running voice. Candidates: the
+play-trig delivery timing makes the ColdFire frame builder RE-ALLOCATE/re-open
+the voice (a new note) rather than update it (the §10.8/§10.10 engine opcodes
+`0x22` re-take / `0x25` re-arm may be firing on the play trig when hardware
+would only reset), or the port's SDRAM/DMA model for the FLEX buffer re-seek
+adds the frames. Instrument the ColdFire's FLEX feed path across a retrigger
+(is the voice record re-allocated, or just its read index moved?) and compare
+to the transport-start open. Closing it makes the port render golden as a clean
+loop and non-golden as a click — the faithful audible instrument. The objective
+metric (§10.42) already works and does not need it.
+
+### 10.45 The retrigger gap is a PORT artifact, isolated: only recorder-buffer playback gaps (static samples never do), and it is the long re-open serializing against the audio feed (10 Sep 2026 — measured)
+
+Settled the §10.43/10.44 gap with a clean control. Built a verified fixture
+(`out/click_demo/hw_gaptest/GAP65`, GAP128) where a FLEX voice plays a **static
+sample** from a WAV (not a recorder buffer) with a PLAY trig every bar — same
+retrigger geometry, different source. Measured on the readback tap:
+
+| player | retrigger gap |
+|---|---|
+| **static sample**, TSMODE 0 | **none** — only a 49-sample initial start |
+| **static sample**, TSMODE 2 (timestretch) | **none** — same |
+| **recorder buffer** (R1), TSMODE 2 | **~5 frames / ~80 samples at every retrigger** |
+| recorder buffer, recorder LOOP=0 | identical (~5 frames) — not the re-record |
+
+The gap is **specific to recorder-buffer playback**, not general FLEX retrigger
+and not timestretch (both static cases retrigger gaplessly). The host-port block
+classes are byte-identical between the static and recorder-buffer runs (same 27
+DMA classes, same sizes) — the SAME host→DSP block just gets **zeros** for ~5
+frames in the recorder-buffer case.
+
+**Why it is a port artifact, not faithful (Sam's argument, and it holds).** If
+the ~80-sample (1.8 ms) dropout at every bar were real, Bryan's golden loop —
+which retriggers every bar — would tick audibly every bar; it is clean
+(§10.31/§10.39). So the port produces something the device does not. The cause:
+the recorder-buffer re-open (engine `0x22` release/allocate + `0x25` open →
+`0x40099680`) is ~611k ColdFire instructions ≈ 6 frames of CPU work, during
+which the firmware writes zeros to the feed. On hardware the audio feed (ESAI +
+eDMA) is genuinely concurrent, so the DSP keeps being fed while that long work
+runs in the background — no audible gap. In the port the long re-open
+**serializes against the feed**, so the feed goes empty for those frames. The
+static sample dodges it because its open is cheap (no pool release/allocate),
+so nothing long blocks the feed. 🟡 The exact port mechanism (audio-feed
+DMA/ISR not preempting the long engine task, or the feed buffer not carrying
+prior content across the re-open) is the next locate; the isolation to
+recorder-buffer-playback-re-open is measured.
+
+**Consequences.** The objective click reproduction (§10.42, successive-loop
+compare) is unaffected — it reads the settled loop content, not the retrigger
+frame. A gap-free AUDIBLE render needs the port to keep the recorder-buffer feed
+flowing across the re-open (feed prior content, or preempt the re-open with the
+audio path) — a port-side scheduling fix, no firmware change. Control fixtures
+`GAP65`/`GAP128` (static, verified gapless) also validate the project-build →
+card pipeline for any follow-on hardware test.
+
+### 10.46 The retrigger gap is the recorder STREAMING gate muting, not a voice restart — corrected via octamax's hw-verified play-position map (10 Sep 2026 — measured)
+
+A peer session relayed mxldyn/octamax 2.0's hardware-verified slice-view map
+(his progress bar renders on a real MKII): the per-track voice struct at
+`0x800049d8` stride 0xA8, `@68` = live integer play position (advanced by
+`0x40008898`), `@0` = active byte (one-shot end clears it at `0x40008ea6`),
+loop-wrap rewrites `@48/@52/@68` at `0x400088dc`, all inside `FUN_40007960`.
+Watching those PCs under our port across a recorder-buffer retrigger **corrects
+§10.44's "voice restart" framing**:
+
+- **T2's play voice LOOPS continuously.** `@68` advances 16×/frame EVERY frame
+  including the gap frames (86,400 hits / 5,400 frames), exactly ONE loop-wrap,
+  **ZERO one-shot-ends**. The voice never stops or re-opens. The `0x22`/`0x25`
+  re-open §10.44 saw was T1's RECORDER re-arm, not T2's play voice.
+- **So the gap is not silence-from-a-dead-voice; it is the OUTPUT being MUTED
+  while the voice plays.** The muter is the recorder STREAMING gate
+  `FUN_40001598` (octamax's HOTCHANGE map, disassembled here): it reads the
+  voice type/slot, the play-position pair `voice+0x5c/0x60`, and the recorder
+  write/limit tables `0x46c7ff42[rec]`/`0x46c7fe24[rec]`, and returns 0 → MUTE
+  (`0x4000812c`) when the play head is past the recorder's written data ("no
+  data available"). It is a real safety: don't play past what is recorded.
+- **Measured:** the write-position table `0x46c7ff42` is cleared to
+  `0xFFFFFFFF` (−1) every frame by `0x4000d36e`, then refilled with the live
+  write positions. In the gate's SIGNED compare a −1 entry reads as "behind the
+  play head" → MUTE. The gap is the ~5 frames at each retrigger where R1's
+  entry is −1 (not yet refilled) or the play head is transiently ahead of the
+  refilled write head.
+
+**Why it is a port artifact (unchanged conclusion).** On hardware the same gate
+runs, but the recorder's write head stays ahead of the reset play head across a
+retrigger (an 80-sample mute every bar would tick, and golden is clean). In the
+port the write-position refill lags the reset play head for ~5 frames at the
+retrigger, tripping the gate. 🟡 The exact mute branch and WHY the port's
+refill lags (recorder re-arm timing, or the play head reset landing ahead of the
+8-frame-lagged write head) is the next locate — best done with octamax's
+`emu_recvoice.py` harness shape (seeds `voice+0/+4/+0x10` and meta
+`0x46c939cc+8/+0x10/+0x14`, reports which branch fires). The objective click
+reproduction (§10.42) is unaffected.
