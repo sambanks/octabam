@@ -4121,3 +4121,43 @@ not bar-periodic — spacings 0.09–1.2 s, clusters up to 2,400 samples —
 because GAPTEST.WAV is not a pure sine, so the tone-calibrated detector does
 not apply. The control has to be a pure 1 kHz loop of 82,687 samples; only
 then is the burst count comparable to `cond_b_128`.)
+
+### 10.49 Seek-not-note candidates built and port-gated; OCTABAM81 (lever A) is the morning's flash (10 Sep 2026, late — measured in the port, unflashed)
+
+Two caves for §10.48's hypothesis, built through the real planter:
+`modules/flex-seekbind` (lever A: hooked on the bind tail's same-sample test
+`0x4000f8cc`; when the bind's own slot/type/generation verdict holds, take the
+same-sample continuation with result 1, skipping the position compare that
+turns the re-bind into a new note) and `modules/flex-seekbind-ctr` (lever B,
+paired: on that same path do not bump the voice's per-bind counter `+0x90`).
+Remixes `seekA` → `OCTATRACK_OCTABAM81.bin`, `seekB` → `OCTABAM82.bin`.
+
+**Gate 1 — does stock already take the seek path?** No, and the answer is
+better than yes/no: on `n128fix` (record once, play every bar) the stock
+tail's verdict at `0x4000f912` for the T2 voice is, bind by bind, NEW, SEEK,
+NEW, SEEK, NEW — it ALTERNATES with the half-sample truncation. The position
+compare in the tail passes on the bars where the trig lands on the wrap and
+fails on the bars where it lands a sample off, so every other bar is a new
+note to the DSP. (This is also the port's self-loop burst period of
+§10.48, every other bar; hardware bursts every bar — the port and the unit
+disagree on exactly the compare's inputs, which is what cfprobe should read.)
+**A and B: 5 of 5 binds take the seek path** (cave entered 5×, compare path
+0×, "different" path only on the initial note). **Gate 2 — does the DSP see
+a difference?** Yes: from the first bar stock would have restarted (bar 3),
+every DSP read-back frame differs from stock (−0.1 dB rms, content differs
+on every frame after), while the ColdFire feed is unchanged. **Gate 3 —
+regression:** feed stationarity −1/0/−1 as stock, no fault, 21,000 frames.
+**What the port cannot say:** its own read-back burst at each bar (5–7
+samples, the feed's one-sample shift smoothed by the DSP) is identical for
+stock, A and B, and the unit's 15–50-sample transient never appears in it.
+So the port has done all it can: A is well-formed, changes the DSP-facing
+event exactly as intended, and changes what the DSP then does. Whether that
+is the click is the morning's ten-minute count.
+
+**Morning order.** Flash OCTABAM81 (A). Record-once loop, 128 BPM, 60 s,
+`out/hw/softretrig/cap.sh`: baseline is 30 bursts. Zero or a clear drop →
+A is the fix (then the golden and the self-loop checks). Unchanged → the
+DSP restart is not message-driven: skip B, lever C (a fade at voice start
+in the DSP payload). Changed but not gone → OCTABAM82 (B). Either way, the
+cfprobe read of the tail's compare inputs on the unit tells why the unit
+takes the new-note path every bar where the port alternates.
