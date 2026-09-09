@@ -1,6 +1,6 @@
-// Drop-free recorder pinned to the EVO4: CoreAudio device lookup by name,
+// Drop-free recorder for an interface chosen by name (EVO4, MicroBook, ...): CoreAudio device lookup,
 // AVAudioEngine tap -> int32 PCM wav (all input channels).
-// usage: rec <seconds> <out.wav>   Prints "START <epoch>" once live.
+// usage: rec <seconds> <out.wav> [device-substring]   Prints "START <epoch>" once live.
 import AVFoundation
 import CoreAudio
 import Foundation
@@ -37,8 +37,11 @@ func findDevice(named want: String) -> AudioDeviceID? {
     return nil
 }
 
-guard var dev = findDevice(named: "EVO4") else {
-    FileHandle.standardError.write("EVO4 not found\n".data(using: .utf8)!)
+// Device: third argument, else $REC_DEVICE, else the EVO4 (a substring of
+// the CoreAudio name: "MicroBook" finds "MOTU MicroBook II").
+let want = args.count >= 4 ? args[3] : (ProcessInfo.processInfo.environment["REC_DEVICE"] ?? "EVO4")
+guard var dev = findDevice(named: want) else {
+    FileHandle.standardError.write("\(want) not found\n".data(using: .utf8)!)
     exit(2)
 }
 
