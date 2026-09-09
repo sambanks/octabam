@@ -4059,3 +4059,45 @@ hardware, not the port, and it is cheap now (10 min per capture, rig
 up): (a) REC every bar, PLAY once with LOOP on — burst gone means the play
 reset is the source; (b) PLAY every bar, REC once — burst gone means the
 re-record is. Both are the same project with one trig removed.
+
+**The split, on hardware (same night, OCTABAM80 still flashed — measured).**
+Condition (a), record every bar / play once, is IMPOSSIBLE by firmware
+design: a running voice is stopped the moment its recorder buffer is
+re-armed (the generation check in `FUN_40007960`), whatever the trig says
+(1ST, 2:8, LOOP ON all tried: the voice dies at the next re-arm). Every bar
+of a re-recording loop therefore re-binds, and my cave's "skip" could never
+have been right there. Condition (b), record ONCE (one-shot recorder trig),
+play every bar (sample trig NOT 1ST), 128 BPM, cave in place: **30 bursts at
+1.875 s, 15–25 samples each** (`out/hw/softretrig/cond_b_128.wav`). Sam by
+ear: "a little high-pitched beep before the click". This is exactly the
+fixed-buffer case the port rendered as bit-identical loops WITH this cave
+(§10.47 table). Three conclusions: (1) the hardware click is not the
+ColdFire read-pointer reset — skipping it changes nothing; (2) at every
+re-bind of a FLEX voice on a recorder buffer the unit's DSP does something
+the port's DSP does not, and a voice-restart transient (a chirp, then hash)
+is both the shape and the sound; (3) the port is blind to it, so no further
+recorder cave is scored in the port until the port shows this burst.
+`modules/flex-softretrig` is withdrawn as a fix (kept as the worked example
+of a bind-site cave).
+
+**Hypothesis for the fix (inferred, not measured).** The bind ends by
+returning 0 or 0x100 (`0x4000f912`, from the same-sample verdict at `sp@55`
+and the `+0x58` compare at `0x4000f8cc`), sets the `0x46104d04/08` "re-send"
+flags and bumps `+0x90`; the caller turns that into the DSP's view of the
+event — a fresh note (voice restart: rate smoother, interpolator and fetch
+state re-primed, which is a chirp and a few samples of stale ring) or a
+seek. On the unit a same-buffer re-bind is evidently taking the restart
+path every bar; in the port it does not, which is why the port's loops are
+bit-identical. The fix would be to make a same-slot, same-generation FLEX
+re-bind a SEEK for the DSP — keep the ColdFire position reset (it is
+correct), suppress the restart signal — the inverse of what the cave did.
+Two cheap discriminators before writing it, both on the unit, no flash:
+(i) the same loop with a STATIC sample instead of a recorder buffer (the
+`GAP128` card project is exactly that): a chirp there says the restart
+transient is general to every FLEX re-trig and only a continuous tone
+exposes it; silence says it is recorder-buffer-specific (the `+0x5c/+0x64`
+bounds path); (ii) `cfprobe` on the bind's return value and the two flags
+at the second bar, which names the branch the unit takes and the port does
+not. If the restart is the DSP's own doing regardless of the message, the
+remaining lever is a short fade at voice restart inside the DSP payload —
+stock voice code, but ours to patch, with payload B the only one with room.
