@@ -3610,3 +3610,52 @@ the smaller step and directly isolates the splice.
 
 Instruments: `tools/scratch/counter_wrap.py`; the counter/tone WAV recipes above
 (both under `out/`, gitignored). This supersedes §10.40's "next step" paragraph.
+
+### 10.42 Decisive: successive loops are bit-identical and stationary at golden, and jitter by an alternating ±1 sample at non-golden — the click mechanism reproduced in the C++ port, by the same instrument the hardware was judged with (9 Sep 2026 — measured)
+
+§10.41 worried the 81-sample loop-point gap (a constant recorder fade/arm-latency
+artifact, present identically at both tempos) blocked a clean golden/non-golden
+comparison. It does not — because the discriminator is not "is there a gap" but
+"are successive loops the SAME." Comparing consecutive loops of the fixed-buffer
+tone render (skip the 120-sample loop-point region, find the best integer
+alignment shift, measure the residual; `g65fix_tone`/`n128fix_tone`, the C++
+port `out/emu/ot_emu --dsp`):
+
+| | golden `g65` | non-golden `n128` |
+|---|---|---|
+| loop 0 vs 1 | shift **+0**, residual **−240 dB** (bit-identical) | shift **−1**, residual −240 dB |
+| loop 1 vs 2 | shift **+0**, residual −240 dB | shift **+1**, residual −240 dB |
+| wrap spacing | constant **161,280** | **82,687 / 82,688** alternating |
+| carrier phase step at the wrap | **constant** −6.32 samples every loop | **±0.5 alternating** (+0.51, −0.50, +0.51) |
+
+**Golden loops are stationary: each pass is the SAME 161,280 samples, byte for
+byte, so the played signal is exactly periodic and there is no transient — clean,
+even though a single loop carries a fixed 6.3-sample carrier-phase kink at its
+boundary (the recording is not a whole number of tone cycles; the kink is
+identical every loop, hence part of a stable periodic waveform, hence
+inaudible).** Non-golden loops are NOT stationary: the boundary walks by an
+alternating ∓1 sample (the truncated fractional pass, 82,687.5), so consecutive
+loops differ, the signal is aperiodic, and the boundary transient changes every
+pass — the click. This is exactly Bryan's golden-vs-non-golden rule, and the
+"compare successive loops" test is the same drift-immune instrument the hardware
+capture was judged with (§10.27's cross-correlation, §10.31's ear). The
+±0.5-alternating carrier phase step is the same number measured on the hardware
+capture (§10.40).
+
+**So the C++ port reproduces the click's mechanism**, on the real DSP, for a
+fixed-buffer retriggered loop: golden = bit-identical periodic loops (clean),
+non-golden = ±1-alternating aperiodic loops (click). 🟡 Inferred, not heard in
+the port: that this ±1 boundary jitter is audibly the same click — the port's
+render also carries the constant 81-sample loop-point gap (a recorder
+fade/arm-latency the fixture does not null and Bryan's SoS feedback would
+re-record away), so an `afplay` of `n128fix_tone` would foreground that gap, not
+the jitter. What the measurement establishes is the mechanism and its exact
+timing/phase signature; a gap-free audible render still wants either a recording
+that seamlessly fills the loop or Bryan's own project (blocked on the §10.24 arm
+gap). **This is the platform to develop and verify a fix on**: any candidate
+recorder/retrigger change can be rendered here and checked for whether the
+non-golden loops become stationary (the golden signature) without disturbing
+golden — no flash cycle.
+
+Instruments: the successive-loop comparison and phase-step probe above
+(inline in `tools/scratch`), `counter_wrap.py`.
