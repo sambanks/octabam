@@ -76,13 +76,15 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int) -> tuple[b
     return raw.read_bytes(), _nm(elf, work)
 
 
-def build(units, payloads, work: pathlib.Path, reserve=None):
+def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
     reserve: (base, size) of the arena reserve the runtime lives in;
-    required when there are units. Returns (append bytes, symbols of the
-    octabam runtime, boot poke, payload names) and writes LAYOUT."""
+    required when there are units. defsyms: extra {name: value} for the
+    link (a bridge's continuation targets, schema.Override). Returns
+    (append bytes, symbols of the octabam runtime, boot poke, payload
+    names) and writes LAYOUT."""
     import json
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -97,6 +99,7 @@ def build(units, payloads, work: pathlib.Path, reserve=None):
         defs = {}
         for p in payloads:
             defs.update(p.get("symbols", {}))
+        defs.update(defsyms or {})
         raw, symbols = link_runtime(units, work / "runtime", defs, base)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             runtime_build.pack(raw, MAX_CANDIDATES)

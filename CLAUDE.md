@@ -419,6 +419,17 @@ all oracle failures.
 hash.** Register discipline in a boot stub is not checkable by anything but
 the port: `verify_dram_boot` watches the loader's entry and its `fatal` hang.
 
+**TWO BUILDS ON ONE MACHINE CORRUPTED EACH OTHER THROUGH FIXED `/tmp`
+NAMES (10 Sep 2026).** `build_bus.assemble()` wrote `/tmp/build_bus_src.asm`,
+`.bin` and `.sym` by fixed name, so two sessions' `make check` — or the
+selftest's per-remix builds beside anyone else's build — read each other's
+assembler output: "STREAMZ overruns the region (2883 > 2724 words)",
+"selprobe dsp_asm exit 1", a different remix each time, on a clean checkout
+too. Found by a peer session. Scratch is `tempfile.mkdtemp` per process now
+(`verify_hello` likewise). A failure that moves between remixes across runs
+is a shared-scratch race before it is anything else; and a `make check`
+result taken while another build was running is not a result.
+
 **The report is API, and it prints paths.** Moving a tool changed the build
 report (the hints name `tools/harness/send_probe.py`), which refhash
 correctly flagged with every artifact identical. Re-save only after proving

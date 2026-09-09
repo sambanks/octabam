@@ -134,6 +134,24 @@ def check(selected) -> list[str]:
     # build's own free-space check covers the real extent); a floating one
     # is skipped like a floating cave. Detour sites are hook sites. Table
     # refs and Pokes are fixed rewrites, checked as pokes below.
+    # ---- overrides (schema.Override): a bridge's claim stands in ---------
+    # The overridden module's detour or recipe write at that site is not a
+    # claim any more; the bridge's own detour is. A bridge naming a module
+    # the remix does not carry is refused: there is nothing to bridge.
+    keys = {m.key for m in selected}
+    overridden_detours: set[tuple[int, str]] = set()      # (site, module key)
+    overridden_writes: set[tuple[str, str]] = set()       # (module key, write name)
+    for m in selected:
+        for o in getattr(m, "overrides", ()):
+            if o.module not in keys:
+                clash("override", m.name, f"(no {o.module})",
+                      f"0x{o.site:08x} -- it bridges {o.module}, which this remix "
+                      f"does not carry")
+            if o.write is None:
+                overridden_detours.add((o.site, o.module))
+            else:
+                overridden_writes.add((o.module, o.write))
+
     for m in selected:
         for u in getattr(m, "linked", ()):
             if u.cave_addr is None:
@@ -145,6 +163,8 @@ def check(selected) -> list[str]:
                           f"0x{u.cave_addr:08x}")
             caves.append((u.cave_addr, 6, m.name, f"linked unit {u.label}"))
         for d in getattr(m, "detours", ()):
+            if (d.site, m.key) in overridden_detours:
+                continue                 # a bridge's stub stands in for it
             if d.site in hooks:
                 clash("hook site", hooks[d.site], m.name,
                       f"0x{d.site:08x} -- the second jmp overwrites the first")
@@ -156,11 +176,18 @@ def check(selected) -> list[str]:
                 pokes.append((addr, 4, m.name, f"table ref ({t.label})"))
         for p in getattr(m, "pokes", ()):
             pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
+    # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave
+    # lands -- only the values written do -- so it is evaluated at a probe
+    # address purely to learn its sites. Until 10 Sep 2026 it was skipped,
+    # and the matrix said Octakit and CC PAGE 2 compose while the build
+    # refused them: both rewrite the MIDI control-parameter dispatch entry
+    # at 0x400d64a0 (her seven midi-control-parameter writes, its repoint).
+    PROBE_ADDR = 0x400D7000
     for m in selected:
         for c in m.cf_patches:
-            if c.emit is None or c.cave_addr is None:
+            if c.emit is None:
                 continue
-            _, cpokes = c.emit(c.cave_addr)
+            _, cpokes = c.emit(c.cave_addr if c.cave_addr is not None else PROBE_ADDR)
             for pa, expect, _write in cpokes:
                 span = (pa, len(expect), m.name, c.label)
                 for start, length, owner, label in caves:
@@ -214,9 +241,10 @@ def check(selected) -> list[str]:
 
     for m in runtimes:
         skip = set(getattr(getattr(m, "arena", None), "recipe_writes", ()))
+        skip |= {w for k, w in overridden_writes if k == m.key}
         for start, length, label in runtime_write_spans(m):
             if label in skip:
-                continue                 # computed by the build (arena geometry)
+                continue                 # computed by the build (arena geometry), or bridged
             for cstart, clength, owner, clabel in caves:
                 if _overlap(cstart, clength, start, length):
                     clash("ColdFire cave", f"{owner}'s {clabel}",
