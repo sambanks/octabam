@@ -2889,3 +2889,56 @@ to reconfigure/verify the recorder ON THE UNIT (a real recorder trig, SRC =
 the live input, T2's slot = R1) rather than trust a passthrough-blind
 capture. The instrument rule from §10.21 stands and just cost another
 reading: **prove the input is OFF before believing a recorder playback.**
+
+### 10.29 Bryan's own image+project on hardware: recording WORKS; the seam is not cleanly measurable on this analog rig (9 Sep 2026)
+
+Bryan's `to_bam` arrived (his image `OCTATRACK_OCTABAM22.bin`, his
+`PROJECT 260908`, his clickless spreadsheet). Flashed OCTABAM22 on Sam's
+unit and loaded his project.
+
+**Recording works on his exact setup.** ✅ Unlike the rebuilt `r4_128`
+fixture (§10.28, which only monitored the input), his image + project
+capture and loop audio: with the transport running there is a sustained
+looped signal on his self-looping track. So the recorder FUNCTIONS on
+hardware; the earlier fixture's silence was a project-config problem (its
+recorder trig lane / SRC / buffer assignment), not firmware, and it also
+resolves §10.23's port "no recorded audio" as the port's gap, not the
+firmware's.
+
+**Driving it needed his sync flags flipped.** His project ships with MIDI
+CLOCK RECEIVE and TRANSPORT RECEIVE OFF — he runs the unit standalone as the
+master (CLOCK/TRANSPORT SEND on). With both RECEIVE flags turned on, the Mac
+clocks the transport and can set the tempo for an A/B.
+
+**The A/B against his spreadsheet did not hold up.** His formula: a loop is
+clean when `RLEN × 15,876,000 / tempo24` is a whole number; 65.6 BPM
+(tempo24 1575) gives 10,080 samples/trig exactly — a GOLDEN tempo, clean at
+any RLEN — while 128 (tempo24 3072) gives 5167.96875, a 0.125-sample residue
+per trig. A first pass looked like a clean reproduction (65.6: 2
+click-candidates and a steady loop period; 128: 16 and a wandering period).
+It did **not** survive repetition. Three confounds stack and dominate:
+
+1. **His setup is sound-on-sound overdub.** The looped level builds up and
+   CLIPS (7–8 % of samples) even at a 0.01 input — the output level is set
+   by the accumulation ceiling, not the input — and clipping manufactures
+   its own discontinuities (a ~100 Hz buzz at one point) that swamp the
+   seam.
+2. **The recorder never holds still.** It re-records every pass, so there is
+   no static buffer to loop-analyse; the measured loop length jumped run to
+   run (20,727 / 23,197 / 88,400 / 73,145 at 65.6) and at 0.01 read ~73,000
+   at BOTH tempos — i.e. not tracking the tempo at all, so the "wander"
+   cannot be attributed to the seam.
+3. **No word clock.** The Mac and OT drift ~1 sample/loop, the same size as
+   the seam; only a cross-correlation of a STATIC recorded buffer would
+   cancel it, and there is no static buffer (see 2).
+
+**Conclusion.** Recording is confirmed on hardware, but a clean, sample-level
+hardware measurement of the golden-vs-clicking seam is not achievable on
+this rig (analog round trip, unsynced clocks, live overdub). It would need a
+single non-overdubbing recording, headroom below clipping, and a
+word-clock-locked capture. **The sample-exact seam therefore remains route
+A's result** (`octabam-emac-unicorn-bug`: −1 every 8 passes at 128/RLEN 4),
+which the fixed-EMAC emulator measures without any of these confounds. The
+hardware's contribution is narrower and real: the recorder works, and
+Bryan's click is a loop-boundary phenomenon consistent with his fixed-RLEN
+theory — but the number is the emulator's, not this capture's.
