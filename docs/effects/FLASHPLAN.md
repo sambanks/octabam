@@ -774,3 +774,43 @@ clicks. The click follows the tempo, not the length converter; the cave is
 not the fix and the seam model is not the click. His projects were rebuilt
 from this description, not copied from the card; AUX at 0 throughout.
 Hardware facts and what route A found next: RTOS_FORK §10.18.
+
+## Flash 8 — `hello-dram`, tag 22: the DRAM platform on silicon (staged 10 Sep 2026)
+
+The first image from the new ColdFire pipeline (`PLAN.md` work order, step
+1): one DRAM unit, no hooks, nothing on the panel. `make image
+REMIX=hello-dram BUILD=22` → `out/OCTATRACK_OCTABAM22.bin` (sha256
+`48ccc2437450f9e5…`) / `out/OCTATRACK_OS1.40C_OCTABAM22.syx`. 95 bytes
+changed inside the OS (the boot-site redirect into the loader, the arena
+base at its 24 sites, the four arena geometry words) plus a 278-byte
+append (loader + one packed payload). Boot-verified under the ColdFire
+port: the loader runs once, its hang never, the reserve reads back equal
+to the linked image (`docs/remixer/PLACEMENT.md`, "The platform reserve").
+
+**Claims, cheapest first, each with what would falsify it:**
+
+1. **It boots** and the OS version reads `OCTABAM22`. Falsified by a hang
+   at the splash — the loader's `fatal` (a hash gate failed) or the boot
+   detour itself. Recovery: `docs/remixer/FLASHING.md`, stock 1.40C over
+   MIDI or the card.
+2. **PROJECT › MEMORY reports ~75 MB**, not 85.5: the arena lost 1,707
+   pages (10 MB). Falsified by the stock figure (the geometry words did
+   not take) or a nonsense figure (the free-list fill and the count
+   disagree).
+3. **A project with static and flex samples loads and plays**, and a
+   second LOAD PROJECT after playing still works. This is the arena base
+   having moved at all 24 sites: a missed site would read pages from the
+   old base and play garbage or crash on the first sample. (The port shows
+   the `hello-dram` image reproducing the stock load to the sector count.)
+4. **Record into a track recorder and play it back.** The recorder cap
+   was cut with the count; a recorder page above the new count would be
+   the failure. Not exercised under the port (no recording there).
+
+Nothing to hear and nothing to look at beyond these: the unit is
+`hello-dram`'s canary, not the other way round. If all four hold, the
+next flash is `midi-scenes` (tag 23), his features through our loader —
+with his own build on his unit as the comparison — then `octakit`.
+
+Before: back up the card's projects (this image changes no project, but
+the next two do). After: power-cycle before judging anything; note the
+MEMORY figure exactly.
