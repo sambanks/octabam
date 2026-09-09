@@ -238,6 +238,19 @@ Fixed addresses whatever the remix, as before: the reserve is always
 the first 1,707 pages, so a remix without Octakit boots the same bytes to
 the same places.
 
+✅ **Measured under the port, with the alias-folding watch, on the
+static-sample card** (boot → LOAD PROJECT → 400 frames): the `hello-dram`
+image reproduces the stock run to the count — 6,232 ATA commands, 30,573
+sectors read, 292 written, the same five tracks armed at frame 0, the
+same 18,005 bytes landing in the old top window — with **0 writes into
+the reserve** and the runtime read back identical. The `midi-scenes`
+image likewise has no stock write into the reserve (28,700 writes, all
+from his own code running in DRAM: the MSC table and his state); on that
+image tracks 1–2 do not arm at frame 0 and ~8,600 fewer sectors are read
+— his `apply_part` wrapper and reload hooks changing part application
+under the port, not the arena (the control says so). Reported to him as
+his to look at; whether it reproduces on hardware is not known.
+
 ## The loader
 
 `tools/remix/loader.S`, derived from Em's Octakit loader with attribution:

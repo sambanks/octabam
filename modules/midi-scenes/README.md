@@ -73,5 +73,14 @@ separate measurement.
   the Part window that hers replaces.
 - Nothing from this pipeline has been flashed; the first flash is
   `hello-dram`, then this (`PLAN.md`, work order).
+- ⚠️ **Under the ColdFire port, with a project whose tracks 1–2 run
+  static machines, this image arms neither at frame 0 and reads ~8,600
+  fewer sectors at project load than stock or `hello-dram` on the same
+  card** (`docs/remixer/PLACEMENT.md`, "The platform reserve"). The
+  control image differs from this one only by his hooks, so it is the
+  `apply_part` wrapper / reload path / never-re-apply flips changing
+  part application — possibly only in the emulator (a MIDI-driving flag
+  his code reads?), possibly on the unit. His to look at; unmeasured on
+  hardware.
 - The PR upstream, once he's done: `tools/gas_port.py` + `gas/`, and
   optionally `build.py` consuming the `.s` form.
