@@ -3705,3 +3705,46 @@ or the DSP voice re-init), and close it. That is the next tooling task, and it
 is well-scoped. Demo WAVs under `out/click_demo/` carry the retrigger gap at
 both tempos and so do NOT yet demonstrate golden-clean — do not use them for an
 ear A/B until the retrigger gap is fixed.
+
+### 10.44 The retrigger gap localized: the port treats a FLEX PLAY-trig as a full VOICE RESTART (the ColdFire's sample-feed re-seeks and stalls ~5 frames) where hardware resets the read pointer seamlessly (9 Sep 2026 — measured)
+
+Traced §10.43's ~5-frame loop-point gap to its source. Instrumented the
+fixed-buffer run across one mid-run retrigger (`--watch-pc 0x4000f450` the FLEX
+bind, block dump), and read the block classes: the 672-word blocks at
+`0x80001c90`/`0x80002710` that `track_audio` parses are **dir `>` — HOST→DSP**,
+i.e. the ColdFire streaming T2's FLEX audio (the recorder buffer R1) TO the DSP,
+not the DSP's output. So "the voice record empties" means **the ColdFire stops
+feeding T2's samples to the DSP.**
+
+**Measured, one retrigger:** the host→DSP audio for T2 goes empty at frame 5170
+and resumes at frame 5175 — **5 frames, ~80 samples** — with the FLEX bind
+`0x4000f450` firing in that window. Decisively: the INITIAL voice start (transport
+frame 1) is empty frames 1–6 and fills at frame 7 — **the same ~5–6-frame
+latency.** So the port handles a PLAY-trig retrigger by running the voice through
+the SAME fresh-start path as the very first note: the ColdFire's FLEX sample-feed
+re-seeks the buffer and takes the full ColdFire→DSP pipeline depth (~5 frames,
+consistent with O9c's 155-sample THRU latency) to produce output again.
+
+**Why this is the port's bug, not the click and not the firmware's intent.**
+Hardware's golden loop is clean (§10.31/§10.39) AND retriggers every bar
+(Bryan: REC+PLAY on the same step). If a retrigger cost a 5-frame feed gap on
+hardware, golden would tick every bar too — it does not. And the tempo
+dependence forces the retrigger to be a read-pointer RESET (a free-running
+looped FLEX loops the buffer at its integer recorded length and is clean at
+every tempo, EXTERNAL.md §6 — no click), landing at the fractional pass
+boundary. So on hardware the PLAY-trig resets the FLEX read pointer to
+buffer-start **seamlessly, within the running voice**; the port instead tears
+the voice down and re-feeds it from scratch, inserting the pipeline-depth gap.
+
+**The fix, scoped.** Find why a PLAY-trig retrigger in the port takes the
+full voice-start path (ColdFire sample-feed re-seek + pipeline refill) instead
+of a seamless read-pointer reset of the already-running voice. Candidates: the
+play-trig delivery timing makes the ColdFire frame builder RE-ALLOCATE/re-open
+the voice (a new note) rather than update it (the §10.8/§10.10 engine opcodes
+`0x22` re-take / `0x25` re-arm may be firing on the play trig when hardware
+would only reset), or the port's SDRAM/DMA model for the FLEX buffer re-seek
+adds the frames. Instrument the ColdFire's FLEX feed path across a retrigger
+(is the voice record re-allocated, or just its read index moved?) and compare
+to the transport-start open. Closing it makes the port render golden as a clean
+loop and non-golden as a click — the faithful audible instrument. The objective
+metric (§10.42) already works and does not need it.
