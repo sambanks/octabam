@@ -267,7 +267,7 @@ It reads the clock through two helpers:
 | 4 | 🟡 day of week | no | no |
 | 5 | day of month | yes | yes |
 | 6 | month | yes | yes |
-| 7 | year, plus 2000 | yes | yes |
+| 7 | year, two digits (the timestamp routine adds 2000 at `0x400819d0` before its `%04d`; the name builder passes it as read) | yes | yes |
 
 Index 4 is skipped by both routines. Day of week is the one calendar field
 neither a filename nor a timestamp needs, which is the reading, but nothing
