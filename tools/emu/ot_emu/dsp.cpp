@@ -228,9 +228,9 @@ namespace ot
 					for(auto& w : _f[i])
 						w = 0;
 				_f.resize(dsp56k::Audio::MaxSlotsPerFrame);
-				if(c.firstCmdSeen && (m_tones || m_inputChannels))
+				if((c.firstCmdSeen || m_inputFromBoot) && (m_tones || m_inputChannels))
 				{
-					const uint64_t n = c.rxFrames - c.rxAtFirstCmd;
+					const uint64_t n = m_inputFromBoot ? c.rxFrames : c.rxFrames - c.rxAtFirstCmd;
 					for(uint32_t s = 0; s < g_audioSlots; ++s)
 					{
 						int32_t v = 0;

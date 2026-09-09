@@ -161,6 +161,13 @@ namespace ot
 		// -- or the built-in tones (slot k = a sine at 500 x (k+1) Hz, -20 dBFS).
 		void setAudioInput(std::vector<int32_t> _interleaved, uint32_t _channels);
 		void setAudioTones(const bool _on) { m_tones = _on; }
+		// O14: feed the input from the DSP's first receive frame instead of the
+		// first 0x8c. The default (from the first command) arms a step-1
+		// recorder against a DSP->host pipeline still holding pre-start silence,
+		// which the recorder then keeps as the buffer's first ~96 samples --
+		// RTOS_FORK 10.43-10.46's "retrigger gap". Hardware's pipeline holds
+		// live input at that moment; this option reproduces that condition.
+		void setAudioInputFromBoot(const bool _on) { m_inputFromBoot = _on; }
 		uint64_t txAtFirstCommand(int _core) const;
 		uint64_t rxAtFirstCommand(int _core) const;
 		uint64_t txSlotNonZero(int _core, uint32_t _slot) const;
@@ -241,6 +248,7 @@ namespace ot
 		std::vector<std::string> m_map, m_writeMap;
 		std::vector<int32_t> m_input;
 		uint32_t m_inputChannels = 0;
+		bool m_inputFromBoot = false;
 		// THE INTER-CORE MAILBOX, one register each way. 🟡 Inferred from the
 		// firmware's use, not from a datasheet: core A writes Y:$FFFFD7 and
 		// waits while bit 1 of Y:$FFFFD6 is set; core B waits for bit 1 of

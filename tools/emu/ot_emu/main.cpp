@@ -87,6 +87,8 @@ int main(int _argc, char** _argv)
 	std::string blockDump;		// O9d: every host-port block's CONTENT (binary) -> FILE
 	std::string audioOut;		// O9: PREFIX -> PREFIX_core<k>.wav, every X-side ESAI TX0 frame (8 slots) the core put out
 	std::string audioIn;		// O9: a WAV onto RX0's slots from the transport start, or "tones"
+	bool audioInFromBoot = false;	// O14: feed it from the DSP boot instead (a live input already flowing when a step-1 recorder arms)
+	int preRoll = 0;			// O14: frames of the frame engine to run BEFORE the transport start (a warm DSP, as on hardware)
 	std::string dspPcWatch;		// O9b: core:pc -- registers at the last 24 arrivals at that DSP PC
 	std::string dspStopwatch;	// O12: core:startpc:stoppc -- instructions between the two, per pair (the cycle meter)
 	std::string dspWatch;		// O9b: core:space:addr -- the last 16 writers of one DSP word
@@ -147,6 +149,8 @@ int main(int _argc, char** _argv)
 		else if(a == "--block-dump" && i + 1 < _argc)	blockDump = _argv[++i];
 		else if(a == "--audio-out" && i + 1 < _argc)	audioOut = _argv[++i];
 		else if(a == "--audio-in" && i + 1 < _argc)	audioIn = _argv[++i];
+		else if(a == "--audio-in-from-boot")		audioInFromBoot = true;
+		else if(a == "--pre-roll" && i + 1 < _argc)	preRoll = std::atoi(_argv[++i]);
 		else if(a == "--dsp-map" && i + 1 < _argc)	dspMap = _argv[++i];
 		else if(a == "--dsp-watch" && i + 1 < _argc)	dspWatch = _argv[++i];
 		else if(a == "--dsp-pcwatch" && i + 1 < _argc)	dspPcWatch = _argv[++i];
@@ -246,6 +250,11 @@ int main(int _argc, char** _argv)
 			std::printf("audio in   : %s, %u channel(s) onto RX0 slots 0..%u, %zu frames at %u Hz (fed at 44100)\n",
 				audioIn.c_str(), ch, ch - 1, pcm.size() / ch, rate);
 			dspPair->setAudioInput(std::move(pcm), ch);
+		}
+		if(audioInFromBoot)
+		{
+			dspPair->setAudioInputFromBoot(true);
+			std::printf("audio in   : fed from the DSP boot, not the first 0x8c (--audio-in-from-boot)\n");
 		}
 		m.setCoprocessor(dspPair.get());
 		std::printf("dsp        : two cores behind the host port, %.2f instructions per ColdFire instruction, %.0f per sample\n",
@@ -537,6 +546,25 @@ int main(int _argc, char** _argv)
 				// them on: on hardware the frame exchange runs from boot, and
 				// nothing the trig test reads depends on it having done so.
 				rtos.setFrame(true);
+				// O14: the sentence above was true for the trig tests and FALSE
+				// for a recorder armed on step 1: with the DSP started cold at
+				// the same instant as the transport, the core-1 read-back the
+				// recorder mixes from is zero for its first ~9 frames, and the
+				// recorder keeps that silence as the buffer's first ~96
+				// samples -- replayed at every retrigger as RTOS_FORK
+				// 10.43-10.46's "retrigger gap". Hardware's DSP has been
+				// exchanging frames since boot. --pre-roll runs the frame
+				// engine N frames before play; the default (0) keeps every
+				// earlier report bit-identical.
+				if(preRoll > 0)
+				{
+					const auto f0 = rtos.frameCount();
+					const auto rsp = rtos.runUntil(preRoll * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0,
+						[&] { return rtos.frameCount() >= f0 + static_cast<uint64_t>(preRoll); });
+					std::printf("pre-roll   : %llu frame(s) of the frame engine before the transport start (%s)\n",
+						static_cast<unsigned long long>(rtos.frameCount() - f0),
+						rsp == ot::Rtos::Stop::Gate ? "REACHED" : rtos.why().c_str());
+				}
 				if(!rtos.startTransportLive())
 					std::printf("transport  : FAILED -- %s\n", rtos.why().c_str());
 				if(pokeTrig)
