@@ -802,9 +802,12 @@ second per-track cursor by `0x48` = 72.
 ### The read-back block is four per-track post-FX2 blocks, not a mix
 
 ✅ Read 10 Sep 2026 from `out/dsp/payload_A.asm` and `payload_B.asm`
-(`tools/dsp_disasm_all.py`, the vendored dsp56300 disassembler, 0 undecodable
-instructions). Every address below is in payload A; payload B has the same
-code 0x20b words lower.
+(`tools/build/dsp_disasm_all.py`, the vendored dsp56300 disassembler, 0
+undecodable instructions). Every address below is in payload A. Payload B
+has the same dispatcher sites at `P:0x5f`/`P:0x68` (the `r5` loads) and
+`P:0x74` (the save to `X:0x206`), and the same per-track loop and copy
+0x20b words lower: `P:0x303` for `P:0x50e`, `P:0x309` for `P:0x514`,
+`P:0x34f` for `P:0x55a`.
 
 The dispatcher at `P:0x54`/`P:0x64` loads `r5 = X:0x4600` (bank A) or
 `X:0x2600` (bank B) and saves it at `X:0x206` (`P:0x8c`). That is the
