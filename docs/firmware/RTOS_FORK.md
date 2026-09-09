@@ -3735,7 +3735,7 @@ is well-scoped. Demo WAVs under `out/click_demo/` carry the retrigger gap at
 both tempos and so do NOT yet demonstrate golden-clean — do not use them for an
 ear A/B until the retrigger gap is fixed.
 
-### 10.44 The retrigger gap localized: the port treats a FLEX PLAY-trig as a full VOICE RESTART (the ColdFire's sample-feed re-seeks and stalls ~5 frames) where hardware resets the read pointer seamlessly (9 Sep 2026 — measured)
+### 10.44 ❌ RETRACTED (see §10.47): The retrigger gap localized: the port treats a FLEX PLAY-trig as a full VOICE RESTART (the ColdFire's sample-feed re-seeks and stalls ~5 frames) where hardware resets the read pointer seamlessly (9 Sep 2026 — measured)
 
 Traced §10.43's ~5-frame loop-point gap to its source. Instrumented the
 fixed-buffer run across one mid-run retrigger (`--watch-pc 0x4000f450` the FLEX
@@ -3778,7 +3778,7 @@ to the transport-start open. Closing it makes the port render golden as a clean
 loop and non-golden as a click — the faithful audible instrument. The objective
 metric (§10.42) already works and does not need it.
 
-### 10.45 The retrigger gap is a PORT artifact, isolated: only recorder-buffer playback gaps (static samples never do), and it is the long re-open serializing against the audio feed (10 Sep 2026 — measured)
+### 10.45 ❌ RETRACTED (see §10.47 — port artifact yes, but not this one): The retrigger gap is a PORT artifact, isolated: only recorder-buffer playback gaps (static samples never do), and it is the long re-open serializing against the audio feed (10 Sep 2026 — measured)
 
 Settled the §10.43/10.44 gap with a clean control. Built a verified fixture
 (`out/click_demo/hw_gaptest/GAP65`, GAP128) where a FLEX voice plays a **static
@@ -3822,7 +3822,7 @@ audio path) — a port-side scheduling fix, no firmware change. Control fixtures
 `GAP65`/`GAP128` (static, verified gapless) also validate the project-build →
 card pipeline for any follow-on hardware test.
 
-### 10.46 The retrigger gap is the recorder STREAMING gate muting, not a voice restart — corrected via octamax's hw-verified play-position map (10 Sep 2026 — measured)
+### 10.46 ❌ RETRACTED (see §10.47): The retrigger gap is the recorder STREAMING gate muting, not a voice restart — corrected via octamax's hw-verified play-position map (10 Sep 2026 — measured)
 
 A peer session relayed mxldyn/octamax 2.0's hardware-verified slice-view map
 (his progress bar renders on a real MKII): the per-track voice struct at
@@ -3860,3 +3860,127 @@ refill lags (recorder re-arm timing, or the play head reset landing ahead of the
 `emu_recvoice.py` harness shape (seeds `voice+0/+4/+0x10` and meta
 `0x46c939cc+8/+0x10/+0x14`, reports which branch fires). The objective click
 reproduction (§10.42) is unaffected.
+
+### 10.47 ❌ §10.44–§10.46 RETRACTED: the "retrigger gap" is the recorded buffer's own first ~96 samples, silent because the port starts the DSP cold at the instant of the transport start — a harness artifact, closed by `--pre-roll` (10 Sep 2026 — measured)
+
+Chased §10.46's open locate (which streaming-gate branch mutes, and why the
+port's write-position refill lags) with octamax's field map, and every step
+of the §10.44–§10.46 story fell over on measurement:
+
+- **The streaming gate does not mute.** `FUN_40001598` returns 1 only on the
+  "write head went backwards" transition (`0x4000160e`, where it sets the
+  voice's data-END bound `+0x64` to the recorder's limit `0x46c7fe24[rec]`);
+  every other return is 0, static samples included, and the caller only tests
+  it when `d5 == 0`, which it is not here (`d5 = 0xff`). `0x4000812c` is not a
+  mute: it is the play path's normal continuation for a position short of its
+  end (`0x4000810a blss`), and T2's voice takes it every frame of the run.
+  Watching the T2 voice's `+0x1f/+0x5c/+0x60/+0x64` across a retrigger
+  (`--watch-mem 0x80004a9f,0x49`): at the bind `+0x64 <- 0x142ff` (the
+  recorded length, copied from the write-position table by `0x4000f89e`) and
+  it stays `0x142ff` through the gap; `+0x60` (the data-START bound, which the
+  copy gate at `0x400086ac` compares the read position against) stays 0. Both
+  bounds are satisfied for every position of the gap. The write-position
+  table reads `0x142ff` at the bind and −1 one frame later — never −1 "for
+  ~5 frames".
+- **The gap is neither a mute nor a stall; it is buffer content.** The
+  sample-pair writer for the host→DSP record is the format-1 copy loop at
+  `0x40008786` (`--watch-mem 0x80001de0,0x150` on T2's 84-longword record:
+  writers `0x40008792/0x40008794`, 16 pairs per frame INCLUDING the gap
+  frames), and its source (`--watch-pc 0x4000873c`, d3) walks
+  `0x460245e0 + 6·pos` from pos 0 after the retrigger — the same pool
+  addresses the very first play read at pos 0..0x5f. The feed is zero exactly
+  while pos < 0x60, at the first play AND at every retrigger, and the first
+  non-zero frame after the gap carries buffer[0x60..0x6f] both times (dump
+  frame 6 == dump frame 5174, sample for sample).
+- **Those pool bytes are zero because the recorder WROTE zeros there.** The
+  recorder's pool writer `0x4000785e/0x40007860` (`--watch-mem
+  0x460245e0,0x300`) writes pos 0..0x60 with value 0 over its first six
+  frames and real audio from pos 0x61 on. Its mix loop (`0x40007786`,
+  `--watch-pc`) reads source sample 0 for those six frames with unity gains;
+  the mix source is the staging at `0x800062d0`, built from the core-1
+  read-back block (`<` ch 1, `0x80003190/0x80003590`), and THAT block is zero
+  for dump frames 1–8 and non-zero from 9/10 — with the recorder armed at dump
+  frame ≈2. `--audio-in-from-boot` (new option: RX0 carries the WAV from the
+  DSP's first receive frame instead of from the first `0x8c`) changed
+  nothing: the RX0 non-zero count rose from 86k to 982k samples and the buffer
+  still began with the same zeros. The input was there; the read-back was not.
+- **Why: the port starts the DSP cold at the transport start.** `main.cpp`'s
+  sequencer branch runs the whole load with the frame engine OFF and turns it
+  on (`rtos.setFrame(true)`) immediately before `startTransportLive()`; the
+  comment there says "on hardware the frame exchange runs from boot, and
+  nothing the trig test reads depends on it having done so". True for the
+  trig tests, false for a recorder armed on step 1: the DSP's first frames
+  ever are the frames the recorder captures, and the core-1 read-back takes
+  ~9 frames to carry signal (pipeline fill plus whatever the payload smooths
+  at start — not separated). On hardware the DSP has been exchanging frames
+  since power-on and the read-back holds live input at the arm. The "gap" was
+  §10.41's "recording fade-in/lag" seen again from the play side and misread
+  as a retrigger stall; §10.45's "~611k-instruction re-open" (`0x40099680`)
+  does not fire anywhere near the retrigger (0 hits in the 4.5e8–5.0e8
+  instruction window of §10.46's own log).
+
+**Closed by `--pre-roll N`:** run the frame engine N frames before the
+transport start (default 0, so every earlier report is bit-identical).
+
+| `--pre-roll 200`, tone1k, `--frames` 21000 / 42000 | non-golden `n128fix` | golden `g65fix` |
+|---|---|---|
+| recorded buffer, first pairs | real audio from pos 0 (`0xe61523…`) | real audio from pos 0 (same bytes: the same tone at the same phase) |
+| zero-frame runs on the T2 feed | only the 202 pre-roll frames before the arm; NONE at any loop point | only the 202 pre-roll frames; NONE at any loop point |
+| loop k vs k+1 (best shift, residual) | −1 / 0 / −1 at −240 dB (spacings 82,687 / 82,688 / 82,687) | +0 / +0 / +0 at −240 dB (stationary) |
+
+With a warm DSP the port renders §10.42's mechanism with no harness silence:
+non-golden loops are bit-identical copies walking by an alternating sample;
+golden loops are stationary. The TX0 renders (`*_pre_tx.wav`, 8 slots) are
+the first listenable pair; the earlier `out/click_demo/` WAVs with the
+80-sample gap are superseded. Instruments: `tools/scratch/loopcompare.py`
+(successive-loop stationarity + zero runs), `tools/scratch/availanalyze.py`
+(frame-aligned voice-field writes).
+
+**Two harness lessons, both instrument-blindness in the CLAUDE.md sense.**
+(1) `--project` defaults to ONEAUX; without the fixtures' project name (RECT)
+the firmware CREATES a new project (ATA: READ 2301, WRITE 2301, WRITE 43437,
+then nothing), `saved_bank: -1`, and every watch reports 0 with no error. Two
+runs were lost to it; check `saved_bank` and the ATA READ count (~6000 for a
+real load, ~57 for a created one) before reading any watch. (2) A
+`--watch-mem` on the wrong bytes of a record (84 halfwords instead of 84
+longwords) reports the init memset and nothing else — a clean "nobody writes
+it" that was an addressing slip.
+
+**Work order for Bryan's click, now that the port can score a candidate
+(inferred design, measured platform).** The mechanism (§10.42, unchanged): the
+PLAY trig that re-binds a FLEX voice on a recorder buffer hard-resets its read
+position to the loop start (`0x4000f820`–`0x4000f828`: `movel a0,a2@(64)`,
+`a2@(68)`, `a2@(72)`), and at a non-golden tempo the bar is a fractional
+number of samples (82,687.5 at 128 BPM) while the recording is an integer
+(0x142ff = 82,687), so the reset lands alternately one sample early and late
+and consecutive loops are not the same signal. Three levers, in order of
+cost:
+
+1. **Skip the redundant reset** (a ~40-byte ColdFire cave hooked on those
+   three stores, the `modules/recorder-seam` shape): if the voice is active
+   (`a2@0 != 0`), FLEX (`a2@20 == 1`) on a recorder slot (`a2@21 < 0`), looping
+   (`a2@23 != 0`), being re-bound to the SAME slot, and its read position
+   `a2@72` is within T samples of the new start `a0` (T = 32, tunable), leave
+   the three position fields alone and let the voice free-run at its integer
+   loop length. Golden tempos: no-op (the position is exactly at the start).
+   Non-golden: the voice drifts 0.5 sample per bar against the sequencer and
+   resets once every 2T bars instead of every bar, so the click becomes one
+   per ~2 minutes at 128 BPM. Score in the port: `n128fix` under
+   `--pre-roll 200`, `loopcompare.py` must report shift +0 / −240 dB for every
+   pair up to the first threshold reset, and `g65fix` must be unchanged.
+   Sound-on-sound consequence (not measured): the REC trig still restarts the
+   recording on the bar while playback is up to T samples ahead, so layered
+   passes smear by half a sample per pass instead of clicking; Bryan should
+   hear that trade before it ships.
+2. **Crossfade the reset** inside the format-1 copy loop (`0x40008786`): blend
+   the last N pairs of the old position into the first N of the new. Removes
+   the discontinuity regardless of drift; larger patch (state for the old
+   position, per-frame work in the hot copy).
+3. **Sub-sample reset** to the sequencer's fractional phase: exact, but no
+   fractional position field has been found in the voice struct (`@68` is an
+   integer), so this may not be a lever at all.
+
+Falsifiers: if lever 1's non-golden render still walks by ±1 with the reset
+skipped, the reset is not the only discontinuity and the record side is back
+in play; if the golden render changes at all, the condition is wrong. Every
+step above is a port render, no flash.
