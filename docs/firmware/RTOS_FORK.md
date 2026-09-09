@@ -4035,3 +4035,27 @@ locks onto the 1 kHz tone when there is no seam (it reported a constant
 it means "no seam feature", not a loop length; the burst count is the judge.
 Unflashed status of `modules/flex-softretrig` stands; it is not a fix for the
 self-loop as it is.
+
+**What the hardware burst IS, and what the port does not show (same night —
+measured).** Through the calibrated burst counter, each 128 BPM burst on
+hardware is a **10–50-sample region of broadband hash** (second difference
+6–48× the tone's own, sample values leaving the tone entirely, ~0.2–1.1 ms),
+one per bar, identical with and without the cave. The port's self-loop render
+(`n128self`, stock) shows at the same bar instants only a **single repeated
+sample** (3-sample second-difference cluster), every OTHER bar. So the port
+reproduces the timing of the seam but not the character of the click: the
+hardware burst has a source the lock-step port does not model — the leading
+candidate is the simultaneous write-restart and read-restart on the same
+recorder buffer racing in SDRAM (a race a lock-step emulator cannot show,
+CLAUDE.md), the other a DSP-side response to the bind. With the cave, the
+port's skip path made the player read three ZEROS at the bar (the recorder
+had restarted the buffer at 0 while the player kept reading at L: on a
+re-recording loop the play reset is NOT redundant), and the burst count
+rose from 2 to 3 — consistent with hardware "unchanged, still every bar".
+Consequence for the levers: a bind-time crossfade covers a one-sample step
+and would cover a ≤50-sample burst only if the burst is generated where
+the crossfade sits; that is not known. The decisive next instrument is
+hardware, not the port, and it is cheap now (10 min per capture, rig
+up): (a) REC every bar, PLAY once with LOOP on — burst gone means the play
+reset is the source; (b) PLAY every bar, REC once — burst gone means the
+re-record is. Both are the same project with one trig removed.
