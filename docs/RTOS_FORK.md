@@ -3468,3 +3468,145 @@ using this recording as the ground truth to match against rather than
 `o10_recloop.py`'s per-pass jump metric alone (which is tuned for a smooth
 sine and may itself be why the emulator's every-wrap bursts, if present,
 weren't being counted the same way hardware's are).
+
+### 10.40 The isolated fixture reproduces neither the click nor the golden/clean split, because its FLEX voice chases the record write-head instead of looping a fixed buffer — and §10.39's "two open mismatches" are that fixture, not the emulator (9 Sep 2026 — measured)
+
+§10.39 closed the hardware side (clean at golden, a burst at every non-golden
+wrap) and left two mismatches against the emulator's own isolated fixture
+(§10.38's `make_isolated_flex_fixtures`, T1 records R1, T2 plays R1 and is
+never armed): the emulator's anomaly recurred at **half** the rate (every
+other wrap) with a **different character** (a sustained second tone, not a
+burst). Both are now explained, and neither is a real emulator behaviour to
+reconcile — they are artifacts of the fixture and of the decode.
+
+**A hardware re-measurement first, sharper than §10.39's jump count.** Fitting
+the 1 kHz carrier's phase across each non-golden wrap (441-sample windows,
+the ~0 ppm analog drift removed by a linear detrend over t = 3–60 s;
+`out/hw_capture_128_210032.wav` channel 2): the carrier's own delay wobbles
+**±0.4–0.5 samples and returns, with a per-wrap step of ≈ 0.00 samples** — it
+does NOT slip. So the click is an **additive transient injected at each loop
+boundary**, riding on top of a continuous carrier, not a pitch/phase
+discontinuity of the loop. The golden capture has no such transient at any
+wrap. (Measured; the ±0.5 wobble is at the drift-residual floor and is not
+itself audible — the burst is.)
+
+**The decisive emulator run: a sample-counter in, not a tone.** A 30 s WAV
+whose every sample's value equals its own input index (`counter.wav`, on the
+C/D pair) fed as `--audio-in`, so each *played* sample's value names the input
+sample it came from — a wrap in the FLEX read shows as an exact, unambiguous
+jump in the value stream, with none of the phase or `record_audio`
+segment-order ambiguity a tone carries. Run on both isolated cards for 22,000
+frames (≈ 4.3 passes at 128, ≈ 2.1 at golden), `--dsp --main-level 64`,
+watching the FLEX bind `0x4000f450` (`tools/scratch/counter_wrap.py`):
+
+| | non-golden `n128` | golden `g65` |
+|---|---|---|
+| T2 played value vs input | **`input − 62`, continuous** | **`input − 62`, continuous** |
+| largest step in the value stream, whole run | **5** (the counter's own per-sample slope) | **5** |
+| value resets (buffer wraps) across 4/2 passes | **0** | **0** |
+| FLEX bind `0x4000f450` retriggers | ~5 (≈ once per pass) | ~6 |
+
+**The two tempos render identically, and neither loop-wraps.** T2 plays the
+recorder buffer as a **fixed-lag delay tap ~62 samples behind the record
+write-head**, and it tracks the writer for the whole run — 352,000 samples,
+four buffer-lengths at 128 — with no read-pointer reset. The FLEX voice IS
+retriggered each pass (the bind fires with `D0 = 0x80` = R1, in a pair with a
+second bind `D0 = 0x5`, ~once per pass), **but the retrigger does not reset the
+read position** to the loop's start; the read stays locked to the writer. A
+fixed-length loop player would reset the read to buffer-start each pass and, at
+a fractional length, splice mid-sample — that is the hardware click, and it is
+exactly what this fixture never does, at either tempo.
+
+**So the isolated fixture is the wrong instrument for the click.** It was built
+(§10.38) to remove the self-loop monitor-passthrough confound, and it does —
+but T2 reading R1 *while T1 is still recording R1* legitimately chases the live
+write-head, so there is no settled buffer to loop and no boundary to splice,
+regardless of tempo. §10.39's "every other wrap" was `record_audio`
+mis-ordering the segmented `(15 pairs)(1 pair)` FLEX frame (the split that
+appears from the first wrap on — confirmed: pass 0 renders as one contiguous
+16-sample block, i.e. the tap; pass 1+ as the segmented wrapping read), and the
+"second tone" was that same scramble heard. **Both §10.39 mismatches are
+retracted as fixture/decode artifacts; there is no residual emulator-vs-hardware
+disagreement to reconcile from that fixture, because that fixture never
+exhibited the mechanism.**
+
+**Bryan's own project cannot stand in for it yet.** `PROJECT 260908` staged and
+run under the port (`--audio-in counter.wav`, 3,000 frames) renders **silent on
+every track** — the same result as §10.19, and for the reason §10.24/§10.25
+localized and left open: the frame-builder's recorder-arm pass never crosses to
+start a recording under `--sequencer --dsp`, so his self-loop records nothing
+and plays nothing. The faithful self-loop fixture is blocked on that gap.
+
+**What actually reproduces the click, and is the next step.** A **fixed-buffer
+loop**: record one pass into R1, *stop the recorder* (remove the REC trig), and
+loop the settled buffer with a per-pass PLAY retrigger — then the FLEX read must
+wrap at the buffer's fixed (fractional, at non-golden) length, and the counter
+stream will show whether the wrap is an integer return (golden) or a
+fractional/duplicated splice (the click). That isolates the loop-wrap without
+the chase-the-writer confound and without needing the arm path Bryan's project
+is blocked on. The alternative — closing the §10.24 arm-crossing gap so his
+project records — is the more faithful but larger task. Either way the mechanism
+to render is now named precisely: **a retriggered fixed-length loop read whose
+start does not sample-align at a non-golden length**, which the current isolated
+fixture structurally cannot show.
+
+Instruments: `tools/scratch/counter_wrap.py` (value-stream wrap detector),
+the counter WAV recipe above; both counter dumps under `out/` are gitignored.
+
+### 10.41 The fixed-buffer fixture reproduces the click's TIMING and the ±0.5-sample phase signature in the port — but not yet a clean audible golden/non-golden split, because the recorded buffer does not seamlessly fill the loop (9 Sep 2026 — measured)
+
+§10.40's recommended fixture, built and run (`make`-style via `ot_project`:
+T1 FLEX-on-R1 records ONE bar with a single REC1 trig at step 1, T2 FLEX-on-R1
+plays with PLAY trigs at steps 1/17/33/49, pattern LEN 64 = four bars at 1X, so
+the recorder arms once and the buffer is settled while T2 loops it three more
+times). Counter input (`counter.wav`, value = input index), 21,000 frames at
+128 and 42,000 at 65.6, `--dsp --main-level 64`; `tools/scratch/counter_wrap.py`.
+
+**The buffer now loop-wraps — the chase-the-writer confound is gone.** Unlike
+§10.40's isolated fixture, T2's played value resets to the buffer start at each
+bar boundary (the record-walk `0x40007178` fires through bar 1 then goes quiet;
+T1 records nothing after). The wrap SPACINGS are the whole result:
+
+| | non-golden `n128fix` | golden `g65fix` |
+|---|---|---|
+| wrap spacings (counter, samples) | **82,687 / 82,688 / …** (alternating) | **161,280 / 161,280 / …** (constant) |
+| = pass length | 82,687.5 (fractional) | 161,280 (exact integer) |
+| carrier phase step at the wrap (tone, fit over ±2,200 samples) | **+0.48, −0.52 … (±0.5 alternating)** | integer, no ±0.5 term |
+
+**This is the golden-vs-non-golden distinction, reproduced in the port for the
+first time**, and the non-golden ±0.5-alternating carrier phase step is the SAME
+signature §10.40 measured on the hardware capture (drift-removed: the carrier
+wobbles ±0.5 and returns, no net slip). The truncated-reciprocal seam
+(`octabam-emac-unicorn-bug`, −0.5/pass at RLEN 4) and this RLEN-16 retrigger
+jitter are the same fractional residue seen two ways.
+
+**What it does NOT yet do: a clean audible click only at non-golden.** The tone
+render (`tone1k.wav`, 1 kHz on the recorded pair) shows a hard discontinuity at
+EVERY wrap **at both tempos** — the buffer's played content ends and the stream
+drops to a run of exact zeros for a stretch before the next retrigger's content
+resumes (verified in both the counter and tone streams; ~340 zero samples per
+wrap in the counter run at 128). That silence gap is a **fixture artifact, not
+the click**: the recorded buffer carries leading zeros (record fade-in/lag) and
+its content is shorter than the loop period, so there is dead space at the loop
+point regardless of tempo, and it swamps a direct golden-vs-non-golden
+burst-count comparison. (The `o10_recloop` record parser also renders the
+segmented `(15)(1)` wrap frame as zeros — a second reason not to trust the
+tone render's per-sample values AT the wrap frame; the counter's value stream
+and the phase fit over windows away from the wrap are the robust instruments,
+and they are what the table above rests on.)
+
+**So: the mechanism and its timing signature are reproduced; a faithful audible
+render is one fixture-fidelity step away.** What is needed is a buffer whose
+recorded content SEAMLESSLY fills the loop period (no leading silence, content
+length = loop length), so the only discontinuity at the loop point is the
+fractional splice itself — which is exactly what Bryan's SRC3 sound-on-sound
+self-loop produces on hardware, and why his clicks and a golden loop does not.
+Two ways to get there, neither done: (a) tune the fixture so the recording is a
+gapless loop (drive a continuous tone from before the arm, size RLEN and the
+FLEX loop points to the recorded length); (b) close the §10.24/§10.25 arm-crossing
+gap so Bryan's own `PROJECT 260908` records under the port (it still renders
+silent — retried this session, 3,000 frames, all tracks zero). Fixture (a) is
+the smaller step and directly isolates the splice.
+
+Instruments: `tools/scratch/counter_wrap.py`; the counter/tone WAV recipes above
+(both under `out/`, gitignored). This supersedes §10.40's "next step" paragraph.
