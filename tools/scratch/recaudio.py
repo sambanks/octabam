@@ -42,7 +42,9 @@ ap.add_argument("--project", required=True); ap.add_argument("--tree", required=
 ap.add_argument("--name", default="RECT"); ap.add_argument("--frames", type=int, default=12600)
 ap.add_argument("--image", default=None); ap.add_argument("--track", type=int, default=0)
 ap.add_argument("--out", required=True)
-ap.add_argument("--inject", default="counter", choices=("counter", "none"))
+ap.add_argument("--inject", default="counter", choices=("counter", "none", "burst"))
+ap.add_argument("--burst-frames", type=int, default=5200, help="burst mode: inject the ramp for this many frames from the start, then silence")
+ap.add_argument("--flex-probe", action="store_true", help="watch the FLEX voice bind 0x4000f450 / caller 0x4000d49e")
 ap.add_argument("--blocks", type=int, default=40, help="pool blocks to dump from the row")
 ap.add_argument("--field-probe", action="store_true", help="log every write to the track's recorder state record (+36..+83, both banks) with its PC")
 ap.add_argument("--reg-probe", action="store_true", help="log the mix loops' source pointers and gains at loop entry (frames 323..326)")
@@ -67,6 +69,24 @@ def at(label, nargs=5):
     return h
 for pc, label in ((0x40005ff0, "armcall"), (0x40006b18, "armpost"), (0x40006edc, "endpost")):
     uc.hook_add(UC_HOOK_CODE, at(label), begin=pc, end=pc)
+
+# -- FLEX playback bind probe (RTOS_FORK 10.13: 0x4000f450 binds a FLEX voice
+# for a NOTE/play trig; 0x4000d49e calls it 3x). Log firing + registers to see
+# whether the recorder-buffer play trig binds a voice and with what slot/ptr.
+from unicorn.m68k_const import (UC_M68K_REG_D0, UC_M68K_REG_D1, UC_M68K_REG_D2,
+    UC_M68K_REG_A0, UC_M68K_REG_A1, UC_M68K_REG_A2)
+flex_ev = []
+def flex_at(label):
+    def h(u, addr, size, user):
+        if len(flex_ev) < 400:
+            flex_ev.append((label, rt.frame_count,
+                [f"{rd(u,r):#x}" for r in (UC_M68K_REG_D0,UC_M68K_REG_D1,UC_M68K_REG_D2,
+                                            UC_M68K_REG_A0,UC_M68K_REG_A1,UC_M68K_REG_A2)],
+                [f"{x:#x}" for x in stack(u,4)]))
+    return h
+if getattr(a, "flex_probe", False):
+    for pc,label in ((0x4000d49e,"caller_d49e"),(0x4000f450,"flexbind_f450")):
+        uc.hook_add(UC_HOOK_CODE, flex_at(label), begin=pc, end=pc)
 
 SNAP_HEAD = 48                      # samples from position 0
 SNAP_PERIODS = (20672, 22050)       # 4 steps at 128 / 120 BPM: the seam region [P-32, P+8)
@@ -145,6 +165,9 @@ def fill(ch):
         # in the fractional patch's saturation path, not yet fixed in the
         # library. A positive signal never meets it.
         words[k] = ((smp & 0x7fff) << 16) if c == 0 else (((tag << 8) | (t << 4) | i) << 16)
+    if a.inject == "burst" and (rt.frame_count - frame0) >= a.burst_frames:
+        for k in range(nl):
+            if k % 2 == 0: words[k] = 0          # silence the audio (L) after the burst window; keep the R tag
     uc.mem_write(daddr, struct.pack(f">{nl}I", *words))
     return daddr, n
 def complete(ch):
@@ -276,6 +299,9 @@ if a.read_probe:
 rec_setup = bytes(uc.mem_read(0x80000cf4 + 12 * a.track, 12))
 print(f"live RECORDING SETUP T{a.track+1} (INAB INCD RLEN TRIG SRC3 LOOP FIN FOUT AB QREC QPL CD): {list(rec_setup)}")
 print(f"trig words: {rt.trig_words_log[:16]}")
+if getattr(a,"flex_probe",False):
+    print(f"FLEX bind events: {len(flex_ev)}")
+    for e in flex_ev[:30]: print("  ", e[0], "frame", e[1], "regs D0-2,A0-2", e[2], "stack", e[3])
 
 import pickle
 with open(a.out, "wb") as fh:
