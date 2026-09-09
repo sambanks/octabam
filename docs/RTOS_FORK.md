@@ -3043,7 +3043,7 @@ to audio (the flex-from-recorder-buffer loader is unlocated in both emulators)
 — that is the next task, to let the loop be heard in the emulator, not only
 measured.
 
-### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026) — RESOLVED, see §10.36
+### 10.33 FLEX-loader is NOT unlocated: the recorder-buffer play trig binds a voice in route A, each pass — the gap is the render, not the bind (9 Sep 2026) — STILL OPEN, see §10.38 (§10.36's resolution was retracted)
 
 Getting the recorder-buffer FLEX voice to render (so the loop can be HEARD in
 the emulator, not only measured) — Sam's next ask after §10.32. `recaudio.py`
@@ -3073,7 +3073,7 @@ voice render for a recorder buffer is the real gap). The pieces upstream of it
 — recorder writes, control record, bind — are now all confirmed present in
 route A.
 
-### 10.34 The 84-word record stays an empty-voice skeleton through pass 2, both ping sides, all four track slots — and route A's own `Edma` class explains why it might have to (9 Sep 2026) — RESOLVED, see §10.36
+### 10.34 The 84-word record stays an empty-voice skeleton through pass 2, both ping sides, all four track slots — and route A's own `Edma` class explains why it might have to (9 Sep 2026) — STILL OPEN, see §10.38 (§10.36's resolution was retracted)
 
 Followed §10.33's own next step: `recaudio.py` gained `--voice-probe`, reading
 the track's 84-word record directly from ColdFire host memory (`0x800021d0`/
@@ -3152,7 +3152,7 @@ would confirm route A is instrument-blind here (this project's own pattern:
 `[[octabam-instrument-blindness]]`), not that the firmware fails to play
 the loop.
 
-### 10.35 The trace resolves further than expected: the fetch that would read real samples is never even called, on either trig frame (9 Sep 2026) — RESOLVED, see §10.36
+### 10.35 The trace resolves further than expected: the fetch that would read real samples is never even called, on either trig frame (9 Sep 2026) — STILL OPEN, see §10.38 (§10.36's resolution was retracted)
 
 Took §10.34's own recommended first step (instruction trace, before the C++
 port) on `g65` (RLEN 16, 65.6 BPM golden self-loop). Three probes,
@@ -3224,7 +3224,7 @@ whether route A's own state is at fault by running the real DSP and a
 faithful boot. Given how far (a) got on route A alone, (a) is probably one
 more session, not several.
 
-### 10.36 ✅ RESOLVED under the C++ port: a recorder-buffer FLEX self-loop renders clean, sample-exact, at golden tempo — the whole 10.33–10.35 chase was two stacked instrument gaps, not a firmware defect (9 Sep 2026)
+### 10.36 ❌ RETRACTED (see §10.38): a recorder-buffer FLEX self-loop renders clean, sample-exact, at golden tempo — the whole 10.33–10.35 chase was two stacked instrument gaps, not a firmware defect (9 Sep 2026)
 
 Moved to the C++ port (`tools/ot_emu`) per §10.34/10.35's own fallback, at
 Sam's direction. `tools/ot_emu/main.cpp` had drifted ahead of the built
@@ -3296,3 +3296,124 @@ answer. Two stacked instrument gaps, both real, both cost real time, both
 resolved by the same rule this project keeps re-learning: **before trusting
 a null result, run the same instrument on a case you already know the
 answer to.**
+
+### 10.37 ❌ RETRACTED (see §10.38): `n128` at the audio-render level: a single, real, non-repeating discontinuity at the second loop wrap — 1.6× the tone's own largest normal swing (9 Sep 2026)
+
+§10.36's recipe gives a real rendered waveform, so the natural next check
+(and the one that actually matters to Bryan) is whether the click shows up
+IN it — not just in recorded sample positions. Same recipe on `n128`
+(RLEN 16, 128 BPM non-golden, same single-trig self-loop geometry as
+`g65`), captured long enough to cross two loop wraps (166,400 samples ≈
+2.02 passes at the ideal 82,687.5 samples/pass).
+
+**The per-pass jump metric (`o10_recloop.py`'s own, comparing each pass's
+biggest jump to that pass's median slope) reported nothing** — 1.4× the
+median in both passes, identical to `g65`'s clean result. **That metric
+doesn't look at the WRAP itself** (it windows strictly inside each pass),
+so a clean report from it was never proof there was nothing at the seam —
+checked directly instead: the single largest sample-to-sample jump across
+the whole 166,400-sample capture, and how it compares to the tone's own
+normal periodic swings.
+
+**Two populations, cleanly separated.** The synthetic tone's own waveform
+produces a recurring ~178,946–178,947 jump roughly every 7,056 samples
+(measured: same magnitude, same spacing, present throughout BOTH passes,
+before and after either wrap — a property of the injected signal, not the
+recorder). **One jump stands apart: sample 165,390, magnitude 289,652 —
+1.62× the largest normal swing, and it does not repeat anywhere else in
+the capture.** Its position (165,390) sits within 15 samples of
+2 × 82,687.5 = 165,375, the second loop-wrap boundary — **not** the first
+(the pass-1→pass-2 wrap near sample 82,687 shows nothing unusual). One
+real, non-periodic anomaly, located exactly where the second wrap is
+expected, of a size well outside the tone's own noise floor.
+
+**Consistent with the accumulation model, not yet proof of it.** A
+per-pass residue too small to show up on the first wrap but large enough
+by the second is exactly the shape a −0.5-sample-per-pass truncation
+(§10.32's own finding, at RLEN 4 — not yet re-derived here for RLEN 16)
+would produce, and matches the general shape of what a slowly building
+defect looks like before it's audible. 🟡 Inferred, not measured: that this
+IS that mechanism, rather than something else that also happens not to
+show up on wrap 1. What would extend this from "consistent with" to
+"confirmed": the same capture at 3+ wraps, checking whether the anomaly
+recurs on a fixed pass-count period (matching route A's "every 8 passes"
+finding at a different RLEN) or grows monotonically.
+
+**Rendered to WAV (`o9d_compare.py extract`) and played.** `out/n128_flex_in.wav`
+(the FLEX voice's own audio, not yet through T1's FX chain) — the click, if
+audible, sits about 3.75 s in. Ear-confirmation is Sam's, pending; this
+section records what the signal measures, not yet whether it was heard.
+`out/g65_flex_in.wav` is the golden-tempo control, same extraction, no
+equivalent anomaly anywhere in it.
+
+**What this adds to §10.31/10.32/10.36.** All three previous confirmations
+of "golden is clean, 128 clicks" were either arithmetic (positions, not
+sound) or an ear on real hardware (real sound, but not something this
+project's own tooling produced or can re-run at will). This is the first
+time the click has shown up as a specific, measured, located, sub-second
+event inside a signal this project's own emulator rendered end-to-end —
+the same instrument that can now be used to test a candidate fix (build it,
+re-render, check whether the anomaly moves, shrinks, or disappears) without
+needing a flash cycle.
+
+### 10.38 ❌ §10.36/§10.37 RETRACTED: what got rendered and played was a live input-monitor passthrough, not FLEX buffer playback — caught by Sam, not by any check in this document (9 Sep 2026)
+
+Sam, after listening to both 30-second renders: **"are we sure those are
+flex track? not sounding like they did on the device, just solid."** Right
+to be skeptical — no check in §10.36/§10.37 actually distinguished "reading
+back from the recorder buffer" from "monitoring the live input while the
+track is armed," and `--audio-in tones` injects its sine **continuously,
+forever, from transport start, with no way to stop it mid-run** (`dsp.cpp`:
+`if(m_tones) v = ...sin(...)` unconditionally every frame) — so a
+perfectly steady tone was exactly what BOTH hypotheses predicted. The
+per-pass jump analysis in §10.37 never ruled the passthrough out either;
+it only shows the tone has a shape, not where the tone's energy comes from.
+
+**The falsifying test:** built a WAV — 5.0 s of the same 1500 Hz tone,
+then 15.0 s of true digital silence — fed it as `--audio-in`
+(`out/tone_then_silence.wav`), ran `g65` for the full 20 s, measured level
+in 0.5 s windows. **If genuine buffer playback:** the already-recorded
+tone content should keep looping and playing for at least one more pass
+(≈3.66 s at golden tempo) after the input goes silent. **Measured:**
+−23 dBFS steady through the 4.5 s window, **−48.7 dBFS in the 5.0 s
+window (the exact same half-second the input stopped in), −200 dBFS (true
+silence) by 5.5 s, and silent for the remaining 14.5 s.** No lag, no
+extended playback, no loop-boundary artefact of any kind past the cutoff —
+the output tracks the input essentially sample-for-sample. **This is the
+live-monitor passthrough signature, not buffer playback.**
+
+**What's actually retracted, and what isn't.** §10.36's audible tone and
+§10.37's located anomaly are real measurements of a real signal — they are
+just measurements of the wrong signal for the claim made about them: NOT
+"the recorder-buffer FLEX voice renders clean" and NOT "the click lives in
+the rendered FLEX audio." Both fixtures (`g65`, `n128`, and every
+`make_seam_fixtures.py --self` variant used across §10.16–10.37) put T1 in
+a SELF-loop — recording AND playing R1 on the same track — which is
+exactly the configuration where a live input monitor and genuine buffer
+playback would be indistinguishable in the summed output. O10's ORIGINAL
+validation (`COLDFIRE_PORT.md`, kick.wav, TSMODE=0, −100.2 dB fit) is NOT
+implicated by this — that fixture played a CARD sample, on a track never
+armed to record, so there is no live input to monitor and no ambiguity.
+🟡 Not yet checked: whether the SAME concern reaches back into route A's
+own self-loop-based findings (§10.16 onward) that assumed a self-loop's
+rendered/recorded signal was buffer content.
+
+**The clean next step, not yet done:** `make_seam_fixtures.py`'s own
+NON-`--self` variant already exists and separates the two roles onto
+different tracks — T1 records, **T2 plays R1 back and is never armed**, so
+T2's own output cannot contain a monitor passthrough by construction. The
+same tone-then-silence burst test on T2, at both golden and non-golden
+tempo, is the way to get an actually-isolated answer to "does the
+recorder-buffer FLEX voice render, and does the click live inside it" —
+this document's real open question, unchanged since §10.33, still open.
+
+**The process lesson.** §10.34/10.35 caught two real instrument gaps by
+checking a probe against a known-good case before trusting its null
+result. This is the same rule from the other direction: a probe returned
+exactly the POSITIVE result expected, on the first try, on a path this
+project had been trying to observe for days — and it was still wrong,
+because "the signal looks right" was never actually tested against the one
+alternative explanation that mattered. Sam's ear caught what no check in
+§10.36/§10.37 was built to catch. **A positive result needs the same
+skepticism as a null one, especially when it's the answer you were hoping
+for.**
