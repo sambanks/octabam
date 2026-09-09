@@ -46,6 +46,10 @@ ap.add_argument("--inject", default="counter", choices=("counter", "none", "burs
 ap.add_argument("--burst-frames", type=int, default=5200, help="burst mode: inject the ramp for this many frames from the start, then silence")
 ap.add_argument("--flex-probe", action="store_true", help="watch the FLEX voice bind 0x4000f450 / caller 0x4000d49e")
 ap.add_argument("--voice-probe", action="store_true", help="capture the track's 84-word record (DSP.md: the voice's audio, both ping sides) every frame")
+ap.add_argument("--packer-probe", action="store_true", help="watch the packer's per-track dispatch (0x4000d472 bit4 test, 0x4000d47e arena lookup, 0x4000d484 null check) -- RTOS_FORK 10.34's next step")
+ap.add_argument("--rec-write-probe", action="store_true", help="watch every write to the track's 84-word record (both ping sides) with its PC, near --rec-write-window")
+ap.add_argument("--rec-write-window", type=int, nargs=2, default=(0, 10 ** 9), help="frame0 frame1: only log rec-write-probe hits in this frame range (default: all)")
+ap.add_argument("--render-gate-probe", action="store_true", help="watch 0x40007960's silence-vs-render gate (a3@8/a3@16 early exits, a2@0 the zero-fill-vs-fetch flag) -- RTOS_FORK 10.34's 3rd probe")
 ap.add_argument("--blocks", type=int, default=40, help="pool blocks to dump from the row")
 ap.add_argument("--field-probe", action="store_true", help="log every write to the track's recorder state record (+36..+83, both banks) with its PC")
 ap.add_argument("--reg-probe", action="store_true", help="log the mix loops' source pointers and gains at loop entry (frames 323..326)")
@@ -88,6 +92,113 @@ def flex_at(label):
 if getattr(a, "flex_probe", False):
     for pc,label in ((0x4000d49e,"caller_d49e"),(0x4000f450,"flexbind_f450")):
         uc.hook_add(UC_HOOK_CODE, flex_at(label), begin=pc, end=pc)
+
+# -- packer per-track dispatch probe (RTOS_FORK 10.34's next step): the
+# packer's bit4 test (0x4000d472: does this track's machine-type flag byte
+# have bit4 set -- gates the whole audio-assembly block), the arena lookup
+# (0x4000d47e: a0 = *(d6 + slot*4), the per-slot voice-render pointer) and
+# its null check (0x4000d484: beqs skips assembly if the slot has no active
+# voice registered). d3 is the packer's own track index (0-based) at every
+# hook site.
+from unicorn.m68k_const import UC_M68K_REG_D3, UC_M68K_REG_D4, UC_M68K_REG_D6
+pack_ev = []
+def pack_at(label, regs):
+    def h(u, addr, size, user):
+        d3 = rd(u, UC_M68K_REG_D3)
+        if d3 != a.track:                     # only this track -- else the shared
+            return                             # cap (4000) empties in ~170 frames
+        if len(pack_ev) < 40000:
+            pack_ev.append((label, rt.frame_count, d3,
+                             {n: f"{rd(u,r):#x}" for n, r in regs}))
+    return h
+if a.packer_probe:
+    uc.hook_add(UC_HOOK_CODE, pack_at("bit4_test", (("d0", UC_M68K_REG_D0), ("d1", UC_M68K_REG_D1))),
+                begin=0x4000d472, end=0x4000d472)
+    uc.hook_add(UC_HOOK_CODE, pack_at("arena_lookup", (("d4", UC_M68K_REG_D4), ("d6", UC_M68K_REG_D6))),
+                begin=0x4000d47e, end=0x4000d47e)
+    uc.hook_add(UC_HOOK_CODE, pack_at("null_check", (("a0", UC_M68K_REG_A0),)),
+                begin=0x4000d484, end=0x4000d484)
+
+# -- the per-frame render function's own silence-vs-fetch gate (0x40007960,
+# called from the packer's unconditional 0x4000d52c jsr; found by disassembly
+# after --rec-write-probe showed the sample-pair region is written ZERO every
+# frame through pass 2 -- RTOS_FORK 10.34's 3rd probe). a2 = table[a5] (a5 =
+# the LOW NIBBLE of the per-track flag byte, from d2 at the call site), a3 =
+# a2@(4). Two early exits (a3@8 != 0, or a3@16 <= 0) bail via a shared tail
+# with no write at all; past those, tstb a2@(0) at 0x400079b2 chooses ZERO-FILL
+# (a2's byte clear) vs the real fetch path at 0x400079cc (a2's byte set).
+from unicorn.m68k_const import UC_M68K_REG_A6
+import collections
+gate_ev = []
+gate_hits = [0]
+gate_track_args = collections.Counter()
+_gate_track_ptrs = None
+def _track_ptrs():
+    global _gate_track_ptrs
+    if _gate_track_ptrs is None:
+        track = a.track + 1
+        core = 0 if track >= 5 else 1
+        pos = (track - 1) % 4
+        base0, base1 = TRACKREC[core]
+        _gate_track_ptrs = {base0 + pos * 84 * 4 + 0x20, base1 + pos * 84 * 4 + 0x20}
+    return _gate_track_ptrs
+def on_gate(u, addr, size, x):
+    gate_hits[0] += 1
+    a2 = rd(u, UC_M68K_REG_A2)
+    fp = rd(u, UC_M68K_REG_A6)
+    try:
+        # fp+8 is NOT a track index (found 9 Sep 2026: it's a raw pointer,
+        # exactly track_base + 0x20 -- the destination for the sample-pair
+        # write, not a track number). Match on that pointer instead.
+        dest_ptr = struct.unpack(">I", u.mem_read(fp + 8, 4))[0]
+    except Exception:
+        return
+    if gate_hits[0] <= 4000:
+        gate_track_args[dest_ptr] += 1
+    if dest_ptr not in _track_ptrs() or len(gate_ev) >= 20000:
+        return
+    track_arg = dest_ptr
+    try:
+        a3 = struct.unpack(">I", u.mem_read(a2 + 4, 4))[0]
+        flag = u.mem_read(a2, 1)[0]
+        a3_8 = struct.unpack(">i", u.mem_read(a3 + 8, 4))[0] if a3 else None
+        a3_16 = struct.unpack(">i", u.mem_read(a3 + 16, 4))[0] if a3 else None
+    except Exception as e:
+        gate_ev.append((rt.frame_count, track_arg, "ERR", str(e))); return
+    gate_ev.append((rt.frame_count, track_arg, a2, a3, flag, a3_8, a3_16))
+if a.render_gate_probe:
+    uc.hook_add(UC_HOOK_CODE, on_gate, begin=0x4000798a, end=0x4000798a)
+
+# -- the fetch-availability call inside the format-converter (0x40008ca0's
+# caller, found by disassembly past the a2@0 flag: even when the fetch branch
+# is taken -- both trig frames -- it still writes zero, at 0x40008cfc's
+# fallback, gated on this call's D1 return. 0x40008c9c calls through a2's own
+# cached function pointer (fp@-68) with (a2, a2@(72)=the read position);
+# D0/D1 come back as an (address, count) pair -- D1==0 forces the zero-fill.
+from unicorn.m68k_const import UC_M68K_REG_D1, UC_M68K_REG_D5
+fetch_ev = []
+def on_fetch_call(u, addr, size, x):
+    a2 = rd(u, UC_M68K_REG_A2)
+    if a2 not in _track_ptrs_a2() or len(fetch_ev) >= 4000:
+        return
+    a0 = rd(u, UC_M68K_REG_A0)                      # the call target (about to jsr)
+    pos = struct.unpack(">i", u.mem_read(a2 + 72, 4))[0]
+    fetch_ev.append(("call", rt.frame_count, a2, a0, pos))
+def on_fetch_ret(u, addr, size, x):
+    a2 = rd(u, UC_M68K_REG_A2)
+    if a2 not in _track_ptrs_a2() or len(fetch_ev) >= 4000:
+        return
+    d0 = rd(u, UC_M68K_REG_D0); d1 = rd(u, UC_M68K_REG_D1)
+    fetch_ev.append(("ret", rt.frame_count, a2, d0, d1))
+_track_ptrs_a2_cache = None
+def _track_ptrs_a2():
+    global _track_ptrs_a2_cache
+    if _track_ptrs_a2_cache is None:
+        _track_ptrs_a2_cache = {0x800049d8}    # a2 was constant here across both frames -- confirm/extend if not
+    return _track_ptrs_a2_cache
+if a.render_gate_probe:
+    uc.hook_add(UC_HOOK_CODE, on_fetch_call, begin=0x40008c9c, end=0x40008c9c)
+    uc.hook_add(UC_HOOK_CODE, on_fetch_ret, begin=0x40008ca0, end=0x40008ca0)
 
 SNAP_HEAD = 48                      # samples from position 0
 SNAP_PERIODS = (20672, 22050)       # 4 steps at 128 / 120 BPM: the seam region [P-32, P+8)
@@ -194,6 +305,31 @@ def voice_segments(rec84):
         pairs += [(rec84[i + 2 * k], rec84[i + 2 * k + 1]) for k in range(take)]
         i += 2 * take
     return pairs[:16]
+
+# -- every write to the track's own 84-word record, with its PC -- RTOS_FORK
+# 10.34's 2nd probe: --packer-probe found the bit4-gated block (0x4000d47a..
+# 0x4000d4ce) is a ONE-FRAME pulse on the trig frame only, calling the SAME
+# 0x4000f450 bind §10.13/10.33 already knew about (a1@(d4*4) is a small
+# per-machine-type dispatch table, not a per-voice arena: a0 == 0x4000f450
+# both times, d4==1==FLEX). So steady-state segment writing, if it happens,
+# must be the UNCONDITIONAL per-frame call at 0x4000d52c instead. Rather than
+# keep tracing control flow, watch the destination bytes directly: does
+# anything, ever, write real (nonzero-beyond-header) content into this
+# track's slot of either ping buffer?
+rw_ev = []
+def on_rec_write(u, acc, addr, size, val, x):
+    if not (a.rec_write_window[0] <= rt.frame_count <= a.rec_write_window[1]):
+        return
+    if len(rw_ev) < 60000:
+        rw_ev.append((rt.frame_count, addr, size, val & 0xffffffff, rd(u, UC_M68K_REG_PC)))
+if a.rec_write_probe:
+    track = a.track + 1
+    core = 0 if track >= 5 else 1
+    pos = (track - 1) % 4
+    base0, base1 = TRACKREC[core]
+    for base in (base0, base1):
+        lo = base + pos * 84 * 4
+        uc.hook_add(UC_HOOK_MEM_WRITE, on_rec_write, begin=lo, end=lo + 84 * 4 - 1)
 
 # -- inbound (DSP -> host): fill the read-back at the paced chain's completion --
 inj = {"seq": 0, "log": []}
@@ -377,6 +513,56 @@ if a.voice_probe:
                     continue
                 segs = voice_segments(words84)
                 print(f"  frame {fr} {tag} pos{pos}: nonzero {nz}/84  segs(L)={[l for l,r in segs]}")
+if a.packer_probe:
+    print(f"packer dispatch events (track {a.track+1}): {len(pack_ev)}")
+    poi = set()
+    for e in ev: poi |= {e["frame"] + d for d in range(-1, 4)}
+    for lbl, fr, d3, regs in pack_ev:
+        if fr % 200 == 0: poi.add(fr)
+    for lbl, fr, d3, regs in pack_ev:
+        if fr in poi:
+            print(f"  frame {fr} {lbl}: {regs}")
+    nulls = [e for e in pack_ev if e[0] == "null_check"]
+    zero = sum(1 for e in nulls if e[3]["a0"] == "0x0")
+    print(f"  null_check reached {len(nulls)}x, a0==0 (skip) {zero}x, a0!=0 (assemble) {len(nulls)-zero}x")
+    if nulls:
+        nz = [e for e in nulls if e[3]["a0"] != "0x0"]
+        print(f"  first a0!=0 at frame {nz[0][1]}" if nz else "  a0 is NEVER nonzero in this run")
+if a.rec_write_probe:
+    import collections
+    print(f"rec-write-probe: {len(rw_ev)} writes to T{a.track+1}'s record in frames {a.rec_write_window}")
+    by_pc = collections.Counter(pc for f, addr, sz, v, pc in rw_ev)
+    print("  by PC:", {f"{pc:#x}": n for pc, n in by_pc.most_common(20)})
+    nz_writes = [e for e in rw_ev if e[3] != 0]
+    print(f"  {len(nz_writes)} of them wrote a NONZERO value")
+    for f, addr, sz, v, pc in rw_ev[:60]:
+        print(f"   f{f} {addr:#x} ({sz}) <- {v:#x}  pc {pc:#x}")
+if a.render_gate_probe:
+    print(f"render-gate: hook fired {gate_hits[0]}x total; track_arg distribution (first 4000 hits): {dict(gate_track_args)}")
+    t1 = [e for e in gate_ev if e[2] != "ERR"]
+    print(f"render-gate: {len(gate_ev)} calls captured for track {a.track+1} ({len(gate_ev)-len(t1)} errored)")
+    early1 = sum(1 for e in t1 if e[3] is None or (e[5] is not None and e[5] != 0))
+    early2 = sum(1 for e in t1 if e[3] and e[5] == 0 and (e[6] is None or e[6] <= 0))
+    flagset = sum(1 for e in t1 if e[3] and e[5] == 0 and e[6] is not None and e[6] > 0 and e[4] != 0)
+    flagclear = sum(1 for e in t1 if e[3] and e[5] == 0 and e[6] is not None and e[6] > 0 and e[4] == 0)
+    print(f"  early-exit-1 (a3 null or a3@8!=0): {early1}")
+    print(f"  early-exit-2 (a3@16<=0): {early2}")
+    print(f"  reached tstb: flag(a2@0)==0 [ZERO-FILL] {flagclear}x, flag!=0 [FETCH] {flagset}x")
+    poi = set()
+    for e in ev: poi |= {e["frame"] + d for d in range(-1, 4)}
+    seen = set()
+    for e in t1:
+        f = e[0]
+        if f in poi and f not in seen:
+            seen.add(f)
+            a3_str = f"{e[3]:#x}" if e[3] else "NULL"
+            print(f"   f{f} track_arg={e[1]} a2={e[2]:#x} a3={a3_str} flag(a2@0)={e[4]} a3@8={e[5]} a3@16={e[6]}")
+    print(f"fetch-call/ret events: {len(fetch_ev)}")
+    for e in fetch_ev:
+        if e[0] == "call":
+            print(f"   f{e[1]} CALL a2={e[2]:#x} target={e[3]:#x} pos(a2@72)={e[4]}")
+        else:
+            print(f"   f{e[1]} RET  a2={e[2]:#x} d0={e[3]:#x} d1={e[4]:#x}")
 
 import pickle
 with open(a.out, "wb") as fh:
@@ -386,5 +572,9 @@ with open(a.out, "wb") as fh:
         audio_out=[(f, s, g, sa, d) for f, s, g, sa, d in audio_out],
         rec_fields=[(f, s, r0, r1) for f, s, r0, r1 in rec_fields],
         pool_row=list(row), pool_blocks=blocks, pool_first=pool_w['first'], pool_per_frame=pool_w['per_frame'], rec_setup=rec_setup, snaps=snaps,
-        voice_rec=voice_rec, flex_ev=flex_ev if getattr(a, "flex_probe", False) else None), fh)
+        voice_rec=voice_rec, flex_ev=flex_ev if getattr(a, "flex_probe", False) else None,
+        pack_ev=pack_ev if a.packer_probe else None,
+        rw_ev=rw_ev if a.rec_write_probe else None,
+        gate_ev=gate_ev if a.render_gate_probe else None,
+        fetch_ev=fetch_ev if a.render_gate_probe else None), fh)
 print(f"saved {a.out}: {len(audio_out)} audio blocks, {len(blocks)} pool blocks, {len(ev)} events, {len(voice_rec)} voice_rec frames")

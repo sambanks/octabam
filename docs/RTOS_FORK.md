@@ -3151,3 +3151,75 @@ recorder-buffer-sourced FLEX voice renders there and not in route A, that
 would confirm route A is instrument-blind here (this project's own pattern:
 `[[octabam-instrument-blindness]]`), not that the firmware fails to play
 the loop.
+
+### 10.35 The trace resolves further than expected: the fetch that would read real samples is never even called, on either trig frame (9 Sep 2026)
+
+Took §10.34's own recommended first step (instruction trace, before the C++
+port) on `g65` (RLEN 16, 65.6 BPM golden self-loop). Three probes,
+`recaudio.py --packer-probe` / `--rec-write-probe` / `--render-gate-probe`,
+each following the last:
+
+**1. The packer's bit4-gated block is not a per-voice arena — it's `0x4000f450`
+itself, the SAME flexbind §10.33 already knew about.** `--packer-probe`
+watched the packer's `btst #4` test and the table lookup that follows it
+(`0x4000d472`/`0x4000d47e`/`0x4000d484`). Bit4 is set on exactly two frames
+in the whole run — 1 and 10081, the two arm/play-trig frames, nothing
+between — and the "arena" lookup (`a1@(d4×4)`, d4 = the low nibble of the
+per-track flag byte, always 1 = FLEX) resolves to the constant `0x4000f450`
+both times: a small per-MACHINE-TYPE jump table, not a per-voice registration
+that could be null. So this block is a one-frame-pulse *call to the bind*,
+not a render step, confirming it's the same mechanism §10.33 already
+instrumented from the caller's side.
+
+**2. The steady-state per-frame writer is a different, unconditional call
+(`0x40007960`, reached via the packer's `0x800062a4`-dispatched
+`0x4000d52c`), and every write it makes to the sample-pair region (record
+offset ≥ 0x20, word 8+) is ZERO — on *every* frame checked, including both
+trig frames.** `--rec-write-probe` watched every write to T1's own record
+slot directly (two runs: frames 0–15, and 10070–10095, spanning both arms).
+The header/position fields (offsets 0x08 magic, 0x10 a counter, 0x18/0x1c a
+rate/phase accumulator that visibly RAMPS every frame — real, live position
+tracking) are written correctly and keep moving. But offset ≥ 0x20 — the 16
+`(L,R)` sample pairs O10 decoded as real audio under the port — is written
+zero, 100% of the time, 418 writes checked in the pass-2 window alone, 0
+nonzero.
+
+**3. Even on the trig frames, where the record's own "please render" flag
+IS set, the function that would read real samples is never called.**
+Disassembly of the writer past its zero-fill loop (`0x400079c0`) found a
+gate at `0x400079b2`: `tstb a2@(0)` — zero takes the hardcoded zero-fill,
+nonzero takes a real fetch/format-converter (`0x40008b60`–`0x40008e42`, a
+jump table on sample width that expands 8/16/24-bit source data into the
+record). `--render-gate-probe` read that flag directly every frame: **it is
+`0xff` on frames 1 and 10081 only** (exactly the two arm frames) and `0`
+everywhere else — so route A is not even failing the "please render" signal;
+something upstream does raise it. But tracing the format-converter's own
+internal branches (disassembly of `0x40008b60`–`0x40008d12`) found it can
+reach its own zero-fill fallback in TWO ways: through an indirect
+availability-query call at `0x40008c9c` (target `a2`'s own cached function
+pointer, args `(a2, a2@72)`, returning `(addr, count)` in D0/D1 — D1==0
+would force zero-fill) — measured, this call **never fires**, 0 of 0, on
+either trig frame — or through an earlier UNCONDITIONAL branch at
+`0x40008c90` that skips the query entirely, gated on `a2@21` (sign),
+`a2@20` (==1?), `a2@23`, and a `d0` vs `a2@(0x64)` comparison built up over
+several frames-only-not blocks. Not yet measured: which of those fields is
+the one holding false. `a3@16` (161,280, the record's cached recorder-buffer
+length) is correct throughout, so at least that piece of the descriptor is
+populated right — the gap is narrower than "nothing upstream works," it's
+specifically the small set of fields feeding `0x40008c56`–`0x40008c90`.
+
+**Where this leaves it.** Measured, precisely: the render function is
+called, the "please render" flag correctly pulses on the arm frames, and
+the code branches to a real (not fake) sample-fetch subsystem — but that
+subsystem's own gate keeps sending it to zero-fill before it ever asks "are
+there samples here." 🟡 Inferred, not measured: whether that gate is false
+because of a genuine route-A gap (uninitialised ColdFire state route A's
+boot doesn't replicate) or because it is false ON HARDWARE TOO for this
+exact geometry (a self-loop needs one extra condition this fixture doesn't
+supply). Two ways to close it from here, cheapest first: (a) one more
+`recaudio.py` hook reading `a2@20/21/23/0x64` directly at the two trig
+frames — the next natural continuation of this exact method, or (b) the
+C++ port (§10.34's original fallback), which sidesteps the question of
+whether route A's own state is at fault by running the real DSP and a
+faithful boot. Given how far (a) got on route A alone, (a) is probably one
+more session, not several.
