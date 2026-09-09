@@ -530,8 +530,11 @@ def native_macload_sites(uc, lo=BASE, hi=0x40098000):
         if (op & 0xF100) != 0xA000 or (op & 0x0030) == 0 or ((op >> 3) & 7) not in (2, 3, 4, 5):
             continue
         ext = int.from_bytes(img[off + 2:off + 4], "big")
-        if not ext & 0x0800:
-            continue
+        # .w forms too (ext bit 11 clear): the level chain's last word,
+        # `msacw %d4l,%d0l,%a1@(4),%d4,%acc1` = a829 0104, is one the core
+        # runs natively and wrongly -- the T1 voice level came out 0x4001
+        # where the port and the arithmetic give 0x7f00 (8 Sep 2026, later;
+        # 222 .w load words in the image, 87 accepted natively).
         if _macload_native(op, ext):
             out.append(lo + off)
     return out
@@ -596,7 +599,8 @@ def _emac_load_shim(uc, r):
     # = a089): Ry in bits 3:0 with bit 3 = A/D, Rx in bits 11:9 with A/D at bit 6,
     # acc bit 0 at bit 7 (straight, unlike the load form)
     plain_op = 0xA000 | ((rx & 7) << 9) | (((rx >> 3) & 1) << 6) | ((acc & 1) << 7) | ry
-    plain_ext = (ext & 0x0F00) | (size_l << 11) | ((acc >> 1) << 4)
+    # ext bits 6-7 are the .w forms' U/L half selects (`%d4u,%d0l`): keep them
+    plain_ext = (ext & 0x0FC0) | (size_l << 11) | ((acc >> 1) << 4)
     try:
         uc.mem_map(TRAMP, 0x3000)
     except UcError:
