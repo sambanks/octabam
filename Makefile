@@ -148,6 +148,9 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	python3 tools/verify_slots.py
 	python3 tools/verify_replaces.py
 	python3 tools/label_fmt.py
+	python3 tools/verify_octakit.py
+	python3 tools/verify_midiscenes.py
+	REMIX=$(REMIX) python3 tools/verify_dram_boot.py
 	@$(PY) tools/verify_labels.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] label check against the firmware: no .venv (make emu-setup)"
 	@$(PY) tools/verify_modenames.py $(REMIX) 2>/dev/null || \

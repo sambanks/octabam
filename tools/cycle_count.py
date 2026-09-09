@@ -572,7 +572,11 @@ def main():
                               core_total=CORE_TOTAL), indent=2))
         return
 
-    w = max(max(len(m["name"]) for m in rows), 17)
+    # A remix with no DSP module at all (a solo ColdFire-only patch, e.g.
+    # midi-scenes) leaves `rows` empty -- max() over an empty generator
+    # raised ValueError here until this guard. Identical to the old
+    # expression whenever rows is non-empty.
+    w = max([len(m["name"]) for m in rows] + [17])
     print(f"remix {remix.name!r}\n")
     print(f"{'':{w}}  cycles/sample")
     for m in rows:

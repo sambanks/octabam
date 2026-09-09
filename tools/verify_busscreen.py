@@ -109,17 +109,29 @@ def main():
           and int.from_bytes(e17[4:8], "big") == 0,
           "17th entry's enter/exit members are 0 (skipped)")
 
-    # source still assembles to the shipped bytes
-    if shutil.which("m68k-elf-as") and shutil.which("m68k-elf-objcopy"):
-        import tempfile
+    # source, linked at HANDLER_AT with the data fields as linker symbols
+    # (the build's own path since 9 Sep 2026), still produces the bytes the
+    # hand-patched HANDLER shipped -- HANDLER_PINNED is that placeholder-
+    # patched form, kept in the manifest as the oracle.
+    if all(shutil.which(t) for t in ("m68k-elf-as", "m68k-elf-ld", "m68k-elf-objcopy")):
+        import importlib.util, tempfile
+        spec = importlib.util.spec_from_file_location(
+            "busscreen_manifest", ROOT / "modules/busscreen/manifest.py")
+        mf = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(ROOT / "tools"))
+        spec.loader.exec_module(mf)
         with tempfile.TemporaryDirectory() as td:
-            o, bp = td + "/c.o", td + "/c.bin"
+            o, e, bp = td + "/c.o", td + "/c.elf", td + "/c.bin"
             subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", o,
                             str(ROOT / "modules/busscreen/screen_draw.s")], check=True)
+            subprocess.run(["m68k-elf-ld", f"-Ttext=0x{mf.HANDLER_AT:x}",
+                            *[f"--defsym={n}=0x{v:x}" for n, v in mf.HANDLER_DEFSYMS],
+                            "-o", e, o], check=True)
             subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
-                            o, bp], check=True)
-            check(pathlib.Path(bp).read_bytes() == src.HANDLER,
-                  "screen_draw.s still assembles to the shipped HANDLER bytes")
+                            e, bp], check=True)
+            check(pathlib.Path(bp).read_bytes() == mf.HANDLER_PINNED,
+                  "screen_draw.s, linked with the data fields as symbols, still "
+                  "produces the shipped (placeholder-patched) HANDLER bytes")
 
     # boots, and the menu gains exactly REVERB and DELAY under CONTROL
     grown_boot = emu.boot(str(IMAGE))

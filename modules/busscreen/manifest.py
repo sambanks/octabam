@@ -81,10 +81,12 @@ TABLE_REFS = (
 # The pinned pieces: the second zero run, 0x400d24d0..0x400d2ce0 (2064 B).
 HANDLER_AT = 0x400d24d0
 
-# screen_draw.s, assembled with m68k-elf-as -mcpu=5407. Self-references the
-# build patches to data-cave addresses (placeholders 0x40bad000..24, MARKS).
-# verify_busscreen re-assembles the source and compares, so a drifted source
-# cannot pass unnoticed.
+# SOURCE IS THE TRUTH (9 Sep 2026): the build assembles and links
+# screen_draw.s at HANDLER_AT with the ten data-cave fields as linker
+# symbols (HANDLER_DEFSYMS). HANDLER below is the hand-assembled form it
+# replaced, with 0x40bad000..24 placeholders (MARKS); HANDLER_PINNED is that
+# form patched exactly as the old emit() did, and is what the linked source
+# must reproduce -- checked on every build, and by tools/verify_busscreen.py.
 HANDLER = bytes.fromhex(
     "4fefffd448d77cfc286f00304a8c67000208203946c82456670001fe7200123980000003"
     "243c000018b24c021000d08172001239800000002040d1fc0008ed88d1c1740014104bf9"
@@ -282,9 +284,11 @@ def emit_table(addr):
     return bytes(table) + bytes(entry), pokes
 
 
-def emit_handler(addr):
-    """The handler with its data placeholders patched to DATA_AT fields."""
-    assert addr == HANDLER_AT, "the handler is pinned"
+def _patched_handler():
+    """HANDLER with its data placeholders patched to DATA_AT's fields --
+    what the build wrote until 9 Sep 2026, and the REFERENCE it must still
+    reproduce now that screen_draw.s is linked with those fields as symbols
+    (CavePatch.pinned + defsyms; verify_busscreen holds the two together)."""
     _, targets, _ = _data()
     handler = bytearray(HANDLER)
     for mark, field in MARKS.items():
@@ -295,7 +299,19 @@ def emit_handler(addr):
         while i >= 0:
             handler[i:i + 4] = want
             i = handler.find(mb, i + 4)
-    return bytes(handler), ()
+    return bytes(handler)
+
+
+HANDLER_PINNED = _patched_handler()
+# The same ten fields, as the linker symbols screen_draw.s now names them.
+HANDLER_DEFSYMS = tuple((field.upper(), _data()[1][field]) for field in MARKS.values())
+
+
+def emit_handler(addr):
+    """Source is the truth: the build links screen_draw.s at HANDLER_AT with
+    HANDLER_DEFSYMS and checks it against HANDLER_PINNED; nothing to emit."""
+    assert addr == HANDLER_AT, "the handler is pinned"
+    return b"", ()
 
 
 def emit_data(addr):
@@ -327,8 +343,11 @@ MODULE = Module(
         CavePatch(
             label="bus screen: draw/key/enc handler",
             cave_addr=HANDLER_AT,           # second zero run, where MENU
-            pinned=b"",                     # SHORTCUT used to live
+            pinned=HANDLER_PINNED,          # SHORTCUT used to live; the
+                                            # linked source must match this
             source="modules/busscreen/screen_draw.s",
+            defsyms=HANDLER_DEFSYMS,
+            cpu="5407",
             emit=emit_handler,
             report_note=" (12-row draw handler, pinned)",
         ),

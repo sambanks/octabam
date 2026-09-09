@@ -88,7 +88,7 @@ code: payload B's placed P words carry 0x38000 five times and 0x30000 zero
 times. The old docstring here claimed "exactly one occurrence", which was
 never true for the XBUS path.
 """
-import dataclasses, os, pathlib, re, subprocess, sys
+import dataclasses, hashlib, os, pathlib, re, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from dsp_modmap import BASE, IMG, PAYLOADS, modules  # noqa: E402
@@ -1176,6 +1176,35 @@ def main():
     # module that has any -- in both cases the DSP side reads zeros and SYNC
     # is a no-op by design.
     import shutil, tempfile
+    _sym = {}                       # cave/unit label -> {symbol: address}
+    _exports = {}                   # GLOBAL symbols of every unit linked so
+                                    # far -> the --defsym set later units
+                                    # resolve their cross-unit references from
+
+    def _link(src, at, cpu, work, sections=(), defsyms=()):
+        """Assemble `src` and link it at `at`; return (bytes, symbols,
+        globals). `sections` = objcopy -j selection (empty = every alloc
+        section). `defsyms` = (name, value) pairs for symbols defined by
+        units already placed."""
+        work = pathlib.Path(work)
+        work.mkdir(parents=True, exist_ok=True)
+        o, e, b = work / "u.o", work / "u.elf", work / "u.bin"
+        _ld = ["m68k-elf-ld", f"-Ttext=0x{at:x}"] + \
+              [f"--defsym={n}=0x{v:x}" for n, v in defsyms] + ["-o", e, o]
+        _oc = ["m68k-elf-objcopy", "-O", "binary"] + \
+              [x for s in sections for x in ("-j", s)] + [e, b]
+        for _args in (["m68k-elf-as", f"-mcpu={cpu}", "-o", o, src], _ld, _oc):
+            _r = subprocess.run([str(a) for a in _args], capture_output=True, text=True)
+            if _r.returncode:
+                sys.exit(f"{src}: {_args[0]} failed\n{_r.stderr[-2000:]}")
+        _nm = subprocess.run(["m68k-elf-nm", str(e)], capture_output=True, text=True).stdout
+        _rows = [f for f in (l.split() for l in _nm.splitlines()) if len(f) == 3]
+        return (pathlib.Path(b).read_bytes(),
+                {f[2]: int(f[0], 16) for f in _rows},
+                {f[2]: int(f[0], 16) for f in _rows if f[1].isupper() and f[1] != "U"})
+
+    _toolchain = all(shutil.which(t) for t in
+                     ("m68k-elf-as", "m68k-elf-ld", "m68k-elf-objcopy", "m68k-elf-nm"))
     _caves = [c for k in REMIX.modules for c in remix_modules()[k].cf_patches]
     # A cave that exists only to draw a BLANKED module's slot (a formatter
     # registration naming a module whose page draws no knobs) is dead
@@ -1256,22 +1285,36 @@ def main():
             sys.exit(f"{_c.label} not free")
         if OVERFLOW_RUN <= _c.cave_addr < OVERFLOW_RUN_END:
             _ovf_top = max(_ovf_top, (_c.cave_addr + len(_b) + 3) & ~3)
-        # The bytes are PINNED so the build needs no m68k toolchain; when one
-        # is present the source is re-assembled and compared, so a source that
-        # has drifted from what we ship cannot pass unnoticed.
-        if (_c.source and _c.emit is None and not _replay
-                and shutil.which("m68k-elf-as")
-                and shutil.which("m68k-elf-objcopy")):
-            with tempfile.TemporaryDirectory() as td:
-                o, bp = os.path.join(td, "c.o"), os.path.join(td, "c.bin")
-                subprocess.run(["m68k-elf-as", "-mcpu=5475", "-o", o,
-                                _c.source], check=True)
-                subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j",
-                                ".text", o, bp], check=True)
-                if pathlib.Path(bp).read_bytes() != _c.pinned:
-                    sys.exit(f"{_c.source} no longer assembles to its "
-                             f"pinned bytes -- re-pin them in the "
-                             f"manifest deliberately")
+        # SOURCE IS THE TRUTH when a toolchain is present (schema.CavePatch):
+        # the cave is assembled and LINKED at the address just resolved and
+        # those bytes are written; the reference -- `pinned`, or the bytes an
+        # emit() returned -- must match or the build refuses. An emit() that
+        # returns b"" hands the bytes to the source entirely (its pokes still
+        # apply). An emit() that returns bytes is the legacy hand-assembled
+        # path and is left exactly alone. Without a toolchain the reference
+        # is written, as it always was.
+        _legacy_emit = _c.emit is not None and len(_b) > 0
+        if _c.source and not _replay and _toolchain and not _legacy_emit:
+            _lb, _lsyms, _lglob = _link(
+                _c.source, _c.cave_addr, _c.cpu,
+                pathlib.Path("out/linked/caves") / re.sub(r"\W+", "_", _c.label),
+                sections=(".text",), defsyms=tuple(_c.defsyms) + tuple(_exports.items()))
+            _exports.update(_lglob)
+            _ref = (_c.reference(_c.cave_addr) if _c.reference is not None
+                    else _c.pinned if _c.emit is None else _b)
+            if _ref and _lb != _ref:
+                sys.exit(f"{_c.source} linked at 0x{_c.cave_addr:08x} no longer "
+                         f"matches the bytes the manifest ratifies ({len(_lb)} vs "
+                         f"{len(_ref)} B) -- re-pin them in the manifest deliberately")
+            if not _ref and not _lb:
+                sys.exit(f"{_c.label}: source produced no bytes")
+            if any(img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_lb)]):
+                sys.exit(f"{_c.label} not free")
+            _b = _lb
+            _sym[_c.label] = _lsyms
+        elif _c.source and not _replay and not _legacy_emit and not _b:
+            sys.exit(f"{_c.label}: its source is the only truth and there is no "
+                     f"m68k-elf toolchain -- run `make setup`")
         img[_c.cave_addr - BASE:_c.cave_addr - BASE + len(_b)] = _b
         for _pa, _expect, _write in _pokes:
             _got = bytes(img[_pa - BASE:_pa - BASE + len(_expect)])
@@ -1307,6 +1350,189 @@ def main():
               f"{_hook}{_c.report_note}")
         if _inside:
             _cave_top = _c.cave_addr + len(_b)
+
+    # ==== 1c. loader-appended DRAM runtimes (schema.Runtime) =================
+    # The third placement class: the OS image GROWS by an append (early
+    # loader + stage + packed runtime) and the runtime executes from DRAM.
+    # Its recipe's sparse writes into the image are pokes with the same
+    # assert-before-write discipline as a cave's; the append is stitched on
+    # at the very end, after every other pass has seen the stock-length
+    # image. tools/remix/runtime_build.py re-derives every identity the
+    # recipe pins, so nothing lands here that does not match the author's
+    # own build byte for byte. Nothing runs for a remix without a runtime.
+    _appends = []
+    _payloads = []                  # runtimes carried by octabam's loader (1e)
+    for _k in REMIX.modules:
+        _x = getattr(remix_modules()[_k], "runtime_ext", None)
+        if _x is not None and _x.host not in REMIX.modules:
+            sys.exit(f"{_k} extends the {_x.host} runtime, which this remix does not "
+                     f"carry -- add it, or drop {_k}")
+    for _k in REMIX.modules:
+        _m = remix_modules()[_k]
+        _rt = getattr(_m, "runtime", None)
+        if _rt is None:
+            continue
+        from remix import runtime_build
+        _work = pathlib.Path("out/runtime") / _m.name
+        # Other selected modules that extend THIS runtime (schema.RuntimeExt)
+        # are linked into it here; their symbols join its table.
+        _exts = [(remix_modules()[_e].key, remix_modules()[_e].runtime_ext)
+                 for _e in REMIX.modules
+                 if getattr(remix_modules()[_e], "runtime_ext", None) is not None
+                 and remix_modules()[_e].runtime_ext.host == _m.key]
+        _writes, _append, _info = runtime_build.build(_rt, IMG.read_bytes(), _work, _exts)
+        _sym[_m.key] = _info["symbols"]
+        _exports.update({k: v for k, v in _info["symbols"].items()
+                         if not k.startswith("_") or k.startswith("__gk_")})
+        if _exts:
+            print(f"  {_m.key}: extended by {', '.join(k for k, _ in _exts)}"
+                  f"{' (code budget 0x%x)' % _info['code_budget'] if _info['code_budget'] else ''}"
+                  f" -- the host's own identities do not apply to the composite; "
+                  f"its helper constants were regenerated")
+        for _va, _expect, _write, _name in _writes:
+            _got = bytes(img[_va - BASE:_va - BASE + len(_expect)])
+            if _got != _expect:
+                sys.exit(f"{_m.key}: runtime write {_name} at 0x{_va:08x} finds "
+                         f"{_got.hex()}, not stock {_expect.hex()} -- another module "
+                         f"got there first; refusing")
+            img[_va - BASE:_va - BASE + len(_write)] = _write
+        # Her append (loader + stage + packed runtime) is NOT stitched on:
+        # her runtime becomes a PAYLOAD of octabam's loader (section 1e),
+        # staged at her own stage address so her relocation still finds it.
+        _payloads.append(_info["payload"])
+        print(f"  {_m.key}: {len(_writes)} writes into the image, runtime "
+              f"{_info['runtime_size']:,} B -> packed {_info['packed_size']:,} B "
+              f"(m68k-elf-gcc {_info['gcc']}, recipe pins {_info['gcc_pinned']}; "
+              f"rebuilt runtime, packed runtime and append all match the "
+              f"recipe) -- carried as a payload of octabam's loader{_rt.report_note}")
+
+    # ==== 1d. linker-backed units (schema.Linked/Detour/TableGrow/Poke) =====
+    # Placement by the BUILD: each unit is assembled and linked at the
+    # address it is given here -- floating ones after whatever precedes them
+    # in the clone window, exactly like a floating cave -- and everything
+    # that points into it (detours, grown tables) resolves through the
+    # linker's symbol table, never through an address the author wrote
+    # down. A unit that declares a `reference` (address, sha256) is ALSO
+    # linked at that address, in a scratch file, and compared: that is the
+    # author's own build output, so a source or toolchain drift from the
+    # bytes they ratified fails here even though the image carries the unit
+    # elsewhere. Nothing runs for a remix without linked units.
+    _all_units = [(remix_modules()[_k], _u) for _k in REMIX.modules
+                  for _u in getattr(remix_modules()[_k], "linked", ())]
+    _units = [(m, u) for m, u in _all_units if not u.dram]      # ROM-placed
+    _dram = [(m, u) for m, u in _all_units if u.dram]           # platform runtime (1e)
+    if (_all_units or _payloads) and not _toolchain:
+        sys.exit("linked units need m68k-elf-as/ld/objcopy/nm -- run `make setup` "
+                 "(Homebrew: brew install m68k-elf-gcc)")
+
+    for _m, _u in _units:
+        _work = pathlib.Path("out/linked") / _m.name / _u.label
+        _work.mkdir(parents=True, exist_ok=True)
+        _src = pathlib.Path(_u.source)
+        _defs = tuple(_exports.items())
+        if _u.reference is not None:
+            _ra, _rsha = _u.reference
+            (_work / "ref").mkdir(exist_ok=True)
+            _rb, _, _ = _link(_src, _ra, _u.cpu, _work / "ref", defsyms=_defs)
+            _got = hashlib.sha256(_rb).hexdigest()
+            if _got != _rsha:
+                sys.exit(f"{_m.key} {_u.label}: linked at the author's address "
+                         f"0x{_ra:08x} it is {len(_rb)} B sha256 {_got}, not the "
+                         f"author's {_rsha} -- source or toolchain drift; refusing")
+        _at = _u.cave_addr if _u.cave_addr is not None else (_cave_top + 0x7f) & ~0x7f
+        _b, _syms, _glob = _link(_src, _at, _u.cpu, _work, defsyms=_defs)
+        _exports.update(_glob)
+        if _at >= SAFE_CAVE_CEIL:
+            sys.exit(f"{_u.label}: linked at 0x{_at:08x}, above the safe ceiling")
+        if any(img[_at - BASE:_at - BASE + len(_b)]):
+            sys.exit(f"{_m.key} {_u.label} at 0x{_at:08x} not free")
+        _in = CLONE_BASE <= _at < cave_limit
+        if _in and _at + len(_b) > cave_limit:
+            sys.exit(f"{_u.label}: past the stock zero run")
+        img[_at - BASE:_at - BASE + len(_b)] = _b
+        _sym[_u.label] = _syms
+        print(f"  {_m.key}: {_u.label} {len(_b)} B linked at 0x{_at:08x}"
+              f"{' (pinned)' if _u.cave_addr is not None else ''}"
+              f"{' -- matches the author\'s build at 0x%08x' % _u.reference[0] if _u.reference else ''}")
+        if _in:
+            _cave_top = max(_cave_top, _at + len(_b))
+        elif OVERFLOW_RUN <= _at < OVERFLOW_RUN_END:
+            _ovf_top = max(_ovf_top, (_at + len(_b) + 3) & ~3)
+
+    # ==== 1e. the platform runtime: DRAM units + other payloads, one loader ==
+    # Every `dram=True` unit in the remix is linked as ONE image at
+    # tools/remix/platform_build.RUNTIME_BASE, packed and carried behind
+    # octabam's loader together with any runtime built in 1c (Octakit) --
+    # equal payloads, one boot detour. The loader itself is the append;
+    # nothing here touches the OS zero runs.
+    if _dram or _payloads:
+        from remix import platform_build
+        _pappend, _psyms, _boot, _pnames = platform_build.build(
+            [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"))
+        for _m, _u in _dram:
+            _sym[_u.label] = _psyms          # detours name units; one table serves all
+        _exports.update(_psyms)
+        for _p in _payloads:
+            _exports.update({k: v for k, v in _p.get("symbols", {}).items() if k.startswith("gk_")})
+        _appends.append(("octabam loader + payloads (" + ", ".join(_pnames) + ")", _pappend))
+        if "OCTAKIT" not in REMIX.modules:
+            # Octakit's own recipe already routes the boot site through her
+            # wrapper, which calls the loader at its fixed address; without
+            # her, the redirect is ours to make.
+            _ba, _bexp, _bw, _bnote = _boot
+            _got = bytes(img[_ba - BASE:_ba - BASE + len(_bexp)])
+            if _got != _bexp:
+                sys.exit(f"boot site 0x{_ba:08x} holds {_got.hex()}, not stock "
+                         f"{_bexp.hex()} -- refusing to redirect boot")
+            img[_ba - BASE:_ba - BASE + len(_bw)] = _bw
+            print(f"    poke 0x{_ba:08x}: {_bexp.hex()} -> {_bw.hex()}  {_bnote}")
+        _dsize = sum(1 for _ in _dram)
+        print(f"  platform runtime: {_dsize} DRAM unit(s) linked at "
+              f"0x{platform_build.RUNTIME_BASE:08x}, payloads {', '.join(_pnames)}, "
+              f"append {len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
+
+    for _m, _t in [(remix_modules()[_k], _t) for _k in REMIX.modules
+                   for _t in getattr(remix_modules()[_k], "tables", ())]:
+        _ents = [rd32(_t.old + i * 4) for i in range(_t.count)]
+        _ents += [_sym[u][s] for u, s in _t.symbols]
+        _blob = b"".join(v.to_bytes(4, "big") for v in _ents)
+        _at = (_cave_top + 0x7f) & ~0x7f
+        if any(img[_at - BASE:_at - BASE + len(_blob)]):
+            sys.exit(f"{_m.key} table {_t.label} at 0x{_at:08x} not free")
+        img[_at - BASE:_at - BASE + len(_blob)] = _blob
+        _cave_top = _at + len(_blob)
+        for _ra, _old in _t.refs:
+            if rd32(_ra) != _old:
+                sys.exit(f"{_m.key} table {_t.label}: ref 0x{_ra:08x} holds "
+                         f"0x{rd32(_ra):08x}, not 0x{_old:08x}; refusing")
+            wr32(_ra, _at)
+        print(f"  {_m.key}: table {_t.label} {_t.count}+{len(_t.symbols)} entries at "
+              f"0x{_at:08x}, {len(_t.refs)} refs repointed")
+
+    for _m, _d in [(remix_modules()[_k], _d) for _k in REMIX.modules
+                   for _d in getattr(remix_modules()[_k], "detours", ())]:
+        _got = bytes(img[_d.site - BASE:_d.site - BASE + len(_d.expect)])
+        if _got != _d.expect:
+            sys.exit(f"{_m.key} detour {_d.note or _d.symbol} at 0x{_d.site:08x} finds "
+                     f"{_got.hex()}, not {_d.expect.hex()}; refusing")
+        _target = _d.target if _d.target is not None else _sym[_d.unit][_d.symbol]
+        _op = {"jmp": b"\x4e\xf9", "jsr": b"\x4e\xb9", "lea": _d.expect[:2]}[_d.kind]
+        _w = _op + _target.to_bytes(4, "big")
+        _n = _d.pad_to or 6
+        assert _n >= 6 and _n % 2 == 0, \
+            f"{_m.key} detour at 0x{_d.site:08x}: pad_to {_n} must be an even count >= 6"
+        img[_d.site - BASE:_d.site - BASE + _n] = _w + b"\x4e\x71" * ((_n - 6) // 2)
+        _what = f"{_d.unit}:{_d.symbol}" if _d.target is None else "stock"
+        print(f"  {_m.key}: {_d.kind} 0x{_d.site:08x} -> {_what} 0x{_target:08x}  {_d.note}")
+
+    for _m, _p in [(remix_modules()[_k], _p) for _k in REMIX.modules
+                   for _p in getattr(remix_modules()[_k], "pokes", ())]:
+        _got = bytes(img[_p.addr - BASE:_p.addr - BASE + len(_p.expect)])
+        if _got != _p.expect:
+            sys.exit(f"{_m.key} poke {_p.note} at 0x{_p.addr:08x} finds {_got.hex()}, "
+                     f"not {_p.expect.hex()}; refusing")
+        img[_p.addr - BASE:_p.addr - BASE + len(_p.write)] = _p.write
+        print(f"    poke 0x{_p.addr:08x}: {_p.expect.hex()} -> {_p.write.hex()}  {_p.note}")
 
     # ---- PLAN §6: the mode selects print their WORDS ---------------------
     # Every stepped select drew as a bare number -- WarpFold's MODE as `1 2 3`
@@ -2890,9 +3116,18 @@ hostquit:
         # only; letting it land on the flashable path is the one way this
         # hatch could do harm.
         out = pathlib.Path("out/mainos_bus_dev.bin")
+    # A loader-appended runtime grows the image here, last of all: every
+    # pass above worked on the stock-length image. The combined OS must
+    # match the identity the recipe pins for exactly this (single-runtime)
+    # composition; a remix that combines the runtime with other modules
+    # cannot match it, and says so instead of failing.
+    _grown = ""
+    for _aname, _append in _appends:
+        img.extend(_append)
+        _grown += f" (+{len(_append):,} B {_aname} appended)"
     out.write_bytes(bytes(img))
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
-    note = ""
+    note = _grown
     if mode_env is not None:
         note = "   *** DIAGNOSTIC, MODE FORCED -- DO NOT FLASH ***"
     elif probe == "silence":

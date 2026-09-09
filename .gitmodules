@@ -1,0 +1,7 @@
+[submodule "modules/octakit/upstream"]
+	path = modules/octakit/upstream
+	url = https://github.com/emuyia/ems-octakit
+[submodule "modules/midi-scenes/upstream"]
+	path = modules/midi-scenes/upstream
+	url = https://github.com/sambanks/midisc
+	branch = octabam-gas

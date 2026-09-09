@@ -22,6 +22,13 @@ echo "== 1) System tools (via Homebrew) =="
 need_brew=()
 command -v binwalk  >/dev/null 2>&1 || need_brew+=(binwalk)
 command -v radare2  >/dev/null 2>&1 || need_brew+=(radare2)
+# The m68k/ColdFire cross-toolchain (bottled, minutes to install). Since
+# 9 Sep 2026 a first-class dependency: loader-appended runtimes
+# (schema.Runtime -- modules/octakit) are COMPILED from source at build
+# time, and every pinned ColdFire cave with a `.s` source is re-assembled
+# and compared against its bytes when this is present. The build refuses
+# with a clear message, not a traceback, when it is missing.
+command -v m68k-elf-gcc >/dev/null 2>&1 || need_brew+=(m68k-elf-gcc)
 if [ "${#need_brew[@]}" -gt 0 ]; then
   echo "   installing: ${need_brew[*]}"
   brew install "${need_brew[@]}"

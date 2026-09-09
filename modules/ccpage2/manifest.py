@@ -41,10 +41,13 @@ DLY_COUNTS = bytes((3, 128, 128, 4, 128, 2))    # MODE, MDEP, MRAT, SIZE(select)
 DISPATCH_CC = 0x400d64a0
 STOCK_CC = 0x4000e79c
 
-# cc_page2.s assembled with m68k-elf-as -mcpu=5407; the two count-table
-# references are placeholders 0x40bad000 (VCOUNT) / 0x40bad004 (DCOUNT) that
-# emit() rewrites to the tables it appends. verify_ccpage2 re-assembles the
-# source and compares, so drifted source cannot pass unnoticed.
+# SOURCE IS THE TRUTH (9 Sep 2026): the build assembles and links
+# cc_page2.s where the cave floats; its two count tables are labels at the
+# end of the source, so `lea VCOUNT:l` resolves at link time. CODE below is
+# the hand-assembled form it replaced, with 0x40bad000/4 placeholders for
+# the tables; legacy_bytes(addr) patches them exactly as the old emit() did
+# and is the ORACLE -- the build compares the linked source to it on every
+# build (CavePatch.reference), as does tools/verify_ccpage2.py.
 CODE = bytes.fromhex(
     "206f000470001028000104800000003e7205b280650260064ef94000e79c4fefffe448d7"
     "04fc28002448263946104cf44eb9400018547a001a2a000202850000007f4a3980000049"
@@ -62,22 +65,28 @@ VCOUNT_MARK = bytes.fromhex("40bad000")
 DCOUNT_MARK = bytes.fromhex("40bad004")
 
 
-def emit(addr):
-    """Cave = code, then the two 6-byte count tables. The code carries the
-    tables' placeholders; patch them to the appended tables' addresses."""
+def legacy_bytes(addr):
+    """What the hand-patched cave looked like at `addr`, until 9 Sep 2026:
+    CODE with its two placeholders patched to the appended tables. Kept as
+    the ORACLE tools/verify_ccpage2.py holds the linked source against --
+    the build itself no longer writes these bytes."""
     code = bytearray(CODE)
     vcount_at = addr + len(code)
     dcount_at = vcount_at + len(VERB_COUNTS)
-
     for mark, target in ((VCOUNT_MARK, vcount_at), (DCOUNT_MARK, dcount_at)):
         i = code.find(mark)
         assert i >= 0, "placeholder %s missing" % mark.hex()
         assert code.find(mark, i + 4) < 0, "placeholder %s not unique" % mark.hex()
         code[i:i + 4] = target.to_bytes(4, "big")
+    return bytes(code) + VERB_COUNTS + DLY_COUNTS
 
-    blob = bytes(code) + VERB_COUNTS + DLY_COUNTS
+
+def emit(addr):
+    """Source is the truth: cc_page2.s carries its own count tables as
+    labels and the build links it where it lands (schema.CavePatch), so
+    this returns no bytes -- only the dispatch repoint."""
     pokes = ((DISPATCH_CC, STOCK_CC.to_bytes(4, "big"), addr.to_bytes(4, "big")),)
-    return blob, pokes
+    return b"", pokes
 
 
 MODULE = Module(
@@ -89,8 +98,15 @@ MODULE = Module(
         label="CC->FX2 page-2 cave + dispatch repoint",
         # FLOATS in the decoded ColdFire free region, like the busscreen.
         cave_addr=None,
-        pinned=b"",                     # bytes depend on the float address
+        pinned=b"",                     # bytes depend on the float address --
+                                        # the linked source is the truth, and
+                                        # verify_ccpage2 holds it against
+                                        # legacy_bytes() at a test address
         source="modules/ccpage2/cc_page2.s",
+        cpu="5407",
+        reference=legacy_bytes,         # the build holds the linked source
+                                        # against the hand-patched form, at
+                                        # whatever address it floats to
         emit=emit,
         report_note=" (CC 62-67 reach FX2 page 2)",
     ),),

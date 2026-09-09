@@ -51,19 +51,28 @@ def _manifest():
 
 
 def check_source_matches(m):
-    if not __import__("shutil").which("m68k-elf-as"):
-        print("  (skip source re-assemble: no m68k-elf-as)")
+    """The source is the truth since 9 Sep 2026 (its count tables are labels,
+    linked wherever the cave lands); the hand-patched CODE+tables it replaced
+    is kept in the manifest as legacy_bytes(addr) and is the ORACLE here:
+    linked at any address, the two must be byte-identical."""
+    shutil = __import__("shutil")
+    if not all(shutil.which(t) for t in ("m68k-elf-as", "m68k-elf-ld", "m68k-elf-objcopy")):
+        print("  (skip source link check: no m68k-elf toolchain)")
         return
-    with tempfile.TemporaryDirectory() as d:
-        o = pathlib.Path(d) / "cc.o"
-        b = pathlib.Path(d) / "cc.bin"
-        subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", str(o),
-                        str(ROOT / "modules/ccpage2/cc_page2.s")], check=True)
-        subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
-                        str(o), str(b)], check=True)
-        asm = b.read_bytes()
-    assert asm == m.CODE, "cc_page2.s no longer assembles to the pinned CODE"
-    print("  source re-assembles to pinned CODE (%d bytes)" % len(asm))
+    for addr in (0x400d7300, 0x400d24d0):
+        with tempfile.TemporaryDirectory() as d:
+            o, e, b = (pathlib.Path(d) / n for n in ("cc.o", "cc.elf", "cc.bin"))
+            subprocess.run(["m68k-elf-as", "-mcpu=5407", "-o", str(o),
+                            str(ROOT / "modules/ccpage2/cc_page2.s")], check=True)
+            subprocess.run(["m68k-elf-ld", f"-Ttext=0x{addr:x}", "-o", str(e), str(o)], check=True)
+            subprocess.run(["m68k-elf-objcopy", "-O", "binary", "-j", ".text",
+                            str(e), str(b)], check=True)
+            linked = b.read_bytes()
+        want = m.legacy_bytes(addr)
+        assert linked == want, (f"cc_page2.s linked at 0x{addr:08x} differs from the "
+                                f"hand-patched legacy bytes ({len(linked)} vs {len(want)} B)")
+        assert linked[-12:] == m.VERB_COUNTS + m.DLY_COUNTS, "count tables drifted"
+    print("  source links to the legacy bytes at two addresses (%d bytes, tables intact)" % len(linked))
 
 
 def _part_base(uc):

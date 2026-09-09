@@ -305,10 +305,11 @@ namespace ot
 		return !m_illegal;
 	}
 
-	uint8_t Machine::read8(const uint32_t _addr)
+	uint8_t Machine::read8(const uint32_t _a0)
 	{
-		if(isPeripheral(_addr))
-			return static_cast<uint8_t>(peripheralRead(_addr, 1));
+		if(isPeripheral(_a0))
+			return static_cast<uint8_t>(peripheralRead(_a0, 1));
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 1))
 			return r->data[_addr - r->base];
 		noteUnmapped('r', _addr, 1, 0xff);
@@ -317,10 +318,11 @@ namespace ot
 		return 0xff;
 	}
 
-	uint16_t Machine::read16(const uint32_t _addr)
+	uint16_t Machine::read16(const uint32_t _a0)
 	{
-		if(isPeripheral(_addr))
-			return static_cast<uint16_t>(peripheralRead(_addr, 2));
+		if(isPeripheral(_a0))
+			return static_cast<uint16_t>(peripheralRead(_a0, 2));
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 2))
 		{
 			const auto o = _addr - r->base;
@@ -348,13 +350,14 @@ namespace ot
 		m_illegal = true;
 	}
 
-	void Machine::write8(const uint32_t _addr, const uint8_t _val)
+	void Machine::write8(const uint32_t _a0, const uint8_t _val)
 	{
 		++m_writes;
 		if(!m_writeWatches.empty())
-			noteWatchedWrite(_addr, 1, _val);
-		if(isPeripheral(_addr))
-			return peripheralWrite(_addr, 1, _val);
+			noteWatchedWrite(_a0, 1, _val);
+		if(isPeripheral(_a0))
+			return peripheralWrite(_a0, 1, _val);
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 1))
 		{
 			const auto o = _addr - r->base;
@@ -375,13 +378,14 @@ namespace ot
 		}
 	}
 
-	void Machine::write16(const uint32_t _addr, const uint16_t _val)
+	void Machine::write16(const uint32_t _a0, const uint16_t _val)
 	{
 		++m_writes;
 		if(!m_writeWatches.empty())
-			noteWatchedWrite(_addr, 2, _val);
-		if(isPeripheral(_addr))
-			return peripheralWrite(_addr, 2, _val);
+			noteWatchedWrite(_a0, 2, _val);
+		if(isPeripheral(_a0))
+			return peripheralWrite(_a0, 2, _val);
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 2))
 		{
 			const auto o = _addr - r->base;
@@ -404,10 +408,11 @@ namespace ot
 		return read16(_addr);
 	}
 
-	uint32_t Machine::read32(const uint32_t _addr)
+	uint32_t Machine::read32(const uint32_t _a0)
 	{
-		if(isPeripheral(_addr))
-			return peripheralRead(_addr, 4);
+		if(isPeripheral(_a0))
+			return peripheralRead(_a0, 4);
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 4))
 		{
 			const auto o = _addr - r->base;
@@ -423,13 +428,14 @@ namespace ot
 		return 0xffffffff;
 	}
 
-	void Machine::write32(const uint32_t _addr, const uint32_t _val)
+	void Machine::write32(const uint32_t _a0, const uint32_t _val)
 	{
 		++m_writes;
 		if(!m_writeWatches.empty())
-			noteWatchedWrite(_addr, 4, _val);
-		if(isPeripheral(_addr))
-			return peripheralWrite(_addr, 4, _val);
+			noteWatchedWrite(_a0, 4, _val);
+		if(isPeripheral(_a0))
+			return peripheralWrite(_a0, 4, _val);
+		const uint32_t _addr = alias(_a0);
 		if(auto* const r = find(_addr, 4))
 		{
 			const auto o = _addr - r->base;

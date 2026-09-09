@@ -369,6 +369,28 @@ class CavePatch:
     # included. The installer is generic; what a given cave actually DOES is
     # not, and the build report is the only place a human sees it.
     report_note: str = ""
+    # ---- SOURCE IS THE TRUTH (9 Sep 2026) ---------------------------------
+    # With the m68k-elf toolchain now a standard dependency (`make setup`),
+    # a cave with a `source` is assembled and LINKED by the build at the
+    # address it lands on, and THOSE bytes are what is written; `pinned` is
+    # the ratified reference and must match, or the build refuses. A source
+    # may therefore hold absolute references to itself, and symbols it needs
+    # from the build (the address of a data field, a clone's slot) arrive as
+    # `defsyms` -- `ld --defsym NAME=value` -- instead of placeholder words
+    # patched into hand-assembled hex (busscreen's MARKS, ccpage2's VCOUNT).
+    # An emit() that returns b"" for its bytes says "the source is the only
+    # truth"; an emit() that still returns bytes takes the legacy path,
+    # unlinked and unchecked, exactly as before. Without a toolchain the
+    # reference bytes are written, as before.
+    defsyms: tuple[tuple[str, int], ...] = ()
+    cpu: str = "5475"                   # m68k-elf-as -mcpu=; 5407 and 5475
+                                        # encode this ISA subset identically
+    # A FLOATING source-linked cave has no fixed `pinned` to be held against
+    # (its bytes depend on where it lands), so it may supply the oracle as a
+    # callable instead: reference(addr) -> the ratified bytes AT that
+    # address -- ccpage2 keeps its hand-patched legacy form for exactly this.
+    # Checked on every build; a drift refuses.
+    reference: object | None = None
 
 
 @dataclass(frozen=True)
@@ -510,6 +532,152 @@ class ModeView:
 
 
 @dataclass(frozen=True)
+class Linked:
+    """One GNU-as source unit, assembled and LINKED BY THE BUILD at whatever
+    address it lands -- placement by the build, not by the author's memory
+    map, so two authors who picked the same free run stop colliding.
+
+    `cave_addr=None` floats it exactly like a floating CavePatch (first free
+    address after what precedes it, rounded to 0x80); a unit that other
+    code names by ABSOLUTE address (mxldyn/octamax's `patch.s`, which
+    `patch_scene2.s` reaches through `.equ SAVE_STUB, 0x400d64e0`) is
+    pinned instead, and stays pinned until that upstream constant becomes
+    a linker symbol. Detours, table entries and pokes name the unit's
+    symbols (`m68k-elf-nm` after the link), never its addresses.
+
+    `reference` = (address, sha256) of the unit as the AUTHOR'S OWN build
+    linked it: the build links a second copy at that address every time
+    and compares, so a source or toolchain drift from the bytes the author
+    ratified fails loudly, even though the unit the image carries is
+    linked somewhere else.
+    """
+
+    label: str
+    source: str                          # .s, repo-relative
+    cave_addr: int | None = None         # None = floating
+    cpu: str = "5407"                    # m68k-elf-as -mcpu=
+    reference: tuple[int, str] | None = None
+    # DRAM: the unit is linked into octabam's PLATFORM RUNTIME -- one image
+    # of every such unit in the remix, linked together (cross-unit symbols
+    # resolve in the one link), packed, appended after the OS with the
+    # loader (tools/remix/loader.S) and depacked into the measured-free
+    # window at boot (docs/remixer/PLACEMENT). `cave_addr` is ignored.
+    # This is where anything bigger than a few hundred bytes belongs; the
+    # ~8 KB of zero runs inside the OS image are for what must be ROM.
+    dram: bool = False
+
+
+@dataclass(frozen=True)
+class Detour:
+    """A stock instruction rewritten to reach a linked unit's symbol.
+
+    `kind`: "jmp" (the stub replays what it displaced and jumps back or on;
+    the common case), "jsr" (the stub returns), or "lea" (the six-byte
+    `lea abs.l,An` at `site` keeps its opcode and gets the symbol as its
+    operand -- midisc's SAVE_ALL). `expect` is stock bytes at `site`, whole
+    instructions. `pad_to` = total bytes to overwrite: the six-byte
+    instruction then `nop`s, so a displaced span longer than six is not
+    left half-rewritten (midisc's 8/10-byte sites); None writes six.
+    `target` names a STOCK address instead of a symbol (midisc's
+    TRACK_GATE/PAGE_GATE jump straight to stock code)."""
+
+    site: int
+    expect: bytes
+    unit: str = ""                       # Linked.label ("" with `target`)
+    symbol: str = ""
+    note: str = ""
+    kind: str = "jmp"
+    target: int | None = None
+    pad_to: int | None = None
+
+
+@dataclass(frozen=True)
+class TableGrow:
+    """A stock pointer array relocated into free space with entries
+    appended, and every reference to the old array repointed --
+    busscreen's menu-state-table move, generalised. `old` is the stock
+    array (`count` u32 entries), `symbols` the (unit, symbol) pairs to
+    append, `refs` the (address, expected old-array u32) sites rewritten
+    to the new address. The new array floats."""
+
+    label: str
+    old: int
+    count: int
+    symbols: tuple[tuple[str, str], ...]
+    refs: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class Poke:
+    """A fixed-address rewrite of existing bytes, asserted first."""
+
+    addr: int
+    expect: bytes
+    write: bytes
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Runtime:
+    """A loader-appended runtime: code and state that live in DRAM, not in
+    the OS image's free zero runs.
+
+    The third placement class, after ColdFire caves and DSP payload words,
+    and the only one that scales past a few kilobytes. The OS image grows
+    by an APPEND (a small early loader, a stage anchor and the runtime,
+    packed with the firmware's own aPLib variant); one of the recipe's
+    sparse writes detours the boot path into the loader, which depacks the
+    runtime into a reserved DRAM window and installs its hooks from there.
+    Everything the runtime needs from Elektron's own code is `.incbin`'d
+    out of the USER'S stock image at build time (copied or PC-relative-
+    relocated per the recipe), so the repo carries none of it.
+
+    This is Em's design (emuyia/ems-octakit) adopted whole, 9 Sep 2026:
+    `recipe` is her `firmware.json` (interface_version 1) and `sources` her
+    `runtime/` -- both live in a git SUBMODULE so she keeps developing in
+    her own repo and octabam builds from it. The build re-derives every
+    identity the recipe pins (rebuilt runtime, packed runtime, append, the
+    combined OS) and refuses on any mismatch; that identity check, not a
+    compiler-version string, is what proves the toolchain reproduced her
+    bytes (gcc 16.2.0 does, measured against her 16.1.0 pin).
+    """
+
+    recipe: str        # firmware.json, repo-relative
+    sources: str       # directory holding the .S/.c sources it names
+    report_note: str = ""
+
+
+@dataclass(frozen=True)
+class RuntimeExt:
+    """Sources linked INTO another module's loader-appended runtime.
+
+    The DRAM host is Em's Octakit runtime (schema.Runtime): its loader,
+    post-clear relocation, instruction-cache sync and hash gate are eight
+    OS-resident pieces of measured reverse-engineering, and re-deriving
+    them for a second loader would repeat her work. So a module that wants
+    DRAM extends the host: its GNU-as sources are compiled with the host's
+    own flags and linked with the host's own linker script, its symbols
+    join the host's symbol table (detours resolve against both), and it
+    rides the host's loader, relocation and hash gate for free.
+
+    Consequences, all deliberate: the host must be in the remix (the
+    ledger refuses otherwise); the host's pinned identities cannot hold
+    for the composite runtime, so the build regenerates the five derived
+    constants the host's OS-resident helpers bake in (runtime size and
+    hash, packed size and hash, backup address -- located and verified
+    against her own recipe) and records its own identities instead; and
+    the host's code budget is the author's (`RUNTIME_CODE_BUDGET` in
+    link.ld, 128 KiB with ~1.9 KB spare) -- `code_budget` asks the build
+    for more, which it can only honour by rewriting that one line of her
+    script in a scratch copy until she makes it overridable upstream.
+    """
+
+    host: str                            # the host module's KEY, e.g. "OCTAKIT"
+    sources: tuple[str, ...]             # .S/.c/.s, repo-relative, link order
+    code_budget: int | None = None       # bytes; None = the host's own
+
+
+@dataclass(frozen=True)
 class Module:
     """One contribution, as declared by modules/<name>/manifest.py."""
 
@@ -526,6 +694,20 @@ class Module:
     cf_patches: tuple[CavePatch, ...] = ()
     claims: Claims | None = None
     harness: Harness | None = None
+    # A loader-appended DRAM runtime (schema.Runtime). At most one per image
+    # today: the append sits at the end of the OS and the loader owns one
+    # DRAM window; the ledger refuses a second.
+    runtime: Runtime | None = None
+    # Sources linked into ANOTHER module's runtime (schema.RuntimeExt): the
+    # way a module gets DRAM without a loader of its own.
+    runtime_ext: RuntimeExt | None = None
+    # Linker-backed ColdFire code (schema.Linked): units the build assembles
+    # and links where it places them, wired in by symbol (Detour), plus
+    # relocated-and-grown stock tables and plain asserted pokes.
+    linked: tuple[Linked, ...] = ()
+    detours: tuple[Detour, ...] = ()
+    tables: tuple[TableGrow, ...] = ()
+    pokes: tuple[Poke, ...] = ()
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None

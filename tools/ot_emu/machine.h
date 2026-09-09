@@ -323,6 +323,21 @@ namespace ot
 		// behaviour; `setAutoMap(false)` restores the all-ones stub for
 		// diagnosis, and then this counter is the work list again.
 		void setAutoMap(bool _on) { m_autoMap = _on; }
+		// THE UNCACHED SDRAM ALIAS. The MCF5445x decodes the same SDRAM at
+		// 0x40000000 (cached) and 0x48000000 (cache-inhibited): every
+		// firmware mod that writes code into DRAM writes it through the
+		// alias (Em's Octakit loader, octabam's loader -- `alias_delta`
+		// 0x08000000 in her recipe's memory ranges) and the OS's own 10.8 MB
+		// delay-ring clear runs at 0x4f502c10. Until 9 Sep 2026 this port,
+		// like route A, grew 0x48100000-0x4fffffff as SEPARATE pages, so a
+		// write through the alias never reached the cached address: a
+		// loader depacked into nowhere, and a write-watch on 0x477xxxxx
+		// reported the delay ring "never written". Measured, then folded:
+		// an access in the alias window is the cached address's.
+		static uint32_t alias(const uint32_t _a)
+		{
+			return (_a >= 0x48000000u && _a < 0x50000000u) ? _a - 0x08000000u : _a;
+		}
 		// ⚠️ A RUNAWAY AUTO-MAP IS A BUG, AND WITHOUT A CEILING IT PRESENTS AS
 		// A CRASH IN THE EMULATOR RATHER THAN AS A FINDING ABOUT THE FIRMWARE.
 		// Measured 8 Sep 2026 (O6): a `moveb %d0,%a0@-` loop walking down

@@ -53,8 +53,9 @@
         .set    FX2P2,    0            | FX2 page-2 store displacement = staged index 0 * 6 (measured)
         .set    VERBID,   7            | BusVerb FX2 id
         .set    DLYID,    6            | BusDelay FX2 id
-        .set    VCOUNT,   0x40bad000   | patched: verb page-2 counts (6 bytes)
-        .set    DCOUNT,   0x40bad004   | patched: delay page-2 counts (6 bytes)
+| VCOUNT / DCOUNT are the two count tables at the END of this file: the
+| linker resolves `lea VCOUNT,%a1` to wherever the build places the cave
+| (until 9 Sep 2026 they were 0x40bad000/4 placeholders patched by hand).
 
         .text
 | ---- CAVE(msg): dispatch entry (jsr'd), msg* at %sp@(4) ------------------
@@ -128,9 +129,10 @@ wtrack: movel   DBPTR,%d0
         cmpl    %d0,%d1
         beq.s   wverb
         rts                            | not a bus host -> skip this track
-wverb:  lea     VCOUNT,%a1
-        bra.s   wclamp
-wdly:   lea     DCOUNT,%a1
+wverb:  lea     VCOUNT:l,%a1           | :l = absolute long, as the hand-patched
+        bra.s   wclamp                 | placeholder form was; a same-section
+wdly:   lea     DCOUNT:l,%a1           | label would otherwise assemble pc-relative
+                                       | (2 bytes shorter) and break identity
 wclamp: moveq   #0,%d1
         moveb   %a1@(0,%d4:l),%d1      | count (1..128)
         subql   #1,%d1                 | max = count - 1
@@ -223,3 +225,9 @@ wpos:   | d2 = clamped value (>=0 by construction)
                                        | P2EDIT vs this cave (5 Sep): this was the
                                        | only functional store still missing.
         rts
+
+| ---- per-engine page-2 value counts, slot2 order (slots 6..11) -----------
+| Must match the engines' manifests (busverb / busdelay page-2 counts);
+| tools/verify_ccpage2.py checks them against VERB_COUNTS / DLY_COUNTS.
+VCOUNT: .byte   3, 128, 128, 4, 128, 4    | MODE SHMR DIFF SHFT GATE RATE
+DCOUNT: .byte   3, 128, 128, 4, 128, 2    | MODE MDEP MRAT SIZE PTCH FRZE

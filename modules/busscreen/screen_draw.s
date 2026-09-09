@@ -25,16 +25,10 @@
 | Self-refs patched by the build (0x40bad000..24): VERBTAB DLYTAB FMT SCRATCH
 | CURSOR VERBSEL DLYSEL RVRBSTR DLYSTR NSLOT.
 
-        .set    VERBTAB, 0x40bad000
-        .set    DLYTAB,  0x40bad004
-        .set    FMT,     0x40bad008
-        .set    SCRATCH, 0x40bad00c
-        .set    CURSOR,  0x40bad010
-        .set    VERBSEL, 0x40bad014
-        .set    DLYSEL,  0x40bad018
-        .set    RVRBSTR, 0x40bad01c
-        .set    DLYSTR,  0x40bad020
-        .set    NSLOT,   0x40bad024
+| VERBTAB DLYTAB FMT SCRATCH CURSOR VERBSEL DLYSEL RVRBSTR DLYSTR NSLOT are
+| the data cave's fields and arrive from the build as linker symbols
+| (CavePatch.defsyms, manifest HANDLER_DEFSYMS) -- until 9 Sep 2026 they
+| were 0x40bad000..24 placeholders patched into hand-assembled hex.
         .set    DRAW_STRING, 0x40012bd8
         .set    INVERT,  0x40012254
         .set    SPRINTF, 0x40013a08

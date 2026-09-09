@@ -72,6 +72,17 @@ def _overlap(a_start, a_len, b_start, b_len) -> bool:
     return a_start < b_start + b_len and b_start < a_start + a_len
 
 
+def runtime_write_spans(m) -> list[tuple[int, int, str]]:
+    """(vaddr, length, patch name) for every sparse write a runtime's recipe
+    makes into the OS image -- its fixed-address claims, read from the
+    recipe itself so a claim cannot drift from what the build writes."""
+    import json
+    spec = json.loads((ROOT / m.runtime.recipe).read_text())
+    base = spec["format"]["os_load_address"]
+    return [(base + w["offset"], len(bytes.fromhex(w["data"])), p["name"])
+            for p in spec["patches"] for w in p["writes"]]
+
+
 def check(selected) -> list[str]:
     """Return a list of collisions among these modules. Empty means clean."""
     problems: list[str] = []
@@ -108,6 +119,100 @@ def check(selected) -> list[str]:
                           f"0x{c.hook_addr:08x} -- the second jsr overwrites "
                           f"the first, so the first module never runs")
                 hooks[c.hook_addr] = m.name
+
+    # ---- emit() pokes of PINNED caves ---------------------------------------
+    # A cave with an emit callable and a fixed address can be asked for its
+    # pokes without a build: those are fixed-address byte claims exactly
+    # like a hook site, and until 9 Sep 2026 the ledger could not see them
+    # -- midi-scenes' 35 redirects and lofi-amf-fix's two DSP words were
+    # invisible, and midi-scenes + octakit (both rewrite the apply_part
+    # entry 0x40009094) passed as clean. A FLOATING emit cave (cave_addr
+    # None) cannot be evaluated before placement and is still skipped.
+    # ---- linker-backed units, detours, grown tables, plain pokes -----------
+    # A PINNED Linked unit is a cave whose length is only known after the
+    # link, so it is claimed here as a 6-byte marker at its address (the
+    # build's own free-space check covers the real extent); a floating one
+    # is skipped like a floating cave. Detour sites are hook sites. Table
+    # refs and Pokes are fixed rewrites, checked as pokes below.
+    for m in selected:
+        for u in getattr(m, "linked", ()):
+            if u.cave_addr is None:
+                continue
+            for start, length, owner, label in caves:
+                if _overlap(start, length, u.cave_addr, 6):
+                    clash("ColdFire cave", f"{owner}'s {label}",
+                          f"{m.name}'s linked unit {u.label}",
+                          f"0x{u.cave_addr:08x}")
+            caves.append((u.cave_addr, 6, m.name, f"linked unit {u.label}"))
+        for d in getattr(m, "detours", ()):
+            if d.site in hooks:
+                clash("hook site", hooks[d.site], m.name,
+                      f"0x{d.site:08x} -- the second jmp overwrites the first")
+            hooks[d.site] = m.name
+    pokes: list[tuple[int, int, str, str]] = []
+    for m in selected:
+        for t in getattr(m, "tables", ()):
+            for addr, _old in t.refs:
+                pokes.append((addr, 4, m.name, f"table ref ({t.label})"))
+        for p in getattr(m, "pokes", ()):
+            pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
+    for m in selected:
+        for c in m.cf_patches:
+            if c.emit is None or c.cave_addr is None:
+                continue
+            _, cpokes = c.emit(c.cave_addr)
+            for pa, expect, _write in cpokes:
+                span = (pa, len(expect), m.name, c.label)
+                for start, length, owner, label in caves:
+                    if owner != m.name and _overlap(start, length, pa, len(expect)):
+                        clash("ColdFire cave", f"{owner}'s {label}",
+                              f"{m.name}'s poke at 0x{pa:08x} ({c.label})",
+                              f"0x{max(start, pa):08x}")
+                for haddr, owner in hooks.items():
+                    if owner != m.name and _overlap(haddr, 6, pa, len(expect)):
+                        clash("hook site", owner, f"{m.name}'s poke ({c.label})",
+                              f"0x{haddr:08x} -- both rewrite the same instruction")
+                for ostart, olength, oowner, olabel in pokes:
+                    if oowner != m.name and _overlap(ostart, olength, pa, len(expect)):
+                        clash("poke site", f"{oowner} ({olabel})", f"{m.name} ({c.label})",
+                              f"0x{max(ostart, pa):08x} -- both rewrite the same bytes")
+                pokes.append(span)
+
+    # ---- loader-appended runtimes (schema.Runtime) ------------------------
+    # The append sits at the end of the OS image and its loader owns one
+    # DRAM window, so an image carries at most one. Its recipe's sparse
+    # writes are fixed-address byte claims like any pinned cave, so they are
+    # checked against every pinned cave, hook site and emit poke above --
+    # the apply_part entry (0x40009094) is a real three-way conflict between
+    # midi-scenes, octamax and octakit, and this is where it is refused.
+    runtimes = [m for m in selected if getattr(m, "runtime", None) is not None]
+    hosts = {m.key for m in runtimes}
+    for m in selected:
+        x = getattr(m, "runtime_ext", None)
+        if x is not None and x.host not in hosts:
+            clash("runtime extension", m.name, f"(no {x.host})",
+                  f"a DRAM host it extends -- {x.host} is not in this remix")
+    for i, a in enumerate(runtimes):
+        for b in runtimes[i + 1:]:
+            clash("appended runtime", a.name, b.name,
+                  "the end of the OS image and the loader's DRAM window -- "
+                  "one runtime per image")
+    for m in runtimes:
+        for start, length, label in runtime_write_spans(m):
+            for cstart, clength, owner, clabel in caves:
+                if _overlap(cstart, clength, start, length):
+                    clash("ColdFire cave", f"{owner}'s {clabel}",
+                          f"{m.name}'s runtime write {label}",
+                          f"0x{max(cstart, start):08x}")
+            for haddr, owner in hooks.items():
+                if _overlap(haddr, 6, start, length):
+                    clash("hook site", owner, f"{m.name} (runtime write {label})",
+                          f"0x{haddr:08x} -- both rewrite the same instruction")
+            for pstart, plength, powner, plabel in pokes:
+                if _overlap(pstart, plength, start, length):
+                    clash("poke site", f"{powner} ({plabel})",
+                          f"{m.name} (runtime write {label})",
+                          f"0x{max(pstart, start):08x} -- both rewrite the same bytes")
 
     # ---- the per-core FX2 instance buffer region --------------------------
     # Y:0x4000-0xBFFF is TWO FX2 instance slots of 16,384 words, per core and
