@@ -65,15 +65,40 @@ armed before boot and `--mem-dump` at exit:
   readings, two instruments, one region.
 - **`0x47fc7410..0x47fe0000`** — the **101,360 B (~99 KB)** between the
   end of the rings and the 128 KiB Octakit keeps below the reset stack
-  pointer. Never written in any phase measured. Octakit's stage
-  (signature + packed runtime, **72,959 B**) takes the bottom of it when
-  she is in the image, leaving 28,401 B; octabam's stage starts at
-  `0x47fd9200` (7,680 B) and its runtime window at `0x47fdb000` (20,480 B),
-  ceiling `0x47fe0000` — fixed addresses whatever the remix, so that a
-  remix without Octakit boots the same bytes to the same places. The
-  price of that simplicity: her 73 KB sits idle when she is absent. The
-  window could grow to the full ~99 KB in that case; nothing has needed
-  it yet.
+  pointer. Octakit's stage (signature + packed runtime, **72,959 B**)
+  takes the bottom of it when she is in the image, leaving 28,401 B;
+  octabam's stage starts at `0x47fd9200` (7,680 B) and its runtime window
+  at `0x47fdb000` (20,480 B), ceiling `0x47fe0000` — fixed addresses
+  whatever the remix.
+  ❌ **"Never written in any phase measured" is RETRACTED (10 Sep 2026).**
+  It held for a project with no samples. Stock's engine task names four
+  buffers *inside* this window, all through the alias — `0x4ffc7610`
+  and `0x4ffc9010` (sector bounce buffers: `base − (file offset & 511)`),
+  `0x4ffcb220` and `0x4ffce230` (two arrays of 769 × 16 B, a
+  double-buffered descriptor list) — from routines under the engine
+  task `0x4008445c` (Bryan's 46-opcode dispatcher). With a project whose
+  slots hold **static samples**, the port fills **`0x47fc8fe4..0x47fcd9e4`
+  (18,944 B = 37 sectors) at PROJECT LOAD** — 43,008 word stores from
+  the PIO sector loop `0x40015472..0x4001548e`, the first of them
+  `RIFF…WAVEfmt `, the static sample's own header — identically for
+  400 and 2,000 frames of play (the same 5,969 ATA reads: it is the
+  load, not streaming, and streaming itself never started in the port).
+  ⚠️ The port's write-watch missed every one of these until 10 Sep
+  2026: it compared the *unfolded* alias address, so a watch on
+  `0x47fc…` could not see a store to `0x4ffc…` (`machine.cpp`,
+  `noteWatchedWrite`) — the dump caught it, the watch now folds. That range is **inside Octakit's stage** (from
+  `+0x1bd4`) and **47 KB below octabam's stage**; nothing has been seen
+  above `0x47fcd9e4`, and no literal in the OS names anything above
+  `0x47fd1240` (the second descriptor array's end). ⚠️ Two caveats: the
+  port's card advertises no DMA, so the OS took its PIO path — a
+  DMA-capable card may use the other bounce buffer (`0x4ffc7610`) or
+  the READ DMA path; and streaming during play is unexercised. Her
+  wrapper re-hashes the stage at every project load (`0x40013304`), so
+  on hardware this either does not happen on her users' cards or her
+  gate copes; the test is one LOAD PROJECT after another with static
+  slots, and Bryan-style: the firmware-armed hardware watchpoint mxldyn
+  proved (his `build_diag_bugA5.py`) on `0x47fc7410..` would settle it
+  in one flash.
 - **`0x46000000..0x47502c10`** (~21 MB) — outside both big clears and
   **unmeasured**: stock's sample pool may live there. The candidate for
   MB-scale placement, once a run that loads samples and records has been
@@ -89,9 +114,25 @@ own memset, not from their audio.
 ### The SDRAM itself, read from the boot code (10 Sep 2026)
 
 - `0x400e12e8`: `SDCS0 = 0x4000001b` (base `0x40000000`, CSSZ `0x1b`),
-  `SDCS1 = 0`. One chip select; per the MCF5445x reference manual's CSSZ
-  encoding that is a **256 MB decode window** `0x40000000..0x4fffffff`
-  (🟡 the encoding table is from memory — confirm against the RM).
+  `SDCS1 = 0`. One chip select; a **256 MB decode window**
+  `0x40000000..0x4fffffff` — ✅ NXP's own DDR2 example (AN3522 §3.3)
+  writes `SDCS0 = 0x4000001A` for 128 MB, so `0x1b` is the next size.
+- **The cache map, decoded with the kernel's own definitions**
+  (`arch/m68k/include/asm/m54xxacr.h`): runtime `CACR = 0xa50ce100` =
+  DEC | DESB | **DDCM_P (`0x04000000`, default data mode = cache-
+  inhibited precise)** | DCINVA | BEC | BCINVA | IEC | DNFB | ICINVA;
+  `ACR0 = 0x4007e020` = base `0x40`, mask `0x07`, ENABLE, any mode,
+  **copyback** → `0x40000000..0x47ffffff` is the cached SDRAM — exactly
+  128 MB, Elektron's own statement of the RAM's extent; `ACR1 =
+  0x0000e020` = `0x00000000..0x00ffffff` copyback. Nothing else is
+  cacheable, so `0x48000000..0x4fffffff` is the **uncached alias** by
+  the CACR default. No instruction ACRs, no MMUBAR: the MMU is unused.
+- Physical size **128 MB**: ✅ ACR0's mask + the reset stack at
+  `0x48000000`; ✅ hardware, twice — Octakit's runtime is written through
+  `0x4dd0dde0` and executed at `0x45d0dde0` on her units, and mxldyn's
+  canary at `0x47800000` was clobbered on his MKII by the rings the OS
+  addresses at `0x4f8…`. The part number on the board would make it
+  three.
 - **Every stock reference to the rings is through the alias**: the
   memset at `0x40002fb4` (`lea 0x4f502c10`; **705,664 × 16 B =
   11,290,624 B = `0xac4800`**, ending at `0x4ffc7410`) and the delay
@@ -104,14 +145,50 @@ own memset, not from their audio.
   over a 128 MB part aliases exactly like this; the physical size is
   what the board's SDRAM part number / Elektron's spec would confirm,
   and the reset stack at `0x48000000` says the OS treats 128 MB as the
-  top. The "uncached" property of the upper half comes from the MMU
-  (`movec %urp` is set; no data ACRs are written), 🟡 inferred.
+  top. The "uncached" property of the upper half is the CACR default
+  (`DDCM_P`) with ACR0 covering only the lower 128 MB — see "The SDRAM
+  itself" above; the earlier "comes from the MMU" reading is withdrawn
+  (`0x806` is a 68040 register number objdump named `urp`; the ColdFire
+  has no such register and no MMUBAR is ever written).
 - Em's stage starts at `0x47fc7410` = the first byte after that memset:
   she measured the same clear.
-- Bryan's per-track ring is 1,411,200 B; the memset is 8 × 1,411,328 —
-  🟡 a 128 B (16-sample) pad per ring would explain it, consistent with
-  his two-tap crossfade reading one frame past the wrap. The stride is
-  readable at the four adds above; not done.
+- Bryan's per-track ring is 1,411,200 B (the wrap length: `cmpil
+  #1411200` at `0x4000359e`, `addil #1411200` at `0x400032f8`); the
+  **stride is 1,411,328** (`addil #1411328,%d5` at `0x40003386`, `movel
+  #1411328,%d4` at `0x400037f8`) — 128 B, one 16-sample frame, of pad per
+  ring, and 8 × 1,411,328 = the memset exactly. ✅ measured.
+- ✅ **Hardware, from mxldyn (10 Sep 2026, via the octamax review):** his
+  canary at `0x47800000` and his first 256-slot home at `0x47700000` were
+  both clobbered at runtime on his MKII — ring 2 spans
+  `0x4765b490..0x477b3d10`. The rings are live memory on silicon.
+
+### The rest of the map, read from the boot code
+
+- `0x40a955e0..0x46025de0` — the **audio page arena**: 14,602 pages ×
+  6,144 B = 89,720,832 B = **85.56 MiB, Elektron's "85.5 MB"** (cold init
+  `0x40096f7a`: count `0x390a`, free-list fill to 14,603, `memset(
+  0x40a955e0, 0x05590800)` at `0x40097006`). Flex samples and the track
+  recorders share it (the default Flex cap is the `0x04000000` = 64 MB
+  literal at `0x40004028`). ✅ measured, and it is where both DRAM mods
+  actually live:
+  - **Octakit takes the TOP 528 pages** — her four writes cut the count
+    to 14,074 (`0x36fa`), the free-list fill to 14,075, the arena clear
+    to `0x05278800` and the recorder cap to match: 528 × 6,144 =
+    3,244,032 B = `0x45d0dde0..0x46025de0`, her `RUNTIME_START..END`
+    exactly. **Octakit costs the unit 3.09 MiB of sample/recorder
+    memory.** ✅ from her recipe against stock's bytes.
+  - **octamax 2.0 takes the BOTTOM 64 pages** (`0x390a → 0x38ca`, pool
+    base moved to `0x40af55e0`): a 384 KB reserve, hardware-confirmed.
+  Two authors, one mechanism, both proven on units. This — not the top
+  window — is the placement with a hardware record.
+- `0x46025de0..0x4763d580` — zero-filled at boot by the loop right after
+  the boot detour (`0x40000518`), and the base of stock's object pool
+  (`pool_init(0x46025de0)` at `0x4002000e`): the OS's own globals and
+  heap, the `0x46xxxxxx` addresses all over this project's notes. Not
+  free. (Its end overlaps the first 1.29 MB of ring 0; both are zeroed,
+  nothing follows from it.)
+- `0x47500a10` — an 8,704 B sector bounce buffer just below the rings
+  (`0x4f500a10 − (offset & 511)` at `0x40091f94`).
 
 ### Em's DRAM, exactly (from `m68k-elf-nm` on her `runtime.elf`)
 

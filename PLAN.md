@@ -87,10 +87,11 @@ port on 9 Sep 2026 unless marked.
 | where | how much | status |
 |---|---|---|
 | **ROM**: the OS image's free zero runs (`0x400c45b0`, `0x400d24d0`, `0x400d2ee6`, `0x400d64da`) | ~8.4 KB total, shared by every ROM-resident cave and the chooser clones | ✅ measured; the scarce thing every author fought over |
-| **DRAM window** `0x47fc7410..0x47fe0000` | ~99 KB never written in any phase measured; Octakit's stage takes 73 KB of it when she is in the image, leaving ~28 KB for octabam's runtime beside her; ~99 KB alone | ✅ measured (boot, project load, 300 frames of play); the recorder and caches not exercised |
-| **Octakit's window** `0x45d0dde0..0x46025de0` | 150 KB, zero-filled by stock at project load; her post-clear relocation re-depacks it | ✅ measured, hers |
-| **The delay rings** `0x47502c10..0x47fc7410` | 10.8 MB — the eight per-track Echo Freeze rings (Bryan T: base `0x4F502C10` = the uncached alias, 1,411,200 B × 8 = `0xac4400`, which lands 1 KB short of the clear's end), always allocated, cleared through the alias at boot instruction ~42 M | ✅ measured + ✅ his; **not free** — the "8.8 MB at 0x47700000" reading is retracted |
-| `0x46000000..0x47502c10` | ~21 MB, outside both big clears | ⚠️ **unmeasured**; probably the sample pool. Not to be used before a run that loads samples and records has been watched |
+| **The RAM** | 128 MB physical at `0x40000000` (ACR0's cacheable window is exactly that; reset stack at `0x48000000`), decoded over a 256 MB chip select (`SDCS0 = 0x4000001b`, NXP's own example uses `0x1a` for 128 MB), so `0x48000000..0x4fffffff` is the same memory **uncached** (CACR default `DDCM_P`, decoded with the kernel's header) | ✅ boot code + ✅ hardware (Octakit writes through the alias and executes cached; mxldyn's canary died inside the rings) |
+| **The audio page arena** `0x40a955e0..0x46025de0` | 14,602 × 6,144 B = 85.56 MiB, Elektron's "85.5 MB": Flex samples + track recorders. **Octakit takes its top 528 pages (3.09 MiB) for her runtime; octamax 2.0 its bottom 64 (384 KB)** — both hardware-proven, the one DRAM placement with a track record | ✅ measured (her recipe against stock's bytes; his hw) |
+| **The top window** `0x47fc7410..0x47fe0000` | 101,360 B: Octakit's stage (72,959 B) at the bottom, octabam's stage + 20 KB runtime at the top. ❌ **Not clean**: stock's engine task keeps its sector bounce buffers and stream descriptors here (`0x4ffc7610`, `0x4ffc9010`, `0x4ffcb220`, `0x4ffce230`); with static samples in the project the port fills `0x47fc8fe4..0x47fcd9e4` (18,944 B) **at project load** — inside her stage, 47 KB below ours | ✅ measured on the port (PIO path); ⚠️ DMA-card path and play-time streaming unexercised; nothing seen above `0x47fcd9e4`, no owner named above `0x47fd1240` |
+| **The delay rings** `0x47502c10..0x47fc7410` | 10.8 MB — eight rings, stride 1,411,328 B (wrap 1,411,200 + one 16-sample frame of pad; read at `0x40003386`), the boot memset `705,664 × 16` at `0x40002fb4`, all addressed through the alias | ✅ static + ✅ port + ✅ Bryan + ✅ mxldyn's hardware; **not free** — "8.8 MB at 0x47700000" retracted |
+| `0x46025de0..0x4763d580` | stock's globals and object pool, zero-filled at boot by the loop right after the boot detour | ✅ static; not free |
 
 ## Work order
 
@@ -106,12 +107,19 @@ port on 9 Sep 2026 unless marked.
    Octakit and midi-scenes are mutually exclusive — and note the second
    reason: Parts versus Kits. His code addresses the Part window; hers
    replaces it. A Kits-aware midi-scenes is his and Sam's to write.
-3. **MB-scale DRAM.** Two candidate mechanisms, neither measured: (a) a
-   remix that gives up the stock DELAY (off both choosers) detours its
-   frame routine (`0x400031a0`) so the rings are never touched, and
-   inherits 10.8 MB — a small mechanism, if the routine's other duties
-   allow it; (b) Em's wipe-and-reload generalised for a window inside a
-   region stock clears. (a) first; it is one detour and one measurement.
+3. **Move octabam's DRAM home off the top window and into an audio-page
+   reserve.** The top window has a measured neighbour (the engine task's
+   sector bounce buffer lands 47 KB below our stage at project load, and
+   inside Octakit's); the arena reserve is the placement two authors
+   have proven on hardware. N pages off the arena (Em: the top 528;
+   mxldyn: the bottom 64) costs N × 6 KB of sample memory and nothing
+   else, and needs no wipe-and-reload if the page count, free-list fill
+   and arena clear are all cut together, as her four writes do. Tell Em
+   what the port saw at `0x47fc8fe4` (the one-flash test: LOAD PROJECT
+   twice with static slots; or mxldyn's firmware-armed hardware
+   watchpoint on `0x47fc7410..`). MB-scale is then the same mechanism
+   with a bigger N — the delay-ring lever (`0x400031a0`) stays as the
+   route that costs no sample memory, unmeasured.
 4. **Upstream.** The PR to bkkbrls-del once he has finished his own
    changes (rebase `octabam-gas`, then `tools/gas_port.py` + `gas/` to him).
    An optional tidy PR to Em splitting her loader infrastructure so the

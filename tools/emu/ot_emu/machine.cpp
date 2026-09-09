@@ -527,8 +527,15 @@ namespace ot
 		m_writeWatches.push_back({_begin, _end, std::move(_cb)});
 	}
 
-	void Machine::noteWatchedWrite(const uint32_t _addr, const uint8_t _size, const uint32_t _val)
+	void Machine::noteWatchedWrite(const uint32_t _a0, const uint8_t _size, const uint32_t _val)
 	{
+		// FOLD THE ALIAS FIRST. A watch is set on the cached address; the OS
+		// writes its DMA-style buffers through the uncached one (0x4ffc9010
+		// for the sector bounce buffer), and until 10 Sep 2026 those stores
+		// were compared unfolded -- a watch on 0x47fc7410.. reported "0
+		// write(s)" while the dump of the same range held 18,944 bytes of
+		// sample data. Same blindness as the ring clear, one layer down.
+		const uint32_t _addr = alias(_a0);
 		for(const auto& w : m_writeWatches)
 			if(_addr + _size > w.begin && _addr <= w.end)
 				w.cb(_addr, _size, _val, currentPc());
