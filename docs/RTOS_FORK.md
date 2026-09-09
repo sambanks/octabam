@@ -3792,3 +3792,42 @@ flowing across the re-open (feed prior content, or preempt the re-open with the
 audio path) — a port-side scheduling fix, no firmware change. Control fixtures
 `GAP65`/`GAP128` (static, verified gapless) also validate the project-build →
 card pipeline for any follow-on hardware test.
+
+### 10.46 The retrigger gap is the recorder STREAMING gate muting, not a voice restart — corrected via octamax's hw-verified play-position map (10 Sep 2026 — measured)
+
+A peer session relayed mxldyn/octamax 2.0's hardware-verified slice-view map
+(his progress bar renders on a real MKII): the per-track voice struct at
+`0x800049d8` stride 0xA8, `@68` = live integer play position (advanced by
+`0x40008898`), `@0` = active byte (one-shot end clears it at `0x40008ea6`),
+loop-wrap rewrites `@48/@52/@68` at `0x400088dc`, all inside `FUN_40007960`.
+Watching those PCs under our port across a recorder-buffer retrigger **corrects
+§10.44's "voice restart" framing**:
+
+- **T2's play voice LOOPS continuously.** `@68` advances 16×/frame EVERY frame
+  including the gap frames (86,400 hits / 5,400 frames), exactly ONE loop-wrap,
+  **ZERO one-shot-ends**. The voice never stops or re-opens. The `0x22`/`0x25`
+  re-open §10.44 saw was T1's RECORDER re-arm, not T2's play voice.
+- **So the gap is not silence-from-a-dead-voice; it is the OUTPUT being MUTED
+  while the voice plays.** The muter is the recorder STREAMING gate
+  `FUN_40001598` (octamax's HOTCHANGE map, disassembled here): it reads the
+  voice type/slot, the play-position pair `voice+0x5c/0x60`, and the recorder
+  write/limit tables `0x46c7ff42[rec]`/`0x46c7fe24[rec]`, and returns 0 → MUTE
+  (`0x4000812c`) when the play head is past the recorder's written data ("no
+  data available"). It is a real safety: don't play past what is recorded.
+- **Measured:** the write-position table `0x46c7ff42` is cleared to
+  `0xFFFFFFFF` (−1) every frame by `0x4000d36e`, then refilled with the live
+  write positions. In the gate's SIGNED compare a −1 entry reads as "behind the
+  play head" → MUTE. The gap is the ~5 frames at each retrigger where R1's
+  entry is −1 (not yet refilled) or the play head is transiently ahead of the
+  refilled write head.
+
+**Why it is a port artifact (unchanged conclusion).** On hardware the same gate
+runs, but the recorder's write head stays ahead of the reset play head across a
+retrigger (an 80-sample mute every bar would tick, and golden is clean). In the
+port the write-position refill lags the reset play head for ~5 frames at the
+retrigger, tripping the gate. 🟡 The exact mute branch and WHY the port's
+refill lags (recorder re-arm timing, or the play head reset landing ahead of the
+8-frame-lagged write head) is the next locate — best done with octamax's
+`emu_recvoice.py` harness shape (seeds `voice+0/+4/+0x10` and meta
+`0x46c939cc+8/+0x10/+0x14`, reports which branch fires). The objective click
+reproduction (§10.42) is unaffected.
