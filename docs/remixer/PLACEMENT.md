@@ -80,7 +80,56 @@ armed before boot and `--mem-dump` at exit:
   watched. Not before.
 
 What the port cannot see: caches (it has none), the recorder (never
-exercised), and anything after the handoff.
+exercised), anything after the handoff — and **DMA traffic**: the port
+models the eDMA's descriptors and completions but moves no bytes
+(`Edma::start` fires callbacks, nothing copies), so a region only DMA
+writes to reads as "never written". The rings are known from the CPU's
+own memset, not from their audio.
+
+### The SDRAM itself, read from the boot code (10 Sep 2026)
+
+- `0x400e12e8`: `SDCS0 = 0x4000001b` (base `0x40000000`, CSSZ `0x1b`),
+  `SDCS1 = 0`. One chip select; per the MCF5445x reference manual's CSSZ
+  encoding that is a **256 MB decode window** `0x40000000..0x4fffffff`
+  (🟡 the encoding table is from memory — confirm against the RM).
+- **Every stock reference to the rings is through the alias**: the
+  memset at `0x40002fb4` (`lea 0x4f502c10`; **705,664 × 16 B =
+  11,290,624 B = `0xac4800`**, ending at `0x4ffc7410`) and the delay
+  frame routine's four `#0x4f502c10` adds (`0x4000330e`, `0x4000331c`,
+  `0x4000358c`, `0x400037aa`). Stock never names `0x47502c10`.
+- **That the two halves are one memory is proven on hardware by
+  Octakit**: her loader writes the runtime through `0x4dd0dde0`
+  (`SDRAM_ALIAS_DELTA = 0x08000000` in her `link.ld`) and the OS then
+  executes it at `0x45d0dde0`, on her unit, every boot. A 256 MB window
+  over a 128 MB part aliases exactly like this; the physical size is
+  what the board's SDRAM part number / Elektron's spec would confirm,
+  and the reset stack at `0x48000000` says the OS treats 128 MB as the
+  top. The "uncached" property of the upper half comes from the MMU
+  (`movec %urp` is set; no data ACRs are written), 🟡 inferred.
+- Em's stage starts at `0x47fc7410` = the first byte after that memset:
+  she measured the same clear.
+- Bryan's per-track ring is 1,411,200 B; the memset is 8 × 1,411,328 —
+  🟡 a 128 B (16-sample) pad per ring would explain it, consistent with
+  his two-tap crossfade reading one frame past the wrap. The stride is
+  readable at the four adds above; not done.
+
+### Em's DRAM, exactly (from `m68k-elf-nm` on her `runtime.elf`)
+
+| | range | bytes |
+|---|---|---|
+| runtime (code + data) | `0x45d0dde0..0x45d32675` | 149,653 |
+| code budget (`0x25000`) | ends `0x45d32de0` | 1,899 spare |
+| 256 Kits × 6,322 B (`PART_PAYLOAD_SIZE 0x18b2`) | `0x45d32de0..0x45ebdfe0` | 1,618,432 |
+| 128 spill payloads (undo, clipboard, rollback) | `..0x45f838e0` | 809,216 |
+| descriptors, bitmaps, names, UI rows, undo | `..0x45fb2f42` (`__gk_planned_end`) | ~190,050 |
+| slack | `0x45fb2f42..0x4600154b` | 320,009 |
+| backup copy of the runtime | `0x4600154b..0x46025de0` | 149,653 |
+| **her region** (`RUNTIME_START..RUNTIME_END`, stock's reserved recorder pages, zero-filled at project load) | `0x45d0dde0..0x46025de0` | **3,244,032** |
+| her stage (signature + packed runtime) | `0x47fc7410..0x47fd910f` | **72,959** |
+
+So she claims 3,316,991 B (3.16 MB) and uses 2,996,982 of it; the
+bytes her loader actually writes at boot are 372,265 (runtime, backup,
+stage).
 
 ## The loader
 
