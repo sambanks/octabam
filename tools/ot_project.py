@@ -573,13 +573,20 @@ def _resolve_slot(mod, slot):
     return s
 
 
-def thru_track(pdir, track, page_hex="00017f00000000", guard=True):
+def thru_track(pdir, track, page_hex="017f0000400000", guard=True):
     """Make `track` (1-based) a THRU machine that starts on play: machine
     type 2 in all eight part records of every bank, its THRU playback page
-    (seven bytes at Part+0x8edaa + track*30 + 2*7), and a trig at step 1 in
-    pattern 1 of every bank. A THRU machine on the unit passes nothing until
-    it is trigged (the RECTRIG-based rig was silent for exactly that, 9 Sep
-    2026); the RIG's own THRU tracks carry a step-1 trig."""
+    (seven bytes at Part+0x8edaa + track*30 + 12), and a trig at step 1 in
+    pattern 1 of every bank.
+
+    ⚠ The THRU page written here is NOT sufficient to make the track pass
+    input at load (9 Sep 2026, on the unit): the operative INAB byte the
+    firmware reads is in the PART record at +0x3f (=1 for A+B), which this
+    page-region write does not reach, and the amp gate must be held open too.
+    The working recipe (tools/hw_flash7.py) arms the THRU over CC, has the
+    unit SAVE the part, then copies that saved part record wholesale. This
+    function sets the machine type and a plausible page; treat the input
+    routing as unproven until a saved part confirms it."""
     pdir = pathlib.Path(pdir); t = int(track) - 1
     if not 0 <= t < NTRACKS:
         sys.exit("track is 1..8")
@@ -594,7 +601,7 @@ def thru_track(pdir, track, page_hex="00017f00000000", guard=True):
             for p in range(NPARTS_ALL):
                 off = PART_BASE + p * PART_STRIDE
                 data[off + 0x2b + t] = 2
-                data[off + pb + t * 30 + 2 * 7: off + pb + t * 30 + 2 * 7 + 7] = page
+                data[off + pb + t * 30 + 12: off + pb + t * 30 + 12 + 7] = page
             base = trac_off(0, t) + 0x00 + 7    # pattern 1 (index 0), mask 0x00, step 1
             data[base] |= 1
         _bank_write(pdir, num, mut, guard=guard)
