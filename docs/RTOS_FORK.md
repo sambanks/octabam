@@ -3748,3 +3748,47 @@ adds the frames. Instrument the ColdFire's FLEX feed path across a retrigger
 to the transport-start open. Closing it makes the port render golden as a clean
 loop and non-golden as a click — the faithful audible instrument. The objective
 metric (§10.42) already works and does not need it.
+
+### 10.45 The retrigger gap is a PORT artifact, isolated: only recorder-buffer playback gaps (static samples never do), and it is the long re-open serializing against the audio feed (10 Sep 2026 — measured)
+
+Settled the §10.43/10.44 gap with a clean control. Built a verified fixture
+(`out/click_demo/hw_gaptest/GAP65`, GAP128) where a FLEX voice plays a **static
+sample** from a WAV (not a recorder buffer) with a PLAY trig every bar — same
+retrigger geometry, different source. Measured on the readback tap:
+
+| player | retrigger gap |
+|---|---|
+| **static sample**, TSMODE 0 | **none** — only a 49-sample initial start |
+| **static sample**, TSMODE 2 (timestretch) | **none** — same |
+| **recorder buffer** (R1), TSMODE 2 | **~5 frames / ~80 samples at every retrigger** |
+| recorder buffer, recorder LOOP=0 | identical (~5 frames) — not the re-record |
+
+The gap is **specific to recorder-buffer playback**, not general FLEX retrigger
+and not timestretch (both static cases retrigger gaplessly). The host-port block
+classes are byte-identical between the static and recorder-buffer runs (same 27
+DMA classes, same sizes) — the SAME host→DSP block just gets **zeros** for ~5
+frames in the recorder-buffer case.
+
+**Why it is a port artifact, not faithful (Sam's argument, and it holds).** If
+the ~80-sample (1.8 ms) dropout at every bar were real, Bryan's golden loop —
+which retriggers every bar — would tick audibly every bar; it is clean
+(§10.31/§10.39). So the port produces something the device does not. The cause:
+the recorder-buffer re-open (engine `0x22` release/allocate + `0x25` open →
+`0x40099680`) is ~611k ColdFire instructions ≈ 6 frames of CPU work, during
+which the firmware writes zeros to the feed. On hardware the audio feed (ESAI +
+eDMA) is genuinely concurrent, so the DSP keeps being fed while that long work
+runs in the background — no audible gap. In the port the long re-open
+**serializes against the feed**, so the feed goes empty for those frames. The
+static sample dodges it because its open is cheap (no pool release/allocate),
+so nothing long blocks the feed. 🟡 The exact port mechanism (audio-feed
+DMA/ISR not preempting the long engine task, or the feed buffer not carrying
+prior content across the re-open) is the next locate; the isolation to
+recorder-buffer-playback-re-open is measured.
+
+**Consequences.** The objective click reproduction (§10.42, successive-loop
+compare) is unaffected — it reads the settled loop content, not the retrigger
+frame. A gap-free AUDIBLE render needs the port to keep the recorder-buffer feed
+flowing across the re-open (feed prior content, or preempt the re-open with the
+audio path) — a port-side scheduling fix, no firmware change. Control fixtures
+`GAP65`/`GAP128` (static, verified gapless) also validate the project-build →
+card pipeline for any follow-on hardware test.
