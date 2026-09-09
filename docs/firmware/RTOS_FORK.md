@@ -3984,3 +3984,25 @@ Falsifiers: if lever 1's non-golden render still walks by ±1 with the reset
 skipped, the reset is not the only discontinuity and the record side is back
 in play; if the golden render changes at all, the condition is wrong. Every
 step above is a port render, no flash.
+
+**Lever 1 built and scored in the port (10 Sep 2026 — measured, unflashed).**
+`modules/flex-softretrig` (remix `softretrig`): a 76-byte floating cave
+hooked on the bind's three position stores (`0x4000f820`, 12 bytes of
+stock), keyed on the bind's own same-slot/type/generation verdict at its
+`sp@55`, an active FLEX voice on a recorder slot, and a read position within
+64 samples past the new start or before the window end (`+0x34`). Threshold
+64 = a real reset every ~128 bars (≈4 min at 128 BPM). The real planter
+places it at `0x400d7200` with the same bytes the port test used. Scored on
+the stock image with the cave planted at `0x400d24d0`, both fixtures,
+`--pre-roll 200`, cave entered 5× per run (first bind + 4 retriggers):
+
+| | n128fix (non-golden), stock | n128fix with the cave | g65fix (golden) with the cave |
+|---|---|---|---|
+| loop spacing | 82,687 / 82,688 alternating | **82,687 constant** (the recording's own length) | 161,280 constant, as stock |
+| loop k vs k+1 at that spacing | bit-identical, but shifted by ∓1 every bar | 0 / 204 / 0 differing samples, every one by **1 LSB** (rounding, −138 dB each, scattered ~every 170 samples, none at the loop point) | bit-identical, shift +0 |
+
+So the alternating one-sample walk — the click — is gone at non-golden and
+golden is untouched. 🟡 Not yet heard on hardware, and the sound-on-sound
+smear (playback up to 64 samples ahead of a bar-aligned re-record) is
+inferred, not rendered: a SoS fixture (SRC3 self-feedback) under the port is
+the next render, then Bryan's ear on a flash.
