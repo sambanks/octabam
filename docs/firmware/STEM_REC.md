@@ -3489,7 +3489,45 @@ blocks.
 The rest of this section is the evidence, and the five stock call sites that fix
 the convention.
 
-### 6.1 The file layer is a table of pointers, not a set of fixed entry points ✅
+### 6.1 How the routine was found ✅
+
+The search started from the new-project path, as the brief's Step 1 directs.
+
+✅ **The disassembler gate passed first.** `scripts/disasm.sh emac 0x40003664 8`
+printed `msacl`, and the image's SHA-256 matched the header's. Every
+disassembly in this section follows from that gate.
+
+✅ **A byte search for `project.work` and `markers.work` found the creator's
+neighbour, not the creator.** `"%s/%s/project.work"` sits at `0x400b5ccd`, with
+one reference, `0x400646bc`. The routine that reads it, `0x40064624`, turned
+out to be the project BROWSER, not CREATE NEW PROJECT. It was still useful: it
+calls a file test through a pointer in RAM, `0x46c823fa`, not through a fixed
+entry point. That is the pointer table 6.2 documents next.
+
+✅ **Following the pointer led to its installer, then to a per-slot census.**
+`0x4001451c` writes `0x46c823fa` and its neighbours, branching at `0x40014520`
+to `0x40014636` depending on its argument, and `0x4001474c` is a separate
+stub-table installer (6.2 has the detail). A linear objdump of the whole
+image, grepped for every `moveal 0x46c82xxx`, split the sites inside the
+installer's own range `0x40014000`-`0x40017000` from the sites outside it,
+which gave a per-slot census of callers.
+
+✅ **The census pointed at slot `0x46c8240a`.** Its neighbour `0x46c82406`
+turned out to be a folder removal: `0x4008ec4c` deletes a project's `.work`
+and `.strd` files and then calls `0x46c82406` on `"%s/%s"`. `0x46c8240a` had
+five callers, all shaped "format a path, test exists, create" (6.3).
+
+✅ **`0x40080fa4` settled it.** CREATE NEW SET makes `"/%s"` and then
+`"/%s/AUDIO"` through slot `0x46c8240a`, parent first, with `"ERROR CREATING
+SET DIR."` on failure (6.3). Nothing but a folder-creation routine has that
+shape, so the search stopped there and moved to confirming the convention.
+
+✅ **The last step disassembled the routine whole.** The card backend
+`0x4001b0ac` behind the slot, and the path resolver `0x4001aa70` it calls,
+gave the calling convention, the return codes and the attribute byte that the
+rest of this section documents.
+
+### 6.2 The file layer is a table of pointers, not a set of fixed entry points ✅
 
 The routine at `0x4001451c` installs 23 function pointers into RAM, at
 `0x46c823fa`, `0x46c823fe` and then `0x46c82402` through `0x46c82452` in steps
@@ -3563,7 +3601,7 @@ behind it. Read `0x46c8240a` and call through it, the way all five stock call
 sites do, and check the return: in the stub state the call returns -1 rather
 than crashing.
 
-### 6.2 Slot `0x46c8240a` is the folder-creation routine ✅
+### 6.3 Slot `0x46c8240a` is the folder-creation routine ✅
 
 Five instructions in the image read that slot. Counted from a linear objdump of
 the whole image (`m68k-elf-objdump -D -b binary -m m68k:cfv4e
@@ -3687,7 +3725,7 @@ banks, and `arr%02d.work` and `arr%02d.strd` for 8, and then does this:
 Empty the folder, then call `0x46c82406` on `"%s/%s"`. That is a folder removal,
 and `0x46c8240a` is its neighbour in both backend tables.
 
-### 6.3 It writes a directory entry with attribute `0x10` ✅
+### 6.4 It writes a directory entry with attribute `0x10` ✅
 
 Step 2 of the brief is confirmed statically, in the card backend `0x4001b0ac`,
 three times. Offset 11 of a 32-byte FAT directory entry is the attribute byte,
@@ -3737,15 +3775,17 @@ The first-cluster numbers go in at `+0x14` and `+0x1a` of each entry
 (`0x4ece3214`, `0x4ece321a`, `0x4ece3234` and `0x4ece323a`), which is the FAT
 split of a cluster number into a high word and a low word. The packed date and
 time go to `+0x16` and `+0x18` (`0x4ece3216`, `0x4ece3218`, `0x4ece3236` and
-`0x4ece3238`), from the two clock helpers in 6.7.
+`0x4ece3238`), from the two clock helpers in 6.8.
 
 That is a FAT directory creation, written out longhand. No port run is needed
 for step 2 of the brief.
 
-### 6.4 Arguments, return and errors ✅
+### 6.5 Arguments, return and errors ✅
 
-✅ **One longword argument, the path, cdecl, the caller pops.** Every one of the
-five call sites pushes one longword and pops four bytes. The plainest:
+✅ **One longword argument, the path, cdecl, the caller pops.** cdecl here
+means the caller pushes the arguments right to left and pops them after the
+call (5.0's term note defines it the same way). Every one of the five call
+sites pushes one longword and pops four bytes. The plainest:
 
 ```
 40063dce:	2f02           	movel %d2,%sp@-
@@ -3825,7 +3865,7 @@ the same convention (`0x4001c5b8` and `0x4001c544` each save `%d2`, `%a2` and
 the section that is not read off a save and a restore, so save them yourself if
 that is cheap.
 
-### 6.5 The path convention ✅
+### 6.6 The path convention ✅
 
 The path resolver is `0x4001aa70`. It takes the path and a 300-plus byte output
 structure, and its return code is the only thing the folder routine tests:
@@ -3922,26 +3962,26 @@ A path that ends in `/` reaches `0x4001ab9a` and returns 1 or -1, never -3. So
 ✅ **The name must not exist already**, by the same rule: a resolved path
 returns 1 or 0, not -3. The exists slot `0x46c823fa` in front of the call is the
 stock way to tell that case apart, and it answers for a folder as well as a
-file, which is what the "NAME ALREADY IN USE!" branch in 6.2 depends on.
+file, which is what the "NAME ALREADY IN USE!" branch in 6.3 depends on.
 
 **What Task 15 must pass.** `<set>/AUDIO/YYMMDD-HHMM`, built from `SET_PATH` as
 section 5.8 says, with no trailing `/`, and only once `<set>/AUDIO` exists.
 
 🟡 **`<set>/AUDIO` can be assumed to exist whenever a set is mounted.** Stock
-creates it with the set (6.2), and the mount check `0x40025650` in section 5.8
+creates it with the set (6.3), and the mount check `0x40025650` in section 5.8
 formats `"%s/AUDIO"` and tests it. Falsifier: a user who deletes `AUDIO` from a
 computer and then mounts the card. Cheap defence: call the exists slot on
 `<set>/AUDIO` first and create it if it is missing, before creating the take
 folder. It is the same call, so it costs a few instructions.
 
 **One corroboration for section 5.8's leading-slash 🟡.** CREATE NEW SET formats
-the folder it makes as `"/%s"` (6.2), so the folder stock creates for a set is
+the folder it makes as `"/%s"` (6.3), so the folder stock creates for a set is
 `/NAME`, at the root. That does not prove what `0x100f8480` holds afterwards,
 which is still the port run listed in 5.10. It does mean that a set path without
 a leading `/` would resolve against the current directory, which is a second
 reason to settle 5.8 before flashing.
 
-### 6.6 It does not change the current directory ✅
+### 6.7 It does not change the current directory ✅
 
 The current directory is the 12 bytes at `0x460bae38`, read by the resolver at
 `0x4001aabe` above. Five instructions in the whole image name it, found by
@@ -3965,14 +4005,14 @@ routine that begins at `0x4001b4f4`, which the installer puts in slot
 that slot that is not a directory change. The two `clrl` sites at `0x40017cfa`
 and `0x40017de8` are 🟡 a mount or a media change resetting to the root.
 
-### 6.7 It takes the same mutex as open, read and write, and it reads the clock ✅
+### 6.8 It takes the same mutex as open, read and write, and it reads the clock ✅
 
 ✅ **The mutex object is `0x461079c0`**, acquired with `0x400009f4` and released
 with `0x40000ab4`. Both routines are already ✅ in this document: section 5.2
 measured `0x400009f4` as a blocking mutex acquire and `0x40000ab4` as the
 release that hands the lock to the head waiter. The folder routine takes the
 mutex at `0x4001b0b4`
-(quoted in 6.4) and releases it on every exit, the last of them here:
+(quoted in 6.5) and releases it on every exit, the last of them here:
 
 ```
 4001b3d8:	4879 4610 79c0 	pea 0x461079c0
@@ -4017,7 +4057,7 @@ priority 1, the way section 5.2 says to call the clock. Never from the DSP hook
 or an interrupt, and never while holding anything the UI task needs. Call it
 once per take, before the file is opened, and never in the sample loop.
 
-### 6.8 What else it does, and what it costs ✅ and 🟡
+### 6.9 What else it does, and what it costs ✅ and 🟡
 
 ✅ **It creates a folder and nothing else.** No template is copied, no project
 files are written, no setting is touched. The project files are written by the
@@ -4038,24 +4078,24 @@ stack.
 layer's own scratch, used under the mutex. That is one more reason not to hold
 the call across anything.
 
-### 6.9 Not measured under the port 🟡
+### 6.10 Not measured under the port 🟡
 
 No project folder exists on this machine, so nothing in this section was
 executed. Four things a port run would settle, in the order they matter:
 
 1. **One call on a scratch card, and the image read back.** Create
    `/SET/AUDIO/260910-1432` and read the directory entry with the FAT reader
-   Task 9 adds. That turns 6.3's static reading into a measurement, and confirms
+   Task 9 adds. That turns 6.4's static reading into a measurement, and confirms
    the entry's attribute byte reaches the card as `0x10`, not only the buffer.
 2. **The failure codes.** Call it twice with the same path and check that the
    second returns -15. Call it with a missing parent, and with a trailing `/`,
    and check both give -15.
 3. **`0x46c8240a` after a mount, and after an unmount.** Confirm it holds
-   `0x4001b0ac` while a card is mounted, which is what makes 6.1's stub warning
+   `0x4001b0ac` while a card is mounted, which is what makes 6.2's stub warning
    real or idle.
-4. **The stack watermark**, for 6.8.
+4. **The stack watermark**, for 6.9.
 
-### 6.10 Interface
+### 6.11 Interface
 
 ```asm
 | CREATE ONE FOLDER. This is a POINTER in RAM, not a fixed entry point: the
@@ -4069,7 +4109,7 @@ executed. Four things a port run would settle, in the order they matter:
 |   tst.l   %d0            | 0 created, negative failed
 | ONE longword argument, a NUL terminated path. cdecl, the caller pops.
 | Returns 0 in %d0 on success and a negative code on failure. Preserves
-| %d2-%d5 measured, and %d6-%d7 and %a2-%a6 by inspection (6.4).
+| %d2-%d5 measured, and %d6-%d7 and %a2-%a6 by inspection (6.5).
 | The path is absolute if it begins with '/', otherwise it is relative to the
 | file layer's current directory. THE PARENT MUST EXIST. The path must NOT
 | exist already. NO trailing '/'. It does NOT change the current directory.
@@ -4080,12 +4120,16 @@ executed. Four things a port run would settle, in the order they matter:
 .equ	HAVE_MKDIR,	1
 .equ	FS_MKDIR_PTR,	0x46c8240a
 
+| The brief's name for this interface resolves to the pointer slot above. The
+| call form is the one already documented: movea.l FS_MKDIR_PTR,%a0 / jsr %a0@.
+.equ	FS_MKDIR,	FS_MKDIR_PTR
+
 | The card backend behind that pointer, for a port watch or a disassembly.
 | DO NOT call it directly: it is only the right routine while a card is
 | mounted.
 .equ	FS_MKDIR_CARD,	0x4001b0ac
 
-| The failure codes, read off FS_MKDIR_CARD (6.4).
+| The failure codes, read off FS_MKDIR_CARD (6.5).
 .equ	FS_ERR_LOCK,	-4	| the FAT mutex could not be taken
 .equ	FS_ERR_NOVOL,	-24	| no volume mounted
 .equ	FS_ERR_PATH,	-15	| exists, or parent missing, or trailing '/'
@@ -4094,7 +4138,7 @@ executed. Four things a port run would settle, in the order they matter:
 | DOES A PATH EXIST? Same table, same shape: one longword path argument, and
 | non-zero in %d0 if it exists. It answers for a FOLDER as well as a file.
 | Call it before FS_MKDIR_PTR, the way all five stock sites do, and call it on
-| "<set>/AUDIO" too if you want to be safe about the pool folder (6.5).
+| "<set>/AUDIO" too if you want to be safe about the pool folder (6.6).
 .equ	FS_EXISTS_PTR,	0x46c823fa
 
 | Remove an EMPTY folder. Recorded for completeness. STEM REC does not use it.
