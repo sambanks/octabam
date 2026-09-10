@@ -90,11 +90,59 @@ every case.
 
 Totals: 20 reads, 7 writes of 0, 5 writes of 1, 1 write of 2.
 
-`refs.sh` sees absolute operands only. No `lea` or `movea.l` of `0x800065b8`
-appears in the image, so there is no access through an address register to
-miss, and no displacement access either: the neighbouring base `0x80006500`
-is a separate 16-byte per-track array, and every reference to it is a `lea`
-into that array whose loop stops at `0x80006510`, well below `0x800065b8`.
+#### Is that census complete? Mostly ✅, with one gap 🟡
+
+`refs.sh` matches 32-bit literals. It cannot see a store formed as
+`lea <base>,%aN` plus a displacement, so "every writer" needs its own
+evidence. Four checks, all against the image:
+
+**1. No pointer to the word itself.** No `lea 0x800065b8` and no
+`movea.l #0x800065b8` appears anywhere. ✅
+
+**2. No misaligned store from below overlaps it.** The bytes immediately
+under the word are accessed at widths that stop at `0x800065b7`:
+
+```
+4009be96:	33c0 8000 65b2 	movew %d0,0x800065b2
+4009be8e:	33c0 8000 65b4 	movew %d0,0x800065b4
+4009bebe:	13c1 8000 65b6 	moveb %d1,0x800065b6
+```
+
+`0x800065b2` and `0x800065b4` are only ever `move.w` (six and six sites),
+`0x800065b6` only ever `move.b` (twelve sites), and `0x800065b7` has no
+reference at all. Nothing below reaches into `0x800065b8`. ✅
+
+**3. Every absolute base near the word, checked.** Enumerating every
+`lea`/`movea.l` of a literal in `0x80006400` to `0x800065b8` gives 15
+distinct bases across 56 sites. The nearest one below the word, and the only
+one within longword reach of it, is `lea 0x800065b2,%a0` at `0x400a4226`. It
+is used once:
+
+```
+400a4226:	41f9 8000 65b2 	lea 0x800065b2,%a0
+400a422c:	33d0 8000 65b4 	movew %a0@,0x800065b4
+400a4232:	3039 8000 65b2 	movew 0x800065b2,%d0
+```
+
+`%a0` is loaded, read once at displacement 0, never incremented, and next
+reloaded with an unrelated base (`lea 0x400abae4,%a0` at `0x400a4264`). The
+code reverts to absolute addressing immediately. It never reaches
+`0x800065b8`. ✅
+
+**4. No pointer walk crosses it.** No `cmpal` loop terminator anywhere in
+the image falls in `0x80006510` to `0x800065c0`, so no walk in this
+neighbourhood runs up to or past the word. The two walks nearby both miss
+it: the per-track array walks stop at `0x80006510`, which is `0xa8` below,
+and the eight-entry walk over `0x80006646` to `0x8000664e` (writing
+`%a0@(-8)` and `%a0@`) sits `0x8e` above. ✅
+
+🟡 **What remains unseen.** A store through a base register whose value is
+computed at run time rather than loaded from a literal, for example a struct
+pointer read out of memory, would be invisible to all four checks. So would
+a base outside the `0x80006400` to `0x800065b8` range that reaches the word
+by a large displacement.
+**Falsifier:** a write watch over `0x800065b8,4` under the port reporting a
+store from a PC that is not one of the 13 writers listed above.
 
 Two reads deserve names, because later tasks will meet them.
 
@@ -259,16 +307,50 @@ rewind primitive:
 400a12b2:	4210           	clrb %a0@
 ```
 
-Both branches of `0x400a10c8` reach `0x400a12ac`, so the routine always
-leaves the word at 0. It also transmits MIDI Stop, at `0x400a1426`. That
-site is inside `0x400a10c8`: the routine's only `rts` is at `0x400a14a0`,
-after the matching `moveml %sp@,%d2-%d5/%a2-%fp` at `0x400a1498`, and there
-is no other return between `0x400a10c8` and it.
+The two clears are on different branches, and the routine reaches at least
+one of them either way. Here is the whole control flow of
+`0x400a10c8` through `0x400a12b4`, every branch it contains:
+
+```
+400a10d0:	4ab9 8000 65b8 	tstl 0x800065b8
+400a10d6:	6600 00ce      	bnew 0x400a11a6
+400a10e0:	6766           	beqs 0x400a1148
+400a111a:	66f4           	bnes 0x400a1110
+400a1138:	6608           	bnes 0x400a1142
+400a1144:	6000 0150      	braw 0x400a1296
+400a114e:	6748           	beqs 0x400a1198
+400a11a2:	6000 00f2      	braw 0x400a1296
+400a11a6:	42b9 8000 65b8 	clrl 0x800065b8
+400a11b6:	6700 00a8      	beqw 0x400a1260
+400a122e:	6710           	beqs 0x400a1240
+400a123e:	6010           	bras 0x400a1250
+400a1256:	6d1c           	blts 0x400a1274
+400a125e:	6014           	bras 0x400a1274
+400a12aa:	66f6           	bnes 0x400a12a2
+400a12ac:	42b9 8000 65b8 	clrl 0x800065b8
+```
+
+Reading it: the zero branch falls through from `0x400a10d0` and leaves by
+one of the two `braw 0x400a1296` at `0x400a1144` and `0x400a11a2`, so it
+clears once, at `0x400a12ac`. The non-zero branch is sent to `0x400a11a6`,
+clears there, and then every one of its own exits (`0x400a11b6` to
+`0x400a1260`, and `0x400a1256` and `0x400a125e` to `0x400a1274`) runs on
+into `0x400a1296` by fall-through, so it clears a second time at
+`0x400a12ac`. There is no `rts` in the whole span.
+
+So the routine always leaves the word at 0, by one clear on the zero branch
+and two on the non-zero branch. ✅
+
+It also transmits MIDI Stop, at `0x400a1426`. That site is inside
+`0x400a10c8`: the routine's only `rts` is at `0x400a14a0`, after the
+matching `moveml %sp@,%d2-%d5/%a2-%fp` at `0x400a1498`, and there is no
+other return between `0x400a10c8` and it.
 
 `0x400a4066` is an automatic stop, inside the same timer interrupt handler
 at `0x400a1e0c` that holds three of the write-1 sites. Its test at
 `0x400a3f96` compares the word against 1 and leaves if it is anything else.
-It transmits MIDI Stop 64 bytes earlier and then clears:
+It transmits MIDI Stop at `0x400a4022`, `0x44` bytes earlier, and then
+clears:
 
 ```
 400a4022:	4878 00fc      	pea 0xfc
@@ -432,10 +514,15 @@ retract section 1.0.
 | at a time reports a flat 0, because the value lands in 0x800065bb.
 .equ	TRANSPORT,		0x800065b8
 
-| The three states. 0 is stopped and rewound, 2 is stopped by the STOP key
-| with the position kept, so ONLY 1 means running.
+| Stopped AND rewound. The state at engine init, after REC's stop and
+| rewind, and after the sequencer's own end of sequence stop.
 .equ	TRANSPORT_REWOUND,	0
+
+| Running. The ONLY value that means the sequencer is playing.
 .equ	TRANSPORT_RUNNING,	1
+
+| Stopped by the STOP key, with the position kept. Non-zero, which is why
+| a tst.l cannot be used to detect a stop.
 .equ	TRANSPORT_STOPPED,	2
 ```
 
