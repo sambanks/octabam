@@ -1373,22 +1373,18 @@ one by hand for the `main` task, TCB `0x46c7ae84`, and never calls create:
 `0x46c7aed4 - 0x46c7ae84 = 80`. Every offset and every constant matches what
 create does, from a code path that never touches create.
 
-The priority field is written a few instructions earlier, and it does not
-read cleanly:
+The priority field is written a few instructions earlier, and it matches
+`K_CREATE`'s own formula exactly ✅:
 
 ```
 40000dec:	223c 8000 68dc 	movel #-2147456804,%d1
-40000df2:	23c1 46c7 aecc 	movel %d1,0x46c7aecc
+40000df2:	23c1 46c7 ae8c 	movel %d1,0x46c7ae8c      | tcb+8 = 0x800068dc
 ```
 
-Read literally that writes `0x800068dc` to `0x46c7aecc`, which `0x40000e1c`
-overwrites with the stack pointer four instructions later. 🟡 The intent
-looks like `tcb+8`, at `0x46c7ae8c`, which is the priority 0 list head, and
-`main` does run at priority 0. Either way it does not bear on `K_CREATE`,
-which computes `+8` itself.
-**Falsifier:** a read of `0x46c7ae8c` under the port after boot showing
-something other than `0x800068dc`, or `main` appearing on a ready list other
-than priority 0.
+`0x46c7ae8c - 0x46c7ae84 = 8`, and `0x800068dc` is what create's formula
+`0x800068dc + 4 * prio` gives for priority 0. So `main` runs at priority 0,
+and the boot writes the same four fields create writes, with the same
+values, computed the same way.
 
 ### 3.4 K_START, the whole routine ✅
 
@@ -1509,10 +1505,10 @@ does at all ten of its sites.
 
 Every routine in `0x40000550` to `0x40000d4c` was disassembled and every
 `%aN@(disp)` displacement counted. Discarding the two that are vector table
-writes rather than TCB accesses, `%a0@(128)` and `%a0@(684)` at
-`0x400005d8`, vectors 32 and 171, both pointing at the trap 0 handler, and
-the queue object fields at `+16` to `+28` in `0x40000bd4`, the TCB offsets in
-use are 0, 4, 8, 12, 44, 72, 76 and 80.
+writes rather than TCB accesses, `%a0@(684)` at `0x400005d8` and
+`%a0@(128)` at `0x400005dc`, vectors 171 and 32, both pointing at the trap 0
+handler, and the queue object fields at `+16` to `+28` in `0x40000bd4`, the
+TCB offsets in use are 0, 4, 8, 12, 44, 72, 76 and 80.
 
 | offset | width | field | touched by |
 |---|---|---|---|
@@ -1620,8 +1616,42 @@ frame is `0x2000` with the S bit set. This is not a constraint in practice.
 either address.
 
 **Nothing else is needed to make a task run.** ✅ Stock's own sequence is the
-oracle. Here is the storage task's creation in full, the site the task lead
-named, with everything before and after it:
+oracle, and the storage task is the clearest one because it is created from
+exactly one place, reached from exactly one place.
+
+The task lead named `0x40061a94` for this. ❌ **`0x40061a94` is not a create
+site.** It is the **entry of the task that does the creating**, the `sys`
+task, row 7 of the census in section 3.1: created at `0x40040d2e` with TCB
+`0x46c7bed8`, priority 1, and that entry address. Its first instruction is a
+function prologue and there is no `jsr` to `0x400005fc` anywhere in it:
+
+```
+40061a94:	4e56 ffa4      	linkw %fp,#-92
+40061a98:	48d7 3cfc      	moveml %d2-%d7/%a2-%a5,%sp@
+```
+
+The chain from there to the create is **one hop**, and every step is unique
+✅:
+
+```
+40061b64:	4eb9 4001 dfbc 	jsr 0x4001dfbc
+```
+
+- `0x4001dfbc` has **exactly one caller in the image**: `0x40061b64` above.
+  Checked three ways, as in section 3.1: `refs.sh 0x4001dfbc` gives one hit,
+  the even offset scan for `jsr %pc@(d16)` and `bsr` gives zero, and the
+  linear disassembly grep agrees.
+- `0x40061b64` lies **inside** the `0x40061a94` function. The only `linkw`,
+  `unlk`, `rts` or `rte` between the two addresses is the prologue's `linkw`
+  at `0x40061a94` itself, so there is no function boundary in between.
+- The storage TCB `0x460bcc2c` is named at **exactly two** places in the
+  whole image, both inside `0x4001dfbc`: the `pea` at `0x4001dfe6` that
+  hands it to create, and the `movel #imm,%sp@` at `0x4001dff6` that hands
+  it to start.
+
+So `sys` (entry `0x40061a94`) calls `0x4001dfbc`, which creates and starts
+the storage task. Here is `0x4001dfbc` in full, with everything before and
+after the pair:
 
 ```
 4001dfbc:	4878 0400      	pea 0x400              | queue capacity
