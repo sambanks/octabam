@@ -293,6 +293,27 @@ at instruction 60,393,356 (transport start), with `d0` = the arena base +
 1×635,712, i.e. bank index 1; `0x400622aa` fires once just after with bank
 index 0; the four `bank_inv` hits all precede both.
 
+**WHAT THE SIGNAL MEANS, and the symptom.** The frame-0 `FW_LIVE_NIBBLE`
+writes are the step-1 trigs of the bank being played (`RTOS_FORK.md`, the
+fixture table). The midisc set *gains* a track, so this is different
+PATTERN DATA being read, not tracks failing to start. Checked against the
+fixture's own banks, excluding track 8 (whose write comes from a different
+pc, `0x4000bd7e` vs `0x4000b9bc`):
+
+| | step-1 trig tracks | matches |
+|---|---|---|
+| control | 1,2,3,5 | **bank 3 pattern 1** — where the project was saved |
+| midisc | 1,6 | **bank 1 pattern 0** — the default position |
+
+So in use this would read as: load a project, press PLAY, and the sequencer
+starts at the top of bank 1 instead of the pattern you left it on. ⚠️ Two
+independent sets each matching a real pattern is strong, but the write is
+NOT traced, and the `--watch-pc` capture showed `d0` carrying bank index 1,
+which does not obviously line up with landing on bank 1 pattern 0. Well
+supported, not established. The persistence risk is the larger one: `pack`
+performs a durable stock SAVE, so this site writes during a bank switch
+with the bank state mid-flight.
+
 Stock's two sites differ, which is the lead: `0x400622aa` is guarded by a
 `cmpl`/`beqs` that skips unless the bank actually CHANGED, and publishes the
 current-bank byte `0x80000002` *after* the store; `0x40087d44` is an
