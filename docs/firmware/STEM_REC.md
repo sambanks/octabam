@@ -4295,9 +4295,57 @@ free. If it returns 0 (invalid/empty), the wrapper closes the file it just
 opened, recursing into the close wrapper (`0x4001677c`, at `0x400168ca`),
 and returns `-10`. **The close wrapper's own body does not take `FS_LOCK`**
 (7.1 already established this for all four wrapper bodies), but tracing THIS
-specific call: mode `'r'` and a freshly-opened file (buffer position 0) make
-close skip the write-flush test entirely and fall straight to the handle
-release, slot `0x46c82422`, backend `0x40019900`:
+specific call, in execution order:
+
+`%a2@` (offset 0, the handle) is NOT zero here. Open stored the raw open's
+return there and range-checked it before the recursive close:
+
+```
+40016896:	2200           	movel %d0,%d1
+40016898:	508f           	addql #8,%sp
+4001689a:	6d3e           	blts 0x400168da
+4001689c:	2480           	movel %d0,%a2@
+...
+400168a2:	5380           	subql #1,%d0
+400168a4:	0c80 0000 01fe 	cmpil #510,%d0
+400168aa:	6228           	bhis 0x400168d4
+```
+
+So close's own handle range check on `%a2@`, its first test after the mode
+check, is not taken (the handle is valid):
+
+```
+400167a4:	2012           	movel %a2@,%d0
+400167a6:	5380           	subql #1,%d0
+400167a8:	0c80 0000 01fe 	cmpil #510,%d0
+400167ae:	6200 00aa      	bhiw 0x4001685a
+```
+
+**The field that gates the flush skip is `%a2@(12)`, not `%a2@`.** Open
+clears it unconditionally, right after the handle range check above passes:
+
+```
+400168ac:	42aa 000c      	clrl %a2@(12)
+```
+
+Nothing between there and the recursive close call (`0x400168ca`) writes it
+again (the intervening code only reads `%a3@`, the mode byte, and calls the
+sixth-slot check, 7.1). Close reads the SAME field next and skips the
+write-flush test when it is zero:
+
+```
+400167b2:	222a 000c      	movel %a2@(12),%d1
+400167b6:	675e           	beqs 0x40016816
+```
+
+`%a2@(12)` is still `0` on this path, so the branch IS taken. (This is the
+same field section 7.1's write-flush quote already identifies as the
+buffered-write fill position, incremented per byte and cleared on a flush;
+nothing here re-derives that meaning, only that open zeroed it and close
+finds it zero.) So mode `'r'` and `%a2@(12) == 0`, not "buffer position 0"
+on `%a2@` (which is the handle, and is valid), make close skip the
+write-flush test entirely and fall straight to the handle release, slot
+`0x46c82422`, backend `0x40019900`, whole:
 
 ```
 40019900:	4e56 ffe0      	linkw %fp,#-32
