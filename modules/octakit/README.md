@@ -78,3 +78,23 @@ reproduce her bytes fails loudly.
   runtime module would need its own window or to co-link into hers.
 - Updating: bump the submodule, rebuild; if her recipe's interface_version
   changes, `runtime_build.py` refuses until taught the new one.
+
+## Open, and what would need to come from her
+
+- ⚠️ **Stock's sector bounce buffers land inside her stage.** With static
+  sample slots the port fills `0x47fc8fe4..0x47fcd9e4` (18,944 B) at
+  PROJECT LOAD, starting `+0x1bd4` into her 72,959 B stage at
+  `0x47fc7410` (`docs/remixer/PLACEMENT.md`). Emulator-only, PIO path,
+  streaming unexercised; her wrapper re-hashes the stage at every project
+  load (`0x40013304`), so hardware may cope. Hers to judge — raised with
+  her (`~/Downloads/octabam-notes-for-em.md`, not sent).
+- **For midisc's locks to survive under Kits**, two things from her: is a
+  kit record byte-for-byte a stock part payload, and can she expose "the
+  address of kit N's payload"? Encouragingly her ABI already says
+  `GK_PART_PAYLOAD_SIZE = 0x18b2` and `GK_FORMAT_PAYLOAD_BODY_SIZE =
+  0x18b200 = 256 x 0x18b2` — a flat array at exactly the stride midisc
+  uses (`BANK_PTR + part*0x18b2 + 0x90522`), so his arithmetic may need
+  only a different base. The matching ask on his side is in
+  `modules/midi-scenes/README.md`. Nothing is needed for the two to
+  coexist today (`remixes/mods.py`); this is persistence, not the live
+  path — her active path still applies the STOCK Part window.
