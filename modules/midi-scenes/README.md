@@ -91,13 +91,18 @@ separate measurement.
   `bank_switch`/`bank_invalidate` preserved only `d0` across a `jsr`
   that replaced a plain `move.l d0,(BANK_PTR).l`, so the sample load
   lost registers; they now save `d1-d7/a0-a6`.
-- ⚠️ **The track-arming half is NOT fixed, and is a separate defect.**
-  Three tracks arm at frame 0 (0, 5, 7) against the control's five
-  (0, 1, 2, 4, 7) — *identical on both his images*, so it is not the
-  register clobber. Still the `apply_part` wrapper / reload path /
-  never-re-apply flips; the `hello-dram` control clears the DRAM
-  platform. Not bisected to a single hook, and unmeasured on hardware —
-  possibly only the emulator (a MIDI-driving flag his code reads?).
-  His to look at.
+- ⚠️ **The track-arming half is NOT fixed, and is a separate defect —
+  now bisected to ONE site, `0x40087d44`** (`bank_sw` B). Three tracks
+  arm at frame 0 (0, 5, 7) against the control's five (0, 1, 2, 4, 7),
+  identically on both his images, so it is not the register clobber.
+  Dropping that single hook restores all five; dropping any of the other
+  37 does not, and dropping all 38 also restores them (so the DRAM units
+  are innocent and the instrument can see the effect). Both `bank_sw`
+  sites carry the same cave and only this one breaks arming, so it is the
+  SITE: stock guards `0x400622aa` with a changed-bank test and publishes
+  `0x80000002` after the store, while `0x40087d44` is unconditional and
+  publishes before it. WHICH part of his cave does the damage is
+  **inferred, not established** — see `docs/remixer/PLACEMENT.md`.
+  Unmeasured on hardware. His to look at.
 - The PR upstream, once he's done: `tools/gas_port.py` + `gas/`, and
   optionally `build.py` consuming the `.s` form.

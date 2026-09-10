@@ -268,10 +268,49 @@ plain `move.l d0,(BANK_PTR).l`, so the sample load lost registers; 1.40MIDISC
 saves `d1-d7/a0-a6` (his comment: "sample load").
 
 ⚠️ **The arming half is NOT fixed and is a SEPARATE defect** — identical on
-both his images, so it is not the register clobber. Still his `apply_part`
-wrapper / reload hooks / never-re-apply flips; the control clears the DRAM
-platform of it. Not bisected to a single hook. Whether either reproduces on
-hardware is still not known — this is the port, and the counts above are
+both his images, so it is not the register clobber.
+
+✅ **BISECTED to ONE site: `0x40087d44`** (10 Sep 2026, same fixture). Built
+one image per dropped hook group, then per site, from the same tree:
+
+| dropped | armed @ frame 0 |
+|---|---|
+| nothing (1.40MIDISC) | 3 — 0,5,7 |
+| all 38 sites | 5 — 0,1,2,4,7 |
+| lifecycle group (apply/reload/save/clr_pt/2 pokes) | 3 |
+| scene group (scene_done ×2, write_mix, plock) | 3 |
+| everything else (hold/dial/addi/LED/menus/enc/morph/xf) | 3 |
+| **bank group (bank_sw ×2, bank_inv ×2)** | **5** |
+| bank_sw A `0x400622aa` only | 3 |
+| **bank_sw B `0x40087d44` only** | **5** |
+| bank_inv A / B / both | 3 |
+
+Dropping the all-38 image restores 5, so the DRAM units alone are innocent
+and the instrument can see the effect. The two `bank_sw` sites carry the
+SAME cave, and only one of them breaks arming — so it is the SITE, not the
+routine in isolation. Watched (`--watch-pc`): `0x40087d44` fires **once**,
+at instruction 60,393,356 (transport start), with `d0` = the arena base +
+1×635,712, i.e. bank index 1; `0x400622aa` fires once just after with bank
+index 0; the four `bank_inv` hits all precede both.
+
+Stock's two sites differ, which is the lead: `0x400622aa` is guarded by a
+`cmpl`/`beqs` that skips unless the bank actually CHANGED, and publishes the
+current-bank byte `0x80000002` *after* the store; `0x40087d44` is an
+unconditional clamp-and-set path that publishes `0x80000002` and
+`0x100b14ce` *before* the store. His cave replaces a plain `move.l
+d0,(BANK_PTR).l` with `pack` — which by his own docstring performs a durable
+STOCK SAVE (shadow + staging + `9b312`) — then the store, then `unpack`.
+
+⚠️ **INFERRED, not established: WHICH of those does the damage.** Candidates
+are the SAVE's side effects, `unpack` overwriting part state the load has
+just written, and the site being unguarded so it fires when nothing changed.
+Not traced to a write. Note `pack` early-outs when `LAST_PART == 0xFF` and
+every `bank_inv` hit (which sets it) precedes this one, so `unpack` is the
+likelier half — but that turns on whether an `apply_part` reset `LAST_PART`
+in between, which was not checked. His code and his intent; handed over as
+the one site.
+
+Whether either half reproduces on hardware is still not known — this is the port, and the counts above are
 its counts, not a unit's. (These absolute numbers differ slightly from the
 9 Sep run above because the build has moved since; the three rows here are
 one contemporaneous set and only they should be compared with each other.)
