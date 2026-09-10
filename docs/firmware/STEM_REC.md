@@ -3469,3 +3469,643 @@ things a port run would settle, in the order they matter:
 | STEM REC IGNORES IT and always writes to the pool.
 .equ	REC_SAVE_LOC,	0x800000a4
 ```
+
+## 6. Creating a folder
+
+STEM REC writes `<set>/AUDIO/YYMMDD-HHMM/T1.wav`, so it has to create the folder
+`<set>/AUDIO/YYMMDD-HHMM` first. A folder-creation routine exists, it does
+nothing but create the folder, and STEM REC can call it. `HAVE_MKDIR` is 1.
+
+### 6.0 The answer, first ✅
+
+The file layer is a table of function pointers in RAM. The folder-creation
+entry is the pointer at `0x46c8240a`. On a card it holds `0x4001b0ac`. One
+longword argument, the path. Returns 0 in `%d0` on success and a negative code
+on failure. The parent must already exist, the path must not, and the path must
+not end in `/`. It does not change the file layer's current directory. It takes
+the same mutex as open, read and write, and it reads the real time clock, so it
+blocks.
+
+The rest of this section is the evidence, and the five stock call sites that fix
+the convention.
+
+### 6.1 The file layer is a table of pointers, not a set of fixed entry points ✅
+
+The routine at `0x4001451c` installs 23 function pointers into RAM, at
+`0x46c823fa`, `0x46c823fe` and then `0x46c82402` through `0x46c82452` in steps
+of 4. It has one longword argument and picks one of two backends from it:
+
+```
+4001451c:	4aaf 0004      	tstl %sp@(4)
+40014520:	6600 0114      	bnew 0x40014636
+```
+
+The two installs of the slot this section is about:
+
+```
+40014584:	203c 4001 b874 	movel #1073854580,%d0
+4001458a:	23c0 46c8 240a 	movel %d0,0x46c8240a
+```
+
+```
+40014696:	203c 4001 b0ac 	movel #1073852588,%d0
+4001469c:	23c0 46c8 240a 	movel %d0,0x46c8240a
+```
+
+objdump prints the immediates in decimal. 1073854580 is `0x4001b874` and
+1073852588 is `0x4001b0ac`, which are also the operand bytes of the two `movel`
+instructions.
+
+✅ **The zero-argument backend is a stub set.** `0x4001b874` is two
+instructions:
+
+```
+4001b874:	70ff           	moveq #-1,%d0
+4001b876:	4e75           	rts
+```
+
+Its neighbours at `0x4001b878`, `0x4001b87c`, `0x4001b880` and `0x4001b884` are
+the same two instructions, four bytes apart.
+
+✅ **The card installs the non-zero backend.** `0x400169d4` calls the installer
+with 1, right after a mount succeeds:
+
+```
+400169c2:	4879 460b ac0c 	pea 0x460bac0c
+400169c8:	4eb9 4001 7ad4 	jsr 0x40017ad4
+400169ce:	2400           	movel %d0,%d2
+400169d0:	588f           	addql #4,%sp
+400169d2:	660e           	bnes 0x400169e2
+400169d4:	4878 0001      	pea 0x1
+400169d8:	4eba db42      	jsr %pc@(0x4001451c)
+```
+
+The only other caller passes zero, in a mode that then writes 2 to
+`0x460d1cb8`:
+
+```
+400616f2:	42a7           	clrl %sp@-
+400616f4:	4eb9 4001 451c 	jsr 0x4001451c
+400616fa:	7002           	moveq #2,%d0
+400616fc:	23c0 460d 1cb8 	movel %d0,0x460d1cb8
+```
+
+🟡 **That second mode is believed to be the USB disk mode.** It is not needed
+here. Falsifier: read `0x460d1cb8` under the port in both states.
+
+There is a third install routine, at `0x4001474c`, whose whole table points into
+`0x40014878` through `0x400148d0`, a run of 4-byte stubs. Four sites call it,
+one of them at `0x40061714`, right after the teardown at `0x40014960`. 🟡 It is
+the unmount table. Falsifier: a port run that unmounts and reads `0x46c8240a`.
+
+**What follows for STEM REC.** The pointer is the interface, not the address
+behind it. Read `0x46c8240a` and call through it, the way all five stock call
+sites do, and check the return: in the stub state the call returns -1 rather
+than crashing.
+
+### 6.2 Slot `0x46c8240a` is the folder-creation routine ✅
+
+Five instructions in the image read that slot. Counted from a linear objdump of
+the whole image (`m68k-elf-objdump -D -b binary -m m68k:cfv4e
+--adjust-vma=0x40000400`) grepped for `moveal 0x46c8240a`, which is the only
+form any of them uses. A byte search for the address finds those five plus the
+three installs (`0x4001458a`, `0x4001469c` and `0x400147b2`, the last being the
+unmount table below), and nothing else. The five are `0x40063dd0`,
+`0x400645a0`, `0x40080fa6`, `0x40080fc2` and `0x40090c24`.
+
+All five have one shape: format a path, ask the "does it exist" slot
+`0x46c823fa`, and on "no" call `0x46c8240a` with that path.
+
+✅ **The decisive site is CREATE NEW SET**, because it creates two nested
+folders in one routine, parent first:
+
+```
+40080f42:	4879 460f aa44 	pea 0x460faa44
+40080f48:	4879 400b 79f0 	pea 0x400b79f0
+40080f4e:	240e           	movel %fp,%d2
+40080f50:	0682 ffff ffa8 	addil #-88,%d2
+40080f56:	2f02           	movel %d2,%sp@-
+40080f58:	45f9 4001 3a08 	lea 0x40013a08,%a2
+40080f5e:	4e92           	jsr %a2@
+40080f60:	2f02           	movel %d2,%sp@-
+40080f62:	2079 46c8 23fa 	moveal 0x46c823fa,%a0
+40080f68:	4e90           	jsr %a0@
+40080f6a:	4fef 0010      	lea %sp@(16),%sp
+40080f6e:	4a80           	tstl %d0
+40080f70:	6732           	beqs 0x40080fa4
+```
+
+```
+40080fa4:	2f02           	movel %d2,%sp@-
+40080fa6:	2079 46c8 240a 	moveal 0x46c8240a,%a0
+40080fac:	4e90           	jsr %a0@
+40080fae:	2600           	movel %d0,%d3
+40080fb0:	4879 460f aa44 	pea 0x460faa44
+40080fb6:	4879 400b 7757 	pea 0x400b7757
+40080fbc:	2f02           	movel %d2,%sp@-
+40080fbe:	4e92           	jsr %a2@
+40080fc0:	2f02           	movel %d2,%sp@-
+40080fc2:	2079 46c8 240a 	moveal 0x46c8240a,%a0
+40080fc8:	4e90           	jsr %a0@
+40080fca:	4fef 0014      	lea %sp@(20),%sp
+40080fce:	4a80           	tstl %d0
+40080fd0:	6d04           	blts 0x40080fd6
+40080fd2:	4a83           	tstl %d3
+40080fd4:	6c30           	bges 0x40081006
+```
+
+`0x400b79f0` is `"/%s"` and `0x400b7757` is `"/%s/AUDIO"`. `0x400b7761`, the
+message the failure branch shows, is `"ERROR CREATING SET DIR."`. So creating a
+set is: make `/NAME`, then make `/NAME/AUDIO`, through the same slot, parent
+first. Nothing but a folder-creation routine has that shape.
+
+✅ **CREATE NEW PROJECT is the second proof**, with the error strings naming
+what the slot did:
+
+```
+4006455e:	4879 100f 8480 	pea 0x100f8480
+40064564:	4879 400b 86c1 	pea 0x400b86c1
+4006456a:	240e           	movel %fp,%d2
+4006456c:	0682 ffff ffa8 	addil #-88,%d2
+40064572:	2f02           	movel %d2,%sp@-
+40064574:	4eb9 4001 3a08 	jsr 0x40013a08
+4006457a:	2f02           	movel %d2,%sp@-
+4006457c:	2079 46c8 23fa 	moveal 0x46c823fa,%a0
+40064582:	4e90           	jsr %a0@
+40064584:	4fef 001c      	lea %sp@(28),%sp
+40064588:	4a80           	tstl %d0
+4006458a:	6712           	beqs 0x4006459e
+4006458c:	203c 400b 58d3 	movel #1074485459,%d0
+40064592:	2d40 fff8      	movel %d0,%fp@(-8)
+40064596:	203c 400b 58e8 	movel #1074485480,%d0
+4006459c:	6020           	bras 0x400645be
+4006459e:	2f02           	movel %d2,%sp@-
+400645a0:	2079 46c8 240a 	moveal 0x46c8240a,%a0
+400645a6:	4e90           	jsr %a0@
+400645a8:	588f           	addql #4,%sp
+400645aa:	4a80           	tstl %d0
+400645ac:	6c32           	bges 0x400645e0
+400645ae:	203c 400b 58fa 	movel #1074485498,%d0
+400645b4:	2d40 fff8      	movel %d0,%fp@(-8)
+400645b8:	203c 400b 5cb5 	movel #1074486453,%d0
+```
+
+`0x400b86c1` is `"%s/%s"` and `0x100f8480` is the set path from section 5.8. The
+argument pushed just before it, at `0x40064558`, is `0x460e436a`, the name the
+user typed. The four message strings are:
+
+```
+0x400b58d3  'NAME ALREADY IN USE!'
+0x400b58e8  'PLEASE TRY AGAIN.'
+0x400b58fa  'ERROR CREATING PROJECT.'
+0x400b5cb5  'CHECK CARD! (FULL?)'
+```
+
+So the exists slot guards the name and the `0x46c8240a` slot creates
+`<set>/<project>`. `0x40063dce` is the same code again under SAVE TO NEW
+(`0x400b58c7`), and `0x40090c22` is a third instance, with `"/"` at
+`0x400b36a6`.
+
+✅ **The neighbouring slot `0x46c82406` removes a folder**, which corroborates
+the pair. The routine at `0x4008ec4c` deletes `project.work`, `project.strd`,
+`markers.work`, `markers.strd`, `bank%02d.work` and `bank%02d.strd` for 16
+banks, and `arr%02d.work` and `arr%02d.strd` for 8, and then does this:
+
+```
+4008ed5e:	2f2f 0018      	movel %sp@(24),%sp@-
+4008ed62:	2f2f 0020      	movel %sp@(32),%sp@-
+4008ed66:	4879 400b 86c1 	pea 0x400b86c1
+4008ed6c:	240f           	movel %sp,%d2
+4008ed6e:	0682 0000 002c 	addil #44,%d2
+4008ed74:	2f02           	movel %d2,%sp@-
+4008ed76:	4eb9 4001 3a08 	jsr 0x40013a08
+4008ed7c:	2f02           	movel %d2,%sp@-
+4008ed7e:	2079 46c8 2406 	moveal 0x46c82406,%a0
+4008ed84:	4e90           	jsr %a0@
+```
+
+Empty the folder, then call `0x46c82406` on `"%s/%s"`. That is a folder removal,
+and `0x46c8240a` is its neighbour in both backend tables.
+
+### 6.3 It writes a directory entry with attribute `0x10` ✅
+
+Step 2 of the brief is confirmed statically, in the card backend `0x4001b0ac`,
+three times. Offset 11 of a 32-byte FAT directory entry is the attribute byte,
+and bit 4 (`0x10`) marks the entry as a directory.
+
+**The new entry in the parent's sector buffer.** `%d2` is the entry index,
+`lsll #5,%d2` multiplies it by 32, and `0x4eceb200` is the sector buffer:
+
+```
+4001b1e0:	eb8a           	lsll #5,%d2
+4001b1e2:	2042           	moveal %d2,%a0
+4001b1e4:	d1fc 4ece b200 	addal #1322168832,%a0
+4001b1ea:	1028 000b      	moveb %a0@(11),%d0
+4001b1ee:	7a10           	moveq #16,%d5
+4001b1f0:	8085           	orl %d5,%d0
+4001b1f2:	1140 000b      	moveb %d0,%a0@(11)
+```
+
+1322168832 is `0x4eceb200`, which is also the operand bytes of the `addal`.
+
+**The `"."` entry in the new cluster**, built at `0x4ece3200`. `0x400abdba` is
+its 11-byte name field:
+
+```
+4001b27e:	4878 000b      	pea 0xb
+4001b282:	4879 400a bdba 	pea 0x400abdba
+4001b288:	4879 4ece 3200 	pea 0x4ece3200
+4001b28e:	4eb9 4002 0898 	jsr 0x40020898
+4001b294:	7210           	moveq #16,%d1
+4001b296:	13c1 4ece 320b 	moveb %d1,0x4ece320b
+```
+
+`0x4ece320b` is `0x4ece3200 + 11`.
+
+**The `".."` entry**, 32 bytes later at `0x4ece3220`:
+
+```
+4001b338:	4878 000b      	pea 0xb
+4001b33c:	4879 400a bdc5 	pea 0x400abdc5
+4001b342:	4879 4ece 3220 	pea 0x4ece3220
+4001b348:	4eb9 4002 0898 	jsr 0x40020898
+4001b34e:	7010           	moveq #16,%d0
+4001b350:	13c0 4ece 322b 	moveb %d0,0x4ece322b
+```
+
+The first-cluster numbers go in at `+0x14` and `+0x1a` of each entry
+(`0x4ece3214`, `0x4ece321a`, `0x4ece3234` and `0x4ece323a`), which is the FAT
+split of a cluster number into a high word and a low word. The packed date and
+time go to `+0x16` and `+0x18` (`0x4ece3216`, `0x4ece3218`, `0x4ece3236` and
+`0x4ece3238`), from the two clock helpers in 6.7.
+
+That is a FAT directory creation, written out longhand. No port run is needed
+for step 2 of the brief.
+
+### 6.4 Arguments, return and errors ✅
+
+✅ **One longword argument, the path, cdecl, the caller pops.** Every one of the
+five call sites pushes one longword and pops four bytes. The plainest:
+
+```
+40063dce:	2f02           	movel %d2,%sp@-
+40063dd0:	2079 46c8 240a 	moveal 0x46c8240a,%a0
+40063dd6:	4e90           	jsr %a0@
+40063dd8:	588f           	addql #4,%sp
+40063dda:	4a80           	tstl %d0
+40063ddc:	6d10           	blts 0x40063dee
+```
+
+✅ **The return is `%d0`. Zero is success and negative is failure.** In the card
+backend `%d4` is the return value, and it is written at exactly five places.
+Here is the whole set, from a grep of the linear objdump restricted to
+`0x4001b0ac` through `0x4001b3f2`:
+
+```
+4001b0c6:	78fc           	moveq #-4,%d4
+4001b0e0:	78e8           	moveq #-24,%d4
+4001b10a:	78f1           	moveq #-15,%d4
+4001b120:	2800           	movel %d0,%d4
+4001b15a:	78e7           	moveq #-25,%d4
+4001b3e8:	2004           	movel %d4,%d0
+```
+
+Nothing else in the routine names `%d4`, and every callee preserves it, so the
+success path carries out the zero that `0x4001b120` stored.
+
+| value | site | what it means |
+|---|---|---|
+| 0 | falls through from `0x4001b120` | the folder was created ✅ |
+| -4 | `0x4001b0c6` | the FAT mutex could not be taken ✅ |
+| -24 | `0x4001b0e0` | no volume is mounted, `0x460bae2c` is zero ✅ |
+| -15 | `0x4001b10a` | the path did not resolve to "only the last component is missing". The name exists already, or a parent does not, or the path ends in `/` ✅ |
+| -25 | `0x4001b15a` | the cluster allocator at `0x400174ec` or `0x4001748c` returned -1 ✅ |
+| other negative | `0x4001b120` | the directory-entry allocator `0x4001a1f8` failed 🟡 |
+
+The first five are read straight off the branches that reach them. The last is
+🟡 only in its name: what `0x4001a1f8` does was not disassembled, and
+`"CHECK CARD! (FULL?)"` is the message its caller shows. Falsifier: fill a card
+image under the port and read the code that comes back.
+
+The lock-failure and not-mounted paths, whole:
+
+```
+4001b0b4:	4879 4610 79c0 	pea 0x461079c0
+4001b0ba:	4eb9 4000 09f4 	jsr 0x400009f4
+4001b0c0:	588f           	addql #4,%sp
+4001b0c2:	4a80           	tstl %d0
+4001b0c4:	6606           	bnes 0x4001b0cc
+4001b0c6:	78fc           	moveq #-4,%d4
+4001b0c8:	6000 031e      	braw 0x4001b3e8
+4001b0cc:	4ab9 460b ae2c 	tstl 0x460bae2c
+4001b0d2:	6610           	bnes 0x4001b0e4
+4001b0d4:	4879 4610 79c0 	pea 0x461079c0
+4001b0da:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b0e0:	78e8           	moveq #-24,%d4
+```
+
+✅ **It preserves `%d2` through `%d5`.** They are saved on entry and restored on
+exit:
+
+```
+4001b0ac:	4e56 feb0      	linkw %fp,#-336
+4001b0b0:	48d7 003c      	moveml %d2-%d5,%sp@
+```
+
+```
+4001b3ea:	4cee 003c feb0 	moveml %fp@(-336),%d2-%d5
+4001b3f0:	4e5e           	unlk %fp
+4001b3f2:	4e75           	rts
+```
+
+🟡 **It preserves `%d6`, `%d7` and `%a2` through `%a6` as well.** No instruction
+between `0x4001b0ac` and `0x4001b3f2` names any of them, and its callees follow
+the same convention (`0x4001c5b8` and `0x4001c544` each save `%d2`, `%a2` and
+`%a3`). Falsifier: one callee that does not. This is the only register claim in
+the section that is not read off a save and a restore, so save them yourself if
+that is cheap.
+
+### 6.5 The path convention ✅
+
+The path resolver is `0x4001aa70`. It takes the path and a 300-plus byte output
+structure, and its return code is the only thing the folder routine tests:
+
+```
+4001b0e4:	240e           	movel %fp,%d2
+4001b0e6:	0682 ffff fec2 	addil #-318,%d2
+4001b0ec:	2f02           	movel %d2,%sp@-
+4001b0ee:	2f2e 0008      	movel %fp@(8),%sp@-
+4001b0f2:	4eba f97c      	jsr %pc@(0x4001aa70)
+4001b0f6:	508f           	addql #8,%sp
+4001b0f8:	72fd           	moveq #-3,%d1
+4001b0fa:	b280           	cmpl %d0,%d1
+4001b0fc:	6714           	beqs 0x4001b112
+```
+
+Anything but -3 becomes the -15 return. So the whole path convention is the
+resolver's convention.
+
+✅ **A leading `/` resolves from the root. Anything else resolves from the
+current directory.** 47 is the ASCII code for `/`:
+
+```
+4001aa80:	7192           	mvzb %a2@,%d0
+4001aa82:	722f           	moveq #47,%d1
+4001aa84:	b280           	cmpl %d0,%d1
+4001aa86:	6632           	bnes 0x4001aaba
+4001aa88:	42ae fff4      	clrl %fp@(-12)
+4001aa8c:	42ae fff8      	clrl %fp@(-8)
+4001aa90:	42ae fffc      	clrl %fp@(-4)
+```
+
+```
+4001aaba:	4878 000c      	pea 0xc
+4001aabe:	4879 460b ae38 	pea 0x460bae38
+4001aac4:	486e fff4      	pea %fp@(-12)
+4001aac8:	4eb9 4002 0898 	jsr 0x40020898
+```
+
+The absolute case zeroes the 12 bytes of walking state. The relative case copies
+them from `0x460bae38`, which is the current directory.
+
+✅ **The parent must exist.** When a component is not found, the resolver looks
+at the next character. If that character is `/`, so the missing component is not
+the last one, it returns -2, and the folder routine turns that into -15:
+
+```
+4001ab3e:	72ff           	moveq #-1,%d1
+4001ab40:	b280           	cmpl %d0,%d1
+4001ab42:	66d0           	bnes 0x4001ab14
+4001ab44:	7192           	mvzb %a2@,%d0
+4001ab46:	742f           	moveq #47,%d2
+4001ab48:	b480           	cmpl %d0,%d2
+4001ab4a:	6604           	bnes 0x4001ab50
+4001ab4c:	70fe           	moveq #-2,%d0
+4001ab4e:	6056           	bras 0x4001aba6
+4001ab50:	4878 0100      	pea 0x100
+4001ab54:	4879 460b ae44 	pea 0x460bae44
+4001ab5a:	2f0b           	movel %a3,%sp@-
+4001ab5c:	4eb9 4001 3f5c 	jsr 0x40013f5c
+4001ab62:	276e fff4 0132 	movel %fp@(-12),%a3@(306)
+4001ab68:	70fd           	moveq #-3,%d0
+```
+
+-3 is also the only code that copies the missing name out to the caller, at
+`0x4001ab5c`. That name is what the folder routine then creates.
+
+✅ **No trailing `/`.** After a component the resolver skips separators and then
+tests for the end of the string:
+
+```
+4001ab70:	528a           	addql #1,%a2
+4001ab72:	1212           	moveb %a2@,%d1
+4001ab74:	7181           	mvzb %d1,%d0
+4001ab76:	782f           	moveq #47,%d4
+4001ab78:	b880           	cmpl %d0,%d4
+4001ab7a:	67f4           	beqs 0x4001ab70
+4001ab7c:	4a01           	tstb %d1
+4001ab7e:	671a           	beqs 0x4001ab9a
+```
+
+```
+4001ab9a:	4a2b 010d      	tstb %a3@(269)
+4001ab9e:	57c0           	seq %d0
+4001aba0:	7100           	mvsb %d0,%d0
+4001aba2:	7201           	moveq #1,%d1
+4001aba4:	8081           	orl %d1,%d0
+```
+
+A path that ends in `/` reaches `0x4001ab9a` and returns 1 or -1, never -3. So
+`"<set>/AUDIO/260910-1432/"` fails with -15, and
+`"<set>/AUDIO/260910-1432"` is the form to pass.
+
+✅ **The name must not exist already**, by the same rule: a resolved path
+returns 1 or 0, not -3. The exists slot `0x46c823fa` in front of the call is the
+stock way to tell that case apart, and it answers for a folder as well as a
+file, which is what the "NAME ALREADY IN USE!" branch in 6.2 depends on.
+
+**What Task 15 must pass.** `<set>/AUDIO/YYMMDD-HHMM`, built from `SET_PATH` as
+section 5.8 says, with no trailing `/`, and only once `<set>/AUDIO` exists.
+
+🟡 **`<set>/AUDIO` can be assumed to exist whenever a set is mounted.** Stock
+creates it with the set (6.2), and the mount check `0x40025650` in section 5.8
+formats `"%s/AUDIO"` and tests it. Falsifier: a user who deletes `AUDIO` from a
+computer and then mounts the card. Cheap defence: call the exists slot on
+`<set>/AUDIO` first and create it if it is missing, before creating the take
+folder. It is the same call, so it costs a few instructions.
+
+**One corroboration for section 5.8's leading-slash 🟡.** CREATE NEW SET formats
+the folder it makes as `"/%s"` (6.2), so the folder stock creates for a set is
+`/NAME`, at the root. That does not prove what `0x100f8480` holds afterwards,
+which is still the port run listed in 5.10. It does mean that a set path without
+a leading `/` would resolve against the current directory, which is a second
+reason to settle 5.8 before flashing.
+
+### 6.6 It does not change the current directory ✅
+
+The current directory is the 12 bytes at `0x460bae38`, read by the resolver at
+`0x4001aabe` above. Five instructions in the whole image name it, found by
+grepping the linear objdump for the operand bytes `460b ae38`:
+
+```
+40016f48:	23c0 460b ae38 	movel %d0,0x460bae38
+40017cfa:	42b9 460b ae38 	clrl 0x460bae38
+40017de8:	42b9 460b ae38 	clrl 0x460bae38
+4001aabe:	4879 460b ae38 	pea 0x460bae38
+4001b540:	23c0 460b ae38 	movel %d0,0x460bae38
+```
+
+✅ **None of them is inside `0x4001b0ac` through `0x4001b3f2`.** The folder
+routine reads the current directory through the resolver and never writes it.
+Spec section 6 is satisfied by calling the slot as documented.
+
+🟡 **`0x4001b540` is the change-directory routine's write.** It sits inside the
+routine that begins at `0x4001b4f4`, which the installer puts in slot
+`0x46c8242e`. STEM REC must never call slot `0x46c8242e`. Falsifier: a caller of
+that slot that is not a directory change. The two `clrl` sites at `0x40017cfa`
+and `0x40017de8` are 🟡 a mount or a media change resetting to the root.
+
+### 6.7 It takes the same mutex as open, read and write, and it reads the clock ✅
+
+✅ **The mutex object is `0x461079c0`**, acquired with `0x400009f4` and released
+with `0x40000ab4`. Both routines are already ✅ in this document: section 5.2
+measured `0x400009f4` as a blocking mutex acquire and `0x40000ab4` as the
+release that hands the lock to the head waiter. The folder routine takes the
+mutex at `0x4001b0b4`
+(quoted in 6.4) and releases it on every exit, the last of them here:
+
+```
+4001b3d8:	4879 4610 79c0 	pea 0x461079c0
+4001b3de:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b3e4:	4fef 0014      	lea %sp@(20),%sp
+4001b3e8:	2004           	movel %d4,%d0
+```
+
+✅ **It is the same lock the rest of the file layer takes.** The card backend for
+open takes it as its first act:
+
+```
+4001b57c:	4879 4610 79c0 	pea 0x461079c0
+4001b582:	4eb9 4000 09f4 	jsr 0x400009f4
+```
+
+`0x4001b570` is slot `0x46c8242a`, the open. The write backend `0x40018a84`
+(slot `0x46c82402`) takes it at `0x40018a98`, and the read backend `0x40018e40`
+(slot `0x46c82426`) at `0x40018e50`. There are 34 `pea 0x461079c0` sites in
+`0x4001b000` through `0x4001bfff` alone, and 113 occurrences of the address in
+the image. So the FAT layer is one big lock, and the folder routine is inside it
+exactly as open and write are. Task 8 owns the lock's own reading. This is the
+pend seen on the way.
+
+✅ **It also reads the real time clock, six times.** Two helpers fill the date
+and the time before the entries are written:
+
+```
+4001b2a0:	486e fff8      	pea %fp@(-8)
+4001b2a4:	4eb9 4001 c5b8 	jsr 0x4001c5b8
+4001b2aa:	486e fffd      	pea %fp@(-3)
+4001b2ae:	4eb9 4001 c544 	jsr 0x4001c544
+```
+
+`0x4001c5b8` calls `0x4001c4d8` with field indices 7, 6 and 5 and adds 2000 to
+the year. `0x4001c544` calls it with 3, 2 and 1. `0x4001c4d8` is `CLK_READ` from
+section 5.1, which takes the blocking SPI mutex `0x46c8c5f4` and runs a DSPI
+transfer.
+
+**What follows.** The call blocks, twice over. Call it from the writer task at
+priority 1, the way section 5.2 says to call the clock. Never from the DSP hook
+or an interrupt, and never while holding anything the UI task needs. Call it
+once per take, before the file is opened, and never in the sample loop.
+
+### 6.8 What else it does, and what it costs ✅ and 🟡
+
+✅ **It creates a folder and nothing else.** No template is copied, no project
+files are written, no setting is touched. The project files are written by the
+CALLER, after the folder exists: `0x4008eda4` and `0x4008ee74` build
+`"%s/bank%02d.work"` and the rest and write them through the buffered file API.
+So the controller's "unless the extra work is harmless" clause does not apply.
+`HAVE_MKDIR` is 1.
+
+🟡 **Budget at least 1 KB of stack for the call.** The measured frames on the
+path are 336 bytes for the folder routine itself (`linkw %fp,#-336`), 40 for the
+resolver (`linkw %fp,#-40`), and 164 for the entry allocator
+(`4001a1f8: linkw %fp,#-164`), plus their own callees, which were not walked to
+the bottom. Falsifier, and the cheap check: a stack-watermark read under the
+port after one call. This matters because section 3 sizes the writer task's
+stack.
+
+⚠️ **The sector buffers are shared.** `0x4eceb200` and `0x4ece3200` are the file
+layer's own scratch, used under the mutex. That is one more reason not to hold
+the call across anything.
+
+### 6.9 Not measured under the port 🟡
+
+No project folder exists on this machine, so nothing in this section was
+executed. Four things a port run would settle, in the order they matter:
+
+1. **One call on a scratch card, and the image read back.** Create
+   `/SET/AUDIO/260910-1432` and read the directory entry with the FAT reader
+   Task 9 adds. That turns 6.3's static reading into a measurement, and confirms
+   the entry's attribute byte reaches the card as `0x10`, not only the buffer.
+2. **The failure codes.** Call it twice with the same path and check that the
+   second returns -15. Call it with a missing parent, and with a trailing `/`,
+   and check both give -15.
+3. **`0x46c8240a` after a mount, and after an unmount.** Confirm it holds
+   `0x4001b0ac` while a card is mounted, which is what makes 6.1's stub warning
+   real or idle.
+4. **The stack watermark**, for 6.8.
+
+### 6.10 Interface
+
+```asm
+| CREATE ONE FOLDER. This is a POINTER in RAM, not a fixed entry point: the
+| file layer installs a backend when a card is mounted. Read the pointer and
+| call through it, and check the return, because in the unmounted state the
+| pointer holds a stub that returns -1.
+|   movea.l FS_MKDIR_PTR,%a0
+|   pea     path
+|   jsr     %a0@
+|   addq.l  #4,%sp
+|   tst.l   %d0            | 0 created, negative failed
+| ONE longword argument, a NUL terminated path. cdecl, the caller pops.
+| Returns 0 in %d0 on success and a negative code on failure. Preserves
+| %d2-%d5 measured, and %d6-%d7 and %a2-%a6 by inspection (6.4).
+| The path is absolute if it begins with '/', otherwise it is relative to the
+| file layer's current directory. THE PARENT MUST EXIST. The path must NOT
+| exist already. NO trailing '/'. It does NOT change the current directory.
+| ⚠️ IT BLOCKS TWICE: it takes the FAT mutex FS_LOCK, the one open, read and
+| write also take, and it reads the clock six times through CLK_READ, which
+| takes the SPI mutex. Call it from the writer task, once per take, before the
+| file is opened. Never from the DSP hook or an interrupt.
+.equ	HAVE_MKDIR,	1
+.equ	FS_MKDIR_PTR,	0x46c8240a
+
+| The card backend behind that pointer, for a port watch or a disassembly.
+| DO NOT call it directly: it is only the right routine while a card is
+| mounted.
+.equ	FS_MKDIR_CARD,	0x4001b0ac
+
+| The failure codes, read off FS_MKDIR_CARD (6.4).
+.equ	FS_ERR_LOCK,	-4	| the FAT mutex could not be taken
+.equ	FS_ERR_NOVOL,	-24	| no volume mounted
+.equ	FS_ERR_PATH,	-15	| exists, or parent missing, or trailing '/'
+.equ	FS_ERR_NOCLUST,	-25	| no free cluster
+
+| DOES A PATH EXIST? Same table, same shape: one longword path argument, and
+| non-zero in %d0 if it exists. It answers for a FOLDER as well as a file.
+| Call it before FS_MKDIR_PTR, the way all five stock sites do, and call it on
+| "<set>/AUDIO" too if you want to be safe about the pool folder (6.5).
+.equ	FS_EXISTS_PTR,	0x46c823fa
+
+| Remove an EMPTY folder. Recorded for completeness. STEM REC does not use it.
+.equ	FS_RMDIR_PTR,	0x46c82406
+
+| CHANGE DIRECTORY. ⚠️ NEVER CALL THIS. It writes FS_CWD, and spec section 6
+| says STEM REC must never change the file layer's current directory.
+.equ	FS_CHDIR_PTR,	0x46c8242e
+
+| The file layer's current directory, 12 bytes, and its one big mutex. Both
+| are here so that a port watch can prove STEM REC leaves them alone.
+.equ	FS_CWD,		0x460bae38
+.equ	FS_LOCK,	0x461079c0
+```
