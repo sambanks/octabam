@@ -4250,12 +4250,14 @@ on a read-mode open.** The rest of the wrapper, read whole:
 400168da:	2001           	movel %d1,%d0
 ```
 
-`0x114` is `114` decimal, ASCII `'r'`. The byte-level encoding of the compare
-settles the direction: `cmpl %d0,%d2` is opcode `0xb480` = `1011 010 010 000
-000`, which decodes to register field `010` (`%d2`, the destination) and
-effective-address field `000 000` (`%d2`, source `%d0`), so the instruction
-computes `%d2 - %d0` and `bnes` (branch on `Z` clear) is taken when the mode
-byte is **NOT** `'r'`. **So the call to slot `0x46c8241e` happens on a
+`0x72` is `114` decimal, ASCII `'r'`, which is exactly the immediate
+`moveq #114,%d2` encodes as opcode `7472` (`0x72` in the low byte). The
+byte-level encoding of the compare settles the direction: `cmpl %d0,%d2` is
+opcode `0xb480` = `1011 010 010 000 000`, which decodes to register field
+`010` (`%d2`, the destination) and effective-address field `000 000`
+(`%d0`, data-register-direct, the source), so the instruction computes
+`%d2 - %d0` and `bnes` (branch on `Z` clear) is taken when the mode byte is
+**NOT** `'r'`. **So the call to slot `0x46c8241e` happens on a
 READ-mode open, not a write-mode one** (the sample save's own call, section
 5.6, mode `"w"`, never reaches it). `0x46c8241e`'s card backend is
 `0x40018a0c`:
@@ -4290,9 +4292,52 @@ open's hold**: the raw open backend (`0x4001b570`) already released
 `FS_LOCK` at its own exit (section 7.2) before the wrapper reaches this
 point, so there is a GAP between the two holds during which `FS_LOCK` is
 free. If it returns 0 (invalid/empty), the wrapper closes the file it just
-opened, recursing into the close wrapper (`0x4001677c`, at `0x400168ca`;
-the close wrapper's own body, quoted below, then takes and releases
-`FS_LOCK` a THIRD time), and returns `-10`.
+opened, recursing into the close wrapper (`0x4001677c`, at `0x400168ca`),
+and returns `-10`. **The close wrapper's own body does not take `FS_LOCK`**
+(7.1 already established this for all four wrapper bodies), but tracing THIS
+specific call: mode `'r'` and a freshly-opened file (buffer position 0) make
+close skip the write-flush test entirely and fall straight to the handle
+release, slot `0x46c82422`, backend `0x40019900`:
+
+```
+40019900:	4e56 ffe0      	linkw %fp,#-32
+40019904:	48d7 0c3c      	moveml %d2-%d5/%a2-%a3,%sp@
+40019908:	262e 0008      	movel %fp@(8),%d3
+4001990c:	4879 4610 79c0 	pea 0x461079c0
+40019912:	4eb9 4000 09f4 	jsr 0x400009f4
+40019918:	588f           	addql #4,%sp
+4001991a:	4a80           	tstl %d0
+4001991c:	6606           	bnes 0x40019924
+4001991e:	70fc           	moveq #-4,%d0
+40019920:	6000 0282      	braw 0x40019ba4
+```
+
+✅ `0x40019900` DOES take `FS_LOCK` as its first act, so close's read-mode
+error path takes and releases it a THIRD time for this one open call, but
+through `0x40019900`, not through the wrapper's own body. Two release sites
+found:
+
+```
+40019930:	4879 4610 79c0 	pea 0x461079c0
+40019936:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001993c:	70f5           	moveq #-11,%d0
+4001993e:	6000 0262      	braw 0x40019ba2
+```
+```
+40019984:	4879 4610 79c0 	pea 0x461079c0
+4001998a:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40019990:	70fd           	moveq #-3,%d0
+40019992:	6000 020e      	braw 0x40019ba2
+```
+
+🟡 Only the first ~150 bytes of `0x40019900` were read; the routine
+continues past `0x400199c2` into work not disassembled here (it reads a
+per-descriptor flag at `%d1@(24)` and, on one path, indirects through
+`0x4694886e`, the same table write's backend used, section 7.2). The two
+releases above are not necessarily every exit; falsifier: read the rest of
+`0x40019900` and confirm every remaining path releases before returning. The
+table entry for `0x46c82422` in 7.1 is corrected below: partially
+disassembled now, for its lock bracket only.
 
 ⚠️ **What is, and is not, at risk in the gap.** Nothing FAT-structural: the
 gap is bounded by two lock-protected operations that each leave the FAT
@@ -4370,7 +4415,7 @@ matching `.equ` line:
 | `0x46c82402` (write) | `0x40018a84` |
 | `0x46c8243e` (seek) | `0x4001858c` |
 | `0x46c82436` (finalize on write close) | `0x40018788`, not disassembled here |
-| `0x46c82422` (release handle) | `0x40019900`, not disassembled here |
+| `0x46c82422` (release handle) | `0x40019900`, lock bracket only (below) |
 
 None of the four wrapper bodies (`0x40016864`-`0x400168e6`, `0x400166b8`-
 `0x40016758`, `0x4001660c`-`0x40016694`, `0x4001677c`-`0x40016864`) contains
@@ -5050,9 +5095,26 @@ guarded by "the word already reads 1" (8.3).
 
 ### 8.3 The callers, and what they say about removal ✅ with two 🟡
 
-`0x40061648` has FOUR callers in the whole image (a linear-objdump grep for
-its address returns five lines: its own label plus these four; the review
-round found the fourth, missed the first time round):
+`0x40061648` has FOUR callers in the whole image. Re-run for this fix round,
+a linear-objdump grep for its address returns exactly FOUR lines:
+
+```
+40061648:	4fef fff4      	lea %sp@(-12),%sp
+40061c1e:	45fa fa28      	lea %pc@(0x40061648),%a2
+40061f98:	4eba f6ae      	jsr %pc@(0x40061648)
+400620b6:	4eba f590      	jsr %pc@(0x40061648)
+```
+
+The FIRST line is the routine's own label. The SECOND is the `lea` that
+loads `%a2`, and it is reused for BOTH boot-time calls (mode 0 and mode 2
+below share the one register load, so they produce only one grep line
+between them, not two). The THIRD and FOURTH are the two `jsr %pc@(...)`
+sites, one per remaining caller. So four lines map to four callers: two
+share a line (the boot block, one `lea` feeding two calls through `%a2`),
+and two each have their own `jsr %pc@(...)` line. Four callers, four
+lines, four DISTINCT call sites for this routine (the boot block's two
+calls, at different program-counter addresses, are still two separate
+call sites even though they share one register load):
 
 - **`0x40061c1c`-`0x40061c22`, the boot sequence, argument literal 0**:
   `clrl %sp@- / lea %pc@(0x40061648),%a2 / jsr %a2@`. This is the FIRST call
