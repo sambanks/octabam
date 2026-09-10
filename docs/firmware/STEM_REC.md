@@ -4338,11 +4338,49 @@ write-flush test when it is zero:
 400167b6:	675e           	beqs 0x40016816
 ```
 
-`%a2@(12)` is still `0` on this path, so the branch IS taken. (This is the
-same field section 7.1's write-flush quote already identifies as the
-buffered-write fill position, incremented per byte and cleared on a flush;
-nothing here re-derives that meaning, only that open zeroed it and close
-finds it zero.) So mode `'r'` and `%a2@(12) == 0`, not "buffer position 0"
+`%a2@(12)` is still `0` on this path, so the branch IS taken.
+
+✅ `%a2@(12)` is the buffered write's fill position: the number of bytes
+staged in the file object's own buffer since the last flush. The evidence
+is the write wrapper, `0x400166b8` (`scripts/disasm.sh emac 0x400166b8 168`,
+gate run first). For each byte of the caller's data, it reads the field,
+uses it as the index into the buffer at `%a2@(4)`, stores the byte there,
+increments the field and writes it back. It then compares the field with
+the buffer size at `%a2@(8)`, and skips the flush while the size is still
+greater:
+
+```
+400166e2:	202a 000c      	movel %a2@(12),%d0
+400166e6:	206a 0004      	moveal %a2@(4),%a0
+400166ea:	43f4 2800      	lea %a4@(0,%d2:l),%a1
+400166ee:	1191 0800      	moveb %a1@,%a0@(0,%d0:l)
+400166f2:	5280           	addql #1,%d0
+400166f4:	2540 000c      	movel %d0,%a2@(12)
+400166f8:	222a 0008      	movel %a2@(8),%d1
+400166fc:	b280           	cmpl %d0,%d1
+400166fe:	6e3a           	bgts 0x4001673a
+```
+
+When the buffer is full, the wrapper flushes it through the write slot
+(`0x40016700`-`0x40016726`, quoted later in this section). Right after
+that call it clears the field on both outcomes: `0x40016730` on the failure
+exit, `0x40016736` on the success path. On the success path the loop then
+repeats for the next byte until `%d2` reaches the caller's count at
+`%sp@(28)`:
+
+```
+4001672c:	4a80           	tstl %d0
+4001672e:	6c06           	bges 0x40016736
+40016730:	42aa 000c      	clrl %a2@(12)
+40016734:	6016           	bras 0x4001674c
+40016736:	42aa 000c      	clrl %a2@(12)
+4001673a:	52aa 0010      	addql #1,%a2@(16)
+4001673e:	5282           	addql #1,%d2
+40016740:	b4af 001c      	cmpl %sp@(28),%d2
+40016744:	659c           	bcss 0x400166e2
+```
+
+So mode `'r'` and `%a2@(12) == 0`, not "buffer position 0"
 on `%a2@` (which is the handle, and is valid), make close skip the
 write-flush test entirely and fall straight to the handle release, slot
 `0x46c82422`, backend `0x40019900`, whole:
