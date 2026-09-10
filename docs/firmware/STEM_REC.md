@@ -1093,3 +1093,692 @@ immediate shift only encodes 1 to 8:
 	add.l	#RDBK_BASE,%d0		| half base
 	add.l	#RDBK_TRACK*N,%d0	| track N, N from section 3
 ```
+
+## 3. Creating a task
+
+### 3.0 The capacity question, answered first ✅
+
+The ready structure is **a circular doubly linked list of task control
+blocks, one list per priority, with no capacity field and no bitmap**. A
+priority holds as many tasks as are linked into its ring. Priority 1 already
+holds three, and a fourth needs nothing beyond the same two calls stock
+makes. Task 15's design stands.
+
+Section 3.5 shows the insertion code. Nothing in it counts, compares against
+a limit, or fails.
+
+One bound does exist, and it is on the priority number, not on the task
+count. The list heads are an array of **eight** longwords at `0x800068dc`,
+priorities 0 to 7. The create routine indexes it with no check. Priority 1
+is inside the array, so this does not constrain STEM REC. Section 3.5 gives
+the evidence.
+
+Term note. A **task control block**, TCB below, is the 84 byte structure the
+kernel keeps per task: its two ring links, its priority, its saved
+registers, and its state. A **ready list** is the ring of TCBs at one
+priority that are eligible to run.
+
+### 3.1 The two routines and every call site ✅
+
+`0x400005fc` creates a task. `0x4000063c` makes it runnable. Both are called
+only in that pair, and always in that order.
+
+`refs.sh 0x400005fc` returns 7 hits and `refs.sh 0x4000063c` returns 7. Each
+hit is the operand of either a `jsr` to the absolute address or a `lea` that
+loads the address into an address register for repeated use. The two `lea`
+sites carry five calls between them, which is the "five more call through a
+register" the task lead named. Counting calls rather than literals gives
+**ten create calls at seven literal sites**.
+
+| # | create call | form | tcb | entry | prio | stack | size |
+|---|---|---|---|---|---|---|---|
+| 1 | `0x400054dc` | `jsr 0x400005fc` | `0x46c7fb0c` | `0x40005540` | 6 | `0x46c7ea20` | `0x1000` |
+| 2 | `0x4001dfec` | `jsr 0x400005fc` | `0x460bcc2c` | `0x4001ee30` | 5 | `0x460bc42c` | `0x800` |
+| 3 | `0x400403f0` | `jsr %a2@` | `0x460d4f80` | `0x4005593c` | 4 | `0x460d4780` | `0x800` |
+| 4 | `0x4004041a` | `jsr %a2@` | `0x460d59d4` | `0x40056c40` | 3 | `0x460d51d4` | `0x800` |
+| 5 | `0x40040cdc` | `jsr %a3@` | `0x460ddde4` | `0x4008445c` | 1 | `0x460d9de4` | `0x4000` |
+| 6 | `0x40040d06` | `jsr %a3@` | `0x460e0e38` | `0x4009203c` | 2 | `0x460dee38` | `0x2000` |
+| 7 | `0x40040d2e` | `jsr %a3@` | `0x46c7bed8` | `0x40061a94` | 1 | `0x460d6de4` | `0x2000` |
+| 8 | `0x40091d00` | `jsr 0x400005fc` | `0x460fab80` | `0x40091d18` | 2 | `0x460fabd4` | `0x2000` |
+| 9 | `0x400921a8` | `jsr 0x400005fc` | `0x460ffd44` | `0x400921c4` | 2 | `0x460fdd44` | `0x2000` |
+| 10 | `0x40098a44` | `jsr 0x400005fc` | `0x46105508` | `0x40098a5c` | 1 | `0x4610555c` | `0x2000` |
+
+Rows 3 and 4 sit in one routine that holds create in `%a2` and start in
+`%a3`. Rows 5, 6 and 7 sit in another that holds create in `%a3` and start
+in `%a2`. The register assignment is swapped between the two routines, so
+reading one and assuming the other is a mistake.
+
+```
+400403ea:	45f9 4000 05fc 	lea 0x400005fc,%a2
+400403f0:	4e92           	jsr %a2@
+400403f8:	47f9 4000 063c 	lea 0x4000063c,%a3
+400403fe:	4e93           	jsr %a3@
+```
+
+```
+40040cd6:	47f9 4000 05fc 	lea 0x400005fc,%a3
+40040cdc:	4e93           	jsr %a3@
+40040ce4:	45f9 4000 063c 	lea 0x4000063c,%a2
+40040cea:	4e92           	jsr %a2@
+```
+
+Every create call is followed by a start call on the same TCB. The ten start
+calls are `0x400054e8`, `0x4001dffc`, `0x400403fe`, `0x40040426`,
+`0x40040cea`, `0x40040d12`, `0x40040d36`, `0x40091d0c`, `0x400921b8` and
+`0x40098a50`.
+
+One task is not created by `0x400005fc` at all. The boot code hand builds it
+and calls only start:
+
+```
+40000e34:	4879 46c7 ae84 	pea 0x46c7ae84
+40000e3a:	4eba f800      	jsr %pc@(0x4000063c)
+```
+
+Section 3.3 uses that hand built task as a second, independent reading of
+the frame layout.
+
+Priority 1 therefore holds three tasks in stock: rows 5, 7 and 10. That is
+the count the plan assumed, confirmed from the image.
+
+#### Is the census complete? ✅ for direct and PC relative calls, 🟡 beyond
+
+`refs.sh` matches 32 bit literals, so a PC relative call is invisible to it.
+Two further checks were run.
+
+**1. Every PC relative call form, scanned by bytes.** A scan of every even
+offset in the image for `jsr %pc@(d16)` (`0x4eba`), `bsr.b`, `bsr.w` and
+`bsr.l`, resolving each displacement, finds **exactly one** call to either
+address: the boot's `0x40000e3a` above. There are **zero** occurrences of
+the word `0x4ebb`, which is `jsr %pc@(d8,Xn)`, at any even offset in the
+image, so the indexed PC relative form is not used anywhere. ✅
+
+**2. A linear disassembly of the whole image**, grepped for both addresses
+in objdump's resolved target column, returns the same set and nothing else.
+✅
+
+🟡 **What remains unseen.** A call through an address register whose value
+came from memory rather than from a `lea` of a literal would be invisible to
+all three checks. So would a call through a dispatch table built at run
+time.
+**Falsifier:** a program counter watch on `0x400005fc` under the port
+reporting an entry from a program counter that is not one of the ten call
+sites above.
+
+### 3.2 K_CREATE, the argument list ✅
+
+The whole routine, 64 bytes:
+
+```
+400005fc:	226f 0004      	moveal %sp@(4),%a1
+40000600:	202f 000c      	movel %sp@(12),%d0
+40000604:	72fc           	moveq #-4,%d1
+40000606:	c2af 0014      	andl %sp@(20),%d1
+4000060a:	d2af 0010      	addl %sp@(16),%d1
+4000060e:	e588           	lsll #2,%d0
+40000610:	0680 8000 68dc 	addil #-2147456804,%d0
+40000616:	2340 0008      	movel %d0,%a1@(8)
+4000061a:	2041           	moveal %d1,%a0
+4000061c:	213c 4000 06e4 	movel #1073743588,%a0@-
+40000622:	212f 0008      	movel %sp@(8),%a0@-
+40000626:	213c 407c 2000 	movel #1081876480,%a0@-
+4000062c:	2348 0048      	movel %a0,%a1@(72)
+40000630:	42a9 004c      	clrl %a1@(76)
+40000634:	42a9 0050      	clrl %a1@(80)
+40000638:	7001           	moveq #1,%d0
+4000063a:	4e75           	rts
+```
+
+There is no `link`, so `%sp@(0)` is the return address and the arguments
+start at `%sp@(4)`. Five longwords, in this order:
+
+| slot | name | meaning |
+|---|---|---|
+| `%sp@(4)` | `tcb` | address of an 84 byte TCB the caller owns. See section 3.6. |
+| `%sp@(8)` | `entry` | address of the task function. It is called with **no arguments**. |
+| `%sp@(12)` | `prio` | priority, 0 to 7. Higher number wins. See section 3.5. |
+| `%sp@(16)` | `stack` | **base** of the stack, its lowest address. |
+| `%sp@(20)` | `size` | stack length in **bytes**. |
+
+C calling convention, so arguments are pushed right to left and the caller
+pops them. A call is five `pea` instructions in reverse order, then `jsr`,
+then a 20 byte stack adjustment. Row 1's call, in full:
+
+```
+400054c4:	4878 1000      	pea 0x1000
+400054c8:	4879 46c7 ea20 	pea 0x46c7ea20
+400054ce:	4878 0006      	pea 0x6
+400054d2:	487a 006c      	pea %pc@(0x40005540)
+400054d6:	4879 46c7 fb0c 	pea 0x46c7fb0c
+400054dc:	4eb9 4000 05fc 	jsr 0x400005fc
+```
+
+**The stack pointer convention, exactly.** `stack` names the base and `size`
+counts bytes, so the top is `stack + size`. The routine computes it in three
+instructions and rounds only `size` down to a multiple of 4, never `stack`:
+
+```
+40000604:	72fc           	moveq #-4,%d1          | d1 = 0xfffffffc
+40000606:	c2af 0014      	andl %sp@(20),%d1      | d1 = size & ~3
+4000060a:	d2af 0010      	addl %sp@(16),%d1      | d1 = stack + (size & ~3)
+```
+
+The caller must therefore pass a 4 byte aligned `stack`. Every stock call
+does. Three longwords are then pushed with `%a0@-`, so the value stored in
+the TCB is
+
+```
+initial SP = stack + (size & ~3) - 12
+```
+
+⚠️ **The mask is on `size`, not on the sum.** An unaligned `stack` produces
+an unaligned stack pointer and an address error on the task's first push.
+Align the base. Do not rely on the mask.
+
+**Return value ✅.** `moveq #1,%d0` at `0x40000638` is unconditional and the
+only exit is the `rts` after it. `K_CREATE` **always returns 1 in `%d0`.
+There is no failure path.** Nothing is validated: not the priority, not the
+stack alignment, not the TCB address. A caller cannot learn that it got
+something wrong.
+
+**What create writes into the TCB ✅.** Four fields, and nothing else:
+
+| offset | value |
+|---|---|
+| `+8` | `0x800068dc + 4 * prio`, the address of this priority's list head |
+| `+72` | the initial stack pointer computed above |
+| `+76` | 0 |
+| `+80` | 0 |
+
+`+0` and `+4`, the ring links, are **not** written by create. Start writes
+them. The saved register block at `+12` through `+71` is not written either.
+Section 3.8 says what follows from that.
+
+### 3.3 The first frame, and what the entry function sees ✅
+
+Three longwords are pushed at the stack top, from high address to low:
+
+```
+4000061c:	213c 4000 06e4 	movel #1073743588,%a0@-   | 0x400006e4
+40000622:	212f 0008      	movel %sp@(8),%a0@-       | entry
+40000626:	213c 407c 2000 	movel #1081876480,%a0@-   | 0x407c2000
+```
+
+Laid out, with `top = stack + (size & ~3)`:
+
+| address | longword | role |
+|---|---|---|
+| `top - 4` | `0x400006e4` | return address for the entry function |
+| `top - 8` | `entry` | the program counter the `rte` loads |
+| `top - 12` | `0x407c2000` | ColdFire exception frame format word, then SR |
+
+The scheduler restores a task by loading its registers, including `%sp`,
+from the TCB, and then executing `rte`. The `rte` pops the format and SR
+longword and then the program counter:
+
+```
+400005a0:	4ce8 ffff 000c 	moveml %a0@(12),%d0-%sp
+400005a6:	4e73           	rte
+```
+
+So on the task's first instruction `%sp` is `top - 4` and `%sp@(0)` is
+`0x400006e4`. **The entry function is entered exactly as if it had been
+called with `jsr` and no arguments.** ✅ Task 15's entry must take no
+parameters.
+
+`0x400006e4` is the task exit stub. It reads the current TCB from
+`0x800068fc`, clears `+76`, unlinks the TCB from its ready ring, and traps
+into the scheduler, which never comes back:
+
+```
+400006e4:	2f0a           	movel %a2,%sp@-
+400006e8:	2479 8000 68fc 	moveal 0x800068fc,%a2
+400006f0:	46fc 2700      	movew #9984,%sr
+400006f4:	42aa 004c      	clrl %a2@(76)
+40000732:	4e40           	trap #0
+```
+
+So an entry function that returns deletes its own task cleanly. It does not
+free the TCB or the stack. ✅
+
+**The SR the task starts with ✅.** The low word of `0x407c2000` is `0x2000`:
+supervisor set, trace off, interrupt mask 0. The task runs with all
+interrupts enabled.
+
+🟡 **The high word `0x407c`.** Read against the ColdFire frame layout it is
+format 4, fault status 0, vector 31. Only the format field and the SR matter
+to `rte`. Task 15 must push the same constant rather than reason about it.
+**Falsifier:** a format field the V4e `rte` rejects would raise a format
+error at the task's first dispatch instead of entering the task.
+
+**A second, independent reading of the same frame ✅.** The boot code builds
+one by hand for the `main` task, TCB `0x46c7ae84`, and never calls create:
+
+```
+40000df8:	203c 4000 06e4 	movel #1073743588,%d0
+40000dfe:	23c0 46c7 bed4 	movel %d0,0x46c7bed4      | top-4  = 0x400006e4
+40000e04:	223c 4001 f834 	movel #1073870900,%d1
+40000e0a:	23c1 46c7 bed0 	movel %d1,0x46c7bed0      | top-8  = entry
+40000e10:	203c 407c 2000 	movel #1081876480,%d0
+40000e16:	23c0 46c7 becc 	movel %d0,0x46c7becc      | top-12 = 0x407c2000
+40000e1c:	223c 46c7 becc 	movel #1187495628,%d1
+40000e22:	23c1 46c7 aecc 	movel %d1,0x46c7aecc      | tcb+72 = top-12
+40000e28:	42b9 46c7 aed0 	clrl 0x46c7aed0           | tcb+76 = 0
+40000e2e:	42b9 46c7 aed4 	clrl 0x46c7aed4           | tcb+80 = 0
+40000e34:	4879 46c7 ae84 	pea 0x46c7ae84
+40000e3a:	4eba f800      	jsr %pc@(0x4000063c)
+```
+
+`0x46c7aecc - 0x46c7ae84 = 72`, `0x46c7aed0 - 0x46c7ae84 = 76`, and
+`0x46c7aed4 - 0x46c7ae84 = 80`. Every offset and every constant matches what
+create does, from a code path that never touches create.
+
+The priority field is written a few instructions earlier, and it does not
+read cleanly:
+
+```
+40000dec:	223c 8000 68dc 	movel #-2147456804,%d1
+40000df2:	23c1 46c7 aecc 	movel %d1,0x46c7aecc
+```
+
+Read literally that writes `0x800068dc` to `0x46c7aecc`, which `0x40000e1c`
+overwrites with the stack pointer four instructions later. 🟡 The intent
+looks like `tcb+8`, at `0x46c7ae8c`, which is the priority 0 list head, and
+`main` does run at priority 0. Either way it does not bear on `K_CREATE`,
+which computes `+8` itself.
+**Falsifier:** a read of `0x46c7ae8c` under the port after boot showing
+something other than `0x800068dc`, or `main` appearing on a ready list other
+than priority 0.
+
+### 3.4 K_START, the whole routine ✅
+
+```
+4000063c:	2f0a           	movel %a2,%sp@-
+4000063e:	246f 0008      	moveal %sp@(8),%a2      | a2 = tcb
+40000642:	40c1           	movew %sr,%d1           | save the caller's SR
+40000644:	46fc 2700      	movew #9984,%sr         | mask to level 7
+40000648:	202a 0008      	movel %a2@(8),%d0       | d0 = this priority's head address
+4000064c:	b0b9 8000 68d8 	cmpl 0x800068d8,%d0
+40000652:	6306           	blss 0x4000065a
+40000654:	23c0 8000 68d8 	movel %d0,0x800068d8    | raise the top-priority pointer
+4000065a:	7001           	moveq #1,%d0
+4000065c:	2540 004c      	movel %d0,%a2@(76)      | tcb+76 = 1, the task is ready
+40000660:	226a 0008      	moveal %a2@(8),%a1      | a1 = &head
+40000664:	2011           	movel %a1@,%d0          | d0 = head
+40000666:	660a           	bnes 0x40000672
+40000668:	228a           	movel %a2,%a1@          | empty: head = tcb
+4000066a:	248a           	movel %a2,%a2@          |        tcb->next = tcb
+4000066c:	254a 0004      	movel %a2,%a2@(4)       |        tcb->prev = tcb
+40000670:	6014           	bras 0x40000686
+40000672:	2540 0004      	movel %d0,%a2@(4)       | tcb->prev = head
+40000676:	2051           	moveal %a1@,%a0
+40000678:	2490           	movel %a0@,%a2@         | tcb->next = head->next
+4000067a:	2051           	moveal %a1@,%a0
+4000067c:	2050           	moveal %a0@,%a0
+4000067e:	214a 0004      	movel %a2,%a0@(4)       | head->next->prev = tcb
+40000682:	2051           	moveal %a1@,%a0
+40000684:	208a           	movel %a2,%a0@          | head->next = tcb
+40000686:	46c1           	movew %d1,%sr           | restore the caller's SR
+40000688:	245f           	moveal %sp@+,%a2
+4000068a:	4e75           	rts
+```
+
+**One argument**, the same `tcb` create was given. It is at `%sp@(8)` and not
+`%sp@(4)` because `%a2` was pushed first. A call is one `pea` and a `jsr`,
+then a 4 byte stack adjustment.
+
+**Return value ✅.** `moveq #1,%d0` at `0x4000065a` is on both paths of the
+branch above it, and nothing after it writes `%d0`. `K_START` **always
+returns 1 in `%d0`**. Like create, it has no failure path.
+
+**It does not force a context switch ✅.** There is no `trap #0` anywhere in
+`0x4000063c` to `0x4000068a`, and no write to the software interrupt bit at
+`0xfc04c010` that the kernel's post routines use to request one. A newly
+started task runs at the next scheduling point, not at the `jsr`. This holds
+even when the new task outranks its creator.
+
+### 3.5 The ready structure, and why it has no capacity ✅
+
+Three facts, all from the code above.
+
+**1. Each priority's ready list is a circular doubly linked ring of TCBs.**
+`tcb+0` is the forward link and `tcb+4` the backward link. The empty case at
+`0x40000668` points both at the TCB itself. The non empty case at
+`0x40000672` splices the new TCB in between the head and the head's
+successor. There is no counter, no array of slots and no bitmap. **A
+priority holds any number of tasks.** ✅
+
+**2. The head array is eight longwords, priorities 0 to 7.** The kernel's
+init clears exactly that range:
+
+```
+40000dd0:	41f9 8000 68dc 	lea 0x800068dc,%a0
+40000dd6:	4298           	clrl %a0@+
+40000dd8:	b1fc 8000 68fc 	cmpal #-2147456772,%a0
+40000dde:	66f6           	bnes 0x40000dd6
+```
+
+`0x800068dc` to `0x800068fb`, eight entries. `0x800068fc`, the loop's limit,
+is the current TCB pointer, so a priority of 8 would overwrite it. Create
+does not check:
+
+```
+4000060e:	e588           	lsll #2,%d0
+40000610:	0680 8000 68dc 	addil #-2147456804,%d0
+```
+
+Priority 1 gives `0x800068e0`, well inside the array. ✅
+
+**3. Higher priority number wins, and the scheduler is round robin inside a
+priority.** `0x800068d8`, one longword below the array, holds the **address**
+of the highest numbered non empty head. `K_START` raises it. The trap 0
+handler reads it, takes the head's successor, and makes that successor the
+new head:
+
+```
+4000056c:	2279 8000 68d8 	moveal 0x800068d8,%a1
+40000576:	2051           	moveal %a1@,%a0       | a0 = head
+4000057c:	2050           	moveal %a0@,%a0       | a0 = head->next
+4000058e:	23c8 8000 68fc 	movel %a0,0x800068fc  | current = it
+40000594:	2288           	movel %a0,%a1@        | head = it
+```
+
+The unblock paths walk **down** from `0x800068d8` looking for a non empty
+head, which is only consistent with a higher number meaning a higher
+priority:
+
+```
+400007e0:	4aa1           	tstl %a1@-
+400007e2:	67fc           	beqs 0x400007e0
+400007e4:	23c9 8000 68d8 	movel %a1,0x800068d8
+```
+
+So priority 1 is second lowest of eight. A priority 1 task runs whenever no
+task at priority 2 through 7 is ready, and it shares its ring round robin
+with the three tasks already there. ✅
+
+⚠️ For Task 15. The UI task runs at **priority 3**, row 4 of the census, TCB
+`0x460d59d4`. A menu action that creates a priority 1 task therefore does not
+lose the processor at the `jsr`, and the new task first runs when the UI task
+blocks or yields. That is the intended behaviour and it matches what stock
+does at all ten of its sites.
+
+### 3.6 The TCB is 84 bytes, measured two ways that agree ✅
+
+**Way 1: the largest offset any kernel routine touches, rounded up to 4.**
+
+Every routine in `0x40000550` to `0x40000d4c` was disassembled and every
+`%aN@(disp)` displacement counted. Discarding the two that are vector table
+writes rather than TCB accesses, `%a0@(128)` and `%a0@(684)` at
+`0x400005d8`, vectors 32 and 171, both pointing at the trap 0 handler, and
+the queue object fields at `+16` to `+28` in `0x40000bd4`, the TCB offsets in
+use are 0, 4, 8, 12, 44, 72, 76 and 80.
+
+| offset | width | field | touched by |
+|---|---|---|---|
+| `+0` | long | ring forward link | start, delete, the block and unblock paths |
+| `+4` | long | ring backward link | the same |
+| `+8` | long | `0x800068dc + 4 * prio` | create, and the set priority helper `0x40000744` |
+| `+12` .. `+71` | 60 | saved `%d0` to `%d7` and `%a0` to `%a6` | the trap 0 handler |
+| `+72` | long | saved `%a7`, the task's stack pointer | create, then the trap 0 handler |
+| `+76` | long | ready flag, 1 when linked, 0 when blocked | create, start, delete, block, unblock |
+| `+80` | long | next waiter, for the mutex and event queues | `0x400009f4`, read by `0x40000ab4` and `0x40000b4c` |
+
+The `+12` to `+72` block is one instruction at each end, and it fixes the
+layout exactly. Sixteen registers, `%d0` through `%a7`:
+
+```
+40000560:	48e8 ffff 000c 	moveml %d0-%sp,%a0@(12)
+400005a0:	4ce8 ffff 000c 	moveml %a0@(12),%d0-%sp
+```
+
+`%a7` is the sixteenth, at `12 + 15 * 4 = 72`, which is the slot create
+writes. `%a0` is the ninth, at `12 + 8 * 4 = 44`, which is the slot the
+handler patches after stashing `%a0` in scratch:
+
+```
+40000572:	2140 002c      	movel %d0,%a0@(44)
+```
+
+The largest offset touched is `+80`, a longword, so the structure runs to
+byte 83. Rounded up to 4: **84**. ✅
+
+**Way 2: the gaps between stock TCBs.**
+
+The census in section 3.1 gives each task's TCB and stack. In eight of the
+ten rows the two are adjacent, and in two of those eight the TCB is the
+lower object, which bounds its size directly:
+
+| row | tcb | stack | relation |
+|---|---|---|---|
+| 2 | `0x460bcc2c` | `0x460bc42c` + `0x800` | tcb = stack + size |
+| 3 | `0x460d4f80` | `0x460d4780` + `0x800` | tcb = stack + size |
+| 4 | `0x460d59d4` | `0x460d51d4` + `0x800` | tcb = stack + size |
+| 5 | `0x460ddde4` | `0x460d9de4` + `0x4000` | tcb = stack + size |
+| 6 | `0x460e0e38` | `0x460dee38` + `0x2000` | tcb = stack + size |
+| 9 | `0x460ffd44` | `0x460fdd44` + `0x2000` | tcb = stack + size |
+| 8 | `0x460fab80` | `0x460fabd4` | **stack = tcb + 0x54** |
+| 10 | `0x46105508` | `0x4610555c` | **stack = tcb + 0x54** |
+
+The six "tcb = stack + size" rows only prove the TCB begins where the stack
+ends, which bounds the stack and not the TCB. They do confirm the stack
+convention of section 3.2 a second time, from the linker's layout rather
+than from the arithmetic. Rows 8 and 10 are the informative ones for size:
+the stack is the next object above the TCB, so the TCB occupies `0x54`
+bytes, **84**.
+
+A third gap agrees, and it comes from the boot code rather than from a
+create call. The boot's two TCBs are consecutive in one static area:
+
+```
+40000de0:	203c 46c7 ae30 	movel #1187491376,%d0
+40000de6:	23c0 8000 68fc 	movel %d0,0x800068fc     | current = 0x46c7ae30
+40000e34:	4879 46c7 ae84 	pea 0x46c7ae84            | main    = 0x46c7ae84
+```
+
+`0x46c7ae84 - 0x46c7ae30 = 0x54`, **84**, the same stride.
+(`0x46c7ae30` is the pre multitasking context the first `trap #0` saves into.
+It is never linked into a ready list, but the trap 0 handler writes its
+register block, so it is a TCB sized object.) ✅
+
+Both ways give 84 and there is nothing to prefer between them. `TCB_SIZE` is
+**84**.
+
+⚠️ Reserve it as 84 bytes aligned to 4, in the module's own data, and never
+read or write inside it. Every field belongs to the kernel.
+
+### 3.7 Interrupts, locks, and what else a task needs ✅
+
+**Neither routine needs interrupts enabled, and neither needs a particular
+SR.** ✅
+
+`K_CREATE` contains no `movew %sr` in either direction. It inherits whatever
+mask the caller has and leaves it alone. It is safe because it touches no
+shared state: the four fields it writes are in the caller's own TCB, and
+that TCB is on no list until start links it, so nothing else can see it.
+
+`K_START` masks and restores around its own critical section:
+
+```
+40000642:	40c1           	movew %sr,%d1
+40000644:	46fc 2700      	movew #9984,%sr
+40000686:	46c1           	movew %d1,%sr
+```
+
+`0x2700` is interrupt mask 7 with supervisor set. Because start saves the
+caller's SR and puts it back, it is safe at any interrupt level, including
+inside a handler and including with interrupts already masked. ✅
+
+**Neither routine takes a lock.** ✅ There is no call out of either one. The
+interrupt mask is the mutual exclusion, and only start needs it.
+
+🟡 Both routines execute `movew %sr,%dN` and `movew #imm,%sr`, which are
+privileged on ColdFire, so both must be called in supervisor mode. Every
+task in this firmware is supervisor, because the SR create puts in the first
+frame is `0x2000` with the S bit set. This is not a constraint in practice.
+**Falsifier:** a privilege violation exception, vector 8, from a call to
+either address.
+
+**Nothing else is needed to make a task run.** ✅ Stock's own sequence is the
+oracle. Here is the storage task's creation in full, the site the task lead
+named, with everything before and after it:
+
+```
+4001dfbc:	4878 0400      	pea 0x400              | queue capacity
+4001dfc0:	4879 460b b42c 	pea 0x460bb42c         | queue storage
+4001dfc6:	42a7           	clrl %sp@-             | 0
+4001dfc8:	4879 460b b3a0 	pea 0x460bb3a0         | queue object
+4001dfce:	4eb9 4000 0bd4 	jsr 0x40000bd4         | queue init
+4001dfd4:	4878 0800      	pea 0x800              | size
+4001dfd8:	4879 460b c42c 	pea 0x460bc42c         | stack
+4001dfde:	4878 0005      	pea 0x5                | prio
+4001dfe2:	487a 0e4c      	pea %pc@(0x4001ee30)   | entry
+4001dfe6:	4879 460b cc2c 	pea 0x460bcc2c         | tcb
+4001dfec:	4eb9 4000 05fc 	jsr 0x400005fc         | CREATE
+4001dff2:	4fef 0020      	lea %sp@(32),%sp
+4001dff6:	2ebc 460b cc2c 	movel #1175178284,%sp@ | tcb again
+4001dffc:	4eb9 4000 063c 	jsr 0x4000063c         | START
+4001e002:	4878 0001      	pea 0x1
+4001e006:	4879 46c8 ce20 	pea 0x46c8ce20
+4001e00c:	4eb9 4000 0794 	jsr 0x40000794         | event init, an unrelated object
+4001e012:	487a 0580      	pea %pc@(0x4001e594)
+4001e016:	4878 00af      	pea 0xaf
+4001e01a:	4eb9 4000 0d50 	jsr 0x40000d50         | install the vector 0xaf handler
+```
+
+**Between create and start there is not one call.** ✅ Only the stack
+adjustment: the four queue arguments and the five create arguments are 36
+bytes, `lea %sp@(32),%sp` pops 32 of them, and the last 4 byte slot is
+overwritten in place with start's single argument. The arithmetic closes
+exactly, so nothing is hidden inside it.
+
+The queue init before create prepares an object the task will use. It is not
+part of making the task runnable, and the other nine sites prove it: rows 1,
+3, 4, 5, 6, 7, 8 and 10 call create with no preceding queue init at all.
+
+There is **no name registration, no enable bit and no scheduler kick**. ✅
+The set priority helper at `0x40000744` has **zero callers** in the image:
+`refs.sh` returns 0 hits, the PC relative byte scan finds 0 calls, and so
+does the linear disassembly grep. Priority is never changed after create
+either. The get priority helper at `0x4000075c` has zero callers too.
+
+**The full sequence Task 15 must emit, and nothing more:**
+
+```asm
+	pea	size
+	pea	stack
+	pea	prio
+	pea	entry
+	pea	tcb
+	jsr	K_CREATE
+	lea	%sp@(20),%sp
+	pea	tcb
+	jsr	K_START
+	addq.l	#4,%sp
+```
+
+### 3.8 What create does not do ✅, and what follows for Task 15 🟡
+
+**Create does not clear `+12` to `+71`.** ✅ It writes `+8`, `+72`, `+76` and
+`+80` and nothing else, so the saved register block holds whatever was in
+the TCB's memory. The scheduler restores `%d0` to `%a6` from it on the
+task's first dispatch. That is harmless because the entry function reads
+none of them, and loading a garbage value into an address register raises
+nothing on ColdFire. Stock relies on this at all ten sites.
+🟡 Zero the TCB anyway in Task 15, once, before the create. It costs 21
+longwords and removes a class of question from any later trace.
+**Falsifier:** a TCB zeroed before create behaving differently from one that
+was not, which would mean some field outside the four is read.
+
+**Neither routine checks whether the TCB is already in use.** ✅ `K_START`
+unconditionally rewrites `tcb+0` and `tcb+4` and splices the TCB into the
+ring. Called a second time on a TCB that is already linked, it links the same
+node into the ring twice.
+🟡 The result is a ring in which one node's forward and backward links no
+longer agree, which the round robin walk at `0x4000057c` and the unlink at
+`0x40000672` would both follow into inconsistency.
+⚠️ **Task 15's `stems_task_create` must run at most once.** Guard it with a
+flag in the module's own data, set after start returns, and test it before
+the create. The STEM REC design already creates the task the first time the
+action is selected, so the guard is the whole of the "first time".
+**Falsifier:** a second create and start on a live TCB, under the port,
+leaving `tcb+0` and `tcb+4` mutually consistent with every task still
+reachable from its head.
+
+### 3.9 Not measured under the port 🟡
+
+Nothing in this section was run. No Octatrack project folder exists on this
+machine, so `ot_emu` cannot be given `--card`, and this section is a static
+reading of the image only.
+
+Three checks will close it once a project folder exists.
+
+The argument order and the initial stack pointer, from a real call:
+
+```bash
+out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card <card.img> \
+  --set <SET> --project <PROJ> --watch-pc 0x400005fc
+```
+
+The priority 1 ready ring holding four tasks, by walking `tcb+0` from
+`0x800068e0` after a create:
+
+```bash
+out/emu/ot_emu ... --watch-mem 0x800068e0,4
+```
+
+The TCB size, by watching for any access outside `tcb` to `tcb+83`:
+
+```bash
+out/emu/ot_emu ... --watch-mem <tcb>,88
+```
+
+Route A can do the first two today. `tools/emu/emu_rtos.py` already names
+`CREATE = 0x400005fc`, `LIST_HEADS = 0x800068dc` and `TCB_A7 = 0x48`, and its
+`EXPECTED_TASKS` table lists the same ten tasks with the same priorities,
+stacks and sizes this section derived. That is an independent agreement on
+the census, from a document written before it, but it is not a fresh
+measurement.
+
+**Falsifier for this whole section:** a create call whose fifth argument is
+not a byte count, an initial stack pointer that is not
+`stack + (size & ~3) - 12`, or a fourth task at priority 1 that the
+scheduler never dispatches.
+
+### 3.10 Interface
+
+```asm
+| Create one task. Five longword arguments, C order, so they are pushed
+| right to left: pea size / pea stack / pea prio / pea entry / pea tcb /
+| jsr K_CREATE, then the caller pops 20 bytes.
+|   tcb    a TCB_SIZE block the caller owns, aligned to 4.
+|   entry  the task function. It is entered with NO arguments, and its
+|          return address is the kernel's task exit stub at 0x400006e4,
+|          so returning from it deletes the task cleanly.
+|   prio   0 to 7, higher number wins. NOT range checked.
+|   stack  the LOWEST address of the stack. Must be 4 byte aligned: the
+|          routine rounds size down to a multiple of 4 but never the base.
+|   size   the stack length in BYTES. The initial stack pointer is
+|          stack + (size & ~3) - 12, and the three longwords below the top
+|          are the task's first exception frame.
+| Always returns 1 in %d0. There is no failure path and nothing is
+| validated. Touches no shared state, so it needs no interrupt mask and
+| takes no lock.
+.equ	K_CREATE,	0x400005fc
+
+| Make a created task runnable. One longword argument, the same tcb:
+| pea tcb / jsr K_START, then the caller pops 4 bytes. Links the TCB into
+| the circular ready ring for its priority, sets tcb+76 to 1, and raises
+| the top-priority pointer at 0x800068d8 if this priority now outranks it.
+| Saves, masks to level 7, and restores the SR itself, so it is safe at any
+| interrupt level and takes no lock. Does NOT force a context switch: the
+| new task runs at the next scheduling point, even if it outranks its
+| creator. Always returns 1 in %d0. Never call it twice on one TCB.
+.equ	K_START,	0x4000063c
+
+| Bytes of task control block to reserve, aligned to 4. Measured two ways
+| that agree: the largest offset any kernel routine touches is +80, a
+| longword, and two stock TCBs sit exactly 0x54 below their own stacks.
+| Every byte belongs to the kernel. Reserve it and never read or write it.
+.equ	TCB_SIZE,	84
+```
