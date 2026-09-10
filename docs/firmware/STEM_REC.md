@@ -108,9 +108,26 @@ under the word are accessed at widths that stop at `0x800065b7`:
 4009bebe:	13c1 8000 65b6 	moveb %d1,0x800065b6
 ```
 
-`0x800065b2` and `0x800065b4` are only ever `move.w` (six and six sites),
-`0x800065b6` only ever `move.b` (twelve sites), and `0x800065b7` has no
-reference at all. Nothing below reaches into `0x800065b8`. ✅
+Counted two ways that agree: a 32-bit literal scan of the whole image (the
+`refs.sh` algorithm) and a `grep` over the linear disassembly for every
+instruction naming the address.
+
+| address | references | breakdown | widest access |
+|---|---|---|---|
+| `0x800065b2` | 17 | 1 `lea`, 8 word writes, 8 word reads | word |
+| `0x800065b4` | 6 | 5 word writes, 1 word read | word |
+| `0x800065b6` | 15 | 10 byte writes, 2 byte reads, 3 `tstb` | byte |
+| `0x800065b7` | 0 | nothing at all | none |
+
+Each count is the number of instructions in the image that name that address
+as an absolute operand, reads and writes together, not writes alone. The
+widest access at `0x800065b2` is a word, so it ends at `0x800065b3`; at
+`0x800065b4` a word, ending at `0x800065b5`; at `0x800065b6` a byte, ending
+there. `0x800065b7` is never touched. Nothing below reaches into
+`0x800065b8`. ✅
+
+(The `lea` at `0x800065b2` is the one site check 3 resolves. It is counted
+here as a reference but it is not an access.)
 
 **3. Every absolute base near the word, checked.** Enumerating every
 `lea`/`movea.l` of a literal in `0x80006400` to `0x800065b8` gives 15
