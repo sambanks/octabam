@@ -248,8 +248,33 @@ image likewise has no stock write into the reserve (28,700 writes, all
 from his own code running in DRAM: the MSC table and his state); on that
 image tracks 1–2 do not arm at frame 0 and ~8,600 fewer sectors are read
 — his `apply_part` wrapper and reload hooks changing part application
-under the port, not the arena (the control says so). Reported to him as
-his to look at; whether it reproduces on hardware is not known.
+under the port, not the arena (the control says so). Reported to him.
+
+✅ **Re-measured 10 Sep 2026 on the same card, against his 1.40MIDISC**
+(the `hello-dram` control rebuilt bit-identical, and the 1.40MSC image
+rebuilt bit-identical to the one first measured, so only his sources
+differ):
+
+| image | ATA cmds | sectors read | written | armed at frame 0 |
+|---|---|---|---|---|
+| `hello-dram` (control) | 6,189 | 30,467 | 297 | 5 — tracks 0,1,2,4,7 |
+| midi-scenes 1.40MSC | 5,234 | 21,958 | 0 | 3 — tracks 0,5,7 |
+| midi-scenes 1.40MIDISC | 6,189 | 30,467 | 297 | 3 — tracks 0,5,7 |
+
+**The card I/O half is FIXED** — every counter on his new image equals the
+control's exactly, not approximately. The cause was his own: `bank_switch`
+/ `bank_invalidate` preserved only `d0` across a `jsr` that had replaced a
+plain `move.l d0,(BANK_PTR).l`, so the sample load lost registers; 1.40MIDISC
+saves `d1-d7/a0-a6` (his comment: "sample load").
+
+⚠️ **The arming half is NOT fixed and is a SEPARATE defect** — identical on
+both his images, so it is not the register clobber. Still his `apply_part`
+wrapper / reload hooks / never-re-apply flips; the control clears the DRAM
+platform of it. Not bisected to a single hook. Whether either reproduces on
+hardware is still not known — this is the port, and the counts above are
+its counts, not a unit's. (These absolute numbers differ slightly from the
+9 Sep run above because the build has moved since; the three rows here are
+one contemporaneous set and only they should be compared with each other.)
 
 ## The loader
 

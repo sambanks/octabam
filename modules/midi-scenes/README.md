@@ -83,14 +83,21 @@ separate measurement.
   measured anywhere.
 - Nothing from this pipeline has been flashed; the first flash is
   `hello-dram`, then this (`PLAN.md`, work order).
-- ⚠️ **Under the ColdFire port, with a project whose tracks 1–2 run
-  static machines, this image arms neither at frame 0 and reads ~8,600
-  fewer sectors at project load than stock or `hello-dram` on the same
-  card** (`docs/remixer/PLACEMENT.md`, "The platform reserve"). The
-  control image differs from this one only by his hooks, so it is the
-  `apply_part` wrapper / reload path / never-re-apply flips changing
-  part application — possibly only in the emulator (a MIDI-driving flag
-  his code reads?), possibly on the unit. His to look at; unmeasured on
-  hardware.
+- ✅ **The project-load I/O half is FIXED in 1.40MIDISC.** Re-measured
+  10 Sep 2026 on the same card (`docs/remixer/PLACEMENT.md`): his new
+  image reads 30,467 sectors and writes 297 in 6,189 ATA commands —
+  *exactly* the `hello-dram` control's counts, every counter. The
+  1.40MSC image on the same fixture read 21,958 and wrote 0. His fix:
+  `bank_switch`/`bank_invalidate` preserved only `d0` across a `jsr`
+  that replaced a plain `move.l d0,(BANK_PTR).l`, so the sample load
+  lost registers; they now save `d1-d7/a0-a6`.
+- ⚠️ **The track-arming half is NOT fixed, and is a separate defect.**
+  Three tracks arm at frame 0 (0, 5, 7) against the control's five
+  (0, 1, 2, 4, 7) — *identical on both his images*, so it is not the
+  register clobber. Still the `apply_part` wrapper / reload path /
+  never-re-apply flips; the `hello-dram` control clears the DRAM
+  platform. Not bisected to a single hook, and unmeasured on hardware —
+  possibly only the emulator (a MIDI-driving flag his code reads?).
+  His to look at.
 - The PR upstream, once he's done: `tools/gas_port.py` + `gas/`, and
   optionally `build.py` consuming the `.s` form.
