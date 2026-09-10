@@ -1812,3 +1812,837 @@ scheduler never dispatches.
 | Every byte belongs to the kernel. Reserve it and never read or write it.
 .equ	TCB_SIZE,	84
 ```
+
+## 4. Sleeping for N ticks
+
+### 4.0 The answer, and the shape it is not ✅
+
+**There is no `K_DELAY` in the kernel.** No kernel routine takes a tick
+count, no task control block holds a tick counter, and there is no delay
+list anywhere. The tick exists, it is 9.99 ms, and its only job is
+preemption.
+
+The image does contain exactly one timed wait, and it is the routine the
+plan retracted. `0x40020c7c` **is** a sleep. It blocks the calling task,
+the task leaves its ready ring, every other task runs, and a timer
+interrupt wakes it. The plan read the lock and the hardware timer
+correctly and drew the wrong conclusion from them.
+
+❌ **Retract "`0x40020c7c` is not a sleep, it is a timed hardware wait"**
+(the plan's section 6, and this task's brief). It is a timed hardware
+wait **that blocks**. Section 4.4 is the whole routine and section 4.6 is
+what happens to the caller.
+
+Two things follow that change what Task 15 writes.
+
+1. The argument is in **microseconds**, not ticks. `TASK_TICKS` keeps its
+   name in the interface but carries 10,000, not 1.
+2. The routine's timer object is **shared and single user**, and it is
+   reset on every call. A second caller entering while a first is asleep
+   destroys the first task's wake-up. Section 4.7 is the evidence, the
+   exposure and what to do about it.
+
+Term note. A **tick** here is one expiry of PIT0, the periodic interval
+timer the kernel uses to preempt tasks. An **event object** is the two
+longword structure the kernel's `0x40000818` blocks on and `0x40000968`
+posts. Both are defined below.
+
+### 4.1 The kernel has no tick counter and no delay list ✅
+
+The kernel installs one handler for both the software trap and the tick:
+
+```
+400005cc:	2079 400b 9668 	moveal 0x400b9668,%a0
+400005d2:	203c 4000 0550 	movel #1073743184,%d0
+400005d8:	2140 02ac      	movel %d0,%a0@(684)
+400005dc:	2140 0080      	movel %d0,%a0@(128)
+```
+
+`0x400b9668` holds the vector base register's value. `684 / 4 = 171` and
+`128 / 4 = 32`, so vector 171 and vector 32 both get `0x40000550`. Vector
+32 is `trap #0`. Vector 171 is PIT0's, and section 4.3 shows why.
+
+That handler, in full, is a context switch and nothing else:
+
+```
+40000550:	46fc 2700      	movew #9984,%sr
+40000554:	23c8 8000 6900 	movel %a0,0x80006900
+4000055a:	2079 8000 68fc 	moveal 0x800068fc,%a0
+40000560:	48e8 ffff 000c 	moveml %d0-%sp,%a0@(12)
+40000566:	2039 8000 6900 	movel 0x80006900,%d0
+4000056c:	2279 8000 68d8 	moveal 0x800068d8,%a1
+40000572:	2140 002c      	movel %d0,%a0@(44)
+40000576:	2051           	moveal %a1@,%a0
+40000578:	717c f7ff      	mvsw #-2049,%d0
+4000057c:	2050           	moveal %a0@,%a0
+4000057e:	323c 0b3f      	movew #2879,%d1
+40000582:	c1b9 fc04 c010 	andl %d0,0xfc04c010
+40000588:	33c1 fc08 0000 	movew %d1,0xfc080000
+4000058e:	23c8 8000 68fc 	movel %a0,0x800068fc
+40000594:	2288           	movel %a0,%a1@
+40000596:	203c a40c e000 	movel #-1542660096,%d0
+4000059c:	4e7b 0002      	movec %d0,%cacr
+400005a0:	4ce8 ffff 000c 	moveml %a0@(12),%d0-%sp
+400005a6:	4e73           	rte
+```
+
+It saves the outgoing task's registers, takes the top priority ring's
+head and steps to `head->next`, makes that the current task and the new
+head, acknowledges the timer, invalidates the cache, and returns. It
+decrements nothing, walks no list, and reads no per task counter. ✅
+
+`0x40000582` clears bit 11 of `0xfc04c010`, which section 4.3 identifies
+as INTC1's force register, and `0x40000588` writes PIT0's control
+register. Both are acknowledgements.
+
+**Nothing re-installs vector 171.** ✅ The set vector routine
+`0x40000d50` takes the vector number as its first argument, and a byte
+scan of the whole image finds **zero** occurrences of either way to push
+171 as an immediate: `4878 00ab` for `pea 0xab`, and `2f3c 0000 00ab` for
+`movel #0xab,%sp@-`. It finds exactly one `4878 00ac`, vector 172, which
+is PIT1's and belongs to section 4.4. `moveq` cannot produce 171, because
+it sign extends, so those two forms are the only immediate ones. Reading
+the `pea` in front of each of the seventeen literal sites that reach
+`0x40000d50` agrees: the numbers seen are `0x40`, `0x41`, `0x47`, `0x49`,
+`0x4f`, `0x56`, `0x5a`, `0x5b`, `0x5c`, `0x60`, `0x61`, `0x62`, `0x64`,
+`0x65`, `0xac`, `0xaf`, `0xb1`, `0xb6` and zero.
+
+🟡 A vector number computed in a register rather than written as an
+immediate would be invisible to both checks. **Falsifier:** a write watch
+on the vector table entry for 171, at the vector base register's value
+plus 684, firing after the kernel's own write at `0x400005d8`.
+
+**No stock task sleeps on a tick.** ✅ Every stock task blocks on an
+object, not on time. The key repeat task the brief named is the clearest
+example. It creates a semaphore, then loops on it forever:
+
+```
+4005593c:	2f0b           	movel %a3,%sp@-
+4005593e:	2f0a           	movel %a2,%sp@-
+40055940:	42a7           	clrl %sp@-
+40055942:	4879 46c7 e0e2 	pea 0x46c7e0e2
+40055948:	4eb9 4000 0794 	jsr 0x40000794
+4005594e:	508f           	addql #8,%sp
+40055950:	47f9 4000 07a4 	lea 0x400007a4,%a3
+40055956:	45f9 4001 387c 	lea 0x4001387c,%a2
+4005595c:	4879 46c7 e0e2 	pea 0x46c7e0e2
+40055962:	4e93           	jsr %a3@
+40055964:	51fc           	tpf
+40055966:	4e92           	jsr %a2@
+40055968:	588f           	addql #4,%sp
+4005596a:	60f0           	bras 0x4005595c
+```
+
+`0x40000794` initialises the object with count 0, `0x400007a4` blocks on
+it, and `0x4001387c` does the work. There is no time in it.
+
+The census of blocking calls from outside the kernel is short and it says
+the same thing everywhere. Three reach `0x400007a4`, ten reach
+`0x40000818` and five reach `0x40000d00`. **Every one of the eighteen
+passes an object and nothing else.** ✅
+
+### 4.2 The three blocking primitives, and their objects ✅
+
+None of the three takes a timeout. That is the finding, and it is why
+step 1 of this task ends here rather than in a convention.
+
+**`0x400007a4`, a counting semaphore wait.** One longword argument, the
+object. Section 4.1 quotes a call.
+
+```
+400007a4:	226f 0004      	moveal %sp@(4),%a1
+400007a8:	40c1           	movew %sr,%d1
+400007aa:	46fc 2700      	movew #9984,%sr
+400007ae:	2011           	movel %a1@,%d0
+400007b0:	6f06           	bles 0x400007b8
+400007b2:	5380           	subql #1,%d0
+400007b4:	2280           	movel %d0,%a1@
+400007b6:	605a           	bras 0x40000812
+```
+
+A count above zero is decremented and the caller returns. A count of zero
+or less blocks. No argument carries a limit.
+
+**`0x40000818`, an event wait.** One longword argument, the object. This
+is the one the timed wait uses.
+
+```
+40000818:	226f 0004      	moveal %sp@(4),%a1
+4000081c:	40c0           	movew %sr,%d0
+4000081e:	46fc 2700      	movew #9984,%sr
+40000822:	4a91           	tstl %a1@
+40000824:	6f04           	bles 0x4000082a
+40000826:	4291           	clrl %a1@
+40000828:	605a           	bras 0x40000884
+4000082a:	2079 8000 68fc 	moveal 0x800068fc,%a0
+40000830:	2348 0004      	movel %a0,%a1@(4)
+```
+
+The flag is **latched**. A set flag is consumed and the caller does not
+block, so a post that arrives before the wait is not lost. A clear flag
+parks the current task control block in `obj+4` and blocks. `obj+4` is
+**one slot, not a list**, so an object holds exactly one waiter and a
+second waiter overwrites the first. ✅
+
+**`0x40000d00`, a queue receive.** Three longwords. It loops on
+`0x40000818` against `obj+8` while the queue count at `obj+4` is zero,
+then pops one entry.
+
+```
+40000d00:	4fef fff4      	lea %sp@(-12),%sp
+40000d04:	48d7 0c04      	moveml %d2/%a2-%a3,%sp@
+40000d08:	246f 0010      	moveal %sp@(16),%a2
+40000d0c:	240a           	movel %a2,%d2
+40000d0e:	5082           	addql #8,%d2
+40000d10:	47fa fb06      	lea %pc@(0x40000818),%a3
+40000d14:	6006           	bras 0x40000d1c
+40000d16:	2f02           	movel %d2,%sp@-
+40000d18:	4e93           	jsr %a3@
+40000d1a:	588f           	addql #4,%sp
+40000d1c:	4aaa 0004      	tstl %a2@(4)
+40000d20:	67f4           	beqs 0x40000d16
+```
+
+It inherits `0x40000818`'s behaviour and adds no time.
+
+**Object sizes and their initialisers**, for a module that wants a private
+one. ✅
+
+| object | bytes | initialiser | arguments |
+|---|---|---|---|
+| event or counting semaphore | 8 | `0x40000794` | `obj`, initial count |
+| mutex | 12 | `0x400009e4` | `obj` |
+| queue | 32 | `0x40000bd4` | `obj`, one unused slot, buffer, capacity |
+
+The event initialiser is four instructions, which fixes the layout:
+
+```
+40000794:	206f 0004      	moveal %sp@(4),%a0
+40000798:	20af 0008      	movel %sp@(8),%a0@
+4000079c:	42a8 0004      	clrl %a0@(4)
+400007a0:	4e75           	rts
+```
+
+`obj+0` is the count or flag, `obj+4` is the single waiter. Eight bytes.
+A statically zeroed eight byte block is already a valid empty event
+object, so `.long 0, 0` in the module's own data needs no initialiser
+call at all. ✅
+
+⚠️ **A private object that nothing posts is a permanent block, not a
+timeout.** The brief asks for that sequence if a timeout were the only
+timed wait available. It is not, and the sequence has no use here.
+Written down so nobody reaches for it: `pea obj` then `jsr 0x40000818` on
+an object no code posts parks the task forever, and `0x400006e4`, the
+task exit path, is the only way back.
+
+### 4.3 The tick, from its own register writes ✅ and 🟡
+
+PIT0 is programmed once, in the kernel's timer init:
+
+```
+400005a8:	2f02           	movel %d2,%sp@-
+400005aa:	43f9 fc08 0000 	lea 0xfc080000,%a1
+400005b0:	32bc 0b36      	movew #2870,%a1@
+400005b4:	2039 400b 9654 	movel 0x400b9654,%d0
+400005ba:	243c 0006 4000 	movel #409600,%d2
+400005c0:	4c42 0000      	remul %d2,%d0,%d0
+400005c4:	5380           	subql #1,%d0
+400005c6:	33c0 fc08 0002 	movew %d0,0xfc080002
+```
+
+⚠️ `4c42 0000` is **`divu.l %d2,%d0`**, an unsigned 32 bit divide leaving
+the quotient in `%d0`. objdump prints it as `remul`, which is the 64 bit
+form's name. `m68k-elf-as -mcpu=5407` assembles `divu.l %d2,%d0` to those
+exact four bytes, which is the check the preamble asks for.
+
+**The register values, read off those lines.** ✅
+
+| register | value | meaning |
+|---|---|---|
+| PCSR, `0xfc080000` | `0x0b36` | PRE = 11, OVW = 1, RLD = 1, PIF written to clear it, EN = 0 |
+| PMR, `0xfc080002` | `0x400b9654 / 409600 - 1` | the modulus |
+
+The enable arrives at the end of the same routine, together with the
+interrupt wiring:
+
+```
+400005e0:	7201           	moveq #1,%d1
+400005e2:	13c1 fc04 c06b 	moveb %d1,0xfc04c06b
+400005e8:	742b           	moveq #43,%d2
+400005ea:	13c2 fc04 c01d 	moveb %d2,0xfc04c01d
+400005f0:	3011           	movew %a1@,%d0
+400005f2:	7209           	moveq #9,%d1
+400005f4:	8081           	orl %d1,%d0
+400005f6:	3280           	movew %d0,%a1@
+```
+
+`0x0009` sets EN and PIE. The two byte writes name the interrupt, and
+they are self checking. ✅
+
+- `0xfc04c000` is INTC1, not INTC0. The UART driver settles it: it writes
+  `0xfc04805c` and `0xfc04801d` for vector `0x5c`, and `0x5c = 92 =
+  64 + 28`, so `0xfc048000` is INTC0 with vectors at 64 plus the source.
+  INTC1's vectors start at 128.
+- `0xfc04c06b` is INTC1's ICR43, at `0x40 + 43`. It is set to 1, which is
+  interrupt level 1.
+- `0xfc04c01d` is INTC1's CIMR, the clear interrupt mask register, and it
+  is written with 43, which unmasks source 43.
+- `128 + 43 = 171`, the vector section 4.1 shows the switcher installed
+  at.
+
+So **the tick is INTC1 source 43, level 1, vector 171, and PIT0 drives
+it.** ✅ Each of those four numbers is confirmed by another.
+
+The same reading explains the switcher's `andl %d0,0xfc04c010` at
+`0x40000582`. `0xfc04c010` is INTC1's INTFRCH, which forces sources 32 to
+63, and bit 11 is source 43. So **the kernel's "reschedule now" is a
+forged PIT0 interrupt**, and the switcher clears it on the way out. ✅
+Section 4.6 uses that.
+
+**The modulus and the period.** `0x400b9654` holds the CPU clock. The boot
+computes it:
+
+```
+40000418:	2439 fc0c 4000 	movel 0xfc0c4000,%d2
+4000041e:	7018           	moveq #24,%d0
+40000420:	e0aa           	lsrl %d0,%d2
+40000422:	203c 00b7 1b00 	movel #12000000,%d0
+40000428:	4c00 2800      	mulsl %d0,%d2
+4000042c:	23c2 400b 9654 	movel %d2,0x400b9654
+```
+
+and a later check refuses to run on anything else. When the comparison
+fails it falls through to two error calls and then to `0x4000fa8c`, a
+`bras` to itself:
+
+```
+4000fa72:	203c 0fbc 5200 	movel #264000000,%d0
+4000fa78:	b0b9 400b 9654 	cmpl 0x400b9654,%d0
+4000fa7e:	670e           	beqs 0x4000fa8e
+```
+
+So the CPU clock is **264,000,000**. ✅
+
+The internal bus clock is half of that, and the firmware says so twice.
+The UART baud setup halves the stored value before dividing by 32 times
+the baud rate, which is the ColdFire UART's own formula against the bus
+clock:
+
+```
+40010d3a:	2239 400b 9654 	movel 0x400b9654,%d1
+40010d40:	e289           	lsrl #1,%d1
+40010d42:	eb88           	lsll #5,%d0
+40010d44:	4c40 1001      	remul %d0,%d1,%d1
+```
+
+and two sites write the literal 132,000,000 into a peripheral's clock
+rate word, for example
+
+```
+40040438:	203c 07de 2900 	movel #132000000,%d0
+4004043e:	23c0 fc07 8004 	movel %d0,0xfc078004
+```
+
+`264,000,000` appears in the image only in the boot's own arithmetic and
+that guard. **The internal bus clock is 132 MHz.** ✅ This agrees with
+`CHIP.md`, which derives it the same way.
+
+The arithmetic, then:
+
+```
+PMR   = 264,000,000 / 409,600 - 1 = 644 - 1 = 643      (unsigned, truncating)
+tick  = (PMR + 1) * 2^PRE / f_bus = 644 * 2048 / 132,000,000
+      = 1,318,912 / 132,000,000 = 9.9918 ms, a 100.08 Hz tick
+```
+
+🟡 **The period in milliseconds rests on two facts that are not in the
+image**: that PIT0 counts the internal bus clock, and that the PCSR
+prescaler field divides by 2^PRE rather than by 2^(PRE+1). Both come from
+the MCF54455 reference manual, by way of `CHIP.md`. Every candidate
+reading is a power of two away from every other, so **no constant in the
+firmware can break the tie**, and three attempts to break it failed:
+
+- PIT2, which the firmware programs at `0x400630a0` with `PCSR = 0x0533`,
+  PRE 5, and `PMR = 4124`. Under the reading above, `4125 * 32 = 132,000`
+  is exactly one millisecond of bus clock. Exact, and exact under the
+  alternatives too, at 0.5 ms and at 2 ms.
+- The delay routine's own unit, section 4.5. Under the reading above it
+  is exactly 1 µs. Under the alternatives it is 0.5 µs or 2 µs.
+- The 15,000 threshold of section 4.5, which sits just under the fine
+  timer's 16 bit overflow. It fits every reading, because it scales with
+  the unit.
+
+**Falsifier:** a hardware measurement of the unit's tick rate, or a PIT
+clock source on this part that is not the internal bus.
+
+⚠️ **Two documents in this repository disagree today, and neither has
+been corrected.** `RTOS_FORK.md` section 3 says **5.0 ms**, marked ✅,
+which is this arithmetic against the CPU clock. `CHIP.md` says **9.99
+ms**, marked 🟡 and flagged there as "not acted on and not yet reviewed".
+This section is a third derivation and it lands on `CHIP.md`'s number.
+Nothing here edits either file.
+
+**Why STEM REC survives the ambiguity.** The whole family scales
+together. The argument this section hands Task 15 is 10,000, and it
+produces a sleep of 5 ms, 10 ms or 20 ms depending on which reading is
+right. A 64 KB chunk fills every 371 ms at 176,400 B/s, so all three are
+ample and none is expensive. ✅ Task 15's loop does not depend on
+resolving it.
+
+### 4.4 K_DELAY, the whole routine ✅
+
+`0x40020c7c`. Two longword arguments, C order, and `%d2` is pushed first,
+so the arguments sit at `%sp@(8)` and `%sp@(12)`.
+
+```
+40020c7c:	2f02           	movel %d2,%sp@-
+40020c7e:	242f 0008      	movel %sp@(8),%d2
+40020c82:	4aaf 000c      	tstl %sp@(12)
+40020c86:	661a           	bnes 0x40020ca2
+40020c88:	4879 460b cda8 	pea 0x460bcda8
+40020c8e:	4eb9 4000 0a94 	jsr 0x40000a94
+40020c94:	588f           	addql #4,%sp
+40020c96:	7201           	moveq #1,%d1
+40020c98:	b280           	cmpl %d0,%d1
+40020c9a:	6714           	beqs 0x40020cb0
+40020c9c:	70ff           	moveq #-1,%d0
+40020c9e:	6000 0094      	braw 0x40020d34
+40020ca2:	4879 460b cda8 	pea 0x460bcda8
+40020ca8:	4eb9 4000 09f4 	jsr 0x400009f4
+40020cae:	588f           	addql #4,%sp
+40020cb0:	4eba ff8a      	jsr %pc@(0x40020c3c)
+40020cb4:	0c82 0000 3a98 	cmpil #15000,%d2
+40020cba:	6324           	blss 0x40020ce0
+40020cbc:	303c 0b3a      	movew #2874,%d0
+40020cc0:	33c0 fc08 4000 	movew %d0,0xfc084000
+40020cc6:	223c 0000 07de 	movel #2014,%d1
+40020ccc:	4c01 2800      	mulsl %d1,%d2
+40020cd0:	2002           	movel %d2,%d0
+40020cd2:	0680 0000 7a11 	addil #31249,%d0
+40020cd8:	243c 0000 7a12 	movel #31250,%d2
+40020cde:	601e           	bras 0x40020cfe
+40020ce0:	303c 053a      	movew #1338,%d0
+40020ce4:	33c0 fc08 4000 	movew %d0,0xfc084000
+40020cea:	223c 0000 019c 	movel #412,%d1
+40020cf0:	4c01 2800      	mulsl %d1,%d2
+40020cf4:	2002           	movel %d2,%d0
+40020cf6:	0680 0000 0063 	addil #99,%d0
+40020cfc:	7464           	moveq #100,%d2
+40020cfe:	4c42 0000      	remul %d2,%d0,%d0
+40020d02:	33c0 fc08 4002 	movew %d0,0xfc084002
+40020d08:	3039 fc08 4000 	movew 0xfc084000,%d0
+40020d0e:	7201           	moveq #1,%d1
+40020d10:	8081           	orl %d1,%d0
+40020d12:	33c0 fc08 4000 	movew %d0,0xfc084000
+40020d18:	4879 460b cdb4 	pea 0x460bcdb4
+40020d1e:	4eb9 4000 0818 	jsr 0x40000818
+40020d24:	4879 460b cda8 	pea 0x460bcda8
+40020d2a:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40020d30:	4280           	clrl %d0
+40020d32:	508f           	addql #8,%sp
+40020d34:	241f           	movel %sp@+,%d2
+40020d36:	4e75           	rts
+```
+
+**The arguments.** ✅
+
+| slot | name | meaning |
+|---|---|---|
+| `%sp@(8)` | `us` | how long to sleep, in microseconds. See section 4.5. |
+| `%sp@(12)` | `wait` | 0 tries the shared timer's mutex and gives up; anything else waits for it. |
+
+A call is two `pea` instructions in reverse order, then `jsr`, then an
+8 byte stack adjustment. Both stock call sites have that shape. The one
+that reads most like Task 15's loop is
+
+```
+4008046a:	42a7           	clrl %sp@-
+4008046c:	4878 2710      	pea 0x2710
+40080470:	4e92           	jsr %a2@
+40080472:	508f           	addql #8,%sp
+```
+
+`%a2` was loaded with `0x40020c7c` at `0x40080462`. `0x2710` is 10,000,
+the `us` argument, and the zero pushed before it is `wait`.
+
+**The return value.** ✅ `moveq #-1,%d0` at `0x40020c9c` is the only other
+exit, and it is reached only when `wait` was 0 and the mutex was held.
+Otherwise `clrl %d0` at `0x40020d30` runs. So **0 means the sleep
+happened and -1 means it did not**. There is no other failure path, and
+nothing else is validated: not the range of `us`, and not its sign.
+
+**`%d2` is saved and restored. Everything else is caller saved.** `%d0`
+carries the result, and `%d1`, `%a0` and `%a1` are clobbered by the
+routine and by the kernel calls it makes.
+
+**The re-initialiser at `0x40020cb0`.** ✅ Every call runs it, and it is
+not guarded.
+
+```
+40020c3c:	4879 460b cda8 	pea 0x460bcda8
+40020c42:	4eb9 4000 09e4 	jsr 0x400009e4
+40020c48:	42a7           	clrl %sp@-
+40020c4a:	4879 460b cdb4 	pea 0x460bcdb4
+40020c50:	4eb9 4000 0794 	jsr 0x40000794
+40020c56:	487a 00e0      	pea %pc@(0x40020d38)
+40020c5a:	4878 00ac      	pea 0xac
+40020c5e:	4eb9 4000 0d50 	jsr 0x40000d50
+40020c64:	7002           	moveq #2,%d0
+40020c66:	13c0 fc04 c06c 	moveb %d0,0xfc04c06c
+40020c6c:	702c           	moveq #44,%d0
+40020c6e:	13c0 fc04 c01d 	moveb %d0,0xfc04c01d
+40020c74:	4fef 0014      	lea %sp@(20),%sp
+40020c78:	4e75           	rts
+```
+
+It clears the mutex at `0x460bcda8`, clears the event object at
+`0x460bcdb4`, installs `0x40020d38` at vector `0xac`, sets INTC1's ICR44
+to level 2 and unmasks source 44. By the arithmetic of section 4.3,
+`0xac = 172 = 128 + 44`, so **PIT1 is INTC1 source 44 at level 2**. ✅
+
+Clearing the event object before arming PIT1 is why a stale expiry cannot
+make the next sleep return early. Clearing the mutex is section 4.7's
+problem.
+
+**The interrupt handler.** ✅
+
+```
+40020d38:	4fef fff0      	lea %sp@(-16),%sp
+40020d3c:	48d7 0303      	moveml %d0-%d1/%a0-%a1,%sp@
+40020d40:	41f9 fc08 4000 	lea 0xfc084000,%a0
+40020d46:	3010           	movew %a0@,%d0
+40020d48:	7204           	moveq #4,%d1
+40020d4a:	8081           	orl %d1,%d0
+40020d4c:	3080           	movew %d0,%a0@
+40020d4e:	3010           	movew %a0@,%d0
+40020d50:	72fe           	moveq #-2,%d1
+40020d52:	c081           	andl %d1,%d0
+40020d54:	3080           	movew %d0,%a0@
+40020d56:	4879 460b cdb4 	pea 0x460bcdb4
+40020d5c:	4eb9 4000 0968 	jsr 0x40000968
+40020d62:	4cef 0303 0004 	moveml %sp@(4),%d0-%d1/%a0-%a1
+40020d68:	4fef 0014      	lea %sp@(20),%sp
+40020d6c:	4e73           	rte
+```
+
+Set PIF to clear it, clear EN to stop the timer, post the event. The
+restore reads from `%sp@(4)` and pops 20 rather than 16 because the `pea`
+at `0x40020d56` is still on the stack. So **one call means exactly one
+interrupt**, even though RLD is set in PCSR. ✅
+
+### 4.5 The unit is microseconds ✅
+
+Two paths, chosen by `cmpil #15000,%d2` and `blss`, which is an unsigned
+"lower or same". Values up to and including 15,000 take the fine path.
+
+| | fine, `us <= 15000` | coarse, `us > 15000` |
+|---|---|---|
+| PCSR | `0x053a`, PRE 5, prescaler 32 | `0x0b3a`, PRE 11, prescaler 2048 |
+| counter clock | 132 MHz / 32 = 4,125,000 Hz | 132 MHz / 2048 = 64,453.125 Hz |
+| PMR | `(us * 412 + 99) / 100` | `(us * 2014 + 31249) / 31250` |
+| counts per µs, exact | 4.125 | 0.064453125 |
+| counts per µs, as coded | 4.12 | 0.0644480 |
+| error | 0.12 % short | 0.008 % short |
+
+Both factors are the counts per microsecond of their own prescaler, to
+within the rounding the integer arithmetic forces. **The argument is
+microseconds.** ✅ The `+ 99 / 100` and `+ 31249 / 31250` are round-up
+divides, so the routine never rounds a request down to nothing.
+
+The threshold is where the fine timer would overflow. PMR is 16 bits,
+written with `movew`, and `15000 * 4.12 = 61,800`, just under 65,535. The
+next thousand microseconds would pass it. ✅
+
+Worked values, for the record:
+
+| `us` | path | PMR | actual sleep |
+|---|---|---|---|
+| 25 | fine | 103 | 25.21 µs |
+| 10,000 | fine | 41,200 | 9.988 ms |
+| 100,000 | coarse | 6,445 | 100.01 ms |
+
+⚠️ **The upper limit is about one second.** PMR passes the 16 bit
+write's range at 1,016,850 µs, and `mulsl` is a signed 32 bit multiply,
+so `us * 2014` overflows a positive 32 bit result at 1,066,278 and up.
+Neither is checked, and the first one binds. Stay under 1,000,000.
+
+⚠️ **`us = 0` is not "return at once".** It takes the fine path, PMR
+becomes 0, and the caller still blocks for one counter period, about
+0.24 µs, plus a full context switch each way.
+
+### 4.6 What happens to the calling task, and what wakes it ✅
+
+**Which queue it joins.** `0x40000818`, called at `0x40020d1e`, does five
+things under interrupt mask 7:
+
+```
+4000082a:	2079 8000 68fc 	moveal 0x800068fc,%a0
+40000830:	2348 0004      	movel %a0,%a1@(4)
+```
+
+```
+40000878:	2079 8000 68fc 	moveal 0x800068fc,%a0
+4000087e:	42a8 004c      	clrl %a0@(76)
+40000882:	4e40           	trap #0
+```
+
+1. Parks the current task control block's address in the event object's
+   single waiter slot, `0x460bcdb4 + 4`.
+2. Unlinks the task control block from its priority's ready ring, which
+   is the splice of section 3.5 run in reverse.
+3. If that emptied the ring, clears the ring head and walks the top
+   priority pointer at `0x800068d8` down to the next non empty head.
+4. Clears `tcb+76`, the ready flag.
+5. Executes `trap #0`, which is the switcher of section 4.1.
+
+So the task is **on no ready ring while it sleeps**, and every other task,
+at every priority, runs normally. ✅ That is the property the plan
+doubted.
+
+**What wakes it.** The handler's post, `0x40000968`:
+
+```
+40000968:	2f0a           	movel %a2,%sp@-
+4000096a:	206f 0008      	moveal %sp@(8),%a0
+4000096e:	40c1           	movew %sr,%d1
+40000970:	46fc 2700      	movew #9984,%sr
+40000974:	7001           	moveq #1,%d0
+40000976:	2080           	movel %d0,%a0@
+40000978:	4aa8 0004      	tstl %a0@(4)
+4000097c:	6758           	beqs 0x400009d6
+4000097e:	4290           	clrl %a0@
+40000980:	2468 0004      	moveal %a0@(4),%a2
+40000984:	42a8 0004      	clrl %a0@(4)
+40000988:	7001           	moveq #1,%d0
+4000098a:	2540 004c      	movel %d0,%a2@(76)
+```
+
+then the ring splice, then
+
+```
+400009c6:	2039 fc04 c010 	movel 0xfc04c010,%d0
+400009cc:	08c0 000b      	bset #11,%d0
+400009d0:	23c0 fc04 c010 	movel %d0,0xfc04c010
+```
+
+It sets the flag, relinks the sleeper into its ready ring, raises
+`0x800068d8` if that ring now outranks the current top, and forges the
+source 43 interrupt of section 4.3.
+
+**The wake latency is not one tick. It is immediate.** ✅ The forced
+interrupt is level 1. PIT1's handler runs at level 2, and its `rte`
+restores the interrupted context's mask, so the forced interrupt is taken
+at the next instruction boundary that allows it, and the switcher runs.
+The sleeper is dispatched as soon as no higher priority task is ready.
+Nothing waits for PIT0 to expire.
+
+⚠️ For Task 15. The writer task is priority 1 and shares its ring with
+three stock tasks. It wakes at once but is dispatched round robin within
+priority 1, and it yields to priorities 2 through 7. Treat the sleep as
+"at least `us`, and then when the machine is free", never as a deadline.
+
+**Interrupt state and locks.** ✅
+
+- `0x40020c7c` saves and restores no SR of its own. The kernel routines it
+  calls, `0x40000818` and the mutex pair, each mask to level 7 and restore
+  the caller's mask, so the routine is safe at any interrupt level the
+  caller holds.
+- 🟡 It must be called in **supervisor mode**, because those kernel
+  routines execute `movew %sr,%dn`, which is privileged on ColdFire. Every
+  task in this firmware is supervisor: the SR `K_CREATE` puts in the first
+  frame is `0x2000`. **Falsifier:** a privilege violation, vector 8, from
+  the call.
+- ⚠️ **Do not call it with the interrupt mask above level 2.** PIT1
+  interrupts at level 2. A caller that masked higher and is the only
+  runnable task would never be woken. A task created by `K_CREATE` starts
+  at SR `0x2000`, level 0, so this needs no action unless Task 15 masks
+  deliberately.
+- ❌ **It is not callable from an interrupt handler.** It blocks the
+  current task, and inside a handler the current task is whoever was
+  interrupted.
+
+### 4.7 The shared timer is single user, and that is the real risk ⚠️ ✅
+
+`0x40020cb0` re-runs the initialiser on every call, and the initialiser
+clears the event object's waiter slot:
+
+```
+40000794:	206f 0004      	moveal %sp@(4),%a0
+40000798:	20af 0008      	movel %sp@(8),%a0@
+4000079c:	42a8 0004      	clrl %a0@(4)
+```
+
+Two consequences, both read off the code above. ✅
+
+**1. The mutex does not exclude anything.** The initialiser calls
+`0x400009e4` on `0x460bcda8`, which clears `obj+0`, and `obj+0` is the
+mutex's owner field. So the owner is cleared immediately after being
+taken, the next caller's try-lock at `0x40000a94` always succeeds, and the
+unlock at `0x40020d2a` finds it is not the owner and does nothing. The
+`wait` argument is therefore close to dead: `wait = 0` will not return -1
+in practice.
+
+**2. A second caller destroys the first caller's wake-up.** The sleeping
+task's address lives only in `0x460bcdb4 + 4`. The second call clears that
+slot before arming PIT1 for its own interval. When PIT1 expires,
+`0x40000968` wakes whoever is in the slot, which is the second caller.
+**The first task is left unlinked from every ready ring with its ready
+flag clear, and nothing will ever relink it.** It is gone until the unit
+restarts.
+
+**Who else calls it, and when.** Only two sites load the address. ✅
+
+| site | call | context |
+|---|---|---|
+| `0x40015ff4` | `us` 25, `wait` 1 | the CompactFlash reset path. It writes `0x90000024`, the ATA device control register in the FlexBus task file window, around the delay. Reached from `0x40061692`, a card probe that calls it twice and then reads the drive's identity. |
+| `0x4008046a` | `us` 10,000, `wait` 0 | the OS upgrade path. It polls a work semaphore's count until a queue drains. The routine at `0x40080434` is reached only from `0x4008075a` and `0x4008077e`, and it passes the string `OS UPGRADE`, at `0x400b5839`, at `0x400804b4`. |
+
+```
+40015fe4:	4200           	clrb %d0
+40015fe6:	13c0 9000 0024 	moveb %d0,0x90000024
+40015fec:	4878 0001      	pea 0x1
+40015ff0:	4878 0019      	pea 0x19
+40015ff4:	4e90           	jsr %a0@
+```
+
+**The steady state card path does not use this timer.** ✅ The sector read
+and write routines are in `0x40014xxx`, and neither of the two sites that
+load `0x40020c7c` is among them. So a stem recording that is writing to
+the card is not racing the driver on every sector.
+
+**The exposure, stated plainly.** 🟡 A writer task that sleeps 10 ms
+between chunks is asleep on this object almost all of the time. The two
+stock callers are a card probe, which happens on insert or mount, and an
+OS upgrade. Both are already incompatible with a recording in progress: a
+card leaving mid-recording ends the recording anyway, and an OS upgrade is
+a modal operation. So the collision is unlikely, and its consequence when
+it happens is a permanently blocked writer task, not corrupted audio.
+**Falsifier:** a program counter watch on `0x40020c7c` under the port
+during a recording, showing an entry from any task other than the writer.
+
+⚠️ **If Task 15 wants no exposure at all**, the clean alternative is a
+private timer. PIT3 at `0xfc08c000` has **zero references anywhere in the
+image**, from a 32 bit scan of the whole file, so it is free. The module
+would program it exactly as section 4.4's routine programs PIT1, install
+its own handler on its own vector, and post its own eight byte event
+object. 🟡 PIT3's interrupt source and vector are inferred from PIT0 at 43
+and PIT1 at 44, so 45 and 46 for PIT2 and PIT3, giving vector 174.
+**Falsifier:** installing at vector 174 and never seeing the handler run.
+That is more code than this proof of concept needs, and it is recorded
+here so that using the shared timer is a choice rather than an oversight.
+
+### 4.8 A bare yield, if the loop ever wants one ✅
+
+`trap #0` from a task is a cooperative yield. Vector 32 is the switcher of
+section 4.1, which advances the top priority ring by one and dispatches
+`head->next`. The caller stays linked and ready, so it runs again on the
+ring's next pass.
+
+```
+40000730:	46c2           	movew %d2,%sr
+40000732:	4e40           	trap #0
+```
+
+Every `trap #0` in the image is inside the kernel, at `0x400006e0`,
+`0x40000732`, `0x40000810`, `0x40000882`, `0x40000a78`, `0x40000b40`,
+`0x40000ba8` and `0x40000e46`. No application code uses it directly, so a
+module that does is doing something stock does not. ✅
+
+⚠️ A loop of `trap #0` never idles the processor. It is a spin at
+priority 1 that yields to priorities 2 through 7 and starves priority 0.
+Use `K_DELAY`. This is here because the switcher's behaviour is worth
+recording, not as a recommendation.
+
+### 4.9 Not measured under the port 🟡
+
+Nothing in this section was run. No Octatrack project folder exists on
+this machine, so `ot_emu` cannot be given `--card`.
+
+Three checks will close it.
+
+The sleep really blocks, and for the right length, by watching the
+routine's entry and exit and the timer's modulus:
+
+```bash
+out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card <card.img> \
+  --set <SET> --project <PROJ> --watch-pc 0x40020c7c --watch-mem 0xfc084002,2
+```
+
+The tick period, which is the open question of section 4.3, by counting
+entries to `0x40000550` from vector 171 over a known number of audio
+frames:
+
+```bash
+out/emu/ot_emu ... --dsp-pcwatch --watch-pc 0x40000550
+```
+
+⚠️ That second one is **structurally blind** in the way `CLAUDE.md` warns
+about. The port's PIT clock is a flag, `--pit-clock`, and both emulators
+share it, so the port can only report the number it was told. It cannot
+settle section 4.3. Only hardware can, by timing something the tick paces.
+
+Whether any task other than the writer enters `0x40020c7c` during a
+recording, which is section 4.7's falsifier, needs the same run with a
+recording actually happening, so it waits for Phase D.
+
+**Falsifier for this whole section:** a call to `0x40020c7c` that returns
+without the caller having left its ready ring, an argument that is not
+microseconds, or a wake that waits for the next PIT0 expiry rather than
+arriving through the forced source 43.
+
+### 4.10 Interface
+
+```asm
+| Sleep, and let every other task run. The only timed wait in the image.
+| Two longword arguments, C order, so they are pushed right to left:
+| pea wait / pea us / jsr K_DELAY, then the caller pops 8 bytes.
+|   us    how long to sleep, in MICROSECONDS. Not in kernel ticks. Keep it
+|         under 1,000,000: nothing is range checked and the routine's
+|         multiply is a signed 32 bit one. Values above 15,000 switch to a
+|         coarser prescaler inside the routine, automatically.
+|   wait  0 gives up and returns -1 if the shared timer is busy, anything
+|         else waits for it. Use 0.
+| Returns 0 in %d0 for a completed sleep, -1 for the give-up case. Saves
+| and restores %d2 only; %d0, %d1, %a0 and %a1 are clobbered.
+| The caller leaves its ready ring for the duration, so every other task
+| runs. PIT1's handler wakes it and forces a reschedule, so the wake is
+| immediate, not rounded up to a tick. Call it in supervisor mode with the
+| SR K_CREATE gives a task, 0x2000. Never from an interrupt handler, and
+| never with the interrupt mask above level 2, because PIT1 is level 2.
+| ⚠️ The timer object is SHARED and holds ONE waiter, and every call
+| resets it. If another task enters this routine while you are asleep,
+| your wake-up is destroyed and your task never runs again. The only stock
+| callers are the CompactFlash probe and the OS upgrade. See section 4.7.
+.equ	K_DELAY,	0x40020c7c
+
+| K_DELAY's second argument.
+.equ	K_DELAY_TRY,	0
+.equ	K_DELAY_WAIT,	1
+
+| One pass of the writer loop. The plan's name is kept; the unit is
+| MICROSECONDS, not the kernel's preemption tick. 10,000 becomes a 9.988 ms
+| sleep. A 64 KB chunk fills every 371 ms at 176,400 B/s, so this is ample
+| whichever way the factor of two in section 4.3 resolves.
+.equ	TASK_TICKS,	10000
+
+| The kernel's preemption tick, in microseconds. PIT0, prescaler 2048,
+| PMR 643, at the 132 MHz internal bus clock. NOTHING COUNTS IT: there is
+| no tick counter, no delay list and no per-task tick field anywhere in
+| the kernel. It exists only to preempt. Recorded for sizing, not for use.
+.equ	K_TICK_US,	9992
+
+| An event object is EIGHT bytes: +0 the latched flag, +4 the one and only
+| waiter's TCB address. A statically zeroed 8 byte block is already valid,
+| so the initialiser call is optional.
+|   pea count / pea obj / jsr K_EVENT_INIT / addq.l #8,%sp
+.equ	K_EVENT_INIT,	0x40000794
+| Block until the flag is set, then consume it. A set flag returns at once,
+| so a post that arrives first is not lost. NO TIMEOUT: on a private object
+| nothing posts, this blocks forever.
+|   pea obj / jsr K_EVENT_PEND / addq.l #4,%sp
+.equ	K_EVENT_PEND,	0x40000818
+| Set the flag, wake the waiter, and force a reschedule. Safe from an
+| interrupt handler.
+|   pea obj / jsr K_EVENT_POST / addq.l #4,%sp
+.equ	K_EVENT_POST,	0x40000968
+```
