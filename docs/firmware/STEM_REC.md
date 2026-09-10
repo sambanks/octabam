@@ -2761,3 +2761,711 @@ arriving through the forced source 43.
 |   pea obj / jsr K_EVENT_POST / addq.l #4,%sp
 .equ	K_EVENT_POST,	0x40000968
 ```
+
+## 5. The name and the path
+
+### 5.0 The plan's set folder rule is a detour. Read this first.
+
+The plan's Task 15 says "set folder = project directory up to its last `/`",
+with the project directory from `0x40025230`. That arithmetic does hold, but
+it is the long way round, and it copies out of a buffer that the next caller
+overwrites.
+
+**The set folder has its own source, and the stock sample save uses it
+directly.** It is a plain C string buffer at `0x100f8480`. `0x40025230` is
+built on top of that buffer: it formats `"%s/%s"` from `0x100f8480` and the
+project name at `0x100f8378`. So `stems_make_path` should read `0x100f8480`
+and never call `0x40025230` at all.
+
+Three other things Task 15 needs, each different from what the brief assumed:
+
+1. `0x4001c4d8` **takes a blocking mutex**, and it is an SPI transaction, not
+   an I2C one. Section 5.2. The writer task is safe against the UI task, but
+   only because it calls this routine rather than the registers.
+2. The clock field indices in the plan are correct. Section 5.4 measures them
+   from the name builder's own calls and from a sibling routine that prints
+   seconds.
+3. The lead address `0x40084e24` in the brief is not a path build. It is the
+   file open. The path builds are at `0x400241b8`, `0x400242e4`, `0x40076440`
+   and `0x40076536`. Section 5.6.
+
+Term note. The **set** is the top level folder on the CompactFlash card. The
+**pool** is the `AUDIO` folder inside it, where samples live. A **project** is
+a folder beside `AUDIO` inside the set. **cdecl** here means arguments pushed
+right to left and popped by the caller, which is what every routine in this
+section uses.
+
+### 5.1 The name builder, whole ✅
+
+`0x400819fc` is 128 bytes and has exactly one caller, a `jsr` at `0x40023eba`.
+Measured two ways that agree: `refs.sh 0x400819fc` returns one hit, and a
+linear objdump of the whole image
+(`m68k-elf-objdump -D -b binary -m m68k:cfv4e --adjust-vma=0x40000400`)
+grepped for `400819fc` returns two lines, the routine's own label and that one
+`jsr`. The linear pass is the one that would catch a register indirect call,
+and there is none.
+
+```
+400819fc:	4fef ffe8      	lea %sp@(-24),%sp
+40081a00:	48d7 0c3c      	moveml %d2-%d5/%a2-%a3,%sp@
+40081a04:	4878 0002      	pea 0x2
+40081a08:	47f9 4001 c4d8 	lea 0x4001c4d8,%a3
+40081a0e:	4e93           	jsr %a3@
+40081a10:	2f00           	movel %d0,%sp@-
+40081a12:	45f9 4001 c31c 	lea 0x4001c31c,%a2
+40081a18:	4e92           	jsr %a2@
+40081a1a:	2a00           	movel %d0,%d5
+40081a1c:	4878 0003      	pea 0x3
+40081a20:	4e93           	jsr %a3@
+40081a22:	2f00           	movel %d0,%sp@-
+40081a24:	4e92           	jsr %a2@
+40081a26:	2800           	movel %d0,%d4
+40081a28:	4878 0005      	pea 0x5
+40081a2c:	4e93           	jsr %a3@
+40081a2e:	2f00           	movel %d0,%sp@-
+40081a30:	4e92           	jsr %a2@
+40081a32:	2600           	movel %d0,%d3
+40081a34:	4878 0006      	pea 0x6
+40081a38:	4e93           	jsr %a3@
+40081a3a:	2f00           	movel %d0,%sp@-
+40081a3c:	4e92           	jsr %a2@
+40081a3e:	2400           	movel %d0,%d2
+40081a40:	4fef 0020      	lea %sp@(32),%sp
+40081a44:	4878 0007      	pea 0x7
+40081a48:	4e93           	jsr %a3@
+40081a4a:	2f00           	movel %d0,%sp@-
+40081a4c:	4e92           	jsr %a2@
+40081a4e:	2f05           	movel %d5,%sp@-
+40081a50:	2f04           	movel %d4,%sp@-
+40081a52:	2f03           	movel %d3,%sp@-
+40081a54:	2f02           	movel %d2,%sp@-
+40081a56:	2f00           	movel %d0,%sp@-
+40081a58:	4879 400b 77bb 	pea 0x400b77bb
+40081a5e:	4879 460f aab4 	pea 0x460faab4
+40081a64:	4eb9 4001 3a08 	jsr 0x40013a08
+40081a6a:	203c 460f aab4 	movel #1175431860,%d0
+40081a70:	4cef 0c3c 0024 	moveml %sp@(36),%d2-%d5/%a2-%a3
+40081a76:	4fef 003c      	lea %sp@(60),%sp
+40081a7a:	4e75           	rts
+```
+
+Five facts follow, all ✅.
+
+- **It takes no arguments.** Nothing reads `%sp@(4)`.
+- **It returns a pointer in `%d0`**, to the static buffer `0x460faab4`.
+  `0x40081a6a` loads that address as a literal. objdump prints the immediate in
+  decimal, 1175431860; the operand bytes `460f aab4` are the address.
+- **The buffer is private to this routine and is overwritten on every call.**
+  The whole image references `0x460faab4` from one instruction,
+  `pea 0x460faab4` at `0x40081a5e`. Copy the string out before anything else
+  can call the builder.
+- **Every helper call is cdecl and the caller pops.** The two `lea %sp@(...)`
+  at `0x40081a40` and `0x40081a76` do all the popping. Follow the stack
+  pointer from entry: 24 bytes of saved registers, then eight pushes of four
+  bytes each, then `lea %sp@(32),%sp` puts it back exactly where the saved
+  registers begin. The final `moveml %sp@(36)` then lands on those same saved
+  registers, because seven more pushes have happened since. The frame closes
+  with `lea %sp@(60),%sp`, which is 24 plus 36.
+- **`0x4001c4d8` and `0x4001c31c` preserve `%d2`, `%d3`, `%d4`, `%d5`, `%a2`
+  and `%a3`.** This is measured, not assumed. `%a3` is loaded once at
+  `0x40081a08` and re-used at `0x40081a20`, `0x40081a38` and `0x40081a48`,
+  across intervening `jsr %a2@` calls. `%d5` is written at `0x40081a1a` and is
+  still live at `0x40081a4e`, across eight calls.
+
+Four sibling routines sit next to it and share the same shape. They are useful
+as cross checks, and section 5.4 uses them.
+
+| address | format string | fields it reads |
+|---|---|---|
+| `0x40081968`, tail at `0x400819d0` | `0x400b779d`, `"%04d-%02d-%02d %02d:%02d:%02d"` | 1, 2, 3, 5, 6, 7 |
+| `0x400819fc` | `0x400b77bb`, `"%02d%02d%02d-%02d%02d"` | 2, 3, 5, 6, 7 |
+| `0x40081a7c` | `0x400b77ac`, `"%02d:%02d:%02d"` | 1, 2, 3 |
+| `0x40081adc` | `0x400b77c8`, `"%02d%02d"` | 2, 3 |
+| `0x40081b30` | `0x400b77d1`, `"%02d%02d%02d"` | 5, 6, 7 |
+
+The timestamp routine's tail is the only place `2000` is added:
+
+```
+400819d0:	0680 0000 07d0 	addil #2000,%d0
+400819d6:	2f00           	movel %d0,%sp@-
+400819d8:	4879 400b 779d 	pea 0x400b779d
+400819de:	4879 460f aa94 	pea 0x460faa94
+400819e4:	4eb9 4001 3a08 	jsr 0x40013a08
+```
+
+✅ The name builder does not add it. It prints the clock's two digit year with
+`%02d`, which is what makes the name `YYMMDD-HHMM`.
+
+### 5.2 The clock read takes a blocking mutex, and it is SPI ✅
+
+```
+4001c4d8:	2f02           	movel %d2,%sp@-
+4001c4da:	242f 0008      	movel %sp@(8),%d2
+4001c4de:	4879 46c8 c5f4 	pea 0x46c8c5f4
+4001c4e4:	4eb9 4000 09f4 	jsr 0x400009f4
+4001c4ea:	0082 9002 0000 	oril #-1878917120,%d2
+4001c4f0:	23c2 fc05 c034 	movel %d2,0xfc05c034
+4001c4f6:	203c 1002 0000 	movel #268566528,%d0
+4001c4fc:	23c0 fc05 c034 	movel %d0,0xfc05c034
+4001c502:	588f           	addql #4,%sp
+4001c504:	2039 fc05 c02c 	movel 0xfc05c02c,%d0
+4001c50a:	e888           	lsrl #4,%d0
+4001c50c:	720f           	moveq #15,%d1
+4001c50e:	c081           	andl %d1,%d0
+4001c510:	123c 0002      	moveb #2,%d1
+4001c514:	b280           	cmpl %d0,%d1
+4001c516:	66ec           	bnes 0x4001c504
+4001c518:	2039 fc05 c038 	movel 0xfc05c038,%d0
+4001c51e:	2439 fc05 c038 	movel 0xfc05c038,%d2
+4001c524:	7002           	moveq #2,%d0
+4001c526:	4840           	swap %d0
+4001c528:	23c0 fc05 c02c 	movel %d0,0xfc05c02c
+4001c52e:	4879 46c8 c5f4 	pea 0x46c8c5f4
+4001c534:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001c53a:	588f           	addql #4,%sp
+4001c53c:	7182           	mvzb %d2,%d0
+4001c53e:	241f           	movel %sp@+,%d2
+4001c540:	4e75           	rts
+```
+
+**The argument.** ✅ One longword at `%sp@(8)`, which is `%sp@(4)` at entry,
+because `%d2` was pushed first. It is the field index, and it goes into the
+transmit word unchanged.
+
+**The return.** ✅ `mvzb %d2,%d0` at `0x4001c53c` zero extends the low byte of
+the second received word into `%d0`. So `%d0` holds the clock's raw byte in the
+range 0 to 255, in binary coded decimal, with bits 8 to 31 clear. `0x4001c31c`
+needs exactly that, because it uses `asrl` on the whole longword.
+
+**The clobbers.** ✅ `%d2` is saved and restored. Nothing else is. The two
+helper calls save `%d2`, `%a2` and `%a3` themselves. So the routine preserves
+`%d2` through `%d7` and `%a2` through `%a6`, and clobbers `%d0`, `%d1`, `%a0`
+and `%a1`. This matches what section 5.1 measured from the caller.
+
+**The lock.** ✅ `0x400009f4` is a blocking mutex acquire. Its object is three
+longwords: the owning task at `+0`, and a waiter list at `+4` and `+8`.
+
+```
+40000a00:	40c2           	movew %sr,%d2
+40000a02:	46fc 2700      	movew #9984,%sr
+40000a06:	4a93           	tstl %a3@
+40000a08:	6608           	bnes 0x40000a12
+40000a0a:	26b9 8000 68fc 	movel 0x800068fc,%a3@
+40000a10:	6068           	bras 0x40000a7a
+```
+
+If the owner word is zero it stores the current task control block address
+from `0x800068fc` and returns. Otherwise it links the caller onto the waiter
+list, unlinks the caller from its ready ring, and executes `trap #0` at
+`0x40000a78`, which section 4.1 shows is the context switch. The release
+`0x40000ab4` puts the head waiter back on its ready ring, and traps again if
+that waiter outranks the current task. `0x400009e4` is the initialiser, three
+`clr`s, and `0x4001f926` calls it on this object during start-up.
+
+Two consequences for Task 15.
+
+- **The writer task is safe against the UI task**, and it is safe because the
+  mutex serialises the whole transaction, not because the transaction is
+  atomic. It is not atomic. `movew #9984,%sr` is `0x2700`, which masks
+  interrupts to level 7, but only inside the acquire and the release, and the
+  status register is restored before the transfer starts. So the poll loop at
+  `0x4001c504` runs with interrupts enabled, and the caller can be preempted in
+  the middle of the transfer.
+- **This routine can block, so it must be called from a task.** Never from an
+  interrupt handler, never from the per-frame DSP hook of section 2, and never
+  with the interrupt mask raised. It is also not recursive: the acquire has no
+  "already mine" case, so a second entry from the same task deadlocks.
+
+**It is DSPI, not I2C.** ✅ The three registers are `+0x2c`, `+0x34` and
+`+0x38` of the module at `0xfc05c000`. On this part that module is the DSPI,
+the serial peripheral interface, and those offsets are its status, transmit
+FIFO push, and receive FIFO pop registers. The behaviour matches: two pushes
+whose upper halves are `0x90020000` and `0x10020000`, which set the continue
+bit and chip select 1 on the first word and drop the continue bit on the
+second; then a poll of the nibble at bits 7 to 4 of the status until it reads
+2, which is the receive FIFO count; then two pops; then a write of
+`0x00020000` to the status to clear the receive flag. `RTOS_FORK.md` line 272
+already names `0xfc05c000` as the DSPI, from the emulator's own modelling of it
+as a loopback FIFO whose sites wait for two or three received frames.
+
+❌ **Retract `SAMPLE_SAVE.md` section 6's "It is an I2C transaction".** The
+addresses in that sentence are right and its conclusion about BCD is right.
+The bus is wrong. The I2C module on this part is at `0xfc058000`, and nothing
+in this path touches it.
+
+The correction changes no calling convention, but it changes the risk picture.
+An SPI FIFO read is a four step sequence, and the poll loop has no timeout. If
+the receive FIFO never reaches two entries the routine spins forever with the
+mutex held, and every other task that wants the clock blocks behind it.
+🟡 That has never been observed. Falsifier: run the port with a watch on
+`0x4001c504` and count iterations across a boot.
+
+The same module has a write path at `0x4001c468`, which takes two arguments and
+uses the same mutex. STEM REC has no reason to call it. It is recorded here
+only so nobody mistakes it for the read.
+
+### 5.3 The BCD conversion ✅
+
+```
+4001c31c:	2f02           	movel %d2,%sp@-
+4001c31e:	202f 0008      	movel %sp@(8),%d0
+4001c322:	2400           	movel %d0,%d2
+4001c324:	e882           	asrl #4,%d2
+4001c326:	2202           	movel %d2,%d1
+4001c328:	e789           	lsll #3,%d1
+4001c32a:	2241           	moveal %d1,%a1
+4001c32c:	41f1 2a00      	lea %a1@(0,%d2:l:2),%a0
+4001c330:	720f           	moveq #15,%d1
+4001c332:	c081           	andl %d1,%d0
+4001c334:	d088           	addl %a0,%d0
+4001c336:	241f           	movel %sp@+,%d2
+4001c338:	4e75           	rts
+```
+
+✅ One longword argument at `%sp@(8)`, which is `%sp@(4)` at entry. The value
+is `(v >> 4) * 8 + (v >> 4) * 2 + (v & 15)`, which is
+`(v >> 4) * 10 + (v & 15)`. Returned in `%d0`, binary. Preserves `%d2`;
+clobbers `%d0`, `%d1`, `%a0` and `%a1`. cdecl, caller pops.
+
+⚠️ `asrl` is arithmetic. Pass it the zero extended byte that `0x4001c4d8`
+returns and nothing else. A value with bit 31 set converts to nonsense.
+
+The inverse, binary to BCD, is at `0x4001c33c`. STEM REC does not need it.
+
+### 5.4 The field indices, and the format's argument order ✅
+
+The name builder pushes the sprintf arguments right to left, so the last push
+before the format string is the first conversion. Reading `0x40081a4e` to
+`0x40081a5e` from the bottom up:
+
+| position in `"%02d%02d%02d-%02d%02d"` | register | clock index | field |
+|---|---|---|---|
+| 1 | `%d0` | 7 | year, two digits |
+| 2 | `%d2` | 6 | month |
+| 3 | `%d3` | 5 | day of month |
+| 4 | `%d4` | 3 | hour |
+| 5 | `%d5` | 2 | minute |
+
+✅ So the name is `YYMMDD-HHMM`, and the plan's placeholder indices 2, 3, 5, 6
+and 7 are the real ones.
+
+The meanings are pinned by the sibling at `0x40081a7c`, which reads indices 1,
+2 and 3 into a format that is unambiguously `HH:MM:SS`:
+
+```
+40081ab2:	2f03           	movel %d3,%sp@-
+40081ab4:	2f02           	movel %d2,%sp@-
+40081ab6:	2f00           	movel %d0,%sp@-
+40081ab8:	4879 400b 77ac 	pea 0x400b77ac
+```
+
+`%d3` came from index 1, `%d2` from index 2 and `%d0` from index 3, and the
+first conversion is the hour. So index 3 is the hour, index 2 the minute, and
+index 1 the second. ✅ The date sibling at `0x40081b30` reads 5, 6 and 7 into
+`"%02d%02d%02d"`, in that same day, month, year order.
+
+🟡 Index 4 is day of week, and index 0 is unidentified. Neither routine reads
+either. Falsifier: call `0x4001c4d8(4)` under the port and compare against a
+known date. This repeats what `SAMPLE_SAVE.md` section 6 already says, and
+nothing here changes it.
+
+The exact bytes of the format string, so a module can carry its own copy rather
+than depend on the address:
+
+```
+0x400b77bb  25 30 32 64 25 30 32 64 25 30 32 64 2d 25 30 32 64 25 30 32 64 00
+            "%02d%02d%02d-%02d%02d"
+```
+
+✅ 21 characters and a terminator. `refs.sh 0x400b77bb` returns exactly one
+hit, `0x40081a5a`, the operand of the `pea` at `0x40081a58`.
+
+### 5.5 sprintf ✅
+
+```
+40013a08:	4e56 0000      	linkw %fp,#0
+40013a0c:	486e 0010      	pea %fp@(16)
+40013a10:	2f2e 000c      	movel %fp@(12),%sp@-
+40013a14:	2f2e 0008      	movel %fp@(8),%sp@-
+40013a18:	4eba d6ea      	jsr %pc@(0x40011104)
+40013a1c:	4fef 000c      	lea %sp@(12),%sp
+40013a20:	4e5e           	unlk %fp
+40013a22:	4e75           	rts
+```
+
+✅ `sprintf(dest, fmt, ...)`, cdecl, caller pops, ordinary C varargs: the
+wrapper hands the inner formatter a pointer to the first vararg at `%fp@(16)`.
+It returns whatever the inner routine returns in `%d0`, which no caller in this
+section reads.
+
+✅ It preserves `%d2` through `%d7` and `%a2` through `%a6`. Measured at a call
+site rather than assumed: the routine at `0x40024180` loads `%a2` before the
+sprintf at `0x400241cc` and dereferences `%a2` at `0x40024202`, after it. The
+inner formatter at `0x40013a24` saves `%d2` to `%d5` and `%a2` to `%a5` in its
+own prologue.
+
+⚠️ There is no length limit. This is `sprintf`, not `snprintf`. Size the
+destination for the worst case yourself.
+
+### 5.6 The stock save's path build, both branches ✅
+
+The brief's lead `0x40084e24` is the file open, not the path build:
+
+```
+40084e0e:	4879 400b 328b 	pea 0x400b328b
+40084e14:	4879 4603 63e0 	pea 0x460363e0
+40084e1a:	260e           	movel %fp,%d3
+40084e1c:	0683 ffff ffe2 	addil #-30,%d3
+40084e22:	2f03           	movel %d3,%sp@-
+40084e24:	4eb9 4001 6864 	jsr 0x40016864
+```
+
+`0x400b328b` is `"w"`, so that is `0x40016864` opening an already built path for
+writing. The path itself is built elsewhere.
+
+`refs.sh 0x400b3a85` finds four uses of `"%s/AUDIO/%s.wav"`, at `0x400241c2`,
+`0x400242f2`, `0x4007644a` and `0x40076544`. All four sit in the same shape.
+Here is the first, whole:
+
+```
+400241a6:	4ab9 8000 00a4 	tstl 0x800000a4
+400241ac:	670a           	beqs 0x400241b8
+400241ae:	4eb9 4002 4eec 	jsr 0x40024eec
+400241b4:	4a80           	tstl %d0
+400241b6:	6620           	bnes 0x400241d8
+400241b8:	2f02           	movel %d2,%sp@-
+400241ba:	4879 100f 8480 	pea 0x100f8480
+400241c0:	4879 400b 3a85 	pea 0x400b3a85
+400241c6:	4879 460b e79c 	pea 0x460be79c
+400241cc:	4eb9 4001 3a08 	jsr 0x40013a08
+400241d2:	4fef 0010      	lea %sp@(16),%sp
+400241d6:	6024           	bras 0x400241fc
+400241d8:	42a7           	clrl %sp@-
+400241da:	42a7           	clrl %sp@-
+400241dc:	4eb9 4002 5230 	jsr 0x40025230
+400241e2:	2f02           	movel %d2,%sp@-
+400241e4:	2f00           	movel %d0,%sp@-
+400241e6:	4879 400b 3a95 	pea 0x400b3a95
+400241ec:	4879 460b e79c 	pea 0x460be79c
+400241f2:	4eb9 4001 3a08 	jsr 0x40013a08
+400241f8:	4fef 0018      	lea %sp@(24),%sp
+```
+
+Reading it out, all ✅.
+
+- **The first `%s` of `"%s/AUDIO/%s.wav"` is the buffer at `0x100f8480`.** `pea`
+  pushes the address, so `0x100f8480` is where the characters are, not a
+  pointer to them.
+- **`0x800000a4` chooses the branch.** It is a personal setting with two
+  values. Its own display routine names them:
+
+```
+40068b82:	2239 8000 00a4 	movel 0x800000a4,%d1
+40068b88:	203c 400b 62b4 	movel #1074487988,%d0
+40068b8e:	4a81           	tstl %d1
+40068b90:	6712           	beqs 0x40068ba4
+40068b92:	203c 400b 62bd 	movel #1074487997,%d0
+```
+
+  `0x400b62b4` is `"AUD POOL"` and `0x400b62bd` is `"PROJ DIR"`. So zero means
+  the pool and one means the project folder. The setting is written at one
+  site, `0x40068b70`, and mirrored to `0x100fff34`.
+- **`0x40024eec` asks whether a project name exists**, and it reads the same
+  buffer that `0x40025230` defaults to:
+
+```
+40024eec:	4a39 100f 8378 	tstb 0x100f8378
+40024ef2:	56c0           	sne %d0
+40024ef4:	7100           	mvsb %d0,%d0
+40024ef6:	4480           	negl %d0
+40024ef8:	4e75           	rts
+```
+
+- **So the rule is:** save to `<set>/<project>/<name>.wav` when the setting is
+  PROJ DIR and the project name is not empty, and to `<set>/AUDIO/<name>.wav`
+  otherwise.
+- **`0x40025230` returns in `%d0`, and the caller does not pop before the next
+  push.** `0x400241e4` pushes `%d0` straight in as the first `%s`, and the
+  single `lea %sp@(24),%sp` at `0x400241f8` pops all six longwords: the two
+  zero arguments, `%d2`, `%d0`, the format and the destination.
+- **`0x40025230` preserves `%d2`.** `%d2` holds the name across the call and is
+  pushed at `0x400241e2`.
+
+One corroboration from elsewhere in the image, which fixes the folder layout
+rather than only the format string. A different routine stores the slot's own
+filename, relative to wherever the slot record is read from:
+
+```
+40023f94:	2f04           	movel %d4,%sp@-
+40023f96:	4879 400b 3a11 	pea 0x400b3a11
+40023f9c:	6008           	bras 0x40023fa6
+40023f9e:	2f04           	movel %d4,%sp@-
+40023fa0:	4879 400b 3a1a 	pea 0x400b3a1a
+```
+
+`0x400b3a11` is `"../AUDIO/%s.wav"` and `0x400b3a1a` is `"%s.wav"`, chosen by
+the same two tests. ✅ So `AUDIO` is one level up from a project folder, and
+both sit directly inside the set.
+
+The exact bytes of the two path formats:
+
+```
+0x400b3a85  25 73 2f 41 55 44 49 4f 2f 25 73 2e 77 61 76 00   "%s/AUDIO/%s.wav"
+0x400b3a95  25 73 2f 25 73 2e 77 61 76 00                     "%s/%s.wav"
+```
+
+### 5.7 The project directory routine, whole ✅
+
+```
+40025230:	202f 0004      	movel %sp@(4),%d0
+40025234:	206f 0008      	moveal %sp@(8),%a0
+40025238:	6606           	bnes 0x40025240
+4002523a:	203c 100f 8480 	movel #269452416,%d0
+40025240:	4a88           	tstl %a0
+40025242:	6606           	bnes 0x4002524a
+40025244:	41f9 100f 8378 	lea 0x100f8378,%a0
+4002524a:	43f9 4001 3a08 	lea 0x40013a08,%a1
+40025250:	4a10           	tstb %a0@
+40025252:	6718           	beqs 0x4002526c
+40025254:	2f08           	movel %a0,%sp@-
+40025256:	2f00           	movel %d0,%sp@-
+40025258:	4879 400b 86c1 	pea 0x400b86c1
+4002525e:	4879 460b f112 	pea 0x460bf112
+40025264:	4e91           	jsr %a1@
+40025266:	4fef 0010      	lea %sp@(16),%sp
+4002526a:	6014           	bras 0x40025280
+4002526c:	2f00           	movel %d0,%sp@-
+4002526e:	4879 400b 3f82 	pea 0x400b3f82
+40025274:	4879 460b f112 	pea 0x460bf112
+4002527a:	4e91           	jsr %a1@
+4002527c:	4fef 000c      	lea %sp@(12),%sp
+40025280:	203c 460b f112 	movel #1175187730,%d0
+40025286:	4e75           	rts
+```
+
+✅ **Two longword arguments, cdecl.** The first is a set path string, defaulted
+to `0x100f8480` when it is zero. The second is a project name string, defaulted
+to `0x100f8378` when it is zero. The `bnes` at `0x40025238` tests `%d0`, because
+`moveal` does not touch the condition codes on this core.
+
+✅ **`0x400b86c1` is `"%s/%s"` and `0x400b3f82` is `"%s/UNTITLED"`.** So the
+result is `<set>/<project>`, or `<set>/UNTITLED` when the project name is the
+empty string.
+
+✅ **The return is `%d0`, and only `%d0`.** `0x40025280` loads the literal
+`0x460bf112`, which is the destination it just formatted into. objdump prints
+the immediate in decimal, 1175187730; the operand bytes `460b f112` are the
+address. `%a0` holds the project name string at that point, not the result, and
+`%a1` holds sprintf's address. Nothing else is set. This answers step 3 of the
+brief: `%d0`, not `%a0`, not both.
+
+✅ **The result buffer is a shared static, `0x460bf112`.** The whole image
+references it from two instructions, both inside this routine, so it is this
+routine's output buffer and nothing else's. But 45 sites in the image name
+this routine. Counted from the linear objdump, which catches the
+`lea 0x40025230,%aN` loads and the `jsr %pc@` form at `0x400255f6` that
+`refs.sh` cannot see; `refs.sh` alone finds 51 raw occurrences of the address,
+some of them table data. Some of the 45 are register loads that feed more than
+one call, so the number of calls is 45 or more. Any of them can overwrite the
+buffer. Copy the string out immediately.
+
+✅ **It clobbers `%d0`, `%d1`, `%a0` and `%a1` only.** It saves nothing, and it
+calls only sprintf, which preserves `%d2` upward.
+
+🟡 **It takes no lock and cannot block on its own.** It reads two globals and
+calls sprintf. Falsifier: a lock inside sprintf's inner formatter, which is not
+disassembled here.
+
+### 5.8 The set folder, and what Task 15 must use ✅ with one 🟡
+
+✅ **The set folder is the C string at `0x100f8480`.** The linear objdump finds
+49 instructions naming it, and every one of them is `pea 0x100f8480`. Not one
+loads from it as a variable. A `pea` in a sprintf argument list is a `%s`
+pointer, so the address is the first character of the string.
+
+There is a fiftieth site, which objdump prints with a decimal immediate, so a
+grep for the hex misses it. It is `0x4002523a`, `movel #269452416,%d0` inside
+`0x40025230`, and it uses the same address the same way.
+
+✅ **`0x100f8378` is the project name**, by the same reasoning, plus
+`0x40024eec` testing its first byte for the empty string.
+
+✅ **Both live outside this image section.** The section covers `0x40000400`
+through `0x4010f9b0`. `0x100f8480` is in the settings block region, above the
+128 slot table, and its contents are runtime state. So the addresses are
+measured and the contents are not, and cannot be, from a static read.
+
+✅ **`0x100f8480` is a complete path prefix, not a bare folder name.** The mount
+check `0x40025650` takes it as its only argument, formats `"%s/AUDIO"` from it
+into a 260 byte stack buffer, and asks the file layer whether both the set path
+and that pool path exist:
+
+```
+40025650:	4fef fefc      	lea %sp@(-260),%sp
+40025658:	242f 0110      	movel %sp@(272),%d2
+4002565c:	2f02           	movel %d2,%sp@-
+4002565e:	4879 400b 7758 	pea 0x400b7758
+40025664:	260f           	movel %sp,%d3
+40025666:	0683 0000 0010 	addil #16,%d3
+4002566c:	2f03           	movel %d3,%sp@-
+4002566e:	4eb9 4001 3a08 	jsr 0x40013a08
+40025674:	2f02           	movel %d2,%sp@-
+40025676:	4eb9 4001 3db0 	jsr 0x40013db0
+```
+
+`0x400b7758` is `"%s/AUDIO"`. Three call sites pass `0x100f8480` to it,
+`0x40021e78`, `0x40023dd8` and `0x400256be`, and the failure message they show
+is `"NO SET IS MOUNTED!"` at `0x400b3766`. So the string is what the file layer
+accepts as the head of a path.
+
+🟡 **It begins with `/` and has no trailing `/`.** The no-trailing-slash half is
+✅, because every format that consumes it writes its own separator:
+`"%s/AUDIO/%s.wav"`, `"%s/%s"`, `"%s/AUDIO"`, `"%s/"` at `0x400b379a`. The
+leading slash is inferred, and neither support is this image. octamax logged the
+path the stock loader resolved on hardware as `/universi/UNTITLED`, through a
+hook on all seven path taking file routines (`octamax/NOTES.md`, around line
+470). ems-octakit appends `"/kits3a.work"` to `0x40025230(0, 0)` and opens the
+result successfully (`ems-octakit/runtime/persistence.c` line 425, with the ABI
+equate in `runtime/abi.inc` line 486). Falsifier, and the one thing a port run
+would settle: load a project under `ot_emu` with a card image and dump the bytes
+at `0x100f8480` and `0x100f8378`. If the first byte is not `/`,
+`stems_make_path` must prepend one.
+
+**What Task 15 must do.** Build the path as
+`sprintf(buf, "%s/AUDIO/%s/T1.wav", 0x100f8480, name)`, or with the folder
+dropped if Task 7 finds no folder routine. Do not call `0x40025230`, and do not
+trim its result back to its last `/`. The plan's rule gives the same answer,
+because `0x40025230` always appends exactly one `/` and one name component, but
+it goes through a buffer that 45 other sites share, and it behaves differently
+when the project name is empty, where it appends `UNTITLED` rather than nothing.
+
+🟡 **Nothing locks `0x100f8480`.** No call site takes a mutex around it. The UI
+task can in principle rewrite it while the writer task is formatting. The window
+is the length of one sprintf, and the only writer is a set change, which the
+user cannot do while the sequencer is running, so the exposure is small.
+Falsifier: find a write to `0x100f8480` that is reachable during playback.
+
+🟡 **`0x800000a4` is not STEM REC's business.** STEM REC writes stems to the
+pool unconditionally, so it should ignore the AUD POOL and PROJ DIR setting.
+Recorded so that nobody wires it in by analogy with the stock save. Falsifier: a
+decision that stems should follow the setting, which is a design question, not a
+firmware one.
+
+### 5.9 The table Task 15 codes against ✅
+
+| routine | address | arguments | returns | preserves | blocks |
+|---|---|---|---|---|---|
+| clock read | `0x4001c4d8` | one longword, the field index | `%d0`, one BCD byte, zero extended | `%d2`-`%d7`, `%a2`-`%a6` | yes, a mutex |
+| BCD to binary | `0x4001c31c` | one longword, the byte | `%d0`, binary | `%d2`-`%d7`, `%a2`-`%a6` | no |
+| sprintf | `0x40013a08` | dest, format, varargs | `%d0`, unused here | `%d2`-`%d7`, `%a2`-`%a6` | no |
+| name builder | `0x400819fc` | none | `%d0`, pointer to `0x460faab4` | `%d2`-`%d7`, `%a2`-`%a6` | yes, through the clock |
+| project directory | `0x40025230` | set path or 0, project name or 0 | `%d0`, pointer to `0x460bf112` | `%d2`-`%d7`, `%a2`-`%a6` | no |
+| set mounted | `0x40025650` | set path | `%d0`, non-zero if mounted | `%d2`, `%d3` measured; rest not | 🟡 not measured |
+
+Every one is cdecl and the caller pops. Every one clobbers `%d0`, `%d1`, `%a0`
+and `%a1`.
+
+Two static buffers, each overwritten on every call to its owner: `0x460faab4`
+for the name, and `0x460bf112` for the project directory.
+
+### 5.10 Not measured under the port 🟡
+
+No project folder exists on this machine, so nothing here was executed. Four
+things a port run would settle, in the order they matter:
+
+1. **The bytes at `0x100f8480` and `0x100f8378` after a project load.** This
+   settles the leading slash question in 5.8, and confirms the set path is what
+   the file layer sees. Method: `ot_emu` with a card image, break after the
+   load, dump 64 bytes at each address.
+2. **One call of `0x400819fc` from a scratch task, and the string it leaves at
+   `0x460faab4`.** This confirms the field map end to end against the unit's own
+   clock, including index 4.
+3. **Whether the clock mutex is ever contended.** Watch `0x400009f4` with
+   `0x46c8c5f4` as its argument, and count the times it takes the blocking path.
+   If the answer is never, the writer task's clock read is free. If the answer
+   is often, the writer task should read the clock once per take rather than
+   once per file.
+4. **The iteration count of the poll loop at `0x4001c504`.** A high count means
+   the transfer is slow enough to matter inside a priority 1 task.
+
+### 5.11 Interface
+
+```asm
+| Read one field of the real time clock. ONE longword argument on the stack,
+| the field index. Returns that field's RAW BCD BYTE, zero extended, in %d0.
+| cdecl, the caller pops:
+|   pea index / jsr CLK_READ / addq.l #4,%sp
+| Preserves %d2-%d7 and %a2-%a6. Clobbers %d0, %d1, %a0, %a1.
+| ⚠️ IT TAKES A BLOCKING MUTEX (object 0x46c8c5f4, acquire 0x400009f4) and then
+| runs a four step DSPI transfer with interrupts ENABLED. So: call it from a
+| task, in supervisor mode, never from an interrupt handler, never from the
+| per-frame DSP hook, and never re-entrantly, because the mutex is not
+| recursive.
+.equ	CLK_READ,	0x4001c4d8
+
+| The field indices CLK_READ takes. Measured from the name builder's own calls
+| and from the HH:MM:SS sibling at 0x40081a7c.
+.equ	CLK_SEC,	1
+.equ	CLK_MIN,	2
+.equ	CLK_HOUR,	3
+.equ	CLK_DAY,	5
+.equ	CLK_MONTH,	6
+.equ	CLK_YEAR,	7	| TWO DIGITS. Nothing adds 2000 for a file name.
+
+| Convert one BCD byte to binary: (v >> 4) * 10 + (v & 15). One longword
+| argument, result in %d0. cdecl. Preserves %d2-%d7 and %a2-%a6.
+| ⚠️ It uses asrl on the whole longword. Feed it ONLY the zero extended byte
+| that CLK_READ returns.
+.equ	BCD2BIN,	0x4001c31c
+
+| "%02d%02d%02d-%02d%02d", 21 characters and a terminator. Its arguments in
+| order are year, month, day, hour, minute, all binary, so the result is
+| YYMMDD-HHMM. Referenced from exactly one site in the image.
+.equ	NAME_FMT,	0x400b77bb
+
+| sprintf(dest, fmt, ...). cdecl varargs, caller pops. Preserves %d2-%d7 and
+| %a2-%a6. ⚠️ NO LENGTH LIMIT. Size the destination yourself.
+.equ	SPRINTF,	0x40013a08
+
+| The stock recording name builder. NO arguments. Returns a pointer to its own
+| static buffer 0x460faab4 in %d0, holding YYMMDD-HHMM. Blocks, because it
+| calls CLK_READ five times.
+| ⚠️ The buffer is overwritten on every call. Copy the string out at once.
+| Use this OR build the name from CLK_READ directly. Both are recorded so that
+| a module can avoid depending on a routine it does not need.
+.equ	NAME_BUILD,	0x400819fc
+.equ	NAME_BUF,	0x460faab4
+
+| The CURRENT SET PATH, as a C string in place. This is the set folder, and it
+| is what stems_make_path must use. It carries no trailing '/'.
+| 🟡 It is believed to begin with '/'. See section 5.8 for the falsifier.
+.equ	SET_PATH,	0x100f8480
+
+| The CURRENT PROJECT NAME, as a C string in place. Empty means no project.
+.equ	PROJ_NAME,	0x100f8378
+
+| The project directory: "<set>/<project>", or "<set>/UNTITLED" when the
+| project name is empty. Two longword arguments, each 0 for the default:
+|   clr.l -(%sp) / clr.l -(%sp) / jsr PROJ_DIR / addq.l #8,%sp
+| Returns a pointer to the SHARED static buffer 0x460bf112 in %d0, and in %d0
+| ONLY. Does not block. Preserves %d2-%d7 and %a2-%a6.
+| ⚠️ 45 other sites share that buffer. STEM REC does not need this routine:
+| build from SET_PATH instead. It is recorded because the plan named it.
+.equ	PROJ_DIR,	0x40025230
+.equ	PROJ_DIR_BUF,	0x460bf112
+
+| Is a set mounted, with its AUDIO folder present? One argument, the set path.
+| Returns non-zero in %d0 if both the set path and "<set>/AUDIO" exist. A cheap
+| precondition before a take:
+|   pea SET_PATH / jsr SET_MOUNTED / addq.l #4,%sp / tst.l %d0
+.equ	SET_MOUNTED,	0x40025650
+
+| The stock save's path formats, for reference. STEM REC needs its own,
+| "%s/AUDIO/%s/T1.wav", because it writes a folder per take.
+.equ	PATH_FMT_POOL,	0x400b3a85	| "%s/AUDIO/%s.wav"
+.equ	PATH_FMT_PROJ,	0x400b3a95	| "%s/%s.wav"
+
+| The personal setting that picks between them: 0 is AUD POOL, 1 is PROJ DIR.
+| STEM REC IGNORES IT and always writes to the pool.
+.equ	REC_SAVE_LOC,	0x800000a4
+```
