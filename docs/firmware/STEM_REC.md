@@ -1936,10 +1936,84 @@ example. It creates a semaphore, then loops on it forever:
 `0x40000794` initialises the object with count 0, `0x400007a4` blocks on
 it, and `0x4001387c` does the work. There is no time in it.
 
-The census of blocking calls from outside the kernel is short and it says
-the same thing everywhere. Three reach `0x400007a4`, ten reach
-`0x40000818` and five reach `0x40000d00`. **Every one of the eighteen
-passes an object and nothing else.** ✅
+**What posts that semaphore** ✅, because a task that never wakes would
+prove nothing. A 32 bit scan of the image finds exactly three references
+to `0x46c7e0e2`: the `pea` in the init above, the `pea` in the wait
+above, and one more, at `0x40055cfe`. It is inside an interrupt handler:
+
+```
+40055cfe:	4879 46c7 e0e2 	pea 0x46c7e0e2
+40055d04:	4eb9 4000 0888 	jsr 0x40000888
+40055d0a:	7002           	moveq #2,%d0
+40055d0c:	13c0 fc07 4003 	moveb %d0,0xfc074003
+40055d12:	4cef 0703 0004 	moveml %sp@(4),%d0-%d1/%a0-%a2
+40055d18:	4fef 0018      	lea %sp@(24),%sp
+40055d1c:	4e73           	rte
+```
+
+`0x40000888` is the counting semaphore post. The handler begins at
+`0x40055cb8`, and its install is the same self checking pattern as
+section 4.3's:
+
+```
+40040478:	4879 4005 5cb8 	pea 0x40055cb8
+4004047e:	4878 0061      	pea 0x61
+40040482:	4eb9 4000 0d50 	jsr 0x40000d50
+40040488:	7003           	moveq #3,%d0
+4004048a:	13c0 fc04 8061 	moveb %d0,0xfc048061
+40040490:	7021           	moveq #33,%d0
+```
+
+`0x61 = 97 = 64 + 33`, and `0xfc048061` is INTC0's ICR33, set to level 3.
+So **the key repeat task is woken by INTC0 source 33, at interrupt level
+3**, and its period is that interrupt's, not the kernel's tick. ✅
+
+🟡 The handler looks periodic rather than one shot: it runs a countdown
+at `0x400c0cf0`, sending two queue messages and reloading the count with
+2 each time it reaches zero, and it acknowledges a peripheral at
+`0xfc074003` on the way out. **Falsifier:** a program counter watch on
+`0x40055cb8` under the port showing it entered once and never again.
+
+⚠️ This gives STEM REC nothing to reuse. The semaphore belongs to the key
+layer, and posting it would inject key repeats.
+
+**The census of blocking calls from outside the kernel** is short and it
+says the same thing everywhere.
+
+❌ **Retract the first version's counts, "three, ten and five, eighteen
+in all".** They counted only `jsr` to a literal address and missed every
+call made through an address register. The method that catches those:
+grep the linear disassembly for each primitive's address, which finds the
+`jsr` sites and also the `lea` and `moveal` instructions that load it into
+a register; then, for each register load, scan forward in the same
+function for `jsr %aN@` until that register is reloaded.
+
+| primitive | direct `jsr` | register loads | calls through them | total |
+|---|---|---|---|---|
+| `0x400007a4` | 0 | 3 | 4 | **4** |
+| `0x40000818` | 10 | 0 | 0 | **10** |
+| `0x40000d00` | 4 | 2 | 2 | **6** |
+
+The register loads and what they carry, all outside the kernel:
+
+| load | calls |
+|---|---|
+| `0x4001ee42`, `lea 0x400007a4,%a4` | `0x4001f076`, `0x4001f170` |
+| `0x4005592a`, `lea 0x400007a4,%a2` | `0x40055936` |
+| `0x40055950`, `lea 0x400007a4,%a3` | `0x40055962`, quoted above |
+| `0x4000554c`, `lea 0x40000d00,%a3` | `0x4000555e` |
+| `0x400921cc`, `lea 0x40000d00,%a4` | `0x400921de` |
+
+Two references are inside the kernel and are not calls from a task:
+`jsr %pc@(0x400007a4)` at `0x40000c0e`, in the kernel's own queue helper
+`0x40000c00`, and `lea %pc@(0x40000818),%a3` at `0x40000d10`, inside
+`0x40000d00` itself.
+
+**Twenty calls, and every one of them pushes exactly one longword, an
+object address.** ✅ Fourteen push it with `pea` on a literal. The other
+six, all in `0x40015xxx`, load a pointer from memory first, with
+`movel %a2@(10),%d0` or `movel 0x46c8c598,%d0`, and push that.
+**None passes a time.**
 
 ### 4.2 The three blocking primitives, and their objects ✅
 
@@ -1984,9 +2058,9 @@ parks the current task control block in `obj+4` and blocks. `obj+4` is
 **one slot, not a list**, so an object holds exactly one waiter and a
 second waiter overwrites the first. ✅
 
-**`0x40000d00`, a queue receive.** Three longwords. It loops on
-`0x40000818` against `obj+8` while the queue count at `obj+4` is zero,
-then pops one entry.
+**`0x40000d00`, a queue receive.** **One longword**, the object. It loops
+on `0x40000818` against `obj+8` while the queue count at `obj+4` is zero,
+then pops one entry and returns it in `%d0`.
 
 ```
 40000d00:	4fef fff4      	lea %sp@(-12),%sp
@@ -2002,6 +2076,47 @@ then pops one entry.
 40000d1c:	4aaa 0004      	tstl %a2@(4)
 40000d20:	67f4           	beqs 0x40000d16
 ```
+
+❌ **Retract "three longwords", which the first version of this section
+said.** The routine reserves 12 bytes and saves three registers into them
+before it reads an argument, so `%sp@(0)` through `%sp@(11)` hold `%d2`,
+`%a2` and `%a3`, `%sp@(12)` is the return address, and `%sp@(16)` is
+**the first and only argument**. The exit is symmetric and confirms the
+frame:
+
+```
+40000d44:	4cd7 0c04      	moveml %sp@,%d2/%a2-%a3
+40000d48:	4fef 000c      	lea %sp@(12),%sp
+40000d4c:	4e75           	rts
+```
+
+Everything else the routine touches is a **field of the object**, not a
+stack slot: `obj+4` the count, `obj+8` the event it blocks on, `obj+16`
+the index mask, `obj+20` the buffer and `obj+28` the read index.
+
+```
+40000d28:	222a 001c      	movel %a2@(28),%d1
+40000d2c:	206a 0014      	moveal %a2@(20),%a0
+40000d30:	2030 1c00      	movel %a0@(0,%d1:l:4),%d0
+40000d34:	5281           	addql #1,%d1
+40000d36:	c2aa 0010      	andl %a2@(16),%d1
+40000d3a:	2541 001c      	movel %d1,%a2@(28)
+40000d3e:	53aa 0004      	subql #1,%a2@(4)
+```
+
+The callers agree. Each of the four direct ones pushes one `pea`, takes
+the entry out of `%d0`, and pops four bytes:
+
+```
+4009204a:	4879 460d 17ee 	pea 0x460d17ee
+40092050:	4eb9 4000 0d00 	jsr 0x40000d00
+40092056:	2440           	moveal %d0,%a2
+40092058:	588f           	addql #4,%sp
+```
+
+The two that call through a register, `0x4000555e` and `0x400921de`, push
+one longword too and fold the four byte pop into a later multi-argument
+`lea %sp@(n),%sp`.
 
 It inherits `0x40000818`'s behaviour and adds no time.
 
