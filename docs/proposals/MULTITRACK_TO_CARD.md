@@ -2,7 +2,8 @@
 
 A technical proposition. It says what the firmware already does, what the
 numbers are, what nobody has measured, and the order in which to measure it.
-It is not a build plan and nothing here is on `PLAN.md`.
+It is not a build plan. Its first step, the STEM REC proof of concept, is
+item 8 of `PLAN.md`'s work order since 10 Sep 2026 (section 7 below).
 
 Confidence markers as in `docs/firmware/CHIP.md`: ✅ measured, 🟡 inferred with
 a falsifier stated, ❌ retracted. Where a number is arithmetic on measured
@@ -208,14 +209,30 @@ is real.
 
 - Not a change to the DSP. The stems are already delivered.
 - Not a change to the recorders. Option C does not touch them.
-- Not on `PLAN.md`. The remixer's work order stands; this is a survey for the
-  people who asked.
+- Not a plan for all eight tracks. Only the one-track proof of concept is on
+  `PLAN.md` (section 7); the rest of this page stays a survey for the people
+  who asked.
 - Not a claim that it works. Nothing has been built, flashed or timed.
   Measurement 1 is where that starts.
 
 ---
 
-## 7. Questions back to the thread
+## 7. First step: the STEM REC proof of concept
+
+Agreed with Yves on 10 Sep 2026, and specified in
+`docs/superpowers/specs/2026-09-10-stem-rec-poc-design.md`: option C for
+one track, T1, at 16-bit stereo, 15 seconds at most, started from a row in
+MAIN MENU > CONTROL. It answers two of the questions below for the POC:
+16-bit, and start with a menu row, stop with the sequencer.
+
+The TODO list after the POC is in that spec, section 12. It includes the
+remixer integration, which is deliberately left until the module works on
+hardware: a TUI row, CONTROL rows several modules can share, and `stems` in
+one image with Octakit and MIDI SCENES.
+
+---
+
+## 8. Questions back to the thread
 
 - Eight stereo files, eight mono pairs, or one 16-channel file?
 - 24-bit or 16-bit? The difference is a third of the card bandwidth.

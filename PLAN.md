@@ -139,6 +139,12 @@ port on 9 Sep 2026 unless marked.
    recorder running, under the port, before anyone places there.
 7. **octamax**, if and when Sam confirms with the author: the branch is
    ported and gated; it rebases.
+8. **STEM REC, the proof of concept.** T1 streamed to the card while the
+   sequencer plays, 16-bit, 15 s at most, from a CONTROL menu row
+   (`docs/superpowers/specs/2026-09-10-stem-rec-poc-design.md`, the first
+   step of `docs/proposals/MULTITRACK_TO_CARD.md`). Its remixer integration
+   (TUI row, shareable CONTROL rows, one image with Octakit and MIDI SCENES)
+   is a TODO in the spec's section 12, after the module holds on hardware.
 
 ## Gates and rules
 
