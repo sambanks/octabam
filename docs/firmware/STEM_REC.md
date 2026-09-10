@@ -4153,3 +4153,749 @@ executed. Four things a port run would settle, in the order they matter:
 .equ	FS_CWD,		0x460bae38
 .equ	FS_LOCK,	0x461079c0
 ```
+
+## 7. Two tasks on one card
+
+STEM REC's writer task and the stock storage task both call the buffered file
+API. Section 6 already measured one lock, `FS_LOCK` (`0x461079c0`), taken by
+the folder-creation routine. This section measures the same lock for open,
+write, seek and close, and asks whether it is enough.
+
+### 7.0 The answer, first ✅
+
+Yes, with the FAT lock. Open, the buffered write's flush, seek, and the
+buffered close's flush all reach a raw card-backend routine that takes
+`FS_LOCK` as its first act and holds it across the whole call, releasing on
+every exit path this section found. Two tasks calling OPEN, WRITE, SEEK or
+CLOSE at the same time cannot corrupt the FAT structures: the lock serialises
+them, the same way section 6 measured for folder creation.
+
+One thing changes the picture. The buffered layer stages every block of data
+through one shared global buffer, `0x4ecd3000`, before the raw call that takes
+the lock. That copy is unprotected. Two tasks whose buffered writes (or a
+write and a read) fill or flush at the same instant can corrupt each other's
+in-flight DATA, even though the FAT METADATA stays correct because the lock
+still serialises the actual sector operation. Section 7.5 has the evidence.
+This belongs in the flash notes as a real, if narrow, exposure: it needs two
+tasks racing on the SAME shared buffer, not merely two tasks holding open
+files.
+
+### 7.1 The four routines the brief names are a buffered layer, and none of them takes FS_LOCK ✅
+
+Open (`0x40016864`), the buffered write (`0x400166b8`), seek (`0x4001660c`)
+and the buffered close (`0x4001677c`) are a small stdio-like layer over the
+pointer-table backends section 6.2 already found. None of them pushes
+`0x461079c0`; each forwards to the pointer-table slot instead. Read whole,
+open:
+
+```
+40016864:	4fef fff4      	lea %sp@(-12),%sp
+40016868:	48d7 0c04      	moveml %d2/%a2-%a3,%sp@
+4001686c:	246f 0010      	moveal %sp@(16),%a2
+40016870:	266f 0018      	moveal %sp@(24),%a3
+40016874:	4a8a           	tstl %a2
+40016876:	675c           	beqs 0x400168d4
+40016878:	256f 001c 0004 	movel %sp@(28),%a2@(4)
+4001687e:	256f 0020 0008 	movel %sp@(32),%a2@(8)
+40016884:	42aa 0010      	clrl %a2@(16)
+40016888:	2f0b           	movel %a3,%sp@-
+4001688a:	2f2f 0018      	movel %sp@(24),%sp@-
+4001688e:	2079 46c8 242a 	moveal 0x46c8242a,%a0
+40016894:	4e90           	jsr %a0@
+```
+
+`0x46c8242a` is the same open slot section 6.8 measured, behind which is
+`0x4001b570`. `%a2` is the caller's file object (five fields are visible
+here: offset 4 the I/O buffer pointer, offset 8 the buffer size, offset 16
+cleared, and later offset 0 the handle and offset 20 the mode byte). `%a3` is
+the mode string; its first byte is stored into `%a2@(20)` a few lines further
+down, and the SAME byte, pushed again, becomes the raw open's second argument.
+
+The buffered write's flush and the buffered close's flush both forward to the
+same write slot, `0x46c82402` (`0x40018a84`, also measured in section 6.8):
+
+```
+40016700:	2f01           	movel %d1,%sp@-
+40016702:	2f2a 0004      	movel %a2@(4),%sp@-
+40016706:	4879 4ecd 3000 	pea 0x4ecd3000
+4001670c:	4e93           	jsr %a3@
+4001670e:	202a 0008      	movel %a2@(8),%d0
+40016712:	7209           	moveq #9,%d1
+40016714:	e2a0           	asrl %d1,%d0
+40016716:	2f00           	movel %d0,%sp@-
+40016718:	4879 4ecd 3000 	pea 0x4ecd3000
+4001671e:	2f12           	movel %a2@,%sp@-
+40016720:	2079 46c8 2402 	moveal 0x46c82402,%a0
+40016726:	4e90           	jsr %a0@
+```
+
+```
+400167f0:	4879 4ecd 3000 	pea 0x4ecd3000
+400167f6:	4eb9 4002 08d4 	jsr 0x400208d4
+400167fc:	2f02           	movel %d2,%sp@-
+400167fe:	4879 4ecd 3000 	pea 0x4ecd3000
+40016804:	2f12           	movel %a2@,%sp@-
+40016806:	2079 46c8 2402 	moveal 0x46c82402,%a0
+4001680c:	4e90           	jsr %a0@
+```
+
+Close also calls two more slots after the flush, `0x46c82436` (only on a
+successful write flush) and `0x46c82422` unconditionally, the second being
+the handle release:
+
+```
+4001683c:	2f12           	movel %a2@,%sp@-
+4001683e:	2079 46c8 2422 	moveal 0x46c82422,%a0
+40016844:	4e90           	jsr %a0@
+```
+
+Seek forwards to a fifth slot, `0x46c8243e` (`0x4001858c`), with a tail call
+rather than a call-and-return:
+
+```
+40016678:	2f42 0010      	movel %d2,%sp@(16)
+4001667c:	2f52 000c      	movel %a2@,%sp@(12)
+40016680:	2279 46c8 243e 	moveal 0x46c8243e,%a1
+40016686:	241f           	movel %sp@+,%d2
+40016688:	245f           	moveal %sp@+,%a2
+4001668a:	4ed1           	jmp %a1@
+```
+
+The slot table itself was read from the card-mode installer, `0x40014636`
+onward (the argument-1 branch of `0x4001451c`, section 6.2's installer), the
+same way section 6.2 read `0x46c8240a`. The five slots this section needs, all
+confirmed by their address appearing as the `movel`'d immediate at the
+matching `.equ` line:
+
+| slot | card backend |
+|---|---|
+| `0x46c8242a` (open) | `0x4001b570` |
+| `0x46c82402` (write) | `0x40018a84` |
+| `0x46c8243e` (seek) | `0x4001858c` |
+| `0x46c82436` (finalize on write close) | `0x40018788`, not disassembled here |
+| `0x46c82422` (release handle) | `0x40019900`, not disassembled here |
+
+None of the four wrapper bodies (`0x40016864`-`0x400168e6`, `0x400166b8`-
+`0x40016758`, `0x4001660c`-`0x40016694`, `0x4001677c`-`0x40016864`) contains
+the byte sequence for `0x461079c0`, read from each routine's full
+disassembly above. The lock is entirely the raw backends' business.
+
+### 7.2 The raw backends: one acquire, the lock held across the whole call, release on every exit ✅
+
+**Open**, `0x4001b570`-`0x4001b722`. Section 6.8 already quoted the acquire;
+repeated here because this section's claim is about the WHOLE routine, not
+just the first instruction:
+
+```
+4001b57c:	4879 4610 79c0 	pea 0x461079c0
+4001b582:	4eb9 4000 09f4 	jsr 0x400009f4
+4001b588:	588f           	addql #4,%sp
+4001b58a:	4a80           	tstl %d0
+4001b58c:	6606           	bnes 0x4001b594
+4001b58e:	74fc           	moveq #-4,%d2
+4001b590:	6000 0176      	braw 0x4001b708
+```
+
+`0x400009f4` returns 0 when the mutex could not be taken (this is section
+5.2's blocking acquire; the 0 case is a defensive check, not a timeout, since
+`0x400009f4` blocks rather than fails). If it returns non-zero the routine
+falls through holding the lock, and calls the shared path resolver
+(`0x4001aa70`, section 6.6) and, on the create path, the directory-entry
+allocator (`0x4001a1f8`, the same routine section 6.5 named but did not
+disassemble), both WHILE HOLDING the lock:
+
+```
+4001b5b2:	4eba f4bc      	jsr %pc@(0x4001aa70)
+...
+4001b5da:	4eba ec1c      	jsr %pc@(0x4001a1f8)
+```
+
+Four release sites, each pairing `pea 0x461079c0` with `jsr 0x40000ab4`
+(section 5.2's release) before returning:
+
+```
+4001b5ee:	4879 4610 79c0 	pea 0x461079c0
+4001b5f4:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b5fa:	74f4           	moveq #-12,%d2
+4001b5fc:	6000 0108      	braw 0x4001b706
+```
+```
+4001b606:	4879 4610 79c0 	pea 0x461079c0
+4001b60c:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b612:	74ee           	moveq #-18,%d2
+4001b614:	6000 00f0      	braw 0x4001b706
+```
+```
+4001b6fa:	4879 4610 79c0 	pea 0x461079c0
+4001b700:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b706:	588f           	addql #4,%sp
+4001b708:	2002           	movel %d2,%d0
+4001b70a:	4cd7 041c      	moveml %sp@,%d2-%d4/%a2
+4001b70e:	4fef 0148      	lea %sp@(328),%sp
+4001b712:	4e75           	rts
+```
+```
+4001b714:	4879 4610 79c0 	pea 0x461079c0
+4001b71a:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001b720:	74ef           	moveq #-17,%d2
+4001b722:	60e2           	bras 0x4001b706
+```
+
+Every exit checked: the immediate acquire-fail path (no release, correct,
+because the lock was never taken) plus these four, and nothing between the
+acquire and any of the four releases returns without going through one of
+them. ✅ **Open holds `FS_LOCK` across the WHOLE call**, not narrowly around a
+sector-I/O step: path resolution and directory-entry allocation both happen
+while it is held.
+
+**Write**, `0x40018a84`. Same shape, acquire first:
+
+```
+40018a98:	4879 4610 79c0 	pea 0x461079c0
+40018a9e:	4eb9 4000 09f4 	jsr 0x400009f4
+40018aa4:	588f           	addql #4,%sp
+40018aa6:	4a80           	tstl %d0
+40018aa8:	6606           	bnes 0x40018ab0
+40018aaa:	70fc           	moveq #-4,%d0
+40018aac:	6000 0386      	braw 0x40018e34
+```
+
+Five release sites, each `pea 0x461079c0` / `jsr 0x40000ab4`, four failures
+and the success exit:
+
+```
+40018abc:	4879 4610 79c0 	pea 0x461079c0
+40018ac2:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018ac8:	70f5           	moveq #-11,%d0
+40018aca:	6000 0366      	braw 0x40018e32
+```
+```
+40018aee:	4879 4610 79c0 	pea 0x461079c0
+40018af4:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018afa:	70fd           	moveq #-3,%d0
+40018afc:	6000 0334      	braw 0x40018e32
+```
+```
+40018b30:	4879 4610 79c0 	pea 0x461079c0
+40018b36:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018b3c:	70e8           	moveq #-24,%d0
+40018b3e:	6000 02f2      	braw 0x40018e32
+```
+```
+40018d92:	4879 4610 79c0 	pea 0x461079c0
+40018d98:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018d9e:	70e7           	moveq #-25,%d0
+40018da0:	6000 0090      	braw 0x40018e32
+```
+```
+40018e1c:	4879 4610 79c0 	pea 0x461079c0
+40018e22:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018e28:	71b9 4610 7990 	mvzb 0x46107990,%d0
+40018e2e:	7209           	moveq #9,%d1
+40018e30:	e3a8           	lsll %d1,%d0
+40018e32:	588f           	addql #4,%sp
+```
+
+`-24` matches the folder routine's "no volume mounted" code (section 6.5's
+table), read from the same `tstl 0x460bae2c` idiom. Between the acquire and
+the final release, write calls a cluster allocator PC-relative
+(`0x4001754c`, the write-side sibling of the folder routine's allocator) and,
+further on, an indirect call through a per-descriptor function-pointer table:
+
+```
+40018b42:	4eba ea08      	jsr %pc@(0x4001754c)
+...
+40018dc8:	4e90           	jsr %a0@
+```
+
+`%a0` there is loaded through two indirections, `moveal 0x4694886e,%a0` then
+`moveal %a0@(4),%a0`. 🟡 This was not traced to a name; its position (between
+the cluster allocator and the final directory-entry bookkeeping, all still
+inside the lock) is consistent with the actual sector write, but that is
+inferred, not confirmed. Falsifier: disassemble the target and confirm it
+reaches the ATA WRITE SECTORS handler section EMU.md names (`0x40014c48`).
+✅ What IS confirmed: nothing between the acquire (`0x40018a98`) and the five
+releases returns without releasing, so write also holds `FS_LOCK` across its
+whole call, cluster allocation and the indirect call both included.
+
+**Seek**, `0x4001858c`. Same acquire-first shape:
+
+```
+4001859c:	4879 4610 79c0 	pea 0x461079c0
+400185a2:	4eb9 4000 09f4 	jsr 0x400009f4
+400185a8:	588f           	addql #4,%sp
+400185aa:	4a80           	tstl %d0
+400185ac:	6606           	bnes 0x400185b4
+400185ae:	70fc           	moveq #-4,%d0
+400185b0:	6000 01cc      	braw 0x4001877e
+```
+
+Three release sites found in the disassembled range:
+
+```
+400185c0:	4879 4610 79c0 	pea 0x461079c0
+400185c6:	4eb9 4000 0ab4 	jsr 0x40000ab4
+400185cc:	70f5           	moveq #-11,%d0
+400185ce:	6000 01ac      	braw 0x4001877c
+```
+```
+400185ec:	4879 4610 79c0 	pea 0x461079c0
+400185f2:	4eb9 4000 0ab4 	jsr 0x40000ab4
+400185f8:	70fd           	moveq #-3,%d0
+400185fa:	6000 0180      	braw 0x4001877c
+```
+```
+40018610:	4879 4610 79c0 	pea 0x461079c0
+40018616:	4eb9 4000 0ab4 	jsr 0x40000ab4
+4001861c:	70fe           	moveq #-2,%d0
+4001861e:	6000 015c      	braw 0x4001877c
+```
+
+🟡 **The success exit was not reached.** Seek's body continues past
+`0x400186c6` into position-update work not disassembled here, so this
+section did not read its final release. Falsifier: disassemble
+`0x4001858c` through its `rts` and confirm a fourth `pea 0x461079c0` /
+`jsr 0x40000ab4` pair guards the success path the same way open's and
+write's do. Given the consistent shape of the other two, and that seek has
+no reason to hold the lock past updating its own position field, this is
+treated as the same pattern, not as measured.
+
+Open (`0x4001b570`), write (`0x40018a84`) and seek (`0x4001858c`) are each
+named by exactly one `jsr` in the whole image, per a linear-objdump grep of
+each address: their own label line, and nothing else. ✅ The pointer-table
+slot is the ONLY way to reach them, so the buffered wrapper is the sole path
+in, and `FS_LOCK` guards every reachable route to the FAT-touching work.
+
+### 7.3 The ATA lock is a separate, lower, non-blocking lock, and it never appears in the FAT-layer code ✅ with one 🟡
+
+The ATA lock EMU.md names, `0x460bae18`, is not the same object as `FS_LOCK`.
+It is a try-lock, not a blocking mutex: it masks interrupts, tests-and-sets
+the word, and on failure returns instead of blocking:
+
+```
+400150ac:	40c1           	movew %sr,%d1
+400150ae:	46fc 2700      	movew #9984,%sr
+400150b2:	2039 460b ae18 	movel 0x460bae18,%d0
+400150b8:	6704           	beqs 0x400150be
+400150ba:	4280           	clrl %d0
+400150bc:	6008           	bras 0x400150c6
+400150be:	7001           	moveq #1,%d0
+400150c0:	23c0 460b ae18 	movel %d0,0x460bae18
+400150c6:	46c1           	movew %d1,%sr
+400150c8:	4a80           	tstl %d0
+400150ca:	6700 01c4      	beqw 0x40015290
+```
+
+`refs.sh 0x460bae18` finds 17 hits, all of them between `0x400150b4` and
+`0x4001611c`. ✅ That whole range is the ATA driver EMU.md describes (the PIO
+handlers it names, `0x40014b94`, `0x40014c48`, `0x400159bc`, sit just below
+it). None of the 17 falls inside any of the FAT-layer addresses this section
+or section 6 disassembled: not the four wrappers, not open, write, seek, or
+folder-create.
+
+🟡 **Nesting is inferred, not traced.** This section confirmed the ATA lock's
+code never appears in the FAT-layer routines by ADDRESS, and separately that
+write's raw backend makes an indirect call, still holding `FS_LOCK`, to
+something not identified by name (7.2). It did not trace that indirect call
+down to `0x400150ac` itself. The architectural picture, consistent with
+EMU.md's description of the ATA layer as a register-pushing driver with no
+knowledge of paths or files, is that `FS_LOCK` is the outer lock and the ATA
+lock is inner, taken only during the sector transfer a FAT routine already
+holds `FS_LOCK` to perform. Falsifier: a port run with a write-watch on both
+locks during one write, showing the ATA lock is never held while `FS_LOCK` is
+free, and never taken by anything that is not already inside a `FS_LOCK`
+critical section.
+
+### 7.4 The current directory is read, never written, by open, write or seek ✅
+
+Section 6.7 already found the whole image's five writers of `FS_CWD`
+(`0x460bae38`): `0x40016f48`, `0x40017cfa`, `0x40017de8`, `0x4001aabe`, and
+`0x4001b540`. None of those five addresses falls inside open
+(`0x4001b570`-`0x4001b722`), write (`0x40018a84`-`0x40018e34`) or seek
+(`0x4001858c`-`0x40018700`, the range disassembled). ✅ The one READ of
+`FS_CWD`, `0x4001aabe`, is inside the shared path resolver, and section 7.2
+shows the resolver is only reached from open while `FS_LOCK` is held. So the
+current directory is touched by these three routines exactly the way the
+folder routine touches it: read under the lock, never written.
+
+### 7.5 The shared sector staging buffer is touched OUTSIDE the lock 🟡
+
+Both flushes quoted in 7.1 copy the caller's data into ONE fixed address,
+`0x4ecd3000`, through a plain memcpy, BEFORE the call that takes `FS_LOCK`:
+
+```
+40016706:	4879 4ecd 3000 	pea 0x4ecd3000
+4001670c:	4e93           	jsr %a3@
+```
+
+`%a3` was loaded earlier in the same routine as `lea 0x400208d4,%a3`
+(section's write-flush quote in 7.1), so the call is `0x400208d4`, whole:
+
+```
+400208d4:	4fef fff0      	lea %sp@(-16),%sp
+400208d8:	48d7 003c      	moveml %d2-%d5,%sp@
+400208dc:	226f 0014      	moveal %sp@(20),%a1
+400208e0:	206f 0018      	moveal %sp@(24),%a0
+400208e4:	2a2f 001c      	movel %sp@(28),%d5
+400208e8:	7010           	moveq #16,%d0
+400208ea:	600c           	bras 0x400208f8
+400208ec:	4cd0 001e      	moveml %a0@,%d1-%d4
+400208f0:	d1c0           	addal %d0,%a0
+400208f2:	48d1 001e      	moveml %d1-%d4,%a1@
+400208f6:	d3c0           	addal %d0,%a1
+400208f8:	9a80           	subl %d0,%d5
+400208fa:	6cf0           	bges 0x400208ec
+400208fc:	4cd7 003c      	moveml %sp@,%d2-%d5
+40020900:	4fef 0010      	lea %sp@(16),%sp
+40020904:	4e75           	rts
+```
+
+✅ **This is memcpy(dest, src, n)**, 16 bytes per iteration. cdecl argument
+order (caller pushes right to left) puts `0x4ecd3000` in `%a1` (dest) and the
+caller's own buffer, `%a2@(4)`, in `%a0` (src). So the write-flush and
+close-flush paths copy the CALLER's buffered bytes INTO the shared address
+`0x4ecd3000` before the raw write backend (which takes `FS_LOCK` as its first
+act, section 7.2) reads that same address back out to build the sector
+payload:
+
+```
+40016718:	4879 4ecd 3000 	pea 0x4ecd3000
+4001671e:	2f12           	movel %a2@,%sp@-
+40016720:	2079 46c8 2402 	moveal 0x46c82402,%a0
+40016726:	4e90           	jsr %a0@
+```
+
+✅ **`refs.sh 0x4ecd3000` finds 12 hits**, clustered in two ranges:
+`0x400162d0`-`0x40016310` and `0x4001648c`-`0x400165c0` (both outside the
+routines this section disassembled, and by their position between open and
+seek in the address map, likely the buffered READ's equivalent fill step,
+not measured here), plus the four sites already shown, two in write-flush
+(`0x40016708`, `0x4001671a`) and two in close-flush (`0x400167f2`,
+`0x40016800`).
+
+🟡 **The exposure.** The memcpy into `0x4ecd3000` happens BEFORE `FS_LOCK` is
+acquired (the acquire is inside the raw write backend, called after the
+memcpy returns). If two tasks both reach a write-flush or close-flush at
+overlapping instants, whichever finishes its memcpy last overwrites the
+other's staged bytes before either takes the lock, and the raw backend that
+runs first will write the WRONG task's data to its own file's sectors. This
+follows from the code shape; it has not been observed, because nothing in
+this document's reading found two tasks that are known to call the buffered
+write path concurrently today. Falsifier: a port run with a write-watch on
+`0x4ecd3000` while the writer task's flush and the storage task's own
+buffered I/O (if it uses this same layer, not yet confirmed) are scheduled to
+interleave.
+
+### 7.6 Per-caller state does not collide ✅
+
+Open writes exactly two kinds of thing outside its own locals: the caller's
+file object (`%a2`, the pointer passed as its first argument) and, inside
+the raw backend, under `FS_LOCK`, the file layer's own open-file table at
+`0x46c8657e` / `0x46c86592` / `0x46c8659e` (indexed by handle, quoted in
+section 7.2's open-backend excerpt via `0x46c8657e` arithmetic; also visible
+in write's and seek's descriptor lookups, which use the same base). It never
+writes to a fixed global buffer address of its own: the I/O buffer address
+comes from the CALLER's argument, stored into `%a2@(4)` at
+`0x40016878` (7.1's open quote).
+
+The stock sample save supplies its own 64 KB buffer, `0x460263e0`, as that
+argument:
+
+```
+40084e02:	2f3c 0001 0000 	movel #65536,%sp@-
+40084e08:	4879 4602 63e0 	pea 0x460263e0
+40084e0e:	4879 400b 328b 	pea 0x400b328b
+40084e14:	4879 4603 63e0 	pea 0x460363e0
+40084e1a:	260e           	movel %fp,%d3
+40084e1c:	0683 ffff ffe2 	addil #-30,%d3
+40084e22:	2f03           	movel %d3,%sp@-
+40084e24:	4eb9 4001 6864 	jsr 0x40016864
+```
+
+✅ **This corrects an ambiguity in how section 5.6 was read.** `0x460363e0`
+is the PATH argument (built by the `sprintf`-like call at `0x40084dee` just
+above), not the buffer; `0x460263e0` is the buffer, pushed with its size
+(`0x10000`) as the two arguments the wrapper stores into `%a2@(4)` and
+`%a2@(8)`. The file object itself is `%fp@(-30)`, a stack-local 30-plus byte
+structure inside the caller's own frame, not a fixed address at all.
+
+So STEM REC's own file object and its own I/O buffer (spec section 6), as
+long as neither is `0x460263e0` and neither aliases the stock save's stack
+frame, do not collide with the stock save's state. The only addresses every
+caller of this layer shares are the open-file table (written only under
+`FS_LOCK`, 7.2) and the staging buffer `0x4ecd3000` (written outside it,
+7.5).
+
+### 7.7 Not measured under the port 🟡
+
+No project folder exists on this machine. Four things a port run would
+settle, in the order they matter:
+
+1. **Seek's success-path release**, 7.2's one open question.
+2. **The write backend's indirect call at `0x40018dc8`**, to confirm it
+   reaches the ATA WRITE SECTORS handler and takes the ATA lock while
+   `FS_LOCK` is held (7.3).
+3. **Whether the stock storage task's sample streaming uses this SAME
+   buffered layer**, or a private path that never touches `0x4ecd3000`. If it
+   is private, the 7.5 exposure does not apply between STEM REC and the
+   storage task specifically, only between two buffered-API callers, which
+   may never both exist at once in the stock firmware.
+4. **A scheduling trace of the writer task's flush against the storage
+   task's own I/O**, to see whether they can actually interleave on
+   `0x4ecd3000` given the two tasks' priorities (1 and 5) and the kernel's
+   preemption (section 4).
+
+### 7.8 What follows for the design
+
+Two tasks calling OPEN, WRITE, SEEK or CLOSE concurrently is safe for the
+FAT structures: `FS_LOCK` serialises every routine that touches them, held
+across the whole call, not narrowly around sector I/O. The design proceeds.
+The flash notes should carry the 7.5 exposure (the shared staging buffer,
+`0x4ecd3000`, is unprotected) as a known risk, first flash on a spare card, so
+that in the unlikely event two buffered-I/O flushes truly interleave, the
+failure is a corrupted stem or corrupted stock sample data, not a wedged FAT
+mutex or a hung card.
+
+## 8. Is a card mounted
+
+### 8.0 The answer, first ✅
+
+`0x460d1cb8` is a LONGWORD. Every one of its nine accesses in the image uses
+a 4-byte form (`movel`, `clrl` or `cmpl`); none uses a byte or word form. It
+is written 0 (not mounted, or just unmounted), 1 (mounted as an ATA card) or
+2 (believed USB disk mode, section 6.2's 🟡, now corroborated below). No
+hardware card-removal path was found: the only writer of 0 at runtime is a
+software unmount sequence, reached from the boot sequence and from at least
+one menu action, never from an interrupt or a poll. Task 13's action should
+use `tst.l`.
+
+### 8.1 The size: longword, from every access's own width ✅
+
+`refs.sh 0x460d1cb8` (sanity-checked against the known 33-hit and 113-hit
+counts for two other addresses first, per the preamble) returns 9 hits. A
+linear-objdump grep for the same address independently returns 9 lines, so
+none of the 9 is a register-indirect access refs.sh would miss (the preamble
+names this as a risk for other addresses; here the two methods agree). Each
+hit resolves to the instruction starting 2 bytes earlier:
+
+| address | instruction |
+|---|---|
+| `0x40032384` | `movel 0x460d1cb8,%d0` |
+| `0x4003ec30` | `cmpl 0x460d1cb8,%d0` |
+| `0x40061654` | `clrl 0x460d1cb8` |
+| `0x400616d4` | `movel %d0,0x460d1cb8` |
+| `0x400616fc` | `movel %d0,0x460d1cb8` |
+| `0x40061726` | `clrl 0x460d1cb8` |
+| `0x40061740` | `clrl 0x460d1cb8` |
+| `0x4006176c` | `movel %d0,0x460d1cb8` |
+| `0x40061f8c` | `cmpl 0x460d1cb8,%d0` |
+
+✅ `movel`, `clrl` and `cmpl` are all longword forms on this core. No `moveb`,
+`clrb`, `cmpb`, `movew`, `clrw` or `cmpw` form appears anywhere against this
+address. `tst.l CARD_MOUNTED` is the correct test.
+
+### 8.2 The writers, and the values ✅
+
+Two routines write it, both reached only through the pointer-table pattern
+this document has already seen elsewhere (a literal `jsr` or a `lea`-then-
+`jsr %aN@`): `0x40061648`, which takes one argument, and `0x40061740`, which
+takes none.
+
+`0x40061648`, whole:
+
+```
+40061648:	4fef fff4      	lea %sp@(-12),%sp
+4006164c:	48d7 0c04      	moveml %d2/%a2-%a3,%sp@
+40061650:	202f 0010      	movel %sp@(16),%d0
+40061654:	42b9 460d 1cb8 	clrl 0x460d1cb8
+4006165a:	7201           	moveq #1,%d1
+4006165c:	b280           	cmpl %d0,%d1
+4006165e:	667e           	bnes 0x400616de
+40061660:	1039 fc0a 4039 	moveb 0xfc0a4039,%d0
+40061666:	44c0           	movew %d0,%ccr
+40061668:	6b00 00c8      	bmiw 0x40061732
+4006166c:	4eb9 4001 4a94 	jsr 0x40014a94
+...
+400616d0:	4e90           	jsr %a0@
+400616d2:	7001           	moveq #1,%d0
+400616d4:	23c0 460d 1cb8 	movel %d0,0x460d1cb8
+400616da:	4200           	clrb %d0
+400616dc:	6056           	bras 0x40061734
+400616de:	7202           	moveq #2,%d1
+400616e0:	b280           	cmpl %d0,%d1
+400616e2:	6622           	bnes 0x40061706
+400616e4:	42a7           	clrl %sp@-
+400616e6:	4eb9 4001 bdb4 	jsr 0x4001bdb4
+400616ec:	588f           	addql #4,%sp
+400616ee:	4a80           	tstl %d0
+400616f0:	6d40           	blts 0x40061732
+400616f2:	42a7           	clrl %sp@-
+400616f4:	4eb9 4001 451c 	jsr 0x4001451c
+400616fa:	7002           	moveq #2,%d0
+400616fc:	23c0 460d 1cb8 	movel %d0,0x460d1cb8
+40061702:	4200           	clrb %d0
+40061704:	6028           	bras 0x4006172e
+40061706:	4eb9 4001 61dc 	jsr 0x400161dc
+4006170c:	42a7           	clrl %sp@-
+4006170e:	4eb9 4001 4960 	jsr 0x40014960
+40061714:	4eb9 4001 474c 	jsr 0x4001474c
+4006171a:	4eb9 4001 61cc 	jsr 0x400161cc
+40061720:	42b9 460d 16cc 	clrl 0x460d16cc
+40061726:	42b9 460d 1cb8 	clrl 0x460d1cb8
+4006172c:	4280           	clrl %d0
+```
+
+✅ **Always clears first, then dispatches on its one argument.** `0x460d1cb8`
+is cleared unconditionally at entry (`0x40061654`), before the argument is
+even tested, so the word reads 0 for the whole duration of every call to this
+routine. Then: argument 1 falls through into an ATA IDENTIFY sequence
+(`0x40014a94`, matching EMU.md's description of the mount sequence) and, on
+success, writes 1 (`0x400616d4`). Argument 2 calls `0x4001bdb4` and, if it
+returns non-negative, calls the STUB-table installer `0x4001451c` with 0
+(section 6.2: "the zero-argument backend is a stub set") and writes 2
+(`0x400616fc`). Any OTHER argument (including the boot call's literal 0,
+below) falls to `0x40061706`: it calls the teardown at `0x40014960` and the
+unmount-table installer `0x4001474c` (the SAME pair section 6.2 already
+flagged as "0x40061714, right after the teardown at 0x40014960 ... believed
+to be the unmount table"), then clears `0x460d16cc` and `0x460d1cb8`
+explicitly (`0x40061726`, redundant with the entry `clrl` but present) and
+returns 0.
+
+🟡 **Argument 2 is corroborated, not directly proven, as USB disk mode.**
+Section 6.2 already marked this 🟡. New evidence here: the ONLY caller of
+`0x40061648` with a literal 2 is in the boot sequence's fallback (8.3), and
+the SECOND writer routine (below) is reached exclusively from a handler whose
+own confirm-dialog string is `"USB DISK MODE"` (read from the image at
+`0x400b5844`). Falsifier unchanged from section 6.2: read `0x460d1cb8` under
+the port in both states.
+
+`0x40061740`, the second writer, no argument, called only when the word
+already reads 1:
+
+```
+40061740:	42b9 460d 1cb8 	clrl 0x460d1cb8
+40061746:	4eb9 4001 61dc 	jsr 0x400161dc
+4006174c:	2f39 460d 16cc 	movel 0x460d16cc,%sp@-
+40061752:	4eba fe74      	jsr %pc@(0x400615c8)
+40061756:	588f           	addql #4,%sp
+40061758:	41f9 4001 61cc 	lea 0x400161cc,%a0
+4006175e:	4a80           	tstl %d0
+40061760:	6706           	beqs 0x40061768
+40061762:	4e90           	jsr %a0@
+40061764:	70ff           	moveq #-1,%d0
+40061766:	4e75           	rts
+40061768:	4e90           	jsr %a0@
+4006176a:	7001           	moveq #1,%d0
+4006176c:	23c0 460d 1cb8 	movel %d0,0x460d1cb8
+40061772:	4200           	clrb %d0
+40061774:	4e75           	rts
+```
+
+✅ Same pattern: clear first (`0x40061740`), re-verify, then set back to 1 on
+success (`0x4006176c`) or leave it at 0 and return -1 on failure. This is a
+re-check, not a fresh mount: it is only reached from two call sites, both
+guarded by "the word already reads 1" (8.3).
+
+### 8.3 The callers, and what they say about removal ✅ with two 🟡
+
+`0x40061648` has three callers in the whole image (a linear-objdump grep for
+its address returns four lines: its own label plus these three):
+
+- **`0x40061c1c`-`0x40061c22`, the boot sequence, argument literal 0**:
+  `clrl %sp@- / lea %pc@(0x40061648),%a2 / jsr %a2@`. This is the FIRST call
+  in the image's boot path (after three subsystem-init calls with no
+  arguments), and its argument (0) is neither 1 nor 2, so it takes the
+  unmount-table branch: `0x460d1cb8` starts, and after this call remains, at
+  0.
+- **The same boot block, argument 2, conditionally**: after the mode-0 call
+  returns, the ATA host status byte (`0xfc0a4039`) is tested; if it shows a
+  fault (`bpls` not taken) AND a personal setting `0x80000088` is non-zero,
+  a second call follows: `pea 0x2 / jsr %a2@` (same `%a2`, still
+  `0x40061648`). This is the boot-time USB-mode fallback when no ATA card
+  answers.
+- **`0x40061f8e`, a lazy-mount gate, argument 1, conditionally**:
+  `cmpl 0x460d1cb8,%d0` (`%d0` = 1) `/ beqs +0xa / pea 0x1 / jsr %pc@(...)`.
+  This calls mode 1 ONLY when the word does not already read 1, so it never
+  writes 0 or 2 itself; it is a read-then-maybe-mount, not a removal path.
+
+`0x40061740` has two callers, both guarded the same way as `0x40061f8e`
+above (read the word, compare to 1, call only if equal):
+
+- **`0x4006bac4`**, inside a routine that first checks `0x40032384()` (the
+  bare accessor quoted in 8.1's table): `jsr 0x40032384 / ... / cmpl %d0,%d1
+  (%d1=1) / bnes +6 / jsr 0x40061740`. 🟡 What triggers this routine was not
+  traced past this point; falsifier: a port run tracing its caller.
+- **`0x4007ec12`**, inside a handler whose own confirm-dialog string reads
+  `"USB DISK MODE"` (`0x400b5844`, found by reading the bytes at that
+  address): the handler starts a subsystem (`0x40055d20`), clears an
+  unrelated flag (`0x460e76a0`), then does the same
+  `jsr 0x40032384 / cmpl / bnes / jsr 0x40061740` gate.
+
+🟡 **No card-removal or media-detect caller was found.** The census above is
+every caller of both writers, from a linear-objdump grep (which catches
+register-indirect calls the preamble warns refs.sh alone would miss; the boot
+call to mode 0 is exactly such a case, `lea %pc@(0x40061648),%a2` then
+`jsr %a2@`). None of the five call sites is inside an interrupt handler or a
+polling loop; all five are boot-sequence or menu/dialog code. The stock
+firmware, as measured here, does not appear to auto-detect a card being
+pulled while mounted: `0x460d1cb8` would stay 1 until the next call that
+clears it, and none of those calls is unconditional at runtime. **Falsifier,
+and the one thing that matters most for the flash notes:** a port run that
+mounts a card, then removes it without any UI action, and reads
+`0x460d1cb8` before the next menu action. If it still reads 1, this is
+confirmed, and STEM REC's mounted check (Task 13) can pass on a card that
+was just pulled.
+
+### 8.4 What follows for the design
+
+The mounted check is real, and cheap: `tst.l CARD_MOUNTED` before arming,
+exactly as the brief's interface line already assumes. Its blind spot is
+mid-session removal, not first-mount: nothing found here clears the word on
+a physical pull, only on the next explicit unmount call. This does not
+change Task 13's action (there is no cheaper or more complete static check
+available), but it belongs in the flash notes next to the FS_LOCK risk from
+section 7: a card pulled mid-take will not be caught by this check, and the
+failure mode is whatever the write backend's FAT-mutex path does when the
+ATA layer stops answering (not measured here; section 7.3's falsifier
+list applies).
+
+### 8.5 Not measured under the port 🟡
+
+No project folder exists on this machine. Three things a port run would
+settle, in the order they matter:
+
+1. **`0x460d1cb8` read after a real removal**, 8.3's falsifier, the one that
+   decides whether the crash-safety picture needs a stronger check than
+   `tst.l CARD_MOUNTED`.
+2. **`0x460d1cb8` in both the 1 and 2 states**, to settle whether 2 really is
+   USB disk mode (8.2's 🟡), by comparing against the port's own USB-mode
+   trigger if one exists.
+3. **What `0x40061648`'s trigger for argument 2 actually reads** at
+   `0x80000088`, to confirm it is the personal setting believed here, not
+   something else that happens to be non-zero at the same boot point.
+
+### 8.6 Interface
+
+```asm
+| Is a card mounted? LONGWORD. 0 = not mounted (boot default, and the state
+| after every unmount). 1 = mounted as an ATA card. 2 = believed USB disk
+| mode (🟡, section 8.2). Written only by 0x40061648(mode) and by
+| 0x40061740's re-check; both are reached only through boot, a lazy-mount
+| gate, or a menu action (section 8.3). NO CARD-REMOVAL WRITER was found:
+| this word can stay 1 after a physical pull. Test with tst.l, not tst.b.
+|   tst.l	CARD_MOUNTED
+|   beq	not_mounted
+.equ	CARD_MOUNTED,	0x460d1cb8
+.equ	CARD_MOUNTED_NONE,	0	| not mounted, or just unmounted
+.equ	CARD_MOUNTED_CARD,	1	| mounted as an ATA card
+.equ	CARD_MOUNTED_USB,	2	| 🟡 believed USB disk mode, not directly proven
+
+| The FAT layer's one lock, already equated in section 6 as FS_LOCK. Open,
+| the buffered write's flush, seek and the folder routine (section 6) all
+| take it as their first act and hold it across their whole call (section
+| 7.2). Two tasks calling the buffered file API concurrently are safe for
+| the FAT structures because of this lock.
+| ⚠️ NOT covered by this lock: the shared sector staging buffer FS_STAGE_BUF
+| (section 7.5), touched by a plain memcpy before the lock is taken.
+.equ	FS_STAGE_BUF,	0x4ecd3000	| shared, UNPROTECTED sector staging buffer
+```
