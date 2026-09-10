@@ -58,8 +58,9 @@ card.
 | RECORDING | the frame hook copies T1 into the ring; the task writes the ring to the card | the frame hook, or the menu action (stop) |
 | FINISHING | the task writes what is left, writes the real sizes into the header, closes the file | the task, when done |
 
-The state is one byte. The menu action and the frame hook write it; the task
-reads it and writes only FINISHING to IDLE.
+The state is one aligned 32-bit word, so every read and write of it is a
+single instruction. The menu action and the frame hook write it. The task
+writes only IDLE: after FINISHING, or after an error (section 7).
 
 **No race with the hook.** The menu action runs in the UI task, and the
 hook can interrupt it between reading the state and writing it. So the
@@ -102,7 +103,7 @@ samples, 362.8 µs.
 
 **Per frame, the hook does this, in this order:**
 
-1. Read the state byte. In IDLE and FINISHING it goes straight to step 4.
+1. Read the state word. In IDLE and FINISHING it goes straight to step 4.
 2. Read the transport word.
    - ARMED and the transport is running: set RECORDING, clear the frame
      count.
@@ -161,8 +162,10 @@ the proposal planned.
 
 **Layout.** One writer, one reader. The hook advances the write index, the
 task advances the read index. Each is an aligned 32-bit word that only its
-owner writes, so no lock is needed. Indexes are byte offsets, masked with
-`size - 1` because the size is a power of two. 64 KB divides 4 MiB and 64
+owner writes, so no lock is needed. The indexes are free-running byte
+counts. The bytes in the ring are `write - read`, which is never ambiguous
+between full and empty. An index becomes an address by masking it with
+`size - 1`, because the size is a power of two. 64 KB divides 4 MiB and 64
 bytes divides 64 KB, so a 64 KB chunk never crosses the end of the ring.
 
 **Overflow guard.** Before a copy, the hook checks that the frame fits
@@ -223,8 +226,7 @@ creation fails, the state stays IDLE and nothing else runs.
 measure the eleven tasks, so the routine is known to the port. Its
 arguments are not written down.
 
-**The loop.** The task sleeps one tick with the stock delay helper
-`0x40020c7c`, then:
+**The loop.** The task sleeps one tick with the kernel's tick delay, then:
 
 1. **RECORDING or FINISHING, no file open.** If the state is FINISHING and
    no frame was recorded, set IDLE and create no file. Otherwise read the
@@ -239,7 +241,18 @@ arguments are not written down.
    `36 + data size`; seek to byte 40 and write the data size. Close the
    file. Set IDLE.
 
-❓ The delay helper's argument unit.
+❌ An earlier version of this page named the "delay helper" `0x40020c7c` as
+the sleep. Read on 10 Sep 2026, it is not one: it takes a lock at
+`0x460bcda8` and programs a hardware timer (`0xfc084000`), a timed hardware
+wait. ❓ The kernel's own tick delay, the call that blocks the calling task
+for N ticks, is still to be found.
+
+🟡 Task creation, read on 10 Sep 2026: `0x400005fc(tcb, entry, prio, stack,
+size)` builds the task's first stack frame, links the TCB to the ready slot
+for `prio`, and returns 1. It does not appear to make the task runnable by
+itself; the routine right after it, `0x4000063c(tcb)`, masks interrupts and
+updates the highest-ready word, which looks like the start call. ❓ The TCB
+size and the start call, from one of stock's own create sites.
 
 **The header** is the stock writer's layout (`docs/firmware/SAMPLE_SAVE.md`
 section 3): channels 2, rate 44,100, byte rate 176,400, block align 4, 16
@@ -253,6 +266,31 @@ independently by ems-octakit and octamax: open `0x40016864`, write
 `0x400166b8`, seek `0x4001660c`, close `0x4001677c`, project directory
 `0x40025230`, sprintf `0x40013a08`. octamax created files with it from a
 detour on hardware.
+
+🟡 The signatures, from Octakit's C runtime (`runtime/persistence.c`), which
+runs them on hardware:
+
+```
+int32 open (FileObject *obj, const char *path, const char *mode,
+            uint8 *buffer, uint32 buffer_size)     <0 = error
+int32 write(FileObject *obj, const void *src, uint32 len)   1 = success
+int32 seek (FileObject *obj, uint32 offset)         <0 = error
+int32 close(FileObject *obj)                        <0 = error
+```
+
+The file object is 24 bytes. Octakit uses a 512-byte buffer. Two
+behaviours matter here:
+
+- **`"w"` does not truncate.** Octakit opens an existing file with `"w"` and
+  checks its size before patching a record in place. So seek-then-write
+  works, which is how the header sizes get written at stop.
+- **The same property is a hazard.** A second recording in the same minute
+  would open the first one's file and overwrite its start. So after opening,
+  the task reads the file object's logical length (word 4, per Octakit's
+  comment at `persistence.c` line 910). If it is not zero, the task closes
+  the file, writes error EXISTS to the status word, and sets IDLE. The
+  earlier recording stays intact. Falsifier for word 4: under the port, open
+  an existing non-empty file and read the word.
 
 ❓ **The folder-creation routine.** Not located. If none can be called, the
 file goes to `AUDIO/YYMMDD-HHMM.wav` (section 2).
@@ -309,7 +347,7 @@ does about it:
 
 1. **Nothing runs until STEM REC is selected.** No boot hook besides
    octabam's existing loader. The task does not exist until the first
-   select. In IDLE the frame hook costs one byte read and one branch.
+   select. In IDLE the frame hook costs one word test and one branch.
 2. **The menu action cannot race the hook.** It changes the state with
    interrupts masked (section 3).
 3. **The interrupt code calls nothing.** The frame hook makes no calls, uses
@@ -346,8 +384,8 @@ blocks the code named beside it.
 | 1 | which ping half holds the current frame | the tap | read `0x400031a0` |
 | 2 | the transport-running word | ARMED and the sequencer stop | read the PLAY and STOP paths, `FW_TRANSPORT` `0x4009c506` (`docs/firmware/RTOS_FORK.md` section 9) |
 | 3 | T1's position and word layout in the block | the packing | port: known signal on T1, dump the block |
-| 4 | the task-create routine and its arguments | the task | the port's `create` hook, then the routine |
-| 5 | the delay helper's argument unit | the loop | read `0x40020c7c` |
+| 4 | the TCB size and the start call after `0x400005fc` | the task | one of stock's create sites |
+| 5 | the kernel's tick delay and the tick period | the loop | the blocking primitives `0x40000818`, `0x400007a4`, `0x40000d00`, and a stock task loop that sleeps |
 | 6 | a folder-creation routine | the folder | search the FAT layer and the file browser |
 | 7 | the FAT layer's locking | crash safety | read the open and write paths for a lock |
 
@@ -420,3 +458,8 @@ seen.
 - **Header sizes written during a recording**, so a power cut leaves a
   readable file.
 - **The length limit**, raised from 15 s once the POC holds on hardware.
+- **Sector-aligned data.** The 44-byte header puts every audio write 44
+  bytes past a sector boundary. A `JUNK` chunk that pads the header to 512
+  bytes would align them, which Octakit does for its own writes. Measure
+  whether it matters, and check that the Octatrack's own WAV reader skips
+  the chunk, before adopting it.
