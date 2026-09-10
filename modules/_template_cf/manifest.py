@@ -8,7 +8,7 @@ are skipped by the registry, so this file is never built.
 For a finished one small enough to read in one sitting, see
 modules/hello-dram/ (one unit, no hooks -- the loader canary); for the
 real thing, modules/midi-scenes/ (seven units built from the author's own
-repository as a submodule, 35 detours, two pokes). docs/remixer/MODULES.md
+repository as a submodule, 34 detours, four pokes). docs/remixer/MODULES.md
 "Declaring a ColdFire module" carries the reasoning these comments only
 summarise; docs/remixer/PLACEMENT.md says where the bytes go and why.
 

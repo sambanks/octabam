@@ -12,8 +12,9 @@ the identity checks passing. Nothing of hers is vendored or rewritten, and
 nothing of Elektron's is stored: the 411 stock routines her runtime
 carries are sliced out of YOUR 1.40C at build time.
 
-WHAT IT CHANGES (her README, 9 Sep 2026 commit ca3b527): 64 Parts become
-256 Kits untethered from Banks; old Projects migrate their Parts into the
+WHAT IT CHANGES (her README, 9 Sep 2026 commit ec70dda): 64 Parts become
+256 Kits untethered from Banks -- which costs 3.6% of the flex pool,
+18.4 s at 16-bit / 12.3 s at 24-bit, her own note; old Projects migrate their Parts into the
 first 64 Kit slots on load (downgrading to stock may lose Kit data); on
 MKII PART opens LOAD KIT and FUNC+PART opens SAVE KIT (MKI: FUNC+MIDI /
 FUNC+BANK); FUNC+CUE reloads the assigned Kit; Kits have 7-char names;

@@ -35,7 +35,8 @@ already accepts the grown section — tested.
 
 ## Measured vs inferred
 
-**Measured (9 Sep 2026, commit `ca3b527`):**
+**Measured (9 Sep 2026, code pinned at `ca3b527`; submodule at `ec70dda`,
+her README's flex-pool note, no code change):**
 - Homebrew's `m68k-elf-gcc` 16.2.0 rebuilds the runtime **byte-identical**
   to her pinned 16.1.0 build (`sha256 dda11aca…`, 149,653 B; all 411 stock
   slices reproduce), and so do the packed runtime and the append.
