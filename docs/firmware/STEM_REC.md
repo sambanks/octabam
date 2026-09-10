@@ -4165,10 +4165,15 @@ write, seek and close, and asks whether it is enough.
 
 Yes, with the FAT lock. Open, the buffered write's flush, seek, and the
 buffered close's flush all reach a raw card-backend routine that takes
-`FS_LOCK` as its first act and holds it across the whole call, releasing on
-every exit path this section found. Two tasks calling OPEN, WRITE, SEEK or
-CLOSE at the same time cannot corrupt the FAT structures: the lock serialises
-them, the same way section 6 measured for folder creation.
+`FS_LOCK` as its first act and holds it across that backend's whole body,
+releasing on every exit path this section found. Two tasks calling OPEN,
+WRITE, SEEK or CLOSE at the same time cannot corrupt the FAT structures: the
+lock serialises them, the same way section 6 measured for folder creation.
+One correction from the review round: a READ-mode open reaches TWO such
+backends, one after the other, with a gap between the two holds where
+`FS_LOCK` is free (section 7.1). Nothing FAT-structural is exposed in that
+gap; STEM REC opens only in write mode, where the wrapper reaches exactly
+one backend, so this does not apply to STEM REC's own calls.
 
 One thing changes the picture. The buffered layer stages every block of data
 through one shared global buffer, `0x4ecd3000`, before the raw call that takes
@@ -4210,6 +4215,97 @@ here: offset 4 the I/O buffer pointer, offset 8 the buffer size, offset 16
 cleared, and later offset 0 the handle and offset 20 the mode byte). `%a3` is
 the mode string; its first byte is stored into `%a2@(20)` a few lines further
 down, and the SAME byte, pushed again, becomes the raw open's second argument.
+
+✅ **Open calls a SIXTH slot after the raw open already released `FS_LOCK`,
+on a read-mode open.** The rest of the wrapper, read whole:
+
+```
+40016896:	2200           	movel %d0,%d1
+40016898:	508f           	addql #8,%sp
+4001689a:	6d3e           	blts 0x400168da
+4001689c:	2480           	movel %d0,%a2@
+4001689e:	1553 0014      	moveb %a3@,%a2@(20)
+400168a2:	5380           	subql #1,%d0
+400168a4:	0c80 0000 01fe 	cmpil #510,%d0
+400168aa:	6228           	bhis 0x400168d4
+400168ac:	42aa 000c      	clrl %a2@(12)
+400168b0:	7113           	mvsb %a3@,%d0
+400168b2:	7472           	moveq #114,%d2
+400168b4:	b480           	cmpl %d0,%d2
+400168b6:	6620           	bnes 0x400168d8
+400168b8:	2f01           	movel %d1,%sp@-
+400168ba:	2079 46c8 241e 	moveal 0x46c8241e,%a0
+400168c0:	4e90           	jsr %a0@
+400168c2:	588f           	addql #4,%sp
+400168c4:	4a80           	tstl %d0
+400168c6:	6610           	bnes 0x400168d8
+400168c8:	2f0a           	movel %a2,%sp@-
+400168ca:	4eba feb0      	jsr %pc@(0x4001677c)
+400168ce:	72f6           	moveq #-10,%d1
+400168d0:	588f           	addql #4,%sp
+400168d2:	6006           	bras 0x400168da
+400168d4:	72fe           	moveq #-2,%d1
+400168d6:	6002           	bras 0x400168da
+400168d8:	7201           	moveq #1,%d1
+400168da:	2001           	movel %d1,%d0
+```
+
+`0x114` is `114` decimal, ASCII `'r'`. The byte-level encoding of the compare
+settles the direction: `cmpl %d0,%d2` is opcode `0xb480` = `1011 010 010 000
+000`, which decodes to register field `010` (`%d2`, the destination) and
+effective-address field `000 000` (`%d2`, source `%d0`), so the instruction
+computes `%d2 - %d0` and `bnes` (branch on `Z` clear) is taken when the mode
+byte is **NOT** `'r'`. **So the call to slot `0x46c8241e` happens on a
+READ-mode open, not a write-mode one** (the sample save's own call, section
+5.6, mode `"w"`, never reaches it). `0x46c8241e`'s card backend is
+`0x40018a0c`:
+
+```
+40018a0c:	2f03           	movel %d3,%sp@-
+40018a0e:	2f02           	movel %d2,%sp@-
+40018a10:	242f 000c      	movel %sp@(12),%d2
+40018a14:	4879 4610 79c0 	pea 0x461079c0
+40018a1a:	4eb9 4000 09f4 	jsr 0x400009f4
+40018a20:	588f           	addql #4,%sp
+40018a22:	4a80           	tstl %d0
+40018a24:	6756           	beqs 0x40018a7c
+...
+40018a32:	4879 4610 79c0 	pea 0x461079c0
+40018a38:	4eb9 4000 0ab4 	jsr 0x40000ab4
+40018a3e:	6024           	bras 0x40018a64
+...
+40018a5c:	4879 4610 79c0 	pea 0x461079c0
+40018a62:	4e90           	jsr %a0@
+...
+40018a68:	4879 4610 79c0 	pea 0x461079c0
+40018a6e:	4e90           	jsr %a0@
+```
+
+✅ `0x40018a0c` DOES take `FS_LOCK` (`0x461079c0`), as its first act, and
+releases it on every exit found (three release sites: the immediate-fail
+skip at `0x40018a24` needs none, and three `pea`/`jsr` pairs at `0x40018a32`,
+`0x40018a5c`-`0x40018a62`, and `0x40018a68`-`0x40018a6e` cover the rest).
+**This is a SECOND, independent acquire/release cycle, not a continuation of
+open's hold**: the raw open backend (`0x4001b570`) already released
+`FS_LOCK` at its own exit (section 7.2) before the wrapper reaches this
+point, so there is a GAP between the two holds during which `FS_LOCK` is
+free. If it returns 0 (invalid/empty), the wrapper closes the file it just
+opened, recursing into the close wrapper (`0x4001677c`, at `0x400168ca`;
+the close wrapper's own body, quoted below, then takes and releases
+`FS_LOCK` a THIRD time), and returns `-10`.
+
+⚠️ **What is, and is not, at risk in the gap.** Nothing FAT-structural: the
+gap is bounded by two lock-protected operations that each leave the FAT
+consistent on their own exit, so another task's open/write/close between
+them sees a consistent filesystem either way. This is not a hole in the
+FAT locking, only a loss of ATOMICITY across the open-then-check sequence
+as a whole. What it does mean: a file this wrapper just opened for reading
+could, in principle, be renamed, truncated, or reopened by another task
+between the raw open's release and `0x40018a0c`'s acquire, and the read-mode
+check would then run against whatever state the file is in at that later
+instant, not the state at open time. STEM REC opens only in write mode
+(spec section 6), so this specific gap does not apply to its own calls; it
+matters only if the design later reads a file through this same wrapper.
 
 The buffered write's flush and the buffered close's flush both forward to the
 same write slot, `0x46c82402` (`0x40018a84`, also measured in section 6.8):
@@ -4263,13 +4359,14 @@ rather than a call-and-return:
 
 The slot table itself was read from the card-mode installer, `0x40014636`
 onward (the argument-1 branch of `0x4001451c`, section 6.2's installer), the
-same way section 6.2 read `0x46c8240a`. The five slots this section needs, all
+same way section 6.2 read `0x46c8240a`. The SIX slots this section needs, all
 confirmed by their address appearing as the `movel`'d immediate at the
 matching `.equ` line:
 
 | slot | card backend |
 |---|---|
 | `0x46c8242a` (open) | `0x4001b570` |
+| `0x46c8241e` (read-mode open's post-check) | `0x40018a0c` |
 | `0x46c82402` (write) | `0x40018a84` |
 | `0x46c8243e` (seek) | `0x4001858c` |
 | `0x46c82436` (finalize on write close) | `0x40018788`, not disassembled here |
@@ -4278,9 +4375,19 @@ matching `.equ` line:
 None of the four wrapper bodies (`0x40016864`-`0x400168e6`, `0x400166b8`-
 `0x40016758`, `0x4001660c`-`0x40016694`, `0x4001677c`-`0x40016864`) contains
 the byte sequence for `0x461079c0`, read from each routine's full
-disassembly above. The lock is entirely the raw backends' business.
+disassembly above. The lock is entirely the raw and post-check backends'
+business, and one open (in read mode) can reach it twice, in two separate
+holds (above).
 
-### 7.2 The raw backends: one acquire, the lock held across the whole call, release on every exit ✅
+### 7.2 Each raw backend holds the lock across its OWN body, released on every exit ✅
+
+This is the corrected claim: `FS_LOCK` is held across the whole body of
+EACH raw backend, not across the whole WRAPPER call. For write, seek, and a
+write-mode open, that is the same thing, because the wrapper reaches exactly
+one lock-taking backend. For a READ-mode open it is not: 7.1 already showed
+two separate holds with a gap between them (the raw open, then, only on a
+successful read-mode open, `0x40018a0c`). Read each backend on its own
+terms.
 
 **Open**, `0x4001b570`-`0x4001b722`. Section 6.8 already quoted the acquire;
 repeated here because this section's claim is about the WHOLE routine, not
@@ -4344,9 +4451,12 @@ Four release sites, each pairing `pea 0x461079c0` with `jsr 0x40000ab4`
 Every exit checked: the immediate acquire-fail path (no release, correct,
 because the lock was never taken) plus these four, and nothing between the
 acquire and any of the four releases returns without going through one of
-them. ✅ **Open holds `FS_LOCK` across the WHOLE call**, not narrowly around a
-sector-I/O step: path resolution and directory-entry allocation both happen
-while it is held.
+them. ✅ **This ONE backend holds `FS_LOCK` across its WHOLE body**, not
+narrowly around a sector-I/O step: path resolution and directory-entry
+allocation both happen while it is held. ⚠️ It is not the whole `0x40016864`
+wrapper call: on a read-mode open, the wrapper reaches this backend, lets it
+release, and then reaches a SECOND lock-taking backend (`0x40018a0c`, 7.1)
+with a gap between the two holds.
 
 **Write**, `0x40018a84`. Same shape, acquire first:
 
@@ -4626,35 +4736,177 @@ caller of this layer shares are the open-file table (written only under
 `FS_LOCK`, 7.2) and the staging buffer `0x4ecd3000` (written outside it,
 7.5).
 
-### 7.7 Not measured under the port 🟡
+### 7.7 The buffered API has other stock callers today, and the storage task's real-time path bypasses it entirely ✅
 
-No project folder exists on this machine. Four things a port run would
+This resolves, statically, the question the first pass of this section could
+only defer to the port: does the section 7.5 exposure ever have two real
+callers to race?
+
+**The caller census, by the preamble's linear-objdump method** (grep the
+whole image for the wrapper's address, which catches both a direct `jsr` and
+a `lea`/`movea.l` register load; a call through a register loaded this way
+is counted once per load found, following section 5.7's own precedent for
+an approximate count of "N or more calls"):
+
+| wrapper | total occurrences (own label + every caller reference) |
+|---|---|
+| open `0x40016864` | 18 |
+| write `0x400166b8` | 57 |
+| close `0x4001677c` | 22 |
+
+✅ These are not small numbers: dozens of stock call sites exist beyond the
+sample save section 5.6 already measured (`0x40084e24`/`0x40084e02` open,
+`0x40084e52` close). Four clusters, by address range:
+
+1. **`0x40084e02`-`0x40084ec6`, the stock sample save**, already measured in
+   section 5.6 and 7.6.
+2. **`0x4001ff50`-`0x4001ffd6`, a small self-contained routine** immediately
+   after the storage task's own code (7.7 below), with its OWN 512-byte
+   buffer `0x460261e0` (distinct from both the sample save's `0x460263e0`
+   and the shared staging buffer `0x4ecd3000`), opening in `"w"` mode
+   (`0x400b328b`), writing, and closing:
+   ```
+   4001ff60:	4878 0200      	pea 0x200
+   4001ff64:	4879 4602 61e0 	pea 0x460261e0
+   4001ff6a:	4879 400b 328b 	pea 0x400b328b
+   ...
+   4001ff7c:	4eb9 4001 6864 	jsr 0x40016864
+   ...
+   4001ffa0:	4eb9 4001 660c 	jsr 0x4001660c
+   ...
+   4001ffae:	4eb9 4001 677c 	jsr 0x4001677c
+   ...
+   4001ffc4:	4eb9 4001 66b8 	jsr 0x400166b8
+   ...
+   4001ffd6:	4e90           	jsr %a0@
+   ```
+   🟡 Not traced to a name or a caller. Its size (one 512-byte record) and
+   position right next to the storage task's own code are consistent with
+   EMU.md's "the firmware's own log on the card records each missing
+   sample", but that is a guess, not a measurement. It is NOT inside the
+   storage task's own loop (7.7 below establishes the loop never returns via
+   `rts`, and this routine does, at `0x4001ffe2`), so it is a distinct,
+   ordinarily-called subroutine, not the real-time streaming path.
+3. **`0x4008fbfc`-`0x40090650`, roughly eight to nine paired open/write/close
+   sites**, each shaped like items 1 and 2 above (an open, some writes, a
+   close). 🟡 Not individually disassembled. Their position, right after the
+   folder-removal and project-file-deletion routines section 6.3 already
+   placed nearby (`0x4008ec4c`), and section 6.9's own finding that
+   "`0x4008eda4` and `0x4008ee74` build `%s/bank%02d.work` and the rest and
+   write them through the buffered file API" together make "one open/write/
+   close cycle per project file (`project.work`, `markers.work`, sixteen
+   bank files, eight arrangement files)" the working guess, not a measured
+   fact.
+4. **`0x400882ba`-`0x4008b47c`, ~50 WRITE-only call sites, no matching open
+   or close density in the same range.** This is the cluster the review
+   round asked about. 🟡 One write roughly every 200 bytes of code, with no
+   open/close nearby, is consistent with a routine that opens ONCE (or reuses
+   an already-open handle from a caller) and then serialises many small
+   fields, one `WRITE` call per field (a text or binary record serializer,
+   probably the same project/bank-file writer as item 3's cluster), working on
+   one already-open handle. Not individually disassembled; this is a shape
+   argument, not a name.
+
+✅ **Conclusion for the exposure itself**: several stock callers of the
+buffered API exist today, independent of STEM REC and independent of each
+other (the sample save, the small log-writer, the project/bank-file saver).
+The section 7.5 exposure is real AMONG THEM: if the project/bank-file saver
+and the sample save (or STEM REC) ever run their buffered writes on two
+different tasks at an overlapping instant, they race on `0x4ecd3000`. This
+was true before this review round; the census only makes it countable.
+
+**The storage task's real-time sample path, from the other direction.**
+RTOS_FORK.md names its entry `0x4001ee30` (TCB `0x460bcc2c`, priority 5,
+`sys` at `0x40061a94` creates it via `0x4001dfbc`, per STEM_REC.md section
+3.7). Its loop, read whole from its entry:
+
+```
+4001ee5c:	4879 460b b3a0 	pea 0x460bb3a0
+4001ee62:	4eb9 4000 0d00 	jsr 0x40000d00
+4001ee68:	2440           	moveal %d0,%a2
+4001ee6a:	588f           	addql #4,%sp
+4001ee6c:	2012           	movel %a2@,%d0
+4001ee6e:	5380           	subql #1,%d0
+4001ee70:	7206           	moveq #6,%d1
+4001ee72:	b280           	cmpl %d0,%d1
+4001ee74:	65e6           	bcss 0x4001ee5c
+4001ee76:	303b 0a08      	movew %pc@(0x4001ee80,%d0:l:2),%d0
+4001ee7a:	48c0           	extl %d0
+4001ee7c:	4efb 0802      	jmp %pc@(0x4001ee80,%d0:l)
+```
+
+✅ Same shape as 8.3's UI dispatcher: blocking `QUEUE_RECEIVE` (`0x40000d00`)
+against the storage task's own queue `0x460bb3a0`, then an opcode-indexed
+jump table (7 entries here). One case does the actual sector transfer:
+
+```
+4001eecc:	2f00           	movel %d0,%sp@-
+4001eece:	2f01           	movel %d1,%sp@-
+4001eed0:	2047           	moveal %d7,%a0
+4001eed2:	4e90           	jsr %a0@
+4001eed4:	4878 0002      	pea 0x2
+4001eed8:	4879 4ecb 8000 	pea 0x4ecb8000
+4001eede:	2f39 460b b41a 	movel 0x460bb41a,%sp@-
+4001eee4:	2f39 460b b41e 	movel 0x460bb41e,%sp@-
+4001eeea:	2079 460d 16cc 	moveal 0x460d16cc,%a0
+4001eef0:	2050           	moveal %a0@,%a0
+4001eef2:	4e90           	jsr %a0@
+4001eef4:	4fef 001c      	lea %sp@(28),%sp
+4001eef8:	6000 ff62      	braw 0x4001ee5c
+```
+
+✅ **The storage task's sector transfer goes through NEITHER the buffered API
+NOR the raw FAT backends.** It calls through `0x460d16cc` (the same word
+section 8.2 already found is the target of `0x40015e28`'s return, written by
+the mount routine), double-indirected (`moveal 0x460d16cc,%a0 / moveal
+%a0@,%a0 / jsr %a0@`): a block-device vtable call, not a path-based file
+open. Its own buffer is `0x4ecb8000`, a DIFFERENT fixed address from the
+buffered layer's shared staging buffer `0x4ecd3000`. None of `0x40016864`,
+`0x400166b8`, `0x4001677c`, `0x461079c0` or `0x4ecd3000` appears anywhere in
+the loop `0x4001ee5c`-`0x4001ef04` (the case bodies disassembled). The loop
+also never executes `rts`: every case ends in `braw 0x4001ee5c` back to the
+top, confirming it is the whole task body, not a subroutine that returns
+into something else that might call the buffered API afterward.
+
+✅ **This settles the open question the first pass deferred.** The section
+7.5 exposure does NOT apply between STEM REC's writer task and the stock
+storage task's real-time sample streaming: they use entirely different
+buffers and entirely different call paths. It remains real among the OTHER
+buffered-API callers this section found (the sample save, the project/bank
+saver, and whatever calls the small log-writer at item 2), none of which
+run at the storage task's priority or on its real-time schedule, but all of
+which could in principle overlap with STEM REC's own writer task.
+
+### 7.8 Not measured under the port 🟡
+
+No project folder exists on this machine. Three things a port run would
 settle, in the order they matter:
 
 1. **Seek's success-path release**, 7.2's one open question.
 2. **The write backend's indirect call at `0x40018dc8`**, to confirm it
    reaches the ATA WRITE SECTORS handler and takes the ATA lock while
    `FS_LOCK` is held (7.3).
-3. **Whether the stock storage task's sample streaming uses this SAME
-   buffered layer**, or a private path that never touches `0x4ecd3000`. If it
-   is private, the 7.5 exposure does not apply between STEM REC and the
-   storage task specifically, only between two buffered-API callers, which
-   may never both exist at once in the stock firmware.
-4. **A scheduling trace of the writer task's flush against the storage
-   task's own I/O**, to see whether they can actually interleave on
-   `0x4ecd3000` given the two tasks' priorities (1 and 5) and the kernel's
-   preemption (section 4).
+3. **A scheduling trace of the writer task's flush against the project/bank
+   saver's or the sample save's own I/O**, to see whether they can actually
+   interleave on `0x4ecd3000` given their priorities and the kernel's
+   preemption (section 4). 7.7 established that these are the real
+   candidates now, not the storage task.
 
-### 7.8 What follows for the design
+### 7.9 What follows for the design
 
 Two tasks calling OPEN, WRITE, SEEK or CLOSE concurrently is safe for the
 FAT structures: `FS_LOCK` serialises every routine that touches them, held
-across the whole call, not narrowly around sector I/O. The design proceeds.
-The flash notes should carry the 7.5 exposure (the shared staging buffer,
-`0x4ecd3000`, is unprotected) as a known risk, first flash on a spare card, so
-that in the unlikely event two buffered-I/O flushes truly interleave, the
-failure is a corrupted stem or corrupted stock sample data, not a wedged FAT
-mutex or a hung card.
+across each raw backend's own body, not narrowly around sector I/O (7.2).
+The design proceeds. The flash notes should carry the 7.5 exposure (the
+shared staging buffer, `0x4ecd3000`, is unprotected) as a known risk, first
+flash on a spare card, so that in the unlikely event two buffered-I/O
+flushes truly interleave, the failure is a corrupted stem or corrupted stock
+sample data, not a wedged FAT mutex or a hung card. Section 7.7 narrows WHO
+that risk is between: not STEM REC against the storage task's real-time
+sample streaming (confirmed to use a different buffer and a different call
+path entirely), but STEM REC against whichever of the stock buffered-API
+callers (the sample save, the project/bank-file saver, the small log-writer)
+happens to run on another task at the same instant.
 
 ## 8. Is a card mounted
 
@@ -4798,8 +5050,9 @@ guarded by "the word already reads 1" (8.3).
 
 ### 8.3 The callers, and what they say about removal ✅ with two 🟡
 
-`0x40061648` has three callers in the whole image (a linear-objdump grep for
-its address returns four lines: its own label plus these three):
+`0x40061648` has FOUR callers in the whole image (a linear-objdump grep for
+its address returns five lines: its own label plus these four; the review
+round found the fourth, missed the first time round):
 
 - **`0x40061c1c`-`0x40061c22`, the boot sequence, argument literal 0**:
   `clrl %sp@- / lea %pc@(0x40061648),%a2 / jsr %a2@`. This is the FIRST call
@@ -4817,6 +5070,54 @@ its address returns four lines: its own label plus these three):
   `cmpl 0x460d1cb8,%d0` (`%d0` = 1) `/ beqs +0xa / pea 0x1 / jsr %pc@(...)`.
   This calls mode 1 ONLY when the word does not already read 1, so it never
   writes 0 or 2 itself; it is a read-then-maybe-mount, not a removal path.
+- **`0x400620b6`, argument literal 0, unconditionally**: `clrl %sp@- / jsr
+  %pc@(0x40061648)`. This one is inside a large opcode-dispatched case
+  handler, quoted below, reached only through a task's own message queue,
+  not an interrupt, not a poll.
+
+`0x400620b6`'s enclosing case is one entry of a **77-entry jump table**
+(`0x40061cfa`) at the top of a task loop that blocks on the kernel's queue
+receive primitive (`0x40000d00`, the same blocking primitive section 4's
+census names) against queue object `0x460d17ae`:
+
+```
+40061cd2:	4879 460d 17ae 	pea 0x460d17ae
+40061cd8:	4eb9 4000 0d00 	jsr 0x40000d00
+40061cde:	2440           	moveal %d0,%a2
+40061ce0:	588f           	addql #4,%sp
+40061ce2:	1012           	moveb %a2@,%d0
+40061ce4:	5380           	subql #1,%d0
+40061ce6:	7180           	mvzb %d0,%d0
+40061ce8:	784d           	moveq #77,%d4
+40061cea:	b880           	cmpl %d0,%d4
+40061cec:	6500 102e      	bcsw 0x40062d1c
+40061cf0:	303b 0a08      	movew %pc@(0x40061cfa,%d0:l:2),%d0
+40061cf4:	48c0           	extl %d0
+40061cf6:	4efb 0802      	jmp %pc@(0x40061cfa,%d0:l)
+```
+
+✅ The first byte of the received message selects the case (`%a2@`, the
+opcode, minus 1, indexes the word table at `0x40061cfa`). Decoding the table
+directly from the image (not from the garbled disassembly a data table
+prints as): index 15 (opcode 16) holds the word `0x0282`, and
+`0x40061cfa + 0x0282 = 0x40061f7c`, the case that CONTAINS `0x400620b6`
+further down its own branch. `refs.sh 0x460d17ae` finds 87 hits across the
+image: a widely shared queue, consistent with it being a general UI/task
+event queue, not a private one-purpose object.
+
+✅ **This is task-context, message-driven code, not an interrupt handler and
+not a poll.** The one fact that matters for the removal question: the whole
+switch runs only after `0x40000d00` returns with a message already
+DEQUEUED, which is section 4's blocking receive primitive, called from a
+task. There is no timer, no ATA interrupt vector, and no busy-wait anywhere
+in this path: the case body only runs when something POSTS a message to
+`0x460d17ae`, which is what happens on a menu action or a mode switch.
+🟡 Which specific keypress or menu action posts opcode 16 was not traced
+among the 87 references (that count includes many unrelated cases sharing
+the same queue); falsifier: a port run posting to `0x460d17ae` with opcode
+16 and observing what the display shows. The architectural point (queue
+message, not interrupt, not a background poll) is ✅ regardless of which
+exact menu entry it is.
 
 `0x40061740` has two callers, both guarded the same way as `0x40061f8e`
 above (read the word, compare to 1, call only if equal):
@@ -4831,18 +5132,23 @@ above (read the word, compare to 1, call only if equal):
   unrelated flag (`0x460e76a0`), then does the same
   `jsr 0x40032384 / cmpl / bnes / jsr 0x40061740` gate.
 
-🟡 **No card-removal or media-detect caller was found.** The census above is
-every caller of both writers, from a linear-objdump grep (which catches
-register-indirect calls the preamble warns refs.sh alone would miss; the boot
-call to mode 0 is exactly such a case, `lea %pc@(0x40061648),%a2` then
-`jsr %a2@`). None of the five call sites is inside an interrupt handler or a
-polling loop; all five are boot-sequence or menu/dialog code. The stock
-firmware, as measured here, does not appear to auto-detect a card being
-pulled while mounted: `0x460d1cb8` would stay 1 until the next call that
-clears it, and none of those calls is unconditional at runtime. **Falsifier,
-and the one thing that matters most for the flash notes:** a port run that
-mounts a card, then removes it without any UI action, and reads
-`0x460d1cb8` before the next menu action. If it still reads 1, this is
+🟡 **No card-removal or media-detect caller was found, against all SIX call
+sites now census'd** (the fourth caller above added one, not removed any).
+The census is every caller of both writers, from a linear-objdump grep
+(which catches register-indirect calls the preamble warns refs.sh alone
+would miss; the boot call to mode 0, and the new `0x400620b6` call, are both
+exactly such a case). None of the six call sites is inside an interrupt
+handler or a polling loop: three are boot-sequence code, two are dialog/menu
+handlers with visible UI strings, and the new one is a task's own queued
+message dispatch, confirmed above to run only when something POSTS a
+message, never on a timer or a hardware event. **The removal verdict
+stands, now against a wider and more careful census**: the stock firmware,
+as measured here, does not appear to auto-detect a card being pulled while
+mounted. `0x460d1cb8` would stay 1 until the next call that clears it, and
+every one of those six calls is boot-time or menu-driven, never automatic.
+**Falsifier, and the one thing that matters most for the flash notes:** a
+port run that mounts a card, then removes it without any UI action, and
+reads `0x460d1cb8` before the next menu action. If it still reads 1, this is
 confirmed, and STEM REC's mounted check (Task 13) can pass on a card that
 was just pulled.
 
@@ -4891,11 +5197,17 @@ settle, in the order they matter:
 .equ	CARD_MOUNTED_USB,	2	| 🟡 believed USB disk mode, not directly proven
 
 | The FAT layer's one lock, already equated in section 6 as FS_LOCK. Open,
-| the buffered write's flush, seek and the folder routine (section 6) all
-| take it as their first act and hold it across their whole call (section
-| 7.2). Two tasks calling the buffered file API concurrently are safe for
-| the FAT structures because of this lock.
+| the buffered write's flush, seek and the folder routine (section 6) each
+| reach a raw backend that takes it as its first act and holds it across
+| that backend's own body (section 7.2). A READ-mode open reaches TWO such
+| backends with a gap between the two holds (section 7.1); STEM REC opens
+| only in write mode, where the wrapper reaches exactly one. Two tasks
+| calling the buffered file API concurrently are safe for the FAT
+| structures because of this lock.
 | ⚠️ NOT covered by this lock: the shared sector staging buffer FS_STAGE_BUF
-| (section 7.5), touched by a plain memcpy before the lock is taken.
+| (section 7.5), touched by a plain memcpy before the lock is taken. Real
+| stock callers of the buffered API exist today beyond the sample save
+| (section 7.7); the stock storage task's real-time sample path is NOT one
+| of them, confirmed by reading its loop (section 7.7).
 .equ	FS_STAGE_BUF,	0x4ecd3000	| shared, UNPROTECTED sector staging buffer
 ```
