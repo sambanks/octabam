@@ -554,3 +554,542 @@ The start edge is any value going to 1. The stop edge is 1 going to anything
 else, and the value it goes to says which stop it was: 2 for the STOP key, 0
 for the sequencer's own end of sequence stop, for REC's stop and rewind, and
 for engine init.
+
+## 2. The read-back half
+
+### 2.0 The plan's rule holds. Read this first.
+
+The plan's interface is right, and Task 14's `.Lh_room` block does **not**
+need to change. The stock frame routine forms the half base as
+
+```
+0x80003190 + (longword at 0x800000e0) * 0x400
+```
+
+with no mask and no inversion. The firmware bounds that longword to 0 or 1
+itself, with a `halt` if it is anything else (section 2.3), so the plan's
+`half = (PING ^ 0) & 1` gives the same answer. `PING_XOR` is **0**. The
+`and #1` is redundant, not wrong.
+
+Two things about the word are not what its name suggests, and section 2.5
+spells them out. The word is not toggled by the frame routine or by the
+interrupt that calls it. It is written once per frame, in a **different**
+interrupt, which also restarts the chain that leads to the frame routine.
+That interrupt runs at level 5 and the frame routine runs with the interrupt
+mask at 5, so the word cannot change under the hook. The hook reads the same
+half the stock routine reads, in the same frame.
+
+One instruction detail for Task 14: ColdFire immediate shift counts stop at
+8. The stock code shifts by 10 through a register, and the hook must do the
+same. Section 2.8 gives the exact sequence.
+
+### 2.1 The frame routine and its one caller ✅
+
+`0x400031a0` is called from exactly one place in the image:
+
+```
+40004b12:	4eba e68c      	jsr %pc@(0x400031a0)
+```
+
+That is the only match for the routine's address in a full linear
+disassembly of the image, apart from the routine's own first instruction.
+The call is PC-relative, so `refs.sh` cannot see it. The search was a `grep`
+over the objdump listing, which prints the resolved target.
+
+The routine runs from `0x400031a0` to its single `rts`:
+
+```
+400031a0:	4fef ff6c      	lea %sp@(-148),%sp
+400031a4:	48d7 7cfc      	moveml %d2-%d7/%a2-%fp,%sp@
+...
+40003850:	4cd7 7cfc      	moveml %sp@,%d2-%d7/%a2-%fp
+40003854:	4fef 0094      	lea %sp@(148),%sp
+40003858:	4e75           	rts
+```
+
+There is no other `rts` in that span, so everything between belongs to it.
+It saves and restores the whole EMAC state around its body
+(`0x400031ac` to `0x400031c4`, and `0x4000383c` to `0x4000384e`), which is
+what an audio routine called from an interrupt has to do.
+
+### 2.2 How the half is computed ✅
+
+The routine reads the word once, at the top, and parks it in a stack slot:
+
+```
+400031d0:	2039 8000 00e0 	movel 0x800000e0,%d0
+400031d6:	2f40 002c      	movel %d0,%sp@(44)
+```
+
+`%sp@(44)` is the plan's lead, and it is read back twice. The first use is a
+different table, and it is worth recording because it shows the same index
+selecting several parallel structures:
+
+```
+40003214:	242f 002c      	movel %sp@(44),%d2
+40003218:	e78a           	lsll #3,%d2
+4000321a:	2f42 006c      	movel %d2,%sp@(108)
+4000321e:	2a3c 8000 0eb4 	movel #-2147479884,%d5
+40003224:	dbaf 006c      	addl %d5,%sp@(108)
+```
+
+That is `0x80000eb4 + half * 8`.
+
+The second use is the read-back block, and it is the rule the hook needs:
+
+```
+400033fc:	202f 002c      	movel %sp@(44),%d0
+40003400:	720a           	moveq #10,%d1
+40003402:	e3a8           	lsll %d1,%d0
+40003404:	2f40 0060      	movel %d0,%sp@(96)
+40003408:	243c 8000 3190 	movel #-2147470960,%d2
+4000340e:	d5af 0060      	addl %d2,%sp@(96)
+```
+
+`0x80003190` is `-2147470960` as a signed longword. So
+`%sp@(96) = 0x80003190 + half * 0x400`, formed by a shift of 10 with no
+masking of any kind.
+
+Note the shift form. `e3a8` is `lsl.l %d1,%d0`, a register count, because
+the ColdFire immediate shift `lsl.l #n,%dm` only encodes `n` in 1 to 8. A
+hook that writes `lsl.l #10,%d0` will not assemble.
+
+`%sp@(96)` is used as the read pointer, and it is a read, not a write:
+
+```
+40003704:	226f 0060      	moveal %sp@(96),%a1
+...
+40003734:	2019           	movel %a1@+,%d0
+40003736:	7410           	moveq #16,%d2
+40003738:	a003 0810      	macl %d3,%d0,%acc2
+...
+40003746:	a099 090b      	msacl %a3,%d0,%a1@+,%d0,%acc0
+...
+40003756:	a019 190b      	msacl %a3,%d1,%a1@+,%d0,%acc1
+40003776:	5382           	subql #1,%d2
+40003778:	66be           	bnes 0x40003738
+```
+
+Sixteen passes, two post-increment loads of `%a1` each, so 32 longwords or
+`0x80` bytes consumed per track.
+
+The outer loop confirms the stride and the count:
+
+```
+40003806:	2a3c 0000 0080 	movel #128,%d5
+4000380c:	dbaf 0060      	addl %d5,%sp@(96)
+...
+4000381c:	7008           	moveq #8,%d0
+4000381e:	b0af 0070      	cmpl %sp@(112),%d0
+40003822:	6600 fc0a      	bnew 0x4000342e
+```
+
+Eight tracks, `0x80` bytes each, `0x400` bytes for the half. That is the
+whole half, and it agrees with `DSP.md`: tracks 1 to 4 at `0x80003190` and
+tracks 5 to 8 at `0x80003390`, which is `0x80003190 + 0x200`.
+
+🟡 **Which loop iteration is track 1 is not settled here.** The loop starts
+at offset 0 and steps by `0x80`, and `DSP.md` puts tracks 1 to 4 in the
+first `0x200`, so iteration 0 is expected to be track 1. Task 4 owns this.
+**Falsifier:** a port run with a known signal on one track showing the
+signal at an offset other than `track_index * 0x80`.
+
+### 2.3 The word is 0 or 1, and the firmware says so ✅
+
+The absence of a mask is safe because the firmware checks the range itself
+and halts:
+
+```
+4000ab30:	7001           	moveq #1,%d0
+4000ab32:	23c0 4610 4d4e 	movel %d0,0x46104d4e
+4000ab38:	b0b9 8000 00e0 	cmpl 0x800000e0,%d0
+4000ab3e:	6402           	bccs 0x4000ab42
+4000ab40:	4ac8           	halt
+```
+
+`cmpl 0x800000e0,%d0` computes `1 - value`, and `bcc` takes the branch when
+there was no borrow, that is when `1 >= value` unsigned. Any value above 1
+runs into the `halt`. The check sits four instructions after the only write
+to the word, so it guards every value the word can take.
+
+### 2.4 Every writer of `0x800000e0`, classified ✅
+
+`refs.sh 0x800000e0` returns 35 hits. The helper was checked first on
+`0x800065b8`, which gave the expected 33.
+
+Thirty-four of the 35 are reads. Every one is a `movel <abs>,Dn` in one of
+its register encodings (`2039`, `2239`, `2439`, `2639`, `2839`, `2a39`,
+`2e39`), a push (`2f39`, at `0x4000d364` and `0x4000d524`), a compare
+(`b0b9`, at `0x4000ab38`), or an `lea` (`41f9` at `0x4000aaee`, `43f9` at
+`0x4000caf4`). Neither `lea` is used to store. `%a0` at `0x4000aaee` is read
+once at displacement 0 on the next instruction, and `%a1` at `0x4000caf4` is
+read once and then reloaded from `%d1` at `0x4000cb16`.
+
+There is exactly one write:
+
+```
+4000aaee:	41f9 8000 00e0 	lea 0x800000e0,%a0
+4000aaf4:	23d0 8000 00e4 	movel %a0@,0x800000e4
+4000aafa:	3039 2000 001c 	movew 0x2000001c,%d0
+4000ab00:	7140           	mvsw %d0,%d0
+4000ab02:	23c0 8000 00e0 	movel %d0,0x800000e0
+```
+
+Read it in order. The old half index is copied to `0x800000e4`. A word is
+read from the DSP host port at `0x2000001c` and sign extended. That word
+becomes the new half index. So the DSP publishes the half, and the ColdFire
+keeps the previous one next door.
+
+`0x800000e4` has the same shape: 13 references in the image, of which
+`0x4000aaf4` above is the only write. The other 12 are `movel <abs>,Dn` or
+pushes. The DMA setup steps use it for the buffers the DSP is still filling
+(`0x400048f6`, `0x40004964`, `0x40004a48`, `0x40004ab2`).
+
+#### Displacement forms, checked ✅
+
+`refs.sh` matches 32-bit literals, so a store written as `lea 0x80000000,%aN`
+plus a displacement of `0xe0` would be invisible to it. A `grep` over the
+full linear disassembly for `%aN@(224)` returns three sites, and none of them
+has `0x80000000` in the base register:
+
+```
+40084438:	2029 00e0      	movel %a1@(224),%d0
+4008443e:	2340 00e0      	movel %d0,%a1@(224)
+400d867e:	2268 00e0      	moveal %a0@(224),%a1
+```
+
+At `0x40084438` the same `%a1` is used at displacements `0xcc`, `0xd0`,
+`0xd8` and `0xdc` in the surrounding lines, so it is a structure pointer.
+At `0x400d867e` the access is a load of a pointer, not a store.
+
+🟡 **What remains unseen.** A store through a base register computed at run
+time, for example a struct pointer read out of memory, would be invisible to
+both checks.
+**Falsifier:** a write watch over `0x800000e0,4` under the port reporting a
+store from a PC other than `0x4000ab02`.
+
+### 2.5 Where the write sits, relative to the `jsr` ✅
+
+The write is not in the interrupt that calls the frame routine. It is in a
+different one, and that one runs first.
+
+**The writer's interrupt.** `0x4000aad0` is an exception handler, not a
+subroutine. It saves every register at entry and its only exit is an `rte`:
+
+```
+4000aad0:	4fef ff04      	lea %sp@(-252),%sp
+4000aad4:	48d7 7fff      	moveml %d0-%fp,%sp@
+...
+4000d9a6:	4cd7 7fff      	moveml %sp@,%d0-%fp
+4000d9aa:	4fef 00fc      	lea %sp@(252),%sp
+4000d9ae:	4e73           	rte
+```
+
+It is installed on vector `0x41` at level 5:
+
+```
+4001fbf8:	4879 4000 aad0 	pea 0x4000aad0
+4001fbfe:	4878 0041      	pea 0x41
+4001fc02:	4eb9 4000 0d50 	jsr 0x40000d50
+...
+4001fc2e:	7005           	moveq #5,%d0
+4001fc30:	13c0 fc04 8041 	moveb %d0,0xfc048041
+```
+
+`0x40000d50` is a three-line vector installer. It takes the vector number in
+`%sp@(4)` and the handler in `%sp@(8)` and stores the handler into the table
+whose base is at `0x400b9668`:
+
+```
+40000d50:	202f 0004      	movel %sp@(4),%d0
+40000d54:	2079 400b 9668 	moveal 0x400b9668,%a0
+40000d5a:	43ef 0008      	lea %sp@(8),%a1
+40000d5e:	2191 0c00      	movel %a1@,%a0@(0,%d0:l:4)
+40000d62:	4e75           	rts
+```
+
+Vector `0x41` is 65, which is interrupt source 1, whose control register is
+`0xfc048041`. The value written there is 5, so the handler runs at
+**level 5**.
+
+**The caller's interrupt.** The `jsr` at `0x40004b12` is inside a second
+handler that entered at `0x40004840`:
+
+```
+40004840:	4fef fff0      	lea %sp@(-16),%sp
+40004844:	48d7 0303      	moveml %d0-%d1/%a0-%a1,%sp@
+40004848:	4200           	clrb %d0
+4000484a:	13c0 fc04 401c 	moveb %d0,0xfc04401c
+40004850:	2039 4610 4d3e 	movel 0x46104d3e,%d0
+40004856:	41f9 400a b61a 	lea 0x400ab61a,%a0
+4000485c:	2070 0c00      	moveal %a0@(0,%d0:l:4),%a0
+40004860:	4ed0           	jmp %a0@
+```
+
+It is a jump table on a step counter at `0x46104d3e`. The table at
+`0x400ab61a` holds:
+
+| step | target |
+|---|---|
+| 0 | `0x40004862` |
+| 1 | `0x400048da` |
+| 2 | `0x4000495c` |
+| 3 | `0x400049ca` |
+| 4 | `0x40004a38` |
+| 5 | `0x40004aaa` |
+| 6 | `0x40004b36` |
+| 7 | `0x40004bc0` |
+
+Each step programs one transfer and bumps the counter, so the chain walks
+itself on successive DMA completions.
+
+The handler is installed on three vectors, all at level 6:
+
+```
+40009798:	487a b0a6      	pea %pc@(0x40004840)
+4000979c:	4878 0048      	pea 0x48
+400097a8:	487a b096      	pea %pc@(0x40004840)
+400097ac:	4878 0049      	pea 0x49
+400097b2:	487a b08c      	pea %pc@(0x40004840)
+400097b6:	4878 004f      	pea 0x4f
+400097bc:	7406           	moveq #6,%d2
+400097be:	13c2 fc04 8048 	moveb %d2,0xfc048048
+400097c4:	13c2 fc04 8049 	moveb %d2,0xfc048049
+400097ca:	13c2 fc04 804f 	moveb %d2,0xfc04804f
+```
+
+**The `jsr` is in step 5.** Step 5 enters at `0x40004aaa`, programs a
+transfer at `0x800000e4 * 0x200 + 0x80000210`, and falls through into the
+block the plan names:
+
+```
+40004af0:	303c 8004      	movew #-32764,%d0
+40004af4:	33c0 fc04 5014 	movew %d0,0xfc045014
+40004afa:	33c0 fc04 501c 	movew %d0,0xfc04501c
+40004b00:	4201           	clrb %d1
+40004b02:	13c1 fc04 401e 	moveb %d1,0xfc04401e
+40004b08:	52b9 4610 4d3e 	addql #1,0x46104d3e
+40004b0e:	46fc 2500      	movew #9472,%sr
+40004b12:	4eba e68c      	jsr %pc@(0x400031a0)
+40004b16:	46fc 2700      	movew #9984,%sr
+40004b1a:	2039 4610 4d3e 	movel 0x46104d3e,%d0
+40004b20:	7206           	moveq #6,%d1
+40004b22:	b280           	cmpl %d0,%d1
+40004b24:	6600 00a2      	bnew 0x40004bc8
+```
+
+So between the handler's entry and the `jsr`, on the pass that reaches it:
+the DMA interrupt flags at `0xfc045014` and `0xfc04501c` are acknowledged,
+`0xfc04401e` is cleared, the step counter goes from 5 to 6, and the status
+register is lowered from `0x2700` to `0x2500`. **Nothing on that path
+touches `0x800000e0`.**
+
+Between the `jsr` returning and the `rte`: the status register goes back to
+`0x2700`, the step counter is compared with 6, and if the DMA status word at
+`0xfc04501e` has a negative top byte the handler runs step 6's body inline at
+`0x40004b44`. That body programs the next transfer **into** the same half the
+frame routine has just read:
+
+```
+40004b58:	2039 8000 00e0 	movel 0x800000e0,%d0
+40004b5e:	323c 000a      	movew #10,%d1
+40004b62:	e3a8           	lsll %d1,%d0
+40004b64:	0680 8000 3190 	addil #-2147470960,%d0
+40004b6a:	23c0 fc04 5000 	movel %d0,0xfc045000
+```
+
+It reads `0x800000e0`, it does not write it. The handler then falls to the
+common exit:
+
+```
+40004bc8:	4cd7 0303      	moveml %sp@,%d0-%d1/%a0-%a1
+40004bcc:	4fef 0010      	lea %sp@(16),%sp
+40004bd0:	4e73           	rte
+```
+
+**The write comes before the `jsr`, in the level 5 handler, and that handler
+is what starts the chain.** The handler reaches the reset of the step counter
+past three decision points, and here are all three:
+
+```
+4000ab02:	23c0 8000 00e0 	movel %d0,0x800000e0
+4000ab08:	4eb9 4001 c9b0 	jsr 0x4001c9b0
+4000ab0e:	4a80           	tstl %d0
+4000ab10:	6708           	beqs 0x4000ab1a
+4000ab12:	4eba fde8      	jsr %pc@(0x4000a8fc)
+4000ab16:	6000 2e8e      	braw 0x4000d9a6
+4000ab1a:	327c 008c      	moveaw #140,%a1
+4000ab1e:	33c9 2000 0004 	movew %a1,0x20000004
+4000ab24:	51fc           	tpf
+4000ab26:	3039 2000 0004 	movew 0x20000004,%d0
+4000ab2c:	4a00           	tstb %d0
+4000ab2e:	6df6           	blts 0x4000ab26
+```
+
+`0x4000ab10` is an error exit, covered below. `0x4000ab2e` is a spin on the
+DSP command vector register at `0x20000004`, waiting for the host command
+`0x8c` to be taken. `0x4000ab3e` is the range guard quoted in section 2.3,
+whose other arm is the `halt`.
+
+From `0x4000ab42` to `0x4000ac32` there is no branch, jump, call or return
+at all. That was checked over the whole 240-byte span, not sampled. The span
+ends:
+
+```
+4000ac2c:	42b9 4610 4d3a 	clrl 0x46104d3a
+4000ac32:	42b9 4610 4d3e 	clrl 0x46104d3e
+```
+
+So on the working path the write and the reset always happen together, in
+that order.
+
+🟡 **The error exit at `0x4000ab12` writes the word and does not reset the
+counter.** On that path `0x800000e0` has already changed while a step chain
+from the previous frame may still be walking, so the frame routine could
+read a half that chain did not fill. The path calls `0x4000a8fc` and leaves
+by `braw 0x4000d9a6`, which is the handler's register restore and `rte`, so
+it also skips the increment of `0x80004800` at `0x4000d98e`. It is a fault
+path, and a hook cannot do better than the stock routine on it, because the
+stock routine reads the same word.
+**Falsifier:** a port run reaching `0x4000ab12` during normal playback.
+
+`0x46104d3e` is the counter the level 6 handler dispatches on. Clearing it
+sends the next DMA completion to step 0. Step 0 programs the transfer that
+fills the half:
+
+```
+400048a2:	2039 8000 00e0 	movel 0x800000e0,%d0
+400048a8:	720a           	moveq #10,%d1
+400048aa:	e3a8           	lsll %d1,%d0
+400048ac:	0680 8000 3190 	addil #-2147470960,%d0
+400048b2:	23c0 fc04 5030 	movel %d0,0xfc045030
+```
+
+and the level 5 handler itself programs the companion transfer into
+`0x80003390 + half * 0x400`, the second `0x200` of the same block:
+
+```
+4000aba2:	2039 8000 00e0 	movel 0x800000e0,%d0
+4000aba8:	720a           	moveq #10,%d1
+4000abaa:	e3a8           	lsll %d1,%d0
+4000abac:	0680 8000 3390 	addil #-2147470448,%d0
+4000abb2:	23c0 fc04 5030 	movel %d0,0xfc045030
+```
+
+That matches `DSP.md`: `0x80003190` is core 1 with tracks 1 to 4, and
+`0x80003390` is core 0 with tracks 5 to 8.
+
+So the order within one frame is:
+
+1. Level 5 handler `0x4000aad0` entered.
+2. `0x4000aaf4` copies the old half index to `0x800000e4`.
+3. `0x4000ab02` writes the new half index to `0x800000e0`.
+4. `0x4000ab38` halts if it is not 0 or 1.
+5. `0x4000abb2` programs the transfer into `0x80003390 + half * 0x400`.
+6. `0x4000ac32` resets the step counter, so the chain restarts at step 0.
+7. `rte`.
+8. Level 6 handler, step 0, programs the transfer into
+   `0x80003190 + half * 0x400`.
+9. Steps 1 to 4 program the other transfers.
+10. Step 5 falls through to `0x40004af0`, lowers the mask to 5, and calls
+    `0x400031a0` at `0x40004b12`.
+11. `0x400031a0` reads `0x800000e0` at `0x400031d0` and walks
+    `0x80003190 + half * 0x400`.
+
+**The hook runs at point 10, one instruction before the `jsr`. It sees the
+value written at point 3, and so does the stock routine at point 11. Same
+value, same half, no inversion.**
+
+🟡 **That the level 5 handler runs once per audio frame is inferred.** What
+is measured is that it resets the step chain, takes a fresh half index from
+the DSP host port, and programs the frame's transfers. That is a frame's
+worth of work, and nothing else in the image resets the counter except the
+one `clrl` at `0x4000ac32`.
+**Falsifier:** a port run counting entries to `0x4000aad0` against frames and
+finding a different rate.
+
+### 2.6 The word cannot change under the hook ✅
+
+The hook is detoured at `0x40004b12`, which is after the
+`movew #9472,%sr` at `0x40004b0e`. `9472` is `0x2500`, so the supervisor bit
+is set and the interrupt priority mask is 5.
+
+A ColdFire interrupt is taken only when its level is **greater** than the
+mask, level 7 excepted. The only writer of `0x800000e0` is in the level 5
+handler on vector `0x41`. Level 5 is not greater than 5, so that handler
+cannot preempt the hook or the frame routine.
+
+The level 6 DMA handler can preempt, and so can the level 7 handler at
+`0x4001fca0` that `0x4001f814` installs on vector `0x47`, but neither writes
+the word. Section 2.4's census is what makes that a fact rather than a hope.
+There is one writer in the whole image.
+
+So the hook may read the word once and use that value for its whole copy.
+That is what the stock routine does.
+
+### 2.7 What the port cannot show 🟡
+
+Nothing in this section was run. No Octatrack project folder exists on this
+machine, and `ot_emu` needs one for `--card`, `--set` and `--project`. The
+static reading is the evidence.
+
+The port would be a weak instrument here even with a project. Under the port
+a DMA completes instantly, so no half is ever torn and no half is ever
+stale. A hook that reads the wrong half renders correct audio one frame
+late, and one frame is 16 samples. That is inaudible in a render and
+invisible to any byte comparison that does not align the frames. This is the
+instrument blindness trap in `CLAUDE.md`: a lock-step emulator cannot show a
+race, and a green local result is not evidence that the half choice is
+right.
+
+What a port run could add, once a card exists, is the value the word
+actually takes and an independent writer census:
+
+```bash
+out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card <card.img> \
+  --set <SET> --project <PROJ> --frames 50 --load-ms 20000 \
+  --watch-mem 0x800000e0,4
+```
+
+Every write should come from `0x4000ab02`, and every value should be 0 or 1.
+Any other PC retracts section 2.4.
+
+### 2.8 Interface
+
+```asm
+| The read-back half index the DSP publishes each frame. A LONGWORD holding
+| 0 or 1; the firmware halts at 0x4000ab40 if it is anything else. Written
+| at exactly one site, 0x4000ab02, in the level 5 handler on vector 0x41.
+.equ	PING,		0x800000e0
+
+| No inversion. The hook runs at 0x40004b12 with the interrupt mask at 5,
+| which locks out the only writer, so the hook and the stock frame routine
+| read the same value in the same frame.
+.equ	PING_XOR,	0
+
+| Base of the read-back block, half 0. Tracks 1 to 4 here, tracks 5 to 8 at
+| RDBK_BASE + 0x200.
+.equ	RDBK_BASE,	0x80003190
+
+| Bytes per half: 8 tracks of RDBK_TRACK.
+.equ	RDBK_HALF,	0x400
+
+| Bytes per track inside a half: 16 samples, stereo, one longword each.
+.equ	RDBK_TRACK,	0x80
+```
+
+The rule, as the plan states it: `half = (PING ^ PING_XOR) & 1`, byte offset
+`half * RDBK_HALF`. The `& 1` is redundant because the firmware bounds the
+word to 0 or 1, and the stock routine omits it.
+
+The arithmetic a hook can execute, matching `0x400033fc` instruction for
+instruction. The shift count goes through a register because a ColdFire
+immediate shift only encodes 1 to 8:
+
+```asm
+	move.l	PING,%d0		| 0 or 1
+	moveq	#10,%d1
+	lsl.l	%d1,%d0			| times RDBK_HALF
+	add.l	#RDBK_BASE,%d0		| half base
+	add.l	#RDBK_TRACK*N,%d0	| track N, N from section 3
+```
