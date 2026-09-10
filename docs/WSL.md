@@ -84,22 +84,116 @@ which is a plain file copy from Explorer. VS Code: use the **WSL** extension.
 
 The steps above were verified against the tree of 3 Sep 2026. Since
 9 Sep 2026 the build treats the m68k cross-toolchain as a first-class
-dependency, and this route does not provide it:
+dependency. `scripts/setup.sh:31` adds `m68k-elf-gcc` to the Homebrew list
+when it is missing, so on a machine without Homebrew `make setup` stops at
+`brew install` with `brew: command not found`. Every remix with linked
+ColdFire units (octakit, midi-scenes, hello-dram, scenes-kits) needs
+`m68k-elf-as`, `ld`, `objcopy` and `nm`, and `tools/build/build_bus.py:1494`
+refuses without them.
 
-- `scripts/setup.sh:31` now requires `m68k-elf-gcc` and adds it to the
-  Homebrew list when it is missing, so on a machine without brew `make setup`
-  stops at `brew install` with `brew: command not found`.
-- Every remix with linked ColdFire units (octakit, midi-scenes, hello-dram,
-  scenes-kits) needs `m68k-elf-as`, `ld`, `objcopy` and `nm`, and
-  `tools/build/build_bus.py:1494` refuses without them. `make check` runs the
-  selftest over every remix, so it fails on this route.
+❌ **Retracted (10 Sep 2026).** The old claim here was that "whether
+symlinking them as `m68k-elf-*` satisfies the build, and whether an `.s`
+re-assembled that way still matches its author's bytes, has not been tried",
+and that the route was proven for disassembly only. It has now been tried.
+The answer is split: the apt tools satisfy this repository's own ColdFire
+code, and they do not satisfy Octakit's.
 
-`binutils-m68k-linux-gnu` ships those four under the `m68k-linux-gnu-`
-prefix, but whether symlinking them as `m68k-elf-*` satisfies the build,
-and whether an `.s` re-assembled that way still matches its author's bytes,
-has not been tried. Until it is, this route is proven for **disassembly**
-(`scripts/disasm.sh emac`) and for the tree state of 3 Sep; treat
-`make setup` and `make check` here as unverified.
+### What was installed (10 Sep 2026, Ubuntu 26.04 under WSL2)
+
+```bash
+sudo apt install -y binutils-m68k-linux-gnu gcc-m68k-linux-gnu
+for t in as ld objcopy nm objdump gcc; do
+  sudo ln -sf "$(command -v m68k-linux-gnu-$t)" /usr/local/bin/m68k-elf-$t
+done
+```
+
+That gives GNU binutils 2.46 and GCC 15.2.0. The links go in `/usr/local/bin`
+because `~/.local/bin` is not on the PATH of a non-login shell, and the build
+runs the tools through `subprocess`, which uses that PATH.
+
+`scripts/setup.sh` was run by hand, minus Homebrew. Step 1 (binwalk, radare2,
+`m68k-elf-gcc`) was skipped: binwalk and radare2 are still absent, and nothing
+below needed them. Step 3 (Ghidra) is optional and was skipped. Steps 1b
+(mc68k), 2 (elektron-firmware-tool) and 4 (dsp56300) were run as written.
+`uv sync --extra emu` provisioned `.venv`, and `make emu-cf` built the
+ColdFire port and reached the M6a gate.
+
+Two provisioning traps, both measured:
+
+- ✅ **`git clone --depth 1` of dsp56300 gets today's upstream tip, and
+  `tools/patches/dsp56300.patch` does not apply to it.** The patch's base is
+  `f5bf5cbf`. On the tip, `git apply` fails on `dsp.h` and `CMakeLists.txt`,
+  `setup.sh` prints its "already applied (or upstream changed)" line, and the
+  build then fails with `class dsp56k::Memory has no member named
+  setSharedWindow`. Fix: `git -C vendor/dsp56300 fetch --unshallow origin`,
+  then `git checkout --detach f5bf5cbf`, then submodules, then the patch.
+- ✅ **The `upstream/` trees under `modules/` are git submodules and are not
+  cloned by `setup.sh`.** Run `git submodule update --init --recursive`.
+  `modules/octakit/upstream` (emuyia/ems-octakit) is public.
+  `modules/midi-scenes/upstream` (sambanks/midisc) returns 404 to an
+  authenticated `gh api`, so it cannot be fetched from this account. Over
+  HTTPS with no credential helper, that clone hangs on a username prompt
+  instead of failing. Set `GIT_TERMINAL_PROMPT=0` to get the error.
+
+### What the oracles said
+
+`make check` runs `tools/remix/selftest.py`, which builds every remix. Thirteen
+remixes need one of the two upstream submodules, so no `make check` passes on
+this machine yet, whatever `REMIX` is set to.
+
+| Run | Exit | Why |
+| --- | --- | --- |
+| `make check REMIX=hello-dram` | 2 | Its own build and cycle count pass. The selftest then fails on 13 other remixes. |
+| `make check REMIX=octakit` | 2 | Build fails: `m68k-elf-as` cannot assemble Octakit's `runtime.S`. |
+| `make check REMIX=midi-scenes` | 2 | Build fails: the upstream submodule is not available to this account. |
+
+✅ **The apt binutils produce this repository's pinned ColdFire bytes.** Run
+individually, against a `hello-dram` build:
+
+- `tools/build/label_fmt.py` passes. It re-assembles twelve caves with
+  `m68k-elf-as -mcpu=5407` and compares them against the bytes `emit()`
+  claims. This is the drift gate, and it is green.
+- `tools/build/mode_names.py` passes.
+- `tools/verify/verify_dram_boot.py` passes. The loader that these tools built
+  boots to the handoff under the ColdFire port, ran once, and never reached
+  its `fatal` hang. The DRAM reserve matches the linked runtime.
+- `tools/verify/verify_slots.py`, `verify_grains.py`, `verify_menu.py` and
+  `verify_labels.py` pass.
+- `tools/verify/verify_replaces.py` fails, but only on the same 13 remixes.
+
+❌ **The apt tools cannot build Octakit's runtime.** Two separate reasons:
+
+1. ✅ `modules/octakit/upstream/runtime/firmware.json` pins
+   `m68k-elf-gcc` version 16.1.0, and `tools/remix/runtime_build.py:371`
+   compares the rebuilt runtime against the author's bytes. Ubuntu ships
+   15.2.0. A different compiler version is a different code generator.
+2. ✅ Binutils 2.46 refuses `runtime.S:438`, with `value of fffffbbe too
+   large for field of 1 byte at 00000441`. The line is `bne.s
+   gk_copy_payload_long_loop`, a branch six bytes backwards. The assembler
+   never resolves an 8-bit branch to a `.global` label. It emits an
+   `R_68K_PC8` relocation and writes the negated section offset into the
+   displacement byte, which overflows once the label sits more than 127 bytes
+   into the section. Minimal case, measured: the same loop assembles at
+   offset 0 and fails after `.space 0x400`, and the identical loop with a
+   local label assembles at any offset.
+
+   🟡 Inferred: the author's `m68k-elf-as` resolves this branch locally, which
+   is why Octakit builds for her. Falsifier: assemble `runtime.S` with a
+   Homebrew `m68k-elf-as` of the pinned toolchain. If it fails there too, the
+   source is at fault and Octakit's own build would be failing.
+
+### Where this leaves the route
+
+✅ Proven: disassembly (`scripts/disasm.sh emac`), `make emu-cf`, the DSP side
+of the build (`scripts/refhash.sh save` saved all 26 configurations), and this
+repository's own ColdFire code, including the DRAM loader, which boots under
+the port.
+
+❌ Not available: `make check`, until the two upstream submodules are
+resolvable. Octakit needs `m68k-elf-gcc` 16.1.0 and an assembler that resolves
+8-bit branches to global labels. Homebrew on Linux, or a cross-toolchain built
+from source, are the untried options. midi-scenes needs read access to
+`sambanks/midisc`.
 
 ## Changes needed
 
