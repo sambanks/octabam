@@ -184,10 +184,15 @@ individually, against a `hello-dram` build:
 
 ### Where this leaves the route
 
-✅ Proven: disassembly (`scripts/disasm.sh emac`), `make emu-cf`, the DSP side
-of the build (`scripts/refhash.sh save` saved all 26 configurations), and this
+✅ Proven: disassembly (`scripts/disasm.sh emac`), `make emu-cf`, and this
 repository's own ColdFire code, including the DRAM loader, which boots under
-the port.
+the port. Each of those was checked by an oracle: the M6a gate,
+`tools/build/label_fmt.py`'s twelve re-assembled caves, and
+`tools/verify/verify_dram_boot.py`.
+
+`scripts/refhash.sh save` also ran cleanly and captured all 26 configurations.
+That is a baseline for a later `scripts/refhash.sh check`, not a result. It
+compared against nothing on this run, so it proves nothing yet.
 
 ❌ Not available: `make check`, until the two upstream submodules are
 resolvable. Octakit needs `m68k-elf-gcc` 16.1.0 and an assembler that resolves
