@@ -45,7 +45,7 @@ hardware.
 
 | module | from | what it is | proof |
 |---|---|---|---|
-| `midi-scenes` | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc), via Sam's fork branch `octabam-gas` (submodule) | MIDI-driven scene locks: seven GNU-as units in DRAM, 35 detours, 2 pokes; 207 B changed inside the OS | every region assembles to his encoder's bytes at his addresses; boots under the port, his hooks run from DRAM |
+| `midi-scenes` | [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc), via Sam's fork branch `octabam-gas` (submodule) | MIDI-driven scene locks: seven GNU-as units in DRAM, 34 detours, 4 pokes; 236 B changed inside the OS (his 1.40MIDISC tree, 10 Sep 2026) | every region assembles to his encoder's bytes at his addresses; boots under the port, his hooks run from DRAM |
 | `octakit` | [emuyia/ems-octakit](https://github.com/emuyia/ems-octakit) (submodule) | Em's Octakit: 256 Kits per Project, a 150 KB runtime in DRAM | stock + her writes + her append == her own `output.os`; her runtime rides octabam's loader and reads back byte-identical at boot |
 | `lofi-amf-fix` | [bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) | the one objective bug fix in his tool: LO-FI's AMF `mpysu` → `mpyuu`, two DSP words | both words disassembled against stock; composes with everything |
 | `hello-dram` | here | one DRAM unit, no hooks — the loader's canary | boots; window equals the linked image |

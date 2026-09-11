@@ -838,7 +838,7 @@ Parts into Kits on load and downgrading may lose Kit data (her warning).
 ### Flash 9 — `midi-scenes`, tag 23
 
 His features through our loader, from DRAM: the seven units linked into
-the arena reserve, 35 detours and 2 pokes inside the OS.
+the arena reserve, 34 detours and 4 pokes inside the OS.
 
 1. Boots, version `OCTABAM23`; PROJECT › MEMORY ~75 MB (as 22).
 2. **The unit behaves as stock without MIDI driving a scene** — load a

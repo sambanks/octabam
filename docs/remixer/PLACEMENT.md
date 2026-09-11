@@ -99,6 +99,15 @@ armed before boot and `--mem-dump` at exit:
   slots, and Bryan-style: the firmware-armed hardware watchpoint mxldyn
   proved (his `build_diag_bugA5.py`) on `0x47fc7410..` would settle it
   in one flash.
+  ✅ **ANSWERED by Em, 12 Sep 2026: this is a NON-ISSUE for Octakit.**
+  She needs that window **on boot only** — afterwards her code runs from
+  the reserved flex-pool space and the temporary copy is not needed. The
+  fills happen at PROJECT LOAD, after boot, so nothing of hers is live
+  there. The measurement above stands; the *consequence* drawn from it
+  is retracted. ⚠️ Still open on OUR side, and small: we recorded her
+  wrapper as re-hashing the stage at every project load. If that reading
+  is right a clobbered stage would meet a hash gate, so either the
+  reading is wrong or the gate tolerates it. Ours to confirm.
 - **`0x46000000..0x47502c10`** (~21 MB) — outside both big clears and
   **unmeasured**: stock's sample pool may live there. The candidate for
   MB-scale placement, once a run that loads samples and records has been
@@ -248,8 +257,123 @@ image likewise has no stock write into the reserve (28,700 writes, all
 from his own code running in DRAM: the MSC table and his state); on that
 image tracks 1–2 do not arm at frame 0 and ~8,600 fewer sectors are read
 — his `apply_part` wrapper and reload hooks changing part application
-under the port, not the arena (the control says so). Reported to him as
-his to look at; whether it reproduces on hardware is not known.
+under the port, not the arena (the control says so). Reported to him.
+
+✅ **Re-measured 10 Sep 2026 on the same card, against his 1.40MIDISC**
+(the `hello-dram` control rebuilt bit-identical, and the 1.40MSC image
+rebuilt bit-identical to the one first measured, so only his sources
+differ):
+
+| image | ATA cmds | sectors read | written | armed at frame 0 |
+|---|---|---|---|---|
+| `hello-dram` (control) | 6,189 | 30,467 | 297 | 5 — tracks 0,1,2,4,7 |
+| midi-scenes 1.40MSC | 5,234 | 21,958 | 0 | 3 — tracks 0,5,7 |
+| midi-scenes 1.40MIDISC | 6,189 | 30,467 | 297 | 3 — tracks 0,5,7 |
+
+**The card I/O half is FIXED** — every counter on his new image equals the
+control's exactly, not approximately. The cause was his own: `bank_switch`
+/ `bank_invalidate` preserved only `d0` across a `jsr` that had replaced a
+plain `move.l d0,(BANK_PTR).l`, so the sample load lost registers; 1.40MIDISC
+saves `d1-d7/a0-a6` (his comment: "sample load").
+
+⚠️ **The arming half is NOT fixed and is a SEPARATE defect** — identical on
+both his images, so it is not the register clobber.
+
+✅ **BISECTED to ONE site: `0x40087d44`** (10 Sep 2026, same fixture). Built
+one image per dropped hook group, then per site, from the same tree:
+
+| dropped | armed @ frame 0 |
+|---|---|
+| nothing (1.40MIDISC) | 3 — 0,5,7 |
+| all 38 sites | 5 — 0,1,2,4,7 |
+| lifecycle group (apply/reload/save/clr_pt/2 pokes) | 3 |
+| scene group (scene_done ×2, write_mix, plock) | 3 |
+| everything else (hold/dial/addi/LED/menus/enc/morph/xf) | 3 |
+| **bank group (bank_sw ×2, bank_inv ×2)** | **5** |
+| bank_sw A `0x400622aa` only | 3 |
+| **bank_sw B `0x40087d44` only** | **5** |
+| bank_inv A / B / both | 3 |
+
+Dropping the all-38 image restores 5, so the DRAM units alone are innocent
+and the instrument can see the effect. The two `bank_sw` sites carry the
+SAME cave, and only one of them breaks arming — so it is the SITE, not the
+routine in isolation. Watched (`--watch-pc`): `0x40087d44` fires **once**,
+at instruction 60,393,356 (transport start), with `d0` = the arena base +
+1×635,712, i.e. bank index 1; `0x400622aa` fires once just after with bank
+index 0; the four `bank_inv` hits all precede both.
+
+**WHAT THE SIGNAL MEANS, and the symptom.** The frame-0 `FW_LIVE_NIBBLE`
+writes are the step-1 trigs of the bank being played (`RTOS_FORK.md`, the
+fixture table). The midisc set *gains* a track, so this is different
+PATTERN DATA being read, not tracks failing to start. Checked against the
+fixture's own banks, excluding track 8 (whose write comes from a different
+pc, `0x4000bd7e` vs `0x4000b9bc`):
+
+| | step-1 trig tracks | matches |
+|---|---|---|
+| control | 1,2,3,5 | **bank 3 pattern 1** — where the project was saved |
+| midisc | 1,6 | **bank 1 pattern 0** — the default position |
+
+So in use this would read as: load a project, press PLAY, and the sequencer
+starts at the top of bank 1 instead of the pattern you left it on. ⚠️ Two
+independent sets each matching a real pattern is strong, but the write is
+NOT traced, and the `--watch-pc` capture showed `d0` carrying bank index 1,
+which does not obviously line up with landing on bank 1 pattern 0. Well
+supported, not established. The persistence risk is the larger one: `pack`
+performs a durable stock SAVE, so this site writes during a bank switch
+with the bank state mid-flight.
+
+🔄 **RE-MEASURED against his 1.40MIDISC5 (12 Sep 2026) — his fix does NOT
+move this symptom, and that narrows it to `unpack`.** He shipped "Site B
+no-pack" crediting this finding (`build_bank_publish`: *"Pack here = Bam emu
+bug (durable SAVE mid bank-load → wrong pattern). Publish + unpack only."*).
+On the same fixture the arming is UNCHANGED — 3 armed, tracks 0,5,7 — while
+the card I/O stays exactly the control's (6,189 / 30,467 / 297). Re-bisected
+on 1.40MIDISC5, which also added a new unpacking hook:
+
+| dropped | armed @ frame 0 |
+|---|---|
+| nothing | 3 — 0,5,7 |
+| `0x400622c6` (the NEW after-project-load hook) | 3 — not it |
+| **`0x40087d44` (site B, now pack-free)** | **5 — 0,1,2,4,7** |
+| both | 5 |
+
+So removing `pack` was not sufficient: **it is `unpack`.** That also
+vindicates the hedge recorded above (pack early-outs on `LAST_PART == 0xFF`
+and every `bank_inv` hit precedes this one) — the lean was right and his
+commit message is wrong about which half.
+
+**`unpack`'s ONE write into stock data** is the shadow→working sync: when
+the shadow path was taken (`d4 == 1`) it copies `SPARSE_BYTES` (144) from
+`BANK_PTR + part×0x18b2 + SHADOW_SPARSE_OFF` to `… + SPARSE_OFF`. At site B
+`bank_publish` stores the NEW `BANK_PTR` and *then* unpacks, so that copy
+runs with the new bank and a part index taken from `PART_DISP` and masked to
+4 bits. ⚠️ Still INFERRED — it is the only stock-visible write `unpack`
+makes, but the write has not been caught in the act. Note it is the same
+`BANK_PTR + part*0x18b2 + SPARSE_OFF` locator that needs a seam for Octakit
+(`modules/octakit/README.md`), so one accessor would serve both.
+
+Stock's two sites differ, which is the lead: `0x400622aa` is guarded by a
+`cmpl`/`beqs` that skips unless the bank actually CHANGED, and publishes the
+current-bank byte `0x80000002` *after* the store; `0x40087d44` is an
+unconditional clamp-and-set path that publishes `0x80000002` and
+`0x100b14ce` *before* the store. His cave replaces a plain `move.l
+d0,(BANK_PTR).l` with `pack` — which by his own docstring performs a durable
+STOCK SAVE (shadow + staging + `9b312`) — then the store, then `unpack`.
+
+⚠️ **INFERRED, not established: WHICH of those does the damage.** Candidates
+are the SAVE's side effects, `unpack` overwriting part state the load has
+just written, and the site being unguarded so it fires when nothing changed.
+Not traced to a write. Note `pack` early-outs when `LAST_PART == 0xFF` and
+every `bank_inv` hit (which sets it) precedes this one, so `unpack` is the
+likelier half — but that turns on whether an `apply_part` reset `LAST_PART`
+in between, which was not checked. His code and his intent; handed over as
+the one site.
+
+Whether either half reproduces on hardware is still not known — this is the port, and the counts above are
+its counts, not a unit's. (These absolute numbers differ slightly from the
+9 Sep run above because the build has moved since; the three rows here are
+one contemporaneous set and only they should be compared with each other.)
 
 ## The loader
 

@@ -10,7 +10,8 @@ panel, is driving. The panel path is untouched. (Its author started from
 this project's own reverse-engineering.)
 
 WHERE THE CODE COMES FROM. `upstream/` is Sam's fork of his repository on
-the branch `octabam-gas` (a PR to him waits until he has finished his own
+the branch `octabam-gas`, rebuilt 10 Sep 2026 on his 1.40MIDISC tree
+(he rewrote the repo's history, so the branch is re-cut, not rebased) (a PR to him waits until he has finished his own
 changes; then it rebases). His caves are written in a small Python encoder
 (`tools/ot3_asm.py`); that branch adds `tools/gas_port.py`, which drives
 his own build_* functions with an encoder subclass that also records one
@@ -33,18 +34,34 @@ now; the only bytes this module changes inside the OS are the 35 detour
 sites, the two pokes, and (when Octakit is not in the image) the boot
 site's three-byte redirect into the loader.
 
-THE DETOURS are his 35 sites, each asserted against stock before it is
-rewritten, wired by SYMBOL: jmp for the stubs that replay what they
-displaced and jump on, jsr for the callable ones, one `lea` operand
-rewrite (SAVE_ALL), two `bne->bra` flips (never re-apply the part after
-Part Save/Clear). TRACK_GATE/PAGE_GATE jump straight to stock code.
+THE DETOURS are his 38 sites -- 34 Detours and 4 Pokes, 236 bytes -- each
+asserted against stock before it is rewritten, wired by SYMBOL: jmp for
+the stubs that replay what they displaced and jump on, jsr for the
+callable ones, one `lea` operand rewrite (SAVE_ALL), two `bne->bra` flips
+(never re-apply the part after Part Save/Clear) and two `bne->nop` flips
+(the MIDI lock LEDs scan MSC as well as the panel table).
+TRACK_GATE/PAGE_GATE jump straight to stock code.
 
-MEASURED: five regions byte-identical to his encoder at his addresses;
-the linked units, detours and pokes install with every assertion passing;
-`make check` green. NOT measured: nothing flashed from this pipeline
-(his own builds are what has run on hardware), and his `apply_part`
-hook (0x40009094) is shared with Octakit -- the ledger refuses that
-combination until detour chaining exists.
+WHAT 1.40MIDISC CHANGED (10 Sep 2026, his commits since 1.40MSC): taddi/
+paddi `rts` instead of jumping back, so the same cave serves two new
+MIDI lock-LED paint sites (`jsr`, 0x40034764/0x40034950) beside the two
+it already had; a scene-lock clamp routine in SAFE_CAVE (ARP page LEG/
+MODE/SPD/RNGE get their own ranges, everything else 0-127); `xf1` moved
+out of SAFE_CAVE into the stub; scene hold ENSURES MSC instead of
+unpacking it every tick (his fix for locks vanishing between encoder
+events); and bank switch/invalidate now preserve d1-d7/a0-a6 across the
+sample load. octabam tracks all of it by regenerating `gas/*.s` from his
+builders -- no transcription -- and re-proving the five regions.
+
+MEASURED (10 Sep 2026, 1.40MIDISC): five regions byte-identical to his
+encoder at his addresses; the linked units, 34 detours and 4 pokes
+install with every assertion passing; `make check REMIX=midi-scenes` and
+`REMIX=mods` green, the reserve reading back equal to the linked runtime
+(8,622 B solo) under the port. NOT measured: nothing flashed from this
+pipeline (his own builds are what has run on hardware). His `apply_part`
+hook (0x40009094) is shared with Octakit; SCENES KITS bridges it, and
+the ledger still refuses the pair without that module. None of the four
+new 1.40MIDISC sites collides with anything Octakit writes.
 """
 
 from remix.schema import Detour, Kind, Linked, Module, Poke
@@ -64,7 +81,9 @@ UNITS = (
     Linked("safe_cave", UP + "safe_cave.s", dram=True),
     Linked("cave2", UP + "cave2.s", dram=True),
     Linked("stub", UP + "stub.s", dram=True),
+    Linked("voice_reload", UP + "voice_reload.s", dram=True),
     Linked("code2", UP + "code2.s", dram=True),
+    Linked("project_cave", UP + "project_cave.s", dram=True),
     Linked("enc_unlock", UP + "enc_unlock.s", dram=True),
 )
 
@@ -74,36 +93,41 @@ DETOURS = (
     Detour(0x4004E348, H("71b9100b14cc"), "stub", "dial", "scene-held dial readout"),
     Detour(0x400343BC, H("4ab980000012"), note="per-track ADDI dispatch -> stock", target=0x400343C4),
     Detour(0x4003445E, H("4ab980000012"), note="per-page ADDI dispatch -> stock", target=0x40034466),
-    Detour(0x400343E8, H("06800008f3e2"), "stub", "taddi", "scene-locked track offset"),
-    Detour(0x4003448E, H("06810008f3e2"), "stub", "paddi", "scene-locked page offset"),
+    Detour(0x400343E8, H("06800008f3e2"), "stub", "taddi", "scene-locked track offset", kind="jsr"),
+    Detour(0x4003448E, H("06810008f3e2"), "stub", "paddi", "scene-locked page offset", kind="jsr"),
+    Detour(0x40034764, H("06800008f3e2"), "stub", "taddi", "MIDI lock-LED paint, engine A", kind="jsr"),
+    Detour(0x40034950, H("06800008f3e2"), "stub", "taddi", "MIDI lock-LED paint, engine B", kind="jsr"),
     Detour(0x40031F44, H("4fefffe448d704fc"), "stub", "pad", "pad-has-locks indicator", pad_to=8),
     Detour(0x400434CA, H("4ebae414241f"), "stub", "press", "encoder-press refresh"),
     Detour(0x40054CB6, H("42b9460d1694"), "stub", "release", "scene-pad release mix"),
     Detour(0x40062F24, H("4eb940038c30"), "stub", "clr_sc", "CLEAR SCENE menu row", kind="jsr"),
     Detour(0x40062FBE, H("4eb9400274cc"), "stub", "cpy_sc", "COPY SCENE menu row", kind="jsr"),
     Detour(0x40062E3C, H("4eb940027578"), "stub", "pst_sc", "PASTE SCENE menu row", kind="jsr"),
-    Detour(0x4002E828, H("4eb94004a9d0"), "safe_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
+    Detour(0x4002E828, H("4eb94004a9d0"), "project_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
     Detour(0x40053A9E, H("4ab980000012660008aa"), "enc_unlock", "hook_a", "scene+encoder unlock, engine A", pad_to=10),
     Detour(0x40054392, H("4ab980000012660008b8"), "enc_unlock", "hook_b", "scene+encoder unlock, engine B", pad_to=10),
     Detour(0x4003F3A2, H("4ef94003577c"), "stub", "morph", "XF morph tail"),
-    Detour(0x40061E78, H("71398000004a"), "safe_cave", "xf1", "post-XF continuation 1"),
+    Detour(0x40061E78, H("71398000004a"), "stub", "xf1", "post-XF continuation 1"),
     Detour(0x40062C32, H("71b980000003"), "safe_cave", "xf2", "post-XF continuation 2"),
     Detour(0x40052AE0, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion A"),
     Detour(0x40052A10, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion B"),
-    Detour(0x4005538A, H("1a82223c0000"), "code2", "write_mix", "part-window write, remixed"),
+    Detour(0x4005538A, H("1a82223c000018b2"), "code2", "write_mix", "part-window write, remixed", pad_to=8),
     Detour(0x4009D1DE, H("4cd73cfc4fef00284e75"), "safe_cave", "plock", "post-plock scene rebuild", pad_to=10),
     Detour(0x40009094, H("4fefff9848d77cfc"), "code2", "apply", "apply_part wrapper", pad_to=8),
     Detour(0x4002DD12, H("4eb94004a908"), "safe_cave", "save", "Part Save menu action", kind="jsr"),
     Detour(0x4002DD56, H("4eb94004aab4"), "code2", "reload", "Part Reload, menu path", kind="jsr"),
     Detour(0x4005E05A, H("4eb94004aab4"), "code2", "reload", "Part Reload, non-menu path", kind="jsr"),
     Detour(0x400622AA, H("23c046c82456"), "code2", "bank_sw", "bank-pointer refresh on switch A", kind="jsr"),
-    Detour(0x40087D44, H("23c046c82456"), "code2", "bank_sw", "bank-pointer refresh on switch B", kind="jsr"),
+    Detour(0x40087D44, H("23c046c82456"), "stub", "bank_pub", "bank publish (no pack) on switch B", kind="jsr"),
     Detour(0x4001FBD0, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init A", kind="jsr"),
     Detour(0x40025AA2, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
+    Detour(0x400622C6, H("4eb9400418e0"), "project_cave", "after_proj", "post-project-load CKPT seed + unpack", kind="jsr"),
     Detour(0x4002DCD4, H("45f94004a908"), "safe_cave", "save", "SAVE ALL's lea -> the ported Save", kind="lea"),
 )
 
 POKES = (
+    Poke(0x40034754, H("665a"), H("4e71"), "MIDI lock LEDs: scan MSC too, engine A (bne->nop)"),
+    Poke(0x4003493E, H("6648"), H("4e71"), "MIDI lock LEDs: scan MSC too, engine B (bne->nop)"),
     Poke(0x4004A9B0, H("6612"), H("6012"), "never re-apply the part after Part Save (bne->bra)"),
     Poke(0x4004AA8E, H("6612"), H("6012"), "never re-apply the part after Part Clear (bne->bra)"),
 )
