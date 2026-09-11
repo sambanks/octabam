@@ -4345,11 +4345,15 @@ returns `round(RLEN × 15,876,000 / tempo24)` once per pass. At **RLEN 16,
 128 BPM** (tempo24 = 3072):
 
 - exact pass period `E` = 254,016,000 / 3072 = **82,687.5 samples**
-- converter length `L` = round(E) = **82,688, every pass**
+- converter length `L` = **82,687, every pass** (`0x142ff`) — ⚠️ *corrected
+  in §10.55: this section first reasoned `round(E) = 82,688` from the
+  converter's `addq #1 / asr #1`, and the port then showed the EMAC product
+  is `0x285fe` = 165,374 = 2E − 1, so the truncated reciprocal loses one and
+  the converter effectively FLOORS*
 - arms at `floor(k·E)` → spacings **82,687, 82,688, 82,687, …**
-- seam = `arm(k+1) − (arm(k) + L)` = **−1 on every other pass**: a
-  one-sample overlap, i.e. the buffer's last sample still holds the
-  previous pass's content when the next arm lands.
+- seam = `arm(k+1) − (arm(k) + L)` = **+1 on every other pass**: a one-sample
+  **never-written gap** at the buffer's end on the LONG passes (not the stale
+  sample this section originally claimed — same parity, opposite sign).
 
 At **65.6** (tempo24 = 1575) the quotient is 254,016,000 / 1575 =
 **161,280 exactly**: spacing constant, seam 0 every pass, nothing to hear.
@@ -4373,7 +4377,7 @@ never-written sample), with density `f`. Predicted per-bar maps at RLEN 16,
 
 | BPM | tempo24 | L | frac | bars 0..25 |
 |---|---|---|---|---|
-| 128.0 | 3072 | 82,688 | 1/2 | `-.-.-.-.-.-.-.-.-.-.-.-.-.` ✅ measured |
+| 128.0 | 3072 | 82,687 | 1/2 | `.+.+.+.+.+.+.+.+.+.+.+.+.+` ✅ measured |
 | 65.6 | 1575 | 161,280 | 0 | `..........................` ✅ measured |
 | 126.0 | 3024 | 84,000 | 0 | `..........................` |
 | 135.0 | 3240 | 78,400 | 0 | `..........................` |
@@ -4382,7 +4386,10 @@ never-written sample), with density `f`. Predicted per-bar maps at RLEN 16,
 
 132.0's irregular 5-in-26 and 130.0's 10-in-26 are fingerprints nothing
 else in this investigation would produce, and **all four rows are reachable
-on the already-flashed OCTABAM82 with the tempo knob** — same project, same
+on the already-flashed OCTABAM82 with the tempo knob**  (✅ **confirmed on the
+unit by Sam, 12 Sep** — and re-derived under §10.55's measured length rule the
+maps come out **identical row for row**, so the confirmation stands unaffected
+by the rounding correction; only the 128 row's sign changes) — same project, same
 buffer, no flash. If 126.0 and 135.0 come back at the 65.6 floor and 132.0
 comes back with that pattern, the mechanism is settled; if 126.0 scuffs,
 this section is wrong and the residual is not the length converter's.
@@ -4402,7 +4409,7 @@ the MicroBook's, and the two takes disagree the way a clock offset would, so
 the slide is probably the instrument. It is not needed by anything above.
 Falsifier: the slide should vanish if the capture is clocked from the OT.
 
-### 10.54 The fix, composed and gated but NOT flashed: `seekB-seam` = lever B plus the recorder-length cave (12 Sep 2026 — built, ledger- and check-clean, port gate still owed)
+### 10.54 ❌ The fix, composed and gated but FALSIFIED BEFORE FLASHING (see §10.55): `seekB-seam` = `seekB-seam` = lever B plus the recorder-length cave (12 Sep 2026 — built, ledger- and check-clean, port gate still owed)
 
 The length is exactly what `modules/recorder-seam` rewrites (§10.17): it
 re-derives L per pass from the sequencer's own next step event
@@ -4454,3 +4461,89 @@ the recording at the arm needs no lookahead arithmetic and no ±1 guard.
 at 128, FX off, internal clock, tone amp 0.05, ≥ 60 s, `gaps.py` with the
 per-bar maximum; 65.6 as the no-change control. Before any of it, the tempo
 test of §10.53 on the 82 already on the unit.
+
+### 10.55 ❌ `recorder-seam` CANNOT fix this geometry, and the port said so for the price of two runs instead of a flash: its lane lookahead resolves to a PAST event, `L'` comes out 0, and the ±1 guard refuses on every one of 1,200 calls — plus the converter FLOORS, so §10.53's defect is a gap, not a stale sample (12 Sep 2026 — measured in the C++ port)
+
+§10.54 named one risk — §10.17's ±1 guard on a one-trig-per-bar RLEN 16 lane —
+and said one watch would answer it. It did, and the answer is no.
+
+**Setup.** `out/mainos_seekBseam.bin` rebuilt explicitly (the selftest leaves
+the LAST remix at `out/mainos_bus.bin`, CLAUDE.md's boot-verifier trap), the
+self-loop card `out/n128_card.img`, `--set OCTABAM --project RECT --load-ms
+20000 --sequencer --internal-clock --pre-roll 200`. Load verified before any
+watch was read, per §10.47: `saved_bank: 0`, 6,033 ATA READs, 30,915 sectors —
+a real load, not a created project. Cave addresses taken from the built bytes,
+not from the source: entry `0x400d7300`, the compare `0x400d7352`, the
+substitute `0x400d735a`, `keep` `0x400d735c`.
+
+**Gate: does the cave substitute?** `--watch-pc 0x400d7300,0x400d735a`,
+1,200 frames: **1,200 hits at the entry, 0 at the substitute.** (The hit cap
+is 2,000,000, so this is the real count, not a truncated log.) The converter
+runs once per frame for the whole recording and the cave declines every time.
+**`seekB-seam` is a silent no-op on Sam's geometry — do not flash it.**
+
+**Why, read out of the cave's own registers.** At the compare `0x400d7352`:
+`d4 = 0x142ff` = 82,687 (the stock length), `d0 = 0` (the cave's `L'`),
+`d1 = 0xfffebd02` = `L' − L + 1` = −82,686 — consistent, and the guard is
+doing exactly its job by refusing to write a zero length. Stepping back
+inside the cave:
+
+| PC | register | value |
+|---|---|---|
+| `0x400d7334` (before `add.l 0x46104cf8,%d0`) | `d0` = `floor((lane[track] − lookahead) × r)` | **−16, then −32, −48, −64, …** one frame further behind every frame |
+| `0x400d7348` (before `sub.l (%a0,%d1.l),%d0`) | `d0` = `s_next` | **0xc90 = 3,216, constant** |
+| both | `d3` (track), `a0` | 0 and `0x46c7fa84` — the addressing is right |
+
+So the lane for a track whose only recorder trig is step 1 does **not** hold
+the next re-trig here: it holds an event already in the past and receding at
+16 samples per frame, `s_next` degenerates to a constant, and `L'` collapses
+to 0. §10.17's own open falsifier ("a recording whose next step is not its
+re-trig… keeps its RLEN") is realised — the cave was derived on Bryan's
+RLEN 4 geometry, where the trigs are exactly RLEN apart and the lane is
+refreshed to the next one every pass. The addressing is not the problem and
+the ±1 guard is not too tight; the lane simply is not the quantity the cave
+needs on this shape.
+
+**And the same run corrects §10.53's arithmetic.** `d0` at the cave entry is
+`0x285fe` = **165,374**, i.e. 2E − 1 where 2E = 165,375 exactly: the truncated
+reciprocal loses one in the doubled product, so the converter's
+`addq #1 / asr #1` yields `82,687`, not `round(82,687.5) = 82,688`. §10.53
+reasoned the rounding from the instructions instead of reading the product —
+CLAUDE.md's "disassemble what you assemble", one level up. The measured rule,
+validated at both tempi (`0x142ff` at 128, `0x27600` = 161,280 at 65.6):
+
+    r       = floor(2^31 / tempo24)
+    product = floor(RLEN × 15,876,000 × 2 × r / 2^31)
+    L       = (product + 1) >> 1
+
+Consequences: the 128 BPM defect is a one-sample **never-written gap** at the
+buffer's end on the LONG passes, not a stale sample on the short ones — same
+parity, opposite sign. **Every row of §10.53's tempo table is unchanged**
+under the corrected rule (re-derived: 130.0 `..+..+.+..+.+..+..+.+..+.+`,
+132.0 `-....-.....-....-.....-...`, 126.0/135.0/65.6 clean), so Sam's
+hardware confirmation of those predictions stands. `tempo_seam.py` now carries
+the measured model rather than an assumed rounding.
+
+**What is left, and what it costs.** The diagnosis of §10.53 survives intact
+— it was confirmed on the unit by the tempo test, independently of the fix.
+What has gone is the cheap fix. The remaining levers, in cost order:
+
+1. **Lever D, named in §10.16.6 and still unbuilt: end a fixed-RLEN recording
+   AT the next arm** rather than at a precomputed length. §10.16.6 measured
+   that RLEN MAX does exactly this — no end post at all, the running
+   recording's end IS the new arm — and is therefore seam-free by
+   construction at any tempo. This needs no lane lookahead, no reciprocal
+   and no ±1 guard, which is precisely what just failed. It is a cave on the
+   end test rather than on the converter; the end test's site is not yet
+   located (§10.16.5 has it posting "at frame 10,657 with the full length").
+2. **Fix the lane read** — find what the firmware itself consults for the next
+   arm on a one-trig lane, and read that instead of `0x80001904[track]`. The
+   port can answer it: watch what the arm path reads between two arms.
+3. **Live with it.** It is −26 dB and ~1 ms on alternate bars, only at the
+   3.3 % of tempi whose period is fractional, and 82 already removed
+   everything above it. §10.53's clean-tempo list is a real answer for a
+   player today.
+
+`remixes/seekB-seam.py` is kept — it composes, it is check-green, and it is
+the worked demonstration that the composition is legal — but it is **not a
+fix for this geometry** and its docstring now says so.

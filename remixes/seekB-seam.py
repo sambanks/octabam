@@ -1,4 +1,12 @@
-"""seekB-seam -- lever B plus the recorder-length cave: the last member of the seam family.
+"""seekB-seam -- lever B plus the recorder-length cave.
+
+⚠️ FALSIFIED BEFORE FLASHING (RTOS_FORK 10.55): on the self-loop geometry
+(RLEN 16, one recorder trig per bar) the seam cave's lane lookahead resolves
+to a PAST event, its L' comes out 0, and the ±1 guard refuses on all 1,200
+calls in a 1,200-frame port run -- the image is SAFE but INERT here. Kept as
+the demonstration that the composition is legal (ledger-clean, check-green).
+Do not flash it expecting the scuff to go. Lever D (§10.16.6: end a fixed-RLEN
+recording AT the next arm) is the remaining candidate.
 
 OCTABAM82 (`seekB`) removed the restart transient and the play-side seam
 and left one residual: a -26 dB, ~1 ms scuff on every OTHER bar at 128 BPM,
