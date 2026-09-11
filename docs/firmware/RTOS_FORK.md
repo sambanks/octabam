@@ -4316,3 +4316,141 @@ maximum, ≥ 60 s takes (the beat is 37 s long), FX off, internal clock,
 tone amp 0.05; a fixed bar grid; the 1 kHz tone is blind to whole-bar
 jumps at 128 (1875.0 periods per bar), so the burst-train source stays on
 the list for the drift question.
+
+### 10.53 82's residual is §10.16.4's defect at RLEN 16: the converter's length is CONSTANT where the arm spacing ALTERNATES, so every other pass leaves one stale sample at the buffer's end — and the tempo table says which tempi can have it at all (12 Sep 2026 — the parity measured on the unit's own captures, the arithmetic read from the firmware's formula)
+
+No new hardware. §10.52's scuff re-measured off `seekB_128_long.wav` (90 s,
+46 bars) and `seekB_128.wav` (60 s, 30 bars) with a per-bar maximum of the
+one-period residual, then matched against the length converter's arithmetic.
+
+**What the residual is, measured.** Four properties, all from the two 82
+takes:
+
+| property | 82 at 128 BPM | 82 at 65.6 | 81 | 80 |
+|---|---|---|---|---|
+| per-bar residual max, fixed bar phase | **odd bars 1.5–2.3× floor, even bars 1.07–1.12×** (16 of 23 odd bars over 1.45×, 0 of 23 even) | every bar 1.0–1.1× | every bar | every bar |
+| net tone phase step across the event | **0.00 samples** (detrended phase flat to ±0.01 over all 46 bars) | — | ±1.5 alternating | −3.6 |
+| residual harmonics 2f..9f | **0.0 % of residual power** | — | 0.0 % | 0.0 % |
+| width / depth | ~16 samples (0.4 ms); peak sample deviation 0.13–0.18 of the tone amplitude against a locally fitted sine | — | — | 150–350 samples, 1.4× |
+
+So: a content defect a handful of samples wide, on **alternate bars**, with
+no timing and no added harmonics — and the 60 s take shows the same thing
+on its own parity (its bar grid starts elsewhere). §10.52's "every OTHER
+bar" is confirmed at sample resolution and is the whole of the signature.
+
+**What it is, from the firmware's own arithmetic.** §10.16.3's rule is that
+trigs fire at `floor(event)` with events exact multiples of
+`15,876,000 / tempo24`, and §10.16.4's is that the fixed-RLEN converter
+returns `round(RLEN × 15,876,000 / tempo24)` once per pass. At **RLEN 16,
+128 BPM** (tempo24 = 3072):
+
+- exact pass period `E` = 254,016,000 / 3072 = **82,687.5 samples**
+- converter length `L` = round(E) = **82,688, every pass**
+- arms at `floor(k·E)` → spacings **82,687, 82,688, 82,687, …**
+- seam = `arm(k+1) − (arm(k) + L)` = **−1 on every other pass**: a
+  one-sample overlap, i.e. the buffer's last sample still holds the
+  previous pass's content when the next arm lands.
+
+At **65.6** (tempo24 = 1575) the quotient is 254,016,000 / 1575 =
+**161,280 exactly**: spacing constant, seam 0 every pass, nothing to hear.
+That is the whole of the golden/non-golden split §10.51–10.52 measured, and
+"1.1× the floor" is what an exact quotient looks like.
+
+This is **the same defect as §10.16.4–5**, not a new one — only ε is
+different. Bryan's RLEN 4 has ε = 0.125, so the seam lands once every 8
+passes (his "~6th repeat" onset); RLEN 16 has ε = 0.5, so it lands every
+2nd. On 80 and 81 it sat 30 dB under a restart transient and a ±1.5-sample
+seam; with both of those gone, it is what is left, and it is the first time
+this defect has been observed on its own.
+
+**The tempo law, and the cheap no-flash test it hands us.** `L = round(E)`
+against arms at `floor(k·E)` makes the defect a pure function of
+`f = frac(E)`: none when `f = 0`; when `f > 0.5` the converter rounds up and
+the SHORT passes overlap by one sample, with density `1 − f`; when
+`f < 0.5` it rounds down and the LONG passes are one sample short (a
+never-written sample), with density `f`. Predicted per-bar maps at RLEN 16,
+26 bars (`.` clean, `-` overlap, `+` gap):
+
+| BPM | tempo24 | L | frac | bars 0..25 |
+|---|---|---|---|---|
+| 128.0 | 3072 | 82,688 | 1/2 | `-.-.-.-.-.-.-.-.-.-.-.-.-.` ✅ measured |
+| 65.6 | 1575 | 161,280 | 0 | `..........................` ✅ measured |
+| 126.0 | 3024 | 84,000 | 0 | `..........................` |
+| 135.0 | 3240 | 78,400 | 0 | `..........................` |
+| 130.0 | 3120 | 81,415 | 5/13 | `..+..+.+..+.+..+..+.+..+.+` |
+| 132.0 | 3168 | 80,182 | 9/11 | `-....-.....-....-.....-...` |
+
+132.0's irregular 5-in-26 and 130.0's 10-in-26 are fingerprints nothing
+else in this investigation would produce, and **all four rows are reachable
+on the already-flashed OCTABAM82 with the tempo knob** — same project, same
+buffer, no flash. If 126.0 and 135.0 come back at the 65.6 floor and 132.0
+comes back with that pattern, the mechanism is settled; if 126.0 scuffs,
+this section is wrong and the residual is not the length converter's.
+
+**Incidentally useful, and Bryan's to know:** only **46 of the 1,401**
+tempi from 60.0 to 200.0 give an integer RLEN-16 length (3.3 %). 128.0 is
+one of the bad ones; the clean whole-number tempi in 90..170 are 90, 96,
+98, 100, 105, 108, 112, 120, 125, 126, 135, 140, 144, 147, 150, 160, 168
+(RLEN 4: the same list without 96 and 160). 120 being clean is his own
+control, and 125 is the one O10 predicted from the arithmetic. Sound-on-sound
+at those tempi is seam-free with no patch at all.
+
+🟡 **Inferred, not measured:** the event's bar-phase slides +2.2 (90 s take)
+to +2.6 (60 s take) samples per bar in runs of 4–5 events with ±40-sample
+resets. 26–31 ppm is an ordinary crystal offset between the OT's clock and
+the MicroBook's, and the two takes disagree the way a clock offset would, so
+the slide is probably the instrument. It is not needed by anything above.
+Falsifier: the slide should vanish if the capture is clocked from the OT.
+
+### 10.54 The fix, composed and gated but NOT flashed: `seekB-seam` = lever B plus the recorder-length cave (12 Sep 2026 — built, ledger- and check-clean, port gate still owed)
+
+The length is exactly what `modules/recorder-seam` rewrites (§10.17): it
+re-derives L per pass from the sequencer's own next step event
+(`L' = s_next − arm`) and substitutes when `|L' − L| ≤ 1`, so the recording
+ends where the next one begins and the seam is 0 at any tempo. It was
+flashed once (tag 21) and **falsified for the wrong reason** — §10.18 scored
+it against the restart-dominated click, 30 dB louder than anything it could
+fix. §10.52 called for re-scoring it on 82; this is that image.
+
+`remixes/seekB-seam.py` = `bus` + `FLEX SEEK BIND` + `FLEX SEEK BIND CTR` +
+`RECORDER SEAM`. All three are ColdFire caves on different hook sites and
+the claim ledger finds no collision; the build places them at `0x400d7200`
+(seek-bind, hook `0x4000f8cc`), `0x400d7280` (counter, hook `0x4000f834`)
+and `0x400d7300` (seam, hook `0x40006e0c`), with 1,760 bytes of cave left.
+`make check REMIX=seekB-seam` green.
+
+**The one real risk, and it is a port question, not a flash question.**
+§10.17's ±1 guard keeps RLEN when "a recording whose next step is not its
+re-trig" — and it was designed on Bryan's RLEN 4 geometry, where the trigs
+are exactly RLEN apart. Sam's self-loop is RLEN 16 with ONE REC trig per
+bar, so the lane's next event is 16 steps away and `L'` should again be the
+true spacing (82,687/82,688), within 1 of stock 82,688 → substitutes. 🟡
+That is read off §10.17's prose, not measured on this geometry: if the lane
+holds the next *grid* step rather than the next *trig*, `L'` is ~5,168, the
+guard rejects, and the cave is a silent no-op here — a wasted flash, not a
+wrong one.
+
+**So the order is: port first, and for once the port can see it.** The port
+was blind to the restart transient (DSP timing) and to the seam's size
+(§10.50–10.51), but a one-sample stale sample in recorded SDRAM content is
+ColdFire arithmetic plus buffer content, and O10 measured that chain
+sample-exact (the voice tap, one sine over 32 passes at −104 dB). On
+`n128self` at 128 BPM the stock image should show a content step at the
+buffer's last sample on alternate passes and `seekB-seam` should not, and
+the cave's substitute-vs-keep branch is one watch. That converts this from
+a flash-per-guess into a local gate — the first time in this investigation
+it has been true. 🟡 Inferred; the falsifier is a stock `n128self` render
+showing no content step at the wrap, which would mean the port's converter
+or arm grid is not the unit's and the local gate is void.
+
+**If the guard does reject, lever D is already named and unbuilt:** §10.16.6
+measured that RLEN MAX has no end post at all — the running recording's end
+IS the new arm, seam-free by construction at any tempo — and closed with
+"a patch that ends a fixed-RLEN recording at the next arm (or sizes it from
+the lane's next event) is the target". Only the second was ever built. Ending
+the recording at the arm needs no lookahead arithmetic and no ±1 guard.
+
+**Hardware order when the port gate passes:** flash `seekB-seam`, self-loop
+at 128, FX off, internal clock, tone amp 0.05, ≥ 60 s, `gaps.py` with the
+per-bar maximum; 65.6 as the no-change control. Before any of it, the tempo
+test of §10.53 on the 82 already on the unit.
