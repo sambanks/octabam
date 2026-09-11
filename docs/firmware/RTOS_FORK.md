@@ -4238,3 +4238,39 @@ clusters were overload. (3) One freeze of the unit on 81 while switching
 the rec trig to one-shot with T1 muted — observed once, cause unknown,
 not reproduced. (4) `hw_flash7`'s Mac MIDI clock ran the unit at 127.1
 BPM; internal clock for every count, MIDI only for mutes/solos.
+
+### 10.51 OCTABAM82 (A + counter hold) on hardware: no restart, no seam, the voice free-runs behind the write head — clean for 90 s; a whole-bar jump is not something this instrument could see (12 Sep 2026 — measured on the unit, drift question open)
+
+Same project, same rig, same morning as §10.50, FX off, tone amp 0.05,
+internal clock. `out/hw/softretrig/seekB_128.wav` (60 s) and
+`seekB_128_long.wav` (90 s): level flat at 2.06e7 rms throughout; **bar
+fold 1.3× / 1.5× (nothing per bar; 80 was 48×, 81 was 7×); single events
+0 in 30 bars, then 1 in 46 bars** — the one at 46.37 s is a 1–2-sample
+impulse with a phase step of −0.07 samples and amplitude ratio 1.000, a
+dropout blip, not a seam. `judge.py` verdict on both: no per-bar event.
+
+**What 82 does that 81 does not.** The tone-kill discriminator: on 80 and
+81 the output dies with the input and, one bar later, 140 ms of the tone
+that was still in the buffer's first blocks plays back — the voice
+restarts from the buffer start every bar. On 82 (`seekB_128_kill2.wav`)
+the output dies at the kill and **nothing comes back**: the voice does
+not restart at the bar. With the per-bind counter (+0x90) held, the
+re-bind is a no-op for the DSP; the read head free-runs behind the write
+head and the bar boundary is nothing to it. That is the "do not move the
+read pointer at all" of §10.50, arrived at by the cheaper lever.
+
+**What this instrument cannot see.** At 128 BPM the bar (82,687.5
+samples) is exactly 1875.0 periods of the 1 kHz tone, so a jump of a
+whole bar — the free-running read head crossing the re-armed write head
+and the voice flipping to one-bar-old material — produces NO phase step
+and NO residual. The seam and the restart were visible because they are
+fractions of a period. The two heads' loop lengths differ by the
+half-sample truncation, so they drift by up to half a sample per bar;
+whether they ever cross depends on how far the read head trails the
+write head (unmeasured). 90 s = 48 bars ≤ 24 samples of drift. Open:
+(a) Sam's ear on real material over minutes; (b) the burst-train source
+(`hw_flash7.py --source burst`) for 5 minutes — a bar-jump shows as a
+burst 1.875 s late; (c) the golden tempo (65.6) and RLEN 4 / Bryan's
+128/RLEN4 for the seam family's other members. Until (a)–(b), 82 is
+"clean on every instrument that could see the previous failure",
+not "fixed".
