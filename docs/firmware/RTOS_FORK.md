@@ -4274,3 +4274,45 @@ burst 1.875 s late; (c) the golden tempo (65.6) and RLEN 4 / Bryan's
 128/RLEN4 for the seam family's other members. Until (a)–(b), 82 is
 "clean on every instrument that could see the previous failure",
 not "fixed".
+
+### 10.52 82's residual, found under the threshold: a −26 dB, 1 ms scuff every OTHER bar that beats over ~37 s, absent at the golden tempo — the half-sample truncation's last trace, and the next lever is the recorder's length arithmetic (12 Sep 2026 — measured on the unit)
+
+Sam, by ear on 82 at 128: "the clicks get quieter over time until they
+disappear, then it repeats." §10.51's fold (1.5×) had averaged it away.
+Per-bar maximum of the one-period residual over the 90 s take
+(`seekB_128_long.wav`), at a fixed bar phase (244 ms on that take's
+grid): **odd bars 1.7, 2.2, 2.2, 1.5, 1.1, 1.5, 2.1, 2.3, 1.8, 1.1, …,
+2.3, 2.0, 1.4, 1.1× the floor; even bars 1.0–1.1× throughout.** Every
+other bar, rising and fading with a period of ~10 odd bars ≈ 20 bars ≈
+37 s. At 2× a 2.67 % floor it is ~5 % of the tone amplitude for ~1 ms,
+−26 dB re the tone; the phase step across it is −0.05 samples on every
+bar (the frequency estimate's constant drift, i.e. zero) and the
+amplitude ratio 1.000 — **not a timing seam, a scuff**. Alternate bars is
+the 82,687/82,688 signature; the 37 s beat is a slow drift between the
+read head and whatever it slides past.
+
+**Golden control, same image, same rig:** 65.6 BPM, 60 s
+(`seekB_65.6.wav`), 15 bars: **the loudest 1 ms bin in the whole take is
+1.1× the floor**, per-bar maxima at random phases, fold 1.1×. Nothing.
+The residual exists only where the bar is not an integer number of
+samples.
+
+**Standing, 12 Sep:**
+
+| image | 128 BPM (non-golden) | 65.6 BPM (golden) |
+|---|---|---|
+| 80 (stock re-bind) | restart hash 140 % + −3.6-sample jump, every bar | clean (§10.39) |
+| 81 (lever A) | no hash; ±1.5-sample alternating seam, every bar | — |
+| 82 (A + counter hold) | no hash, no seam; −26 dB 1 ms scuff every other bar, beating ~37 s | clean, 1.1× floor |
+
+82 is the image to keep testing on; its residual is ~30 dB below where
+this started and the seam family is out of it. What remains is owned by
+the recorder's length alternation, not the bind: the next lever is the
+length converter / block walk (`recorder-seam`'s territory — that patch
+was judged against the restart-dominated click and falsified for the
+wrong reason; re-score it, or its successor, on 82 with `gaps.py` and the
+per-bar-max view, non-golden only). Instrument for it: `gaps.py`, per-bar
+maximum, ≥ 60 s takes (the beat is 37 s long), FX off, internal clock,
+tone amp 0.05; a fixed bar grid; the 1 kHz tone is blind to whole-bar
+jumps at 128 (1875.0 periods per bar), so the burst-train source stays on
+the list for the drift question.
