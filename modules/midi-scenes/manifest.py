@@ -81,7 +81,9 @@ UNITS = (
     Linked("safe_cave", UP + "safe_cave.s", dram=True),
     Linked("cave2", UP + "cave2.s", dram=True),
     Linked("stub", UP + "stub.s", dram=True),
+    Linked("voice_reload", UP + "voice_reload.s", dram=True),
     Linked("code2", UP + "code2.s", dram=True),
+    Linked("project_cave", UP + "project_cave.s", dram=True),
     Linked("enc_unlock", UP + "enc_unlock.s", dram=True),
 )
 
@@ -101,7 +103,7 @@ DETOURS = (
     Detour(0x40062F24, H("4eb940038c30"), "stub", "clr_sc", "CLEAR SCENE menu row", kind="jsr"),
     Detour(0x40062FBE, H("4eb9400274cc"), "stub", "cpy_sc", "COPY SCENE menu row", kind="jsr"),
     Detour(0x40062E3C, H("4eb940027578"), "stub", "pst_sc", "PASTE SCENE menu row", kind="jsr"),
-    Detour(0x4002E828, H("4eb94004a9d0"), "safe_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
+    Detour(0x4002E828, H("4eb94004a9d0"), "project_cave", "clr_pt", "FUNC+Part clear", kind="jsr"),
     Detour(0x40053A9E, H("4ab980000012660008aa"), "enc_unlock", "hook_a", "scene+encoder unlock, engine A", pad_to=10),
     Detour(0x40054392, H("4ab980000012660008b8"), "enc_unlock", "hook_b", "scene+encoder unlock, engine B", pad_to=10),
     Detour(0x4003F3A2, H("4ef94003577c"), "stub", "morph", "XF morph tail"),
@@ -109,16 +111,17 @@ DETOURS = (
     Detour(0x40062C32, H("71b980000003"), "safe_cave", "xf2", "post-XF continuation 2"),
     Detour(0x40052AE0, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion A"),
     Detour(0x40052A10, H("4ef94007e8d8"), "code2", "scene_done", "scene-recall completion B"),
-    Detour(0x4005538A, H("1a82223c0000"), "code2", "write_mix", "part-window write, remixed"),
+    Detour(0x4005538A, H("1a82223c000018b2"), "code2", "write_mix", "part-window write, remixed", pad_to=8),
     Detour(0x4009D1DE, H("4cd73cfc4fef00284e75"), "safe_cave", "plock", "post-plock scene rebuild", pad_to=10),
     Detour(0x40009094, H("4fefff9848d77cfc"), "code2", "apply", "apply_part wrapper", pad_to=8),
     Detour(0x4002DD12, H("4eb94004a908"), "safe_cave", "save", "Part Save menu action", kind="jsr"),
     Detour(0x4002DD56, H("4eb94004aab4"), "code2", "reload", "Part Reload, menu path", kind="jsr"),
     Detour(0x4005E05A, H("4eb94004aab4"), "code2", "reload", "Part Reload, non-menu path", kind="jsr"),
     Detour(0x400622AA, H("23c046c82456"), "code2", "bank_sw", "bank-pointer refresh on switch A", kind="jsr"),
-    Detour(0x40087D44, H("23c046c82456"), "code2", "bank_sw", "bank-pointer refresh on switch B", kind="jsr"),
+    Detour(0x40087D44, H("23c046c82456"), "stub", "bank_pub", "bank publish (no pack) on switch B", kind="jsr"),
     Detour(0x4001FBD0, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init A", kind="jsr"),
     Detour(0x40025AA2, H("23c046c82456"), "code2", "bank_inv", "bank-pointer refresh on init B", kind="jsr"),
+    Detour(0x400622C6, H("4eb9400418e0"), "project_cave", "after_proj", "post-project-load CKPT seed + unpack", kind="jsr"),
     Detour(0x4002DCD4, H("45f94004a908"), "safe_cave", "save", "SAVE ALL's lea -> the ported Save", kind="lea"),
 )
 

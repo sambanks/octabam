@@ -81,20 +81,36 @@ reproduce her bytes fails loudly.
 
 ## Open, and what would need to come from her
 
-- ⚠️ **Stock's sector bounce buffers land inside her stage.** With static
-  sample slots the port fills `0x47fc8fe4..0x47fcd9e4` (18,944 B) at
-  PROJECT LOAD, starting `+0x1bd4` into her 72,959 B stage at
-  `0x47fc7410` (`docs/remixer/PLACEMENT.md`). Emulator-only, PIO path,
-  streaming unexercised; her wrapper re-hashes the stage at every project
-  load (`0x40013304`), so hardware may cope. Hers to judge — raised with
-  her (`~/Downloads/octabam-notes-for-em.md`, not sent).
-- **For midisc's locks to survive under Kits**, two things from her: is a
-  kit record byte-for-byte a stock part payload, and can she expose "the
-  address of kit N's payload"? Encouragingly her ABI already says
-  `GK_PART_PAYLOAD_SIZE = 0x18b2` and `GK_FORMAT_PAYLOAD_BODY_SIZE =
-  0x18b200 = 256 x 0x18b2` — a flat array at exactly the stride midisc
-  uses (`BANK_PTR + part*0x18b2 + 0x90522`), so his arithmetic may need
-  only a different base. The matching ask on his side is in
+- ✅ **The stage overlap is a NON-ISSUE — answered by Em, 12 Sep 2026.**
+  Octakit needs `0x47fc7410..0x47fd910f` **on boot only**; after that her
+  code lives in the reserved flex-pool space and the temporary copy is no
+  longer needed. The bounce-buffer fills we measured happen at PROJECT
+  LOAD, i.e. after boot, so nothing of hers is live there. The
+  measurement itself stands (`docs/remixer/PLACEMENT.md`) — it is the
+  *consequence* that is retracted. ⚠️ One thing still worth checking on
+  our side: we recorded her wrapper as re-hashing the stage at every
+  project load (`0x40013304`); if that is right, a clobbered stage would
+  meet a hash gate. Either our reading of that site is wrong or the gate
+  tolerates it — unresolved, and ours to confirm, not hers.
+- ✅ **Both kit questions ANSWERED by Em, 12 Sep 2026.** (1) **Kits retain
+  the part layout and offsets** — an offset valid inside a part is valid
+  inside a kit. (2) Saved kit data is at **`__gk_canonical_payloads`**,
+  indexed exactly as `persistence.c` does it:
+  `__gk_canonical_payloads + kit * PART_PAYLOAD_SIZE` (`0x18b2`), a flat
+  256-entry array. So the READ side needs only a different base, as the
+  stride match suggested.
+- ⚠️ **But the WRITE side is not a base change, and that retracts the
+  optimistic framing.** Em: *the saved kit and the active working kit are
+  separate*, so changes must go through Octakit's editing functions to be
+  included when the kit is saved. Her sequence, in order:
+  `gk_workspace_prepare` → `gk_physical_acquire` →
+  `gk_descriptor_store_byte` **for each changed byte** →
+  `gk_workspace_mark_dirty_pending` → `gk_workspace_commit_update` →
+  `gk_descriptor_release`. All six are `.global` in her runtime.
+  midisc's `pack` writes its sparse bytes directly, so under Kits it
+  would have to drive that bracket instead — up to `SPARSE_BYTES` (144)
+  `gk_descriptor_store_byte` calls per part. Tractable, but it is a
+  protocol, not an address. The matching ask on his side is in
   `modules/midi-scenes/README.md`. Nothing is needed for the two to
   coexist today (`remixes/mods.py`); this is persistence, not the live
   path — her active path still applies the STOCK Part window.

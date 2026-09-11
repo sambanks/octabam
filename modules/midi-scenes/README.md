@@ -4,8 +4,8 @@ MIDI-driven scene locks, built from
 [bkkbrls-del/midisc](https://github.com/bkkbrls-del/midisc) — via Sam's
 fork, branch `octabam-gas`, checked out here as the submodule `upstream/`
 (`git submodule update --init`). `Kind.CF_PATCH`: seven linker-placed
-units, 34 detours, four pokes — 38 sites, 236 bytes inside the OS. No DSP
-code, no menu row. Tracking his **1.40MIDISC** tree (10 Sep 2026).
+units, 35 detours, four pokes — 39 sites inside the OS. No DSP code, no
+menu row. Tracking his **1.40MIDISC5** tree (12 Sep 2026).
 
 Octatrack 1.40C has no per-scene parameter lock over MIDI — XF morph reads
 one live 8×30 lock table that only the panel can write. midisc adds a
@@ -92,7 +92,14 @@ separate measurement.
   that replaced a plain `move.l d0,(BANK_PTR).l`, so the sample load
   lost registers; they now save `d1-d7/a0-a6`.
 - ⚠️ **The track-arming half is NOT fixed, and is a separate defect —
-  now bisected to ONE site, `0x40087d44`** (`bank_sw` B). Three tracks
+  bisected to ONE site, `0x40087d44`, and narrowed to `unpack`.**
+  1.40MIDISC5 shipped "Site B no-pack" crediting this finding, but the
+  symptom is UNCHANGED on the same fixture, and a re-bisect (including
+  his new `0x400622c6` hook, which is not it) still lands on
+  `0x40087d44`. Since that site no longer packs, it is `unpack` — whose
+  one stock-visible write is the 144-byte shadow→working sparse sync.
+  Told him; see `docs/remixer/PLACEMENT.md`. (Previously described as
+  `bank_sw` B.) Three tracks
   arm at frame 0 (0, 5, 7) against the control's five (0, 1, 2, 4, 7),
   identically on both his images, so it is not the register clobber.
   Dropping that single hook restores all five; dropping any of the other
