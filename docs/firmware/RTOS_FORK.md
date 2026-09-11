@@ -4161,3 +4161,80 @@ DSP restart is not message-driven: skip B, lever C (a fade at voice start
 in the DSP payload). Changed but not gone → OCTABAM82 (B). Either way, the
 cfprobe read of the tail's compare inputs on the unit tells why the unit
 takes the new-note path every bar where the port alternates.
+
+### 10.50 OCTABAM81 on hardware: lever A removes the restart transient and leaves a pure alternating ±1.5-sample seam — Bryan's click reduced to its timing step (12 Sep 2026 — measured on the unit)
+
+**The flash.** `out/OCTATRACK_OCTABAM81.bin` re-proven first: rebuilt from
+`flex-seekbind` @5d8c73d in a clean worktree, bit-identical to the 10 Sep
+image (sha256 `e27e320e…`), `make check REMIX=seekA` green. Sam's self-loop
+project (T1 = FLEX, REC trig every bar + PLAY trig every bar on the same
+track, recorder source INAB, RLEN 16, 128 BPM, internal clock, FX off),
+`tools/tone` 1 kHz into A/B, `tools/rec` from the MicroBook. Captures in
+`out/hw/softretrig/`: `seekA_128c_kill.wav` (81, FX off, 16 s of tone),
+`seekA_128b.wav` (81, FX on, 60 s), `base80_128.wav` (OCTABAM80 re-flashed
+the same morning, FX off, 60 s — the same-day baseline).
+
+**The instrument had to change first.** `bursts.py`'s second-difference
+count reported 0 on 81 while Sam heard "little gaps" every bar; the
+detector keys on HF energy and a timing step has none. `gaps.py` predicts
+each sample from one tone period earlier (fractional delay, period from
+the FFT peak) — any stationary periodic waveform cancels, harmonics and
+all; a step or a hole is a spike — and folds the residual on the 1.875 s
+bar grid. It finds all 30 of `cond_b_128`'s clicks (10 Sep) and the 31 of
+`soft_128`, then measures the tone's phase before and after each event.
+(`judge.py` is the front end; its floor gate was calibrated on the
+record-once fixture, 0.22 % of rms, and a self-loop sits at ~3 % on both
+images — the gate is per-fixture, fixed in the script.)
+
+**The result, same floor on both images:**
+
+| image | per-bar event (bar fold) | shape | tone phase step across it | amplitude after/before |
+|---|---|---|---|---|
+| 80 (`base80_128`) | 48× | 150–350 samples, residual peaks at 140 % of the tone amplitude — hash, then a sine-shaped ramp | **−3.6 samples** (−3.2…−3.8, 10 events) | 0.97–1.04 |
+| 81 (`seekA_128c`) | 7× | ~44 samples (one period), residual ≤ 30 %, raw never above 100 % — no hash | **alternating −1.96 / +1.18 samples**, bar by bar, 8 of 8 | 1.000 |
+
+Lever A does what it was built to do: the DSP no longer restarts the
+voice at the bar (no chirp, no hash, no amplitude event), and what remains
+is a pure timing step whose sign alternates — the half-sample-truncation
+family §10.42 measured in the port on the record-once fixture (−1/0
+alternating), here on hardware on the self-loop at about ±1.5. Bryan's
+"click" on this geometry was two things stacked: the restart transient
+(gone) and the seam (still there, now audible on its own as a "little
+gap"). §10.49's "partial → OCTABAM82" applies; expectation for B is low
+(the +0x90 counter is not obviously the seek's target position). The next
+real lever is the position the seek lands on versus where the voice is —
+on a self-loop the ideal bar boundary is "do not move the read pointer at
+all". The FX-on capture (`seekA_128b`) shows the same-sized steps but
+non-alternating and with amplitude ratios 0.81–1.24: the reverb smears
+them (the §10.44-era rule, "a reverb cannot show you a discontinuity");
+FX off for every capture from now on.
+
+**Port side (same morning, flashed bytes this time).** The 10.49 gates ran
+on `mainos_seekA.bin` with the cave at `0x400d24d0`; the flashed image
+places it at `0x400d7200` (same 24 bytes, different cave placement, tempo
+cave moved too). Re-run on the self-loop fixture (`n128self_card.img`,
+`--pre-roll 200`, watches on the cave and the three exits): the initial
+note takes the stock "different" path, and **binds 2–5 all take the seek
+exit** — the slot/type/generation verdict at `(55,sp)` HOLDS across a
+re-record. This retracts §10.48's explanation of the softretrig failure
+("new generation each bind, so sp@55 is false"): the generation is not
+bumped by the self-loop's re-arm. Stock on the same fixture alternates
+SAME/NEW/SAME/NEW (return 0 at binds 2 and 4, 0x100 at 3 and 5), the
+§10.49 pattern. The ColdFire position `a2@(88)` advances by exactly
+0x142ff = 82,687 per bar; stock's `d3` is 1 or 2, so its compare fails
+every other bar. Per-bar RMS of the read-back and the main mix is flat on
+both images (nothing dies) — the port still cannot show the seam's size or
+the transient, only the message path.
+
+**A morning of wrong turns, recorded so they are not repeated.** (1) T1
+was taken for a THRU track because the output died the instant the tone
+was killed; it is the self-loop itself, reading the ring a hair from the
+write head, and a bar later it played the 140 ms of old tone left at the
+buffer start. "Mute T1 → silence" on both 81 and 80 measured nothing.
+(2) The 10 Sep `seekA_128.wav` was not a dud from two summed tone
+processes: the unit's input chain was ~17 dB hotter than at 03:23 (amp
+0.3 clipped orange; 0.05 is right now), so its 7.5× level and 231 junk
+clusters were overload. (3) One freeze of the unit on 81 while switching
+the rec trig to one-shot with T1 muted — observed once, cause unknown,
+not reproduced. (4) `hw_flash7`'s Mac MIDI clock ran the unit at 127.1
+BPM; internal clock for every count, MIDI only for mutes/solos.
