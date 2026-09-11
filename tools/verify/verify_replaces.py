@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """No stock effect is hijacked by accident.
 
-    python3 tools/verify/verify_replaces.py [remix ...]     (default: every remix)
+    python3 tools/verify/verify_replaces.py [remix ...]     (default: every remix
+                                                     this machine can build;
+                                                     the rest are named)
 
 THE FAILURE THIS EXISTS FOR. The DSP dispatch tables are indexed by the raw
 effect id and SHARED BY BOTH MENUS, so a module carrying a stock effect's id
@@ -212,6 +214,18 @@ def main():
     static_checks(fails)
     names = sys.argv[1:] or [n for n in registry.remix_names()
                              if not n.startswith("_")]
+    # THE SWEEP SKIPS WHAT THIS MACHINE CANNOT BUILD, BY NAME. A remix whose
+    # submodule is not checked out, or whose runtime needs a toolchain this
+    # machine lacks, is not a regression (tools/remix/prereq.py). A remix
+    # named on the command line is always built.
+    skipped: list[tuple[str, str]] = []
+    if not sys.argv[1:]:
+        from remix import prereq
+        for n in list(names):
+            why = prereq.unbuildable(n)
+            if why:
+                names.remove(n)
+                skipped.append((n, why))
     out = pathlib.Path("out/mainos_bus.bin")
     # ⚠️ EVERY BUILD HERE OVERWRITES THE SHIPPING ARTIFACT, and the checks
     # that run after this one read it. verify_burn already had to say so in
@@ -225,9 +239,17 @@ def main():
         if saved is not None:
             out.write_bytes(saved)
     print()
+    by_why: dict[str, list[str]] = {}
+    for n, why in skipped:
+        by_why.setdefault(why, []).append(n)
+    for why, ns in by_why.items():
+        print(f"  [SKIP] {len(ns)} remix{'es' if len(ns) > 1 else ''} not "
+              f"built on this machine -- {why}:\n         {', '.join(ns)}")
     for f in fails:
         print(f"  [FAIL] {f}")
-    print("OK" if not fails else f"{len(fails)} FAILED")
+    print(("OK" if not fails else f"{len(fails)} FAILED")
+          + (f" ({len(skipped)} of {len(skipped) + len(names)} remixes "
+             f"skipped, named above)" if skipped else ""))
     return 1 if fails else 0
 
 

@@ -14,7 +14,6 @@ SKIPs, rather than fails, when the toolchain or the submodule is absent:
 """
 import hashlib
 import pathlib
-import shutil
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -30,8 +29,10 @@ if not (ROOT / mod.runtime.recipe).exists():
     print("  [SKIP] verify_octakit: submodule not checked out "
           "(git submodule update --init modules/octakit/upstream)")
     sys.exit(0)
-if any(shutil.which(t) is None for t in runtime_build.TOOLS):
-    print("  [SKIP] verify_octakit: m68k-elf toolchain not installed (make setup)")
+from remix import prereq  # noqa: E402
+if prereq.runtime_toolchain_problem():
+    print(f"  [SKIP] verify_octakit: {prereq.runtime_toolchain_problem()} "
+          f"(make setup)")
     sys.exit(0)
 
 stock = (ROOT / "out/raw/section_3_MAIN_OS.bin").read_bytes()
