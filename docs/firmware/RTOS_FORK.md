@@ -4765,15 +4765,42 @@ have fixed 1 or 2 (it cannot stop a voice re-priming, and the arm times still
 alternate, so a reset-based player would still splice on alternating
 samples), which is why all three were needed to get here.
 
-**Open, and it decides what the community is asked to flash: is fix 3 enough
-ALONE?** 83 is 82 + the cave, so the three have only ever been tested
-stacked. `remixes/recfix` is the cave by itself — **125 bytes changed in the
-whole OS**, no DSP code, no menu change — and it gates identically to the
-stacked build (36,826 / 36,826 substitutes, the same
-82,687/82,688/82,687/82,688 alternation, `make check REMIX=recfix` green,
-303 PASS). One cave is a far easier ask than three, and Bryan's own unit is
-the instrument for that question: `docs/firmware/RECORDER_CLICK.md` is the
-write-up and the reproduction steps for him.
+**The build for Bryan: `remixes/recfix` = the three caves and nothing else
+of ours.** 83 carries them beside the bus (our DSP effects); `recfix` drops
+the bus, so somebody whose recorder clicks gets the three fixes and a unit
+that is otherwise stock — **228 bytes changed in the whole OS**, no DSP code,
+no FX2 id of ours. Gates, all four on its own cave addresses (the spacing
+cave moves to `0x400d6c80` without the bus's caves in front of it — §10.50's
+lesson, re-gated rather than assumed): substitute **36,826 / 36,826** with
+the same 82,687/82,688/82,687/82,688 alternation; golden a no-op on all
+21,000 calls; the bind's copy of the voice's data-END bound still runs (4
+hits in 16,000 frames); `make check REMIX=recfix` green, 303 PASS. Image
+**OCTABAM84**, sha256 `ecb574a9…`.
+`docs/firmware/RECORDER_CLICK.md` is the write-up and the reproduction steps
+for him.
+
+🟡 **`recfix` is NOT the bytes that were measured** — 83 had the bus. The
+recorder path is ColdFire and the bus is DSP, so they are independent and no
+difference is expected, but expected is not measured: the honest order is a
+re-take of the self-loop capture on this image before it goes out.
+
+**⚠️ The stock FX2 list is load-bearing in this build, and the first cut of
+it was wrong.** Every octabam image replaces the FX2 chooser WHOLESALE with
+the remix's modules (`tools/remix/stock.py`), so `recfix` as first written —
+caves only — drew a chooser of **one row, NONE**. The eleven non-donor stock
+effects keep their code, descriptor and dispatch regardless, so saved
+projects would still PLAY, but nothing could be selected or changed from the
+menu: a severe regression in the one build whose entire job is to change
+nothing else. Listing the fourteen costs **nothing** — no clone, no
+placement, no words, no cycles, only their list rows — and it makes the
+remix give up nothing, which the selftest's `_want` table now records beside
+`restock`'s. Caught by reading the build report's "chooser list = 1 entries"
+line before the image went anywhere.
+
+**Open, and it decides what the community is eventually asked to flash: is
+fix 3 enough ALONE?** The three have only ever been tested stacked. Nothing
+in this section answers it; the modules can be selected individually when
+somebody wants to.
 
 **Also still open (§10.51's drift question), now with a prediction.** With
 the counter hold the read head free-ran at a fixed 82,687 while the writer's

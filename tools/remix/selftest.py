@@ -438,6 +438,14 @@ def main():
     # The three that differ, and why -- a remix reaching this list by
     # accident is the thing being guarded against.
     _want = {"restock": (),                       # lists all fourteen
+             # recfix is Bryan's recorder fix: three ColdFire caves, NO DSP
+             # words placed, and all fourteen stock effects listed so the
+             # chooser is the one an unmodified unit shows. Like restock it
+             # therefore gives up nothing -- and unlike restock that is the
+             # POINT: somebody flashes it and carries on using their own
+             # projects, so taking a reverb away would be a regression in
+             # the one build whose whole job is to change nothing else.
+             "recfix": (),
              "nimbuslite": ("PLATE REV", "SPRING REV"),   # keeps DARK REV
              # deliberately gives up two more, to put a non-reverb donor on
              # the unit for the first time (docs/effects/FLASHPLAN.md)
