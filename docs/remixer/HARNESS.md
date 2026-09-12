@@ -286,9 +286,31 @@ call sites, `docs/firmware/COLDFIRE_PORT.md` O13, 9 Sep 2026): core 0 24,654 a f
 against the meter's 24,971, core 1 15,177 against 14,880 once T1's
 CHARACTER is live on both — the meter reads the real load within 2 %.
 
-What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
-the mixer are a unity sum, samples do not play (stems stand in), and the
-stock DELAY is not on the DSP at all.
+**The mixer model (12 Sep 2026, `tools/harness/mixer.py`).** The unit's
+gain chain around the DSP, measured under the ColdFire port
+(`docs/firmware/COLDFIRE_PORT.md` O14, 26 runs, residuals −100 dB and
+better): **AMP VOL is (v/127)² and AMP BAL a balance (near side unity, far
+side to zero on a cubic), both applied BEFORE the FX chain by the stock DSP
+code `dsp_host` never runs; track LEVEL is (L/128)², applied AFTER, at the
+mix.** `rig_render` applies them by default — the stem through VOL² and the
+balance per side into the chain (`dsp_host -stereo`), each track's chain
+output through LEVEL² into `mix.wav`, which is now the main out (saturated
+as a 24-bit sum, clips counted) and not a −6 dB unity sum. The values come
+from the part with `--project` (the AMP row six bytes before the FX1 row,
+the LEVEL pair at +0x1b) or the unit's defaults (VOL 64 = −11.9 dB, BAL
+64, LEVEL 108 = −3.0 dB); `--mix T1:VOL=127,BAL=64,LEVEL=100` overrides;
+`--mixer off` is the old harness to the bit. A stem is the VOICE at its
+sample GAIN (`--amp` defaults to 1.0 with the model on), so a 0 dBFS file
+enters the engine at 0.254 FS at the default VOL — the old default
+(`--amp 0.5`, no AMP stage) drove every engine 5.9 dB hotter than the
+unit does, which every voicing note before this date inherited. `T*.wav`
+stay the chain output (before LEVEL). Not modelled: the main level (scales
+trigged voices, not THRUs — unity here), the cue mix, the master track;
+and the AMP stage was measured on a THRU and is inferred for FLEX/STATIC
+(falsifier in `mixer.py`'s docstring).
+
+What it still is not: the ColdFire. Knobs are poked into `r6`, samples do
+not play (stems stand in), and the stock DELAY is not on the DSP at all.
 
 **The first thing it was built for** (`tools/verify/verify_onebus.py`, in `make
 check`, same day): the one-aux rig's chain, liveness stamps, MIX
@@ -310,7 +332,9 @@ mean hardware-clean; when the two disagree, believe the hardware.
   cannot afford; 432 cycles/sample over once froze the unit. `make cycles`
   bounds it, hardware proves it.
 * **The ColdFire side.** `-params` pokes r6 directly, bypassing menus,
-  descriptors, ranges and scene logic entirely. A slot can draw a knob and
+  descriptors, ranges and scene logic entirely (the gain chain around the
+  chain — AMP VOL/BAL, LEVEL — is measured and modelled since 12 Sep 2026;
+  the main level and the cue are not). A slot can draw a knob and
   publish nothing, or publish and draw wrongly — the panel and the DSP are
   separate mechanisms and the harness only exercises one of them
   (`docs/firmware/PARAM_PAGES.md`).

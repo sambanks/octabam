@@ -163,6 +163,15 @@ def die(msg):
 def read_wav(path):
     """-> (mono float list in -1..1, samplerate). Stereo is summed to mono:
     the harness feeds one mono stream and the engine sums L+R itself."""
+    chans, sr = read_wav_channels(path)
+    if len(chans) == 1:
+        return chans[0], sr
+    return [sum(c[i] for c in chans) / len(chans) for i in range(len(chans[0]))], sr
+
+
+def read_wav_channels(path):
+    """-> ([channel float lists in -1..1], samplerate), channels kept apart
+    (rig_render's mixer model applies AMP BAL per side, 12 Sep 2026)."""
     with wave.open(str(path), "rb") as w:
         ch, sw, sr, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
         raw = w.readframes(n)
@@ -179,9 +188,7 @@ def read_wav(path):
         a = array.array("i"); a.frombytes(raw); vals = [v / 2147483648.0 for v in a]
     else:
         die(f"unsupported sample width {sw*8}-bit in {path}")
-    if ch > 1:
-        vals = [sum(vals[i:i + ch]) / ch for i in range(0, len(vals) - ch + 1, ch)]
-    return vals, sr
+    return [vals[c::ch] for c in range(ch)], sr
 
 
 def resample(x, src, dst):

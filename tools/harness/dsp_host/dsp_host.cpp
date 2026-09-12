@@ -129,6 +129,10 @@
 //     -in file.raw          24-bit mono raw input, else an impulse is used.
 //                           A LIST gives each instance its own file; "-" is
 //                           silence. (-inmask still gates it.)
+//     -stereo               the -in files are INTERLEAVED L,R (two words a
+//                           frame) instead of mono copied to both channels --
+//                           rig_render's mixer model needs it for AMP BAL,
+//                           which is pre-FX and per side (12 Sep 2026)
 //     -out file.raw         write instance 0; others go to file.raw.i1, .i2, ...
 //     -track a,b,..         r7-relative X words (hex) dumped EVERY block, so a
 //                           rate can be MEASURED by differencing -- -peekx only
@@ -171,6 +175,7 @@ struct Args {
     std::vector<int> allocIdx, r7Idx, coreIdx, audioIdx;
     std::vector<TWord> initList, procList;     // entry points, one per instance
     unsigned inmask = ~0u;                     // which instances get the input
+    bool stereo = false;                       // -in is interleaved L,R
     std::vector<std::vector<int>> pv;          // one parameter set per instance
     std::string allocProc = "perinst";
     bool guard = false; TWord guardWords = 0x3800;
@@ -472,6 +477,7 @@ int main(int argc, char** argv) {
         else if (k == "-init") { a.initList = parseHexList(argv[++i]); a.init = a.initList[0]; }
         else if (k == "-proc") { a.procList = parseHexList(argv[++i]); a.proc = a.procList[0]; }
         else if (k == "-inmask") a.inmask = strtoul(argv[++i], nullptr, 0);
+        else if (k == "-stereo") a.stereo = true;
         else if (k == "-audio") a.audio = strtoul(argv[++i], nullptr, 16);
         else if (k == "-pblock") a.params = strtoul(argv[++i], nullptr, 16);
         else if (k == "-tempo") a.tempo = atof(argv[++i]);
@@ -1157,15 +1163,19 @@ int main(int argc, char** argv) {
             Core& C = *cores[I.core];
             if (!I.fills) continue;              // a chained instance sees its predecessor's output
             for (int f = 0; f < a.frames; ++f) {
-                int32_t s = 0;
-                if (I.hasInput) s = I.inPos < I.input.size() ? I.input[I.inPos++] : 0;
-                else if (b == 0 && f == 0) s = 0x400000;             // 0.5 full scale
+                int32_t s = 0, s2 = 0;
+                if (I.hasInput) {
+                    s = I.inPos < I.input.size() ? I.input[I.inPos++] : 0;
+                    // -stereo: the next word is R; mono copies L to both
+                    s2 = a.stereo ? (I.inPos < I.input.size() ? I.input[I.inPos++] : 0) : s;
+                }
+                else if (b == 0 && f == 0) s = s2 = 0x400000;        // 0.5 full scale
                 // -inmask silences an instance's own input so its output is
                 // ONLY what arrived through the shared bus. Feeding a server
                 // dry audio as well would bury the bus contribution under it.
-                const int32_t sk = I.fed ? s : 0;
+                const int32_t sk = I.fed ? s : 0, sk2 = I.fed ? s2 : 0;
                 C.dsp->memWrite(MemArea_X, I.audio + f * 2 + 0, sk & 0xffffff);
-                C.dsp->memWrite(MemArea_X, I.audio + f * 2 + 1, sk & 0xffffff);
+                C.dsp->memWrite(MemArea_X, I.audio + f * 2 + 1, sk2 & 0xffffff);
             }
         }
         if (a.spray && b == 0) {

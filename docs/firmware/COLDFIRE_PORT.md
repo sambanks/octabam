@@ -2792,6 +2792,107 @@ unit, not a ceiling. Only the burn sweep measures the ceiling.
   --dsp --main-level 64 --audio-in tones --dsp-stopwatch 0:50d:50e     # core 0 FX2 calls
 ```
 
+## Milestone O14 — the gain chain around the DSP, measured: AMP VOL and BAL are pre-FX on the DSP, LEVEL is post-FX at the mix, and `rig_render` now models all three (12 Sep 2026, branch `rig-mixer-model`)
+
+O9d left one number: the pre-FX track gain k = 2130129/2^23 (−11.906 dB)
+at AMP VOL 64, "🟡 not derived from those — measured as the fit". A
+voicing judgement made on `rig_render` needs the whole chain — what the
+stem's level into the engine is at a given AMP VOL, and how the returns
+sit against the dry at a given LEVEL — so the sweep was run rather than
+the curve guessed.
+
+**The instrument** (`tools/scratch/mixer_sweep.py`): the O9d fixture
+(Sam's RIG, T1 THRU, FX1 = SEND, FX2 = EQUALIZER flat `64 ×6`, tone on
+RX0 slot 2, `--main-level 64`, 400 frames), **the master track OFF** in
+`project.work` (the RIG's T8 is a master with stock LO-FI on FX1 —
+nonlinear, and between the chain output and TX0; with it on the TX0 fit's
+worst window was −3 dB, with it off −113 dB), one byte of the part changed
+per run in every part record of every bank (the set_fx rule): AMP VOL /
+BAL at the six bytes before the FX1 row (`00 7f 7f 40 40 7f` = ATK HOLD
+REL VOL BAL XVOL, confirmed on every track of the fixture), LEVEL at
+`+0x1b + 2·track`. Three taps: the chain INPUT (the 84-word record's
+audio), the chain OUTPUT (T1's slot of core 1's read-back) and TX0
+(`--audio-out`); each stage a per-200-sample-window least-squares scale at
+the fitted lag, the MEDIAN over windows. Whole-run rms is NOT the gain on
+this fixture: the RIG's pattern re-trigs T1 around frame 340 (a ~400-sample
+dip at the chain output, the input tap flat), which a median ignores and
+an rms does not — the first pass read −12.7 dB for k until the windows
+were printed. 26 port runs, ~75 s each.
+
+**AMP VOL — pre-FX, ON THE DSP, a square law** (k/2^23 at the chain
+output, TX0 over chain output unchanged at every point):
+
+| VOL | 0 | 16 | 32 | 48 | 64 | 80 | 96 | 112 | 127 |
+|---|---|---|---|---|---|---|---|---|---|
+| k/2^23 | 0 | 133,104 | 532,512 | 1,198,176 | 2,130,128 | 3,328,320 | 4,792,800 | 6,523,552 | 8,387,936 |
+| dB | −∞ | −35.990 | −23.947 | −16.903 | −11.906 | −8.029 | −4.862 | −2.184 | −0.001 |
+| (v/127)² err | | −0.002 | −0.001 | −0.001 | −0.001 | −0.000 | −0.000 | −0.000 | −0.001 |
+
+k/v² = 520.05 at every point (16 → 520.0): `g = (VOL/127)²`, within
+0.002 dB. It is applied between the record and FX1 by the stock DSP code
+(the chain here is SEND + a unity EQ; O9d's residual against `dsp_host` on
+the same input is −125 dB), so `dsp_host`, which calls only the effect
+procs, never runs it — that is the stage the harness lacked.
+
+**AMP BAL — pre-FX, on the DSP, a BALANCE**: the near side stays at unity
+(BAL 0 and 32 leave the L-only fixture at k exactly, to −126 dB), the far
+side falls to zero at the end stop. Measured on the right half, L
+attenuated, at VOL 64 (g = k/k₆₄):
+
+| BAL | 64 | 72 | 80 | 88 | 96 | 104 | 112 | 127 |
+|---|---|---|---|---|---|---|---|---|
+| g | 1 | 0.81202 | 0.63005 | 0.46007 | 0.30808 | 0.18009 | 0.08210 | 0.00009 |
+| dB | 0 | −1.808 | −4.012 | −6.743 | −10.226 | −14.890 | −21.713 | −81 |
+
+Not a power of a linear ramp (the exponent drifts 1.53 → 1.74 across the
+points). g/x with x = (127−BAL)/63 is a quadratic in d = BAL−64 to 1e-5
+(1 − d/128.95 − d²/8141), which is `((64−d)/64)·((127+d)/127)` expanded, so
+**g = ((63−d)/63)·((64−d)/64)·((127+d)/127)**, within 0.01 dB of every
+point. 🟡 The left half (R attenuated) is its mirror in d = 64 − BAL —
+inferred; falsifier: the same sweep with the tone on the THRU's right
+input. 🟡 That the same AMP stage precedes a FLEX/STATIC voice's chain is
+inferred from the DSP receiving the AMP page in the same per-instance words
+for every machine (O9d); falsifier: the O10 kick fixture at AMP VOL 32,
+expecting −12.04 dB at the read-back.
+
+**LEVEL — post-FX, at the mix**: the chain output is unchanged at every
+LEVEL (k = 2130128 at 0, 32, 64, 100, 127 — the "+0x1b byte did nothing
+to the read-back" of O10, now explained), and TX0 over the chain output:
+
+| LEVEL | 0 | 32 | 64 | 100 | 108 | 127 |
+|---|---|---|---|---|---|---|
+| dB | silent | −24.083 | −12.042 | −4.289 | −2.952 | −0.137 |
+| (L/128)² | | −24.082 | −12.041 | −4.288 | −2.952 | −0.137 |
+
+`g = (LEVEL/128)²` — over 128, not 127 (over 127 misses every point by a
+constant 0.136 dB, which is exactly (127/128)²). The lag TX0→chain output
+is −17 samples (TX0 leads: the read-back is the later copy). A second
+TX0 slot (4) carries the same signal 3.3 dB lower at lag −164 and tracks
+LEVEL; 🟡 the cue mix — not chased, not modelled.
+
+**Not modelled, and said so:** the main level (SET MAIN LEVEL, the
+`0x80003c60` table) scales trigged voices and not THRUs (O9c) — unity in
+the model, which O10's sample-exact kick at `--main-level 64` supports and
+does not prove; the cue path; the master track.
+
+**In the harness** (`tools/harness/mixer.py`, the curves beside the
+measured points and a `selftest()` that refuses if a curve drifts more
+than 0.02 dB from them — 0.008 today): `rig_render` applies VOL² and the
+balance to the stem BEFORE the chain, per side (`dsp_host -stereo`,
+interleaved L,R input; the mono form is untouched, every gate renders
+bit-identically), and LEVEL² AFTER, at `mix.wav`, which is now the main
+out and not a −6 dB unity sum. The values come from the part (`--project`:
+the AMP row and the LEVEL pair) or the unit's defaults, `--mix
+T1:VOL=127,LEVEL=100` overrides, `--mixer off` is the old harness to the
+bit (checked: T1/T5 of a bamsep27 render identical to the morning's).
+`--amp` now defaults to 1.0 with the model on: a stem is the voice at its
+sample GAIN. Consequence for every voicing note written before this: at
+its old default (`--amp 0.5`, no AMP stage) the harness drove each engine
+**5.9 dB hotter** than the unit does at AMP VOL 64 — and 11.9 dB hotter
+wherever `--amp 1.0` was used (O9d's first pass). A 0 dBFS voice at the
+default AMP VOL enters the chain at 0.254 FS, the BOTTOM of the "BIG clips
+at 0.25–0.5 FS in" knee; the old default put it at 0.5 FS, the top.
+
 ## What is NOT here yet
 
 - **The rest of the peripherals.** The eDMA with its completion-timing rules
