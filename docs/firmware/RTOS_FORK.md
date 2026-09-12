@@ -4633,7 +4633,7 @@ nothing here is a claim about a built image.
 floating, hooked at the converter tail `0x40006e0c` like `recorder-seam`,
 replaying the same three displaced instructions), remix `seekE` = 82 + it.
 `make check REMIX=seekE` green (311 passes). Image
-`out/mainos_seekE.bin`, sha256 `f0a12e7c…` (see the build report).
+`out/mainos_seekE.bin`, sha256 `e70a4b98…` (see the build report).
 
 **Gate 1 — is the substitute path taken?** `--watch-pc` on the cave entry and
 the `move.l %d2,%d4` substitute, `n128_card`, 21,000 frames (four passes):
