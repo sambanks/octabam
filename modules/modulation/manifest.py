@@ -104,12 +104,12 @@ MODULE = Module(
         ModeView(mode=3,                        # COMB
                  names={2: b"RING", 6: b"PTCH"},
                  defaults={0: 8, 1: 20, 2: 110, 3: 64, 6: 20}),
-        ModeView(mode=4,                        # TREM
-                 defaults={0: 70, 1: 90, 2: 0, 3: 127}),
+        ModeView(mode=4,                        # TREM: WID 0 -- at the knob's 64
+                 defaults={0: 70, 1: 90, 2: 0, 3: 127, 10: 0}),   # it was half a panner (ear, 12 Sep 2026)
         ModeView(mode=5,                        # VIB
                  defaults={0: 45, 1: 40, 2: 0, 3: 127, 6: 20, 10: 64}),
-        ModeView(mode=6,                        # PAN
-                 defaults={0: 55, 1: 100, 2: 0, 3: 127}),
+        ModeView(mode=6,                        # PAN: WID 0, so R is exactly L inverted
+                 defaults={0: 55, 1: 100, 2: 0, 3: 127, 10: 0}),
     ),
     dsp=DspSection(
         asm="modules/modulation/modulation.asm",

@@ -520,8 +520,14 @@ mo_mdone:
         move    y:(r5),a                ; t0
         move    a,x:(r7+$3c)
         move    x:(r7+$3f),a
-        add     #>$1,a                  ; the neighbour, one sample newer
-        and     #>$3ff,a
+        add     #>$3ff,a                ; the neighbour, one sample OLDER (-1
+        and     #>$3ff,a                ; mod 1024): a delay of i + f blends
+                                        ; toward i + 1. Blending toward the
+                                        ; NEWER sample made the delay i - f,
+                                        ; a two-sample jump at every integer
+                                        ; crossing of the sweep -- a crackle
+                                        ; on hats, invisible on a 440 Hz sine
+                                        ; (ear + fix 12 Sep 2026)
         move    a1,x0
         move    x0,a
         move    x:(r7+$19),x0
@@ -587,7 +593,7 @@ mo_mdone:
         move    y:(r5),a
         move    a,x:(r7+$3d)
         move    x:(r7+$3f),a
-        add     #>$1,a
+        add     #>$3ff,a                ; the older neighbour (as L)
         and     #>$3ff,a
         move    a1,x0
         move    x0,a

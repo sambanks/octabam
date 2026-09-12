@@ -271,7 +271,11 @@ FX2 slot modelled as the fallback SEND the unit dispatches there (without
 it a layout with nothing at core 0's position 0 had no housekeeper and the
 bus never rotated — a delay-only render was silent, 7 Sep 2026); out come
 `T1.wav…T8.wav`, `mix.wav` (unity sum, −6 dB) and `meter.txt`. About real
-time for eight tracks on two cores. `make render-rig`.
+time for eight tracks on two cores. `make render-rig`. A `--set` that picks
+a module's MODE also applies that mode's `ModeView.defaults` to every knob
+not set explicitly (since 12 Sep 2026 — the TUI bench's rule, and what
+per-mode defaults on the unit will do); a knob you want at the manifest's
+value under a mode, set it.
 
 **The rig's floor, metered (7 Sep 2026, `bamsep27`, the RIG table with
 eight stems):** core 0 (Modulation + BusVerb on T5, Spectrum + SEND on T6/T7,
