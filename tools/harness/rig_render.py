@@ -62,7 +62,10 @@ import mixer                           # noqa: E402  (the measured gain chain)
 from remix import registry             # noqa: E402
 
 SR = 44100
-FRAMES = send_probe.FRAMES             # 15: dsp_host caps a block at 15 frames
+FRAMES = 16                            # the firmware's frame; the harness's own cap is 15
+                                       # (dsp_host -frames overrides it, COLDFIRE_PORT.md O12).
+                                       # Voicing renders run whole blocks since 12 Sep 2026;
+                                       # the bit-identity gates (send_probe) stay at 15.
 NTRACKS = 8
 # Track -> core. Measured 10 Aug 2026 (marker flash): payload A serves 5-8.
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, NTRACKS + 1)}
@@ -273,7 +276,7 @@ def main():
     ap.add_argument("--out", default="out/rig")
     ap.add_argument("--keep", action="store_true", help="keep the raw files")
     ap.add_argument("-v", "--verbose", action="store_true")
-    ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (15 = the harness default; 16 = the firmware's frame)")
+    ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (16 = the firmware's frame, the default; 15 = the old harness)")
     ap.add_argument("--extra", default="", help="extra dsp_host arguments, e.g. '-dumpy 36000,360d3,file' (the bus scratch after the render)")
     a = ap.parse_args()
 
@@ -351,8 +354,10 @@ def main():
     n_src = int(a.seconds * SR) if a.seconds else longest
     if n_src == 0:
         die("no stems and no --seconds: nothing to render")
-    pad = send_probe.WARMUP_BLOCKS * FRAMES        # the engines stay dry for 256 calls
     FR = a.frames
+    pad = send_probe.WARMUP_BLOCKS * FR            # the engines stay dry for 256 CALLS, so the
+                                                   # pad is in blocks of THIS length (at 16 frames
+                                                   # the old 260 x 15 left 196 dry samples in)
     total = pad + n_src + int(a.tail * SR)
     blocks = -(-total // FR)
     n = blocks * FR

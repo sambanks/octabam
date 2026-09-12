@@ -1,4 +1,4 @@
-> ⚠️ **9 Sep 2026: `dsp_host`'s default block is 15 samples; the unit's is 16.** The frame-context nibble the harness seeds is the dispatcher's SPLIT, not a length (0 = a whole 16-sample block, measured under the ColdFire port). Renders at the default are self-consistent and every bit-identity gate is pinned to them, but every per-block rate is 16/15 of the unit's and every bus latency carries a sub-frame offset. `dsp_host -frames 16` / `rig_render --frames 16` run whole blocks exactly as the firmware does (the delay bus then lands at exactly one frame of lag against the port). `docs/firmware/COLDFIRE_PORT.md` O12.
+> ⚠️ **9 Sep 2026: `dsp_host`'s own block is 15 samples; the unit's is 16.** The frame-context nibble the harness seeds is the dispatcher's SPLIT, not a length (0 = a whole 16-sample block, measured under the ColdFire port). `dsp_host -frames 16` runs whole blocks exactly as the firmware does (the delay bus then lands at exactly one frame of lag against the port). **Since 12 Sep 2026 the voicing wrappers — `rig_render`, `render_reverb` (`make render-rig`, `make reverb`) — default to 16**; `--frames 15` is the old harness. The bit-identity gates (`send_probe`: `make render`, `verify-bus`, `verify-twocore`, …) are still pinned at 15 and self-consistent there; every per-block rate in THOSE is 16/15 of the unit's and every bus latency carries a sub-frame offset. `docs/firmware/COLDFIRE_PORT.md` O12.
 
 # The harness — hearing and measuring the effects without hardware
 
@@ -122,13 +122,18 @@ faithful mode: instead of hand-rolling the calling convention, it runs the
 payload's *own* dispatcher loop and lets it make every call — the mode that
 caught an ABI misreading the hand-rolled path could never see.
 
-### Blocks are 15 frames here, 16 on hardware
+### Blocks are 15 frames in the gates, 16 in the voicing wrappers
 
-The setup routine masks the frame count with `& 0xf`, so dsp_host caps a
-block at 15 frames where hardware runs 16. Nothing audible depends on it,
-but sample-exact measurements shift: the bus latency is exactly 2 blocks —
-**30 samples locally, 32 on hardware** (measured to the sample, see
-`docs/remixer/TESTPASS.md`).
+The setup routine masks the frame count with `& 0xf`, so dsp_host's own
+block is 15 frames where hardware runs 16; `-frames 16` overrides it and
+runs whole frames (O12). `send_probe` and every bit-identity gate built on
+it are pinned at 15 (the bus latency there is exactly 2 blocks — **30
+samples, 32 on hardware**, `docs/remixer/TESTPASS.md`); `rig_render` and
+`render_reverb` run 16 since 12 Sep 2026 so a voicing render's rates and
+latencies are the unit's. Their warm-up pad is 256 CALLS, i.e. in blocks
+of the chosen length — at 16 it is 4,096 samples, and until 12 Sep the pad
+was fixed at 260 × 15, which left 196 samples of the engines' dry warm-up
+at the head of every `--frames 16` render.
 
 ## render_reverb.py — judging by ear
 

@@ -108,7 +108,10 @@ def prov_stamp(img, fp):
     img.with_suffix(img.suffix + ".prov").write_text(fp + "\n")
 
 SR = 44100
-FRAMES = 15              # dsp_host caps a block at 15 frames (the & 0xf in setup)
+FRAMES = 16              # the firmware's frame (the harness's own cap is 15: the & 0xf
+                         # in setup, which dsp_host -frames overrides -- COLDFIRE_PORT.md O12).
+                         # Voicing renders run whole blocks since 12 Sep 2026; the
+                         # bit-identity gates (send_probe) are still pinned at 15.
 WARMUP_BLOCKS = 260      # the engine stays dry for 256 CALLS; pad past it and trim
 
 # -params index -> r6 offset: 0..5 are page 1, then dsp_host carries the REAL
@@ -402,12 +405,12 @@ def entry_points(mem_path):
     return init, proc
 
 
-def run(mem, src, values, tail_s, verbose, entry=None):
+def run(mem, src, values, tail_s, verbose, entry=None, frames=FRAMES):
     """src: mono floats at SR. -> (L, R) as 24-bit ints, warm-up trimmed."""
-    pad = WARMUP_BLOCKS * FRAMES
+    pad = WARMUP_BLOCKS * frames
     total = pad + len(src) + int(tail_s * SR)
-    blocks = -(-total // FRAMES)
-    n = blocks * FRAMES
+    blocks = -(-total // frames)
+    n = blocks * frames
 
     # PER-PROCESS scratch names. These were the fixed paths _render_in.raw /
     # _render_out.raw, which meant TWO RENDERS RUNNING AT ONCE silently fed
@@ -445,7 +448,7 @@ def run(mem, src, values, tail_s, verbose, entry=None):
     r7 = os.environ.get("RVR7") or ("2" if _guarded(mem) else "4")
     cmd = [str(HOST), "-mem", str(mem), "-init", f"{init:x}", "-proc", f"{proc:x}",
            "-inst", "1", "-r7", r7, "-alloc", "3", "-blocks", str(blocks),
-           "-in", str(tmp), "-out", str(out),
+           "-frames", str(frames), "-in", str(tmp), "-out", str(out),
            "-params", ",".join(str(v) for v in values)]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
@@ -515,6 +518,8 @@ def main():
                          "current build -- how you A/B two engine versions on the "
                          "same source (keep the old .mem when you change the engine)")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--frames", type=int, default=FRAMES,
+                    help="samples per block: 16 = the firmware's frame (default); 15 = the old harness")
     a = ap.parse_args()
     if a.dev:
         os.environ["DEV"] = "1"     # before any fingerprint() call -- DEV is in
@@ -584,7 +589,7 @@ def main():
         print(f"  engine {mem.name}  [payload {sha(mem)}]")
         for vals, dest, swept in jobs:
             vlist = [vals[n] for n, _ in PARAMS]
-            L, R = run(mem, src, vlist, a.tail, a.verbose)
+            L, R = run(mem, src, vlist, a.tail, a.verbose, frames=a.frames)
             if a.wet:
                 # output = dry + wet, and the dry path is the mono input duplicated,
                 # so subtracting it recovers the wet exactly.
