@@ -1,12 +1,12 @@
 # The recorder loop click — what it is, and how to test the fix
 
-**For Bryan T, and anyone else who records loops on the Octatrack's recorder.**
+**For anyone who records loops on the Octatrack's recorder.**
 
-You reported a click at the loop point when recording a bar into the
-recorder and looping it back — sound-on-sound. 128 BPM clicks, 120 BPM does
-not. This is what it turned out to be and how to check whether the patch
-fixes it on your unit, because **it is not fixed until it is fixed on
-somebody else's machine.**
+The reported symptom: a click at the loop point when recording a bar into
+the recorder and looping it back — sound-on-sound. 128 BPM clicks, 120 BPM
+does not. This is what it turned out to be, and how to check whether the
+patch fixes it on your unit — because **it is not fixed until it is fixed on
+a machine other than the one it was developed on.**
 
 > ⚠️ This is not official Elektron firmware. Flashing a modified OS can leave
 > the unit unusable until you recover it, and puts your warranty in question.
@@ -32,11 +32,13 @@ On every pass where the arm came one sample later than the recording ended,
 two moments that are two samples apart instead of one. That is the click.
 
 At 120 BPM a bar is 88,200 samples — exact — so the arms are evenly spaced,
-nothing is skipped, and it is clean. That is your own control, explained.
+nothing is skipped, and it is clean. That explains the original report's own
+control: 120 was never a lucky tempo, it is an exact one.
 
-Your `~6th repeat` onset at RLEN 4 is the same arithmetic with a different
-fraction: at RLEN 4 the period is 20,671.**875** samples, so the sample is
-lost once every **eight** passes rather than every other one.
+It also explains why the click was first noticed "around the sixth repeat"
+at RLEN 4 rather than immediately: at RLEN 4 the period is 20,671.**875**
+samples, so the fraction accumulates and the sample is lost once every
+**eight** passes instead of every other one.
 
 **Only 46 of the 1,401 tempi from 60.0 to 200.0 give a whole-number bar.**
 128 is not one of them. 120, 125, 126, 135, 140, 144 and 150 are — so
@@ -79,14 +81,29 @@ you could not select an effect (your saved projects would still play — the
 effect code and dispatch are untouched — but you could not change one).
 
 ```bash
+git clone --recurse-submodules https://github.com/sambanks/octabam
+cd octabam
 make setup                               # vendored tools
 make os                                  # extracts YOUR OWN downloaded 1.40C
 make check REMIX=recfix                  # every gate, no hardware needed
 make image REMIX=recfix BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
 ```
 
+**On the submodules** (verified on a fresh clone, 12 Sep 2026): `make bus
+REMIX=recfix` builds fine **without** them, but `make check` runs every remix
+in the repo — including two that wrap other people's code — so it needs them
+even though `recfix` does not. If you cloned without `--recurse-submodules`:
+
+```bash
+git submodule update --init --recursive
+```
+
+`make check` now says exactly that if they are missing, rather than throwing a
+Python traceback at you (it used to; sorry).
+
 `make check` is the floor — it builds the image and runs every gate in the
-repo without touching hardware. If it is not green, do not flash.
+repo without touching hardware. If it is not green, do not flash. Expect
+**303 PASS** and `EXIT=0` for `recfix`.
 
 Sam's build of that image is sha256 `ecb574a9…` — yours should match if your
 stock 1.40C does (`370c55a3…`); if it does not, say so before flashing, because
@@ -120,7 +137,7 @@ both.
 |---|---|---|---|
 | 1 | 128.0 BPM, RLEN 16 | tick every bar | nothing |
 | 2 | **120.0 BPM**, same | already clean | **still clean** — if 120 got *worse*, stop and tell us; the patch is supposed to do nothing at all there |
-| 3 | 128.0 BPM, **RLEN 4** | tick roughly every 8th pass (your "~6th repeat") | nothing |
+| 3 | 128.0 BPM, **RLEN 4** | tick roughly every 8th pass (the "~6th repeat" of the original report) | nothing |
 
 Check 2 is the important one. The patch is a no-op at 120 by construction,
 so a change there means something is wrong that our own testing did not see.
