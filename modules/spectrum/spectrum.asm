@@ -302,7 +302,7 @@ fs_rring:
 fs_rfm:
         move    #>$7fffff,x0            ; FM: out = A, f modulated by B
         move    x0,x:(r7+$26)
-        move    #>$200000,x0            ; kFM = 0.25
+        move    #>$400000,x0            ; kFM = 0.5 (0.25 was "a bit little" by ear, 12 Sep 2026)
         move    x0,x:(r7+$2c)
 fs_rdone:
 
@@ -493,7 +493,7 @@ fs_live:
 ; FM: f = clamp(fA + kFM * B_prev)
         move    x:(r7+$19),x0           ; B_prev L
         move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.25
+        mpy     x0,y1,a                 ; kFM * B, +-0.5
         move    a,x0
         move    x:(r7+$20),y1           ; fA
         mpy     x0,y1,a                 ; fA * kFM * B: MULTIPLICATIVE FM,
@@ -613,7 +613,7 @@ fs_live:
         move    x0,x:(r7+$1d)
         move    x:(r7+$1a),x0           ; B_prev R
         move    x:(r7+$2c),y1           ; kFM (0 unless ROUT = FM)
-        mpy     x0,y1,a                 ; kFM * B, +-0.25
+        mpy     x0,y1,a                 ; kFM * B, +-0.5
         move    a,x0
         move    x:(r7+$20),y1           ; fA
         mpy     x0,y1,a                 ; fA * kFM * B: MULTIPLICATIVE FM,
