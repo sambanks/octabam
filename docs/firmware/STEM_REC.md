@@ -5414,3 +5414,162 @@ settle, in the order they matter:
 | of them, confirmed by reading its loop (section 7.7).
 .equ	FS_STAGE_BUF,	0x4ecd3000	| shared, UNPROTECTED sector staging buffer
 ```
+
+## 9. T1 in the read-back block
+
+### 9.0 The fixture ✅
+
+No copy of the RIG project exists on this machine (COLDFIRE_PORT.md O10's own
+fixture). `tools/verify/stems_fixture.py` builds an equivalent from EZBot's
+"Ultimate FX 1.5.3" template (`out/projects/Ultimate FX 1.5.3`, gitignored,
+never modified -- the fixture copies it into `out/task11/fixture_src` first
+and edits the copy): T1 = FLEX on slot 1, in banks 1 and 2, every part and
+its mirror; T1's FX1 and FX2 = SEND; slot 1 is our own kick
+(`scripts/make_test_audio.py kick`, 16-bit mono), staged into the set's
+`AUDIO` folder, with `TSMODE=0` so "the record IS the file" (O10). One
+command rebuilds it:
+
+```
+python3 tools/verify/stems_fixture.py
+```
+
+It prints the card path, the set (`STEMS`) and the project (`ULTFX`), and
+writes `out/stems_fixture.json`.
+
+### 9.1 The port run ✅
+
+Step 3's command, run against the fixture's own card:
+
+```
+out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/stems_fixture_card.img \
+  --set STEMS --project ULTFX \
+  --sequencer --internal-clock --frames 300 --load-ms 20000 --dsp --main-level 64 --pre-roll 40 \
+  --poke-trig 2 --block-dump out/task11/t1.dump
+python3 tools/scratch/blockdump.py summary out/task11/t1.dump
+```
+
+The summary lists four read-back classes at `ram` `0x80003190` and
+`0x80003590` (core 1, tracks 1-4) and `0x80003390`/`0x80003790` (core 0,
+tracks 5-8), each `256` words, direction `<`. `0x80003190`/`0x80003590`
+carry real content (`nz-frac` 0.43/0.43, `rms16` ~8900, `max16` 32768) where
+the core-0 pair is near silent (`nz-frac` 0.008/0.007, `rms16` 15.7) --
+confirming the block is alive before anything is decoded, the instrument-
+blindness check CLAUDE.md asks for. A second, longer run
+(`--frames 700`, `out/task11/t1_long.dump`) was made only to widen the
+window for the fit below; it changes nothing about the layout, and every
+number in 9.2-9.3 reproduces identically from the official 300-frame dump.
+
+### 9.2 Which 0x80-byte block is T1, and the word order ✅
+
+Section 2.2 flagged this as open: "which loop iteration is track 1 is not
+settled". It is now measured, directly, not inferred. `0x80003190`'s
+256-word block splits into four `0x80`-byte (64-word) per-track slots at
+byte offsets `0x00`, `0x80`, `0x100` and `0x180`. Extracting each slot's
+words at index `0, 4, 8, ..., 60` (one value per of the 16 samples the slot
+carries) across the dump's frames and comparing to `kick.wav`'s own samples
+gives a clean, reproducible fit **only at offset `0x100`**:
+
+| frame | slot `0x100`, word 0 (every 4th) | `kick.wav` |
+|---|---|---|
+| 53 | 1099, 1181, 1235, 1289, 300, 328, 384, 439, 494, 548, 603, 657, 710, 763, 815, 867 | 17949, 18856, 19762, 20666, 4540, 5442, 6342, 7239, 8132, 9021, 9906, 10786, 11660, 12529, 13392, 14249 |
+| 54 | 918, 969, 1019, 1068, 1117, 1165, 1213, 1260, 1306, 1351, 1395, 1439, 1482, 1524, 1565, 1605 | 15099, 15942, 16777, 17604, 18423, 19233, 20035, 20826, 21609, 22381, 23142, 23893, 24632, 25361, 26077, 26781 |
+
+Every one of those 32 pairs rises and falls together, sample for sample,
+including the fall from `kick[3]`=20666 to `kick[4]`=4540 (the sweep
+resetting phase) landing exactly on the same frame boundary in the slot's
+own numbers. Offset `0` shows a single four-frame blip and then silence
+(consistent with pipeline fill, not a note); offset `0x180` is silent for
+the whole run; offset `0x80` shows a slowly-decaying, non-oscillating
+residue with the same duplicate-pair structure but no waveform relationship
+to `kick.wav` at any lag tried (checked to `±6600` samples). **T1 is the
+THIRD `0x80`-byte slot (0-based index 2), not the first.**
+
+Within the matching slot, each of the 16 samples is 4 words, and word 0
+equals word 2 (both "high") while word 1 equals word 3 (both "low") -- L
+and R identical, as expected for a centred mono voice. So the plan's word
+order (`L-high, L-low, R-high, R-low`) is confirmed for the WORD GROUPING;
+section 9.3 confirms which half of the pair is which.
+
+**The odd words ARE the low 8 bits shifted left by 8, with zero
+exceptions.** Every low word (position 1, and its duplicate at position 3)
+checked across 2,000 consecutive samples from the fit's start is an exact
+multiple of 256 (`value % 256 == 0` on all 2,000) -- e.g. frame 53's low
+words are 15872, -27648, 18432, 31488, 8960, 6656, 13056, 14592, 18176,
+-3584, 15616, 4096, 25088, 16128, -26112, 29696, every one divisible by 256
+exactly. This is the plan's claim, met without a single counterexample in
+the tested range.
+
+### 9.3 The lag, the residual, and where the fit breaks down ✅, with an open gain factor 🟡
+
+**Lag.** `kick.wav` sample 0 lands at the matching slot's word-0 in
+block-dump frame 53 (this run's own frame numbering, 1-based) -- 52 frames
+(832 samples) after the dump's first frame. That interval is the time this
+particular fixture's poked trig takes to reach a sounding voice; it is a
+fact about this run, not about the read-back block, and later fixtures will
+land on a different frame.
+
+**Residual, over the kick's own rising (non-clipped) attack.** Fitting
+`high_word = k * kick_sample` by least squares over the first N samples from
+frame 53:
+
+| N (samples) | k | 1/k | residual | correlation |
+|---|---|---|---|---|
+| 16 | 0.06164 | 16.22 | −36.8 dB | 0.99990 |
+| 32 | 0.06068 | 16.48 | −37.9 dB | 0.99992 |
+| 48 | 0.05973 | 16.74 | −35.7 dB | 0.99987 |
+| 64 | 0.05861 | 17.06 | −31.2 dB | 0.99962 |
+
+Identical numbers come out of the official 300-frame dump and the 700-frame
+diagnostic one. This is a clean fit: correlation above 0.999 and residual
+below −31 dB for every window tried through 64 samples.
+
+**Where it stops matching, and why -- not forced.** Past sample 64 (frame
+57), correlation collapses (0.67 at N=96, 0.48 at N=256, ~0.17 by N=2000)
+and stays low at every lag and every small resample-rate correction tried
+(±0.5%). The cause is in the TEST FILE, not the read-back: `kick.wav`
+samples 48 onward are `kick[48]=kick[49]=...=32767`, flat, because
+`make_test_audio.py`'s `gen_kick` multiplies by 1.3 and clips to full scale
+(`out/test_audio/kick.wav`, verified by reading the samples directly). The
+read-back's own word-0 stream does NOT go flat there -- it keeps decaying
+smoothly (1829 at frame 56 down through the 200s by frame 65) -- so once the
+INPUT stops changing, the read-back and the file diverge by construction:
+a clipped, constant input cannot validate a sample-for-sample fit past the
+clip point, only the falling correlation confirms it (the instrument here
+-- a fixed-lag linear fit against a flat reference -- is blind to any real
+signal once the reference itself stops carrying information, the same
+family of blindness CLAUDE.md warns about). **Falsifier for the offset and
+word-order claims above (met): any frame in the NON-clipped attack (samples
+0-64 from frame 53) where the even words move opposite to `kick.wav`, or
+where an odd word is not a multiple of 256. Not met: this dictates a
+different kick fixture (one that never saturates) is needed before a
+full-duration, whole-note fit can be claimed -- Task 14 should not assume
+this offset holds sample-for-sample once its own source material clips.**
+
+**🟡 The gain factor (1/k ≈ 16.2-17.1, roughly −24.4 dB) is measured, not
+explained.** It rules out both of the two simplest hypotheses: a plain
+16-to-24-bit promotion (`high_word == kick_sample`, 1/k = 1) and the same
+promotion read 8 bits low (1/k = 256). 1/k sits close to 16 (four bits), 🟡
+consistent with a headroom/guard-bit convention on the DSP side, but no
+site in the DSP disassembly was read to confirm it. **Falsifier:** a second
+fixture with a known, different GAIN or AMP setting on T1, showing 1/k move
+by the same ratio.
+
+### 9.4 Interface
+
+```asm
+| Base of the read-back, half 0 (RDBK_BASE, section 2.8). '<' is the
+| direction blockdump.py prints for these classes (RTOS_FORK.md 3901: "the
+| read-back block (`<` ch 1, `0x80003190/0x80003590`)").
+.equ	READBACK,	0x80003190
+.equ	READBACK_DIR,	'<'		| the direction char blockdump.py's summary prints for this class
+
+| T1's per-track slot inside the half: the THIRD 0x80-byte slot (0-based
+| index 2), not the first -- measured 12 Sep 2026 by fitting a known kick
+| against all four slots (section 9.2). Bytes, matching RDBK_TRACK's own
+| unit.
+.equ	T1_OFFSET,	0x100
+```
+
+The fixture command (section 9.0) and the falsifier in 9.3 are the two
+things Task 14 needs before writing the hook: which command reproduces this
+card, and what a passing check on it can and cannot claim.
