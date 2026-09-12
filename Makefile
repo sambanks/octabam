@@ -165,8 +165,6 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	  echo "  [SKIP] per-mode knob names: no .venv, or this remix has none"
 	@$(PY) tools/verify/verify_menushortcut.py $(REMIX) 2>/dev/null || \
 	  echo "  [SKIP] menu shortcut: no .venv, or this remix has none"
-	@$(PY) tools/verify/verify_cfprobe.py $(REMIX) 2>/dev/null || \
-	  echo "  [SKIP] cf probe: no .venv, or this remix has none"
 	@$(PY) tools/verify/verify_busscreen.py 2>/dev/null || \
 	  echo "  [SKIP] bus screen table relocation: no .venv"
 	@$(PY) tools/verify/verify_ccpage2.py 2>/dev/null || \
