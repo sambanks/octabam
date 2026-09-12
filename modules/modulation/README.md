@@ -75,11 +75,26 @@ allocator put us.
 - Two gates measured the wrong signal before they measured the right one: an
   envelope follower on a 438 Hz tone tracks the tone, not the sweep.
 
+## Measured laws (12 Sep 2026, `tools/harness/station_laws.py --probe lfo|impulse|noise`)
+
+| knob | law | readout |
+|---|---|---|
+| RATE | squared, ~0.05 → 8 Hz (kept: chorus rates in the bottom half, tremolo/vibrato in the top) | 32 → 0.64 Hz, 48 → 1.24, 64 → 2.1, 80 → 3.3, 96 → 4.6, 112 → 6.3, 127 → 8.0 |
+| DLY | linear, ≈1 ms + 0.18 ms per detent; **the read is clamped to the 1,024-word line** (centre ≤ 1,000 samples, depth ≤ min(centre − 8, 1,015 − centre)) | 16 → 3.9 ms, 64 → 12.3, 96 → 18.0, 127 → 22.7 (it was 0.18 ms: CHOR's 40-sample floor pushed 127 past the line and the mask wrapped it) |
+| FDBK (FLNG) | linear | a 4-sample comb decaying −9.6 / −5.6 / −3.5 dB per pass at 64 / 100 / 127 |
+| DPTH (TREM, PAN) | | 5 / 10 / 17 / 38 dB at 32 / 64 / 96 / 127 |
+| COMB | DLY = the pitch; FDBK the ring | resonance peaks +8..+12 dB, bw 20–40 Hz |
+| PHSR | **rewritten**: the allpass coefficient was multiplied `mpy x1,y1` — the order that ENCODES AS MPYSU — so a negative `c` (half of every LFO cycle) read as a large positive one and the chain measured +34 dB at Nyquist and +6 dB across the band; the sweep had no centre (DLY unused) and the RES knob reached nothing. Now: `c = centre + DPTH·0.75·lfo`, centre `0.94 − 1.24·DLY/128` (first notch ≈ 1 kHz at DLY 0 → 15 kHz at 127), the sweep clamped per block so `c` stays inside ±0.95, RES = negative feedback of the chain's output (capped 0.9·knob; positive fed back at DC) | unity peaks, notches −55 dB, one more notch per STGS step; RES 64 +3 dB resonance between the notches |
+
+Cost: the phaser loop 464 (it was cheaper broken); the line loop 386.
+
+Kits for the ear in `out/ab/mod_*` (`tools/harness/abkit.py`): the seven
+modes, CHOR depth, FLNG feedback, PHSR stages and resonance, COMB pitch,
+TREM rate.
+
 ## Open
 
-- Voicing: nothing has been heard. Every law here is a first guess — the
-  delay ranges per mode, the sweep depths, the phaser's range, the SHPE
-  curves.
-- SHPE's fourth position is labelled SAW but the shaper implements TRI, SIN
-  and SQR; SAW currently renders as TRI. Either the label or the shape.
-- ⚠️ UNFLASHED, and the FX1-participant bus case has never run on hardware.
+- Voicing: the laws are measured (above); nothing has been HEARD yet.
+- SAW is a real shape since 3 Sep 2026 (`modulation.asm`).
+- On hardware since flash 4 (tag 79) as T5's FX1; the FX1-only dry pass is
+  emulator-proven; none of the 12 Sep changes are flashed.

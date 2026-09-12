@@ -59,6 +59,8 @@
 ;   $21 centre delay, Q11.12         $22 sweep depth, Q11.12
 ;   $23 feedback                     $24 tone coefficient
 ;   $25 WID phase offset             $26 LFO increment per sample
+;   $2f phaser sweep (DPTH*0.75)     $44 phaser centre (from DLY)
+;   $40/$41 phaser feedback state L/R (PERSISTENT)   $42/$43 tap sums
 ;   $27 sin blend weight             $28 square gain / 8
 ;   $18 saw blend weight             $17 saw this sample (shape scratch)
 ;   $29 engine class                 $2a scratch (shape)
@@ -112,6 +114,8 @@ monoclr:
         move    a,x:(r7+$1c)            ; LFO phase
         move    a,x:(r7+$32)            ; feedback tone states
         move    a,x:(r7+$33)
+        move    a,x:(r7+$40)            ; the phaser's feedback state, L / R
+        move    a,x:(r7+$41)
         move    a,x:(r7+$34)            ; allpass states, both channels
         move    a,x:(r7+$35)
         move    a,x:(r7+$36)
@@ -327,11 +331,44 @@ mo_stdone:
         move    #>$1e0000,y1            ; 480 samples, pre-scaled to Q11.12
         mpy     x0,y1,a                 ; (no shift -- see the note above)
         move    a,x:(r7+$22)
-; FDBK -> the feedback amount, and the phaser's sweep depth
+; FDBK -> the feedback amount (RES in PHSR: the chain's resonance)
         move    x:(r6+$2),x0
         move    x0,x:(r7+$23)
-        move    #>$600000,x0            ; the phaser sweeps 0.75 of its range
-        move    x0,x:(r7+$2f)
+; the phaser's sweep: DPTH * 0.75 either side of its centre (was a fixed
+; 0.75 with no centre, 12 Sep 2026), the centre from DLY: c0 = 0.94 -
+; 1.24 * DLY/128 -- DLY 0 puts the notches low, 127 high. The loop clamps
+; c to +-0.95.
+        move    x:(r6+$1),x0            ; DPTH/128
+        move    #>$600000,y1            ; 0.75
+        mpy     x0,y1,a
+        move    a,x:(r7+$2f)            ; sweep
+        move    x:(r6+$c),a
+        and     #>$7f0000,a
+        move    a1,x0
+        move    x0,a
+        move    a,x0                    ; DLY/128
+        move    #>$4f5c29,y1            ; 0.62
+        mpy     x0,y1,a
+        asl     #$1,a,a                 ; 1.24 * DLY/128
+        neg     a
+        add     #>$7851eb,a             ; 0.94 - 1.24 * DLY/128: the first notch
+        move    a,x:(r7+$44)            ; from ~1 kHz (DLY 0) to ~15 kHz (127)
+; clamp the SWEEP once per block so centre +- sweep stays inside +-0.95 (an
+; allpass coefficient at +-1 is a pole on the circle): sweep <= 0.95 - c0
+; and sweep <= c0 + 0.95. Per block, so the loop needs no clamp.
+        move    a,b
+        move    #>$799999,x1            ; 0.95
+        neg     b
+        add     x1,b                    ; 0.95 - c0
+        move    b,y0
+        add     x1,a                    ; c0 + 0.95
+        move    x:(r7+$2f),b            ; sweep
+        cmp     y0,b
+        tgt     y0,b
+        move    a,x1
+        cmp     x1,b                    ; nothing between: the flag trap
+        tgt     x1,b
+        move    b,x:(r7+$2f)
 ; ---- MODE (slot 7 select of r6+$c): the engine class, and the per-mode ----
 ; overrides of centre, depth and feedback. CHOR is the fall-through.
         clr     a
@@ -382,6 +419,10 @@ mo_mflng:
 mo_mphsr:
         move    #>$1,a
         move    a,x:(r7+$29)            ; class 1 = the PHASER loop
+        move    x:(r7+$23),x0           ; RES capped at 0.9 * knob: at 0.99 the
+        move    #>$733333,y1            ; negative feedback rings +40 dB
+        mpy     x0,y1,a
+        move    a,x:(r7+$23)
         bra     mo_mdone
 mo_mcomb:
         move    x:(r7+$22),a
@@ -404,6 +445,30 @@ mo_mpan:
         move    #>$c00000,x0            ; ... with the right channel inverted
         move    x0,x:(r7+$1f)           ; (-0.5, halved like every y1 gain)
 mo_mdone:
+; ---- keep the read inside the 1,024-word line (12 Sep 2026) ---------------
+; centre + depth must stay below 1,016 samples and centre - depth above 8:
+; CHOR's 40-sample floor put DLY 127 at 1,032 (masked to 8: the impulse
+; came back 0.18 ms late instead of 23), and a deep sweep at a long centre
+; wrapped the same way. Centre is capped at 1,000; depth at the smaller of
+; (centre - 8) and (1,015 - centre). Q11.12 throughout; cmp + one Tcc each.
+        move    x:(r7+$21),a            ; centre
+        move    #>$3e8000,x0            ; 1,000 samples
+        cmp     x0,a
+        tgt     x0,a
+        move    a,x:(r7+$21)
+        move    a,b
+        move    #>$8000,x0              ; 8 samples
+        sub     x0,b                    ; centre - 8
+        move    b,x1
+        move    #>$3f7000,b             ; 1,015 samples
+        sub     a,b                     ; 1,015 - centre
+        move    x:(r7+$22),a            ; depth
+        cmp     x1,a
+        tgt     x1,a                    ; depth <= centre - 8
+        move    b,x1
+        cmp     x1,a                    ; nothing between: the flag trap
+        tgt     x1,a                    ; depth <= 1,015 - centre
+        move    a,x:(r7+$22)
 ; ---- the dry path: an FX2 slot, or MIX at zero ---------------------------
         move    x:(r7+$1a),a            ; the FX2 flag from init
         tst     a
@@ -580,10 +645,13 @@ mo_phsr:
         move    #>$1,n0
         do      n7,>mophsz
         bsr     moshap
-; the coefficient: c = lfo * depth, so it sweeps either side of centre
+; the coefficient: c = centre + lfo * sweep -- inside +-0.95 by the per-block
+; clamp of the sweep, so nothing to clamp here
         move    x:(r7+$1d),x0
         move    x:(r7+$2f),y1
         mpy     x0,y1,a
+        move    x:(r7+$44),x0
+        add     x0,a
         move    a,x:(r7+$3e)            ; c for this sample
         move    x:(r0),a
         move    a,x:(r7+$3c)
@@ -591,6 +659,8 @@ mo_phsr:
         move    x:(r7+$1e),x0           ; the right channel's own coefficient
         move    x:(r7+$2f),y1
         mpy     x0,y1,a
+        move    x:(r7+$44),x0
+        add     x0,a
         move    a,x:(r7+$3e)
         move    x:(r0+n0),a
         move    a,x:(r7+$3d)
@@ -791,163 +861,192 @@ moshap:
 
 
 ; ---------------------------------------------------------------------------
-; moapch / moapcr -- the four-stage allpass chain, L and R.
-; In: $3c (or $3d) = the input, $3e = this sample's coefficient.
+; moapch / moapcr -- the four-stage allpass chain, L and R (rewritten 12 Sep
+; 2026). In: $3c (or $3d) = the input, $3e = this sample's coefficient.
 ; Out: the same slot holds the weighted tap. Each stage is the one-pole
-; allpass y = -c*x + s, s' = x + c*y, which is unity-magnitude at every
-; frequency -- the phase is the whole point. The four taps are weighted
-; rather than branched on, so STGS costs no branch in the loop. The stages
-; are INLINED (cycle_count refuses a bsr callee that itself calls).
+; allpass y = -c*x + s, s' = x + c*y, unity-magnitude at every frequency --
+; the phase is the whole point. The four taps are weighted (one-hot by
+; STGS) rather than branched on. RES (the FDBK knob, renamed in PHSR) feeds
+; the chain's last output back into its input, the classic phaser
+; resonance. ⚠️ The first version multiplied `mpy x1,y1` with c in y1:
+; that order ENCODES AS MPYSU (CLAUDE.md), so a negative c -- half of every
+; LFO cycle -- was read as a large positive one and the "allpass" measured
+; +34 dB at Nyquist and +6 dB across the band (station_laws.py, noise).
+; c lives in x0 now; mpy x0,y1 is the audited signed order. The stages are
+; INLINED (cycle_count refuses a bsr callee that itself calls).
+;   $40 / $41  the chain's last output L / R (PERSISTENT, the feedback)
+;   $42 / $43  the weighted-tap sum, per sample
 ; ---------------------------------------------------------------------------
 moapch:
         clr     b
-        move    x:(r7+$3c),a
-        move    a,x:(r7+$3f)
-        move    x:(r7+$34),x0
+        move    x:(r7+$3c),a           ; x, the chain input
+        move    x:(r7+$40),x0          ; the chain's last output
+        move    x:(r7+$23),y1           ; RES (FDBK)
+        mpy     x0,y1,b                 ; res * y_last  (x0,y1: the signed order)
+        sub     b,a                     ; x - res * y_last: NEGATIVE, so the
+                                        ; resonance sits between the notches
+                                        ; (positive fed back at DC: +12 dB at
+                                        ; RES 110 on noise, 12 Sep 2026)
+        clr     b
+        move    a,x:(r7+$3f)            ; the first stage's input
+; stage 1: y = s - c*x, s' = x + c*y  (state $34)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$34),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$34)
-        move    x:(r7+$3e),y1
-        move    x:(r7+$2b),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
-        add     a,b
-        move    x:(r7+$35),x0
+        move    x:(r7+$2b),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    a,x:(r7+$42)
+; stage 2: y = s - c*x, s' = x + c*y  (state $35)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$35),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$35)
-        move    x:(r7+$2c),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2c),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$42),b
         add     a,b
-        move    x:(r7+$36),x0
+        move    b,x:(r7+$42)
+; stage 3: y = s - c*x, s' = x + c*y  (state $36)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$36),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$36)
-        move    x:(r7+$2d),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2d),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$42),b
         add     a,b
-        move    x:(r7+$37),x0
+        move    b,x:(r7+$42)
+; stage 4: y = s - c*x, s' = x + c*y  (state $37)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$37),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$37)
-        move    x:(r7+$2e),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2e),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$42),b
         add     a,b
-        move    b,x:(r7+$3c)
+        move    b,x:(r7+$42)
+        move    b,x:(r7+$40)           ; y_last for the feedback
+        move    b,x:(r7+$3c)           ; the wet
         rts
+
 moapcr:
         clr     b
-        move    x:(r7+$3d),a
-        move    a,x:(r7+$3f)
-        move    x:(r7+$38),x0
+        move    x:(r7+$3d),a           ; x, the chain input
+        move    x:(r7+$41),x0          ; the chain's last output
+        move    x:(r7+$23),y1           ; RES (FDBK)
+        mpy     x0,y1,b                 ; res * y_last  (x0,y1: the signed order)
+        sub     b,a                     ; x - res * y_last: NEGATIVE, so the
+                                        ; resonance sits between the notches
+                                        ; (positive fed back at DC: +12 dB at
+                                        ; RES 110 on noise, 12 Sep 2026)
+        clr     b
+        move    a,x:(r7+$3f)            ; the first stage's input
+; stage 1: y = s - c*x, s' = x + c*y  (state $38)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$38),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$38)
-        move    x:(r7+$3e),y1
-        move    x:(r7+$2b),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
-        add     a,b
-        move    x:(r7+$39),x0
+        move    x:(r7+$2b),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    a,x:(r7+$43)
+; stage 2: y = s - c*x, s' = x + c*y  (state $39)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$39),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$39)
-        move    x:(r7+$2c),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2c),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$43),b
         add     a,b
-        move    x:(r7+$3a),x0
+        move    b,x:(r7+$43)
+; stage 3: y = s - c*x, s' = x + c*y  (state $3a)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$3a),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$3a)
-        move    x:(r7+$2d),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2d),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$43),b
         add     a,b
-        move    x:(r7+$3b),x0
+        move    b,x:(r7+$43)
+; stage 4: y = s - c*x, s' = x + c*y  (state $3b)
         move    x:(r7+$3f),x1           ; x, the stage input
-        move    x:(r7+$3e),y1           ; c
-        mpy     x1,y1,a                 ; c * x
-        neg     a                       ; -c * x
-        move    x0,y0                   ; s
-        add     y0,a                    ; y = -c*x + s
+        move    x:(r7+$3f),y1
+        move    x:(r7+$3e),x0           ; c -- in x0: mpy x0,y1 is SIGNED
+        mpy     x0,y1,a                 ; c * x
+        neg     a
+        move    x:(r7+$3b),b            ; s
+        add     b,a                     ; y = s - c*x
         move    a,x:(r7+$3f)            ; the stage output
-        move    a,x0
+        move    a,y1
         mpy     x0,y1,a                 ; c * y
         add     x1,a                    ; s' = x + c*y
         move    a,x:(r7+$3b)
-        move    x:(r7+$2e),y0
-        move    x:(r7+$3f),x0
-        move    y0,y1
-        mpy     x0,y1,a
+        move    x:(r7+$2e),x0            ; this tap's weight (one-hot by STGS)
+        mpy     x0,y1,a                 ; w * y  (y1 still holds y)
+        move    x:(r7+$43),b
         add     a,b
-        move    b,x:(r7+$3d)
+        move    b,x:(r7+$43)
+        move    b,x:(r7+$41)           ; y_last for the feedback
+        move    b,x:(r7+$3d)           ; the wet
         rts
 
 ; ---------------------------------------------------------------------------

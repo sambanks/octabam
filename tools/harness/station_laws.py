@@ -141,9 +141,93 @@ def burst_probe(a, knob, vals):
     return rows
 
 
+def lfo_probe(a, knob, vals):
+    """A steady tone: the output's amplitude envelope (5 ms windows) gives the
+    modulation rate (its autocorrelation's first peak) and depth (the
+    envelope's max/min in dB) -- TREM and PAN directly, CHOR/FLNG/VIB via the
+    level ripple of a delayed tone summed with itself."""
+    out = pathlib.Path(a.out)
+    stem = out / "sine.wav"; write_sine(stem, a.hz, a.amp, seconds=a.seconds)
+    rows = []
+    win = SR // 200
+    for v in vals:
+        d = out / f"_r_{v:03d}"
+        cmd = [sys.executable, str(ROOT / "tools/harness/rig_render.py"), "--image", a.image, "--remix", a.remix,
+               "--tracks", f"T1={a.station}+SEND", "--stem", f"T1={stem}", "--tail", "0", "--frames", "16",
+               "--set", f"T1:FX1:{knob}={v}", "--out", str(d)]
+        for fx in a.fixed:
+            cmd += ["--set", f"T1:FX1:{fx}"]
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit(f"rig_render failed for {knob}={v}:\n{r.stdout[-1500:]}{r.stderr[-1500:]}")
+        with wave.open(str(d / "T1.wav"), "rb") as w:
+            nch, sw, n = w.getnchannels(), w.getsampwidth(), w.getnframes(); raw = w.readframes(n)
+        arr = np.frombuffer(raw, dtype=np.uint8).reshape(n, nch, sw)
+        val = arr[:, :, 0].astype(np.int32) | (arr[:, :, 1].astype(np.int32) << 8) | (arr[:, :, 2].astype(np.int32) << 16)
+        val = np.where(val >= 1 << 23, val - (1 << 24), val) / 8388608.0
+        shutil.rmtree(d, ignore_errors=True)
+        res = dict(value=v)
+        for ch, name in ((0, "L"), (1, "R")):
+            y = val[SR // 2:, ch]                          # skip the warm-in
+            e = np.sqrt(np.convolve(y * y, np.ones(win) / win, mode="valid"))[::win // 2]
+            e = e[len(e) // 8:]
+            dep = 20 * math.log10(e.max() / e.min()) if e.min() > 0 else 99.0
+            ac = np.correlate(e - e.mean(), e - e.mean(), mode="full")[len(e) - 1:]
+            ac /= max(ac[0], 1e-12)
+            # first peak after the first zero crossing
+            z = next((i for i in range(1, len(ac)) if ac[i] < 0), None)
+            hz = None
+            if z is not None and z < len(ac) - 2:
+                pk = int(np.argmax(ac[z:]) + z)
+                if ac[pk] > 0.2:
+                    hz = SR / (win // 2) / pk
+            res[f"depth_{name}_db"] = dep; res[f"rate_{name}_hz"] = hz
+        rows.append(res)
+        fmt = lambda x: "  none" if x is None else f"{x:6.2f}"
+        print(f"{knob}={v:3d}: rate L {fmt(res['rate_L_hz'])} Hz  R {fmt(res['rate_R_hz'])} Hz   "
+              f"depth L {res['depth_L_db']:5.1f} dB  R {res['depth_R_db']:5.1f} dB")
+    return rows
+
+
+def impulse_probe(a, knob, vals):
+    """A single impulse at -6 dBFS: the lags (ms) and levels of the echoes in
+    the output -- a delay line's centre time per DLY, its feedback repeats."""
+    out = pathlib.Path(a.out)
+    stem = out / "impulse.wav"
+    x = np.zeros(int(SR * a.seconds)); x[1000] = a.amp
+    write_wav16(stem, x)
+    rows = []
+    for v in vals:
+        y = render(a, stem, knob, v)
+        y = y[1000:1000 + int(0.5 * SR)]
+        ay = np.abs(y)
+        thr = ay.max() * 0.02
+        peaks = []
+        i = 0
+        while i < len(ay):
+            if ay[i] > thr:
+                j = i
+                while j < len(ay) and (j - i) < a.min_gap:
+                    j += 1
+                seg = ay[i:j]; k = int(np.argmax(seg)) + i
+                peaks.append((k, float(ay[k]))); i = j
+            else:
+                i += 1
+        peaks = peaks[:6]
+        rows.append(dict(value=v, echoes=[dict(ms=k / SR * 1000, db=20 * math.log10(l / (a.amp * AMP))) for k, l in peaks]))
+        print(f"{knob}={v:3d}: " + "  ".join(f"{k / SR * 1000:6.2f} ms {20 * math.log10(l / (a.amp * AMP)):+6.1f} dB" for k, l in peaks))
+    return rows
+
+
 def laws(a):
     knob, vals = a.knob.split("="); vals = [int(v) for v in vals.split(",")]
     out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    if a.probe == "lfo":
+        rows = lfo_probe(a, knob, vals)
+        (out / "laws.json").write_text(json.dumps(dict(station=a.station, knob=knob, fixed=a.fixed, probe="lfo", rows=rows), indent=1)); return
+    if a.probe == "impulse":
+        rows = impulse_probe(a, knob, vals)
+        (out / "laws.json").write_text(json.dumps(dict(station=a.station, knob=knob, fixed=a.fixed, probe="impulse", rows=rows), indent=1)); return
     if a.probe == "sine":
         rows = sine_probe(a, knob, vals)
         (out / "laws.json").write_text(json.dumps(dict(station=a.station, knob=knob, fixed=a.fixed, probe="sine", rows=rows), indent=1)); return
@@ -195,7 +279,9 @@ def main():
     ap.add_argument("--fixed", action="append", default=[])
     ap.add_argument("--image", default="out/mainos_bus.bin"); ap.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
     ap.add_argument("--out", required=True)
-    ap.add_argument("--probe", choices=("noise", "sine", "burst"), default="noise")
+    ap.add_argument("--probe", choices=("noise", "sine", "burst", "lfo", "impulse"), default="noise")
+    ap.add_argument("--seconds", type=float, default=4.0, help="probe length for lfo / impulse")
+    ap.add_argument("--min-gap", type=int, default=40, help="impulse probe: samples between distinct echoes")
     ap.add_argument("--hz", type=float, default=440.0); ap.add_argument("--amp", type=float, default=0.5, help="probe amplitude before the AMP stage (0.5 = -6 dBFS)")
     return laws(ap.parse_args())
 
