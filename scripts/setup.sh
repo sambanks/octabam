@@ -89,7 +89,7 @@ if [ -f vendor/elektron-firmware-tool/Makefile ]; then
   make -C vendor/elektron-firmware-tool || { echo "   [!] elektron-firmware-tool build FAILED -- make image needs it"; exit 1; }
   # The binary must carry OUR container dump, or make image has nothing to
   # wrap; a build from an unpatched tree is silent about it until then.
-  grep -q EFT_EMIT_CONTAINER vendor/elektron-firmware-tool/elektron-firmware-tool \
+  grep -a -q EFT_EMIT_CONTAINER vendor/elektron-firmware-tool/elektron-firmware-tool \
     || { echo "   [!] elektron-firmware-tool was built WITHOUT the local patch (no EFT_EMIT_CONTAINER)."; \
          echo "       Fix: rm -rf vendor/elektron-firmware-tool; make setup"; exit 1; }
 else
