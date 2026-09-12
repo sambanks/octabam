@@ -15,12 +15,26 @@ shared window Y:0x30000-0x3FFFF really shared between the two emulated cores
 it does on hardware: across the core boundary, through the bus scratch.
 
 What comes out: T1.wav .. T8.wav (each track's stereo output, dry + wet as
-the DSP emits it), mix.wav (their unity sum, -6 dB), and meter.txt (per-block
-instruction counts per core: the cycle floor of THIS layout).
+the DSP emits it -- the chain output, before LEVEL), mix.wav (the main out:
+every track through its LEVEL, summed, saturated the way a 24-bit sum is),
+and meter.txt (per-block instruction counts per core: the cycle floor of
+THIS layout).
+
+THE MIXER MODEL (12 Sep 2026, tools/harness/mixer.py). The unit's gain
+chain around the DSP, measured under the ColdFire port: AMP VOL (v/127)^2
+and AMP BAL (a balance: the far side falls to zero, the near side stays)
+are applied to the stem BEFORE the FX chain, exactly as the DSP's own AMP
+stage does it; track LEVEL (L/128)^2 is applied AFTER, at the mix. The
+values come from the part (--project: the AMP page and the LEVEL pair) or
+the unit's defaults (VOL 64 = -11.9 dB, BAL 64, LEVEL 108 = -3.0 dB), and
+--mix T1:VOL=127,LEVEL=100 overrides them. A stem is therefore THE VOICE at
+its sample GAIN (0 dBFS in the file = 0 dBFS at the voice), which is why
+--amp defaults to 1.0 with the model on. --mixer off is the old harness:
+stems at --amp 0.5 straight into the chain, mix.wav a unity sum at -6 dB.
 
 What this is NOT: the ColdFire. Knobs are poked into r6 the way the harness
 always has (a slot can draw a knob and publish nothing -- docs/firmware/PARAM_PAGES.md),
-AMP VOL / pan / the mixer are not modelled (unity sum), samples do not play
+the main level and the cue mix are not modelled, samples do not play
 (stems stand in for what the track would play), and the cores are lock-step
 unless --skew interleaves them (a fuzz of the hardware's timing, never a
 proof). docs/remixer/HARNESS.md.
@@ -44,10 +58,14 @@ import wave
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
 import send_probe                      # noqa: E402  (entry_points, dump_mem, HOST)
+import mixer                           # noqa: E402  (the measured gain chain)
 from remix import registry             # noqa: E402
 
 SR = 44100
-FRAMES = send_probe.FRAMES             # 15: dsp_host caps a block at 15 frames
+FRAMES = 16                            # the firmware's frame; the harness's own cap is 15
+                                       # (dsp_host -frames overrides it, COLDFIRE_PORT.md O12).
+                                       # Voicing renders run whole blocks since 12 Sep 2026;
+                                       # the bit-identity gates (send_probe) stay at 15.
 NTRACKS = 8
 # Track -> core. Measured 10 Aug 2026 (marker flash): payload A serves 5-8.
 CORE_OF = {t: (0 if t >= 5 else 1) for t in range(1, NTRACKS + 1)}
@@ -150,7 +168,13 @@ def part_tracks(project, bank, part, remix_name):
     ids = remix_id_map(remix_name)
     off = otp.PART_BASE + (part - 1) * otp.PART_STRIDE
     out = {}
+    mix = {}
     for i in range(NTRACKS):
+        # the AMP page (ATK HOLD REL VOL BAL XVOL) sits six bytes before the
+        # track's FX1 row; LEVEL is the first of the (LEVEL, cue) pair at +0x1b
+        amp = off + otp.P1_OFF + i * otp.TRACK_STRIDE - 6
+        mix[i + 1] = dict(vol=data[amp + 3] & 0x7f, bal=data[amp + 4] & 0x7f,
+                          level=data[off + 0x1b + 2 * i] & 0x7f)
         slots = []
         for fx, idoff, sub in ((1, otp.FX1_OFF, 0), (2, otp.FX2_OFF, 6)):
             fid = data[off + idoff + i]
@@ -166,7 +190,28 @@ def part_tracks(project, bank, part, remix_name):
             slots.append(Slot(m, fx, [v & 0x7f for v in vals]))
         if slots:
             out[i + 1] = slots
-    return out
+    return out, mix
+
+
+def default_mix():
+    return {t: dict(vol=mixer.VOL_DEFAULT, bal=mixer.BAL_DEFAULT, level=mixer.LEVEL_DEFAULT)
+            for t in range(1, NTRACKS + 1)}
+
+
+def apply_mix(mix, specs):
+    """--mix T1:VOL=127,BAL=64,LEVEL=100 (any subset, repeatable)."""
+    for spec in specs:
+        try:
+            tn, rest = spec.split(":", 1)
+            t = int(tn.upper().lstrip("T"))
+            for kv in rest.split(","):
+                k, v = kv.split("=")
+                k = k.strip().lower()
+                if k not in ("vol", "bal", "level"):
+                    raise ValueError
+                mix[t][k] = max(0, min(127, int(v)))
+        except (ValueError, KeyError):
+            die(f"--mix {spec!r}: want T<n>:VOL=<0..127>,BAL=<0..127>,LEVEL=<0..127>")
 
 
 def apply_sets(tracks, sets):
@@ -195,9 +240,12 @@ def apply_sets(tracks, sets):
 
 # ---- audio ----------------------------------------------------------------
 def read_stem(path):
-    from render_reverb import read_wav, resample
-    x, sr = read_wav(path)
-    return resample(x, sr, SR)
+    """-> (L, R) float lists at SR. A mono file is the same list twice."""
+    from render_reverb import read_wav_channels, resample
+    chans, sr = read_wav_channels(path)
+    L = resample(chans[0], sr, SR)
+    R = resample(chans[1], sr, SR) if len(chans) > 1 else L
+    return L, R
 
 
 def write_wav(path, L, R):
@@ -215,17 +263,20 @@ def main():
     ap.add_argument("--bank", type=int, default=1)
     ap.add_argument("--part", type=int, default=1)
     ap.add_argument("--set", action="append", default=[], help="T2:-VRB=100 knob override")
+    ap.add_argument("--mix", action="append", default=[], help="T1:VOL=127,BAL=64,LEVEL=100 mixer override")
+    ap.add_argument("--mixer", choices=("on", "off"), default="on",
+                    help="the measured gain chain (AMP VOL/BAL pre-FX, LEVEL post-FX); off = the old unity harness")
     ap.add_argument("--stems", help="dir of T1.wav..T8.wav (a missing one is silence)")
     ap.add_argument("--stem", action="append", default=[], help="T3=file.wav")
     ap.add_argument("--seconds", type=float, help="length (default: longest stem)")
     ap.add_argument("--tail", type=float, default=2.0, help="seconds after the stems end")
-    ap.add_argument("--amp", type=float, default=0.5, help="stem scale into the DSP (0.5 = -6 dBFS)")
+    ap.add_argument("--amp", type=float, help="stem scale (default 1.0 with the mixer, 0.5 = -6 dBFS without)")
     ap.add_argument("--tempo", type=float, help="publish tempo24 / clocks as the ColdFire cave does")
     ap.add_argument("--skew", type=int, help="interleave the cores, core 0 N instructions ahead")
     ap.add_argument("--out", default="out/rig")
     ap.add_argument("--keep", action="store_true", help="keep the raw files")
     ap.add_argument("-v", "--verbose", action="store_true")
-    ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (15 = the harness default; 16 = the firmware's frame)")
+    ap.add_argument("--frames", type=int, default=FRAMES, help="samples per dsp_host block (16 = the firmware's frame, the default; 15 = the old harness)")
     ap.add_argument("--extra", default="", help="extra dsp_host arguments, e.g. '-dumpy 36000,360d3,file' (the bus scratch after the render)")
     a = ap.parse_args()
 
@@ -236,13 +287,18 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
 
     # the tracks
+    mix = default_mix()
     if a.project:
-        tracks = part_tracks(a.project, a.bank, a.part, a.remix)
+        tracks, mix = part_tracks(a.project, a.bank, a.part, a.remix)
     elif a.tracks:
         tracks = parse_tracks(a.tracks, a.remix)
     else:
         die("give --tracks or --project")
     apply_sets(tracks, a.set)
+    apply_mix(mix, a.mix)
+    model = a.mixer == "on"
+    if a.amp is None:
+        a.amp = 1.0 if model else 0.5
 
     # both payloads
     mems = {}
@@ -294,28 +350,44 @@ def main():
     for spec in a.stem:
         tn, f = spec.split("=", 1)
         stems[int(tn.upper().lstrip("T"))] = read_stem(pathlib.Path(f).expanduser())
-    longest = max((len(x) for x in stems.values()), default=0)
+    longest = max((len(x[0]) for x in stems.values()), default=0)
     n_src = int(a.seconds * SR) if a.seconds else longest
     if n_src == 0:
         die("no stems and no --seconds: nothing to render")
-    pad = send_probe.WARMUP_BLOCKS * FRAMES        # the engines stay dry for 256 calls
     FR = a.frames
+    pad = send_probe.WARMUP_BLOCKS * FR            # the engines stay dry for 256 CALLS, so the
+                                                   # pad is in blocks of THIS length (at 16 frames
+                                                   # the old 260 x 15 left 196 dry samples in)
     total = pad + n_src + int(a.tail * SR)
     blocks = -(-total // FR)
     n = blocks * FR
 
+    # what the chain is fed: the stem at --amp, and with the model on, through
+    # the DSP's AMP stage (VOL^2 and the balance) -- interleaved L,R (-stereo)
+    def pre_gains(t):
+        if not model:
+            return a.amp, a.amp
+        gl, gr = mixer.bal_gains(mix[t]["bal"])
+        g = a.amp * mixer.vol_gain(mix[t]["vol"])
+        return g * gl, g * gr
     tag = os.getpid()
     raws = {}
-    for t, x in stems.items():
+    for t, (xl, xr) in stems.items():
         p = ROOT / f"out/dsp/_rig_in_T{t}_{tag}.raw"
+        gl, gr = pre_gains(t)
+        m = min(len(xl), n_src)
         with open(p, "wb") as f:
             for i in range(n):
                 j = i - pad
-                v = a.amp * x[j] if 0 <= j < min(len(x), n_src) else 0.0
-                f.write(struct.pack("<i", max(-8388608, min(8388607, int(v * 8388607)))))
+                if 0 <= j < m:
+                    l_, r_ = gl * xl[j], gr * xr[j]
+                else:
+                    l_ = r_ = 0.0
+                f.write(struct.pack("<ii", max(-8388608, min(8388607, int(l_ * 8388607))),
+                                    max(-8388608, min(8388607, int(r_ * 8388607)))))
         raws[t] = p
     silent = ROOT / f"out/dsp/_rig_silence_{tag}.raw"
-    silent.write_bytes(b"\0" * (4 * n))
+    silent.write_bytes(b"\0" * (8 * n))
 
     out = ROOT / f"out/dsp/_rig_out_{tag}.raw"
     cmd = [str(send_probe.HOST), "-mem", str(mems[0]), "-memB", str(mems[1]),
@@ -328,7 +400,7 @@ def main():
            "-audioidx", ",".join(str(i["track"] - 1) for i in inst),
            "-audio", f"{AUDIO_BASE:x}",
            "-in", ",".join(str(raws.get(i["track"], silent)) for i in inst),
-           "-frames", str(FR), "-blocks", str(blocks),
+           "-frames", str(FR), "-blocks", str(blocks), "-stereo",
            "-out", str(out), "-meter", str(outdir / "meter.txt")]
     for i in inst:
         cmd += ["-params", ",".join(map(str, i["values"]))]
@@ -344,8 +416,14 @@ def main():
               f"alloc {i['alloc']} r7 {i['r7']} init P:0x{i['init']:05x} "
               f"params {' '.join(map(str, i['values']))}"
               f"{'   <- SEND alias' if i['aliased'] else ''}")
-    print(f"{blocks} blocks x {FR} frames ({n / SR:.1f} s incl. {pad / SR:.1f} s warm-up), "
-          f"stems on {sorted(stems) or 'none'}")
+    if model:
+        def desc(t, m):
+            db = lambda g: 20 * math.log10(g) if g > 0 else -200.0
+            bal = "" if m["bal"] == 64 else f" BAL {m['bal']}"
+            return (f"T{t} VOL {m['vol']} ({db(mixer.vol_gain(m['vol'])):+.1f} dB){bal}"
+                    f" LVL {m['level']} ({db(mixer.level_gain(m['level'])):+.1f})")
+        print("mixer (the measured chain, tools/harness/mixer.py): "
+              + "  ".join(desc(t, m) for t, m in sorted(mix.items()) if t in stems or t in tracks))
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if a.verbose:
         print(r.stdout)
@@ -368,22 +446,27 @@ def main():
             arr = array.array("i"); arr.frombytes(p.read_bytes())
             L, R = list(arr[0::2])[pad:], list(arr[1::2])[pad:]
         elif t in stems:                       # no instance at all: the stem passes through
-            x = stems[t]
-            L = [int(a.amp * (x[j] if j < min(len(x), n_src) else 0.0) * 8388607) for j in range(n - pad)]
-            R = list(L)
+            xl, xr = stems[t]; gl, gr = pre_gains(t); m = min(len(xl), n_src)
+            L = [int(gl * (xl[j] if j < m else 0.0) * 8388607) for j in range(n - pad)]
+            R = [int(gr * (xr[j] if j < m else 0.0) * 8388607) for j in range(n - pad)]
         else:
             continue
         write_wav(outdir / f"T{t}.wav", L, R)
         peak = max((abs(v) for v in L + R), default=0)
         print(f"  T{t}.wav  peak {20 * math.log10(max(peak, 1) / 8388608):6.1f} dBFS")
+        lv = mixer.level_gain(mix[t]["level"]) if model else 1.0
         for j in range(len(L)):
-            mixL[j] += L[j]; mixR[j] += R[j]
-    mixL = [v * 0.5 for v in mixL]; mixR = [v * 0.5 for v in mixR]
-    write_wav(outdir / "mix.wav", mixL, mixR)
+            mixL[j] += lv * L[j]; mixR[j] += lv * R[j]
+    if not model:
+        mixL = [v * 0.5 for v in mixL]; mixR = [v * 0.5 for v in mixR]
     peak = max((abs(v) for v in mixL + mixR), default=0)
-    clip = sum(1 for v in mixL + mixR if abs(v) >= 8388607)
+    clip = sum(1 for v in mixL + mixR if abs(v) > 8388607)
+    mixL = [max(-8388608, min(8388607, int(v))) for v in mixL]
+    mixR = [max(-8388608, min(8388607, int(v))) for v in mixR]
+    write_wav(outdir / "mix.wav", mixL, mixR)
     print(f"  mix.wav  peak {20 * math.log10(max(peak, 1) / 8388608):6.1f} dBFS"
-          f"{f'  !! {clip} clipped samples' if clip else ''}   (unity sum, -6 dB; no AMP/pan model)")
+          f"{f'  !! {clip} clipped samples' if clip else ''}   "
+          + ("(the main out: each track through LEVEL, summed)" if model else "(unity sum, -6 dB; --mixer off)"))
     print(f"-> {outdir}")
     if not a.keep:
         for p in [out, silent, *raws.values()] + [pathlib.Path(f"{out}.i{k}") for k in range(1, len(inst))]:

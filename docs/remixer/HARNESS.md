@@ -1,4 +1,4 @@
-> ⚠️ **9 Sep 2026: `dsp_host`'s default block is 15 samples; the unit's is 16.** The frame-context nibble the harness seeds is the dispatcher's SPLIT, not a length (0 = a whole 16-sample block, measured under the ColdFire port). Renders at the default are self-consistent and every bit-identity gate is pinned to them, but every per-block rate is 16/15 of the unit's and every bus latency carries a sub-frame offset. `dsp_host -frames 16` / `rig_render --frames 16` run whole blocks exactly as the firmware does (the delay bus then lands at exactly one frame of lag against the port). `docs/firmware/COLDFIRE_PORT.md` O12.
+> ⚠️ **9 Sep 2026: `dsp_host`'s own block is 15 samples; the unit's is 16.** The frame-context nibble the harness seeds is the dispatcher's SPLIT, not a length (0 = a whole 16-sample block, measured under the ColdFire port). `dsp_host -frames 16` runs whole blocks exactly as the firmware does (the delay bus then lands at exactly one frame of lag against the port). **Since 12 Sep 2026 the voicing wrappers — `rig_render`, `render_reverb` (`make render-rig`, `make reverb`) — default to 16**; `--frames 15` is the old harness. The bit-identity gates (`send_probe`: `make render`, `verify-bus`, `verify-twocore`, …) are still pinned at 15 and self-consistent there; every per-block rate in THOSE is 16/15 of the unit's and every bus latency carries a sub-frame offset. `docs/firmware/COLDFIRE_PORT.md` O12.
 
 # The harness — hearing and measuring the effects without hardware
 
@@ -122,13 +122,18 @@ faithful mode: instead of hand-rolling the calling convention, it runs the
 payload's *own* dispatcher loop and lets it make every call — the mode that
 caught an ABI misreading the hand-rolled path could never see.
 
-### Blocks are 15 frames here, 16 on hardware
+### Blocks are 15 frames in the gates, 16 in the voicing wrappers
 
-The setup routine masks the frame count with `& 0xf`, so dsp_host caps a
-block at 15 frames where hardware runs 16. Nothing audible depends on it,
-but sample-exact measurements shift: the bus latency is exactly 2 blocks —
-**30 samples locally, 32 on hardware** (measured to the sample, see
-`docs/remixer/TESTPASS.md`).
+The setup routine masks the frame count with `& 0xf`, so dsp_host's own
+block is 15 frames where hardware runs 16; `-frames 16` overrides it and
+runs whole frames (O12). `send_probe` and every bit-identity gate built on
+it are pinned at 15 (the bus latency there is exactly 2 blocks — **30
+samples, 32 on hardware**, `docs/remixer/TESTPASS.md`); `rig_render` and
+`render_reverb` run 16 since 12 Sep 2026 so a voicing render's rates and
+latencies are the unit's. Their warm-up pad is 256 CALLS, i.e. in blocks
+of the chosen length — at 16 it is 4,096 samples, and until 12 Sep the pad
+was fixed at 260 × 15, which left 196 samples of the engines' dry warm-up
+at the head of every `--frames 16` render.
 
 ## render_reverb.py — judging by ear
 
@@ -286,15 +291,73 @@ call sites, `docs/firmware/COLDFIRE_PORT.md` O13, 9 Sep 2026): core 0 24,654 a f
 against the meter's 24,971, core 1 15,177 against 14,880 once T1's
 CHARACTER is live on both — the meter reads the real load within 2 %.
 
-What it still is not: the ColdFire. Knobs are poked into `r6`, AMP/pan and
-the mixer are a unity sum, samples do not play (stems stand in), and the
-stock DELAY is not on the DSP at all.
+**The mixer model (12 Sep 2026, `tools/harness/mixer.py`).** The unit's
+gain chain around the DSP, measured under the ColdFire port
+(`docs/firmware/COLDFIRE_PORT.md` O14, 26 runs, residuals −100 dB and
+better): **AMP VOL is (v/127)² and AMP BAL a balance (near side unity, far
+side to zero on a cubic), both applied BEFORE the FX chain by the stock DSP
+code `dsp_host` never runs; track LEVEL is (L/128)², applied AFTER, at the
+mix.** `rig_render` applies them by default — the stem through VOL² and the
+balance per side into the chain (`dsp_host -stereo`), each track's chain
+output through LEVEL² into `mix.wav`, which is now the main out (saturated
+as a 24-bit sum, clips counted) and not a −6 dB unity sum. The values come
+from the part with `--project` (the AMP row six bytes before the FX1 row,
+the LEVEL pair at +0x1b) or the unit's defaults (VOL 64 = −11.9 dB, BAL
+64, LEVEL 108 = −3.0 dB); `--mix T1:VOL=127,BAL=64,LEVEL=100` overrides;
+`--mixer off` is the old harness to the bit. A stem is the VOICE at its
+sample GAIN (`--amp` defaults to 1.0 with the model on), so a 0 dBFS file
+enters the engine at 0.254 FS at the default VOL — the old default
+(`--amp 0.5`, no AMP stage) drove every engine 5.9 dB hotter than the
+unit does, which every voicing note before this date inherited. `T*.wav`
+stay the chain output (before LEVEL). Not modelled: the main level (scales
+trigged voices, not THRUs — unity here), the cue mix, the master track;
+and the AMP stage was measured on a THRU and is inferred for FLEX/STATIC
+(falsifier in `mixer.py`'s docstring).
+
+What it still is not: the ColdFire. Knobs are poked into `r6`, samples do
+not play (stems stand in), and the stock DELAY is not on the DSP at all.
 
 **The first thing it was built for** (`tools/verify/verify_onebus.py`, in `make
 check`, same day): the one-aux rig's chain, liveness stamps, MIX
 passthrough, last-live-stage return, track-8 send refusal and station
 silence, all with the senders and the delay on payload B and the reverb and
 the return on payload A — `docs/effects/BUS.md` "The one aux bus".
+
+## port_compare.py — the harness against the firmware, one part (12 Sep 2026)
+
+`make port-compare PROJECT=dir [IMAGE=... REMIX=...]` runs ONE part under
+the ColdFire port (the firmware booting the image, loading the project
+from a staged card, the sequencer running with a probe on the ESAI inputs)
+and under `rig_render` on the same image with each track's chain input —
+the port's own 84-word record audio — as its stem, and fits the two per
+track (lag, least-squares scale, per-window residual) and the port's TX0
+main slot against `mix.wav`. ~90 s. Read it as: a linear chain fits to
+0.00 dB and −100 dB or better (the mixer model, the parameter path and the
+dispatch all agreeing with the firmware); an engine with history — the
+reverb's free-running allpass modulator, the delay's LFO — matches in
+**scale** and not in residual (O12), so read the scale there; a scale that
+is not 0 dB on a linear chain is a finding. Measured on the day it landed:
+
+| fixture | track | scale | residual |
+|---|---|---|---|
+| O9d's (stock image, T1 THRU: SEND + EQ flat, tone) | T1 chain | −0.001 dB | −121 dB |
+| same | mix (TX0 slot 2 vs `mix.wav` L) | −0.001 dB | −113 dB |
+| the one-aux rig, flash-7 image, kick on T2's inputs | T2 chain (SPECTRUM + SEND) | −0.001 dB | −137 dB |
+| same | T8 return (delay → reverb, history) | −0.083 dB | −8 dB |
+| same | mix | −0.001 dB | −90 dB |
+
+Rules it learned: a track whose record carries audio but whose chain
+output is digital zero is a non-THRU machine's record (not that track's
+chain input, O10) and is listed, not compared; a host or a return has
+output and no input of its own and is compared on its output with a
+silent stem; the lag search is ±96 because on a periodic probe the fit is
+ambiguous modulo the period (147 samples at 300 Hz — the first run
+reported −179 for the 32-sample record pipeline); the master track is
+turned off in the COPY of the project the port loads, so TX0 is the mix
+(the RIG's T8 master carries stock LO-FI). Use a transient probe
+(`--tone out/o9d/kickAB_late.wav`, after the knob slew) for anything
+with a delay in it — a tone cannot separate a gain from the phase of a
+repeat.
 
 ## What the harness cannot see
 
@@ -310,7 +373,9 @@ mean hardware-clean; when the two disagree, believe the hardware.
   cannot afford; 432 cycles/sample over once froze the unit. `make cycles`
   bounds it, hardware proves it.
 * **The ColdFire side.** `-params` pokes r6 directly, bypassing menus,
-  descriptors, ranges and scene logic entirely. A slot can draw a knob and
+  descriptors, ranges and scene logic entirely (the gain chain around the
+  chain — AMP VOL/BAL, LEVEL — is measured and modelled since 12 Sep 2026;
+  the main level and the cue are not). A slot can draw a knob and
   publish nothing, or publish and draw wrongly — the panel and the DSP are
   separate mechanisms and the harness only exercises one of them
   (`docs/firmware/PARAM_PAGES.md`).

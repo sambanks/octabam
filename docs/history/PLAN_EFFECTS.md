@@ -104,8 +104,10 @@ What ships:
   placement had only ever been checked statically. ⚠️ What this is NOT:
   the chip's timing (lock-step, or a guessed `-skew`: a local mismatch is
   a defect, identity is not evidence), the cycle cliff (instructions per
-  block, no contention stall), or the ColdFire (knobs poked into `r6`, a
-  unity mixer, stems instead of sample playback). `docs/remixer/HARNESS.md` "Two
+  block, no contention stall), or the ColdFire (knobs poked into `r6`,
+  stems instead of sample playback; the gain chain around the DSP — AMP
+  VOL/BAL pre-FX, LEVEL post-FX — is measured and modelled since 12 Sep
+  2026, `COLDFIRE_PORT.md` O14). `docs/remixer/HARNESS.md` "Two
   cores". Tiers 2 (the ColdFire's per-frame parameter records replayed
   into this harness) and 3 (audio through the host port, ~100× slower than
   real time) are scoped in the 7 Sep session notes and not started.

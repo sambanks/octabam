@@ -126,6 +126,11 @@ midi-flash: ## RECOVERY: flash a .syx over MIDI (Startup Menu). make midi-flash 
 	$(PY) tools/hw/midi_flash.py $(PORT) $(SYX)
 PORT ?= A
 
+.PHONY: port-compare
+port-compare: ## One part under the firmware (ot_emu) and under rig_render on the same input: make port-compare PROJECT=dir [IMAGE=out/mainos_bus.bin] [PCARGS='--tone out/o9d/kickAB_late.wav']
+	@test -n "$(PROJECT)" || { echo "usage: make port-compare PROJECT=out/o9d/proj_t1eqA [IMAGE=out/mainos_bus.bin REMIX=bamsep27] [PCARGS=...]"; exit 1; }
+	python3 tools/harness/port_compare.py --project $(PROJECT) --remix $(REMIX) $(if $(IMAGE),--image $(IMAGE)) $(PCARGS)
+
 .PHONY: reverb
 reverb: ## Render a wav through BusVerb: make reverb IN=loop.wav [ARGS='-p MIX=80']
 	@test -n "$(IN)" || { echo "usage: make reverb IN=loop.wav [ARGS='--wet --mode all']"; exit 1; }

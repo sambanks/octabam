@@ -33,6 +33,7 @@ to what task 11 needs to prove (the five tables agree with each other and
 with what the two real functions read). This is "measure, don't guess" in the
 form the ColdFire side allows without a full UI emulation harness.
 """
+import hashlib
 import os, pathlib, sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401  (every tools/ dir on sys.path)
@@ -142,9 +143,32 @@ REG_FMT = {(_c.registers_formatter.module, _c.registers_formatter.slot):
            if _c.registers_formatter is not None}
 
 
+def _built_for(img: bytes) -> str | None:
+    """Which remix wrote BUILT, from the sidecar build_bus leaves beside it --
+    None when there is no sidecar or it describes different bytes (an image
+    restored by hand, or a build older than the sidecar)."""
+    side = BUILT.with_suffix(".remix")
+    if not side.exists():
+        return None
+    parts = side.read_text().split()
+    if len(parts) != 2 or parts[1] != hashlib.sha256(img).hexdigest():
+        return None
+    return parts[0]
+
+
 def main():
     stock = STOCK.read_bytes()
     img = BUILT.read_bytes()
+    # ⚠️ THE IMAGE ON DISK IS WHATEVER BUILT LAST, and this check reads its
+    # expectations from REMIX. Checking one remix's image against another's
+    # list prints dozens of FAILs whose "garbage" entries are the other
+    # remix's descriptor text -- say the one true thing instead.
+    built = _built_for(img)
+    if built is not None and built != REMIX.name:
+        print(f"  [FAIL] {BUILT} was built for remix '{built}', but REMIX="
+              f"{REMIX.name} -- run `make bus REMIX={REMIX.name}` first "
+              f"(or `make check REMIX={REMIX.name}`, which does)")
+        sys.exit(1)
 
     def rd32(buf, a):
         i = a - BASE
