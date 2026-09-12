@@ -235,7 +235,11 @@ ch_mskz:
         move    a,y1
         mpy     x0,y1,a                 ; RING^2
         move    a,x0
-        move    #>$5a0000,y1            ; ~2.95 kHz at full knob
+        move    #>$116000,y1            ; 2.95 kHz at full knob: step = 2f/fs
+                                        ; over (127/128)^2. ($5a0000 put 127
+                                        ; at 15 kHz and 20 at 379 Hz, measured
+                                        ; on the sidebands 12 Sep 2026 -- the
+                                        ; comment said 2.95 k, the value did not)
         mpy     x0,y1,a
         move    a,x:(r7+$24)            ; carrier step
 ; SRR (slot 11 select of r6+$e): hold mask 0 / 1 / 3 / 7
