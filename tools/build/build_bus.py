@@ -2936,10 +2936,16 @@ hostquit:
         # the rolled source carries, so verify_roll can hold BOTH engines at
         # once and compare them.
         LFO01_MARK = "LFO lines 0-1: ROLLED TOO"
+        PTABLE_MARK = "$fab1e0"          # schema.DspSection.ptable's literal
         for name, src in plan:
             if "$facade" in src and src.count("$facade") != 1:
                 sys.exit(f"payload {tag}: {name} has multiple $facade "
                          f"LFOTAB literals -- expected exactly one")
+            _ptab = list(remix_modules()[name].dsp.ptable) if name in remix_modules() else []
+            if (PTABLE_MARK in src) != bool(_ptab) or src.count(PTABLE_MARK) > 1:
+                sys.exit(f"payload {tag}: {name}: a DspSection.ptable and exactly one "
+                         f"{PTABLE_MARK} literal in the source go together "
+                         f"(table {len(_ptab)} words, literal x{src.count(PTABLE_MARK)})")
             if DEV and name == "DELAY SERVER":
                 # DEV: the delay does NOT go in the donor region. It is
                 # assembled at DEV_DELAY_P (see that constant) and its module
@@ -2979,12 +2985,18 @@ hostquit:
             _fit, _last = None, None
             for _r in runs:
                 _c, _end = _r["cursor"], _r["base"] + _r["words"]
-                _tab, _s2 = None, src
-                if "$facade" in src:
+                _tab, _s2, _lfo = None, src, "$facade" in src
+                if _lfo:
                     _tab = (LFO01 + LFOTAB) if LFO01_MARK in src else LFOTAB
                     if _c + len(_tab) > _end:
                         continue
                     _s2 = src.replace("$facade", f"${_c:x}")
+                    _c += len(_tab)
+                elif _ptab:
+                    _tab = _ptab
+                    if _c + len(_tab) > _end:
+                        continue
+                    _s2 = src.replace(PTABLE_MARK, f"${_c:x}")
                     _c += len(_tab)
                 _w, _ia, _pa = assemble(_s2, _c)
                 _last = (_c, len(_w))
@@ -3009,10 +3021,15 @@ hostquit:
             _r, tab, src, cursor, words, init_a, proc_a = _fit
             if tab is not None:
                 place(tab, _r["cursor"])
-                print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
-                      f"0x{_r['cursor'] + len(tab):05x} "
-                      f"({len(tab):4d} words)  rolled LFO lines "
-                      f"{'0-7' if LFO01_MARK in src else '2-7'}")
+                if _lfo:
+                    print(f"  LFOTAB        P:0x{_r['cursor']:05x}.."
+                          f"0x{_r['cursor'] + len(tab):05x} "
+                          f"({len(tab):4d} words)  rolled LFO lines "
+                          f"{'0-7' if LFO01_MARK in src else '2-7'}")
+                else:
+                    print(f"  PTABLE        P:0x{_r['cursor']:05x}.."
+                          f"0x{_r['cursor'] + len(tab):05x} "
+                          f"({len(tab):4d} words)  {name}'s table")
             place(words, cursor)
             _r["cursor"] = cursor + len(words)
             wrw_p(pp["xtab"] + NEW_IDS[name] * 3, init_a)
