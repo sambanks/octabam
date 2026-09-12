@@ -105,14 +105,23 @@ def check(selected) -> list[str]:
     hooks: dict[int, str] = {}
     for m in selected:
         for c in m.cf_patches:
-            if c.cave_addr is None:      # floating: the build allocates
-                continue                 # it after everything pinned
-            for start, length, owner, label in caves:
-                if _overlap(start, length, c.cave_addr, len(c.pinned)):
-                    clash("ColdFire cave", f"{owner}'s {label}",
-                          f"{m.name}'s {c.label}",
-                          f"0x{max(start, c.cave_addr):08x}")
-            caves.append((c.cave_addr, len(c.pinned), m.name, c.label))
+            if c.cave_addr is not None:  # pinned: check for overlap against
+                for start, length, owner, label in caves:  # every pinned cave
+                    if _overlap(start, length, c.cave_addr, len(c.pinned)):
+                        clash("ColdFire cave", f"{owner}'s {label}",
+                              f"{m.name}'s {c.label}",
+                              f"0x{max(start, c.cave_addr):08x}")
+                caves.append((c.cave_addr, len(c.pinned), m.name, c.label))
+            # A hook site is a fixed address whether or not the CAVE that
+            # receives the jsr floats. Until 12 Sep 2026 the `continue` above
+            # returned before this check too, so a floating cave's hook_addr
+            # was never registered -- every existing hook-based CavePatch
+            # (cfprobe, flex-softretrig, recorder-seam, tempo-sync) floats,
+            # so NO hook site in the tree was ever checked against anything.
+            # Found demonstrating STEM REC + CF PROBE: both hook the frame
+            # site 0x40004b12 (a Detour and a CavePatch hook naming the same
+            # address) and composed silently -- the exact "two hooks, one
+            # site" hazard this dict exists to catch.
             if c.hook_addr is not None:
                 if c.hook_addr in hooks:
                     clash("hook site", hooks[c.hook_addr], m.name,
