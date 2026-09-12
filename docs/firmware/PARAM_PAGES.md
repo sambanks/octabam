@@ -327,6 +327,32 @@ parameter. Widening `TSTR` to a fifth value gets you a fifth selectable mode tha
 DSP has no code for. Data edits reach the control surface; new behaviour behind a
 parameter still needs the DSP56300 work described in `COVERAGE.md`.
 
+## 5a. The Part's page arrays, measured under the ColdFire port (12 Sep 2026)
+
+A stamped test project loaded under `ot_emu` (`--mem-dump` of the DB at the
+part pointer `0x46c82456` = `0x400e21e0` there) and searched for the bytes
+the file carries:
+
+| array | per track | order (6 bytes each) | note |
+|---|---|---|---|
+| page 1 | `DB + 0x8ee9a + t·24` | LFO · AMP · FX1 · FX2 | = the page-1 writer's `flat − 6` (§3 of `midi_re_cc.md`): FX1 p1 at `+0x8eea6`, FX2 p1 at `+0x8eeac` |
+| page 2 (the array the dial READS) | `DB + 0x8f06c + t·30` | machine · LFO · AMP · **FX1** · **FX2** | FX2 p2 at `+0x8f084 + t·30` (the CC cave's `DISPOFF`, confirmed); FX1 p2 six bytes before it |
+| page 2 (the editor's "storage") | `DB + 0x8ef5a + t·30 + 6·page + slot` | by the staged index `0x460d5c30` | P2EDIT `0x4003a474` writes this, the shadow `0x100a50a8 + …`, the changed flags and the live lane `0x80000830 + t·72 + slot` — the lane store has NO page term (measured: page index 0..3 move only the Part/shadow bytes) |
+
+The bank FILE's page-2 block (`ot_project.P2_OFF 0x307 + t·30`, FX1 p2 at
++0, FX2 p2 at +6) is the same order as the DB's display array from the FX1
+column on.
+
+**Open, and it gates per-mode defaults on the unit:** which staged index and
+which live-lane bytes an **FX1** page-2 edit uses. Opening a page under route
+A (`render_fx1`/`render_fx2`) leaves `0x460d5c30` at 0 — the index is set on
+the page-KEY path (`0x4005a5b0`, the 4→3 remap), which no emulator drives —
+so it is a hardware read: turn a station's MODE on the unit, SAVE, and read
+the part file (the 4 Sep method that found `P2_OFF`), or watch
+`0x460d5c30` and the lane on the unit. Every station's mode slot is on FX1
+page 2, so the cave (`docs/history` → the roadmap, Stage B) cannot ship
+without it; the FX2 case (the engines' MODE) is fully measured.
+
 ## 5b. Confirmed by decompilation (Ghidra 12.1.2 pass)
 
 `FUN_40031da4(track, page_kind)` is the resolver, and it settles the layout:
