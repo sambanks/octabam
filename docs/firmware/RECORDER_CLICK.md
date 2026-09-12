@@ -108,6 +108,11 @@ recfix touches no DSP code. Setup used to swallow a failed build and then
 report "already built" on every re-run once the disassembler alone existed;
 now it fails loudly, and `make check` names the missing binary and the fix
 up front instead of a traceback in `verify_twocore`.
+The emulator is pinned to the upstream commit our patch is written against;
+a `make setup` from before 12 Sep 2026 cloned that day's upstream HEAD, on
+which the patch no longer applies, and `dsp_host.cpp` then fails with "no
+member named 'setSharedWindow'". If you see that: `rm -rf vendor/dsp56300;
+make setup`.
 
 **Always pass `REMIX=recfix`** -- to `make check`, `make bus` and `make image`
 alike. The Makefile's default is a different remix, and every verifier reads

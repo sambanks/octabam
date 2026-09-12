@@ -115,8 +115,22 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     echo "   [!] cmake not found — brew install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
     exit 1
   else
-    [ -d vendor/dsp56300 ] || git clone --depth 1 \
-      https://github.com/dsp56300/dsp56300.git vendor/dsp56300
+    # PINNED. The patch below is against this commit; upstream moved 105
+    # commits past it by 12 Sep 2026 and the patch no longer applies there
+    # (dsp.h, dsp_ops_alu.inl, jitops.h reject). A contributor's fresh
+    # clone took that day's HEAD, the "already applied (or upstream
+    # changed)" line below hid which, and dsp_host.cpp failed to compile
+    # against an unpatched emulator (no setSharedWindow). Moving the pin
+    # means re-basing the patch and re-running make check's bit-identity
+    # gates -- dsp_host renders every effect on this emulator.
+    DSP56300_PIN=c051afad31612c2d2c7a81a7ab23e1c5ac9e61af
+    if [ ! -d vendor/dsp56300 ]; then
+      git clone --no-checkout https://github.com/dsp56300/dsp56300.git vendor/dsp56300
+    fi
+    if [ "$(git -C vendor/dsp56300 rev-parse HEAD 2>/dev/null)" != "$DSP56300_PIN" ]; then
+      git -C vendor/dsp56300 fetch -q origin "$DSP56300_PIN"
+      git -C vendor/dsp56300 checkout -q "$DSP56300_PIN"
+    fi
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
     # The patch carries: MPYRI (unimplemented upstream in interpreter and
     # JIT; stock LO-FI uses it, 2 Sep 2026); the shared window, two-way for
@@ -128,8 +142,13 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     if git -C vendor/dsp56300 apply --check "$EMUPATCH" 2>/dev/null; then
       git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI, shared window, host-stepped cores)"
+    elif git -C vendor/dsp56300 apply --check --reverse "$EMUPATCH" 2>/dev/null; then
+      echo "   emulator patch already applied"
     else
-      echo "   emulator patch already applied (or upstream changed: check $EMUPATCH)"
+      echo "   [!] emulator patch does NOT apply to vendor/dsp56300 at $(git -C vendor/dsp56300 rev-parse --short HEAD)"
+      echo "       (expected $DSP56300_PIN). dsp_host cannot build without it."
+      echo "       Fix: rm -rf vendor/dsp56300; make setup"
+      exit 1
     fi
     stage_dsp_host
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
