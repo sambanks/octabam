@@ -4686,10 +4686,25 @@ recording is now exactly as long as the gap to its next arm, at the
 non-golden tempo, and unchanged at the golden one. It does **not** show the
 scuff is gone — the port has never been able to see it (§10.50–10.52), and the
 audio consequence runs through the bind's copy of the voice's data-END bound
-(§10.56, measured live) and then the analogue path. That is the hardware take:
-self-loop at 128, FX off, internal clock, tone amp 0.05, ≥ 60 s,
-`out/hw/softretrig/gaps.py` with `perbar.py`'s per-bar maximum, and 65.6 as
-the control. 🟡 Nothing here is a hardware claim.
+(§10.56, measured live) and then the analogue path. That is the hardware take, and
+the sit-down is written: **`out/hw/softretrig/RECIPE_83.md`**, with
+`card83.sh` (stage `OCTATRACK_OCTABAM83.bin`, sha256 `a3376684…`, built by
+`make image REMIX=seekE BUILD=83`) and `cap83.sh <name>` (90 s — the scuff
+beats over ~37 s, so a 60 s take can land in a quiet stretch and read clean
+for the wrong reason — then `judge.py` and `perbar.py`). The verdict is
+`perbar.py`'s last line: on 82 the parity split is **even bars 1.10× / odd
+bars 1.70×**, and the fix working means both medians at ~1.1× with no split.
+Controls: 65.6 must stay at the floor (the cave is a proven no-op there), and
+132.0's irregular `-....-.....-....-.....-...` should disappear.
+🟡 Nothing here is a hardware claim.
+
+**The flashable bytes are gated, not just the development build** — §10.50's
+lesson, where 81's gates ran on a build that placed its cave at a different
+address. `make image` rebuilds at `BUILD=83`, and on that image the spacing
+cave sits at the same `0x400d7300` and takes the substitute path
+**1,200 / 1,200** times on `n128_card` (load verified: `saved_bank` 0, 6,033
+ATA READs). The 21,000-frame alternation and golden results transfer because
+the cave's 146 bytes and its address are identical in both builds.
 
 **What would falsify it on the unit.** The scuff staying at −26 dB on
 alternate bars with the length demonstrably alternating would mean the join is
