@@ -34,7 +34,7 @@ container? data inside the MAIN OS that `FUN_40001d4c` receives as `param_1`?).
 | OS format & update (8.5.2, ch.18) | ✅ | ELUP/ELEK/aPLib, checksum, validation, ATA write, MIDI upgrade. Complete |
 | Kernel / RTOS / scheduler | ✅ | Context switch, priority queues, PIT, TRAP #0. Missing: task list, allocator |
 | ATA/CF storage | ✅ | ATA stack (PIO/DMA), driver+vtable, registers. Missing: FAT layer (vtable `_DAT_46c82xxx`) |
-| File hierarchy: Sets/Projects/Audio Pool (ch.4,7,8) | 🟡 | Project settings serialization found; the rest missing (banks/parts/samples on disk) |
+| File hierarchy: Sets/Projects/Audio Pool (ch.4,7,8) | 🟡 | Project settings serialization found. **The sample-save path is no longer missing** — the firmware's own WAV writer is `0x40020f04`, documented in `docs/firmware/SAMPLE_SAVE.md`, along with the buffered file API it sits on and the auto-name clock. Still missing: banks/parts on disk, and the WAV reader `0x400210fc` |
 | Audio engine (voices) | 🟡 | Data model (voice `0x800049d8`, mailboxes), frame builder, handoff to the DSP. Missing: voice parameter computation, envelopes, amp modulator |
 | Sample playback: FLEX vs STATIC | ⬜ | FLEX=RAM, STATIC=stream from CF. Not decompiled |
 | **Timestretch** (NORMAL/BEAT) | ⬜ | On the DSP (separate binary) |
