@@ -21,7 +21,7 @@ BASE = 0x40000400
 IMAGE = pathlib.Path("out/mainos_bus.bin")
 STOCK = pathlib.Path("out/raw/section_3_MAIN_OS.bin")
 RUNTIME_ELF = pathlib.Path("out/platform/runtime/runtime.elf")
-LAYOUT = pathlib.Path("out/platform")          # platform_build.LAYOUT lives here
+LAYOUT_DIR = pathlib.Path("out/platform")      # platform_build.LAYOUT lives here, by name
 CONTROL_DESC, CONTROL_ROWS, ROW_LEN, STOCK_N = 0x400cbd54, 0x400cc5a8, 24, 6
 FRAME_SITE = 0x40004b12
 fails = 0
@@ -59,7 +59,8 @@ def static(img, stock, s):
 
 
 def regions(s):
-    lay = json.loads(next(LAYOUT.glob("*.json")).read_text())
+    from remix import platform_build
+    lay = json.loads((LAYOUT_DIR / platform_build.LAYOUT).read_text())
     ring, stack = s["stems_ring"], s["stems_stack"]
     check("ring is 4 MiB ending at the reserve ceiling", ring + 0x400000 == lay["ceiling"],
           f"0x{ring:08x} + 4 MiB vs ceiling 0x{lay['ceiling']:08x}")
