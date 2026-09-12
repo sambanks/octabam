@@ -101,11 +101,10 @@ MODULE = Module(
         priority=12,                  # after every existing module
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,
-        r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
         gate_label=None,              # no housekeeping, so no XBUS gate
     ),
-    # bus_client: it writes the shared accumulators, so an image with it has a
-    # bus and needs SEND as the fallback (schema.on_the_bus).
+    # NOT a bus client since 12 Sep 2026: the sends went with the one-aux rig
+    # (7 Sep) and the bus bookkeeping went with them.
     # FX1 ONLY (12 Sep 2026): an FX2 instance runs as a dry pass -- the
     # station reads its allocator base at init and returns before touching
     # a frame when it is an FX2 slot. The rig's cycle envelope only closes
@@ -113,5 +112,5 @@ MODULE = Module(
     # on both slots priced a core at 4,830 against 3,120), the FX2 chooser
     # hides the row, and tools/verify/verify_spectrum.py proves the dry pass.
     claims=Claims(fx1_only=True),
-    harness=Harness(layout_char="1", is_server=False, bus_client=True),
+    harness=Harness(layout_char="1", is_server=False, bus_client=False),
 )

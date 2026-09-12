@@ -97,8 +97,12 @@ def build(env_burn):
 
 
 def render(mem, src, out, p3):
+    # HP merged into TONE on 7 Sep 2026 (TONE 64 = the old HP 0 / LP 127,
+    # bit-identical; below 64 darkens, above thins). The neutral value is 64
+    # and the sensitivity control is 0 -- the gate's meaning is unchanged.
+    tone = {0: 64, 64: 0}.get(p3, p3)
     run([sys.executable, "tools/harness/render_reverb.py", str(src),
-         "--mem", str(mem), "-p", f"HP={p3}", "-o", str(out)])
+         "--mem", str(mem), "-p", f"TONE={tone}", "-o", str(out)])
     return out.read_bytes()
 
 
