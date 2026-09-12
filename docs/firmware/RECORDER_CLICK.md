@@ -101,6 +101,14 @@ git submodule update --init --recursive
 `make check` now says exactly that if they are missing, rather than throwing a
 Python traceback at you (it used to; sorry).
 
+**`make setup` must finish step 4** (the DSP56300 assembler and emulator,
+built with cmake: `brew install cmake` first). `make check` renders every
+effect under that emulator, so it needs `dsp_asm` and `dsp_host` even though
+recfix touches no DSP code. Setup used to swallow a failed build and then
+report "already built" on every re-run once the disassembler alone existed;
+now it fails loudly, and `make check` names the missing binary and the fix
+up front instead of a traceback in `verify_twocore`.
+
 **Always pass `REMIX=recfix`** -- to `make check`, `make bus` and `make image`
 alike. The Makefile's default is a different remix, and every verifier reads
 the one image at `out/mainos_bus.bin`, so a bare `make bus` (or `make -j`,
