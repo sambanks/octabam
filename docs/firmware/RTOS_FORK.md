@@ -4626,3 +4626,73 @@ byte-identical to stock, and then the self-loop hardware take at 128 with
 `gaps.py` and the per-bar maximum. 🟡 Everything above the assembly is
 measured or exhaustively validated; the cave itself is **not written**, so
 nothing here is a claim about a built image.
+
+### 10.57 Lever E built: `modules/recorder-spacing`, and all three port gates pass — the cave's length tracks the sequencer's arm grid pass for pass, and is a no-op at the golden tempo (12 Sep 2026 — measured in the port, UNFLASHED)
+
+§10.56's design, written as a cave: `modules/recorder-spacing` (146 bytes,
+floating, hooked at the converter tail `0x40006e0c` like `recorder-seam`,
+replaying the same three displaced instructions), remix `seekE` = 82 + it.
+`make check REMIX=seekE` green (311 passes). Image
+`out/mainos_seekE.bin`, sha256 `f0a12e7c…` (see the build report).
+
+**Gate 1 — is the substitute path taken?** `--watch-pc` on the cave entry and
+the `move.l %d2,%d4` substitute, `n128_card`, 21,000 frames (four passes):
+**36,826 entries, 36,826 substitutes.** recorder-seam scored **0 of 1,200** at
+the same site (§10.55). The lane is gone and with it the failure.
+
+**Gate 2 — is the length right?** The computed `L'` at the guard, run-length
+encoded over the four passes, against the sequencer's own arm spacings
+(82,687 / 82,688 / 82,687 / 82,688, §10.53):
+
+| pass | calls | cave `L'` | stock `L` | residue `floor(k·r/D)` |
+|---|---|---|---|---|
+| 0 | 5,167 | `0x142ff` = 82,687 | 82,687 | 0 |
+| 1 | 10,334 | **`0x14300` = 82,688** | 82,687 | 0 |
+| 2 | 10,334 | `0x142ff` = 82,687 | 82,687 | 1 |
+| 3 | 10,334 | **`0x14300` = 82,688** | 82,687 | 1 |
+| 4 (part) | 657 | `0x142ff` = 82,687 | 82,687 | 2 |
+
+**Exact match, pass for pass**, with the Bresenham residue visibly advancing
+0, 0, 1, 1, 2. The call counts confirm §10.17's "twice per frame" (10,334 =
+2 × 5,167 frames ≈ one 82,687-sample pass) and the stock length never moves,
+so the substitution is doing all of the work.
+
+**Gate 3 — the golden no-op.** Same image, `g65_card`, 21,000 frames:
+**`L'` = `0x27600` = 161,280 = the stock length on all 21,000 calls**, `r` = 0
+every time (the clean-tempo branch). The cave writes back the value that was
+already there, so a tempo whose period is an integer cannot regress — the
+property §10.56 proved for all 11,208 (tempo, RLEN) pairs, now observed.
+
+**Also resolved on the way:** `0x80001814` is the live tempo24 at this hook
+(`d1` = `0xc00` = 3072 on every call), so §10.56's 🟡 about `0x8000181c` is
+closed — the per-frame latch is not needed here.
+
+**Two traps paid for, both cheap because they were checked and not reasoned.**
+(1) Every `divu.l %dN,%dM` in the source **disassembles as `remul`**: `0x4c4x`
+is one encoding family and GNU names it after the remainder form. Musashi's
+`m68k_op_divl_32_d` (and the CFPRM's `DIVU.L <ea>,Dx`) writes the quotient
+only when the extension's `Dr` and `Dq` fields are equal, which `4c41 0000`
+makes them — so the quotient is what lands, and the distinct-register spelling
+`remu.l %d1,%d3:%d0` is a remainder-ONLY instruction that leaves the quotient
+unwritten. There is therefore no way to get `q` and `r` from one divide here,
+which is why `r` is formed as `N − q·D`. The source carries the note so nobody
+"fixes" the disassembly. (2) The pinned bytes caught a real transcription
+slip: `0c81` (compare on `d1`, copied from recorder-seam where it was on d1)
+where this cave compares `d0` — one byte, and the build refused until it
+matched the assembler.
+
+**What this does and does not claim.** The port shows the *mechanism*: the
+recording is now exactly as long as the gap to its next arm, at the
+non-golden tempo, and unchanged at the golden one. It does **not** show the
+scuff is gone — the port has never been able to see it (§10.50–10.52), and the
+audio consequence runs through the bind's copy of the voice's data-END bound
+(§10.56, measured live) and then the analogue path. That is the hardware take:
+self-loop at 128, FX off, internal clock, tone amp 0.05, ≥ 60 s,
+`out/hw/softretrig/gaps.py` with `perbar.py`'s per-bar maximum, and 65.6 as
+the control. 🟡 Nothing here is a hardware claim.
+
+**What would falsify it on the unit.** The scuff staying at −26 dB on
+alternate bars with the length demonstrably alternating would mean the join is
+not where §10.55's model puts it — the next thing to read would be the voice's
+`+0x64` across two consecutive binds under this image, to see whether the
+wrap actually moved by the sample the recorder added.
