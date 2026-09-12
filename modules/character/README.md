@@ -61,7 +61,8 @@ fader there, and are re-ranged.
 | SAT | TAPE the curve + the low-pass (dark, odd); TUBE neg 0.5 — the negative half driven at half — with the DC blocker and **no** low-pass (bright, even = odd at DRV 80, −22 dB each; at neg 0.75 TUBE was TAPE by ear); FUZZ hard clip ±0.6 **on the curve's output, before post**, with the low-pass at half strength (the clip's fizz off the top — heard better; the aliasing under it needs oversampling, unaffordable at payload A FREE 30); BUS pre 0.5 / post 2 — the return mode, not a colour | |
 | DC blocker | `y = x − k·x1 + R·y1`, R 0.999 (~7 Hz), **on in TUBE and FUZZ only** (k = R = 0 elsewhere: bit-exact) | TUBE's DC leak −30 dBFS → −68 |
 | FOLD | 1 → 48× into the fold (was 1 → 8×, then 1 → 32×: the first quarter of the dial was dead on a pad — nothing folds until gain × peak crosses 1 — and 64× made 127 "insane") | first fold on the pad at ~24; 127 = 48× |
-| COMP / GLUE | block-max detector; per block `gr = (thr + over·invR)/env` by a real division; COMP scales the reduction and adds makeup 1 + 0.5·COMP; attack/release slew the GAIN per sample | COMP (thr 0.03, invR 0.1, **8 ms**/100 ms — the 1 ms / 5:1 / −26 dBFS first cut "lost energy, washed out" by ear) at 127: quiet +3.4 dB, loud −6.2 dB, release 86 ms; heard "good, doesn't pump". GLUE (0.03, 0.35, 10 ms/400 ms): +2.6 / −2.4 dB. The first compressor measured **inert** (thr 0.2/0.1 FS, a gain law linear in amplitude, a release coefficient of 0.004 that reset the envelope every sample, an attack never read) |
+| TRNS | boost = (0.9 − slow/env)⁺ · COMP on the gain, slow = a 23 ms one-pole of the detector; rising slew 0.25/sample, falling 20 ms; the detector restarts each block at 15/16 of itself (~6 ms) | burst: +5.9 dB at 2 ms, ~20 ms hold, unity by 70 ms, steady 0.00 dB |
+| COMP / GLUE | block-max detector (6 ms peak hold); per block `gr = (thr + over·invR)/env` by a real division; COMP scales the reduction and adds makeup 1 + 0.5·COMP; attack/release slew the GAIN per sample | COMP (thr 0.03, invR 0.1, **8 ms**/100 ms — the 1 ms / 5:1 / −26 dBFS first cut "lost energy, washed out" by ear) at 127: quiet +3.4 dB, loud −6.2 dB, release 86 ms; heard "good, doesn't pump". GLUE (0.03, 0.35, 10 ms/400 ms): +2.6 / −2.4 dB. The first compressor measured **inert** (thr 0.2/0.1 FS, a gain law linear in amplitude, a release coefficient of 0.004 that reset the envelope every sample, an attack never read) |
 | TRNS | `gr/2 += 4·(blockmax − slow)⁺·COMP`, capped at gr 2.0, 0.5 ms / 30 ms, no makeup | onset +6 dB max |
 | CRSH / SRR / WDTH | unchanged; the gates cover them | |
 
@@ -109,8 +110,15 @@ drive, the four characters at DRV 80, FOLD, COMP, GLUE, TRNS, CRSH+SRR, RING.
   "more distinct and useful"; FUZZ "awesome" with fizz on top → half
   low-pass, "a bit better". FOLD: 0–24 dead, 127 still growing → 64×
   (127 "insane") → 48× ("better"). COMP: subtle and washed at 1 ms →
-  8 ms / 10:1 / −30 dBFS, "sounds good, doesn't pump". Still to hear:
-  GLUE, TRNS, CRSH+SRR, RING.
+  8 ms / 10:1 / −30 dBFS, "sounds good, doesn't pump". GLUE: "sounds
+  good", kept. TRNS: inaudible → three defects (the boost chased its target
+  on the RISING slew at 1/512 a sample; a level DIFFERENCE, not a ratio,
+  so ghost notes got nothing; the block-max detector's 40 % ripple within
+  one cycle read a steady tone as +2 dB) → now +5.9 dB within 2 ms of an
+  onset, ~20 ms hold, unity by 70 ms, 0.00 dB steady — "still subtle but
+  the thwacks come up"; the +6 dB cap is the gain word's (gr/2 ≤ 1), a
+  +12 dB ceiling is the lever if it wants more. Still to hear: CRSH+SRR,
+  RING.
 - On hardware since flash 4 (tag 79); the return (SAT=BUS on T8) confirmed
   on flash 7 (tag 21). **FX1 only** since 12 Sep 2026: an FX2 instance runs
   as a dry pass (`Claims(fx1_only=True)`, `verify_character.py`), the FX2

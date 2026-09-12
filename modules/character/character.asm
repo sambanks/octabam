@@ -322,24 +322,28 @@ chcmtr:
                                         ; fires, only the boost term does
         clr     a
         move    a,x:(r7+$28)            ; invR 0
-        move    #>$05ac58,x0            ; attack 0.5 ms
+; The slew slots are keyed on the gain's DIRECTION ($2d while it falls, $2e
+; while it rises) and TRNS's boost is a RISE: until 12 Sep 2026 it chased
+; its target at 1/512 a sample and never arrived (inaudible by ear). Now the
+; rise is near-instant and the fall is the 30 ms hold.
+        move    #>$002522,x0            ; falling: 20 ms, the boost's hold
         move    x0,x:(r7+$2d)
-        move    #>$0018c4,x0            ; release 30 ms
-        move    x0,x:(r7+$2e)
-        move    #>$200000,x0            ; fast follower
-        move    x0,x:(r7+$2d)
-        move    #>$004000,x0            ; slow follower
-        move    x0,x:(r7+$2e)
+        move    #>$200000,x0            ; rising: 0.25 a sample, the boost lands
+        move    x0,x:(r7+$2e)           ; within the onset
 ch_cdone:
 ; ---- the gain computer, once per block, on the LAST block's max |key| ----
         move    x:(r7+$1d),x1           ; env = the block max (persistent)
-        clr     a
-        move    a,x:(r7+$1d)            ; the max restarts each block
+        move    x1,x0
+        move    #>$780000,y1            ; the max restarts each block at 15/16
+        mpy     x0,y1,a                 ; of itself (~6 ms): restarted at 0 it
+        move    a,x:(r7+$1d)            ; swung 40 % within one 438 Hz cycle and
+                                        ; TRNS read a steady tone as a constant
+                                        ; +2 dB boost (12 Sep 2026)
         move    x:(r7+$1e),b            ; slow follower, TRNS's reference
         move    x1,a
         sub     b,a                     ; env - slow
         move    a,x0
-        move    #>$040000,y1            ; 1/32 a block: ~12 ms
+        move    #>$020000,y1            ; 1/64 a block: ~23 ms (was 1/32)
         mpy     x0,y1,a
         add     b,a
         move    a,x:(r7+$1e)            ; slow'
@@ -386,23 +390,39 @@ ch_gunity:
         asr     #$1,a,a
         move    x:(r7+$45),b
         add     a,b                     ; gr/2 * (1 + 0.5*COMP')
-; TRNS: gr/2 += 4 * (env - slow)+ * COMP * flag, capped at 1.0 (gr 2.0)
+; TRNS: gr/2 += (1 - slow/env)+ * COMP * flag, capped -- a RATIO, so a hit
+; is "how far above its background", at any level: +6 dB as env >> slow,
+; ~0 for a hat over a bed. (A difference could not tell the two apart:
+; 4 * (env - slow) gave the loud hits +2 dB and the ghost notes nothing,
+; 16 * ... was on in most blocks of a busy loop and read as a constant
+; gain -- 12 Sep 2026, both by ear and on the rendered wavs.) The divide
+; is the compressor's; it runs only while env > slow, so the quotient is
+; a fraction.
         move    x1,a
-        move    x:(r7+$1e),x0
+        move    x:(r7+$1e),x0           ; slow'
         sub     x0,a                    ; env - slow
-        move    #>$0,x0
-        tmi     x0,a                    ; the rising side only
+        ble     ch_tnone                ; not rising: no boost (and no divide)
+        move    x0,a                    ; slow, a clean load (a0 = 0)
+        move    x1,x0                   ; env
+        andi    #$fe,ccr
+        rep     #$18
+        div     x0,a
+        move    a0,x0                   ; slow / env, < 1
+        move    #>$733333,a             ; 0.9 - slow/env: a 0.1 deadband, so the
+        sub     x0,a                    ; detector's ripple on a steady tone
+        move    #>$0,x0                 ; (+0.7 dB without it) cannot register
+        tmi     x0,a
         move    a,x0
         move    x:(r7+$2a),y1           ; trns flag
         mpy     x0,y1,a
         move    a,x0
         move    x:(r7+$26),y1           ; COMP
-        mpy     x0,y1,a
-        asl     #$2,a,a                 ; x4
-        add     a,b
+        mpy     x0,y1,a                 ; (1 - slow/env) * COMP: +6 dB from
+        add     a,b                     ; a hit at 2x its background
         move    #>$7fffff,x0
         cmp     x0,b
-        tgt     x0,b
+        tgt     x0,b                    ; capped at gr/2 = 1.0 (gr 2.0)
+ch_tnone:
         move    b,x:(r7+$45)            ; gr/2 target for this block
 ; SAT character (slot 7 select of r6+$c) -> FOUR COEFFICIENTS, so the sample
 ; loop has no branch in it at all: neg (what the negative half is scaled by
