@@ -38,6 +38,29 @@ namespace
 	}
 }
 
+// "FRAME:ADDR:ARG,..." (FRAME omitted for --call-before-play). ARG defaults to 0.
+struct Call { uint64_t frame = 0; uint32_t addr = 0, arg = 0; };
+static std::vector<Call> parseCalls(const std::string& _s, const bool _withFrame)
+{
+	std::vector<Call> out;
+	size_t q = 0;
+	while(q < _s.size())
+	{
+		auto e = _s.find(',', q); if(e == std::string::npos) e = _s.size();
+		std::string one = _s.substr(q, e - q); q = e + 1;
+		Call c;
+		std::vector<std::string> f;
+		size_t r = 0;
+		while(r <= one.size()) { auto k = one.find(':', r); if(k == std::string::npos) k = one.size(); f.push_back(one.substr(r, k - r)); r = k + 1; }
+		size_t n = 0;
+		if(_withFrame) c.frame = std::strtoull(f[n++].c_str(), nullptr, 0);
+		c.addr = static_cast<uint32_t>(std::strtoul(f[n++].c_str(), nullptr, 0));
+		if(n < f.size()) c.arg = static_cast<uint32_t>(std::strtoul(f[n].c_str(), nullptr, 0));
+		out.push_back(c);
+	}
+	return out;
+}
+
 int main(int _argc, char** _argv)
 {
 	// ⚠️ LINE-BUFFERED, ALWAYS. Redirected to a file, printf is block-buffered,
@@ -99,6 +122,10 @@ int main(int _argc, char** _argv)
 	std::string pokeAfterLoad;	// O9c: "addr=byte;addr=byte" written after the load, before the frames (drive an apply the load skips)
 	int mainLevel = -1;			// O9b: post sys command 4 (SET MAIN LEVEL) with this level after the load; -1 = don't (the emulated load never does, and every voice then renders at gain zero)
 	std::string memDump;		// O10.21: "addr,len=path[;...]" -- ColdFire memory ranges, raw bytes, to FILE at the very end (peeks only support one word, pre-sequencer; this is a range, post-run)
+	std::string cardOut;		// --card-out FILE: the card image at the end of the run
+	std::string callBeforePlay;	// --call-before-play ADDR[:ARG][,...]: callAsMain after the load, before the transport start
+	std::string atFrames;		// --at FRAME:ADDR[:ARG][,...]: callAsMain at that frame after the transport start
+	long long cardFailAfter = -1;	// --card-fail-after N
 
 	for(int i = 1; i < _argc; ++i)
 	{
@@ -161,6 +188,10 @@ int main(int _argc, char** _argv)
 		else if(a == "--mem-dump" && i + 1 < _argc)	memDump = _argv[++i];
 		else if(a == "--poke" && i + 1 < _argc)		pokeAfterLoad = _argv[++i];
 		else if(a == "--frame-timer")				frameTimer = true;
+		else if(a == "--card-out" && i + 1 < _argc)		cardOut = _argv[++i];
+		else if(a == "--call-before-play" && i + 1 < _argc)	callBeforePlay = _argv[++i];
+		else if(a == "--at" && i + 1 < _argc)			atFrames = _argv[++i];
+		else if(a == "--card-fail-after" && i + 1 < _argc)	cardFailAfter = std::atoll(_argv[++i]);
 		else
 		{
 			std::printf("usage: ot_emu [--image FILE] [--max N] [--periph] [--profile]\n"
@@ -305,6 +336,7 @@ int main(int _argc, char** _argv)
 			std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(cf)),
 				std::istreambuf_iterator<char>());
 			card = std::make_unique<ot::AtaCard>(std::move(bytes));
+			if(cardFailAfter >= 0) card->failWritesAfter(cardFailAfter);
 			rtos.attachCard(*card);
 			rtos.setAtaTrace(!ataTrace.empty());
 			std::printf("card       : %s, %u sectors\n", cardImage.c_str(), card->totalSectors());
@@ -565,6 +597,13 @@ int main(int _argc, char** _argv)
 						static_cast<unsigned long long>(rtos.frameCount() - f0),
 						rsp == ot::Rtos::Stop::Gate ? "REACHED" : rtos.why().c_str());
 				}
+				for(const auto& c : parseCalls(callBeforePlay, false))
+				{
+					uint32_t d0 = 0;
+					const bool ok = rtos.callAsMain(c.addr, {c.arg}, d0, 200000000);
+					std::printf("call       : %#x(%#x) before play -> %s, d0 %#x\n", c.addr, c.arg,
+						ok ? "returned" : rtos.why().c_str(), d0);
+				}
 				if(!rtos.startTransportLive())
 					std::printf("transport  : FAILED -- %s\n", rtos.why().c_str());
 				if(pokeTrig)
@@ -596,6 +635,20 @@ int main(int _argc, char** _argv)
 				if(pcRing)
 					rtos.armPcRingNow(pcRing);
 				const auto target = frame0 + static_cast<uint64_t>(frames);
+				auto calls = parseCalls(atFrames, true);
+				std::sort(calls.begin(), calls.end(), [](const Call& x, const Call& y) { return x.frame < y.frame; });
+				for(const auto& c : calls)
+				{
+					const auto at = frame0 + c.frame;
+					rtos.runUntil(c.frame * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0,
+						[&] { return rtos.frameCount() >= at; });
+					rtos.runToMainSpin(1000.0);
+					uint32_t d0 = 0;
+					const bool ok = rtos.callAsMain(c.addr, {c.arg}, d0, 200000000);
+					std::printf("call       : %#x(%#x) at frame %llu -> %s, d0 %#x\n", c.addr, c.arg,
+						static_cast<unsigned long long>(rtos.frameCount() - frame0),
+						ok ? "returned" : rtos.why().c_str(), d0);
+				}
 				const auto rs2 = rtos.runUntil(frames * ot::g_framePeriod / ot::g_sampleHz * 1000.0 * 5 + 2000.0,
 					[&] { return rtos.frameCount() >= target; });
 				static const char* const g_seqStop[] = {"REACHED", "TIME", "FAULT", "ILLEGAL"};
@@ -728,6 +781,13 @@ int main(int _argc, char** _argv)
 		{
 			rtos.writeGoldenJson(golden);
 			std::printf("golden     : %s\n", golden.c_str());
+		}
+		if(!cardOut.empty() && card)
+		{
+			std::ofstream co(cardOut, std::ios::binary);
+			co.write(reinterpret_cast<const char*>(card->image().data()), static_cast<std::streamsize>(card->image().size()));
+			std::printf("card out   : %s (%llu sectors written in the run)\n", cardOut.c_str(),
+				static_cast<unsigned long long>(card->sectorsWritten()));
 		}
 	}
 

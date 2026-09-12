@@ -65,6 +65,12 @@ namespace ot
 		uint32_t totalSectors() const { return m_nsect; }
 		static std::vector<uint16_t> identifyWords(uint32_t _totalSectors);
 
+		// --card-out: the image with every sector the firmware wrote.
+		const std::vector<uint8_t>& image() const { return m_img; }
+		// --card-fail-after N: every WRITE SECTORS after N sectors have been
+		// written ends in ERR + ABRT, the way a full or failing card answers.
+		void failWritesAfter(const int64_t _n) { m_failAfter = _n; }
+
 	private:
 		uint32_t lba() const;
 		uint32_t count() const;
@@ -84,5 +90,6 @@ namespace ot
 		uint8_t m_cmd = 0;
 		std::vector<Entry> m_log;
 		uint64_t m_reads = 0, m_writes = 0;
+		int64_t m_failAfter = -1;
 	};
 }

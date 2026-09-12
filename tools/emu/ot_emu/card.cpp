@@ -156,6 +156,13 @@ namespace ot
 		}
 		case 0x30:					// WRITE SECTORS
 		{
+			if(m_failAfter >= 0 && static_cast<int64_t>(m_writes) >= m_failAfter)
+			{
+				m_error = 0x04;			// ABRT
+				m_status |= 0x01;		// ERR, no DRQ: the command is refused
+				m_log.push_back({"WRITE-FAIL", lba(), count()});
+				return;
+			}
 			const auto l = lba(), n = count();
 			m_wbuf.clear();
 			m_wlba = l;
