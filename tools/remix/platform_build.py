@@ -76,15 +76,17 @@ def link_runtime(units, work: pathlib.Path, defsyms: dict, base: int) -> tuple[b
     return raw.read_bytes(), _nm(elf, work)
 
 
-def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None):
+def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, regions=()):
     """units: [(module key, Linked)] with dram=True, in link order.
     payloads: [dict(name, blob, stage, dst, rawlen, rhash, backup)] for
     payloads built elsewhere (Octakit): `blob` = signature + GKA3 stream.
     reserve: (base, size) of the arena reserve the runtime lives in;
     required when there are units. defsyms: extra {name: value} for the
-    link (a bridge's continuation targets, schema.Override). Returns
-    (append bytes, symbols of the octabam runtime, boot poke, payload
-    names) and writes LAYOUT."""
+    link (a bridge's continuation targets, schema.Override). regions:
+    [(symbol, size, align)] of uninitialised DRAM (schema.DramRegion),
+    stacked down from the reserve's ceiling and handed to the link as
+    --defsym symbol=address. Returns (append bytes, symbols of the octabam
+    runtime, boot poke, payload names) and writes LAYOUT."""
     import json
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -100,6 +102,13 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None):
         for p in payloads:
             defs.update(p.get("symbols", {}))
         defs.update(defsyms or {})
+        # DramRegions: stacked down from the ceiling, named to the link.
+        placed = {}
+        top = ceiling
+        for sym, size, align in regions:
+            top = (top - size) & ~(align - 1)
+            placed[sym] = (top, size)
+        defs.update({s: a for s, (a, _) in placed.items()})
         raw, symbols = link_runtime(units, work / "runtime", defs, base)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
             runtime_build.pack(raw, MAX_CANDIDATES)
@@ -110,12 +119,20 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None):
                      f"{len(raw):,} B at 0x{base:08x}, stage 0x{stage:08x}..0x{stage_end:08x}, "
                      f"ceiling 0x{ceiling:08x} ({size:,} B). Reserve more pages "
                      f"(tools/remix/arena.py PLATFORM_PAGES).")
+        if placed:
+            floor_sym, (floor, _) = min(placed.items(), key=lambda kv: kv[1][0])
+            if stage_end > floor:
+                sys.exit(f"platform build: the runtime and its stage end at 0x{stage_end:08x}, "
+                         f"above DRAM region {floor_sym} at 0x{floor:08x} -- shrink the regions "
+                         f"or reserve more pages (tools/remix/arena.py PLATFORM_PAGES).")
         entries.append(dict(name="octabam", blob=SIGNATURE + packed,
                             stage=stage + UNCACHED, dst=base + UNCACHED,
                             rawlen=len(raw), rhash=roll(raw), backup=0))
         (work / "runtime.raw").write_bytes(raw)
         layout.update(base=base, runtime_end=base + len(raw), stage=stage,
                       stage_end=stage_end, ceiling=ceiling, size=size)
+        if placed:
+            layout["regions"] = {s: [a, n] for s, (a, n) in placed.items()}
     (work / LAYOUT).write_text(json.dumps(layout, indent=2) + "\n")
     # the table and the blobs, as assembler input
     inc = [f"        .long {len(entries)}"]

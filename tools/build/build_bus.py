@@ -1563,11 +1563,13 @@ def main():
               f"({_acount * arena.PAGE // 1048576} MB) left for samples and recorders "
               f"(stock {arena.PAGES:,}); {len(arena.pokes(_reservations))} words rewritten")
 
+    _regions = [(_r.symbol, _r.size, _r.align) for _k in REMIX.modules
+                for _r in getattr(remix_modules()[_k], "dram_regions", ())]
     if _dram or _payloads:
         from remix import platform_build
         _pappend, _psyms, _boot, _pnames = platform_build.build(
             [(_m.key, _u) for _m, _u in _dram], _payloads, pathlib.Path("out/platform"),
-            reserve=_reserve, defsyms=_defsym_ovr)
+            reserve=_reserve, defsyms=_defsym_ovr, regions=_regions)
         for _m, _u in _dram:
             _sym[_u.label] = _psyms          # detours name units; one table serves all
         _exports.update(_psyms)
@@ -1592,6 +1594,8 @@ def main():
               if _reserve else
               f"  platform loader: payloads {', '.join(_pnames)}, "
               f"append {len(_pappend):,} B at 0x{platform_build.LOADER_AT:08x}")
+        for _s, _n, _al in _regions:
+            print(f"  dram region: {_s} {_n:,} B at 0x{_psyms[_s]:08x}")
 
     for _m, _t in [(remix_modules()[_k], _t) for _k in REMIX.modules
                    for _t in getattr(remix_modules()[_k], "tables", ())]:
