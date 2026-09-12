@@ -65,11 +65,34 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   lists the clone) and `verify_labels` (the three selects print their words
   on the emulated firmware) all pass on `stations`.
 
+## Measured laws (12 Sep 2026, `tools/harness/station_laws.py` on noise)
+
+| knob | law | readout |
+|---|---|---|
+| FREQ (LP) | exponential, 24 Hz → 7.2 kHz, one octave per 16 detents (a 33-word P table, `DspSection.ptable`, interpolated per block) | 48 → 258 Hz, 64 → 528, 80 → 1.1 k, 96 → 2.3 k, 112 → 5.0 k; 127 = the SVF's 7 kHz ceiling |
+| RES | `damp = (0.998 − RES·0.587)⁴`: the peak is near-linear in dB | +1 / +5.7 / +12 / +20 / +30 dB at 0 / 32 / 64 / 96 / 127 |
+| BASE (HP pair) | `c = BASE²·0.5` | 32 → 54 Hz, 64 → 205, 96 → 560, 127 → 1.27 k |
+| WDTH (LP pair) | `c = WDTH²·1.0 + 0.002` — 127 is OPEN (flat within 0.15 dB at 10 kHz) | 96 → 4.0 k, 64 → 1.3 k, 32 → 320 Hz |
+| DRV | 1 → 4× into the SVF, the limiter clips | +4.9 / +8 / +10 / +12 dB at 32 / 64 / 96 / 127 |
+| NOTCH | depth −42 dB at RES 0, −36 at 64, −12 at 127 (narrower) | |
+
+Two laws were wrong on the meter and are replaced: the FREQ taper was
+squared (half the dial above 2 kHz; on the drum loop FREQ 24 → 56 barely
+moved the centroid) and WDTH 127 sat at ≈7 kHz per pole, so every live
+setting lost 5 dB at 10 kHz and 8 at 15 kHz (only the all-defaults bypass
+was flat). RES was hyperbolic in dB (18 of 30 dB in the top quarter).
+
+Known and left for the ear: the SVF's Chamberlin ceiling puts LP 127 at
+7 kHz (12 dB/oct above), and HP/BP at the top of the dial lift 10–15 kHz
+(+5 / +9 dB at HP 127 — the hp tap's warping at high f). A mode-aware
+ceiling (HP/BP capped near FREQ 96's f) would bound the lift at ~+3 dB for
+one per-block compare, if it reads as harsh rather than presence.
+
 ## Open
 
-- Voicing: nothing has been heard yet. The coefficient laws (cutoff taper,
-  base/width corners, LFO rate range, release times, FM depth 0.25) are
-  first guesses.
+- Voicing: the laws are measured (above); nothing has been HEARD yet. Kits in
+  `out/ab/spec_*` (`tools/harness/abkit.py`): the taper (squared vs
+  exponential), RES, the HP top, VOWEL, FM depth 0.25.
 - Cycles: 339 is dear. Candidates if it must come down: drop RING (~10),
   a single-pole base/width (~40), block-rate FM.
 - The layout alphabet lists this station under both `1` and `L` (stock

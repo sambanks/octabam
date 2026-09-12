@@ -174,12 +174,23 @@ fs_cntz:
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
-; damp = 0.992 - RES * 0.969   (Ripple's law)
+; damp = (0.998 - RES * 0.587)^4   -- base linear in RES, then squared twice,
+; so the resonant PEAK is close to linear in dB across the dial: ~0.8 / 5.5 /
+; 12 / 20 / 30 dB at RES 0 / 32 / 64 / 96 / 127. Ripple's linear damp
+; (0.992 - RES * 0.969, the law until 12 Sep 2026) measured 0.8 / 2.7 / 5.7 /
+; 11.3 / 29.5 dB on noise: 18 of the 29 dB lived in the top quarter of the
+; dial (tools/harness/station_laws.py). RES 0 is unchanged (0.998^4 = 0.992).
         move    x:(r6+$1),x0
-        move    #>$7c0000,y1
+        move    #>$4b2350,y1            ; 0.587
         mpy     x0,y1,a
         neg     a
-        add     #>$7f0000,a
+        add     #>$7fbe77,a             ; base = 0.998 - RES * 0.587  (>= 0.416)
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a                 ; base^2
+        move    a,x0
+        move    a,y1
+        mpy     x0,y1,a                 ; base^4
         move    a,x:(r7+$21)
 ; g4 = 0.25 + DRV * 0.75  (page-2 slot 6 KNOB field of r6+$c)
         move    x:(r6+$c),a
@@ -191,7 +202,12 @@ fs_cntz:
         mpy     x0,y1,a
         add     #>$200000,a
         move    a,x:(r7+$22)
-; cHP = BASE^2 * 0.5 ;  cLP = WDTH^2 * 0.75 + 0.002  (one-pole coefficients)
+; cHP = BASE^2 * 0.5 ;  cLP = WDTH^2 * 1.0 + 0.002  (one-pole coefficients)
+; cLP's scale was 0.75 until 12 Sep 2026: WDTH 127 then sat at 0.74 (about
+; 7 kHz per pole, 12 dB/oct above it), so "open" lost 5 dB at 10 kHz and 8 dB
+; at 15 kHz in EVERY live setting -- measured on noise, station_laws.py --
+; and only the all-defaults bypass was flat. At 1.0 WDTH 127 is 0.986: a
+; corner near 30 kHz per pole, flat within 0.15 dB at 10 kHz.
         move    x:(r6+$2),x0
         move    x:(r6+$2),y1
         mpy     x0,y1,a
@@ -203,7 +219,7 @@ fs_cntz:
         move    x:(r6+$3),y1
         mpy     x0,y1,a
         move    a,x0
-        move    #>$600000,y1
+        move    #>$7fffff,y1            ; x 1.0
         mpy     x0,y1,a
         add     #>$4189,a
         move    a,x:(r7+$2b)
@@ -301,13 +317,31 @@ fs_smod:
         move    #>$7f0000,x0
         cmp     x0,a
         tgt     x0,a                    ; clamp above at 127/128
-        move    a,x0
-        move    a,y1
-        mpy     x0,y1,a                 ; FREQm^2
-        move    a,x0
-        move    #>$7df3b6,y1            ; 0.984
-        mpy     x0,y1,a
-        add     #>$6f69,a               ; + 0.0034
+; fA = table(FREQm): an EXPONENTIAL taper, 24 Hz..7.2 kHz, one octave per
+; ~15.5 detents, read from the 33-word P table the manifest declares
+; (DspSection.ptable; the build places it before this code and rewrites the
+; literal below) and interpolated linearly: idx = FREQm >> 18 (0..31),
+; frac = the 18 bits under it as Q23. Until 12 Sep 2026 the law was
+; 0.984 * FREQm^2 + 0.0034 -- half the dial above 2 kHz on noise, and the
+; loop's centroid on the drum loop barely moved from FREQ 24 to 56.
+; AGU settle: r5/n5 are written two instructions before they address.
+        move    a,x1                    ; FREQm, kept
+        move    #>$fab1e0,r5            ; FREQ_TABLE -- rewritten by build_bus.py
+        move    #>$ffffff,m5
+        asr     #$12,a,a                ; idx
+        move    a1,n5
+        move    x1,a
+        and     #>$3ffff,a              ; FREQm & (2^18 - 1)   (a2 = 0: FREQm >= 0)
+        asl     #$5,a,a                 ; frac, Q23
+        move    (r5)+n5
+        move    a,x0                    ; frac
+        move    p:(r5)+,y0              ; T[idx]
+        move    p:(r5),b                ; T[idx+1]
+        move    y0,a
+        sub     a,b                     ; T[idx+1] - T[idx]  (>= 0: the table rises)
+        move    b,y1
+        mpy     x0,y1,a                 ; frac * diff
+        add     y0,a
         move    a,x:(r7+$20)            ; fA
 
 ; ---- ROUT (slot 9 select of r6+$d): sel, kA, kB, kR, kFM -------------------

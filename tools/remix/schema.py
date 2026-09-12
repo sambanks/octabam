@@ -291,6 +291,14 @@ class DspSection:
     r7_latch_slot: int | None = None           # rotation-latch state word
     gate_label: str | None = None              # where the housekeeping gate jumps
     override_markers: tuple[str, ...] = ()     # ";_OVERRIDE" hooks it honours
+    # A P-MEMORY TABLE the module reads with p:(rN)+ -- placed by the build
+    # immediately BEFORE the module's code (so the address is known before
+    # assembly) and the source's one `$fab1e0` literal rewritten to it, the
+    # reverb's LFOTAB mechanism made declarative (12 Sep 2026: Spectrum's
+    # exponential FREQ taper is the first). dsp_asm has no dc directive,
+    # hence words here. Costs the module's own budget: the table rides in
+    # its run.
+    ptable: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

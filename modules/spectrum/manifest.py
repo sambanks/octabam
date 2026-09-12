@@ -39,6 +39,15 @@ _STEP = Formatter.STEPPED
 
 _BLANK = Param(b"", 0)
 
+FREQ_TABLE = (
+    0x00700c, 0x0085e9, 0x00a00a, 0x00bf43, 0x00e495, 0x01112e,
+    0x01467c, 0x01862f, 0x01d251, 0x022d4c, 0x029a08, 0x031bfb,
+    0x03b747, 0x0470df, 0x054eaa, 0x0657b6, 0x079470, 0x090ee7,
+    0x0ad31c, 0x0cef60, 0x0f74c1, 0x12778c, 0x160fdd, 0x1a5a44,
+    0x1f7872, 0x2591f0, 0x2cd4bc, 0x3575a5, 0x3fb028, 0x4bc52e,
+    0x59f7db, 0x6a86da, 0x7d9faa,
+)
+
 MODULE = Module(
     name="spectrum",
     key="SPECTRUM",
@@ -83,6 +92,12 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/spectrum/spectrum.asm",
+        # FREQ's taper: 33 SVF f coefficients (Q23, 2*sin(pi*fc/fs)) at FREQ
+        # 0, 4, .., 128 for fc = 24 Hz * 300^(FREQ/128) -- exponential, 8.2
+        # octaves, an equal step per detent -- read with p:(r5)+ and
+        # interpolated linearly per block (12 Sep 2026). The squared law it
+        # replaced put half the dial above 2 kHz (station_laws.py).
+        ptable=FREQ_TABLE,
         priority=12,                  # after every existing module
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,
