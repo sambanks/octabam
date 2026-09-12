@@ -111,20 +111,30 @@ def sweep(a):
     knob, vals = a.knob.split("=")
     vals = [int(v) for v in vals.split(",")]
     out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
-    tracks = a.tracks or f"T1={a.station}+SEND"
-    sets = []
+    # --target T5:FX2 sweeps an ENGINE on its host track; the stem goes to
+    # --stem-track (a SEND at AUX 100 by default), the kit keeps the host's wav
+    tgt = a.target.upper()
+    ttrack, tfx = (tgt.split(":") + ["FX1"])[:2]
+    stem_track = a.stem_track or ttrack
+    if a.tracks:
+        tracks = a.tracks
+    elif tgt == "T1:FX1":
+        tracks = f"T1={a.station}+SEND"
+    else:
+        tracks = f"{ttrack}={a.station},{stem_track}=SEND"
+    sets = [] if tgt == "T1:FX1" or a.tracks else ["--set", f"{stem_track}:AUX=100"]
     for fx in a.fixed:
-        sets += ["--set", f"T1:FX1:{fx}"]
+        sets += ["--set", f"{ttrack}:{tfx}:{fx}"]
     rendered = []
     for v in vals:
         d = out / f"_r_{knob}_{v:03d}"
         cmd = [sys.executable, str(ROOT / "tools/harness/rig_render.py"), "--image", a.image, "--remix", a.remix,
-               "--tracks", tracks, "--stem", f"T1={a.stem}", "--tail", str(a.tail), "--frames", "16",
-               "--set", f"T1:FX1:{knob}={v}", "--out", str(d)] + sets + (["--seconds", str(a.seconds)] if a.seconds else [])
+               "--tracks", tracks, "--stem", f"{stem_track}={a.stem}", "--tail", str(a.tail), "--frames", "16",
+               "--set", f"{ttrack}:{tfx}:{knob}={v}", "--out", str(d)] + sets + (["--seconds", str(a.seconds)] if a.seconds else [])
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         if r.returncode != 0:
             sys.exit(f"rig_render failed for {knob}={v}:\n{r.stdout[-1500:]}{r.stderr[-1500:]}")
-        src = d / "T1.wav"
+        src = d / f"{ttrack}.wav"
         dst = out / f"{knob}_{v:03d}.wav"
         shutil.move(str(src), str(dst))
         shutil.rmtree(d, ignore_errors=True)
@@ -185,7 +195,9 @@ def main():
     s.add_argument("--stem", required=True)
     s.add_argument("--knob", required=True, help="NAME=v1,v2,...")
     s.add_argument("--fixed", action="append", default=[], help="NAME=v held for every render")
-    s.add_argument("--tracks", help="override the layout (rig_render syntax); T1 must carry the station on FX1")
+    s.add_argument("--tracks", help="override the layout (rig_render syntax)")
+    s.add_argument("--target", default="T1:FX1", help="which track/slot carries the module (T5:FX2 for an engine)")
+    s.add_argument("--stem-track", help="which track the stem feeds (default: the target; for an engine a SEND at AUX 100)")
     s.add_argument("--image", default="out/mainos_bus.bin")
     s.add_argument("--remix", default=os.environ.get("REMIX", "bamsep26"))
     s.add_argument("--seconds", type=float)

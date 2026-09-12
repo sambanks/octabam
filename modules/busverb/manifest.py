@@ -66,9 +66,14 @@ MODULE = Module(
         # it from $c's KNOB field now (bits 16-23). A part saved before the
         # swap loads its old SHMR byte as MODE and its old MODE as SHMR --
         # ROOM and a whisper of shimmer at worst; re-select the effect.
-        Param(b"MODE", 2, 3, active=True, formatter=_STEP,
+        # PLATE by default (12 Sep 2026; was BIG). Measured on the loop at
+        # the unit's level the three wet levels sit within 2 dB now (ROOM
+        # -16.9, PLATE -19.1, BIG -19.0 dBFS at defaults, AUX 100) -- the
+        # "7-9 dB apart" note predated the re-laws -- so the default is the
+        # conventional shared plate rather than the biggest space.
+        Param(b"MODE", 1, 3, active=True, formatter=_STEP,
               labels=("ROOM", "PLATE", "BIG"),
-              doc="voicing; the modes sit 7-9 dB apart and BIG clips first"),
+              doc="voicing: ROOM / PLATE / BIG; BIG clips first"),
         # SHMR defaults OFF. The slot used to be SPEED (the LFO rate) with a
         # default of 48; when it became the shimmer amount the default was
         # never revisited, so a fresh part booted with the shimmer half up.
@@ -77,7 +82,9 @@ MODULE = Module(
         # DIST knob on slot 11.
         Param(b"SHMR", 0, 128, active=True, formatter=_PLAIN,
               doc="shimmer -- pitch-shifted regeneration in the tail; 0 = off"),
-        Param(b"DIFF", 64, 128, active=True, formatter=_PLAIN,
+        # DIFF 80 by default (12 Sep 2026; was 64): R59's VintageVerb match
+        # point bracketed at ~80-90, never applied.
+        Param(b"DIFF", 80, 128, active=True, formatter=_PLAIN,
               doc="diffusion -- low = discrete repeats, high = smooth wash"),
         # SHFT selects the shimmer interval +12/+19/+7/-12 (v6; was WIDTH,
         # which is retired and pinned wide). An old project's stored WIDTH=3
