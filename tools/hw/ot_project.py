@@ -478,7 +478,14 @@ def _remix_defaults(remix_name, replaced_only):
     out = {}
     for k in remix.modules:
         m = mods.get(k)
-        if m is None or m.menu is None or getattr(m, "is_stock", False):
+        if m is None or m.menu is None:
+            continue
+        # A stock row's stored bytes are its own on a real set, so
+        # replaced_only leaves them alone; a FRESH project (replaced_only=
+        # False) writes the stock effect's descriptor defaults too, so the
+        # stock DELAY never boots on a foreign layout's bytes (its TAPE/LOCK
+        # selects count 2 -- a stored 48 there is an index, 12 Sep 2026).
+        if getattr(m, "is_stock", False) and replaced_only:
             continue
         if replaced_only and not m.menu.replaces:
             continue

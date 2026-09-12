@@ -416,6 +416,13 @@ mean hardware-clean; when the two disagree, believe the hardware.
   hardware later showed carrying +22 dB of inharmonic block-rate hash,
   because a ~2940 Hz discontinuity is not a harmonic of 438 Hz. Before
   trusting a null result, ask what the instrument physically cannot see.
+* **The stock DELAY's audio, under the ColdFire port.** Its ring arithmetic
+  runs (`0x40003386` once per track per frame, the ring addresses in `d0`),
+  but the eDMA channel that moves audio through the SDRAM rings is not
+  modelled, so a part carrying stock DELAY renders no repeats under
+  `ot_emu` — TX0 tracks the chain output at LEVEL² exactly (12 Sep 2026).
+  🟡 inferred from the silence; falsifier: model the channel and see repeats.
+  Its DSP cost is nil either way (the id dispatches to the null stub).
 * **What only ears catch.** GRAIN's right-channel hiss (a re-latching bug)
   passed every automated check green and was found by listening. The
   listening protocol in `docs/effects/VOICING.md` is part of the harness, not an

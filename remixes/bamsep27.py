@@ -19,11 +19,15 @@ RET). docs/effects/BUS.md "The one aux bus". What differs from `bamsep26`:
   * Each engine also gets the HOST GUARD: it runs on the bank's first FX2
     state block and passes dry on every other, so an old part naming its id
     on another track cannot start a second instance writing the host's tank.
-  * The stock DELAY row is gone. Flash 4 (4 Sep 2026) wedged the unit every
-    time a part LOADED with it selected -- a squeal that survived a project
-    change and needed a power cycle, where re-selecting the same effect on
-    the panel did not. Unexplained, and not worth explaining: the rig does
-    not want it.
+  * The stock DELAY row is gone -- by design (the one-aux rig has one delay,
+    on the bus), NOT because of flash 4. Flash 4's squeal "every time a part
+    loaded with it selected" was the page-2 stamp offset bug of that day
+    (`tools/hw/ot_project.py` P2_OFF: every track's row written one block
+    late, so T4's DELAY row landed on T5's BusVerb as DIFF 127 and the tank
+    self-oscillated until a reboot; re-selecting on the panel rewrote the
+    row at the right offset, which is how the offset was found). The stock
+    DELAY costs the DSP nothing (its id dispatches to the null stub; the
+    delay is ColdFire DMA over SDRAM rings) and `bamsep26` keeps it.
 
 THE HOSTS CARRY ONE SEND, AUX, AT SLOT 0 (the one-aux rig, 7 Sep 2026): the
 same knob every track has, so a host page reads like any track's. The slot

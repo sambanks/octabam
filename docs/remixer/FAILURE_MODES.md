@@ -147,8 +147,11 @@ the tag, warm-up runs, buffers zero. Judge no defect until you have rebooted.
 
 **Cause.** Two measured sources: (1) a wild page-2 value — e.g. BusVerb DIFF
 stamped to 127 self-oscillates the tank (the +0x325/+0x331 stamp-offset bug,
-4 Sep 2026); (2) **deep cycle overrun** — the "high-pitch squeal" is the
-deep-overrun signature (`docs/firmware/CHIP.md`: p3=23 × 32 breakup, 23 Aug 2026).
+4 Sep 2026 — this is ALSO what flash 4's "the stock DELAY wedges the unit on
+part load" was: T4's DELAY row landed on T5's BusVerb; the stock DELAY costs
+the DSP nothing and is innocent); (2) **deep cycle overrun** — the
+"high-pitch squeal" is the deep-overrun signature (`docs/firmware/CHIP.md`:
+p3=23 × 32 breakup, 23 Aug 2026).
 
 **Fix.** Re-stamp the project (1); fit the layout (2).
 
