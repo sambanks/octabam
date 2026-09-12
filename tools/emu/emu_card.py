@@ -251,6 +251,72 @@ def build_image(tree_dir, size_mb=64, label="OCTABAM", part_start=2048, log=None
     return bytes(img)
 
 
+def read_file(image: bytes, path: str):
+    """The contents of `path` (absolute, '/'-separated, case-insensitive)
+    in a FAT16 card image, or None if it is not there. Reads the MBR's
+    first partition, the BPB, and follows the FAT chain; long names are
+    matched through their VFAT entries, short names directly. The inverse
+    of build_image, and held to it by tools/verify/verify_card_reader.py."""
+    return _walk(image, path, want_dir=False)
+
+
+def list_dir(image: bytes, path: str):
+    """The entry names in directory `path` of a FAT16 card image, without
+    '.' and '..', or None if it is not a directory."""
+    return _walk(image, path, want_dir=True)
+
+
+def _walk(image: bytes, path: str, want_dir: bool):
+    part = struct.unpack_from("<I", image, 0x1be + 8)[0] * 512
+    bps, spc = struct.unpack_from("<HB", image, part + 11)
+    reserved, nfats, nroot = struct.unpack_from("<HBH", image, part + 14)
+    spf = struct.unpack_from("<H", image, part + 22)[0]
+    fat = part + reserved * bps
+    root = fat + nfats * spf * bps
+    data = root + nroot * 32
+    csize = spc * bps
+
+    def chain(c):
+        while 2 <= c < 0xfff8:
+            yield data + (c - 2) * csize
+            c = struct.unpack_from("<H", image, fat + 2 * c)[0]
+
+    def entries(raw):
+        lfn = []
+        for o in range(0, len(raw), 32):
+            e = raw[o:o + 32]
+            if e[0] == 0:
+                return
+            if e[0] == 0xe5:
+                lfn = []
+                continue
+            if e[11] == 0x0f:
+                part_ = e[1:11] + e[14:26] + e[28:32]
+                lfn.insert(0, part_.decode("utf-16-le", "ignore"))
+                continue
+            short = e[0:8].decode("ascii", "ignore").rstrip()
+            ext = e[8:11].decode("ascii", "ignore").rstrip()
+            long_ = "".join(lfn).split("\x00")[0].rstrip("￿") if lfn else None
+            lfn = []
+            name = long_ or (short + ("." + ext if ext else ""))
+            yield name, e[11], struct.unpack_from("<H", e, 26)[0], struct.unpack_from("<I", e, 28)[0]
+
+    raw = image[root:root + nroot * 32]
+    parts = [p for p in path.split("/") if p]
+    for i, want in enumerate(parts):
+        hit = next((x for x in entries(raw) if x[0].lower() == want.lower()), None)
+        if hit is None:
+            return None
+        _, attr, cluster, size = hit
+        body = b"".join(image[a:a + csize] for a in chain(cluster))
+        if not attr & 0x10:                      # a file
+            return body[:size] if (i == len(parts) - 1 and not want_dir) else None
+        raw = body
+    if not want_dir:
+        return None                              # the path named a directory
+    return [n for n, _, _, _ in entries(raw) if n not in (".", "..")]
+
+
 # ---------------------------------------------------------------------------
 # ATA task-file model
 # ---------------------------------------------------------------------------
