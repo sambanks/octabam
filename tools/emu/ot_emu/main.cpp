@@ -48,10 +48,17 @@ static std::vector<Call> parseCalls(const std::string& _s, const bool _withFrame
 	{
 		auto e = _s.find(',', q); if(e == std::string::npos) e = _s.size();
 		std::string one = _s.substr(q, e - q); q = e + 1;
+		if(one.empty())
+			continue;
 		Call c;
 		std::vector<std::string> f;
 		size_t r = 0;
 		while(r <= one.size()) { auto k = one.find(':', r); if(k == std::string::npos) k = one.size(); f.push_back(one.substr(r, k - r)); r = k + 1; }
+		if(f.size() < (_withFrame ? 2u : 1u))
+		{
+			std::fprintf(stderr, "ot_emu: bad call spec '%s'\n", one.c_str());
+			std::exit(2);
+		}
 		size_t n = 0;
 		if(_withFrame) c.frame = std::strtoull(f[n++].c_str(), nullptr, 0);
 		c.addr = static_cast<uint32_t>(std::strtoul(f[n++].c_str(), nullptr, 0));
