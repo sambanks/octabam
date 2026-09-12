@@ -3232,6 +3232,16 @@ hostquit:
         img.extend(_append)
         _grown += f" (+{len(_append):,} B {_aname} appended)"
     out.write_bytes(bytes(img))
+    # Say WHICH remix wrote this image, beside it. Every verifier reads the
+    # image by fixed path, and nothing in the bytes names the remix -- so a
+    # check run against an image some other build left here (a bare `make
+    # bus`, a `make -j`, a verifier's own scratch build) reports dozens of
+    # failures about a list it was never meant to see (Bryan T, 12 Sep 2026:
+    # 32 verify_menu fails on recfix, the "garbage" past index 2 was
+    # BusVerb's abbr from a default-remix image). The hash lets a reader
+    # ignore the sidecar when the image was restored without it.
+    out.with_suffix(".remix").write_text(
+        f"{REMIX.name} {hashlib.sha256(bytes(img)).hexdigest()}\n")
     d = sum(1 for x, y in zip(IMG.read_bytes(), img) if x != y)
     note = _grown
     if mode_env is not None:

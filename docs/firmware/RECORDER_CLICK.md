@@ -101,6 +101,15 @@ git submodule update --init --recursive
 `make check` now says exactly that if they are missing, rather than throwing a
 Python traceback at you (it used to; sorry).
 
+**Always pass `REMIX=recfix`** -- to `make check`, `make bus` and `make image`
+alike. The Makefile's default is a different remix, and every verifier reads
+the one image at `out/mainos_bus.bin`, so a bare `make bus` (or `make -j`,
+which runs the build and the checks at once) leaves another remix's image
+for the checks to read. That looked like "32 fails in verify_menu, garbage
+past index 2" on 12 Sep 2026 -- the garbage was the other remix's descriptor
+text. The build now records which remix wrote the image
+(`out/mainos_bus.remix`) and `verify_menu` says so in one line instead.
+
 `make check` is the floor — it builds the image and runs every gate in the
 repo without touching hardware. If it is not green, do not flash. Expect
 **303 PASS** and `EXIT=0` for `recfix`.
