@@ -107,8 +107,35 @@ CLEAN_STOCK_PAIR = [_stock("chorus", 0x12, True), _stock("comb", 0x13, True),
                     _effect("alpha", 0x07)]
 
 
+def _submodule_preflight() -> int:
+    """Refuse early, with the fix, if a community submodule is not checked out.
+
+    `make check` runs EVERY remix, so a clone without submodules fails on
+    somebody else's module even when the remix under test has nothing to do
+    with it -- and it failed as a bare FileNotFoundError traceback out of
+    ledger.runtime_write_spans (octakit's firmware.json) or as an assembler
+    "can't open" from midi-scenes' sources. Measured 12 Sep 2026 on a fresh
+    clone: `make bus REMIX=recfix` succeeds, `make check REMIX=recfix` dies.
+    That is a wall in front of the first thing an outside contributor is
+    asked to run, so it gets a message instead of a traceback.
+    """
+    missing = sorted(d.parent.name for d in ROOT.glob("modules/*/upstream")
+                     if d.is_dir() and not any(d.iterdir()))
+    if not missing:
+        return 0
+    print(f"  [FAIL] community submodule(s) not checked out: {', '.join(missing)}")
+    print("         `make check` builds EVERY remix, so these are needed even "
+          "when yours does not use them.")
+    print("         Fix:  git submodule update --init --recursive")
+    print("         (Building just your own remix does not need them: "
+          "`make bus REMIX=<name>` works without.)")
+    return 1
+
+
 def main():
-    bad = 0
+    bad = _submodule_preflight()
+    if bad:
+        return bad                      # nothing below can run without them
     for label, mods, expect in CASES:
         found = ledger.check(mods)
         hit = [p for p in found if p.startswith(expect)]

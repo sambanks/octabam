@@ -1,6 +1,8 @@
-"""RECFIX -- Bryan's recorder click: the three fixes, and nothing else.
+"""RECFIX -- the recorder loop click: the three fixes, and nothing else.
 
-The build to hand somebody whose recorder loops click. It carries the THREE
+The build to hand somebody whose recorder loops click (the shareable one --
+`docs/firmware/RECORDER_CLICK.md` is its write-up and reproduction steps, and
+neither names the reporter). It carries the THREE
 ColdFire caves that between them removed the fault on hardware, and no DSP
 code of our own at all -- no effects, no bus, no FX2 id of ours, no menu
 change:
@@ -18,9 +20,7 @@ change:
                              alternate bars. 10.57/10.58.
 
 Three different mechanisms -- a message path, a position store, a length --
-each measured on its own symptom, which is why all three are here. See
-`docs/firmware/RECORDER_CLICK.md` for the plain-language version and the
-reproduction steps.
+each measured on its own symptom, which is why all three are here.
 
 ⚠️ THE STOCK FX2 LIST IS NOT OPTIONAL, AND IS NOT "SOMETHING ELSE". Every
 octabam image replaces the FX2 chooser WHOLESALE with the remix's modules
@@ -49,8 +49,8 @@ from remix.schema import Remix
 
 REMIX = Remix(
     name="recfix",
-    doc="Bryan's recorder click: the three ColdFire fixes beside the stock FX2 chooser, "
-        "no DSP code of our own.",
+    doc="The recorder loop click: the three ColdFire fixes beside the stock FX2 "
+        "chooser, no DSP code of our own.",
     modules=("FLEX SEEK BIND", "FLEX SEEK BIND CTR", "RECORDER SPACING",
              # the stock chooser, in stock order -- no words, no placement (stock.py)
              "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
