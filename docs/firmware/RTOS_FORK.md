@@ -4528,8 +4528,9 @@ the measured model rather than an assumed rounding.
 — it was confirmed on the unit by the tempo test, independently of the fix.
 What has gone is the cheap fix. The remaining levers, in cost order:
 
-1. **Lever D, named in §10.16.6 and still unbuilt: end a fixed-RLEN recording
-   AT the next arm** rather than at a precomputed length. §10.16.6 measured
+1. ✅ **Superseded by lever E (§10.56), which is better than either: compute
+   the next arm's spacing from the CURRENT arm, state-free.** The original
+   lever D — **end a fixed-RLEN recording AT the next arm** rather than at a precomputed length. §10.16.6 measured
    that RLEN MAX does exactly this — no end post at all, the running
    recording's end IS the new arm — and is therefore seam-free by
    construction at any tempo. This needs no lane lookahead, no reciprocal
@@ -4547,3 +4548,81 @@ What has gone is the cheap fix. The remaining levers, in cost order:
 `remixes/seekB-seam.py` is kept — it composes, it is check-green, and it is
 the worked demonstration that the composition is legal — but it is **not a
 fix for this geometry** and its docstring now says so.
+
+### 10.56 Lever E: the next arm's spacing computed from the CURRENT arm, with no lane, no lookahead and no stored state — the arithmetic validated on 115,200 cases, every input measured at the hook site, the cave unbuilt (12 Sep 2026 — derived and validated; the assembly is designed, not written)
+
+§10.55 killed recorder-seam's lane lookahead. But the quantity it wanted —
+the spacing to the next arm — is derivable from the quantity the cave already
+reads correctly: the **current** arm sample at `0x46c7fa84[track]`, which
+§10.55 confirmed it addresses right (`d3` = 0, `a0` = `0x46c7fa84`).
+
+**The arithmetic.** The sequencer arms at `floor(k·N/D)` with `N = RLEN ×
+15,876,000` and `D = tempo24` (§10.16.3, measured). Write `q, r = divmod(N,
+D)`. Then `spacing_k = q + 1` exactly when the Bresenham residue overflows,
+and the residue at pass `k` is recoverable from `arm_k` alone because
+`arm_k = k·q + floor(k·r/D)` and `floor(k·r/D) < q`, so `k = arm_k / q` is
+exact. All 32-bit, at the converter tail, where `d4` already holds the stock
+length `L`:
+
+    RLEN = (L × D + 7,938,000) / 15,876,000      recovered from L -- no scratch needed
+    N    = RLEN × 15,876,000                     ≤ 1,016,064,000, fits
+    q    = N / D ;  r = N − q·D                  (no remu.l on V4e, see below)
+    if r == 0:  L' = q                           clean tempo, bit-exact no-op
+    k    = arm / q                               arm = 0x46c7fa84[track]
+    acc  = k·r − (k·r / D)·D
+    L'   = q + (1 if acc + r ≥ D else 0)
+
+**Validated:** `115,200` (tempo, RLEN, pass) triples — 12 tempi × 8 RLENs ×
+1,200 consecutive passes — and `L'` equals the sequencer's own next spacing
+in **every one**, zero mismatches. Two safety properties over all `11,208`
+(tempo, RLEN) pairs from 60.0 to 200.0: at every clean tempo `q == L`, so the
+cave is a **bit-exact no-op** there by construction (the golden case cannot
+regress), and `|L' − L| ≤ 1` everywhere, so **recorder-seam's own ±1 guard can
+be kept unchanged as a safety net** — the one thing that behaved correctly in
+§10.55. Exactness bound: `k = arm/q` holds while `floor(k·r/D) < q`, i.e. past
+165,000 passes at RLEN 16 / 128 BPM (86 hours) and 23,600 at RLEN 4 (3 hours);
+the arm counter's own 32-bit wrap comes first at ~27 hours.
+
+**Every input measured at the hook site, this session, on the port:**
+
+| what | where | measured |
+|---|---|---|
+| stock length `L` | `d4` at the converter tail | `0x142ff` = 82,687 |
+| `RLEN` | `d0` at the converter **entry** `0x40006dfc` | `0x10` = 16 ✅ — but `d0` is the EMAC product by the tail, hence the recovery above |
+| `tempo24` `D` | `0x80001814` | `0xc00` = 3072 ✅ (`0x8000181c`, the per-frame latch `tempo-sync` uses, read `0xb40` = 2880 pre-sequencer — 🟡 confirm which is live at the hook before trusting either) |
+| arm sample | `0x46c7fa84[track]`, track from `160(%sp)` | addressing confirmed in §10.55 |
+
+**And the route to the reader is live — this was the real risk.** A per-pass
+recording length is only a fix if the playing voice's wrap follows it. It
+does: §10.47 measured the bind setting the voice's data-END bound `+0x64` from
+the write-position table `0x46c7ff42[rec]` at `0x4000f89e`, and that
+instruction **still runs under 82's caves** — `--watch-pc 0x4000f89e` over
+16,000 frames of the self-loop: **4 hits, one per bind, `a0 = 0x46c7ff42`**.
+So lengthening a pass by one sample moves the reader's wrap by one sample at
+the next bind, which is exactly what the join needs.
+
+**Why that closes it, in the corrected §10.55 picture.** The reader trails the
+write head by a fixed lag (~62 samples, §10.45-era measurement), so its wrap
+joins buffer[`len−1`] (input time `arm_k + len − 1`) to buffer[0] (input time
+`arm_{k+1}`). The step is `spacing_k − len_k + 1`, which is 1 — contiguous —
+exactly when `len_k = spacing_k`. Stock has `len` constant and `spacing`
+alternating, so every other bar steps by 2 and skips an input sample: §10.53's
+scuff. Lever E makes `len_k = spacing_k` at every tempo.
+
+**Assembler facts for whoever writes it** (checked with `m68k-elf-as
+-mcpu=5475`): `mulu.l %dN,%dM` and `divu.l %dN,%dM` assemble in the
+**register form only** — an immediate operand is `operands mismatch`, so every
+constant goes through a register first — and **`remu.l` does not exist** on
+this cpu, so each remainder is `a − (a/b)·b`. Both are the CLAUDE.md
+"disassemble what you assemble" family caught early for once.
+
+**What is left to do.** Write the cave (≈ 20 instructions on top of
+recorder-seam's frame, same hook `0x40006e0c`, same ±1 guard, same
+`movem`/`lea` prologue, no new ledger claim of any kind), pin its bytes, and
+gate it on the port: the cave's `L'` must read 82,687/82,688 alternating on
+`n128_card` (one `--watch-pc` on the substitute path — the site that scored
+0/1,200 in §10.55 should now score ~1/1), the golden card must be
+byte-identical to stock, and then the self-loop hardware take at 128 with
+`gaps.py` and the per-bar maximum. 🟡 Everything above the assembly is
+measured or exhaustively validated; the cave itself is **not written**, so
+nothing here is a claim about a built image.
