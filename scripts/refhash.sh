@@ -96,7 +96,7 @@ sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 # drops the one field that is guaranteed to churn. Nothing else is touched:
 # the build report proper is compared verbatim, because tools parse it.
 normalise() {
-  sed -E -i '' -e 's|File "[^"]*", line [0-9]+|File "<src>", line <n>|g' "$1"
+  sed -E -i.bak -e 's|File "[^"]*", line [0-9]+|File "<src>", line <n>|g' "$1" && rm -f "$1.bak"
 }
 
 run_matrix() {
