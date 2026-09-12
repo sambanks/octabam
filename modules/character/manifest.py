@@ -64,6 +64,23 @@ DRIVE_COMP = (
     0x249249, 0x233f5e, 0x220ec8, 0x20fb17, 0x200000,
 )
 
+# The saturation curve, tanh(4w) over w in [0, 1] (driven 0..4) as 33 pairs
+# (value, slope to the next value) interpolated per sample -- read with
+# (r1)+n1 / p:(r1)+ / p:(r1) at n1 = 2*idx. tanh never goes flat: the cubic
+# it replaced (12 Sep 2026) was a hard clip above |w| = 1 and read as digital.
+def _tanh_td(n=32, span=4.0):
+    import math
+    t = [math.tanh(span * i / n) for i in range(n + 1)]
+    q = lambda v: min(0x7FFFFF, round(v * (1 << 23)))
+    out = []
+    for i in range(n + 1):
+        out.append(q(t[i]))
+        out.append(q(t[i + 1] - t[i]) if i < n else 0)
+    return tuple(out)
+
+
+TANH_TD = _tanh_td()
+
 MODULE = Module(
     name="character",
     key="CHARACTER",
@@ -116,7 +133,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/character/character.asm",
-        ptable=DRIVE_COMP,
+        ptable=DRIVE_COMP + TANH_TD,
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,                # (an FX1 module may own no buffers;

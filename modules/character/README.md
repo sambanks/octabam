@@ -55,11 +55,15 @@ fader there, and are re-ranged.
 
 | stage | law now | readout (−6 dBFS sine unless said) |
 |---|---|---|
-| DRV | 1 → 16× into the curve (was 1 → 4×), post × 1/√(1+15·DRV/128) from a 17-word P table (`DspSection.ptable`) | TAPE THD 1 / 3.5 / 14 / 25 / 31 % at 16/32/64/96/127, gain +4..+6 dB across the dial (a 0 dBFS source: −1..+3 dB) |
-| SAT | TAPE the curve; TUBE neg 0.75 (H2 ≈ −25 dB, ~6 % even from DRV 16); FUZZ hard clip ±0.6 **on the curve's output, before post** (24 → 42 %, level held at 0 dB); BUS pre 0.5 / post 2 (0.8 → 26 %) | |
+| DRV | 1 → 16× into the curve (was 1 → 4×), post × 1/√(1+15·DRV/128) from the module's P table (`DspSection.ptable`, 17 words) | TAPE THD 1 / 3 / 8 / 13 / 17 % at 16/32/64/96/127, gain +4..+7 dB across the dial |
+| the curve | **tanh(driven)** from a 33-pair P table (value, slope; interpolated per sample, `(r1)+n1`) — never flat. Was `w − w³/3` with a hard clip at |w| = 1: at DRV 96+ the top of a drum loop sat on that flat and read as "digital, clippy" (ear, 12 Sep 2026; the cubic's THD was 14 / 25 / 31 % at 64/96/127) | H2 −119 dB (odd symmetry exact) |
+| post low-pass | one pole after the curve, `kl = 0.6·DRV/128` in **TAPE / TUBE** only (0 = bit-exact elsewhere): tape darkens as it drives | corner 16.7 k / 8.4 k / 5.4 k / 3.3 kHz at DRV 32/64/96/127 |
+| SAT | TAPE the curve + the low-pass (dark, odd); TUBE neg 0.5 — the negative half driven at half — with the DC blocker and **no** low-pass (bright, even = odd at DRV 80, −22 dB each; at neg 0.75 TUBE was TAPE by ear); FUZZ hard clip ±0.6 **on the curve's output, before post**, with the low-pass at half strength (the clip's fizz off the top — heard better; the aliasing under it needs oversampling, unaffordable at payload A FREE 30); BUS pre 0.5 / post 2 — the return mode, not a colour | |
 | DC blocker | `y = x − k·x1 + R·y1`, R 0.999 (~7 Hz), **on in TUBE and FUZZ only** (k = R = 0 elsewhere: bit-exact) | TUBE's DC leak −30 dBFS → −68 |
-| FOLD | 1 → 32× into the fold (was 1 → 8×) | 4 % at 16, 16 % at 32, full folding (THD > 100 %) from 64 |
-| COMP / GLUE | block-max detector; per block `gr = (thr + over·invR)/env` by a real division; COMP scales the reduction and adds makeup 1 + 0.5·COMP; attack/release slew the GAIN per sample | COMP (thr 0.05, invR 0.125, 1 ms/100 ms) at 127: quiet +3.5 dB, loud −3 dB, release 85 ms. GLUE (0.03, 0.35, 10 ms/400 ms): +2.6 / −2.4 dB. The first compressor measured **inert** (thr 0.2/0.1 FS, a gain law linear in amplitude, a release coefficient of 0.004 that reset the envelope every sample, an attack never read) |
+| FOLD | 1 → 48× into the fold (was 1 → 8×, then 1 → 32×: the first quarter of the dial was dead on a pad — nothing folds until gain × peak crosses 1 — and 64× made 127 "insane") | first fold on the pad at ~24; 127 = 48× |
+| RING | triangle-ish carrier `4·p·(1−|p|)`, f = 2950·(RING/128)² Hz (was 15.2 kHz at 127 — a wrong constant, never heard) | 12 / 73 / 456 / 1170 / 2210 / 2946 Hz at 8 / 20 / 50 / 80 / 110 / 127, from the sidebands |
+| TRNS | boost = (0.9 − slow/env)⁺ · COMP on the gain, slow = a 23 ms one-pole of the detector; rising slew 0.25/sample, falling 20 ms; the detector restarts each block at 15/16 of itself (~6 ms) | burst: +5.9 dB at 2 ms, ~20 ms hold, unity by 70 ms, steady 0.00 dB |
+| COMP / GLUE | block-max detector (6 ms peak hold); per block `gr = (thr + over·invR)/env` by a real division; COMP scales the reduction and adds makeup 1 + 0.5·COMP; attack/release slew the GAIN per sample | COMP (thr 0.03, invR 0.1, **8 ms**/100 ms — the 1 ms / 5:1 / −26 dBFS first cut "lost energy, washed out" by ear) at 127: quiet +3.4 dB, loud −6.2 dB, release 86 ms; heard "good, doesn't pump". GLUE (0.03, 0.35, 10 ms/400 ms): +2.6 / −2.4 dB. The first compressor measured **inert** (thr 0.2/0.1 FS, a gain law linear in amplitude, a release coefficient of 0.004 that reset the envelope every sample, an attack never read) |
 | TRNS | `gr/2 += 4·(blockmax − slow)⁺·COMP`, capped at gr 2.0, 0.5 ms / 30 ms, no makeup | onset +6 dB max |
 | CRSH / SRR / WDTH | unchanged; the gates cover them | |
 
@@ -100,9 +104,27 @@ drive, the four characters at DRV 80, FOLD, COMP, GLUE, TRNS, CRSH+SRR, RING.
 
 ## Open
 
-- Voicing: nothing has been heard yet. Every law here — the drive taper, the
-  four characters' constants, the two compressor timings, the 12 ms transient
-  window — is a first guess.
+- Voicing (ear pass, 12 Sep 2026, kits in `out/ab/char_*`): TAPE drive —
+  scaling even, but the cubic's top was "digital, clippy" → the tanh curve
+  and the drive-keyed low-pass (heard: better). The four characters at DRV
+  80: TAPE / TUBE / BUS were alike → TUBE bright and harder-asymmetric,
+  "more distinct and useful"; FUZZ "awesome" with fizz on top → half
+  low-pass, "a bit better". FOLD: 0–24 dead, 127 still growing → 64×
+  (127 "insane") → 48× ("better"). COMP: subtle and washed at 1 ms →
+  8 ms / 10:1 / −30 dBFS, "sounds good, doesn't pump". GLUE: "sounds
+  good", kept. TRNS: inaudible → three defects (the boost chased its target
+  on the RISING slew at 1/512 a sample; a level DIFFERENCE, not a ratio,
+  so ghost notes got nothing; the block-max detector's 40 % ripple within
+  one cycle read a steady tone as +2 dB) → now +5.9 dB within 2 ms of an
+  onset, ~20 ms hold, unity by 70 ms, 0.00 dB steady — "still subtle but
+  the thwacks come up"; the +6 dB cap is the gain word's (gr/2 ≤ 1), a
+  +12 dB ceiling is the lever if it wants more. CRSH (with SRR /2): 60
+  subtle, 90 a modulating metallic layer behind the tone, 110 the metal in
+  front — "useful", kept. RING: the carrier constant put 127 at 15 kHz and 20
+  at 379 Hz (sidebands measured; the comment said 2.95 k) → fixed, 12 / 73 /
+  456 / 1170 / 2210 / 2946 Hz at 8 / 20 / 50 / 80 / 110 / 127; heard "wild,
+  metallic, alien" — which is ring modulation; kept. **Character's ear pass
+  is complete.**
 - On hardware since flash 4 (tag 79); the return (SAT=BUS on T8) confirmed
   on flash 7 (tag 21). **FX1 only** since 12 Sep 2026: an FX2 instance runs
   as a dry pass (`Claims(fx1_only=True)`, `verify_character.py`), the FX2
