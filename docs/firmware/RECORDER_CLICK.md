@@ -153,21 +153,24 @@ noise floor, no per-bar event at any threshold.
 - **One unit, one fixture, one session.** Only ever flashed on an **MKII**.
   The MKI runs the byte-identical stock OS so it is plausibly fine, but
   nobody has done it.
-- **`recfix` is not the exact image that was measured.** The hardware result
-  above is OCTABAM83, which is these three caves **plus** our DSP effects
-  (the "bus"). `recfix` drops those, so it is a different image and has been
-  gated in the emulator only. The recorder path is on the ColdFire and the
-  effects are on the DSP, so they are independent and we expect no
-  difference — but expected is not measured, and Sam is re-taking the
-  capture on this exact image.
+- ✅ **`recfix` itself is now measured, not just the image it came from.**
+  The table above was OCTABAM83, which carried these three caves *plus* our
+  DSP effects. `recfix` (OCTABAM84) drops those, and re-flashing and
+  repeating the capture gives **even bars 1.10× / odd bars 1.10×** with a
+  residual floor of **2.67 % of rms — identical to 83's**. So the build you
+  are being handed is the one that was measured. (RTOS_FORK §10.59.)
 - **We do not know whether all three fixes are needed.** They have only ever
   been tested together. If you are curious, the individual modules can be
   built separately — but start with all three.
 - **Real material over long periods.** Our measurements are a tone for 90
   seconds. Whether a half-hour of layering stays clean, nobody knows.
-- One isolated blip (2.3× the floor, one bar in 47) turned up in the 132 BPM
-  take and is unexplained. It is not bar-periodic and looks like a dropout
-  rather than the seam, but it is on the record.
+- **A sporadic blip, about one per 45–90 s take, that we cannot account for.**
+  It shows up on every image — including the *broken* one — at roughly one
+  isolated event per take (1.6× to 11.5× the noise floor), at no repeating
+  bar position. The seam's signature was 16 of 23 bars on a regular grid, so
+  this is something else: a dropout somewhere in the capture or output path
+  is the guess, and nobody has tested it. If you hear an occasional tick that
+  is clearly *not* once-per-bar, that is probably this and it is not new.
 
 If it does not fix it for you, that is the useful result — the arithmetic
 above is exact and measurable, so a click that survives it is a *different*
