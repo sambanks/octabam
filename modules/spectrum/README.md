@@ -19,7 +19,7 @@ mode (five formant pairs morphed by FREQ: A's band-pass at F1, filter B as a
 band at F2, routing forced PAR). Filter B is the base/width pair: two
 cascaded one-poles of HP at BASE and two of LP at WDTH. Routing: SER (A into
 B), PAR, RING (2·A·B), FM (B's output modulates A's cutoff multiplicatively,
-one sample late). Modulation: one bipolar DPTH onto A's cutoff from a
+f = fA·(1 + 0.5·B), one sample late — depth 0.5 by ear, 0.25 was too little). Modulation: one bipolar DPTH onto A's cutoff from a
 block-peak envelope follower (instant attack, RATE = release), an LFO
 (RATE = ~0.08–9 Hz), or half of each.
 
@@ -82,17 +82,20 @@ moved the centroid) and WDTH 127 sat at ≈7 kHz per pole, so every live
 setting lost 5 dB at 10 kHz and 8 at 15 kHz (only the all-defaults bypass
 was flat). RES was hyperbolic in dB (18 of 30 dB in the top quarter).
 
-Known and left for the ear: the SVF's Chamberlin ceiling puts LP 127 at
-7 kHz (12 dB/oct above), and HP/BP at the top of the dial lift 10–15 kHz
-(+5 / +9 dB at HP 127 — the hp tap's warping at high f). A mode-aware
-ceiling (HP/BP capped near FREQ 96's f) would bound the lift at ~+3 dB for
-one per-block compare, if it reads as harsh rather than presence.
+Known: the SVF's Chamberlin ceiling puts LP 127 at 7 kHz (12 dB/oct
+above), and HP/BP at the top of the dial lift 10–15 kHz (+5 / +9 dB at HP
+127 — the hp tap's warping at high f). Heard 12 Sep 2026 on the drum loop
+(HP 96 vs 127): **presence, kept** — no mode-aware ceiling.
 
 ## Open
 
-- Voicing: the laws are measured (above); nothing has been HEARD yet. Kits in
-  `out/ab/spec_*` (`tools/harness/abkit.py`): the taper (squared vs
-  exponential), RES, the HP top, VOWEL, FM depth 0.25.
+- Voicing (ear pass, 12 Sep 2026, kits in `out/ab/spec_*` via
+  `tools/harness/abkit.py`): the FREQ taper — **exponential wins** over the
+  squared law (six even steps on the drum loop; kept). The HP top (96 vs 127):
+  presence, kept. RES 32/64/96/127 on the pad: even steps, 127 ringy
+  but kept as the scream. VOWEL A/E/I/O/U on the melody: all five
+  distinct. FM depth: 0.25 "a bit little", 0.5 good — set. **Spectrum's ear pass is
+  complete**; every law on this page is heard.
 - Cycles: 339 is dear. Candidates if it must come down: drop RING (~10),
   a single-pole base/width (~40), block-rate FM.
 - The layout alphabet lists this station under both `1` and `L` (stock
