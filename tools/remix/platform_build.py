@@ -105,9 +105,9 @@ def build(units, payloads, work: pathlib.Path, reserve=None, defsyms=None, regio
         # DramRegions: stacked down from the ceiling, named to the link.
         placed = {}
         top = ceiling
-        for sym, size, align in regions:
-            top = (top - size) & ~(align - 1)
-            placed[sym] = (top, size)
+        for r_sym, r_size, r_align in regions:
+            top = (top - r_size) & ~(r_align - 1)
+            placed[r_sym] = (top, r_size)
         defs.update({s: a for s, (a, _) in placed.items()})
         raw, symbols = link_runtime(units, work / "runtime", defs, base)
         packed = runtime_build.PACKED_MAGIC + len(raw).to_bytes(4, "big") + \
