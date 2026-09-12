@@ -51,6 +51,7 @@ recon: ## Unpack + static recon -> out/raw/section_3_MAIN_OS.bin
 
 .PHONY: bus
 bus: ## THE build: one server per core, cross-core bus -> out/mainos_bus.bin
+	@test -f out/raw/section_3_MAIN_OS.bin || { echo "missing out/raw/section_3_MAIN_OS.bin (the stock OS every build reads) -- run 'make os' then 'make recon'"; exit 1; }
 	REMIX=$(REMIX) BUILD=$(BUILD) XBUS=1 SPEC=1 python3 tools/build/build_bus.py
 
 .PHONY: bus-plain
