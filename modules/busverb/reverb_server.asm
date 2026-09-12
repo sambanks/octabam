@@ -1579,10 +1579,29 @@ md_done:
 ; The floor is NOT this law: dropping the base to 0.42 per pass changed
 ; nothing at TIME 0, and neither did scaling all eight per-line gains by
 ; 0.35 (both tried and reverted the same day), nor DIFF, MOD or SIZE. Some
-; path outside the tank gains holds a ~40 dB/s memory -- the shimmer
-; buffer (recirculating at SHMR 0?) is the next suspect; a NOSHIM build
-; render was not obtained (render_reverb's cache served the shimmer-in
-; render). R59's "TIME-independent early-tail floor" is this. Open.
+; path outside the tank gains holds a ~40 dB/s memory. R59's
+; "TIME-independent early-tail floor" is this. Open.
+; ⚠️ 12 Sep 2026, evening (rig_render on a 50 ms noise burst, RT60 from the
+; tail's slope, -3..-33 dB below the peak): the floor is a clean exponential
+; at -32..-35 dB/s down to -66 dB, in every mode, and it is NOT
+;   - the shimmer: a NOSHIM=1 image decays identically (1.67/2.27/3.81 s at
+;     TIME 0/64/127 both ways);
+;   - the tank gains: a law that took line 0's per-pass radius to 0.43 at
+;     TIME 0 ($1e = a - k*(d_min + d_span*(1-t)^2), k ROOM 0.5 / PLATE 0.4 /
+;     BIG 0.25, d 0.056..0.42) moved the top as designed (ROOM 3.9, PLATE
+;     4.4, BIG 11.7 s) and left TIME 0..64 ALL at 1.6..1.8 s -- reverted,
+;     since against the floor it deadens half the dial;
+;   - the input diffusers: DIFF 0 (g 0.45, which alone would fall 150 dB/s)
+;     1.78 s, DIFF 127 1.93 s;
+;   - MOD 0, SIZE 0/3, TONE 0/127: 1.76..1.96 s;
+;   - the cross-core bus: the single-core hatch (send_probe --layout RS)
+;     shows the same -32 dB/s at TIME 0.
+; Something recirculates at g ~ 0.9 per ~26 ms (or 0.99 per ~3 ms) that no
+; knob reaches. Next instrument: on the hatch the reverb is instance 0, so
+; dsp_host -track can dump the eight line outputs' energy per block beside
+; the output -- if the tank is silent while the output rings, the loop is
+; downstream of it (the output section / wet stage), else it is a line or
+; allpass whose gain is not the one the knobs write.
         move    x:(r6+$1),x0            ; TIME: slot 1 (one-aux re-slot)
         move    #>$080000,y1
         mpy     x0,y1,a

@@ -156,7 +156,8 @@ vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
 ## Open
 
 - REVERSE-long (above).
-- The GRAIN level item (+6 dB makeup, 12 Sep) is to be re-measured now that
-  the reader is whole: the 5.1 dB deficit was measured on the broken reader.
+- ~~The GRAIN level item~~ re-measured whole: with the +6 dB makeup GRAIN was
+  +2.1 dB RMS / +6.6 dB peak over CLEAN; the makeup is gone and GRAIN's
+  peaks sit level with CLEAN's (RMS ~4 dB under: a scattered cloud's crest).
 - Pitch accuracy below −1.5 octaves: finder or engine, unverified.
 - The delay return is ~4 dB quieter than the reverb at equal send.

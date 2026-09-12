@@ -25,13 +25,15 @@ because the bisect narrowed it; see `PLAN.md`.
   BIG −19.0 dBFS wet at defaults, within 2 dB; the note predated the re-laws.
   The default MODE is PLATE now (was BIG) and DIFF 80 (was 64; R59's
   bracket).
-- **The decay dial has a floor (12 Sep 2026, measured):** ROOM's whole TIME
-  dial decays 1.8 s (TIME 0) → 4.3 s (127), PLATE the same, BIG 4 → 12 s —
-  no room under ~1.5 s anywhere. The floor is NOT the TIME→gain law
-  (dropping the base to 0.42 per pass changed nothing at TIME 0) and NOT the
-  per-line gains (scaling all eight by 0.35 changed nothing), nor DIFF, MOD
-  or SIZE. Something outside the tank gains holds a ~40 dB/s memory; the
-  shimmer buffer at SHMR 0 is the next suspect. R59's "TIME-independent
-  early-tail floor" is this. Open.
+- **The decay dial has a floor (12 Sep 2026, measured twice):** a clean
+  exponential at −32..−35 dB/s (RT60 ≈ 1.7 s) in every mode that no knob
+  reaches — ROOM 1.7 → 3.9 s, PLATE → 4.4, BIG → 11.7 across TIME. Ruled out
+  the same evening: the shimmer (NOSHIM identical), the tank gains (a law
+  taking line 0's radius to 0.43 moved only the top; reverted, it deadened
+  half the dial), the input diffusers (DIFF 0 → 127: 1.78 → 1.93 s), MOD,
+  SIZE, TONE, and the cross-core bus (the single-core hatch shows the same
+  floor). Something recirculates at g ≈ 0.9 per ~26 ms that the knobs don't
+  write. Next: `dsp_host -track` on the hatch (the reverb is instance 0
+  there) to read the eight lines' energy beside the output. Open.
 - A SIZE turn once killed the reverb on R44 and has not been reproduced. If
   it recurs, the one diagnostic that matters is whether tracks 5–8 *all* died.
