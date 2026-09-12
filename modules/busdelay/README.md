@@ -129,6 +129,6 @@ vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
 
 ## Open
 
-- GRAIN v5's ear pass and the level offset (a makeup decision).
+- GRAIN v5's ear pass (the level offset closed 12 Sep 2026: measured 5.1 dB under CLEAN at the return, +6 dB makeup on the window sum, now +0.9 dB over CLEAN in RMS with hotter peaks).
 - Pitch accuracy below −1.5 octaves: finder or engine, unverified.
 - The delay return is ~4 dB quieter than the reverb at equal send.
