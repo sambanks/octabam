@@ -32,11 +32,9 @@
 ; and nothing lost: that buffer was cleared two blocks ago and is read next.
 ;
 ; ---- r7 slots -------------------------------------------------------------
-;   $14 $65..$69   bus bookkeeping, SEND's layout ($69 = this block's offset)
 ;   $20 fA (per block, post-modulation)   $21 damp          $22 g4 (gain/4)
 ;   $23 kLP  $24 kBP  $25 kHP              $26 kA  $27 kB  $28 kR  $29 sel
 ;   $2a cHP  $2b cLP  $2c kFM              $2d bypass flag
-;   $2e ->DEL level  $2f ->VRB level (per block copies of r6+4/5)
 ;   $30 FX2-slot flag (set at init: 1 = this instance is on FX2, dry)
 ;   $31 LFO phase (PERSISTENT, masked)     $32 env (PERSISTENT, clamped)
 ;   $34/$35 SVF lp/bp L   $36/$37 SVF lp/bp R                 (PERSISTENT)
@@ -51,7 +49,7 @@
 ;   slots may sit high; per-sample ones may not.
 ; Persistent states are bounded by the limited stores or masked on use;
 ; nothing here ever becomes an address except the bus pointers, which come
-; masked from ROTLATCH exactly as SEND's do.
+; masked exactly as SEND's are.
 ;
 ; Every mpy is `mpy x0,y1` (the known-signed encoding) except the send taps,
 ; which are SEND's `mpy x1,y1` / `mpy x1,y0` with a non-negative level in the
@@ -88,89 +86,11 @@ proc:
         move    x:(r7+$30),a           ; an FX2 slot: dry, nothing written
         tst     a
         bne     fs_end
-; ===========================================================================
-; BUS: split-aware frame offset, verbatim from modules/send/send_client.asm
-; ===========================================================================
-        move    a,x:(r7+$14)
-        clr     a
-        move    a,x:(r7+$67)
-        move    x:(r7+$14),a
-        tst     a
-        bne     fs_a1
-        move    #>$1,a
-        move    a,x:(r7+$65)
-        move    n7,a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$66)
-        bra     fs_offok
-fs_a1:
-        move    x:(r7+$65),a
-        and     #>$ff,a
-        move    a1,x0
-        move    x0,a
-        move    #>$1,x0
-        cmp     x0,a
-        bne     fs_offok
-        clr     a
-        move    a,x:(r7+$65)
-        move    x:(r7+$66),a
-        and     #>$f,a
-        move    a1,x0
-        move    x0,a
-        move    a,x:(r7+$67)
-fs_offok:
-; ---- resolve this block's write offset (per payload) -> r7+$69, r1, r2 ---
-; ROTLATCH
-        move    a,x0
-        move    #>$901,a
-        add     x0,a
-        move    x:(r7+$67),b
-        add     b,a
-        move    a,r1                    ; REVERB ACC[write] + frame offset
-        move    #>$961,a
-        add     x0,a
-        add     b,a
-        move    a,r2                    ; DELAY  ACC[write] + frame offset
-        move    #>$ffffff,m1
-        move    #>$ffffff,m2
-; ---- register, once per block, per bus, ONLY IF SENDING (r6+4 / r6+5) ----
-        move    x:(r7+$67),a
-        tst     a
-        bne     fs_cntz
-        move    x:(r7+$69),a
-        asr     #$4,a,a
-        move    a1,x0
-        move    x0,a
-        move    #>$9c3,x0
-        add     x0,a
-        move    a,r3
-        move    #>$ffffff,m3
-        move    #>$1,x0
-        clr     b
-        clr     a                       ; NO STATION SENDS (one-aux rig, 7 Sep
-                                        ; 2026): the level is 0 whatever the
-                                        ; part stores, so nothing registers
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)
-        move    #4,n3
-        move    (r3)+n3
-        clr     b
-        clr     a                       ; (no sends: never a client)
-        tst     a
-        tne     x0,b
-        move    y:(r3),a
-        add     b,a
-        move    a,y:(r3)
-fs_cntz:
-        move    #>$0,x0                 ; the send levels are 0: the stations
-        move    x0,x:(r7+$2e)           ; lost their sends in the one-aux
-        move    x0,x:(r7+$2f)           ; rig (every track sends from FX2's AUX)
-
+; (the bus section -- split-aware frame offset, the rotation latch, the registration
+; and the r1/r2 accumulator pointers -- left with the sends, 12 Sep 2026: the
+; stations have carried no send since the one-aux rig of 7 Sep, and the ~70
+; words and ~10 cycles a block it cost bought nothing. The station is no
+; longer a bus client: Harness(bus_client=False).)
 ; ===========================================================================
 ; PER-BLOCK KNOB DECODE
 ; ===========================================================================
@@ -799,24 +719,6 @@ fs_live:
         mpy     x0,y1,b
         add     b,a
         move    a,x:(r0+n0)             ; out R
-; ---- the sends: the PROCESSED mono, 3 bits of bus headroom, both buses ----
-        move    x:(r0),a
-        move    x:(r0+n0),x0
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x1                    ; mono
-        move    x:(r7+$2e),y1           ; ->DEL level
-        mpy     x1,y1,a                 ; SEND's order: level (2nd) >= 0
-        asr     #$3,a,a
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+
-        move    x:(r7+$2f),y0           ; ->VRB level
-        mpy     x1,y0,a
-        asr     #$3,a,a
-        move    y:(r1),b
-        add     b,a
-        move    a,y:(r1)+
         move    #>$2,n0                 ; LONG immediates, deliberately: the
         move    (r0)+n0                 ; short form `move #2,n0` assembled and
         move    #>$1,n0                 ; stepped ONE word per frame (3 Sep 2026)
@@ -825,31 +727,7 @@ fs_end:
         rts
 
 ; ===========================================================================
-; BYPASS LOOP: frames untouched, sends only (SEND's loop, verbatim shape)
+; BYPASS: frames untouched -- with no sends there is nothing to do at all
 ; ===========================================================================
 fs_bypass:
-        move    x:(r7+$2f),y0           ; ->VRB level
-        move    x:(r7+$2e),y1           ; ->DEL level
-        move    #>$1,n0
-        do      n7,>fs_byz
-        move    x:(r0),a                ; frames untouched: the bypass IS the
-        move    x:(r0+n0),x0            ; bit-exact passthrough
-        add     x0,a
-        asr     #$1,a,a
-        move    a,x1
-        mpy     x1,y1,a
-        asr     #$3,a,a
-        move    y:(r2),b
-        add     b,a
-        move    a,y:(r2)+
-        mpy     x1,y0,a
-        asr     #$3,a,a
-        move    y:(r1),b
-        add     b,a
-        move    a,y:(r1)+
-        move    #>$2,n0                 ; LONG immediates, deliberately: the
-        move    (r0)+n0                 ; short form `move #2,n0` assembled and
-        move    #>$1,n0                 ; stepped ONE word per frame (3 Sep 2026)
-fs_byz:
-        nop
         rts

@@ -54,6 +54,16 @@ _STEP = Formatter.STEPPED
 
 _BLANK = Param(b"", 0)
 
+# post-gain compensation for DRV, 1/sqrt(1 + 15*DRV/128) at DRV 0, 8, .., 128:
+# the drive's 1x..16x pre-gain read as a +16 dB fader at the unit's level
+# (12 Sep 2026); with this a saturated signal comes out near unity and a
+# quiet one gains ~+12 dB at full drive. Read with p:(r5)+, interpolated.
+DRIVE_COMP = (
+    0x7fffff, 0x5bf53a, 0x4b7d83, 0x418e0d, 0x3abafd, 0x35ac14,
+    0x31bad7, 0x2e8ba3, 0x2be755, 0x29aa7d, 0x27bd29, 0x260e81,
+    0x249249, 0x233f5e, 0x220ec8, 0x20fb17, 0x200000,
+)
+
 MODULE = Module(
     name="character",
     key="CHARACTER",
@@ -106,6 +116,7 @@ MODULE = Module(
     ),
     dsp=DspSection(
         asm="modules/character/character.asm",
+        ptable=DRIVE_COMP,
         priority=13,                  # after the Spectrum station
         bus_role=BusRole.NONE,        # an insert that also WRITES the bus
         ybase=YBase.NEVER,                # (an FX1 module may own no buffers;

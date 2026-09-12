@@ -46,6 +46,29 @@ rather than a fader for the dirt.
   or two. Trims if it must come down: drop RING (~12), a single `chsatur`
   call by rolling the two channels (~13), the TUBE asymmetry (~10 per
   channel).
+## Measured laws (12 Sep 2026, `tools/harness/station_laws.py --probe sine|burst`)
+
+At the unit's level: a −6 dBFS source enters the chain at 0.127 FS (AMP VOL
+64, the mixer model). Every stage below was first measured against that
+level; three were sized for the old harness's 0.5 FS and were inert or a
+fader there, and are re-ranged.
+
+| stage | law now | readout (−6 dBFS sine unless said) |
+|---|---|---|
+| DRV | 1 → 16× into the curve (was 1 → 4×), post × 1/√(1+15·DRV/128) from a 17-word P table (`DspSection.ptable`) | TAPE THD 1 / 3.5 / 14 / 25 / 31 % at 16/32/64/96/127, gain +4..+6 dB across the dial (a 0 dBFS source: −1..+3 dB) |
+| SAT | TAPE the curve; TUBE neg 0.75 (H2 ≈ −25 dB, ~6 % even from DRV 16); FUZZ hard clip ±0.6 **on the curve's output, before post** (24 → 42 %, level held at 0 dB); BUS pre 0.5 / post 2 (0.8 → 26 %) | |
+| DC blocker | `y = x − k·x1 + R·y1`, R 0.999 (~7 Hz), **on in TUBE and FUZZ only** (k = R = 0 elsewhere: bit-exact) | TUBE's DC leak −30 dBFS → −68 |
+| FOLD | 1 → 32× into the fold (was 1 → 8×) | 4 % at 16, 16 % at 32, full folding (THD > 100 %) from 64 |
+| COMP / GLUE | block-max detector; per block `gr = (thr + over·invR)/env` by a real division; COMP scales the reduction and adds makeup 1 + 0.5·COMP; attack/release slew the GAIN per sample | COMP (thr 0.05, invR 0.125, 1 ms/100 ms) at 127: quiet +3.5 dB, loud −3 dB, release 85 ms. GLUE (0.03, 0.35, 10 ms/400 ms): +2.6 / −2.4 dB. The first compressor measured **inert** (thr 0.2/0.1 FS, a gain law linear in amplitude, a release coefficient of 0.004 that reset the envelope every sample, an attack never read) |
+| TRNS | `gr/2 += 4·(blockmax − slow)⁺·COMP`, capped at gr 2.0, 0.5 ms / 30 ms, no makeup | onset +6 dB max |
+| CRSH / SRR / WDTH | unchanged; the gates cover them | |
+
+Cost 436 → 414 cycles/sample (the dead send taps and registration went with
+the sends; the new compressor is cheaper in the loop than the old one).
+
+Kits for the ear in `out/ab/char_*` (`tools/harness/abkit.py`): TAPE
+drive, the four characters at DRV 80, FOLD, COMP, GLUE, TRNS, CRSH+SRR, RING.
+
 - `tools/verify/verify_character.py`, **22 gates, all PASS**: defaults bit-exact;
   MIX=0 bit-exact with every stage driven; CRSH=110 collapses a ramp to 144
   wet levels against 4,500; SRR holds the wet exactly 2/4/8 samples; all four
