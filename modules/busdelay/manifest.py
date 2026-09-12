@@ -46,12 +46,15 @@ MODULE = Module(
               doc="feedback -- how much each repeat regenerates"),
         Param(b"TONE", 100, active=True, formatter=_PLAIN,
               doc="tone of the repeats -- lower = darker every pass"),
-        # PING 127, not 64. Measured 17 Aug 2026: 64 was the worst place on
-        # the knob to boot -- it leaned +14.7 dB left with correlation 0.185,
-        # i.e. more lean than 127 and no audible bounce. 127 is the classic
-        # ping-pong, and where the lean is smallest.
-        Param(b"PING", 127, active=True, formatter=_PLAIN,
-              doc="stereo ping-pong spread; 127 = the classic alternation (least lean)"),
+        # PING 0 = centred (12 Sep 2026, Sam: an aux delay on a mixer sits in
+        # the middle; the bounce is the knob's). Measured on the loop at FDBK
+        # 60: 0 mono (L/R correlation 1.000), 32 / 64 near-mono (0.998 /
+        # 0.965), the alternation lives in 96..127 (0.73 / 0.01), and 127
+        # leans +4.4 dB left -- the arithmetic of ping-pong itself (L gets
+        # repeats 1, 3, 5: L/R = 1/feedback), not a defect. The 17 Aug note
+        # that 64 leaned +14.7 dB is not what the current code measures.
+        Param(b"PING", 0, active=True, formatter=_PLAIN,
+              doc="stereo ping-pong spread; 0 = centred, the alternation is in the top quarter"),
         # MIX (one-aux rig, 7 Sep 2026; -VRB and PTCH moved): the STAGE's
         # crossfade. The delay is chain stage 1: out = in*(1-MIX) + wet*MIX
         # goes on to the reverb and to the return, so MIX 0 is a clean
@@ -75,7 +78,9 @@ MODULE = Module(
               doc="engine select: CLEAN, GRAIN (pitched cloud, v5), REVERSE"),
         # MDEP on slot 7: delivered in $c's companion field (bits 8-15), as
         # stock FILTER's DIST knob is on slot 11.
-        Param(b"MDEP", 48, 128, active=True, formatter=_PLAIN,
+        # MDEP 0 (12 Sep 2026, Sam): the wow at 48 read as motion/panning on a
+        # mono loop; a mixer's aux delay sits still by default, the wow is the knob's.
+        Param(b"MDEP", 0, 128, active=True, formatter=_PLAIN,
               doc="tape mod (wow) depth; 0 = none - GRAIN: scatter, how far apart the grains read"),
         # RATE 64 IS LOAD-BEARING: exactly 1x, the pre-knob modulation speed.
         # The DPTH=0 bypass gate only holds with the law exact here.
@@ -104,16 +109,16 @@ MODULE = Module(
     mode_views=(
         # (slots are the one-aux layout: 1 TIME, 2 FDBK, 3 TONE, 4 PING,
         # 5 MIX, 10 PTCH -- AUX at 0 is never re-defaulted by a mode)
-        ModeView(mode=0,                        # CLEAN
-                 defaults={1: 40, 2: 60, 3: 100, 4: 127, 5: 127,
-                           7: 48, 8: 64, 10: 64}),
+        ModeView(mode=0,                        # CLEAN: centred, no wow (12 Sep 2026)
+                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,
+                           7: 0, 8: 64, 10: 64}),
         ModeView(mode=1,                        # GRAIN
                  names={7: b"SCAT", 8: b"DENS"},   # PTCH is PTCH in every mode
-                 defaults={1: 36, 2: 40, 3: 100, 4: 127, 5: 127,
+                 defaults={1: 36, 2: 40, 3: 100, 4: 0, 5: 127,
                            7: 40, 8: 127, 9: 1, 10: 64}),
-        ModeView(mode=2,                        # REVERSE
-                 defaults={1: 40, 2: 60, 3: 100, 4: 127, 5: 127,
-                           7: 48, 8: 64, 9: 1, 10: 64}),
+        ModeView(mode=2,                        # REVERSE: centred, no wow
+                 defaults={1: 40, 2: 60, 3: 100, 4: 0, 5: 127,
+                           7: 0, 8: 64, 9: 1, 10: 64}),
     ),
     dsp=DspSection(
         asm="modules/busdelay/delay_server.asm",

@@ -138,6 +138,7 @@
 //                           rate can be MEASURED by differencing -- -peekx only
 //                           snapshots once, after the run
 //     -trackout FILE        where -track writes (default /tmp/dsp_track.txt)
+//     -trackinst K          which instance -track samples (default 0)
 //     -trace N              log the first N instructions executed
 #include <cstdio>
 #include <cstring>
@@ -182,6 +183,7 @@ struct Args {
     std::vector<TWord> peekY, peekX;
     std::string dumpyFile; TWord dumpyLo = 0, dumpyHi = 0;
     std::vector<TWord> track;              // r7-relative X words, dumped EVERY block
+    int trackInst = 0;                     // -trackinst: which instance -track samples
     std::string trackOut;
     std::vector<std::pair<TWord, TWord>> pokeY;
     double tempo = 0;                      // -tempo BPM: publish r6+$6/$7 like the ColdFire cave
@@ -485,6 +487,7 @@ int main(int argc, char** argv) {
         else if (k == "-frames") a.frames = atoi(argv[++i]);
         else if (k == "-blocks") a.blocks = atoi(argv[++i]);
         else if (k == "-trace") a.trace = atoi(argv[++i]);
+        else if (k == "-trackinst") a.trackInst = atoi(argv[++i]);
         else if (k == "-flags") a.flags = strtoul(argv[++i], nullptr, 16);
         else if (k == "-diff") a.diff = atoi(argv[++i]);
         else if (k == "-spray") a.spray = atoi(argv[++i]);
@@ -1064,7 +1067,7 @@ int main(int argc, char** argv) {
         // -track: sample r7-relative state EVERY block. -peekx only snapshots
         // after the whole run, which cannot measure a RATE -- an LFO phase has
         // to be differenced block to block to get its increment.
-        if (!a.track.empty() && k == 0) {
+        if (!a.track.empty() && k == a.trackInst) {
             if (trackFile.is_open()) {
                 trackFile << b;
                 for (TWord off : a.track)
@@ -1133,7 +1136,7 @@ int main(int argc, char** argv) {
             dumpRegs(D, *C.mem);
             return false;
         }
-        const bool tr = a.trace && (R.cur.inst == 0) && !R.cur.ctl &&
+        const bool tr = a.trace && (R.cur.inst == a.trackInst) && !R.cur.ctl &&
                         (R.block == 0 || (a.diff && R.block == a.diff - 1)) &&
                         static_cast<int>(R.cur.steps) < a.trace;
         if (tr)
