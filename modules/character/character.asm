@@ -41,7 +41,7 @@
 ; ---- r7 slots -------------------------------------------------------------
 ;   $14 $65..$69   bus bookkeeping, SEND's layout ($69 = this block's offset)
 ;   per block:
-;   $20 m (MIX)   $21 fold gain/32  $22 drive gain/16  $23 crush mask
+;   $20 m (MIX)   $21 fold gain/64  $22 drive gain/16  $23 crush mask
 ;   $24 carrier step  $25 srr mask  $26 comp amount    $27 thr
 ;   $28 invR      $29 sat mode      $2a trns flag      $2b width side gain
 ;   $2c width mid gain  $2d attack coeff   $2e release coeff  $2f bypass
@@ -174,16 +174,20 @@ ch_offok:
         move    a1,x0
         move    x0,a
         move    a,x:(r7+$20)            ; m
-; fold gain/32 = (1 + 31*FOLD/128)/32 -- 1x .. 32x into the fold, pre-divided
-; by 32 so the fold's (v+1)/2 arithmetic keeps its guard bits (the loop
-; shifts by 4). WarpFold's 1x..8x law (until 12 Sep 2026) was sized for the
+; fold gain/64 = (1 + 47*FOLD/128)/64 -- 1x .. 48x into the fold, pre-divided
+; by 64 so the fold's (v+1)/2 arithmetic keeps its guard bits (the loop
+; shifts by 5). WarpFold's 1x..8x law (until 12 Sep 2026) was sized for the
 ; old harness's 0.5 FS input; the unit hands the chain ~0.13 FS at AMP VOL
 ; 64 (the mixer model, COLDFIRE_PORT.md O14), where 8x reached the FIRST
-; fold only at FOLD 127 -- +15 dB of gain and 12 % THD, a volume knob.
+; fold only at FOLD 127 -- +15 dB of gain and 12 % THD, a volume knob. The
+; 1x..32x law that followed left the first quarter of the dial dead on a
+; pad (nothing folds until gain * peak crosses 1: ~8x at that level, FOLD
+; 28) while 80 -> 127 still grew (ear, 12 Sep 2026); doubled to 64x, 127
+; was "insane, maybe too much": 48x.
         move    x:(r6+$1),x0            ; the knob word IS FOLD/128 in Q23
-        move    #>$7c0000,y1            ; 31/32
-        mpy     x0,y1,a                 ; (31/32)*(FOLD/128)
-        add     #>$040000,a             ; + 1/32 -> gain/32, 0.031 .. 0.992
+        move    #>$5e0000,y1            ; 47/64
+        mpy     x0,y1,a                 ; (47/64)*(FOLD/128)
+        add     #>$020000,a             ; + 1/64 -> gain/64, 0.016 .. 0.75
         move    a,x:(r7+$21)            ; gq
 ; drive gain/16 = (1 + 15*DRV/128)/16 -- 1x .. 16x into the curve (the loop
 ; shifts by 4; the limiting store IS the clip). Was 1x..4x, same reason as
@@ -750,9 +754,9 @@ ch_nosrr:
         move    x1,x:(r7+$34)
 ; ---- FOLD: WarpFold's wrap-and-reflect, both channels --------------------
         move    x:(r7+$33),x0
-        move    x:(r7+$21),y1           ; gq = gain/32
-        mpy     x0,y1,a                 ; v/32
-        asl     #$4,a,a                 ; v/2
+        move    x:(r7+$21),y1           ; gq = gain/64
+        mpy     x0,y1,a                 ; v/64
+        asl     #$5,a,a                 ; v/2
         move    #>$400000,x1
         add     x1,a                    ; (v+1)/2
         move    a1,x1                   ; s = wrap(...), raw A1: the fold
@@ -765,7 +769,7 @@ ch_nosrr:
         move    x:(r7+$34),x0
         move    x:(r7+$21),y1
         mpy     x0,y1,a
-        asl     #$4,a,a
+        asl     #$5,a,a
         move    #>$400000,x1
         add     x1,a
         move    a1,x1
