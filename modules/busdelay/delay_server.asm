@@ -2164,12 +2164,11 @@ gvlz:
 ; gate -- the v2 arithmetic, kept.
         move    x:(r7+$1e),x0
         move    x:(r7+$3d),y1           ; makeup coeff
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; +6 dB (12 Sep 2026): GRAIN measured
-                                        ; 5.1 dB under CLEAN at the return, on
-                                        ; the loop at the unit's level (v5's
-                                        ; four-reader window law; R64's open
-                                        ; makeup item). Both grain counts.
+        mpy     x0,y1,b                 ; (a +6 dB asl sat here for a day, 12 Sep
+                                        ; 2026, sized on the clobbered reader:
+                                        ; whole, GRAIN is +2.1 dB RMS / +6.6 dB
+                                        ; peak over CLEAN with it, peaks level
+                                        ; without -- the level a return wants)
 ; GRAINMK
         move    b,x:(r7+$24)            ; shifted OUTPUT tap L
 ; ---- READER, line R: four grains, ROLLED (v5) ----------------------------
@@ -2291,12 +2290,11 @@ gvrz:
 ; ---- wet R -------------------------------------------------------------
         move    x:(r7+$1f),x0
         move    x:(r7+$3d),y1
-        mpy     x0,y1,b
-        asl     #$1,b,b                 ; +6 dB (12 Sep 2026): GRAIN measured
-                                        ; 5.1 dB under CLEAN at the return, on
-                                        ; the loop at the unit's level (v5's
-                                        ; four-reader window law; R64's open
-                                        ; makeup item). Both grain counts.
+        mpy     x0,y1,b                 ; (a +6 dB asl sat here for a day, 12 Sep
+                                        ; 2026, sized on the clobbered reader:
+                                        ; whole, GRAIN is +2.1 dB RMS / +6.6 dB
+                                        ; peak over CLEAN with it, peaks level
+                                        ; without -- the level a return wants)
 ; GRAINMK
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
         bra     pdone
