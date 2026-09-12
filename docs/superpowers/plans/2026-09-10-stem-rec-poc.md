@@ -1074,12 +1074,17 @@ git commit -m "stems: the CONTROL row, the action's state machine, and a pass-th
 EMU = pathlib.Path("out/emu/ot_emu")
 FIXTURE = pathlib.Path("out/stems_fixture.json")   # written by tools/verify/stems_fixture.py
 KEY_STOP = 0x4000a1e0
+STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
 
 
-def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=()):
+def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=()):
     """One fixture run under the port: the module's action called before
     play, STOP at `stop_at` (None = no STOP), any further `calls` as
-    (frame, addr). Dumps the six state words and, when `ring_bytes`, the
+    (frame, addr), any `pokes` as (addr, byte) applied after the load.
+    A run that calls STOP also sets STOP_GATE to 1: the port starts the
+    transport without the PLAY key, and on the fixture's project that
+    leaves the STOP handler's gate shut, so the call would do nothing
+    (Task 10). Dumps the six state words and, when `ring_bytes`, the
     start of the ring. Returns (log text, dump, card, state words, ring bytes)."""
     fx = json.loads(FIXTURE.read_text())
     work = pathlib.Path("out/stems_runs"); work.mkdir(parents=True, exist_ok=True)
@@ -1089,8 +1094,10 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=()):
     if ring_bytes:
         dumps += f";0x{s['stems_ring']:x},{ring_bytes}={ring}"
     at = [f"{f}:0x{a:x}:0" for f, a in calls]
+    pk = list(pokes)
     if stop_at is not None:
         at.append(f"{stop_at}:0x{KEY_STOP:x}:0")
+        pk.append((STOP_GATE, 1))
     args = [str(EMU), "--image", str(IMAGE), "--card", fx["card"], "--set", fx["set"],
             "--project", fx["project"], "--sequencer", "--internal-clock",
             "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
@@ -1099,6 +1106,8 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=()):
             "--card-out", str(card), "--mem-dump", dumps, *extra]
     if at:
         args += ["--at", ",".join(at)]
+    if pk:
+        args += ["--poke", ";".join(f"0x{a:x}={b}" for a, b in pk)]
     r = subprocess.run(args, capture_output=True, text=True)
     m = mem.read_bytes() if mem.exists() else b"\0" * 24
     words = [int.from_bytes(m[i:i + 4], "big") for i in range(0, 24, 4)]
@@ -1121,7 +1130,7 @@ def tap(s):
     check("the signal is not silence", any(any(x) for x in got), "non-zero samples present")
 ```
 
-  The ring is dumped before the task exists, so it is still big-endian here. The last check guards against the instrument blindness CLAUDE.md warns about: two silent streams compare equal.
+  The ring is dumped before the task exists, so it is still big-endian here. The last check guards against the instrument blindness CLAUDE.md warns about: two silent streams compare equal. Check `--poke`'s exact syntax in `main.cpp` (Task 10 used `--poke 0x80000029=1`; confirm how several pokes are joined) and fix the one `--poke` line in `port()` if it differs.
 
   In `main()`, after `regions(s)`, add:
 
@@ -1733,7 +1742,7 @@ stems_finish:
 
 - [ ] **Step 4: Disassemble what you assembled.** The whole unit. Check five things by eye: `BYTEREV 0` is the word `02c0`; every `cmp.l` has its operands the way round the branch after it expects (`cmp.l %d1,%d0` then `blt` means `d0 < d1`); `pea K_DELAY_TRY`, `pea TASK_SLEEP_US` and `pea 4` push the numbers, in that order; `jsr (%a0)` after `movea.l FS_MKDIR_PTR,%a0` is an indirect call, not a call to `0x46c8240a`; the `.Lp_copy` loop copies the set path byte for byte (step through it once under the port with `--watch-pc` if in doubt).
 
-- [ ] **Step 5: Run the check.** `make bus REMIX=stems && python3 tools/verify/verify_stems.py`. Expected: every `full:` check `[PASS]`. If the file is missing, read `stems_status` from the mem dump first: its value names the step that failed. If the port hangs in `K_DELAY` or `K_CREATE`, the Task 4 or 5 reading is wrong; go back to it, do not guess.
+- [ ] **Step 5: Run the check.** `make bus REMIX=stems && python3 tools/verify/verify_stems.py`. Expected: every `full:` check `[PASS]`. This is also the first firmware-issued card write the port has carried: Task 10's project never wrote the card, so `--card-out` was proven only with a hand-driven register write. If `card out` reports 0 sectors here, suspect the port's card model before the unit. If the file is missing, read `stems_status` from the mem dump first: its value names the step that failed. If the port hangs in `K_DELAY` or `K_CREATE`, the Task 4 or 5 reading is wrong; go back to it, do not guess.
 
 - [ ] **Step 6: Arm while stopped, and stop from the row.** Add two runs to `verify_stems.py`: (a) the action called before play (already the case: ARMED, then PLAY moves it to RECORDING) is `full`; (b) `rowstop`: action before play, then `--at 200:<stems_action>:0` (the row stops it), then STOP at 400. Expected for (b): a file of about 200 frames, state IDLE, status 0.
 
@@ -1753,7 +1762,7 @@ git commit -m "stems: the writer task -- T1.wav on the port's card equals T1's r
 
 - [ ] **Step 2: An existing file is not overwritten.** Run `full` twice on the same card (the second run's `--card` is the first run's `--card-out`: give `port()` a `card=` parameter defaulting to the fixture's), with the clock in the same minute (check that the port's clock reads the same minute in both runs). Expected second run: status `ERR_EXISTS` (4), state IDLE, and the first run's file byte-identical to what it was.
 
-- [ ] **Step 3: The overflow guard.** The POC cannot overflow a 4 MiB ring in 15 seconds, so make the ring look nearly full instead of building a small one: poke `stems_rd` right after the transport start so that `wr - rd` is `RING_SIZE - 6400`, which the hook sees as full about 100 frames later. `--poke` writes bytes (`addr=byte;...`), so write the four bytes of `(-(0x400000 - 6400)) & 0xffffffff` at `stems_rd`, most significant first. Expected: status `ERR_OVERFLOW` (1), set by the hook; `nfr` between 90 and 100; the state goes on to IDLE (the task drains what it believes is there and closes the file); the task is still alive afterwards (a second `--at` action call arms again: state 1). The file's content is not checked here, because the poke made the task drain bytes the hook never wrote.
+- [ ] **Step 3: The overflow guard.** The POC cannot overflow a 4 MiB ring in 15 seconds, so make the ring look nearly full instead of building a small one: poke `stems_rd` so that `wr - rd` is `RING_SIZE - 6400`, which the hook sees as full about 100 frames later. `--poke` writes bytes, so pass the four bytes of `(-(0x400000 - 6400)) & 0xffffffff` at `stems_rd`, most significant first, through `port()`'s `pokes`. ⚠️ The action clears `stems_rd` when it arms. Read `main.cpp` for where `--poke` lands relative to `--call-before-play`: if the poke lands first, the action wipes it, and the poke must move after the call (arm the take with `--at 1:<stems_action>:0` instead of before play, or apply `--poke` after the calls, with a one-line port change and a commit that says so). Expected: status `ERR_OVERFLOW` (1), set by the hook; `nfr` between 90 and 100; the state goes on to IDLE (the task drains what it believes is there and closes the file); the task is still alive afterwards (a second `--at` action call arms again: state 1). The file's content is not checked here, because the poke made the task drain bytes the hook never wrote.
 
 - [ ] **Step 4: A card write error.** `full` with `--card-fail-after` set just past the load's own writes plus the header. Expected: status `ERR_WRITE` (5), state IDLE, the task alive (a second action call arms again). If Task 10 found that stock's driver hangs on a write error, this test records that fact instead and the spec's section 7 gets a line saying so.
 
