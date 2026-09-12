@@ -5,7 +5,7 @@ one insert, **replacing stock LO-FI** (id 0x1c) on both menus and in every
 saved part that chose LO-FI. Design page:
 https://claude.ai/code/artifact/42670d67-7365-4c7d-bcc7-1786ba4331ce
 
-| page 1 | DRV · FOLD · CRSH · COMP · →DEL · →VRB |
+| page 1 | DRV · FOLD · CRSH · COMP · — · — |
 |---|---|
 | page 2 | MIX · SAT (TAPE TUBE FUZZ BUS) · RING · CMOD (COMP GLUE TRNS) · WDTH · SRR (OFF /2 /4 /8) |
 
@@ -29,31 +29,23 @@ rather than a fader for the dirt.
   compressor's threshold to 1.0 and the other modes set the boost flag to 0.
 - **WDTH** is mid/side: 64 untouched, 0 mono, 127 double sides. With BUS +
   GLUE + WDTH this is the master chain on T8's FX1.
-- **→DEL / →VRB** make it a bus client on the Spectrum station's terms:
-  knob-gated registration, and it never housekeeps.
-- **SAT = BUS is also the RETURN** (3 Sep 2026, `docs/effects/BUS.md` "The
-  returns"). On a master chain CRSH and RING are knobs nobody turns, so BUS
-  repurposes them as **RVRB** and **DLY**, the two return levels — the panel
-  and the remixer print those names (`mode_views`), the crush and ring
-  stages go neutral, and after the send taps the station adds the shared
-  reverb and delay wet (stereo, four deep, two buffers back) at those
-  levels. While a level is up it stamps that bus's liveness word each
-  block, and the engine on the other end stops printing on its own host:
-  the reverb leaves T5 and enters the mix here. Levels down, any other SAT,
-  or no station, and within 3 blocks the engines print on their hosts as
-  before — bit-identically. Gate: `tools/verify_returns.py` (18 cases).
-
-⚠️ **The detector reads `x:(r7+$32)`, the KEY**, which is the station's own
-input today. The →KEY bus send on the backlog writes another track's there
-and nothing else changes — that is the whole sidechain-ducking path.
-
-## Measured (3 Sep 2026, local)
-
+- **SAT = BUS is also the RETURN** (3 Sep 2026, one return since the one-aux
+  rig of 7 Sep: `docs/effects/BUS.md` "The one aux bus"). On a master chain
+  CRSH is a knob nobody turns, so BUS repurposes it as **RET**, the return
+  level (RING is inert in BUS mode) — the panel and the remixer print that
+  name (`mode_views`), the crush and ring stages go neutral, and the
+  station adds the LAST LIVE STAGE's output (the reverb's if it runs, else
+  the delay's; stereo, four deep, two buffers back) at that level. While
+  RET is up it stamps both hosts quiet, so the wet arrives once, here, on
+  T8 — the return is pinned to track 8 and returns nothing elsewhere.
 - **833 words** (payload A, 866 on B), **405 cycles/sample**. ⚠️ The pricer's
-  worst case — seven of these on one core beside the reverb — is **331 over**
-  the 3,120 + 768 FILTER credit. Sam's layout runs one or two. Trims if it
-  must come down: drop RING (~12), a single `chsatur` call by rolling the two
-  channels (~13), the TUBE asymmetry (~10 per channel).
+  worst case since the station went FX1-only (12 Sep 2026) is FOUR of these
+  beside the delay: 3,567 on the counter (`make cycles`), 447 over the flat
+  3,120 and 321 under the FILTER-credited 3,888 — which line is real is the
+  burn sweep's to say (`tools/harness/pressure.py`). Sam's layout runs one
+  or two. Trims if it must come down: drop RING (~12), a single `chsatur`
+  call by rolling the two channels (~13), the TUBE asymmetry (~10 per
+  channel).
 - `tools/verify/verify_character.py`, **22 gates, all PASS**: defaults bit-exact;
   MIX=0 bit-exact with every stage driven; CRSH=110 collapses a ramp to 144
   wet levels against 4,500; SRR holds the wet exactly 2/4/8 samples; all four
@@ -88,4 +80,9 @@ and nothing else changes — that is the whole sidechain-ducking path.
 - Voicing: nothing has been heard yet. Every law here — the drive taper, the
   four characters' constants, the two compressor timings, the 12 ms transient
   window — is a first guess.
-- ⚠️ UNFLASHED.
+- On hardware since flash 4 (tag 79); the return (SAT=BUS on T8) confirmed
+  on flash 7 (tag 21). **FX1 only** since 12 Sep 2026: an FX2 instance runs
+  as a dry pass (`Claims(fx1_only=True)`, `verify_character.py`), the FX2
+  chooser hides the row; emulator-proven, not yet flashed. The sends went
+  with the one-aux rig: page-1 slots 4-5 are blank, and BUS mode carries ONE
+  return, RET (the CRSH knob).

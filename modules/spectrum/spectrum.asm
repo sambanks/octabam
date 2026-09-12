@@ -37,6 +37,7 @@
 ;   $23 kLP  $24 kBP  $25 kHP              $26 kA  $27 kB  $28 kR  $29 sel
 ;   $2a cHP  $2b cLP  $2c kFM              $2d bypass flag
 ;   $2e ->DEL level  $2f ->VRB level (per block copies of r6+4/5)
+;   $30 FX2-slot flag (set at init: 1 = this instance is on FX2, dry)
 ;   $31 LFO phase (PERSISTENT, masked)     $32 env (PERSISTENT, clamped)
 ;   $34/$35 SVF lp/bp L   $36/$37 SVF lp/bp R                 (PERSISTENT)
 ;   $38..$3b B poles L: hp1 hp2 lp1 lp2    $3c..$3f R         (PERSISTENT)
@@ -61,9 +62,32 @@
 
 init:
 ; ROTINIT
+; ---- FX1 ONLY (12 Sep 2026): the allocator base decides, at init --------
+; Modulation's idiom (modules/modulation/modulation.asm): X:0x213 points at
+; this instance's entry in the base table, valid HERE and nowhere else. FX1
+; slots are below 0x4000, FX2 slots at or above it. An FX2 instance runs as
+; a dry pass -- proc returns before it touches a frame or the bus -- so a
+; part that names this id on FX2 (the stock id both menus share) costs its
+; core nothing: the rig's cycle envelope is priced with the stations on FX1
+; only (tools/harness/pressure.py), and the FX2 chooser hides them.
+; sub/tst rather than cmp: the cmp-encodes-as-max family (CLAUDE.md).
+        move    x:>$213,r4
+        move    #>$ffffff,m4
+        move    x:(r4),x0
+        move    x0,a
+        move    #>$4000,x0
+        sub     x0,a                    ; base - 0x4000
+        clr     b                       ; b = 0 BEFORE the tst (the flag trap)
+        move    #>$1,x0
+        tst     a
+        tpl     x0,b                    ; base >= 0x4000: an FX2 slot
+        move    b,x:(r7+$30)          ; 1 = dry pass
         rts
 
 proc:
+        move    x:(r7+$30),a           ; an FX2 slot: dry, nothing written
+        tst     a
+        bne     fs_end
 ; ===========================================================================
 ; BUS: split-aware frame offset, verbatim from modules/send/send_client.asm
 ; ===========================================================================

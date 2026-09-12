@@ -446,22 +446,26 @@ class Claims:
     buffer_words: int | None = None
     # FX1-ONLY BY DESIGN: the module reads its allocator base at init and,
     # when the base is an FX2 slot (>= 0x4000), runs as a dry pass and
-    # WRITES NOTHING. That is what lets it sit beside a server: the FX2
-    # slots it would otherwise be handed are BusVerb's tank and
-    # BusDelay's line, and the ledger refuses every other allocator
-    # reader beside them for exactly that reason. The claim is a promise
-    # the module's render gate must prove (an FX2-slot instance renders
-    # bit-exact dry and dsp_host's guard sees no write above 0x3fff).
+    # WRITES NOTHING. Two reasons a module says so, one claim:
+    #   * an allocator reader (stock_instance_buffer): the FX2 slots it
+    #     would be handed are BusVerb's tank and BusDelay's line, and the
+    #     ledger refuses every other allocator reader beside them;
+    #   * a buffer-free station (12 Sep 2026: SPECTRUM, CHARACTER): the
+    #     rig's cycle envelope only closes with the stations on FX1 -- a
+    #     station on both slots of four tracks priced a core at 4,830
+    #     against 3,120 usable (tools/harness/pressure.py) -- so an FX2
+    #     instance costs nothing and the FX2 chooser hides the row.
+    # Either way the claim is a promise the module's render gate must
+    # prove (an FX2-slot instance renders bit-exact dry and dsp_host's
+    # guard sees no write above 0x3fff), and the pricer takes it at its
+    # word: an fx1_only module is priced on FX1 slots only.
     fx1_only: bool = False
 
     def __post_init__(self):
         if self.buffer_words is not None and not self.stock_instance_buffer:
             raise ValueError("buffer_words without stock_instance_buffer: "
                              "only an allocator reader has a sized buffer")
-        if self.fx1_only:
-            if not self.stock_instance_buffer:
-                raise ValueError("fx1_only is for allocator readers -- a "
-                                 "buffer-free module runs on both menus")
+        if self.fx1_only and self.stock_instance_buffer:
             if self.buffer_words is None or self.buffer_words > 3072:
                 raise ValueError("fx1_only needs buffer_words <= 3072: an "
                                  "FX1 slot is 3,072 words (docs/firmware/DSP.md 10)")

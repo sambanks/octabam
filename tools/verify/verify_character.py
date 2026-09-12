@@ -72,20 +72,29 @@ def params(**kw):
     return v
 
 
-def render(samples, **kw):
+def render(samples, slot="fx1", guard=False, **kw):
     """samples: MONO ints in Q23 -- dsp_host feeds one stream to both
-    channels (verify_hello's shape). Returns (L, R) lists."""
+    channels (verify_hello's shape). Returns (L, R) lists.
+
+    slot="fx1" (alloc 0, r7 1) is the station's own slot; "fx2" (alloc 1,
+    r7 2) is an FX2 instance, which the station runs as a DRY PASS since
+    12 Sep 2026 (Claims.fx1_only) -- the gate below proves it. Until then
+    every gate here rendered on alloc 1 and would now read dry."""
     src = TMP / "ch_in.raw"
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "ch_out.raw"
+    r7, alloc = ("1", "0") if slot == "fx1" else ("2", "1")
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
-           "-inst", "1", "-r7", "2", "-alloc", "1", "-inmask", "1",
+           "-inst", "1", "-r7", r7, "-alloc", alloc, "-inmask", "1",
+           *(["-guard"] if guard else []),
            "-frames", str(FRAMES), "-blocks", str(len(samples) // FRAMES),
            "-in", str(src), "-out", str(out),
            "-params", ",".join(str(x) for x in params(**kw))]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"dsp_host failed for {kw}:\n{r.stdout}\n{r.stderr}")
+    if guard:
+        render.guard_out = r.stdout + r.stderr
     d = out.read_bytes()
     w = struct.unpack(f"<{len(d)//4}i", d)
     return list(w[0::2])[:len(samples)], list(w[1::2])[:len(samples)]
@@ -224,6 +233,21 @@ for name in K:
     for v in (0, 127 if MOD.params[K[name]].count in (None, 128) else MOD.params[K[name]].count - 1):
         render(tone(438, n=600), **{name: v})
 check("every knob at both extremes renders", True)
+
+# ---- THE FX1-ONLY PROMISE (12 Sep 2026): an FX2 instance is dry -------------
+# Claims.fx1_only says an FX2-slot instance touches nothing; the rig's cycle
+# envelope (tools/harness/pressure.py) and the FX2 chooser both take it at
+# its word, so it is proven here at every extreme, and the guard sees no
+# write outside the frame.
+L, R = render(ramp, slot="fx2", DRV=127, FOLD=127, CRSH=100, COMP=127, MIX=127, SAT=2, RING=100, WDTH=127, SRR=2)
+check("FX2 instance is a bit-exact DRY PASS at every extreme (fx1_only)",
+      L == ramp and R == ramp,
+      "" if L == ramp else f"first diff at {next(i for i,(a,b) in enumerate(zip(L,ramp)) if a!=b)}")
+render(ramp, slot="fx2", guard=True, DRV=127, FOLD=127, CRSH=100, COMP=127, MIX=127, SAT=2, RING=100, WDTH=127, SRR=2)
+g = getattr(render, "guard_out", "")
+check("FX2 instance trips no write guard",
+      "guard clean" in g,
+      next((ln.strip() for ln in reversed(g.splitlines()) if "guard" in ln), ""))
 
 print(f"\n{fails} gate(s) failed" if fails else "\nOK")
 sys.exit(1 if fails else 0)

@@ -735,6 +735,19 @@ def main():
             die(f"--pick {a.pick!r}: not a layout letter "
                 f"({''.join(sorted(SERVER_ID))}) or a module key/name")
         a.pick = _pm.harness.layout_char
+    if a.pick is not None:
+        # Every layout letter here is an FX2 instance (alloc 1 + 2k). An
+        # FX1-ONLY module renders as a dry pass there by its own design
+        # (Claims.fx1_only, 12 Sep 2026: the stations decide from the
+        # allocator base at init), so a --pick of one would measure silence
+        # and call it the effect. Render it on FX1 with rig_render instead.
+        _fm = next((m for m in registry.modules().values()
+                    if m.harness is not None and m.harness.layout_char == a.pick
+                    and m.claims is not None and m.claims.fx1_only), None)
+        if _fm is not None:
+            die(f"--pick {a.pick}: {_fm.key} is FX1-only (an FX2 instance runs dry). Render it on FX1:\n"
+                f"  python3 tools/harness/rig_render.py --tracks T1={_fm.key}+SEND --stem T1=<wav> "
+                f"--set T1:FX1:<KNOB>=<v> --out out/rig")
 
     if a.build:
         r = subprocess.run([sys.executable, "tools/build/build_bus.py"], cwd=ROOT,

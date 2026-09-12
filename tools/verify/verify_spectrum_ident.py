@@ -57,7 +57,7 @@ def render(samples, **kw):
     src.write_bytes(b"".join(struct.pack("<i", m) for m in samples))
     out = TMP / "fs_out.raw"
     cmd = [HOST, "-mem", MEM, "-init", f"{init:x}", "-proc", f"{proc:x}",
-           "-inst", "1", "-r7", "2", "-alloc", "1", "-inmask", "1",
+           "-inst", "1", "-r7", "1", "-alloc", "0", "-inmask", "1",   # the FX1 slot (12 Sep 2026: alloc 1 is an FX2 slot and renders dry)
            "-frames", str(FRAMES), "-blocks", str(len(samples) // FRAMES),
            "-in", str(src), "-out", str(out),
            "-params", ",".join(str(x) for x in params(**kw))]
