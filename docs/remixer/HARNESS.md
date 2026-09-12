@@ -359,6 +359,38 @@ turned off in the COPY of the project the port loads, so TX0 is the mix
 with a delay in it — a tone cannot separate a gain from the phase of a
 repeat.
 
+## pressure.py — every layout a user can dial, priced and rendered
+
+`python3 tools/harness/pressure.py price --remix bamsep26` enumerates every
+per-core layout the remix lets a user select — four tracks × FX1 ∈ {none, the
+FX1 rows of ours} × FX2 ∈ {SEND, this core's server, ours on the FX2
+chooser, stock rows at 0} with at most one server per core — and sums the
+static per-sample cost of each pick at its worst mode loop
+(`tools/build/cycle_count.py`). It scores against two lines: **3,120**
+(USABLE, `CHIP.md` §2) and **3,888** (USABLE + the FILTER credit: the 3,120
+was measured with four stock FILTERs running inside stock's share, and a
+rig that replaces every onboard effect gets that 4 × 192 back). Both are
+shown because the credit is arithmetic and tag 91 (4 Sep 2026) hung the
+sequencer with three stations beside the reverb at a static 3,106 — under
+both lines — which points at the counter's known error (the reverb ~270
+low, the delay ~260 high) rather than at the credit; the burn sweep is the
+one instrument that settles both. `out/pressure/<remix>_layouts.tsv` has
+every layout with its verdict.
+
+`pressure.py render --top N --sample M` takes the dearest N layouts per
+core and M random others and runs each through `rig_render` on the real
+image with every mode and knob at its dearest setting, all stems live, under
+`dsp_host -guard -dirty` (a write outside the instance's window; garbage in
+every buffer) and the meter, with the other core carrying plain SENDs so
+the bus has both ends. A **red** is a HANG, a CLOBBER of a loaded module,
+or a stray write from an insert; a server's strays (the bus scratch, the
+reverb's relocated buffers) are expected and listed; a clipped `mix.wav` is
+the fixture (every knob at its dearest, summed) and is noted, not failed.
+A local green says nothing about the cliff — the emulator renders a layout
+the chip cannot afford — so the render pass proves **memory**, and the
+meter's instructions/sample is the relative load for the burn sweep to
+sample.
+
 ## What the harness cannot see
 
 Every item here has cost a real session at least once. Local-clean does not

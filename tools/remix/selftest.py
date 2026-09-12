@@ -132,8 +132,39 @@ def _submodule_preflight() -> int:
     return 1
 
 
+HARNESS = {
+    "dsp_asm": ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_asm",
+    "dsp_host": ROOT / "vendor/dsp56300/build/source/dsp_host/dsp_host",
+}
+
+
+def _harness_preflight() -> int:
+    """Refuse early, with the fix, if the DSP assembler or emulator is not built.
+
+    `make setup` builds both, but its step 4 used to (a) swallow a failed
+    cmake build behind an echo and (b) decide "already built" from the
+    DISASSEMBLER alone, so a machine whose first setup got that far and no
+    further passed every later `make setup` and then died in verify_twocore
+    as a FileNotFoundError traceback on dsp_host -- the second wall Bryan T
+    hit on a fresh clone, 12 Sep 2026. And a missing dsp_host is not only a
+    crash later: the FLANGER passthrough probe below silently SKIPS without
+    it, which is a gate reporting nothing rather than green.
+    """
+    missing = sorted(k for k, p in HARNESS.items() if not p.exists())
+    if not missing:
+        return 0
+    print(f"  [FAIL] DSP harness not built: {', '.join(missing)} "
+          f"(expected under vendor/dsp56300/build/source/dsp_host/)")
+    print("         `make check` renders every effect under the emulator, so "
+          "these are needed even when your remix touches no DSP code.")
+    print("         Fix:  make setup      (needs cmake: brew install cmake)")
+    print("         If it says 'already built', delete "
+          "vendor/dsp56300/build and run it again.")
+    return 1
+
+
 def main():
-    bad = _submodule_preflight()
+    bad = _submodule_preflight() or _harness_preflight()
     if bad:
         return bad                      # nothing below can run without them
     for label, mods, expect in CASES:

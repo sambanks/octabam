@@ -104,9 +104,16 @@ echo "== 4) dsp56300 -- assembler, disassembler and emulator for the audio DSP =
 # Ghidra nor radare2 targets it; we use the Access Virus emulator's toolchain.
 # See docs/firmware/DSP.md and tools/build/dsp_modmap.py.
 DIS=vendor/dsp56300/build/source/disassemble/dsp56kDisassemble
-if [ ! -x "$DIS" ]; then
+ASM=vendor/dsp56300/build/source/dsp_host/dsp_asm
+HOST=vendor/dsp56300/build/source/dsp_host/dsp_host
+# All three, not just the disassembler: a build that got the disassembler
+# and then failed on dsp_host used to read as "already built" on every
+# re-run, and the failure only surfaced later as a traceback in make check
+# (12 Sep 2026, a contributor's fresh clone).
+if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
   if ! command -v cmake >/dev/null 2>&1; then
-    echo "   [!] cmake not found — brew install cmake"
+    echo "   [!] cmake not found — brew install cmake — then re-run make setup (make check needs dsp_asm and dsp_host)"
+    exit 1
   else
     [ -d vendor/dsp56300 ] || git clone --depth 1 \
       https://github.com/dsp56300/dsp56300.git vendor/dsp56300
@@ -128,10 +135,11 @@ if [ ! -x "$DIS" ]; then
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
       && cmake --build vendor/dsp56300/build \
            --target dsp56kDisassemble dsp_asm dsp_host -j8 \
-      || echo "   [!] build failed — check vendor/dsp56300"
+      || { echo "   [!] dsp56300 build FAILED -- make check cannot run without dsp_asm and dsp_host."; \
+           echo "       Fix what cmake printed above, then: rm -rf vendor/dsp56300/build; make setup"; exit 1; }
   fi
 else
-  echo "   already built: $DIS"
+  echo "   already built: $DIS, $ASM, $HOST"
   stage_dsp_host
 fi
 
