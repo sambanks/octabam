@@ -4711,3 +4711,74 @@ alternate bars with the length demonstrably alternating would mean the join is
 not where §10.55's model puts it — the next thing to read would be the voice's
 `+0x64` across two consecutive binds under this image, to see whether the
 wrap actually moved by the sample the recorder added.
+
+### 10.58 ✅ FIXED ON HARDWARE: `recorder-spacing` removes the last residual — 128 BPM now reads IDENTICALLY to a whole-number tempo, and 132.0 confirms the arithmetic generalises (12 Sep 2026 — measured on the unit)
+
+Flashed `seekE` as **OCTABAM83** (`out/OCTATRACK_OCTABAM83.bin`, sha256
+`a3376684…`) by `RECIPE_83.md`. Sam's self-loop, unchanged from §10.51–10.52:
+T1 = FLEX on R1, REC + PLAY trig every bar, INAB, RLEN 16, internal clock,
+FX off, `tools/tone` 1 kHz at amp 0.05, MicroBook ch 3/4, 90 s takes.
+
+**The result, `perbar.py`'s per-bar maximum of the one-period residual:**
+
+| | 82 (`seekB_128_long`) | **83 (`spacing_128`)** |
+|---|---|---|
+| even bars, median | 1.10× the floor | 1.10× |
+| **odd bars, median** | **1.70×** | **1.10×** |
+| worst bar in the take | 11.53× | **1.11×** |
+| bars with any 1 ms bin above 1.45× | **16 of 23 odd, 0 of 23 even** | **0 of 46** |
+| bars above 1.25× | 16 | **0** |
+| single events, `judge.py` | 1 | **0 in 87 s** |
+| bar fold | 1.5× | **1.0×** (80 was 225×) |
+
+**The parity split is gone, not reduced below one threshold** — zero bars
+survive even at 1.25×, where 82 had sixteen. Sam by ear: "sounds clean".
+
+**Golden control, same image, same rig, 65.6 BPM** (`spacing_65.6`, 60 s, the
+bar grid passed as 3.6571 s — the 128 default would have folded the wrong
+window): every bar 1.09–1.11×, no split, **residual floor 2.67 % of rms,
+identical to the 128 take**. So the non-golden tempo is now
+indistinguishable from the golden one, which is the strongest form the claim
+can take. The cave is a proven no-op there (§10.57 gate 3) and it did not
+regress.
+
+**Generalisation, same sit-down, 132.0 BPM** (`spacing_132`, 90 s, bar
+1.8182 s). 132's fraction is **9/11**, not 128's easy 1/2, so it drives the
+Bresenham path down a different route — a real test rather than a repeat.
+Every bar 1.09–1.11× **except bar 22 at 2.30×**: one isolated event in 47
+bars, at no repeating phase. That is not the length seam (132's residue would
+light ~5 of 26 bars on a repeating grid); it is the same class as 82's
+isolated bar-23 blip, which §10.51 called a dropout. 🟡 Unexplained, not
+bar-periodic, on the record.
+
+**So Bryan's click is three faults, all three now measured and fixed:**
+
+| | fault | fix | measured |
+|---|---|---|---|
+| 1 | the re-bind was a NEW NOTE to the DSP: voice restart, chirp + hash at 140 % of the tone over 300 samples, −3.6-sample jump per bar | `FLEX SEEK BIND` | §10.50 (81) |
+| 2 | the read pointer was reset onto the alternating grid: ±1.5-sample seam per bar | `FLEX SEEK BIND CTR` | §10.51 (82) |
+| 3 | the recording length was CONSTANT against an alternating arm spacing: one input sample skipped at the wrap, alternate bars, −26 dB | `RECORDER SPACING` | this section (83) |
+
+Three different mechanisms — a message path, a position store, a length —
+each removed on its own measured symptom. Nothing about the length cave could
+have fixed 1 or 2 (it cannot stop a voice re-priming, and the arm times still
+alternate, so a reset-based player would still splice on alternating
+samples), which is why all three were needed to get here.
+
+**Open, and it decides what the community is asked to flash: is fix 3 enough
+ALONE?** 83 is 82 + the cave, so the three have only ever been tested
+stacked. `remixes/recfix` is the cave by itself — **125 bytes changed in the
+whole OS**, no DSP code, no menu change — and it gates identically to the
+stacked build (36,826 / 36,826 substitutes, the same
+82,687/82,688/82,687/82,688 alternation, `make check REMIX=recfix` green,
+303 PASS). One cave is a far easier ask than three, and Bryan's own unit is
+the instrument for that question: `docs/firmware/RECORDER_CLICK.md` is the
+write-up and the reproduction steps for him.
+
+**Also still open (§10.51's drift question), now with a prediction.** With
+the counter hold the read head free-ran at a fixed 82,687 while the writer's
+period averaged 82,687.5, so it crept ~0.5 samples per bar toward the write
+head; a 1 kHz tone at 128 cannot see a whole-bar jump (1875.0 periods per
+bar). On 83 the reader's wrap follows the alternating length, so **that drift
+should now be zero** — testable with the burst-train source over minutes, and
+worth doing before this is called finished for real material.
