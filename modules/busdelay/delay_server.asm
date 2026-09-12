@@ -222,9 +222,15 @@
 ;                       wrap; cleared by the warm-up)
 ;   r7+$3e, $48..$53    free since v4 (the v2 grain table's other fields;
 ;                       $3f is GRAIN's again)
-;   r7+$44/$45          MIX / 1-MIX (per block; one-aux rig, 7 Sep 2026)
-;   r7+$46              scratch: x_in*(1-MIX), the passthrough term (per sample)
-;   r7+$47              scratch: stage output L, for the chain's mono (per sample)
+;   r7+$40..$4b         GRAIN v5 line-L records: s, w, acc x 4 grains ($4c..$57 line R).
+;                       ⚠️ The one-aux rig (7 Sep 2026) parked MIX / 1-MIX and two
+;                       per-sample scratch words in $44..$47 on the strength of the
+;                       v4 map above -- grain 1's w/acc and grain 2's s/w -- and GRAIN
+;                       crackled on every size and setting until 12 Sep 2026 (found by
+;                       a sine: 288 discontinuities a second; bisected to that commit).
+;   r7+$85/$87          MIX / 1-MIX (per block; the -VRB slots the one-aux rig freed)
+;   r7+$6e              scratch: x_in*(1-MIX), the passthrough term (per sample; PITCH's)
+;   r7+$6f              scratch: stage output L, for the chain's mono (per sample; PITCH's)
 ;   r7+$58/$59          this sample's scatter / window-multiplier candidates
 ;   r7+$19..$1f         GRAIN v5 per-sample parks: window, frac, t0, read
 ;                       phase, s, wet L, wet R (the PITCH jitter slots until v5)
@@ -295,8 +301,6 @@
 ;                       frame offset; per-call, advances per sample -- same
 ;                       shape as $63/$64). One-aux rig, 7 Sep 2026: was the
 ;                       REVERB ACC write address of the -VRB send.
-;   r7+$85              FREE (was -VRB; the chain is hardwired at unity)
-;   r7+$87              FREE (was the -VRB mono stash)
 ;   r7+$86              this block's RESOLVED write offset (0/16/32/48).
 ;                       Was FREE after v3 stage 1; taken 17 Aug 2026 by the
 ;                       rotation-tracking fix (docs/effects/XBUS.md step 3). Every bus
@@ -1150,10 +1154,10 @@ dwarmdone:
 ; the multiplier (val<<16 == val/128 Q1.23, the PING trick); 1-MIX is
 ; computed here once. (-VRB is gone: the chain is hardwired and unscaled.)
         move    x:(r6+$5),x0            ; MIX, slot 5
-        move    x0,x:(r7+$44)           ; MIX
+        move    x0,x:(r7+$85)           ; MIX
         move    #>$7fffff,a
         sub     x0,a
-        move    a,x:(r7+$45)            ; 1 - MIX
+        move    a,x:(r7+$87)            ; 1 - MIX
 
 ; ---- IN: this track's OWN send level into the delay (v3 stage 1) ---------
 ; The exact counterpart of every other track's ->DELAY knob (send_client p0):
@@ -2689,9 +2693,9 @@ pdone:
 ; (The IN-keyed wet makeup and the -VRB send went with their knobs.) Every
 ; mpy is an audited-signed order: y0,x0 or x0,y1.
         move    x:(r7+$7d),y0           ; x_in, this sample's chain input
-        move    x:(r7+$45),x0           ; 1 - MIX
+        move    x:(r7+$87),x0           ; 1 - MIX
         mpy     y0,x0,b                 ; in * (1 - MIX)
-        move    b,x:(r7+$46)            ; the passthrough term, both channels
+        move    b,x:(r7+$6e)            ; the passthrough term, both channels
         move    x:(r7+$7b),x0           ; wet L = fL
         move    x:(r7+$83),y1           ; d
         mpy     x0,y1,a                 ; d*wet
@@ -2701,12 +2705,12 @@ pdone:
         asr     #$1,b,b                 ; wet/2 -> x1.5 both channels (R58)
         add     b,a
         move    a,x0                    ; wet L, final
-        move    x:(r7+$44),y1           ; MIX
+        move    x:(r7+$85),y1           ; MIX
         mpy     x0,y1,a                 ; wet * MIX
         move    a,x0                    ; x0 = wet*MIX: what the host prints
-        move    x:(r7+$46),b
+        move    x:(r7+$6e),b
         add     x0,b                    ; b = stage output L
-        move    b,x:(r7+$47)            ; parked for the chain's mono average
+        move    b,x:(r7+$6f)            ; parked for the chain's mono average
         move    x:(r7+$64),a
         move    a,r5
         move    b,y:(r5)                ; -> shared DELAY OUTPUT, L
@@ -2731,10 +2735,10 @@ pdone:
         asr     #$1,b,b
         add     b,a                     ; + wet*PING/4 -> R shelf 0.75*PING
         move    a,x0                    ; wet R, final
-        move    x:(r7+$44),y1           ; MIX
+        move    x:(r7+$85),y1           ; MIX
         mpy     x0,y1,a                 ; wet * MIX
         move    a,x0                    ; x0 = wet*MIX
-        move    x:(r7+$46),b
+        move    x:(r7+$6e),b
         add     x0,b                    ; b = stage output R
         move    x:(r7+$64),a
         add     #>$1,a
@@ -2747,7 +2751,7 @@ pdone:
         add     x0,a
         move    a,x:(r0+n0)             ; R in place -- dry + wet*MIX
 ; ---- the CHAIN buffer: mono average of the stage output, at unity --------
-        move    x:(r7+$47),a            ; out L
+        move    x:(r7+$6f),a            ; out L
         add     b,a                     ; + out R (b still holds it)
         asr     #$1,a,a                 ; mono
         move    x:(r7+$84),b            ; this call's CHAIN write address

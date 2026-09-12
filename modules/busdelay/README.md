@@ -127,8 +127,36 @@ on a lower tone would settle it. The pitch ceiling behaves as derived:
 ⬜ **Ear pass pending** (Sam): `out/ab/grain_v4/{glow_intro,guitar_dry}_v3.wav`
 vs `_v5_r64_lm.wav` (unison) and `_v5_r96_lm.wav` (+12).
 
+## Ear pass (12 Sep 2026, Sam on the level-matched kits in `out/ab/dly_*`)
+
+- **GRAIN was broken from 7 Sep to 12 Sep 2026 and it shipped on flash 7 that
+  way.** The one-aux commit (`2e4a7dd`) parked MIX / 1−MIX and two per-sample
+  scratch words in `r7+$44..$47` on the strength of a stale r7 map — v5's
+  line-L grain records (grain 1's w/acc, grain 2's s/w). Every block rewrote a
+  grain's window multiplier and read advance: "crashing, glitching, metallic"
+  by ear; 288 discontinuities a second on a 440 Hz sine; DC in came back
+  rippling 0.00–0.31 where Nimbus's DC gate gives 0.00000. Bisected on the
+  hatch (R61, v4, v5.1, 4 Sep all clean; 7 Sep broken); the four words moved
+  to `$85/$87` (freed by that same commit) and `$6e/$6f` (retired PITCH's).
+  Now: DC flat to 5 decimals, the sine continuous, DENS 32 → 127 on the loop
+  "sounds pretty good". The 21 bus layouts stay bit-identical (they run CLEAN).
+- **PING defaults 0 and MDEP (wow) 0** in every mode view: an aux delay on a
+  mixer sits still by default; the alternation (top quarter of PING) and the
+  wow are the knobs'. Measured: PING 0 mono (L/R correlation 1.000), 32/64
+  near-mono (0.998/0.965), 96/127 the bounce (0.73/0.01); 127 leans +4.4 dB
+  left, which is ping-pong's own arithmetic (L gets repeats 1, 3, 5: L/R =
+  1/feedback), not a defect. The wow at 48 read as motion on a mono loop.
+- **REVERSE at 93 ms is a flutter**, on drums and on a pad. The ceiling is the
+  line (2S of history in one 16,384-word line). The remedy on the table: a
+  MONO reverse over both lines as one 32K line — segments to 186 ms (371 at a
+  push), PING lost in that mode. Not done.
+- `rig_render` in this checkout predates #208's ModeView rule, so the kits set
+  PING/MDEP explicitly; on hardware the views carry them.
+
 ## Open
 
-- GRAIN v5's ear pass (the level offset closed 12 Sep 2026: measured 5.1 dB under CLEAN at the return, +6 dB makeup on the window sum, now +0.9 dB over CLEAN in RMS with hotter peaks).
+- REVERSE-long (above).
+- The GRAIN level item (+6 dB makeup, 12 Sep) is to be re-measured now that
+  the reader is whole: the 5.1 dB deficit was measured on the broken reader.
 - Pitch accuracy below −1.5 octaves: finder or engine, unverified.
 - The delay return is ~4 dB quieter than the reverb at equal send.
