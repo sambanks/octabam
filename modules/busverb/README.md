@@ -20,8 +20,18 @@ because the bisect narrowed it; see `PLAN.md`.
 
 ## Open
 
-- Per-mode gain structure: the modes sit 7–9 dB apart at the output, and BIG
-  crosses the clip knee at an input PLATE never reaches. Interim practice is
-  to back BIG off by hand.
+- ~~Per-mode gain structure: the modes sit 7–9 dB apart~~ — measured 12 Sep
+  2026 on the loop at the unit's level (AUX 100): ROOM −16.9, PLATE −19.1,
+  BIG −19.0 dBFS wet at defaults, within 2 dB; the note predated the re-laws.
+  The default MODE is PLATE now (was BIG) and DIFF 80 (was 64; R59's
+  bracket).
+- **The decay dial has a floor (12 Sep 2026, measured):** ROOM's whole TIME
+  dial decays 1.8 s (TIME 0) → 4.3 s (127), PLATE the same, BIG 4 → 12 s —
+  no room under ~1.5 s anywhere. The floor is NOT the TIME→gain law
+  (dropping the base to 0.42 per pass changed nothing at TIME 0) and NOT the
+  per-line gains (scaling all eight by 0.35 changed nothing), nor DIFF, MOD
+  or SIZE. Something outside the tank gains holds a ~40 dB/s memory; the
+  shimmer buffer at SHMR 0 is the next suspect. R59's "TIME-independent
+  early-tail floor" is this. Open.
 - A SIZE turn once killed the reverb on R44 and has not been reproduced. If
   it recurs, the one diagnostic that matters is whether tracks 5–8 *all* died.
