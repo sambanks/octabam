@@ -1077,6 +1077,7 @@ EMU = pathlib.Path("out/emu/ot_emu")
 FIXTURE = pathlib.Path("out/stems_fixture.json")   # written by tools/verify/stems_fixture.py
 KEY_STOP = 0x4000a1e0
 STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
+PRE_ROLL = 40              # frames before the transport start; the dump includes them
 
 
 def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=()):
@@ -1103,7 +1104,7 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     args = [str(EMU), "--image", str(IMAGE), "--card", fx["card"], "--set", fx["set"],
             "--project", fx["project"], "--sequencer", "--internal-clock",
             "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
-            "--pre-roll", "40", "--poke-trig", "2", "--block-dump", str(dump),
+            "--pre-roll", str(PRE_ROLL), "--poke-trig", "2", "--block-dump", str(dump),
             "--call-before-play", f"0x{s['stems_action']:x}:0",
             "--card-out", str(card), "--mem-dump", dumps, *extra]
     if at:
@@ -1126,13 +1127,16 @@ def tap(s):
     got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "big", signed=True)
             for k in range(32)] for f in range(nfr)]
     want = t1_frames(dump)
-    lag = next((L for L in range(0, 8) if want[L:L + nfr] == got), None)
+    lag = next((L for L in range(len(want) - nfr + 1) if want[L:L + nfr] == got), None)
     check("every ring frame equals T1's read-back at one fixed lag", lag is not None,
-          f"lag {lag}" if lag is not None else "no lag 0..7 matches")
+          f"lag {lag} frames (pre-roll {PRE_ROLL})" if lag is not None
+          else f"no lag 0..{len(want) - nfr} matches")
     check("the signal is not silence", any(any(x) for x in got), "non-zero samples present")
 ```
 
-  The ring is dumped before the task exists, so it is still big-endian here. The last check guards against the instrument blindness CLAUDE.md warns about: two silent streams compare equal. Check `--poke`'s exact syntax in `main.cpp` (Task 10 used `--poke 0x80000029=1`; confirm how several pokes are joined) and fix the one `--poke` line in `port()` if it differs.
+  The ring is dumped before the task exists, so it is still big-endian here. The last check guards against the instrument blindness CLAUDE.md warns about: two silent streams compare equal.
+
+  ⚠️ **The lag is not 0 to 7.** `--block-dump` is armed before the load (`main.cpp` line 353), and `--pre-roll 40` runs 40 frames of the frame engine before the action is called and the transport starts (lines 598 to 614), so the dump's first frame comes at least 40 frames before the ring's first frame, and more if the frame engine also ran during the load. The search therefore runs over the whole dump, the match must be exact over all `nfr` frames, and the lag is printed. What the check requires is ONE fixed lag with an exact match; do not predict its value. Write the measured value into STEM_REC.md section 10, and treat a lag that changes between two runs of the same command as a finding. Define `PRE_ROLL = 40` beside `KEY_STOP` and use it in `port()`'s `--pre-roll` argument. Check `--poke`'s exact syntax in `main.cpp` (Task 10 used `--poke 0x80000029=1`; confirm how several pokes are joined) and fix the one `--poke` line in `port()` if it differs.
 
   In `main()`, after `regions(s)`, add:
 
@@ -1301,9 +1305,9 @@ def wav_check(card_path, nfr, dump, tag):
     check(f"{tag}: file length = 44 + data", len(data) == 44 + dlen, f"{len(data)}")
     got = [[v for v in struct.unpack_from("<32h", data, 44 + 64 * f)] for f in range(nfr)]
     want = t1_frames(dump)
-    lag = next((L for L in range(0, 8) if want[L:L + nfr] == got), None)
+    lag = next((L for L in range(len(want) - nfr + 1) if want[L:L + nfr] == got), None)
     check(f"{tag}: every sample equals T1's read-back at one fixed lag", lag is not None,
-          f"lag {lag}")
+          f"lag {lag} frames (pre-roll {PRE_ROLL})")
 ```
 
   The take is always a folder (Task 7 found the routine). `stems_fixture.py` must add a key `staged` to `out/stems_fixture.json`: the names it put in the set's AUDIO folder itself (the kick's folder), so the check counts only new names.
@@ -1764,7 +1768,7 @@ git commit -m "stems: the writer task -- T1.wav on the port's card equals T1's r
 
 - [ ] **Step 2: An existing file is not overwritten.** Run `full` twice on the same card (the second run's `--card` is the first run's `--card-out`: give `port()` a `card=` parameter defaulting to the fixture's), with the clock in the same minute (check that the port's clock reads the same minute in both runs). Expected second run: status `ERR_EXISTS` (4), state IDLE, and the first run's file byte-identical to what it was.
 
-- [ ] **Step 3: The overflow guard.** The POC cannot overflow a 4 MiB ring in 15 seconds, so make the ring look nearly full instead of building a small one: poke `stems_rd` so that `wr - rd` is `RING_SIZE - 6400`, which the hook sees as full about 100 frames later. `--poke` writes bytes, so pass the four bytes of `(-(0x400000 - 6400)) & 0xffffffff` at `stems_rd`, most significant first, through `port()`'s `pokes`. ⚠️ The action clears `stems_rd` when it arms. Read `main.cpp` for where `--poke` lands relative to `--call-before-play`: if the poke lands first, the action wipes it, and the poke must move after the call (arm the take with `--at 1:<stems_action>:0` instead of before play, or apply `--poke` after the calls, with a one-line port change and a commit that says so). Expected: status `ERR_OVERFLOW` (1), set by the hook; `nfr` between 90 and 100; the state goes on to IDLE (the task drains what it believes is there and closes the file); the task is still alive afterwards (a second `--at` action call arms again: state 1). The file's content is not checked here, because the poke made the task drain bytes the hook never wrote.
+- [ ] **Step 3: The overflow guard.** The POC cannot overflow a 4 MiB ring in 15 seconds, so make the ring look nearly full instead of building a small one: poke `stems_rd` so that `wr - rd` is `RING_SIZE - 6400`, which the hook sees as full about 100 frames later. `--poke` writes bytes, so pass the four bytes of `(-(0x400000 - 6400)) & 0xffffffff` at `stems_rd`, most significant first, through `port()`'s `pokes`. The action clears `stems_rd` when it arms, but the order is safe: `main.cpp` (lines 598 to 639) runs the pre-roll, then `--call-before-play`, then the transport start, then `--poke`, and only then the first recorded frame. So the poke lands after the action has armed and before the hook's first copy. Expected: status `ERR_OVERFLOW` (1), set by the hook; `nfr` between 90 and 100; the state goes on to IDLE (the task drains what it believes is there and closes the file); the task is still alive afterwards (a second `--at` action call arms again: state 1). The file's content is not checked here, because the poke made the task drain bytes the hook never wrote.
 
 - [ ] **Step 4: A card write error.** `full` with `--card-fail-after` set just past the load's own writes plus the header. Expected: status `ERR_WRITE` (5), state IDLE, the task alive (a second action call arms again). If Task 10 found that stock's driver hangs on a write error, this test records that fact instead and the spec's section 7 gets a line saying so.
 
