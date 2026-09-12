@@ -290,14 +290,16 @@ ch_srrz:
 ; proportional makeup, and attack / release as the GAIN's slew per sample
 ; (attack while it falls, release while it rises). Coefficients are
 ; 1 - exp(-1 / (t * fs)) in Q23. thr in FS at the chain; invR = 1/R.
-        clr     a                       ; COMP: ~5:1 from -26 dBFS, 1 ms / 100 ms
+        clr     a                       ; COMP: 10:1 from -30 dBFS, 8 ms / 100 ms
         move    a,x:(r7+$2a)            ; trns flag = 0
-        move    #>$066666,x0            ; thr 0.05
+        move    #>$03d70a,x0            ; thr 0.03
         move    x0,x:(r7+$27)
-        move    #>$100000,x0            ; invR 0.125: the amplitude curve reads
-        move    x0,x:(r7+$28)           ; ~5:1 in dB at +8 dB over
-        move    #>$02deba,x0            ; attack 1 ms
-        move    x0,x:(r7+$2d)
+        move    #>$0ccccd,x0            ; invR 0.1
+        move    x0,x:(r7+$28)
+        move    #>$005cc0,x0            ; attack 8 ms: the front of a hit passes,
+        move    x0,x:(r7+$2d)           ; the body is clamped (1 ms / 5:1 /
+                                        ; -26 dBFS "lost energy, washed out",
+                                        ; ear 12 Sep 2026)
         move    #>$00076e,x0            ; release 100 ms
         move    x0,x:(r7+$2e)
         bra     ch_cdone
