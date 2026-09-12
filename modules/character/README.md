@@ -55,7 +55,9 @@ fader there, and are re-ranged.
 
 | stage | law now | readout (−6 dBFS sine unless said) |
 |---|---|---|
-| DRV | 1 → 16× into the curve (was 1 → 4×), post × 1/√(1+15·DRV/128) from a 17-word P table (`DspSection.ptable`) | TAPE THD 1 / 3.5 / 14 / 25 / 31 % at 16/32/64/96/127, gain +4..+6 dB across the dial (a 0 dBFS source: −1..+3 dB) |
+| DRV | 1 → 16× into the curve (was 1 → 4×), post × 1/√(1+15·DRV/128) from the module's P table (`DspSection.ptable`, 17 words) | TAPE THD 1 / 3 / 8 / 13 / 17 % at 16/32/64/96/127, gain +4..+7 dB across the dial |
+| the curve | **tanh(driven)** from a 33-pair P table (value, slope; interpolated per sample, `(r1)+n1`) — never flat. Was `w − w³/3` with a hard clip at |w| = 1: at DRV 96+ the top of a drum loop sat on that flat and read as "digital, clippy" (ear, 12 Sep 2026; the cubic's THD was 14 / 25 / 31 % at 64/96/127) | H2 −119 dB (odd symmetry exact) |
+| post low-pass | one pole after the curve, `kl = 0.6·DRV/128` in **TAPE / TUBE** only (0 = bit-exact elsewhere): tape darkens as it drives | corner 16.7 k / 8.4 k / 5.4 k / 3.3 kHz at DRV 32/64/96/127 |
 | SAT | TAPE the curve; TUBE neg 0.75 (H2 ≈ −25 dB, ~6 % even from DRV 16); FUZZ hard clip ±0.6 **on the curve's output, before post** (24 → 42 %, level held at 0 dB); BUS pre 0.5 / post 2 (0.8 → 26 %) | |
 | DC blocker | `y = x − k·x1 + R·y1`, R 0.999 (~7 Hz), **on in TUBE and FUZZ only** (k = R = 0 elsewhere: bit-exact) | TUBE's DC leak −30 dBFS → −68 |
 | FOLD | 1 → 32× into the fold (was 1 → 8×) | 4 % at 16, 16 % at 32, full folding (THD > 100 %) from 64 |
@@ -100,9 +102,10 @@ drive, the four characters at DRV 80, FOLD, COMP, GLUE, TRNS, CRSH+SRR, RING.
 
 ## Open
 
-- Voicing: nothing has been heard yet. Every law here — the drive taper, the
-  four characters' constants, the two compressor timings, the 12 ms transient
-  window — is a first guess.
+- Voicing (ear pass, 12 Sep 2026, kits in `out/ab/char_*`): TAPE drive —
+  scaling even, but the cubic's top was "digital, clippy" → the tanh curve
+  and the drive-keyed low-pass (heard: better). Still to hear: the four
+  characters, FOLD, COMP, GLUE, TRNS, CRSH+SRR, RING.
 - On hardware since flash 4 (tag 79); the return (SAT=BUS on T8) confirmed
   on flash 7 (tag 21). **FX1 only** since 12 Sep 2026: an FX2 instance runs
   as a dry pass (`Claims(fx1_only=True)`, `verify_character.py`), the FX2

@@ -50,6 +50,8 @@
 ;   $40 FX2-slot flag (set at init: 1 = this instance is on FX2, dry; per block)
 ;   $41/$42 DC block x1 L/R, $43/$44 y1 L/R (PERSISTENT, zeroed at init; long-form slots)
 ;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE / FUZZ only (per block)
+;   $49 post low-pass kl  $4a/$4b its state L/R (PERSISTENT)
+;   $4c low-pass mode flag (1.0 in TAPE / TUBE, 0 in FUZZ / BUS; per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
@@ -415,6 +417,8 @@ ch_gunity:
         clr     a
         move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0): a
         move    a,x:(r7+$47)            ; symmetric curve leaves no DC
+        move    #>$7fffff,x0            ; the post low-pass ON (TAPE, the
+        move    x0,x:(r7+$4c)           ; fall-through; TUBE keeps it)
         clr     a
         move    a,x:(r7+$3e)            ; return levels: 0 outside BUS mode
         move    a,x:(r7+$3f)
@@ -450,12 +454,16 @@ ch_sfuzz:
         move    x0,x:(r7+$46)           ; fold ahead of a hard clip are not
         move    #>$7fdf3b,x0            ; symmetric on real material)
         move    x0,x:(r7+$47)
+        clr     a
+        move    a,x:(r7+$4c)            ; FUZZ stays bright: no low-pass
         bra     ch_sdone
 ch_sbus:
         move    #>$200000,x0            ; pre = 0.5 ...
         move    x0,x:(r7+$38)
         move    #>$7fffff,x0            ; ... post = 2.0
         move    x0,x:(r7+$39)
+        clr     a
+        move    a,x:(r7+$4c)            ; a return is clean: no low-pass
 ; BUS: CRSH and RING are the RETURN levels. The crush mask goes all-ones and
 ; the carrier step 0, so the stages those knobs used to drive are neutral.
         move    #>$ffffff,x0
@@ -520,6 +528,9 @@ ch_sdone:
         move    #>$fab1e0,r5            ; DRIVE_COMP -- rewritten by build_bus.py
         move    #>$ffffff,m5
         asr     #$13,a,a                ; idx
+        move    r5,r1                   ; ... and TANH_TD is the 17 words after
+        move    #>17,n1                 ; it: r1 -> the curve's table, parked in
+        move    #>$ffffff,m1            ; r2 = r1 + 1 for the sample loop (below)
         move    a1,n5
         move    x1,a
         and     #>$7ffff,a              ; DRV & (2^19 - 1)   (a2 = 0: DRV >= 0)
@@ -537,6 +548,18 @@ ch_sdone:
         move    x:(r7+$39),x0           ; post/2 (1.0 or BUS's 2.0, halved)
         mpy     x0,y1,a
         move    a,x:(r7+$39)
+        move    (r1)+n1                 ; r1 = TANH_TD (n1 written 12 back)
+        move    r1,r2
+        move    (r2)+                   ; r2 = its slopes
+; kl = 0.6 * DRV/128 * the mode flag ($4c): the post low-pass, ~16 kHz at
+; DRV 32, ~8 k at 64, ~3.6 k at 127 in TAPE / TUBE; 0 (bit-exact) elsewhere.
+        move    x1,x0                   ; DRV/128
+        move    #>$4ccccd,y1            ; 0.6
+        mpy     x0,y1,a
+        move    x:(r7+$4c),y1           ; 1.0 / 0
+        move    a,x0
+        mpy     x0,y1,a
+        move    a,x:(r7+$49)            ; kl
 ; WDTH -> mid and side gains. 64 = (1, 1); 0 = (1, 0) mono; 127 = (1, ~2).
 ; side gain = WDTH/64, mid stays 1 -- widening only touches the difference,
 ; so a mono source is untouched at every setting.
@@ -784,8 +807,8 @@ ch_noring:
                                         ; and the ring away, 3 Sep 2026)
         move    x:(r7+$22),y1           ; gd = gain/16
         mpy     x0,y1,a
-        asl     #$4,a,a                 ; driven
-        move    a,x:(r7+$35)            ; LIMITING store: the clip IS the drive
+        asl     #$2,a,a                 ; driven/4: the curve's table spans 0..4
+        move    a,x:(r7+$35)            ; LIMITING store at driven 4 = tanh 0.9993
         move    x:(r7+$35),x0
         move    x:(r7+$37),y1           ; neg / 2
         mpy     x0,y1,a
@@ -829,11 +852,24 @@ ch_noring:
         move    x:(r7+$47),y1           ; R: 0.999 in TUBE / FUZZ, 0 elsewhere
         mac     x0,y1,a                 ; + R*y1  -- k = R = 0 is y = x exactly,
         move    a,x:(r7+$43)            ; y1 <- y     so TAPE / BUS stay bit-exact
-        move    a,x:(r7+$35)            ; saturated L, DC-free
+; Tape darkens as it drives (12 Sep 2026, by ear): one pole after the curve,
+; y = x - kl*(x - y1), kl = 0.6*DRV/128 in TAPE / TUBE and 0 elsewhere --
+; kl = 0 is y = x exactly, so FUZZ / BUS and DRV 0 stay bit-exact. State
+; $4a/$4b (L/R), kl in $49.
+        move    a,y0                    ; x
+        move    x:(r7+$4a),x0           ; y1
+        sub     x0,a                    ; x - y1
+        move    a,x0
+        move    x:(r7+$49),y1           ; kl
+        mpy     x0,y1,a                 ; kl*(x - y1)  (signed order)
+        neg     a
+        add     y0,a                    ; y
+        move    a,x:(r7+$4a)
+        move    a,x:(r7+$35)            ; saturated L, DC-free, darkened
         move    x:(r7+$36),x0           ; R, the identical path
         move    x:(r7+$22),y1
         mpy     x0,y1,a
-        asl     #$4,a,a
+        asl     #$2,a,a
         move    a,x:(r7+$36)
         move    x:(r7+$36),x0
         move    x:(r7+$37),y1
@@ -873,7 +909,16 @@ ch_noring:
         move    x:(r7+$47),y1           ; R
         mac     x0,y1,a
         move    a,x:(r7+$44)
-        move    a,x:(r7+$36)            ; saturated R, DC-free
+        move    a,y0                    ; the low-pass, R side ($4b); x1 still
+        move    x:(r7+$4b),x0           ; parks L
+        sub     x0,a
+        move    a,x0
+        move    x:(r7+$49),y1
+        mpy     x0,y1,a
+        neg     a
+        add     y0,a
+        move    a,x:(r7+$4b)
+        move    a,x:(r7+$36)            ; saturated R, DC-free, darkened
         move    x1,x:(r7+$35)           ; L back from its park
 ; ---- COMPRESS: the block-max detector, and the gain slewed to the block's
 ; target -- attack while it falls, release while it rises (12 Sep 2026) ---
@@ -1036,16 +1081,35 @@ ch_byz:
 ; this can sit in front of a compressor without adding gain.
 ; bsr, not jsr: dsp_asm implements only the relative b-forms.
 ; ---------------------------------------------------------------------------
+; The curve is tanh(4w), w = driven/4 (12 Sep 2026, by ear: the cubic
+; w - w^3/3 is a soft knee only up to |w| = 1 and a hard clip above it, and
+; at DRV 96+ the whole top of a drum loop sat on that flat -- "digital,
+; clippy"). tanh never goes flat: every extra dB in still changes the
+; output. A 33-pair P table (TANH_TD in the manifest: value, slope-to-next,
+; interleaved; the second half of the module's ptable after DRIVE_COMP),
+; linear interpolation over [0, 4]: idx = |w| >> 18, frac = the 18 bits
+; under it. r1 = the table and r2 = r1 + 1 (both per block; (Rn+Nn) reads
+; leave them alone), n1 = 2*idx. Odd symmetry restored with one tst + one
+; Tcc. Clobbers x0 y0 y1 b n1 n2 -- never x1 (the R pass parks L there).
 chsatur:
-        move    x:(r7+$35),x0           ; w
-        move    x0,y1
-        mpy     x0,y1,b                 ; w^2
-        move    b,y1                    ; limiting move: w^2 <= 1
-        mpy     x0,y1,b                 ; w^3
-        move    b,x0
-        move    #>$2aaaab,y1            ; 1/3
-        mpy     x0,y1,b                 ; w^3/3
-        move    x:(r7+$35),a            ; w
-        move    b,x0
-        sub     x0,a                    ; sat
+        move    x:(r7+$35),b            ; w
+        abs     b
+        move    b,y1                    ; |w|
+        asr     #$11,b,b                ; |w| >> 17 = 2*idx + bit 17 ...
+        and     #>$fffffe,b             ; ... masked to 2*idx (an asl after the
+        move    b1,n1                   ; asr would pull B0's top bit back in)
+        move    b1,n2                   ; (Rn+Nn) wants its own N
+        move    y1,b
+        and     #>$3ffff,b              ; |w| & (2^18 - 1)   (b2 = 0: |w| >= 0)
+        asl     #$5,b,b                 ; frac, Q23
+        move    b,x0                    ; AGU settle: n1 written 4 back
+        move    p:(r1+n1),y0            ; T[idx]
+        move    p:(r2+n2),y1            ; T[idx+1] - T[idx]  (>= 0)
+        mpy     x0,y1,a                 ; frac * slope  (signed order; both >= 0)
+        add     y0,a                    ; |sat|
+        move    a,x0
+        neg     a                       ; -|sat|
+        move    x:(r7+$35),b
+        tst     b                       ; sign of w -- nothing between this
+        tpl     x0,a                    ; and the Tcc
         rts
