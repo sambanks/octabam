@@ -2161,6 +2161,11 @@ gvlz:
         move    x:(r7+$1e),x0
         move    x:(r7+$3d),y1           ; makeup coeff
         mpy     x0,y1,b
+        asl     #$1,b,b                 ; +6 dB (12 Sep 2026): GRAIN measured
+                                        ; 5.1 dB under CLEAN at the return, on
+                                        ; the loop at the unit's level (v5's
+                                        ; four-reader window law; R64's open
+                                        ; makeup item). Both grain counts.
 ; GRAINMK
         move    b,x:(r7+$24)            ; shifted OUTPUT tap L
 ; ---- READER, line R: four grains, ROLLED (v5) ----------------------------
@@ -2283,6 +2288,11 @@ gvrz:
         move    x:(r7+$1f),x0
         move    x:(r7+$3d),y1
         mpy     x0,y1,b
+        asl     #$1,b,b                 ; +6 dB (12 Sep 2026): GRAIN measured
+                                        ; 5.1 dB under CLEAN at the return, on
+                                        ; the loop at the unit's level (v5's
+                                        ; four-reader window law; R64's open
+                                        ; makeup item). Both grain counts.
 ; GRAINMK
         move    b,x:(r7+$25)            ; shifted OUTPUT tap R
         bra     pdone
