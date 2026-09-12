@@ -486,43 +486,90 @@ The word does return to 0, but only on the other three stop paths:
 before it starts), `0x400a4066` (the sequencer's automatic stop) and
 `0x400a1050` (engine init). None of these is reached from the STOP key.
 
-### 1.6 Not measured under the port 🟡
+### 1.6 Measured under the port ✅, with one new open question 🟡
 
-Step 3 of this task could not run. No Octatrack project folder exists on
-this machine, and `ot_emu` needs one for `--card`, `--set` and `--project`.
-Nothing in this section has been confirmed against a running image by this
-pass. The one port measurement that already exists is `RTOS_FORK.md` §9.4's
-`[0x800065b8] <- 0x1 (4)` at pc `0x4009c3d4`, from 6 Sep 2026, cited in
-section 1.3 and **not re-measured here**.
-
-Two commands will close this, once a card with a project exists.
-
-The start edge, and every write during a sequencer run:
+Task 10 added four `ot_emu` flags (`--card-out`, `--call-before-play`, `--at`,
+`--card-fail-after`) and staged a project card (set `STEMS`, project `ULTFX`,
+from `out/projects/Ultimate FX 1.5.3`) to close this section. Command run
+(12 Sep 2026):
 
 ```bash
-out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card <card.img> \
-  --set <SET> --project <PROJ> --sequencer --frames 50 --load-ms 20000 \
-  --watch-mem 0x800065b8,4
+out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/stems_card.img \
+  --set STEMS --project ULTFX --sequencer --frames 400 --load-ms 20000 \
+  --at 200:0x4000a1e0:0 --card-out out/task10/after.img \
+  --watch-mem 0x800065b8,4 --mem-dump 0x100f8480,64=out/task10/setpath.bin
 ```
 
-⚠️ `--peek` is the wrong instrument here, and the task brief's command would
-have read as "the word never changed". `--peek ADDR[,ADDR...]` prints one
-32-bit word per address **once, after the load and before the sequencer
-starts** (`tools/emu/ot_emu/main.cpp` line 447, inside the load block; the
-comment at line 101 says so outright). It cannot show the transport start.
-`--watch-mem ADDR,LEN` logs every write into the range with its value, size,
-PC and task, which is what this needs.
+`--at 200:0x4000a1e0:0` calls the STOP handler with `callAsMain`, the same
+call shape `press_key_live(KEY_STOP)` uses in `emu_rtos.py`, at frame 200
+after the transport start.
 
-The stop edge needs a key press, and `ot_emu` has no flag for one. Route A
-does: `tools/emu/emu_rtos.py` exposes `press_key_live(KEY_STOP)` with
-`KEY_STOP = 0x4000a1e0`, and `_word(rt, TRANSPORT)` reads the longword.
-Press STOP while the transport is running and read the word before and
-after.
+**The start edge is confirmed. ✅** `--watch-mem` shows exactly two writes
+over the whole run:
 
-**Falsifier for this whole section:** a transport stop from the STOP key
-that leaves the word at 0 rather than 2, or a running transport whose word
-is anything other than 1. Either would restore the plan's original rule and
-retract section 1.0.
+```
+[    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
+[  895721.0] [0x800065b8] <- 0x1 (4) at pc 0x4009c3d4 in main  i=443500349
+```
+
+The first is engine init (section 1.3's `0x400a1050`); the second is
+`FW_TRANSPORT`'s cold-start write of 1, at the transport start. This matches
+`RTOS_FORK.md` §9.4 exactly (same pc, same value) against a different
+project, so the 0->1 transition is now measured twice, against two
+projects.
+
+**The literal STOP call is a no-op on this project.** The call returns
+(`call : 0x4000a1e0(0x0) at frame 200 -> returned, d0 0x3fb6`), but
+`--watch-mem` shows no third write: the word stays at 1. `--watch-pc` on the
+handler's three exits (`0x4000a1fe`, `0x4000a1f8`, `0x4000a1f2`) shows the
+call landed at `0x4000a1fe`, the bare `rts` from section 1.5's disassembly:
+
+```
+tstb 0x80000029 / beqs 0x4000a1fe   -- taken
+```
+
+`--peek 80000029` (a 32-bit read starting at that address) reads
+`0x00010209`, so the single byte at `0x80000029` itself is `0x00`. A
+`--mem-dump 0x80000028,8` at the end of a full 400-frame run with no STOP
+call at all shows the same byte still `0x00`: nothing in this project's load
+or its first 400 frames ever sets it.
+
+**With the gate forced open, the write-2 path is confirmed. ✅** Poking the
+byte before the call (`--poke 0x80000029=1`) reaches the code section 1.5
+already disassembled:
+
+```
+[    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
+[  895721.0] [0x800065b8] <- 0x1 (4) at pc 0x4009c3d4 in main  i=443500349
+[  898942.4] [0x800065b8] <- 0x2 (4) at pc 0x4009f5c6 in main  i=449759644
+```
+
+`0x4009f5c6` is exactly the "write 2" site section 1.2 classified from the
+static read. So the 0/1/2 state machine in sections 1.0, 1.4 and 1.7 is
+now measured end to end, and the falsifier below is not triggered: a
+running transport (word 1) that receives a real STOP call, with its own
+precondition satisfied, does write 2 and nothing else.
+
+**🟡 New question: what sets `0x80000029`, and why is it already set on one
+project and not another?** `RTOS_FORK.md` §9.4 measured this same byte as
+already `0x01` right after `load_project_live` on `out/_testproj`, with no
+extra setup. On `Ultimate FX 1.5.3`, staged the same way, it reads `0x00`
+after the same kind of load and stays `0x00` through 400 frames of the
+sequencer running. `startTransportLive()` (what `--sequencer` uses to start
+the transport) calls `FW_TRANSPORT` directly and does not go through the
+real `KEY_PLAY` handler, so whatever sets `0x80000029` may be a side effect
+of the real PLAY key path, of a specific project setting, or of both;
+this pass did not chase it further. **Concern for Tasks 13 to 15:** a raw
+`callAsMain` on `0x4000a1e0` (or any project-dependent equivalent) is not on
+its own proof that STOP was pressed; check `0x80000029` first, or drive
+STOP through the real key path.
+**Falsifier:** a write to `0x80000029` found in the image, or a run on a
+third project where the byte is set after load without the poke.
+
+**Falsifier for this whole section (unchanged, and not triggered):** a
+transport stop from the STOP key that leaves the word at 0 rather than 2, or
+a running transport whose word is anything other than 1. Neither happened:
+every write measured matches sections 1.0, 1.4, 1.5 and 1.7.
 
 ### 1.7 Interface
 
@@ -3276,7 +3323,7 @@ calls only sprintf, which preserves `%d2` upward.
 calls sprintf. Falsifier: a lock inside sprintf's inner formatter, which is not
 disassembled here.
 
-### 5.8 The set folder, and what Task 15 must use ✅ with one 🟡
+### 5.8 The set folder, and what Task 15 must use ✅ with two 🟡
 
 ✅ **The set folder is the C string at `0x100f8480`.** The linear objdump finds
 49 instructions naming it, and every one of them is `pea 0x100f8480`. Not one
@@ -3318,18 +3365,19 @@ and that pool path exist:
 is `"NO SET IS MOUNTED!"` at `0x400b3766`. So the string is what the file layer
 accepts as the head of a path.
 
-🟡 **It begins with `/` and has no trailing `/`.** The no-trailing-slash half is
-✅, because every format that consumes it writes its own separator:
-`"%s/AUDIO/%s.wav"`, `"%s/%s"`, `"%s/AUDIO"`, `"%s/"` at `0x400b379a`. The
-leading slash is inferred, and neither support is this image. octamax logged the
-path the stock loader resolved on hardware as `/universi/UNTITLED`, through a
-hook on all seven path taking file routines (`octamax/NOTES.md`, around line
-470). ems-octakit appends `"/kits3a.work"` to `0x40025230(0, 0)` and opens the
-result successfully (`ems-octakit/runtime/persistence.c` line 425, with the ABI
-equate in `runtime/abi.inc` line 486). Falsifier, and the one thing a port run
-would settle: load a project under `ot_emu` with a card image and dump the bytes
-at `0x100f8480` and `0x100f8378`. If the first byte is not `/`,
-`stems_make_path` must prepend one.
+✅ **It begins with `/` and has no trailing `/`.** Measured under the port,
+12 Sep 2026: a project staged as set `STEMS`, project `ULTFX`
+(`out/projects/Ultimate FX 1.5.3`), loaded and run under `ot_emu`
+(`--card out/stems_card.img --set STEMS --project ULTFX --sequencer`), then
+`--mem-dump 0x100f8480,64` dumped as `2f5354454d53 00...` --
+`b'/STEMS'` followed by zero bytes. The first byte is `/`, and the string
+ends at the terminator with no trailing `/`, confirming both halves of this
+claim. octamax logged the path the stock loader resolved on hardware as
+`/universi/UNTITLED`, through a hook on all seven path taking file routines
+(`octamax/NOTES.md`, around line 470), which agrees. ems-octakit appends
+`"/kits3a.work"` to `0x40025230(0, 0)` and opens the result successfully
+(`ems-octakit/runtime/persistence.c` line 425, with the ABI equate in
+`runtime/abi.inc` line 486), which also agrees.
 
 **What Task 15 must do.** Build the path as
 `sprintf(buf, "%s/AUDIO/%s/T1.wav", 0x100f8480, name)`, or with the folder
@@ -3373,10 +3421,10 @@ for the name, and `0x460bf112` for the project directory.
 No project folder exists on this machine, so nothing here was executed. Four
 things a port run would settle, in the order they matter:
 
-1. **The bytes at `0x100f8480` and `0x100f8378` after a project load.** This
-   settles the leading slash question in 5.8, and confirms the set path is what
-   the file layer sees. Method: `ot_emu` with a card image, break after the
-   load, dump 64 bytes at each address.
+1. ✅ **Done for `0x100f8480`, 12 Sep 2026 (Task 10).** `--mem-dump
+   0x100f8480,64` after a real load reads `/STEMS`, settling the leading
+   slash question in 5.8. `0x100f8378` (the project name) was not dumped in
+   this pass and is still open.
 2. **One call of `0x400819fc` from a scratch task, and the string it leaves at
    `0x460faab4`.** This confirms the field map end to end against the unit's own
    clock, including index 4.
@@ -3438,7 +3486,7 @@ things a port run would settle, in the order they matter:
 
 | The CURRENT SET PATH, as a C string in place. This is the set folder, and it
 | is what stems_make_path must use. It carries no trailing '/'.
-| 🟡 It is believed to begin with '/'. See section 5.8 for the falsifier.
+| ✅ It begins with '/'. Measured under the port: see section 5.8.
 .equ	SET_PATH,	0x100f8480
 
 | The CURRENT PROJECT NAME, as a C string in place. Empty means no project.
