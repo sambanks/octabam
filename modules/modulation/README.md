@@ -94,7 +94,14 @@ TREM rate.
 
 ## Open
 
-- Voicing: the laws are measured (above); nothing has been HEARD yet.
+- Voicing (ear pass, 12 Sep 2026, kits in `out/ab/mod_*`): the seven modes
+  all distinct. CHOR depth 16–127 "sounds good". FLNG had a **crackle** on the
+  loop (not on a 440 Hz sine): the tap's linear interpolation blended toward
+  the NEWER neighbour, so a delay of i + f read as i − f and jumped two
+  samples at every integer crossing of the sweep — every LINE mode, shipped
+  on flash 4 and 7 unheard. Fixed (blend toward the older sample): off-tone
+  energy on a 5 kHz sine −48.7 → −89.5 dB max; "gone" by ear. Still to hear:
+  PHSR (stages, RES), COMB, TREM.
 - SAW is a real shape since 3 Sep 2026 (`modulation.asm`).
 - On hardware since flash 4 (tag 79) as T5's FX1; the FX1-only dry pass is
   emulator-proven; none of the 12 Sep changes are flashed.
