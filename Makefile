@@ -64,6 +64,10 @@ image: bus ## Repack the build into a card-flashable .bin (see docs/remixer/FLAS
 	EFT_EMIT_CONTAINER=out/elek_$(BUILD).bin $(EFT) \
 	  -i $(SYX) -c 3 out/mainos_bus.bin \
 	  -V $(VERSION) -o out/OCTATRACK_OS1.40C_$(VERSION).syx
+	@test -f out/elek_$(BUILD).bin || { echo; \
+	  echo "  the .syx was written but no container came out: $(EFT) was built WITHOUT"; \
+	  echo "  tools/patches/elektron-firmware-tool.patch (EFT_EMIT_CONTAINER)."; \
+	  echo "  Fix: rm -rf vendor/elektron-firmware-tool; make setup; make image REMIX=$(REMIX) BUILD=$(BUILD)"; exit 1; }
 	python3 tools/build/make_bin.py out/elek_$(BUILD).bin \
 	  -o out/OCTATRACK_$(VERSION).bin
 	@echo
