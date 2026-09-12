@@ -1,11 +1,16 @@
 # SPECTRUM
 
-The first BamSep26 station: two filters, four routings, one modulation and
-two bus sends in one insert, **replacing stock FILTER** (id 0x04) on both
-menus and in every saved part that chose FILTER. Design page:
+The first BamSep26 station: two filters, four routings and one modulation
+in one insert, **replacing stock FILTER** (id 0x04) in every saved part that
+chose FILTER. **FX1 only** (12 Sep 2026): the id is shared by both menus, so
+an FX2 instance runs as a dry pass, decided from the allocator base at init
+(`Claims(fx1_only=True)`, proven by `verify_spectrum.py`), and the FX2
+chooser hides the row -- the rig's cycle envelope only closes with the
+stations on FX1. The bus sends went with the one-aux rig (7 Sep 2026):
+page-1 slots 4-5 are blank. Design page:
 https://claude.ai/code/artifact/42670d67-7365-4c7d-bcc7-1786ba4331ce
 
-| page 1 | FREQ · RES · BASE · WDTH · →DEL · →VRB |
+| page 1 | FREQ · RES · BASE · WDTH · — · — |
 |---|---|
 | page 2 | DRV · MODE (LP BP HP NTCH VOWL) · DPTH · ROUT (SER PAR RING FM) · RATE · SRC (ENV LFO BOTH) |
 
@@ -69,7 +74,8 @@ on FILTER's stored values sent at 64 through a closed, resonant filter).
   a single-pole base/width (~40), block-rate FM.
 - The layout alphabet lists this station under both `1` and `L` (stock
   FILTER's letter) because both map to id 0x04 — harmless, cosmetic.
-- ⚠️ UNFLASHED. The FX1-participant bus case is flash 4's claim (v).
+- On hardware since flash 4 (tag 79) and in every rig flash since; the
+  FX1-only dry pass is emulator-proven (12 Sep 2026), not yet flashed.
 
 ## Cycle trim — the parallel-move relayout (evaluated 4 Sep 2026, not done)
 

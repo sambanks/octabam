@@ -151,7 +151,10 @@ def bank_worst(rows, mods, fx1=(), stock_fx1_keys=()):
     cyc = {r["name"]: r["cycles"] for r in rows}
     servers = sorted((m for m in mods if m["server"] and m["stem"] in cyc),
                      key=lambda m: -cyc[m["stem"]])
-    others = sorted((m for m in mods if not m["server"] and m["stem"] in cyc),
+    # An FX1-ONLY module (Claims.fx1_only: an FX2 instance runs dry, 12 Sep
+    # 2026) never costs an FX2 slot; it is charged on the FX1 slots below.
+    others = sorted((m for m in mods if not m["server"] and m["stem"] in cyc
+                     and not m.get("fx1_only")),
                     key=lambda m: -cyc[m["stem"]])
     picks = []
     if servers:
@@ -508,6 +511,7 @@ def main():
     remix = registry.remix(os.environ.get("REMIX") or registry.DEFAULT_REMIX)
     mods = [dict(stem=pathlib.Path(m.dsp.asm).stem, key=m.key,
                  server=(m.dsp.bus_role is BusRole.SERVER),
+                 fx1_only=(m.claims is not None and m.claims.fx1_only),
                  replaces=(m.menu.replaces if m.menu is not None else None))
             for m in registry.selected(remix) if m.dsp is not None]
     from remix import stock as _stock

@@ -46,7 +46,7 @@ their hosts exactly as before -- a wrong setting on the master can never
 make the reverb vanish from the set.
 """
 
-from remix.schema import (BusRole, DspSection, Formatter, Harness, Kind,
+from remix.schema import (BusRole, Claims, DspSection, Formatter, Harness, Kind,
                           MenuEntry, ModeView, Module, Param, YBase)
 
 _PLAIN = Formatter.PLAIN
@@ -114,5 +114,12 @@ MODULE = Module(
         r7_latch_slot=0x69,           # ROTLATCH parks this block's offset here
         gate_label=None,              # no housekeeping: a station never elects
     ),
+    # FX1 ONLY (12 Sep 2026): an FX2 instance runs as a dry pass -- the
+    # station reads its allocator base at init and returns before touching
+    # a frame when it is an FX2 slot. The rig's cycle envelope only closes
+    # with the stations on FX1 (tools/harness/pressure.py: four Characters
+    # on both slots priced a core at 4,830 against 3,120), the FX2 chooser
+    # hides the row, and tools/verify/verify_character.py proves the dry pass.
+    claims=Claims(fx1_only=True),
     harness=Harness(layout_char="2", is_server=False, bus_client=True),
 )
