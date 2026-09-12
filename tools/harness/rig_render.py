@@ -215,7 +215,14 @@ def apply_mix(mix, specs):
 
 
 def apply_sets(tracks, sets):
-    """--set T2:-VRB=100 (or T2:FX1:-VRB=100 when both slots carry the name)."""
+    """--set T2:-VRB=100 (or T2:FX1:-VRB=100 when both slots carry the name).
+
+    A --set that picks a module's MODE also applies that mode's
+    ModeView.defaults to every knob NOT set explicitly -- what the TUI bench
+    does, and what per-mode defaults on the unit will do (Stage B). Without
+    it a phaser kit rendered at the manifest's passthrough MIX 0 and was
+    judged dry (12 Sep 2026)."""
+    explicit = {}                       # (track, fx) -> {slot index}
     for spec in sets:
         try:
             lhs, val = spec.split("=")
@@ -233,9 +240,22 @@ def apply_sets(tracks, sets):
                 p.name.decode().strip(): i for i, p in enumerate(s.module.params) if p.name}
             if name in kmap:
                 s.values[kmap[name]] = int(val) & 0x7f
+                explicit.setdefault((t, s.fx), set()).add(kmap[name])
                 hit = True
         if not hit:
             die(f"--set {spec!r}: no such knob on track {t}")
+    for t, slots in tracks.items():
+        for s in slots:
+            m = s.module
+            ms = getattr(m, "mode_slot", None)
+            if ms is None or not getattr(m, "mode_views", ()) or ms not in explicit.get((t, s.fx), ()):
+                continue
+            view = next((v for v in m.mode_views if v.mode == s.values[ms]), None)
+            if view is None:
+                continue
+            for slot, val in view.defaults.items():
+                if slot not in explicit[(t, s.fx)]:
+                    s.values[slot] = val & 0x7f
 
 
 # ---- audio ----------------------------------------------------------------
