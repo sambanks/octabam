@@ -393,7 +393,7 @@ def _walk(image: bytes, path: str, want_dir: bool):
     return [n for n, _, _, _ in entries(raw) if n not in (".", "..")]
 ```
 
-- [ ] **Step 4: Run it and see it pass.** Expected: eight `[PASS]`, exit 0. If the builder puts the BPB somewhere else (read `build_image`'s `part_start`), fix the reader, not the test.
+- [ ] **Step 4: Run it and see it pass.** Expected: seven `[PASS]` (five files, the missing file, `list_dir`), exit 0. If the builder puts the BPB somewhere else (read `build_image`'s `part_start`), fix the reader, not the test.
 
 - [ ] **Step 5: Commit.**
 
