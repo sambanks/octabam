@@ -2478,6 +2478,15 @@ MDEP); its level matched within 1 dB in the both-engines run.
 
 ### 🟡 The reverb stage: level-matched, not bit-compared, and why (8 Sep 2026, later)
 
+> **Superseded the next day**, and recorded here because this section was
+> quoted as current on 12 Sep 2026: the "toolkit gap" below (a THRU that
+> starts) closed with `ot_project.py thru-track`, the reverb path was
+> re-run on the clean project ("The harness ran 15-sample blocks", below:
+> levels within 0.1 dB, the residual the reverb's own free-running
+> modulator and initial state, not a defect), and since 12 Sep
+> `tools/harness/port_compare.py` runs the whole comparison as one command
+> (O14).
+
 Same fixture with the reverb instead of the delay (T1's FX2 = SEND, one
 client, MOD 0): the port's return is **deterministic** — identical to
 −200 dB across load lengths and across core-interleave quanta of 1, 64,
@@ -2874,6 +2883,17 @@ LEVEL; 🟡 the cue mix — not chased, not modelled.
 `0x80003c60` table) scales trigged voices and not THRUs (O9c) — unity in
 the model, which O10's sample-exact kick at `--main-level 64` supports and
 does not prove; the cue path; the master track.
+
+**One command, the whole comparison** (`tools/harness/port_compare.py`,
+`make port-compare PROJECT=…`): a part under the port and under
+`rig_render` on the port's own record audio, fitted per track and at the
+mix. On O9d's fixture the T1 chain fits at −0.001 dB / −121 dB and the
+mix (TX0 slot 2 against `mix.wav`) at −0.001 dB / −113 dB — the AMP stage,
+the chain, LEVEL and the sum agreeing with the firmware end to end. On
+the one-aux rig under the flash-7 image with the kick on T2's inputs: the
+sender −0.001 dB / −137 dB, the return −0.083 dB in scale with a history
+residual (−8 dB, the reverb's), the mix −0.001 dB / −90 dB.
+`docs/remixer/HARNESS.md` "port_compare".
 
 **In the harness** (`tools/harness/mixer.py`, the curves beside the
 measured points and a `selftest()` that refuses if a curve drifts more

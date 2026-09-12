@@ -323,6 +323,42 @@ passthrough, last-live-stage return, track-8 send refusal and station
 silence, all with the senders and the delay on payload B and the reverb and
 the return on payload A — `docs/effects/BUS.md` "The one aux bus".
 
+## port_compare.py — the harness against the firmware, one part (12 Sep 2026)
+
+`make port-compare PROJECT=dir [IMAGE=... REMIX=...]` runs ONE part under
+the ColdFire port (the firmware booting the image, loading the project
+from a staged card, the sequencer running with a probe on the ESAI inputs)
+and under `rig_render` on the same image with each track's chain input —
+the port's own 84-word record audio — as its stem, and fits the two per
+track (lag, least-squares scale, per-window residual) and the port's TX0
+main slot against `mix.wav`. ~90 s. Read it as: a linear chain fits to
+0.00 dB and −100 dB or better (the mixer model, the parameter path and the
+dispatch all agreeing with the firmware); an engine with history — the
+reverb's free-running allpass modulator, the delay's LFO — matches in
+**scale** and not in residual (O12), so read the scale there; a scale that
+is not 0 dB on a linear chain is a finding. Measured on the day it landed:
+
+| fixture | track | scale | residual |
+|---|---|---|---|
+| O9d's (stock image, T1 THRU: SEND + EQ flat, tone) | T1 chain | −0.001 dB | −121 dB |
+| same | mix (TX0 slot 2 vs `mix.wav` L) | −0.001 dB | −113 dB |
+| the one-aux rig, flash-7 image, kick on T2's inputs | T2 chain (SPECTRUM + SEND) | −0.001 dB | −137 dB |
+| same | T8 return (delay → reverb, history) | −0.083 dB | −8 dB |
+| same | mix | −0.001 dB | −90 dB |
+
+Rules it learned: a track whose record carries audio but whose chain
+output is digital zero is a non-THRU machine's record (not that track's
+chain input, O10) and is listed, not compared; a host or a return has
+output and no input of its own and is compared on its output with a
+silent stem; the lag search is ±96 because on a periodic probe the fit is
+ambiguous modulo the period (147 samples at 300 Hz — the first run
+reported −179 for the 32-sample record pipeline); the master track is
+turned off in the COPY of the project the port loads, so TX0 is the mix
+(the RIG's T8 master carries stock LO-FI). Use a transient probe
+(`--tone out/o9d/kickAB_late.wav`, after the knob slew) for anything
+with a delay in it — a tone cannot separate a gain from the phase of a
+repeat.
+
 ## What the harness cannot see
 
 Every item here has cost a real session at least once. Local-clean does not
