@@ -51,7 +51,7 @@
 ;   $41/$42 DC block x1 L/R, $43/$44 y1 L/R (PERSISTENT, zeroed at init; long-form slots)
 ;   $46 DC block k (1 or 0), $47 R (0.999 or 0): on in TUBE / FUZZ only (per block)
 ;   $49 post low-pass kl  $4a/$4b its state L/R (PERSISTENT)
-;   $4c low-pass mode flag (1.0 in TAPE / TUBE, 0 in FUZZ / BUS; per block)
+;   $4c low-pass mode flag (1.0 TAPE, 0.5 FUZZ, 0 TUBE / BUS; per block)
 ;   $3c/$3d reverb / delay liveness grace (BUS mode, per block)
 ;   per sample / persistent (ALL BELOW $40 -- an r7 displacement past 63
 ;   assembles to the two-word long form, which cost the Spectrum station 30
@@ -418,7 +418,7 @@ ch_gunity:
         move    a,x:(r7+$46)            ; the DC blocker off (k = R = 0): a
         move    a,x:(r7+$47)            ; symmetric curve leaves no DC
         move    #>$7fffff,x0            ; the post low-pass ON (TAPE, the
-        move    x0,x:(r7+$4c)           ; fall-through; TUBE keeps it)
+        move    x0,x:(r7+$4c)           ; fall-through; the others override)
         clr     a
         move    a,x:(r7+$3e)            ; return levels: 0 outside BUS mode
         move    a,x:(r7+$3f)
@@ -438,13 +438,17 @@ ch_gunity:
         beq     ch_sbus
         bra     ch_sdone                ; TAPE: the curve alone
 ch_stube:
-        move    #>$0300000,x0           ; neg = 0.75: the positive half is
-        move    x0,x:(r7+$37)           ; driven harder, so even harmonics
+        move    #>$200000,x0            ; neg = 0.5: the positive half is
+        move    x0,x:(r7+$37)           ; driven twice as hard, so even
+                                        ; harmonics (0.75 gave H2 -25 dB and
+                                        ; TUBE was TAPE by ear, 12 Sep 2026)
         move    #>$7fffff,x0            ; ... and DC: the blocker on
         move    x0,x:(r7+$46)
         move    #>$7fdf3b,x0            ; R = 0.999, ~7 Hz
         move    x0,x:(r7+$47)
-        bra     ch_sdone
+        clr     a
+        move    a,x:(r7+$4c)            ; and BRIGHT: no low-pass -- TAPE is
+        bra     ch_sdone                ; the dark one, TUBE the present one
 ch_sfuzz:
         move    #>$266666,x0            ; clip +0.6
         move    x0,x:(r7+$3a)
@@ -454,8 +458,8 @@ ch_sfuzz:
         move    x0,x:(r7+$46)           ; fold ahead of a hard clip are not
         move    #>$7fdf3b,x0            ; symmetric on real material)
         move    x0,x:(r7+$47)
-        clr     a
-        move    a,x:(r7+$4c)            ; FUZZ stays bright: no low-pass
+        move    #>$400000,x0            ; the low-pass at half strength: the
+        move    x0,x:(r7+$4c)           ; clip's fizz off the top (ear, 12 Sep)
         bra     ch_sdone
 ch_sbus:
         move    #>$200000,x0            ; pre = 0.5 ...
@@ -552,7 +556,8 @@ ch_sdone:
         move    r1,r2
         move    (r2)+                   ; r2 = its slopes
 ; kl = 0.6 * DRV/128 * the mode flag ($4c): the post low-pass, ~16 kHz at
-; DRV 32, ~8 k at 64, ~3.6 k at 127 in TAPE / TUBE; 0 (bit-exact) elsewhere.
+; DRV 32, ~8 k at 64, ~3.6 k at 127 in TAPE, half as strong in FUZZ; 0
+; (bit-exact) in TUBE / BUS.
         move    x1,x0                   ; DRV/128
         move    #>$4ccccd,y1            ; 0.6
         mpy     x0,y1,a
@@ -853,7 +858,7 @@ ch_noring:
         mac     x0,y1,a                 ; + R*y1  -- k = R = 0 is y = x exactly,
         move    a,x:(r7+$43)            ; y1 <- y     so TAPE / BUS stay bit-exact
 ; Tape darkens as it drives (12 Sep 2026, by ear): one pole after the curve,
-; y = x - kl*(x - y1), kl = 0.6*DRV/128 in TAPE / TUBE and 0 elsewhere --
+; y = x - kl*(x - y1), kl = 0.6*DRV/128 in TAPE, half that in FUZZ, 0 else --
 ; kl = 0 is y = x exactly, so FUZZ / BUS and DRV 0 stay bit-exact. State
 ; $4a/$4b (L/R), kl in $49.
         move    a,y0                    ; x
