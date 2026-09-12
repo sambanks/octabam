@@ -44,35 +44,51 @@ lost once every **eight** passes rather than every other one.
 The full list is `out/hw/softretrig/tempo_seam.py` (run it with no
 arguments).
 
-There were two other, louder faults stacked on top of this one — the voice
-was being restarted from scratch at every loop (a chirp and a burst of
-hash) and the read pointer was being reset onto alternating samples. Those
-are separate fixes (`FLEX SEEK BIND`, `FLEX SEEK BIND CTR`) and they are
-**not** in the image below. See §4.
+**And it was not the only fault.** Two louder ones sat on top of it:
+
+1. **The voice was restarted from scratch every loop** — the DSP was told the
+   re-bind was a brand new note, so it re-primed the voice: a chirp, then a
+   burst of hash at 140 % of the signal's own level over 300 samples.
+2. **The read pointer was reset** onto that same alternating grid, giving a
+   ±1.5-sample lurch every bar.
+
+Each was loud enough to hide the ones beneath it, which is why this kept
+"not being fixed". **All three fixes are in the image below.**
 
 ## 2. The patch
 
-`modules/recorder-spacing` — one ColdFire code cave, 146 bytes, hooked on
-the last three instructions of the length converter. It works out where the
-next arm will land from where the **current** one did (the sequencer's own
-`floor(k × period)` grid, reconstructed by integer arithmetic) and makes the
-recording exactly that long. No prediction, no lookahead, no state kept
-between passes.
+Three ColdFire code caves, **186 bytes of code between them**, and no DSP
+code at all:
 
-At any tempo whose bar is already a whole number of samples it writes back
-the length that was already there — a **bit-exact no-op**, proven for all
-11,208 (tempo, RLEN) pairs and observed over 21,000 emulator calls at 65.6.
+| module | what it does |
+|---|---|
+| `FLEX SEEK BIND` | a re-bind on the same buffer is a **seek** for the DSP, not a new note — so the voice is not re-primed |
+| `FLEX SEEK BIND CTR` | holds the per-bind counter, so the read pointer is **not reset** — the read head free-runs |
+| `RECORDER SPACING` | makes each pass exactly as long as the gap to its next arm, worked out from where the **current** arm landed (the sequencer's own `floor(k × period)` grid, reconstructed by integer arithmetic). No prediction, no lookahead, no state kept between passes |
 
-Build the minimal image — this cave and **nothing else**, so the FX2 list
-and every other behaviour stay stock:
+At any tempo whose bar is already a whole number of samples, `RECORDER
+SPACING` writes back the length that was already there — a **bit-exact
+no-op**, proven for all 11,208 (tempo, RLEN) pairs and observed over 21,000
+emulator calls at 65.6.
+
+The `recfix` build is **these three and nothing else of ours**. It also lists
+the fourteen stock FX2 effects, which costs nothing at all and is what keeps
+your unit normal: every octabam image rebuilds the FX2 chooser from the
+remix's contents, so without that line the FX2 list would come up empty and
+you could not select an effect (your saved projects would still play — the
+effect code and dispatch are untouched — but you could not change one).
 
 ```bash
-make os                                  # extracts your own downloaded 1.40C
-make check REMIX=recfix                  # every gate, no hardware
+make setup                               # vendored tools
+make os                                  # extracts YOUR OWN downloaded 1.40C
+make check REMIX=recfix                  # every gate, no hardware needed
 make image REMIX=recfix BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
 ```
 
-Sam's build of that image is sha256 `2f38d9d1…` — yours should match if your
+`make check` is the floor — it builds the image and runs every gate in the
+repo without touching hardware. If it is not green, do not flash.
+
+Sam's build of that image is sha256 `ecb574a9…` — yours should match if your
 stock 1.40C does (`370c55a3…`); if it does not, say so before flashing, because
 that is a difference worth understanding.
 
@@ -137,12 +153,16 @@ noise floor, no per-bar event at any threshold.
 - **One unit, one fixture, one session.** Only ever flashed on an **MKII**.
   The MKI runs the byte-identical stock OS so it is plausibly fine, but
   nobody has done it.
-- **Tested stacked, not alone.** The hardware result above is from an image
-  carrying this cave *plus* the two other fixes from §1. `recfix` is this
-  cave **by itself** and has been gated in the emulator only — whether it is
-  enough on its own is exactly what your test answers. If you still hear a
-  chirp-then-click rather than a clean tick, that is the voice-restart fault
-  and you need the other two as well; say so and we will build that image.
+- **`recfix` is not the exact image that was measured.** The hardware result
+  above is OCTABAM83, which is these three caves **plus** our DSP effects
+  (the "bus"). `recfix` drops those, so it is a different image and has been
+  gated in the emulator only. The recorder path is on the ColdFire and the
+  effects are on the DSP, so they are independent and we expect no
+  difference — but expected is not measured, and Sam is re-taking the
+  capture on this exact image.
+- **We do not know whether all three fixes are needed.** They have only ever
+  been tested together. If you are curious, the individual modules can be
+  built separately — but start with all three.
 - **Real material over long periods.** Our measurements are a tone for 90
   seconds. Whether a half-hour of layering stays clean, nobody knows.
 - One isolated blip (2.3× the floor, one bar in 47) turned up in the 132 BPM
@@ -158,6 +178,9 @@ click, and knowing that is worth more than a confirmation.
 - `docs/firmware/RTOS_FORK.md` §10.53 (the diagnosis and the tempo table),
   §10.55 (a fix that failed, and why), §10.56–10.57 (this cave and its
   gates), §10.58 (the hardware result)
-- `modules/recorder-spacing/` — the cave, its source and its arithmetic
+- `modules/recorder-spacing/`, `modules/flex-seekbind/`,
+  `modules/flex-seekbind-ctr/` — the three caves, their sources and their
+  arithmetic
+- `remixes/recfix.py` — what is and is not in the image, and why
 - `out/hw/softretrig/tempo_seam.py` — which tempi are affected, any RLEN
 - `out/hw/softretrig/lever_e.py` — the arithmetic gate, 115,200 cases

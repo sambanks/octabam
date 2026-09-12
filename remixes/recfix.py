@@ -1,40 +1,60 @@
-"""RECFIX -- the recorder length fix, ALONE: one ColdFire cave, nothing else.
+"""RECFIX -- Bryan's recorder click: the three fixes, and nothing else.
 
-The minimal image for testing RTOS_FORK 10.53's defect in isolation. It
-carries `RECORDER SPACING` and no DSP code at all -- no effects, no menu
-changes, no FX2 ids, no bus -- so the FX2 list, every stock effect and every
-other behaviour are the stock 1.40C ones, and anything that changes in the
-recorder is attributable to the cave and nothing else.
+The build to hand somebody whose recorder loops click. It carries the THREE
+ColdFire caves that between them removed the fault on hardware, and no DSP
+code of our own at all -- no effects, no bus, no FX2 id of ours, no menu
+change:
 
-WHY A SOLO BUILD. The fix landed on hardware as OCTABAM83, which is 82
-(`seekB`: bus + the two seek-bind caves) PLUS this cave, so the three fixes
-have only ever been tested stacked:
+  * `FLEX SEEK BIND`      -- a same-buffer re-bind is a SEEK for the DSP, not
+                             a new note. Removes the voice-restart transient
+                             (a chirp, then hash at 140 % of the signal over
+                             300 samples). RTOS_FORK 10.50.
+  * `FLEX SEEK BIND CTR`  -- and its per-bind counter is held, so the read
+                             pointer is not reset onto the alternating grid.
+                             Removes the +/-1.5-sample seam. 10.51.
+  * `RECORDER SPACING`    -- each fixed-RLEN pass is exactly as long as the
+                             gap to its next arm, derived from the current
+                             arm. Removes the one-skipped-sample scuff on
+                             alternate bars. 10.57/10.58.
 
-  * lever A (`FLEX SEEK BIND`)      removed the voice-restart transient
-  * lever B (`FLEX SEEK BIND CTR`)  removed the read-pointer seam
-  * this cave                       removed the length scuff
+Three different mechanisms -- a message path, a position store, a length --
+each measured on its own symptom, which is why all three are here. See
+`docs/firmware/RECORDER_CLICK.md` for the plain-language version and the
+reproduction steps.
 
-Each was measured on its own symptom (10.50/10.51/10.58) so all three are
-real, but "is this cave alone enough?" is UNANSWERED -- and it is the
-question that decides what the community is asked to flash. One cave is a
-much easier ask than three. This remix is how that gets answered, and it is
-also the build to hand someone who only wants the recorder fixed.
+⚠️ THE STOCK FX2 LIST IS NOT OPTIONAL, AND IS NOT "SOMETHING ELSE". Every
+octabam image replaces the FX2 chooser WHOLESALE with the remix's modules
+(`tools/remix/stock.py`), so a remix carrying only ColdFire caves draws a
+chooser of ONE row -- NONE. The eleven non-donor stock effects keep their
+code, descriptor and dispatch either way, so saved projects still PLAY, but
+nothing could be selected or changed from the menu. Listing the fourteen
+costs NOTHING: no clone, no placement, no words, no cycles -- only their list
+rows. It is what keeps the unit NORMAL, which is the whole point of this
+build: somebody should be able to flash it and carry on using their own
+projects.
 
-WHAT IT SHOULD DO. At any tempo whose bar is a whole number of samples
-(65.6, 120, 125, 126, 135, 140, 144, 150 -- 46 of the 1401 tempi from 60.0
-to 200.0) the cave is a BIT-EXACT no-op: it writes back the length that was
-already there, proven for all 11,208 (tempo, RLEN) pairs and observed on
-21,000 port calls. At every other tempo it makes each recorder pass exactly
-as long as the gap to its next arm.
+⚠️ NOT THE BYTES THAT WERE MEASURED. The hardware result (10.58) is
+OCTABAM83 = `seekE`, which is these three caves PLUS the bus (our DSP
+effects). This remix drops the bus, so it is a DIFFERENT IMAGE and is
+port-gated only. The recorder path is ColdFire and the bus is DSP, so they
+are independent and this is expected to behave identically -- but "expected"
+is not "measured", and the honest order is for Sam to re-take the self-loop
+capture on this image before it goes out.
 
-  docs/firmware/RECORDER_CLICK.md -- the reproduction steps.
+OPEN QUESTION this build does not answer: whether `RECORDER SPACING` alone
+would have been enough. The three have only ever been tested stacked.
 """
 
 from remix.schema import Remix
 
 REMIX = Remix(
     name="recfix",
-    doc="Minimal build: the recorder length fix (RECORDER SPACING) alone, no DSP code.",
-    modules=("RECORDER SPACING",),
+    doc="Bryan's recorder click: the three ColdFire fixes beside the stock FX2 chooser, "
+        "no DSP code of our own.",
+    modules=("FLEX SEEK BIND", "FLEX SEEK BIND CTR", "RECORDER SPACING",
+             # the stock chooser, in stock order -- no words, no placement (stock.py)
+             "FILTER", "EQUALIZER", "DJ EQ", "PHASER", "FLANGER", "CHORUS",
+             "SPATIALIZER", "COMB FILTER", "COMPRESSOR", "LO-FI", "DELAY",
+             "PLATE REV", "SPRING REV", "DARK REV"),
     fallback="NONE",
 )
