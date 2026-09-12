@@ -539,6 +539,8 @@ cmp <card.img> /tmp/after.img | head -1
 
   Expected: the STOP call returns at frame 200; `card out` reports the sectors the load wrote (the firmware's own log file, EMU.md); `cmp` reports a difference. Find the log with Task 9's reader: `list_dir` the root and the set folder of both images, and `read_file` the file that exists only in `/tmp/after.img` or grew there. It must be readable text naming the project. That proves `--card-out` and the reader together. With `--card-fail-after 0`, the log shows `WRITE-FAIL` lines; write down what the firmware then does (retries, error, hang). That behaviour is stock's, and Task 16 depends on it.
 
+- [ ] **Step 6b: Close two Phase A pendings with the same run.** Phase A could not run the port (no project existed). Add `--watch-mem 0x800065b8,4` to the Step 6 command, and a `--mem-dump` of 64 bytes at `0x100f8480` taken at the end of the run (check `--mem-dump`'s exact syntax in `main.cpp`; the plan's `port()` in Task 14 uses `ADDR,LEN=FILE`). Expected: the watch prints a write of `1` at the transport start, a write of `2` from the STOP call at frame 200, and no other value during the run; the dump's first byte is `/` and the string is `/<SET>` with no trailing `/`. Write both into `docs/firmware/STEM_REC.md`: section 1.6 becomes measured ✅ (keep its falsifier), and section 5.8's leading-slash 🟡 becomes ✅, or the opposite if the byte is not `/`. If the STOP call writes `0`, or the first byte is not `/`, stop: Tasks 13 to 15 assume both. Commit as `STEM_REC: transport 0->1->2 and the set path's leading '/', measured under the port`.
+
 - [ ] **Step 7: Commit.**
 
 ```bash
@@ -554,7 +556,7 @@ COLDFIRE_PORT O10 renders a kick on T1 sample-exact under the port: the RIG proj
 - Modify: `docs/firmware/STEM_REC.md` (section 9)
 - Create: `tools/verify/stems_fixture.py` (builds the card)
 
-- [ ] **Step 1: Find the RIG project.** `ls ~/octabam/out/ ~/octabam/out/_emu_rtos_tree 2>/dev/null` and COLDFIRE_PORT O10's text. If no copy of the RIG project exists on this machine, ask Yves for a project folder from his card (his own data, not Elektron's) and use it instead; any project whose T1 can be made FLEX works.
+- [ ] **Step 1: The project.** No copy of the RIG project exists on this machine. Yves supplied EZBot's "Ultimate FX 1.5.3" template (his own download) at `C:\Projects\Octabam\Octatrack projects\Ultimate FX 1.5.3`, gitignored, and it was copied to `~/octabam-stems/out/projects/Ultimate FX 1.5.3` on 12 Sep 2026. `tools/hw/ot_project.py report` reads it (16 banks, four parts each, FX2 ids `0x08`/`0x16` on its tracks). Stage it as set `STEMS`, project `ULTFX`. Any project whose T1 can be made FLEX works, so the fixture takes the project folder as an argument with that path as the default.
 - [ ] **Step 2: Write `tools/verify/stems_fixture.py`,** which copies the project into a scratch folder, applies `tools/hw/ot_project.py` edits (FLEX on T1 with `set_machine_type`, SEND in both FX slots with `set-fx`, `TSMODE=0` for slot 1 in `project.work`), makes the kick with `scripts/make_test_audio.py kick`, and calls `emu_rtos.stage_project(project, set_name, name, audio=[f"{kick}:{slot_path}"])`. It prints the card path, the set and the project. Keep every edit in the script so the fixture is reproducible from one command.
 - [ ] **Step 3: Dump the block.**
 
@@ -731,6 +733,17 @@ git commit -m "DramRegion: uninitialised DRAM at the top of the platform reserve
 ## Phase D: the module
 
 The unit grows over Tasks 13 to 16. The equates marked **(Task N)** take the values Phase A recorded. Keep the section order: facts, constants, data, action, hook, task, writer.
+
+**Revised 12 Sep 2026, after Phase A** (`docs/firmware/STEM_REC.md`; the ledger is `.superpowers/sdd/2026-09-10-stem-rec-poc/progress.md`). Four readings changed the code below, and Yves settled two design questions:
+
+1. The transport word has three values: `0` stopped and rewound, `1` running, `2` stopped by the STOP key (section 1). The action and the hook test for exactly `1`, never `tst.l`.
+2. The kernel has no tick delay. `0x40020c7c(us, wait)` is a real sleep, in microseconds (section 4). Its timer is shared and holds one waiter; every call resets it. **Accepted for the proof of concept** (Yves, 12 Sep 2026): the stems remix excludes CF PROBE, and nothing upgrades the OS mid-recording. The task passes `wait = 0`, so a busy timer returns `-1` at once instead of blocking. The alternative, a private timed wait on PIT3, is not built.
+3. The set folder is the C string at `0x100f8480`, used as the stock save uses it (section 5.8). `stems_make_path` copies it and never calls `0x40025230`. Its leading `/` is 🟡 until Task 10 Step 6b measures it.
+4. Folder creation exists: the pointer at `0x46c8240a`, called through, parent must exist, no trailing `/` (section 6). The file is always `<set>/AUDIO/YYMMDD-HHMM/T1.wav`.
+
+And one accepted risk that changes no code: the buffered file API's sector staging buffer at `0x4ecd3000` is shared and unlocked (section 7.5). A stock sample save during a recording could race with the writer task. **Accepted for the proof of concept** (Yves, 12 Sep 2026); it goes into the flash notes (Task 18), and the first flash uses a spare card.
+
+Readings that held as the plan assumed: the read-back half (`PING_XOR = 0`), task creation (create then start, TCB 84 bytes, priority 1 has room), the FAT lock (held across each call), and the card-mounted word (a longword; removal does not clear it).
 
 ### Task 13: The row, the action, the remix
 
@@ -933,8 +946,9 @@ MODULE = Module(
 | instruction. The action and the hook write it; the task writes only IDLE.
 
 | ---- stock facts (docs/firmware/STEM_REC.md) ----------------------------
-        .equ    TRANSPORT,     0x800065b8   | long; 0 = stopped            (Task 2)
-        .equ    CARD_MOUNTED,  0x460d1cb8   | 0 = no card                  (Task 8)
+        .equ    TRANSPORT,     0x800065b8   | long; 1 = running, 0 or 2 = stopped (Task 2)
+        .equ    TRANSPORT_RUNNING, 1        | the ONLY value that means playing   (Task 2)
+        .equ    CARD_MOUNTED,  0x460d1cb8   | long; 0 = no card                   (Task 8)
         .equ    FRAME_ROUTINE, 0x400031a0   | the displaced call
         .equ    MODE_W,        0x400b328b   | "w": opens without truncating
 
@@ -981,8 +995,9 @@ stems_action:
         clr.l   stems_frames
         clr.l   stems_status
         moveq   #ST_ARMED,%d1
-        tst.l   TRANSPORT
-        beq.s   .La_set
+        move.l  TRANSPORT,%d0       | running iff exactly 1 (Task 2)
+        subq.l  #TRANSPORT_RUNNING,%d0
+        bne.s   .La_set             | 0 or 2: stopped
         moveq   #ST_RECORDING,%d1   | already playing: start at the next frame
         bra.s   .La_set
 .La_busy:
@@ -1015,7 +1030,7 @@ stems_frame_hook:
         rts
 ```
 
-  If Task 8 found `CARD_MOUNTED` is a byte, write `tst.b`.
+  `CARD_MOUNTED` is a longword (Task 8), so `tst.l` is right.
 
 - [ ] **Step 6: Build and run the static check.**
 
@@ -1158,19 +1173,20 @@ stems_frame_hook:
         moveq   #ST_FINISHING,%d1
         cmp.l   %d1,%d0
         beq.w   .Lh_out             | FINISHING: the task owns the ring now
-        move.l  TRANSPORT,%d2       | 0 = stopped
+        move.l  TRANSPORT,%d2       | running iff exactly 1 (Task 2)
+        subq.l  #TRANSPORT_RUNNING,%d2   | Z set while the sequencer plays
         moveq   #ST_ARMED,%d1
         cmp.l   %d1,%d0
         bne.s   .Lh_rec
         tst.l   %d2                 | ARMED
-        beq.w   .Lh_out             | still stopped
+        bne.w   .Lh_out             | still stopped (0 or 2)
         moveq   #ST_RECORDING,%d0   | the first playing frame is recorded
         move.l  %d0,stems_state
         bra.s   .Lh_copy
 .Lh_rec:                            | RECORDING
         tst.l   %d2
-        bne.s   .Lh_copy
-        moveq   #ST_FINISHING,%d0   | the sequencer stopped
+        beq.s   .Lh_copy
+        moveq   #ST_FINISHING,%d0   | the sequencer stopped: 0 (end, rewind) or 2 (STOP key)
         move.l  %d0,stems_state
         bra.w   .Lh_out
 .Lh_copy:
@@ -1225,7 +1241,7 @@ stems_frame_hook:
         rts
 ```
 
-  Use the rule Task 3 recorded for the half; if it is not the XOR form, replace the five instructions after `move.l PING,%d4`.
+  Task 3 confirmed the XOR form with `PING_XOR = 0` (STEM_REC.md section 2), so the five instructions after `move.l PING,%d4` stand.
 
 - [ ] **Step 4: Rebuild, disassemble, run.** `make bus REMIX=stems`, then disassemble `stems_frame_hook` in full. Check in particular that `eori.l #0` and `cmpi.l` came out as written, and that the `.rept` body is five instructions sixteen times. Then `python3 tools/verify/verify_stems.py`. Expected: every tap check `[PASS]`, with the lag printed.
 
@@ -1260,7 +1276,7 @@ def wav_check(card_path, nfr, dump, tag):
     check(f"{tag}: one new recording in {audio}", len(names) == 1, f"{names}")
     if not names:
         return
-    path = f"{audio}/{names[0]}/T1.wav" if HAVE_MKDIR else f"{audio}/{names[0]}"
+    path = f"{audio}/{names[0]}/T1.wav"
     data = ec.read_file(img, path)
     check(f"{tag}: {path} exists", data is not None)
     if data is None:
@@ -1279,7 +1295,7 @@ def wav_check(card_path, nfr, dump, tag):
           f"lag {lag}")
 ```
 
-  `HAVE_MKDIR` mirrors the unit's equate from Task 7. `stems_fixture.py` must add a key `staged` to `out/stems_fixture.json`: the names it put in the set's AUDIO folder itself (the kick's folder), so the check counts only new names.
+  The take is always a folder (Task 7 found the routine). `stems_fixture.py` must add a key `staged` to `out/stems_fixture.json`: the names it put in the set's AUDIO folder itself (the kick's folder), so the check counts only new names.
 
   Add a second run beside `tap()`, long enough for the task to finish after STOP:
 
@@ -1302,23 +1318,23 @@ def full(s):
 ```asm
         .equ    K_CREATE,      0x400005fc   | (tcb, entry, prio, stack, size) -> 1   (Task 4)
         .equ    K_START,       0x4000063c   | (tcb)                                  (Task 4)
-        .equ    TCB_SIZE,      96           |                                        (Task 4)
-        .equ    K_DELAY,       0x40000000   | (ticks)  -- REPLACE with Task 5's      (Task 5)
-        .equ    TASK_TICKS,    10           | about 10 ms                            (Task 5)
+        .equ    TCB_SIZE,      84           |                                        (Task 4)
+        .equ    K_DELAY,       0x40020c7c   | (us, wait) -> 0; -1 = timer busy, wait 0 (Task 5)
+        .equ    K_DELAY_TRY,   0            | wait = 0: never block on the shared timer (Task 5)
+        .equ    TASK_SLEEP_US, 10000        | one pass; MICROSECONDS, not ticks       (Task 5)
         .equ    F_OPEN,        0x40016864   | (obj, path, mode, buf, size) <0 = error
         .equ    F_WRITE,       0x400166b8   | (obj, src, len) 1 = success
         .equ    F_SEEK,        0x4001660c   | (obj, offset) <0 = error
         .equ    F_CLOSE,       0x4001677c   | (obj) <0 = error
-        .equ    PROJ_DIR,      0x40025230   | (0, 0) -> project directory     (Task 6)
-        .equ    CLK_READ,      0x4001c4d8   | (field) -> BCD                   (Task 6)
-        .equ    BCD2BIN,       0x4001c31c   | (bcd) -> binary                  (Task 6)
-        .equ    NAME_FMT,      0x400b77bb   | "%02d%02d%02d-%02d%02d"           (Task 6)
+        .equ    SET_PATH,      0x100f8480   | the current set's path, a C string in place (Task 6)
+        .equ    CLK_READ,      0x4001c4d8   | (field) -> one BCD byte in d0; BLOCKS   (Task 6)
+        .equ    BCD2BIN,       0x4001c31c   | (bcd) -> binary                          (Task 6)
+        .equ    NAME_FMT,      0x400b77bb   | "%02d%02d%02d-%02d%02d"                  (Task 6)
         .equ    SPRINTF,       0x40013a08   | (buf, fmt, ...)
-        .equ    HAVE_MKDIR,    0            |                                  (Task 7)
-        .equ    FS_MKDIR,      0            | (path)                           (Task 7)
+        .equ    FS_MKDIR_PTR,  0x46c8240a   | -> mkdir(path): 0 ok, <0 failed; call THROUGH it (Task 7)
 ```
 
-  **`K_DELAY` must be replaced with Task 5's address before this step is run.** The `0x40000000` is there only so the file assembles if someone builds out of order, and `verify_stems.py` must refuse to run the port when the unit's `K_DELAY` symbol equals `0x40000000`: add that guard at the top of `full()`, reading the value with `m68k-elf-nm` on `out/platform/runtime/runtime.elf` after marking it `.global` (use `.global K_DELAY` beside the `.equ`).
+  `TASK_SLEEP_US` is STEM_REC.md 4.10's `TASK_TICKS`, renamed because the unit is microseconds and a name that says ticks is the kind of trap this project keeps paying for. `K_DELAY` is the shared single-waiter timer (STEM_REC.md 4.7); with `wait = 0` a busy timer returns `-1` at once and the loop simply goes round again, which starves only lower priorities and never destroys another caller's wake-up. Yves accepted the hazard for the proof of concept on 12 Sep 2026. Never call `K_DELAY` with the interrupt mask above level 2 (PIT1 is level 2), and never from the hook.
 
   Add to the constants:
 
@@ -1366,7 +1382,6 @@ stems_hdr:
         .equ    HDR_SIZE, 44
 fmt_dir:   .asciz  "/AUDIO/%s"
 fmt_file:  .asciz  "/T1.wav"
-fmt_flat:  .asciz  ".wav"
         .balign 2
 ```
 
@@ -1426,12 +1441,15 @@ stems_task_create:
         rts
 
 | ---- the task ------------------------------------------------------------
-| Wakes every TASK_TICKS. Owns the file. Writes stems_state only to IDLE.
+| Wakes every TASK_SLEEP_US. Owns the file. Writes stems_state only to IDLE.
+| K_DELAY(us, wait): C order, so wait is pushed first (STEM_REC.md 4.4:
+| us at sp@(8), wait at sp@(12) inside the routine).
 stems_task:
 .Lt_loop:
-        pea     TASK_TICKS
-        jsr     K_DELAY
-        addq.l  #4,%sp
+        pea     K_DELAY_TRY
+        pea     TASK_SLEEP_US
+        jsr     K_DELAY             | d0 = -1 when the timer was busy: just loop
+        addq.l  #8,%sp
         move.l  stems_state,%d0
         moveq   #ST_RECORDING,%d1
         cmp.l   %d1,%d0
@@ -1504,50 +1522,36 @@ stems_make_name:
         lea     20(%sp),%sp
         rts
 
-| ---- the path: <set>/AUDIO/<name>/T1.wav, or <set>/AUDIO/<name>.wav ----
-| set = the project directory up to its last '/'. d0 = 0, or -1 (too long).
+| ---- the path: <set>/AUDIO/<name>/T1.wav ---------------------------------
+| set = the C string at SET_PATH, used exactly as the stock save uses it
+| (STEM_REC.md 5.8): copied, never trimmed, and PROJ_DIR is never called.
+| Uses d0, d1, a0, a1 only. d0 = 0, or -1 (empty, or too long).
 stems_make_path:
-        lea     -12(%sp),%sp
-        movem.l %d2/%a2-%a3,(%sp)
-        clr.l   -(%sp)
-        clr.l   -(%sp)
-        jsr     PROJ_DIR
-        addq.l  #8,%sp
-        tst.l   %d0
-        beq.s   .Lp_fail
-        movea.l %d0,%a0
+        lea     SET_PATH,%a0
         lea     stems_path,%a1
-        suba.l  %a2,%a2             | the last '/' seen
         move.l  #PATH_MAX-40,%d1    | room left for /AUDIO/name/T1.wav
 .Lp_copy:
         move.b  (%a0)+,%d0
         beq.s   .Lp_end
-        move.b  %d0,(%a1)
-        moveq   #0x2f,%d2           | '/'
-        cmp.b   %d2,%d0
-        bne.s   .Lp_char
-        movea.l %a1,%a2             | where the last '/' went
-.Lp_char:
-        addq.l  #1,%a1
+        move.b  %d0,(%a1)+
         subq.l  #1,%d1
         bne.s   .Lp_copy
-        bra.s   .Lp_fail            | the project path is too long
+        bra.s   .Lp_fail            | the set path is too long
 .Lp_end:
-        move.l  %a2,%d0
-        beq.s   .Lp_fail            | no '/': not an absolute path
-        pea     stems_name          | <set>/AUDIO/<name>
+        clr.b   (%a1)
+        move.l  %a1,%d0
+        sub.l   #stems_path,%d0
+        beq.s   .Lp_fail            | an empty set path: no set mounted
+        pea     stems_name          | <set>/AUDIO/<name>, written at the end
         pea     fmt_dir
-        move.l  %a2,-(%sp)
+        move.l  %a1,-(%sp)
         jsr     SPRINTF
         lea     12(%sp),%sp
-        .if     HAVE_MKDIR
-        pea     stems_path          | the folder; an error here is left to
-        jsr     FS_MKDIR            | the open, which fails if it is absent
-        addq.l  #4,%sp
+        movea.l FS_MKDIR_PTR,%a0    | the take's folder (STEM_REC.md 6.11). It
+        pea     stems_path          | takes FS_LOCK and reads the clock, so task
+        jsr     (%a0)               | context only. An error is left to the
+        addq.l  #4,%sp              | open, which fails if the folder is absent.
         lea     fmt_file,%a0
-        .else
-        lea     fmt_flat,%a0
-        .endif
         lea     stems_path,%a1      | append the file part
 .Lp_find:
         tst.b   (%a1)+
@@ -1557,12 +1561,9 @@ stems_make_path:
         move.b  (%a0)+,(%a1)+
         bne.s   .Lp_app
         moveq   #0,%d0
-        bra.s   .Lp_out
+        rts
 .Lp_fail:
         moveq   #-1,%d0
-.Lp_out:
-        movem.l (%sp),%d2/%a2-%a3
-        lea     12(%sp),%sp
         rts
 
 | ---- open, refuse a file that has content, write the header -------------
@@ -1728,9 +1729,9 @@ stems_finish:
         rts
 ```
 
-  Replace the CLOCK field numbers, the `PROJ_DIR` return register and the `FS_MKDIR` call with what Tasks 6 and 7 recorded. A `.Lf_close` path that sets `stems_file_open` to 0 before the close result is checked is deliberate: a failed close must not be retried by `.Lt_fail`.
+  The CLOCK field numbers (minute 2, hour 3, day 5, month 6, year 7) and the push order (minute first, so sprintf sees year, month, day, hour, minute) are what Task 6 measured; `CLK_READ` takes its index on the stack and returns one zero-extended BCD byte, which is exactly what `BCD2BIN` wants. A `.Lf_close` path that sets `stems_file_open` to 0 before the close result is checked is deliberate: a failed close must not be retried by `.Lt_fail`.
 
-- [ ] **Step 4: Disassemble what you assembled.** The whole unit. Check four things by eye: `BYTEREV 0` is the word `02c0`; every `cmp.l` has its operands the way round the branch after it expects (`cmp.l %d1,%d0` then `blt` means `d0 < d1`); `pea TASK_TICKS` and `pea 4` push the numbers; the `.Lp_copy` loop copies the project path byte for byte (step through it once under the port with `--watch-pc` if in doubt).
+- [ ] **Step 4: Disassemble what you assembled.** The whole unit. Check five things by eye: `BYTEREV 0` is the word `02c0`; every `cmp.l` has its operands the way round the branch after it expects (`cmp.l %d1,%d0` then `blt` means `d0 < d1`); `pea K_DELAY_TRY`, `pea TASK_SLEEP_US` and `pea 4` push the numbers, in that order; `jsr (%a0)` after `movea.l FS_MKDIR_PTR,%a0` is an indirect call, not a call to `0x46c8240a`; the `.Lp_copy` loop copies the set path byte for byte (step through it once under the port with `--watch-pc` if in doubt).
 
 - [ ] **Step 5: Run the check.** `make bus REMIX=stems && python3 tools/verify/verify_stems.py`. Expected: every `full:` check `[PASS]`. If the file is missing, read `stems_status` from the mem dump first: its value names the step that failed. If the port hangs in `K_DELAY` or `K_CREATE`, the Task 4 or 5 reading is wrong; go back to it, do not guess.
 
@@ -1777,7 +1778,7 @@ This task needs Yves and the unit.
 
 - [ ] **Step 1: Build the image.** `make image REMIX=stems BUILD=<next>` (read `docs/remixer/FLASHING.md` for the current `BUILD` number and naming). Record the SHA-256 of the result.
 - [ ] **Step 2: Bring the branch to the Windows clone.** `git -C /c/Projects/Octabam fetch //wsl$/Ubuntu/home/yvez/octabam-stems stem-rec-poc` then fast-forward it there. Do not push anywhere.
-- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (backed up or spare), and the three tests from spec section 11 in order, each with what to look at and what to report back.
+- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (a spare, not a backed-up working card), and the three tests from spec section 11 in order, each with what to look at and what to report back. Name the two risks Yves accepted for the proof of concept on 12 Sep 2026, each with its do-not: (1) the writer task sleeps on the shared single-waiter timer at `0x40020c7c` (STEM_REC.md 4.7), so once STEM REC has been selected since boot, do not run CF PROBE or an OS upgrade without a power cycle first; (2) the buffered file API's staging buffer at `0x4ecd3000` is shared and unlocked (STEM_REC.md 7.5), so do not save a sample while a recording is running.
 - [ ] **Step 4: After the flash,** record every result, good and bad, in `docs/firmware/STEM_REC.md` (a "Hardware" section) and `FAILURE_MODES.md`, then update `PLAN.md`.
 
 ---
@@ -1785,4 +1786,4 @@ This task needs Yves and the unit.
 ## Self-review notes
 
 - Spec coverage: section 2 workflows (Tasks 13, 15 Step 6), section 3 states and race (13), section 4 tap (14), section 5 ring and placement (12, 14, 16), section 6 task and file API (4 to 8, 15), section 7 stops and errors (14, 16), section 8 crash safety (13 card check, 14 bounded hook, 15 checked results, 17 stack), section 9 unknowns (2 to 8, 11), section 10 verification (9, 10, 13 to 17), section 11 flash (18), section 12 TODO (unchanged, in the spec).
-- The one value that cannot be written ahead is `K_DELAY`: Task 15 guards it so a stale `0x40000000` refuses to run rather than hanging the port.
+- `K_DELAY` was the one value the plan could not write ahead; Phase A found it (`0x40020c7c`, microseconds, a shared single-waiter timer), and Task 15 now carries the real call. The guard against a placeholder address is gone with the placeholder.

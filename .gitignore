@@ -14,6 +14,9 @@ out/
 vendor/
 
 # --- Local ---
+# Octatrack project folders for the port runs (someone else's work, not ours
+# to redistribute; EZBot's template lives here since 12 Sep 2026).
+Octatrack projects/
 .claude/
 .DS_Store
 .playwright-mcp/
