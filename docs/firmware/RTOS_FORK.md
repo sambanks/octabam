@@ -4809,3 +4809,50 @@ head; a 1 kHz tone at 128 cannot see a whole-bar jump (1875.0 periods per
 bar). On 83 the reader's wrap follows the alternating length, so **that drift
 should now be zero** — testable with the burst-train source over minutes, and
 worth doing before this is called finished for real material.
+
+### 10.59 ✅ The re-take on the build that actually goes out: OCTABAM84 (`recfix`, the three caves without the bus) measures the same as 83 (12 Sep 2026 — measured on the unit)
+
+§10.58's result was OCTABAM83 = `seekE`, which carries the three recorder
+caves **plus** the bus. `recfix` drops the bus, so the image going to Bryan
+was a different one and port-gated only. Re-flashed as **OCTABAM84**
+(`out/OCTATRACK_OCTABAM84.bin`, sha256 `ecb574a9…`, `card84.sh`) and repeated
+the §10.58 capture: same fixture, same rig, same day, 90 s, FX off, internal
+clock, tone amp 0.05.
+
+| | 82 (broken) | 83 (measured fix) | **84 (`recfix`, what ships)** |
+|---|---|---|---|
+| even bars, median | 1.10× | 1.10× | **1.10×** (max 1.11×) |
+| **odd bars, median** | **1.70×** | 1.10× | **1.10×** |
+| bars above 1.25× the floor, 46 bars | 16 | 0 | **1** |
+| `judge.py` per-bar event | yes | no | **no** (bar fold 1.0×) |
+| residual floor | — | 2.67 % of rms | **2.67 %, identical** |
+
+**No parity split, and the floor is identical to 83's.** Sam by ear: "sounds
+good". The bus makes no difference to the recorder path, as expected from it
+being DSP-side while these caves are ColdFire — now measured rather than
+assumed.
+
+**The one event, and what settles it.** Bar 3 reads 1.56× — a single
+non-periodic blip, where 82's signature was 16 of 23 **odd** bars on a
+repeating grid. An accidental replication decides it: the capture was
+inadvertently run twice and the first (discarded) take has **bar 3 at
+1.14×**, so the event is not bar-locked — it lands wherever it lands.
+Together with §10.58's 132 BPM bar-22 (2.30×) and §10.51's 82 bar-23
+(11.53×), that is **one sporadic blip per 45–90 s take on every image
+including the broken one**, unrelated to the seam. 🟡 Still unexplained, now
+with three instances and a shape (isolated, non-periodic, any bar phase);
+a dropout somewhere in the capture or output path is the standing guess and
+nothing has been done to test it.
+
+**Method note, worth not repeating:** the double-run overwrote the WAV, so
+the head and tail of that shell output came from two different recordings.
+Compare numbers only within one file — `perbar.py` on the saved capture, not
+across invocations. (It was luck that made this informative.)
+
+**Standing, end of 12 Sep 2026:** Bryan's click is three faults, all three
+fixed and measured on Sam's MKII, and the shipping build is measured too.
+What is not known is written in `docs/firmware/RECORDER_CLICK.md` for him:
+one unit, one fixture, MKII only, a tone rather than real material, the three
+fixes tested only stacked, and §10.51's long-term drift question still open
+(with the prediction that 83/84's alternating length should have taken the
+read head's ~0.5 samples/bar creep to zero).
