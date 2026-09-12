@@ -589,6 +589,8 @@ def t1_frames(dump_path):
 
   with `READBACK_DIR` the direction character the summary printed for those classes.
 
+  **Measured (Task 11, 12 Sep 2026, STEM_REC.md section 9):** `T1_OFFSET = 0x100`, the third 0x80-byte slot of a half, not the first; `READBACK_DIR = "<"`; word order L high, L low, R high, R low; odd words exact multiples of 256. The fixture is `tools/verify/stems_fixture.py`, which writes `out/stems_fixture.json`. T1's level in the block is about 1/16.5 of the source sample (−24.4 dB), measured and not explained (🟡). A take recorded on the unit may be that much quieter than the pattern sounds; say so in the flash notes.
+
 ---
 
 ## Phase C: the build change
@@ -1152,7 +1154,7 @@ def tap(s):
         .equ    PING,          0x800000e0   | the read-back half selector  (Task 3)
         .equ    PING_XOR,      0            | half = (PING ^ PING_XOR) & 1  (Task 3)
         .equ    READBACK,      0x80003190   | core 1's read-back, tracks 1-4
-        .equ    T1_OFFSET,     0            | T1's block in a half, bytes   (Task 11)
+        .equ    T1_OFFSET,     0x100        | T1's block in a half: the THIRD 0x80 slot (Task 11)
 ```
 
   to the constants:
@@ -1787,7 +1789,7 @@ This task needs Yves and the unit.
 
 - [ ] **Step 1: Build the image.** `make image REMIX=stems BUILD=<next>` (read `docs/remixer/FLASHING.md` for the current `BUILD` number and naming). Record the SHA-256 of the result.
 - [ ] **Step 2: Bring the branch to the Windows clone.** `git -C /c/Projects/Octabam fetch //wsl$/Ubuntu/home/yvez/octabam-stems stem-rec-poc` then fast-forward it there. Do not push anywhere.
-- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (a spare, not a backed-up working card), and the three tests from spec section 11 in order, each with what to look at and what to report back. Name the two risks Yves accepted for the proof of concept on 12 Sep 2026, each with its do-not: (1) the writer task sleeps on the shared single-waiter timer at `0x40020c7c` (STEM_REC.md 4.7), so once STEM REC has been selected since boot, do not run CF PROBE or an OS upgrade without a power cycle first; (2) the buffered file API's staging buffer at `0x4ecd3000` is shared and unlocked (STEM_REC.md 7.5), so do not save a sample while a recording is running.
+- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (a spare, not a backed-up working card), and the three tests from spec section 11 in order, each with what to look at and what to report back. Name the two risks Yves accepted for the proof of concept on 12 Sep 2026, each with its do-not: (1) the writer task sleeps on the shared single-waiter timer at `0x40020c7c` (STEM_REC.md 4.7), so once STEM REC has been selected since boot, do not run CF PROBE or an OS upgrade without a power cycle first; (2) the buffered file API's staging buffer at `0x4ecd3000` is shared and unlocked (STEM_REC.md 7.5), so do not save a sample while a recording is running. Also name one expectation: under the port, T1 sits in the read-back block about 24 dB below its source sample (STEM_REC.md section 9, unexplained), so a quiet take is a known possibility. Ask Yves to compare the take's level with the same pattern resampled by the stock recorder.
 - [ ] **Step 4: After the flash,** record every result, good and bad, in `docs/firmware/STEM_REC.md` (a "Hardware" section) and `FAILURE_MODES.md`, then update `PLAN.md`.
 
 ---
