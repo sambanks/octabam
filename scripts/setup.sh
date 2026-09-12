@@ -42,39 +42,56 @@ echo "== 1b) mc68k (ColdFire core for the headless machine) =="
 # peripheral scaffolding -- the CPU half of tools/emu/ot_emu. Vendored, GPLv3, the
 # same posture as vendor/dsp56300: tooling and patches are shared, built
 # binaries never are. `docs/firmware/COLDFIRE_PORT.md`.
-if [ ! -d vendor/mc68k ]; then
-  git clone https://github.com/joelanders/mc68k-md-mm vendor/mc68k
-else
-  echo "   already cloned; git pull ..."
-  git -C vendor/mc68k pull --ff-only || true
-fi
+# PINNED, like the two below: a `git pull` on every setup moves a
+# contributor's tree to whatever upstream is that day, and the port was
+# measured against this commit (docs/firmware/COLDFIRE_PORT.md).
+MC68K_PIN=4a6d0d17a1f2b30077ab726c27fe9bb770fa0456
+pin_checkout() {  # dir url sha
+  [ -d "$1" ] || git clone --no-checkout "$2" "$1"
+  if [ "$(git -C "$1" rev-parse HEAD 2>/dev/null)" != "$3" ]; then
+    git -C "$1" fetch -q origin "$3"
+    git -C "$1" checkout -q "$3"
+  fi
+  echo "   $1 at $(git -C "$1" rev-parse --short HEAD) (pinned)"
+}
+# apply_patch dir patch: apply, or accept already-applied, or FAIL LOUDLY.
+# The old "already applied (or upstream changed)" line covered both a
+# patched tree and a tree the patch REJECTED on, and a contributor's fresh
+# clone hit the second twice on 12 Sep 2026 (dsp_host would not compile;
+# make image found no container) before the message said which.
+apply_patch() {
+  if git -C "$1" apply --check "$2" 2>/dev/null; then
+    git -C "$1" apply "$2" && echo "   local patch applied: $(basename "$2")"
+  elif git -C "$1" apply --check --reverse "$2" 2>/dev/null; then
+    echo "   local patch already applied: $(basename "$2")"
+  else
+    echo "   [!] $(basename "$2") does NOT apply to $1 at $(git -C "$1" rev-parse --short HEAD)"
+    echo "       and is not already applied either. Fix: rm -rf $1; make setup"
+    exit 1
+  fi
+}
+pin_checkout vendor/mc68k https://github.com/joelanders/mc68k-md-mm "$MC68K_PIN"
 
 echo
 echo "== 2) elektron-firmware-tool (mischa85) =="
-if [ ! -d vendor/elektron-firmware-tool ]; then
-  git clone https://github.com/mischa85/elektron-firmware-tool vendor/elektron-firmware-tool
-else
-  echo "   already cloned; git pull ..."
-  git -C vendor/elektron-firmware-tool pull --ff-only || true
-fi
+EFT_PIN=065d18f4195793e61891e387813488ee59f6d1ca
+pin_checkout vendor/elektron-firmware-tool https://github.com/mischa85/elektron-firmware-tool "$EFT_PIN"
 
 # Two local changes are needed to reproduce this build:
 #   - set_version() writes the full 10-char ELEK version field from 0x08;
 #     upstream only writes from 0x0D, where 5 fit.
 #   - EFT_EMIT_CONTAINER dumps the rebuilt container, which tools/build/make_bin.py
 #     wraps to produce the CF card .bin.
-PATCH=$(pwd)/tools/patches/elektron-firmware-tool.patch
-if [ -f "$PATCH" ]; then
-  if git -C vendor/elektron-firmware-tool apply --check "$PATCH" 2>/dev/null; then
-    git -C vendor/elektron-firmware-tool apply "$PATCH" && echo "   local patch applied"
-  else
-    echo "   local patch already applied (or upstream changed: check $PATCH)"
-  fi
-fi
+apply_patch vendor/elektron-firmware-tool "$(pwd)/tools/patches/elektron-firmware-tool.patch"
 
 echo "   building ..."
 if [ -f vendor/elektron-firmware-tool/Makefile ]; then
-  make -C vendor/elektron-firmware-tool || echo "   [!] make failed — see vendor/elektron-firmware-tool/README"
+  make -C vendor/elektron-firmware-tool || { echo "   [!] elektron-firmware-tool build FAILED -- make image needs it"; exit 1; }
+  # The binary must carry OUR container dump, or make image has nothing to
+  # wrap; a build from an unpatched tree is silent about it until then.
+  grep -a -q EFT_EMIT_CONTAINER vendor/elektron-firmware-tool/elektron-firmware-tool \
+    || { echo "   [!] elektron-firmware-tool was built WITHOUT the local patch (no EFT_EMIT_CONTAINER)."; \
+         echo "       Fix: rm -rf vendor/elektron-firmware-tool; make setup"; exit 1; }
 else
   src=$(find vendor/elektron-firmware-tool -maxdepth 2 -name '*.c' | tr '\n' ' ')
   if [ -n "$src" ]; then
@@ -140,16 +157,7 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     # interpreted, peripherals serviced under a masked interrupt, an idle
     # step) plus hooks for Y-side registers it does not map (8 Sep 2026, O8).
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
-    if git -C vendor/dsp56300 apply --check "$EMUPATCH" 2>/dev/null; then
-      git -C vendor/dsp56300 apply "$EMUPATCH" && echo "   emulator patch applied (MPYRI, shared window, host-stepped cores)"
-    elif git -C vendor/dsp56300 apply --check --reverse "$EMUPATCH" 2>/dev/null; then
-      echo "   emulator patch already applied"
-    else
-      echo "   [!] emulator patch does NOT apply to vendor/dsp56300 at $(git -C vendor/dsp56300 rev-parse --short HEAD)"
-      echo "       (expected $DSP56300_PIN). dsp_host cannot build without it."
-      echo "       Fix: rm -rf vendor/dsp56300; make setup"
-      exit 1
-    fi
+    apply_patch vendor/dsp56300 "$EMUPATCH"
     stage_dsp_host
     cmake -S vendor/dsp56300 -B vendor/dsp56300/build -DCMAKE_BUILD_TYPE=Release \
       && cmake --build vendor/dsp56300/build \

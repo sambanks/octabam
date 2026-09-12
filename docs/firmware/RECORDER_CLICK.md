@@ -83,8 +83,9 @@ effect code and dispatch are untouched — but you could not change one).
 ```bash
 git clone --recurse-submodules https://github.com/sambanks/octabam
 cd octabam
-make setup                               # vendored tools
+make setup                               # vendored tools, each pinned and built
 make os                                  # extracts YOUR OWN downloaded 1.40C
+make recon                               # unpacks it: out/raw/section_3_MAIN_OS.bin, what every build reads
 make check REMIX=recfix                  # every gate, no hardware needed
 make image REMIX=recfix BUILD=84         # -> out/OCTATRACK_OCTABAM84.bin
 ```
@@ -108,6 +109,10 @@ recfix touches no DSP code. Setup used to swallow a failed build and then
 report "already built" on every re-run once the disassembler alone existed;
 now it fails loudly, and `make check` names the missing binary and the fix
 up front instead of a traceback in `verify_twocore`.
+This whole sequence, `make setup` through the hash below, was run on 12 Sep
+2026 on a clone with no vendored tools and no venv -- every tool cloned at its
+pin and built from source -- and produced `ecb574a9…`.
+
 The emulator is pinned to the upstream commit our patch is written against;
 a `make setup` from before 12 Sep 2026 cloned that day's upstream HEAD, on
 which the patch no longer applies, and `dsp_host.cpp` then fails with "no
