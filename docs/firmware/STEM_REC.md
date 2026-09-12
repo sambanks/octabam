@@ -486,7 +486,7 @@ The word does return to 0, but only on the other three stop paths:
 before it starts), `0x400a4066` (the sequencer's automatic stop) and
 `0x400a1050` (engine init). None of these is reached from the STOP key.
 
-### 1.6 Measured under the port ✅, with one new open question 🟡
+### 1.6 Measured under the port -- the write of 2 needed the STOP gate forced
 
 Task 10 added four `ot_emu` flags (`--card-out`, `--call-before-play`, `--at`,
 `--card-fail-after`) and staged a project card (set `STEMS`, project `ULTFX`,
@@ -502,10 +502,14 @@ out/emu/ot_emu --image out/raw/section_3_MAIN_OS.bin --card out/stems_card.img \
 
 `--at 200:0x4000a1e0:0` calls the STOP handler with `callAsMain`, the same
 call shape `press_key_live(KEY_STOP)` uses in `emu_rtos.py`, at frame 200
-after the transport start.
+after the transport start. **On its own, this command's STOP call did NOT
+write 2** -- it hit a precondition inside the STOP handler and returned
+without touching the transport word. The write of 2 was measured only in a
+second run, with that precondition forced open. Four separate claims, each
+measured, follow.
 
-**The start edge is confirmed. ✅** `--watch-mem` shows exactly two writes
-over the whole run:
+**✅ `0` at init and `1` at the transport start, measured.** `--watch-mem`
+on the command above shows exactly two writes over the whole run:
 
 ```
 [    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
@@ -518,7 +522,8 @@ The first is engine init (section 1.3's `0x400a1050`); the second is
 project, so the 0->1 transition is now measured twice, against two
 projects.
 
-**The literal STOP call is a no-op on this project.** The call returns
+**✅ Unforced, on this project, the STOP handler takes its early `rts` and
+the word stays 1, measured.** The call above returns
 (`call : 0x4000a1e0(0x0) at frame 200 -> returned, d0 0x3fb6`), but
 `--watch-mem` shows no third write: the word stays at 1. `--watch-pc` on the
 handler's three exits (`0x4000a1fe`, `0x4000a1f8`, `0x4000a1f2`) shows the
@@ -534,9 +539,10 @@ tstb 0x80000029 / beqs 0x4000a1fe   -- taken
 call at all shows the same byte still `0x00`: nothing in this project's load
 or its first 400 frames ever sets it.
 
-**With the gate forced open, the write-2 path is confirmed. ✅** Poking the
-byte before the call (`--poke 0x80000029=1`) reaches the code section 1.5
-already disassembled:
+**✅ With `0x80000029` forced to 1, the STOP handler writes 2 at pc
+`0x4009f5c6`, measured.** A second run, `--poke 0x80000029=1` added before
+the same `--at 200:0x4000a1e0:0` call, reaches the code section 1.5 already
+disassembled:
 
 ```
 [    8707.8] [0x800065b8] <- 0 (4) at pc 0x400a1050 in main  i=44915230
@@ -545,24 +551,25 @@ already disassembled:
 ```
 
 `0x4009f5c6` is exactly the "write 2" site section 1.2 classified from the
-static read. So the 0/1/2 state machine in sections 1.0, 1.4 and 1.7 is
-now measured end to end, and the falsifier below is not triggered: a
-running transport (word 1) that receives a real STOP call, with its own
-precondition satisfied, does write 2 and nothing else.
+static read. So the 0/1/2 state machine in sections 1.0, 1.4 and 1.7 is now
+measured end to end across the two runs above, and the falsifier below is
+not triggered: a running transport (word 1) that receives a real STOP call,
+with its own precondition satisfied, does write 2 and nothing else. Section
+1.7's rule -- running iff the word is exactly 1 -- stands on both runs.
 
-**🟡 New question: what sets `0x80000029`, and why is it already set on one
-project and not another?** `RTOS_FORK.md` §9.4 measured this same byte as
-already `0x01` right after `load_project_live` on `out/_testproj`, with no
-extra setup. On `Ultimate FX 1.5.3`, staged the same way, it reads `0x00`
-after the same kind of load and stays `0x00` through 400 frames of the
-sequencer running. `startTransportLive()` (what `--sequencer` uses to start
-the transport) calls `FW_TRANSPORT` directly and does not go through the
-real `KEY_PLAY` handler, so whatever sets `0x80000029` may be a side effect
-of the real PLAY key path, of a specific project setting, or of both;
-this pass did not chase it further. **Concern for Tasks 13 to 15:** a raw
-`callAsMain` on `0x4000a1e0` (or any project-dependent equivalent) is not on
-its own proof that STOP was pressed; check `0x80000029` first, or drive
-STOP through the real key path.
+**🟡 What sets `0x80000029` on the unit is still open.** `RTOS_FORK.md`
+§9.4 measured this same byte as already `0x01` right after
+`load_project_live` on `out/_testproj`, with no extra setup. On
+`Ultimate FX 1.5.3`, staged the same way, it reads `0x00` after the same
+kind of load and stays `0x00` through 400 frames of the sequencer running.
+`startTransportLive()` (what `--sequencer` uses to start the transport)
+calls `FW_TRANSPORT` directly and does not go through the real `KEY_PLAY`
+handler, so whatever sets `0x80000029` may be a side effect of the real
+PLAY key path, of a specific project setting, or of both; this pass did not
+chase it further. **Concern for Tasks 13 to 15:** a raw `callAsMain` on
+`0x4000a1e0` (or any project-dependent equivalent) is not on its own proof
+that STOP was pressed; check `0x80000029` first, or drive STOP through the
+real key path.
 **Falsifier:** a write to `0x80000029` found in the image, or a run on a
 third project where the byte is set after load without the poke.
 
