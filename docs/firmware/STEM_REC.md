@@ -5094,6 +5094,89 @@ path entirely), but STEM REC against whichever of the stock buffered-API
 callers (the sample save, the project/bank-file saver, the small log-writer)
 happens to run on another task at the same instant.
 
+### 7.10 Why the header is written first ✅
+
+STEM REC writes a take only after it stops. It writes the header first,
+with its final sizes, then the ring, then closes, and it never seeks. The
+original design streamed the take during the recording and then sought back
+to patch the two sizes. This section is why that design could not work.
+Read from `scripts/disasm.sh emac` on 13 Sep 2026: the open wrapper
+`0x40016864`, the write `0x400166b8`, the seek `0x4001660c`, the close
+`0x4001677c`, the buffered read `0x40016564` and the close backend
+`0x40018788`.
+
+✅ **The object is 24 bytes.** Open stores the caller's buffer at `+4`
+(`0x40016878`) and its size at `+8` (`0x4001687e`), clears `+16`
+(`0x40016884`), stores the raw handle at `+0` (`0x4001689c`) and the mode's
+first character at `+20` (`0x4001689e`), and clears `+12` (`0x400168ac`).
+The five routines read and write nothing past that byte at `+20`.
+
+| offset | field |
+|---|---|
+| `+0` | the raw handle, 1 to 511; close clears it |
+| `+4` | the caller's buffer |
+| `+8` | the buffer's size |
+| `+12` | the fill: bytes waiting in the buffer |
+| `+16` | the write position |
+| `+20` | the mode byte, `'r'` or `'w'` |
+
+✅ **Open clears `+16`, so `+16` cannot say whether the file existed.** It is
+0 after every open, new file or old. STEM REC asks the file layer's exists
+pointer `0x46c823fa` instead (section 6.11).
+
+✅ **The write copies one byte at a time and advances `+16` once per byte.**
+Each byte goes into the caller's buffer at the fill (`0x400166ee`). When the
+fill reaches the buffer's size, the buffer is copied to the shared staging
+buffer `0x4ecd3000` and written as size ÷ 512 sectors through the slot
+`0x46c82402` (`0x40016726`), and the fill goes back to 0. `+16` goes up by
+one for every byte (`0x4001673a`), whether or not a flush happened. The
+write returns 1, or the sector write's negative code.
+
+✅ **The seek does not flush.** It seeks the raw file to the offset rounded
+down to 512 (slot `0x46c8243e`, `0x40016636`), then calls the buffered read
+`0x40016564` for the remaining `offset & 511` bytes with no destination
+(`0x4001665e`). That read refills the buffer from the card only when the
+fill is 0 (`0x40016590`). Otherwise it consumes bytes already in the
+buffer, which after a write are data that has not reached the card. In `"w"`
+mode the seek then sets `+16` to the offset (`0x40016674`), and it ends by
+jumping to the raw seek with the full offset (`0x4001668a`). Nothing in it
+writes the pending buffer.
+
+✅ **Close flushes the tail, then hands `+16` to the file layer as the
+length.** In `"w"` mode with a non-zero fill, it pads the buffer with zeros
+to its size (`0x400167c2`) and writes `(fill + 511) ÷ 512` sectors
+(`0x40016806`). Then, still in `"w"` mode, it calls the slot `0x46c82436`
+with the handle and `+16` (`0x40016826`). The card backend behind that slot
+is `0x40018788`. It converts the file's current size and the new value into
+cluster counts and compares them (`0x40018828`): the same number of
+clusters or fewer takes the path at `0x4001895a`, and more allocates at
+`0x400188f8`.
+Close then calls the raw close (slot `0x46c82422`) and clears `+0`.
+
+✅ **Close sets the file's length to `+16`, shorter as well as longer.**
+Measured under the port on 13 Sep 2026, both ways:
+
+- **Longer.** Every take the verifier writes reads back at exactly 44 bytes
+  plus its data: 27,180 bytes for 27,136 bytes of audio. Close wrote whole
+  512-byte sectors, so the length came from `+16`, not from the bytes on the
+  card.
+- **Shorter.** A scratch build of STEM REC, never committed, wrote the header
+  and 25,728 bytes of audio. It then sought to 40, wrote 4 bytes and closed.
+  The file read back at 44 bytes, and its first bytes were
+  `0300 0300 ...`, not `RIFF`. The buffer still held the take's unflushed
+  tail when the seek ran, and close wrote that buffer at the file's first
+  sector, where the seek had left it, then cut the file to the write
+  position.
+
+So the original design would have cut every take to a 44-byte file of
+audio bytes with no header. The stock sample save never seeks: it knows the
+length before it writes, and it writes the header first with the final
+sizes (SAMPLE_SAVE.md section 3). STEM REC now does the same.
+
+The costs of writing after the stop: the file appears a few seconds after
+the stop, not during the take, and a power cut or a card pull during a take
+leaves no file. The gain: no card traffic at all while the take runs.
+
 ## 8. Is a card mounted
 
 ### 8.0 The answer, first ✅
