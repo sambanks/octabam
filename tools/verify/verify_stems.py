@@ -36,6 +36,7 @@ FIXTURE = pathlib.Path("out/stems_fixture.json")   # written by tools/verify/ste
 KEY_STOP = 0x4000a1e0
 STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
 PRE_ROLL = 40              # frames before the transport start; the dump includes them
+ST_IDLE, ST_ARMED, ST_RECORDING, ST_FINISHING = 0, 1, 2, 3   # stems.s
 
 fails = 0
 
@@ -96,37 +97,21 @@ def t1_frames(dump_path):
 
 
 def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=()):
-    """One fixture run under the port: the module's action called at frame 0
-    (the first frame after the transport start), STOP at `stop_at` (None = no
-    STOP), any further `calls` as (frame, addr), any `pokes` as (addr, byte)
-    applied after the load. A run that calls STOP also sets STOP_GATE to 1:
-    the port starts the transport without the PLAY key, and on the fixture's
-    project that leaves the STOP handler's gate shut, so the call would do
-    nothing (Task 10). Dumps the six state words and, when `ring_bytes`, the
-    start of the ring. Returns (log text, dump, card, state words, ring bytes).
+    """One fixture run under the port: the module's action called before
+    play (`--call-before-play`: the action arms, and the hook takes the
+    ARMED-to-RECORDING edge on the first playing frame), STOP at `stop_at`
+    (None = no STOP), any further `calls` as (frame, addr), any `pokes` as
+    (addr, byte) applied after the load. A run that calls STOP also sets
+    STOP_GATE to 1: the port starts the transport without the PLAY key, and
+    on the fixture's project that leaves the STOP handler's gate shut, so
+    the call would do nothing (Task 10). Dumps the six state words and, when
+    `ring_bytes`, the start of the ring. Returns (log text, dump, card,
+    state words, ring bytes).
 
-    ⚠️ The action is called through `--at 0:...`, NOT `--call-before-play`.
-    Measured 12 Sep 2026: `--call-before-play` can never succeed once
-    `--pre-roll` (>= 1) is also given. `main.cpp`'s pre-roll loop stops the
-    instant the Nth frame's interrupt vector (0x41) is taken -- which is
-    where `m_frameCount` is incremented (`rtos.cpp`'s `setAckHook`) -- so
-    PC always lands a few bytes into the level-5 handler (0x4000aad4 in
-    this build), never at main's spin (0x4001fc9c); `callAsMain` refuses
-    to run anywhere else and the call is silently skipped (main.cpp prints
-    the refusal but does not abort). Confirmed identical at PRE_ROLL = 1, 5,
-    10, 20, 39, 40, 41 and 50 -- fully deterministic, not a timing fluke; only
-    PRE_ROLL = 0 lands at spin. The `--at` path (used below, and already used
-    for `stop_at`) does not have this gap: main.cpp calls
-    `rtos.runToMainSpin(1000.0)` after the frame-count wait and before
-    `callAsMain` (`main.cpp` ~line 652), which `--call-before-play`'s path
-    omits. So calling the action at frame 0 -- after the transport is
-    already running -- exercises `stems_action`'s "already playing: start at
-    the next frame" branch (straight to RECORDING) rather than the
-    ARMED-then-RECORDING edge; that edge is a `stems_action` detail, not
-    something this tap needs to hit. This is a real gap in `ot_emu`'s
-    `main.cpp` (the pre-roll path is missing the `runToMainSpin` step the
-    `--at` path has), out of this task's files (stems.s, verify_stems.py) to
-    fix; report it rather than silently working around it forever."""
+    `--call-before-play` beside `--pre-roll` needs the port fixed on 13 Sep
+    2026 (`main.cpp` runs to main's spin before the call; STEM_REC.md 10.1).
+    An older port refuses the call, prints the refusal and records nothing,
+    so `tap()` checks the call's own report line before anything else."""
     fx = json.loads(FIXTURE.read_text())
     work = pathlib.Path("out/stems_runs"); work.mkdir(parents=True, exist_ok=True)
     dump, card = work / f"{tag}.dump", work / f"{tag}.img"
@@ -134,7 +119,7 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     dumps = f"0x{s['stems_state']:x},24={mem}"
     if ring_bytes:
         dumps += f";0x{s['stems_ring']:x},{ring_bytes}={ring}"
-    at = [f"0:0x{s['stems_action']:x}:0"] + [f"{f}:0x{a:x}:0" for f, a in calls]
+    at = [f"{f}:0x{a:x}:0" for f, a in calls]
     pk = list(pokes)
     if stop_at is not None:
         at.append(f"{stop_at}:0x{KEY_STOP:x}:0")
@@ -143,6 +128,7 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
             "--project", fx["project"], "--sequencer", "--internal-clock",
             "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
             "--pre-roll", str(PRE_ROLL), "--poke-trig", "2", "--block-dump", str(dump),
+            "--call-before-play", f"0x{s['stems_action']:x}:0",
             "--card-out", str(card), "--mem-dump", dumps, *extra]
     if at:
         args += ["--at", ",".join(at)]
@@ -158,17 +144,26 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
 def tap(s):
     log, dump, _, words, raw = port(s, 400, stop_at=300, tag="tap", ring_bytes=64 * 400)
     st, status, _, wr, rd, nfr = words
+    armed = [l for l in log.splitlines() if l.startswith("call") and "before play" in l]
+    check("the action was called before play", any("-> returned" in l for l in armed),
+          armed[0].strip() if armed else "no call line in the port's report")
     check("the hook recorded frames", nfr > 200, f"{nfr} frames, wr {wr}")
-    check("wr is 64 bytes per frame", wr == 64 * nfr, f"{wr} vs {64 * nfr}")
-    check("the stop moved RECORDING on", st != 2, f"state {st}, status {status}")
+    # Every check below needs frames: with none, "equal at a fixed lag" and
+    # "64 bytes per frame" are true of an empty ring, which is how the first
+    # RED run of this task passed three of them.
+    check("wr is 64 bytes per frame", nfr > 0 and wr == 64 * nfr, f"{wr} vs {64 * nfr}")
+    check("the stop moved RECORDING on", nfr > 0 and st in (ST_IDLE, ST_FINISHING),
+          f"state {st}, status {status}")
     got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "big", signed=True)
             for k in range(32)] for f in range(nfr)]
     want = t1_frames(dump)
     lag = next((L for L in range(len(want) - nfr + 1) if want[L:L + nfr] == got), None)
-    check("every ring frame equals T1's read-back at one fixed lag", lag is not None,
+    check("every ring frame equals T1's read-back at one fixed lag", nfr > 0 and lag is not None,
           f"lag {lag} frames (pre-roll {PRE_ROLL})" if lag is not None
           else f"no lag 0..{len(want) - nfr} matches")
-    check("the signal is not silence", any(any(x) for x in got), "non-zero samples present")
+    loud = any(any(x) for x in got)
+    check("the signal is not silence", loud,
+          "non-zero samples present" if loud else f"all {nfr} ring frames are zero")
 
 
 def main():
