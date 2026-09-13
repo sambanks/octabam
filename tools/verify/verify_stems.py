@@ -239,7 +239,35 @@ def rowstop(s):
     wav_check(card, nfr, dump, "rowstop")
 
 
-ERR_EXISTS = 4
+ERR_OVERFLOW, ERR_EXISTS = 1, 4
+RING_SIZE = 0x400000
+OVERFLOW_FRAMES = 4000                   # the task writes the whole 4 MiB ring after the guard
+
+
+def watched(s, extra=(), span=8):
+    """--watch-mem on the state words from stems_state on, `span` bytes:
+    every write, in order, so a run can see a value the next arm clears.
+    8 covers the state and the status; 24 adds the write index and the
+    frame count, which the hook writes every frame."""
+    return ("--watch-mem", f"0x{s['stems_state']:x},{span}", *extra)
+
+
+def writes(s, log, span=8):
+    """(sample, word, value) for every watched write: word 0 = state,
+    1 = status, 3 = stems_wr, 5 = stems_frames."""
+    out = []
+    for l in log.splitlines():
+        if "] <- " not in l or "[0x" not in l:
+            continue
+        try:
+            sample = float(l.split("[", 1)[1].split("]", 1)[0])
+            addr = int(l.split("[0x", 1)[1].split("]", 1)[0], 16)
+            val = int(l.split("<- ", 1)[1].split()[0], 0)
+        except ValueError:
+            continue
+        if s["stems_state"] <= addr < s["stems_state"] + span:
+            out.append((sample, (addr - s["stems_state"]) // 4, val))
+    return out
 
 
 def take(card_path):
@@ -271,6 +299,35 @@ def exists(s):
           f"{len(before) if before else None} bytes before, {len(after) if after else None} after")
 
 
+def overflow(s):
+    """The ring made to look nearly full: stems_rd poked so wr - rd is
+    RING_SIZE - 6400 plus what the hook has written. The hook stops with
+    ERR_OVERFLOW once 100 frames are in; the task then writes what it
+    believes is there (the whole ring) and closes. A STOP, then the row,
+    arms again: the task came back to IDLE."""
+    rd = (-(RING_SIZE - 6400)) & 0xffffffff
+    pokes = [(s["stems_rd"] + i, (rd >> (24 - 8 * i)) & 0xff) for i in range(4)]
+    log, _, card, words, _ = port(s, OVERFLOW_FRAMES, stop_at=OVERFLOW_FRAMES - 400, tag="overflow",
+                                  pokes=pokes, dump_blocks=False,
+                                  calls=((OVERFLOW_FRAMES - 200, s["stems_action"]),),
+                                  extra=watched(s, span=24))
+    st, status, _, wr, rd_end, _ = words
+    ws = writes(s, log, span=24)
+    nfr = max((v for x, w, v in ws if w == 5), default=0)   # the re-arm clears the count
+    statuses = [v for x, w, v in ws if w == 1]
+    states = [v for x, w, v in ws if w == 0]
+    check("overflow: the hook stopped with ERR_OVERFLOW", ERR_OVERFLOW in statuses,
+          f"status writes {statuses}")
+    check("overflow: 100 frames, then the guard", nfr == 100, f"{nfr} frames")
+    fin = next((x for x, w, v in ws if w == 0 and v == ST_FINISHING), None)
+    idle = next((x for x, w, v in ws if w == 0 and v == ST_IDLE and fin is not None and x > fin), None)
+    if fin is not None and idle is not None:
+        print(f"  [ -- ] overflow: the task wrote the whole ring in {(idle - fin) / 16:.0f} frames "
+              f"({(idle - fin) / 44100:.2f} s of port time)")
+    check("overflow: the task wrote and went IDLE, and the row armed again",
+          states[-2:] == [ST_IDLE, ST_ARMED] and st == ST_ARMED, f"state writes {states}, state {st}")
+
+
 def main():
     from remix import registry
     name = sys.argv[1] if len(sys.argv) > 1 else "stems"
@@ -290,6 +347,7 @@ def main():
         full(s)
         rowstop(s)
         exists(s)
+        overflow(s)
     else:
         print("  [SKIP] port runs: build the port (make emu-cf) and the fixture "
               "(python3 tools/verify/stems_fixture.py)")
