@@ -5964,3 +5964,85 @@ had a span of 23.
 **Falsifier:** a span that changes between two runs of one build. That
 would make it a race in the port, not a property of the build.
 
+### 11.4 A card that aborts a write hangs the writer in the stock driver ✅
+
+The run is `cardfail`, with `--card-fail-after 20`. From the 21st sector on,
+the port's card refuses every WRITE SECTORS command with ERR and ABRT and
+never raises DRQ, the way a card answers an aborted command
+(`tools/emu/ot_emu/card.cpp`). The take's first 20 sectors reached the card.
+The state stayed FINISHING to the end of the run, and nothing wrote the
+status word.
+
+`--coverage` over the 700-frame window names the loop. Three instructions
+ran 3.3 million times:
+
+```
+40014cf4:	1039 9000 00d8 	moveb 0x900000d8,%d0     | the card's status byte
+40014cfa:	44c0           	movew %d0,%ccr          | bit 3, DRQ, lands in N
+40014cfc:	6af6           	bpls 0x40014cf4          | round again while DRQ is clear
+```
+
+They are the stock write command's wait for data. The routine starts at
+`0x40014c48`, issues WRITE SECTORS (`0x30`) at `0x40014ce4`, and has one
+caller, `0x40015230`. Its earlier waits, at `0x40014c62`, `0x40014c80` and
+`0x40014c88`, poll for BSY clear and DRDY set the same way. None of them
+reads the ERR bit, and none of them counts. So the task that issued a
+command the card refuses waits for it forever.
+
+What the hang reaches:
+
+- ✅ **Main stops running.** The writer spins at priority 1 and never
+  blocks, and main is priority 0: the boot writes the priority-0 list head
+  `0x800068dc` into main's TCB (`0x40000dec` to `0x40000df2`; section 3.0
+  has the array of list heads). In the first `cardfail` run the port's call
+  at frame 600 waited 1,000 ms of port time for main to reach its idle loop,
+  and was refused with main elsewhere.
+- 🟡 **Every other user of the FAT layer waits.** The sector write runs
+  inside a raw backend that holds `FS_LOCK` across its body (section 7.2),
+  so the writer hangs holding the lock. This follows from the reading. The
+  run did not watch the lock.
+- 🟡 **Tasks above priority 1 keep running**, the UI task (3) and the
+  storage task (5) among them, by the scheduler's rule (section 3.5). The
+  run did not observe them.
+
+It is not the module's defect. The stock sample save writes through the
+same routine and would hang the same way. The proof of concept cannot guard
+against it without patching the driver. On the unit, recovery is a power
+cycle.
+
+Not measured: whether a real card ever refuses WRITE SECTORS this way. The
+port models only a refused command, not a media error reported after the
+data.
+
+`verify_stems.py`'s `cardfail()` records the hang: it passes while the
+writer is stuck in that loop after exactly 20 sectors, so a change in the
+driver's answer or in the port's card model shows up as a failure.
+
+### 11.5 A second take in the same minute, and the overflow guard ✅
+
+Two runs of `verify_stems.py`, 13 Sep 2026:
+
+- **`exists`.** A second take on the card the `full` run wrote, in the same
+  minute: every port take is `000000-0000` (11.2). The task refused it with
+  ERR_EXISTS (4) and went IDLE. The first take stayed byte-identical, 27,180
+  bytes before and after.
+- **`overflow`.** `stems_rd` is poked after the transport start so that the
+  hook sees `RING_SIZE - 6400` bytes more in the ring than it has written.
+  The guard fired at exactly 100 frames: the watched state word went from
+  RECORDING to FINISHING 1,600.5 samples after the start edge, and the
+  status word got ERR_OVERFLOW (1) in the same frame. The task then wrote
+  what it believed the ring held, all 4 MiB, closed the file and went IDLE.
+  After a STOP, the row armed again. The file's content is not checked,
+  because the poke made the task write bytes the hook never wrote.
+
+| overflow run | value |
+|---|---|
+| frames before the guard | 100 |
+| the task's write of 4 MiB, in frames | 2,879 |
+| the same, in port time | 1.04 s |
+| sectors written in the run | 8,227 |
+
+The write rate is the port's, not the unit's: the port's card model
+answers every command at once. The sequencer was running during this
+write, so the figure includes the task's share of the processor beside the
+audio interrupt and the other tasks.
