@@ -38,6 +38,8 @@ KEY_STOP = 0x4000a1e0
 STOP_GATE = 0x80000029     # the STOP handler returns early while this byte is 0 (STEM_REC.md 1.6)
 PRE_ROLL = 40              # frames before the transport start; the dump includes them
 ST_IDLE, ST_ARMED, ST_RECORDING, ST_FINISHING = 0, 1, 2, 3   # stems.s
+STACK_SIZE, STACK_FILL = 0x2000, 0x5354454d                   # stems.s: DramRegion stems_stack, "STEM"
+STACK_LIMIT = 6 * 1024     # above this, the plan raises the stack to 16 KB before a flash
 
 fails = 0
 
@@ -98,7 +100,7 @@ def t1_frames(dump_path):
 
 
 def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=(),
-         card_in=None, dump_blocks=True):
+         card_in=None, dump_blocks=True, stack=False):
     """One fixture run under the port: the module's action called before
     play (`--call-before-play`: the action arms, and the hook takes the
     ARMED-to-RECORDING edge on the first playing frame), STOP at `stop_at`
@@ -111,6 +113,7 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     state words, ring bytes). `card_in` replaces the fixture's card (Task 16:
     a second take on the first take's card). `dump_blocks=False` drops the
     block dump, which a run of tens of thousands of frames cannot afford.
+    `stack=True` also dumps the writer task's 8 KB stack to <tag>.stack.
 
     `--call-before-play` beside `--pre-roll` needs the port fixed on 13 Sep
     2026 (`main.cpp` runs to main's spin before the call; STEM_REC.md 10.1).
@@ -123,6 +126,8 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     dumps = f"0x{s['stems_state']:x},24={mem}"
     if ring_bytes:
         dumps += f";0x{s['stems_ring']:x},{ring_bytes}={ring}"
+    if stack:
+        dumps += f";0x{s['stems_stack']:x},{STACK_SIZE}={work / (tag + '.stack')}"
     at = [f"{f}:0x{a:x}:0" for f, a in calls]
     pk = list(pokes)
     if stop_at is not None:
@@ -217,8 +222,15 @@ def wav_check(card_path, nfr, dump, tag):
 def full(s):
     """Armed before play, STOP at 400, and 300 frames for the task to write
     the take."""
-    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="full")
+    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="full", stack=True)
     st, status, made, wr, rd, nfr = words
+    raw = pathlib.Path("out/stems_runs/full.stack")
+    if raw.exists():
+        longs = [int.from_bytes(raw.read_bytes()[i:i + 4], "big") for i in range(0, STACK_SIZE, 4)]
+        untouched = next((i for i, w in enumerate(longs) if w != STACK_FILL), len(longs))
+        peak = STACK_SIZE - 4 * untouched
+        check(f"full: the writer's stack peak is at most {STACK_LIMIT} bytes", 0 < peak <= STACK_LIMIT,
+              f"{peak} of {STACK_SIZE} bytes used")
     check("full: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
           f"state {st}, status {status}")
     check("full: the task drained everything", nfr > 0 and rd == wr, f"rd {rd}, wr {wr}")
