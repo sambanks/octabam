@@ -239,8 +239,9 @@ def rowstop(s):
     wav_check(card, nfr, dump, "rowstop")
 
 
-ERR_OVERFLOW, ERR_EXISTS = 1, 4
+ERR_OVERFLOW, ERR_EXISTS, ERR_WRITE = 1, 4, 5
 RING_SIZE = 0x400000
+DRIVER_DRQ_POLL = 0x40014cf4             # the stock write command's wait for DRQ (STEM_REC.md 11.4)
 OVERFLOW_FRAMES = 4000                   # the task writes the whole 4 MiB ring after the guard
 
 
@@ -328,6 +329,29 @@ def overflow(s):
           states[-2:] == [ST_IDLE, ST_ARMED] and st == ST_ARMED, f"state writes {states}, state {st}")
 
 
+def cardfail(s):
+    """Every card write after the 20th is refused, as a card answers an
+    aborted command: ERR and ABRT, no DRQ. The stock driver's write command
+    waits for DRQ at 0x40014cf4 with no error check and no timeout, so the
+    writer task hangs there, holding the file layer's lock (STEM_REC.md
+    11.4). This run RECORDS that fact rather than expecting a recovery: a
+    change here means the driver's answer, or the port's card model,
+    changed."""
+    work = pathlib.Path("out/stems_runs")
+    cov = work / "cardfail.cov"
+    log, _, card, words, _ = port(s, 700, stop_at=400, tag="cardfail", dump_blocks=False,
+                                  extra=watched(s, ("--card-fail-after", "20", "--coverage", str(cov))))
+    st, status, _, wr, rd, nfr = words
+    polls = 0
+    if cov.exists():
+        polls = next((int(n) for a, n in (l.split() for l in cov.read_text().splitlines())
+                      if int(a, 16) == DRIVER_DRQ_POLL), 0)
+    sectors = next((l.split("(")[1].split()[0] for l in log.splitlines() if l.startswith("card out")), "?")
+    check("cardfail: a refused write hangs the writer in the stock driver's DRQ poll (known)",
+          st == ST_FINISHING and sectors == "20" and polls > 100000,
+          f"state {st}, {sectors} sectors written, {polls} polls at 0x{DRIVER_DRQ_POLL:x}")
+
+
 def main():
     from remix import registry
     name = sys.argv[1] if len(sys.argv) > 1 else "stems"
@@ -348,6 +372,7 @@ def main():
         rowstop(s)
         exists(s)
         overflow(s)
+        cardfail(s)
     else:
         print("  [SKIP] port runs: build the port (make emu-cf) and the fixture "
               "(python3 tools/verify/stems_fixture.py)")
