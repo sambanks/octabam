@@ -930,3 +930,78 @@ answer:
    so this is the first measurement of that chain anywhere.
 5. His Part save/reload menu actions (Part Save, Part Reload) under her
    Kit menus — the unmeasured half. Whatever happens is the finding.
+
+## Flash 13 — `stems`, tag 27: STEM REC, T1 to the card (staged 13 Sep 2026)
+
+STEM REC alone (`modules/stems`, `modules/stems/README.md`), so a first
+flash can only fail in one module's ways. `make image REMIX=stems BUILD=27`
+on branch `stem-rec-poc` → `out/OCTATRACK_OCTABAM27.bin` (446,820 B, sha256
+`22d98c5169709f6c…`) / `out/OCTATRACK_OS1.40C_OCTABAM27.syx` (624,144 B,
+sha256 `0488b824aa7e8e54…`). The OS inside is `out/mainos_bus.bin` sha256
+`c3cf29d9987d0cf1…`. `make check REMIX=stems` green the same day; every
+claim below was measured under the ColdFire port first
+(`docs/firmware/STEM_REC.md` sections 10 and 11).
+
+⚠️ **Confirm 27 is unused before you copy it.** The last tag in this
+series on any branch this clone has fetched is 26 (Flash 12). If another
+machine flashed a 27 since, rebuild with the next free number.
+
+⚠️ **Use a spare card, not a backed-up working card.** Two risks were
+accepted for the proof of concept (Yves, 12 Sep 2026), and each has a
+do-not:
+
+1. The writer task sleeps on the kernel's shared timer, which holds one
+   waiter (STEM_REC.md 4.7). **Once STEM REC has been selected since
+   power-on, do not run CF PROBE or an OS upgrade without a power cycle
+   first.**
+2. The file layer's sector staging buffer `0x4ecd3000` is shared and
+   unlocked (STEM_REC.md 7.5). **Do not save a sample while a take is being
+   written.**
+
+**How a take behaves.** Nothing is written to the card while a take runs.
+The take is written after it stops, header first, and that takes some
+seconds: under the port the whole 4 MiB ring took 1.04 s of port time, and
+the port's card answers at once, so the unit's card is slower. **Do not
+pull the card or power off until the take's folder shows in the audio
+pool.** The screen shows nothing, and STEM REC ignores a select while the
+write runs. The folder is `YYMMDD-HHMM` from the unit's clock. Under the
+port every take is `000000-0000`, because the port's clock reads 0.
+
+**One expectation.** Under the port, T1 sits in the read-back block about
+24 dB below its source sample (STEM_REC.md section 9, unexplained). A quiet
+take is a known possibility. Record the same pattern with the stock
+recorder, resampling T1, and compare the two levels.
+
+The three tests of the spec's section 11, in order:
+
+1. **A project with Flex machines only. Record 15 s.** Select STEM REC with
+   the sequencer running and let the limit stop it. Listen for dropouts or
+   clicks in the unit's output while recording: the frame hook runs 122
+   instructions per frame then (STEM_REC.md 10.2). Then open `T1.wav` in a
+   DAW. **Report:** the folder name and the unit's clock at the time (the
+   first check of the name's field order), the file's length (15 s is
+   2,646,016 data bytes, 2,646,060 in all), how long after the stop the
+   folder appeared, the level against the stock recorder's take, and any
+   dropout heard live or seen in the file.
+2. **The same with a static machine playing.** A static machine streams
+   from the card. The take is written after it stops, so to make the write
+   and the stream overlap, **stop the take with STEM REC while the
+   sequencer plays on**. **Report:** whether the static machine's playback
+   glitched while the take was written, and whether the take is intact.
+3. **Arm while stopped, then press PLAY.** Then a second take stopped with
+   the sequencer's STOP, and a third stopped with STEM REC, each in a new
+   minute. **Report:** that the first take starts on the first step, and
+   that all three files are there and play. Then select STEM REC twice in
+   one minute: the second take must be refused, and the first must stay
+   intact.
+
+**Stop conditions.** A hang when STEM REC is selected: power cycle, and
+stop the session. A take that never appears while card access stops
+working: this is STEM_REC.md 11.4, a card that aborts a write hanging the
+stock driver. Power cycle, and do not use that card again for this test.
+Every new failure goes into `docs/remixer/FAILURE_MODES.md`, whose STEM REC
+block lists what is predicted, the moment it is seen.
+
+**After the flash:** every result, good and bad, goes into
+`docs/firmware/STEM_REC.md` (a new "Hardware" section) and
+`FAILURE_MODES.md`, and PLAN.md item 8 is updated.
