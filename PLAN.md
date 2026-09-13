@@ -139,12 +139,21 @@ port on 9 Sep 2026 unless marked.
    recorder running, under the port, before anyone places there.
 7. **octamax**, if and when Sam confirms with the author: the branch is
    ported and gated; it rebases.
-8. **STEM REC, the proof of concept.** T1 streamed to the card while the
-   sequencer plays, 16-bit, 15 s at most, from a CONTROL menu row
+8. **STEM REC, the proof of concept: built and measured under the port
+   (13 Sep 2026), unflashed, staged as tag 27.** T1 recorded to the card
+   while the sequencer plays, 16-bit, 15 s at most, from a CONTROL menu row
    (`docs/superpowers/specs/2026-09-10-stem-rec-poc-design.md`, the first
-   step of `docs/proposals/MULTITRACK_TO_CARD.md`). Its remixer integration
-   (TUI row, shareable CONTROL rows, one image with Octakit and MIDI SCENES)
-   is a TODO in the spec's section 12, after the module holds on hardware.
+   step of `docs/proposals/MULTITRACK_TO_CARD.md`; `modules/stems/README.md`;
+   branch `stem-rec-poc`). A take is written after it stops, header first,
+   because the file layer's seek does not flush and its close cuts the file
+   to the write position (`docs/firmware/STEM_REC.md` 7.10). Under the port,
+   every sample of a take equals T1's read-back, and the STOP, the row, the
+   same-minute refusal and the overflow guard behave as designed. One stock
+   limitation found: a card that aborts a write hangs the stock driver
+   (STEM_REC.md 11.4). Next: the flash, `docs/effects/FLASHPLAN.md` Flash
+   13. Its remixer integration (TUI row, shareable CONTROL rows, one image
+   with Octakit and MIDI SCENES) is a TODO in the spec's section 12, after
+   the module holds on hardware.
 
 ## Gates and rules
 
