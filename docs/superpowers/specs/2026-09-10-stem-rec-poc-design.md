@@ -55,8 +55,12 @@ card.
 |---|---|---|
 | IDLE | nothing happens | the menu action |
 | ARMED | waiting for the sequencer to start | the frame hook, or the menu action (cancel) |
-| RECORDING | the frame hook copies T1 into the ring; the task writes the ring to the card | the frame hook, or the menu action (stop) |
-| FINISHING | the task writes what is left, writes the real sizes into the header, closes the file | the task, when done |
+| RECORDING | the frame hook copies T1 into the ring; nothing is written to the card | the frame hook, or the menu action (stop) |
+| FINISHING | the task writes the take: the header with its final sizes, then the ring, then it closes the file (section 6) | the task, when done |
+
+The RECORDING and FINISHING rows were revised on 12 Sep 2026: the first
+design wrote during RECORDING and patched the sizes at FINISHING, which the
+file layer does not allow (section 6).
 
 The state is one aligned 32-bit word, so every read and write of it is a
 single instruction. The menu action and the frame hook write it. The task
@@ -209,6 +213,15 @@ fallback if the build change proves awkward.
 
 ## 6. The writer task
 
+**Updated 13 Sep 2026.** Phase A answered every ❓ in this section, and one
+design choice changed. The answers, with their evidence, are in
+`docs/firmware/STEM_REC.md`: task creation (section 3), the sleep (section
+4: `0x40020c7c` is a real sleep, in microseconds, on a shared timer that
+holds one waiter), the name and the path (section 5), the folder routine
+(section 6), two tasks on one card (section 7). The change: the task writes
+a take only after it stops, header first, and never seeks (STEM_REC.md
+7.10). The paragraphs below that the change retracts are marked ❌.
+
 **Creation.** The first time STEM REC is selected, the menu action creates
 the task with the stock task-create routine. The action runs in the UI
 task, and the firmware already creates tasks from a running task: `sys`
@@ -226,7 +239,26 @@ creation fails, the state stays IDLE and nothing else runs.
 measure the eleven tasks, so the routine is known to the port. Its
 arguments are not written down.
 
-**The loop.** The task sleeps one tick with the kernel's tick delay, then:
+**The loop, as built.** The task sleeps 10 ms with `0x40020c7c`, without
+waiting if the shared timer is busy. It writes nothing while a take runs.
+Once the hook has set FINISHING:
+
+1. If no frame was recorded, it sets IDLE and creates no file.
+2. It builds the name `YYMMDD-HHMM` from the clock and the path
+   `<set>/AUDIO/<name>/T1.wav`, creates the folder, and refuses a file that
+   already exists (status EXISTS). Then it opens the file in `"w"`.
+3. It writes the 44-byte header with its final sizes, then the ring from
+   the read index, in runs of at most 64 KB that never cross the ring's end.
+   Each run is swapped to little-endian in place, with `byterev` and
+   `swap.w`, and written straight from the ring. No staging copy, no seek.
+4. It closes the file and sets IDLE.
+
+❌ **The loop as first designed, retracted 12 Sep 2026.** It streamed the
+take during the recording and patched the two sizes at stop with a seek.
+The buffered layer's seek does not flush, and close sets the file's length
+to the write position, so every take would have been cut to 44 bytes
+(STEM_REC.md 7.10, measured under the port on 13 Sep 2026). The first
+design, kept for the record:
 
 1. **RECORDING or FINISHING, no file open.** If the state is FINISHING and
    no frame was recorded, set IDLE and create no file. Otherwise read the
@@ -282,15 +314,20 @@ The file object is 24 bytes. Octakit uses a 512-byte buffer. Two
 behaviours matter here:
 
 - **`"w"` does not truncate.** Octakit opens an existing file with `"w"` and
-  checks its size before patching a record in place. So seek-then-write
-  works, which is how the header sizes get written at stop.
+  checks its size before patching a record in place. ❌ "So seek-then-write
+  works, which is how the header sizes get written at stop" is retracted:
+  close sets the length to the write position, so a seek back cuts the
+  file (STEM_REC.md 7.10).
 - **The same property is a hazard.** A second recording in the same minute
   would open the first one's file and overwrite its start. So after opening,
   the task reads the file object's logical length (word 4, per Octakit's
   comment at `persistence.c` line 910). If it is not zero, the task closes
   the file, writes error EXISTS to the status word, and sets IDLE. The
-  earlier recording stays intact. Falsifier for word 4: under the port, open
-  an existing non-empty file and read the word.
+  earlier recording stays intact. ❌ Retracted: open clears word 4 (`+16`,
+  at `0x40016884`), so it is 0 for every file. The task asks the file
+  layer's exists pointer `0x46c823fa` before it opens, and refuses with
+  EXISTS. ✅ Measured under the port: a second take in the same minute is
+  refused, and the first take stays byte-identical (STEM_REC.md 11).
 
 ❓ **The folder-creation routine.** Not located. If none can be called, the
 file goes to `AUDIO/YYMMDD-HHMM.wav` (section 2).
@@ -325,17 +362,27 @@ always closed.
 
 - **The ring would overflow.** Unreachable in the POC (section 5). The hook
   drops the frame and sets FINISHING.
-- **Open, write, seek or close returns an error, or the card is full.** The
+- **Open, write or close returns an error, or the card is full.** The
   task closes whatever is open, writes the error code to a status word, and
   sets IDLE. The status word can be read under the port. On the unit it is
   not shown.
+- **The card aborts a write command.** ✅ Measured under the port, 13 Sep
+  2026 (STEM_REC.md 11.4): the stock driver's write command waits for the
+  card's DRQ bit at `0x40014cf4` with no error check and no timeout, so the
+  writer task spins there forever, holding the file layer's lock. The rule
+  above cannot hold for this case: nothing returns to the task. It is a
+  stock limitation, because the stock sample save goes through the same
+  routine. Recovery is a power cycle. Whether a real card ever answers a
+  write this way is not measured.
 - **STEM REC selected during FINISHING.** Ignored.
 
 **Known limitations of the POC:**
 
-- **Power off during a recording.** The header sizes are written only at
-  stop, so the file reads as empty. The audio is in the file and a repair
-  tool can recover it.
+- **Power off, or a card pulled, during a take or before its write ends.**
+  The take is written only after it stops, so nothing of it is on the card
+  until the write ends. ❌ "The header sizes are written only at stop, so
+  the file reads as empty. The audio is in the file and a repair tool can
+  recover it" described the first design and is retracted (section 6).
 - **Loading a project during a recording.** Not detected. Do not do it.
 
 ---
@@ -356,7 +403,8 @@ does about it:
    is the code that gets the most checking under the port.
 4. **The ring cannot overflow** in the POC (section 5).
 5. **Every file API result is checked.** Any error closes the file and
-   returns to IDLE (section 7).
+   returns to IDLE (section 7). The exception is a card that aborts a write
+   command: the stock driver never returns (section 7).
 6. **The task never touches stock's global file state**: no directory change,
    no shared buffer (section 6).
 7. **The 8 KB stack is generous, not tight.** The peak is measured under the
@@ -416,7 +464,9 @@ log).
 6. **The overflow guard.** Build with a tiny ring and stall the task. The
    file must close cleanly and hold gap-free audio up to the drop.
 7. **An error from the card.** Make the port's write fail. The task must
-   close and return to IDLE.
+   close and return to IDLE. ✅ Run 13 Sep 2026, and it cannot: the port's
+   refused write hangs the writer inside the stock driver (section 7). The
+   verifier records that fact instead.
 8. **The gates.** `make check REMIX=stems`. The placement in section 5
    changes the build, so first `scripts/refhash.sh save` on the tree before
    the change, then `scripts/refhash.sh check` after it: all 26 existing
@@ -430,7 +480,8 @@ One flash, on a backed-up or spare card, in this order:
    while recording. Open the file in a DAW. Compare with what the port
    predicts.
 2. The same with a static machine playing, which streams from the card while
-   we write to it.
+   we write to it. The take is written after it stops, so stop it with STEM
+   REC while the sequencer plays on: then the write and the stream overlap.
 3. Arm while stopped, then press PLAY. Then stop with the sequencer, then
    with STEM REC.
 
@@ -455,8 +506,10 @@ seen.
 - **Seconds in the name**, so two recordings in one minute do not collide.
 - **A tail after stop**, to keep delay and reverb decays.
 - **Screen feedback**: armed, recording, saved, error.
-- **Header sizes written during a recording**, so a power cut leaves a
-  readable file.
+- **Writing during the take**, so a power cut leaves a readable file. It
+  needs a way to finish the header that the buffered layer allows: its seek
+  does not flush and its close cuts the file to the write position
+  (STEM_REC.md 7.10).
 - **The length limit**, raised from 15 s once the POC holds on hardware.
 - **Sector-aligned data.** The 44-byte header puts every audio write 44
   bytes past a sector boundary. A `JUNK` chunk that pads the header to 512
