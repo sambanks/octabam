@@ -13,6 +13,7 @@ runs of Tasks 14 to 16.
 import json
 import os
 import pathlib
+import struct
 import subprocess
 import sys
 
@@ -135,6 +136,7 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     if pk:
         args += ["--poke", ";".join(f"0x{a:x}={b}" for a, b in pk)]
     r = subprocess.run(args, capture_output=True, text=True)
+    (work / f"{tag}.log").write_text(r.stdout + r.stderr)   # the port's report, for the call timing
     m = mem.read_bytes() if mem.exists() else b"\0" * 24
     words = [int.from_bytes(m[i:i + 4], "big") for i in range(0, 24, 4)]
     return (r.stdout + r.stderr, dump, card, words,
@@ -154,7 +156,12 @@ def tap(s):
     check("wr is 64 bytes per frame", nfr > 0 and wr == 64 * nfr, f"{wr} vs {64 * nfr}")
     check("the stop moved RECORDING on", nfr > 0 and st in (ST_IDLE, ST_FINISHING),
           f"state {st}, status {status}")
-    got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2], "big", signed=True)
+    # The hook stores big-endian. Once the take has stopped, the task swaps
+    # each run to little-endian in place before it writes it, and stems_rd
+    # counts the bytes it has swapped and written. So frames below rd are
+    # little-endian and the rest big-endian.
+    got = [[int.from_bytes(raw[f * 64 + 2 * k:f * 64 + 2 * k + 2],
+                           "little" if f * 64 < rd else "big", signed=True)
             for k in range(32)] for f in range(nfr)]
     want = t1_frames(dump)
     lag = next((L for L in range(len(want) - nfr + 1) if want[L:L + nfr] == got), None)
@@ -164,6 +171,67 @@ def tap(s):
     loud = any(any(x) for x in got)
     check("the signal is not silence", loud,
           "non-zero samples present" if loud else f"all {nfr} ring frames are zero")
+
+
+def wav_check(card_path, nfr, dump, tag):
+    """The take on the card: one new folder in the set's AUDIO folder, its
+    T1.wav with the header STEM REC writes, and every sample equal to T1's
+    read-back at one fixed lag."""
+    import emu_card as ec
+    img = pathlib.Path(card_path).read_bytes()
+    fx = json.loads(FIXTURE.read_text())
+    audio = f"/{fx['set']}/AUDIO"
+    names = [n for n in (ec.list_dir(img, audio) or []) if n not in fx.get("staged", [])]
+    check(f"{tag}: one new recording in {audio}", len(names) == 1, f"{names}")
+    if not names:
+        return
+    path = f"{audio}/{names[0]}/T1.wav"
+    data = ec.read_file(img, path)
+    check(f"{tag}: {path} exists", data is not None)
+    if data is None:
+        return
+    if len(data) < 44:
+        check(f"{tag}: the file holds a header", False, f"{len(data)} bytes")
+        return
+    riff, size, wave_, fmt, flen, pcm, ch, rate, brate, align, bits, dtag, dlen =         struct.unpack_from("<4sI4s4sIHHIIHH4sI", data, 0)
+    check(f"{tag}: header fields", (riff, wave_, fmt, flen, pcm, ch, rate, brate, align, bits, dtag) ==
+          (b"RIFF", b"WAVE", b"fmt ", 16, 1, 2, 44100, 176400, 4, 16, b"data"))
+    check(f"{tag}: data size = frames x 64", nfr > 0 and dlen == 64 * nfr, f"{dlen} vs {64 * nfr}")
+    check(f"{tag}: RIFF size = 36 + data", size == 36 + dlen, f"{size}")
+    check(f"{tag}: file length = 44 + data", len(data) == 44 + dlen, f"{len(data)}")
+    if len(data) < 44 + 64 * nfr:
+        check(f"{tag}: every sample equals T1's read-back at one fixed lag", False, "file too short")
+        return
+    got = [list(struct.unpack_from("<32h", data, 44 + 64 * f)) for f in range(nfr)]
+    want = t1_frames(dump)
+    lag = next((L for L in range(len(want) - nfr + 1) if want[L:L + nfr] == got), None)
+    check(f"{tag}: every sample equals T1's read-back at one fixed lag", nfr > 0 and lag is not None,
+          f"lag {lag} frames (pre-roll {PRE_ROLL})")
+
+
+def full(s):
+    """Armed before play, STOP at 400, and 300 frames for the task to write
+    the take."""
+    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="full")
+    st, status, made, wr, rd, nfr = words
+    check("full: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
+          f"state {st}, status {status}")
+    check("full: the task drained everything", nfr > 0 and rd == wr, f"rd {rd}, wr {wr}")
+    wav_check(card, nfr, dump, "full")
+    return log, words
+
+
+def rowstop(s):
+    """Armed before play, stopped from the row at frame 200 while the
+    sequencer plays on to the STOP at 400: the task writes the take while
+    the sequencer is still running."""
+    log, dump, card, words, _ = port(s, 700, stop_at=400, tag="rowstop",
+                                     calls=((200, s["stems_action"]),))
+    st, status, made, wr, rd, nfr = words
+    check("rowstop: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
+          f"state {st}, status {status}")
+    check("rowstop: the row stopped it near frame 200", 150 < nfr < 260, f"{nfr} frames")
+    wav_check(card, nfr, dump, "rowstop")
 
 
 def main():
@@ -182,6 +250,8 @@ def main():
     regions(s)
     if EMU.exists() and FIXTURE.exists():
         tap(s)
+        full(s)
+        rowstop(s)
     else:
         print("  [SKIP] port runs: build the port (make emu-cf) and the fixture "
               "(python3 tools/verify/stems_fixture.py)")

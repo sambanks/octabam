@@ -8,9 +8,9 @@ Every stock fact the unit uses: docs/firmware/STEM_REC.md.
 
 HOW, in one breath: a detour at the per-frame routine's only call site
 (0x40004b12) packs T1's post-FX2 read-back block into a 4 MiB ring each
-frame; an RTOS task of the module's own drains the ring to the card
-through the stock buffered file API; the ring and the task's stack are
-DramRegions at the free top of the platform reserve, so the module costs
+frame; an RTOS task of the module's own writes the ring to the card
+through the stock buffered file API once the take stops, header first;
+the ring and the task's stack are DramRegions at the free top of the platform reserve, so the module costs
 no sample memory beyond what any DRAM remix already gives up.
 
 ⚠️ UNFLASHED. It shares the frame site with CF PROBE and the CONTROL list
