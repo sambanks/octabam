@@ -4,7 +4,7 @@
 
 **Goal:** A flashable octabam remix, `stems`, whose MAIN MENU > CONTROL > STEM REC row records track 1 to the card as a 16-bit stereo WAV while the sequencer plays, for at most 15 seconds.
 
-**Architecture:** One DRAM unit (`modules/stems/stems.s`) holds everything: a menu action, a per-frame hook detoured in at `0x40004b12` that packs T1's post-FX2 read-back block into a 4 MiB ring, and an RTOS task of its own that drains the ring to the card through the stock buffered file API. The ring and the task's stack sit at the free top of the platform's existing 10 MiB arena reserve, which needs one small build change (`schema.DramRegion`). Everything is proven under the ColdFire port (`out/emu/ot_emu`) before the one flash.
+**Architecture:** One DRAM unit (`modules/stems/stems.s`) holds everything: a menu action, a per-frame hook detoured in at `0x40004b12` that packs T1's post-FX2 read-back block into a 4 MiB ring, and an RTOS task of its own that, once the take stops, writes the ring to the card through the stock buffered file API, header first (revised 12 Sep 2026; see Phase D's preamble, item 5). The ring and the task's stack sit at the free top of the platform's existing 10 MiB arena reserve, which needs one small build change (`schema.DramRegion`). Everything is proven under the ColdFire port (`out/emu/ot_emu`) before the one flash.
 
 **Tech Stack:** GNU as for ColdFire (`m68k-elf-as -mcpu=5407`), Python 3 (the build, the verifiers), C++17 (the ColdFire port), WSL Ubuntu.
 
@@ -742,6 +742,7 @@ The unit grows over Tasks 13 to 16. The equates marked **(Task N)** take the val
 2. The kernel has no tick delay. `0x40020c7c(us, wait)` is a real sleep, in microseconds (section 4). Its timer is shared and holds one waiter; every call resets it. **Accepted for the proof of concept** (Yves, 12 Sep 2026): the stems remix excludes CF PROBE, and nothing upgrades the OS mid-recording. The task passes `wait = 0`, so a busy timer returns `-1` at once instead of blocking. The alternative, a private timed wait on PIT3, is not built.
 3. The set folder is the C string at `0x100f8480`, used as the stock save uses it (section 5.8). `stems_make_path` copies it and never calls `0x40025230`. Its leading `/` is 🟡 until Task 10 Step 6b measures it.
 4. Folder creation exists: the pointer at `0x46c8240a`, called through, parent must exist, no trailing `/` (section 6). The file is always `<set>/AUDIO/YYMMDD-HHMM/T1.wav`.
+5. **The take is written after it stops, header first, with no seek** (controller's reading of the file layer, 12 Sep 2026, before Task 15; Task 15 Step 3b writes it into STEM_REC.md section 7.10). The buffered layer's seek `0x4001660c` does not flush and sets the write position `+16` in `"w"` mode, and close calls `0x40018788` with `+16`, which sets the file's length to it. So the original design (stream during the take, then seek back and patch the two sizes) would have cut every take to a 44-byte file. The stock save never seeks: it knows the length first and writes the header with the final sizes. STEM REC now does the same: the task writes nothing while the take runs, and once the hook has moved the state to FINISHING it writes the header with the final sizes, then the ring, then closes. The ring was sized for this: 15 s is 2,646,016 bytes, and the ring is 4 MiB. The costs: the file exists a few seconds after the stop, not during the take, and a power cut during a take leaves no file. The gain: no card traffic while the take runs. Two fixes ride along: "a file already exists" is asked of the file layer's exists pointer `0x46c823fa`, because open clears `+16`, so the plan's `tst.l stems_file+16` could never fire; and the chunk loop never crosses the ring's end.
 
 And one accepted risk that changes no code: the buffered file API's sector staging buffer at `0x4ecd3000` is shared and unlocked (section 7.5). A stock sample save during a recording could race with the writer task. **Accepted for the proof of concept** (Yves, 12 Sep 2026); it goes into the flash notes (Task 18), and the first flash uses a spare card.
 
@@ -884,8 +885,9 @@ Every stock fact the unit uses: docs/firmware/STEM_REC.md.
 
 HOW, in one breath: a detour at the per-frame routine's only call site
 (0x40004b12) packs T1's post-FX2 read-back block into a 4 MiB ring each
-frame; an RTOS task of the module's own drains the ring to the card
-through the stock buffered file API; the ring and the task's stack are
+frame; an RTOS task of the module's own writes the ring to the card
+through the stock buffered file API once the take stops, header first;
+the ring and the task's stack are
 DramRegions at the free top of the platform reserve, so the module costs
 no sample memory beyond what any DRAM remix already gives up.
 
@@ -1339,8 +1341,8 @@ def full(s):
         .equ    TASK_SLEEP_US, 10000        | one pass; MICROSECONDS, not ticks       (Task 5)
         .equ    F_OPEN,        0x40016864   | (obj, path, mode, buf, size) <0 = error
         .equ    F_WRITE,       0x400166b8   | (obj, src, len) 1 = success
-        .equ    F_SEEK,        0x4001660c   | (obj, offset) <0 = error
-        .equ    F_CLOSE,       0x4001677c   | (obj) <0 = error
+        .equ    F_CLOSE,       0x4001677c   | (obj) <0 = error; sets the file length to obj+16
+        .equ    FS_EXISTS_PTR, 0x46c823fa   | -> exists(path): non-zero if it exists; call THROUGH it (Task 7)
         .equ    SET_PATH,      0x100f8480   | the current set's path, a C string in place (Task 6)
         .equ    CLK_READ,      0x4001c4d8   | (field) -> one BCD byte in d0; BLOCKS   (Task 6)
         .equ    BCD2BIN,       0x4001c31c   | (bcd) -> binary                          (Task 6)
@@ -1363,7 +1365,7 @@ def full(s):
         .equ    ERR_OPEN,      3
         .equ    ERR_EXISTS,    4
         .equ    ERR_WRITE,     5
-        .equ    ERR_SEEK,      6
+|       6 is retired: it was ERR_SEEK, and the unit no longer seeks
         .equ    ERR_CLOSE,     7
         .equ    ERR_TASK,      8
         .equ    STACK_FILL,    0x5354454d   | "STEM": the untouched stack
@@ -1373,14 +1375,17 @@ def full(s):
 
 ```asm
 stems_file_open: .long   0
-stems_le:        .long   0          | a size, little-endian, for the header
-stems_file:      .space  24         | the stock buffered file object
+stems_file:      .space  24         | the stock buffered file object: +0 handle, +4 buffer,
+                                    | +8 buffer size, +12 fill, +16 write position, +20 mode
+                                    | byte; nothing touches +21 or above (STEM_REC.md 7.10)
 stems_tcb:       .space  TCB_SIZE
 stems_name:      .space  16         | YYMMDD-HHMM
 stems_path:      .space  PATH_MAX
 stems_fbuf:      .space  FBUF_SIZE
 | The 44-byte header, little-endian as RIFF wants. The two sizes are
-| written at stop (spec section 6).
+| filled in here, in memory, once the take has stopped, and the header is
+| then written FIRST, with its final values: the file layer cannot patch a
+| header after the data (STEM_REC.md 7.10).
 stems_hdr:
         .ascii  "RIFF"
         .long   0                   | 36 + data, at stop
@@ -1457,6 +1462,9 @@ stems_task_create:
 
 | ---- the task ------------------------------------------------------------
 | Wakes every TASK_SLEEP_US. Owns the file. Writes stems_state only to IDLE.
+| Writes nothing while the take runs: once the hook has moved the state to
+| FINISHING, stems_wr is final and the whole take is written in one pass,
+| header first (STEM_REC.md 7.10). The ring holds a whole 15 s take.
 | K_DELAY(us, wait): C order, so wait is pushed first (STEM_REC.md 4.4:
 | us at sp@(8), wait at sp@(12) inside the routine).
 stems_task:
@@ -1465,42 +1473,15 @@ stems_task:
         pea     TASK_SLEEP_US
         jsr     K_DELAY             | d0 = -1 when the timer was busy: just loop
         addq.l  #8,%sp
-        move.l  stems_state,%d0
-        moveq   #ST_RECORDING,%d1
-        cmp.l   %d1,%d0
-        blt.s   .Lt_loop            | IDLE or ARMED: nothing to write
-        tst.l   stems_file_open
-        bne.s   .Lt_drain
-        moveq   #ST_FINISHING,%d1
-        cmp.l   %d1,%d0
-        bne.s   .Lt_open
-        tst.l   stems_frames
-        beq.s   .Lt_idle            | stopped before a frame: no file
-.Lt_open:
-        bsr.w   stems_open
-        tst.l   %d0
-        bmi.s   .Lt_fail
-.Lt_drain:
-        bsr.w   stems_drain
-        tst.l   %d0
-        bmi.s   .Lt_fail
         moveq   #ST_FINISHING,%d1
         cmp.l   stems_state,%d1
-        bne.s   .Lt_loop
-        bsr.w   stems_finish        | the hook has stopped: wr is final
-        tst.l   %d0
-        bmi.s   .Lt_fail
+        bne.s   .Lt_loop            | IDLE, ARMED or RECORDING: nothing to write
+        tst.l   stems_frames
+        beq.s   .Lt_idle            | stopped before a frame: no file
+        bsr.w   stems_write_take    | stems_status says why if it failed
 .Lt_idle:
         clr.l   stems_state
         bra.s   .Lt_loop
-.Lt_fail:                           | stems_status says why
-        tst.l   stems_file_open
-        beq.s   .Lt_idle
-        pea     stems_file
-        jsr     F_CLOSE
-        addq.l  #4,%sp
-        clr.l   stems_file_open
-        bra.s   .Lt_idle
 
 | ---- the name: YYMMDD-HHMM, from the clock -----------------------------
         .macro  CLOCK field
@@ -1581,12 +1562,19 @@ stems_make_path:
         moveq   #-1,%d0
         rts
 
-| ---- open, refuse a file that has content, write the header -------------
+| ---- name, folder, refuse an existing file, open ------------------------
+| d0 = 0 with the file open, or -1 with stems_status set and nothing open.
 stems_open:
         bsr.w   stems_make_name
         bsr.w   stems_make_path
         tst.l   %d0
         bmi.s   .Lo_path
+        movea.l FS_EXISTS_PTR,%a0   | same minute as an earlier take: refuse.
+        pea     stems_path          | (The object's +16 cannot say: open
+        jsr     (%a0)               | clears it. STEM_REC.md 7.10.)
+        addq.l  #4,%sp
+        tst.l   %d0
+        bne.s   .Lo_exists          | non-zero: it exists (or no card: -1)
         pea     FBUF_SIZE
         pea     stems_fbuf
         pea     MODE_W
@@ -1598,16 +1586,6 @@ stems_open:
         bmi.s   .Lo_open
         moveq   #1,%d0
         move.l  %d0,stems_file_open
-        tst.l   stems_file+16       | word 4: the logical length (Octakit)
-        bne.s   .Lo_exists          | same minute as an earlier recording
-        pea     HDR_SIZE
-        pea     stems_hdr
-        pea     stems_file
-        jsr     F_WRITE
-        lea     12(%sp),%sp
-        moveq   #1,%d1
-        cmp.l   %d1,%d0
-        bne.s   .Lo_write
         moveq   #0,%d0
         rts
 .Lo_path:   moveq   #ERR_PATH,%d0
@@ -1615,8 +1593,6 @@ stems_open:
 .Lo_open:   moveq   #ERR_OPEN,%d0
         bra.s   .Lo_err
 .Lo_exists: moveq   #ERR_EXISTS,%d0
-        bra.s   .Lo_err
-.Lo_write:  moveq   #ERR_WRITE,%d0
 .Lo_err:
         move.l  %d0,stems_status
         moveq   #-1,%d0
@@ -1664,89 +1640,86 @@ stems_write_run:
         lea     8(%sp),%sp
         rts
 
-| ---- every whole 64 KB chunk in the ring --------------------------------
-stems_drain:
-        move.l  stems_wr,%d0
-        sub.l   stems_rd,%d0
-        cmpi.l  #CHUNK,%d0
-        bcs.s   .Ld_done
-        move.l  #CHUNK,%d1
-        bsr.w   stems_write_run
+| ---- the take: its final header, then the ring, then close --------------
+| Runs once the hook has stopped (FINISHING), so stems_wr is final. One
+| sequential pass and NO SEEK, the way the stock sample save writes: the
+| buffered layer's seek does not flush and moves the write position, and
+| close sets the file's length to that position, so a header patched after
+| the data would cut the file to 44 bytes (STEM_REC.md 7.10).
+| d0 = 0, or -1 with stems_status set; the file is closed either way.
+stems_write_take:
+        bsr.w   stems_open          | name, folder, refuse an existing file, open
         tst.l   %d0
-        bpl.s   stems_drain
-        rts
-.Ld_done:
-        moveq   #0,%d0
-        rts
-
-| ---- the tail, the two sizes, close -------------------------------------
-stems_finish:
+        bmi.s   .Lk_ret             | nothing is open
         move.l  stems_wr,%d1
-        sub.l   stems_rd,%d1        | < CHUNK, starts on a CHUNK boundary
-        bsr.w   stems_write_run
-        tst.l   %d0
-        bmi.s   .Lf_ret
-        move.l  stems_wr,%d0        | data bytes: the hook started wr at 0
-        moveq   #36,%d1
-        add.l   %d0,%d1             | RIFF size
+        sub.l   stems_rd,%d1        | data bytes: exactly what will be written
         move.l  %d1,%d0
         BYTEREV 0
-        move.l  %d0,stems_le
-        moveq   #4,%d0
-        bsr.s   .Lf_patch
-        bmi.s   .Lf_ret
-        move.l  stems_wr,%d0
+        move.l  %d0,stems_hdr+40    | data size, little-endian
+        moveq   #36,%d0
+        add.l   %d1,%d0             | RIFF size = 36 + data
         BYTEREV 0
-        move.l  %d0,stems_le
-        moveq   #40,%d0
-        bsr.s   .Lf_patch
-        bmi.s   .Lf_ret
-        pea     stems_file
-        jsr     F_CLOSE
-        addq.l  #4,%sp
-        clr.l   stems_file_open
-        tst.l   %d0
-        bmi.s   .Lf_close
-        moveq   #0,%d0
-.Lf_ret:
-        rts
-.Lf_close:
-        moveq   #ERR_CLOSE,%d0
-        move.l  %d0,stems_status
-        moveq   #-1,%d0
-        rts
-| seek to d0, write stems_le there; d0 = 0 or -1, flags set from d0
-.Lf_patch:
-        move.l  %d0,-(%sp)
-        pea     stems_file
-        jsr     F_SEEK
-        addq.l  #8,%sp
-        tst.l   %d0
-        bmi.s   .Lf_seek
-        pea     4
-        pea     stems_le
+        move.l  %d0,stems_hdr+4
+        pea     HDR_SIZE
+        pea     stems_hdr
         pea     stems_file
         jsr     F_WRITE
         lea     12(%sp),%sp
         moveq   #1,%d1
         cmp.l   %d1,%d0
-        bne.s   .Lf_pwrite
+        bne.s   .Lk_werr
+.Lk_chunk:                          | at most CHUNK, never across the ring's end
+        move.l  stems_wr,%d1
+        sub.l   stems_rd,%d1        | bytes left
+        beq.s   .Lk_close
+        cmpi.l  #CHUNK,%d1
+        bls.s   .Lk_fit
+        move.l  #CHUNK,%d1
+.Lk_fit:
+        move.l  stems_rd,%d0
+        andi.l  #RING_SIZE-1,%d0
+        neg.l   %d0
+        addi.l  #RING_SIZE,%d0      | bytes from the read index to the ring's end
+        cmp.l   %d0,%d1
+        bls.s   .Lk_run             | d1 <= room: keep d1
+        move.l  %d0,%d1
+.Lk_run:
+        bsr.w   stems_write_run     | swaps in place, writes, advances stems_rd
+        tst.l   %d0
+        bpl.s   .Lk_chunk
+        bra.s   .Lk_fail            | stems_write_run set ERR_WRITE
+.Lk_close:
+        pea     stems_file
+        jsr     F_CLOSE             | flushes the tail; length = write position
+        addq.l  #4,%sp
+        clr.l   stems_file_open     | before the check: never close twice
+        tst.l   %d0
+        bmi.s   .Lk_cerr
         moveq   #0,%d0
+.Lk_ret:
         rts
-.Lf_seek:
-        moveq   #ERR_SEEK,%d0
-        bra.s   .Lf_perr
-.Lf_pwrite:
+.Lk_werr:
         moveq   #ERR_WRITE,%d0
-.Lf_perr:
+        move.l  %d0,stems_status
+.Lk_fail:
+        pea     stems_file
+        jsr     F_CLOSE
+        addq.l  #4,%sp
+        clr.l   stems_file_open
+        moveq   #-1,%d0
+        rts
+.Lk_cerr:
+        moveq   #ERR_CLOSE,%d0
         move.l  %d0,stems_status
         moveq   #-1,%d0
         rts
 ```
 
-  The CLOCK field numbers (minute 2, hour 3, day 5, month 6, year 7) and the push order (minute first, so sprintf sees year, month, day, hour, minute) are what Task 6 measured; `CLK_READ` takes its index on the stack and returns one zero-extended BCD byte, which is exactly what `BCD2BIN` wants. A `.Lf_close` path that sets `stems_file_open` to 0 before the close result is checked is deliberate: a failed close must not be retried by `.Lt_fail`.
+  The CLOCK field numbers (minute 2, hour 3, day 5, month 6, year 7) and the push order (minute first, so sprintf sees year, month, day, hour, minute) are what Task 6 measured; `CLK_READ` takes its index on the stack and returns one zero-extended BCD byte, which is exactly what `BCD2BIN` wants. `.Lk_close` clears `stems_file_open` before it checks the close result on purpose: a failed close is reported, never retried. The header's data size is `stems_wr - stems_rd` at the start of the pass, which is exactly the byte count the chunk loop then writes; in a normal take `stems_rd` is still 0 there, so it is `stems_wr`.
 
-- [ ] **Step 4: Disassemble what you assembled.** The whole unit. Check five things by eye: `BYTEREV 0` is the word `02c0`; every `cmp.l` has its operands the way round the branch after it expects (`cmp.l %d1,%d0` then `blt` means `d0 < d1`); `pea K_DELAY_TRY`, `pea TASK_SLEEP_US` and `pea 4` push the numbers, in that order; `jsr (%a0)` after `movea.l FS_MKDIR_PTR,%a0` is an indirect call, not a call to `0x46c8240a`; the `.Lp_copy` loop copies the set path byte for byte (step through it once under the port with `--watch-pc` if in doubt).
+- [ ] **Step 3b: Write STEM_REC.md section 7.10, "Why the header is written first".** Disassemble the four buffered wrappers and the write-close finalize yourself (`scripts/disasm.sh emac 0x4001660c 172`, `0x400166b8 196`, `0x4001677c 232`, `0x40018788 260`, `0x40016564 168`; decimal lengths, the script ignores hex ones) and quote what the controller read on 12 Sep 2026, each with its marker: ✅ the object's fields (`+0` handle, `+4` buffer, `+8` buffer size, `+12` fill, `+16` write position, `+20` mode byte; no wrapper touches `+21` or above, so 24 bytes is enough); ✅ open clears `+16` (`0x40016884`), so `+16` cannot tell whether a file already existed; ✅ seek (`0x4001660c`) never touches the fill `+12`, calls the buffered read `0x40016564` (which refills the buffer from the card when the fill is 0), and in `"w"` mode sets `+16` to the new offset (`0x40016674`); ✅ close in `"w"` mode flushes the partial buffer padded with zeros to 512 bytes, then calls the slot `0x46c82436` (backend `0x40018788`) with `+16` (`0x40016826`); 🟡 `0x40018788` sets the file's length to that value, growing or trimming its cluster chain (it compares the cluster counts of the old and new sizes at `0x40018828`; the trim and grow paths are not read to the end), with the falsifier: a port run that writes 1,000 bytes, seeks to 40, writes 4 and closes, and reads the file back with Task 9's reader; a 44-byte file confirms it. So a header patched after the data would cut every take to 44 bytes, which is why STEM REC writes the whole take after it stops, header first. Commit it: `STEM_REC: why the header is written first -- close sets the length to the write position, seek does not flush`.
+
+- [ ] **Step 4: Disassemble what you assembled.** The whole unit. Check six things by eye: `BYTEREV 0` is the word `02c0`; every `cmp.l` has its operands the way round the branch after it expects (`cmp.l %d1,%d0` then `blt` means `d0 < d1`; `cmp.l %d0,%d1` then `bls` means `d1 <= d0` unsigned); `pea K_DELAY_TRY` and `pea TASK_SLEEP_US` push the numbers, in that order; `jsr (%a0)` after `movea.l FS_MKDIR_PTR,%a0` and after `movea.l FS_EXISTS_PTR,%a0` is an indirect call through the pointer read from `0x46c8240a` / `0x46c823fa`, not a call to those addresses; the two header stores land at `stems_hdr+4` and `stems_hdr+40`; the `.Lp_copy` loop copies the set path byte for byte (step through it once under the port with `--watch-pc` if in doubt).
 
 - [ ] **Step 5: Run the check.** `make bus REMIX=stems && python3 tools/verify/verify_stems.py`. Expected: every `full:` check `[PASS]`. This is also the first firmware-issued card write the port has carried: Task 10's project never wrote the card, so `--card-out` was proven only with a hand-driven register write. If `card out` reports 0 sectors here, suspect the port's card model before the unit. If the file is missing, read `stems_status` from the mem dump first: its value names the step that failed. If the port hangs in `K_DELAY` or `K_CREATE`, the Task 4 or 5 reading is wrong; go back to it, do not guess.
 
@@ -1764,7 +1737,7 @@ git commit -m "stems: the writer task -- T1.wav on the port's card equals T1's r
 **Files:**
 - Modify: `tools/verify/verify_stems.py` (four runs; the long one behind a flag)
 
-- [ ] **Step 1: The 15-second limit.** A run of 43,000 frames with no STOP: `port(s, 43000, stop_at=None, tag="limit")`. Expected: `nfr == 41344` exactly, the file's data size `41344 * 64 = 2,646,016`, state IDLE, status 0. This run is long under the port: put it behind `verify_stems.py --long` and keep it out of `make check`.
+- [ ] **Step 1: The 15-second limit.** A run with no STOP, long enough for the task to write the whole take AFTER the limit (the take is written only once it stops): start with `port(s, 48000, stop_at=None, tag="limit")` and lengthen it if the state is still FINISHING at the end. Expected: `nfr == 41344` exactly, the file's data size `41344 * 64 = 2,646,016`, state IDLE, status 0. Report how many frames after the limit the write took: that is the port's figure for the post-stop delay, and Task 18's flash notes quote it (the unit's card speed is not the port's). This run is long under the port: put it behind `verify_stems.py --long` and keep it out of `make check`.
 
 - [ ] **Step 2: An existing file is not overwritten.** Run `full` twice on the same card (the second run's `--card` is the first run's `--card-out`: give `port()` a `card=` parameter defaulting to the fixture's), with the clock in the same minute (check that the port's clock reads the same minute in both runs). Expected second run: status `ERR_EXISTS` (4), state IDLE, and the first run's file byte-identical to what it was.
 
@@ -1783,7 +1756,7 @@ git commit -m "stems: the writer task -- T1.wav on the port's card equals T1's r
 
 - [ ] **Step 1: The stack's peak.** After the `full` run, `--mem-dump` the 8 KB at `stems_stack` and count the longs still equal to `0x5354454d` from the bottom. Peak = 8192 minus 4 times that count. Write it in section 11. If the peak is above 6 KB, raise the stack to 16 KB before flashing.
 - [ ] **Step 2: The README.** What it does, how to use it (the three workflows from spec section 2), the file name, the limits (15 s, T1, 16-bit, no screen feedback, same-minute refusal, no project load while recording), and "measured under the port, unflashed" with the numbers from sections 10 and 11.
-- [ ] **Step 3: FAILURE_MODES.** Add the entries a flash could hit, each as symptom, likely cause, first check: "no file after a recording" (read the status word under the port first), "the unit hangs when STEM REC is selected" (task creation), "audio drops while recording" (the hook's cost, the storage task's load), "the file is empty after a power cut" (known, header sizes written at stop).
+- [ ] **Step 3: FAILURE_MODES.** Add the entries a flash could hit, each as symptom, likely cause, first check: "no file after a recording" (read the status word under the port first), "the unit hangs when STEM REC is selected" (task creation), "audio drops while recording" (the hook's cost; the take writes nothing to the card until it stops), "no file after a power cut or a card pull during a take" (known: the take is written only after it stops), "the file appears seconds after the stop" (known: the whole take is written then; the port's figure is in Task 16 Step 1).
 - [ ] **Step 4: PLAN.md.** Update item 8 with where it stands.
 - [ ] **Step 5: Commit** each document separately.
 
@@ -1793,7 +1766,7 @@ This task needs Yves and the unit.
 
 - [ ] **Step 1: Build the image.** `make image REMIX=stems BUILD=<next>` (read `docs/remixer/FLASHING.md` for the current `BUILD` number and naming). Record the SHA-256 of the result.
 - [ ] **Step 2: Bring the branch to the Windows clone.** `git -C /c/Projects/Octabam fetch //wsl$/Ubuntu/home/yvez/octabam-stems stem-rec-poc` then fast-forward it there. Do not push anywhere.
-- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (a spare, not a backed-up working card), and the three tests from spec section 11 in order, each with what to look at and what to report back. Name the two risks Yves accepted for the proof of concept on 12 Sep 2026, each with its do-not: (1) the writer task sleeps on the shared single-waiter timer at `0x40020c7c` (STEM_REC.md 4.7), so once STEM REC has been selected since boot, do not run CF PROBE or an OS upgrade without a power cycle first; (2) the buffered file API's staging buffer at `0x4ecd3000` is shared and unlocked (STEM_REC.md 7.5), so do not save a sample while a recording is running. Also name one expectation: under the port, T1 sits in the read-back block about 24 dB below its source sample (STEM_REC.md section 9, unexplained), so a quiet take is a known possibility. Ask Yves to compare the take's level with the same pattern resampled by the stock recorder.
+- [ ] **Step 3: Write the flash notes** for Yves, in `docs/effects/FLASHPLAN.md`'s format: the image, the card to use (a spare, not a backed-up working card), and the three tests from spec section 11 in order, each with what to look at and what to report back. Name the two risks Yves accepted for the proof of concept on 12 Sep 2026, each with its do-not: (1) the writer task sleeps on the shared single-waiter timer at `0x40020c7c` (STEM_REC.md 4.7), so once STEM REC has been selected since boot, do not run CF PROBE or an OS upgrade without a power cycle first; (2) the buffered file API's staging buffer at `0x4ecd3000` is shared and unlocked (STEM_REC.md 7.5), so do not save a sample while a recording is running. Also name one expectation: under the port, T1 sits in the read-back block about 24 dB below its source sample (STEM_REC.md section 9, unexplained), so a quiet take is a known possibility. Ask Yves to compare the take's level with the same pattern resampled by the stock recorder. And say how a take behaves: nothing is written while it runs; the file is written after the stop, which takes some seconds (Task 16 Step 1 has the port's figure); do not pull the card or power off until STEM REC can be armed again.
 - [ ] **Step 4: After the flash,** record every result, good and bad, in `docs/firmware/STEM_REC.md` (a "Hardware" section) and `FAILURE_MODES.md`, then update `PLAN.md`.
 
 ---
