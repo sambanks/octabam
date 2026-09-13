@@ -6046,3 +6046,19 @@ The write rate is the port's, not the unit's: the port's card model
 answers every command at once. The sequencer was running during this
 write, so the figure includes the task's share of the processor beside the
 audio interrupt and the other tasks.
+
+### 11.6 The writer's stack ✅ 1,048 bytes of 8,192
+
+The `full` run dumps the task's 8 KB stack after the take is written. Create
+fills it with `"STEM"` (`0x5354454d`), and 1,786 of its 2,048 longs are
+still the fill, counted from the bottom. So the peak is 1,048 bytes. The top
+of the stack holds what the design predicts: the kernel's task exit stub
+`0x400006e4` as the entry's return address, then the sleep's two arguments
+(0 and 10,000) and its return address `0x40a95c2a`.
+
+The figure includes any exception frames that landed on this stack while
+the task ran, because a ColdFire interrupt pushes onto the current stack.
+One run's nesting is not the unit's worst case. The plan's limit is 6 KB,
+and 1,048 bytes is well under it, so the stack stays at 8 KB. The depth does
+not grow with the take's length: a 15-second take runs the same calls more
+times.
