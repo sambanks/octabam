@@ -254,3 +254,93 @@ a send from a **core 0** track (T6/T7) behaves differently from a **core 1**
 one (T2–T4), and whether the return is dead or merely intermittent (the
 free lever from `docs/effects/XBUS.md` is to change what sits on track 5).
 
+## STEM REC (`modules/stems`, remix `stems`): what the first flash could hit 🔮
+
+None of these has been seen on hardware: STEM REC is unflashed as of 13 Sep
+2026. Each entry is predicted from the port or known by design, and says
+which. Move an entry out of this block, with its **Seen** line, the moment
+it happens on the unit. Background for all of them:
+`docs/firmware/STEM_REC.md` sections 10 and 11, and `modules/stems/README.md`.
+
+### No file after a take
+
+**Symptom.** A take was made, and no `YYMMDD-HHMM` folder with a `T1.wav`
+appears in the set's AUDIO folder.
+
+**Cause.** Predicted. The unit shows no error, but the module keeps one in
+its status word: 1 overflow, 2 path (no set mounted, or the set path is too
+long), 3 open, 4 the file exists, 5 write, 7 close, 8 task. The likeliest
+on a working card is 4: a second take in the same minute is refused by
+design, and the first take is left intact.
+
+**First check.** Was there an earlier take in the same minute? Is a set
+mounted, with its AUDIO folder present? Then reproduce under the port with
+the same project and read the status word from `--mem-dump` of
+`stems_state` (the second of the six words): its value names the step that
+failed.
+
+### The unit hangs when STEM REC is selected
+
+**Symptom.** Selecting MAIN MENU › CONTROL › STEM REC freezes the unit.
+
+**Cause.** Predicted, and untested on the unit. The first select creates the
+writer task (STEM_REC.md section 3), and every select changes the state with
+interrupts masked for a few instructions. Under the port both run and
+return (STEM_REC.md 11.1).
+
+**First check.** Does it happen on the first select after power-on only?
+Then it is task creation. Run the same image under the port with the same
+project and `--call-before-play` of `stems_action`, and look for a fault or
+a hang in the port's report.
+
+### Audio drops or clicks while recording
+
+**Symptom.** Dropouts or clicks in the unit's own output while a take runs.
+
+**Cause.** Predicted, unmeasured on the unit. The frame hook runs 122
+instructions per frame while recording, in the audio interrupt
+(STEM_REC.md 10.2), and its time on the unit is not measured. The card is
+not the cause during a take: nothing is written to the card until the take
+stops.
+
+**First check.** Does it happen only while RECORDING, and not while ARMED
+(17 instructions) or IDLE (2)? Compare with the same project in the stock
+OS.
+
+### No file after a power cut or a card pull during a take
+
+**Symptom.** The unit lost power, or the card was pulled, during a take or
+just after it stopped, and there is no file.
+
+**Cause.** Known, by design. The take is written only after it stops, header
+first (STEM_REC.md 7.10), so nothing of it is on the card until that write
+ends.
+
+**Fix.** None in the proof of concept. Wait until the take's folder shows
+in the audio pool before pulling the card or powering off.
+
+### The file appears some seconds after the stop
+
+**Symptom.** Right after the stop, the take's folder is not there yet. It
+appears later.
+
+**Cause.** Known, by design: the whole take is written after the stop.
+Under the port, writing the whole 4 MiB ring took 2,879 frames, 1.04 s of
+port time (STEM_REC.md 11.5). The port's card model answers at once, so the
+unit's card will take longer.
+
+### The take never appears, and card access stops working
+
+**Symptom.** After a take, its file never appears. Loading or saving
+anything on the card afterwards does not finish. Audio already playing
+continues.
+
+**Cause.** Predicted from the port (STEM_REC.md 11.4). If the card aborts a
+write command, the stock card driver waits for it forever, with no error
+check and no timeout, inside the writer task, which holds the file layer's
+lock. Main, at priority 0, never runs again. It is a stock limitation: the
+stock sample save goes through the same routine. Whether a real card ever
+aborts a write this way is not measured.
+
+**Fix.** Power cycle. Then check the card on a computer, and do not use it
+for STEM REC again until it passes.
