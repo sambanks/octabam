@@ -5891,3 +5891,76 @@ would still break parts 1 or 2.
 Section 9.3's 52 frames is a different quantity: how long the fixture's
 poked trig takes to reach a sounding voice. It is not a lag between the
 ring and the dump.
+
+## 11. The writer task under the port
+
+### 11.0 The runs ✅
+
+`python3 tools/verify/verify_stems.py stems`, 13 Sep 2026, with the writer
+task in the unit. Every run uses the fixture's card and project, a 40-frame
+pre-roll and the action called before play, so each take starts with the
+ARMED-to-RECORDING edge. Each run writes its port report to
+`out/stems_runs/<run>.log`.
+
+| run | how the take stops | frames | data bytes | `T1.wav` bytes | sectors written | state, status |
+|---|---|---|---|---|---|---|
+| `tap` | STOP at 300 | 324 | 20,736 | not read | 59 | IDLE, 0 |
+| `full` | STOP at 400 | 424 | 27,136 | 27,180 | 72 | IDLE, 0 |
+| `rowstop` | the row at 200, STOP at 400 | 224 | 14,336 | 14,380 | 47 | IDLE, 0 |
+
+In `full` and `rowstop`, the file is `/STEMS/AUDIO/000000-0000/T1.wav`. Its
+header carries PCM, 2 channels, 44,100 Hz, 176,400 bytes per second, block
+align 4 and 16 bits. Its data size is the frame count times 64, its RIFF
+size is 36 plus that, and the file is 44 bytes plus that. Every sample
+equals T1's read-back at the lag of 40, the pre-roll, as in section 10.6.
+In `rowstop` the task wrote the file while the sequencer was still playing.
+
+### 11.1 What the runs settle ✅
+
+- **The task is created, dispatched and sleeps.** The action's one create
+  and start made a task that ran. Its sleep call returned 47 times in a
+  700-frame run, always with 0, about every 377,000 instructions: about 13
+  frames, or 4.6 ms. That is half the 10 ms asked for, the open factor of
+  two in section 4.3. The port's timer clock is a flag (section 4.9), so the
+  port cannot settle which way that factor resolves. The call never returned
+  -1: nothing else held the shared timer.
+- **The firmware's own card writes work under the port.** These are the
+  first card writes the port has carried that the firmware issued itself.
+  The folder creation, the "exists" test, the open in `"w"` mode, the
+  buffered writes and the close all ran. Open in `"w"` mode creates a file
+  that does not exist.
+- **The ring is swapped in place.** After the task writes a run, those
+  bytes of the ring are little-endian. `tap()` reads the bytes below
+  `stems_rd` that way and still finds every frame equal to the read-back.
+
+### 11.2 Every take is named 000000-0000 under the port ✅
+
+The port's SPI model answers every transfer with 0 (`Dspi::write` in
+`tools/emu/ot_emu/periph.cpp` queues a 0 for each word pushed). The clock is
+read over SPI, so every field reads 0 and every name is `000000-0000`. The
+name's shape is right. Which clock field lands where is not tested by the
+port, so section 5.10's second item stays open until the unit names a take.
+One consequence helps: every port run's take is in the same minute, which is
+what Task 16's "an existing file is not overwritten" test needs.
+
+### 11.3 The port's transport start spans 23 frames in this build 🟡
+
+In section 10's build, one frame arrived inside the port's transport start.
+In this build 23 do: the block dump holds 763 read-back frames for a 40-frame
+pre-roll and a 700-frame run. The hook records from the first frame the
+transport word reads 1, so every take starts 22 frames before the port's
+frame 0. That is why `full` holds 424 frames for a STOP at frame 400, and
+`rowstop` 224 for a row stop at frame 200. The lag stays 40.
+
+The hook is not the cause. In the same run it ran exactly 700 times in the
+700-frame coverage window, once per frame. The span also differs between
+builds whose code is the same up to the stop. A scratch build that changed
+only the code after the close had a span of 1 frame. So the span is a
+timing property of the port's transport start, which makes nine calls as
+main, each after waiting for main's spin. The cause is not located. Five
+runs of this build (`tap`, `full`, `rowstop` and two diagnostic runs) all
+had a span of 23.
+
+**Falsifier:** a span that changes between two runs of one build. That
+would make it a race in the port, not a property of the build.
+
