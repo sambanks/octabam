@@ -97,7 +97,8 @@ def t1_frames(dump_path):
     return [s for _, s in sorted(out)]
 
 
-def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=()):
+def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), pokes=(),
+         card_in=None, dump_blocks=True):
     """One fixture run under the port: the module's action called before
     play (`--call-before-play`: the action arms, and the hook takes the
     ARMED-to-RECORDING edge on the first playing frame), STOP at `stop_at`
@@ -107,7 +108,9 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     on the fixture's project that leaves the STOP handler's gate shut, so
     the call would do nothing (Task 10). Dumps the six state words and, when
     `ring_bytes`, the start of the ring. Returns (log text, dump, card,
-    state words, ring bytes).
+    state words, ring bytes). `card_in` replaces the fixture's card (Task 16:
+    a second take on the first take's card). `dump_blocks=False` drops the
+    block dump, which a run of tens of thousands of frames cannot afford.
 
     `--call-before-play` beside `--pre-roll` needs the port fixed on 13 Sep
     2026 (`main.cpp` runs to main's spin before the call; STEM_REC.md 10.1).
@@ -125,10 +128,11 @@ def port(s, frames, stop_at=None, extra=(), tag="run", ring_bytes=0, calls=(), p
     if stop_at is not None:
         at.append(f"{stop_at}:0x{KEY_STOP:x}:0")
         pk.append((STOP_GATE, 1))
-    args = [str(EMU), "--image", str(IMAGE), "--card", fx["card"], "--set", fx["set"],
+    args = [str(EMU), "--image", str(IMAGE), "--card", card_in or fx["card"], "--set", fx["set"],
             "--project", fx["project"], "--sequencer", "--internal-clock",
             "--frames", str(frames), "--load-ms", "20000", "--dsp", "--main-level", "64",
-            "--pre-roll", str(PRE_ROLL), "--poke-trig", "2", "--block-dump", str(dump),
+            "--pre-roll", str(PRE_ROLL), "--poke-trig", "2",
+            *(["--block-dump", str(dump)] if dump_blocks else []),
             "--call-before-play", f"0x{s['stems_action']:x}:0",
             "--card-out", str(card), "--mem-dump", dumps, *extra]
     if at:
@@ -193,7 +197,8 @@ def wav_check(card_path, nfr, dump, tag):
     if len(data) < 44:
         check(f"{tag}: the file holds a header", False, f"{len(data)} bytes")
         return
-    riff, size, wave_, fmt, flen, pcm, ch, rate, brate, align, bits, dtag, dlen =         struct.unpack_from("<4sI4s4sIHHIIHH4sI", data, 0)
+    riff, size, wave_, fmt, flen, pcm, ch, rate, brate, align, bits, dtag, dlen = \
+        struct.unpack_from("<4sI4s4sIHHIIHH4sI", data, 0)
     check(f"{tag}: header fields", (riff, wave_, fmt, flen, pcm, ch, rate, brate, align, bits, dtag) ==
           (b"RIFF", b"WAVE", b"fmt ", 16, 1, 2, 44100, 176400, 4, 16, b"data"))
     check(f"{tag}: data size = frames x 64", nfr > 0 and dlen == 64 * nfr, f"{dlen} vs {64 * nfr}")
@@ -234,6 +239,38 @@ def rowstop(s):
     wav_check(card, nfr, dump, "rowstop")
 
 
+ERR_EXISTS = 4
+
+
+def take(card_path):
+    """The one new take's T1.wav on a card, or None."""
+    import emu_card as ec
+    img = pathlib.Path(card_path).read_bytes()
+    fx = json.loads(FIXTURE.read_text())
+    audio = f"/{fx['set']}/AUDIO"
+    names = [n for n in (ec.list_dir(img, audio) or []) if n not in fx.get("staged", [])]
+    return ec.read_file(img, f"{audio}/{names[0]}/T1.wav") if len(names) == 1 else None
+
+
+def exists(s):
+    """A second take on the first take's card, in the same minute: refused,
+    and the first take is untouched. Every port take is 000000-0000 (the
+    port's clock reads 0, STEM_REC.md 11.2), so the minute is the same."""
+    first = pathlib.Path("out/stems_runs/full.img")
+    if not first.exists():
+        print("  [SKIP] exists: needs the full run's card")
+        return
+    before = take(first)
+    log, _, card, words, _ = port(s, 700, stop_at=400, tag="exists", card_in=str(first),
+                                  dump_blocks=False)
+    st, status, _, wr, rd, nfr = words
+    check("exists: refused with ERR_EXISTS, state IDLE", st == ST_IDLE and status == ERR_EXISTS,
+          f"state {st}, status {status}")
+    after = take(card)
+    check("exists: the first take is byte-identical", before is not None and after == before,
+          f"{len(before) if before else None} bytes before, {len(after) if after else None} after")
+
+
 def main():
     from remix import registry
     name = sys.argv[1] if len(sys.argv) > 1 else "stems"
@@ -252,6 +289,7 @@ def main():
         tap(s)
         full(s)
         rowstop(s)
+        exists(s)
     else:
         print("  [SKIP] port runs: build the port (make emu-cf) and the fixture "
               "(python3 tools/verify/stems_fixture.py)")
