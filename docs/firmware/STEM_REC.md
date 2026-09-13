@@ -5578,132 +5578,148 @@ card, and what a passing check on it can and cannot claim.
 
 ### 10.0 Method ✅
 
-`tools/verify/verify_stems.py`'s `tap()` runs the fixture's card for 400
-frames after the transport start, with `--coverage`, an "at frame 0" call to
-`stems_action` (see 10.1 for why this is not `--call-before-play`), and a
-STOP call at frame 300. `--coverage` records how many times the ColdFire ran
-each program-counter value from the transport start on. Every address inside
-`stems_frame_hook` (`0x40a9566e` to `0x40a957e6` in this build) is one of the
-hook's own instructions, so its hit count is the number of times that
-instruction ran.
-
-Command (12 Sep 2026, `out/mainos_bus.bin` built from this HEAD):
+`--coverage` records how many times the ColdFire ran each program-counter
+value, from the moment the port's transport start returns. Every address
+from `stems_frame_hook` (`0x40a9566e`) to its `rts` (`0x40a957e6`) is one of
+the hook's own instructions in this build, so its hit count is the number
+of frames in which that instruction ran. Three runs, 13 Sep 2026, all from
+`out/mainos_bus.bin` built from this HEAD, all with the fixture's card and
+the same common flags:
 
 ```
-out/emu/ot_emu --image out/mainos_bus.bin --card out/stems_fixture_card.img \
-  --set STEMS --project ULTFX --sequencer --internal-clock \
-  --frames 400 --load-ms 20000 --dsp --main-level 64 --pre-roll 40 \
-  --poke-trig 2 --block-dump out/task14/cov.dump \
-  --at 0:0x40a95602:0,300:0x4000a1e0:0 --poke 0x80000029=1 \
-  --card-out out/task14/cov.img --mem-dump 0x40a955e0,24=out/task14/cov.mem \
-  --coverage out/task14/coverage.txt
+COMMON="--image out/mainos_bus.bin --card out/stems_fixture_card.img \
+  --set STEMS --project ULTFX --sequencer --internal-clock --frames 400 \
+  --load-ms 20000 --dsp --main-level 64 --pre-roll 40 --poke-trig 2 \
+  --poke 0x80000029=1 --mem-dump 0x40a955e0,24=<run>.mem --coverage <run>.cov"
+
+# The tap: armed before play, STOP at 300 (what verify_stems.py's tap() runs)
+out/emu/ot_emu $COMMON --call-before-play 0x40a95602:0 --at 300:0x4000a1e0:0
+
+# Run A: STOP at 100, arm at 200 -- the transport word reads 2, so the hook stays ARMED
+out/emu/ot_emu $COMMON --at 100:0x4000a1e0:0,200:0x40a95602:0
+
+# Run C: run A, then the port's own transport start from frame 300 (the
+# transport call, then one start-track call per track) -- the start edge
+out/emu/ot_emu $COMMON --at 100:0x4000a1e0:0,200:0x40a95602:0,300:0x4009b964:0,\
+301:0x4009b5c8:0,302:0x4009b5c8:1,303:0x4009b5c8:2,304:0x4009b5c8:3,\
+305:0x4009b5c8:4,306:0x4009b5c8:5,307:0x4009b5c8:6,308:0x4009b5c8:7
 ```
 
-`0x40a95602` is `stems_action` and `0x4000a1e0` is the STOP key in this
-build; both addresses move if the module or the remix's other modules
-change, so re-read them from `m68k-elf-nm out/platform/runtime/runtime.elf`
-before reusing this command.
+`0x40a95602` is `stems_action`, `0x40a955e0` is `stems_state` and
+`0x4000a1e0` is the STOP key in this build. The first two move whenever the
+module or the remix's other modules change: re-read them with
+`m68k-elf-nm out/platform/runtime/runtime.elf` before reusing a command.
 
-The count is exact, not sampled: the hook has no data-dependent loop (the
-`.rept 16` block runs 16 times on every call that reaches it, always), so
-every instruction on a given path executes the same number of times every
-frame that takes that path. `--coverage`'s per-address count is therefore
-the frame count for that path, not an average.
+The hook has no data-dependent loop. The `.rept 16` block runs 16 times on
+every call that reaches it. So each state takes one fixed path, and the hit
+count of an address is the number of frames that took a path through it.
 
-### 10.1 A harness gap, found while measuring this 🟡, with the workaround it forced
+One count in the three runs does not fit that rule. In run C the `lea` after
+the register restore (`0x40a957d8`) shows 200 hits, and the restore just
+before it (`0x40a957d4`) shows 199. Nothing branches to the `lea`, so one of
+its 200 counts is a double count. 🟡 The cause is inferred: an interrupt
+above level 5 taken at that instruction boundary, so the port counts the
+instruction once before the exception and again when it resumes. No path
+count below reads that address alone.
 
-`verify_stems.py`'s `port()` no longer calls `stems_action` with
-`--call-before-play`, and this is why. `--call-before-play` requires the
-ColdFire to be sitting at `main`'s spin loop (`callAsMain`'s own guard,
-`rtos.cpp`); `--pre-roll` does not arrange that. `main.cpp`'s pre-roll loop
-stops the instant the Nth frame's interrupt vector (`0x41`) is taken, which
-is also where `m_frameCount` is incremented (`rtos.cpp`'s `setAckHook`), so
-the call lands mid-way into the level-5 handler (`0x4000aad4` in this
-build), never at the spin address, and `callAsMain` refuses silently
-(`main.cpp` prints the refusal and carries on; it does not stop the run).
-Measured as fully deterministic, not a timing race: identical failure, same
-program counter, at `--pre-roll` values 1, 5, 10, 20, 39, 40, 41 and 50.
-Only `--pre-roll 0` lets the call through.
+These are instruction counts, not cycles. The hook's time on the unit is not
+measured.
 
-The `--at FRAME:ADDR` path does not have this gap: `main.cpp` calls
-`rtos.runToMainSpin(1000.0)` after its own frame-count wait and before
-`callAsMain` (around line 652), which the pre-roll and
-`--call-before-play` path omits. `port()` now calls `stems_action` through
-`--at 0:...` instead, and by the time frame 0 runs the transport is already
-started, so the action takes its "already playing: start at the next
-frame" branch straight to RECORDING, never through ARMED.
+### 10.1 The port refused a call before play, and now does not ✅
 
-**Falsifier:** a fixed `main.cpp` that calls `runToMainSpin` before
-`--call-before-play`'s own call, or a run at `--pre-roll 1` to `50` that
-lands the call at the spin address. Neither happened; the failure was
-checked at eight pre-roll values and did not vary. Fixing `main.cpp` is
-outside this task's files (`modules/stems/stems.s`,
-`tools/verify/verify_stems.py`); it is a finding for a later task, not
-something this one silently works around forever.
+On 12 Sep 2026 `--call-before-play` could never succeed beside
+`--pre-roll`. The pre-roll loop in `tools/emu/ot_emu/main.cpp` stops the
+instant the last pre-roll frame's interrupt vector is taken. That is where
+`rtos.cpp`'s acknowledge hook counts the frame, so the ColdFire is inside
+the level-5 handler (`0x4000aad4` in this build) and not at main's spin
+(`0x4001fc9c`). `callAsMain` refuses to run anywhere but the spin. The port
+printed the refusal and carried on, so the run recorded nothing and did not
+fail. This was measured the same at `--pre-roll` 1, 5, 10, 20, 39, 40, 41
+and 50. Only `--pre-roll 0` let the call through.
 
-**Consequence for this section:** because this run's own action call skips
-ARMED, section 10.3's ARMED figure is not measured from this run. It is
-counted by hand from the same disassembly section 10.2 and 10.4 use for the
-measured states, and marked accordingly.
+The fix, 13 Sep 2026: `main.cpp` calls `rtos.runToMainSpin(1000.0)` before
+each `--call-before-play` call, as its `--at` loop already did. With
+`--pre-roll 0` the ColdFire is already at the spin and `runToMainSpin`
+returns without stepping, so every earlier run that used the flag is
+unchanged. No other verifier passes the flag.
 
-### 10.2 IDLE ✅ measured: 2 instructions
+With the fix, the port reports the call as returned:
 
-`stems_state` is 0 for 22 of the run's 400 frames (the frames before the
-frame-0 call to `stems_action` takes effect). On every one of those 22
-frames, `--coverage` shows only two hook addresses executed:
+```
+pre-roll   : 40 frame(s) of the frame engine before the transport start (REACHED)
+call       : 0x40a95602(0) before play -> returned, d0 0xffffffff
+```
 
-| address | instruction | hits |
-|---|---|---|
-| `0x40a9566e` | `tst.l stems_state` | 400 |
-| `0x40a95674` | `beq.w .Lh_stock` (taken) | 400 |
+`verify_stems.py`'s `port()` arms before play again, as the plan wrote it.
+`tap()` now checks the call's report line first, so an older port fails the
+check by name instead of recording nothing.
 
-Both addresses show 400 hits because every frame, in every state, starts
-here; the next address in program order (`0x40a95678`) shows only 378 hits,
-which is `400 - 22`, confirming the branch is taken on exactly those 22
-frames and nowhere else. This matches the source comment beside the hook:
-"In IDLE its whole cost is one test and one branch." Two instructions, then
-the always-present tail (`jsr FRAME_ROUTINE`, `move.w #0x2700,%sr`, `rts`):
-the same tail every state falls into, and the same two instructions the
-pass-through hook Task 13 shipped had before this task. It is not counted
-as part of the state's own cost below, for the same reason: it existed
-before Task 14 and does not change with `stems_state`.
+❌ **Retracted, from this section's 12 Sep version:** the workaround. The
+tap called `stems_action` through `--at 0:...`, after the transport start.
+That run took the action's "already playing" branch straight to RECORDING
+and never passed through ARMED. Its IDLE and RECORDING figures were right
+for that run. Its ARMED figure was counted by hand, and its lag of 63 frames
+included 22 frames of waiting that the workaround added (10.6).
 
-### 10.3 ARMED 🟡 inferred: 17 instructions (steady), 3 more on the frame play starts
+### 10.2 The costs, per state
 
-Not runtime-exercised in the run above (10.1): every ARMED-only address
-(`0x40a9569c`, `0x40a956a2`, `0x40a956a4`, `0x40a956aa`, `0x40a9569e`) is
-absent from `coverage.txt`, meaning zero hits. The count below is read
-directly from the disassembly in `out/task14/runtime.dis`, walking the one
-path `stems_state == ST_ARMED` takes when the sequencer is still stopped
-(the steady case: armed, waiting for play):
+| state | instructions per frame | measured in | frames |
+|---|---|---|---|
+| IDLE | 2 | run A | 201 |
+| ARMED | 17 | run A | 199 |
+| ARMED to RECORDING, once | 125 | run C | 1 |
+| RECORDING | 122 | the tap | 301 |
+| RECORDING to FINISHING, once | 20 | the tap | 1 |
+| FINISHING | 10 | the tap | 98 |
 
-tst.l, beq.w (not taken), lea, movem.l (save), move.l, moveq, cmp.l, beq.w
-(not taken), move.l TRANSPORT, subq.l, moveq, cmp.l, bne.s (not taken),
-tst.l, bne.w (taken, to `.Lh_out`), movem.l (restore), lea. Seventeen
-instructions, then the tail (10.2).
+Every state then runs the same three-instruction tail: `jsr FRAME_ROUTINE`,
+`move.w #0x2700,%sr`, `rts`. The tail is the pass-through hook Task 13
+shipped, and it does not change with `stems_state`, so the table leaves it
+out. All six figures are ✅ measured: each is the number of hook addresses
+whose hit count equals that state's frame count in the run named.
 
-The frame play actually starts, ARMED moves to RECORDING and the branch at
-`bne.w .Lh_out` is not taken instead: three more instructions run
-(`moveq #ST_RECORDING`, `move.l %d0,stems_state`, `bra.s .Lh_copy`) before
-falling into the RECORDING copy body (10.4), a one-time cost on the frame
-recording begins, not a per-frame ARMED cost.
+### 10.3 IDLE and ARMED ✅
 
-**Falsifier:** a run whose action call reaches `stems_action` while the
-sequencer is genuinely stopped (not the frame-0-after-transport-start call
-this run uses) and whose `--coverage` shows a different instruction count on
-this path, or any hit at all on the four ARMED-only addresses above from a
-run that was not supposed to arm.
+In run A, `tst.l stems_state` (`0x40a9566e`) and the `beq.w` after it show
+400 hits, one per frame. The next address in program order shows 199. So
+the hook took the IDLE branch on 201 frames: the frames before the arm at
+frame 200. IDLE costs those 2 instructions.
 
-### 10.4 RECORDING ✅ measured: 122 instructions
+After the arm, the state is ARMED and the transport word reads 2, because
+the STOP at frame 100 stopped the sequencer. Seventeen addresses show
+exactly 199 hits, one per ARMED frame:
 
-`stems_state` is 2 (RECORDING) for 279 of the run's 400 frames, and every
-one of those 279 frames takes the identical path: room is available (the
-ring is nowhere near full at 279 × 64 = 17,856 bytes of 4,194,304), so the
-copy always runs. Every address on the path below shows exactly 279 hits in
-`coverage.txt`, address for address, which is the frame count exactly: no
-address diverges, so no frame took a different branch on this path (an
-overflow, for instance, would show at `0x40a956ce`, which is absent from
-the count entirely).
+`tst.l`, `beq.w` (not taken), `lea`, `movem.l` (save), `move.l stems_state`,
+`moveq #3`, `cmp.l`, `beq.w` (not taken), `move.l TRANSPORT`, `subq.l #1`,
+`moveq #1`, `cmp.l`, `bne.s` (not taken), `tst.l %d2`, `bne.w` (taken, to
+`.Lh_out`), `movem.l` (restore), `lea`.
+
+The run ends with `stems_state` 1 and `stems_frames` 0: armed, nothing
+recorded. Every ARMED-only address after the `bne.w` shows 0 hits.
+
+### 10.4 The start edge ✅ 125 instructions, once
+
+In run C the port starts the transport again at frame 300, while the hook is
+ARMED. The three edge instructions (`moveq #2`, `move.l %d0,stems_state`,
+`bra.s .Lh_copy`, from `0x40a956a2`) show 1 hit each. The edge frame runs
+the ARMED path up to its `bne.w`, which is not taken: 15 instructions. Then
+the 3 edge instructions, then the RECORDING copy path from `.Lh_copy`
+without its state checks: 107 instructions (10.5's last five rows). That is
+125, three more than a RECORDING frame. The run ends with `stems_state` 2,
+99 frames recorded and `stems_wr` 6,336, which is 99 × 64.
+
+The tap takes the same edge before play. A `--watch-pc 0x40a956a2` on the
+tap's command hits once, 37,484 instructions after main writes 1 to the
+transport word (`0x800065b8`, at `0x4009c3d4`), with `%d2` = 0 there: the
+transport word minus 1.
+
+### 10.5 RECORDING ✅ 122 instructions
+
+In the tap, 122 hook addresses show exactly 301 hits each. The 302nd
+recorded frame is the start edge, which runs before the coverage window
+opens (10.6). The ring was nowhere near full (302 × 64 = 19,328 bytes of
+4,194,304), so every frame took the copy, and the overflow path
+(`0x40a956ce`) shows 0 hits.
 
 | segment | instructions | detail |
 |---|---|---|
@@ -5718,38 +5734,77 @@ the count entirely).
 | restore | 2 | `movem.l`, `lea` |
 | **total** | **122** | |
 
-Then the tail (10.2): three more instructions, common to every state.
+The STOP ends it. The hook at the frame after the STOP sees the transport
+word at 2 and runs 20 instructions once: the first 15 of the RECORDING
+path, ending with `.Lh_rec`'s `beq.s`, which is not taken; then `moveq #3`,
+`move.l %d0,stems_state` and `bra.w .Lh_out`; then the 2-instruction
+restore. Each of the three
+transition addresses (`0x40a956b0`, `0x40a956b2`, `0x40a956b8`) shows 1 hit.
+FINISHING then costs 10 instructions per frame: the first 8 of the
+RECORDING path, where the state dispatch's `beq.w` is taken, then the
+restore. The window's 400 frames are 301
+RECORDING, 1 transition and 98 FINISHING, with no gap and no double count.
 
-Total distinct hook addresses seen by `--coverage` across the whole run:
-128. That accounts for exactly the 122 above, plus the three
-ARMED-to-RECORDING transition instructions (10.3, unused this run because
-the action starts already in RECORDING) minus zero (they did not run), plus
-three transition-only addresses that DID run once (`stems_state ==
-RECORDING` moving to FINISHING at the STOP frame: `moveq #ST_FINISHING`,
-`move.l`, `bra.w`, at `0x40a956b0`/`b2`/`b8`, one hit each) and the
-always-present tail. 22 (IDLE) + 0 (ARMED) + 279 (RECORDING) + 1
-(RECORDING to FINISHING, at the STOP frame) + 98 (FINISHING, after the
-stop) accounts for all 400 frames the run reports, with no gap and no
-double count.
+### 10.6 The lag, broken down ✅
 
-### 10.5 The lag, measured twice ✅
-
-`python3 tools/verify/verify_stems.py stems`, run twice from the same
-build, both times reports:
+`python3 tools/verify/verify_stems.py stems`, run three times from the same
+build on 13 Sep 2026, reports the same lines each time:
 
 ```
-[PASS] the hook recorded frames  279 frames, wr 17856
-[PASS] wr is 64 bytes per frame  17856 vs 17856
+[PASS] the action was called before play  call       : 0x40a95602(0) before play -> returned, d0 0xffffffff
+[PASS] the hook recorded frames  302 frames, wr 19328
+[PASS] wr is 64 bytes per frame  19328 vs 19328
 [PASS] the stop moved RECORDING on  state 3, status 0
-[PASS] every ring frame equals T1's read-back at one fixed lag  lag 63 frames (pre-roll 40)
+[PASS] every ring frame equals T1's read-back at one fixed lag  lag 40 frames (pre-roll 40)
 [PASS] the signal is not silence  non-zero samples present
 ```
 
-Lag 63 frames both times, with every one of the run's 279 ring frames
-matching T1's read-back at that one fixed lag, exactly (not a
-best-effort fit: `tap()`'s check requires the whole slice to match, or it
-reports no lag at all). This is a different fixture run from section 9.3's
-(a full tap run, not the bare read-back dump), so 63 is not expected to
-equal section 9.3's 52-frame figure; both are facts about their own run's
-timing from the dump's first frame to the ring's first frame, not a
-property of the read-back block itself.
+The lag is the index, in the block dump's T1 read-back frames, of the frame
+that equals the ring's first frame. It is 40, exactly the pre-roll, and it
+has three parts.
+
+1. **The dump starts with the pre-roll.** The port turns the frame engine on
+   just before the pre-roll, and no frame interrupt is taken during the
+   boot or the load. The dump's T1 read-back frames are numbered 1 to 441
+   with no gap: 40 pre-roll frames, then 401 more.
+2. **One frame arrives inside the port's own transport start, and the armed
+   hook records it.** `startTransportLive` makes one call as main that
+   writes 1 to the transport word, then one start-track call per track.
+   Frame 41 arrives between them. Coverage starts only after the transport
+   start returns, and in the tap's coverage run the edge addresses show 0
+   hits while the copy path shows 301 and the ring holds 302 frames. So the
+   edge and the first copy ran before the window. The port's "frame 0" is
+   therefore the dump's frame 42.
+3. **The hook's frame N copies the read-back the dump records as frame N.**
+   The ring's first frame equals the dump's frame 41. There is no pipeline
+   frame between the hook and the dump.
+
+So an arm before play records from the first frame in which the transport
+word reads 1, and the lag equals `--pre-roll`.
+
+The same parts account for every figure of the 12 Sep workaround run. Its
+lag of 63 is 40 pre-roll frames, plus frame 41 inside the transport start
+with the hook IDLE, plus 22 frames (the dump's 42 to 63, the port's 0 to 21)
+while the `--at 0` call waited for main to return to its spin. Its call line
+read `at frame 21`. So its first recorded frame was the dump's frame 64, at
+index 63. The same arithmetic gives that run's 22 IDLE frames and its 279
+recorded frames (the dump's 64 to 342). In both runs the last recorded frame
+is the port's frame 300: the STOP call returns at frame 301, and the hook in
+frame 301 reads the transport word at 2.
+
+**Falsifier, run:** the breakdown predicts that the lag follows
+`--pre-roll`, and that the edge never runs inside the coverage window. The
+tap at `--pre-roll 20`, with `--coverage` (13 Sep 2026, same build):
+
+| pre-roll | dump frames | frames recorded | lag | edge hits in the window | copy hits in the window |
+|---|---|---|---|---|---|
+| 40 | 441 | 302 | 40 | 0 | 301 |
+| 20 | 421 | 302 | 20 | 0 | 301 |
+
+Both predictions held. A tap whose lag differs from its pre-roll, or a
+coverage run of the tap in which the edge address `0x40a956a2` shows a hit,
+would still break parts 1 or 2.
+
+Section 9.3's 52 frames is a different quantity: how long the fixture's
+poked trig takes to reach a sounding voice. It is not a lag between the
+ring and the dump.
