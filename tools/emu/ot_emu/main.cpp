@@ -606,6 +606,17 @@ int main(int _argc, char** _argv)
 				}
 				for(const auto& c : parseCalls(callBeforePlay, false))
 				{
+					// Pre-roll (above) stops the instant the last frame's
+					// interrupt vector is taken, which is never main's spin
+					// (rtos.cpp's setAckHook fires mid the level-5 handler),
+					// so callAsMain's own guard refused every call here
+					// whenever preRoll > 0 -- measured 12 Sep 2026, identical
+					// at eight different --pre-roll values. The --at loop
+					// below does not have this gap because it already calls
+					// runToMainSpin first; do the same here. A no-op when
+					// the PC is already at the spin (preRoll == 0): runToMainSpin
+					// returns immediately without stepping (rtos.cpp:659).
+					rtos.runToMainSpin(1000.0);
 					uint32_t d0 = 0;
 					const bool ok = rtos.callAsMain(c.addr, {c.arg}, d0, 200000000);
 					std::printf("call       : %#x(%#x) before play -> %s, d0 %#x\n", c.addr, c.arg,
