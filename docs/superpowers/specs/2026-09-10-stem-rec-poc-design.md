@@ -374,6 +374,16 @@ always closed.
   stock limitation, because the stock sample save goes through the same
   routine. Recovery is a power cycle. Whether a real card ever answers a
   write this way is not measured.
+- **The stock PIO write's race.** ✅ Found under the port, 14 Sep 2026
+  (STEM_REC.md 11.7). The stock routine that issues WRITE SECTORS sends the
+  first sector, then updates the card handler's data pointer and sector
+  count, with interrupts enabled. An interrupt in between either writes a
+  sector twice, silently, or leaves the handler waiting forever at level
+  5, which freezes the unit: the port's first 15-second take did that.
+  This breaks the rule above from inside stock code, so the module patches
+  the routine (`stems_ata_first`, a detour at `0x40014cfe`) to update both
+  first. The patch changes every PIO write, stock saves included. A card
+  that reports DMA takes the stock DMA path, where the patch never runs.
 - **STEM REC selected during FINISHING.** Ignored.
 
 **Known limitations of the POC:**
@@ -460,6 +470,9 @@ log).
    - data size = frames recorded x 64;
    - every sample equals the first halfword of its pair in the dumped block.
 4. **The 15 s limit.** Run 20 s. The file must hold exactly 41,344 frames.
+   ✅ Run 14 Sep 2026 (`verify_stems.py --long`): it froze the unit before
+   the PIO write fix, and with the fix the file holds all 41,344 frames and
+   equals the ring byte for byte (STEM_REC.md 11.7).
 5. **The stack peak**, from the fill pattern.
 6. **The overflow guard.** Build with a tiny ring and stall the task. The
    file must close cleanly and hold gap-free audio up to the drop.
