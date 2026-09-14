@@ -325,9 +325,10 @@ in the audio pool before pulling the card or powering off.
 appears later.
 
 **Cause.** Known, by design: the whole take is written after the stop.
-Under the port, writing the whole 4 MiB ring took 2,879 frames, 1.04 s of
-port time (STEM_REC.md 11.5). The port's card model answers at once, so the
-unit's card will take longer.
+Under the port, a 15-second take took 1,892 frames, 0.69 s of port time
+(STEM_REC.md 11.7), and the whole 4 MiB ring 2,879 frames, 1.04 s
+(STEM_REC.md 11.5). The port's card model answers at once, so the unit's
+card will take longer.
 
 ### The take never appears, and card access stops working
 
@@ -344,3 +345,38 @@ aborts a write this way is not measured.
 
 **Fix.** Power cycle. Then check the card on a computer, and do not use it
 for STEM REC again until it passes.
+
+### The whole unit freezes while a take is written
+
+**Symptom.** After a take stops, the unit freezes: the audio stops or
+sticks, and the screen and the keys stop answering. The take never
+appears.
+
+**Cause.** Seen under the port before the module's fix, and not expected
+since (STEM_REC.md 11.7). The stock PIO card write updates the card
+handler's data pointer and sector count only after it has sent a write's
+first sector. An interrupt landing in between left the handler one sector
+short of the card, waiting forever at level 5, so no audio frame was
+taken again. The module patches the routine to update both first. If this
+is seen on the unit, either the patch did not take, or the card uses the
+stock DMA write path, which the patch does not touch and which is not
+analysed.
+
+**First check.** Does `0x40014cfe` in the flashed image hold `jmp
+stems_ata_first` (`verify_stems.py` checks it)? Does the card report DMA?
+Then power cycle, and try the same take with another card.
+
+### A take plays with a repeated or missing 512-byte block
+
+**Symptom.** A take has one 512-byte stretch, about 3 ms, repeated, or the
+audio after some point is shifted by 512 bytes, with no error reported.
+
+**Cause.** The other outcome of the same stock race (STEM_REC.md 11.7): if
+the interrupt lands before the routine has updated the pointer, the
+handler sends the first sector of a write twice. The fix covers this too,
+and under the port the 15-second take's file equals the ring byte for byte.
+Not expected on the unit, for the same reasons as the freeze above.
+
+**First check.** Where in the file is the repeat? A write command starts on
+a sector boundary, so the repeat starts at a multiple of 512 bytes from
+the start of the file.
