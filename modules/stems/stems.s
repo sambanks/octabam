@@ -36,6 +36,10 @@
         .equ    NAME_FMT,      0x400b77bb   | "%02d%02d%02d-%02d%02d"                  (Task 6)
         .equ    SPRINTF,       0x40013a08   | (buf, fmt, ...)
         .equ    FS_MKDIR_PTR,  0x46c8240a   | -> mkdir(path): 0 ok, <0 failed; call THROUGH it (Task 7)
+        .equ    ATA_DATA,      0x900000a0   | the card's data register, 16 bits       (11.7)
+        .equ    ATA_PTR,       0x46c8c594   | long; the PIO handler's next sector      (11.7)
+        .equ    ATA_LEFT,      0x46c8c592   | byte; the sectors the handler still sends (11.7)
+        .equ    ATA_RET,       0x40014d58   | the PIO write routine's return           (11.7)
 
 | ---- constants -----------------------------------------------------------
         .equ    ST_IDLE,       0
@@ -246,6 +250,32 @@ stems_frame_hook:
         jsr     FRAME_ROUTINE
         move.w  #0x2700,%sr
         rts
+
+| ---- the stock PIO write's first sector (docs/firmware/STEM_REC.md 11.7) --
+| Reached by `jmp` from 0x40014cfe, in the task that issued a WRITE SECTORS,
+| once the card has asked for data. Stock streams the first sector, then
+| advances the interrupt handler's data pointer and sector count, with
+| interrupts enabled: a card interrupt taken between the two runs the
+| handler on the stale pair, which either sends a sector twice or leaves
+| the handler waiting, masked, for a sector the card never asks for. This
+| does the same work in the safe order. The card cannot interrupt for this
+| command until the whole sector is in, so the handler always finds the
+| pair already advanced. Registers as stock: d0, d1 and a0.
+        .global stems_ata_first
+stems_ata_first:
+        movea.l ATA_PTR,%a0         | this sector (the displaced instruction)
+        move.l  %a0,%d1
+        addi.l  #512,%d1
+        move.l  %d1,ATA_PTR         | the handler's next sector
+        move.b  ATA_LEFT,%d0
+        subq.l  #1,%d0
+        move.b  %d0,ATA_LEFT        | the sectors the handler still sends
+.Lw_word:
+        move.w  (%a0)+,%d0
+        move.w  %d0,ATA_DATA
+        cmp.l   %a0,%d1
+        bne.s   .Lw_word
+        jmp     ATA_RET             | stock: return the count
 
 | ---- creating the task (from the action, in the UI task) ---------------
 | The sequence is stock's own (docs/firmware/STEM_REC.md section 3).

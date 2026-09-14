@@ -25,6 +25,13 @@ from remix.schema import Detour, DramRegion, Kind, Linked, Module, Poke, TableGr
 FRAME_SITE = 0x40004B12
 FRAME_STOCK = bytes.fromhex("4ebae68c" "46fc2700")
 
+# The stock PIO write routine (0x40014c48), right after its wait for DRQ:
+# `movea.l 0x46c8c594,%a0`, the first sector's data. The stub streams the
+# sector after advancing the handler's pointer and count, not before
+# (docs/firmware/STEM_REC.md 11.7), and returns through stock's epilogue.
+ATA_FIRST_SITE = 0x40014CFE
+ATA_FIRST_STOCK = bytes.fromhex("207946c8c594")
+
 # The CONTROL list (docs/firmware/MAINMENU.md sections 2-5): count at +0x00,
 # row array pointer at +0x18. TableGrow copies the stock rows from the user's
 # image at build time and appends ours; an ACTION row has window, child and
@@ -42,7 +49,10 @@ MODULE = Module(
     linked=(Linked("stems", "modules/stems/stems.s", dram=True),),
     detours=(Detour(FRAME_SITE, FRAME_STOCK, "stems", "stems_frame_hook",
                     "per-frame tap: T1 into the ring, then the stock routine",
-                    kind="jsr", pad_to=8),),
+                    kind="jsr", pad_to=8),
+             Detour(ATA_FIRST_SITE, ATA_FIRST_STOCK, "stems", "stems_ata_first",
+                    "the PIO write's first sector, pointer and count advanced first",
+                    kind="jmp"),),
     tables=(TableGrow("CONTROL rows + STEM REC", old=CONTROL_ROWS,
                       count=ROW_N * ROW_WORDS,
                       symbols=(("stems", "stems_label"), ("stems", "stems_zero"),

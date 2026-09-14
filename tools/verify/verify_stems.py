@@ -26,6 +26,7 @@ RUNTIME_ELF = pathlib.Path("out/platform/runtime/runtime.elf")
 LAYOUT_DIR = pathlib.Path("out/platform")      # platform_build.LAYOUT lives here, by name
 CONTROL_DESC, CONTROL_ROWS, ROW_LEN, STOCK_N = 0x400cbd54, 0x400cc5a8, 24, 6
 FRAME_SITE = 0x40004b12
+ATA_FIRST_SITE = 0x40014cfe  # the stock PIO write's first sector (STEM_REC.md 11.7)
 
 # Task 11's interface (STEM_REC.md section 9.4): T1's slot in the read-back
 # half, and the direction char blockdump.py's summary prints for that class.
@@ -73,6 +74,9 @@ def static(img, stock, s):
     want = b"\x4e\xb9" + s["stems_frame_hook"].to_bytes(4, "big") + b"\x4e\x71"
     got = img[FRAME_SITE - BASE:FRAME_SITE - BASE + 8]
     check("0x40004b12 is jsr stems_frame_hook; nop", got == want, got.hex())
+    want = bytes.fromhex("4ef9") + s["stems_ata_first"].to_bytes(4, "big")
+    got = img[ATA_FIRST_SITE - BASE:ATA_FIRST_SITE - BASE + 6]
+    check("0x40014cfe is jmp stems_ata_first", got == want, got.hex())
 
 
 def regions(s):
