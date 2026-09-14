@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """STEM REC -- the row, the tap and the file, checked without hardware.
 
-    python3 tools/verify/verify_stems.py [remix]      (default: stems)
+    python3 tools/verify/verify_stems.py [remix] [--long]   (default: stems)
 
 Static, from the built image: CONTROL has seven rows, the six stock ones
 byte for byte, the seventh labelled STEM REC with the module's action and
 id 0; the frame site jumps to the hook; the ring and the stack sit at the
 top of the platform reserve, above the runtime's stage. Then, when the
 port is built and the fixture exists (tools/verify/stems_fixture.py), the
-runs of Tasks 14 to 16.
+runs of Tasks 14 to 16. `--long` adds the 15-second limit run, which
+takes about 13 minutes under the port and stays out of `make check`.
 """
 import json
 import os
@@ -255,6 +256,7 @@ def rowstop(s):
     wav_check(card, nfr, dump, "rowstop")
 
 
+MAX_FRAMES = 41344                       # stems.s: 15.0 s
 ERR_OVERFLOW, ERR_EXISTS, ERR_WRITE = 1, 4, 5
 RING_SIZE = 0x400000
 DRIVER_DRQ_POLL = 0x40014cf4             # the stock write command's wait for DRQ (STEM_REC.md 11.4)
@@ -295,6 +297,38 @@ def take(card_path):
     audio = f"/{fx['set']}/AUDIO"
     names = [n for n in (ec.list_dir(img, audio) or []) if n not in fx.get("staged", [])]
     return ec.read_file(img, f"{audio}/{names[0]}/T1.wav") if len(names) == 1 else None
+
+
+def limit(s):
+    """No STOP: the hook stops the take at 15 seconds, then the task writes
+    it. The task swaps the ring in place before each write, so after the
+    take the ring IS the file's data, and the file must equal it byte for
+    byte: a sector sent twice or lost by the stock PIO write (STEM_REC.md
+    11.7) keeps the size and fails this."""
+    n = 64 * MAX_FRAMES
+    log, _, card, words, ring = port(s, 48000, tag="limit", dump_blocks=False,
+                                     extra=watched(s), ring_bytes=n)
+    st, status, _, wr, rd, nfr = words
+    check("limit: the hook stopped at exactly MAX_FRAMES", nfr == MAX_FRAMES, f"{nfr} frames")
+    check("limit: the task finished (state IDLE, no error)", st == ST_IDLE and status == 0,
+          f"state {st}, status {status}")
+    data = take(card)
+    dlen = int.from_bytes(data[40:44], "little") if data and len(data) >= 44 else None
+    check("limit: the file holds 15 s of data", dlen == n and len(data) == 44 + dlen,
+          f"data {dlen}, file {len(data) if data else None}")
+    same = data is not None and len(ring) == n and data[44:] == ring
+    bad = None
+    if data is not None and not same:
+        bad = next((i for i in range(0, min(len(ring), len(data) - 44), 512)
+                    if data[44 + i:44 + i + 512] != ring[i:i + 512]), None)
+    check("limit: the file's data is the ring, byte for byte", same,
+          "" if same else f"first differing 512-byte block at data offset {bad}")
+    ws = writes(s, log)
+    fin = next((x for x, w, v in ws if w == 0 and v == ST_FINISHING), None)
+    idle = next((x for x, w, v in ws if w == 0 and v == ST_IDLE and fin is not None and x > fin), None)
+    if fin is not None and idle is not None:
+        print(f"  [ -- ] limit: the write took {(idle - fin) / 16:.0f} frames after the limit "
+              f"({(idle - fin) / 44100:.2f} s of port time; the unit's card is not the port's)")
 
 
 def exists(s):
@@ -370,7 +404,8 @@ def cardfail(s):
 
 def main():
     from remix import registry
-    name = sys.argv[1] if len(sys.argv) > 1 else "stems"
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    name = args[0] if args else "stems"
     if "STEM REC" not in registry.remix(name).modules:
         print(f"  [ -- ] {name} does not carry STEM REC -- nothing to check")
         return 0
@@ -389,6 +424,8 @@ def main():
         exists(s)
         overflow(s)
         cardfail(s)
+        if "--long" in sys.argv:
+            limit(s)
     else:
         print("  [SKIP] port runs: build the port (make emu-cf) and the fixture "
               "(python3 tools/verify/stems_fixture.py)")
