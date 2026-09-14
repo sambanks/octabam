@@ -6062,3 +6062,117 @@ One run's nesting is not the unit's worst case. The plan's limit is 6 KB,
 and 1,048 bytes is well under it, so the stack stays at 8 KB. The depth does
 not grow with the take's length: a 15-second take runs the same calls more
 times.
+
+### 11.7 The 15-second take, and a race in the stock PIO write ✅
+
+`python3 tools/verify/verify_stems.py stems --long` adds `limit()`: a take
+with no STOP, which the hook ends at 15 seconds, and then the writer writes
+it. It stays out of `make check`, because it plays 48,000 frames: about 15
+minutes of wall time on the fixed image.
+
+**The first runs stalled.** On 13 and 14 Sep 2026, on the image before the
+fix, the runs `limit` and `limit2` ended the same way:
+
+- ✅ The hook stopped the take at exactly 41,344 frames.
+- ✅ The writer then wrote 20 of the take's 41 chunks (`stems_rd` =
+  1,310,720), and the port's card took 2,665 sectors.
+- ✅ About 900 frames after the stop, the processor stopped taking the frame
+  interrupt. The DSP ran the whole of the port's budget, 3.93 million
+  samples after the transport start, but frames stopped at 42,275. At the
+  end, the frame source was asserting and latched, and not masked. The
+  file's directory entry stayed at length 0, because the close never ran.
+
+Three more runs ruled out the other causes:
+
+| run | what it checks | result |
+|---|---|---|
+| `control` | 44,000 frames, STEM REC never selected | ✅ all 44,000 reached: the port has no limit near frame 42,300 |
+| `overlap` | the same, with a write watch over the whole platform reserve, `0x40a955e0` to `0x41495ddf` | ✅ 0 writes: stock does not write into the ring or the stack during play |
+| `limit2` | the stalled take again, recording the last 256 instructions | ✅ the same stall, and all 256 instructions are one loop |
+
+The loop is in the card interrupt's handler, entry `0x40015304`:
+
+```
+4001551e:	1039 9000 00d8 	moveb 0x900000d8,%d0     | the card's alternate status
+40015524:	44c0           	movew %d0,%ccr          | bit 3, DRQ, lands in N
+40015526:	6af6           	bpls 0x4001551e          | round again while DRQ is clear
+```
+
+It is the handler's WRITE step. On each card interrupt during a WRITE
+SECTORS, the handler reads the status register, which clears the interrupt.
+Then it reads the driver's count of the sectors it still has to send, the
+byte at `0x46c8c592`. If the count is not 0, the handler waits for DRQ,
+sends the 512 bytes at the pointer `0x46c8c594`, advances the pointer by
+512 and decrements the count. The driver sets the card interrupt's level to
+5 (`0x40016130`, INTC1 source 54), the frame interrupt's level, so no frame
+is taken while the handler spins. The wait has no timeout.
+
+**The race.** The routine that issues the command, `0x40014c48`
+(section 11.4), runs in the writer task with interrupts enabled. It sets
+the count to N and the pointer, issues the command, waits for DRQ and sends
+the first sector itself. Only then does it advance the pointer
+(`0x40014d38` to `0x40014d44`) and decrement the count (`0x40014d4a` to
+`0x40014d52`), each as a separate read, change and write. The card raises
+its interrupt once it has taken the first sector. If the handler runs
+before the task has finished, it works from stale values. What happens
+depends on the task's next instruction when the handler runs:
+
+| the task's next instruction | the handler sends | afterward |
+|---|---|---|
+| `0x40014d38` or earlier: nothing updated yet | the first sector again | The counts agree. The first sector is written twice and the second is lost, with no error. |
+| `0x40014d3e` or `0x40014d44`: the pointer read, not yet written back | the first sector again | The counts agree. The task writes back the pointer it read plus 512, so every later sector lands one place late and the last is lost, with no error. |
+| `0x40014d4a`: the pointer written, the count not yet read | the second sector | Correct. |
+| `0x40014d50` or `0x40014d52`: the count read, not yet written back | the second sector | The task stores N − 1 over the handler's decrement, so the driver expects one sector more than the card does. After the last sector the card clears DRQ, and the handler waits for it forever. **This is the stall.** |
+
+The handler can run in that window only if an interrupt preempts the task
+there and lasts longer than the card takes to raise its own interrupt. The
+frame interrupt can. The card interrupt has the same level, so it is taken
+the moment the frame interrupt returns, before the task's next instruction.
+The port's card raises its interrupt one sample, about 23 µs, after each
+sector.
+
+🟡 Which window the port's runs hit is inferred from the stall: only the
+last row leaves the handler waiting. A run that watches every write to the
+count and the pointer measures it.
+
+**It is stock's, and it is on the PIO path only.** The driver picks its
+command set once, from the card's IDENTIFY data (`0x40015e28`). If word 49
+reports DMA, and word 88 or words 63 and 163 name a mode, it installs READ
+DMA and WRITE DMA (`0xC8`, `0xCA`). Otherwise it installs READ SECTORS and
+WRITE SECTORS (`0x20`, `0x30`): the PIO path. The port's card reports no DMA
+(word 49 is `0x0200` in `tools/emu/ot_emu/card.cpp`), so every port run
+takes the PIO path.
+
+- ✅ Any PIO write can hit the race, the stock sample save included: the
+  window is in the stock routine, and nothing in it is STEM REC's.
+- 🟡 The port's shorter runs did not hit it only because no interrupt
+  landed in the window. They are deterministic, so they miss it every time.
+- 🟡 On the unit, a card that reports DMA takes the WRITE DMA path, which
+  this section did not read. CompactFlash 4.0 (2006) added UDMA, and fast
+  cards generally report it. A card that reports no DMA takes the PIO path
+  and can hit the race. How often depends on how long the card takes to
+  raise its interrupt, which is not measured.
+
+**The fix.** `stems_ata_first`, reached by a `jmp` detour at `0x40014cfe`,
+the instruction that loads the pointer, right after the wait for DRQ. It
+advances the pointer and decrements the count first, then sends the first
+sector, then returns through stock's epilogue at `0x40014d58`. The card
+cannot raise its interrupt for a WRITE until the whole first sector is in,
+so the handler always finds the values already advanced. The stub uses the
+registers stock uses there: d0, d1 and a0. It changes every PIO write, not
+only STEM REC's. On the WRITE DMA path it never runs.
+
+**With the fix**, the same take on 14 Sep 2026, image `343779ab4b13389a…`:
+
+- ✅ All 48,000 frames ran.
+- ✅ The state is IDLE and the status 0. `stems_rd` and `stems_wr` are both
+  2,646,016.
+- ✅ `T1.wav` is 2,646,060 bytes, and its header gives 2,646,016 data bytes.
+- ✅ The file's data equals the ring byte for byte. The task swaps the ring
+  in place before each write, so after the take the ring is the file's
+  data. A sector sent twice or lost keeps the size and fails this check.
+- ✅ The write took 1,892 frames after the stop, 0.69 s of port time. The
+  port's card answers at once, so the unit's card will be slower.
+
+Falsifier: any rerun of `limit()` on the fixed image that stalls, or whose
+file differs from the ring.
