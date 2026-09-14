@@ -968,8 +968,9 @@ forever with the audio frame blocked, which freezes the unit. The first
 15-second take under the port hit the freeze. STEM REC patches the routine
 (`stems_ata_first`), and that changes every PIO write on the unit, stock
 saves included. A card that reports DMA takes the stock DMA path instead,
-where the patch never runs; that path is not analysed. Test 4 below checks
-that stock saves still work.
+where the patch never runs; that path is not analysed. Yves chose to ship
+the patch in this flash (14 Sep 2026) rather than leave the race in. Test 4
+below checks that stock saves still work.
 
 **How a take behaves.** Nothing is written to the card while a take runs.
 The take is written after it stops, header first, and that takes a while:
