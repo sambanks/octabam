@@ -6114,8 +6114,15 @@ the first sector itself. Only then does it advance the pointer
 (`0x40014d38` to `0x40014d44`) and decrement the count (`0x40014d4a` to
 `0x40014d52`), each as a separate read, change and write. The card raises
 its interrupt once it has taken the first sector. If the handler runs
-before the task has finished, it works from stale values. What happens
-depends on the task's next instruction when the handler runs:
+before the task has finished, it works from stale values.
+
+With N = 1, the handler finds the count still at 1 in every window, and the
+card has no second sector to ask for. The handler waits forever, whichever
+instruction the task was at: every window is the stall. The take's writes
+are nearly all single sectors (below).
+
+With N of 2 or more, what happens depends on the task's next instruction
+when the handler runs:
 
 | the task's next instruction | the handler sends | afterward |
 |---|---|---|
@@ -6131,9 +6138,23 @@ the moment the frame interrupt returns, before the task's next instruction.
 The port's card raises its interrupt one sample, about 23 µs, after each
 sector.
 
-🟡 Which window the port's runs hit is inferred from the stall: only the
-last row leaves the handler waiting. A run that watches every write to the
-count and the pointer measures it.
+✅ **Measured.** The run `race`, on the image before the fix, watched every
+write to the driver's bytes `0x46c8c58a` to `0x46c8c59b`, 113,289 writes,
+and dumped them at the end:
+
+- The take went to the card as 2,656 WRITE SECTORS commands. 2,653 were
+  single sectors, 2,650 of those from the file layer's staging buffer
+  `0x4ecd3000` (section 7.5). 3 were four sectors, and the handler's write
+  step ran 9 times, 3 for each.
+- The last command set the count to 1, the pointer to `0x4ecd3000` and the
+  driver's state to 2, and then nothing. The task's pointer update at
+  `0x40014d44` never came. At the end the count is still 1 and the command
+  byte is `0x30`. So the card interrupt was taken after the sector went out
+  and before the task's update, on a single-sector command.
+- In the other 2,655 commands, the task's pointer update came 714 to 36,204
+  instructions after the state: the task is often preempted inside the
+  routine. The race needs the preemption to fall after the sector's last
+  word.
 
 **It is stock's, and it is on the PIO path only.** The driver picks its
 command set once, from the card's IDENTIFY data (`0x40015e28`). If word 49
