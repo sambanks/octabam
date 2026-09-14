@@ -16,7 +16,9 @@ concept: the first step of `docs/proposals/MULTITRACK_TO_CARD.md`.
 part of `make check REMIX=stems`, runs the module on a fixture project with a
 kick on T1. It reads each take back off the port's card and checks the
 header, the sizes and every sample. Every sample equals T1's post-FX2
-read-back block at a fixed lag.
+read-back block at a fixed lag. `--long` adds a whole 15-second take, whose
+file must equal the ring byte for byte (about 15 minutes, outside
+`make check`).
 
 | measured under the port | value | STEM_REC.md |
 |---|---|---|
@@ -24,6 +26,7 @@ read-back block at a fixed lag.
 | the frame hook, ARMED | 17 instructions per frame | 10.2 |
 | the frame hook, RECORDING | 122 instructions per frame | 10.2 |
 | the writer task's stack peak | 1,048 of 8,192 bytes | 11.6 |
+| writing a 15-second take after it stops | 1,892 frames, 0.69 s of port time | 11.7 |
 | writing the whole 4 MiB ring after a take | 2,879 frames, 1.04 s of port time | 11.5 |
 
 The hook's figures are instruction counts. Its time on the unit is not
@@ -41,6 +44,15 @@ Known from the port, before any flash:
 - **A card that aborts a write command hangs the writer** inside the stock
   card driver, which has no timeout. Recovery is a power cycle. The stock
   sample save shares this (STEM_REC.md 11.4).
+- **The stock PIO card write has a race, and the module fixes it.** The
+  first 15-second take under the port stalled the whole unit: an interrupt
+  landed between the stock routine sending a write's first sector and
+  updating the card handler's pointer and count, and the handler then
+  waited forever with the frame interrupt blocked. The same race can also
+  write a sector twice without an error. The module patches the stock
+  routine to update both first (STEM_REC.md 11.7). The patch changes every
+  PIO card write, not only STEM REC's. A card that reports DMA takes a
+  different stock path, where the patch never runs.
 
 ## How to use it
 
@@ -85,6 +97,10 @@ card.
   that exists, and writes the header with its final sizes, then the ring,
   then closes. It never seeks: the file layer's seek does not flush and its
   close sets the file's length to the write position (STEM_REC.md 7.10).
+- **The first-sector fix.** A detour in the stock PIO write routine at
+  `0x40014cfe`. It advances the card handler's data pointer and sector
+  count before the first sector goes out, not after, so a card interrupt
+  can never find them stale (STEM_REC.md 11.7).
 - **The memory.** The ring and the task's 8 KB stack are DRAM regions at
   the free top of the platform's arena reserve, so the module costs no
   sample memory beyond what any DRAM remix already gives up.
