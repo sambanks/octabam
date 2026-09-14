@@ -931,16 +931,19 @@ answer:
 5. His Part save/reload menu actions (Part Save, Part Reload) under her
    Kit menus — the unmeasured half. Whatever happens is the finding.
 
-## Flash 13 — `stems`, tag 27: STEM REC, T1 to the card (staged 13 Sep 2026)
+## Flash 13 — `stems`, tag 27: STEM REC, T1 to the card (staged 13 Sep 2026, restaged 14 Sep)
 
 STEM REC alone (`modules/stems`, `modules/stems/README.md`), so a first
 flash can only fail in one module's ways. `make image REMIX=stems BUILD=27`
-on branch `stem-rec-poc` → `out/OCTATRACK_OCTABAM27.bin` (446,820 B, sha256
-`22d98c5169709f6c…`) / `out/OCTATRACK_OS1.40C_OCTABAM27.syx` (624,144 B,
-sha256 `0488b824aa7e8e54…`). The OS inside is `out/mainos_bus.bin` sha256
-`c3cf29d9987d0cf1…`. `make check REMIX=stems` green the same day; every
-claim below was measured under the ColdFire port first
-(`docs/firmware/STEM_REC.md` sections 10 and 11).
+on branch `stem-rec-poc` → `out/OCTATRACK_OCTABAM27.bin` (446,884 B, sha256
+`e1596682c6803f6d…`) / `out/OCTATRACK_OS1.40C_OCTABAM27.syx` (624,229 B,
+sha256 `ba8af66b7f95c698…`). The OS inside is `out/mainos_bus.bin` sha256
+`343779ab4b13389a…`. `make check REMIX=stems` green the same day, and the
+15-second take (`verify_stems.py --long`) passes on this OS; every claim
+below was measured under the ColdFire port first
+(`docs/firmware/STEM_REC.md` sections 10 and 11). ❌ The 13 Sep image
+(`22d98c51…` / `0488b824…`, OS `c3cf29d9…`) is withdrawn: under the port its
+15-second take froze the whole unit (STEM_REC.md 11.7). Do not flash it.
 
 ⚠️ **Confirm 27 is unused before you copy it.** The last tag in this
 series on any branch this clone has fetched is 26 (Flash 12). If another
@@ -958,10 +961,20 @@ do-not:
    unlocked (STEM_REC.md 7.5). **Do not save a sample while a take is being
    written.**
 
+⚠️ **This image patches a stock card routine.** The stock PIO card write
+has a race (STEM_REC.md 11.7): an interrupt at the wrong instruction either
+writes a sector twice with no error, or leaves the card handler waiting
+forever with the audio frame blocked, which freezes the unit. The first
+15-second take under the port hit the freeze. STEM REC patches the routine
+(`stems_ata_first`), and that changes every PIO write on the unit, stock
+saves included. A card that reports DMA takes the stock DMA path instead,
+where the patch never runs; that path is not analysed. Test 4 below checks
+that stock saves still work.
+
 **How a take behaves.** Nothing is written to the card while a take runs.
-The take is written after it stops, header first, and that takes some
-seconds: under the port the whole 4 MiB ring took 1.04 s of port time, and
-the port's card answers at once, so the unit's card is slower. **Do not
+The take is written after it stops, header first, and that takes a while:
+under the port a 15-second take took 0.69 s of port time to write, and the
+port's card answers at once, so the unit's card is slower. **Do not
 pull the card or power off until the take's folder shows in the audio
 pool.** The screen shows nothing, and STEM REC ignores a select while the
 write runs. The folder is `YYMMDD-HHMM` from the unit's clock. Under the
@@ -972,7 +985,7 @@ port every take is `000000-0000`, because the port's clock reads 0.
 take is a known possibility. Record the same pattern with the stock
 recorder, resampling T1, and compare the two levels.
 
-The three tests of the spec's section 11, in order:
+The three tests of the spec's section 11, then one for the patch, in order:
 
 1. **A project with Flex machines only. Record 15 s.** Select STEM REC with
    the sequencer running and let the limit stop it. Listen for dropouts or
@@ -982,7 +995,8 @@ The three tests of the spec's section 11, in order:
    first check of the name's field order), the file's length (15 s is
    2,646,016 data bytes, 2,646,060 in all), how long after the stop the
    folder appeared, the level against the stock recorder's take, and any
-   dropout heard live or seen in the file.
+   dropout heard live or seen in the file. Also the card's make, model and
+   size: whether it reports DMA decides which stock write path ran.
 2. **The same with a static machine playing.** A static machine streams
    from the card. The take is written after it stops, so to make the write
    and the stream overlap, **stop the take with STEM REC while the
@@ -994,11 +1008,21 @@ The three tests of the spec's section 11, in order:
    that all three files are there and play. Then select STEM REC twice in
    one minute: the second take must be refused, and the first must stay
    intact.
+4. **Stock saves still work.** On this image, after the takes: save the
+   project, save a sample (the stock recorder's take from test 1 will do),
+   power cycle, and load both back. **Report:** that both saved and both
+   load. This is the patch's test: it changes the stock routine those saves
+   use on a PIO card.
 
 **Stop conditions.** A hang when STEM REC is selected: power cycle, and
 stop the session. A take that never appears while card access stops
 working: this is STEM_REC.md 11.4, a card that aborts a write hanging the
 stock driver. Power cycle, and do not use that card again for this test.
+The whole unit freezing, audio and keys, after a take stops: the race of
+STEM_REC.md 11.7, which the patch should prevent. Power cycle, stop the
+session, and report the card's make and model. A stock save that fails in
+test 4: power cycle, stop the session, and go back to a stock OS for that
+card.
 Every new failure goes into `docs/remixer/FAILURE_MODES.md`, whose STEM REC
 block lists what is predicted, the moment it is seen.
 
