@@ -148,10 +148,12 @@ port on 9 Sep 2026 unless marked.
    because the file layer's seek does not flush and its close cuts the file
    to the write position (`docs/firmware/STEM_REC.md` 7.10). Under the port,
    every sample of a take equals T1's read-back, and the STOP, the row, the
-   same-minute refusal and the overflow guard behave as designed. One stock
-   limitation found: a card that aborts a write hangs the stock driver
-   (STEM_REC.md 11.4). Next: the flash, `docs/effects/FLASHPLAN.md` Flash
-   13. Its remixer integration (TUI row, shareable CONTROL rows, one image
+   same-minute refusal, the overflow guard and a whole 15-second take
+   behave as designed. Two stock defects found: a card that aborts a write
+   hangs the stock driver (STEM_REC.md 11.4), and a race in the stock PIO
+   write froze the unit on the port's first 15-second take (11.7), which
+   the module now patches. Next: the flash, `docs/effects/FLASHPLAN.md`
+   Flash 13, restaged 14 Sep with the patch. Its remixer integration (TUI row, shareable CONTROL rows, one image
    with Octakit and MIDI SCENES) is a TODO in the spec's section 12, after
    the module holds on hardware.
 
