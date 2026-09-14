@@ -48,8 +48,9 @@ Known from the port, before any flash:
   first 15-second take under the port stalled the whole unit: an interrupt
   landed between the stock routine sending a write's first sector and
   updating the card handler's pointer and count, and the handler then
-  waited forever with the frame interrupt blocked. The same race can also
-  write a sector twice without an error. The module patches the stock
+  waited forever with the frame interrupt blocked. On the rarer writes of
+  more than one sector, the same race can instead write a sector twice
+  without an error. The module patches the stock
   routine to update both first (STEM_REC.md 11.7). The patch changes every
   PIO card write, not only STEM REC's. A card that reports DMA takes a
   different stock path, where the patch never runs.

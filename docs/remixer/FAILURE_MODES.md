@@ -371,11 +371,14 @@ Then power cycle, and try the same take with another card.
 **Symptom.** A take has one 512-byte stretch, about 3 ms, repeated, or the
 audio after some point is shifted by 512 bytes, with no error reported.
 
-**Cause.** The other outcome of the same stock race (STEM_REC.md 11.7): if
-the interrupt lands before the routine has updated the pointer, the
-handler sends the first sector of a write twice. The fix covers this too,
-and under the port the 15-second take's file equals the ring byte for byte.
-Not expected on the unit, for the same reasons as the freeze above.
+**Cause.** The other outcome of the same stock race (STEM_REC.md 11.7),
+possible only on a write command of more than one sector: if the interrupt
+lands before the routine has updated the pointer, the handler sends the
+first sector twice. Under the port, 3 of a 15-second take's 2,656 write
+commands had more than one sector. On a single sector, the same race is the
+freeze above. The fix covers both, and under the port the 15-second take's
+file equals the ring byte for byte. Not expected on the unit, for the same
+reasons as the freeze.
 
 **First check.** Where in the file is the repeat? A write command starts on
 a sector boundary, so the repeat starts at a multiple of 512 bytes from

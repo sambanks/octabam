@@ -377,9 +377,11 @@ always closed.
 - **The stock PIO write's race.** ✅ Found under the port, 14 Sep 2026
   (STEM_REC.md 11.7). The stock routine that issues WRITE SECTORS sends the
   first sector, then updates the card handler's data pointer and sector
-  count, with interrupts enabled. An interrupt in between either writes a
-  sector twice, silently, or leaves the handler waiting forever at level
-  5, which freezes the unit: the port's first 15-second take did that.
+  count, with interrupts enabled. An interrupt in between leaves the
+  handler waiting forever at level 5, which freezes the unit: the port's
+  first 15-second take did that, on one of its 2,653 single-sector writes.
+  On a write of more than one sector it can instead write a sector twice,
+  silently.
   This breaks the rule above from inside stock code, so the module patches
   the routine (`stems_ata_first`, a detour at `0x40014cfe`) to update both
   first. The patch changes every PIO write, stock saves included. A card
