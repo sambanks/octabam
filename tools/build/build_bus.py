@@ -600,7 +600,12 @@ def main():
                 wr32(clone_P + 0x0fa + idx * 4, 0)
             for step_slot in STEPPED_SLOTS[name]:
                 wr32(clone_P + 0x0ca + step_slot * 4, 0x4003c718)
-                wr32(clone_P + 0x0fa + step_slot * 4, 0x40047254)
+                # CHORUS.TAPS' tick widget has five positions hard-coded and
+                # draws nothing above value 4. Wider selects use the plain
+                # dial (B=0) while their A formatter still prints each label.
+                _count = _MODS[name].params[step_slot].count
+                wr32(clone_P + 0x0fa + step_slot * 4,
+                     0x40047254 if _count is not None and _count <= 5 else 0)
             # ...and P+0x12a MUST BE ZERO for a stepped control. Surveyed all
             # 20 stepped params in stock FX2 (count < 128): every single one
             # has 0x12a = 0, no exceptions. MODE sits in slot 7 and inherited
@@ -1248,6 +1253,18 @@ def main():
         img[_d.site - BASE:_d.site - BASE + _n] = _w + b"\x4e\x71" * ((_n - 6) // 2)
         _what = f"{_d.unit}:{_d.symbol}" if _d.target is None else "stock"
         print(f"  {_m.key}: {_d.kind} 0x{_d.site:08x} -> {_what} 0x{_target:08x}  {_d.note}")
+
+    for _m, _r in [(remix_modules()[_k], _r) for _k in REMIX.modules
+                   for _r in getattr(remix_modules()[_k], "symbol_refs", ())]:
+        _got = rd32(_r.addr)
+        if _got != _r.expect:
+            sys.exit(f"{_m.key} symbol ref {_r.note or _r.symbol} at "
+                     f"0x{_r.addr:08x} finds 0x{_got:08x}, not "
+                     f"0x{_r.expect:08x}; refusing")
+        _target = _sym[_r.unit][_r.symbol] + _r.addend
+        wr32(_r.addr, _target)
+        print(f"    ref 0x{_r.addr:08x}: 0x{_r.expect:08x} -> "
+              f"{_r.unit}:{_r.symbol} 0x{_target:08x}  {_r.note}")
 
     for _m, _p in [(remix_modules()[_k], _p) for _k in REMIX.modules
                    for _p in getattr(remix_modules()[_k], "pokes", ())]:

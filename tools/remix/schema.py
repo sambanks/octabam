@@ -569,6 +569,23 @@ class Poke:
 
 
 @dataclass(frozen=True)
+class SymbolRef:
+    """Rewrite one stock u32 data pointer to a linked symbol.
+
+    Unlike a Detour this emits no opcode: descriptor tables and callback
+    slots contain the address itself. The stock value is asserted before
+    the symbol (plus an optional byte addend) is written.
+    """
+
+    addr: int
+    expect: int
+    unit: str
+    symbol: str
+    note: str = ""
+    addend: int = 0
+
+
+@dataclass(frozen=True)
 class Runtime:
     """A loader-appended runtime: code and state that live in DRAM, not in
     the OS image's free zero runs.
@@ -686,6 +703,7 @@ class Module:
     linked: tuple[Linked, ...] = ()
     detours: tuple[Detour, ...] = ()
     tables: tuple[TableGrow, ...] = ()
+    symbol_refs: tuple[SymbolRef, ...] = ()
     pokes: tuple[Poke, ...] = ()
     # Pages of the audio page arena this module's DRAM lives in
     # (schema.ArenaReserve). DRAM units need none: the platform reserves
@@ -1052,4 +1070,3 @@ class Remix:
         # registry is in scope: build_bus.py refuses, selftest pins it.
         if len(set(self.fx1)) != len(self.fx1):
             raise ValueError(f"remix {self.name!r}: duplicate fx1 keys")
-

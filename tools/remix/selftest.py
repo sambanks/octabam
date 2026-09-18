@@ -513,6 +513,7 @@ def main():
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (),
+             "repitch": (),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
              "rig-mods": _rig}
     for _n in registry.remix_names():

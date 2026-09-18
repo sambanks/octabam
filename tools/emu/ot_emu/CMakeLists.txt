@@ -63,3 +63,13 @@ add_test(NAME rtos COMMAND ot_rtos_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE
 add_executable(ot_dsp_test test_dsp.cpp)
 target_link_libraries(ot_dsp_test PRIVATE ot_machine)
 add_test(NAME dsp COMMAND ot_dsp_test WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+
+# Repitch's firmware patch relies on stock TSTR value numbers, descriptor
+# bounds and one rate-selection block. Keep those reverse-engineered facts
+# executable so a different base image cannot silently invalidate the hook.
+add_executable(ot_repitch_stock_test ../../harness/repitch_probe.cpp)
+target_link_libraries(ot_repitch_stock_test PRIVATE ot_machine)
+add_test(NAME repitch-stock COMMAND ot_repitch_stock_test
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+add_test(NAME repitch-patch COMMAND ot_repitch_stock_test --patched out/mainos_bus.bin
+	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)

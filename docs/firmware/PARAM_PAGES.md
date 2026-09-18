@@ -428,7 +428,9 @@ hard-coded (`cmp #N` after a common prologue):
 | `0x40047424` | 3-position (SPRING TYPE) |
 | `0x400477d4` | boolean (DELAY's switches) |
 | `0x400467a4` / `0x4004661c` | numeric bar (NOTE) |
-| `0` | plain dial printing A's text (stock DELAY TIME: `A=0x4003c718, B=0`) |
+| `0x40046f10` / `0x40046d9c` / `0x40046c28` / `0x40046ab4` | the PLAYBACK-page select: 2 / 3 / 4 / 5 positions, one body, a `cmp #N-1` bound and a 17x7 icon table each (`0x400be2f2`, `0x400be2fa`, `0x400be306`, `0x400be316`); a value past the bound draws nothing. The 5-position one is unreferenced in stock; REPITCH's TSTR uses it (✅ 16 Sep 2026, `docs/firmware/REPITCH.md`) |
+| `0x400479b4` | the knob (PTCH, RATE); a negative value draws its frame alone (`0x40047a0e`) |
+| `0` | plain dial printing A's text (stock DELAY TIME: `A=0x4003c718, B=0`; used for labelled selects wider than five because the tick widget stops at value 4) |
 
 A formatter overrides the count: a cloned slot inherits the donor's A/B,
 and a count-128 slot on a 3-entry word-label renderer draws nothing

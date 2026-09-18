@@ -193,6 +193,9 @@ def check(selected) -> list[str]:
         for t in getattr(m, "tables", ()):
             for addr, _old in t.refs:
                 pokes.append((addr, 4, m.name, f"table ref ({t.label})"))
+        for r in getattr(m, "symbol_refs", ()):
+            pokes.append((r.addr, 4, m.name,
+                          f"symbol ref {r.unit}:{r.symbol} ({r.note or hex(r.addr)})"))
         for p in getattr(m, "pokes", ()):
             pokes.append((p.addr, len(p.expect), m.name, f"poke {p.note or hex(p.addr)}"))
     # A FLOATING emit cave's poke ADDRESSES do not depend on where the cave

@@ -323,9 +323,11 @@ def main():
                 # emulated firmware: tools/verify/verify_labels.py.
                 a_ok = (f1 == STEPPED_FMT[0] or CAVE_LO <= f1 < CAVE_HI
                         or OVF_LO <= f1 < OVF_HI)
-                check(a_ok and f2 == STEPPED_FMT[1] and f3 == 0,
+                want_b = STEPPED_FMT[1] if cnt <= 5 else 0
+                check(a_ok and f2 == want_b and f3 == 0,
                       f"{name}: p{i} count {cnt} is a SELECT, so it carries "
-                      f"the tick widget and 0x12a=0, with A either stock's "
+                      f"{'the tick widget' if want_b else 'a plain dial'} and "
+                      f"0x12a=0, with A either stock's "
                       f"enumerated formatter or a label cave "
                       f"(got 0x{f1:08x}/0x{f2:08x}/0x{f3:08x})")
             elif ((name, i) in REG_FMT

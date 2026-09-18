@@ -15,6 +15,7 @@ vendor/
 
 # --- Local ---
 .claude/
+/template_project/
 .DS_Store
 .playwright-mcp/
 __pycache__/

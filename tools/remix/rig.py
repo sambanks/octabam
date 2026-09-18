@@ -46,7 +46,7 @@ GROUP_TITLE = {BUS: "Bus", INSERT: "Inserts", STOCK: "Stock Effects",
 def touches_coldfire(m) -> bool:
     """Does this module change the OS image outside its own chooser row --
     caves, linked units, detours, pokes, grown tables, overrides or a runtime?"""
-    return bool(m.cf_patches or m.linked or m.detours or m.pokes
+    return bool(m.cf_patches or m.linked or m.detours or m.symbol_refs or m.pokes
                 or m.tables or m.overrides or m.runtime is not None)
 
 
