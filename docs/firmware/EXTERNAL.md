@@ -1,7 +1,7 @@
 # External findings
 
 Reverse-engineering results from outside this project, with what we
-re-verified, adopted, and retracted kept distinct. §1–§6, §8, §10 and §11
+re-verified, adopted, and retracted kept distinct. §1–§6, §8 and §10–§12
 are Bryan T's (Discord); §7 scans two parallel projects; §9 is nordseele's
 octalab. All were derived from the officially distributed OS 1.40C
 (`section_3_MAIN_OS.bin` SHA-256 `164f3122…`, base `0x40000400`). The full
@@ -438,3 +438,57 @@ does `move.w flags,%ccr`, and `bpl` at `0x40047aac` picks the layout at
 path and bit 1's drawer. 🟡 A module would get a link element by setting
 bit 1 on the right-hand slot (stock data + his panel reading; no module has
 tried it); `build_bus.py`'s `penable` writes bit 0 only.
+
+## 12. The track LFO engine (Bryan T, 21 Sep 2026) ✅ (❌ ours, ❌ his)
+
+`~/Downloads/LFO.md`, a handoff read out of the binary in one session,
+answering two questions of ours (a slew control; more than 19 waveforms).
+What it establishes is `LFO.md`; this section is what was checked, all in
+objdump against our image the same day, none of it run.
+
+Re-read and matching: the engine at `0x4000cf84`–`0x4000d096` (inline in
+the frame builder, `MACSR = 0x20`), 24 iterations, the 28-byte state
+record with the phase accumulator at `+24` (modulus `0x791fd`), the value
+read once at `0x4000d054`, MULT as `asll`, the destination rule (`PMTR <
+12` → the page record, else the `a5` record), both 32-entry dispatch
+tables with slots 19–31 as `0x400038bc` padding, the handler ABI (`a0`,
+`+0`/`+4`), the 19-entry label array at `0x400be38e` packed against
+`FREE`, the Part resolver's six bases, and that `0x400074a0`/`0x40007502`
+are the recorder's FIN/FOUT fades over a `1/n` table (`a4@(6)`/`(7)`, the
+recorder page's slots 6 and 7).
+
+❌ Ours, retracted: `DSP.md`'s "LFO speed `0x400074a0`/`0x40007502`, MULT
+table `0x400ab83a`" (they are the fade generator; the LFO rate is `SPD ×
+tempo24 × 4` and MULT is a shift). `PARAM_PAGES.md` §5a's page-2 display
+array at `+0x8f06c` with a machine column: his `part + 0x2f2` / `+ 0x30a`
+(re-read at `0x4005762c`/`0x4005765a`) put PMTR/WAVE and MULT/TRIG at
+`+0x8f072 + 30·t` and `+0x8f08a + 30·t`, which is his "open discrepancy"
+resolved in his favour — the array starts six bytes later than we had it
+and ends on the MIDI array. `MIDI.md` Appendix C's two 🟡 rows (scene bytes
+6–11 and 12–17) are LFO p1 and AMP p1.
+
+❌ His, corrected in `LFO.md`:
+- WAVE's count: `0x400d386c` / `0x400d41d0` hold 0. The counts are `u32`
+  at `E + 0xd2 + 4·slot`; WAVE is slot 7, so `0x400d38ac` (audio) and
+  `0x400d4218` (MIDI), both 19.
+- The page record's MULT and TRIG bytes are at `+0x24` and `+0x27`, not
+  `+0x18` and `+0x1b`: the displacements `24`/`27` in the `mvzb` extension
+  words are hex. `+0x18..+0x1d` is PLAYBACK page 2 (`REPITCH.md`'s TSTR at
+  byte 28 sits there).
+- The label array's reader and its only reference: the WAVE formatter
+  `0x4003be4c` (`lea` immediate at `0x4003be5c`), which also clamps the
+  index with a `moveq #19`; a count bump needs that word too.
+- The MIDI dispatch table is not identically shaped: its designer slots
+  hold `0x40003b10`, which reads steps from `0x46c76dc0`.
+
+Taken one step further (🟡 objdump): the iteration order is track 7 → 0
+(`a2 = 0x80000510 + 48·7`, `a5 + 24 = 0x80000110 + 64·7` at the first
+iteration; the `sp` slots are ping offsets, computed explicitly by the
+standalone copy of the engine at `0x40003b90`); the state array is
+`0x800010e8 + 28·(3·t + lfo)`, ending at the designer table `0x80001388`
+(16 bytes per LFO index, with a per-LFO slope word at `0x80001508 +
+2·i`); the copier's lane `+0x3e..+0x43` carries MULT/TRIG into the record.
+Open, as he left it: the state record's `+12/+16/+20`, the TRIG modes'
+records, whether anything but the descriptor count bounds WAVE, and how
+the T1–T8 choice reaches the per-LFO designer copy.
+

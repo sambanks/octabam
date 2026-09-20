@@ -272,11 +272,18 @@ track:
 | array | per track | order (6 bytes each) |
 |---|---|---|
 | page 1 | `DB + 0x8ee9a + t·24` | LFO · AMP · FX1 · FX2 (FX1 p1 `+0x8eea6`, FX2 p1 `+0x8eeac`; = the page-1 writer's `flat − 6`) |
-| page 2, read by the dial | `DB + 0x8f06c + t·30` | machine · LFO · AMP · FX1 (`+0x8f07e`) · FX2 (`+0x8f084`) |
+| page 2, read by the dial | `DB + 0x8f072 + t·30` | LFO PMTR×3 WAVE×3 · AMP · FX1 (`+0x8f07e`) · FX2 (`+0x8f084`) · LFO MULT×3 TRIG×3 (`+0x8f08a`) |
 | page 2, PLAYBACK editor storage | `DB + 0x8ef5a + t·30 + 6·machine + slot` | indexed by `0x460d5c30` |
 
 The bank file's page-2 block (`ot_project.P2_OFF 0x307 + t·30`, FX1 p2 at
 +0, FX2 p2 at +6) has the DB display array's order from the FX1 column on.
+❌ Until 21 Sep 2026 the display array was written as `+0x8f06c` with a
+machine column first: the LFO resolver `0x40057538` (`LFO.md` §7) puts
+PMTR/WAVE at `+0x8f072 + 30·t` and MULT/TRIG at `+0x8f08a + 30·t`, and
+`+0x8f072 + 8·30 = +0x8f162`, the MIDI tracks' array (`MIDI.md` Appendix A §3). The
+FX1/FX2 columns, the only ones measured, are unchanged; AMP's position is
+the six-byte gap between them. The tools index from `P2_OFF` and were
+never affected.
 
 ### 5b. Page-2 editors ✅ (port, 13 Sep 2026)
 
@@ -307,12 +314,19 @@ DSP record `0x80000110 + 64·t`:
 
 | lane bytes (`t·72 +`) | lands in | page |
 |---|---|---|
-| `+0x20..+0x2b` | ColdFire record `0x80000510 + 48·t` only | PLAYBACK p2, LFO p2 (never the DSP) |
+| `+0x20..+0x25` | ColdFire record `0x80000510 + 48·t`, `+0x18..+0x1d` | PLAYBACK p2 (never the DSP) |
+| `+0x26..+0x2b` | same record `+0x1e..+0x23` | LFO p2 PMTR×3 WAVE×3 |
 | `+0x2c..+0x31` | DSP record hw 21–23 | AMP p2 |
 | `+0x32..+0x37` | DSP record hw 18–20 | FX1 p2 |
 | `+0x38..+0x3d` | DSP record hw 24–26 | FX2 p2 |
+| `+0x3e..+0x43` | ColdFire record `+0x24..+0x29` | LFO p2 MULT×3 TRIG×3 |
 
-Measured with marker bytes (scratchpad `copier_markers.py`).
+Measured with marker bytes (scratchpad `copier_markers.py`) for the DSP
+rows; the ColdFire-record offsets and the `+0x3e` row from the loop's
+`moveml`/`lea` sequence (`0x4000cb3a`, `0x4000cb86`; objdump, 21 Sep 2026).
+The same loop fills the record's words `+0..+0x17` and DSP hw 0–17 from a
+third, 64-byte-stride source (`a3`; ⬜ the scene morph's output) — the
+page-1 words the LFOs modulate (`LFO.md` §5).
 
 ### 5d. Effect ids into shared RAM ✅
 

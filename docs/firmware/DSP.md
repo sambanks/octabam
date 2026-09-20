@@ -330,8 +330,12 @@ Tempo: `0x80001814` = BPM × 24, clamped `0x2d0..0x1c20` at both writers
 returns the pattern's own word (`blob + pattern×0x8ed8 + 0x8e58`) when
 `[0x80000024]` is set; `0x4004bc54` scales by `[0x46c7d328]/1000` (🟡 nudge,
 clamp ≤ 1100). No code path copies tempo24 into a frame record: the
-ColdFire ships rates. Consumers: LFO speed `0x400074a0`/`0x40007502`
-(`tempo24 << 18`, MULT table `0x400ab83a`, ÷3 for triplets); `0x40006d48`
+ColdFire ships rates. Consumers: the recorder's FIN/FOUT fade generator
+`0x400074a0`/`0x40007502` (`tempo24 << 18` × `table[FIN]`/`table[FOUT]`
+from `a4@(6)`/`a4@(7)`, `0x400ab83a` = `ceil(1134693784 / n)`, entry 0
+`0xFFFFFFFF`; ❌ until 21 Sep 2026 this read "LFO speed" and "MULT table"
+— the LFOs are `LFO.md`, their rate is `SPD × tempo24 × 4` and MULT is a
+shift); `0x40006d48`
 reads the phase increment into per-voice records; `0x40004bd2` advances a
 playback position by `tempo24 << 4` per frame when byte `+0x2b` of the
 per-voice record is set, else `0xb40`; UI `0x40031d70` (bars) and
