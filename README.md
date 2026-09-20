@@ -1,5 +1,14 @@
 # octabam
 
+> **A personal research project, shared in case it is useful to you.** I
+> work on this for my own unit and publish it so others can build on it.
+> Pull requests are very welcome — a module, a port of someone's mod, a
+> fix, a doc correction. Issues and feature requests are not something I
+> can take on — this is a spare-time project and the queue is already my
+> own. If there is something you want the remixer to do, the way to get
+> it is to build it (`CONTRIBUTING.md`, `docs/remixer/MODULES.md`) and
+> send the PR; I will gladly review it.
+
 A remixer for the Elektron Octatrack's operating system: pick the
 modifications you want — the community's and this project's own — and build
 them into one firmware image from your own copy of OS 1.40C.
