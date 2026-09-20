@@ -180,8 +180,10 @@ BAL 64, LEVEL 108 = −3.0 dB); `--mix T1:VOL=127,BAL=64,LEVEL=100`
 overrides; `--mixer off` is the old harness (`--amp 0.5`, no AMP stage,
 5.9 dB hotter than the unit; every voicing note before 12 Sep 2026
 inherited that). A 0 dBFS stem enters the engine at 0.254 FS at the
-default VOL. Not modelled: the main level, the cue mix, the master track;
-the AMP stage was measured on a THRU and is inferred for FLEX/STATIC.
+default VOL. Not modelled here: the main level, the cue mix, the master
+track — the same `(L/128)²` law, measured on MAIN/CUE by hardware capture
+rather than under the port (`docs/firmware/LEVEL_LAW.md`); the AMP stage
+was measured on a THRU and is inferred for FLEX/STATIC.
 
 **The rig on a real set:** `tools/hw/ot_project.py rigproj SONGSET
 out/set/RIGSONG bamsep26` writes the rig's layout (ids, defaults, mode

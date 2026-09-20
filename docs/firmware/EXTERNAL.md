@@ -492,3 +492,25 @@ Open, as he left it: the state record's `+12/+16/+20`, the TRIG modes'
 records, whether anything but the descriptor count bounds WAVE, and how
 the T1–T8 choice reaches the per-LFO designer copy.
 
+## 13. The level law (Bryan T, hardware; 21 Sep 2026) ✅
+
+`~/Downloads/octatrack-level-law.md`. Hardware capture (24-bit WAV, no
+converters in the path) plus a static read of our image, both his. What it
+establishes is `LEVEL_LAW.md`; this section is what was checked.
+
+MAIN and CUE are not unity at 127: the raw 0..127 byte crosses the
+ColdFire untouched (`0x4000d2c6`-`0x4000d2da`, into the per-track DSP
+record at `X:0x080`+`0x32`/`0x33`) and is squared on the DSP
+(`P:0x2f4`-`0x2fb`) against an implicit denominator of 128 —
+`gain = (L/128)²`, -0.1362 dB at 127. Re-read and matching his objdump:
+the dispatcher site, the encoder handlers (`0x40066b64`/`ba8`) and their
+SRAM mirrors, the squaring, and the coefficient loop
+(`P:0x2ff`-`0x30a`). Not re-derived here: the hardware captures
+themselves (his rig, not re-run).
+
+This is the same `(L/128)²` law `tools/harness/mixer.py` measured under
+the port for per-track LEVEL (`docs/remixer/HARNESS.md`); his note is the
+first measurement of MAIN/CUE, which that harness explicitly does not
+model. Open, as he left it: which byte is MAIN and which is CUE; a +1/32
+excess at CUE 32/64 absent at 96/127.
+
