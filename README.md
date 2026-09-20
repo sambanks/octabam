@@ -7,7 +7,10 @@
 > can take on — this is a spare-time project and the queue is already my
 > own. If there is something you want the remixer to do, the way to get
 > it is to build it (`CONTRIBUTING.md`, `docs/remixer/MODULES.md`) and
-> send the PR; I will gladly review it.
+> send the PR; I will gladly review it. And if you would like to run a
+> supported version of this — one that takes requests, tracks issues and
+> answers questions — please fork it and do exactly that. The licence
+> allows it and I would be glad to see it.
 
 A remixer for the Elektron Octatrack's operating system: pick the
 modifications you want — the community's and this project's own — and build
