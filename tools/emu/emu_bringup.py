@@ -64,10 +64,112 @@ def emac_selftest():
         uc.emu_start(0x1000, 0x1000 + len(prog))
         got.append(uc.reg_read(UC_M68K_REG_D0) & 0xffffffff)
     want = [3, 0xfffffffd, 0xfffffffd, 0xea700000]
+    ok1 = got == want
+
+    ok2, detail2 = _emac_macload_selftest()
     lib = os.environ.get("LIBUNICORN_PATH", "<pip wheel>")
-    return got == want, (f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x}, "
-                         f"msacl -> {got[2]:#x}, saturating msacl -1.0 x 0xea700000 -> {got[3]:#x} "
-                         f"(want 0x3, 0xfffffffd, 0xfffffffd, 0xea700000); lib {lib}")
+    detail = (f"macl fractional 0xc00*0x200000 -> {got[0]:#x}, -0xc00 -> {got[1]:#x}, "
+              f"msacl -> {got[2]:#x}, saturating msacl -1.0 x 0xea700000 -> {got[3]:#x} "
+              f"(want 0x3, 0xfffffffd, 0xfffffffd, 0xea700000); {detail2}; lib {lib}")
+    return ok1 and ok2, detail
+
+
+def _emac_macload_selftest():
+    """Does this Unicorn's DISAS_INSN(mac) decode the MAC-with-load form the
+    way the CFPRM (and binutils, and dsp56300/octemu's independent fix
+    against QEMU 11.1) do? Three defects, tested together because they sit
+    in the same three lines of translate.c:
+
+      1. Rx must come from the EXTENSION word (bits 15-12), not the opcode
+         word. `a490 1800  macl %d1,%d0,%a0@,%d2,%acc0` -- ext=0x1800 puts
+         Rx=d1 (ext bits 15-12) where the buggy decode reads insn bits
+         14-12=4 (d4) instead. d1=5, d0=3 (Ry, ext bits 3-0=0) -> acc0=15
+         only if Rx is read from ext.
+      2. `dual` must be forced to 0 for the load form. ext=0x1803 sets
+         Ry=d3 (ext bits 3-0=3, nonzero low bits) -- the buggy
+         `dual = (insn&0x30)!=0 && (ext&3)!=0` then reads Ry's own register
+         field as a dual-accumulate flag, and cfv4e (no
+         M68K_FEATURE_CF_EMAC_B) turns that into disas_undef: an ordinary
+         multiply raises an illegal-instruction trap instead of running.
+      3. The MASK register resets to all-ones (CFPRM), not zero. MAC-with-
+         load ANDs its effective address with MASK; a zeroed MASK reads
+         address 0 regardless of the real operand.
+    Encodings verified against tools/emu/ot_emu/test_emac.cpp's oracle for
+    this instruction family (a490/a498/a4a8, integer mode, (An)/(An)+/
+    (d16,An)); case 2 is a synthetic Ry variant of the same opcode, chosen
+    because the firmware's own MAC-with-load sites never combine with a
+    dual-accumulate mnemonic (0 maaac/masac/msaac/mssac in the MAIN OS) but
+    do vary Ry freely, so this decode path runs on real firmware words even
+    though this exact bit pattern is not claimed to be one of them."""
+    if not HAVE_UNICORN:
+        return False, "unicorn not importable (macload)"
+    # 1: Rx from ext, not insn. a0 -> a mapped scratch address holding a
+    # recognisable longword, so a wrong Rw/mode would also show.
+    prog1 = (b"\xa4\x90\x18\x00"       # macl %d1,%d0,%a0@,%d2,%acc0
+             b"\xa1\xc1"                 # movclrl %acc0,%d1 (reuse d1 to read back)
+             b"\x4e\x71")
+    uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+    uc.mem_map(0x1000, 0x1000)
+    uc.mem_map(0x2000, 0x1000)
+    uc.mem_write(0x1000, prog1)
+    uc.mem_write(0x2000, bytes.fromhex("11223344"))
+    uc.reg_write(UC_M68K_REG_D0, 3)
+    uc.reg_write(UC_M68K_REG_D1, 5)
+    uc.reg_write(UC_M68K_REG_A0, 0x2000)
+    try:
+        uc.emu_start(0x1000, 0x1000 + len(prog1))
+    except UcError as e:
+        return False, f"macload Rx-from-ext trapped unexpectedly: {e}"
+    acc1 = uc.reg_read(UC_M68K_REG_D1) & 0xffffffff
+    d2 = uc.reg_read(UC_M68K_REG_D2) & 0xffffffff
+    a0 = uc.reg_read(UC_M68K_REG_A0) & 0xffffffff
+    if (acc1, d2, a0) != (15, 0x11223344, 0x2000):
+        return False, (f"macload Rx-from-ext: acc={acc1:#x} d2={d2:#x} a0={a0:#x} "
+                       f"(want acc=0xf d2=0x11223344 a0=0x2000 -- 5*3, the load, a0 unchanged)")
+
+    # 2: dual forced to 0 for the load form. Ry=d3 (ext&3 == 3) used to
+    # decode as a phantom dual-accumulate and trap on cfv4e.
+    prog2 = (b"\xa4\x90\x18\x03"       # macl %d1,%d3,%a0@,%d2,%acc0 (Ry=d3)
+             b"\xa1\xc1"
+             b"\x4e\x71")
+    uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+    uc.mem_map(0x1000, 0x1000)
+    uc.mem_map(0x2000, 0x1000)
+    uc.mem_write(0x1000, prog2)
+    uc.mem_write(0x2000, bytes.fromhex("11223344"))
+    uc.reg_write(UC_M68K_REG_D1, 5)
+    uc.reg_write(UC_M68K_REG_D3, 3)
+    uc.reg_write(UC_M68K_REG_A0, 0x2000)
+    try:
+        uc.emu_start(0x1000, 0x1000 + len(prog2))
+    except UcError as e:
+        return False, f"macload dual-flag: trapped as phantom dual-accumulate ({e})"
+    acc1 = uc.reg_read(UC_M68K_REG_D1) & 0xffffffff
+    if acc1 != 15:
+        return False, f"macload dual-flag: ran but acc={acc1:#x} (want 0xf -- 5*3)"
+
+    # 3: MASK resets to all-ones. Load from a HIGH address without ever
+    # writing %mask; a zeroed mask would fold this to address 0 (unmapped
+    # here, so it would raise UcError rather than silently misreading).
+    prog3 = (b"\xa4\x90\x18\x00"       # macl %d1,%d0,%a0@,%d2,%acc0
+             b"\x4e\x71")
+    uc = Uc(UC_ARCH_M68K, UC_MODE_BIG_ENDIAN)
+    uc.mem_map(0x1000, 0x1000)
+    uc.mem_map(0x00700000, 0x1000)
+    uc.mem_write(0x1000, prog3)
+    uc.mem_write(0x00700000, bytes.fromhex("aabbccdd"))
+    uc.reg_write(UC_M68K_REG_D0, 1)
+    uc.reg_write(UC_M68K_REG_D1, 1)
+    uc.reg_write(UC_M68K_REG_A0, 0x00700000)
+    try:
+        uc.emu_start(0x1000, 0x1000 + len(prog3))
+    except UcError as e:
+        return False, f"macload MASK: reset value folded a0 to an unmapped address ({e})"
+    d2 = uc.reg_read(UC_M68K_REG_D2) & 0xffffffff
+    if d2 != 0xaabbccdd:
+        return False, f"macload MASK: d2={d2:#x} (want 0xaabbccdd -- MASK must be all-ones at reset)"
+
+    return True, "macload Rx/dual/MASK: OK"
 STOCK_IMAGE = os.path.join(REPO, "out/raw/section_3_MAIN_OS.bin")
 BASE = ENTRY = 0x40000400          # load base = 0x40000000 + 0x400 header
 BUDGET = 50_000_000

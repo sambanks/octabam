@@ -64,8 +64,47 @@
                  result = (uint32_t)val;
              }
 --- a/src/qemu/target/m68k/translate.c	2026-09-08 16:33:21.798327962 +1000
-+++ b/src/qemu/target/m68k/translate.c	2026-09-08 16:33:22.073642489 +1000
-@@ -5794,7 +5794,13 @@
++++ b/src/qemu/target/m68k/translate.c	2026-09-22 06:57:30.752308400 +1000
+@@ -5715,7 +5715,21 @@
+     ext = read_im16(env, s);
+ 
+     acc = ((insn >> 7) & 1) | ((ext >> 3) & 2);
+-    dual = ((insn & 0x30) != 0 && (ext & 3) != 0);
++    /* octabam: MAC-with-load is never a dual-accumulate form. ext[3:0] is
++       Ry's register field in that encoding (read as such ten lines below,
++       `ry = (ext & 8) ? AREG(ext, 0) : DREG(ext, 0)`), so the original
++       `dual = ((insn & 0x30) != 0 && (ext & 3) != 0)` reads Ry's own
++       register number as a "dual" flag whenever insn&0x30 selects the
++       load form (dual can never be true otherwise, since that term is
++       false). On the Octatrack image (cfv4e, no M68K_FEATURE_CF_EMAC_B)
++       any MAC-with-load whose Ry has a low bit set therefore hit
++       disas_undef -- an illegal instruction on an ordinary multiply. The
++       image has zero true dual-accumulate (maaac/masac/msaac/mssac)
++       instructions, so forcing this to 0 is unconditionally safe for it
++       and changes nothing for the non-load form (dual was already false
++       there). Matches dsp56300/octemu's independent fix against QEMU
++       11.1's identical decode. */
++    dual = 0;
+     if (dual && !m68k_feature(s->env, M68K_FEATURE_CF_EMAC_B)) {
+         disas_undef(env, s, insn);
+         return;
+@@ -5732,7 +5746,14 @@
+         loadval = gen_load(s, OS_LONG, addr, 0, IS_USER(s));
+ 
+         acc ^= 1;
+-        rx = (ext & 0x8000) ? AREG(ext, 12) : DREG(insn, 12);
++        /* octabam: MAC-with-load takes Rx entirely from the EXTENSION word
++           (bit 15 selects A/D, bits 14-12 the register number) -- the
++           original read the data-register number from the FIRST (opcode)
++           word instead, so an `%rx` field that happened to differ between
++           insn and ext multiplied by the wrong register. Matches
++           binutils' reading of this encoding and dsp56300/octemu's
++           independent fix against QEMU 11.1. */
++        rx = (ext & 0x8000) ? AREG(ext, 12) : DREG(ext, 12);
+         ry = (ext & 8) ? AREG(ext, 0) : DREG(ext, 0);
+     } else {
+         loadval = addr = tcg_ctx->NULL_QREG;
+@@ -5794,7 +5815,13 @@
      }
  #endif
  
@@ -80,3 +119,41 @@
          tcg_gen_sub_i64(tcg_ctx, MACREG(acc), MACREG(acc), s->mactmp);
      else
          tcg_gen_add_i64(tcg_ctx, MACREG(acc), MACREG(acc), s->mactmp);
+--- a/src/qemu/target/m68k/cpu.c	2026-09-22 06:56:38.812061075 +1000
++++ b/src/qemu/target/m68k/cpu.c	2026-09-22 06:57:45.031902125 +1000
+@@ -59,6 +59,14 @@
+     cpu_m68k_set_fpcr(env, 0);
+     env->fpsr = 0;
+ 
++    /* octabam: the EMAC address MASK register is all-ones out of reset
++       (CFPRM); MAC-with-load ANDs its effective address with it, so
++       leaving it zeroed (as the memset above does) makes every such load
++       read address 0 and write a bogus address register back. Only an
++       explicit `move.l Rx,%mask` narrows it. Matches dsp56300/octemu's
++       independent fix against QEMU 11.1. */
++    env->mac_mask = 0xffffffff;
++
+     /* TODO: We should set PC from the interrupt vector.  */
+     env->pc = 0;
+ }
+--- a/src/qemu/target/m68k/unicorn.c	2026-09-08 16:33:21.798327962 +1000
++++ b/src/qemu/target/m68k/unicorn.c	2026-09-22 07:06:34.653891378 +1000
+@@ -46,6 +46,18 @@
+     memset(env->aregs, 0, sizeof(env->aregs));
+     memset(env->dregs, 0, sizeof(env->dregs));
+ 
++    /* octabam: THIS is the reset Unicorn actually runs -- src/uc.c calls
++       uc->reg_reset() only, never cc->reset()/m68k_cpu_reset() in cpu.c,
++       so a fix placed there (as QEMU proper carries it, and as this same
++       patch keeps for documentation) is dead code here. The EMAC address
++       MASK register is all-ones out of reset (CFPRM); MAC-with-load ANDs
++       its effective address with it, so leaving it zeroed makes every
++       such load read address 0 and write a bogus address register back.
++       Found by a UC_ERR_READ_UNMAPPED on a `macl ...,%a0@,...` whose a0
++       was a valid mapped address: the AND with a zeroed mask silently
++       folded it to 0 first. */
++    env->mac_mask = 0xffffffff;
++
+     env->pc = 0;
+ }
+ 

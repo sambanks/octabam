@@ -195,9 +195,31 @@ frames alone): 28.5% the stock delay's EMAC mix (`0x40003400..`), 22.5%
 the frame builder (`0x4000cc00..`), 7% the frame dispatcher, ~4% the
 host-port transfer state machine — real work, nothing to idle-skip.
 Unicorn's TCG (route A's core, QEMU's m68k JIT) on a store loop from this
-image with no hooks and no instruction count: 52 M instr/s, and it has
-no MAC-with-parallel-load form (route A shims it per site). Real time
+image with no hooks and no instruction count: 52 M instr/s. Real time
 needs 66 M/s on the ColdFire plus the DSP side.
+
+**Retracted 22 Sep 2026**: "it has no MAC-with-parallel-load form" was
+wrong. Unicorn 2.1.4's `DISAS_INSN(mac)` (vendored QEMU 5.0.1) has the
+form and decodes it with three defects, found by reading markandrus/octemu's
+independent fix against QEMU 11.1 and confirming the identical lines are
+present, verbatim, in Unicorn's own source: Rx read from the opcode word
+instead of the extension word; a phantom dual-accumulate flag read out of
+Ry's own register field, which `disas_undef`s on `cfv4e` (no
+`M68K_FEATURE_CF_EMAC_B`) — this, not an absent form, is why route A shims
+every site (`emu_bringup._emac_load_shim`, `native_macload_sites`) instead
+of running them natively; and the MASK register resets to zero instead of
+CFPRM's all-ones, folding every load address to 0. Fixed in
+`tools/patches/unicorn_emac_fractional.patch` (three files: `translate.c`,
+and `unicorn.c` — NOT `cpu.c`'s `m68k_cpu_reset`, which this patch also
+carries for documentation but which Unicorn's own `uc.c` never calls;
+`unicorn.c`'s `reg_reset` is the reset Unicorn actually runs). Verified by
+`emu_bringup.emac_selftest`'s new cases (fails on stock, passes fixed) and
+by a route-A boot to the RTOS handoff completing clean with the shim
+disabled (`OCTA_MACLOAD_NATIVE=1`, `emu_rtos.py`) — but that run never
+executes any of the 435 hooked sites (0 shim calls either way without a
+project on the card), so this is NOT yet evidence the shim can be retired
+on real firmware traffic; `OT_PROJECT=<dir>` would be. The shim stays the
+default until that run exists.
 
 **Parked 18 Sep 2026** (someone else is working on a core). The options,
 cheapest first: (1) hot-loop HLE — the two loops above are 51% of the

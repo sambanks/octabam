@@ -248,6 +248,38 @@ same as "disassemble what you assemble": when firmware arithmetic comes out
 exactly 2× or ½ off, suspect the INSTRUMENT before inventing a unit, and
 find a site in the firmware whose constants only make sense one way.
 
+**STOCK UNICORN'S MAC-WITH-LOAD DECODE HAS THREE DEFECTS, WHICH IS WHY
+ROUTE A SHIMS IT PER SITE RATHER THAN THE FORM BEING ABSENT.** Found 22 Sep
+2026 by reading markandrus/octemu's independent fix against QEMU 11.1 and
+confirming the identical lines are present, verbatim, in Unicorn 2.1.4's
+own vendored QEMU 5.0.1 `target/m68k/translate.c`. In `DISAS_INSN(mac)`:
+(1) `rx = (ext & 0x8000) ? AREG(ext, 12) : DREG(insn, 12)` reads Rx from
+the OPCODE word instead of the extension word; (2)
+`dual = ((insn & 0x30) != 0 && (ext & 3) != 0)` reads Ry's own register
+field (ext bits 3-0, ANY MAC-with-load) as a dual-accumulate flag, and
+`cfv4e` has no `M68K_FEATURE_CF_EMAC_B`, so this `disas_undef`s an ordinary
+multiply into an illegal-instruction trap whenever Ry's low bits are set;
+(3) the EMAC address MASK register resets to zero instead of CFPRM's
+all-ones, and MAC-with-load ANDs its effective address with it, so every
+load reads address 0 regardless of the real operand. **Fixing (3) in
+`cpu.c`'s `m68k_cpu_reset` does nothing under Unicorn**: `src/uc.c` never
+calls `cc->reset()`, only `uc->reg_reset()` (`unicorn.c`), a separate,
+minimal function that clears `aregs`/`dregs`/`pc` and nothing else — found
+by a `UC_ERR_READ_UNMAPPED` on a `macl ...,%a0@,...` whose `a0` was a
+valid mapped address (the AND with a zeroed mask folded it to 0 first).
+The fix belongs in `unicorn.c`'s `reg_reset`, not `cpu.c` (kept there too,
+for documentation, since a future Unicorn version might wire up the real
+reset path). All three are in `tools/patches/unicorn_emac_fractional.patch`;
+`emu_bringup.emac_selftest` gained cases for them (fails on stock, passes
+fixed). The MAIN OS has zero true dual-accumulate instructions
+(`maaac`/`masac`/`msaac`/`mssac`), so forcing `dual = 0` is unconditionally
+safe for it. **Not yet retired**: `emu_rtos.py`'s `OCTA_MACLOAD_NATIVE=1`
+disables the per-site shim for a differential, but a run with no project
+on the card never executes any of the 435 hooked sites (0 shim calls
+either way) — vacuously identical, not evidence. The shim stays the
+default until a run with `OT_PROJECT=<dir>` confirms native and shimmed
+agree on real firmware traffic.
+
 **MACSR S/U IS BIT 6, AND IN FRACTIONAL MODE IT IS NOT SIGNED/UNSIGNED:
 it selects 16-BIT ROUNDING ON THE ACCUMULATOR READ-OUT.** The ColdFire port
 had S/U as bit 4 (that is R/T) and returned every `movclrl` as `ACC[39:8]`;

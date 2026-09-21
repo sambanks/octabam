@@ -687,7 +687,13 @@ class Rtos:
         # BEFORE them (a code hook's emu_stop lands before the instruction,
         #) and hand them to the shim as if they had
         # trapped. See emu_bringup.native_macload_sites.
-        self.native_macload = eb.native_macload_sites(uc)
+        #
+        # OCTA_MACLOAD_NATIVE=1 disables this entirely, for a differential
+        # against a Unicorn whose own MAC-with-load decode has been fixed
+        # (tools/patches/unicorn_emac_fractional.patch): every site runs
+        # natively, r.emac_shims must stay 0, and every output must match
+        # the shimmed run bit for bit.
+        self.native_macload = [] if os.environ.get("OCTA_MACLOAD_NATIVE") else eb.native_macload_sites(uc)
         for site in self.native_macload:
             uc.hook_add(eb.UC_HOOK_CODE, self._on_native_macload, begin=site, end=site)
         if self.frame:
@@ -1752,6 +1758,9 @@ def _cli():
         rt.tape(a.tape)
         print(f"tape       : recording host-port traffic to {a.tape} (from the handoff)")
     print(f"boot       : {r.stopped} ({time.perf_counter() - t0:.1f} s)")
+    print(f"macload    : {len(rt.native_macload)} hooked sites, "
+          f"{getattr(r, 'emac_shims', 0)} shim calls"
+          f"{' (OCTA_MACLOAD_NATIVE)' if os.environ.get('OCTA_MACLOAD_NATIVE') else ''}")
     print(f"PIT0       : period {rt.pit0.period_samples():.2f} samples "
           f"({rt.pit0.period_samples() / SAMPLE_HZ * 1000:.3f} ms) at pit clock {a.pit_clock:.0f} Hz")
 
