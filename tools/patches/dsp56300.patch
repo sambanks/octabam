@@ -93,10 +93,39 @@ index 1a22cedf..c3202cfe 100644
  				setFieldValue(word, inst, Field_DDDDDD, dd);
  				setFieldValue(word, inst, Field_W, write ? 1 : 0);
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index 44fca439..65612c84 100644
+index 44fca439..08bf29a2 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
-@@ -484,6 +484,19 @@ namespace dsp56k
+@@ -133,7 +133,28 @@ namespace dsp56k
+ 	void DmaChannel::setDCR(const TWord _controlRegister)
+ 	{
+ 		if(m_dcr == _controlRegister)
++		{
++			// octabam: measured 22 Sep 2026 (Task C) -- the Octatrack's ESAI
++			// feed (DCR2=0xcc6220, request-triggered, self-clearing word
++			// mode: isDEClearedAfterTransfer()==true) rewrites this exact
++			// value every idle-loop pass at P:0x099, and DE was still SET at
++			// the time of the rewrite on 1199 of 1200 frames of a real
++			// project under the port (0 in the other case). The early
++			// return above silently drops that write; per octemu's
++			// independent QEMU fix (DMA patch, "de-renewal"), a DCR write
++			// with DE=1 while a self-clearing window is running is a
++			// re-arm, not a no-op. WHETHER dropping it costs anything for
++			// THIS channel's actual operation is not established here --
++			// DE never reads as cleared in this run, so nothing upstream of
++			// this line observably needed the renewal in this test (its own
++			// block-dump is bit-identical with and without this fix); ported
++			// defensively per the general rule (a same-value DE=1 rewrite
++			// during an open window should behave like a fresh arm, not
++			// silently vanish).
++			if (m_armed && bitvalue(m_dcr, De) && isDEClearedAfterTransfer())
++				m_deRenewed = true;
+ 			return;
++		}
+ 
+ 		// Re-configuration: drop any previous trigger registration and clear the armed flag
+ 		// so arm() can re-initialize the working counters with the new DCR settings.
+@@ -484,6 +505,19 @@ namespace dsp56k
  		{
  			_dst += _dor;
  			_dst &= 0xffffff;
@@ -116,6 +145,46 @@ index 44fca439..65612c84 100644
  			return true;
  		}
  
+@@ -806,7 +840,27 @@ namespace dsp56k
+ 	void DmaChannel::finishTransfer()
+ 	{
+ 		if(isDEClearedAfterTransfer())
++		{
++			if (m_deRenewed)
++			{
++				// octabam: a same-value DCR rewrite landed while this window
++				// was still open (setDCR) -- renew instead of clearing DE:
++				// drop the address-phase bookkeeping and re-arm from the
++				// current DSR/DDR (arm() re-derives DCOH/DCOL from the
++				// unchanged DCR; DSR/DDR are the state a fresh m_armed=false
++				// does not itself preserve).
++				m_deRenewed = false;
++				m_dma.removeTriggerTarget(this);
++				m_armed = false;
++				m_dma.clearActiveChannel();
++				const auto dsr = m_dsr, ddr = m_ddr;
++				arm();
++				m_dsr = dsr;
++				m_ddr = ddr;
++				return;
++			}
+ 			m_dcr &= ~(1 << De);
++		}
+ 
+ 		m_dma.clearActiveChannel();
+ 
+diff --git a/source/dsp56kEmu/dma.h b/source/dsp56kEmu/dma.h
+index c4b0c4bd..2e559618 100644
+--- a/source/dsp56kEmu/dma.h
++++ b/source/dsp56kEmu/dma.h
+@@ -177,6 +177,7 @@ namespace dsp56k
+ 		bool m_dsrWritten = false;
+ 		bool m_ddrWritten = false;
+ 		bool m_armed = false;
++		bool m_deRenewed = false;
+ 
+ 		TWord m_dcoh = 0;
+ 		TWord m_dcom = 0;
 diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
 index 5f023c01..9fffb062 100644
 --- a/source/dsp56kEmu/dsp.cpp

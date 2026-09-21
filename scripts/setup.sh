@@ -148,12 +148,16 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     fi
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
     # The patch carries: the one-word displaced move; the AGU pre-decrement
-    # fix; the DMA dual-counter reload at end of block; the shared window,
-    # two-way for dsp_host (X with X, Y with Y) and three-way for the
-    # ColdFire port's DSP pair (P, X and Y one memory, as the chip has it);
-    # and the host-stepped mode the port drives the cores in (DO loops
-    # stepped, interrupts interpreted, peripherals serviced under a masked
-    # interrupt, an idle step) plus hooks for Y-side registers it does not map.
+    # fix; the DMA dual-counter reload at end of block; a same-value DCR
+    # rewrite while a self-clearing window is open renews instead of being
+    # dropped (measured 1199/1200 frames on DCR2, the ESAI feed -- bit-
+    # identical with or without it on that project, ported defensively);
+    # the shared window, two-way for dsp_host (X with X, Y with Y) and
+    # three-way for the ColdFire port's DSP pair (P, X and Y one memory,
+    # as the chip has it); and the host-stepped mode the port drives the
+    # cores in (DO loops stepped, interrupts interpreted, peripherals
+    # serviced under a masked interrupt, an idle step) plus hooks for
+    # Y-side registers it does not map.
     EMUPATCH=$(pwd)/tools/patches/dsp56300.patch
     apply_patch vendor/dsp56300 "$EMUPATCH"
     stage_dsp_host

@@ -631,3 +631,19 @@ pre-repin baseline (24 cases), `verify-bus`, `verify-spectrum-ident`,
 `verify-twocore`, and `make check` with a real project under the port
 (`verify_set`) -- all bit-identical or passing. Our own AGU fix is still
 an open, uncommented upstream PR (#13, since 8 Sep).
+
+Also 22 Sep 2026: measured whether a same-value `DCR` rewrite ever lands
+while a self-clearing DMA window is still open (octemu's independent
+QEMU fix names this a re-arm, not a no-op, that the vendored emulator was
+silently dropping). Instrumented `DmaChannel::setDCR` in an isolated
+clone, ran a real project 1200 frames under the port: DCR2 (the ESAI
+feed, `0xcc6220`, rewritten every idle-loop pass at `P:0x099`) landed
+with the window open on 1199 of 1200 rewrites. Ported octemu's renewal
+(`m_deRenewed`, in `setDCR`/`finishTransfer`) — but its block-dump
+against the same project, same frame count, is **bit-identical** with or
+without the fix, so it is landed defensively (matches the DMA manual's
+own semantics, costs nothing, `verify-twocore` and every gate stay
+green) rather than as a fix for an observed symptom. Not octemu's other
+DE-renewal hunk (disabling `HostTransmitData` as a request source):
+`ot_emu` drives HDI08 directly, never through a `DmaChannel`, so that
+half doesn't apply here (checked, not inferred).
