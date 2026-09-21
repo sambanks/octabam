@@ -126,7 +126,19 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
     # Pinned: the patch below is against this commit and does not apply to
     # upstream's later HEAD. Moving the pin means re-basing the patch and
     # re-running make check's bit-identity gates.
-    DSP56300_PIN=c051afad31612c2d2c7a81a7ab23e1c5ac9e61af
+    #
+    # Re-pinned 22 Sep 2026 from c051afad (28 Jul) to 8ccdd843 (21 Sep, 144
+    # commits later). Upstream absorbed several of our own fixes in that
+    # span -- MPYRI and MACRI, the DCOL 12-bit width, "serve a DMA request
+    # raised before the channel was enabled", 2D/no-update DMA address
+    # modes, the assembler's TFR/CMP/CMPM/Tcc JJJ=000 encoding, JIT MPYI
+    # sign-extension, CCR overflow flags -- so this patch dropped those
+    # hunks; see the PR that did the re-pin for what was checked absorbed
+    # vs. still needed. NOT absorbed, still ours: the AGU pre-decrement fix
+    # (upstream PR #13 from us, open since 8 Sep), the one-word displaced
+    # move, the DMA dual-counter reload at end of block, the host-stepped
+    # mode, the shared window, the unmapped-register hooks.
+    DSP56300_PIN=8ccdd843adda9c18fc232a2ca50d6caccbf3cb1e
     if [ ! -d vendor/dsp56300 ]; then
       git clone --no-checkout https://github.com/dsp56300/dsp56300.git vendor/dsp56300
     fi
@@ -135,9 +147,9 @@ if [ ! -x "$DIS" ] || [ ! -x "$ASM" ] || [ ! -x "$HOST" ]; then
       git -C vendor/dsp56300 checkout -q "$DSP56300_PIN"
     fi
     git -C vendor/dsp56300 submodule update --init --depth 1 --recursive
-    # The patch carries: MPYRI (unimplemented upstream; stock LO-FI uses it);
-    # the one-word displaced move; the AGU pre-decrement fix; the shared
-    # window, two-way for dsp_host (X with X, Y with Y) and three-way for the
+    # The patch carries: the one-word displaced move; the AGU pre-decrement
+    # fix; the DMA dual-counter reload at end of block; the shared window,
+    # two-way for dsp_host (X with X, Y with Y) and three-way for the
     # ColdFire port's DSP pair (P, X and Y one memory, as the chip has it);
     # and the host-stepped mode the port drives the cores in (DO loops
     # stepped, interrupts interpreted, peripherals serviced under a masked

@@ -1,15 +1,15 @@
 diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
-index ffbf791..350a71a 100644
+index da7612bd..944719a8 100644
 --- a/source/CMakeLists.txt
 +++ b/source/CMakeLists.txt
-@@ -56,3 +56,5 @@ if(DSP56300_DEBUGGER)
+@@ -57,3 +57,5 @@ if(DSP56300_DEBUGGER)
  
  	set_property(TARGET dsp56kDebugger PROPERTY FOLDER "dsp56300")
  endif()
 +
 +add_subdirectory(dsp_host)
 diff --git a/source/dsp56kEmu/agu.h b/source/dsp56kEmu/agu.h
-index ac3853c..5acf878 100644
+index ac3853c1..5acf8785 100644
 --- a/source/dsp56kEmu/agu.h
 +++ b/source/dsp56kEmu/agu.h
 @@ -45,20 +45,27 @@ namespace dsp56k
@@ -52,10 +52,10 @@ index ac3853c..5acf878 100644
  				if constexpr(add)
  				{
 diff --git a/source/dsp56kEmu/assembler.cpp b/source/dsp56kEmu/assembler.cpp
-index a6d9b92..ca705f8 100644
+index 1a22cedf..c3202cfe 100644
 --- a/source/dsp56kEmu/assembler.cpp
 +++ b/source/dsp56kEmu/assembler.cpp
-@@ -2284,6 +2284,36 @@ namespace dsp56k
+@@ -2289,6 +2289,36 @@ namespace dsp56k
  				TWord dd;
  				if (!parseRegister_dddddd(regOp, dd)) continue;
  
@@ -93,37 +93,10 @@ index a6d9b92..ca705f8 100644
  				setFieldValue(word, inst, Field_DDDDDD, dd);
  				setFieldValue(word, inst, Field_W, write ? 1 : 0);
 diff --git a/source/dsp56kEmu/dma.cpp b/source/dsp56kEmu/dma.cpp
-index bd3e603..fea36b4 100644
+index 44fca439..65612c84 100644
 --- a/source/dsp56kEmu/dma.cpp
 +++ b/source/dsp56kEmu/dma.cpp
-@@ -59,7 +59,12 @@ namespace dsp56k
- 
- 		bool checkTrigger(Peripherals56362& _p, const RequestSource _src)
- 		{
--			return false;
-+			// octabam: a channel armed while its request condition already
-+			// holds must fire once, or a transmit DMA whose HTDE is already set
-+			// never starts. Only for a host-stepped core: upstream disabled
-+			// this for its own (threaded, JIT) timing.
-+			if(!_p.getDSP().isHostStepped())
-+				return false;
- 			switch (_src)
- 			{
- 			case RequestSource::EsaiReceiveData:			return _p.getEsai().getSR().test(Esai::M_RDF);
-@@ -156,7 +161,11 @@ namespace dsp56k
- 		else
- 		{
- 			m_dcohInit = m_dco >> 12;
--			m_dcolInit = m_dco & 0xff;
-+			// octabam: DCOL is the LOW TWELVE bits (DCOH the high twelve). The
-+			// Octatrack's ESAI-in ring is DCO3 = 0x23f with DOR3 = -575 = -0x23f:
-+			// the pointer returns to its base only if DCOL counts 0x23f words,
-+			// so the firmware's own constants say 12, not 8.
-+			m_dcolInit = m_dco & 0xfff;
- 
- 			m_dcoh = m_dcohInit;
- 			m_dcol = m_dcolInit;
-@@ -469,6 +478,19 @@ namespace dsp56k
+@@ -484,6 +484,19 @@ namespace dsp56k
  		{
  			_dst += _dor;
  			_dst &= 0xffffff;
@@ -143,37 +116,11 @@ index bd3e603..fea36b4 100644
  			return true;
  		}
  
-@@ -716,6 +738,25 @@ namespace dsp56k
- 			return false;
- 		}
- 
-+		// octabam: a dual-counter RING on the memory side and a fixed
-+		// peripheral register on the other -- the Octatrack DSP's audio out
-+		// (DMA2: X:0x8000.. DualCounterDOR2 -> ESAI TX0) and audio in (DMA3:
-+		// ESAI RX0 -> X:0x8100.. DualCounterDOR3), one word per request. The
-+		// release build reached the assert below for both, returned "finished"
-+		// without moving a word, and the DSP polled DSR2 for 0x8070/0x80f0
-+		// forever (measured 8 Sep 2026, `ot_emu --dsp --dsp-trace`).
-+		const auto isDual = [](const AddressGenMode _m) { return static_cast<uint32_t>(_m) <= 3; };
-+		if (isDual(agmS) && agmD == AddressGenMode::SingleCounterAnoUpdate)
-+		{
-+			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));
-+			return dualModeIncrement(m_dsr, m_dma.getDOR(static_cast<uint32_t>(agmS)));
-+		}
-+		if (agmS == AddressGenMode::SingleCounterAnoUpdate && isDual(agmD))
-+		{
-+			memWrite(areaD, m_ddr, memRead(areaS, m_dsr));
-+			return dualModeIncrement(m_ddr, m_dma.getDOR(static_cast<uint32_t>(agmD)));
-+		}
-+
- 		assert(false && "DMA transfer mode not supported yet");
- 		return true;
- 	}
 diff --git a/source/dsp56kEmu/dsp.cpp b/source/dsp56kEmu/dsp.cpp
-index db792a8..b1af305 100644
+index 5f023c01..9fffb062 100644
 --- a/source/dsp56kEmu/dsp.cpp
 +++ b/source/dsp56kEmu/dsp.cpp
-@@ -178,7 +178,18 @@ namespace dsp56k
+@@ -180,7 +180,18 @@ namespace dsp56k
  		const auto vba = interrupt;
  
  		if(isInterruptMasked(vba))
@@ -192,7 +139,7 @@ index db792a8..b1af305 100644
  
  		// it is important that the processing mode is switched first before popping the vector to prevent a possible race condition in hasPendingInterrupt()
  		{
-@@ -194,12 +205,15 @@ namespace dsp56k
+@@ -196,12 +207,15 @@ namespace dsp56k
  		pcCurrentInstruction = vba;
  		m_processingMode = FastInterrupt;
  
@@ -209,7 +156,7 @@ index db792a8..b1af305 100644
  		{
  			LOGJITPC(vba);
  			const auto pc = getPC();
-@@ -496,6 +510,10 @@ namespace dsp56k
+@@ -525,6 +539,10 @@ namespace dsp56k
  
  		traceOp();
  
@@ -220,7 +167,7 @@ index db792a8..b1af305 100644
  		// __________________
  		//
  
-@@ -524,6 +542,48 @@ namespace dsp56k
+@@ -559,6 +577,48 @@ namespace dsp56k
  		return true;
  	}
  
@@ -270,18 +217,18 @@ index db792a8..b1af305 100644
  	// exec_do_end
  	//
 diff --git a/source/dsp56kEmu/dsp.h b/source/dsp56kEmu/dsp.h
-index 423b699..a2851ae 100644
+index e53ecd45..73dd9862 100644
 --- a/source/dsp56kEmu/dsp.h
 +++ b/source/dsp56kEmu/dsp.h
-@@ -1,5 +1,7 @@
+@@ -1,6 +1,7 @@
  #pragma once
  
+ #include <atomic>
 +#include <functional>
-+
+ 
  #include "disasm.h"
  #include "dspconfig.h"
- #include "dspregs.h"
-@@ -171,7 +173,7 @@ namespace dsp56k
+@@ -185,7 +186,7 @@ namespace dsp56k
  
  		ASMJIT_FORCE_INLINE void exec() noexcept
  		{
@@ -290,8 +237,8 @@ index 423b699..a2851ae 100644
  				execJit();
  			else
  				execInterpreter();
-@@ -375,6 +377,35 @@ namespace dsp56k
- 		bool	do_exec							( TWord _loopcount, TWord _addr );
+@@ -421,6 +422,35 @@ namespace dsp56k
+ 		bool	do_start						( const TWord* _loopcount, TWord _addr );
  		bool	do_end							();
  
 +	public:
@@ -326,30 +273,8 @@ index 423b699..a2851ae 100644
  		bool	rep_exec						(TWord _loopCount);
  
  		void	traceOp							();
-diff --git a/source/dsp56kEmu/dsp_ops_alu.inl b/source/dsp56kEmu/dsp_ops_alu.inl
-index 386e30f..996c82a 100644
---- a/source/dsp56kEmu/dsp_ops_alu.inl
-+++ b/source/dsp56kEmu/dsp_ops_alu.inl
-@@ -1160,7 +1160,16 @@ namespace dsp56k
- 	}
- 	inline void DSP::op_Mpyri(const TWord op)
- 	{
--		errNotImplemented("MPYRI");
-+		// MPYI, then round -- the same shape as Mpyr_SD against Mpy_SD.
-+		const bool	ab = getFieldValue<Mpyri, Field_d>(op);
-+		const bool	negate = getFieldValue<Mpyri, Field_k>(op);
-+		const TWord qq = getFieldValue<Mpyri, Field_qq>(op);
-+
-+		const TReg24 s		= TReg24(immediateDataExt<Mpyri>());
-+		const TReg24 reg	= decode_qq_read(qq);
-+
-+		alu_mpy( ab, reg, s, negate, false );
-+		alu_rnd( ab );
- 	}
- 	inline void DSP::op_Neg(const TWord op)
- 	{
 diff --git a/source/dsp56kEmu/esai.cpp b/source/dsp56kEmu/esai.cpp
-index 5bf0bd7..52c458e 100644
+index ff461c30..07f79bb1 100644
 --- a/source/dsp56kEmu/esai.cpp
 +++ b/source/dsp56kEmu/esai.cpp
 @@ -17,6 +17,8 @@ namespace dsp56k
@@ -361,7 +286,7 @@ index 5bf0bd7..52c458e 100644
  		// Reset control registers to power-on defaults
  		m_cr = 0;
  		m_tcr = 0;
-@@ -190,7 +192,7 @@ namespace dsp56k
+@@ -191,7 +193,7 @@ namespace dsp56k
  	void Esai::writeTransmitControlRegister(TWord _val)
  	{
  		m_sr.clear(M_TUE);
@@ -370,49 +295,8 @@ index 5bf0bd7..52c458e 100644
  		const auto tem = getEnabledTransmitters();
  		m_tcr = _val;
  		if(tem != getEnabledTransmitters())
-diff --git a/source/dsp56kEmu/jitops.h b/source/dsp56kEmu/jitops.h
-index 0be2c03..5d51f90 100644
---- a/source/dsp56kEmu/jitops.h
-+++ b/source/dsp56kEmu/jitops.h
-@@ -240,7 +240,7 @@ namespace dsp56k
- 		template<Instruction Inst, bool Accumulate> void op_Mpy_su(TWord op);
- 		void op_Mpyi(TWord op);
- 		void op_Mpyr_S1S2D(TWord op)			{ alu_multiply(op); }
--		void op_Mpyri(TWord op)					{ errNotImplemented(op); }
-+		void op_Mpyri(TWord op);
- 		void op_Neg(TWord op);
- 		void op_Nop(TWord op);
- 		void op_Norm(TWord op)					{ errNotImplemented(op); }
-diff --git a/source/dsp56kEmu/jitops_alu.cpp b/source/dsp56kEmu/jitops_alu.cpp
-index f9f8180..714776e 100644
---- a/source/dsp56kEmu/jitops_alu.cpp
-+++ b/source/dsp56kEmu/jitops_alu.cpp
-@@ -999,6 +999,23 @@ namespace dsp56k
- 		alu_mpy(ab, reg, s, negate, false, false, false, false);
- 	}
- 
-+	// MPYRI: MPYI with the result rounded (Mpyri differs from Mpyi only in
-+	// the low opcode bits). Elektron's LO-FI effect uses `mpyri #>$2000,x1,a`.
-+	void JitOps::op_Mpyri(TWord op)
-+	{
-+		const bool	ab = getFieldValue<Mpyri, Field_d>(op);
-+		const bool	negate = getFieldValue<Mpyri, Field_k>(op);
-+		const TWord qq = getFieldValue<Mpyri, Field_qq>(op);
-+
-+		DspValue s(m_block);
-+		getOpWordB(s);
-+
-+		DspValue reg(m_block);
-+		decode_qq_read(reg, qq, true);
-+
-+		alu_mpy(ab, reg, s, negate, false, false, false, true);
-+	}
-+
- 	void JitOps::op_Maci_xxxx(TWord op)
- 	{
- 		const bool	ab = getFieldValue<Maci_xxxx, Field_d>(op);
 diff --git a/source/dsp56kEmu/memory.cpp b/source/dsp56kEmu/memory.cpp
-index 98c2226..18b660c 100644
+index 14cf3ae7..05ddd92c 100644
 --- a/source/dsp56kEmu/memory.cpp
 +++ b/source/dsp56kEmu/memory.cpp
 @@ -145,6 +145,17 @@ namespace dsp56k
@@ -459,7 +343,7 @@ index 98c2226..18b660c 100644
  		_wordB = p[_offset+1];
  
 diff --git a/source/dsp56kEmu/memory.h b/source/dsp56kEmu/memory.h
-index 567d068..8ea2123 100644
+index 567d0684..8ea21235 100644
 --- a/source/dsp56kEmu/memory.h
 +++ b/source/dsp56kEmu/memory.h
 @@ -1,5 +1,7 @@
@@ -519,10 +403,10 @@ index 567d068..8ea2123 100644
  		{
  			switch (_area)
 diff --git a/source/dsp56kEmu/peripherals.cpp b/source/dsp56kEmu/peripherals.cpp
-index 67c3dfd..a97e2fb 100644
+index 20d687fb..aac49eae 100644
 --- a/source/dsp56kEmu/peripherals.cpp
 +++ b/source/dsp56kEmu/peripherals.cpp
-@@ -767,6 +767,12 @@ namespace dsp56k
+@@ -811,6 +811,12 @@ namespace dsp56k
  		case Esai::M_RSMA_1:		return m_esai.readRSMA();
  		case Esai::M_RSMB_1:		return m_esai.readRSMB();
  		default:
@@ -535,7 +419,7 @@ index 67c3dfd..a97e2fb 100644
  			return m_mem[_addr - XIO_Reserved_High_First];
  		}
  	}
-@@ -792,6 +798,8 @@ namespace dsp56k
+@@ -836,6 +842,8 @@ namespace dsp56k
  		case Esai::M_RSMA_1:	m_esai.writeRSMA(_val);								return;
  		case Esai::M_RSMB_1:	m_esai.writeRSMB(_val);								return;
  		default:
@@ -545,7 +429,7 @@ index 67c3dfd..a97e2fb 100644
  		}
  		if (_addr != 0xffffd5)
 diff --git a/source/dsp56kEmu/peripherals.h b/source/dsp56kEmu/peripherals.h
-index adbac77..4257ef4 100644
+index 73e89aed..92bf2fe2 100644
 --- a/source/dsp56kEmu/peripherals.h
 +++ b/source/dsp56kEmu/peripherals.h
 @@ -1,5 +1,7 @@
@@ -556,7 +440,7 @@ index adbac77..4257ef4 100644
  #include "dma.h"
  #include "esai.h"
  #include "esaiclock.h"
-@@ -255,6 +257,14 @@ namespace dsp56k
+@@ -275,6 +277,14 @@ namespace dsp56k
  		const TWord* readAsPtr(TWord _addr, Instruction _inst) override { return nullptr; }
  		void write(TWord _addr, TWord _val) override;
  
@@ -571,7 +455,7 @@ index adbac77..4257ef4 100644
  		uint32_t exec() noexcept { return MaxDelayCycles; }
  
  		void reset() override;
-@@ -274,5 +284,7 @@ namespace dsp56k
+@@ -294,5 +304,7 @@ namespace dsp56k
  	private:
  		std::array<TWord, XIO_Reserved_High_Last - XIO_Reserved_High_First + 1> m_mem;
  		Esai m_esai;

@@ -614,3 +614,20 @@ COLDFIRE_PORT, VOICING, NOTES, REVERB_LOG, XBUS_LOG, EXTERNAL_INGEST, ...)
 was removed. A citation of the form `docs/history/RTOS_FORK.md §10.16` in a
 comment or a doc is still the provenance of what it sits beside; read it
 with `git show 3ceba41:docs/history/RTOS_FORK.md`.
+
+On 22 Sep 2026 `vendor/dsp56300`'s pin moved from `c051afad` (28 Jul) to
+`8ccdd843` (21 Sep, 144 commits later), prompted by reading
+`markandrus/octemu`'s independent RE and finding upstream had absorbed
+several of our own fixes in that span. `tools/patches/dsp56300.patch`
+dropped the hunks upstream now carries itself (MPYRI/MACRI, the DCOL
+12-bit width, "serve a DMA request raised before the channel was
+enabled", 2D/no-update DMA address modes, the assembler's
+TFR/CMP/CMPM/Tcc JJJ=000 encoding, JIT MPYI sign-extension, CCR overflow
+flags) and kept what is still ours (the AGU pre-decrement fix, the
+one-word displaced move, the DMA dual-counter reload, the host-stepped
+mode, the shared window, the unmapped-register hooks). Gated on: upstream's
+own `dsp56kTestRunner` suite, `scripts/refhash.sh check` against a
+pre-repin baseline (24 cases), `verify-bus`, `verify-spectrum-ident`,
+`verify-twocore`, and `make check` with a real project under the port
+(`verify_set`) -- all bit-identical or passing. Our own AGU fix is still
+an open, uncommented upstream PR (#13, since 8 Sep).
