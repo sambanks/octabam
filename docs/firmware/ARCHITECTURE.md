@@ -23,6 +23,7 @@ pipeline.
 | Audio DSP | Freescale Symphony **DSP56721** (`DSPB56721AG`): two DSP5636x cores, 200 MHz each, no external memory controller | ✓ (board photo) |
 | RAM | 128 MB SDRAM at `0x40000000` (`docs/remixer/PLACEMENT.md`) | ✓ |
 | Storage | CompactFlash (FAT16/32), OS and data; boots to DEMO without CF | ✓ |
+| NOR flash | CS0 at `0x00000000`, 8 MB decode; Spansion S29GL-N ID check, size not read (§3a) | ~ |
 | Expansion bus | FlexBus (chip selects for ATA, DSP, RAM) | ✓ |
 
 ## 3. OS format and update chain ✓
@@ -54,6 +55,82 @@ MK1-era files (inferred); octabam images keep code 0178.
 UI → write flow: OS UPGRADE menu → confirm → `os_upgrade` (stops audio,
 "WORKING PLEASE WAIT", enqueues a task) → scans the CF, validates →
 `os_apply_flash` (critical section) → writes the CF via ATA → reboot.
+
+## 3a. NOR flash ~
+
+Read from the 1.40C MAIN OS image (objdump listing, absolute-operand
+scan), 24 Sep 2026, after Andreas (Discord) reported an 8 MB NOR with
+~1.1 MB used. Nothing here is measured on a unit. objdump decodes the
+bootstrap copy and the ID-check region misaligned, so the addresses
+given for entry points there are ± a few bytes.
+
+**Chip select.** The bootstrap init (`0x400e0a1c..`) sets CSAR0 = 0,
+CSMR0 = `0x007F0001` (8 MB decode, valid), CSCR0 = `0x0C8015B0` (16-bit
+port, 5 wait states). A decode size is not a part size: SDCS0 decodes
+256 MB over a 128 MB SDRAM (`docs/remixer/PLACEMENT.md`). CS1 =
+`0x10000000`, 1 MB decode; CS2 = `0x20000000`, 256 MB decode.
+
+**Part.** JEDEC command set: unlock writes at byte `0xAAAA`/`0x5554`
+(word `0x5555`/`0x2AAA`; only A10:A0 are decoded, so Spansion's
+`0x555`/`0x2AA` parts accept them), sector erase `0x80`/`0x30` polled
+for `0xFFFF`, word program `0xA0` polled for data. The OS reads the ID
+(`~0x400202f4`): manufacturer `0x0001` and device `0x227E` set
+`0x400b9874` = 1 and select write-buffer programming (`0x25`, 128 words,
+`0x29`); any other ID programs word by word. So at least two parts are
+expected across production. `0x227E` is the Spansion S29GL-N family
+(S29GL064N / 128N / 256N = 8 / 16 / 32 MB); the extended ID words that
+tell them apart are never read, so the part size is not known from the
+image.
+
+**Layout.**
+
+| Flash range | Contents | Source |
+|---|---|---|
+| `0x000000..0x003fff` | bootstrap, linked at 0; its copy sits in the OS image at `~0x400de7dc..0x400e21e0` and carries the "BOOTSTRAP UPGRADE" string and the SysEx OS upgrade path | ~ |
+| `0x004000..0x1fffff` | the OS region: the OS's sector table at `0x400a91c0` has 37 entries, `0x4000`, `0x6000..0xe000` (6 × 8 KB), `0x10000..0x1f0000` (31 × 64 KB) = 2,080,768 B. The bootstrap's SysEx path programs the OS from `0x4000` (`0x400e011a..`, `pea %a0@(16384)`, +2 per word). The table is followed by "ELFU" and the `.bin` cipher constants (§3) | ~ |
+| `0x1ffffa..0x1fffff` | three words: magic `0x1234` at `0x1ffffa`, two words after it; the bootstrap also programs `0xabcd`/`0xdcba` markers here | ~ |
+| `0x200000..` | magic "EFGH", a count n, then n × 28-byte records, copied to `0x46ceb400` by `0x4001b9b4`; contents unidentified | ~ |
+| above the EFGH table | no reference in the OS image | ~ |
+
+The current MAIN OS is 1,112,560 B, 53% of the 2,080,768 B window;
+968,208 B of the window is unused by 1.40C.
+
+**Constraints on using it.**
+
+- The OS executes from SDRAM (load base `0x40000400`, §7), not in place
+  from flash. Code stored in flash runs only after something copies it to
+  RAM: the bootstrap does this for the OS region (inferred: the copy loop is not located); anything above
+  `0x200000` needs its own loader (the DRAM platform's boot detour is
+  where one would sit, `docs/remixer/PLACEMENT.md`).
+- An image up to 2,080,768 B fits the region the OS already erases and
+  programs. Past that, the image would overwrite the `0x1ffffa` words
+  and the EFGH table, and the OS's sector table ends at `0x1f0000`.
+- The bootstrap at `0..0x3fff` holds the SysEx upgrade path; erasing or
+  mis-programming it removes the recovery route for a bad OS image.
+- Erase granularity above `0x10000` is 64 KB. S29GL-N datasheet figures
+  (part not confirmed on a unit): ~0.5 s typical per sector erase,
+  100,000 erase cycles per sector. A setting stored in flash rewrites a
+  whole sector per change; the card is the store for anything written
+  often (samples, recordings, projects).
+- The OS's own upgrade flow stops audio before it writes (§3). Whether a
+  program or erase can run with audio running is not measured.
+- Capacity: 8 MB decoded; the part may be larger than the decode, and a
+  larger part's upper half is unreachable at this CSMR0 setting. Sample
+  storage stays on the CompactFlash (8 MB = ~95 s mono or ~48 s stereo at 16-bit 44.1 kHz).
+
+**To find out.**
+
+- The contents from `0x200000` to the end of the decode, and the EFGH
+  records: a read-only dump (a DRAM module copying `0..0x7fffff` to the
+  card) answers both.
+- The part fitted (8 / 16 / 32 MB): the extended ID words at `0x0E`/`0x0F`
+  in autoselect mode.
+- The bootstrap's own erase loop runs 21 entries from a table at flash
+  `0x2e38`, which the image copy does not carry. 21 sectors from `0x4000`
+  would end at `0xfffff`, below the end of the current OS.
+- §3's write flow says `os_apply_flash` writes via ATA; the OS carries
+  this NOR driver and sector table. Which device `os_apply_flash` writes
+  is not traced.
 
 ## 4. Kernel: a proprietary preemptive microkernel ✓
 
@@ -157,6 +234,8 @@ branch at `0x40083544` posts the same bits).
 
 | Window | Use |
 |---|---|
+| `0x00000000` | NOR flash, CS0, 8 MB decode (§3a) |
+| `0x10000000` | CS1, 1 MB decode |
 | `0x40000000` | SDRAM: code (OS image at `0x40000400`), data/BSS, the audio page arena, the delay rings (`docs/remixer/PLACEMENT.md`) |
 | `0x48000000` | the same SDRAM, uncached |
 | `0x20000000` | the DSP host port (HI08) |
