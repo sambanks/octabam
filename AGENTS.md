@@ -154,6 +154,17 @@ to exactly 1, so **DC in must come back flat** — it came back with 2×-DC
 ripple, and went flat (−122 dB) when the multiplier was halved. If you use
 a0 for anything, pin it with a test whose arithmetic you can predict exactly.
 
+**`asr #n,a,a` SHIFTS THE LOW BITS INTO a0, AND Z IS SET ONLY WHEN ALL 56
+BITS ARE ZERO.** A ramp step written as `sub x0,a / asr #6,a,a / teq y1,b`
+("a step that rounds to 0 snaps the run value onto its target") never
+snapped: a1 was 0, a0 held the shifted-out remainder, Z stayed clear, and
+every ramp sat up to 63 LSB under its knob for good (26 Sep 2026, found
+by `make verify-onebus`: a host's send at 100 was not bit-identical to a
+SEND's at 100). The same a0 remainder breaks `add x0,a / cmp x0,a / teq`
+(a 56-bit compare). Reload the step clean before testing it — `move a,x1 /
+move x1,a / tst a` — the one-word `move a,x1` drops a0. Sister of the
+"reading a0" trap below: the low word carries what a1 hides.
+
 **A logical op (`and`/`or`/`not`/`asr`-as-mask) on an accumulator leaves the
 extension byte (A2/B2) STALE, and the next `move a,x:` SATURATES to full
 scale.** Building a sign mask with `move a,b / asr #$17,b,b / not b` and
