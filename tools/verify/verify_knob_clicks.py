@@ -2,55 +2,57 @@
 """KNOB CLICK CENSUS: every continuous knob of every DSP module in bamsep26,
 moved mid-render under dsp_host, checked for block-rate steps in the output.
 
-A knob the DSP applies once per block (15 samples) and not per sample makes
-a step at every block boundary while it moves: zipper crackle at 2,940 Hz
-and its harmonics. This renders a steady 438.75 Hz tone through each module
-(the rig's layout for the bus engines and SEND, both payloads for the
-stations), and per knob and mode:
+A knob the DSP applies once per block (16 frames on the unit) and not per
+sample makes a step at every block boundary while it moves: zipper crackle
+at 2,756 Hz and its harmonics. This renders a steady 438.75 Hz tone at
+0.3 FS through each module (the rig's layout for the bus engines and
+SEND, both payloads for the stations) in 16-frame blocks, and per knob
+and mode:
 
-  move    knob at LO, jump to HI at block J1, back to LO at J2, then a turn
-          LO -> HI one step every two blocks from S0
+  move    knob at LO 20, a jump to HI 110 at block J1, back to LO at J2,
+          then a turn LO -> HI one step every two blocks from S0
   static  the same render with the knob held at LO, and again at HI
 
-Two measures per window (jump up, jump down, turn), on the second
-difference d2 of the observed track's L and R:
+The measure, per window (jump up, jump down, turn): the third difference
+d3 of each observed channel, its energy in each of the 16 sample phases
+of the block; the loudest phase over the median phase, less three robust
+deviations of the phases, as the RMS height of one step per block in
+dBFS (a step of height s puts 6 s^2 into d3). A step lands on the same
+phases every block; a tone, its harmonics, a swept resonance and an
+effect's own period-3 rotation spread over all of them. d3 terms touching
+a sample on the store's limit are left out (clipping is the effect's
+level, not a step).
 
-  grid    the energy of d2 in each of the 15 sample phases of the block,
-          max over median. A step at a block boundary lands on one phase
-          every block (the offset is whatever latency the step passes
-          through, so the max is taken over phases); a tone, harmonics and
-          noise spread evenly. Reported as move / static, the static being
-          the larger of LO and HI over the same window.
-  spikes  samples where |d2| exceeds twice the static renders' max over the
-          same window.
+A knob is FLAGGED when a window's move level is above STEP_LIMIT and
+MARGIN over the louder static render. STEP_LIMIT (-70 dBFS) sits under
+the delay's per-block FDBK glide, which measured -60 to -72 here before
+it got a per-sample ramp. Selects (count < 128: MODE, SIZE, SHFT, SAT)
+and the knobs in STEPPED change something discrete on a value change and
+are listed apart; KNOWN lists a residual with its reason and fails only
+if it gets louder than its ceiling.
 
-A knob is FLAGGED when either window's grid ratio exceeds GRID_LIMIT or its
-spikes exceed SPIKE_LIMIT. Selects (count < 128: MODE, SIZE, SHFT, SAT) change
-the engine on a value change and are listed apart, not flagged.
-
-The instrument is checked before any module is judged: a static render
-multiplied by a gain stepping once per block must flag, and the same gain
-ramped per sample must not.
+The instrument is checked before any module is judged: a 0.3 FS tone
+under a gain glided an eighth of the way per block must flag, and the
+same glide ramped per sample must not.
 
 What this cannot see: the chip's cycle overrun (a block that misses its
 deadline crackles on the unit and renders clean here), anything the
-ColdFire does between a panel turn and r6 (knobs are poked into r6 once per
-block, as the -sched option does), and a step smaller than the tone's own
-d2 floor.
+ColdFire does between a panel turn and r6 (knobs are poked into r6 once
+per block, as -sched does), a trig-split block (the dispatcher's two calls
+per block; dsp_host makes one), and a step under the tone's own d3 floor.
 
-    make verify-knobs                 # the census + its checks (~4 min)
-    python3 tools/verify/verify_knob_clicks.py --only SPECTRUM   # one module
+    make verify-knobs                 # the census (~1 min)
+    python3 tools/verify/verify_knob_clicks.py --only SPECTRUM --report out/k.md
 """
 import argparse
 import concurrent.futures as cf
 import math
 import pathlib
 import shutil
+import statistics
 import struct
 import subprocess
 import sys
-
-import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1])); import toolpath  # noqa: E402,F401
@@ -78,6 +80,12 @@ CONTEXT = {
 BUS = ("DELAY SERVER", "REVERB SERVER", "SEND")
 # continuous knobs whose values select discrete things: listed with the
 # selects, not flagged
+KNOWN = {
+    # integer taps (forced odd) move with SIZE's per-block glide; a
+    # per-sample fractional ramp in the tank loop prices ~100 cycles/sample
+    # on the reverb, more than the worst core's headroom
+    ("REVERB SERVER", "SIZE"): ("the tank taps are integers that step per block", -25.0),
+}
 STEPPED = {
     ("MODULATION", "LOFI"): "hold length and bit mask are integers",
     ("MODULATION", "STGS"): "PHSR's stage count, 2/4/6/8 by quarters of DLY",
@@ -228,33 +236,34 @@ def render(mems, case, at, sched, tag):
     res = []
     for o in obs:
         p = out if o == 0 else pathlib.Path(f"{out}.i{o}")
-        a = np.frombuffer(p.read_bytes(), dtype="<i4").astype(np.float64) / 8388607.0
+        raw = p.read_bytes()
+        a = [v / 8388607.0 for v in struct.unpack(f"<{len(raw) // 4}i", raw)]
         res += [a[0::2][PAD:], a[1::2][PAD:]]
     return res
 
 
 def tone_file(path, blocks, amp=0.3):
     """the steady tone, from sample PAD on"""
-    i = np.arange(blocks * FRAMES)
-    v = np.where(i >= PAD, amp * np.sin(2 * math.pi * vo.TONE_HZ / vo.SR * (i - PAD)), 0.0)
-    path.write_bytes((v * 8388607).astype("<i4").tobytes())
+    w = 2 * math.pi * vo.TONE_HZ / vo.SR
+    v = [int(amp * 8388607 * math.sin(w * (i - PAD))) if i >= PAD else 0
+         for i in range(blocks * FRAMES)]
+    path.write_bytes(struct.pack(f"<{len(v)}i", *v))
 
 
-def d3(x):
-    return x[3:] - 3 * x[2:-1] + 3 * x[1:-2] - x[:-3]
-
-
-def win(x, b0, b1):
-    """d3 of blocks [b0, b1), as (values, sample phase within the block)"""
-    s0, s1 = b0 * FRAMES, b1 * FRAMES
-    seg = x[s0 - 2:s1 + 1]
-    d = d3(seg)
-    # a sample on the store's limit is the effect clipping, not a step: the
-    # d3 terms that touch one are left out (a resonance swept through the
-    # tone overshoots; that is the effect's level, a separate question)
-    rail = np.abs(seg) >= 0.9999
-    d[rail[3:] | rail[2:-1] | rail[1:-2] | rail[:-3]] = 0.0
-    return d, np.arange(s0, s1) % FRAMES
+def phase_energy(x, b0, b1):
+    """the energy of d3 over blocks [b0, b1), per sample phase of the block.
+    A sample on the store's limit is the effect clipping, not a step: the d3
+    terms that touch one are left out (a resonance swept through the tone
+    overshoots; that is the effect's level, a separate question)."""
+    e = [0.0] * FRAMES
+    s0 = b0 * FRAMES
+    for n in range(s0, b1 * FRAMES):
+        a, b, c, d = x[n - 2], x[n - 1], x[n], x[n + 1]
+        if max(abs(a), abs(b), abs(c), abs(d)) >= 0.9999:
+            continue
+        v = d - 3 * c + 3 * b - a
+        e[n % FRAMES] += v * v
+    return e
 
 
 def step_db(x, b0, b1):
@@ -263,11 +272,10 @@ def step_db(x, b0, b1):
     deviations of the phases (a swept resonance spreads noise over all 15;
     a step lands on the same two every block), as the RMS height of one
     step per block (a step of height s puts 6 s^2 into d3)"""
-    d, ph = win(x, b0, b1)
-    e = np.array([np.sum(d[ph == p] ** 2) for p in range(FRAMES)])
-    med = np.median(e)
-    spread = 1.4826 * np.median(np.abs(e - med))
-    excess = e.max() - med - 3 * spread
+    e = phase_energy(x, b0, b1)
+    med = statistics.median(e)
+    spread = 1.4826 * statistics.median(abs(v - med) for v in e)
+    excess = max(e) - med - 3 * spread
     return max(-140.0, 10 * math.log10(max(excess, 1e-30) / (6 * (b1 - b0))))
 
 
@@ -291,19 +299,15 @@ def self_test():
     FDBK law, an eighth of the way per block) and not the same gain ramped
     per sample"""
     n = END * FRAMES + 3
-    t = np.arange(n)
-    x = 0.3 * np.sin(2 * math.pi * vo.TONE_HZ / vo.SR * t)
-    blk = t // FRAMES + (t % FRAMES) / FRAMES
-    def glide(pos):
-        g = np.ones(n)
-        k = np.clip(pos - J1, 0, None)
-        g[t >= J1 * FRAMES] = (0.5 + 0.5 * 0.875 ** k)[t >= J1 * FRAMES]
-        return g
-    step = glide(t // FRAMES)
-    ramp = glide(blk)
-    lo, hi = [x, x], [0.5 * x, 0.5 * x]
-    rs = measure([x * step] * 2, lo, hi)
-    rr = measure([x * ramp] * 2, lo, hi)
+    w = 2 * math.pi * vo.TONE_HZ / vo.SR
+    x = [0.3 * math.sin(w * t) for t in range(n)]
+    def gain(pos):
+        return 1.0 if pos < J1 else 0.5 + 0.5 * 0.875 ** (pos - J1)
+    step = [v * gain(t // FRAMES) for t, v in enumerate(x)]
+    ramp = [v * gain(t / FRAMES) for t, v in enumerate(x)]
+    half = [0.5 * v for v in x]
+    rs = measure([step] * 2, [x, x], [half, half])
+    rr = measure([ramp] * 2, [x, x], [half, half])
     ok = flagged(rs) and not flagged(rr)
     print(f"  [{'PASS' if ok else 'FAIL'}] instrument: a gain glided per block {rs['up'][0]:.1f} dBFS "
           f"(flags), the same glide ramped per sample {rr['up'][0]:.1f} dBFS (clean)")
@@ -350,6 +354,12 @@ def main():
         line = f"| {c.key} | {mode} | {c.label} | {cells} |"
         if (c.count is not None and c.count < 128) or (c.key, c.label) in STEPPED:
             sel.append(line)
+        elif (c.key, c.label) in KNOWN:
+            why, ceil = KNOWN[(c.key, c.label)]
+            worse = any(m > ceil for m, _ in r.values())
+            rows.append(line + (" LOUDER THAN KNOWN |" if worse else " known |"))
+            if worse:
+                flags.append(f"{c.key} mode {mode} {c.label} (known: {why}; ceiling {ceil} dBFS)")
         else:
             rows.append(line + (" FLAG |" if flagged(r) else " |"))
             if flagged(r):

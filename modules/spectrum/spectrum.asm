@@ -206,10 +206,11 @@ proc:
         tst     b
         move    x:(r7+$2e),b            ; g2run, where the last block ended
         teq     y1,b
-        move    b,x:(r7+$2e)
         move    b,x0
         sub     x0,a
         asr     #$7,a,a
+        teq     y1,b                    ; a step of 0: on g2
+        move    b,x:(r7+$2e)
         move    a,x:(r7+$2f)            ; dg
 ; ---- the SEM core's per-block words: c4 = (R + g2)/2 (so 4*c4 = 2R + g),
 ; d = 1/(1 + 2Rg + g^2) = (1/8) / (1/8 + R*g2/2 + g2^2/2) -- the one real
@@ -494,10 +495,11 @@ fs_mladr:
         tst     b
         move    x:(r7+$16),b            ; Grun, where the last block ended
         teq     y1,b                    ; a new mode: at G
-        move    b,x:(r7+$16)
         move    b,x0
         sub     x0,a
         asr     #$7,a,a                 ; 1/128 per sample (g2run's law)
+        teq     y1,b                    ; a step of 0: on G
+        move    b,x:(r7+$16)
         move    a,x:(r7+$15)            ; dG
 fs_mdone:
 ; ---- WDTH (slot 5): stereo width of the output, Character's mid/side,

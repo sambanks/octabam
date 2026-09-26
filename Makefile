@@ -149,6 +149,9 @@ emu-cf: ## Build and run the headless ColdFire machine (tools/emu/ot_emu) -- boo
 verify-onebus: ## THE ONE AUX BUS on both cores: chain, each host's print, WET passthrough, T8 refusal, no station sends (~2 min)
 	python3 tools/verify/verify_onebus.py
 
+verify-knobs: ## KNOB CLICK CENSUS: every continuous knob of bamsep26's DSP modules moved mid-render, block-rate steps in dBFS (~1 min)
+	$(PY) tools/verify/verify_knob_clicks.py
+
 .PHONY: verify-midi
 verify-midi: ## Local check of note->PITCH interval (DNOTE override, ~40 s)
 	python3 tools/verify/verify_midi.py

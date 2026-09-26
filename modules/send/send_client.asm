@@ -323,15 +323,23 @@ cnt_done:
 ; (dsp_host census on a 0.3 FS tone: steps to 0.25 FS in the delay's
 ; print); 1/16 per sample until 26 Sep 2026 left a jump's one-block ramp
 ; at the edge (tools/verify/verify_knob_clicks.py).
-        move    x:(r6),a                 ; DEL level: the target
+        move    x:(r6),y1                ; DEL level: the target
         move    x:(r7+$15),x0            ; the ramp's current value
+        move    y1,a
         sub     x0,a
         asr     #$6,a,a
+        move    x0,b
+        teq     y1,b                     ; a step of 0: on the target
+        move    b,x:(r7+$15)
         move    a,x:(r7+$16)             ; the per-sample step
-        move    x:(r6+$1),a              ; REV level, ramped the same way
+        move    x:(r6+$1),y1             ; REV level, ramped the same way
         move    x:(r7+$17),x0
+        move    y1,a
         sub     x0,a
         asr     #$6,a,a
+        move    x0,b
+        teq     y1,b
+        move    b,x:(r7+$17)
         move    a,x:(r7+$18)
         do      n7,>send_end
         move    x:(r7+$15),a

@@ -777,9 +777,12 @@ stpdn:
         asr     #$3,a,a
         add     b,a
         move    a,x:(r7-$16)            ; FDBK, glided
+        move    a,y1
         move    x:(r7+$2a),b            ; the run value
         sub     b,a
         asr     #$4,a,a
+        teq     y1,b                    ; a step of 0: on the glide
+        move    b,x:(r7+$2a)
         move    a,x:(r7-$13)            ; its step per sample
 
         move    x:(r6+$3),x0            ; TONE: slot 3 (one-aux re-slot)
@@ -791,9 +794,12 @@ stpdn:
         asr     #$3,a,a
         add     b,a
         move    a,x:(r7-$15)            ; TONE, glided
+        move    a,y1
         move    x:(r7+$29),b
         sub     b,a
         asr     #$4,a,a
+        teq     y1,b
+        move    b,x:(r7+$29)
         move    a,x:(r7-$12)
 
         move    x:(r6+$4),x0            ; PING: slot 4 (one-aux re-slot)
@@ -803,9 +809,12 @@ stpdn:
         asr     #$3,a,a
         add     b,a
         move    a,x:(r7-$14)            ; PING, glided
+        move    a,y1
         move    x:(r7+$2b),b
         sub     b,a
         asr     #$4,a,a
+        teq     y1,b
+        move    b,x:(r7+$2b)
         move    a,x:(r7-$1a)            ; +step for PING, -step for 1 - PING
         move    b,x0
         move    #>$7fffff,a
@@ -853,9 +862,13 @@ slewdn:
         move    x:(r6),a                ; SEND, slot 0
         and     #>$7f0000,a
         move    a,x:(r7+$2d)            ; SEND, this block
+        move    a,y1
         move    x:(r7-$30),x0           ; the ramp's running value ($19)
         sub     x0,a                    ; 1/64 of the gap per sample ($1b):
         asr     #$6,a,a                 ; the level stepped once per block
+        move    x0,b
+        teq     y1,b                    ; (a step of 0: on the knob)
+        move    b,x:(r7-$30)
         move    a,x:(r7-$2e)            ; until 23 Sep 2026, a click per block
                                         ; while the knob turned; a one-block
                                         ; ramp from last block's level until
@@ -876,9 +889,13 @@ slewdn:
         move    x:(r6+$1),a             ; REV, slot 1
         and     #>$7f0000,a             ; knob field only
         move    a,x:(r7-$20)            ; REV, this block
+        move    a,y1
         move    x:(r7-$1e),x0           ; the ramp's running value
         sub     x0,a                    ; the gap, 1/64 per sample
         asr     #$6,a,a
+        move    x0,b
+        teq     y1,b                    ; a step of 0: on the knob
+        move    b,x:(r7-$1e)
         move    a,x:(r7-$1d)
         move    #>$9d8,a                ; the REV accumulator: the chain's
         add     #>$80,a                 ; base plus its length
@@ -1213,10 +1230,14 @@ gvrdone:
         cmp     x0,a
         tgt     x0,a                    ; rstep = min(rstep, rmax)
         move    a,x:(r7-$b)
+        move    a,y1
         move    x:(r7-$1b),x0           ; the readers' rstep is a run value (raw
         sub     x0,a                    ; $2e) stepped 1/16 of the gap per
         asr     #$4,a,a                 ; sample (raw $30, 26 Sep 2026): a PTCH
-        move    a,x:(r7-$19)            ; jump was a speed step at a block edge
+        move    x0,b                    ; jump was a speed step at a block edge;
+        teq     y1,b                    ; a step of 0 lands it on the target
+        move    b,x:(r7-$1b)
+        move    a,x:(r7-$19)
         move    x:(r6+$d),a             ; DENS, slot 8's knob field
         and     #>$7f0000,a
         asr     #$14,a,a                ; knob >> 4 = dens3, 0..7
@@ -1235,9 +1256,13 @@ gvrdone:
         add     x0,b                    ; + 1/2
         move    b1,x0
         move    x0,b
-        move    x:(r7+$11),x0           ; GRAIN makeup coeff, this block's target:
-        sub     x0,b                    ; the loop's run value (raw $5a) steps
-        asr     #$4,b,b                 ; 1/16 of the gap per sample (raw $5b)
+        move    b,y1                    ; GRAIN makeup coeff, this block's target:
+        move    x:(r7+$11),x0           ; the loop's run value (raw $5a) steps
+        sub     x0,b                    ; 1/16 of the gap per sample (raw $5b)
+        asr     #$4,b,b
+        move    x0,a
+        teq     y1,a                    ; a step of 0: on the target
+        move    a,x:(r7+$11)
         move    b,x:(r7+$12)
 
 ; ---- rebuild both line pointers from saved phase --------------------------
