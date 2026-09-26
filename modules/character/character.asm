@@ -577,38 +577,37 @@ ch_rinfl:
         move    #$8,n6                  ; 16 - 8
 ch_rdone:
         do      n7,>ch_end
-; ---- the ramps' step: r5 walks the ring once (one turn per sample) --------
-        move    x:(r7+$15),x0
+; ---- the ramps' step: r5 walks the ring once (one turn per sample), r3
+; the steps ($15..$17, then $34..$36)
+        lua     (r7+$15),r3
+        move    x:(r3)+,x0
         move    x:(r5),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; gq L
-        move    x:(r7+$16),x0
         move    x:(r5),b
-        add     x0,b
+        add     x0,b    x:(r3)+,x0
         move    b,x:(r5)+               ; trim/2 L
         move    a,x:(r5)+               ; gq R
         move    b,x:(r5)+               ; trim/2 R
         move    (r5)+
         move    (r5)+
-        move    x:(r7+$17),x0
         move    x:(r5),a
         add     x0,a
         move    a,x:(r5)+               ; t/2 L
         move    a,x:(r5)+               ; t/2 R
+        lua     (r7+$34),r3
         move    (r5)+
         move    (r5)+
         move    (r5)+
         move    (r5)+
-        move    x:(r7+$34),x0
+        move    x:(r3)+,x0
         move    x:(r5),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; the dip's a
-        move    x:(r7+$35),x0
         move    x:(r5),a
-        add     x0,a
+        add     x0,a    x:(r3)+,x0
         move    a,x:(r5)+               ; makeup/4
         move    (r5)+
-        move    x:(r7+$36),x0
         move    x:(r5),a
         add     x0,a
         move    a,x:(r5)+               ; m, and r5 is back at the ring's head
