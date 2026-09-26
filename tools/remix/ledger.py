@@ -126,6 +126,24 @@ def check(selected) -> list[str]:
                   f"0x{m.menu.fx2_id:02x}")
         ids[m.menu.fx2_id] = m.name
 
+    # ---- bridges: what they stand in for must be there ---------------------
+    keys = {m.key for m in selected}
+    for m in selected:
+        for need in getattr(m, "requires", ()):
+            if need not in keys:
+                problems.append(f"{m.name} requires {need} in the remix (its overrides "
+                                f"leave a site with nothing at it otherwise)")
+
+    # ---- Part-window bytes (Claims.part_window) -----------------------------
+    regions: list[tuple[int, int, str, str]] = []
+    for m in selected:
+        for off, length, what in (m.claims.part_window if m.claims else ()):
+            for o2, l2, owner, w2 in regions:
+                if _overlap(o2, l2, off, length):
+                    clash("Part window", f"{owner}'s {w2}", f"{m.name}'s {what}",
+                          f"bytes +0x{max(o2, off):05x}.. of every Part")
+            regions.append((off, length, m.name, what))
+
     # ---- ColdFire caves and hook sites ------------------------------------
     caves: list[tuple[int, int, str, str]] = []
     hooks: dict[int, str] = {}

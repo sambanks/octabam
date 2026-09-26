@@ -256,6 +256,10 @@ verify: ## Verify the ColdFire menu edits, module ledger (+ burn probe when it f
 	@# TEMPO BUS: the TEMPO window's bus screen driven through the port's live
 	@# panel on verify_set's staged card; SKIPs without it (above).
 	python3 tools/verify/verify_tempobus.py $(REMIX)
+	@# SCENES P2: page-2 locks lerped into the DSP frame by the fader, and
+	@# the page-2 editor with a scene held writing the pool; SKIPs without
+	@# OT_PROJECT (above).
+	python3 tools/verify/verify_scenesp2.py $(REMIX)
 
 .PHONY: verify-roll
 verify-roll: ## Prove an alternate REVERB engine is bit-identical: make verify-roll CAND=cand.asm [REF=modules/busverb/reverb_server.asm]

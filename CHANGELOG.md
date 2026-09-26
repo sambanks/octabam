@@ -17,6 +17,12 @@ flashed image was built from.
   `verify_modedefaults` pokes both current-track bytes (`0x80000000`,
   `0x100b14cc`) before its editor call: with one moved, Octakit's editor
   wrapper halts on the disagreement (the FX1 case, T2; T1 was 0 in both).
+- SCENES P2 (26 Sep 2026): scene locks and the crossfader reach page 2 of
+  FX1 and FX2 (hold a scene, turn a page-2 knob; FUNC + turn removes the
+  lock). Locks live in a 144-byte pool inside the Part window (`+0x90522`)
+  and follow scene copy / paste / clear / undo. In `bamsep26`; in
+  `rig-kits` with the SCENES P2 KITS bridge over Octakit's editor
+  wrappers. Refused beside MIDI SCENES (same Part bytes). Port only.
 
 - `usb-audio` (26 Sep 2026) follows `bamsep26` again: TEMPO BUS added and
   the host pages draw DEL/REV (`host_slots`) where it had all twelve knobs.

@@ -405,6 +405,13 @@ class Claims:
     # guard sees no write above 0x3fff), and the pricer takes it at its
     # word: an fx1_only module is priced on FX1 slots only.
     fx1_only: bool = False
+    # BYTES OF THE PART WINDOW a module stores its own data in: (offset from
+    # the window's base 0x8ed80, length, what). The window (0x18b2 bytes a
+    # part) is dense; the one run known free is 0x90492..0x905b2 (midisc's
+    # 144-byte freeze twin then its 144-byte sparse blob, hardware since
+    # 1.40MIDISC8). SCENES P2's pool is the same 144 bytes as the sparse
+    # blob, so the ledger refuses the pair by name.
+    part_window: tuple[tuple[int, int, str], ...] = ()
 
     def __post_init__(self):
         if self.buffer_words is not None and not self.stock_instance_buffer:
@@ -737,6 +744,11 @@ class Module:
     # Claims of OTHER modules this module's own stand in for
     # (schema.Override) -- a bridge chaining two mods' hooks at one site.
     overrides: tuple[Override, ...] = ()
+    # Module KEYS this one is meaningless without -- a bridge whose overrides
+    # skip another module's writes on the promise that a third module's
+    # stubs stand at those sites (scenes-p2-kits). The ledger refuses a
+    # remix that selects it without them.
+    requires: tuple[str, ...] = ()
     # Which slot carries the MODE select, and what each of its positions
     # renames and re-defaults. Empty for a single-engine module.
     mode_slot: int | None = None
