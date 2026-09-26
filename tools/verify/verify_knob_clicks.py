@@ -234,18 +234,28 @@ def d3(x):
 def win(x, b0, b1):
     """d3 of blocks [b0, b1), as (values, sample phase within the block)"""
     s0, s1 = b0 * FRAMES, b1 * FRAMES
-    d = d3(x[s0 - 2:s1 + 1])
+    seg = x[s0 - 2:s1 + 1]
+    d = d3(seg)
+    # a sample on the store's limit is the effect clipping, not a step: the
+    # d3 terms that touch one are left out (a resonance swept through the
+    # tone overshoots; that is the effect's level, a separate question)
+    rail = np.abs(seg) >= 0.9999
+    d[rail[3:] | rail[2:-1] | rail[1:-2] | rail[:-3]] = 0.0
     return d, np.arange(s0, s1) % FRAMES
 
 
 def step_db(x, b0, b1):
     """the block-locked step in blocks [b0, b1), dBFS: the energy of d3 in
-    the loudest of the 15 phases over the median phase, as the RMS height
-    of one step per block (a step of height s puts 6 s^2 into d3)"""
+    the loudest of the 15 phases over the median phase, less three robust
+    deviations of the phases (a swept resonance spreads noise over all 15;
+    a step lands on the same two every block), as the RMS height of one
+    step per block (a step of height s puts 6 s^2 into d3)"""
     d, ph = win(x, b0, b1)
     e = np.array([np.sum(d[ph == p] ** 2) for p in range(FRAMES)])
-    excess = e.max() - np.median(e)
-    return 10 * math.log10(max(excess, 1e-30) / (6 * (b1 - b0)))
+    med = np.median(e)
+    spread = 1.4826 * np.median(np.abs(e - med))
+    excess = e.max() - med - 3 * spread
+    return max(-140.0, 10 * math.log10(max(excess, 1e-30) / (6 * (b1 - b0))))
 
 
 def measure(move, lo, hi):
