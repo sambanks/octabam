@@ -1006,7 +1006,7 @@ fs_ladr:
         move    #>$499999,x0            ; 2.3/4
         cmp     x0,a
         tgt     x0,a                    ; M <= 2.3
-        move    a,x1
+        move    a,y0                    ; (fs_rset clobbers x1)
         move    r7,r2
         move    #$60,n2
         move    (r2)+n2
@@ -1030,7 +1030,7 @@ fs_ladr:
         bsr     fs_rset
         move    x:(r7+$14),y1           ; d/2
         bsr     fs_rset
-        move    x1,y1                   ; M/4
+        move    y0,y1                   ; M/4
         bsr     fs_rset
         move    x:(r7+$2c),x0           ; WDTH's side gain / 2
         move    x0,x:(r1)+
