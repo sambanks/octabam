@@ -42,7 +42,12 @@
 ;   $68..$75  the VOWL stream (b0 m1 a2 gain x3, vg/8, WDTH; overlaps LADR's:
 ;             each is rebuilt by its own mode's prologue every block)
 ;   $7c..$7f  CAP's amounts ring (m1 = 3)
-;   free: $19..$1d, $27..$2b, $39..$3f, $4a..$4d, $76..$7b
+;   $2b       1 once this mode's ramped stream words started at their
+;             targets (0 at init and on a MODE change; fs_rset)
+;   $39..$3b  CAP's per-sample steps (gn/16 lpBase trim/2); $76..$7f the
+;             other modes' per-sample steps (per block, fs_rbase), CAP's
+;             gn/16 and trim/2 targets at $76/$77
+;   free: $19..$1d, $27..$2a, $3c..$3f, $4a..$4d
 ; ---------------------------------------------------------------------------
 
 init:

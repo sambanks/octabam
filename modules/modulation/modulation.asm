@@ -29,9 +29,15 @@
 ;   $41        the LOFI hold counter (persistent)
 ;   $42        the LOFI hold length; $45 its mask; $46 the TONE knob word;
 ;              $47 mo_para's park (per block)
-;   $48..$69   the block's constant stream on r4/r1: LINE 34 words, PHSR 18,
-;              COMB 16 (each loop's header lists the order)
-;   $22, $43, $44, $6a..$83 free
+;   $48..$69   the block's constant stream on r4/r1: LINE 28 words, PHSR 18,
+;              COMB 13 (each loop's header lists the order)
+;   $22        MIX's run value, stepped per sample by the loops (26 Sep 2026)
+;   $43        1 once the run values started at their targets (0 at init and
+;              on a MODE change; mo_rset); $44 MIX's per-sample step (per
+;              block); $10..$12 LINE's wid/depth/centre steps, COMB's
+;              period/polarity/gain steps (per block, in the modes that do
+;              not use $10..$12 otherwise)
+;   $6a..$83 free
 ; init zeroes $11..$46 and, on FX1, the lines.
 ; ---------------------------------------------------------------------------
 
@@ -310,8 +316,9 @@ mo_line:
         move    #$1,n0                  ; (short immediate, stock's own form)
 ; Pointer-addressed (22 Sep 2026). The block's constants in a stream at $48
 ; (r4), in the order the sample reads them: inc wid | depth centre c fb hold
-; mask c | depth centre c fb mask c | i f bl bd ff c200 kc c200 kb | the same
-; for R | m. The states walk from $23 on r3: lpi L, latch L, lpo L, lpi R,
+; mask c | c fb mask c | bl bd ff c200 kc c200 kb | the same for R | MIX's
+; step (wid, depth and centre are run values; R and both fixed taps read
+; L's depth and centre at r4 + 2/3). The states walk from $23 on r3: lpi L, latch L, lpo L, lpi R,
 ; latch R, lpo R, hp L, lpb L, wet L, hp R, lpb R. r2/r6 = the lines' bases,
 ; y0 = the write phase, n4 = the LFO phase, n1 = the LOFI counter, n2/n6 =
 ; the taps and then the LPo outputs. r6 (the page pointer) is not read past
@@ -780,7 +787,7 @@ mo_padv:
         move    x0,x:(r5)
 ; ---- the loop --------------------------------------------------------------
 ; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): dbm dbf fb w2 w4
-; w6 w8 hold mask | dbm dbf fb w2 w4 w6 w8 mask | m. The walk from $25 on
+; w6 w8 hold mask | dbm dbf fb w2 w4 w6 w8 mask | MIX's step. The walk from $25 on
 ; r3, per channel: bm bf, the two feedback stages, the eight mod stages, the
 ; LOFI latch, then (L only) the wet. The ramps' states are copied into the
 ; walk for the block and back after it; y previous in n2/n6 (their slots
@@ -1086,7 +1093,8 @@ mo_bcomb:
         move    a,x:(r7+$1c)
 ; ---- the loop --------------------------------------------------------------
 ; Pointer-addressed (22 Sep 2026). The stream at $48 (r4): period-1 polarity
-; h1 h0 gain hold mask trim | period-1 polarity h1 h0 gain mask trim | m. The
+; h1 h0 gain hold mask trim | h1 h0 mask trim | MIX's step (period-1,
+; polarity and gain are run values the R string reads at r4 + 0/1/4). The
 ; walk from
 ; $23 on r3, per channel: mo_herm's eight scratch words, x1, x2, the LOFI
 ; latch, then (L only) the wet. r2/r6 = the lines' bases, y0 = the write

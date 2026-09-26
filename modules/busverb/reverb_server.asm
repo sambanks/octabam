@@ -94,7 +94,8 @@
 ;   r7+$82        warm-up counter, $2c0000 | blocks, capped at 0x100
 ;   r7+$83        write phase (persistent, masked on load as well as save)
 ;   $71 WET ramped per sample, $7c its per-sample step (per block)
-;   free: $10..$13, $25..$27, $39, $66, $68, $69, $6e, $7d
+;   r7+$10        TIME's t, glided (per block, 26 Sep 2026)
+;   free: $11..$13, $25..$27, $39, $66, $68, $69, $6e, $7d
 ;   (fourteen; $25/$26 and $39 went to registers 23 Sep 2026)
 ;
 ; Parameters (page 1 slots 0-5, page 2 slots 6-11):
