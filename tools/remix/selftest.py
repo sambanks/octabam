@@ -520,6 +520,7 @@ def main():
                  "PLATE REV", "SPRING REV", "DARK REV", "COMPRESSOR", "LO-FI",
                  "DJ EQ", "COMB FILTER")
     _want = {"restock": (), "recfix": (), "mods": (), "ok-ms": (), "usb-lean": (),
+             "octatrick": (), "octatrick-usb": (),     # stock effects + ColdFire modules, no DSP words
              "repitch": (),
              "euclid": ("SPATIALIZER", "FLANGER", "CHORUS", "COMB FILTER"),
              "bamsep26": _rig, "rig-scenes": _rig, "rig-kits": _rig,
